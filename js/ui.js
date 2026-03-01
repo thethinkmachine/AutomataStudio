@@ -1,0 +1,238 @@
+// ══════════════════════════════════════════════════════════════════
+//  KEYBOARD SHORTCUTS
+// ══════════════════════════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === 'z') { e.preventDefault(); undo(); }
+    if (e.key === 'y' || e.key === 'Z') { e.preventDefault(); redo(); }
+    if (e.key === 's') { e.preventDefault(); saveJSON(); }
+    return;
+  }
+  if (e.key === 'v' || e.key === 'V') setTool('move');
+  if (e.key === 's' || e.key === 'S') setTool('state');
+  if (e.key === 't' || e.key === 'T') setTool('trans');
+  if (e.key === 'h' || e.key === 'H') { e.preventDefault(); fitToScreen(); }
+  if (e.key === '=' || e.key === '+') { e.preventDefault(); zoomIn(); }
+  if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut(); }
+  if (e.key === 'd' || e.key === 'D') setTool('del');
+  if (e.key === 'x' || e.key === 'X') clearAll();
+  if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); }
+  if (e.key === 'Escape') {
+    const anyModalOpen = document.querySelector('.modal[style*="flex"]');
+    if (anyModalOpen) {
+      closeModal('trans-modal'); closeModal('state-modal'); closeModal('help-modal');
+    } else {
+      App.transFrom = null; clearTempLine(); setTool('pointer');
+    }
+  }
+  if (e.key === 'ArrowRight' || e.key === 'Enter') {
+    if (App.currentAlgo === 'utm') utmStepFwd(); else stepFwd();
+  }
+  if (e.key === 'ArrowLeft') {
+    if (App.currentAlgo === 'utm') utmStepBack(); else stepBack();
+  }
+  if (e.key === ' ' && App.currentAlgo === 'utm') {
+    e.preventDefault();
+    utmToggleAuto();
+  }
+  if (e.key === '1') setView('build');
+  if (e.key === '2') setView('algo');
+  if (e.key === '3') setView('grammar');
+  if (e.key === '4') setView('theory');
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+//  ZOOM / FIT / MINIMAP / SIDEBAR / FILTER FUNCTIONS
+// ══════════════════════════════════════════════════════════════════
+function zoomIn() {
+  const w = $('canvas-wrap'); if (!w) return;
+  const r = w.getBoundingClientRect();
+  const mx = r.width / 2, my = r.height / 2;
+  const newZ = Math.min(3, App.cam.z * 1.25);
+  App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
+  App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
+  App.cam.z = newZ;
+  applyCamera();
+}
+
+function zoomOut() {
+  const w = $('canvas-wrap'); if (!w) return;
+  const r = w.getBoundingClientRect();
+  const mx = r.width / 2, my = r.height / 2;
+  const newZ = Math.max(0.2, App.cam.z / 1.25);
+  App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
+  App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
+  App.cam.z = newZ;
+  applyCamera();
+}
+
+function fitToScreen() {
+  if (!App.states.length) return;
+  const w = $('canvas-wrap'); if (!w) return;
+  const cw = w.clientWidth, ch = w.clientHeight;
+  const R = 34; // state radius + some padding
+  const pad = 90;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  App.states.forEach(s => {
+    minX = Math.min(minX, s.x - R);
+    minY = Math.min(minY, s.y - R);
+    maxX = Math.max(maxX, s.x + R);
+    maxY = Math.max(maxY, s.y + R);
+  });
+  const bw = maxX - minX, bh = maxY - minY;
+  const scaleX = (cw - pad * 2) / bw;
+  const scaleY = (ch - pad * 2) / bh;
+  const z = Math.min(2.0, Math.min(scaleX, scaleY));
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  App.cam.x = cw / 2 - cx * z;
+  App.cam.y = ch / 2 - cy * z;
+  App.cam.z = z;
+  applyCamera();
+  showStatus('Fit to screen');
+}
+
+function toggleFullscreen() {
+  const elem = document.documentElement;
+  if (!document.fullscreenElement) {
+    elem.requestFullscreen().catch(err => showStatus(`Fullscreen failed: ${err.message}`));
+  } else {
+    document.exitFullscreen().catch(err => showStatus(`Exit fullscreen failed: ${err.message}`));
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  const btn = $('fs-btn');
+  if (btn) {
+    btn.title = document.fullscreenElement ? 'Exit fullscreen (F)' : 'Enter fullscreen (F)';
+    btn.style.opacity = document.fullscreenElement ? '0.7' : '1';
+  }
+});
+
+
+function renderMinimap() {
+  const canvas = $('minimap-canvas'); if (!canvas) return;
+  if (!canvas.isConnected) return;
+  const ctx = canvas.getContext('2d');
+  const cw = canvas.width, ch = canvas.height;
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.fillStyle = '#080c18';
+  ctx.fillRect(0, 0, cw, ch);
+  if (!App.states.length) return;
+  // Compute world bounding box
+  const R = 34;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  App.states.forEach(s => {
+    minX = Math.min(minX, s.x - R); minY = Math.min(minY, s.y - R);
+    maxX = Math.max(maxX, s.x + R); maxY = Math.max(maxY, s.y + R);
+  });
+  // Also include viewport extent
+  const vw = $('canvas-wrap')?.clientWidth || 600, vh = $('canvas-wrap')?.clientHeight || 400;
+  const vpMinX = -App.cam.x / App.cam.z, vpMinY = -App.cam.y / App.cam.z;
+  const vpMaxX = (vw - App.cam.x) / App.cam.z, vpMaxY = (vh - App.cam.y) / App.cam.z;
+  minX = Math.min(minX, vpMinX); minY = Math.min(minY, vpMinY);
+  maxX = Math.max(maxX, vpMaxX); maxY = Math.max(maxY, vpMaxY);
+  const bw = maxX - minX, bh = maxY - minY;
+  if (!bw || !bh) return;
+  const pad = 4;
+  const scaleX = (cw - pad * 2) / bw, scaleY = (ch - pad * 2) / bh;
+  const mmScale = Math.min(scaleX, scaleY);
+  const mmOffX = pad + (cw - pad * 2 - bw * mmScale) / 2;
+  const mmOffY = pad + (ch - pad * 2 - bh * mmScale) / 2;
+  // Save for click navigation
+  canvas._mmScale = mmScale; canvas._mmOffX = mmOffX; canvas._mmOffY = mmOffY;
+  canvas._mmMinX = minX; canvas._mmMinY = minY;
+  // Draw transitions
+  ctx.strokeStyle = 'rgba(100,130,200,0.25)';
+  ctx.lineWidth = 1;
+  App.transitions.forEach(tr => {
+    const fs = App.states.find(s => s.id === tr.from);
+    const ts2 = App.states.find(s => s.id === tr.to);
+    if (!fs || !ts2) return;
+    ctx.beginPath();
+    ctx.moveTo((fs.x - minX) * mmScale + mmOffX, (fs.y - minY) * mmScale + mmOffY);
+    ctx.lineTo((ts2.x - minX) * mmScale + mmOffX, (ts2.y - minY) * mmScale + mmOffY);
+    ctx.stroke();
+  });
+  // Draw states
+  App.states.forEach(s => {
+    const sx = (s.x - minX) * mmScale + mmOffX;
+    const sy = (s.y - minY) * mmScale + mmOffY;
+    const sr = Math.max(2, R * mmScale * 0.7);
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+    ctx.fillStyle = s.accept ? 'rgba(105,240,174,0.6)' : 'rgba(79,195,247,0.4)';
+    ctx.fill();
+  });
+  // Draw viewport rect
+  const rx = (vpMinX - minX) * mmScale + mmOffX;
+  const ry = (vpMinY - minY) * mmScale + mmOffY;
+  const rw = (vpMaxX - vpMinX) * mmScale;
+  const rh = (vpMaxY - vpMinY) * mmScale;
+  ctx.strokeStyle = 'rgba(79,195,247,0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(rx, ry, rw, rh);
+}
+
+function toggleMinimap() {
+  const mm = $('minimap-container'), sb = $('minimap-show-btn');
+  if (!mm) return;
+  const hidden = mm.classList.toggle('minimap-hidden');
+  if (sb) sb.style.display = hidden ? '' : 'none';
+  try { localStorage.setItem('automata-minimap', hidden ? '0' : '1'); } catch(e) {}
+}
+
+function minimapNavigate(e) {
+  const canvas = $('minimap-canvas'); if (!canvas) return;
+  if (!canvas._mmScale) return;
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy2 = e.clientY - rect.top;
+  // Convert minimap coords → world coords
+  const worldX = (cx - canvas._mmOffX) / canvas._mmScale + canvas._mmMinX;
+  const worldY = (cy2 - canvas._mmOffY) / canvas._mmScale + canvas._mmMinY;
+  // Pan camera to center on this world point
+  const w = $('canvas-wrap'); if (!w) return;
+  App.cam.x = w.clientWidth / 2 - worldX * App.cam.z;
+  App.cam.y = w.clientHeight / 2 - worldY * App.cam.z;
+  applyCamera();
+}
+
+function toggleSidebar() {
+  const s = $('sidebar');
+  const collapsed = s.classList.toggle('collapsed');
+  const btn = $('sidebar-toggle-btn');
+  if (btn) btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  try { localStorage.setItem('automata-sidebar', collapsed ? '0' : '1'); } catch(e) {}
+}
+
+function filterStates() {
+  const q = ($('state-search')?.value || '').toLowerCase();
+  document.querySelectorAll('#states-list .si').forEach(el => {
+    el.style.display = (!q || el.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  });
+}
+
+function toggleRPSection(id) {
+  const sec = $(id); if (!sec) return;
+  const body = sec.querySelector('.rp-section-body');
+  const collapsed = sec.classList.toggle('collapsed');
+  if (body) body.style.display = collapsed ? 'none' : '';
+}
+
+function filterAlgos() {
+  const q = ($('algo-search')?.value || '').toLowerCase();
+  document.querySelectorAll('.algo-item').forEach(el => {
+    el.style.display = (!q || el.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  });
+  document.querySelectorAll('.algo-grp').forEach(grp => {
+    let sib = grp.nextElementSibling, any = false;
+    while (sib && sib.classList.contains('algo-item')) {
+      if (sib.style.display !== 'none') any = true;
+      sib = sib.nextElementSibling;
+    }
+    grp.style.display = any ? '' : 'none';
+  });
+}
+

@@ -1,0 +1,273 @@
+/* ─── SVG STATES ─── */
+.sn {
+  cursor: pointer;
+}
+
+.sn circle.bd {
+  fill: var(--surface);
+  stroke: var(--border2);
+  stroke-width: 1.5;
+  transition: fill .15s, stroke .15s;
+}
+
+.sn:hover circle.bd {
+  fill: var(--surface2);
+  stroke: var(--accent);
+}
+
+.sn.start-st circle.bd {
+  stroke: var(--green);
+}
+
+.sn.acc-st circle.bd {
+  stroke: var(--gold);
+}
+
+.sn.act-st circle.bd {
+  fill: rgba(79, 195, 247, .18);
+  stroke: var(--accent);
+  filter: drop-shadow(0 0 7px rgba(79, 195, 247, .45));
+}
+
+.sn.rej-st circle.bd {
+  fill: rgba(255, 107, 107, .1);
+  stroke: var(--red);
+}
+
+.sn.sel-st circle.bd {
+  stroke: var(--purple);
+  stroke-width: 2.5;
+}
+
+.slbl {
+  font-family: var(--mono);
+  font-size: 11px;
+  fill: var(--text);
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
+.tarr {
+  stroke: var(--text3);
+  stroke-width: 1.5;
+  fill: none;
+  marker-end: url(#arr);
+}
+
+.tarr.act-t {
+  stroke: var(--accent);
+}
+
+.tlbl {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--text2);
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+
+/* ─── CANVAS TOOLBOX ─── */
+.canvas-toolbox {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 50;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: var(--shadow-md);
+}
+.toolbox-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--text2);
+  transition: all var(--transition-fast);
+  min-width: 52px;
+}
+.toolbox-btn:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.toolbox-btn.active {
+  background: var(--surface2);
+  color: var(--accent);
+  border-color: rgba(79,195,247,.4);
+}
+.toolbox-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+}
+.toolbox-lbl {
+  font-family: var(--mono);
+  font-size: .6rem;
+  letter-spacing: .05em;
+}
+.toolbox-kbd {
+  font-family: var(--mono);
+  font-size: .55rem;
+  color: var(--text3);
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+.toolbox-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+}
+.toolbox-btn.toolbox-danger {
+  color: var(--text3);
+}
+.toolbox-btn.toolbox-danger:hover {
+  background: rgba(255,107,107,.1);
+  color: var(--red);
+  border-color: rgba(255,107,107,.3);
+}
+.toolbox-btn.toolbox-danger.active {
+  background: rgba(255,107,107,.15);
+  color: var(--red);
+  border-color: rgba(255,107,107,.4);
+}
+
+/* ─── CANVAS NAV CONTROLS ─── */
+.canvas-nav-controls {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  z-index: 50;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: var(--shadow-sm);
+}
+.cnc-btn {
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--text2);
+  font-size: .9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+.cnc-btn:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.cnc-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+.cnc-zoom-display {
+  font-family: var(--mono);
+  font-size: .65rem;
+  color: var(--text3);
+  padding: 0 6px;
+  min-width: 38px;
+  text-align: center;
+}
+.cnc-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border2);
+  margin: 0 2px;
+}
+
+/* ─── MINIMAP ─── */
+.minimap-container {
+  position: absolute;
+  bottom: 56px;
+  right: 14px;
+  z-index: 50;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: opacity var(--transition-fast);
+}
+.minimap-container.minimap-hidden {
+  display: none;
+}
+.minimap-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+}
+.minimap-title {
+  font-family: var(--mono);
+  font-size: .6rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+.minimap-toggle {
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text3);
+  font-size: .8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  padding: 0;
+}
+.minimap-toggle:hover { color: var(--text); }
+.minimap-canvas {
+  display: block;
+  cursor: pointer;
+  width: 160px;
+  height: 100px;
+}
+.minimap-show-btn {
+  position: absolute;
+  bottom: 56px;
+  right: 14px;
+  z-index: 50;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-family: var(--mono);
+  font-size: .6rem;
+  color: var(--text3);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.minimap-show-btn:hover { color: var(--text); background: var(--surface); }
+
