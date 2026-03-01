@@ -31,34 +31,38 @@ function setView(v) {
 //  MACHINE TYPE
 // ══════════════════════════════════════════════════════════════════
 function setMachine(m) {
-  if (m === 'DFA' || m === 'NFA') {
-    const violations = [];
-    const epsTrans = App.transitions.filter(t => t.symbol === 'ε');
-    if (epsTrans.length) violations.push(`${epsTrans.length} ε-transition(s)`);
-    if (m === 'DFA') {
-      const seen = new Set();
-      const dups = App.transitions.filter(t => { const k = `${t.from}:${t.symbol}`; if (seen.has(k)) return true; seen.add(k); return false; });
-      if (dups.length) violations.push(`${dups.length} duplicate (state, symbol) transition(s)`);
-    }
-    if (violations.length) {
-      const ok = confirm(`Switching to ${m} requires removing:\n• ${violations.join('\n• ')}\n\nRemove violations and switch?`);
-      if (!ok) return;
-      snapshot();
-      App.transitions = App.transitions.filter(t => t.symbol !== 'ε');
-      if (m === 'DFA') {
-        const seen = new Set();
-        App.transitions = App.transitions.filter(t => { const k = `${t.from}:${t.symbol}`; if (seen.has(k)) return false; seen.add(k); return true; });
-      }
-    }
+  if (m !== App.machine && App.states.length > 0) {
+    if (!confirm(`Switch to ${m}? The current canvas will be cleared.`)) return;
+    clearAll(true);
   }
   App.machine = m;
   document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('active', b.textContent === m));
   $('mach-badge').className = `badge bd-${m.toLowerCase().replace('ε-', 'e')}`;
   $('mach-badge').textContent = m;
   $('stack-sec').style.display = m === 'PDA' ? '' : 'none';
+  $('output-sec').style.display = (m === 'Moore' || m === 'Mealy') ? '' : 'none';
   $('tape-wrap').style.display = m === 'TM' ? '' : 'none';
+  $('mtm-ctrl').style.display = m === 'MTM' ? 'flex' : 'none';
+  $('mtm-tapes').style.display = m === 'MTM' ? '' : 'none';
   updateRPanel(); renderAll();
   showStatus('Machine: ' + m);
+}
+
+function setTapeCount(n) {
+  const newCount = Math.max(2, Math.min(4, parseInt(n) || 2));
+  if (newCount === App.tapeCount) return;
+  if (App.transitions.length > 0) {
+    if (!confirm(`Changing tape count from ${App.tapeCount} to ${newCount} requires clearing all existing transitions. Continue?`)) {
+      $('tape-count-sel').value = App.tapeCount;
+      return;
+    }
+    snapshot();
+    App.transitions = [];
+    renderAll(); updateSidebar(); updateRPanel();
+  }
+  App.tapeCount = newCount;
+  $('tape-count-sel').value = App.tapeCount;
+  resetSim();
 }
 
 // ══════════════════════════════════════════════════════════════════

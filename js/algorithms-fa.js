@@ -16,6 +16,8 @@ function renderAlgo(a) {
     isEmpty: algoIsEmpty, isFinite: algoIsFinite, isUniversal: algoIsUniversal, fullEquiv: algoFullEquiv,
     star: algoClopStar, reversal: algoClopReversal, union2: algoClopUnion, intersect: algoClopIntersect, concat2: algoClopConcat,
     nfaTree: algoNFATree, ndtm: algoNDTM, utm: algoUTM,
+    mooreTable: algoMooreTable, mealyTable: algoMealyTable,
+    moore2mealy: algoMoore2Mealy, mealy2moore: algoMealy2Moore, mtmTable: algoMTMTable,
   };
   if (renders[a]) renders[a](c);
 }
@@ -1592,3 +1594,225 @@ function utmToggleAuto() {
   }, 400);
 }
 
+
+
+// ══════════════════════════════════════════════════════════════════
+//  MOORE MACHINE ALGORITHMS
+// ══════════════════════════════════════════════════════════════════
+function algoMooreTable(c) {
+  c.innerHTML = `<div class="algo-title">Moore Machine Table</div>
+<div class="algo-sub">TRANSITION TABLE WITH STATE OUTPUTS &#955;: Q &#8594; &#916;</div>
+<div class="info-box">Each state has an associated output symbol &#955;(q). The output produced on input string w = a&#8321;...a&#8345; is &#955;(q&#8320;)&#955;(q&#8321;)...&#955;(q&#8345;), where q&#7522; = &#948;(q&#7522;&#8331;&#8321;, a&#7522;). Output length is always |w|+1.</div>`;
+  if (App.machine !== 'Moore') { c.innerHTML += '<div class="card">Switch to Moore machine mode to use this table.</div>'; return; }
+  if (!App.states.length) { c.innerHTML += '<div class="card">Build a Moore machine first in the Build tab.</div>'; return; }
+  const syms = [...App.sigma];
+  const thead = `<tr><th>State</th><th style="color:var(--green)">&#955;(q)</th>${syms.map(s => `<th>${s}</th>`).join('')}</tr>`;
+  const rows = App.states.map(s => {
+    const prefix = (App.startId === s.id ? '&#8594;' : ' ') + (App.accepts.has(s.id) ? '*' : ' ');
+    const outCell = `<td style="color:var(--green);font-weight:600">${s.output || '&#8212;'}</td>`;
+    const cells = syms.map(sym => {
+      const t = App.transitions.find(tr => tr.from === s.id && tr.symbol === sym);
+      const dest = t ? getState(t.to)?.name : '&#8212;';
+      return `<td class="${!t ? 'dead-cell' : ''}">${dest}</td>`;
+    }).join('');
+    return `<tr><td class="${App.startId === s.id ? 'start-cell' : ''} ${App.accepts.has(s.id) ? 'acc-cell' : ''}">${prefix} ${s.name}</td>${outCell}${cells}</tr>`;
+  }).join('');
+  c.innerHTML += `<div class="card"><div class="card-title">&#948;: Q &times; &#931; &#8594; Q &nbsp;|&nbsp; &#955;: Q &#8594; &#916;</div>
+<div class="subset-table-wrap"><table class="result-table"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>
+<div style="font-family:var(--mono);font-size:.62rem;color:var(--text3);margin-top:8px">&#8594; = start state &nbsp;&nbsp; * = accept state &nbsp;&nbsp; &#955;(q) = output of state q</div></div>`;
+  const outSyms = [...new Set(App.states.map(s => s.output).filter(Boolean))];
+  c.innerHTML += `<div class="card"><div class="card-title">Output Alphabet &#916; used</div>
+<div class="nfa-result-states">${outSyms.map(o => `<div class="state-pill">${o}</div>`).join('') || '<span style="color:var(--text3);font-size:.72rem">No outputs defined</span>'}</div></div>`;
+}
+
+function algoMoore2Mealy(c) {
+  c.innerHTML = `<div class="algo-title">Moore &#8594; Mealy Conversion</div>
+<div class="algo-sub">OUTPUT MOVES FROM STATES TO TRANSITIONS</div>
+<div class="info-box">For each Moore transition (p, a) &#8594; q with &#955;(q) = b, the equivalent Mealy transition is (p, a) &#8594; q with output b. State structure is unchanged; only output attribution shifts from destination states to incoming transitions.</div>`;
+  if (App.machine !== 'Moore') { c.innerHTML += '<div class="card">Switch to Moore machine mode to use this conversion.</div>'; return; }
+  if (!App.states.length) { c.innerHTML += '<div class="card">Build a Moore machine first.</div>'; return; }
+  const rows = App.transitions.map(t => {
+    const fn = getState(t.from)?.name || '?', tn = getState(t.to)?.name || '?';
+    const mealyOut = getState(t.to)?.output || '&#8212;';
+    return `<tr><td>${fn}</td><td>${t.symbol}</td><td>${tn}</td><td style="color:var(--accent);font-weight:600">${mealyOut}</td></tr>`;
+  }).join('');
+  c.innerHTML += `<div class="card"><div class="card-title">Equivalent Mealy Transitions</div>
+<div class="subset-table-wrap"><table class="result-table">
+  <thead><tr><th>From</th><th>Input</th><th>To</th><th style="color:var(--accent)">Output &#955;(to)</th></tr></thead>
+  <tbody>${rows || '<tr><td colspan="4" class="dead-cell">No transitions</td></tr>'}</tbody>
+</table></div>
+<div style="font-family:var(--mono);font-size:.62rem;color:var(--text3);margin-top:8px">
+  Mealy output = &#955;<sub>Moore</sub>(destination state). State structure unchanged.<br>
+  Note: The initial Moore output &#955;(q&#8320;) has no Mealy equivalent &mdash; Mealy output sequence is one symbol shorter.
+</div></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadMooreAsMealy()">Load as Mealy Machine</button></div>`;
+}
+
+function loadMooreAsMealy() {
+  if (App.machine !== 'Moore') return;
+  snapshot();
+  App.transitions.forEach(t => { t.output = getState(t.to)?.output || ''; });
+  App.machine = 'Mealy';
+  document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('active', b.textContent === 'Mealy'));
+  $('mach-badge').className = 'badge bd-mealy'; $('mach-badge').textContent = 'Mealy';
+  $('output-sec').style.display = '';
+  $('stack-sec').style.display = 'none';
+  updateRPanel(); renderAll(); updateSidebar();
+  setView('build'); showStatus('Loaded as Mealy machine. Transition outputs set from destination state outputs.');
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+//  MEALY MACHINE ALGORITHMS
+// ══════════════════════════════════════════════════════════════════
+function algoMealyTable(c) {
+  c.innerHTML = `<div class="algo-title">Mealy Machine Table</div>
+<div class="algo-sub">TRANSITION TABLE WITH TRANSITION OUTPUTS &#955;: Q &times; &#931; &#8594; &#916;</div>
+<div class="info-box">Each transition (q, a) &#8594; p carries an output symbol &#955;(q, a). The output produced on w = a&#8321;...a&#8345; is &#955;(q&#8320;,a&#8321;)&#955;(q&#8321;,a&#8322;)...&#955;(q&#8345;&#8331;&#8321;,a&#8345;), exactly n symbols. No output before the first input.</div>`;
+  if (App.machine !== 'Mealy') { c.innerHTML += '<div class="card">Switch to Mealy machine mode to use this table.</div>'; return; }
+  if (!App.states.length) { c.innerHTML += '<div class="card">Build a Mealy machine first in the Build tab.</div>'; return; }
+  const syms = [...App.sigma];
+  const thead = `<tr><th>State</th>${syms.map(s => `<th>${s}<br><span style="font-size:.58rem;color:var(--text3)">to / out</span></th>`).join('')}</tr>`;
+  const rows = App.states.map(s => {
+    const prefix = (App.startId === s.id ? '&#8594;' : ' ') + (App.accepts.has(s.id) ? '*' : ' ');
+    const cells = syms.map(sym => {
+      const t = App.transitions.find(tr => tr.from === s.id && tr.symbol === sym);
+      if (!t) return '<td class="dead-cell">&#8212; / &#8212;</td>';
+      const dest = getState(t.to)?.name || '?';
+      const out = t.output || '&#8212;';
+      return `<td>${dest} / <span style="color:var(--accent);font-weight:600">${out}</span></td>`;
+    }).join('');
+    return `<tr><td class="${App.startId === s.id ? 'start-cell' : ''} ${App.accepts.has(s.id) ? 'acc-cell' : ''}">${prefix} ${s.name}</td>${cells}</tr>`;
+  }).join('');
+  c.innerHTML += `<div class="card"><div class="card-title">&#948;: Q &times; &#931; &#8594; Q &nbsp;|&nbsp; &#955;: Q &times; &#931; &#8594; &#916; &nbsp;(format: &#948;(q,a) / &#955;(q,a))</div>
+<div class="subset-table-wrap"><table class="result-table"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>
+<div style="font-family:var(--mono);font-size:.62rem;color:var(--text3);margin-top:8px">&#8594; = start state &nbsp;&nbsp; * = accept state &nbsp;&nbsp; format: next-state / output</div></div>`;
+}
+
+function algoMealy2Moore(c) {
+  c.innerHTML = `<div class="algo-title">Mealy &#8594; Moore Conversion</div>
+<div class="algo-sub">OUTPUT MOVES FROM TRANSITIONS TO STATES (STATE SPLITTING)</div>
+<div class="info-box">Each Mealy state q is split into copies (q, b) for each output symbol b that appears on any transition entering q. The Moore output of copy (q, b) is b. An initial copy (q&#8320;, &#8709;) is added for the start state with no output.</div>`;
+  if (App.machine !== 'Mealy') { c.innerHTML += '<div class="card">Switch to Mealy machine mode to use this conversion.</div>'; return; }
+  if (!App.states.length) { c.innerHTML += '<div class="card">Build a Mealy machine first.</div>'; return; }
+  const result = computeMealy2Moore();
+  const stateHtml = result.states.map(s => {
+    const isAcc = result.accepts.has(s.id), isStart = s.id === result.startId;
+    return `<div class="state-pill ${isAcc ? 'acc' : isStart ? 'start' : ''}">${s.name} [&#955;=${s.output || '&#8709;'}]</div>`;
+  }).join('');
+  c.innerHTML += `<div class="card"><div class="card-title">Moore States (${result.states.length} from ${App.states.length} Mealy states)</div>
+<div class="nfa-result-states">${stateHtml}</div></div>`;
+  const rows = result.transitions.map(t => {
+    const fn = result.states.find(s => s.id === t.from)?.name || t.from;
+    const tn = result.states.find(s => s.id === t.to)?.name || t.to;
+    const toOut = result.states.find(s => s.id === t.to)?.output || '&#8212;';
+    return `<tr><td>${fn}</td><td>${t.symbol}</td><td>${tn}</td><td style="color:var(--green)">${toOut}</td></tr>`;
+  }).join('');
+  c.innerHTML += `<div class="card"><div class="card-title">Moore Transitions (${result.transitions.length})</div>
+<div class="subset-table-wrap"><table class="result-table">
+  <thead><tr><th>From</th><th>Input</th><th>To</th><th style="color:var(--green)">&#955;(to)</th></tr></thead>
+  <tbody>${rows || '<tr><td colspan="4" class="dead-cell">No transitions</td></tr>'}</tbody>
+</table></div></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadMealyAsMoore()">Load as Moore Machine</button></div>`;
+  App._lastMealy2Moore = result;
+}
+
+function computeMealy2Moore() {
+  const incomingOutputs = {};
+  App.states.forEach(s => { incomingOutputs[s.id] = new Set(); });
+  App.transitions.forEach(t => { if (t.output) incomingOutputs[t.to]?.add(t.output); });
+  const mooreStates = []; const idMap = {};
+  const s0 = App.startId ? getState(App.startId) : null;
+  if (s0) {
+    const sid = 'm_' + s0.id + '_init';
+    mooreStates.push({ id: sid, name: s0.name, output: '' });
+    idMap[s0.id + '_init'] = sid;
+  }
+  App.states.forEach(s => {
+    if (s.id === App.startId) return;
+    const outs = incomingOutputs[s.id];
+    if (!outs || outs.size === 0) {
+      const sid = 'm_' + s.id + '_none';
+      mooreStates.push({ id: sid, name: s.name, output: '' });
+      idMap[s.id + '_none'] = sid;
+    } else {
+      outs.forEach(b => {
+        const sid = 'm_' + s.id + '_' + b;
+        mooreStates.push({ id: sid, name: s.name + '/' + b, output: b });
+        idMap[s.id + '_' + b] = sid;
+      });
+    }
+  });
+  const mooreTrans = [];
+  App.transitions.forEach((t, ti) => {
+    const b = t.output || '';
+    const toKey = b ? (t.to + '_' + b) : (t.to + '_none');
+    const toId = idMap[toKey] || idMap[t.to + '_init'] || null;
+    const fromCopies = mooreStates.filter(s => s.id.startsWith('m_' + t.from + '_'));
+    fromCopies.forEach((fc, fi) => {
+      if (toId) mooreTrans.push({ id: 'mt_' + ti + '_' + fi, from: fc.id, to: toId, symbol: t.symbol });
+    });
+  });
+  const startId = mooreStates[0]?.id || null;
+  const accepts = new Set(mooreStates.filter(s => {
+    const origId = s.id.slice(2, s.id.lastIndexOf('_'));
+    return App.accepts.has(origId);
+  }).map(s => s.id));
+  return { states: mooreStates, transitions: mooreTrans, startId, accepts };
+}
+
+function loadMealyAsMoore() {
+  const r = App._lastMealy2Moore; if (!r) return;
+  snapshot();
+  App.states = r.states.map((s, i) => ({ ...s, x: 120 + (i % 4) * 180, y: 120 + Math.floor(i / 4) * 160 }));
+  App.transitions = r.transitions;
+  App.startId = r.startId;
+  App.accepts = r.accepts;
+  App.stateN = r.states.length; App.transN = r.transitions.length;
+  App.machine = 'Moore';
+  document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('active', b.textContent === 'Moore'));
+  $('mach-badge').className = 'badge bd-moore'; $('mach-badge').textContent = 'Moore';
+  $('output-sec').style.display = '';
+  $('stack-sec').style.display = 'none';
+  updateRPanel(); renderAll(); updateSidebar();
+  setView('build'); showStatus('Loaded as Moore machine.');
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+//  MULTI-TAPE TM TABLE
+// ══════════════════════════════════════════════════════════════════
+function algoMTMTable(c) {
+  c.innerHTML = `<div class="algo-title">Multi-Tape TM Transition Table</div>
+<div class="algo-sub">&#948;: Q &times; &#915;&#7503; &#8594; Q &times; &#915;&#7503; &times; {L,R}&#7503;</div>
+<div class="info-box">Each transition reads one symbol from each of the k tapes, writes one symbol to each tape, and moves each head independently. The table shows one row per transition: symbols read from all tapes, the destination state, and writes/directions for all tapes.</div>`;
+  if (App.machine !== 'MTM') { c.innerHTML += '<div class="card">Switch to MTM mode to use this table.</div>'; return; }
+  if (!App.states.length) { c.innerHTML += '<div class="card">Build an MTM first in the Build tab.</div>'; return; }
+  const k = App.tapeCount;
+  const readHdrs = Array.from({length:k},(_,i)=>`<th>T${i+1} read</th>`).join('');
+  const writeHdrs = Array.from({length:k},(_,i)=>`<th>T${i+1} write/dir</th>`).join('');
+  const thead = `<tr><th>State</th>${readHdrs}<th>Next State</th>${writeHdrs}</tr>`;
+  const rows = App.transitions.map(t => {
+    const fn = getState(t.from)?.name || '?', tn = getState(t.to)?.name || '?';
+    const reads = Array.from({length:k}, (_,i) => `<td>${(t.tapeSyms || [])[i] || t.symbol || '&#8212;'}</td>`).join('');
+    const writes = Array.from({length:k}, (_,i) => {
+      const w = (t.tapeWrites || [])[i] || '&#8212;', d = (t.tapeDirs || [])[i] || '&#8212;';
+      return `<td>${w}/${d}</td>`;
+    }).join('');
+    const fromClass = App.startId === t.from ? 'start-cell' : App.accepts.has(t.from) ? 'acc-cell' : '';
+    const toClass = App.accepts.has(t.to) ? 'acc-cell' : '';
+    return `<tr><td class="${fromClass}">${fn}</td>${reads}<td class="${toClass}">${tn}</td>${writes}</tr>`;
+  }).join('');
+  const emptyCols = 2 + 2 * k;
+  c.innerHTML += `<div class="card"><div class="card-title">${k}-Tape TM Transitions (${App.transitions.length} total)</div>
+<div class="subset-table-wrap"><table class="result-table"><thead>${thead}</thead><tbody>${rows || `<tr><td colspan="${emptyCols}" class="dead-cell">No transitions defined</td></tr>`}</tbody></table></div>
+<div style="font-family:var(--mono);font-size:.62rem;color:var(--text3);margin-top:8px">
+  T1 = primary input tape &nbsp;&nbsp; T2..Tk = work tapes &nbsp;&nbsp; format: write-symbol/direction
+</div></div>`;
+  const statePills = App.states.map(s => {
+    const cls = App.accepts.has(s.id) ? 'acc' : App.startId === s.id ? 'start' : '';
+    return `<div class="state-pill ${cls}">${s.name}${App.startId===s.id?' (start)':''}${App.accepts.has(s.id)?' &#9733;':''}</div>`;
+  }).join('');
+  c.innerHTML += `<div class="card"><div class="card-title">States Q (${App.states.length})</div>
+<div class="nfa-result-states">${statePills}</div></div>`;
+}

@@ -1,7 +1,7 @@
 // ══════════════════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════════════════
-renderSigma(); renderGamma(); renderGramSyms();
+renderSigma(); renderGamma(); renderGramSyms(); renderOutputAlpha();
 renderGrammarSidebar(); updateSidebar();
 setMachine('DFA'); setTool('pointer'); setView('build');
 snapshot();

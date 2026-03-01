@@ -133,6 +133,60 @@
   border: 1px solid rgba(255, 183, 77, .25);
 }
 
+.bd-enfa {
+  background: rgba(124, 77, 255, .12);
+  color: var(--purple);
+  border: 1px solid rgba(124, 77, 255, .25);
+}
+
+.bd-moore {
+  background: rgba(105, 240, 174, .1);
+  color: var(--green);
+  border: 1px solid rgba(105, 240, 174, .3);
+}
+
+.bd-mealy {
+  background: rgba(79, 195, 247, .1);
+  color: var(--accent);
+  border: 1px solid rgba(79, 195, 247, .3);
+}
+
+.bd-mtm {
+  background: rgba(255, 99, 99, .1);
+  color: var(--red, #ff6b6b);
+  border: 1px solid rgba(255, 99, 99, .3);
+}
+
+#mtm-tapes {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 9px;
+  margin-bottom: 7px;
+}
+
+.mtm-tape-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.tape-label {
+  font-family: var(--mono);
+  font-size: .6rem;
+  color: var(--text3);
+  min-width: 18px;
+}
+
+.tape-cells {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  gap: 1px;
+}
+
 .code-box {
   font-family: var(--mono);
   font-size: .72rem;
@@ -260,7 +314,8 @@
 .tape-wrap {
   display: flex;
   gap: 2px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   padding: 7px;
   background: var(--bg3);
   border: 1px solid var(--border);
@@ -272,6 +327,7 @@
 .tc {
   width: 26px;
   height: 26px;
+  flex-shrink: 0;
   border: 1px solid var(--border2);
   border-radius: 3px;
   display: flex;

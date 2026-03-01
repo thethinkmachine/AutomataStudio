@@ -19,13 +19,36 @@ function tokenize(str) {
 
 function runSim() {
   resetSim();
-  const raw = $('sim-in').value, str = raw === 'ε' ? '' : raw;
+  const raw = $('sim-in').value;
   if (!App.startId) { log('<span class="t-err">No start state.</span>'); return; }
+
+  // MTM: support optional comma-separated per-tape initialization
+  if (App.machine === 'MTM' && raw.includes(',')) {
+    const parts = raw.split(',');
+    if (parts.length !== App.tapeCount) {
+      log(`<span class="t-err">MTM: found ${parts.length} comma-separated segment(s) but machine has ${App.tapeCount} tape(s). Provide one value per tape.</span>`);
+      return;
+    }
+    const tapeTokens = [];
+    for (let pi = 0; pi < parts.length; pi++) {
+      const p = parts[pi].trim();
+      const tok = tokenize(p === 'ε' ? '' : p);
+      if (tok === null) { log(`<span class="t-err">Tape ${pi + 1}: cannot tokenize "${p}" using alphabet {${[...App.sigma].join(', ')}}.</span>`); return; }
+      tapeTokens.push(tok);
+    }
+    simMTM(tapeTokens[0], tapeTokens);
+    return;
+  }
+
+  const str = raw === 'ε' ? '' : raw;
   const tokens = tokenize(str);
   if (tokens === null) { log(`<span class="t-err">Input cannot be tokenized using alphabet {${[...App.sigma].join(', ')}}.</span>`); return; }
   if (App.machine === 'DFA') simDFA(tokens);
   else if (App.machine === 'NFA' || App.machine === 'ε-NFA') simNFA(tokens);
   else if (App.machine === 'PDA') simPDA(tokens);
+  else if (App.machine === 'Moore') simMoore(tokens);
+  else if (App.machine === 'Mealy') simMealy(tokens);
+  else if (App.machine === 'MTM') simMTM(tokens);
   else simTM(tokens);
 }
 function log(html) { const t = $('trace-log'); t.innerHTML = html; t.scrollTop = t.scrollHeight; }
@@ -116,6 +139,75 @@ function simTM(tokens) {
   App.simIdx = 0; renderSimStep();
 }
 
+function simMoore(tokens) {
+  App.simSteps = [];
+  let cur = App.startId;
+  const s0 = getState(cur);
+  const initOut = s0?.output ?? '';
+  App.simSteps.push({ state: cur, remaining: tokens.join(''), note: `Start: ${s0?.name} — λ: '${initOut}'`, output: initOut });
+  const outputs = [initOut];
+  for (let i = 0; i < tokens.length; i++) {
+    const sym = tokens[i];
+    const t = App.transitions.find(tr => tr.from === cur && tr.symbol === sym);
+    if (!t) { App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' }); break; }
+    cur = t.to;
+    const sc = getState(cur);
+    const out = sc?.output ?? '';
+    outputs.push(out);
+    App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `Read '${sym}' → ${sc?.name} — λ: '${out}'`, tid: t.id, output: out });
+  }
+  const last = App.simSteps[App.simSteps.length - 1];
+  if (!last.final) { last.final = App.accepts.has(cur) ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }
+  last.note += ` | Output: "${outputs.join('')}"`;
+  App.simIdx = 0; renderSimStep();
+}
+
+function simMealy(tokens) {
+  App.simSteps = [];
+  let cur = App.startId;
+  App.simSteps.push({ state: cur, remaining: tokens.join(''), note: `Start: ${getState(cur)?.name}`, outSoFar: '' });
+  const outputs = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const sym = tokens[i];
+    const t = App.transitions.find(tr => tr.from === cur && tr.symbol === sym);
+    if (!t) { App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject', outSoFar: outputs.join('') }); break; }
+    outputs.push(t.output ?? '?');
+    cur = t.to;
+    App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `Read '${sym}' → ${getState(cur)?.name} — out: '${t.output ?? '?'}'`, tid: t.id, outSoFar: outputs.join('') });
+  }
+  const last = App.simSteps[App.simSteps.length - 1];
+  if (!last.final) { last.final = App.accepts.has(cur) ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }
+  if (outputs.length) last.note += ` | Output: "${outputs.join('')}"`;
+  App.simIdx = 0; renderSimStep();
+}
+
+function simMTM(tokens, allTapeTokens) {
+  App.simSteps = [];
+  const k = App.tapeCount;
+  const tapes = allTapeTokens
+    ? Array.from({ length: k }, (_, i) => { const tok = allTapeTokens[i]; return (tok && tok.length) ? [...tok] : ['⊔']; })
+    : Array.from({ length: k }, (_, i) => i === 0 ? (tokens.length ? [...tokens] : ['⊔']) : ['⊔']);
+  const heads = Array(k).fill(0);
+  let state = App.startId;
+  for (let step = 0; step < 10000; step++) {
+    tapes.forEach((tape, i) => { while (tape.length <= heads[i]) tape.push('⊔'); });
+    const syms = tapes.map((tape, i) => tape[heads[i]]);
+    App.simSteps.push({ state, tapes: tapes.map(t => [...t]), heads: [...heads], note: `State:${getState(state)?.name} Read:[${syms.join(',')}]` });
+    if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
+    const t = App.transitions.find(tr => tr.from === state && tr.tapeSyms && tr.tapeSyms.length === k && tr.tapeSyms.every((s, i) => s === syms[i] || s === 'Σ'));
+    if (!t) { App.simSteps[App.simSteps.length - 1].final = 'reject'; App.simSteps[App.simSteps.length - 1].note += ' — REJECT'; break; }
+    for (let i = 0; i < k; i++) {
+      tapes[i][heads[i]] = t.tapeWrites[i] || syms[i];
+      heads[i] += t.tapeDirs[i] === 'R' ? 1 : -1;
+      if (heads[i] < 0) heads[i] = 0;
+    }
+    state = t.to;
+  }
+  const lastMTM = App.simSteps[App.simSteps.length - 1];
+  if (lastMTM && !lastMTM.final) { lastMTM.final = 'reject'; lastMTM.note += ' — STEP LIMIT REACHED — REJECT'; }
+  App.simIdx = 0; renderSimStep();
+}
+
 function renderSimStep() {
   const step = App.simSteps[App.simIdx]; if (!step) return;
   const lines = App.simSteps.slice(0, App.simIdx + 1).map((s, i) => {
@@ -133,6 +225,12 @@ function renderSimStep() {
     const tw = $('tape-wrap'); tw.style.display = 'flex';
     tw.innerHTML = step.tape.map((c, i) => `<div class="tc ${i === step.head ? 'head' : ''}">${c}</div>`).join('');
   }
+  if (App.machine === 'MTM' && step.tapes) {
+    const mtmDiv = $('mtm-tapes'); mtmDiv.style.display = '';
+    mtmDiv.innerHTML = step.tapes.map((tape, ti) =>
+      `<div class="mtm-tape-row"><span class="tape-label">T${ti + 1}</span><span class="tape-cells">${tape.map((c, ci) => `<div class="tc ${ci === step.heads[ti] ? 'head' : ''}">${c}</div>`).join('')}</span></div>`
+    ).join('');
+  }
 }
 function stepFwd() { if (App.simIdx < App.simSteps.length - 1) { App.simIdx++; renderSimStep(); } }
 function stepBack() { if (App.simIdx > 0) { App.simIdx--; renderSimStep(); } }
@@ -141,7 +239,8 @@ function resetSim() {
   App.simSteps = []; App.simIdx = 0;
   $('auto-btn').classList.remove('playing'); $('auto-btn').textContent = '⏵ Auto';
   log('<span style="color:var(--text3);font-style:italic">Run a string to simulate…</span>');
-  $('tape-wrap').innerHTML = '';
+  $('tape-wrap').innerHTML = ''; $('tape-wrap').style.display = 'none';
+  $('mtm-tapes').innerHTML = ''; $('mtm-tapes').style.display = 'none';
   document.querySelectorAll('.sn').forEach(el => el.classList.remove('act-st', 'rej-st'));
 }
 function toggleAuto() {
@@ -156,24 +255,26 @@ function toggleAuto() {
 function runBatch() {
   const lines = $('batch-in').value.split('\n').map(l => l.trim()).filter(l => l !== undefined);
   if (!lines.length) return;
-  if (App.machine === 'PDA' || App.machine === 'TM') {
-    $('batch-result').innerHTML = `<div class="br-err">Batch testing is not supported for ${App.machine}. Switch to DFA, NFA, or ε-NFA.</div>`;
+  if (App.machine === 'PDA' || App.machine === 'TM' || App.machine === 'MTM') {
+    $('batch-result').innerHTML = `<div class="br-err">Batch testing is not supported for ${App.machine}.</div>`;
     return;
   }
   const results = lines.map(line => {
     const str = line === 'ε' ? '' : line;
     const tokens = tokenize(str);
     if (tokens === null) return { str: line, accepted: false, error: true };
-    let accepted = false;
+    let accepted = false, output = null;
     if (App.machine === 'DFA') accepted = testDFA(tokens);
     else if (App.machine === 'NFA' || App.machine === 'ε-NFA') accepted = testNFA(tokens);
-    return { str: line, accepted };
+    else if (App.machine === 'Moore') { accepted = testDFA(tokens); output = getMooreOutput(tokens); }
+    else if (App.machine === 'Mealy') { accepted = testDFA(tokens); output = getMealyOutput(tokens); }
+    return { str: line, accepted, output };
   });
-  $('batch-result').innerHTML = results.map(r =>
-    r.error
-      ? `<div class="br-err">✗ "${r.str}" — cannot tokenize</div>`
-      : `<div class="${r.accepted ? 'br-ok' : 'br-err'}">${r.accepted ? '✓' : '✗'} "${r.str}"</div>`
-  ).join('');
+  $('batch-result').innerHTML = results.map(r => {
+    if (r.error) return `<div class="br-err">✗ "${r.str}" — cannot tokenize</div>`;
+    const outTag = r.output !== null ? ` <span style="color:var(--text3);font-size:.65rem">→ "${r.output}"</span>` : '';
+    return `<div class="${r.accepted ? 'br-ok' : 'br-err'}">${r.accepted ? '✓' : '✗'} "${r.str}"${outTag}</div>`;
+  }).join('');
 }
 function testDFA(tokens) {
   let cur = App.startId;
@@ -184,5 +285,27 @@ function testNFA(tokens) {
   let cur = epsClosure(new Set([App.startId]));
   for (const sym of tokens) { let nx = new Set(); cur.forEach(s => App.transitions.filter(t => t.from === s && t.symbol === sym).forEach(t => nx.add(t.to))); cur = epsClosure(nx); }
   return [...cur].some(id => App.accepts.has(id));
+}
+function getMooreOutput(tokens) {
+  let cur = App.startId;
+  const outputs = [getState(cur)?.output ?? ''];
+  for (const sym of tokens) {
+    const t = App.transitions.find(tr => tr.from === cur && tr.symbol === sym);
+    if (!t) break;
+    cur = t.to;
+    outputs.push(getState(cur)?.output ?? '');
+  }
+  return outputs.join('');
+}
+function getMealyOutput(tokens) {
+  let cur = App.startId;
+  const outputs = [];
+  for (const sym of tokens) {
+    const t = App.transitions.find(tr => tr.from === cur && tr.symbol === sym);
+    if (!t) break;
+    outputs.push(t.output ?? '?');
+    cur = t.to;
+  }
+  return outputs.join('');
 }
 

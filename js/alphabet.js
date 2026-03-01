@@ -21,4 +21,15 @@ function renderGamma() {
   const c = $('gamma-chips');
   c.innerHTML = [...App.stackAlpha].map(s => `<div class="chip">${s}<span class="x" onclick="delGSym('${s}')">×</span></div>`).join('');
 }
+function addOutSym() {
+  const v = $('outsym-in').value.trim(); if (!v) return;
+  v.split(/[,\s]+/).forEach(s => { if (s) App.outputAlpha.add(s); });
+  $('outsym-in').value = ''; renderOutputAlpha();
+}
+function delOutSym(s) { App.outputAlpha.delete(s); renderOutputAlpha(); }
+function renderOutputAlpha() {
+  const c = $('output-chips');
+  c.innerHTML = [...App.outputAlpha].map(s => `<div class="chip">${s}<span class="x" onclick="delOutSym('${s}')">×</span></div>`).join('')
+    || '<div class="empty-msg">Add symbols</div>';
+}
 

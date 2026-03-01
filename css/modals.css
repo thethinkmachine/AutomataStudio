@@ -26,6 +26,8 @@
   min-width: 320px;
   max-width: 520px;
   width: 90%;
+  max-height: 85vh;
+  overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, .6), 0 0 0 1px rgba(255, 255, 255, .025);
   transform: translateY(-8px);
   transition: transform .2s;
@@ -54,6 +56,18 @@
   font-size: .67rem;
   color: var(--text2);
   min-width: 72px;
+}
+
+.modal-section-lbl {
+  font-family: var(--mono);
+  font-size: .65rem;
+  color: var(--text3);
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  padding: 6px 0 2px;
+  border-top: 1px solid var(--border2);
+  margin-top: 4px;
 }
 
 .modal-foot {

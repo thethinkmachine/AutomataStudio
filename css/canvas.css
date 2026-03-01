@@ -48,6 +48,15 @@
   pointer-events: none;
 }
 
+.mooreout {
+  font-family: var(--mono);
+  font-size: 8px;
+  fill: var(--green);
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
 .tarr {
   stroke: var(--text3);
   stroke-width: 1.5;

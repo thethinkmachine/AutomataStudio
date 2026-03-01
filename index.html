@@ -59,10 +59,13 @@
     <span class="stb-label">Machine Type</span>
     <div class="machine-tabs" id="machine-tabs">
       <button class="mtab active" onclick="setMachine('DFA')">DFA</button>
+      <button class="mtab" onclick="setMachine('Moore')">Moore</button>
+      <button class="mtab" onclick="setMachine('Mealy')">Mealy</button>
       <button class="mtab" onclick="setMachine('NFA')">NFA</button>
       <button class="mtab" onclick="setMachine('ε-NFA')">ε-NFA</button>
       <button class="mtab" onclick="setMachine('PDA')">PDA</button>
       <button class="mtab" onclick="setMachine('TM')">TM</button>
+      <button class="mtab" onclick="setMachine('MTM')">MTM</button>
     </div>
     <div style="flex:1"></div>
     <button class="hbtn" onclick="loadExample()" title="Load example automaton">
@@ -105,6 +108,15 @@
             <button class="ibtn" onclick="addGSym()">+</button>
           </div>
           <div class="chips" id="gamma-chips"></div>
+        </div>
+        <div class="sec" id="output-sec" style="display:none">
+          <div class="sec-lbl">Output Δ</div>
+          <div class="row">
+            <input class="inp" id="outsym-in" placeholder="0, 1…" maxlength="10"
+              onkeydown="if(event.key==='Enter')addOutSym()">
+            <button class="ibtn" onclick="addOutSym()">+</button>
+          </div>
+          <div class="chips" id="output-chips"></div>
         </div>
         <div class="sec">
           <div class="sec-lbl">States Q</div>
@@ -240,6 +252,15 @@
                 <button class="sbtn" onclick="resetSim()">↺</button>
               </div>
               <div class="tape-wrap" id="tape-wrap" style="display:none"></div>
+              <div id="mtm-ctrl" style="display:none;align-items:center;gap:6px;margin-bottom:4px">
+                <span style="font-family:var(--mono);font-size:.65rem;color:var(--text3)">Tapes:</span>
+                <select class="sel" id="tape-count-sel" onchange="setTapeCount(this.value)" style="flex:none;width:55px">
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                </select>
+              </div>
+              <div id="mtm-tapes" style="display:none"></div>
               <div class="trace-log" id="trace-log"><span style="color:var(--text3);font-style:italic">Run a string to simulate…</span></div>
             </div>
           </div>
@@ -274,6 +295,12 @@
           <div class="algo-item" onclick="setAlgo('ndtm')" data-algo="ndtm">NDTM Simulation</div>
           <div class="algo-grp">Turing Machines</div>
           <div class="algo-item" onclick="setAlgo('utm')" data-algo="utm">UTM Simulator</div>
+          <div class="algo-item" onclick="setAlgo('mtmTable')" data-algo="mtmTable">MTM Transition Table</div>
+          <div class="algo-grp">Transducers</div>
+          <div class="algo-item" onclick="setAlgo('mooreTable')" data-algo="mooreTable">Moore Table (&#955;: Q&rarr;&Delta;)</div>
+          <div class="algo-item" onclick="setAlgo('mealyTable')" data-algo="mealyTable">Mealy Table (&#955;: Q&times;&Sigma;&rarr;&Delta;)</div>
+          <div class="algo-item" onclick="setAlgo('moore2mealy')" data-algo="moore2mealy">Moore &rarr; Mealy</div>
+          <div class="algo-item" onclick="setAlgo('mealy2moore')" data-algo="mealy2moore">Mealy &rarr; Moore</div>
           <div class="algo-grp">Regular Expressions</div>
           <div class="algo-item" onclick="setAlgo('re2nfa')" data-algo="re2nfa">Regex → NFA (Thompson)</div>
           <div class="algo-item" onclick="setAlgo('nfa2re')" data-algo="nfa2re">NFA → Regex (GNFA)</div>
@@ -389,6 +416,10 @@
           <a class="theory-nav-link" id="tnl-algorithms" href="#th-algorithms" onclick="theoryNavClick(this)">Key Algorithms</a>
           <a class="theory-nav-link" id="tnl-closure-card" href="#th-closure-card" onclick="theoryNavClick(this)">Closure Properties</a>
           <a class="theory-nav-link" id="tnl-nerode" href="#th-nerode" onclick="theoryNavClick(this)">Myhill-Nerode</a>
+          <div class="theory-nav-group">Transducers &amp; Extensions</div>
+          <a class="theory-nav-link" id="tnl-moore" href="#th-moore" onclick="theoryNavClick(this)">Moore Machines</a>
+          <a class="theory-nav-link" id="tnl-mealy" href="#th-mealy" onclick="theoryNavClick(this)">Mealy Machines</a>
+          <a class="theory-nav-link" id="tnl-mtm" href="#th-mtm" onclick="theoryNavClick(this)">Multi-Tape TMs</a>
           <div class="theory-nav-group">Interactive</div>
           <a class="theory-nav-link" id="tnl-pump" href="#th-pump" onclick="theoryNavClick(this)">RL Pumping Lemma</a>
           <a class="theory-nav-link" id="tnl-pump-cfl" href="#th-pump-cfl" onclick="theoryNavClick(this)">CFL Pumping Lemma</a>
@@ -538,7 +569,7 @@
     <div class="modal">
       <div class="modal-title">Add Transition</div>
       <div class="modal-row"><span class="modal-lbl">From</span><select class="sel" id="m-from"></select></div>
-      <div class="modal-row"><span class="modal-lbl">Read</span><select class="sel" id="m-sym"></select></div>
+      <div class="modal-row" id="m-sym-row"><span class="modal-lbl">Read</span><select class="sel" id="m-sym"></select></div>
       <div id="m-pda-extra" style="display:none">
         <div class="modal-row"><span class="modal-lbl">Pop</span><input class="inp" id="m-pop"
             placeholder="ε or symbol"></div>
@@ -555,6 +586,10 @@
           </select>
         </div>
       </div>
+      <div id="m-mealy-extra" style="display:none">
+        <div class="modal-row"><span class="modal-lbl">Output</span><input class="inp" id="m-output" placeholder="symbol"></div>
+      </div>
+      <div id="m-mtm-extra" style="display:none"></div>
       <div class="modal-row"><span class="modal-lbl">To</span><select class="sel" id="m-to"></select></div>
       <div class="modal-foot"><button class="btn-g" onclick="closeModal('trans-modal')">Cancel</button><button
           class="btn-p" onclick="confirmTrans()">Add</button></div>
@@ -569,6 +604,9 @@
           style="width:16px;height:16px"></div>
       <div class="modal-row"><span class="modal-lbl">Accept</span><input type="checkbox" id="s-acc"
           style="width:16px;height:16px"></div>
+      <div id="s-moore-extra" style="display:none">
+        <div class="modal-row"><span class="modal-lbl">Output λ</span><input class="inp" id="s-output" placeholder="output symbol" maxlength="8"></div>
+      </div>
       <div class="modal-foot"><button class="btn-g" onclick="closeModal('state-modal')">Cancel</button><button
           class="btn-p" onclick="confirmState()">Save</button></div>
     </div>

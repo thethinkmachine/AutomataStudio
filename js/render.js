@@ -74,8 +74,15 @@ function renderStates() {
       r2.setAttribute('fill', 'none'); r2.setAttribute('stroke', 'var(--gold)'); r2.setAttribute('stroke-width', '1.5');
       grp.appendChild(r2);
     }
-    const t = makeSVG('text'); t.classList.add('slbl'); t.setAttribute('x', s.x); t.setAttribute('y', s.y);
+    const t = makeSVG('text'); t.classList.add('slbl'); t.setAttribute('x', s.x);
+    t.setAttribute('y', App.machine === 'Moore' ? s.y - 8 : s.y);
     t.textContent = s.name; grp.appendChild(t);
+    if (App.machine === 'Moore') {
+      const ot = makeSVG('text'); ot.classList.add('mooreout');
+      ot.setAttribute('x', s.x); ot.setAttribute('y', s.y + 9);
+      ot.textContent = s.output !== undefined && s.output !== '' ? s.output : '—';
+      grp.appendChild(ot);
+    }
     grp.addEventListener('mousedown', e => onStateDown(e, s.id));
     grp.addEventListener('contextmenu', e => { e.preventDefault(); App.ctxId = s.id; const m = $('ctx'); m.style.display = 'block'; m.style.left = Math.min(e.clientX, innerWidth - 160) + 'px'; m.style.top = Math.min(e.clientY, innerHeight - 140) + 'px'; });
     grp.addEventListener('dblclick', () => { App.accepts.has(s.id) ? App.accepts.delete(s.id) : App.accepts.add(s.id); snapshot(); renderAll(); updateSidebar(); updateRPanel(); });
@@ -117,6 +124,14 @@ function updateFormalDef() {
   } else if (m === 'PDA') {
     const G = [...App.stackAlpha].join(', ') || '∅';
     txt = `M = (Q,Σ,Γ,δ,q₀,Z,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×(Σ∪{ε})×Γ→2^(Q×Γ*)`;
+  } else if (m === 'Moore') {
+    const D = [...App.outputAlpha].join(', ') || '∅';
+    txt = `M = (Q, Σ, Δ, δ, λ, q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΔ = {${D}}\nq₀ = ${q0}\nδ: Q×Σ→Q\nλ: Q→Δ`;
+  } else if (m === 'Mealy') {
+    const D = [...App.outputAlpha].join(', ') || '∅';
+    txt = `M = (Q, Σ, Δ, δ, λ, q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΔ = {${D}}\nq₀ = ${q0}\nδ: Q×Σ→Q\nλ: Q×Σ→Δ`;
+  } else if (m === 'MTM') {
+    txt = `M = (Q,Σ,Γ,δ,q₀,q_acc,q_rej)\n\nQ = {${Q}}\nΣ = {${S}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γᵏ→Q×Γᵏ×{L,R}ᵏ\nk = ${App.tapeCount} tapes`;
   } else {
     txt = `M = (Q,Σ,Γ,δ,q₀,q_acc,q_rej)\n\nQ = {${Q}}\nΣ = {${S}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γ→Q×Γ×{L,R}`;
   }
@@ -125,7 +140,9 @@ function updateFormalDef() {
 function updateRegex() {
   const rb = $('regex-box'), m = App.machine;
   if (m === 'PDA') { rb.textContent = 'Context-Free Language'; return; }
-  if (m === 'TM') { rb.textContent = 'Recursively Enumerable Language'; return; }
+  if (m === 'TM' || m === 'MTM') { rb.textContent = 'Recursively Enumerable Language'; return; }
+  if (m === 'Moore') { rb.textContent = 'Finite-State Transducer (Moore)'; return; }
+  if (m === 'Mealy') { rb.textContent = 'Finite-State Transducer (Mealy)'; return; }
   rb.textContent = deriveRegex() || '∅';
 }
 
