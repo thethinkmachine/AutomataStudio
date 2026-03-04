@@ -2,7 +2,8 @@
 //  SAVE / LOAD
 // ══════════════════════════════════════════════════════════════════
 function saveJSON() {
-  const data = { machine: App.machine, sigma: [...App.sigma], stackAlpha: [...App.stackAlpha], outputAlpha: [...App.outputAlpha], tapeCount: App.tapeCount, states: App.states, transitions: App.transitions, startId: App.startId, accepts: [...App.accepts], grammar: App.grammar };
+  const grammarData = { vars: [...App.grammar.vars], start: App.grammar.start, productions: App.grammar.productions };
+  const data = { machine: App.machine, sigma: [...App.sigma], stackAlpha: [...App.stackAlpha], outputAlpha: [...App.outputAlpha], tapeCount: App.tapeCount, states: App.states, transitions: App.transitions, startId: App.startId, accepts: [...App.accepts], grammar: grammarData };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'automaton.json'; a.click();
   showStatus('Saved!');
@@ -21,9 +22,13 @@ function onFileLoad(e) {
       App.states = d.states || [];
       App.transitions = d.transitions || []; App.startId = d.startId || null;
       App.accepts = new Set(d.accepts || []);
-      App.stateN = Math.max(0, ...App.states.map(s => parseInt(s.id.slice(1)) || 0));
-      App.transN = Math.max(0, ...App.transitions.map(t => parseInt(t.id.slice(1)) || 0));
-      if (d.grammar) App.grammar = d.grammar;
+      App.stateN = Math.max(0, ...App.states.map(s => { const m = s.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
+      App.transN = Math.max(0, ...App.transitions.map(t => { const m = t.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
+      if (d.grammar) {
+        App.grammar.vars = new Set(d.grammar.vars || []);
+        App.grammar.start = d.grammar.start || '';
+        App.grammar.productions = d.grammar.productions || [];
+      }
       setMachine(App.machine); renderSigma(); renderGamma(); renderOutputAlpha();
       renderAll(); updateSidebar(); updateRPanel(); showStatus('Loaded!');
       snapshot();
@@ -46,7 +51,7 @@ function loadExample() {
     const q1 = createState(360, 200, 'q_odd');
     App.startId = q0.id; App.accepts.add(q0.id);
     [{ f: q0.id, t: q0.id, s: '0' }, { f: q0.id, t: q1.id, s: '1' },
-     { f: q1.id, t: q1.id, s: '0' }, { f: q1.id, t: q0.id, s: '1' }]
+    { f: q1.id, t: q1.id, s: '0' }, { f: q1.id, t: q0.id, s: '1' }]
       .forEach((tr, i) => App.transitions.push({ id: 't' + (i + 1), from: tr.f, to: tr.t, symbol: tr.s }));
     App.transN = 4; showStatus('Example: DFA accepting even number of 1s');
   } else if (m === 'NFA') {
@@ -58,9 +63,9 @@ function loadExample() {
     const q3 = createState(460, 200, 'q3');
     App.startId = q0.id; App.accepts.add(q3.id);
     [{ f: q0.id, t: q0.id, s: 'a' }, { f: q0.id, t: q0.id, s: 'b' },
-     { f: q0.id, t: q1.id, s: 'a' }, { f: q0.id, t: q2.id, s: 'b' },
-     { f: q1.id, t: q3.id, s: 'a' }, { f: q2.id, t: q3.id, s: 'b' },
-     { f: q3.id, t: q3.id, s: 'a' }, { f: q3.id, t: q3.id, s: 'b' }]
+    { f: q0.id, t: q1.id, s: 'a' }, { f: q0.id, t: q2.id, s: 'b' },
+    { f: q1.id, t: q3.id, s: 'a' }, { f: q2.id, t: q3.id, s: 'b' },
+    { f: q3.id, t: q3.id, s: 'a' }, { f: q3.id, t: q3.id, s: 'b' }]
       .forEach((tr, i) => App.transitions.push({ id: 't' + (i + 1), from: tr.f, to: tr.t, symbol: tr.s }));
     App.transN = 8; showStatus('Example: NFA accepting strings with "aa" or "bb"');
   } else if (m === 'ε-NFA') {
@@ -73,11 +78,11 @@ function loadExample() {
     const q_ba = createState(560, 200, 'q_ba');
     App.startId = q0.id; App.accepts.add(q_ab.id); App.accepts.add(q_ba.id);
     [{ f: q0.id, t: q0.id, s: 'a' }, { f: q0.id, t: q0.id, s: 'b' },
-     { f: q0.id, t: qa.id, s: 'a' }, { f: q0.id, t: qb.id, s: 'b' },
-     { f: qa.id, t: q0.id, s: 'a' }, { f: qa.id, t: q_ab.id, s: 'b' },
-     { f: qb.id, t: q_ba.id, s: 'a' }, { f: qb.id, t: q0.id, s: 'b' },
-     { f: q_ab.id, t: q_ab.id, s: 'a' }, { f: q_ab.id, t: q_ab.id, s: 'b' },
-     { f: q_ba.id, t: q_ba.id, s: 'a' }, { f: q_ba.id, t: q_ba.id, s: 'b' }]
+    { f: q0.id, t: qa.id, s: 'a' }, { f: q0.id, t: qb.id, s: 'b' },
+    { f: qa.id, t: q0.id, s: 'a' }, { f: qa.id, t: q_ab.id, s: 'b' },
+    { f: qb.id, t: q_ba.id, s: 'a' }, { f: qb.id, t: q0.id, s: 'b' },
+    { f: q_ab.id, t: q_ab.id, s: 'a' }, { f: q_ab.id, t: q_ab.id, s: 'b' },
+    { f: q_ba.id, t: q_ba.id, s: 'a' }, { f: q_ba.id, t: q_ba.id, s: 'b' }]
       .forEach((tr, i) => App.transitions.push({ id: 't' + (i + 1), from: tr.f, to: tr.t, symbol: tr.s }));
     App.transN = 12; showStatus('Example: ε-NFA accepting "ab" or "ba"');
   } else if (m === 'PDA') {
@@ -122,7 +127,7 @@ function loadExample() {
     const q1 = createState(360, 200, 'q1');
     App.startId = q0.id; App.accepts.add(q0.id); App.accepts.add(q1.id);
     [{ f: q0.id, t: q0.id, s: '0', o: 'seen0' }, { f: q0.id, t: q1.id, s: '1', o: 'seen1' },
-     { f: q1.id, t: q0.id, s: '0', o: 'seen0' }, { f: q1.id, t: q1.id, s: '1', o: 'seen1' }]
+    { f: q1.id, t: q0.id, s: '0', o: 'seen0' }, { f: q1.id, t: q1.id, s: '1', o: 'seen1' }]
       .forEach((tr, i) => App.transitions.push({ id: 't' + (i + 1), from: tr.f, to: tr.t, symbol: tr.s, output: tr.o }));
     App.transN = 4; showStatus('Example: Mealy machine tagging 0s and 1s');
   } else if (m === 'MTM') {
@@ -136,8 +141,8 @@ function loadExample() {
     App.startId = q0.id; App.accepts.add(qa.id);
     // Read x from T1, blank from T2 → write x to T2, advance both heads
     [{ f: q0.id, t: q0.id, ts: ['a', '⊔'], tw: ['a', 'a'], td: ['R', 'R'] },
-     { f: q0.id, t: q0.id, ts: ['b', '⊔'], tw: ['b', 'b'], td: ['R', 'R'] },
-     { f: q0.id, t: qa.id, ts: ['⊔', '⊔'], tw: ['⊔', '⊔'], td: ['R', 'R'] }]
+    { f: q0.id, t: q0.id, ts: ['b', '⊔'], tw: ['b', 'b'], td: ['R', 'R'] },
+    { f: q0.id, t: qa.id, ts: ['⊔', '⊔'], tw: ['⊔', '⊔'], td: ['R', 'R'] }]
       .forEach((tr, i) => App.transitions.push({ id: 't' + (i + 1), from: tr.f, to: tr.t, symbol: tr.ts[0], tapeSyms: tr.ts, tapeWrites: tr.tw, tapeDirs: tr.td }));
     App.transN = 3; showStatus('Example: MTM 2-tape — copies tape 1 content to tape 2');
   }

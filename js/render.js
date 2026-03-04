@@ -146,20 +146,39 @@ function updateRegex() {
   rb.textContent = deriveRegex() || '∅';
 }
 
-// GNFA State Elimination
+// GNFA State Elimination (textbook: add new start + new accept, eliminate interior)
+let _regexCache = { key: '', val: '' };
+function _regexCacheKey() {
+  return App.states.map(s => s.id).join(',') + '|' +
+    App.transitions.map(t => t.from + t.symbol + t.to).sort().join(',') + '|' +
+    App.startId + '|' + [...App.accepts].sort().join(',');
+}
 function deriveRegex() {
   if (!App.states.length || !App.startId) return '—';
   const accs = [...App.accepts]; if (!accs.length) return '∅';
+  // Cache check (#7)
+  const ck = _regexCacheKey();
+  if (_regexCache.key === ck) return _regexCache.val;
+
   const ids = App.states.map(s => s.id);
   const gnfa = {};
-  ids.forEach(a => ids.forEach(b => { gnfa[a + '|' + b] = null; }));
+  // Add new unique start (qs) and accept (qa) states (#3)
+  const qs = '__gnfa_qs__', qa = '__gnfa_qa__';
+  const allIds = [qs, ...ids, qa];
+  allIds.forEach(a => allIds.forEach(b => { gnfa[a + '|' + b] = null; }));
+  // ε from new start to old start
+  gnfa[qs + '|' + App.startId] = 'ε';
+  // ε from each old accept to new accept
+  accs.forEach(acc => { gnfa[acc + '|' + qa] = gnfa[acc + '|' + qa] ? reUnion(gnfa[acc + '|' + qa], 'ε') : 'ε'; });
+  // Copy original transitions
   App.transitions.forEach(t => {
     const k = t.from + '|' + t.to, sym = t.symbol;
     gnfa[k] = gnfa[k] ? reUnion(gnfa[k], sym) : sym;
   });
-  const elim = ids.filter(id => id !== App.startId && !App.accepts.has(id));
-  const rem = [...ids];
-  elim.forEach(mid => {
+  // Eliminate all interior states (everything except qs and qa)
+  const rem = [...allIds];
+  const toElim = ids.slice(); // all original states are interior
+  toElim.forEach(mid => {
     const self = gnfa[mid + '|' + mid];
     const star = self ? `(${self})*` : '';
     rem.forEach(a => {
@@ -173,12 +192,11 @@ function deriveRegex() {
     });
     rem.splice(rem.indexOf(mid), 1);
   });
-  const parts = accs.map(acc => {
-    if (acc === App.startId) { const s = gnfa[App.startId + '|' + App.startId]; return s ? `(${s})*` : 'ε'; }
-    return gnfa[App.startId + '|' + acc] || null;
-  }).filter(Boolean);
-  if (!parts.length) return '∅';
-  return simplifyRE(parts.length === 1 ? parts[0] : parts.join(' | '));
+  // Result is the single edge qs→qa
+  const result = gnfa[qs + '|' + qa];
+  const val = result ? simplifyRE(result) : '∅';
+  _regexCache = { key: ck, val };
+  return val;
 }
 function reUnion(a, b) { if (!a) return b; if (!b) return a; if (a === b) return a; return `${a} | ${b}`; }
 function reConcat(a, b) { if (!a || !b) return a || b || ''; if (a === 'ε') return b; if (b === 'ε') return a; const pa = a.includes(' | '), pb = b.includes(' | '); return `${pa ? '(' + a + ')' : a}${pb ? '(' + b + ')' : b}`; }

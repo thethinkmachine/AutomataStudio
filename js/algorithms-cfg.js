@@ -79,13 +79,26 @@ function runCNF() {
   prods.forEach(p => { if (p.rhs === 'ε') nullable.add(p.lhs); });
   let changed = true;
   while (changed) { changed = false; prods.forEach(p => { if (!nullable.has(p.lhs) && p.rhs.split('').every(c => nullable.has(c) || !c)) { nullable.add(p.lhs); changed = true; } }); }
-  const prods2 = [];
+  const prods2 = [], seen2 = new Set();
   prods.forEach(p => {
     if (p.rhs === 'ε') { if (p.lhs === S0) prods2.push(p); return; }
-    prods2.push(p);
-    // Add combinations without nullable symbols
-    const nullChars = [...p.rhs].map((c, i) => nullable.has(c) ? i : -1).filter(i => i >= 1);
-    nullChars.forEach(i => { const r = p.rhs.slice(0, i) + p.rhs.slice(i + 1); if (r) prods2.push({ lhs: p.lhs, rhs: r }); });
+    // Generate all subsets of nullable positions
+    const chars = [...p.rhs];
+    const nullableIdx = chars.map((c, i) => nullable.has(c) ? i : -1).filter(i => i >= 0);
+    const total = 1 << nullableIdx.length; // 2^k subsets
+    for (let mask = 0; mask < total; mask++) {
+      const kept = chars.filter((c, i) => {
+        const ni = nullableIdx.indexOf(i);
+        return ni === -1 || !(mask & (1 << ni)); // keep if not nullable or not masked out
+      });
+      const r = kept.join('');
+      if (!r) { // all omitted → ε, only allow for new start
+        if (p.lhs === S0) { const k2 = p.lhs + '→ε'; if (!seen2.has(k2)) { seen2.add(k2); prods2.push({ lhs: p.lhs, rhs: 'ε' }); } }
+        continue;
+      }
+      const key = p.lhs + '→' + r;
+      if (!seen2.has(key)) { seen2.add(key); prods2.push({ lhs: p.lhs, rhs: r }); }
+    }
   });
   steps.push({ lbl: 'Step 2: Remove ε-productions', desc: `Nullable: {${[...nullable].join(',')}}. Add combinations without nullable symbols.`, prods: [...prods2] });
 
@@ -199,7 +212,7 @@ function runDerivation() {
       if (G.vars.has(c)) {
         const prods = G.productions.filter(p => p.lhs === c);
         if (!prods.length) break;
-        const p = prods[0];
+        const p = prods[Math.floor(Math.random() * prods.length)];
         current = current.replace(c, p.rhs);
         steps.push(current); applied = true;
         if (![...current].some(ch => G.vars.has(ch))) { found = true; break; }
@@ -238,7 +251,7 @@ function runRightmostDerivation() {
     const c = current[rightmostIdx];
     const prods = G.productions.filter(p => p.lhs === c);
     if (!prods.length) break;
-    const p = prods[0];
+    const p = prods[Math.floor(Math.random() * prods.length)];
     current = current.slice(0, rightmostIdx) + p.rhs + current.slice(rightmostIdx + 1);
     steps.push(current); applied = true;
     if (![...current].some(ch => G.vars.has(ch))) { found = true; break; }
@@ -373,7 +386,7 @@ function runUselessElim() {
   }
   const nonproductive = [...G.vars].filter(v => !productive.has(v));
   // Remove non-productive
-  let prods2 = prods.filter(p => productive.has(p.lhs) && (p.rhs === 'ε' || p.rhs.split('').every(c => productive.has(c) || !G.vars.has(c))));
+  let prods2 = prods.filter(p => productive.has(p.lhs) && (p.rhs === 'ε' || p.rhs.split('').every(c => productive.has(c))));
   // Step 2: Find reachable variables from start
   const reachable = new Set([G.start]);
   changed = true;

@@ -99,6 +99,8 @@ function simPDA(tokens) {
   const init = { state: App.startId, remaining: tokens, stack: ['Z'], note: 'Start configuration' };
   App.simSteps.push(init);
   let cfgs = [init];
+  const visited = new Set(); // Track visited configurations to avoid ε-loops (#8)
+  visited.add(init.state + '|' + init.remaining.join('') + '|' + init.stack.join(''));
   for (let step = 0; step < 2000 && cfgs.length; step++) {
     const next = [];
     cfgs.forEach(cfg => {
@@ -110,6 +112,9 @@ function simPDA(tokens) {
         const ns = [...stack]; if (t.pop !== 'ε') ns.pop();
         if (t.push && t.push !== 'ε') t.push.split('').reverse().forEach(c => ns.push(c));
         const nr = t.symbol === 'ε' ? remaining : remaining.slice(1);
+        const cfgKey = t.to + '|' + nr.join('') + '|' + ns.join('');
+        if (visited.has(cfgKey)) return; // Skip already-visited configurations
+        visited.add(cfgKey);
         const nc = { state: t.to, remaining: nr, stack: ns, note: `(${getState(state)?.name},${t.symbol || 'ε'},${top})→(${getState(t.to)?.name},${t.push || 'ε'})  [${ns.join('')}]` };
         next.push(nc); App.simSteps.push(nc);
       });
@@ -253,7 +258,7 @@ function toggleAuto() {
 //  BATCH TESTING
 // ══════════════════════════════════════════════════════════════════
 function runBatch() {
-  const lines = $('batch-in').value.split('\n').map(l => l.trim()).filter(l => l !== undefined);
+  const lines = $('batch-in').value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   if (!lines.length) return;
   if (App.machine === 'PDA' || App.machine === 'TM' || App.machine === 'MTM') {
     $('batch-result').innerHTML = `<div class="br-err">Batch testing is not supported for ${App.machine}.</div>`;

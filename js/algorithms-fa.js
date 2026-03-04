@@ -82,7 +82,7 @@ function algoNFA2DFA(c) {
 function subsetConstruction() {
   const syms = [...App.sigma];
   const setKey = set => [...set].sort().join(',');
-  const setName = set => '{' + [...set].map(id => getState(id)?.name).sort().join(',') + '}' || '∅';
+  const setName = set => { const inner = [...set].map(id => getState(id)?.name).sort().join(','); return inner ? '{' + inner + '}' : '∅'; };
   const start = epsClosure(new Set([App.startId]));
   const startName = setName(start);
   const queue = [start]; const visited = new Map([[setKey(start), start]]);
@@ -332,10 +332,11 @@ function parseRE(re) {
     if (pos >= re.length) throw new Error('Unexpected end');
     if (re[pos] === '(') { pos++; const r = parseUnion(); if (re[pos] !== ')') throw new Error("Expected ')'"); pos++; return r; }
     if (re[pos] === 'ε') { pos++; return { t: 'eps' }; }
-    if (re[pos] === '[') { pos++; const neg = re[pos] === '^' ? (pos++, true) : false; const chars = new Set();
+    if (re[pos] === '[') {
+      pos++; const neg = re[pos] === '^' ? (pos++, true) : false; const chars = new Set();
       while (pos < re.length && re[pos] !== ']') {
         const c = re[pos++];
-        if (pos < re.length && re[pos] === '-' && re[pos+1] !== ']') {
+        if (pos < re.length && re[pos] === '-' && re[pos + 1] !== ']') {
           pos++;
           const end = re[pos++];
           for (let i = c.charCodeAt(0); i <= end.charCodeAt(0); i++) chars.add(String.fromCharCode(i));
@@ -382,7 +383,7 @@ function buildThompson(ast) {
     case 'cat': { const L = buildThompson(ast.l), R = buildThompson(ast.r); return { states: [...L.states, ...R.states], trans: [...L.trans, { from: L.accept, sym: 'ε', to: R.start }, ...R.trans], start: L.start, accept: R.accept }; }
     case 'union': { const L = buildThompson(ast.l), R = buildThompson(ast.r), s = tnew(), e = tnew(); return { states: [s, ...L.states, ...R.states, e], trans: [{ from: s, sym: 'ε', to: L.start }, { from: s, sym: 'ε', to: R.start }, ...L.trans, ...R.trans, { from: L.accept, sym: 'ε', to: e }, { from: R.accept, sym: 'ε', to: e }], start: s, accept: e }; }
     case 'star': { const I = buildThompson(ast.c), s = tnew(), e = tnew(); return { states: [s, ...I.states, e], trans: [{ from: s, sym: 'ε', to: I.start }, { from: s, sym: 'ε', to: e }, { from: I.accept, sym: 'ε', to: I.start }, { from: I.accept, sym: 'ε', to: e }, ...I.trans], start: s, accept: e }; }
-    case 'plus': { return buildThompson({ t: 'cat', l: ast.c, r: { t: 'star', c: ast.c } }); }
+    case 'plus': { return buildThompson({ t: 'cat', l: JSON.parse(JSON.stringify(ast.c)), r: { t: 'star', c: JSON.parse(JSON.stringify(ast.c)) } }); }
     case 'opt': { return buildThompson({ t: 'union', l: ast.c, r: { t: 'eps' } }); }
     default: throw new Error('Unknown AST node: ' + ast.t);
   }
@@ -465,9 +466,25 @@ function algoComplement(c) {
 }
 function loadComplement() {
   snapshot();
+  // Complete the DFA first: add trap state for missing transitions (#9)
+  const syms = [...App.sigma];
+  const needTrap = App.states.some(s => syms.some(sym => !App.transitions.some(t => t.from === s.id && t.symbol === sym)));
+  if (needTrap) {
+    const trapId = 's' + (++App.stateN);
+    App.states.push({ id: trapId, x: 80, y: 80, name: 'trap' });
+    // Fill missing transitions for all states (including trap itself)
+    App.states.forEach(s => {
+      syms.forEach(sym => {
+        if (!App.transitions.some(t => t.from === s.id && t.symbol === sym)) {
+          App.transitions.push({ id: 't' + (++App.transN), from: s.id, to: trapId, symbol: sym });
+        }
+      });
+    });
+  }
+  // Swap accept / non-accept
   const newAcc = new Set(App.states.filter(s => !App.accepts.has(s.id)).map(s => s.id));
   App.accepts = newAcc; renderAll(); updateSidebar(); updateRPanel();
-  setView('build'); showStatus('Complement loaded!');
+  setView('build'); showStatus('Complement loaded (DFA completed with trap state if needed)!');
 }
 
 // --- Product Construction ---
@@ -966,13 +983,18 @@ function buildNFAStar(machine) {
   const states = machine.states.map(s => ({ id: prefix + s.id, name: s.name }));
   const newStart = { id: 'star_q_new', name: 'q_s' };
   states.unshift(newStart);
-  const accepts = [newStart.id, ...machine.accepts.map(id => prefix + id)];
+  // Only the new start state is accepting (Thompson's: it doubles as new accept) (#5)
+  const accepts = [newStart.id];
   const transitions = machine.transitions.map(t => ({ ...t, id: prefix + t.id, from: prefix + t.from, to: prefix + t.to }));
   // ε from new start to original start
   transitions.push({ id: 'star_e1', from: newStart.id, to: prefix + machine.startId, symbol: 'ε' });
-  // ε from each original accept back to original start
+  // ε from each original accept back to original start (for looping) (#11)
   machine.accepts.forEach((id, i) => {
     transitions.push({ id: `star_loop_${i}`, from: prefix + id, to: prefix + machine.startId, symbol: 'ε' });
+  });
+  // ε from each original accept to new start (to reach the accept state) (#11)
+  machine.accepts.forEach((id, i) => {
+    transitions.push({ id: `star_acc_${i}`, from: prefix + id, to: newStart.id, symbol: 'ε' });
   });
   return { states, transitions, startId: newStart.id, accepts, sigma: machine.sigma };
 }
@@ -1063,38 +1085,45 @@ function buildNFATree() {
 }
 
 function computeNFATree(str) {
-  function makeNode(stateIds, depth) {
-    const label = depth === 0 ? 'Start' : `After "${str.slice(0, depth)}"`;
-    const isAccept = [...stateIds].some(id => App.accepts.has(id));
-    const isDead = stateIds.size === 0;
+  // Build a true per-state nondeterministic computation tree (#4)
+  const MAX_NODES = 500; let nodeCount = 0;
+  function makeNode(stateId, depth, sym) {
+    nodeCount++;
+    const sName = getState(stateId)?.name || stateId;
+    const isAccept = App.accepts.has(stateId);
     const children = [];
-    if (!isDead && depth < str.length) {
-      const sym = str[depth];
-      let nxt = new Set();
-      stateIds.forEach(sid => App.transitions.filter(t => t.from === sid && t.symbol === sym).forEach(t => nxt.add(t.to)));
-      nxt = epsClosure(nxt);
-      children.push(makeNode(nxt, depth + 1));
+    if (nodeCount < MAX_NODES && depth < str.length) {
+      const nextSym = str[depth];
+      // Direct transitions on this symbol
+      const directTargets = App.transitions.filter(t => t.from === stateId && t.symbol === nextSym);
+      directTargets.forEach(t => {
+        // For each target, expand ε-closure and create child nodes
+        const ecl = epsClosure(new Set([t.to]));
+        ecl.forEach(eid => {
+          if (nodeCount < MAX_NODES) children.push(makeNode(eid, depth + 1, nextSym));
+        });
+      });
     }
-    return {
-      label: `{${[...stateIds].map(id => getState(id)?.name || id).join(',') || '∅'}}`,
-      states: stateIds,
-      sym: depth > 0 ? str[depth - 1] : '',
-      isAccept,
-      isDead,
-      depth,
-      children
-    };
+    return { label: sName, stateId, sym: sym || '', isAccept, isDead: false, depth, children };
   }
-  const init = epsClosure(new Set([App.startId]));
-  return makeNode(init, 0);
+  // Start: ε-closure of start state, each becomes a root child
+  const initStates = epsClosure(new Set([App.startId]));
+  const rootChildren = [...initStates].map(sid => makeNode(sid, 0, ''));
+  return { label: 'Start', stateId: null, sym: '', isAccept: false, isDead: false, depth: -1, children: rootChildren, isRoot: true };
 }
 
 function renderNFATreeHTML(node, depth, fullStr) {
-  const cls = node.isDead ? 'reject' : node.isAccept && node.depth === fullStr.length ? 'accept' : '';
+  if (node.isRoot) {
+    let html = `<div style="margin-bottom:4px"><span class="ct-node">Start (ε-closure)</span></div>`;
+    node.children.forEach(ch => { html += renderNFATreeHTML(ch, depth + 1, fullStr); });
+    return html;
+  }
+  const isFinal = node.depth === fullStr.length;
+  const cls = node.isDead ? 'reject' : node.isAccept && isFinal ? 'accept' : '';
   const symlbl = node.sym ? `<span style="color:var(--gold);margin-right:6px">—${node.sym}→</span>` : '';
-  const final = node.depth === fullStr.length ? (node.isAccept ? ' <span style="color:var(--green)">ACCEPT</span>' : ' <span style="color:var(--red)">REJECT</span>') : '';
+  const final = isFinal ? (node.isAccept ? ' <span style="color:var(--green)">ACCEPT</span>' : ' <span style="color:var(--red)">REJECT</span>') : '';
   let html = `<div style="margin-left:${depth * 20}px;margin-bottom:4px">${symlbl}<span class="ct-node ${cls}">${node.label}</span>${final}</div>`;
-  node.children.forEach(ch => { html += renderNFATreeHTML(ch, depth, fullStr); });
+  node.children.forEach(ch => { html += renderNFATreeHTML(ch, depth + 1, fullStr); });
   return html;
 }
 
@@ -1184,20 +1213,20 @@ function simNDTM(str) {
 // ══════════════════════════════════════════════════════════════════
 const UTM_DEFAULT_TM = JSON.stringify({
   "comment": "Accepts {0^n 1^n | n >= 1}",
-  "states": ["q0","q1","q2","q3","q_accept"],
+  "states": ["q0", "q1", "q2", "q3", "q_accept"],
   "start": "q0",
   "accept": ["q_accept"],
   "transitions": [
-    {"from":"q0","read":"0","write":"X","dir":"R","to":"q1"},
-    {"from":"q1","read":"0","write":"0","dir":"R","to":"q1"},
-    {"from":"q1","read":"Y","write":"Y","dir":"R","to":"q1"},
-    {"from":"q1","read":"1","write":"Y","dir":"L","to":"q2"},
-    {"from":"q2","read":"0","write":"0","dir":"L","to":"q2"},
-    {"from":"q2","read":"Y","write":"Y","dir":"L","to":"q2"},
-    {"from":"q2","read":"X","write":"X","dir":"R","to":"q0"},
-    {"from":"q0","read":"Y","write":"Y","dir":"R","to":"q3"},
-    {"from":"q3","read":"Y","write":"Y","dir":"R","to":"q3"},
-    {"from":"q3","read":"⊔","write":"⊔","dir":"R","to":"q_accept"}
+    { "from": "q0", "read": "0", "write": "X", "dir": "R", "to": "q1" },
+    { "from": "q1", "read": "0", "write": "0", "dir": "R", "to": "q1" },
+    { "from": "q1", "read": "Y", "write": "Y", "dir": "R", "to": "q1" },
+    { "from": "q1", "read": "1", "write": "Y", "dir": "L", "to": "q2" },
+    { "from": "q2", "read": "0", "write": "0", "dir": "L", "to": "q2" },
+    { "from": "q2", "read": "Y", "write": "Y", "dir": "L", "to": "q2" },
+    { "from": "q2", "read": "X", "write": "X", "dir": "R", "to": "q0" },
+    { "from": "q0", "read": "Y", "write": "Y", "dir": "R", "to": "q3" },
+    { "from": "q3", "read": "Y", "write": "Y", "dir": "R", "to": "q3" },
+    { "from": "q3", "read": "⊔", "write": "⊔", "dir": "R", "to": "q_accept" }
   ]
 }, null, 2);
 
@@ -1207,20 +1236,20 @@ const UTM_EXAMPLES = [
     input: "0001111",
     tm: {
       "comment": "Accepts {0^n 1^n | n >= 1}",
-      "states": ["q0","q1","q2","q3","q_accept"],
+      "states": ["q0", "q1", "q2", "q3", "q_accept"],
       "start": "q0",
       "accept": ["q_accept"],
       "transitions": [
-        {"from":"q0","read":"0","write":"X","dir":"R","to":"q1"},
-        {"from":"q1","read":"0","write":"0","dir":"R","to":"q1"},
-        {"from":"q1","read":"Y","write":"Y","dir":"R","to":"q1"},
-        {"from":"q1","read":"1","write":"Y","dir":"L","to":"q2"},
-        {"from":"q2","read":"0","write":"0","dir":"L","to":"q2"},
-        {"from":"q2","read":"Y","write":"Y","dir":"L","to":"q2"},
-        {"from":"q2","read":"X","write":"X","dir":"R","to":"q0"},
-        {"from":"q0","read":"Y","write":"Y","dir":"R","to":"q3"},
-        {"from":"q3","read":"Y","write":"Y","dir":"R","to":"q3"},
-        {"from":"q3","read":"","write":"","dir":"R","to":"q_accept"}
+        { "from": "q0", "read": "0", "write": "X", "dir": "R", "to": "q1" },
+        { "from": "q1", "read": "0", "write": "0", "dir": "R", "to": "q1" },
+        { "from": "q1", "read": "Y", "write": "Y", "dir": "R", "to": "q1" },
+        { "from": "q1", "read": "1", "write": "Y", "dir": "L", "to": "q2" },
+        { "from": "q2", "read": "0", "write": "0", "dir": "L", "to": "q2" },
+        { "from": "q2", "read": "Y", "write": "Y", "dir": "L", "to": "q2" },
+        { "from": "q2", "read": "X", "write": "X", "dir": "R", "to": "q0" },
+        { "from": "q0", "read": "Y", "write": "Y", "dir": "R", "to": "q3" },
+        { "from": "q3", "read": "Y", "write": "Y", "dir": "R", "to": "q3" },
+        { "from": "q3", "read": "⊔", "write": "⊔", "dir": "R", "to": "q_accept" }
       ]
     }
   },
@@ -1229,17 +1258,17 @@ const UTM_EXAMPLES = [
     input: "10110",
     tm: {
       "name": "Binary Evenness Checker",
-      "states": ["q0","q_last_0","q_last_1","q_acc"],
+      "states": ["q0", "q_last_0", "q_last_1", "q_acc"],
       "start": "q0",
       "accept": ["q_acc"],
       "transitions": [
-        {"from":"q0","read":"0","dir":"R","to":"q_last_0"},
-        {"from":"q0","read":"1","dir":"R","to":"q_last_1"},
-        {"from":"q_last_0","read":"0","dir":"R","to":"q_last_0"},
-        {"from":"q_last_0","read":"1","dir":"R","to":"q_last_1"},
-        {"from":"q_last_0","read":"","dir":"R","to":"q_acc"},
-        {"from":"q_last_1","read":"0","dir":"R","to":"q_last_0"},
-        {"from":"q_last_1","read":"1","dir":"R","to":"q_last_1"}
+        { "from": "q0", "read": "0", "dir": "R", "to": "q_last_0" },
+        { "from": "q0", "read": "1", "dir": "R", "to": "q_last_1" },
+        { "from": "q_last_0", "read": "0", "dir": "R", "to": "q_last_0" },
+        { "from": "q_last_0", "read": "1", "dir": "R", "to": "q_last_1" },
+        { "from": "q_last_0", "read": "⊔", "dir": "R", "to": "q_acc" },
+        { "from": "q_last_1", "read": "0", "dir": "R", "to": "q_last_0" },
+        { "from": "q_last_1", "read": "1", "dir": "R", "to": "q_last_1" }
       ]
     }
   },
@@ -1248,17 +1277,17 @@ const UTM_EXAMPLES = [
     input: "10111",
     tm: {
       "name": "Binary Oddness Checker",
-      "states": ["q0","q_last_0","q_last_1","q_acc"],
+      "states": ["q0", "q_last_0", "q_last_1", "q_acc"],
       "start": "q0",
       "accept": ["q_acc"],
       "transitions": [
-        {"from":"q0","read":"0","dir":"R","to":"q_last_0"},
-        {"from":"q0","read":"1","dir":"R","to":"q_last_1"},
-        {"from":"q_last_0","read":"0","dir":"R","to":"q_last_0"},
-        {"from":"q_last_0","read":"1","dir":"R","to":"q_last_1"},
-        {"from":"q_last_1","read":"0","dir":"R","to":"q_last_0"},
-        {"from":"q_last_1","read":"1","dir":"R","to":"q_last_1"},
-        {"from":"q_last_1","read":"","dir":"R","to":"q_acc"}
+        { "from": "q0", "read": "0", "dir": "R", "to": "q_last_0" },
+        { "from": "q0", "read": "1", "dir": "R", "to": "q_last_1" },
+        { "from": "q_last_0", "read": "0", "dir": "R", "to": "q_last_0" },
+        { "from": "q_last_0", "read": "1", "dir": "R", "to": "q_last_1" },
+        { "from": "q_last_1", "read": "0", "dir": "R", "to": "q_last_0" },
+        { "from": "q_last_1", "read": "1", "dir": "R", "to": "q_last_1" },
+        { "from": "q_last_1", "read": "⊔", "dir": "R", "to": "q_acc" }
       ]
     }
   },
@@ -1267,21 +1296,21 @@ const UTM_EXAMPLES = [
     input: "1011",
     tm: {
       "name": "Binary Adder (+1)",
-      "states": ["q0","q_right","q_carry","q_rewind","q_acc"],
+      "states": ["q0", "q_right", "q_carry", "q_rewind", "q_acc"],
       "start": "q0",
       "accept": ["q_acc"],
       "transitions": [
-        {"from":"q0","read":"0","dir":"R","to":"q_right"},
-        {"from":"q0","read":"1","dir":"R","to":"q_right"},
-        {"from":"q_right","read":"0","dir":"R","to":"q_right"},
-        {"from":"q_right","read":"1","dir":"R","to":"q_right"},
-        {"from":"q_right","read":"","dir":"L","to":"q_carry"},
-        {"from":"q_carry","read":"1","write":"0","dir":"L","to":"q_carry"},
-        {"from":"q_carry","read":"0","write":"1","dir":"L","to":"q_rewind"},
-        {"from":"q_carry","read":"","write":"1","dir":"L","to":"q_rewind"},
-        {"from":"q_rewind","read":"0","dir":"L","to":"q_rewind"},
-        {"from":"q_rewind","read":"1","dir":"L","to":"q_rewind"},
-        {"from":"q_rewind","read":"","dir":"R","to":"q_acc"}
+        { "from": "q0", "read": "0", "dir": "R", "to": "q_right" },
+        { "from": "q0", "read": "1", "dir": "R", "to": "q_right" },
+        { "from": "q_right", "read": "0", "dir": "R", "to": "q_right" },
+        { "from": "q_right", "read": "1", "dir": "R", "to": "q_right" },
+        { "from": "q_right", "read": "⊔", "dir": "L", "to": "q_carry" },
+        { "from": "q_carry", "read": "1", "write": "0", "dir": "L", "to": "q_carry" },
+        { "from": "q_carry", "read": "0", "write": "1", "dir": "L", "to": "q_rewind" },
+        { "from": "q_carry", "read": "⊔", "write": "1", "dir": "L", "to": "q_rewind" },
+        { "from": "q_rewind", "read": "0", "dir": "L", "to": "q_rewind" },
+        { "from": "q_rewind", "read": "1", "dir": "L", "to": "q_rewind" },
+        { "from": "q_rewind", "read": "⊔", "dir": "R", "to": "q_acc" }
       ]
     }
   },
@@ -1290,20 +1319,20 @@ const UTM_EXAMPLES = [
     input: "1100",
     tm: {
       "name": "Binary Subtractor (-1)",
-      "states": ["q0","q_right","q_borrow","q_rewind","q_acc"],
+      "states": ["q0", "q_right", "q_borrow", "q_rewind", "q_acc"],
       "start": "q0",
       "accept": ["q_acc"],
       "transitions": [
-        {"from":"q0","read":"0","dir":"R","to":"q_right"},
-        {"from":"q0","read":"1","dir":"R","to":"q_right"},
-        {"from":"q_right","read":"0","dir":"R","to":"q_right"},
-        {"from":"q_right","read":"1","dir":"R","to":"q_right"},
-        {"from":"q_right","read":"","dir":"L","to":"q_borrow"},
-        {"from":"q_borrow","read":"0","write":"1","dir":"L","to":"q_borrow"},
-        {"from":"q_borrow","read":"1","write":"0","dir":"L","to":"q_rewind"},
-        {"from":"q_rewind","read":"0","dir":"L","to":"q_rewind"},
-        {"from":"q_rewind","read":"1","dir":"L","to":"q_rewind"},
-        {"from":"q_rewind","read":"","dir":"R","to":"q_acc"}
+        { "from": "q0", "read": "0", "dir": "R", "to": "q_right" },
+        { "from": "q0", "read": "1", "dir": "R", "to": "q_right" },
+        { "from": "q_right", "read": "0", "dir": "R", "to": "q_right" },
+        { "from": "q_right", "read": "1", "dir": "R", "to": "q_right" },
+        { "from": "q_right", "read": "⊔", "dir": "L", "to": "q_borrow" },
+        { "from": "q_borrow", "read": "0", "write": "1", "dir": "L", "to": "q_borrow" },
+        { "from": "q_borrow", "read": "1", "write": "0", "dir": "L", "to": "q_rewind" },
+        { "from": "q_rewind", "read": "0", "dir": "L", "to": "q_rewind" },
+        { "from": "q_rewind", "read": "1", "dir": "L", "to": "q_rewind" },
+        { "from": "q_rewind", "read": "⊔", "dir": "R", "to": "q_acc" }
       ]
     }
   },
@@ -1312,32 +1341,32 @@ const UTM_EXAMPLES = [
     input: "11*111",
     tm: {
       "name": "Unary Multiplier",
-      "states": ["q0","q_mark_left","q_find_right","q_copy","q_return_copy","q_reset_right","q_return_left","q_cleanup","q_acc"],
+      "states": ["q0", "q_mark_left", "q_find_right", "q_copy", "q_return_copy", "q_reset_right", "q_return_left", "q_cleanup", "q_acc"],
       "start": "q0",
       "accept": ["q_acc"],
       "transitions": [
-        {"from":"q0","read":"1","write":"X","dir":"R","to":"q_find_right"},
-        {"from":"q0","read":"*","write":"","dir":"R","to":"q_cleanup"},
-        {"from":"q_find_right","read":"1","dir":"R","to":"q_find_right"},
-        {"from":"q_find_right","read":"*","dir":"R","to":"q_copy"},
-        {"from":"q_copy","read":"1","write":"Y","dir":"R","to":"q_return_copy"},
-        {"from":"q_copy","read":"Y","dir":"R","to":"q_copy"},
-        {"from":"q_copy","read":"=","dir":"R","to":"q_reset_right"},
-        {"from":"q_copy","read":"","write":"=","dir":"L","to":"q_reset_right"},
-        {"from":"q_return_copy","read":"1","dir":"R","to":"q_return_copy"},
-        {"from":"q_return_copy","read":"=","dir":"R","to":"q_return_copy"},
-        {"from":"q_return_copy","read":"","write":"1","dir":"L","to":"q_return_left"},
-        {"from":"q_return_left","read":"1","dir":"L","to":"q_return_left"},
-        {"from":"q_return_left","read":"=","dir":"L","to":"q_return_left"},
-        {"from":"q_return_left","read":"Y","write":"Y","dir":"R","to":"q_copy"},
-        {"from":"q_reset_right","read":"Y","write":"1","dir":"L","to":"q_reset_right"},
-        {"from":"q_reset_right","read":"*","dir":"L","to":"q_reset_right"},
-        {"from":"q_reset_right","read":"1","dir":"L","to":"q_reset_right"},
-        {"from":"q_reset_right","read":"X","dir":"R","to":"q0"},
-        {"from":"q_cleanup","read":"1","write":"","dir":"R","to":"q_cleanup"},
-        {"from":"q_cleanup","read":"=","write":"","dir":"R","to":"q_cleanup"},
-        {"from":"q_cleanup","read":"X","write":"","dir":"R","to":"q_cleanup"},
-        {"from":"q_cleanup","read":"","dir":"R","to":"q_acc"}
+        { "from": "q0", "read": "1", "write": "X", "dir": "R", "to": "q_find_right" },
+        { "from": "q0", "read": "*", "write": "⊔", "dir": "R", "to": "q_cleanup" },
+        { "from": "q_find_right", "read": "1", "dir": "R", "to": "q_find_right" },
+        { "from": "q_find_right", "read": "*", "dir": "R", "to": "q_copy" },
+        { "from": "q_copy", "read": "1", "write": "Y", "dir": "R", "to": "q_return_copy" },
+        { "from": "q_copy", "read": "Y", "dir": "R", "to": "q_copy" },
+        { "from": "q_copy", "read": "=", "dir": "R", "to": "q_reset_right" },
+        { "from": "q_copy", "read": "⊔", "write": "=", "dir": "L", "to": "q_reset_right" },
+        { "from": "q_return_copy", "read": "1", "dir": "R", "to": "q_return_copy" },
+        { "from": "q_return_copy", "read": "=", "dir": "R", "to": "q_return_copy" },
+        { "from": "q_return_copy", "read": "⊔", "write": "1", "dir": "L", "to": "q_return_left" },
+        { "from": "q_return_left", "read": "1", "dir": "L", "to": "q_return_left" },
+        { "from": "q_return_left", "read": "=", "dir": "L", "to": "q_return_left" },
+        { "from": "q_return_left", "read": "Y", "write": "Y", "dir": "R", "to": "q_copy" },
+        { "from": "q_reset_right", "read": "Y", "write": "1", "dir": "L", "to": "q_reset_right" },
+        { "from": "q_reset_right", "read": "*", "dir": "L", "to": "q_reset_right" },
+        { "from": "q_reset_right", "read": "1", "dir": "L", "to": "q_reset_right" },
+        { "from": "q_reset_right", "read": "X", "dir": "R", "to": "q0" },
+        { "from": "q_cleanup", "read": "1", "write": "⊔", "dir": "R", "to": "q_cleanup" },
+        { "from": "q_cleanup", "read": "=", "write": "⊔", "dir": "R", "to": "q_cleanup" },
+        { "from": "q_cleanup", "read": "X", "write": "⊔", "dir": "R", "to": "q_cleanup" },
+        { "from": "q_cleanup", "read": "⊔", "dir": "R", "to": "q_acc" }
       ]
     }
   },
@@ -1346,26 +1375,26 @@ const UTM_EXAMPLES = [
     input: "101101",
     tm: {
       "name": "Binary Palindrome Checker",
-      "states": ["q0","q_scan_right_0","q_scan_right_1","q_check_0","q_check_1","q_scan_left","q_acc"],
+      "states": ["q0", "q_scan_right_0", "q_scan_right_1", "q_check_0", "q_check_1", "q_scan_left", "q_acc"],
       "start": "q0",
       "accept": ["q_acc"],
       "transitions": [
-        {"from":"q0","read":"0","write":"","dir":"R","to":"q_scan_right_0"},
-        {"from":"q0","read":"1","write":"","dir":"R","to":"q_scan_right_1"},
-        {"from":"q0","read":"","write":"","dir":"R","to":"q_acc"},
-        {"from":"q_scan_right_0","read":"0","dir":"R","to":"q_scan_right_0"},
-        {"from":"q_scan_right_0","read":"1","dir":"R","to":"q_scan_right_0"},
-        {"from":"q_scan_right_0","read":"","dir":"L","to":"q_check_0"},
-        {"from":"q_scan_right_1","read":"0","dir":"R","to":"q_scan_right_1"},
-        {"from":"q_scan_right_1","read":"1","dir":"R","to":"q_scan_right_1"},
-        {"from":"q_scan_right_1","read":"","dir":"L","to":"q_check_1"},
-        {"from":"q_check_0","read":"0","write":"","dir":"L","to":"q_scan_left"},
-        {"from":"q_check_0","read":"","dir":"R","to":"q_acc"},
-        {"from":"q_check_1","read":"1","write":"","dir":"L","to":"q_scan_left"},
-        {"from":"q_check_1","read":"","dir":"R","to":"q_acc"},
-        {"from":"q_scan_left","read":"0","dir":"L","to":"q_scan_left"},
-        {"from":"q_scan_left","read":"1","dir":"L","to":"q_scan_left"},
-        {"from":"q_scan_left","read":"","dir":"R","to":"q0"}
+        { "from": "q0", "read": "0", "write": "⊔", "dir": "R", "to": "q_scan_right_0" },
+        { "from": "q0", "read": "1", "write": "⊔", "dir": "R", "to": "q_scan_right_1" },
+        { "from": "q0", "read": "⊔", "write": "⊔", "dir": "R", "to": "q_acc" },
+        { "from": "q_scan_right_0", "read": "0", "dir": "R", "to": "q_scan_right_0" },
+        { "from": "q_scan_right_0", "read": "1", "dir": "R", "to": "q_scan_right_0" },
+        { "from": "q_scan_right_0", "read": "⊔", "dir": "L", "to": "q_check_0" },
+        { "from": "q_scan_right_1", "read": "0", "dir": "R", "to": "q_scan_right_1" },
+        { "from": "q_scan_right_1", "read": "1", "dir": "R", "to": "q_scan_right_1" },
+        { "from": "q_scan_right_1", "read": "⊔", "dir": "L", "to": "q_check_1" },
+        { "from": "q_check_0", "read": "0", "write": "⊔", "dir": "L", "to": "q_scan_left" },
+        { "from": "q_check_0", "read": "⊔", "dir": "R", "to": "q_acc" },
+        { "from": "q_check_1", "read": "1", "write": "⊔", "dir": "L", "to": "q_scan_left" },
+        { "from": "q_check_1", "read": "⊔", "dir": "R", "to": "q_acc" },
+        { "from": "q_scan_left", "read": "0", "dir": "L", "to": "q_scan_left" },
+        { "from": "q_scan_left", "read": "1", "dir": "L", "to": "q_scan_left" },
+        { "from": "q_scan_left", "read": "⊔", "dir": "R", "to": "q0" }
       ]
     }
   },
@@ -1374,16 +1403,16 @@ const UTM_EXAMPLES = [
     input: "",
     tm: {
       "name": "3-State Busy Beaver",
-      "states": ["qA","qB","qC","q_acc"],
+      "states": ["qA", "qB", "qC", "q_acc"],
       "start": "qA",
       "accept": ["q_acc"],
       "transitions": [
-        {"from":"qA","read":"","write":"1","dir":"R","to":"qB"},
-        {"from":"qA","read":"1","write":"1","dir":"R","to":"q_acc"},
-        {"from":"qB","read":"","write":"","dir":"R","to":"qC"},
-        {"from":"qB","read":"1","write":"1","dir":"R","to":"qB"},
-        {"from":"qC","read":"","write":"1","dir":"L","to":"qC"},
-        {"from":"qC","read":"1","write":"1","dir":"L","to":"qA"}
+        { "from": "qA", "read": "⊔", "write": "1", "dir": "R", "to": "qB" },
+        { "from": "qA", "read": "1", "write": "1", "dir": "R", "to": "q_acc" },
+        { "from": "qB", "read": "⊔", "write": "⊔", "dir": "R", "to": "qC" },
+        { "from": "qB", "read": "1", "write": "1", "dir": "R", "to": "qB" },
+        { "from": "qC", "read": "⊔", "write": "1", "dir": "L", "to": "qC" },
+        { "from": "qC", "read": "1", "write": "1", "dir": "L", "to": "qA" }
       ]
     }
   }
@@ -1458,7 +1487,7 @@ function runUTMSim() {
   const outEl = document.getElementById('utm-result');
   if (!descEl || !inputEl || !outEl) return;
   let tm;
-  try { tm = JSON.parse(descEl.value); } catch(e) {
+  try { tm = JSON.parse(descEl.value); } catch (e) {
     outEl.innerHTML = `<div style="color:var(--red);font-family:var(--mono);font-size:.72rem">JSON parse error: ${e.message}</div>`;
     return;
   }
@@ -1527,7 +1556,7 @@ function simUTM(tm, w) {
       break;
     }
 
-    steps.push({ tape: [...tape], head, state, note: `UTM step ${i+1}: state="${state}", read='${sym}' → write='${tr.write}', dir=${tr.dir}, → state="${tr.to}"`, id: idStr, step: i });
+    steps.push({ tape: [...tape], head, state, note: `UTM step ${i + 1}: state="${state}", read='${sym}' → write='${tr.write}', dir=${tr.dir}, → state="${tr.to}"`, id: idStr, step: i });
 
     tape[head] = tr.write;
     state = tr.to;
@@ -1725,7 +1754,7 @@ function computeMealy2Moore() {
   const s0 = App.startId ? getState(App.startId) : null;
   if (s0) {
     const sid = 'm_' + s0.id + '_init';
-    mooreStates.push({ id: sid, name: s0.name, output: '' });
+    mooreStates.push({ id: sid, name: s0.name, output: '', origId: s0.id });
     idMap[s0.id + '_init'] = sid;
   }
   App.states.forEach(s => {
@@ -1733,12 +1762,12 @@ function computeMealy2Moore() {
     const outs = incomingOutputs[s.id];
     if (!outs || outs.size === 0) {
       const sid = 'm_' + s.id + '_none';
-      mooreStates.push({ id: sid, name: s.name, output: '' });
+      mooreStates.push({ id: sid, name: s.name, output: '', origId: s.id });
       idMap[s.id + '_none'] = sid;
     } else {
       outs.forEach(b => {
         const sid = 'm_' + s.id + '_' + b;
-        mooreStates.push({ id: sid, name: s.name + '/' + b, output: b });
+        mooreStates.push({ id: sid, name: s.name + '/' + b, output: b, origId: s.id });
         idMap[s.id + '_' + b] = sid;
       });
     }
@@ -1754,10 +1783,7 @@ function computeMealy2Moore() {
     });
   });
   const startId = mooreStates[0]?.id || null;
-  const accepts = new Set(mooreStates.filter(s => {
-    const origId = s.id.slice(2, s.id.lastIndexOf('_'));
-    return App.accepts.has(origId);
-  }).map(s => s.id));
+  const accepts = new Set(mooreStates.filter(s => s.origId && App.accepts.has(s.origId)).map(s => s.id));
   return { states: mooreStates, transitions: mooreTrans, startId, accepts };
 }
 
@@ -1789,13 +1815,13 @@ function algoMTMTable(c) {
   if (App.machine !== 'MTM') { c.innerHTML += '<div class="card">Switch to MTM mode to use this table.</div>'; return; }
   if (!App.states.length) { c.innerHTML += '<div class="card">Build an MTM first in the Build tab.</div>'; return; }
   const k = App.tapeCount;
-  const readHdrs = Array.from({length:k},(_,i)=>`<th>T${i+1} read</th>`).join('');
-  const writeHdrs = Array.from({length:k},(_,i)=>`<th>T${i+1} write/dir</th>`).join('');
+  const readHdrs = Array.from({ length: k }, (_, i) => `<th>T${i + 1} read</th>`).join('');
+  const writeHdrs = Array.from({ length: k }, (_, i) => `<th>T${i + 1} write/dir</th>`).join('');
   const thead = `<tr><th>State</th>${readHdrs}<th>Next State</th>${writeHdrs}</tr>`;
   const rows = App.transitions.map(t => {
     const fn = getState(t.from)?.name || '?', tn = getState(t.to)?.name || '?';
-    const reads = Array.from({length:k}, (_,i) => `<td>${(t.tapeSyms || [])[i] || t.symbol || '&#8212;'}</td>`).join('');
-    const writes = Array.from({length:k}, (_,i) => {
+    const reads = Array.from({ length: k }, (_, i) => `<td>${(t.tapeSyms || [])[i] || t.symbol || '&#8212;'}</td>`).join('');
+    const writes = Array.from({ length: k }, (_, i) => {
       const w = (t.tapeWrites || [])[i] || '&#8212;', d = (t.tapeDirs || [])[i] || '&#8212;';
       return `<td>${w}/${d}</td>`;
     }).join('');
@@ -1811,7 +1837,7 @@ function algoMTMTable(c) {
 </div></div>`;
   const statePills = App.states.map(s => {
     const cls = App.accepts.has(s.id) ? 'acc' : App.startId === s.id ? 'start' : '';
-    return `<div class="state-pill ${cls}">${s.name}${App.startId===s.id?' (start)':''}${App.accepts.has(s.id)?' &#9733;':''}</div>`;
+    return `<div class="state-pill ${cls}">${s.name}${App.startId === s.id ? ' (start)' : ''}${App.accepts.has(s.id) ? ' &#9733;' : ''}</div>`;
   }).join('');
   c.innerHTML += `<div class="card"><div class="card-title">States Q (${App.states.length})</div>
 <div class="nfa-result-states">${statePills}</div></div>`;
