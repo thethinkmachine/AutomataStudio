@@ -31,10 +31,23 @@ function setView(v) {
 //  MACHINE TYPE
 // ══════════════════════════════════════════════════════════════════
 function setMachine(m) {
-  if (m !== App.machine && App.states.length > 0) {
-    if (!confirm(`Switch to ${m}? The current canvas will be cleared.`)) return;
-    clearAll(true);
+  if (m === App.machine) return;
+  if (App.states.length > 0) {
+    $('confirm-title').textContent = 'Switch Machine Type?';
+    $('confirm-msg').textContent = `Switching to ${m} will delete your current machine work. Continue?`;
+    const btn = $('confirm-action-btn');
+    btn.onclick = () => {
+      clearAll(true);
+      applyMachineSwitch(m);
+      closeModal('confirm-modal');
+    };
+    showOverlay('confirm-modal');
+    return;
   }
+  applyMachineSwitch(m);
+}
+
+function applyMachineSwitch(m) {
   App.machine = m;
   document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('active', b.textContent === m));
   $('mach-badge').className = `badge bd-${m.toLowerCase().replace('ε-', 'e')}`;
@@ -52,13 +65,20 @@ function setTapeCount(n) {
   const newCount = Math.max(2, Math.min(4, parseInt(n) || 2));
   if (newCount === App.tapeCount) return;
   if (App.transitions.length > 0) {
-    if (!confirm(`Changing tape count from ${App.tapeCount} to ${newCount} requires clearing all existing transitions. Continue?`)) {
+    $('confirm-title').textContent = 'Change Tape Count?';
+    $('confirm-msg').textContent = `Changing to ${newCount} tapes will clear all existing multi-tape transitions. Continue?`;
+    const btn = $('confirm-action-btn');
+    btn.onclick = () => {
+      snapshot();
+      App.transitions = [];
+      App.tapeCount = newCount;
       $('tape-count-sel').value = App.tapeCount;
-      return;
-    }
-    snapshot();
-    App.transitions = [];
-    renderAll(); updateSidebar(); updateRPanel();
+      resetSim();
+      renderAll(); updateSidebar(); updateRPanel();
+      closeModal('confirm-modal');
+    };
+    showOverlay('confirm-modal');
+    return;
   }
   App.tapeCount = newCount;
   $('tape-count-sel').value = App.tapeCount;

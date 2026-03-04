@@ -36,20 +36,32 @@
     </div>
     <div class="hdr-right">
       <button class="hbtn" onclick="undo()" title="Undo (Ctrl+Z)">
-        <svg viewBox="0 0 16 16"><path d="M3 8a5 5 0 1 0 1-3M3 2v4h4"/></svg>Undo
+        <svg viewBox="0 0 16 16">
+          <path d="M3 8a5 5 0 1 0 1-3M3 2v4h4" />
+        </svg>Undo
       </button>
       <button class="hbtn" onclick="redo()" title="Redo (Ctrl+Y)">
-        <svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1-3M13 2v4h-4"/></svg>Redo
+        <svg viewBox="0 0 16 16">
+          <path d="M13 8a5 5 0 1 1-1-3M13 2v4h-4" />
+        </svg>Redo
       </button>
       <div class="hdr-sep"></div>
       <button class="hbtn" onclick="saveJSON()" title="Save as JSON">
-        <svg viewBox="0 0 16 16"><path d="M3 3h7l3 3v7H3zM6 3v3h5M6 9v4"/></svg>Save
+        <svg viewBox="0 0 16 16">
+          <path d="M3 3h7l3 3v7H3zM6 3v3h5M6 9v4" />
+        </svg>Save
       </button>
       <button class="hbtn" onclick="loadJSON()" title="Load JSON">
-        <svg viewBox="0 0 16 16"><path d="M3 3h7l3 3v7H3z"/><path d="M8 7v5M5 10l3 3 3-3"/></svg>Load
+        <svg viewBox="0 0 16 16">
+          <path d="M3 3h7l3 3v7H3z" />
+          <path d="M8 7v5M5 10l3 3 3-3" />
+        </svg>Load
       </button>
       <button class="hbtn" onclick="showHelpModal()" title="Keyboard shortcuts">
-        <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 11v1M6.5 6.5c0-1 .7-2 1.5-2s1.5.9 1.5 2c0 1-1.5 1.5-1.5 2.5"/></svg>Help
+        <svg viewBox="0 0 16 16">
+          <circle cx="8" cy="8" r="6" />
+          <path d="M8 11v1M6.5 6.5c0-1 .7-2 1.5-2s1.5.9 1.5 2c0 1-1.5 1.5-1.5 2.5" />
+        </svg>Help
       </button>
     </div>
   </header>
@@ -69,16 +81,31 @@
     </div>
     <div style="flex:1"></div>
     <button class="hbtn" onclick="loadExample()" title="Load example automaton">
-      <svg viewBox="0 0 16 16"><polygon points="5,3 13,8 5,13"/></svg>Example
+      <svg viewBox="0 0 16 16">
+        <polygon points="5,3 13,8 5,13" />
+      </svg>Example
     </button>
-    <button id="fs-btn" class="hbtn" onclick="toggleFullscreen()" title="Enter fullscreen (F)" style="width:2.2rem;padding:0;display:flex;align-items:center;justify-content:center">
-      <svg viewBox="0 0 16 16"><path d="M 3 3 L 6 3 M 3 3 L 3 6 M 13 3 L 10 3 M 13 3 L 13 6 M 3 13 L 3 10 M 3 13 L 6 13 M 13 13 L 13 10 M 13 13 L 10 13" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>
+    <button id="fs-btn" class="hbtn" onclick="toggleFullscreen()" title="Enter fullscreen (F)"
+      style="width:2.2rem;padding:0;display:flex;align-items:center;justify-content:center">
+      <svg viewBox="0 0 16 16">
+        <path
+          d="M 3 3 L 6 3 M 3 3 L 3 6 M 13 3 L 10 3 M 13 3 L 13 6 M 3 13 L 3 10 M 3 13 L 6 13 M 13 13 L 13 10 M 13 13 L 10 13"
+          stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" />
+      </svg>
     </button>
     <button class="hbtn" onclick="autoLayout()" title="Auto-arrange states in a circle">
-      <svg viewBox="0 0 16 16"><circle cx="8" cy="4" r="2"/><circle cx="13" cy="11" r="2"/><circle cx="3" cy="11" r="2"/><path d="M8 6v2M7 8l-3.5 2M9 8l3.5 2"/></svg>Layout
+      <svg viewBox="0 0 16 16">
+        <circle cx="8" cy="4" r="2" />
+        <circle cx="13" cy="11" r="2" />
+        <circle cx="3" cy="11" r="2" />
+        <path d="M8 6v2M7 8l-3.5 2M9 8l3.5 2" />
+      </svg>Layout
     </button>
     <button class="hbtn" onclick="exportSVG()" title="Export canvas as SVG">
-      <svg viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M5 8l2 2 4-4"/></svg>SVG
+      <svg viewBox="0 0 16 16">
+        <rect x="2" y="2" width="12" height="12" rx="1" />
+        <path d="M5 8l2 2 4-4" />
+      </svg>SVG
     </button>
   </div>
 
@@ -88,7 +115,9 @@
     <!-- SIDEBAR (shown on Build+Algo views) -->
     <aside class="sidebar" id="sidebar">
       <button class="sidebar-toggle-btn" id="sidebar-toggle-btn" onclick="toggleSidebar()" title="Collapse sidebar">
-        <svg viewBox="0 0 12 12"><path d="M8 2L4 6l4 4"/></svg>
+        <svg viewBox="0 0 12 12">
+          <path d="M8 2L4 6l4 4" />
+        </svg>
       </button>
       <div class="sidebar-content" id="sidebar-content">
         <div class="sec">
@@ -159,36 +188,50 @@
           </svg>
           <!-- Floating toolbox -->
           <div class="canvas-toolbox" id="canvas-toolbox">
-            <button class="toolbox-btn" id="t-pointer" onclick="setTool('pointer')" title="Pointer — select &amp; interact (Esc)">
-              <svg viewBox="0 0 16 16" style="fill:currentColor;stroke:none"><path d="M3.5 1.5l9 9-3.5.8L7.2 14l-1.4-4.2L1.5 11z"/></svg>
+            <button class="toolbox-btn" id="t-pointer" onclick="setTool('pointer')"
+              title="Pointer — select &amp; interact (Esc)">
+              <svg viewBox="0 0 16 16" style="fill:currentColor;stroke:none">
+                <path d="M3.5 1.5l9 9-3.5.8L7.2 14l-1.4-4.2L1.5 11z" />
+              </svg>
               <span class="toolbox-lbl">Pointer</span>
               <span class="toolbox-kbd">Esc</span>
             </button>
             <div class="toolbox-sep"></div>
             <button class="toolbox-btn" id="t-move" onclick="setTool('move')" title="Move — drag canvas to pan (V)">
-              <svg viewBox="0 0 16 16"><path d="M8 2v12M2 8h12M5 5l-3 3 3 3M11 5l3 3-3 3"/></svg>
+              <svg viewBox="0 0 16 16">
+                <path d="M8 2v12M2 8h12M5 5l-3 3 3 3M11 5l3 3-3 3" />
+              </svg>
               <span class="toolbox-lbl">Pan</span>
               <span class="toolbox-kbd">V</span>
             </button>
             <button class="toolbox-btn" id="t-state" onclick="setTool('state')" title="Add State (S)">
-              <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M5 8h6"/></svg>
+              <svg viewBox="0 0 16 16">
+                <circle cx="8" cy="8" r="6" />
+                <path d="M8 5v6M5 8h6" />
+              </svg>
               <span class="toolbox-lbl">State</span>
               <span class="toolbox-kbd">S</span>
             </button>
             <button class="toolbox-btn" id="t-trans" onclick="setTool('trans')" title="Add Transition (T)">
-              <svg viewBox="0 0 16 16"><path d="M2 8h12M10 5l4 3-4 3"/></svg>
+              <svg viewBox="0 0 16 16">
+                <path d="M2 8h12M10 5l4 3-4 3" />
+              </svg>
               <span class="toolbox-lbl">Trans</span>
               <span class="toolbox-kbd">T</span>
             </button>
             <div class="toolbox-sep"></div>
             <button class="toolbox-btn toolbox-danger" id="t-del" onclick="setTool('del')" title="Delete (D)">
-              <svg viewBox="0 0 16 16"><path d="M3 3l10 10M13 3L3 13"/></svg>
+              <svg viewBox="0 0 16 16">
+                <path d="M3 3l10 10M13 3L3 13" />
+              </svg>
               <span class="toolbox-lbl">Delete</span>
               <span class="toolbox-kbd">D</span>
             </button>
             <div class="toolbox-sep"></div>
             <button class="toolbox-btn toolbox-danger" id="t-clear" onclick="clearAll()" title="Clear all (X)">
-              <svg viewBox="0 0 16 16"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9"/></svg>
+              <svg viewBox="0 0 16 16">
+                <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" />
+              </svg>
               <span class="toolbox-lbl">Clear</span>
               <span class="toolbox-kbd">X</span>
             </button>
@@ -203,19 +246,26 @@
             </div>
             <canvas class="minimap-canvas" id="minimap-canvas" width="160" height="100"></canvas>
           </div>
-          <button class="minimap-show-btn" id="minimap-show-btn" style="display:none" onclick="toggleMinimap()" title="Show minimap">⊞ Map</button>
+          <button class="minimap-show-btn" id="minimap-show-btn" style="display:none" onclick="toggleMinimap()"
+            title="Show minimap">⊞ Map</button>
           <!-- Nav controls -->
           <div class="canvas-nav-controls" id="canvas-nav-controls">
             <button class="cnc-btn" onclick="zoomOut()" title="Zoom out (-)">
-              <svg viewBox="0 0 14 14"><path d="M3 7h8"/></svg>
+              <svg viewBox="0 0 14 14">
+                <path d="M3 7h8" />
+              </svg>
             </button>
             <span class="cnc-zoom-display" id="zoom-ind">100%</span>
             <button class="cnc-btn" onclick="zoomIn()" title="Zoom in (+)">
-              <svg viewBox="0 0 14 14"><path d="M7 3v8M3 7h8"/></svg>
+              <svg viewBox="0 0 14 14">
+                <path d="M7 3v8M3 7h8" />
+              </svg>
             </button>
             <div class="cnc-sep"></div>
             <button class="cnc-btn" onclick="fitToScreen()" title="Fit to screen (H)">
-              <svg viewBox="0 0 14 14"><path d="M2 5V2h3M9 2h3v3M2 9v3h3M12 9v3h-3"/></svg>
+              <svg viewBox="0 0 14 14">
+                <path d="M2 5V2h3M9 2h3v3M2 9v3h3M12 9v3h-3" />
+              </svg>
             </button>
           </div>
         </div>
@@ -227,7 +277,9 @@
             <div class="rp-section-header" onclick="toggleRPSection('rp-language')">
               <span class="rp-section-title">Language</span>
               <span class="badge bd-dfa" id="mach-badge">DFA</span>
-              <svg class="rp-toggle-arrow" viewBox="0 0 14 14"><path d="M3 5l4 4 4-4"/></svg>
+              <svg class="rp-toggle-arrow" viewBox="0 0 14 14">
+                <path d="M3 5l4 4 4-4" />
+              </svg>
             </div>
             <div class="rp-section-body">
               <div class="code-box" id="regex-box">—</div>
@@ -238,7 +290,9 @@
           <div class="rp-collapsible" id="rp-simulate">
             <div class="rp-section-header" onclick="toggleRPSection('rp-simulate')">
               <span class="rp-section-title">Simulate</span>
-              <svg class="rp-toggle-arrow" viewBox="0 0 14 14"><path d="M3 5l4 4 4-4"/></svg>
+              <svg class="rp-toggle-arrow" viewBox="0 0 14 14">
+                <path d="M3 5l4 4 4-4" />
+              </svg>
             </div>
             <div class="rp-section-body">
               <div class="sim-row">
@@ -254,21 +308,25 @@
               <div class="tape-wrap" id="tape-wrap" style="display:none"></div>
               <div id="mtm-ctrl" style="display:none;align-items:center;gap:6px;margin-bottom:4px">
                 <span style="font-family:var(--mono);font-size:.65rem;color:var(--text3)">Tapes:</span>
-                <select class="sel" id="tape-count-sel" onchange="setTapeCount(this.value)" style="flex:none;width:55px">
+                <select class="sel" id="tape-count-sel" onchange="setTapeCount(this.value)"
+                  style="flex:none;width:55px">
                   <option value="2">2</option>
                   <option value="3">3</option>
                   <option value="4">4</option>
                 </select>
               </div>
               <div id="mtm-tapes" style="display:none"></div>
-              <div class="trace-log" id="trace-log"><span style="color:var(--text3);font-style:italic">Run a string to simulate…</span></div>
+              <div class="trace-log" id="trace-log"><span style="color:var(--text3);font-style:italic">Run a string to
+                  simulate…</span></div>
             </div>
           </div>
           <!-- Batch Test section (collapsed by default) -->
           <div class="rp-collapsible collapsed" id="rp-batch">
             <div class="rp-section-header" onclick="toggleRPSection('rp-batch')">
               <span class="rp-section-title">Batch Test</span>
-              <svg class="rp-toggle-arrow" viewBox="0 0 14 14"><path d="M3 5l4 4 4-4"/></svg>
+              <svg class="rp-toggle-arrow" viewBox="0 0 14 14">
+                <path d="M3 5l4 4 4-4" />
+              </svg>
             </div>
             <div class="rp-section-body" style="display:none">
               <textarea class="batch-in" id="batch-in"
@@ -297,8 +355,10 @@
           <div class="algo-item" onclick="setAlgo('utm')" data-algo="utm">UTM Simulator</div>
           <div class="algo-item" onclick="setAlgo('mtmTable')" data-algo="mtmTable">MTM Transition Table</div>
           <div class="algo-grp">Transducers</div>
-          <div class="algo-item" onclick="setAlgo('mooreTable')" data-algo="mooreTable">Moore Table (&#955;: Q&rarr;&Delta;)</div>
-          <div class="algo-item" onclick="setAlgo('mealyTable')" data-algo="mealyTable">Mealy Table (&#955;: Q&times;&Sigma;&rarr;&Delta;)</div>
+          <div class="algo-item" onclick="setAlgo('mooreTable')" data-algo="mooreTable">Moore Table (&#955;:
+            Q&rarr;&Delta;)</div>
+          <div class="algo-item" onclick="setAlgo('mealyTable')" data-algo="mealyTable">Mealy Table (&#955;:
+            Q&times;&Sigma;&rarr;&Delta;)</div>
           <div class="algo-item" onclick="setAlgo('moore2mealy')" data-algo="moore2mealy">Moore &rarr; Mealy</div>
           <div class="algo-item" onclick="setAlgo('mealy2moore')" data-algo="mealy2moore">Mealy &rarr; Moore</div>
           <div class="algo-grp">Regular Expressions</div>
@@ -362,27 +422,36 @@
           </div>
           <div class="sec" style="border-bottom:none">
             <div class="gram-group-label">Conversions</div>
-            <button class="algo-btn" onclick="runCNF()" style="width:100%;margin-bottom:5px;margin-right:0">Convert to CNF</button>
-            <button class="algo-btn sec" onclick="runGNF()" style="width:100%;margin-right:0;margin-bottom:5px">Convert to GNF</button>
-            <button class="algo-btn sec" onclick="runCFG2PDA()" style="width:100%;margin-right:0;margin-bottom:5px">CFG → PDA</button>
+            <button class="algo-btn" onclick="runCNF()" style="width:100%;margin-bottom:5px;margin-right:0">Convert to
+              CNF</button>
+            <button class="algo-btn sec" onclick="runGNF()" style="width:100%;margin-right:0;margin-bottom:5px">Convert
+              to GNF</button>
+            <button class="algo-btn sec" onclick="runCFG2PDA()" style="width:100%;margin-right:0;margin-bottom:5px">CFG
+              → PDA</button>
 
             <div class="gram-group-label">Parse &amp; Derive</div>
             <div class="row" style="margin-bottom:5px">
               <input class="inp" id="cyk-in" placeholder="String to parse">
               <button class="ibtn" onclick="runCYK()" title="Run CYK">▶</button>
             </div>
-            <button class="algo-btn sec" onclick="runDerivation()" style="width:100%;margin-right:0;margin-bottom:5px">Leftmost Derivation</button>
-            <button class="algo-btn sec" onclick="runRightmostDerivation()" style="width:100%;margin-right:0;margin-bottom:5px">Rightmost Derivation</button>
-            <button class="algo-btn sec" onclick="runParseTree()" style="width:100%;margin-right:0;margin-bottom:5px">Parse Tree (SVG)</button>
+            <button class="algo-btn sec" onclick="runDerivation()"
+              style="width:100%;margin-right:0;margin-bottom:5px">Leftmost Derivation</button>
+            <button class="algo-btn sec" onclick="runRightmostDerivation()"
+              style="width:100%;margin-right:0;margin-bottom:5px">Rightmost Derivation</button>
+            <button class="algo-btn sec" onclick="runParseTree()"
+              style="width:100%;margin-right:0;margin-bottom:5px">Parse Tree (SVG)</button>
             <div class="row" style="margin-bottom:5px">
               <input class="inp" id="ambig-in" placeholder="String for ambiguity check">
               <button class="ibtn" onclick="runAmbiguityCheck()" title="Check Ambiguity">?</button>
             </div>
 
             <div class="gram-group-label">Simplify &amp; Decide</div>
-            <button class="algo-btn sec" onclick="runUselessElim()" style="width:100%;margin-right:0;margin-bottom:5px">Eliminate Useless</button>
-            <button class="algo-btn sec" onclick="runCFGIsEmpty()" style="width:100%;margin-right:0;margin-bottom:5px">isEmpty?</button>
-            <button class="algo-btn sec" onclick="runCFGIsFinite()" style="width:100%;margin-right:0;margin-bottom:4px">isFinite?</button>
+            <button class="algo-btn sec" onclick="runUselessElim()"
+              style="width:100%;margin-right:0;margin-bottom:5px">Eliminate Useless</button>
+            <button class="algo-btn sec" onclick="runCFGIsEmpty()"
+              style="width:100%;margin-right:0;margin-bottom:5px">isEmpty?</button>
+            <button class="algo-btn sec" onclick="runCFGIsFinite()"
+              style="width:100%;margin-right:0;margin-bottom:4px">isFinite?</button>
           </div>
         </div>
         <div class="gram-right" id="gram-right">
@@ -400,21 +469,29 @@
         <div class="algo-nav theory-nav" style="width:190px;min-width:190px;">
           <div class="theory-nav-header">
             <div class="theory-nav-title">Theory Reference</div>
-            <div class="theory-nav-subtitle">Hopcroft, Motwani &amp; Ullman<br>Automata, Languages &amp; Computation</div>
+            <div class="theory-nav-subtitle">Hopcroft, Motwani &amp; Ullman<br>Automata, Languages &amp; Computation
+            </div>
           </div>
           <div class="theory-nav-group">Foundations</div>
-          <a class="theory-nav-link active" id="tnl-hierarchy" href="#th-hierarchy" onclick="theoryNavClick(this)">Chomsky Hierarchy</a>
+          <a class="theory-nav-link active" id="tnl-hierarchy" href="#th-hierarchy"
+            onclick="theoryNavClick(this)">Chomsky Hierarchy</a>
           <a class="theory-nav-link" id="tnl-fa" href="#th-fa" onclick="theoryNavClick(this)">Finite Automata</a>
-          <a class="theory-nav-link" id="tnl-regular" href="#th-regular" onclick="theoryNavClick(this)">Regular Languages</a>
+          <a class="theory-nav-link" id="tnl-regular" href="#th-regular" onclick="theoryNavClick(this)">Regular
+            Languages</a>
           <div class="theory-nav-group">Beyond Regular</div>
-          <a class="theory-nav-link" id="tnl-cfl" href="#th-cfl" onclick="theoryNavClick(this)">Context-Free Languages</a>
+          <a class="theory-nav-link" id="tnl-cfl" href="#th-cfl" onclick="theoryNavClick(this)">Context-Free
+            Languages</a>
           <div class="theory-nav-group">Computability</div>
           <a class="theory-nav-link" id="tnl-tm" href="#th-tm" onclick="theoryNavClick(this)">Turing Machines</a>
-          <a class="theory-nav-link" id="tnl-undecidable" href="#th-undecidable" onclick="theoryNavClick(this)">Undecidability</a>
-          <a class="theory-nav-link" id="tnl-complexity" href="#th-complexity" onclick="theoryNavClick(this)">Complexity Theory</a>
+          <a class="theory-nav-link" id="tnl-undecidable" href="#th-undecidable"
+            onclick="theoryNavClick(this)">Undecidability</a>
+          <a class="theory-nav-link" id="tnl-complexity" href="#th-complexity" onclick="theoryNavClick(this)">Complexity
+            Theory</a>
           <div class="theory-nav-group">Reference Cards</div>
-          <a class="theory-nav-link" id="tnl-algorithms" href="#th-algorithms" onclick="theoryNavClick(this)">Key Algorithms</a>
-          <a class="theory-nav-link" id="tnl-closure-card" href="#th-closure-card" onclick="theoryNavClick(this)">Closure Properties</a>
+          <a class="theory-nav-link" id="tnl-algorithms" href="#th-algorithms" onclick="theoryNavClick(this)">Key
+            Algorithms</a>
+          <a class="theory-nav-link" id="tnl-closure-card" href="#th-closure-card"
+            onclick="theoryNavClick(this)">Closure Properties</a>
           <a class="theory-nav-link" id="tnl-nerode" href="#th-nerode" onclick="theoryNavClick(this)">Myhill-Nerode</a>
           <div class="theory-nav-group">Transducers &amp; Extensions</div>
           <a class="theory-nav-link" id="tnl-moore" href="#th-moore" onclick="theoryNavClick(this)">Moore Machines</a>
@@ -422,144 +499,198 @@
           <a class="theory-nav-link" id="tnl-mtm" href="#th-mtm" onclick="theoryNavClick(this)">Multi-Tape TMs</a>
           <div class="theory-nav-group">Interactive</div>
           <a class="theory-nav-link" id="tnl-pump" href="#th-pump" onclick="theoryNavClick(this)">RL Pumping Lemma</a>
-          <a class="theory-nav-link" id="tnl-pump-cfl" href="#th-pump-cfl" onclick="theoryNavClick(this)">CFL Pumping Lemma</a>
-          <a class="theory-nav-link" id="tnl-closure-tbl" href="#th-closure-tbl" onclick="theoryNavClick(this)">Closure Table</a>
-          <a class="theory-nav-link" id="tnl-decidability" href="#th-decidability" onclick="theoryNavClick(this)">Decidability Table</a>
+          <a class="theory-nav-link" id="tnl-pump-cfl" href="#th-pump-cfl" onclick="theoryNavClick(this)">CFL Pumping
+            Lemma</a>
+          <a class="theory-nav-link" id="tnl-closure-tbl" href="#th-closure-tbl" onclick="theoryNavClick(this)">Closure
+            Table</a>
+          <a class="theory-nav-link" id="tnl-decidability" href="#th-decidability"
+            onclick="theoryNavClick(this)">Decidability Table</a>
         </div>
-      <div class="algo-content" style="padding: 24px 28px;">
+        <div class="algo-content" style="padding: 24px 28px;">
 
-        <!-- Chomsky Hierarchy -->
-        <div class="theory-section" id="th-hierarchy">
-          <div class="theory-section-title">Chomsky Hierarchy</div>
-          <div class="theory-section-sub">Classification of formal languages by generative power (Type 3 → Type 0)</div>
-          <div class="hierarchy-section">
-            <svg viewBox="0 0 700 240" style="width:100%;max-width:1000px;display:block;margin:0 auto">
-              <ellipse cx="350" cy="120" rx="330" ry="110" fill="rgba(255,183,77,.06)" stroke="var(--orange)" stroke-width="1" stroke-dasharray="4,3" />
-              <ellipse cx="350" cy="120" rx="255" ry="85" fill="rgba(206,147,216,.06)" stroke="var(--purple)" stroke-width="1" stroke-dasharray="4,3" />
-              <ellipse cx="350" cy="120" rx="180" ry="60" fill="rgba(105,240,174,.07)" stroke="var(--green)" stroke-width="1" stroke-dasharray="4,3" />
-              <ellipse cx="350" cy="120" rx="100" ry="36" fill="rgba(79,195,247,.1)" stroke="var(--accent)" stroke-width="1.5" />
-              <text x="350" y="124" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--accent)">Regular</text>
-              <text x="350" y="168" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--green)">Context-Free</text>
-              <text x="350" y="198" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--purple)">Context-Sensitive</text>
-              <text x="350" y="224" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--orange)">Recursively Enumerable</text>
-              <text x="60" y="60" font-family="var(--mono)" font-size="9" fill="var(--accent)">DFA / NFA</text>
-              <text x="60" y="74" font-family="var(--mono)" font-size="9" fill="var(--accent)">Regex</text>
-              <text x="60" y="100" font-family="var(--mono)" font-size="9" fill="var(--green)">PDA / CFG</text>
-              <text x="60" y="130" font-family="var(--mono)" font-size="9" fill="var(--purple)">LBA</text>
-              <text x="60" y="158" font-family="var(--mono)" font-size="9" fill="var(--orange)">TM</text>
-            </svg>
-          </div>
-        </div>
-
-        <!-- Theory Reference Cards (JS-injected, organized by section) -->
-        <div class="theory-section" id="th-cards-section">
-          <div id="theory-grid"></div>
-        </div>
-
-        <!-- RL Pumping Lemma -->
-        <div class="theory-section" id="th-pump">
-          <div class="theory-section-title">RL Pumping Lemma Explorer</div>
-          <div class="theory-section-sub">Verify or disprove pumping conditions for regular languages</div>
-          <div class="pump-section">
-            <div style="font-family:var(--mono);font-size:.72rem;color:var(--text2);margin-bottom:12px;line-height:1.8">
-              If L is regular, ∃p≥1 s.t. ∀w∈L with |w|≥p, ∃xyz=w where:<br>
-              (1) |xy|≤p &nbsp; (2) |y|≥1 &nbsp; (3) ∀i≥0, xy<sup>i</sup>z ∈ L
+          <!-- Chomsky Hierarchy -->
+          <div class="theory-section" id="th-hierarchy">
+            <div class="theory-section-title">Chomsky Hierarchy</div>
+            <div class="theory-section-sub">Classification of formal languages by generative power (Type 3 → Type 0)
             </div>
-            <div class="pump-row">
-              <span class="pump-lbl">Pump length p</span>
-              <input class="inp" id="pump-p" value="3" type="number" min="1" max="20" style="width:60px;flex:none" oninput="renderPumpVis()">
-              <span class="pump-lbl">String w</span>
-              <input class="inp" id="pump-w" value="aaabbb" oninput="renderPumpVis()">
-            </div>
-            <div class="pump-row">
-              <span class="pump-lbl">Split |x|</span>
-              <input class="inp" id="pump-x" value="0" type="number" min="0" style="width:60px;flex:none" oninput="renderPumpVis()">
-              <span class="pump-lbl">Split |y|</span>
-              <input class="inp" id="pump-y" value="3" type="number" min="1" style="width:60px;flex:none" oninput="renderPumpVis()">
-              <span class="pump-lbl">Pump i</span>
-              <input class="inp" id="pump-i" value="2" type="number" min="0" style="width:60px;flex:none" oninput="renderPumpVis()">
-            </div>
-            <div class="pump-string-vis" id="pump-vis"></div>
-            <div id="pump-result"></div>
-          </div>
-        </div>
-
-        <!-- Closure Table -->
-        <div class="theory-section" id="th-closure-tbl">
-          <div class="theory-section-title">Closure Properties Table</div>
-          <div class="theory-section-sub">Click operations to see which language classes are closed under each</div>
-          <div class="pump-section">
-            <div id="closure-table"></div>
-          </div>
-        </div>
-
-        <!-- CFL Pumping Lemma -->
-        <div class="theory-section" id="th-pump-cfl">
-          <div class="theory-section-title">CFL Pumping Lemma Explorer</div>
-          <div class="theory-section-sub">Interactive tool for Context-Free Languages — Ogden's Lemma variant</div>
-          <div class="pump-section" id="cfl-pump-section">
-            <div style="font-family:var(--mono);font-size:.72rem;color:var(--text2);margin-bottom:12px;line-height:1.8">
-              If L is CFL, ∃p≥1 s.t. ∀w∈L with |w|≥p, ∃uvxyz=w where:<br>
-              (1) |vxy| ≤ p &nbsp; (2) |vy| ≥ 1 &nbsp; (3) ∀i≥0: uv<sup>i</sup>xy<sup>i</sup>z ∈ L
-            </div>
-            <div class="pump-row">
-              <span class="pump-lbl">Pump length p</span>
-              <input class="inp" id="cfl-pump-p" value="4" type="number" min="1" max="20" style="width:60px;flex:none" oninput="renderCFLPumpVis()">
-              <span class="pump-lbl">String w</span>
-              <input class="inp" id="cfl-pump-w" value="aabbcc" oninput="renderCFLPumpVis()">
-            </div>
-            <div class="pump-row">
-              <span class="pump-lbl">|u|</span>
-              <input class="inp" id="cfl-pump-u" value="1" type="number" min="0" style="width:60px;flex:none" oninput="renderCFLPumpVis()">
-              <span class="pump-lbl">|v|</span>
-              <input class="inp" id="cfl-pump-v" value="1" type="number" min="0" style="width:60px;flex:none" oninput="renderCFLPumpVis()">
-              <span class="pump-lbl">|x|</span>
-              <input class="inp" id="cfl-pump-x" value="2" type="number" min="0" style="width:60px;flex:none" oninput="renderCFLPumpVis()">
-              <span class="pump-lbl">|y|</span>
-              <input class="inp" id="cfl-pump-y" value="1" type="number" min="0" style="width:60px;flex:none" oninput="renderCFLPumpVis()">
-              <span class="pump-lbl">Pump i</span>
-              <input class="inp" id="cfl-pump-i" value="2" type="number" min="0" style="width:60px;flex:none" oninput="renderCFLPumpVis()">
-            </div>
-            <div class="pump-string-vis" id="cfl-pump-vis"></div>
-            <div id="cfl-pump-result"></div>
-          </div>
-        </div>
-
-        <!-- Decidability Table -->
-        <div class="theory-section" id="th-decidability">
-          <div class="theory-section-title">Decidability Reference</div>
-          <div class="theory-section-sub">Decision problems by language class</div>
-          <div class="pump-section">
-            <div style="overflow-x:auto;margin-top:4px">
-              <table class="dec-table">
-                <thead>
-                  <tr>
-                    <th style="text-align:left">Language Class</th>
-                    <th>Membership</th>
-                    <th>Emptiness</th>
-                    <th>Equivalence</th>
-                    <th>Universality</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr><td style="font-family:var(--mono);font-size:.7rem">Regular (DFA)</td><td class="yes">Decidable</td><td class="yes">Decidable</td><td class="yes">Decidable</td><td class="yes">Decidable</td></tr>
-                  <tr><td style="font-family:var(--mono);font-size:.7rem">CFL (CFG/PDA)</td><td class="yes">Decidable (CYK)</td><td class="yes">Decidable</td><td class="no">Undecidable</td><td class="no">Undecidable</td></tr>
-                  <tr><td style="font-family:var(--mono);font-size:.7rem">CSL (LBA)</td><td class="yes">Decidable</td><td class="no">Undecidable</td><td class="no">Undecidable</td><td class="no">Undecidable</td></tr>
-                  <tr><td style="font-family:var(--mono);font-size:.7rem">RE (TM)</td><td class="semi">Semi-decidable</td><td class="no">Undecidable</td><td class="no">Undecidable</td><td class="no">Undecidable</td></tr>
-                  <tr><td style="font-family:var(--mono);font-size:.7rem">Non-RE</td><td class="no">Undecidable</td><td class="no">Undecidable</td><td class="no">Undecidable</td><td class="no">Undecidable</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <div style="font-family:var(--mono);font-size:.65rem;color:var(--text3);margin-top:10px;line-height:1.8">
-              <span style="color:var(--green)">Green</span> = Decidable (always halts, correct answer) &nbsp;
-              <span style="color:var(--orange)">Orange</span> = Semi-decidable (halts on yes, may loop on no) &nbsp;
-              <span style="color:var(--red)">Red</span> = Undecidable (no algorithm exists)
+            <div class="hierarchy-section">
+              <svg viewBox="0 0 700 240" style="width:100%;max-width:1000px;display:block;margin:0 auto">
+                <ellipse cx="350" cy="120" rx="330" ry="110" fill="rgba(255,183,77,.06)" stroke="var(--orange)"
+                  stroke-width="1" stroke-dasharray="4,3" />
+                <ellipse cx="350" cy="120" rx="255" ry="85" fill="rgba(206,147,216,.06)" stroke="var(--purple)"
+                  stroke-width="1" stroke-dasharray="4,3" />
+                <ellipse cx="350" cy="120" rx="180" ry="60" fill="rgba(105,240,174,.07)" stroke="var(--green)"
+                  stroke-width="1" stroke-dasharray="4,3" />
+                <ellipse cx="350" cy="120" rx="100" ry="36" fill="rgba(79,195,247,.1)" stroke="var(--accent)"
+                  stroke-width="1.5" />
+                <text x="350" y="124" text-anchor="middle" font-family="var(--mono)" font-size="11"
+                  fill="var(--accent)">Regular</text>
+                <text x="350" y="168" text-anchor="middle" font-family="var(--mono)" font-size="10"
+                  fill="var(--green)">Context-Free</text>
+                <text x="350" y="198" text-anchor="middle" font-family="var(--mono)" font-size="10"
+                  fill="var(--purple)">Context-Sensitive</text>
+                <text x="350" y="224" text-anchor="middle" font-family="var(--mono)" font-size="10"
+                  fill="var(--orange)">Recursively Enumerable</text>
+                <text x="60" y="60" font-family="var(--mono)" font-size="9" fill="var(--accent)">DFA / NFA</text>
+                <text x="60" y="74" font-family="var(--mono)" font-size="9" fill="var(--accent)">Regex</text>
+                <text x="60" y="100" font-family="var(--mono)" font-size="9" fill="var(--green)">PDA / CFG</text>
+                <text x="60" y="130" font-family="var(--mono)" font-size="9" fill="var(--purple)">LBA</text>
+                <text x="60" y="158" font-family="var(--mono)" font-size="9" fill="var(--orange)">TM</text>
+              </svg>
             </div>
           </div>
-        </div>
 
+          <!-- Theory Reference Cards (JS-injected, organized by section) -->
+          <div class="theory-section" id="th-cards-section">
+            <div id="theory-grid"></div>
+          </div>
+
+          <!-- RL Pumping Lemma -->
+          <div class="theory-section" id="th-pump">
+            <div class="theory-section-title">RL Pumping Lemma Explorer</div>
+            <div class="theory-section-sub">Verify or disprove pumping conditions for regular languages</div>
+            <div class="pump-section">
+              <div
+                style="font-family:var(--mono);font-size:.72rem;color:var(--text2);margin-bottom:12px;line-height:1.8">
+                If L is regular, ∃p≥1 s.t. ∀w∈L with |w|≥p, ∃xyz=w where:<br>
+                (1) |xy|≤p &nbsp; (2) |y|≥1 &nbsp; (3) ∀i≥0, xy<sup>i</sup>z ∈ L
+              </div>
+              <div class="pump-row">
+                <span class="pump-lbl">Pump length p</span>
+                <input class="inp" id="pump-p" value="3" type="number" min="1" max="20" style="width:60px;flex:none"
+                  oninput="renderPumpVis()">
+                <span class="pump-lbl">String w</span>
+                <input class="inp" id="pump-w" value="aaabbb" oninput="renderPumpVis()">
+              </div>
+              <div class="pump-row">
+                <span class="pump-lbl">Split |x|</span>
+                <input class="inp" id="pump-x" value="0" type="number" min="0" style="width:60px;flex:none"
+                  oninput="renderPumpVis()">
+                <span class="pump-lbl">Split |y|</span>
+                <input class="inp" id="pump-y" value="3" type="number" min="1" style="width:60px;flex:none"
+                  oninput="renderPumpVis()">
+                <span class="pump-lbl">Pump i</span>
+                <input class="inp" id="pump-i" value="2" type="number" min="0" style="width:60px;flex:none"
+                  oninput="renderPumpVis()">
+              </div>
+              <div class="pump-string-vis" id="pump-vis"></div>
+              <div id="pump-result"></div>
+            </div>
+          </div>
+
+          <!-- Closure Table -->
+          <div class="theory-section" id="th-closure-tbl">
+            <div class="theory-section-title">Closure Properties Table</div>
+            <div class="theory-section-sub">Click operations to see which language classes are closed under each</div>
+            <div class="pump-section">
+              <div id="closure-table"></div>
+            </div>
+          </div>
+
+          <!-- CFL Pumping Lemma -->
+          <div class="theory-section" id="th-pump-cfl">
+            <div class="theory-section-title">CFL Pumping Lemma Explorer</div>
+            <div class="theory-section-sub">Interactive tool for Context-Free Languages — Ogden's Lemma variant</div>
+            <div class="pump-section" id="cfl-pump-section">
+              <div
+                style="font-family:var(--mono);font-size:.72rem;color:var(--text2);margin-bottom:12px;line-height:1.8">
+                If L is CFL, ∃p≥1 s.t. ∀w∈L with |w|≥p, ∃uvxyz=w where:<br>
+                (1) |vxy| ≤ p &nbsp; (2) |vy| ≥ 1 &nbsp; (3) ∀i≥0: uv<sup>i</sup>xy<sup>i</sup>z ∈ L
+              </div>
+              <div class="pump-row">
+                <span class="pump-lbl">Pump length p</span>
+                <input class="inp" id="cfl-pump-p" value="4" type="number" min="1" max="20" style="width:60px;flex:none"
+                  oninput="renderCFLPumpVis()">
+                <span class="pump-lbl">String w</span>
+                <input class="inp" id="cfl-pump-w" value="aabbcc" oninput="renderCFLPumpVis()">
+              </div>
+              <div class="pump-row">
+                <span class="pump-lbl">|u|</span>
+                <input class="inp" id="cfl-pump-u" value="1" type="number" min="0" style="width:60px;flex:none"
+                  oninput="renderCFLPumpVis()">
+                <span class="pump-lbl">|v|</span>
+                <input class="inp" id="cfl-pump-v" value="1" type="number" min="0" style="width:60px;flex:none"
+                  oninput="renderCFLPumpVis()">
+                <span class="pump-lbl">|x|</span>
+                <input class="inp" id="cfl-pump-x" value="2" type="number" min="0" style="width:60px;flex:none"
+                  oninput="renderCFLPumpVis()">
+                <span class="pump-lbl">|y|</span>
+                <input class="inp" id="cfl-pump-y" value="1" type="number" min="0" style="width:60px;flex:none"
+                  oninput="renderCFLPumpVis()">
+                <span class="pump-lbl">Pump i</span>
+                <input class="inp" id="cfl-pump-i" value="2" type="number" min="0" style="width:60px;flex:none"
+                  oninput="renderCFLPumpVis()">
+              </div>
+              <div class="pump-string-vis" id="cfl-pump-vis"></div>
+              <div id="cfl-pump-result"></div>
+            </div>
+          </div>
+
+          <!-- Decidability Table -->
+          <div class="theory-section" id="th-decidability">
+            <div class="theory-section-title">Decidability Reference</div>
+            <div class="theory-section-sub">Decision problems by language class</div>
+            <div class="pump-section">
+              <div style="overflow-x:auto;margin-top:4px">
+                <table class="dec-table">
+                  <thead>
+                    <tr>
+                      <th style="text-align:left">Language Class</th>
+                      <th>Membership</th>
+                      <th>Emptiness</th>
+                      <th>Equivalence</th>
+                      <th>Universality</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style="font-family:var(--mono);font-size:.7rem">Regular (DFA)</td>
+                      <td class="yes">Decidable</td>
+                      <td class="yes">Decidable</td>
+                      <td class="yes">Decidable</td>
+                      <td class="yes">Decidable</td>
+                    </tr>
+                    <tr>
+                      <td style="font-family:var(--mono);font-size:.7rem">CFL (CFG/PDA)</td>
+                      <td class="yes">Decidable (CYK)</td>
+                      <td class="yes">Decidable</td>
+                      <td class="no">Undecidable</td>
+                      <td class="no">Undecidable</td>
+                    </tr>
+                    <tr>
+                      <td style="font-family:var(--mono);font-size:.7rem">CSL (LBA)</td>
+                      <td class="yes">Decidable</td>
+                      <td class="no">Undecidable</td>
+                      <td class="no">Undecidable</td>
+                      <td class="no">Undecidable</td>
+                    </tr>
+                    <tr>
+                      <td style="font-family:var(--mono);font-size:.7rem">RE (TM)</td>
+                      <td class="semi">Semi-decidable</td>
+                      <td class="no">Undecidable</td>
+                      <td class="no">Undecidable</td>
+                      <td class="no">Undecidable</td>
+                    </tr>
+                    <tr>
+                      <td style="font-family:var(--mono);font-size:.7rem">Non-RE</td>
+                      <td class="no">Undecidable</td>
+                      <td class="no">Undecidable</td>
+                      <td class="no">Undecidable</td>
+                      <td class="no">Undecidable</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div style="font-family:var(--mono);font-size:.65rem;color:var(--text3);margin-top:10px;line-height:1.8">
+                <span style="color:var(--green)">Green</span> = Decidable (always halts, correct answer) &nbsp;
+                <span style="color:var(--orange)">Orange</span> = Semi-decidable (halts on yes, may loop on no) &nbsp;
+                <span style="color:var(--red)">Red</span> = Undecidable (no algorithm exists)
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
-     </div>
 
     </div><!-- end view-container -->
   </div><!-- end app-body -->
@@ -569,7 +700,8 @@
     <div class="modal">
       <div class="modal-title">Add Transition</div>
       <div class="modal-row"><span class="modal-lbl">From</span><select class="sel" id="m-from"></select></div>
-      <div class="modal-row" id="m-sym-row"><span class="modal-lbl">Read</span><select class="sel" id="m-sym"></select></div>
+      <div class="modal-row" id="m-sym-row"><span class="modal-lbl">Read</span><select class="sel" id="m-sym"></select>
+      </div>
       <div id="m-pda-extra" style="display:none">
         <div class="modal-row"><span class="modal-lbl">Pop</span><input class="inp" id="m-pop"
             placeholder="ε or symbol"></div>
@@ -587,7 +719,8 @@
         </div>
       </div>
       <div id="m-mealy-extra" style="display:none">
-        <div class="modal-row"><span class="modal-lbl">Output</span><input class="inp" id="m-output" placeholder="symbol"></div>
+        <div class="modal-row"><span class="modal-lbl">Output</span><input class="inp" id="m-output"
+            placeholder="symbol"></div>
       </div>
       <div id="m-mtm-extra" style="display:none"></div>
       <div class="modal-row"><span class="modal-lbl">To</span><select class="sel" id="m-to"></select></div>
@@ -605,10 +738,24 @@
       <div class="modal-row"><span class="modal-lbl">Accept</span><input type="checkbox" id="s-acc"
           style="width:16px;height:16px"></div>
       <div id="s-moore-extra" style="display:none">
-        <div class="modal-row"><span class="modal-lbl">Output λ</span><input class="inp" id="s-output" placeholder="output symbol" maxlength="8"></div>
+        <div class="modal-row"><span class="modal-lbl">Output λ</span><input class="inp" id="s-output"
+            placeholder="output symbol" maxlength="8"></div>
       </div>
       <div class="modal-foot"><button class="btn-g" onclick="closeModal('state-modal')">Cancel</button><button
           class="btn-p" onclick="confirmState()">Save</button></div>
+    </div>
+  </div>
+
+  <div class="overlay" id="confirm-modal">
+    <div class="modal">
+      <div class="modal-title" id="confirm-title">Confirm Action</div>
+      <div id="confirm-msg" class="confirm-msg">
+        Are you sure you want to proceed?
+      </div>
+      <div class="modal-foot">
+        <button class="btn-g" onclick="closeModal('confirm-modal')">Cancel</button>
+        <button class="btn-p" id="confirm-action-btn">Confirm</button>
+      </div>
     </div>
   </div>
 
@@ -620,42 +767,114 @@
       <div class="modal-title">Keyboard Shortcuts &amp; Help</div>
       <div class="help-section">Tools</div>
       <table class="help-table">
-        <tr><td>Esc</td><td>Pointer — normal cursor, drag states to move</td></tr>
-        <tr><td>V</td><td>Pan — drag canvas to pan, drag states to move</td></tr>
-        <tr><td>S</td><td>State — click canvas to place state</td></tr>
-        <tr><td>T</td><td>Transition — click source then target state</td></tr>
-        <tr><td>D</td><td>Delete — click state to remove</td></tr>
-        <tr><td>X</td><td>Clear — delete all states and transitions</td></tr>
+        <tr>
+          <td>Esc</td>
+          <td>Pointer — normal cursor, drag states to move</td>
+        </tr>
+        <tr>
+          <td>V</td>
+          <td>Pan — drag canvas to pan, drag states to move</td>
+        </tr>
+        <tr>
+          <td>S</td>
+          <td>State — click canvas to place state</td>
+        </tr>
+        <tr>
+          <td>T</td>
+          <td>Transition — click source then target state</td>
+        </tr>
+        <tr>
+          <td>D</td>
+          <td>Delete — click state to remove</td>
+        </tr>
+        <tr>
+          <td>X</td>
+          <td>Clear — delete all states and transitions</td>
+        </tr>
       </table>
       <div class="help-section">View Navigation</div>
       <table class="help-table">
-        <tr><td>1</td><td>Switch to Build view</td></tr>
-        <tr><td>2</td><td>Switch to Algorithms view</td></tr>
-        <tr><td>3</td><td>Switch to Grammar view</td></tr>
-        <tr><td>4</td><td>Switch to Theory view</td></tr>
+        <tr>
+          <td>1</td>
+          <td>Switch to Build view</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>Switch to Algorithms view</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>Switch to Grammar view</td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>Switch to Theory view</td>
+        </tr>
       </table>
       <div class="help-section">Edit</div>
       <table class="help-table">
-        <tr><td>Ctrl+Z</td><td>Undo last action</td></tr>
-        <tr><td>Ctrl+Y</td><td>Redo last undone action</td></tr>
-        <tr><td>Ctrl+S</td><td>Save automaton as JSON</td></tr>
+        <tr>
+          <td>Ctrl+Z</td>
+          <td>Undo last action</td>
+        </tr>
+        <tr>
+          <td>Ctrl+Y</td>
+          <td>Redo last undone action</td>
+        </tr>
+        <tr>
+          <td>Ctrl+S</td>
+          <td>Save automaton as JSON</td>
+        </tr>
       </table>
       <div class="help-section">Simulation</div>
       <table class="help-table">
-        <tr><td>Arrow Right / Enter</td><td>Step simulation forward</td></tr>
-        <tr><td>Arrow Left</td><td>Step simulation backward</td></tr>
-        <tr><td>Escape</td><td>Cancel current action / close modal</td></tr>
+        <tr>
+          <td>Arrow Right / Enter</td>
+          <td>Step simulation forward</td>
+        </tr>
+        <tr>
+          <td>Arrow Left</td>
+          <td>Step simulation backward</td>
+        </tr>
+        <tr>
+          <td>Escape</td>
+          <td>Cancel current action / close modal</td>
+        </tr>
       </table>
       <div class="help-section">Canvas</div>
       <table class="help-table">
-        <tr><td>Scroll Wheel</td><td>Zoom in / out</td></tr>
-        <tr><td>+  /  =</td><td>Zoom in</td></tr>
-        <tr><td>−  /  _</td><td>Zoom out</td></tr>
-        <tr><td>H</td><td>Fit to screen (show all states)</td></tr>
-        <tr><td>F</td><td>Fullscreen mode</td></tr>
-        <tr><td>Middle Mouse / Alt+Drag</td><td>Pan the canvas</td></tr>
-        <tr><td>Double-click state</td><td>Toggle accept state</td></tr>
-        <tr><td>Right-click state</td><td>Context menu (set start, rename, delete)</td></tr>
+        <tr>
+          <td>Scroll Wheel</td>
+          <td>Zoom in / out</td>
+        </tr>
+        <tr>
+          <td>+ / =</td>
+          <td>Zoom in</td>
+        </tr>
+        <tr>
+          <td>− / _</td>
+          <td>Zoom out</td>
+        </tr>
+        <tr>
+          <td>H</td>
+          <td>Fit to screen (show all states)</td>
+        </tr>
+        <tr>
+          <td>F</td>
+          <td>Fullscreen mode</td>
+        </tr>
+        <tr>
+          <td>Middle Mouse / Alt+Drag</td>
+          <td>Pan the canvas</td>
+        </tr>
+        <tr>
+          <td>Double-click state</td>
+          <td>Toggle accept state</td>
+        </tr>
+        <tr>
+          <td>Right-click state</td>
+          <td>Context menu (set start, rename, delete)</td>
+        </tr>
       </table>
       <div class="modal-foot"><button class="btn-g" onclick="closeModal('help-modal')">Close</button></div>
     </div>
@@ -687,4 +906,5 @@
   <script src="js/ui.js"></script>
   <script src="js/init.js"></script>
 </body>
+
 </html>
