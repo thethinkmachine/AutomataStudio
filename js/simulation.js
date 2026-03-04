@@ -59,7 +59,7 @@ function simDFA(tokens) {
   App.simSteps.push({ state: cur, remaining: tokens.join(''), note: `Start: ${getState(cur)?.name || '?'}` });
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
-    const t = App.transitions.find(tr => tr.from === cur && tr.symbol === sym);
+    const t = App.transitions.find(tr => tr.from === cur && (tr.symbol === sym || tr.symbol === App.config.sym.any));
     if (!t) { App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `No δ(${getState(cur)?.name},'${sym}') — REJECT`, final: 'reject' }); break; }
     cur = t.to;
     App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `Read '${sym}' → ${getState(cur)?.name}`, tid: t.id });
@@ -75,7 +75,7 @@ function simNFA(tokens) {
   App.simSteps.push({ states: [...cur], remaining: tokens.join(''), note: `Start ε-closure: {${stateNames(cur)}}` });
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i]; let nx = new Set();
-    cur.forEach(sid => App.transitions.filter(t => t.from === sid && t.symbol === sym).forEach(t => nx.add(t.to)));
+    cur.forEach(sid => App.transitions.filter(t => t.from === sid && (t.symbol === sym || t.symbol === App.config.sym.any)).forEach(t => nx.add(t.to)));
     nx = epsClosure(nx);
     cur = nx;
     App.simSteps.push({ states: [...cur], remaining: tokens.slice(i + 1).join(''), note: `Read '${sym}' → {${stateNames(cur) || '∅'}}` });
@@ -108,11 +108,13 @@ function simPDA(tokens) {
       const { state, remaining, stack } = cfg, top = stack[stack.length - 1];
       const eps = App.config.sym.eps;
       App.transitions.filter(t => t.from === state).forEach(t => {
-        const rOk = t.symbol === eps || (remaining.length > 0 && t.symbol === remaining[0]);
-        const pOk = t.pop === eps || t.pop === top;
+        const rOk = t.symbol === eps || (remaining.length > 0 && (t.symbol === remaining[0] || t.symbol === App.config.sym.any));
+        const pOk = t.pop === eps || t.pop === top || t.pop === App.config.sym.any;
         if (!rOk || !pOk) return;
         const ns = [...stack]; if (t.pop !== eps) ns.pop();
-        if (t.push && t.push !== eps) t.push.split('').reverse().forEach(c => ns.push(c));
+        let pushStr = t.push && t.push !== eps ? t.push : '';
+        if (pushStr === App.config.sym.any) pushStr = top; // Write-back popped symbol if wildcard
+        if (pushStr) pushStr.split('').reverse().forEach(c => ns.push(c));
         const nr = t.symbol === eps ? remaining : remaining.slice(1);
         const cfgKey = t.to + '|' + nr.join('') + '|' + ns.join('');
         if (visited.has(cfgKey)) return; // Skip already-visited configurations
@@ -138,9 +140,10 @@ function simTM(tokens) {
     const sym = tape[head];
     App.simSteps.push({ state, tape: [...tape], head, note: `State:${getState(state)?.name} Read:'${sym}'` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
-    const t = App.transitions.find(tr => tr.from === state && tr.symbol === sym);
+    const t = App.transitions.find(tr => tr.from === state && (tr.symbol === sym || tr.symbol === App.config.sym.any));
     if (!t) { App.simSteps[App.simSteps.length - 1].final = 'reject'; App.simSteps[App.simSteps.length - 1].note += ' — REJECT'; break; }
-    tape[head] = t.write || sym; state = t.to;
+    const writeSym = (!t.write || t.write === App.config.sym.any) ? sym : t.write;
+    tape[head] = writeSym; state = t.to;
     const move = t.dir === 'R' ? 1 : (t.dir === 'L' ? -1 : 0);
     head += move; if (head < 0) head = 0;
   }
@@ -158,7 +161,7 @@ function simMoore(tokens) {
   const outputs = [initOut];
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
-    const t = App.transitions.find(tr => tr.from === cur && tr.symbol === sym);
+    const t = App.transitions.find(tr => tr.from === cur && (tr.symbol === sym || tr.symbol === App.config.sym.any));
     if (!t) { App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' }); break; }
     cur = t.to;
     const sc = getState(cur);
@@ -179,7 +182,7 @@ function simMealy(tokens) {
   const outputs = [];
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
-    const t = App.transitions.find(tr => tr.from === cur && tr.symbol === sym);
+    const t = App.transitions.find(tr => tr.from === cur && (tr.symbol === sym || tr.symbol === App.config.sym.any));
     if (!t) { App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject', outSoFar: outputs.join('') }); break; }
     outputs.push(t.output ?? '?');
     cur = t.to;

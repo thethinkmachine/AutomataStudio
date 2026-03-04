@@ -306,7 +306,11 @@ function openSettingsModal() {
   $('set-auto-speed').value = c.autoSpeed;
   $('set-radius').value = c.radius;
   $('set-zoom-step').value = c.zoom.step;
+  $('set-grid-snap').value = c.gridSnap;
+  $('set-node-spacing').value = c.layout.nodeSpacing;
+  $('set-curve-off').value = c.render.curveOff;
   $('set-sym-eps').value = c.sym.eps;
+  $('set-sym-any').value = c.sym.any;
   $('set-sym-blank').value = c.sym.blank;
   $('set-sym-z0').value = c.sym.stackBottom;
   showOverlay('settings-modal');
@@ -319,7 +323,11 @@ function confirmSettings() {
   c.autoSpeed = parseInt($('set-auto-speed').value) || 500;
   c.radius = parseInt($('set-radius').value) || 30;
   c.zoom.step = parseFloat($('set-zoom-step').value) || 0.1;
+  c.gridSnap = parseInt($('set-grid-snap').value) || 20;
+  c.layout.nodeSpacing = parseInt($('set-node-spacing').value) || 35;
+  c.render.curveOff = parseInt($('set-curve-off').value) || 45;
   c.sym.eps = $('set-sym-eps').value || App.config.sym.eps;
+  c.sym.any = $('set-sym-any').value || App.config.sym.any;
   c.sym.blank = $('set-sym-blank').value || App.config.sym.blank;
   c.sym.stackBottom = $('set-sym-z0').value || App.config.sym.stackBottom;
 
