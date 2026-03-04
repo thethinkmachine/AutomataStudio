@@ -1,18 +1,18 @@
 /* ─── SIDEBAR ─── */
-.sidebar {
+.lpanel {
   width: 256px;
   min-width: 256px;
   background: var(--bg2);
   border-right: 1px solid var(--border);
-  overflow-y: auto;
-  overflow-x: visible;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   transition: width var(--transition-base), min-width var(--transition-base);
   position: relative;
+  z-index: 10;
 }
 
-.sidebar.hidden {
+.lpanel.hidden {
   width: 0;
   min-width: 0;
   overflow: hidden;
@@ -234,51 +234,95 @@
 }
 
 
-/* ─── SIDEBAR COLLAPSE ─── */
-.sidebar-toggle-btn {
+/* ─── SIDEBAR COLLAPSE / PINNING ─── */
+.lpanel.unpinned {
   position: absolute;
-  right: -14px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 22px;
-  height: 44px;
+  left: 0;
+  top: 0;
+  height: 100%;
+  z-index: 100;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+  transition-delay: 0.15s;
+}
+
+.lpanel.unpinned:not(:hover) {
+  width: 0;
+  min-width: 0;
+  transition-delay: 0.4s;
+}
+
+.lpanel.unpinned .lpanel-content,
+.lpanel.unpinned .panel-footer {
+  transition: opacity var(--transition-base), visibility var(--transition-base);
+  transition-delay: 0.15s;
+}
+
+.lpanel.unpinned:not(:hover) .lpanel-content,
+.lpanel.unpinned:not(:hover) .panel-footer {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition-delay: 0.4s;
+}
+
+.lpanel.unpinned::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -15px;
+  width: 15px;
+  cursor: default;
+  z-index: 101;
+}
+
+.panel-footer {
+  padding: 8px 14px;
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
   background: var(--bg2);
-  border: 1px solid var(--border);
-  border-left: none;
-  border-radius: 0 8px 8px 0;
+  flex-shrink: 0;
+  transition: opacity var(--transition-base), visibility var(--transition-base);
+}
+
+.pin-btn {
+  background: transparent;
+  border: 1px solid transparent;
   cursor: pointer;
   color: var(--text3);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  transition: all var(--transition-fast);
 }
-.sidebar-toggle-btn:hover { color: var(--text); background: var(--surface); }
-.sidebar-toggle-btn svg {
-  width: 12px;
-  height: 12px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  transition: transform var(--transition-base);
+
+.pin-btn:hover {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border2);
 }
-.sidebar.collapsed {
-  width: 0;
-  min-width: 0;
-  overflow: hidden;
+
+.pin-btn svg {
+  transition: transform 0.2s ease;
 }
-.sidebar.collapsed .sidebar-toggle-btn svg {
-  transform: rotate(180deg);
+
+.lpanel.unpinned .pin-btn svg {
+  transform: rotate(-45deg);
 }
-.sidebar-content {
+
+.lpanel-content {
   display: flex;
   flex-direction: column;
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
 }
-.sidebar-search-inp {
+
+.lpanel-search-inp {
   width: 100%;
   box-sizing: border-box;
   background: var(--bg3);
@@ -292,10 +336,16 @@
   margin-bottom: 5px;
   transition: border-color var(--transition-fast);
 }
-.sidebar-search-inp:focus { border-color: var(--accent); }
+
+.lpanel-search-inp:focus {
+  border-color: var(--accent);
+}
 
 /* ─── RPANEL COLLAPSIBLE SECTIONS ─── */
-.rp-collapsible { border-bottom: 1px solid var(--border); }
+.rp-collapsible {
+  border-bottom: 1px solid var(--border);
+}
+
 .rp-section-header {
   display: flex;
   align-items: center;
@@ -305,7 +355,11 @@
   user-select: none;
   transition: background var(--transition-fast);
 }
-.rp-section-header:hover { background: var(--surface); }
+
+.rp-section-header:hover {
+  background: var(--surface);
+}
+
 .rp-section-title {
   font-family: var(--serif);
   font-size: .92rem;
@@ -313,6 +367,7 @@
   color: var(--text);
   flex: 1;
 }
+
 .rp-toggle-arrow {
   width: 14px;
   height: 14px;
@@ -322,10 +377,14 @@
   flex-shrink: 0;
   transition: transform var(--transition-fast);
 }
+
 .rp-collapsible.collapsed .rp-toggle-arrow {
   transform: rotate(-90deg);
 }
-.rp-section-body { padding: 0 14px 12px; }
+
+.rp-section-body {
+  padding: 0 14px 12px;
+}
 
 /* ─── ALGO SEARCH ─── */
 .algo-search-wrap {
@@ -336,6 +395,7 @@
   z-index: 5;
   border-bottom: 1px solid var(--border);
 }
+
 .algo-search-inp {
   width: 100%;
   box-sizing: border-box;
@@ -349,8 +409,14 @@
   outline: none;
   transition: border-color var(--transition-fast);
 }
-.algo-search-inp:focus { border-color: var(--accent); }
-.algo-search-inp::placeholder { color: var(--text3); }
+
+.algo-search-inp:focus {
+  border-color: var(--accent);
+}
+
+.algo-search-inp::placeholder {
+  color: var(--text3);
+}
 
 /* ─── GRAMMAR GROUP LABELS ─── */
 .gram-group-label {
@@ -363,4 +429,8 @@
   border-top: 1px solid var(--border);
   margin-top: 6px;
 }
-.gram-group-label:first-child { border-top: none; margin-top: 0; }
+
+.gram-group-label:first-child {
+  border-top: none;
+  margin-top: 0;
+}

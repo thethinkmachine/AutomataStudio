@@ -29,6 +29,6 @@ function restoreSnapshot(s) {
   App.startId = d.startId; App.accepts = new Set(d.accepts);
   App.sigma = new Set(d.sigma); App.stackAlpha = new Set(d.stackAlpha);
   App.stateN = d.stateN; App.transN = d.transN;
-  renderAll(); updateSidebar(); updateRPanel();
+  renderAll(); updateLPanel(); updateRPanel();
 }
 

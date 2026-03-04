@@ -2,7 +2,7 @@
 //  INIT
 // ══════════════════════════════════════════════════════════════════
 renderSigma(); renderGamma(); renderGramSyms(); renderOutputAlpha();
-renderGrammarSidebar(); updateSidebar();
+renderGrammarLPanel(); updateLPanel();
 setMachine('DFA'); setTool('pointer'); setView('build');
 snapshot();
 // Attach minimap click navigation
@@ -11,7 +11,8 @@ if (_mmCanvas) _mmCanvas.addEventListener('click', minimapNavigate);
 // Restore localStorage preferences
 try {
   if (localStorage.getItem('automata-minimap') === '0') toggleMinimap();
-  if (localStorage.getItem('automata-sidebar') === '0') toggleSidebar();
+  if (localStorage.getItem('automata-lpanel-pinned') === '0') toggleLPanelPin();
+  if (localStorage.getItem('automata-rpanel-pinned') === '0') toggleRPanelPin();
 } catch (e) { }
 if (typeof loadBackup === 'function') loadBackup();
 setTimeout(() => showStatus('Esc=Pointer · V=Pan · S=State · T=Transition · H=Fit · Ctrl+Z=Undo'), 600);

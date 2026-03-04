@@ -45,7 +45,7 @@ function loadData(d, isExample) {
     applyMachineSwitch(App.machine);
   }
   renderSigma(); renderGamma(); renderOutputAlpha();
-  renderAll(); updateSidebar(); updateRPanel();
+  renderAll(); updateLPanel(); updateRPanel();
 
   if (d.cam) { applyCamera(); }
   else { setTimeout(() => fitToScreen(), 50); }

@@ -26,7 +26,7 @@ function clearAll(silent) {
 function performClear() {
   App.states = []; App.transitions = []; App.startId = null; App.accepts.clear();
   App.stateN = 0; App.transN = 0; App.history = []; App.future = [];
-  resetSim(); renderAll(); updateSidebar(); updateRPanel();
+  resetSim(); renderAll(); updateLPanel(); updateRPanel();
 }
 
 function showStatus(msg) {

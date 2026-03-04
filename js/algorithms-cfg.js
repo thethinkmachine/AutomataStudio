@@ -10,12 +10,12 @@ function renderGramSyms() {
 function addNT() {
   const v = $('nt-in').value.trim(); if (!v) return;
   G.vars.add(v.toUpperCase()); $('nt-in').value = '';
-  renderGrammarSidebar(); renderGrammarView();
+  renderGrammarLPanel(); renderGrammarView();
 }
 function delNT(v) {
   G.vars.delete(v); G.productions = G.productions.filter(p => p.lhs !== v);
   if (G.start === v) G.start = [...G.vars][0] || '';
-  renderGrammarSidebar(); renderGrammarView();
+  renderGrammarLPanel(); renderGrammarView();
 }
 function addProduction() {
   const lhs = $('prod-lhs').value.trim().toUpperCase();
@@ -27,10 +27,10 @@ function addProduction() {
     if (trimmed) G.productions.push({ id: 'p' + Date.now() + '_' + Math.random(), lhs, rhs: trimmed });
   });
   $('prod-rhs').value = '';
-  renderGrammarSidebar(); renderGrammarView();
+  renderGrammarLPanel(); renderGrammarView();
 }
-function delProd(id) { G.productions = G.productions.filter(p => p.id !== id); renderGrammarSidebar(); renderGrammarView(); }
-function renderGrammarSidebar() {
+function delProd(id) { G.productions = G.productions.filter(p => p.id !== id); renderGrammarLPanel(); renderGrammarView(); }
+function renderGrammarLPanel() {
   $('nt-chips').innerHTML = [...G.vars].map(v => `<div class="chip" style="color:var(--accent)">${v}<span class="x" onclick="delNT('${v}')">×</span></div>`).join('');
   const pl = $('prod-list');
   pl.innerHTML = G.productions.length ? G.productions.map(p => `
@@ -495,7 +495,7 @@ function loadCFGPDA() {
   });
   App.transN = App._lastCFGPDA.length;
   App.machine = 'PDA'; setMachine('PDA');
-  renderAll(); updateSidebar(); updateRPanel();
+  renderAll(); updateLPanel(); updateRPanel();
   setView('build'); showStatus('PDA loaded for CFG!');
 }
 

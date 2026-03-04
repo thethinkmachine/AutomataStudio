@@ -125,7 +125,7 @@ function loadSubsetAsDFA() {
     App.transitions.push({ id: 't' + (i + 1), from: nameMap[t.from], to: nameMap[t.to], symbol: t.sym });
   });
   App.machine = 'DFA'; setMachine('DFA');
-  renderAll(); updateSidebar(); updateRPanel();
+  renderAll(); updateLPanel(); updateRPanel();
   setView('build'); showStatus('DFA loaded into canvas!');
 }
 
@@ -236,7 +236,7 @@ function loadMinimizedDFA() {
   App.states = newStates; App.transitions = newTrans; App.accepts = newAccepts;
   App.startId = newStart; App.stateN = groups.length; App.transN = newTrans.length;
   App.machine = 'DFA'; setMachine('DFA');
-  renderAll(); updateSidebar(); updateRPanel();
+  renderAll(); updateLPanel(); updateRPanel();
   setView('build'); showStatus(`Minimized: ${groups.length} states (was ${r.savedStates.length})`);
 }
 
@@ -413,7 +413,7 @@ function loadThompsonNFA() {
   });
   // Update sigma
   d.trans.forEach(t => { if (t.sym !== App.config.sym.eps) App.sigma.add(t.sym); });
-  renderSigma(); renderAll(); updateSidebar(); updateRPanel();
+  renderSigma(); renderAll(); updateLPanel(); updateRPanel();
   setView('build'); showStatus('NFA loaded from Thompson\'s construction!');
 }
 
@@ -483,7 +483,7 @@ function loadComplement() {
   }
   // Swap accept / non-accept
   const newAcc = new Set(App.states.filter(s => !App.accepts.has(s.id)).map(s => s.id));
-  App.accepts = newAcc; renderAll(); updateSidebar(); updateRPanel();
+  App.accepts = newAcc; renderAll(); updateLPanel(); updateRPanel();
   setView('build'); showStatus('Complement loaded (DFA completed with trap state if needed)!');
 }
 
@@ -1767,7 +1767,7 @@ function loadMooreAsMealy() {
   $('mach-badge').className = 'badge bd-mealy'; $('mach-badge').textContent = 'Mealy';
   $('output-sec').style.display = '';
   $('stack-sec').style.display = 'none';
-  updateRPanel(); renderAll(); updateSidebar();
+  updateRPanel(); renderAll(); updateLPanel();
   setView('build'); showStatus('Loaded as Mealy machine. Transition outputs set from destination state outputs.');
 }
 
@@ -1881,7 +1881,7 @@ function loadMealyAsMoore() {
   $('mach-badge').className = 'badge bd-moore'; $('mach-badge').textContent = 'Moore';
   $('output-sec').style.display = '';
   $('stack-sec').style.display = 'none';
-  updateRPanel(); renderAll(); updateSidebar();
+  updateRPanel(); renderAll(); updateLPanel();
   setView('build'); showStatus('Loaded as Moore machine.');
 }
 

@@ -10,7 +10,7 @@ function createState(x, y, name) {
   const s = { id, x, y, name: name || `q${App.stateN - 1}` };
   App.states.push(s);
   if (!App.startId) App.startId = id;
-  renderAll(); updateSidebar(); updateRPanel();
+  renderAll(); updateLPanel(); updateRPanel();
   return s;
 }
 function deleteState(id) {
@@ -19,7 +19,7 @@ function deleteState(id) {
   App.transitions = App.transitions.filter(t => t.from !== id && t.to !== id);
   App.accepts.delete(id);
   if (App.startId === id) App.startId = App.states[0]?.id || null;
-  renderAll(); updateSidebar(); updateRPanel();
+  renderAll(); updateLPanel(); updateRPanel();
 }
 function getState(id) { return App.states.find(s => s.id === id); }
 
@@ -98,12 +98,12 @@ function confirmTrans() {
   App.transitions.push(t);
   closeModal('trans-modal');
   App.transFrom = null; clearTempLine();
-  renderAll(); updateSidebar(); updateRPanel();
+  renderAll(); updateLPanel(); updateRPanel();
 }
 function deleteTrans(id) {
   snapshot();
   App.transitions = App.transitions.filter(t => t.id !== id);
-  renderAll(); updateSidebar(); updateRPanel();
+  renderAll(); updateLPanel(); updateRPanel();
 }
 function transLabel(t) {
   if (App.machine === 'PDA') return `${t.symbol},${t.pop}/${t.push}`;
@@ -141,10 +141,10 @@ function confirmState() {
   if ($('s-start').checked) App.startId = s.id;
   if ($('s-acc').checked) App.accepts.add(s.id); else App.accepts.delete(s.id);
   if (App.machine === 'Moore') s.output = $('s-output').value.trim();
-  closeModal('state-modal'); renderAll(); updateSidebar(); updateRPanel();
+  closeModal('state-modal'); renderAll(); updateLPanel(); updateRPanel();
 }
-function ctxStart() { if (App.ctxId) { App.startId = App.ctxId; snapshot(); renderAll(); updateSidebar(); updateRPanel(); } }
-function ctxToggleAcc() { if (!App.ctxId) return; App.accepts.has(App.ctxId) ? App.accepts.delete(App.ctxId) : App.accepts.add(App.ctxId); snapshot(); renderAll(); updateSidebar(); updateRPanel(); }
+function ctxStart() { if (App.ctxId) { App.startId = App.ctxId; snapshot(); renderAll(); updateLPanel(); updateRPanel(); } }
+function ctxToggleAcc() { if (!App.ctxId) return; App.accepts.has(App.ctxId) ? App.accepts.delete(App.ctxId) : App.accepts.add(App.ctxId); snapshot(); renderAll(); updateLPanel(); updateRPanel(); }
 function ctxRename() { if (App.ctxId) openStateModal(App.ctxId); }
 function ctxDel() { if (App.ctxId) deleteState(App.ctxId); }
 

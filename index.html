@@ -10,7 +10,7 @@
     rel="stylesheet">
   <link rel="stylesheet" href="css/variables.css">
   <link rel="stylesheet" href="css/layout.css">
-  <link rel="stylesheet" href="css/sidebar.css">
+  <link rel="stylesheet" href="css/lpanel.css">
   <link rel="stylesheet" href="css/views.css">
   <link rel="stylesheet" href="css/canvas.css">
   <link rel="stylesheet" href="css/modals.css">
@@ -63,6 +63,12 @@
         </svg>Load
       </button>
       <div class="hdr-sep"></div>
+      <button id="fs-btn" class="hbtn" onclick="toggleFullscreen()" title="Enter fullscreen (F)"
+        style="width:2.2rem;padding:0;display:flex;align-items:center;justify-content:center">
+        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6V3h3M10 3h3v3M3 10v3h3M13 10v3h-3" />
+        </svg>
+      </button>
       <button class="hbtn" onclick="openSettingsModal()" title="Engine Settings">
         <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="8" cy="8" r="2.2" />
@@ -115,12 +121,7 @@
         <polygon points="5,3 13.5,8 5,13" fill="currentColor" stroke="none" />
       </svg>Load Example
     </button>
-    <button id="fs-btn" class="hbtn" onclick="toggleFullscreen()" title="Enter fullscreen (F)"
-      style="width:2.2rem;padding:0;display:flex;align-items:center;justify-content:center">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 6V3h3M10 3h3v3M3 10v3h3M13 10v3h-3" />
-      </svg>
-    </button>
+
     <button class="hbtn" onclick="autoLayout()" title="Auto-arrange states in a circle">
       <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="8" cy="3.5" r="1.6" />
@@ -143,14 +144,10 @@
   <!-- ══════════════ APP BODY ══════════════ -->
   <div class="app-body">
 
-    <!-- SIDEBAR (shown on Build+Algo views) -->
-    <aside class="sidebar" id="sidebar">
-      <button class="sidebar-toggle-btn" id="sidebar-toggle-btn" onclick="toggleSidebar()" title="Collapse sidebar">
-        <svg viewBox="0 0 12 12">
-          <path d="M8 2L4 6l4 4" />
-        </svg>
-      </button>
-      <div class="sidebar-content" id="sidebar-content">
+    <!-- LPANEL (shown on Build+Algo views) -->
+    <aside class="lpanel" id="lpanel">
+
+      <div class="lpanel-content" id="lpanel-content">
         <div class="sec">
           <div class="sec-lbl">Alphabet Σ</div>
           <div class="row">
@@ -180,7 +177,7 @@
         </div>
         <div class="sec">
           <div class="sec-lbl">States Q</div>
-          <input class="sidebar-search-inp" id="state-search" placeholder="Filter states…" oninput="filterStates()">
+          <input class="lpanel-search-inp" id="state-search" placeholder="Filter states…" oninput="filterStates()">
           <div class="slist" id="states-list">
             <div class="empty-msg">No states</div>
           </div>
@@ -191,6 +188,14 @@
             <div class="empty-msg">No transitions</div>
           </div>
         </div>
+      </div>
+      <div class="panel-footer">
+        <button class="pin-btn" id="lpanel-pin-btn" onclick="toggleLPanelPin()" title="Unpin left panel">
+          <svg viewBox="0 0 16 16" width="14" height="14">
+            <path d="M8 2a3 3 0 013 3v2l1 1v2H9v4l-1 1-1-1v-4H4V8l1-1V5a3 3 0 013-3z" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
       </div>
     </aside>
 
@@ -304,68 +309,78 @@
 
         <!-- Right Panel -->
         <div class="rpanel" id="rpanel">
-          <!-- Language section -->
-          <div class="rp-collapsible" id="rp-language">
-            <div class="rp-section-header" onclick="toggleRPSection('rp-language')">
-              <span class="rp-section-title">Language</span>
-              <span class="badge bd-dfa" id="mach-badge">DFA</span>
-              <svg class="rp-toggle-arrow" viewBox="0 0 14 14">
-                <path d="M3 5l4 4 4-4" />
-              </svg>
+          <div class="rpanel-content" id="rpanel-content">
+            <!-- Language section -->
+            <div class="rp-collapsible" id="rp-language">
+              <div class="rp-section-header" onclick="toggleRPSection('rp-language')">
+                <span class="rp-section-title">Language</span>
+                <span class="badge bd-dfa" id="mach-badge">DFA</span>
+                <svg class="rp-toggle-arrow" viewBox="0 0 14 14">
+                  <path d="M3 5l4 4 4-4" />
+                </svg>
+              </div>
+              <div class="rp-section-body">
+                <div class="code-box" id="regex-box">—</div>
+                <div class="def-box" id="def-box">M = (Q, Σ, δ, q₀, F)</div>
+              </div>
             </div>
-            <div class="rp-section-body">
-              <div class="code-box" id="regex-box">—</div>
-              <div class="def-box" id="def-box">M = (Q, Σ, δ, q₀, F)</div>
+            <!-- Simulate section -->
+            <div class="rp-collapsible" id="rp-simulate">
+              <div class="rp-section-header" onclick="toggleRPSection('rp-simulate')">
+                <span class="rp-section-title">Simulate</span>
+                <svg class="rp-toggle-arrow" viewBox="0 0 14 14">
+                  <path d="M3 5l4 4 4-4" />
+                </svg>
+              </div>
+              <div class="rp-section-body">
+                <div class="sim-row">
+                  <input class="inp" id="sim-in" placeholder="ε for empty…" style="flex:1">
+                  <button class="run-btn" onclick="runSim()">▶</button>
+                </div>
+                <div class="sctrl">
+                  <button class="sbtn" onclick="stepBack()">◀</button>
+                  <button class="sbtn" onclick="stepFwd()">▶</button>
+                  <button class="sbtn auto-btn" id="auto-btn" onclick="toggleAuto()">⏵ Auto</button>
+                  <button class="sbtn" onclick="resetSim()">↺</button>
+                </div>
+                <div class="tape-wrap" id="tape-wrap" style="display:none"></div>
+                <div id="mtm-ctrl" style="display:none;align-items:center;gap:6px;margin-bottom:4px">
+                  <span style="font-family:var(--mono);font-size:.65rem;color:var(--text3)">Tapes:</span>
+                  <select class="sel" id="tape-count-sel" onchange="setTapeCount(this.value)"
+                    style="flex:none;width:55px">
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                  </select>
+                </div>
+                <div id="mtm-tapes" style="display:none"></div>
+                <div class="trace-log" id="trace-log"><span style="color:var(--text3);font-style:italic">Run a string to
+                    simulate…</span></div>
+              </div>
+            </div>
+            <!-- Batch Test section (collapsed by default) -->
+            <div class="rp-collapsible collapsed" id="rp-batch">
+              <div class="rp-section-header" onclick="toggleRPSection('rp-batch')">
+                <span class="rp-section-title">Batch Test</span>
+                <svg class="rp-toggle-arrow" viewBox="0 0 14 14">
+                  <path d="M3 5l4 4 4-4" />
+                </svg>
+              </div>
+              <div class="rp-section-body" style="display:none">
+                <textarea class="batch-in" id="batch-in"
+                  placeholder="One string per line&#10;ε for empty string"></textarea>
+                <button class="run-btn" style="width:100%;margin-bottom:6px" onclick="runBatch()">▶ Test All</button>
+                <div class="batch-result" id="batch-result"></div>
+              </div>
             </div>
           </div>
-          <!-- Simulate section -->
-          <div class="rp-collapsible" id="rp-simulate">
-            <div class="rp-section-header" onclick="toggleRPSection('rp-simulate')">
-              <span class="rp-section-title">Simulate</span>
-              <svg class="rp-toggle-arrow" viewBox="0 0 14 14">
-                <path d="M3 5l4 4 4-4" />
+          <div class="panel-footer">
+            <button class="pin-btn" id="rpanel-pin-btn" onclick="toggleRPanelPin()" title="Unpin right panel">
+              <svg viewBox="0 0 16 16" width="14" height="14">
+                <path d="M8 2a3 3 0 013 3v2l1 1v2H9v4l-1 1-1-1v-4H4V8l1-1V5a3 3 0 013-3z" fill="none"
+                  stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
-            </div>
-            <div class="rp-section-body">
-              <div class="sim-row">
-                <input class="inp" id="sim-in" placeholder="ε for empty…" style="flex:1">
-                <button class="run-btn" onclick="runSim()">▶</button>
-              </div>
-              <div class="sctrl">
-                <button class="sbtn" onclick="stepBack()">◀</button>
-                <button class="sbtn" onclick="stepFwd()">▶</button>
-                <button class="sbtn auto-btn" id="auto-btn" onclick="toggleAuto()">⏵ Auto</button>
-                <button class="sbtn" onclick="resetSim()">↺</button>
-              </div>
-              <div class="tape-wrap" id="tape-wrap" style="display:none"></div>
-              <div id="mtm-ctrl" style="display:none;align-items:center;gap:6px;margin-bottom:4px">
-                <span style="font-family:var(--mono);font-size:.65rem;color:var(--text3)">Tapes:</span>
-                <select class="sel" id="tape-count-sel" onchange="setTapeCount(this.value)"
-                  style="flex:none;width:55px">
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                </select>
-              </div>
-              <div id="mtm-tapes" style="display:none"></div>
-              <div class="trace-log" id="trace-log"><span style="color:var(--text3);font-style:italic">Run a string to
-                  simulate…</span></div>
-            </div>
-          </div>
-          <!-- Batch Test section (collapsed by default) -->
-          <div class="rp-collapsible collapsed" id="rp-batch">
-            <div class="rp-section-header" onclick="toggleRPSection('rp-batch')">
-              <span class="rp-section-title">Batch Test</span>
-              <svg class="rp-toggle-arrow" viewBox="0 0 14 14">
-                <path d="M3 5l4 4 4-4" />
-              </svg>
-            </div>
-            <div class="rp-section-body" style="display:none">
-              <textarea class="batch-in" id="batch-in"
-                placeholder="One string per line&#10;ε for empty string"></textarea>
-              <button class="run-btn" style="width:100%;margin-bottom:6px" onclick="runBatch()">▶ Test All</button>
-              <div class="batch-result" id="batch-result"></div>
-            </div>
+            </button>
           </div>
         </div>
       </div>

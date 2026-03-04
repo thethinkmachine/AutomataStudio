@@ -8,8 +8,8 @@ function setView(v) {
     const el = $('v-' + id);
     if (el) el.style.display = (id === v) ? 'flex' : 'none';
   });
-  const hideSidebar = v === 'grammar' || v === 'theory';
-  $('sidebar').classList.toggle('hidden', hideSidebar);
+  const hideLPanel = v === 'grammar' || v === 'theory';
+  $('lpanel').classList.toggle('hidden', hideLPanel);
   // Sub-toolbar only on build/algo views
   const stb = $('sub-toolbar');
   if (stb) stb.style.display = (v === 'build' || v === 'algo') ? 'flex' : 'none';
@@ -22,9 +22,9 @@ function setView(v) {
   const mmsb = $('minimap-show-btn');
   if (mmsb) mmsb.style.visibility = (v === 'build') ? '' : 'hidden';
   if (v === 'algo') { renderAlgo(App.currentAlgo); }
-  if (v === 'grammar') { renderGrammarSidebar(); renderGrammarView(); renderGramSyms(); }
+  if (v === 'grammar') { renderGrammarLPanel(); renderGrammarView(); renderGramSyms(); }
   if (v === 'theory') { renderTheoryView(); }
-  updateSidebar();
+  updateLPanel();
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -81,7 +81,7 @@ function setTapeCount(n) {
       App.tapeCount = newCount;
       $('tape-count-sel').value = App.tapeCount;
       resetSim();
-      renderAll(); updateSidebar(); updateRPanel();
+      renderAll(); updateLPanel(); updateRPanel();
       closeModal('confirm-modal');
     };
     showOverlay('confirm-modal');

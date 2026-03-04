@@ -88,7 +88,7 @@ function renderTransitions() {
         snapshot();
         const ids = new Set(grp.ts.map(t => t.id));
         App.transitions = App.transitions.filter(t => !ids.has(t.id));
-        renderAll(); updateSidebar(); updateRPanel();
+        renderAll(); updateLPanel(); updateRPanel();
         return;
       }
       if (App.tool === 'pointer') {
@@ -172,7 +172,7 @@ function renderStates() {
     }
     grp.addEventListener('mousedown', e => onStateDown(e, s.id));
     grp.addEventListener('contextmenu', e => { e.preventDefault(); App.ctxId = s.id; const m = $('ctx'); m.style.display = 'block'; m.style.left = Math.min(e.clientX, innerWidth - 160) + 'px'; m.style.top = Math.min(e.clientY, innerHeight - 140) + 'px'; });
-    grp.addEventListener('dblclick', () => { App.accepts.has(s.id) ? App.accepts.delete(s.id) : App.accepts.add(s.id); snapshot(); renderAll(); updateSidebar(); updateRPanel(); });
+    grp.addEventListener('dblclick', () => { App.accepts.has(s.id) ? App.accepts.delete(s.id) : App.accepts.add(s.id); snapshot(); renderAll(); updateLPanel(); updateRPanel(); });
     g.appendChild(grp);
   });
 }
@@ -180,7 +180,7 @@ function renderStates() {
 // ══════════════════════════════════════════════════════════════════
 //  SIDEBAR
 // ══════════════════════════════════════════════════════════════════
-function updateSidebar() {
+function updateLPanel() {
   const sl = $('states-list');
   sl.innerHTML = App.states.length ? App.states.map(s => `
 <div class="si ${App.startId === s.id ? 'start' : ''} ${App.accepts.has(s.id) ? 'acc' : ''}" onclick="openStateModal('${s.id}')">

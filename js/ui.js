@@ -34,7 +34,7 @@ document.addEventListener('keydown', e => {
       });
       App.selectedStates.clear();
       App.selectedTransitions.clear();
-      renderAll(); updateSidebar(); updateRPanel();
+      renderAll(); updateLPanel(); updateRPanel();
     }
   }
   if (e.key === 'Escape') {
@@ -262,12 +262,20 @@ function setTool(t) {
   }
 }
 
-function toggleSidebar() {
-  const s = $('sidebar');
-  const collapsed = s.classList.toggle('collapsed');
-  const btn = $('sidebar-toggle-btn');
-  if (btn) btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
-  try { localStorage.setItem('automata-sidebar', collapsed ? '0' : '1'); } catch (e) { }
+function toggleLPanelPin() {
+  const s = $('lpanel');
+  const unpinned = s.classList.toggle('unpinned');
+  const btn = $('lpanel-pin-btn');
+  if (btn) btn.title = unpinned ? 'Pin left panel' : 'Unpin left panel';
+  try { localStorage.setItem('automata-lpanel-pinned', unpinned ? '0' : '1'); } catch (e) { }
+}
+
+function toggleRPanelPin() {
+  const r = $('rpanel');
+  const unpinned = r.classList.toggle('unpinned');
+  const btn = $('rpanel-pin-btn');
+  if (btn) btn.title = unpinned ? 'Pin right panel' : 'Unpin right panel';
+  try { localStorage.setItem('automata-rpanel-pinned', unpinned ? '0' : '1'); } catch (e) { }
 }
 
 function filterStates() {

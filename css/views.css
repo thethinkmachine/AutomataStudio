@@ -80,9 +80,67 @@
   min-width: 288px;
   background: var(--bg2);
   border-left: 1px solid var(--border);
-  overflow-y: auto;
+  overflow: visible;
   display: flex;
   flex-direction: column;
+  transition: width var(--transition-base), min-width var(--transition-base);
+  position: relative;
+  z-index: 10;
+}
+
+.rpanel-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.rpanel.unpinned {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  z-index: 100;
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+  transition-delay: 0.15s;
+}
+
+.rpanel.unpinned:not(:hover) {
+  width: 0;
+  min-width: 0;
+  transition-delay: 0.4s;
+}
+
+.rpanel.unpinned> :not(style) {
+  transition: opacity var(--transition-base), visibility var(--transition-base);
+  transition-delay: 0.15s;
+}
+
+.rpanel.unpinned:not(:hover)> :not(style) {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition-delay: 0.4s;
+}
+
+.rpanel.unpinned::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -15px;
+  width: 15px;
+  cursor: default;
+  z-index: 101;
+}
+
+.rpanel .panel-footer {
+  justify-content: flex-start;
+}
+
+.rpanel.unpinned .pin-btn svg {
+  transform: rotate(45deg);
 }
 
 .rp-sec {
