@@ -1,0 +1,81 @@
+{
+    "machine": "PDA",
+    "sigma": [
+        "a",
+        "b"
+    ],
+    "states": [
+        {
+            "id": "s1",
+            "x": 100,
+            "y": 200,
+            "name": "push"
+        },
+        {
+            "id": "s2",
+            "x": 300,
+            "y": 200,
+            "name": "pop"
+        },
+        {
+            "id": "s3",
+            "x": 500,
+            "y": 200,
+            "name": "acc"
+        }
+    ],
+    "startId": "s1",
+    "accepts": [
+        "s3"
+    ],
+    "transitions": [
+        {
+            "id": "t1",
+            "from": "s1",
+            "to": "s1",
+            "symbol": "a",
+            "pop": "ε",
+            "push": "A"
+        },
+        {
+            "id": "t2",
+            "from": "s1",
+            "to": "s1",
+            "symbol": "b",
+            "pop": "ε",
+            "push": "B"
+        },
+        {
+            "id": "t3",
+            "from": "s1",
+            "to": "s2",
+            "symbol": "ε",
+            "pop": "ε",
+            "push": "ε"
+        },
+        {
+            "id": "t4",
+            "from": "s2",
+            "to": "s2",
+            "symbol": "a",
+            "pop": "A",
+            "push": "ε"
+        },
+        {
+            "id": "t5",
+            "from": "s2",
+            "to": "s2",
+            "symbol": "b",
+            "pop": "B",
+            "push": "ε"
+        },
+        {
+            "id": "t6",
+            "from": "s2",
+            "to": "s3",
+            "symbol": "ε",
+            "pop": "Z",
+            "push": "Z"
+        }
+    ]
+}

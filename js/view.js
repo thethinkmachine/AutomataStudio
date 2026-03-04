@@ -48,16 +48,23 @@ function setMachine(m) {
 }
 
 function applyMachineSwitch(m) {
+  const cfg = getMachineConfig(m);
   App.machine = m;
+
+  // Update UI Tabs and Badges
   document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('active', b.textContent === m));
-  $('mach-badge').className = `badge bd-${m.toLowerCase().replace('ε-', 'e')}`;
-  $('mach-badge').textContent = m;
-  $('stack-sec').style.display = m === 'PDA' ? '' : 'none';
-  $('output-sec').style.display = (m === 'Moore' || m === 'Mealy') ? '' : 'none';
-  $('tape-wrap').style.display = m === 'TM' ? '' : 'none';
-  $('mtm-ctrl').style.display = m === 'MTM' ? 'flex' : 'none';
-  $('mtm-tapes').style.display = m === 'MTM' ? '' : 'none';
-  updateRPanel(); renderAll();
+  $('mach-badge').className = `badge ${cfg.badge}`;
+  $('mach-badge').textContent = cfg.label;
+
+  // Toggle UI Sections based on Machine Features
+  $('stack-sec').style.display = cfg.hasStack ? '' : 'none';
+  $('output-sec').style.display = cfg.isTransducer ? '' : 'none';
+  $('tape-wrap').style.display = (m === 'TM') ? '' : 'none';
+  $('mtm-ctrl').style.display = (m === 'MTM') ? 'flex' : 'none';
+  $('mtm-tapes').style.display = (m === 'MTM') ? '' : 'none';
+
+  updateRPanel();
+  renderAll();
   showStatus('Machine: ' + m);
 }
 

@@ -3,7 +3,7 @@
 // ══════════════════════════════════════════════════════════════════
 function tokenize(str) {
   if (str === '') return [];
-  const syms = [...App.sigma].filter(s => s !== 'ε').sort((a, b) => b.length - a.length);
+  const syms = [...App.sigma].filter(s => s !== App.config.sym.eps).sort((a, b) => b.length - a.length);
   function bt(pos) {
     if (pos === str.length) return [];
     for (const s of syms) {
@@ -32,7 +32,7 @@ function runSim() {
     const tapeTokens = [];
     for (let pi = 0; pi < parts.length; pi++) {
       const p = parts[pi].trim();
-      const tok = tokenize(p === 'ε' ? '' : p);
+      const tok = tokenize(p === App.config.sym.eps ? '' : p);
       if (tok === null) { log(`<span class="t-err">Tape ${pi + 1}: cannot tokenize "${p}" using alphabet {${[...App.sigma].join(', ')}}.</span>`); return; }
       tapeTokens.push(tok);
     }
@@ -40,7 +40,7 @@ function runSim() {
     return;
   }
 
-  const str = raw === 'ε' ? '' : raw;
+  const str = raw === App.config.sym.eps ? '' : raw;
   const tokens = tokenize(str);
   if (tokens === null) { log(`<span class="t-err">Input cannot be tokenized using alphabet {${[...App.sigma].join(', ')}}.</span>`); return; }
   if (App.machine === 'DFA') simDFA(tokens);
@@ -89,14 +89,15 @@ function simNFA(tokens) {
 
 function epsClosure(states) {
   const c = new Set(states), stk = [...states];
-  while (stk.length) { const s = stk.pop(); App.transitions.filter(t => t.from === s && t.symbol === 'ε').forEach(t => { if (!c.has(t.to)) { c.add(t.to); stk.push(t.to); } }); }
+  const eps = App.config.sym.eps;
+  while (stk.length) { const s = stk.pop(); App.transitions.filter(t => t.from === s && t.symbol === eps).forEach(t => { if (!c.has(t.to)) { c.add(t.to); stk.push(t.to); } }); }
   return c;
 }
 function stateNames(ids) { return [...ids].map(id => getState(id)?.name || id).join(',') }
 
 function simPDA(tokens) {
   App.simSteps = [];
-  const init = { state: App.startId, remaining: tokens, stack: ['Z'], note: 'Start configuration' };
+  const init = { state: App.startId, remaining: tokens, stack: [App.config.sym.stackBottom], note: 'Start configuration' };
   App.simSteps.push(init);
   let cfgs = [init];
   const visited = new Set(); // Track visited configurations to avoid ε-loops (#8)
@@ -105,17 +106,18 @@ function simPDA(tokens) {
     const next = [];
     cfgs.forEach(cfg => {
       const { state, remaining, stack } = cfg, top = stack[stack.length - 1];
+      const eps = App.config.sym.eps;
       App.transitions.filter(t => t.from === state).forEach(t => {
-        const rOk = t.symbol === 'ε' || (remaining.length > 0 && t.symbol === remaining[0]);
-        const pOk = t.pop === 'ε' || t.pop === top;
+        const rOk = t.symbol === eps || (remaining.length > 0 && t.symbol === remaining[0]);
+        const pOk = t.pop === eps || t.pop === top;
         if (!rOk || !pOk) return;
-        const ns = [...stack]; if (t.pop !== 'ε') ns.pop();
-        if (t.push && t.push !== 'ε') t.push.split('').reverse().forEach(c => ns.push(c));
-        const nr = t.symbol === 'ε' ? remaining : remaining.slice(1);
+        const ns = [...stack]; if (t.pop !== eps) ns.pop();
+        if (t.push && t.push !== eps) t.push.split('').reverse().forEach(c => ns.push(c));
+        const nr = t.symbol === eps ? remaining : remaining.slice(1);
         const cfgKey = t.to + '|' + nr.join('') + '|' + ns.join('');
         if (visited.has(cfgKey)) return; // Skip already-visited configurations
         visited.add(cfgKey);
-        const nc = { state: t.to, remaining: nr, stack: ns, note: `(${getState(state)?.name},${t.symbol || 'ε'},${top})→(${getState(t.to)?.name},${t.push || 'ε'})  [${ns.join('')}]` };
+        const nc = { state: t.to, remaining: nr, stack: ns, note: `(${getState(state)?.name},${t.symbol || eps},${top})→(${getState(t.to)?.name},${t.push || eps})  [${ns.join('')}]` };
         next.push(nc); App.simSteps.push(nc);
       });
     });
@@ -130,14 +132,17 @@ function simPDA(tokens) {
 function simTM(tokens) {
   App.simSteps = [];
   let tape = tokens.length ? [...tokens] : [], head = 0, state = App.startId;
-  for (let step = 0; step < 10000; step++) {
-    while (tape.length <= head) tape.push('⊔');
+  const blank = App.config.sym.blank;
+  for (let step = 0; step < App.config.maxTmSteps; step++) {
+    while (tape.length <= head) tape.push(blank);
     const sym = tape[head];
     App.simSteps.push({ state, tape: [...tape], head, note: `State:${getState(state)?.name} Read:'${sym}'` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
     const t = App.transitions.find(tr => tr.from === state && tr.symbol === sym);
     if (!t) { App.simSteps[App.simSteps.length - 1].final = 'reject'; App.simSteps[App.simSteps.length - 1].note += ' — REJECT'; break; }
-    tape[head] = t.write || sym; state = t.to; head += t.dir === 'R' ? 1 : -1; if (head < 0) head = 0;
+    tape[head] = t.write || sym; state = t.to;
+    const move = t.dir === 'R' ? 1 : (t.dir === 'L' ? -1 : 0);
+    head += move; if (head < 0) head = 0;
   }
   const lastTM = App.simSteps[App.simSteps.length - 1];
   if (lastTM && !lastTM.final) { lastTM.final = 'reject'; lastTM.note += ' — STEP LIMIT REACHED (possible loop) — REJECT'; }
@@ -189,21 +194,23 @@ function simMealy(tokens) {
 function simMTM(tokens, allTapeTokens) {
   App.simSteps = [];
   const k = App.tapeCount;
+  const blank = App.config.sym.blank;
   const tapes = allTapeTokens
-    ? Array.from({ length: k }, (_, i) => { const tok = allTapeTokens[i]; return (tok && tok.length) ? [...tok] : ['⊔']; })
-    : Array.from({ length: k }, (_, i) => i === 0 ? (tokens.length ? [...tokens] : ['⊔']) : ['⊔']);
+    ? Array.from({ length: k }, (_, i) => { const tok = allTapeTokens[i]; return (tok && tok.length) ? [...tok] : [blank]; })
+    : Array.from({ length: k }, (_, i) => i === 0 ? (tokens.length ? [...tokens] : [blank]) : [blank]);
   const heads = Array(k).fill(0);
   let state = App.startId;
-  for (let step = 0; step < 10000; step++) {
-    tapes.forEach((tape, i) => { while (tape.length <= heads[i]) tape.push('⊔'); });
+  for (let step = 0; step < App.config.maxTmSteps; step++) {
+    tapes.forEach((tape, i) => { while (tape.length <= heads[i]) tape.push(blank); });
     const syms = tapes.map((tape, i) => tape[heads[i]]);
     App.simSteps.push({ state, tapes: tapes.map(t => [...t]), heads: [...heads], note: `State:${getState(state)?.name} Read:[${syms.join(',')}]` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
-    const t = App.transitions.find(tr => tr.from === state && tr.tapeSyms && tr.tapeSyms.length === k && tr.tapeSyms.every((s, i) => s === syms[i] || s === 'Σ'));
+    const t = App.transitions.find(tr => tr.from === state && tr.tapeSyms && tr.tapeSyms.length === k && tr.tapeSyms.every((s, i) => s === syms[i] || s === App.config.sym.any));
     if (!t) { App.simSteps[App.simSteps.length - 1].final = 'reject'; App.simSteps[App.simSteps.length - 1].note += ' — REJECT'; break; }
     for (let i = 0; i < k; i++) {
       tapes[i][heads[i]] = t.tapeWrites[i] || syms[i];
-      heads[i] += t.tapeDirs[i] === 'R' ? 1 : -1;
+      const move = t.tapeDirs[i] === 'R' ? 1 : (t.tapeDirs[i] === 'L' ? -1 : 0);
+      heads[i] += move;
       if (heads[i] < 0) heads[i] = 0;
     }
     state = t.to;
@@ -251,7 +258,7 @@ function resetSim() {
 function toggleAuto() {
   if (App.autoTimer) { clearInterval(App.autoTimer); App.autoTimer = null; $('auto-btn').classList.remove('playing'); $('auto-btn').textContent = '⏵ Auto'; return; }
   $('auto-btn').classList.add('playing'); $('auto-btn').textContent = '⏸ Stop';
-  App.autoTimer = setInterval(() => { if (App.simIdx >= App.simSteps.length - 1) { clearInterval(App.autoTimer); App.autoTimer = null; $('auto-btn').classList.remove('playing'); $('auto-btn').textContent = '⏵ Auto'; return; } stepFwd(); }, 500);
+  App.autoTimer = setInterval(() => { if (App.simIdx >= App.simSteps.length - 1) { clearInterval(App.autoTimer); App.autoTimer = null; $('auto-btn').classList.remove('playing'); $('auto-btn').textContent = '⏵ Auto'; return; } stepFwd(); }, App.config.autoSpeed);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -260,12 +267,13 @@ function toggleAuto() {
 function runBatch() {
   const lines = $('batch-in').value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   if (!lines.length) return;
+  const eps = App.config.sym.eps;
   if (App.machine === 'PDA' || App.machine === 'TM' || App.machine === 'MTM') {
     $('batch-result').innerHTML = `<div class="br-err">Batch testing is not supported for ${App.machine}.</div>`;
     return;
   }
   const results = lines.map(line => {
-    const str = line === 'ε' ? '' : line;
+    const str = line === eps ? '' : line;
     const tokens = tokenize(str);
     if (tokens === null) return { str: line, accepted: false, error: true };
     let accepted = false, output = null;

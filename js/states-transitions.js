@@ -28,18 +28,31 @@ function getState(id) { return App.states.find(s => s.id === id); }
 // ══════════════════════════════════════════════════════════════════
 function openTransModal(from, to) {
   App._pendFrom = from; App._pendTo = to;
+  const cfg = getMachineConfig(App.machine);
+  const { eps, any, blank } = App.config.sym;
+
   const fs = $('m-from'), ts = $('m-to'), ss = $('m-sym');
   fs.innerHTML = App.states.map(s => `<option value="${s.id}" ${s.id === from ? 'selected' : ''}>${s.name}</option>`).join('');
   ts.innerHTML = App.states.map(s => `<option value="${s.id}" ${s.id === to ? 'selected' : ''}>${s.name}</option>`).join('');
-  const epsilonAllowed = App.machine !== 'DFA' && App.machine !== 'NFA' && App.machine !== 'Moore' && App.machine !== 'Mealy';
-  const syms = [...(epsilonAllowed ? ['ε'] : []), 'Σ', ...App.sigma, ...(App.machine === 'TM' || App.machine === 'MTM' ? ['⊔'] : [])];
+
+  const syms = [...(cfg.hasEpsilon ? [eps] : []), any, ...App.sigma, ...(cfg.hasTape ? [blank] : [])];
   ss.innerHTML = syms.map(s => `<option value="${s}">${s}</option>`).join('');
+
   $('m-sym-row').style.display = App.machine === 'MTM' ? 'none' : '';
-  $('m-pda-extra').style.display = App.machine === 'PDA' ? '' : 'none';
-  $('m-tm-extra').style.display = App.machine === 'TM' ? '' : 'none';
-  $('m-mealy-extra').style.display = App.machine === 'Mealy' ? '' : 'none';
+  $('m-pda-extra').style.display = cfg.hasStack ? '' : 'none';
+  $('m-tm-extra').style.display = (App.machine === 'TM') ? '' : 'none';
+  $('m-mealy-extra').style.display = (App.machine === 'Mealy') ? '' : 'none';
+
   const mtmExtra = $('m-mtm-extra');
   mtmExtra.style.display = App.machine === 'MTM' ? '' : 'none';
+
+  // Populate TM/MTM directions
+  const dirOpts = App.directions.map(d => `<option value="${d.value}">${d.label} (${d.value})</option>`).join('');
+  if (App.machine === 'TM') {
+    const dsel = $('m-dir');
+    if (dsel) dsel.innerHTML = dirOpts;
+  }
+
   if (App.machine === 'MTM') {
     const k = App.tapeCount;
     const symOpts = syms.map(s => `<option value="${s}">${s}</option>`).join('');
@@ -47,17 +60,20 @@ function openTransModal(from, to) {
       <div class="modal-section-lbl">Tape ${i + 1}</div>
       <div class="modal-row"><span class="modal-lbl">Read</span><select class="sel" id="m-mtm-read-${i}">${symOpts}</select></div>
       <div class="modal-row"><span class="modal-lbl">Write</span><input class="inp" id="m-mtm-write-${i}" placeholder="symbol"></div>
-      <div class="modal-row"><span class="modal-lbl">Move</span><select class="sel" id="m-mtm-dir-${i}"><option value="R">Right (R)</option><option value="L">Left (L)</option></select></div>
+      <div class="modal-row"><span class="modal-lbl">Move</span><select class="sel" id="m-mtm-dir-${i}">${dirOpts}</select></div>
     `).join('');
   }
   showOverlay('trans-modal');
 }
 function confirmTrans() {
+  const cfg = getMachineConfig(App.machine);
+  const { eps } = App.config.sym;
   const from = $('m-from').value, to = $('m-to').value, sym = App.machine === 'MTM' ? null : $('m-sym').value;
-  if ((App.machine === 'DFA' || App.machine === 'NFA' || App.machine === 'Moore' || App.machine === 'Mealy') && sym === 'ε') {
-    showStatus(`${App.machine} cannot have ε-transitions.`); return;
+
+  if (!cfg.hasEpsilon && sym === eps) {
+    showStatus(`${App.machine} cannot have epsilon-transitions.`); return;
   }
-  if (App.machine === 'DFA' || App.machine === 'Moore' || App.machine === 'Mealy') {
+  if (!cfg.isTransducer && App.machine !== 'NFA' && App.machine !== 'ε-NFA' && App.machine !== 'PDA' && !cfg.hasTape) {
     const conflict = App.transitions.find(t => t.from === from && t.symbol === sym);
     if (conflict) {
       showStatus(`${App.machine} already has δ(${getState(from)?.name}, '${sym}'). Each (state, symbol) pair must be unique.`); return;
@@ -65,14 +81,18 @@ function confirmTrans() {
   }
   snapshot();
   const t = { id: newTId(), from, to, symbol: sym };
-  if (App.machine === 'PDA') { t.pop = $('m-pop').value || 'ε'; t.push = $('m-push').value || 'ε'; }
+  if (App.machine === 'PDA') {
+    t.pop = $('m-pop').value || eps;
+    t.push = $('m-push').value || eps;
+  }
   if (App.machine === 'TM') { t.write = $('m-write').value || t.symbol; t.dir = $('m-dir').value; }
   if (App.machine === 'Mealy') { t.output = $('m-output').value || ''; }
   if (App.machine === 'MTM') {
     const k = App.tapeCount;
-    t.tapeSyms = Array.from({ length: k }, (_, i) => $(`m-mtm-read-${i}`)?.value || '⊔');
-    t.tapeWrites = Array.from({ length: k }, (_, i) => $(`m-mtm-write-${i}`)?.value || '⊔');
-    t.tapeDirs = Array.from({ length: k }, (_, i) => $(`m-mtm-dir-${i}`)?.value || 'R');
+    const blank = App.config.sym.blank;
+    t.tapeSyms = Array.from({ length: k }, (_, i) => $(`m-mtm-read-${i}`)?.value || blank);
+    t.tapeWrites = Array.from({ length: k }, (_, i) => $(`m-mtm-write-${i}`)?.value || blank);
+    t.tapeDirs = Array.from({ length: k }, (_, i) => $(`m-mtm-dir-${i}`)?.value || App.directions[0].value);
     t.symbol = t.tapeSyms[0];
   }
   App.transitions.push(t);
@@ -92,8 +112,9 @@ function transLabel(t) {
   if (App.machine === 'MTM') {
     const syms = t.tapeSyms || [t.symbol];
     const writes = t.tapeWrites || [t.write || t.symbol];
-    const dirs = t.tapeDirs || [t.dir || 'R'];
-    return syms.map((s, i) => `${s}/${writes[i] ?? s},${dirs[i] ?? 'R'}`).join(' ');
+    const defDir = App.directions[0].value;
+    const dirs = t.tapeDirs || [t.dir || defDir];
+    return syms.map((s, i) => `${s}/${writes[i] ?? s},${dirs[i] ?? defDir}`).join(' ');
   }
   return t.symbol;
 }

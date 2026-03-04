@@ -10,7 +10,10 @@ function svgPt(e) {
 }
 function applyCamera() {
   $('cam-g').setAttribute('transform', `translate(${App.cam.x},${App.cam.y}) scale(${App.cam.z})`);
-  $('zoom-ind').textContent = Math.round(App.cam.z * 100) + '%';
+  const zInput = $('zoom-ind');
+  if (zInput && document.activeElement !== zInput) {
+    zInput.value = Math.round(App.cam.z * 100) + '%';
+  }
   renderMinimap();
 }
 
@@ -19,7 +22,7 @@ wrap.addEventListener('wheel', e => {
   const r = wrap.getBoundingClientRect();
   const mx = e.clientX - r.left, my = e.clientY - r.top;
   const delta = e.deltaY > 0 ? 0.9 : 1.1;
-  const newZ = Math.max(0.2, Math.min(3, App.cam.z * delta));
+  const newZ = Math.max(App.config.zoom.min, Math.min(App.config.zoom.max, App.cam.z * delta));
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
@@ -116,7 +119,7 @@ function autoLayout() {
   if (!App.states.length) { showStatus('No states to arrange'); return; }
   snapshot();
   const n = App.states.length;
-  const r = Math.max(80, n * 35);
+  const r = Math.max(App.config.layout.minRadius, n * App.config.layout.nodeSpacing);
   App.states.forEach((s, i) => {
     const angle = (2 * Math.PI * i / n) - Math.PI / 2;
     s.x = r * Math.cos(angle);
@@ -140,15 +143,16 @@ function exportSVG() {
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
   // Inject inline styles
   const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  const ex = App.config.export;
   style.textContent = `
-    .sn circle.bd { fill: #161d2e; stroke: rgba(100,130,200,0.22); stroke-width: 1.5; }
-    .sn.start-st circle.bd { stroke: #69f0ae; }
-    .sn.acc-st circle.bd { stroke: #ffd54f; }
-    .sn.act-st circle.bd { fill: rgba(79,195,247,.18); stroke: #4fc3f7; }
-    .tarr { stroke: #4a5878; stroke-width: 1.5; fill: none; marker-end: url(#arr); }
-    .tlbl { font-family: monospace; font-size: 10px; fill: #7a8ab0; text-anchor: middle; }
-    .slbl { font-family: monospace; font-size: 11px; fill: #c8d4f0; text-anchor: middle; dominant-baseline: central; }
-    svg { background: #080c18; }
+    .sn circle.bd { fill: ${ex.nodeFill}; stroke: ${ex.nodeStroke}; stroke-width: 1.5; }
+    .sn.start-st circle.bd { stroke: ${ex.startStroke}; }
+    .sn.acc-st circle.bd { stroke: ${ex.accStroke}; }
+    .sn.act-st circle.bd { fill: ${ex.actFill}; stroke: ${ex.actStroke}; }
+    .tarr { stroke: ${ex.edgeStroke}; stroke-width: 1.5; fill: none; marker-end: url(#arr); }
+    .tlbl { font-family: monospace; font-size: 10px; fill: ${ex.textFill}; text-anchor: middle; }
+    .slbl { font-family: monospace; font-size: 11px; fill: ${ex.nodeTextFill}; text-anchor: middle; dominant-baseline: central; }
+    svg { background: ${ex.bg}; }
   `;
   clone.insertBefore(style, clone.firstChild);
   const serializer = new XMLSerializer();

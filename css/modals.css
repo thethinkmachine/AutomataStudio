@@ -22,9 +22,9 @@
   background: var(--bg2);
   border: 1px solid var(--border2);
   border-radius: var(--r);
-  padding: 22px;
-  min-width: 320px;
-  max-width: 520px;
+  padding: 30px;
+  min-width: 280px;
+  max-width: 380px;
   width: 90%;
   max-height: 85vh;
   overflow-y: auto;
@@ -46,16 +46,16 @@
 
 .modal-row {
   display: flex;
-  gap: 8px;
+  gap: 16px;
   align-items: center;
-  margin-bottom: 9px;
+  margin-bottom: 20px;
 }
 
 .modal-lbl {
   font-family: var(--mono);
   font-size: .67rem;
   color: var(--text2);
-  min-width: 72px;
+  min-width: 130px;
 }
 
 .modal-section-lbl {
@@ -65,9 +65,9 @@
   font-weight: 600;
   letter-spacing: .05em;
   text-transform: uppercase;
-  padding: 6px 0 2px;
+  padding: 12px 0 6px;
   border-top: 1px solid var(--border2);
-  margin-top: 4px;
+  margin: 10px 0 8px;
 }
 
 .confirm-msg {

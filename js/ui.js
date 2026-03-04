@@ -49,9 +49,10 @@ document.addEventListener('keydown', e => {
 // ══════════════════════════════════════════════════════════════════
 function zoomIn() {
   const w = $('canvas-wrap'); if (!w) return;
+  const cfg = App.config.zoom;
   const r = w.getBoundingClientRect();
   const mx = r.width / 2, my = r.height / 2;
-  const newZ = Math.min(3, App.cam.z * 1.25);
+  const newZ = Math.min(cfg.max, App.cam.z * 1.25);
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
@@ -60,9 +61,26 @@ function zoomIn() {
 
 function zoomOut() {
   const w = $('canvas-wrap'); if (!w) return;
+  const cfg = App.config.zoom;
   const r = w.getBoundingClientRect();
   const mx = r.width / 2, my = r.height / 2;
-  const newZ = Math.max(0.2, App.cam.z / 1.25);
+  const newZ = Math.max(cfg.min, App.cam.z / 1.25);
+  App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
+  App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
+  App.cam.z = newZ;
+  applyCamera();
+}
+
+function setZoomFromInput(val) {
+  const num = parseFloat(val.replace('%', ''));
+  if (isNaN(num)) {
+    applyCamera(); return;
+  }
+  const w = $('canvas-wrap'); if (!w) return;
+  const cfg = App.config.zoom;
+  const newZ = Math.max(cfg.min, Math.min(cfg.max, num / 100));
+
+  const mx = w.clientWidth / 2, my = w.clientHeight / 2;
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
@@ -85,7 +103,7 @@ function fitToScreen() {
   const bw = maxX - minX, bh = maxY - minY;
   const scaleX = (cw - pad * 2) / bw;
   const scaleY = (ch - pad * 2) / bh;
-  const z = Math.min(2.0, Math.min(scaleX, scaleY));
+  const z = Math.min(App.config.zoom.max, Math.min(scaleX, scaleY));
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
   App.cam.x = cw / 2 - cx * z;
   App.cam.y = ch / 2 - cy * z;
@@ -117,15 +135,15 @@ function renderMinimap() {
   const ctx = canvas.getContext('2d');
   const cw = canvas.width, ch = canvas.height;
   ctx.clearRect(0, 0, cw, ch);
-  ctx.fillStyle = '#080c18';
+  ctx.fillStyle = App.config.export.bg;
   ctx.fillRect(0, 0, cw, ch);
   if (!App.states.length) return;
   // Compute world bounding box
-  const R = 34;
+  const R_PAD = App.config.radius + 4;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   App.states.forEach(s => {
-    minX = Math.min(minX, s.x - R); minY = Math.min(minY, s.y - R);
-    maxX = Math.max(maxX, s.x + R); maxY = Math.max(maxY, s.y + R);
+    minX = Math.min(minX, s.x - R_PAD); minY = Math.min(minY, s.y - R_PAD);
+    maxX = Math.max(maxX, s.x + R_PAD); maxY = Math.max(maxY, s.y + R_PAD);
   });
   // Also include viewport extent
   const vw = $('canvas-wrap')?.clientWidth || 600, vh = $('canvas-wrap')?.clientHeight || 400;
@@ -159,7 +177,7 @@ function renderMinimap() {
   App.states.forEach(s => {
     const sx = (s.x - minX) * mmScale + mmOffX;
     const sy = (s.y - minY) * mmScale + mmOffY;
-    const sr = Math.max(2, R * mmScale * 0.7);
+    const sr = Math.max(2, R_PAD * mmScale * 0.7);
     ctx.beginPath();
     ctx.arc(sx, sy, sr, 0, Math.PI * 2);
     ctx.fillStyle = s.accept ? 'rgba(105,240,174,0.6)' : 'rgba(79,195,247,0.4)';
@@ -180,7 +198,7 @@ function toggleMinimap() {
   if (!mm) return;
   const hidden = mm.classList.toggle('minimap-hidden');
   if (sb) sb.style.display = hidden ? '' : 'none';
-  try { localStorage.setItem('automata-minimap', hidden ? '0' : '1'); } catch(e) {}
+  try { localStorage.setItem('automata-minimap', hidden ? '0' : '1'); } catch (e) { }
 }
 
 function minimapNavigate(e) {
@@ -204,7 +222,7 @@ function toggleSidebar() {
   const collapsed = s.classList.toggle('collapsed');
   const btn = $('sidebar-toggle-btn');
   if (btn) btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
-  try { localStorage.setItem('automata-sidebar', collapsed ? '0' : '1'); } catch(e) {}
+  try { localStorage.setItem('automata-sidebar', collapsed ? '0' : '1'); } catch (e) { }
 }
 
 function filterStates() {
@@ -234,5 +252,37 @@ function filterAlgos() {
     }
     grp.style.display = any ? '' : 'none';
   });
+}
+
+function openSettingsModal() {
+  const c = App.config;
+  $('set-pda-steps').value = c.maxPdaSteps;
+  $('set-tm-steps').value = c.maxTmSteps;
+  $('set-auto-speed').value = c.autoSpeed;
+  $('set-radius').value = c.radius;
+  $('set-zoom-step').value = c.zoom.step;
+  $('set-sym-eps').value = c.sym.eps;
+  $('set-sym-blank').value = c.sym.blank;
+  $('set-sym-z0').value = c.sym.stackBottom;
+  showOverlay('settings-modal');
+}
+
+function confirmSettings() {
+  const c = App.config;
+  c.maxPdaSteps = parseInt($('set-pda-steps').value) || 2000;
+  c.maxTmSteps = parseInt($('set-tm-steps').value) || 10000;
+  c.autoSpeed = parseInt($('set-auto-speed').value) || 500;
+  c.radius = parseInt($('set-radius').value) || 30;
+  c.zoom.step = parseFloat($('set-zoom-step').value) || 0.1;
+  c.sym.eps = $('set-sym-eps').value || 'ε';
+  c.sym.blank = $('set-sym-blank').value || '⊔';
+  c.sym.stackBottom = $('set-sym-z0').value || 'Z';
+
+  // Apply visual changes
+  R = c.radius;
+  renderAll();
+  closeModal('settings-modal');
+  showStatus('Settings applied!');
+  saveBackup();
 }
 

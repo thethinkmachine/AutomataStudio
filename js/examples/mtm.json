@@ -1,0 +1,167 @@
+{
+    "machine": "MTM",
+    "sigma": [
+        "a",
+        "b",
+        "c"
+    ],
+    "tapeCount": 2,
+    "states": [
+        {
+            "id": "s1",
+            "x": 100,
+            "y": 200,
+            "name": "copy_a"
+        },
+        {
+            "id": "s2",
+            "x": 280,
+            "y": 200,
+            "name": "match_b"
+        },
+        {
+            "id": "s3",
+            "x": 460,
+            "y": 200,
+            "name": "match_c"
+        },
+        {
+            "id": "s4",
+            "x": 640,
+            "y": 200,
+            "name": "acc"
+        }
+    ],
+    "startId": "s1",
+    "accepts": [
+        "s4"
+    ],
+    "transitions": [
+        {
+            "id": "t1",
+            "from": "s1",
+            "to": "s1",
+            "symbol": "a",
+            "tapeSyms": [
+                "a",
+                "⊔"
+            ],
+            "tapeWrites": [
+                "a",
+                "a"
+            ],
+            "tapeDirs": [
+                "R",
+                "R"
+            ]
+        },
+        {
+            "id": "t2",
+            "from": "s1",
+            "to": "s2",
+            "symbol": "b",
+            "tapeSyms": [
+                "b",
+                "⊔"
+            ],
+            "tapeWrites": [
+                "b",
+                "⊔"
+            ],
+            "tapeDirs": [
+                "S",
+                "L"
+            ]
+        },
+        {
+            "id": "t3",
+            "from": "s1",
+            "to": "s2",
+            "symbol": "ε",
+            "tapeSyms": [
+                "⊔",
+                "⊔"
+            ],
+            "tapeWrites": [
+                "⊔",
+                "⊔"
+            ],
+            "tapeDirs": [
+                "S",
+                "S"
+            ]
+        },
+        {
+            "id": "t4",
+            "from": "s2",
+            "to": "s2",
+            "symbol": "b",
+            "tapeSyms": [
+                "b",
+                "a"
+            ],
+            "tapeWrites": [
+                "b",
+                "a"
+            ],
+            "tapeDirs": [
+                "R",
+                "L"
+            ]
+        },
+        {
+            "id": "t5",
+            "from": "s2",
+            "to": "s3",
+            "symbol": "c",
+            "tapeSyms": [
+                "c",
+                "⊔"
+            ],
+            "tapeWrites": [
+                "c",
+                "⊔"
+            ],
+            "tapeDirs": [
+                "S",
+                "R"
+            ]
+        },
+        {
+            "id": "t6",
+            "from": "s3",
+            "to": "s3",
+            "symbol": "c",
+            "tapeSyms": [
+                "c",
+                "a"
+            ],
+            "tapeWrites": [
+                "c",
+                "a"
+            ],
+            "tapeDirs": [
+                "R",
+                "R"
+            ]
+        },
+        {
+            "id": "t7",
+            "from": "s3",
+            "to": "s4",
+            "symbol": "⊔",
+            "tapeSyms": [
+                "⊔",
+                "⊔"
+            ],
+            "tapeWrites": [
+                "⊔",
+                "⊔"
+            ],
+            "tapeDirs": [
+                "S",
+                "S"
+            ]
+        }
+    ]
+}

@@ -3,7 +3,12 @@
 // ══════════════════════════════════════════════════════════════════
 function makeSVG(t) { return document.createElementNS(SVG_NS, t); }
 
-function renderAll() { renderTransitions(); renderStates(); renderMinimap(); }
+function renderAll() {
+  const cfg = getMachineConfig(App.machine);
+  $('mach-badge').className = `badge ${cfg.badge}`;
+  $('mach-badge').textContent = cfg.label;
+  renderTransitions(); renderStates(); renderMinimap();
+}
 
 function groupTrans() {
   const g = {};
@@ -18,7 +23,8 @@ function renderTransitions() {
     const s = getState(App.startId);
     if (s) {
       const a = makeSVG('path');
-      a.setAttribute('d', `M ${s.x - R - 28} ${s.y} L ${s.x - R - 2} ${s.y}`);
+      const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
+      a.setAttribute('d', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah / 3} ${s.y}`);
       a.setAttribute('stroke', 'var(--green)'); a.setAttribute('stroke-width', '1.5'); a.setAttribute('fill', 'none'); a.setAttribute('marker-end', 'url(#arr-g)');
       g.appendChild(a);
     }
@@ -31,26 +37,27 @@ function renderTransitions() {
     let pathEl, textEl;
     if (isSelf) {
       pathEl = makeSVG('path');
-      pathEl.setAttribute('d', `M ${from.x - 12} ${from.y - R} A 22 22 0 1 1 ${from.x + 12} ${from.y - R}`);
+      const so = App.config.render.selfLoopOff, ss = App.config.render.selfLoopSize;
+      pathEl.setAttribute('d', `M ${from.x - so} ${from.y - R} A ${ss} ${ss} 0 1 1 ${from.x + so} ${from.y - R}`);
       pathEl.setAttribute('marker-end', 'url(#arr)');
       pathEl.classList.add('tarr');
       textEl = makeSVG('text');
-      textEl.setAttribute('x', from.x); textEl.setAttribute('y', from.y - R - 30);
+      textEl.setAttribute('x', from.x); textEl.setAttribute('y', from.y - R - App.config.render.selfLoopTextOff);
       textEl.classList.add('tlbl'); textEl.textContent = lbl;
     } else {
       const hasRev = App.transitions.some(t => t.from === grp.to && t.to === grp.from);
       const dx = to.x - from.x, dy = to.y - from.y, dist = Math.sqrt(dx * dx + dy * dy);
       const ux = dx / dist, uy = dy / dist, px = -uy, py = ux;
-      const crv = hasRev ? 45 : 0;
+      const crv = hasRev ? App.config.render.curveOff : 0;
       const mx = (from.x + to.x) / 2 + px * crv, my = (from.y + to.y) / 2 + py * crv;
       const sx = from.x + ux * R, sy = from.y + uy * R;
-      const ex = to.x - ux * (R + 6), ey = to.y - uy * (R + 6);
+      const ex = to.x - ux * (R + App.config.render.arrowHeadSize), ey = to.y - uy * (R + App.config.render.arrowHeadSize);
       const d = crv ? `M ${sx} ${sy} Q ${mx} ${my} ${ex} ${ey}` : `M ${sx} ${sy} L ${ex} ${ey}`;
       pathEl = makeSVG('path');
       pathEl.setAttribute('d', d); pathEl.setAttribute('marker-end', 'url(#arr)');
       pathEl.classList.add('tarr');
       textEl = makeSVG('text');
-      textEl.setAttribute('x', crv ? mx : (sx + ex) / 2); textEl.setAttribute('y', (crv ? my : (sy + ey) / 2) - 8);
+      textEl.setAttribute('x', crv ? mx : (sx + ex) / 2); textEl.setAttribute('y', (crv ? my : (sy + ey) / 2) - App.config.render.textMargin);
       textEl.classList.add('tlbl'); textEl.textContent = lbl;
     }
     g.appendChild(pathEl); g.appendChild(textEl);
@@ -75,11 +82,11 @@ function renderStates() {
       grp.appendChild(r2);
     }
     const t = makeSVG('text'); t.classList.add('slbl'); t.setAttribute('x', s.x);
-    t.setAttribute('y', App.machine === 'Moore' ? s.y - 8 : s.y);
+    t.setAttribute('y', App.machine === 'Moore' ? s.y - App.config.render.textMargin : s.y);
     t.textContent = s.name; grp.appendChild(t);
     if (App.machine === 'Moore') {
       const ot = makeSVG('text'); ot.classList.add('mooreout');
-      ot.setAttribute('x', s.x); ot.setAttribute('y', s.y + 9);
+      ot.setAttribute('x', s.x); ot.setAttribute('y', s.y + App.config.render.mooreTextMargin);
       ot.textContent = s.output !== undefined && s.output !== '' ? s.output : '—';
       grp.appendChild(ot);
     }
@@ -167,9 +174,9 @@ function deriveRegex() {
   const allIds = [qs, ...ids, qa];
   allIds.forEach(a => allIds.forEach(b => { gnfa[a + '|' + b] = null; }));
   // ε from new start to old start
-  gnfa[qs + '|' + App.startId] = 'ε';
+  gnfa[qs + '|' + App.startId] = App.config.sym.eps;
   // ε from each old accept to new accept
-  accs.forEach(acc => { gnfa[acc + '|' + qa] = gnfa[acc + '|' + qa] ? reUnion(gnfa[acc + '|' + qa], 'ε') : 'ε'; });
+  accs.forEach(acc => { gnfa[acc + '|' + qa] = gnfa[acc + '|' + qa] ? reUnion(gnfa[acc + '|' + qa], App.config.sym.eps) : App.config.sym.eps; });
   // Copy original transitions
   App.transitions.forEach(t => {
     const k = t.from + '|' + t.to, sym = t.symbol;
@@ -199,6 +206,6 @@ function deriveRegex() {
   return val;
 }
 function reUnion(a, b) { if (!a) return b; if (!b) return a; if (a === b) return a; return `${a} | ${b}`; }
-function reConcat(a, b) { if (!a || !b) return a || b || ''; if (a === 'ε') return b; if (b === 'ε') return a; const pa = a.includes(' | '), pb = b.includes(' | '); return `${pa ? '(' + a + ')' : a}${pb ? '(' + b + ')' : b}`; }
+function reConcat(a, b) { if (!a || !b) return a || b || ''; if (a === App.config.sym.eps) return b; if (b === App.config.sym.eps) return a; const pa = a.includes(' | '), pb = b.includes(' | '); return `${pa ? '(' + a + ')' : a}${pb ? '(' + b + ')' : b}`; }
 function simplifyRE(r) { if (!r) return '∅'; return r.replace(/\(ε\)\*/g, 'ε').replace(/ε\*/g, 'ε').replace(/\(([a-zA-Z0-9])\)\*/g, '$1*').replace(/\(([a-zA-Z0-9])\)/g, '$1'); }
 

@@ -1,4 +1,18 @@
 // ══════════════════════════════════════════════════════════════════
+//  CORE CONFIGURATION
+// ══════════════════════════════════════════════════════════════════
+const MachineTypes = {
+  'DFA': { label: 'DFA', hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-dfa', file: 'dfa' },
+  'NFA': { label: 'NFA', hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-nfa', file: 'nfa' },
+  'ε-NFA': { label: 'ε-NFA', hasEpsilon: true, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-enfa', file: 'enfa' },
+  'PDA': { label: 'PDA', hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-pda', file: 'pda' },
+  'TM': { label: 'TM', hasEpsilon: true, hasStack: false, hasTape: true, isTransducer: false, badge: 'bd-tm', file: 'tm' },
+  'MTM': { label: 'MTM', hasEpsilon: true, hasStack: false, hasTape: true, isTransducer: false, badge: 'bd-mtm', file: 'mtm' },
+  'Moore': { label: 'Moore', hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-moore', file: 'moore' },
+  'Mealy': { label: 'Mealy', hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-mealy', file: 'mealy' }
+};
+
+// ══════════════════════════════════════════════════════════════════
 //  CORE STATE
 // ══════════════════════════════════════════════════════════════════
 const App = {
@@ -10,6 +24,38 @@ const App = {
   states: [], transitions: [],
   startId: null, accepts: new Set(),
   stateN: 0, transN: 0,
+  // Configuration constants
+  config: {
+    maxPdaSteps: 2000,
+    maxTmSteps: 10000,
+    autoSpeed: 500,
+    radius: 30,
+    zoom: { min: 0.2, max: 3, step: 0.1 },
+    layout: { minRadius: 80, nodeSpacing: 35 },
+    sym: { eps: 'ε', any: 'Σ', blank: '⊔', stackBottom: 'Z' },
+    render: {
+      startArrowLen: 28,
+      selfLoopSize: 22,
+      selfLoopOff: 12,
+      selfLoopTextOff: 30,
+      curveOff: 45,
+      arrowHeadSize: 6,
+      textMargin: 8,
+      mooreTextMargin: 9
+    },
+    export: {
+      bg: '#080c18',
+      nodeFill: '#161d2e',
+      nodeStroke: 'rgba(100,130,200,0.22)',
+      startStroke: '#69f0ae',
+      accStroke: '#ffd54f',
+      actFill: 'rgba(79,195,247,.18)',
+      actStroke: '#4fc3f7',
+      edgeStroke: '#4a5878',
+      textFill: '#7a8ab0',
+      nodeTextFill: '#c8d4f0'
+    }
+  },
   // Camera
   cam: { x: 0, y: 0, z: 1 },
   // Undo/Redo
@@ -25,7 +71,14 @@ const App = {
   currentAlgo: 'table',
   // Workspace B (M₂ for binary operations)
   workspaceB: null,
+  // Head directions for TM / MTM
+  directions: [
+    { value: 'R', label: 'Right' },
+    { value: 'L', label: 'Left' },
+    { value: 'S', label: 'Stay' }
+  ],
 };
-const SVG_NS = 'http://www.w3.org/2000/svg', R = 30;
+const SVG_NS = 'http://www.w3.org/2000/svg';
+var R = App.config.radius;
 const $ = id => document.getElementById(id);
 
