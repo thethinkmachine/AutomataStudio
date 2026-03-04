@@ -19,7 +19,7 @@ const App = {
   machine: 'DFA', tool: 'move', view: 'build',
   sigma: new Set(['a', 'b']),
   outputAlpha: new Set(['0', '1']),
-  stackAlpha: new Set(['Z']),
+  stackAlpha: new Set(['Z']), // will be sync'd in init
   tapeCount: 2,
   states: [], transitions: [],
   startId: null, accepts: new Set(),
@@ -35,7 +35,8 @@ const App = {
     zoom: { min: 0.2, max: 3, step: 0.1 },
     layout: { minRadius: 80, nodeSpacing: 35 },
     gridSnap: 20,
-    sym: { eps: 'ε', any: 'Σ', blank: '⊔', stackBottom: 'Z' },
+    sym: { eps: 'ε', any: 'Σ', blank: '⊔', stackBottom: 'Z', lambda: 'λ' },
+    statePrefix: 'q',
     render: {
       startArrowLen: 28,
       selfLoopSize: 22,

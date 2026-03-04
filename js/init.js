@@ -3,6 +3,7 @@
 // ══════════════════════════════════════════════════════════════════
 renderSigma(); renderGamma(); renderGramSyms(); renderOutputAlpha();
 renderGrammarLPanel(); updateLPanel();
+App.stackAlpha = new Set([App.config.sym.stackBottom]);
 setMachine('DFA'); setTool('pointer'); setView('build');
 snapshot();
 // Attach minimap click navigation

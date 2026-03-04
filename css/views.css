@@ -211,7 +211,7 @@
 
 .bd-mtm {
   background: rgba(255, 99, 99, .1);
-  color: var(--red, #ff6b6b);
+  color: var(--red);
   border: 1px solid rgba(255, 99, 99, .3);
 }
 
@@ -304,7 +304,7 @@
 }
 
 .run-btn:hover {
-  background: #81d4fa;
+  background: var(--accent);
   box-shadow: 0 0 14px rgba(79, 195, 247, .35);
 }
 
@@ -617,7 +617,7 @@
 }
 
 .algo-btn:hover {
-  background: #81d4fa;
+  background: var(--accent);
 }
 
 .algo-btn.sec {

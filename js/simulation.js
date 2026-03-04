@@ -157,7 +157,7 @@ function simMoore(tokens) {
   let cur = App.startId;
   const s0 = getState(cur);
   const initOut = s0?.output ?? '';
-  App.simSteps.push({ state: cur, remaining: tokens.join(''), note: `Start: ${s0?.name} — λ: '${initOut}'`, output: initOut });
+  App.simSteps.push({ state: cur, remaining: tokens.join(''), note: `Start: ${s0?.name} — ${App.config.sym.lambda}: '${initOut}'`, output: initOut });
   const outputs = [initOut];
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
@@ -167,7 +167,7 @@ function simMoore(tokens) {
     const sc = getState(cur);
     const out = sc?.output ?? '';
     outputs.push(out);
-    App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `Read '${sym}' → ${sc?.name} — λ: '${out}'`, tid: t.id, output: out });
+    App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `Read '${sym}' → ${sc?.name} — ${App.config.sym.lambda}: '${out}'`, tid: t.id, output: out });
   }
   const last = App.simSteps[App.simSteps.length - 1];
   if (!last.final) { last.final = App.accepts.has(cur) ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }

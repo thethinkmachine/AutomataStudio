@@ -210,13 +210,16 @@ function updateFormalDef() {
     txt = `M = (Q, Σ, δ, q₀, F)\n\nQ = {${Q}}\nΣ = {${S}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Σ→${m === 'DFA' ? 'Q' : '2^Q'}`;
   } else if (m === 'PDA') {
     const G = [...App.stackAlpha].join(', ') || '∅';
-    txt = `M = (Q,Σ,Γ,δ,q₀,Z,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×(Σ∪{ε})×Γ→2^(Q×Γ*)`;
+    const { eps, stackBottom } = App.config.sym;
+    txt = `M = (Q,Σ,Γ,δ,q₀,${stackBottom},F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×(Σ∪{${eps}})×Γ→2^(Q×Γ*)`;
   } else if (m === 'Moore') {
     const D = [...App.outputAlpha].join(', ') || '∅';
-    txt = `M = (Q, Σ, Δ, δ, λ, q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΔ = {${D}}\nq₀ = ${q0}\nδ: Q×Σ→Q\nλ: Q→Δ`;
+    const { lambda } = App.config.sym;
+    txt = `M = (Q, Σ, Δ, δ, ${lambda}, q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΔ = {${D}}\nq₀ = ${q0}\nδ: Q×Σ→Q\n${lambda}: Q→Δ`;
   } else if (m === 'Mealy') {
     const D = [...App.outputAlpha].join(', ') || '∅';
-    txt = `M = (Q, Σ, Δ, δ, λ, q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΔ = {${D}}\nq₀ = ${q0}\nδ: Q×Σ→Q\nλ: Q×Σ→Δ`;
+    const { lambda } = App.config.sym;
+    txt = `M = (Q, Σ, Δ, δ, ${lambda}, q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΔ = {${D}}\nq₀ = ${q0}\nδ: Q×Σ→Q\n${lambda}: Q×Σ→Δ`;
   } else if (m === 'MTM') {
     txt = `M = (Q,Σ,Γ,δ,q₀,q_acc,q_rej)\n\nQ = {${Q}}\nΣ = {${S}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γᵏ→Q×Γᵏ×{L,R}ᵏ\nk = ${App.tapeCount} tapes`;
   } else {

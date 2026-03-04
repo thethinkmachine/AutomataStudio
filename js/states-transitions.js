@@ -7,7 +7,7 @@ function newTId() { return 't' + (++App.transN); }
 function createState(x, y, name) {
   snapshot();
   const id = newId();
-  const s = { id, x, y, name: name || `q${App.stateN - 1}` };
+  const s = { id, x, y, name: name || `${App.config.statePrefix}${App.stateN - 1}` };
   App.states.push(s);
   if (!App.startId) App.startId = id;
   renderAll(); updateLPanel(); updateRPanel();
