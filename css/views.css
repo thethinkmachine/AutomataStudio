@@ -398,7 +398,7 @@
 
 .algo-item {
   padding: 9px 16px;
-  font-family: var(--sans);
+  font-family: var(--mono);
   font-size: .8rem;
   cursor: pointer;
   border-left: 2px solid transparent;
@@ -409,12 +409,14 @@
 .algo-item:hover {
   background: var(--surface);
   color: var(--text);
+  font-family: var(--mono);
 }
 
 .algo-item.active {
   border-left-color: var(--accent);
   background: var(--surface);
   color: var(--accent);
+  font-family: var(--mono);
 }
 
 .algo-grp {
@@ -452,6 +454,7 @@
   border-radius: var(--r);
   padding: 16px;
   margin-bottom: 14px;
+  font-family: var(--mono);
 }
 
 .card-title {
@@ -1077,21 +1080,108 @@
 }
 
 /* ── Theory view navigation ── */
-.theory-nav { display: flex; flex-direction: column; overflow-y: auto; }
-.theory-nav-header { padding: 18px 14px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.theory-nav-title { font-family: var(--serif); font-size: 1.05rem; font-weight: 600; margin-bottom: 4px; }
-.theory-nav-subtitle { font-family: var(--mono); font-size: .6rem; color: var(--text3); line-height: 1.6; }
-.theory-nav-group { font-family: var(--mono); font-size: .58rem; letter-spacing: .1em; text-transform: uppercase; color: var(--text3); padding: 14px 14px 4px; }
-.theory-nav-link { display: block; font-family: var(--mono); font-size: .72rem; color: var(--text2); padding: 6px 14px 6px 16px; cursor: pointer; text-decoration: none; border-left: 2px solid transparent; transition: all var(--transition-fast); }
-.theory-nav-link:hover { background: var(--surface); color: var(--text); border-left-color: var(--border2); }
-.theory-nav-link.active { background: rgba(79,195,247,.08); color: var(--accent); border-left-color: var(--accent); }
+.theory-nav {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.theory-nav-header {
+  padding: 18px 14px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.theory-nav-title {
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.theory-nav-subtitle {
+  font-family: var(--mono);
+  font-size: .6rem;
+  color: var(--text3);
+  line-height: 1.6;
+}
+
+.theory-nav-group {
+  font-family: var(--mono);
+  font-size: .58rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text3);
+  padding: 14px 14px 4px;
+}
+
+.theory-nav-link {
+  display: block;
+  font-family: var(--mono);
+  font-size: .72rem;
+  color: var(--text2);
+  padding: 6px 14px 6px 16px;
+  cursor: pointer;
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.theory-nav-link:hover {
+  background: var(--surface);
+  color: var(--text);
+  border-left-color: var(--border2);
+}
+
+.theory-nav-link.active {
+  background: rgba(79, 195, 247, .08);
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
 
 /* ── Theory content sections ── */
-.theory-section { margin-bottom: 36px; scroll-margin-top: 20px; }
-.theory-section-title { font-family: var(--serif); font-size: 1.15rem; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 12px; color: var(--text); }
-.theory-section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-.theory-section-sub { font-family: var(--mono); font-size: .65rem; color: var(--text3); margin-bottom: 14px; }
-.hierarchy-section { background: var(--surface); border: 1px solid var(--border2); border-radius: var(--r); padding: 16px 20px 8px; }
-.theory-card { transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
-.theory-card:hover { border-color: var(--border2); box-shadow: 0 2px 12px rgba(0,0,0,.28); }
+.theory-section {
+  margin-bottom: 36px;
+  scroll-margin-top: 20px;
+}
 
+.theory-section-title {
+  font-family: var(--serif);
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text);
+}
+
+.theory-section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.theory-section-sub {
+  font-family: var(--mono);
+  font-size: .65rem;
+  color: var(--text3);
+  margin-bottom: 14px;
+}
+
+.hierarchy-section {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  padding: 16px 20px 8px;
+}
+
+.theory-card {
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.theory-card:hover {
+  border-color: var(--border2);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .28);
+}

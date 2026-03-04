@@ -26,7 +26,7 @@ function renderAlgo(a) {
 function algoTable(c) {
   c.innerHTML = `<div class="algo-title">Transition Table δ</div>
 <div class="algo-sub">FORMAL REPRESENTATION OF THE TRANSITION FUNCTION</div>`;
-  if (!App.states.length) { c.innerHTML += '<div class="card"><div style="color:var(--text3);font-family:var(--mono);font-size:.72rem">Build an automaton first in the Build tab.</div></div>'; return; }
+  if (!App.states.length) { c.innerHTML += '<div class="card"><div style="color:var(--text3);font-size:.72rem">Build an automaton first in the Build tab.</div></div>'; return; }
   const syms = [...App.sigma];
   const thead = `<tr><th>State</th>${syms.map(s => `<th>${s}</th>`).join('')}</tr>`;
   const rows = App.states.map(s => {
@@ -46,7 +46,7 @@ function algoTable(c) {
   }).join('');
   c.innerHTML += `<div class="card"><div class="card-title">δ: Q × Σ → ${App.machine === 'DFA' ? 'Q' : '2^Q'}</div>
 <div class="subset-table-wrap"><table class="result-table"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>
-<div style="font-family:var(--mono);font-size:.62rem;color:var(--text3);margin-top:8px">→ = start state &nbsp;&nbsp; * = accept state &nbsp;&nbsp; — = dead state (implicit reject)</div></div>`;
+<div style="font-size:.62rem;color:var(--text3);margin-top:8px">→ = start state &nbsp;&nbsp; * = accept state &nbsp;&nbsp; — = dead state (implicit reject)</div></div>`;
 }
 
 // --- NFA to DFA Subset Construction ---
@@ -255,7 +255,7 @@ function algoRE2NFA(c) {
     <input class="inp regex-inp" id="re-input" placeholder="e.g. (a|b)*abb or [a-z]{2,5}" onkeydown="if(event.key==='Enter')doThompson()">
     <button class="algo-btn" onclick="doThompson()">Build NFA</button>
   </div>
-  <div style="font-family:var(--mono);font-size:.67rem;color:var(--text3)">
+  <div style="font-size:.67rem;color:var(--text3)">
     <b>Supported</b>: <b>|</b> union &nbsp; <b>*</b> Kleene star &nbsp; <b>+</b> one-or-more &nbsp; <b>?</b> optional &nbsp; <b>()</b> grouping &nbsp; <b>[abc]</b> char class &nbsp; <b>[a-z]</b> ranges &nbsp; <b>{n,m}</b> bounds &nbsp; ε = epsilon<br>
     <b>Not supported</b>: <b>.</b> = any character &nbsp; <b>[^abc]</b> = negation (limited support)<br>
     This tool uses the mathematical/textbook notation for Thompson's construction.
@@ -282,7 +282,7 @@ function doThompson() {
     html += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadThompsonNFA()">Load into Canvas</button></div>`;
     $('re-result').innerHTML = html;
     App._lastThompson = nfaData;
-  } catch (err) { $('re-result').innerHTML = `<div class="card" style="color:var(--red);font-family:var(--mono);font-size:.75rem">Parse error: ${err.message}</div>`; }
+  } catch (err) { $('re-result').innerHTML = `<div class="card" style="color:var(--red);font-size:.75rem">Parse error: ${err.message}</div>`; }
 }
 
 // Thompson's Construction
@@ -425,7 +425,7 @@ function algoNFA2RE(c) {
   if (!App.startId) { c.innerHTML += '<div class="card">No start state defined.</div>'; return; }
   const rex = deriveRegex();
   c.innerHTML += `<div class="card"><div class="card-title">Derived Regular Expression</div>
-<div style="font-family:var(--mono);font-size:1.1rem;color:var(--gold);padding:12px;background:var(--bg3);border-radius:6px;word-break:break-all;">${rex}</div></div>`;
+<div style="font-size:1.1rem;color:var(--gold);padding:12px;background:var(--bg3);border-radius:6px;word-break:break-all;">${rex}</div></div>`;
   if (App.machine === 'PDA') { c.innerHTML += '<div class="card" style="color:var(--text2)">Note: PDA recognizes CFLs, not regular languages. The regex shown is derived from NFA/DFA states only.</div>'; }
 }
 
@@ -461,7 +461,7 @@ function algoComplement(c) {
   const comp = App.states.map(s => ({ ...s, accept: !App.accepts.has(s.id) }));
   const html = comp.map(s => `<div class="state-pill ${s.accept ? 'acc' : ''}">${s.name} → ${s.accept ? 'ACCEPT' : 'REJECT'}</div>`).join('');
   c.innerHTML += `<div class="card"><div class="card-title">Complemented States</div><div class="nfa-result-states">${html}</div>
-<div style="font-family:var(--mono);font-size:.7rem;color:var(--text2);margin-top:10px">Note: Original accept states become non-accepting and vice versa. All transitions remain the same.</div></div>
+<div style="font-size:.7rem;color:var(--text2);margin-top:10px">Note: Original accept states become non-accepting and vice versa. All transitions remain the same.</div></div>
 <div style="margin-top:8px"><button class="algo-btn" onclick="loadComplement()">Load Complement into Canvas</button></div>`;
 }
 function loadComplement() {
@@ -506,7 +506,7 @@ function algoEquiv(c) {
 <div class="info-box">Two DFAs are equivalent iff they accept exactly the same language. We check equivalence by minimizing both and comparing, or by running the product construction on their symmetric difference (L₁△L₂ = ∅).</div>
 <div class="card">
   <div class="card-title">Method A: String Testing</div>
-  <div style="font-family:var(--mono);font-size:.72rem;color:var(--text2);line-height:1.8">
+  <div style="font-size:.72rem;color:var(--text2);line-height:1.8">
     Test if a specific string is accepted:
   </div>
   <div class="row" style="margin-top:10px">
@@ -517,7 +517,7 @@ function algoEquiv(c) {
 </div>
 <div class="card">
   <div class="card-title">Method B: Product Construction (L₁△L₂ = ∅)</div>
-  <div style="font-family:var(--mono);font-size:.72rem;color:var(--text2);line-height:1.8;margin-bottom:10px">
+  <div style="font-size:.72rem;color:var(--text2);line-height:1.8;margin-bottom:10px">
     L₁ = L₂ iff their symmetric difference is empty.<br>
     Load a second automaton as M₂, then run the check.<br>
     M₂ status: ${m2status}
@@ -531,7 +531,7 @@ function testEquivStr() {
   const str = $('eq-str').value.trim();
   const s = str === 'ε' ? '' : str;
   const accepted = App.machine === 'DFA' ? testDFA(s) : testNFA(s);
-  $('eq-result').innerHTML = `<div style="font-family:var(--mono);font-size:.75rem;color:${accepted ? 'var(--green)' : 'var(--red)'}">
+  $('eq-result').innerHTML = `<div style="font-size:.75rem;color:${accepted ? 'var(--green)' : 'var(--red)'}">
 "${str}" is ${accepted ? 'ACCEPTED ✓' : 'REJECTED ✗'} by the current automaton.</div>`;
 }
 function runProductEquiv() {
@@ -658,7 +658,7 @@ function algoIsEmpty(c) {
 <div style="font-family:var(--serif);font-size:1.2rem;font-weight:600;color:${isEmpty ? 'var(--red)' : 'var(--green)'}">
   ${isEmpty ? 'EMPTY ∅' : 'NON-EMPTY ✓'}
 </div>
-<div style="font-family:var(--mono);font-size:.72rem;color:var(--text2);margin-top:8px">
+<div style="font-size:.72rem;color:var(--text2);margin-top:8px">
   ${isEmpty ? 'No accept state is reachable from the start → L(M) = ∅' : `Accept states reachable: {${reachableAccepts.map(id => getState(id)?.name).join(', ')}}`}
 </div>
 </div>`;
@@ -686,7 +686,7 @@ function algoIsFinite(c) {
 <div style="font-family:var(--serif);font-size:1.2rem;font-weight:600;color:${isFinite ? 'var(--green)' : 'var(--orange)'}">
   ${isFinite ? 'FINITE ✓' : 'INFINITE ∞'}
 </div>
-<div style="font-family:var(--mono);font-size:.72rem;color:var(--text2);margin-top:8px">
+<div style="font-size:.72rem;color:var(--text2);margin-top:8px">
   ${isFinite ? 'No cycles among useful states → L(M) is a finite set of strings.' : 'There is a cycle among useful states → L(M) contains infinitely many strings (due to the cycle allowing repetition).'}
 </div>
 </div>`;
@@ -728,7 +728,7 @@ function algoIsUniversal(c) {
   const isUniversal = compAccReachable.length === 0;
   c.innerHTML += `<div class="card">
 <div class="card-title">Complement Analysis</div>
-<div style="font-family:var(--mono);font-size:.72rem;color:var(--text2);line-height:1.8">
+<div style="font-size:.72rem;color:var(--text2);line-height:1.8">
   Added ${completedTrans.length} trap transitions.<br>
   Complement accept states (non-original-accept): {${[...compAccepts].filter(id => id !== trapId).map(id => getState(id)?.name).join(', ') || '∅'}}${compAccepts.has(trapId) ? (completedTrans.length > 0 ? ' + trap' : '') : ''}<br>
   Reachable complement accept states: ${compAccReachable.length ? '{' + compAccReachable.map(id => id === trapId ? 'trap' : getState(id)?.name).join(',') + '}' : '∅'}
@@ -738,7 +738,7 @@ function algoIsUniversal(c) {
 <div style="font-family:var(--serif);font-size:1.2rem;font-weight:600;color:${isUniversal ? 'var(--green)' : 'var(--red)'}">
   ${isUniversal ? 'UNIVERSAL ✓  L(M) = Σ*' : 'NOT UNIVERSAL ✗  L(M) ≠ Σ*'}
 </div>
-<div style="font-family:var(--mono);font-size:.72rem;color:var(--text2);margin-top:8px">
+<div style="font-size:.72rem;color:var(--text2);margin-top:8px">
   ${isUniversal ? 'Complement DFA has empty language → original DFA accepts everything.' : 'Complement DFA is non-empty → some strings are rejected.'}
 </div>
 </div>`;
@@ -757,7 +757,7 @@ Build the product DFA with accept condition: (p,q) accepts iff exactly one of p,
 </div>`;
   if (!App.workspaceB) {
     c.innerHTML += `<div class="card dec-card-empty">
-  <div style="font-family:var(--mono);font-size:.72rem;color:var(--text2);line-height:1.8">
+  <div style="font-size:.72rem;color:var(--text2);line-height:1.8">
     To check equivalence:<br>
     1. Build your first machine (M₁) in the Build view<br>
     2. Come back here and click "Save Current as M₂"<br>
@@ -786,7 +786,7 @@ function runFullEquivCheck() {
     const cex = findShortestAccepted(product);
     out.innerHTML = `<div class="pump-result fail">NOT EQUIVALENT ✗ — L(M₁) ≠ L(M₂)<br>Distinguishing string: "${cex || '(found, too long to display)'}"</div>
 <div class="card" style="margin-top:8px"><div class="card-title">Symmetric Difference Product DFA</div>
-<div style="font-family:var(--mono);font-size:.7rem;color:var(--text2)">
+<div style="font-size:.7rem;color:var(--text2)">
   Product states: ${product.states.length}<br>
   Product accept states (distinguishing): ${product.accepts.filter(id => reachable.has(id)).length}<br>
   Accept condition: exactly one of the component states is accepting
@@ -848,7 +848,7 @@ function m2RequiredCard(c, opName) {
   if (!haM2) {
     c.innerHTML += `<div class="card dec-card-empty">
   <div class="card-title">M₂ Required for ${opName}</div>
-  <div style="font-family:var(--mono);font-size:.72rem;color:var(--text2);line-height:1.8;margin-bottom:10px">
+  <div style="font-size:.72rem;color:var(--text2);line-height:1.8;margin-bottom:10px">
     First save your M₂:<br>
     1. Go to Build view and build/load your second machine<br>
     2. Come back to Algorithms and click the button below<br>
@@ -929,7 +929,7 @@ function algoClopIntersect(c) {
   ).join('');
   c.innerHTML += `<div class="card"><div class="card-title">Product DFA States (showing up to 20 reachable)</div>
 <div class="subset-table-wrap"><table class="result-table"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>
-<div style="font-family:var(--mono);font-size:.68rem;color:var(--text3);margin-top:8px">${product.states.length} total product states, ${reachableStates.length} reachable</div>
+<div style="font-size:.68rem;color:var(--text3);margin-top:8px">${product.states.length} total product states, ${reachableStates.length} reachable</div>
 </div>`;
   c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadBuiltNFAResult('intersect')">Load Result into Canvas</button></div>`;
   App._lastBuiltNFA = { key: 'intersect', machine: product };
@@ -1080,8 +1080,16 @@ function buildNFATree() {
   const s = str === 'ε' ? '' : str;
   const out = $('nfa-tree-result');
   if (!App.startId) { out.innerHTML = '<div class="card">No start state defined.</div>'; return; }
+
+  // Validate input against alphabet (Sigma)
+  const invalidChars = [...s].filter(c => !App.sigma.has(c));
+  if (invalidChars.length > 0) {
+    out.innerHTML = `<div class="card" style="border-left-color:var(--red);  font-size:.72rem;"><span style="color:var(--red);font-weight:600">Error:</span> Input sequence must be an element of Σ*. Found invalid characters: "${[...new Set(invalidChars)].join('", "')}"</div>`;
+    return;
+  }
+
   const tree = computeNFATree(s);
-  out.innerHTML = renderNFATreeHTML(tree, 0, s);
+  out.innerHTML = layoutNFATree(tree, s);
 }
 
 function computeNFATree(str) {
@@ -1112,19 +1120,92 @@ function computeNFATree(str) {
   return { label: 'Start', stateId: null, sym: '', isAccept: false, isDead: false, depth: -1, children: rootChildren, isRoot: true };
 }
 
-function renderNFATreeHTML(node, depth, fullStr) {
-  if (node.isRoot) {
-    let html = `<div style="margin-bottom:4px"><span class="ct-node">Start (ε-closure)</span></div>`;
-    node.children.forEach(ch => { html += renderNFATreeHTML(ch, depth + 1, fullStr); });
-    return html;
+function layoutNFATree(root, fullStr) {
+  const levelH = 65;
+  const positions = [];
+  let maxX = 0, maxY = 0;
+
+  // Bottom-up width calculation to prevent node overlap
+  function calcWidths(node) {
+    if (!node.children || !node.children.length) {
+      node._w = 60;
+      return node._w;
+    }
+    let sum = 0;
+    node.children.forEach(ch => { sum += calcWidths(ch) + 10; });
+    node._w = Math.max(60, sum - 10);
+    return node._w;
   }
-  const isFinal = node.depth === fullStr.length;
-  const cls = node.isDead ? 'reject' : node.isAccept && isFinal ? 'accept' : '';
-  const symlbl = node.sym ? `<span style="color:var(--gold);margin-right:6px">—${node.sym}→</span>` : '';
-  const final = isFinal ? (node.isAccept ? ' <span style="color:var(--green)">ACCEPT</span>' : ' <span style="color:var(--red)">REJECT</span>') : '';
-  let html = `<div style="margin-left:${depth * 20}px;margin-bottom:4px">${symlbl}<span class="ct-node ${cls}">${node.label}</span>${final}</div>`;
-  node.children.forEach(ch => { html += renderNFATreeHTML(ch, depth + 1, fullStr); });
-  return html;
+
+  // Top-down position assignment
+  function assign(node, x, y) {
+    node._x = x; node._y = y;
+    positions.push(node);
+    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+    if (node.children && node.children.length) {
+      let curX = x - node._w / 2;
+      node.children.forEach(ch => {
+        curX += ch._w / 2;
+        assign(ch, curX, y + levelH);
+        curX += ch._w / 2 + 10;
+      });
+    }
+  }
+
+  calcWidths(root);
+  assign(root, root._w / 2 + 30, 30);
+
+  const svgW = maxX + 60, svgH = maxY + 60;
+  let edges = '', nodes = '';
+
+  positions.forEach(node => {
+    node.children.forEach(ch => {
+      // Draw edge 
+      edges += `<line x1="${node._x}" y1="${node._y + 15}" x2="${ch._x}" y2="${ch._y - 15}" stroke="var(--border)" stroke-width="1.5" />`;
+      // Draw edge symbol
+      if (ch.sym) {
+        const mx = (node._x + ch._x) / 2;
+        const my = (node._y + 15 + ch._y - 15) / 2;
+        // background pill for text
+        edges += `<rect x="${mx - 8}" y="${my - 8}" width="16" height="16" rx="4" fill="var(--bg2)" />`;
+        edges += `<text x="${mx}" y="${my + 3}" fill="var(--gold)" font-family="var(--mono)" font-size="0.75rem" text-anchor="middle">${ch.sym}</text>`;
+      }
+    });
+
+    const isFinal = node.depth === fullStr.length;
+    let stroke = 'var(--accent)';
+    let fill = 'var(--bg2)';
+    let textCol = 'var(--text)'; // Used to be --text1, which resulted in dark text
+    let label = node.label;
+
+    if (node.isRoot) {
+      stroke = 'var(--text3)';
+      label = 'Start';
+      textCol = 'var(--text)';
+      node._r = 20;
+    } else {
+      node._r = 16;
+      if (node.isDead) { // died early
+        stroke = 'var(--red)'; fill = 'var(--bg3)'; textCol = 'var(--text3)';
+      } else if (isFinal) {
+        if (node.isAccept) { stroke = 'var(--green)'; fill = '#1a3320'; textCol = 'var(--green)'; }
+        else { stroke = 'var(--red)'; fill = '#331a1a'; textCol = 'var(--red)'; }
+      }
+    }
+
+    // Node circle
+    nodes += `<circle cx="${node._x}" cy="${node._y}" r="${node._r}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
+    // Extra ring for accept state
+    if (!node.isRoot && node.isAccept && isFinal) {
+      nodes += `<circle cx="${node._x}" cy="${node._y}" r="${node._r - 4}" fill="none" stroke="var(--green)" stroke-width="1.5"/>`;
+    }
+    // Node text
+    let displayLabel = label.length > 5 ? '..' : label;
+    if (node.isRoot) displayLabel = label;
+    nodes += `<text x="${node._x}" y="${node._y + 4}" fill="${textCol}" font-family="var(--mono)" font-size="${node.isRoot ? '0.7rem' : '0.75rem'}" text-anchor="middle">${displayLabel}</text>`;
+  });
+
+  return `<div style="overflow-x:auto"><svg viewBox="0 0 ${svgW} ${svgH}" style="min-width:${svgW}px; height:${svgH}px">${edges}${nodes}</svg></div>`;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1134,7 +1215,7 @@ function algoNDTM(c) {
   c.innerHTML = `<div class="algo-title">Nondeterministic Turing Machine</div>
 <div class="algo-sub">BFS OVER ALL COMPUTATION BRANCHES</div>
 <div class="info-box">A NDTM is a TM where δ is a relation: the same (state, symbol) pair may have multiple possible transitions. An NDTM accepts if ANY computation branch reaches an accept state. Equivalent in power to a deterministic TM.</div>`;
-  if (App.machine !== 'TM') { c.innerHTML += `<div class="card"><div style="font-family:var(--mono);font-size:.72rem;color:var(--text2)">Switch to TM mode to use this simulator.</div></div>`; return; }
+  if (App.machine !== 'TM') { c.innerHTML += `<div class="card"><div style="font-size:.72rem;color:var(--text2)">Switch to TM mode to use this simulator.</div></div>`; return; }
   // Show nondeterministic transitions (same state+symbol, multiple outputs)
   const groups = {};
   App.transitions.forEach(t => {
@@ -1147,7 +1228,7 @@ function algoNDTM(c) {
     const [sid, sym] = k.split('|');
     const sn = getState(sid)?.name || sid;
     return `<div class="step-item"><div class="step-num">ND</div><div class="step-text">δ(${sn}, '${sym}') = {${ts.map(t => `(${getState(t.to)?.name}, '${t.write}', ${t.dir})`).join('; ')}}</div></div>`;
-  }).join('') : '<div style="color:var(--text3);font-family:var(--mono);font-size:.7rem">No nondeterministic transitions found — this TM is deterministic.</div>';
+  }).join('') : '<div style="color:var(--text3);font-size:.7rem">No nondeterministic transitions found — this TM is deterministic.</div>';
   c.innerHTML += `<div class="card"><div class="card-title">Nondeterministic Transitions (same state+symbol, multiple outputs)</div><div class="step-list">${ndHtml}</div></div>`;
   c.innerHTML += `<div class="card">
 <div class="card-title">Simulate NDTM (BFS over all branches)</div>
@@ -1163,7 +1244,7 @@ function runNDTMSim() {
   const str = $('ndtm-input').value;
   const s = str === 'ε' ? '' : str;
   const out = $('ndtm-result');
-  if (!App.startId) { out.innerHTML = '<div style="color:var(--red);font-family:var(--mono)">No start state.</div>'; return; }
+  if (!App.startId) { out.innerHTML = '<div style="color:var(--red);">No start state.</div>'; return; }
   const result = simNDTM(s);
   out.innerHTML = `<div class="pump-result ${result.accepted ? 'ok' : 'fail'}">
 ${result.accepted ? 'ACCEPTED ✓' : 'REJECTED ✗'} — ${result.branches} branches explored, max depth ${result.maxDepth}
@@ -1439,12 +1520,12 @@ function algoUTM(c) {
 </div>
 <div class="card">
   <div class="card-title">Inner TM Description ⟨M⟩</div>
-  <div style="font-family:var(--mono);font-size:.65rem;color:var(--text2);margin-bottom:6px">
+  <div style="font-size:.65rem;color:var(--text2);margin-bottom:6px">
 JSON format · fields: states[], start, accept[], transitions[{from, read, write, dir, to}]<br>
 <em>write</em> defaults to <em>read</em> if omitted · <em>dir</em>: "L" or "R" · blank = "⊔"
   </div>
   <textarea id="utm-tm-desc" rows="18"
-style="width:100%;font-family:var(--mono);font-size:.68rem;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:var(--r);padding:8px;resize:vertical;outline:none;line-height:1.5;"
+style="width:100%;font-size:.68rem;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:var(--r);padding:8px;resize:vertical;outline:none;line-height:1.5;"
 placeholder="Paste TM JSON here…">${UTM_DEFAULT_TM}</textarea>
 </div>
 <div class="card" style="margin-top:8px">
@@ -1488,12 +1569,12 @@ function runUTMSim() {
   if (!descEl || !inputEl || !outEl) return;
   let tm;
   try { tm = JSON.parse(descEl.value); } catch (e) {
-    outEl.innerHTML = `<div style="color:var(--red);font-family:var(--mono);font-size:.72rem">JSON parse error: ${e.message}</div>`;
+    outEl.innerHTML = `<div style="color:var(--red);font-size:.72rem">JSON parse error: ${e.message}</div>`;
     return;
   }
   const errs = utmValidateTM(tm);
   if (errs.length) {
-    outEl.innerHTML = `<div style="color:var(--red);font-family:var(--mono);font-size:.72rem">${errs.join('<br>')}</div>`;
+    outEl.innerHTML = `<div style="color:var(--red);font-size:.72rem">${errs.join('<br>')}</div>`;
     return;
   }
   const raw = inputEl.value; const w = (raw === 'ε' || raw === '') ? '' : raw;
@@ -1583,13 +1664,13 @@ function renderUTMStep() {
   const BLANK = '⊔';
   const tapeDisplay = [...step.tape]; while (tapeDisplay.length <= step.head) tapeDisplay.push(BLANK);
   tapeEl.innerHTML = tapeDisplay.map((c, i) =>
-    `<div style="min-width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:.8rem;border:1px solid ${i === step.head ? 'var(--accent)' : 'var(--border2)'};border-radius:3px;background:${i === step.head ? 'var(--surface3)' : 'var(--surface)'};color:${i === step.head ? 'var(--accent)' : 'var(--text)'};">${c}</div>`
-  ).join('') + `<div style="min-width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:.65rem;color:var(--text3);border:1px dashed var(--border);border-radius:3px;">…</div>`;
+    `<div style="min-width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:.8rem;border:1px solid ${i === step.head ? 'var(--accent)' : 'var(--border2)'};border-radius:3px;background:${i === step.head ? 'var(--surface3)' : 'var(--surface)'};color:${i === step.head ? 'var(--accent)' : 'var(--text)'};">${c}</div>`
+  ).join('') + `<div style="min-width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:.65rem;color:var(--text3);border:1px dashed var(--border);border-radius:3px;">…</div>`;
 
   // Render trace log
   const lines = utmSteps.slice(0, utmIdx + 1).map((s, i) => {
     const cls = i === utmIdx ? (s.final === 'accept' ? 't-ok' : s.final === 'reject' ? 't-err' : s.final === 'loop' ? 't-err' : 't-step') : '';
-    return `<div class="${cls}" style="font-family:var(--mono);font-size:.68rem;padding:2px 0;">${i}: ${s.note}</div>`;
+    return `<div class="${cls}" style="font-size:.68rem;padding:2px 0;">${i}: ${s.note}</div>`;
   }).join('');
 
   const finalStep = utmSteps[utmSteps.length - 1];
@@ -1648,7 +1729,7 @@ function algoMooreTable(c) {
   }).join('');
   c.innerHTML += `<div class="card"><div class="card-title">&#948;: Q &times; &#931; &#8594; Q &nbsp;|&nbsp; &#955;: Q &#8594; &#916;</div>
 <div class="subset-table-wrap"><table class="result-table"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>
-<div style="font-family:var(--mono);font-size:.62rem;color:var(--text3);margin-top:8px">&#8594; = start state &nbsp;&nbsp; * = accept state &nbsp;&nbsp; &#955;(q) = output of state q</div></div>`;
+<div style="font-size:.62rem;color:var(--text3);margin-top:8px">&#8594; = start state &nbsp;&nbsp; * = accept state &nbsp;&nbsp; &#955;(q) = output of state q</div></div>`;
   const outSyms = [...new Set(App.states.map(s => s.output).filter(Boolean))];
   c.innerHTML += `<div class="card"><div class="card-title">Output Alphabet &#916; used</div>
 <div class="nfa-result-states">${outSyms.map(o => `<div class="state-pill">${o}</div>`).join('') || '<span style="color:var(--text3);font-size:.72rem">No outputs defined</span>'}</div></div>`;
@@ -1670,7 +1751,7 @@ function algoMoore2Mealy(c) {
   <thead><tr><th>From</th><th>Input</th><th>To</th><th style="color:var(--accent)">Output &#955;(to)</th></tr></thead>
   <tbody>${rows || '<tr><td colspan="4" class="dead-cell">No transitions</td></tr>'}</tbody>
 </table></div>
-<div style="font-family:var(--mono);font-size:.62rem;color:var(--text3);margin-top:8px">
+<div style="font-size:.62rem;color:var(--text3);margin-top:8px">
   Mealy output = &#955;<sub>Moore</sub>(destination state). State structure unchanged.<br>
   Note: The initial Moore output &#955;(q&#8320;) has no Mealy equivalent &mdash; Mealy output sequence is one symbol shorter.
 </div></div>`;
@@ -1715,7 +1796,7 @@ function algoMealyTable(c) {
   }).join('');
   c.innerHTML += `<div class="card"><div class="card-title">&#948;: Q &times; &#931; &#8594; Q &nbsp;|&nbsp; &#955;: Q &times; &#931; &#8594; &#916; &nbsp;(format: &#948;(q,a) / &#955;(q,a))</div>
 <div class="subset-table-wrap"><table class="result-table"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>
-<div style="font-family:var(--mono);font-size:.62rem;color:var(--text3);margin-top:8px">&#8594; = start state &nbsp;&nbsp; * = accept state &nbsp;&nbsp; format: next-state / output</div></div>`;
+<div style="font-size:.62rem;color:var(--text3);margin-top:8px">&#8594; = start state &nbsp;&nbsp; * = accept state &nbsp;&nbsp; format: next-state / output</div></div>`;
 }
 
 function algoMealy2Moore(c) {
@@ -1832,7 +1913,7 @@ function algoMTMTable(c) {
   const emptyCols = 2 + 2 * k;
   c.innerHTML += `<div class="card"><div class="card-title">${k}-Tape TM Transitions (${App.transitions.length} total)</div>
 <div class="subset-table-wrap"><table class="result-table"><thead>${thead}</thead><tbody>${rows || `<tr><td colspan="${emptyCols}" class="dead-cell">No transitions defined</td></tr>`}</tbody></table></div>
-<div style="font-family:var(--mono);font-size:.62rem;color:var(--text3);margin-top:8px">
+<div style="font-size:.62rem;color:var(--text3);margin-top:8px">
   T1 = primary input tape &nbsp;&nbsp; T2..Tk = work tapes &nbsp;&nbsp; format: write-symbol/direction
 </div></div>`;
   const statePills = App.states.map(s => {

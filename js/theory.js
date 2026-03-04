@@ -100,7 +100,7 @@ function renderPumpVis() {
     [...yPart].map(c => `<div class="pump-char y-part">${c}</div>`).join('') +
     [...zPart].map(c => `<div class="pump-char z-part">${c}</div>`).join('');
   const info = `x = "${xPart}" (|x|=${x})  y = "${yPart}" (|y|=${y})  z = "${zPart}"`;
-  $('pump-result').innerHTML = `<div style="font-family:var(--mono);font-size:.68rem;color:var(--text2);margin-bottom:6px">${info}</div>
+  $('pump-result').innerHTML = `<div style="font-size:.68rem;color:var(--text2);margin-bottom:6px">${info}</div>
 <div class="pump-result ok">Pumped string xy^${pi}z = "${pumped}"<br>Verify if this is in your language to test the pumping lemma.</div>`;
 }
 

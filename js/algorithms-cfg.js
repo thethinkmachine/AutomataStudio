@@ -5,7 +5,7 @@ const G = App.grammar;
 
 function renderGramSyms() {
   $('term-chips').innerHTML = [...App.sigma].map(s => `<div class="chip" style="color:var(--gold)">${s}</div>`).join('')
-    || '<span style="font-family:var(--mono);font-size:.65rem;color:var(--text3);font-style:italic">Mirror from Σ</span>';
+    || '<span style="font-size:.65rem;color:var(--text3);font-style:italic">Mirror from Σ</span>';
 }
 function addNT() {
   const v = $('nt-in').value.trim(); if (!v) return;
@@ -45,7 +45,7 @@ function renderGrammarSidebar() {
 
 function renderGrammarView() {
   const out = $('gram-output'); if (!out) return;
-  if (!G.productions.length) { out.innerHTML = '<div style="font-family:var(--mono);font-size:.72rem;color:var(--text3);font-style:italic">Add productions to see the grammar.</div>'; return; }
+  if (!G.productions.length) { out.innerHTML = '<div style="font-size:.72rem;color:var(--text3);font-style:italic">Add productions to see the grammar.</div>'; return; }
   // Group by LHS
   const byLHS = {};
   G.productions.forEach(p => { if (!byLHS[p.lhs]) byLHS[p.lhs] = []; byLHS[p.lhs].push(p.rhs); });
@@ -56,7 +56,7 @@ function renderGrammarView() {
     }).join(' | ');
     html += `<div><span class="nt">${lhs}</span> <span style="color:var(--text3)">→</span> ${colored}</div>`;
   });
-  html += `</div><div style="font-family:var(--mono);font-size:.7rem;color:var(--text2);margin-bottom:12px">G = ({${[...G.vars].join(',')}}, {${[...App.sigma].join(',')}}, R, ${G.start})</div>`;
+  html += `</div><div style="font-size:.7rem;color:var(--text2);margin-bottom:12px">G = ({${[...G.vars].join(',')}}, {${[...App.sigma].join(',')}}, R, ${G.start})</div>`;
   out.innerHTML = html;
 }
 
@@ -152,7 +152,7 @@ function runCYK() {
     // Check if start derives ε
     const acc = App._cnfProds.some(p => p.lhs === App._cnfStart && p.rhs === 'ε');
     out.innerHTML = `<div class="card"><div class="card-title">CYK Result for ε</div>
-  <div style="font-family:var(--mono);font-size:.85rem;color:${acc ? 'var(--green)' : 'var(--red)'}">
+  <div style="font-size:.85rem;color:${acc ? 'var(--green)' : 'var(--red)'}">
     ${acc ? '✓ ACCEPTED' : '✗ REJECTED'}</div></div>`;
     return;
   }
@@ -177,7 +177,7 @@ function runCYK() {
   }
   const accepted = T[0][n - 1].has(App._cnfStart);
   let html = `<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:12px">CYK Parse Table for "${str}"</h3>
-<div style="font-family:var(--mono);font-size:.85rem;margin-bottom:12px;color:${accepted ? 'var(--green)' : 'var(--red)'}">
+<div style="font-size:.85rem;margin-bottom:12px;color:${accepted ? 'var(--green)' : 'var(--red)'}">
   ${accepted ? '✓ ACCEPTED — ' + App._cnfStart + ' ∈ T[0][' + (n - 1) + ']' : '✗ REJECTED — ' + App._cnfStart + ' ∉ T[0][' + (n - 1) + ']'}</div>`;
   html += '<div style="overflow-x:auto"><table class="cyk-table"><thead><tr><th class="cyk-cell header">i\\j</th>';
   for (let j = 0; j < n; j++) html += `<th class="cyk-cell header">${j} (${s[j]})</th>`;
@@ -226,7 +226,7 @@ function runDerivation() {
     const colored = step.split('').map(c => G.vars.has(c) ? `<span class="nt">${c}</span>` : `<span class="term">${c}</span>`).join('');
     html += `<div class="deriv-step">${i > 0 ? '⇒ ' : ''}${colored}</div>`;
   });
-  if (!found) html += `<div style="font-family:var(--mono);font-size:.7rem;color:var(--text3);margin-top:8px">Derivation truncated at ${max} steps. Grammar may be recursive.</div>`;
+  if (!found) html += `<div style="font-size:.7rem;color:var(--text3);margin-top:8px">Derivation truncated at ${max} steps. Grammar may be recursive.</div>`;
   out.innerHTML = html;
 }
 
@@ -261,7 +261,7 @@ function runRightmostDerivation() {
     const colored = step.split('').map(c => G.vars.has(c) ? `<span class="nt">${c}</span>` : `<span class="term">${c}</span>`).join('');
     html += `<div class="deriv-step">${i > 0 ? '⇒<sub>rm</sub> ' : ''}${colored}</div>`;
   });
-  if (!found) html += `<div style="font-family:var(--mono);font-size:.7rem;color:var(--text3);margin-top:8px">Derivation truncated at ${max} steps.</div>`;
+  if (!found) html += `<div style="font-size:.7rem;color:var(--text3);margin-top:8px">Derivation truncated at ${max} steps.</div>`;
   out.innerHTML = html;
 }
 
@@ -352,12 +352,12 @@ function runAmbiguityCheck() {
     html += `<div class="pump-result fail">String "${str}" is NOT in the language (no derivation found up to depth 20).</div>`;
   } else if (found.length === 1) {
     html += `<div class="pump-result ok">Likely UNAMBIGUOUS for this string (only one leftmost derivation found within depth 20).</div>`;
-    html += '<h4 style="font-family:var(--mono);font-size:.75rem;margin:10px 0 6px">Derivation:</h4>';
+    html += '<h4 style="font-size:.75rem;margin:10px 0 6px">Derivation:</h4>';
     found[0].forEach((step, i) => { html += `<div class="deriv-step">${i > 0 ? '⇒ ' : ''}${step}</div>`; });
   } else {
     html += `<div class="pump-result fail">AMBIGUOUS! Found two different leftmost derivations for "${str}".</div>`;
     found.forEach((deriv, di) => {
-      html += `<h4 style="font-family:var(--mono);font-size:.75rem;margin:10px 0 6px">Derivation ${di + 1}:</h4>`;
+      html += `<h4 style="font-size:.75rem;margin:10px 0 6px">Derivation ${di + 1}:</h4>`;
       deriv.forEach((step, i) => { html += `<div class="deriv-step">${i > 0 ? '⇒ ' : ''}${step}</div>`; });
     });
   }
@@ -464,7 +464,7 @@ function runCFG2PDA() {
   trans.push({ from: 'q_loop', to: 'q_accept', symbol: 'ε', pop: 'Z', push: 'ε', id: 't' + tnum++ });
   const rows = trans.map(t => `<tr><td>${t.from}</td><td>${t.symbol}</td><td>${t.pop}</td><td>${t.push}</td><td>${t.to}</td></tr>`).join('');
   let html = `<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:12px">CFG → PDA</h3>
-<div style="font-family:var(--mono);font-size:.72rem;color:var(--text2);margin-bottom:10px;line-height:1.8">
+<div style="font-size:.72rem;color:var(--text2);margin-bottom:10px;line-height:1.8">
   States: {q_start, q_loop, q_accept} &nbsp;&nbsp; Start: q_start &nbsp;&nbsp; Accept: q_accept<br>
   Stack alphabet: {${[...G.vars].join(',')}, ${[...App.sigma].join(',')}, Z (bottom)}
 </div>
@@ -616,7 +616,7 @@ function renderCFLPumpVis() {
     [...yPart].map(c => `<div class="pump-char y-part2">${c}</div>`).join('') +
     [...zPart].map(c => `<div class="pump-char z-part2">${c}</div>`).join('');
   const info = `u="${uPart}"(${u})  v="${vPart}"(${v})  x="${xPart}"(${x})  y="${yPart}"(${y})  z="${zPart}"`;
-  resEl.innerHTML = `<div style="font-family:var(--mono);font-size:.68rem;color:var(--text2);margin-bottom:6px">${info}</div>
+  resEl.innerHTML = `<div style="font-size:.68rem;color:var(--text2);margin-bottom:6px">${info}</div>
 <div class="pump-result ok">Pumped: uv^${pi}xy^${pi}z = "${pumped}"<br>Verify i=0: "${uPart + xPart + zPart}" &nbsp; i=1: "${uPart + vPart + xPart + yPart + zPart}" &nbsp; i=2: "${uPart + vPart.repeat(2) + xPart + yPart.repeat(2) + zPart}"</div>`;
 }
 
