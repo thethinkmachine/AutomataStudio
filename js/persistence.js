@@ -24,7 +24,7 @@ function onFileLoad(e) {
 
 function loadData(d, isExample) {
   App.machine = d.machine || 'DFA'; App.sigma = new Set(d.sigma || []);
-  App.stackAlpha = new Set(d.stackAlpha || ['Z']);
+  App.stackAlpha = new Set(d.stackAlpha || [App.config.sym.stackBottom]);
   App.outputAlpha = new Set(d.outputAlpha || []);
   if (d.tapeCount) App.tapeCount = d.tapeCount;
   App.states = d.states || [];
@@ -37,6 +37,7 @@ function loadData(d, isExample) {
     App.grammar.productions = d.grammar.productions || [];
   }
   if (d.config) { App.config = { ...App.config, ...d.config }; }
+  else { migrateLegacySymbols(d); }
   if (d.cam) { App.cam = { ...d.cam }; }
 
   // Update view without confirm bypass
@@ -50,6 +51,31 @@ function loadData(d, isExample) {
   else { setTimeout(() => fitToScreen(), 50); }
 
   if (!isExample) snapshot();
+}
+
+function migrateLegacySymbols(d) {
+  const LEGACY_EPS = 'ε', LEGACY_BLANK = '⊔', LEGACY_Z0 = 'Z';
+  const newE = App.config.sym.eps, newB = App.config.sym.blank, newZ = App.config.sym.stackBottom;
+  const mapSym = s => (s === LEGACY_EPS ? newE : s === LEGACY_BLANK ? newB : s === LEGACY_Z0 ? newZ : s);
+
+  if (d.sigma) d.sigma = d.sigma.map(mapSym);
+  if (d.stackAlpha) d.stackAlpha = d.stackAlpha.map(mapSym);
+  if (d.outputAlpha) d.outputAlpha = d.outputAlpha.map(mapSym);
+  if (d.transitions) {
+    d.transitions.forEach(t => {
+      if (t.symbol !== undefined) t.symbol = mapSym(t.symbol);
+      if (t.write !== undefined) t.write = mapSym(t.write);
+      if (t.pop !== undefined) t.pop = mapSym(t.pop);
+      if (t.push !== undefined) t.push = mapSym(t.push);
+      if (t.tapeSyms) t.tapeSyms = t.tapeSyms.map(mapSym);
+      if (t.tapeWrites) t.tapeWrites = t.tapeWrites.map(mapSym);
+    });
+  }
+  if (d.grammar && d.grammar.productions) {
+    d.grammar.productions.forEach(p => {
+      p.rhs = p.rhs.split('').map(mapSym).join('');
+    });
+  }
 }
 
 
@@ -84,7 +110,7 @@ function loadExample() {
       .then(data => {
         performClear();
         loadData(data, true);
-        showStatus(`Example: ${m} loaded`);
+        showStatus(`Example: ${App.machine} loaded`);
         snapshot();
       })
       .catch(err => {
@@ -95,7 +121,7 @@ function loadExample() {
 
   if (App.states.length > 0) {
     $('confirm-title').textContent = 'Load Example?';
-    $('confirm-msg').textContent = `Loading the ${m} example will clear your current workspace. Continue?`;
+    $('confirm-msg').textContent = `Loading the ${App.machine} example will clear your current workspace. Continue?`;
     const btn = $('confirm-action-btn');
     btn.onclick = () => {
       executeLoad();

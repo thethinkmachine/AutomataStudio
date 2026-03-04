@@ -91,7 +91,7 @@ function fitToScreen() {
   if (!App.states.length) return;
   const w = $('canvas-wrap'); if (!w) return;
   const cw = w.clientWidth, ch = w.clientHeight;
-  const R = 34; // state radius + some padding
+  const R = App.config.radius + 4; // state radius + some padding
   const pad = 90;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   App.states.forEach(s => {
@@ -162,7 +162,7 @@ function renderMinimap() {
   canvas._mmScale = mmScale; canvas._mmOffX = mmOffX; canvas._mmOffY = mmOffY;
   canvas._mmMinX = minX; canvas._mmMinY = minY;
   // Draw transitions
-  ctx.strokeStyle = 'rgba(100,130,200,0.25)';
+  ctx.strokeStyle = App.config.export.edgeStroke;
   ctx.lineWidth = 1;
   App.transitions.forEach(tr => {
     const fs = App.states.find(s => s.id === tr.from);
@@ -180,7 +180,7 @@ function renderMinimap() {
     const sr = Math.max(2, R_PAD * mmScale * 0.7);
     ctx.beginPath();
     ctx.arc(sx, sy, sr, 0, Math.PI * 2);
-    ctx.fillStyle = s.accept ? 'rgba(105,240,174,0.6)' : 'rgba(79,195,247,0.4)';
+    ctx.fillStyle = App.accepts.has(s.id) ? App.config.export.accStroke : App.config.export.actStroke;
     ctx.fill();
   });
   // Draw viewport rect
@@ -274,9 +274,9 @@ function confirmSettings() {
   c.autoSpeed = parseInt($('set-auto-speed').value) || 500;
   c.radius = parseInt($('set-radius').value) || 30;
   c.zoom.step = parseFloat($('set-zoom-step').value) || 0.1;
-  c.sym.eps = $('set-sym-eps').value || 'ε';
-  c.sym.blank = $('set-sym-blank').value || '⊔';
-  c.sym.stackBottom = $('set-sym-z0').value || 'Z';
+  c.sym.eps = $('set-sym-eps').value || App.config.sym.eps;
+  c.sym.blank = $('set-sym-blank').value || App.config.sym.blank;
+  c.sym.stackBottom = $('set-sym-z0').value || App.config.sym.stackBottom;
 
   // Apply visual changes
   R = c.radius;

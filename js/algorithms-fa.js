@@ -331,7 +331,7 @@ function parseRE(re) {
   function parseAtom() {
     if (pos >= re.length) throw new Error('Unexpected end');
     if (re[pos] === '(') { pos++; const r = parseUnion(); if (re[pos] !== ')') throw new Error("Expected ')'"); pos++; return r; }
-    if (re[pos] === 'ε') { pos++; return { t: 'eps' }; }
+    if (re[pos] === App.config.sym.eps) { pos++; return { t: 'eps' }; }
     if (re[pos] === '[') {
       pos++; const neg = re[pos] === '^' ? (pos++, true) : false; const chars = new Set();
       while (pos < re.length && re[pos] !== ']') {
@@ -353,7 +353,7 @@ function parseRE(re) {
 function buildThompson(ast) {
   switch (ast.t) {
     case 'lit': { const s = tnew(), e = tnew(); return { states: [s, e], trans: [{ from: s, sym: ast.ch, to: e }], start: s, accept: e }; }
-    case 'eps': { const s = tnew(), e = tnew(); return { states: [s, e], trans: [{ from: s, sym: 'ε', to: e }], start: s, accept: e }; }
+    case 'eps': { const s = tnew(), e = tnew(); return { states: [s, e], trans: [{ from: s, sym: App.config.sym.eps, to: e }], start: s, accept: e }; }
     case 'class': {
       const chars = ast.neg ? getAllChars().filter(c => !ast.chars.includes(c)) : ast.chars;
       if (chars.length === 0) throw new Error('Empty character class');
@@ -380,9 +380,9 @@ function buildThompson(ast) {
       if (!result) return buildThompson({ t: 'eps' });
       return result;
     }
-    case 'cat': { const L = buildThompson(ast.l), R = buildThompson(ast.r); return { states: [...L.states, ...R.states], trans: [...L.trans, { from: L.accept, sym: 'ε', to: R.start }, ...R.trans], start: L.start, accept: R.accept }; }
-    case 'union': { const L = buildThompson(ast.l), R = buildThompson(ast.r), s = tnew(), e = tnew(); return { states: [s, ...L.states, ...R.states, e], trans: [{ from: s, sym: 'ε', to: L.start }, { from: s, sym: 'ε', to: R.start }, ...L.trans, ...R.trans, { from: L.accept, sym: 'ε', to: e }, { from: R.accept, sym: 'ε', to: e }], start: s, accept: e }; }
-    case 'star': { const I = buildThompson(ast.c), s = tnew(), e = tnew(); return { states: [s, ...I.states, e], trans: [{ from: s, sym: 'ε', to: I.start }, { from: s, sym: 'ε', to: e }, { from: I.accept, sym: 'ε', to: I.start }, { from: I.accept, sym: 'ε', to: e }, ...I.trans], start: s, accept: e }; }
+    case 'cat': { const L = buildThompson(ast.l), R = buildThompson(ast.r); return { states: [...L.states, ...R.states], trans: [...L.trans, { from: L.accept, sym: App.config.sym.eps, to: R.start }, ...R.trans], start: L.start, accept: R.accept }; }
+    case 'union': { const L = buildThompson(ast.l), R = buildThompson(ast.r), s = tnew(), e = tnew(); return { states: [s, ...L.states, ...R.states, e], trans: [{ from: s, sym: App.config.sym.eps, to: L.start }, { from: s, sym: App.config.sym.eps, to: R.start }, ...L.trans, ...R.trans, { from: L.accept, sym: App.config.sym.eps, to: e }, { from: R.accept, sym: App.config.sym.eps, to: e }], start: s, accept: e }; }
+    case 'star': { const I = buildThompson(ast.c), s = tnew(), e = tnew(); return { states: [s, ...I.states, e], trans: [{ from: s, sym: App.config.sym.eps, to: I.start }, { from: s, sym: App.config.sym.eps, to: e }, { from: I.accept, sym: App.config.sym.eps, to: I.start }, { from: I.accept, sym: App.config.sym.eps, to: e }, ...I.trans], start: s, accept: e }; }
     case 'plus': { return buildThompson({ t: 'cat', l: JSON.parse(JSON.stringify(ast.c)), r: { t: 'star', c: JSON.parse(JSON.stringify(ast.c)) } }); }
     case 'opt': { return buildThompson({ t: 'union', l: ast.c, r: { t: 'eps' } }); }
     default: throw new Error('Unknown AST node: ' + ast.t);
@@ -412,7 +412,7 @@ function loadThompsonNFA() {
     App.transitions.push({ id: 't' + (i + 1), from: nameMap[t.from], to: nameMap[t.to], symbol: t.sym });
   });
   // Update sigma
-  d.trans.forEach(t => { if (t.sym !== 'ε') App.sigma.add(t.sym); });
+  d.trans.forEach(t => { if (t.sym !== App.config.sym.eps) App.sigma.add(t.sym); });
   renderSigma(); renderAll(); updateSidebar(); updateRPanel();
   setView('build'); showStatus('NFA loaded from Thompson\'s construction!');
 }
@@ -529,7 +529,7 @@ function algoEquiv(c) {
 }
 function testEquivStr() {
   const str = $('eq-str').value.trim();
-  const s = str === 'ε' ? '' : str;
+  const s = str === App.config.sym.eps ? '' : str;
   const accepted = App.machine === 'DFA' ? testDFA(s) : testNFA(s);
   $('eq-result').innerHTML = `<div style="font-size:.75rem;color:${accepted ? 'var(--green)' : 'var(--red)'}">
 "${str}" is ${accepted ? 'ACCEPTED ✓' : 'REJECTED ✗'} by the current automaton.</div>`;
@@ -987,14 +987,14 @@ function buildNFAStar(machine) {
   const accepts = [newStart.id];
   const transitions = machine.transitions.map(t => ({ ...t, id: prefix + t.id, from: prefix + t.from, to: prefix + t.to }));
   // ε from new start to original start
-  transitions.push({ id: 'star_e1', from: newStart.id, to: prefix + machine.startId, symbol: 'ε' });
+  transitions.push({ id: 'star_e1', from: newStart.id, to: prefix + machine.startId, symbol: App.config.sym.eps });
   // ε from each original accept back to original start (for looping) (#11)
   machine.accepts.forEach((id, i) => {
-    transitions.push({ id: `star_loop_${i}`, from: prefix + id, to: prefix + machine.startId, symbol: 'ε' });
+    transitions.push({ id: `star_loop_${i}`, from: prefix + id, to: prefix + machine.startId, symbol: App.config.sym.eps });
   });
   // ε from each original accept to new start (to reach the accept state) (#11)
   machine.accepts.forEach((id, i) => {
-    transitions.push({ id: `star_acc_${i}`, from: prefix + id, to: newStart.id, symbol: 'ε' });
+    transitions.push({ id: `star_acc_${i}`, from: prefix + id, to: newStart.id, symbol: App.config.sym.eps });
   });
   return { states, transitions, startId: newStart.id, accepts, sigma: machine.sigma };
 }
@@ -1014,7 +1014,7 @@ function buildNFAReversal(machine) {
     const superStart = { id: 'rev_super_start', name: 'q_r' };
     states.unshift(superStart);
     machine.accepts.forEach((id, i) => {
-      transitions.push({ id: `rev_es_${i}`, from: superStart.id, to: prefix + id, symbol: 'ε' });
+      transitions.push({ id: `rev_es_${i}`, from: superStart.id, to: prefix + id, symbol: App.config.sym.eps });
     });
     startId = superStart.id;
     newAccepts = [prefix + machine.startId];
@@ -1030,8 +1030,8 @@ function buildNFAUnion(m1, m2) {
     ...m2.states.map(s => ({ id: p2 + s.id, name: 'M2_' + s.name })),
   ];
   const transitions = [
-    { id: 'u_e1', from: 'union_start', to: p1 + m1.startId, symbol: 'ε' },
-    { id: 'u_e2', from: 'union_start', to: p2 + m2.startId, symbol: 'ε' },
+    { id: 'u_e1', from: 'union_start', to: p1 + m1.startId, symbol: App.config.sym.eps },
+    { id: 'u_e2', from: 'union_start', to: p2 + m2.startId, symbol: App.config.sym.eps },
     ...m1.transitions.map(t => ({ ...t, id: p1 + t.id, from: p1 + t.from, to: p1 + t.to })),
     ...m2.transitions.map(t => ({ ...t, id: p2 + t.id, from: p2 + t.from, to: p2 + t.to })),
   ];
@@ -1052,7 +1052,7 @@ function buildNFAConcat(m1, m2) {
     ...m1.transitions.map(t => ({ ...t, id: p1 + t.id, from: p1 + t.from, to: p1 + t.to })),
     ...m2.transitions.map(t => ({ ...t, id: p2 + t.id, from: p2 + t.from, to: p2 + t.to })),
     // ε from each M1 accept to M2 start
-    ...m1.accepts.map((id, i) => ({ id: `c_e_${i}`, from: p1 + id, to: p2 + m2.startId, symbol: 'ε' })),
+    ...m1.accepts.map((id, i) => ({ id: `c_e_${i}`, from: p1 + id, to: p2 + m2.startId, symbol: App.config.sym.eps })),
   ];
   const accepts = m2.accepts.map(id => p2 + id);
   return { states, transitions, startId: p1 + m1.startId, accepts, sigma: [...new Set([...(m1.sigma || []), ...(m2.sigma || [])])] };
@@ -1077,7 +1077,7 @@ function algoNFATree(c) {
 
 function buildNFATree() {
   const str = $('nfa-tree-input').value;
-  const s = str === 'ε' ? '' : str;
+  const s = str === App.config.sym.eps ? '' : str;
   const out = $('nfa-tree-result');
   if (!App.startId) { out.innerHTML = '<div class="card">No start state defined.</div>'; return; }
 
@@ -1242,7 +1242,7 @@ function algoNDTM(c) {
 
 function runNDTMSim() {
   const str = $('ndtm-input').value;
-  const s = str === 'ε' ? '' : str;
+  const s = str === App.config.sym.eps ? '' : str;
   const out = $('ndtm-result');
   if (!App.startId) { out.innerHTML = '<div style="color:var(--red);">No start state.</div>'; return; }
   const result = simNDTM(s);
@@ -1265,7 +1265,7 @@ function simNDTM(str) {
     const cfg = queue.shift();
     const { state, tape, head } = cfg;
     branches++;
-    const t = [...tape]; while (t.length <= head) t.push('⊔');
+    const t = [...tape]; while (t.length <= head) t.push(App.config.sym.blank);
     const sym = t[head];
     const depth = cfg.depth || 0;
     maxDepth = Math.max(maxDepth, depth);
@@ -1577,7 +1577,7 @@ function runUTMSim() {
     outEl.innerHTML = `<div style="color:var(--red);font-size:.72rem">${errs.join('<br>')}</div>`;
     return;
   }
-  const raw = inputEl.value; const w = (raw === 'ε' || raw === '') ? '' : raw;
+  const raw = inputEl.value; const w = (raw === App.config.sym.eps || raw === '') ? '' : raw;
   utmSteps = simUTM(tm, w);
   utmIdx = 0;
   renderUTMStep();
@@ -1607,14 +1607,14 @@ function simUTM(tm, w) {
   // Build transition map indexed by from+read
   const delta = {};
   tm.transitions.forEach(tr => {
-    const key = tr.from + '\x00' + (tr.read === '' ? '⊔' : tr.read);
-    delta[key] = { write: tr.write !== undefined ? (tr.write === '' ? '⊔' : tr.write) : (tr.read === '' ? '⊔' : tr.read), dir: tr.dir, to: tr.to };
+    const key = tr.from + '\x00' + (tr.read === '' ? App.config.sym.blank : tr.read);
+    delta[key] = { write: tr.write !== undefined ? (tr.write === '' ? App.config.sym.blank : tr.write) : (tr.read === '' ? App.config.sym.blank : tr.read), dir: tr.dir, to: tr.to };
   });
 
   let tape = w.length ? w.split('') : [];
   let head = 0, state = tm.start;
-  const BLANK = '⊔';
-  const MAX_STEPS = 2000;
+  const BLANK = App.config.sym.blank;
+  const MAX_STEPS = App.config.maxTmSteps;
 
   for (let i = 0; i < MAX_STEPS; i++) {
     while (tape.length <= head) tape.push(BLANK);
@@ -1661,7 +1661,7 @@ function renderUTMStep() {
   const step = utmSteps[utmIdx];
 
   // Render tape
-  const BLANK = '⊔';
+  const BLANK = App.config.sym.blank;
   const tapeDisplay = [...step.tape]; while (tapeDisplay.length <= step.head) tapeDisplay.push(BLANK);
   tapeEl.innerHTML = tapeDisplay.map((c, i) =>
     `<div style="min-width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:.8rem;border:1px solid ${i === step.head ? 'var(--accent)' : 'var(--border2)'};border-radius:3px;background:${i === step.head ? 'var(--surface3)' : 'var(--surface)'};color:${i === step.head ? 'var(--accent)' : 'var(--text)'};">${c}</div>`

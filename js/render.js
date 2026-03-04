@@ -207,5 +207,14 @@ function deriveRegex() {
 }
 function reUnion(a, b) { if (!a) return b; if (!b) return a; if (a === b) return a; return `${a} | ${b}`; }
 function reConcat(a, b) { if (!a || !b) return a || b || ''; if (a === App.config.sym.eps) return b; if (b === App.config.sym.eps) return a; const pa = a.includes(' | '), pb = b.includes(' | '); return `${pa ? '(' + a + ')' : a}${pb ? '(' + b + ')' : b}`; }
-function simplifyRE(r) { if (!r) return '∅'; return r.replace(/\(ε\)\*/g, 'ε').replace(/ε\*/g, 'ε').replace(/\(([a-zA-Z0-9])\)\*/g, '$1*').replace(/\(([a-zA-Z0-9])\)/g, '$1'); }
+function simplifyRE(r) {
+  if (!r) return '∅';
+  const e = App.config.sym.eps;
+  const escE = e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re1 = new RegExp('\\(' + escE + '\\)\\*', 'g');
+  const re2 = new RegExp(escE + '\\*', 'g');
+  return r.replace(re1, e).replace(re2, e)
+    .replace(/\(([a-zA-Z0-9])\)\*/g, '$1*')
+    .replace(/\(([a-zA-Z0-9])\)/g, '$1');
+}
 

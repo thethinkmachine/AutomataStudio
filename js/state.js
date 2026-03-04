@@ -19,7 +19,7 @@ const App = {
   machine: 'DFA', tool: 'move', view: 'build',
   sigma: new Set(['a', 'b']),
   outputAlpha: new Set(['0', '1']),
-  stackAlpha: new Set(['Z', 'A', 'B']),
+  stackAlpha: new Set(['Z']),
   tapeCount: 2,
   states: [], transitions: [],
   startId: null, accepts: new Set(),

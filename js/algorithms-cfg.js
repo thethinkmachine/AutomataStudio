@@ -52,7 +52,7 @@ function renderGrammarView() {
   let html = '<div class="grammar-display">';
   Object.entries(byLHS).forEach(([lhs, rhss]) => {
     const colored = rhss.map(rhs => {
-      return rhs.split('').map(c => G.vars.has(c) ? `<span class="nt">${c}</span>` : c === 'ε' ? `<span class="eps">ε</span>` : `<span class="t">${c}</span>`).join('');
+      return rhs.split('').map(c => G.vars.has(c) ? `<span class="nt">${c}</span>` : c === App.config.sym.eps ? `<span class="eps">${App.config.sym.eps}</span>` : `<span class="t">${c}</span>`).join('');
     }).join(' | ');
     html += `<div><span class="nt">${lhs}</span> <span style="color:var(--text3)">→</span> ${colored}</div>`;
   });
@@ -76,12 +76,12 @@ function runCNF() {
 
   // Step 2: Eliminate ε-productions (find nullable)
   const nullable = new Set();
-  prods.forEach(p => { if (p.rhs === 'ε') nullable.add(p.lhs); });
+  prods.forEach(p => { if (p.rhs === App.config.sym.eps) nullable.add(p.lhs); });
   let changed = true;
   while (changed) { changed = false; prods.forEach(p => { if (!nullable.has(p.lhs) && p.rhs.split('').every(c => nullable.has(c) || !c)) { nullable.add(p.lhs); changed = true; } }); }
   const prods2 = [], seen2 = new Set();
   prods.forEach(p => {
-    if (p.rhs === 'ε') { if (p.lhs === S0) prods2.push(p); return; }
+    if (p.rhs === App.config.sym.eps) { if (p.lhs === S0) prods2.push(p); return; }
     // Generate all subsets of nullable positions
     const chars = [...p.rhs];
     const nullableIdx = chars.map((c, i) => nullable.has(c) ? i : -1).filter(i => i >= 0);
@@ -93,7 +93,7 @@ function runCNF() {
       });
       const r = kept.join('');
       if (!r) { // all omitted → ε, only allow for new start
-        if (p.lhs === S0) { const k2 = p.lhs + '→ε'; if (!seen2.has(k2)) { seen2.add(k2); prods2.push({ lhs: p.lhs, rhs: 'ε' }); } }
+        if (p.lhs === S0) { const k2 = p.lhs + '→' + App.config.sym.eps; if (!seen2.has(k2)) { seen2.add(k2); prods2.push({ lhs: p.lhs, rhs: App.config.sym.eps }); } }
         continue;
       }
       const key = p.lhs + '→' + r;
@@ -147,11 +147,11 @@ function runCYK() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   if (!App._cnfProds) { showStatus('Run CNF conversion first'); return; }
-  const s = str === 'ε' ? '' : str;
+  const s = str === App.config.sym.eps ? '' : str;
   if (s.length === 0) {
     // Check if start derives ε
-    const acc = App._cnfProds.some(p => p.lhs === App._cnfStart && p.rhs === 'ε');
-    out.innerHTML = `<div class="card"><div class="card-title">CYK Result for ε</div>
+    const acc = App._cnfProds.some(p => p.lhs === App._cnfStart && p.rhs === App.config.sym.eps);
+    out.innerHTML = `<div class="card"><div class="card-title">CYK Result for ${App.config.sym.eps}</div>
   <div style="font-size:.85rem;color:${acc ? 'var(--green)' : 'var(--red)'}">
     ${acc ? '✓ ACCEPTED' : '✗ REJECTED'}</div></div>`;
     return;
@@ -310,7 +310,7 @@ function layoutParseTree(root) {
     } else {
       nodes += `<circle class="pt-node-t" cx="${node._x}" cy="${node._y}" r="13"/>`;
     }
-    nodes += `<text class="pt-text" x="${node._x}" y="${node._y}">${node.sym === 'ε' ? 'ε' : node.sym}</text>`;
+    nodes += `<text class="pt-text" x="${node._x}" y="${node._y}">${node.sym === App.config.sym.eps ? App.config.sym.eps : node.sym}</text>`;
   });
   return `<svg class="parse-tree-svg" viewBox="0 0 ${svgW} ${svgH}" style="width:100%;max-width:${svgW}px">${edges}${nodes}</svg>`;
 }
@@ -320,7 +320,7 @@ function runAmbiguityCheck() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   if (!str) { showStatus('Enter a string to check ambiguity'); return; }
-  const s = str === 'ε' ? '' : str;
+  const s = str === App.config.sym.eps ? '' : str;
   G.start = $('start-sym').value || G.start;
   // BFS for two different leftmost derivations
   const found = [];
@@ -337,7 +337,7 @@ function runAmbiguityCheck() {
     for (let i = 0; i < sent.length; i++) {
       if (G.vars.has(sent[i])) {
         G.productions.filter(p => p.lhs === sent[i]).forEach(p => {
-          const nxt = sent.slice(0, i) + (p.rhs === 'ε' ? '' : p.rhs) + sent.slice(i + 1);
+          const nxt = sent.slice(0, i) + (p.rhs === App.config.sym.eps ? '' : p.rhs) + sent.slice(i + 1);
           if (!visited.has(nxt + '|' + steps.length) && steps.length < 20) {
             visited.add(nxt + '|' + steps.length);
             queue.push({ sent: nxt, steps: [...steps, nxt] });
@@ -377,7 +377,7 @@ function runUselessElim() {
     changed = false;
     prods.forEach(p => {
       if (!productive.has(p.lhs)) {
-        const rhs = p.rhs === 'ε' ? [] : p.rhs.split('');
+        const rhs = p.rhs === App.config.sym.eps ? [] : p.rhs.split('');
         if (rhs.every(c => productive.has(c))) {
           productive.add(p.lhs); changed = true;
         }
@@ -386,7 +386,7 @@ function runUselessElim() {
   }
   const nonproductive = [...G.vars].filter(v => !productive.has(v));
   // Remove non-productive
-  let prods2 = prods.filter(p => productive.has(p.lhs) && (p.rhs === 'ε' || p.rhs.split('').every(c => productive.has(c))));
+  let prods2 = prods.filter(p => productive.has(p.lhs) && (p.rhs === App.config.sym.eps || p.rhs.split('').every(c => productive.has(c))));
   // Step 2: Find reachable variables from start
   const reachable = new Set([G.start]);
   changed = true;
@@ -394,7 +394,7 @@ function runUselessElim() {
     changed = false;
     prods2.forEach(p => {
       if (reachable.has(p.lhs)) {
-        (p.rhs === 'ε' ? [] : p.rhs.split('').filter(c => G.vars.has(c))).forEach(v => {
+        (p.rhs === App.config.sym.eps ? [] : p.rhs.split('').filter(c => G.vars.has(c))).forEach(v => {
           if (!reachable.has(v)) { reachable.add(v); changed = true; }
         });
       }
@@ -454,19 +454,19 @@ function runCFG2PDA() {
   // From q_loop: to q_accept when stack symbol is bottom and input empty (ε, Z/ε)
   const trans = [];
   let tnum = 1;
-  trans.push({ from: 'q_start', to: 'q_loop', symbol: 'ε', pop: 'Z', push: G.start + 'Z', id: 't' + tnum++ });
+  trans.push({ from: 'q_start', to: 'q_loop', symbol: App.config.sym.eps, pop: App.config.sym.stackBottom, push: G.start + App.config.sym.stackBottom, id: 't' + tnum++ });
   G.productions.forEach(p => {
-    trans.push({ from: 'q_loop', to: 'q_loop', symbol: 'ε', pop: p.lhs, push: p.rhs === 'ε' ? 'ε' : p.rhs, id: 't' + tnum++ });
+    trans.push({ from: 'q_loop', to: 'q_loop', symbol: App.config.sym.eps, pop: p.lhs, push: p.rhs === App.config.sym.eps ? App.config.sym.eps : p.rhs, id: 't' + tnum++ });
   });
   [...App.sigma].forEach(a => {
-    trans.push({ from: 'q_loop', to: 'q_loop', symbol: a, pop: a, push: 'ε', id: 't' + tnum++ });
+    trans.push({ from: 'q_loop', to: 'q_loop', symbol: a, pop: a, push: App.config.sym.eps, id: 't' + tnum++ });
   });
-  trans.push({ from: 'q_loop', to: 'q_accept', symbol: 'ε', pop: 'Z', push: 'ε', id: 't' + tnum++ });
+  trans.push({ from: 'q_loop', to: 'q_accept', symbol: App.config.sym.eps, pop: App.config.sym.stackBottom, push: App.config.sym.eps, id: 't' + tnum++ });
   const rows = trans.map(t => `<tr><td>${t.from}</td><td>${t.symbol}</td><td>${t.pop}</td><td>${t.push}</td><td>${t.to}</td></tr>`).join('');
   let html = `<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:12px">CFG → PDA</h3>
 <div style="font-size:.72rem;color:var(--text2);margin-bottom:10px;line-height:1.8">
   States: {q_start, q_loop, q_accept} &nbsp;&nbsp; Start: q_start &nbsp;&nbsp; Accept: q_accept<br>
-  Stack alphabet: {${[...G.vars].join(',')}, ${[...App.sigma].join(',')}, Z (bottom)}
+  Stack alphabet: {${[...G.vars].join(',')}, ${[...App.sigma].join(',')}, ${App.config.sym.stackBottom} (bottom)}
 </div>
 <div style="overflow-x:auto"><table class="result-table">
 <thead><tr><th>From</th><th>Read</th><th>Pop</th><th>Push</th><th>To</th></tr></thead>
@@ -508,13 +508,13 @@ function runCFGIsEmpty() {
   G.start = $('start-sym').value || G.start;
   const terms = [...App.sigma];
   const productive = new Set(terms);
-  productive.add('ε');
+  productive.add(App.config.sym.eps);
   let changed = true;
   while (changed) {
     changed = false;
     G.productions.forEach(p => {
       if (!productive.has(p.lhs)) {
-        const rhs = p.rhs === 'ε' ? [] : p.rhs.split('');
+        const rhs = p.rhs === App.config.sym.eps ? [] : p.rhs.split('');
         if (rhs.every(c => productive.has(c))) { productive.add(p.lhs); changed = true; }
       }
     });
@@ -536,16 +536,16 @@ function runCFGIsFinite() {
   const deps = {};
   [...G.vars].forEach(v => deps[v] = new Set());
   G.productions.forEach(p => {
-    if (p.rhs !== 'ε') { p.rhs.split('').filter(c => G.vars.has(c)).forEach(v => deps[p.lhs].add(v)); }
+    if (p.rhs !== App.config.sym.eps) { p.rhs.split('').filter(c => G.vars.has(c)).forEach(v => deps[p.lhs].add(v)); }
   });
   // Find productive variables
-  const terms = [...App.sigma]; const productive = new Set(terms); productive.add('ε');
+  const terms = [...App.sigma]; const productive = new Set(terms); productive.add(App.config.sym.eps);
   let changed = true;
   while (changed) {
     changed = false;
     G.productions.forEach(p => {
       if (!productive.has(p.lhs)) {
-        const rhs = p.rhs === 'ε' ? [] : p.rhs.split('');
+        const rhs = p.rhs === App.config.sym.eps ? [] : p.rhs.split('');
         if (rhs.every(c => productive.has(c))) { productive.add(p.lhs); changed = true; }
       }
     });
