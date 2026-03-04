@@ -19,8 +19,26 @@ document.addEventListener('keydown', e => {
   if (e.key === 'd' || e.key === 'D') setTool('del');
   if (e.key === 'x' || e.key === 'X') clearAll();
   if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); }
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (App.selectedStates.size || App.selectedTransitions.size) {
+      e.preventDefault();
+      snapshot();
+      App.selectedStates.forEach(id => {
+        App.states = App.states.filter(s => s.id !== id);
+        App.transitions = App.transitions.filter(t => t.from !== id && t.to !== id);
+        if (App.startId === id) App.startId = null;
+        App.accepts.delete(id);
+      });
+      App.selectedTransitions.forEach(tid => {
+        App.transitions = App.transitions.filter(t => t.id !== tid);
+      });
+      App.selectedStates.clear();
+      App.selectedTransitions.clear();
+      renderAll(); updateSidebar(); updateRPanel();
+    }
+  }
   if (e.key === 'Escape') {
-    const anyModalOpen = document.querySelector('.modal[style*="flex"]');
+    const anyModalOpen = document.querySelector('.overlay.show');
     if (anyModalOpen) {
       closeModal('trans-modal'); closeModal('state-modal'); closeModal('help-modal');
     } else {
@@ -56,7 +74,9 @@ function zoomIn() {
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
+  $('cam-g').classList.add('cam-smooth');
   applyCamera();
+  setTimeout(() => $('cam-g').classList.remove('cam-smooth'), 250);
 }
 
 function zoomOut() {
@@ -68,13 +88,24 @@ function zoomOut() {
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
+  $('cam-g').classList.add('cam-smooth');
   applyCamera();
+  setTimeout(() => $('cam-g').classList.remove('cam-smooth'), 250);
 }
 
 function setZoomFromInput(val) {
   const num = parseFloat(val.replace('%', ''));
   if (isNaN(num)) {
     applyCamera(); return;
+  }
+  if (!App.states.length) {
+    const w = $('canvas-wrap'); if (!w) return;
+    const mx = w.clientWidth / 2, my = w.clientHeight / 2;
+    App.cam = { x: mx, y: my, z: 1 };
+    $('cam-g').classList.add('cam-smooth');
+    applyCamera();
+    setTimeout(() => $('cam-g').classList.remove('cam-smooth'), 250);
+    return;
   }
   const w = $('canvas-wrap'); if (!w) return;
   const cfg = App.config.zoom;
@@ -84,7 +115,9 @@ function setZoomFromInput(val) {
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
+  $('cam-g').classList.add('cam-smooth');
   applyCamera();
+  setTimeout(() => $('cam-g').classList.remove('cam-smooth'), 250);
 }
 
 function fitToScreen() {
@@ -108,7 +141,9 @@ function fitToScreen() {
   App.cam.x = cw / 2 - cx * z;
   App.cam.y = ch / 2 - cy * z;
   App.cam.z = z;
+  $('cam-g').classList.add('cam-smooth');
   applyCamera();
+  setTimeout(() => $('cam-g').classList.remove('cam-smooth'), 250);
   showStatus('Fit to screen');
 }
 
@@ -215,6 +250,16 @@ function minimapNavigate(e) {
   App.cam.x = w.clientWidth / 2 - worldX * App.cam.z;
   App.cam.y = w.clientHeight / 2 - worldY * App.cam.z;
   applyCamera();
+}
+
+function setTool(t) {
+  App.tool = t;
+  const w = $('canvas-wrap');
+  if (w) {
+    const cursors = { pointer: 'default', move: 'grab', state: 'crosshair', trans: 'crosshair', del: 'not-allowed' };
+    w.style.cursor = cursors[t] || 'default';
+    w.setAttribute('data-tool', t);
+  }
 }
 
 function toggleSidebar() {

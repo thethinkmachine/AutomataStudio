@@ -23,6 +23,8 @@ const App = {
   tapeCount: 2,
   states: [], transitions: [],
   startId: null, accepts: new Set(),
+  selectedStates: new Set(),
+  selectedTransitions: new Set(),
   stateN: 0, transN: 0,
   // Configuration constants
   config: {
@@ -32,6 +34,7 @@ const App = {
     radius: 30,
     zoom: { min: 0.2, max: 3, step: 0.1 },
     layout: { minRadius: 80, nodeSpacing: 35 },
+    gridSnap: 20,
     sym: { eps: 'ε', any: 'Σ', blank: '⊔', stackBottom: 'Z' },
     render: {
       startArrowLen: 28,

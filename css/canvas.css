@@ -1,6 +1,6 @@
 /* ─── SVG STATES ─── */
 .sn {
-  cursor: pointer;
+  cursor: inherit;
 }
 
 .sn circle.bd {
@@ -57,11 +57,33 @@
   pointer-events: none;
 }
 
+.edge-g {
+  cursor: pointer;
+}
+
 .tarr {
   stroke: var(--text3);
   stroke-width: 1.5;
   fill: none;
   marker-end: url(#arr);
+  pointer-events: none;
+  transition: stroke 0.15s;
+}
+
+.tarr-hit {
+  stroke: transparent;
+  stroke-width: 16;
+  fill: none;
+  pointer-events: stroke;
+}
+
+.edge-g:hover .tarr {
+  stroke: var(--accent);
+}
+
+.edge-g.sel-t .tarr {
+  stroke: var(--purple);
+  stroke-width: 2.5;
 }
 
 .tarr.act-t {
@@ -76,6 +98,48 @@
   pointer-events: none;
 }
 
+
+/* ─── CANVAS INTERACTIONS ─── */
+[data-tool="pointer"] .sn {
+  cursor: default;
+}
+
+[data-tool="move"] .sn {
+  cursor: grab;
+}
+
+[data-tool="move"].panning .sn,
+[data-tool="move"].panning #svgCanvas {
+  cursor: grabbing !important;
+}
+
+[data-tool="state"] .sn {
+  cursor: default;
+}
+
+[data-tool="trans"] .sn {
+  cursor: crosshair;
+}
+
+[data-tool="del"] .sn {
+  cursor: not-allowed;
+}
+
+[data-tool="del"] .edge-g {
+  cursor: not-allowed;
+}
+
+
+.marquee-rect {
+  fill: rgba(79, 195, 247, 0.1);
+  stroke: var(--accent);
+  stroke-dasharray: 4, 4;
+  pointer-events: none;
+}
+
+.cam-smooth {
+  transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1);
+}
 
 /* ─── CANVAS TOOLBOX ─── */
 .canvas-toolbox {
@@ -93,6 +157,7 @@
   padding: 6px;
   box-shadow: var(--shadow-md);
 }
+
 .toolbox-btn {
   display: flex;
   flex-direction: column;
@@ -107,15 +172,18 @@
   transition: all var(--transition-fast);
   min-width: 52px;
 }
+
 .toolbox-btn:hover {
   background: var(--surface);
   color: var(--text);
 }
+
 .toolbox-btn.active {
   background: var(--surface2);
   color: var(--accent);
-  border-color: rgba(79,195,247,.4);
+  border-color: rgba(79, 195, 247, .4);
 }
+
 .toolbox-btn svg {
   width: 18px;
   height: 18px;
@@ -123,11 +191,13 @@
   stroke: currentColor;
   stroke-width: 1.75;
 }
+
 .toolbox-lbl {
   font-family: var(--mono);
   font-size: .6rem;
   letter-spacing: .05em;
 }
+
 .toolbox-kbd {
   font-family: var(--mono);
   font-size: .55rem;
@@ -137,23 +207,27 @@
   border-radius: 3px;
   padding: 1px 4px;
 }
+
 .toolbox-sep {
   height: 1px;
   background: var(--border);
   margin: 2px 0;
 }
+
 .toolbox-btn.toolbox-danger {
   color: var(--text3);
 }
+
 .toolbox-btn.toolbox-danger:hover {
-  background: rgba(255,107,107,.1);
+  background: rgba(255, 107, 107, .1);
   color: var(--red);
-  border-color: rgba(255,107,107,.3);
+  border-color: rgba(255, 107, 107, .3);
 }
+
 .toolbox-btn.toolbox-danger.active {
-  background: rgba(255,107,107,.15);
+  background: rgba(255, 107, 107, .15);
   color: var(--red);
-  border-color: rgba(255,107,107,.4);
+  border-color: rgba(255, 107, 107, .4);
 }
 
 /* ─── CANVAS NAV CONTROLS ─── */
@@ -171,6 +245,7 @@
   padding: 4px;
   box-shadow: var(--shadow-sm);
 }
+
 .cnc-btn {
   width: 28px;
   height: 28px;
@@ -185,10 +260,12 @@
   justify-content: center;
   transition: all var(--transition-fast);
 }
+
 .cnc-btn:hover {
   background: var(--surface);
   color: var(--text);
 }
+
 .cnc-btn svg {
   width: 14px;
   height: 14px;
@@ -196,6 +273,7 @@
   stroke: currentColor;
   stroke-width: 2;
 }
+
 .cnc-zoom-input {
   background: transparent;
   border: 1px solid transparent;
@@ -209,10 +287,12 @@
   transition: all var(--transition-fast);
   cursor: text;
 }
+
 .cnc-zoom-input:hover {
   background: var(--surface);
   border-color: var(--border2);
 }
+
 .cnc-zoom-input:focus {
   outline: none;
   background: var(--bg3);
@@ -220,6 +300,7 @@
   color: var(--text);
   box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.15);
 }
+
 .cnc-sep {
   width: 1px;
   height: 18px;
@@ -240,9 +321,11 @@
   box-shadow: var(--shadow-sm);
   transition: opacity var(--transition-fast);
 }
+
 .minimap-container.minimap-hidden {
   display: none;
 }
+
 .minimap-header {
   display: flex;
   align-items: center;
@@ -251,6 +334,7 @@
   background: var(--bg3);
   border-bottom: 1px solid var(--border);
 }
+
 .minimap-title {
   font-family: var(--mono);
   font-size: .6rem;
@@ -258,6 +342,7 @@
   text-transform: uppercase;
   color: var(--text3);
 }
+
 .minimap-toggle {
   width: 18px;
   height: 18px;
@@ -272,13 +357,18 @@
   border-radius: 3px;
   padding: 0;
 }
-.minimap-toggle:hover { color: var(--text); }
+
+.minimap-toggle:hover {
+  color: var(--text);
+}
+
 .minimap-canvas {
   display: block;
   cursor: pointer;
   width: 160px;
   height: 100px;
 }
+
 .minimap-show-btn {
   position: absolute;
   bottom: 56px;
@@ -294,5 +384,8 @@
   cursor: pointer;
   transition: all var(--transition-fast);
 }
-.minimap-show-btn:hover { color: var(--text); background: var(--surface); }
 
+.minimap-show-btn:hover {
+  color: var(--text);
+  background: var(--surface);
+}

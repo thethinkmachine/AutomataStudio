@@ -23,7 +23,6 @@
     <div class="hdr-left">
       <div class="logo-wrapper">
         <div class="logo">Automata <em>Playground</em></div>
-        <div class="logo-author">By Shreyan Chaubey</div>
       </div>
     </div>
     <div class="hdr-center">
@@ -36,38 +35,53 @@
     </div>
     <div class="hdr-right">
       <button class="hbtn" onclick="undo()" title="Undo (Ctrl+Z)">
-        <svg viewBox="0 0 16 16">
-          <path d="M3 8a5 5 0 1 0 1-3M3 2v4h4" />
+        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3.5 6.5H9a4 4 0 0 1 0 8H5" />
+          <polyline points="3.5,3 3.5,6.5 7,6.5" />
         </svg>Undo
       </button>
       <button class="hbtn" onclick="redo()" title="Redo (Ctrl+Y)">
-        <svg viewBox="0 0 16 16">
-          <path d="M13 8a5 5 0 1 1-1-3M13 2v4h-4" />
+        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12.5 6.5H7a4 4 0 0 0 0 8h4" />
+          <polyline points="12.5,3 12.5,6.5 9,6.5" />
         </svg>Redo
       </button>
       <div class="hdr-sep"></div>
       <button class="hbtn" onclick="saveJSON()" title="Save as JSON">
-        <svg viewBox="0 0 16 16">
-          <path d="M3 3h7l3 3v7H3zM6 3v3h5M6 9v4" />
+        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
+          <rect x="5" y="2.5" width="6" height="4" rx="0.5" />
+          <rect x="5.5" y="9" width="5" height="3.5" rx="0.5" />
+          <line x1="7" y1="3.5" x2="7" y2="6" />
         </svg>Save
       </button>
       <button class="hbtn" onclick="loadJSON()" title="Load JSON">
-        <svg viewBox="0 0 16 16">
-          <path d="M3 3h7l3 3v7H3z" />
-          <path d="M8 7v5M5 10l3 3 3-3" />
+        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2.5 10v3a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-3" />
+          <polyline points="5,7.5 8,10.5 11,7.5" />
+          <line x1="8" y1="2" x2="8" y2="10.5" />
         </svg>Load
       </button>
+      <div class="hdr-sep"></div>
       <button class="hbtn" onclick="openSettingsModal()" title="Engine Settings">
-        <svg viewBox="0 0 16 16">
-          <path d="M8 4.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z" />
+        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="8" cy="8" r="2.2" />
           <path
-            d="M14.5 9.5a1 1 0 0 0 0-3h-1.5l-.2-.5 1-1.2a1 1 0 0 0-1.5-1.5l-1.2 1-.5-.2v-1.5a1 1 0 0 0-3 0v1.5l-.5.2-1.2-1a1 1 0 0 0-1.5 1.5l1 1.2-.2.5h-1.5a1 1 0 0 0 0 3h1.5l.2.5-1 1.2a1 1 0 0 0 1.5 1.5l1.2-1 .5.2v1.5a1 1 0 0 0 3 0v-1.5l.5-.2 1.2 1a1 1 0 0 0 1.5-1.5l-1-1.2.2-.5h1.5z" />
+            d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3" />
         </svg>Settings
       </button>
-      <button class="hbtn" onclick="showHelpModal()" title="Keyboard shortcuts">
-        <svg viewBox="0 0 16 16">
+      <button class="hbtn" onclick="openAboutModal()" title="About this application">
+        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="8" cy="8" r="6" />
-          <path d="M8 11v1M6.5 6.5c0-1 .7-2 1.5-2s1.5.9 1.5 2c0 1-1.5 1.5-1.5 2.5" />
+          <line x1="8" y1="7.5" x2="8" y2="11" />
+          <circle cx="8" cy="5.2" r="0.5" fill="currentColor" stroke="none" />
+        </svg>About
+      </button>
+      <button class="hbtn" onclick="showHelpModal()" title="Keyboard shortcuts">
+        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="8" cy="8" r="6" />
+          <path d="M6 6.2a2 2 0 1 1 2.5 1.9C7.8 8.4 8 9 8 9.5" />
+          <circle cx="8" cy="11.5" r="0.5" fill="currentColor" stroke="none" />
         </svg>Help
       </button>
     </div>
@@ -87,32 +101,42 @@
       <button class="mtab" onclick="setMachine('MTM')">MTM</button>
     </div>
     <div style="flex:1"></div>
+    <div class="hdr-sep"></div>
+    <button class="hbtn warn" onclick="clearAll()" title="Clear canvas (X)">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="4,4 12,4" />
+        <path d="M5 4V3h6v1" />
+        <path d="M6 7v5M10 7v5" />
+        <path d="M3 4l.8 9a1 1 0 0 0 1 .9h6.4a1 1 0 0 0 1-.9L13 4" />
+      </svg>Clear
+    </button>
     <button class="hbtn" onclick="loadExample()" title="Load example automaton">
-      <svg viewBox="0 0 16 16">
-        <polygon points="5,3 13,8 5,13" />
-      </svg>Example
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="5,3 13.5,8 5,13" fill="currentColor" stroke="none" />
+      </svg>Load Example
     </button>
     <button id="fs-btn" class="hbtn" onclick="toggleFullscreen()" title="Enter fullscreen (F)"
       style="width:2.2rem;padding:0;display:flex;align-items:center;justify-content:center">
-      <svg viewBox="0 0 16 16">
-        <path
-          d="M 3 3 L 6 3 M 3 3 L 3 6 M 13 3 L 10 3 M 13 3 L 13 6 M 3 13 L 3 10 M 3 13 L 6 13 M 13 13 L 13 10 M 13 13 L 10 13"
-          stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" />
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 6V3h3M10 3h3v3M3 10v3h3M13 10v3h-3" />
       </svg>
     </button>
     <button class="hbtn" onclick="autoLayout()" title="Auto-arrange states in a circle">
-      <svg viewBox="0 0 16 16">
-        <circle cx="8" cy="4" r="2" />
-        <circle cx="13" cy="11" r="2" />
-        <circle cx="3" cy="11" r="2" />
-        <path d="M8 6v2M7 8l-3.5 2M9 8l3.5 2" />
-      </svg>Layout
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8" cy="3.5" r="1.6" />
+        <circle cx="13" cy="11.5" r="1.6" />
+        <circle cx="3" cy="11.5" r="1.6" />
+        <line x1="8" y1="5.1" x2="8" y2="7" />
+        <line x1="7.1" y1="7.2" x2="4.2" y2="10" />
+        <line x1="8.9" y1="7.2" x2="11.8" y2="10" />
+      </svg>Auto-Layout
     </button>
     <button class="hbtn" onclick="exportSVG()" title="Export canvas as SVG">
-      <svg viewBox="0 0 16 16">
-        <rect x="2" y="2" width="12" height="12" rx="1" />
-        <path d="M5 8l2 2 4-4" />
-      </svg>SVG
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9.5 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6.5L9.5 2z" />
+        <polyline points="9.5,2 9.5,6.5 13,6.5" />
+        <path d="M6.5 9.5h3M8 8v3" />
+      </svg>Export SVG
     </button>
   </div>
 
@@ -197,50 +221,49 @@
           <div class="canvas-toolbox" id="canvas-toolbox">
             <button class="toolbox-btn" id="t-pointer" onclick="setTool('pointer')"
               title="Pointer — select &amp; interact (Esc)">
-              <svg viewBox="0 0 16 16" style="fill:currentColor;stroke:none">
-                <path d="M3.5 1.5l9 9-3.5.8L7.2 14l-1.4-4.2L1.5 11z" />
+              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 2l8 5.5-4.5.8L5.5 13 4 2z" fill="currentColor" stroke="none" />
               </svg>
               <span class="toolbox-lbl">Pointer</span>
               <span class="toolbox-kbd">Esc</span>
             </button>
             <div class="toolbox-sep"></div>
             <button class="toolbox-btn" id="t-move" onclick="setTool('move')" title="Move — drag canvas to pan (V)">
-              <svg viewBox="0 0 16 16">
-                <path d="M8 2v12M2 8h12M5 5l-3 3 3 3M11 5l3 3-3 3" />
+              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 2v12M2 8h12" />
+                <polyline points="5,5 2,8 5,11" />
+                <polyline points="11,5 14,8 11,11" />
               </svg>
               <span class="toolbox-lbl">Pan</span>
               <span class="toolbox-kbd">V</span>
             </button>
             <button class="toolbox-btn" id="t-state" onclick="setTool('state')" title="Add State (S)">
-              <svg viewBox="0 0 16 16">
-                <circle cx="8" cy="8" r="6" />
-                <path d="M8 5v6M5 8h6" />
+              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="8" cy="8" r="5.5" />
+                <line x1="8" y1="5.5" x2="8" y2="10.5" />
+                <line x1="5.5" y1="8" x2="10.5" y2="8" />
               </svg>
               <span class="toolbox-lbl">State</span>
               <span class="toolbox-kbd">S</span>
             </button>
             <button class="toolbox-btn" id="t-trans" onclick="setTool('trans')" title="Add Transition (T)">
-              <svg viewBox="0 0 16 16">
-                <path d="M2 8h12M10 5l4 3-4 3" />
+              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="4" cy="8" r="2" />
+                <circle cx="12" cy="8" r="2" />
+                <line x1="6" y1="8" x2="10" y2="8" />
+                <polyline points="9.5,6 12,8 9.5,10" />
               </svg>
               <span class="toolbox-lbl">Trans</span>
               <span class="toolbox-kbd">T</span>
             </button>
             <div class="toolbox-sep"></div>
             <button class="toolbox-btn toolbox-danger" id="t-del" onclick="setTool('del')" title="Delete (D)">
-              <svg viewBox="0 0 16 16">
-                <path d="M3 3l10 10M13 3L3 13" />
+              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="4" y1="4" x2="12" y2="12" />
+                <line x1="12" y1="4" x2="4" y2="12" />
               </svg>
               <span class="toolbox-lbl">Delete</span>
               <span class="toolbox-kbd">D</span>
-            </button>
-            <div class="toolbox-sep"></div>
-            <button class="toolbox-btn toolbox-danger" id="t-clear" onclick="clearAll()" title="Clear all (X)">
-              <svg viewBox="0 0 16 16">
-                <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" />
-              </svg>
-              <span class="toolbox-lbl">Clear</span>
-              <span class="toolbox-kbd">X</span>
             </button>
           </div>
           <!-- Status bar -->
@@ -258,20 +281,21 @@
           <!-- Nav controls -->
           <div class="canvas-nav-controls" id="canvas-nav-controls">
             <button class="cnc-btn" onclick="zoomOut()" title="Zoom out (-)">
-              <svg viewBox="0 0 14 14">
-                <path d="M3 7h8" />
+              <svg viewBox="0 0 14 14" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="3" y1="7" x2="11" y2="7" />
               </svg>
             </button>
             <input type="text" class="cnc-zoom-input" id="zoom-ind" value="100%"
               onkeydown="if(event.key==='Enter') this.blur()" onblur="setZoomFromInput(this.value)">
             <button class="cnc-btn" onclick="zoomIn()" title="Zoom in (+)">
-              <svg viewBox="0 0 14 14">
-                <path d="M7 3v8M3 7h8" />
+              <svg viewBox="0 0 14 14" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="7" y1="3" x2="7" y2="11" />
+                <line x1="3" y1="7" x2="11" y2="7" />
               </svg>
             </button>
             <div class="cnc-sep"></div>
             <button class="cnc-btn" onclick="fitToScreen()" title="Fit to screen (H)">
-              <svg viewBox="0 0 14 14">
+              <svg viewBox="0 0 14 14" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M2 5V2h3M9 2h3v3M2 9v3h3M12 9v3h-3" />
               </svg>
             </button>
@@ -932,6 +956,37 @@
         </tr>
       </table>
       <div class="modal-foot"><button class="btn-g" onclick="closeModal('help-modal')">Close</button></div>
+    </div>
+  </div>
+
+  <div class="overlay" id="about-modal">
+    <div class="modal" style="max-width:420px">
+      <div class="about-logo-header">
+        <div class="logo">Automata <em>Playground</em></div>
+        <div class="logo-author">Shreyan Chaubey</div>
+      </div>
+      <div class="about-body">
+        <div class="about-row">
+          <span class="about-lbl">Built by</span>
+          <span class="about-val">Shreyan Chaubey</span>
+        </div>
+        <div class="about-row">
+          <span class="about-lbl">License</span>
+          <span class="about-val about-badge">CC BY-NC-SA 4.0</span>
+        </div>
+        <div class="about-row">
+          <span class="about-lbl">GitHub</span>
+          <a class="about-link" href="https://github.com/thethinkmachine" target="_blank" rel="noopener">
+            github.com/thethinkmachine
+            <svg viewBox="0 0 12 12" aria-hidden="true">
+              <path d="M4 2H2v8h8V8M6.5 2H10v3.5M10 2 5.5 6.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </a>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn-g" onclick="closeModal('about-modal')">Close</button>
+      </div>
     </div>
   </div>
 

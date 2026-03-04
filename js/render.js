@@ -34,13 +34,24 @@ function renderTransitions() {
     if (!from || !to) return;
     const lbl = grp.ts.map(transLabel).join(', ');
     const isSelf = from.id === to.id;
-    let pathEl, textEl;
+    let pathEl, textEl, hitEl;
+    const edgeGrp = makeSVG('g');
+    edgeGrp.classList.add('edge-g');
+    edgeGrp.setAttribute('data-edge', from.id + '|' + to.id);
+    if (grp.ts.some(t => App.selectedTransitions.has(t.id))) edgeGrp.classList.add('sel-t');
+
     if (isSelf) {
       pathEl = makeSVG('path');
       const so = App.config.render.selfLoopOff, ss = App.config.render.selfLoopSize;
-      pathEl.setAttribute('d', `M ${from.x - so} ${from.y - R} A ${ss} ${ss} 0 1 1 ${from.x + so} ${from.y - R}`);
+      const d = `M ${from.x - so} ${from.y - R} A ${ss} ${ss} 0 1 1 ${from.x + so} ${from.y - R}`;
+      pathEl.setAttribute('d', d);
       pathEl.setAttribute('marker-end', 'url(#arr)');
       pathEl.classList.add('tarr');
+
+      hitEl = makeSVG('path');
+      hitEl.setAttribute('d', d);
+      hitEl.classList.add('tarr-hit');
+
       textEl = makeSVG('text');
       textEl.setAttribute('x', from.x); textEl.setAttribute('y', from.y - R - App.config.render.selfLoopTextOff);
       textEl.classList.add('tlbl'); textEl.textContent = lbl;
@@ -48,20 +59,89 @@ function renderTransitions() {
       const hasRev = App.transitions.some(t => t.from === grp.to && t.to === grp.from);
       const dx = to.x - from.x, dy = to.y - from.y, dist = Math.sqrt(dx * dx + dy * dy);
       const ux = dx / dist, uy = dy / dist, px = -uy, py = ux;
-      const crv = hasRev ? App.config.render.curveOff : 0;
-      const mx = (from.x + to.x) / 2 + px * crv, my = (from.y + to.y) / 2 + py * crv;
+
+      const defCrv = hasRev ? App.config.render.curveOff : 0;
+      const crvVal = grp.ts[0].curve !== undefined ? grp.ts[0].curve : defCrv;
+
+      const mx = (from.x + to.x) / 2 + px * crvVal, my = (from.y + to.y) / 2 + py * crvVal;
       const sx = from.x + ux * R, sy = from.y + uy * R;
       const ex = to.x - ux * (R + App.config.render.arrowHeadSize), ey = to.y - uy * (R + App.config.render.arrowHeadSize);
-      const d = crv ? `M ${sx} ${sy} Q ${mx} ${my} ${ex} ${ey}` : `M ${sx} ${sy} L ${ex} ${ey}`;
+      const d = crvVal ? `M ${sx} ${sy} Q ${mx} ${my} ${ex} ${ey}` : `M ${sx} ${sy} L ${ex} ${ey}`;
+
       pathEl = makeSVG('path');
       pathEl.setAttribute('d', d); pathEl.setAttribute('marker-end', 'url(#arr)');
       pathEl.classList.add('tarr');
+
+      hitEl = makeSVG('path');
+      hitEl.setAttribute('d', d);
+      hitEl.classList.add('tarr-hit');
+
       textEl = makeSVG('text');
-      textEl.setAttribute('x', crv ? mx : (sx + ex) / 2); textEl.setAttribute('y', (crv ? my : (sy + ey) / 2) - App.config.render.textMargin);
+      textEl.setAttribute('x', crvVal ? mx : (sx + ex) / 2); textEl.setAttribute('y', (crvVal ? my : (sy + ey) / 2) - App.config.render.textMargin);
       textEl.classList.add('tlbl'); textEl.textContent = lbl;
     }
-    g.appendChild(pathEl); g.appendChild(textEl);
+
+    edgeGrp.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      if (App.tool === 'del') {
+        snapshot();
+        const ids = new Set(grp.ts.map(t => t.id));
+        App.transitions = App.transitions.filter(t => !ids.has(t.id));
+        renderAll(); updateSidebar(); updateRPanel();
+        return;
+      }
+      if (App.tool === 'pointer') {
+        const isSel = grp.ts.some(t => App.selectedTransitions.has(t.id));
+        if (!e.shiftKey && !isSel) {
+          App.selectedStates.clear();
+          App.selectedTransitions.clear();
+          document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
+          grp.ts.forEach(t => App.selectedTransitions.add(t.id));
+          edgeGrp.classList.add('sel-t');
+        } else if (e.shiftKey) {
+          if (isSel) {
+            grp.ts.forEach(t => App.selectedTransitions.delete(t.id));
+            edgeGrp.classList.remove('sel-t');
+            return;
+          } else {
+            grp.ts.forEach(t => App.selectedTransitions.add(t.id));
+            edgeGrp.classList.add('sel-t');
+          }
+        }
+        if (!isSelf) {
+          App.dragCurve = { grp, from, to };
+        }
+      }
+    });
+
+    edgeGrp.addEventListener('dblclick', e => {
+      if (App.tool !== 'pointer') return;
+      e.stopPropagation();
+      openTransModal(from.id, to.id);
+    });
+
+    edgeGrp.appendChild(pathEl);
+    edgeGrp.appendChild(hitEl);
+    edgeGrp.appendChild(textEl);
+    g.appendChild(edgeGrp);
   });
+}
+
+function updateFastDOM() {
+  App.states.forEach(s => {
+    const grp = document.querySelector(`[data-id="${s.id}"]`);
+    if (!grp) return;
+    const c = grp.querySelector('circle.bd');
+    if (c) { c.setAttribute('cx', s.x); c.setAttribute('cy', s.y); }
+    const r2 = grp.querySelector('circle[fill="none"]');
+    if (r2) { r2.setAttribute('cx', s.x); r2.setAttribute('cy', s.y); }
+    const t = grp.querySelector('text.slbl');
+    if (t) { t.setAttribute('x', s.x); t.setAttribute('y', App.machine === 'Moore' ? s.y - App.config.render.textMargin : s.y); }
+    const ot = grp.querySelector('text.mooreout');
+    if (ot) { ot.setAttribute('x', s.x); ot.setAttribute('y', s.y + App.config.render.mooreTextMargin); }
+  });
+  renderTransitions();
 }
 
 function renderStates() {

@@ -23,8 +23,8 @@
   --r: 8px;
   --hdr: 52px;
   --hdr2: 42px;
-  --shadow-sm: 0 2px 8px rgba(0,0,0,.35);
-  --shadow-md: 0 4px 18px rgba(0,0,0,.45);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, .35);
+  --shadow-md: 0 4px 18px rgba(0, 0, 0, .45);
   --transition-fast: 0.12s ease;
   --transition-base: 0.18s ease;
 }
@@ -49,6 +49,21 @@ body {
   color: var(--text);
   display: flex;
   flex-direction: column;
+  user-select: none;
+}
+
+/* Re-enable selection only where it makes sense */
+input,
+textarea,
+select,
+.code-box,
+.def-box,
+.slist,
+.gram-output,
+.rp-section-body,
+.algo-output,
+.theory-content {
+  user-select: text;
 }
 
 ::-webkit-scrollbar {
@@ -64,4 +79,3 @@ body {
   background: var(--border2);
   border-radius: 2px;
 }
-

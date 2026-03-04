@@ -2,6 +2,7 @@
 //  HELP MODAL
 // ══════════════════════════════════════════════════════════════════
 function showHelpModal() { showOverlay('help-modal'); }
+function openAboutModal() { showOverlay('about-modal'); }
 
 
 // ══════════════════════════════════════════════════════════════════

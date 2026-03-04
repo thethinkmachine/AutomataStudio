@@ -99,7 +99,7 @@
 }
 
 .btn-p:hover {
-  background: #81d4fa;
+  filter: brightness(1.15);
 }
 
 .btn-g {
@@ -117,6 +117,97 @@
 .btn-g:hover {
   background: var(--surface);
   color: var(--text);
+}
+
+/* ─── ABOUT MODAL ─── */
+.about-logo-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 16px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border2);
+}
+
+.about-logo-header .logo-author {
+  opacity: 1;
+  position: static;
+  margin-top: 0;
+  font-size: 0.6rem;
+  pointer-events: none;
+}
+
+.about-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 4px;
+}
+
+.about-row {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.about-row:last-child {
+  border-bottom: none;
+}
+
+.about-lbl {
+  font-family: var(--mono);
+  font-size: .65rem;
+  color: var(--text3);
+  min-width: 90px;
+  flex-shrink: 0;
+  letter-spacing: .04em;
+}
+
+.about-val {
+  font-family: var(--mono);
+  font-size: .78rem;
+  color: var(--text);
+}
+
+.about-val em {
+  color: var(--accent);
+  font-style: normal;
+}
+
+.about-badge {
+  font-size: .65rem;
+  color: var(--text2);
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  padding: 2px 8px;
+  letter-spacing: .04em;
+}
+
+.about-link {
+  font-family: var(--mono);
+  font-size: .75rem;
+  color: var(--accent);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: opacity var(--transition-fast);
+}
+
+.about-link:hover {
+  opacity: 0.75;
+}
+
+.about-link svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  flex-shrink: 0;
 }
 
 /* ─── CTX MENU ─── */
