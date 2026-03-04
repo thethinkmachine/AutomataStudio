@@ -3,7 +3,7 @@
 // ══════════════════════════════════════════════════════════════════
 function saveJSON() {
   const grammarData = { vars: [...App.grammar.vars], start: App.grammar.start, productions: App.grammar.productions };
-  const data = { machine: App.machine, sigma: [...App.sigma], stackAlpha: [...App.stackAlpha], outputAlpha: [...App.outputAlpha], tapeCount: App.tapeCount, states: App.states, transitions: App.transitions, startId: App.startId, accepts: [...App.accepts], grammar: grammarData };
+  const data = { machine: App.machine, sigma: [...App.sigma], stackAlpha: [...App.stackAlpha], outputAlpha: [...App.outputAlpha], tapeCount: App.tapeCount, states: App.states, transitions: App.transitions, startId: App.startId, accepts: [...App.accepts], grammar: grammarData, cam: App.cam };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'automaton.json'; a.click();
   showStatus('Saved!');
@@ -29,13 +29,42 @@ function onFileLoad(e) {
         App.grammar.start = d.grammar.start || '';
         App.grammar.productions = d.grammar.productions || [];
       }
+      if (d.cam) { App.cam = { ...d.cam }; }
       setMachine(App.machine); renderSigma(); renderGamma(); renderOutputAlpha();
       renderAll(); updateSidebar(); updateRPanel(); showStatus('Loaded!');
+      if (d.cam) { applyCamera(); } else { setTimeout(() => fitToScreen(), 50); }
       snapshot();
     } catch (err) { showStatus('Invalid JSON file'); }
   };
   r.readAsText(f); e.target.value = '';
 }
+
+// Auto Backup/Restore via LocalStorage
+function saveBackup() {
+  const grammarData = { vars: [...App.grammar.vars], start: App.grammar.start, productions: App.grammar.productions };
+  const data = { machine: App.machine, sigma: [...App.sigma], stackAlpha: [...App.stackAlpha], outputAlpha: [...App.outputAlpha], tapeCount: App.tapeCount, states: App.states, transitions: App.transitions, startId: App.startId, accepts: [...App.accepts], grammar: grammarData, cam: App.cam };
+  try { localStorage.setItem('automata-backup', JSON.stringify(data)); } catch (e) { }
+}
+function loadBackup() {
+  try {
+    const raw = localStorage.getItem('automata-backup');
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    App.machine = d.machine || 'DFA'; App.sigma = new Set(d.sigma || []);
+    App.stackAlpha = new Set(d.stackAlpha || ['Z']); App.outputAlpha = new Set(d.outputAlpha || []);
+    if (d.tapeCount) App.tapeCount = d.tapeCount;
+    App.states = d.states || []; App.transitions = d.transitions || []; App.startId = d.startId || null; App.accepts = new Set(d.accepts || []);
+    App.stateN = Math.max(0, ...App.states.map(s => { const m = s.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
+    App.transN = Math.max(0, ...App.transitions.map(t => { const m = t.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
+    if (d.grammar) { App.grammar.vars = new Set(d.grammar.vars || []); App.grammar.start = d.grammar.start || ''; App.grammar.productions = d.grammar.productions || []; }
+    if (d.cam) { App.cam = { ...d.cam }; }
+    setMachine(App.machine); renderSigma(); renderGamma(); renderOutputAlpha();
+    renderAll(); updateSidebar(); updateRPanel();
+    if (d.cam) { applyCamera(); } else { setTimeout(() => fitToScreen(), 50); }
+  } catch (e) { }
+}
+
+window.addEventListener('beforeunload', saveBackup);
 
 
 // ══════════════════════════════════════════════════════════════════

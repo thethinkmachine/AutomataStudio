@@ -12,5 +12,6 @@ if (_mmCanvas) _mmCanvas.addEventListener('click', minimapNavigate);
 try {
   if (localStorage.getItem('automata-minimap') === '0') toggleMinimap();
   if (localStorage.getItem('automata-sidebar') === '0') toggleSidebar();
-} catch(e) {}
+} catch (e) { }
+if (typeof loadBackup === 'function') loadBackup();
 setTimeout(() => showStatus('Esc=Pointer · V=Pan · S=State · T=Transition · H=Fit · Ctrl+Z=Undo'), 600);
