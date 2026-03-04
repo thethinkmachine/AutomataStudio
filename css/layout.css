@@ -93,7 +93,7 @@ header {
 }
 
 .nav-btn {
-  font-family: var(--sans);
+  font-family: var(--mono);
   font-size: .82rem;
   font-weight: 500;
   letter-spacing: .01em;
@@ -110,12 +110,14 @@ header {
 .nav-btn:hover {
   color: var(--text2);
   background: var(--surface);
+  font-family: var(--mono);
 }
 
 .nav-btn.active {
   background: var(--surface2);
   color: var(--text);
   box-shadow: 0 1px 4px rgba(0,0,0,.25);
+  font-family: var(--mono);
 }
 
 .hdr-sep {
