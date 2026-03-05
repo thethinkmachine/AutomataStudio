@@ -620,3 +620,219 @@ function renderCFLPumpVis() {
 <div class="pump-result ok">Pumped: uv^${pi}xy^${pi}z = "${pumped}"<br>Verify i=0: "${uPart + xPart + zPart}" &nbsp; i=1: "${uPart + vPart + xPart + yPart + zPart}" &nbsp; i=2: "${uPart + vPart.repeat(2) + xPart + yPart.repeat(2) + zPart}"</div>`;
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+//  PDA → CFG (Sipser Construction)
+// ══════════════════════════════════════════════════════════════════
+function runPDA2CFG() {
+  const out = $('gram-output');
+  if (App.machine !== 'PDA') {
+    out.innerHTML = `<div class="cnf-step"><span class="lbl">Switch to PDA mode to use this conversion.</span></div>`;
+    return;
+  }
+  if (!App.states.length) { out.innerHTML = '<div class="cnf-step"><span class="lbl">No PDA states defined.</span></div>'; return; }
+  if (!App.startId) { out.innerHTML = '<div class="cnf-step"><span class="lbl">No start state defined.</span></div>'; return; }
+
+  const eps = App.config.sym.eps;
+  const Z = App.config.sym.stackBottom;
+  const states = App.states;
+  const trans = App.transitions;
+  const sname = id => states.find(s => s.id === id)?.name || id;
+
+  const prods = [];
+  const startName = sname(App.startId);
+
+  App.accepts.forEach(afid => {
+    prods.push({ lhs: 'S', rhs: `[${startName},${Z},${sname(afid)}]` });
+  });
+
+  trans.forEach(t => {
+    const p = sname(t.from);
+    const q = sname(t.to);
+    const a = t.symbol || eps;
+    const pop = t.pop || Z;
+    const push = t.push || eps;
+    const pushSyms = push === eps ? [] : push.split('');
+
+    if (pushSyms.length === 0) {
+      prods.push({ lhs: `[${p},${pop},${q}]`, rhs: a });
+    } else if (pushSyms.length === 1) {
+      states.forEach(r => {
+        const rn = r.name;
+        const rhsStr = `${a === eps ? '' : a}[${q},${pushSyms[0]},${rn}]`.trim();
+        prods.push({ lhs: `[${p},${pop},${rn}]`, rhs: rhsStr || eps });
+      });
+    } else if (pushSyms.length === 2) {
+      states.forEach(s => {
+        states.forEach(r => {
+          const sn = s.name, rn = r.name;
+          const rhsStr = `${a === eps ? '' : a}[${q},${pushSyms[0]},${sn}][${sn},${pushSyms[1]},${rn}]`.trim();
+          prods.push({ lhs: `[${p},${pop},${rn}]`, rhs: rhsStr });
+        });
+      });
+    }
+  });
+
+  const byLHS = {};
+  prods.forEach(p => {
+    if (!byLHS[p.lhs]) byLHS[p.lhs] = new Set();
+    byLHS[p.lhs].add(p.rhs || eps);
+  });
+
+  const rows = Object.entries(byLHS).map(([lhs, rhsSet]) => {
+    const rhs = [...rhsSet].join(' | ');
+    return `<tr>
+      <td style="color:var(--accent);font-family:var(--mono);font-size:.67rem">${lhs}</td>
+      <td style="color:var(--text3)">→</td>
+      <td style="font-family:var(--mono);font-size:.67rem">${rhs}</td>
+    </tr>`;
+  }).join('');
+
+  out.innerHTML = `
+<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:6px">PDA → CFG (Sipser Triple Construction)</h3>
+<div style="font-size:.7rem;color:var(--text2);margin-bottom:12px;line-height:1.8">
+  Non-terminal <b>[p, A, q]</b>: starting in state p with stack symbol A on top, consume some input and end in state q with A removed.<br>
+  Start variable: <b>S</b> &nbsp;&nbsp; PDA states: ${states.length} &nbsp;&nbsp; Transitions: ${trans.length} &nbsp;&nbsp; Generated rules: ${prods.length}
+</div>
+<div style="overflow-x:auto"><table class="result-table">
+  <thead><tr><th>LHS</th><th></th><th>RHS</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table></div>
+<div style="font-size:.62rem;color:var(--text3);margin-top:8px">
+  Assumes PDA pops exactly 1 symbol and pushes at most 2 per transition. Longer push strings require decomposition.
+</div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  CYK STEP-THROUGH VISUALIZER
+// ══════════════════════════════════════════════════════════════════
+let _cykViz = null;
+
+function runCYKVisual() {
+  const str = $('cyk-in').value.trim();
+  const out = $('gram-output');
+  if (!G.productions.length) { showStatus('Add a grammar first'); return; }
+  if (!App._cnfProds) { showStatus('Run CNF conversion first then use step-through'); return; }
+  const s = str === App.config.sym.eps ? '' : str;
+  if (!s.length) { runCYK(); return; }
+
+  const n = s.length;
+  const prods = App._cnfProds;
+  const cnfStart = App._cnfStart;
+
+  const T = Array.from({ length: n }, () => Array.from({ length: n }, () => new Set()));
+  const steps = [];
+
+  // Phase 1: base case
+  for (let i = 0; i < n; i++) {
+    let fired = false;
+    prods.forEach(p => {
+      if (p.rhs === s[i] && !T[i][i].has(p.lhs)) {
+        T[i][i].add(p.lhs);
+        steps.push({
+          i, j: i, k: null, added: p.lhs,
+          note: `<b>Base:</b> T[${i}][${i}] &larr; <span style="color:var(--accent)">${p.lhs}</span> &nbsp; via ${p.lhs} &rarr; '${p.rhs}' &nbsp; (char '${s[i]}' at pos ${i})`,
+          snapshot: T.map(row => row.map(cell => new Set(cell)))
+        });
+        fired = true;
+      }
+    });
+    if (!fired) {
+      steps.push({ i, j: i, k: null, added: null,
+        note: `<b>Base:</b> T[${i}][${i}] — no terminal production matches '${s[i]}'`,
+        snapshot: T.map(row => row.map(cell => new Set(cell)))
+      });
+    }
+  }
+
+  // Phase 2: recursive fill
+  for (let len = 2; len <= n; len++) {
+    for (let i = 0; i <= n - len; i++) {
+      const j = i + len - 1;
+      let firedAny = false;
+      for (let k = i; k < j; k++) {
+        prods.forEach(p => {
+          if (p.rhsArr && p.rhsArr.length === 2) {
+            const [B, C] = p.rhsArr;
+            if (T[i][k].has(B) && T[k+1][j].has(C) && !T[i][j].has(p.lhs)) {
+              T[i][j].add(p.lhs);
+              steps.push({
+                i, j, k, added: p.lhs,
+                note: `<b>Fill T[${i}][${j}]</b> (span "<span style="color:var(--gold)">${s.slice(i,j+1)}</span>"): <span style="color:var(--accent)">${p.lhs}</span> &larr; ${p.lhs} &rarr; ${B}&thinsp;${C}, split k=${k} &rarr; T[${i}][${k}]&ni;${B}, T[${k+1}][${j}]&ni;${C}`,
+                snapshot: T.map(row => row.map(cell => new Set(cell)))
+              });
+              firedAny = true;
+            }
+          }
+        });
+      }
+      if (!firedAny) {
+        steps.push({ i, j, k: null, added: null,
+          note: `<b>Fill T[${i}][${j}]</b> (span "<span style="color:var(--gold)">${s.slice(i,j+1)}</span>"): no production fires &rarr; T[${i}][${j}] = &empty;`,
+          snapshot: T.map(row => row.map(cell => new Set(cell)))
+        });
+      }
+    }
+  }
+
+  const accepted = T[0][n-1].has(cnfStart);
+  _cykViz = { steps, idx: 0, n, s, cnfStart, accepted };
+  renderCYKVisStep(out);
+}
+
+function renderCYKVisStep(out) {
+  if (!out) out = $('gram-output');
+  if (!_cykViz) return;
+  const { steps, idx, n, s, cnfStart, accepted } = _cykViz;
+  const step = steps[idx];
+  const T = step.snapshot;
+
+  let table = '<div style="overflow-x:auto"><table class="cyk-table"><thead><tr><th class="cyk-cell header">i﹨j</th>';
+  for (let j = 0; j < n; j++) table += `<th class="cyk-cell header">${j} <span style="color:var(--gold)">${s[j]}</span></th>`;
+  table += '</tr></thead><tbody>';
+  for (let i = 0; i < n; i++) {
+    table += `<tr><th class="cyk-cell header">${i}</th>`;
+    for (let j = 0; j < n; j++) {
+      if (j < i) {
+        table += '<td class="cyk-cell" style="background:var(--bg3);color:var(--text3)">—</td>';
+      } else {
+        const cell = [...T[i][j]];
+        const isActive = step.i === i && step.j === j;
+        const hasStart = cell.includes(cnfStart);
+        const justAdded = isActive && step.added && cell.includes(step.added);
+        let ex = '';
+        if (justAdded) ex = 'background:rgba(79,195,247,.16);outline:1.5px solid var(--accent);';
+        else if (isActive) ex = 'background:rgba(255,213,79,.08);outline:1px solid var(--gold);';
+        table += `<td class="cyk-cell ${hasStart ? 'has-start' : cell.length ? '' : 'empty-cell'}" style="${ex}">${cell.join(',') || '∅'}</td>`;
+      }
+    }
+    table += '</tr>';
+  }
+  table += '</tbody></table></div>';
+
+  const isLast = idx === steps.length - 1;
+  const progress = `${idx + 1} / ${steps.length}`;
+
+  out.innerHTML = `
+<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:8px">CYK Step-Through &mdash; "<span style="color:var(--gold)">${s}</span>"</h3>
+<div class="sctrl" style="margin-bottom:10px">
+  <button class="sbtn" onclick="cykVisStep(-1)" ${idx===0?'disabled':''}>← Back</button>
+  <button class="sbtn auto-btn" onclick="cykVisStep(1)" ${isLast?'disabled':''}>Next →</button>
+  <span style="font-family:var(--mono);font-size:.63rem;color:var(--text3);padding:4px 8px">${progress}</span>
+  <button class="sbtn sec" onclick="runCYKVisual()">↺ Reset</button>
+</div>
+<div class="step-item" style="margin-bottom:12px">
+  <div class="step-num">${idx + 1}</div>
+  <div class="step-text">${step.note}</div>
+</div>
+${table}
+${isLast ? `<div class="pump-result ${accepted ? 'ok' : 'fail'}" style="margin-top:14px">
+  ${accepted ? `✓ ACCEPTED — ${cnfStart} ∈ T[0][${n-1}]` : `✗ REJECTED — ${cnfStart} ∉ T[0][${n-1}]`}
+</div>` : ''}`;
+}
+
+function cykVisStep(delta) {
+  if (!_cykViz) return;
+  _cykViz.idx = Math.max(0, Math.min(_cykViz.steps.length - 1, _cykViz.idx + delta));
+  renderCYKVisStep($('gram-output'));
+}

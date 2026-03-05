@@ -241,10 +241,25 @@ function renderSimStep() {
     tw.innerHTML = step.tape.map((c, i) => `<div class="tc ${i === step.head ? 'head' : ''}">${c}</div>`).join('');
   }
   if (App.machine === 'MTM' && step.tapes) {
-    const mtmDiv = $('mtm-tapes'); mtmDiv.style.display = '';
-    mtmDiv.innerHTML = step.tapes.map((tape, ti) =>
-      `<div class="mtm-tape-row"><span class="tape-label">T${ti + 1}</span><span class="tape-cells">${tape.map((c, ci) => `<div class="tc ${ci === step.heads[ti] ? 'head' : ''}">${c}</div>`).join('')}</span></div>`
-    ).join('');
+    const mtmDiv = $('mtm-tapes');
+    mtmDiv.style.display = 'block';
+    const stateName = getState(step.state)?.name || '?';
+    const syms = step.tapes.map((tape, i) => tape[step.heads[i]] || App.config.sym.blank);
+    const header = `<div style="font-size:.6rem;color:var(--text3);font-family:var(--mono);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">
+      State: <span style="color:var(--accent)">${stateName}</span> &nbsp;
+      Reading: [${syms.map((s, i) => `T${i + 1}:<span style="color:var(--gold)">${s}</span>`).join(', ')}]
+    </div>`;
+    const tapeHtml = step.tapes.map((tape, ti) => {
+      const cells = tape.map((c, ci) => {
+        const isHead = ci === step.heads[ti];
+        return `<div class="tc ${isHead ? 'head' : ''}" title="Tape ${ti + 1} pos ${ci}">${c}</div>`;
+      }).join('');
+      return `<div class="mtm-tape-row">
+        <span class="tape-label" style="color:var(--accent)">T${ti + 1}</span>
+        <span class="tape-cells">${cells}</span>
+      </div>`;
+    }).join('');
+    mtmDiv.innerHTML = header + tapeHtml;
   }
 }
 function stepFwd() { if (App.simIdx < App.simSteps.length - 1) { App.simIdx++; renderSimStep(); } }

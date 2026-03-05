@@ -152,6 +152,12 @@ function renderStates() {
     grp.setAttribute('data-id', s.id);
     if (App.startId === s.id) grp.classList.add('start-st');
     if (App.accepts.has(s.id)) grp.classList.add('acc-st');
+    // Dead/unreachable overlay (set by Dead State Analysis algo)
+    if (App.stateClassification) {
+      const cls = App.stateClassification.get(s.id);
+      if (cls === 'unreachable') grp.classList.add('unreachable-st');
+      else if (cls === 'dead') grp.classList.add('dead-st');
+    }
     const c = makeSVG('circle');
     c.classList.add('bd'); c.setAttribute('cx', s.x); c.setAttribute('cy', s.y); c.setAttribute('r', R);
     grp.appendChild(c);

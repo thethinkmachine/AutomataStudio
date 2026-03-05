@@ -395,11 +395,19 @@
           <div class="algo-item active" onclick="setAlgo('table')" data-algo="table">δ Transition Table</div>
           <div class="algo-item" onclick="setAlgo('nfa2dfa')" data-algo="nfa2dfa">NFA → DFA (Subset)</div>
           <div class="algo-item" onclick="setAlgo('minimize')" data-algo="minimize">DFA Minimize</div>
+          <div class="algo-item" onclick="setAlgo('minimizeVisual')" data-algo="minimizeVisual">DFA Minimize (Visual)
+          </div>
           <div class="algo-item" onclick="setAlgo('equiv')" data-algo="equiv">DFA Equivalence</div>
           <div class="algo-item" onclick="setAlgo('nfaTree')" data-algo="nfaTree">NFA Computation Tree</div>
+          <div class="algo-item" onclick="setAlgo('epsClosure')" data-algo="epsClosure">&epsilon;-Closure Table</div>
+          <div class="algo-item" onclick="setAlgo('deadStates')" data-algo="deadStates">Dead State Analysis</div>
           <div class="algo-item" onclick="setAlgo('ndtm')" data-algo="ndtm">NDTM Simulation</div>
+          <div class="algo-grp">Regular Grammars</div>
+          <div class="algo-item" onclick="setAlgo('dfa2rg')" data-algo="dfa2rg">DFA/NFA &rarr; Regular Grammar</div>
+          <div class="algo-item" onclick="setAlgo('rg2nfa')" data-algo="rg2nfa">Regular Grammar &rarr; NFA</div>
           <div class="algo-grp">Turing Machines</div>
           <div class="algo-item" onclick="setAlgo('utm')" data-algo="utm">UTM Simulator</div>
+          <div class="algo-item" onclick="setAlgo('tm2grammar')" data-algo="tm2grammar">TM &rarr; Grammar</div>
           <div class="algo-item" onclick="setAlgo('mtmTable')" data-algo="mtmTable">MTM Transition Table</div>
           <div class="algo-grp">Transducers</div>
           <div class="algo-item" onclick="setAlgo('mooreTable')" data-algo="mooreTable">Moore Table (&#955;:
@@ -409,7 +417,9 @@
           <div class="algo-item" onclick="setAlgo('moore2mealy')" data-algo="moore2mealy">Moore &rarr; Mealy</div>
           <div class="algo-item" onclick="setAlgo('mealy2moore')" data-algo="mealy2moore">Mealy &rarr; Moore</div>
           <div class="algo-grp">Regular Expressions</div>
-          <div class="algo-item" onclick="setAlgo('re2nfa')" data-algo="re2nfa">Regex → NFA (Thompson)</div>
+          <div class="algo-item" onclick="setAlgo('re2nfa')" data-algo="re2nfa">Regex &rarr; NFA (Thompson)</div>
+          <div class="algo-item" onclick="setAlgo('re2nfaVisual')" data-algo="re2nfaVisual">Regex &rarr; NFA (Visual)
+          </div>
           <div class="algo-item" onclick="setAlgo('nfa2re')" data-algo="nfa2re">NFA → Regex (GNFA)</div>
           <div class="algo-grp">Transformations</div>
           <div class="algo-item" onclick="setAlgo('enfa2nfa')" data-algo="enfa2nfa">ε-NFA → NFA</div>
@@ -474,12 +484,16 @@
             <button class="algo-btn sec" onclick="runGNF()" style="width:100%;margin-right:0;margin-bottom:5px">Convert
               to GNF</button>
             <button class="algo-btn sec" onclick="runCFG2PDA()" style="width:100%;margin-right:0;margin-bottom:5px">CFG
-              → PDA</button>
+              &rarr; PDA</button>
+            <button class="algo-btn sec" onclick="runPDA2CFG()" style="width:100%;margin-right:0;margin-bottom:5px">PDA
+              &rarr; CFG</button>
 
             <div class="gram-group-label">Parse &amp; Derive</div>
             <div class="row" style="margin-bottom:5px">
               <input class="inp" id="cyk-in" placeholder="String to parse">
-              <button class="ibtn" onclick="runCYK()" title="Run CYK">▶</button>
+              <button class="ibtn" onclick="runCYK()" title="Run CYK (instant)">&#9654;</button>
+              <button class="ibtn" onclick="runCYKVisual()" title="CYK Step-by-Step"
+                style="background:var(--surface3)">&#9783;</button>
             </div>
             <button class="algo-btn sec" onclick="runDerivation()"
               style="width:100%;margin-right:0;margin-bottom:5px">Leftmost Derivation</button>

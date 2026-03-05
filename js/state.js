@@ -73,6 +73,8 @@ const App = {
   grammar: { vars: new Set(['S']), start: 'S', productions: [] },
   // Current algo
   currentAlgo: 'table',
+  // State classification overlay (null = off, Map<id → 'live'|'dead'|'unreachable'> = on)
+  stateClassification: null,
   // Workspace B (M₂ for binary operations)
   workspaceB: null,
   // Head directions for TM / MTM

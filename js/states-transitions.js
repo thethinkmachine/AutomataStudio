@@ -108,7 +108,7 @@ function deleteTrans(id) {
 function transLabel(t) {
   if (App.machine === 'PDA') return `${t.symbol},${t.pop}/${t.push}`;
   if (App.machine === 'TM') return `${t.symbol}/${t.write},${t.dir}`;
-  if (App.machine === 'Mealy') return `${t.symbol}/${t.output ?? '?'}`;
+  if (App.machine === 'Mealy') return `${t.symbol}/${t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda}`;
   if (App.machine === 'MTM') {
     const syms = t.tapeSyms || [t.symbol];
     const writes = t.tapeWrites || [t.write || t.symbol];

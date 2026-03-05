@@ -39,6 +39,28 @@
   stroke-width: 2.5;
 }
 
+/* ─── Dead / Unreachable State Overlay ─── */
+.sn.unreachable-st circle.bd {
+  stroke: var(--orange, #ff9800);
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+  fill: var(--bg3);
+  opacity: 0.55;
+}
+
+.sn.dead-st circle.bd {
+  stroke: var(--text3);
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+  fill: var(--bg2);
+  opacity: 0.6;
+}
+
+.sn.unreachable-st .slbl,
+.sn.dead-st .slbl {
+  opacity: 0.55;
+}
+
 .slbl {
   font-family: var(--mono);
   font-size: 11px;
@@ -50,7 +72,8 @@
 
 .mooreout {
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: 10px;
+  font-weight: 600;
   fill: var(--green);
   text-anchor: middle;
   dominant-baseline: central;
