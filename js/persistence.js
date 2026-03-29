@@ -39,6 +39,7 @@ function loadData(d, isExample) {
   if (d.config) { App.config = { ...App.config, ...d.config }; }
   else { migrateLegacySymbols(d); }
   if (d.cam) { App.cam = { ...d.cam }; }
+  if (typeof applyTheme === 'function') applyTheme(App.config.theme || 'dark', false);
 
   // Update view without confirm bypass
   if (typeof applyMachineSwitch === 'function') {
@@ -132,5 +133,4 @@ function loadExample() {
     executeLoad();
   }
 }
-
 

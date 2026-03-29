@@ -152,7 +152,7 @@ header {
 .hbtn.active {
   background: var(--surface2);
   color: var(--accent);
-  border-color: rgba(79, 195, 247, .25);
+  border-color: var(--accent-border);
 }
 
 .hbtn svg {
@@ -165,14 +165,14 @@ header {
 }
 
 .hbtn.warn:hover {
-  background: rgba(255, 107, 107, .08);
+  background: var(--red-soft);
   color: var(--red);
-  border-color: rgba(255, 107, 107, .25);
+  border-color: var(--red-border);
 }
 
 .hbtn.success {
   color: var(--green);
-  border-color: rgba(105, 240, 174, .25);
+  border-color: var(--green-border);
 }
 
 /* ─── APP BODY ─── */

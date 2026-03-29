@@ -1,6 +1,11 @@
 // ══════════════════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════════════════
+try {
+  applyTheme(localStorage.getItem('automata-theme') || App.config.theme || 'dark', false);
+} catch (e) {
+  applyTheme(App.config.theme || 'dark', false);
+}
 renderSigma(); renderGamma(); renderGramSyms(); renderOutputAlpha();
 renderGrammarLPanel(); updateLPanel();
 App.stackAlpha = new Set([App.config.sym.stackBottom]);

@@ -61,6 +61,70 @@ document.addEventListener('keydown', e => {
   if (e.key === '4') setView('theory');
 });
 
+const ThemeExports = {
+  dark: {
+    bg: '#080c18',
+    nodeFill: '#161d2e',
+    nodeStroke: 'rgba(100,130,200,0.22)',
+    startStroke: '#69f0ae',
+    accStroke: '#ffd54f',
+    actFill: 'rgba(79,195,247,.18)',
+    actStroke: '#4fc3f7',
+    edgeStroke: '#4a5878',
+    textFill: '#7a8ab0',
+    nodeTextFill: '#c8d4f0',
+    viewportStroke: 'rgba(79,195,247,0.6)'
+  },
+  light: {
+    bg: '#eef4fb',
+    nodeFill: '#ffffff',
+    nodeStroke: 'rgba(41,73,109,0.2)',
+    startStroke: '#198b63',
+    accStroke: '#b7791f',
+    actFill: 'rgba(23,142,216,.12)',
+    actStroke: '#178ed8',
+    edgeStroke: '#7d92a6',
+    textFill: '#496277',
+    nodeTextFill: '#16324a',
+    viewportStroke: 'rgba(23,142,216,0.45)'
+  }
+};
+
+function syncThemeExportPalette(theme) {
+  App.config.export = { ...App.config.export, ...(ThemeExports[theme] || ThemeExports.dark) };
+}
+
+function updateThemeButton() {
+  const btn = $('theme-btn');
+  if (!btn) return;
+  const nextTheme = App.config.theme === 'light' ? 'dark' : 'light';
+  btn.innerHTML = App.config.theme === 'light'
+    ? `<svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.6l1.45 2.94 3.25.47-2.35 2.29.56 3.24L8 9.07 5.09 10.6l.56-3.24L3.3 5.07l3.25-.47L8 1.6z" fill="currentColor" stroke="none" /></svg>`
+    : `<svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M10.9 2.2a5.8 5.8 0 1 0 2.9 10.83A6.4 6.4 0 1 1 10.9 2.2z" fill="currentColor" stroke="none" /></svg>`;
+  btn.title = `Switch to ${nextTheme} theme`;
+  btn.setAttribute('aria-label', btn.title);
+}
+
+function applyTheme(theme, persist = true) {
+  const resolved = theme === 'light' ? 'light' : 'dark';
+  App.config.theme = resolved;
+  document.documentElement.dataset.theme = resolved;
+  syncThemeExportPalette(resolved);
+  updateThemeButton();
+  if ($('set-theme')) $('set-theme').value = resolved;
+  if (typeof drawMinimap === 'function') drawMinimap();
+  if (persist) {
+    try { localStorage.setItem('automata-theme', resolved); } catch (e) { }
+  }
+}
+
+function toggleTheme() {
+  applyTheme(App.config.theme === 'light' ? 'dark' : 'light');
+  if (typeof renderAll === 'function') renderAll();
+  saveBackup();
+  showStatus(`Theme: ${App.config.theme}`);
+}
+
 
 // ══════════════════════════════════════════════════════════════════
 //  ZOOM / FIT / MINIMAP / SIDEBAR / FILTER FUNCTIONS
@@ -223,7 +287,7 @@ function renderMinimap() {
   const ry = (vpMinY - minY) * mmScale + mmOffY;
   const rw = (vpMaxX - vpMinX) * mmScale;
   const rh = (vpMaxY - vpMinY) * mmScale;
-  ctx.strokeStyle = 'rgba(79,195,247,0.6)';
+  ctx.strokeStyle = App.config.export.viewportStroke || App.config.export.actStroke;
   ctx.lineWidth = 1.5;
   ctx.strokeRect(rx, ry, rw, rh);
 }
@@ -309,6 +373,7 @@ function filterAlgos() {
 
 function openSettingsModal() {
   const c = App.config;
+  $('set-theme').value = c.theme || 'dark';
   $('set-pda-steps').value = c.maxPdaSteps;
   $('set-tm-steps').value = c.maxTmSteps;
   $('set-auto-speed').value = c.autoSpeed;
@@ -326,6 +391,7 @@ function openSettingsModal() {
 
 function confirmSettings() {
   const c = App.config;
+  applyTheme($('set-theme').value || c.theme || 'dark');
   c.maxPdaSteps = parseInt($('set-pda-steps').value) || 2000;
   c.maxTmSteps = parseInt($('set-tm-steps').value) || 10000;
   c.autoSpeed = parseInt($('set-auto-speed').value) || 500;
@@ -346,4 +412,3 @@ function confirmSettings() {
   showStatus('Settings applied!');
   saveBackup();
 }
-

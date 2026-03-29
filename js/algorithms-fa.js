@@ -170,14 +170,20 @@ function algoMinimize(c) {
 }
 
 function tableFillingMinimize() {
-  const states = App.states, n = states.length;
+  const reachable = getReachableStates(App.startId);
+  const states = App.states.filter(s => reachable.has(s.id));
   const ids = states.map(s => s.id);
   const dist = {}, steps = [];
   // Save snapshot of transitions for later use in loadMinimizedDFA
-  const savedTrans = App.transitions.map(t => ({ ...t }));
-  const savedStates = App.states.map(s => ({ ...s }));
-  const savedAccepts = new Set(App.accepts);
+  const savedTrans = App.transitions
+    .filter(t => reachable.has(t.from) && reachable.has(t.to))
+    .map(t => ({ ...t }));
+  const savedStates = states.map(s => ({ ...s }));
+  const savedAccepts = new Set([...App.accepts].filter(id => reachable.has(id)));
   const savedStart = App.startId;
+  if (states.length !== App.states.length) {
+    steps.push(`Discard ${App.states.length - states.length} unreachable state(s) before minimization.`);
+  }
   // Init
   ids.forEach((a, i) => ids.slice(0, i).forEach(b => {
     const key = [a, b].sort().join('|');
@@ -338,6 +344,7 @@ function parseRE(re) {
   }
   function parseAtom() {
     if (pos >= re.length) throw new Error('Unexpected end');
+    if (re[pos] === ')') throw new Error("Unexpected ')'");
     if (re[pos] === '(') { pos++; const r = parseUnion(); if (re[pos] !== ')') throw new Error("Expected ')'"); pos++; return r; }
     if (re[pos] === App.config.sym.eps) { pos++; return { t: 'eps' }; }
     if (re[pos] === '[') {
@@ -357,7 +364,9 @@ function parseRE(re) {
     if (re[pos] === '.') { pos++; return { t: 'any' }; }
     return { t: 'lit', ch: re[pos++] };
   }
-  return parseUnion();
+  const parsed = parseUnion();
+  if (pos !== re.length) throw new Error(`Unexpected token '${re[pos]}'`);
+  return parsed;
 }
 function buildThompson(ast) {
   switch (ast.t) {
@@ -556,6 +565,10 @@ function runProductEquiv() {
   if (App.machine !== 'DFA') { out.innerHTML = '<div class="pump-result fail">Switch to DFA mode for product construction.</div>'; return; }
   const m1 = getCurrentMachineSnapshot();
   const m2 = App.workspaceB;
+  if ((m2.machine && m2.machine !== 'DFA') || !isDeterministicMachine(m2)) {
+    out.innerHTML = '<div class="pump-result fail">M₂ must be a DFA for product-based equivalence checking.</div>';
+    return;
+  }
   // Build product DFA with symmetric difference accept condition
   const product = buildProductDFA(m1, m2, 'diff');
   // Check if any accept state is reachable
@@ -793,6 +806,10 @@ function runFullEquivCheck() {
   if (App.machine !== 'DFA') { out.innerHTML = '<div class="pump-result fail">Switch to DFA mode for product construction.</div>'; return; }
   const m1 = getCurrentMachineSnapshot();
   const m2 = App.workspaceB;
+  if ((m2.machine && m2.machine !== 'DFA') || !isDeterministicMachine(m2)) {
+    out.innerHTML = '<div class="pump-result fail">M₂ must be a DFA for full equivalence checking.</div>';
+    return;
+  }
   const product = buildProductDFA(m1, m2, 'diff');
   const reachable = getReachableStatesGeneral(product.startId, product.transitions);
   const hasAccept = product.accepts.some(id => reachable.has(id));
@@ -854,6 +871,18 @@ function buildProductDFA(m1, m2, mode) {
     });
   }
   return { states, transitions, startId: startPair, accepts, sigma };
+}
+
+function isDeterministicMachine(machine) {
+  if (!machine || !machine.startId || !machine.transitions) return false;
+  const seen = new Set();
+  for (const t of machine.transitions) {
+    if (t.symbol === App.config.sym.eps) return false;
+    const key = `${t.from}|${t.symbol}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+  }
+  return true;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -931,11 +960,16 @@ function algoClopIntersect(c) {
   c.innerHTML = `<div class="algo-title">Intersection with M₂ (Product DFA)</div>
 <div class="algo-sub">L(M₁) ∩ L(M₂)</div>
 <div class="info-box">Build the product DFA: states are pairs (q₁, q₂). Accept iff BOTH component states are accepting.</div>
-<div class="card"><div class="card-title">M₂ Status: ${m2status}</div>
+  <div class="card"><div class="card-title">M₂ Status: ${m2status}</div>
 <button class="ws-save-btn" onclick="saveWorkspaceB()">Save Current as M₂</button></div>`;
+  if (App.machine !== 'DFA') { c.innerHTML += '<div class="card" style="color:var(--red)">Intersection via product construction currently requires M₁ to be a DFA.</div>'; return; }
   if (!m2RequiredCard(c, 'Intersection')) return;
   if (!App.startId) { c.innerHTML += '<div class="card">Build M₁ in Build view first.</div>'; return; }
   const m1 = getCurrentMachineSnapshot(), m2 = App.workspaceB;
+  if ((m2.machine && m2.machine !== 'DFA') || !isDeterministicMachine(m2)) {
+    c.innerHTML += '<div class="card" style="color:var(--red)">M₂ must be a DFA for product construction.</div>';
+    return;
+  }
   const product = buildProductDFA(m1, m2, 'intersection');
   const reachable = getReachableStatesGeneral(product.startId, product.transitions);
   const reachableStates = product.states.filter(s => reachable.has(s.id));
@@ -1204,8 +1238,8 @@ function layoutNFATree(root, fullStr) {
       if (node.isDead) { // died early
         stroke = 'var(--red)'; fill = 'var(--bg3)'; textCol = 'var(--text3)';
       } else if (isFinal) {
-        if (node.isAccept) { stroke = 'var(--green)'; fill = '#1a3320'; textCol = 'var(--green)'; }
-        else { stroke = 'var(--red)'; fill = '#331a1a'; textCol = 'var(--red)'; }
+        if (node.isAccept) { stroke = 'var(--green)'; fill = 'var(--green-soft)'; textCol = 'var(--green)'; }
+        else { stroke = 'var(--red)'; fill = 'var(--red-soft)'; textCol = 'var(--red)'; }
       }
     }
 
@@ -1261,7 +1295,12 @@ function runNDTMSim() {
   const s = str === App.config.sym.eps ? '' : str;
   const out = $('ndtm-result');
   if (!App.startId) { out.innerHTML = '<div style="color:var(--red);">No start state.</div>'; return; }
-  const result = simNDTM(s);
+  const tokens = tokenize(s);
+  if (tokens === null) {
+    out.innerHTML = `<div style="color:var(--red);font-size:.72rem">Input cannot be tokenized using alphabet {${[...App.sigma].join(', ')}}.</div>`;
+    return;
+  }
+  const result = simNDTM(tokens);
   out.innerHTML = `<div class="pump-result ${result.accepted ? 'ok' : 'fail'}">
 ${result.accepted ? 'ACCEPTED ✓' : 'REJECTED ✗'} — ${result.branches} branches explored, max depth ${result.maxDepth}
 </div>
@@ -1270,9 +1309,9 @@ ${result.accepted ? 'ACCEPTED ✓' : 'REJECTED ✗'} — ${result.branches} bran
 </div>`;
 }
 
-function simNDTM(str) {
+function simNDTM(tokens) {
   // BFS over configurations {state, tape, head}
-  const init = { state: App.startId, tape: str ? str.split('') : [], head: 0 };
+  const init = { state: App.startId, tape: tokens.length ? [...tokens] : [], head: 0 };
   const queue = [init];
   let branches = 0, maxDepth = 0, accepted = false;
   const log = [];
@@ -1292,11 +1331,13 @@ function simNDTM(str) {
       break;
     }
     if (depth >= 150) { log.push(`Branch ${branches}: cut off (depth 150) — ID: ${idStr}`); continue; }
-    const matching = App.transitions.filter(tr => tr.from === state && tr.symbol === sym);
+    const matching = App.transitions.filter(tr => tr.from === state && (tr.symbol === sym || tr.symbol === App.config.sym.any));
     if (!matching.length) { log.push(`Branch ${branches}: stuck (no transition) — ID: ${idStr}`); continue; }
     matching.forEach(tr => {
-      const nt = [...t]; nt[head] = tr.write || sym;
-      const nh = head + (tr.dir === 'R' ? 1 : -1);
+      const nt = [...t];
+      nt[head] = (!tr.write || tr.write === App.config.sym.any) ? sym : tr.write;
+      const move = tr.dir === 'R' ? 1 : (tr.dir === 'L' ? -1 : 0);
+      const nh = head + move;
       queue.push({ state: tr.to, tape: nt, head: Math.max(0, nh), depth: depth + 1 });
     });
     log.push(`Branch ${branches}: read '${sym}' at ${getState(state)?.name}, ${matching.length} choice(s) — ID: ${idStr}`);
@@ -1855,9 +1896,9 @@ function computeMealy2Moore() {
     idMap[s0.id + '_init'] = sid;
   }
   App.states.forEach(s => {
-    if (s.id === App.startId) return;
     const outs = incomingOutputs[s.id];
     if (!outs || outs.size === 0) {
+      if (s.id === App.startId) return;
       const sid = 'm_' + s.id + '_none';
       mooreStates.push({ id: sid, name: s.name, output: '', origId: s.id });
       idMap[s.id + '_none'] = sid;
@@ -1947,19 +1988,30 @@ function algoTM2Grammar(c) {
 <div class="algo-sub">CHOMSKY TYPE 0 REPRESENTATION</div>
 <div class="info-box">Any language accepted by a Turing Machine can be generated by an Unrestricted (Type 0) Grammar. This construction uses a marker-based approach to simulate the head movement and tape contents using phrase-structure rules.</div>`;
   if (App.machine !== 'TM' && App.machine !== 'MTM') { c.innerHTML += `<div class="card">Switch to TM mode to use this conversion.</div>`; return; }
+  if (App.machine === 'MTM') {
+    c.innerHTML += `<div class="card">This construction currently supports only single-tape TMs. Multi-tape TMs need a separate encoding before they can be converted to a Type 0 grammar.</div>`;
+    return;
+  }
 
   const eps = App.config.sym.eps;
   const blank = App.config.sym.blank;
   const sigma = [...App.sigma];
-  const gamma = [...new Set([...App.sigma, blank, ...App.transitions.map(t => t.write).filter(x => x && x !== eps)])];
-  const states = App.states.map(s => s.name);
+  const gamma = [...new Set([
+    ...App.sigma,
+    blank,
+    ...App.transitions.map(t => t.symbol).filter(x => x && x !== eps),
+    ...App.transitions.map(t => t.write).filter(x => x && x !== eps)
+  ])];
   const q0 = getState(App.startId)?.name || 'q0';
 
   const prods = [];
-  // 1. Initial configuration: S -> [L q0 input R]
-  // For simplicity, we create a grammar that generates strings and simulates TM logic.
-  prods.push({ lhs: 'S', rhs: `⟨L⟩ ${q0} ⟨R⟩` });
-  prods.push({ lhs: '⟨L⟩', rhs: '' });
+  // 1. Initial configuration: generate an arbitrary input word w ∈ Σ* to the right of q0.
+  prods.push({ lhs: 'S', rhs: `⟨L⟩ ${q0} ⟨W⟩ ⟨R⟩` });
+  prods.push({ lhs: '⟨L⟩', rhs: blank });
+  sigma.forEach(sym => {
+    if (sym !== eps) prods.push({ lhs: '⟨W⟩', rhs: `${sym} ⟨W⟩` });
+  });
+  prods.push({ lhs: '⟨W⟩', rhs: '' });
 
   // 2. Expand tape end markers to allow infinite movement
   prods.push({ lhs: '⟨R⟩', rhs: `${blank} ⟨R⟩` });
@@ -2485,7 +2537,7 @@ let _rgNFAData = null;
 function algoRG2NFA(c) {
   c.innerHTML = `<div class="algo-title">Regular Grammar &rarr; NFA</div>
 <div class="algo-sub">RIGHT-LINEAR / LEFT-LINEAR TO AUTOMATON</div>
-<div class="info-box">Enter a right-linear grammar: productions must be of the form <em>A → aB</em>&nbsp;(read terminal, go to state B) or <em>A → a</em>&nbsp;(terminal and accept) or <em>A → ε</em>&nbsp;(accept immediately). Each variable becomes a state. A fresh accept state is added.</div>
+<div class="info-box">Enter a regular grammar using either right-linear productions (<em>A → aB</em>, <em>A → a</em>, <em>A → ε</em>) or left-linear productions (<em>A → Ba</em>, <em>A → a</em>, <em>A → ε</em>). Use one orientation consistently. Each variable becomes a state, plus one helper state.</div>
 <div class="card">
   <div class="card-title">Grammar Input</div>
   <div style="font-size:.67rem;color:var(--text3);margin-bottom:8px">Format: one production per line&nbsp; e.g. <code>S → aA | b</code> or <code>A → ε</code></div>
@@ -2506,11 +2558,9 @@ function buildRG2NFA() {
   if (!raw) { out.innerHTML = '<div class="card" style="color:var(--red)">Enter a grammar first.</div>'; return; }
 
   try {
-    // Parse productions
     const prods = [];
     raw.split('\n').forEach(line => {
       const line2 = line.trim(); if (!line2) return;
-      // Split on → or -> 
       const arrow = line2.includes('→') ? '→' : '->';
       const parts = line2.split(arrow);
       if (parts.length < 2) return;
@@ -2522,47 +2572,79 @@ function buildRG2NFA() {
     });
     if (!prods.length) throw new Error('No valid productions found.');
 
-    // Collect variables and terminals
     const vars = new Set(prods.map(p => p.lhs));
-    const ACCEPT = '__acc__';
-    // Build NFA states: one per variable + accept state
+    const helperState = '__helper__';
+    const varNames = [...vars].sort((a, b) => b.length - a.length);
+    const startVar = startSym.toUpperCase();
+    const ruleKinds = new Set();
+
+    function parseRegularRHS(rhs) {
+      if (rhs === eps) return { kind: 'epsilon' };
+
+      const rightVar = varNames.find(v => rhs.endsWith(v) && rhs !== v);
+      const leftVar = varNames.find(v => rhs.startsWith(v) && rhs !== v);
+
+      if (rightVar) {
+        const terminal = rhs.slice(0, rhs.length - rightVar.length).trim();
+        if (terminal) return { kind: 'right', terminal, variable: rightVar };
+      }
+      if (leftVar) {
+        const terminal = rhs.slice(leftVar.length).trim();
+        if (terminal) return { kind: 'left', terminal, variable: leftVar };
+      }
+      return { kind: 'terminal', terminal: rhs.trim() };
+    }
+
+    const parsedProds = prods.map(p => {
+      const parsed = parseRegularRHS(p.rhs);
+      if (parsed.kind === 'right' || parsed.kind === 'left') ruleKinds.add(parsed.kind);
+      return { ...p, parsed };
+    });
+
+    if (ruleKinds.size > 1) {
+      throw new Error('Mixed right-linear and left-linear productions are not supported in a single grammar.');
+    }
+
+    const orientation = ruleKinds.has('left') ? 'left' : 'right';
     const stateMap = {}; // varName → id
     let sid = 1;
     [...vars].forEach(v => { stateMap[v] = 's' + sid++; });
-    stateMap[ACCEPT] = 's' + sid++;
+    stateMap[helperState] = 's' + sid++;
 
     const states = [...vars].map(v => ({ id: stateMap[v], name: v }));
-    states.push({ id: stateMap[ACCEPT], name: 'qAcc' });
+    states.push({ id: stateMap[helperState], name: orientation === 'left' ? 'qStart' : 'qAcc' });
 
-    const accepts = new Set([stateMap[ACCEPT]]);
-    const startId = stateMap[startSym.toUpperCase()] || stateMap[[...vars][0]];
+    const accepts = orientation === 'left'
+      ? new Set([stateMap[startVar] || stateMap[[...vars][0]]])
+      : new Set([stateMap[helperState]]);
+    const startId = orientation === 'left'
+      ? stateMap[helperState]
+      : (stateMap[startVar] || stateMap[[...vars][0]]);
     const transitions = [];
     let tn = 1;
 
-    prods.forEach(({ lhs, rhs }) => {
+    parsedProds.forEach(({ lhs, rhs, parsed }) => {
       const from = stateMap[lhs];
       if (!from) return;
 
-      if (rhs === eps) {
-        // A → ε : add ε-transition to accept
-        transitions.push({ id: 't' + tn++, from, to: stateMap[ACCEPT], symbol: eps });
-      } else {
-        // Could be: A → a  (terminal only) or A → aB (terminal then variable)
-        // Tokenise: first char is terminal, rest is variable name
-        const chars = rhs.split('');
-        const terminal = chars[0];
-        const ntPart = chars.slice(1).join('').trim().toUpperCase();
-
-        if (ntPart && stateMap[ntPart]) {
-          // A → aB
-          transitions.push({ id: 't' + tn++, from, to: stateMap[ntPart], symbol: terminal });
-        } else if (!ntPart) {
-          // A → a  (terminal only → go to accept)
-          transitions.push({ id: 't' + tn++, from, to: stateMap[ACCEPT], symbol: terminal });
+      if (orientation === 'left') {
+        if (parsed.kind === 'epsilon') {
+          transitions.push({ id: 't' + tn++, from: stateMap[helperState], to: from, symbol: eps });
+        } else if (parsed.kind === 'left') {
+          transitions.push({ id: 't' + tn++, from: stateMap[parsed.variable], to: from, symbol: parsed.terminal });
+        } else if (parsed.kind === 'terminal') {
+          transitions.push({ id: 't' + tn++, from: stateMap[helperState], to: from, symbol: parsed.terminal });
         } else {
-          // NT not in grammar — create implicit accept state transition
-          transitions.push({ id: 't' + tn++, from, to: stateMap[ACCEPT], symbol: terminal });
+          throw new Error(`Production "${lhs} → ${rhs}" is not left-linear.`);
         }
+      } else if (parsed.kind === 'epsilon') {
+        transitions.push({ id: 't' + tn++, from, to: stateMap[helperState], symbol: eps });
+      } else if (parsed.kind === 'right') {
+        transitions.push({ id: 't' + tn++, from, to: stateMap[parsed.variable], symbol: parsed.terminal });
+      } else if (parsed.kind === 'terminal') {
+        transitions.push({ id: 't' + tn++, from, to: stateMap[helperState], symbol: parsed.terminal });
+      } else {
+        throw new Error(`Production "${lhs} → ${rhs}" is not right-linear.`);
       }
     });
 
@@ -2572,7 +2654,7 @@ function buildRG2NFA() {
     const transRows = transitions.map(t => {
       const fn = states.find(s => s.id === t.from)?.name || '?';
       const tn2 = states.find(s => s.id === t.to)?.name || '?';
-      const isAcc = t.to === stateMap[ACCEPT];
+      const isAcc = accepts.has(t.to);
       return `<tr>
         <td>${fn}</td>
         <td style="color:var(--gold)">${t.symbol}</td>
@@ -2584,7 +2666,7 @@ function buildRG2NFA() {
   <div class="card-title">Constructed NFA — States: ${states.length} Transitions: ${transitions.length}</div>
   <div style="font-size:.68rem;color:var(--text3);margin-bottom:8px">
     Start: <span style="color:var(--green)">${states.find(s => s.id === startId)?.name}</span> &nbsp;&nbsp;
-    Accept: <span style="color:var(--gold)">qAcc</span> &nbsp;&nbsp;
+    Accept: <span style="color:var(--gold)">${[...accepts].map(id => states.find(s => s.id === id)?.name).join(', ')}</span> &nbsp;&nbsp;
     Σ = {${sigma.join(', ')}}
   </div>
   <table class="result-table">

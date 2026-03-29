@@ -35,8 +35,8 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(ellipse at 30% 25%, rgba(79, 195, 247, .035) 0, transparent 60%),
-    radial-gradient(ellipse at 70% 75%, rgba(124, 77, 255, .03) 0, transparent 60%);
+  background: radial-gradient(ellipse at 30% 25%, var(--canvas-glow-a) 0, transparent 60%),
+    radial-gradient(ellipse at 70% 75%, var(--canvas-glow-b) 0, transparent 60%);
 }
 
 #svgCanvas {
@@ -102,7 +102,7 @@
   top: 0;
   height: 100%;
   z-index: 100;
-  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--panel-shadow-right);
   transition-delay: 0.15s;
 }
 
@@ -168,51 +168,51 @@
 }
 
 .bd-dfa {
-  background: rgba(79, 195, 247, .12);
+  background: var(--accent-soft);
   color: var(--accent);
-  border: 1px solid rgba(79, 195, 247, .25);
+  border: 1px solid var(--accent-border);
 }
 
 .bd-nfa {
-  background: rgba(124, 77, 255, .12);
+  background: var(--purple-soft);
   color: var(--purple);
-  border: 1px solid rgba(124, 77, 255, .25);
+  border: 1px solid var(--purple-border);
 }
 
 .bd-pda {
-  background: rgba(105, 240, 174, .1);
+  background: var(--green-soft);
   color: var(--green);
-  border: 1px solid rgba(105, 240, 174, .25);
+  border: 1px solid var(--green-border);
 }
 
 .bd-tm {
-  background: rgba(255, 183, 77, .1);
+  background: var(--orange-soft);
   color: var(--orange);
-  border: 1px solid rgba(255, 183, 77, .25);
+  border: 1px solid var(--orange-border);
 }
 
 .bd-enfa {
-  background: rgba(124, 77, 255, .12);
+  background: var(--purple-soft);
   color: var(--purple);
-  border: 1px solid rgba(124, 77, 255, .25);
+  border: 1px solid var(--purple-border);
 }
 
 .bd-moore {
-  background: rgba(105, 240, 174, .1);
+  background: var(--green-soft);
   color: var(--green);
-  border: 1px solid rgba(105, 240, 174, .3);
+  border: 1px solid var(--green-border);
 }
 
 .bd-mealy {
-  background: rgba(79, 195, 247, .1);
+  background: var(--accent-soft);
   color: var(--accent);
-  border: 1px solid rgba(79, 195, 247, .3);
+  border: 1px solid var(--accent-border);
 }
 
 .bd-mtm {
-  background: rgba(255, 99, 99, .1);
+  background: var(--red-soft);
   color: var(--red);
-  border: 1px solid rgba(255, 99, 99, .3);
+  border: 1px solid var(--red-border);
 }
 
 #mtm-tapes {
@@ -292,7 +292,7 @@
   padding: 6px 13px;
   background: var(--accent);
   border: none;
-  color: var(--bg);
+  color: var(--on-accent);
   font-family: var(--mono);
   font-size: .67rem;
   letter-spacing: .06em;
@@ -305,7 +305,7 @@
 
 .run-btn:hover {
   background: var(--accent);
-  box-shadow: 0 0 14px rgba(79, 195, 247, .35);
+  box-shadow: var(--accent-glow);
 }
 
 .sctrl {
@@ -333,15 +333,15 @@
 }
 
 .auto-btn {
-  background: rgba(79, 195, 247, .1);
+  background: var(--accent-soft);
   color: var(--accent);
-  border-color: rgba(79, 195, 247, .3);
+  border-color: var(--accent-border);
 }
 
 .auto-btn.playing {
-  background: rgba(255, 107, 107, .1);
+  background: var(--red-soft);
   color: var(--red);
-  border-color: rgba(255, 107, 107, .3);
+  border-color: var(--red-border);
 }
 
 .trace-log {
@@ -608,7 +608,7 @@
   padding: 7px 16px;
   background: var(--accent);
   border: none;
-  color: var(--bg);
+  color: var(--on-accent);
   font-family: var(--mono);
   font-size: .7rem;
   border-radius: 6px;

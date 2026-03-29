@@ -69,7 +69,7 @@
 
 .inp:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(79, 195, 247, .08);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .inp::placeholder {
@@ -107,7 +107,7 @@
 
 .ibtn:hover {
   background: var(--accent);
-  color: var(--bg);
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 
@@ -174,7 +174,7 @@
   height: 6px;
   border-radius: 50%;
   background: var(--gold);
-  box-shadow: 0 0 5px rgba(255, 213, 79, .5);
+  box-shadow: 0 0 5px var(--gold-border);
   display: none;
   margin-left: auto;
 }
@@ -241,7 +241,7 @@
   top: 0;
   height: 100%;
   z-index: 100;
-  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--panel-shadow-left);
   transition-delay: 0.15s;
 }
 
@@ -413,7 +413,7 @@
 
 .algo-search-inp:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(79, 195, 247, .08);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .algo-search-inp::placeholder {

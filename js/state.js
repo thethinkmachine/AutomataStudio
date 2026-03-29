@@ -28,6 +28,7 @@ const App = {
   stateN: 0, transN: 0,
   // Configuration constants
   config: {
+    theme: 'dark',
     maxPdaSteps: 2000,
     maxTmSteps: 10000,
     autoSpeed: 500,
@@ -87,4 +88,3 @@ const App = {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 var R = App.config.radius;
 const $ = id => document.getElementById(id);
-

@@ -635,22 +635,58 @@ function runPDA2CFG() {
 
   const eps = App.config.sym.eps;
   const Z = App.config.sym.stackBottom;
-  const states = App.states;
-  const trans = App.transitions;
-  const sname = id => states.find(s => s.id === id)?.name || id;
-
-  const prods = [];
-  const startName = sname(App.startId);
-
-  App.accepts.forEach(afid => {
-    prods.push({ lhs: 'S', rhs: `[${startName},${Z},${sname(afid)}]` });
+  const sname = id => App.states.find(s => s.id === id)?.name || id;
+  const stateNames = App.states.map(s => s.name);
+  const stackSymbols = new Set([Z]);
+  App.transitions.forEach(t => {
+    if (t.pop && t.pop !== eps && t.pop !== App.config.sym.any) stackSymbols.add(t.pop);
+    if (t.push && t.push !== eps && t.push !== App.config.sym.any) t.push.split('').forEach(sym => stackSymbols.add(sym));
   });
 
+  const freshBottomCandidates = ['$', '#', '@', '%', '&'];
+  let freshBottom = freshBottomCandidates.find(sym => !stackSymbols.has(sym)) || '$';
+  while (stackSymbols.has(freshBottom)) freshBottom += '$';
+  stackSymbols.add(freshBottom);
+
+  let startName = '__pda_cfg_start__';
+  while (stateNames.includes(startName)) startName += '_';
+  let drainName = '__pda_cfg_drain__';
+  while (stateNames.includes(drainName) || drainName === startName) drainName += '_';
+
+  const states = [
+    ...stateNames.map(name => ({ name })),
+    { name: startName },
+    { name: drainName }
+  ];
+  const trans = [];
+  trans.push({ from: startName, to: sname(App.startId), symbol: eps, pop: freshBottom, push: `${Z}${freshBottom}` });
+  App.transitions.forEach(t => {
+    trans.push({
+      from: sname(t.from),
+      to: sname(t.to),
+      symbol: t.symbol || eps,
+      pop: t.pop || eps,
+      push: t.push || eps
+    });
+  });
+  App.accepts.forEach(afid => {
+    const accName = sname(afid);
+    [...stackSymbols].forEach(sym => {
+      trans.push({ from: accName, to: drainName, symbol: eps, pop: sym, push: eps });
+    });
+  });
+  [...stackSymbols].forEach(sym => {
+    trans.push({ from: drainName, to: drainName, symbol: eps, pop: sym, push: eps });
+  });
+
+  const prods = [];
+  prods.push({ lhs: 'S', rhs: `[${startName},${freshBottom},${drainName}]` });
+
   trans.forEach(t => {
-    const p = sname(t.from);
-    const q = sname(t.to);
+    const p = t.from;
+    const q = t.to;
     const a = t.symbol || eps;
-    const pop = t.pop || Z;
+    const pop = t.pop || eps;
     const push = t.push || eps;
     const pushSyms = push === eps ? [] : push.split('');
 

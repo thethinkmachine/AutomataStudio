@@ -24,13 +24,13 @@
 }
 
 .sn.act-st circle.bd {
-  fill: rgba(79, 195, 247, .18);
+  fill: var(--state-active-fill);
   stroke: var(--accent);
-  filter: drop-shadow(0 0 7px rgba(79, 195, 247, .45));
+  filter: var(--state-active-shadow);
 }
 
 .sn.rej-st circle.bd {
-  fill: rgba(255, 107, 107, .1);
+  fill: var(--state-reject-fill);
   stroke: var(--red);
 }
 
@@ -154,7 +154,7 @@
 
 
 .marquee-rect {
-  fill: rgba(79, 195, 247, 0.1);
+  fill: var(--marquee-fill);
   stroke: var(--accent);
   stroke-dasharray: 4, 4;
   pointer-events: none;
@@ -204,7 +204,7 @@
 .toolbox-btn.active {
   background: var(--surface2);
   color: var(--accent);
-  border-color: rgba(79, 195, 247, .4);
+  border-color: var(--accent-border-strong);
 }
 
 .toolbox-btn svg {
@@ -242,15 +242,15 @@
 }
 
 .toolbox-btn.toolbox-danger:hover {
-  background: rgba(255, 107, 107, .1);
+  background: var(--red-soft);
   color: var(--red);
-  border-color: rgba(255, 107, 107, .3);
+  border-color: var(--red-border);
 }
 
 .toolbox-btn.toolbox-danger.active {
-  background: rgba(255, 107, 107, .15);
+  background: var(--red-soft);
   color: var(--red);
-  border-color: rgba(255, 107, 107, .4);
+  border-color: var(--red-border);
 }
 
 /* ─── CANVAS NAV CONTROLS ─── */
