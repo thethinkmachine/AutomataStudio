@@ -2,8 +2,12 @@
   display: none;
 }
 
- .mobile-panel-toggle {
+.mobile-panel-toggle {
   display: none;
+}
+
+.mobile-panel-content {
+  display: contents;
 }
 
 @media (max-width: 900px) {
@@ -126,6 +130,9 @@
   }
 
   .mobile-panel-content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
     min-width: 0;
     min-height: 0;
   }
