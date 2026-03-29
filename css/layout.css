@@ -164,6 +164,11 @@ header {
   flex-shrink: 0;
 }
 
+#theme-btn svg, #fs-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
 .hbtn.warn:hover {
   background: var(--red-soft);
   color: var(--red);
