@@ -1,4 +1,8 @@
- .mobile-machine-select {
+.mobile-machine-select {
+  display: none;
+}
+
+ .mobile-panel-toggle {
   display: none;
 }
 
@@ -61,6 +65,35 @@
     min-height: 32px;
   }
 
+  .mobile-panel-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg2);
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .mobile-panel-title {
+    min-width: 0;
+  }
+
+  .mobile-panel-icon {
+    color: var(--text3);
+    font-size: .85rem;
+    transition: transform var(--transition-fast), color var(--transition-fast);
+    flex: 0 0 auto;
+  }
+
   .machine-tabs {
     display: none;
   }
@@ -90,6 +123,28 @@
     border-left: 0;
     border-right: 0;
     box-shadow: none;
+  }
+
+  .mobile-panel-content {
+    min-width: 0;
+    min-height: 0;
+  }
+
+  #lpanel[data-mobile-collapsed="1"] > .mobile-panel-content,
+  #rpanel[data-mobile-collapsed="1"] > .mobile-panel-content,
+  #algo-nav[data-mobile-collapsed="1"] > .mobile-panel-content,
+  #gram-left[data-mobile-collapsed="1"] > .mobile-panel-content,
+  #theory-nav[data-mobile-collapsed="1"] > .mobile-panel-content {
+    display: none;
+  }
+
+  #lpanel[data-mobile-collapsed="1"] .mobile-panel-icon,
+  #rpanel[data-mobile-collapsed="1"] .mobile-panel-icon,
+  #algo-nav[data-mobile-collapsed="1"] .mobile-panel-icon,
+  #gram-left[data-mobile-collapsed="1"] .mobile-panel-icon,
+  #theory-nav[data-mobile-collapsed="1"] .mobile-panel-icon {
+    transform: rotate(-90deg);
+    color: var(--text2);
   }
 
   .lpanel,
@@ -136,6 +191,18 @@
   .algo-content,
   .gram-right {
     overflow: visible;
+  }
+
+  #lpanel[data-mobile-collapsed="1"],
+  #rpanel[data-mobile-collapsed="1"],
+  #algo-nav[data-mobile-collapsed="1"],
+  #gram-left[data-mobile-collapsed="1"],
+  #theory-nav[data-mobile-collapsed="1"] {
+    flex: 0 0 auto;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: hidden;
   }
 
   .canvas-area {
@@ -277,6 +344,14 @@
 
   .algo-search-wrap {
     position: static;
+  }
+
+  .algo-nav .mobile-panel-toggle,
+  .gram-left .mobile-panel-toggle,
+  .theory-nav .mobile-panel-toggle {
+    position: sticky;
+    top: 0;
+    z-index: 2;
   }
 
   .algo-item,

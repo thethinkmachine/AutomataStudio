@@ -177,8 +177,13 @@
 
     <!-- LPANEL (shown on Build+Algo views) -->
     <aside class="lpanel" id="lpanel">
-
-      <div class="lpanel-content" id="lpanel-content">
+      <button class="mobile-panel-toggle" id="lpanel-mobile-toggle" onclick="toggleMobilePanel('lpanel')"
+        aria-controls="lpanel-mobile-content" aria-expanded="true">
+        <span class="mobile-panel-title">Workspace</span>
+        <span class="mobile-panel-icon">▾</span>
+      </button>
+      <div class="mobile-panel-content" id="lpanel-mobile-content">
+        <div class="lpanel-content" id="lpanel-content">
         <div class="sec">
           <div class="sec-lbl">Alphabet Σ</div>
           <div class="row">
@@ -227,6 +232,7 @@
               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </button>
+      </div>
       </div>
     </aside>
 
@@ -340,7 +346,13 @@
 
         <!-- Right Panel -->
         <div class="rpanel" id="rpanel">
-          <div class="rpanel-content" id="rpanel-content">
+          <button class="mobile-panel-toggle" id="rpanel-mobile-toggle" onclick="toggleMobilePanel('rpanel')"
+            aria-controls="rpanel-mobile-content" aria-expanded="true">
+            <span class="mobile-panel-title">Inspector</span>
+            <span class="mobile-panel-icon">▾</span>
+          </button>
+          <div class="mobile-panel-content" id="rpanel-mobile-content">
+            <div class="rpanel-content" id="rpanel-content">
             <!-- Language section -->
             <div class="rp-collapsible" id="rp-language">
               <div class="rp-section-header" onclick="toggleRPSection('rp-language')">
@@ -413,67 +425,81 @@
               </svg>
             </button>
           </div>
+          </div>
         </div>
       </div>
 
       <!-- ─── ALGORITHMS VIEW ─── -->
       <div id="v-algo" style="display:none">
         <div class="algo-nav" id="algo-nav">
-          <div class="algo-search-wrap">
-            <input class="algo-search-inp" id="algo-search" placeholder="Search algorithms…" oninput="filterAlgos()">
+          <button class="mobile-panel-toggle" id="algo-nav-mobile-toggle" onclick="toggleMobilePanel('algo-nav')"
+            aria-controls="algo-nav-content" aria-expanded="true">
+            <span class="mobile-panel-title">Algorithms</span>
+            <span class="mobile-panel-icon">▾</span>
+          </button>
+          <div class="mobile-panel-content" id="algo-nav-content">
+            <div class="algo-search-wrap">
+              <input class="algo-search-inp" id="algo-search" placeholder="Search algorithms…" oninput="filterAlgos()">
+            </div>
+            <div class="algo-grp">Finite Automata</div>
+            <div class="algo-item active" onclick="setAlgo('table')" data-algo="table">δ Transition Table</div>
+            <div class="algo-item" onclick="setAlgo('nfa2dfa')" data-algo="nfa2dfa">NFA → DFA (Subset)</div>
+            <div class="algo-item" onclick="setAlgo('minimize')" data-algo="minimize">DFA Minimize</div>
+            <div class="algo-item" onclick="setAlgo('minimizeVisual')" data-algo="minimizeVisual">DFA Minimize (Visual)
+            </div>
+            <div class="algo-item" onclick="setAlgo('equiv')" data-algo="equiv">DFA Equivalence</div>
+            <div class="algo-item" onclick="setAlgo('nfaTree')" data-algo="nfaTree">NFA Computation Tree</div>
+            <div class="algo-item" onclick="setAlgo('epsClosure')" data-algo="epsClosure">&epsilon;-Closure Table</div>
+            <div class="algo-item" onclick="setAlgo('deadStates')" data-algo="deadStates">Dead State Analysis</div>
+            <div class="algo-item" onclick="setAlgo('ndtm')" data-algo="ndtm">NDTM Simulation</div>
+            <div class="algo-grp">Regular Grammars</div>
+            <div class="algo-item" onclick="setAlgo('dfa2rg')" data-algo="dfa2rg">DFA/NFA &rarr; Regular Grammar</div>
+            <div class="algo-item" onclick="setAlgo('rg2nfa')" data-algo="rg2nfa">Regular Grammar &rarr; NFA</div>
+            <div class="algo-grp">Turing Machines</div>
+            <div class="algo-item" onclick="setAlgo('utm')" data-algo="utm">UTM Simulator</div>
+            <div class="algo-item" onclick="setAlgo('tm2grammar')" data-algo="tm2grammar">TM &rarr; Grammar</div>
+            <div class="algo-item" onclick="setAlgo('mtmTable')" data-algo="mtmTable">MTM Transition Table</div>
+            <div class="algo-grp">Transducers</div>
+            <div class="algo-item" onclick="setAlgo('mooreTable')" data-algo="mooreTable">Moore Table (&#955;:
+              Q&rarr;&Delta;)</div>
+            <div class="algo-item" onclick="setAlgo('mealyTable')" data-algo="mealyTable">Mealy Table (&#955;:
+              Q&times;&Sigma;&rarr;&Delta;)</div>
+            <div class="algo-item" onclick="setAlgo('moore2mealy')" data-algo="moore2mealy">Moore &rarr; Mealy</div>
+            <div class="algo-item" onclick="setAlgo('mealy2moore')" data-algo="mealy2moore">Mealy &rarr; Moore</div>
+            <div class="algo-grp">Regular Expressions</div>
+            <div class="algo-item" onclick="setAlgo('re2nfa')" data-algo="re2nfa">Regex &rarr; NFA (Thompson)</div>
+            <div class="algo-item" onclick="setAlgo('re2nfaVisual')" data-algo="re2nfaVisual">Regex &rarr; NFA (Visual)
+            </div>
+            <div class="algo-item" onclick="setAlgo('nfa2re')" data-algo="nfa2re">NFA → Regex (GNFA)</div>
+            <div class="algo-grp">Transformations</div>
+            <div class="algo-item" onclick="setAlgo('enfa2nfa')" data-algo="enfa2nfa">ε-NFA → NFA</div>
+            <div class="algo-item" onclick="setAlgo('complement')" data-algo="complement">DFA Complement</div>
+            <div class="algo-item" onclick="setAlgo('product')" data-algo="product">Product Construction</div>
+            <div class="algo-grp">Decision Properties</div>
+            <div class="algo-item" onclick="setAlgo('isEmpty')" data-algo="isEmpty">Is Empty?</div>
+            <div class="algo-item" onclick="setAlgo('isFinite')" data-algo="isFinite">Is Finite?</div>
+            <div class="algo-item" onclick="setAlgo('isUniversal')" data-algo="isUniversal">Is Universal? (DFA)</div>
+            <div class="algo-item" onclick="setAlgo('fullEquiv')" data-algo="fullEquiv">Full Equivalence</div>
+            <div class="algo-grp">Closure Operations</div>
+            <div class="algo-item" onclick="setAlgo('star')" data-algo="star">Kleene Star (NFA)</div>
+            <div class="algo-item" onclick="setAlgo('reversal')" data-algo="reversal">Reversal (NFA)</div>
+            <div class="algo-item" onclick="setAlgo('union2')" data-algo="union2">Union with M₂</div>
+            <div class="algo-item" onclick="setAlgo('intersect')" data-algo="intersect">Intersection with M₂</div>
+            <div class="algo-item" onclick="setAlgo('concat2')" data-algo="concat2">Concat with M₂</div>
           </div>
-          <div class="algo-grp">Finite Automata</div>
-          <div class="algo-item active" onclick="setAlgo('table')" data-algo="table">δ Transition Table</div>
-          <div class="algo-item" onclick="setAlgo('nfa2dfa')" data-algo="nfa2dfa">NFA → DFA (Subset)</div>
-          <div class="algo-item" onclick="setAlgo('minimize')" data-algo="minimize">DFA Minimize</div>
-          <div class="algo-item" onclick="setAlgo('minimizeVisual')" data-algo="minimizeVisual">DFA Minimize (Visual)
-          </div>
-          <div class="algo-item" onclick="setAlgo('equiv')" data-algo="equiv">DFA Equivalence</div>
-          <div class="algo-item" onclick="setAlgo('nfaTree')" data-algo="nfaTree">NFA Computation Tree</div>
-          <div class="algo-item" onclick="setAlgo('epsClosure')" data-algo="epsClosure">&epsilon;-Closure Table</div>
-          <div class="algo-item" onclick="setAlgo('deadStates')" data-algo="deadStates">Dead State Analysis</div>
-          <div class="algo-item" onclick="setAlgo('ndtm')" data-algo="ndtm">NDTM Simulation</div>
-          <div class="algo-grp">Regular Grammars</div>
-          <div class="algo-item" onclick="setAlgo('dfa2rg')" data-algo="dfa2rg">DFA/NFA &rarr; Regular Grammar</div>
-          <div class="algo-item" onclick="setAlgo('rg2nfa')" data-algo="rg2nfa">Regular Grammar &rarr; NFA</div>
-          <div class="algo-grp">Turing Machines</div>
-          <div class="algo-item" onclick="setAlgo('utm')" data-algo="utm">UTM Simulator</div>
-          <div class="algo-item" onclick="setAlgo('tm2grammar')" data-algo="tm2grammar">TM &rarr; Grammar</div>
-          <div class="algo-item" onclick="setAlgo('mtmTable')" data-algo="mtmTable">MTM Transition Table</div>
-          <div class="algo-grp">Transducers</div>
-          <div class="algo-item" onclick="setAlgo('mooreTable')" data-algo="mooreTable">Moore Table (&#955;:
-            Q&rarr;&Delta;)</div>
-          <div class="algo-item" onclick="setAlgo('mealyTable')" data-algo="mealyTable">Mealy Table (&#955;:
-            Q&times;&Sigma;&rarr;&Delta;)</div>
-          <div class="algo-item" onclick="setAlgo('moore2mealy')" data-algo="moore2mealy">Moore &rarr; Mealy</div>
-          <div class="algo-item" onclick="setAlgo('mealy2moore')" data-algo="mealy2moore">Mealy &rarr; Moore</div>
-          <div class="algo-grp">Regular Expressions</div>
-          <div class="algo-item" onclick="setAlgo('re2nfa')" data-algo="re2nfa">Regex &rarr; NFA (Thompson)</div>
-          <div class="algo-item" onclick="setAlgo('re2nfaVisual')" data-algo="re2nfaVisual">Regex &rarr; NFA (Visual)
-          </div>
-          <div class="algo-item" onclick="setAlgo('nfa2re')" data-algo="nfa2re">NFA → Regex (GNFA)</div>
-          <div class="algo-grp">Transformations</div>
-          <div class="algo-item" onclick="setAlgo('enfa2nfa')" data-algo="enfa2nfa">ε-NFA → NFA</div>
-          <div class="algo-item" onclick="setAlgo('complement')" data-algo="complement">DFA Complement</div>
-          <div class="algo-item" onclick="setAlgo('product')" data-algo="product">Product Construction</div>
-          <div class="algo-grp">Decision Properties</div>
-          <div class="algo-item" onclick="setAlgo('isEmpty')" data-algo="isEmpty">Is Empty?</div>
-          <div class="algo-item" onclick="setAlgo('isFinite')" data-algo="isFinite">Is Finite?</div>
-          <div class="algo-item" onclick="setAlgo('isUniversal')" data-algo="isUniversal">Is Universal? (DFA)</div>
-          <div class="algo-item" onclick="setAlgo('fullEquiv')" data-algo="fullEquiv">Full Equivalence</div>
-          <div class="algo-grp">Closure Operations</div>
-          <div class="algo-item" onclick="setAlgo('star')" data-algo="star">Kleene Star (NFA)</div>
-          <div class="algo-item" onclick="setAlgo('reversal')" data-algo="reversal">Reversal (NFA)</div>
-          <div class="algo-item" onclick="setAlgo('union2')" data-algo="union2">Union with M₂</div>
-          <div class="algo-item" onclick="setAlgo('intersect')" data-algo="intersect">Intersection with M₂</div>
-          <div class="algo-item" onclick="setAlgo('concat2')" data-algo="concat2">Concat with M₂</div>
         </div>
         <div class="algo-content" id="algo-content"></div>
       </div>
 
       <!-- ─── GRAMMAR VIEW ─── -->
       <div id="v-grammar" style="display:none">
-        <div class="gram-left">
+        <div class="gram-left" id="gram-left">
+          <button class="mobile-panel-toggle" id="gram-left-mobile-toggle" onclick="toggleMobilePanel('gram-left')"
+            aria-controls="gram-left-content" aria-expanded="true">
+            <span class="mobile-panel-title">Grammar Tools</span>
+            <span class="mobile-panel-icon">▾</span>
+          </button>
+          <div class="mobile-panel-content" id="gram-left-content">
           <div class="sec">
             <div class="sec-lbl">Non-terminals</div>
             <div class="row">
@@ -545,6 +571,7 @@
             <button class="algo-btn sec" onclick="runCFGIsFinite()"
               style="width:100%;margin-right:0;margin-bottom:4px">isFinite?</button>
           </div>
+          </div>
         </div>
         <div class="gram-right" id="gram-right">
           <h2 style="font-family:var(--serif);font-size:1.3rem;margin-bottom:4px">Context-Free Grammar</h2>
@@ -558,45 +585,52 @@
 
       <!-- ─── THEORY VIEW ─── -->
       <div id="v-theory" style="display:none">
-        <div class="algo-nav theory-nav" style="width:190px;min-width:190px;">
-          <div class="theory-nav-header">
-            <div class="theory-nav-title">Theory Reference</div>
-            <div class="theory-nav-subtitle">Hopcroft, Motwani &amp; Ullman<br>Automata, Languages &amp; Computation
+        <div class="algo-nav theory-nav" id="theory-nav" style="width:190px;min-width:190px;">
+          <button class="mobile-panel-toggle" id="theory-nav-mobile-toggle" onclick="toggleMobilePanel('theory-nav')"
+            aria-controls="theory-nav-content" aria-expanded="true">
+            <span class="mobile-panel-title">Theory Topics</span>
+            <span class="mobile-panel-icon">▾</span>
+          </button>
+          <div class="mobile-panel-content" id="theory-nav-content">
+            <div class="theory-nav-header">
+              <div class="theory-nav-title">Theory Reference</div>
+              <div class="theory-nav-subtitle">Hopcroft, Motwani &amp; Ullman<br>Automata, Languages &amp; Computation
+              </div>
             </div>
+            <div class="theory-nav-group">Foundations</div>
+            <a class="theory-nav-link active" id="tnl-hierarchy" href="#th-hierarchy"
+              onclick="theoryNavClick(this)">Chomsky Hierarchy</a>
+            <a class="theory-nav-link" id="tnl-fa" href="#th-fa" onclick="theoryNavClick(this)">Finite Automata</a>
+            <a class="theory-nav-link" id="tnl-regular" href="#th-regular" onclick="theoryNavClick(this)">Regular
+              Languages</a>
+            <div class="theory-nav-group">Beyond Regular</div>
+            <a class="theory-nav-link" id="tnl-cfl" href="#th-cfl" onclick="theoryNavClick(this)">Context-Free
+              Languages</a>
+            <div class="theory-nav-group">Computability</div>
+            <a class="theory-nav-link" id="tnl-tm" href="#th-tm" onclick="theoryNavClick(this)">Turing Machines</a>
+            <a class="theory-nav-link" id="tnl-undecidable" href="#th-undecidable"
+              onclick="theoryNavClick(this)">Undecidability</a>
+            <a class="theory-nav-link" id="tnl-complexity" href="#th-complexity" onclick="theoryNavClick(this)">Complexity
+              Theory</a>
+            <div class="theory-nav-group">Reference Cards</div>
+            <a class="theory-nav-link" id="tnl-algorithms" href="#th-algorithms" onclick="theoryNavClick(this)">Key
+              Algorithms</a>
+            <a class="theory-nav-link" id="tnl-closure-card" href="#th-closure-card"
+              onclick="theoryNavClick(this)">Closure Properties</a>
+            <a class="theory-nav-link" id="tnl-nerode" href="#th-nerode" onclick="theoryNavClick(this)">Myhill-Nerode</a>
+            <div class="theory-nav-group">Transducers &amp; Extensions</div>
+            <a class="theory-nav-link" id="tnl-moore" href="#th-moore" onclick="theoryNavClick(this)">Moore Machines</a>
+            <a class="theory-nav-link" id="tnl-mealy" href="#th-mealy" onclick="theoryNavClick(this)">Mealy Machines</a>
+            <a class="theory-nav-link" id="tnl-mtm" href="#th-mtm" onclick="theoryNavClick(this)">Multi-Tape TMs</a>
+            <div class="theory-nav-group">Interactive</div>
+            <a class="theory-nav-link" id="tnl-pump" href="#th-pump" onclick="theoryNavClick(this)">RL Pumping Lemma</a>
+            <a class="theory-nav-link" id="tnl-pump-cfl" href="#th-pump-cfl" onclick="theoryNavClick(this)">CFL Pumping
+              Lemma</a>
+            <a class="theory-nav-link" id="tnl-closure-tbl" href="#th-closure-tbl" onclick="theoryNavClick(this)">Closure
+              Table</a>
+            <a class="theory-nav-link" id="tnl-decidability" href="#th-decidability"
+              onclick="theoryNavClick(this)">Decidability Table</a>
           </div>
-          <div class="theory-nav-group">Foundations</div>
-          <a class="theory-nav-link active" id="tnl-hierarchy" href="#th-hierarchy"
-            onclick="theoryNavClick(this)">Chomsky Hierarchy</a>
-          <a class="theory-nav-link" id="tnl-fa" href="#th-fa" onclick="theoryNavClick(this)">Finite Automata</a>
-          <a class="theory-nav-link" id="tnl-regular" href="#th-regular" onclick="theoryNavClick(this)">Regular
-            Languages</a>
-          <div class="theory-nav-group">Beyond Regular</div>
-          <a class="theory-nav-link" id="tnl-cfl" href="#th-cfl" onclick="theoryNavClick(this)">Context-Free
-            Languages</a>
-          <div class="theory-nav-group">Computability</div>
-          <a class="theory-nav-link" id="tnl-tm" href="#th-tm" onclick="theoryNavClick(this)">Turing Machines</a>
-          <a class="theory-nav-link" id="tnl-undecidable" href="#th-undecidable"
-            onclick="theoryNavClick(this)">Undecidability</a>
-          <a class="theory-nav-link" id="tnl-complexity" href="#th-complexity" onclick="theoryNavClick(this)">Complexity
-            Theory</a>
-          <div class="theory-nav-group">Reference Cards</div>
-          <a class="theory-nav-link" id="tnl-algorithms" href="#th-algorithms" onclick="theoryNavClick(this)">Key
-            Algorithms</a>
-          <a class="theory-nav-link" id="tnl-closure-card" href="#th-closure-card"
-            onclick="theoryNavClick(this)">Closure Properties</a>
-          <a class="theory-nav-link" id="tnl-nerode" href="#th-nerode" onclick="theoryNavClick(this)">Myhill-Nerode</a>
-          <div class="theory-nav-group">Transducers &amp; Extensions</div>
-          <a class="theory-nav-link" id="tnl-moore" href="#th-moore" onclick="theoryNavClick(this)">Moore Machines</a>
-          <a class="theory-nav-link" id="tnl-mealy" href="#th-mealy" onclick="theoryNavClick(this)">Mealy Machines</a>
-          <a class="theory-nav-link" id="tnl-mtm" href="#th-mtm" onclick="theoryNavClick(this)">Multi-Tape TMs</a>
-          <div class="theory-nav-group">Interactive</div>
-          <a class="theory-nav-link" id="tnl-pump" href="#th-pump" onclick="theoryNavClick(this)">RL Pumping Lemma</a>
-          <a class="theory-nav-link" id="tnl-pump-cfl" href="#th-pump-cfl" onclick="theoryNavClick(this)">CFL Pumping
-            Lemma</a>
-          <a class="theory-nav-link" id="tnl-closure-tbl" href="#th-closure-tbl" onclick="theoryNavClick(this)">Closure
-            Table</a>
-          <a class="theory-nav-link" id="tnl-decidability" href="#th-decidability"
-            onclick="theoryNavClick(this)">Decidability Table</a>
         </div>
         <div class="algo-content" style="padding: 24px 28px;">
 

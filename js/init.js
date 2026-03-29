@@ -20,5 +20,6 @@ try {
   if (localStorage.getItem('automata-lpanel-pinned') === '0') toggleLPanelPin();
   if (localStorage.getItem('automata-rpanel-pinned') === '0') toggleRPanelPin();
 } catch (e) { }
+if (typeof initMobilePanels === 'function') initMobilePanels();
 if (typeof loadBackup === 'function') loadBackup();
 setTimeout(() => showStatus('Esc=Pointer · V=Pan · S=State · T=Transition · H=Fit · Ctrl+Z=Undo'), 600);

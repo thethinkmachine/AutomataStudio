@@ -342,6 +342,32 @@ function toggleRPanelPin() {
   try { localStorage.setItem('automata-rpanel-pinned', unpinned ? '0' : '1'); } catch (e) { }
 }
 
+function setMobilePanelCollapsed(id, collapsed, persist = true) {
+  const panel = $(id);
+  if (!panel) return;
+  panel.dataset.mobileCollapsed = collapsed ? '1' : '0';
+  const toggle = panel.querySelector('.mobile-panel-toggle');
+  if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  if (persist) {
+    try { localStorage.setItem(`automata-mobile-panel-${id}`, collapsed ? '1' : '0'); } catch (e) { }
+  }
+}
+
+function toggleMobilePanel(id, force) {
+  const panel = $(id);
+  if (!panel) return;
+  const collapsed = force === undefined ? panel.dataset.mobileCollapsed !== '1' : !!force;
+  setMobilePanelCollapsed(id, collapsed);
+}
+
+function initMobilePanels() {
+  ['lpanel', 'rpanel', 'algo-nav', 'gram-left', 'theory-nav'].forEach(id => {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem(`automata-mobile-panel-${id}`) === '1'; } catch (e) { }
+    setMobilePanelCollapsed(id, collapsed, false);
+  });
+}
+
 function filterStates() {
   const q = ($('state-search')?.value || '').toLowerCase();
   document.querySelectorAll('#states-list .si').forEach(el => {
