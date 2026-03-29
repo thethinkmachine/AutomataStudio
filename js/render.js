@@ -24,6 +24,7 @@ function groupTrans() {
 
 function renderTransitions() {
   const g = $('trans-g'); g.innerHTML = '';
+  const lg = $('trans-lbl-g'); if (lg) lg.innerHTML = '';
   // start arrow
   if (App.startId) {
     const s = getState(App.startId);
@@ -49,20 +50,32 @@ function renderTransitions() {
     if (grp.ts.some(t => App.selectedTransitions.has(t.id))) edgeGrp.classList.add('sel-t');
 
     if (isSelf) {
-      pathEl = makeSVG('path');
       const so = App.config.render.selfLoopOff, ss = App.config.render.selfLoopSize;
       const d = `M ${from.x - so} ${from.y - R} A ${ss} ${ss} 0 1 1 ${from.x + so} ${from.y - R}`;
-      pathEl.setAttribute('d', d);
-      pathEl.setAttribute('marker-end', 'url(#arr)');
+      pathEl = makeSVG('path');
+      pathEl.setAttribute('d', d); pathEl.setAttribute('marker-end', 'url(#arr)');
       pathEl.classList.add('tarr');
 
       hitEl = makeSVG('path');
-      hitEl.setAttribute('d', d);
-      hitEl.classList.add('tarr-hit');
+      hitEl.setAttribute('d', d); hitEl.classList.add('tarr-hit');
 
       textEl = makeSVG('text');
-      textEl.setAttribute('x', from.x); textEl.setAttribute('y', from.y - R - App.config.render.selfLoopTextOff);
-      textEl.classList.add('tlbl'); textEl.textContent = lbl;
+      textEl.classList.add('tlbl');
+      textEl.textContent = lbl;
+      textEl.setAttribute('id', `lbl-${from.id}|${to.id}`);
+      
+      const arcCentY = from.y - R - Math.sqrt(ss * ss - so * so);
+      const ly = arcCentY - ss;
+      const lx = from.x;
+
+      textEl.setAttribute('x', lx); textEl.setAttribute('y', ly);
+      textEl.setAttribute('dominant-baseline', 'central');
+      textEl.setAttribute('text-anchor', 'middle');
+
+      edgeGrp.appendChild(pathEl);
+      edgeGrp.appendChild(hitEl);
+      if ($('trans-lbl-g')) $('trans-lbl-g').appendChild(textEl);
+      else edgeGrp.appendChild(textEl);
     } else {
       const hasRev = App.transitions.some(t => t.from === grp.to && t.to === grp.from);
       const dx = to.x - from.x, dy = to.y - from.y, dist = Math.sqrt(dx * dx + dy * dy);
@@ -85,12 +98,22 @@ function renderTransitions() {
       hitEl.classList.add('tarr-hit');
 
       textEl = makeSVG('text');
-      const m = App.config.render.textMargin;
-      // If straight, use -y offset, if curved, use normal-based offset
-      const lx = crvVal ? mx + px * m : (sx + ex) / 2;
-      const ly = crvVal ? my + py * m : (sy + ey) / 2 - m;
-      textEl.setAttribute('x', lx); textEl.setAttribute('y', ly);
-      textEl.classList.add('tlbl'); textEl.textContent = lbl;
+      textEl.classList.add('tlbl');
+      textEl.textContent = lbl;
+      textEl.setAttribute('id', `lbl-${from.id}|${to.id}`);
+      
+      const lx = crvVal ? (sx + 2 * mx + ex) / 4 : (sx + ex) / 2;
+      const ly = crvVal ? (sy + 2 * my + ey) / 4 : (sy + ey) / 2;
+      
+      textEl.setAttribute('x', lx);
+      textEl.setAttribute('y', ly);
+      textEl.setAttribute('dominant-baseline', 'central');
+      textEl.setAttribute('text-anchor', 'middle');
+
+      edgeGrp.appendChild(pathEl);
+      edgeGrp.appendChild(hitEl);
+      if ($('trans-lbl-g')) $('trans-lbl-g').appendChild(textEl);
+      else edgeGrp.appendChild(textEl);
     }
 
     edgeGrp.addEventListener('mousedown', e => {
@@ -171,7 +194,8 @@ function updateFastDOM() {
     const from = getState(fid), to = getState(tid);
     if (!from || !to) return;
     const isSelf = fid === tid;
-    const pathEl = edgeGrp.querySelector('.tarr'), hitEl = edgeGrp.querySelector('.tarr-hit'), textEl = edgeGrp.querySelector('.tlbl');
+    const pathEl = edgeGrp.querySelector('.tarr'), hitEl = edgeGrp.querySelector('.tarr-hit');
+    const textEl = document.getElementById(`lbl-${fid}|${tid}`) || edgeGrp.querySelector('.tlbl');
     if (!pathEl || !textEl) return;
 
     if (isSelf) {
@@ -179,7 +203,12 @@ function updateFastDOM() {
       const d = `M ${from.x - so} ${from.y - R} A ${ss} ${ss} 0 1 1 ${from.x + so} ${from.y - R}`;
       pathEl.setAttribute('d', d);
       if (hitEl) hitEl.setAttribute('d', d);
-      textEl.setAttribute('x', from.x); textEl.setAttribute('y', from.y - R - App.config.render.selfLoopTextOff);
+      
+      const arcCentY = from.y - R - Math.sqrt(ss * ss - so * so);
+      const ly = arcCentY - ss;
+      const lx = from.x;
+      
+      textEl.setAttribute('x', lx); textEl.setAttribute('y', ly);
     } else {
       const hasRev = App.transitions.some(t => t.from === tid && t.to === fid);
       const dx = to.x - from.x, dy = to.y - from.y, dist = Math.sqrt(dx * dx + dy * dy);
@@ -194,12 +223,15 @@ function updateFastDOM() {
       const sx = from.x + ux * R, sy = from.y + uy * R;
       const ex = to.x - ux * (R + App.config.render.arrowHeadSize), ey = to.y - uy * (R + App.config.render.arrowHeadSize);
       const d = crvVal ? `M ${sx} ${sy} Q ${mx} ${my} ${ex} ${ey}` : `M ${sx} ${sy} L ${ex} ${ey}`;
+      
       pathEl.setAttribute('d', d);
       if (hitEl) hitEl.setAttribute('d', d);
-      const m = App.config.render.textMargin;
-      const lx = crvVal ? mx + px * m : (sx + ex) / 2;
-      const ly = crvVal ? my + py * m : (sy + ey) / 2 - m;
-      textEl.setAttribute('x', lx); textEl.setAttribute('y', ly);
+      
+      const lx = crvVal ? (sx + 2 * mx + ex) / 4 : (sx + ex) / 2;
+      const ly = crvVal ? (sy + 2 * my + ey) / 4 : (sy + ey) / 2;
+      
+      textEl.setAttribute('x', lx);
+      textEl.setAttribute('y', ly);
     }
   });
 }
