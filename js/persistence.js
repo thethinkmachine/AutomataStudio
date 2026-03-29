@@ -28,8 +28,8 @@ function saveJSON() {
 
 function loadJSON() { $('file-input').click(); }
 
-function onFileLoad(e) {
-  const f = e.target.files[0]; if (!f) return;
+function handleFiles(files) {
+  const f = files[0]; if (!f) return;
   const isPng = f.name.toLowerCase().endsWith('.png');
   const reader = new FileReader();
 
@@ -58,9 +58,28 @@ function onFileLoad(e) {
 
   if (isPng) reader.readAsArrayBuffer(f);
   else reader.readAsText(f);
-  
+}
+
+function onFileLoad(e) {
+  handleFiles(e.target.files);
   e.target.value = '';
 }
+
+// Drag & Drop
+window.addEventListener('dragover', e => {
+  e.preventDefault();
+  const b = $('status-bar');
+  b.textContent = 'Drop to load';
+  b.classList.add('show');
+  clearTimeout(b._t);
+});
+window.addEventListener('dragleave', e => {
+  if (e.relatedTarget === null) $('status-bar').classList.remove('show');
+});
+window.addEventListener('drop', e => {
+  e.preventDefault();
+  handleFiles(e.dataTransfer.files);
+});
 
 function loadData(d, isExample) {
   App.machine = d.machine || 'DFA'; App.sigma = new Set(d.sigma || []);
