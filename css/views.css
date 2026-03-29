@@ -149,7 +149,7 @@
 }
 
 .rp-title {
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: .95rem;
   font-weight: 600;
   color: var(--text);
@@ -495,7 +495,7 @@
 }
 
 .algo-title {
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: 1.4rem;
   font-weight: 600;
   margin-bottom: 4px;
@@ -914,7 +914,7 @@
 }
 
 .tc-title {
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: 1.12rem;
   font-weight: 600;
   margin-bottom: 5px;
@@ -976,7 +976,7 @@
 }
 
 .hierarchy-title {
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: 1.05rem;
   font-weight: 600;
   margin-bottom: 16px;
@@ -997,7 +997,7 @@
 }
 
 .pump-title {
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: 1rem;
   font-weight: 600;
   margin-bottom: 10px;
@@ -1153,7 +1153,7 @@
 }
 
 .theory-nav-title {
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: 1.05rem;
   font-weight: 600;
   margin-bottom: 4px;
@@ -1206,7 +1206,7 @@
 }
 
 .theory-section-title {
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: 1.15rem;
   font-weight: 600;
   margin-bottom: 4px;
