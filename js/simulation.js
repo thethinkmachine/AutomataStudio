@@ -285,6 +285,10 @@ function toggleAuto() {
 function runBatch() {
   const lines = $('batch-in').value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   if (!lines.length) return;
+  if (!App.startId) {
+    $('batch-result').innerHTML = `<div class="br-err">Error: No start state defined.</div>`;
+    return;
+  }
   const eps = App.config.sym.eps;
   if (App.machine === 'PDA' || App.machine === 'TM' || App.machine === 'MTM') {
     $('batch-result').innerHTML = `<div class="br-err">Batch testing is not supported for ${App.machine}.</div>`;
@@ -309,19 +313,30 @@ function runBatch() {
 }
 function testDFA(tokens) {
   let cur = App.startId;
-  for (const sym of tokens) { const t = App.transitions.find(tr => tr.from === cur && tr.symbol === sym); if (!t) return false; cur = t.to; }
+  const any = App.config.sym.any;
+  for (const sym of tokens) {
+    const t = App.transitions.find(tr => tr.from === cur && (tr.symbol === sym || tr.symbol === any));
+    if (!t) return false;
+    cur = t.to;
+  }
   return App.accepts.has(cur);
 }
 function testNFA(tokens) {
   let cur = epsClosure(new Set([App.startId]));
-  for (const sym of tokens) { let nx = new Set(); cur.forEach(s => App.transitions.filter(t => t.from === s && t.symbol === sym).forEach(t => nx.add(t.to))); cur = epsClosure(nx); }
+  const any = App.config.sym.any;
+  for (const sym of tokens) {
+    let nx = new Set();
+    cur.forEach(s => App.transitions.filter(t => t.from === s && (t.symbol === sym || t.symbol === any)).forEach(t => nx.add(t.to)));
+    cur = epsClosure(nx);
+  }
   return [...cur].some(id => App.accepts.has(id));
 }
 function getMooreOutput(tokens) {
   let cur = App.startId;
+  const any = App.config.sym.any;
   const outputs = [getState(cur)?.output ?? ''];
   for (const sym of tokens) {
-    const t = App.transitions.find(tr => tr.from === cur && tr.symbol === sym);
+    const t = App.transitions.find(tr => tr.from === cur && (tr.symbol === sym || tr.symbol === any));
     if (!t) break;
     cur = t.to;
     outputs.push(getState(cur)?.output ?? '');
@@ -330,9 +345,10 @@ function getMooreOutput(tokens) {
 }
 function getMealyOutput(tokens) {
   let cur = App.startId;
+  const any = App.config.sym.any;
   const outputs = [];
   for (const sym of tokens) {
-    const t = App.transitions.find(tr => tr.from === cur && tr.symbol === sym);
+    const t = App.transitions.find(tr => tr.from === cur && (tr.symbol === sym || tr.symbol === any));
     if (!t) break;
     outputs.push(t.output ?? '?');
     cur = t.to;
