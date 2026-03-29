@@ -436,3 +436,46 @@
   border-top: none;
   margin-top: 0;
 }
+
+@media (max-width: 900px) {
+  .lpanel {
+    width: 100%;
+    min-width: 0;
+    max-height: 30vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .lpanel.hidden {
+    display: none;
+  }
+
+  .lpanel.unpinned,
+  .lpanel.unpinned:not(:hover) {
+    position: relative;
+    left: auto;
+    top: auto;
+    height: auto;
+    width: 100%;
+    min-width: 0;
+    box-shadow: none;
+    transition-delay: 0s;
+  }
+
+  .lpanel.unpinned::after {
+    display: none;
+  }
+
+  .lpanel.unpinned .lpanel-content,
+  .lpanel.unpinned .panel-footer,
+  .lpanel.unpinned:not(:hover) .lpanel-content,
+  .lpanel.unpinned:not(:hover) .panel-footer {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .panel-footer {
+    padding: 8px 10px;
+  }
+}

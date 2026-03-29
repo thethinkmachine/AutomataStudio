@@ -412,3 +412,70 @@
   color: var(--text);
   background: var(--surface);
 }
+
+@media (max-width: 900px) {
+  .canvas-toolbox {
+    top: auto;
+    bottom: 12px;
+    left: 12px;
+    transform: none;
+    flex-direction: row;
+    align-items: stretch;
+    max-width: calc(100% - 116px);
+    overflow-x: auto;
+    padding: 4px;
+  }
+
+  .toolbox-sep {
+    width: 1px;
+    height: auto;
+    margin: 0 2px;
+  }
+
+  .toolbox-btn {
+    min-width: 46px;
+    padding: 7px 8px;
+  }
+
+  .toolbox-kbd {
+    display: none;
+  }
+
+  .canvas-nav-controls {
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .minimap-container {
+    right: 12px;
+    bottom: 56px;
+  }
+
+  .minimap-canvas {
+    width: 120px;
+    height: 75px;
+  }
+
+  .minimap-show-btn {
+    right: 12px;
+    bottom: 56px;
+  }
+}
+
+@media (max-width: 640px) {
+  .toolbox-lbl {
+    font-size: .55rem;
+  }
+
+  .cnc-zoom-input {
+    width: 38px;
+  }
+
+  .minimap-container {
+    display: none;
+  }
+
+  .minimap-show-btn {
+    display: none !important;
+  }
+}

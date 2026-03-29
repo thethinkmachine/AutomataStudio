@@ -147,6 +147,7 @@ function createHarness() {
   });
   context.window = context;
   context.setMachine = m => { context.App.machine = m; };
+  context.applyMachineSwitch = m => { context.App.machine = m; };
 
   for (const rel of SCRIPT_ORDER) {
     const code = fs.readFileSync(path.join(ROOT, rel), 'utf8');

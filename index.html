@@ -20,6 +20,7 @@
   <link rel="stylesheet" href="css/views.css">
   <link rel="stylesheet" href="css/canvas.css">
   <link rel="stylesheet" href="css/modals.css">
+  <link rel="stylesheet" href="css/mobile.css">
 </head>
 
 <body>
@@ -116,6 +117,16 @@
   <!-- ══════════════ SUB-TOOLBAR ══════════════ -->
   <div class="sub-toolbar" id="sub-toolbar">
     <span class="stb-label">Machine Type</span>
+    <select class="sel mobile-machine-select" id="mobile-machine-select" onchange="setMachine(this.value)" aria-label="Machine type">
+      <option value="DFA">DFA</option>
+      <option value="Moore">Moore</option>
+      <option value="Mealy">Mealy</option>
+      <option value="NFA">NFA</option>
+      <option value="ε-NFA">ε-NFA</option>
+      <option value="PDA">PDA</option>
+      <option value="TM">TM</option>
+      <option value="MTM">MTM</option>
+    </select>
     <div class="machine-tabs" id="machine-tabs">
       <button class="mtab active" onclick="setMachine('DFA')">DFA</button>
       <button class="mtab" onclick="setMachine('Moore')">Moore</button>

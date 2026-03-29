@@ -1,0 +1,409 @@
+ .mobile-machine-select {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  html,
+  body {
+    height: auto;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  body {
+    min-height: 100svh;
+  }
+
+  header {
+    position: relative;
+  }
+
+  .hdr-sep,
+  .stb-sep,
+  .panel-footer {
+    display: none;
+  }
+
+  .hdr-left,
+  .hdr-center,
+  .hdr-right {
+    width: 100%;
+  }
+
+  .hdr-right {
+    gap: 6px;
+    padding-bottom: 12px;
+  }
+
+  .hbtn {
+    flex: 0 0 auto;
+  }
+
+  .sub-toolbar {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .mobile-machine-select {
+    display: block;
+    flex: 0 0 122px;
+    min-width: 122px;
+    max-width: 122px;
+  }
+
+  .sub-toolbar .hbtn {
+    min-height: 32px;
+  }
+
+  .machine-tabs {
+    display: none;
+  }
+
+  .app-body,
+  .view-container,
+  #v-build,
+  #v-algo,
+  #v-grammar,
+  #v-theory {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+    overflow: visible;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .lpanel,
+  .rpanel,
+  .algo-nav,
+  .gram-left,
+  .theory-nav {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-height: none;
+    border-left: 0;
+    border-right: 0;
+    box-shadow: none;
+  }
+
+  .lpanel,
+  .algo-nav,
+  .gram-left,
+  .theory-nav {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .rpanel {
+    border-top: 1px solid var(--border);
+  }
+
+  .lpanel.unpinned,
+  .lpanel.unpinned:not(:hover),
+  .rpanel.unpinned,
+  .rpanel.unpinned:not(:hover) {
+    position: relative;
+    top: auto;
+    right: auto;
+    left: auto;
+    height: auto;
+    width: 100%;
+    min-width: 0;
+    box-shadow: none;
+  }
+
+  .lpanel.unpinned::after,
+  .rpanel.unpinned::before {
+    display: none;
+  }
+
+  .lpanel.unpinned .lpanel-content,
+  .lpanel.unpinned:not(:hover) .lpanel-content,
+  .rpanel.unpinned > :not(style),
+  .rpanel.unpinned:not(:hover) > :not(style) {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .lpanel-content,
+  .rpanel-content,
+  .algo-content,
+  .gram-right {
+    overflow: visible;
+  }
+
+  .canvas-area {
+    min-height: clamp(320px, 52svh, 560px);
+    height: clamp(320px, 52svh, 560px);
+  }
+
+  .status {
+    left: 12px;
+    right: 12px;
+    top: 12px;
+    transform: none;
+    max-width: none;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  .canvas-toolbox {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    top: auto;
+    transform: none;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: stretch;
+    gap: 3px;
+    max-width: none;
+    overflow-x: auto;
+    padding: 4px;
+    scrollbar-width: none;
+  }
+
+  .canvas-toolbox::-webkit-scrollbar,
+  .sub-toolbar::-webkit-scrollbar,
+  .machine-tabs::-webkit-scrollbar,
+  .nav-tabs::-webkit-scrollbar,
+  .hdr-right::-webkit-scrollbar {
+    display: none;
+  }
+
+  .toolbox-btn {
+    min-width: 50px;
+    padding: 7px 8px;
+  }
+
+  .toolbox-kbd,
+  .minimap-container,
+  .minimap-show-btn,
+  .canvas-hint,
+  .zoom-indicator {
+    display: none !important;
+  }
+
+  .toolbox-sep {
+    width: 1px;
+    height: auto;
+    margin: 0 2px;
+  }
+
+  .canvas-nav-controls {
+    top: 12px;
+    right: 12px;
+    bottom: auto;
+  }
+
+  .code-box,
+  .def-box {
+    max-width: none;
+  }
+
+  .algo-content,
+  .gram-right {
+    padding: 16px 14px;
+  }
+
+  .algo-content .card,
+  .gram-right .card,
+  .pump-section,
+  .hierarchy-section,
+  .theory-card,
+  .grammar-display,
+  .info-box {
+    overflow-x: auto;
+  }
+
+  .card,
+  .pump-section,
+  .hierarchy-section,
+  .theory-card {
+    padding: 14px;
+  }
+
+  .algo-content [style*="display:flex"],
+  .gram-right [style*="display:flex"],
+  #v-theory .algo-content [style*="display:flex"] {
+    flex-wrap: wrap;
+  }
+
+  #utm-tape-wrap,
+  .tape-wrap,
+  .canvas-toolbox,
+  .canvas-nav-controls,
+  .machine-tabs,
+  .nav-tabs,
+  .hdr-right,
+  .sctrl {
+    flex-wrap: nowrap !important;
+  }
+
+  .row,
+  .sim-row,
+  .regex-input-wrap,
+  .pump-row,
+  .modal-row,
+  .modal-foot,
+  .about-row {
+    flex-wrap: wrap;
+  }
+
+  .sim-row .run-btn,
+  .regex-input-wrap .algo-btn,
+  .algo-content .algo-btn,
+  .modal-foot .btn-g,
+  .modal-foot .btn-p {
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .sctrl {
+    overflow-x: auto;
+  }
+
+  .sbtn {
+    flex: 0 0 auto;
+    min-width: 72px;
+  }
+
+  .algo-search-wrap {
+    position: static;
+  }
+
+  .algo-item,
+  .theory-nav-link {
+    padding-right: 12px;
+  }
+
+  .theory-nav-header {
+    padding-bottom: 10px;
+  }
+
+  .theory-section {
+    margin-bottom: 24px;
+  }
+
+  .theory-section-title {
+    gap: 8px;
+    font-size: 1rem;
+  }
+
+  .theory-section-sub,
+  .tc-sub {
+    line-height: 1.5;
+  }
+
+  .closure-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pump-lbl,
+  .modal-lbl,
+  .about-lbl {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .pump-row .inp,
+  .modal-row .inp,
+  .modal-row .sel {
+    flex: 1 1 140px;
+  }
+
+  .help-table td:first-child {
+    width: 84px;
+  }
+
+  .help-table td,
+  .result-table th,
+  .result-table td,
+  .dec-table th,
+  .dec-table td,
+  .cyk-cell,
+  .min-table th,
+  .min-table td {
+    padding: 6px 8px;
+  }
+
+  .result-table,
+  .dec-table,
+  .help-table,
+  .cyk-table,
+  .min-table {
+    font-size: .66rem;
+  }
+
+  .parse-tree-svg,
+  .algo-content svg,
+  .gram-right svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  textarea,
+  .batch-in {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  #v-theory .algo-content[style] {
+    padding: 16px 14px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .hdr-left {
+    padding-bottom: 6px;
+  }
+
+  .logo {
+    font-size: 1rem;
+  }
+
+  .nav-btn {
+    padding: 0 12px;
+  }
+
+  .mobile-machine-select {
+    flex-basis: 108px;
+    min-width: 108px;
+    max-width: 108px;
+  }
+
+  .hbtn {
+    font-size: .64rem;
+    padding: 5px 8px;
+  }
+
+  .toolbox-lbl {
+    font-size: .55rem;
+  }
+
+  .cnc-zoom-input {
+    width: 38px;
+  }
+
+  .canvas-area {
+    min-height: clamp(280px, 46svh, 460px);
+    height: clamp(280px, 46svh, 460px);
+  }
+
+  .closure-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modal {
+    padding: 18px 16px;
+    min-width: 0;
+    width: calc(100% - 20px);
+  }
+}

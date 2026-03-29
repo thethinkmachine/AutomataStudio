@@ -269,3 +269,66 @@ header {
   gap: 3px;
   margin-left: auto;
 }
+
+@media (max-width: 900px) {
+  header {
+    height: auto;
+    min-height: 0;
+    grid-template-columns: 1fr;
+  }
+
+  .hdr-left,
+  .hdr-center,
+  .hdr-right {
+    border: 0;
+  }
+
+  .hdr-left {
+    padding: 12px 14px 8px;
+  }
+
+  .hdr-center {
+    padding: 0 10px 8px;
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+
+  .hdr-right {
+    padding: 0 10px 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nav-tabs {
+    min-width: max-content;
+  }
+
+  .nav-btn {
+    min-height: 38px;
+    padding: 0 14px;
+  }
+
+  .sub-toolbar {
+    height: auto;
+    min-height: 0;
+    padding: 8px 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .stb-label {
+    display: none;
+  }
+
+  .machine-tabs {
+    order: 1;
+    width: 100%;
+    overflow-x: auto;
+    min-height: 34px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sub-toolbar > div[style*="flex:1"] {
+    display: none;
+  }
+}

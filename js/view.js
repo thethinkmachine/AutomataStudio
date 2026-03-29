@@ -31,8 +31,12 @@ function setView(v) {
 //  MACHINE TYPE
 // ══════════════════════════════════════════════════════════════════
 function setMachine(m) {
-  if (m === App.machine) return;
+  if (m === App.machine) {
+    syncMachineSelectors(m);
+    return;
+  }
   if (App.states.length > 0) {
+    syncMachineSelectors(App.machine);
     $('confirm-title').textContent = 'Switch Machine Type?';
     $('confirm-msg').textContent = `Switching to ${m} will delete your current machine work. Continue?`;
     const btn = $('confirm-action-btn');
@@ -47,12 +51,18 @@ function setMachine(m) {
   applyMachineSwitch(m);
 }
 
+function syncMachineSelectors(m) {
+  document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('active', b.textContent === m));
+  const mobileSelect = $('mobile-machine-select');
+  if (mobileSelect) mobileSelect.value = m;
+}
+
 function applyMachineSwitch(m) {
   const cfg = getMachineConfig(m);
   App.machine = m;
 
   // Update UI Tabs and Badges
-  document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('active', b.textContent === m));
+  syncMachineSelectors(m);
   $('mach-badge').className = `badge ${cfg.badge}`;
   $('mach-badge').textContent = cfg.label;
 
@@ -105,4 +115,3 @@ function setTool(t) {
   const msgs = { pointer: 'Click or drag states to interact', move: 'Drag canvas to pan · Drag state to move', state: 'Click canvas to place state', trans: 'Click source then target state', del: 'Click state to delete' };
   showStatus(msgs[t]);
 }
-

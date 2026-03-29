@@ -1819,12 +1819,8 @@ function loadMooreAsMealy() {
   if (App.machine !== 'Moore') return;
   snapshot();
   App.transitions.forEach(t => { t.output = getState(t.to)?.output || ''; });
-  App.machine = 'Mealy';
-  document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('active', b.textContent === 'Mealy'));
-  $('mach-badge').className = 'badge bd-mealy'; $('mach-badge').textContent = 'Mealy';
-  $('output-sec').style.display = '';
-  $('stack-sec').style.display = 'none';
-  updateRPanel(); renderAll(); updateLPanel();
+  applyMachineSwitch('Mealy');
+  updateLPanel();
   setView('build'); showStatus('Loaded as Mealy machine. Transition outputs set from destination state outputs.');
 }
 
@@ -1933,12 +1929,8 @@ function loadMealyAsMoore() {
   App.startId = r.startId;
   App.accepts = r.accepts;
   App.stateN = r.states.length; App.transN = r.transitions.length;
-  App.machine = 'Moore';
-  document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('active', b.textContent === 'Moore'));
-  $('mach-badge').className = 'badge bd-moore'; $('mach-badge').textContent = 'Moore';
-  $('output-sec').style.display = '';
-  $('stack-sec').style.display = 'none';
-  updateRPanel(); renderAll(); updateLPanel();
+  applyMachineSwitch('Moore');
+  updateLPanel();
   setView('build'); showStatus('Loaded as Moore machine.');
 }
 

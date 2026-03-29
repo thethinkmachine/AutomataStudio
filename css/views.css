@@ -1245,3 +1245,138 @@
   border-color: var(--border2);
   box-shadow: 0 2px 12px rgba(0, 0, 0, .28);
 }
+
+@media (max-width: 900px) {
+  .app-body,
+  .view-container,
+  #v-build,
+  #v-algo,
+  #v-grammar,
+  #v-theory,
+  .algo-content,
+  .gram-right {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .app-body,
+  #v-build,
+  #v-algo,
+  #v-grammar,
+  #v-theory {
+    flex-direction: column;
+  }
+
+  .view-container {
+    overflow: hidden;
+  }
+
+  .canvas-area {
+    min-height: 38vh;
+  }
+
+  .rpanel {
+    width: 100%;
+    min-width: 0;
+    max-height: 34vh;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .rpanel.unpinned,
+  .rpanel.unpinned:not(:hover) {
+    position: relative;
+    right: auto;
+    top: auto;
+    height: auto;
+    width: 100%;
+    min-width: 0;
+    box-shadow: none;
+    transition-delay: 0s;
+  }
+
+  .rpanel.unpinned::before {
+    display: none;
+  }
+
+  .rpanel.unpinned > :not(style),
+  .rpanel.unpinned:not(:hover) > :not(style) {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .sim-row {
+    flex-wrap: wrap;
+  }
+
+  .sim-row .run-btn {
+    width: 100%;
+  }
+
+  .algo-nav,
+  .gram-left,
+  .theory-nav {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-height: 28vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .algo-content,
+  .gram-right {
+    padding: 16px;
+    overflow: auto;
+  }
+
+  .regex-input-wrap {
+    flex-wrap: wrap;
+  }
+
+  .regex-input-wrap > * {
+    width: 100%;
+  }
+
+  .card,
+  .theory-card,
+  .pump-section,
+  .hierarchy-section {
+    padding: 14px;
+  }
+
+  .closure-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .theory-section {
+    margin-bottom: 24px;
+  }
+
+  .theory-section-title {
+    font-size: 1rem;
+    gap: 8px;
+  }
+
+  .theory-section-sub,
+  .tc-sub {
+    line-height: 1.5;
+  }
+}
+
+@media (max-width: 640px) {
+  .canvas-area {
+    min-height: 34vh;
+  }
+
+  .rpanel,
+  .algo-nav,
+  .gram-left,
+  .theory-nav {
+    max-height: 32vh;
+  }
+
+  .closure-grid {
+    grid-template-columns: 1fr;
+  }
+}
