@@ -54,7 +54,7 @@
         </svg>Redo
       </button>
       <div class="hdr-sep"></div>
-      <button class="hbtn" onclick="saveJSON()" title="Save as JSON">
+      <button class="hbtn" onclick="exportPNG()" title="Save as Smart PNG (Data Included)">
         <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
           <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
           <rect x="5" y="2.5" width="6" height="4" rx="0.5" />
@@ -62,7 +62,7 @@
           <line x1="7" y1="3.5" x2="7" y2="6" />
         </svg>Save
       </button>
-      <button class="hbtn" onclick="loadJSON()" title="Load JSON">
+      <button class="hbtn" onclick="loadJSON()" title="Load Workspace (PNG or JSON)">
         <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
           <path d="M2.5 10v3a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-3" />
           <polyline points="5,7.5 8,10.5 11,7.5" />
@@ -162,13 +162,6 @@
         <line x1="7.1" y1="7.2" x2="4.2" y2="10" />
         <line x1="8.9" y1="7.2" x2="11.8" y2="10" />
       </svg>Auto-Layout
-    </button>
-    <button class="hbtn" onclick="exportSVG()" title="Export canvas as SVG">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M9.5 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6.5L9.5 2z" />
-        <polyline points="9.5,2 9.5,6.5 13,6.5" />
-        <path d="M6.5 9.5h3M8 8v3" />
-      </svg>Export SVG
     </button>
   </div>
 
@@ -928,6 +921,10 @@
       <div class="modal-row">
         <span class="modal-lbl">Default Edge Curve</span>
         <input type="number" class="inp" id="set-curve-off" label="Base curve magnitude for bidirectional edges">
+      </div>
+      <div class="modal-row">
+        <span class="modal-lbl">Export Resolution (×)</span>
+        <input type="number" step="0.5" min="1" max="10" class="inp" id="set-export-res" label="Density of the exported PNG image">
       </div>
 
       <div class="modal-section-lbl">Theory Symbols</div>

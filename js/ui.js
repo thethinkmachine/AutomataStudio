@@ -408,6 +408,7 @@ function openSettingsModal() {
   $('set-grid-snap').value = c.gridSnap;
   $('set-node-spacing').value = c.layout.nodeSpacing;
   $('set-curve-off').value = c.render.curveOff;
+  $('set-export-res').value = c.exportRes || 2;
   $('set-sym-eps').value = c.sym.eps;
   $('set-sym-any').value = c.sym.any;
   $('set-sym-blank').value = c.sym.blank;
@@ -426,6 +427,7 @@ function confirmSettings() {
   c.gridSnap = parseInt($('set-grid-snap').value) || 20;
   c.layout.nodeSpacing = parseInt($('set-node-spacing').value) || 35;
   c.render.curveOff = parseInt($('set-curve-off').value) || 45;
+  c.exportRes = parseFloat($('set-export-res').value) || 2;
   c.sym.eps = $('set-sym-eps').value || App.config.sym.eps;
   c.sym.any = $('set-sym-any').value || App.config.sym.any;
   c.sym.blank = $('set-sym-blank').value || App.config.sym.blank;

@@ -1,25 +1,65 @@
 // ══════════════════════════════════════════════════════════════════
 //  SAVE / LOAD
 // ══════════════════════════════════════════════════════════════════
-function saveJSON() {
+function getWorkspaceData() {
   const grammarData = { vars: [...App.grammar.vars], start: App.grammar.start, productions: App.grammar.productions };
-  const data = { machine: App.machine, config: App.config, sigma: [...App.sigma], stackAlpha: [...App.stackAlpha], outputAlpha: [...App.outputAlpha], tapeCount: App.tapeCount, states: App.states, transitions: App.transitions, startId: App.startId, accepts: [...App.accepts], grammar: grammarData, cam: App.cam };
+  return {
+    machine: App.machine,
+    config: App.config,
+    sigma: [...App.sigma],
+    stackAlpha: [...App.stackAlpha],
+    outputAlpha: [...App.outputAlpha],
+    tapeCount: App.tapeCount,
+    states: App.states,
+    transitions: App.transitions,
+    startId: App.startId,
+    accepts: [...App.accepts],
+    grammar: grammarData,
+    cam: App.cam
+  };
+}
+
+function saveJSON() {
+  const data = getWorkspaceData();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'automaton.json'; a.click();
-  showStatus('Saved!');
+  showStatus('Saved as JSON!');
 }
+
 function loadJSON() { $('file-input').click(); }
+
 function onFileLoad(e) {
   const f = e.target.files[0]; if (!f) return;
-  const r = new FileReader();
-  r.onload = ev => {
+  const isPng = f.name.toLowerCase().endsWith('.png');
+  const reader = new FileReader();
+
+  reader.onload = ev => {
     try {
-      const d = JSON.parse(ev.target.result);
-      loadData(d);
-      showStatus('Loaded!');
-    } catch (err) { showStatus('Invalid JSON file'); }
+      let data;
+      if (isPng) {
+        const text = new TextDecoder().decode(ev.target.result);
+        const marker = "\n--AutomataData--\n";
+        const parts = text.split(marker);
+        if (parts.length < 2) {
+          showStatus('Error: No workspace data found in this PNG');
+          return;
+        }
+        data = JSON.parse(parts[1]);
+      } else {
+        data = JSON.parse(ev.target.result);
+      }
+      loadData(data);
+      showStatus('Workspace loaded!');
+    } catch (err) {
+      console.error(err);
+      showStatus(isPng ? 'Could not extract workspace data' : 'Invalid JSON file');
+    }
   };
-  r.readAsText(f); e.target.value = '';
+
+  if (isPng) reader.readAsArrayBuffer(f);
+  else reader.readAsText(f);
+  
+  e.target.value = '';
 }
 
 function loadData(d, isExample) {

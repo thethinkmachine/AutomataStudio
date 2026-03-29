@@ -85,7 +85,11 @@ function renderTransitions() {
       hitEl.classList.add('tarr-hit');
 
       textEl = makeSVG('text');
-      textEl.setAttribute('x', crvVal ? mx : (sx + ex) / 2); textEl.setAttribute('y', (crvVal ? my : (sy + ey) / 2) - App.config.render.textMargin);
+      const m = App.config.render.textMargin;
+      // If straight, use -y offset, if curved, use normal-based offset
+      const lx = crvVal ? mx + px * m : (sx + ex) / 2;
+      const ly = crvVal ? my + py * m : (sy + ey) / 2 - m;
+      textEl.setAttribute('x', lx); textEl.setAttribute('y', ly);
       textEl.classList.add('tlbl'); textEl.textContent = lbl;
     }
 
@@ -192,7 +196,10 @@ function updateFastDOM() {
       const d = crvVal ? `M ${sx} ${sy} Q ${mx} ${my} ${ex} ${ey}` : `M ${sx} ${sy} L ${ex} ${ey}`;
       pathEl.setAttribute('d', d);
       if (hitEl) hitEl.setAttribute('d', d);
-      textEl.setAttribute('x', crvVal ? mx : (sx + ex) / 2); textEl.setAttribute('y', (crvVal ? my : (sy + ey) / 2) - App.config.render.textMargin);
+      const m = App.config.render.textMargin;
+      const lx = crvVal ? mx + px * m : (sx + ex) / 2;
+      const ly = crvVal ? my + py * m : (sy + ey) / 2 - m;
+      textEl.setAttribute('x', lx); textEl.setAttribute('y', ly);
     }
   });
 }

@@ -118,7 +118,20 @@ function handleMouseMove(e) {
         if (!App.selectedStates.has(s.id)) { App.selectedStates.add(s.id); hlState(s.id, true); }
       }
     });
-    // Marquee transition selection is expensive if many transitions, omit or simplify if needed
+    // Select transitions whose midpoints are in the marquee
+    App.transitions.forEach(t => {
+      const from = getState(t.from), to = getState(t.to);
+      if (!from || !to) return;
+      // Approximate center including potential curve
+      const midX = (from.x + to.x) / 2, midY = (from.y + to.y) / 2;
+      if (midX >= mx && midX <= mx + mw && midY >= my && midY <= my + mh) {
+        if (!App.selectedTransitions.has(t.id)) { 
+          App.selectedTransitions.add(t.id);
+          const el = document.querySelector(`[data-edge="${t.from}|${t.to}"]`);
+          if (el) el.classList.add('sel-t');
+        }
+      }
+    });
     return;
   }
   if (App.dragOffsets) {
@@ -256,35 +269,73 @@ function autoLayout() {
 // ══════════════════════════════════════════════════════════════════
 //  SVG EXPORT
 // ══════════════════════════════════════════════════════════════════
-function exportSVG() {
+function exportPNG() {
   const svgEl = $('svgCanvas');
-  const clone = svgEl.cloneNode(true);
-  // Set explicit size
   const wrap = $('canvas-wrap');
   const w = wrap.clientWidth || 800, h = wrap.clientHeight || 600;
+
+  const clone = svgEl.cloneNode(true);
   clone.setAttribute('width', w);
   clone.setAttribute('height', h);
-  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-  // Inject inline styles
-  const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
-  const ex = App.config.export;
-  style.textContent = `
-    .sn circle.bd { fill: ${ex.nodeFill}; stroke: ${ex.nodeStroke}; stroke-width: 1.5; }
-    .sn.start-st circle.bd { stroke: ${ex.startStroke}; }
-    .sn.acc-st circle.bd { stroke: ${ex.accStroke}; }
-    .sn.act-st circle.bd { fill: ${ex.actFill}; stroke: ${ex.actStroke}; }
-    .tarr { stroke: ${ex.edgeStroke}; stroke-width: 1.5; fill: none; marker-end: url(#arr); }
-    .tlbl { font-family: monospace; font-size: 10px; fill: ${ex.textFill}; text-anchor: middle; }
-    .slbl { font-family: monospace; font-size: 11px; fill: ${ex.nodeTextFill}; text-anchor: middle; dominant-baseline: central; }
-    svg { background: ${ex.bg}; }
-  `;
-  clone.insertBefore(style, clone.firstChild);
+  
+  // Maintain theme: Copy the current data-theme attribute (light/dark)
+  const currentTheme = document.documentElement.dataset.theme;
+  if (currentTheme) clone.setAttribute('data-theme', currentTheme);
+  
+  const svgStyle = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+
+  // 1. Dynamic Variable Scraping: Capture every live theme variable
+  let rootStyles = ":root {";
+  const computed = getComputedStyle(document.documentElement);
+  for (let i = 0; i < computed.length; i++) {
+    const prop = computed[i];
+    if (prop.startsWith('--')) {
+      rootStyles += `${prop}: ${computed.getPropertyValue(prop)};`;
+    }
+  }
+  rootStyles += "}";
+
+  // 2. Dynamic Rule Scraping: Capture every CSS class and rule from all stylesheets
+  let cssRules = "";
+  for (let sheet of document.styleSheets) {
+    try {
+      for (let rule of sheet.cssRules) {
+        cssRules += rule.cssText + "\n";
+      }
+    } catch(e) {} // Skip cross-origin sheets safely
+  }
+
+  // 3. Glue it together and ensure hit-areas are hidden in the final export
+  svgStyle.textContent = `${rootStyles}\n${cssRules}\n.tarr-hit { display:none !important; }\nsvg { background: transparent; }`;
+  clone.insertBefore(svgStyle, clone.firstChild);
+
+  const canvas = document.createElement('canvas');
+  const res = App.config.exportRes || 2;
+  canvas.width = w * res; 
+  canvas.height = h * res;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(res, res);
+
   const serializer = new XMLSerializer();
   const svgStr = serializer.serializeToString(clone);
-  const blob = new Blob([svgStr], { type: 'image/svg+xml' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'automaton.svg';
-  a.click();
-  showStatus('SVG exported!');
+  const img = new Image();
+  const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(svgBlob);
+
+  img.onload = () => {
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0);
+    canvas.toBlob(blob => {
+      const data = getWorkspaceData();
+      const meta = `\n--AutomataData--\n${JSON.stringify(data)}`;
+      const finalBlob = new Blob([blob, meta], { type: 'image/png' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(finalBlob);
+      a.download = 'automaton.png';
+      a.click();
+      URL.revokeObjectURL(url);
+      showStatus('Workspace snapshot saved!');
+    }, 'image/png');
+  };
+  img.src = url;
 }

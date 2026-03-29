@@ -48,6 +48,7 @@ const App = {
       textMargin: 8,
       mooreTextMargin: 9
     },
+    exportRes: 2,
     export: {
       bg: '#080c18',
       nodeFill: '#161d2e',
