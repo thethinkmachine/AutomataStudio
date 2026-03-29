@@ -8,6 +8,12 @@ function renderAll() {
   $('mach-badge').className = `badge ${cfg.badge}`;
   $('mach-badge').textContent = cfg.label;
   renderTransitions(); renderStates(); renderMinimap();
+  // Refresh cache after redraw
+  App.domCache.states.clear();
+  App.domCache.transitions.clear();
+  App.domCache.startArrow = $('trans-g').querySelector('[data-start-arrow="true"]');
+  document.querySelectorAll('.sn').forEach(el => App.domCache.states.set(el.getAttribute('data-id'), el));
+  document.querySelectorAll('.edge-g').forEach(el => App.domCache.transitions.set(el.getAttribute('data-edge'), el));
 }
 
 function groupTrans() {
@@ -25,8 +31,10 @@ function renderTransitions() {
       const a = makeSVG('path');
       const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
       a.setAttribute('d', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah / 3} ${s.y}`);
+      a.setAttribute('data-start-arrow', 'true');
       a.setAttribute('stroke', 'var(--green)'); a.setAttribute('stroke-width', '1.5'); a.setAttribute('fill', 'none'); a.setAttribute('marker-end', 'url(#arr-g)');
       g.appendChild(a);
+      App.domCache.startArrow = a;
     }
   }
   groupTrans().forEach(grp => {
@@ -130,8 +138,10 @@ function renderTransitions() {
 
 function updateFastDOM() {
   App.states.forEach(s => {
-    const grp = document.querySelector(`[data-id="${s.id}"]`);
+    const grp = App.domCache.states.get(s.id) || document.querySelector(`[data-id="${s.id}"]`);
     if (!grp) return;
+    if (!App.domCache.states.has(s.id)) App.domCache.states.set(s.id, grp);
+
     const c = grp.querySelector('circle.bd');
     if (c) { c.setAttribute('cx', s.x); c.setAttribute('cy', s.y); }
     const r2 = grp.querySelector('circle[fill="none"]');
@@ -141,7 +151,50 @@ function updateFastDOM() {
     const ot = grp.querySelector('text.mooreout');
     if (ot) { ot.setAttribute('x', s.x); ot.setAttribute('y', s.y + App.config.render.mooreTextMargin); }
   });
-  renderTransitions();
+
+  const startArrow = App.domCache.startArrow;
+  if (startArrow && App.startId) {
+    const s = getState(App.startId);
+    if (s) {
+      const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
+      startArrow.setAttribute('d', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah / 3} ${s.y}`);
+    }
+  }
+
+  // Fast transitions update: only update attributes for existing edges
+  App.domCache.transitions.forEach((edgeGrp, key) => {
+    const [fid, tid] = key.split('|');
+    const from = getState(fid), to = getState(tid);
+    if (!from || !to) return;
+    const isSelf = fid === tid;
+    const pathEl = edgeGrp.querySelector('.tarr'), hitEl = edgeGrp.querySelector('.tarr-hit'), textEl = edgeGrp.querySelector('.tlbl');
+    if (!pathEl || !textEl) return;
+
+    if (isSelf) {
+      const so = App.config.render.selfLoopOff, ss = App.config.render.selfLoopSize;
+      const d = `M ${from.x - so} ${from.y - R} A ${ss} ${ss} 0 1 1 ${from.x + so} ${from.y - R}`;
+      pathEl.setAttribute('d', d);
+      if (hitEl) hitEl.setAttribute('d', d);
+      textEl.setAttribute('x', from.x); textEl.setAttribute('y', from.y - R - App.config.render.selfLoopTextOff);
+    } else {
+      const hasRev = App.transitions.some(t => t.from === tid && t.to === fid);
+      const dx = to.x - from.x, dy = to.y - from.y, dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist === 0) return;
+      const ux = dx / dist, uy = dy / dist, px = -uy, py = ux;
+      const defCrv = hasRev ? App.config.render.curveOff : 0;
+      // Get the curve value from the first transition in the group
+      const firstTrans = App.transitions.find(t => t.from === fid && t.to === tid);
+      const crvVal = (firstTrans && firstTrans.curve !== undefined) ? firstTrans.curve : defCrv;
+
+      const mx = (from.x + to.x) / 2 + px * crvVal, my = (from.y + to.y) / 2 + py * crvVal;
+      const sx = from.x + ux * R, sy = from.y + uy * R;
+      const ex = to.x - ux * (R + App.config.render.arrowHeadSize), ey = to.y - uy * (R + App.config.render.arrowHeadSize);
+      const d = crvVal ? `M ${sx} ${sy} Q ${mx} ${my} ${ex} ${ey}` : `M ${sx} ${sy} L ${ex} ${ey}`;
+      pathEl.setAttribute('d', d);
+      if (hitEl) hitEl.setAttribute('d', d);
+      textEl.setAttribute('x', crvVal ? mx : (sx + ex) / 2); textEl.setAttribute('y', (crvVal ? my : (sy + ey) / 2) - App.config.render.textMargin);
+    }
+  });
 }
 
 function renderStates() {
@@ -306,4 +359,3 @@ function simplifyRE(r) {
     .replace(/\(([a-zA-Z0-9])\)\*/g, '$1*')
     .replace(/\(([a-zA-Z0-9])\)/g, '$1');
 }
-

@@ -74,6 +74,8 @@ const App = {
   grammar: { vars: new Set(['S']), start: 'S', productions: [] },
   // Current algo
   currentAlgo: 'table',
+  // DOM Cache for performance
+  domCache: { states: new Map(), transitions: new Map(), startArrow: null },
   // State classification overlay (null = off, Map<id → 'live'|'dead'|'unreachable'> = on)
   stateClassification: null,
   // Workspace B (M₂ for binary operations)

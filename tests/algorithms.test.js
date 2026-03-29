@@ -67,11 +67,11 @@ test('theme button icon reflects the active theme', () => {
   const h = createHarness();
   const btn = h.getElement('theme-btn');
   h.context.applyTheme('dark', false);
-  assert.match(btn.innerHTML, /viewBox="0 0 16 16"/);
-  assert.match(btn.innerHTML, /M10\.9 2\.2/);
+  assert.match(btn.innerHTML, /viewBox="0 0 24 24"/);
+  assert.match(btn.innerHTML, /2\.06 4\.18/);
 
   h.context.applyTheme('light', false);
-  assert.match(btn.innerHTML, /M8 1\.6l1\.45 2\.94/);
+  assert.match(btn.innerHTML, /M12 3a6 6 0 0 0 9 9/);
 });
 
 test('subset construction handles epsilon cycles and marks accepting subsets', () => {

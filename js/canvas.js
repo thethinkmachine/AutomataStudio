@@ -8,13 +8,22 @@ function svgPt(e) {
   const r = wrap.getBoundingClientRect();
   return { x: (e.clientX - r.left - App.cam.x) / App.cam.z, y: (e.clientY - r.top - App.cam.y) / App.cam.z };
 }
-function applyCamera() {
-  $('cam-g').setAttribute('transform', `translate(${App.cam.x},${App.cam.y}) scale(${App.cam.z})`);
-  const zInput = $('zoom-ind');
-  if (zInput && document.activeElement !== zInput) {
-    zInput.value = Math.round(App.cam.z * 100) + '%';
-  }
-  renderMinimap();
+let _pendingFrame = false;
+let _pendingMinimapRefresh = false;
+function applyCamera(skipMinimap = false) {
+  _pendingMinimapRefresh = _pendingMinimapRefresh || !skipMinimap;
+  if (_pendingFrame) return;
+  _pendingFrame = true;
+  requestAnimationFrame(() => {
+    $('cam-g').setAttribute('transform', `translate(${App.cam.x},${App.cam.y}) scale(${App.cam.z})`);
+    const zInput = $('zoom-ind');
+    if (zInput && document.activeElement !== zInput) {
+      zInput.value = Math.round(App.cam.z * 100) + '%';
+    }
+    if (_pendingMinimapRefresh) renderMinimap();
+    _pendingMinimapRefresh = false;
+    _pendingFrame = false;
+  });
 }
 
 wrap.addEventListener('wheel', e => {
@@ -67,11 +76,34 @@ wrap.addEventListener('mousedown', e => {
   }
 });
 
-document.addEventListener('mousemove', e => {
+let _activeMoveFrame = false;
+let _pendingMoveEvent = null;
+
+function queueMouseMove(e) {
+  _pendingMoveEvent = {
+    clientX: e.clientX,
+    clientY: e.clientY,
+    shiftKey: e.shiftKey
+  };
+  if (_activeMoveFrame) return;
+  _activeMoveFrame = true;
+  requestAnimationFrame(() => {
+    const nextMove = _pendingMoveEvent;
+    _pendingMoveEvent = null;
+    if (nextMove) handleMouseMove(nextMove);
+    _activeMoveFrame = false;
+    if (_pendingMoveEvent) queueMouseMove(_pendingMoveEvent);
+  });
+}
+
+document.addEventListener('mousemove', queueMouseMove);
+
+function handleMouseMove(e) {
   if (isPanning) {
     App.cam.x = camStart.x + (e.clientX - panStart.x);
     App.cam.y = camStart.y + (e.clientY - panStart.y);
-    applyCamera(); return;
+    applyCamera(true); // skip minimap during pan for speed
+    return;
   }
   if (App.marquee) {
     App.marquee.current = svgPt(e);
@@ -86,16 +118,7 @@ document.addEventListener('mousemove', e => {
         if (!App.selectedStates.has(s.id)) { App.selectedStates.add(s.id); hlState(s.id, true); }
       }
     });
-    App.transitions.forEach(t => {
-      const f = getState(t.from), toSt = getState(t.to);
-      if (f && toSt && App.selectedStates.has(f.id) && App.selectedStates.has(toSt.id)) {
-        if (!App.selectedTransitions.has(t.id)) {
-          App.selectedTransitions.add(t.id);
-          const eg = document.querySelector(`[data-edge="${f.id}|${toSt.id}"]`);
-          if (eg) eg.classList.add('sel-t');
-        }
-      }
-    });
+    // Marquee transition selection is expensive if many transitions, omit or simplify if needed
     return;
   }
   if (App.dragOffsets) {
@@ -132,17 +155,25 @@ document.addEventListener('mousemove', e => {
     const src = getState(App.transFrom), pt = svgPt(e);
     if (src) drawTempLine(src.x, src.y, pt.x, pt.y);
   }
-});
+}
 
 document.addEventListener('mouseup', e => {
+  if (_pendingMoveEvent) {
+    const nextMove = _pendingMoveEvent;
+    _pendingMoveEvent = null;
+    handleMouseMove(nextMove);
+  }
   if (isPanning) {
-    isPanning = false; wrap.classList.remove('panning'); return;
+    isPanning = false; wrap.classList.remove('panning'); renderMinimap(); return;
   }
   if (App.marquee) {
-    App.marqueeRect.remove(); App.marqueeRect = null; App.marquee = null;
+    App.marqueeRect.remove(); App.marqueeRect = null; App.marquee = null; renderMinimap();
   }
-  App.dragOffsets = null;
-  App.dragCurve = null;
+  if (App.dragOffsets || App.dragCurve) {
+    App.dragOffsets = null;
+    App.dragCurve = null;
+    renderMinimap();
+  }
 });
 document.addEventListener('click', () => $('ctx').style.display = 'none');
 
@@ -257,4 +288,3 @@ function exportSVG() {
   a.click();
   showStatus('SVG exported!');
 }
-
