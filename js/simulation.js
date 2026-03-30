@@ -1,9 +1,9 @@
 // ══════════════════════════════════════════════════════════════════
 //  SIMULATION
 // ══════════════════════════════════════════════════════════════════
-function tokenize(str) {
-  if (str === '') return [];
-  const syms = [...App.sigma].filter(s => s !== App.config.sym.eps).sort((a, b) => b.length - a.length);
+function tokenize(str, sigma = App.sigma) {
+  if (str === '' || !str) return [];
+  const syms = [...sigma].filter(s => s !== App.config.sym.eps).sort((a, b) => b.length - a.length);
   function bt(pos) {
     if (pos === str.length) return [];
     for (const s of syms) {
@@ -19,7 +19,11 @@ function tokenize(str) {
 
 function runSim() {
   resetSim();
-  const raw = $('sim-in').value;
+  let raw = $('sim-in').value.trim();
+  if (raw.toLowerCase() === 'eps' || raw.toLowerCase() === 'epsilon') {
+    raw = App.config.sym.eps;
+    $('sim-in').value = raw;
+  }
   if (!App.startId) { log('<span class="t-err">No start state.</span>'); return; }
 
   // MTM: support optional comma-separated per-tape initialization
@@ -37,12 +41,14 @@ function runSim() {
       tapeTokens.push(tok);
     }
     simMTM(tapeTokens[0], tapeTokens);
+    toggleAuto(); // Unified "play" experience
     return;
   }
 
   const str = raw === App.config.sym.eps ? '' : raw;
   const tokens = tokenize(str);
   if (tokens === null) { log(`<span class="t-err">Input cannot be tokenized using alphabet {${[...App.sigma].join(', ')}}.</span>`); return; }
+  App.currentTokens = tokens; // Save tokens for highlighting
   if (App.machine === 'DFA') simDFA(tokens);
   else if (App.machine === 'NFA' || App.machine === 'ε-NFA') simNFA(tokens);
   else if (App.machine === 'PDA') simPDA(tokens);
@@ -50,19 +56,24 @@ function runSim() {
   else if (App.machine === 'Mealy') simMealy(tokens);
   else if (App.machine === 'MTM') simMTM(tokens);
   else simTM(tokens);
+
+  // Unified playback: automatically start the animation if it loaded correctly
+  if (App.simSteps && App.simSteps.length > 0) {
+    toggleAuto();
+  }
 }
 function log(html) { const t = $('trace-log'); t.innerHTML = html; t.scrollTop = t.scrollHeight; }
 
 function simDFA(tokens) {
   App.simSteps = [];
   let cur = App.startId;
-  App.simSteps.push({ state: cur, remaining: tokens.join(''), note: `Start: ${getState(cur)?.name || '?'}` });
+  App.simSteps.push({ state: cur, tokens, remaining: tokens, note: `Start: ${getState(cur)?.name || '?'}` });
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
     const t = App.transitions.find(tr => tr.from === cur && (tr.symbol === sym || tr.symbol === App.config.sym.any));
-    if (!t) { App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `No δ(${getState(cur)?.name},'${sym}') — Implicit REJECT`, final: 'reject' }); break; }
+    if (!t) { App.simSteps.push({ state: cur, tokens, remaining: tokens.slice(i), note: `No δ(${getState(cur)?.name},'${sym}') — Implicit REJECT`, final: 'reject' }); break; }
     cur = t.to;
-    App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `Read '${sym}' → ${getState(cur)?.name}`, tid: t.id });
+    App.simSteps.push({ state: cur, tokens, remaining: tokens.slice(i + 1), note: `Read '${sym}' → ${getState(cur)?.name}`, tid: t.id });
   }
   const last = App.simSteps[App.simSteps.length - 1];
   if (!last.final) { last.final = App.accepts.has(cur) ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }
@@ -72,13 +83,13 @@ function simDFA(tokens) {
 function simNFA(tokens) {
   App.simSteps = [];
   let cur = epsClosure(new Set([App.startId]));
-  App.simSteps.push({ states: [...cur], remaining: tokens.join(''), note: `Start ε-closure: {${stateNames(cur)}}` });
+  App.simSteps.push({ states: [...cur], tokens, remaining: tokens, note: `Start ε-closure: {${stateNames(cur)}}` });
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i]; let nx = new Set();
     cur.forEach(sid => App.transitions.filter(t => t.from === sid && (t.symbol === sym || t.symbol === App.config.sym.any)).forEach(t => nx.add(t.to)));
     nx = epsClosure(nx);
     cur = nx;
-    App.simSteps.push({ states: [...cur], remaining: tokens.slice(i + 1).join(''), note: `Read '${sym}' → {${stateNames(cur) || '∅'}}` });
+    App.simSteps.push({ states: [...cur], tokens, remaining: tokens.slice(i + 1), note: `Read '${sym}' → {${stateNames(cur) || '∅'}}` });
     if (!cur.size) break;
   }
   const last = App.simSteps[App.simSteps.length - 1];
@@ -97,7 +108,7 @@ function stateNames(ids) { return [...ids].map(id => getState(id)?.name || id).j
 
 function simPDA(tokens) {
   App.simSteps = [];
-  const init = { state: App.startId, remaining: tokens, stack: [App.config.sym.stackBottom], note: 'Start configuration' };
+  const init = { state: App.startId, tokens, remaining: tokens, stack: [App.config.sym.stackBottom], note: 'Start configuration' };
   App.simSteps.push(init);
   let cfgs = [init];
   const visited = new Set(); // Track visited configurations to avoid ε-loops (#8)
@@ -119,7 +130,7 @@ function simPDA(tokens) {
         const cfgKey = t.to + '|' + nr.join('') + '|' + ns.join('');
         if (visited.has(cfgKey)) return; // Skip already-visited configurations
         visited.add(cfgKey);
-        const nc = { state: t.to, remaining: nr, stack: ns, note: `(${getState(state)?.name},${t.symbol || eps},${top})→(${getState(t.to)?.name},${t.push || eps})  [${ns.join('')}]` };
+        const nc = { state: t.to, tokens, remaining: nr, stack: ns, note: `(${getState(state)?.name},${t.symbol || eps},${top})→(${getState(t.to)?.name},${t.push || eps})` };
         next.push(nc); App.simSteps.push(nc);
       });
     });
@@ -138,7 +149,7 @@ function simTM(tokens) {
   for (let step = 0; step < App.config.maxTmSteps; step++) {
     while (tape.length <= head) tape.push(blank);
     const sym = tape[head];
-    App.simSteps.push({ state, tape: [...tape], head, note: `State:${getState(state)?.name} Read:'${sym}'` });
+    App.simSteps.push({ state, tokens, tape: [...tape], head, note: `State:${getState(state)?.name} Read:'${sym}'` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
     const t = App.transitions.find(tr => tr.from === state && (tr.symbol === sym || tr.symbol === App.config.sym.any));
     if (!t) { App.simSteps[App.simSteps.length - 1].final = 'reject'; App.simSteps[App.simSteps.length - 1].note += ' — REJECT'; break; }
@@ -157,42 +168,47 @@ function simMoore(tokens) {
   let cur = App.startId;
   const s0 = getState(cur);
   const initOut = s0?.output ?? '';
-  App.simSteps.push({ state: cur, remaining: tokens.join(''), note: `Start: ${s0?.name} — ${App.config.sym.lambda}: '${initOut}'`, output: initOut });
-  const outputs = [initOut];
+  let outStr = initOut;
+  let outputs = [initOut];
+  App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Start: ${s0?.name} — ${App.config.sym.lambda}: '${initOut}'` });
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
     const t = App.transitions.find(tr => tr.from === cur && (tr.symbol === sym || tr.symbol === App.config.sym.any));
-    if (!t) { App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' }); break; }
+    if (!t) { App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' }); break; }
     cur = t.to;
     const sc = getState(cur);
     const out = sc?.output ?? '';
+    outStr += out;
     outputs.push(out);
-    App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `Read '${sym}' → ${sc?.name} — ${App.config.sym.lambda}: '${out}'`, tid: t.id, output: out });
+    App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Read '${sym}' → ${sc?.name} — ${App.config.sym.lambda}: '${out}'`, tid: t.id });
   }
   const last = App.simSteps[App.simSteps.length - 1];
   const showAccepts = App.config.transducerAccepts;
   if (!last.final && showAccepts) { last.final = App.accepts.has(cur) ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }
-  last.note += ` | Output: "${outputs.join('')}"`;
+  last.note += ` | Output: "${outStr}"`;
   App.simIdx = 0; renderSimStep();
 }
 
 function simMealy(tokens) {
   App.simSteps = [];
   let cur = App.startId;
-  App.simSteps.push({ state: cur, remaining: tokens.join(''), note: `Start: ${getState(cur)?.name}`, outSoFar: '' });
-  const outputs = [];
+  let outStr = '';
+  let outputs = [];
+  App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Start: ${getState(cur)?.name}` });
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
     const t = App.transitions.find(tr => tr.from === cur && (tr.symbol === sym || tr.symbol === App.config.sym.any));
-    if (!t) { App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject', outSoFar: outputs.join('') }); break; }
-    outputs.push(t.output ?? '?');
+    if (!t) { App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' }); break; }
+    const out = t.output ?? '?';
+    outStr += out;
+    outputs.push(out);
     cur = t.to;
-    App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `Read '${sym}' → ${getState(cur)?.name} — out: '${t.output ?? '?'}'`, tid: t.id, outSoFar: outputs.join('') });
+    App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Read '${sym}' → ${getState(cur)?.name} — out: '${out}'`, tid: t.id });
   }
   const last = App.simSteps[App.simSteps.length - 1];
   const showAccepts = App.config.transducerAccepts;
   if (!last.final && showAccepts) { last.final = App.accepts.has(cur) ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }
-  if (outputs.length) last.note += ` | Output: "${outputs.join('')}"`;
+  if (outStr.length) last.note += ` | Output: "${outStr}"`;
   App.simIdx = 0; renderSimStep();
 }
 
@@ -208,7 +224,7 @@ function simMTM(tokens, allTapeTokens) {
   for (let step = 0; step < App.config.maxTmSteps; step++) {
     tapes.forEach((tape, i) => { while (tape.length <= heads[i]) tape.push(blank); });
     const syms = tapes.map((tape, i) => tape[heads[i]]);
-    App.simSteps.push({ state, tapes: tapes.map(t => [...t]), heads: [...heads], note: `State:${getState(state)?.name} Read:[${syms.join(',')}]` });
+    App.simSteps.push({ state, tokens, tapes: tapes.map(t => [...t]), heads: [...heads], note: `State:${getState(state)?.name} Read:[${syms.join(',')}]` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
     const t = App.transitions.find(tr => tr.from === state && tr.tapeSyms && tr.tapeSyms.length === k && tr.tapeSyms.every((s, i) => s === syms[i] || s === App.config.sym.any));
     if (!t) { App.simSteps[App.simSteps.length - 1].final = 'reject'; App.simSteps[App.simSteps.length - 1].note += ' — REJECT'; break; }
@@ -227,52 +243,87 @@ function simMTM(tokens, allTapeTokens) {
 
 function renderSimStep() {
   const step = App.simSteps[App.simIdx]; if (!step) return;
-  const lines = App.simSteps.slice(0, App.simIdx + 1).map((s, i) => {
+  const isLast = App.simIdx === App.simSteps.length - 1;
+
+  // Log update
+  const logLines = App.simSteps.slice(0, App.simIdx + 1).map((s, i) => {
     const cl = i === App.simIdx ? (s.final === 'accept' ? 't-ok' : s.final === 'reject' ? 't-err' : 't-step') : '';
     return `<div class="${cl}">${i}: ${s.note}</div>`;
   }).join('');
-  log(lines);
+  log(logLines);
+
+  // Unified Tracker System
+  const trackerEl = $('sim-tracker');
+  trackerEl.style.display = 'block';
+  
+  let rows = [];
+  const m = App.machine;
+  const stateName = getState(step.state)?.name || (step.states ? stateNames(step.states) : '?');
+
+  if (m === 'TM') {
+    rows.push({ label: 'Tape', cells: step.tape, head: step.head });
+  } else if (m === 'MTM') {
+    step.tapes.forEach((t, i) => rows.push({ label: `T${i + 1}`, cells: t, head: step.heads[i] }));
+  } else {
+    // DFA, NFA, PDA, Moore, Mealy
+    const tokens = step.tokens || App.currentTokens || [];
+    const tokensToDisplay = tokens.length ? tokens : [App.config.sym.eps];
+    
+    // Determine token index (which one was JUST read)
+    let tokIdx = -1;
+    if (step.remaining) {
+      tokIdx = tokens.length - step.remaining.length - 1;
+    } else {
+      tokIdx = App.simIdx - 1;
+    }
+    
+    rows.push({ label: 'In', cells: tokensToDisplay, head: tokIdx });
+
+    if (m === 'PDA' && step.stack) {
+      rows.push({ label: 'Stk', cells: [...step.stack].reverse(), head: 0 }); // Stack top at index 0
+    } else if (['Moore', 'Mealy'].includes(m)) {
+      const outToks = step.outToks || [];
+      rows.push({ label: 'Out', cells: outToks, head: outToks.length ? outToks.length - 1 : -1 });
+    }
+  }
+
+  // Header
+  const headerHtml = `<div class="tracker-header">
+    State: <span class="tracker-val-st">${stateName}</span> &nbsp;
+    ${rows.map(r => `${r.label}:<span class="tracker-val-sym">${(r.head >= 0 && r.cells && r.cells[r.head]) || '—'}</span>`).join(' &nbsp; ')}
+  </div>`;
+
+  // Row Rendering
+  const rowsHtml = rows.map(r => {
+    const cellsHtml = (r.cells || []).map((c, ci) => {
+      const isHead = ci === r.head;
+      const resClass = (isLast && step.final && isHead) ? ` ${step.final}` : '';
+      return `<div class="tc ${isHead ? 'head' : ''}${resClass}" title="${r.label} index ${ci}">${c}</div>`;
+    }).join('');
+    return `<div class="mtm-tape-row">
+      <span class="tape-label">${r.label}</span>
+      <span class="tape-cells">${cellsHtml}</span>
+    </div>`;
+  }).join('');
+
+  trackerEl.innerHTML = headerHtml + rowsHtml;
+
+  // Visual highlights on canvas
   document.querySelectorAll('.sn').forEach(el => el.classList.remove('act-st', 'rej-st'));
   const hl = step.state ? [step.state] : (step.states || []);
   hl.forEach(id => {
     const el = document.querySelector(`[data-id="${id}"]`);
     if (el) el.classList.add(step.final === 'reject' ? 'rej-st' : 'act-st');
   });
-  if (App.machine === 'TM' && step.tape) {
-    const tw = $('tape-wrap'); tw.style.display = 'flex';
-    tw.innerHTML = step.tape.map((c, i) => `<div class="tc ${i === step.head ? 'head' : ''}">${c}</div>`).join('');
-  }
-  if (App.machine === 'MTM' && step.tapes) {
-    const mtmDiv = $('mtm-tapes');
-    mtmDiv.style.display = 'block';
-    const stateName = getState(step.state)?.name || '?';
-    const syms = step.tapes.map((tape, i) => tape[step.heads[i]] || App.config.sym.blank);
-    const header = `<div style="font-size:.6rem;color:var(--text3);font-family:var(--mono);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">
-      State: <span style="color:var(--accent)">${stateName}</span> &nbsp;
-      Reading: [${syms.map((s, i) => `T${i + 1}:<span style="color:var(--gold)">${s}</span>`).join(', ')}]
-    </div>`;
-    const tapeHtml = step.tapes.map((tape, ti) => {
-      const cells = tape.map((c, ci) => {
-        const isHead = ci === step.heads[ti];
-        return `<div class="tc ${isHead ? 'head' : ''}" title="Tape ${ti + 1} pos ${ci}">${c}</div>`;
-      }).join('');
-      return `<div class="mtm-tape-row">
-        <span class="tape-label" style="color:var(--accent)">T${ti + 1}</span>
-        <span class="tape-cells">${cells}</span>
-      </div>`;
-    }).join('');
-    mtmDiv.innerHTML = header + tapeHtml;
-  }
 }
 function stepFwd() { if (App.simIdx < App.simSteps.length - 1) { App.simIdx++; renderSimStep(); } }
 function stepBack() { if (App.simIdx > 0) { App.simIdx--; renderSimStep(); } }
 function resetSim() {
   clearInterval(App.autoTimer); App.autoTimer = null;
-  App.simSteps = []; App.simIdx = 0;
+  App.simSteps = []; App.simIdx = 0; App.currentTokens = null;
   $('auto-btn').classList.remove('playing'); $('auto-btn').textContent = '⏵ Auto';
   log('<span style="color:var(--text3);font-style:italic">Run a string to simulate…</span>');
-  $('tape-wrap').innerHTML = ''; $('tape-wrap').style.display = 'none';
-  $('mtm-tapes').innerHTML = ''; $('mtm-tapes').style.display = 'none';
+  $('sim-tracker').innerHTML = ''; $('sim-tracker').style.display = 'none';
   document.querySelectorAll('.sn').forEach(el => el.classList.remove('act-st', 'rej-st'));
 }
 function toggleAuto() {

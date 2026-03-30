@@ -555,7 +555,12 @@ function algoEquiv(c) {
 function testEquivStr() {
   const str = $('eq-str').value.trim();
   const s = str === App.config.sym.eps ? '' : str;
-  const accepted = App.machine === 'DFA' ? testDFA(s) : testNFA(s);
+  const tokens = tokenize(s);
+  if (tokens === null) {
+    $('eq-result').innerHTML = `<div style="font-size:.75rem;color:var(--red)">Cannot tokenize string using the alphabet Σ.</div>`;
+    return;
+  }
+  const accepted = App.machine === 'DFA' ? testDFA(tokens) : testNFA(tokens);
   $('eq-result').innerHTML = `<div style="font-size:.75rem;color:${accepted ? 'var(--green)' : 'var(--red)'}">
 "${str}" is ${accepted ? 'ACCEPTED ✓' : 'REJECTED ✗'} by the current automaton.</div>`;
 }

@@ -359,6 +359,15 @@
               <div class="rp-section-body">
                 <div class="code-box" id="regex-box">—</div>
                 <div class="def-box" id="def-box">M = (Q, Σ, δ, q₀, F)</div>
+                <div id="mtm-ctrl" style="display:none;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+                  <span style="font-family:var(--mono);font-size:.65rem;color:var(--text3)">Tapes:</span>
+                  <select class="sel" id="tape-count-sel" onchange="setTapeCount(this.value)"
+                    style="flex:none;width:55px">
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                  </select>
+                </div>
               </div>
             </div>
             <!-- Simulate section -->
@@ -371,7 +380,7 @@
               </div>
               <div class="rp-section-body">
                 <div class="sim-row">
-                  <input class="inp" id="sim-in" placeholder="ε for empty…" style="flex:1">
+                  <input class="inp" id="sim-in" placeholder="Empty string (ε) or type 'eps'…" style="flex:1">
                   <button class="run-btn" onclick="runSim()">▶</button>
                 </div>
                 <div class="sctrl">
@@ -380,17 +389,7 @@
                   <button class="sbtn auto-btn" id="auto-btn" onclick="toggleAuto()">⏵ Auto</button>
                   <button class="sbtn" onclick="resetSim()">↺</button>
                 </div>
-                <div class="tape-wrap" id="tape-wrap" style="display:none"></div>
-                <div id="mtm-ctrl" style="display:none;align-items:center;gap:6px;margin-bottom:4px">
-                  <span style="font-family:var(--mono);font-size:.65rem;color:var(--text3)">Tapes:</span>
-                  <select class="sel" id="tape-count-sel" onchange="setTapeCount(this.value)"
-                    style="flex:none;width:55px">
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                  </select>
-                </div>
-                <div id="mtm-tapes" style="display:none"></div>
+                <div id="sim-tracker" class="sim-tracker" style="display:none"></div>
                 <div class="trace-log" id="trace-log"><span style="color:var(--text3);font-style:italic">Run a string to
                     simulate…</span></div>
               </div>

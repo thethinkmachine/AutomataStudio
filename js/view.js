@@ -69,9 +69,7 @@ function applyMachineSwitch(m) {
   // Toggle UI Sections based on Machine Features
   $('stack-sec').style.display = cfg.hasStack ? '' : 'none';
   $('output-sec').style.display = cfg.isTransducer ? '' : 'none';
-  $('tape-wrap').style.display = (m === 'TM') ? '' : 'none';
   $('mtm-ctrl').style.display = (m === 'MTM') ? 'flex' : 'none';
-  $('mtm-tapes').style.display = (m === 'MTM') ? '' : 'none';
 
   updateRPanel();
   renderAll();
