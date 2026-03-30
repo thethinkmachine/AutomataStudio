@@ -170,7 +170,8 @@ function simMoore(tokens) {
     App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `Read '${sym}' → ${sc?.name} — ${App.config.sym.lambda}: '${out}'`, tid: t.id, output: out });
   }
   const last = App.simSteps[App.simSteps.length - 1];
-  if (!last.final) { last.final = App.accepts.has(cur) ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }
+  const showAccepts = App.config.transducerAccepts;
+  if (!last.final && showAccepts) { last.final = App.accepts.has(cur) ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }
   last.note += ` | Output: "${outputs.join('')}"`;
   App.simIdx = 0; renderSimStep();
 }
@@ -189,7 +190,8 @@ function simMealy(tokens) {
     App.simSteps.push({ state: cur, remaining: tokens.slice(i + 1).join(''), note: `Read '${sym}' → ${getState(cur)?.name} — out: '${t.output ?? '?'}'`, tid: t.id, outSoFar: outputs.join('') });
   }
   const last = App.simSteps[App.simSteps.length - 1];
-  if (!last.final) { last.final = App.accepts.has(cur) ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }
+  const showAccepts = App.config.transducerAccepts;
+  if (!last.final && showAccepts) { last.final = App.accepts.has(cur) ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }
   if (outputs.length) last.note += ` | Output: "${outputs.join('')}"`;
   App.simIdx = 0; renderSimStep();
 }
@@ -301,13 +303,14 @@ function runBatch() {
     let accepted = false, output = null;
     if (App.machine === 'DFA') accepted = testDFA(tokens);
     else if (App.machine === 'NFA' || App.machine === 'ε-NFA') accepted = testNFA(tokens);
-    else if (App.machine === 'Moore') { accepted = testDFA(tokens); output = getMooreOutput(tokens); }
-    else if (App.machine === 'Mealy') { accepted = testDFA(tokens); output = getMealyOutput(tokens); }
+    else if (App.machine === 'Moore') { accepted = App.config.transducerAccepts ? testDFA(tokens) : undefined; output = getMooreOutput(tokens); }
+    else if (App.machine === 'Mealy') { accepted = App.config.transducerAccepts ? testDFA(tokens) : undefined; output = getMealyOutput(tokens); }
     return { str: line, accepted, output };
   });
   $('batch-result').innerHTML = results.map(r => {
     if (r.error) return `<div class="br-err">✗ "${r.str}" — cannot tokenize</div>`;
     const outTag = r.output !== null ? ` <span style="color:var(--text3);font-size:.65rem">→ "${r.output}"</span>` : '';
+    if (r.accepted === undefined) return `<div class="br-ok" style="border-left-color:var(--text-main)"><span style="color:var(--text-main)">•</span> "${r.str}"${outTag}</div>`;
     return `<div class="${r.accepted ? 'br-ok' : 'br-err'}">${r.accepted ? '✓' : '✗'} "${r.str}"${outTag}</div>`;
   }).join('');
 }

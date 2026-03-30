@@ -400,6 +400,7 @@ function filterAlgos() {
 function openSettingsModal() {
   const c = App.config;
   $('set-theme').value = c.theme || 'dark';
+  $('set-transducer-accepts').checked = !!c.transducerAccepts;
   $('set-pda-steps').value = c.maxPdaSteps;
   $('set-tm-steps').value = c.maxTmSteps;
   $('set-auto-speed').value = c.autoSpeed;
@@ -419,6 +420,7 @@ function openSettingsModal() {
 function confirmSettings() {
   const c = App.config;
   applyTheme($('set-theme').value || c.theme || 'dark');
+  c.transducerAccepts = $('set-transducer-accepts').checked;
   c.maxPdaSteps = parseInt($('set-pda-steps').value) || 2000;
   c.maxTmSteps = parseInt($('set-tm-steps').value) || 10000;
   c.autoSpeed = parseInt($('set-auto-speed').value) || 500;

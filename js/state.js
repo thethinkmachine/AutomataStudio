@@ -29,6 +29,7 @@ const App = {
   // Configuration constants
   config: {
     theme: 'dark',
+    transducerAccepts: false,
     maxPdaSteps: 2000,
     maxTmSteps: 10000,
     autoSpeed: 500,

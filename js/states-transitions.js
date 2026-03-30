@@ -128,6 +128,12 @@ function openStateModal(id) {
   const s = getState(id); if (!s) return;
   $('s-name').value = s.name;
   $('s-start').checked = App.startId === id;
+  const cfg = getMachineConfig(App.machine);
+  if (cfg.isTransducer && !App.config.transducerAccepts) {
+    $('s-acc').parentElement.style.display = 'none';
+  } else {
+    $('s-acc').parentElement.style.display = '';
+  }
   $('s-acc').checked = App.accepts.has(id);
   const mooreExtra = $('s-moore-extra');
   mooreExtra.style.display = App.machine === 'Moore' ? '' : 'none';
@@ -144,7 +150,13 @@ function confirmState() {
   closeModal('state-modal'); renderAll(); updateLPanel(); updateRPanel();
 }
 function ctxStart() { if (App.ctxId) { App.startId = App.ctxId; snapshot(); renderAll(); updateLPanel(); updateRPanel(); } }
-function ctxToggleAcc() { if (!App.ctxId) return; App.accepts.has(App.ctxId) ? App.accepts.delete(App.ctxId) : App.accepts.add(App.ctxId); snapshot(); renderAll(); updateLPanel(); updateRPanel(); }
+function ctxToggleAcc() { 
+  if (!App.ctxId) return; 
+  const cfg = getMachineConfig(App.machine);
+  if (cfg.isTransducer && !App.config.transducerAccepts) return;
+  App.accepts.has(App.ctxId) ? App.accepts.delete(App.ctxId) : App.accepts.add(App.ctxId); 
+  snapshot(); renderAll(); updateLPanel(); updateRPanel(); 
+}
 function ctxRename() { if (App.ctxId) openStateModal(App.ctxId); }
 function ctxDel() { if (App.ctxId) deleteState(App.ctxId); }
 

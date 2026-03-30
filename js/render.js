@@ -243,7 +243,8 @@ function renderStates() {
     grp.classList.add('sn');
     grp.setAttribute('data-id', s.id);
     if (App.startId === s.id) grp.classList.add('start-st');
-    if (App.accepts.has(s.id)) grp.classList.add('acc-st');
+    const showAccepts = !(getMachineConfig(App.machine).isTransducer && !App.config.transducerAccepts);
+    if (showAccepts && App.accepts.has(s.id)) grp.classList.add('acc-st');
     // Dead/unreachable overlay (set by Dead State Analysis algo)
     if (App.stateClassification) {
       const cls = App.stateClassification.get(s.id);
@@ -253,7 +254,7 @@ function renderStates() {
     const c = makeSVG('circle');
     c.classList.add('bd'); c.setAttribute('cx', s.x); c.setAttribute('cy', s.y); c.setAttribute('r', R);
     grp.appendChild(c);
-    if (App.accepts.has(s.id)) {
+    if (showAccepts && App.accepts.has(s.id)) {
       const r2 = makeSVG('circle');
       r2.setAttribute('cx', s.x); r2.setAttribute('cy', s.y); r2.setAttribute('r', R - 5);
       r2.setAttribute('fill', 'none'); r2.setAttribute('stroke', 'var(--gold)'); r2.setAttribute('stroke-width', '1.5');
@@ -269,8 +270,20 @@ function renderStates() {
       grp.appendChild(ot);
     }
     grp.addEventListener('mousedown', e => onStateDown(e, s.id));
-    grp.addEventListener('contextmenu', e => { e.preventDefault(); App.ctxId = s.id; const m = $('ctx'); m.style.display = 'block'; m.style.left = Math.min(e.clientX, innerWidth - 160) + 'px'; m.style.top = Math.min(e.clientY, innerHeight - 140) + 'px'; });
-    grp.addEventListener('dblclick', () => { App.accepts.has(s.id) ? App.accepts.delete(s.id) : App.accepts.add(s.id); snapshot(); renderAll(); updateLPanel(); updateRPanel(); });
+    grp.addEventListener('contextmenu', e => { 
+      e.preventDefault(); App.ctxId = s.id; 
+      const m = $('ctx'); 
+      const toggleOpt = $('ctx-toggle-acc');
+      if (toggleOpt) toggleOpt.style.display = showAccepts ? '' : 'none';
+      m.style.display = 'block'; 
+      m.style.left = Math.min(e.clientX, innerWidth - 160) + 'px'; 
+      m.style.top = Math.min(e.clientY, innerHeight - 140) + 'px'; 
+    });
+    grp.addEventListener('dblclick', () => { 
+      if (!showAccepts) return;
+      App.accepts.has(s.id) ? App.accepts.delete(s.id) : App.accepts.add(s.id); 
+      snapshot(); renderAll(); updateLPanel(); updateRPanel(); 
+    });
     g.appendChild(grp);
   });
 }
@@ -280,8 +293,9 @@ function renderStates() {
 // ══════════════════════════════════════════════════════════════════
 function updateLPanel() {
   const sl = $('states-list');
+  const showAccepts = !(getMachineConfig(App.machine).isTransducer && !App.config.transducerAccepts);
   sl.innerHTML = App.states.length ? App.states.map(s => `
-<div class="si ${App.startId === s.id ? 'start' : ''} ${App.accepts.has(s.id) ? 'acc' : ''}" onclick="openStateModal('${s.id}')">
+<div class="si ${App.startId === s.id ? 'start' : ''} ${showAccepts && App.accepts.has(s.id) ? 'acc' : ''}" onclick="openStateModal('${s.id}')">
   ${s.name}<div class="dot"></div>
 </div>`).join('') : '<div class="empty-msg">No states</div>';
   const tl = $('trans-list');

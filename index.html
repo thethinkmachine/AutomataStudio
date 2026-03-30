@@ -882,6 +882,10 @@
       <div class="modal-title">Engine Settings</div>
 
       <div class="modal-section-lbl">Automaton Engine</div>
+      <div class="modal-row" id="set-row-transducer" title="Allow Moore and Mealy machines to have accept states">
+        <span class="modal-lbl">Transducer Accepts</span>
+        <input type="checkbox" class="inp" id="set-transducer-accepts" style="width:16px;height:16px">
+      </div>
       <div class="modal-row">
         <span class="modal-lbl">PDA Max Steps</span>
         <input type="number" class="inp" id="set-pda-steps" label="PDA step limit">
@@ -1108,7 +1112,7 @@
   <!-- ══════ CTX MENU ══════ -->
   <div class="ctx" id="ctx">
     <div class="ctx-i" onclick="ctxStart()">→ Set Start</div>
-    <div class="ctx-i" onclick="ctxToggleAcc()">◎ Toggle Accept</div>
+    <div class="ctx-i" id="ctx-toggle-acc" onclick="ctxToggleAcc()">◎ Toggle Accept</div>
     <div class="ctx-i" onclick="ctxRename()">✎ Rename</div>
     <div class="ctx-i danger" onclick="ctxDel()">✕ Delete</div>
   </div>
