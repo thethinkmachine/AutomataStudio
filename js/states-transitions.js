@@ -42,6 +42,12 @@ function openTransModal(from, to) {
   $('m-pda-extra').style.display = cfg.hasStack ? '' : 'none';
   $('m-tm-extra').style.display = (App.machine === 'TM') ? '' : 'none';
   $('m-mealy-extra').style.display = (App.machine === 'Mealy') ? '' : 'none';
+  if (App.machine === 'Mealy') {
+    const { lambda } = App.config.sym;
+    const outs = [...new Set([...App.outputAlpha, lambda])];
+    $('m-output').innerHTML = outs.map(o => `<option value="${o}">${o}</option>`).join('');
+    $('m-output').value = lambda;
+  }
 
   const mtmExtra = $('m-mtm-extra');
   mtmExtra.style.display = App.machine === 'MTM' ? '' : 'none';
@@ -86,7 +92,10 @@ function confirmTrans() {
     t.push = $('m-push').value || eps;
   }
   if (App.machine === 'TM') { t.write = $('m-write').value || t.symbol; t.dir = $('m-dir').value; }
-  if (App.machine === 'Mealy') { t.output = $('m-output').value || ''; }
+  if (App.machine === 'Mealy') {
+    const out = $('m-output').value.trim();
+    t.output = out === App.config.sym.lambda ? '' : out;
+  }
   if (App.machine === 'MTM') {
     const k = App.tapeCount;
     const blank = App.config.sym.blank;
@@ -137,7 +146,33 @@ function openStateModal(id) {
   $('s-acc').checked = App.accepts.has(id);
   const mooreExtra = $('s-moore-extra');
   mooreExtra.style.display = App.machine === 'Moore' ? '' : 'none';
-  if (App.machine === 'Moore') $('s-output').value = s.output || '';
+  if (App.machine === 'Moore') {
+    const { lambda } = App.config.sym;
+    const outs = [...new Set([...App.outputAlpha, lambda])];
+    $('s-output').innerHTML = outs.map(o => `<option value="${o}">${o}</option>`).join('');
+    $('s-output').value = (s.output === undefined || s.output === '') ? lambda : s.output;
+  }
+  const mealyExtra = $('s-mealy-extra');
+  if (mealyExtra) mealyExtra.style.display = App.machine === 'Mealy' ? '' : 'none';
+  if (App.machine === 'Mealy') {
+    const { lambda } = App.config.sym;
+    const outs = [...new Set([...App.outputAlpha, lambda])];
+    const outgoing = App.transitions.filter(t => t.from === id);
+    const list = $('s-mealy-transitions-list');
+    if (outgoing.length === 0) {
+      list.innerHTML = '<div style="font-size:0.8rem;color:var(--text3);font-style:italic">No outgoing transitions</div>';
+    } else {
+      list.innerHTML = outgoing.map(t => {
+        const toState = getState(t.to)?.name || '?';
+        const outVal = (t.output === undefined || t.output === '') ? lambda : t.output;
+        const options = outs.map(o => `<option value="${o}" ${outVal === o ? 'selected' : ''}>${o}</option>`).join('');
+        return `<div class="modal-row" style="margin-bottom:6px">
+          <span class="modal-lbl" style="width: auto; margin-right: 8px; font-size: 0.85rem">→ ${toState} ('${t.symbol}')</span>
+          <select class="sel" id="mealy-out-${t.id}" style="flex:1">${options}</select>
+        </div>`;
+      }).join('');
+    }
+  }
   showOverlay('state-modal');
 }
 function confirmState() {
@@ -146,7 +181,20 @@ function confirmState() {
   s.name = $('s-name').value.trim() || s.name;
   if ($('s-start').checked) App.startId = s.id;
   if ($('s-acc').checked) App.accepts.add(s.id); else App.accepts.delete(s.id);
-  if (App.machine === 'Moore') s.output = $('s-output').value.trim();
+  if (App.machine === 'Moore') {
+    const out = $('s-output').value.trim();
+    s.output = out === App.config.sym.lambda ? '' : out;
+  }
+  if (App.machine === 'Mealy') {
+    const outgoing = App.transitions.filter(t => t.from === s.id);
+    outgoing.forEach(t => {
+      const el = $(`mealy-out-${t.id}`);
+      if (el) {
+        const out = el.value.trim();
+        t.output = out === App.config.sym.lambda ? '' : out;
+      }
+    });
+  }
   closeModal('state-modal'); renderAll(); updateLPanel(); updateRPanel();
 }
 function ctxStart() { if (App.ctxId) { App.startId = App.ctxId; snapshot(); renderAll(); updateLPanel(); updateRPanel(); } }

@@ -274,7 +274,9 @@ function renderStates() {
       e.preventDefault(); App.ctxId = s.id; 
       const m = $('ctx'); 
       const toggleOpt = $('ctx-toggle-acc');
+      const renameOpt = $('ctx-rename');
       if (toggleOpt) toggleOpt.style.display = showAccepts ? '' : 'none';
+      if (renameOpt) renameOpt.innerText = (App.machine === 'Moore' || App.machine === 'Mealy') ? '✎ Configure' : '✎ Rename';
       m.style.display = 'block'; 
       m.style.left = Math.min(e.clientX, innerWidth - 160) + 'px'; 
       m.style.top = Math.min(e.clientY, innerHeight - 140) + 'px'; 
@@ -294,10 +296,16 @@ function renderStates() {
 function updateLPanel() {
   const sl = $('states-list');
   const showAccepts = !(getMachineConfig(App.machine).isTransducer && !App.config.transducerAccepts);
-  sl.innerHTML = App.states.length ? App.states.map(s => `
-<div class="si ${App.startId === s.id ? 'start' : ''} ${showAccepts && App.accepts.has(s.id) ? 'acc' : ''}" onclick="openStateModal('${s.id}')">
-  ${s.name}<div class="dot"></div>
-</div>`).join('') : '<div class="empty-msg">No states</div>';
+  sl.innerHTML = App.states.length ? App.states.map(s => {
+    let mooreOut = '';
+    if (App.machine === 'Moore') {
+      const outSym = (s.output === undefined || s.output === '') ? App.config.sym.lambda : s.output;
+      mooreOut = `<span style="color:var(--text3);font-size:0.75em;margin-left:4px">/ ${outSym}</span>`;
+    }
+    return `<div class="si ${App.startId === s.id ? 'start' : ''} ${showAccepts && App.accepts.has(s.id) ? 'acc' : ''}" onclick="openStateModal('${s.id}')">
+  ${s.name}${mooreOut}<div class="dot"></div>
+</div>`;
+  }).join('') : '<div class="empty-msg">No states</div>';
   const tl = $('trans-list');
   tl.innerHTML = App.transitions.length ? App.transitions.map(t => {
     const fn = getState(t.from)?.name || '?', tn = getState(t.to)?.name || '?';

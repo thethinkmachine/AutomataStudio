@@ -836,8 +836,7 @@
         </div>
       </div>
       <div id="m-mealy-extra" style="display:none">
-        <div class="modal-row"><span class="modal-lbl">Output</span><input class="inp" id="m-output"
-            placeholder="symbol"></div>
+        <div class="modal-row"><span class="modal-lbl">Output</span><select class="sel" id="m-output"></select></div>
       </div>
       <div id="m-mtm-extra" style="display:none"></div>
       <div class="modal-row"><span class="modal-lbl">To</span><select class="sel" id="m-to"></select></div>
@@ -855,8 +854,11 @@
       <div class="modal-row"><span class="modal-lbl">Accept</span><input type="checkbox" id="s-acc"
           style="width:16px;height:16px"></div>
       <div id="s-moore-extra" style="display:none">
-        <div class="modal-row"><span class="modal-lbl">Output λ</span><input class="inp" id="s-output"
-            placeholder="output symbol" maxlength="8"></div>
+        <div class="modal-row"><span class="modal-lbl">Output λ</span><select class="sel" id="s-output"></select></div>
+      </div>
+      <div id="s-mealy-extra" style="display:none; margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px;">
+        <div style="font-size: 0.8rem; color: var(--text3); margin-bottom: 8px;">Outgoing Transition Outputs (λ)</div>
+        <div id="s-mealy-transitions-list" style="max-height: 160px; overflow-y: auto;"></div>
       </div>
       <div class="modal-foot"><button class="btn-g" onclick="closeModal('state-modal')">Cancel</button><button
           class="btn-p" onclick="confirmState()">Save</button></div>
@@ -1113,7 +1115,7 @@
   <div class="ctx" id="ctx">
     <div class="ctx-i" onclick="ctxStart()">→ Set Start</div>
     <div class="ctx-i" id="ctx-toggle-acc" onclick="ctxToggleAcc()">◎ Toggle Accept</div>
-    <div class="ctx-i" onclick="ctxRename()">✎ Rename</div>
+    <div class="ctx-i" id="ctx-rename" onclick="ctxRename()">✎ Rename</div>
     <div class="ctx-i danger" onclick="ctxDel()">✕ Delete</div>
   </div>
 
