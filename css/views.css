@@ -436,8 +436,9 @@
 }
 
 .tc {
-  width: 26px;
+  min-width: 26px;
   height: 26px;
+  padding: 0 4px;
   flex-shrink: 0;
   border: 1px solid var(--border2);
   border-radius: 3px;
@@ -448,6 +449,7 @@
   font-size: .72rem;
   background: var(--surface);
   transition: all .2s;
+  box-sizing: border-box;
 }
 
 .tc.head {
