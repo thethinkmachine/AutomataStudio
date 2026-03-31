@@ -136,7 +136,7 @@ function openStateModal(id) {
   App.editId = id;
   const s = getState(id); if (!s) return;
   $('s-name').value = s.name;
-  $('s-start').checked = App.startId === id;
+  $('s-start').checked = isConceptualStart(id);
   const cfg = getMachineConfig(App.machine);
   if (cfg.isTransducer && !App.config.transducerAccepts) {
     $('s-acc').parentElement.style.display = 'none';
@@ -179,7 +179,15 @@ function confirmState() {
   const s = getState(App.editId); if (!s) return closeModal('state-modal');
   snapshot();
   s.name = $('s-name').value.trim() || s.name;
-  if ($('s-start').checked) App.startId = s.id;
+  
+  const wasStart = isConceptualStart(s.id);
+  const nowStart = $('s-start').checked;
+  if (!wasStart && nowStart) {
+    applyStartState(s.id);
+  } else if (wasStart && !nowStart) {
+    removeStartState(s.id);
+  }
+  
   if ($('s-acc').checked) App.accepts.add(s.id); else App.accepts.delete(s.id);
   if (App.machine === 'Moore') {
     const out = $('s-output').value.trim();
@@ -197,7 +205,88 @@ function confirmState() {
   }
   closeModal('state-modal'); renderAll(); updateLPanel(); updateRPanel();
 }
-function ctxStart() { if (App.ctxId) { App.startId = App.ctxId; snapshot(); renderAll(); updateLPanel(); updateRPanel(); } }
+
+function isConceptualStart(id) {
+  if (App.startId === id) return true;
+  const startState = getState(App.startId);
+  if (startState && startState.isDummyStart) {
+    return App.transitions.some(t => t.from === startState.id && t.to === id && t.symbol === App.config.sym.eps);
+  }
+  return false;
+}
+
+function applyStartState(targetId) {
+  if (App.startId === targetId) return;
+  if (!App.startId) {
+    App.startId = targetId;
+    return;
+  }
+  if (App.machine === 'NFA' || App.machine === 'ε-NFA') {
+    let dummy = App.states.find(s => s.isDummyStart && App.startId === s.id);
+    const eps = App.config.sym.eps;
+    if (dummy) {
+      if (!App.transitions.find(t => t.from === dummy.id && t.to === targetId && t.symbol === eps)) {
+        App.transitions.push({ id: newTId(), from: dummy.id, to: targetId, symbol: eps });
+      }
+    } else {
+      const oldStart = getState(App.startId);
+      const nx = oldStart ? oldStart.x - 80 : 100;
+      const ny = oldStart ? oldStart.y : 100;
+      const dummyId = newId();
+      const newDummy = { id: dummyId, x: nx, y: ny, name: 'q_start', isDummyStart: true };
+      App.states.push(newDummy);
+      App.startId = dummyId;
+      if (oldStart) {
+        App.transitions.push({ id: newTId(), from: dummyId, to: oldStart.id, symbol: eps });
+      }
+      App.transitions.push({ id: newTId(), from: dummyId, to: targetId, symbol: eps });
+      if (App.machine === 'NFA') {
+         App.machine = 'ε-NFA';
+         const sel = document.getElementById('mobile-machine-select');
+         if (sel) sel.value = 'ε-NFA';
+         document.querySelectorAll('.mtab').forEach(b => {
+           b.classList.toggle('active', b.textContent.trim() === 'ε-NFA');
+         });
+         const badge = document.getElementById('mach-badge');
+         if (badge) {
+           badge.textContent = 'ε-NFA';
+           badge.className = 'badge bd-enfa';
+         }
+      }
+    }
+  } else {
+    App.startId = targetId; 
+  }
+}
+
+function removeStartState(targetId) {
+  if (App.startId === targetId) {
+    App.startId = null;
+  } else {
+    const startState = getState(App.startId);
+    if (startState && startState.isDummyStart) {
+      App.transitions = App.transitions.filter(t => !(t.from === startState.id && t.to === targetId && t.symbol === App.config.sym.eps));
+      const remainingLinks = App.transitions.filter(t => t.from === startState.id && t.symbol === App.config.sym.eps);
+      if (remainingLinks.length === 0) {
+        App.states = App.states.filter(s => s.id !== startState.id);
+        App.startId = null;
+      }
+    }
+  }
+}
+
+function ctxStart() { 
+  if (App.ctxId) { 
+    snapshot();
+    if (isConceptualStart(App.ctxId)) {
+      removeStartState(App.ctxId);
+    } else {
+      applyStartState(App.ctxId);
+    }
+    renderAll(); updateLPanel(); updateRPanel(); 
+  } 
+}
+
 function ctxToggleAcc() { 
   if (!App.ctxId) return; 
   const cfg = getMachineConfig(App.machine);
