@@ -352,6 +352,18 @@ function toggleTool(t) {
 const TOOLBAR_DOCK_KEY = 'automata-toolbar-dock';
 const TOOLBAR_MARGIN = 12;
 
+function isCompactToolbarMode() {
+  return window.matchMedia && window.matchMedia('(max-width: 820px)').matches;
+}
+
+function normalizeToolbarDock(dock) {
+  const fallback = dock && ['top', 'bottom', 'left', 'right'].includes(dock.side)
+    ? dock
+    : getDefaultToolbarDock();
+  if (isCompactToolbarMode()) return { side: 'bottom', ratio: 0.5 };
+  return { side: fallback.side, ratio: clamp01(typeof fallback.ratio === 'number' ? fallback.ratio : 0.5) };
+}
+
 function clamp01(n) {
   return Math.max(0, Math.min(1, n));
 }
@@ -367,11 +379,11 @@ function readToolbarDock() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && ['top', 'bottom', 'left', 'right'].includes(parsed.side)) {
-        return { side: parsed.side, ratio: clamp01(typeof parsed.ratio === 'number' ? parsed.ratio : 0.5) };
+        return normalizeToolbarDock({ side: parsed.side, ratio: parsed.ratio });
       }
     }
   } catch (e) { }
-  return getDefaultToolbarDock();
+  return normalizeToolbarDock(getDefaultToolbarDock());
 }
 
 function saveToolbarDock() {
@@ -421,8 +433,10 @@ function removeToolbarPreview() {
 
 function positionToolbarNode(node, dock, wrapRect) {
   const margin = TOOLBAR_MARGIN;
-  const isHorizontal = dock.side === 'top' || dock.side === 'bottom';
-  node.dataset.dock = dock.side;
+  const compact = isCompactToolbarMode();
+  const normalizedDock = compact ? { side: 'bottom', ratio: 0.5 } : dock;
+  const isHorizontal = compact || normalizedDock.side === 'top' || normalizedDock.side === 'bottom';
+  node.dataset.dock = normalizedDock.side;
   node.style.position = 'absolute';
   node.style.transform = 'none';
   node.style.right = 'auto';
@@ -431,20 +445,30 @@ function positionToolbarNode(node, dock, wrapRect) {
   node.style.flexDirection = isHorizontal ? 'row' : 'column';
   node.style.alignItems = isHorizontal ? 'center' : 'stretch';
   node.style.gap = isHorizontal ? '6px' : '4px';
-  node.style.width = 'max-content';
-  node.style.maxWidth = isHorizontal ? `calc(100% - ${margin * 2}px)` : 'none';
+  node.style.width = compact ? 'auto' : 'max-content';
+  node.style.maxWidth = compact ? 'none' : (isHorizontal ? `calc(100% - ${margin * 2}px)` : 'none');
   node.style.overflowX = isHorizontal ? 'auto' : 'hidden';
   node.style.overflowY = isHorizontal ? 'hidden' : 'auto';
+  node.style.justifyContent = 'flex-start';
+
+  if (compact) {
+    node.style.left = `${margin}px`;
+    node.style.right = `${margin}px`;
+    node.style.top = 'auto';
+    node.style.bottom = `${margin}px`;
+    node.style.padding = '6px 8px';
+    return node.getBoundingClientRect();
+  }
 
   const box = node.getBoundingClientRect();
   const availableX = Math.max(1, wrapRect.width - box.width - margin * 2);
   const availableY = Math.max(1, wrapRect.height - box.height - margin * 2);
-  const ratio = clamp01(dock.ratio);
+  const ratio = clamp01(normalizedDock.ratio);
   const left = isHorizontal
     ? margin + ratio * availableX
-    : dock.side === 'left' ? margin : wrapRect.width - box.width - margin;
+    : normalizedDock.side === 'left' ? margin : wrapRect.width - box.width - margin;
   const top = isHorizontal
-    ? dock.side === 'top' ? margin : wrapRect.height - box.height - margin
+    ? normalizedDock.side === 'top' ? margin : wrapRect.height - box.height - margin
     : margin + ratio * availableY;
 
   node.style.left = `${Math.max(margin, Math.min(left, wrapRect.width - box.width - margin))}px`;
@@ -475,7 +499,7 @@ function applyToolbarDock(persist = false) {
   const w = $('canvas-wrap');
   if (!toolbox || !w) return;
 
-  const dock = App.toolbarDock || readToolbarDock();
+  const dock = normalizeToolbarDock(App.toolbarDock || readToolbarDock());
   App.toolbarDock = dock;
   toolbox.dataset.dock = dock.side;
   toolbox.classList.toggle('dragging', !!App.toolbarDragging);
