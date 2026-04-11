@@ -4,6 +4,176 @@
 function newId() { return 's' + (++App.stateN); }
 function newTId() { return 't' + (++App.transN); }
 
+function getState(id) { return App.states.find(s => s.id === id); }
+function getTransition(id) { return App.transitions.find(t => t.id === id); }
+function getEdgeTransitions(from, to) { return App.transitions.filter(t => t.from === from && t.to === to); }
+
+function showContextMenu(kind, x, y) {
+  const m = $('ctx');
+  if (!m) return;
+  m.dataset.mode = kind;
+  m.style.display = 'block';
+  const maxX = kind === 'edge' ? 260 : 220;
+  const maxY = kind === 'edge' ? 190 : 150;
+  m.style.left = Math.max(8, Math.min(x, innerWidth - maxX)) + 'px';
+  m.style.top = Math.max(8, Math.min(y, innerHeight - maxY)) + 'px';
+}
+
+function hideContextMenu() {
+  const m = $('ctx');
+  if (m) m.style.display = 'none';
+  App.ctxId = null;
+  App.ctxEdge = null;
+  App.ctxMode = null;
+}
+
+function ensureSelectValue(sel, value) {
+  if (!sel || value === undefined || value === null) return;
+  const strValue = String(value);
+  if (strValue === '') return;
+  if (!sel.innerHTML.includes(`value="${strValue}"`)) {
+    sel.innerHTML += `<option value="${strValue}">${strValue}</option>`;
+  }
+  sel.value = strValue;
+}
+
+function setTransitionModalMode(mode) {
+  const title = $('trans-modal-title');
+  const confirmBtn = $('trans-confirm-btn');
+  const isEdit = mode === 'edit';
+  if (title) title.textContent = isEdit ? 'Edit Transition' : 'Add Transition';
+  if (confirmBtn) confirmBtn.textContent = isEdit ? 'Save' : 'Add';
+}
+
+function buildTransitionPicker(transitions, selectedId) {
+  const row = $('m-trans-row');
+  const sel = $('m-trans');
+  if (!row || !sel) return null;
+  if (transitions.length <= 1) {
+    row.style.display = 'none';
+    sel.innerHTML = '';
+    sel.onchange = null;
+    return null;
+  }
+  row.style.display = '';
+  sel.innerHTML = transitions.map((t, i) => `<option value="${t.id}">${i + 1}. ${transLabel(t)}</option>`).join('');
+  sel.value = selectedId || transitions[0].id;
+  return sel;
+}
+
+function populateTransitionModal(t) {
+  const cfg = getMachineConfig(App.machine);
+  const { eps, any, blank } = App.config.sym;
+  const syms = [...new Set([...(cfg.hasEpsilon ? [eps] : []), any, ...App.sigma, ...(cfg.hasTape ? [blank] : [])])];
+
+  const fromSel = $('m-from');
+  const toSel = $('m-to');
+  if (fromSel) {
+    fromSel.innerHTML = App.states.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    if (t?.from) ensureSelectValue(fromSel, t.from);
+  }
+  if (toSel) {
+    toSel.innerHTML = App.states.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    if (t?.to) ensureSelectValue(toSel, t.to);
+  }
+
+  const symSel = $('m-sym');
+  if (symSel) {
+    if (App.machine !== 'MTM') {
+      symSel.innerHTML = syms.map(s => `<option value="${s}">${s}</option>`).join('');
+      if (t?.symbol !== undefined) ensureSelectValue(symSel, t.symbol);
+    } else {
+      symSel.innerHTML = '';
+    }
+  }
+
+  $('m-sym-row').style.display = App.machine === 'MTM' ? 'none' : '';
+  $('m-pda-extra').style.display = cfg.hasStack ? '' : 'none';
+  $('m-tm-extra').style.display = (App.machine === 'TM') ? '' : 'none';
+  $('m-mealy-extra').style.display = (App.machine === 'Mealy') ? '' : 'none';
+  $('m-mtm-extra').style.display = (App.machine === 'MTM') ? '' : 'none';
+
+  if (App.machine === 'Mealy') {
+    const { lambda } = App.config.sym;
+    const outs = [...new Set([...App.outputAlpha, lambda, ...(t?.output ? [t.output] : [])])];
+    const outSel = $('m-output');
+    if (outSel) {
+      outSel.innerHTML = outs.map(o => `<option value="${o}">${o}</option>`).join('');
+      ensureSelectValue(outSel, (t && t.output !== undefined && t.output !== '') ? t.output : lambda);
+    }
+  }
+
+  if (App.machine === 'TM') {
+    const dirSel = $('m-dir');
+    if (dirSel) {
+      dirSel.innerHTML = App.directions.map(d => `<option value="${d.value}">${d.label} (${d.value})</option>`).join('');
+      ensureSelectValue(dirSel, t?.dir || App.directions[0].value);
+    }
+  }
+
+  if (App.machine === 'MTM') {
+    const k = App.tapeCount;
+    const dirOpts = App.directions.map(d => `<option value="${d.value}">${d.label} (${d.value})</option>`).join('');
+    const symOpts = syms.map(s => `<option value="${s}">${s}</option>`).join('');
+    const mtmExtra = $('m-mtm-extra');
+    if (mtmExtra) {
+      mtmExtra.innerHTML = Array.from({ length: k }, (_, i) => `
+        <div class="modal-section-lbl">Tape ${i + 1}</div>
+        <div class="modal-row"><span class="modal-lbl">Read</span><select class="sel" id="m-mtm-read-${i}">${symOpts}</select></div>
+        <div class="modal-row"><span class="modal-lbl">Write</span><input class="inp" id="m-mtm-write-${i}" placeholder="symbol"></div>
+        <div class="modal-row"><span class="modal-lbl">Move</span><select class="sel" id="m-mtm-dir-${i}">${dirOpts}</select></div>
+      `).join('');
+    }
+    for (let i = 0; i < k; i++) {
+      ensureSelectValue($(`m-mtm-read-${i}`), t?.tapeSyms?.[i] ?? t?.symbol ?? blank);
+      const writeEl = $(`m-mtm-write-${i}`);
+      if (writeEl) writeEl.value = t?.tapeWrites?.[i] ?? t?.write ?? t?.symbol ?? blank;
+      ensureSelectValue($(`m-mtm-dir-${i}`), t?.tapeDirs?.[i] ?? t?.dir ?? App.directions[0].value);
+    }
+  } else {
+    const pdaPop = $('m-pop');
+    const pdaPush = $('m-push');
+    if (pdaPop) pdaPop.value = t?.pop ?? eps;
+    if (pdaPush) pdaPush.value = t?.push ?? eps;
+    const tmWrite = $('m-write');
+    if (tmWrite) tmWrite.value = t?.write ?? t?.symbol ?? '';
+  }
+
+  const picker = $('m-trans');
+  if (picker && t) picker.value = t.id;
+}
+
+function getTransitionFormValues() {
+  const cfg = getMachineConfig(App.machine);
+  const { eps } = App.config.sym;
+  const values = {
+    from: $('m-from')?.value,
+    to: $('m-to')?.value,
+    symbol: App.machine === 'MTM' ? null : $('m-sym')?.value
+  };
+  if (cfg.hasStack) {
+    values.pop = $('m-pop')?.value || eps;
+    values.push = $('m-push')?.value || eps;
+  }
+  if (App.machine === 'TM') {
+    values.write = $('m-write')?.value || values.symbol;
+    values.dir = $('m-dir')?.value || App.directions[0].value;
+  }
+  if (App.machine === 'Mealy') {
+    const out = $('m-output')?.value?.trim() || App.config.sym.lambda;
+    values.output = out === App.config.sym.lambda ? '' : out;
+  }
+  if (App.machine === 'MTM') {
+    const k = App.tapeCount;
+    const blank = App.config.sym.blank;
+    values.tapeSyms = Array.from({ length: k }, (_, i) => $(`m-mtm-read-${i}`)?.value || blank);
+    values.tapeWrites = Array.from({ length: k }, (_, i) => $(`m-mtm-write-${i}`)?.value || blank);
+    values.tapeDirs = Array.from({ length: k }, (_, i) => $(`m-mtm-dir-${i}`)?.value || App.directions[0].value);
+    values.symbol = values.tapeSyms[0];
+  }
+  return values;
+}
+
 function createState(x, y, name) {
   snapshot();
   const id = newId();
@@ -21,90 +191,106 @@ function deleteState(id) {
   if (App.startId === id) App.startId = App.states[0]?.id || null;
   renderAll(); updateLPanel(); updateRPanel();
 }
-function getState(id) { return App.states.find(s => s.id === id); }
-
 // ══════════════════════════════════════════════════════════════════
 //  TRANSITIONS
 // ══════════════════════════════════════════════════════════════════
-function openTransModal(from, to) {
-  App._pendFrom = from; App._pendTo = to;
-  const cfg = getMachineConfig(App.machine);
-  const { eps, any, blank } = App.config.sym;
+function openTransModal(from, to, opts = {}) {
+  const mode = opts.mode === 'edit' ? 'edit' : 'add';
+  const groupTransitions = opts.transitions || getEdgeTransitions(from, to);
+  const selectedId = mode === 'edit'
+    ? (opts.transId || groupTransitions[0]?.id || null)
+    : (opts.seedId || groupTransitions[0]?.id || null);
+  const selectedTrans = selectedId ? getTransition(selectedId) : null;
 
-  const fs = $('m-from'), ts = $('m-to'), ss = $('m-sym');
-  fs.innerHTML = App.states.map(s => `<option value="${s.id}" ${s.id === from ? 'selected' : ''}>${s.name}</option>`).join('');
-  ts.innerHTML = App.states.map(s => `<option value="${s.id}" ${s.id === to ? 'selected' : ''}>${s.name}</option>`).join('');
+  App._pendFrom = from;
+  App._pendTo = to;
+  App.transModalMode = mode;
+  App.transModalIds = groupTransitions.map(t => t.id);
+  App.transEditId = mode === 'edit' ? selectedId : null;
 
-  const syms = [...(cfg.hasEpsilon ? [eps] : []), any, ...App.sigma, ...(cfg.hasTape ? [blank] : [])];
-  ss.innerHTML = syms.map(s => `<option value="${s}">${s}</option>`).join('');
-
-  $('m-sym-row').style.display = App.machine === 'MTM' ? 'none' : '';
-  $('m-pda-extra').style.display = cfg.hasStack ? '' : 'none';
-  $('m-tm-extra').style.display = (App.machine === 'TM') ? '' : 'none';
-  $('m-mealy-extra').style.display = (App.machine === 'Mealy') ? '' : 'none';
-  if (App.machine === 'Mealy') {
-    const { lambda } = App.config.sym;
-    const outs = [...new Set([...App.outputAlpha, lambda])];
-    $('m-output').innerHTML = outs.map(o => `<option value="${o}">${o}</option>`).join('');
-    $('m-output').value = lambda;
+  setTransitionModalMode(mode);
+  buildTransitionPicker(groupTransitions, selectedId);
+  const picker = $('m-trans');
+  if (picker) {
+    picker.onchange = () => {
+      const next = getTransition(picker.value);
+      if (!next) return;
+      if (App.transModalMode === 'edit') App.transEditId = next.id;
+      populateTransitionModal(next);
+    };
   }
 
-  const mtmExtra = $('m-mtm-extra');
-  mtmExtra.style.display = App.machine === 'MTM' ? '' : 'none';
-
-  // Populate TM/MTM directions
-  const dirOpts = App.directions.map(d => `<option value="${d.value}">${d.label} (${d.value})</option>`).join('');
-  if (App.machine === 'TM') {
-    const dsel = $('m-dir');
-    if (dsel) dsel.innerHTML = dirOpts;
-  }
-
-  if (App.machine === 'MTM') {
-    const k = App.tapeCount;
-    const symOpts = syms.map(s => `<option value="${s}">${s}</option>`).join('');
-    mtmExtra.innerHTML = Array.from({ length: k }, (_, i) => `
-      <div class="modal-section-lbl">Tape ${i + 1}</div>
-      <div class="modal-row"><span class="modal-lbl">Read</span><select class="sel" id="m-mtm-read-${i}">${symOpts}</select></div>
-      <div class="modal-row"><span class="modal-lbl">Write</span><input class="inp" id="m-mtm-write-${i}" placeholder="symbol"></div>
-      <div class="modal-row"><span class="modal-lbl">Move</span><select class="sel" id="m-mtm-dir-${i}">${dirOpts}</select></div>
-    `).join('');
-  }
+  populateTransitionModal(selectedTrans);
   showOverlay('trans-modal');
 }
 function confirmTrans() {
   const cfg = getMachineConfig(App.machine);
   const { eps } = App.config.sym;
-  const from = $('m-from').value, to = $('m-to').value, sym = App.machine === 'MTM' ? null : $('m-sym').value;
+  const values = getTransitionFormValues();
+  const from = values.from, to = values.to, sym = values.symbol;
+  const editId = App.transEditId;
 
   if (!cfg.hasEpsilon && sym === eps) {
     showStatus(`${App.machine} cannot have epsilon-transitions.`); return;
   }
   if (!cfg.isTransducer && App.machine !== 'NFA' && App.machine !== 'ε-NFA' && App.machine !== 'PDA' && !cfg.hasTape) {
-    const conflict = App.transitions.find(t => t.from === from && t.symbol === sym);
+    const conflict = App.transitions.find(t => t.id !== editId && t.from === from && t.symbol === sym);
     if (conflict) {
       showStatus(`${App.machine} already has δ(${getState(from)?.name}, '${sym}'). Each (state, symbol) pair must be unique.`); return;
     }
   }
   snapshot();
-  const t = { id: newTId(), from, to, symbol: sym };
-  if (App.machine === 'PDA') {
-    t.pop = $('m-pop').value || eps;
-    t.push = $('m-push').value || eps;
+  if (editId) {
+    const t = getTransition(editId);
+    if (!t) { closeModal('trans-modal'); return; }
+    t.from = from;
+    t.to = to;
+    t.symbol = sym;
+    if (cfg.hasStack) {
+      t.pop = values.pop;
+      t.push = values.push;
+    } else {
+      delete t.pop;
+      delete t.push;
+    }
+    if (App.machine === 'TM') {
+      t.write = values.write;
+      t.dir = values.dir;
+    } else {
+      delete t.write;
+      delete t.dir;
+    }
+    if (App.machine === 'Mealy') {
+      t.output = values.output;
+    } else {
+      delete t.output;
+    }
+    if (App.machine === 'MTM') {
+      t.tapeSyms = values.tapeSyms;
+      t.tapeWrites = values.tapeWrites;
+      t.tapeDirs = values.tapeDirs;
+      t.symbol = values.symbol;
+    } else {
+      delete t.tapeSyms;
+      delete t.tapeWrites;
+      delete t.tapeDirs;
+    }
+  } else {
+    const t = { id: newTId(), from, to, symbol: sym };
+    if (cfg.hasStack) {
+      t.pop = values.pop;
+      t.push = values.push;
+    }
+    if (App.machine === 'TM') { t.write = values.write; t.dir = values.dir; }
+    if (App.machine === 'Mealy') { t.output = values.output; }
+    if (App.machine === 'MTM') {
+      t.tapeSyms = values.tapeSyms;
+      t.tapeWrites = values.tapeWrites;
+      t.tapeDirs = values.tapeDirs;
+      t.symbol = values.symbol;
+    }
+    App.transitions.push(t);
   }
-  if (App.machine === 'TM') { t.write = $('m-write').value || t.symbol; t.dir = $('m-dir').value; }
-  if (App.machine === 'Mealy') {
-    const out = $('m-output').value.trim();
-    t.output = out === App.config.sym.lambda ? '' : out;
-  }
-  if (App.machine === 'MTM') {
-    const k = App.tapeCount;
-    const blank = App.config.sym.blank;
-    t.tapeSyms = Array.from({ length: k }, (_, i) => $(`m-mtm-read-${i}`)?.value || blank);
-    t.tapeWrites = Array.from({ length: k }, (_, i) => $(`m-mtm-write-${i}`)?.value || blank);
-    t.tapeDirs = Array.from({ length: k }, (_, i) => $(`m-mtm-dir-${i}`)?.value || App.directions[0].value);
-    t.symbol = t.tapeSyms[0];
-  }
-  App.transitions.push(t);
   closeModal('trans-modal');
   App.transFrom = null; clearTempLine();
   renderAll(); updateLPanel(); updateRPanel();
@@ -112,6 +298,13 @@ function confirmTrans() {
 function deleteTrans(id) {
   snapshot();
   App.transitions = App.transitions.filter(t => t.id !== id);
+  renderAll(); updateLPanel(); updateRPanel();
+}
+function deleteTransitions(ids) {
+  const removeIds = new Set(ids);
+  if (!removeIds.size) return;
+  snapshot();
+  App.transitions = App.transitions.filter(t => !removeIds.has(t.id));
   renderAll(); updateLPanel(); updateRPanel();
 }
 function transLabel(t) {
@@ -277,6 +470,7 @@ function removeStartState(targetId) {
 
 function ctxStart() { 
   if (App.ctxId) { 
+    hideContextMenu();
     snapshot();
     if (isConceptualStart(App.ctxId)) {
       removeStartState(App.ctxId);
@@ -289,14 +483,98 @@ function ctxStart() {
 
 function ctxToggleAcc() { 
   if (!App.ctxId) return; 
+  hideContextMenu();
   const cfg = getMachineConfig(App.machine);
   if (cfg.isTransducer && !App.config.transducerAccepts) return;
   App.accepts.has(App.ctxId) ? App.accepts.delete(App.ctxId) : App.accepts.add(App.ctxId); 
   snapshot(); renderAll(); updateLPanel(); updateRPanel(); 
 }
-function ctxRename() { if (App.ctxId) openStateModal(App.ctxId); }
-function ctxDel() { if (App.ctxId) deleteState(App.ctxId); }
+function ctxRename() { 
+  if (!App.ctxId) return; 
+  hideContextMenu();
+  openStateModal(App.ctxId); 
+}
+function ctxDel() { 
+  if (!App.ctxId) return; 
+  hideContextMenu();
+  deleteState(App.ctxId); 
+}
+
+function ctxEditTrans() {
+  const edge = App.ctxEdge;
+  if (!edge) return;
+  const transitions = edge.transitionIds.map(getTransition).filter(Boolean);
+  const primary = transitions.find(t => t.id === edge.primaryId) || transitions[0];
+  hideContextMenu();
+  if (!primary) return;
+  openTransModal(edge.from, edge.to, { mode: 'edit', transId: primary.id, transitions });
+}
+
+function ctxDuplicateTrans() {
+  const edge = App.ctxEdge;
+  if (!edge) return;
+  const transitions = edge.transitionIds.map(getTransition).filter(Boolean);
+  const primary = transitions.find(t => t.id === edge.primaryId) || transitions[0];
+  hideContextMenu();
+  if (!primary) return;
+  openTransModal(edge.from, edge.to, { mode: 'add', seedId: primary.id, transitions });
+}
+
+function ctxReverseTrans() {
+  const edge = App.ctxEdge;
+  if (!edge) return;
+  hideContextMenu();
+  const ids = new Set(edge.transitionIds);
+  if (!ids.size) return;
+  if (App.machine === 'DFA') {
+    const conflict = App.transitions.find(t => {
+      if (ids.has(t.id)) return false;
+      return edge.transitionIds.some(id => {
+        const tr = getTransition(id);
+        if (!tr) return false;
+        return t.from === tr.to && t.symbol === tr.symbol;
+      });
+    });
+    if (conflict) {
+      showStatus(`Cannot reverse: ${App.machine} already has a transition for one of the reversed (state, symbol) pairs.`);
+      return;
+    }
+  }
+  snapshot();
+  App.transitions.forEach(t => {
+    if (!ids.has(t.id)) return;
+    const oldFrom = t.from;
+    const oldTo = t.to;
+    t.from = t.to;
+    t.to = oldFrom;
+    if (typeof t.curve === 'number' && oldFrom !== oldTo) t.curve = -t.curve;
+  });
+  renderAll(); updateLPanel(); updateRPanel();
+}
+
+function ctxDeleteTrans() {
+  const edge = App.ctxEdge;
+  if (!edge) return;
+  hideContextMenu();
+  deleteTransitions(edge.transitionIds);
+}
 
 function showOverlay(id) { $(id).classList.add('show'); }
-function closeModal(id) { $(id).classList.remove('show'); App._pendFrom = null; App._pendTo = null; App.transFrom = null; clearTempLine(); }
+function closeModal(id) {
+  $(id).classList.remove('show');
+  if (id === 'trans-modal') {
+    App.transEditId = null;
+    App.transModalMode = 'add';
+    App.transModalIds = [];
+    const pickerRow = $('m-trans-row');
+    const picker = $('m-trans');
+    if (pickerRow) pickerRow.style.display = 'none';
+    if (picker) {
+      picker.innerHTML = '';
+      picker.onchange = null;
+    }
+    setTransitionModalMode('add');
+  }
+  App._pendFrom = null; App._pendTo = null; App.transFrom = null; clearTempLine();
+}
 

@@ -68,10 +68,10 @@ test('theme button icon reflects the active theme', () => {
   const btn = h.getElement('theme-btn');
   h.context.applyTheme('dark', false);
   assert.match(btn.innerHTML, /viewBox="0 0 24 24"/);
-  assert.match(btn.innerHTML, /2\.06 4\.18/);
+  assert.match(btn.innerHTML, /M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z/);
 
   h.context.applyTheme('light', false);
-  assert.match(btn.innerHTML, /M12 3a6 6 0 0 0 9 9/);
+  assert.match(btn.innerHTML, /circle cx="12" cy="12" r="4"/);
 });
 
 test('subset construction handles epsilon cycles and marks accepting subsets', () => {

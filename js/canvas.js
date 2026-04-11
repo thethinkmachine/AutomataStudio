@@ -188,7 +188,7 @@ document.addEventListener('mouseup', e => {
     renderMinimap();
   }
 });
-document.addEventListener('click', () => $('ctx').style.display = 'none');
+document.addEventListener('click', () => hideContextMenu());
 
 function onStateDown(e, id) {
   e.stopPropagation();

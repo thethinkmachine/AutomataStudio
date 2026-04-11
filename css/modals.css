@@ -219,7 +219,12 @@
   padding: 4px;
   z-index: 800;
   box-shadow: var(--shadow-md);
-  min-width: 148px;
+  min-width: 240px;
+  display: none;
+}
+
+.ctx[data-mode="state"] .ctx-edge,
+.ctx[data-mode="edge"] .ctx-state {
   display: none;
 }
 
@@ -232,6 +237,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
 }
 
 .ctx-i:hover {

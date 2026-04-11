@@ -256,49 +256,41 @@
           <div class="canvas-toolbox" id="canvas-toolbox">
             <button class="toolbox-btn" id="t-pointer" onclick="setTool('pointer')"
               title="Pointer — select &amp; interact (Esc)">
-              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 2l8 5.5-4.5.8L5.5 13 4 2z" fill="currentColor" stroke="none" />
+              <svg viewBox="0 0 16 16" fill="currentColor" stroke="none" aria-hidden="true">
+                <path d="M4.1 2.5v11.2l2.7-2.5 1.8 4.1 1.7-.8-1.8-4.1h3.5L4.1 2.5Z" />
               </svg>
               <span class="toolbox-lbl">Pointer</span>
               <span class="toolbox-kbd">Esc</span>
             </button>
             <div class="toolbox-sep"></div>
             <button class="toolbox-btn" id="t-move" onclick="setTool('move')" title="Move — drag canvas to pan (V)">
-              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M8 2v12M2 8h12" />
                 <polyline points="5,5 2,8 5,11" />
                 <polyline points="11,5 14,8 11,11" />
+                <polyline points="5,5 8,2 11,5" />
+                <polyline points="5,11 8,14 11,11" />
               </svg>
               <span class="toolbox-lbl">Pan</span>
               <span class="toolbox-kbd">V</span>
             </button>
             <button class="toolbox-btn" id="t-state" onclick="setTool('state')" title="Add State (S)">
-              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="8" cy="8" r="5.5" />
-                <line x1="8" y1="5.5" x2="8" y2="10.5" />
-                <line x1="5.5" y1="8" x2="10.5" y2="8" />
+                <line x1="8" y1="5.2" x2="8" y2="10.8" />
+                <line x1="5.2" y1="8" x2="10.8" y2="8" />
               </svg>
               <span class="toolbox-lbl">State</span>
               <span class="toolbox-kbd">S</span>
             </button>
             <button class="toolbox-btn" id="t-trans" onclick="setTool('trans')" title="Add Transition (T)">
-              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="4" cy="8" r="2" />
-                <circle cx="12" cy="8" r="2" />
-                <line x1="6" y1="8" x2="10" y2="8" />
-                <polyline points="9.5,6 12,8 9.5,10" />
+              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="3.8" cy="8" r="1.8" />
+                <circle cx="12.2" cy="8" r="1.8" />
+                <path d="M5.9 8h4.9" />
               </svg>
               <span class="toolbox-lbl">Trans</span>
               <span class="toolbox-kbd">T</span>
-            </button>
-            <div class="toolbox-sep"></div>
-            <button class="toolbox-btn toolbox-danger" id="t-del" onclick="setTool('del')" title="Delete (D)">
-              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="4" y1="4" x2="12" y2="12" />
-                <line x1="12" y1="4" x2="4" y2="12" />
-              </svg>
-              <span class="toolbox-lbl">Delete</span>
-              <span class="toolbox-kbd">D</span>
             </button>
           </div>
           <!-- Status bar -->
@@ -816,7 +808,8 @@
   <!-- ══════ MODALS ══════ -->
   <div class="overlay" id="trans-modal">
     <div class="modal">
-      <div class="modal-title">Add Transition</div>
+      <div class="modal-title" id="trans-modal-title">Add Transition</div>
+      <div class="modal-row" id="m-trans-row" style="display:none"><span class="modal-lbl">Transition</span><select class="sel" id="m-trans"></select></div>
       <div class="modal-row"><span class="modal-lbl">From</span><select class="sel" id="m-from"></select></div>
       <div class="modal-row" id="m-sym-row"><span class="modal-lbl">Read</span><select class="sel" id="m-sym"></select>
       </div>
@@ -838,8 +831,8 @@
       </div>
       <div id="m-mtm-extra" style="display:none"></div>
       <div class="modal-row"><span class="modal-lbl">To</span><select class="sel" id="m-to"></select></div>
-      <div class="modal-foot"><button class="btn-g" onclick="closeModal('trans-modal')">Cancel</button><button
-          class="btn-p" onclick="confirmTrans()">Add</button></div>
+        <div class="modal-foot"><button class="btn-g" onclick="closeModal('trans-modal')">Cancel</button><button
+          class="btn-p" id="trans-confirm-btn" onclick="confirmTrans()">Add</button></div>
     </div>
   </div>
 
@@ -1070,8 +1063,8 @@
           <td>Toggle accept state</td>
         </tr>
         <tr>
-          <td>Right-click state</td>
-          <td>Context menu (set start, rename, delete)</td>
+          <td>Right-click state / transition</td>
+          <td>Context menu (state and transition actions)</td>
         </tr>
       </table>
       <div class="modal-foot"><button class="btn-g" onclick="closeModal('help-modal')">Close</button></div>
@@ -1111,10 +1104,14 @@
 
   <!-- ══════ CTX MENU ══════ -->
   <div class="ctx" id="ctx">
-    <div class="ctx-i" onclick="ctxStart()">→ Set Start</div>
-    <div class="ctx-i" id="ctx-toggle-acc" onclick="ctxToggleAcc()">◎ Toggle Accept</div>
-    <div class="ctx-i" id="ctx-rename" onclick="ctxRename()">✎ Rename</div>
-    <div class="ctx-i danger" onclick="ctxDel()">✕ Delete</div>
+    <div class="ctx-i ctx-state" onclick="ctxStart()">→ Set Start</div>
+    <div class="ctx-i ctx-state" id="ctx-toggle-acc" onclick="ctxToggleAcc()">◎ Toggle Accept</div>
+    <div class="ctx-i ctx-state" id="ctx-rename" onclick="ctxRename()">✎ Rename</div>
+    <div class="ctx-i ctx-state danger" onclick="ctxDel()">✕ Delete</div>
+    <div class="ctx-i ctx-edge" onclick="ctxEditTrans()">✎ Edit Transition</div>
+    <div class="ctx-i ctx-edge" onclick="ctxDuplicateTrans()">⧉ Duplicate/Add Parallel Transition</div>
+    <div class="ctx-i ctx-edge" onclick="ctxReverseTrans()">⇄ Reverse Direction</div>
+    <div class="ctx-i ctx-edge danger" onclick="ctxDeleteTrans()">✕ Delete Transition(s)</div>
   </div>
 
 

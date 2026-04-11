@@ -69,7 +69,8 @@ const App = {
   history: [], future: [],
   // Interaction
   drag: null, dragOff: { x: 0, y: 0 },
-  transFrom: null, ctxId: null, editId: null,
+  transFrom: null, ctxId: null, ctxEdge: null, ctxMode: null, editId: null,
+  transEditId: null, transModalMode: 'add', transModalIds: [],
   // Simulation
   simSteps: [], simIdx: 0, autoTimer: null,
   // Grammar

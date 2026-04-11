@@ -156,6 +156,21 @@ function renderTransitions() {
       openTransModal(from.id, to.id);
     });
 
+      const onEdgeContextMenu = e => {
+        e.preventDefault();
+        e.stopPropagation();
+        App.ctxId = null;
+        App.ctxMode = 'edge';
+        App.ctxEdge = { from: from.id, to: to.id, transitionIds: grp.ts.map(t => t.id), primaryId: grp.ts[0]?.id || null };
+        App.selectedStates.clear();
+        App.selectedTransitions.clear();
+        document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
+        grp.ts.forEach(t => App.selectedTransitions.add(t.id));
+        edgeGrp.classList.add('sel-t');
+        showContextMenu('edge', e.clientX, e.clientY);
+      };
+      edgeGrp.addEventListener('contextmenu', onEdgeContextMenu);
+
     edgeGrp.appendChild(pathEl);
     edgeGrp.appendChild(hitEl);
     edgeGrp.appendChild(textEl);
@@ -271,15 +286,15 @@ function renderStates() {
     }
     grp.addEventListener('mousedown', e => onStateDown(e, s.id));
     grp.addEventListener('contextmenu', e => { 
-      e.preventDefault(); App.ctxId = s.id; 
-      const m = $('ctx'); 
+      e.preventDefault();
+      App.ctxId = s.id; 
+      App.ctxEdge = null;
+      App.ctxMode = 'state';
       const toggleOpt = $('ctx-toggle-acc');
       const renameOpt = $('ctx-rename');
       if (toggleOpt) toggleOpt.style.display = showAccepts ? '' : 'none';
       if (renameOpt) renameOpt.innerText = (App.machine === 'Moore' || App.machine === 'Mealy') ? '✎ Configure' : '✎ Rename';
-      m.style.display = 'block'; 
-      m.style.left = Math.min(e.clientX, innerWidth - 160) + 'px'; 
-      m.style.top = Math.min(e.clientY, innerHeight - 140) + 'px'; 
+      showContextMenu('state', e.clientX, e.clientY); 
     });
     grp.addEventListener('dblclick', () => { 
       if (!showAccepts) return;
