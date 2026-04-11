@@ -254,7 +254,7 @@
           </svg>
           <!-- Floating toolbox -->
           <div class="canvas-toolbox" id="canvas-toolbox">
-            <button class="toolbox-btn" id="t-pointer" onclick="setTool('pointer')"
+            <button class="toolbox-btn" id="t-pointer" onclick="toggleTool('pointer')"
               title="Pointer — select &amp; interact (Esc)">
               <svg viewBox="0 0 16 16" fill="currentColor" stroke="none" aria-hidden="true">
                 <path d="M4.1 2.5v11.2l2.7-2.5 1.8 4.1 1.7-.8-1.8-4.1h3.5L4.1 2.5Z" />
@@ -263,7 +263,7 @@
               <span class="toolbox-kbd">Esc</span>
             </button>
             <div class="toolbox-sep"></div>
-            <button class="toolbox-btn" id="t-move" onclick="setTool('move')" title="Move — drag canvas to pan (V)">
+            <button class="toolbox-btn" id="t-move" onclick="toggleTool('move')" title="Move — drag canvas to pan (V); click again to return to Pointer">
               <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M8 2v12M2 8h12" />
                 <polyline points="5,5 2,8 5,11" />
@@ -274,7 +274,7 @@
               <span class="toolbox-lbl">Pan</span>
               <span class="toolbox-kbd">V</span>
             </button>
-            <button class="toolbox-btn" id="t-state" onclick="setTool('state')" title="Add State (S)">
+            <button class="toolbox-btn" id="t-state" onclick="toggleTool('state')" title="Add State (S); click again to return to Pointer">
               <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="8" cy="8" r="5.5" />
                 <line x1="8" y1="5.2" x2="8" y2="10.8" />
@@ -283,7 +283,7 @@
               <span class="toolbox-lbl">State</span>
               <span class="toolbox-kbd">S</span>
             </button>
-            <button class="toolbox-btn" id="t-trans" onclick="setTool('trans')" title="Add Transition (T)">
+            <button class="toolbox-btn" id="t-trans" onclick="toggleTool('trans')" title="Add Transition (T); click again to return to Pointer">
               <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="3.8" cy="8" r="1.8" />
                 <circle cx="12.2" cy="8" r="1.8" />
@@ -1065,6 +1065,10 @@
         <tr>
           <td>Right-click state / transition</td>
           <td>Context menu (state and transition actions)</td>
+        </tr>
+        <tr>
+          <td>Click the active tool button</td>
+          <td>Return to Pointer</td>
         </tr>
       </table>
       <div class="modal-foot"><button class="btn-g" onclick="closeModal('help-modal')">Close</button></div>

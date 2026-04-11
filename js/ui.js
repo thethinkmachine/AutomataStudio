@@ -318,12 +318,35 @@ function minimapNavigate(e) {
 
 function setTool(t) {
   App.tool = t;
+  if (App.transFrom && typeof hlState === 'function') hlState(App.transFrom, false);
+  App.transFrom = null;
+  if (typeof clearTempLine === 'function') clearTempLine();
+
   const w = $('canvas-wrap');
   if (w) {
     const cursors = { pointer: 'default', move: 'grab', state: 'crosshair', trans: 'crosshair', del: 'not-allowed' };
     w.style.cursor = cursors[t] || 'default';
     w.setAttribute('data-tool', t);
   }
+
+  document.querySelectorAll('.toolbox-btn[id^="t-"]').forEach(b => {
+    const isActive = b.id === `t-${t}`;
+    b.classList.toggle('active', isActive);
+    b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+
+  const msgs = {
+    pointer: 'Click or drag states to interact',
+    move: 'Drag canvas to pan · drag state to move · click the active tool again to return to Pointer',
+    state: 'Click canvas to place state · click the active tool again to return to Pointer',
+    trans: 'Click source then target state · click the active tool again to return to Pointer',
+    del: 'Click state or transition to delete · press Esc or click Pointer to return'
+  };
+  showStatus(msgs[t] || '');
+}
+
+function toggleTool(t) {
+  setTool(App.tool === t && t !== 'pointer' ? 'pointer' : t);
 }
 
 function toggleLPanelPin() {
