@@ -118,6 +118,7 @@ function renderTransitions() {
 
     edgeGrp.addEventListener('mousedown', e => {
       if (e.button !== 0) return;
+      if (App.spacePan) return;
       e.stopPropagation();
       if (App.tool === 'del') {
         snapshot();

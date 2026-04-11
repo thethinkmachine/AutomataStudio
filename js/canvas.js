@@ -47,7 +47,7 @@ wrap.addEventListener('wheel', e => {
 wrap.addEventListener('mousedown', e => {
   if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, .minimap-show-btn, #status-bar')) return;
 
-  if (e.button === 1 || (e.button === 0 && e.altKey)) {
+  if (e.button === 1 || (e.button === 0 && (e.altKey || App.spacePan))) {
     isPanning = true; panStart = { x: e.clientX, y: e.clientY }; camStart = { x: App.cam.x, y: App.cam.y };
     wrap.classList.add('panning'); e.preventDefault(); return;
   }
@@ -80,6 +80,7 @@ let _activeMoveFrame = false;
 let _pendingMoveEvent = null;
 
 function queueMouseMove(e) {
+  if (App.toolbarDragging) return;
   _pendingMoveEvent = {
     clientX: e.clientX,
     clientY: e.clientY,
@@ -99,6 +100,7 @@ function queueMouseMove(e) {
 document.addEventListener('mousemove', queueMouseMove);
 
 function handleMouseMove(e) {
+  if (App.toolbarDragging) return;
   if (isPanning) {
     App.cam.x = camStart.x + (e.clientX - panStart.x);
     App.cam.y = camStart.y + (e.clientY - panStart.y);
@@ -171,6 +173,7 @@ function handleMouseMove(e) {
 }
 
 document.addEventListener('mouseup', e => {
+  if (App.toolbarDragging) return;
   if (_pendingMoveEvent) {
     const nextMove = _pendingMoveEvent;
     _pendingMoveEvent = null;
@@ -190,7 +193,20 @@ document.addEventListener('mouseup', e => {
 });
 document.addEventListener('click', () => hideContextMenu());
 
+window.addEventListener('blur', () => {
+  isPanning = false;
+  wrap.classList.remove('panning');
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    isPanning = false;
+    wrap.classList.remove('panning');
+  }
+});
+
 function onStateDown(e, id) {
+  if (App.spacePan) return;
   e.stopPropagation();
   if (e.button !== 0) return;
   if (App.tool === 'del') { deleteState(id); return; }

@@ -234,14 +234,46 @@
     bottom: 12px;
     top: auto;
     transform: none;
-    flex-direction: row;
-    justify-content: flex-start;
-    align-items: stretch;
+    width: auto;
     gap: 3px;
     max-width: none;
     overflow-x: auto;
     padding: 4px;
     scrollbar-width: none;
+  }
+
+  .canvas-toolbox[data-dock="top"],
+  .canvas-toolbox[data-dock="bottom"] {
+    flex-direction: row;
+    align-items: center;
+    min-width: 0;
+    padding: 6px 8px;
+  }
+
+  .canvas-toolbox[data-dock="left"],
+  .canvas-toolbox[data-dock="right"] {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 8px;
+  }
+
+  .toolbox-grip {
+    width: 100%;
+    min-height: 28px;
+  }
+
+  .canvas-toolbox[data-dock="top"] .toolbox-grip,
+  .canvas-toolbox[data-dock="bottom"] .toolbox-grip,
+  .canvas-toolbox[data-dock="floating"] .toolbox-grip {
+    width: 28px;
+    min-height: 28px;
+    margin-right: 2px;
+  }
+
+  .canvas-toolbox[data-dock="top"] .toolbox-btn,
+  .canvas-toolbox[data-dock="bottom"] .toolbox-btn {
+    min-width: 58px;
+    padding: 7px 9px;
   }
 
   .canvas-toolbox::-webkit-scrollbar,

@@ -254,6 +254,16 @@
           </svg>
           <!-- Floating toolbox -->
           <div class="canvas-toolbox" id="canvas-toolbox">
+            <button class="toolbox-grip" id="toolbox-grip" type="button" title="Drag toolbar" aria-label="Drag toolbar">
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="4" cy="5" r="1" />
+                <circle cx="8" cy="5" r="1" />
+                <circle cx="12" cy="5" r="1" />
+                <circle cx="4" cy="11" r="1" />
+                <circle cx="8" cy="11" r="1" />
+                <circle cx="12" cy="11" r="1" />
+              </svg>
+            </button>
             <button class="toolbox-btn" id="t-pointer" onclick="toggleTool('pointer')"
               title="Pointer — select &amp; interact (Esc)">
               <svg viewBox="0 0 16 16" fill="currentColor" stroke="none" aria-hidden="true">
@@ -1065,6 +1075,14 @@
         <tr>
           <td>Right-click state / transition</td>
           <td>Context menu (state and transition actions)</td>
+        </tr>
+        <tr>
+          <td>Space + drag</td>
+          <td>Pan the canvas temporarily</td>
+        </tr>
+        <tr>
+          <td>Drag toolbar handle</td>
+          <td>Dock the toolbar to any canvas edge</td>
         </tr>
         <tr>
           <td>Click the active tool button</td>

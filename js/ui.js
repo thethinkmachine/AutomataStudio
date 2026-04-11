@@ -349,11 +349,268 @@ function toggleTool(t) {
   setTool(App.tool === t && t !== 'pointer' ? 'pointer' : t);
 }
 
+const TOOLBAR_DOCK_KEY = 'automata-toolbar-dock';
+const TOOLBAR_MARGIN = 12;
+
+function clamp01(n) {
+  return Math.max(0, Math.min(1, n));
+}
+
+function getDefaultToolbarDock() {
+  const isNarrow = window.matchMedia && window.matchMedia('(max-width: 820px)').matches;
+  return { side: isNarrow ? 'bottom' : 'left', ratio: 0.5 };
+}
+
+function readToolbarDock() {
+  try {
+    const raw = localStorage.getItem(TOOLBAR_DOCK_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && ['top', 'bottom', 'left', 'right'].includes(parsed.side)) {
+        return { side: parsed.side, ratio: clamp01(typeof parsed.ratio === 'number' ? parsed.ratio : 0.5) };
+      }
+    }
+  } catch (e) { }
+  return getDefaultToolbarDock();
+}
+
+function saveToolbarDock() {
+  try {
+    if (App.toolbarDock) localStorage.setItem(TOOLBAR_DOCK_KEY, JSON.stringify(App.toolbarDock));
+  } catch (e) { }
+}
+
+function getToolbarDockFromPoint(pointerX, pointerY, wrapRect) {
+  const distances = [
+    { side: 'left', value: pointerX },
+    { side: 'right', value: wrapRect.width - pointerX },
+    { side: 'top', value: pointerY },
+    { side: 'bottom', value: wrapRect.height - pointerY }
+  ];
+  return distances.reduce((best, item) => item.value < best.value ? item : best).side;
+}
+
+function stripToolbarClone(root) {
+  if (!root) return;
+  root.removeAttribute('onclick');
+  root.setAttribute('aria-hidden', 'true');
+  root.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+  root.querySelectorAll('[onclick]').forEach(el => el.removeAttribute('onclick'));
+  root.querySelectorAll('button').forEach(btn => btn.tabIndex = -1);
+}
+
+function ensureToolbarPreview() {
+  const wrap = $('canvas-wrap');
+  const toolbox = $('canvas-toolbox');
+  if (!wrap || !toolbox) return null;
+  let preview = $('toolbar-dock-preview');
+  if (preview) return preview;
+  preview = toolbox.cloneNode(true);
+  preview.id = 'toolbar-dock-preview';
+  preview.classList.add('toolbar-preview');
+  stripToolbarClone(preview);
+  wrap.appendChild(preview);
+  return preview;
+}
+
+function removeToolbarPreview() {
+  const preview = $('toolbar-dock-preview');
+  if (preview) preview.remove();
+  App.toolbarPreviewDock = null;
+}
+
+function positionToolbarNode(node, dock, wrapRect) {
+  const margin = TOOLBAR_MARGIN;
+  const isHorizontal = dock.side === 'top' || dock.side === 'bottom';
+  node.dataset.dock = dock.side;
+  node.style.position = 'absolute';
+  node.style.transform = 'none';
+  node.style.right = 'auto';
+  node.style.bottom = 'auto';
+  node.style.boxSizing = 'border-box';
+  node.style.flexDirection = isHorizontal ? 'row' : 'column';
+  node.style.alignItems = isHorizontal ? 'center' : 'stretch';
+  node.style.gap = isHorizontal ? '6px' : '4px';
+  node.style.width = 'max-content';
+  node.style.maxWidth = isHorizontal ? `calc(100% - ${margin * 2}px)` : 'none';
+  node.style.overflowX = isHorizontal ? 'auto' : 'hidden';
+  node.style.overflowY = isHorizontal ? 'hidden' : 'auto';
+
+  const box = node.getBoundingClientRect();
+  const availableX = Math.max(1, wrapRect.width - box.width - margin * 2);
+  const availableY = Math.max(1, wrapRect.height - box.height - margin * 2);
+  const ratio = clamp01(dock.ratio);
+  const left = isHorizontal
+    ? margin + ratio * availableX
+    : dock.side === 'left' ? margin : wrapRect.width - box.width - margin;
+  const top = isHorizontal
+    ? dock.side === 'top' ? margin : wrapRect.height - box.height - margin
+    : margin + ratio * availableY;
+
+  node.style.left = `${Math.max(margin, Math.min(left, wrapRect.width - box.width - margin))}px`;
+  node.style.top = `${Math.max(margin, Math.min(top, wrapRect.height - box.height - margin))}px`;
+  return box;
+}
+
+function updateToolbarDockPreview(pointerX, pointerY, wrapRect) {
+  const preview = ensureToolbarPreview();
+  if (!preview) return null;
+
+  const side = getToolbarDockFromPoint(pointerX, pointerY, wrapRect);
+  positionToolbarNode(preview, { side, ratio: 0.5 }, wrapRect);
+  const box = preview.getBoundingClientRect();
+  const margin = TOOLBAR_MARGIN;
+  const ratio = side === 'left' || side === 'right'
+    ? clamp01((pointerY - box.height / 2 - margin) / Math.max(1, wrapRect.height - box.height - margin * 2))
+    : clamp01((pointerX - box.width / 2 - margin) / Math.max(1, wrapRect.width - box.width - margin * 2));
+  const dock = { side, ratio };
+  positionToolbarNode(preview, dock, wrapRect);
+  preview.classList.add('visible');
+  App.toolbarPreviewDock = dock;
+  return dock;
+}
+
+function applyToolbarDock(persist = false) {
+  const toolbox = $('canvas-toolbox');
+  const w = $('canvas-wrap');
+  if (!toolbox || !w) return;
+
+  const dock = App.toolbarDock || readToolbarDock();
+  App.toolbarDock = dock;
+  toolbox.dataset.dock = dock.side;
+  toolbox.classList.toggle('dragging', !!App.toolbarDragging);
+
+  const wrapRect = w.getBoundingClientRect();
+  positionToolbarNode(toolbox, dock, wrapRect);
+
+  if (persist) saveToolbarDock();
+}
+
+function initToolbarDock() {
+  App.toolbarDock = readToolbarDock();
+  applyToolbarDock(false);
+
+  const grip = $('toolbox-grip');
+  if (!grip || grip._toolbarDockInit) return;
+  grip._toolbarDockInit = true;
+
+  grip.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    const toolbox = $('canvas-toolbox');
+    const w = $('canvas-wrap');
+    if (!toolbox || !w) return;
+
+    const box = toolbox.getBoundingClientRect();
+    App.toolbarDragging = {
+      grabX: e.clientX - box.left,
+      grabY: e.clientY - box.top,
+      side: App.toolbarDock?.side || 'left'
+    };
+    App.toolbarPreviewDock = null;
+    ensureToolbarPreview();
+    toolbox.classList.add('dragging');
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!App.toolbarDragging) return;
+    const toolbox = $('canvas-toolbox');
+    const w = $('canvas-wrap');
+    if (!toolbox || !w) return;
+
+    const wrapRect = w.getBoundingClientRect();
+    const margin = TOOLBAR_MARGIN;
+    const left = e.clientX - wrapRect.left - App.toolbarDragging.grabX;
+    const top = e.clientY - wrapRect.top - App.toolbarDragging.grabY;
+    const pointerX = e.clientX - wrapRect.left;
+    const pointerY = e.clientY - wrapRect.top;
+    toolbox.style.left = `${left}px`;
+    toolbox.style.top = `${top}px`;
+    toolbox.style.right = 'auto';
+    toolbox.style.bottom = 'auto';
+    toolbox.style.transform = 'none';
+    toolbox.style.maxWidth = `${Math.max(120, wrapRect.width - margin * 2)}px`;
+    toolbox.classList.add('dragging');
+    updateToolbarDockPreview(pointerX, pointerY, wrapRect);
+  });
+
+  document.addEventListener('mouseup', e => {
+    if (!App.toolbarDragging) return;
+    const toolbox = $('canvas-toolbox');
+    const w = $('canvas-wrap');
+    if (!toolbox || !w) {
+      App.toolbarDragging = null;
+      removeToolbarPreview();
+      return;
+    }
+
+    const wrapRect = w.getBoundingClientRect();
+    const dock = App.toolbarPreviewDock || { side: App.toolbarDock?.side || 'left', ratio: App.toolbarDock?.ratio ?? 0.5 };
+
+    App.toolbarDragging = null;
+    App.toolbarDock = dock;
+    toolbox.classList.remove('dragging');
+    removeToolbarPreview();
+    applyToolbarDock(true);
+  });
+
+  window.addEventListener('resize', () => applyToolbarDock(false));
+}
+
+if (typeof initToolbarDock === 'function') initToolbarDock();
+
+document.addEventListener('keyup', e => {
+  if (e.code !== 'Space') return;
+  if (!App.spacePan) return;
+  App.spacePan = false;
+  const w = $('canvas-wrap');
+  if (w) w.classList.remove('space-pan');
+});
+
+function clearSpacePan() {
+  if (!App.spacePan) return;
+  App.spacePan = false;
+  const w = $('canvas-wrap');
+  if (w) w.classList.remove('space-pan');
+}
+
+function cancelToolbarDrag() {
+  if (!App.toolbarDragging) return;
+  App.toolbarDragging = null;
+  const toolbox = $('canvas-toolbox');
+  if (toolbox) toolbox.classList.remove('dragging');
+  removeToolbarPreview();
+  applyToolbarDock(false);
+}
+
+window.addEventListener('blur', () => {
+  clearSpacePan();
+  cancelToolbarDrag();
+});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) return;
+  clearSpacePan();
+  cancelToolbarDrag();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.code !== 'Space' || e.repeat) return;
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON') return;
+  if (e.target !== document.body && e.target !== document.documentElement && e.target !== $('canvas-wrap')) return;
+  App.spacePan = true;
+  const w = $('canvas-wrap');
+  if (w) w.classList.add('space-pan');
+  e.preventDefault();
+});
+
 function toggleLPanelPin() {
   const s = $('lpanel');
   const unpinned = s.classList.toggle('unpinned');
   const btn = $('lpanel-pin-btn');
   if (btn) btn.title = unpinned ? 'Pin left panel' : 'Unpin left panel';
+  if (typeof applyToolbarDock === 'function') applyToolbarDock(false);
   try { localStorage.setItem('automata-lpanel-pinned', unpinned ? '0' : '1'); } catch (e) { }
 }
 
@@ -362,6 +619,7 @@ function toggleRPanelPin() {
   const unpinned = r.classList.toggle('unpinned');
   const btn = $('rpanel-pin-btn');
   if (btn) btn.title = unpinned ? 'Pin right panel' : 'Unpin right panel';
+  if (typeof applyToolbarDock === 'function') applyToolbarDock(false);
   try { localStorage.setItem('automata-rpanel-pinned', unpinned ? '0' : '1'); } catch (e) { }
 }
 

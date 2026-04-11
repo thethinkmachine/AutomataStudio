@@ -70,6 +70,10 @@ const App = {
   // Interaction
   drag: null, dragOff: { x: 0, y: 0 },
   transFrom: null, ctxId: null, ctxEdge: null, ctxMode: null, editId: null,
+  spacePan: false,
+  toolbarDock: null,
+  toolbarDragging: null,
+  toolbarPreviewDock: null,
   transEditId: null, transModalMode: 'add', transModalIds: [],
   // Simulation
   simSteps: [], simIdx: 0, autoTimer: null,

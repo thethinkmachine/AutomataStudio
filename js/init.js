@@ -22,4 +22,4 @@ try {
 } catch (e) { }
 if (typeof initMobilePanels === 'function') initMobilePanels();
 if (typeof loadBackup === 'function') loadBackup();
-setTimeout(() => showStatus('Esc=Pointer · V=Pan · S=State · T=Transition · H=Fit · Ctrl+Z=Undo'), 600);
+setTimeout(() => showStatus('Esc=Pointer · V=Pan · Space+Drag=Pan · S=State · T=Transition · H=Fit · Ctrl+Z=Undo'), 600);
