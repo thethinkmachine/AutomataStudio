@@ -16,6 +16,15 @@ function applyCamera(skipMinimap = false) {
   _pendingFrame = true;
   requestAnimationFrame(() => {
     $('cam-g').setAttribute('transform', `translate(${App.cam.x},${App.cam.y}) scale(${App.cam.z})`);
+    
+    // Update CSS variables for infinite grid
+    const wrap = $('canvas-wrap');
+    if (wrap) {
+      wrap.style.setProperty('--cam-x', `${App.cam.x}px`);
+      wrap.style.setProperty('--cam-y', `${App.cam.y}px`);
+      wrap.style.setProperty('--cam-z', App.cam.z);
+    }
+    
     const zInput = $('zoom-ind');
     if (zInput && document.activeElement !== zInput) {
       zInput.value = Math.round(App.cam.z * 100) + '%';
