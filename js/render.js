@@ -172,9 +172,6 @@ function renderTransitions() {
       };
       edgeGrp.addEventListener('contextmenu', onEdgeContextMenu);
 
-    edgeGrp.appendChild(pathEl);
-    edgeGrp.appendChild(hitEl);
-    edgeGrp.appendChild(textEl);
     g.appendChild(edgeGrp);
   });
 }

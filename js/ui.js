@@ -623,6 +623,8 @@ document.addEventListener('keydown', e => {
   const tag = e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON') return;
   if (e.target !== document.body && e.target !== document.documentElement && e.target !== $('canvas-wrap')) return;
+  // Don't activate spacePan when UTM algo is using Space for auto-play toggle
+  if (App.currentAlgo === 'utm') return;
   App.spacePan = true;
   const w = $('canvas-wrap');
   if (w) w.classList.add('space-pan');

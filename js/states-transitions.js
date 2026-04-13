@@ -221,6 +221,12 @@ function openTransModal(from, to, opts = {}) {
   }
 
   populateTransitionModal(selectedTrans);
+  // Always pre-select From/To to match the states the user clicked,
+  // even when there's no existing transition to seed from (t was null).
+  const fromSel = $('m-from');
+  const toSel = $('m-to');
+  if (fromSel && from) ensureSelectValue(fromSel, from);
+  if (toSel && to) ensureSelectValue(toSel, to);
   showOverlay('trans-modal');
 }
 function confirmTrans() {
@@ -469,35 +475,39 @@ function removeStartState(targetId) {
 }
 
 function ctxStart() { 
-  if (App.ctxId) { 
-    hideContextMenu();
-    snapshot();
-    if (isConceptualStart(App.ctxId)) {
-      removeStartState(App.ctxId);
-    } else {
-      applyStartState(App.ctxId);
-    }
-    renderAll(); updateLPanel(); updateRPanel(); 
-  } 
+  if (!App.ctxId) return;
+  const id = App.ctxId;
+  hideContextMenu();
+  snapshot();
+  if (isConceptualStart(id)) {
+    removeStartState(id);
+  } else {
+    applyStartState(id);
+  }
+  renderAll(); updateLPanel(); updateRPanel(); 
 }
 
 function ctxToggleAcc() { 
-  if (!App.ctxId) return; 
+  if (!App.ctxId) return;
+  const id = App.ctxId;
   hideContextMenu();
   const cfg = getMachineConfig(App.machine);
   if (cfg.isTransducer && !App.config.transducerAccepts) return;
-  App.accepts.has(App.ctxId) ? App.accepts.delete(App.ctxId) : App.accepts.add(App.ctxId); 
-  snapshot(); renderAll(); updateLPanel(); updateRPanel(); 
+  snapshot();
+  App.accepts.has(id) ? App.accepts.delete(id) : App.accepts.add(id); 
+  renderAll(); updateLPanel(); updateRPanel(); 
 }
 function ctxRename() { 
-  if (!App.ctxId) return; 
+  if (!App.ctxId) return;
+  const id = App.ctxId;
   hideContextMenu();
-  openStateModal(App.ctxId); 
+  openStateModal(id); 
 }
 function ctxDel() { 
-  if (!App.ctxId) return; 
+  if (!App.ctxId) return;
+  const id = App.ctxId;
   hideContextMenu();
-  deleteState(App.ctxId); 
+  deleteState(id); 
 }
 
 function ctxEditTrans() {
@@ -527,16 +537,23 @@ function ctxReverseTrans() {
   const ids = new Set(edge.transitionIds);
   if (!ids.size) return;
   if (App.machine === 'DFA') {
-    const conflict = App.transitions.find(t => {
+    let conflictMsg = null;
+    App.transitions.find(t => {
       if (ids.has(t.id)) return false;
       return edge.transitionIds.some(id => {
         const tr = getTransition(id);
         if (!tr) return false;
-        return t.from === tr.to && t.symbol === tr.symbol;
+        if (t.from === tr.to && t.symbol === tr.symbol) {
+          const fromName = getState(tr.to)?.name || '?';
+          const toName = getState(t.to)?.name || '?';
+          conflictMsg = `Cannot reverse: δ(${fromName}, '${tr.symbol}') → ${toName} already exists. Remove it first.`;
+          return true;
+        }
+        return false;
       });
     });
-    if (conflict) {
-      showStatus(`Cannot reverse: ${App.machine} already has a transition for one of the reversed (state, symbol) pairs.`);
+    if (conflictMsg) {
+      showStatus(conflictMsg);
       return;
     }
   }
