@@ -796,13 +796,20 @@ function getEditorSettingsData() {
   const c = App.config;
   return {
     theme: c.theme,
+    transducerAccepts: !!c.transducerAccepts,
+    maxPdaSteps: c.maxPdaSteps,
+    maxTmSteps: c.maxTmSteps,
     autoSpeed: c.autoSpeed,
     radius: c.radius,
     zoomStep: c.zoom.step,
     gridSnap: c.gridSnap,
     layoutNodeSpacing: c.layout.nodeSpacing,
     renderCurveOff: c.render.curveOff,
-    exportRes: c.exportRes
+    exportRes: c.exportRes,
+    symEps: c.sym.eps,
+    symAny: c.sym.any,
+    symBlank: c.sym.blank,
+    symZ0: c.sym.stackBottom
   };
 }
 
@@ -813,7 +820,7 @@ function exportSettings() {
   a.href = URL.createObjectURL(blob);
   a.download = 'automata-settings.json';
   a.click();
-  showStatus('Settings exported!');
+  showStatus('Settings profile exported!');
 }
 
 function importSettings(e) {
@@ -824,10 +831,8 @@ function importSettings(e) {
   reader.onload = ev => {
     try {
       const data = JSON.parse(ev.target.result);
-      applyEditorSettingsData(data);
-      if ($('settings-modal').classList.contains('show')) openSettingsModal();
-      showStatus('Settings imported successfully!');
-      saveBackup();
+      populateSettingsModalInputs(data);
+      showStatus('Settings loaded! Click Apply to save or Discard to cancel.');
     } catch (err) {
       console.error(err);
       showStatus('Invalid settings file');
@@ -836,15 +841,20 @@ function importSettings(e) {
   reader.readAsText(f);
 }
 
-function applyEditorSettingsData(data) {
-  const c = App.config;
-  if (data.theme) applyTheme(data.theme); 
-  if (typeof data.autoSpeed === 'number') c.autoSpeed = data.autoSpeed;
-  if (typeof data.radius === 'number') { c.radius = data.radius; R = c.radius; }
-  if (typeof data.zoomStep === 'number' && c.zoom) c.zoom.step = data.zoomStep;
-  if (typeof data.gridSnap === 'number') c.gridSnap = data.gridSnap;
-  if (typeof data.layoutNodeSpacing === 'number' && c.layout) c.layout.nodeSpacing = data.layoutNodeSpacing;
-  if (typeof data.renderCurveOff === 'number' && c.render) c.render.curveOff = data.renderCurveOff;
-  if (typeof data.exportRes === 'number') c.exportRes = data.exportRes;
-  renderAll();
+function populateSettingsModalInputs(data) {
+  if (data.theme !== undefined) $('set-theme').value = data.theme;
+  if (data.transducerAccepts !== undefined) $('set-transducer-accepts').checked = !!data.transducerAccepts;
+  if (data.maxPdaSteps !== undefined) $('set-pda-steps').value = data.maxPdaSteps;
+  if (data.maxTmSteps !== undefined) $('set-tm-steps').value = data.maxTmSteps;
+  if (data.autoSpeed !== undefined) $('set-auto-speed').value = data.autoSpeed;
+  if (data.radius !== undefined) $('set-radius').value = data.radius;
+  if (data.zoomStep !== undefined) $('set-zoom-step').value = data.zoomStep;
+  if (data.gridSnap !== undefined) $('set-grid-snap').value = data.gridSnap;
+  if (data.layoutNodeSpacing !== undefined) $('set-node-spacing').value = data.layoutNodeSpacing;
+  if (data.renderCurveOff !== undefined) $('set-curve-off').value = data.renderCurveOff;
+  if (data.exportRes !== undefined) $('set-export-res').value = data.exportRes;
+  if (data.symEps !== undefined) $('set-sym-eps').value = data.symEps;
+  if (data.symAny !== undefined) $('set-sym-any').value = data.symAny;
+  if (data.symBlank !== undefined) $('set-sym-blank').value = data.symBlank;
+  if (data.symZ0 !== undefined) $('set-sym-z0').value = data.symZ0;
 }
