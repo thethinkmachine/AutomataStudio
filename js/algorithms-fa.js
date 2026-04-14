@@ -615,26 +615,107 @@ function algoNFA2RE(c) {
 }
 
 // --- ε-NFA to NFA ---
+function buildEpsNFAEliminationResult() {
+  if (!App.startId) return null;
+
+  const syms = [...App.sigma].filter(sym => sym !== App.config.sym.eps);
+  const steps = [];
+  const newTransitions = [];
+  const newAccepts = new Set();
+  const closureMap = {};
+
+  const p1Subs = [];
+  App.states.forEach(s => {
+    const cl = epsClosure(new Set([s.id]));
+    closureMap[s.id] = cl;
+    p1Subs.push(`E(${s.name}) = {${[...cl].map(id => getState(id)?.name).join(', ')}}`);
+  });
+  steps.push(`<span class="step-phase">Phase 1: Compute ε-closures</span><span class="step-sub">${p1Subs.join('<br>')}</span>`);
+
+  const p2Subs = [];
+  App.states.forEach(s => {
+    const cl = closureMap[s.id];
+    const isAcc = [...cl].some(id => App.accepts.has(id));
+    if (isAcc) {
+      newAccepts.add(s.id);
+      if (!App.accepts.has(s.id)) {
+        p2Subs.push(`State <em>${s.name}</em> promoted to <span class="step-acc">★ Accept</span> (ε-reachable to an original accept state)`);
+      } else {
+        p2Subs.push(`State <em>${s.name}</em> remains <span class="step-acc">★ Accept</span>`);
+      }
+    }
+  });
+  if (!p2Subs.length) p2Subs.push('No new accept states discovered from ε-paths');
+  steps.push(`<span class="step-phase">Phase 2: Update Accept States</span><span class="step-sub">${p2Subs.join('<br>')}</span>`);
+
+  steps.push('<span class="step-phase">Phase 3: Resolve Direct Transitions</span>');
+  let totalNewTrans = 0;
+  App.states.forEach(s => {
+    syms.forEach(sym => {
+      const reachedFromEps = closureMap[s.id];
+      const midDestinations = new Set();
+
+      reachedFromEps.forEach(epsTgtId => {
+        App.transitions.filter(t => t.from === epsTgtId && t.symbol === sym).forEach(t => {
+          midDestinations.add(t.to);
+        });
+      });
+
+      const finalDestinations = epsClosure(midDestinations);
+
+      if (finalDestinations.size > 0) {
+        finalDestinations.forEach(destId => {
+          newTransitions.push({ from: s.id, to: destId, symbol: sym });
+        });
+
+        const pathSubs = [];
+        pathSubs.push(`ε-reach: {${[...reachedFromEps].map(id => getState(id)?.name).join(', ')}}`);
+        pathSubs.push(`Read '${sym}' → {${[...midDestinations].map(id => getState(id)?.name).join(', ') || '∅'}}`);
+        pathSubs.push(`ε-reach from midpoints → {${[...finalDestinations].map(id => getState(id)?.name).join(', ')}}`);
+        pathSubs.push(`<b>Result:</b> Adding ${finalDestinations.size} direct transition(s) to targets`);
+        steps.push(`Routing ${s.name} on '${sym}'<span class="step-sub">${pathSubs.join('<br>')}</span>`);
+        totalNewTrans += finalDestinations.size;
+      }
+    });
+  });
+
+  const epsCount = App.transitions.filter(t => t.symbol === App.config.sym.eps).length;
+  steps.push(`<span class="step-phase">Phase 4: Cleanup & Summary</span><span class="step-sub">Discarded ${epsCount} original ε-transition(s)<br>Generated ${totalNewTrans} new direct transition(s) mapping the combined paths<br>Final NFA contains ${App.states.length} states and ${newTransitions.length} transitions</span>`);
+
+  return { steps, transitions: newTransitions, accepts: newAccepts };
+}
+
 function algoEpsNFA2NFA(c) {
   c.innerHTML = `<div class="algo-title">ε-NFA → NFA</div>
-<div class="algo-sub">EPSILON CLOSURE REMOVAL</div>
-<div class="info-box">Replace each ε-closure of a state with direct transitions. A state becomes accepting if its ε-closure contains an accept state.</div>`;
-  if (!App.startId) { c.innerHTML += '<div class="card">No start state defined.</div>'; return; }
-  const syms = [...App.sigma];
-  const rows = App.states.map(s => {
-    const cl = epsClosure(new Set([s.id]));
-    const clNames = [...cl].map(id => getState(id)?.name).join(',');
-    const isAcc = [...cl].some(id => App.accepts.has(id));
-    const cells = syms.map(sym => {
-      let nx = new Set();
-      cl.forEach(sid => App.transitions.filter(t => t.from === sid && t.symbol === sym).forEach(t => nx.add(t.to)));
-      nx = epsClosure(nx);
-      return `<td>{${[...nx].map(id => getState(id)?.name).join(',') || '∅'}}</td>`;
-    }).join('');
-    return `<tr><td class="${isAcc ? 'acc-cell' : ''}">${s.name} [ε*={${clNames}}]</td>${cells}</tr>`;
-  }).join('');
-  c.innerHTML += `<div class="card"><div class="card-title">New NFA (ε-transitions removed)</div>
-<div class="subset-table-wrap"><table class="result-table"><thead><tr><th>State + ε-closure</th>${syms.map(s => `<th>${s}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></div>`;
+<div class="algo-sub">EPSILON ELIMINATION</div>
+<div class="info-box">Any NFA with epsilon transitions can be converted into an equivalent NFA without epsilon transitions. This is done by adding direct transitions that bypass the original ε-paths, and promoting states to accept states if they can reach an accept state purely via ε.</div>`;
+  if (!App.startId) { c.innerHTML += '<div class="card dec-card-empty">No start state defined.</div>'; return; }
+  const result = buildEpsNFAEliminationResult();
+  if (!result) { c.innerHTML += '<div class="card">No start state defined.</div>'; return; }
+
+  App._lastEpsElim = {
+    transitions: result.transitions.map(t => ({ ...t })),
+    accepts: new Set(result.accepts)
+  };
+
+  c.innerHTML += `<div class="card"><div class="card-title">Algorithm Steps</div>
+<div class="step-list">${result.steps.map((s, i) => `<div class="step-item"><div class="step-num">${i + 1}</div><div class="step-text">${s}</div></div>`).join('')}</div></div>
+<div style="margin-top:8px"><button class="algo-btn" onclick="loadEpsEliminatedNFA()">Load NFA without ε-transitions</button></div>`;
+}
+
+function loadEpsEliminatedNFA() {
+  const r = buildEpsNFAEliminationResult();
+  if (!r) return showStatus('No start state defined.');
+
+  snapshot();
+
+  App.transitions = r.transitions.map((t, i) => ({ id: 't' + (i + 1), from: t.from, to: t.to, symbol: t.symbol }));
+  App.transN = App.transitions.length;
+  App.accepts = new Set(r.accepts);
+
+  applyMachineSwitch('NFA');
+  updateLPanel(); updateRPanel();
+  setView('build'); showStatus('NFA loaded into canvas! (ε-transitions eliminated)');
 }
 
 // --- DFA Complement ---
