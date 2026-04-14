@@ -267,7 +267,15 @@ function onStateDown(e, id) {
 
 let tempLine = null;
 function drawTempLine(x1, y1, x2, y2) {
-  if (!tempLine) { tempLine = makeSVG('line'); tempLine.setAttribute('stroke', 'var(--accent)'); tempLine.setAttribute('stroke-width', '1.5'); tempLine.setAttribute('stroke-dasharray', '6,3'); tempLine.setAttribute('opacity', '0.6'); $('trans-g').appendChild(tempLine); }
+  if (!tempLine) { 
+    tempLine = makeSVG('line'); 
+    tempLine.classList.add('editor-layer');
+    tempLine.setAttribute('stroke', 'var(--accent)'); 
+    tempLine.setAttribute('stroke-width', '1.5'); 
+    tempLine.setAttribute('stroke-dasharray', '6,3'); 
+    tempLine.setAttribute('opacity', '0.6'); 
+    $('trans-g').appendChild(tempLine); 
+  }
   ['x1', 'y1', 'x2', 'y2'].forEach((a, i) => tempLine.setAttribute(a, [x1, y1, x2, y2][i]));
 }
 function clearTempLine() { if (tempLine) { tempLine.remove(); tempLine = null; } }
@@ -302,6 +310,10 @@ function exportPNG() {
   const clone = svgEl.cloneNode(true);
   clone.setAttribute('width', w);
   clone.setAttribute('height', h);
+  
+  // Strip transient interaction states (selection highlights, temporary lines)
+  clone.querySelectorAll('.sel-st, .sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
+  clone.querySelectorAll('.editor-layer').forEach(n => n.remove());
   
   // Maintain theme: Copy the current data-theme attribute (light/dark)
   const currentTheme = document.documentElement.dataset.theme;

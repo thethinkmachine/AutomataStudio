@@ -3,9 +3,20 @@
 // ══════════════════════════════════════════════════════════════════
 function getWorkspaceData() {
   const grammarData = { vars: [...App.grammar.vars], start: App.grammar.start, productions: App.grammar.productions };
+  
+  // Explicitly allow-list only FSM model configuration, dropping all UI/Theme data.
+  const cleanConfig = {
+    transducerAccepts: App.config.transducerAccepts,
+    maxPdaSteps: App.config.maxPdaSteps,
+    maxTmSteps: App.config.maxTmSteps,
+    sym: { ...App.config.sym },
+    statePrefix: App.config.statePrefix
+    // Note: gridSnap, layout, zoom, and radius are intentionally dropped as they are editor-specific
+  };
+
   return {
     machine: App.machine,
-    config: App.config,
+    config: cleanConfig,
     sigma: [...App.sigma],
     stackAlpha: [...App.stackAlpha],
     outputAlpha: [...App.outputAlpha],
@@ -95,10 +106,13 @@ function loadData(d, isExample) {
     App.grammar.start = d.grammar.start || '';
     App.grammar.productions = d.grammar.productions || [];
   }
-  if (d.config) { App.config = { ...App.config, ...d.config }; }
+  if (d.config) {
+    // Drop any legacy theme or presentation properties that might be in old files
+    const { theme, export: exp, exportRes, ...loadedConfig } = d.config;
+    App.config = { ...App.config, ...loadedConfig };
+  }
   else { migrateLegacySymbols(d); }
   if (d.cam) { App.cam = { ...d.cam }; }
-  if (typeof applyTheme === 'function') applyTheme(App.config.theme || 'dark', false);
 
   // Update view without confirm bypass
   if (typeof applyMachineSwitch === 'function') {
