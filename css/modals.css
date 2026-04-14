@@ -119,6 +119,50 @@
   color: var(--text);
 }
 
+/* ─── TABS ─── */
+.modal.settings-modal-wide {
+  max-width: 600px;
+  width: 90vw;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-tabs {
+  display: flex;
+  gap: 20px;
+  border-bottom: 1px solid var(--border2);
+  margin-bottom: 20px;
+  overflow-x: auto;
+}
+
+.modal-tab {
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  color: var(--text2);
+  cursor: pointer;
+  padding: 8px 4px;
+  border-bottom: 2px solid transparent;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.modal-tab:hover {
+  color: var(--text);
+}
+
+.modal-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.modal-tab-content {
+  display: none;
+}
+
+.modal-tab-content.active {
+  display: block;
+}
+
 /* ─── ABOUT MODAL ─── */
 .about-logo-header {
   display: flex;

@@ -881,86 +881,105 @@
 
   <!-- Settings Modal -->
   <div class="overlay" id="settings-modal">
-    <div class="modal">
+    <div class="modal settings-modal-wide">
       <div class="modal-title">Engine Settings</div>
 
-      <div class="modal-section-lbl">Automaton Engine</div>
-      <div class="modal-row" id="set-row-transducer" title="Allow Moore and Mealy machines to have accept states">
-        <span class="modal-lbl">Transducer Accepts</span>
-        <input type="checkbox" class="inp" id="set-transducer-accepts" style="width:16px;height:16px">
-      </div>
-      <div class="modal-row">
-        <span class="modal-lbl">PDA Max Steps</span>
-        <input type="number" class="inp" id="set-pda-steps" label="PDA step limit">
-      </div>
-      <div class="modal-row">
-        <span class="modal-lbl">TM Max Steps</span>
-        <input type="number" class="inp" id="set-tm-steps" label="TM step limit">
-      </div>
-      <div class="modal-row">
-        <span class="modal-lbl">Playback Speed (ms)</span>
-        <input type="number" class="inp" id="set-auto-speed" label="Auto-run interval">
-      </div>
-      <div class="modal-row">
-        <span class="modal-lbl">Theme</span>
-        <select class="inp" id="set-theme" label="Color theme">
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
-        </select>
+      <div class="modal-tabs" id="settings-tabs">
+        <div class="modal-tab active" onclick="switchSettingsTab('engine')">Automaton Engine</div>
+        <div class="modal-tab" onclick="switchSettingsTab('rendering')">Rendering & Canvas</div>
+        <div class="modal-tab" onclick="switchSettingsTab('symbols')">Theory Symbols</div>
       </div>
 
-      <div class="modal-section-lbl">Rendering & Canvas Engine</div>
-      <div class="modal-row">
-        <span class="modal-lbl">Node Radius</span>
-        <input type="number" class="inp" id="set-radius" label="State node size">
-      </div>
-      <div class="modal-row">
-        <span class="modal-lbl">Zoom Step</span>
-        <input type="number" step="0.05" class="inp" id="set-zoom-step" label="Scroll zoom sensitivity">
-      </div>
-      <div class="modal-row">
-        <span class="modal-lbl">Grid Snap (px)</span>
-        <input type="number" class="inp" id="set-grid-snap" label="Shift-drag snap grid size">
-      </div>
-      <div class="modal-row">
-        <span class="modal-lbl">Auto-Layout Spacing</span>
-        <input type="number" class="inp" id="set-node-spacing" label="Spacing between nodes during auto-layout">
-      </div>
-      <div class="modal-row">
-        <span class="modal-lbl">Default Edge Curve</span>
-        <input type="number" class="inp" id="set-curve-off" label="Base curve magnitude for bidirectional edges">
-      </div>
-      <div class="modal-row">
-        <span class="modal-lbl">Export Resolution (×)</span>
-        <input type="number" step="0.5" min="1" max="10" class="inp" id="set-export-res" label="Density of the exported PNG image">
-      </div>
-
-      <div class="modal-section-lbl">Theory Symbols</div>
-      <div class="modal-row">
-        <span class="modal-lbl">Epsilon</span>
-        <input type="text" class="inp" id="set-sym-eps" label="Empty string symbol">
-      </div>
-      <div class="modal-row">
-        <span class="modal-lbl">Any / Wildcard</span>
-        <input type="text" class="inp" id="set-sym-any" label="Match any character symbol">
-      </div>
-      <div class="modal-row">
-        <span class="modal-lbl">TM Blank</span>
-        <input type="text" class="inp" id="set-sym-blank" label="Tape blank symbol">
-      </div>
-      <div class="modal-row">
-        <span class="modal-lbl">Stack Bottom</span>
-        <input type="text" class="inp" id="set-sym-z0" label="PDA initial stack symbol">
+      <div class="modal-tab-content active" id="tab-engine">
+        <div class="modal-row" id="set-row-transducer" title="Allow Moore and Mealy machines to have accept states">
+          <span class="modal-lbl">Transducer Accepts</span>
+          <input type="checkbox" class="inp" id="set-transducer-accepts" style="width:16px;height:16px">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl">PDA Max Steps</span>
+          <input type="number" class="inp" id="set-pda-steps" label="PDA step limit">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl">TM Max Steps</span>
+          <input type="number" class="inp" id="set-tm-steps" label="TM step limit">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl">Playback Speed (ms)</span>
+          <input type="number" class="inp" id="set-auto-speed" label="Auto-run interval">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl">Theme</span>
+          <select class="inp" id="set-theme" label="Color theme">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </div>
       </div>
 
-      <div class="modal-foot">
-        <button class="btn-g" onclick="closeModal('settings-modal')">Discard</button>
-        <button class="btn-p" onclick="confirmSettings()">Apply Settings</button>
+      <div class="modal-tab-content" id="tab-rendering">
+        <div class="modal-row">
+          <span class="modal-lbl">Node Radius</span>
+          <input type="number" class="inp" id="set-radius" label="State node size">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl">Zoom Step</span>
+          <input type="number" step="0.05" class="inp" id="set-zoom-step" label="Scroll zoom sensitivity">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl">Grid Snap (px)</span>
+          <input type="number" class="inp" id="set-grid-snap" label="Shift-drag snap grid size">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl">Auto-Layout Spacing</span>
+          <input type="number" class="inp" id="set-node-spacing" label="Spacing between nodes during auto-layout">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl">Default Edge Curve</span>
+          <input type="number" class="inp" id="set-curve-off" label="Base curve magnitude for bidirectional edges">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl">Export Resolution (×)</span>
+          <input type="number" step="0.5" min="1" max="10" class="inp" id="set-export-res" label="Density of the exported PNG image">
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="tab-symbols">
+        <div class="modal-row">
+          <span class="modal-lbl">Epsilon</span>
+          <input type="text" class="inp" id="set-sym-eps" label="Empty string symbol">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl">Any / Wildcard</span>
+          <input type="text" class="inp" id="set-sym-any" label="Match any character symbol">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl">TM Blank</span>
+          <input type="text" class="inp" id="set-sym-blank" label="Tape blank symbol">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl">Stack Bottom</span>
+          <input type="text" class="inp" id="set-sym-z0" label="PDA initial stack symbol">
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="tab-profile">
+      </div>
+
+      <div class="modal-foot" style="justify-content: space-between; margin-top: 14px;">
+        <div style="display: flex; gap: 7px;">
+          <button class="btn-g" onclick="exportSettings()">Export Profile</button>
+          <button class="btn-g" onclick="$('settings-file-input').click()">Import Profile...</button>
+        </div>
+        <div style="display: flex; gap: 7px;">
+          <button class="btn-g" onclick="closeModal('settings-modal')">Discard</button>
+          <button class="btn-p" onclick="confirmSettings()">Apply Settings</button>
+        </div>
       </div>
     </div>
   </div>
 
   <input type="file" id="file-input" style="display:none" onchange="onFileLoad(event)">
+  <input type="file" id="settings-file-input" accept=".json" style="display:none" onchange="importSettings(event)">
 
   <!-- Help Modal -->
   <div class="overlay" id="help-modal">

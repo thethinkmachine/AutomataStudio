@@ -748,7 +748,22 @@ function openSettingsModal() {
   $('set-sym-any').value = c.sym.any;
   $('set-sym-blank').value = c.sym.blank;
   $('set-sym-z0').value = c.sym.stackBottom;
+  
+  if (typeof switchSettingsTab === 'function') switchSettingsTab('engine');
   showOverlay('settings-modal');
+}
+
+function switchSettingsTab(tabId) {
+  const tabs = document.querySelectorAll('#settings-tabs .modal-tab');
+  const contents = document.querySelectorAll('#settings-modal .modal-tab-content');
+  
+  tabs.forEach(t => t.classList.remove('active'));
+  contents.forEach(c => c.classList.remove('active'));
+  
+  const targetTab = document.querySelector(`#settings-tabs [onclick="switchSettingsTab('${tabId}')"]`);
+  const targetContent = document.getElementById(`tab-${tabId}`);
+  if (targetTab) targetTab.classList.add('active');
+  if (targetContent) targetContent.classList.add('active');
 }
 
 function confirmSettings() {
@@ -775,4 +790,61 @@ function confirmSettings() {
   closeModal('settings-modal');
   showStatus('Settings applied!');
   saveBackup();
+}
+
+function getEditorSettingsData() {
+  const c = App.config;
+  return {
+    theme: c.theme,
+    autoSpeed: c.autoSpeed,
+    radius: c.radius,
+    zoomStep: c.zoom.step,
+    gridSnap: c.gridSnap,
+    layoutNodeSpacing: c.layout.nodeSpacing,
+    renderCurveOff: c.render.curveOff,
+    exportRes: c.exportRes
+  };
+}
+
+function exportSettings() {
+  const data = getEditorSettingsData();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'automata-settings.json';
+  a.click();
+  showStatus('Settings exported!');
+}
+
+function importSettings(e) {
+  const f = e.target.files[0];
+  if (!f) return;
+  e.target.value = '';
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      applyEditorSettingsData(data);
+      if ($('settings-modal').classList.contains('show')) openSettingsModal();
+      showStatus('Settings imported successfully!');
+      saveBackup();
+    } catch (err) {
+      console.error(err);
+      showStatus('Invalid settings file');
+    }
+  };
+  reader.readAsText(f);
+}
+
+function applyEditorSettingsData(data) {
+  const c = App.config;
+  if (data.theme) applyTheme(data.theme); 
+  if (typeof data.autoSpeed === 'number') c.autoSpeed = data.autoSpeed;
+  if (typeof data.radius === 'number') { c.radius = data.radius; R = c.radius; }
+  if (typeof data.zoomStep === 'number' && c.zoom) c.zoom.step = data.zoomStep;
+  if (typeof data.gridSnap === 'number') c.gridSnap = data.gridSnap;
+  if (typeof data.layoutNodeSpacing === 'number' && c.layout) c.layout.nodeSpacing = data.layoutNodeSpacing;
+  if (typeof data.renderCurveOff === 'number' && c.render) c.render.curveOff = data.renderCurveOff;
+  if (typeof data.exportRes === 'number') c.exportRes = data.exportRes;
+  renderAll();
 }
