@@ -59,11 +59,13 @@ function handleFiles(files) {
       } else {
         data = JSON.parse(ev.target.result);
       }
+      validateSchema(data);
       loadData(data);
       showStatus('Workspace loaded!');
     } catch (err) {
       console.error(err);
-      showStatus(isPng ? 'Could not extract workspace data' : 'Invalid JSON file');
+      const isCustomErr = err.message && !err.message.includes('JSON');
+      showStatus(isCustomErr ? `Validation Error: ${err.message}` : (isPng ? 'Could not extract workspace data' : 'Invalid JSON file'));
     }
   };
 
@@ -91,6 +93,55 @@ window.addEventListener('drop', e => {
   e.preventDefault();
   handleFiles(e.dataTransfer.files);
 });
+
+function validateSchema(data) {
+  if (!data || typeof data !== 'object') throw new Error("Data must be a valid JSON object.");
+  
+  const validMachines = ['DFA', 'NFA', 'ε-NFA', 'PDA', 'TM', 'MTM', 'Moore', 'Mealy'];
+  if (!data.machine || !validMachines.includes(data.machine)) {
+    throw new Error(`Missing or unsupported machine type: ${data.machine || 'undefined'}`);
+  }
+
+  // Core properties MUST be present, no partial loading
+  if (!Array.isArray(data.sigma)) throw new Error("Missing required 'sigma' array.");
+  if (!Array.isArray(data.states)) throw new Error("Missing required 'states' array.");
+  if (!Array.isArray(data.transitions)) throw new Error("Missing required 'transitions' array.");
+  if (!Array.isArray(data.accepts)) throw new Error("Missing required 'accepts' array.");
+
+  // Conditional requirements based on machine type
+  if (data.machine === 'PDA' && !Array.isArray(data.stackAlpha)) {
+    throw new Error("PDA requires a 'stackAlpha' array.");
+  }
+  if ((data.machine === 'Moore' || data.machine === 'Mealy') && !Array.isArray(data.outputAlpha)) {
+    throw new Error("Transducers require an 'outputAlpha' array.");
+  }
+  if ((data.machine === 'TM' || data.machine === 'MTM') && typeof data.tapeCount !== 'number') {
+    throw new Error("Turing Machines require a numeric 'tapeCount'.");
+  }
+
+  // Validate States deeply
+  for (const s of data.states) {
+    if (typeof s !== 'object' || s === null || typeof s.id === 'undefined') {
+      throw new Error("Each state must be an object containing an 'id' property.");
+    }
+  }
+
+  // Validate Transitions deeply
+  for (const t of data.transitions) {
+    if (typeof t !== 'object' || t === null || typeof t.id === 'undefined' || typeof t.from === 'undefined' || typeof t.to === 'undefined') {
+      throw new Error("Each transition must be an object with 'id', 'from', and 'to' properties.");
+    }
+  }
+
+  // Validate Grammar
+  if (data.grammar) {
+    if (typeof data.grammar !== 'object') throw new Error("'grammar' must be an object.");
+    if (data.grammar.vars && !Array.isArray(data.grammar.vars)) throw new Error("'grammar.vars' must be an array.");
+    if (data.grammar.productions && !Array.isArray(data.grammar.productions)) throw new Error("'grammar.productions' must be an array.");
+  }
+  
+  return true;
+}
 
 function loadData(d, isExample) {
   App.machine = d.machine || 'DFA'; App.sigma = new Set(d.sigma || []);
