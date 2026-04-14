@@ -166,8 +166,9 @@
   pointer-events: none;
 }
 
-.cam-smooth {
-  transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1);
+.cam-smooth,
+.cam-smooth::before {
+  transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1), background-position 0.25s cubic-bezier(0.2, 0, 0, 1), background-size 0.25s cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* ─── CANVAS TOOLBOX ─── */

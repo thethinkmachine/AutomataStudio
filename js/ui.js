@@ -139,8 +139,12 @@ function zoomIn() {
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
   $('cam-g').classList.add('cam-smooth');
+  w.classList.add('cam-smooth');
   applyCamera();
-  setTimeout(() => $('cam-g').classList.remove('cam-smooth'), 250);
+  setTimeout(() => {
+    $('cam-g').classList.remove('cam-smooth')
+    w.classList.remove('cam-smooth');
+  }, 250);
 }
 
 function zoomOut() {
@@ -153,8 +157,12 @@ function zoomOut() {
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
   $('cam-g').classList.add('cam-smooth');
+  w.classList.add('cam-smooth');
   applyCamera();
-  setTimeout(() => $('cam-g').classList.remove('cam-smooth'), 250);
+  setTimeout(() => {
+    $('cam-g').classList.remove('cam-smooth')
+    w.classList.remove('cam-smooth');
+  }, 250);
 }
 
 function setZoomFromInput(val) {
@@ -167,8 +175,12 @@ function setZoomFromInput(val) {
     const mx = w.clientWidth / 2, my = w.clientHeight / 2;
     App.cam = { x: mx, y: my, z: 1 };
     $('cam-g').classList.add('cam-smooth');
+    w.classList.add('cam-smooth');
     applyCamera();
-    setTimeout(() => $('cam-g').classList.remove('cam-smooth'), 250);
+    setTimeout(() => {
+      $('cam-g').classList.remove('cam-smooth')
+      w.classList.remove('cam-smooth');
+    }, 250);
     return;
   }
   const w = $('canvas-wrap'); if (!w) return;
@@ -180,8 +192,12 @@ function setZoomFromInput(val) {
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
   $('cam-g').classList.add('cam-smooth');
+  w.classList.add('cam-smooth');
   applyCamera();
-  setTimeout(() => $('cam-g').classList.remove('cam-smooth'), 250);
+  setTimeout(() => {
+    $('cam-g').classList.remove('cam-smooth')
+    w.classList.remove('cam-smooth');
+  }, 250);
 }
 
 function fitToScreen() {
@@ -206,8 +222,12 @@ function fitToScreen() {
   App.cam.y = ch / 2 - cy * z;
   App.cam.z = z;
   $('cam-g').classList.add('cam-smooth');
+  w.classList.add('cam-smooth');
   applyCamera();
-  setTimeout(() => $('cam-g').classList.remove('cam-smooth'), 250);
+  setTimeout(() => {
+    $('cam-g').classList.remove('cam-smooth');
+    w.classList.remove('cam-smooth');
+  }, 250);
   showStatus('Fit to screen');
 }
 
@@ -313,7 +333,14 @@ function minimapNavigate(e) {
   const w = $('canvas-wrap'); if (!w) return;
   App.cam.x = w.clientWidth / 2 - worldX * App.cam.z;
   App.cam.y = w.clientHeight / 2 - worldY * App.cam.z;
+  
+  $('cam-g').classList.add('cam-smooth');
+  w.classList.add('cam-smooth');
   applyCamera();
+  setTimeout(() => {
+    $('cam-g').classList.remove('cam-smooth');
+    w.classList.remove('cam-smooth');
+  }, 250);
 }
 
 function setTool(t) {
