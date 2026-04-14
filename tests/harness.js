@@ -146,6 +146,8 @@ function createHarness() {
     renderSigma: () => {}
   });
   context.window = context;
+  context.addEventListener = () => {};
+  context.removeEventListener = () => {};
   context.setMachine = m => { context.App.machine = m; };
   context.applyMachineSwitch = m => { context.App.machine = m; };
 

@@ -89,29 +89,124 @@ function algoNFA2DFA(c) {
 
 function subsetConstruction() {
   const syms = [...App.sigma];
+  const isEpsNFA = App.machine === 'ε-NFA';
   const setKey = set => [...set].sort().join(',');
   const setName = set => { const inner = [...set].map(id => getState(id)?.name).sort().join(','); return inner ? '{' + inner + '}' : '∅'; };
   const start = epsClosure(new Set([App.startId]));
   const startName = setName(start);
   const queue = [start]; const visited = new Map([[setKey(start), start]]);
-  const states = [{ name: startName, set: start, isStart: true, isAcc: [...start].some(id => App.accepts.has(id)) }];
-  const trans = [], steps = [`ε-closure({${getState(App.startId)?.name}}) = ${startName} <em>(initial DFA state)</em>`];
+  const startIsAcc = [...start].some(id => App.accepts.has(id));
+  const states = [{ name: startName, set: start, isStart: true, isAcc: startIsAcc }];
+  const trans = [], steps = [];
+
+  // --- Step 1: ε-closure of start state ---
+  const q0Name = getState(App.startId)?.name;
+  let initMain = `ε-closure({${q0Name}}) = <em>${startName}</em> <em>(initial DFA state)</em>`;
+  const initSubs = [];
+  if (isEpsNFA && start.size > 1) {
+    const reached = [...start].filter(id => id !== App.startId).map(id => getState(id)?.name);
+    initSubs.push(`ε-transitions from ${q0Name} reach: ${reached.join(', ')}`);
+  } else if (!isEpsNFA) {
+    initSubs.push(`No ε-transitions (NFA mode) — closure is {${q0Name}}`);
+  } else {
+    initSubs.push(`No ε-transitions from ${q0Name}`);
+  }
+  if (startIsAcc) {
+    const accNames = [...start].filter(id => App.accepts.has(id)).map(id => getState(id)?.name);
+    initSubs.push(`Contains accept state${accNames.length > 1 ? 's' : ''} {${accNames.join(', ')}} → <span class="step-acc">this DFA state is accepting ★</span>`);
+  }
+  steps.push(initMain + `<span class="step-sub">${initSubs.join('<br>')}</span>`);
+
+  // --- Process each DFA state from the queue ---
   while (queue.length) {
     const cur = queue.shift(), curName = setName(cur);
     syms.forEach(sym => {
       let nx = new Set();
-      cur.forEach(sid => App.transitions.filter(t => t.from === sid && t.symbol === sym).forEach(t => nx.add(t.to)));
+      const contribs = [];
+      cur.forEach(sid => {
+        const targets = App.transitions.filter(t => t.from === sid && t.symbol === sym);
+        const sName = getState(sid)?.name;
+        if (targets.length) {
+          const tNames = targets.map(t => getState(t.to)?.name);
+          contribs.push({ name: sName, targets: tNames, empty: false });
+          targets.forEach(t => nx.add(t.to));
+        } else {
+          contribs.push({ name: sName, targets: [], empty: true });
+        }
+      });
+
+      const preEps = new Set(nx);
+      const preEpsName = nx.size ? setName(preEps) : '∅';
       nx = epsClosure(nx);
-      if (!nx.size) { steps.push(`δ(${curName},'${sym}') = ∅`); return; }
+      const epsExpanded = nx.size > preEps.size;
+
+      if (!nx.size) {
+        let main = `δ(${curName}, '${sym}') = <span class="step-dead">∅</span>`;
+        const subs = [];
+        if (cur.size === 1) {
+          subs.push(`${contribs[0].name} has no transitions on '${sym}'`);
+        } else {
+          const parts = contribs.map(c => c.empty ? `${c.name} → ∅` : `${c.name} → {${c.targets.join(',')}}`);
+          subs.push(`NFA moves: ${parts.join(' · ')}`);
+        }
+        subs.push(`No reachable states — this maps to the dead/trap state`);
+        steps.push(main + `<span class="step-sub">${subs.join('<br>')}</span>`);
+        return;
+      }
+
       const nxName = setName(nx), nxKey = setKey(nx);
       trans.push({ from: curName, sym, to: nxName });
-      steps.push(`δ(${curName},'${sym}') = <em>${nxName}</em>${!visited.has(nxKey) ? ' <em>(new state!)</em>' : ''}`);
-      if (!visited.has(nxKey)) {
+      const isNew = !visited.has(nxKey);
+      const isAcc = [...nx].some(id => App.accepts.has(id));
+
+      let main = `δ(${curName}, '${sym}') = <em>${nxName}</em>`;
+      if (isNew) main += ` <em>(new state!)</em>`;
+      const subs = [];
+
+      // Show per-state contributions when subset has multiple states
+      if (cur.size > 1) {
+        const parts = contribs.map(c => c.empty ? `${c.name} → ∅` : `${c.name} → {${c.targets.join(',')}}`);
+        subs.push(`NFA moves: ${parts.join(' · ')}`);
+        const nonEmpty = contribs.filter(c => !c.empty);
+        if (nonEmpty.length > 1) {
+          subs.push(`Union of targets = ${preEpsName}`);
+        }
+      }
+
+      // Show ε-closure when it expanded the set
+      if (epsExpanded) {
+        subs.push(`ε-closure(${preEpsName}) = <em>${nxName}</em>`);
+      }
+
+      // New vs. existing state
+      if (isNew) {
+        subs.push(`New DFA state discovered — added to processing queue`);
+      } else {
+        subs.push(`Already a known DFA state — no new work needed`);
+      }
+
+      // Accept state check for newly discovered states
+      if (isAcc && isNew) {
+        const accNames = [...nx].filter(id => App.accepts.has(id)).map(id => getState(id)?.name);
+        subs.push(`Contains NFA accept state${accNames.length > 1 ? 's' : ''} {${accNames.join(', ')}} → <span class="step-acc">accepting ★</span>`);
+      }
+
+      if (subs.length) main += `<span class="step-sub">${subs.join('<br>')}</span>`;
+      steps.push(main);
+
+      if (isNew) {
         visited.set(nxKey, nx); queue.push(nx);
-        states.push({ name: nxName, set: nx, isStart: false, isAcc: [...nx].some(id => App.accepts.has(id)) });
+        states.push({ name: nxName, set: nx, isStart: false, isAcc: isAcc });
       }
     });
   }
+
+  // --- Summary step ---
+  const accCount = states.filter(s => s.isAcc).length;
+  const summaryMain = `<span class="step-phase">Construction complete ✓</span>`;
+  const summarySub = `All reachable subsets explored (queue empty). Resulting DFA has <em>${states.length}</em> state${states.length !== 1 ? 's' : ''} (${accCount} accepting) and <em>${trans.length}</em> transition${trans.length !== 1 ? 's' : ''} over Σ = {${syms.join(', ')}}.`;
+  steps.push(summaryMain + `<span class="step-sub">${summarySub}</span>`);
+
   return { states, trans, steps };
 }
 
@@ -163,7 +258,7 @@ function algoMinimize(c) {
   c.innerHTML += `<div class="card"><div class="card-title">Equivalence Classes (${result.groups.length} classes = minimized states)</div>
 <div class="nfa-result-states">${gHtml}</div></div>`;
   // Steps
-  c.innerHTML += `<div class="card"><div class="card-title">Algorithm Steps</div><div class="step-list">${result.steps.map((s, i) => `<div class="step-item"><div class="step-num">${i + 1}</div><div class="step-text">${s}</div></div>`).join('')
+  c.innerHTML += `<div class="card"><div class="card-title">Algorithm Steps</div><div class="step-list">${result.steps.map((s, i) => `<div class="step-item"><div class="step-num">${i + 1}</div><div class="step-text">${s.html}</div></div>`).join('')
     }</div></div>`;
   c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadMinimizedDFA()">Load Minimized DFA</button></div>`;
   App._lastMin = result;
@@ -181,35 +276,84 @@ function tableFillingMinimize() {
   const savedStates = states.map(s => ({ ...s }));
   const savedAccepts = new Set([...App.accepts].filter(id => reachable.has(id)));
   const savedStart = App.startId;
+
+  // --- Step: discard unreachable states ---
   if (states.length !== App.states.length) {
-    steps.push(`Discard ${App.states.length - states.length} unreachable state(s) before minimization.`);
+    const discarded = App.states.filter(s => !reachable.has(s.id)).map(s => s.name);
+    let main = `Discard ${App.states.length - states.length} unreachable state(s) before minimization.`;
+    main += `<span class="step-sub">Removed: {${discarded.join(', ')}}<br>Remaining: ${states.length} reachable states to minimize</span>`;
+    steps.push({ type: 'discard', html: main });
   }
-  // Init
+
+  // --- Step: base case marking ---
+  const accNames = states.filter(s => App.accepts.has(s.id)).map(s => s.name);
+  const nonAccNames = states.filter(s => !App.accepts.has(s.id)).map(s => s.name);
+  let basePairsMarked = 0;
   ids.forEach((a, i) => ids.slice(0, i).forEach(b => {
     const key = [a, b].sort().join('|');
     dist[key] = App.accepts.has(a) !== App.accepts.has(b);
+    if (dist[key]) basePairsMarked++;
   }));
-  steps.push('Mark pairs where one state is accepting and the other is not.');
-  // Iterate
-  let changed = true, iter = 0;
+  let baseMain = `<em>Base case:</em> Mark all pairs where one state is accepting and the other is not.`;
+  const baseSubs = [];
+  baseSubs.push(`Accept states F = {${accNames.join(', ') || '∅'}} · Non-accept = {${nonAccNames.join(', ') || '∅'}}`);
+  baseSubs.push(`Marked <em>${basePairsMarked}</em> pair(s) as distinguishable in this step`);
+  baseSubs.push(`Reasoning: an accept state and a non-accept state are trivially distinguishable — the empty string ε distinguishes them`);
+  steps.push({ type: 'base', html: baseMain + `<span class="step-sub">${baseSubs.join('<br>')}</span>` });
+
+  // --- Iterative refinement ---
+  let changed = true, iter = 0, totalMarked = basePairsMarked;
   while (changed) {
     changed = false; iter++;
     ids.forEach((a, i) => ids.slice(0, i).forEach(b => {
       const key = [a, b].sort().join('|');
       if (dist[key]) return;
+      const aName = getState(a)?.name, bName = getState(b)?.name;
       for (const sym of App.sigma) {
         const ta = App.transitions.find(t => t.from === a && t.symbol === sym);
         const tb = App.transitions.find(t => t.from === b && t.symbol === sym);
         const da = ta?.to, db = tb?.to;
         if (da === db) continue;
-        if (da && db) { const pk = [da, db].sort().join('|'); if (dist[pk]) { dist[key] = true; changed = true; steps.push(`Mark (${getState(a)?.name},${getState(b)?.name}): δ on '${sym}' leads to distinguishable pair.`); return; } }
-        else if (da || db) { dist[key] = true; changed = true; steps.push(`Mark (${getState(a)?.name},${getState(b)?.name}): one has δ on '${sym}', other doesn't.`); return; }
+        if (da && db) {
+          const pk = [da, db].sort().join('|');
+          if (dist[pk]) {
+            dist[key] = true; changed = true; totalMarked++;
+            const daName = getState(da)?.name, dbName = getState(db)?.name;
+            let main = `Mark (<em>${aName}</em>, <em>${bName}</em>) as distinguishable`;
+            const subs = [];
+            subs.push(`Iteration ${iter}: examining unmarked pair (${aName}, ${bName}) on symbol '${sym}'`);
+            subs.push(`δ(${aName}, '${sym}') = ${daName} · δ(${bName}, '${sym}') = ${dbName}`);
+            subs.push(`(${daName}, ${dbName}) is already marked ✗ → (${aName}, ${bName}) must also be distinguishable`);
+            steps.push({ type: 'mark', p1: a, p2: b, html: main + `<span class="step-sub">${subs.join('<br>')}</span>` });
+            return;
+          }
+        } else if (da || db) {
+          dist[key] = true; changed = true; totalMarked++;
+          const hasName = da ? getState(da)?.name : getState(db)?.name;
+          const missState = da ? bName : aName;
+          let main = `Mark (<em>${aName}</em>, <em>${bName}</em>) as distinguishable`;
+          const subs = [];
+          subs.push(`Iteration ${iter}: examining unmarked pair (${aName}, ${bName}) on symbol '${sym}'`);
+          subs.push(`δ(${aName}, '${sym}') = ${da ? getState(da)?.name : '∅'} · δ(${bName}, '${sym}') = ${db ? getState(db)?.name : '∅'}`);
+          subs.push(`${missState} has no transition on '${sym}' (implicit dead/trap) — states are distinguishable`);
+          steps.push({ type: 'mark', p1: a, p2: b, html: main + `<span class="step-sub">${subs.join('<br>')}</span>` });
+          return;
+        }
       }
     }));
     if (iter > ids.length * ids.length) break;
   }
-  steps.push('Fixed point reached — no more pairs can be marked.');
-  // Group indistinguishable
+
+  // --- Fixed point ---
+  const totalPairs = ids.length * (ids.length - 1) / 2;
+  const unmarkedCount = totalPairs - totalMarked;
+  let fpMain = `<span class="step-phase">Fixed point reached ✓</span>`;
+  const fpSubs = [];
+  fpSubs.push(`Completed after ${iter} iteration(s) — no new pairs could be marked`);
+  fpSubs.push(`Total pairs: <em>${totalPairs}</em> · Marked (✗ distinguishable): <em>${totalMarked}</em> · Unmarked (≡ equivalent): <em>${unmarkedCount}</em>`);
+  steps.push({ type: 'fixed', html: fpMain + `<span class="step-sub">${fpSubs.join('<br>')}</span>` });
+
+  // --- Group indistinguishable states ---
   const assigned = new Set(), groups = [];
   ids.forEach(a => {
     if (assigned.has(a)) return;
@@ -217,6 +361,22 @@ function tableFillingMinimize() {
     ids.forEach(b => { if (!assigned.has(b)) { const k = [a, b].sort().join('|'); if (!dist[k]) { grp.push(b); assigned.add(b); } } });
     groups.push(grp);
   });
+
+  // --- Summary step ---
+  let sumMain = `<span class="step-phase">Merge equivalent states → ${groups.length} equivalence classes</span>`;
+  const sumSubs = [];
+  groups.forEach((g, i) => {
+    const names = g.map(id => getState(id)?.name);
+    const isAcc = g.some(id => App.accepts.has(id));
+    sumSubs.push(`Class ${i + 1}: {${names.join(', ')}}${g.length > 1 ? ' — these states are indistinguishable (≡)' : ''}${isAcc ? ' <span class="step-acc">★ accepting</span>' : ''}`);
+  });
+  if (groups.length < states.length) {
+    sumSubs.push(`Minimized DFA: <em>${groups.length}</em> states (reduced from ${states.length})`);
+  } else {
+    sumSubs.push(`DFA is already minimal — no states could be merged`);
+  }
+  steps.push({ type: 'summary', html: sumMain + `<span class="step-sub">${sumSubs.join('<br>')}</span>` });
+
   return { dist, groups, steps, savedTrans, savedStates, savedAccepts, savedStart };
 }
 
@@ -1320,7 +1480,6 @@ function simNDTM(tokens) {
   const queue = [init];
   let branches = 0, maxDepth = 0, accepted = false;
   const log = [];
-  const steps = 0;
   while (queue.length && branches < 2000) {
     const cfg = queue.shift();
     const { state, tape, head } = cfg;
@@ -1329,15 +1488,39 @@ function simNDTM(tokens) {
     const sym = t[head];
     const depth = cfg.depth || 0;
     maxDepth = Math.max(maxDepth, depth);
-    const idStr = `${t.slice(0, head).join('')}[${getState(state)?.name || state}]${t.slice(head).join('')}`;
+    const stateName = getState(state)?.name || state;
+    const idStr = `${t.slice(0, head).join('')}[${stateName}]${t.slice(head).join('')}`;
+
     if (App.accepts.has(state)) {
       accepted = true;
-      log.push(`Branch ${branches}: ACCEPT — ID: ${idStr}`);
+      let main = `<span class="step-acc">Branch ${branches}: ACCEPT ✓</span>`;
+      const subs = [];
+      subs.push(`State "${stateName}" is an accept state — computation halts`);
+      subs.push(`Reached at depth ${depth} · ID: ${idStr}`);
+      log.push(main + `<span class="step-sub">${subs.join('<br>')}</span>`);
       break;
     }
-    if (depth >= 150) { log.push(`Branch ${branches}: cut off (depth 150) — ID: ${idStr}`); continue; }
+
+    if (depth >= 150) {
+      let main = `Branch ${branches}: <span class="step-dead">cut off (depth limit)</span>`;
+      const subs = [];
+      subs.push(`Depth ${depth} ≥ 150 — pruning this branch to prevent infinite exploration`);
+      subs.push(`ID: ${idStr}`);
+      log.push(main + `<span class="step-sub">${subs.join('<br>')}</span>`);
+      continue;
+    }
+
     const matching = App.transitions.filter(tr => tr.from === state && (tr.symbol === sym || tr.symbol === App.config.sym.any));
-    if (!matching.length) { log.push(`Branch ${branches}: stuck (no transition) — ID: ${idStr}`); continue; }
+
+    if (!matching.length) {
+      let main = `Branch ${branches}: <span class="step-dead">stuck (no transition)</span>`;
+      const subs = [];
+      subs.push(`State "${stateName}", read '${sym}' — no matching δ(${stateName}, '${sym}')`);
+      subs.push(`This branch is a dead end · depth ${depth} · ID: ${idStr}`);
+      log.push(main + `<span class="step-sub">${subs.join('<br>')}</span>`);
+      continue;
+    }
+
     matching.forEach(tr => {
       const nt = [...t];
       nt[head] = (!tr.write || tr.write === App.config.sym.any) ? sym : tr.write;
@@ -1345,10 +1528,28 @@ function simNDTM(tokens) {
       const nh = head + move;
       queue.push({ state: tr.to, tape: nt, head: Math.max(0, nh), depth: depth + 1 });
     });
-    log.push(`Branch ${branches}: read '${sym}' at ${getState(state)?.name}, ${matching.length} choice(s) — ID: ${idStr}`);
+
+    let main = `Branch ${branches}: exploring state <em>${stateName}</em>`;
+    const subs = [];
+    subs.push(`Read '${sym}' at head position ${head} · depth ${depth}`);
+    if (matching.length > 1) {
+      subs.push(`<em>Nondeterministic choice:</em> ${matching.length} transitions match — spawning ${matching.length} child branches`);
+      matching.forEach((tr, i) => {
+        const toName = getState(tr.to)?.name || tr.to;
+        const writeStr = (!tr.write || tr.write === App.config.sym.any) ? sym : tr.write;
+        subs.push(`  Choice ${i + 1}: write '${writeStr}', move ${tr.dir}, → ${toName}`);
+      });
+    } else {
+      const tr = matching[0], toName = getState(tr.to)?.name || tr.to;
+      const writeStr = (!tr.write || tr.write === App.config.sym.any) ? sym : tr.write;
+      subs.push(`Deterministic: write '${writeStr}', move ${tr.dir}, → ${toName}`);
+    }
+    subs.push(`ID: ${idStr}`);
+    log.push(main + `<span class="step-sub">${subs.join('<br>')}</span>`);
   }
   return { accepted, branches, maxDepth, log };
 }
+
 
 
 // ══════════════════════════════════════════════════════════════════
@@ -2119,16 +2320,11 @@ function getDistAtStep(stepIdx) {
       if (App.accepts.has(a) !== App.accepts.has(b)) d[k] = true;
     }));
   }
-  // 2. Further marks
+  // 2. Further marks via step objects
   for (let s = 1; s <= stepIdx; s++) {
     const msg = _minViz.steps[s];
-    if (msg.includes('Mark (')) {
-      const m = msg.match(/\(([^,]+),([^)]+)\)/);
-      if (m) {
-        const n1 = m[1], n2 = m[2];
-        const s1 = App.states.find(x => x.name === n1), s2 = App.states.find(x => x.name === n2);
-        if (s1 && s2) d[[s1.id, s2.id].sort().join('|')] = true;
-      }
+    if (msg.type === 'mark') {
+      d[[msg.p1, msg.p2].sort().join('|')] = true;
     }
   }
   return d;
@@ -2137,7 +2333,7 @@ function getDistAtStep(stepIdx) {
 function minVisStep(delta) {
   _minViz.idx = Math.max(0, Math.min(_minViz.steps.length - 1, _minViz.idx + delta));
   const status = $('min-vis-status');
-  status.innerHTML = `<b>Step ${_minViz.idx + 1}/${_minViz.steps.length}</b>: ${_minViz.steps[_minViz.idx]}`;
+  status.innerHTML = `<b>Step ${_minViz.idx + 1}/${_minViz.steps.length}</b>: ${_minViz.steps[_minViz.idx].html}`;
   $('min-vis-play').textContent = _minViz.idx === 0 ? 'Start Step-by-Step →' : 'Next Step →';
   renderMinVisTable();
 }
@@ -2198,14 +2394,14 @@ function buildThompsonVisual(ast, steps) {
   if (ast.t === 'lit') {
     const s = tnew(), e = tnew();
     const nfa = { states: [s, e], trans: [{ from: s, sym: ast.ch, to: e }], start: s, accept: e };
-    steps.push({ ast, nfa, note: `Primitive: state ${s} —'${ast.ch}'→ state ${e}` });
+    steps.push({ ast, nfa, note: `Create literal fragment for '${ast.ch}': ${s} —'${ast.ch}'→ ${e}<span class="step-sub">2 states, 1 transition · start: ${s}, accept: ${e}<br>Matches exactly one occurrence of symbol '${ast.ch}'</span>` });
     return nfa;
   }
 
   if (ast.t === 'eps') {
     const s = tnew(), e = tnew();
     const nfa = { states: [s, e], trans: [{ from: s, sym: App.config.sym.eps, to: e }], start: s, accept: e };
-    steps.push({ ast, nfa, note: `Epsilon: state ${s} —ε→ state ${e}` });
+    steps.push({ ast, nfa, note: `Create epsilon fragment: ${s} —ε→ ${e}<span class="step-sub">2 states, 1 ε-transition · start: ${s}, accept: ${e}<br>Matches the empty string — no input consumed</span>` });
     return nfa;
   }
 
@@ -2224,7 +2420,7 @@ function buildThompsonVisual(ast, steps) {
       ],
       start: s, accept: e
     };
-    steps.push({ ast, nfa, note: `New start ${s} forks via ε to both branches, both converge via ε to new accept ${e}` });
+    steps.push({ ast, nfa, note: `Union (|): merge two sub-fragments<span class="step-sub">New start <em>${s}</em> forks via ε to left branch (${L.start}) and right branch (${R.start})<br>Both accept states (${L.accept}, ${R.accept}) converge via ε to new accept <em>${e}</em><br>Result: ${nfa.states.length} states, ${nfa.trans.length} transitions — matches either alternative</span>` });
     return nfa;
   }
 
@@ -2236,7 +2432,7 @@ function buildThompsonVisual(ast, steps) {
       trans: [...L.trans, { from: L.accept, sym: App.config.sym.eps, to: R.start }, ...R.trans],
       start: L.start, accept: R.accept
     };
-    steps.push({ ast, nfa, note: `Accept of left fragment (${L.accept}) is bridged via ε to start of right fragment (${R.start})` });
+    steps.push({ ast, nfa, note: `Concatenation: chain two sub-fragments in sequence<span class="step-sub">Left fragment accept (${L.accept}) bridged via ε to right fragment start (${R.start})<br>Combined start: <em>${L.start}</em> · Combined accept: <em>${R.accept}</em><br>Result: ${nfa.states.length} states, ${nfa.trans.length} transitions — matches left then right</span>` });
     return nfa;
   }
 
@@ -2254,7 +2450,7 @@ function buildThompsonVisual(ast, steps) {
       ],
       start: s, accept: e
     };
-    steps.push({ ast, nfa, note: `New start ${s}: ε-bypass to ${e} (zero repetitions) and ε-enter fragment; ${M.accept} loops back and exits` });
+    steps.push({ ast, nfa, note: `Kleene star (*): wrap sub-fragment with loop and bypass<span class="step-sub">New start <em>${s}</em> has two ε-paths: bypass to <em>${e}</em> (zero repetitions) or enter fragment at ${M.start}<br>Fragment accept ${M.accept} has ε-loop back to ${M.start} (repetition) and ε-exit to <em>${e}</em><br>Result: ${nfa.states.length} states, ${nfa.trans.length} transitions — matches zero or more repetitions</span>` });
     return nfa;
   }
 

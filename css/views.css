@@ -674,6 +674,36 @@
   color: var(--accent);
 }
 
+.step-sub {
+  display: block;
+  font-size: .63rem;
+  color: var(--text3);
+  margin-top: 4px;
+  padding-left: 8px;
+  line-height: 1.65;
+  border-left: 2px solid var(--border2);
+}
+
+.step-sub em {
+  color: var(--accent);
+}
+
+.step-acc {
+  color: var(--green);
+  font-weight: 500;
+}
+
+.step-dead {
+  color: var(--red);
+  opacity: .7;
+}
+
+.step-phase {
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+
 .algo-btn {
   padding: 7px 16px;
   background: var(--accent);

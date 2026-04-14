@@ -115,7 +115,7 @@ test('DFA minimization drops unreachable states before grouping', () => {
   const result = h.context.tableFillingMinimize();
   assert.equal(result.savedStates.length, 2);
   assert.equal(JSON.stringify(result.groups.map(g => [...g].sort())), JSON.stringify([['s0'], ['s1']]));
-  assert.match(result.steps[0], /Discard 1 unreachable state/);
+  assert.match(result.steps[0].html, /Discard 1 unreachable state/);
 });
 
 test('regex parser rejects trailing junk instead of silently truncating', () => {
