@@ -391,7 +391,7 @@ function updateFormalDef() {
     if (App.config.pdaParadigm === 'explicit') {
       txt = `M = (Q,Σ,Γ,δ,q₀,Z₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nZ₀ = ${stackBottom}\nF = {${F}}\nδ: Q×(Σ∪{${eps}})×Γ→𝒫(Q×Γ*)`;
     } else {
-      txt = `M = (Q,Σ,Γ,δ,q₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×(Σ∪{${eps}})×(Γ∪{${eps}})→𝒫(Q×(Γ∪{${eps}}))`;
+      txt = `M = (Q,Σ,Γ,δ,q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nAcceptance = empty stack\nδ: Q×(Σ∪{${eps}})×(Γ∪{${eps}})→𝒫(Q×(Γ∪{${eps}}))`;
     }
   } else if (m === 'Moore') {
     const D = [...App.outputAlpha].join(', ') || '∅';

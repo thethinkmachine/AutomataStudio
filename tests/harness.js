@@ -10,6 +10,7 @@ const SCRIPT_ORDER = [
   'js/simulation.js',
   'js/render.js',
   'js/workspace.js',
+  'js/persistence.js',
   'js/ui.js',
   'js/algorithms-fa.js'
 ];

@@ -736,6 +736,7 @@ function openSettingsModal() {
   $('set-theme').value = c.theme || 'dark';
   $('set-transducer-accepts').checked = !!c.transducerAccepts;
   $('set-pda-steps').value = c.maxPdaSteps;
+  $('set-pda-paradigm').value = c.pdaParadigm || 'explicit';
   $('set-tm-steps').value = c.maxTmSteps;
   $('set-auto-speed').value = c.autoSpeed;
   $('set-radius').value = c.radius;

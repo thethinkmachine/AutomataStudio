@@ -138,7 +138,9 @@ function simPDA(tokens) {
     });
     cfgs = next;
   }
-  const acc = App.simSteps.some(c => App.accepts.has(c.state) && c.remaining.length === 0);
+  const acc = isExplicit
+    ? App.simSteps.some(c => App.accepts.has(c.state) && c.remaining.length === 0)
+    : App.simSteps.some(c => c.remaining.length === 0 && c.stack.length === 0);
   const last = App.simSteps[App.simSteps.length - 1];
   if (last && !last.final) {
     if (!acc && cfgs.length > 0) {

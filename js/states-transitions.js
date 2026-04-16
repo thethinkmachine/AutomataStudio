@@ -259,9 +259,6 @@ function confirmTrans() {
       showStatus(`Symbol '${values.pop}' is not in your Stack Alphabet (Γ). Add it in the left panel first.`); return;
     }
     if (values.push && values.push !== eps && values.push !== App.config.sym.any) {
-      if (!isExplicit && values.push.length > 1) {
-        showStatus(`6-Tuple (Empty) PDAs may push at most one symbol at a time.`); return;
-      }
       const invalidChars = values.push.split('').filter(c => !stackAllowed.has(c));
       if (invalidChars.length > 0) {
         showStatus(`Push string contains symbols not in Stack Alphabet (Γ): ${invalidChars.join(', ')}. Add them first.`); return;

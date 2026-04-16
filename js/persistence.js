@@ -9,6 +9,7 @@ function getWorkspaceData() {
     transducerAccepts: App.config.transducerAccepts,
     maxPdaSteps: App.config.maxPdaSteps,
     maxTmSteps: App.config.maxTmSteps,
+    pdaParadigm: App.config.pdaParadigm,
     sym: { ...App.config.sym },
     statePrefix: App.config.statePrefix
     // Note: gridSnap, layout, zoom, and radius are intentionally dropped as they are editor-specific
@@ -159,8 +160,8 @@ function loadData(d, isExample) {
   }
   if (d.config) {
     // Drop any legacy theme or presentation properties that might be in old files
-    const { theme, export: exp, exportRes, ...loadedConfig } = d.config;
-    App.config = { ...App.config, ...loadedConfig };
+    const { theme, export: exp, exportRes, pdaParadigm, ...loadedConfig } = d.config;
+    App.config = { ...App.config, ...loadedConfig, pdaParadigm: pdaParadigm || 'explicit' };
   }
   else { migrateLegacySymbols(d); }
   if (d.cam) { App.cam = { ...d.cam }; }

@@ -74,6 +74,31 @@ test('theme button icon reflects the active theme', () => {
   assert.match(btn.innerHTML, /circle cx="12" cy="12" r="4"/);
 });
 
+test('PDA settings modal reflects the active formalism', () => {
+  const h = createHarness();
+  h.context.App.config.pdaParadigm = 'empty';
+  h.context.openSettingsModal();
+  assert.equal(h.getElement('set-pda-paradigm').value, 'empty');
+});
+
+test('workspace export preserves the PDA formalism setting', () => {
+  const h = createHarness();
+  h.context.App.config.pdaParadigm = 'empty';
+  const data = h.context.getWorkspaceData();
+  assert.equal(data.config.pdaParadigm, 'empty');
+});
+
+test('PDA simulation accepts by empty stack when that formalism is selected', () => {
+  const h = createHarness();
+  h.context.App.machine = 'PDA';
+  h.context.App.config.pdaParadigm = 'empty';
+  h.context.App.states = [makeState('s0', 'q0')];
+  h.context.App.startId = 's0';
+  h.context.App.accepts = new Set();
+  h.context.simPDA([]);
+  assert.equal(h.context.App.simSteps.at(-1).final, 'accept');
+});
+
 test('subset construction handles epsilon cycles and marks accepting subsets', () => {
   const h = createHarness();
   configureAppMachine(h, {
