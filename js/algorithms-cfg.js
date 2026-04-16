@@ -497,9 +497,15 @@ function loadCFGPDA() {
     if (t.push && t.push !== App.config.sym.eps) t.push.split('').forEach(ch => App.stackAlpha.add(ch));
   });
   App.transN = App._lastCFGPDA.length;
+  
+  // Natively force Explicit Stack Base (7-Tuple) paradigm since CFG algorithm structurally utilizes Z0 and string pushing
+  App.config.pdaParadigm = 'explicit';
+  const paradigmDropdown = document.getElementById('set-pda-paradigm');
+  if (paradigmDropdown) paradigmDropdown.value = 'explicit';
+
   applyMachineSwitch('PDA');
   renderAll(); updateLPanel(); updateRPanel();
-  setView('build'); showStatus('PDA loaded for CFG!');
+  setView('build'); showStatus('PDA loaded for CFG! (Forced 7-Tuple Paradigm)');
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -631,6 +637,10 @@ function runPDA2CFG() {
   const out = $('gram-output');
   if (App.machine !== 'PDA') {
     out.innerHTML = `<div class="cnf-step"><span class="lbl">Switch to PDA mode to use this conversion.</span></div>`;
+    return;
+  }
+  if (App.config.pdaParadigm === 'empty') {
+    out.innerHTML = `<div class="cnf-step"><span class="lbl" style="color:var(--error-color)">Conversion Failed.</span> The PDA → CFG (Triple Construction) algorithm conceptually requires transitions to evaluate explicitly popped elements from Γ. Change the Engine settings to '7-Tuple (Explicit Stack Base)' and normalize your PDA to pop exactly 1 symbol per transition.</div>`;
     return;
   }
   if (!App.states.length) { out.innerHTML = '<div class="cnf-step"><span class="lbl">No PDA states defined.</span></div>'; return; }
