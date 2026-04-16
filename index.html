@@ -884,32 +884,16 @@
     <div class="modal settings-modal-wide">
       <div class="modal-title">Engine Settings</div>
 
-      <div class="modal-tabs" id="settings-tabs">
-        <div class="modal-tab active" onclick="switchSettingsTab('engine')">Automaton Engine</div>
-        <div class="modal-tab" onclick="switchSettingsTab('rendering')">Rendering & Canvas</div>
-        <div class="modal-tab" onclick="switchSettingsTab('symbols')">Theory Symbols</div>
+      <div class="modal-tabs" style="display:flex; flex-wrap:wrap; gap:4px;" id="settings-tabs">
+        <div class="modal-tab active" onclick="switchSettingsTab('general')">General</div>
+        <div class="modal-tab" onclick="switchSettingsTab('pda')">PDA</div>
+        <div class="modal-tab" onclick="switchSettingsTab('tm')">Turing Machine</div>
+        <div class="modal-tab" onclick="switchSettingsTab('transducer')">Transducers</div>
+        <div class="modal-tab" onclick="switchSettingsTab('rendering')">Rendering</div>
+        <div class="modal-tab" onclick="switchSettingsTab('symbols')">Symbols</div>
       </div>
 
-      <div class="modal-tab-content active" id="tab-engine">
-        <div class="modal-row" id="set-row-transducer" title="Allow Moore and Mealy machines to have accept states">
-          <span class="modal-lbl">Transducer Accepts</span>
-          <input type="checkbox" class="inp" id="set-transducer-accepts" style="width:16px;height:16px">
-        </div>
-        <div class="modal-row">
-          <span class="modal-lbl">PDA Max Steps</span>
-          <input type="number" class="inp" id="set-pda-steps" label="PDA step limit">
-        </div>
-        <div class="modal-row">
-          <span class="modal-lbl">TM Max Steps</span>
-          <input type="number" class="inp" id="set-tm-steps" label="TM step limit">
-        </div>
-        <div class="modal-row">
-          <span class="modal-lbl" title="Toggles between HUM formal definition and Sipser formalism">PDA Formalism</span>
-          <select class="inp" id="set-pda-paradigm" label="PDA Formalism Paradigm">
-            <option value="explicit">Acceptance by final state</option>
-            <option value="empty">Acceptance by empty stack</option>
-          </select>
-        </div>
+      <div class="modal-tab-content active" id="tab-general">
         <div class="modal-row">
           <span class="modal-lbl">Playback Speed (ms)</span>
           <input type="number" class="inp" id="set-auto-speed" label="Auto-run interval">
@@ -920,6 +904,34 @@
             <option value="dark">Dark</option>
             <option value="light">Light</option>
           </select>
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="tab-pda">
+        <div class="modal-row">
+          <span class="modal-lbl">PDA Max Steps</span>
+          <input type="number" class="inp" id="set-pda-steps" label="PDA step limit">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl" title="Toggles between HUM formal definition and Sipser formalism">PDA Formalism</span>
+          <select class="inp" id="set-pda-paradigm" label="PDA Formalism Paradigm">
+            <option value="explicit">Acceptance by final state</option>
+            <option value="empty">Acceptance by empty stack</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="tab-tm">
+        <div class="modal-row">
+          <span class="modal-lbl">TM Max Steps</span>
+          <input type="number" class="inp" id="set-tm-steps" label="TM step limit">
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="tab-transducer">
+        <div class="modal-row" id="set-row-transducer" title="Allow Moore and Mealy machines to have accept states">
+          <span class="modal-lbl">Transducer Accepts</span>
+          <input type="checkbox" class="inp" id="set-transducer-accepts" style="width:16px;height:16px">
         </div>
       </div>
 

@@ -749,7 +749,7 @@ function openSettingsModal() {
   $('set-sym-blank').value = c.sym.blank;
   $('set-sym-z0').value = c.sym.stackBottom;
   
-  if (typeof switchSettingsTab === 'function') switchSettingsTab('engine');
+  if (typeof switchSettingsTab === 'function') switchSettingsTab('general');
   showOverlay('settings-modal');
 }
 
