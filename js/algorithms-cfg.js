@@ -4,7 +4,9 @@
 const G = App.grammar;
 
 function renderGramSyms() {
-  $('term-chips').innerHTML = [...App.sigma].map(s => `<div class="chip" style="color:var(--gold)">${s}</div>`).join('')
+  const tc = $('term-chips');
+  if (!tc) return;
+  tc.innerHTML = [...App.sigma].map(s => `<div class="chip" style="color:var(--gold)">${s}</div>`).join('')
     || '<span style="font-size:.65rem;color:var(--text3);font-style:italic">Mirror from Σ</span>';
 }
 function parseRawGrammar() {
@@ -76,6 +78,25 @@ function tokenizeRHS(str, vars) {
 }
 
 function renderGrammarLPanel() {
+  const gi = $('grammar-input');
+  if (!gi) return;
+  const grouped = {};
+  G.productions.forEach(p => {
+    if (!grouped[p.lhs]) grouped[p.lhs] = [];
+    grouped[p.lhs].push(p.rhs);
+  });
+  const lines = [];
+  for (const k in grouped) {
+    if (k !== G.start) continue;
+    lines.push(`${k} -> ${grouped[k].join(' | ')}`);
+  }
+  for (const k in grouped) {
+    if (k === G.start) continue;
+    lines.push(`${k} -> ${grouped[k].join(' | ')}`);
+  }
+  gi.value = lines.join('\n');
+  const ss = $('start-sym');
+  if (ss) ss.value = G.start || '';
 }
 
 
