@@ -550,20 +550,20 @@ function buildThompson(ast) {
       if (ast.min === 0 && ast.max === 1) return buildThompson({ t: 'opt', c: ast.c });
       if (ast.min === 0 && ast.max === Infinity) return buildThompson({ t: 'star', c: ast.c });
       if (ast.min === 1 && ast.max === Infinity) return buildThompson({ t: 'plus', c: ast.c });
-      let result = null;
+      let resultAst = null;
       for (let i = 0; i < ast.min; i++) {
         const copy = JSON.parse(JSON.stringify(ast.c));
-        result = result ? buildThompson({ t: 'cat', l: result, r: copy }) : buildThompson(copy);
+        resultAst = resultAst ? { t: 'cat', l: resultAst, r: copy } : copy;
       }
       if (ast.max > ast.min && ast.max !== Infinity) {
         for (let i = ast.min; i < ast.max; i++) {
           const copy = JSON.parse(JSON.stringify(ast.c));
-          const opt = buildThompson({ t: 'opt', c: copy });
-          result = result ? buildThompson({ t: 'cat', l: result, r: opt }) : opt;
+          const optAst = { t: 'opt', c: copy };
+          resultAst = resultAst ? { t: 'cat', l: resultAst, r: optAst } : optAst;
         }
       }
-      if (!result) return buildThompson({ t: 'eps' });
-      return result;
+      if (!resultAst) return buildThompson({ t: 'eps' });
+      return buildThompson(resultAst);
     }
     case 'cat': { const L = buildThompson(ast.l), R = buildThompson(ast.r); return { states: [...L.states, ...R.states], trans: [...L.trans, { from: L.accept, sym: App.config.sym.eps, to: R.start }, ...R.trans], start: L.start, accept: R.accept }; }
     case 'union': { const L = buildThompson(ast.l), R = buildThompson(ast.r), s = tnew(), e = tnew(); return { states: [s, ...L.states, ...R.states, e], trans: [{ from: s, sym: App.config.sym.eps, to: L.start }, { from: s, sym: App.config.sym.eps, to: R.start }, ...L.trans, ...R.trans, { from: L.accept, sym: App.config.sym.eps, to: e }, { from: R.accept, sym: App.config.sym.eps, to: e }], start: s, accept: e }; }

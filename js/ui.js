@@ -782,7 +782,12 @@ function confirmSettings() {
   c.sym.eps = $('set-sym-eps').value || App.config.sym.eps;
   c.sym.any = $('set-sym-any').value || App.config.sym.any;
   c.sym.blank = $('set-sym-blank').value || App.config.sym.blank;
-  c.sym.stackBottom = $('set-sym-z0').value || App.config.sym.stackBottom;
+  const newZ0 = $('set-sym-z0').value || App.config.sym.stackBottom;
+  if (newZ0 !== c.sym.stackBottom) {
+    c.sym.stackBottom = newZ0;
+    if (App.stackAlpha) App.stackAlpha.add(newZ0);
+    if (typeof renderGamma === 'function') renderGamma();
+  }
 
   // Apply visual changes
   R = c.radius;

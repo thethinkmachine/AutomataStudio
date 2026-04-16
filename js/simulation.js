@@ -113,7 +113,7 @@ function simPDA(tokens) {
   let cfgs = [init];
   const visited = new Set(); // Track visited configurations to avoid ε-loops (#8)
   visited.add(init.state + '|' + init.remaining.join('') + '|' + init.stack.join(''));
-  for (let step = 0; step < 2000 && cfgs.length; step++) {
+  for (let step = 0; step < App.config.maxPdaSteps && cfgs.length; step++) {
     const next = [];
     cfgs.forEach(cfg => {
       const { state, remaining, stack } = cfg, top = stack[stack.length - 1];
@@ -138,7 +138,13 @@ function simPDA(tokens) {
   }
   const acc = App.simSteps.some(c => App.accepts.has(c.state) && c.remaining.length === 0);
   const last = App.simSteps[App.simSteps.length - 1];
-  if (last && !last.final) { last.final = acc ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }
+  if (last && !last.final) {
+    if (!acc && cfgs.length > 0) {
+      last.final = 'reject'; last.note += ' — STEP LIMIT REACHED — REJECT';
+    } else {
+      last.final = acc ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`;
+    }
+  }
   App.simIdx = 0; renderSimStep();
 }
 

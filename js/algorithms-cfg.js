@@ -490,11 +490,14 @@ function loadCFGPDA() {
     if (name === 'q_start') App.startId = id;
     if (name === 'q_accept') App.accepts.add(id);
   });
+  App.stackAlpha = new Set([App.config.sym.stackBottom]);
   App._lastCFGPDA.forEach((t, i) => {
     App.transitions.push({ ...t, id: 't' + (i + 1), from: idMap[t.from], to: idMap[t.to] });
+    if (t.pop && t.pop !== App.config.sym.eps) App.stackAlpha.add(t.pop);
+    if (t.push && t.push !== App.config.sym.eps) t.push.split('').forEach(ch => App.stackAlpha.add(ch));
   });
   App.transN = App._lastCFGPDA.length;
-  App.machine = 'PDA'; setMachine('PDA');
+  applyMachineSwitch('PDA');
   renderAll(); updateLPanel(); updateRPanel();
   setView('build'); showStatus('PDA loaded for CFG!');
 }
