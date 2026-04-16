@@ -256,15 +256,15 @@
 .canvas-toolbox[data-dock="top"] .toolbox-sep,
 .canvas-toolbox[data-dock="bottom"] .toolbox-sep {
   width: 1px;
-  height: auto;
-  margin: 0 2px;
+  height: 20px;
+  margin: 0 6px;
 }
 
 .canvas-toolbox[data-dock="left"] .toolbox-sep,
 .canvas-toolbox[data-dock="right"] .toolbox-sep {
-  width: auto;
+  width: 20px;
   height: 1px;
-  margin: 2px 0;
+  margin: 6px auto;
 }
 
 .toolbox-grip {
@@ -377,9 +377,10 @@
 }
 
 .toolbox-sep {
+  width: 20px;
   height: 1px;
   background: var(--border);
-  margin: 2px 0;
+  margin: 6px auto;
 }
 
 .toolbox-btn.toolbox-danger {
@@ -573,7 +574,8 @@
 
   .toolbox-sep {
     width: 1px;
-    height: auto;
+    height: 100%;
+    min-height: 22px;
     margin: 0 2px;
   }
 

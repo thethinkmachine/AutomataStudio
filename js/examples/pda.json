@@ -4,6 +4,11 @@
         "a",
         "b"
     ],
+    "stackAlpha": [
+        "A",
+        "B",
+        "Z"
+    ],
     "states": [
         {
             "id": "s1",
@@ -41,5 +46,8 @@
         { "id": "t10", "from": "s2", "to": "s2", "symbol": "a", "pop": "A", "push": "ε" },
         { "id": "t11", "from": "s2", "to": "s2", "symbol": "b", "pop": "B", "push": "ε" },
         { "id": "t12", "from": "s2", "to": "s3", "symbol": "ε", "pop": "Z", "push": "Z" }
-    ]
+    ],
+    "config": {
+        "pdaParadigm": "explicit"
+    }
 }

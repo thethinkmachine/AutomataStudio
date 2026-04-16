@@ -5,6 +5,12 @@
         "b",
         "c"
     ],
+    "stackAlpha": [
+        "a",
+        "b",
+        "c",
+        "⊔"
+    ],
     "tapeCount": 2,
     "states": [
         {
@@ -42,126 +48,63 @@
             "from": "s1",
             "to": "s1",
             "symbol": "a",
-            "tapeSyms": [
-                "a",
-                "⊔"
-            ],
-            "tapeWrites": [
-                "a",
-                "a"
-            ],
-            "tapeDirs": [
-                "R",
-                "R"
-            ]
+            "tapeSyms": [ "a", "⊔" ],
+            "tapeWrites": [ "a", "a" ],
+            "tapeDirs": [ "R", "R" ]
         },
         {
             "id": "t2",
             "from": "s1",
             "to": "s2",
             "symbol": "b",
-            "tapeSyms": [
-                "b",
-                "⊔"
-            ],
-            "tapeWrites": [
-                "b",
-                "⊔"
-            ],
-            "tapeDirs": [
-                "S",
-                "L"
-            ]
+            "tapeSyms": [ "b", "⊔" ],
+            "tapeWrites": [ "b", "⊔" ],
+            "tapeDirs": [ "S", "L" ]
         },
         {
             "id": "t3",
             "from": "s1",
             "to": "s2",
             "symbol": "ε",
-            "tapeSyms": [
-                "⊔",
-                "⊔"
-            ],
-            "tapeWrites": [
-                "⊔",
-                "⊔"
-            ],
-            "tapeDirs": [
-                "S",
-                "S"
-            ]
+            "tapeSyms": [ "⊔", "⊔" ],
+            "tapeWrites": [ "⊔", "⊔" ],
+            "tapeDirs": [ "S", "S" ]
         },
         {
             "id": "t4",
             "from": "s2",
             "to": "s2",
             "symbol": "b",
-            "tapeSyms": [
-                "b",
-                "a"
-            ],
-            "tapeWrites": [
-                "b",
-                "a"
-            ],
-            "tapeDirs": [
-                "R",
-                "L"
-            ]
+            "tapeSyms": [ "b", "a" ],
+            "tapeWrites": [ "b", "a" ],
+            "tapeDirs": [ "R", "L" ]
         },
         {
             "id": "t5",
             "from": "s2",
             "to": "s3",
             "symbol": "c",
-            "tapeSyms": [
-                "c",
-                "⊔"
-            ],
-            "tapeWrites": [
-                "c",
-                "⊔"
-            ],
-            "tapeDirs": [
-                "S",
-                "R"
-            ]
+            "tapeSyms": [ "c", "⊔" ],
+            "tapeWrites": [ "c", "⊔" ],
+            "tapeDirs": [ "S", "R" ]
         },
         {
             "id": "t6",
             "from": "s3",
             "to": "s3",
             "symbol": "c",
-            "tapeSyms": [
-                "c",
-                "a"
-            ],
-            "tapeWrites": [
-                "c",
-                "a"
-            ],
-            "tapeDirs": [
-                "R",
-                "R"
-            ]
+            "tapeSyms": [ "c", "a" ],
+            "tapeWrites": [ "c", "a" ],
+            "tapeDirs": [ "R", "R" ]
         },
         {
             "id": "t7",
             "from": "s3",
             "to": "s4",
             "symbol": "⊔",
-            "tapeSyms": [
-                "⊔",
-                "⊔"
-            ],
-            "tapeWrites": [
-                "⊔",
-                "⊔"
-            ],
-            "tapeDirs": [
-                "S",
-                "S"
-            ]
+            "tapeSyms": [ "⊔", "⊔" ],
+            "tapeWrites": [ "⊔", "⊔" ],
+            "tapeDirs": [ "S", "S" ]
         }
     ]
 }

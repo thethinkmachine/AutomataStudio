@@ -4,6 +4,11 @@
         "0",
         "1"
     ],
+    "stackAlpha": [
+        "0",
+        "1",
+        "⊔"
+    ],
     "states": [
         {
             "id": "s1",
@@ -29,53 +34,11 @@
         "s3"
     ],
     "transitions": [
-        {
-            "id": "t1",
-            "from": "s1",
-            "to": "s1",
-            "symbol": "0",
-            "write": "0",
-            "dir": "R"
-        },
-        {
-            "id": "t2",
-            "from": "s1",
-            "to": "s1",
-            "symbol": "1",
-            "write": "1",
-            "dir": "R"
-        },
-        {
-            "id": "t3",
-            "from": "s1",
-            "to": "s2",
-            "symbol": "⊔",
-            "write": "⊔",
-            "dir": "L"
-        },
-        {
-            "id": "t4",
-            "from": "s2",
-            "to": "s2",
-            "symbol": "1",
-            "write": "0",
-            "dir": "L"
-        },
-        {
-            "id": "t5",
-            "from": "s2",
-            "to": "s3",
-            "symbol": "0",
-            "write": "1",
-            "dir": "R"
-        },
-        {
-            "id": "t6",
-            "from": "s2",
-            "to": "s3",
-            "symbol": "⊔",
-            "write": "1",
-            "dir": "R"
-        }
+        { "id": "t1", "from": "s1", "to": "s1", "symbol": "0", "write": "0", "dir": "R" },
+        { "id": "t2", "from": "s1", "to": "s1", "symbol": "1", "write": "1", "dir": "R" },
+        { "id": "t3", "from": "s1", "to": "s2", "symbol": "⊔", "write": "⊔", "dir": "L" },
+        { "id": "t4", "from": "s2", "to": "s2", "symbol": "1", "write": "0", "dir": "L" },
+        { "id": "t5", "from": "s2", "to": "s3", "symbol": "0", "write": "1", "dir": "R" },
+        { "id": "t6", "from": "s2", "to": "s3", "symbol": "⊔", "write": "1", "dir": "R" }
     ]
 }
