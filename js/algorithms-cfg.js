@@ -33,10 +33,12 @@ function parseRawGrammar() {
     rhsRaw.split('|').forEach(alt => {
       let altTrimmed = alt.trim();
       if (!altTrimmed) return;
+      let isEps = altTrimmed === App.config.sym.eps || altTrimmed.toLowerCase() === 'eps' || altTrimmed.toLowerCase() === 'epsilon';
+      let finalRhs = isEps ? App.config.sym.eps : altTrimmed;
       G.productions.push({
         id: 'p' + Date.now() + '_' + Math.random(),
         lhs,
-        rhs: altTrimmed,
+        rhs: finalRhs,
         rhsArr: tokenizeRHS(altTrimmed, G.vars)
       });
     });
