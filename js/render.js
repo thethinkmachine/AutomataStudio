@@ -41,7 +41,7 @@ function renderTransitions() {
   groupTrans().forEach(grp => {
     const from = getState(grp.from), to = getState(grp.to);
     if (!from || !to) return;
-    const lbl = grp.ts.map(transLabel).join(', ');
+    const lbls = grp.ts.map(transLabel);
     const isSelf = from.id === to.id;
     let pathEl, textEl, hitEl;
     const edgeGrp = makeSVG('g');
@@ -61,12 +61,19 @@ function renderTransitions() {
 
       textEl = makeSVG('text');
       textEl.classList.add('tlbl');
-      textEl.textContent = lbl;
       textEl.setAttribute('id', `lbl-${from.id}|${to.id}`);
       
       const arcCentY = from.y - R - Math.sqrt(ss * ss - so * so);
       const ly = arcCentY - ss;
       const lx = from.x;
+
+      lbls.forEach((lbl, i) => {
+        const tspan = makeSVG('tspan');
+        tspan.textContent = lbl;
+        tspan.setAttribute('x', lx);
+        tspan.setAttribute('dy', i === 0 ? `-${(lbls.length - 1) * 0.6}em` : '1.2em');
+        textEl.appendChild(tspan);
+      });
 
       textEl.setAttribute('x', lx); textEl.setAttribute('y', ly);
       textEl.setAttribute('dominant-baseline', 'central');
@@ -99,12 +106,19 @@ function renderTransitions() {
 
       textEl = makeSVG('text');
       textEl.classList.add('tlbl');
-      textEl.textContent = lbl;
       textEl.setAttribute('id', `lbl-${from.id}|${to.id}`);
       
       const lx = crvVal ? (sx + 2 * mx + ex) / 4 : (sx + ex) / 2;
       const ly = crvVal ? (sy + 2 * my + ey) / 4 : (sy + ey) / 2;
       
+      lbls.forEach((lbl, i) => {
+        const tspan = makeSVG('tspan');
+        tspan.textContent = lbl;
+        tspan.setAttribute('x', lx);
+        tspan.setAttribute('dy', i === 0 ? `-${(lbls.length - 1) * 0.6}em` : '1.2em');
+        textEl.appendChild(tspan);
+      });
+
       textEl.setAttribute('x', lx);
       textEl.setAttribute('y', ly);
       textEl.setAttribute('dominant-baseline', 'central');
@@ -222,6 +236,8 @@ function updateFastDOM() {
       const lx = from.x;
       
       textEl.setAttribute('x', lx); textEl.setAttribute('y', ly);
+      const tspans = textEl.querySelectorAll('tspan');
+      if (tspans.length > 0) tspans.forEach(ts => ts.setAttribute('x', lx));
     } else {
       const hasRev = App.transitions.some(t => t.from === tid && t.to === fid);
       const dx = to.x - from.x, dy = to.y - from.y, dist = Math.sqrt(dx * dx + dy * dy);
@@ -245,6 +261,8 @@ function updateFastDOM() {
       
       textEl.setAttribute('x', lx);
       textEl.setAttribute('y', ly);
+      const tspans = textEl.querySelectorAll('tspan');
+      if (tspans.length > 0) tspans.forEach(ts => ts.setAttribute('x', lx));
     }
   });
 }
@@ -344,7 +362,7 @@ function updateFormalDef() {
   } else if (m === 'PDA') {
     const G = [...App.stackAlpha].join(', ') || '∅';
     const { eps, stackBottom } = App.config.sym;
-    txt = `M = (Q,Σ,Γ,δ,q₀,${stackBottom},F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×(Σ∪{${eps}})×Γ→2^(Q×Γ*)`;
+    txt = `M = (Q,Σ,Γ,δ,q₀,Z₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nZ₀ = ${stackBottom}\nF = {${F}}\nδ: Q×(Σ∪{${eps}})×Γ→2^(Q×Γ*)`;
   } else if (m === 'Moore') {
     const D = [...App.outputAlpha].join(', ') || '∅';
     const { lambda } = App.config.sym;

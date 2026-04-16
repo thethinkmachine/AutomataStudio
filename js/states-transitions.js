@@ -245,6 +245,24 @@ function confirmTrans() {
       showStatus(`${App.machine} already has δ(${getState(from)?.name}, '${sym}'). Each (state, symbol) pair must be unique.`); return;
     }
   }
+  if (App.machine === 'PDA') {
+    if (!values.pop || values.pop === eps || values.pop.trim() === '') {
+      showStatus(`PDA transitions must pop exactly one stack symbol. ε-pops are mathematically prohibited.`); return;
+    }
+    if (values.pop.length > 1 && values.pop !== App.config.sym.any) {
+      showStatus(`PDA pop must be exactly one symbol.`); return;
+    }
+    const stackAllowed = new Set([...App.stackAlpha, App.config.sym.stackBottom, App.config.sym.any]);
+    if (!stackAllowed.has(values.pop)) {
+      showStatus(`Symbol '${values.pop}' is not in your Stack Alphabet (Γ). Add it in the left panel first.`); return;
+    }
+    if (values.push && values.push !== eps && values.push !== App.config.sym.any) {
+      const invalidChars = values.push.split('').filter(c => !stackAllowed.has(c));
+      if (invalidChars.length > 0) {
+        showStatus(`Push string contains symbols not in Stack Alphabet (Γ): ${invalidChars.join(', ')}. Add them first.`); return;
+      }
+    }
+  }
   snapshot();
   if (editId) {
     const t = getTransition(editId);

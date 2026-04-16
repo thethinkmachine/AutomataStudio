@@ -120,9 +120,9 @@ function simPDA(tokens) {
       const eps = App.config.sym.eps;
       App.transitions.filter(t => t.from === state).forEach(t => {
         const rOk = t.symbol === eps || (remaining.length > 0 && (t.symbol === remaining[0] || t.symbol === App.config.sym.any));
-        const pOk = t.pop === eps || t.pop === top || t.pop === App.config.sym.any;
+        const pOk = top !== undefined && (t.pop === top || t.pop === App.config.sym.any);
         if (!rOk || !pOk) return;
-        const ns = [...stack]; if (t.pop !== eps) ns.pop();
+        const ns = [...stack]; ns.pop();
         let pushStr = t.push && t.push !== eps ? t.push : '';
         if (pushStr === App.config.sym.any) pushStr = top; // Write-back popped symbol if wildcard
         if (pushStr) pushStr.split('').reverse().forEach(c => ns.push(c));

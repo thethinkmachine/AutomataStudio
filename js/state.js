@@ -97,3 +97,49 @@ const App = {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 var R = App.config.radius;
 const $ = id => document.getElementById(id);
+
+// ══════════════════════════════════════════════════════════════════
+//  STATE MIGRATIONS
+// ══════════════════════════════════════════════════════════════════
+function migrateSystemSymbols(oldSyms, newSyms) {
+  const needsMigration = ['eps', 'any', 'blank', 'stackBottom'].some(k => oldSyms[k] !== newSyms[k]);
+  if (!needsMigration) return;
+
+  App.transitions.forEach(t => {
+    // Identify character map replacements strictly
+    if (t.symbol === oldSyms.eps) t.symbol = newSyms.eps;
+    if (t.symbol === oldSyms.any) t.symbol = newSyms.any;
+    if (t.symbol === oldSyms.blank) t.symbol = newSyms.blank;
+    
+    // Abstract mapping for PDA edge actions
+    if (t.pop === oldSyms.eps) t.pop = newSyms.eps;
+    if (t.pop === oldSyms.any) t.pop = newSyms.any;
+    if (t.pop === oldSyms.stackBottom) t.pop = newSyms.stackBottom;
+    
+    if (t.push) {
+      if (t.push === oldSyms.eps) t.push = newSyms.eps;
+      else if (t.push === oldSyms.any) t.push = newSyms.any;
+      else if (oldSyms.stackBottom !== newSyms.stackBottom) {
+        // Enforce strict character parsing corresponding to standard PDA architectures (no substring mutation)
+        t.push = t.push.split('').map(c => c === oldSyms.stackBottom ? newSyms.stackBottom : c).join('');
+      }
+    }
+    
+    // Abstract mapping for TM/MTM
+    if (t.write === oldSyms.eps) t.write = newSyms.eps;
+    if (t.write === oldSyms.any) t.write = newSyms.any;
+    if (t.write === oldSyms.blank) t.write = newSyms.blank;
+    
+    if (t.tapeSyms) {
+      t.tapeSyms = t.tapeSyms.map(s => s === oldSyms.eps ? newSyms.eps : s === oldSyms.any ? newSyms.any : s === oldSyms.blank ? newSyms.blank : s);
+    }
+    if (t.tapeWrites) {
+      t.tapeWrites = t.tapeWrites.map(s => s === oldSyms.eps ? newSyms.eps : s === oldSyms.any ? newSyms.any : s === oldSyms.blank ? newSyms.blank : s);
+    }
+  });
+
+  if (oldSyms.stackBottom !== newSyms.stackBottom && App.stackAlpha) {
+    if (App.stackAlpha.has(oldSyms.stackBottom)) App.stackAlpha.delete(oldSyms.stackBottom);
+    App.stackAlpha.add(newSyms.stackBottom);
+  }
+}

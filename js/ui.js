@@ -779,19 +779,22 @@ function confirmSettings() {
   c.layout.nodeSpacing = parseInt($('set-node-spacing').value) || 35;
   c.render.curveOff = parseInt($('set-curve-off').value) || 45;
   c.exportRes = parseFloat($('set-export-res').value) || 2;
-  c.sym.eps = $('set-sym-eps').value || App.config.sym.eps;
-  c.sym.any = $('set-sym-any').value || App.config.sym.any;
-  c.sym.blank = $('set-sym-blank').value || App.config.sym.blank;
-  const newZ0 = $('set-sym-z0').value || App.config.sym.stackBottom;
-  if (newZ0 !== c.sym.stackBottom) {
-    c.sym.stackBottom = newZ0;
-    if (App.stackAlpha) App.stackAlpha.add(newZ0);
-    if (typeof renderGamma === 'function') renderGamma();
+  const oldSyms = { ...c.sym };
+  c.sym.eps = $('set-sym-eps').value || oldSyms.eps;
+  c.sym.any = $('set-sym-any').value || oldSyms.any;
+  c.sym.blank = $('set-sym-blank').value || oldSyms.blank;
+  c.sym.stackBottom = $('set-sym-z0').value || oldSyms.stackBottom;
+
+  if (typeof migrateSystemSymbols === 'function') {
+    migrateSystemSymbols(oldSyms, c.sym);
   }
 
   // Apply visual changes
   R = c.radius;
   renderAll();
+  if (typeof updateLPanel === 'function') updateLPanel();
+  if (typeof updateRPanel === 'function') updateRPanel();
+  if (typeof renderGamma === 'function') renderGamma();
   closeModal('settings-modal');
   showStatus('Settings applied!');
   saveBackup();
