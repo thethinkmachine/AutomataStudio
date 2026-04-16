@@ -353,7 +353,7 @@ function runBatch() {
     return;
   }
   const eps = App.config.sym.eps;
-  if (App.machine === 'PDA' || App.machine === 'TM' || App.machine === 'MTM') {
+  if (App.machine === 'TM' || App.machine === 'MTM') {
     $('batch-result').innerHTML = `<div class="br-err">Batch testing is not supported for ${App.machine}.</div>`;
     return;
   }
@@ -364,6 +364,7 @@ function runBatch() {
     let accepted = false, output = null;
     if (App.machine === 'DFA') accepted = testDFA(tokens);
     else if (App.machine === 'NFA' || App.machine === 'ε-NFA') accepted = testNFA(tokens);
+    else if (App.machine === 'PDA') accepted = testPDA(tokens);
     else if (App.machine === 'Moore') { accepted = App.config.transducerAccepts ? testDFA(tokens) : undefined; output = getMooreOutput(tokens); }
     else if (App.machine === 'Mealy') { accepted = App.config.transducerAccepts ? testDFA(tokens) : undefined; output = getMealyOutput(tokens); }
     return { str: line, accepted, output };
@@ -395,6 +396,54 @@ function testNFA(tokens) {
   }
   return [...cur].some(id => App.accepts.has(id));
 }
+
+function testPDA(tokens) {
+  const isExplicit = App.config.pdaParadigm === 'explicit';
+  const init = {
+    state: App.startId,
+    tokens,
+    remaining: tokens,
+    stack: isExplicit ? [App.config.sym.stackBottom] : []
+  };
+  const visited = new Set();
+  visited.add(init.state + '|' + init.remaining.join('') + '|' + init.stack.join(''));
+  let cfgs = [init];
+
+  const isAccepted = cfg => isExplicit
+    ? App.accepts.has(cfg.state) && cfg.remaining.length === 0
+    : cfg.remaining.length === 0 && cfg.stack.length === 0;
+
+  if (isAccepted(init)) return true;
+
+  for (let step = 0; step < App.config.maxPdaSteps && cfgs.length; step++) {
+    const next = [];
+    cfgs.forEach(cfg => {
+      const { state, remaining, stack } = cfg, top = stack[stack.length - 1];
+      const eps = App.config.sym.eps;
+      App.transitions.filter(t => t.from === state).forEach(t => {
+        const rOk = t.symbol === eps || (remaining.length > 0 && (t.symbol === remaining[0] || t.symbol === App.config.sym.any));
+        const pOk = (top !== undefined && (t.pop === top || t.pop === App.config.sym.any)) || (!isExplicit && t.pop === eps);
+        if (!rOk || !pOk) return;
+        const ns = [...stack];
+        if (t.pop !== eps) ns.pop();
+        let pushStr = t.push && t.push !== eps ? t.push : '';
+        if (pushStr === App.config.sym.any) pushStr = top;
+        if (pushStr) pushStr.split('').reverse().forEach(c => ns.push(c));
+        const nr = t.symbol === eps ? remaining : remaining.slice(1);
+        const cfgKey = t.to + '|' + nr.join('') + '|' + ns.join('');
+        if (visited.has(cfgKey)) return;
+        visited.add(cfgKey);
+        const nc = { state: t.to, tokens, remaining: nr, stack: ns };
+        next.push(nc);
+      });
+    });
+    if (next.some(isAccepted)) return true;
+    cfgs = next;
+  }
+
+  return cfgs.some(isAccepted);
+}
+
 function getMooreOutput(tokens) {
   let cur = App.startId;
   const any = App.config.sym.any;

@@ -99,6 +99,48 @@ test('PDA simulation accepts by empty stack when that formalism is selected', ()
   assert.equal(h.context.App.simSteps.at(-1).final, 'accept');
 });
 
+test('PDA batch testing works in final-state mode', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'PDA',
+    sigma: ['a', 'b'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1'), makeState('s2', 'qa')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's1', symbol: 'a', pop: 'Z', push: 'Z' },
+      { id: 't1', from: 's1', to: 's2', symbol: 'b', pop: 'Z', push: 'Z' }
+    ],
+    startId: 's0',
+    accepts: ['s2']
+  });
+  h.context.App.config.pdaParadigm = 'explicit';
+  h.getElement('batch-in').value = 'ab\na';
+  h.context.runBatch();
+  const html = h.getElement('batch-result').innerHTML;
+  assert.match(html, /✓ "ab"/);
+  assert.match(html, /✗ "a"/);
+});
+
+test('PDA batch testing works in empty-stack mode', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'PDA',
+    sigma: ['a', 'b'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's1', symbol: 'a', pop: 'ε', push: 'Z' },
+      { id: 't1', from: 's1', to: 's1', symbol: 'b', pop: 'Z', push: 'ε' }
+    ],
+    startId: 's0',
+    accepts: []
+  });
+  h.context.App.config.pdaParadigm = 'empty';
+  h.getElement('batch-in').value = 'ab\naba';
+  h.context.runBatch();
+  const html = h.getElement('batch-result').innerHTML;
+  assert.match(html, /✓ "ab"/);
+  assert.match(html, /✗ "aba"/);
+});
+
 test('subset construction handles epsilon cycles and marks accepting subsets', () => {
   const h = createHarness();
   configureAppMachine(h, {
