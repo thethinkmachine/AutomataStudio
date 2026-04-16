@@ -98,7 +98,7 @@ window.addEventListener('drop', e => {
 function validateSchema(data) {
   if (!data || typeof data !== 'object') throw new Error("Data must be a valid JSON object.");
   
-  const validMachines = ['DFA', 'NFA', 'ε-NFA', 'PDA', 'TM', 'MTM', 'Moore', 'Mealy'];
+  const validMachines = ['DFA', 'NFA', 'ε-NFA', 'PDA', 'TM', 'NDTM', 'MTM', 'Moore', 'Mealy'];
   if (!data.machine || !validMachines.includes(data.machine)) {
     throw new Error(`Missing or unsupported machine type: ${data.machine || 'undefined'}`);
   }
@@ -116,7 +116,7 @@ function validateSchema(data) {
   if ((data.machine === 'Moore' || data.machine === 'Mealy') && !Array.isArray(data.outputAlpha)) {
     throw new Error("Transducers require an 'outputAlpha' array.");
   }
-  if ((data.machine === 'TM' || data.machine === 'MTM') && typeof data.tapeCount !== 'number') {
+  if ((data.machine === 'TM' || data.machine === 'NDTM' || data.machine === 'MTM') && typeof data.tapeCount !== 'number') {
     throw new Error("Turing Machines require a numeric 'tapeCount'.");
   }
 
@@ -171,6 +171,9 @@ function loadData(d, isExample) {
   App.states = d.states || [];
   App.transitions = d.transitions || []; App.startId = d.startId || null;
   App.accepts = new Set(d.accepts || []);
+  if (App.machine === 'TM' && hasSingleTapeNondeterminism(App.transitions)) {
+    App.machine = 'NDTM';
+  }
   resetIds();
   if (d.grammar) {
     const grammar = normalizeGrammarData(d.grammar);

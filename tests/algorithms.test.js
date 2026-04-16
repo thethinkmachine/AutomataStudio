@@ -70,6 +70,14 @@ function configureGrammar(h, grammar) {
   App.grammar.productions = (grammar.productions || []).map(p => ({ ...p }));
 }
 
+function setSingleTapeTransitionForm(h, values) {
+  h.getElement('m-from').value = values.from;
+  h.getElement('m-to').value = values.to;
+  h.getElement('m-sym').value = values.symbol;
+  h.getElement('m-write').value = values.write;
+  h.getElement('m-dir').value = values.dir;
+}
+
 test('theme button icon reflects the active theme', () => {
   const h = createHarness();
   const btn = h.getElement('theme-btn');
@@ -163,6 +171,37 @@ test('PDA simulation honors epsilon-pop transitions in explicit mode', () => {
   h.context.App.config.pdaParadigm = 'explicit';
   h.context.simPDA(['a']);
   assert.equal(h.context.App.simSteps.at(-1).final, 'accept');
+});
+
+test('TM stays deterministic while NDTM allows duplicate read choices', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'TM',
+    sigma: ['0'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1'), makeState('s2', 'q2')],
+    transitions: [],
+    startId: 's0',
+    accepts: []
+  });
+  setSingleTapeTransitionForm(h, { from: 's0', to: 's1', symbol: '0', write: '0', dir: 'R' });
+  h.context.confirmTrans();
+  setSingleTapeTransitionForm(h, { from: 's0', to: 's2', symbol: '0', write: '0', dir: 'R' });
+  h.context.confirmTrans();
+  assert.equal(h.context.App.transitions.length, 1);
+
+  configureAppMachine(h, {
+    machine: 'NDTM',
+    sigma: ['0'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1'), makeState('s2', 'q2')],
+    transitions: [],
+    startId: 's0',
+    accepts: []
+  });
+  setSingleTapeTransitionForm(h, { from: 's0', to: 's1', symbol: '0', write: '0', dir: 'R' });
+  h.context.confirmTrans();
+  setSingleTapeTransitionForm(h, { from: 's0', to: 's2', symbol: '0', write: '0', dir: 'S' });
+  h.context.confirmTrans();
+  assert.equal(h.context.App.transitions.length, 2);
 });
 
 test('subset construction handles epsilon cycles and marks accepting subsets', () => {
@@ -306,7 +345,7 @@ test('decision procedures distinguish useful cycles from unreachable cycles', ()
 test('NDTM simulation tokenizes input and supports wildcard plus stay transitions', () => {
   const h = createHarness();
   configureAppMachine(h, {
-    machine: 'TM',
+    machine: 'NDTM',
     sigma: ['aa'],
     states: [makeState('s0', 'q0'), makeState('s1', 'q1')],
     transitions: [
@@ -318,6 +357,7 @@ test('NDTM simulation tokenizes input and supports wildcard plus stay transition
 
   const result = h.context.simNDTM(['aa']);
   assert.equal(result.accepted, true);
+  assert.equal(h.context.App.simSteps.at(-1).final, 'accept');
 });
 
 test('UTM simulator accepts, rejects, and reports loops correctly', () => {
@@ -419,6 +459,50 @@ test('TM to grammar rejects MTM and seeds Sigma-star in the start productions', 
   assert.match(card.innerHTML, /⟨W⟩/);
   assert.match(card.innerHTML, /a ⟨W⟩/);
   assert.match(card.innerHTML, /b ⟨W⟩/);
+
+  configureAppMachine(h, {
+    machine: 'NDTM',
+    sigma: ['a'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'qa')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's0', symbol: 'a', write: 'a', dir: 'R' },
+      { id: 't1', from: 's0', to: 's1', symbol: 'a', write: 'a', dir: 'S' }
+    ],
+    startId: 's0',
+    accepts: ['s1']
+  });
+  h.context.algoTM2Grammar(card);
+  assert.match(card.innerHTML, /Generated Type 0 Productions/);
+});
+
+test('workspace validation accepts NDTM as a machine type', () => {
+  const h = createHarness();
+  assert.doesNotThrow(() => h.context.validateSchema({
+    machine: 'NDTM',
+    sigma: ['0', '1'],
+    states: [],
+    transitions: [],
+    accepts: [],
+    tapeCount: 1
+  }));
+});
+
+test('loading a legacy TM with duplicate read choices upgrades it to NDTM', () => {
+  const h = createHarness();
+  h.context.loadData({
+    machine: 'TM',
+    sigma: ['0'],
+    stackAlpha: ['0', '⊔'],
+    tapeCount: 1,
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1'), makeState('s2', 'q2')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's1', symbol: '0', write: '0', dir: 'R' },
+      { id: 't1', from: 's0', to: 's2', symbol: '0', write: '0', dir: 'S' }
+    ],
+    startId: 's0',
+    accepts: ['s2']
+  });
+  assert.equal(h.context.App.machine, 'NDTM');
 });
 
 test('right-linear and left-linear regular grammars load into equivalent automata', () => {

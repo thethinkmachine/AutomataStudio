@@ -69,7 +69,7 @@ function applyMachineSwitch(m) {
   // Toggle UI Sections based on Machine Features
   $('stack-sec').style.display = cfg.hasStack ? '' : 'none';
   const stackLbl = $('stack-sec').querySelector('.sec-lbl');
-  if (stackLbl) stackLbl.textContent = (m === 'TM' || m === 'MTM') ? 'Tape Alphabet Γ' : 'Stack Alphabet Γ';
+  if (stackLbl) stackLbl.textContent = isAnyTM(m) ? 'Tape Alphabet Γ' : 'Stack Alphabet Γ';
   
   $('output-sec').style.display = cfg.isTransducer ? '' : 'none';
   $('mtm-ctrl').style.display = (m === 'MTM') ? 'flex' : 'none';

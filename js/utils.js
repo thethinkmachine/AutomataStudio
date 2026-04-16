@@ -3,6 +3,24 @@
 // ══════════════════════════════════════════════════════════════════
 function getMachineConfig(m) { return MachineTypes[m] || MachineTypes['DFA']; }
 
+function isSingleTapeTM(m = App.machine) {
+  return m === 'TM' || m === 'NDTM';
+}
+
+function isAnyTM(m = App.machine) {
+  return isSingleTapeTM(m) || m === 'MTM';
+}
+
+function hasSingleTapeNondeterminism(transitions = App.transitions) {
+  const seen = new Set();
+  for (const t of transitions) {
+    const key = `${t.from}|${t.symbol}`;
+    if (seen.has(key)) return true;
+    seen.add(key);
+  }
+  return false;
+}
+
 function resetIds() {
   App.stateN = Math.max(0, ...App.states.map(s => { const m = s.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
   App.transN = Math.max(0, ...App.transitions.map(t => { const m = t.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));

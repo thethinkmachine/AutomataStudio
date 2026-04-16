@@ -192,6 +192,12 @@
   border: 1px solid var(--orange-border);
 }
 
+.bd-ndtm {
+  background: var(--orange-soft);
+  color: var(--orange);
+  border: 1px solid var(--orange-border);
+}
+
 .bd-enfa {
   background: var(--purple-soft);
   color: var(--purple);

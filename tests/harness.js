@@ -147,7 +147,10 @@ function createHarness() {
     setView: () => {},
     renderSigma: () => {},
     renderGamma: () => {},
-    renderOutputAlpha: () => {}
+    renderOutputAlpha: () => {},
+    clearTempLine: () => {},
+    applyCamera: () => {},
+    fitToScreen: () => {}
   });
   context.window = context;
   context.addEventListener = () => {};

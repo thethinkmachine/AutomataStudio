@@ -37,6 +37,8 @@ function restoreSnapshot(s) {
     if (badge) { badge.className = `badge ${cfg.badge}`; badge.textContent = cfg.label; }
     const stSec = document.getElementById('stack-sec');
     if (stSec) stSec.style.display = cfg.hasStack ? '' : 'none';
+    const stackLbl = stSec?.querySelector('.sec-lbl');
+    if (stackLbl) stackLbl.textContent = isAnyTM(d.machine) ? 'Tape Alphabet Γ' : 'Stack Alphabet Γ';
     const outSec = document.getElementById('output-sec');
     if (outSec) outSec.style.display = cfg.isTransducer ? '' : 'none';
     const mtmSec = document.getElementById('mtm-ctrl');

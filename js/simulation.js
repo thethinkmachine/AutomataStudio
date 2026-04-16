@@ -57,6 +57,7 @@ function runSim() {
   else if (App.machine === 'PDA') simPDA(tokens);
   else if (App.machine === 'Moore') simMoore(tokens);
   else if (App.machine === 'Mealy') simMealy(tokens);
+  else if (App.machine === 'NDTM') simNDTM(tokens);
   else if (App.machine === 'MTM') simMTM(tokens);
   else simTM(tokens);
 
@@ -176,6 +177,123 @@ function simTM(tokens) {
   App.simIdx = 0; renderSimStep();
 }
 
+function normalizeTapeConfig(tape, head) {
+  const blank = App.config.sym.blank;
+  const normalizedHead = Math.max(0, head);
+  const normalizedTape = tape.length ? [...tape] : [blank];
+  while (normalizedTape.length <= normalizedHead) normalizedTape.push(blank);
+  while (normalizedTape.length > normalizedHead + 1 && normalizedTape[normalizedTape.length - 1] === blank) normalizedTape.pop();
+  return { tape: normalizedTape, head: normalizedHead };
+}
+
+function ndtmConfigKey(state, tape, head) {
+  const normalized = normalizeTapeConfig(tape, head);
+  return `${state}|${normalized.head}|${normalized.tape.join('\u0001')}`;
+}
+
+function formatTapeInstantaneousDescription(state, tape, head) {
+  const normalized = normalizeTapeConfig(tape, head);
+  const stateName = getState(state)?.name || state;
+  return `${normalized.tape.slice(0, normalized.head).join('')}[${stateName}]${normalized.tape.slice(normalized.head).join('')}`;
+}
+
+function simNDTM(tokens) {
+  App.simSteps = [];
+  const blank = App.config.sym.blank;
+  const initTape = tokens.length ? [...tokens] : [blank];
+  const queue = [{ state: App.startId, tape: initTape, head: 0, depth: 0, branch: 1 }];
+  const visited = new Set([ndtmConfigKey(App.startId, initTape, 0)]);
+  let accepted = false;
+  let branches = 0;
+  let maxDepth = 0;
+  const log = [];
+  let nextBranchId = 2;
+
+  while (queue.length && branches < App.config.maxTmSteps) {
+    const cfg = queue.shift();
+    const { state, depth, branch } = cfg;
+    const normalized = normalizeTapeConfig(cfg.tape, cfg.head);
+    const tape = normalized.tape;
+    const head = normalized.head;
+    const sym = tape[head];
+    const stateName = getState(state)?.name || state;
+    const idStr = formatTapeInstantaneousDescription(state, tape, head);
+    branches++;
+    maxDepth = Math.max(maxDepth, depth);
+
+    const step = {
+      state,
+      tokens,
+      tape: [...tape],
+      head,
+      branch,
+      note: `Branch ${branch} depth ${depth}: ${stateName} reads '${sym}'`
+    };
+
+    if (App.accepts.has(state)) {
+      step.final = 'accept';
+      step.note += ' — ACCEPT';
+      App.simSteps.push(step);
+      log.push(`<span class="step-acc">Branch ${branch}: ACCEPT ✓</span><span class="step-sub">State "${stateName}" is accepting.<br>Depth ${depth} · ID: ${idStr}</span>`);
+      accepted = true;
+      break;
+    }
+
+    const matching = App.transitions.filter(tr => tr.from === state && (tr.symbol === sym || tr.symbol === App.config.sym.any));
+    if (!matching.length) {
+      step.note += ' — dead branch';
+      App.simSteps.push(step);
+      log.push(`Branch ${branch}: <span class="step-dead">stuck</span><span class="step-sub">No transition matches (${stateName}, '${sym}').<br>Depth ${depth} · ID: ${idStr}</span>`);
+      continue;
+    }
+
+    step.note += matching.length > 1 ? ` — branching ×${matching.length}` : ' — deterministic step';
+    App.simSteps.push(step);
+
+    const subs = [
+      `Read '${sym}' at head position ${head}.`,
+      `Depth ${depth} · ID: ${idStr}`
+    ];
+    if (matching.length > 1) {
+      subs.push(`Nondeterministic choice: ${matching.length} matching transitions.`);
+    }
+    log.push(`Branch ${branch}: exploring <em>${stateName}</em><span class="step-sub">${subs.join('<br>')}</span>`);
+
+    matching.forEach(tr => {
+      const nextTape = [...tape];
+      nextTape[head] = (!tr.write || tr.write === App.config.sym.any) ? sym : tr.write;
+      const move = tr.dir === 'R' ? 1 : (tr.dir === 'L' ? -1 : 0);
+      const nextHead = Math.max(0, head + move);
+      const nextKey = ndtmConfigKey(tr.to, nextTape, nextHead);
+      if (visited.has(nextKey)) return;
+      visited.add(nextKey);
+      queue.push({ state: tr.to, tape: nextTape, head: nextHead, depth: depth + 1, branch: nextBranchId++ });
+    });
+  }
+
+  if (!accepted) {
+    const finalNote = queue.length
+      ? `Exploration limit ${App.config.maxTmSteps} reached — unresolved branches remain`
+      : 'All branches halted without acceptance — REJECT';
+    const fallbackTape = App.simSteps.at(-1)?.tape || [...initTape];
+    const fallbackHead = App.simSteps.at(-1)?.head ?? 0;
+    const fallbackState = App.simSteps.at(-1)?.state || App.startId;
+    App.simSteps.push({
+      state: fallbackState,
+      tokens,
+      tape: [...fallbackTape],
+      head: fallbackHead,
+      note: finalNote,
+      final: 'reject'
+    });
+    log.push(`${queue.length ? 'Exploration limit reached' : 'Reject'}<span class="step-sub">${finalNote}.<br>Branches explored: ${branches} · max depth ${maxDepth}</span>`);
+  }
+
+  App.simIdx = 0;
+  renderSimStep();
+  return { accepted, branches, maxDepth, log };
+}
+
 function simMoore(tokens) {
   App.simSteps = [];
   let cur = App.startId;
@@ -273,7 +391,7 @@ function renderSimStep() {
   const m = App.machine;
   const stateName = getState(step.state)?.name || (step.states ? stateNames(step.states) : '?');
 
-  if (m === 'TM') {
+  if (m === 'TM' || m === 'NDTM') {
     rows.push({ label: 'Tape', cells: step.tape, head: step.head });
   } else if (m === 'MTM') {
     step.tapes.forEach((t, i) => rows.push({ label: `T${i + 1}`, cells: t, head: step.heads[i] }));
@@ -356,7 +474,7 @@ function runBatch() {
     return;
   }
   const eps = App.config.sym.eps;
-  if (App.machine === 'TM' || App.machine === 'MTM') {
+  if (isAnyTM(App.machine)) {
     $('batch-result').innerHTML = `<div class="br-err">Batch testing is not supported for ${App.machine}.</div>`;
     return;
   }

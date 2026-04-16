@@ -88,8 +88,8 @@ function populateTransitionModal(t) {
   }
 
   $('m-sym-row').style.display = App.machine === 'MTM' ? 'none' : '';
-  $('m-pda-extra').style.display = cfg.hasStack ? '' : 'none';
-  $('m-tm-extra').style.display = (App.machine === 'TM') ? '' : 'none';
+  $('m-pda-extra').style.display = App.machine === 'PDA' ? '' : 'none';
+  $('m-tm-extra').style.display = isSingleTapeTM(App.machine) ? '' : 'none';
   $('m-mealy-extra').style.display = (App.machine === 'Mealy') ? '' : 'none';
   $('m-mtm-extra').style.display = (App.machine === 'MTM') ? '' : 'none';
 
@@ -103,7 +103,7 @@ function populateTransitionModal(t) {
     }
   }
 
-  if (App.machine === 'TM') {
+  if (isSingleTapeTM(App.machine)) {
     const dirSel = $('m-dir');
     if (dirSel) {
       dirSel.innerHTML = App.directions.map(d => `<option value="${d.value}">${d.label} (${d.value})</option>`).join('');
@@ -151,11 +151,11 @@ function getTransitionFormValues() {
     to: $('m-to')?.value,
     symbol: App.machine === 'MTM' ? null : $('m-sym')?.value
   };
-  if (cfg.hasStack) {
+  if (App.machine === 'PDA') {
     values.pop = parseEps($('m-pop')?.value) || eps;
     values.push = parseEps($('m-push')?.value) || eps;
   }
-  if (App.machine === 'TM') {
+  if (isSingleTapeTM(App.machine)) {
     values.write = parseEps($('m-write')?.value) || values.symbol;
     values.dir = $('m-dir')?.value || App.directions[0].value;
   }
@@ -239,7 +239,18 @@ function confirmTrans() {
   if (!cfg.hasEpsilon && sym === eps) {
     showStatus(`${App.machine} cannot have epsilon-transitions.`); return;
   }
-  if (!cfg.isTransducer && App.machine !== 'NFA' && App.machine !== 'ε-NFA' && App.machine !== 'PDA' && !cfg.hasTape) {
+  if (App.machine === 'TM') {
+    const conflict = App.transitions.find(t => t.id !== editId && t.from === from && t.symbol === sym);
+    if (conflict) {
+      showStatus(`TM already has δ(${getState(from)?.name}, '${sym}'). Use NDTM mode if you want multiple choices for the same read symbol.`); return;
+    }
+  } else if (App.machine === 'MTM') {
+    const sig = (values.tapeSyms || []).join('\u0001');
+    const conflict = App.transitions.find(t => t.id !== editId && t.from === from && (t.tapeSyms || []).join('\u0001') === sig);
+    if (conflict) {
+      showStatus(`MTM already has a transition for (${getState(from)?.name}, [${(values.tapeSyms || []).join(', ')}]). Each read tuple must be unique.`); return;
+    }
+  } else if (!cfg.isTransducer && App.machine !== 'NFA' && App.machine !== 'ε-NFA' && App.machine !== 'PDA' && !cfg.hasTape) {
     const conflict = App.transitions.find(t => t.id !== editId && t.from === from && t.symbol === sym);
     if (conflict) {
       showStatus(`${App.machine} already has δ(${getState(from)?.name}, '${sym}'). Each (state, symbol) pair must be unique.`); return;
@@ -272,14 +283,14 @@ function confirmTrans() {
     t.from = from;
     t.to = to;
     t.symbol = sym;
-    if (cfg.hasStack) {
+    if (App.machine === 'PDA') {
       t.pop = values.pop;
       t.push = values.push;
     } else {
       delete t.pop;
       delete t.push;
     }
-    if (App.machine === 'TM') {
+    if (isSingleTapeTM(App.machine)) {
       t.write = values.write;
       t.dir = values.dir;
     } else {
@@ -303,11 +314,11 @@ function confirmTrans() {
     }
   } else {
     const t = { id: newTId(), from, to, symbol: sym };
-    if (cfg.hasStack) {
+    if (App.machine === 'PDA') {
       t.pop = values.pop;
       t.push = values.push;
     }
-    if (App.machine === 'TM') { t.write = values.write; t.dir = values.dir; }
+    if (isSingleTapeTM(App.machine)) { t.write = values.write; t.dir = values.dir; }
     if (App.machine === 'Mealy') { t.output = values.output; }
     if (App.machine === 'MTM') {
       t.tapeSyms = values.tapeSyms;
@@ -335,7 +346,7 @@ function deleteTransitions(ids) {
 }
 function transLabel(t) {
   if (App.machine === 'PDA') return `${t.symbol}, ${t.pop} → ${t.push}`;
-  if (App.machine === 'TM') return `${t.symbol} → ${t.write}, ${t.dir}`;
+  if (isSingleTapeTM(App.machine)) return `${t.symbol} → ${t.write}, ${t.dir}`;
   if (App.machine === 'Mealy') return `${t.symbol} / ${t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda}`;
   if (App.machine === 'MTM') {
     const syms = t.tapeSyms || [t.symbol];
@@ -352,7 +363,7 @@ function transLabelDescriptive(t) {
   if (App.machine === 'PDA') {
     return `Read '${t.symbol}', Pop '${t.pop}', Push '${t.push}'`;
   }
-  if (App.machine === 'TM') {
+  if (isSingleTapeTM(App.machine)) {
     return `Read '${t.symbol}', Write '${t.write}', Move ${dirMap[t.dir] || t.dir}`;
   }
   if (App.machine === 'Mealy') {

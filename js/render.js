@@ -401,19 +401,22 @@ function updateFormalDef() {
     const D = [...App.outputAlpha].join(', ') || '∅';
     const { lambda } = App.config.sym;
     txt = `M = (Q, Σ, Δ, δ, ${lambda}, q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΔ = {${D}}\nq₀ = ${q0}\nδ: Q×Σ→Q\n${lambda}: Q×Σ→Δ`;
+  } else if (m === 'NDTM') {
+    const G = [...App.stackAlpha].join(', ') || '∅';
+    txt = `M = (Q,Σ,Γ,δ,q₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γ→𝒫(Q×Γ×{L,R,S})`;
   } else if (m === 'MTM') {
     const G = [...App.stackAlpha].join(', ') || '∅';
-    txt = `M = (Q,Σ,Γ,δ,q₀,q_acc,q_rej)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γᵏ→Q×Γᵏ×{L,R}ᵏ\nk = ${App.tapeCount} tapes`;
+    txt = `M = (Q,Σ,Γ,δ,q₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γᵏ→Q×Γᵏ×{L,R,S}ᵏ\nk = ${App.tapeCount} tapes`;
   } else {
     const G = [...App.stackAlpha].join(', ') || '∅';
-    txt = `M = (Q,Σ,Γ,δ,q₀,q_acc,q_rej)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γ→Q×Γ×{L,R}`;
+    txt = `M = (Q,Σ,Γ,δ,q₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γ→Q×Γ×{L,R,S}`;
   }
   $('def-box').textContent = txt;
 }
 function updateRegex() {
   const rb = $('regex-box'), m = App.machine;
   if (m === 'PDA') { rb.textContent = 'Context-Free Language'; return; }
-  if (m === 'TM' || m === 'MTM') { rb.textContent = 'Recursively Enumerable Language'; return; }
+  if (isAnyTM(m)) { rb.textContent = 'Recursively Enumerable Language'; return; }
   if (m === 'Moore') { rb.textContent = 'Finite-State Transducer (Moore)'; return; }
   if (m === 'Mealy') { rb.textContent = 'Finite-State Transducer (Mealy)'; return; }
   rb.textContent = deriveRegex() || '∅';
