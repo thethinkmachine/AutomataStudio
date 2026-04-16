@@ -345,6 +345,27 @@ function transLabel(t) {
   return t.symbol;
 }
 
+function transLabelDescriptive(t) {
+  const dirMap = { 'R': 'Right', 'L': 'Left', 'S': 'Stay' };
+  if (App.machine === 'PDA') {
+    return `Read '${t.symbol}', Pop '${t.pop}', Push '${t.push}'`;
+  }
+  if (App.machine === 'TM') {
+    return `Read '${t.symbol}', Write '${t.write}', Move ${dirMap[t.dir] || t.dir}`;
+  }
+  if (App.machine === 'Mealy') {
+    const o = t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda;
+    return `Read '${t.symbol}', Print '${o}'`;
+  }
+  if (App.machine === 'MTM') {
+    const syms = t.tapeSyms || [t.symbol];
+    const writes = t.tapeWrites || [t.write || t.symbol];
+    const defDir = App.directions[0].value;
+    const dirs = t.tapeDirs || [t.dir || defDir];
+    return syms.map((s, i) => `Tape ${i + 1}: Read '${s}', Write '${writes[i] ?? s}', Move ${dirMap[dirs[i] ?? defDir] || (dirs[i] ?? defDir)}`).join(' | ');
+  }
+  return `Read '${t.symbol}'`;
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  STATE MODAL / CTX

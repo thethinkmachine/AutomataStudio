@@ -79,6 +79,11 @@ function renderTransitions() {
       textEl.setAttribute('dominant-baseline', 'central');
       textEl.setAttribute('text-anchor', 'middle');
 
+      const titleEl = makeSVG('title');
+      titleEl.textContent = grp.ts.map(t => transLabelDescriptive(t)).join('\n');
+      textEl.appendChild(titleEl);
+      edgeGrp.appendChild(titleEl.cloneNode(true));
+
       edgeGrp.appendChild(pathEl);
       edgeGrp.appendChild(hitEl);
       if ($('trans-lbl-g')) $('trans-lbl-g').appendChild(textEl);
@@ -123,6 +128,11 @@ function renderTransitions() {
       textEl.setAttribute('y', ly);
       textEl.setAttribute('dominant-baseline', 'central');
       textEl.setAttribute('text-anchor', 'middle');
+
+      const titleEl = makeSVG('title');
+      titleEl.textContent = grp.ts.map(t => transLabelDescriptive(t)).join('\n');
+      textEl.appendChild(titleEl);
+      edgeGrp.appendChild(titleEl.cloneNode(true));
 
       edgeGrp.appendChild(pathEl);
       edgeGrp.appendChild(hitEl);
@@ -300,6 +310,22 @@ function renderStates() {
       ot.textContent = s.output !== undefined && s.output !== '' ? s.output : '—';
       grp.appendChild(ot);
     }
+
+    let stTitle = `State '${s.name}'`;
+    const isStart = App.startId === s.id;
+    const isAcc = showAccepts && App.accepts.has(s.id);
+    if (isStart || isAcc) {
+      const statuses = [];
+      if (isStart) statuses.push('Start');
+      if (isAcc) statuses.push('Accept');
+      stTitle += ` (${statuses.join(', ')})`;
+    }
+    if (App.machine === 'Moore') {
+      const o = s.output !== undefined && s.output !== '' ? s.output : App.config.sym.lambda;
+      stTitle += `\nOutput: '${o}'`;
+    }
+    const stTitleEl = makeSVG('title'); stTitleEl.textContent = stTitle;
+    grp.appendChild(stTitleEl);
     grp.addEventListener('mousedown', e => onStateDown(e, s.id));
     grp.addEventListener('contextmenu', e => { 
       e.preventDefault();
