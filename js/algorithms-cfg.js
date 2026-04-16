@@ -952,12 +952,7 @@ function runPDA2CFG(mode = 'raw') {
       });
     }
     prods = prods.filter(p => reachable.has(p.lhs));
-    
-    // Handle edge case where grammar evaluates to empty language and gets entirely pruned
-    if(prods.length === 0) {
-      prods.push({ lhs: 'S', rhs: eps, rhsArr: [] }); // Or leave empty
-    }
-    
+
     prunedMessage = `&nbsp;&nbsp; Pruned ${totalOriginal - prods.length} useless rules.`;
   }
 
@@ -970,6 +965,7 @@ function runPDA2CFG(mode = 'raw') {
   const textFormat = Object.entries(byLHS).map(([lhs, pSet]) => {
     return `${lhs} -> ${[...pSet].map(p => p.rhs === '' ? eps : p.rhs).join(' | ')}`;
   }).join('\n');
+  const isEmptyLanguage = prods.length === 0;
 
   const rows = Object.entries(byLHS).map(([lhs, pSet]) => {
     const rhsList = [...pSet].map(p => p.rhs === '' ? eps : p.rhs).join(' | ');
@@ -983,16 +979,16 @@ function runPDA2CFG(mode = 'raw') {
   out.innerHTML = `
 <h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
   <span>PDA &#8594; CFG (Sipser Triple Construction)</span>
-  <button id="copy-cfg-btn" class="icon-btn" title="Copy to Editor" style="font-size:0.75rem;padding:4px 8px;border:1px solid var(--border);cursor:pointer;border-radius:4px;background:var(--bg3);color:var(--text);font-family:var(--sans)">Apply to Editor</button>
+  <button id="copy-cfg-btn" class="icon-btn" title="Copy to Editor" ${isEmptyLanguage ? 'disabled' : ''} style="font-size:0.75rem;padding:4px 8px;border:1px solid var(--border);cursor:${isEmptyLanguage ? 'not-allowed' : 'pointer'};border-radius:4px;background:var(--bg3);color:var(--text);font-family:var(--sans);opacity:${isEmptyLanguage ? '0.55' : '1'}">Apply to Editor</button>
 </h3>
 <div style="font-size:.7rem;color:var(--text2);margin-bottom:12px;line-height:1.8">
   Non-terminal <b>[p, A, q]</b>: starting in state p with stack symbol A on top, consume some input and end in state q with A removed.<br>
   Start variable: <b>S</b> &nbsp;&nbsp; PDA states: ${states.length} &nbsp;&nbsp; Generated rules: ${prods.length} ${prunedMessage}
 </div>
-<div style="overflow-x:auto"><table class="result-table">
+${isEmptyLanguage ? `<div class="pump-result fail">No productions remain after pruning. The resulting CFG denotes the empty language.</div>` : `<div style="overflow-x:auto"><table class="result-table">
   <thead><tr><th>LHS</th><th></th><th>RHS</th></tr></thead>
   <tbody>${rows}</tbody>
-</table></div>
+</table></div>`}
 <div style="font-size:.62rem;color:var(--text3);margin-top:8px">
   Assumes PDA pops exactly 1 symbol and pushes at most 2 per transition. Longer push strings require decomposition.
 </div>
@@ -1000,7 +996,7 @@ function runPDA2CFG(mode = 'raw') {
 
   setTimeout(() => {
     const btn = $('copy-cfg-btn');
-    if(btn) {
+    if (btn && !isEmptyLanguage) {
       btn.onclick = () => {
         $('grammar-input').value = textFormat;
         parseRawGrammar();
@@ -1374,22 +1370,27 @@ function runLeftRecursionRemoval() {
     
     const vars = [...G.vars];
     const newProds = [];
+    const warnings = [];
     const eps = App.config.sym.eps;
 
     vars.forEach(A => {
-        const rulesA = G.productions.filter(p => p.lhs === A);
+        const rulesA = G.productions
+          .filter(p => p.lhs === A)
+          .map(p => ({ ...p, rhsArr: p.rhsArr || tokenizeRHS(p.rhs, G.vars) }));
         const recursive = rulesA.filter(p => p.rhsArr[0] === A);
         const nonRecursive = rulesA.filter(p => p.rhsArr[0] !== A);
 
         if (recursive.length > 0) {
+            if (nonRecursive.length === 0) {
+                rulesA.forEach(p => newProds.push(p));
+                warnings.push(`Skipped ${A}: no non-left-recursive alternative exists, so removing direct left recursion would change the language.`);
+                return;
+            }
             const ARime = A + "'";
             nonRecursive.forEach(p => {
                 const newRhs = (p.rhs === eps ? [] : p.rhsArr).concat([ARime]);
                 newProds.push({ lhs: A, rhs: newRhs.join(''), rhsArr: newRhs });
             });
-            if (nonRecursive.length === 0) {
-                 newProds.push({ lhs: A, rhs: ARime, rhsArr: [ARime] });
-            }
             recursive.forEach(p => {
                 const alpha = p.rhsArr.slice(1);
                 const newRhs = alpha.concat([ARime]);
@@ -1404,10 +1405,10 @@ function runLeftRecursionRemoval() {
     const formatRule = p => `${p.lhs} → ${p.rhs}`;
     out.innerHTML = `<div class="card">
         <div class="card-title">Left Recursion Removal</div>
+        ${warnings.length ? `<div class="pump-result fail" style="margin-bottom:12px">${warnings.join('<br>')}</div>` : ''}
         <div style="font-family:var(--mono);font-size:0.8rem;line-height:1.6">
             ${newProds.map(p => `<div><span style="color:var(--accent)">${p.lhs}</span> → ${p.rhs}</div>`).join('')}
         </div>
         <div class="pump-result ok" style="margin-top:12px">Transformed grammar is now suitable for top-down parsing.</div>
     </div>`;
 }
-

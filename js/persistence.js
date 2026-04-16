@@ -144,6 +144,25 @@ function validateSchema(data) {
   return true;
 }
 
+function normalizeGrammarData(grammar) {
+  const productions = Array.isArray(grammar?.productions) ? grammar.productions : [];
+  const vars = new Set(Array.isArray(grammar?.vars) ? grammar.vars : []);
+  productions.forEach(p => {
+    if (typeof p?.lhs === 'string' && p.lhs) vars.add(p.lhs);
+  });
+  const start = grammar?.start || productions[0]?.lhs || '';
+  const normalizedProductions = productions.map(p => {
+    const rhs = typeof p?.rhs === 'string' ? p.rhs : App.config.sym.eps;
+    const rhsArr = Array.isArray(p?.rhsArr)
+      ? [...p.rhsArr]
+      : (typeof tokenizeRHS === 'function'
+        ? tokenizeRHS(rhs, vars)
+        : (rhs === App.config.sym.eps ? [App.config.sym.eps] : rhs.split('')));
+    return { ...p, rhs, rhsArr };
+  });
+  return { vars, start, productions: normalizedProductions };
+}
+
 function loadData(d, isExample) {
   App.machine = d.machine || 'DFA'; App.sigma = new Set(d.sigma || []);
   App.stackAlpha = new Set(d.stackAlpha || [App.config.sym.stackBottom]);
@@ -154,9 +173,10 @@ function loadData(d, isExample) {
   App.accepts = new Set(d.accepts || []);
   resetIds();
   if (d.grammar) {
-    App.grammar.vars = new Set(d.grammar.vars || []);
-    App.grammar.start = d.grammar.start || '';
-    App.grammar.productions = d.grammar.productions || [];
+    const grammar = normalizeGrammarData(d.grammar);
+    App.grammar.vars = grammar.vars;
+    App.grammar.start = grammar.start;
+    App.grammar.productions = grammar.productions;
   }
   if (d.config) {
     // Drop any legacy theme or presentation properties that might be in old files

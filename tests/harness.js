@@ -12,7 +12,8 @@ const SCRIPT_ORDER = [
   'js/workspace.js',
   'js/persistence.js',
   'js/ui.js',
-  'js/algorithms-fa.js'
+  'js/algorithms-fa.js',
+  'js/algorithms-cfg.js'
 ];
 
 function createElement(id = '') {
@@ -144,7 +145,9 @@ function createHarness() {
     closeModal: () => {},
     showOverlay: () => {},
     setView: () => {},
-    renderSigma: () => {}
+    renderSigma: () => {},
+    renderGamma: () => {},
+    renderOutputAlpha: () => {}
   });
   context.window = context;
   context.addEventListener = () => {};
@@ -192,7 +195,13 @@ function createHarness() {
     App.simSteps = [];
     App.simIdx = 0;
     App.autoTimer = null;
-    App.grammar = { vars: new Set(['S']), start: 'S', productions: [] };
+    if (App.grammar) {
+      App.grammar.vars = new Set(['S']);
+      App.grammar.start = 'S';
+      App.grammar.productions = [];
+    } else {
+      App.grammar = { vars: new Set(['S']), start: 'S', productions: [] };
+    }
     App.currentAlgo = 'table';
     App.stateClassification = null;
     App.workspaceB = null;

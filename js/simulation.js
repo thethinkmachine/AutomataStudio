@@ -17,6 +17,12 @@ function tokenize(str, sigma = App.sigma) {
   return bt(0);
 }
 
+function canApplyPdaPop(top, pop) {
+  const eps = App.config.sym.eps;
+  if (pop === eps) return true;
+  return top !== undefined && (pop === top || pop === App.config.sym.any);
+}
+
 function runSim() {
   resetSim();
   let raw = parseEps($('sim-in').value);
@@ -118,7 +124,7 @@ function simPDA(tokens) {
       const eps = App.config.sym.eps;
       App.transitions.filter(t => t.from === state).forEach(t => {
         const rOk = t.symbol === eps || (remaining.length > 0 && (t.symbol === remaining[0] || t.symbol === App.config.sym.any));
-        const pOk = (top !== undefined && (t.pop === top || t.pop === App.config.sym.any)) || (!isExplicit && t.pop === eps);
+        const pOk = canApplyPdaPop(top, t.pop);
         if (!rOk || !pOk) return;
         const ns = [...stack]; 
         if (t.pop !== eps) ns.pop();
@@ -420,7 +426,7 @@ function testPDA(tokens) {
       const eps = App.config.sym.eps;
       App.transitions.filter(t => t.from === state).forEach(t => {
         const rOk = t.symbol === eps || (remaining.length > 0 && (t.symbol === remaining[0] || t.symbol === App.config.sym.any));
-        const pOk = (top !== undefined && (t.pop === top || t.pop === App.config.sym.any)) || (!isExplicit && t.pop === eps);
+        const pOk = canApplyPdaPop(top, t.pop);
         if (!rOk || !pOk) return;
         const ns = [...stack];
         if (t.pop !== eps) ns.pop();

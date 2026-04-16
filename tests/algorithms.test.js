@@ -63,6 +63,13 @@ function configureAppMachine(h, config) {
   return App;
 }
 
+function configureGrammar(h, grammar) {
+  const App = h.context.App;
+  App.grammar.vars = new Set(grammar.vars || []);
+  App.grammar.start = grammar.start || '';
+  App.grammar.productions = (grammar.productions || []).map(p => ({ ...p }));
+}
+
 test('theme button icon reflects the active theme', () => {
   const h = createHarness();
   const btn = h.getElement('theme-btn');
@@ -139,6 +146,23 @@ test('PDA batch testing works in empty-stack mode', () => {
   const html = h.getElement('batch-result').innerHTML;
   assert.match(html, /✓ "ab"/);
   assert.match(html, /✗ "aba"/);
+});
+
+test('PDA simulation honors epsilon-pop transitions in explicit mode', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'PDA',
+    sigma: ['a'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'qa')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's1', symbol: 'a', pop: 'ε', push: 'ε' }
+    ],
+    startId: 's0',
+    accepts: ['s1']
+  });
+  h.context.App.config.pdaParadigm = 'explicit';
+  h.context.simPDA(['a']);
+  assert.equal(h.context.App.simSteps.at(-1).final, 'accept');
 });
 
 test('subset construction handles epsilon cycles and marks accepting subsets', () => {
@@ -523,4 +547,56 @@ test('universality, emptiness, and finiteness render correct classifications', (
   });
   h.context.algoIsFinite(card);
   assert.match(card.innerHTML, /INFINITE/);
+});
+
+test('legacy grammar productions are normalized when loaded from workspace data', () => {
+  const h = createHarness();
+  h.context.loadData({
+    machine: 'DFA',
+    sigma: ['a'],
+    states: [],
+    transitions: [],
+    startId: null,
+    accepts: [],
+    grammar: {
+      vars: ['S'],
+      start: 'S',
+      productions: [{ lhs: 'S', rhs: 'a' }]
+    }
+  });
+  assert.equal(JSON.stringify(h.context.App.grammar.productions[0].rhsArr), JSON.stringify(['a']));
+  assert.doesNotThrow(() => h.context.runFirstFollow());
+  assert.match(h.getElement('gram-output').innerHTML, /First & Follow Sets/);
+});
+
+test('left recursion removal leaves recursive-only grammars unchanged and warns', () => {
+  const h = createHarness();
+  configureGrammar(h, {
+    vars: ['S'],
+    start: 'S',
+    productions: [{ lhs: 'S', rhs: 'Sa', rhsArr: ['S', 'a'] }]
+  });
+  h.context.runLeftRecursionRemoval();
+  const html = h.getElement('gram-output').innerHTML;
+  assert.match(html, /Skipped S/);
+  assert.match(html, />S<\/span> → Sa</);
+  assert.doesNotMatch(html, /aS'/);
+});
+
+test('pruned PDA to CFG reports empty language instead of inventing epsilon', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'PDA',
+    sigma: ['a'],
+    states: [makeState('s0', 'q0')],
+    transitions: [],
+    startId: 's0',
+    accepts: []
+  });
+  h.context.App.config.pdaParadigm = 'explicit';
+  h.context.runPDA2CFG('pruned');
+  const html = h.getElement('gram-output').innerHTML;
+  assert.match(html, /empty language/i);
+  assert.match(html, /Generated rules: 0/);
+  assert.doesNotMatch(html, />ε</);
 });
