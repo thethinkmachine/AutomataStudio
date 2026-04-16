@@ -332,15 +332,15 @@ function deleteTransitions(ids) {
   renderAll(); updateLPanel(); updateRPanel();
 }
 function transLabel(t) {
-  if (App.machine === 'PDA') return `${t.symbol},${t.pop}/${t.push}`;
-  if (App.machine === 'TM') return `${t.symbol}/${t.write},${t.dir}`;
-  if (App.machine === 'Mealy') return `${t.symbol}/${t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda}`;
+  if (App.machine === 'PDA') return `${t.symbol}, ${t.pop} → ${t.push}`;
+  if (App.machine === 'TM') return `${t.symbol} → ${t.write}, ${t.dir}`;
+  if (App.machine === 'Mealy') return `${t.symbol} / ${t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda}`;
   if (App.machine === 'MTM') {
     const syms = t.tapeSyms || [t.symbol];
     const writes = t.tapeWrites || [t.write || t.symbol];
     const defDir = App.directions[0].value;
     const dirs = t.tapeDirs || [t.dir || defDir];
-    return syms.map((s, i) => `${s}/${writes[i] ?? s},${dirs[i] ?? defDir}`).join(' ');
+    return syms.map((s, i) => `${s} → ${writes[i] ?? s}, ${dirs[i] ?? defDir}`).join(' | ');
   }
   return t.symbol;
 }
