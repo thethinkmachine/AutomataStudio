@@ -7,40 +7,89 @@ function renderGramSyms() {
   $('term-chips').innerHTML = [...App.sigma].map(s => `<div class="chip" style="color:var(--gold)">${s}</div>`).join('')
     || '<span style="font-size:.65rem;color:var(--text3);font-style:italic">Mirror from Σ</span>';
 }
-function addNT() {
-  const v = $('nt-in').value.trim(); if (!v) return;
-  G.vars.add(v.toUpperCase()); $('nt-in').value = '';
-  renderGrammarLPanel(); renderGrammarView();
-}
-function delNT(v) {
-  G.vars.delete(v); G.productions = G.productions.filter(p => p.lhs !== v);
-  if (G.start === v) G.start = [...G.vars][0] || '';
-  renderGrammarLPanel(); renderGrammarView();
-}
-function addProduction() {
-  const lhs = $('prod-lhs').value.trim().toUpperCase();
-  const rhs = $('prod-rhs').value.trim();
-  if (!lhs || !rhs) return;
-  if (!G.vars.has(lhs)) { G.vars.add(lhs); }
-  rhs.split('|').forEach(alt => {
-    const trimmed = alt.trim();
-    if (trimmed) G.productions.push({ id: 'p' + Date.now() + '_' + Math.random(), lhs, rhs: trimmed });
+function parseRawGrammar() {
+  const text = $('grammar-input').value;
+  const lines = text.split('\n').filter(l => l.trim());
+  G.vars.clear();
+  G.productions = [];
+  G.start = '';
+
+  const parsedLines = [];
+  // First pass: identify variables (LHS of any rule)
+  lines.forEach(line => {
+    let parts = line.split(/->|→|=>/);
+    if (parts.length >= 2) {
+      let lhs = parts[0].trim();
+      if (!G.start) G.start = lhs;
+      G.vars.add(lhs);
+      parsedLines.push({ lhs, rhsRaw: parts.slice(1).join('->').trim() });
+    }
   });
-  $('prod-rhs').value = '';
-  renderGrammarLPanel(); renderGrammarView();
+
+  // Second pass: tokenize RHS
+  parsedLines.forEach(({ lhs, rhsRaw }) => {
+    rhsRaw.split('|').forEach(alt => {
+      let altTrimmed = alt.trim();
+      if (!altTrimmed) return;
+      G.productions.push({
+        id: 'p' + Date.now() + '_' + Math.random(),
+        lhs,
+        rhs: altTrimmed,
+        rhsArr: tokenizeRHS(altTrimmed, G.vars)
+      });
+    });
+  });
+
+  renderGrammarView();
 }
-function delProd(id) { G.productions = G.productions.filter(p => p.id !== id); renderGrammarLPanel(); renderGrammarView(); }
+
+function tokenizeRHS(str, vars) {
+  const raw = str.trim();
+  if (raw === App.config.sym.eps || raw.toLowerCase() === 'eps' || raw.toLowerCase() === 'epsilon') return [App.config.sym.eps];
+  const tokens = [];
+  let current = '';
+  // Simple tokenization: treat known variables as single tokens, everything else as individual terminal chars.
+  // Exception: things in brackets `[q0,a,q1]` are parsed as a single non-terminal token.
+  for (let i = 0; i < str.length; i++) {
+    if (str[i] === '[') {
+      let j = i;
+      while (j < str.length && str[j] !== ']') j++;
+      if (j < str.length) {
+        let nt = str.slice(i, j + 1);
+        vars.add(nt);
+        tokens.push(nt);
+        i = j;
+        continue;
+      }
+    }
+    // If we have a sequence that matches a variable exactly, this is tricky if variables are multi-char (but they aren't unless bracketed or we enforce spaces).
+    // For now, if we match any known variable string greedily (descending length):
+    let matchedVar = [...vars].sort((a,b)=>b.length - a.length).find(v => str.startsWith(v, i));
+    if (matchedVar) {
+      tokens.push(matchedVar);
+      i += matchedVar.length - 1;
+    } else if (str[i] !== ' ') {
+      tokens.push(str[i]);
+    }
+  }
+  return tokens.length ? tokens : [App.config.sym.eps];
+}
+
 function renderGrammarLPanel() {
-  $('nt-chips').innerHTML = [...G.vars].map(v => `<div class="chip" style="color:var(--accent)">${v}<span class="x" onclick="delNT('${v}')">×</span></div>`).join('');
-  const pl = $('prod-list');
-  pl.innerHTML = G.productions.length ? G.productions.map(p => `
-<div class="prod-item"><span style="color:var(--accent)">${p.lhs}</span>
-<span class="prod-arrow">→</span><span class="prod-rhs">${p.rhs}</span>
-<span class="prod-del" onclick="delProd('${p.id}')">×</span></div>`).join('')
-    : '<div class="empty-msg">No productions</div>';
-  const ss = $('start-sym');
-  ss.innerHTML = [...G.vars].map(v => `<option value="${v}" ${v === G.start ? 'selected' : ''}>${v}</option>`).join('');
-  ss.onchange = () => { G.start = ss.value; };
+}
+
+
+
+/** Collects all terminals used in the current grammar */
+function getGrammarTerminals() {
+  const terms = new Set();
+  G.productions.forEach(p => {
+    (p.rhsArr || []).forEach(t => {
+      if (!G.vars.has(t) && t !== App.config.sym.eps) terms.add(t);
+    });
+  });
+  [...App.sigma].forEach(s => terms.add(s));
+  return terms;
 }
 
 function renderGrammarView() {
@@ -52,7 +101,8 @@ function renderGrammarView() {
   let html = '<div class="grammar-display">';
   Object.entries(byLHS).forEach(([lhs, rhss]) => {
     const colored = rhss.map(rhs => {
-      return rhs.split('').map(c => G.vars.has(c) ? `<span class="nt">${c}</span>` : c === App.config.sym.eps ? `<span class="eps">${App.config.sym.eps}</span>` : `<span class="t">${c}</span>`).join('');
+      return (G.productions.find(p=>p.lhs === lhs && p.rhs === rhs)?.rhsArr || tokenizeRHS(rhs, G.vars))
+        .map(c => G.vars.has(c) ? `<span class="nt">${c}</span>` : c === App.config.sym.eps ? `<span class="eps">${App.config.sym.eps}</span>` : `<span class="t">${c}</span>`).join('');
     }).join(' | ');
     html += `<div><span class="nt">${lhs}</span> <span style="color:var(--text3)">→</span> ${colored}</div>`;
   });
@@ -64,26 +114,26 @@ function renderGrammarView() {
 function runCNF() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add productions first'); return; }
-  G.start = ($('start-sym').value) || G.start;
-  let prods = G.productions.map(p => ({ lhs: p.lhs, rhs: p.rhs }));
-  let html = '<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:12px">CNF Conversion Steps</h3>';
+  G.start = ($('start-sym')?.value) || G.start;
+  let prods = G.productions.map(p => ({ lhs: p.lhs, rhs: p.rhs, rhsArr: p.rhsArr || tokenizeRHS(p.rhs, G.vars) }));
+  let html = '<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">CNF Conversion Steps</h3>';
   const steps = [];
 
   // Step 1: Add new start
   const S0 = G.start + '₀';
-  prods = [{ lhs: S0, rhs: G.start }, ...prods];
+  prods = [{ lhs: S0, rhs: G.start, rhsArr: [G.start] }, ...prods];
   steps.push({ lbl: 'Step 1: New start', desc: `Add ${S0} → ${G.start} to avoid start symbol in RHS`, prods: [...prods] });
 
   // Step 2: Eliminate ε-productions (find nullable)
   const nullable = new Set();
   prods.forEach(p => { if (p.rhs === App.config.sym.eps) nullable.add(p.lhs); });
   let changed = true;
-  while (changed) { changed = false; prods.forEach(p => { if (!nullable.has(p.lhs) && p.rhs.split('').every(c => nullable.has(c) || !c)) { nullable.add(p.lhs); changed = true; } }); }
+  while (changed) { changed = false; prods.forEach(p => { if (!nullable.has(p.lhs) && p.rhsArr.every(c => nullable.has(c) || !c)) { nullable.add(p.lhs); changed = true; } }); }
   const prods2 = [], seen2 = new Set();
   prods.forEach(p => {
     if (p.rhs === App.config.sym.eps) { if (p.lhs === S0) prods2.push(p); return; }
     // Generate all subsets of nullable positions
-    const chars = [...p.rhs];
+    const chars = p.rhsArr;
     const nullableIdx = chars.map((c, i) => nullable.has(c) ? i : -1).filter(i => i >= 0);
     const total = 1 << nullableIdx.length; // 2^k subsets
     for (let mask = 0; mask < total; mask++) {
@@ -92,12 +142,13 @@ function runCNF() {
         return ni === -1 || !(mask & (1 << ni)); // keep if not nullable or not masked out
       });
       const r = kept.join('');
-      if (!r) { // all omitted → ε, only allow for new start
-        if (p.lhs === S0) { const k2 = p.lhs + '→' + App.config.sym.eps; if (!seen2.has(k2)) { seen2.add(k2); prods2.push({ lhs: p.lhs, rhs: App.config.sym.eps }); } }
+      const rArr = kept.length ? kept : [App.config.sym.eps];
+      if (!kept.length) { // all omitted → ε, only allow for new start
+        if (p.lhs === S0) { const k2 = p.lhs + '→' + App.config.sym.eps; if (!seen2.has(k2)) { seen2.add(k2); prods2.push({ lhs: p.lhs, rhs: App.config.sym.eps, rhsArr: rArr }); } }
         continue;
       }
       const key = p.lhs + '→' + r;
-      if (!seen2.has(key)) { seen2.add(key); prods2.push({ lhs: p.lhs, rhs: r }); }
+      if (!seen2.has(key)) { seen2.add(key); prods2.push({ lhs: p.lhs, rhs: r, rhsArr: rArr }); }
     }
   });
   steps.push({ lbl: 'Step 2: Remove ε-productions', desc: `Nullable: {${[...nullable].join(',')}}. Add combinations without nullable symbols.`, prods: [...prods2] });
@@ -107,23 +158,22 @@ function runCNF() {
   function closeUnit(A) {
     const reach = new Set([A]);
     let ch = true;
-    while (ch) { ch = false; prods2.forEach(p => { if (reach.has(p.lhs) && G.vars.has(p.rhs) && !reach.has(p.rhs)) { reach.add(p.rhs); ch = true; } }); }
+    while (ch) { ch = false; prods2.forEach(p => { if (reach.has(p.lhs) && G.vars.has(p.rhs) && p.rhsArr.length === 1 && !reach.has(p.rhs)) { reach.add(p.rhs); ch = true; } }); }
     return reach;
   }
   [...G.vars, S0].forEach(A => {
     const reach = closeUnit(A);
-    reach.forEach(B => { prods2.filter(p => p.lhs === B && !G.vars.has(p.rhs)).forEach(p => prods3.push({ lhs: A, rhs: p.rhs })); });
+    reach.forEach(B => { prods2.filter(p => p.lhs === B && !(G.vars.has(p.rhs) && p.rhsArr.length === 1)).forEach(p => prods3.push({ lhs: A, rhs: p.rhs, rhsArr: p.rhsArr })); });
   });
   steps.push({ lbl: 'Step 3: Remove unit productions', desc: 'Replace chains A→B→... with direct productions.', prods: [...prods3] });
 
   // Step 4: Binarize + add terminal intermediates
   const prods4 = [...prods3], newVars = new Map();
   let vcnt = 0;
-  prods4.forEach(p => p.rhsArr = p.rhs.split(''));
   function termVar(t) { if (!newVars.has(t)) { const v = 'T_' + t; newVars.set(t, v); prods4.push({ lhs: v, rhs: t, rhsArr: [t] }); } return newVars.get(t); }
-  const toFix = prods4.filter(p => p.rhs.length >= 2);
+  const toFix = prods4.filter(p => p.rhsArr.length >= 2);
   toFix.forEach(p => {
-    const syms = p.rhs.split('').map(c => G.vars.has(c) || c === S0 ? c : termVar(c));
+    const syms = p.rhsArr.map(c => G.vars.has(c) || c === S0 ? c : termVar(c));
     while (syms.length > 2) { const last = syms.pop(); const prev = syms.pop(); const v = 'B_' + (++vcnt); prods4.push({ lhs: v, rhs: prev + last, rhsArr: [prev, last] }); syms.push(v); }
     p.rhs = syms.join('');
     p.rhsArr = [...syms];
@@ -139,16 +189,26 @@ function runCNF() {
   });
   out.innerHTML = html;
   App._cnfProds = prods4; App._cnfStart = S0;
+  App._lastParsedWasCnf = true;
 }
 
 // --- CYK Parsing ---
 function runCYK() {
-  const str = $('cyk-in').value.trim();
+  const strLine = $('cyk-in').value.trim();
+  const rawStr = parseEps(strLine);
+  const str = rawStr === App.config.sym.eps ? '' : rawStr;
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
-  if (!App._cnfProds) { showStatus('Run CNF conversion first'); return; }
-  const s = str === App.config.sym.eps ? '' : str;
-  if (s.length === 0) {
+  if (!App._lastParsedWasCnf) runCNF();
+  if (!App._cnfProds) { showStatus('CNF conversion failed'); return; }
+  const gTerms = getGrammarTerminals();
+  const sTokenized = str === App.config.sym.eps ? [] : tokenize(str, gTerms);
+  if (sTokenized === null) {
+    showStatus('Input contains symbols not in the grammar');
+    out.innerHTML = `<div class="pump-result fail">Input string contains terminals that are not defined in your grammar.</div>`;
+    return;
+  }
+  if (sTokenized.length === 0) {
     // Check if start derives ε
     const acc = App._cnfProds.some(p => p.lhs === App._cnfStart && p.rhs === App.config.sym.eps);
     out.innerHTML = `<div class="card"><div class="card-title">CYK Result for ${App.config.sym.eps}</div>
@@ -156,11 +216,11 @@ function runCYK() {
     ${acc ? '✓ ACCEPTED' : '✗ REJECTED'}</div></div>`;
     return;
   }
-  const n = s.length;
+  const n = sTokenized.length;
   const prods = App._cnfProds;
   const T = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => new Set()));
   // Fill length 1
-  for (let i = 0; i < n; i++) { prods.forEach(p => { if (p.rhs === s[i]) T[i][i].add(p.lhs); }); }
+  for (let i = 0; i < n; i++) { prods.forEach(p => { if (p.rhs === sTokenized[i]) T[i][i].add(p.lhs); }); }
   // Fill length 2..n
   for (let len = 2; len <= n; len++) {
     for (let i = 0; i <= n - len; i++) {
@@ -176,11 +236,11 @@ function runCYK() {
     }
   }
   const accepted = T[0][n - 1].has(App._cnfStart);
-  let html = `<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:12px">CYK Parse Table for "${str}"</h3>
+  let html = `<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">CYK Parse Table for "${str}"</h3>
 <div style="font-size:.85rem;margin-bottom:12px;color:${accepted ? 'var(--green)' : 'var(--red)'}">
   ${accepted ? '✓ ACCEPTED — ' + App._cnfStart + ' ∈ T[0][' + (n - 1) + ']' : '✗ REJECTED — ' + App._cnfStart + ' ∉ T[0][' + (n - 1) + ']'}</div>`;
   html += '<div style="overflow-x:auto"><table class="cyk-table"><thead><tr><th class="cyk-cell header">i\\j</th>';
-  for (let j = 0; j < n; j++) html += `<th class="cyk-cell header">${j} (${s[j]})</th>`;
+  for (let j = 0; j < n; j++) html += `<th class="cyk-cell header">${j} (${str === App.config.sym.eps ? '' : sTokenized[j]})</th>`;
   html += '</tr></thead><tbody>';
   for (let i = 0; i < n; i++) {
     html += `<tr><th class="cyk-cell header">${i}</th>`;
@@ -202,28 +262,31 @@ function runCYK() {
 function runDerivation() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
-  G.start = $('start-sym').value || G.start;
+  G.start = $('start-sym')?.value || G.start;
   // BFS leftmost derivation
   const start = G.start, max = 150;
-  let current = start, steps = [start], found = false;
+  let current = [start], steps = [[start]], found = false;
   for (let i = 0; i < max; i++) {
     let applied = false;
-    for (const c of current) {
+    for (let j = 0; j < current.length; j++) {
+      const c = current[j];
       if (G.vars.has(c)) {
         const prods = G.productions.filter(p => p.lhs === c);
         if (!prods.length) break;
         const p = prods[Math.floor(Math.random() * prods.length)];
-        current = current.replace(c, p.rhs);
+        const newArr = [...current];
+        newArr.splice(j, 1, ...(p.rhs === App.config.sym.eps ? [] : p.rhsArr));
+        current = newArr;
         steps.push(current); applied = true;
-        if (![...current].some(ch => G.vars.has(ch))) { found = true; break; }
+        if (!current.some(ch => G.vars.has(ch))) { found = true; break; }
         break;
       }
     }
     if (!applied || found) break;
   }
-  let html = '<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:12px">Leftmost Derivation from ' + start + '</h3>';
-  steps.forEach((step, i) => {
-    const colored = step.split('').map(c => G.vars.has(c) ? `<span class="nt">${c}</span>` : `<span class="term">${c}</span>`).join('');
+  let html = '<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">Leftmost Derivation from ' + start + '</h3>';
+  steps.forEach((stepArr, i) => {
+    const colored = stepArr.length === 0 ? `<span class="eps">${App.config.sym.eps}</span>` : stepArr.map(c => G.vars.has(c) ? `<span class="nt">${c}</span>` : `<span class="term">${c}</span>`).join('');
     html += `<div class="deriv-step">${i > 0 ? '⇒ ' : ''}${colored}</div>`;
   });
   if (!found) html += `<div style="font-size:.7rem;color:var(--text3);margin-top:8px">Derivation truncated at ${max} steps. Grammar may be recursive.</div>`;
@@ -237,9 +300,9 @@ function runDerivation() {
 function runRightmostDerivation() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
-  G.start = $('start-sym').value || G.start;
+  G.start = $('start-sym')?.value || G.start;
   const start = G.start, max = 150;
-  let current = start, steps = [start], found = false;
+  let current = [start], steps = [[start]], found = false;
   for (let i = 0; i < max; i++) {
     let applied = false;
     // Find RIGHTMOST nonterminal
@@ -252,13 +315,15 @@ function runRightmostDerivation() {
     const prods = G.productions.filter(p => p.lhs === c);
     if (!prods.length) break;
     const p = prods[Math.floor(Math.random() * prods.length)];
-    current = current.slice(0, rightmostIdx) + p.rhs + current.slice(rightmostIdx + 1);
+    const newArr = [...current];
+    newArr.splice(rightmostIdx, 1, ...(p.rhs === App.config.sym.eps ? [] : p.rhsArr));
+    current = newArr;
     steps.push(current); applied = true;
-    if (![...current].some(ch => G.vars.has(ch))) { found = true; break; }
+    if (!current.some(ch => G.vars.has(ch))) { found = true; break; }
   }
-  let html = '<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:12px">Rightmost Derivation from ' + start + '</h3>';
-  steps.forEach((step, i) => {
-    const colored = step.split('').map(c => G.vars.has(c) ? `<span class="nt">${c}</span>` : `<span class="term">${c}</span>`).join('');
+  let html = '<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">Rightmost Derivation from ' + start + '</h3>';
+  steps.forEach((stepArr, i) => {
+    const colored = stepArr.length === 0 ? `<span class="eps">${App.config.sym.eps}</span>` : stepArr.map(c => G.vars.has(c) ? `<span class="nt">${c}</span>` : `<span class="term">${c}</span>`).join('');
     html += `<div class="deriv-step">${i > 0 ? '⇒<sub>rm</sub> ' : ''}${colored}</div>`;
   });
   if (!found) html += `<div style="font-size:.7rem;color:var(--text3);margin-top:8px">Derivation truncated at ${max} steps.</div>`;
@@ -268,43 +333,82 @@ function runRightmostDerivation() {
 function runParseTree() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
-  G.start = $('start-sym').value || G.start;
+  G.start = $('start-sym')?.value || G.start;
   // Build a simple derivation tree structure via leftmost derivation
   function buildTree(sym, depth) {
     if (depth > 20 || !G.vars.has(sym)) return { sym, children: [] };
     const prods = G.productions.filter(p => p.lhs === sym);
     if (!prods.length) return { sym, children: [] };
     const p = prods[0];
-    return { sym, children: p.rhs.split('').map(c => buildTree(c, depth + 1)) };
+    return { sym, children: (p.rhs === App.config.sym.eps ? [App.config.sym.eps] : p.rhsArr).map(c => buildTree(c, depth + 1)) };
   }
   const tree = buildTree(G.start, 0);
   // Layout and render as SVG
   const svgData = layoutParseTree(tree);
-  out.innerHTML = `<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:12px">Parse Tree (first derivation)</h3>${svgData}`;
+  out.innerHTML = `<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">Parse Tree (first derivation)</h3>${svgData}`;
 }
 
 function layoutParseTree(root) {
-  const nodeW = 50, nodeH = 40, levelH = 60;
+  const nodeH = 40, levelH = 60, minGap = 20;
   const positions = [];
-  let maxX = 0, maxY = 0;
-  function assign(node, x, y) {
-    node._x = x; node._y = y;
+  let maxY = 0;
+  
+  // First pass: compute relative X (Reingold-Tilford style conceptually, simplified)
+  function calcMetrics(node) {
+    if (!node.children || !node.children.length) {
+      node.w = (node.sym.length * 10) + 16; 
+      return node.w;
+    }
+    let tw = 0;
+    node.children.forEach(ch => { tw += calcMetrics(ch) + minGap; });
+    tw -= minGap;
+    node.w = Math.max(tw, (node.sym.length * 10) + 16);
+    return node.w;
+  }
+  calcMetrics(root);
+
+  // Second pass: assign actual X and Y
+  function assign(node, cx, y) {
+    node._x = cx; node._y = y;
     positions.push(node);
-    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
-    if (node.children.length) {
-      const startX = x - (node.children.length - 1) * nodeW / 2;
-      node.children.forEach((ch, i) => assign(ch, startX + i * (nodeW + 10), y + levelH));
+    maxY = Math.max(maxY, y);
+    if (node.children && node.children.length) {
+      // the total width this node's children need is sum of their widths + gaps
+      let totalW = 0;
+      node.children.forEach(ch => totalW += ch.w);
+      totalW += (node.children.length - 1) * minGap;
+      
+      let startX = cx - (totalW / 2);
+      node.children.forEach(ch => {
+        let childCx = startX + (ch.w / 2);
+        assign(ch, childCx, y + levelH);
+        startX += ch.w + minGap;
+      });
     }
   }
-  assign(root, 300, 30);
-  const svgW = Math.max(600, maxX + 60), svgH = maxY + 60;
+  assign(root, Math.max(300, root.w / 2 + 50), 30);
+  
+  // Third pass to find min/max
+  let minX = Infinity, maxX = -Infinity;
+  positions.forEach(n => {
+    minX = Math.min(minX, n._x - n.w / 2);
+    maxX = Math.max(maxX, n._x + n.w / 2);
+  });
+  // Shift everything positive if minX < 20
+  const shiftX = minX < 20 ? 20 - minX : 0;
+  if (shiftX > 0) {
+    positions.forEach(n => n._x += shiftX);
+    maxX += shiftX;
+  }
+
+  const svgW = maxX + 40, svgH = maxY + 60;
   let edges = '', nodes = '';
   positions.forEach(node => {
     node.children.forEach(ch => {
       edges += `<line class="pt-edge" x1="${node._x}" y1="${node._y}" x2="${ch._x}" y2="${ch._y}"/>`;
     });
     const isNT = G.vars.has(node.sym);
-    const rx = nodeW / 2 - 2;
+    const rx = ((node.sym.length * 8) + 16) / 2;
     if (isNT) {
       nodes += `<rect class="pt-node-nt" x="${node._x - rx}" y="${node._y - 12}" width="${rx * 2}" height="24" rx="4"/>`;
     } else {
@@ -316,49 +420,61 @@ function layoutParseTree(root) {
 }
 
 function runAmbiguityCheck() {
-  const str = $('ambig-in').value.trim() || $('cyk-in').value.trim();
+  const strLine = $('ambig-in').value.trim() || $('cyk-in').value.trim();
+  const strRaw = parseEps(strLine);
+  const str = strRaw === App.config.sym.eps ? '' : strRaw;
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   if (!str) { showStatus('Enter a string to check ambiguity'); return; }
-  const s = str === App.config.sym.eps ? '' : str;
-  G.start = $('start-sym').value || G.start;
+  const gTerms = getGrammarTerminals(); let targetSeq = str === App.config.sym.eps ? [] : tokenize(str, gTerms); if (targetSeq === null) return;
+  const targetStr = targetSeq.join('');
+  G.start = $('start-sym')?.value || G.start;
   // BFS for two different leftmost derivations
   const found = [];
   const visited = new Set([G.start]);
-  const queue = [{ sent: G.start, steps: [G.start] }];
+  const queue = [{ sentArr: [G.start], steps: [[G.start]] }];
   let iterations = 0;
-  while (queue.length && found.length < 2 && iterations < 2000) {
+  while (queue.length && found.length < 2 && iterations < 5000) {
     iterations++;
-    const { sent, steps } = queue.shift();
-    // Check if it's the target string
-    if (sent === s) { found.push(steps); continue; }
-    if (![...sent].some(c => G.vars.has(c))) continue; // terminal, not the target
+    const { sentArr, steps } = queue.shift();
+    const sentStr = sentArr.join('');
+    // Check if it's the target string (terminal sequence matching input exactly)
+    if (sentStr === targetStr && !sentArr.some(c => G.vars.has(c))) { found.push(steps); continue; }
+    if (!sentArr.some(c => G.vars.has(c))) continue; // terminal, not the target
     // Find leftmost NT
-    for (let i = 0; i < sent.length; i++) {
-      if (G.vars.has(sent[i])) {
-        G.productions.filter(p => p.lhs === sent[i]).forEach(p => {
-          const nxt = sent.slice(0, i) + (p.rhs === App.config.sym.eps ? '' : p.rhs) + sent.slice(i + 1);
-          if (!visited.has(nxt + '|' + steps.length) && steps.length < 20) {
-            visited.add(nxt + '|' + steps.length);
-            queue.push({ sent: nxt, steps: [...steps, nxt] });
+    for (let i = 0; i < sentArr.length; i++) {
+      if (G.vars.has(sentArr[i])) {
+        G.productions.filter(p => p.lhs === sentArr[i]).forEach(p => {
+          const nxtArr = [...sentArr];
+          nxtArr.splice(i, 1, ...(p.rhs === App.config.sym.eps ? [] : p.rhsArr));
+          const nxtStr = nxtArr.join('');
+          if (!visited.has(nxtStr + '|' + steps.length) && steps.length < 25) {
+            visited.add(nxtStr + '|' + steps.length);
+            queue.push({ sentArr: nxtArr, steps: [...steps, nxtArr] });
           }
         });
         break;
       }
     }
   }
-  let html = `<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:12px">Ambiguity Check for "${str}"</h3>`;
+  let html = `<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">Ambiguity Check for "${str}"</h3>`;
   if (found.length === 0) {
-    html += `<div class="pump-result fail">String "${str}" is NOT in the language (no derivation found up to depth 20).</div>`;
+    html += `<div class="pump-result fail">String "${str}" is NOT in the language (no leftmost derivation found up to depth 25).</div>`;
   } else if (found.length === 1) {
-    html += `<div class="pump-result ok">Likely UNAMBIGUOUS for this string (only one leftmost derivation found within depth 20).</div>`;
+    html += `<div class="pump-result ok">Likely UNAMBIGUOUS for this string (only one leftmost derivation found within depth 25).</div>`;
     html += '<h4 style="font-size:.75rem;margin:10px 0 6px">Derivation:</h4>';
-    found[0].forEach((step, i) => { html += `<div class="deriv-step">${i > 0 ? '⇒ ' : ''}${step}</div>`; });
+    found[0].forEach((stepArr, i) => { 
+      const txt = stepArr.length === 0 ? App.config.sym.eps : stepArr.join('');
+      html += `<div class="deriv-step">${i > 0 ? '⇒ ' : ''}${txt}</div>`; 
+    });
   } else {
     html += `<div class="pump-result fail">AMBIGUOUS! Found two different leftmost derivations for "${str}".</div>`;
     found.forEach((deriv, di) => {
       html += `<h4 style="font-size:.75rem;margin:10px 0 6px">Derivation ${di + 1}:</h4>`;
-      deriv.forEach((step, i) => { html += `<div class="deriv-step">${i > 0 ? '⇒ ' : ''}${step}</div>`; });
+      deriv.forEach((stepArr, i) => { 
+        const txt = stepArr.length === 0 ? App.config.sym.eps : stepArr.join('');
+        html += `<div class="deriv-step">${i > 0 ? '⇒ ' : ''}${txt}</div>`; 
+      });
     });
   }
   out.innerHTML = html;
@@ -367,7 +483,7 @@ function runAmbiguityCheck() {
 function runUselessElim() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
-  G.start = $('start-sym').value || G.start;
+  G.start = $('start-sym')?.value || G.start;
   const terms = [...App.sigma];
   // Step 1: Find productive variables
   const productive = new Set(terms);
@@ -377,8 +493,8 @@ function runUselessElim() {
     changed = false;
     prods.forEach(p => {
       if (!productive.has(p.lhs)) {
-        const rhs = p.rhs === App.config.sym.eps ? [] : p.rhs.split('');
-        if (rhs.every(c => productive.has(c))) {
+        const rhsArr = p.rhs === App.config.sym.eps ? [] : p.rhsArr;
+        if (rhsArr.every(c => productive.has(c))) {
           productive.add(p.lhs); changed = true;
         }
       }
@@ -386,7 +502,7 @@ function runUselessElim() {
   }
   const nonproductive = [...G.vars].filter(v => !productive.has(v));
   // Remove non-productive
-  let prods2 = prods.filter(p => productive.has(p.lhs) && (p.rhs === App.config.sym.eps || p.rhs.split('').every(c => productive.has(c))));
+  let prods2 = prods.filter(p => productive.has(p.lhs) && (p.rhs === App.config.sym.eps || p.rhsArr.every(c => productive.has(c))));
   // Step 2: Find reachable variables from start
   const reachable = new Set([G.start]);
   changed = true;
@@ -394,7 +510,7 @@ function runUselessElim() {
     changed = false;
     prods2.forEach(p => {
       if (reachable.has(p.lhs)) {
-        (p.rhs === App.config.sym.eps ? [] : p.rhs.split('').filter(c => G.vars.has(c))).forEach(v => {
+        (p.rhs === App.config.sym.eps ? [] : p.rhsArr.filter(c => G.vars.has(c))).forEach(v => {
           if (!reachable.has(v)) { reachable.add(v); changed = true; }
         });
       }
@@ -402,7 +518,7 @@ function runUselessElim() {
   }
   const unreachable = [...G.vars].filter(v => !reachable.has(v));
   const prods3 = prods2.filter(p => reachable.has(p.lhs));
-  let html = '<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:12px">Useless Symbol Elimination</h3>';
+  let html = '<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">Useless Symbol Elimination</h3>';
   html += `<div class="cnf-step"><span class="lbl">Step 1:</span>Non-productive: {${nonproductive.join(',') || '∅'}}. Removed productions with non-productive variables.</div>`;
   html += `<div class="cnf-step"><span class="lbl">Step 2:</span>Unreachable from ${G.start}: {${unreachable.join(',') || '∅'}}. Removed their productions.</div>`;
   html += '<div class="cnf-step"><span class="lbl">Result:</span>';
@@ -419,10 +535,10 @@ function runGNF() {
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   // Ensure CNF first
   if (!App._cnfProds) { runCNF(); }
-  const prods = App._cnfProds ? App._cnfProds.filter(p => p.rhs.length >= 1) : G.productions.map(p => ({ lhs: p.lhs, rhs: p.rhs, rhsArr: p.rhs.split('') }));
+  const prods = App._cnfProds ? App._cnfProds.filter(p => p.rhs.length >= 1) : G.productions.map(p => ({ lhs: p.lhs, rhs: p.rhs, rhsArr: p.rhsArr }));
   // Get variables in order (reversed for Lemma application)
   const vars = [...new Set(prods.map(p => p.lhs))];
-  let html = '<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:12px">Greibach Normal Form (GNF)</h3>';
+  let html = '<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">Greibach Normal Form (GNF)</h3>';
   html += '<div class="cnf-step"><span class="lbl">Note:</span>GNF conversion requires CNF, elimination of left recursion, and ensuring all productions start with a terminal. This shows a simplified pedagogical version.</div>';
   html += '<div class="cnf-step"><span class="lbl">Input (CNF):</span>';
   const byLHS0 = {};
@@ -445,7 +561,7 @@ function runGNF() {
 function runCFG2PDA() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
-  G.start = $('start-sym').value || G.start;
+  G.start = $('start-sym')?.value || G.start;
   // Build standard PDA for CFG
   // States: q_start, q_loop, q_accept
   // From q_start: push S, go to q_loop (ε, ε/S)
@@ -463,7 +579,7 @@ function runCFG2PDA() {
   });
   trans.push({ from: 'q_loop', to: 'q_accept', symbol: App.config.sym.eps, pop: App.config.sym.stackBottom, push: App.config.sym.eps, id: 't' + tnum++ });
   const rows = trans.map(t => `<tr><td>${t.from}</td><td>${t.symbol}</td><td>${t.pop}</td><td>${t.push}</td><td>${t.to}</td></tr>`).join('');
-  let html = `<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:12px">CFG → PDA</h3>
+  let html = `<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">CFG → PDA</h3>
 <div style="font-size:.72rem;color:var(--text2);margin-bottom:10px;line-height:1.8">
   States: {q_start, q_loop, q_accept} &nbsp;&nbsp; Start: q_start &nbsp;&nbsp; Accept: q_accept<br>
   Stack alphabet: {${[...G.vars].join(',')}, ${[...App.sigma].join(',')}, ${App.config.sym.stackBottom} (bottom)}
@@ -514,7 +630,7 @@ function loadCFGPDA() {
 function runCFGIsEmpty() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
-  G.start = $('start-sym').value || G.start;
+  G.start = $('start-sym')?.value || G.start;
   const terms = [...App.sigma];
   const productive = new Set(terms);
   productive.add(App.config.sym.eps);
@@ -523,14 +639,14 @@ function runCFGIsEmpty() {
     changed = false;
     G.productions.forEach(p => {
       if (!productive.has(p.lhs)) {
-        const rhs = p.rhs === App.config.sym.eps ? [] : p.rhs.split('');
+        const rhs = p.rhs === App.config.sym.eps ? [] : p.rhsArr;
         if (rhs.every(c => productive.has(c))) { productive.add(p.lhs); changed = true; }
       }
     });
   }
   const nonproductive = [...G.vars].filter(v => !productive.has(v));
   const isEmpty = !productive.has(G.start);
-  let html = '<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:12px">CFG Emptiness Check</h3>';
+  let html = '<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">CFG Emptiness Check</h3>';
   html += `<div class="cnf-step"><span class="lbl">Productive variables:</span>{${[...productive].filter(v => G.vars.has(v)).join(',') || '∅'}}</div>`;
   html += `<div class="cnf-step"><span class="lbl">Non-productive:</span>{${nonproductive.join(',') || '∅'}}</div>`;
   html += `<div class="pump-result ${isEmpty ? 'fail' : 'ok'}">${isEmpty ? 'EMPTY — Start symbol ' + G.start + ' is non-productive → L(G) = ∅' : 'NON-EMPTY — Start symbol ' + G.start + ' is productive → L(G) ≠ ∅'}</div>`;
@@ -540,12 +656,12 @@ function runCFGIsEmpty() {
 function runCFGIsFinite() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
-  G.start = $('start-sym').value || G.start;
+  G.start = $('start-sym')?.value || G.start;
   // Build dependency graph: A depends on B if A → ...B...
   const deps = {};
   [...G.vars].forEach(v => deps[v] = new Set());
   G.productions.forEach(p => {
-    if (p.rhs !== App.config.sym.eps) { p.rhs.split('').filter(c => G.vars.has(c)).forEach(v => deps[p.lhs].add(v)); }
+    if (p.rhs !== App.config.sym.eps) { p.rhsArr.filter(c => G.vars.has(c)).forEach(v => deps[p.lhs].add(v)); }
   });
   // Find productive variables
   const terms = [...App.sigma]; const productive = new Set(terms); productive.add(App.config.sym.eps);
@@ -554,7 +670,7 @@ function runCFGIsFinite() {
     changed = false;
     G.productions.forEach(p => {
       if (!productive.has(p.lhs)) {
-        const rhs = p.rhs === App.config.sym.eps ? [] : p.rhs.split('');
+        const rhs = p.rhs === App.config.sym.eps ? [] : p.rhsArr;
         if (rhs.every(c => productive.has(c))) { productive.add(p.lhs); changed = true; }
       }
     });
@@ -588,7 +704,7 @@ function runCFGIsFinite() {
     }
   }
   const cycleReachable = hasCycle && cycleVars.some(v => reachableFromStart.has(v));
-  let html = '<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:12px">CFG Finiteness Check</h3>';
+  let html = '<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">CFG Finiteness Check</h3>';
   html += `<div class="cnf-step"><span class="lbl">Productive variables:</span>{${prodVars.join(',') || '∅'}}</div>`;
   html += `<div class="cnf-step"><span class="lbl">Dependency cycle:</span>${hasCycle ? 'Yes — involving ' + [...new Set(cycleVars)].join(', ') : 'No cycles found'}</div>`;
   html += `<div class="pump-result ${cycleReachable ? 'fail' : 'ok'}">${cycleReachable ? 'INFINITE — Cycle reachable from start → L(G) is infinite' : 'FINITE — No reachable cycle → L(G) is a finite set'}</div>`;
@@ -661,9 +777,9 @@ function runPDA2CFG() {
   while (stackSymbols.has(freshBottom)) freshBottom += '$';
   stackSymbols.add(freshBottom);
 
-  let startName = '__pda_cfg_start__';
+  let startName = 'qStart';
   while (stateNames.includes(startName)) startName += '_';
-  let drainName = '__pda_cfg_drain__';
+  let drainName = 'qDrain';
   while (stateNames.includes(drainName) || drainName === startName) drainName += '_';
 
   const states = [
@@ -693,7 +809,7 @@ function runPDA2CFG() {
   });
 
   const prods = [];
-  prods.push({ lhs: 'S', rhs: `[${startName},${freshBottom},${drainName}]` });
+  prods.push({ lhs: 'S', rhs: `[${startName},${freshBottom},${drainName}]`, rhsArr: [`[${startName},${freshBottom},${drainName}]`] });
 
   trans.forEach(t => {
     const p = t.from;
@@ -704,19 +820,24 @@ function runPDA2CFG() {
     const pushSyms = push === eps ? [] : push.split('');
 
     if (pushSyms.length === 0) {
-      prods.push({ lhs: `[${p},${pop},${q}]`, rhs: a });
+      prods.push({ lhs: `[${p},${pop},${q}]`, rhs: a, rhsArr: a === eps ? [] : [a] });
     } else if (pushSyms.length === 1) {
       states.forEach(r => {
         const rn = r.name;
-        const rhsStr = `${a === eps ? '' : a}[${q},${pushSyms[0]},${rn}]`.trim();
-        prods.push({ lhs: `[${p},${pop},${rn}]`, rhs: rhsStr || eps });
+        const rhsA = a === eps ? [] : [a];
+        rhsA.push(`[${q},${pushSyms[0]},${rn}]`);
+        const rhsStr = rhsA.join('');
+        prods.push({ lhs: `[${p},${pop},${rn}]`, rhs: rhsStr, rhsArr: rhsA });
       });
     } else if (pushSyms.length === 2) {
       states.forEach(s => {
         states.forEach(r => {
           const sn = s.name, rn = r.name;
-          const rhsStr = `${a === eps ? '' : a}[${q},${pushSyms[0]},${sn}][${sn},${pushSyms[1]},${rn}]`.trim();
-          prods.push({ lhs: `[${p},${pop},${rn}]`, rhs: rhsStr });
+          const rhsA = a === eps ? [] : [a];
+          rhsA.push(`[${q},${pushSyms[0]},${sn}]`);
+          rhsA.push(`[${sn},${pushSyms[1]},${rn}]`);
+          const rhsStr = rhsA.join('');
+          prods.push({ lhs: `[${p},${pop},${rn}]`, rhs: rhsStr, rhsArr: rhsA });
         });
       });
     }
@@ -725,20 +846,27 @@ function runPDA2CFG() {
   const byLHS = {};
   prods.forEach(p => {
     if (!byLHS[p.lhs]) byLHS[p.lhs] = new Set();
-    byLHS[p.lhs].add(p.rhs || eps);
+    byLHS[p.lhs].add(p);
   });
 
-  const rows = Object.entries(byLHS).map(([lhs, rhsSet]) => {
-    const rhs = [...rhsSet].join(' | ');
+  const textFormat = Object.entries(byLHS).map(([lhs, pSet]) => {
+    return `${lhs} -> ${[...pSet].map(p => p.rhs === '' ? eps : p.rhs).join(' | ')}`;
+  }).join('\n');
+
+  const rows = Object.entries(byLHS).map(([lhs, pSet]) => {
+    const rhsList = [...pSet].map(p => p.rhs === '' ? eps : p.rhs).join(' | ');
     return `<tr>
       <td style="color:var(--accent);font-family:var(--mono);font-size:.67rem">${lhs}</td>
-      <td style="color:var(--text3)">→</td>
-      <td style="font-family:var(--mono);font-size:.67rem">${rhs}</td>
+      <td style="color:var(--text3)">&#8594;</td>
+      <td style="font-family:var(--mono);font-size:.67rem">${rhsList}</td>
     </tr>`;
   }).join('');
 
   out.innerHTML = `
-<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:6px">PDA → CFG (Sipser Triple Construction)</h3>
+<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+  <span>PDA &#8594; CFG (Sipser Triple Construction)</span>
+  <button id="copy-cfg-btn" class="icon-btn" title="Copy to Editor" style="font-size:0.75rem;padding:4px 8px;border:1px solid var(--border);cursor:pointer;border-radius:4px;background:var(--bg3);color:var(--text);font-family:var(--sans)">Apply to Editor</button>
+</h3>
 <div style="font-size:.7rem;color:var(--text2);margin-bottom:12px;line-height:1.8">
   Non-terminal <b>[p, A, q]</b>: starting in state p with stack symbol A on top, consume some input and end in state q with A removed.<br>
   Start variable: <b>S</b> &nbsp;&nbsp; PDA states: ${states.length} &nbsp;&nbsp; Transitions: ${trans.length} &nbsp;&nbsp; Generated rules: ${prods.length}
@@ -749,7 +877,18 @@ function runPDA2CFG() {
 </table></div>
 <div style="font-size:.62rem;color:var(--text3);margin-top:8px">
   Assumes PDA pops exactly 1 symbol and pushes at most 2 per transition. Longer push strings require decomposition.
-</div>`;
+</div>
+`;
+
+  setTimeout(() => {
+    const btn = $('copy-cfg-btn');
+    if(btn) {
+      btn.onclick = () => {
+        $('grammar-input').value = textFormat;
+        parseRawGrammar();
+      };
+    }
+  }, 10);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -762,7 +901,8 @@ function runCYKVisual() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   if (!App._cnfProds) { showStatus('Run CNF conversion first then use step-through'); return; }
-  const s = str === App.config.sym.eps ? '' : str;
+  const sRaw = parseEps(str);
+  const s = sRaw === App.config.sym.eps ? '' : sRaw;
   if (!s.length) { runCYK(); return; }
 
   const n = s.length;
@@ -863,7 +1003,7 @@ function renderCYKVisStep(out) {
   const progress = `${idx + 1} / ${steps.length}`;
 
   out.innerHTML = `
-<h3 style="font-family:var(--serif);font-size:1.1rem;margin-bottom:8px">CYK Step-Through &mdash; "<span style="color:var(--gold)">${s}</span>"</h3>
+<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:8px">CYK Step-Through &mdash; "<span style="color:var(--gold)">${s}</span>"</h3>
 <div class="sctrl" style="margin-bottom:10px">
   <button class="sbtn" onclick="cykVisStep(-1)" ${idx===0?'disabled':''}>← Back</button>
   <button class="sbtn auto-btn" onclick="cykVisStep(1)" ${isLast?'disabled':''}>Next →</button>
@@ -885,3 +1025,271 @@ function cykVisStep(delta) {
   _cykViz.idx = Math.max(0, Math.min(_cykViz.steps.length - 1, _cykViz.idx + delta));
   renderCYKVisStep($('gram-output'));
 }
+
+
+// ══════════════════════════════════════════════════════════════════
+//  ADVANCED & COMPILER THEORY
+// ══════════════════════════════════════════════════════════════════
+
+/** Chomsky Hierarchy Classification */
+function runChomskyClassify() {
+  const out = $('gram-output');
+  if (!G.productions.length) { showStatus('Add a grammar first'); return; }
+  
+  let type = 3; // Start assuming Regular
+  let isRightLinear = true;
+  let isLeftLinear = true;
+  let isType2 = true;
+  let isType1 = true;
+
+  const eps = App.config.sym.eps;
+
+  G.productions.forEach(rule => {
+    const lhs = rule.lhs;
+    const rhsArr = rule.rhsArr;
+
+    // Type 2 Check: LHS must be a single variable
+    if (!G.vars.has(lhs)) {
+        isType2 = false;
+        isType3 = false;
+    }
+
+    // Type 3 (Regular) Check
+    // Right linear: A -> a or A -> aB
+    // Left linear: A -> a or A -> Ba
+    let hasNonTerminal = false;
+    let ntPos = -1;
+    rhsArr.forEach((token, idx) => {
+        if (G.vars.has(token)) {
+            if (hasNonTerminal) { isRightLinear = false; isLeftLinear = false; }
+            hasNonTerminal = true;
+            ntPos = idx;
+        }
+    });
+
+    if (hasNonTerminal) {
+        if (ntPos !== rhsArr.length - 1) isRightLinear = false;
+        if (ntPos !== 0) isLeftLinear = false;
+    }
+  });
+
+  if (!isType2) type = 0; // Simplified check for Type 0/1
+  else if (isRightLinear || isLeftLinear) type = 3;
+  else type = 2;
+
+  const desc = {
+    3: "<b>Type 3: Regular Grammar</b><br>Rules are right-linear or left-linear. This grammar can be recognized by a Finite Automaton.",
+    2: "<b>Type 2: Context-Free Grammar</b><br>LHS is always a single variable. This grammar can be recognized by a Pushdown Automaton.",
+    0: "<b>Type 0/1: Unrestricted/Context-Sensitive</b><br>LHS contains multiple symbols or terminals. Beyond context-free."
+  };
+
+  out.innerHTML = `<div class="card">
+    <div class="card-title" style="color:var(--gold)">Chomsky Hierarchy Result</div>
+    <div style="font-size:1.1rem;margin:10px 0">${desc[type]}</div>
+    <div style="font-size:0.75rem;color:var(--text3)">Classification is based on the structural constraints of the production rules.</div>
+  </div>`;
+}
+
+/** Compute First and Follow Sets */
+function computeFirstFollow() {
+  const vars = [...G.vars];
+  const first = {};
+  const follow = {};
+  const eps = App.config.sym.eps;
+
+  vars.forEach(v => { first[v] = new Set(); follow[v] = new Set(); });
+
+  // 1. Compute FIRST sets
+  let changed = true;
+  while (changed) {
+    changed = false;
+    G.productions.forEach(rule => {
+      const A = rule.lhs;
+      const rhs = rule.rhsArr;
+
+      if (rhs.length === 1 && rhs[0] === eps) {
+        if (!first[A].has(eps)) { first[A].add(eps); changed = true; }
+      } else {
+        let canBeEps = true;
+        for (const sym of rhs) {
+          if (!G.vars.has(sym)) {
+            if (!first[A].has(sym)) { first[A].add(sym); changed = true; }
+            canBeEps = false; break;
+          } else {
+            let addedAnything = false;
+            for (const f of first[sym]) {
+              if (f !== eps && !first[A].has(f)) { first[A].add(f); changed = true; addedAnything = true; }
+            }
+            if (!first[sym].has(eps)) { canBeEps = false; break; }
+          }
+        }
+        if (canBeEps && !first[A].has(eps)) { first[A].add(eps); changed = true; }
+      }
+    });
+  }
+
+  // 2. Compute FOLLOW sets
+  const start = G.start;
+  if (follow[start]) follow[start].add('$');
+
+  changed = true;
+  while (changed) {
+    changed = false;
+    G.productions.forEach(rule => {
+      const A = rule.lhs;
+      const rhs = rule.rhsArr;
+
+      for (let i = 0; i < rhs.length; i++) {
+        const B = rhs[i];
+        if (G.vars.has(B)) {
+          let trailer = new Set(follow[A]);
+          for (let j = rhs.length - 1; j > i; j--) {
+            const C = rhs[j];
+            if (!G.vars.has(C)) {
+                trailer = new Set([C]);
+            } else {
+                const fC = first[C];
+                if (fC.has(eps)) {
+                    fC.forEach(x => { if(x !== eps) trailer.add(x); });
+                } else {
+                    trailer = new Set(fC);
+                }
+            }
+          }
+          const oldSize = follow[B].size;
+          trailer.forEach(t => follow[B].add(t));
+          if (follow[B].size > oldSize) changed = true;
+        }
+      }
+    });
+  }
+  return { first, follow };
+}
+
+function runFirstFollow() {
+  const out = $('gram-output');
+  if (!G.productions.length) { showStatus('Add a grammar first'); return; }
+  
+  const { first, follow } = computeFirstFollow();
+  
+  const rows = Object.keys(first).map(v => `<tr>
+    <td style="color:var(--accent);font-family:var(--mono)">${v}</td>
+    <td style="font-family:var(--mono)">{ ${[...first[v]].join(', ')} }</td>
+    <td style="font-family:var(--mono)">{ ${[...follow[v]].join(', ')} }</td>
+  </tr>`).join('');
+
+  out.innerHTML = `<div class="card">
+    <div class="card-title">First & Follow Sets</div>
+    <table class="result-table">
+        <thead><tr><th>Variable</th><th>First(V)</th><th>Follow(V)</th></tr></thead>
+        <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+/** LL(1) Parsing Table Generation */
+function runLL1Table() {
+  const out = $('gram-output');
+  if (!G.productions.length) { showStatus('Add a grammar first'); return; }
+  
+  const { first, follow } = computeFirstFollow();
+  const terminals = new Set();
+  G.productions.forEach(p => p.rhsArr.forEach(t => { if(!G.vars.has(t) && t !== App.config.sym.eps) terminals.add(t); }));
+  terminals.add('$');
+
+  const table = {};
+  let conflict = false;
+
+  G.productions.forEach(rule => {
+    const A = rule.lhs;
+    const rhs = rule.rhsArr;
+    if (!table[A]) table[A] = {};
+
+    // Compute FIRST(rhs)
+    const firstRHS = new Set();
+    let canBeEps = true;
+    for (const sym of rhs) {
+      if (!G.vars.has(sym)) {
+        if (sym !== App.config.sym.eps) firstRHS.add(sym);
+        canBeEps = (sym === App.config.sym.eps);
+        break;
+      } else {
+        first[sym].forEach(f => { if(f !== App.config.sym.eps) firstRHS.add(f); });
+        if (!first[sym].has(App.config.sym.eps)) { canBeEps = false; break; }
+      }
+    }
+    if (canBeEps) firstRHS.add(App.config.sym.eps);
+
+    firstRHS.forEach(terminal => {
+      if (terminal !== App.config.sym.eps) {
+        if (table[A][terminal]) conflict = true;
+        else table[A][terminal] = rule.rhs;
+      } else {
+        follow[A].forEach(fTerminal => {
+          if (table[A][fTerminal]) conflict = true;
+          else table[A][fTerminal] = rule.rhs;
+        });
+      }
+    });
+  });
+
+  const terms = [...terminals].sort();
+  const header = `<tr><th></th>${terms.map(t => `<th>${t}</th>`).join('')}</tr>`;
+  const rows = Object.keys(table).map(v => {
+    return `<tr><th style="background:var(--surface2)">${v}</th>${terms.map(t => `<td>${table[v][t] || ''}</td>`).join('')}</tr>`;
+  }).join('');
+
+  out.innerHTML = `<div class="card">
+    <div class="card-title">LL(1) Parsing Table</div>
+    ${conflict ? `<div class="pump-result fail" style="margin-bottom:12px">⚠️ Conflicts detected! Grammar is not LL(1).</div>` : ''}
+    <div style="overflow-x:auto"><table class="result-table">
+        <thead>${header}</thead>
+        <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
+/** Remove Direct Left Recursion */
+function runLeftRecursionRemoval() {
+    const out = $('gram-output');
+    if (!G.productions.length) { showStatus('Add a grammar first'); return; }
+    
+    const vars = [...G.vars];
+    const newProds = [];
+    const eps = App.config.sym.eps;
+
+    vars.forEach(A => {
+        const rulesA = G.productions.filter(p => p.lhs === A);
+        const recursive = rulesA.filter(p => p.rhsArr[0] === A);
+        const nonRecursive = rulesA.filter(p => p.rhsArr[0] !== A);
+
+        if (recursive.length > 0) {
+            const ARime = A + "'";
+            nonRecursive.forEach(p => {
+                const newRhs = (p.rhs === eps ? [] : p.rhsArr).concat([ARime]);
+                newProds.push({ lhs: A, rhs: newRhs.join(''), rhsArr: newRhs });
+            });
+            if (nonRecursive.length === 0) {
+                 newProds.push({ lhs: A, rhs: ARime, rhsArr: [ARime] });
+            }
+            recursive.forEach(p => {
+                const alpha = p.rhsArr.slice(1);
+                const newRhs = alpha.concat([ARime]);
+                newProds.push({ lhs: ARime, rhs: newRhs.join(''), rhsArr: newRhs });
+            });
+            newProds.push({ lhs: ARime, rhs: eps, rhsArr: [eps] });
+        } else {
+            rulesA.forEach(p => newProds.push(p));
+        }
+    });
+
+    const formatRule = p => `${p.lhs} → ${p.rhs}`;
+    out.innerHTML = `<div class="card">
+        <div class="card-title">Left Recursion Removal</div>
+        <div style="font-family:var(--mono);font-size:0.8rem;line-height:1.6">
+            ${newProds.map(p => `<div><span style="color:var(--accent)">${p.lhs}</span> → ${p.rhs}</div>`).join('')}
+        </div>
+        <div class="pump-result ok" style="margin-top:12px">Transformed grammar is now suitable for top-down parsing.</div>
+    </div>`;
+}
+

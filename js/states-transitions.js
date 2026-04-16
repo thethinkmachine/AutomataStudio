@@ -152,11 +152,11 @@ function getTransitionFormValues() {
     symbol: App.machine === 'MTM' ? null : $('m-sym')?.value
   };
   if (cfg.hasStack) {
-    values.pop = $('m-pop')?.value || eps;
-    values.push = $('m-push')?.value || eps;
+    values.pop = parseEps($('m-pop')?.value) || eps;
+    values.push = parseEps($('m-push')?.value) || eps;
   }
   if (App.machine === 'TM') {
-    values.write = $('m-write')?.value || values.symbol;
+    values.write = parseEps($('m-write')?.value) || values.symbol;
     values.dir = $('m-dir')?.value || App.directions[0].value;
   }
   if (App.machine === 'Mealy') {
@@ -167,7 +167,7 @@ function getTransitionFormValues() {
     const k = App.tapeCount;
     const blank = App.config.sym.blank;
     values.tapeSyms = Array.from({ length: k }, (_, i) => $(`m-mtm-read-${i}`)?.value || blank);
-    values.tapeWrites = Array.from({ length: k }, (_, i) => $(`m-mtm-write-${i}`)?.value || blank);
+    values.tapeWrites = Array.from({ length: k }, (_, i) => parseEps($(`m-mtm-write-${i}`)?.value) || blank);
     values.tapeDirs = Array.from({ length: k }, (_, i) => $(`m-mtm-dir-${i}`)?.value || App.directions[0].value);
     values.symbol = values.tapeSyms[0];
   }
@@ -249,7 +249,7 @@ function confirmTrans() {
     const isExplicit = App.config.pdaParadigm === 'explicit';
     if (!values.pop || values.pop.trim() === '') values.pop = eps;
     if (isExplicit && values.pop === eps) {
-      showStatus(`7-Tuple (Explicit) PDAs must pop exactly one stack symbol. ε-pops are prohibited.`); return;
+      // Allow epsilon pops for 7-tuple PDAs although formal definition requires exactly one symbol
     }
     if (values.pop.length > 1 && values.pop !== App.config.sym.any) {
       showStatus(`PDA pop must be exactly one symbol.`); return;

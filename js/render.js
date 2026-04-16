@@ -82,7 +82,7 @@ function renderTransitions() {
       const titleEl = makeSVG('title');
       titleEl.textContent = grp.ts.map(t => transLabelDescriptive(t)).join('\n');
       textEl.appendChild(titleEl);
-      edgeGrp.appendChild(titleEl.cloneNode(true));
+      const titleEl2 = makeSVG('title'); titleEl2.textContent = titleEl.textContent; edgeGrp.appendChild(titleEl2);
 
       edgeGrp.appendChild(pathEl);
       edgeGrp.appendChild(hitEl);
@@ -132,7 +132,7 @@ function renderTransitions() {
       const titleEl = makeSVG('title');
       titleEl.textContent = grp.ts.map(t => transLabelDescriptive(t)).join('\n');
       textEl.appendChild(titleEl);
-      edgeGrp.appendChild(titleEl.cloneNode(true));
+      const titleEl2 = makeSVG('title'); titleEl2.textContent = titleEl.textContent; edgeGrp.appendChild(titleEl2);
 
       edgeGrp.appendChild(pathEl);
       edgeGrp.appendChild(hitEl);
@@ -483,3 +483,4 @@ function simplifyRE(r) {
     .replace(/\(([a-zA-Z0-9])\)\*/g, '$1*')
     .replace(/\(([a-zA-Z0-9])\)/g, '$1');
 }
+

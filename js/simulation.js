@@ -19,11 +19,8 @@ function tokenize(str, sigma = App.sigma) {
 
 function runSim() {
   resetSim();
-  let raw = $('sim-in').value.trim();
-  if (raw.toLowerCase() === 'eps' || raw.toLowerCase() === 'epsilon') {
-    raw = App.config.sym.eps;
-    $('sim-in').value = raw;
-  }
+  let raw = parseEps($('sim-in').value);
+  if (raw === App.config.sym.eps) $('sim-in').value = raw;
   if (!App.startId) { log('<span class="t-err">No start state.</span>'); return; }
 
   // MTM: support optional comma-separated per-tape initialization
@@ -358,7 +355,8 @@ function runBatch() {
     return;
   }
   const results = lines.map(line => {
-    const str = line === eps ? '' : line;
+    const raw = parseEps(line);
+    const str = raw === App.config.sym.eps ? '' : raw;
     const tokens = tokenize(str);
     if (tokens === null) return { str: line, accepted: false, error: true };
     let accepted = false, output = null;

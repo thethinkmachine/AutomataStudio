@@ -34,3 +34,10 @@ function showStatus(msg) {
   clearTimeout(b._t); b._t = setTimeout(() => b.classList.remove('show'), 2500);
 }
 
+
+function parseEps(str) {
+  if (!str) return '';
+  const s = str.trim();
+  if (s.toLowerCase() === 'eps' || s.toLowerCase() === 'epsilon') return App.config.sym.eps;
+  return s;
+}
