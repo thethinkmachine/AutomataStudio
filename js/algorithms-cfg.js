@@ -676,11 +676,13 @@ function loadCFGPDA() {
     if (name === 'q_accept') App.accepts.add(id);
   });
   
+  App.sigma = new Set();
   App.stackAlpha = new Set([App.config.sym.stackBottom]);
   App._lastCFGPDA.forEach((t, i) => {
     App.transitions.push({ ...t, id: 't' + (i + 1), from: idMap[t.from], to: idMap[t.to] });
-    if (t.pop && t.pop !== App.config.sym.eps) App.stackAlpha.add(t.pop);
-    if (t.push && t.push !== App.config.sym.eps) t.push.split('').forEach(ch => App.stackAlpha.add(ch));
+    if (t.symbol && t.symbol !== App.config.sym.eps && t.symbol !== App.config.sym.any) App.sigma.add(t.symbol);
+    if (t.pop && t.pop !== App.config.sym.eps && t.pop !== App.config.sym.any) App.stackAlpha.add(t.pop);
+    if (t.push && t.push !== App.config.sym.eps && t.push !== App.config.sym.any) t.push.split('').forEach(ch => App.stackAlpha.add(ch));
   });
   App.transN = App._lastCFGPDA.length;
   
@@ -691,6 +693,7 @@ function loadCFGPDA() {
 
   applyMachineSwitch('PDA');
   renderAll(); updateLPanel(); updateRPanel();
+  saveBackup(); // Required to persist to localStorage after programmatically loading a structure
   setView('build'); showStatus('PDA loaded for CFG! (Forced 7-Tuple Paradigm)');
 }
 
