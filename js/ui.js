@@ -770,6 +770,7 @@ function confirmSettings() {
   const c = App.config;
   applyTheme($('set-theme').value || c.theme || 'dark');
   c.transducerAccepts = $('set-transducer-accepts').checked;
+  c.pdaParadigm = $('set-pda-paradigm').value || 'explicit';
   c.maxPdaSteps = parseInt($('set-pda-steps').value) || 2000;
   c.maxTmSteps = parseInt($('set-tm-steps').value) || 10000;
   c.autoSpeed = parseInt($('set-auto-speed').value) || 500;
@@ -804,6 +805,7 @@ function getEditorSettingsData() {
   const c = App.config;
   return {
     theme: c.theme,
+    pdaParadigm: c.pdaParadigm,
     transducerAccepts: !!c.transducerAccepts,
     maxPdaSteps: c.maxPdaSteps,
     maxTmSteps: c.maxTmSteps,
@@ -851,6 +853,7 @@ function importSettings(e) {
 
 function populateSettingsModalInputs(data) {
   if (data.theme !== undefined) $('set-theme').value = data.theme;
+  if (data.pdaParadigm !== undefined) $('set-pda-paradigm').value = data.pdaParadigm;
   if (data.transducerAccepts !== undefined) $('set-transducer-accepts').checked = !!data.transducerAccepts;
   if (data.maxPdaSteps !== undefined) $('set-pda-steps').value = data.maxPdaSteps;
   if (data.maxTmSteps !== undefined) $('set-tm-steps').value = data.maxTmSteps;

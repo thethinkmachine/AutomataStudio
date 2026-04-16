@@ -384,11 +384,15 @@ function updateFormalDef() {
   const m = App.machine;
   let txt;
   if (m === 'DFA' || m === 'NFA' || m === 'ε-NFA') {
-    txt = `M = (Q, Σ, δ, q₀, F)\n\nQ = {${Q}}\nΣ = {${S}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Σ→${m === 'DFA' ? 'Q' : '2^Q'}`;
+    txt = `M = (Q, Σ, δ, q₀, F)\n\nQ = {${Q}}\nΣ = {${S}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Σ→${m === 'DFA' ? 'Q' : '𝒫(Q)'}`;
   } else if (m === 'PDA') {
     const G = [...App.stackAlpha].join(', ') || '∅';
     const { eps, stackBottom } = App.config.sym;
-    txt = `M = (Q,Σ,Γ,δ,q₀,Z₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nZ₀ = ${stackBottom}\nF = {${F}}\nδ: Q×(Σ∪{${eps}})×Γ→2^(Q×Γ*)`;
+    if (App.config.pdaParadigm === 'explicit') {
+      txt = `M = (Q,Σ,Γ,δ,q₀,Z₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nZ₀ = ${stackBottom}\nF = {${F}}\nδ: Q×(Σ∪{${eps}})×Γ→𝒫(Q×Γ*)`;
+    } else {
+      txt = `M = (Q,Σ,Γ,δ,q₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×(Σ∪{${eps}})×(Γ∪{${eps}})→𝒫(Q×(Γ∪{${eps}}))`;
+    }
   } else if (m === 'Moore') {
     const D = [...App.outputAlpha].join(', ') || '∅';
     const { lambda } = App.config.sym;

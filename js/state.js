@@ -38,6 +38,7 @@ const App = {
     layout: { minRadius: 80, nodeSpacing: 35 },
     gridSnap: 20,
     sym: { eps: 'ε', any: 'Σ', blank: '⊔', stackBottom: 'Z', lambda: 'λ' },
+    pdaParadigm: 'explicit',
     statePrefix: 'q',
     render: {
       startArrowLen: 28,

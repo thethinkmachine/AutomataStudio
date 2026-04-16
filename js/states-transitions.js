@@ -246,17 +246,22 @@ function confirmTrans() {
     }
   }
   if (App.machine === 'PDA') {
-    if (!values.pop || values.pop === eps || values.pop.trim() === '') {
-      showStatus(`PDA transitions must pop exactly one stack symbol. ε-pops are mathematically prohibited.`); return;
+    const isExplicit = App.config.pdaParadigm === 'explicit';
+    if (!values.pop || values.pop.trim() === '') values.pop = eps;
+    if (isExplicit && values.pop === eps) {
+      showStatus(`7-Tuple (Explicit) PDAs must pop exactly one stack symbol. ε-pops are prohibited.`); return;
     }
     if (values.pop.length > 1 && values.pop !== App.config.sym.any) {
       showStatus(`PDA pop must be exactly one symbol.`); return;
     }
     const stackAllowed = new Set([...App.stackAlpha, App.config.sym.stackBottom, App.config.sym.any]);
-    if (!stackAllowed.has(values.pop)) {
+    if (values.pop !== eps && !stackAllowed.has(values.pop)) {
       showStatus(`Symbol '${values.pop}' is not in your Stack Alphabet (Γ). Add it in the left panel first.`); return;
     }
     if (values.push && values.push !== eps && values.push !== App.config.sym.any) {
+      if (!isExplicit && values.push.length > 1) {
+        showStatus(`6-Tuple (Empty) PDAs may push at most one symbol at a time.`); return;
+      }
       const invalidChars = values.push.split('').filter(c => !stackAllowed.has(c));
       if (invalidChars.length > 0) {
         showStatus(`Push string contains symbols not in Stack Alphabet (Γ): ${invalidChars.join(', ')}. Add them first.`); return;

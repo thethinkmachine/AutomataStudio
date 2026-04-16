@@ -108,7 +108,8 @@ function stateNames(ids) { return [...ids].map(id => getState(id)?.name || id).j
 
 function simPDA(tokens) {
   App.simSteps = [];
-  const init = { state: App.startId, tokens, remaining: tokens, stack: [App.config.sym.stackBottom], note: 'Start configuration' };
+  const isExplicit = App.config.pdaParadigm === 'explicit';
+  const init = { state: App.startId, tokens, remaining: tokens, stack: isExplicit ? [App.config.sym.stackBottom] : [], note: 'Start configuration' };
   App.simSteps.push(init);
   let cfgs = [init];
   const visited = new Set(); // Track visited configurations to avoid ε-loops (#8)
@@ -120,9 +121,10 @@ function simPDA(tokens) {
       const eps = App.config.sym.eps;
       App.transitions.filter(t => t.from === state).forEach(t => {
         const rOk = t.symbol === eps || (remaining.length > 0 && (t.symbol === remaining[0] || t.symbol === App.config.sym.any));
-        const pOk = top !== undefined && (t.pop === top || t.pop === App.config.sym.any);
+        const pOk = (top !== undefined && (t.pop === top || t.pop === App.config.sym.any)) || (!isExplicit && t.pop === eps);
         if (!rOk || !pOk) return;
-        const ns = [...stack]; ns.pop();
+        const ns = [...stack]; 
+        if (t.pop !== eps) ns.pop();
         let pushStr = t.push && t.push !== eps ? t.push : '';
         if (pushStr === App.config.sym.any) pushStr = top; // Write-back popped symbol if wildcard
         if (pushStr) pushStr.split('').reverse().forEach(c => ns.push(c));
@@ -130,7 +132,7 @@ function simPDA(tokens) {
         const cfgKey = t.to + '|' + nr.join('') + '|' + ns.join('');
         if (visited.has(cfgKey)) return; // Skip already-visited configurations
         visited.add(cfgKey);
-        const nc = { state: t.to, tokens, remaining: nr, stack: ns, note: `(${getState(state)?.name},${t.symbol || eps},${top})→(${getState(t.to)?.name},${t.push || eps})` };
+        const nc = { state: t.to, tokens, remaining: nr, stack: ns, note: `(${getState(state)?.name},${t.symbol || eps},${top || eps})→(${getState(t.to)?.name},${t.push || eps})` };
         next.push(nc); App.simSteps.push(nc);
       });
     });
