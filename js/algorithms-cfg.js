@@ -579,54 +579,103 @@ function runGNF() {
   out.innerHTML = html;
 }
 
-function runCFG2PDA() {
+function runCFG2PDA(mode = 'topdown') {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   G.start = $('start-sym')?.value || G.start;
-  // Build standard PDA for CFG
-  // States: q_start, q_loop, q_accept
-  // From q_start: push S, go to q_loop (ε, ε/S)
-  // From q_loop: for each A → α, add (ε, A/α)
-  // From q_loop: for each terminal a, add (a, a/ε)
-  // From q_loop: to q_accept when stack symbol is bottom and input empty (ε, Z/ε)
   const trans = [];
   let tnum = 1;
-  trans.push({ from: 'q_start', to: 'q_loop', symbol: App.config.sym.eps, pop: App.config.sym.stackBottom, push: G.start + App.config.sym.stackBottom, id: 't' + tnum++ });
-  G.productions.forEach(p => {
-    trans.push({ from: 'q_loop', to: 'q_loop', symbol: App.config.sym.eps, pop: p.lhs, push: p.rhs === App.config.sym.eps ? App.config.sym.eps : p.rhs, id: 't' + tnum++ });
-  });
-  [...App.sigma].forEach(a => {
-    trans.push({ from: 'q_loop', to: 'q_loop', symbol: a, pop: a, push: App.config.sym.eps, id: 't' + tnum++ });
-  });
-  trans.push({ from: 'q_loop', to: 'q_accept', symbol: App.config.sym.eps, pop: App.config.sym.stackBottom, push: App.config.sym.eps, id: 't' + tnum++ });
+  const eps = App.config.sym.eps;
+  const stateNamesSet = new Set(['q_start', 'q_loop', 'q_accept']);
+
+  if (mode === 'topdown') {
+    // Top-Down (Expand-Match)
+    trans.push({ from: 'q_start', to: 'q_loop', symbol: eps, pop: App.config.sym.stackBottom, push: G.start + App.config.sym.stackBottom, id: 't' + tnum++ });
+    G.productions.forEach(p => {
+      trans.push({ from: 'q_loop', to: 'q_loop', symbol: eps, pop: p.lhs, push: p.rhs === eps ? eps : p.rhs, id: 't' + tnum++ });
+    });
+    [...App.sigma].forEach(a => {
+      trans.push({ from: 'q_loop', to: 'q_loop', symbol: a, pop: a, push: eps, id: 't' + tnum++ });
+    });
+    trans.push({ from: 'q_loop', to: 'q_accept', symbol: eps, pop: App.config.sym.stackBottom, push: eps, id: 't' + tnum++ });
+  } else {
+    // Bottom-Up (Shift-Reduce)
+    trans.push({ from: 'q_start', to: 'q_loop', symbol: eps, pop: App.config.sym.stackBottom, push: App.config.sym.stackBottom, id: 't' + tnum++ });
+    
+    // Shift: Read input and push onto stack
+    [...App.sigma].forEach(a => {
+      trans.push({ from: 'q_loop', to: 'q_loop', symbol: a, pop: eps, push: a, id: 't' + tnum++ });
+    });
+    
+    // Reduce: For each production A -> α, pop reverse(α), push A
+    G.productions.forEach((p, idx) => {
+      const rhsArr = p.rhsArr || [eps];
+      // Due to PDA single-pop constraint, string reductions require intermediate states
+      if (rhsArr.length === 0 || (rhsArr.length === 1 && rhsArr[0] === eps)) {
+        trans.push({ from: 'q_loop', to: 'q_loop', symbol: eps, pop: eps, push: p.lhs, id: 't' + tnum++ });
+      } else if (rhsArr.length === 1) {
+        trans.push({ from: 'q_loop', to: 'q_loop', symbol: eps, pop: rhsArr[0], push: p.lhs, id: 't' + tnum++ });
+      } else {
+        let currState = 'q_loop';
+        // Pop in reverse order:
+        for (let i = rhsArr.length - 1; i >= 0; i--) {
+          const symToPop = rhsArr[i];
+          const isLastPop = (i === 0);
+          const nextState = isLastPop ? 'q_loop' : `q_red_${idx}_${i}`;
+          if (!isLastPop) stateNamesSet.add(nextState);
+          const pushSym = isLastPop ? p.lhs : eps;
+          trans.push({ from: currState, to: nextState, symbol: eps, pop: symToPop, push: pushSym, id: 't' + tnum++ });
+          currState = nextState;
+        }
+      }
+    });
+
+    // Accept when stack only contains the start symbol S above the bottom marker
+    trans.push({ from: 'q_loop', to: 'q_accept', symbol: eps, pop: G.start, push: eps, id: 't' + tnum++ });
+  }
+
   const rows = trans.map(t => `<tr><td>${t.from}</td><td>${t.symbol}</td><td>${t.pop}</td><td>${t.push}</td><td>${t.to}</td></tr>`).join('');
-  let html = `<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">CFG → PDA</h3>
+  let html = `<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">CFG → PDA (${mode === 'topdown' ? 'Top-Down / Leftmost' : 'Bottom-Up / Rightmost'})</h3>
 <div style="font-size:.72rem;color:var(--text2);margin-bottom:10px;line-height:1.8">
-  States: {q_start, q_loop, q_accept} &nbsp;&nbsp; Start: q_start &nbsp;&nbsp; Accept: q_accept<br>
+  States: {${[...stateNamesSet].join(', ')}} &nbsp;&nbsp; Start: q_start &nbsp;&nbsp; Accept: q_accept<br>
   Stack alphabet: {${[...G.vars].join(',')}, ${[...App.sigma].join(',')}, ${App.config.sym.stackBottom} (bottom)}
 </div>
-<div style="overflow-x:auto"><table class="result-table">
+<div style="overflow-x:auto;max-height:300px;"><table class="result-table">
 <thead><tr><th>From</th><th>Read</th><th>Pop</th><th>Push</th><th>To</th></tr></thead>
 <tbody>${rows}</tbody></table></div>
 <div style="margin-top:10px"><button class="algo-btn" onclick="loadCFGPDA()">Load to Canvas (PDA)</button></div>`;
   out.innerHTML = html;
   App._lastCFGPDA = trans;
+  App._lastCFGPDANames = [...stateNamesSet];
 }
 
 function loadCFGPDA() {
   if (!App._lastCFGPDA) return;
   snapshot();
   App.states = []; App.transitions = []; App.accepts.clear(); App.startId = null; App.stateN = 0; App.transN = 0;
-  const stateNames = ['q_start', 'q_loop', 'q_accept'];
-  const xs = [120, 340, 560], ys = [200, 200, 200];
+  
+  const stateNames = App._lastCFGPDANames || ['q_start', 'q_loop', 'q_accept'];
   const idMap = {};
+  
+  // Distribute dynamically across an arc/grid
   stateNames.forEach((name, i) => {
     const id = 's' + (i + 1); App.stateN = i + 1;
-    App.states.push({ id, x: xs[i], y: ys[i], name });
+    // q_start, q_loop, q_accept get fixed nice positions, others are distributed below
+    let x, y;
+    if (name === 'q_start') { x = 120; y = 200; }
+    else if (name === 'q_loop') { x = 340; y = 200; }
+    else if (name === 'q_accept') { x = 560; y = 200; }
+    else {
+      // Dynamic positioning for intermediate reduce states
+      x = 340 + ((i % 2 === 0 ? 1 : -1) * ((Math.floor(i / 2) + 1) * 60));
+      y = 300 + (Math.floor(i / 2) * 50);
+    }
+    App.states.push({ id, x, y, name });
     idMap[name] = id;
     if (name === 'q_start') App.startId = id;
     if (name === 'q_accept') App.accepts.add(id);
   });
+  
   App.stackAlpha = new Set([App.config.sym.stackBottom]);
   App._lastCFGPDA.forEach((t, i) => {
     App.transitions.push({ ...t, id: 't' + (i + 1), from: idMap[t.from], to: idMap[t.to] });
@@ -770,7 +819,7 @@ function renderCFLPumpVis() {
 // ══════════════════════════════════════════════════════════════════
 //  PDA → CFG (Sipser Construction)
 // ══════════════════════════════════════════════════════════════════
-function runPDA2CFG() {
+function runPDA2CFG(mode = 'raw') {
   const out = $('gram-output');
   if (App.machine !== 'PDA') {
     out.innerHTML = `<div class="cnf-step"><span class="lbl">Switch to PDA mode to use this conversion.</span></div>`;
@@ -829,7 +878,7 @@ function runPDA2CFG() {
     trans.push({ from: drainName, to: drainName, symbol: eps, pop: sym, push: eps });
   });
 
-  const prods = [];
+  let prods = [];
   prods.push({ lhs: 'S', rhs: `[${startName},${freshBottom},${drainName}]`, rhsArr: [`[${startName},${freshBottom},${drainName}]`] });
 
   trans.forEach(t => {
@@ -864,6 +913,49 @@ function runPDA2CFG() {
     }
   });
 
+  let prunedMessage = '';
+  if (mode === 'pruned') {
+    const totalOriginal = prods.length;
+    // Step 1: Find Generating Variables
+    let generating = new Set([...App.sigma, eps]); // terminals are generating
+    let changed = true;
+    while (changed) {
+      changed = false;
+      prods.forEach(p => {
+        if (!generating.has(p.lhs)) {
+          const allGen = p.rhsArr.every(sym => !sym.startsWith('[') || generating.has(sym));
+          if (allGen) { generating.add(p.lhs); changed = true; }
+        }
+      });
+    }
+    prods = prods.filter(p => generating.has(p.lhs) && p.rhsArr.every(sym => !sym.startsWith('[') || generating.has(sym)));
+    
+    // Step 2: Find Reachable Variables
+    let reachable = new Set(['S']);
+    changed = true;
+    while (changed) {
+      changed = false;
+      prods.forEach(p => {
+        if (reachable.has(p.lhs)) {
+          p.rhsArr.forEach(sym => {
+            if (sym.startsWith('[') && !reachable.has(sym)) {
+              reachable.add(sym);
+              changed = true;
+            }
+          });
+        }
+      });
+    }
+    prods = prods.filter(p => reachable.has(p.lhs));
+    
+    // Handle edge case where grammar evaluates to empty language and gets entirely pruned
+    if(prods.length === 0) {
+      prods.push({ lhs: 'S', rhs: eps, rhsArr: [] }); // Or leave empty
+    }
+    
+    prunedMessage = `&nbsp;&nbsp; Pruned ${totalOriginal - prods.length} useless rules.`;
+  }
+
   const byLHS = {};
   prods.forEach(p => {
     if (!byLHS[p.lhs]) byLHS[p.lhs] = new Set();
@@ -890,7 +982,7 @@ function runPDA2CFG() {
 </h3>
 <div style="font-size:.7rem;color:var(--text2);margin-bottom:12px;line-height:1.8">
   Non-terminal <b>[p, A, q]</b>: starting in state p with stack symbol A on top, consume some input and end in state q with A removed.<br>
-  Start variable: <b>S</b> &nbsp;&nbsp; PDA states: ${states.length} &nbsp;&nbsp; Transitions: ${trans.length} &nbsp;&nbsp; Generated rules: ${prods.length}
+  Start variable: <b>S</b> &nbsp;&nbsp; PDA states: ${states.length} &nbsp;&nbsp; Generated rules: ${prods.length} ${prunedMessage}
 </div>
 <div style="overflow-x:auto"><table class="result-table">
   <thead><tr><th>LHS</th><th></th><th>RHS</th></tr></thead>

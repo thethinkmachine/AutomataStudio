@@ -514,10 +514,14 @@
               CNF</button>
             <button class="algo-btn sec" onclick="runGNF()" style="width:100%;margin-right:0;margin-bottom:5px">Convert
               to GNF</button>
-            <button class="algo-btn sec" onclick="runCFG2PDA()" style="width:100%;margin-right:0;margin-bottom:5px">CFG
-              &rarr; PDA</button>
-            <button class="algo-btn sec" onclick="runPDA2CFG()" style="width:100%;margin-right:0;margin-bottom:5px">PDA
-              &rarr; CFG</button>
+            <button class="algo-btn sec" onclick="runCFG2PDA('topdown')" style="width:100%;margin-right:0;margin-bottom:5px">CFG
+              &rarr; PDA (Top-Down)</button>
+            <button class="algo-btn sec" onclick="runCFG2PDA('bottomup')" style="width:100%;margin-right:0;margin-bottom:5px">CFG
+              &rarr; PDA (Bottom-Up)</button>
+            <button class="algo-btn sec" onclick="runPDA2CFG('raw')" style="width:100%;margin-right:0;margin-bottom:5px">PDA
+              &rarr; CFG (Raw)</button>
+            <button class="algo-btn sec" onclick="runPDA2CFG('pruned')" style="width:100%;margin-right:0;margin-bottom:5px">PDA
+              &rarr; CFG (Pruned)</button>
 
             <div class="gram-group-label">Parse &amp; Derive</div>
             <div class="row" style="margin-bottom:5px">
