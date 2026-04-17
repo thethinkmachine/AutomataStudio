@@ -54,6 +54,9 @@ function configureAppMachine(h, config) {
   const App = context.App;
   App.machine = config.machine || 'DFA';
   App.sigma = new Set(config.sigma || []);
+  App.stackAlpha = new Set(config.stackAlpha || [App.config.sym.stackBottom]);
+  App.outputAlpha = new Set(config.outputAlpha || []);
+  if (typeof config.tapeCount === 'number') App.tapeCount = config.tapeCount;
   App.states = config.states.map(s => ({ ...s }));
   App.transitions = config.transitions.map(t => ({ ...t }));
   App.startId = config.startId;
@@ -76,6 +79,14 @@ function setSingleTapeTransitionForm(h, values) {
   h.getElement('m-sym').value = values.symbol;
   h.getElement('m-write').value = values.write;
   h.getElement('m-dir').value = values.dir;
+}
+
+function setStackTransitionForm(h, values) {
+  h.getElement('m-from').value = values.from;
+  h.getElement('m-to').value = values.to;
+  h.getElement('m-sym').value = values.symbol;
+  h.getElement('m-pop').value = values.pop;
+  h.getElement('m-push').value = values.push;
 }
 
 test('theme button icon reflects the active theme', () => {
@@ -202,6 +213,102 @@ test('TM stays deterministic while NDTM allows duplicate read choices', () => {
   setSingleTapeTransitionForm(h, { from: 's0', to: 's2', symbol: '0', write: '0', dir: 'S' });
   h.context.confirmTrans();
   assert.equal(h.context.App.transitions.length, 2);
+});
+
+test('PDA stays deterministic while NPDA allows overlapping stack moves', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'PDA',
+    sigma: ['a'],
+    stackAlpha: ['A', 'Z'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1'), makeState('s2', 'q2')],
+    transitions: [],
+    startId: 's0',
+    accepts: []
+  });
+  setStackTransitionForm(h, { from: 's0', to: 's1', symbol: 'a', pop: 'Z', push: 'AZ' });
+  h.context.confirmTrans();
+  setStackTransitionForm(h, { from: 's0', to: 's2', symbol: 'ε', pop: 'Z', push: 'Z' });
+  h.context.confirmTrans();
+  assert.equal(h.context.App.transitions.length, 1);
+
+  configureAppMachine(h, {
+    machine: 'NPDA',
+    sigma: ['a'],
+    stackAlpha: ['A', 'Z'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1'), makeState('s2', 'q2')],
+    transitions: [],
+    startId: 's0',
+    accepts: []
+  });
+  setStackTransitionForm(h, { from: 's0', to: 's1', symbol: 'a', pop: 'Z', push: 'AZ' });
+  h.context.confirmTrans();
+  setStackTransitionForm(h, { from: 's0', to: 's2', symbol: 'ε', pop: 'Z', push: 'Z' });
+  h.context.confirmTrans();
+  assert.equal(h.context.App.transitions.length, 2);
+});
+
+test('NPDA simulation finds an accepting branch for midpoint guessing', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'NPDA',
+    sigma: ['a', 'b'],
+    stackAlpha: ['A', 'B', 'Z'],
+    states: [makeState('s0', 'push'), makeState('s1', 'pop'), makeState('s2', 'acc')],
+    transitions: [
+      { id: 't1', from: 's0', to: 's0', symbol: 'a', pop: 'Z', push: 'AZ' },
+      { id: 't2', from: 's0', to: 's0', symbol: 'a', pop: 'A', push: 'AA' },
+      { id: 't3', from: 's0', to: 's0', symbol: 'a', pop: 'B', push: 'AB' },
+      { id: 't4', from: 's0', to: 's0', symbol: 'b', pop: 'Z', push: 'BZ' },
+      { id: 't5', from: 's0', to: 's0', symbol: 'b', pop: 'A', push: 'BA' },
+      { id: 't6', from: 's0', to: 's0', symbol: 'b', pop: 'B', push: 'BB' },
+      { id: 't7', from: 's0', to: 's1', symbol: 'ε', pop: 'Z', push: 'Z' },
+      { id: 't8', from: 's0', to: 's1', symbol: 'ε', pop: 'A', push: 'A' },
+      { id: 't9', from: 's0', to: 's1', symbol: 'ε', pop: 'B', push: 'B' },
+      { id: 't10', from: 's1', to: 's1', symbol: 'a', pop: 'A', push: 'ε' },
+      { id: 't11', from: 's1', to: 's1', symbol: 'b', pop: 'B', push: 'ε' },
+      { id: 't12', from: 's1', to: 's2', symbol: 'ε', pop: 'Z', push: 'Z' }
+    ],
+    startId: 's0',
+    accepts: ['s2']
+  });
+  h.context.App.config.pdaParadigm = 'explicit';
+  const result = h.context.simNPDA(['a', 'b', 'b', 'a']);
+  assert.equal(result.accepted, true);
+  assert.equal(h.context.App.simSteps.at(-1).final, 'accept');
+  assert.match(h.context.App.simSteps.at(-1).note, /ACCEPT/);
+});
+
+test('NPDA batch testing explores branching paths', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'NPDA',
+    sigma: ['a', 'b'],
+    stackAlpha: ['A', 'B', 'Z'],
+    states: [makeState('s0', 'push'), makeState('s1', 'pop'), makeState('s2', 'acc')],
+    transitions: [
+      { id: 't1', from: 's0', to: 's0', symbol: 'a', pop: 'Z', push: 'AZ' },
+      { id: 't2', from: 's0', to: 's0', symbol: 'a', pop: 'A', push: 'AA' },
+      { id: 't3', from: 's0', to: 's0', symbol: 'a', pop: 'B', push: 'AB' },
+      { id: 't4', from: 's0', to: 's0', symbol: 'b', pop: 'Z', push: 'BZ' },
+      { id: 't5', from: 's0', to: 's0', symbol: 'b', pop: 'A', push: 'BA' },
+      { id: 't6', from: 's0', to: 's0', symbol: 'b', pop: 'B', push: 'BB' },
+      { id: 't7', from: 's0', to: 's1', symbol: 'ε', pop: 'Z', push: 'Z' },
+      { id: 't8', from: 's0', to: 's1', symbol: 'ε', pop: 'A', push: 'A' },
+      { id: 't9', from: 's0', to: 's1', symbol: 'ε', pop: 'B', push: 'B' },
+      { id: 't10', from: 's1', to: 's1', symbol: 'a', pop: 'A', push: 'ε' },
+      { id: 't11', from: 's1', to: 's1', symbol: 'b', pop: 'B', push: 'ε' },
+      { id: 't12', from: 's1', to: 's2', symbol: 'ε', pop: 'Z', push: 'Z' }
+    ],
+    startId: 's0',
+    accepts: ['s2']
+  });
+  h.context.App.config.pdaParadigm = 'explicit';
+  h.getElement('batch-in').value = 'abba\nabab';
+  h.context.runBatch();
+  const html = h.getElement('batch-result').innerHTML;
+  assert.match(html, /✓ "abba"|âœ“ "abba"/);
+  assert.match(html, /✗ "abab"|âœ— "abab"/);
 });
 
 test('subset construction handles epsilon cycles and marks accepting subsets', () => {
@@ -487,6 +594,18 @@ test('workspace validation accepts NDTM as a machine type', () => {
   }));
 });
 
+test('workspace validation accepts NPDA as a machine type', () => {
+  const h = createHarness();
+  assert.doesNotThrow(() => h.context.validateSchema({
+    machine: 'NPDA',
+    sigma: ['a', 'b'],
+    stackAlpha: ['A', 'Z'],
+    states: [],
+    transitions: [],
+    accepts: []
+  }));
+});
+
 test('loading a legacy TM with duplicate read choices upgrades it to NDTM', () => {
   const h = createHarness();
   h.context.loadData({
@@ -503,6 +622,23 @@ test('loading a legacy TM with duplicate read choices upgrades it to NDTM', () =
     accepts: ['s2']
   });
   assert.equal(h.context.App.machine, 'NDTM');
+});
+
+test('loading a legacy PDA with overlapping stack moves upgrades it to NPDA', () => {
+  const h = createHarness();
+  h.context.loadData({
+    machine: 'PDA',
+    sigma: ['a'],
+    stackAlpha: ['A', 'Z'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1'), makeState('s2', 'q2')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's1', symbol: 'a', pop: 'Z', push: 'AZ' },
+      { id: 't1', from: 's0', to: 's2', symbol: 'ε', pop: 'Z', push: 'Z' }
+    ],
+    startId: 's0',
+    accepts: ['s2']
+  });
+  assert.equal(h.context.App.machine, 'NPDA');
 });
 
 test('right-linear and left-linear regular grammars load into equivalent automata', () => {

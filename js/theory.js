@@ -169,7 +169,7 @@ The app's decision-property tools are algorithmic expressions of deep closure fa
       id: 'th-cfl',
       color: 'var(--green)',
       title: 'Context-Free Languages',
-      sub: 'CFG · PDA · PARSING · PUMPING',
+      sub: 'CFG · PDA · NPDA · PARSING · PUMPING',
       body: `<b>Context-Free Grammars</b>
 A context-free grammar is a 4-tuple <em>G = (V, Sigma, R, S)</em> where each production has a single variable on the left. The defining idea is locality of rewriting: a variable can be expanded without looking at surrounding symbols. That single restriction already yields languages with nested structure, recursive syntax, and unbounded counting in one dimension.
 
@@ -177,10 +177,10 @@ A context-free grammar is a 4-tuple <em>G = (V, Sigma, R, S)</em> where each pro
 Derivations are sequential rewrites; parse trees are their hierarchical form. Leftmost and rightmost derivations may differ as derivation sequences even when they describe the same tree. When they produce different trees for the same string, the grammar is ambiguous.
 
 <b>Pushdown Automata</b>
-PDAs extend finite automata with a stack. This extra unbounded but disciplined memory is exactly what is needed for balanced parentheses, nested scopes, and matched recursive constructs. Nondeterministic PDAs recognize exactly the context-free languages.
+PDAs extend finite automata with a stack. This extra unbounded but disciplined memory is exactly what is needed for balanced parentheses, nested scopes, and matched recursive constructs. In this app, <em>PDA</em> denotes the deterministic model, while <em>NPDA</em> denotes the general nondeterministic model.
 
 <b>Determinism Is Subtle</b>
-Deterministic PDAs are strictly weaker than general PDAs. They still cover many useful language families, especially those designed for deterministic parsing, but they do not capture all CFLs. This is why parsing theory distinguishes general CFG membership from LL and LR subclasses.
+Deterministic PDAs are strictly weaker than general PDAs. Nondeterministic PDAs recognize exactly the context-free languages, but deterministic PDAs do not capture all CFLs. They still cover many useful language families, especially those designed for deterministic parsing, which is why parsing theory distinguishes general CFG membership from LL and LR subclasses.
 
 <b>Pumping for CFLs</b>
 The CFL pumping lemma comes from repeated variables on deep parse-tree paths. Unlike the regular pumping lemma, two regions are pumped in sync. The lemma is useful for showing that some languages require more than one stack discipline, but it is often technically trickier to apply.
@@ -234,25 +234,25 @@ Removing useless symbols and deciding emptiness or finiteness are not cosmetic c
     {
       id: 'th-pda-cfg',
       color: 'var(--green)',
-      title: 'PDA and CFG Equivalence',
-      sub: 'CFG -> PDA · PDA -> CFG · TOP-DOWN · BOTTOM-UP',
+      title: 'PDA, NPDA, and CFG Equivalence',
+      sub: 'CFG -> NPDA · PDA/NPDA -> CFG · TOP-DOWN · BOTTOM-UP',
       body: `<b>The Fundamental Equivalence</b>
 Context-free languages are exactly the languages accepted by nondeterministic PDAs. This is the context-free analogue of the DFA/NFA/regex equivalence for regular languages, but the constructions are more intricate because the stack has to encode partially completed syntax.
 
-<b>Top-Down CFG to PDA</b>
-The standard top-down construction starts with the grammar's start variable on the stack. If the top of the stack is a variable, the PDA nondeterministically expands it using a production. If the top is a terminal matching the current input symbol, the PDA consumes that symbol and pops it. Acceptance means the grammar has derived the input exactly.
+<b>Top-Down CFG to NPDA</b>
+The standard top-down construction starts with the grammar's start variable on the stack. If the top of the stack is a variable, the NPDA nondeterministically expands it using a production. If the top is a terminal matching the current input symbol, the machine consumes that symbol and pops it. Acceptance means the grammar has derived the input exactly.
 
 <b>Bottom-Up Intuition</b>
 Bottom-up constructions model reduction rather than prediction. The stack stores partially recognized material, and transitions simulate reversing derivation steps. This perspective connects more naturally to shift-reduce parsing and LR-style reasoning.
 
-<b>PDA to CFG</b>
-The reverse construction is more technical. A common method introduces variables of the form <em>[p A q]</em>, intended to generate exactly the strings that take the PDA from state <em>p</em> with stack symbol <em>A</em> on top to state <em>q</em> after that symbol has been removed. Productions encode the ways the PDA can consume input while matching pushes with corresponding later pops.
+<b>PDA / NPDA to CFG</b>
+The reverse construction is more technical. A common method introduces variables of the form <em>[p A q]</em>, intended to generate exactly the strings that take the machine from state <em>p</em> with stack symbol <em>A</em> on top to state <em>q</em> after that symbol has been removed. Productions encode the ways the automaton can consume input while matching pushes with corresponding later pops.
 
 <b>Why Acceptance Mode Matters</b>
 PDAs may accept by final state or by empty stack. These two conventions are equivalent in expressive power, but the conversion details differ. The app's explicit and empty-stack paradigms reflect that theoretical distinction.
 
 <b>What This Section Should Teach</b>
-The key lesson is not just that CFGs and PDAs are equivalent. It is that syntax trees and stack behavior are two descriptions of the same nested dependency structure: one generative, one operational.` },
+The key lesson is not just that CFGs and NPDAs are equivalent. It is that syntax trees and stack behavior are two descriptions of the same nested dependency structure: one generative, one operational. The deterministic PDA model then sits inside that picture as the parsing-friendly but strictly smaller subclass.` },
     {
       id: 'th-tm',
       color: 'var(--orange)',
@@ -356,7 +356,7 @@ Regex to epsilon-NFA is handled by Thompson construction. DFA or NFA to regex us
 FIRST/FOLLOW computation, LL(1) table generation, left-recursion removal, CNF and GNF conversion, CYK parsing, derivation generation, and parse-tree construction form the grammar-analysis side of the app. Each corresponds to a standard theorem or construction in formal-language theory.
 
 <b>PDA and TM Algorithms</b>
-CFG to PDA and PDA to CFG illustrate language-class equivalence on the context-free level. UTM, NDTM, and TM-to-grammar features represent the more advanced computability side of the project.
+CFG to NPDA and PDA/NPDA to CFG illustrate language-class equivalence on the context-free level, while the separate PDA mode highlights what changes when determinism is enforced. UTM, NDTM, and TM-to-grammar features represent the more advanced computability side of the project.
 
 <b>Pedagogical Point</b>
 This app is not just a simulator. It is a constructive theory environment. Almost every algorithm in the interface is there because it either proves an equivalence theorem, decides a property, or exposes the shape of a classical proof.` },

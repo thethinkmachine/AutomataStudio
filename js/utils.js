@@ -11,6 +11,10 @@ function isAnyTM(m = App.machine) {
   return isSingleTapeTM(m) || m === 'MTM';
 }
 
+function isAnyPDA(m = App.machine) {
+  return m === 'PDA' || m === 'NPDA';
+}
+
 function hasSingleTapeNondeterminism(transitions = App.transitions) {
   const seen = new Set();
   for (const t of transitions) {
@@ -19,6 +23,47 @@ function hasSingleTapeNondeterminism(transitions = App.transitions) {
     seen.add(key);
   }
   return false;
+}
+
+function pdaReadPatternsOverlap(a, b, eps = App.config.sym.eps, any = App.config.sym.any) {
+  if (a === eps || b === eps) return true;
+  if (a === any || b === any) return true;
+  return a === b;
+}
+
+function pdaPopPatternsOverlap(a, b, eps = App.config.sym.eps, any = App.config.sym.any) {
+  if (a === eps || b === eps) return true;
+  if (a === any || b === any) return true;
+  return a === b;
+}
+
+function pdaTransitionsOverlap(a, b) {
+  return a.from === b.from
+    && pdaReadPatternsOverlap(a.symbol, b.symbol)
+    && pdaPopPatternsOverlap(a.pop, b.pop);
+}
+
+function findPdaNondeterministicPairs(transitions = App.transitions) {
+  const pairs = [];
+  for (let i = 0; i < transitions.length; i++) {
+    for (let j = i + 1; j < transitions.length; j++) {
+      if (pdaTransitionsOverlap(transitions[i], transitions[j])) {
+        pairs.push([transitions[i], transitions[j]]);
+      }
+    }
+  }
+  return pairs;
+}
+
+function hasPdaNondeterminism(transitions = App.transitions) {
+  return findPdaNondeterministicPairs(transitions).length > 0;
+}
+
+function getPdaDeterminismConflict(candidate, transitions = App.transitions, ignoreId = null) {
+  return transitions.find(t =>
+    t.id !== ignoreId
+    && pdaTransitionsOverlap(t, candidate)
+  ) || null;
 }
 
 function resetIds() {

@@ -637,7 +637,7 @@ function runCFG2PDA(mode = 'topdown') {
   }
 
   const rows = trans.map(t => `<tr><td>${t.from}</td><td>${t.symbol}</td><td>${t.pop}</td><td>${t.push}</td><td>${t.to}</td></tr>`).join('');
-  let html = `<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">CFG → PDA (${mode === 'topdown' ? 'Top-Down / Leftmost' : 'Bottom-Up / Rightmost'})</h3>
+  let html = `<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">CFG → NPDA (${mode === 'topdown' ? 'Top-Down / Leftmost' : 'Bottom-Up / Rightmost'})</h3>
 <div style="font-size:.72rem;color:var(--text2);margin-bottom:10px;line-height:1.8">
   States: {${[...stateNamesSet].join(', ')}} &nbsp;&nbsp; Start: q_start &nbsp;&nbsp; Accept: q_accept<br>
   Stack alphabet: {${[...G.vars].join(',')}, ${[...App.sigma].join(',')}, ${App.config.sym.stackBottom} (bottom)}
@@ -645,7 +645,7 @@ function runCFG2PDA(mode = 'topdown') {
 <div style="overflow-x:auto;max-height:300px;"><table class="result-table">
 <thead><tr><th>From</th><th>Read</th><th>Pop</th><th>Push</th><th>To</th></tr></thead>
 <tbody>${rows}</tbody></table></div>
-<div style="margin-top:10px"><button class="algo-btn" onclick="loadCFGPDA()">Load to Canvas (PDA)</button></div>`;
+<div style="margin-top:10px"><button class="algo-btn" onclick="loadCFGPDA()">Load to Canvas (NPDA)</button></div>`;
   out.innerHTML = html;
   App._lastCFGPDA = trans;
   App._lastCFGPDANames = [...stateNamesSet];
@@ -693,10 +693,10 @@ function loadCFGPDA() {
   const paradigmDropdown = document.getElementById('set-pda-paradigm');
   if (paradigmDropdown) paradigmDropdown.value = 'explicit';
 
-  applyMachineSwitch('PDA');
+  applyMachineSwitch('NPDA');
   renderAll(); updateLPanel(); updateRPanel();
   saveBackup(); // Required to persist to localStorage after programmatically loading a structure
-  setView('build'); showStatus('PDA loaded for CFG! (Forced 7-Tuple Paradigm)');
+  setView('build'); showStatus('NPDA loaded for CFG! (Forced 7-Tuple Paradigm)');
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -826,15 +826,15 @@ function renderCFLPumpVis() {
 // ══════════════════════════════════════════════════════════════════
 function runPDA2CFG(mode = 'raw') {
   const out = $('gram-output');
-  if (App.machine !== 'PDA') {
-    out.innerHTML = `<div class="cnf-step"><span class="lbl">Switch to PDA mode to use this conversion.</span></div>`;
+  if (!isAnyPDA(App.machine)) {
+    out.innerHTML = `<div class="cnf-step"><span class="lbl">Switch to PDA or NPDA mode to use this conversion.</span></div>`;
     return;
   }
   if (App.config.pdaParadigm === 'empty') {
-    out.innerHTML = `<div class="cnf-step"><span class="lbl" style="color:var(--error-color)">Conversion Failed.</span> The PDA → CFG (Triple Construction) algorithm conceptually requires transitions to evaluate explicitly popped elements from Γ. Change the Engine settings to '7-Tuple (Explicit Stack Base)' and normalize your PDA to pop exactly 1 symbol per transition.</div>`;
+    out.innerHTML = `<div class="cnf-step"><span class="lbl" style="color:var(--error-color)">Conversion Failed.</span> The PDA → CFG (Triple Construction) algorithm conceptually requires transitions to evaluate explicitly popped elements from Γ. Change the Engine settings to '7-Tuple (Explicit Stack Base)' and normalize your PDA or NPDA to pop exactly 1 symbol per transition.</div>`;
     return;
   }
-  if (!App.states.length) { out.innerHTML = '<div class="cnf-step"><span class="lbl">No PDA states defined.</span></div>'; return; }
+  if (!App.states.length) { out.innerHTML = '<div class="cnf-step"><span class="lbl">No PDA or NPDA states defined.</span></div>'; return; }
   if (!App.startId) { out.innerHTML = '<div class="cnf-step"><span class="lbl">No start state defined.</span></div>'; return; }
 
   const eps = App.config.sym.eps;
@@ -978,7 +978,7 @@ function runPDA2CFG(mode = 'raw') {
 
   out.innerHTML = `
 <h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
-  <span>PDA &#8594; CFG (Sipser Triple Construction)</span>
+  <span>PDA / NPDA &#8594; CFG (Sipser Triple Construction)</span>
   <button id="copy-cfg-btn" class="icon-btn" title="Copy to Editor" ${isEmptyLanguage ? 'disabled' : ''} style="font-size:0.75rem;padding:4px 8px;border:1px solid var(--border);cursor:${isEmptyLanguage ? 'not-allowed' : 'pointer'};border-radius:4px;background:var(--bg3);color:var(--text);font-family:var(--sans);opacity:${isEmptyLanguage ? '0.55' : '1'}">Apply to Editor</button>
 </h3>
 <div style="font-size:.7rem;color:var(--text2);margin-bottom:12px;line-height:1.8">
@@ -990,7 +990,7 @@ ${isEmptyLanguage ? `<div class="pump-result fail">No productions remain after p
   <tbody>${rows}</tbody>
 </table></div>`}
 <div style="font-size:.62rem;color:var(--text3);margin-top:8px">
-  Assumes PDA pops exactly 1 symbol and pushes at most 2 per transition. Longer push strings require decomposition.
+  Assumes the input PDA/NPDA pops exactly 1 symbol and pushes at most 2 per transition. Longer push strings require decomposition.
 </div>
 `;
 

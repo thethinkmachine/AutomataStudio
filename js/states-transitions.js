@@ -88,7 +88,7 @@ function populateTransitionModal(t) {
   }
 
   $('m-sym-row').style.display = App.machine === 'MTM' ? 'none' : '';
-  $('m-pda-extra').style.display = App.machine === 'PDA' ? '' : 'none';
+  $('m-pda-extra').style.display = isAnyPDA(App.machine) ? '' : 'none';
   $('m-tm-extra').style.display = isSingleTapeTM(App.machine) ? '' : 'none';
   $('m-mealy-extra').style.display = (App.machine === 'Mealy') ? '' : 'none';
   $('m-mtm-extra').style.display = (App.machine === 'MTM') ? '' : 'none';
@@ -151,7 +151,7 @@ function getTransitionFormValues() {
     to: $('m-to')?.value,
     symbol: App.machine === 'MTM' ? null : $('m-sym')?.value
   };
-  if (App.machine === 'PDA') {
+  if (isAnyPDA(App.machine)) {
     values.pop = parseEps($('m-pop')?.value) || eps;
     values.push = parseEps($('m-push')?.value) || eps;
   }
@@ -244,26 +244,31 @@ function confirmTrans() {
     if (conflict) {
       showStatus(`TM already has δ(${getState(from)?.name}, '${sym}'). Use NDTM mode if you want multiple choices for the same read symbol.`); return;
     }
+  } else if (App.machine === 'PDA') {
+    const conflict = getPdaDeterminismConflict({ from, symbol: sym, pop: values.pop }, App.transitions, editId);
+    if (conflict) {
+      showStatus(`PDA already has an overlapping move from ${getState(from)?.name}. Switch to NPDA mode if you want branching on the same configuration.`); return;
+    }
   } else if (App.machine === 'MTM') {
     const sig = (values.tapeSyms || []).join('\u0001');
     const conflict = App.transitions.find(t => t.id !== editId && t.from === from && (t.tapeSyms || []).join('\u0001') === sig);
     if (conflict) {
       showStatus(`MTM already has a transition for (${getState(from)?.name}, [${(values.tapeSyms || []).join(', ')}]). Each read tuple must be unique.`); return;
     }
-  } else if (!cfg.isTransducer && App.machine !== 'NFA' && App.machine !== 'ε-NFA' && App.machine !== 'PDA' && !cfg.hasTape) {
+  } else if (!cfg.isTransducer && App.machine !== 'NFA' && App.machine !== 'ε-NFA' && !isAnyPDA(App.machine) && !cfg.hasTape) {
     const conflict = App.transitions.find(t => t.id !== editId && t.from === from && t.symbol === sym);
     if (conflict) {
       showStatus(`${App.machine} already has δ(${getState(from)?.name}, '${sym}'). Each (state, symbol) pair must be unique.`); return;
     }
   }
-  if (App.machine === 'PDA') {
+  if (isAnyPDA(App.machine)) {
     const isExplicit = App.config.pdaParadigm === 'explicit';
     if (!values.pop || values.pop.trim() === '') values.pop = eps;
     if (isExplicit && values.pop === eps) {
       // Allow epsilon pops for 7-tuple PDAs although formal definition requires exactly one symbol
     }
     if (values.pop.length > 1 && values.pop !== App.config.sym.any) {
-      showStatus(`PDA pop must be exactly one symbol.`); return;
+      showStatus(`${App.machine} pop must be exactly one symbol.`); return;
     }
     const stackAllowed = new Set([...App.stackAlpha, App.config.sym.stackBottom, App.config.sym.any]);
     if (values.pop !== eps && !stackAllowed.has(values.pop)) {
@@ -283,7 +288,7 @@ function confirmTrans() {
     t.from = from;
     t.to = to;
     t.symbol = sym;
-    if (App.machine === 'PDA') {
+    if (isAnyPDA(App.machine)) {
       t.pop = values.pop;
       t.push = values.push;
     } else {
@@ -314,7 +319,7 @@ function confirmTrans() {
     }
   } else {
     const t = { id: newTId(), from, to, symbol: sym };
-    if (App.machine === 'PDA') {
+    if (isAnyPDA(App.machine)) {
       t.pop = values.pop;
       t.push = values.push;
     }
@@ -345,7 +350,7 @@ function deleteTransitions(ids) {
   renderAll(); updateLPanel(); updateRPanel();
 }
 function transLabel(t) {
-  if (App.machine === 'PDA') return `${t.symbol}, ${t.pop} → ${t.push}`;
+  if (isAnyPDA(App.machine)) return `${t.symbol}, ${t.pop} → ${t.push}`;
   if (isSingleTapeTM(App.machine)) return `${t.symbol} → ${t.write}, ${t.dir}`;
   if (App.machine === 'Mealy') return `${t.symbol} / ${t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda}`;
   if (App.machine === 'MTM') {
@@ -360,7 +365,7 @@ function transLabel(t) {
 
 function transLabelDescriptive(t) {
   const dirMap = { 'R': 'Right', 'L': 'Left', 'S': 'Stay' };
-  if (App.machine === 'PDA') {
+  if (isAnyPDA(App.machine)) {
     return `Read '${t.symbol}', Pop '${t.pop}', Push '${t.push}'`;
   }
   if (isSingleTapeTM(App.machine)) {

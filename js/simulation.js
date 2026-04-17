@@ -55,6 +55,7 @@ function runSim() {
   if (App.machine === 'DFA') simDFA(tokens);
   else if (App.machine === 'NFA' || App.machine === 'ε-NFA') simNFA(tokens);
   else if (App.machine === 'PDA') simPDA(tokens);
+  else if (App.machine === 'NPDA') simNPDA(tokens);
   else if (App.machine === 'Moore') simMoore(tokens);
   else if (App.machine === 'Mealy') simMealy(tokens);
   else if (App.machine === 'NDTM') simNDTM(tokens);
@@ -110,7 +111,7 @@ function epsClosure(states) {
 }
 function stateNames(ids) { return [...ids].map(id => getState(id)?.name || id).join(',') }
 
-function simPDA(tokens) {
+function legacySimPDA_unused(tokens) {
   App.simSteps = [];
   const isExplicit = App.config.pdaParadigm === 'explicit';
   const init = { state: App.startId, tokens, remaining: tokens, stack: isExplicit ? [App.config.sym.stackBottom] : [], note: 'Start configuration' };
@@ -294,6 +295,263 @@ function simNDTM(tokens) {
   return { accepted, branches, maxDepth, log };
 }
 
+function createInitialPdaConfig(tokens) {
+  const isExplicit = App.config.pdaParadigm === 'explicit';
+  return {
+    state: App.startId,
+    tokens,
+    remaining: [...tokens],
+    stack: isExplicit ? [App.config.sym.stackBottom] : [],
+    depth: 0,
+    branch: 1,
+    parent: null,
+    via: null
+  };
+}
+
+function pdaConfigKey(state, remaining, stack) {
+  return `${state}|${remaining.join('\u0001')}|${stack.join('\u0001')}`;
+}
+
+function isPdaAcceptingConfig(cfg) {
+  if (App.config.pdaParadigm === 'explicit') {
+    return App.accepts.has(cfg.state) && cfg.remaining.length === 0;
+  }
+  return cfg.remaining.length === 0 && cfg.stack.length === 0;
+}
+
+function formatPdaInstantaneousDescription(cfg) {
+  const stateName = getState(cfg.state)?.name || cfg.state;
+  const remaining = cfg.remaining.length ? cfg.remaining.join('') : App.config.sym.eps;
+  const stack = cfg.stack.length ? [...cfg.stack].reverse().join('') : App.config.sym.eps;
+  return `(${stateName}, ${remaining}, ${stack})`;
+}
+
+function getMatchingPdaTransitions(cfg) {
+  const top = cfg.stack[cfg.stack.length - 1];
+  const eps = App.config.sym.eps;
+  return App.transitions.filter(t => {
+    if (t.from !== cfg.state) return false;
+    const readOk = t.symbol === eps || (cfg.remaining.length > 0 && (t.symbol === cfg.remaining[0] || t.symbol === App.config.sym.any));
+    const popOk = canApplyPdaPop(top, t.pop);
+    return readOk && popOk;
+  });
+}
+
+function applyPdaTransitionConfig(cfg, transition, branch = cfg.branch) {
+  const eps = App.config.sym.eps;
+  const top = cfg.stack[cfg.stack.length - 1];
+  const nextStack = [...cfg.stack];
+  if (transition.pop !== eps) nextStack.pop();
+  let pushStr = transition.push && transition.push !== eps ? transition.push : '';
+  if (pushStr === App.config.sym.any) pushStr = top;
+  if (pushStr) pushStr.split('').reverse().forEach(sym => nextStack.push(sym));
+  return {
+    state: transition.to,
+    tokens: cfg.tokens,
+    remaining: transition.symbol === eps ? [...cfg.remaining] : cfg.remaining.slice(1),
+    stack: nextStack,
+    depth: cfg.depth + 1,
+    branch,
+    parent: cfg,
+    via: transition
+  };
+}
+
+function tracePdaPath(cfg) {
+  const path = [];
+  let cur = cfg;
+  while (cur) {
+    path.push(cur);
+    cur = cur.parent;
+  }
+  return path.reverse();
+}
+
+function formatPdaTransitionNote(prevCfg, nextCfg) {
+  const t = nextCfg.via;
+  const fromName = getState(prevCfg.state)?.name || prevCfg.state;
+  const toName = getState(nextCfg.state)?.name || nextCfg.state;
+  const read = t?.symbol || App.config.sym.eps;
+  const pop = t?.pop || App.config.sym.eps;
+  const push = t?.push || App.config.sym.eps;
+  return `Branch ${nextCfg.branch} depth ${nextCfg.depth}: (${fromName}, ${read}, ${pop}) → (${toName}, ${push})`;
+}
+
+function buildPdaPathSteps(path, finalStatus = null, finalNote = '') {
+  const steps = path.map((cfg, idx) => ({
+    state: cfg.state,
+    tokens: cfg.tokens,
+    remaining: [...cfg.remaining],
+    stack: [...cfg.stack],
+    branch: cfg.branch,
+    tid: cfg.via?.id,
+    note: idx === 0 ? 'Start configuration' : formatPdaTransitionNote(path[idx - 1], cfg)
+  }));
+  if (steps.length && finalStatus) {
+    const last = steps[steps.length - 1];
+    last.final = finalStatus;
+    last.note += finalStatus === 'accept' ? ' — ACCEPT' : ` — ${finalNote || 'REJECT'}`;
+  }
+  return steps;
+}
+
+function appendPdaSummaryStep(steps, cfg, finalStatus, note) {
+  steps.push({
+    state: cfg.state,
+    tokens: cfg.tokens,
+    remaining: [...cfg.remaining],
+    stack: [...cfg.stack],
+    branch: cfg.branch,
+    note,
+    final: finalStatus
+  });
+}
+
+function simPDA(tokens) {
+  const init = createInitialPdaConfig(tokens);
+  if (isPdaAcceptingConfig(init)) {
+    App.simSteps = buildPdaPathSteps([init], 'accept');
+    App.simIdx = 0; renderSimStep();
+    return { accepted: true };
+  }
+
+  let cfg = init;
+  const visited = new Set([pdaConfigKey(cfg.state, cfg.remaining, cfg.stack)]);
+
+  for (let step = 0; step < App.config.maxPdaSteps; step++) {
+    const matching = getMatchingPdaTransitions(cfg);
+    if (matching.length > 1) {
+      App.simSteps = buildPdaPathSteps(tracePdaPath(cfg));
+      appendPdaSummaryStep(
+        App.simSteps,
+        cfg,
+        'reject',
+        'Nondeterministic overlap detected in PDA mode. Switch to NPDA to explore all valid branches.'
+      );
+      App.simIdx = 0; renderSimStep();
+      return { accepted: false };
+    }
+    if (!matching.length) {
+      App.simSteps = buildPdaPathSteps(tracePdaPath(cfg));
+      appendPdaSummaryStep(App.simSteps, cfg, 'reject', 'No valid transition from this configuration — REJECT');
+      App.simIdx = 0; renderSimStep();
+      return { accepted: false };
+    }
+
+    const nextCfg = applyPdaTransitionConfig(cfg, matching[0], cfg.branch);
+    const nextKey = pdaConfigKey(nextCfg.state, nextCfg.remaining, nextCfg.stack);
+    if (visited.has(nextKey)) {
+      App.simSteps = buildPdaPathSteps(tracePdaPath(cfg));
+      appendPdaSummaryStep(App.simSteps, cfg, 'reject', 'Repeated configuration detected — possible ε-loop — REJECT');
+      App.simIdx = 0; renderSimStep();
+      return { accepted: false };
+    }
+    visited.add(nextKey);
+    cfg = nextCfg;
+
+    if (isPdaAcceptingConfig(cfg)) {
+      App.simSteps = buildPdaPathSteps(tracePdaPath(cfg), 'accept');
+      App.simIdx = 0; renderSimStep();
+      return { accepted: true };
+    }
+  }
+
+  App.simSteps = buildPdaPathSteps(tracePdaPath(cfg));
+  appendPdaSummaryStep(App.simSteps, cfg, 'reject', 'PDA step limit reached — REJECT');
+  App.simIdx = 0; renderSimStep();
+  return { accepted: false };
+}
+
+function exploreNPDA(tokens) {
+  const init = createInitialPdaConfig(tokens);
+  const queue = [init];
+  const visited = new Set([pdaConfigKey(init.state, init.remaining, init.stack)]);
+  const log = [];
+  let acceptedCfg = null;
+  let branches = 0;
+  let maxDepth = 0;
+  let lastExplored = init;
+  let nextBranchId = 2;
+
+  while (queue.length && branches < App.config.maxPdaSteps) {
+    const cfg = queue.shift();
+    lastExplored = cfg;
+    branches++;
+    maxDepth = Math.max(maxDepth, cfg.depth);
+    const stateName = getState(cfg.state)?.name || cfg.state;
+    const idStr = formatPdaInstantaneousDescription(cfg);
+
+    if (isPdaAcceptingConfig(cfg)) {
+      acceptedCfg = cfg;
+      log.push(`<span class="step-acc">Branch ${cfg.branch}: ACCEPT ✓</span><span class="step-sub">Accepted at depth ${cfg.depth}.<br>ID: ${idStr}</span>`);
+      break;
+    }
+
+    const matching = getMatchingPdaTransitions(cfg);
+    if (!matching.length) {
+      log.push(`Branch ${cfg.branch}: <span class="step-dead">stuck</span><span class="step-sub">No transition matches ${idStr}.<br>Depth ${cfg.depth}</span>`);
+      continue;
+    }
+
+    const nextRead = cfg.remaining[0] || App.config.sym.eps;
+    const subs = [
+      `State "${stateName}" with next input '${nextRead}'`,
+      `Depth ${cfg.depth} · Stack top ${cfg.stack[cfg.stack.length - 1] || App.config.sym.eps}`,
+      `ID: ${idStr}`
+    ];
+    if (matching.length > 1) {
+      subs.push(`Nondeterministic choice: ${matching.length} matching transitions.`);
+    }
+    log.push(`Branch ${cfg.branch}: exploring <em>${stateName}</em><span class="step-sub">${subs.join('<br>')}</span>`);
+
+    matching.forEach((transition, idx) => {
+      const childBranch = matching.length === 1 || idx === 0 ? cfg.branch : nextBranchId++;
+      const nextCfg = applyPdaTransitionConfig(cfg, transition, childBranch);
+      const key = pdaConfigKey(nextCfg.state, nextCfg.remaining, nextCfg.stack);
+      if (visited.has(key)) return;
+      visited.add(key);
+      queue.push(nextCfg);
+    });
+  }
+
+  return {
+    accepted: !!acceptedCfg,
+    branches,
+    maxDepth,
+    log,
+    witnessPath: tracePdaPath(acceptedCfg || lastExplored),
+    finalCfg: acceptedCfg || lastExplored,
+    unresolved: !acceptedCfg && queue.length > 0
+  };
+}
+
+function simNPDA(tokens) {
+  const result = exploreNPDA(tokens);
+  if (result.accepted) {
+    App.simSteps = buildPdaPathSteps(result.witnessPath, 'accept');
+  } else {
+    App.simSteps = buildPdaPathSteps(result.witnessPath);
+    appendPdaSummaryStep(
+      App.simSteps,
+      result.finalCfg,
+      'reject',
+      result.unresolved
+        ? `Exploration limit ${App.config.maxPdaSteps} reached — unresolved branches remain`
+        : 'All branches halted without acceptance — REJECT'
+    );
+  }
+  App.simIdx = 0;
+  renderSimStep();
+  return {
+    accepted: result.accepted,
+    branches: result.branches,
+    maxDepth: result.maxDepth,
+    log: result.log,
+    witnessLength: result.witnessPath.length
+  };
+}
+
 function simMoore(tokens) {
   App.simSteps = [];
   let cur = App.startId;
@@ -410,7 +668,7 @@ function renderSimStep() {
     
     rows.push({ label: 'In', cells: tokensToDisplay, head: tokIdx });
 
-    if (m === 'PDA' && step.stack) {
+    if (isAnyPDA(m) && step.stack) {
       rows.push({ label: 'Stk', cells: [...step.stack].reverse(), head: 0 }); // Stack top at index 0
     } else if (['Moore', 'Mealy'].includes(m)) {
       const outToks = step.outToks || [];
@@ -487,6 +745,7 @@ function runBatch() {
     if (App.machine === 'DFA') accepted = testDFA(tokens);
     else if (App.machine === 'NFA' || App.machine === 'ε-NFA') accepted = testNFA(tokens);
     else if (App.machine === 'PDA') accepted = testPDA(tokens);
+    else if (App.machine === 'NPDA') accepted = testNPDA(tokens);
     else if (App.machine === 'Moore') { accepted = App.config.transducerAccepts ? testDFA(tokens) : undefined; output = getMooreOutput(tokens); }
     else if (App.machine === 'Mealy') { accepted = App.config.transducerAccepts ? testDFA(tokens) : undefined; output = getMealyOutput(tokens); }
     return { str: line, accepted, output };
@@ -519,7 +778,7 @@ function testNFA(tokens) {
   return [...cur].some(id => App.accepts.has(id));
 }
 
-function testPDA(tokens) {
+function legacyTestPDA_unused(tokens) {
   const isExplicit = App.config.pdaParadigm === 'explicit';
   const init = {
     state: App.startId,
@@ -564,6 +823,29 @@ function testPDA(tokens) {
   }
 
   return cfgs.some(isAccepted);
+}
+
+function testPDA(tokens) {
+  let cfg = createInitialPdaConfig(tokens);
+  if (isPdaAcceptingConfig(cfg)) return true;
+  const visited = new Set([pdaConfigKey(cfg.state, cfg.remaining, cfg.stack)]);
+
+  for (let step = 0; step < App.config.maxPdaSteps; step++) {
+    const matching = getMatchingPdaTransitions(cfg);
+    if (matching.length !== 1) return false;
+    const nextCfg = applyPdaTransitionConfig(cfg, matching[0], cfg.branch);
+    const nextKey = pdaConfigKey(nextCfg.state, nextCfg.remaining, nextCfg.stack);
+    if (visited.has(nextKey)) return false;
+    visited.add(nextKey);
+    cfg = nextCfg;
+    if (isPdaAcceptingConfig(cfg)) return true;
+  }
+
+  return false;
+}
+
+function testNPDA(tokens) {
+  return exploreNPDA(tokens).accepted;
 }
 
 function getMooreOutput(tokens) {

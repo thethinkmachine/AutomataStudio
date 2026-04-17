@@ -6,6 +6,7 @@ const MachineTypes = {
   'NFA': { label: 'NFA', hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-nfa', file: 'nfa' },
   'ε-NFA': { label: 'ε-NFA', hasEpsilon: true, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-enfa', file: 'enfa' },
   'PDA': { label: 'PDA', hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-pda', file: 'pda' },
+  'NPDA': { label: 'NPDA', hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-npda', file: 'npda' },
   'TM': { label: 'TM', hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-tm', file: 'tm' },
   'NDTM': { label: 'NDTM', hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-ndtm', file: 'ndtm' },
   'MTM': { label: 'MTM', hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-mtm', file: 'mtm' },

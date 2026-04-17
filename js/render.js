@@ -376,51 +376,6 @@ function updateLPanel() {
 function updateRPanel() {
   updateFormalDef(); updateRegex();
 }
-function updateFormalDef() {
-  const Q = App.states.map(s => s.name).join(', ') || '∅';
-  const S = [...App.sigma].join(', ') || '∅';
-  const q0 = getState(App.startId)?.name || '—';
-  const F = App.states.filter(s => App.accepts.has(s.id)).map(s => s.name).join(', ') || '∅';
-  const m = App.machine;
-  let txt;
-  if (m === 'DFA' || m === 'NFA' || m === 'ε-NFA') {
-    txt = `M = (Q, Σ, δ, q₀, F)\n\nQ = {${Q}}\nΣ = {${S}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Σ→${m === 'DFA' ? 'Q' : '𝒫(Q)'}`;
-  } else if (m === 'PDA') {
-    const G = [...App.stackAlpha].join(', ') || '∅';
-    const { eps, stackBottom } = App.config.sym;
-    if (App.config.pdaParadigm === 'explicit') {
-      txt = `M = (Q,Σ,Γ,δ,q₀,Z₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nZ₀ = ${stackBottom}\nF = {${F}}\nδ: Q×(Σ∪{${eps}})×Γ→𝒫(Q×Γ*)`;
-    } else {
-      txt = `M = (Q,Σ,Γ,δ,q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nAcceptance = empty stack\nδ: Q×(Σ∪{${eps}})×(Γ∪{${eps}})→𝒫(Q×(Γ∪{${eps}}))`;
-    }
-  } else if (m === 'Moore') {
-    const D = [...App.outputAlpha].join(', ') || '∅';
-    const { lambda } = App.config.sym;
-    txt = `M = (Q, Σ, Δ, δ, ${lambda}, q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΔ = {${D}}\nq₀ = ${q0}\nδ: Q×Σ→Q\n${lambda}: Q→Δ`;
-  } else if (m === 'Mealy') {
-    const D = [...App.outputAlpha].join(', ') || '∅';
-    const { lambda } = App.config.sym;
-    txt = `M = (Q, Σ, Δ, δ, ${lambda}, q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΔ = {${D}}\nq₀ = ${q0}\nδ: Q×Σ→Q\n${lambda}: Q×Σ→Δ`;
-  } else if (m === 'NDTM') {
-    const G = [...App.stackAlpha].join(', ') || '∅';
-    txt = `M = (Q,Σ,Γ,δ,q₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γ→𝒫(Q×Γ×{L,R,S})`;
-  } else if (m === 'MTM') {
-    const G = [...App.stackAlpha].join(', ') || '∅';
-    txt = `M = (Q,Σ,Γ,δ,q₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γᵏ→Q×Γᵏ×{L,R,S}ᵏ\nk = ${App.tapeCount} tapes`;
-  } else {
-    const G = [...App.stackAlpha].join(', ') || '∅';
-    txt = `M = (Q,Σ,Γ,δ,q₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γ→Q×Γ×{L,R,S}`;
-  }
-  $('def-box').textContent = txt;
-}
-function updateRegex() {
-  const rb = $('regex-box'), m = App.machine;
-  if (m === 'PDA') { rb.textContent = 'Context-Free Language'; return; }
-  if (isAnyTM(m)) { rb.textContent = 'Recursively Enumerable Language'; return; }
-  if (m === 'Moore') { rb.textContent = 'Finite-State Transducer (Moore)'; return; }
-  if (m === 'Mealy') { rb.textContent = 'Finite-State Transducer (Mealy)'; return; }
-  rb.textContent = deriveRegex() || '∅';
-}
 
 // GNFA State Elimination (textbook: add new start + new accept, eliminate interior)
 let _regexCache = { key: '', val: '' };
@@ -474,6 +429,56 @@ function deriveRegex() {
   _regexCache = { key: ck, val };
   return val;
 }
+function updateFormalDef() {
+  const Q = App.states.map(s => s.name).join(', ') || '∅';
+  const S = [...App.sigma].join(', ') || '∅';
+  const q0 = getState(App.startId)?.name || '—';
+  const F = App.states.filter(s => App.accepts.has(s.id)).map(s => s.name).join(', ') || '∅';
+  const m = App.machine;
+  let txt;
+  if (m === 'DFA' || m === 'NFA' || m === 'ε-NFA') {
+    txt = `M = (Q, Σ, δ, q₀, F)\n\nQ = {${Q}}\nΣ = {${S}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Σ→${m === 'DFA' ? 'Q' : '𝒫(Q)'}`;
+  } else if (isAnyPDA(m)) {
+    const G = [...App.stackAlpha].join(', ') || '∅';
+    const { eps, stackBottom } = App.config.sym;
+    const codomain = m === 'NPDA' ? '𝒫(Q×Γ*)' : 'Q×Γ*';
+    const emptyCodomain = m === 'NPDA' ? `𝒫(Q×(Γ∪{${eps}})*)` : `Q×(Γ∪{${eps}})*`;
+    const label = m === 'NPDA' ? 'NPDA' : 'PDA';
+    if (App.config.pdaParadigm === 'explicit') {
+      txt = `${label} = (Q,Σ,Γ,δ,q₀,Z₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nZ₀ = ${stackBottom}\nF = {${F}}\nδ: Q×(Σ∪{${eps}})×Γ→${codomain}`;
+    } else {
+      txt = `${label} = (Q,Σ,Γ,δ,q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nAcceptance = empty stack\nδ: Q×(Σ∪{${eps}})×(Γ∪{${eps}})→${emptyCodomain}`;
+    }
+  } else if (m === 'Moore') {
+    const D = [...App.outputAlpha].join(', ') || '∅';
+    const { lambda } = App.config.sym;
+    txt = `M = (Q, Σ, Δ, δ, ${lambda}, q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΔ = {${D}}\nq₀ = ${q0}\nδ: Q×Σ→Q\n${lambda}: Q→Δ`;
+  } else if (m === 'Mealy') {
+    const D = [...App.outputAlpha].join(', ') || '∅';
+    const { lambda } = App.config.sym;
+    txt = `M = (Q, Σ, Δ, δ, ${lambda}, q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΔ = {${D}}\nq₀ = ${q0}\nδ: Q×Σ→Q\n${lambda}: Q×Σ→Δ`;
+  } else if (m === 'NDTM') {
+    const G = [...App.stackAlpha].join(', ') || '∅';
+    txt = `M = (Q,Σ,Γ,δ,q₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γ→𝒫(Q×Γ×{L,R,S})`;
+  } else if (m === 'MTM') {
+    const G = [...App.stackAlpha].join(', ') || '∅';
+    txt = `M = (Q,Σ,Γ,δ,q₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γᵏ→Q×Γᵏ×{L,R,S}ᵏ\nk = ${App.tapeCount} tapes`;
+  } else {
+    const G = [...App.stackAlpha].join(', ') || '∅';
+    txt = `M = (Q,Σ,Γ,δ,q₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γ→Q×Γ×{L,R,S}`;
+  }
+  $('def-box').textContent = txt;
+}
+
+function updateRegex() {
+  const rb = $('regex-box'), m = App.machine;
+  if (isAnyPDA(m)) { rb.textContent = 'Context-Free Language'; return; }
+  if (isAnyTM(m)) { rb.textContent = 'Recursively Enumerable Language'; return; }
+  if (m === 'Moore') { rb.textContent = 'Finite-State Transducer (Moore)'; return; }
+  if (m === 'Mealy') { rb.textContent = 'Finite-State Transducer (Mealy)'; return; }
+  rb.textContent = deriveRegex() || '∅';
+}
+
 function reUnion(a, b) { if (!a) return b; if (!b) return a; if (a === b) return a; return `${a} | ${b}`; }
 function reConcat(a, b) { if (!a || !b) return a || b || ''; if (a === App.config.sym.eps) return b; if (b === App.config.sym.eps) return a; const pa = a.includes(' | '), pb = b.includes(' | '); return `${pa ? '(' + a + ')' : a}${pb ? '(' + b + ')' : b}`; }
 function simplifyRE(r) {
@@ -486,4 +491,3 @@ function simplifyRE(r) {
     .replace(/\(([a-zA-Z0-9])\)\*/g, '$1*')
     .replace(/\(([a-zA-Z0-9])\)/g, '$1');
 }
-

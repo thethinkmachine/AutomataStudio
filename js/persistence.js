@@ -98,7 +98,7 @@ window.addEventListener('drop', e => {
 function validateSchema(data) {
   if (!data || typeof data !== 'object') throw new Error("Data must be a valid JSON object.");
   
-  const validMachines = ['DFA', 'NFA', 'ε-NFA', 'PDA', 'TM', 'NDTM', 'MTM', 'Moore', 'Mealy'];
+  const validMachines = ['DFA', 'NFA', 'ε-NFA', 'PDA', 'NPDA', 'TM', 'NDTM', 'MTM', 'Moore', 'Mealy'];
   if (!data.machine || !validMachines.includes(data.machine)) {
     throw new Error(`Missing or unsupported machine type: ${data.machine || 'undefined'}`);
   }
@@ -110,8 +110,8 @@ function validateSchema(data) {
   if (!Array.isArray(data.accepts)) throw new Error("Missing required 'accepts' array.");
 
   // Conditional requirements based on machine type
-  if (data.machine === 'PDA' && !Array.isArray(data.stackAlpha)) {
-    throw new Error("PDA requires a 'stackAlpha' array.");
+  if ((data.machine === 'PDA' || data.machine === 'NPDA') && !Array.isArray(data.stackAlpha)) {
+    throw new Error("PDA and NPDA require a 'stackAlpha' array.");
   }
   if ((data.machine === 'Moore' || data.machine === 'Mealy') && !Array.isArray(data.outputAlpha)) {
     throw new Error("Transducers require an 'outputAlpha' array.");
@@ -173,6 +173,9 @@ function loadData(d, isExample) {
   App.accepts = new Set(d.accepts || []);
   if (App.machine === 'TM' && hasSingleTapeNondeterminism(App.transitions)) {
     App.machine = 'NDTM';
+  }
+  if (App.machine === 'PDA' && hasPdaNondeterminism(App.transitions)) {
+    App.machine = 'NPDA';
   }
   resetIds();
   if (d.grammar) {

@@ -20,7 +20,7 @@ function renderAlgo(a) {
     complement: algoComplement, product: algoProduct,
     isEmpty: algoIsEmpty, isFinite: algoIsFinite, isUniversal: algoIsUniversal, fullEquiv: algoFullEquiv,
     star: algoClopStar, reversal: algoClopReversal, union2: algoClopUnion, intersect: algoClopIntersect, concat2: algoClopConcat,
-    nfaTree: algoNFATree, ndtm: algoNDTM, utm: algoUTM,
+    nfaTree: algoNFATree, npda: algoNPDA, ndtm: algoNDTM, utm: algoUTM,
     mooreTable: algoMooreTable, mealyTable: algoMealyTable,
     moore2mealy: algoMoore2Mealy, mealy2moore: algoMealy2Moore, mtmTable: algoMTMTable,
     minimizeVisual: algoMinimizeVisual, re2nfaVisual: algoRE2NFAVisual, tm2grammar: algoTM2Grammar,
@@ -611,7 +611,7 @@ function algoNFA2RE(c) {
   const rex = deriveRegex();
   c.innerHTML += `<div class="card"><div class="card-title">Derived Regular Expression</div>
 <div style="font-size:1.1rem;color:var(--gold);padding:12px;background:var(--bg3);border-radius:6px;word-break:break-all;">${rex}</div></div>`;
-  if (App.machine === 'PDA') { c.innerHTML += '<div class="card" style="color:var(--text2)">Note: PDA recognizes CFLs, not regular languages. The regex shown is derived from NFA/DFA states only.</div>'; }
+  if (isAnyPDA(App.machine)) { c.innerHTML += '<div class="card" style="color:var(--text2)">Note: PDA and NPDA recognize context-free languages, not regular languages. The regex shown is derived from NFA/DFA states only.</div>'; }
 }
 
 // --- ε-NFA to NFA ---
@@ -1507,6 +1507,50 @@ function layoutNFATree(root, fullStr) {
 // ══════════════════════════════════════════════════════════════════
 //  NDTM SIMULATION
 // ══════════════════════════════════════════════════════════════════
+function algoNPDA(c) {
+  c.innerHTML = `<div class="algo-title">Nondeterministic Pushdown Automaton</div>
+<div class="algo-sub">BFS OVER STACKED COMPUTATION BRANCHES</div>
+<div class="info-box">An NPDA may have multiple enabled moves for the same state, unread input, and stack top. It accepts if <em>any</em> branch reaches acceptance. This is the full stack-machine model equivalent in power to context-free grammars.</div>`;
+  if (App.machine !== 'NPDA') { c.innerHTML += `<div class="card"><div style="font-size:.72rem;color:var(--text2)">Switch to NPDA mode to use this simulator.</div></div>`; return; }
+
+  const ndPairs = findPdaNondeterministicPairs();
+  const ndHtml = ndPairs.length
+    ? ndPairs.map(([a, b], idx) => {
+      const fromName = getState(a.from)?.name || a.from;
+      return `<div class="step-item"><div class="step-num">${idx + 1}</div><div class="step-text">${fromName}: (${a.symbol}, ${a.pop}) overlaps with (${b.symbol}, ${b.pop})<span class="step-sub">These transitions can both be enabled on at least one stack/input configuration.</span></div></div>`;
+    }).join('')
+    : '<div style="color:var(--text3);font-size:.7rem">No overlapping stack moves found â€” this NPDA currently behaves deterministically.</div>';
+
+  c.innerHTML += `<div class="card"><div class="card-title">Overlapping NPDA Moves</div><div class="step-list">${ndHtml}</div></div>`;
+  c.innerHTML += `<div class="card">
+<div class="card-title">Simulate NPDA (BFS over all branches)</div>
+<div class="regex-input-wrap">
+  <input class="inp" id="npda-input" placeholder="Input string (e.g. aabb or ε)">
+  <button class="algo-btn" onclick="runNPDASim()">Simulate</button>
+</div>
+<div id="npda-result" style="margin-top:8px"></div>
+</div>`;
+}
+
+function runNPDASim() {
+  const raw = parseEps($('npda-input').value);
+  const s = raw === App.config.sym.eps ? '' : raw;
+  const out = $('npda-result');
+  if (!App.startId) { out.innerHTML = '<div style="color:var(--red);">No start state.</div>'; return; }
+  const tokens = tokenize(s);
+  if (tokens === null) {
+    out.innerHTML = `<div style="color:var(--red);font-size:.72rem">Input cannot be tokenized using alphabet {${[...App.sigma].join(', ')}}.</div>`;
+    return;
+  }
+  const result = simNPDA(tokens);
+  out.innerHTML = `<div class="pump-result ${result.accepted ? 'ok' : 'fail'}">
+${result.accepted ? 'ACCEPTED ✓' : 'REJECTED ✗'} â€” ${result.branches} branches explored, max depth ${result.maxDepth}, witness length ${result.witnessLength}
+</div>
+<div class="card" style="margin-top:8px"><div class="card-title">Branch Summary (first 10 explored branches)</div>
+<div class="step-list">${result.log.slice(0, 10).map((l, i) => `<div class="step-item"><div class="step-num">${i + 1}</div><div class="step-text">${l}</div></div>`).join('')}</div>
+</div>`;
+}
+
 function algoNDTM(c) {
   c.innerHTML = `<div class="algo-title">Nondeterministic Turing Machine</div>
 <div class="algo-sub">BFS OVER ALL COMPUTATION BRANCHES</div>

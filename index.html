@@ -123,6 +123,7 @@
       <option value="NFA">NFA</option>
       <option value="ε-NFA">ε-NFA</option>
       <option value="PDA">PDA</option>
+      <option value="NPDA">NPDA</option>
       <option value="TM">TM</option>
       <option value="NDTM">NDTM</option>
       <option value="MTM">MTM</option>
@@ -134,6 +135,7 @@
       <button class="mtab" onclick="setMachine('NFA')">NFA</button>
       <button class="mtab" onclick="setMachine('ε-NFA')">ε-NFA</button>
       <button class="mtab" onclick="setMachine('PDA')">PDA</button>
+      <button class="mtab" onclick="setMachine('NPDA')">NPDA</button>
       <button class="mtab" onclick="setMachine('TM')">TM</button>
       <button class="mtab" onclick="setMachine('NDTM')">NDTM</button>
       <button class="mtab" onclick="setMachine('MTM')">MTM</button>
@@ -447,6 +449,8 @@
             <div class="algo-item" onclick="setAlgo('nfaTree')" data-algo="nfaTree">NFA Computation Tree</div>
             <div class="algo-item" onclick="setAlgo('epsClosure')" data-algo="epsClosure">&epsilon;-Closure Table</div>
             <div class="algo-item" onclick="setAlgo('deadStates')" data-algo="deadStates">Dead State Analysis</div>
+            <div class="algo-grp">Pushdown Automata</div>
+            <div class="algo-item" onclick="setAlgo('npda')" data-algo="npda">NPDA Simulation</div>
             <div class="algo-item" onclick="setAlgo('ndtm')" data-algo="ndtm">NDTM Simulation</div>
             <div class="algo-grp">Regular Grammars</div>
             <div class="algo-item" onclick="setAlgo('dfa2rg')" data-algo="dfa2rg">DFA/NFA &rarr; Regular Grammar</div>
@@ -517,12 +521,12 @@
             <button class="algo-btn sec" onclick="runGNF()" style="width:100%;margin-right:0;margin-bottom:5px">Convert
               to GNF</button>
             <button class="algo-btn sec" onclick="runCFG2PDA('topdown')" style="width:100%;margin-right:0;margin-bottom:5px">CFG
-              &rarr; PDA (Top-Down)</button>
+              &rarr; NPDA (Top-Down)</button>
             <button class="algo-btn sec" onclick="runCFG2PDA('bottomup')" style="width:100%;margin-right:0;margin-bottom:5px">CFG
-              &rarr; PDA (Bottom-Up)</button>
-            <button class="algo-btn sec" onclick="runPDA2CFG('raw')" style="width:100%;margin-right:0;margin-bottom:5px">PDA
+              &rarr; NPDA (Bottom-Up)</button>
+            <button class="algo-btn sec" onclick="runPDA2CFG('raw')" style="width:100%;margin-right:0;margin-bottom:5px">PDA / NPDA
               &rarr; CFG (Raw)</button>
-            <button class="algo-btn sec" onclick="runPDA2CFG('pruned')" style="width:100%;margin-right:0;margin-bottom:5px">PDA
+            <button class="algo-btn sec" onclick="runPDA2CFG('pruned')" style="width:100%;margin-right:0;margin-bottom:5px">PDA / NPDA
               &rarr; CFG (Pruned)</button>
 
             <div class="gram-group-label">Parse &amp; Derive</div>
@@ -589,15 +593,15 @@
               Automata</a>
             <a class="theory-nav-link" id="tnl-decision" href="#th-decision" onclick="theoryNavClick(this)">DFA
               Decision Procedures</a>
-            <div class="theory-nav-group">Grammar and PDA</div>
+            <div class="theory-nav-group">Grammar and PDAs</div>
             <a class="theory-nav-link" id="tnl-cfl" href="#th-cfl" onclick="theoryNavClick(this)">Context-Free
               Languages</a>
             <a class="theory-nav-link" id="tnl-cfg-analysis" href="#th-cfg-analysis"
               onclick="theoryNavClick(this)">CFG Analysis</a>
             <a class="theory-nav-link" id="tnl-cfg-normal" href="#th-cfg-normal"
               onclick="theoryNavClick(this)">Normal Forms and CYK</a>
-            <a class="theory-nav-link" id="tnl-pda-cfg" href="#th-pda-cfg" onclick="theoryNavClick(this)">PDA and
-              CFG Equivalence</a>
+            <a class="theory-nav-link" id="tnl-pda-cfg" href="#th-pda-cfg" onclick="theoryNavClick(this)">PDA, NPDA,
+              and CFGs</a>
             <div class="theory-nav-group">Computability</div>
             <a class="theory-nav-link" id="tnl-tm" href="#th-tm" onclick="theoryNavClick(this)">Turing Machines</a>
             <a class="theory-nav-link" id="tnl-utm-ndtm" href="#th-utm-ndtm" onclick="theoryNavClick(this)">UTM and
@@ -653,7 +657,7 @@
                   fill="var(--orange)">Recursively Enumerable</text>
                 <text x="60" y="60" font-family="var(--mono)" font-size="9" fill="var(--accent)">DFA / NFA</text>
                 <text x="60" y="74" font-family="var(--mono)" font-size="9" fill="var(--accent)">Regex</text>
-                <text x="60" y="100" font-family="var(--mono)" font-size="9" fill="var(--green)">PDA / CFG</text>
+                <text x="60" y="100" font-family="var(--mono)" font-size="9" fill="var(--green)">PDA / NPDA / CFG</text>
                 <text x="60" y="130" font-family="var(--mono)" font-size="9" fill="var(--purple)">LBA</text>
                 <text x="60" y="158" font-family="var(--mono)" font-size="9" fill="var(--orange)">TM</text>
               </svg>
