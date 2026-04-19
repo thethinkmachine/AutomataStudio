@@ -244,10 +244,10 @@ function confirmTrans() {
     if (conflict) {
       showStatus(`TM already has δ(${getState(from)?.name}, '${sym}'). Use NDTM mode if you want multiple choices for the same read symbol.`); return;
     }
-  } else if (App.machine === 'PDA') {
+  } else if (App.machine === 'DPDA') {
     const conflict = getPdaDeterminismConflict({ from, symbol: sym, pop: values.pop }, App.transitions, editId);
     if (conflict) {
-      showStatus(`PDA already has an overlapping move from ${getState(from)?.name}. Switch to NPDA mode if you want branching on the same configuration.`); return;
+      showStatus(`DPDA already has an overlapping move from ${getState(from)?.name}. Switch to NPDA mode if you want branching on the same configuration.`); return;
     }
   } else if (App.machine === 'MTM') {
     const sig = (values.tapeSyms || []).join('\u0001');

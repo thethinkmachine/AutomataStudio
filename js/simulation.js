@@ -54,7 +54,7 @@ function runSim() {
   App.currentTokens = tokens; // Save tokens for highlighting
   if (App.machine === 'DFA') simDFA(tokens);
   else if (App.machine === 'NFA' || App.machine === 'ε-NFA') simNFA(tokens);
-  else if (App.machine === 'PDA') simPDA(tokens);
+  else if (App.machine === 'DPDA') simPDA(tokens);
   else if (App.machine === 'NPDA') simNPDA(tokens);
   else if (App.machine === 'Moore') simMoore(tokens);
   else if (App.machine === 'Mealy') simMealy(tokens);
@@ -427,7 +427,7 @@ function simPDA(tokens) {
         App.simSteps,
         cfg,
         'reject',
-        'Nondeterministic overlap detected in PDA mode. Switch to NPDA to explore all valid branches.'
+        'Nondeterministic overlap detected in DPDA mode. Switch to NPDA to explore all valid branches.'
       );
       App.simIdx = 0; renderSimStep();
       return { accepted: false };
@@ -744,7 +744,7 @@ function runBatch() {
     let accepted = false, output = null;
     if (App.machine === 'DFA') accepted = testDFA(tokens);
     else if (App.machine === 'NFA' || App.machine === 'ε-NFA') accepted = testNFA(tokens);
-    else if (App.machine === 'PDA') accepted = testPDA(tokens);
+    else if (App.machine === 'DPDA') accepted = testPDA(tokens);
     else if (App.machine === 'NPDA') accepted = testNPDA(tokens);
     else if (App.machine === 'Moore') { accepted = App.config.transducerAccepts ? testDFA(tokens) : undefined; output = getMooreOutput(tokens); }
     else if (App.machine === 'Mealy') { accepted = App.config.transducerAccepts ? testDFA(tokens) : undefined; output = getMealyOutput(tokens); }

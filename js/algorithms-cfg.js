@@ -90,11 +90,11 @@ function renderGrammarLPanel() {
   const lines = [];
   for (const k in grouped) {
     if (k !== G.start) continue;
-    lines.push(`${k} -> ${grouped[k].join(' | ')}`);
+    lines.push(`${k} → ${grouped[k].join(' | ')}`);
   }
   for (const k in grouped) {
     if (k === G.start) continue;
-    lines.push(`${k} -> ${grouped[k].join(' | ')}`);
+    lines.push(`${k} → ${grouped[k].join(' | ')}`);
   }
   gi.value = lines.join('\n');
   const ss = $('start-sym');
@@ -125,7 +125,7 @@ function renderGrammarView() {
   Object.entries(byLHS).forEach(([lhs, rhss]) => {
     const colored = rhss.map(rhs => {
       return (G.productions.find(p=>p.lhs === lhs && p.rhs === rhs)?.rhsArr || tokenizeRHS(rhs, G.vars))
-        .map(c => G.vars.has(c) ? `<span class="nt">${c}</span>` : c === App.config.sym.eps ? `<span class="eps">${App.config.sym.eps}</span>` : `<span class="t">${c}</span>`).join('');
+        .map(c => G.vars.has(c) ? `<span class="nt">${c}</span>` : c === App.config.sym.eps ? `<span class="eps">${App.config.sym.eps}</span>` : `<span class="t">${c}</span>`).join(' ');
     }).join(' | ');
     html += `<div><span class="nt">${lhs}</span> <span style="color:var(--text3)">→</span> ${colored}</div>`;
   });
@@ -142,10 +142,12 @@ function runCNF() {
   let html = '<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">CNF Conversion Steps</h3>';
   const steps = [];
 
+  const copyProds = (arr) => arr.map(p => ({ ...p, rhsArr: [...p.rhsArr] }));
+
   // Step 1: Add new start
   const S0 = G.start + '₀';
   prods = [{ lhs: S0, rhs: G.start, rhsArr: [G.start] }, ...prods];
-  steps.push({ lbl: 'Step 1: New start', desc: `Add ${S0} → ${G.start} to avoid start symbol in RHS`, prods: [...prods] });
+  steps.push({ lbl: 'Step 1: New start', desc: `Add ${S0} → ${G.start} to avoid start symbol in RHS`, prods: copyProds(prods) });
 
   // Step 2: Eliminate ε-productions (find nullable)
   const nullable = new Set();
@@ -174,7 +176,7 @@ function runCNF() {
       if (!seen2.has(key)) { seen2.add(key); prods2.push({ lhs: p.lhs, rhs: r, rhsArr: rArr }); }
     }
   });
-  steps.push({ lbl: 'Step 2: Remove ε-productions', desc: `Nullable: {${[...nullable].join(',')}}. Add combinations without nullable symbols.`, prods: [...prods2] });
+  steps.push({ lbl: 'Step 2: Remove ε-productions', desc: `Nullable: {${[...nullable].join(',')}}. Add combinations without nullable symbols.`, prods: copyProds(prods2) });
 
   // Step 3: Eliminate unit rules
   const prods3 = []; const unitVisited = new Set();
@@ -188,26 +190,39 @@ function runCNF() {
     const reach = closeUnit(A);
     reach.forEach(B => { prods2.filter(p => p.lhs === B && !(G.vars.has(p.rhs) && p.rhsArr.length === 1)).forEach(p => prods3.push({ lhs: A, rhs: p.rhs, rhsArr: p.rhsArr })); });
   });
-  steps.push({ lbl: 'Step 3: Remove unit productions', desc: 'Replace chains A→B→... with direct productions.', prods: [...prods3] });
+  steps.push({ lbl: 'Step 3: Remove unit productions', desc: 'Replace chains A→B→... with direct productions.', prods: copyProds(prods3) });
 
   // Step 4: Binarize + add terminal intermediates
-  const prods4 = [...prods3], newVars = new Map();
+  const prods4 = [...prods3], newVars = new Map(), binVars = new Map();
   let vcnt = 0;
   function termVar(t) { if (!newVars.has(t)) { const v = 'T_' + t; newVars.set(t, v); prods4.push({ lhs: v, rhs: t, rhsArr: [t] }); } return newVars.get(t); }
   const toFix = prods4.filter(p => p.rhsArr.length >= 2);
   toFix.forEach(p => {
     const syms = p.rhsArr.map(c => G.vars.has(c) || c === S0 ? c : termVar(c));
-    while (syms.length > 2) { const last = syms.pop(); const prev = syms.pop(); const v = 'B_' + (++vcnt); prods4.push({ lhs: v, rhs: prev + last, rhsArr: [prev, last] }); syms.push(v); }
+    while (syms.length > 2) {
+      const last = syms.pop();
+      const prev = syms.pop();
+      const key = `${prev} ${last}`;
+      if (!binVars.has(key)) {
+        const v = 'B_' + (++vcnt);
+        binVars.set(key, v);
+        prods4.push({ lhs: v, rhs: prev + last, rhsArr: [prev, last] });
+      }
+      syms.push(binVars.get(key));
+    }
     p.rhs = syms.join('');
     p.rhsArr = [...syms];
   });
-  steps.push({ lbl: 'Step 4: Convert to binary & terminal rules (CNF)', desc: 'Each production is now A→BC or A→a.', prods: [...prods4] });
+  steps.push({ lbl: 'Step 4: Convert to binary & terminal rules (CNF)', desc: 'Each production is now A→BC or A→a.', prods: copyProds(prods4) });
 
   steps.forEach(step => {
     html += `<div class="cnf-step"><span class="lbl">${step.lbl}</span>${step.desc}<br>`;
     const byLHS = {};
-    step.prods.forEach(p => { if (!byLHS[p.lhs]) byLHS[p.lhs] = []; byLHS[p.lhs].push(p.rhs); });
-    html += Object.entries(byLHS).map(([l, rs]) => `<span style="color:var(--accent)">${l}</span> → ${rs.join(' | ')}`).join('<br>');
+    step.prods.forEach(p => { if (!byLHS[p.lhs]) byLHS[p.lhs] = []; byLHS[p.lhs].push(p.rhsArr); });
+    html += Object.entries(byLHS).map(([l, rsArr]) => {
+      const rhsStr = rsArr.map(arr => arr.join(' ')).join(' | ');
+      return `<span style="color:var(--accent)">${l}</span> → ${rhsStr}`;
+    }).join('<br>');
     html += '</div>';
   });
   out.innerHTML = html;
@@ -822,19 +837,19 @@ function renderCFLPumpVis() {
 
 
 // ══════════════════════════════════════════════════════════════════
-//  PDA → CFG (Sipser Construction)
+//  DPDA/NPDA → CFG (Sipser Construction)
 // ══════════════════════════════════════════════════════════════════
 function runPDA2CFG(mode = 'raw') {
   const out = $('gram-output');
   if (!isAnyPDA(App.machine)) {
-    out.innerHTML = `<div class="cnf-step"><span class="lbl">Switch to PDA or NPDA mode to use this conversion.</span></div>`;
+    out.innerHTML = `<div class="cnf-step"><span class="lbl">Switch to DPDA or NPDA mode to use this conversion.</span></div>`;
     return;
   }
   if (App.config.pdaParadigm === 'empty') {
-    out.innerHTML = `<div class="cnf-step"><span class="lbl" style="color:var(--error-color)">Conversion Failed.</span> The PDA → CFG (Triple Construction) algorithm conceptually requires transitions to evaluate explicitly popped elements from Γ. Change the Engine settings to '7-Tuple (Explicit Stack Base)' and normalize your PDA or NPDA to pop exactly 1 symbol per transition.</div>`;
+    out.innerHTML = `<div class="cnf-step"><span class="lbl" style="color:var(--error-color)">Conversion Failed.</span> The DPDA / NPDA → CFG (Triple Construction) algorithm conceptually requires transitions to evaluate explicitly popped elements from Γ. Change the Engine settings to '7-Tuple (Explicit Stack Base)' and normalize your DPDA or NPDA to pop exactly 1 symbol per transition.</div>`;
     return;
   }
-  if (!App.states.length) { out.innerHTML = '<div class="cnf-step"><span class="lbl">No PDA or NPDA states defined.</span></div>'; return; }
+  if (!App.states.length) { out.innerHTML = '<div class="cnf-step"><span class="lbl">No DPDA or NPDA states defined.</span></div>'; return; }
   if (!App.startId) { out.innerHTML = '<div class="cnf-step"><span class="lbl">No start state defined.</span></div>'; return; }
 
   const eps = App.config.sym.eps;
@@ -978,19 +993,19 @@ function runPDA2CFG(mode = 'raw') {
 
   out.innerHTML = `
 <h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
-  <span>PDA / NPDA &#8594; CFG (Sipser Triple Construction)</span>
+  <span>DPDA / NPDA &#8594; CFG (Sipser Triple Construction)</span>
   <button id="copy-cfg-btn" class="icon-btn" title="Copy to Editor" ${isEmptyLanguage ? 'disabled' : ''} style="font-size:0.75rem;padding:4px 8px;border:1px solid var(--border);cursor:${isEmptyLanguage ? 'not-allowed' : 'pointer'};border-radius:4px;background:var(--bg3);color:var(--text);font-family:var(--sans);opacity:${isEmptyLanguage ? '0.55' : '1'}">Apply to Editor</button>
 </h3>
 <div style="font-size:.7rem;color:var(--text2);margin-bottom:12px;line-height:1.8">
   Non-terminal <b>[p, A, q]</b>: starting in state p with stack symbol A on top, consume some input and end in state q with A removed.<br>
-  Start variable: <b>S</b> &nbsp;&nbsp; PDA states: ${states.length} &nbsp;&nbsp; Generated rules: ${prods.length} ${prunedMessage}
+  Start variable: <b>S</b> &nbsp;&nbsp; DPDA/NPDA states: ${states.length} &nbsp;&nbsp; Generated rules: ${prods.length} ${prunedMessage}
 </div>
 ${isEmptyLanguage ? `<div class="pump-result fail">No productions remain after pruning. The resulting CFG denotes the empty language.</div>` : `<div style="overflow-x:auto"><table class="result-table">
   <thead><tr><th>LHS</th><th></th><th>RHS</th></tr></thead>
   <tbody>${rows}</tbody>
 </table></div>`}
 <div style="font-size:.62rem;color:var(--text3);margin-top:8px">
-  Assumes the input PDA/NPDA pops exactly 1 symbol and pushes at most 2 per transition. Longer push strings require decomposition.
+  Assumes the input DPDA/NPDA pops exactly 1 symbol and pushes at most 2 per transition. Longer push strings require decomposition.
 </div>
 `;
 

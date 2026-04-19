@@ -12,7 +12,7 @@ function isAnyTM(m = App.machine) {
 }
 
 function isAnyPDA(m = App.machine) {
-  return m === 'PDA' || m === 'NPDA';
+  return m === 'DPDA' || m === 'NPDA';
 }
 
 function hasSingleTapeNondeterminism(transitions = App.transitions) {

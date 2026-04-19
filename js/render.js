@@ -443,7 +443,7 @@ function updateFormalDef() {
     const { eps, stackBottom } = App.config.sym;
     const codomain = m === 'NPDA' ? '𝒫(Q×Γ*)' : 'Q×Γ*';
     const emptyCodomain = m === 'NPDA' ? `𝒫(Q×(Γ∪{${eps}})*)` : `Q×(Γ∪{${eps}})*`;
-    const label = m === 'NPDA' ? 'NPDA' : 'PDA';
+    const label = m;
     if (App.config.pdaParadigm === 'explicit') {
       txt = `${label} = (Q,Σ,Γ,δ,q₀,Z₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nZ₀ = ${stackBottom}\nF = {${F}}\nδ: Q×(Σ∪{${eps}})×Γ→${codomain}`;
     } else {

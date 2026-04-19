@@ -21,8 +21,26 @@ const THEORY_CARD_IDS = [
   'th-nerode',
   'th-moore',
   'th-mealy',
-  'th-mtm'
+  'th-mtm',
+  'th-summary'
 ];
+
+function triggerMath(el) {
+  if (typeof renderMathInElement === 'function') {
+    renderMathInElement(el || document.body, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false},
+        {left: '\\(', right: '\\)', display: false},
+        {left: '\\[', right: '\\]', display: true}
+      ],
+      throwOnError: false
+    });
+  } else {
+    // If KaTeX isn't loaded yet, try again in 100ms
+    setTimeout(() => triggerMath(el), 100);
+  }
+}
 
 function theoryNavClick(link) {
   document.querySelectorAll('.theory-nav-link').forEach(l => l.classList.remove('active'));
@@ -41,9 +59,13 @@ function theoryNavClick(link) {
     document.querySelectorAll('#theory-grid .theory-card').forEach(card => {
       card.style.display = card.id === targetId ? '' : 'none';
     });
+    triggerMath($('theory-grid'));
   } else {
     const sec = $(targetId);
-    if (sec) sec.style.display = '';
+    if (sec) {
+      sec.style.display = '';
+      triggerMath(sec);
+    }
   }
 
   const content = $('v-theory')?.querySelector('.algo-content');
@@ -58,22 +80,19 @@ function renderTheoryView() {
       title: 'Finite Automata',
       sub: 'DFA · NFA · EPSILON-NFA · COMPUTATION MODELS',
       body: `<b>Core Models</b>
-A deterministic finite automaton (DFA) is a 5-tuple <em>M = (Q, Sigma, delta, q0, F)</em>, where <em>Q</em> is a finite state set, <em>Sigma</em> is the input alphabet, <em>delta: Q x Sigma -> Q</em> is a total transition function, <em>q0</em> is the start state, and <em>F subseteq Q</em> is the accept set. Totality matters: on every symbol, from every state, the machine must know what to do. When a transition seems "missing," the standard repair is to add a trap state and route all undefined moves there.
+A deterministic finite automaton (DFA) is a 5-tuple $M = (Q, \\Sigma, \\delta, q_0, F)$, where $Q$ is a finite state set, $\\Sigma$ is the input alphabet, $\\delta: Q \\times \\Sigma \\to Q$ is a total transition function, $q_0$ is the start state, and $F \\subseteq Q$ is the accept set. Totality matters: on every symbol, from every state, the machine must know what to do. When a transition seems "missing," the standard repair is to add a trap state and route all undefined moves there.
 
 <b>Nondeterminism</b>
-An NFA replaces single-valued transitions with set-valued transitions: <em>delta: Q x Sigma -> 2^Q</em>. An epsilon-NFA extends this further by allowing moves that consume no input. A string is accepted if at least one computation path reaches an accept state after all input is consumed. Nondeterminism changes how we describe a machine, but not what class of languages it can recognize.
+An NFA replaces single-valued transitions with set-valued transitions: $\\delta: Q \\times \\Sigma \\to 2^Q$. An $\\epsilon$-NFA extends this further by allowing moves that consume no input. A string is accepted if at least one computation path reaches an accept state after all input is consumed. Nondeterminism changes how we describe a machine, but not what class of languages it can recognize.
 
 <b>Epsilon-Closure</b>
-For a state <em>q</em>, the epsilon-closure is the set of states reachable from <em>q</em> by zero or more epsilon moves. This is the key bridge between epsilon-NFAs and ordinary NFAs or DFAs. Conceptually, epsilon-closure tells us which states are "already active" before reading the next real symbol.
+For a state $q$, the $\\epsilon$-closure is the set of states reachable from $q$ by zero or more $\\epsilon$ moves. This is the key bridge between $\\epsilon$-NFAs and ordinary NFAs or DFAs. Conceptually, $\\epsilon$-closure tells us which states are "already active" before reading the next real symbol.
 
 <b>Equivalence of DFA, NFA, and Epsilon-NFA</b>
-All three models recognize exactly the regular languages. The easy direction is containment: every DFA is an NFA, and every NFA is an epsilon-NFA. The nontrivial direction is simulation: subset construction turns any NFA into an equivalent DFA by treating each reachable set of NFA states as a single DFA state.
+All three models recognize exactly the regular languages. The easy direction is containment: every DFA is an NFA, and every NFA is an $\\epsilon$-NFA. The nontrivial direction is simulation: subset construction turns any NFA into an equivalent DFA by treating each reachable set of NFA states as a single DFA state.
 
 <b>Subset Construction and State Explosion</b>
-If an NFA has <em>n</em> states, the equivalent DFA can have as many as <em>2^n</em> states. This upper bound is tight. The exponential blow-up is not an artifact of a poor algorithm; some regular languages truly require exponentially larger DFAs than their NFA descriptions.
-
-<b>Computation Trees and Acceptance</b>
-The app's NFA computation tree view illustrates a subtle but essential fact: rejection in an NFA means every branch fails, while acceptance means at least one branch succeeds. This existential semantics is why NFAs are often easier to design from a language description than DFAs.
+If an NFA has $n$ states, the equivalent DFA can have as many as $2^n$ states. This upper bound is tight. The exponential blow-up is not an artifact of a poor algorithm; some regular languages truly require exponentially larger DFAs than their NFA descriptions.
 
 <b>Minimal DFA</b>
 Every regular language has a unique minimal DFA up to isomorphism. The states of the minimal DFA correspond to genuinely different "future behaviors" of prefixes. This is the intuition behind distinguishability, minimization, and the Myhill-Nerode theorem.` },
@@ -83,372 +102,370 @@ Every regular language has a unique minimal DFA up to isomorphism. The states of
       title: 'Regular Languages',
       sub: 'KLEENE THEOREM · CLOSURE · PUMPING LEMMA',
       body: `<b>Equivalent Characterizations</b>
-A language is regular if and only if it is accepted by a DFA, if and only if it is accepted by an NFA, if and only if it can be described by a regular expression, and if and only if it can be generated by a regular grammar. This equivalence is one of the foundational organizing results of automata theory.
+A language is regular if and only if it is accepted by a DFA, if and only if it is accepted by an NFA, if and only if it can be described by a regular expression, and if and only if it can be generated by a regular grammar.
 
-<b>Regular Operations</b>
-Regular languages are built from the base languages <em>emptyset</em>, <em>{epsilon}</em>, and <em>{a}</em> for each symbol <em>a</em>, using union, concatenation, and Kleene star. These are not just syntactic conveniences; they correspond directly to machine constructions and algebraic closure principles.
-
-<b>Closure Properties</b>
-Regular languages are closed under union, intersection, complement, difference, concatenation, star, reversal, homomorphism, and inverse homomorphism. Closure is powerful in both directions. It lets us construct new regular languages from old ones, and it lets us derive contradictions when a supposed regular language would force a non-regular one through closure arguments.
+<b>Regular Operations and Closure</b>
+Regular languages are closed under union, intersection, complement, difference, concatenation, star, reversal, homomorphism, and inverse homomorphism. Closure is powerful: it lets us construct new regular languages from old ones and derive contradictions for non-regularity.
 
 <b>Pumping Lemma</b>
-If <em>L</em> is regular, then there exists a pumping length <em>p</em> such that every sufficiently long string <em>w in L</em> can be written as <em>w = xyz</em> with <em>|xy| <= p</em>, <em>|y| >= 1</em>, and <em>xy^i z in L</em> for all <em>i >= 0</em>. The proof comes from repeated state visits in a DFA computation. A loop in the state graph induces a repeatable substring.
+If $L$ is regular, then there exists a pumping length $p$ such that every string $w \\in L$ with $|w| \\ge p$ can be written as $w = xyz$ with $|xy| \\le p$, $|y| \\ge 1$, and $xy^i z \\in L$ for all $i \\ge 0$.
 
-<b>How the Pumping Lemma Is Used Correctly</b>
-The pumping lemma is a one-way implication: all regular languages pump, but not every pumping-looking language is regular for that reason alone. So the lemma is mainly a tool for proving non-regularity by contradiction. You choose a strategic long string and show that every valid split fails under some pumping exponent.
-
-<b>Why Myhill-Nerode Is Stronger</b>
-The pumping lemma gives a necessary condition for regularity. Myhill-Nerode gives a necessary and sufficient one. In practice, pumping lemma proofs are often more ad hoc, while Myhill-Nerode exposes the structural reason a language needs infinitely many states.
+<b>Finding Minimum Pumping Length</b>
+The <em>minimum</em> pumping length $p$ is the smallest integer where the rule holds.
+<b>Strategy:</b> Find the shortest string in the language that <b>cannot</b> be pumped (often because pumping <em>down</em>, $i=0$, leaves the language). If a string of length $k$ is not pumpable, then $p$ must be at least $k + 1$.
+<em>Example:</em> For $L = 0^*1^+0^+1^* \\cup 10^*1$, the string "10" (length 2) cannot be pumped because removing either character leaves "0" or "1", neither of which is in $L$. Thus, the minimum pumping length must be 3.
 
 <b>Decision Problems</b>
-Membership, emptiness, finiteness, equivalence, containment, and universality are all decidable for regular languages. This tractability is one reason regular languages are so central in compilers, model checking, text processing, and hardware verification.` },
+Membership, emptiness, finiteness, equivalence, containment, and universality are all decidable for regular languages. This tractability is why they are central in verification and text processing.` },
     {
       id: 'th-rg',
       color: 'var(--gold)',
       title: 'Regular Grammars',
       sub: 'RIGHT-LINEAR · LEFT-LINEAR · RG <-> NFA',
       body: `<b>Shape of a Regular Grammar</b>
-A right-linear grammar has productions of the form <em>A -> aB</em>, <em>A -> a</em>, or optionally <em>A -> epsilon</em>. A left-linear grammar has the mirrored shape <em>A -> Ba</em> or <em>A -> a</em>. Mixing left-linear and right-linear forms arbitrarily can produce languages that are not regular, so the directionality matters.
+A right-linear grammar has productions of the form $A \\to aB$, $A \\to a$, or optionally $A \\to \\epsilon$. A left-linear grammar has the mirrored shape $A \\to Ba$ or $A \\to a$. Mixing left-linear and right-linear forms arbitrarily can produce languages that are not regular.
 
 <b>Why Right-Linear Grammars Match NFAs</b>
-Each nonterminal behaves like a state. A production <em>A -> aB</em> becomes a transition from state <em>A</em> to state <em>B</em> on symbol <em>a</em>. A production <em>A -> a</em> becomes a transition on <em>a</em> into a distinguished accepting state. An epsilon production makes the corresponding state accepting.
+Each nonterminal behaves like a state. A production $A \\to aB$ becomes a transition from state $A$ to state $B$ on symbol $a$. A production $A \\to a$ becomes a transition into a distinguished accepting state.
 
 <b>NFA to Regular Grammar</b>
-Going the other way, each state becomes a variable. A transition <em>p -a-> q</em> becomes a production <em>P -> aQ</em>. If <em>q</em> is accepting, we also need a terminal-only production when appropriate so the derivation can stop exactly when the automaton accepts. This correspondence is what the app's DFA/NFA to regular grammar conversion is visualizing.
-
-<b>Left-Linear vs Right-Linear</b>
-Both forms generate exactly the regular languages, but they encode derivations in different directions. Right-linear grammars line up more naturally with left-to-right machine computation, which is why they are the standard choice in automata textbooks and tools.
+Going the other way, each state becomes a variable. A transition $p \\xrightarrow{a} q$ becomes a production $P \\to aQ$. If $q$ is accepting, we also need $P \\to a$.
 
 <b>What the Conversion Teaches</b>
-These conversions are not only about representation changes. They show that "grammar generation" and "machine recognition" are two views of the same low-level memoryless process. That equivalence is the regular-language case of a broader theme that repeats with CFGs and PDAs.` },
+These conversions show that "grammar generation" and "machine recognition" are two views of the same low-level memoryless process. That equivalence is the regular-language case of a broader theme that repeats with CFGs and PDAs.` },
     {
       id: 'th-regex',
       color: 'var(--accent)',
       title: 'Regular Expressions and Automata',
       sub: 'THOMPSON · GNFA · EPSILON ELIMINATION',
       body: `<b>Regular Expressions as Algebraic Descriptions</b>
-A regular expression denotes a language, not a matching procedure. The primitives are <em>emptyset</em>, <em>epsilon</em>, and symbols; the constructors are union, concatenation, and star. Parentheses and precedence only control how these constructors are grouped.
+A regular expression denotes a language, not a matching procedure. The primitives are $\\emptyset$, $\\epsilon$, and symbols; the constructors are union, concatenation, and star.
 
 <b>Thompson Construction</b>
-Thompson's method compiles a regex into an equivalent epsilon-NFA by composing small gadgets. A symbol uses one edge. Union forks with epsilon transitions. Concatenation joins submachines end-to-start. Star creates a new entry/exit pattern that supports zero or more repetitions. The construction is linear in the size of the expression and guarantees a systematic machine shape.
-
-<b>Why Epsilon Transitions Appear</b>
-Epsilon edges are not a weakness of Thompson's construction; they are what makes the construction modular. They let us connect subexpressions without prematurely committing to specific symbol consumption. Later, epsilon-closure and elimination absorb those administrative moves into ordinary NFA or DFA behavior.
+Thompson's method compiles a regex into an equivalent $\\epsilon$-NFA by composing small gadgets. A symbol uses one edge. Union forks with $\\epsilon$ transitions. Concatenation joins submachines end-to-start. Star creates a new entry/exit pattern.
 
 <b>State Elimination and GNFAs</b>
-To convert an automaton back into a regex, we typically pass through a generalized NFA (GNFA), where edge labels are whole regular expressions. Eliminating a state means preserving every path that used to pass through that state by updating direct edges with concatenation, union, and star expressions. The final surviving edge from the new start to the new accept is the desired regex.
+To convert an automaton back into a regex, we typically pass through a generalized NFA (GNFA), where edge labels are whole regular expressions. Eliminating a state means preserving every path that used to pass through that state by updating direct edges with concatenation, union, and star expressions.
 
 <b>Practical Consequence</b>
-Regex to NFA and NFA to regex are not merely dual procedures. Together they complete the proof of Kleene's theorem in operational form: every regex has an automaton, and every finite automaton has a regex.
-
-<b>What to Watch For</b>
-State elimination often produces very large, hard-to-read expressions. That does not mean the algorithm is wrong; it reflects the fact that compact machine structure can expand when translated into algebraic syntax. The app's visual and textual conversions help make that expansion explicit.` },
+Regex to NFA and NFA to regex are dual procedures. Together they complete the proof of Kleene's theorem: every regex has an automaton, and every finite automaton has a regex.` },
     {
       id: 'th-decision',
       color: 'var(--green)',
       title: 'DFA Decision Procedures',
       sub: 'EMPTINESS · FINITENESS · UNIVERSALITY · EQUIVALENCE',
       body: `<b>Emptiness</b>
-A DFA language is empty exactly when no accepting state is reachable from the start state. This is a graph reachability problem, so it is decidable in linear time in the size of the transition graph.
+A DFA language is empty exactly when no accepting state is reachable from the start state. This is a graph reachability problem, decidable in linear time.
 
 <b>Finiteness</b>
-A regular language is infinite if and only if there exists a cycle reachable from the start state that can also reach an accept state. Intuitively, such a cycle can be pumped arbitrarily many times while still preserving a path to acceptance. If no such productive cycle exists, only finitely many accepted strings are possible.
+A regular language is infinite if and only if there exists a cycle reachable from the start state that can also reach an accept state. Intuitively, such a cycle can be pumped arbitrarily many times.
 
 <b>Universality</b>
-A complete DFA is universal exactly when every state reachable from the start is accepting, or equivalently when the complement DFA has empty language. This demonstrates how complement and emptiness combine into a standard decision pattern.
+A complete DFA is universal exactly when every state reachable from the start is accepting, or equivalently when the complement DFA has empty language.
 
 <b>Equivalence</b>
-Two DFAs are equivalent if they accept exactly the same language. A standard test constructs the symmetric-difference machine and checks emptiness. If the symmetric difference accepts some string, that string is a concrete witness of inequivalence.
+Two DFAs are equivalent if they accept exactly the same language. A standard test constructs the symmetric-difference machine and checks emptiness.
 
 <b>Complement and Product</b>
-Complement is easy for total DFAs: flip accepting and rejecting states. Product construction combines machines so one component tracks each input in parallel. Choosing the accept condition appropriately yields union, intersection, difference, and symmetric difference.
-
-<b>Why These Matter</b>
-The app's decision-property tools are algorithmic expressions of deep closure facts. They show that regular languages are not just expressive; they are computationally manageable. This combination is why finite automata are used in so many automated reasoning tasks.` },
+Complement is easy for total DFAs: flip accepting and rejecting states. Product construction combines machines so one component tracks each input in parallel. Choosing the accept condition appropriately yields union, intersection, and difference.` },
     {
       id: 'th-cfl',
       color: 'var(--green)',
       title: 'Context-Free Languages',
       sub: 'CFG · PDA · NPDA · PARSING · PUMPING',
       body: `<b>Context-Free Grammars</b>
-A context-free grammar is a 4-tuple <em>G = (V, Sigma, R, S)</em> where each production has a single variable on the left. The defining idea is locality of rewriting: a variable can be expanded without looking at surrounding symbols. That single restriction already yields languages with nested structure, recursive syntax, and unbounded counting in one dimension.
-
-<b>Derivations and Parse Trees</b>
-Derivations are sequential rewrites; parse trees are their hierarchical form. Leftmost and rightmost derivations may differ as derivation sequences even when they describe the same tree. When they produce different trees for the same string, the grammar is ambiguous.
+A context-free grammar is a 4-tuple $G = (V, \\Sigma, R, S)$ where each production has a single variable on the left. This allows nested structure and recursive syntax.
 
 <b>Pushdown Automata</b>
-PDAs extend finite automata with a stack. This extra unbounded but disciplined memory is exactly what is needed for balanced parentheses, nested scopes, and matched recursive constructs. In this app, <em>PDA</em> denotes the deterministic model, while <em>NPDA</em> denotes the general nondeterministic model.
+<<<<<<< HEAD
+PDAs extend finite automata with a stack. This extra unbounded but disciplined memory is exactly what is needed for balanced parentheses, nested scopes, and matched recursive constructs. In this app, <em>DPDA</em> denotes the deterministic model, while <em>NPDA</em> denotes the general nondeterministic model.
+=======
+PDAs extend finite automata with a stack. This extra unbounded memory allows balanced parentheses and nested scopes. While NPDAs recognize all CFLs, deterministic PDAs are strictly weaker.
+>>>>>>> 43fa997381c8b29c9d5ef72f8519e2f65afffc56
 
-<b>Determinism Is Subtle</b>
-Deterministic PDAs are strictly weaker than general PDAs. Nondeterministic PDAs recognize exactly the context-free languages, but deterministic PDAs do not capture all CFLs. They still cover many useful language families, especially those designed for deterministic parsing, which is why parsing theory distinguishes general CFG membership from LL and LR subclasses.
-
-<b>Pumping for CFLs</b>
-The CFL pumping lemma comes from repeated variables on deep parse-tree paths. Unlike the regular pumping lemma, two regions are pumped in sync. The lemma is useful for showing that some languages require more than one stack discipline, but it is often technically trickier to apply.
+<b>Why CFLs are not closed under Intersection</b>
+A PDA has only one stack. To check the intersection of two CFLs, a machine would effectively need two independent stacks, which turns it into a Turing Machine.
+<em>Example:</em> $L_1 = \\{a^nb^nc^m\\}$ and $L_2 = \\{a^mb^nc^n\\}$ are both CFLs. Their intersection $L_1 \\cap L_2 = \\{a^nb^nc^n\\}$ requires matching all three letters simultaneously, which a single stack cannot do.
 
 <b>Closure Profile</b>
-CFLs are closed under union, concatenation, star, reversal, homomorphism, and inverse homomorphism. They are not closed under general intersection or complement. However, CFLs are closed under intersection with regular languages, which is one of the most useful hybrid constructions in formal language proofs.` },
+CFLs are closed under union, concatenation, star, reversal, and homomorphism. They are <b>NOT</b> closed under intersection or complement.
+<em>Crucial Exception:</em> The intersection of a CFL and a Regular Language is ALWAYS a Context-Free Language.
+
+<b>Pumping Lemma for CFLs</b>
+If $L$ is CFL, there is a $p$ such that any $w \\in L$ with $|w| \\ge p$ can be split into $uvxyz$ where $|vxy| \\le p$, $|vy| \\ge 1$, and $uv^ixy^iz \\in L$ for all $i \\ge 0$.` },
     {
       id: 'th-cfg-analysis',
       color: 'var(--green)',
       title: 'CFG Analysis and Parsing',
       sub: 'FIRST/FOLLOW · LL(1) · AMBIGUITY · DERIVATIONS',
       body: `<b>FIRST Sets</b>
-FIRST(X) records which terminals can appear at the beginning of some string derived from <em>X</em>. For a terminal, FIRST is the terminal itself. For a variable, it is computed from productions, propagating epsilon where necessary. FIRST is the predictive summary of what can begin next.
+FIRST(X) records which terminals can appear at the beginning of some string derived from $X$. For a variable, it is computed from productions, propagating $\\epsilon$ where necessary.
 
 <b>FOLLOW Sets</b>
-FOLLOW(A) records which terminals may appear immediately to the right of variable <em>A</em> in some sentential form. The end marker belongs to FOLLOW of the start symbol. FOLLOW matters because epsilon-producing variables need a fallback lookahead set when no terminal is forced by FIRST.
+FOLLOW(A) records which terminals may appear immediately to the right of variable $A$ in some sentential form. FOLLOW matters because $\\epsilon$-producing variables need a fallback lookahead set.
 
 <b>LL(1) Condition</b>
-A grammar is LL(1) when one symbol of lookahead is enough to choose the correct production for each variable in a predictive parser. Formally, productions for the same nonterminal must have disjoint FIRST sets, and if one alternative can derive epsilon, its FOLLOW set must also be disjoint from the FIRST sets of the others.
+A grammar is LL(1) when one symbol of lookahead is enough to choose the correct production for each variable in a predictive parser. Formally, productions for the same nonterminal must have disjoint FIRST sets.
 
 <b>Left Recursion</b>
-Immediate left recursion, such as <em>A -> A alpha | beta</em>, breaks naive top-down parsing because expansion can loop before consuming input. Eliminating left recursion rewrites the grammar into an equivalent form better suited for predictive parsing. This changes the grammar, not the language.
+Immediate left recursion, such as $A \\to A \\alpha \\mid \\beta$, breaks naive top-down parsing because expansion can loop before consuming input. Eliminating left recursion rewrites the grammar into an equivalent form.
 
 <b>Ambiguity</b>
-Ambiguity means some string has more than one parse tree. The classic arithmetic-expression grammar without precedence or associativity rules is ambiguous because expressions like <em>id + id * id</em> admit multiple structural readings. Ambiguity is a property of the grammar, not necessarily of the language; some languages have both ambiguous and unambiguous grammars, while others are inherently ambiguous.
-
-<b>Why the App Includes These Tools</b>
-FIRST/FOLLOW, LL(1) table generation, derivations, parse trees, and ambiguity checks are all different windows onto the same question: how much of a string's structure is forced by the grammar, and how early can a parser know what to do next?` },
+Ambiguity means some string has more than one parse tree. The classic arithmetic-expression grammar without precedence rules is ambiguous because expressions like $id + id * id$ admit multiple structural readings.` },
     {
       id: 'th-cfg-normal',
       color: 'var(--green)',
       title: 'Normal Forms and CYK',
       sub: 'CNF · GNF · CYK · GRAMMAR SIMPLIFICATION',
-      body: `<b>Why Normal Forms Exist</b>
-Normal forms are disciplined rewritings of grammars that preserve the language while enforcing a regular production shape. They are not usually the grammar form humans want to read, but they are the form algorithms want to consume.
+      body: `<b>The Goal of Chomsky Normal Form</b>
+CNF forces every parse tree to be binary and predictable. Productions can only be:
+1. <b>The Split:</b> $A \\to BC$ (Exactly two variables)
+2. <b>The End:</b> $A \\to a$ (Exactly one terminal)
 
-<b>Chomsky Normal Form</b>
-In CNF, every production is either <em>A -> BC</em> or <em>A -> a</em>, plus possibly <em>S -> epsilon</em> when epsilon belongs to the language. Converting to CNF typically proceeds by removing useless symbols, epsilon-productions, and unit productions, then binarizing longer right-hand sides.
-
-<b>Why CNF Matters</b>
-CNF makes every derivation tree essentially binary. That binary structure is exactly what dynamic-programming parsers like CYK exploit: every substring split corresponds to some binary decomposition.
-
-<b>Greibach Normal Form</b>
-In GNF, each production begins with a terminal: <em>A -> a alpha</em> where <em>alpha</em> is a string of variables. GNF is useful because every derivation step consumes one terminal immediately. It is closely tied to proofs about top-down derivation length and constructions from CFGs to PDAs.
+<b>The Conversion "Car Wash" (Steps in Order):</b>
+<b>1. Protect Start Symbol:</b> Add $S_0 \\to S$ so the start symbol never appears on a right-hand side.
+<b>2. Remove $\\epsilon$-productions:</b> If $A \\to \\epsilon$, add all combinations of $A$ vanishing in other rules, then delete $A \\to \\epsilon$.
+<b>3. Remove Unit Productions:</b> If $A \\to B$, give all of $B$'s productions directly to $A$, then delete $A \\to B$.
+<b>4. Isolate & Shorten:</b> Create dummy variables for mixed terminals ($T_a \\to a$) and chain long rules ($A \\to BCD$ becomes $A \\to BX, X \\to CD$).
 
 <b>CYK Algorithm</b>
-CYK decides whether a string belongs to a CFG in CNF by filling a triangular table. Each cell stores the variables that can derive a given substring. Length-1 substrings are filled from terminal productions; longer substrings are built by trying all split points and binary rules. Membership holds exactly when the start variable appears in the cell for the whole string.
-
-<b>Simplification and Decidability</b>
-Removing useless symbols and deciding emptiness or finiteness are not cosmetic cleanups. They help expose whether a grammar has productive derivations at all, whether it can generate arbitrarily long strings, and whether later conversions will carry dead structure into more complicated forms.` },
+CYK decides whether a string belongs to a CFG in CNF using dynamic programming. It fills a triangular table representing all possible substring derivations. Membership holds if the start variable reaches the top cell.` },
     {
       id: 'th-pda-cfg',
       color: 'var(--green)',
-      title: 'PDA, NPDA, and CFG Equivalence',
-      sub: 'CFG -> NPDA · PDA/NPDA -> CFG · TOP-DOWN · BOTTOM-UP',
+      title: 'DPDA, NPDA, and CFG Equivalence',
+      sub: 'CFG -> NPDA · DPDA/NPDA -> CFG · TOP-DOWN · BOTTOM-UP',
       body: `<b>The Fundamental Equivalence</b>
-Context-free languages are exactly the languages accepted by nondeterministic PDAs. This is the context-free analogue of the DFA/NFA/regex equivalence for regular languages, but the constructions are more intricate because the stack has to encode partially completed syntax.
+Context-free languages are exactly the languages accepted by nondeterministic PDAs.
 
 <b>Top-Down CFG to NPDA</b>
-The standard top-down construction starts with the grammar's start variable on the stack. If the top of the stack is a variable, the NPDA nondeterministically expands it using a production. If the top is a terminal matching the current input symbol, the machine consumes that symbol and pops it. Acceptance means the grammar has derived the input exactly.
+The standard top-down construction starts with the grammar's start variable on the stack. If the top of the stack is a variable $A$, the NPDA nondeterministically expands $A \\to \\alpha$. If the top is a terminal matching input, the machine consumes and pops it.
 
-<b>Bottom-Up Intuition</b>
-Bottom-up constructions model reduction rather than prediction. The stack stores partially recognized material, and transitions simulate reversing derivation steps. This perspective connects more naturally to shift-reduce parsing and LR-style reasoning.
+<b>PDA to CFG</b>
+This construction introduces variables of the form $[p A q]$, intended to generate strings that take the machine from state $p$ with stack symbol $A$ to state $q$ after $A$ is popped.
 
-<b>PDA / NPDA to CFG</b>
+<<<<<<< HEAD
+<b>DPDA / NPDA to CFG</b>
 The reverse construction is more technical. A common method introduces variables of the form <em>[p A q]</em>, intended to generate exactly the strings that take the machine from state <em>p</em> with stack symbol <em>A</em> on top to state <em>q</em> after that symbol has been removed. Productions encode the ways the automaton can consume input while matching pushes with corresponding later pops.
 
 <b>Why Acceptance Mode Matters</b>
 PDAs may accept by final state or by empty stack. These two conventions are equivalent in expressive power, but the conversion details differ. The app's explicit and empty-stack paradigms reflect that theoretical distinction.
 
 <b>What This Section Should Teach</b>
-The key lesson is not just that CFGs and NPDAs are equivalent. It is that syntax trees and stack behavior are two descriptions of the same nested dependency structure: one generative, one operational. The deterministic PDA model then sits inside that picture as the parsing-friendly but strictly smaller subclass.` },
+The key lesson is not just that CFGs and NPDAs are equivalent. It is that syntax trees and stack behavior are two descriptions of the same nested dependency structure: one generative, one operational. The <b>DPDA</b> model then sits inside that picture as the parsing-friendly but strictly smaller subclass.` },
+=======
+<b>Acceptance Mode</b>
+PDAs may accept by final state or by empty stack. These are equivalent in power, but the conversion details differ.` },
+>>>>>>> 43fa997381c8b29c9d5ef72f8519e2f65afffc56
     {
       id: 'th-tm',
       color: 'var(--orange)',
       title: 'Turing Machines',
       sub: 'DECIDABILITY · RECOGNIZABILITY · UNIVERSAL MODEL',
       body: `<b>Formal Model</b>
-A standard single-tape Turing machine is a 7-tuple <em>M = (Q, Sigma, Gamma, delta, q0, q_accept, q_reject)</em>. The tape alphabet <em>Gamma</em> contains the input alphabet and the blank symbol. At each step the machine reads one cell, writes one symbol, moves left or right, and changes state.
+A standard single-tape TM is a 7-tuple $M = (Q, \\Sigma, \\Gamma, \\delta, q_0, q_{acc}, q_{rej})$. The tape alphabet $\\Gamma$ contains the input alphabet and the blank symbol.
 
 <b>Recognition vs Decision</b>
-A TM recognizes a language if it accepts every string in the language and may reject or loop on strings outside it. A TM decides a language if it halts on every input, accepting strings in the language and rejecting strings outside it. This halt-on-all-inputs condition is what separates decidable languages from merely recognizable ones.
+A TM recognizes a language if it accepts every string in the language. A TM decides a language if it halts on every input, accepting strings in the language and rejecting strings outside it. This halt-on-all-inputs condition is what separates decidable languages from merely recognizable ones.
 
 <b>Why TMs Matter</b>
-Finite automata have no unbounded memory; PDAs have one stack; TMs have unrestricted read-write tape. That qualitative jump is what makes TMs the standard model for general-purpose computation and for undecidability proofs.
-
-<b>Configuration View</b>
-A TM computation is best understood as a sequence of configurations: current state, full tape contents up to the used region, and head position. Many proofs in computability work by transforming machines into equivalent machines that manipulate configurations in a controlled way.
+Finite automata have no unbounded memory; PDAs have one stack; TMs have unrestricted read-write tape. That jump is what makes TMs the standard model for general-purpose computation.
 
 <b>Church-Turing Thesis</b>
-The Church-Turing thesis is not a formal theorem. It is the claim that every effectively calculable procedure can be carried out by a Turing machine. Its strength comes from repeated confirmation across every standard computational model that has been studied seriously.
-
-<b>The App's TM Features</b>
-Single-tape simulation, universal-machine ideas, nondeterministic branching, and multi-tape variants all sit naturally under this section because they refine one central question: what changes computation speed or description style, and what changes computation power?` },
+The Church-Turing thesis is the claim that every effectively calculable procedure can be carried out by a Turing machine.` },
     {
       id: 'th-utm-ndtm',
       color: 'var(--orange)',
       title: 'UTM and Nondeterministic TMs',
       sub: 'SIMULATION · ENCODINGS · BRANCHING COMPUTATION',
       body: `<b>Universal Turing Machine</b>
-A universal Turing machine (UTM) takes an encoding <em>&lt;M, w&gt;</em> and simulates machine <em>M</em> on input <em>w</em>. This is the formal ancestor of the stored-program computer: the program itself is data, and one fixed interpreter can execute many different machines from their descriptions.
+A universal Turing machine (UTM) takes an encoding $\\langle M, w \\rangle$ and simulates machine $M$ on input $w$. This is the formal ancestor of the stored-program computer.
 
 <b>Why Encodings Matter</b>
-Universality depends on being able to encode states, symbols, transitions, and input strings in a computable, unambiguous way. Once that is done, questions about machines become questions about strings, which is exactly what undecidability reductions exploit.
+Universality depends on being able to encode states, symbols, transitions, and input strings. Once that is done, questions about machines become questions about strings.
 
 <b>Nondeterministic TMs</b>
-An NDTM can branch into multiple possible next moves. It accepts if any branch accepts. This is the Turing-machine analogue of NFA semantics. Nondeterminism does not change language-recognition power for TMs, but it does change complexity-theoretic viewpoints, because polynomial-time nondeterminism gives rise to the class NP.
+An NDTM can branch into multiple possible next moves. It accepts if any branch accepts. Nondeterminism does not change language-recognition power for TMs, but it does change complexity-theoretic viewpoints ($NP$).
 
-<b>Simulation by Dovetailing or BFS</b>
-To simulate an NDTM deterministically, we cannot just follow one branch deeply, because another shallow branch might accept. Standard simulations enumerate configurations breadth-first or dovetail over branches so that every finite accepting path is eventually found.
-
-<b>What the UTM Simulator Illustrates</b>
-A UTM is one of the cleanest demonstrations that programs are objects inside computation, not outside it. The simulator makes that concrete by turning machine descriptions into inputs for another machine. That move is the gateway to self-reference, diagonalization, and the halting problem.` },
+<b>Simulation by BFS</b>
+To simulate an NDTM deterministically, we cannot just follow one branch deeply (it might loop). Standard simulations enumerate configurations breadth-first.` },
     {
       id: 'th-undecidable',
       color: 'var(--red)',
       title: 'Undecidability',
       sub: 'HALTING · ATM · REDUCTIONS · RICE',
-      body: `<b>Acceptance and Halting Problems</b>
-The language <em>A_TM = {&lt;M, w&gt; | M accepts w}</em> is recognizable but undecidable. The halting problem <em>HALT_TM = {&lt;M, w&gt; | M halts on w}</em> is also undecidable. These are not obscure corner cases; they are the baseline sources from which many other undecidable problems are derived.
+      body: `<b>Rice's Theorem (Decidability)</b>
+Checking <b>any</b> non-trivial semantic property of a Turing Machine's language is undecidable.
+- <b>Semantic:</b> About the language $L(M)$ (e.g., "is it empty?"), not the code.
+- <b>Non-trivial:</b> True for some TMs and false for others.
 
-<b>Diagonalization</b>
-Turing's proof idea is to assume a perfect halting decider exists and then build a machine that contradicts its own prediction when run on its own description. The paradox is not a gimmick. It reveals that self-reference plus universal simulation creates questions no algorithm can settle uniformly.
+<b>Rice-Shapiro Theorem (Recognizability)</b>
+Also known as the "Wait and See" test. A property is Turing-Recognizable (RE) if it can be confirmed by observing the TM for finite time.
+<b>The Formal Rules:</b>
+1. <b>Finite Subset Rule:</b> If $L$ has the property, there must be a finite subset of $L$ that also has it.
+2. <b>Monotonicity:</b> If a finite $L_1$ has it, any $L_2 \\supseteq L_1$ must also have it.
 
-<b>Recognizable vs Co-Recognizable</b>
-If both a language and its complement are recognizable, then the language is decidable. This gives a clean test for showing some recognizable languages are not decidable: show the complement is not recognizable. That is the status of <em>A_TM</em>.
+<b>Ultimate Cheat Sheet:</b>
+- <b>Recognizable (RE):</b> e.g., "Contains $w$", "is not empty".
+- <b>Co-Recognizable (co-RE):</b> e.g., "is empty".
+- <b>Neither:</b> e.g., "$L(M) = \\Sigma^*$", "is finite".
 
-<b>Many-One Reductions</b>
-To prove a new problem undecidable, we reduce a known undecidable problem to it. A computable function <em>f</em> maps instances of problem <em>A</em> to instances of problem <em>B</em> so that yes-instances stay yes and no-instances stay no. If <em>B</em> were decidable, then <em>A</em> would be too, which is impossible.
-
-<b>Rice's Theorem</b>
-Any nontrivial semantic property of the language recognized by a TM is undecidable. "Semantic" means it depends only on the language recognized, not on the syntactic presentation of the machine. Questions like emptiness, finiteness, universality, and "accepts epsilon" all fall under Rice's theorem.
-
-<b>Why This Connects to the App</b>
-The theory section distinguishes decidability tables for regular and context-free models from undecidability on TMs so users can see where the boundary shifts. The app's richer TM features should be paired with explanations of which questions remain algorithmically solvable and which do not.` },
+<b>Diagonalization and $A_{TM}$</b>
+$A_{TM} = \\{\\langle M, w \\rangle \\mid M \\text{ accepts } w\\}$ is the baseline undecidable problem, proved via Cantor's diagonal argument.` },
     {
       id: 'th-complexity',
       color: 'var(--purple)',
       title: 'Complexity Theory',
       sub: 'P · NP · PSPACE · REDUCTIONS',
-      body: `<b>Computation Cost, Not Just Computability</b>
-Complexity theory asks how many resources an algorithm needs, usually time or space as a function of input length. Two problems may both be decidable, but one may require exponential time while another is solvable in polynomial time.
+      body: `<b>Resource Bounds</b>
+Complexity theory classifies problems by the time or space needed. $P$ is solvable in polynomial time, $NP$ is verifiable in polynomial time.
 
-<b>Class P</b>
-P is the class of languages decidable in polynomial time by a deterministic TM. It is the canonical tractability class because polynomial slowdowns remain manageable under reasonable changes of machine model.
+<b>The Master Flow of Reductions ($A \\le_m B$)</b>
+- <b>Easiness flows backward:</b> If $B$ is Decidable/RE, then $A$ is also Decidable/RE.
+- <b>Hardness flows forward:</b> If $A$ is Undecidable/Not RE, then $B$ is also Undecidable/Not RE.
 
-<b>Class NP</b>
-NP consists of languages decidable in polynomial time by a nondeterministic TM, or equivalently languages whose yes-instances have polynomial-size certificates verifiable in polynomial time. This verifier viewpoint is often the more useful one in proofs and algorithm design.
+<b>NP-Completeness and Gadgets</b>
+NP-complete problems (like 3-SAT) are the hardest in NP. Reductions often use "gadgets":
+- <b>Variable Gadget:</b> An edge between $x$ and $\\neg x$.
+- <b>Clause Gadget:</b> A triangle representing $(x \\lor y \\lor z)$.
 
-<b>Polynomial-Time Reductions</b>
-A problem <em>A</em> reduces to problem <em>B</em> if every instance of <em>A</em> can be translated to an instance of <em>B</em> in polynomial time while preserving the answer. NP-complete problems are the hardest problems inside NP under these reductions.
-
-<b>NP-Completeness</b>
-SAT was the first NP-complete problem. To prove another problem NP-complete, we show it belongs to NP and that a known NP-complete problem reduces to it. The reduction direction matters: to show <em>B</em> is hard, reduce something already known hard into <em>B</em>.
-
-<b>Beyond NP</b>
-PSPACE captures problems solvable with polynomial memory. We know <em>P subseteq NP subseteq PSPACE subseteq EXP</em>. Some containments are known to be strict, while the most famous one, whether <em>P = NP</em>, remains open.
-
-<b>Why This Belongs Beside Automata Theory</b>
-Automata theory classifies what can be recognized with different memory models. Complexity theory refines that by classifying how efficiently those recognitions can be carried out. Multi-tape TMs, CYK, and nondeterministic simulation all connect directly to that refinement.` },
+<b>Specific "Trick" Concepts:</b>
+- <b>Unary vs Binary:</b> Subset-Sum is NP-complete in Binary, but in $P$ in Unary because the input size $n$ is artificially inflated.
+- <b>coNP Collapse:</b> If an NP-complete problem belongs to $coNP$, then $NP = coNP$.
+- <b>PSPACE-complete:</b> Includes board games and $TQBF$.` },
     {
       id: 'th-algorithms',
       color: 'var(--accent)',
       title: 'Key Algorithms',
       sub: 'CONSTRUCTIONS · NORMAL FORMS · DECISION TESTS',
       body: `<b>Finite-Automata Algorithms</b>
-The app implements epsilon-closure computation, subset construction, table-filling minimization, dead-state analysis, complement, product construction, emptiness, finiteness, universality, and equivalence. These are the standard operational toolkit for regular languages.
+The app implements $\\epsilon$-closure computation, subset construction, table-filling minimization, dead-state analysis, complement, product construction, emptiness, finiteness, universality, and equivalence.
 
 <b>Regex and Grammar Algorithms</b>
-Regex to epsilon-NFA is handled by Thompson construction. DFA or NFA to regex uses generalized-NFA elimination. Regular-grammar and automaton conversions expose the equivalence among the main regular formalisms.
+Regex to $\\epsilon$-NFA is handled by Thompson construction. DFA or NFA to regex uses generalized-NFA elimination.
 
 <b>CFG Algorithms</b>
-FIRST/FOLLOW computation, LL(1) table generation, left-recursion removal, CNF and GNF conversion, CYK parsing, derivation generation, and parse-tree construction form the grammar-analysis side of the app. Each corresponds to a standard theorem or construction in formal-language theory.
+FIRST/FOLLOW computation, LL(1) table generation, left-recursion removal, CNF and GNF conversion, CYK parsing, and parse-tree construction.
 
 <b>PDA and TM Algorithms</b>
-CFG to NPDA and PDA/NPDA to CFG illustrate language-class equivalence on the context-free level, while the separate PDA mode highlights what changes when determinism is enforced. UTM, NDTM, and TM-to-grammar features represent the more advanced computability side of the project.
+<<<<<<< HEAD
+CFG to NPDA and DPDA/NPDA to CFG illustrate language-class equivalence on the context-free level, while the separate DPDA mode highlights what changes when determinism is enforced. UTM, NDTM, and TM-to-grammar features represent the more advanced computability side of the project.
 
 <b>Pedagogical Point</b>
 This app is not just a simulator. It is a constructive theory environment. Almost every algorithm in the interface is there because it either proves an equivalence theorem, decides a property, or exposes the shape of a classical proof.` },
+=======
+CFG to NPDA and PDA/NPDA to CFG illustrate language-class equivalence. UTM, NDTM, and TM-to-grammar features represent the computability side.` },
+>>>>>>> 43fa997381c8b29c9d5ef72f8519e2f65afffc56
     {
       id: 'th-closure-card',
       color: 'var(--green)',
       title: 'Closure Properties',
       sub: 'REGULAR · CFL · CSL · RE · RECURSIVE',
       body: `<b>What Closure Means</b>
-A class is closed under an operation when applying the operation to members of the class never takes you outside the class. Closure results are often the quickest way to understand the strengths and weaknesses of a computational model.
+A class is closed under an operation when applying the operation to members of the class never takes you outside the class.
 
 <b>Regular Languages</b>
-Regular languages enjoy very strong closure behavior because finite control can be combined in systematic product-style ways. Complement, intersection, and reversal are especially clean examples.
+Regular languages enjoy very strong closure behavior because finite control can be combined in systematic ways (Product Construction).
 
 <b>Context-Free Languages</b>
-CFLs are closed under union, concatenation, star, reversal, homomorphism, and inverse homomorphism, but not under general intersection or complement. This asymmetry is one of the clearest signs that one stack is powerful but limited.
+CFLs are closed under union, concatenation, star, reversal, but <b>NOT</b> under general intersection or complement. This is a sign that one stack is limited.
 
 <b>Recursive and RE Languages</b>
-Recursive languages are closed under the Boolean operations because deciders always halt. RE languages are closed under union and intersection but not complement in general; that failure is exactly what separates recognizability from full decidability.
+Recursive languages are closed under Boolean operations. RE languages are closed under union and intersection but not complement.
 
 <b>How to Use Closure in Proofs</b>
-Closure arguments usually follow one of two patterns: build a target language from known languages using allowed operations, or assume a language belongs to a class and derive an impossible closure consequence from it. The closure table and decision tables in the theory view are meant to support both styles of reasoning.` },
+Closure arguments build a target language from known languages, or derive a contradiction (e.g., if $L$ was regular, then $L \\cap L'$ would be regular, but it's not).` },
     {
       id: 'th-nerode',
       color: 'var(--orange)',
       title: 'Myhill-Nerode Theorem',
       sub: 'DISTINGUISHABILITY · MINIMALITY · NON-REGULARITY',
-      body: `<b>Distinguishable Prefixes</b>
-Two strings <em>x</em> and <em>y</em> are distinguishable with respect to a language <em>L</em> if there exists some extension <em>z</em> such that exactly one of <em>xz</em> and <em>yz</em> lies in <em>L</em>. If no such <em>z</em> exists, the strings are equivalent for the purposes of future acceptance.
+      body: `<b>The Intuition</b>
+To understand equivalence classes, stop looking at languages as sets and start looking at them from the perspective of a machine trying to process strings.
+Suppose a DFA reads string $x$ and ends up in <b>State Q</b>. If it also ends up in <b>State Q</b> after reading $y$, the machine has "forgotten" which it read. Any future suffix $z$ will lead to the same result. They are <b>indistinguishable</b>.
 
-<b>Equivalence Classes as States</b>
-The Myhill-Nerode relation partitions all strings into equivalence classes of identical future behavior. If there are only finitely many such classes, they can serve directly as DFA states. This gives a conceptual proof that regularity is exactly finite-index distinguishability.
+<b>Formal Definition</b>
+Two strings $x$ and $y$ are indistinguishable with respect to $L$ ($x \\equiv_L y$) if, for every possible suffix $z$:
+$$xz \\in L \\iff yz \\in L$$
+
+<b>Myhill-Nerode Theorem</b>
+The number of equivalence classes of $L$ is exactly equal to the number of states in the <b>minimal DFA</b>.
+- <b>Finite classes:</b> Language is Regular.
+- <b>Infinite classes:</b> Language is NOT Regular.
 
 <b>Minimal DFA</b>
-The minimal DFA for a regular language has exactly one state per Myhill-Nerode class. This is why minimal DFAs are unique up to renaming: the classes are determined by the language itself, not by a particular construction procedure.
-
-<b>Proving Non-Regularity</b>
-To show a language is not regular, it is enough to produce infinitely many pairwise distinguishable strings. This is often cleaner than a pumping-lemma proof because it targets the reason finite memory fails: too many genuinely different future obligations.
-
-<b>Connection to Minimization</b>
-DFA minimization algorithms are computational versions of Myhill-Nerode reasoning. They start from a given automaton and merge states only when no distinguishing continuation exists.` },
+This is why minimal DFAs are unique: the states correspond to the inherent equivalence classes of the language itself.` },
     {
       id: 'th-moore',
       color: 'var(--purple)',
       title: 'Moore Machines',
       sub: 'OUTPUT ON STATES · SYNCHRONOUS TRANSDUCTION',
       body: `<b>Definition</b>
-A Moore machine is a finite-state transducer whose output depends only on the current state. Formally, it has a state-transition function <em>delta</em> and an output function <em>lambda: Q -> Delta</em>. Because output is state-based, the machine emits an initial output before any input is read.
+A Moore machine is a finite-state transducer whose output depends only on the current state: $\\lambda: Q \\to \\Delta$. Because output is state-based, the machine emits an initial output before any input is read.
 
 <b>Behavioral Consequence</b>
-Outputs change only when the state changes. This gives Moore machines a synchronous, stable feel that is especially useful in hardware and control systems, where glitch-free output changes matter.
+Outputs change only when the state changes. This gives Moore machines a synchronous, stable feel useful in hardware and control systems.
 
-<b>Expressive Relationship to Mealy Machines</b>
-Moore and Mealy machines realize the same finite-state transductions up to the usual convention about initial output alignment. However, a Moore machine may need more states because output information is encoded into state identity itself.
-
-<b>Why the Table View Matters</b>
-The app's Moore table tool makes visible that transition behavior and output behavior are separated. That separation is exactly the design tradeoff Moore machines make: clarity and timing stability in exchange for possible state blow-up.` },
+<b>Relationship to Mealy Machines</b>
+Moore and Mealy machines realize the same finite-state transductions. However, a Moore machine may need more states because output information is encoded into state identity itself.` },
     {
       id: 'th-mealy',
       color: 'var(--accent)',
       title: 'Mealy Machines',
       sub: 'OUTPUT ON TRANSITIONS · COMPACT TRANSDUCERS',
       body: `<b>Definition</b>
-A Mealy machine is a finite-state transducer with output function <em>lambda: Q x Sigma -> Delta</em>. The output is determined by the current state together with the current input symbol, so output is attached to transitions rather than states.
+A Mealy machine is a finite-state transducer with output function $\\lambda: Q \\times \\Sigma \\to \\Delta$. The output is determined by the current state together with the current input symbol.
 
 <b>Operational Effect</b>
-For an input of length <em>n</em>, a Mealy machine emits exactly <em>n</em> output symbols. There is no separate initial output. This often yields a more compact encoding than a Moore machine because output need not be baked into every destination state.
+For an input of length $n$, a Mealy machine emits exactly $n$ output symbols. There is no separate initial output. This often yields a more compact encoding than a Moore machine.
 
-<b>Conversion to and from Moore</b>
-Converting Moore to Mealy is straightforward: each transition inherits the output of its destination state. Converting Mealy to Moore usually requires splitting states according to incoming output labels so that each Moore state has a single fixed output.
-
-<b>Applications</b>
-Mealy machines are natural for tokenization, streaming transforms, and protocol response logic, where the emitted symbol depends immediately on the input just seen. They are also the conceptual stepping stone toward richer finite-state transducers used in language technology.` },
+<b>Conversion</b>
+Converting Moore to Mealy is straightforward: each transition inherits the output of its destination state. Converting Mealy to Moore usually requires splitting states.` },
     {
       id: 'th-mtm',
       color: 'var(--orange)',
       title: 'Multi-Tape Turing Machines',
       sub: 'EFFICIENCY · SIMULATION · MACHINE VARIANTS',
       body: `<b>Definition</b>
-A <em>k</em>-tape TM reads and writes on <em>k</em> tapes simultaneously, with one head per tape. The transition function consumes a <em>k</em>-tuple of tape symbols and returns a new state, a <em>k</em>-tuple of symbols to write, and a movement choice for each head.
+A $k$-tape TM reads and writes on $k$ tapes simultaneously. The transition function consumes a $k$-tuple of tape symbols and returns a new state, a $k$-tuple to write, and movements for each head.
 
 <b>Power vs Efficiency</b>
-Multi-tape TMs do not recognize more languages than single-tape TMs, but they can be dramatically faster. The standard simulation of a <em>k</em>-tape machine by a single-tape machine incurs at most quadratic overhead.
+Multi-tape TMs do not recognize more languages than single-tape TMs, but they can be dramatically faster. The simulation incurs at most quadratic overhead.
 
-<b>Why They Matter in Complexity Theory</b>
-Because multi-tape and single-tape models are polynomially equivalent, complexity classes like P do not depend on which one we choose. That robustness is why the theory can focus on asymptotic classes rather than machine-specific engineering details.
+<b>Robustness</b>
+Because multi-tape and single-tape models are polynomially equivalent, complexity classes like $P$ do not depend on which one we choose.` },
+    {
+      id: 'th-summary',
+      color: 'var(--accent)',
+      title: 'Revision Summary',
+      sub: 'COMPREHENSIVE THEORY SUMMARY · WEEKS 7-12',
+      body: `<b>1. Time Complexity & Reductions</b>
+- <b>$P$ vs $NP$:</b> $P$ = Solvable, $NP$ = Verifiable in poly-time.
+- <b>Reductions ($A \\le_P B$):</b> Easiness backward, Hardness forward.
+- <b>Graph Equivalences:</b> Clique of size $k$ in $G'$ $\\iff$ Independent Set size $k$ in $G$ $\\iff$ Vertex Cover size $n-k$ in $G$.
 
-<b>Practical Intuition</b>
-Extra tapes act like organized workspace. One tape may hold the input, another a stack-like scratch structure, and another intermediate data. This makes algorithm design much closer to how programmers think, even though the underlying power is unchanged.
+<b>2. Decidability & Rice's Theorem</b>
+- <b>Rice's Theorem:</b> Any non-trivial semantic property of $L(M)$ is UNDECIDABLE.
+- <b>Checks:</b> Must be about the language (semantic) and true for some machines, false for others (non-trivial).
 
-<b>Connection to the App</b>
-The MTM tools should be read as a lesson in efficiency and encoding, not a lesson in extra computability. They demonstrate a recurring theme in theory: richer machine structure often changes complexity before it changes expressiveness.` }
+<b>3. Recognizability (RE)</b>
+- <b>Turing-Recognizable (RE):</b> Finitely prove a "Yes" (e.g., $HALT_{TM}$).
+- <b>co-Turing-Recognizable (co-RE):</b> Finitely prove a "No" (e.g., $E_{TM}$).
+- <b>Decidable:</b> Only if BOTH RE and $co-RE$.
+
+<b>4. Mapping Reductions ($A \\le_m B$)</b>
+- <b>Easiness ($B$ to $A$):</b> If $B$ is easy (Decidable/RE), $A$ must be easy.
+- <b>Hardness ($A$ to $B$):</b> If $A$ is hard (Undecidable/Not RE), $B$ must be hard.
+
+<b>5. Space Complexity</b>
+- <b>Master Hierarchy:</b> $L \\subseteq NL = coNL \\subseteq P \\subseteq NP \\subseteq PSPACE = NPSPACE$.
+- <b>Savitch's Theorem:</b> $NSPACE(f(n)) \\subseteq DSPACE(f(n)^2)$.
+
+<b>6. The "Trick" Concepts</b>
+- <b>Unary SUBSET-SUM:</b> In $P$ (size is inflated). Binary version is $NP$-complete.
+- <b>coNP Collapse:</b> If an $NPC$ problem is in $coNP$, then $NP = coNP$.
+- <b>Gadgets:</b> $3-SAT$ to Vertex Cover uses variable (edges) and clause (triangles) gadgets.
+- <b>PSPACE-complete:</b> board games and $TQBF$.` }
   ];
 
   const grid = $('theory-grid');
@@ -459,6 +476,7 @@ The MTM tools should be read as a lesson in efficiency and encoding, not a lesso
   <div class="tc-sub">${card.sub}</div>
   <div class="tc-body" style="white-space:pre-line">${card.body}</div>
 </div>`).join('');
+    triggerMath(grid);
   }
 
   renderClosureTable();
