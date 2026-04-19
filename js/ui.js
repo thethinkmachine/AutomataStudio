@@ -619,6 +619,103 @@ document.addEventListener('keyup', e => {
   if (w) w.classList.remove('space-pan');
 });
 
+// ══════════════════════════════════════════════════════════════════
+//  MODEL PICKER LOGIC
+// ══════════════════════════════════════════════════════════════════
+
+function renderModelPicker() {
+  const menu = $('model-picker-menu');
+  if (!menu) return;
+  
+  let html = '';
+  MachineCategories.forEach(cat => {
+    html += `
+      <div class="model-cat-group">
+        <div class="model-cat-group-title">${cat.label}</div>
+        ${cat.machines.map(mid => {
+          const m = MachineTypes[mid];
+          if (!m) return '';
+          const isActive = App.machine === mid;
+          const isDisabled = m.implemented === false;
+          return `
+            <div class="model-item ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}" 
+                 onclick="${isDisabled ? '' : `selectModel('${mid}')`}">
+              <span class="model-item-label">${m.label}</span>
+              ${isDisabled ? '<span class="model-item-status">Coming Soon</span>' : ''}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  });
+
+  // Power Hierarchy Summary
+  html += `
+    <div class="model-hierarchy-summary">
+      <div class="model-hierarchy-title">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M2 13 L8 3 L14 13" />
+        </svg>
+        Chomsky Power Hierarchy
+      </div>
+      <div class="model-hierarchy-math">
+        DFA = NFA < DPDA < NPDA < LBA < DTM = NTM
+      </div>
+    </div>
+  `;
+
+  menu.innerHTML = html;
+}
+
+function toggleModelPicker(force) {
+  const container = $('model-picker-container');
+  if (!container) return;
+  const isOpen = force === undefined ? container.classList.contains('open') : !force;
+  
+  if (!isOpen) { // Opening
+    renderModelPicker();
+    container.classList.add('open');
+    // Global click listener for and close on outside click
+    setTimeout(() => {
+      window.addEventListener('click', closeModelPickerOnClickOutside);
+    }, 0);
+  } else {
+    container.classList.remove('open');
+    window.removeEventListener('click', closeModelPickerOnClickOutside);
+  }
+}
+
+function closeModelPickerOnClickOutside(e) {
+  const container = $('model-picker-container');
+  if (container && !container.contains(e.target)) {
+    toggleModelPicker(false);
+  }
+}
+
+function selectModel(id) {
+  if (MachineTypes[id] && MachineTypes[id].implemented) {
+    setMachine(id);
+    toggleModelPicker(false);
+  }
+}
+
+function updateModelPickerLabels() {
+  const m = MachineTypes[App.machine];
+  if (!m) return;
+  const cat = MachineCategories.find(c => c.id === m.category);
+  
+  const catEl = $('cur-model-cat');
+  const nameEl = $('cur-model-name');
+  if (catEl) catEl.textContent = cat ? cat.label : 'Automata';
+  if (nameEl) nameEl.textContent = m.label;
+}
+
+// Initial call to set labels
+document.addEventListener('DOMContentLoaded', () => {
+    updateModelPickerLabels();
+});
+
+
 function clearSpacePan() {
   if (!App.spacePan) return;
   App.spacePan = false;

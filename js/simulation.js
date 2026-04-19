@@ -710,15 +710,15 @@ function stepBack() { if (App.simIdx > 0) { App.simIdx--; renderSimStep(); } }
 function resetSim() {
   clearInterval(App.autoTimer); App.autoTimer = null;
   App.simSteps = []; App.simIdx = 0; App.currentTokens = null;
-  $('auto-btn').classList.remove('playing'); $('auto-btn').textContent = '⏵ Auto';
+  $('auto-btn').classList.remove('playing'); $('auto-btn').innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-right:4px"><path d="M4 2v12l9-6z"/></svg> Auto';
   log('<span style="color:var(--text3);font-style:italic">Run a string to simulate…</span>');
   $('sim-tracker').innerHTML = ''; $('sim-tracker').style.display = 'none';
   document.querySelectorAll('.sn').forEach(el => el.classList.remove('act-st', 'rej-st'));
 }
 function toggleAuto() {
-  if (App.autoTimer) { clearInterval(App.autoTimer); App.autoTimer = null; $('auto-btn').classList.remove('playing'); $('auto-btn').textContent = '⏵ Auto'; return; }
-  $('auto-btn').classList.add('playing'); $('auto-btn').textContent = '⏸ Stop';
-  App.autoTimer = setInterval(() => { if (App.simIdx >= App.simSteps.length - 1) { clearInterval(App.autoTimer); App.autoTimer = null; $('auto-btn').classList.remove('playing'); $('auto-btn').textContent = '⏵ Auto'; return; } stepFwd(); }, App.config.autoSpeed);
+  if (App.autoTimer) { clearInterval(App.autoTimer); App.autoTimer = null; $('auto-btn').classList.remove('playing'); $('auto-btn').innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-right:4px"><path d="M4 2v12l9-6z"/></svg> Auto'; return; }
+  $('auto-btn').classList.add('playing'); $('auto-btn').innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-right:4px"><path d="M5 3h2v10H5zM9 3h2v10H9z"/></svg> Stop';
+  App.autoTimer = setInterval(() => { if (App.simIdx >= App.simSteps.length - 1) { clearInterval(App.autoTimer); App.autoTimer = null; $('auto-btn').classList.remove('playing'); $('auto-btn').innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-right:4px"><path d="M4 2v12l9-6z"/></svg> Auto'; return; } stepFwd(); }, App.config.autoSpeed);
 }
 
 // ══════════════════════════════════════════════════════════════════

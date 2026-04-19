@@ -118,30 +118,20 @@
 
   <!-- ══════════════ SUB-TOOLBAR ══════════════ -->
   <div class="sub-toolbar" id="sub-toolbar">
-    <span class="stb-label">Machine Type</span>
-    <select class="sel mobile-machine-select" id="mobile-machine-select" onchange="setMachine(this.value)" aria-label="Machine type">
-      <option value="DFA">DFA</option>
-      <option value="Moore">Moore</option>
-      <option value="Mealy">Mealy</option>
-      <option value="NFA">NFA</option>
-      <option value="ε-NFA">ε-NFA</option>
-      <option value="DPDA">DPDA</option>
-      <option value="NPDA">NPDA</option>
-      <option value="TM">TM</option>
-      <option value="NDTM">NDTM</option>
-      <option value="MTM">MTM</option>
-    </select>
-    <div class="machine-tabs" id="machine-tabs">
-      <button class="mtab active" onclick="setMachine('DFA')">DFA</button>
-      <button class="mtab" onclick="setMachine('Moore')">Moore</button>
-      <button class="mtab" onclick="setMachine('Mealy')">Mealy</button>
-      <button class="mtab" onclick="setMachine('NFA')">NFA</button>
-      <button class="mtab" onclick="setMachine('ε-NFA')">ε-NFA</button>
-      <button class="mtab" onclick="setMachine('DPDA')">DPDA</button>
-      <button class="mtab" onclick="setMachine('NPDA')">NPDA</button>
-      <button class="mtab" onclick="setMachine('TM')">TM</button>
-      <button class="mtab" onclick="setMachine('NDTM')">NDTM</button>
-      <button class="mtab" onclick="setMachine('MTM')">MTM</button>
+    <div class="model-picker-container" id="model-picker-container">
+      <button class="model-picker-btn" id="model-picker-btn" onclick="toggleModelPicker()" title="Switch machine model">
+        <div class="model-picker-info">
+          <span class="model-picker-cat" id="cur-model-cat">Finite Automata</span>
+          <span class="model-picker-type" id="cur-model-name">DFA</span>
+        </div>
+        <svg class="chevron" viewBox="0 0 16 16" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="4,6 8,10 12,6" />
+        </svg>
+      </button>
+
+      <div class="model-picker-menu" id="model-picker-menu">
+        <!-- Categories and machines will be injected here by JS -->
+      </div>
     </div>
     <div style="flex:1"></div>
     <div class="hdr-sep"></div>
@@ -367,10 +357,10 @@
               <div class="rp-section-body">
                 <div class="code-box" id="regex-box">—</div>
                 <div class="def-box" id="def-box">M = (Q, Σ, δ, q₀, F)</div>
-                <div id="mtm-ctrl" style="display:none;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-                  <span style="font-family:var(--mono);font-size:.65rem;color:var(--text3)">Tapes:</span>
+                <div id="mtm-ctrl" style="display:none;align-items:center;gap:6px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+                  <span style="font-family:var(--sans);font-weight:600;font-size:.7rem;color:var(--text3)">Tapes:</span>
                   <select class="sel" id="tape-count-sel" onchange="setTapeCount(this.value)"
-                    style="flex:none;width:55px">
+                    style="flex:none;width:55px;padding:3px 6px;height:24px;font-size:.7rem">
                     <option value="2">2</option>
                     <option value="3">3</option>
                     <option value="4">4</option>
@@ -388,14 +378,24 @@
               </div>
               <div class="rp-section-body">
                 <div class="sim-row">
-                  <input class="inp" id="sim-in" placeholder="Empty string (ε) or type 'eps'…" style="flex:1">
-                  <button class="run-btn" onclick="runSim()">▶</button>
+                  <input class="inp" id="sim-in" placeholder="ε" style="flex:1">
+                  <button class="run-btn" onclick="runSim()">
+                    <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M4 2v12l9-6z"/></svg> 
+                  </button>
                 </div>
                 <div class="sctrl">
-                  <button class="sbtn" onclick="stepBack()">◀</button>
-                  <button class="sbtn" onclick="stepFwd()">▶</button>
-                  <button class="sbtn auto-btn" id="auto-btn" onclick="toggleAuto()">⏵ Auto</button>
-                  <button class="sbtn" onclick="resetSim()">↺</button>
+                  <button class="sbtn" onclick="stepBack()" title="Step Back">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M10 2L3 8l7 6" /></svg>
+                  </button>
+                  <button class="sbtn" onclick="stepFwd()" title="Step Forward">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M6 2l7 6-7 6" /></svg>
+                  </button>
+                  <button class="sbtn auto-btn" id="auto-btn" onclick="toggleAuto()">
+                    <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-right:4px"><path d="M4 2v12l9-6z"/></svg> Auto
+                  </button>
+                  <button class="sbtn" onclick="resetSim()" title="Reset">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M2.5 8a5.5 5.5 0 1 1 1.7 4M1 10.5l1.5-3 3 1.5"/></svg>
+                  </button>
                 </div>
                 <div id="sim-tracker" class="sim-tracker" style="display:none"></div>
                 <div class="trace-log" id="trace-log"><span style="color:var(--text3);font-style:italic">Run a string to
@@ -413,13 +413,15 @@
               <div class="rp-section-body" style="display:none">
                 <textarea class="batch-in" id="batch-in"
                   placeholder="One string per line&#10;ε for empty string"></textarea>
-                <button class="run-btn" style="width:100%;margin-bottom:6px" onclick="runBatch()">▶ Test All</button>
+                <button class="run-btn" style="width:100%;margin-bottom:6px;display:flex;align-items:center;justify-content:center;gap:6px" onclick="runBatch()">
+                  <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M4 2v12l9-6z"/></svg> Test All
+                </button>
                 <div class="batch-result" id="batch-result"></div>
               </div>
             </div>
           </div>
           <div class="panel-footer">
-            <button class="pin-btn" id="rpanel-pin-btn" onclick="toggleRPanelPin()" title="Unpin right panel">
+            <button class="pin-btn" id="rpanel-pin-btn" onclick="toggleRPanelPin()" title="Unpin right panel" style="display:flex;align-items:center;justify-content:center;">
               <svg viewBox="0 0 16 16" width="14" height="14">
                 <path d="M8 2a3 3 0 013 3v2l1 1v2H9v4l-1 1-1-1v-4H4V8l1-1V5a3 3 0 013-3z" fill="none"
                   stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />

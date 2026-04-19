@@ -2,17 +2,27 @@
 //  CORE CONFIGURATION
 // ══════════════════════════════════════════════════════════════════
 const MachineTypes = {
-  'DFA': { label: 'DFA', hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-dfa', file: 'dfa' },
-  'NFA': { label: 'NFA', hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-nfa', file: 'nfa' },
-  'ε-NFA': { label: 'ε-NFA', hasEpsilon: true, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-enfa', file: 'enfa' },
-  'DPDA': { label: 'DPDA', hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-dpda', file: 'pda' },
-  'NPDA': { label: 'NPDA', hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-npda', file: 'npda' },
-  'TM': { label: 'TM', hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-tm', file: 'tm' },
-  'NDTM': { label: 'NDTM', hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-ndtm', file: 'ndtm' },
-  'MTM': { label: 'MTM', hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-mtm', file: 'mtm' },
-  'Moore': { label: 'Moore', hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-moore', file: 'moore' },
-  'Mealy': { label: 'Mealy', hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-mealy', file: 'mealy' }
+  'DFA': { label: 'DFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-dfa', file: 'dfa' },
+  'NFA': { label: 'NFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-nfa', file: 'nfa' },
+  'ε-NFA': { label: 'ε-NFA', category: 'fa', implemented: true, hasEpsilon: true, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-enfa', file: 'enfa' },
+
+  'DPDA': { label: 'DPDA', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-dpda', file: 'pda' },
+  'NPDA': { label: 'NPDA', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-npda', file: 'npda' },
+
+  'TM': { label: 'TM (DTM)', category: 'tm', implemented: true, hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-tm', file: 'tm' },
+  'NDTM': { label: 'NDTM', category: 'tm', implemented: true, hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-ndtm', file: 'ndtm' },
+  'MTM': { label: 'MTM', category: 'tm', implemented: true, hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-mtm', file: 'mtm' },
+
+  'Moore': { label: 'Moore', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-moore', file: 'moore' },
+  'Mealy': { label: 'Mealy', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-mealy', file: 'mealy' }
 };
+
+const MachineCategories = [
+  { id: 'fa', label: 'Finite Automata', machines: ['DFA', 'NFA', 'ε-NFA'] },
+  { id: 'mem', label: 'Pushdown Automata', machines: ['DPDA', 'NPDA'] },
+  { id: 'tm', label: 'Turing Machines', machines: ['TM', 'NDTM', 'MTM'] },
+  { id: 'special', label: 'Transducers', machines: ['Moore', 'Mealy'] }
+];
 
 // ══════════════════════════════════════════════════════════════════
 //  CORE STATE

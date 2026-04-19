@@ -177,11 +177,7 @@ Complement is easy for total DFAs: flip accepting and rejecting states. Product 
 A context-free grammar is a 4-tuple $G = (V, \\Sigma, R, S)$ where each production has a single variable on the left. This allows nested structure and recursive syntax.
 
 <b>Pushdown Automata</b>
-<<<<<<< HEAD
 PDAs extend finite automata with a stack. This extra unbounded but disciplined memory is exactly what is needed for balanced parentheses, nested scopes, and matched recursive constructs. In this app, <em>DPDA</em> denotes the deterministic model, while <em>NPDA</em> denotes the general nondeterministic model.
-=======
-PDAs extend finite automata with a stack. This extra unbounded memory allows balanced parentheses and nested scopes. While NPDAs recognize all CFLs, deterministic PDAs are strictly weaker.
->>>>>>> 43fa997381c8b29c9d5ef72f8519e2f65afffc56
 
 <b>Why CFLs are not closed under Intersection</b>
 A PDA has only one stack. To check the intersection of two CFLs, a machine would effectively need two independent stacks, which turns it into a Turing Machine.
@@ -244,7 +240,6 @@ The standard top-down construction starts with the grammar's start variable on t
 <b>PDA to CFG</b>
 This construction introduces variables of the form $[p A q]$, intended to generate strings that take the machine from state $p$ with stack symbol $A$ to state $q$ after $A$ is popped.
 
-<<<<<<< HEAD
 <b>DPDA / NPDA to CFG</b>
 The reverse construction is more technical. A common method introduces variables of the form <em>[p A q]</em>, intended to generate exactly the strings that take the machine from state <em>p</em> with stack symbol <em>A</em> on top to state <em>q</em> after that symbol has been removed. Productions encode the ways the automaton can consume input while matching pushes with corresponding later pops.
 
@@ -253,10 +248,6 @@ PDAs may accept by final state or by empty stack. These two conventions are equi
 
 <b>What This Section Should Teach</b>
 The key lesson is not just that CFGs and NPDAs are equivalent. It is that syntax trees and stack behavior are two descriptions of the same nested dependency structure: one generative, one operational. The <b>DPDA</b> model then sits inside that picture as the parsing-friendly but strictly smaller subclass.` },
-=======
-<b>Acceptance Mode</b>
-PDAs may accept by final state or by empty stack. These are equivalent in power, but the conversion details differ.` },
->>>>>>> 43fa997381c8b29c9d5ef72f8519e2f65afffc56
     {
       id: 'th-tm',
       color: 'var(--orange)',
@@ -348,14 +339,10 @@ Regex to $\\epsilon$-NFA is handled by Thompson construction. DFA or NFA to rege
 FIRST/FOLLOW computation, LL(1) table generation, left-recursion removal, CNF and GNF conversion, CYK parsing, and parse-tree construction.
 
 <b>PDA and TM Algorithms</b>
-<<<<<<< HEAD
 CFG to NPDA and DPDA/NPDA to CFG illustrate language-class equivalence on the context-free level, while the separate DPDA mode highlights what changes when determinism is enforced. UTM, NDTM, and TM-to-grammar features represent the more advanced computability side of the project.
 
 <b>Pedagogical Point</b>
 This app is not just a simulator. It is a constructive theory environment. Almost every algorithm in the interface is there because it either proves an equivalence theorem, decides a property, or exposes the shape of a classical proof.` },
-=======
-CFG to NPDA and PDA/NPDA to CFG illustrate language-class equivalence. UTM, NDTM, and TM-to-grammar features represent the computability side.` },
->>>>>>> 43fa997381c8b29c9d5ef72f8519e2f65afffc56
     {
       id: 'th-closure-card',
       color: 'var(--green)',

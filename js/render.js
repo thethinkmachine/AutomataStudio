@@ -429,54 +429,133 @@ function deriveRegex() {
   _regexCache = { key: ck, val };
   return val;
 }
+function formatStateName(name) {
+  if (!name) return '\\text{—}';
+  return name.replace(/([a-zA-Z]+)(\d+)/g, '$1_{$2}');
+}
+
+function formatSet(items) {
+  if (!items || !items.length) return '\\emptyset';
+  return `\\{ ${items.map(formatStateName).join(', ')} \\}`;
+}
+
 function updateFormalDef() {
-  const Q = App.states.map(s => s.name).join(', ') || '∅';
-  const S = [...App.sigma].join(', ') || '∅';
-  const q0 = getState(App.startId)?.name || '—';
-  const F = App.states.filter(s => App.accepts.has(s.id)).map(s => s.name).join(', ') || '∅';
   const m = App.machine;
-  let txt;
+  const Q_str = formatSet(App.states.map(s => s.name));
+  const S_str = formatSet([...App.sigma]);
+  const q0_name = getState(App.startId)?.name;
+  const q0_str = q0_name ? formatStateName(q0_name) : '\\text{—}';
+  const F_str = formatSet(App.states.filter(s => App.accepts.has(s.id)).map(s => s.name));
+  
+  let txt = `$$ \\begin{aligned} `;
+  
   if (m === 'DFA' || m === 'NFA' || m === 'ε-NFA') {
-    txt = `M = (Q, Σ, δ, q₀, F)\n\nQ = {${Q}}\nΣ = {${S}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Σ→${m === 'DFA' ? 'Q' : '𝒫(Q)'}`;
+    const codomain = m === 'DFA' ? 'Q' : '\\mathcal{P}(Q)';
+    const eps = (m === 'ε-NFA') ? '\\cup \\{\\varepsilon\\}' : '';
+    const mapDom = (m === 'ε-NFA') ? `\\Sigma ${eps}` : '\\Sigma';
+    txt += `M &= (Q, \\Sigma, \\delta, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times ${mapDom} \\to ${codomain}`;
   } else if (isAnyPDA(m)) {
-    const G = [...App.stackAlpha].join(', ') || '∅';
-    const { eps, stackBottom } = App.config.sym;
-    const codomain = m === 'NPDA' ? '𝒫(Q×Γ*)' : 'Q×Γ*';
-    const emptyCodomain = m === 'NPDA' ? `𝒫(Q×(Γ∪{${eps}})*)` : `Q×(Γ∪{${eps}})*`;
-    const label = m;
+    const G_str = formatSet([...App.stackAlpha]);
+    const stackBottomStr = formatStateName(App.config.sym.stackBottom);
+    const eps = '\\varepsilon';
+    const codomain = m === 'NPDA' ? '\\mathcal{P}(Q \\times \\Gamma^*)' : 'Q \\times \\Gamma^*';
+    const emptyCodomain = m === 'NPDA' ? `\\mathcal{P}(Q \\times (\\Gamma \\cup \\{${eps}\\})^*)` : `Q \\times (\\Gamma \\cup \\{${eps}\\})^*`;
+    
     if (App.config.pdaParadigm === 'explicit') {
-      txt = `${label} = (Q,Σ,Γ,δ,q₀,Z₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nZ₀ = ${stackBottom}\nF = {${F}}\nδ: Q×(Σ∪{${eps}})×Γ→${codomain}`;
+      txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, Z_0, F) \\\\`;
+      txt += `Q &= ${Q_str} \\\\`;
+      txt += `\\Sigma &= ${S_str} \\\\`;
+      txt += `\\Gamma &= ${G_str} \\\\`;
+      txt += `q_0 &= ${q0_str} \\\\`;
+      txt += `Z_0 &= ${stackBottomStr} \\\\`;
+      txt += `F &= ${F_str} \\\\`;
+      txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times \\Gamma \\to ${codomain}`;
     } else {
-      txt = `${label} = (Q,Σ,Γ,δ,q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nAcceptance = empty stack\nδ: Q×(Σ∪{${eps}})×(Γ∪{${eps}})→${emptyCodomain}`;
+      txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0) \\\\`;
+      txt += `Q &= ${Q_str} \\\\`;
+      txt += `\\Sigma &= ${S_str} \\\\`;
+      txt += `\\Gamma &= ${G_str} \\\\`;
+      txt += `q_0 &= ${q0_str} \\\\`;
+      txt += `\\text{Acc} &= \\text{empty stack} \\\\`;
+      txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times (\\Gamma \\cup \\{${eps}\\}) \\to ${emptyCodomain}`;
     }
   } else if (m === 'Moore') {
-    const D = [...App.outputAlpha].join(', ') || '∅';
-    const { lambda } = App.config.sym;
-    txt = `M = (Q, Σ, Δ, δ, ${lambda}, q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΔ = {${D}}\nq₀ = ${q0}\nδ: Q×Σ→Q\n${lambda}: Q→Δ`;
+    const D_str = formatSet([...App.outputAlpha]);
+    const lambda = '\\lambda';
+    txt += `M &= (Q, \\Sigma, \\Delta, \\delta, ${lambda}, q_0) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `\\Delta &= ${D_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `\\delta &: Q \\times \\Sigma \\to Q \\\\`;
+    txt += `${lambda} &: Q \\to \\Delta`;
   } else if (m === 'Mealy') {
-    const D = [...App.outputAlpha].join(', ') || '∅';
-    const { lambda } = App.config.sym;
-    txt = `M = (Q, Σ, Δ, δ, ${lambda}, q₀)\n\nQ = {${Q}}\nΣ = {${S}}\nΔ = {${D}}\nq₀ = ${q0}\nδ: Q×Σ→Q\n${lambda}: Q×Σ→Δ`;
+    const D_str = formatSet([...App.outputAlpha]);
+    const lambda = '\\lambda';
+    txt += `M &= (Q, \\Sigma, \\Delta, \\delta, ${lambda}, q_0) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `\\Delta &= ${D_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `\\delta &: Q \\times \\Sigma \\to Q \\\\`;
+    txt += `${lambda} &: Q \\times \\Sigma \\to \\Delta`;
   } else if (m === 'NDTM') {
-    const G = [...App.stackAlpha].join(', ') || '∅';
-    txt = `M = (Q,Σ,Γ,δ,q₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γ→𝒫(Q×Γ×{L,R,S})`;
+    const G_str = formatSet([...App.stackAlpha]);
+    txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `\\Gamma &= ${G_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times \\Gamma \\to \\mathcal{P}(Q \\times \\Gamma \\times \\{L, R, S\\})`;
   } else if (m === 'MTM') {
-    const G = [...App.stackAlpha].join(', ') || '∅';
-    txt = `M = (Q,Σ,Γ,δ,q₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γᵏ→Q×Γᵏ×{L,R,S}ᵏ\nk = ${App.tapeCount} tapes`;
+    const G_str = formatSet([...App.stackAlpha]);
+    const k = App.tapeCount || 2;
+    txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `\\Gamma &= ${G_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times \\Gamma^{${k}} \\to Q \\times \\Gamma^{${k}} \\times \\{L, R, S\\}^{${k}}`;
   } else {
-    const G = [...App.stackAlpha].join(', ') || '∅';
-    txt = `M = (Q,Σ,Γ,δ,q₀,F)\n\nQ = {${Q}}\nΣ = {${S}}\nΓ = {${G}}\nq₀ = ${q0}\nF = {${F}}\nδ: Q×Γ→Q×Γ×{L,R,S}`;
+    const G_str = formatSet([...App.stackAlpha]);
+    txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `\\Gamma &= ${G_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times \\Gamma \\to Q \\times \\Gamma \\times \\{L, R, S\\}`;
   }
-  $('def-box').textContent = txt;
+  txt += ` \\end{aligned} $$`;
+  
+  const defBox = $('def-box');
+  defBox.innerHTML = txt;
+  if (typeof triggerMath === 'function') triggerMath(defBox);
 }
 
 function updateRegex() {
   const rb = $('regex-box'), m = App.machine;
-  if (isAnyPDA(m)) { rb.textContent = 'Context-Free Language'; return; }
-  if (isAnyTM(m)) { rb.textContent = 'Recursively Enumerable Language'; return; }
-  if (m === 'Moore') { rb.textContent = 'Finite-State Transducer (Moore)'; return; }
-  if (m === 'Mealy') { rb.textContent = 'Finite-State Transducer (Mealy)'; return; }
-  rb.textContent = deriveRegex() || '∅';
+  let txt = '';
+  if (isAnyPDA(m)) { txt = '\\text{Context-Free Language}'; }
+  else if (isAnyTM(m)) { txt = '\\text{Recursively Enumerable Language}'; }
+  else if (m === 'Moore') { txt = '\\text{Finite-State Transducer (Moore)}'; }
+  else if (m === 'Mealy') { txt = '\\text{Finite-State Transducer (Mealy)}'; }
+  else {
+    const re = deriveRegex() || '\\emptyset';
+    txt = re.replace(/eps/gi, '\\varepsilon');
+  }
+  
+  if (txt === '∅') txt = '\\emptyset';
+  
+  rb.innerHTML = `$$ ${txt} $$`;
+  if (typeof triggerMath === 'function') triggerMath(rb);
 }
 
 function reUnion(a, b) { if (!a) return b; if (!b) return a; if (a === b) return a; return `${a} | ${b}`; }

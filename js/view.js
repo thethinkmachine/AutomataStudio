@@ -52,9 +52,9 @@ function setMachine(m) {
 }
 
 function syncMachineSelectors(m) {
-  document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('active', b.textContent === m));
-  const mobileSelect = $('mobile-machine-select');
-  if (mobileSelect) mobileSelect.value = m;
+  if (typeof updateModelPickerLabels === 'function') {
+    updateModelPickerLabels();
+  }
 }
 
 function applyMachineSwitch(m) {

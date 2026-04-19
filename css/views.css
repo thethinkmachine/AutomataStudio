@@ -161,11 +161,12 @@
 }
 
 .badge {
-  font-family: var(--mono);
-  font-size: .57rem;
-  padding: 2px 7px;
+  font-family: var(--sans);
+  font-size: .65rem;
+  font-weight: 600;
+  padding: 2px 8px;
   border-radius: 20px;
-  letter-spacing: .07em;
+  letter-spacing: .04em;
 }
 
 .bd-dfa {
@@ -280,20 +281,25 @@
 }
 
 .code-box {
+  margin-top: 6px;
   font-family: var(--mono);
-  font-size: .72rem;
-  padding: 9px 11px;
+  font-size: .75rem;
+  padding: 8px 10px;
   background: var(--bg3);
   border: 1px solid var(--border2);
-  border-radius: 7px;
+  border-radius: 6px;
   color: var(--gold);
-  min-height: 32px;
-  line-height: 1.6;
-  word-break: break-all;
-  max-width: 260px;
+  min-height: 28px;
+  line-height: 1.5;
+  max-width: 100%;
   max-height: 300px;
-  overflow-y: scroll;
+  overflow-y: auto;
   overflow-x: auto;
+}
+
+.code-box .katex-display {
+  margin: 0;
+  text-align: left;
 }
 
 .curr-char-hl {
@@ -322,42 +328,43 @@
 }
 
 .def-box {
-  font-family: var(--mono);
-  font-size: .63rem;
-  padding: 9px 11px;
+  padding: 8px 10px;
   background: var(--bg3);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 6px;
   color: var(--text2);
-  line-height: 1.85;
-  margin-top: 7px;
-  white-space: pre;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  max-width: 260px;
-  max-height: 300px;
-  overflow-y: scroll;
+  margin-top: 6px;
+  font-size: .8rem;
+  max-width: 100%;
+  max-height: 350px;
+  overflow-y: auto;
   overflow-x: auto;
+}
+
+.def-box .katex-display {
+  margin: 0;
+  text-align: left;
 }
 
 /* Simulation */
 .sim-row {
   display: flex;
-  gap: 5px;
-  margin-bottom: 7px;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .run-btn {
-  padding: 6px 13px;
+  padding: 6px 12px;
   background: var(--accent);
   border: none;
   color: var(--on-accent);
-  font-family: var(--mono);
-  font-size: .67rem;
-  letter-spacing: .06em;
+  font-family: var(--sans);
+  font-size: .75rem;
+  letter-spacing: .02em;
   border-radius: 6px;
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 600;
   transition: all .15s;
   white-space: nowrap;
 }
@@ -369,21 +376,21 @@
 
 .sctrl {
   display: flex;
-  gap: 4px;
-  margin-bottom: 7px;
-  padding-top: 4px;
+  gap: 5px;
+  padding-top: 6px;
   border-top: 1px solid var(--border);
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .sbtn {
   flex: 1;
-  height: 32px;
+  height: 30px;
   background: var(--surface);
   border: 1px solid var(--border2);
   color: var(--text2);
-  font-family: var(--mono);
-  font-size: .65rem;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: .7rem;
   border-radius: 6px;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -412,14 +419,15 @@
 .trace-log {
   background: var(--bg3);
   border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 9px;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 6px;
   overflow-y: auto;
   font-family: var(--mono);
-  font-size: .65rem;
+  font-size: .7rem;
   color: var(--text2);
-  line-height: 1.75;
-  max-height: 200px;
+  line-height: 1.5;
+  max-height: 180px;
   scroll-behavior: smooth;
 }
 
@@ -508,8 +516,15 @@
 
 .batch-result {
   font-family: var(--mono);
-  font-size: .68rem;
-  line-height: 1.7;
+  font-size: .7rem;
+  line-height: 1.5;
+  margin-top: 6px;
+  background: var(--bg3);
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  max-height: 160px;
+  overflow-y: auto;
 }
 
 .br-ok {

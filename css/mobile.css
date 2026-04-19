@@ -1,5 +1,5 @@
-.mobile-machine-select {
-  display: none;
+.model-picker-container {
+  display: flex !important;
 }
 
 .mobile-panel-toggle {
@@ -52,17 +52,21 @@
     flex-wrap: nowrap;
     justify-content: flex-start;
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: visible;
     white-space: nowrap;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
   }
 
-  .mobile-machine-select {
-    display: block;
-    flex: 0 0 122px;
-    min-width: 122px;
-    max-width: 122px;
+  .model-picker-container {
+    flex: 0 0 auto;
+    width: auto;
+  }
+
+  .model-picker-btn {
+    min-width: 140px;
+    height: 32px;
+    padding: 0 8px;
   }
 
   .sub-toolbar .hbtn {
