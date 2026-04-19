@@ -21,5 +21,11 @@ try {
   if (localStorage.getItem('automata-rpanel-pinned') === '0') toggleRPanelPin();
 } catch (e) { }
 if (typeof initMobilePanels === 'function') initMobilePanels();
-if (typeof loadBackup === 'function') loadBackup();
+if (typeof loadBackup === 'function') {
+  loadBackup();
+} else {
+  initTabs(); // Create initial tab if no backup logic
+}
+if (Workspaces.length === 0) initTabs(); // Guard for fresh launch
+
 setTimeout(() => showStatus('Esc=Pointer · V=Pan · Space+Drag=Pan · S=State · T=Transition · H=Fit · Ctrl+Z=Undo'), 600);

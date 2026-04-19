@@ -234,16 +234,47 @@ function migrateLegacySymbols(d) {
 
 // Auto Backup/Restore via LocalStorage
 function saveBackup() {
-  const grammarData = { vars: [...App.grammar.vars], start: App.grammar.start, productions: App.grammar.productions };
-  const data = { machine: App.machine, config: App.config, sigma: [...App.sigma], stackAlpha: [...App.stackAlpha], outputAlpha: [...App.outputAlpha], tapeCount: App.tapeCount, states: App.states, transitions: App.transitions, startId: App.startId, accepts: [...App.accepts], grammar: grammarData, cam: App.cam };
-  try { localStorage.setItem('automata-backup', JSON.stringify(data)); } catch (e) { }
+  if (typeof exportWorkspaceState !== 'function' || !activeWorkspaceId) return;
+  // Ensure the active tab gets its latest snapshot
+  const act = Workspaces.find(w => w.id === activeWorkspaceId);
+  if (act) act.data = exportWorkspaceState();
+  
+  const payload = {
+    tabs: Workspaces,
+    activeId: activeWorkspaceId,
+    config: App.config
+  };
+  try { localStorage.setItem('automata-backup', JSON.stringify(payload)); } catch (e) { }
 }
+
 function loadBackup() {
   try {
     const raw = localStorage.getItem('automata-backup');
     if (!raw) return;
-    loadData(JSON.parse(raw));
-  } catch (e) { }
+    const loaded = JSON.parse(raw);
+    
+    // Check if it's the new multi-tab format
+    if (loaded.tabs && Array.isArray(loaded.tabs)) {
+      if (loaded.config) {
+        // Hydrate config safely preserving theme/defaults
+        const { theme, export: exp, exportRes, pdaParadigm, ...loadedConfig } = loaded.config;
+        App.config = { ...App.config, ...loadedConfig, pdaParadigm: pdaParadigm || 'explicit' };
+      }
+      
+      Workspaces = loaded.tabs;
+      const targetId = loaded.activeId || Workspaces[0].id;
+      
+      // We set activeWorkspaceId to null to force switchTab to inject the data fully
+      activeWorkspaceId = null;
+      switchTab(targetId);
+    } else {
+      // Monolithic fallback migration
+      loadData(loaded);
+      
+      // Inject the monolith state into a fresh tab correctly
+      if (typeof initTabs === 'function') initTabs();
+    }
+  } catch (e) { console.error('Backup load failed:', e); }
 }
 
 window.addEventListener('beforeunload', saveBackup);

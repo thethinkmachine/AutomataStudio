@@ -233,8 +233,9 @@
   background: var(--bg3);
   border: 1px solid var(--border);
   border-radius: 7px;
-  padding: 7px 9px;
-  margin-bottom: 7px;
+  padding: 10px 12px;
+  margin-top: 14px;
+  margin-bottom: 12px;
 }
 
 .tracker-header {
@@ -350,17 +351,18 @@
 .sim-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: 8px;
+  margin-top: 6px;
+  margin-bottom: 14px;
 }
 
 .run-btn {
-  padding: 6px 12px;
+  padding: 7px 14px;
   background: var(--accent);
   border: none;
   color: var(--on-accent);
   font-family: var(--sans);
-  font-size: .75rem;
+  font-size: .8rem;
   letter-spacing: .02em;
   border-radius: 6px;
   cursor: pointer;
@@ -376,15 +378,15 @@
 
 .sctrl {
   display: flex;
-  gap: 5px;
-  padding-top: 6px;
+  gap: 6px;
+  padding-top: 12px;
   border-top: 1px solid var(--border);
-  margin-top: 6px;
+  margin-top: 12px;
 }
 
 .sbtn {
   flex: 1;
-  height: 30px;
+  height: 34px;
   background: var(--surface);
   border: 1px solid var(--border2);
   color: var(--text2);
@@ -420,14 +422,14 @@
   background: var(--bg3);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 8px 10px;
-  margin-top: 6px;
+  padding: 10px 12px;
+  margin-top: 14px;
   overflow-y: auto;
   font-family: var(--mono);
-  font-size: .7rem;
+  font-size: .75rem;
   color: var(--text2);
   line-height: 1.5;
-  max-height: 180px;
+  max-height: 250px;
   scroll-behavior: smooth;
 }
 

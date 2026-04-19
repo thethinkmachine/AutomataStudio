@@ -112,6 +112,60 @@ var R = App.config.radius;
 const $ = id => document.getElementById(id);
 
 // ══════════════════════════════════════════════════════════════════
+//  WORKSPACES
+// ══════════════════════════════════════════════════════════════════
+let Workspaces = [];
+let activeWorkspaceId = null;
+
+function exportWorkspaceState() {
+  return {
+    machine: App.machine,
+    sigma: [...App.sigma],
+    outputAlpha: [...App.outputAlpha],
+    stackAlpha: [...App.stackAlpha],
+    tapeCount: App.tapeCount,
+    states: JSON.parse(JSON.stringify(App.states)),
+    transitions: JSON.parse(JSON.stringify(App.transitions)),
+    startId: App.startId,
+    accepts: [...App.accepts],
+    stateN: App.stateN,
+    transN: App.transN,
+    cam: { ...App.cam },
+    history: App.history.map(h => JSON.parse(JSON.stringify(h))),
+    future: App.future.map(h => JSON.parse(JSON.stringify(h))),
+    grammar: {
+      vars: [...App.grammar.vars],
+      start: App.grammar.start,
+      productions: JSON.parse(JSON.stringify(App.grammar.productions))
+    }
+  };
+}
+
+function importWorkspaceState(data) {
+  App.machine = data.machine || 'DFA';
+  App.sigma = new Set(data.sigma || ['a', 'b']);
+  App.outputAlpha = new Set(data.outputAlpha || ['0', '1']);
+  App.stackAlpha = new Set(data.stackAlpha || ['Z']);
+  App.tapeCount = data.tapeCount || 2;
+  App.states = data.states || [];
+  App.transitions = data.transitions || [];
+  App.startId = data.startId || null;
+  App.accepts = new Set(data.accepts || []);
+  App.stateN = data.stateN || 0;
+  App.transN = data.transN || 0;
+  App.cam = data.cam || { x: 0, y: 0, z: 1 };
+  App.history = data.history || [];
+  App.future = data.future || [];
+  if (data.grammar) {
+    App.grammar.vars = new Set(data.grammar.vars);
+    App.grammar.start = data.grammar.start;
+    App.grammar.productions = data.grammar.productions || [];
+  } else {
+    App.grammar = { vars: new Set(['S']), start: 'S', productions: [] };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  STATE MIGRATIONS
 // ══════════════════════════════════════════════════════════════════
 function migrateSystemSymbols(oldSyms, newSyms) {

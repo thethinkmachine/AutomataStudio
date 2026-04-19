@@ -1,4 +1,148 @@
 // ══════════════════════════════════════════════════════════════════
+//  WORKSPACE TABS UI
+// ══════════════════════════════════════════════════════════════════
+function renderTabs() {
+  const tb = $('tab-bar');
+  if (!tb) return;
+  tb.innerHTML = Workspaces.map(ws => `
+    <div class="tab ${ws.id === activeWorkspaceId ? 'active' : ''}" onclick="switchTab('${ws.id}')" ondblclick="renameTab('${ws.id}', event)">
+      <span class="tab-name">${ws.name}</span>
+      ${Workspaces.length > 1 ? `<span class="tab-close" onclick="closeTab('${ws.id}', event)">×</span>` : ''}
+    </div>
+  `).join('') + `
+    <div class="tab tab-add" onclick="createTab()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+    </div>
+  `;
+
+  // Enable horizontal scrolling with standard mouse wheel
+  tb.onwheel = (e) => {
+    if (e.deltaY !== 0) {
+      tb.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }
+  };
+}
+
+function createTab(name) {
+  const body = document.querySelector('.app-body');
+  if (body) {
+    body.classList.remove('tab-switching');
+    void body.offsetWidth;
+    body.classList.add('tab-switching');
+  }
+
+  if (activeWorkspaceId) {
+    const act = Workspaces.find(w => w.id === activeWorkspaceId);
+    if (act) act.data = exportWorkspaceState();
+  }
+
+  let wsName = name || `Workspace ${Workspaces.length + 1}`;
+  const newWs = {
+    id: 'ws_' + Date.now() + '_' + Math.random().toString(36).substring(2,9),
+    name: wsName,
+    data: {
+      machine: 'DFA', sigma: ['a', 'b'], outputAlpha: ['0', '1'], stackAlpha: ['Z'], tapeCount: 2,
+      states: [], transitions: [], startId: null, accepts: [], stateN: 0, transN: 0, cam: { x: 0, y: 0, z: 1 },
+      history: [], future: [], grammar: { vars: ['S'], start: 'S', productions: [] }
+    }
+  };
+  Workspaces.push(newWs);
+  
+  importWorkspaceState(newWs.data);
+  activeWorkspaceId = newWs.id;
+
+  App.selectedStates.clear();
+  App.selectedTransitions.clear();
+  if (typeof resetSim === 'function') resetSim();
+  if (typeof applyMachineSwitch === 'function') applyMachineSwitch(App.machine);
+  
+  renderTabs();
+  renderAll();
+  if (typeof updateLPanel === 'function') updateLPanel();
+  if (typeof updateRPanel === 'function') updateRPanel();
+  saveBackup();
+}
+
+function switchTab(id) {
+  if (id === activeWorkspaceId) return;
+  
+  const body = document.querySelector('.app-body');
+  if (body) {
+    body.classList.remove('tab-switching');
+    void body.offsetWidth; // trigger reflow
+    body.classList.add('tab-switching');
+  }
+
+  if (activeWorkspaceId) {
+    const act = Workspaces.find(w => w.id === activeWorkspaceId);
+    if (act) act.data = exportWorkspaceState();
+  }
+  
+  activeWorkspaceId = id;
+  const curr = Workspaces.find(w => w.id === id);
+  if (curr && curr.data) {
+    importWorkspaceState(curr.data);
+  }
+  
+  App.selectedStates.clear();
+  App.selectedTransitions.clear();
+  if (typeof resetSim === 'function') resetSim();
+  if (typeof applyMachineSwitch === 'function') {
+    // Re-bind toolbar UI to match machine switch
+    applyMachineSwitch(App.machine);
+  }
+
+  renderTabs();
+  renderAll();
+  if (typeof updateLPanel === 'function') updateLPanel();
+  if (typeof updateRPanel === 'function') updateRPanel();
+  saveBackup();
+}
+
+function closeTab(id, e) {
+  if (e) { e.stopPropagation(); e.preventDefault(); }
+  if (Workspaces.length <= 1) return;
+  
+  const idx = Workspaces.findIndex(w => w.id === id);
+  if (idx === -1) return;
+  
+  Workspaces.splice(idx, 1);
+  if (id === activeWorkspaceId) {
+    activeWorkspaceId = null;
+    let nextIdx = Math.max(0, idx - 1);
+    switchTab(Workspaces[nextIdx].id);
+  } else {
+    renderTabs();
+    saveBackup();
+  }
+}
+
+function renameTab(id, e) {
+  if (e) { e.stopPropagation(); e.preventDefault(); }
+  const ws = Workspaces.find(w => w.id === id);
+  if (!ws) return;
+  let newName = prompt("Rename Workspace:", ws.name);
+  if (newName && newName.trim().length > 0) {
+    ws.name = newName.trim();
+    renderTabs();
+    saveBackup();
+  }
+}
+
+function initTabs() {
+  if (Workspaces.length === 0) {
+    Workspaces.push({
+      id: 'ws_initial',
+      name: 'Workspace 1',
+      data: exportWorkspaceState()
+    });
+    activeWorkspaceId = 'ws_initial';
+  }
+  renderTabs();
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  KEYBOARD SHORTCUTS
 // ══════════════════════════════════════════════════════════════════
 document.addEventListener('keydown', e => {

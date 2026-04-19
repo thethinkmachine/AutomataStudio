@@ -175,12 +175,83 @@ header {
   border-color: var(--green-border);
 }
 
+/* ─── TABS ─── */
+.tab-bar {
+  display: flex;
+  background: var(--bg2);
+  height: var(--hdr2);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  user-select: none;
+  scrollbar-width: none;
+}
+.tab-bar::-webkit-scrollbar {
+  display: none;
+}
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-right: 1px solid var(--border);
+  font-family: var(--sans);
+  font-size: .8rem;
+  color: var(--text3);
+  cursor: pointer;
+  background: var(--bg2);
+  white-space: nowrap;
+  height: 100%;
+}
+.tab:hover {
+  background: var(--bg3);
+  color: var(--text2);
+}
+.tab.active {
+  background: var(--bg1);
+  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
+}
+.tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text3);
+}
+.tab-close:hover {
+  background: var(--surface2);
+  color: var(--red);
+}
+.tab-add {
+  padding: 0 12px;
+  color: var(--text3);
+}
+.tab-add:hover {
+  color: var(--accent);
+}
+
 /* ─── APP BODY ─── */
 .app-body {
   flex: 1;
   display: flex;
   overflow: hidden;
   position: relative;
+}
+
+@keyframes tabSwitchFade {
+  0% { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.app-body.tab-switching {
+  animation: tabSwitchFade 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
 
