@@ -234,6 +234,38 @@ header {
   max-width: 200px;
 }
 
+.tab[draggable="true"] {
+  cursor: grab;
+}
+
+.tab.dragging {
+  opacity: .5;
+  cursor: grabbing;
+}
+
+.tab.drop-before::before,
+.tab.drop-after::before,
+.tab.drop-end::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--tab-active-line);
+  box-shadow: 0 0 0 1px var(--bg2);
+  pointer-events: none;
+}
+
+.tab.drop-before::before {
+  left: -2px;
+}
+
+.tab.drop-after::before,
+.tab.drop-end::before {
+  right: -2px;
+}
+
 .tab::after {
   content: '';
   position: absolute;

@@ -3,6 +3,9 @@
 // ══════════════════════════════════════════════════════════════════
 const TAB_ACCENTS = ['var(--accent)', 'var(--green)', 'var(--gold)', 'var(--orange)', 'var(--purple)', 'var(--red)'];
 let editingTabId = null;
+let draggingTabId = null;
+let tabDropTargetId = null;
+let tabDropPosition = null;
 
 function tabHash(str) {
   let h = 0;
@@ -36,6 +39,121 @@ function focusTabElement(id) {
   if (!tb) return;
   const tab = tb.querySelector(`.tab[data-tab-id="${id}"]`);
   if (tab) tab.focus();
+}
+
+function clearTabDropMarkers(tb = $('tab-bar')) {
+  if (!tb) return;
+  tb.querySelectorAll('.tab.drop-before, .tab.drop-after, .tab.drop-end').forEach(el => {
+    el.classList.remove('drop-before', 'drop-after', 'drop-end');
+  });
+}
+
+function moveWorkspaceTab(sourceId, targetId, position = 'after') {
+  const fromIdx = Workspaces.findIndex(w => w.id === sourceId);
+  const targetIdx = Workspaces.findIndex(w => w.id === targetId);
+  if (fromIdx === -1 || targetIdx === -1 || sourceId === targetId) return false;
+
+  const [moved] = Workspaces.splice(fromIdx, 1);
+  const baseIdx = Workspaces.findIndex(w => w.id === targetId);
+  const insertIdx = position === 'before' ? baseIdx : baseIdx + 1;
+  Workspaces.splice(Math.max(0, insertIdx), 0, moved);
+  return true;
+}
+
+function moveWorkspaceTabToEnd(sourceId) {
+  const fromIdx = Workspaces.findIndex(w => w.id === sourceId);
+  if (fromIdx === -1 || fromIdx === Workspaces.length - 1) return false;
+  const [moved] = Workspaces.splice(fromIdx, 1);
+  Workspaces.push(moved);
+  return true;
+}
+
+function finishTabDrag() {
+  clearTabDropMarkers();
+  const tb = $('tab-bar');
+  if (tb) tb.querySelectorAll('.tab.dragging').forEach(el => el.classList.remove('dragging'));
+  draggingTabId = null;
+  tabDropTargetId = null;
+  tabDropPosition = null;
+}
+
+function handleTabDragStart(id, e) {
+  if (editingTabId === id || Workspaces.length < 2) {
+    e.preventDefault();
+    return;
+  }
+  draggingTabId = id;
+  tabDropTargetId = null;
+  tabDropPosition = null;
+  if (e.currentTarget) e.currentTarget.classList.add('dragging');
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', id); } catch (_) { }
+  }
+}
+
+function handleTabDragOver(id, e) {
+  if (!draggingTabId || id === draggingTabId) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  const tabEl = e.currentTarget;
+  if (!tabEl) return;
+
+  const rect = tabEl.getBoundingClientRect();
+  const position = (e.clientX - rect.left) < rect.width / 2 ? 'before' : 'after';
+
+  if (tabDropTargetId === id && tabDropPosition === position) return;
+  tabDropTargetId = id;
+  tabDropPosition = position;
+
+  clearTabDropMarkers();
+  tabEl.classList.add(position === 'before' ? 'drop-before' : 'drop-after');
+}
+
+function handleTabDrop(id, e) {
+  if (!draggingTabId) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  const tabEl = e.currentTarget;
+  const rect = tabEl?.getBoundingClientRect?.();
+  const position = rect && (e.clientX - rect.left) < rect.width / 2 ? 'before' : 'after';
+
+  const moved = moveWorkspaceTab(draggingTabId, id, position);
+  const movedId = draggingTabId;
+  finishTabDrag();
+  if (!moved) return;
+
+  renderTabs();
+  saveBackup();
+  requestAnimationFrame(() => focusTabElement(movedId));
+}
+
+function handleTabDragEnd() {
+  finishTabDrag();
+}
+
+function handleTabAddDragOver(e) {
+  if (!draggingTabId) return;
+  e.preventDefault();
+  e.stopPropagation();
+  clearTabDropMarkers();
+  if (e.currentTarget) e.currentTarget.classList.add('drop-end');
+}
+
+function handleTabAddDrop(e) {
+  if (!draggingTabId) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const movedId = draggingTabId;
+  const moved = moveWorkspaceTabToEnd(draggingTabId);
+  finishTabDrag();
+  if (!moved) return;
+
+  renderTabs();
+  saveBackup();
+  requestAnimationFrame(() => focusTabElement(movedId));
 }
 
 function handleCreateTabKeydown(e) {
@@ -134,13 +252,14 @@ function renderTabs() {
   tb.innerHTML = Workspaces.map(ws => {
     const isActive = ws.id === activeWorkspaceId;
     const isEditing = ws.id === editingTabId;
+    const dragClass = draggingTabId === ws.id ? 'dragging' : '';
     const safeName = escapeTabText(ws.name || 'Workspace');
     const nameMarkup = isEditing
       ? `<input class="tab-rename-input" value="${safeName}" maxlength="40" aria-label="Rename workspace" onclick="event.stopPropagation()" onkeydown="handleTabRenameKeydown('${ws.id}', event)" onblur="commitTabRename('${ws.id}', this)">`
       : `<span class="tab-name" title="${safeName}">${safeName}</span>`;
 
     return `
-    <div class="tab ${isActive ? 'active' : ''}" role="tab" aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? '0' : '-1'}" data-tab-id="${ws.id}" style="--tab-accent:${getWorkspaceAccent(ws.id)}" onclick="switchTab('${ws.id}')" ondblclick="beginRenameTab('${ws.id}', event)" onkeydown="handleTabKeydown('${ws.id}', event)">
+    <div class="tab ${isActive ? 'active' : ''} ${dragClass}" role="tab" aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? '0' : '-1'}" data-tab-id="${ws.id}" style="--tab-accent:${getWorkspaceAccent(ws.id)}" draggable="${isEditing ? 'false' : 'true'}" onclick="switchTab('${ws.id}')" ondblclick="beginRenameTab('${ws.id}', event)" onkeydown="handleTabKeydown('${ws.id}', event)" ondragstart="handleTabDragStart('${ws.id}', event)" ondragover="handleTabDragOver('${ws.id}', event)" ondrop="handleTabDrop('${ws.id}', event)" ondragend="handleTabDragEnd(event)">
       <span class="tab-dot" aria-hidden="true"></span>
       ${nameMarkup}
       ${ws.dirty ? '<span class="tab-dirty" aria-hidden="true" title="Unsaved changes"></span>' : ''}
@@ -148,7 +267,7 @@ function renderTabs() {
     </div>
   `;
   }).join('') + `
-    <div class="tab tab-add" role="button" tabindex="0" aria-label="Create workspace" onclick="createTab()" onkeydown="handleCreateTabKeydown(event)">
+    <div class="tab tab-add" role="button" tabindex="0" aria-label="Create workspace" draggable="false" onclick="createTab()" onkeydown="handleCreateTabKeydown(event)" ondragover="handleTabAddDragOver(event)" ondrop="handleTabAddDrop(event)">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
     </div>
   `;
