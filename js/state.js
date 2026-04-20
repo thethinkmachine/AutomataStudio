@@ -137,7 +137,8 @@ function exportWorkspaceState() {
       vars: [...App.grammar.vars],
       start: App.grammar.start,
       productions: JSON.parse(JSON.stringify(App.grammar.productions))
-    }
+    },
+    config: JSON.parse(JSON.stringify(App.config))
   };
 }
 
@@ -162,6 +163,9 @@ function importWorkspaceState(data) {
     App.grammar.productions = data.grammar.productions || [];
   } else {
     App.grammar = { vars: new Set(['S']), start: 'S', productions: [] };
+  }
+  if (data.config) {
+    App.config = { ...App.config, ...data.config };
   }
 }
 

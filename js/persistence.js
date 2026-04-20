@@ -98,7 +98,7 @@ window.addEventListener('drop', e => {
 function validateSchema(data) {
   if (!data || typeof data !== 'object') throw new Error("Data must be a valid JSON object.");
   
-  const validMachines = ['DFA', 'NFA', 'ε-NFA', 'DPDA', 'NPDA', 'TM', 'NDTM', 'MTM', 'Moore', 'Mealy'];
+  const validMachines = ['DFA', 'NFA', 'ε-NFA', 'DPDA', 'NPDA', 'PDA', 'TM', 'NDTM', 'MTM', 'Moore', 'Mealy'];
   if (!data.machine || !validMachines.includes(data.machine)) {
     throw new Error(`Missing or unsupported machine type: ${data.machine || 'undefined'}`);
   }
