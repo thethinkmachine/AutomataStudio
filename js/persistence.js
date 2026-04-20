@@ -206,7 +206,8 @@ function loadData(d, isExample) {
   renderAll(); updateLPanel(); updateRPanel();
 
   if (d.cam) { applyCamera(); }
-  else { setTimeout(() => fitToScreen(), 50); }
+  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
+  else setTimeout(() => fitToScreen(true), 50);
 
   if (!isExample) snapshot();
 }

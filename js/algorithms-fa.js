@@ -229,7 +229,10 @@ function loadSubsetAsDFA() {
   });
   App.machine = 'DFA'; setMachine('DFA');
   renderAll(); updateLPanel(); updateRPanel();
-  setView('build'); showStatus('DFA loaded into canvas!');
+  setView('build');
+  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
+  else setTimeout(() => fitToScreen(true), 50);
+  showStatus('DFA loaded into canvas!');
 }
 
 // --- DFA Minimization (Table-Filling) ---
@@ -411,7 +414,10 @@ function loadMinimizedDFA() {
   App.startId = newStart; App.stateN = groups.length; App.transN = newTrans.length;
   App.machine = 'DFA'; setMachine('DFA');
   renderAll(); updateLPanel(); updateRPanel();
-  setView('build'); showStatus(`Minimized: ${groups.length} states (was ${r.savedStates.length})`);
+  setView('build');
+  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
+  else setTimeout(() => fitToScreen(true), 50);
+  showStatus(`Minimized: ${groups.length} states (was ${r.savedStates.length})`);
 }
 
 // --- Regex to NFA (Thompson's Construction) ---
@@ -599,7 +605,10 @@ function loadThompsonNFA() {
   // Update sigma
   d.trans.forEach(t => { if (t.sym !== App.config.sym.eps) App.sigma.add(t.sym); });
   renderSigma(); renderAll(); updateLPanel(); updateRPanel();
-  setView('build'); showStatus('NFA loaded from Thompson\'s construction!');
+  setView('build');
+  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
+  else setTimeout(() => fitToScreen(true), 50);
+  showStatus('NFA loaded from Thompson\'s construction!');
 }
 
 // --- NFA → Regex ---
@@ -715,7 +724,10 @@ function loadEpsEliminatedNFA() {
 
   applyMachineSwitch('NFA');
   updateLPanel(); updateRPanel();
-  setView('build'); showStatus('NFA loaded into canvas! (ε-transitions eliminated)');
+  setView('build');
+  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
+  else setTimeout(() => fitToScreen(true), 50);
+  showStatus('NFA loaded into canvas! (ε-transitions eliminated)');
 }
 
 // --- DFA Complement ---
@@ -750,7 +762,10 @@ function loadComplement() {
   // Swap accept / non-accept
   const newAcc = new Set(App.states.filter(s => !App.accepts.has(s.id)).map(s => s.id));
   App.accepts = newAcc; renderAll(); updateLPanel(); updateRPanel();
-  setView('build'); showStatus('Complement loaded (DFA completed with trap state if needed)!');
+  setView('build');
+  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
+  else setTimeout(() => fitToScreen(true), 50);
+  showStatus('Complement loaded (DFA completed with trap state if needed)!');
 }
 
 // --- Product Construction ---
@@ -2152,7 +2167,10 @@ function loadMooreAsMealy() {
   App.transitions.forEach(t => { t.output = getState(t.to)?.output || ''; });
   applyMachineSwitch('Mealy');
   updateLPanel();
-  setView('build'); showStatus('Loaded as Mealy machine. Transition outputs set from destination state outputs.');
+  setView('build');
+  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
+  else setTimeout(() => fitToScreen(true), 50);
+  showStatus('Loaded as Mealy machine. Transition outputs set from destination state outputs.');
 }
 
 
@@ -2262,7 +2280,10 @@ function loadMealyAsMoore() {
   App.stateN = r.states.length; App.transN = r.transitions.length;
   applyMachineSwitch('Moore');
   updateLPanel();
-  setView('build'); showStatus('Loaded as Moore machine.');
+  setView('build');
+  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
+  else setTimeout(() => fitToScreen(true), 50);
+  showStatus('Loaded as Moore machine.');
 }
 
 
@@ -3024,7 +3045,10 @@ function loadRG2NFAToCanvas() {
   App.machine = transitions.some(t => t.symbol === App.config.sym.eps) ? 'ε-NFA' : 'NFA';
   setMachine(App.machine);
   renderSigma(); renderAll(); updateLPanel(); updateRPanel();
-  setView('build'); showStatus('Regular Grammar NFA loaded!');
+  setView('build');
+  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
+  else setTimeout(() => fitToScreen(true), 50);
+  showStatus('Regular Grammar NFA loaded!');
 }
 
 // ══════════════════════════════════════════════════════════════════

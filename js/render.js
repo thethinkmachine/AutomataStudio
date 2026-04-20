@@ -390,8 +390,6 @@ function updateLPanel() {
 function updateRPanel() {
   updateFormalDef(); 
   updateRegex();
-  if ($('sim-in').value || $('trace-log').innerHTML) { runSim(); }
-  if ($('batch-in').value) { runBatch(); }
 }
 
 // GNFA State Elimination (textbook: add new start + new accept, eliminate interior)

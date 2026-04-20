@@ -711,7 +711,10 @@ function loadCFGPDA() {
   applyMachineSwitch('NPDA');
   renderAll(); updateLPanel(); updateRPanel();
   saveBackup(); // Required to persist to localStorage after programmatically loading a structure
-  setView('build'); showStatus('NPDA loaded for CFG! (Forced 7-Tuple Paradigm)');
+  setView('build');
+  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
+  else setTimeout(() => fitToScreen(true), 50);
+  showStatus('NPDA loaded for CFG! (Forced 7-Tuple Paradigm)');
 }
 
 // ══════════════════════════════════════════════════════════════════

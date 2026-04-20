@@ -423,7 +423,7 @@
               </div>
               <div class="rp-section-body">
                 <div class="sim-row">
-                  <input class="inp" id="sim-in" placeholder="ε" style="flex:1" oninput="runSim()">
+                  <input class="inp" id="sim-in" placeholder="ε" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();runSim()}">
                   <button class="run-btn" onclick="runSim()">
                     <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M4 2v12l9-6z"/></svg> 
                   </button>
@@ -456,7 +456,7 @@
                 </svg>
               </div>
               <div class="rp-section-body" style="display:none">
-                <textarea class="batch-in" id="batch-in" oninput="runBatch()"
+                <textarea class="batch-in" id="batch-in"
                   placeholder="One string per line&#10;ε for empty string"></textarea>
                 <button class="run-btn" style="width:100%;margin-bottom:6px;display:flex;align-items:center;justify-content:center;gap:6px" onclick="runBatch()">
                   <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M4 2v12l9-6z"/></svg> Test All

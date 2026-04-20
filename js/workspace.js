@@ -40,5 +40,7 @@ function loadBuiltMachine(machine, machineType) {
   if (machineType) { applyMachineSwitch(machineType); }
   renderAll(); updateLPanel(); updateRPanel();
   setView('build');
+  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
+  else setTimeout(() => fitToScreen(true), 50);
 }
 

@@ -624,7 +624,7 @@ function setZoomFromInput(val) {
   }, 250);
 }
 
-function fitToScreen() {
+function fitToScreen(silent = false) {
   if (!App.states.length) return;
   const w = $('canvas-wrap'); if (!w) return;
   const cw = w.clientWidth, ch = w.clientHeight;
@@ -652,7 +652,12 @@ function fitToScreen() {
     $('cam-g').classList.remove('cam-smooth');
     w.classList.remove('cam-smooth');
   }, 250);
-  showStatus('Fit to screen');
+  if (!silent) showStatus('Fit to screen');
+}
+
+function autoFitLoadedMachine() {
+  // Wait a tick so view switches and panel layout changes settle before fitting.
+  setTimeout(() => fitToScreen(true), 50);
 }
 
 function toggleFullscreen() {
