@@ -77,8 +77,8 @@
 
 /* Right Panel */
 .rpanel {
-  width: 288px;
-  min-width: 288px;
+  width: var(--rpanel-width, 288px);
+  min-width: var(--rpanel-width, 288px);
   background: var(--bg2);
   border-left: 1px solid var(--border);
   overflow: visible;

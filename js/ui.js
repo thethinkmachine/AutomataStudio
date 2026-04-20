@@ -1179,6 +1179,112 @@ document.addEventListener('keydown', e => {
   e.preventDefault();
 });
 
+const PANEL_WIDTH_LIMITS = {
+  lpanel: { min: 220, max: 420, defaultWidth: 256, storageKey: 'automata-lpanel-width', cssVar: '--lpanel-width' },
+  rpanel: { min: 240, max: 480, defaultWidth: 288, storageKey: 'automata-rpanel-width', cssVar: '--rpanel-width' }
+};
+let activePanelResize = null;
+
+function isMobilePanelLayout() {
+  return !!(window.matchMedia && window.matchMedia('(max-width: 900px)').matches);
+}
+
+function clampPanelWidth(panelId, width) {
+  const cfg = PANEL_WIDTH_LIMITS[panelId];
+  if (!cfg) return width;
+  return Math.max(cfg.min, Math.min(cfg.max, width));
+}
+
+function readStoredPanelWidth(panelId) {
+  const cfg = PANEL_WIDTH_LIMITS[panelId];
+  if (!cfg) return null;
+  try {
+    const raw = localStorage.getItem(cfg.storageKey);
+    if (!raw) return cfg.defaultWidth;
+    const parsed = parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) return cfg.defaultWidth;
+    return clampPanelWidth(panelId, parsed);
+  } catch (e) {
+    return cfg.defaultWidth;
+  }
+}
+
+function setPanelWidth(panelId, width, persist = true) {
+  const cfg = PANEL_WIDTH_LIMITS[panelId];
+  if (!cfg) return null;
+  const next = Math.round(clampPanelWidth(panelId, width));
+  document.documentElement.style.setProperty(cfg.cssVar, `${next}px`);
+  if (persist) {
+    try { localStorage.setItem(cfg.storageKey, String(next)); } catch (e) { }
+  }
+  if (typeof applyToolbarDock === 'function') applyToolbarDock(false);
+  return next;
+}
+
+function applyStoredPanelWidths() {
+  if (isMobilePanelLayout()) return;
+  setPanelWidth('lpanel', readStoredPanelWidth('lpanel'), false);
+  setPanelWidth('rpanel', readStoredPanelWidth('rpanel'), false);
+}
+
+function startPanelResize(panelId, e) {
+  if (e.button !== 0 || isMobilePanelLayout()) return;
+  const panel = $(panelId);
+  if (!panel || panel.classList.contains('unpinned')) return;
+  const cfg = PANEL_WIDTH_LIMITS[panelId];
+  if (!cfg) return;
+
+  const handle = panelId === 'lpanel' ? $('lpanel-resizer') : $('rpanel-resizer');
+  if (handle) handle.classList.add('active');
+  activePanelResize = {
+    panelId,
+    startX: e.clientX,
+    startWidth: panel.getBoundingClientRect().width
+  };
+  document.body.classList.add('panel-resizing');
+  e.preventDefault();
+}
+
+function handlePanelResizeMove(e) {
+  if (!activePanelResize) return;
+  const { panelId, startX, startWidth } = activePanelResize;
+  const delta = e.clientX - startX;
+  const next = panelId === 'lpanel' ? startWidth + delta : startWidth - delta;
+  setPanelWidth(panelId, next, false);
+}
+
+function stopPanelResize() {
+  if (!activePanelResize) return;
+  const { panelId } = activePanelResize;
+  const panel = $(panelId);
+  if (panel) setPanelWidth(panelId, panel.getBoundingClientRect().width, true);
+  const handle = panelId === 'lpanel' ? $('lpanel-resizer') : $('rpanel-resizer');
+  if (handle) handle.classList.remove('active');
+  activePanelResize = null;
+  document.body.classList.remove('panel-resizing');
+}
+
+function initPanelResizers() {
+  const lHandle = $('lpanel-resizer');
+  const rHandle = $('rpanel-resizer');
+  if (!lHandle || !rHandle || lHandle.dataset.resizeInit === '1') return;
+
+  lHandle.dataset.resizeInit = '1';
+  rHandle.dataset.resizeInit = '1';
+
+  lHandle.addEventListener('mousedown', e => startPanelResize('lpanel', e));
+  rHandle.addEventListener('mousedown', e => startPanelResize('rpanel', e));
+
+  lHandle.addEventListener('dblclick', () => setPanelWidth('lpanel', PANEL_WIDTH_LIMITS.lpanel.defaultWidth, true));
+  rHandle.addEventListener('dblclick', () => setPanelWidth('rpanel', PANEL_WIDTH_LIMITS.rpanel.defaultWidth, true));
+
+  document.addEventListener('mousemove', handlePanelResizeMove);
+  document.addEventListener('mouseup', stopPanelResize);
+  window.addEventListener('resize', applyStoredPanelWidths);
+
+  applyStoredPanelWidths();
+}
+
 function toggleLPanelPin() {
   const s = $('lpanel');
   const unpinned = s.classList.toggle('unpinned');
@@ -1227,6 +1333,34 @@ function filterStates() {
   const q = ($('state-search')?.value || '').toLowerCase();
   document.querySelectorAll('#states-list .si').forEach(el => {
     el.style.display = (!q || el.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  });
+}
+
+function setLPSectionCollapsed(id, collapsed, persist = true) {
+  const sec = $(id);
+  if (!sec) return;
+  sec.classList.toggle('collapsed', !!collapsed);
+  const body = sec.querySelector('.lp-section-body');
+  if (body) body.style.display = collapsed ? 'none' : '';
+  const hdr = sec.querySelector('.lp-section-header');
+  if (hdr) hdr.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  if (persist) {
+    try { localStorage.setItem(`automata-lpanel-section-${id}`, collapsed ? '1' : '0'); } catch (e) { }
+  }
+}
+
+function toggleLPSection(id) {
+  const sec = $(id);
+  if (!sec) return;
+  const collapsed = !sec.classList.contains('collapsed');
+  setLPSectionCollapsed(id, collapsed, true);
+}
+
+function initLPanelSections() {
+  ['lp-alphabet', 'stack-sec', 'output-sec', 'lp-states', 'lp-transitions'].forEach(id => {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem(`automata-lpanel-section-${id}`) === '1'; } catch (e) { }
+    setLPSectionCollapsed(id, collapsed, false);
   });
 }
 

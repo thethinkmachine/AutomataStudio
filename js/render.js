@@ -350,6 +350,19 @@ function renderStates() {
 // ══════════════════════════════════════════════════════════════════
 //  SIDEBAR
 // ══════════════════════════════════════════════════════════════════
+function updateLPanelSectionMeta() {
+  const setCount = (id, value) => {
+    const el = $(id);
+    if (el) el.textContent = String(value);
+  };
+
+  setCount('lp-count-sigma', App.sigma?.size || 0);
+  setCount('lp-count-stack', App.stackAlpha?.size || 0);
+  setCount('lp-count-output', App.outputAlpha?.size || 0);
+  setCount('lp-count-states', App.states?.length || 0);
+  setCount('lp-count-trans', App.transitions?.length || 0);
+}
+
 function updateLPanel() {
   const sl = $('states-list');
   const showAccepts = !(getMachineConfig(App.machine).isTransducer && !App.config.transducerAccepts);
@@ -368,6 +381,7 @@ function updateLPanel() {
     const fn = getState(t.from)?.name || '?', tn = getState(t.to)?.name || '?';
     return `<div class="ti"><span>${fn}</span><span class="arr">–${transLabel(t)}→</span><span>${tn}</span><span class="dx" onclick="deleteTrans('${t.id}')">×</span></div>`;
   }).join('') : '<div class="empty-msg">No transitions</div>';
+  updateLPanelSectionMeta();
 }
 
 // ══════════════════════════════════════════════════════════════════

@@ -11,6 +11,7 @@ function renderSigma() {
   const c = $('sigma-chips');
   c.innerHTML = [...App.sigma].map(s => `<div class="chip">${s}<span class="x" onclick="delSym('${s}')">×</span></div>`).join('')
     || '<div class="empty-msg">Add symbols</div>';
+  if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
 function addGSym() {
   const v = $('gsym-in').value.trim(); if (!v) return;
@@ -23,6 +24,7 @@ function renderGamma() {
   c.innerHTML = [...App.stackAlpha].map(s => 
     `<div class="chip" ${s === App.config.sym.stackBottom ? 'style="color:var(--green)"' : ''}>${s}${s === App.config.sym.stackBottom ? '' : `<span class="x" onclick="delGSym('${s}')">×</span>`}</div>`
   ).join('') || '<div class="empty-msg">Add symbols</div>';
+  if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
 function addOutSym() {
   const v = $('outsym-in').value.trim(); if (!v) return;
@@ -34,5 +36,6 @@ function renderOutputAlpha() {
   const c = $('output-chips');
   c.innerHTML = [...App.outputAlpha].map(s => `<div class="chip">${s}<span class="x" onclick="delOutSym('${s}')">×</span></div>`).join('')
     || '<div class="empty-msg">Add symbols</div>';
+  if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
 

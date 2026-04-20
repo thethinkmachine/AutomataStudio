@@ -172,56 +172,101 @@
       </button>
       <div class="mobile-panel-content" id="lpanel-mobile-content">
         <div class="lpanel-content" id="lpanel-content">
-        <div class="sec">
-          <div class="sec-lbl">Alphabet Σ</div>
-          <div class="row">
-            <input class="inp" id="sym-in" placeholder="a, b, 0…" maxlength="33"
-              onkeydown="if(e.key==='Enter'||event.key==='Enter')addSym()">
-            <button class="ibtn" onclick="addSym()">+</button>
+          <div class="sec lp-collapsible" id="lp-alphabet">
+            <div class="lp-section-header" onclick="toggleLPSection('lp-alphabet')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('lp-alphabet')}">
+              <span class="sec-lbl lp-section-title">Alphabet Σ</span>
+              <span class="lp-section-count" id="lp-count-sigma">0</span>
+              <svg class="lp-toggle-arrow" viewBox="0 0 14 14">
+                <path d="M3 5l4 4 4-4" />
+              </svg>
+            </div>
+            <div class="lp-section-body">
+              <div class="row">
+                <input class="inp" id="sym-in" placeholder="a, b, 0…" maxlength="33"
+                  onkeydown="if(e.key==='Enter'||event.key==='Enter')addSym()">
+                <button class="ibtn" onclick="addSym()">+</button>
+              </div>
+              <div class="chips" id="sigma-chips"></div>
+            </div>
           </div>
-          <div class="chips" id="sigma-chips"></div>
+
+          <div class="sec lp-collapsible" id="stack-sec" style="display:none">
+            <div class="lp-section-header" onclick="toggleLPSection('stack-sec')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('stack-sec')}">
+              <span class="sec-lbl lp-section-title">Stack Γ</span>
+              <span class="lp-section-count" id="lp-count-stack">0</span>
+              <svg class="lp-toggle-arrow" viewBox="0 0 14 14">
+                <path d="M3 5l4 4 4-4" />
+              </svg>
+            </div>
+            <div class="lp-section-body">
+              <div class="row">
+                <input class="inp" id="gsym-in" placeholder="Z, A…" maxlength="5"
+                  onkeydown="if(event.key==='Enter')addGSym()">
+                <button class="ibtn" onclick="addGSym()">+</button>
+              </div>
+              <div class="chips" id="gamma-chips"></div>
+            </div>
+          </div>
+
+          <div class="sec lp-collapsible" id="output-sec" style="display:none">
+            <div class="lp-section-header" onclick="toggleLPSection('output-sec')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('output-sec')}">
+              <span class="sec-lbl lp-section-title">Output Δ</span>
+              <span class="lp-section-count" id="lp-count-output">0</span>
+              <svg class="lp-toggle-arrow" viewBox="0 0 14 14">
+                <path d="M3 5l4 4 4-4" />
+              </svg>
+            </div>
+            <div class="lp-section-body">
+              <div class="row">
+                <input class="inp" id="outsym-in" placeholder="0, 1…" maxlength="10"
+                  onkeydown="if(event.key==='Enter')addOutSym()">
+                <button class="ibtn" onclick="addOutSym()">+</button>
+              </div>
+              <div class="chips" id="output-chips"></div>
+            </div>
+          </div>
+
+          <div class="sec lp-collapsible" id="lp-states">
+            <div class="lp-section-header" onclick="toggleLPSection('lp-states')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('lp-states')}">
+              <span class="sec-lbl lp-section-title">States Q</span>
+              <span class="lp-section-count" id="lp-count-states">0</span>
+              <svg class="lp-toggle-arrow" viewBox="0 0 14 14">
+                <path d="M3 5l4 4 4-4" />
+              </svg>
+            </div>
+            <div class="lp-section-body">
+              <input class="lpanel-search-inp" id="state-search" placeholder="Filter states…" oninput="filterStates()">
+              <div class="slist" id="states-list">
+                <div class="empty-msg">No states</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sec lp-collapsible" id="lp-transitions">
+            <div class="lp-section-header" onclick="toggleLPSection('lp-transitions')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('lp-transitions')}">
+              <span class="sec-lbl lp-section-title">Transitions δ</span>
+              <span class="lp-section-count" id="lp-count-trans">0</span>
+              <svg class="lp-toggle-arrow" viewBox="0 0 14 14">
+                <path d="M3 5l4 4 4-4" />
+              </svg>
+            </div>
+            <div class="lp-section-body">
+              <div class="tlist" id="trans-list">
+                <div class="empty-msg">No transitions</div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="sec" id="stack-sec" style="display:none">
-          <div class="sec-lbl">Stack Γ</div>
-          <div class="row">
-            <input class="inp" id="gsym-in" placeholder="Z, A…" maxlength="5"
-              onkeydown="if(event.key==='Enter')addGSym()">
-            <button class="ibtn" onclick="addGSym()">+</button>
-          </div>
-          <div class="chips" id="gamma-chips"></div>
-        </div>
-        <div class="sec" id="output-sec" style="display:none">
-          <div class="sec-lbl">Output Δ</div>
-          <div class="row">
-            <input class="inp" id="outsym-in" placeholder="0, 1…" maxlength="10"
-              onkeydown="if(event.key==='Enter')addOutSym()">
-            <button class="ibtn" onclick="addOutSym()">+</button>
-          </div>
-          <div class="chips" id="output-chips"></div>
-        </div>
-        <div class="sec">
-          <div class="sec-lbl">States Q</div>
-          <input class="lpanel-search-inp" id="state-search" placeholder="Filter states…" oninput="filterStates()">
-          <div class="slist" id="states-list">
-            <div class="empty-msg">No states</div>
-          </div>
-        </div>
-        <div class="sec">
-          <div class="sec-lbl">Transitions δ</div>
-          <div class="tlist" id="trans-list">
-            <div class="empty-msg">No transitions</div>
-          </div>
+        <div class="panel-footer">
+          <button class="pin-btn" id="lpanel-pin-btn" onclick="toggleLPanelPin()" title="Unpin left panel">
+            <svg viewBox="0 0 16 16" width="14" height="14">
+              <path d="M8 2a3 3 0 013 3v2l1 1v2H9v4l-1 1-1-1v-4H4V8l1-1V5a3 3 0 013-3z" fill="none" stroke="currentColor"
+                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
         </div>
       </div>
-      <div class="panel-footer">
-        <button class="pin-btn" id="lpanel-pin-btn" onclick="toggleLPanelPin()" title="Unpin left panel">
-          <svg viewBox="0 0 16 16" width="14" height="14">
-            <path d="M8 2a3 3 0 013 3v2l1 1v2H9v4l-1 1-1-1v-4H4V8l1-1V5a3 3 0 013-3z" fill="none" stroke="currentColor"
-              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </button>
-      </div>
-      </div>
+      <div class="panel-resizer panel-resizer-right" id="lpanel-resizer" role="separator" aria-orientation="vertical" aria-label="Resize left panel" title="Resize left panel"></div>
     </aside>
 
     <!-- VIEW CONTAINER -->
@@ -337,6 +382,7 @@
 
         <!-- Right Panel -->
         <div class="rpanel" id="rpanel">
+          <div class="panel-resizer panel-resizer-left" id="rpanel-resizer" role="separator" aria-orientation="vertical" aria-label="Resize right panel" title="Resize right panel"></div>
           <button class="mobile-panel-toggle" id="rpanel-mobile-toggle" onclick="toggleMobilePanel('rpanel')"
             aria-controls="rpanel-mobile-content" aria-expanded="true">
             <span class="mobile-panel-title">Inspector</span>

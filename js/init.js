@@ -21,6 +21,8 @@ try {
   if (localStorage.getItem('automata-rpanel-pinned') === '0') toggleRPanelPin();
 } catch (e) { }
 if (typeof initMobilePanels === 'function') initMobilePanels();
+if (typeof initLPanelSections === 'function') initLPanelSections();
+if (typeof initPanelResizers === 'function') initPanelResizers();
 if (typeof loadBackup === 'function') {
   loadBackup();
 } else {

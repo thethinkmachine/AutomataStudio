@@ -33,6 +33,10 @@
     display: none;
   }
 
+  .panel-resizer {
+    display: none !important;
+  }
+
   .hdr-left,
   .hdr-center,
   .hdr-right {
