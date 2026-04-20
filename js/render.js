@@ -462,6 +462,50 @@ function updateFormalDef() {
     txt += `q_0 &= ${q0_str} \\\\`;
     txt += `F &= ${F_str} \\\\`;
     txt += `\\delta &: Q \\times ${mapDom} \\to ${codomain}`;
+  } else if (m === '2DFA') {
+    txt += `M &= (Q, \\Sigma, \\delta, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times \\Sigma \\to Q \\times \\{L, R, S\\}`;
+  } else if (m === '2NFA') {
+    txt += `M &= (Q, \\Sigma, \\delta, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times \\Sigma \\to \\mathcal{P}(Q \\times \\{L, R, S\\})`;
+  } else if (m === 'QA') {
+    const G_str = formatSet([...App.stackAlpha]);
+    const eps = '\\varepsilon';
+    txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `\\Gamma &= ${G_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times (\\Gamma \\cup \\{${eps}\\}) \\to \\mathcal{P}(Q \\times \\Gamma^*)`;
+  } else if (m === 'Counter') {
+    const bottom = formatStateName(App.config.sym.stackBottom);
+    const counterSym = formatStateName([...App.stackAlpha].find(sym => sym !== App.config.sym.stackBottom) || '1');
+    const eps = '\\varepsilon';
+    txt += `M &= (Q, \\Sigma, \\{${counterSym}, ${bottom}\\}, \\delta, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times \\{${counterSym}, ${bottom}, ${eps}\\} \\to \\mathcal{P}(Q \\times \\{${counterSym}, ${bottom}, ${eps}\\}^*)`;
+  } else if (m === '2PDA') {
+    const G_str = formatSet([...App.stackAlpha]);
+    const eps = '\\varepsilon';
+    txt += `M &= (Q, \\Sigma, \\Gamma_1, \\Gamma_2, \\delta, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `\\Gamma_1 = \\Gamma_2 &= ${G_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times (\\Gamma_1 \\cup \\{${eps}\\}) \\times (\\Gamma_2 \\cup \\{${eps}\\}) \\to \\mathcal{P}(Q \\times \\Gamma_1^* \\times \\Gamma_2^*)`;
   } else if (isAnyPDA(m)) {
     const G_str = formatSet([...App.stackAlpha]);
     const stackBottomStr = formatStateName(App.config.sym.stackBottom);
@@ -507,6 +551,17 @@ function updateFormalDef() {
     txt += `q_0 &= ${q0_str} \\\\`;
     txt += `\\delta &: Q \\times \\Sigma \\to Q \\\\`;
     txt += `${lambda} &: Q \\times \\Sigma \\to \\Delta`;
+  } else if (m === 'FST') {
+    const D_str = formatSet([...App.outputAlpha]);
+    const eps = '\\varepsilon';
+    txt += `M &= (Q, \\Sigma, \\Delta, \\delta, \\lambda, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `\\Delta &= ${D_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\to \\mathcal{P}(Q) \\\\`;
+    txt += `\\lambda &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times Q \\to \\Delta^*`;
   } else if (m === 'NDTM') {
     const G_str = formatSet([...App.stackAlpha]);
     txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, F) \\\\`;
@@ -526,6 +581,26 @@ function updateFormalDef() {
     txt += `q_0 &= ${q0_str} \\\\`;
     txt += `F &= ${F_str} \\\\`;
     txt += `\\delta &: Q \\times \\Gamma^{${k}} \\to Q \\times \\Gamma^{${k}} \\times \\{L, R, S\\}^{${k}}`;
+  } else if (m === 'LBA') {
+    const G_str = formatSet([...App.stackAlpha]);
+    txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `\\Gamma &= ${G_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times \\Gamma \\to Q \\times \\Gamma \\times \\{L, R, S\\} \\\\`;
+    txt += `\\text{Tape bound} &: |\\text{tape}| \\le |w|`;
+  } else if (m === 'ITM') {
+    const G_str = formatSet([...App.stackAlpha]);
+    txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `\\Gamma &= ${G_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times \\Gamma \\to Q \\times \\Gamma \\times \\{L, R, S\\} \\\\`;
+    txt += `\\text{Tape index set} &: \\mathbb{Z}`;
   } else {
     const G_str = formatSet([...App.stackAlpha]);
     txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, F) \\\\`;
@@ -546,10 +621,17 @@ function updateFormalDef() {
 function updateRegex() {
   const rb = $('regex-box'), m = App.machine;
   let txt = '';
-  if (isAnyPDA(m)) { txt = '\\text{Context-Free Language}'; }
+  if (m === '2DFA' || m === '2NFA') { txt = '\\text{Regular Language (Two-Way Head Motion)}'; }
+  else if (m === 'QA') { txt = '\\text{Queue Automaton Language Family}'; }
+  else if (m === 'Counter') { txt = '\\text{Counter Language Family}'; }
+  else if (m === '2PDA') { txt = '\\text{Two-Stack PDA (TM-Equivalent Power)}'; }
+  else if (m === 'LBA') { txt = '\\text{Context-Sensitive Language}'; }
+  else if (m === 'ITM') { txt = '\\text{Recursively Enumerable Language}'; }
+  else if (isAnyPDA(m)) { txt = '\\text{Context-Free Language}'; }
   else if (isAnyTM(m)) { txt = '\\text{Recursively Enumerable Language}'; }
   else if (m === 'Moore') { txt = '\\text{Finite-State Transducer (Moore)}'; }
   else if (m === 'Mealy') { txt = '\\text{Finite-State Transducer (Mealy)}'; }
+  else if (m === 'FST') { txt = '\\text{Finite-State Transducer (Nondeterministic)}'; }
   else {
     const re = deriveRegex() || '\\emptyset';
     txt = re.replace(/eps/gi, '\\varepsilon');

@@ -18,7 +18,7 @@ Open `http://localhost:5173/` (or whichever port Vite uses) in your browser.
 
 ## Features
 
-* **Multiple Machine Types:** DFA, NFA, ε-NFA, PDA, NPDA, TM, NDTM, MTM, Moore, and Mealy.
+* **Multiple Machine Types:** DFA, NFA, ε-NFA, 2DFA, 2NFA, DPDA, NPDA, Queue Automaton, Counter Machine, 2-Stack PDA, TM, NDTM, MTM, LBA, 2-Way Infinite TM, Moore, Mealy, and FST.
 * **Interactive Canvas:** Draw states and transitions directly. Drag states to reposition.
 * **Step-by-Step Simulation:** Watch tape execution and state transitions in real time.
 * **Smart PNG Export:** Workspaces are saved as `.png` files that also store canvas state. Drop the image back onto the canvas to resume editing.

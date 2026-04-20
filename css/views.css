@@ -181,6 +181,18 @@
   border: 1px solid var(--purple-border);
 }
 
+.bd-2dfa {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+}
+
+.bd-2nfa {
+  background: var(--purple-soft);
+  color: var(--purple);
+  border: 1px solid var(--purple-border);
+}
+
 .bd-pda {
   background: var(--green-soft);
   color: var(--green);
@@ -193,6 +205,24 @@
   border: 1px solid var(--accent-border);
 }
 
+.bd-qa {
+  background: var(--green-soft);
+  color: var(--green);
+  border: 1px solid var(--green-border);
+}
+
+.bd-counter {
+  background: var(--orange-soft);
+  color: var(--orange);
+  border: 1px solid var(--orange-border);
+}
+
+.bd-2pda {
+  background: var(--red-soft);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+}
+
 .bd-tm {
   background: var(--orange-soft);
   color: var(--orange);
@@ -203,6 +233,18 @@
   background: var(--orange-soft);
   color: var(--orange);
   border: 1px solid var(--orange-border);
+}
+
+.bd-lba {
+  background: rgba(79, 195, 247, .12);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+}
+
+.bd-itm {
+  background: var(--red-soft);
+  color: var(--red);
+  border: 1px solid var(--red-border);
 }
 
 .bd-enfa {
@@ -218,6 +260,12 @@
 }
 
 .bd-mealy {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+}
+
+.bd-fst {
   background: var(--accent-soft);
   color: var(--accent);
   border: 1px solid var(--accent-border);

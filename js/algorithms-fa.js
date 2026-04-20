@@ -611,7 +611,7 @@ function algoNFA2RE(c) {
   const rex = deriveRegex();
   c.innerHTML += `<div class="card"><div class="card-title">Derived Regular Expression</div>
 <div style="font-size:1.1rem;color:var(--gold);padding:12px;background:var(--bg3);border-radius:6px;word-break:break-all;">${rex}</div></div>`;
-  if (isAnyPDA(App.machine)) { c.innerHTML += '<div class="card" style="color:var(--text2)">Note: DPDA and NPDA recognize context-free languages, not regular languages. The regex shown is derived from NFA/DFA states only.</div>'; }
+  if (isClassicPDA(App.machine)) { c.innerHTML += '<div class="card" style="color:var(--text2)">Note: DPDA and NPDA recognize context-free languages, not regular languages. The regex shown is derived from NFA/DFA states only.</div>'; }
 }
 
 // --- ε-NFA to NFA ---

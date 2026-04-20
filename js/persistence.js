@@ -98,7 +98,12 @@ window.addEventListener('drop', e => {
 function validateSchema(data) {
   if (!data || typeof data !== 'object') throw new Error("Data must be a valid JSON object.");
   
-  const validMachines = ['DFA', 'NFA', 'ε-NFA', 'DPDA', 'NPDA', 'PDA', 'TM', 'NDTM', 'MTM', 'Moore', 'Mealy'];
+  const validMachines = [
+    'DFA', 'NFA', 'ε-NFA', '2DFA', '2NFA',
+    'DPDA', 'NPDA', 'PDA', 'QA', 'Counter', '2PDA',
+    'TM', 'NDTM', 'MTM', 'LBA', 'ITM',
+    'Moore', 'Mealy', 'FST'
+  ];
   if (!data.machine || !validMachines.includes(data.machine)) {
     throw new Error(`Missing or unsupported machine type: ${data.machine || 'undefined'}`);
   }
@@ -111,12 +116,12 @@ function validateSchema(data) {
 
   // Conditional requirements based on machine type
   if (isAnyPDA(data.machine) && !Array.isArray(data.stackAlpha)) {
-    throw new Error("DPDA and NPDA require a 'stackAlpha' array.");
+    throw new Error("Stack/queue-based machines require a 'stackAlpha' array.");
   }
-  if ((data.machine === 'Moore' || data.machine === 'Mealy') && !Array.isArray(data.outputAlpha)) {
+  if ((data.machine === 'Moore' || data.machine === 'Mealy' || data.machine === 'FST') && !Array.isArray(data.outputAlpha)) {
     throw new Error("Transducers require an 'outputAlpha' array.");
   }
-  if ((data.machine === 'TM' || data.machine === 'NDTM' || data.machine === 'MTM') && typeof data.tapeCount !== 'number') {
+  if ((data.machine === 'TM' || data.machine === 'NDTM' || data.machine === 'MTM' || data.machine === 'LBA' || data.machine === 'ITM') && typeof data.tapeCount !== 'number') {
     throw new Error("Turing Machines require a numeric 'tapeCount'.");
   }
 

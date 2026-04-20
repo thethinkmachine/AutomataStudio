@@ -841,7 +841,7 @@ function renderCFLPumpVis() {
 // ══════════════════════════════════════════════════════════════════
 function runPDA2CFG(mode = 'raw') {
   const out = $('gram-output');
-  if (!isAnyPDA(App.machine)) {
+  if (!isCfgConvertiblePDA(App.machine)) {
     out.innerHTML = `<div class="cnf-step"><span class="lbl">Switch to DPDA or NPDA mode to use this conversion.</span></div>`;
     return;
   }

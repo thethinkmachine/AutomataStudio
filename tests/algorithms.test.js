@@ -820,3 +820,170 @@ test('pruned PDA to CFG reports empty language instead of inventing epsilon', ()
   assert.match(html, /Generated rules: 0/);
   assert.doesNotMatch(html, />ε</);
 });
+
+test('workspace validation accepts newly added machine types', () => {
+  const h = createHarness();
+  const base = {
+    sigma: ['a'],
+    states: [],
+    transitions: [],
+    accepts: []
+  };
+
+  assert.doesNotThrow(() => h.context.validateSchema({ ...base, machine: '2DFA' }));
+  assert.doesNotThrow(() => h.context.validateSchema({ ...base, machine: '2NFA' }));
+  assert.doesNotThrow(() => h.context.validateSchema({ ...base, machine: 'QA', stackAlpha: ['A', 'Z'] }));
+  assert.doesNotThrow(() => h.context.validateSchema({ ...base, machine: 'Counter', stackAlpha: ['1', 'Z'] }));
+  assert.doesNotThrow(() => h.context.validateSchema({ ...base, machine: '2PDA', stackAlpha: ['A', 'Z'] }));
+  assert.doesNotThrow(() => h.context.validateSchema({ ...base, machine: 'LBA', tapeCount: 1 }));
+  assert.doesNotThrow(() => h.context.validateSchema({ ...base, machine: 'ITM', tapeCount: 1 }));
+  assert.doesNotThrow(() => h.context.validateSchema({ ...base, machine: 'FST', outputAlpha: ['0', '1'] }));
+});
+
+test('2DFA accepts when the head exits the input in an accepting state', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: '2DFA',
+    sigma: ['a'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'qa')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's1', symbol: 'a', dir: 'R' }
+    ],
+    startId: 's0',
+    accepts: ['s1']
+  });
+
+  const result = h.context.sim2DFA(['a']);
+  assert.equal(result.accepted, true);
+  assert.equal(h.context.App.simSteps.at(-1).final, 'accept');
+});
+
+test('2NFA accepts if any branch exits input in an accepting state', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: '2NFA',
+    sigma: ['a'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'qa')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's0', symbol: 'a', dir: 'R' },
+      { id: 't1', from: 's0', to: 's1', symbol: 'a', dir: 'R' }
+    ],
+    startId: 's0',
+    accepts: ['s1']
+  });
+
+  const result = h.context.sim2NFA(['a']);
+  assert.equal(result.accepted, true);
+  assert.equal(h.context.App.simSteps.at(-1).final, 'accept');
+});
+
+test('counter machine accepts matched increment and decrement steps', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'Counter',
+    sigma: ['a', 'b'],
+    stackAlpha: ['1', 'Z'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1'), makeState('s2', 'qa')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's1', symbol: 'a', pop: 'Z', push: '1Z' },
+      { id: 't1', from: 's1', to: 's2', symbol: 'b', pop: '1', push: 'Z' }
+    ],
+    startId: 's0',
+    accepts: ['s2']
+  });
+  h.context.App.config.pdaParadigm = 'explicit';
+
+  const result = h.context.simNPDA(['a', 'b']);
+  assert.equal(result.accepted, true);
+});
+
+test('queue automaton simulation uses FIFO pop semantics', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'QA',
+    sigma: ['a', 'b'],
+    stackAlpha: ['A', 'Z'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1'), makeState('s2', 'qa')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's1', symbol: 'a', pop: 'ε', push: 'A' },
+      { id: 't1', from: 's1', to: 's2', symbol: 'b', pop: 'Z', push: 'ε' }
+    ],
+    startId: 's0',
+    accepts: ['s2']
+  });
+  h.context.App.config.pdaParadigm = 'explicit';
+  const result = h.context.simNPDA(['a', 'b']);
+  assert.equal(result.accepted, true);
+});
+
+test('2-stack PDA transitions require second-stack pop conditions', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: '2PDA',
+    sigma: ['a'],
+    stackAlpha: ['A', 'Z'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'qa')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's1', symbol: 'a', pop: 'Z', push: 'Z', pop2: 'A', push2: 'A' }
+    ],
+    startId: 's0',
+    accepts: ['s1']
+  });
+  h.context.App.config.pdaParadigm = 'explicit';
+  const result = h.context.simNPDA(['a']);
+  assert.equal(result.accepted, false);
+});
+
+test('LBA rejects transitions that move outside initial tape bounds', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'LBA',
+    sigma: ['a'],
+    states: [makeState('s0', 'q0')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's0', symbol: 'a', write: 'a', dir: 'R' }
+    ],
+    startId: 's0',
+    accepts: []
+  });
+  h.context.simLBA(['a']);
+  assert.equal(h.context.App.simSteps.at(-1).final, 'reject');
+  assert.match(h.context.App.simSteps.at(-1).note, /LBA bounds/);
+});
+
+test('infinite-tape TM can move left of index zero and continue', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'ITM',
+    sigma: ['a'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'qa')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's1', symbol: 'a', write: 'a', dir: 'L' }
+    ],
+    startId: 's0',
+    accepts: ['s1']
+  });
+  h.context.simITM(['a']);
+  assert.equal(h.context.App.simSteps.at(-1).final, 'accept');
+  assert.ok(h.context.App.simSteps.some(step => /@-1/.test(step.note)));
+});
+
+test('FST batch helper returns multiple outputs for nondeterministic transduction', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'FST',
+    sigma: ['a'],
+    outputAlpha: ['0', '1'],
+    states: [makeState('s0', 'q0')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's0', symbol: 'a', output: '0' },
+      { id: 't1', from: 's0', to: 's0', symbol: 'a', output: '1' }
+    ],
+    startId: 's0',
+    accepts: ['s0']
+  });
+  h.context.App.config.transducerAccepts = true;
+  const result = h.context.testFST(['a']);
+  assert.equal(result.accepted, true);
+  assert.match(result.output, /0|1/);
+});

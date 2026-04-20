@@ -1,0 +1,75 @@
+{
+  "machine": "2DFA",
+  "sigma": [
+    "a",
+    "b"
+  ],
+  "states": [
+    {
+      "id": "s1",
+      "x": 120,
+      "y": 220,
+      "name": "start"
+    },
+    {
+      "id": "s2",
+      "x": 340,
+      "y": 140,
+      "name": "last_a"
+    },
+    {
+      "id": "s3",
+      "x": 340,
+      "y": 300,
+      "name": "last_b"
+    }
+  ],
+  "startId": "s1",
+  "accepts": [
+    "s2"
+  ],
+  "transitions": [
+    {
+      "id": "t1",
+      "from": "s1",
+      "to": "s2",
+      "symbol": "a",
+      "dir": "R"
+    },
+    {
+      "id": "t2",
+      "from": "s1",
+      "to": "s3",
+      "symbol": "b",
+      "dir": "R"
+    },
+    {
+      "id": "t3",
+      "from": "s2",
+      "to": "s2",
+      "symbol": "a",
+      "dir": "R"
+    },
+    {
+      "id": "t4",
+      "from": "s2",
+      "to": "s3",
+      "symbol": "b",
+      "dir": "R"
+    },
+    {
+      "id": "t5",
+      "from": "s3",
+      "to": "s2",
+      "symbol": "a",
+      "dir": "R"
+    },
+    {
+      "id": "t6",
+      "from": "s3",
+      "to": "s3",
+      "symbol": "b",
+      "dir": "R"
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "machine": "2NFA",
+  "sigma": [
+    "a",
+    "b"
+  ],
+  "states": [
+    {
+      "id": "s1",
+      "x": 140,
+      "y": 220,
+      "name": "scan"
+    },
+    {
+      "id": "s2",
+      "x": 380,
+      "y": 220,
+      "name": "seen_a"
+    }
+  ],
+  "startId": "s1",
+  "accepts": [
+    "s2"
+  ],
+  "transitions": [
+    {
+      "id": "t1",
+      "from": "s1",
+      "to": "s1",
+      "symbol": "b",
+      "dir": "R"
+    },
+    {
+      "id": "t2",
+      "from": "s1",
+      "to": "s1",
+      "symbol": "a",
+      "dir": "R"
+    },
+    {
+      "id": "t3",
+      "from": "s1",
+      "to": "s2",
+      "symbol": "a",
+      "dir": "R"
+    },
+    {
+      "id": "t4",
+      "from": "s2",
+      "to": "s2",
+      "symbol": "a",
+      "dir": "R"
+    },
+    {
+      "id": "t5",
+      "from": "s2",
+      "to": "s2",
+      "symbol": "b",
+      "dir": "R"
+    }
+  ]
+}

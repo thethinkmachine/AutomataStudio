@@ -61,6 +61,13 @@ function applyMachineSwitch(m) {
   const cfg = getMachineConfig(m);
   App.machine = m;
 
+  if (isCounterMachine(m)) {
+    const bottom = App.config.sym.stackBottom;
+    const counterSym = [...App.stackAlpha].find(sym => sym !== bottom) || '1';
+    App.stackAlpha = new Set([bottom, counterSym]);
+    if (typeof renderGamma === 'function') renderGamma();
+  }
+
   // Update UI Tabs and Badges
   syncMachineSelectors(m);
   $('mach-badge').className = `badge ${cfg.badge}`;

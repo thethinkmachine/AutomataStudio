@@ -55,11 +55,16 @@ function runSim() {
   if (App.machine === 'DFA') simDFA(tokens);
   else if (App.machine === 'NFA' || App.machine === 'ε-NFA') simNFA(tokens);
   else if (App.machine === 'DPDA' || App.machine === 'PDA') simPDA(tokens);
-  else if (App.machine === 'NPDA') simNPDA(tokens);
+  else if (App.machine === 'NPDA' || App.machine === 'QA' || App.machine === 'Counter' || App.machine === '2PDA') simNPDA(tokens);
+  else if (App.machine === '2DFA') sim2DFA(tokens);
+  else if (App.machine === '2NFA') sim2NFA(tokens);
   else if (App.machine === 'Moore') simMoore(tokens);
   else if (App.machine === 'Mealy') simMealy(tokens);
+  else if (App.machine === 'FST') simFST(tokens);
   else if (App.machine === 'NDTM') simNDTM(tokens);
   else if (App.machine === 'MTM') simMTM(tokens);
+  else if (App.machine === 'LBA') simLBA(tokens);
+  else if (App.machine === 'ITM') simITM(tokens);
   else simTM(tokens);
 
   // Unified playback: automatically start the animation if it loaded correctly
@@ -295,27 +300,69 @@ function simNDTM(tokens) {
   return { accepted, branches, maxDepth, log };
 }
 
+function pdaUsesQueueStorage(machine = App.machine) {
+  return isQueueAutomaton(machine);
+}
+
+function pdaUsesSecondStack(machine = App.machine) {
+  return isTwoStackPDA(machine);
+}
+
+function pdaPeek(store, queueMode = false) {
+  if (!store || !store.length) return undefined;
+  return queueMode ? store[0] : store[store.length - 1];
+}
+
+function pdaStoreToString(store, queueMode = false) {
+  if (!store || !store.length) return App.config.sym.eps;
+  return queueMode ? store.join('') : [...store].reverse().join('');
+}
+
+function applyPdaStoreTransition(store, pop, push, queueMode = false) {
+  const eps = App.config.sym.eps;
+  const nextStore = [...store];
+  let popped = undefined;
+  if (pop !== eps) {
+    popped = queueMode ? nextStore.shift() : nextStore.pop();
+  }
+  let pushStr = push && push !== eps ? push : '';
+  if (pushStr === App.config.sym.any) pushStr = popped || '';
+  if (pushStr) {
+    const chars = pushStr.split('');
+    if (queueMode) chars.forEach(sym => nextStore.push(sym));
+    else chars.reverse().forEach(sym => nextStore.push(sym));
+  }
+  return nextStore;
+}
+
 function createInitialPdaConfig(tokens) {
   const isExplicit = App.config.pdaParadigm === 'explicit';
-  return {
+  const baseStore = isExplicit ? [App.config.sym.stackBottom] : [];
+  const cfg = {
     state: App.startId,
     tokens,
     remaining: [...tokens],
-    stack: isExplicit ? [App.config.sym.stackBottom] : [],
+    stack: [...baseStore],
     depth: 0,
     branch: 1,
     parent: null,
     via: null
   };
+  if (pdaUsesSecondStack()) cfg.stack2 = [...baseStore];
+  return cfg;
 }
 
-function pdaConfigKey(state, remaining, stack) {
-  return `${state}|${remaining.join('\u0001')}|${stack.join('\u0001')}`;
+function pdaConfigKey(state, remaining, stack, stack2 = null) {
+  const second = Array.isArray(stack2) ? `|${stack2.join('\u0001')}` : '';
+  return `${state}|${remaining.join('\u0001')}|${stack.join('\u0001')}${second}`;
 }
 
 function isPdaAcceptingConfig(cfg) {
   if (App.config.pdaParadigm === 'explicit') {
     return App.accepts.has(cfg.state) && cfg.remaining.length === 0;
+  }
+  if (pdaUsesSecondStack()) {
+    return cfg.remaining.length === 0 && cfg.stack.length === 0 && (cfg.stack2 || []).length === 0;
   }
   return cfg.remaining.length === 0 && cfg.stack.length === 0;
 }
@@ -323,39 +370,46 @@ function isPdaAcceptingConfig(cfg) {
 function formatPdaInstantaneousDescription(cfg) {
   const stateName = getState(cfg.state)?.name || cfg.state;
   const remaining = cfg.remaining.length ? cfg.remaining.join('') : App.config.sym.eps;
-  const stack = cfg.stack.length ? [...cfg.stack].reverse().join('') : App.config.sym.eps;
-  return `(${stateName}, ${remaining}, ${stack})`;
+  const primary = pdaStoreToString(cfg.stack, pdaUsesQueueStorage());
+  if (pdaUsesSecondStack()) {
+    const secondary = pdaStoreToString(cfg.stack2 || []);
+    return `(${stateName}, ${remaining}, ${primary}; ${secondary})`;
+  }
+  return `(${stateName}, ${remaining}, ${primary})`;
 }
 
 function getMatchingPdaTransitions(cfg) {
-  const top = cfg.stack[cfg.stack.length - 1];
   const eps = App.config.sym.eps;
+  const queueMode = pdaUsesQueueStorage();
+  const top = pdaPeek(cfg.stack, queueMode);
+  const top2 = pdaUsesSecondStack() ? pdaPeek(cfg.stack2 || []) : undefined;
   return App.transitions.filter(t => {
     if (t.from !== cfg.state) return false;
     const readOk = t.symbol === eps || (cfg.remaining.length > 0 && (t.symbol === cfg.remaining[0] || t.symbol === App.config.sym.any));
     const popOk = canApplyPdaPop(top, t.pop);
-    return readOk && popOk;
+    const pop2Sym = t.pop2 || eps;
+    const pop2Ok = !pdaUsesSecondStack() || canApplyPdaPop(top2, pop2Sym);
+    return readOk && popOk && pop2Ok;
   });
 }
 
 function applyPdaTransitionConfig(cfg, transition, branch = cfg.branch) {
   const eps = App.config.sym.eps;
-  const top = cfg.stack[cfg.stack.length - 1];
-  const nextStack = [...cfg.stack];
-  if (transition.pop !== eps) nextStack.pop();
-  let pushStr = transition.push && transition.push !== eps ? transition.push : '';
-  if (pushStr === App.config.sym.any) pushStr = top;
-  if (pushStr) pushStr.split('').reverse().forEach(sym => nextStack.push(sym));
-  return {
+  const queueMode = pdaUsesQueueStorage();
+  const nextCfg = {
     state: transition.to,
     tokens: cfg.tokens,
     remaining: transition.symbol === eps ? [...cfg.remaining] : cfg.remaining.slice(1),
-    stack: nextStack,
+    stack: applyPdaStoreTransition(cfg.stack, transition.pop || eps, transition.push || eps, queueMode),
     depth: cfg.depth + 1,
     branch,
     parent: cfg,
     via: transition
   };
+  if (pdaUsesSecondStack()) {
+    nextCfg.stack2 = applyPdaStoreTransition(cfg.stack2 || [], transition.pop2 || eps, transition.push2 || eps, false);
+  }
+  return nextCfg;
 }
 
 function tracePdaPath(cfg) {
@@ -375,19 +429,28 @@ function formatPdaTransitionNote(prevCfg, nextCfg) {
   const read = t?.symbol || App.config.sym.eps;
   const pop = t?.pop || App.config.sym.eps;
   const push = t?.push || App.config.sym.eps;
+  const pop2 = t?.pop2 || App.config.sym.eps;
+  const push2 = t?.push2 || App.config.sym.eps;
+  if (pdaUsesSecondStack()) {
+    return `Branch ${nextCfg.branch} depth ${nextCfg.depth}: (${fromName}, ${read}, ${pop}/${pop2}) → (${toName}, ${push}/${push2})`;
+  }
   return `Branch ${nextCfg.branch} depth ${nextCfg.depth}: (${fromName}, ${read}, ${pop}) → (${toName}, ${push})`;
 }
 
 function buildPdaPathSteps(path, finalStatus = null, finalNote = '') {
-  const steps = path.map((cfg, idx) => ({
-    state: cfg.state,
-    tokens: cfg.tokens,
-    remaining: [...cfg.remaining],
-    stack: [...cfg.stack],
-    branch: cfg.branch,
-    tid: cfg.via?.id,
-    note: idx === 0 ? 'Start configuration' : formatPdaTransitionNote(path[idx - 1], cfg)
-  }));
+  const steps = path.map((cfg, idx) => {
+    const step = {
+      state: cfg.state,
+      tokens: cfg.tokens,
+      remaining: [...cfg.remaining],
+      stack: [...cfg.stack],
+      branch: cfg.branch,
+      tid: cfg.via?.id,
+      note: idx === 0 ? 'Start configuration' : formatPdaTransitionNote(path[idx - 1], cfg)
+    };
+    if (Array.isArray(cfg.stack2)) step.stack2 = [...cfg.stack2];
+    return step;
+  });
   if (steps.length && finalStatus) {
     const last = steps[steps.length - 1];
     last.final = finalStatus;
@@ -397,7 +460,7 @@ function buildPdaPathSteps(path, finalStatus = null, finalNote = '') {
 }
 
 function appendPdaSummaryStep(steps, cfg, finalStatus, note) {
-  steps.push({
+  const summary = {
     state: cfg.state,
     tokens: cfg.tokens,
     remaining: [...cfg.remaining],
@@ -405,7 +468,9 @@ function appendPdaSummaryStep(steps, cfg, finalStatus, note) {
     branch: cfg.branch,
     note,
     final: finalStatus
-  });
+  };
+  if (Array.isArray(cfg.stack2)) summary.stack2 = [...cfg.stack2];
+  steps.push(summary);
 }
 
 function simPDA(tokens) {
@@ -417,7 +482,7 @@ function simPDA(tokens) {
   }
 
   let cfg = init;
-  const visited = new Set([pdaConfigKey(cfg.state, cfg.remaining, cfg.stack)]);
+  const visited = new Set([pdaConfigKey(cfg.state, cfg.remaining, cfg.stack, cfg.stack2)]);
 
   for (let step = 0; step < App.config.maxPdaSteps; step++) {
     const matching = getMatchingPdaTransitions(cfg);
@@ -440,7 +505,7 @@ function simPDA(tokens) {
     }
 
     const nextCfg = applyPdaTransitionConfig(cfg, matching[0], cfg.branch);
-    const nextKey = pdaConfigKey(nextCfg.state, nextCfg.remaining, nextCfg.stack);
+    const nextKey = pdaConfigKey(nextCfg.state, nextCfg.remaining, nextCfg.stack, nextCfg.stack2);
     if (visited.has(nextKey)) {
       App.simSteps = buildPdaPathSteps(tracePdaPath(cfg));
       appendPdaSummaryStep(App.simSteps, cfg, 'reject', 'Repeated configuration detected — possible ε-loop — REJECT');
@@ -466,7 +531,7 @@ function simPDA(tokens) {
 function exploreNPDA(tokens) {
   const init = createInitialPdaConfig(tokens);
   const queue = [init];
-  const visited = new Set([pdaConfigKey(init.state, init.remaining, init.stack)]);
+  const visited = new Set([pdaConfigKey(init.state, init.remaining, init.stack, init.stack2)]);
   const log = [];
   let acceptedCfg = null;
   let branches = 0;
@@ -495,11 +560,16 @@ function exploreNPDA(tokens) {
     }
 
     const nextRead = cfg.remaining[0] || App.config.sym.eps;
+    const primaryTop = pdaPeek(cfg.stack, pdaUsesQueueStorage());
+    const primaryTopLabel = isQueueAutomaton() ? 'Queue front' : 'Stack top';
     const subs = [
       `State "${stateName}" with next input '${nextRead}'`,
-      `Depth ${cfg.depth} · Stack top ${cfg.stack[cfg.stack.length - 1] || App.config.sym.eps}`,
+      `Depth ${cfg.depth} · ${primaryTopLabel} ${primaryTop || App.config.sym.eps}`,
       `ID: ${idStr}`
     ];
+    if (isTwoStackPDA()) {
+      subs.push(`Second stack top ${pdaPeek(cfg.stack2 || []) || App.config.sym.eps}`);
+    }
     if (matching.length > 1) {
       subs.push(`Nondeterministic choice: ${matching.length} matching transitions.`);
     }
@@ -508,7 +578,7 @@ function exploreNPDA(tokens) {
     matching.forEach((transition, idx) => {
       const childBranch = matching.length === 1 || idx === 0 ? cfg.branch : nextBranchId++;
       const nextCfg = applyPdaTransitionConfig(cfg, transition, childBranch);
-      const key = pdaConfigKey(nextCfg.state, nextCfg.remaining, nextCfg.stack);
+      const key = pdaConfigKey(nextCfg.state, nextCfg.remaining, nextCfg.stack, nextCfg.stack2);
       if (visited.has(key)) return;
       visited.add(key);
       queue.push(nextCfg);
@@ -601,6 +671,462 @@ function simMealy(tokens) {
   App.simIdx = 0; renderSimStep();
 }
 
+function headMoveDelta(dir) {
+  return dir === 'R' ? 1 : (dir === 'L' ? -1 : 0);
+}
+
+function isHeadOutOfInput(tokens, head) {
+  return head < 0 || head >= tokens.length;
+}
+
+function twoWayDisplayTape(tokens) {
+  return tokens.length ? [...tokens] : [App.config.sym.eps];
+}
+
+function twoWayDisplayHead(tokens, head) {
+  if (!tokens.length) return 0;
+  return Math.max(0, Math.min(tokens.length - 1, head));
+}
+
+function twoWayReadSymbol(tokens, head) {
+  return isHeadOutOfInput(tokens, head) ? null : tokens[head];
+}
+
+function getTwoWayMatchingTransitions(state, sym) {
+  return App.transitions.filter(t => t.from === state && (t.symbol === sym || t.symbol === App.config.sym.any));
+}
+
+function buildTwoWayPathSteps(path, tokens, finalStatus = null, finalNote = '') {
+  const displayTape = twoWayDisplayTape(tokens);
+  const steps = path.map((cfg, idx) => {
+    const stateName = getState(cfg.state)?.name || cfg.state;
+    const step = {
+      state: cfg.state,
+      tokens,
+      tape: [...displayTape],
+      head: twoWayDisplayHead(tokens, cfg.head),
+      branch: cfg.branch,
+      tid: cfg.via?.id,
+      note: ''
+    };
+    if (idx === 0) {
+      step.note = `Start: ${stateName} (head=${cfg.head})`;
+    } else {
+      const prev = path[idx - 1];
+      const fromName = getState(prev.state)?.name || prev.state;
+      const read = twoWayReadSymbol(tokens, prev.head);
+      const readSym = read === null ? App.config.sym.eps : read;
+      step.note = `Branch ${cfg.branch} depth ${cfg.depth}: ${fromName} reads '${readSym}', move ${cfg.via?.dir || 'S'} → ${stateName} (head=${cfg.head})`;
+    }
+    return step;
+  });
+  if (steps.length && finalStatus) {
+    const last = steps[steps.length - 1];
+    last.final = finalStatus;
+    last.note += finalStatus === 'accept'
+      ? ` — ${finalNote || 'ACCEPT'}`
+      : ` — ${finalNote || 'REJECT'}`;
+  }
+  return steps;
+}
+
+function explore2DFA(tokens) {
+  const init = { state: App.startId, head: 0, depth: 0, branch: 1, parent: null, via: null };
+  const path = [init];
+
+  for (let step = 0; step < App.config.maxTmSteps; step++) {
+    const cfg = path[path.length - 1];
+    if (isHeadOutOfInput(tokens, cfg.head)) {
+      const accepted = App.accepts.has(cfg.state);
+      return {
+        accepted,
+        path,
+        finalNote: `Head moved outside input bounds at index ${cfg.head}`
+      };
+    }
+
+    const sym = tokens[cfg.head];
+    const matching = getTwoWayMatchingTransitions(cfg.state, sym);
+    if (!matching.length) {
+      return {
+        accepted: false,
+        path,
+        finalNote: `No valid transition on '${sym}'`
+      };
+    }
+    if (matching.length > 1) {
+      return {
+        accepted: false,
+        path,
+        finalNote: 'Nondeterministic overlap detected in 2DFA mode. Switch to 2NFA to explore branching.'
+      };
+    }
+
+    const t = matching[0];
+    path.push({
+      state: t.to,
+      head: cfg.head + headMoveDelta(t.dir),
+      depth: cfg.depth + 1,
+      branch: cfg.branch,
+      parent: cfg,
+      via: t
+    });
+  }
+
+  return {
+    accepted: false,
+    path,
+    finalNote: `2DFA step limit ${App.config.maxTmSteps} reached`
+  };
+}
+
+function sim2DFA(tokens) {
+  const result = explore2DFA(tokens);
+  App.simSteps = buildTwoWayPathSteps(result.path, tokens, result.accepted ? 'accept' : 'reject', result.finalNote);
+  App.simIdx = 0;
+  renderSimStep();
+  return result;
+}
+
+function explore2NFA(tokens) {
+  const init = { state: App.startId, head: 0, depth: 0, branch: 1, parent: null, via: null };
+  const queue = [init];
+  const visited = new Set([`${init.state}|${init.head}`]);
+  let acceptedCfg = null;
+  let lastCfg = init;
+  let branches = 0;
+  let maxDepth = 0;
+  let nextBranchId = 2;
+
+  while (queue.length && branches < App.config.maxTmSteps) {
+    const cfg = queue.shift();
+    lastCfg = cfg;
+    branches++;
+    maxDepth = Math.max(maxDepth, cfg.depth);
+
+    if (isHeadOutOfInput(tokens, cfg.head)) {
+      if (App.accepts.has(cfg.state)) {
+        acceptedCfg = cfg;
+        break;
+      }
+      continue;
+    }
+
+    const sym = tokens[cfg.head];
+    const matching = getTwoWayMatchingTransitions(cfg.state, sym);
+    if (!matching.length) continue;
+
+    matching.forEach((t, idx) => {
+      const childBranch = matching.length === 1 || idx === 0 ? cfg.branch : nextBranchId++;
+      const nextCfg = {
+        state: t.to,
+        head: cfg.head + headMoveDelta(t.dir),
+        depth: cfg.depth + 1,
+        branch: childBranch,
+        parent: cfg,
+        via: t
+      };
+      const key = `${nextCfg.state}|${nextCfg.head}`;
+      if (visited.has(key)) return;
+      visited.add(key);
+      queue.push(nextCfg);
+    });
+  }
+
+  const witnessCfg = acceptedCfg || lastCfg;
+  return {
+    accepted: !!acceptedCfg,
+    witnessPath: tracePdaPath(witnessCfg),
+    finalCfg: witnessCfg,
+    unresolved: !acceptedCfg && queue.length > 0,
+    branches,
+    maxDepth
+  };
+}
+
+function sim2NFA(tokens) {
+  const result = explore2NFA(tokens);
+  const finalNote = result.accepted
+    ? `Head moved outside input bounds at index ${result.finalCfg.head}`
+    : (result.unresolved
+      ? `Exploration limit ${App.config.maxTmSteps} reached — unresolved branches remain`
+      : 'All branches halted without acceptance');
+  App.simSteps = buildTwoWayPathSteps(
+    result.witnessPath,
+    tokens,
+    result.accepted ? 'accept' : 'reject',
+    finalNote
+  );
+  App.simIdx = 0;
+  renderSimStep();
+  return result;
+}
+
+function fstConfigKey(state, index, outRaw) {
+  return `${state}|${index}|${outRaw}`;
+}
+
+function getMatchingFstTransitions(cfg, tokens) {
+  const eps = App.config.sym.eps;
+  return App.transitions.filter(t => {
+    if (t.from !== cfg.state) return false;
+    if (t.symbol === eps) return true;
+    if (cfg.index >= tokens.length) return false;
+    return t.symbol === tokens[cfg.index] || t.symbol === App.config.sym.any;
+  });
+}
+
+function applyFstTransition(cfg, transition, branch) {
+  const eps = App.config.sym.eps;
+  const rawOut = transition.output ?? '';
+  const displayOut = rawOut === '' ? App.config.sym.lambda : rawOut;
+  const consumes = transition.symbol !== eps;
+  return {
+    state: transition.to,
+    index: consumes ? cfg.index + 1 : cfg.index,
+    depth: cfg.depth + 1,
+    branch,
+    outRaw: cfg.outRaw + rawOut,
+    outToks: [...cfg.outToks, displayOut],
+    parent: cfg,
+    via: transition
+  };
+}
+
+function buildFstPathSteps(path, tokens, finalStatus = null, finalNote = '') {
+  const steps = path.map((cfg, idx) => {
+    const stateName = getState(cfg.state)?.name || cfg.state;
+    const step = {
+      state: cfg.state,
+      tokens,
+      outToks: [...cfg.outToks],
+      outSoFar: cfg.outRaw,
+      branch: cfg.branch,
+      tid: cfg.via?.id,
+      note: ''
+    };
+    if (idx === 0) {
+      step.note = `Start: ${stateName}`;
+    } else {
+      const prev = path[idx - 1];
+      const fromName = getState(prev.state)?.name || prev.state;
+      const read = cfg.via?.symbol || App.config.sym.eps;
+      const out = cfg.via?.output !== undefined && cfg.via?.output !== '' ? cfg.via.output : App.config.sym.lambda;
+      step.note = `Branch ${cfg.branch} depth ${cfg.depth}: (${fromName}, ${read}/${out}) → ${stateName}`;
+    }
+    return step;
+  });
+
+  if (steps.length && finalStatus) {
+    const last = steps[steps.length - 1];
+    last.final = finalStatus;
+    last.note += finalStatus === 'accept'
+      ? ` — ${finalNote || 'ACCEPT'}`
+      : ` — ${finalNote || 'REJECT'}`;
+  }
+  return steps;
+}
+
+function exploreFST(tokens) {
+  const init = {
+    state: App.startId,
+    index: 0,
+    depth: 0,
+    branch: 1,
+    outRaw: '',
+    outToks: [],
+    parent: null,
+    via: null
+  };
+  const queue = [init];
+  const visited = new Set([fstConfigKey(init.state, init.index, init.outRaw)]);
+  const outputs = new Set();
+  let acceptedCfg = null;
+  let completedCfg = null;
+  let lastCfg = init;
+  let branches = 0;
+  let maxDepth = 0;
+  let nextBranchId = 2;
+
+  while (queue.length && branches < App.config.maxPdaSteps) {
+    const cfg = queue.shift();
+    lastCfg = cfg;
+    branches++;
+    maxDepth = Math.max(maxDepth, cfg.depth);
+
+    if (cfg.index === tokens.length) {
+      outputs.add(cfg.outRaw);
+      if (!completedCfg) completedCfg = cfg;
+      if (App.config.transducerAccepts && App.accepts.has(cfg.state)) {
+        acceptedCfg = cfg;
+        break;
+      }
+    }
+
+    const matching = getMatchingFstTransitions(cfg, tokens);
+    if (!matching.length) continue;
+
+    matching.forEach((transition, idx) => {
+      const childBranch = matching.length === 1 || idx === 0 ? cfg.branch : nextBranchId++;
+      const nextCfg = applyFstTransition(cfg, transition, childBranch);
+      const key = fstConfigKey(nextCfg.state, nextCfg.index, nextCfg.outRaw);
+      if (visited.has(key)) return;
+      visited.add(key);
+      queue.push(nextCfg);
+    });
+  }
+
+  const witnessCfg = acceptedCfg || completedCfg || lastCfg;
+  return {
+    accepted: !!acceptedCfg,
+    witnessPath: tracePdaPath(witnessCfg),
+    finalCfg: witnessCfg,
+    outputs,
+    unresolved: !acceptedCfg && queue.length > 0,
+    branches,
+    maxDepth
+  };
+}
+
+function simFST(tokens) {
+  const result = exploreFST(tokens);
+  const usesAcceptance = App.config.transducerAccepts;
+  const finalStatus = usesAcceptance ? (result.accepted ? 'accept' : 'reject') : null;
+  const finalNote = usesAcceptance
+    ? (result.accepted
+      ? 'Accepting branch found'
+      : (result.unresolved
+        ? `Exploration limit ${App.config.maxPdaSteps} reached — unresolved branches remain`
+        : 'No accepting branch found'))
+    : '';
+
+  App.simSteps = buildFstPathSteps(result.witnessPath, tokens, finalStatus, finalNote);
+  const last = App.simSteps[App.simSteps.length - 1];
+  if (last) {
+    const outs = [...result.outputs];
+    if (!outs.length) {
+      last.note += ' | Output: ""';
+    } else if (outs.length === 1) {
+      last.note += ` | Output: "${outs[0]}"`;
+    } else {
+      last.note += ` | Outputs: {${outs.map(o => `"${o}"`).join(', ')}}`;
+    }
+  }
+
+  App.simIdx = 0;
+  renderSimStep();
+  return result;
+}
+
+function simLBA(tokens) {
+  App.simSteps = [];
+  const blank = App.config.sym.blank;
+  const tape = tokens.length ? [...tokens] : [blank];
+  const leftBound = 0;
+  const rightBound = tape.length - 1;
+  let head = 0;
+  let state = App.startId;
+
+  for (let step = 0; step < App.config.maxTmSteps; step++) {
+    const sym = tape[head];
+    App.simSteps.push({ state, tokens, tape: [...tape], head, note: `State:${getState(state)?.name} Read:'${sym}'` });
+    if (App.accepts.has(state)) {
+      App.simSteps[App.simSteps.length - 1].final = 'accept';
+      App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT';
+      break;
+    }
+    const t = App.transitions.find(tr => tr.from === state && (tr.symbol === sym || tr.symbol === App.config.sym.any));
+    if (!t) {
+      App.simSteps[App.simSteps.length - 1].final = 'reject';
+      App.simSteps[App.simSteps.length - 1].note += ' — REJECT';
+      break;
+    }
+    const writeSym = (!t.write || t.write === App.config.sym.any) ? sym : t.write;
+    tape[head] = writeSym;
+    const nextHead = head + headMoveDelta(t.dir);
+    state = t.to;
+    if (nextHead < leftBound || nextHead > rightBound) {
+      App.simSteps.push({
+        state,
+        tokens,
+        tape: [...tape],
+        head,
+        note: `Attempted to move outside LBA bounds [${leftBound}, ${rightBound}] — REJECT`,
+        final: 'reject'
+      });
+      break;
+    }
+    head = nextHead;
+  }
+
+  const last = App.simSteps[App.simSteps.length - 1];
+  if (last && !last.final) {
+    last.final = 'reject';
+    last.note += ' — STEP LIMIT REACHED (possible loop) — REJECT';
+  }
+  App.simIdx = 0;
+  renderSimStep();
+}
+
+function materializeInfiniteTape(tapeMap, head) {
+  const blank = App.config.sym.blank;
+  const keys = [...tapeMap.keys(), head];
+  const min = Math.min(...keys);
+  const max = Math.max(...keys);
+  const tape = [];
+  for (let i = min; i <= max; i++) {
+    tape.push(tapeMap.has(i) ? tapeMap.get(i) : blank);
+  }
+  return { tape, head: head - min };
+}
+
+function simITM(tokens) {
+  App.simSteps = [];
+  const blank = App.config.sym.blank;
+  const tape = new Map();
+  if (tokens.length) tokens.forEach((sym, i) => tape.set(i, sym));
+  else tape.set(0, blank);
+
+  let head = 0;
+  let state = App.startId;
+
+  for (let step = 0; step < App.config.maxTmSteps; step++) {
+    const sym = tape.has(head) ? tape.get(head) : blank;
+    const snap = materializeInfiniteTape(tape, head);
+    App.simSteps.push({
+      state,
+      tokens,
+      tape: snap.tape,
+      head: snap.head,
+      note: `State:${getState(state)?.name} Read:'${sym}' @${head}`
+    });
+    if (App.accepts.has(state)) {
+      App.simSteps[App.simSteps.length - 1].final = 'accept';
+      App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT';
+      break;
+    }
+    const t = App.transitions.find(tr => tr.from === state && (tr.symbol === sym || tr.symbol === App.config.sym.any));
+    if (!t) {
+      App.simSteps[App.simSteps.length - 1].final = 'reject';
+      App.simSteps[App.simSteps.length - 1].note += ' — REJECT';
+      break;
+    }
+    const writeSym = (!t.write || t.write === App.config.sym.any) ? sym : t.write;
+    if (writeSym === blank) tape.delete(head);
+    else tape.set(head, writeSym);
+    head += headMoveDelta(t.dir);
+    state = t.to;
+  }
+
+  const last = App.simSteps[App.simSteps.length - 1];
+  if (last && !last.final) {
+    last.final = 'reject';
+    last.note += ' — STEP LIMIT REACHED (possible loop) — REJECT';
+  }
+  App.simIdx = 0;
+  renderSimStep();
+}
+
 function simMTM(tokens, allTapeTokens) {
   App.simSteps = [];
   const k = App.tapeCount;
@@ -649,7 +1175,7 @@ function renderSimStep() {
   const m = App.machine;
   const stateName = getState(step.state)?.name || (step.states ? stateNames(step.states) : '?');
 
-  if (m === 'TM' || m === 'NDTM') {
+  if (m === 'TM' || m === 'NDTM' || m === 'LBA' || m === 'ITM' || m === '2DFA' || m === '2NFA') {
     rows.push({ label: 'Tape', cells: step.tape, head: step.head });
   } else if (m === 'MTM') {
     step.tapes.forEach((t, i) => rows.push({ label: `T${i + 1}`, cells: t, head: step.heads[i] }));
@@ -669,8 +1195,15 @@ function renderSimStep() {
     rows.push({ label: 'In', cells: tokensToDisplay, head: tokIdx });
 
     if (isAnyPDA(m) && step.stack) {
-      rows.push({ label: 'Stk', cells: [...step.stack].reverse(), head: 0 }); // Stack top at index 0
-    } else if (['Moore', 'Mealy'].includes(m)) {
+      if (isQueueAutomaton(m)) {
+        rows.push({ label: 'Que', cells: [...step.stack], head: 0 });
+      } else {
+        rows.push({ label: 'Stk', cells: [...step.stack].reverse(), head: 0 });
+      }
+      if (isTwoStackPDA(m) && step.stack2) {
+        rows.push({ label: 'Stk2', cells: [...step.stack2].reverse(), head: 0 });
+      }
+    } else if (['Moore', 'Mealy', 'FST'].includes(m)) {
       const outToks = step.outToks || [];
       rows.push({ label: 'Out', cells: outToks, head: outToks.length ? outToks.length - 1 : -1 });
     }
@@ -745,9 +1278,16 @@ function runBatch() {
     if (App.machine === 'DFA') accepted = testDFA(tokens);
     else if (App.machine === 'NFA' || App.machine === 'ε-NFA') accepted = testNFA(tokens);
     else if (App.machine === 'DPDA' || App.machine === 'PDA') accepted = testPDA(tokens);
-    else if (App.machine === 'NPDA') accepted = testNPDA(tokens);
+    else if (App.machine === 'NPDA' || App.machine === 'QA' || App.machine === 'Counter' || App.machine === '2PDA') accepted = testNPDA(tokens);
+    else if (App.machine === '2DFA') accepted = test2DFA(tokens);
+    else if (App.machine === '2NFA') accepted = test2NFA(tokens);
     else if (App.machine === 'Moore') { accepted = App.config.transducerAccepts ? testDFA(tokens) : undefined; output = getMooreOutput(tokens); }
     else if (App.machine === 'Mealy') { accepted = App.config.transducerAccepts ? testDFA(tokens) : undefined; output = getMealyOutput(tokens); }
+    else if (App.machine === 'FST') {
+      const fstResult = testFST(tokens);
+      accepted = App.config.transducerAccepts ? fstResult.accepted : undefined;
+      output = fstResult.output;
+    }
     return { str: line, accepted, output };
   });
   $('batch-result').innerHTML = results.map(r => {
@@ -828,13 +1368,13 @@ function legacyTestPDA_unused(tokens) {
 function testPDA(tokens) {
   let cfg = createInitialPdaConfig(tokens);
   if (isPdaAcceptingConfig(cfg)) return true;
-  const visited = new Set([pdaConfigKey(cfg.state, cfg.remaining, cfg.stack)]);
+  const visited = new Set([pdaConfigKey(cfg.state, cfg.remaining, cfg.stack, cfg.stack2)]);
 
   for (let step = 0; step < App.config.maxPdaSteps; step++) {
     const matching = getMatchingPdaTransitions(cfg);
     if (matching.length !== 1) return false;
     const nextCfg = applyPdaTransitionConfig(cfg, matching[0], cfg.branch);
-    const nextKey = pdaConfigKey(nextCfg.state, nextCfg.remaining, nextCfg.stack);
+    const nextKey = pdaConfigKey(nextCfg.state, nextCfg.remaining, nextCfg.stack, nextCfg.stack2);
     if (visited.has(nextKey)) return false;
     visited.add(nextKey);
     cfg = nextCfg;
@@ -846,6 +1386,24 @@ function testPDA(tokens) {
 
 function testNPDA(tokens) {
   return exploreNPDA(tokens).accepted;
+}
+
+function test2DFA(tokens) {
+  return explore2DFA(tokens).accepted;
+}
+
+function test2NFA(tokens) {
+  return explore2NFA(tokens).accepted;
+}
+
+function testFST(tokens) {
+  const result = exploreFST(tokens);
+  const outs = [...result.outputs];
+  let output = '';
+  if (outs.length > 1) output = outs.join(' | ');
+  else if (outs.length === 1) output = outs[0];
+  else output = result.witnessPath.at(-1)?.outRaw || '';
+  return { accepted: result.accepted, output };
 }
 
 function getMooreOutput(tokens) {

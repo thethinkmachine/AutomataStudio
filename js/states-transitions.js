@@ -90,10 +90,12 @@ function populateTransitionModal(t) {
   $('m-sym-row').style.display = App.machine === 'MTM' ? 'none' : '';
   $('m-pda-extra').style.display = isAnyPDA(App.machine) ? '' : 'none';
   $('m-tm-extra').style.display = isSingleTapeTM(App.machine) ? '' : 'none';
-  $('m-mealy-extra').style.display = (App.machine === 'Mealy') ? '' : 'none';
+  $('m-mealy-extra').style.display = (App.machine === 'Mealy' || App.machine === 'FST') ? '' : 'none';
   $('m-mtm-extra').style.display = (App.machine === 'MTM') ? '' : 'none';
+  const twoStackExtra = $('m-2pda-extra');
+  if (twoStackExtra) twoStackExtra.style.display = isTwoStackPDA(App.machine) ? '' : 'none';
 
-  if (App.machine === 'Mealy') {
+  if (App.machine === 'Mealy' || App.machine === 'FST') {
     const { lambda } = App.config.sym;
     const outs = [...new Set([...App.outputAlpha, lambda, ...(t?.output ? [t.output] : [])])];
     const outSel = $('m-output');
@@ -109,6 +111,9 @@ function populateTransitionModal(t) {
       dirSel.innerHTML = App.directions.map(d => `<option value="${d.value}">${d.label} (${d.value})</option>`).join('');
       ensureSelectValue(dirSel, t?.dir || App.directions[0].value);
     }
+    const writeInput = $('m-write');
+    const writeRow = writeInput && typeof writeInput.closest === 'function' ? writeInput.closest('.modal-row') : null;
+    if (writeRow) writeRow.style.display = isReadOnlyHeadMachine(App.machine) ? 'none' : '';
   }
 
   if (App.machine === 'MTM') {
@@ -135,8 +140,14 @@ function populateTransitionModal(t) {
     const pdaPush = $('m-push');
     if (pdaPop) pdaPop.value = t?.pop ?? eps;
     if (pdaPush) pdaPush.value = t?.push ?? eps;
+    if (isTwoStackPDA(App.machine)) {
+      const pdaPop2 = $('m-pop2');
+      const pdaPush2 = $('m-push2');
+      if (pdaPop2) pdaPop2.value = t?.pop2 ?? eps;
+      if (pdaPush2) pdaPush2.value = t?.push2 ?? eps;
+    }
     const tmWrite = $('m-write');
-    if (tmWrite) tmWrite.value = t?.write ?? t?.symbol ?? '';
+    if (tmWrite) tmWrite.value = isReadOnlyHeadMachine(App.machine) ? (t?.symbol ?? '') : (t?.write ?? t?.symbol ?? '');
   }
 
   const picker = $('m-trans');
@@ -154,12 +165,18 @@ function getTransitionFormValues() {
   if (isAnyPDA(App.machine)) {
     values.pop = parseEps($('m-pop')?.value) || eps;
     values.push = parseEps($('m-push')?.value) || eps;
+    if (isTwoStackPDA(App.machine)) {
+      values.pop2 = parseEps($('m-pop2')?.value) || eps;
+      values.push2 = parseEps($('m-push2')?.value) || eps;
+    }
   }
   if (isSingleTapeTM(App.machine)) {
-    values.write = parseEps($('m-write')?.value) || values.symbol;
     values.dir = $('m-dir')?.value || App.directions[0].value;
+    values.write = isReadOnlyHeadMachine(App.machine)
+      ? values.symbol
+      : (parseEps($('m-write')?.value) || values.symbol);
   }
-  if (App.machine === 'Mealy') {
+  if (App.machine === 'Mealy' || App.machine === 'FST') {
     const out = $('m-output')?.value?.trim() || App.config.sym.lambda;
     values.output = out === App.config.sym.lambda ? '' : out;
   }
@@ -239,10 +256,11 @@ function confirmTrans() {
   if (!cfg.hasEpsilon && sym === eps) {
     showStatus(`${App.machine} cannot have epsilon-transitions.`); return;
   }
-  if (App.machine === 'TM') {
+  if (App.machine === 'TM' || App.machine === 'LBA' || App.machine === 'ITM' || App.machine === '2DFA') {
     const conflict = App.transitions.find(t => t.id !== editId && t.from === from && t.symbol === sym);
     if (conflict) {
-      showStatus(`TM already has δ(${getState(from)?.name}, '${sym}'). Use NDTM mode if you want multiple choices for the same read symbol.`); return;
+      const nondetAlt = App.machine === '2DFA' ? '2NFA' : 'NDTM';
+      showStatus(`${App.machine} already has δ(${getState(from)?.name}, '${sym}'). Use ${nondetAlt} mode if you want multiple choices for the same read symbol.`); return;
     }
   } else if (App.machine === 'DPDA') {
     const conflict = getPdaDeterminismConflict({ from, symbol: sym, pop: values.pop }, App.transitions, editId);
@@ -280,6 +298,37 @@ function confirmTrans() {
         showStatus(`Push string contains symbols not in Stack Alphabet (Γ): ${invalidChars.join(', ')}. Add them first.`); return;
       }
     }
+
+    if (isTwoStackPDA(App.machine)) {
+      if (!values.pop2 || values.pop2.trim() === '') values.pop2 = eps;
+      if (values.pop2.length > 1 && values.pop2 !== App.config.sym.any) {
+        showStatus(`${App.machine} pop₂ must be exactly one symbol.`); return;
+      }
+      if (values.pop2 !== eps && !stackAllowed.has(values.pop2)) {
+        showStatus(`Symbol '${values.pop2}' is not in your Stack Alphabet (Γ). Add it in the left panel first.`); return;
+      }
+      if (values.push2 && values.push2 !== eps && values.push2 !== App.config.sym.any) {
+        const invalidChars2 = values.push2.split('').filter(c => !stackAllowed.has(c));
+        if (invalidChars2.length > 0) {
+          showStatus(`Push₂ string contains symbols not in Stack Alphabet (Γ): ${invalidChars2.join(', ')}. Add them first.`); return;
+        }
+      }
+    }
+
+    if (isCounterMachine(App.machine)) {
+      const bottom = App.config.sym.stackBottom;
+      const counterSym = [...App.stackAlpha].find(symEl => symEl !== bottom) || '1';
+      const counterAllowed = new Set([eps, bottom, counterSym, App.config.sym.any]);
+      if (!counterAllowed.has(values.pop)) {
+        showStatus(`Counter Machine pop must use only '${counterSym}', '${bottom}', '${App.config.sym.any}', or ε.`); return;
+      }
+      if (values.push && values.push !== eps && values.push !== App.config.sym.any) {
+        const invalidCounterPush = values.push.split('').filter(c => c !== counterSym && c !== bottom);
+        if (invalidCounterPush.length > 0) {
+          showStatus(`Counter Machine push may only use '${counterSym}' (and optional '${bottom}'). Invalid: ${invalidCounterPush.join(', ')}.`); return;
+        }
+      }
+    }
   }
   snapshot();
   if (editId) {
@@ -291,9 +340,18 @@ function confirmTrans() {
     if (isAnyPDA(App.machine)) {
       t.pop = values.pop;
       t.push = values.push;
+      if (isTwoStackPDA(App.machine)) {
+        t.pop2 = values.pop2;
+        t.push2 = values.push2;
+      } else {
+        delete t.pop2;
+        delete t.push2;
+      }
     } else {
       delete t.pop;
       delete t.push;
+      delete t.pop2;
+      delete t.push2;
     }
     if (isSingleTapeTM(App.machine)) {
       t.write = values.write;
@@ -302,7 +360,7 @@ function confirmTrans() {
       delete t.write;
       delete t.dir;
     }
-    if (App.machine === 'Mealy') {
+    if (App.machine === 'Mealy' || App.machine === 'FST') {
       t.output = values.output;
     } else {
       delete t.output;
@@ -322,9 +380,13 @@ function confirmTrans() {
     if (isAnyPDA(App.machine)) {
       t.pop = values.pop;
       t.push = values.push;
+      if (isTwoStackPDA(App.machine)) {
+        t.pop2 = values.pop2;
+        t.push2 = values.push2;
+      }
     }
     if (isSingleTapeTM(App.machine)) { t.write = values.write; t.dir = values.dir; }
-    if (App.machine === 'Mealy') { t.output = values.output; }
+    if (App.machine === 'Mealy' || App.machine === 'FST') { t.output = values.output; }
     if (App.machine === 'MTM') {
       t.tapeSyms = values.tapeSyms;
       t.tapeWrites = values.tapeWrites;
@@ -350,9 +412,15 @@ function deleteTransitions(ids) {
   renderAll(); updateLPanel(); updateRPanel();
 }
 function transLabel(t) {
-  if (isAnyPDA(App.machine)) return `${t.symbol}, ${t.pop} → ${t.push}`;
+  if (isAnyPDA(App.machine)) {
+    if (isTwoStackPDA(App.machine)) {
+      return `${t.symbol}, (${t.pop}, ${t.pop2 ?? App.config.sym.eps}) → (${t.push}, ${t.push2 ?? App.config.sym.eps})`;
+    }
+    return `${t.symbol}, ${t.pop} → ${t.push}`;
+  }
+  if (isReadOnlyHeadMachine(App.machine)) return `${t.symbol}, ${t.dir}`;
   if (isSingleTapeTM(App.machine)) return `${t.symbol} → ${t.write}, ${t.dir}`;
-  if (App.machine === 'Mealy') return `${t.symbol} / ${t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda}`;
+  if (App.machine === 'Mealy' || App.machine === 'FST') return `${t.symbol} / ${t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda}`;
   if (App.machine === 'MTM') {
     const syms = t.tapeSyms || [t.symbol];
     const writes = t.tapeWrites || [t.write || t.symbol];
@@ -366,12 +434,18 @@ function transLabel(t) {
 function transLabelDescriptive(t) {
   const dirMap = { 'R': 'Right', 'L': 'Left', 'S': 'Stay' };
   if (isAnyPDA(App.machine)) {
+    if (isTwoStackPDA(App.machine)) {
+      return `Read '${t.symbol}', Pop₁ '${t.pop}', Push₁ '${t.push}', Pop₂ '${t.pop2 ?? App.config.sym.eps}', Push₂ '${t.push2 ?? App.config.sym.eps}'`;
+    }
     return `Read '${t.symbol}', Pop '${t.pop}', Push '${t.push}'`;
+  }
+  if (isReadOnlyHeadMachine(App.machine)) {
+    return `Read '${t.symbol}', Move ${dirMap[t.dir] || t.dir}`;
   }
   if (isSingleTapeTM(App.machine)) {
     return `Read '${t.symbol}', Write '${t.write}', Move ${dirMap[t.dir] || t.dir}`;
   }
-  if (App.machine === 'Mealy') {
+  if (App.machine === 'Mealy' || App.machine === 'FST') {
     const o = t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda;
     return `Read '${t.symbol}', Print '${o}'`;
   }

@@ -803,7 +803,7 @@ function renderModelPicker() {
         Chomsky Power Hierarchy
       </div>
       <div class="model-hierarchy-math">
-        DFA = NFA < DPDA < NPDA < LBA < DTM = NTM
+        DFA = NFA < DPDA < NPDA ≤ QA ≤ 2PDA = TM
       </div>
     </div>
   `;

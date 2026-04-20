@@ -3,16 +3,56 @@
 // ══════════════════════════════════════════════════════════════════
 function getMachineConfig(m) { return MachineTypes[m] || MachineTypes['DFA']; }
 
+function isTwoWayFA(m = App.machine) {
+  return m === '2DFA' || m === '2NFA';
+}
+
+function isReadOnlyHeadMachine(m = App.machine) {
+  return isTwoWayFA(m);
+}
+
 function isSingleTapeTM(m = App.machine) {
-  return m === 'TM' || m === 'NDTM';
+  return m === 'TM' || m === 'NDTM' || m === 'LBA' || m === 'ITM' || isTwoWayFA(m);
 }
 
 function isAnyTM(m = App.machine) {
-  return isSingleTapeTM(m) || m === 'MTM';
+  return m === 'TM' || m === 'NDTM' || m === 'MTM' || m === 'LBA' || m === 'ITM';
 }
 
 function isAnyPDA(m = App.machine) {
+  return m === 'DPDA' || m === 'NPDA' || m === 'PDA' || m === 'QA' || m === 'Counter' || m === '2PDA';
+}
+
+function isClassicPDA(m = App.machine) {
   return m === 'DPDA' || m === 'NPDA' || m === 'PDA';
+}
+
+function isCfgConvertiblePDA(m = App.machine) {
+  return isClassicPDA(m);
+}
+
+function isQueueAutomaton(m = App.machine) {
+  return m === 'QA';
+}
+
+function isCounterMachine(m = App.machine) {
+  return m === 'Counter';
+}
+
+function isTwoStackPDA(m = App.machine) {
+  return m === '2PDA';
+}
+
+function isTwoWayNondeterministicFA(m = App.machine) {
+  return m === '2NFA';
+}
+
+function isLBA(m = App.machine) {
+  return m === 'LBA';
+}
+
+function isInfiniteTapeTM(m = App.machine) {
+  return m === 'ITM';
 }
 
 function hasSingleTapeNondeterminism(transitions = App.transitions) {
