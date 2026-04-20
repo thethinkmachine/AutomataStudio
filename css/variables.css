@@ -35,6 +35,11 @@
   --accent-border: rgba(79, 195, 247, .25);
   --accent-border-strong: rgba(79, 195, 247, .4);
   --accent-glow: 0 0 14px rgba(79, 195, 247, .35);
+  --tab-hover-bg: rgba(255, 255, 255, .035);
+  --tab-active-bg: rgba(79, 195, 247, .11);
+  --tab-active-border: rgba(79, 195, 247, .28);
+  --tab-active-line: rgba(79, 195, 247, .95);
+  --tab-overflow-shadow: rgba(2, 7, 16, .62);
   --purple-soft: rgba(206, 147, 216, .14);
   --purple-border: rgba(206, 147, 216, .3);
   --green-soft: rgba(105, 240, 174, .1);
@@ -90,6 +95,11 @@
   --accent-border: rgba(23, 142, 216, .22);
   --accent-border-strong: rgba(23, 142, 216, .34);
   --accent-glow: 0 10px 24px rgba(23, 142, 216, .18);
+  --tab-hover-bg: rgba(22, 50, 74, .05);
+  --tab-active-bg: rgba(23, 142, 216, .095);
+  --tab-active-border: rgba(23, 142, 216, .28);
+  --tab-active-line: rgba(23, 142, 216, .92);
+  --tab-overflow-shadow: rgba(113, 136, 167, .36);
   --purple-soft: rgba(132, 88, 207, .12);
   --purple-border: rgba(132, 88, 207, .24);
   --green-soft: rgba(25, 139, 99, .1);

@@ -1,16 +1,154 @@
 // ══════════════════════════════════════════════════════════════════
 //  WORKSPACE TABS UI
 // ══════════════════════════════════════════════════════════════════
+const TAB_ACCENTS = ['var(--accent)', 'var(--green)', 'var(--gold)', 'var(--orange)', 'var(--purple)', 'var(--red)'];
+let editingTabId = null;
+
+function tabHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) - h) + str.charCodeAt(i);
+  return Math.abs(h);
+}
+
+function getWorkspaceAccent(id) {
+  return TAB_ACCENTS[tabHash(String(id || 'ws')) % TAB_ACCENTS.length];
+}
+
+function escapeTabText(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function updateTabOverflowShadows(tb = $('tab-bar')) {
+  if (!tb) return;
+  const maxScroll = Math.max(0, tb.scrollWidth - tb.clientWidth);
+  const hasOverflow = maxScroll > 2;
+  tb.classList.toggle('has-overflow-left', hasOverflow && tb.scrollLeft > 2);
+  tb.classList.toggle('has-overflow-right', hasOverflow && tb.scrollLeft < maxScroll - 2);
+}
+
+function focusTabElement(id) {
+  const tb = $('tab-bar');
+  if (!tb) return;
+  const tab = tb.querySelector(`.tab[data-tab-id="${id}"]`);
+  if (tab) tab.focus();
+}
+
+function handleCreateTabKeydown(e) {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    createTab();
+  }
+}
+
+function handleTabKeydown(id, e) {
+  if (editingTabId === id) return;
+
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    e.stopPropagation();
+    switchTab(id);
+    return;
+  }
+
+  if (e.key === 'F2') {
+    e.preventDefault();
+    e.stopPropagation();
+    beginRenameTab(id, e);
+    return;
+  }
+
+  if (e.key === 'Delete' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'w')) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeTab(id, e);
+    return;
+  }
+
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    e.preventDefault();
+    e.stopPropagation();
+    const ids = Workspaces.map(w => w.id);
+    if (!ids.length) return;
+    const idx = ids.indexOf(id);
+    if (idx === -1) return;
+    const delta = e.key === 'ArrowRight' ? 1 : -1;
+    const nextId = ids[(idx + delta + ids.length) % ids.length];
+    if (!nextId) return;
+    switchTab(nextId);
+    requestAnimationFrame(() => focusTabElement(nextId));
+  }
+}
+
+function beginRenameTab(id, e) {
+  if (e) {
+    e.stopPropagation();
+    e.preventDefault();
+  }
+  editingTabId = id;
+  renderTabs();
+}
+
+function handleTabRenameKeydown(id, e) {
+  e.stopPropagation();
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    commitTabRename(id, e.target);
+    return;
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    editingTabId = null;
+    renderTabs();
+    requestAnimationFrame(() => focusTabElement(id));
+  }
+}
+
+function commitTabRename(id, inputEl) {
+  if (editingTabId !== id) return;
+  const ws = Workspaces.find(w => w.id === id);
+  if (!ws) {
+    editingTabId = null;
+    renderTabs();
+    return;
+  }
+
+  const candidate = String(inputEl?.value || '').trim();
+  if (candidate) ws.name = candidate.slice(0, 40);
+
+  editingTabId = null;
+  renderTabs();
+  saveBackup();
+}
+
 function renderTabs() {
   const tb = $('tab-bar');
   if (!tb) return;
-  tb.innerHTML = Workspaces.map(ws => `
-    <div class="tab ${ws.id === activeWorkspaceId ? 'active' : ''}" onclick="switchTab('${ws.id}')" ondblclick="renameTab('${ws.id}', event)">
-      <span class="tab-name">${ws.name}</span>
-      ${Workspaces.length > 1 ? `<span class="tab-close" onclick="closeTab('${ws.id}', event)">×</span>` : ''}
+  tb.setAttribute('role', 'tablist');
+  tb.setAttribute('aria-label', 'Workspace tabs');
+
+  tb.innerHTML = Workspaces.map(ws => {
+    const isActive = ws.id === activeWorkspaceId;
+    const isEditing = ws.id === editingTabId;
+    const safeName = escapeTabText(ws.name || 'Workspace');
+    const nameMarkup = isEditing
+      ? `<input class="tab-rename-input" value="${safeName}" maxlength="40" aria-label="Rename workspace" onclick="event.stopPropagation()" onkeydown="handleTabRenameKeydown('${ws.id}', event)" onblur="commitTabRename('${ws.id}', this)">`
+      : `<span class="tab-name" title="${safeName}">${safeName}</span>`;
+
+    return `
+    <div class="tab ${isActive ? 'active' : ''}" role="tab" aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? '0' : '-1'}" data-tab-id="${ws.id}" style="--tab-accent:${getWorkspaceAccent(ws.id)}" onclick="switchTab('${ws.id}')" ondblclick="beginRenameTab('${ws.id}', event)" onkeydown="handleTabKeydown('${ws.id}', event)">
+      <span class="tab-dot" aria-hidden="true"></span>
+      ${nameMarkup}
+      ${ws.dirty ? '<span class="tab-dirty" aria-hidden="true" title="Unsaved changes"></span>' : ''}
+      ${Workspaces.length > 1 ? `<button class="tab-close" type="button" aria-label="Close ${safeName}" onclick="closeTab('${ws.id}', event)">×</button>` : ''}
     </div>
-  `).join('') + `
-    <div class="tab tab-add" onclick="createTab()">
+  `;
+  }).join('') + `
+    <div class="tab tab-add" role="button" tabindex="0" aria-label="Create workspace" onclick="createTab()" onkeydown="handleCreateTabKeydown(event)">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
     </div>
   `;
@@ -22,6 +160,18 @@ function renderTabs() {
       e.preventDefault();
     }
   };
+
+  tb.onscroll = () => updateTabOverflowShadows(tb);
+  requestAnimationFrame(() => {
+    updateTabOverflowShadows(tb);
+    if (editingTabId) {
+      const input = tb.querySelector('.tab-rename-input');
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }
+  });
 }
 
 function createTab(name) {
@@ -34,13 +184,17 @@ function createTab(name) {
 
   if (activeWorkspaceId) {
     const act = Workspaces.find(w => w.id === activeWorkspaceId);
-    if (act) act.data = exportWorkspaceState();
+    if (act) {
+      act.data = exportWorkspaceState();
+      act.dirty = false;
+    }
   }
 
   let wsName = name || `Workspace ${Workspaces.length + 1}`;
   const newWs = {
     id: 'ws_' + Date.now() + '_' + Math.random().toString(36).substring(2,9),
     name: wsName,
+    dirty: false,
     data: {
       machine: 'DFA', sigma: ['a', 'b'], outputAlpha: ['0', '1'], stackAlpha: ['Z'], tapeCount: 2,
       states: [], transitions: [], startId: null, accepts: [], stateN: 0, transN: 0, cam: { x: 0, y: 0, z: 1 },
@@ -48,6 +202,7 @@ function createTab(name) {
     }
   };
   Workspaces.push(newWs);
+  editingTabId = null;
   
   importWorkspaceState(newWs.data);
   activeWorkspaceId = newWs.id;
@@ -76,10 +231,14 @@ function switchTab(id) {
 
   if (activeWorkspaceId) {
     const act = Workspaces.find(w => w.id === activeWorkspaceId);
-    if (act) act.data = exportWorkspaceState();
+    if (act) {
+      act.data = exportWorkspaceState();
+      act.dirty = false;
+    }
   }
   
   activeWorkspaceId = id;
+  editingTabId = null;
   const curr = Workspaces.find(w => w.id === id);
   if (curr && curr.data) {
     importWorkspaceState(curr.data);
@@ -103,6 +262,7 @@ function switchTab(id) {
 function closeTab(id, e) {
   if (e) { e.stopPropagation(); e.preventDefault(); }
   if (Workspaces.length <= 1) return;
+  if (editingTabId === id) editingTabId = null;
   
   const idx = Workspaces.findIndex(w => w.id === id);
   if (idx === -1) return;
@@ -119,15 +279,7 @@ function closeTab(id, e) {
 }
 
 function renameTab(id, e) {
-  if (e) { e.stopPropagation(); e.preventDefault(); }
-  const ws = Workspaces.find(w => w.id === id);
-  if (!ws) return;
-  let newName = prompt("Rename Workspace:", ws.name);
-  if (newName && newName.trim().length > 0) {
-    ws.name = newName.trim();
-    renderTabs();
-    saveBackup();
-  }
+  beginRenameTab(id, e);
 }
 
 function initTabs() {
@@ -135,12 +287,21 @@ function initTabs() {
     Workspaces.push({
       id: 'ws_initial',
       name: 'Workspace 1',
+      dirty: false,
       data: exportWorkspaceState()
     });
     activeWorkspaceId = 'ws_initial';
   }
+  Workspaces.forEach((ws, idx) => {
+    if (!ws.name) ws.name = `Workspace ${idx + 1}`;
+    ws.dirty = !!ws.dirty;
+  });
+  if (!Workspaces.find(w => w.id === activeWorkspaceId)) activeWorkspaceId = Workspaces[0].id;
+  editingTabId = null;
   renderTabs();
 }
+
+window.addEventListener('resize', () => updateTabOverflowShadows());
 
 // ══════════════════════════════════════════════════════════════════
 //  KEYBOARD SHORTCUTS

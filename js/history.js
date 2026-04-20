@@ -13,6 +13,14 @@ function snapshot() {
   App.history.push(s);
   App.future = [];
   if (App.history.length > 300) App.history.shift();
+
+  if (activeWorkspaceId) {
+    const ws = Workspaces.find(w => w.id === activeWorkspaceId);
+    if (ws && !ws.dirty) {
+      ws.dirty = true;
+      if (typeof renderTabs === 'function') renderTabs();
+    }
+  }
 }
 function undo() {
   if (App.history.length < 2) return showStatus('Nothing to undo');
