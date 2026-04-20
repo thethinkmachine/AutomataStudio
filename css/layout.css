@@ -180,7 +180,7 @@ header {
   display: flex;
   align-items: flex-end;
   gap: 1px;
-  background: var(--bg2);
+  background: transparent;
   height: var(--hdr2);
   border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
@@ -432,7 +432,7 @@ header {
   align-items: center;
   gap: 6px;
   padding: 0 12px;
-  background: var(--bg3);
+  background: var(--bg2);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   z-index: 100;
@@ -473,7 +473,7 @@ header {
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
-  background: var(--bg2);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
@@ -484,7 +484,7 @@ header {
 }
 
 .model-picker-btn:hover {
-  background: var(--surface);
+  background: var(--surface2);
   border-color: var(--accent);
   box-shadow: 0 0 12px rgba(0,0,0,0.2), 0 0 0 1px var(--accent-border);
 }
