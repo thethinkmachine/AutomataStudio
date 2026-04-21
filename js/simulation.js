@@ -80,7 +80,7 @@ function simDFA(tokens) {
   App.simSteps.push({ state: cur, tokens, remaining: tokens, note: `Start: ${getState(cur)?.name || '?'}` });
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
-    const t = App.transitions.find(tr => tr.from === cur && (tr.symbol === sym || tr.symbol === App.config.sym.any));
+    const t = getSingleTapeDeterministicTransition(cur, sym);
     if (!t) { App.simSteps.push({ state: cur, tokens, remaining: tokens.slice(i), note: `No δ(${getState(cur)?.name},'${sym}') — Implicit REJECT`, final: 'reject' }); break; }
     cur = t.to;
     App.simSteps.push({ state: cur, tokens, remaining: tokens.slice(i + 1), note: `Read '${sym}' → ${getState(cur)?.name}`, tid: t.id });
@@ -115,6 +115,16 @@ function epsClosure(states) {
   return c;
 }
 function stateNames(ids) { return [...ids].map(id => getState(id)?.name || id).join(',') }
+
+function getSingleTapeDeterministicTransition(state, sym) {
+  const matching = App.transitions.filter(tr => tr.from === state && (tr.symbol === sym || tr.symbol === App.config.sym.any));
+  return pickMostSpecificTransition(matching, tr => (tr.symbol === sym ? 1 : 0));
+}
+
+function getMultiTapeDeterministicTransition(state, syms) {
+  const matching = App.transitions.filter(tr => tr.from === state && tr.tapeSyms && tr.tapeSyms.length === syms.length && tr.tapeSyms.every((s, i) => s === syms[i] || s === App.config.sym.any));
+  return pickMostSpecificTransition(matching, tr => tr.tapeSyms.reduce((score, s, i) => score + (s === syms[i] ? 1 : 0), 0));
+}
 
 function legacySimPDA_unused(tokens) {
   App.simSteps = [];
@@ -171,7 +181,7 @@ function simTM(tokens) {
     const sym = tape[head];
     App.simSteps.push({ state, tokens, tape: [...tape], head, note: `State:${getState(state)?.name} Read:'${sym}'` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
-    const t = App.transitions.find(tr => tr.from === state && (tr.symbol === sym || tr.symbol === App.config.sym.any));
+    const t = getSingleTapeDeterministicTransition(state, sym);
     if (!t) { App.simSteps[App.simSteps.length - 1].final = 'reject'; App.simSteps[App.simSteps.length - 1].note += ' — REJECT'; break; }
     const writeSym = (!t.write || t.write === App.config.sym.any) ? sym : t.write;
     tape[head] = writeSym; state = t.to;
@@ -632,7 +642,7 @@ function simMoore(tokens) {
   App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Start: ${s0?.name} — ${App.config.sym.lambda}: '${initOut}'` });
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
-    const t = App.transitions.find(tr => tr.from === cur && (tr.symbol === sym || tr.symbol === App.config.sym.any));
+    const t = getSingleTapeDeterministicTransition(cur, sym);
     if (!t) { App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' }); break; }
     cur = t.to;
     const sc = getState(cur);
@@ -656,7 +666,7 @@ function simMealy(tokens) {
   App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Start: ${getState(cur)?.name}` });
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
-    const t = App.transitions.find(tr => tr.from === cur && (tr.symbol === sym || tr.symbol === App.config.sym.any));
+    const t = getSingleTapeDeterministicTransition(cur, sym);
     if (!t) { App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' }); break; }
     const out = t.output ?? '?';
     outStr += out;
@@ -754,22 +764,14 @@ function explore2DFA(tokens) {
 
     const sym = tape[cfg.head];
     const matching = getTwoWayMatchingTransitions(cfg.state, sym);
-    if (!matching.length) {
+    const t = pickMostSpecificTransition(matching, tr => (tr.symbol === sym ? 1 : 0));
+    if (!t) {
       return {
         accepted: false,
         path,
         finalNote: `No valid transition on '${sym}'`
       };
     }
-    if (matching.length > 1) {
-      return {
-        accepted: false,
-        path,
-        finalNote: 'Nondeterministic overlap detected in 2DFA mode. Switch to 2NFA to explore branching.'
-      };
-    }
-
-    const t = matching[0];
     const nextHead = cfg.head + headMoveDelta(t.dir);
     if (nextHead < 0 || nextHead >= tape.length) {
       const boundSym = nextHead < 0 ? '⊢' : '⊣';
@@ -1056,7 +1058,7 @@ function simLBA(tokens) {
       App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT';
       break;
     }
-    const t = App.transitions.find(tr => tr.from === state && (tr.symbol === sym || tr.symbol === App.config.sym.any));
+    const t = getSingleTapeDeterministicTransition(state, sym);
     if (!t) {
       App.simSteps[App.simSteps.length - 1].final = 'reject';
       App.simSteps[App.simSteps.length - 1].note += ' — REJECT';
@@ -1073,7 +1075,7 @@ function simLBA(tokens) {
         tokens,
         tape: [...tape],
         head,
-        note: `Attempted to move outside ${boundSym} bound. — REJECT`,
+        note: `Attempted to move outside the ${boundSym} boundary. — REJECT`,
         final: 'reject'
       });
       break;
@@ -1127,7 +1129,7 @@ function simITM(tokens) {
       App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT';
       break;
     }
-    const t = App.transitions.find(tr => tr.from === state && (tr.symbol === sym || tr.symbol === App.config.sym.any));
+    const t = getSingleTapeDeterministicTransition(state, sym);
     if (!t) {
       App.simSteps[App.simSteps.length - 1].final = 'reject';
       App.simSteps[App.simSteps.length - 1].note += ' — REJECT';
@@ -1163,7 +1165,7 @@ function simMTM(tokens, allTapeTokens) {
     const syms = tapes.map((tape, i) => tape[heads[i]]);
     App.simSteps.push({ state, tokens, tapes: tapes.map(t => [...t]), heads: [...heads], note: `State:${getState(state)?.name} Read:[${syms.join(',')}]` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
-    const t = App.transitions.find(tr => tr.from === state && tr.tapeSyms && tr.tapeSyms.length === k && tr.tapeSyms.every((s, i) => s === syms[i] || s === App.config.sym.any));
+    const t = getMultiTapeDeterministicTransition(state, syms);
     if (!t) { App.simSteps[App.simSteps.length - 1].final = 'reject'; App.simSteps[App.simSteps.length - 1].note += ' — REJECT'; break; }
     for (let i = 0; i < k; i++) {
       tapes[i][heads[i]] = t.tapeWrites[i] || syms[i];
@@ -1321,9 +1323,8 @@ function runBatch() {
 }
 function testDFA(tokens) {
   let cur = App.startId;
-  const any = App.config.sym.any;
   for (const sym of tokens) {
-    const t = App.transitions.find(tr => tr.from === cur && (tr.symbol === sym || tr.symbol === any));
+    const t = getSingleTapeDeterministicTransition(cur, sym);
     if (!t) return false;
     cur = t.to;
   }
@@ -1430,10 +1431,9 @@ function testFST(tokens) {
 
 function getMooreOutput(tokens) {
   let cur = App.startId;
-  const any = App.config.sym.any;
   const outputs = [getState(cur)?.output ?? ''];
   for (const sym of tokens) {
-    const t = App.transitions.find(tr => tr.from === cur && (tr.symbol === sym || tr.symbol === any));
+    const t = getSingleTapeDeterministicTransition(cur, sym);
     if (!t) break;
     cur = t.to;
     outputs.push(getState(cur)?.output ?? '');
@@ -1442,10 +1442,9 @@ function getMooreOutput(tokens) {
 }
 function getMealyOutput(tokens) {
   let cur = App.startId;
-  const any = App.config.sym.any;
   const outputs = [];
   for (const sym of tokens) {
-    const t = App.transitions.find(tr => tr.from === cur && (tr.symbol === sym || tr.symbol === any));
+    const t = getSingleTapeDeterministicTransition(cur, sym);
     if (!t) break;
     outputs.push(t.output ?? '?');
     cur = t.to;

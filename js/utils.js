@@ -122,6 +122,32 @@ function pdaTransitionsOverlap(a, b) {
     && pdaPopPatternsOverlap(a.pop, b.pop);
 }
 
+function symbolsOverlap(a, b, any = App.config.sym.any) {
+  return a === b || a === any || b === any;
+}
+
+function tapeTuplesOverlap(aSyms = [], bSyms = [], any = App.config.sym.any) {
+  if (!Array.isArray(aSyms) || !Array.isArray(bSyms) || aSyms.length !== bSyms.length) return false;
+  return aSyms.every((sym, i) => symbolsOverlap(sym, bSyms[i], any));
+}
+
+function pickMostSpecificTransition(transitions = [], scoreFn = () => 0) {
+  let best = null;
+  let bestScore = -Infinity;
+  for (const transition of transitions) {
+    const score = scoreFn(transition);
+    if (score > bestScore) {
+      best = transition;
+      bestScore = score;
+      continue;
+    }
+    if (score === bestScore && best && String(transition.id || '').localeCompare(String(best.id || ''), undefined, { numeric: true }) < 0) {
+      best = transition;
+    }
+  }
+  return best;
+}
+
 function findPdaNondeterministicPairs(transitions = App.transitions) {
   const pairs = [];
   for (let i = 0; i < transitions.length; i++) {

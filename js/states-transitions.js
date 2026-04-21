@@ -270,21 +270,26 @@ function confirmTrans() {
     }
   }
   if (App.machine === 'TM' || App.machine === 'LBA' || App.machine === 'ITM' || App.machine === '2DFA') {
-    const conflict = App.transitions.find(t => t.id !== editId && t.from === from && t.symbol === sym);
+    const conflict = App.transitions.find(t => t.id !== editId && t.from === from && symbolsOverlap(t.symbol, sym));
     if (conflict) {
       const nondetAlt = App.machine === '2DFA' ? '2NFA' : 'NDTM';
       showStatus(`${App.machine} already has δ(${getState(from)?.name}, '${sym}'). Use ${nondetAlt} mode if you want multiple choices for the same read symbol.`); return;
     }
-  } else if (App.machine === 'DPDA') {
+  } else if (App.machine === 'DPDA' || App.machine === 'PDA') {
     const conflict = getPdaDeterminismConflict({ from, symbol: sym, pop: values.pop }, App.transitions, editId);
     if (conflict) {
       showStatus(`DPDA already has an overlapping move from ${getState(from)?.name}. Switch to NPDA mode if you want branching on the same configuration.`); return;
     }
   } else if (App.machine === 'MTM') {
-    const sig = (values.tapeSyms || []).join('\u0001');
-    const conflict = App.transitions.find(t => t.id !== editId && t.from === from && (t.tapeSyms || []).join('\u0001') === sig);
+    const candidateSyms = values.tapeSyms || [];
+    const conflict = App.transitions.find(t => t.id !== editId && t.from === from && tapeTuplesOverlap(t.tapeSyms || [t.symbol], candidateSyms));
     if (conflict) {
-      showStatus(`MTM already has a transition for (${getState(from)?.name}, [${(values.tapeSyms || []).join(', ')}]). Each read tuple must be unique.`); return;
+      showStatus(`MTM already has a transition for (${getState(from)?.name}, [${candidateSyms.join(', ')}]). Each read tuple must be unique.`); return;
+    }
+  } else if (App.machine === 'Moore' || App.machine === 'Mealy') {
+    const conflict = App.transitions.find(t => t.id !== editId && t.from === from && symbolsOverlap(t.symbol, sym));
+    if (conflict) {
+      showStatus(`${App.machine} already has δ(${getState(from)?.name}, '${sym}'). Each input symbol must map to one output.`); return;
     }
   } else if (!cfg.isTransducer && App.machine !== 'NFA' && App.machine !== 'ε-NFA' && !isAnyPDA(App.machine) && !cfg.hasTape) {
     const conflict = App.transitions.find(t => t.id !== editId && t.from === from && t.symbol === sym);

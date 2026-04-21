@@ -89,6 +89,11 @@ function setStackTransitionForm(h, values) {
   h.getElement('m-push').value = values.push;
 }
 
+function setMealyTransitionForm(h, values) {
+  setSingleTapeTransitionForm(h, values);
+  h.getElement('m-output').value = values.output;
+}
+
 test('theme button icon reflects the active theme', () => {
   const h = createHarness();
   const btn = h.getElement('theme-btn');
@@ -112,6 +117,11 @@ test('workspace export preserves the PDA formalism setting', () => {
   h.context.App.config.pdaParadigm = 'empty';
   const data = h.context.getWorkspaceData();
   assert.equal(data.config.pdaParadigm, 'empty');
+});
+
+test('model picker categories keep the PDA alias hidden', () => {
+  const h = createHarness();
+  assert.equal(h.context.MachineCategories.some(cat => cat.machines.includes('PDA')), false);
 });
 
 test('PDA simulation accepts by empty stack when that formalism is selected', () => {
@@ -246,6 +256,50 @@ test('PDA stays deterministic while NPDA allows overlapping stack moves', () => 
   setStackTransitionForm(h, { from: 's0', to: 's2', symbol: 'ε', pop: 'Z', push: 'Z' });
   h.context.confirmTrans();
   assert.equal(h.context.App.transitions.length, 2);
+});
+
+test('DFA prefers exact transitions over wildcard transitions', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'DFA',
+    sigma: ['a'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1'), makeState('s2', 'q2')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's2', symbol: 'Σ' },
+      { id: 't1', from: 's0', to: 's1', symbol: 'a' }
+    ],
+    startId: 's0',
+    accepts: ['s1']
+  });
+
+  assert.equal(h.context.testDFA(['a']), true);
+});
+
+test('TM machines reject epsilon-read transitions in the editor and on import', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'TM',
+    sigma: ['a'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1')],
+    transitions: [],
+    startId: 's0',
+    accepts: []
+  });
+
+  setSingleTapeTransitionForm(h, { from: 's0', to: 's1', symbol: 'ε', write: 'a', dir: 'R' });
+  h.context.confirmTrans();
+  assert.equal(h.context.App.transitions.length, 0);
+  assert.match(h.getElement('status-bar').textContent, /epsilon/i);
+
+  assert.throws(() => h.context.validateSchema({
+    machine: 'TM',
+    sigma: ['a'],
+    tapeCount: 1,
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1')],
+    transitions: [{ id: 't0', from: 's0', to: 's1', symbol: 'ε', write: 'a', dir: 'R' }],
+    startId: 's0',
+    accepts: []
+  }), /epsilon/i);
 });
 
 test('NPDA simulation finds an accepting branch for midpoint guessing', () => {
@@ -516,6 +570,27 @@ test('Moore to Mealy conversion labels outputs on destination transitions', () =
   h.context.loadMooreAsMealy();
   assert.equal(h.context.App.machine, 'Mealy');
   assert.equal(h.context.App.transitions[0].output, '1');
+});
+
+test('Mealy rejects overlapping wildcard transitions from the same state', () => {
+  const h = createHarness();
+  configureAppMachine(h, {
+    machine: 'Mealy',
+    sigma: ['a'],
+    outputAlpha: ['0', '1'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1'), makeState('s2', 'q2')],
+    transitions: [],
+    startId: 's0',
+    accepts: []
+  });
+
+  setMealyTransitionForm(h, { from: 's0', to: 's1', symbol: 'Σ', write: 'a', dir: 'R', output: '0' });
+  h.context.confirmTrans();
+  setMealyTransitionForm(h, { from: 's0', to: 's2', symbol: 'a', write: 'a', dir: 'R', output: '1' });
+  h.context.confirmTrans();
+
+  assert.equal(h.context.App.transitions.length, 1);
+  assert.equal(h.context.App.transitions[0].output, '0');
 });
 
 test('Mealy to Moore splits start state when it has incoming outputs', () => {

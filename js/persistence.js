@@ -139,6 +139,11 @@ function validateSchema(data) {
     }
   }
 
+  const cfg = getMachineConfig(data.machine);
+  if (!cfg.hasEpsilon && data.transitions.some(t => t.symbol === App.config.sym.eps)) {
+    throw new Error(`${data.machine} does not allow epsilon-read transitions.`);
+  }
+
   // Validate Grammar
   if (data.grammar) {
     if (typeof data.grammar !== 'object') throw new Error("'grammar' must be an object.");
