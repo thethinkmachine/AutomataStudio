@@ -91,6 +91,9 @@ For a state $q$, the $\\epsilon$-closure is the set of states reachable from $q$
 <b>Equivalence of DFA, NFA, and Epsilon-NFA</b>
 All three models recognize exactly the regular languages. The easy direction is containment: every DFA is an NFA, and every NFA is an $\\epsilon$-NFA. The nontrivial direction is simulation: subset construction turns any NFA into an equivalent DFA by treating each reachable set of NFA states as a single DFA state.
 
+<b>Two-Way Automata with Endmarkers</b>
+A 2DFA or 2NFA reads a tape of the form ⊢w⊣. The head starts on the left marker ⊢, may move left, right, or stay, and may never cross past either boundary marker. In the app, the markers are reserved symbols: they are not part of the editable input alphabet $\Sigma$, but they are valid read symbols for the transition relation.
+
 <b>Subset Construction and State Explosion</b>
 If an NFA has $n$ states, the equivalent DFA can have as many as $2^n$ states. This upper bound is tight. The exponential blow-up is not an artifact of a poor algorithm; some regular languages truly require exponentially larger DFAs than their NFA descriptions.
 
@@ -261,6 +264,9 @@ A TM recognizes a language if it accepts every string in the language. A TM deci
 
 <b>Why TMs Matter</b>
 Finite automata have no unbounded memory; PDAs have one stack; TMs have unrestricted read-write tape. That jump is what makes TMs the standard model for general-purpose computation.
+
+<b>Linearly Bounded Automata</b>
+An LBA is a Turing machine whose tape is constrained to the marked input region ⊢w⊣. The boundary cells are fixed markers, the head starts on ⊢, and no move may cross past the left or right marker. This is the operational reason LBA languages sit exactly at the context-sensitive level.
 
 <b>Church-Turing Thesis</b>
 The Church-Turing thesis is the claim that every effectively calculable procedure can be carried out by a Turing machine.` },

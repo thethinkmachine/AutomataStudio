@@ -68,10 +68,18 @@ function applyMachineSwitch(m) {
     if (typeof renderGamma === 'function') renderGamma();
   }
 
+  if (typeof normalizeBoundarySymbolsForMachine === 'function') {
+    normalizeBoundarySymbolsForMachine(m);
+  }
+
   // Update UI Tabs and Badges
   syncMachineSelectors(m);
   $('mach-badge').className = `badge ${cfg.badge}`;
   $('mach-badge').textContent = cfg.label;
+
+  if (typeof renderSigma === 'function') renderSigma();
+  if (typeof renderGamma === 'function') renderGamma();
+  if (typeof renderOutputAlpha === 'function') renderOutputAlpha();
 
   // Toggle UI Sections based on Machine Features
   $('stack-sec').style.display = cfg.hasStack ? '' : 'none';

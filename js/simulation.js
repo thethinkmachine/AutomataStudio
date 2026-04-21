@@ -680,16 +680,15 @@ function isHeadOutOfInput(tokens, head) {
 }
 
 function twoWayDisplayTape(tokens) {
-  return tokens.length ? [...tokens] : [App.config.sym.eps];
+  return buildMarkedInputTape(tokens);
 }
 
 function twoWayDisplayHead(tokens, head) {
-  if (!tokens.length) return 0;
-  return Math.max(0, Math.min(tokens.length - 1, head));
+  return head;
 }
 
 function twoWayReadSymbol(tokens, head) {
-  return isHeadOutOfInput(tokens, head) ? null : tokens[head];
+  return tokens[head] ?? null;
 }
 
 function getTwoWayMatchingTransitions(state, sym) {
@@ -704,17 +703,17 @@ function buildTwoWayPathSteps(path, tokens, finalStatus = null, finalNote = '') 
       state: cfg.state,
       tokens,
       tape: [...displayTape],
-      head: twoWayDisplayHead(tokens, cfg.head),
+      head: twoWayDisplayHead(displayTape, cfg.head),
       branch: cfg.branch,
       tid: cfg.via?.id,
       note: ''
     };
     if (idx === 0) {
-      step.note = `Start: ${stateName} (head=${cfg.head})`;
+      step.note = `Start: ${stateName} at ${displayTape[cfg.head]}`;
     } else {
       const prev = path[idx - 1];
       const fromName = getState(prev.state)?.name || prev.state;
-      const read = twoWayReadSymbol(tokens, prev.head);
+      const read = twoWayReadSymbol(displayTape, prev.head);
       const readSym = read === null ? App.config.sym.eps : read;
       step.note = `Branch ${cfg.branch} depth ${cfg.depth}: ${fromName} reads '${readSym}', move ${cfg.via?.dir || 'S'} → ${stateName} (head=${cfg.head})`;
     }
@@ -731,21 +730,29 @@ function buildTwoWayPathSteps(path, tokens, finalStatus = null, finalNote = '') 
 }
 
 function explore2DFA(tokens) {
+  const tape = buildMarkedInputTape(tokens);
   const init = { state: App.startId, head: 0, depth: 0, branch: 1, parent: null, via: null };
   const path = [init];
 
   for (let step = 0; step < App.config.maxTmSteps; step++) {
     const cfg = path[path.length - 1];
-    if (isHeadOutOfInput(tokens, cfg.head)) {
-      const accepted = App.accepts.has(cfg.state);
+    if (App.accepts.has(cfg.state)) {
       return {
-        accepted,
+        accepted: true,
         path,
-        finalNote: `Head moved outside input bounds at index ${cfg.head}`
+        finalNote: `Accepted in state ${getState(cfg.state)?.name || cfg.state}`
       };
     }
 
-    const sym = tokens[cfg.head];
+    if (cfg.head < 0 || cfg.head >= tape.length) {
+      return {
+        accepted: false,
+        path,
+        finalNote: `Head moved outside endmarker bounds at index ${cfg.head}`
+      };
+    }
+
+    const sym = tape[cfg.head];
     const matching = getTwoWayMatchingTransitions(cfg.state, sym);
     if (!matching.length) {
       return {
@@ -763,9 +770,18 @@ function explore2DFA(tokens) {
     }
 
     const t = matching[0];
+    const nextHead = cfg.head + headMoveDelta(t.dir);
+    if (nextHead < 0 || nextHead >= tape.length) {
+      const boundSym = nextHead < 0 ? '⊢' : '⊣';
+      return {
+        accepted: false,
+        path,
+        finalNote: `Transition on '${sym}' attempted to move outside ${boundSym} bound.`
+      };
+    }
     path.push({
       state: t.to,
-      head: cfg.head + headMoveDelta(t.dir),
+      head: nextHead,
       depth: cfg.depth + 1,
       branch: cfg.branch,
       parent: cfg,
@@ -789,6 +805,7 @@ function sim2DFA(tokens) {
 }
 
 function explore2NFA(tokens) {
+  const tape = buildMarkedInputTape(tokens);
   const init = { state: App.startId, head: 0, depth: 0, branch: 1, parent: null, via: null };
   const queue = [init];
   const visited = new Set([`${init.state}|${init.head}`]);
@@ -804,23 +821,26 @@ function explore2NFA(tokens) {
     branches++;
     maxDepth = Math.max(maxDepth, cfg.depth);
 
-    if (isHeadOutOfInput(tokens, cfg.head)) {
-      if (App.accepts.has(cfg.state)) {
-        acceptedCfg = cfg;
-        break;
-      }
+    if (App.accepts.has(cfg.state)) {
+      acceptedCfg = cfg;
+      break;
+    }
+
+    if (cfg.head < 0 || cfg.head >= tape.length) {
       continue;
     }
 
-    const sym = tokens[cfg.head];
+    const sym = tape[cfg.head];
     const matching = getTwoWayMatchingTransitions(cfg.state, sym);
     if (!matching.length) continue;
 
     matching.forEach((t, idx) => {
       const childBranch = matching.length === 1 || idx === 0 ? cfg.branch : nextBranchId++;
+      const nextHead = cfg.head + headMoveDelta(t.dir);
+      if (nextHead < 0 || nextHead >= tape.length) return;
       const nextCfg = {
         state: t.to,
-        head: cfg.head + headMoveDelta(t.dir),
+        head: nextHead,
         depth: cfg.depth + 1,
         branch: childBranch,
         parent: cfg,
@@ -847,7 +867,7 @@ function explore2NFA(tokens) {
 function sim2NFA(tokens) {
   const result = explore2NFA(tokens);
   const finalNote = result.accepted
-    ? `Head moved outside input bounds at index ${result.finalCfg.head}`
+    ? `Accepted in state ${getState(result.finalCfg.state)?.name || result.finalCfg.state}`
     : (result.unresolved
       ? `Exploration limit ${App.config.maxTmSteps} reached — unresolved branches remain`
       : 'All branches halted without acceptance');
@@ -1021,9 +1041,10 @@ function simFST(tokens) {
 function simLBA(tokens) {
   App.simSteps = [];
   const blank = App.config.sym.blank;
-  const tape = tokens.length ? [...tokens] : [blank];
+  const tape = buildMarkedInputTape(tokens);
   const leftBound = 0;
   const rightBound = tape.length - 1;
+  const { leftMarker, rightMarker } = App.config.sym;
   let head = 0;
   let state = App.startId;
 
@@ -1042,16 +1063,17 @@ function simLBA(tokens) {
       break;
     }
     const writeSym = (!t.write || t.write === App.config.sym.any) ? sym : t.write;
-    tape[head] = writeSym;
+    tape[head] = (sym === leftMarker || sym === rightMarker) ? sym : writeSym;
     const nextHead = head + headMoveDelta(t.dir);
     state = t.to;
     if (nextHead < leftBound || nextHead > rightBound) {
+      const boundSym = nextHead < leftBound ? '⊢' : '⊣';
       App.simSteps.push({
         state,
         tokens,
         tape: [...tape],
         head,
-        note: `Attempted to move outside LBA bounds [${leftBound}, ${rightBound}] — REJECT`,
+        note: `Attempted to move outside ${boundSym} bound. — REJECT`,
         final: 'reject'
       });
       break;

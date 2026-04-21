@@ -5,8 +5,8 @@ const MachineTypes = {
   'DFA': { label: 'DFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-dfa', file: 'dfa' },
   'NFA': { label: 'NFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-nfa', file: 'nfa' },
   'ε-NFA': { label: 'ε-NFA', category: 'fa', implemented: true, hasEpsilon: true, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-enfa', file: 'enfa' },
-  '2DFA': { label: '2DFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-2dfa', file: 'twdfa' },
-  '2NFA': { label: '2NFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-2nfa', file: 'twnfa' },
+  '2DFA': { label: '2DFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, hasEndMarkers: true, isTransducer: false, badge: 'bd-2dfa', file: 'twdfa' },
+  '2NFA': { label: '2NFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, hasEndMarkers: true, isTransducer: false, badge: 'bd-2nfa', file: 'twnfa' },
 
   'DPDA': { label: 'DPDA', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-dpda', file: 'pda' },
   'NPDA': { label: 'NPDA', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-npda', file: 'npda' },
@@ -17,7 +17,7 @@ const MachineTypes = {
   'TM': { label: 'TM (DTM)', category: 'tm', implemented: true, hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-tm', file: 'tm' },
   'NDTM': { label: 'NDTM', category: 'tm', implemented: true, hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-ndtm', file: 'ndtm' },
   'MTM': { label: 'MTM', category: 'tm', implemented: true, hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-mtm', file: 'mtm' },
-  'LBA': { label: 'LBA', category: 'tm', implemented: true, hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-lba', file: 'lba' },
+  'LBA': { label: 'LBA', category: 'tm', implemented: true, hasEpsilon: true, hasStack: true, hasTape: true, hasEndMarkers: true, isTransducer: false, badge: 'bd-lba', file: 'lba' },
   'ITM': { label: '2-Way Infinite TM', category: 'tm', implemented: true, hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-itm', file: 'ittm' },
 
   'Moore': { label: 'Moore', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-moore', file: 'moore' },
@@ -57,7 +57,7 @@ const App = {
     zoom: { min: 0.2, max: 3, step: 0.1 },
     layout: { minRadius: 80, nodeSpacing: 35 },
     gridSnap: 20,
-    sym: { eps: 'ε', any: 'Σ', blank: '⊔', stackBottom: 'Z', lambda: 'λ' },
+    sym: { eps: 'ε', any: 'Σ', blank: '⊔', leftMarker: '⊢', rightMarker: '⊣', stackBottom: 'Z', lambda: 'λ' },
     pdaParadigm: 'explicit',
     statePrefix: 'q',
     render: {
@@ -173,7 +173,12 @@ function importWorkspaceState(data) {
     App.grammar = { vars: new Set(['S']), start: 'S', productions: [] };
   }
   if (data.config) {
-    App.config = { ...App.config, ...data.config };
+    const { sym, ...loadedConfig } = data.config;
+    App.config = { ...App.config, ...loadedConfig, sym: { ...App.config.sym, ...(sym || {}) } };
+  }
+
+  if (typeof normalizeBoundarySymbolsForMachine === 'function') {
+    normalizeBoundarySymbolsForMachine(App.machine);
   }
 }
 
@@ -181,7 +186,7 @@ function importWorkspaceState(data) {
 //  STATE MIGRATIONS
 // ══════════════════════════════════════════════════════════════════
 function migrateSystemSymbols(oldSyms, newSyms) {
-  const needsMigration = ['eps', 'any', 'blank', 'stackBottom'].some(k => oldSyms[k] !== newSyms[k]);
+  const needsMigration = ['eps', 'any', 'blank', 'stackBottom', 'leftMarker', 'rightMarker'].some(k => oldSyms[k] !== newSyms[k]);
   if (!needsMigration) return;
 
   App.transitions.forEach(t => {
@@ -189,6 +194,8 @@ function migrateSystemSymbols(oldSyms, newSyms) {
     if (t.symbol === oldSyms.eps) t.symbol = newSyms.eps;
     if (t.symbol === oldSyms.any) t.symbol = newSyms.any;
     if (t.symbol === oldSyms.blank) t.symbol = newSyms.blank;
+    if (t.symbol === oldSyms.leftMarker) t.symbol = newSyms.leftMarker;
+    if (t.symbol === oldSyms.rightMarker) t.symbol = newSyms.rightMarker;
     
     // Abstract mapping for PDA edge actions
     if (t.pop === oldSyms.eps) t.pop = newSyms.eps;
@@ -208,6 +215,8 @@ function migrateSystemSymbols(oldSyms, newSyms) {
     if (t.write === oldSyms.eps) t.write = newSyms.eps;
     if (t.write === oldSyms.any) t.write = newSyms.any;
     if (t.write === oldSyms.blank) t.write = newSyms.blank;
+    if (t.write === oldSyms.leftMarker) t.write = newSyms.leftMarker;
+    if (t.write === oldSyms.rightMarker) t.write = newSyms.rightMarker;
     
     if (t.tapeSyms) {
       t.tapeSyms = t.tapeSyms.map(s => s === oldSyms.eps ? newSyms.eps : s === oldSyms.any ? newSyms.any : s === oldSyms.blank ? newSyms.blank : s);

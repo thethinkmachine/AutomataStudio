@@ -333,6 +333,7 @@ function createTab(name) {
   
   renderTabs();
   renderAll();
+  if (typeof applyCamera === 'function') applyCamera();
   if (typeof updateLPanel === 'function') updateLPanel();
   if (typeof updateRPanel === 'function') updateRPanel();
   saveBackup();
@@ -373,6 +374,7 @@ function switchTab(id) {
 
   renderTabs();
   renderAll();
+  if (typeof applyCamera === 'function') applyCamera();
   if (typeof updateLPanel === 'function') updateLPanel();
   if (typeof updateRPanel === 'function') updateRPanel();
   saveBackup();
@@ -1408,6 +1410,8 @@ function openSettingsModal() {
   $('set-sym-eps').value = c.sym.eps;
   $('set-sym-any').value = c.sym.any;
   $('set-sym-blank').value = c.sym.blank;
+  $('set-sym-left').value = c.sym.leftMarker;
+  $('set-sym-right').value = c.sym.rightMarker;
   $('set-sym-z0').value = c.sym.stackBottom;
   
   if (typeof switchSettingsTab === 'function') switchSettingsTab('general');
@@ -1445,6 +1449,8 @@ function confirmSettings() {
   c.sym.eps = $('set-sym-eps').value || oldSyms.eps;
   c.sym.any = $('set-sym-any').value || oldSyms.any;
   c.sym.blank = $('set-sym-blank').value || oldSyms.blank;
+  c.sym.leftMarker = $('set-sym-left').value || oldSyms.leftMarker;
+  c.sym.rightMarker = $('set-sym-right').value || oldSyms.rightMarker;
   c.sym.stackBottom = $('set-sym-z0').value || oldSyms.stackBottom;
 
   if (typeof migrateSystemSymbols === 'function') {
@@ -1480,6 +1486,8 @@ function getEditorSettingsData() {
     symEps: c.sym.eps,
     symAny: c.sym.any,
     symBlank: c.sym.blank,
+    symLeft: c.sym.leftMarker,
+    symRight: c.sym.rightMarker,
     symZ0: c.sym.stackBottom
   };
 }
@@ -1528,5 +1536,7 @@ function populateSettingsModalInputs(data) {
   if (data.symEps !== undefined) $('set-sym-eps').value = data.symEps;
   if (data.symAny !== undefined) $('set-sym-any').value = data.symAny;
   if (data.symBlank !== undefined) $('set-sym-blank').value = data.symBlank;
+  if (data.symLeft !== undefined) $('set-sym-left').value = data.symLeft;
+  if (data.symRight !== undefined) $('set-sym-right').value = data.symRight;
   if (data.symZ0 !== undefined) $('set-sym-z0').value = data.symZ0;
 }

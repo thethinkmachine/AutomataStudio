@@ -840,41 +840,108 @@ test('workspace validation accepts newly added machine types', () => {
   assert.doesNotThrow(() => h.context.validateSchema({ ...base, machine: 'FST', outputAlpha: ['0', '1'] }));
 });
 
-test('2DFA accepts when the head exits the input in an accepting state', () => {
+test('transition modal exposes reserved endmarkers for marker-based machines', () => {
+  const h = createHarness();
+
+  configureAppMachine(h, {
+    machine: '2DFA',
+    sigma: ['a', 'b'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1')],
+    transitions: [],
+    startId: 's0',
+    accepts: []
+  });
+  h.context.populateTransitionModal(null);
+  const twoWayHtml = h.getElement('m-sym').innerHTML;
+  assert.match(twoWayHtml, /⊢/);
+  assert.match(twoWayHtml, /⊣/);
+  assert.doesNotMatch(twoWayHtml, /⊔/);
+
+  configureAppMachine(h, {
+    machine: 'LBA',
+    sigma: ['a', 'b'],
+    stackAlpha: ['a', 'b', '⊔'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1')],
+    transitions: [],
+    startId: 's0',
+    accepts: [],
+    tapeCount: 1
+  });
+  h.context.populateTransitionModal(null);
+  const lbaHtml = h.getElement('m-sym').innerHTML;
+  assert.match(lbaHtml, /⊢/);
+  assert.match(lbaHtml, /⊣/);
+  assert.match(lbaHtml, /⊔/);
+});
+
+test('workspace import normalizes boundary symbols for LBA', () => {
+  const h = createHarness();
+  h.context.importWorkspaceState({
+    machine: 'LBA',
+    sigma: ['a', '⊢', '⊣'],
+    stackAlpha: ['a', '⊔'],
+    outputAlpha: ['0'],
+    tapeCount: 1,
+    states: [],
+    transitions: [],
+    startId: null,
+    accepts: [],
+    config: {
+      sym: { eps: 'ε', any: 'Σ', blank: '⊔', stackBottom: 'Z', lambda: 'λ' }
+    }
+  });
+  assert.equal(h.context.App.sigma.has('⊢'), false);
+  assert.equal(h.context.App.sigma.has('⊣'), false);
+  assert.equal(h.context.App.stackAlpha.has('⊢'), true);
+  assert.equal(h.context.App.stackAlpha.has('⊣'), true);
+});
+
+test('2DFA accepts when the right boundary marker is reached in an accepting state', () => {
   const h = createHarness();
   configureAppMachine(h, {
     machine: '2DFA',
     sigma: ['a'],
-    states: [makeState('s0', 'q0'), makeState('s1', 'qa')],
+    states: [makeState('s0', 'q0'), makeState('s1', 'scan'), makeState('s2', 'qa')],
     transitions: [
-      { id: 't0', from: 's0', to: 's1', symbol: 'a', dir: 'R' }
+      { id: 't0', from: 's0', to: 's1', symbol: '⊢', dir: 'R' },
+      { id: 't1', from: 's1', to: 's1', symbol: 'a', dir: 'R' },
+      { id: 't2', from: 's1', to: 's2', symbol: '⊣', dir: 'S' }
     ],
     startId: 's0',
-    accepts: ['s1']
+    accepts: ['s2']
   });
 
   const result = h.context.sim2DFA(['a']);
   assert.equal(result.accepted, true);
   assert.equal(h.context.App.simSteps.at(-1).final, 'accept');
+  assert.equal(h.context.App.simSteps[0].tape[0], '⊢');
+  assert.equal(h.context.App.simSteps[0].tape.at(-1), '⊣');
 });
 
-test('2NFA accepts if any branch exits input in an accepting state', () => {
+test('2NFA accepts if any branch reaches the accepting boundary marker', () => {
   const h = createHarness();
   configureAppMachine(h, {
     machine: '2NFA',
     sigma: ['a'],
-    states: [makeState('s0', 'q0'), makeState('s1', 'qa')],
+    states: [makeState('s0', 'q0'), makeState('s1', 'scan'), makeState('s2', 'found'), makeState('s3', 'qa')],
     transitions: [
-      { id: 't0', from: 's0', to: 's0', symbol: 'a', dir: 'R' },
-      { id: 't1', from: 's0', to: 's1', symbol: 'a', dir: 'R' }
+      { id: 't0', from: 's0', to: 's1', symbol: '⊢', dir: 'R' },
+      { id: 't1', from: 's1', to: 's1', symbol: 'b', dir: 'R' },
+      { id: 't2', from: 's1', to: 's1', symbol: 'a', dir: 'R' },
+      { id: 't3', from: 's1', to: 's2', symbol: 'a', dir: 'R' },
+      { id: 't4', from: 's2', to: 's2', symbol: 'a', dir: 'R' },
+      { id: 't5', from: 's2', to: 's2', symbol: 'b', dir: 'R' },
+      { id: 't6', from: 's2', to: 's3', symbol: '⊣', dir: 'S' }
     ],
     startId: 's0',
-    accepts: ['s1']
+    accepts: ['s3']
   });
 
-  const result = h.context.sim2NFA(['a']);
+  const result = h.context.sim2NFA(['b', 'a']);
   assert.equal(result.accepted, true);
   assert.equal(h.context.App.simSteps.at(-1).final, 'accept');
+  assert.equal(h.context.App.simSteps[0].tape[0], '⊢');
+  assert.equal(h.context.App.simSteps[0].tape.at(-1), '⊣');
 });
 
 test('counter machine accepts matched increment and decrement steps', () => {
@@ -934,21 +1001,21 @@ test('2-stack PDA transitions require second-stack pop conditions', () => {
   assert.equal(result.accepted, false);
 });
 
-test('LBA rejects transitions that move outside initial tape bounds', () => {
+test('LBA rejects transitions that move past the boundary markers', () => {
   const h = createHarness();
   configureAppMachine(h, {
     machine: 'LBA',
     sigma: ['a'],
     states: [makeState('s0', 'q0')],
     transitions: [
-      { id: 't0', from: 's0', to: 's0', symbol: 'a', write: 'a', dir: 'R' }
+      { id: 't0', from: 's0', to: 's0', symbol: '⊢', write: '⊢', dir: 'L' }
     ],
     startId: 's0',
     accepts: []
   });
   h.context.simLBA(['a']);
   assert.equal(h.context.App.simSteps.at(-1).final, 'reject');
-  assert.match(h.context.App.simSteps.at(-1).note, /LBA bounds/);
+  assert.match(h.context.App.simSteps.at(-1).note, /LBA bounds|boundary/);
 });
 
 test('infinite-tape TM can move left of index zero and continue', () => {

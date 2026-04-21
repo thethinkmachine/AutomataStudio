@@ -192,11 +192,20 @@ function loadData(d, isExample) {
   }
   if (d.config) {
     // Drop any legacy theme or presentation properties that might be in old files
-    const { theme, export: exp, exportRes, pdaParadigm, ...loadedConfig } = d.config;
-    App.config = { ...App.config, ...loadedConfig, pdaParadigm: pdaParadigm || 'explicit' };
+    const { theme, export: exp, exportRes, pdaParadigm, sym, ...loadedConfig } = d.config;
+    App.config = {
+      ...App.config,
+      ...loadedConfig,
+      sym: { ...App.config.sym, ...(sym || {}) },
+      pdaParadigm: pdaParadigm || 'explicit'
+    };
   }
   else { migrateLegacySymbols(d); }
   if (d.cam) { App.cam = { ...d.cam }; }
+
+  if (typeof normalizeBoundarySymbolsForMachine === 'function') {
+    normalizeBoundarySymbolsForMachine(App.machine);
+  }
 
   // Update view without confirm bypass
   if (typeof applyMachineSwitch === 'function') {
@@ -263,8 +272,13 @@ function loadBackup() {
     if (loaded.tabs && Array.isArray(loaded.tabs)) {
       if (loaded.config) {
         // Hydrate config safely preserving theme/defaults
-        const { theme, export: exp, exportRes, pdaParadigm, ...loadedConfig } = loaded.config;
-        App.config = { ...App.config, ...loadedConfig, pdaParadigm: pdaParadigm || 'explicit' };
+          const { theme, export: exp, exportRes, pdaParadigm, sym, ...loadedConfig } = loaded.config;
+          App.config = {
+            ...App.config,
+            ...loadedConfig,
+            sym: { ...App.config.sym, ...(sym || {}) },
+            pdaParadigm: pdaParadigm || 'explicit'
+          };
       }
       
       Workspaces = loaded.tabs;

@@ -3,10 +3,20 @@
 // ══════════════════════════════════════════════════════════════════
 function addSym() {
   const v = $('sym-in').value.trim(); if (!v) return;
-  v.split(/[,\s]+/).forEach(s => { if (s) App.sigma.add(s); });
+    const blocked = [];
+    v.split(/[,\s]+/).forEach(s => {
+      if (!s) return;
+      if (isBoundarySymbol(s)) { blocked.push(s); return; }
+      App.sigma.add(s);
+    });
   $('sym-in').value = ''; renderSigma(); updateRPanel(); renderGramSyms();
+    if (blocked.length && typeof showStatus === 'function') showStatus('Boundary markers are reserved and cannot be added to Σ.');
 }
-function delSym(s) { App.sigma.delete(s); renderSigma(); renderGramSyms(); }
+  function delSym(s) { 
+    App.sigma.delete(s); 
+    renderSigma(); 
+    renderGramSyms(); 
+  }
 function renderSigma() {
   const c = $('sigma-chips');
   c.innerHTML = [...App.sigma].map(s => `<div class="chip">${s}<span class="x" onclick="delSym('${s}')">×</span></div>`).join('')
@@ -15,15 +25,29 @@ function renderSigma() {
 }
 function addGSym() {
   const v = $('gsym-in').value.trim(); if (!v) return;
-  v.split(/[,\s]+/).forEach(s => { if (s) App.stackAlpha.add(s); });
+    const blocked = [];
+    v.split(/[,\s]+/).forEach(s => {
+      if (!s) return;
+      if (isBoundarySymbol(s)) { blocked.push(s); return; }
+      App.stackAlpha.add(s);
+    });
   $('gsym-in').value = ''; renderGamma();
+    if (blocked.length && typeof showStatus === 'function') showStatus('Boundary markers are reserved for the tape boundary and were not added here.');
 }
-function delGSym(s) { App.stackAlpha.delete(s); renderGamma(); }
+  function delGSym(s) { 
+    if (isBoundaryTapeMachine(App.machine) && isBoundarySymbol(s)) return; 
+    App.stackAlpha.delete(s); 
+    renderGamma(); 
+  }
 function renderGamma() {
   const c = $('gamma-chips');
-  c.innerHTML = [...App.stackAlpha].map(s => 
-    `<div class="chip" ${s === App.config.sym.stackBottom ? 'style="color:var(--green)"' : ''}>${s}${s === App.config.sym.stackBottom ? '' : `<span class="x" onclick="delGSym('${s}')">×</span>`}</div>`
-  ).join('') || '<div class="empty-msg">Add symbols</div>';
+    c.innerHTML = [...App.stackAlpha].map(s => {
+      const isBottom = s === App.config.sym.stackBottom;
+      const isBoundary = isBoundaryTapeMachine(App.machine) && isBoundarySymbol(s);
+      const style = isBottom ? 'style="color:var(--green)"' : (isBoundary ? 'style="color:var(--gold)"' : '');
+      const title = isBoundary ? ` title="${s === App.config.sym.leftMarker ? 'Left boundary marker' : 'Right boundary marker'}"` : '';
+      return `<div class="chip" ${style}${title}>${s}${(isBottom || isBoundary) ? '' : `<span class="x" onclick="delGSym('${s}')">×</span>`}</div>`;
+    }).join('') || '<div class="empty-msg">Add symbols</div>';
   if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
 function addOutSym() {

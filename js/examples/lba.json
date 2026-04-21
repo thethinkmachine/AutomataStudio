@@ -5,22 +5,24 @@
     "b"
   ],
   "stackAlpha": [
+    "⊢",
     "a",
     "b",
-    "⊔"
+    "⊔",
+    "⊣"
   ],
   "tapeCount": 1,
   "states": [
     {
       "id": "s1",
-      "x": 180,
-      "y": 220,
+      "x": 200,
+      "y": 200,
       "name": "scan"
     },
     {
       "id": "s2",
-      "x": 460,
-      "y": 220,
+      "x": 400,
+      "y": 200,
       "name": "acc"
     }
   ],
@@ -33,12 +35,20 @@
       "id": "t1",
       "from": "s1",
       "to": "s1",
+      "symbol": "⊢",
+      "write": "⊢",
+      "dir": "R"
+    },
+    {
+      "id": "t2",
+      "from": "s1",
+      "to": "s1",
       "symbol": "a",
       "write": "a",
       "dir": "R"
     },
     {
-      "id": "t2",
+      "id": "t3",
       "from": "s1",
       "to": "s2",
       "symbol": "b",

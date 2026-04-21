@@ -474,20 +474,16 @@ function updateFormalDef() {
     txt += `q_0 &= ${q0_str} \\\\`;
     txt += `F &= ${F_str} \\\\`;
     txt += `\\delta &: Q \\times ${mapDom} \\to ${codomain}`;
-  } else if (m === '2DFA') {
+  } else if (m === '2DFA' || m === '2NFA') {
+    const left = App.config.sym.leftMarker;
+    const right = App.config.sym.rightMarker;
+    const codomain = m === '2DFA' ? 'Q \\times \\{L, R, S\\}' : '\\mathcal{P}(Q \\times \\{L, R, S\\})';
     txt += `M &= (Q, \\Sigma, \\delta, q_0, F) \\\\`;
     txt += `Q &= ${Q_str} \\\\`;
     txt += `\\Sigma &= ${S_str} \\\\`;
     txt += `q_0 &= ${q0_str} \\\\`;
     txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times \\Sigma \\to Q \\times \\{L, R, S\\}`;
-  } else if (m === '2NFA') {
-    txt += `M &= (Q, \\Sigma, \\delta, q_0, F) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times \\Sigma \\to \\mathcal{P}(Q \\times \\{L, R, S\\})`;
+    txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${left}, ${right}\\}) \\to ${codomain} \\\\`;
   } else if (m === 'QA') {
     const G_str = formatSet([...App.stackAlpha]);
     const eps = '\\varepsilon';
@@ -633,11 +629,11 @@ function updateFormalDef() {
 function updateRegex() {
   const rb = $('regex-box'), m = App.machine;
   let txt = '';
-  if (m === '2DFA' || m === '2NFA') { txt = '\\text{Regular Language (Two-Way Head Motion)}'; }
+    if (m === '2DFA' || m === '2NFA') { txt = '\\text{Regular Language (Two-Way Head Motion with Endmarkers)}'; }
   else if (m === 'QA') { txt = '\\text{Queue Automaton Language Family}'; }
   else if (m === 'Counter') { txt = '\\text{Counter Language Family}'; }
   else if (m === '2PDA') { txt = '\\text{Two-Stack PDA (TM-Equivalent Power)}'; }
-  else if (m === 'LBA') { txt = '\\text{Context-Sensitive Language}'; }
+  else if (m === 'LBA') { txt = '\\text{Context-Sensitive Language (Endmarked Tape)}'; }
   else if (m === 'ITM') { txt = '\\text{Recursively Enumerable Language}'; }
   else if (isAnyPDA(m)) { txt = '\\text{Context-Free Language}'; }
   else if (isAnyTM(m)) { txt = '\\text{Recursively Enumerable Language}'; }

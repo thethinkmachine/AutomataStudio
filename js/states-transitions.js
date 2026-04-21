@@ -64,7 +64,8 @@ function buildTransitionPicker(transitions, selectedId) {
 function populateTransitionModal(t) {
   const cfg = getMachineConfig(App.machine);
   const { eps, any, blank } = App.config.sym;
-  const syms = [...new Set([...(cfg.hasEpsilon ? [eps] : []), any, ...App.sigma, ...(cfg.hasTape ? [blank] : [])])];
+  const markers = cfg.hasEndMarkers ? [App.config.sym.leftMarker, App.config.sym.rightMarker] : [];
+  const syms = [...new Set([...(cfg.hasEpsilon ? [eps] : []), any, ...App.sigma, ...markers, ...(cfg.hasTape ? [blank] : [])])];
 
   const fromSel = $('m-from');
   const toSel = $('m-to');
@@ -255,6 +256,18 @@ function confirmTrans() {
 
   if (!cfg.hasEpsilon && sym === eps) {
     showStatus(`${App.machine} cannot have epsilon-transitions.`); return;
+  }
+  if (cfg.hasEndMarkers && isBoundarySymbol(sym)) {
+    const { leftMarker, rightMarker } = App.config.sym;
+    if (sym === leftMarker && values.dir === 'L') {
+      showStatus(`${App.machine} cannot move left of the left boundary marker.`); return;
+    }
+    if (sym === rightMarker && values.dir === 'R') {
+      showStatus(`${App.machine} cannot move right of the right boundary marker.`); return;
+    }
+    if (App.machine === 'LBA' && values.write !== sym) {
+      showStatus('LBA boundary markers are fixed and must be preserved on write.'); return;
+    }
   }
   if (App.machine === 'TM' || App.machine === 'LBA' || App.machine === 'ITM' || App.machine === '2DFA') {
     const conflict = App.transitions.find(t => t.id !== editId && t.from === from && t.symbol === sym);
