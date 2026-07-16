@@ -66,7 +66,7 @@
         </svg>Redo
       </button>
       <div class="hdr-sep"></div>
-      <button class="hbtn" onclick="exportPNG()" title="Save as Smart PNG (Data Included)">
+      <button class="hbtn" id="save-btn" onclick="toggleSaveMenu(event)" title="Export workspace">
         <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
           <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
           <rect x="5" y="2.5" width="6" height="4" rx="0.5" />
@@ -1258,6 +1258,13 @@
     <div class="ctx-i ctx-edge" onclick="ctxDuplicateTrans()">⧉ Duplicate/Add Parallel Transition</div>
     <div class="ctx-i ctx-edge" onclick="ctxReverseTrans()">⇄ Reverse Direction</div>
     <div class="ctx-i ctx-edge danger" onclick="ctxDeleteTrans()">✕ Delete Transition(s)</div>
+  </div>
+
+  <!-- ══════ SAVE MENU ══════ -->
+  <div class="ctx" id="save-menu">
+    <div class="ctx-i" onclick="hideSaveMenu(); exportPNG()">▧ Export as Photo (PNG)</div>
+    <div class="ctx-i" onclick="hideSaveMenu(); saveJSON()">{ } Export as JSON</div>
+    <div class="ctx-i" onclick="hideSaveMenu(); copyShareableLink()">↗ Copy Shareable Link</div>
   </div>
 
 

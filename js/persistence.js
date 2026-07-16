@@ -38,6 +38,22 @@ function saveJSON() {
   showStatus('Saved as JSON!');
 }
 
+function toggleSaveMenu(e) {
+  e.stopPropagation();
+  const m = $('save-menu');
+  if (!m) return;
+  if (m.style.display === 'block') { hideSaveMenu(); return; }
+  const r = e.currentTarget.getBoundingClientRect();
+  m.style.display = 'block';
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - 248)) + 'px';
+  m.style.top = (r.bottom + 6) + 'px';
+}
+function hideSaveMenu() {
+  const m = $('save-menu');
+  if (m) m.style.display = 'none';
+}
+document.addEventListener('click', () => hideSaveMenu());
+
 function loadJSON() { $('file-input').click(); }
 
 function handleFiles(files) {
@@ -94,6 +110,65 @@ window.addEventListener('drop', e => {
   e.preventDefault();
   handleFiles(e.dataTransfer.files);
 });
+
+// ══════════════════════════════════════════════════════════════════
+//  SHAREABLE LINK
+// ══════════════════════════════════════════════════════════════════
+// Unicode-safe base64url codec (plain btoa/atob choke on non-Latin1 chars
+// like the ε symbols that show up in every workspace's config).
+function b64UrlEncodeUnicode(str) {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  bytes.forEach(b => binary += String.fromCharCode(b));
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64UrlDecodeUnicode(b64url) {
+  let b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  while (b64.length % 4) b64 += '=';
+  const binary = atob(b64);
+  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+const SHARE_HASH_PREFIX = '#share=';
+
+function getShareableLink() {
+  const encoded = b64UrlEncodeUnicode(JSON.stringify(getWorkspaceData()));
+  return `${location.origin}${location.pathname}${SHARE_HASH_PREFIX}${encoded}`;
+}
+
+function copyShareableLink() {
+  const url = getShareableLink();
+  const onCopied = () => showStatus('Shareable link copied to clipboard!');
+  const onFailed = () => window.prompt('Copy this link:', url);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(onCopied).catch(onFailed);
+  } else {
+    onFailed();
+  }
+}
+
+// Reads a #share=… link on page load and swaps it into the current workspace,
+// the same way dropping a JSON/PNG file does.
+function loadSharedLinkFromURL() {
+  if (!location.hash.startsWith(SHARE_HASH_PREFIX)) return false;
+  const encoded = location.hash.slice(SHARE_HASH_PREFIX.length);
+  // Strip the hash immediately so refreshing later doesn't re-import stale data
+  // over whatever the user has since built.
+  history.replaceState(null, '', location.pathname + location.search);
+  try {
+    const data = JSON.parse(b64UrlDecodeUnicode(encoded));
+    validateSchema(data);
+    loadData(data);
+    saveBackup();
+    showStatus('Loaded machine from shared link!');
+    return true;
+  } catch (err) {
+    console.error(err);
+    showStatus('Could not load the shared link — it may be corrupted or from an incompatible version.');
+    return false;
+  }
+}
 
 function validateSchema(data) {
   if (!data || typeof data !== 'object') throw new Error("Data must be a valid JSON object.");

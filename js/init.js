@@ -30,4 +30,5 @@ if (typeof loadBackup === 'function') {
 }
 if (Workspaces.length === 0) initTabs(); // Guard for fresh launch
 
-setTimeout(() => showStatus('Esc=Pointer · V=Pan · Space+Drag=Pan · S=State · T=Transition · H=Fit · Ctrl+Z=Undo'), 600);
+const _sharedLinkLoaded = typeof loadSharedLinkFromURL === 'function' && loadSharedLinkFromURL();
+setTimeout(() => showStatus('Esc=Pointer · V=Pan · Space+Drag=Pan · S=State · T=Transition · H=Fit · Ctrl+Z=Undo'), _sharedLinkLoaded ? 3200 : 600);
