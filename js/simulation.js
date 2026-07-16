@@ -1389,7 +1389,16 @@ function toggleAuto() {
 
 // ── Input history (↑ / ↓ recall previously-run strings) ──
 function handleSimInputKeydown(e) {
-  if (e.key === 'Enter') { e.preventDefault(); runSim(); return; }
+  if (typeof trySymSuggestKeydown === 'function' && trySymSuggestKeydown(e)) return;
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    // dismissSymSuggest (not hideSymSuggest) — Enter's keyup still fires
+    // after this keydown handler returns, and would otherwise pop the
+    // popover back open via the onkeyup caret-refresh handler.
+    if (typeof dismissSymSuggest === 'function') dismissSymSuggest();
+    runSim();
+    return;
+  }
   const hist = App.simInputHistory || [];
   if (!hist.length) return;
   if (e.key === 'ArrowUp') {

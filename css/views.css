@@ -794,6 +794,73 @@
   color: var(--red);
 }
 
+/* Σ symbol-suggest popover (Simulate / Batch Test inputs) */
+.inp.sim-input-err {
+  border-color: var(--red);
+  box-shadow: 0 0 0 2px var(--red-border);
+}
+
+.sym-suggest {
+  position: fixed;
+  display: none;
+  z-index: 800;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  padding: 8px;
+}
+
+.sym-suggest-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-height: 76px;
+  overflow-y: auto;
+}
+
+.sugg-chip {
+  appearance: none;
+  outline: none;
+  font-family: var(--mono);
+  line-height: normal;
+  cursor: pointer;
+  transition: all .12s;
+}
+
+.sugg-chip:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.sugg-chip.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sugg-chip.sugg-eps {
+  font-style: italic;
+}
+
+.sym-suggest-status {
+  font-family: var(--sans);
+  font-size: .65rem;
+  color: var(--text3);
+  margin-top: 6px;
+}
+
+.sym-suggest-status:empty {
+  display: none;
+  margin-top: 0;
+}
+
+.sym-suggest-status.err {
+  color: var(--red);
+  font-weight: 600;
+}
+
 /* ─── ALGORITHMS VIEW ─── */
 #v-algo {
   flex: 1;

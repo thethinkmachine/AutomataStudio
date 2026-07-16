@@ -485,7 +485,10 @@
               </div>
               <div class="rp-section-body">
                 <div class="sim-row">
-                  <input class="inp" id="sim-in" placeholder="ε" style="flex:1" onkeydown="handleSimInputKeydown(event)">
+                  <input class="inp" id="sim-in" placeholder="ε" style="flex:1" autocomplete="off"
+                    onkeydown="handleSimInputKeydown(event)" oninput="handleSymSuggestActive(this)"
+                    onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
+                    onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
                   <button class="run-btn" onclick="runSim()">
                     <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M4 2v12l9-6z"/></svg>
                   </button>
@@ -538,8 +541,11 @@
                 </svg>
               </div>
               <div class="rp-section-body" style="display:none">
-                <textarea class="batch-in" id="batch-in"
-                  placeholder="One string per line&#10;ε for empty string&#10;Optional: aab =&gt; accept"></textarea>
+                <textarea class="batch-in" id="batch-in" autocomplete="off"
+                  placeholder="One string per line&#10;ε for empty string&#10;Optional: aab =&gt; accept"
+                  onkeydown="handleBatchInputKeydown(event)" oninput="handleSymSuggestActive(this)"
+                  onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
+                  onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></textarea>
                 <button class="run-btn" style="width:100%;margin-bottom:6px;display:flex;align-items:center;justify-content:center;gap:6px" onclick="runBatch()">
                   <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M4 2v12l9-6z"/></svg> Test All
                 </button>
@@ -1337,6 +1343,12 @@
     <div class="ctx-i" onclick="hideSaveMenu(); copyShareableLink()">↗ Copy Shareable Link</div>
   </div>
 
+  <!-- ══════ Σ SYMBOL SUGGEST POPOVER (Simulate / Batch Test inputs) ══════ -->
+  <div class="sym-suggest" id="sym-suggest">
+    <div class="sym-suggest-chips" id="sym-suggest-chips"></div>
+    <div class="sym-suggest-status" id="sym-suggest-status"></div>
+  </div>
+
   <!-- ══════ CANVAS BACKGROUND CTX MENU ══════ -->
   <div class="ctx" id="canvas-ctx">
     <div class="ctx-i" onclick="ctxCanvasAddState()">✛ Add State Here</div>
@@ -1355,6 +1367,7 @@
   <script src="js/canvas.js"></script>
   <script src="js/render.js"></script>
   <script src="js/simulation.js"></script>
+  <script src="js/suggest.js"></script>
   <script src="js/persistence.js"></script>
   <script src="js/algorithms-fa.js"></script>
   <script src="js/algorithms-cfg.js"></script>
