@@ -9,20 +9,27 @@ try {
 renderSigma(); renderGamma(); renderGramSyms(); renderOutputAlpha();
 renderGrammarLPanel(); updateLPanel();
 App.stackAlpha = new Set([App.config.sym.stackBottom]);
+if ($('sim-speed-sel')) $('sim-speed-sel').value = String(App.config.autoSpeed);
 setMachine('DFA'); setTool('pointer'); setView('build');
 snapshot();
-// Attach minimap click navigation
-const _mmCanvas = $('minimap-canvas');
-if (_mmCanvas) _mmCanvas.addEventListener('click', minimapNavigate);
+// Attach minimap drag-to-navigate
+if (typeof initMinimapDrag === 'function') initMinimapDrag();
 // Restore localStorage preferences
 try {
   if (localStorage.getItem('automata-minimap') === '0') toggleMinimap();
   if (localStorage.getItem('automata-lpanel-pinned') === '0') toggleLPanelPin();
   if (localStorage.getItem('automata-rpanel-pinned') === '0') toggleRPanelPin();
+  const wz = localStorage.getItem('automata-wheel-zoom');
+  if (wz !== null) App.config.wheelZoom = wz === '1';
+  if (localStorage.getItem('automata-snap-grid') === '1') toggleSnapToGrid(true);
+  if (typeof initToolbarCollapse === 'function') initToolbarCollapse();
 } catch (e) { }
 if (typeof initMobilePanels === 'function') initMobilePanels();
 if (typeof initLPanelSections === 'function') initLPanelSections();
+if (typeof initRPanelSections === 'function') initRPanelSections();
 if (typeof initPanelResizers === 'function') initPanelResizers();
+if (typeof initCanvasResizeObserver === 'function') initCanvasResizeObserver();
+if (typeof initDefBoxOverflowObserver === 'function') initDefBoxOverflowObserver();
 if (typeof loadBackup === 'function') {
   loadBackup();
 } else {

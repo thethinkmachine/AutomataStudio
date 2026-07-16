@@ -268,6 +268,39 @@
   border-color: var(--border2);
 }
 
+.si.sel {
+  border-color: var(--accent-border-strong);
+  background: var(--accent-soft);
+}
+
+.si-edit {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity .12s, background .12s, color .12s;
+}
+
+.si:hover .si-edit,
+.si:focus-within .si-edit {
+  opacity: 1;
+}
+
+.si-edit:hover {
+  background: var(--surface3);
+  color: var(--accent);
+}
+
 .si .dot {
   width: 6px;
   height: 6px;
@@ -275,7 +308,7 @@
   background: var(--gold);
   box-shadow: 0 0 5px var(--gold-border);
   display: none;
-  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .si.acc .dot {
@@ -312,16 +345,45 @@
   font-family: var(--mono);
   font-size: .67rem;
   color: var(--text2);
+  cursor: pointer;
+  transition: all .12s;
+  user-select: none;
+}
+
+.ti:hover {
+  border-color: var(--border2);
+}
+
+.ti.sel {
+  border-color: var(--accent-border-strong);
+  background: var(--accent-soft);
+}
+
+/* Long symbol names (whole-word alphabet entries) must never wrap the row
+   or clip off-panel — each segment truncates on its own, full text on hover. */
+.ti-from,
+.ti-to {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 3ch;
+  flex: 0 1 auto;
 }
 
 .ti .arr {
   color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 1.5em;
+  flex: 1 1 auto;
 }
 
 .ti .dx {
   margin-left: auto;
   cursor: pointer;
   color: var(--text3);
+  flex: 0 0 auto;
 }
 
 .ti .dx:hover {
@@ -387,6 +449,13 @@ body.panel-resizing * {
   cursor: col-resize !important;
 }
 
+/* The panel width transition is great for pin/unpin, but it makes an active
+   drag-resize visibly lag behind the cursor — disable it while dragging. */
+body.panel-resizing .lpanel,
+body.panel-resizing .rpanel {
+  transition: none !important;
+}
+
 
 /* ─── SIDEBAR COLLAPSE / PINNING ─── */
 .lpanel.unpinned {
@@ -396,27 +465,27 @@ body.panel-resizing * {
   height: 100%;
   z-index: 100;
   box-shadow: var(--panel-shadow-left);
-  transition-delay: 0.15s;
+  transition-delay: 0.1s;
 }
 
 .lpanel.unpinned:not(:hover) {
   width: 0;
   min-width: 0;
-  transition-delay: 0.4s;
-}
-
-.lpanel.unpinned .lpanel-content,
-.lpanel.unpinned .panel-footer {
-  transition: opacity var(--transition-base), visibility var(--transition-base);
   transition-delay: 0.15s;
 }
 
+.lpanel.unpinned .lpanel-content,
+.lpanel.unpinned .panel-header {
+  transition: opacity var(--transition-base), visibility var(--transition-base);
+  transition-delay: 0.1s;
+}
+
 .lpanel.unpinned:not(:hover) .lpanel-content,
-.lpanel.unpinned:not(:hover) .panel-footer {
+.lpanel.unpinned:not(:hover) .panel-header {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition-delay: 0.4s;
+  transition-delay: 0.15s;
 }
 
 .lpanel.unpinned::after {
@@ -430,14 +499,24 @@ body.panel-resizing * {
   z-index: 101;
 }
 
-.panel-footer {
-  padding: 8px 14px;
+.panel-header {
+  padding: 10px 14px;
   display: flex;
-  justify-content: flex-end;
-  border-top: 1px solid var(--border);
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
   background: var(--bg2);
   flex-shrink: 0;
   transition: opacity var(--transition-base), visibility var(--transition-base);
+}
+
+.panel-header-title {
+  font-family: var(--sans);
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--text2);
+  letter-spacing: .01em;
 }
 
 .pin-btn {
@@ -633,15 +712,15 @@ body.panel-resizing * {
   }
 
   .lpanel.unpinned .lpanel-content,
-  .lpanel.unpinned .panel-footer,
+  .lpanel.unpinned .panel-header,
   .lpanel.unpinned:not(:hover) .lpanel-content,
-  .lpanel.unpinned:not(:hover) .panel-footer {
+  .lpanel.unpinned:not(:hover) .panel-header {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
   }
 
-  .panel-footer {
+  .panel-header {
     padding: 8px 10px;
   }
 }

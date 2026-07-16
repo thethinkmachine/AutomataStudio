@@ -434,6 +434,10 @@ document.addEventListener('keydown', e => {
     if (e.key === 'z') { e.preventDefault(); undo(); }
     if (e.key === 'y' || e.key === 'Z') { e.preventDefault(); redo(); }
     if (e.key === 's') { e.preventDefault(); saveJSON(); }
+    if (e.key === 'a' || e.key === 'A') { e.preventDefault(); if (App.view === 'build') selectAllStates(); }
+    if (e.key === 'c' || e.key === 'C') { if (App.view === 'build') copySelection(); }
+    if (e.key === 'v' || e.key === 'V') { if (App.view === 'build') { e.preventDefault(); pasteClipboard(App._lastCanvasWorldPt || null); } }
+    if (e.key === 'd' || e.key === 'D') { if (App.view === 'build') { e.preventDefault(); duplicateSelection(); } }
     return;
   }
   if (e.key === 'v' || e.key === 'V') setTool('move');
@@ -443,7 +447,9 @@ document.addEventListener('keydown', e => {
   if (e.key === '=' || e.key === '+') { e.preventDefault(); zoomIn(); }
   if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut(); }
   if (e.key === 'd' || e.key === 'D') setTool('del');
-  if (e.key === 'x' || e.key === 'X') clearAll();
+  // Bare X previously cleared the entire canvas with no confirmation-free
+  // undo path — require Shift so a stray keypress can't wipe the workspace.
+  if ((e.key === 'x' || e.key === 'X') && e.shiftKey) clearAll();
   if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); }
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (App.selectedStates.size || App.selectedTransitions.size) {
@@ -464,17 +470,25 @@ document.addEventListener('keydown', e => {
     }
   }
   if (e.key === 'Escape') {
-    const anyModalOpen = document.querySelector('.overlay.show');
-    if (anyModalOpen) {
-      closeModal('trans-modal'); closeModal('state-modal'); closeModal('help-modal');
+    const openOverlay = document.querySelector('.overlay.show');
+    if (openOverlay) {
+      closeModal(openOverlay.id);
     } else {
+      App.selectedStates.clear();
+      App.selectedTransitions.clear();
+      document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
       App.transFrom = null; clearTempLine(); setTool('pointer');
     }
   }
-  if (e.key === 'ArrowRight' || e.key === 'Enter') {
+  if (e.key.startsWith('Arrow') && App.selectedStates.size && App.view === 'build') {
+    e.preventDefault();
+    const amt = e.shiftKey ? (App.config.gridSnap || 20) : 1;
+    const dx = e.key === 'ArrowRight' ? amt : e.key === 'ArrowLeft' ? -amt : 0;
+    const dy = e.key === 'ArrowDown' ? amt : e.key === 'ArrowUp' ? -amt : 0;
+    nudgeSelected(dx, dy);
+  } else if (e.key === 'ArrowRight' || e.key === 'Enter') {
     if (App.currentAlgo === 'utm') utmStepFwd(); else stepFwd();
-  }
-  if (e.key === 'ArrowLeft') {
+  } else if (e.key === 'ArrowLeft') {
     if (App.currentAlgo === 'utm') utmStepBack(); else stepBack();
   }
   if (e.key === ' ' && App.currentAlgo === 'utm') {
@@ -642,7 +656,7 @@ function fitToScreen(silent = false) {
   const bw = maxX - minX, bh = maxY - minY;
   const scaleX = (cw - pad * 2) / bw;
   const scaleY = (ch - pad * 2) / bh;
-  const z = Math.min(App.config.zoom.max, Math.min(scaleX, scaleY));
+  const z = Math.max(App.config.zoom.min, Math.min(App.config.zoom.max, Math.min(scaleX, scaleY)));
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
   App.cam.x = cw / 2 - cx * z;
   App.cam.y = ch / 2 - cy * z;
@@ -660,6 +674,116 @@ function fitToScreen(silent = false) {
 function autoFitLoadedMachine() {
   // Wait a tick so view switches and panel layout changes settle before fitting.
   setTimeout(() => fitToScreen(true), 50);
+}
+
+// ── Keep the diagram framed as the canvas area changes shape ──
+// (panel resize/pin/unpin, fullscreen toggle, browser window resize)
+function isMachineFullyVisible(vw, vh) {
+  if (!App.states.length) return false;
+  const R_PAD = App.config.radius + 4;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  App.states.forEach(s => {
+    minX = Math.min(minX, s.x - R_PAD); minY = Math.min(minY, s.y - R_PAD);
+    maxX = Math.max(maxX, s.x + R_PAD); maxY = Math.max(maxY, s.y + R_PAD);
+  });
+  const vpMinX = -App.cam.x / App.cam.z, vpMinY = -App.cam.y / App.cam.z;
+  const vpMaxX = (vw - App.cam.x) / App.cam.z, vpMaxY = (vh - App.cam.y) / App.cam.z;
+  return minX >= vpMinX && minY >= vpMinY && maxX <= vpMaxX && maxY <= vpMaxY;
+}
+
+let _lastCanvasSize = null;
+let _resizeWasFullyVisible = false;
+let _resizeSettleTimer = null;
+
+function notifyCanvasResize() {
+  const w = $('canvas-wrap');
+  if (!w) return;
+  const rect = w.getBoundingClientRect();
+  const newSize = { w: rect.width, h: rect.height };
+  const prev = _lastCanvasSize;
+  _lastCanvasSize = newSize;
+  if (!prev || !prev.w || !prev.h || !newSize.w || !newSize.h) return;
+  const dw = newSize.w - prev.w, dh = newSize.h - prev.h;
+  if (!dw && !dh) return;
+
+  if (!_resizeSettleTimer) {
+    // Start of a resize gesture — remember whether the whole diagram was in
+    // view, so the same framing can be restored once the resize settles.
+    _resizeWasFullyVisible = isMachineFullyVisible(prev.w, prev.h);
+  }
+  // Keep the world point at the viewport center fixed frame-to-frame instead
+  // of letting the camera silently drift while the canvas area is resizing.
+  App.cam.x += dw / 2;
+  App.cam.y += dh / 2;
+  applyCamera(true);
+
+  clearTimeout(_resizeSettleTimer);
+  _resizeSettleTimer = setTimeout(() => {
+    _resizeSettleTimer = null;
+    if (_resizeWasFullyVisible) fitToScreen(true);
+    else renderMinimap();
+  }, 150);
+}
+
+function initCanvasResizeObserver() {
+  const w = $('canvas-wrap');
+  if (!w || !('ResizeObserver' in window) || w._resizeObserverInit) return;
+  w._resizeObserverInit = true;
+  const rect = w.getBoundingClientRect();
+  _lastCanvasSize = { w: rect.width, h: rect.height };
+  new ResizeObserver(() => notifyCanvasResize()).observe(w);
+}
+
+function centerCameraOn(x, y, animate = true) {
+  const w = $('canvas-wrap'); if (!w) return;
+  App.cam.x = w.clientWidth / 2 - x * App.cam.z;
+  App.cam.y = w.clientHeight / 2 - y * App.cam.z;
+  if (animate) { $('cam-g').classList.add('cam-smooth'); w.classList.add('cam-smooth'); }
+  applyCamera();
+  if (animate) {
+    setTimeout(() => { $('cam-g').classList.remove('cam-smooth'); w.classList.remove('cam-smooth'); }, 250);
+  }
+}
+
+// ── Panel list ↔ canvas cross-highlighting ──
+function focusStateFromList(id) {
+  const s = getState(id); if (!s) return;
+  App.selectedStates = new Set([id]);
+  App.selectedTransitions.clear();
+  document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
+  const el = document.querySelector(`[data-id="${id}"]`);
+  if (el) el.classList.add('sel-st');
+  centerCameraOn(s.x, s.y, true);
+  updateLPanel();
+}
+
+function hlListHover(id, on) {
+  const el = document.querySelector(`[data-id="${id}"]`);
+  if (el) el.classList.toggle('list-hover-st', on);
+}
+
+function focusTransFromList(id) {
+  const t = getTransition(id); if (!t) return;
+  const from = getState(t.from), to = getState(t.to);
+  if (!from || !to) return;
+  App.selectedTransitions = new Set([id]);
+  App.selectedStates.clear();
+  document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
+  renderAll();
+  centerCameraOn((from.x + to.x) / 2, (from.y + to.y) / 2, true);
+  updateLPanel();
+}
+
+function hlTransListHover(fromId, toId, on) {
+  const el = document.querySelector(`[data-edge="${fromId}|${toId}"]`);
+  if (el) el.classList.toggle('list-hover-t', on);
+}
+
+function filterTransitions() {
+  const q = ($('trans-search')?.value || '').toLowerCase();
+  document.querySelectorAll('#trans-list .ti').forEach(el => {
+    el.style.display = (!q || el.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  });
 }
 
 function toggleFullscreen() {
@@ -751,7 +875,7 @@ function toggleMinimap() {
   try { localStorage.setItem('automata-minimap', hidden ? '0' : '1'); } catch (e) { }
 }
 
-function minimapNavigate(e) {
+function minimapNavigate(e, animate = true) {
   const canvas = $('minimap-canvas'); if (!canvas) return;
   if (!canvas._mmScale) return;
   const rect = canvas.getBoundingClientRect();
@@ -764,14 +888,42 @@ function minimapNavigate(e) {
   const w = $('canvas-wrap'); if (!w) return;
   App.cam.x = w.clientWidth / 2 - worldX * App.cam.z;
   App.cam.y = w.clientHeight / 2 - worldY * App.cam.z;
-  
-  $('cam-g').classList.add('cam-smooth');
-  w.classList.add('cam-smooth');
-  applyCamera();
-  setTimeout(() => {
-    $('cam-g').classList.remove('cam-smooth');
-    w.classList.remove('cam-smooth');
-  }, 250);
+
+  if (animate) { $('cam-g').classList.add('cam-smooth'); w.classList.add('cam-smooth'); }
+  applyCamera(true);
+  if (animate) {
+    setTimeout(() => {
+      $('cam-g').classList.remove('cam-smooth');
+      w.classList.remove('cam-smooth');
+    }, 250);
+  }
+}
+
+// Minimap viewport is draggable, not just click-to-jump.
+let _minimapDragging = false;
+function initMinimapDrag() {
+  const canvas = $('minimap-canvas');
+  if (!canvas || canvas._dragInit) return;
+  canvas._dragInit = true;
+  canvas.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    _minimapDragging = true;
+    canvas.classList.add('dragging');
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { }
+    minimapNavigate(e, false);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!_minimapDragging) return;
+    minimapNavigate(e, false);
+  });
+  const end = () => {
+    if (!_minimapDragging) return;
+    _minimapDragging = false;
+    canvas.classList.remove('dragging');
+    renderMinimap();
+  };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
 }
 
 function setTool(t) {
@@ -860,13 +1012,15 @@ function getToolbarDockFromPoint(pointerX, pointerY, wrapRect) {
   return distances.reduce((best, item) => item.value < best.value ? item : best).side;
 }
 
-function stripToolbarClone(root) {
-  if (!root) return;
+// A translucent ghost clone of the toolbar, positioned exactly where it will
+// land (same positioning math as the real dock, so it can't drift out of
+// sync) — shows the actual final shape/size/orientation, not just an edge.
+function stripToolbarPreviewClone(root) {
   root.removeAttribute('onclick');
   root.setAttribute('aria-hidden', 'true');
   root.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
   root.querySelectorAll('[onclick]').forEach(el => el.removeAttribute('onclick'));
-  root.querySelectorAll('button').forEach(btn => btn.tabIndex = -1);
+  root.querySelectorAll('button, input, select').forEach(el => { el.tabIndex = -1; });
 }
 
 function ensureToolbarPreview() {
@@ -877,16 +1031,48 @@ function ensureToolbarPreview() {
   if (preview) return preview;
   preview = toolbox.cloneNode(true);
   preview.id = 'toolbar-dock-preview';
+  preview.classList.remove('dragging');
   preview.classList.add('toolbar-preview');
-  stripToolbarClone(preview);
+  stripToolbarPreviewClone(preview);
   wrap.appendChild(preview);
   return preview;
+}
+
+function showToolbarPreview(dock, wrapRect) {
+  const preview = ensureToolbarPreview();
+  if (!preview) return;
+  positionToolbarNode(preview, dock, wrapRect);
+  preview.classList.add('visible');
 }
 
 function removeToolbarPreview() {
   const preview = $('toolbar-dock-preview');
   if (preview) preview.remove();
-  App.toolbarPreviewDock = null;
+}
+
+const TOOLBAR_COLLAPSE_KEY = 'automata-toolbar-collapsed';
+function toggleToolbarCollapsed(force) {
+  const toolbox = $('canvas-toolbox');
+  if (!toolbox) return;
+  App.toolbarCollapsed = force !== undefined ? !!force : !App.toolbarCollapsed;
+  toolbox.classList.toggle('collapsed', App.toolbarCollapsed);
+  try { localStorage.setItem(TOOLBAR_COLLAPSE_KEY, App.toolbarCollapsed ? '1' : '0'); } catch (e) { }
+  requestAnimationFrame(() => applyToolbarDock(false));
+}
+function initToolbarCollapse() {
+  let collapsed = false;
+  try { collapsed = localStorage.getItem(TOOLBAR_COLLAPSE_KEY) === '1'; } catch (e) { }
+  App.toolbarCollapsed = collapsed;
+  const toolbox = $('canvas-toolbox');
+  if (toolbox) toolbox.classList.toggle('collapsed', collapsed);
+  if (typeof applyToolbarDock === 'function') applyToolbarDock(false);
+}
+
+function computeToolbarRatio(side, pointerX, pointerY, wrapRect, box) {
+  const margin = TOOLBAR_MARGIN;
+  return side === 'left' || side === 'right'
+    ? clamp01((pointerY - box.height / 2 - margin) / Math.max(1, wrapRect.height - box.height - margin * 2))
+    : clamp01((pointerX - box.width / 2 - margin) / Math.max(1, wrapRect.width - box.width - margin * 2));
 }
 
 function positionToolbarNode(node, dock, wrapRect) {
@@ -934,24 +1120,6 @@ function positionToolbarNode(node, dock, wrapRect) {
   return box;
 }
 
-function updateToolbarDockPreview(pointerX, pointerY, wrapRect) {
-  const preview = ensureToolbarPreview();
-  if (!preview) return null;
-
-  const side = getToolbarDockFromPoint(pointerX, pointerY, wrapRect);
-  positionToolbarNode(preview, { side, ratio: 0.5 }, wrapRect);
-  const box = preview.getBoundingClientRect();
-  const margin = TOOLBAR_MARGIN;
-  const ratio = side === 'left' || side === 'right'
-    ? clamp01((pointerY - box.height / 2 - margin) / Math.max(1, wrapRect.height - box.height - margin * 2))
-    : clamp01((pointerX - box.width / 2 - margin) / Math.max(1, wrapRect.width - box.width - margin * 2));
-  const dock = { side, ratio };
-  positionToolbarNode(preview, dock, wrapRect);
-  preview.classList.add('visible');
-  App.toolbarPreviewDock = dock;
-  return dock;
-}
-
 function applyToolbarDock(persist = false) {
   const toolbox = $('canvas-toolbox');
   const w = $('canvas-wrap');
@@ -976,7 +1144,10 @@ function initToolbarDock() {
   if (!grip || grip._toolbarDockInit) return;
   grip._toolbarDockInit = true;
 
-  grip.addEventListener('mousedown', e => {
+  // A click on the grip toggles collapse; a drag past a small threshold
+  // redocks the toolbar. Pointer capture keeps tracking even if the
+  // pointer leaves the grip element mid-drag.
+  grip.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;
     const toolbox = $('canvas-toolbox');
     const w = $('canvas-wrap');
@@ -986,25 +1157,33 @@ function initToolbarDock() {
     App.toolbarDragging = {
       grabX: e.clientX - box.left,
       grabY: e.clientY - box.top,
-      side: App.toolbarDock?.side || 'left'
+      startX: e.clientX,
+      startY: e.clientY,
+      moved: false
     };
     App.toolbarPreviewDock = null;
-    ensureToolbarPreview();
-    toolbox.classList.add('dragging');
+    try { grip.setPointerCapture(e.pointerId); } catch (err) { }
     e.preventDefault();
     e.stopPropagation();
   });
 
-  document.addEventListener('mousemove', e => {
-    if (!App.toolbarDragging) return;
+  grip.addEventListener('pointermove', e => {
+    const dragging = App.toolbarDragging;
+    if (!dragging) return;
     const toolbox = $('canvas-toolbox');
     const w = $('canvas-wrap');
     if (!toolbox || !w) return;
 
+    if (!dragging.moved) {
+      if (Math.hypot(e.clientX - dragging.startX, e.clientY - dragging.startY) < 4) return;
+      dragging.moved = true;
+      toolbox.classList.add('dragging');
+    }
+
     const wrapRect = w.getBoundingClientRect();
     const margin = TOOLBAR_MARGIN;
-    const left = e.clientX - wrapRect.left - App.toolbarDragging.grabX;
-    const top = e.clientY - wrapRect.top - App.toolbarDragging.grabY;
+    const left = e.clientX - wrapRect.left - dragging.grabX;
+    const top = e.clientY - wrapRect.top - dragging.grabY;
     const pointerX = e.clientX - wrapRect.left;
     const pointerY = e.clientY - wrapRect.top;
     toolbox.style.left = `${left}px`;
@@ -1013,29 +1192,34 @@ function initToolbarDock() {
     toolbox.style.bottom = 'auto';
     toolbox.style.transform = 'none';
     toolbox.style.maxWidth = `${Math.max(120, wrapRect.width - margin * 2)}px`;
-    toolbox.classList.add('dragging');
-    updateToolbarDockPreview(pointerX, pointerY, wrapRect);
+
+    const side = getToolbarDockFromPoint(pointerX, pointerY, wrapRect);
+    const box = toolbox.getBoundingClientRect();
+    const ratio = computeToolbarRatio(side, pointerX, pointerY, wrapRect, box);
+    App.toolbarPreviewDock = { side, ratio };
+    showToolbarPreview({ side, ratio }, wrapRect);
   });
 
-  document.addEventListener('mouseup', e => {
-    if (!App.toolbarDragging) return;
+  const finishGripInteraction = e => {
+    const dragging = App.toolbarDragging;
+    if (!dragging) return;
     const toolbox = $('canvas-toolbox');
-    const w = $('canvas-wrap');
-    if (!toolbox || !w) {
-      App.toolbarDragging = null;
-      removeToolbarPreview();
+    App.toolbarDragging = null;
+    removeToolbarPreview();
+    try { grip.releasePointerCapture(e.pointerId); } catch (err) { }
+
+    if (!dragging.moved) {
+      toggleToolbarCollapsed();
       return;
     }
-
-    const wrapRect = w.getBoundingClientRect();
+    if (toolbox) toolbox.classList.remove('dragging');
     const dock = App.toolbarPreviewDock || { side: App.toolbarDock?.side || 'left', ratio: App.toolbarDock?.ratio ?? 0.5 };
-
-    App.toolbarDragging = null;
+    App.toolbarPreviewDock = null;
     App.toolbarDock = dock;
-    toolbox.classList.remove('dragging');
-    removeToolbarPreview();
     applyToolbarDock(true);
-  });
+  };
+  grip.addEventListener('pointerup', finishGripInteraction);
+  grip.addEventListener('pointercancel', finishGripInteraction);
 
   window.addEventListener('resize', () => applyToolbarDock(false));
 }
@@ -1157,6 +1341,7 @@ function clearSpacePan() {
 function cancelToolbarDrag() {
   if (!App.toolbarDragging) return;
   App.toolbarDragging = null;
+  App.toolbarPreviewDock = null;
   const toolbox = $('canvas-toolbox');
   if (toolbox) toolbox.classList.remove('dragging');
   removeToolbarPreview();
@@ -1242,7 +1427,7 @@ function startPanelResize(panelId, e) {
   if (!cfg) return;
 
   const handle = panelId === 'lpanel' ? $('lpanel-resizer') : $('rpanel-resizer');
-  if (handle) handle.classList.add('active');
+  if (handle) { handle.classList.add('active'); try { handle.setPointerCapture(e.pointerId); } catch (err) { } }
   activePanelResize = {
     panelId,
     startX: e.clientX,
@@ -1269,6 +1454,7 @@ function stopPanelResize() {
   if (handle) handle.classList.remove('active');
   activePanelResize = null;
   document.body.classList.remove('panel-resizing');
+  if (typeof notifyCanvasResize === 'function') notifyCanvasResize();
 }
 
 function initPanelResizers() {
@@ -1279,14 +1465,15 @@ function initPanelResizers() {
   lHandle.dataset.resizeInit = '1';
   rHandle.dataset.resizeInit = '1';
 
-  lHandle.addEventListener('mousedown', e => startPanelResize('lpanel', e));
-  rHandle.addEventListener('mousedown', e => startPanelResize('rpanel', e));
+  lHandle.addEventListener('pointerdown', e => startPanelResize('lpanel', e));
+  rHandle.addEventListener('pointerdown', e => startPanelResize('rpanel', e));
 
   lHandle.addEventListener('dblclick', () => setPanelWidth('lpanel', PANEL_WIDTH_LIMITS.lpanel.defaultWidth, true));
   rHandle.addEventListener('dblclick', () => setPanelWidth('rpanel', PANEL_WIDTH_LIMITS.rpanel.defaultWidth, true));
 
-  document.addEventListener('mousemove', handlePanelResizeMove);
-  document.addEventListener('mouseup', stopPanelResize);
+  document.addEventListener('pointermove', handlePanelResizeMove);
+  document.addEventListener('pointerup', stopPanelResize);
+  document.addEventListener('pointercancel', stopPanelResize);
   window.addEventListener('resize', applyStoredPanelWidths);
 
   applyStoredPanelWidths();
@@ -1371,11 +1558,33 @@ function initLPanelSections() {
   });
 }
 
+const RP_SECTION_DEFAULTS = { 'rp-language': false, 'rp-simulate': false, 'rp-batch': true };
+
+function setRPSectionCollapsed(id, collapsed, persist = true) {
+  const sec = $(id);
+  if (!sec) return;
+  sec.classList.toggle('collapsed', !!collapsed);
+  const body = sec.querySelector('.rp-section-body');
+  if (body) body.style.display = collapsed ? 'none' : '';
+  if (persist) {
+    try { localStorage.setItem(`automata-rpanel-section-${id}`, collapsed ? '1' : '0'); } catch (e) { }
+  }
+}
+
 function toggleRPSection(id) {
   const sec = $(id); if (!sec) return;
-  const body = sec.querySelector('.rp-section-body');
-  const collapsed = sec.classList.toggle('collapsed');
-  if (body) body.style.display = collapsed ? 'none' : '';
+  setRPSectionCollapsed(id, !sec.classList.contains('collapsed'), true);
+}
+
+function initRPanelSections() {
+  Object.keys(RP_SECTION_DEFAULTS).forEach(id => {
+    let collapsed = RP_SECTION_DEFAULTS[id];
+    try {
+      const raw = localStorage.getItem(`automata-rpanel-section-${id}`);
+      if (raw !== null) collapsed = raw === '1';
+    } catch (e) { }
+    setRPSectionCollapsed(id, collapsed, false);
+  });
 }
 
 function filterAlgos() {
@@ -1396,6 +1605,7 @@ function filterAlgos() {
 function openSettingsModal() {
   const c = App.config;
   $('set-theme').value = c.theme || 'dark';
+  if ($('set-wheel-zoom')) $('set-wheel-zoom').checked = !!c.wheelZoom;
   $('set-transducer-accepts').checked = !!c.transducerAccepts;
   $('set-pda-steps').value = c.maxPdaSteps;
   $('set-pda-paradigm').value = c.pdaParadigm || 'explicit';
@@ -1434,11 +1644,16 @@ function switchSettingsTab(tabId) {
 function confirmSettings() {
   const c = App.config;
   applyTheme($('set-theme').value || c.theme || 'dark');
+  if ($('set-wheel-zoom')) {
+    c.wheelZoom = $('set-wheel-zoom').checked;
+    try { localStorage.setItem('automata-wheel-zoom', c.wheelZoom ? '1' : '0'); } catch (e) { }
+  }
   c.transducerAccepts = $('set-transducer-accepts').checked;
   c.pdaParadigm = $('set-pda-paradigm').value || 'explicit';
   c.maxPdaSteps = parseInt($('set-pda-steps').value) || 2000;
   c.maxTmSteps = parseInt($('set-tm-steps').value) || 10000;
   c.autoSpeed = parseInt($('set-auto-speed').value) || 500;
+  if ($('sim-speed-sel')) $('sim-speed-sel').value = String(c.autoSpeed);
   c.radius = parseInt($('set-radius').value) || 30;
   c.zoom.step = parseFloat($('set-zoom-step').value) || 0.1;
   c.gridSnap = parseInt($('set-grid-snap').value) || 20;
@@ -1472,6 +1687,7 @@ function getEditorSettingsData() {
   const c = App.config;
   return {
     theme: c.theme,
+    wheelZoom: !!c.wheelZoom,
     pdaParadigm: c.pdaParadigm,
     transducerAccepts: !!c.transducerAccepts,
     maxPdaSteps: c.maxPdaSteps,
@@ -1522,6 +1738,7 @@ function importSettings(e) {
 
 function populateSettingsModalInputs(data) {
   if (data.theme !== undefined) $('set-theme').value = data.theme;
+  if (data.wheelZoom !== undefined && $('set-wheel-zoom')) $('set-wheel-zoom').checked = !!data.wheelZoom;
   if (data.pdaParadigm !== undefined) $('set-pda-paradigm').value = data.pdaParadigm;
   if (data.transducerAccepts !== undefined) $('set-transducer-accepts').checked = !!data.transducerAccepts;
   if (data.maxPdaSteps !== undefined) $('set-pda-steps').value = data.maxPdaSteps;

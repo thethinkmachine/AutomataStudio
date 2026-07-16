@@ -104,25 +104,25 @@
   height: 100%;
   z-index: 100;
   box-shadow: var(--panel-shadow-right);
-  transition-delay: 0.15s;
+  transition-delay: 0.1s;
 }
 
 .rpanel.unpinned:not(:hover) {
   width: 0;
   min-width: 0;
-  transition-delay: 0.4s;
+  transition-delay: 0.15s;
 }
 
 .rpanel.unpinned> :not(style) {
   transition: opacity var(--transition-base), visibility var(--transition-base);
-  transition-delay: 0.15s;
+  transition-delay: 0.1s;
 }
 
 .rpanel.unpinned:not(:hover)> :not(style) {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition-delay: 0.4s;
+  transition-delay: 0.15s;
 }
 
 .rpanel.unpinned::before {
@@ -134,10 +134,6 @@
   width: 15px;
   cursor: default;
   z-index: 101;
-}
-
-.rpanel .panel-footer {
-  justify-content: flex-start;
 }
 
 .rpanel.unpinned .pin-btn svg {
@@ -329,11 +325,16 @@
   gap: 1px;
 }
 
+.code-box-wrap,
+.def-box-wrap {
+  position: relative;
+}
+
 .code-box {
   margin-top: 6px;
   font-family: var(--mono);
   font-size: .75rem;
-  padding: 8px 10px;
+  padding: 8px 30px 8px 10px;
   background: var(--bg3);
   border: 1px solid var(--border2);
   border-radius: 6px;
@@ -343,12 +344,43 @@
   max-width: 100%;
   max-height: 300px;
   overflow-y: auto;
-  overflow-x: auto;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.code-box .katex-display {
-  margin: 0;
-  text-align: left;
+.box-copy-btn {
+  position: absolute;
+  top: 12px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text3);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  z-index: 1;
+}
+
+.box-copy-btn:hover {
+  background: var(--surface3);
+  color: var(--text);
+  border-color: var(--border2);
+}
+
+.box-copy-btn.copied {
+  color: var(--green);
+}
+
+.box-copy-btn svg {
+  width: 13px;
+  height: 13px;
 }
 
 .curr-char-hl {
@@ -377,7 +409,7 @@
 }
 
 .def-box {
-  padding: 8px 10px;
+  padding: 8px 30px 8px 10px;
   background: var(--bg3);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -388,11 +420,27 @@
   max-height: 350px;
   overflow-y: auto;
   overflow-x: auto;
+  transition: box-shadow var(--transition-fast);
 }
 
 .def-box .katex-display {
   margin: 0;
   text-align: left;
+}
+
+/* Formal-definition lines (Σ, Q, …) can still run wider than the sidebar —
+   fade the edge to hint that there's more to scroll to, same treatment as
+   the workspace tab bar. */
+.def-box.has-overflow-left {
+  box-shadow: inset 14px 0 12px -12px var(--tab-overflow-shadow);
+}
+
+.def-box.has-overflow-right {
+  box-shadow: inset -14px 0 12px -12px var(--tab-overflow-shadow);
+}
+
+.def-box.has-overflow-left.has-overflow-right {
+  box-shadow: inset 14px 0 12px -12px var(--tab-overflow-shadow), inset -14px 0 12px -12px var(--tab-overflow-shadow);
 }
 
 /* Simulation */
@@ -424,12 +472,151 @@
   box-shadow: var(--accent-glow);
 }
 
+/* Verdict banner — the headline result, shown once the simulation reaches
+   its final step, instead of leaving accept/reject buried in the trace log. */
+.sim-verdict {
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-radius: 7px;
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: .8rem;
+  letter-spacing: .01em;
+  border: 1px solid transparent;
+}
+
+.sim-verdict svg {
+  flex-shrink: 0;
+}
+
+.sim-verdict.accept {
+  background: var(--green-soft);
+  border-color: var(--green-border);
+  color: var(--green);
+}
+
+.sim-verdict.reject {
+  background: var(--red-soft);
+  border-color: var(--red-border);
+  color: var(--red);
+}
+
+.sim-verdict.output {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sim-verdict-lbl {
+  color: var(--text2);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: .62rem;
+  letter-spacing: .06em;
+}
+
+.sim-verdict-out {
+  font-family: var(--mono);
+  font-weight: 700;
+}
+
+/* Step scrubber */
+.sim-scrubber-row {
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.sim-scrubber {
+  flex: 1;
+  appearance: none;
+  -webkit-appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border2);
+  outline: none;
+  cursor: pointer;
+}
+
+.sim-scrubber::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg2);
+  box-shadow: 0 0 0 1px var(--accent-border-strong);
+  cursor: pointer;
+  transition: transform .12s;
+}
+
+.sim-scrubber::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.sim-scrubber::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg2);
+  box-shadow: 0 0 0 1px var(--accent-border-strong);
+  cursor: pointer;
+}
+
+.sim-scrubber::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border2);
+}
+
+.sim-step-counter {
+  font-family: var(--mono);
+  font-size: .65rem;
+  color: var(--text3);
+  white-space: nowrap;
+  min-width: 3.6em;
+  text-align: right;
+}
+
 .sctrl {
   display: flex;
   gap: 6px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
   margin-top: 12px;
+}
+
+.sctrl-auto-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.sim-speed-sel {
+  flex: none;
+  width: 56px;
+  height: 34px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: .68rem;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  transition: all var(--transition-fast);
+}
+
+.sim-speed-sel:hover {
+  background: var(--surface3);
+  color: var(--text);
+  border-color: var(--accent-border);
 }
 
 .sbtn {
@@ -562,6 +749,28 @@
 
 .batch-in:focus {
   border-color: var(--accent);
+}
+
+.batch-summary {
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: .72rem;
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  border: 1px solid transparent;
+}
+
+.batch-summary.all-pass {
+  background: var(--green-soft);
+  border-color: var(--green-border);
+  color: var(--green);
+}
+
+.batch-summary.has-fail {
+  background: var(--red-soft);
+  border-color: var(--red-border);
+  color: var(--red);
 }
 
 .batch-result {

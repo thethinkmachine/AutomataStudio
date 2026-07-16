@@ -296,6 +296,13 @@
   background: var(--red-soft);
 }
 
+.ctx-i.disabled {
+  color: var(--text3);
+  cursor: default;
+  pointer-events: none;
+  opacity: .5;
+}
+
 /* ─── STATUS ─── */
 .status {
   position: absolute;

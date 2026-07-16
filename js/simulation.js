@@ -43,6 +43,14 @@ function runSim() {
   resetSim();
   let raw = parseEps($('sim-in').value);
   if (raw === App.config.sym.eps) $('sim-in').value = raw;
+  if (raw !== '') {
+    App.simInputHistory = App.simInputHistory || [];
+    if (App.simInputHistory[App.simInputHistory.length - 1] !== raw) {
+      App.simInputHistory.push(raw);
+      if (App.simInputHistory.length > 50) App.simInputHistory.shift();
+    }
+  }
+  App.simHistoryIdx = undefined;
   if (!App.startId) { log('<span class="t-err">No start state.</span>'); return; }
 
   // MTM: support optional comma-separated per-tape initialization
@@ -1277,43 +1285,159 @@ function renderSimStep() {
     const el = document.querySelector(`[data-id="${id}"]`);
     if (el) el.classList.add(step.final === 'reject' ? 'rej-st' : 'act-st');
   });
+
+  updateSimScrubber();
+  updateSimVerdict(step, isLast);
 }
-function stepFwd() { if (App.simIdx < App.simSteps.length - 1) { App.simIdx++; renderSimStep(); } }
-function stepBack() { if (App.simIdx > 0) { App.simIdx--; renderSimStep(); } }
-function resetSim() {
+
+// ── Scrubber / transport ──
+function updateSimScrubber() {
+  const row = $('sim-scrubber-row'), scrubber = $('sim-scrubber'), counter = $('sim-step-counter');
+  if (!row || !scrubber || !counter) return;
+  const total = App.simSteps.length;
+  row.style.display = total > 1 ? 'flex' : 'none';
+  if (document.activeElement !== scrubber) {
+    scrubber.max = String(Math.max(0, total - 1));
+    scrubber.value = String(App.simIdx);
+  }
+  counter.textContent = `${total ? App.simIdx + 1 : 0} / ${total}`;
+}
+
+const SIM_ICON_ACCEPT = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 4.5"/></svg>';
+const SIM_ICON_REJECT = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+
+function updateSimVerdict(step, isLast) {
+  const el = $('sim-verdict');
+  if (!el) return;
+  if (!isLast) { el.style.display = 'none'; return; }
+  if (step.final === 'accept' || step.final === 'reject') {
+    const accepted = step.final === 'accept';
+    el.style.display = 'flex';
+    el.className = `sim-verdict ${accepted ? 'accept' : 'reject'}`;
+    el.innerHTML = `${accepted ? SIM_ICON_ACCEPT : SIM_ICON_REJECT}<span>${accepted ? 'Accepted' : 'Rejected'}</span>`;
+    return;
+  }
+  const cfg = getMachineConfig(App.machine);
+  if (cfg.isTransducer && step.outToks !== undefined) {
+    el.style.display = 'flex';
+    el.className = 'sim-verdict output';
+    el.innerHTML = `<span class="sim-verdict-lbl">Output</span><span class="sim-verdict-out">${step.outToks.length ? step.outToks.join('') : '—'}</span>`;
+    return;
+  }
+  el.style.display = 'none';
+}
+
+function stopAutoPlay() {
+  if (!App.autoTimer) return;
   clearInterval(App.autoTimer); App.autoTimer = null;
+  const btn = $('auto-btn');
+  if (btn) { btn.classList.remove('playing'); btn.innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-right:4px"><path d="M4 2v12l9-6z"/></svg> Auto'; }
+}
+
+function stepFwd(stopAuto = true) {
+  if (stopAuto) stopAutoPlay();
+  if (App.simIdx < App.simSteps.length - 1) { App.simIdx++; renderSimStep(); }
+}
+function stepBack() {
+  stopAutoPlay();
+  if (App.simIdx > 0) { App.simIdx--; renderSimStep(); }
+}
+function stepToStart() {
+  if (!App.simSteps.length) return;
+  stopAutoPlay();
+  App.simIdx = 0; renderSimStep();
+}
+function stepToEnd() {
+  if (!App.simSteps.length) return;
+  stopAutoPlay();
+  App.simIdx = App.simSteps.length - 1; renderSimStep();
+}
+function scrubSim(value) {
+  const idx = parseInt(value, 10);
+  if (isNaN(idx) || idx < 0 || idx >= App.simSteps.length) return;
+  stopAutoPlay();
+  App.simIdx = idx;
+  renderSimStep();
+}
+function setAutoSpeedPreset(ms) {
+  App.config.autoSpeed = parseInt(ms, 10) || 500;
+  if (App.autoTimer) {
+    clearInterval(App.autoTimer);
+    App.autoTimer = setInterval(() => {
+      if (App.simIdx >= App.simSteps.length - 1) { stopAutoPlay(); return; }
+      stepFwd(false);
+    }, App.config.autoSpeed);
+  }
+}
+function resetSim() {
+  stopAutoPlay();
   App.simSteps = []; App.simIdx = 0; App.currentTokens = null;
-  $('auto-btn').classList.remove('playing'); $('auto-btn').innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-right:4px"><path d="M4 2v12l9-6z"/></svg> Auto';
   log('<span style="color:var(--text3);font-style:italic">Run a string to simulate…</span>');
   $('sim-tracker').innerHTML = ''; $('sim-tracker').style.display = 'none';
+  const verdict = $('sim-verdict'); if (verdict) verdict.style.display = 'none';
+  const scrubRow = $('sim-scrubber-row'); if (scrubRow) scrubRow.style.display = 'none';
   document.querySelectorAll('.sn').forEach(el => el.classList.remove('act-st', 'rej-st'));
 }
 function toggleAuto() {
-  if (App.autoTimer) { clearInterval(App.autoTimer); App.autoTimer = null; $('auto-btn').classList.remove('playing'); $('auto-btn').innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-right:4px"><path d="M4 2v12l9-6z"/></svg> Auto'; return; }
+  if (App.autoTimer) { stopAutoPlay(); return; }
   $('auto-btn').classList.add('playing'); $('auto-btn').innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-right:4px"><path d="M5 3h2v10H5zM9 3h2v10H9z"/></svg> Stop';
-  App.autoTimer = setInterval(() => { if (App.simIdx >= App.simSteps.length - 1) { clearInterval(App.autoTimer); App.autoTimer = null; $('auto-btn').classList.remove('playing'); $('auto-btn').innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-right:4px"><path d="M4 2v12l9-6z"/></svg> Auto'; return; } stepFwd(); }, App.config.autoSpeed);
+  App.autoTimer = setInterval(() => {
+    if (App.simIdx >= App.simSteps.length - 1) { stopAutoPlay(); return; }
+    stepFwd(false);
+  }, App.config.autoSpeed);
+}
+
+// ── Input history (↑ / ↓ recall previously-run strings) ──
+function handleSimInputKeydown(e) {
+  if (e.key === 'Enter') { e.preventDefault(); runSim(); return; }
+  const hist = App.simInputHistory || [];
+  if (!hist.length) return;
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (App.simHistoryIdx === undefined || App.simHistoryIdx < 0) App.simHistoryIdx = hist.length;
+    App.simHistoryIdx = Math.max(0, App.simHistoryIdx - 1);
+    e.target.value = hist[App.simHistoryIdx];
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (App.simHistoryIdx === undefined) return;
+    App.simHistoryIdx = Math.min(hist.length, App.simHistoryIdx + 1);
+    e.target.value = App.simHistoryIdx >= hist.length ? '' : hist[App.simHistoryIdx];
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════
 //  BATCH TESTING
 // ══════════════════════════════════════════════════════════════════
+// Optional trailing "=> accept" / "=> reject" (also: acc/rej, ✓/✗, a/r)
+// turns a batch line into a pass/fail expectation instead of a plain probe.
+function parseBatchLine(line) {
+  const m = line.match(/^(.*?)(?:=>|→)\s*(accept|reject|acc|rej|✓|✗|a|r)\s*$/i);
+  if (!m) return { input: line, expect: null };
+  const tag = m[2].toLowerCase();
+  const expect = (tag === 'accept' || tag === 'acc' || tag === '✓' || tag === 'a') ? 'accept' : 'reject';
+  return { input: m[1].trim(), expect };
+}
+
 function runBatch() {
-  const lines = $('batch-in').value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-  if (!lines.length) return;
+  const rawLines = $('batch-in').value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const summaryEl = $('batch-summary');
+  if (!rawLines.length) return;
   if (!App.startId) {
     $('batch-result').innerHTML = `<div class="br-err">Error: No start state defined.</div>`;
+    if (summaryEl) summaryEl.style.display = 'none';
     return;
   }
   const eps = App.config.sym.eps;
   if (isAnyTM(App.machine)) {
     $('batch-result').innerHTML = `<div class="br-err">Batch testing is not supported for ${App.machine}.</div>`;
+    if (summaryEl) summaryEl.style.display = 'none';
     return;
   }
-  const results = lines.map(line => {
+  const results = rawLines.map(parseBatchLine).map(({ input: line, expect }) => {
     const raw = parseEps(line);
     const str = raw === App.config.sym.eps ? '' : raw;
     const tokens = tokenize(str);
-    if (tokens === null) return { str: line, accepted: false, error: true };
+    if (tokens === null) return { str: line, accepted: false, error: true, expect };
     let accepted = false, output = null;
     if (App.machine === 'DFA') accepted = testDFA(tokens);
     else if (App.machine === 'NFA' || App.machine === 'ε-NFA') accepted = testNFA(tokens);
@@ -1328,11 +1452,29 @@ function runBatch() {
       accepted = App.config.transducerAccepts ? fstResult.accepted : undefined;
       output = fstResult.output;
     }
-    return { str: line, accepted, output };
+    return { str: line, accepted, output, expect };
   });
+
+  const withExpectation = results.filter(r => r.expect && !r.error);
+  if (summaryEl) {
+    if (withExpectation.length) {
+      const passCount = withExpectation.filter(r => (r.accepted ? 'accept' : 'reject') === r.expect).length;
+      summaryEl.style.display = 'block';
+      summaryEl.className = `batch-summary ${passCount === withExpectation.length ? 'all-pass' : 'has-fail'}`;
+      summaryEl.textContent = `${passCount} / ${withExpectation.length} expectations passed`;
+    } else {
+      summaryEl.style.display = 'none';
+    }
+  }
+
   $('batch-result').innerHTML = results.map(r => {
     if (r.error) return `<div class="br-err">✗ "${r.str}" — cannot tokenize</div>`;
     const outTag = r.output !== null ? ` <span style="color:var(--text3);font-size:.65rem">→ "${r.output}"</span>` : '';
+    if (r.expect) {
+      const got = r.accepted ? 'accept' : 'reject';
+      const pass = got === r.expect;
+      return `<div class="${pass ? 'br-ok' : 'br-err'}">${pass ? '✓' : '✗'} "${r.str}" <span style="color:var(--text3);font-size:.65rem">(expected ${r.expect}, got ${got})</span>${outTag}</div>`;
+    }
     if (r.accepted === undefined) return `<div class="br-ok" style="border-left-color:var(--text-main)"><span style="color:var(--text-main)">•</span> "${r.str}"${outTag}</div>`;
     return `<div class="${r.accepted ? 'br-ok' : 'br-err'}">${r.accepted ? '✓' : '✗'} "${r.str}"${outTag}</div>`;
   }).join('');

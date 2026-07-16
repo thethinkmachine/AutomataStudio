@@ -56,6 +56,8 @@ const App = {
     autoSpeed: 500,
     radius: 30,
     zoom: { min: 0.2, max: 3, step: 0.1 },
+    wheelZoom: true,
+    snapToGrid: false,
     layout: { minRadius: 80, nodeSpacing: 35 },
     gridSnap: 20,
     sym: { eps: 'ε', any: 'Σ', blank: '⊔', leftMarker: '⊢', rightMarker: '⊣', stackBottom: 'Z', lambda: 'λ' },

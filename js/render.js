@@ -138,9 +138,18 @@ function renderTransitions() {
       edgeGrp.appendChild(hitEl);
       if ($('trans-lbl-g')) $('trans-lbl-g').appendChild(textEl);
       else edgeGrp.appendChild(textEl);
+
+      // Discoverability handle: a visible grip at the curve control point
+      // when the edge is selected, hinting that it can be dragged to bend.
+      if (grp.ts.some(t => App.selectedTransitions.has(t.id))) {
+        const handle = makeSVG('circle');
+        handle.classList.add('curve-handle');
+        handle.setAttribute('cx', mx); handle.setAttribute('cy', my); handle.setAttribute('r', 4.5);
+        edgeGrp.appendChild(handle);
+      }
     }
 
-    edgeGrp.addEventListener('mousedown', e => {
+    edgeGrp.addEventListener('pointerdown', e => {
       if (e.button !== 0) return;
       if (App.spacePan) return;
       e.stopPropagation();
@@ -171,6 +180,7 @@ function renderTransitions() {
         }
         if (!isSelf) {
           App.dragCurve = { grp, from, to };
+          try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
         }
       }
     });
@@ -268,11 +278,14 @@ function updateFastDOM() {
       
       const lx = crvVal ? (sx + 2 * mx + ex) / 4 : (sx + ex) / 2;
       const ly = crvVal ? (sy + 2 * my + ey) / 4 : (sy + ey) / 2;
-      
+
       textEl.setAttribute('x', lx);
       textEl.setAttribute('y', ly);
       const tspans = textEl.querySelectorAll('tspan');
       if (tspans.length > 0) tspans.forEach(ts => ts.setAttribute('x', lx));
+
+      const handleEl = edgeGrp.querySelector('.curve-handle');
+      if (handleEl) { handleEl.setAttribute('cx', mx); handleEl.setAttribute('cy', my); }
     }
   });
 }
@@ -326,7 +339,7 @@ function renderStates() {
     }
     const stTitleEl = makeSVG('title'); stTitleEl.textContent = stTitle;
     grp.appendChild(stTitleEl);
-    grp.addEventListener('mousedown', e => onStateDown(e, s.id));
+    grp.addEventListener('pointerdown', e => onStateDown(e, s.id));
     grp.addEventListener('contextmenu', e => { 
       e.preventDefault();
       App.ctxId = s.id; 
@@ -372,15 +385,32 @@ function updateLPanel() {
       const outSym = (s.output === undefined || s.output === '') ? App.config.sym.lambda : s.output;
       mooreOut = `<span style="color:var(--text3);font-size:0.75em;margin-left:4px">/ ${outSym}</span>`;
     }
-    return `<div class="si ${App.startId === s.id ? 'start' : ''} ${showAccepts && App.accepts.has(s.id) ? 'acc' : ''}" onclick="openStateModal('${s.id}')">
-  ${s.name}${mooreOut}<div class="dot"></div>
+    const sel = App.selectedStates.has(s.id) ? 'sel' : '';
+    return `<div class="si ${App.startId === s.id ? 'start' : ''} ${showAccepts && App.accepts.has(s.id) ? 'acc' : ''} ${sel}"
+  onclick="focusStateFromList('${s.id}')" ondblclick="openStateModal('${s.id}')"
+  onmouseenter="hlListHover('${s.id}', true)" onmouseleave="hlListHover('${s.id}', false)"
+  title="Click to focus · Double-click to edit">
+  ${s.name}${mooreOut}
+  <button class="si-edit" onclick="event.stopPropagation(); openStateModal('${s.id}')" title="Edit state" aria-label="Edit ${s.name}">
+    <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-8 8-3.5.5.5-3.5z"/></svg>
+  </button>
+  <div class="dot"></div>
 </div>`;
   }).join('') : '<div class="empty-msg">No states</div>';
   const tl = $('trans-list');
   tl.innerHTML = App.transitions.length ? App.transitions.map(t => {
     const fn = getState(t.from)?.name || '?', tn = getState(t.to)?.name || '?';
-    return `<div class="ti"><span>${fn}</span><span class="arr">–${transLabel(t)}→</span><span>${tn}</span><span class="dx" onclick="deleteTrans('${t.id}')">×</span></div>`;
+    const sel = App.selectedTransitions.has(t.id) ? 'sel' : '';
+    const fullTitle = `${fn} → ${tn}\n${transLabelDescriptive(t)}\nClick to focus on canvas`;
+    return `<div class="ti ${sel}" onclick="focusTransFromList('${t.id}')"
+  onmouseenter="hlTransListHover('${t.from}','${t.to}', true)" onmouseleave="hlTransListHover('${t.from}','${t.to}', false)"
+  title="${fullTitle.replace(/"/g, '&quot;')}">
+  <span class="ti-from">${fn}</span><span class="arr">–${transLabel(t)}→</span><span class="ti-to">${tn}</span>
+  <span class="dx" onclick="event.stopPropagation(); deleteTrans('${t.id}')" title="Delete transition">×</span>
+</div>`;
   }).join('') : '<div class="empty-msg">No transitions</div>';
+  if (typeof filterStates === 'function') filterStates();
+  if (typeof filterTransitions === 'function') filterTransitions();
   updateLPanelSectionMeta();
 }
 
@@ -444,9 +474,25 @@ function deriveRegex() {
   _regexCache = { key: ck, val };
   return val;
 }
+// User-supplied names (states, symbols) get interpolated straight into KaTeX
+// source. Left unescaped, a name containing '_' is read as a LaTeX subscript
+// operator (breaking the render), and any multi-letter name renders in the
+// slanted math-variable font instead of as a normal word. Escape the LaTeX
+// special characters and typeset anything that isn't the classic q0/s1
+// short-name convention as upright text instead.
+function escapeLatexText(str) {
+  return String(str ?? '')
+    .replace(/\\/g, '\\textbackslash{}')
+    .replace(/([_%$#&{}])/g, '\\$1')
+    .replace(/\^/g, '\\textasciicircum{}')
+    .replace(/~/g, '\\textasciitilde{}');
+}
+
 function formatStateName(name) {
   if (!name) return '\\text{—}';
-  return name.replace(/([a-zA-Z]+)(\d+)/g, '$1_{$2}');
+  const m = /^([a-zA-Z]+)(\d+)$/.exec(name);
+  if (m) return `${m[1]}_{${m[2]}}`;
+  return `\\text{${escapeLatexText(name)}}`;
 }
 
 function formatSet(items) {
@@ -620,39 +666,91 @@ function updateFormalDef() {
     txt += `\\delta &: Q \\times \\Gamma \\to Q \\times \\Gamma \\times \\{L, R, S\\}`;
   }
   txt += ` \\end{aligned} $$`;
-  
+
+  App._defBoxLatex = txt;
   const defBox = $('def-box');
   defBox.innerHTML = txt;
   if (typeof triggerMath === 'function') triggerMath(defBox);
+  updateDefBoxOverflowShadow();
 }
 
+// Same edge-fade hint the workspace tab bar uses, applied to the formal
+// definition box so a horizontally-scrollable Σ/Q set doesn't look like a
+// hard cutoff.
+function updateDefBoxOverflowShadow() {
+  const box = $('def-box');
+  if (!box) return;
+  const maxScroll = Math.max(0, box.scrollWidth - box.clientWidth);
+  const hasOverflow = maxScroll > 2;
+  box.classList.toggle('has-overflow-left', hasOverflow && box.scrollLeft > 2);
+  box.classList.toggle('has-overflow-right', hasOverflow && box.scrollLeft < maxScroll - 2);
+}
+
+function initDefBoxOverflowObserver() {
+  const box = $('def-box');
+  if (!box || box._overflowObsInit) return;
+  box._overflowObsInit = true;
+  box.addEventListener('scroll', updateDefBoxOverflowShadow);
+  if ('ResizeObserver' in window) {
+    new ResizeObserver(updateDefBoxOverflowShadow).observe(box);
+  }
+}
+
+function copyBoxText(id) {
+  const text = id === 'def-box'
+    ? (App._defBoxLatex || $(id).textContent)
+    : (App._regexBoxPlain !== undefined ? App._regexBoxPlain : $(id).textContent);
+  const btn = $(id === 'def-box' ? 'def-copy-btn' : 'regex-copy-btn');
+  if (!navigator.clipboard || !navigator.clipboard.writeText) {
+    showStatus('Clipboard access unavailable');
+    return;
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    showStatus(id === 'def-box' ? 'Copied LaTeX source' : 'Copied regular expression');
+    if (btn) {
+      btn.classList.add('copied');
+      clearTimeout(btn._copiedTimer);
+      btn._copiedTimer = setTimeout(() => btn.classList.remove('copied'), 1200);
+    }
+  }).catch(() => showStatus('Copy failed — clipboard access blocked'));
+}
+
+// Plain text, not KaTeX: regex notation (| * ( )) reads fine unstyled, and
+// unlike math mode it wraps naturally instead of needing horizontal scroll —
+// and it can't misrender symbols that contain LaTeX-special characters.
 function updateRegex() {
   const rb = $('regex-box'), m = App.machine;
   let txt = '';
-    if (m === '2DFA' || m === '2NFA') { txt = '\\text{Regular Language (Two-Way Head Motion with Endmarkers)}'; }
-  else if (m === 'QA') { txt = '\\text{Queue Automaton Language Family}'; }
-  else if (m === 'Counter') { txt = '\\text{Counter Language Family}'; }
-  else if (m === '2PDA') { txt = '\\text{Two-Stack PDA (TM-Equivalent Power)}'; }
-  else if (m === 'LBA') { txt = '\\text{Context-Sensitive Language (Endmarked Tape)}'; }
-  else if (m === 'ITM') { txt = '\\text{Recursively Enumerable Language}'; }
-  else if (isAnyPDA(m)) { txt = '\\text{Context-Free Language}'; }
-  else if (isAnyTM(m)) { txt = '\\text{Recursively Enumerable Language}'; }
-  else if (m === 'Moore') { txt = '\\text{Finite-State Transducer (Moore)}'; }
-  else if (m === 'Mealy') { txt = '\\text{Finite-State Transducer (Mealy)}'; }
-  else if (m === 'FST') { txt = '\\text{Finite-State Transducer (Nondeterministic)}'; }
-  else {
-    const re = deriveRegex() || '\\emptyset';
-    txt = re.replace(/eps/gi, '\\varepsilon');
-  }
-  
-  if (txt === '∅') txt = '\\emptyset';
-  
-  rb.innerHTML = `$$ ${txt} $$`;
-  if (typeof triggerMath === 'function') triggerMath(rb);
+  if (m === '2DFA' || m === '2NFA') { txt = 'Regular Language (Two-Way Head Motion with Endmarkers)'; }
+  else if (m === 'QA') { txt = 'Queue Automaton Language Family'; }
+  else if (m === 'Counter') { txt = 'Counter Language Family'; }
+  else if (m === '2PDA') { txt = 'Two-Stack PDA (TM-Equivalent Power)'; }
+  else if (m === 'LBA') { txt = 'Context-Sensitive Language (Endmarked Tape)'; }
+  else if (m === 'ITM') { txt = 'Recursively Enumerable Language'; }
+  else if (isAnyPDA(m)) { txt = 'Context-Free Language'; }
+  else if (isAnyTM(m)) { txt = 'Recursively Enumerable Language'; }
+  else if (m === 'Moore') { txt = 'Finite-State Transducer (Moore)'; }
+  else if (m === 'Mealy') { txt = 'Finite-State Transducer (Mealy)'; }
+  else if (m === 'FST') { txt = 'Finite-State Transducer (Nondeterministic)'; }
+  else { txt = deriveRegex() || '∅'; }
+
+  App._regexBoxPlain = txt;
+  rb.textContent = txt;
 }
 
 function reUnion(a, b) { if (!a) return b; if (!b) return a; if (a === b) return a; return `${a} | ${b}`; }
-function reConcat(a, b) { if (!a || !b) return a || b || ''; if (a === App.config.sym.eps) return b; if (b === App.config.sym.eps) return a; const pa = a.includes(' | '), pb = b.includes(' | '); return `${pa ? '(' + a + ')' : a}${pb ? '(' + b + ')' : b}`; }
+// The explicit "·" keeps concatenation unambiguous once symbols can be whole
+// words instead of single characters (e.g. "citizenFilesComplaint·officerOpensReview"
+// instead of the two runs silently glued together).
+function reConcat(a, b) {
+  if (!a || !b) return a || b || '';
+  if (a === App.config.sym.eps) return b;
+  if (b === App.config.sym.eps) return a;
+  const pa = a.includes(' | '), pb = b.includes(' | ');
+  const left = pa ? '(' + a + ')' : a;
+  const right = pb ? '(' + b + ')' : b;
+  return `${left}·${right}`;
+}
 function simplifyRE(r) {
   if (!r) return '∅';
   const e = App.config.sym.eps;

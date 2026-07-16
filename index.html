@@ -180,6 +180,15 @@
         <span class="mobile-panel-icon">▾</span>
       </button>
       <div class="mobile-panel-content" id="lpanel-mobile-content">
+        <div class="panel-header">
+          <span class="panel-header-title">Workspace</span>
+          <button class="pin-btn" id="lpanel-pin-btn" onclick="toggleLPanelPin()" title="Unpin left panel">
+            <svg viewBox="0 0 16 16" width="14" height="14">
+              <path d="M8 2a3 3 0 013 3v2l1 1v2H9v4l-1 1-1-1v-4H4V8l1-1V5a3 3 0 013-3z" fill="none" stroke="currentColor"
+                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </div>
         <div class="lpanel-content" id="lpanel-content">
           <div class="sec lp-collapsible" id="lp-alphabet">
             <div class="lp-section-header" onclick="toggleLPSection('lp-alphabet')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('lp-alphabet')}">
@@ -192,7 +201,7 @@
             <div class="lp-section-body">
               <div class="row">
                 <input class="inp" id="sym-in" placeholder="a, b, 0…" maxlength="33"
-                  onkeydown="if(e.key==='Enter'||event.key==='Enter')addSym()">
+                  onkeydown="if(event.key==='Enter')addSym()">
                 <button class="ibtn" onclick="addSym()">+</button>
               </div>
               <div class="chips" id="sigma-chips"></div>
@@ -260,19 +269,12 @@
               </svg>
             </div>
             <div class="lp-section-body">
+              <input class="lpanel-search-inp" id="trans-search" placeholder="Filter transitions…" oninput="filterTransitions()">
               <div class="tlist" id="trans-list">
                 <div class="empty-msg">No transitions</div>
               </div>
             </div>
           </div>
-        </div>
-        <div class="panel-footer">
-          <button class="pin-btn" id="lpanel-pin-btn" onclick="toggleLPanelPin()" title="Unpin left panel">
-            <svg viewBox="0 0 16 16" width="14" height="14">
-              <path d="M8 2a3 3 0 013 3v2l1 1v2H9v4l-1 1-1-1v-4H4V8l1-1V5a3 3 0 013-3z" fill="none" stroke="currentColor"
-                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
         </div>
       </div>
       <div class="panel-resizer panel-resizer-right" id="lpanel-resizer" role="separator" aria-orientation="vertical" aria-label="Resize left panel" title="Resize left panel"></div>
@@ -300,6 +302,7 @@
               <g id="trans-g"></g>
               <g id="trans-lbl-g"></g>
               <g id="states-g"></g>
+              <g id="align-guides-g"></g>
             </g>
           </svg>
           <!-- Floating toolbox -->
@@ -352,6 +355,30 @@
               <span class="toolbox-lbl">Trans</span>
               <span class="toolbox-kbd">T</span>
             </button>
+            <button class="toolbox-btn toolbox-danger" id="t-del" onclick="toggleTool('del')" title="Delete — click a state or transition (D); click again to return to Pointer">
+              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 5h10M6.5 5V3.5h3V5M4.5 5l.6 8a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8" />
+              </svg>
+              <span class="toolbox-lbl">Delete</span>
+              <span class="toolbox-kbd">D</span>
+            </button>
+            <div class="toolbox-sep"></div>
+            <button class="toolbox-btn" onclick="undo()" title="Undo (Ctrl+Z)">
+              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3.5 6.5H9a4 4 0 0 1 0 8H5" />
+                <polyline points="3.5,3 3.5,6.5 7,6.5" />
+              </svg>
+              <span class="toolbox-lbl">Undo</span>
+              <span class="toolbox-kbd">⌘Z</span>
+            </button>
+            <button class="toolbox-btn" onclick="redo()" title="Redo (Ctrl+Y)">
+              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12.5 6.5H7a4 4 0 0 0 0 8h4" />
+                <polyline points="12.5,3 12.5,6.5 9,6.5" />
+              </svg>
+              <span class="toolbox-lbl">Redo</span>
+              <span class="toolbox-kbd">⌘Y</span>
+            </button>
           </div>
           <!-- Status bar -->
           <div class="status" id="status-bar"></div>
@@ -386,6 +413,13 @@
                 <path d="M2 5V2h3M9 2h3v3M2 9v3h3M12 9v3h-3" />
               </svg>
             </button>
+            <div class="cnc-sep"></div>
+            <button class="cnc-btn" id="snap-toggle-btn" onclick="toggleSnapToGrid()" title="Snap to grid while dragging (hold Shift to invert)">
+              <svg viewBox="0 0 14 14" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 1.2 3 3.6v4.8L7 10.8l4-2.4V3.6z" />
+                <circle cx="7" cy="6" r="1.1" fill="currentColor" stroke="none" />
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -398,6 +432,15 @@
             <span class="mobile-panel-icon">▾</span>
           </button>
           <div class="mobile-panel-content" id="rpanel-mobile-content">
+            <div class="panel-header">
+              <span class="panel-header-title">Inspector</span>
+              <button class="pin-btn" id="rpanel-pin-btn" onclick="toggleRPanelPin()" title="Unpin right panel">
+                <svg viewBox="0 0 16 16" width="14" height="14">
+                  <path d="M8 2a3 3 0 013 3v2l1 1v2H9v4l-1 1-1-1v-4H4V8l1-1V5a3 3 0 013-3z" fill="none"
+                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+            </div>
             <div class="rpanel-content" id="rpanel-content">
             <!-- Language section -->
             <div class="rp-collapsible" id="rp-language">
@@ -409,8 +452,18 @@
                 </svg>
               </div>
               <div class="rp-section-body">
-                <div class="code-box" id="regex-box">—</div>
-                <div class="def-box" id="def-box">M = (Q, Σ, δ, q₀, F)</div>
+                <div class="code-box-wrap">
+                  <div class="code-box" id="regex-box">—</div>
+                  <button class="box-copy-btn" id="regex-copy-btn" onclick="copyBoxText('regex-box')" title="Copy regular expression" aria-label="Copy regular expression">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="9" rx="1.3"/><path d="M3.5 10.2V3.8A1.3 1.3 0 0 1 4.8 2.5h6"/></svg>
+                  </button>
+                </div>
+                <div class="def-box-wrap">
+                  <div class="def-box" id="def-box">M = (Q, Σ, δ, q₀, F)</div>
+                  <button class="box-copy-btn" id="def-copy-btn" onclick="copyBoxText('def-box')" title="Copy as LaTeX" aria-label="Copy formal definition as LaTeX">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="9" rx="1.3"/><path d="M3.5 10.2V3.8A1.3 1.3 0 0 1 4.8 2.5h6"/></svg>
+                  </button>
+                </div>
                 <div id="mtm-ctrl" style="display:none;align-items:center;gap:6px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
                   <span style="font-family:var(--sans);font-weight:600;font-size:.7rem;color:var(--text3)">Tapes:</span>
                   <select class="sel" id="tape-count-sel" onchange="setTapeCount(this.value)"
@@ -432,24 +485,44 @@
               </div>
               <div class="rp-section-body">
                 <div class="sim-row">
-                  <input class="inp" id="sim-in" placeholder="ε" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();runSim()}">
+                  <input class="inp" id="sim-in" placeholder="ε" style="flex:1" onkeydown="handleSimInputKeydown(event)">
                   <button class="run-btn" onclick="runSim()">
-                    <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M4 2v12l9-6z"/></svg> 
+                    <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M4 2v12l9-6z"/></svg>
                   </button>
                 </div>
+                <div id="sim-verdict" class="sim-verdict" style="display:none"></div>
+                <div class="sim-scrubber-row" id="sim-scrubber-row" style="display:none">
+                  <input type="range" class="sim-scrubber" id="sim-scrubber" min="0" max="0" value="0"
+                    oninput="scrubSim(this.value)" title="Scrub through simulation steps">
+                  <span class="sim-step-counter" id="sim-step-counter">0 / 0</span>
+                </div>
                 <div class="sctrl">
+                  <button class="sbtn" onclick="stepToStart()" title="Jump to start">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M4 2.5v11M12 3 5 8l7 5" /></svg>
+                  </button>
                   <button class="sbtn" onclick="stepBack()" title="Step Back">
                     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M10 2L3 8l7 6" /></svg>
                   </button>
                   <button class="sbtn" onclick="stepFwd()" title="Step Forward">
                     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M6 2l7 6-7 6" /></svg>
                   </button>
-                  <button class="sbtn auto-btn" id="auto-btn" onclick="toggleAuto()">
-                    <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-right:4px"><path d="M4 2v12l9-6z"/></svg> Auto
+                  <button class="sbtn" onclick="stepToEnd()" title="Jump to end">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 2.5v11M4 3l7 5-7 5" /></svg>
                   </button>
                   <button class="sbtn" onclick="resetSim()" title="Reset">
                     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M2.5 8a5.5 5.5 0 1 1 1.7 4M1 10.5l1.5-3 3 1.5"/></svg>
                   </button>
+                </div>
+                <div class="sctrl-auto-row">
+                  <button class="sbtn auto-btn" id="auto-btn" onclick="toggleAuto()" style="flex:1">
+                    <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-right:4px"><path d="M4 2v12l9-6z"/></svg> Auto
+                  </button>
+                  <select class="sim-speed-sel" id="sim-speed-sel" onchange="setAutoSpeedPreset(this.value)" title="Playback speed">
+                    <option value="1000">0.5×</option>
+                    <option value="500" selected>1×</option>
+                    <option value="250">2×</option>
+                    <option value="100">4×</option>
+                  </select>
                 </div>
                 <div id="sim-tracker" class="sim-tracker" style="display:none"></div>
                 <div class="trace-log" id="trace-log"><span style="color:var(--text3);font-style:italic">Run a string to
@@ -466,21 +539,14 @@
               </div>
               <div class="rp-section-body" style="display:none">
                 <textarea class="batch-in" id="batch-in"
-                  placeholder="One string per line&#10;ε for empty string"></textarea>
+                  placeholder="One string per line&#10;ε for empty string&#10;Optional: aab =&gt; accept"></textarea>
                 <button class="run-btn" style="width:100%;margin-bottom:6px;display:flex;align-items:center;justify-content:center;gap:6px" onclick="runBatch()">
                   <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M4 2v12l9-6z"/></svg> Test All
                 </button>
+                <div class="batch-summary" id="batch-summary" style="display:none"></div>
                 <div class="batch-result" id="batch-result"></div>
               </div>
             </div>
-          </div>
-          <div class="panel-footer">
-            <button class="pin-btn" id="rpanel-pin-btn" onclick="toggleRPanelPin()" title="Unpin right panel" style="display:flex;align-items:center;justify-content:center;">
-              <svg viewBox="0 0 16 16" width="14" height="14">
-                <path d="M8 2a3 3 0 013 3v2l1 1v2H9v4l-1 1-1-1v-4H4V8l1-1V5a3 3 0 013-3z" fill="none"
-                  stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-            </button>
           </div>
           </div>
         </div>
@@ -983,6 +1049,10 @@
             <option value="light">Light</option>
           </select>
         </div>
+        <div class="modal-row" title="When on, plain scroll zooms the canvas (Shift+scroll pans horizontally). When off, plain scroll pans and Ctrl+scroll zooms.">
+          <span class="modal-lbl">Scroll Wheel Zooms Canvas</span>
+          <input type="checkbox" class="inp" id="set-wheel-zoom" style="width:16px;height:16px">
+        </div>
       </div>
 
       <div class="modal-tab-content" id="tab-pda">
@@ -1265,6 +1335,15 @@
     <div class="ctx-i" onclick="hideSaveMenu(); exportPNG()">▧ Export as Photo (PNG)</div>
     <div class="ctx-i" onclick="hideSaveMenu(); saveJSON()">{ } Export as JSON</div>
     <div class="ctx-i" onclick="hideSaveMenu(); copyShareableLink()">↗ Copy Shareable Link</div>
+  </div>
+
+  <!-- ══════ CANVAS BACKGROUND CTX MENU ══════ -->
+  <div class="ctx" id="canvas-ctx">
+    <div class="ctx-i" onclick="ctxCanvasAddState()">✛ Add State Here</div>
+    <div class="ctx-i" id="canvas-ctx-paste" onclick="ctxCanvasPaste()">⧉ Paste</div>
+    <div class="ctx-i" onclick="ctxCanvasSelectAll()">▤ Select All</div>
+    <div class="ctx-i" onclick="ctxCanvasAutoLayout()">◎ Auto-Layout</div>
+    <div class="ctx-i" onclick="ctxCanvasFit()">⤢ Fit to Screen</div>
   </div>
 
 

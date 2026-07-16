@@ -39,6 +39,18 @@
   stroke-width: 2.5;
 }
 
+/* Lighter highlight when hovering the matching row in a side panel list —
+   distinct from selection, just says "this is the one you're pointing at". */
+.sn.list-hover-st circle.bd {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.edge-g.list-hover-t .tarr {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
 /* ─── Dead / Unreachable State Overlay ─── */
 .sn.unreachable-st circle.bd {
   stroke: var(--orange, #ff9800);
@@ -164,6 +176,29 @@
   stroke: var(--accent);
   stroke-dasharray: 4, 4;
   pointer-events: none;
+}
+
+/* Alignment guides shown while dragging a single state near another's x/y */
+.align-guide {
+  stroke: var(--purple);
+  stroke-width: 1;
+  stroke-dasharray: 5, 4;
+  pointer-events: none;
+  opacity: .8;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Discoverability grip on a selected edge's curve control point */
+.curve-handle {
+  fill: var(--accent);
+  stroke: var(--bg);
+  stroke-width: 1.5;
+  cursor: grab;
+  vector-effect: non-scaling-stroke;
+}
+
+.curve-handle:hover {
+  fill: var(--purple);
 }
 
 .cam-smooth,
@@ -306,18 +341,39 @@
   cursor: grabbing;
 }
 
+/* Ghost preview of the toolbar shown at the drop target while dragging.
+   It's a clone of the real toolbox positioned with the exact same layout
+   math as the actual dock, so it always shows the true final shape, size
+   and orientation — not just which edge it's headed for. */
 .toolbar-preview {
   opacity: 0;
   pointer-events: none;
   z-index: 49;
+  background: var(--accent-soft-strong);
   border-style: dashed;
   border-color: var(--accent-border-strong);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  filter: saturate(.95);
+  box-shadow: var(--accent-glow);
+  transition: opacity .15s ease;
 }
 
 .toolbar-preview.visible {
-  opacity: .38;
+  opacity: .75;
+}
+
+/* Collapsed toolbar: icon-only rail. Click the grip to toggle; drag it to redock. */
+.canvas-toolbox.collapsed .toolbox-lbl,
+.canvas-toolbox.collapsed .toolbox-kbd {
+  display: none;
+}
+
+.canvas-toolbox.collapsed .toolbox-btn {
+  min-width: 0;
+  padding: 8px;
+}
+
+.canvas-toolbox.collapsed[data-dock="top"] .toolbox-btn,
+.canvas-toolbox.collapsed[data-dock="bottom"] .toolbox-btn {
+  padding: 8px;
 }
 
 .toolbox-grip svg {
@@ -435,6 +491,12 @@
   color: var(--text);
 }
 
+.cnc-btn.active {
+  background: var(--surface2);
+  color: var(--accent);
+  border-color: var(--accent-border-strong);
+}
+
 .cnc-btn svg {
   width: 14px;
   height: 14px;
@@ -536,6 +598,11 @@
   cursor: pointer;
   width: 160px;
   height: 100px;
+  touch-action: none;
+}
+
+.minimap-canvas.dragging {
+  cursor: grabbing;
 }
 
 .minimap-show-btn {
