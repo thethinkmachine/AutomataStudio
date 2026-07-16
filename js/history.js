@@ -8,7 +8,8 @@ function snapshot() {
     startId: App.startId, accepts: [...App.accepts],
     sigma: [...App.sigma], stackAlpha: [...App.stackAlpha],
     outputAlpha: [...App.outputAlpha], tapeCount: App.tapeCount,
-    stateN: App.stateN, transN: App.transN
+    stateN: App.stateN, transN: App.transN,
+    notes: App.notes, noteN: App.noteN
   });
   App.history.push(s);
   App.future = [];
@@ -64,6 +65,7 @@ function restoreSnapshot(s) {
   App.sigma = new Set(d.sigma || []); App.stackAlpha = new Set(d.stackAlpha || [App.config.sym.stackBottom]);
   App.outputAlpha = new Set(d.outputAlpha || ['0', '1']);
   App.stateN = d.stateN; App.transN = d.transN;
+  App.notes = d.notes || []; App.noteN = d.noteN || 0;
 
   renderSigma(); renderGamma(); renderOutputAlpha();
   renderAll(); updateLPanel(); updateRPanel();

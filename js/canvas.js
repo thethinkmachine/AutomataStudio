@@ -91,9 +91,9 @@ wrap.addEventListener('pointerdown', e => {
   if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, .minimap-show-btn, #status-bar')) return;
 
   if (e.button === 2) {
-    // States/edges own their right-click: they already stop propagation on
-    // their native `contextmenu` listener, so leave their pointerdown alone.
-    if (e.target.closest('.sn, .edge-g')) return;
+    // States/edges/notes own their right-click: they already stop propagation
+    // on their native `contextmenu` listener, so leave their pointerdown alone.
+    if (e.target.closest('.sn, .edge-g, .note-g')) return;
     _rightDownPt = { x: e.clientX, y: e.clientY };
     _rightDragged = false;
     return;
@@ -111,7 +111,7 @@ wrap.addEventListener('pointerdown', e => {
   if (!onBackground) return;
 
   if (App.tool === 'pointer') {
-    if (!e.shiftKey) { App.selectedStates.clear(); App.selectedTransitions.clear(); renderAll(); }
+    if (!(e.shiftKey || e.ctrlKey || e.metaKey)) { App.selectedStates.clear(); App.selectedTransitions.clear(); renderAll(); }
     const pt = svgPt(e);
     App.marquee = { start: pt, current: pt };
     App.marqueeRect = makeSVG('rect');
@@ -324,6 +324,11 @@ function handlePointerMove(e) {
     checkAutoPan(e);
     return;
   }
+  if (App.dragNoteId) {
+    if (typeof dragNoteTo === 'function') dragNoteTo(e);
+    checkAutoPan(e);
+    return;
+  }
   if (App.dragCurve) {
     const pt = svgPt(e);
     const { from, to, grp } = App.dragCurve;
@@ -371,6 +376,10 @@ function endPointerInteractions() {
     App.dragOffsets = null;
     App.dragCurve = null;
     clearAlignGuides();
+    renderMinimap();
+  }
+  if (App.dragNoteId) {
+    App.dragNoteId = null;
     renderMinimap();
   }
 }
@@ -493,14 +502,15 @@ function onStateDown(e, id) {
   }
   if (App.tool === 'move' || App.tool === 'pointer') {
     if (App.tool === 'pointer') {
-      if (!e.shiftKey && !App.selectedStates.has(id)) {
+      const multi = e.shiftKey || e.ctrlKey || e.metaKey;
+      if (!multi && !App.selectedStates.has(id)) {
         App.selectedStates.clear();
         App.selectedTransitions.clear();
         document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
         App.selectedStates.add(id);
         if (el) el.classList.add('sel-st');
 
-      } else if (e.shiftKey) {
+      } else if (multi) {
         if (App.selectedStates.has(id)) {
           App.selectedStates.delete(id);
           if (el) el.classList.remove('sel-st');

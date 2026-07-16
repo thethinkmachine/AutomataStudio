@@ -302,6 +302,7 @@
               <g id="trans-g"></g>
               <g id="trans-lbl-g"></g>
               <g id="states-g"></g>
+              <g id="notes-g"></g>
               <g id="align-guides-g"></g>
             </g>
           </svg>
@@ -1016,6 +1017,33 @@
     </div>
   </div>
 
+  <div class="overlay" id="note-modal">
+    <div class="modal">
+      <div class="modal-title">Note</div>
+      <div class="modal-row" style="align-items:flex-start">
+        <span class="modal-lbl">Text</span>
+        <textarea class="inp" id="note-text" rows="4" maxlength="500"
+          style="resize:vertical;width:100%;font-family:var(--mono)" placeholder="Write a note…"></textarea>
+      </div>
+      <div class="modal-row">
+        <span class="modal-lbl">Color</span>
+        <div class="note-swatch-row" style="display:flex;gap:8px">
+          <button class="note-swatch" data-color="default" onclick="setNoteModalColor('default')" title="Default"></button>
+          <button class="note-swatch" data-color="yellow" onclick="setNoteModalColor('yellow')" title="Yellow"></button>
+          <button class="note-swatch" data-color="green" onclick="setNoteModalColor('green')" title="Green"></button>
+          <button class="note-swatch" data-color="purple" onclick="setNoteModalColor('purple')" title="Purple"></button>
+          <button class="note-swatch" data-color="orange" onclick="setNoteModalColor('orange')" title="Orange"></button>
+          <button class="note-swatch" data-color="red" onclick="setNoteModalColor('red')" title="Red"></button>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn-g" style="color:var(--red);border-color:var(--red-border);margin-right:auto" onclick="deleteNoteFromModal()">Delete</button>
+        <button class="btn-g" onclick="closeModal('note-modal')">Cancel</button>
+        <button class="btn-p" onclick="confirmNote()">Save</button>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay" id="confirm-modal">
     <div class="modal">
       <div class="modal-title" id="confirm-title">Confirm Action</div>
@@ -1329,11 +1357,25 @@
     <div class="ctx-i ctx-state" onclick="ctxStart()">→ Set Start</div>
     <div class="ctx-i ctx-state" id="ctx-toggle-acc" onclick="ctxToggleAcc()">◎ Toggle Accept</div>
     <div class="ctx-i ctx-state" id="ctx-rename" onclick="ctxRename()">✎ Rename</div>
+    <div class="ctx-i ctx-state" onclick="ctxAddNoteState()">✐ Add Note</div>
     <div class="ctx-i ctx-state danger" onclick="ctxDel()">✕ Delete</div>
     <div class="ctx-i ctx-edge" onclick="ctxEditTrans()">✎ Edit Transition</div>
     <div class="ctx-i ctx-edge" onclick="ctxDuplicateTrans()">⧉ Duplicate/Add Parallel Transition</div>
     <div class="ctx-i ctx-edge" onclick="ctxReverseTrans()">⇄ Reverse Direction</div>
+    <div class="ctx-i ctx-edge" onclick="ctxAddNoteEdge()">✐ Add Note</div>
     <div class="ctx-i ctx-edge danger" onclick="ctxDeleteTrans()">✕ Delete Transition(s)</div>
+    <div class="ctx-i ctx-note" onclick="ctxEditNote()">✎ Edit Note</div>
+    <div class="ctx-i ctx-note note-swatch-row">
+      <button class="note-swatch" data-color="default" onclick="ctxSetNoteColor('default')" title="Default"></button>
+      <button class="note-swatch" data-color="yellow" onclick="ctxSetNoteColor('yellow')" title="Yellow"></button>
+      <button class="note-swatch" data-color="green" onclick="ctxSetNoteColor('green')" title="Green"></button>
+      <button class="note-swatch" data-color="purple" onclick="ctxSetNoteColor('purple')" title="Purple"></button>
+      <button class="note-swatch" data-color="orange" onclick="ctxSetNoteColor('orange')" title="Orange"></button>
+      <button class="note-swatch" data-color="red" onclick="ctxSetNoteColor('red')" title="Red"></button>
+    </div>
+    <div class="ctx-i ctx-note" id="ctx-note-anchor" onclick="ctxAnchorNoteToSelection()">⛓ Anchor to Selection</div>
+    <div class="ctx-i ctx-note" id="ctx-note-detach" onclick="ctxDetachNote()">✂ Detach (Make Free)</div>
+    <div class="ctx-i ctx-note danger" onclick="ctxDeleteNote()">✕ Delete Note</div>
   </div>
 
   <!-- ══════ SAVE MENU ══════ -->
@@ -1352,6 +1394,7 @@
   <!-- ══════ CANVAS BACKGROUND CTX MENU ══════ -->
   <div class="ctx" id="canvas-ctx">
     <div class="ctx-i" onclick="ctxCanvasAddState()">✛ Add State Here</div>
+    <div class="ctx-i" onclick="ctxCanvasAddNote()">✐ Add Note Here</div>
     <div class="ctx-i" id="canvas-ctx-paste" onclick="ctxCanvasPaste()">⧉ Paste</div>
     <div class="ctx-i" onclick="ctxCanvasSelectAll()">▤ Select All</div>
     <div class="ctx-i" onclick="ctxCanvasAutoLayout()">◎ Auto-Layout</div>
@@ -1366,6 +1409,7 @@
   <script src="js/states-transitions.js"></script>
   <script src="js/canvas.js"></script>
   <script src="js/render.js"></script>
+  <script src="js/notes.js"></script>
   <script src="js/simulation.js"></script>
   <script src="js/suggest.js"></script>
   <script src="js/persistence.js"></script>

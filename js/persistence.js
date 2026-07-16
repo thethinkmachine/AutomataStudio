@@ -26,6 +26,7 @@ function getWorkspaceData() {
     transitions: App.transitions,
     startId: App.startId,
     accepts: [...App.accepts],
+    notes: App.notes,
     grammar: grammarData,
     cam: App.cam
   };
@@ -214,6 +215,16 @@ function validateSchema(data) {
     }
   }
 
+  // Notes are optional (older files won't have them); if present, just check the shape.
+  if (data.notes !== undefined) {
+    if (!Array.isArray(data.notes)) throw new Error("'notes' must be an array.");
+    for (const n of data.notes) {
+      if (typeof n !== 'object' || n === null || typeof n.id === 'undefined') {
+        throw new Error("Each note must be an object containing an 'id' property.");
+      }
+    }
+  }
+
   const cfg = getMachineConfig(data.machine);
   if (!cfg.hasEpsilon && data.transitions.some(t => t.symbol === App.config.sym.eps)) {
     throw new Error(`${data.machine} does not allow epsilon-read transitions.`);
@@ -256,6 +267,7 @@ function loadData(d, isExample) {
   App.states = d.states || [];
   App.transitions = d.transitions || []; App.startId = d.startId || null;
   App.accepts = new Set(d.accepts || []);
+  App.notes = Array.isArray(d.notes) ? d.notes : [];
   if (App.machine === 'TM' && hasSingleTapeNondeterminism(App.transitions)) {
     App.machine = 'NDTM';
   }

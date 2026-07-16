@@ -13,8 +13,8 @@ function showContextMenu(kind, x, y) {
   if (!m) return;
   m.dataset.mode = kind;
   m.style.display = 'block';
-  const maxX = kind === 'edge' ? 260 : 220;
-  const maxY = kind === 'edge' ? 190 : 150;
+  const maxX = kind === 'edge' ? 260 : kind === 'note' ? 240 : 220;
+  const maxY = kind === 'edge' ? 190 : kind === 'note' ? 240 : 150;
   m.style.left = Math.max(8, Math.min(x, innerWidth - maxX)) + 'px';
   m.style.top = Math.max(8, Math.min(y, innerHeight - maxY)) + 'px';
 }
@@ -25,6 +25,7 @@ function hideContextMenu() {
   App.ctxId = null;
   App.ctxEdge = null;
   App.ctxMode = null;
+  App.ctxNoteId = null;
 }
 
 function ensureSelectValue(sel, value) {
@@ -203,6 +204,11 @@ function createState(x, y, name) {
 }
 function deleteState(id) {
   snapshot();
+  // Resolve any notes anchored to this state (or edges through it) while it's
+  // still live — renderAll()'s prune pass runs after the array mutation below
+  // and can no longer recover the note's pre-deletion position.
+  const orphanedTransIds = App.transitions.filter(t => t.from === id || t.to === id).map(t => t.id);
+  if (typeof pruneNoteAnchorsExcluding === 'function') pruneNoteAnchorsExcluding([id], orphanedTransIds);
   App.states = App.states.filter(s => s.id !== id);
   App.transitions = App.transitions.filter(t => t.from !== id && t.to !== id);
   App.accepts.delete(id);
@@ -419,6 +425,7 @@ function confirmTrans() {
 }
 function deleteTrans(id) {
   snapshot();
+  if (typeof pruneNoteAnchorsExcluding === 'function') pruneNoteAnchorsExcluding([], [id]);
   App.transitions = App.transitions.filter(t => t.id !== id);
   renderAll(); updateLPanel(); updateRPanel();
 }
@@ -426,6 +433,7 @@ function deleteTransitions(ids) {
   const removeIds = new Set(ids);
   if (!removeIds.size) return;
   snapshot();
+  if (typeof pruneNoteAnchorsExcluding === 'function') pruneNoteAnchorsExcluding([], ids);
   App.transitions = App.transitions.filter(t => !removeIds.has(t.id));
   renderAll(); updateLPanel(); updateRPanel();
 }
@@ -740,6 +748,9 @@ function closeModal(id) {
       picker.onchange = null;
     }
     setTransitionModalMode('add');
+  }
+  if (id === 'note-modal') {
+    App.editNoteId = null;
   }
   App._pendFrom = null; App._pendTo = null; App.transFrom = null; clearTempLine();
 }

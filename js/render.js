@@ -7,13 +7,16 @@ function renderAll() {
   const cfg = getMachineConfig(App.machine);
   $('mach-badge').className = `badge ${cfg.badge}`;
   $('mach-badge').textContent = cfg.label;
-  renderTransitions(); renderStates(); renderMinimap();
+  if (typeof pruneNoteAnchors === 'function') pruneNoteAnchors();
+  renderTransitions(); renderStates(); renderNotes(); renderMinimap();
   // Refresh cache after redraw
   App.domCache.states.clear();
   App.domCache.transitions.clear();
+  App.domCache.notes.clear();
   App.domCache.startArrow = $('trans-g').querySelector('[data-start-arrow="true"]');
   document.querySelectorAll('.sn').forEach(el => App.domCache.states.set(el.getAttribute('data-id'), el));
   document.querySelectorAll('.edge-g').forEach(el => App.domCache.transitions.set(el.getAttribute('data-edge'), el));
+  document.querySelectorAll('.note-g').forEach(el => App.domCache.notes.set(el.getAttribute('data-note-id'), el));
 }
 
 function groupTrans() {
@@ -162,13 +165,14 @@ function renderTransitions() {
       }
       if (App.tool === 'pointer') {
         const isSel = grp.ts.some(t => App.selectedTransitions.has(t.id));
-        if (!e.shiftKey && !isSel) {
+        const multi = e.shiftKey || e.ctrlKey || e.metaKey;
+        if (!multi && !isSel) {
           App.selectedStates.clear();
           App.selectedTransitions.clear();
           document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
           grp.ts.forEach(t => App.selectedTransitions.add(t.id));
           edgeGrp.classList.add('sel-t');
-        } else if (e.shiftKey) {
+        } else if (multi) {
           if (isSel) {
             grp.ts.forEach(t => App.selectedTransitions.delete(t.id));
             edgeGrp.classList.remove('sel-t');
@@ -197,11 +201,17 @@ function renderTransitions() {
         App.ctxId = null;
         App.ctxMode = 'edge';
         App.ctxEdge = { from: from.id, to: to.id, transitionIds: grp.ts.map(t => t.id), primaryId: grp.ts[0]?.id || null };
-        App.selectedStates.clear();
-        App.selectedTransitions.clear();
-        document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
-        grp.ts.forEach(t => App.selectedTransitions.add(t.id));
-        edgeGrp.classList.add('sel-t');
+        // If this edge is already part of a larger selection (e.g. built with
+        // ctrl+click across states and edges), keep it intact — right-clicking
+        // shouldn't collapse a combo selection down to just this one edge.
+        const alreadySelected = grp.ts.some(t => App.selectedTransitions.has(t.id));
+        if (!alreadySelected) {
+          App.selectedStates.clear();
+          App.selectedTransitions.clear();
+          document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
+          grp.ts.forEach(t => App.selectedTransitions.add(t.id));
+          edgeGrp.classList.add('sel-t');
+        }
         showContextMenu('edge', e.clientX, e.clientY);
       };
       edgeGrp.addEventListener('contextmenu', onEdgeContextMenu);
@@ -288,6 +298,9 @@ function updateFastDOM() {
       if (handleEl) { handleEl.setAttribute('cx', mx); handleEl.setAttribute('cy', my); }
     }
   });
+
+  // Anchored notes ride along with the states/edges they're pinned to.
+  if (typeof updateNotesDOM === 'function') updateNotesDOM();
 }
 
 function renderStates() {

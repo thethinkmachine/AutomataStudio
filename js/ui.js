@@ -455,6 +455,13 @@ document.addEventListener('keydown', e => {
     if (App.selectedStates.size || App.selectedTransitions.size) {
       e.preventDefault();
       snapshot();
+      if (typeof pruneNoteAnchorsExcluding === 'function') {
+        const removedTransIds = new Set(App.selectedTransitions);
+        App.transitions.forEach(t => {
+          if (App.selectedStates.has(t.from) || App.selectedStates.has(t.to)) removedTransIds.add(t.id);
+        });
+        pruneNoteAnchorsExcluding([...App.selectedStates], [...removedTransIds]);
+      }
       App.selectedStates.forEach(id => {
         App.states = App.states.filter(s => s.id !== id);
         App.transitions = App.transitions.filter(t => t.from !== id && t.to !== id);
@@ -653,6 +660,10 @@ function fitToScreen(silent = false) {
     maxX = Math.max(maxX, s.x + R);
     maxY = Math.max(maxY, s.y + R);
   });
+  includeNoteBounds((x0, y0, x1, y1) => {
+    minX = Math.min(minX, x0); minY = Math.min(minY, y0);
+    maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
+  });
   const bw = maxX - minX, bh = maxY - minY;
   const scaleX = (cw - pad * 2) / bw;
   const scaleY = (ch - pad * 2) / bh;
@@ -685,6 +696,10 @@ function isMachineFullyVisible(vw, vh) {
   App.states.forEach(s => {
     minX = Math.min(minX, s.x - R_PAD); minY = Math.min(minY, s.y - R_PAD);
     maxX = Math.max(maxX, s.x + R_PAD); maxY = Math.max(maxY, s.y + R_PAD);
+  });
+  includeNoteBounds((x0, y0, x1, y1) => {
+    minX = Math.min(minX, x0); minY = Math.min(minY, y0);
+    maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
   });
   const vpMinX = -App.cam.x / App.cam.z, vpMinY = -App.cam.y / App.cam.z;
   const vpMaxX = (vw - App.cam.x) / App.cam.z, vpMaxY = (vh - App.cam.y) / App.cam.z;
@@ -819,6 +834,10 @@ function renderMinimap() {
     minX = Math.min(minX, s.x - R_PAD); minY = Math.min(minY, s.y - R_PAD);
     maxX = Math.max(maxX, s.x + R_PAD); maxY = Math.max(maxY, s.y + R_PAD);
   });
+  includeNoteBounds((x0, y0, x1, y1) => {
+    minX = Math.min(minX, x0); minY = Math.min(minY, y0);
+    maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
+  });
   // Also include viewport extent
   const vw = $('canvas-wrap')?.clientWidth || 600, vh = $('canvas-wrap')?.clientHeight || 400;
   const vpMinX = -App.cam.x / App.cam.z, vpMinY = -App.cam.y / App.cam.z;
@@ -857,6 +876,17 @@ function renderMinimap() {
     ctx.fillStyle = App.accepts.has(s.id) ? App.config.export.accStroke : App.config.export.actStroke;
     ctx.fill();
   });
+  // Draw notes as small squares
+  if (typeof resolveNotePos === 'function') {
+    ctx.fillStyle = App.config.export.textFill;
+    App.notes.forEach(note => {
+      const pos = resolveNotePos(note);
+      const nx = (pos.x - minX) * mmScale + mmOffX;
+      const ny = (pos.y - minY) * mmScale + mmOffY;
+      const s = 3;
+      ctx.fillRect(nx - s / 2, ny - s / 2, s, s);
+    });
+  }
   // Draw viewport rect
   const rx = (vpMinX - minX) * mmScale + mmOffX;
   const ry = (vpMinY - minY) * mmScale + mmOffY;

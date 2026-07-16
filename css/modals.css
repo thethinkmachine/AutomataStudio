@@ -268,9 +268,43 @@
 }
 
 .ctx[data-mode="state"] .ctx-edge,
-.ctx[data-mode="edge"] .ctx-state {
+.ctx[data-mode="state"] .ctx-note,
+.ctx[data-mode="edge"] .ctx-state,
+.ctx[data-mode="edge"] .ctx-note,
+.ctx[data-mode="note"] .ctx-state,
+.ctx[data-mode="note"] .ctx-edge {
   display: none;
 }
+
+.note-swatch-row {
+  cursor: default;
+}
+
+.note-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--border2);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: transform .1s;
+}
+
+.note-swatch:hover {
+  transform: scale(1.15);
+}
+
+.note-swatch.active {
+  box-shadow: 0 0 0 2px var(--bg2), 0 0 0 3px var(--accent);
+}
+
+.note-swatch[data-color="default"] { background: var(--surface3); }
+.note-swatch[data-color="yellow"] { background: var(--gold); }
+.note-swatch[data-color="green"] { background: var(--green); }
+.note-swatch[data-color="purple"] { background: var(--purple); }
+.note-swatch[data-color="orange"] { background: var(--orange); }
+.note-swatch[data-color="red"] { background: var(--red); }
 
 .ctx-i {
   padding: 6px 12px;

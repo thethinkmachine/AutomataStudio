@@ -201,6 +201,54 @@
   fill: var(--purple);
 }
 
+/* ─── NOTES ─── */
+.note-g {
+  cursor: default;
+}
+
+[data-tool="pointer"] .note-g,
+[data-tool="move"] .note-g {
+  cursor: grab;
+}
+
+[data-tool="del"] .note-g {
+  cursor: not-allowed;
+}
+
+.note-leader {
+  stroke: var(--text3);
+  stroke-width: 1;
+  stroke-dasharray: 3, 3;
+  pointer-events: none;
+  opacity: .6;
+}
+
+.note-body {
+  fill: var(--surface2);
+  stroke: var(--border2);
+  stroke-width: 1.25;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .25));
+  transition: stroke .15s;
+}
+
+.note-g:hover .note-body {
+  stroke: var(--accent);
+}
+
+.note-text {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  fill: var(--text2);
+  pointer-events: none;
+  white-space: pre;
+}
+
+.note-g[data-color="yellow"] .note-body { fill: var(--gold-soft); stroke: var(--gold-border); }
+.note-g[data-color="green"] .note-body { fill: var(--green-soft); stroke: var(--green-border); }
+.note-g[data-color="purple"] .note-body { fill: var(--purple-soft); stroke: var(--purple-border); }
+.note-g[data-color="orange"] .note-body { fill: var(--orange-soft); stroke: var(--orange-border); }
+.note-g[data-color="red"] .note-body { fill: var(--red-soft); stroke: var(--red-border); }
+
 .cam-smooth,
 .cam-smooth::before {
   transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1), background-position 0.25s cubic-bezier(0.2, 0, 0, 1), background-size 0.25s cubic-bezier(0.2, 0, 0, 1);
