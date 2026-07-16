@@ -4,17 +4,33 @@
 function tokenize(str, sigma = App.sigma) {
   if (str === '' || !str) return [];
   const syms = [...sigma].filter(s => s !== App.config.sym.eps).sort((a, b) => b.length - a.length);
-  function bt(pos) {
-    if (pos === str.length) return [];
-    for (const s of syms) {
-      if (str.startsWith(s, pos)) {
-        const rest = bt(pos + s.length);
-        if (rest !== null) return [s, ...rest];
+  function bt(segment) {
+    function rec(pos) {
+      if (pos === segment.length) return [];
+      for (const s of syms) {
+        if (segment.startsWith(s, pos)) {
+          const rest = rec(pos + s.length);
+          if (rest !== null) return [s, ...rest];
+        }
       }
+      return null;
     }
-    return null;
+    return rec(0);
   }
-  return bt(0);
+  // Symbols are allowed to be whole words (e.g. "officerOpensReview"), so a
+  // human-typed test string will naturally separate them with commas/whitespace
+  // — the same delimiters used when symbols are added to Σ. Split on those first,
+  // falling back to plain concatenation (undelimited backtracking) per segment
+  // so single-character alphabets like {0,1} keep working exactly as before.
+  const segments = str.split(/[,\s]+/).filter(seg => seg.length > 0);
+  if (segments.length === 0) return [];
+  const tokens = [];
+  for (const segment of segments) {
+    const t = bt(segment);
+    if (t === null) return null;
+    tokens.push(...t);
+  }
+  return tokens;
 }
 
 function canApplyPdaPop(top, pop) {
