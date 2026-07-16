@@ -384,6 +384,8 @@
   cursor: pointer;
   color: var(--text3);
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
 }
 
 .ti .dx:hover {

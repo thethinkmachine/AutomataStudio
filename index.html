@@ -55,71 +55,63 @@
     <div class="hdr-right">
       <button class="hbtn" onclick="undo()" title="Undo (Ctrl+Z)">
         <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3.5 6.5H9a4 4 0 0 1 0 8H5" />
-          <polyline points="3.5,3 3.5,6.5 7,6.5" />
+          <path d="M13.3 13.3V8.7a2.7 2.7 0 0 0-2.7-2.7H2.7" />
+          <polyline points="6,9.3 2.7,6 6,2.7" />
         </svg>Undo
       </button>
       <button class="hbtn" onclick="redo()" title="Redo (Ctrl+Y)">
         <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12.5 6.5H7a4 4 0 0 0 0 8h4" />
-          <polyline points="12.5,3 12.5,6.5 9,6.5" />
+          <path d="M2.7 13.3V8.7a2.7 2.7 0 0 1 2.7-2.7H13.3" />
+          <polyline points="10,9.3 13.3,6 10,2.7" />
         </svg>Redo
       </button>
       <div class="hdr-sep"></div>
       <button class="hbtn" id="save-btn" onclick="toggleSaveMenu(event)" title="Export workspace">
         <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
-          <rect x="5" y="2.5" width="6" height="4" rx="0.5" />
-          <rect x="5.5" y="9" width="5" height="3.5" rx="0.5" />
-          <line x1="7" y1="3.5" x2="7" y2="6" />
+          <path d="M8 2v8" />
+          <path d="M5 7.3 8 10.3 11 7.3" />
+          <path d="M2.5 11.3v1.7a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1.7" />
         </svg>Save
       </button>
       <button class="hbtn" onclick="loadJSON()" title="Load Workspace (PNG or JSON)">
         <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M2.5 10v3a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-3" />
-          <polyline points="5,7.5 8,10.5 11,7.5" />
-          <line x1="8" y1="2" x2="8" y2="10.5" />
+          <path d="M8 10.3v-8" />
+          <path d="M5 5.3 8 2.3 11 5.3" />
+          <path d="M2.5 11.3v1.7a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1.7" />
         </svg>Load
       </button>
       <div class="hdr-sep"></div>
       <button id="fs-btn" class="hbtn" onclick="toggleFullscreen()" title="Enter fullscreen (F)"
         style="width:2.2rem;padding:0;display:flex;align-items:center;justify-content:center">
         <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 6V3h3M10 3h3v3M3 10v3h3M13 10v3h-3" />
+          <path d="M2.3 6.2V2.3h3.9M9.8 2.3h3.9v3.9M2.3 9.8v3.9h3.9M13.7 9.8v3.9h-3.9" />
         </svg>
       </button>
       <button id="theme-btn" class="hbtn" onclick="toggleTheme()" title="Switch theme"
         style="width:2.2rem;padding:0;display:flex;align-items:center;justify-content:center">
         <svg viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="4" />
-          <path d="M12 2v2" />
-          <path d="M12 20v2" />
-          <path d="m4.93 4.93 1.41 1.41" />
-          <path d="m17.66 17.66 1.41 1.41" />
-          <path d="M2 12h2" />
-          <path d="M20 12h2" />
-          <path d="m6.34 17.66-1.41 1.41" />
-          <path d="m19.07 4.93-1.41 1.41" />
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
         </svg>
       </button>
       <button class="hbtn" onclick="openSettingsModal()" title="Engine Settings">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M8 1.5l5.2 3v6l-5.2 3-5.2-3v-6z" />
-          <circle cx="8" cy="7.5" r="2.2" />
+        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="8" cy="8" r="4.1" />
+          <circle cx="8" cy="8" r="1.5" />
+          <path d="M13.7 8h-1.4M12.03 12.03l-.99-.99M8 13.7v-1.4M3.97 12.03l.99-.99M2.3 8h1.4M3.97 3.97l.99.99M8 2.3v1.4M12.03 3.97l-.99.99" />
         </svg>Settings
       </button>
       <button class="hbtn" onclick="openAboutModal()" title="About this application">
         <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="8" cy="8" r="6" />
-          <line x1="8" y1="7.5" x2="8" y2="11" />
-          <circle cx="8" cy="5.2" r="0.5" fill="currentColor" stroke="none" />
+          <path d="M8 7.4v4" />
+          <circle cx="8" cy="4.9" r="0.55" fill="currentColor" stroke="none" />
         </svg>About
       </button>
       <button class="hbtn" onclick="showHelpModal()" title="Keyboard shortcuts">
         <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="8" cy="8" r="6" />
-          <path d="M6 6.2a2 2 0 1 1 2.5 1.9C7.8 8.4 8 9 8 9.5" />
-          <circle cx="8" cy="11.5" r="0.5" fill="currentColor" stroke="none" />
+          <path d="M5.9 6.3a2.15 2.15 0 1 1 2.9 2c-.75.32-1.05.8-1.05 1.5" />
+          <circle cx="7.75" cy="11.55" r="0.55" fill="currentColor" stroke="none" />
         </svg>Help
       </button>
     </div>
@@ -145,15 +137,16 @@
     <div id="tab-bar" class="tab-bar"></div>
     <button class="hbtn warn" onclick="clearAll()" title="Clear canvas (X)">
       <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="4,4 12,4" />
-        <path d="M5 4V3h6v1" />
-        <path d="M6 7v5M10 7v5" />
-        <path d="M3 4l.8 9a1 1 0 0 0 1 .9h6.4a1 1 0 0 0 1-.9L13 4" />
+        <path d="M3 4.5h10" />
+        <path d="M5.3 4.5V3a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1v1.5" />
+        <path d="M4.3 4.5l.6 8.3a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.6-8.3" />
+        <path d="M6.7 7v4M9.3 7v4" />
       </svg>Clear
     </button>
     <button class="hbtn" onclick="loadExample()" title="Load example automaton">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="5,3 13.5,8 5,13" fill="currentColor" stroke="none" />
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M6.4 2c.45 2.8 1.3 3.65 4.1 4.1-2.8.45-3.65 1.3-4.1 4.1-.45-2.8-1.3-3.65-4.1-4.1C5.1 5.65 5.95 4.8 6.4 2Z" fill="currentColor" stroke="none" />
+        <path d="M12.3 8.6c.2 1.35.65 1.8 2 2-1.35.2-1.8.65-2 2-.2-1.35-.65-1.8-2-2 1.35-.2 1.8-.65 2-2Z" fill="currentColor" stroke="none" />
       </svg>Load Example
     </button>
 
@@ -349,16 +342,20 @@
             </button>
             <button class="toolbox-btn" id="t-trans" onclick="toggleTool('trans')" title="Add Transition (T); click again to return to Pointer">
               <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="3.8" cy="8" r="1.8" />
-                <circle cx="12.2" cy="8" r="1.8" />
-                <path d="M5.9 8h4.9" />
+                <circle cx="3.6" cy="8" r="1.7" />
+                <circle cx="12.4" cy="8" r="1.7" />
+                <path d="M5.5 8h3" />
+                <path d="M8 6.2 10.2 8 8 9.8" />
               </svg>
               <span class="toolbox-lbl">Trans</span>
               <span class="toolbox-kbd">T</span>
             </button>
             <button class="toolbox-btn toolbox-danger" id="t-del" onclick="toggleTool('del')" title="Delete — click a state or transition (D); click again to return to Pointer">
               <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3 5h10M6.5 5V3.5h3V5M4.5 5l.6 8a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8" />
+                <path d="M3 4.5h10" />
+                <path d="M5.3 4.5V3a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1v1.5" />
+                <path d="M4.3 4.5l.6 8.3a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.6-8.3" />
+                <path d="M6.7 7v4M9.3 7v4" />
               </svg>
               <span class="toolbox-lbl">Delete</span>
               <span class="toolbox-kbd">D</span>
@@ -366,16 +363,16 @@
             <div class="toolbox-sep"></div>
             <button class="toolbox-btn" onclick="undo()" title="Undo (Ctrl+Z)">
               <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3.5 6.5H9a4 4 0 0 1 0 8H5" />
-                <polyline points="3.5,3 3.5,6.5 7,6.5" />
+                <path d="M13.3 13.3V8.7a2.7 2.7 0 0 0-2.7-2.7H2.7" />
+                <polyline points="6,9.3 2.7,6 6,2.7" />
               </svg>
               <span class="toolbox-lbl">Undo</span>
               <span class="toolbox-kbd">⌘Z</span>
             </button>
             <button class="toolbox-btn" onclick="redo()" title="Redo (Ctrl+Y)">
               <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12.5 6.5H7a4 4 0 0 0 0 8h4" />
-                <polyline points="12.5,3 12.5,6.5 9,6.5" />
+                <path d="M2.7 13.3V8.7a2.7 2.7 0 0 1 2.7-2.7H13.3" />
+                <polyline points="10,9.3 13.3,6 10,2.7" />
               </svg>
               <span class="toolbox-lbl">Redo</span>
               <span class="toolbox-kbd">⌘Y</span>
@@ -387,38 +384,51 @@
           <div class="minimap-container" id="minimap-container">
             <div class="minimap-header">
               <span class="minimap-title">Overview</span>
-              <button class="minimap-toggle" onclick="toggleMinimap()" title="Hide minimap">✕</button>
+              <button class="minimap-toggle" onclick="toggleMinimap()" title="Hide minimap">
+                <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+              </button>
             </div>
             <canvas class="minimap-canvas" id="minimap-canvas" width="160" height="100"></canvas>
           </div>
           <button class="minimap-show-btn" id="minimap-show-btn" style="display:none" onclick="toggleMinimap()"
-            title="Show minimap">⊞ Map</button>
+            title="Show minimap">
+            <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="1.5" y="2.5" width="13" height="9" rx="1.3" />
+              <rect x="5.5" y="5.5" width="6" height="4" rx="0.6" />
+            </svg>Map
+          </button>
           <!-- Nav controls -->
           <div class="canvas-nav-controls" id="canvas-nav-controls">
             <button class="cnc-btn" onclick="zoomOut()" title="Zoom out (-)">
               <svg viewBox="0 0 14 14" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="3" y1="7" x2="11" y2="7" />
+                <circle cx="5.8" cy="5.8" r="3.6" />
+                <path d="M8.3 8.3 12.3 12.3" />
+                <path d="M3.8 5.8h4" />
               </svg>
             </button>
             <input type="text" class="cnc-zoom-input" id="zoom-ind" value="100%"
               onkeydown="if(event.key==='Enter') this.blur()" onblur="setZoomFromInput(this.value)">
             <button class="cnc-btn" onclick="zoomIn()" title="Zoom in (+)">
               <svg viewBox="0 0 14 14" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="7" y1="3" x2="7" y2="11" />
-                <line x1="3" y1="7" x2="11" y2="7" />
+                <circle cx="5.8" cy="5.8" r="3.6" />
+                <path d="M8.3 8.3 12.3 12.3" />
+                <path d="M3.8 5.8h4M5.8 3.8v4" />
               </svg>
             </button>
             <div class="cnc-sep"></div>
             <button class="cnc-btn" onclick="fitToScreen()" title="Fit to screen (H)">
               <svg viewBox="0 0 14 14" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M2 5V2h3M9 2h3v3M2 9v3h3M12 9v3h-3" />
+                <rect x="5.3" y="5.3" width="3.4" height="3.4" rx="0.6" />
               </svg>
             </button>
             <div class="cnc-sep"></div>
             <button class="cnc-btn" id="snap-toggle-btn" onclick="toggleSnapToGrid()" title="Snap to grid while dragging (hold Shift to invert)">
               <svg viewBox="0 0 14 14" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M7 1.2 3 3.6v4.8L7 10.8l4-2.4V3.6z" />
-                <circle cx="7" cy="6" r="1.1" fill="currentColor" stroke="none" />
+                <circle cx="3" cy="3" r="0.7" fill="currentColor" stroke="none" /><circle cx="7" cy="3" r="0.7" fill="currentColor" stroke="none" /><circle cx="11" cy="3" r="0.7" fill="currentColor" stroke="none" />
+                <circle cx="3" cy="7" r="0.7" fill="currentColor" stroke="none" /><circle cx="11" cy="7" r="0.7" fill="currentColor" stroke="none" />
+                <circle cx="3" cy="11" r="0.7" fill="currentColor" stroke="none" /><circle cx="7" cy="11" r="0.7" fill="currentColor" stroke="none" /><circle cx="11" cy="11" r="0.7" fill="currentColor" stroke="none" />
+                <circle cx="7" cy="7" r="1.3" fill="currentColor" stroke="none" />
               </svg>
             </button>
           </div>
@@ -1354,17 +1364,50 @@
 
   <!-- ══════ CTX MENU ══════ -->
   <div class="ctx" id="ctx">
-    <div class="ctx-i ctx-state" onclick="ctxStart()">→ Set Start</div>
-    <div class="ctx-i ctx-state" id="ctx-toggle-acc" onclick="ctxToggleAcc()">◎ Toggle Accept</div>
-    <div class="ctx-i ctx-state" id="ctx-rename" onclick="ctxRename()">✎ Rename</div>
-    <div class="ctx-i ctx-state" onclick="ctxAddNoteState()">✐ Add Note</div>
-    <div class="ctx-i ctx-state danger" onclick="ctxDel()">✕ Delete</div>
-    <div class="ctx-i ctx-edge" onclick="ctxEditTrans()">✎ Edit Transition</div>
-    <div class="ctx-i ctx-edge" onclick="ctxDuplicateTrans()">⧉ Duplicate/Add Parallel Transition</div>
-    <div class="ctx-i ctx-edge" onclick="ctxReverseTrans()">⇄ Reverse Direction</div>
-    <div class="ctx-i ctx-edge" onclick="ctxAddNoteEdge()">✐ Add Note</div>
-    <div class="ctx-i ctx-edge danger" onclick="ctxDeleteTrans()">✕ Delete Transition(s)</div>
-    <div class="ctx-i ctx-note" onclick="ctxEditNote()">✎ Edit Note</div>
+    <div class="ctx-i ctx-state" onclick="ctxStart()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 8h6.4" /><path d="M6.9 5.2 9.7 8l-2.8 2.8" /><path d="M12.3 3v10" /></svg>
+      Set Start
+    </div>
+    <div class="ctx-i ctx-state" id="ctx-toggle-acc" onclick="ctxToggleAcc()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5" /><circle cx="8" cy="8" r="2.3" /></svg>
+      Toggle Accept
+    </div>
+    <div class="ctx-i ctx-state" id="ctx-rename" onclick="ctxRename()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-8 8-3.5.5.5-3.5z" /></svg>
+      <span class="ctx-label">Rename</span>
+    </div>
+    <div class="ctx-i ctx-state" onclick="ctxAddNoteState()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7.3L13 5.7V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M10.3 3v2.7H13" /><path d="M4.3 8.2h5.6M4.3 10.4h3.8" /></svg>
+      Add Note
+    </div>
+    <div class="ctx-i ctx-state danger" onclick="ctxDel()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10" /><path d="M5.3 4.5V3a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1v1.5" /><path d="M4.3 4.5l.6 8.3a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.6-8.3" /><path d="M6.7 7v4M9.3 7v4" /></svg>
+      Delete
+    </div>
+    <div class="ctx-i ctx-edge" onclick="ctxEditTrans()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-8 8-3.5.5.5-3.5z" /></svg>
+      Edit Transition
+    </div>
+    <div class="ctx-i ctx-edge" onclick="ctxDuplicateTrans()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="9" rx="1.3" /><path d="M3.5 10.2V3.8A1.3 1.3 0 0 1 4.8 2.5h6" /></svg>
+      Duplicate/Add Parallel Transition
+    </div>
+    <div class="ctx-i ctx-edge" onclick="ctxReverseTrans()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.3h7.2" /><path d="M8.2 2.8 10.8 5.3 8.2 7.8" /><path d="M13 10.7H5.8" /><path d="M7.8 13.2 5.2 10.7 7.8 8.2" /></svg>
+      Reverse Direction
+    </div>
+    <div class="ctx-i ctx-edge" onclick="ctxAddNoteEdge()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7.3L13 5.7V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M10.3 3v2.7H13" /><path d="M4.3 8.2h5.6M4.3 10.4h3.8" /></svg>
+      Add Note
+    </div>
+    <div class="ctx-i ctx-edge danger" onclick="ctxDeleteTrans()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10" /><path d="M5.3 4.5V3a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1v1.5" /><path d="M4.3 4.5l.6 8.3a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.6-8.3" /><path d="M6.7 7v4M9.3 7v4" /></svg>
+      Delete Transition(s)
+    </div>
+    <div class="ctx-i ctx-note" onclick="ctxEditNote()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-8 8-3.5.5.5-3.5z" /></svg>
+      Edit Note
+    </div>
     <div class="ctx-i ctx-note note-swatch-row">
       <button class="note-swatch" data-color="default" onclick="ctxSetNoteColor('default')" title="Default"></button>
       <button class="note-swatch" data-color="yellow" onclick="ctxSetNoteColor('yellow')" title="Yellow"></button>
@@ -1373,16 +1416,34 @@
       <button class="note-swatch" data-color="orange" onclick="ctxSetNoteColor('orange')" title="Orange"></button>
       <button class="note-swatch" data-color="red" onclick="ctxSetNoteColor('red')" title="Red"></button>
     </div>
-    <div class="ctx-i ctx-note" id="ctx-note-anchor" onclick="ctxAnchorNoteToSelection()">⛓ Anchor to Selection</div>
-    <div class="ctx-i ctx-note" id="ctx-note-detach" onclick="ctxDetachNote()">✂ Detach (Make Free)</div>
-    <div class="ctx-i ctx-note danger" onclick="ctxDeleteNote()">✕ Delete Note</div>
+    <div class="ctx-i ctx-note" id="ctx-note-anchor" onclick="ctxAnchorNoteToSelection()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="3.3" r="1.3" /><path d="M8 4.6v8" /><path d="M4 8h8" /><path d="M4.5 9.5a3.8 3.8 0 0 0 3.1 3.3M11.5 9.5a3.8 3.8 0 0 1-3.1 3.3" /></svg>
+      Anchor to Selection
+    </div>
+    <div class="ctx-i ctx-note" id="ctx-note-detach" onclick="ctxDetachNote()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="3.3" r="1.3" /><path d="M8 4.6v8" /><path d="M4 8h8" /><path d="M4.5 9.5a3.8 3.8 0 0 0 3.1 3.3M11.5 9.5a3.8 3.8 0 0 1-3.1 3.3" /><path d="M2.8 2.8l10.4 10.4" /></svg>
+      Detach (Make Free)
+    </div>
+    <div class="ctx-i ctx-note danger" onclick="ctxDeleteNote()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10" /><path d="M5.3 4.5V3a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1v1.5" /><path d="M4.3 4.5l.6 8.3a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.6-8.3" /><path d="M6.7 7v4M9.3 7v4" /></svg>
+      Delete Note
+    </div>
   </div>
 
   <!-- ══════ SAVE MENU ══════ -->
   <div class="ctx" id="save-menu">
-    <div class="ctx-i" onclick="hideSaveMenu(); exportPNG()">▧ Export as Photo (PNG)</div>
-    <div class="ctx-i" onclick="hideSaveMenu(); saveJSON()">{ } Export as JSON</div>
-    <div class="ctx-i" onclick="hideSaveMenu(); copyShareableLink()">↗ Copy Shareable Link</div>
+    <div class="ctx-i" onclick="hideSaveMenu(); exportPNG()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.8" width="12" height="10.4" rx="1.3" /><circle cx="5.6" cy="6" r="1.2" /><path d="M2.6 11.5 6.3 8l2.6 2.4 2-1.8 2.5 2.5" /></svg>
+      Export as Photo (PNG)
+    </div>
+    <div class="ctx-i" onclick="hideSaveMenu(); saveJSON()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M5.3 2.5c-1.1 0-1.6.5-1.6 1.6v2c0 .8-.3 1.2-1.2 1.4.9.2 1.2.6 1.2 1.4v2c0 1.1.5 1.6 1.6 1.6" /><path d="M10.7 2.5c1.1 0 1.6.5 1.6 1.6v2c0 .8.3 1.2 1.2 1.4-.9.2-1.2.6-1.2 1.4v2c0 1.1-.5 1.6-1.6 1.6" /></svg>
+      Export as JSON
+    </div>
+    <div class="ctx-i" onclick="hideSaveMenu(); copyShareableLink()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 9.5 9.5 6.5" /><path d="M7.3 4.8 8.6 3.5a2.3 2.3 0 0 1 3.3 3.3L10.6 8.1" /><path d="M8.7 11.2 7.4 12.5a2.3 2.3 0 0 1-3.3-3.3l1.3-1.3" /></svg>
+      Copy Shareable Link
+    </div>
   </div>
 
   <!-- ══════ Σ SYMBOL SUGGEST POPOVER (Simulate / Batch Test inputs) ══════ -->
@@ -1393,12 +1454,30 @@
 
   <!-- ══════ CANVAS BACKGROUND CTX MENU ══════ -->
   <div class="ctx" id="canvas-ctx">
-    <div class="ctx-i" onclick="ctxCanvasAddState()">✛ Add State Here</div>
-    <div class="ctx-i" onclick="ctxCanvasAddNote()">✐ Add Note Here</div>
-    <div class="ctx-i" id="canvas-ctx-paste" onclick="ctxCanvasPaste()">⧉ Paste</div>
-    <div class="ctx-i" onclick="ctxCanvasSelectAll()">▤ Select All</div>
-    <div class="ctx-i" onclick="ctxCanvasAutoLayout()">◎ Auto-Layout</div>
-    <div class="ctx-i" onclick="ctxCanvasFit()">⤢ Fit to Screen</div>
+    <div class="ctx-i" onclick="ctxCanvasAddState()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5" /><line x1="8" y1="5.2" x2="8" y2="10.8" /><line x1="5.2" y1="8" x2="10.8" y2="8" /></svg>
+      Add State Here
+    </div>
+    <div class="ctx-i" onclick="ctxCanvasAddNote()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7.3L13 5.7V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M10.3 3v2.7H13" /><path d="M4.3 8.2h5.6M4.3 10.4h3.8" /></svg>
+      Add Note Here
+    </div>
+    <div class="ctx-i" id="canvas-ctx-paste" onclick="ctxCanvasPaste()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 3h5a1 1 0 0 1 1 1v8.5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M6.3 3 6.7 1.8h2.6L9.7 3" /></svg>
+      Paste
+    </div>
+    <div class="ctx-i" onclick="ctxCanvasSelectAll()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke-dasharray="2.2 2.2" /></svg>
+      Select All
+    </div>
+    <div class="ctx-i" onclick="ctxCanvasAutoLayout()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="3.5" r="1.6" /><circle cx="13" cy="11.5" r="1.6" /><circle cx="3" cy="11.5" r="1.6" /><line x1="8" y1="5.1" x2="8" y2="7" /><line x1="7.1" y1="7.2" x2="4.2" y2="10" /><line x1="8.9" y1="7.2" x2="11.8" y2="10" /></svg>
+      Auto-Layout
+    </div>
+    <div class="ctx-i" onclick="ctxCanvasFit()">
+      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 5.7V2.3h3.4M10.3 2.3h3.4v3.4M2.3 10.3v3.4h3.4M13.7 10.3v3.4h-3.4" /><rect x="6" y="6" width="4" height="4" rx="0.7" /></svg>
+      Fit to Screen
+    </div>
   </div>
 
 

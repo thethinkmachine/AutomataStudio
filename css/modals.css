@@ -314,8 +314,18 @@
   transition: background .1s;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   white-space: nowrap;
+}
+
+.ctx-i svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  flex-shrink: 0;
+  opacity: .85;
 }
 
 .ctx-i:hover {

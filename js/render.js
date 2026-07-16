@@ -359,9 +359,9 @@ function renderStates() {
       App.ctxEdge = null;
       App.ctxMode = 'state';
       const toggleOpt = $('ctx-toggle-acc');
-      const renameOpt = $('ctx-rename');
+      const renameLbl = document.querySelector('#ctx-rename .ctx-label');
       if (toggleOpt) toggleOpt.style.display = showAccepts ? '' : 'none';
-      if (renameOpt) renameOpt.innerText = (App.machine === 'Moore' || App.machine === 'Mealy') ? '✎ Configure' : '✎ Rename';
+      if (renameLbl) renameLbl.textContent = (App.machine === 'Moore' || App.machine === 'Mealy') ? 'Configure' : 'Rename';
       showContextMenu('state', e.clientX, e.clientY); 
     });
     grp.addEventListener('dblclick', () => { 
@@ -419,7 +419,7 @@ function updateLPanel() {
   onmouseenter="hlTransListHover('${t.from}','${t.to}', true)" onmouseleave="hlTransListHover('${t.from}','${t.to}', false)"
   title="${fullTitle.replace(/"/g, '&quot;')}">
   <span class="ti-from">${fn}</span><span class="arr">–${transLabel(t)}→</span><span class="ti-to">${tn}</span>
-  <span class="dx" onclick="event.stopPropagation(); deleteTrans('${t.id}')" title="Delete transition">×</span>
+  <span class="dx" onclick="event.stopPropagation(); deleteTrans('${t.id}')" title="Delete transition"><svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></span>
 </div>`;
   }).join('') : '<div class="empty-msg">No transitions</div>';
   if (typeof filterStates === 'function') filterStates();

@@ -641,6 +641,23 @@
   color: var(--text);
 }
 
+.minimap-toggle svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+
+.minimap-show-btn svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  flex-shrink: 0;
+}
+
 .minimap-canvas {
   display: block;
   cursor: pointer;
@@ -667,6 +684,9 @@
   color: var(--text3);
   cursor: pointer;
   transition: all var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .minimap-show-btn:hover {
