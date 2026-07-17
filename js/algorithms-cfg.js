@@ -1137,10 +1137,10 @@ function renderCYKVisStep(out) {
   out.innerHTML = `
 <h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:8px">CYK Step-Through &mdash; "<span style="color:var(--gold)">${s}</span>"</h3>
 <div class="sctrl" style="margin-bottom:10px">
-  <button class="sbtn" onclick="cykVisStep(-1)" ${idx===0?'disabled':''}>← Back</button>
-  <button class="sbtn auto-btn" onclick="cykVisStep(1)" ${isLast?'disabled':''}>Next →</button>
+  <button class="sbtn" onclick="cykVisStep(-1)" ${idx===0?'disabled':''} style="display:flex;align-items:center;justify-content:center;gap:4px"><svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg> Back</button>
+  <button class="sbtn auto-btn" onclick="cykVisStep(1)" ${isLast?'disabled':''} style="display:flex;align-items:center;justify-content:center;gap:4px">Next <svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></button>
   <span style="font-family:var(--mono);font-size:.63rem;color:var(--text3);padding:4px 8px">${progress}</span>
-  <button class="sbtn sec" onclick="runCYKVisual()">↺ Reset</button>
+  <button class="sbtn sec" onclick="runCYKVisual()" style="display:flex;align-items:center;justify-content:center;gap:4px"><svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg> Reset</button>
 </div>
 <div class="step-item" style="margin-bottom:12px">
   <div class="step-num">${idx + 1}</div>

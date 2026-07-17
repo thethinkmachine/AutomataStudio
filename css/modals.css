@@ -248,9 +248,8 @@
 .about-link svg {
   width: 10px;
   height: 10px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
+  fill: currentColor;
+  stroke: none;
   flex-shrink: 0;
 }
 
@@ -324,9 +323,8 @@
 .ctx-i svg {
   width: 14px;
   height: 14px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
+  fill: currentColor;
+  stroke: none;
   flex-shrink: 0;
   opacity: .85;
 }

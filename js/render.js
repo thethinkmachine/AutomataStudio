@@ -438,7 +438,7 @@ function updateLPanel() {
   title="Click to focus · Double-click to edit">
   ${s.name}${mooreOut}
   <button class="si-edit" onclick="event.stopPropagation(); openStateModal('${s.id}')" title="Edit state" aria-label="Edit ${s.name}">
-    <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-8 8-3.5.5.5-3.5z"/></svg>
+    <svg viewBox="0 0 256 256" width="11" height="11" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"/></svg>
   </button>
   <div class="dot"></div>
 </div>`;
@@ -452,7 +452,7 @@ function updateLPanel() {
   onmouseenter="hlTransListHover('${t.from}','${t.to}', true)" onmouseleave="hlTransListHover('${t.from}','${t.to}', false)"
   title="${fullTitle.replace(/"/g, '&quot;')}">
   <span class="ti-from">${fn}</span><span class="arr">–${transLabel(t)}→</span><span class="ti-to">${tn}</span>
-  <span class="dx" onclick="event.stopPropagation(); deleteTrans('${t.id}')" title="Delete transition"><svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></span>
+  <span class="dx" onclick="event.stopPropagation(); deleteTrans('${t.id}')" title="Delete transition"><svg viewBox="0 0 256 256" width="10" height="10" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span>
 </div>`;
   }).join('') : '<div class="empty-msg">No transitions</div>';
   if (typeof filterStates === 'function') filterStates();

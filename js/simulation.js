@@ -1303,20 +1303,35 @@ function updateSimScrubber() {
   counter.textContent = `${total ? App.simIdx + 1 : 0} / ${total}`;
 }
 
-const SIM_ICON_ACCEPT = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 4.5"/></svg>';
-const SIM_ICON_REJECT = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+const SIM_ICON_ACCEPT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>';
+const SIM_ICON_REJECT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>';
+const SIM_ICON_PLAY = '<svg viewBox="0 0 256 256" fill="currentColor" width="14" height="14"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>';
+
+// Run doubles as the verdict readout — once the simulation reaches its
+// final step, recoloring/relabeling this one button communicates
+// accept/reject at a glance instead of a separate banner. 'idle' is the
+// pre-run/pre-verdict state; 'accept'/'reject' only apply once isLast is
+// true and get cleared the moment you step away from the final step,
+// reset, or start a new run.
+function setRunBtnState(mode) {
+  const btn = $('run-btn');
+  if (!btn) return;
+  btn.classList.remove('accept', 'reject');
+  if (mode === 'accept') { btn.classList.add('accept'); btn.innerHTML = `${SIM_ICON_ACCEPT} Accepted`; return; }
+  if (mode === 'reject') { btn.classList.add('reject'); btn.innerHTML = `${SIM_ICON_REJECT} Rejected`; return; }
+  btn.innerHTML = SIM_ICON_PLAY;
+}
 
 function updateSimVerdict(step, isLast) {
   const el = $('sim-verdict');
   if (!el) return;
-  if (!isLast) { el.style.display = 'none'; return; }
+  if (!isLast) { el.style.display = 'none'; setRunBtnState('idle'); return; }
   if (step.final === 'accept' || step.final === 'reject') {
-    const accepted = step.final === 'accept';
-    el.style.display = 'flex';
-    el.className = `sim-verdict ${accepted ? 'accept' : 'reject'}`;
-    el.innerHTML = `${accepted ? SIM_ICON_ACCEPT : SIM_ICON_REJECT}<span>${accepted ? 'Accepted' : 'Rejected'}</span>`;
+    el.style.display = 'none';
+    setRunBtnState(step.final);
     return;
   }
+  setRunBtnState('idle');
   const cfg = getMachineConfig(App.machine);
   if (cfg.isTransducer && step.outToks !== undefined) {
     el.style.display = 'flex';
@@ -1330,8 +1345,6 @@ function updateSimVerdict(step, isLast) {
 function stopAutoPlay() {
   if (!App.autoTimer) return;
   clearInterval(App.autoTimer); App.autoTimer = null;
-  const btn = $('auto-btn');
-  if (btn) { btn.classList.remove('playing'); btn.innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-right:4px"><path d="M4 2v12l9-6z"/></svg> Auto'; }
 }
 
 function stepFwd(stopAuto = true) {
@@ -1377,10 +1390,10 @@ function resetSim() {
   const verdict = $('sim-verdict'); if (verdict) verdict.style.display = 'none';
   const scrubRow = $('sim-scrubber-row'); if (scrubRow) scrubRow.style.display = 'none';
   document.querySelectorAll('.sn').forEach(el => el.classList.remove('act-st', 'rej-st'));
+  setRunBtnState('idle');
 }
 function toggleAuto() {
   if (App.autoTimer) { stopAutoPlay(); return; }
-  $('auto-btn').classList.add('playing'); $('auto-btn').innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-right:4px"><path d="M5 3h2v10H5zM9 3h2v10H9z"/></svg> Stop';
   App.autoTimer = setInterval(() => {
     if (App.simIdx >= App.simSteps.length - 1) { stopAutoPlay(); return; }
     stepFwd(false);

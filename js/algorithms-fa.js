@@ -1,6 +1,7 @@
 // ══════════════════════════════════════════════════════════════════
 //  ALGORITHMS VIEW
 // ══════════════════════════════════════════════════════════════════
+const ALGO_ICON_LOAD_CANVAS = '<svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor" style="margin-right:6px"><path d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/></svg>';
 function setAlgo(a) {
   // Clear canvas overlay when leaving Dead State Analysis
   if (App.currentAlgo === 'deadStates' && a !== 'deadStates' && App.stateClassification) {
@@ -80,7 +81,7 @@ function algoNFA2DFA(c) {
   }).join('');
   c.innerHTML += `<div class="card"><div class="card-title">Result: ${result.states.length} DFA states from ${App.states.length} NFA states</div>
 <div class="subset-table-wrap"><table class="result-table"><thead>${thead}</thead><tbody>${rows}</tbody></table></div></div>`;
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadSubsetAsDFA()">Load Result into Canvas</button></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadSubsetAsDFA()">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
   // Steps
   c.innerHTML += `<div class="card"><div class="card-title">Construction Steps</div><div class="step-list">${result.steps.map((s, i) => `<div class="step-item"><div class="step-num">${i + 1}</div><div class="step-text">${s}</div></div>`).join('')
     }</div></div>`;
@@ -459,7 +460,7 @@ function doThompson() {
   <table class="result-table"><thead><tr><th>From</th><th>Symbol</th><th>To</th></tr></thead><tbody>`;
     nfaData.trans.forEach(t => { html += `<tr><td ${t.from === nfaData.start ? 'class="start-cell"' : ''}>${t.from}</td><td>${t.sym}</td><td ${t.to === nfaData.accept ? 'class="acc-cell"' : ''}>${t.to}</td></tr>`; });
     html += '</tbody></table></div>';
-    html += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadThompsonNFA()">Load into Canvas</button></div>`;
+    html += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadThompsonNFA()">${ALGO_ICON_LOAD_CANVAS}Load into Canvas</button></div>`;
     $('re-result').innerHTML = html;
     App._lastThompson = nfaData;
   } catch (err) { $('re-result').innerHTML = `<div class="card" style="color:var(--red);font-size:.75rem">Parse error: ${err.message}</div>`; }
@@ -740,7 +741,7 @@ function algoComplement(c) {
   const html = comp.map(s => `<div class="state-pill ${s.accept ? 'acc' : ''}">${s.name} → ${s.accept ? 'ACCEPT' : 'REJECT'}</div>`).join('');
   c.innerHTML += `<div class="card"><div class="card-title">Complemented States</div><div class="nfa-result-states">${html}</div>
 <div style="font-size:.7rem;color:var(--text2);margin-top:10px">Note: Original accept states become non-accepting and vice versa. All transitions remain the same.</div></div>
-<div style="margin-top:8px"><button class="algo-btn" onclick="loadComplement()">Load Complement into Canvas</button></div>`;
+<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadComplement()">${ALGO_ICON_LOAD_CANVAS}Load Complement into Canvas</button></div>`;
 }
 function loadComplement() {
   snapshot();
@@ -1183,7 +1184,7 @@ function algoClopStar(c) {
   const result = buildNFAStar(m);
   const html = renderBuiltNFAResult(result, 'Kleene Star NFA');
   c.innerHTML += html;
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadBuiltNFAResult('star')">Load Result into Canvas</button></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadBuiltNFAResult('star')">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
   App._lastBuiltNFA = { key: 'star', machine: result };
 }
 
@@ -1199,7 +1200,7 @@ function algoClopReversal(c) {
   const result = buildNFAReversal(m);
   const html = renderBuiltNFAResult(result, 'Reversal NFA');
   c.innerHTML += html;
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadBuiltNFAResult('reversal')">Load Result into Canvas</button></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadBuiltNFAResult('reversal')">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
   App._lastBuiltNFA = { key: 'reversal', machine: result };
 }
 
@@ -1215,7 +1216,7 @@ function algoClopUnion(c) {
   const m1 = getCurrentMachineSnapshot(), m2 = App.workspaceB;
   const result = buildNFAUnion(m1, m2);
   c.innerHTML += renderBuiltNFAResult(result, 'Union NFA');
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadBuiltNFAResult('union')">Load Result into Canvas</button></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadBuiltNFAResult('union')">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
   App._lastBuiltNFA = { key: 'union', machine: result };
 }
 
@@ -1245,7 +1246,7 @@ function algoClopIntersect(c) {
 <div class="subset-table-wrap"><table class="result-table"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>
 <div style="font-size:.68rem;color:var(--text3);margin-top:8px">${product.states.length} total product states, ${reachableStates.length} reachable</div>
 </div>`;
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadBuiltNFAResult('intersect')">Load Result into Canvas</button></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadBuiltNFAResult('intersect')">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
   App._lastBuiltNFA = { key: 'intersect', machine: product };
 }
 
@@ -1261,7 +1262,7 @@ function algoClopConcat(c) {
   const m1 = getCurrentMachineSnapshot(), m2 = App.workspaceB;
   const result = buildNFAConcat(m1, m2);
   c.innerHTML += renderBuiltNFAResult(result, 'Concatenation NFA');
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadBuiltNFAResult('concat')">Load Result into Canvas</button></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadBuiltNFAResult('concat')">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
   App._lastBuiltNFA = { key: 'concat', machine: result };
 }
 
@@ -1959,13 +1960,13 @@ placeholder="Paste TM JSON here…">${UTM_DEFAULT_TM}</textarea>
   <div class="card-title">Input Tape ⟨w⟩</div>
   <div class="regex-input-wrap" style="margin-bottom:8px">
 <input class="inp" id="utm-input" placeholder="Input string (ε for empty)" style="flex:1">
-<button class="algo-btn" onclick="runUTMSim()">▶ Run UTM</button>
+<button class="algo-btn" onclick="runUTMSim()" style="display:flex;align-items:center;justify-content:center;gap:6px"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg> Run UTM</button>
   </div>
   <div style="display:flex;gap:6px;margin-bottom:8px">
-<button class="sbtn" onclick="utmStepBack()" title="Step back">◀</button>
-<button class="sbtn" onclick="utmStepFwd()" title="Step forward">▶</button>
-<button class="sbtn" id="utm-auto-btn" onclick="utmToggleAuto()" title="Auto-play">⏵ Auto</button>
-<button class="sbtn" onclick="utmResetView()" title="Reset">↺</button>
+<button class="sbtn" onclick="utmStepBack()" title="Step back"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg></button>
+<button class="sbtn" onclick="utmStepFwd()" title="Step forward"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></button>
+<button class="sbtn" id="utm-auto-btn" onclick="utmToggleAuto()" title="Auto-play" style="display:flex;align-items:center;justify-content:center;gap:4px"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg> Auto</button>
+<button class="sbtn" onclick="utmResetView()" title="Reset"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg></button>
   </div>
   <div id="utm-tape-wrap" style="display:flex;flex-wrap:nowrap;overflow-x:auto;gap:2px;min-height:36px;margin-bottom:8px;padding:4px 0;"></div>
   <div id="utm-result"></div>
@@ -2120,11 +2121,13 @@ function renderUTMStep() {
 function utmStepFwd() { if (utmIdx < utmSteps.length - 1) { utmIdx++; renderUTMStep(); } }
 function utmStepBack() { if (utmIdx > 0) { utmIdx--; renderUTMStep(); } }
 function utmResetView() { utmResetTimer(); utmSteps = []; utmIdx = 0; const el = document.getElementById('utm-result'); if (el) el.innerHTML = ''; const t = document.getElementById('utm-tape-wrap'); if (t) t.innerHTML = ''; }
-function utmResetTimer() { if (utmAutoTimer) { clearInterval(utmAutoTimer); utmAutoTimer = null; } const b = document.getElementById('utm-auto-btn'); if (b) { b.classList.remove('playing'); b.textContent = '⏵ Auto'; } }
+const UTM_ICON_PLAY = '<svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>';
+const UTM_ICON_PAUSE = '<svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M200,32H160a16,16,0,0,0-16,16V208a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V48A16,16,0,0,0,200,32Zm0,176H160V48h40ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Zm0,176H56V48H96Z"/></svg>';
+function utmResetTimer() { if (utmAutoTimer) { clearInterval(utmAutoTimer); utmAutoTimer = null; } const b = document.getElementById('utm-auto-btn'); if (b) { b.classList.remove('playing'); b.innerHTML = `${UTM_ICON_PLAY} Auto`; } }
 function utmToggleAuto() {
   if (utmAutoTimer) { utmResetTimer(); return; }
   const b = document.getElementById('utm-auto-btn');
-  if (b) { b.classList.add('playing'); b.textContent = '⏸ Stop'; }
+  if (b) { b.classList.add('playing'); b.innerHTML = `${UTM_ICON_PAUSE} Stop`; }
   utmAutoTimer = setInterval(() => {
     if (utmIdx >= utmSteps.length - 1) { utmResetTimer(); return; }
     utmIdx++; renderUTMStep();
@@ -2438,8 +2441,8 @@ function algoMinimizeVisual(c) {
 
   c.innerHTML += `<div class="card">
     <div class="sctrl">
-      <button class="sbtn" onclick="minVisStep(-1)">&larr; Back</button>
-      <button class="sbtn" id="min-vis-play" onclick="minVisStep(1)">Start Step-by-Step &rarr;</button>
+      <button class="sbtn" onclick="minVisStep(-1)" style="display:flex;align-items:center;justify-content:center;gap:4px"><svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg> Back</button>
+      <button class="sbtn" id="min-vis-play" onclick="minVisStep(1)" style="display:flex;align-items:center;justify-content:center;gap:4px">Start Step-by-Step <svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></button>
       <button class="sbtn sec" onclick="renderAlgo('minimizeVisual')">Reset</button>
     </div>
     <div id="min-vis-status" style="font-size:.7rem;color:var(--text2);margin-bottom:12px;min-height:2em">Click Start to begin the Myhill-Nerode process.</div>
@@ -2710,8 +2713,8 @@ function renderThViz() {
         </div>
       </div>
       <div class="sctrl">
-        <button class="sbtn" onclick="thVizStep(-1)" ${idx === 0 ? 'disabled' : ''}>&larr; Back</button>
-        <button class="sbtn ${isLast ? '' : 'auto-btn'}" onclick="thVizStep(1)" ${isLast ? 'disabled' : ''}>Next &rarr;</button>
+        <button class="sbtn" onclick="thVizStep(-1)" ${idx === 0 ? 'disabled' : ''} style="display:flex;align-items:center;justify-content:center;gap:4px"><svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg> Back</button>
+        <button class="sbtn ${isLast ? '' : 'auto-btn'}" onclick="thVizStep(1)" ${isLast ? 'disabled' : ''} style="display:flex;align-items:center;justify-content:center;gap:4px">Next <svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></button>
         <button class="sbtn sec" onclick="startThompsonViz()">Restart</button>
       </div>
     </div>
@@ -2726,7 +2729,7 @@ function renderThViz() {
         <tbody>${transRows || '<tr><td colspan="3" class="dead-cell">No transitions</td></tr>'}</tbody>
       </table>
     </div>
-    ${isLast ? `<button class="algo-btn" style="margin-top:10px" onclick="loadThompsonNFA_Viz()">&#8599; Load Final NFA into Canvas</button>` : ''}
+    ${isLast ? `<button class="algo-btn" style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px" onclick="loadThompsonNFA_Viz()"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/></svg> Load Final NFA into Canvas</button>` : ''}
   `;
 }
 
@@ -3037,7 +3040,7 @@ function buildRG2NFA() {
     <tbody>${transRows}</tbody>
   </table>
   <div style="margin-top:10px">
-    <button class="algo-btn" onclick="loadRG2NFAToCanvas()">&#8599; Load into Canvas</button>
+    <button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadRG2NFAToCanvas()">${ALGO_ICON_LOAD_CANVAS}Load into Canvas</button>
   </div>
 </div>`;
   } catch (e) {
@@ -3151,11 +3154,11 @@ function algoDeadStates(c) {
     ${pill('Unreachable', unreachable.length, 'var(--orange, #ff9800)')}
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
-    <button class="algo-btn" onclick="highlightDeadStates()" id="dsa-highlight-btn">
-      &#9670; Highlight on Canvas
+    <button class="algo-btn" onclick="highlightDeadStates()" id="dsa-highlight-btn" style="display:flex;align-items:center;justify-content:center;gap:6px">
+      <svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M247.31,124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57,61.26,162.88,48,128,48S61.43,61.26,36.34,86.35C17.51,105.18,9,124,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208s66.57-13.26,91.66-38.34c18.83-18.83,27.3-37.61,27.65-38.4A8,8,0,0,0,247.31,124.76ZM128,192c-30.78,0-57.67-11.19-79.93-33.25A133.47,133.47,0,0,1,25,128,133.33,133.33,0,0,1,48.07,97.25C70.33,75.19,97.22,64,128,64s57.67,11.19,79.93,33.25A133.46,133.46,0,0,1,231.05,128C223.84,141.46,192.43,192,128,192Zm0-112a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Z"/></svg> Highlight on Canvas
     </button>
-    <button class="algo-btn sec" onclick="clearStateHighlights()">
-      &#10005; Clear Highlights
+    <button class="algo-btn sec" onclick="clearStateHighlights()" style="display:flex;align-items:center;justify-content:center;gap:6px">
+      <svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg> Clear Highlights
     </button>
   </div>
 </div>`;

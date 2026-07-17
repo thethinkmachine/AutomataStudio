@@ -158,9 +158,8 @@ header {
 .hbtn svg {
   width: 14px;
   height: 14px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
+  fill: currentColor;
+  stroke: none;
   flex-shrink: 0;
 }
 
@@ -516,6 +515,7 @@ header {
 .model-picker-btn .chevron {
   width: 14px;
   height: 14px;
+  fill: currentColor;
   color: var(--text3);
   transition: transform var(--transition-fast);
 }

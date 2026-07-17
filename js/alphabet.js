@@ -19,7 +19,7 @@ function addSym() {
   }
 function renderSigma() {
   const c = $('sigma-chips');
-  c.innerHTML = [...App.sigma].map(s => `<div class="chip">${escapeHtml(s)}<span class="x" onclick="delSym(${jsAttr(s)})">×</span></div>`).join('')
+  c.innerHTML = [...App.sigma].map(s => `<div class="chip">${escapeHtml(s)}<span class="x" onclick="delSym(${jsAttr(s)})"><svg viewBox="0 0 256 256"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span></div>`).join('')
     || '<div class="empty-msg">Add symbols</div>';
   if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
@@ -46,7 +46,7 @@ function renderGamma() {
       const isBoundary = isBoundaryTapeMachine(App.machine) && isBoundarySymbol(s);
       const style = isBottom ? 'style="color:var(--green)"' : (isBoundary ? 'style="color:var(--gold)"' : '');
       const title = isBoundary ? ` title="${s === App.config.sym.leftMarker ? 'Left boundary marker' : 'Right boundary marker'}"` : '';
-      return `<div class="chip" ${style}${title}>${escapeHtml(s)}${(isBottom || isBoundary) ? '' : `<span class="x" onclick="delGSym(${jsAttr(s)})">×</span>`}</div>`;
+      return `<div class="chip" ${style}${title}>${escapeHtml(s)}${(isBottom || isBoundary) ? '' : `<span class="x" onclick="delGSym(${jsAttr(s)})"><svg viewBox="0 0 256 256"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span>`}</div>`;
     }).join('') || '<div class="empty-msg">Add symbols</div>';
   if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
@@ -58,7 +58,7 @@ function addOutSym() {
 function delOutSym(s) { App.outputAlpha.delete(s); renderOutputAlpha(); }
 function renderOutputAlpha() {
   const c = $('output-chips');
-  c.innerHTML = [...App.outputAlpha].map(s => `<div class="chip">${escapeHtml(s)}<span class="x" onclick="delOutSym(${jsAttr(s)})">×</span></div>`).join('')
+  c.innerHTML = [...App.outputAlpha].map(s => `<div class="chip">${escapeHtml(s)}<span class="x" onclick="delOutSym(${jsAttr(s)})"><svg viewBox="0 0 256 256"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span></div>`).join('')
     || '<div class="empty-msg">Add symbols</div>';
   if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }

@@ -95,11 +95,10 @@
 .lp-toggle-arrow {
   width: 13px;
   height: 13px;
-  fill: none;
-  stroke: var(--text3);
-  stroke-width: 2;
+  fill: var(--text3);
+  stroke: none;
   flex-shrink: 0;
-  transition: transform var(--transition-fast), stroke var(--transition-fast);
+  transition: transform var(--transition-fast), fill var(--transition-fast);
 }
 
 .lp-collapsible.collapsed .lp-toggle-arrow {
@@ -210,6 +209,11 @@
   border-color: var(--accent);
 }
 
+.ibtn svg {
+  fill: currentColor;
+  flex-shrink: 0;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -233,8 +237,14 @@
 .chip .x {
   cursor: pointer;
   color: var(--text3);
-  font-size: .75rem;
+  display: inline-flex;
   transition: color .12s;
+}
+
+.chip .x svg {
+  width: 9px;
+  height: 9px;
+  fill: currentColor;
 }
 
 .chip .x:hover {
@@ -542,6 +552,7 @@ body.panel-resizing .rpanel {
 }
 
 .pin-btn svg {
+  fill: currentColor;
   transition: transform 0.2s ease;
 }
 
@@ -618,9 +629,8 @@ body.panel-resizing .rpanel {
 .rp-toggle-arrow {
   width: 14px;
   height: 14px;
-  fill: none;
-  stroke: var(--text3);
-  stroke-width: 2;
+  fill: var(--text3);
+  stroke: none;
   flex-shrink: 0;
   transition: transform var(--transition-fast);
 }

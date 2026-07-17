@@ -54,65 +54,35 @@
     </div>
     <div class="hdr-right">
       <button class="hbtn" onclick="undo()" title="Undo (Ctrl+Z)">
-        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M13.3 13.3V8.7a2.7 2.7 0 0 0-2.7-2.7H2.7" />
-          <polyline points="6,9.3 2.7,6 6,2.7" />
-        </svg>Undo
+        <svg viewBox="0 0 256 256" fill="currentColor"><path d="M232,144a64.07,64.07,0,0,1-64,64H80a8,8,0,0,1,0-16h88a48,48,0,0,0,0-96H51.31l34.35,34.34a8,8,0,0,1-11.32,11.32l-48-48a8,8,0,0,1,0-11.32l48-48A8,8,0,0,1,85.66,45.66L51.31,80H168A64.07,64.07,0,0,1,232,144Z" /></svg>Undo
       </button>
       <button class="hbtn" onclick="redo()" title="Redo (Ctrl+Y)">
-        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M2.7 13.3V8.7a2.7 2.7 0 0 1 2.7-2.7H13.3" />
-          <polyline points="10,9.3 13.3,6 10,2.7" />
-        </svg>Redo
+        <svg viewBox="0 0 256 256" fill="currentColor"><path d="M170.34,130.34,204.69,96H88a48,48,0,0,0,0,96h88a8,8,0,0,1,0,16H88A64,64,0,0,1,88,80H204.69L170.34,45.66a8,8,0,0,1,11.32-11.32l48,48a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32-11.32Z" /></svg>Redo
       </button>
       <div class="hdr-sep"></div>
       <button class="hbtn" id="save-btn" onclick="toggleSaveMenu(event)" title="Export workspace">
-        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M8 2v8" />
-          <path d="M5 7.3 8 10.3 11 7.3" />
-          <path d="M2.5 11.3v1.7a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1.7" />
-        </svg>Save
+        <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,124.69V32a8,8,0,0,0-16,0v92.69L93.66,98.34a8,8,0,0,0-11.32,11.32Z" /></svg>Save
       </button>
       <button class="hbtn" onclick="loadJSON()" title="Load Workspace (PNG or JSON)">
-        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M8 10.3v-8" />
-          <path d="M5 5.3 8 2.3 11 5.3" />
-          <path d="M2.5 11.3v1.7a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1.7" />
-        </svg>Load
+        <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0ZM93.66,77.66,120,51.31V144a8,8,0,0,0,16,0V51.31l26.34,26.35a8,8,0,0,0,11.32-11.32l-40-40a8,8,0,0,0-11.32,0l-40,40A8,8,0,0,0,93.66,77.66Z" /></svg>Load
       </button>
       <div class="hdr-sep"></div>
       <button id="fs-btn" class="hbtn" onclick="toggleFullscreen()" title="Enter fullscreen (F)"
         style="width:2.2rem;padding:0;display:flex;align-items:center;justify-content:center">
-        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M2.3 6.2V2.3h3.9M9.8 2.3h3.9v3.9M2.3 9.8v3.9h3.9M13.7 9.8v3.9h-3.9" />
-        </svg>
+        <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48V96a8,8,0,0,1-16,0V67.31l-42.34,42.35a8,8,0,0,1-11.32-11.32L188.69,56H160a8,8,0,0,1,0-16h48A8,8,0,0,1,216,48ZM98.34,146.34,56,188.69V160a8,8,0,0,0-16,0v48a8,8,0,0,0,8,8H96a8,8,0,0,0,0-16H67.31l42.35-42.34a8,8,0,0,0-11.32-11.32ZM208,152a8,8,0,0,0-8,8v28.69l-42.34-42.35a8,8,0,0,0-11.32,11.32L188.69,200H160a8,8,0,0,0,0,16h48a8,8,0,0,0,8-8V160A8,8,0,0,0,208,152ZM67.31,56H96a8,8,0,0,0,0-16H48a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31l42.34,42.35a8,8,0,0,0,11.32-11.32Z" /></svg>
       </button>
       <button id="theme-btn" class="hbtn" onclick="toggleTheme()" title="Switch theme"
         style="width:2.2rem;padding:0;display:flex;align-items:center;justify-content:center">
-        <svg viewBox="0 0 24 24">
-          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
-        </svg>
+        <svg viewBox="0 0 256 256" fill="currentColor"><path d="M233.54,142.23a8,8,0,0,0-8-2,88.08,88.08,0,0,1-109.8-109.8,8,8,0,0,0-10-10,104.84,104.84,0,0,0-52.91,37A104,104,0,0,0,136,224a103.09,103.09,0,0,0,62.52-20.88,104.84,104.84,0,0,0,37-52.91A8,8,0,0,0,233.54,142.23ZM188.9,190.34A88,88,0,0,1,65.66,67.11a89,89,0,0,1,31.4-26A106,106,0,0,0,96,56,104.11,104.11,0,0,0,200,160a106,106,0,0,0,14.92-1.06A89,89,0,0,1,188.9,190.34Z" /></svg>
       </button>
       <button class="hbtn" onclick="openSettingsModal()" title="Engine Settings">
-        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="8" cy="8" r="4.1" />
-          <circle cx="8" cy="8" r="1.5" />
-          <path d="M13.7 8h-1.4M12.03 12.03l-.99-.99M8 13.7v-1.4M3.97 12.03l.99-.99M2.3 8h1.4M3.97 3.97l.99.99M8 2.3v1.4M12.03 3.97l-.99.99" />
-        </svg>Settings
+        <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A112.1,112.1,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.62a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.08,8.08,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8.08,8.08,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z" /></svg>Settings
       </button>
       <button class="hbtn" onclick="openAboutModal()" title="About this application">
-        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="8" cy="8" r="6" />
-          <path d="M8 7.4v4" />
-          <circle cx="8" cy="4.9" r="0.55" fill="currentColor" stroke="none" />
-        </svg>About
+        <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z" /></svg>About
       </button>
       <button class="hbtn" onclick="showHelpModal()" title="Keyboard shortcuts">
-        <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="8" cy="8" r="6" />
-          <path d="M5.9 6.3a2.15 2.15 0 1 1 2.9 2c-.75.32-1.05.8-1.05 1.5" />
-          <circle cx="7.75" cy="11.55" r="0.55" fill="currentColor" stroke="none" />
-        </svg>Help
+        <svg viewBox="0 0 256 256" fill="currentColor"><path d="M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z" /></svg>Help
       </button>
     </div>
   </header>
@@ -125,9 +95,7 @@
           <span class="model-picker-cat" id="cur-model-cat">Finite Automata</span>
           <span class="model-picker-type" id="cur-model-name">DFA</span>
         </div>
-        <svg class="chevron" viewBox="0 0 16 16" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="4,6 8,10 12,6" />
-        </svg>
+        <svg class="chevron" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
       </button>
 
       <div class="model-picker-menu" id="model-picker-menu">
@@ -136,29 +104,14 @@
     </div>
     <div id="tab-bar" class="tab-bar"></div>
     <button class="hbtn warn" onclick="clearAll()" title="Clear canvas (X)">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 4.5h10" />
-        <path d="M5.3 4.5V3a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1v1.5" />
-        <path d="M4.3 4.5l.6 8.3a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.6-8.3" />
-        <path d="M6.7 7v4M9.3 7v4" />
-      </svg>Clear
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>Clear
     </button>
     <button class="hbtn" onclick="loadExample()" title="Load example automaton">
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M6.4 2c.45 2.8 1.3 3.65 4.1 4.1-2.8.45-3.65 1.3-4.1 4.1-.45-2.8-1.3-3.65-4.1-4.1C5.1 5.65 5.95 4.8 6.4 2Z" fill="currentColor" stroke="none" />
-        <path d="M12.3 8.6c.2 1.35.65 1.8 2 2-1.35.2-1.8.65-2 2-.2-1.35-.65-1.8-2-2 1.35-.2 1.8-.65 2-2Z" fill="currentColor" stroke="none" />
-      </svg>Load Example
+      <svg viewBox="0 0 256 256" aria-hidden="true" fill="currentColor"><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z" /></svg>Load Example
     </button>
 
     <button class="hbtn" onclick="autoLayout()" title="Auto-arrange states (algorithm set in Settings → Rendering)">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="8" cy="3.5" r="1.6" />
-        <circle cx="13" cy="11.5" r="1.6" />
-        <circle cx="3" cy="11.5" r="1.6" />
-        <line x1="8" y1="5.1" x2="8" y2="7" />
-        <line x1="7.1" y1="7.2" x2="4.2" y2="10" />
-        <line x1="8.9" y1="7.2" x2="11.8" y2="10" />
-      </svg>Auto-Layout
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M160,112h48a16,16,0,0,0,16-16V48a16,16,0,0,0-16-16H160a16,16,0,0,0-16,16V64H128a24,24,0,0,0-24,24v32H72v-8A16,16,0,0,0,56,96H24A16,16,0,0,0,8,112v32a16,16,0,0,0,16,16H56a16,16,0,0,0,16-16v-8h32v32a24,24,0,0,0,24,24h16v16a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V160a16,16,0,0,0-16-16H160a16,16,0,0,0-16,16v16H128a8,8,0,0,1-8-8V88a8,8,0,0,1,8-8h16V96A16,16,0,0,0,160,112ZM56,144H24V112H56v32Zm104,16h48v48H160Zm0-112h48V96H160Z" /></svg>Auto-Layout
     </button>
   </div>
 
@@ -176,10 +129,7 @@
         <div class="panel-header">
           <span class="panel-header-title">Workspace</span>
           <button class="pin-btn" id="lpanel-pin-btn" onclick="toggleLPanelPin()" title="Unpin left panel">
-            <svg viewBox="0 0 16 16" width="14" height="14">
-              <path d="M8 2a3 3 0 013 3v2l1 1v2H9v4l-1 1-1-1v-4H4V8l1-1V5a3 3 0 013-3z" fill="none" stroke="currentColor"
-                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
+            <svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M235.32,81.37,174.63,20.69a16,16,0,0,0-22.63,0L98.37,74.49c-10.66-3.34-35-7.37-60.4,13.14a16,16,0,0,0-1.29,23.78L85,159.71,42.34,202.34a8,8,0,0,0,11.32,11.32L96.29,171l48.29,48.29A16,16,0,0,0,155.9,224c.38,0,.75,0,1.13,0a15.93,15.93,0,0,0,11.64-6.33c19.64-26.1,17.75-47.32,13.19-60L235.33,104A16,16,0,0,0,235.32,81.37ZM224,92.69h0l-57.27,57.46a8,8,0,0,0-1.49,9.22c9.46,18.93-1.8,38.59-9.34,48.62L48,100.08c12.08-9.74,23.64-12.31,32.48-12.31A40.13,40.13,0,0,1,96.81,91a8,8,0,0,0,9.25-1.51L163.32,32,224,92.68Z" /></svg>
           </button>
         </div>
         <div class="lpanel-content" id="lpanel-content">
@@ -187,15 +137,13 @@
             <div class="lp-section-header" onclick="toggleLPSection('lp-alphabet')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('lp-alphabet')}">
               <span class="sec-lbl lp-section-title">Alphabet Σ</span>
               <span class="lp-section-count" id="lp-count-sigma">0</span>
-              <svg class="lp-toggle-arrow" viewBox="0 0 14 14">
-                <path d="M3 5l4 4 4-4" />
-              </svg>
+              <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
             </div>
             <div class="lp-section-body">
               <div class="row">
                 <input class="inp" id="sym-in" placeholder="a, b, 0…" maxlength="33"
                   onkeydown="if(event.key==='Enter')addSym()">
-                <button class="ibtn" onclick="addSym()">+</button>
+                <button class="ibtn" onclick="addSym()"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
               </div>
               <div class="chips" id="sigma-chips"></div>
             </div>
@@ -205,15 +153,13 @@
             <div class="lp-section-header" onclick="toggleLPSection('stack-sec')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('stack-sec')}">
               <span class="sec-lbl lp-section-title">Stack Γ</span>
               <span class="lp-section-count" id="lp-count-stack">0</span>
-              <svg class="lp-toggle-arrow" viewBox="0 0 14 14">
-                <path d="M3 5l4 4 4-4" />
-              </svg>
+              <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
             </div>
             <div class="lp-section-body">
               <div class="row">
                 <input class="inp" id="gsym-in" placeholder="Z, A…" maxlength="5"
                   onkeydown="if(event.key==='Enter')addGSym()">
-                <button class="ibtn" onclick="addGSym()">+</button>
+                <button class="ibtn" onclick="addGSym()"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
               </div>
               <div class="chips" id="gamma-chips"></div>
             </div>
@@ -223,15 +169,13 @@
             <div class="lp-section-header" onclick="toggleLPSection('output-sec')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('output-sec')}">
               <span class="sec-lbl lp-section-title">Output Δ</span>
               <span class="lp-section-count" id="lp-count-output">0</span>
-              <svg class="lp-toggle-arrow" viewBox="0 0 14 14">
-                <path d="M3 5l4 4 4-4" />
-              </svg>
+              <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
             </div>
             <div class="lp-section-body">
               <div class="row">
                 <input class="inp" id="outsym-in" placeholder="0, 1…" maxlength="10"
                   onkeydown="if(event.key==='Enter')addOutSym()">
-                <button class="ibtn" onclick="addOutSym()">+</button>
+                <button class="ibtn" onclick="addOutSym()"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
               </div>
               <div class="chips" id="output-chips"></div>
             </div>
@@ -241,9 +185,7 @@
             <div class="lp-section-header" onclick="toggleLPSection('lp-states')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('lp-states')}">
               <span class="sec-lbl lp-section-title">States Q</span>
               <span class="lp-section-count" id="lp-count-states">0</span>
-              <svg class="lp-toggle-arrow" viewBox="0 0 14 14">
-                <path d="M3 5l4 4 4-4" />
-              </svg>
+              <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
             </div>
             <div class="lp-section-body">
               <input class="lpanel-search-inp" id="state-search" placeholder="Filter states…" oninput="filterStates()">
@@ -257,9 +199,7 @@
             <div class="lp-section-header" onclick="toggleLPSection('lp-transitions')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('lp-transitions')}">
               <span class="sec-lbl lp-section-title">Transitions δ</span>
               <span class="lp-section-count" id="lp-count-trans">0</span>
-              <svg class="lp-toggle-arrow" viewBox="0 0 14 14">
-                <path d="M3 5l4 4 4-4" />
-              </svg>
+              <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
             </div>
             <div class="lp-section-body">
               <input class="lpanel-search-inp" id="trans-search" placeholder="Filter transitions…" oninput="filterTransitions()">
@@ -302,46 +242,27 @@
           <!-- Floating toolbox -->
           <div class="canvas-toolbox" id="canvas-toolbox">
             <button class="toolbox-grip" id="toolbox-grip" type="button" title="Drag toolbar" aria-label="Drag toolbar">
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <circle cx="4" cy="5" r="1" />
-                <circle cx="8" cy="5" r="1" />
-                <circle cx="12" cy="5" r="1" />
-                <circle cx="4" cy="11" r="1" />
-                <circle cx="8" cy="11" r="1" />
-                <circle cx="12" cy="11" r="1" />
-              </svg>
+              <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,60A12,12,0,1,1,92,48,12,12,0,0,1,104,60Zm60,12a12,12,0,1,0-12-12A12,12,0,0,0,164,72ZM92,116a12,12,0,1,0,12,12A12,12,0,0,0,92,116Zm72,0a12,12,0,1,0,12,12A12,12,0,0,0,164,116ZM92,184a12,12,0,1,0,12,12A12,12,0,0,0,92,184Zm72,0a12,12,0,1,0,12,12A12,12,0,0,0,164,184Z" /></svg>
             </button>
             <button class="toolbox-btn" id="t-pointer" onclick="toggleTool('pointer')"
               title="Pointer — select &amp; interact (Esc)">
-              <svg viewBox="0 0 16 16" fill="currentColor" stroke="none" aria-hidden="true">
-                <path d="M4.1 2.5v11.2l2.7-2.5 1.8 4.1 1.7-.8-1.8-4.1h3.5L4.1 2.5Z" />
-              </svg>
+              <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M168,132.69,214.08,115l.33-.13A16,16,0,0,0,213,85.07L52.92,32.8A15.95,15.95,0,0,0,32.8,52.92L85.07,213a15.82,15.82,0,0,0,14.41,11l.78,0a15.84,15.84,0,0,0,14.61-9.59l.13-.33L132.69,168,184,219.31a16,16,0,0,0,22.63,0l12.68-12.68a16,16,0,0,0,0-22.63ZM195.31,208,144,156.69a16,16,0,0,0-26,4.93c0,.11-.09.22-.13.32l-17.65,46L48,48l159.85,52.2-45.95,17.64-.32.13a16,16,0,0,0-4.93,26h0L208,195.31Z" /></svg>
               <span class="toolbox-lbl">Pointer</span>
               <span class="toolbox-kbd">Esc</span>
             </button>
             <div class="toolbox-sep"></div>
             <button class="toolbox-btn" id="t-move" onclick="toggleTool('move')" title="Move — drag canvas to pan (V); click again to return to Pointer">
-              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M8 2v12M2 8h12" />
-                <polyline points="5,5 2,8 5,11" />
-                <polyline points="11,5 14,8 11,11" />
-                <polyline points="5,5 8,2 11,5" />
-                <polyline points="5,11 8,14 11,11" />
-              </svg>
+              <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M90.34,61.66a8,8,0,0,1,0-11.32l32-32a8,8,0,0,1,11.32,0l32,32a8,8,0,0,1-11.32,11.32L136,43.31V96a8,8,0,0,1-16,0V43.31L101.66,61.66A8,8,0,0,1,90.34,61.66Zm64,132.68L136,212.69V160a8,8,0,0,0-16,0v52.69l-18.34-18.35a8,8,0,0,0-11.32,11.32l32,32a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm83.32-72-32-32a8,8,0,0,0-11.32,11.32L212.69,120H160a8,8,0,0,0,0,16h52.69l-18.35,18.34a8,8,0,0,0,11.32,11.32l32-32A8,8,0,0,0,237.66,122.34ZM43.31,136H96a8,8,0,0,0,0-16H43.31l18.35-18.34A8,8,0,0,0,50.34,90.34l-32,32a8,8,0,0,0,0,11.32l32,32a8,8,0,0,0,11.32-11.32Z" /></svg>
               <span class="toolbox-lbl">Pan</span>
               <span class="toolbox-kbd">V</span>
             </button>
             <button class="toolbox-btn" id="t-state" onclick="toggleTool('state')" title="Add State (S); click again to return to Pointer">
-              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="8" cy="8" r="5.5" />
-                <line x1="8" y1="5.2" x2="8" y2="10.8" />
-                <line x1="5.2" y1="8" x2="10.8" y2="8" />
-              </svg>
+              <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm48-88a8,8,0,0,1-8,8H136v32a8,8,0,0,1-16,0V136H88a8,8,0,0,1,0-16h32V88a8,8,0,0,1,16,0v32h32A8,8,0,0,1,176,128Z" /></svg>
               <span class="toolbox-lbl">State</span>
               <span class="toolbox-kbd">S</span>
             </button>
             <button class="toolbox-btn" id="t-trans" onclick="toggleTool('trans')" title="Add Transition (T); click again to return to Pointer">
-              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="3.6" cy="8" r="1.7" />
                 <circle cx="12.4" cy="8" r="1.7" />
                 <path d="M5.5 8h3" />
@@ -351,29 +272,18 @@
               <span class="toolbox-kbd">T</span>
             </button>
             <button class="toolbox-btn toolbox-danger" id="t-del" onclick="toggleTool('del')" title="Delete — click a state or transition (D); click again to return to Pointer">
-              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3 4.5h10" />
-                <path d="M5.3 4.5V3a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1v1.5" />
-                <path d="M4.3 4.5l.6 8.3a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.6-8.3" />
-                <path d="M6.7 7v4M9.3 7v4" />
-              </svg>
+              <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
               <span class="toolbox-lbl">Delete</span>
               <span class="toolbox-kbd">D</span>
             </button>
             <div class="toolbox-sep"></div>
             <button class="toolbox-btn" onclick="undo()" title="Undo (Ctrl+Z)">
-              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M13.3 13.3V8.7a2.7 2.7 0 0 0-2.7-2.7H2.7" />
-                <polyline points="6,9.3 2.7,6 6,2.7" />
-              </svg>
+              <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,144a64.07,64.07,0,0,1-64,64H80a8,8,0,0,1,0-16h88a48,48,0,0,0,0-96H51.31l34.35,34.34a8,8,0,0,1-11.32,11.32l-48-48a8,8,0,0,1,0-11.32l48-48A8,8,0,0,1,85.66,45.66L51.31,80H168A64.07,64.07,0,0,1,232,144Z" /></svg>
               <span class="toolbox-lbl">Undo</span>
               <span class="toolbox-kbd">⌘Z</span>
             </button>
             <button class="toolbox-btn" onclick="redo()" title="Redo (Ctrl+Y)">
-              <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M2.7 13.3V8.7a2.7 2.7 0 0 1 2.7-2.7H13.3" />
-                <polyline points="10,9.3 13.3,6 10,2.7" />
-              </svg>
+              <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M170.34,130.34,204.69,96H88a48,48,0,0,0,0,96h88a8,8,0,0,1,0,16H88A64,64,0,0,1,88,80H204.69L170.34,45.66a8,8,0,0,1,11.32-11.32l48,48a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32-11.32Z" /></svg>
               <span class="toolbox-lbl">Redo</span>
               <span class="toolbox-kbd">⌘Y</span>
             </button>
@@ -385,51 +295,32 @@
             <div class="minimap-header">
               <span class="minimap-title">Overview</span>
               <button class="minimap-toggle" onclick="toggleMinimap()" title="Hide minimap">
-                <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg>
               </button>
             </div>
             <canvas class="minimap-canvas" id="minimap-canvas" width="160" height="100"></canvas>
           </div>
           <button class="minimap-show-btn" id="minimap-show-btn" style="display:none" onclick="toggleMinimap()"
             title="Show minimap">
-            <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="1.5" y="2.5" width="13" height="9" rx="1.3" />
-              <rect x="5.5" y="5.5" width="6" height="4" rx="0.6" />
-            </svg>Map
+            <svg viewBox="0 0 256 256" fill="currentColor"><path d="M228.92,49.69a8,8,0,0,0-6.86-1.45L160.93,63.52,99.58,32.84a8,8,0,0,0-5.52-.6l-64,16A8,8,0,0,0,24,56V200a8,8,0,0,0,9.94,7.76l61.13-15.28,61.35,30.68A8.15,8.15,0,0,0,160,224a8,8,0,0,0,1.94-.24l64-16A8,8,0,0,0,232,200V56A8,8,0,0,0,228.92,49.69ZM104,52.94l48,24V203.06l-48-24ZM40,62.25l48-12v127.5l-48,12Zm176,131.5-48,12V78.25l48-12Z" /></svg>Map
           </button>
           <!-- Nav controls -->
           <div class="canvas-nav-controls" id="canvas-nav-controls">
             <button class="cnc-btn" onclick="zoomOut()" title="Zoom out (-)">
-              <svg viewBox="0 0 14 14" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="5.8" cy="5.8" r="3.6" />
-                <path d="M8.3 8.3 12.3 12.3" />
-                <path d="M3.8 5.8h4" />
-              </svg>
+              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M152,112a8,8,0,0,1-8,8H80a8,8,0,0,1,0-16h64A8,8,0,0,1,152,112Zm77.66,117.66a8,8,0,0,1-11.32,0l-50.06-50.07a88.11,88.11,0,1,1,11.31-11.31l50.07,50.06A8,8,0,0,1,229.66,229.66ZM112,184a72,72,0,1,0-72-72A72.08,72.08,0,0,0,112,184Z" /></svg>
             </button>
             <input type="text" class="cnc-zoom-input" id="zoom-ind" value="100%"
               onkeydown="if(event.key==='Enter') this.blur()" onblur="setZoomFromInput(this.value)">
             <button class="cnc-btn" onclick="zoomIn()" title="Zoom in (+)">
-              <svg viewBox="0 0 14 14" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="5.8" cy="5.8" r="3.6" />
-                <path d="M8.3 8.3 12.3 12.3" />
-                <path d="M3.8 5.8h4M5.8 3.8v4" />
-              </svg>
+              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M152,112a8,8,0,0,1-8,8H120v24a8,8,0,0,1-16,0V120H80a8,8,0,0,1,0-16h24V80a8,8,0,0,1,16,0v24h24A8,8,0,0,1,152,112Zm77.66,117.66a8,8,0,0,1-11.32,0l-50.06-50.07a88.11,88.11,0,1,1,11.31-11.31l50.07,50.06A8,8,0,0,1,229.66,229.66ZM112,184a72,72,0,1,0-72-72A72.08,72.08,0,0,0,112,184Z" /></svg>
             </button>
             <div class="cnc-sep"></div>
             <button class="cnc-btn" onclick="fitToScreen()" title="Fit to screen (H)">
-              <svg viewBox="0 0 14 14" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M2 5V2h3M9 2h3v3M2 9v3h3M12 9v3h-3" />
-                <rect x="5.3" y="5.3" width="3.4" height="3.4" rx="0.6" />
-              </svg>
+              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M200,80v32a8,8,0,0,1-16,0V88H160a8,8,0,0,1,0-16h32A8,8,0,0,1,200,80ZM96,168H72V144a8,8,0,0,0-16,0v32a8,8,0,0,0,8,8H96a8,8,0,0,0,0-16ZM232,56V200a16,16,0,0,1-16,16H40a16,16,0,0,1-16-16V56A16,16,0,0,1,40,40H216A16,16,0,0,1,232,56ZM216,200V56H40V200H216Z" /></svg>
             </button>
             <div class="cnc-sep"></div>
             <button class="cnc-btn" id="snap-toggle-btn" onclick="toggleSnapToGrid()" title="Snap to grid while dragging (hold Shift to invert)">
-              <svg viewBox="0 0 14 14" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="3" cy="3" r="0.7" fill="currentColor" stroke="none" /><circle cx="7" cy="3" r="0.7" fill="currentColor" stroke="none" /><circle cx="11" cy="3" r="0.7" fill="currentColor" stroke="none" />
-                <circle cx="3" cy="7" r="0.7" fill="currentColor" stroke="none" /><circle cx="11" cy="7" r="0.7" fill="currentColor" stroke="none" />
-                <circle cx="3" cy="11" r="0.7" fill="currentColor" stroke="none" /><circle cx="7" cy="11" r="0.7" fill="currentColor" stroke="none" /><circle cx="11" cy="11" r="0.7" fill="currentColor" stroke="none" />
-                <circle cx="7" cy="7" r="1.3" fill="currentColor" stroke="none" />
-              </svg>
+              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H40A16,16,0,0,0,24,64V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V64A16,16,0,0,0,216,48ZM104,144V112h48v32Zm48,16v32H104V160ZM40,112H88v32H40Zm64-16V64h48V96Zm64,16h48v32H168Zm48-16H168V64h48ZM88,64V96H40V64ZM40,160H88v32H40Zm176,32H168V160h48v32Z" /></svg>
             </button>
           </div>
         </div>
@@ -446,10 +337,7 @@
             <div class="panel-header">
               <span class="panel-header-title">Inspector</span>
               <button class="pin-btn" id="rpanel-pin-btn" onclick="toggleRPanelPin()" title="Unpin right panel">
-                <svg viewBox="0 0 16 16" width="14" height="14">
-                  <path d="M8 2a3 3 0 013 3v2l1 1v2H9v4l-1 1-1-1v-4H4V8l1-1V5a3 3 0 013-3z" fill="none"
-                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
+                <svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M235.32,81.37,174.63,20.69a16,16,0,0,0-22.63,0L98.37,74.49c-10.66-3.34-35-7.37-60.4,13.14a16,16,0,0,0-1.29,23.78L85,159.71,42.34,202.34a8,8,0,0,0,11.32,11.32L96.29,171l48.29,48.29A16,16,0,0,0,155.9,224c.38,0,.75,0,1.13,0a15.93,15.93,0,0,0,11.64-6.33c19.64-26.1,17.75-47.32,13.19-60L235.33,104A16,16,0,0,0,235.32,81.37ZM224,92.69h0l-57.27,57.46a8,8,0,0,0-1.49,9.22c9.46,18.93-1.8,38.59-9.34,48.62L48,100.08c12.08-9.74,23.64-12.31,32.48-12.31A40.13,40.13,0,0,1,96.81,91a8,8,0,0,0,9.25-1.51L163.32,32,224,92.68Z" /></svg>
               </button>
             </div>
             <div class="rpanel-content" id="rpanel-content">
@@ -458,21 +346,19 @@
               <div class="rp-section-header" onclick="toggleRPSection('rp-language')">
                 <span class="rp-section-title">Language</span>
                 <span class="badge bd-dfa" id="mach-badge">DFA</span>
-                <svg class="rp-toggle-arrow" viewBox="0 0 14 14">
-                  <path d="M3 5l4 4 4-4" />
-                </svg>
+                <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
               </div>
               <div class="rp-section-body">
                 <div class="code-box-wrap">
                   <div class="code-box" id="regex-box">—</div>
                   <button class="box-copy-btn" id="regex-copy-btn" onclick="copyBoxText('regex-box')" title="Copy regular expression" aria-label="Copy regular expression">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="9" rx="1.3"/><path d="M3.5 10.2V3.8A1.3 1.3 0 0 1 4.8 2.5h6"/></svg>
+                    <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z" /></svg>
                   </button>
                 </div>
                 <div class="def-box-wrap">
                   <div class="def-box" id="def-box">M = (Q, Σ, δ, q₀, F)</div>
                   <button class="box-copy-btn" id="def-copy-btn" onclick="copyBoxText('def-box')" title="Copy as LaTeX" aria-label="Copy formal definition as LaTeX">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="9" rx="1.3"/><path d="M3.5 10.2V3.8A1.3 1.3 0 0 1 4.8 2.5h6"/></svg>
+                    <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z" /></svg>
                   </button>
                 </div>
                 <div id="mtm-ctrl" style="display:none;align-items:center;gap:6px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
@@ -490,9 +376,7 @@
             <div class="rp-collapsible" id="rp-simulate">
               <div class="rp-section-header" onclick="toggleRPSection('rp-simulate')">
                 <span class="rp-section-title">Simulate</span>
-                <svg class="rp-toggle-arrow" viewBox="0 0 14 14">
-                  <path d="M3 5l4 4 4-4" />
-                </svg>
+                <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
               </div>
               <div class="rp-section-body">
                 <div class="sim-row">
@@ -500,8 +384,8 @@
                     onkeydown="handleSimInputKeydown(event)" oninput="handleSymSuggestActive(this)"
                     onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
                     onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
-                  <button class="run-btn" onclick="runSim()">
-                    <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M4 2v12l9-6z"/></svg>
+                  <button class="run-btn" id="run-btn" onclick="runSim()">
+                    <svg viewBox="0 0 256 256" fill="currentColor" width="14" height="14"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z" /></svg>
                   </button>
                 </div>
                 <div id="sim-verdict" class="sim-verdict" style="display:none"></div>
@@ -513,25 +397,20 @@
                 <div class="sctrl">
                   <div class="sctrl-steps">
                     <button class="sbtn" onclick="stepToStart()" title="Jump to start">
-                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M4 2.5v11M12 3 5 8l7 5" /></svg>
+                      <svg viewBox="0 0 256 256" fill="currentColor" width="13" height="13"><path d="M199.81,34a16,16,0,0,0-16.24.43L64,109.23V40a8,8,0,0,0-16,0V216a8,8,0,0,0,16,0V146.77l119.57,74.78A15.95,15.95,0,0,0,208,208.12V47.88A15.86,15.86,0,0,0,199.81,34ZM192,208,64.16,128,192,48.07Z" /></svg>
                     </button>
                     <button class="sbtn" onclick="stepBack()" title="Step Back">
-                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M10 2L3 8l7 6" /></svg>
+                      <svg viewBox="0 0 256 256" fill="currentColor" width="13" height="13"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z" /></svg>
                     </button>
                     <button class="sbtn" onclick="stepFwd()" title="Step Forward">
-                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M6 2l7 6-7 6" /></svg>
+                      <svg viewBox="0 0 256 256" fill="currentColor" width="13" height="13"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z" /></svg>
                     </button>
                     <button class="sbtn" onclick="stepToEnd()" title="Jump to end">
-                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 2.5v11M4 3l7 5-7 5" /></svg>
+                      <svg viewBox="0 0 256 256" fill="currentColor" width="13" height="13"><path d="M200,32a8,8,0,0,0-8,8v69.23L72.43,34.45A15.95,15.95,0,0,0,48,47.88V208.12a16,16,0,0,0,24.43,13.43L192,146.77V216a8,8,0,0,0,16,0V40A8,8,0,0,0,200,32ZM64,207.93V48.05l127.84,80Z" /></svg>
                     </button>
                   </div>
                   <button class="sbtn sbtn-reset" onclick="resetSim()" title="Reset">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M2.5 8a5.5 5.5 0 1 1 1.7 4M1 10.5l1.5-3 3 1.5"/></svg>
-                  </button>
-                </div>
-                <div class="sctrl-auto-row">
-                  <button class="auto-btn sim-auto-btn" id="auto-btn" onclick="toggleAuto()">
-                    <svg viewBox="0 0 16 16" fill="currentColor" width="13" height="13" style="margin-right:5px"><path d="M4 2v12l9-6z"/></svg> Auto-play
+                    <svg viewBox="0 0 256 256" fill="currentColor" width="13" height="13"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z" /></svg>
                   </button>
                   <select class="sim-speed-sel" id="sim-speed-sel" onchange="setAutoSpeedPreset(this.value)" title="Playback speed">
                     <option value="1000">0.5×</option>
@@ -549,9 +428,7 @@
             <div class="rp-collapsible collapsed" id="rp-batch">
               <div class="rp-section-header" onclick="toggleRPSection('rp-batch')">
                 <span class="rp-section-title">Batch Test</span>
-                <svg class="rp-toggle-arrow" viewBox="0 0 14 14">
-                  <path d="M3 5l4 4 4-4" />
-                </svg>
+                <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
               </div>
               <div class="rp-section-body" style="display:none">
                 <textarea class="batch-in" id="batch-in" autocomplete="off"
@@ -560,7 +437,7 @@
                   onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
                   onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></textarea>
                 <button class="run-btn" style="width:100%;margin-bottom:6px;display:flex;align-items:center;justify-content:center;gap:6px" onclick="runBatch()">
-                  <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M4 2v12l9-6z"/></svg> Test All
+                  <svg viewBox="0 0 256 256" fill="currentColor" width="14" height="14"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z" /></svg> Test All
                 </button>
                 <div class="batch-summary" id="batch-summary" style="display:none"></div>
                 <div class="batch-result" id="batch-result"></div>
@@ -679,9 +556,9 @@
                 onkeydown="trySymSuggestKeydown(event)" oninput="handleSymSuggestActive(this)"
                 onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
                 onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
-              <button class="ibtn" onclick="runCYK()" title="Run CYK (instant)">&#9654;</button>
+              <button class="ibtn" onclick="runCYK()" title="Run CYK (instant)"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg></button>
               <button class="ibtn" onclick="runCYKVisual()" title="CYK Step-by-Step"
-                style="background:var(--surface3)">&#9783;</button>
+                style="background:var(--surface3)"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M248,56a8,8,0,0,1-8,8H192v40a8,8,0,0,1-8,8H136v40a8,8,0,0,1-8,8H80v40a8,8,0,0,1-8,8H16a8,8,0,0,1,0-16H64V152a8,8,0,0,1,8-8h48V104a8,8,0,0,1,8-8h48V56a8,8,0,0,1,8-8h56A8,8,0,0,1,248,56Z"/></svg></button>
             </div>
             <button class="algo-btn sec" onclick="runDerivation()"
               style="width:100%;margin-right:0;margin-bottom:5px">Leftmost Derivation</button>
@@ -1381,9 +1258,7 @@
           <span class="about-lbl">GitHub</span>
           <a class="about-link" href="https://github.com/thethinkmachine" target="_blank" rel="noopener">
             github.com/thethinkmachine
-            <svg viewBox="0 0 12 12" aria-hidden="true">
-              <path d="M4 2H2v8h8V8M6.5 2H10v3.5M10 2 5.5 6.5" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
+            <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z" /></svg>
           </a>
         </div>
       </div>
@@ -1396,47 +1271,47 @@
   <!-- ══════ CTX MENU ══════ -->
   <div class="ctx" id="ctx">
     <div class="ctx-i ctx-state" onclick="ctxStart()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 8h6.4" /><path d="M6.9 5.2 9.7 8l-2.8 2.8" /><path d="M12.3 3v10" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M221.66,133.66l-72,72a8,8,0,0,1-11.32-11.32L196.69,136H40a8,8,0,0,1,0-16H196.69L138.34,61.66a8,8,0,0,1,11.32-11.32l72,72A8,8,0,0,1,221.66,133.66Z" /></svg>
       Set Start
     </div>
     <div class="ctx-i ctx-state" id="ctx-toggle-acc" onclick="ctxToggleAcc()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5" /><circle cx="8" cy="8" r="2.3" /></svg>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5" /><circle cx="8" cy="8" r="2.3" /></svg>
       Toggle Accept
     </div>
     <div class="ctx-i ctx-state" id="ctx-rename" onclick="ctxRename()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-8 8-3.5.5.5-3.5z" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" /></svg>
       <span class="ctx-label">Rename</span>
     </div>
     <div class="ctx-i ctx-state" onclick="ctxAddNoteState()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7.3L13 5.7V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M10.3 3v2.7H13" /><path d="M4.3 8.2h5.6M4.3 10.4h3.8" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M88,96a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H96A8,8,0,0,1,88,96Zm8,40h64a8,8,0,0,0,0-16H96a8,8,0,0,0,0,16Zm32,16H96a8,8,0,0,0,0,16h32a8,8,0,0,0,0-16ZM224,48V156.69A15.86,15.86,0,0,1,219.31,168L168,219.31A15.86,15.86,0,0,1,156.69,224H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H152V160a8,8,0,0,1,8-8h48V48H48Zm120-40v28.7L196.69,168Z" /></svg>
       Add Note
     </div>
     <div class="ctx-i ctx-state danger" onclick="ctxDel()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10" /><path d="M5.3 4.5V3a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1v1.5" /><path d="M4.3 4.5l.6 8.3a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.6-8.3" /><path d="M6.7 7v4M9.3 7v4" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
       Delete
     </div>
     <div class="ctx-i ctx-edge" onclick="ctxEditTrans()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-8 8-3.5.5.5-3.5z" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" /></svg>
       Edit Transition
     </div>
     <div class="ctx-i ctx-edge" onclick="ctxDuplicateTrans()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="9" rx="1.3" /><path d="M3.5 10.2V3.8A1.3 1.3 0 0 1 4.8 2.5h6" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z" /></svg>
       Duplicate/Add Parallel Transition
     </div>
     <div class="ctx-i ctx-edge" onclick="ctxReverseTrans()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.3h7.2" /><path d="M8.2 2.8 10.8 5.3 8.2 7.8" /><path d="M13 10.7H5.8" /><path d="M7.8 13.2 5.2 10.7 7.8 8.2" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,181.66l-32,32a8,8,0,0,1-11.32-11.32L188.69,184H48a8,8,0,0,1,0-16H188.69l-18.35-18.34a8,8,0,0,1,11.32-11.32l32,32A8,8,0,0,1,213.66,181.66Zm-139.32-64a8,8,0,0,0,11.32-11.32L67.31,88H208a8,8,0,0,0,0-16H67.31L85.66,53.66A8,8,0,0,0,74.34,42.34l-32,32a8,8,0,0,0,0,11.32Z" /></svg>
       Reverse Direction
     </div>
     <div class="ctx-i ctx-edge" onclick="ctxAddNoteEdge()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7.3L13 5.7V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M10.3 3v2.7H13" /><path d="M4.3 8.2h5.6M4.3 10.4h3.8" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M88,96a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H96A8,8,0,0,1,88,96Zm8,40h64a8,8,0,0,0,0-16H96a8,8,0,0,0,0,16Zm32,16H96a8,8,0,0,0,0,16h32a8,8,0,0,0,0-16ZM224,48V156.69A15.86,15.86,0,0,1,219.31,168L168,219.31A15.86,15.86,0,0,1,156.69,224H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H152V160a8,8,0,0,1,8-8h48V48H48Zm120-40v28.7L196.69,168Z" /></svg>
       Add Note
     </div>
     <div class="ctx-i ctx-edge danger" onclick="ctxDeleteTrans()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10" /><path d="M5.3 4.5V3a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1v1.5" /><path d="M4.3 4.5l.6 8.3a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.6-8.3" /><path d="M6.7 7v4M9.3 7v4" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
       Delete Transition(s)
     </div>
     <div class="ctx-i ctx-note" onclick="ctxEditNote()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2l3 3-8 8-3.5.5.5-3.5z" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" /></svg>
       Edit Note
     </div>
     <div class="ctx-i ctx-note note-swatch-row">
@@ -1449,15 +1324,15 @@
       <button class="note-swatch" data-color="red" onclick="ctxSetNoteColor('red')" title="Red"></button>
     </div>
     <div class="ctx-i ctx-note" id="ctx-note-anchor" onclick="ctxAnchorNoteToSelection()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="3.3" r="1.3" /><path d="M8 4.6v8" /><path d="M4 8h8" /><path d="M4.5 9.5a3.8 3.8 0 0 0 3.1 3.3M11.5 9.5a3.8 3.8 0 0 1-3.1 3.3" /></svg>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="3.3" r="1.3" /><path d="M8 4.6v8" /><path d="M4 8h8" /><path d="M4.5 9.5a3.8 3.8 0 0 0 3.1 3.3M11.5 9.5a3.8 3.8 0 0 1-3.1 3.3" /></svg>
       Anchor to Selection
     </div>
     <div class="ctx-i ctx-note" id="ctx-note-detach" onclick="ctxDetachNote()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="3.3" r="1.3" /><path d="M8 4.6v8" /><path d="M4 8h8" /><path d="M4.5 9.5a3.8 3.8 0 0 0 3.1 3.3M11.5 9.5a3.8 3.8 0 0 1-3.1 3.3" /><path d="M2.8 2.8l10.4 10.4" /></svg>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="3.3" r="1.3" /><path d="M8 4.6v8" /><path d="M4 8h8" /><path d="M4.5 9.5a3.8 3.8 0 0 0 3.1 3.3M11.5 9.5a3.8 3.8 0 0 1-3.1 3.3" /><path d="M2.8 2.8l10.4 10.4" /></svg>
       Detach (Make Free)
     </div>
     <div class="ctx-i ctx-note danger" onclick="ctxDeleteNote()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10" /><path d="M5.3 4.5V3a1 1 0 0 1 1-1h3.4a1 1 0 0 1 1 1v1.5" /><path d="M4.3 4.5l.6 8.3a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.6-8.3" /><path d="M6.7 7v4M9.3 7v4" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
       Delete Note
     </div>
   </div>
@@ -1465,15 +1340,15 @@
   <!-- ══════ SAVE MENU ══════ -->
   <div class="ctx" id="save-menu">
     <div class="ctx-i" onclick="hideSaveMenu(); exportPNG()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.8" width="12" height="10.4" rx="1.3" /><circle cx="5.6" cy="6" r="1.2" /><path d="M2.6 11.5 6.3 8l2.6 2.4 2-1.8 2.5 2.5" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z" /></svg>
       Export as Photo (PNG)
     </div>
     <div class="ctx-i" onclick="hideSaveMenu(); saveJSON()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M5.3 2.5c-1.1 0-1.6.5-1.6 1.6v2c0 .8-.3 1.2-1.2 1.4.9.2 1.2.6 1.2 1.4v2c0 1.1.5 1.6 1.6 1.6" /><path d="M10.7 2.5c1.1 0 1.6.5 1.6 1.6v2c0 .8.3 1.2 1.2 1.4-.9.2-1.2.6-1.2 1.4v2c0 1.1-.5 1.6-1.6 1.6" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M43.18,128a29.78,29.78,0,0,1,8,10.26c4.8,9.9,4.8,22,4.8,33.74,0,24.31,1,36,24,36a8,8,0,0,1,0,16c-17.48,0-29.32-6.14-35.2-18.26-4.8-9.9-4.8-22-4.8-33.74,0-24.31-1-36-24-36a8,8,0,0,1,0-16c23,0,24-11.69,24-36,0-11.72,0-23.84,4.8-33.74C50.68,38.14,62.52,32,80,32a8,8,0,0,1,0,16C57,48,56,59.69,56,84c0,11.72,0,23.84-4.8,33.74A29.78,29.78,0,0,1,43.18,128ZM240,120c-23,0-24-11.69-24-36,0-11.72,0-23.84-4.8-33.74C205.32,38.14,193.48,32,176,32a8,8,0,0,0,0,16c23,0,24,11.69,24,36,0,11.72,0,23.84,4.8,33.74a29.78,29.78,0,0,0,8,10.26,29.78,29.78,0,0,0-8,10.26c-4.8,9.9-4.8,22-4.8,33.74,0,24.31-1,36-24,36a8,8,0,0,0,0,16c17.48,0,29.32-6.14,35.2-18.26,4.8-9.9,4.8-22,4.8-33.74,0-24.31,1-36,24-36a8,8,0,0,0,0-16Z" /></svg>
       Export as JSON
     </div>
     <div class="ctx-i" onclick="hideSaveMenu(); copyShareableLink()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 9.5 9.5 6.5" /><path d="M7.3 4.8 8.6 3.5a2.3 2.3 0 0 1 3.3 3.3L10.6 8.1" /><path d="M8.7 11.2 7.4 12.5a2.3 2.3 0 0 1-3.3-3.3l1.3-1.3" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z" /></svg>
       Copy Shareable Link
     </div>
   </div>
@@ -1487,27 +1362,27 @@
   <!-- ══════ CANVAS BACKGROUND CTX MENU ══════ -->
   <div class="ctx" id="canvas-ctx">
     <div class="ctx-i" onclick="ctxCanvasAddState()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5" /><line x1="8" y1="5.2" x2="8" y2="10.8" /><line x1="5.2" y1="8" x2="10.8" y2="8" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm48-88a8,8,0,0,1-8,8H136v32a8,8,0,0,1-16,0V136H88a8,8,0,0,1,0-16h32V88a8,8,0,0,1,16,0v32h32A8,8,0,0,1,176,128Z" /></svg>
       Add State Here
     </div>
     <div class="ctx-i" onclick="ctxCanvasAddNote()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7.3L13 5.7V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M10.3 3v2.7H13" /><path d="M4.3 8.2h5.6M4.3 10.4h3.8" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M88,96a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H96A8,8,0,0,1,88,96Zm8,40h64a8,8,0,0,0,0-16H96a8,8,0,0,0,0,16Zm32,16H96a8,8,0,0,0,0,16h32a8,8,0,0,0,0-16ZM224,48V156.69A15.86,15.86,0,0,1,219.31,168L168,219.31A15.86,15.86,0,0,1,156.69,224H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H152V160a8,8,0,0,1,8-8h48V48H48Zm120-40v28.7L196.69,168Z" /></svg>
       Add Note Here
     </div>
     <div class="ctx-i" id="canvas-ctx-paste" onclick="ctxCanvasPaste()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 3h5a1 1 0 0 1 1 1v8.5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M6.3 3 6.7 1.8h2.6L9.7 3" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M200,32H163.74a47.92,47.92,0,0,0-71.48,0H56A16,16,0,0,0,40,48V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V48A16,16,0,0,0,200,32Zm-72,0a32,32,0,0,1,32,32H96A32,32,0,0,1,128,32Zm72,184H56V48H82.75A47.93,47.93,0,0,0,80,64v8a8,8,0,0,0,8,8h80a8,8,0,0,0,8-8V64a47.93,47.93,0,0,0-2.75-16H200Z" /></svg>
       Paste
     </div>
     <div class="ctx-i" onclick="ctxCanvasSelectAll()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke-dasharray="2.2 2.2" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M152,40a8,8,0,0,1-8,8H112a8,8,0,0,1,0-16h32A8,8,0,0,1,152,40Zm-8,168H112a8,8,0,0,0,0,16h32a8,8,0,0,0,0-16ZM208,32H184a8,8,0,0,0,0,16h24V72a8,8,0,0,0,16,0V48A16,16,0,0,0,208,32Zm8,72a8,8,0,0,0-8,8v32a8,8,0,0,0,16,0V112A8,8,0,0,0,216,104Zm0,72a8,8,0,0,0-8,8v24H184a8,8,0,0,0,0,16h24a16,16,0,0,0,16-16V184A8,8,0,0,0,216,176ZM40,152a8,8,0,0,0,8-8V112a8,8,0,0,0-16,0v32A8,8,0,0,0,40,152Zm32,56H48V184a8,8,0,0,0-16,0v24a16,16,0,0,0,16,16H72a8,8,0,0,0,0-16ZM72,32H48A16,16,0,0,0,32,48V72a8,8,0,0,0,16,0V48H72a8,8,0,0,0,0-16Z" /></svg>
       Select All
     </div>
     <div class="ctx-i" onclick="ctxCanvasAutoLayout()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="3.5" r="1.6" /><circle cx="13" cy="11.5" r="1.6" /><circle cx="3" cy="11.5" r="1.6" /><line x1="8" y1="5.1" x2="8" y2="7" /><line x1="7.1" y1="7.2" x2="4.2" y2="10" /><line x1="8.9" y1="7.2" x2="11.8" y2="10" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M160,112h48a16,16,0,0,0,16-16V48a16,16,0,0,0-16-16H160a16,16,0,0,0-16,16V64H128a24,24,0,0,0-24,24v32H72v-8A16,16,0,0,0,56,96H24A16,16,0,0,0,8,112v32a16,16,0,0,0,16,16H56a16,16,0,0,0,16-16v-8h32v32a24,24,0,0,0,24,24h16v16a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V160a16,16,0,0,0-16-16H160a16,16,0,0,0-16,16v16H128a8,8,0,0,1-8-8V88a8,8,0,0,1,8-8h16V96A16,16,0,0,0,160,112ZM56,144H24V112H56v32Zm104,16h48v48H160Zm0-112h48V96H160Z" /></svg>
       Auto-Layout
     </div>
     <div class="ctx-i" onclick="ctxCanvasFit()">
-      <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 5.7V2.3h3.4M10.3 2.3h3.4v3.4M2.3 10.3v3.4h3.4M13.7 10.3v3.4h-3.4" /><rect x="6" y="6" width="4" height="4" rx="0.7" /></svg>
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M200,80v32a8,8,0,0,1-16,0V88H160a8,8,0,0,1,0-16h32A8,8,0,0,1,200,80ZM96,168H72V144a8,8,0,0,0-16,0v32a8,8,0,0,0,8,8H96a8,8,0,0,0,0-16ZM232,56V200a16,16,0,0,1-16,16H40a16,16,0,0,1-16-16V56A16,16,0,0,1,40,40H216A16,16,0,0,1,232,56ZM216,200V56H40V200H216Z" /></svg>
       Fit to Screen
     </div>
   </div>

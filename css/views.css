@@ -453,8 +453,11 @@
 
 .run-btn {
   padding: 7px 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   background: var(--accent);
-  border: none;
+  border: 1px solid transparent;
   color: var(--on-accent);
   font-family: var(--sans);
   font-size: .8rem;
@@ -469,6 +472,23 @@
 .run-btn:hover {
   background: var(--accent);
   box-shadow: var(--accent-glow);
+}
+
+/* Run doubles as the verdict readout once the simulation reaches its
+   final step — recoloring/relabeling this one button communicates
+   accept/reject at a glance instead of a separate banner. Reverts to the
+   plain accent ▶ the moment you step away from the final step, reset, or
+   start a new run. */
+.run-btn.accept {
+  background: var(--green-soft);
+  border-color: var(--green-border);
+  color: var(--green);
+}
+
+.run-btn.reject {
+  background: var(--red-soft);
+  border-color: var(--red-border);
+  color: var(--red);
 }
 
 /* Verdict banner — the headline result, shown once the simulation reaches
@@ -488,18 +508,6 @@
 
 .sim-verdict svg {
   flex-shrink: 0;
-}
-
-.sim-verdict.accept {
-  background: var(--green-soft);
-  border-color: var(--green-border);
-  color: var(--green);
-}
-
-.sim-verdict.reject {
-  background: var(--red-soft);
-  border-color: var(--red-border);
-  color: var(--red);
 }
 
 .sim-verdict.output {
@@ -640,23 +648,17 @@
   color: var(--text3);
 }
 
-.sctrl-auto-row {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
-}
-
 .sim-speed-sel {
   flex: none;
-  width: 50px;
-  height: 30px;
+  width: 44px;
+  height: 28px;
   background: var(--surface);
   border: 1px solid var(--border2);
   color: var(--text2);
   font-family: var(--sans);
   font-weight: 600;
-  font-size: .66rem;
-  border-radius: 7px;
+  font-size: .64rem;
+  border-radius: 6px;
   cursor: pointer;
   text-align: center;
   transition: all var(--transition-fast);
@@ -678,40 +680,6 @@
 }
 
 .auto-btn.playing {
-  background: var(--red-soft);
-  color: var(--red);
-  border-color: var(--red-border);
-}
-
-/* Simulate panel's Auto-play is the primary transport action, not just
-   another step button — it gets its own accent-tinted pill so it's the
-   clear visual anchor of the row, with the speed selector reading as its
-   companion. Overrides the plain .auto-btn tint above with a fuller,
-   dedicated pill treatment. */
-.sim-auto-btn {
-  flex: 1;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-border);
-  color: var(--accent);
-  font-family: var(--sans);
-  font-weight: 700;
-  font-size: .72rem;
-  letter-spacing: .01em;
-  border-radius: 7px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.sim-auto-btn:hover {
-  background: var(--accent-soft-strong);
-  box-shadow: var(--accent-glow);
-}
-
-.sim-auto-btn.playing {
   background: var(--red-soft);
   color: var(--red);
   border-color: var(--red-border);
