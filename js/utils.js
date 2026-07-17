@@ -211,3 +211,19 @@ function parseEps(str) {
   if (s.toLowerCase() === 'eps' || s.toLowerCase() === 'epsilon') return App.config.sym.eps;
   return s;
 }
+
+// Escapes a string for safe insertion as HTML text/attribute content — needed
+// wherever untrusted data (Σ symbols, stack/output alphabet symbols, all of
+// which can arrive via an imported automaton file) is interpolated into innerHTML.
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Safely embeds an arbitrary string as a JS argument inside an inline HTML
+// event handler attribute, e.g. `onclick="delSym(${jsAttr(s)})"`. JSON.stringify
+// produces a properly quote/backslash-escaped JS string literal; escapeHtml then
+// protects the surrounding HTML attribute (browsers HTML-decode the attribute
+// value before parsing it as JS, so both layers are required).
+function jsAttr(str) {
+  return escapeHtml(JSON.stringify(String(str)));
+}

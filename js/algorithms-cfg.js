@@ -6,7 +6,7 @@ const G = App.grammar;
 function renderGramSyms() {
   const tc = $('term-chips');
   if (!tc) return;
-  tc.innerHTML = [...App.sigma].map(s => `<div class="chip" style="color:var(--gold)">${s}</div>`).join('')
+  tc.innerHTML = [...App.sigma].map(s => `<div class="chip" style="color:var(--gold)">${escapeHtml(s)}</div>`).join('')
     || '<span style="font-size:.65rem;color:var(--text3);font-style:italic">Mirror from Σ</span>';
 }
 function parseRawGrammar() {

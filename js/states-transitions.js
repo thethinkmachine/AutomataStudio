@@ -127,7 +127,10 @@ function populateTransitionModal(t) {
       mtmExtra.innerHTML = Array.from({ length: k }, (_, i) => `
         <div class="modal-section-lbl">Tape ${i + 1}</div>
         <div class="modal-row"><span class="modal-lbl">Read</span><select class="sel" id="m-mtm-read-${i}">${symOpts}</select></div>
-        <div class="modal-row"><span class="modal-lbl">Write</span><input class="inp" id="m-mtm-write-${i}" placeholder="symbol"></div>
+        <div class="modal-row"><span class="modal-lbl">Write</span><input class="inp" id="m-mtm-write-${i}" placeholder="symbol"
+          autocomplete="off" onkeydown="trySymSuggestKeydown(event)" oninput="handleSymSuggestActive(this)"
+          onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
+          onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></div>
         <div class="modal-row"><span class="modal-lbl">Move</span><select class="sel" id="m-mtm-dir-${i}">${dirOpts}</select></div>
       `).join('');
     }

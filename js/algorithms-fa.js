@@ -791,7 +791,10 @@ function algoEquiv(c) {
     Test if a specific string is accepted:
   </div>
   <div class="row" style="margin-top:10px">
-    <input class="inp" id="eq-str" placeholder="Enter a test string">
+    <input class="inp" id="eq-str" placeholder="Enter a test string" autocomplete="off"
+      onkeydown="trySymSuggestKeydown(event)" oninput="handleSymSuggestActive(this)"
+      onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
+      onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
     <button class="algo-btn" onclick="testEquivStr()">Test</button>
   </div>
   <div id="eq-result" style="margin-top:8px"></div>
@@ -1379,7 +1382,10 @@ function algoNFATree(c) {
 <div class="card">
   <div class="card-title">Input String</div>
   <div class="regex-input-wrap">
-    <input class="inp" id="nfa-tree-input" placeholder="e.g. ab or 010" onkeydown="if(event.key==='Enter')buildNFATree()">
+    <input class="inp" id="nfa-tree-input" placeholder="e.g. ab or 010" autocomplete="off"
+      onkeydown="if(trySymSuggestKeydown(event))return;if(event.key==='Enter')buildNFATree()"
+      oninput="handleSymSuggestActive(this)" onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
+      onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
     <button class="algo-btn" onclick="buildNFATree()">Build Tree</button>
   </div>
 </div>
@@ -1387,23 +1393,25 @@ function algoNFATree(c) {
 }
 
 function buildNFATree() {
-  const str = $('nfa-tree-input').value;
-  const s = str === App.config.sym.eps ? '' : str;
+  const raw = parseEps($('nfa-tree-input').value);
+  const s = raw === App.config.sym.eps ? '' : raw;
   const out = $('nfa-tree-result');
   if (!App.startId) { out.innerHTML = '<div class="card">No start state defined.</div>'; return; }
 
-  // Validate input against alphabet (Sigma)
-  const invalidChars = [...s].filter(c => !App.sigma.has(c));
-  if (invalidChars.length > 0) {
-    out.innerHTML = `<div class="card" style="border-left-color:var(--red);  font-size:.72rem;"><span style="color:var(--red);font-weight:600">Error:</span> Input sequence must be an element of Σ*. Found invalid characters: "${[...new Set(invalidChars)].join('", "')}"</div>`;
+  // tokenize() against Σ (same longest-match backtracking Simulate/NPDA/NDTM
+  // use) so word alphabets — not just single-character ones — walk correctly:
+  // each tree level below is one *token*, not one raw character.
+  const tokens = tokenize(s);
+  if (tokens === null) {
+    out.innerHTML = `<div class="card" style="border-left-color:var(--red);font-size:.72rem;"><span style="color:var(--red);font-weight:600">Error:</span> Input cannot be tokenized using alphabet {${[...App.sigma].join(', ')}}.</div>`;
     return;
   }
 
-  const tree = computeNFATree(s);
-  out.innerHTML = layoutNFATree(tree, s);
+  const tree = computeNFATree(tokens);
+  out.innerHTML = layoutNFATree(tree, tokens);
 }
 
-function computeNFATree(str) {
+function computeNFATree(tokens) {
   // Build a true per-state nondeterministic computation tree (#4)
   const MAX_NODES = 500; let nodeCount = 0;
   function makeNode(stateId, depth, sym) {
@@ -1411,8 +1419,8 @@ function computeNFATree(str) {
     const sName = getState(stateId)?.name || stateId;
     const isAccept = App.accepts.has(stateId);
     const children = [];
-    if (nodeCount < MAX_NODES && depth < str.length) {
-      const nextSym = str[depth];
+    if (nodeCount < MAX_NODES && depth < tokens.length) {
+      const nextSym = tokens[depth];
       // Direct transitions on this symbol
       const directTargets = App.transitions.filter(t => t.from === stateId && t.symbol === nextSym);
       directTargets.forEach(t => {
@@ -1431,10 +1439,15 @@ function computeNFATree(str) {
   return { label: 'Start', stateId: null, sym: '', isAccept: false, isDead: false, depth: -1, children: rootChildren, isRoot: true };
 }
 
-function layoutNFATree(root, fullStr) {
+function layoutNFATree(root, tokens) {
   const levelH = 65;
   const positions = [];
   let maxX = 0, maxY = 0;
+
+  // Word-alphabet tokens can be much wider than the fixed-width pill a
+  // single character needs — size it to fit so long edge labels (and the
+  // node columns beneath them) don't overlap their neighbors.
+  const pillWidth = sym => sym ? Math.max(16, [...sym].length * 7 + 8) : 16;
 
   // Bottom-up width calculation to prevent node overlap
   function calcWidths(node) {
@@ -1443,7 +1456,11 @@ function layoutNFATree(root, fullStr) {
       return node._w;
     }
     let sum = 0;
-    node.children.forEach(ch => { sum += calcWidths(ch) + 10; });
+    node.children.forEach(ch => {
+      calcWidths(ch);
+      ch._w = Math.max(ch._w, pillWidth(ch.sym));
+      sum += ch._w + 10;
+    });
     node._w = Math.max(60, sum - 10);
     return node._w;
   }
@@ -1477,13 +1494,14 @@ function layoutNFATree(root, fullStr) {
       if (ch.sym) {
         const mx = (node._x + ch._x) / 2;
         const my = (node._y + 15 + ch._y - 15) / 2;
+        const w = pillWidth(ch.sym);
         // background pill for text
-        edges += `<rect x="${mx - 8}" y="${my - 8}" width="16" height="16" rx="4" fill="var(--bg2)" />`;
-        edges += `<text x="${mx}" y="${my + 3}" fill="var(--gold)" font-family="var(--mono)" font-size="0.75rem" text-anchor="middle">${ch.sym}</text>`;
+        edges += `<rect x="${mx - w / 2}" y="${my - 8}" width="${w}" height="16" rx="4" fill="var(--bg2)" />`;
+        edges += `<text x="${mx}" y="${my + 3}" fill="var(--gold)" font-family="var(--mono)" font-size="0.75rem" text-anchor="middle">${escapeHtml(ch.sym)}</text>`;
       }
     });
 
-    const isFinal = node.depth === fullStr.length;
+    const isFinal = node.depth === tokens.length;
     let stroke = 'var(--accent)';
     let fill = 'var(--bg2)';
     let textCol = 'var(--text)'; // Used to be --text1, which resulted in dark text
@@ -1513,7 +1531,7 @@ function layoutNFATree(root, fullStr) {
     // Node text
     let displayLabel = label.length > 5 ? '..' : label;
     if (node.isRoot) displayLabel = label;
-    nodes += `<text x="${node._x}" y="${node._y + 4}" fill="${textCol}" font-family="var(--mono)" font-size="${node.isRoot ? '0.7rem' : '0.75rem'}" text-anchor="middle">${displayLabel}</text>`;
+    nodes += `<text x="${node._x}" y="${node._y + 4}" fill="${textCol}" font-family="var(--mono)" font-size="${node.isRoot ? '0.7rem' : '0.75rem'}" text-anchor="middle">${escapeHtml(displayLabel)}</text>`;
   });
 
   return `<div style="overflow-x:auto"><svg viewBox="0 0 ${svgW} ${svgH}" style="min-width:${svgW}px; height:${svgH}px">${edges}${nodes}</svg></div>`;
@@ -1540,7 +1558,10 @@ function algoNPDA(c) {
   c.innerHTML += `<div class="card">
 <div class="card-title">Simulate NPDA (BFS over all branches)</div>
 <div class="regex-input-wrap">
-  <input class="inp" id="npda-input" placeholder="Input string (e.g. aabb or ε)">
+  <input class="inp" id="npda-input" placeholder="Input string (e.g. aabb or ε)" autocomplete="off"
+    onkeydown="trySymSuggestKeydown(event)" oninput="handleSymSuggestActive(this)"
+    onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
+    onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
   <button class="algo-btn" onclick="runNPDASim()">Simulate</button>
 </div>
 <div id="npda-result" style="margin-top:8px"></div>
@@ -1588,7 +1609,10 @@ function algoNDTM(c) {
   c.innerHTML += `<div class="card">
 <div class="card-title">Simulate NDTM (BFS over all branches)</div>
 <div class="regex-input-wrap">
-  <input class="inp" id="ndtm-input" placeholder="Input string (e.g. 001)">
+  <input class="inp" id="ndtm-input" placeholder="Input string (e.g. 001)" autocomplete="off"
+    onkeydown="trySymSuggestKeydown(event)" oninput="handleSymSuggestActive(this)"
+    onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
+    onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
   <button class="algo-btn" onclick="runNDTMSim()">Simulate</button>
 </div>
 <div id="ndtm-result" style="margin-top:8px"></div>

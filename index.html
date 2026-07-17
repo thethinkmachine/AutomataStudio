@@ -673,7 +673,10 @@
 
             <div class="gram-group-label">Parse &amp; Derive</div>
             <div class="row" style="margin-bottom:5px">
-              <input class="inp" id="cyk-in" placeholder="String to parse">
+              <input class="inp" id="cyk-in" placeholder="String to parse" autocomplete="off"
+                onkeydown="trySymSuggestKeydown(event)" oninput="handleSymSuggestActive(this)"
+                onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
+                onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
               <button class="ibtn" onclick="runCYK()" title="Run CYK (instant)">&#9654;</button>
               <button class="ibtn" onclick="runCYKVisual()" title="CYK Step-by-Step"
                 style="background:var(--surface3)">&#9783;</button>
@@ -685,7 +688,10 @@
             <button class="algo-btn sec" onclick="runParseTree()"
               style="width:100%;margin-right:0;margin-bottom:5px">Parse Tree (SVG)</button>
             <div class="row" style="margin-bottom:5px">
-              <input class="inp" id="ambig-in" placeholder="String for ambiguity check">
+              <input class="inp" id="ambig-in" placeholder="String for ambiguity check" autocomplete="off"
+                onkeydown="trySymSuggestKeydown(event)" oninput="handleSymSuggestActive(this)"
+                onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
+                onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
               <button class="ibtn" onclick="runAmbiguityCheck()" title="Check Ambiguity">?</button>
             </div>
 
@@ -980,18 +986,29 @@
       </div>
       <div id="m-pda-extra" style="display:none">
         <div class="modal-row"><span class="modal-lbl">Pop</span><input class="inp" id="m-pop"
-            placeholder="ε or symbol"></div>
+            placeholder="ε or symbol" autocomplete="off" onkeydown="trySymSuggestKeydown(event)"
+            oninput="handleSymSuggestActive(this)" onfocus="handleSymSuggestActive(this)"
+            onclick="refreshSymSuggest(this)" onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></div>
         <div class="modal-row"><span class="modal-lbl">Push</span><input class="inp" id="m-push"
-            placeholder="ε or string"></div>
+            placeholder="ε or string" autocomplete="off" onkeydown="trySymSuggestKeydown(event)"
+            oninput="handleSymSuggestActive(this)" onfocus="handleSymSuggestActive(this)"
+            onclick="refreshSymSuggest(this)" onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></div>
         <div id="m-2pda-extra" style="display:none">
           <div class="modal-row"><span class="modal-lbl">Pop₂</span><input class="inp" id="m-pop2"
-              placeholder="ε or symbol"></div>
+              placeholder="ε or symbol" autocomplete="off" onkeydown="trySymSuggestKeydown(event)"
+              oninput="handleSymSuggestActive(this)" onfocus="handleSymSuggestActive(this)"
+              onclick="refreshSymSuggest(this)" onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></div>
           <div class="modal-row"><span class="modal-lbl">Push₂</span><input class="inp" id="m-push2"
-              placeholder="ε or string"></div>
+              placeholder="ε or string" autocomplete="off" onkeydown="trySymSuggestKeydown(event)"
+              oninput="handleSymSuggestActive(this)" onfocus="handleSymSuggestActive(this)"
+              onclick="refreshSymSuggest(this)" onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></div>
         </div>
       </div>
       <div id="m-tm-extra" style="display:none">
-        <div class="modal-row"><span class="modal-lbl">Write</span><input class="inp" id="m-write" placeholder="symbol">
+        <div class="modal-row"><span class="modal-lbl">Write</span><input class="inp" id="m-write" placeholder="symbol"
+            autocomplete="off" onkeydown="trySymSuggestKeydown(event)" oninput="handleSymSuggestActive(this)"
+            onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
+            onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
         </div>
         <div class="modal-row"><span class="modal-lbl">Move</span>
           <select class="sel" id="m-dir"></select>

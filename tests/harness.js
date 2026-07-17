@@ -8,6 +8,7 @@ const SCRIPT_ORDER = [
   'js/utils.js',
   'js/states-transitions.js',
   'js/simulation.js',
+  'js/suggest.js',
   'js/render.js',
   'js/workspace.js',
   'js/persistence.js',

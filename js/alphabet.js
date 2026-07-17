@@ -19,7 +19,7 @@ function addSym() {
   }
 function renderSigma() {
   const c = $('sigma-chips');
-  c.innerHTML = [...App.sigma].map(s => `<div class="chip">${s}<span class="x" onclick="delSym('${s}')">×</span></div>`).join('')
+  c.innerHTML = [...App.sigma].map(s => `<div class="chip">${escapeHtml(s)}<span class="x" onclick="delSym(${jsAttr(s)})">×</span></div>`).join('')
     || '<div class="empty-msg">Add symbols</div>';
   if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
@@ -46,7 +46,7 @@ function renderGamma() {
       const isBoundary = isBoundaryTapeMachine(App.machine) && isBoundarySymbol(s);
       const style = isBottom ? 'style="color:var(--green)"' : (isBoundary ? 'style="color:var(--gold)"' : '');
       const title = isBoundary ? ` title="${s === App.config.sym.leftMarker ? 'Left boundary marker' : 'Right boundary marker'}"` : '';
-      return `<div class="chip" ${style}${title}>${s}${(isBottom || isBoundary) ? '' : `<span class="x" onclick="delGSym('${s}')">×</span>`}</div>`;
+      return `<div class="chip" ${style}${title}>${escapeHtml(s)}${(isBottom || isBoundary) ? '' : `<span class="x" onclick="delGSym(${jsAttr(s)})">×</span>`}</div>`;
     }).join('') || '<div class="empty-msg">Add symbols</div>';
   if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
@@ -58,7 +58,7 @@ function addOutSym() {
 function delOutSym(s) { App.outputAlpha.delete(s); renderOutputAlpha(); }
 function renderOutputAlpha() {
   const c = $('output-chips');
-  c.innerHTML = [...App.outputAlpha].map(s => `<div class="chip">${s}<span class="x" onclick="delOutSym('${s}')">×</span></div>`).join('')
+  c.innerHTML = [...App.outputAlpha].map(s => `<div class="chip">${escapeHtml(s)}<span class="x" onclick="delOutSym(${jsAttr(s)})">×</span></div>`).join('')
     || '<div class="empty-msg">Add symbols</div>';
   if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
