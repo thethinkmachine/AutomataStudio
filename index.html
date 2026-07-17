@@ -511,25 +511,27 @@
                   <span class="sim-step-counter" id="sim-step-counter">0 / 0</span>
                 </div>
                 <div class="sctrl">
-                  <button class="sbtn" onclick="stepToStart()" title="Jump to start">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M4 2.5v11M12 3 5 8l7 5" /></svg>
-                  </button>
-                  <button class="sbtn" onclick="stepBack()" title="Step Back">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M10 2L3 8l7 6" /></svg>
-                  </button>
-                  <button class="sbtn" onclick="stepFwd()" title="Step Forward">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M6 2l7 6-7 6" /></svg>
-                  </button>
-                  <button class="sbtn" onclick="stepToEnd()" title="Jump to end">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 2.5v11M4 3l7 5-7 5" /></svg>
-                  </button>
-                  <button class="sbtn" onclick="resetSim()" title="Reset">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M2.5 8a5.5 5.5 0 1 1 1.7 4M1 10.5l1.5-3 3 1.5"/></svg>
+                  <div class="sctrl-steps">
+                    <button class="sbtn" onclick="stepToStart()" title="Jump to start">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M4 2.5v11M12 3 5 8l7 5" /></svg>
+                    </button>
+                    <button class="sbtn" onclick="stepBack()" title="Step Back">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M10 2L3 8l7 6" /></svg>
+                    </button>
+                    <button class="sbtn" onclick="stepFwd()" title="Step Forward">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M6 2l7 6-7 6" /></svg>
+                    </button>
+                    <button class="sbtn" onclick="stepToEnd()" title="Jump to end">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 2.5v11M4 3l7 5-7 5" /></svg>
+                    </button>
+                  </div>
+                  <button class="sbtn sbtn-reset" onclick="resetSim()" title="Reset">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M2.5 8a5.5 5.5 0 1 1 1.7 4M1 10.5l1.5-3 3 1.5"/></svg>
                   </button>
                 </div>
                 <div class="sctrl-auto-row">
-                  <button class="sbtn auto-btn" id="auto-btn" onclick="toggleAuto()" style="flex:1">
-                    <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-right:4px"><path d="M4 2v12l9-6z"/></svg> Auto
+                  <button class="auto-btn sim-auto-btn" id="auto-btn" onclick="toggleAuto()">
+                    <svg viewBox="0 0 16 16" fill="currentColor" width="13" height="13" style="margin-right:5px"><path d="M4 2v12l9-6z"/></svg> Auto-play
                   </button>
                   <select class="sim-speed-sel" id="sim-speed-sel" onchange="setAutoSpeedPreset(this.value)" title="Playback speed">
                     <option value="1000">0.5×</option>

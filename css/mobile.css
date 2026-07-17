@@ -384,13 +384,8 @@
     margin-right: 0;
   }
 
-  .sctrl {
+  .sctrl-steps {
     overflow-x: auto;
-  }
-
-  .sbtn {
-    flex: 0 0 auto;
-    min-width: 72px;
   }
 
   .algo-search-wrap {

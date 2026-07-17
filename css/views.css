@@ -582,12 +582,62 @@
   text-align: right;
 }
 
+/* Step-control toolbar: a single unified pill housing the four step
+   buttons (grouped, no individual borders — just hairline dividers between
+   them so they read as one control, not four stacked slabs) plus Reset
+   visually separated as its own smaller, muted button since it's a rarer,
+   more consequential action than stepping. */
 .sctrl {
   display: flex;
+  align-items: center;
   gap: 6px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-  margin-top: 12px;
+  margin-top: 10px;
+}
+
+.sctrl-steps {
+  flex: 1;
+  display: flex;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.sctrl-steps .sbtn {
+  flex: 1;
+  border: none;
+  border-radius: 0;
+}
+
+.sctrl-steps .sbtn:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+
+.sbtn {
+  height: 28px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: .7rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sbtn:hover {
+  background: var(--surface3);
+  color: var(--text);
+}
+
+.sbtn-reset {
+  flex: none;
+  width: 28px;
+  color: var(--text3);
 }
 
 .sctrl-auto-row {
@@ -598,15 +648,15 @@
 
 .sim-speed-sel {
   flex: none;
-  width: 56px;
-  height: 34px;
+  width: 50px;
+  height: 30px;
   background: var(--surface);
   border: 1px solid var(--border2);
   color: var(--text2);
   font-family: var(--sans);
   font-weight: 600;
-  font-size: .68rem;
-  border-radius: 6px;
+  font-size: .66rem;
+  border-radius: 7px;
   cursor: pointer;
   text-align: center;
   transition: all var(--transition-fast);
@@ -618,35 +668,50 @@
   border-color: var(--accent-border);
 }
 
-.sbtn {
-  flex: 1;
-  height: 34px;
-  background: var(--surface);
-  border: 1px solid var(--border2);
-  color: var(--text2);
-  font-family: var(--sans);
-  font-weight: 600;
-  font-size: .7rem;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.sbtn:hover {
-  background: var(--surface3);
-  color: var(--text);
-  border-color: var(--accent-border);
-}
-
+/* Generic "highlighted step button" modifier, layered on top of .sbtn
+   elsewhere (CYK/theory step-through visualizers) — just an accent tint,
+   no shape changes, so it stays visually consistent with its sibling .sbtn
+   buttons in those flat toolbars. */
 .auto-btn {
   background: var(--surface);
   color: var(--accent);
 }
 
 .auto-btn.playing {
+  background: var(--red-soft);
+  color: var(--red);
+  border-color: var(--red-border);
+}
+
+/* Simulate panel's Auto-play is the primary transport action, not just
+   another step button — it gets its own accent-tinted pill so it's the
+   clear visual anchor of the row, with the speed selector reading as its
+   companion. Overrides the plain .auto-btn tint above with a fuller,
+   dedicated pill treatment. */
+.sim-auto-btn {
+  flex: 1;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: .72rem;
+  letter-spacing: .01em;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sim-auto-btn:hover {
+  background: var(--accent-soft-strong);
+  box-shadow: var(--accent-glow);
+}
+
+.sim-auto-btn.playing {
   background: var(--red-soft);
   color: var(--red);
   border-color: var(--red-border);
