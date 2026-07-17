@@ -46,9 +46,22 @@
   stroke-width: 2.5;
 }
 
+.sn.note-link-st circle.bd {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 3;
+  filter: var(--state-active-shadow);
+}
+
 .edge-g.list-hover-t .tarr {
   stroke: var(--accent);
   stroke-width: 2.5;
+}
+
+.edge-g.note-link-t .tarr {
+  stroke: var(--accent);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 7px rgba(79, 195, 247, .45));
 }
 
 /* ─── Dead / Unreachable State Overlay ─── */
@@ -228,7 +241,7 @@
   stroke: var(--border2);
   stroke-width: 1.25;
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .25));
-  transition: stroke .15s;
+  transition: fill .15s, stroke .15s, stroke-width .15s;
 }
 
 .note-g:hover .note-body {
@@ -243,11 +256,20 @@
   white-space: pre;
 }
 
-.note-g[data-color="yellow"] .note-body { fill: var(--gold-soft); stroke: var(--gold-border); }
+.note-g[data-color="yellow"] .note-body { fill: var(--note-yellow-soft); stroke: var(--note-yellow-border); }
 .note-g[data-color="green"] .note-body { fill: var(--green-soft); stroke: var(--green-border); }
+.note-g[data-color="blue"] .note-body { fill: var(--blue-soft); stroke: var(--blue-border); }
+.note-g[data-color="indigo"] .note-body { fill: var(--indigo-soft); stroke: var(--indigo-border); }
+.note-g[data-color="violet"] .note-body { fill: var(--violet-soft); stroke: var(--violet-border); }
 .note-g[data-color="purple"] .note-body { fill: var(--purple-soft); stroke: var(--purple-border); }
 .note-g[data-color="orange"] .note-body { fill: var(--orange-soft); stroke: var(--orange-border); }
 .note-g[data-color="red"] .note-body { fill: var(--red-soft); stroke: var(--red-border); }
+.note-g[data-color="white"] .note-body { fill: var(--white-note-soft); stroke: var(--white-note-border); }
+.note-g[data-color="white"] .note-text { fill: var(--bg2); }
+.note-g.note-link-active .note-body {
+  stroke: var(--accent);
+  stroke-width: 2.25;
+}
 
 .cam-smooth,
 .cam-smooth::before {

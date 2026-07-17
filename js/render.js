@@ -8,7 +8,9 @@ function renderAll() {
   $('mach-badge').className = `badge ${cfg.badge}`;
   $('mach-badge').textContent = cfg.label;
   if (typeof pruneNoteAnchors === 'function') pruneNoteAnchors();
-  renderTransitions(); renderStates(); renderNotes(); renderMinimap();
+  renderTransitions(); renderStates();
+  if (typeof renderNotes === 'function') renderNotes();
+  renderMinimap();
   // Refresh cache after redraw
   App.domCache.states.clear();
   App.domCache.transitions.clear();
@@ -17,6 +19,7 @@ function renderAll() {
   document.querySelectorAll('.sn').forEach(el => App.domCache.states.set(el.getAttribute('data-id'), el));
   document.querySelectorAll('.edge-g').forEach(el => App.domCache.transitions.set(el.getAttribute('data-edge'), el));
   document.querySelectorAll('.note-g').forEach(el => App.domCache.notes.set(el.getAttribute('data-note-id'), el));
+  if (App.activeNoteId && typeof highlightNoteAnchors === 'function') highlightNoteAnchors(App.activeNoteId, true);
 }
 
 function groupTrans() {

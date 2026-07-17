@@ -109,6 +109,7 @@ wrap.addEventListener('pointerdown', e => {
   const onTransition = !!e.target.closest('#trans-g');
   const onBackground = onSVGBg || onTransition;
   if (!onBackground) return;
+  if (typeof clearActiveNoteHighlight === 'function') clearActiveNoteHighlight();
 
   if (App.tool === 'pointer') {
     if (!(e.shiftKey || e.ctrlKey || e.metaKey)) { App.selectedStates.clear(); App.selectedTransitions.clear(); renderAll(); }

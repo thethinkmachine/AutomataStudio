@@ -8,6 +8,10 @@ const NOTE_LINE_H = 15;
 function newNoteId() { return 'n' + (++App.noteN); }
 function getNote(id) { return App.notes.find(n => n.id === id); }
 
+function normalizeNoteColor(color) {
+  return color === 'purple' ? 'violet' : (color || 'default');
+}
+
 // ── Anchoring: a note's stored (x, y) is an absolute point when it has no
 // anchors, or an offset from its anchors' centroid when it does. This way an
 // anchored note rides along automatically whenever a state it's pinned to
@@ -150,8 +154,9 @@ function renderOneNote(g, note) {
 
   const grp = makeSVG('g');
   grp.classList.add('note-g');
+  if (App.activeNoteId === note.id) grp.classList.add('note-link-active');
   grp.setAttribute('data-note-id', note.id);
-  grp.setAttribute('data-color', note.color || 'default');
+  grp.setAttribute('data-color', normalizeNoteColor(note.color));
 
   noteAnchorPoints(note).forEach(pt => {
     const line = makeSVG('line');
@@ -227,6 +232,12 @@ function updateNotesDOM() {
 // ══════════════════════════════════════════════════════════════════
 function attachNoteHandlers(grp, note) {
   grp.addEventListener('pointerdown', e => onNoteDown(e, note.id));
+  grp.addEventListener('pointerenter', () => highlightNoteAnchors(note.id));
+  grp.addEventListener('pointerleave', () => {
+    if (App.activeNoteId === note.id) return;
+    clearNoteAnchorHighlight();
+    if (App.activeNoteId) highlightNoteAnchors(App.activeNoteId);
+  });
   grp.addEventListener('dblclick', e => {
     e.stopPropagation();
     openNoteModal(note.id);
@@ -247,6 +258,46 @@ function attachNoteHandlers(grp, note) {
   });
 }
 
+function getNoteTransitionGroupKeys(note) {
+  const keys = new Set();
+  (note.anchorTransitions || []).forEach(id => {
+    const t = getTransition(id);
+    if (t) keys.add(`${t.from}|${t.to}`);
+  });
+  return keys;
+}
+
+function clearNoteAnchorHighlight(noteId = null) {
+  const noteSelector = noteId ? `.note-g[data-note-id="${noteId}"]` : '.note-g';
+  document.querySelectorAll(`${noteSelector}.note-link-active`).forEach(el => el.classList.remove('note-link-active'));
+  document.querySelectorAll('.sn.note-link-st, .edge-g.note-link-t').forEach(el => el.classList.remove('note-link-st', 'note-link-t'));
+}
+
+function highlightNoteAnchors(id, pin = false) {
+  const note = getNote(id);
+  if (!note) return;
+  clearNoteAnchorHighlight();
+  if (pin) App.activeNoteId = id;
+
+  const noteEl = App.domCache.notes.get(id) || document.querySelector(`.note-g[data-note-id="${id}"]`);
+  if (noteEl && (pin || App.activeNoteId === id)) noteEl.classList.add('note-link-active');
+
+  (note.anchorStates || []).forEach(stateId => {
+    const el = App.domCache.states.get(stateId) || document.querySelector(`.sn[data-id="${stateId}"]`);
+    if (el) el.classList.add('note-link-st');
+  });
+
+  getNoteTransitionGroupKeys(note).forEach(key => {
+    const el = App.domCache.transitions.get(key) || document.querySelector(`.edge-g[data-edge="${key}"]`);
+    if (el) el.classList.add('note-link-t');
+  });
+}
+
+function clearActiveNoteHighlight() {
+  App.activeNoteId = null;
+  clearNoteAnchorHighlight();
+}
+
 function onNoteDown(e, id) {
   if (App.spacePan) return;
   e.stopPropagation();
@@ -257,6 +308,7 @@ function onNoteDown(e, id) {
 
   const note = getNote(id);
   if (!note) return;
+  highlightNoteAnchors(id, true);
   const pos = resolveNotePos(note);
   const pt = svgPt(e);
   snapshot();
@@ -283,6 +335,7 @@ function dragNoteTo(e) {
 function deleteNote(id) {
   snapshot();
   App.notes = App.notes.filter(n => n.id !== id);
+  if (App.activeNoteId === id) clearActiveNoteHighlight();
   renderAll();
 }
 
@@ -295,9 +348,9 @@ function createNote(x, y, anchorStates = [], anchorTransitions = []) {
   let note;
   if (anchorStates.length || anchorTransitions.length) {
     const c = noteAnchorCentroid({ anchorStates, anchorTransitions }) || { x: 0, y: 0 };
-    note = { id, text: '', color: 'default', anchorStates: [...anchorStates], anchorTransitions: [...anchorTransitions], x: x - c.x, y: y - c.y };
+    note = { id, text: '', color: 'yellow', anchorStates: [...anchorStates], anchorTransitions: [...anchorTransitions], x: x - c.x, y: y - c.y };
   } else {
-    note = { id, text: '', color: 'default', anchorStates: [], anchorTransitions: [], x, y };
+    note = { id, text: '', color: 'yellow', anchorStates: [], anchorTransitions: [], x, y };
   }
   App.notes.push(note);
   renderAll();
@@ -368,7 +421,7 @@ function ctxSetNoteColor(color) {
   hideContextMenu();
   if (!note) return;
   snapshot();
-  note.color = color;
+  note.color = normalizeNoteColor(color);
   renderAll();
 }
 function ctxDetachNote() {
@@ -413,7 +466,7 @@ function openNoteModal(id) {
   App.editNoteId = id;
   const textEl = $('note-text');
   if (textEl) textEl.value = note.text || '';
-  _noteModalColor = note.color || 'default';
+  _noteModalColor = normalizeNoteColor(note.color);
   setNoteModalColorUI(_noteModalColor);
   showOverlay('note-modal');
   if (textEl) setTimeout(() => textEl.focus(), 50);
@@ -432,7 +485,7 @@ function confirmNote() {
   if (!note) return closeModal('note-modal');
   snapshot();
   note.text = ($('note-text')?.value || '').slice(0, 500);
-  note.color = _noteModalColor;
+  note.color = normalizeNoteColor(_noteModalColor);
   closeModal('note-modal');
   renderAll();
 }

@@ -300,7 +300,10 @@
 }
 
 .note-swatch[data-color="default"] { background: var(--surface3); }
-.note-swatch[data-color="yellow"] { background: var(--gold); }
+.note-swatch[data-color="violet"] { background: var(--violet); }
+.note-swatch[data-color="indigo"] { background: var(--indigo); }
+.note-swatch[data-color="blue"] { background: var(--blue); }
+.note-swatch[data-color="yellow"] { background: var(--note-yellow); }
 .note-swatch[data-color="green"] { background: var(--green); }
 .note-swatch[data-color="purple"] { background: var(--purple); }
 .note-swatch[data-color="orange"] { background: var(--orange); }

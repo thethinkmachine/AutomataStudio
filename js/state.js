@@ -49,6 +49,7 @@ const App = {
   stateN: 0, transN: 0,
   // Canvas notes (comments), anchored to states/transitions or free-floating
   notes: [], noteN: 0,
+  activeNoteId: null,
   ctxNoteId: null, editNoteId: null,
   dragNoteId: null, dragNoteOffset: { x: 0, y: 0 },
   // Configuration constants
