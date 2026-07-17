@@ -844,6 +844,17 @@
   font-style: italic;
 }
 
+/* Advisory only — still fully clickable/Tab-able, just visually
+   deprioritized: no transition exists from the machine's current state(s),
+   so accepting it would dead-end the simulation from here. */
+.sugg-chip.sugg-dead {
+  opacity: .45;
+}
+
+.sugg-chip.sugg-dead:hover {
+  opacity: .8;
+}
+
 .sym-suggest-status {
   font-family: var(--sans);
   font-size: .65rem;
