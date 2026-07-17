@@ -150,7 +150,7 @@
       </svg>Load Example
     </button>
 
-    <button class="hbtn" onclick="autoLayout()" title="Auto-arrange states in a circle">
+    <button class="hbtn" onclick="autoLayout()" title="Auto-arrange states (algorithm set in Settings → Rendering)">
       <svg viewBox="0 0 16 16" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="8" cy="3.5" r="1.6" />
         <circle cx="13" cy="11.5" r="1.6" />
@@ -1132,6 +1132,10 @@
           <span class="modal-lbl">Node Radius</span>
           <input type="number" class="inp" id="set-radius" label="State node size">
         </div>
+        <div class="modal-row" title="Break long, underscore/space/hyphen-separated state names onto multiple lines so they fit inside the node instead of overflowing it.">
+          <span class="modal-lbl">Wrap Long State Labels</span>
+          <input type="checkbox" class="inp" id="set-wrap-labels" style="width:16px;height:16px">
+        </div>
         <div class="modal-row">
           <span class="modal-lbl">Zoom Step</span>
           <input type="number" step="0.05" class="inp" id="set-zoom-step" label="Scroll zoom sensitivity">
@@ -1139,6 +1143,13 @@
         <div class="modal-row">
           <span class="modal-lbl">Grid Snap (px)</span>
           <input type="number" class="inp" id="set-grid-snap" label="Shift-drag snap grid size">
+        </div>
+        <div class="modal-row" title="Layered (Sugiyama) ranks states by transition flow and minimizes edge crossings — best for most automata. Circular arranges states evenly around a ring.">
+          <span class="modal-lbl">Auto-Layout Algorithm</span>
+          <select class="inp" id="set-layout-algo" label="Auto-layout algorithm">
+            <option value="sugiyama">Layered (Sugiyama)</option>
+            <option value="circular">Circular</option>
+          </select>
         </div>
         <div class="modal-row">
           <span class="modal-lbl">Auto-Layout Spacing</span>

@@ -622,18 +622,152 @@ function pasteClipboard(atPoint, fallbackOffset = 32) {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  AUTO LAYOUT — Sugiyama-style layered graph drawing
+//
+//  1. sugiyamaBuildDAG    — drop self-loops, break cycles (DFS back-edge
+//                           removal) so every remaining edge points from
+//                           an earlier layer to a later one.
+//  2. sugiyamaAssignRanks — longest-path layering over that DAG; rank =
+//                           column (states flow left → right).
+//  3. sugiyamaOrderLayers — barycenter/median heuristic, swept down then
+//                           up a few times, to reduce edge crossings
+//                           between adjacent columns.
+//  4. Coordinates are then read straight off (rank, order-in-layer) —
+//     no simulation, no animation, one deterministic pass.
+// ══════════════════════════════════════════════════════════════════
+
+// Adjacency ignoring self-loops (they don't affect layering) and
+// collapsing parallel transitions between the same pair of states.
+function sugiyamaAdjacency(states, transitions) {
+  const succ = new Map(states.map(s => [s.id, new Set()]));
+  const pred = new Map(states.map(s => [s.id, new Set()]));
+  transitions.forEach(t => {
+    if (t.from === t.to || !succ.has(t.from) || !pred.has(t.to)) return;
+    succ.get(t.from).add(t.to);
+    pred.get(t.to).add(t.from);
+  });
+  return { succ, pred };
+}
+
+// DFS from the start state (then any remaining states, for full
+// coverage of disconnected components) classifying edges to a node
+// still on the recursion stack as back-edges — dropping those breaks
+// every cycle while keeping the rest of the graph intact.
+function sugiyamaBuildDAG(states, succ, startId) {
+  const dag = new Map(states.map(s => [s.id, new Set()]));
+  const visited = new Set(), onStack = new Set();
+  const visitOrder = [];
+
+  function dfs(u) {
+    visited.add(u); onStack.add(u);
+    for (const v of succ.get(u)) {
+      if (onStack.has(v)) continue; // back-edge: would reintroduce a cycle
+      if (!visited.has(v)) dfs(v);
+      dag.get(u).add(v);
+    }
+    onStack.delete(u);
+    visitOrder.push(u);
+  }
+
+  const roots = [startId, ...states.map(s => s.id)].filter(id => id && succ.has(id));
+  roots.forEach(id => { if (!visited.has(id)) dfs(id); });
+  return { dag, visitOrder };
+}
+
+// Longest-path layering: every DAG edge goes from a strictly lower
+// rank to a strictly higher one (Kahn's algorithm over in-degree).
+function sugiyamaAssignRanks(states, dag) {
+  const indeg = new Map(states.map(s => [s.id, 0]));
+  dag.forEach(tos => tos.forEach(to => indeg.set(to, indeg.get(to) + 1)));
+  const rank = new Map(states.map(s => [s.id, 0]));
+  const queue = states.map(s => s.id).filter(id => indeg.get(id) === 0);
+  for (let i = 0; i < queue.length; i++) {
+    const u = queue[i];
+    dag.get(u).forEach(v => {
+      rank.set(v, Math.max(rank.get(v), rank.get(u) + 1));
+      indeg.set(v, indeg.get(v) - 1);
+      if (indeg.get(v) === 0) queue.push(v);
+    });
+  }
+  return rank;
+}
+
+// Barycenter heuristic: repeatedly reorder each layer by the average
+// position of its neighbors in the layer that was just fixed, sweeping
+// downward then upward so information propagates both ways. Nodes
+// with no fixed neighbor yet just keep their current slot.
+function sugiyamaOrderLayers(layers, succ, pred, sweeps = 6) {
+  const positionOf = layer => new Map(layer.map((id, i) => [id, i]));
+  for (let s = 0; s < sweeps; s++) {
+    const downward = s % 2 === 0;
+    const range = downward
+      ? Array.from({ length: layers.length - 1 }, (_, i) => i + 1)
+      : Array.from({ length: layers.length - 1 }, (_, i) => layers.length - 2 - i);
+    range.forEach(i => {
+      const fixedPos = positionOf(layers[downward ? i - 1 : i + 1]);
+      const neighborsOf = downward ? pred : succ;
+      const scored = layers[i].map((id, idx) => {
+        const positions = [...neighborsOf.get(id)].map(n => fixedPos.get(n)).filter(p => p !== undefined);
+        const bary = positions.length ? positions.reduce((a, b) => a + b, 0) / positions.length : idx;
+        return { id, bary };
+      });
+      scored.sort((a, b) => a.bary - b.bary);
+      layers[i] = scored.map(x => x.id);
+    });
+  }
+}
+
+function sugiyamaLayout(states, transitions, startId) {
+  const { succ, pred } = sugiyamaAdjacency(states, transitions);
+  const { dag, visitOrder } = sugiyamaBuildDAG(states, succ, startId);
+  const rank = sugiyamaAssignRanks(states, dag);
+
+  const maxRank = Math.max(0, ...states.map(s => rank.get(s.id)));
+  const layers = Array.from({ length: maxRank + 1 }, () => []);
+  // Seed each layer in DFS-visit order so connected chains land near
+  // each other before crossing-reduction takes over.
+  [...visitOrder].reverse().forEach(id => layers[rank.get(id)].push(id));
+  states.forEach(s => { if (!visitOrder.includes(s.id)) layers[rank.get(s.id)].push(s.id); });
+
+  sugiyamaOrderLayers(layers, succ, pred);
+
+  const { minRadius, nodeSpacing } = App.config.layout;
+  const layerSpacing = Math.max(minRadius, nodeSpacing * 3.4);
+  const byId = new Map(states.map(s => [s.id, s]));
+  layers.forEach((layer, r) => {
+    const span = (layer.length - 1) * nodeSpacing * 1.6;
+    layer.forEach((id, i) => {
+      const s = byId.get(id);
+      s.x = r * layerSpacing;
+      s.y = i * nodeSpacing * 1.6 - span / 2;
+    });
+  });
+}
+
+// Original one-shot circular placement — kept as a selectable alternative
+// (Settings → Rendering → Auto-Layout Algorithm) for users who prefer an
+// evenly-spaced ring over the layered layout.
+function circularLayout(states) {
+  const n = states.length;
+  const r = Math.max(App.config.layout.minRadius, n * App.config.layout.nodeSpacing);
+  states.forEach((s, i) => {
+    const angle = (2 * Math.PI * i / n) - Math.PI / 2;
+    s.x = r * Math.cos(angle);
+    s.y = r * Math.sin(angle);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  AUTO LAYOUT
 // ══════════════════════════════════════════════════════════════════
 function autoLayout() {
   if (!App.states.length) { showStatus('No states to arrange'); return; }
   snapshot();
-  const n = App.states.length;
-  const r = Math.max(App.config.layout.minRadius, n * App.config.layout.nodeSpacing);
-  App.states.forEach((s, i) => {
-    const angle = (2 * Math.PI * i / n) - Math.PI / 2;
-    s.x = r * Math.cos(angle);
-    s.y = r * Math.sin(angle);
-  });
+  if (App.config.layout.algorithm === 'circular') {
+    circularLayout(App.states);
+  } else {
+    sugiyamaLayout(App.states, App.transitions, App.startId);
+  }
   renderAll();
   fitToScreen();
 }

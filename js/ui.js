@@ -1642,8 +1642,10 @@ function openSettingsModal() {
   $('set-tm-steps').value = c.maxTmSteps;
   $('set-auto-speed').value = c.autoSpeed;
   $('set-radius').value = c.radius;
+  if ($('set-wrap-labels')) $('set-wrap-labels').checked = c.wrapStateLabels !== false;
   $('set-zoom-step').value = c.zoom.step;
   $('set-grid-snap').value = c.gridSnap;
+  if ($('set-layout-algo')) $('set-layout-algo').value = c.layout.algorithm || 'sugiyama';
   $('set-node-spacing').value = c.layout.nodeSpacing;
   $('set-curve-off').value = c.render.curveOff;
   $('set-export-res').value = c.exportRes || 2;
@@ -1685,8 +1687,10 @@ function confirmSettings() {
   c.autoSpeed = parseInt($('set-auto-speed').value) || 500;
   if ($('sim-speed-sel')) $('sim-speed-sel').value = String(c.autoSpeed);
   c.radius = parseInt($('set-radius').value) || 30;
+  if ($('set-wrap-labels')) c.wrapStateLabels = $('set-wrap-labels').checked;
   c.zoom.step = parseFloat($('set-zoom-step').value) || 0.1;
   c.gridSnap = parseInt($('set-grid-snap').value) || 20;
+  if ($('set-layout-algo')) c.layout.algorithm = $('set-layout-algo').value || 'sugiyama';
   c.layout.nodeSpacing = parseInt($('set-node-spacing').value) || 35;
   c.render.curveOff = parseInt($('set-curve-off').value) || 45;
   c.exportRes = parseFloat($('set-export-res').value) || 2;
@@ -1724,8 +1728,10 @@ function getEditorSettingsData() {
     maxTmSteps: c.maxTmSteps,
     autoSpeed: c.autoSpeed,
     radius: c.radius,
+    wrapStateLabels: !!c.wrapStateLabels,
     zoomStep: c.zoom.step,
     gridSnap: c.gridSnap,
+    layoutAlgorithm: c.layout.algorithm,
     layoutNodeSpacing: c.layout.nodeSpacing,
     renderCurveOff: c.render.curveOff,
     exportRes: c.exportRes,
@@ -1775,8 +1781,10 @@ function populateSettingsModalInputs(data) {
   if (data.maxTmSteps !== undefined) $('set-tm-steps').value = data.maxTmSteps;
   if (data.autoSpeed !== undefined) $('set-auto-speed').value = data.autoSpeed;
   if (data.radius !== undefined) $('set-radius').value = data.radius;
+  if (data.wrapStateLabels !== undefined && $('set-wrap-labels')) $('set-wrap-labels').checked = !!data.wrapStateLabels;
   if (data.zoomStep !== undefined) $('set-zoom-step').value = data.zoomStep;
   if (data.gridSnap !== undefined) $('set-grid-snap').value = data.gridSnap;
+  if (data.layoutAlgorithm !== undefined && $('set-layout-algo')) $('set-layout-algo').value = data.layoutAlgorithm;
   if (data.layoutNodeSpacing !== undefined) $('set-node-spacing').value = data.layoutNodeSpacing;
   if (data.renderCurveOff !== undefined) $('set-curve-off').value = data.renderCurveOff;
   if (data.exportRes !== undefined) $('set-export-res').value = data.exportRes;

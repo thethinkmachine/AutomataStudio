@@ -231,7 +231,10 @@ function updateFastDOM() {
     const r2 = grp.querySelector('circle[fill="none"]');
     if (r2) { r2.setAttribute('cx', s.x); r2.setAttribute('cy', s.y); }
     const t = grp.querySelector('text.slbl');
-    if (t) { t.setAttribute('x', s.x); t.setAttribute('y', App.machine === 'Moore' ? s.y - App.config.render.textMargin : s.y); }
+    if (t) {
+      t.setAttribute('x', s.x); t.setAttribute('y', App.machine === 'Moore' ? s.y - App.config.render.textMargin : s.y);
+      t.querySelectorAll('tspan').forEach(ts => ts.setAttribute('x', s.x));
+    }
     const ot = grp.querySelector('text.mooreout');
     if (ot) { ot.setAttribute('x', s.x); ot.setAttribute('y', s.y + App.config.render.mooreTextMargin); }
   });
@@ -303,6 +306,32 @@ function updateFastDOM() {
   if (typeof updateNotesDOM === 'function') updateNotesDOM();
 }
 
+// Break a state name into per-line words at underscore/space/hyphen
+// boundaries, e.g. "NEW_ACCOUNT_OPENED" -> ["NEW","ACCOUNT","OPENED"],
+// so long descriptive names stack inside the fixed-radius circle
+// instead of overflowing it. Names with no such boundary are left as
+// a single line untouched.
+function splitStateLabel(name) {
+  if (!App.config.wrapStateLabels) return [String(name)];
+  const parts = String(name).split(/[_\s-]+/).filter(Boolean);
+  return parts.length > 1 ? parts : [String(name)];
+}
+
+// Writes `lines` into `textEl` as centered tspans and returns the line
+// count, so callers can size the font to fit the circle.
+function setStateLabelLines(textEl, lines, cx) {
+  textEl.innerHTML = '';
+  const lineH = 1.05;
+  lines.forEach((line, i) => {
+    const tspan = makeSVG('tspan');
+    tspan.textContent = line;
+    tspan.setAttribute('x', cx);
+    tspan.setAttribute('dy', i === 0 ? `-${(lines.length - 1) * lineH / 2}em` : `${lineH}em`);
+    textEl.appendChild(tspan);
+  });
+  textEl.setAttribute('font-size', lines.length >= 4 ? '8.5px' : lines.length === 3 ? '9.5px' : '11px');
+}
+
 function renderStates() {
   const g = $('states-g'); g.innerHTML = '';
   App.states.forEach(s => {
@@ -329,7 +358,8 @@ function renderStates() {
     }
     const t = makeSVG('text'); t.classList.add('slbl'); t.setAttribute('x', s.x);
     t.setAttribute('y', App.machine === 'Moore' ? s.y - App.config.render.textMargin : s.y);
-    t.textContent = s.name; grp.appendChild(t);
+    setStateLabelLines(t, splitStateLabel(s.name), s.x);
+    grp.appendChild(t);
     if (App.machine === 'Moore') {
       const ot = makeSVG('text'); ot.classList.add('mooreout');
       ot.setAttribute('x', s.x); ot.setAttribute('y', s.y + App.config.render.mooreTextMargin);
