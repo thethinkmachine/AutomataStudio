@@ -196,6 +196,7 @@ function performClear() {
   App.states = []; App.transitions = []; App.startId = null; App.accepts.clear();
   App.stateN = 0; App.transN = 0; App.history = []; App.future = [];
   App.notes = []; App.noteN = 0;
+  if (typeof showExampleCard === 'function') showExampleCard(null);
   resetSim(); renderAll(); updateLPanel(); updateRPanel();
 }
 

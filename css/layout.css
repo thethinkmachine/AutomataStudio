@@ -557,6 +557,56 @@ header {
   display: block;
 }
 
+/* ── Example picker dropdown (Load Example button) ── */
+.example-picker {
+  position: relative;
+}
+
+.example-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 240px;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  display: none;
+  z-index: 1000;
+  padding: 6px;
+  animation: model-picker-slide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.example-picker.open .example-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.example-menu-item {
+  font-family: var(--mono);
+  font-size: .68rem;
+  text-align: left;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.example-menu-item:hover {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border2);
+}
+
+.example-menu-item.flagship {
+  color: var(--accent);
+}
+
 .model-cat-group {
   padding: 6px 0;
 }

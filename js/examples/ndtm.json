@@ -1,43 +1,68 @@
 {
   "machine": "NDTM",
-  "sigma": [
-    "0",
-    "1"
-  ],
-  "stackAlpha": [
-    "0",
-    "1",
-    "⊔"
-  ],
-  "tapeCount": 1,
+  "sigma": ["1"],
+  "stackAlpha": ["1", "#", "X", "x", "D", "⊔"],
   "states": [
-    {
-      "id": "s1",
-      "x": 120,
-      "y": 200,
-      "name": "scan"
-    },
-    {
-      "id": "s2",
-      "x": 360,
-      "y": 200,
-      "name": "guess-last-1"
-    },
-    {
-      "id": "s3",
-      "x": 600,
-      "y": 200,
-      "name": "acc"
-    }
+    { "id": "s1", "x": 120, "y": 150, "name": "seed" },
+    { "id": "s2", "x": 340, "y": 150, "name": "guess p" },
+    { "id": "s3", "x": 560, "y": 150, "name": "next X" },
+    { "id": "s4", "x": 800, "y": 150, "name": "cross 1" },
+    { "id": "s5", "x": 560, "y": 380, "name": "last cross" },
+    { "id": "s6", "x": 800, "y": 380, "name": "reset ruler" },
+    { "id": "s7", "x": 340, "y": 380, "name": "any 1s left?" },
+    { "id": "s8", "x": 120, "y": 380, "name": "acc" }
   ],
   "startId": "s1",
-  "accepts": [
-    "s3"
-  ],
+  "accepts": ["s8"],
   "transitions": [
-    { "id": "t1", "from": "s1", "to": "s1", "symbol": "0", "write": "0", "dir": "R" },
-    { "id": "t2", "from": "s1", "to": "s1", "symbol": "1", "write": "1", "dir": "R" },
-    { "id": "t3", "from": "s1", "to": "s2", "symbol": "1", "write": "1", "dir": "R" },
-    { "id": "t4", "from": "s2", "to": "s3", "symbol": "⊔", "write": "⊔", "dir": "S" }
-  ]
+    { "id": "t1", "from": "s1", "to": "s2", "symbol": "1", "write": "#", "dir": "R" },
+    { "id": "t2", "from": "s2", "to": "s2", "symbol": "1", "write": "X", "dir": "R" },
+    { "id": "t3", "from": "s2", "to": "s3", "symbol": "1", "write": "X", "dir": "R" },
+    { "id": "t4", "from": "s3", "to": "s3", "symbol": "1", "write": "1", "dir": "L" },
+    { "id": "t5", "from": "s3", "to": "s3", "symbol": "D", "write": "D", "dir": "L" },
+    { "id": "t6", "from": "s3", "to": "s3", "symbol": "x", "write": "x", "dir": "L" },
+    { "id": "t7", "from": "s3", "to": "s4", "symbol": "X", "write": "x", "dir": "R" },
+    { "id": "t8", "from": "s3", "to": "s5", "symbol": "#", "write": "#", "dir": "R" },
+    { "id": "t9", "from": "s4", "to": "s4", "symbol": "x", "write": "x", "dir": "R" },
+    { "id": "t10", "from": "s4", "to": "s4", "symbol": "D", "write": "D", "dir": "R" },
+    { "id": "t11", "from": "s4", "to": "s3", "symbol": "1", "write": "D", "dir": "L" },
+    { "id": "t12", "from": "s5", "to": "s5", "symbol": "x", "write": "x", "dir": "R" },
+    { "id": "t13", "from": "s5", "to": "s5", "symbol": "D", "write": "D", "dir": "R" },
+    { "id": "t14", "from": "s5", "to": "s6", "symbol": "1", "write": "D", "dir": "L" },
+    { "id": "t15", "from": "s6", "to": "s6", "symbol": "D", "write": "D", "dir": "L" },
+    { "id": "t16", "from": "s6", "to": "s6", "symbol": "x", "write": "X", "dir": "L" },
+    { "id": "t17", "from": "s6", "to": "s7", "symbol": "#", "write": "#", "dir": "R" },
+    { "id": "t18", "from": "s7", "to": "s7", "symbol": "X", "write": "X", "dir": "R" },
+    { "id": "t19", "from": "s7", "to": "s7", "symbol": "D", "write": "D", "dir": "R" },
+    { "id": "t20", "from": "s7", "to": "s3", "symbol": "1", "write": "1", "dir": "L" },
+    { "id": "t21", "from": "s7", "to": "s8", "symbol": "⊔", "write": "⊔", "dir": "S" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 30, "y": 40, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Compositeness by guessing: on input 1ⁿ the machine nondeterministically marks a factor p ≥ 2 as a ruler (#X…X), then deals the remaining 1s into rounds of exactly p. Every round completes cleanly ⇔ p divides n ⇔ n is composite."
+    },
+    {
+      "id": "n2", "x": 950, "y": 220, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "1s get crossed to D one per ruler cell; the ruler resets (x→X) between rounds. If the 1s run out mid-round, that guess dies — only a correct factor survives."
+    },
+    {
+      "id": "n3", "x": 950, "y": 420, "color": "orange",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "The trace shows breadth-first exploration over ALL guesses of p at once, not a single run — that's what the N in NDTM means."
+    }
+  ],
+  "meta": {
+    "title": "Is n composite? Guess a factor",
+    "blurb": "Accepts 1ⁿ exactly when n is composite: the machine guesses a factor p, then verifies it by dealing the remaining 1s into rounds of p. Primality by nondeterministic elimination.",
+    "inputs": [
+      { "w": "1111", "expect": "accept", "label": "4 = 2×2" },
+      { "w": "111111", "expect": "accept", "label": "6 = 2×3" },
+      { "w": "111111111", "expect": "accept", "label": "9 = 3×3" },
+      { "w": "11111", "expect": "reject", "label": "5 is prime" },
+      { "w": "1111111", "expect": "reject", "label": "7 is prime" }
+    ]
+  }
 }

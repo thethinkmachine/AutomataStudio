@@ -491,6 +491,97 @@
   color: var(--red);
 }
 
+/* Example info card — shown in the Simulate panel after loading an example:
+   what the machine does, plus sample inputs as one-click chips. */
+.example-card {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 7px;
+  padding: 9px 11px;
+  margin-bottom: 10px;
+}
+
+.example-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.example-card-title {
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: .78rem;
+  color: var(--text);
+}
+
+.example-card-close {
+  background: transparent;
+  border: none;
+  color: var(--text3);
+  font-size: .9rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.example-card-close:hover {
+  color: var(--text);
+}
+
+.example-card-blurb {
+  font-family: var(--sans);
+  font-size: .7rem;
+  line-height: 1.45;
+  color: var(--text2);
+  margin-top: 5px;
+}
+
+.example-card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.example-chip {
+  font-family: var(--mono);
+  font-size: .66rem;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+  background: var(--bg2);
+  color: var(--text2);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.example-chip:hover {
+  color: var(--text);
+  border-color: var(--accent-border);
+}
+
+.example-chip.chip-acc {
+  border-color: var(--green-border);
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.example-chip.chip-rej {
+  border-color: var(--red-border);
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.example-chip.chip-acc:hover,
+.example-chip.chip-rej:hover {
+  filter: brightness(1.15);
+}
+
 /* Verdict banner — the headline result, shown once the simulation reaches
    its final step, instead of leaving accept/reject buried in the trace log. */
 .sim-verdict {

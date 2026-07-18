@@ -395,17 +395,54 @@ window.addEventListener('beforeunload', saveBackup);
 // ══════════════════════════════════════════════════════════════════
 //  LOAD EXAMPLE
 // ══════════════════════════════════════════════════════════════════
-function loadExample() {
+function getMachineExampleOptions() {
+  const list = (typeof MachineExamples !== 'undefined' && MachineExamples[App.machine]) || null;
+  if (list && list.length) return list;
   const cfg = getMachineConfig(App.machine);
-  const file = cfg.file;
-  if (!file) return;
+  return cfg.file ? [{ file: cfg.file, label: 'Example' }] : [];
+}
 
+function loadExample() {
+  const options = getMachineExampleOptions();
+  if (!options.length) return;
+  if (options.length === 1) { loadExampleFile(options[0].file); return; }
+  toggleExampleMenu(options);
+}
+
+function toggleExampleMenu(options) {
+  const picker = $('example-picker');
+  const menu = $('example-menu');
+  if (!picker || !menu) { loadExampleFile(options[0].file); return; }
+  if (picker.classList.contains('open')) { closeExampleMenu(); return; }
+  menu.innerHTML = '';
+  options.forEach((opt, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'example-menu-item' + (i === 0 ? ' flagship' : '');
+    btn.textContent = opt.label || opt.file;
+    btn.onclick = e => {
+      e.stopPropagation();
+      closeExampleMenu();
+      loadExampleFile(opt.file);
+    };
+    menu.appendChild(btn);
+  });
+  picker.classList.add('open');
+  setTimeout(() => document.addEventListener('click', closeExampleMenu, { once: true }), 0);
+}
+
+function closeExampleMenu() {
+  const picker = $('example-picker');
+  if (picker) picker.classList.remove('open');
+}
+
+function loadExampleFile(file) {
   const executeLoad = () => {
     fetch(`js/examples/${file}.json`)
       .then(res => res.json())
       .then(data => {
         performClear();
         loadData(data, true);
+        showExampleCard(data.meta);
         showStatus(`Example: ${App.machine} loaded`);
         snapshot();
       })
@@ -427,5 +464,59 @@ function loadExample() {
   } else {
     executeLoad();
   }
+}
+
+// Info card in the Simulate panel describing the loaded example, with sample
+// inputs as chips that run with one click. Pass null to hide it.
+function showExampleCard(meta) {
+  const card = $('example-card');
+  if (!card) return;
+  card.innerHTML = '';
+  if (!meta) { card.style.display = 'none'; return; }
+
+  const head = document.createElement('div');
+  head.className = 'example-card-head';
+  const title = document.createElement('span');
+  title.className = 'example-card-title';
+  title.textContent = meta.title || 'Example';
+  const close = document.createElement('button');
+  close.className = 'example-card-close';
+  close.title = 'Dismiss';
+  close.textContent = '×';
+  close.onclick = () => { card.style.display = 'none'; };
+  head.append(title, close);
+  card.appendChild(head);
+
+  if (meta.blurb) {
+    const blurb = document.createElement('div');
+    blurb.className = 'example-card-blurb';
+    blurb.textContent = meta.blurb;
+    card.appendChild(blurb);
+  }
+
+  if (Array.isArray(meta.inputs) && meta.inputs.length) {
+    const row = document.createElement('div');
+    row.className = 'example-card-chips';
+    meta.inputs.forEach(sample => {
+      const chip = document.createElement('button');
+      const tone = sample.expect === 'reject' ? ' chip-rej' : (sample.expect === 'accept' ? ' chip-acc' : '');
+      chip.className = 'example-chip' + tone;
+      chip.textContent = sample.w;
+      const hint = [sample.label, sample.expect || (sample.out !== undefined ? `→ ${sample.out}` : '')]
+        .filter(Boolean).join(' — ');
+      if (hint) chip.title = hint;
+      chip.onclick = () => {
+        const inp = $('sim-in');
+        if (inp) inp.value = sample.w;
+        runSim();
+      };
+      row.appendChild(chip);
+    });
+    card.appendChild(row);
+  }
+
+  card.style.display = 'block';
+  const simSection = $('rp-simulate');
+  if (simSection) simSection.classList.remove('collapsed');
 }
 

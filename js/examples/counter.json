@@ -1,80 +1,43 @@
 {
   "machine": "Counter",
-  "sigma": [
-    "a",
-    "b"
-  ],
-  "stackAlpha": [
-    "1",
-    "Z"
-  ],
+  "sigma": ["+", "-"],
+  "stackAlpha": ["1", "Z"],
   "states": [
-    {
-      "id": "s1",
-      "x": 120,
-      "y": 220,
-      "name": "push"
-    },
-    {
-      "id": "s2",
-      "x": 360,
-      "y": 220,
-      "name": "pop"
-    },
-    {
-      "id": "s3",
-      "x": 600,
-      "y": 220,
-      "name": "acc"
-    }
+    { "id": "s1", "x": 260, "y": 260, "name": "balance" },
+    { "id": "s2", "x": 580, "y": 260, "name": "settled" }
   ],
   "startId": "s1",
-  "accepts": [
-    "s3"
-  ],
+  "accepts": ["s2"],
   "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "+", "pop": "ε", "push": "1" },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "-", "pop": "1", "push": "ε" },
+    { "id": "t3", "from": "s1", "to": "s2", "symbol": "ε", "pop": "Z", "push": "Z" }
+  ],
+  "notes": [
     {
-      "id": "t1",
-      "from": "s1",
-      "to": "s1",
-      "symbol": "a",
-      "pop": "Z",
-      "push": "1Z"
+      "id": "n1", "x": 180, "y": 80, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "A bank account with one rule: never go below zero, and end settled at exactly zero. Every + deposits a token on the counter, every − withdraws one. A withdrawal with nothing on the counter gets stuck — overdraft rejected."
     },
     {
-      "id": "t2",
-      "from": "s1",
-      "to": "s1",
-      "symbol": "a",
-      "pop": "1",
-      "push": "11"
-    },
-    {
-      "id": "t3",
-      "from": "s1",
-      "to": "s2",
-      "symbol": "b",
-      "pop": "1",
-      "push": "ε"
-    },
-    {
-      "id": "t4",
-      "from": "s2",
-      "to": "s2",
-      "symbol": "b",
-      "pop": "1",
-      "push": "ε"
-    },
-    {
-      "id": "t5",
-      "from": "s2",
-      "to": "s3",
-      "symbol": "ε",
-      "pop": "Z",
-      "push": "Z"
+      "id": "n2", "x": 180, "y": 400, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "The ε move to settled only fires when the counter shows bottom Z, i.e. balance is exactly 0. One counter is all it takes to leave the world of finite automata."
     }
   ],
   "config": {
     "pdaParadigm": "explicit"
+  },
+  "meta": {
+    "title": "Bank account: never overdrawn",
+    "blurb": "Deposits (+) and withdrawals (−) where the balance never goes negative and ends at exactly zero. One counter separates this from anything a DFA could ever check.",
+    "inputs": [
+      { "w": "+-", "expect": "accept" },
+      { "w": "++--", "expect": "accept" },
+      { "w": "+-+-", "expect": "accept" },
+      { "w": "+--+", "expect": "reject", "label": "overdraft" },
+      { "w": "++-", "expect": "reject", "label": "money left" },
+      { "w": "-", "expect": "reject" }
+    ]
   }
 }

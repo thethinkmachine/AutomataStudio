@@ -1,88 +1,59 @@
 {
   "machine": "2NFA",
-  "sigma": [
-    "a",
-    "b"
-  ],
+  "sigma": ["a", "b"],
   "states": [
-    {
-      "id": "s1",
-      "x": 140,
-      "y": 220,
-      "name": "start"
-    },
-    {
-      "id": "s2",
-      "x": 330,
-      "y": 220,
-      "name": "scan"
-    },
-    {
-      "id": "s3",
-      "x": 500,
-      "y": 160,
-      "name": "found_a"
-    },
-    {
-      "id": "s4",
-      "x": 650,
-      "y": 220,
-      "name": "accept"
-    }
+    { "id": "s1", "x": 130, "y": 270, "name": "scan" },
+    { "id": "s2", "x": 360, "y": 150, "name": "sawA" },
+    { "id": "s3", "x": 590, "y": 150, "name": "runA" },
+    { "id": "s4", "x": 820, "y": 150, "name": "checkA" },
+    { "id": "s5", "x": 360, "y": 390, "name": "sawB" },
+    { "id": "s6", "x": 590, "y": 390, "name": "runB" },
+    { "id": "s7", "x": 820, "y": 390, "name": "checkB" },
+    { "id": "s8", "x": 950, "y": 270, "name": "acc" }
   ],
   "startId": "s1",
-  "accepts": [
-    "s4"
-  ],
+  "accepts": ["s8"],
   "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "⊢", "dir": "R" },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "a", "dir": "R" },
+    { "id": "t3", "from": "s1", "to": "s1", "symbol": "b", "dir": "R" },
+    { "id": "t4", "from": "s1", "to": "s2", "symbol": "a", "dir": "R" },
+    { "id": "t5", "from": "s1", "to": "s5", "symbol": "b", "dir": "R" },
+    { "id": "t6", "from": "s2", "to": "s3", "symbol": "a", "dir": "R" },
+    { "id": "t7", "from": "s2", "to": "s3", "symbol": "b", "dir": "R" },
+    { "id": "t8", "from": "s3", "to": "s3", "symbol": "a", "dir": "R" },
+    { "id": "t9", "from": "s3", "to": "s3", "symbol": "b", "dir": "R" },
+    { "id": "t10", "from": "s3", "to": "s4", "symbol": "⊣", "dir": "L" },
+    { "id": "t11", "from": "s4", "to": "s8", "symbol": "a", "dir": "S" },
+    { "id": "t12", "from": "s5", "to": "s6", "symbol": "a", "dir": "R" },
+    { "id": "t13", "from": "s5", "to": "s6", "symbol": "b", "dir": "R" },
+    { "id": "t14", "from": "s6", "to": "s6", "symbol": "a", "dir": "R" },
+    { "id": "t15", "from": "s6", "to": "s6", "symbol": "b", "dir": "R" },
+    { "id": "t16", "from": "s6", "to": "s7", "symbol": "⊣", "dir": "L" },
+    { "id": "t17", "from": "s7", "to": "s8", "symbol": "b", "dir": "S" }
+  ],
+  "notes": [
     {
-      "id": "t1",
-      "from": "s1",
-      "to": "s2",
-      "symbol": "⊢",
-      "dir": "R"
+      "id": "n1", "x": 120, "y": 50, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Déjà vu detector: accepts exactly the strings whose LAST letter already appeared somewhere earlier. The machine guesses which earlier occurrence matches (nondeterminism), runs to the end marker, then doubles back one cell to verify."
     },
     {
-      "id": "t2",
-      "from": "s2",
-      "to": "s2",
-      "symbol": "b",
-      "dir": "R"
-    },
-    {
-      "id": "t3",
-      "from": "s2",
-      "to": "s2",
-      "symbol": "a",
-      "dir": "R"
-    },
-    {
-      "id": "t4",
-      "from": "s2",
-      "to": "s3",
-      "symbol": "a",
-      "dir": "R"
-    },
-    {
-      "id": "t5",
-      "from": "s3",
-      "to": "s3",
-      "symbol": "b",
-      "dir": "R"
-    },
-    {
-      "id": "t6",
-      "from": "s3",
-      "to": "s3",
-      "symbol": "a",
-      "dir": "R"
-    },
-    {
-      "id": "t7",
-      "from": "s3",
-      "to": "s4",
-      "symbol": "⊣",
-      "dir": "S"
+      "id": "n2", "x": 120, "y": 430, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "The guessed letter must not be the final one itself — sawA/sawB demand at least one more symbol before ⊣. Nondeterminism + a two-way head = clairvoyance."
     }
-  ]
+  ],
+  "meta": {
+    "title": "Déjà vu: the last letter is a rerun",
+    "blurb": "Accepts strings whose final letter occurred earlier too. The 2NFA guesses the earlier occurrence, races to the end marker, and steps back to confirm the match.",
+    "inputs": [
+      { "w": "aba", "expect": "accept" },
+      { "w": "abb", "expect": "accept" },
+      { "w": "abab", "expect": "accept" },
+      { "w": "ab", "expect": "reject" },
+      { "w": "ba", "expect": "reject" },
+      { "w": "a", "expect": "reject" }
+    ]
+  }
 }

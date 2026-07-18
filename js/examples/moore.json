@@ -1,58 +1,52 @@
 {
-    "machine": "Moore",
-    "sigma": [
-        "tick"
-    ],
-    "outputAlpha": [
-        "RED",
-        "GREEN",
-        "YELLOW"
-    ],
-    "states": [
-        {
-            "id": "s1",
-            "x": 160,
-            "y": 200,
-            "name": "q_red",
-            "output": "RED"
-        },
-        {
-            "id": "s2",
-            "x": 360,
-            "y": 200,
-            "name": "q_green",
-            "output": "GREEN"
-        },
-        {
-            "id": "s3",
-            "x": 560,
-            "y": 200,
-            "name": "q_yellow",
-            "output": "YELLOW"
-        }
-    ],
-    "startId": "s1",
-    "accepts": [
-        "s1"
-    ],
-    "transitions": [
-        {
-            "id": "t1",
-            "from": "s1",
-            "to": "s2",
-            "symbol": "tick"
-        },
-        {
-            "id": "t2",
-            "from": "s2",
-            "to": "s3",
-            "symbol": "tick"
-        },
-        {
-            "id": "t3",
-            "from": "s3",
-            "to": "s1",
-            "symbol": "tick"
-        }
+  "machine": "Moore",
+  "sigma": ["0", "1"],
+  "outputAlpha": ["·", "OPEN"],
+  "states": [
+    { "id": "s1", "x": 120, "y": 260, "name": "idle", "output": "·" },
+    { "id": "s2", "x": 320, "y": 260, "name": "1", "output": "·" },
+    { "id": "s3", "x": 520, "y": 260, "name": "11", "output": "·" },
+    { "id": "s4", "x": 720, "y": 260, "name": "110", "output": "·" },
+    { "id": "s5", "x": 920, "y": 260, "name": "OPEN", "output": "OPEN" }
+  ],
+  "startId": "s1",
+  "accepts": ["s5"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "0" },
+    { "id": "t2", "from": "s1", "to": "s2", "symbol": "1" },
+    { "id": "t3", "from": "s2", "to": "s1", "symbol": "0" },
+    { "id": "t4", "from": "s2", "to": "s3", "symbol": "1" },
+    { "id": "t5", "from": "s3", "to": "s4", "symbol": "0" },
+    { "id": "t6", "from": "s3", "to": "s3", "symbol": "1" },
+    { "id": "t7", "from": "s4", "to": "s1", "symbol": "0" },
+    { "id": "t8", "from": "s4", "to": "s5", "symbol": "1" },
+    { "id": "t9", "from": "s5", "to": "s1", "symbol": "0" },
+    { "id": "t10", "from": "s5", "to": "s3", "symbol": "1" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 100, "y": 80, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "A combination lock: it opens only after the secret sequence 1101. Each state remembers how much of the code is already entered — the classic hardware sequence detector."
+    },
+    {
+      "id": "n2", "x": 100, "y": 400, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "The backward edges are the clever part (KMP-style): a wrong digit rarely resets you fully, because progress can overlap. From OPEN, reading 1 keeps '11' of the next attempt. Watch the output stream: dots until the lock says OPEN."
+    }
+  ],
+  "config": {
+    "transducerAccepts": true
+  },
+  "meta": {
+    "title": "Combination lock: 1101",
+    "blurb": "Opens exactly when the last four digits entered were 1101. The fallback edges reuse overlapping progress instead of resetting — a Moore machine doing KMP string matching in hardware.",
+    "inputs": [
+      { "w": "1101", "expect": "accept", "out": "····OPEN" },
+      { "w": "111101", "expect": "accept", "out": "······OPEN" },
+      { "w": "1101101", "expect": "accept", "label": "opens twice" },
+      { "w": "1111011", "expect": "reject", "label": "opened, then closed" },
+      { "w": "0110", "expect": "reject" }
     ]
+  }
 }

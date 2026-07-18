@@ -1,81 +1,44 @@
 {
-    "machine": "NFA",
-    "sigma": [
-        "0",
-        "1"
-    ],
-    "states": [
-        {
-            "id": "s1",
-            "x": 100,
-            "y": 200,
-            "name": "start"
-        },
-        {
-            "id": "s2",
-            "x": 250,
-            "y": 200,
-            "name": "guess"
-        },
-        {
-            "id": "s3",
-            "x": 400,
-            "y": 200,
-            "name": "penult"
-        },
-        {
-            "id": "s4",
-            "x": 550,
-            "y": 200,
-            "name": "acc"
-        }
-    ],
-    "startId": "s1",
-    "accepts": [
-        "s4"
-    ],
-    "transitions": [
-        {
-            "id": "t1",
-            "from": "s1",
-            "to": "s1",
-            "symbol": "0"
-        },
-        {
-            "id": "t2",
-            "from": "s1",
-            "to": "s1",
-            "symbol": "1"
-        },
-        {
-            "id": "t3",
-            "from": "s1",
-            "to": "s2",
-            "symbol": "1"
-        },
-        {
-            "id": "t4",
-            "from": "s2",
-            "to": "s3",
-            "symbol": "0"
-        },
-        {
-            "id": "t5",
-            "from": "s2",
-            "to": "s3",
-            "symbol": "1"
-        },
-        {
-            "id": "t6",
-            "from": "s3",
-            "to": "s4",
-            "symbol": "0"
-        },
-        {
-            "id": "t7",
-            "from": "s3",
-            "to": "s4",
-            "symbol": "1"
-        }
+  "machine": "NFA",
+  "sigma": ["c", "a", "t", "r", "b"],
+  "states": [
+    { "id": "s1", "x": 130, "y": 260, "name": "scan" },
+    { "id": "s2", "x": 340, "y": 260, "name": "c" },
+    { "id": "s3", "x": 550, "y": 260, "name": "ca" },
+    { "id": "s4", "x": 770, "y": 260, "name": "hit" }
+  ],
+  "startId": "s1",
+  "accepts": ["s4"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "Σ" },
+    { "id": "t2", "from": "s1", "to": "s2", "symbol": "c" },
+    { "id": "t3", "from": "s2", "to": "s3", "symbol": "a" },
+    { "id": "t4", "from": "s3", "to": "s4", "symbol": "t" },
+    { "id": "t5", "from": "s3", "to": "s4", "symbol": "r" },
+    { "id": "t6", "from": "s3", "to": "s4", "symbol": "b" },
+    { "id": "t7", "from": "s4", "to": "s4", "symbol": "Σ" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 120, "y": 60, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "A search engine in four states: accepts any stream containing cat, car, or cab. The Σ self-loop keeps scan alive at every position, so the machine attempts a match everywhere at once — exactly how grep-style multi-pattern search works."
+    },
+    {
+      "id": "n2", "x": 120, "y": 400, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Run cart and watch several states glow at the same time — that parallelism is the NFA superpower. crab is rejected: no complete keyword."
+    }
+  ],
+  "meta": {
+    "title": "Keyword search: cat | car | cab",
+    "blurb": "Accepts any string that contains cat, car, or cab. The Σ self-loops let the NFA start a match at every position simultaneously — multi-pattern text search as an automaton.",
+    "inputs": [
+      { "w": "cat", "expect": "accept" },
+      { "w": "cart", "expect": "accept", "label": "contains car" },
+      { "w": "tacab", "expect": "accept", "label": "contains cab" },
+      { "w": "crab", "expect": "reject" },
+      { "w": "acta", "expect": "reject" }
     ]
+  }
 }

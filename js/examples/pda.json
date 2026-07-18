@@ -1,45 +1,44 @@
 {
   "machine": "PDA",
-  "sigma": [
-    "a",
-    "b"
-  ],
-  "stackAlpha": [
-    "A",
-    "Z"
-  ],
+  "sigma": ["(", ")", "[", "]", "{", "}"],
+  "stackAlpha": ["(", "[", "{"],
   "states": [
-    {
-      "id": "s1",
-      "x": 120,
-      "y": 200,
-      "name": "push-a"
-    },
-    {
-      "id": "s2",
-      "x": 360,
-      "y": 200,
-      "name": "pop-b"
-    },
-    {
-      "id": "s3",
-      "x": 600,
-      "y": 200,
-      "name": "acc"
-    }
+    { "id": "s1", "x": 300, "y": 280, "name": "track" }
   ],
   "startId": "s1",
-  "accepts": [
-    "s3"
-  ],
+  "accepts": [],
   "transitions": [
-    { "id": "t1", "from": "s1", "to": "s1", "symbol": "a", "pop": "Z", "push": "AZ" },
-    { "id": "t2", "from": "s1", "to": "s1", "symbol": "a", "pop": "A", "push": "AA" },
-    { "id": "t3", "from": "s1", "to": "s2", "symbol": "b", "pop": "A", "push": "ε" },
-    { "id": "t4", "from": "s2", "to": "s2", "symbol": "b", "pop": "A", "push": "ε" },
-    { "id": "t5", "from": "s2", "to": "s3", "symbol": "ε", "pop": "Z", "push": "Z" }
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "(", "pop": "ε", "push": "(" },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "[", "pop": "ε", "push": "[" },
+    { "id": "t3", "from": "s1", "to": "s1", "symbol": "{", "pop": "ε", "push": "{" },
+    { "id": "t4", "from": "s1", "to": "s1", "symbol": ")", "pop": "(", "push": "ε" },
+    { "id": "t5", "from": "s1", "to": "s1", "symbol": "]", "pop": "[", "push": "ε" },
+    { "id": "t6", "from": "s1", "to": "s1", "symbol": "}", "pop": "{", "push": "ε" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 480, "y": 130, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Your editor's bracket matcher, as one state and a stack. Every opener is pushed; every closer must match the top of the stack. Acceptance by empty stack: balanced ⇔ nothing left over."
+    },
+    {
+      "id": "n2", "x": 480, "y": 300, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Try ([)] — it fails exactly where regular expressions fail: interleaved nesting needs memory. Keep the Stack panel in view during playback; the stack is the whole story here."
+    }
   ],
   "config": {
-    "pdaParadigm": "explicit"
+    "pdaParadigm": "empty"
+  },
+  "meta": {
+    "title": "Bracket matcher ( ) [ ] { }",
+    "blurb": "Balanced-bracket checking — what your editor does on every keystroke. One state; the stack does all the work. Accepts by empty stack.",
+    "inputs": [
+      { "w": "([]{})", "expect": "accept" },
+      { "w": "{[()()]}", "expect": "accept" },
+      { "w": "()", "expect": "accept" },
+      { "w": "([)]", "expect": "reject", "label": "interleaved!" },
+      { "w": "(((", "expect": "reject", "label": "left open" }
+    ]
   }
 }

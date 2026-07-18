@@ -1,59 +1,47 @@
 {
-    "machine": "ε-NFA",
-    "sigma": [
-        "a",
-        "b"
-    ],
-    "states": [
-        {
-            "id": "s1",
-            "x": 100,
-            "y": 200,
-            "name": "start"
-        },
-        {
-            "id": "s2",
-            "x": 300,
-            "y": 120,
-            "name": "a_star"
-        },
-        {
-            "id": "s3",
-            "x": 300,
-            "y": 280,
-            "name": "b_star"
-        }
-    ],
-    "startId": "s1",
-    "accepts": [
-        "s1",
-        "s2",
-        "s3"
-    ],
-    "transitions": [
-        {
-            "id": "t1",
-            "from": "s1",
-            "to": "s2",
-            "symbol": "ε"
-        },
-        {
-            "id": "t2",
-            "from": "s1",
-            "to": "s3",
-            "symbol": "ε"
-        },
-        {
-            "id": "t3",
-            "from": "s2",
-            "to": "s2",
-            "symbol": "a"
-        },
-        {
-            "id": "t4",
-            "from": "s3",
-            "to": "s3",
-            "symbol": "b"
-        }
+  "machine": "ε-NFA",
+  "sigma": ["d", ".", "+", "-"],
+  "states": [
+    { "id": "s1", "x": 110, "y": 260, "name": "start" },
+    { "id": "s2", "x": 300, "y": 260, "name": "signed" },
+    { "id": "s3", "x": 490, "y": 260, "name": "integer" },
+    { "id": "s4", "x": 680, "y": 260, "name": "point" },
+    { "id": "s5", "x": 870, "y": 260, "name": "fraction" }
+  ],
+  "startId": "s1",
+  "accepts": ["s3", "s5"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s2", "symbol": "+" },
+    { "id": "t2", "from": "s1", "to": "s2", "symbol": "-" },
+    { "id": "t3", "from": "s1", "to": "s2", "symbol": "ε" },
+    { "id": "t4", "from": "s2", "to": "s3", "symbol": "d" },
+    { "id": "t5", "from": "s3", "to": "s3", "symbol": "d" },
+    { "id": "t6", "from": "s3", "to": "s4", "symbol": "." },
+    { "id": "t7", "from": "s4", "to": "s5", "symbol": "d" },
+    { "id": "t8", "from": "s5", "to": "s5", "symbol": "d" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 110, "y": 70, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "The float-literal regex [+-]?d+(.d+)? compiled to states (d = any digit). The ε edge silently skips the optional sign; the decimal branch only opens after at least one digit. This is Thompson construction — the machinery inside every regex engine."
+    },
+    {
+      "id": "n2", "x": 110, "y": 400, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Step through dd.dd and watch the ε-closure fire before any input is read. d. and .dd both fail — each for a different reason."
+    }
+  ],
+  "meta": {
+    "title": "Float regex, compiled",
+    "blurb": "The regex [+-]?d+(.d+)? as an ε-NFA, where d stands for any digit — what a regex engine actually builds. ε-jumps make the sign optional; the fraction needs a digit after the dot.",
+    "inputs": [
+      { "w": "dd", "expect": "accept", "label": "like 42" },
+      { "w": "+ddd", "expect": "accept", "label": "like +314" },
+      { "w": "dd.dd", "expect": "accept", "label": "like 31.41" },
+      { "w": "-d.d", "expect": "accept", "label": "like -2.5" },
+      { "w": "d.", "expect": "reject", "label": "trailing dot" },
+      { "w": ".dd", "expect": "reject", "label": "no integer part" }
     ]
+  }
 }

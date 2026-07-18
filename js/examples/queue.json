@@ -1,56 +1,44 @@
 {
   "machine": "QA",
-  "sigma": [
-    "a",
-    "b"
-  ],
-  "stackAlpha": [
-    "A",
-    "Z"
-  ],
+  "sigma": ["a", "b", "#"],
+  "stackAlpha": ["A", "B"],
   "states": [
-    {
-      "id": "s1",
-      "x": 140,
-      "y": 220,
-      "name": "q0"
-    },
-    {
-      "id": "s2",
-      "x": 360,
-      "y": 220,
-      "name": "q1"
-    },
-    {
-      "id": "s3",
-      "x": 580,
-      "y": 220,
-      "name": "acc"
-    }
+    { "id": "s1", "x": 220, "y": 260, "name": "enqueue" },
+    { "id": "s2", "x": 540, "y": 260, "name": "match" }
   ],
   "startId": "s1",
-  "accepts": [
-    "s3"
-  ],
+  "accepts": [],
   "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "a", "pop": "ε", "push": "A" },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "b", "pop": "ε", "push": "B" },
+    { "id": "t3", "from": "s1", "to": "s2", "symbol": "#", "pop": "ε", "push": "ε" },
+    { "id": "t4", "from": "s2", "to": "s2", "symbol": "a", "pop": "A", "push": "ε" },
+    { "id": "t5", "from": "s2", "to": "s2", "symbol": "b", "pop": "B", "push": "ε" }
+  ],
+  "notes": [
     {
-      "id": "t1",
-      "from": "s1",
-      "to": "s2",
-      "symbol": "a",
-      "pop": "ε",
-      "push": "A"
+      "id": "n1", "x": 160, "y": 80, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "The copy language w#w — provably IMPOSSIBLE for any pushdown automaton: a stack hands back what it stored in reverse. A queue preserves order, so verifying a perfect copy is effortless: enqueue the left half, then match each symbol against the queue front."
     },
     {
-      "id": "t2",
-      "from": "s2",
-      "to": "s3",
-      "symbol": "b",
-      "pop": "Z",
-      "push": "ε"
+      "id": "n2", "x": 160, "y": 400, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "ab#ab is accepted; ab#ba — the string a STACK would accept — is rejected. Acceptance: empty queue + input consumed."
     }
   ],
   "config": {
-    "pdaParadigm": "explicit"
+    "pdaParadigm": "empty"
+  },
+  "meta": {
+    "title": "Perfect copy: w#w",
+    "blurb": "Accepts w#w — an exact repetition. No PDA can do this (stacks reverse), but FIFO order makes it natural: the queue front always holds the next symbol the copy must produce.",
+    "inputs": [
+      { "w": "ab#ab", "expect": "accept" },
+      { "w": "abb#abb", "expect": "accept" },
+      { "w": "#", "expect": "accept", "label": "empty copy" },
+      { "w": "ab#ba", "expect": "reject", "label": "mirrored, not copied" },
+      { "w": "ab#a", "expect": "reject" }
+    ]
   }
 }

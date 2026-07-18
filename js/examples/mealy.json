@@ -1,60 +1,45 @@
 {
-    "machine": "Mealy",
-    "sigma": [
-        "0",
-        "1"
-    ],
-    "outputAlpha": [
-        "seen0",
-        "seen1"
-    ],
-    "states": [
-        {
-            "id": "s1",
-            "x": 160,
-            "y": 200,
-            "name": "q0"
-        },
-        {
-            "id": "s2",
-            "x": 360,
-            "y": 200,
-            "name": "q1"
-        }
-    ],
-    "startId": "s1",
-    "accepts": [
-        "s1",
-        "s2"
-    ],
-    "transitions": [
-        {
-            "id": "t1",
-            "from": "s1",
-            "to": "s1",
-            "symbol": "0",
-            "output": "seen0"
-        },
-        {
-            "id": "t2",
-            "from": "s1",
-            "to": "s2",
-            "symbol": "1",
-            "output": "seen1"
-        },
-        {
-            "id": "t3",
-            "from": "s2",
-            "to": "s1",
-            "symbol": "0",
-            "output": "seen0"
-        },
-        {
-            "id": "t4",
-            "from": "s2",
-            "to": "s2",
-            "symbol": "1",
-            "output": "seen1"
-        }
+  "machine": "Mealy",
+  "sigma": ["00", "01", "10", "11"],
+  "outputAlpha": ["0", "1"],
+  "states": [
+    { "id": "s1", "x": 260, "y": 260, "name": "carry 0" },
+    { "id": "s2", "x": 640, "y": 260, "name": "carry 1" }
+  ],
+  "startId": "s1",
+  "accepts": [],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "00", "output": "0" },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "01", "output": "1" },
+    { "id": "t3", "from": "s1", "to": "s1", "symbol": "10", "output": "1" },
+    { "id": "t4", "from": "s1", "to": "s2", "symbol": "11", "output": "0" },
+    { "id": "t5", "from": "s2", "to": "s2", "symbol": "11", "output": "1" },
+    { "id": "t6", "from": "s2", "to": "s2", "symbol": "01", "output": "0" },
+    { "id": "t7", "from": "s2", "to": "s2", "symbol": "10", "output": "0" },
+    { "id": "t8", "from": "s2", "to": "s1", "symbol": "00", "output": "1" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 160, "y": 70, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "TWO states adding numbers of any length. Each input symbol is a bit-pair — one bit from each number, least-significant first — and the output stream is their sum. The carry is the only memory addition ever needs. This is the serial adder circuit inside real hardware."
+    },
+    {
+      "id": "n2", "x": 160, "y": 410, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Separate pairs with spaces: 01 11 10 00 adds 6+3 (read bits bottom-up). End with 00 to flush a final carry — exactly what fixed word width does in a CPU."
+    }
+  ],
+  "config": {
+    "transducerAccepts": false
+  },
+  "meta": {
+    "title": "Serial binary adder",
+    "blurb": "Adds two arbitrarily long binary numbers with just two states: feed bit-pairs LSB-first, read the sum off the output. Carry in the state, nothing else — the circuit in your CPU.",
+    "inputs": [
+      { "w": "01 11 10 00", "out": "1001", "label": "6+3=9" },
+      { "w": "11 11 00", "out": "011", "label": "3+3=6" },
+      { "w": "10 10", "out": "11", "label": "3+0=3" }
     ]
+  }
 }
