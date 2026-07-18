@@ -1494,20 +1494,30 @@ function updateSimScrubber() {
 const SIM_ICON_ACCEPT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>';
 const SIM_ICON_REJECT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>';
 const SIM_ICON_PLAY = '<svg viewBox="0 0 256 256" fill="currentColor" width="14" height="14"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>';
+const SIM_ICON_PAUSE = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M200,28H160a20,20,0,0,0-20,20V208a20,20,0,0,0,20,20h40a20,20,0,0,0,20-20V48A20,20,0,0,0,200,28Zm-4,176H164V52h32ZM96,28H56A20,20,0,0,0,36,48V208a20,20,0,0,0,20,20H96a20,20,0,0,0,20-20V48A20,20,0,0,0,96,28ZM92,204H60V52H92Z"/></svg>';
+const SIM_ICON_REPEAT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M228,48V96a12,12,0,0,1-12,12H168a12,12,0,0,1,0-24h19l-7.8-7.8a75.55,75.55,0,0,0-53.32-22.26h-.43A75.49,75.49,0,0,0,72.39,75.57,12,12,0,1,1,55.61,58.41a99.38,99.38,0,0,1,69.87-28.47H126A99.42,99.42,0,0,1,196.2,59.23L204,67V48a12,12,0,0,1,24,0ZM183.61,180.43a75.49,75.49,0,0,1-53.09,21.63h-.43A75.55,75.55,0,0,1,76.77,179.8L69,172H88a12,12,0,0,0,0-24H40a12,12,0,0,0-12,12v48a12,12,0,0,0,24,0V189l7.8,7.8A99.42,99.42,0,0,0,130,226.06h.56a99.38,99.38,0,0,0,69.87-28.47,12,12,0,0,0-16.78-17.16Z"/></svg>';
+const SIM_ICON_SEPARATOR = '<span class="run-btn-sep">|</span>';
 
-// Run doubles as the verdict readout — once the simulation reaches its
-// final step, recoloring/relabeling this one button communicates
-// accept/reject at a glance instead of a separate banner. 'idle' is the
-// pre-run/pre-verdict state; 'accept'/'reject' only apply once isLast is
-// true and get cleared the moment you step away from the final step,
-// reset, or start a new run.
+// Clicking run-btn either starts a new simulation, or — while one is
+// already playing — pauses it, mirroring standard media-control behavior.
+function handleRunBtnClick() {
+  if (App.autoTimer) { stopAutoPlay(); setRunBtnState('idle'); return; }
+  runSim();
+}
+
+// Run doubles as the verdict/transport readout — recoloring/relabeling this
+// one button communicates play state and accept/reject at a glance instead
+// of separate controls/banner. 'idle' is pre-run/paused/mid-scrub; 'playing'
+// while the auto-play timer is running; 'accept'/'reject' only apply once
+// isLast is true and get cleared the moment you step away from the final
+// step, reset, or start a new run.
 function setRunBtnState(mode) {
   const btn = $('run-btn');
   if (!btn) return;
   btn.classList.remove('accept', 'reject');
-  if (mode === 'accept') { btn.classList.add('accept'); btn.innerHTML = `${SIM_ICON_ACCEPT} Accepted`; return; }
-  if (mode === 'reject') { btn.classList.add('reject'); btn.innerHTML = `${SIM_ICON_REJECT} Rejected`; return; }
-  btn.innerHTML = SIM_ICON_PLAY;
+  if (mode === 'accept') { btn.classList.add('accept'); btn.innerHTML = `${SIM_ICON_ACCEPT}${SIM_ICON_SEPARATOR}${SIM_ICON_REPEAT}`; return; }
+  if (mode === 'reject') { btn.classList.add('reject'); btn.innerHTML = `${SIM_ICON_REJECT}${SIM_ICON_SEPARATOR}${SIM_ICON_REPEAT}`; return; }
+  btn.innerHTML = App.autoTimer ? SIM_ICON_PAUSE : SIM_ICON_PLAY;
 }
 
 function updateSimVerdict(step, isLast) {
@@ -1582,11 +1592,12 @@ function resetSim() {
   setRunBtnState('idle');
 }
 function toggleAuto() {
-  if (App.autoTimer) { stopAutoPlay(); return; }
+  if (App.autoTimer) { stopAutoPlay(); setRunBtnState('idle'); return; }
   App.autoTimer = setInterval(() => {
     if (App.simIdx >= App.simSteps.length - 1) { stopAutoPlay(); return; }
     stepFwd(false);
   }, App.config.autoSpeed);
+  setRunBtnState('playing');
 }
 
 // ── Input history (↑ / ↓ recall previously-run strings) ──

@@ -491,6 +491,11 @@
   color: var(--red);
 }
 
+.run-btn-sep {
+  opacity: .35;
+  font-weight: 400;
+}
+
 /* Example info card — shown in the Simulate panel after loading an example:
    what the machine does, plus sample inputs as one-click chips. */
 .example-card {
