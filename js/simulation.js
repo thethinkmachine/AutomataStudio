@@ -200,15 +200,16 @@ function simTM(tokens) {
   App.simSteps = [];
   let tape = tokens.length ? [...tokens] : [], head = 0, state = App.startId;
   const blank = App.config.sym.blank;
+  let via = null;
   for (let step = 0; step < App.config.maxTmSteps; step++) {
     while (tape.length <= head) tape.push(blank);
     const sym = tape[head];
-    App.simSteps.push({ state, tokens, tape: [...tape], head, note: `State:${getState(state)?.name} Read:'${sym}'` });
+    App.simSteps.push({ state, tokens, tape: [...tape], head, tid: via, note: `State:${getState(state)?.name} Read:'${sym}'` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
     const t = getSingleTapeDeterministicTransition(state, sym);
     if (!t) { App.simSteps[App.simSteps.length - 1].final = 'reject'; App.simSteps[App.simSteps.length - 1].note += ' — REJECT'; break; }
     const writeSym = (!t.write || t.write === App.config.sym.any) ? sym : t.write;
-    tape[head] = writeSym; state = t.to;
+    tape[head] = writeSym; state = t.to; via = t.id;
     const move = t.dir === 'R' ? 1 : (t.dir === 'L' ? -1 : 0);
     head += move; if (head < 0) head = 0;
   }
@@ -1073,10 +1074,11 @@ function simLBA(tokens) {
   const { leftMarker, rightMarker } = App.config.sym;
   let head = 0;
   let state = App.startId;
+  let via = null;
 
   for (let step = 0; step < App.config.maxTmSteps; step++) {
     const sym = tape[head];
-    App.simSteps.push({ state, tokens, tape: [...tape], head, note: `State:${getState(state)?.name} Read:'${sym}'` });
+    App.simSteps.push({ state, tokens, tape: [...tape], head, tid: via, note: `State:${getState(state)?.name} Read:'${sym}'` });
     if (App.accepts.has(state)) {
       App.simSteps[App.simSteps.length - 1].final = 'accept';
       App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT';
@@ -1091,7 +1093,7 @@ function simLBA(tokens) {
     const writeSym = (!t.write || t.write === App.config.sym.any) ? sym : t.write;
     tape[head] = (sym === leftMarker || sym === rightMarker) ? sym : writeSym;
     const nextHead = head + headMoveDelta(t.dir);
-    state = t.to;
+    state = t.to; via = t.id;
     if (nextHead < leftBound || nextHead > rightBound) {
       const boundSym = nextHead < leftBound ? '⊢' : '⊣';
       App.simSteps.push({
@@ -1099,6 +1101,7 @@ function simLBA(tokens) {
         tokens,
         tape: [...tape],
         head,
+        tid: via,
         note: `Attempted to move outside the ${boundSym} boundary. — REJECT`,
         final: 'reject'
       });
@@ -1137,6 +1140,7 @@ function simITM(tokens) {
 
   let head = 0;
   let state = App.startId;
+  let via = null;
 
   for (let step = 0; step < App.config.maxTmSteps; step++) {
     const sym = tape.has(head) ? tape.get(head) : blank;
@@ -1146,6 +1150,7 @@ function simITM(tokens) {
       tokens,
       tape: snap.tape,
       head: snap.head,
+      tid: via,
       note: `State:${getState(state)?.name} Read:'${sym}' @${head}`
     });
     if (App.accepts.has(state)) {
@@ -1163,7 +1168,7 @@ function simITM(tokens) {
     if (writeSym === blank) tape.delete(head);
     else tape.set(head, writeSym);
     head += headMoveDelta(t.dir);
-    state = t.to;
+    state = t.to; via = t.id;
   }
 
   const last = App.simSteps[App.simSteps.length - 1];
@@ -1184,10 +1189,11 @@ function simMTM(tokens, allTapeTokens) {
     : Array.from({ length: k }, (_, i) => i === 0 ? (tokens.length ? [...tokens] : [blank]) : [blank]);
   const heads = Array(k).fill(0);
   let state = App.startId;
+  let via = null;
   for (let step = 0; step < App.config.maxTmSteps; step++) {
     tapes.forEach((tape, i) => { while (tape.length <= heads[i]) tape.push(blank); });
     const syms = tapes.map((tape, i) => tape[heads[i]]);
-    App.simSteps.push({ state, tokens, tapes: tapes.map(t => [...t]), heads: [...heads], note: `State:${getState(state)?.name} Read:[${syms.join(',')}]` });
+    App.simSteps.push({ state, tokens, tapes: tapes.map(t => [...t]), heads: [...heads], tid: via, note: `State:${getState(state)?.name} Read:[${syms.join(',')}]` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
     const t = getMultiTapeDeterministicTransition(state, syms);
     if (!t) { App.simSteps[App.simSteps.length - 1].final = 'reject'; App.simSteps[App.simSteps.length - 1].note += ' — REJECT'; break; }
@@ -1197,7 +1203,7 @@ function simMTM(tokens, allTapeTokens) {
       heads[i] += move;
       if (heads[i] < 0) heads[i] = 0;
     }
-    state = t.to;
+    state = t.to; via = t.id;
   }
   const lastMTM = App.simSteps[App.simSteps.length - 1];
   if (lastMTM && !lastMTM.final) { lastMTM.final = 'reject'; lastMTM.note += ' — STEP LIMIT REACHED — REJECT'; }
@@ -1278,16 +1284,198 @@ function renderSimStep() {
 
   trackerEl.innerHTML = headerHtml + rowsHtml;
 
-  // Visual highlights on canvas
-  document.querySelectorAll('.sn').forEach(el => el.classList.remove('act-st', 'rej-st'));
+  updateSimCanvasHighlights(step);
+
+  updateSimScrubber();
+  updateSimVerdict(step, isLast);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  CANVAS PATH HIGHLIGHTING
+// ══════════════════════════════════════════════════════════════════
+function simMotionOk() {
+  return !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+function findSimEdgeGroup(key) {
+  return App.domCache.transitions.get(key) || document.querySelector(`.edge-g[data-edge="${key}"]`);
+}
+
+// Edge(s) traversed to arrive at step `idx`, as "from|to" keys matching the
+// grouped edge DOM. Path-style machines record the transition id on the step;
+// NFA-style set steps are reconstructed from the previous state set (symbol
+// move + ε-closure). NDTM exploration steps carry no path information —
+// consecutive steps are BFS order, not a run — so they highlight states only.
+function getSimStepEdgeKeys(idx) {
+  const step = App.simSteps[idx];
+  if (!step) return [];
+  if (step.tid) {
+    const t = App.transitions.find(tr => tr.id === step.tid);
+    return t ? [t.from + '|' + t.to] : [];
+  }
+  if (step.states) return getNfaSimStepEdgeKeys(idx);
+  return [];
+}
+
+function getNfaSimStepEdgeKeys(idx) {
+  const eps = App.config.sym.eps, any = App.config.sym.any;
+  const step = App.simSteps[idx];
+  const cur = new Set(step.states);
+  const keys = new Set();
+  let seed;
+  if (idx === 0) {
+    seed = new Set([App.startId]);
+  } else {
+    const prev = App.simSteps[idx - 1];
+    const prevStates = prev.states || (prev.state ? [prev.state] : []);
+    const sym = prev.remaining && prev.remaining.length ? prev.remaining[0] : null;
+    seed = new Set();
+    if (sym !== null) {
+      prevStates.forEach(sid => App.transitions.forEach(t => {
+        if (t.from === sid && (t.symbol === sym || t.symbol === any) && cur.has(t.to)) {
+          keys.add(t.from + '|' + t.to);
+          seed.add(t.to);
+        }
+      }));
+    }
+  }
+  // ε-edges that expanded the closure into the current set
+  const stk = [...seed], seen = new Set(seed);
+  while (stk.length) {
+    const s = stk.pop();
+    App.transitions.forEach(t => {
+      if (t.from === s && t.symbol === eps && cur.has(t.to)) {
+        keys.add(t.from + '|' + t.to);
+        if (!seen.has(t.to)) { seen.add(t.to); stk.push(t.to); }
+      }
+    });
+  }
+  return [...keys];
+}
+
+function clearSimCanvasHighlights() {
+  document.querySelectorAll('.sn.act-st, .sn.rej-st, .sn.sim-visited-st')
+    .forEach(el => el.classList.remove('act-st', 'rej-st', 'sim-visited-st'));
+  document.querySelectorAll('.edge-g.sim-active-t, .edge-g.sim-trail-t')
+    .forEach(el => el.classList.remove('sim-active-t', 'sim-trail-t'));
+  document.querySelectorAll('.tlbl.sim-active-lbl').forEach(el => el.classList.remove('sim-active-lbl'));
+  document.querySelectorAll('.sim-pulse').forEach(el => el.remove());
+  removeSimTokens();
+}
+
+function updateSimCanvasHighlights(step) {
+  const isNewRun = App._simRenderRun !== App.simSteps;
+  const advancedOne = !isNewRun && App.simIdx === App._simRenderIdx + 1;
+  App._simRenderRun = App.simSteps;
+  App._simRenderIdx = App.simIdx;
+
+  clearSimCanvasHighlights();
+
+  // Trail: everything traversed before the current step accumulates
+  // behind the playhead, so the whole route stays visible.
+  const visited = new Set();
+  const trailKeys = new Set();
+  for (let i = 0; i < App.simIdx; i++) {
+    const s = App.simSteps[i];
+    (s.states || (s.state ? [s.state] : [])).forEach(id => visited.add(id));
+    getSimStepEdgeKeys(i).forEach(k => trailKeys.add(k));
+  }
+
+  const activeKeys = getSimStepEdgeKeys(App.simIdx);
   const hl = step.state ? [step.state] : (step.states || []);
+
+  visited.forEach(id => {
+    if (hl.includes(id)) return;
+    const el = document.querySelector(`[data-id="${id}"]`);
+    if (el) el.classList.add('sim-visited-st');
+  });
+  trailKeys.forEach(k => {
+    if (activeKeys.includes(k)) return;
+    const el = findSimEdgeGroup(k);
+    if (el) el.classList.add('sim-trail-t');
+  });
+
   hl.forEach(id => {
     const el = document.querySelector(`[data-id="${id}"]`);
     if (el) el.classList.add(step.final === 'reject' ? 'rej-st' : 'act-st');
   });
+  activeKeys.forEach(k => {
+    const el = findSimEdgeGroup(k);
+    if (el) el.classList.add('sim-active-t');
+    const lbl = document.getElementById(`lbl-${k}`);
+    if (lbl) lbl.classList.add('sim-active-lbl');
+  });
 
-  updateSimScrubber();
-  updateSimVerdict(step, isLast);
+  // Motion: a token slides along each newly-taken edge, then the arrival
+  // state pulses (verdict-colored on the final step). Only on a single
+  // forward step — scrubbing and jumps update instantly.
+  if (!simMotionOk()) return;
+  const tone = step.final === 'reject' ? 'rej' : step.final === 'accept' ? 'acc' : '';
+  const pulseAll = () => hl.forEach(id => pulseSimState(id, tone));
+  if (advancedOne && activeKeys.length) {
+    const dur = App.autoTimer
+      ? Math.max(160, Math.min(App.config.autoSpeed * 0.6, 500))
+      : 280;
+    activeKeys.slice(0, 8).forEach((k, i) => {
+      animateSimToken(k, dur, i === 0 ? pulseAll : null);
+    });
+  } else if ((advancedOne && step.final) || (isNewRun && App.simIdx === 0)) {
+    pulseAll();
+  }
+}
+
+function removeSimTokens() {
+  (App._simTokens || []).forEach(t => { cancelAnimationFrame(t.raf); t.el.remove(); });
+  App._simTokens = [];
+}
+
+function animateSimToken(edgeKey, dur, onDone) {
+  const grp = findSimEdgeGroup(edgeKey);
+  const pathEl = grp && grp.querySelector('.tarr');
+  const layer = $('sim-anim-g');
+  let len = 0;
+  try { len = pathEl && layer ? pathEl.getTotalLength() : 0; } catch (e) { }
+  if (!len) { if (onDone) onDone(); return; }
+  const dot = makeSVG('circle');
+  dot.setAttribute('r', 5);
+  dot.classList.add('sim-token');
+  const p0 = pathEl.getPointAtLength(0);
+  dot.setAttribute('cx', p0.x); dot.setAttribute('cy', p0.y);
+  layer.appendChild(dot);
+  const token = { el: dot, raf: 0 };
+  App._simTokens = App._simTokens || [];
+  App._simTokens.push(token);
+  const t0 = performance.now();
+  const finish = () => {
+    dot.remove();
+    App._simTokens = (App._simTokens || []).filter(t => t !== token);
+    if (onDone) onDone();
+  };
+  const tick = now => {
+    if (!pathEl.isConnected) { finish(); return; }
+    const p = Math.min(1, (now - t0) / dur);
+    const e = p < 0.5 ? 2 * p * p : -1 + (4 - 2 * p) * p; // easeInOutQuad
+    const pt = pathEl.getPointAtLength(len * e);
+    dot.setAttribute('cx', pt.x); dot.setAttribute('cy', pt.y);
+    if (p < 1) token.raf = requestAnimationFrame(tick);
+    else finish();
+  };
+  token.raf = requestAnimationFrame(tick);
+}
+
+function pulseSimState(id, tone = '') {
+  const grp = App.domCache.states.get(id) || document.querySelector(`[data-id="${id}"]`);
+  const c = grp && grp.querySelector('circle.bd');
+  if (!c) return;
+  const ring = makeSVG('circle');
+  ring.setAttribute('cx', c.getAttribute('cx'));
+  ring.setAttribute('cy', c.getAttribute('cy'));
+  ring.setAttribute('r', R);
+  ring.classList.add('sim-pulse');
+  if (tone) ring.classList.add(tone);
+  grp.appendChild(ring);
+  ring.addEventListener('animationend', () => ring.remove());
+  setTimeout(() => ring.remove(), 900); // safety net if animations are disabled
 }
 
 // ── Scrubber / transport ──
@@ -1389,7 +1577,8 @@ function resetSim() {
   $('sim-tracker').innerHTML = ''; $('sim-tracker').style.display = 'none';
   const verdict = $('sim-verdict'); if (verdict) verdict.style.display = 'none';
   const scrubRow = $('sim-scrubber-row'); if (scrubRow) scrubRow.style.display = 'none';
-  document.querySelectorAll('.sn').forEach(el => el.classList.remove('act-st', 'rej-st'));
+  clearSimCanvasHighlights();
+  App._simRenderRun = null; App._simRenderIdx = -1;
   setRunBtnState('idle');
 }
 function toggleAuto() {

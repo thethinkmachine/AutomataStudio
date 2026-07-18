@@ -134,8 +134,91 @@
   stroke-width: 2.5;
 }
 
-.tarr.act-t {
+/* ─── Simulation playback highlights ───
+   Trail = the route already traversed this run (quiet accent, accumulates
+   behind the playhead). Active = the transition being taken right now
+   (bright, dashes flowing in the direction of travel). */
+.sn.sim-visited-st circle.bd {
   stroke: var(--accent);
+  stroke-opacity: .5;
+}
+
+.edge-g.sim-trail-t .tarr {
+  stroke: var(--accent);
+  marker-end: url(#arr-a);
+  opacity: .35;
+}
+
+.edge-g.sim-active-t .tarr {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  marker-end: url(#arr-a);
+  stroke-dasharray: 7 5;
+  animation: sim-dash-flow .5s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(79, 195, 247, .55));
+}
+
+@keyframes sim-dash-flow {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+.tlbl.sim-active-lbl {
+  fill: var(--accent);
+  font-weight: 700;
+}
+
+/* The dot that rides the active edge into the next state. */
+.sim-token {
+  fill: var(--accent);
+  stroke: var(--bg);
+  stroke-width: 1.5;
+  pointer-events: none;
+  filter: drop-shadow(0 0 5px rgba(79, 195, 247, .8));
+}
+
+/* Arrival pulse ring — verdict-colored on the final step. */
+.sim-pulse {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: sim-pulse .5s ease-out forwards;
+}
+
+.sim-pulse.rej {
+  stroke: var(--red);
+}
+
+.sim-pulse.acc {
+  stroke: var(--gold);
+}
+
+@keyframes sim-pulse {
+  from {
+    transform: scale(1);
+    opacity: .9;
+  }
+
+  to {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edge-g.sim-active-t .tarr {
+    animation: none;
+    stroke-dasharray: none;
+  }
+
+  .sim-pulse {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 .tlbl {
