@@ -140,7 +140,7 @@ test('every example JSON (flagship and classic) parses and references valid stat
       assert.ok(ids.has(t.from) && ids.has(t.to), `${f}: transition ${t.id} endpoints exist`);
     }
     for (const n of data.notes || []) {
-      assert.ok(n.text.length <= 500, `${f}: note ${n.id} within 500 chars`);
+      assert.ok(n.text.length <= 2000, `${f}: note ${n.id} within 2000 chars`);
     }
   }
 });

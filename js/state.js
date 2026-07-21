@@ -76,6 +76,11 @@ const App = {
   activeNoteId: null,
   ctxNoteId: null, editNoteId: null,
   dragNoteId: null, dragNoteOffset: { x: 0, y: 0 },
+  resizeNoteId: null, resizeNoteStart: null,
+  // Directional edge highlight, kept in App state (not just as DOM classes) so
+  // it survives re-renders the same way selection does. { id, direction }.
+  // Deliberately one state at a time — see clearEdgeDirectionHighlight.
+  edgeHighlight: null,
   // Configuration constants
   config: {
     theme: 'dark',
@@ -88,6 +93,7 @@ const App = {
     wheelZoom: true,
     snapToGrid: false,
     wrapStateLabels: true,
+    clickHighlightMode: 'off', // 'off' | 'outgoing' | 'incoming'
     layout: { minRadius: 80, nodeSpacing: 35, algorithm: 'sugiyama' },
     gridSnap: 20,
     sym: { eps: 'ε', any: 'Σ', blank: '⊔', leftMarker: '⊢', rightMarker: '⊣', stackBottom: 'Z', lambda: 'λ' },

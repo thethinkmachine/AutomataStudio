@@ -20,6 +20,7 @@ function renderAll() {
   document.querySelectorAll('.edge-g').forEach(el => App.domCache.transitions.set(el.getAttribute('data-edge'), el));
   document.querySelectorAll('.note-g').forEach(el => App.domCache.notes.set(el.getAttribute('data-note-id'), el));
   if (App.activeNoteId && typeof highlightNoteAnchors === 'function') highlightNoteAnchors(App.activeNoteId, true);
+  if (typeof applyEdgeDirectionHighlight === 'function') applyEdgeDirectionHighlight();
 }
 
 function groupTrans() {
@@ -169,6 +170,9 @@ function renderTransitions() {
       if (App.tool === 'pointer') {
         const isSel = grp.ts.some(t => App.selectedTransitions.has(t.id));
         const multi = e.shiftKey || e.ctrlKey || e.metaKey;
+        // Focus moved to an edge — the highlighted state is no longer the
+        // thing being read, so its lit edges would just be stale clutter.
+        if (typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
         if (!multi && !isSel) {
           App.selectedStates.clear();
           App.selectedTransitions.clear();
@@ -342,6 +346,7 @@ function renderStates() {
     grp.classList.add('sn');
     grp.setAttribute('data-id', s.id);
     if (App.startId === s.id) grp.classList.add('start-st');
+    if (App.selectedStates.has(s.id)) grp.classList.add('sel-st');
     const showAccepts = !(getMachineConfig(App.machine).isTransducer && !App.config.transducerAccepts);
     if (showAccepts && App.accepts.has(s.id)) grp.classList.add('acc-st');
     // Dead/unreachable overlay (set by Dead State Analysis algo)

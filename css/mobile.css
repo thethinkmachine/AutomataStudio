@@ -527,4 +527,14 @@
     min-width: 0;
     width: calc(100% - 20px);
   }
+
+  .note-tb-hint {
+    flex-basis: 100%;
+    margin-left: 0;
+    margin-top: 4px;
+  }
+
+  .note-editor-foot {
+    flex-wrap: wrap;
+  }
 }

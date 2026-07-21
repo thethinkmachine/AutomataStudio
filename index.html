@@ -233,6 +233,9 @@
               <marker id="arr-a" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
                 <polygon points="0 0,8 3,0 6" fill="var(--accent)" />
               </marker>
+              <marker id="arr-i" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+                <polygon points="0 0,8 3,0 6" fill="var(--indigo)" />
+              </marker>
             </defs>
             <g id="cam-g" transform="translate(0,0) scale(1)">
               <g id="trans-g"></g>
@@ -862,13 +865,13 @@
 
   <!-- ══════ MODALS ══════ -->
   <div class="overlay" id="trans-modal">
-    <div class="modal">
+    <div class="modal trans-modal-wide">
       <div class="modal-title" id="trans-modal-title">Add Transition</div>
       <div class="modal-row" id="m-trans-row" style="display:none"><span class="modal-lbl">Transition</span><select class="sel" id="m-trans"></select></div>
       <div class="modal-row"><span class="modal-lbl">From</span><select class="sel" id="m-from"></select></div>
-      <div class="modal-row" id="m-sym-row"><span class="modal-lbl">Read</span><select class="sel" id="m-sym"></select>
-      </div>
+      <div class="modal-row" id="m-sym-row"><span class="modal-lbl">Read</span><select class="sel" id="m-sym"></select></div>
       <div id="m-pda-extra" style="display:none">
+        <div class="modal-section-lbl">Stack</div>
         <div class="modal-row"><span class="modal-lbl">Pop</span><input class="inp" id="m-pop"
             placeholder="ε or symbol" autocomplete="off" onkeydown="trySymSuggestKeydown(event)"
             oninput="handleSymSuggestActive(this)" onfocus="handleSymSuggestActive(this)"
@@ -878,6 +881,7 @@
             oninput="handleSymSuggestActive(this)" onfocus="handleSymSuggestActive(this)"
             onclick="refreshSymSuggest(this)" onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></div>
         <div id="m-2pda-extra" style="display:none">
+          <div class="modal-section-lbl">Stack 2</div>
           <div class="modal-row"><span class="modal-lbl">Pop₂</span><input class="inp" id="m-pop2"
               placeholder="ε or symbol" autocomplete="off" onkeydown="trySymSuggestKeydown(event)"
               oninput="handleSymSuggestActive(this)" onfocus="handleSymSuggestActive(this)"
@@ -889,6 +893,7 @@
         </div>
       </div>
       <div id="m-tm-extra" style="display:none">
+        <div class="modal-section-lbl">Tape</div>
         <div class="modal-row"><span class="modal-lbl">Write</span><input class="inp" id="m-write" placeholder="symbol"
             autocomplete="off" onkeydown="trySymSuggestKeydown(event)" oninput="handleSymSuggestActive(this)"
             onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
@@ -899,11 +904,12 @@
         </div>
       </div>
       <div id="m-mealy-extra" style="display:none">
+        <div class="modal-section-lbl">Output</div>
         <div class="modal-row"><span class="modal-lbl">Output</span><select class="sel" id="m-output"></select></div>
       </div>
       <div id="m-mtm-extra" style="display:none"></div>
       <div class="modal-row"><span class="modal-lbl">To</span><select class="sel" id="m-to"></select></div>
-        <div class="modal-foot"><button class="btn-g" onclick="closeModal('trans-modal')">Cancel</button><button
+      <div class="modal-foot"><button class="btn-g" onclick="closeModal('trans-modal')">Cancel</button><button
           class="btn-p" id="trans-confirm-btn" onclick="confirmTrans()">Add</button></div>
     </div>
   </div>
@@ -911,17 +917,19 @@
   <div class="overlay" id="state-modal">
     <div class="modal">
       <div class="modal-title">Configure State</div>
-      <div class="modal-row"><span class="modal-lbl">Name</span><input class="inp" id="s-name" maxlength="8"></div>
-      <div class="modal-row"><span class="modal-lbl">Start</span><input type="checkbox" id="s-start"
-          style="width:16px;height:16px"></div>
-      <div class="modal-row"><span class="modal-lbl">Accept</span><input type="checkbox" id="s-acc"
-          style="width:16px;height:16px"></div>
+      <div class="modal-row"><span class="modal-lbl">Name</span><input class="inp" id="s-name" maxlength="24" placeholder="q0" aria-describedby="s-name-hint"></div>
+      <div class="modal-row modal-row-tight" id="s-name-hint-row">
+        <span class="modal-lbl"></span>
+        <span class="modal-hint" id="s-name-hint">Use <code>_</code>, space or <code>-</code> to break long names onto multiple lines inside the node.</span>
+      </div>
+      <div class="modal-row"><span class="modal-lbl">Start</span><label class="toggle-switch"><input type="checkbox" id="s-start"><span class="toggle-track"><span class="toggle-thumb"></span></span></label></div>
+      <div class="modal-row"><span class="modal-lbl">Accept</span><label class="toggle-switch"><input type="checkbox" id="s-acc"><span class="toggle-track"><span class="toggle-thumb"></span></span></label></div>
       <div id="s-moore-extra" style="display:none">
         <div class="modal-row"><span class="modal-lbl">Output λ</span><select class="sel" id="s-output"></select></div>
       </div>
-      <div id="s-mealy-extra" style="display:none; margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px;">
-        <div style="font-size: 0.8rem; color: var(--text3); margin-bottom: 8px;">Outgoing Transition Outputs (λ)</div>
-        <div id="s-mealy-transitions-list" style="max-height: 160px; overflow-y: auto;"></div>
+      <div id="s-mealy-extra" style="display:none">
+        <div class="modal-section-lbl">Outgoing Transition Outputs (λ)</div>
+        <div id="s-mealy-transitions-list" class="mealy-outputs-list"></div>
       </div>
       <div class="modal-foot"><button class="btn-g" onclick="closeModal('state-modal')">Cancel</button><button
           class="btn-p" onclick="confirmState()">Save</button></div>
@@ -929,16 +937,38 @@
   </div>
 
   <div class="overlay" id="note-modal">
-    <div class="modal">
+    <div class="modal note-modal-wide">
       <div class="modal-title">Note</div>
-      <div class="modal-row" style="align-items:flex-start">
+      <div class="modal-row note-editor-row">
         <span class="modal-lbl">Text</span>
-        <textarea class="inp" id="note-text" rows="4" maxlength="500"
-          style="resize:vertical;width:100%;font-family:var(--mono)" placeholder="Write a note…"></textarea>
+        <div class="note-editor">
+          <div class="note-toolbar" role="toolbar" aria-label="Note formatting">
+            <button type="button" class="note-tb-btn" onclick="applyNoteFormat('bold')" title="Bold (**text**)" aria-label="Bold">
+              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M170.48,115.7A44,44,0,0,0,140,40H72a12,12,0,0,0-12,12V204a12,12,0,0,0,12,12h74a48,48,0,0,0,24.48-89.3ZM84,64h56a20,20,0,0,1,0,40H84Zm62,128H84V128h62a32,32,0,0,1,0,64Z"></path></svg>
+            </button>
+            <button type="button" class="note-tb-btn" onclick="applyNoteFormat('italic')" title="Italic (*text*)" aria-label="Italic">
+              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M200,52a12,12,0,0,1-12,12H164.65l-42,128H148a12,12,0,0,1,0,24H68a12,12,0,0,1,0-24H91.35l42-128H108a12,12,0,0,1,0-24h80A12,12,0,0,1,200,52Z"></path></svg>
+            </button>
+            <button type="button" class="note-tb-btn" onclick="applyNoteFormat('underline')" title="Underline (__text__)" aria-label="Underline">
+              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M76,40a12,12,0,0,1,12,12v72a40,40,0,0,0,80,0V52a12,12,0,0,1,24,0v72a64,64,0,0,1-128,0V52A12,12,0,0,1,76,40ZM224,208a12,12,0,0,1-12,12H44a12,12,0,0,1,0-24H212A12,12,0,0,1,224,208Z"></path></svg>
+            </button>
+            <span class="note-tb-sep"></span>
+            <button type="button" class="note-tb-btn" onclick="insertNoteNewline()" title="New line" aria-label="Insert new line">
+              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M228,56V144a12,12,0,0,1-12,12H69l25.66,25.66a12,12,0,0,1-17,17l-46-46a12,12,0,0,1,0-17l46-46a12,12,0,1,1,17,17L69,112H204V56a12,12,0,0,1,24,0Z"></path></svg>
+            </button>
+            <span class="note-tb-hint">Select whole words, then click a style — or type <code>**bold**</code>, <code>*italic*</code>, <code>__underline__</code> directly. Markers only apply around whole words, so <code>a*b*</code>, <code>Σ*</code> and <code>q_start</code> stay literal.</span>
+          </div>
+          <textarea class="inp note-textarea" id="note-text" rows="6" maxlength="2000"
+            placeholder="Write a note…" oninput="updateNoteCharCount()"></textarea>
+          <div class="note-editor-foot">
+            <span class="note-resize-hint">Drag a note's corner on canvas to resize it</span>
+            <span class="note-char-count" id="note-char-count">0 / 2000</span>
+          </div>
+        </div>
       </div>
       <div class="modal-row">
         <span class="modal-lbl">Color</span>
-        <div class="note-swatch-row" style="display:flex;gap:8px">
+        <div class="note-swatch-row">
           <button class="note-swatch" data-color="violet" onclick="setNoteModalColor('violet')" title="Violet"></button>
           <button class="note-swatch" data-color="indigo" onclick="setNoteModalColor('indigo')" title="Indigo"></button>
           <button class="note-swatch" data-color="blue" onclick="setNoteModalColor('blue')" title="Blue"></button>
@@ -949,7 +979,7 @@
         </div>
       </div>
       <div class="modal-foot">
-        <button class="btn-g" style="color:var(--red);border-color:var(--red-border);margin-right:auto" onclick="deleteNoteFromModal()">Delete</button>
+        <button class="btn-g btn-danger-ghost" onclick="deleteNoteFromModal()">Delete</button>
         <button class="btn-g" onclick="closeModal('note-modal')">Cancel</button>
         <button class="btn-p" onclick="confirmNote()">Save</button>
       </div>
@@ -974,7 +1004,7 @@
     <div class="modal settings-modal-wide">
       <div class="modal-title">Engine Settings</div>
 
-      <div class="modal-tabs" style="display:flex; flex-wrap:wrap; gap:4px;" id="settings-tabs">
+      <div class="modal-tabs" id="settings-tabs">
         <div class="modal-tab active" onclick="switchSettingsTab('general')">General</div>
         <div class="modal-tab" onclick="switchSettingsTab('pda')">Pushdown</div>
         <div class="modal-tab" onclick="switchSettingsTab('tm')">Turing Machine</div>
@@ -997,7 +1027,7 @@
         </div>
         <div class="modal-row" title="When on, plain scroll zooms the canvas (Shift+scroll pans horizontally). When off, plain scroll pans and Ctrl+scroll zooms.">
           <span class="modal-lbl">Scroll Wheel Zooms Canvas</span>
-          <input type="checkbox" class="inp" id="set-wheel-zoom" style="width:16px;height:16px">
+          <label class="toggle-switch"><input type="checkbox" id="set-wheel-zoom"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
         </div>
       </div>
 
@@ -1025,7 +1055,7 @@
       <div class="modal-tab-content" id="tab-transducer">
         <div class="modal-row" id="set-row-transducer" title="Allow Moore and Mealy machines to have accept states">
           <span class="modal-lbl">Transducer Accepts</span>
-          <input type="checkbox" class="inp" id="set-transducer-accepts" style="width:16px;height:16px">
+          <label class="toggle-switch"><input type="checkbox" id="set-transducer-accepts"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
         </div>
       </div>
 
@@ -1036,7 +1066,15 @@
         </div>
         <div class="modal-row" title="Break long, underscore/space/hyphen-separated state names onto multiple lines so they fit inside the node instead of overflowing it.">
           <span class="modal-lbl">Wrap Long State Labels</span>
-          <input type="checkbox" class="inp" id="set-wrap-labels" style="width:16px;height:16px">
+          <label class="toggle-switch"><input type="checkbox" id="set-wrap-labels"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" title="When set, clicking a state on the canvas also highlights its outgoing (green) or incoming (indigo) transitions. Both directions are always available from a state's right-click menu regardless of this setting.">
+          <span class="modal-lbl">Click State Highlights Edges</span>
+          <select class="sel" id="set-click-highlight-mode" label="Direction to highlight when a state is clicked">
+            <option value="off">Off</option>
+            <option value="outgoing">Outgoing</option>
+            <option value="incoming">Incoming</option>
+          </select>
         </div>
         <div class="modal-row">
           <span class="modal-lbl">Zoom Step</span>
@@ -1094,15 +1132,12 @@
         </div>
       </div>
 
-      <div class="modal-tab-content" id="tab-profile">
-      </div>
-
-      <div class="modal-foot" style="justify-content: space-between; margin-top: 14px;">
-        <div style="display: flex; gap: 7px;">
+      <div class="modal-foot modal-foot-split">
+        <div class="modal-foot-group">
           <button class="btn-g" onclick="exportSettings()">Export Profile</button>
           <button class="btn-g" onclick="$('settings-file-input').click()">Import Profile...</button>
         </div>
-        <div style="display: flex; gap: 7px;">
+        <div class="modal-foot-group">
           <button class="btn-g" onclick="closeModal('settings-modal')">Discard</button>
           <button class="btn-p" onclick="confirmSettings()">Apply Settings</button>
         </div>
@@ -1115,7 +1150,7 @@
 
   <!-- Help Modal -->
   <div class="overlay" id="help-modal">
-    <div class="modal" style="max-width:400px;width:90%;max-height:80vh;overflow-y:auto">
+    <div class="modal help-modal-wide">
       <div class="modal-title">Keyboard Shortcuts &amp; Help</div>
       <div class="help-section">Tools</div>
       <table class="help-table">
@@ -1245,7 +1280,7 @@
   </div>
 
   <div class="overlay" id="about-modal">
-    <div class="modal" style="max-width:420px">
+    <div class="modal about-modal-wide">
       <div class="about-logo-header">
         <div class="logo">Automata <em>Playground</em></div>
         <div class="logo-author">Shreyan Chaubey</div>
@@ -1291,6 +1326,14 @@
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M88,96a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H96A8,8,0,0,1,88,96Zm8,40h64a8,8,0,0,0,0-16H96a8,8,0,0,0,0,16Zm32,16H96a8,8,0,0,0,0,16h32a8,8,0,0,0,0-16ZM224,48V156.69A15.86,15.86,0,0,1,219.31,168L168,219.31A15.86,15.86,0,0,1,156.69,224H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H152V160a8,8,0,0,1,8-8h48V48H48Zm120-40v28.7L196.69,168Z" /></svg>
       Add Note
     </div>
+    <div class="ctx-i ctx-state" onclick="ctxHighlightOutgoing()">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z" /></svg>
+      Highlight Outgoing Edges
+    </div>
+    <div class="ctx-i ctx-state" onclick="ctxHighlightIncoming()">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,136v64a8,8,0,0,1-16,0V155.32L45.66,221.66a8,8,0,0,1-11.32-11.32L100.68,144H56a8,8,0,0,1,0-16h64A8,8,0,0,1,128,136ZM208,32H80A16,16,0,0,0,64,48V96a8,8,0,0,0,16,0V48H208V176H160a8,8,0,0,0,0,16h48a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Z" /></svg>
+      Highlight Incoming Edges
+    </div>
     <div class="ctx-i ctx-state danger" onclick="ctxDel()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
       Delete
@@ -1335,6 +1378,10 @@
     <div class="ctx-i ctx-note" id="ctx-note-detach" onclick="ctxDetachNote()">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="3.3" r="1.3" /><path d="M8 4.6v8" /><path d="M4 8h8" /><path d="M4.5 9.5a3.8 3.8 0 0 0 3.1 3.3M11.5 9.5a3.8 3.8 0 0 1-3.1 3.3" /><path d="M2.8 2.8l10.4 10.4" /></svg>
       Detach (Make Free)
+    </div>
+    <div class="ctx-i ctx-note" id="ctx-note-reset-size" onclick="ctxResetNoteSize()">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M136,32V96a8,8,0,0,0,8,8h64a8,8,0,0,0,0-16H163.31l50.35-50.34a8,8,0,0,0-11.32-11.32L152,76.69V32a8,8,0,0,0-16,0Zm-16,88H56a8,8,0,0,0,0,16H92.69L42.34,186.34a8,8,0,0,0,11.32,11.32L104,147.31V184a8,8,0,0,0,16,0V128A8,8,0,0,0,120,120Z" /></svg>
+      Reset Note Size
     </div>
     <div class="ctx-i ctx-note danger" onclick="ctxDeleteNote()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>

@@ -1,12 +1,22 @@
 // ══════════════════════════════════════════════════════════════════
 //  CANVAS NOTES — free or anchored comments on states/transitions
 // ══════════════════════════════════════════════════════════════════
-const NOTE_WIDTH = 170;
+const NOTE_WIDTH = 170;          // default/auto width when a note has never been resized
+const NOTE_MIN_W = 120;
+const NOTE_MIN_H = 54;
+const NOTE_MAX_W = 640;
+const NOTE_MAX_H = 480;
 const NOTE_PAD = 10;
 const NOTE_LINE_H = 15;
+const NOTE_MAX_CHARS = 2000;
 
 function newNoteId() { return 'n' + (++App.noteN); }
 function getNote(id) { return App.notes.find(n => n.id === id); }
+
+// A note is auto-sized (grows/shrinks with its text) until the user drags its
+// resize handle, at which point note.w/note.h are pinned and text wraps/clips
+// to that box instead.
+function noteIsResized(note) { return note && note.w != null && note.h != null; }
 
 function normalizeNoteColor(color) {
   return color === 'purple' ? 'violet' : (color || 'default');
@@ -43,14 +53,36 @@ function resolveNotePos(note) {
   return c ? { x: c.x + note.x, y: c.y + note.y } : { x: note.x, y: note.y };
 }
 
+// Computes a note's effective on-screen box: for an auto-sized note the
+// width is fixed (NOTE_WIDTH) and the height grows with content; for a
+// user-resized note both are pinned and content wraps/clips to fit, showing
+// as many lines as fit (plus a "…" overflow marker) rather than spilling out.
+function noteBoxLayout(note) {
+  if (noteIsResized(note)) {
+    const w = Math.max(NOTE_MIN_W, Math.min(NOTE_MAX_W, note.w));
+    const h = Math.max(NOTE_MIN_H, Math.min(NOTE_MAX_H, note.h));
+    const allLines = layoutNoteText(note.text, noteCharsPerLine(w));
+    const maxLines = Math.max(1, Math.floor((h - NOTE_PAD * 2) / NOTE_LINE_H));
+    const overflow = allLines.length > maxLines;
+    const lines = overflow ? allLines.slice(0, maxLines) : allLines;
+    if (overflow && lines.length) {
+      const lastRuns = lines[lines.length - 1];
+      lines[lines.length - 1] = [...lastRuns, { text: ' …', ellipsis: true }];
+    }
+    return { w, h, lines };
+  }
+  const lines = layoutNoteText(note.text, NOTE_CHARS_PER_LINE);
+  const w = NOTE_WIDTH, h = NOTE_PAD * 2 + lines.length * NOTE_LINE_H;
+  return { w, h, lines };
+}
+
 // Lets fitToScreen / the minimap / resize-framing include note bodies in
 // their world bounding box, so a free-floating note never gets scrolled out
 // of view when a saved workspace is loaded.
 function includeNoteBounds(cb) {
   App.notes.forEach(note => {
     const pos = resolveNotePos(note);
-    const lines = wrapNoteText(note.text);
-    const w = NOTE_WIDTH, h = NOTE_PAD * 2 + lines.length * NOTE_LINE_H;
+    const { w, h } = noteBoxLayout(note);
     cb(pos.x - w / 2, pos.y - h / 2, pos.x + w / 2, pos.y + h / 2);
   });
 }
@@ -108,31 +140,108 @@ function pruneNoteAnchors() {
   pruneNoteAnchorsRemoving(goneStates, goneTrans);
 }
 
-// ── Word-wrap: plain SVG text/tspan (not foreignObject) so notes survive the
-// PNG export pipeline, which rasterizes the SVG via drawImage(). ──
-const NOTE_CHARS_PER_LINE = 24;
+// ── Rich text: a minimal inline markup (**bold**, *italic*, __underline__)
+// parsed into styled runs and laid out as plain SVG tspans (not
+// foreignObject), so notes survive the PNG export pipeline, which rasterizes
+// the SVG via drawImage(). Word-wrap operates on run boundaries so a bold
+// word never gets silently split from its markers. ──
 const NOTE_EMPTY_PLACEHOLDER = 'Double-click to edit';
-function wrapNoteText(text) {
-  const raw = String(text || '').replace(/\r\n/g, '\n');
-  const source = raw.trim() ? raw : NOTE_EMPTY_PLACEHOLDER;
+// Derived, not hardcoded, so an auto-sized note and one resized to exactly
+// NOTE_WIDTH wrap identically instead of differing by a character.
+const NOTE_CHARS_PER_LINE = noteCharsPerLine(NOTE_WIDTH);
+
+// Splits raw markup text into { text, bold, italic, underline } runs, one per
+// styled span, without crossing newlines (callers split on '\n' first).
+// Recognizes **bold**, *italic*, __underline__ — non-greedy and non-nested.
+//
+// Markers must "flank" a word the way CommonMark requires: the opener sits at
+// line start or after whitespace/opening punctuation, the closer at line end or
+// before whitespace/closing punctuation, and the content may not begin or end
+// with a space. Without that rule this markup would eat notation that shows up
+// constantly in this domain — `a*b*`, `Σ*`, `(0|1)*` would silently italicize,
+// and `q_start to q_end` would silently underline. Those now render literally;
+// the trade-off is that markers can only wrap whole words, not word interiors.
+const NOTE_MARKUP_RE = /(^|[\s([{"'])(\*\*|__|\*)(?=\S)(.*?\S)\2(?=$|[\s)\]}"'.,;:!?])/g;
+function parseNoteRuns(line) {
+  const runs = [];
+  let last = 0, m;
+  NOTE_MARKUP_RE.lastIndex = 0;
+  while ((m = NOTE_MARKUP_RE.exec(line))) {
+    const [, lead, marker, body] = m;
+    const markerAt = m.index + lead.length; // `lead` is context, not markup
+    if (markerAt > last) runs.push({ text: line.slice(last, markerAt) });
+    if (marker === '**') runs.push({ text: body, bold: true });
+    else if (marker === '__') runs.push({ text: body, underline: true });
+    else runs.push({ text: body, italic: true });
+    last = NOTE_MARKUP_RE.lastIndex;
+  }
+  if (last < line.length) runs.push({ text: line.slice(last) });
+  return runs.filter(r => r.text.length);
+}
+
+// Word-wraps one paragraph's runs to `charsPerLine`, preserving styling
+// across the break. Returns an array of lines, each an array of runs.
+function wrapNoteRuns(runs, charsPerLine) {
   const lines = [];
-  source.split('\n').forEach(para => {
-    const words = para.split(/\s+/).filter(Boolean);
-    if (!words.length) { lines.push(''); return; }
-    let cur = '';
-    words.forEach(word => {
-      while (word.length > NOTE_CHARS_PER_LINE) {
-        if (cur) { lines.push(cur); cur = ''; }
-        lines.push(word.slice(0, NOTE_CHARS_PER_LINE));
-        word = word.slice(NOTE_CHARS_PER_LINE);
+  let curLine = [], curLen = 0;
+  // Commits the current line, dropping the separator space that would
+  // otherwise dangle past the wrap point and skew the next line's budget.
+  const flushLine = () => {
+    while (curLine.length && !curLine[curLine.length - 1].text.trim()) curLine.pop();
+    lines.push(curLine);
+    curLine = []; curLen = 0;
+  };
+  runs.forEach(run => {
+    const style = { bold: run.bold, italic: run.italic, underline: run.underline };
+    run.text.split(/(\s+)/).forEach(chunk => { // keep separators so we know where spaces were
+      if (!chunk) return;
+      if (/^\s+$/.test(chunk)) {
+        // Whitespace: collapse to a single separator between words.
+        if (curLen) { curLine.push({ text: ' ' }); curLen += 1; }
+        return;
       }
-      const candidate = cur ? cur + ' ' + word : word;
-      if (candidate.length > NOTE_CHARS_PER_LINE) { lines.push(cur); cur = word; }
-      else cur = candidate;
+      let word = chunk;
+      while (word.length > charsPerLine) {
+        if (curLine.length) flushLine();
+        lines.push([{ text: word.slice(0, charsPerLine), ...style }]);
+        word = word.slice(charsPerLine);
+      }
+      if (!word) return;
+      if (curLen && curLen + word.length > charsPerLine) flushLine();
+      curLine.push({ text: word, ...style });
+      curLen += word.length;
     });
-    if (cur) lines.push(cur);
   });
-  return lines.length ? lines : [NOTE_EMPTY_PLACEHOLDER];
+  if (curLine.length) flushLine();
+  return lines.length ? lines : [[]];
+}
+
+// Full layout: raw markup text -> array of lines, each an array of styled
+// runs, wrapped to `charsPerLine`. Blank source shows a placeholder run.
+function layoutNoteText(text, charsPerLine) {
+  const raw = String(text || '').replace(/\r\n/g, '\n');
+  if (!raw.trim()) return [[{ text: NOTE_EMPTY_PLACEHOLDER, placeholder: true }]];
+  const out = [];
+  raw.split('\n').forEach(para => {
+    if (!para) { out.push([]); return; }
+    wrapNoteRuns(parseNoteRuns(para), charsPerLine).forEach(l => out.push(l));
+  });
+  return out.length ? out : [[]];
+}
+
+// Back-compat helper: plain-text lines only (used by bounds/export math that
+// doesn't need per-run styling).
+function wrapNoteText(text) {
+  return layoutNoteText(text, NOTE_CHARS_PER_LINE).map(runs => runs.map(r => r.text).join(''));
+}
+
+// How many characters fit per line for a note of the given pixel width.
+// Hoisted above its use in NOTE_CHARS_PER_LINE by function declaration.
+function noteCharsPerLine(widthPx) {
+  // ~ monospace 10.5px advance width, calibrated so NOTE_WIDTH yields exactly
+  // the 24 chars/line that auto-sized notes have always wrapped at.
+  const approxCharPx = 6.25;
+  return Math.max(6, Math.floor((widthPx - NOTE_PAD * 2) / approxCharPx));
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -145,16 +254,45 @@ function renderNotes() {
   App.notes.forEach(note => renderOneNote(g, note));
 }
 
+// Fills `textEl` with one tspan per styled run, laid out as wrapped lines.
+// Shared by the initial render and the fast in-place update path.
+function fillNoteTextEl(textEl, lines, xLeft) {
+  textEl.innerHTML = '';
+  lines.forEach((runs, i) => {
+    runs.forEach((run, j) => {
+      const tspan = makeSVG('tspan');
+      tspan.textContent = run.text;
+      if (j === 0) {
+        tspan.setAttribute('x', xLeft);
+        tspan.setAttribute('dy', i === 0 ? 0 : NOTE_LINE_H);
+      }
+      if (run.bold) tspan.setAttribute('font-weight', '700');
+      if (run.italic) tspan.setAttribute('font-style', 'italic');
+      if (run.underline) tspan.setAttribute('text-decoration', 'underline');
+      if (run.placeholder) tspan.classList.add('note-placeholder');
+      if (run.ellipsis) tspan.classList.add('note-overflow-mark');
+      textEl.appendChild(tspan);
+    });
+    if (!runs.length && i > 0) {
+      // Blank line: emit an empty tspan so dy-stacking stays correct.
+      const tspan = makeSVG('tspan');
+      tspan.textContent = '​';
+      tspan.setAttribute('x', xLeft);
+      tspan.setAttribute('dy', NOTE_LINE_H);
+      textEl.appendChild(tspan);
+    }
+  });
+}
+
 function renderOneNote(g, note) {
   const pos = resolveNotePos(note);
-  const lines = wrapNoteText(note.text);
-  const w = NOTE_WIDTH;
-  const h = NOTE_PAD * 2 + lines.length * NOTE_LINE_H;
+  const { w, h, lines } = noteBoxLayout(note);
   const x = pos.x - w / 2, y = pos.y - h / 2;
 
   const grp = makeSVG('g');
   grp.classList.add('note-g');
   if (App.activeNoteId === note.id) grp.classList.add('note-link-active');
+  if (noteIsResized(note)) grp.classList.add('note-resized');
   grp.setAttribute('data-note-id', note.id);
   grp.setAttribute('data-color', normalizeNoteColor(note.color));
 
@@ -173,48 +311,87 @@ function renderOneNote(g, note) {
   rect.setAttribute('rx', 6);
   grp.appendChild(rect);
 
+  // Clip text to the box so a resized-down note never lets long words bleed
+  // past its border (the layout already caps line count to fit height).
+  const clipId = `note-clip-${note.id}`;
+  const clip = makeSVG('clipPath');
+  clip.setAttribute('id', clipId);
+  const clipRect = makeSVG('rect');
+  clipRect.setAttribute('x', x + 1); clipRect.setAttribute('y', y + 1);
+  clipRect.setAttribute('width', Math.max(0, w - 2)); clipRect.setAttribute('height', Math.max(0, h - 2));
+  clipRect.setAttribute('rx', 5);
+  clip.appendChild(clipRect);
+  grp.appendChild(clip);
+
   const textEl = makeSVG('text');
   textEl.classList.add('note-text');
-  lines.forEach((line, i) => {
-    const tspan = makeSVG('tspan');
-    tspan.textContent = line;
-    tspan.setAttribute('x', x + NOTE_PAD);
-    tspan.setAttribute('dy', i === 0 ? 0 : NOTE_LINE_H);
-    textEl.appendChild(tspan);
-  });
+  textEl.setAttribute('clip-path', `url(#${clipId})`);
+  fillNoteTextEl(textEl, lines, x + NOTE_PAD);
   textEl.setAttribute('x', x + NOTE_PAD);
   textEl.setAttribute('y', y + NOTE_PAD + NOTE_LINE_H * 0.72);
   grp.appendChild(textEl);
 
+  // Two paths, mirroring the .tarr / .tarr-hit split used for edges: a wide
+  // transparent stroke catches the pointer, the thin visible one is decoration
+  // only. A 1.5px stroke is far too small a target to grab on its own.
+  const handleHit = makeSVG('path');
+  handleHit.classList.add('note-resize-hit');
+  handleHit.setAttribute('d', noteResizeHandlePath(x + w, y + h));
+  handleHit.addEventListener('pointerdown', e => onNoteResizeDown(e, note.id));
+  grp.appendChild(handleHit);
+
+  const handle = makeSVG('path');
+  handle.classList.add('note-resize-handle');
+  handle.setAttribute('d', noteResizeHandlePath(x + w, y + h));
+  grp.appendChild(handle);
+
   const titleEl = makeSVG('title');
-  titleEl.textContent = 'Double-click to edit · Right-click for options';
+  titleEl.textContent = 'Double-click to edit · Right-click for options · Drag corner to resize';
   grp.appendChild(titleEl);
 
   attachNoteHandlers(grp, note);
   g.appendChild(grp);
 }
 
+function noteResizeHandlePath(cx, cy) {
+  const s = 9;
+  return `M ${cx - s} ${cy} L ${cx} ${cy} L ${cx} ${cy - s}`;
+}
+
 // Fast path used while dragging: reposition one note's existing DOM in place
-// instead of re-rendering the whole notes layer.
-function updateOneNoteDOM(note) {
+// instead of re-rendering the whole notes layer. Pass refillText:false when the
+// text can't have changed (a plain move) to skip rebuilding every tspan — that
+// teardown runs on each pointermove and is pure waste while only x/y shift.
+function updateOneNoteDOM(note, { refillText = true } = {}) {
   const grp = App.domCache.notes.get(note.id) || document.querySelector(`.note-g[data-note-id="${note.id}"]`);
   if (!grp) return;
   if (!App.domCache.notes.has(note.id)) App.domCache.notes.set(note.id, grp);
 
   const pos = resolveNotePos(note);
-  const lines = wrapNoteText(note.text);
-  const w = NOTE_WIDTH;
-  const h = NOTE_PAD * 2 + lines.length * NOTE_LINE_H;
+  const { w, h, lines } = noteBoxLayout(note);
   const x = pos.x - w / 2, y = pos.y - h / 2;
 
   const rect = grp.querySelector('.note-body');
-  if (rect) { rect.setAttribute('x', x); rect.setAttribute('y', y); }
+  if (rect) { rect.setAttribute('x', x); rect.setAttribute('y', y); rect.setAttribute('width', w); rect.setAttribute('height', h); }
+  const clipRect = grp.querySelector('clipPath rect');
+  if (clipRect) {
+    clipRect.setAttribute('x', x + 1); clipRect.setAttribute('y', y + 1);
+    clipRect.setAttribute('width', Math.max(0, w - 2)); clipRect.setAttribute('height', Math.max(0, h - 2));
+  }
   const textEl = grp.querySelector('.note-text');
   if (textEl) {
+    if (refillText) {
+      fillNoteTextEl(textEl, lines, x + NOTE_PAD);
+    } else {
+      // Only line-leading tspans carry an x; setting it on continuation runs
+      // would break them out of inline flow onto their own column.
+      textEl.querySelectorAll('tspan[x]').forEach(ts => ts.setAttribute('x', x + NOTE_PAD));
+    }
     textEl.setAttribute('x', x + NOTE_PAD);
     textEl.setAttribute('y', y + NOTE_PAD + NOTE_LINE_H * 0.72);
-    textEl.querySelectorAll('tspan').forEach(ts => ts.setAttribute('x', x + NOTE_PAD));
   }
+  grp.querySelectorAll('.note-resize-handle, .note-resize-hit')
+    .forEach(p => p.setAttribute('d', noteResizeHandlePath(x + w, y + h)));
   const anchorPts = noteAnchorPoints(note);
   grp.querySelectorAll('.note-leader').forEach((line, i) => {
     const pt = anchorPts[i];
@@ -254,6 +431,8 @@ function attachNoteHandlers(grp, note) {
     if (detachItem) detachItem.style.display = anchored ? '' : 'none';
     const anchorItem = $('ctx-note-anchor');
     if (anchorItem) anchorItem.classList.toggle('disabled', !(App.selectedStates.size || App.selectedTransitions.size));
+    const resetSizeItem = $('ctx-note-reset-size');
+    if (resetSizeItem) resetSizeItem.style.display = noteIsResized(note) ? '' : 'none';
     showContextMenu('note', e.clientX, e.clientY);
   });
 }
@@ -329,7 +508,52 @@ function dragNoteTo(e) {
   const c = noteAnchorCentroid(note);
   if (c) { note.x = nx - c.x; note.y = ny - c.y; }
   else { note.x = nx; note.y = ny; }
+  updateOneNoteDOM(note, { refillText: false });
+}
+
+// ── Resize: drag the bottom-right handle to pin an explicit width/height.
+// Once resized, a note stops auto-growing with its text and instead wraps/
+// clips content to the box (see noteBoxLayout). ──
+function onNoteResizeDown(e, id) {
+  if (App.spacePan) return;
+  e.stopPropagation();
+  e.preventDefault();
+  if (e.button !== 0) return;
+  const note = getNote(id);
+  if (!note) return;
+  const { w, h } = noteBoxLayout(note);
+  snapshot();
+  App.resizeNoteId = id;
+  App.resizeNoteStart = { pt: svgPt(e), w, h };
+}
+
+// Called from canvas.js's handlePointerMove while App.resizeNoteId is set.
+function resizeNoteTo(e) {
+  const note = getNote(App.resizeNoteId);
+  const start = App.resizeNoteStart;
+  if (!note || !start) return;
+  const pt = svgPt(e);
+  const dx = (pt.x - start.pt.x), dy = (pt.y - start.pt.y);
+  note.w = Math.max(NOTE_MIN_W, Math.min(NOTE_MAX_W, start.w + dx * 2));
+  note.h = Math.max(NOTE_MIN_H, Math.min(NOTE_MAX_H, start.h + dy * 2));
   updateOneNoteDOM(note);
+}
+
+function endNoteResize() {
+  App.resizeNoteId = null;
+  App.resizeNoteStart = null;
+}
+
+// Drops back to auto-sizing (grows/shrinks with content again).
+function ctxResetNoteSize() {
+  const id = App.ctxNoteId;
+  hideContextMenu();
+  const note = getNote(id);
+  if (!note) return;
+  snapshot();
+  delete note.w; delete note.h;
+  renderAll();
+  showStatus('Note size reset to auto');
 }
 
 function deleteNote(id) {
@@ -468,6 +692,7 @@ function openNoteModal(id) {
   if (textEl) textEl.value = note.text || '';
   _noteModalColor = normalizeNoteColor(note.color);
   setNoteModalColorUI(_noteModalColor);
+  updateNoteCharCount();
   showOverlay('note-modal');
   if (textEl) setTimeout(() => textEl.focus(), 50);
 }
@@ -484,10 +709,75 @@ function confirmNote() {
   const note = getNote(App.editNoteId);
   if (!note) return closeModal('note-modal');
   snapshot();
-  note.text = ($('note-text')?.value || '').slice(0, 500);
+  note.text = ($('note-text')?.value || '').slice(0, NOTE_MAX_CHARS);
   note.color = normalizeNoteColor(_noteModalColor);
   closeModal('note-modal');
   renderAll();
+}
+
+// ── Formatting toolbar: wraps (or unwraps, if already applied to an
+// identical selection) the textarea's current selection with markup
+// markers, mirroring the classic "bold/italic in a plain textarea" pattern
+// used by Markdown editors everywhere. ──
+function applyNoteFormat(kind) {
+  const ta = $('note-text');
+  if (!ta) return;
+  const markers = { bold: '**', italic: '*', underline: '__' };
+  const marker = markers[kind];
+  if (!marker) return;
+  const { value, selectionStart: s, selectionEnd: e } = ta;
+  const selected = value.slice(s, e);
+  const before = value.slice(Math.max(0, s - marker.length), s);
+  const after = value.slice(e, e + marker.length);
+  let next, cs, ce;
+  if (selected && before === marker && after === marker) {
+    // Selection is already wrapped exactly by this marker — unwrap it.
+    next = value.slice(0, s - marker.length) + selected + value.slice(e + marker.length);
+    cs = s - marker.length; ce = cs + selected.length;
+  } else if (selected) {
+    next = value.slice(0, s) + marker + selected + marker + value.slice(e);
+    cs = s + marker.length; ce = cs + selected.length;
+  } else {
+    // No selection: insert an empty pair and place the caret between them.
+    next = value.slice(0, s) + marker + marker + value.slice(e);
+    cs = ce = s + marker.length;
+  }
+  // Refuse rather than slice: truncating here would silently eat the tail of
+  // the note to make room for markers the user only meant to add.
+  if (!setNoteTextareaValue(ta, next)) return;
+  ta.setSelectionRange(Math.min(cs, ta.value.length), Math.min(ce, ta.value.length));
+}
+
+function insertNoteNewline() {
+  const ta = $('note-text');
+  if (!ta) return;
+  const { value, selectionStart: s, selectionEnd: e } = ta;
+  if (!setNoteTextareaValue(ta, value.slice(0, s) + '\n' + value.slice(e))) return;
+  const cs = Math.min(s + 1, ta.value.length);
+  ta.setSelectionRange(cs, cs);
+}
+
+// Commits an edit to the note textarea, rejecting it whole if it would exceed
+// the character cap. Returns whether the value was applied.
+function setNoteTextareaValue(ta, next) {
+  if (next.length > NOTE_MAX_CHARS) {
+    showStatus(`Note is at the ${NOTE_MAX_CHARS}-character limit`);
+    ta.focus();
+    return false;
+  }
+  ta.value = next;
+  ta.focus();
+  updateNoteCharCount();
+  return true;
+}
+
+function updateNoteCharCount() {
+  const ta = $('note-text');
+  const counter = $('note-char-count');
+  if (!ta || !counter) return;
+  const len = ta.value.length;
+  counter.textContent = `${len} / ${NOTE_MAX_CHARS}`;
+  counter.classList.toggle('note-char-count-max', len >= NOTE_MAX_CHARS);
 }
 function deleteNoteFromModal() {
   const id = App.editNoteId;

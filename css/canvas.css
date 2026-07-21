@@ -134,6 +134,38 @@
   stroke-width: 2.5;
 }
 
+/* Directional edge highlight: triggered by clicking a state (Settings →
+   Rendering chooses Outgoing/Incoming/Off) or unconditionally from its
+   right-click menu. Green = flow leaving the state (ties to the start-state
+   arrow); indigo = flow arriving at it — deliberately distinct from every
+   other hue already in use (selection is purple, accept is gold, danger is
+   red) so the two directions and "plain selected" never get confused. */
+.sn.outgoing-hl-src circle.bd {
+  stroke: var(--green);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px rgba(105, 240, 174, .4));
+}
+
+.edge-g.outgoing-hl .tarr {
+  stroke: var(--green);
+  stroke-width: 2.5;
+  marker-end: url(#arr-g);
+  filter: drop-shadow(0 0 5px rgba(105, 240, 174, .4));
+}
+
+.sn.incoming-hl-src circle.bd {
+  stroke: var(--indigo);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px rgba(124, 77, 255, .45));
+}
+
+.edge-g.incoming-hl .tarr {
+  stroke: var(--indigo);
+  stroke-width: 2.5;
+  marker-end: url(#arr-i);
+  filter: drop-shadow(0 0 5px rgba(124, 77, 255, .45));
+}
+
 /* ─── Simulation playback highlights ───
    Trail = the route already traversed this run (quiet accent, accumulates
    behind the playhead). Active = the transition being taken right now
@@ -337,6 +369,49 @@
   fill: var(--text2);
   pointer-events: none;
   white-space: pre;
+}
+
+.note-text .note-placeholder {
+  font-style: italic;
+  opacity: .7;
+}
+
+.note-text .note-overflow-mark {
+  fill: var(--text3);
+}
+
+/* Invisible wide grab target, same trick as .tarr-hit for edges — the visible
+   handle's 1.5px stroke is far too thin to hit reliably. */
+.note-resize-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  stroke-linecap: round;
+  cursor: nwse-resize;
+  pointer-events: stroke;
+}
+
+.note-resize-handle {
+  fill: none;
+  stroke: var(--text3);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s, stroke .12s;
+}
+
+.note-g:hover .note-resize-handle,
+.note-g.note-resized .note-resize-handle {
+  opacity: .55;
+}
+
+/* The hit path precedes the visible one, so a forward sibling combinator can
+   light the handle up on hover of the real target. */
+.note-resize-hit:hover ~ .note-resize-handle {
+  opacity: 1;
+  stroke: var(--accent);
 }
 
 .note-g[data-color="yellow"] .note-body { fill: var(--note-yellow-soft); stroke: var(--note-yellow-border); }

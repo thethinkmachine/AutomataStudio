@@ -112,7 +112,12 @@ wrap.addEventListener('pointerdown', e => {
   if (typeof clearActiveNoteHighlight === 'function') clearActiveNoteHighlight();
 
   if (App.tool === 'pointer') {
-    if (!(e.shiftKey || e.ctrlKey || e.metaKey)) { App.selectedStates.clear(); App.selectedTransitions.clear(); renderAll(); }
+    // A marquee is a multi-select gesture whether or not a modifier is held.
+    if (typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
+    if (!(e.shiftKey || e.ctrlKey || e.metaKey)) {
+      App.selectedStates.clear(); App.selectedTransitions.clear();
+      renderAll();
+    }
     const pt = svgPt(e);
     App.marquee = { start: pt, current: pt };
     App.marqueeRect = makeSVG('rect');
@@ -330,6 +335,10 @@ function handlePointerMove(e) {
     checkAutoPan(e);
     return;
   }
+  if (App.resizeNoteId) {
+    if (typeof resizeNoteTo === 'function') resizeNoteTo(e);
+    return;
+  }
   if (App.dragCurve) {
     const pt = svgPt(e);
     const { from, to, grp } = App.dragCurve;
@@ -381,6 +390,10 @@ function endPointerInteractions() {
   }
   if (App.dragNoteId) {
     App.dragNoteId = null;
+    renderMinimap();
+  }
+  if (App.resizeNoteId) {
+    if (typeof endNoteResize === 'function') endNoteResize();
     renderMinimap();
   }
 }
@@ -510,8 +523,14 @@ function onStateDown(e, id) {
         document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
         App.selectedStates.add(id);
         if (el) el.classList.add('sel-st');
+        if (App.config.clickHighlightMode === 'outgoing' || App.config.clickHighlightMode === 'incoming') {
+          highlightEdgesForState(id, App.config.clickHighlightMode);
+        } else {
+          clearEdgeDirectionHighlight();
+        }
 
       } else if (multi) {
+        clearEdgeDirectionHighlight();
         if (App.selectedStates.has(id)) {
           App.selectedStates.delete(id);
           if (el) el.classList.remove('sel-st');
@@ -557,10 +576,70 @@ function clearTempLine() { if (tempLine) { tempLine.remove(); tempLine = null; }
 function hlState(id, on) { const el = document.querySelector(`[data-id="${id}"]`); if (el) el.classList.toggle('sel-st', on); }
 
 // ══════════════════════════════════════════════════════════════════
+//  DIRECTIONAL EDGE HIGHLIGHT — optionally triggered by clicking a state
+//  (Settings → Rendering picks Outgoing / Incoming / Off), or always
+//  available via the state's right-click menu regardless of that setting.
+// ══════════════════════════════════════════════════════════════════
+// Repaints App.edgeHighlight onto the DOM from scratch. renderAll() calls this
+// after every redraw, so the highlight is reconstructed from App state rather
+// than living only as classes that the next render would silently wipe.
+function applyEdgeDirectionHighlight() {
+  document.querySelectorAll('.edge-g.outgoing-hl, .edge-g.incoming-hl, .sn.outgoing-hl-src, .sn.incoming-hl-src').forEach(el => {
+    el.classList.remove('outgoing-hl', 'incoming-hl', 'outgoing-hl-src', 'incoming-hl-src');
+  });
+  const hl = App.edgeHighlight;
+  if (!hl) return;
+  const srcCls = hl.direction === 'incoming' ? 'incoming-hl-src' : 'outgoing-hl-src';
+  const edgeCls = hl.direction === 'incoming' ? 'incoming-hl' : 'outgoing-hl';
+  const srcEl = App.domCache.states.get(hl.id) || document.querySelector(`.sn[data-id="${hl.id}"]`);
+  if (srcEl) srcEl.classList.add(srcCls);
+  App.transitions.forEach(t => {
+    const matches = hl.direction === 'incoming' ? t.to === hl.id : t.from === hl.id;
+    if (!matches) return;
+    const key = t.from + '|' + t.to;
+    const el = App.domCache.transitions.get(key) || document.querySelector(`.edge-g[data-edge="${key}"]`);
+    if (el) el.classList.add(edgeCls);
+  });
+}
+
+// The highlight exists to make a cluttered graph readable by isolating one
+// state's flow. Lighting up several states at once rebuilds the haystack it
+// was meant to cut through, so every multi-select gesture — shift/ctrl-click,
+// marquee, select-all, or shifting focus to an edge — drops it entirely
+// rather than accumulating.
+function clearEdgeDirectionHighlight() {
+  if (!App.edgeHighlight) return;
+  App.edgeHighlight = null;
+  applyEdgeDirectionHighlight();
+}
+
+// direction: 'outgoing' highlights edges leaving stateId, 'incoming' those
+// arriving at it. A self-loop matches both, since it's simultaneously the
+// state's only outgoing and only incoming edge to itself. Always replaces any
+// existing highlight — only one state is ever lit.
+function highlightEdgesForState(stateId, direction) {
+  App.edgeHighlight = { id: stateId, direction };
+  applyEdgeDirectionHighlight();
+}
+
+function ctxHighlightOutgoing() {
+  const id = App.ctxId;
+  hideContextMenu();
+  if (!id) return;
+  highlightEdgesForState(id, 'outgoing');
+}
+function ctxHighlightIncoming() {
+  const id = App.ctxId;
+  hideContextMenu();
+  if (!id) return;
+  highlightEdgesForState(id, 'incoming');
+}
+// ══════════════════════════════════════════════════════════════════
 //  SELECTION: select-all, nudge, copy / paste / duplicate
 // ══════════════════════════════════════════════════════════════════
 function selectAllStates() {
   if (!App.states.length) return;
+  clearEdgeDirectionHighlight();
   App.selectedStates = new Set(App.states.map(s => s.id));
   App.selectedTransitions = new Set(App.transitions.map(t => t.id));
   renderAll();
@@ -787,6 +866,8 @@ function exportPNG() {
 
   // Strip transient interaction states (selection highlights, temporary lines)
   clone.querySelectorAll('.sel-st, .sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
+  clone.querySelectorAll('.outgoing-hl, .incoming-hl, .outgoing-hl-src, .incoming-hl-src')
+    .forEach(n => n.classList.remove('outgoing-hl', 'incoming-hl', 'outgoing-hl-src', 'incoming-hl-src'));
   clone.querySelectorAll('.editor-layer').forEach(n => n.remove());
   const guideLayer = clone.querySelector('#align-guides-g');
   if (guideLayer) guideLayer.innerHTML = '';
@@ -819,7 +900,7 @@ function exportPNG() {
   }
 
   // 3. Glue it together and ensure hit-areas are hidden in the final export
-  svgStyle.textContent = `${rootStyles}\n${cssRules}\n.tarr-hit { display:none !important; }\nsvg { background: transparent; }`;
+  svgStyle.textContent = `${rootStyles}\n${cssRules}\n.tarr-hit { display:none !important; }\n.note-resize-hit, .note-resize-handle { display:none !important; }\nsvg { background: transparent; }`;
   clone.insertBefore(svgStyle, clone.firstChild);
 
   const canvas = document.createElement('canvas');

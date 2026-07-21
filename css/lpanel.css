@@ -176,6 +176,8 @@
 
 .sel {
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
   background: var(--bg3);
   border: 1px solid var(--border2);
   color: var(--text);
@@ -185,6 +187,15 @@
   border-radius: 6px;
   outline: none;
   cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: border-color .15s;
+}
+
+.sel:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .ibtn {

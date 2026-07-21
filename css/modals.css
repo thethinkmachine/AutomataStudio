@@ -3,14 +3,15 @@
   position: fixed;
   inset: 0;
   background: var(--overlay);
-  backdrop-filter: blur(5px);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 900;
   opacity: 0;
   pointer-events: none;
-  transition: opacity .2s;
+  transition: opacity var(--transition-base);
 }
 
 .overlay.show {
@@ -19,43 +20,104 @@
 }
 
 .modal {
-  background: var(--bg2);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--bg2) 100%);
   border: 1px solid var(--border2);
-  border-radius: var(--r);
-  padding: 30px;
+  border-radius: 14px;
+  padding: 26px 28px;
   min-width: 280px;
   max-width: 380px;
   width: 90%;
   max-height: 85vh;
   overflow-y: auto;
-  box-shadow: var(--shadow-lg), 0 0 0 1px var(--overlay-ring);
-  transform: translateY(-8px);
-  transition: transform .2s;
+  overflow-x: hidden;
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--overlay-ring), inset 0 1px 0 rgba(255, 255, 255, .03);
+  transform: translateY(-10px) scale(.98);
+  transition: transform var(--transition-base), opacity var(--transition-base);
 }
 
 .overlay.show .modal {
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
 }
 
 .modal-title {
   font-family: var(--sans);
-  font-size: 1.05rem;
+  font-size: 1.08rem;
   font-weight: 600;
-  margin-bottom: 14px;
+  letter-spacing: -.01em;
+  color: var(--text);
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .modal-row {
   display: flex;
   gap: 16px;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
+}
+
+.modal-row:last-of-type {
+  margin-bottom: 0;
+}
+
+/* Pulls a hint/helper row up against the field it annotates instead of
+   sitting a full row-gap below it. */
+.modal-row-tight {
+  margin-top: -8px;
+}
+
+.mealy-outputs-list {
+  max-height: 160px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mealy-output-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mealy-output-lbl {
+  font-family: var(--sans);
+  font-size: .72rem;
+  color: var(--text2);
+  flex-shrink: 0;
+}
+
+.mealy-output-row .sel {
+  flex: 1;
 }
 
 .modal-lbl {
   font-family: var(--sans);
-  font-size: .67rem;
+  font-size: .72rem;
   color: var(--text2);
   min-width: 130px;
+  line-height: 1.35;
+}
+
+.modal-hint {
+  font-family: var(--sans);
+  font-size: .68rem;
+  color: var(--text3);
+  line-height: 1.5;
+}
+
+.modal-hint code {
+  font-family: var(--mono);
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--accent);
+  font-size: .95em;
 }
 
 .modal-section-lbl {
@@ -63,104 +125,233 @@
   font-size: .65rem;
   color: var(--text3);
   font-weight: 600;
-  letter-spacing: .05em;
+  letter-spacing: .06em;
   text-transform: uppercase;
-  padding: 12px 0 6px;
-  border-top: 1px solid var(--border2);
-  margin: 10px 0 8px;
+  padding: 14px 0 8px;
+  border-top: 1px solid var(--border);
+  margin: 14px 0 10px;
 }
 
 .confirm-msg {
   font-size: .83rem;
   color: var(--text2);
-  line-height: 1.5;
-  margin-bottom: 22px;
+  line-height: 1.55;
+  margin-bottom: 24px;
   font-family: var(--mono);
 }
 
 .modal-foot {
   display: flex;
-  gap: 7px;
-  margin-top: 14px;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
   justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* Two clusters pinned to opposite ends of the footer, e.g. import/export on
+   the left, confirm/cancel on the right. */
+.modal-foot-split {
+  justify-content: space-between;
+}
+
+.modal-foot-group {
+  display: flex;
+  gap: 7px;
 }
 
 .btn-p {
-  padding: 6px 16px;
-  background: var(--accent);
-  border: none;
+  padding: 8px 18px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 100%, white 8%), var(--accent));
+  border: 1px solid var(--accent-border-strong);
   color: var(--on-accent);
   font-family: var(--mono);
-  font-size: .7rem;
-  border-radius: 6px;
+  font-size: .72rem;
+  border-radius: 7px;
   cursor: pointer;
-  font-weight: 500;
-  transition: all .15s;
+  font-weight: 600;
+  letter-spacing: .01em;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .15);
+  transition: filter var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .btn-p:hover {
-  filter: brightness(1.15);
+  filter: brightness(1.1);
+  box-shadow: var(--accent-glow), 0 1px 2px rgba(0, 0, 0, .15);
+}
+
+.btn-p:active {
+  transform: translateY(1px);
+  filter: brightness(0.97);
 }
 
 .btn-g {
-  padding: 6px 16px;
-  background: transparent;
+  padding: 8px 18px;
+  background: var(--surface2);
   border: 1px solid var(--border2);
   color: var(--text2);
   font-family: var(--mono);
-  font-size: .7rem;
-  border-radius: 6px;
+  font-size: .72rem;
+  border-radius: 7px;
   cursor: pointer;
-  transition: all .15s;
+  font-weight: 500;
+  transition: all var(--transition-fast);
 }
 
 .btn-g:hover {
-  background: var(--surface);
+  background: var(--surface3);
+  border-color: var(--border2);
   color: var(--text);
 }
 
-/* ─── TABS ─── */
+.btn-g:active {
+  transform: translateY(1px);
+}
+
+.btn-danger-ghost {
+  color: var(--red) !important;
+  border-color: var(--red-border) !important;
+  background: transparent !important;
+  margin-right: auto;
+}
+
+.btn-danger-ghost:hover {
+  background: var(--red-soft) !important;
+}
+
+/* ─── TOGGLE SWITCH ───
+   Replaces bare <input type=checkbox> in modals/settings with a switch that
+   matches the app's pill/track visual language used elsewhere (tabs, badges). */
+.toggle-switch {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.toggle-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+
+.toggle-track {
+  display: block;
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.toggle-thumb {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 2px;
+  border-radius: 50%;
+  background: var(--text3);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  transition: transform var(--transition-base), background var(--transition-fast);
+}
+
+.toggle-switch input:checked+.toggle-track {
+  background: var(--accent-soft-strong);
+  border-color: var(--accent-border-strong);
+}
+
+.toggle-switch input:checked+.toggle-track .toggle-thumb {
+  background: var(--accent);
+  transform: translateX(16px);
+  box-shadow: 0 0 6px rgba(79, 195, 247, .5), 0 1px 2px rgba(0, 0, 0, .3);
+}
+
+.toggle-switch input:focus-visible+.toggle-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.toggle-switch:hover .toggle-track {
+  border-color: var(--accent-border);
+}
+
+/* ─── MODAL WIDTH VARIANTS ───
+   The base .modal caps at 380px for small confirm/config dialogs; content
+   that needs more room opts in explicitly rather than every modal carrying
+   its width as a one-off inline style. */
 .modal.settings-modal-wide {
-  max-width: 600px;
+  max-width: 620px;
   width: 90vw;
   display: flex;
   flex-direction: column;
 }
 
+.modal.note-modal-wide {
+  max-width: 480px;
+}
+
+.modal.trans-modal-wide {
+  max-width: 440px;
+}
+
+.modal.help-modal-wide {
+  max-width: 400px;
+}
+
+.modal.about-modal-wide {
+  max-width: 420px;
+}
+
+/* ─── TABS ─── */
 .modal-tabs {
   display: flex;
-  gap: 20px;
-  border-bottom: 1px solid var(--border2);
-  margin-bottom: 20px;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  gap: 2px 2px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 22px;
 }
 
 .modal-tab {
   font-family: var(--sans);
-  font-size: 0.8rem;
-  color: var(--text2);
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text3);
   cursor: pointer;
-  padding: 8px 4px;
+  padding: 8px 12px;
+  border-radius: 7px 7px 0 0;
   border-bottom: 2px solid transparent;
   transition: all var(--transition-fast);
   white-space: nowrap;
 }
 
 .modal-tab:hover {
-  color: var(--text);
+  color: var(--text2);
+  background: var(--tab-hover-bg);
 }
 
 .modal-tab.active {
   color: var(--accent);
-  border-bottom-color: var(--accent);
+  background: var(--tab-active-bg);
+  border-bottom-color: var(--tab-active-line);
 }
 
 .modal-tab-content {
   display: none;
+  animation: modal-tab-fade-in var(--transition-base);
 }
 
 .modal-tab-content.active {
   display: block;
+}
+
+@keyframes modal-tab-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* ─── ABOUT MODAL ─── */
@@ -258,12 +449,24 @@
   position: fixed;
   background: var(--surface2);
   border: 1px solid var(--border2);
-  border-radius: 8px;
-  padding: 4px;
+  border-radius: 10px;
+  padding: 5px;
   z-index: 800;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--overlay-ring);
   min-width: 240px;
   display: none;
+  animation: ctx-pop-in .12s ease-out;
+}
+
+@keyframes ctx-pop-in {
+  from { opacity: 0; transform: translateY(-3px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.ctx-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 6px;
 }
 
 .ctx[data-mode="state"] .ctx-edge,
@@ -276,6 +479,8 @@
 }
 
 .note-swatch-row {
+  display: flex;
+  gap: 8px;
   cursor: default;
 }
 
@@ -296,6 +501,7 @@
 
 .note-swatch.active {
   box-shadow: 0 0 0 2px var(--bg2), 0 0 0 3px var(--accent);
+  transform: scale(1.08);
 }
 
 .note-swatch[data-color="default"] { background: var(--surface3); }
@@ -309,11 +515,13 @@
 .note-swatch[data-color="red"] { background: var(--red); }
 
 .ctx-i {
-  padding: 6px 12px;
+  padding: 7px 12px;
+  font-family: var(--sans);
   font-size: .78rem;
-  border-radius: 5px;
+  color: var(--text);
+  border-radius: 6px;
   cursor: pointer;
-  transition: background .1s;
+  transition: background var(--transition-fast), color var(--transition-fast);
   display: flex;
   align-items: center;
   gap: 9px;
@@ -588,4 +796,139 @@
 button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ─── NOTE EDITOR (rich-text modal) ─── */
+.note-editor-row {
+  align-items: flex-start;
+}
+
+.note-editor {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border2);
+  border-radius: 9px;
+  background: var(--bg3);
+  overflow: hidden;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.note-editor:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.note-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  flex-wrap: wrap;
+}
+
+.note-tb-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.note-tb-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.note-tb-btn:hover {
+  background: var(--surface3);
+  color: var(--text);
+  border-color: var(--border2);
+}
+
+.note-tb-btn:active {
+  transform: translateY(1px);
+}
+
+.note-tb-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border2);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.note-tb-hint {
+  font-family: var(--sans);
+  font-size: .63rem;
+  color: var(--text3);
+  line-height: 1.4;
+  margin-left: 6px;
+  flex: 1 1 180px;
+  min-width: 140px;
+}
+
+.note-tb-hint code {
+  font-family: var(--mono);
+  background: var(--surface3);
+  border-radius: 3px;
+  padding: 0 3px;
+  color: var(--text2);
+}
+
+.note-textarea {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  width: 100%;
+  resize: vertical;
+  min-height: 90px;
+  max-height: 50vh;
+  font-family: var(--mono);
+  line-height: 1.5;
+  padding: 10px 12px;
+}
+
+.note-textarea:focus {
+  outline: none;
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.note-editor-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+}
+
+.note-resize-hint {
+  font-family: var(--sans);
+  font-size: .62rem;
+  color: var(--text3);
+}
+
+.note-char-count {
+  font-family: var(--mono);
+  font-size: .65rem;
+  color: var(--text3);
+  white-space: nowrap;
+}
+
+.note-char-count-max {
+  color: var(--orange);
 }

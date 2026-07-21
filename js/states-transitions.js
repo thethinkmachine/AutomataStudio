@@ -8,9 +8,14 @@ function getState(id) { return App.states.find(s => s.id === id); }
 function getTransition(id) { return App.transitions.find(t => t.id === id); }
 function getEdgeTransitions(from, to) { return App.transitions.filter(t => t.from === from && t.to === to); }
 
+// At most one right-click popover is ever open: the two menus (#ctx for
+// state/edge/note, #canvas-ctx for empty background) live in separate DOM
+// nodes, so opening one must explicitly close the other — they don't share
+// an element the way re-showing #ctx for a different target does.
 function showContextMenu(kind, x, y) {
   const m = $('ctx');
   if (!m) return;
+  if (typeof hideCanvasContextMenu === 'function') hideCanvasContextMenu();
   m.dataset.mode = kind;
   m.style.display = 'block';
   const maxX = kind === 'edge' ? 260 : kind === 'note' ? 240 : 220;
@@ -495,6 +500,12 @@ function openStateModal(id) {
   App.editId = id;
   const s = getState(id); if (!s) return;
   $('s-name').value = s.name;
+  const hint = $('s-name-hint');
+  if (hint) {
+    hint.innerHTML = App.config.wrapStateLabels
+      ? 'Use <code>_</code>, space or <code>-</code> to break long names onto multiple lines inside the node.'
+      : 'Long names will overflow the node — enable "Wrap Long State Labels" in Settings → Rendering to break them at <code>_</code>, space or <code>-</code>.';
+  }
   $('s-start').checked = isConceptualStart(id);
   const cfg = getMachineConfig(App.machine);
   if (cfg.isTransducer && !App.config.transducerAccepts) {
@@ -519,15 +530,15 @@ function openStateModal(id) {
     const outgoing = App.transitions.filter(t => t.from === id);
     const list = $('s-mealy-transitions-list');
     if (outgoing.length === 0) {
-      list.innerHTML = '<div style="font-size:0.8rem;color:var(--text3);font-style:italic">No outgoing transitions</div>';
+      list.innerHTML = '<div class="modal-hint">No outgoing transitions</div>';
     } else {
       list.innerHTML = outgoing.map(t => {
         const toState = getState(t.to)?.name || '?';
         const outVal = (t.output === undefined || t.output === '') ? lambda : t.output;
         const options = outs.map(o => `<option value="${o}" ${outVal === o ? 'selected' : ''}>${o}</option>`).join('');
-        return `<div class="modal-row" style="margin-bottom:6px">
-          <span class="modal-lbl" style="width: auto; margin-right: 8px; font-size: 0.85rem">→ ${toState} ('${t.symbol}')</span>
-          <select class="sel" id="mealy-out-${t.id}" style="flex:1">${options}</select>
+        return `<div class="mealy-output-row">
+          <span class="mealy-output-lbl">→ ${toState} ('${t.symbol}')</span>
+          <select class="sel" id="mealy-out-${t.id}">${options}</select>
         </div>`;
       }).join('');
     }
