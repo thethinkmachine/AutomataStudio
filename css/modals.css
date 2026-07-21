@@ -471,10 +471,16 @@
 
 .ctx[data-mode="state"] .ctx-edge,
 .ctx[data-mode="state"] .ctx-note,
+.ctx[data-mode="state"] .ctx-shape,
 .ctx[data-mode="edge"] .ctx-state,
 .ctx[data-mode="edge"] .ctx-note,
+.ctx[data-mode="edge"] .ctx-shape,
 .ctx[data-mode="note"] .ctx-state,
-.ctx[data-mode="note"] .ctx-edge {
+.ctx[data-mode="note"] .ctx-edge,
+.ctx[data-mode="note"] .ctx-shape,
+.ctx[data-mode="divider"] .ctx-state,
+.ctx[data-mode="divider"] .ctx-edge,
+.ctx[data-mode="divider"] .ctx-note {
   display: none;
 }
 
@@ -482,6 +488,59 @@
   display: flex;
   gap: 8px;
   cursor: default;
+}
+
+/* A non-interactive row inside a context menu. Deliberately NOT .ctx-i: that
+   rule forces every descendant svg to 14x14 with fill:currentColor and
+   stroke:none, which blanks out stroke-drawn icons like the style previews. */
+.ctx-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: default;
+}
+
+.divider-style-row {
+  gap: 6px;
+}
+
+.divider-style-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text2);
+  cursor: pointer;
+  transition: border-color .12s, color .12s, background .12s;
+}
+
+/* Wins over the generic `.ctx-i svg` / `.ctx svg` sizing and fill rules so the
+   stroke-drawn line previews actually show a line. */
+.divider-style-btn svg,
+.ctx .divider-style-btn svg {
+  width: 24px;
+  height: 8px;
+  fill: none;
+  stroke: currentColor;
+  opacity: 1;
+  flex-shrink: 0;
+}
+
+.divider-style-btn:hover {
+  border-color: var(--accent-border);
+  color: var(--text);
+}
+
+.divider-style-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .note-swatch {
@@ -504,7 +563,8 @@
   transform: scale(1.08);
 }
 
-.note-swatch[data-color="default"] { background: var(--surface3); }
+.note-swatch[data-color="default"],
+.note-swatch[data-color="slate"] { background: var(--surface3); }
 .note-swatch[data-color="violet"] { background: var(--violet); }
 .note-swatch[data-color="indigo"] { background: var(--indigo); }
 .note-swatch[data-color="blue"] { background: var(--blue); }
@@ -539,6 +599,26 @@
 
 .ctx-i:hover {
   background: var(--surface3);
+}
+
+.ctx-i.active {
+  color: var(--accent);
+}
+
+.ctx-i.active svg {
+  opacity: 1;
+}
+
+.ctx-kbd-hint {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: .62rem;
+  color: var(--text3);
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  padding: 1px 4px;
+  flex-shrink: 0;
 }
 
 .ctx-i.danger {

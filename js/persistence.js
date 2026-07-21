@@ -27,6 +27,7 @@ function getWorkspaceData() {
     startId: App.startId,
     accepts: [...App.accepts],
     notes: App.notes,
+    dividers: App.dividers,
     grammar: grammarData,
     cam: App.cam
   };
@@ -225,6 +226,21 @@ function validateSchema(data) {
     }
   }
 
+  // Dividers are optional too, and purely decorative — only the geometry has
+  // to be sound, since a NaN coordinate would render an invisible-but-clickable
+  // line rather than failing loudly.
+  if (data.dividers !== undefined) {
+    if (!Array.isArray(data.dividers)) throw new Error("'dividers' must be an array.");
+    for (const d of data.dividers) {
+      if (typeof d !== 'object' || d === null || typeof d.id === 'undefined') {
+        throw new Error("Each divider must be an object containing an 'id' property.");
+      }
+      if (!['x1', 'y1', 'x2', 'y2'].every(k => Number.isFinite(d[k]))) {
+        throw new Error("Each divider needs finite 'x1', 'y1', 'x2', and 'y2' coordinates.");
+      }
+    }
+  }
+
   const cfg = getMachineConfig(data.machine);
   if (!cfg.hasEpsilon && data.transitions.some(t => t.symbol === App.config.sym.eps)) {
     throw new Error(`${data.machine} does not allow epsilon-read transitions.`);
@@ -268,6 +284,8 @@ function loadData(d, isExample) {
   App.transitions = d.transitions || []; App.startId = d.startId || null;
   App.accepts = new Set(d.accepts || []);
   App.notes = Array.isArray(d.notes) ? d.notes : [];
+  App.dividers = Array.isArray(d.dividers) ? d.dividers : [];
+  App.selectedDividerId = null;
   if (App.machine === 'TM' && hasSingleTapeNondeterminism(App.transitions)) {
     App.machine = 'NDTM';
   }

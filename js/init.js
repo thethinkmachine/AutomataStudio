@@ -10,6 +10,10 @@ renderSigma(); renderGamma(); renderGramSyms(); renderOutputAlpha();
 renderGrammarLPanel(); updateLPanel();
 App.stackAlpha = new Set([App.config.sym.stackBottom]);
 if ($('sim-speed-sel')) $('sim-speed-sel').value = String(App.config.autoSpeed);
+try {
+  const st = localStorage.getItem('automata-shape-tool');
+  if (st === 'rect' || st === 'divider') App.lastShapeTool = st;
+} catch (e) { }
 setMachine('DFA'); setTool('pointer'); setView('build');
 snapshot();
 // Attach minimap drag-to-navigate

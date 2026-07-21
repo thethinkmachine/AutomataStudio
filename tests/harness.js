@@ -10,6 +10,7 @@ const SCRIPT_ORDER = [
   'js/simulation.js',
   'js/suggest.js',
   'js/render.js',
+  'js/dividers.js',
   'js/workspace.js',
   'js/persistence.js',
   'js/ui.js',
@@ -187,6 +188,11 @@ function createHarness() {
     App.selectedTransitions = new Set();
     App.stateN = 0;
     App.transN = 0;
+    App.notes = [];
+    App.noteN = 0;
+    App.dividers = [];
+    App.dividerN = 0;
+    App.selectedDividerId = null;
     App.config = JSON.parse(JSON.stringify(baseConfig));
     App.cam = { x: 0, y: 0, z: 1 };
     App.history = [];

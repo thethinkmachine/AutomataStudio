@@ -8,6 +8,7 @@ function renderAll() {
   $('mach-badge').className = `badge ${cfg.badge}`;
   $('mach-badge').textContent = cfg.label;
   if (typeof pruneNoteAnchors === 'function') pruneNoteAnchors();
+  if (typeof renderDividers === 'function') renderDividers();
   renderTransitions(); renderStates();
   if (typeof renderNotes === 'function') renderNotes();
   renderMinimap();
@@ -15,10 +16,12 @@ function renderAll() {
   App.domCache.states.clear();
   App.domCache.transitions.clear();
   App.domCache.notes.clear();
+  App.domCache.dividers.clear();
   App.domCache.startArrow = $('trans-g').querySelector('[data-start-arrow="true"]');
   document.querySelectorAll('.sn').forEach(el => App.domCache.states.set(el.getAttribute('data-id'), el));
   document.querySelectorAll('.edge-g').forEach(el => App.domCache.transitions.set(el.getAttribute('data-edge'), el));
   document.querySelectorAll('.note-g').forEach(el => App.domCache.notes.set(el.getAttribute('data-note-id'), el));
+  document.querySelectorAll('.divider-g').forEach(el => App.domCache.dividers.set(el.getAttribute('data-divider-id'), el));
   if (App.activeNoteId && typeof highlightNoteAnchors === 'function') highlightNoteAnchors(App.activeNoteId, true);
   if (typeof applyEdgeDirectionHighlight === 'function') applyEdgeDirectionHighlight();
 }

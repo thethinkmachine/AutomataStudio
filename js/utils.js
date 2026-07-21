@@ -175,6 +175,7 @@ function resetIds() {
   App.stateN = Math.max(0, ...App.states.map(s => { const m = s.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
   App.transN = Math.max(0, ...App.transitions.map(t => { const m = t.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
   App.noteN = Math.max(0, ...(App.notes || []).map(n => { const m = n.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
+  App.dividerN = Math.max(0, ...(App.dividers || []).map(d => { const m = d.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
 }
 function clearAll(silent) {
   if (!silent && App.states.length > 0) {
@@ -196,6 +197,7 @@ function performClear() {
   App.states = []; App.transitions = []; App.startId = null; App.accepts.clear();
   App.stateN = 0; App.transN = 0; App.history = []; App.future = [];
   App.notes = []; App.noteN = 0;
+  App.dividers = []; App.dividerN = 0; App.selectedDividerId = null;
   App.edgeHighlight = null;
   if (typeof showExampleCard === 'function') showExampleCard(null);
   resetSim(); renderAll(); updateLPanel(); updateRPanel();

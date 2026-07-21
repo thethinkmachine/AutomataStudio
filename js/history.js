@@ -9,7 +9,8 @@ function snapshot() {
     sigma: [...App.sigma], stackAlpha: [...App.stackAlpha],
     outputAlpha: [...App.outputAlpha], tapeCount: App.tapeCount,
     stateN: App.stateN, transN: App.transN,
-    notes: App.notes, noteN: App.noteN
+    notes: App.notes, noteN: App.noteN,
+    dividers: App.dividers, dividerN: App.dividerN
   });
   App.history.push(s);
   App.future = [];
@@ -66,6 +67,8 @@ function restoreSnapshot(s) {
   App.outputAlpha = new Set(d.outputAlpha || ['0', '1']);
   App.stateN = d.stateN; App.transN = d.transN;
   App.notes = d.notes || []; App.noteN = d.noteN || 0;
+  App.dividers = d.dividers || []; App.dividerN = d.dividerN || 0;
+  if (App.selectedDividerId && !App.dividers.some(dv => dv.id === App.selectedDividerId)) App.selectedDividerId = null;
 
   renderSigma(); renderGamma(); renderOutputAlpha();
   renderAll(); updateLPanel(); updateRPanel();

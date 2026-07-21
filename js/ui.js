@@ -443,6 +443,8 @@ document.addEventListener('keydown', e => {
   if (e.key === 'v' || e.key === 'V') setTool('move');
   if (e.key === 's' || e.key === 'S') setTool('state');
   if (e.key === 't' || e.key === 'T') setTool('trans');
+  if (e.key === 'l' || e.key === 'L') setTool('divider');
+  if (e.key === 'r' || e.key === 'R') setTool('rect');
   if (e.key === 'h' || e.key === 'H') { e.preventDefault(); fitToScreen(); }
   if (e.key === '=' || e.key === '+') { e.preventDefault(); zoomIn(); }
   if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut(); }
@@ -474,6 +476,9 @@ document.addEventListener('keydown', e => {
       App.selectedStates.clear();
       App.selectedTransitions.clear();
       renderAll(); updateLPanel(); updateRPanel();
+    } else if (App.selectedDividerId && typeof deleteSelectedDivider === 'function') {
+      e.preventDefault();
+      deleteSelectedDivider();
     }
   }
   if (e.key === 'Escape') {
@@ -485,6 +490,7 @@ document.addEventListener('keydown', e => {
       App.selectedTransitions.clear();
       document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
       if (typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
+      if (typeof clearDividerSelection === 'function') clearDividerSelection();
       App.transFrom = null; clearTempLine(); setTool('pointer');
     }
   }
@@ -667,6 +673,12 @@ function fitToScreen(silent = false) {
       maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
     });
   }
+  if (typeof includeDividerBounds === 'function') {
+    includeDividerBounds((x0, y0, x1, y1) => {
+      minX = Math.min(minX, x0); minY = Math.min(minY, y0);
+      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
+    });
+  }
   const bw = maxX - minX, bh = maxY - minY;
   const scaleX = (cw - pad * 2) / bw;
   const scaleY = (ch - pad * 2) / bh;
@@ -702,6 +714,12 @@ function isMachineFullyVisible(vw, vh) {
   });
   if (typeof includeNoteBounds === 'function') {
     includeNoteBounds((x0, y0, x1, y1) => {
+      minX = Math.min(minX, x0); minY = Math.min(minY, y0);
+      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
+    });
+  }
+  if (typeof includeDividerBounds === 'function') {
+    includeDividerBounds((x0, y0, x1, y1) => {
       minX = Math.min(minX, x0); minY = Math.min(minY, y0);
       maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
     });
@@ -845,6 +863,12 @@ function renderMinimap() {
       maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
     });
   }
+  if (typeof includeDividerBounds === 'function') {
+    includeDividerBounds((x0, y0, x1, y1) => {
+      minX = Math.min(minX, x0); minY = Math.min(minY, y0);
+      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
+    });
+  }
   // Also include viewport extent
   const vw = $('canvas-wrap')?.clientWidth || 600, vh = $('canvas-wrap')?.clientHeight || 400;
   const vpMinX = -App.cam.x / App.cam.z, vpMinY = -App.cam.y / App.cam.z;
@@ -861,6 +885,28 @@ function renderMinimap() {
   // Save for click navigation
   canvas._mmScale = mmScale; canvas._mmOffX = mmOffX; canvas._mmOffY = mmOffY;
   canvas._mmMinX = minX; canvas._mmMinY = minY;
+  // Draw dividers first so they sit behind the machine, as on the canvas
+  if (App.dividers && App.dividers.length) {
+    ctx.save();
+    ctx.strokeStyle = App.config.export.textFill;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    App.dividers.forEach(d => {
+      const ax = (d.x1 - minX) * mmScale + mmOffX, ay = (d.y1 - minY) * mmScale + mmOffY;
+      const bx = (d.x2 - minX) * mmScale + mmOffX, by = (d.y2 - minY) * mmScale + mmOffY;
+      ctx.beginPath();
+      if (typeof isRectDivider === 'function' && isRectDivider(d)) {
+        // The two stored points are opposite corners, so a plain moveTo/lineTo
+        // would draw the box's diagonal instead of the box.
+        ctx.rect(Math.min(ax, bx), Math.min(ay, by), Math.abs(bx - ax), Math.abs(by - ay));
+      } else {
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
+      }
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
   // Draw transitions
   ctx.strokeStyle = App.config.export.edgeStroke;
   ctx.lineWidth = 1;
@@ -971,22 +1017,32 @@ function setTool(t) {
 
   const w = $('canvas-wrap');
   if (w) {
-    const cursors = { pointer: 'default', move: 'grab', state: 'crosshair', trans: 'crosshair', del: 'not-allowed' };
+    const cursors = { pointer: 'default', move: 'grab', state: 'crosshair', trans: 'crosshair', divider: 'crosshair', rect: 'crosshair', del: 'not-allowed' };
     w.style.cursor = cursors[t] || 'default';
     w.setAttribute('data-tool', t);
   }
 
+  // Divider and Rect share one toolbar slot (#t-shape), so both map to it here.
+  const isShapeTool = t === 'divider' || t === 'rect';
+  const activeBtnId = isShapeTool ? 't-shape' : `t-${t}`;
   document.querySelectorAll('.toolbox-btn[id^="t-"]').forEach(b => {
-    const isActive = b.id === `t-${t}`;
+    const isActive = b.id === activeBtnId;
     b.classList.toggle('active', isActive);
     b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   });
+  if (isShapeTool) {
+    App.lastShapeTool = t;
+    try { localStorage.setItem('automata-shape-tool', t); } catch (e) { }
+  }
+  if (typeof updateShapeToolButton === 'function') updateShapeToolButton(App.lastShapeTool);
 
   const msgs = {
     pointer: 'Click or drag states to interact',
     move: 'Drag canvas to pan · drag state to move · click the active tool again to return to Pointer',
     state: 'Click canvas to place state · click the active tool again to return to Pointer',
     trans: 'Click source then target state · click the active tool again to return to Pointer',
+    divider: 'Drag on the canvas to draw a divider · hold Shift to lock to 0° / 45° / 90°',
+    rect: 'Drag on the canvas to draw a region box · hold Shift for a square',
     del: 'Click state or transition to delete · press Esc or click Pointer to return'
   };
   showStatus(msgs[t] || '');

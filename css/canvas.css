@@ -329,6 +329,123 @@
   fill: var(--purple);
 }
 
+/* ─── DIVIDERS ─── */
+.divider-g {
+  cursor: default;
+}
+
+[data-tool="pointer"] .divider-g,
+[data-tool="move"] .divider-g {
+  cursor: grab;
+}
+
+[data-tool="del"] .divider-g {
+  cursor: not-allowed;
+}
+
+/* Wide invisible stroke that owns the pointer target — the visible 1.5px line
+   is far too thin to grab. Mirrors the .tarr / .tarr-hit split used by edges.
+   `fill: none` matters most for regions: a filled box would swallow every
+   click meant for the states sitting inside it. */
+.divider-hit {
+  stroke: transparent;
+  stroke-width: 14;
+  fill: none;
+}
+
+.divider-line {
+  stroke: var(--divider-stroke, var(--text3));
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  fill: none;
+  pointer-events: none;
+  opacity: .75;
+  transition: opacity .15s, stroke-width .15s;
+}
+
+.divider-g:hover .divider-line,
+.divider-g.divider-sel .divider-line {
+  opacity: 1;
+  stroke-width: 2;
+}
+
+.divider-g[data-style="dashed"] .divider-line { stroke-dasharray: 9 7; }
+.divider-g[data-style="dotted"] .divider-line { stroke-dasharray: 0.1 6; }
+
+/* Regions get a whisper of tint so the enclosed area reads as grouped, without
+   competing with the states drawn on top of it. */
+.divider-g[data-kind="rect"] .divider-line {
+  fill: var(--divider-stroke, var(--text3));
+  fill-opacity: .05;
+  opacity: .6;
+}
+
+.divider-g[data-kind="rect"]:hover .divider-line,
+.divider-g[data-kind="rect"].divider-sel .divider-line {
+  opacity: .95;
+  fill-opacity: .08;
+}
+
+.divider-g[data-kind="rect"] .divider-endpoint {
+  cursor: pointer;
+}
+
+/* The line being dragged out before it becomes a real divider. */
+.divider-draft {
+  stroke: var(--accent);
+  stroke-dasharray: 9 7;
+  fill: var(--accent);
+  fill-opacity: .06;
+  opacity: .9;
+  pointer-events: none;
+}
+
+.divider-endpoint {
+  fill: var(--bg2);
+  stroke: var(--divider-stroke, var(--text3));
+  stroke-width: 1.5;
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity .15s;
+}
+
+.divider-g:hover .divider-endpoint,
+.divider-g.divider-sel .divider-endpoint {
+  opacity: 1;
+}
+
+.divider-g.divider-sel .divider-endpoint {
+  stroke: var(--accent);
+}
+
+/* Label rides at the line's midpoint on an opaque plate, so the stroke reads as
+   interrupted by the caption rather than running through it. */
+.divider-label-plate {
+  fill: var(--bg);
+  stroke: none;
+  pointer-events: none;
+}
+
+.divider-label {
+  font-family: var(--sans);
+  font-size: 11px;
+  letter-spacing: .04em;
+  fill: var(--divider-stroke, var(--text2));
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+  user-select: none;
+}
+
+.divider-g[data-color="slate"]  { --divider-stroke: var(--text3); }
+.divider-g[data-color="violet"] { --divider-stroke: var(--violet); }
+.divider-g[data-color="indigo"] { --divider-stroke: var(--indigo); }
+.divider-g[data-color="blue"]   { --divider-stroke: var(--blue); }
+.divider-g[data-color="green"]  { --divider-stroke: var(--green); }
+.divider-g[data-color="yellow"] { --divider-stroke: var(--note-yellow); }
+.divider-g[data-color="orange"] { --divider-stroke: var(--orange); }
+.divider-g[data-color="red"]    { --divider-stroke: var(--red); }
+
 /* ─── NOTES ─── */
 .note-g {
   cursor: default;

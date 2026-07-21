@@ -93,7 +93,7 @@ wrap.addEventListener('pointerdown', e => {
   if (e.button === 2) {
     // States/edges/notes own their right-click: they already stop propagation
     // on their native `contextmenu` listener, so leave their pointerdown alone.
-    if (e.target.closest('.sn, .edge-g, .note-g')) return;
+    if (e.target.closest('.sn, .edge-g, .note-g, .divider-g')) return;
     _rightDownPt = { x: e.clientX, y: e.clientY };
     _rightDragged = false;
     return;
@@ -110,8 +110,13 @@ wrap.addEventListener('pointerdown', e => {
   const onBackground = onSVGBg || onTransition;
   if (!onBackground) return;
   if (typeof clearActiveNoteHighlight === 'function') clearActiveNoteHighlight();
+  if (typeof clearDividerSelection === 'function') clearDividerSelection();
 
-  if (App.tool === 'pointer') {
+  if (typeof dividerToolKind === 'function' && dividerToolKind()) {
+    beginDividerDraw(e);
+    wrap.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  } else if (App.tool === 'pointer') {
     // A marquee is a multi-select gesture whether or not a modifier is held.
     if (typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
     if (!(e.shiftKey || e.ctrlKey || e.metaKey)) {
@@ -178,7 +183,7 @@ function stopAutoPan() {
 function startAutoPanLoop() {
   if (autoPanRAF) return;
   const step = () => {
-    if (!(App.dragOffsets || App.marquee) || !lastPointerClient) { autoPanRAF = null; return; }
+    if (!(App.dragOffsets || App.marquee || App.dividerDraft || App.dragDividerId || App.dragDividerEndpoint) || !lastPointerClient) { autoPanRAF = null; return; }
     const rect = wrap.getBoundingClientRect();
     const vec = computeAutoPanVector(lastPointerClient.clientX, lastPointerClient.clientY, rect);
     if (vec.x || vec.y) {
@@ -330,6 +335,21 @@ function handlePointerMove(e) {
     checkAutoPan(e);
     return;
   }
+  if (App.dividerDraft) {
+    updateDividerDraw(e);
+    checkAutoPan(e);
+    return;
+  }
+  if (App.dragDividerEndpoint) {
+    dragDividerEndpointTo(e);
+    checkAutoPan(e);
+    return;
+  }
+  if (App.dragDividerId) {
+    dragDividerTo(e);
+    checkAutoPan(e);
+    return;
+  }
   if (App.dragNoteId) {
     if (typeof dragNoteTo === 'function') dragNoteTo(e);
     checkAutoPan(e);
@@ -386,6 +406,19 @@ function endPointerInteractions() {
     App.dragOffsets = null;
     App.dragCurve = null;
     clearAlignGuides();
+    renderMinimap();
+  }
+  if (App.dividerDraft) {
+    finishDividerDraw();
+    renderMinimap();
+  }
+  if (App.dragDividerEndpoint) {
+    endDividerEndpointDrag();
+    renderMinimap();
+  }
+  if (App.dragDividerId) {
+    App.dragDividerId = null;
+    App.dragDividerOffset = null;
     renderMinimap();
   }
   if (App.dragNoteId) {
@@ -900,7 +933,7 @@ function exportPNG() {
   }
 
   // 3. Glue it together and ensure hit-areas are hidden in the final export
-  svgStyle.textContent = `${rootStyles}\n${cssRules}\n.tarr-hit { display:none !important; }\n.note-resize-hit, .note-resize-handle { display:none !important; }\nsvg { background: transparent; }`;
+  svgStyle.textContent = `${rootStyles}\n${cssRules}\n.tarr-hit { display:none !important; }\n.note-resize-hit, .note-resize-handle { display:none !important; }\n.divider-hit, .divider-endpoint { display:none !important; }\nsvg { background: transparent; }`;
   clone.insertBefore(svgStyle, clone.firstChild);
 
   const canvas = document.createElement('canvas');

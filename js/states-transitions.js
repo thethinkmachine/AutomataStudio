@@ -18,8 +18,8 @@ function showContextMenu(kind, x, y) {
   if (typeof hideCanvasContextMenu === 'function') hideCanvasContextMenu();
   m.dataset.mode = kind;
   m.style.display = 'block';
-  const maxX = kind === 'edge' ? 260 : kind === 'note' ? 240 : 220;
-  const maxY = kind === 'edge' ? 190 : kind === 'note' ? 240 : 150;
+  const maxX = kind === 'edge' ? 260 : (kind === 'note' || kind === 'divider') ? 240 : 220;
+  const maxY = kind === 'edge' ? 190 : kind === 'note' ? 240 : kind === 'divider' ? 210 : 150;
   m.style.left = Math.max(8, Math.min(x, innerWidth - maxX)) + 'px';
   m.style.top = Math.max(8, Math.min(y, innerHeight - maxY)) + 'px';
 }
@@ -31,6 +31,7 @@ function hideContextMenu() {
   App.ctxEdge = null;
   App.ctxMode = null;
   App.ctxNoteId = null;
+  App.ctxDividerId = null;
 }
 
 function ensureSelectValue(sel, value) {

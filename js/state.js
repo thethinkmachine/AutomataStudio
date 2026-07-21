@@ -77,6 +77,17 @@ const App = {
   ctxNoteId: null, editNoteId: null,
   dragNoteId: null, dragNoteOffset: { x: 0, y: 0 },
   resizeNoteId: null, resizeNoteStart: null,
+  // Canvas dividers (annotation line segments that partition the canvas)
+  dividers: [], dividerN: 0,
+  selectedDividerId: null,
+  ctxDividerId: null, editDividerId: null,
+  dragDividerId: null, dragDividerOffset: null,
+  dragDividerEndpoint: null,
+  dividerDraft: null, dividerDraftEl: null,
+  // Which shape kind the merged toolbar button draws: 'divider' (line) or
+  // 'rect'. Clicking the button reactivates whichever was used last; right-
+  // click (or L/R) switches it. Session-only default, persisted via localStorage.
+  lastShapeTool: 'divider',
   // Directional edge highlight, kept in App state (not just as DOM classes) so
   // it survives re-renders the same way selection does. { id, direction }.
   // Deliberately one state at a time — see clearEdgeDirectionHighlight.
@@ -142,7 +153,7 @@ const App = {
   // Current algo
   currentAlgo: 'table',
   // DOM Cache for performance
-  domCache: { states: new Map(), transitions: new Map(), notes: new Map(), startArrow: null },
+  domCache: { states: new Map(), transitions: new Map(), notes: new Map(), dividers: new Map(), startArrow: null },
   // State classification overlay (null = off, Map<id → 'live'|'dead'|'unreachable'> = on)
   stateClassification: null,
   // Workspace B (M₂ for binary operations)
@@ -179,6 +190,8 @@ function exportWorkspaceState() {
     transN: App.transN,
     notes: JSON.parse(JSON.stringify(App.notes)),
     noteN: App.noteN,
+    dividers: JSON.parse(JSON.stringify(App.dividers)),
+    dividerN: App.dividerN,
     cam: { ...App.cam },
     history: App.history.map(h => JSON.parse(JSON.stringify(h))),
     future: App.future.map(h => JSON.parse(JSON.stringify(h))),
@@ -205,6 +218,9 @@ function importWorkspaceState(data) {
   App.transN = data.transN || 0;
   App.notes = data.notes || [];
   App.noteN = data.noteN || 0;
+  App.dividers = data.dividers || [];
+  App.dividerN = data.dividerN || 0;
+  App.selectedDividerId = null;
   App.cam = data.cam || { x: 0, y: 0, z: 1 };
   App.history = data.history || [];
   App.future = data.future || [];
