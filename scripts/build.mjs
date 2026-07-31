@@ -87,8 +87,8 @@ async function main() {
   // ---- HTML: swap the per-file tag blocks for single bundled tags, then minify ----
   // Paths are relative (no leading slash) so the build works when served from a
   // subpath, e.g. a GitHub Pages project site at /<repo>/ rather than domain root.
-  html = html.replace(cssBlock.join('\n  '), `<link rel="stylesheet" href="${cssOut}">`);
-  for (const tag of cssBlock) html = html.replace(tag, '');
+  html = html.replace(cssBlock[0], `<link rel="stylesheet" href="${cssOut}">`);
+  for (let i = 1; i < cssBlock.length; i++) html = html.replace(cssBlock[i], '');
   html = html.replace(/^\s*\n/gm, ''); // tidy up blank lines left behind
   html = html.replace(jsBlock[0], `<script src="${jsOut}"></script>`);
   for (let i = 1; i < jsBlock.length; i++) html = html.replace(jsBlock[i], '');
