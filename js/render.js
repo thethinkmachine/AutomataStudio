@@ -231,6 +231,22 @@ function renderTransitions() {
 }
 
 function updateFastDOM() {
+  // Runs on every animation frame while dragging. The edge loop below used to
+  // call getState() (a linear scan of App.states) twice per edge and scan
+  // App.transitions twice per edge, making each frame O(edges x states) +
+  // O(edges x transitions) — the dominant cost when dragging a large machine.
+  // Indexing all three once per frame turns those lookups into O(1).
+  const stateById = new Map();
+  App.states.forEach(s => stateById.set(s.id, s));
+  const transitionPairs = new Set();
+  const firstTransByPair = new Map();
+  App.transitions.forEach(t => {
+    const pairKey = t.from + '|' + t.to;
+    transitionPairs.add(pairKey);
+    // Matches the previous .find() semantics: first transition wins.
+    if (!firstTransByPair.has(pairKey)) firstTransByPair.set(pairKey, t);
+  });
+
   App.states.forEach(s => {
     const grp = App.domCache.states.get(s.id) || document.querySelector(`[data-id="${s.id}"]`);
     if (!grp) return;
@@ -251,7 +267,7 @@ function updateFastDOM() {
 
   const startArrow = App.domCache.startArrow;
   if (startArrow && App.startId) {
-    const s = getState(App.startId);
+    const s = stateById.get(App.startId);
     if (s) {
       const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
       startArrow.setAttribute('d', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah / 3} ${s.y}`);
@@ -261,7 +277,7 @@ function updateFastDOM() {
   // Fast transitions update: only update attributes for existing edges
   App.domCache.transitions.forEach((edgeGrp, key) => {
     const [fid, tid] = key.split('|');
-    const from = getState(fid), to = getState(tid);
+    const from = stateById.get(fid), to = stateById.get(tid);
     if (!from || !to) return;
     const isSelf = fid === tid;
     const pathEl = edgeGrp.querySelector('.tarr'), hitEl = edgeGrp.querySelector('.tarr-hit');
@@ -282,13 +298,13 @@ function updateFastDOM() {
       const tspans = textEl.querySelectorAll('tspan');
       if (tspans.length > 0) tspans.forEach(ts => ts.setAttribute('x', lx));
     } else {
-      const hasRev = App.transitions.some(t => t.from === tid && t.to === fid);
+      const hasRev = transitionPairs.has(tid + '|' + fid);
       const dx = to.x - from.x, dy = to.y - from.y, dist = Math.sqrt(dx * dx + dy * dy);
       if (dist === 0) return;
       const ux = dx / dist, uy = dy / dist, px = -uy, py = ux;
       const defCrv = hasRev ? App.config.render.curveOff : 0;
       // Get the curve value from the first transition in the group
-      const firstTrans = App.transitions.find(t => t.from === fid && t.to === tid);
+      const firstTrans = firstTransByPair.get(key);
       const crvVal = (firstTrans && firstTrans.curve !== undefined) ? firstTrans.curve : defCrv;
 
       const mx = (from.x + to.x) / 2 + px * crvVal, my = (from.y + to.y) / 2 + py * crvVal;
