@@ -1650,13 +1650,18 @@ function scrubSim(value) {
 }
 function setAutoSpeedPreset(ms) {
   App.config.autoSpeed = parseInt(ms, 10) || 500;
-  if (App.autoTimer) {
-    clearInterval(App.autoTimer);
-    App.autoTimer = setInterval(() => {
-      if (App.simIdx >= App.simSteps.length - 1) { stopAutoPlay(); return; }
-      stepFwd(false);
-    }, App.config.autoSpeed);
-  }
+  restartAutoTimerIfPlaying();
+}
+// Re-arms the auto-play interval at the current autoSpeed, but only if
+// playback is already running — called whenever autoSpeed changes so an
+// in-progress run picks up the new pace instead of finishing out the old one.
+function restartAutoTimerIfPlaying() {
+  if (!App.autoTimer) return;
+  clearInterval(App.autoTimer);
+  App.autoTimer = setInterval(() => {
+    if (App.simIdx >= App.simSteps.length - 1) { stopAutoPlay(); return; }
+    stepFwd(false);
+  }, App.config.autoSpeed);
 }
 function resetSim() {
   stopAutoPlay();
