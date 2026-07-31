@@ -1754,6 +1754,7 @@ function confirmSettings() {
   }
   c.autoSpeed = parseInt($('set-auto-speed').value) || 500;
   if ($('sim-speed-sel')) $('sim-speed-sel').value = String(c.autoSpeed);
+  if (typeof restartAutoTimerIfPlaying === 'function') restartAutoTimerIfPlaying();
   c.radius = parseInt($('set-radius').value) || 30;
   if ($('set-wrap-labels')) c.wrapStateLabels = $('set-wrap-labels').checked;
   if ($('set-click-highlight-mode')) {

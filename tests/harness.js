@@ -52,6 +52,13 @@ function createElement(id = '') {
       this.children.push(child);
       return child;
     },
+    insertBefore(newNode, referenceNode) {
+      if (referenceNode == null) { this.children.push(newNode); return newNode; }
+      const idx = this.children.indexOf(referenceNode);
+      if (idx === -1) throw new Error('insertBefore: referenceNode is not a child of this node');
+      this.children.splice(idx, 0, newNode);
+      return newNode;
+    },
     setAttribute(name, value) {
       this[name] = value;
     },

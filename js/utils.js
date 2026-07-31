@@ -199,6 +199,11 @@ function performClear() {
   App.notes = []; App.noteN = 0;
   App.dividers = []; App.dividerN = 0; App.selectedDividerId = null;
   App.edgeHighlight = null;
+  // Selections/edit targets can otherwise outlive the states and
+  // transitions they point at — a stray Ctrl+D or arrow-key nudge right
+  // after Clear would then act on an id that no longer exists.
+  App.selectedStates.clear(); App.selectedTransitions.clear();
+  App.transFrom = null; App.ctxId = null; App.ctxEdge = null; App.ctxMode = null; App.editId = null;
   if (typeof showExampleCard === 'function') showExampleCard(null);
   resetSim(); renderAll(); updateLPanel(); updateRPanel();
 }
