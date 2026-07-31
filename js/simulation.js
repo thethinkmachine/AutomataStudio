@@ -201,11 +201,14 @@ function simTM(tokens) {
   let tape = tokens.length ? [...tokens] : [], head = 0, state = App.startId;
   const blank = App.config.sym.blank;
   let via = null;
+  const loop = makeLoopTracker();
   for (let step = 0; step < App.config.maxTmSteps; step++) {
     while (tape.length <= head) tape.push(blank);
     const sym = tape[head];
     App.simSteps.push({ state, tokens, tape: [...tape], head, tid: via, note: `State:${getState(state)?.name} Read:'${sym}'` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
+    const at = loop.seenAt(ndtmConfigKey(state, tape, head), App.simSteps.length - 1);
+    if (at >= 0) { markLoopStep(App.simSteps[App.simSteps.length - 1], at); break; }
     const t = getSingleTapeDeterministicTransition(state, sym);
     if (!t) { App.simSteps[App.simSteps.length - 1].final = 'reject'; App.simSteps[App.simSteps.length - 1].note += ' — REJECT'; break; }
     const writeSym = (!t.write || t.write === App.config.sym.any) ? sym : t.write;
@@ -214,7 +217,12 @@ function simTM(tokens) {
     head += move; if (head < 0) head = 0;
   }
   const lastTM = App.simSteps[App.simSteps.length - 1];
-  if (lastTM && !lastTM.final) { lastTM.final = 'reject'; lastTM.note += ' — STEP LIMIT REACHED (possible loop) — REJECT'; }
+  // Still running is not the same as rejecting — reporting a timeout as a
+  // REJECT is what makes non-halting invisible. See testTM3.
+  if (lastTM && !lastTM.final) {
+    lastTM.final = 'timeout'; lastTM.limit = App.config.maxTmSteps;
+    lastTM.note += ` — NO VERDICT: still running after ${App.config.maxTmSteps} steps`;
+  }
   App.simIdx = 0; renderSimStep();
 }
 
@@ -230,6 +238,34 @@ function normalizeTapeConfig(tape, head) {
 function ndtmConfigKey(state, tape, head) {
   const normalized = normalizeTapeConfig(tape, head);
   return `${state}|${normalized.head}|${normalized.tape.join('\u0001')}`;
+}
+
+// ── loop detection for the deterministic tape machines ────────────
+// A deterministic machine that revisits a configuration will revisit it
+// forever, so playback can stop there and report a *proven* non-halt
+// instead of grinding out the step limit and calling it a reject. The
+// tracker is capped: a machine whose tape grows without bound never
+// repeats anyway, and its keys would grow with it.
+const LOOP_TRACK_MAX = 5000;
+
+function makeLoopTracker() {
+  let seen = new Map();
+  return {
+    // Step index where this configuration was first seen, or -1 if new.
+    seenAt(key, idx) {
+      if (!seen) return -1;
+      if (seen.has(key)) return seen.get(key);
+      seen.set(key, idx);
+      if (seen.size > LOOP_TRACK_MAX) seen = null; // bail out rather than grow
+      return -1;
+    }
+  };
+}
+
+function markLoopStep(step, firstIdx) {
+  step.final = 'loop';
+  step.loopFrom = firstIdx;
+  step.note += ` — LOOP: repeats step ${firstIdx}, so this machine never halts on this input`;
 }
 
 function formatTapeInstantaneousDescription(state, tape, head) {
@@ -313,8 +349,10 @@ function simNDTM(tokens) {
   }
 
   if (!accepted) {
-    const finalNote = queue.length
-      ? `Exploration limit ${App.config.maxTmSteps} reached — unresolved branches remain`
+    // An exhausted frontier is a real reject; unexplored branches are not.
+    const unresolved = queue.length > 0;
+    const finalNote = unresolved
+      ? `NO VERDICT: exploration limit ${App.config.maxTmSteps} reached — unresolved branches remain`
       : 'All branches halted without acceptance — REJECT';
     const fallbackTape = App.simSteps.at(-1)?.tape || [...initTape];
     const fallbackHead = App.simSteps.at(-1)?.head ?? 0;
@@ -325,7 +363,8 @@ function simNDTM(tokens) {
       tape: [...fallbackTape],
       head: fallbackHead,
       note: finalNote,
-      final: 'reject'
+      final: unresolved ? 'timeout' : 'reject',
+      limit: unresolved ? App.config.maxTmSteps : undefined
     });
     log.push(`${queue.length ? 'Exploration limit reached' : 'Reject'}<span class="step-sub">${finalNote}.<br>Branches explored: ${branches} · max depth ${maxDepth}</span>`);
   }
@@ -1075,6 +1114,9 @@ function simLBA(tokens) {
   let head = 0;
   let state = App.startId;
   let via = null;
+  // An LBA's tape is bounded, so its configuration space is finite and this
+  // check always fires eventually — membership is genuinely decidable here.
+  const loop = makeLoopTracker();
 
   for (let step = 0; step < App.config.maxTmSteps; step++) {
     const sym = tape[head];
@@ -1084,6 +1126,8 @@ function simLBA(tokens) {
       App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT';
       break;
     }
+    const at = loop.seenAt(`${state}|${head}|${tape.join('')}`, App.simSteps.length - 1);
+    if (at >= 0) { markLoopStep(App.simSteps[App.simSteps.length - 1], at); break; }
     const t = getSingleTapeDeterministicTransition(state, sym);
     if (!t) {
       App.simSteps[App.simSteps.length - 1].final = 'reject';
@@ -1112,8 +1156,8 @@ function simLBA(tokens) {
 
   const last = App.simSteps[App.simSteps.length - 1];
   if (last && !last.final) {
-    last.final = 'reject';
-    last.note += ' — STEP LIMIT REACHED (possible loop) — REJECT';
+    last.final = 'timeout'; last.limit = App.config.maxTmSteps;
+    last.note += ` — NO VERDICT: still running after ${App.config.maxTmSteps} steps`;
   }
   App.simIdx = 0;
   renderSimStep();
@@ -1141,6 +1185,7 @@ function simITM(tokens) {
   let head = 0;
   let state = App.startId;
   let via = null;
+  const loop = makeLoopTracker();
 
   for (let step = 0; step < App.config.maxTmSteps; step++) {
     const sym = tape.has(head) ? tape.get(head) : blank;
@@ -1158,6 +1203,8 @@ function simITM(tokens) {
       App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT';
       break;
     }
+    const at = loop.seenAt(`${state}|${snap.head}|${snap.tape.join('')}`, App.simSteps.length - 1);
+    if (at >= 0) { markLoopStep(App.simSteps[App.simSteps.length - 1], at); break; }
     const t = getSingleTapeDeterministicTransition(state, sym);
     if (!t) {
       App.simSteps[App.simSteps.length - 1].final = 'reject';
@@ -1173,8 +1220,8 @@ function simITM(tokens) {
 
   const last = App.simSteps[App.simSteps.length - 1];
   if (last && !last.final) {
-    last.final = 'reject';
-    last.note += ' — STEP LIMIT REACHED (possible loop) — REJECT';
+    last.final = 'timeout'; last.limit = App.config.maxTmSteps;
+    last.note += ` — NO VERDICT: still running after ${App.config.maxTmSteps} steps`;
   }
   App.simIdx = 0;
   renderSimStep();
@@ -1190,11 +1237,14 @@ function simMTM(tokens, allTapeTokens) {
   const heads = Array(k).fill(0);
   let state = App.startId;
   let via = null;
+  const loop = makeLoopTracker();
   for (let step = 0; step < App.config.maxTmSteps; step++) {
     tapes.forEach((tape, i) => { while (tape.length <= heads[i]) tape.push(blank); });
     const syms = tapes.map((tape, i) => tape[heads[i]]);
     App.simSteps.push({ state, tokens, tapes: tapes.map(t => [...t]), heads: [...heads], tid: via, note: `State:${getState(state)?.name} Read:[${syms.join(',')}]` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
+    const at = loop.seenAt(`${state}|${heads.join(',')}|${tapes.map(t => t.join('')).join('')}`, App.simSteps.length - 1);
+    if (at >= 0) { markLoopStep(App.simSteps[App.simSteps.length - 1], at); break; }
     const t = getMultiTapeDeterministicTransition(state, syms);
     if (!t) { App.simSteps[App.simSteps.length - 1].final = 'reject'; App.simSteps[App.simSteps.length - 1].note += ' — REJECT'; break; }
     for (let i = 0; i < k; i++) {
@@ -1206,7 +1256,10 @@ function simMTM(tokens, allTapeTokens) {
     state = t.to; via = t.id;
   }
   const lastMTM = App.simSteps[App.simSteps.length - 1];
-  if (lastMTM && !lastMTM.final) { lastMTM.final = 'reject'; lastMTM.note += ' — STEP LIMIT REACHED — REJECT'; }
+  if (lastMTM && !lastMTM.final) {
+    lastMTM.final = 'timeout'; lastMTM.limit = App.config.maxTmSteps;
+    lastMTM.note += ` — NO VERDICT: still running after ${App.config.maxTmSteps} steps`;
+  }
   App.simIdx = 0; renderSimStep();
 }
 
@@ -1216,7 +1269,11 @@ function renderSimStep() {
 
   // Log update
   const logLines = App.simSteps.slice(0, App.simIdx + 1).map((s, i) => {
-    const cl = i === App.simIdx ? (s.final === 'accept' ? 't-ok' : s.final === 'reject' ? 't-err' : 't-step') : '';
+    const cl = i === App.simIdx
+      ? (s.final === 'accept' ? 't-ok'
+        : (s.final === 'reject' || s.final === 'loop') ? 't-err'
+          : s.final === 'timeout' ? 't-warn' : 't-step')
+      : '';
     return `<div class="${cl}">${i}: ${s.note}</div>`;
   }).join('');
   log(logLines);
@@ -1529,6 +1586,27 @@ function updateSimVerdict(step, isLast) {
     setRunBtnState(step.final);
     return;
   }
+  // A proven loop IS a decision — the machine never halts, so the input is
+  // not accepted — but it is a different fact from halting in a non-accepting
+  // state, and the banner says which one happened.
+  if (step.final === 'loop') {
+    setRunBtnState('reject');
+    el.style.display = 'flex';
+    el.className = 'sim-verdict loop';
+    el.innerHTML = `<span class="sim-verdict-lbl">Loop</span>` +
+      `<span class="sim-verdict-out">configuration repeats step ${step.loopFrom ?? 0} — never halts, so the input is not accepted</span>`;
+    return;
+  }
+  // A run that never halted has no verdict at all. Saying so is the point —
+  // the alternative is a red REJECT that quietly asserts something false.
+  if (step.final === 'timeout') {
+    setRunBtnState('idle');
+    el.style.display = 'flex';
+    el.className = 'sim-verdict timeout';
+    el.innerHTML = `<span class="sim-verdict-lbl">No verdict</span>` +
+      `<span class="sim-verdict-out">still running after ${step.limit || App.config.maxTmSteps} steps — not a rejection</span>`;
+    return;
+  }
   setRunBtnState('idle');
   const cfg = getMachineConfig(App.machine);
   if (cfg.isTransducer && step.outToks !== undefined) {
@@ -1650,18 +1728,20 @@ function runBatch() {
     return;
   }
   const eps = App.config.sym.eps;
-  if (isAnyTM(App.machine)) {
-    $('batch-result').innerHTML = `<div class="br-err">Batch testing is not supported for ${App.machine}.</div>`;
-    if (summaryEl) summaryEl.style.display = 'none';
-    return;
-  }
   const results = rawLines.map(parseBatchLine).map(({ input: line, expect }) => {
     const raw = parseEps(line);
     const str = raw === App.config.sym.eps ? '' : raw;
     const tokens = tokenize(str);
     if (tokens === null) return { str: line, accepted: false, error: true, expect };
-    let accepted = false, output = null;
-    if (App.machine === 'DFA') accepted = testDFA(tokens);
+    let accepted = false, output = null, verdict = null;
+    // Turing machines answer three-valued: a run still going at the budget
+    // has not rejected, and reporting it as one would be a false negative.
+    if (isAnyTM(App.machine)) {
+      const v = testTMVerdict(tokens);
+      verdict = v === 'acc' ? 'accept' : v === 'rej' ? 'reject' : 'unknown';
+      accepted = v === 'acc';
+    }
+    else if (App.machine === 'DFA') accepted = testDFA(tokens);
     else if (App.machine === 'NFA' || App.machine === 'ε-NFA') accepted = testNFA(tokens);
     else if (App.machine === 'DPDA' || App.machine === 'PDA') accepted = testPDA(tokens);
     else if (App.machine === 'NPDA' || App.machine === 'QA' || App.machine === 'Counter' || App.machine === '2PDA') accepted = testNPDA(tokens);
@@ -1674,13 +1754,16 @@ function runBatch() {
       accepted = App.config.transducerAccepts ? fstResult.accepted : undefined;
       output = fstResult.output;
     }
-    return { str: line, accepted, output, expect };
+    if (verdict === null) verdict = accepted === undefined ? undefined : (accepted ? 'accept' : 'reject');
+    return { str: line, accepted, output, expect, verdict };
   });
 
   const withExpectation = results.filter(r => r.expect && !r.error);
   if (summaryEl) {
     if (withExpectation.length) {
-      const passCount = withExpectation.filter(r => (r.accepted ? 'accept' : 'reject') === r.expect).length;
+      // An "unknown" matches no expectation — it is neither pass nor a
+      // rejection, and folding it into either would hide the budget.
+      const passCount = withExpectation.filter(r => r.verdict === r.expect).length;
       summaryEl.style.display = 'block';
       summaryEl.className = `batch-summary ${passCount === withExpectation.length ? 'all-pass' : 'has-fail'}`;
       summaryEl.textContent = `${passCount} / ${withExpectation.length} expectations passed`;
@@ -1689,17 +1772,29 @@ function runBatch() {
     }
   }
 
-  $('batch-result').innerHTML = results.map(r => {
+  const sub = 'color:var(--text3);font-size:.65rem';
+  const rows = results.map(r => {
     if (r.error) return `<div class="br-err">✗ "${r.str}" — cannot tokenize</div>`;
-    const outTag = r.output !== null ? ` <span style="color:var(--text3);font-size:.65rem">→ "${r.output}"</span>` : '';
+    const outTag = r.output !== null ? ` <span style="${sub}">→ "${r.output}"</span>` : '';
+    if (r.verdict === 'unknown') {
+      const why = r.expect ? `expected ${r.expect}, still running` : 'still running';
+      return `<div class="br-unk">? "${r.str}" <span style="${sub}">(${why} after ${langStepBudget()} steps — not a rejection)</span></div>`;
+    }
     if (r.expect) {
-      const got = r.accepted ? 'accept' : 'reject';
+      const got = r.verdict;
       const pass = got === r.expect;
-      return `<div class="${pass ? 'br-ok' : 'br-err'}">${pass ? '✓' : '✗'} "${r.str}" <span style="color:var(--text3);font-size:.65rem">(expected ${r.expect}, got ${got})</span>${outTag}</div>`;
+      return `<div class="${pass ? 'br-ok' : 'br-err'}">${pass ? '✓' : '✗'} "${r.str}" <span style="${sub}">(expected ${r.expect}, got ${got})</span>${outTag}</div>`;
     }
     if (r.accepted === undefined) return `<div class="br-ok" style="border-left-color:var(--text-main)"><span style="color:var(--text-main)">•</span> "${r.str}"${outTag}</div>`;
     return `<div class="${r.accepted ? 'br-ok' : 'br-err'}">${r.accepted ? '✓' : '✗'} "${r.str}"${outTag}</div>`;
   }).join('');
+
+  const unknowns = results.filter(r => r.verdict === 'unknown').length;
+  const budgetNote = unknowns
+    ? `<div class="br-note">${unknowns} input${unknowns > 1 ? 's' : ''} had no verdict inside ${langStepBudget()} steps. ` +
+      `Raise <em>Language Fingerprint Budget</em> in Settings › Turing Machine; whatever stays unresolved never halts.</div>`
+    : '';
+  $('batch-result').innerHTML = rows + budgetNote;
 }
 function testDFA(tokens) {
   let cur = App.startId;
@@ -1807,6 +1902,164 @@ function testFST(tokens) {
   else if (outs.length === 1) output = outs[0];
   else output = result.witnessPath.at(-1)?.outRaw || '';
   return { accepted: result.accepted, output };
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  TURING-MACHINE MEMBERSHIP — THREE-VALUED
+// ══════════════════════════════════════════════════════════════════
+// A machine that has not halted inside a step budget has NOT rejected.
+// Collapsing the two is the mistake that makes undecidability invisible,
+// so these return 'unk' for "no verdict yet" and keep 'rej' for a real
+// answer. Two situations turn a non-halt back INTO a real answer:
+//
+//   • a repeated configuration in a deterministic machine — it will now
+//     repeat forever, so the word is provably never accepted;
+//   • an exhausted search frontier in a nondeterministic one — every
+//     branch halted without accepting.
+//
+// An LBA is decidable outright: its tape is bounded, so the
+// configuration space is finite and the repeat check always fires.
+function langStepBudget() {
+  return Math.max(10, App.config.langStepBudget || 400);
+}
+
+function testTM3(tokens, budget) {
+  budget = budget || langStepBudget();
+  const blank = App.config.sym.blank, any = App.config.sym.any;
+  const tape = tokens.length ? [...tokens] : [];
+  let head = 0, state = App.startId;
+  const seen = new Set();
+  for (let step = 0; step < budget; step++) {
+    while (tape.length <= head) tape.push(blank);
+    if (App.accepts.has(state)) return 'acc';
+    const key = ndtmConfigKey(state, tape, head);
+    if (seen.has(key)) return 'rej';
+    seen.add(key);
+    const sym = tape[head];
+    const t = getSingleTapeDeterministicTransition(state, sym);
+    if (!t) return 'rej';
+    tape[head] = (!t.write || t.write === any) ? sym : t.write;
+    head += headMoveDelta(t.dir);
+    if (head < 0) head = 0;
+    state = t.to;
+  }
+  return 'unk';
+}
+
+function testLBA3(tokens, budget) {
+  budget = budget || langStepBudget();
+  const any = App.config.sym.any;
+  const { leftMarker, rightMarker } = App.config.sym;
+  const tape = buildMarkedInputTape(tokens);
+  const rightBound = tape.length - 1;
+  let head = 0, state = App.startId;
+  const seen = new Set();
+  for (let step = 0; step < budget; step++) {
+    if (App.accepts.has(state)) return 'acc';
+    const key = `${state}|${head}|${tape.join('')}`;
+    if (seen.has(key)) return 'rej';
+    seen.add(key);
+    const sym = tape[head];
+    const t = getSingleTapeDeterministicTransition(state, sym);
+    if (!t) return 'rej';
+    const writeSym = (!t.write || t.write === any) ? sym : t.write;
+    tape[head] = (sym === leftMarker || sym === rightMarker) ? sym : writeSym;
+    const nextHead = head + headMoveDelta(t.dir);
+    state = t.to;
+    if (nextHead < 0 || nextHead > rightBound) return 'rej';
+    head = nextHead;
+  }
+  return 'unk';
+}
+
+function testITM3(tokens, budget) {
+  budget = budget || langStepBudget();
+  const blank = App.config.sym.blank, any = App.config.sym.any;
+  const tape = new Map();
+  tokens.forEach((sym, i) => tape.set(i, sym));
+  let head = 0, state = App.startId;
+  const seen = new Set();
+  for (let step = 0; step < budget; step++) {
+    if (App.accepts.has(state)) return 'acc';
+    const snap = materializeInfiniteTape(tape, head);
+    const key = `${state}|${snap.head}|${snap.tape.join('')}`;
+    if (seen.has(key)) return 'rej';
+    seen.add(key);
+    const sym = tape.has(head) ? tape.get(head) : blank;
+    const t = getSingleTapeDeterministicTransition(state, sym);
+    if (!t) return 'rej';
+    const writeSym = (!t.write || t.write === any) ? sym : t.write;
+    if (writeSym === blank) tape.delete(head); else tape.set(head, writeSym);
+    head += headMoveDelta(t.dir);
+    state = t.to;
+  }
+  return 'unk';
+}
+
+function testMTM3(tokens, budget) {
+  budget = budget || langStepBudget();
+  const k = App.tapeCount || 2, blank = App.config.sym.blank;
+  const tapes = Array.from({ length: k }, (_, i) =>
+    i === 0 ? (tokens.length ? [...tokens] : [blank]) : [blank]);
+  const heads = Array(k).fill(0);
+  let state = App.startId;
+  const seen = new Set();
+  for (let step = 0; step < budget; step++) {
+    tapes.forEach((tape, i) => { while (tape.length <= heads[i]) tape.push(blank); });
+    if (App.accepts.has(state)) return 'acc';
+    const key = `${state}|${heads.join(',')}|${tapes.map(t => t.join('')).join('')}`;
+    if (seen.has(key)) return 'rej';
+    seen.add(key);
+    const syms = tapes.map((tape, i) => tape[heads[i]]);
+    const t = getMultiTapeDeterministicTransition(state, syms);
+    if (!t) return 'rej';
+    for (let i = 0; i < k; i++) {
+      tapes[i][heads[i]] = t.tapeWrites[i] || syms[i];
+      heads[i] += headMoveDelta(t.tapeDirs[i]);
+      if (heads[i] < 0) heads[i] = 0;
+    }
+    state = t.to;
+  }
+  return 'unk';
+}
+
+function testNDTM3(tokens, budget) {
+  budget = budget || langStepBudget();
+  const blank = App.config.sym.blank, any = App.config.sym.any;
+  const init = tokens.length ? [...tokens] : [blank];
+  const queue = [{ state: App.startId, tape: init, head: 0 }];
+  const visited = new Set([ndtmConfigKey(App.startId, init, 0)]);
+  let expanded = 0;
+  while (queue.length) {
+    if (expanded++ >= budget) return 'unk';
+    const cfg = queue.shift();
+    if (App.accepts.has(cfg.state)) return 'acc';
+    const norm = normalizeTapeConfig(cfg.tape, cfg.head);
+    const tape = norm.tape, head = norm.head, sym = tape[head];
+    const matching = App.transitions.filter(tr =>
+      tr.from === cfg.state && (tr.symbol === sym || tr.symbol === any));
+    for (const tr of matching) {
+      const next = [...tape];
+      next[head] = (!tr.write || tr.write === any) ? sym : tr.write;
+      const nh = Math.max(0, head + headMoveDelta(tr.dir));
+      const key = ndtmConfigKey(tr.to, next, nh);
+      if (visited.has(key)) continue;
+      visited.add(key);
+      queue.push({ state: tr.to, tape: next, head: nh });
+    }
+  }
+  // Frontier exhausted with nothing accepting — a definitive answer.
+  return 'rej';
+}
+
+function testTMVerdict(tokens, budget) {
+  switch (App.machine) {
+    case 'NDTM': return testNDTM3(tokens, budget);
+    case 'MTM': return testMTM3(tokens, budget);
+    case 'LBA': return testLBA3(tokens, budget);
+    case 'ITM': return testITM3(tokens, budget);
+    default: return testTM3(tokens, budget);
+  }
 }
 
 function getMooreOutput(tokens) {

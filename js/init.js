@@ -40,6 +40,10 @@ if (typeof loadBackup === 'function') {
   initTabs(); // Create initial tab if no backup logic
 }
 if (Workspaces.length === 0) initTabs(); // Guard for fresh launch
+// setMachine('DFA') above no-ops at boot because DFA is already the default,
+// so nothing has refreshed the Language section yet — without this it would
+// sit on its static placeholder markup until the first edit.
+if (typeof updateRPanel === 'function') updateRPanel();
 
 const _sharedLinkLoaded = typeof loadSharedLinkFromURL === 'function' && loadSharedLinkFromURL();
 setTimeout(() => showStatus('Esc=Pointer · V=Pan · Space+Drag=Pan · S=State · T=Transition · H=Fit · Ctrl+Z=Undo'), _sharedLinkLoaded ? 3200 : 600);
