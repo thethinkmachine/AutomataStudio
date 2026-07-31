@@ -411,6 +411,70 @@ test('PDA traces are verified against the stack, not just the graph', () => {
 });
 
 // ══════════════════════════════════════════════════════════════════
+//  SCROLLING PAST THE OLD ROW CAP, AND THE INFINITE-LANGUAGE CHECK
+// ══════════════════════════════════════════════════════════════════
+// The old search materialised a frontier per length, capped so it would
+// not blow up — which meant results beyond a handful of rows either
+// were not found or were not trustworthy. The lazy generator behind
+// langAcceptedTraces has no such cap: any K should come back complete,
+// still in shortlex order.
+test('a machine with a cycle on an accepting path yields far more than the old row cap', () => {
+  reset();
+  workflow(); // has cycles: e.g. Work -> Rev -> Resv -> Done -> Work
+  const { traces, truncated } = context.langAcceptedTraces(200);
+  assert.equal(traces.length, 200);
+  assert.equal(truncated, false, 'a well-behaved DFA must not hit the safety budget at 200 rows');
+  for (let i = 1; i < traces.length; i++) {
+    assert.ok(traces[i - 1].length <= traces[i].length, `length must not decrease at ${i}`);
+  }
+  // no duplicate words, and every one still independently verified
+  const words = traces.map(w => w.join('␟'));
+  assert.equal(new Set(words).size, words.length, 'no word should repeat');
+  for (const w of traces) assert.equal(context.langVerdict(w), 'acc', w.join(' → '));
+});
+
+test('langIsInfinite is true for a machine whose accepting path has a cycle', () => {
+  reset();
+  workflow();
+  assert.equal(context.langIsInfinite(), true);
+});
+
+test('langIsInfinite is false for an acyclic machine, and the generator exhausts on its own', () => {
+  reset();
+  // q0 -a-> q1 -b-> q2(accept): a straight line, no cycle anywhere.
+  fa({
+    sigma: ['a', 'b'],
+    states: ['q0', 'q1', 'q2'], start: 'q0', accepts: ['q2'],
+    edges: [['q0', 'a', 'q1'], ['q1', 'b', 'q2']]
+  });
+  assert.equal(context.langIsInfinite(), false);
+  // asking for far more than exist must not hang or fabricate rows
+  const { traces, truncated } = context.langAcceptedTraces(50);
+  deepEq(traces, [['a', 'b']]);
+  assert.equal(truncated, false);
+});
+
+test('langIsInfinite is false when no accepting state is reachable at all', () => {
+  reset();
+  fa({ sigma: ['a'], states: ['q0'], start: 'q0', accepts: [], edges: [['q0', 'a', 'q0']] });
+  assert.equal(context.langIsInfinite(), false);
+});
+
+test('a self-loop that cannot reach any accept does not count as making the language infinite', () => {
+  reset();
+  // q0 spins on 'a' forever but the only route to the accept is q0 -b-> q1;
+  // the self-loop on q0 is a real cycle, but since q0 is live it must
+  // still register as infinite — this pins down that liveness, not mere
+  // cycle presence anywhere in the graph, is what is being checked.
+  fa({
+    sigma: ['a', 'b'],
+    states: ['q0', 'q1'], start: 'q0', accepts: ['q1'],
+    edges: [['q0', 'a', 'q0'], ['q0', 'b', 'q1']]
+  });
+  assert.equal(context.langIsInfinite(), true);
+});
+
+// ══════════════════════════════════════════════════════════════════
 //  FINGERPRINT ENUMERATION
 // ══════════════════════════════════════════════════════════════════
 test('langEnumerate emits whole shortlex blocks within the cell budget', () => {

@@ -531,6 +531,15 @@
   margin-top: 5px;
   display: flex;
   flex-direction: column;
+  /* ~6 rows before it scrolls — a scroll-triggered sentinel pulls more
+     out of the paused search rather than capping the list at a count. */
+  max-height: 216px;
+  overflow-y: auto;
+}
+
+.lang-tr-sentinel {
+  height: 1px;
+  flex: none;
 }
 
 .lang-tr-row {
