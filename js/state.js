@@ -98,6 +98,11 @@ const App = {
     transducerAccepts: false,
     maxPdaSteps: 2000,
     maxTmSteps: 10000,
+    // Per-word budget for the Language panel's fingerprint. Deliberately
+    // far smaller than maxTmSteps: the fingerprint runs one simulation per
+    // cell, so this is multiplied by ~127. Words that exhaust it are drawn
+    // as "no verdict" rather than as rejects.
+    langStepBudget: 400,
     autoSpeed: 500,
     radius: 30,
     zoom: { min: 0.2, max: 3, step: 0.1 },

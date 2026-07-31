@@ -10,6 +10,7 @@ const SCRIPT_ORDER = [
   'js/simulation.js',
   'js/suggest.js',
   'js/render.js',
+  'js/language.js',
   'js/dividers.js',
   'js/workspace.js',
   'js/persistence.js',
@@ -102,6 +103,9 @@ function createHarness() {
     },
     createElementNS() {
       return createElement();
+    },
+    createTextNode(text) {
+      return { nodeType: 3, textContent: String(text), children: [] };
     }
   };
 

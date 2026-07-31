@@ -325,27 +325,493 @@
   gap: 1px;
 }
 
-.code-box-wrap,
+.lang-claim-wrap,
 .def-box-wrap {
   position: relative;
 }
 
-.code-box {
+/* ── the claim: what L(M) is ────────────────────────────────────
+   Sized to its content instead of to a fixed 76px, so a two-symbol
+   regex costs two lines and a thousand-character one scrolls. */
+.lang-claim-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
   margin-top: 6px;
+}
+
+/* Marks a derivation that recomputes as the graph changes. Absent on
+   an asserted class label, which is a constant. */
+.lang-live {
+  width: 6px;
+  height: 6px;
+  margin-top: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 0 0 var(--gold-border);
+  animation: lang-pulse 2.6s ease-out infinite;
+}
+
+@keyframes lang-pulse {
+  0% { box-shadow: 0 0 0 0 var(--gold-border); }
+  70% { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.lang-asserted .lang-live {
+  display: none;
+}
+
+.lang-claim {
+  flex: 1;
+  min-width: 0;
   font-family: var(--mono);
-  font-size: .75rem;
-  padding: 8px 30px 8px 10px;
-  background: var(--bg3);
-  border: 1px solid var(--border2);
-  border-radius: 6px;
-  color: var(--gold);
-  height: 76px;
+  font-size: .78rem;
+  /* Whole multiple of the line box, so a long derivation scrolls from a
+     clean edge instead of being sliced through the middle of a row. */
   line-height: 1.5;
-  max-width: 100%;
+  max-height: 6em;
+  color: var(--gold);
+  padding-right: 24px;
   overflow-y: auto;
-  overflow-x: hidden;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.lang-claim.asserted {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: .95rem;
+  color: var(--text2);
+  word-break: normal;
+}
+
+.lang-micro,
+.lang-cap,
+.lang-foot {
+  font-family: var(--mono);
+  font-size: .58rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.lang-micro { margin-top: 5px; }
+.lang-foot { margin-top: 7px; letter-spacing: .06em; text-transform: none; }
+
+.lang-note {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: .62rem;
+  line-height: 1.55;
+  color: var(--text3);
+  border-left: 2px solid var(--border2);
+  padding-left: 8px;
+}
+
+.lang-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.lang-legend {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 11px;
+  font-family: var(--mono);
+  font-size: .58rem;
+  color: var(--text3);
+  font-variant-numeric: tabular-nums;
+}
+
+.lang-legend i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+
+.lang-legend .k-acc { background: var(--gold); }
+.lang-legend .k-rej { background: var(--surface3); }
+.lang-legend .k-unk {
+  background: repeating-linear-gradient(45deg, var(--orange) 0 1.5px, transparent 1.5px 4px);
+  outline: 1px solid var(--orange-border);
+}
+.lang-legend .k-g1 { background: var(--accent); }
+.lang-legend .k-g2 { background: var(--gold); }
+.lang-legend .k-g0 { background: var(--text3); }
+
+/* ── symbolic mode: the fingerprint ─────────────────────────────
+   Σ* in shortlex order, one cell per word. Two machines with the
+   same picture accept the same language. */
+.lang-fp {
+  margin-top: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lang-fp-row {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 5px;
+  align-items: start;
+}
+
+.lang-fp-len {
+  font-family: var(--mono);
+  font-size: .55rem;
+  color: var(--text3);
+  text-align: right;
+  padding-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lang-fp-cells {
+  display: grid;
+  grid-template-columns: repeat(20, 1fr);
+  gap: 2px;
+}
+
+.lang-fp-c {
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: var(--surface3);
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+}
+
+.lang-fp-c.acc { background: var(--gold); }
+.lang-fp-c.unk {
+  background: repeating-linear-gradient(45deg, var(--orange) 0 1.5px, transparent 1.5px 4px);
+  outline: 1px solid var(--orange-border);
+  outline-offset: -1px;
+}
+
+.lang-fp-c:hover {
+  transform: scale(1.5);
+  box-shadow: 0 0 0 1px var(--accent);
+  position: relative;
+  z-index: 2;
+}
+
+.lang-fp-c.sel { box-shadow: 0 0 0 1.5px var(--accent); }
+
+.lang-fp-read {
+  margin-top: 7px;
+  min-height: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: .66rem;
+  color: var(--text2);
+}
+
+.lang-fp-read .w { color: var(--text); word-break: break-all; }
+.lang-fp-read .v-acc { color: var(--gold); }
+.lang-fp-read .v-rej { color: var(--text3); }
+.lang-fp-read .v-unk { color: var(--orange); }
+
+/* ── vocabulary mode: accepted traces ───────────────────────────
+   Walking the machine rather than Σ*, so the cost is the same at
+   two symbols as at seventeen. */
+.lang-tr {
+  margin-top: 5px;
+  display: flex;
+  flex-direction: column;
+}
+
+.lang-tr-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  gap: 6px;
+  align-items: start;
+  padding: 5px 4px;
+  border-top: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.lang-tr-row:first-child { border-top: 0; }
+.lang-tr-row:hover,
+.lang-tr-row:focus-visible { background: var(--accent-soft); }
+
+.lang-tr-syms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-width: 0;
+}
+
+.lang-tr-eps {
+  font-family: var(--mono);
+  font-size: .8rem;
+  color: var(--gold);
+}
+
+.lang-tr-len {
+  font-family: var(--mono);
+  font-size: .6rem;
+  color: var(--text3);
+  text-align: right;
+  padding-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Abbreviation chip. Two categorical hues at most — the two largest
+   actor prefixes — and the code's first letter repeats the grouping,
+   so hue is never the only channel. */
+.lang-sym {
+  font-family: var(--mono);
+  font-size: .65rem;
+  line-height: 1.35;
+  padding: 2px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  cursor: default;
+}
+
+.lang-sym.g1 {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.lang-sym.g2 {
+  background: var(--gold-soft);
+  border-color: var(--gold-border);
+  color: var(--gold);
+}
+
+.lang-sym.dead {
+  background: transparent;
+  border-style: dashed;
+  color: var(--text3);
+}
+
+/* ── the machine, as one line ───────────────────────────────────*/
+.lang-tuple-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+}
+
+.lang-tuple {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1px;
+  font-family: var(--mono);
+  font-size: .76rem;
+  color: var(--text2);
+}
+
+.lang-punc { color: var(--text3); }
+
+.lang-chip {
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: .8rem;
+  line-height: 1.3;
+  color: var(--text);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.lang-chip:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.lang-chip[aria-expanded="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent-border-strong);
+  color: var(--accent);
+}
+
+.lang-chip sup {
+  font-size: .62em;
+  opacity: .72;
+  margin-left: 1px;
+}
+
+.lang-expand-btn {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text3);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.lang-expand-btn svg { width: 13px; height: 13px; }
+.lang-expand-btn:hover {
+  background: var(--surface3);
+  color: var(--text);
+  border-color: var(--border2);
+}
+.lang-expand-btn.open { color: var(--accent); }
+
+.lang-tuple-open {
+  margin-top: 7px;
+  padding: 7px 9px;
+  background: var(--bg3);
+  border: 1px solid var(--accent-border);
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: .7rem;
+  line-height: 1.55;
+  color: var(--text2);
+}
+
+.lang-open-head { color: var(--text3); }
+.lang-open-head .k { color: var(--accent); }
+.lang-open-val { color: var(--text); word-break: break-word; margin-top: 2px; }
+
+.lang-open-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 5px;
+}
+
+/* ── Σ as a vocabulary ──────────────────────────────────────────*/
+.lang-voc-search {
+  width: 100%;
+  margin-top: 6px;
+  padding: 4px 8px;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: .68rem;
+  color: var(--text);
+}
+
+.lang-voc-search::placeholder { color: var(--text3); }
+
+.lang-voc-list {
+  margin-top: 7px;
+  max-height: 176px;
+  overflow-y: auto;
+  padding-right: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lang-voc-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px 16px;
+  gap: 7px;
+  align-items: center;
+}
+
+.lang-voc-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.lang-voc-name .t {
+  font-family: var(--mono);
+  font-size: .62rem;
+  color: var(--text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Magnitude, so a single hue on its own soft track: square at the
+   baseline, rounded at the data end. Identity stays in the chip. */
+.lang-voc-meter {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  position: relative;
+}
+
+.lang-voc-meter i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--accent);
+  border-radius: 0 3px 3px 0;
+}
+
+.lang-voc-n {
+  font-family: var(--mono);
+  font-size: .6rem;
+  color: var(--text3);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.lang-voc-row.dead .lang-voc-name .t,
+.lang-voc-row.dead .lang-voc-n { color: var(--orange); }
+.lang-voc-row.dead .lang-voc-meter {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--orange-border);
+}
+
+.lang-flag {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--orange-soft);
+  border: 1px solid var(--orange-border);
+  font-family: var(--mono);
+  font-size: .6rem;
+  line-height: 1.5;
+  color: var(--orange);
+}
+
+.lang-voc-groups {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: .58rem;
+  color: var(--text3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lang-live { animation: none; }
+  .lang-fp-c:hover { transform: none; }
 }
 
 .box-copy-btn {
@@ -613,6 +1079,31 @@
   font-weight: 600;
 }
 
+/* Deliberately not red: a run that never halted has not rejected. */
+.sim-verdict.timeout {
+  background: var(--orange-soft);
+  border-color: var(--orange-border);
+  color: var(--orange);
+  font-weight: 600;
+}
+
+.sim-verdict.timeout .sim-verdict-out {
+  font-weight: 600;
+  font-size: .72rem;
+}
+
+.sim-verdict.loop {
+  background: var(--red-soft);
+  border-color: var(--red-border);
+  color: var(--red);
+  font-weight: 600;
+}
+
+.sim-verdict.loop .sim-verdict-out {
+  font-weight: 600;
+  font-size: .72rem;
+}
+
 .sim-verdict-lbl {
   color: var(--text2);
   font-weight: 600;
@@ -808,6 +1299,10 @@
   color: var(--accent);
 }
 
+.t-warn {
+  color: var(--orange);
+}
+
 .tape-wrap {
   display: flex;
   gap: 2px;
@@ -854,6 +1349,23 @@
 .tc.head.reject {
   background: var(--red-soft);
   border-color: var(--red);
+  color: var(--red);
+  box-shadow: 0 0 10px var(--red-border);
+}
+
+.tc.head.timeout {
+  background: var(--orange-soft);
+  border-color: var(--orange);
+  color: var(--orange);
+  box-shadow: 0 0 10px var(--orange-border);
+}
+
+/* A proven loop is a decided non-acceptance, so it wears the reject colour;
+   the dashed edge says it got there by never halting. */
+.tc.head.loop {
+  background: var(--red-soft);
+  border-color: var(--red);
+  border-style: dashed;
   color: var(--red);
   box-shadow: 0 0 10px var(--red-border);
 }
@@ -920,6 +1432,25 @@
 
 .br-err {
   color: var(--red);
+}
+
+/* Neither pass nor fail: the machine had not decided yet. */
+.br-unk {
+  color: var(--orange);
+}
+
+.br-note {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  color: var(--text3);
+  font-size: .62rem;
+  line-height: 1.5;
+}
+
+.br-note em {
+  color: var(--text2);
+  font-style: normal;
 }
 
 /* Σ symbol-suggest popover (Simulate / Batch Test inputs) */

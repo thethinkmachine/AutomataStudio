@@ -1703,6 +1703,7 @@ function openSettingsModal() {
   $('set-pda-steps').value = c.maxPdaSteps;
   $('set-pda-paradigm').value = c.pdaParadigm || 'explicit';
   $('set-tm-steps').value = c.maxTmSteps;
+  if ($('set-lang-budget')) $('set-lang-budget').value = c.langStepBudget ?? 400;
   $('set-auto-speed').value = c.autoSpeed;
   $('set-radius').value = c.radius;
   if ($('set-wrap-labels')) $('set-wrap-labels').checked = c.wrapStateLabels !== false;
@@ -1748,6 +1749,9 @@ function confirmSettings() {
   c.pdaParadigm = $('set-pda-paradigm').value || 'explicit';
   c.maxPdaSteps = parseInt($('set-pda-steps').value) || 2000;
   c.maxTmSteps = parseInt($('set-tm-steps').value) || 10000;
+  if ($('set-lang-budget')) {
+    c.langStepBudget = Math.max(10, parseInt($('set-lang-budget').value) || 400);
+  }
   c.autoSpeed = parseInt($('set-auto-speed').value) || 500;
   if ($('sim-speed-sel')) $('sim-speed-sel').value = String(c.autoSpeed);
   c.radius = parseInt($('set-radius').value) || 30;
@@ -1794,6 +1798,7 @@ function getEditorSettingsData() {
     transducerAccepts: !!c.transducerAccepts,
     maxPdaSteps: c.maxPdaSteps,
     maxTmSteps: c.maxTmSteps,
+    langStepBudget: c.langStepBudget,
     autoSpeed: c.autoSpeed,
     radius: c.radius,
     wrapStateLabels: !!c.wrapStateLabels,
@@ -1848,6 +1853,7 @@ function populateSettingsModalInputs(data) {
   if (data.transducerAccepts !== undefined) $('set-transducer-accepts').checked = !!data.transducerAccepts;
   if (data.maxPdaSteps !== undefined) $('set-pda-steps').value = data.maxPdaSteps;
   if (data.maxTmSteps !== undefined) $('set-tm-steps').value = data.maxTmSteps;
+  if (data.langStepBudget !== undefined && $('set-lang-budget')) $('set-lang-budget').value = data.langStepBudget;
   if (data.autoSpeed !== undefined) $('set-auto-speed').value = data.autoSpeed;
   if (data.radius !== undefined) $('set-radius').value = data.radius;
   if (data.wrapStateLabels !== undefined && $('set-wrap-labels')) $('set-wrap-labels').checked = !!data.wrapStateLabels;

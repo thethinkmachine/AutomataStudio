@@ -488,8 +488,11 @@ function updateLPanel() {
 //  RIGHT PANEL: LANGUAGE
 // ══════════════════════════════════════════════════════════════════
 function updateRPanel() {
-  updateFormalDef(); 
+  updateFormalDef();
   updateRegex();
+  // The extension of L and the clickable tuple line both depend on the
+  // two above, so they refresh last.
+  if (typeof renderLanguagePanel === 'function') renderLanguagePanel();
 }
 
 // GNFA State Elimination (textbook: add new start + new accept, eliminate interior)
@@ -521,10 +524,26 @@ function deriveRegex() {
     const k = t.from + '|' + t.to, sym = t.symbol;
     gnfa[k] = gnfa[k] ? reUnion(gnfa[k], sym) : sym;
   });
-  // Eliminate all interior states (everything except qs and qa)
+  // Eliminate all interior states (everything except qs and qa), ripping the
+  // least-connected state first. The order never changes the language, but it
+  // changes the size of the expression enormously — each elimination can
+  // create fanIn × fanOut new edges, so taking the cheapest state first keeps
+  // the blow-up in check. On a 10-state process model, canvas order yields a
+  // ~26,000-character regex and this yields ~1,200 for the same language.
   const rem = [...allIds];
-  const toElim = ids.slice(); // all original states are interior
-  toElim.forEach(mid => {
+  const pending = new Set(ids); // all original states are interior
+  while (pending.size) {
+    let mid = null, best = Infinity;
+    for (const cand of pending) {
+      let fanIn = 0, fanOut = 0;
+      for (const x of rem) {
+        if (x === cand) continue;
+        if (gnfa[x + '|' + cand]) fanIn++;
+        if (gnfa[cand + '|' + x]) fanOut++;
+      }
+      const cost = fanIn * fanOut;
+      if (cost < best) { best = cost; mid = cand; }
+    }
     const self = gnfa[mid + '|' + mid];
     const star = self ? `(${self})*` : '';
     rem.forEach(a => {
@@ -537,7 +556,8 @@ function deriveRegex() {
       });
     });
     rem.splice(rem.indexOf(mid), 1);
-  });
+    pending.delete(mid);
+  }
   // Result is the single edge qs→qa
   const result = gnfa[qs + '|' + qa];
   const val = result ? simplifyRE(result) : '∅';
@@ -791,6 +811,10 @@ function copyBoxText(id) {
 function updateRegex() {
   const rb = $('regex-box'), m = App.machine;
   let txt = '';
+  // A derived regex recomputes as you drag an edge; a class label is a
+  // constant. They are different kinds of claim, so the panel marks
+  // which one it is showing rather than styling them identically.
+  App._regexIsDerived = false;
   if (m === '2DFA' || m === '2NFA') { txt = 'Regular Language (Two-Way Head Motion with Endmarkers)'; }
   else if (m === 'QA') { txt = 'Queue Automaton Language Family'; }
   else if (m === 'Counter') { txt = 'Counter Language Family'; }
@@ -802,7 +826,7 @@ function updateRegex() {
   else if (m === 'Moore') { txt = 'Finite-State Transducer (Moore)'; }
   else if (m === 'Mealy') { txt = 'Finite-State Transducer (Mealy)'; }
   else if (m === 'FST') { txt = 'Finite-State Transducer (Nondeterministic)'; }
-  else { txt = deriveRegex() || '∅'; }
+  else { txt = deriveRegex() || '∅'; App._regexIsDerived = true; }
 
   App._regexBoxPlain = txt;
   rb.textContent = txt;

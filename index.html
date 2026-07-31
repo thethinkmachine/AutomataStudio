@@ -366,13 +366,31 @@
                 <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
               </div>
               <div class="rp-section-body">
-                <div class="code-box-wrap">
-                  <div class="code-box" id="regex-box">—</div>
+                <!-- What the language IS: a live derivation, or a class asserted
+                     by machine type. The pulsing dot marks the difference. -->
+                <div class="lang-claim-wrap">
+                  <span class="lang-live" id="lang-live" aria-hidden="true"></span>
+                  <div class="lang-claim" id="regex-box">—</div>
                   <button class="box-copy-btn" id="regex-copy-btn" onclick="copyBoxText('regex-box')" title="Copy regular expression" aria-label="Copy regular expression">
                     <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z" /></svg>
                   </button>
                 </div>
-                <div class="def-box-wrap">
+                <div class="lang-micro" id="lang-micro"></div>
+
+                <!-- The extension of L: fingerprint over Σ* when symbols are
+                     characters, accepted traces when they are words. -->
+                <div id="lang-extension"></div>
+
+                <!-- The machine, as one clickable line. -->
+                <div class="lang-tuple-wrap">
+                  <div class="lang-tuple" id="lang-tuple"></div>
+                  <button class="lang-expand-btn" id="def-toggle-btn" onclick="toggleFormalDef()" title="Show the full formal definition" aria-label="Show the full formal definition" aria-expanded="false">
+                    <svg viewBox="0 0 256 256" fill="currentColor"><path d="M181.66,133.66l-48,48a8,8,0,0,1-11.32,0l-48-48a8,8,0,0,1,11.32-11.32L128,164.69l42.34-42.35a8,8,0,0,1,11.32,11.32Zm-96-11.32L128,80l42.34,42.34a8,8,0,0,0,11.32-11.32l-48-48a8,8,0,0,0-11.32,0l-48,48a8,8,0,0,0,11.32,11.32Z" /></svg>
+                  </button>
+                </div>
+                <div class="lang-tuple-open" id="lang-tuple-open" style="display:none"></div>
+
+                <div class="def-box-wrap" id="def-box-wrap" style="display:none">
                   <div class="def-box" id="def-box">M = (Q, Σ, δ, q₀, F)</div>
                   <button class="box-copy-btn" id="def-copy-btn" onclick="copyBoxText('def-box')" title="Copy as LaTeX" aria-label="Copy formal definition as LaTeX">
                     <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z" /></svg>
@@ -1104,6 +1122,10 @@
           <span class="modal-lbl">TM Max Steps</span>
           <input type="number" class="inp" id="set-tm-steps" label="TM step limit">
         </div>
+        <div class="modal-row" title="Per-word step budget for the Language panel's fingerprint. One simulation runs per cell, so this is multiplied by roughly 127. Words that exhaust it are drawn as 'no verdict' rather than as rejects.">
+          <span class="modal-lbl">Language Fingerprint Budget</span>
+          <input type="number" class="inp" id="set-lang-budget" min="10" max="20000" step="10" label="Language fingerprint step budget">
+        </div>
       </div>
 
       <div class="modal-tab-content" id="tab-transducer">
@@ -1552,6 +1574,7 @@
   <script src="js/notes.js"></script>
   <script src="js/dividers.js"></script>
   <script src="js/simulation.js"></script>
+  <script src="js/language.js"></script>
   <script src="js/suggest.js"></script>
   <script src="js/persistence.js"></script>
   <script src="js/algorithms-fa.js"></script>
