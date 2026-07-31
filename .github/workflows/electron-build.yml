@@ -49,6 +49,11 @@ jobs:
 
       - name: Build web bundle
         run: npm run build
+        env:
+          # Desktop builds ship the plainly-minified bundle; obfuscation is a
+          # website-only concern and measurably slows startup. Keep this in step
+          # with the electron:build script in package.json.
+          SKIP_OBFUSCATION: 1
 
       - name: Package with electron-builder
         run: npx electron-builder --${{ matrix.platform }} --publish never

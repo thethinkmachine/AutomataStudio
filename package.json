@@ -21,8 +21,8 @@
     "build": "node scripts/build.mjs",
     "test": "node --test",
     "electron:dev": "concurrently -k -s first \"npm:dev\" \"wait-on http://localhost:5173 && cross-env ELECTRON_DEV_SERVER_URL=http://localhost:5173 electron .\"",
-    "electron:preview": "npm run build && electron .",
-    "electron:build": "npm run build && electron-builder"
+    "electron:preview": "cross-env SKIP_OBFUSCATION=1 npm run build && electron .",
+    "electron:build": "cross-env SKIP_OBFUSCATION=1 npm run build && electron-builder"
   },
   "build": {
     "appId": "com.automataplayground.app",

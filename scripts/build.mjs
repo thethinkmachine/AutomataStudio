@@ -21,6 +21,13 @@ import { minify as minifyHTML } from 'html-minifier-terser';
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const DIST = join(ROOT, 'dist');
 
+// Obfuscation only makes sense for the deployed website, where the served source
+// is the only copy a reader has. It roughly doubles the bundle (423kB -> 791kB)
+// and routes string literals through a base64 decoder at runtime, measured at
+// ~26% slower to interactive. A desktop user already has the whole app on disk,
+// so the Electron build sets this and takes the faster, plainly-minified bundle.
+const SKIP_OBFUSCATION = process.env.SKIP_OBFUSCATION === '1';
+
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const hash8 = (s) => createHash('sha256').update(s).digest('hex').slice(0, 8);
 
@@ -63,7 +70,7 @@ async function main() {
   });
   if (!terserResult.code) throw new Error('Terser produced no output');
 
-  const obfuscated = JavaScriptObfuscator.obfuscate(terserResult.code, {
+  const finalJS = SKIP_OBFUSCATION ? terserResult.code : JavaScriptObfuscator.obfuscate(terserResult.code, {
     compact: true,
     renameGlobals: false, // safety net on top of mangle.toplevel:false above
     identifierNamesGenerator: 'hexadecimal',
@@ -79,10 +86,15 @@ async function main() {
     debugProtection: false,
   }).getObfuscatedCode();
 
-  const jsHash = hash8(obfuscated);
+  const jsHash = hash8(finalJS);
   const jsOut = `assets/app.${jsHash}.js`;
-  writeFileSync(join(DIST, jsOut), obfuscated);
-  console.log(`JS:  ${(jsSource.length / 1024).toFixed(1)}kB -> ${(terserResult.code.length / 1024).toFixed(1)}kB (minified) -> ${(obfuscated.length / 1024).toFixed(1)}kB (obfuscated)`);
+  writeFileSync(join(DIST, jsOut), finalJS);
+  const jsStages = [
+    `${(jsSource.length / 1024).toFixed(1)}kB`,
+    `${(terserResult.code.length / 1024).toFixed(1)}kB (minified)`,
+    ...(SKIP_OBFUSCATION ? [] : [`${(finalJS.length / 1024).toFixed(1)}kB (obfuscated)`]),
+  ];
+  console.log(`JS:  ${jsStages.join(' -> ')}${SKIP_OBFUSCATION ? '  [obfuscation skipped]' : ''}`);
 
   // ---- HTML: swap the per-file tag blocks for single bundled tags, then minify ----
   // Paths are relative (no leading slash) so the build works when served from a
