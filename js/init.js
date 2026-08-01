@@ -34,6 +34,7 @@ if (typeof initRPanelSections === 'function') initRPanelSections();
 if (typeof initPanelResizers === 'function') initPanelResizers();
 if (typeof initCanvasResizeObserver === 'function') initCanvasResizeObserver();
 if (typeof initDefBoxOverflowObserver === 'function') initDefBoxOverflowObserver();
+if (typeof initLangClaimOverflowObserver === 'function') initLangClaimOverflowObserver();
 if (typeof loadBackup === 'function') {
   loadBackup();
 } else {

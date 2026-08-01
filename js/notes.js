@@ -345,9 +345,9 @@ function renderOneNote(g, note) {
   handle.setAttribute('d', noteResizeHandlePath(x + w, y + h));
   grp.appendChild(handle);
 
-  const titleEl = makeSVG('title');
-  titleEl.textContent = 'Double-click to edit · Right-click for options · Drag corner to resize';
-  grp.appendChild(titleEl);
+  const noteTip = 'Double-click to edit · Right-click for options · Drag corner to resize';
+  grp.setAttribute('data-tip', noteTip);
+  grp.setAttribute('aria-label', noteTip);
 
   attachNoteHandlers(grp, note);
   g.appendChild(grp);
@@ -684,6 +684,13 @@ function ctxAnchorNoteToSelection() {
 //  EDIT MODAL
 // ══════════════════════════════════════════════════════════════════
 let _noteModalColor = 'default';
+
+// Enter inserts a newline in the note textarea; Ctrl/Cmd+Enter saves.
+registerModal('note-modal', {
+  submit: () => confirmNote(),
+  onClose: () => { App.editNoteId = null; }
+});
+
 function openNoteModal(id) {
   const note = getNote(id);
   if (!note) return;

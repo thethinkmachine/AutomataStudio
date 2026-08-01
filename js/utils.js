@@ -171,6 +171,15 @@ function getPdaDeterminismConflict(candidate, transitions = App.transitions, ign
   ) || null;
 }
 
+// Callers rebind #confirm-action-btn per prompt, so Enter has to dispatch to
+// whatever handler is currently attached rather than a fixed function.
+registerModal('confirm-modal', {
+  submit: () => {
+    const btn = $('confirm-action-btn');
+    if (btn && btn.onclick) btn.onclick();
+  }
+});
+
 function resetIds() {
   App.stateN = Math.max(0, ...App.states.map(s => { const m = s.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
   App.transN = Math.max(0, ...App.transitions.map(t => { const m = t.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));

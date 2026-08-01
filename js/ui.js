@@ -1,20 +1,34 @@
 // ══════════════════════════════════════════════════════════════════
 //  WORKSPACE TABS UI
 // ══════════════════════════════════════════════════════════════════
-const TAB_ACCENTS = ['var(--accent)', 'var(--green)', 'var(--gold)', 'var(--orange)', 'var(--purple)', 'var(--red)'];
+// Tab accent reflects the workspace's machine *category* (not the exact type)
+// so a glance at the dot tells you "finite automaton" vs "stack machine" vs
+// "Turing machine" vs "transducer" without needing 18 distinct colors.
+const CATEGORY_ACCENT_VAR = { fa: '--accent', mem: '--green', tm: '--orange', special: '--purple' };
 let editingTabId = null;
 let draggingTabId = null;
 let tabDropTargetId = null;
 let tabDropPosition = null;
+let closedWorkspaces = [];
 
-function tabHash(str) {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) h = ((h << 5) - h) + str.charCodeAt(i);
-  return Math.abs(h);
+function getWorkspaceMachine(ws) {
+  if (!ws) return null;
+  return ws.id === activeWorkspaceId ? App.machine : ws.data?.machine;
 }
 
-function getWorkspaceAccent(id) {
-  return TAB_ACCENTS[tabHash(String(id || 'ws')) % TAB_ACCENTS.length];
+function getWorkspaceAccent(ws) {
+  const machine = getWorkspaceMachine(ws);
+  const cat = machine && MachineTypes[machine] ? MachineTypes[machine].category : null;
+  return `var(${CATEGORY_ACCENT_VAR[cat] || '--accent'})`;
+}
+
+function markActiveWorkspaceSaved() {
+  if (!activeWorkspaceId) return;
+  const ws = Workspaces.find(w => w.id === activeWorkspaceId);
+  if (ws && ws.dirty) {
+    ws.dirty = false;
+    renderTabs();
+  }
 }
 
 function escapeTabText(value) {
@@ -32,6 +46,14 @@ function updateTabOverflowShadows(tb = $('tab-bar')) {
   const hasOverflow = maxScroll > 2;
   tb.classList.toggle('has-overflow-left', hasOverflow && tb.scrollLeft > 2);
   tb.classList.toggle('has-overflow-right', hasOverflow && tb.scrollLeft < maxScroll - 2);
+  // The strip can't fit every tab (which happens with far fewer tabs on a
+  // narrow/mobile viewport) — surface the jump-to-tab dropdown as an
+  // alternative to hunting via horizontal scroll or drag.
+  const btn = $('tab-overflow-btn');
+  if (btn) {
+    btn.classList.toggle('show', hasOverflow);
+    if (!hasOverflow) hideTabOverflowMenu();
+  }
 }
 
 function focusTabElement(id) {
@@ -254,15 +276,18 @@ function renderTabs() {
     const isEditing = ws.id === editingTabId;
     const dragClass = draggingTabId === ws.id ? 'dragging' : '';
     const safeName = escapeTabText(ws.name || 'Workspace');
+    const machine = getWorkspaceMachine(ws);
+    const machineLabel = machine && MachineTypes[machine] ? MachineTypes[machine].label : '';
     const nameMarkup = isEditing
       ? `<input class="tab-rename-input" value="${safeName}" maxlength="40" aria-label="Rename workspace" onclick="event.stopPropagation()" onkeydown="handleTabRenameKeydown('${ws.id}', event)" onblur="commitTabRename('${ws.id}', this)">`
-      : `<span class="tab-name" title="${safeName}">${safeName}</span>`;
+      : `<span class="tab-name" data-tip="${safeName}${machineLabel ? ' — ' + escapeTabText(machineLabel) : ''}">${safeName}</span>`;
 
     return `
-    <div class="tab ${isActive ? 'active' : ''} ${dragClass}" role="tab" aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? '0' : '-1'}" data-tab-id="${ws.id}" style="--tab-accent:${getWorkspaceAccent(ws.id)}" draggable="${isEditing ? 'false' : 'true'}" onclick="switchTab('${ws.id}')" ondblclick="beginRenameTab('${ws.id}', event)" onkeydown="handleTabKeydown('${ws.id}', event)" ondragstart="handleTabDragStart('${ws.id}', event)" ondragover="handleTabDragOver('${ws.id}', event)" ondrop="handleTabDrop('${ws.id}', event)" ondragend="handleTabDragEnd(event)">
+    <div class="tab ${isActive ? 'active' : ''} ${dragClass}" role="tab" aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? '0' : '-1'}" data-tab-id="${ws.id}" style="--tab-accent:${getWorkspaceAccent(ws)}" draggable="${isEditing ? 'false' : 'true'}" onclick="switchTab('${ws.id}')" ondblclick="beginRenameTab('${ws.id}', event)" onkeydown="handleTabKeydown('${ws.id}', event)" oncontextmenu="showTabContextMenu('${ws.id}', event); return false;" ondragstart="handleTabDragStart('${ws.id}', event)" ondragover="handleTabDragOver('${ws.id}', event)" ondrop="handleTabDrop('${ws.id}', event)" ondragend="handleTabDragEnd(event)">
       <span class="tab-dot" aria-hidden="true"></span>
+      ${machineLabel ? `<span class="sr-only">${escapeTabText(machineLabel)} — </span>` : ''}
       ${nameMarkup}
-      ${ws.dirty ? '<span class="tab-dirty" aria-hidden="true" title="Unsaved changes"></span>' : ''}
+      ${ws.dirty ? '<span class="tab-dirty" aria-hidden="true" data-tip="Unsaved changes"></span>' : ''}
       ${Workspaces.length > 1 ? `<button class="tab-close" type="button" aria-label="Close ${safeName}" onclick="closeTab('${ws.id}', event)"><svg width="10" height="10" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button>` : ''}
     </div>
   `;
@@ -291,7 +316,83 @@ function renderTabs() {
       }
     }
   });
+
+  renderTabOverflowMenu();
+  updateSaveIndicator();
 }
+
+// The Save button carries the same unsaved marker as the tabs. Driven from
+// renderTabs, which is already the one place dirty state changes are drawn.
+function updateSaveIndicator() {
+  const btn = $('save-now-btn');
+  if (!btn) return;
+  const anyDirty = Workspaces.some(w => w.dirty);
+  btn.classList.toggle('is-dirty', anyDirty);
+  const label = anyDirty ? 'Save workspace — unsaved changes' : 'Workspace saved';
+  btn.dataset.tip = label;
+  btn.setAttribute('aria-label', label);
+}
+
+function renderTabOverflowMenu() {
+  const menu = $('tab-overflow-menu');
+  if (!menu || menu.style.display !== 'block') return;
+  menu.innerHTML = Workspaces.map(ws => {
+    const isActive = ws.id === activeWorkspaceId;
+    const safeName = escapeTabText(ws.name || 'Workspace');
+    return `
+    <div class="tab-overflow-item ${isActive ? 'active' : ''}" role="option" aria-selected="${isActive ? 'true' : 'false'}" tabindex="0" style="--item-accent:${getWorkspaceAccent(ws)}" onclick="switchTabFromOverflow('${ws.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();switchTabFromOverflow('${ws.id}');}">
+      <span class="tab-overflow-item-dot" aria-hidden="true"></span>
+      <span class="tab-overflow-item-name" data-tip="${safeName}">${safeName}</span>
+      ${ws.dirty ? '<span class="tab-overflow-item-dirty" aria-hidden="true" data-tip="Unsaved changes"></span>' : ''}
+      ${Workspaces.length > 1 ? `<button class="tab-overflow-item-close" type="button" aria-label="Close ${safeName}" onclick="event.stopPropagation(); closeTab('${ws.id}', event); renderTabOverflowMenu();"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button>` : ''}
+    </div>
+  `;
+  }).join('');
+}
+
+function switchTabFromOverflow(id) {
+  hideTabOverflowMenu();
+  switchTab(id);
+  requestAnimationFrame(() => {
+    const tabEl = $('tab-bar')?.querySelector(`.tab[data-tab-id="${id}"]`);
+    if (tabEl) tabEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  });
+}
+
+function toggleTabOverflowMenu(e) {
+  e.stopPropagation();
+  const menu = $('tab-overflow-menu');
+  if (!menu) return;
+  if (menu.style.display === 'block') { hideTabOverflowMenu(); return; }
+  hideTabContextMenu();
+  if (typeof hideContextMenu === 'function') hideContextMenu();
+  if (typeof hideCanvasContextMenu === 'function') hideCanvasContextMenu();
+  const btn = $('tab-overflow-btn');
+  const r = e.currentTarget.getBoundingClientRect();
+  // Render first so the menu has its real height/width before we place it.
+  menu.style.display = 'block';
+  menu.style.visibility = 'hidden';
+  if (btn) btn.setAttribute('aria-expanded', 'true');
+  renderTabOverflowMenu();
+  const m = menu.getBoundingClientRect();
+  // Right-align the menu to the button, clamped inside the viewport, and
+  // flip it above the button when there isn't room below.
+  menu.style.left = Math.max(8, Math.min(r.right - m.width, innerWidth - m.width - 8)) + 'px';
+  const below = r.bottom + 6;
+  menu.style.top = (below + m.height > innerHeight - 8
+    ? Math.max(8, r.top - 6 - m.height)
+    : below) + 'px';
+  menu.style.visibility = '';
+}
+
+function hideTabOverflowMenu() {
+  const menu = $('tab-overflow-menu');
+  if (menu) menu.style.display = 'none';
+  const btn = $('tab-overflow-btn');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+document.addEventListener('click', () => hideTabOverflowMenu());
 
 function createTab(name) {
   const body = document.querySelector('.app-body');
@@ -305,7 +406,6 @@ function createTab(name) {
     const act = Workspaces.find(w => w.id === activeWorkspaceId);
     if (act) {
       act.data = exportWorkspaceState();
-      act.dirty = false;
     }
   }
 
@@ -353,10 +453,9 @@ function switchTab(id) {
     const act = Workspaces.find(w => w.id === activeWorkspaceId);
     if (act) {
       act.data = exportWorkspaceState();
-      act.dirty = false;
     }
   }
-  
+
   activeWorkspaceId = id;
   editingTabId = null;
   const curr = Workspaces.find(w => w.id === id);
@@ -380,15 +479,82 @@ function switchTab(id) {
   saveBackup();
 }
 
+// ── Unsaved-changes guard ─────────────────────────────────────────
+// Closing a tab is undoable via the toast, but the undo stack is capped and
+// in-memory, so a dirty tab still deserves an explicit prompt. Every close
+// path routes through here: it resolves which of the tabs being closed are
+// dirty, and only then runs `proceed`.
+//
+// `proceed` is invoked for Save and Discard alike — Save just persists first.
+// Cancel simply never calls it, leaving the workspace untouched.
+function confirmDiscardingTabs(ids, proceed) {
+  const dirty = ids
+    .map(id => Workspaces.find(w => w.id === id))
+    .filter(ws => ws && ws.dirty);
+
+  if (!dirty.length) { proceed(); return; }
+
+  const many = dirty.length > 1;
+  const msgEl = $('unsaved-msg');
+  if (msgEl) {
+    msgEl.textContent = many
+      ? `${dirty.length} tabs have unsaved changes. Save them before closing?`
+      : `"${dirty[0].name}" has unsaved changes. Save before closing?`;
+  }
+
+  const saveBtn = $('unsaved-save-btn');
+  const discardBtn = $('unsaved-discard-btn');
+  if (saveBtn) {
+    saveBtn.textContent = many ? 'Save all' : 'Save';
+    saveBtn.onclick = () => {
+      // A failed save must not close the tab — that would destroy the very
+      // work the prompt exists to protect. saveWorkspaceById reports the
+      // failure itself; leaving the dialog open lets the user retry or
+      // deliberately discard.
+      const allSaved = dirty.every(ws => saveWorkspaceById(ws.id));
+      if (!allSaved) return;
+      closeModal('unsaved-modal');
+      proceed();
+    };
+  }
+  if (discardBtn) {
+    discardBtn.textContent = many ? 'Discard all' : 'Discard';
+    discardBtn.onclick = () => { closeModal('unsaved-modal'); proceed(); };
+  }
+  showOverlay('unsaved-modal');
+}
+
+// Enter activates the primary (Save) action, matching the other dialogs.
+registerModal('unsaved-modal', {
+  submit: () => { const b = $('unsaved-save-btn'); if (b && b.onclick) b.onclick(); }
+});
+
 function closeTab(id, e) {
   if (e) { e.stopPropagation(); e.preventDefault(); }
   if (Workspaces.length <= 1) return;
+  hideTabContextMenu();
+  confirmDiscardingTabs([id], () => performCloseTab(id));
+}
+
+function performCloseTab(id) {
+  if (Workspaces.length <= 1) return;
   if (editingTabId === id) editingTabId = null;
-  
+
   const idx = Workspaces.findIndex(w => w.id === id);
   if (idx === -1) return;
-  
-  Workspaces.splice(idx, 1);
+
+  // Keep the active workspace's in-flight edits in its snapshot before it's
+  // possibly the one being removed, so a reopen restores exactly what was on
+  // screen rather than whatever was last saved on a prior switch.
+  if (activeWorkspaceId) {
+    const act = Workspaces.find(w => w.id === activeWorkspaceId);
+    if (act) act.data = exportWorkspaceState();
+  }
+
+  const [removed] = Workspaces.splice(idx, 1);
+  recordClosedWorkspace(removed, idx);
+  showTabUndoToast(removed.name);
+
   if (id === activeWorkspaceId) {
     activeWorkspaceId = null;
     let nextIdx = Math.max(0, idx - 1);
@@ -398,6 +564,201 @@ function closeTab(id, e) {
     saveBackup();
   }
 }
+
+function closeOtherTabs(id) {
+  hideTabContextMenu();
+  if (Workspaces.length <= 1 || !Workspaces.find(w => w.id === id)) return;
+  confirmDiscardingTabs(
+    Workspaces.filter(w => w.id !== id).map(w => w.id),
+    () => performCloseOtherTabs(id)
+  );
+}
+
+function performCloseOtherTabs(id) {
+  if (Workspaces.length <= 1 || !Workspaces.find(w => w.id === id)) return;
+  if (activeWorkspaceId) {
+    const act = Workspaces.find(w => w.id === activeWorkspaceId);
+    if (act) act.data = exportWorkspaceState();
+  }
+  const closed = Workspaces.map((w, i) => ({ w, i })).filter(({ w }) => w.id !== id);
+  closed.forEach(({ w, i }) => recordClosedWorkspace(w, i));
+  Workspaces = Workspaces.filter(w => w.id === id);
+  if (editingTabId && editingTabId !== id) editingTabId = null;
+  showTabUndoToast(closed.length === 1 ? closed[0].w.name : `${closed.length} tabs`, closed.length);
+  if (activeWorkspaceId !== id) {
+    activeWorkspaceId = null;
+    switchTab(id);
+  } else {
+    renderTabs();
+    saveBackup();
+  }
+}
+
+function closeTabsToRight(id) {
+  hideTabContextMenu();
+  const idx = Workspaces.findIndex(w => w.id === id);
+  if (idx === -1 || idx >= Workspaces.length - 1) return;
+  confirmDiscardingTabs(
+    Workspaces.slice(idx + 1).map(w => w.id),
+    () => performCloseTabsToRight(id)
+  );
+}
+
+function performCloseTabsToRight(id) {
+  const idx = Workspaces.findIndex(w => w.id === id);
+  if (idx === -1 || idx >= Workspaces.length - 1) return;
+  if (activeWorkspaceId) {
+    const act = Workspaces.find(w => w.id === activeWorkspaceId);
+    if (act) act.data = exportWorkspaceState();
+  }
+  const closed = Workspaces.slice(idx + 1).map((w, off) => ({ w, i: idx + 1 + off }));
+  closed.forEach(({ w, i }) => recordClosedWorkspace(w, i));
+  const closingActive = closed.some(({ w }) => w.id === activeWorkspaceId);
+  Workspaces = Workspaces.slice(0, idx + 1);
+  if (editingTabId && !Workspaces.find(w => w.id === editingTabId)) editingTabId = null;
+  showTabUndoToast(closed.length === 1 ? closed[0].w.name : `${closed.length} tabs`, closed.length);
+  if (closingActive) {
+    activeWorkspaceId = null;
+    switchTab(id);
+  } else {
+    renderTabs();
+    saveBackup();
+  }
+}
+
+function closeAllTabs() {
+  hideTabContextMenu();
+  if (!Workspaces.length) return;
+  confirmDiscardingTabs(Workspaces.map(w => w.id), performCloseAllTabs);
+}
+
+function performCloseAllTabs() {
+  if (!Workspaces.length) return;
+  if (activeWorkspaceId) {
+    const act = Workspaces.find(w => w.id === activeWorkspaceId);
+    if (act) act.data = exportWorkspaceState();
+  }
+  const closed = Workspaces.map((w, i) => ({ w, i }));
+  closed.forEach(({ w, i }) => recordClosedWorkspace(w, i));
+  Workspaces = [];
+  activeWorkspaceId = null;
+  editingTabId = null;
+  createTab();
+  showTabUndoToast(closed.length === 1 ? closed[0].w.name : `${closed.length} tabs`, closed.length);
+}
+
+function recordClosedWorkspace(workspace, index) {
+  closedWorkspaces.push({ workspace, index });
+  if (closedWorkspaces.length > 15) closedWorkspaces.shift();
+}
+
+function reopenClosedTab() {
+  if (!closedWorkspaces.length) { showStatus('No recently closed tabs'); return; }
+  const { workspace, index } = closedWorkspaces.pop();
+  if (Workspaces.find(w => w.id === workspace.id)) { reopenClosedTab(); return; }
+  const insertAt = Math.max(0, Math.min(index, Workspaces.length));
+  Workspaces.splice(insertAt, 0, workspace);
+  hideTabUndoToast();
+  switchTab(workspace.id);
+  showStatus(`Reopened "${workspace.name}"`);
+}
+
+function showTabUndoToast(label, count) {
+  const toast = $('tab-undo-toast');
+  if (!toast) return;
+  const msg = $('tab-undo-msg');
+  if (msg) {
+    msg.textContent = count && count > 1 ? `Closed ${count} tabs` : `Closed "${label}"`;
+  }
+  toast.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => toast.classList.remove('show'), 6000);
+}
+
+function hideTabUndoToast() {
+  const toast = $('tab-undo-toast');
+  if (!toast) return;
+  toast.classList.remove('show');
+  clearTimeout(toast._t);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  TAB CONTEXT MENU
+// ══════════════════════════════════════════════════════════════════
+let tabCtxId = null;
+
+function showTabContextMenu(id, e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const m = $('tab-ctx-menu');
+  if (!m) return;
+  if (typeof hideContextMenu === 'function') hideContextMenu();
+  if (typeof hideCanvasContextMenu === 'function') hideCanvasContextMenu();
+  tabCtxId = id;
+  const idx = Workspaces.findIndex(w => w.id === id);
+  const closeBtn = $('tab-ctx-close');
+  const othersBtn = $('tab-ctx-close-others');
+  const rightBtn = $('tab-ctx-close-right');
+  if (closeBtn) closeBtn.classList.toggle('disabled', Workspaces.length <= 1);
+  if (othersBtn) othersBtn.classList.toggle('disabled', Workspaces.length <= 1);
+  if (rightBtn) rightBtn.classList.toggle('disabled', idx === -1 || idx >= Workspaces.length - 1);
+  m.style.display = 'block';
+  const maxX = 220, maxY = 260;
+  m.style.left = Math.max(8, Math.min(e.clientX, innerWidth - maxX)) + 'px';
+  m.style.top = Math.max(8, Math.min(e.clientY, innerHeight - maxY)) + 'px';
+}
+
+function hideTabContextMenu() {
+  const m = $('tab-ctx-menu');
+  if (m) m.style.display = 'none';
+  tabCtxId = null;
+}
+
+function tabCtxRename() {
+  if (!tabCtxId) return;
+  const id = tabCtxId;
+  hideTabContextMenu();
+  beginRenameTab(id);
+}
+
+function tabCtxDuplicate() {
+  if (!tabCtxId) return;
+  const src = Workspaces.find(w => w.id === tabCtxId);
+  hideTabContextMenu();
+  if (!src) return;
+  if (src.id === activeWorkspaceId) src.data = exportWorkspaceState();
+  const srcIdx = Workspaces.findIndex(w => w.id === src.id);
+  const copy = {
+    id: 'ws_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
+    name: `${src.name} copy`,
+    dirty: true,
+    data: JSON.parse(JSON.stringify(src.data)),
+  };
+  Workspaces.splice(srcIdx + 1, 0, copy);
+  switchTab(copy.id);
+}
+
+function tabCtxClose() {
+  if (!tabCtxId) return;
+  const id = tabCtxId;
+  closeTab(id);
+}
+
+function tabCtxCloseOthers() {
+  if (!tabCtxId) return;
+  closeOtherTabs(tabCtxId);
+}
+
+function tabCtxCloseRight() {
+  if (!tabCtxId) return;
+  closeTabsToRight(tabCtxId);
+}
+
+function tabCtxCloseAll() {
+  closeAllTabs();
+}
+
+document.addEventListener('click', () => hideTabContextMenu());
 
 function renameTab(id, e) {
   beginRenameTab(id, e);
@@ -430,14 +791,23 @@ window.addEventListener('resize', () => updateTabOverflowShadows());
 document.addEventListener('keydown', e => {
   const tag = e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  // A modal is blocking, so canvas shortcuts must not reach through it —
+  // bare keys here would otherwise still switch tools, toggle fullscreen or
+  // step the simulation underneath the dialog. Escape and Enter are handled
+  // by modal.js, which sees them first from its capture-phase listener.
+  if (typeof anyModalOpen === 'function' && anyModalOpen()) return;
   if (e.ctrlKey || e.metaKey) {
     if (e.key === 'z') { e.preventDefault(); undo(); }
     if (e.key === 'y' || e.key === 'Z') { e.preventDefault(); redo(); }
-    if (e.key === 's') { e.preventDefault(); saveJSON(); }
+    // Ctrl+S is the in-app save; Ctrl+Shift+S exports a JSON file, which is
+    // what Ctrl+S used to do.
+    if (e.key === 's') { e.preventDefault(); saveWorkspace(); }
+    if (e.key === 'S' && e.shiftKey) { e.preventDefault(); saveJSON(); }
     if (e.key === 'a' || e.key === 'A') { e.preventDefault(); if (App.view === 'build') selectAllStates(); }
     if (e.key === 'c' || e.key === 'C') { if (App.view === 'build') copySelection(); }
     if (e.key === 'v' || e.key === 'V') { if (App.view === 'build') { e.preventDefault(); pasteClipboard(App._lastCanvasWorldPt || null); } }
     if (e.key === 'd' || e.key === 'D') { if (App.view === 'build') { e.preventDefault(); duplicateSelection(); } }
+    if (e.shiftKey && (e.key === 't' || e.key === 'T')) { e.preventDefault(); reopenClosedTab(); }
     return;
   }
   if (e.key === 'v' || e.key === 'V') setTool('move');
@@ -482,9 +852,15 @@ document.addEventListener('keydown', e => {
     }
   }
   if (e.key === 'Escape') {
-    const openOverlay = document.querySelector('.overlay.show');
-    if (openOverlay) {
-      closeModal(openOverlay.id);
+    // Open modals are handled in modal.js and never reach this far.
+    const menuOpen = document.querySelector('#tools-menu.open, #hdr-more-menu.open');
+    if (menuOpen) {
+      // Dismiss header menus before anything else they sit above.
+      if (typeof hideToolsMenu === 'function') hideToolsMenu();
+      if (typeof hideMoreMenu === 'function') hideMoreMenu();
+    } else if (typeof AUX_VIEWS !== 'undefined' && AUX_VIEWS.includes(App.view)) {
+      // Escape from an auxiliary view returns to the canvas.
+      closeAuxView();
     } else {
       App.selectedStates.clear();
       App.selectedTransitions.clear();
@@ -509,6 +885,7 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     utmToggleAuto();
   }
+  // 1 returns to the canvas (closing any auxiliary view); 2-4 open one.
   if (e.key === '1') setView('build');
   if (e.key === '2') setView('algo');
   if (e.key === '3') setView('grammar');
@@ -548,15 +925,26 @@ function syncThemeExportPalette(theme) {
   App.config.export = { ...App.config.export, ...(ThemeExports[theme] || ThemeExports.dark) };
 }
 
+// The theme control lives in the header overflow menu as an icon + label row,
+// so only the icon is swapped — replacing innerHTML would drop the label.
 function updateThemeButton() {
   const btn = $('theme-btn');
   if (!btn) return;
-  const nextTheme = App.config.theme === 'light' ? 'dark' : 'light';
-  btn.innerHTML = App.config.theme === 'light'
-    ? `<svg viewBox="0 0 256 256"><path d="M120,40V16a8,8,0,0,1,16,0V40a8,8,0,0,1-16,0Zm72,88a64,64,0,1,1-64-64A64.07,64.07,0,0,1,192,128Zm-16,0a48,48,0,1,0-48,48A48.05,48.05,0,0,0,176,128ZM58.34,69.66A8,8,0,0,0,69.66,58.34l-16-16A8,8,0,0,0,42.34,53.66Zm0,116.68-16,16a8,8,0,0,0,11.32,11.32l16-16a8,8,0,0,0-11.32-11.32ZM192,72a8,8,0,0,0,5.66-2.34l16-16a8,8,0,0,0-11.32-11.32l-16,16A8,8,0,0,0,192,72Zm5.66,114.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32-11.32ZM48,128a8,8,0,0,0-8-8H16a8,8,0,0,0,0,16H40A8,8,0,0,0,48,128Zm80,80a8,8,0,0,0-8,8v24a8,8,0,0,0,16,0V216A8,8,0,0,0,128,208Zm112-88H216a8,8,0,0,0,0,16h24a8,8,0,0,0,0-16Z"/></svg>`
-    : `<svg viewBox="0 0 256 256"><path d="M233.54,142.23a8,8,0,0,0-8-2,88.08,88.08,0,0,1-109.8-109.8,8,8,0,0,0-10-10,104.84,104.84,0,0,0-52.91,37A104,104,0,0,0,136,224a103.09,103.09,0,0,0,62.52-20.88,104.84,104.84,0,0,0,37-52.91A8,8,0,0,0,233.54,142.23ZM188.9,190.34A88,88,0,0,1,65.66,67.11a89,89,0,0,1,31.4-26A106,106,0,0,0,96,56,104.11,104.11,0,0,0,200,160a106,106,0,0,0,14.92-1.06A89,89,0,0,1,188.9,190.34Z"/></svg>`;
-  btn.title = `Switch to ${nextTheme} theme`;
-  btn.setAttribute('aria-label', btn.title);
+  const isLight = App.config.theme === 'light';
+  const nextTheme = isLight ? 'dark' : 'light';
+  const icon = isLight
+    ? `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M120,40V16a8,8,0,0,1,16,0V40a8,8,0,0,1-16,0Zm72,88a64,64,0,1,1-64-64A64.07,64.07,0,0,1,192,128Zm-16,0a48,48,0,1,0-48,48A48.05,48.05,0,0,0,176,128ZM58.34,69.66A8,8,0,0,0,69.66,58.34l-16-16A8,8,0,0,0,42.34,53.66Zm0,116.68-16,16a8,8,0,0,0,11.32,11.32l16-16a8,8,0,0,0-11.32-11.32ZM192,72a8,8,0,0,0,5.66-2.34l16-16a8,8,0,0,0-11.32-11.32l-16,16A8,8,0,0,0,192,72Zm5.66,114.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32-11.32ZM48,128a8,8,0,0,0-8-8H16a8,8,0,0,0,0,16H40A8,8,0,0,0,48,128Zm80,80a8,8,0,0,0-8,8v24a8,8,0,0,0,16,0V216A8,8,0,0,0,128,208Zm112-88H216a8,8,0,0,0,0,16h24a8,8,0,0,0,0-16Z"/></svg>`
+    : `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M233.54,142.23a8,8,0,0,0-8-2,88.08,88.08,0,0,1-109.8-109.8,8,8,0,0,0-10-10,104.84,104.84,0,0,0-52.91,37A104,104,0,0,0,136,224a103.09,103.09,0,0,0,62.52-20.88,104.84,104.84,0,0,0,37-52.91A8,8,0,0,0,233.54,142.23ZM188.9,190.34A88,88,0,0,1,65.66,67.11a89,89,0,0,1,31.4-26A106,106,0,0,0,96,56,104.11,104.11,0,0,0,200,160a106,106,0,0,0,14.92-1.06A89,89,0,0,1,188.9,190.34Z"/></svg>`;
+
+  const svg = btn.querySelector && btn.querySelector('svg');
+  if (svg) svg.outerHTML = icon;
+  else btn.innerHTML = icon;
+
+  const label = btn.querySelector && btn.querySelector('.theme-btn-label');
+  if (label) label.textContent = `Switch to ${nextTheme} theme`;
+
+  btn.dataset.tip = `Switch to ${nextTheme} theme`;
+  btn.setAttribute('aria-label', btn.dataset.tip);
 }
 
 function applyTheme(theme, persist = true) {
@@ -793,6 +1181,7 @@ function focusStateFromList(id) {
   if (el) el.classList.add('sel-st');
   centerCameraOn(s.x, s.y, true);
   updateLPanel();
+  if (isMobilePanelLayout()) setMobilePanelCollapsed('lpanel', true);
 }
 
 function hlListHover(id, on) {
@@ -810,6 +1199,7 @@ function focusTransFromList(id) {
   renderAll();
   centerCameraOn((from.x + to.x) / 2, (from.y + to.y) / 2, true);
   updateLPanel();
+  if (isMobilePanelLayout()) setMobilePanelCollapsed('lpanel', true);
 }
 
 function hlTransListHover(fromId, toId, on) {
@@ -835,7 +1225,8 @@ function toggleFullscreen() {
 document.addEventListener('fullscreenchange', () => {
   const btn = $('fs-btn');
   if (btn) {
-    btn.title = document.fullscreenElement ? 'Exit fullscreen (F)' : 'Enter fullscreen (F)';
+    btn.dataset.tip = document.fullscreenElement ? 'Exit fullscreen' : 'Enter fullscreen';
+    btn.dataset.tipKbd = 'F';
     btn.style.opacity = document.fullscreenElement ? '0.7' : '1';
   }
 });
@@ -956,6 +1347,9 @@ function toggleMinimap() {
   const hidden = mm.classList.toggle('minimap-hidden');
   if (sb) sb.style.display = hidden ? '' : 'none';
   try { localStorage.setItem('automata-minimap', hidden ? '0' : '1'); } catch (e) { }
+  // The collapsed stand-in is a different height from the map it replaces,
+  // so the stack above it has to be re-stacked.
+  if (typeof layoutCanvasOverlays === 'function') layoutCanvasOverlays();
 }
 
 function minimapNavigate(e, animate = true) {
@@ -1224,9 +1618,83 @@ function applyToolbarDock(persist = false) {
   toolbox.classList.toggle('dragging', !!App.toolbarDragging);
 
   const wrapRect = w.getBoundingClientRect();
-  positionToolbarNode(toolbox, dock, wrapRect);
+  const box = positionToolbarNode(toolbox, dock, wrapRect);
+  layoutCanvasOverlays(wrapRect, box);
 
   if (persist) saveToolbarDock();
+}
+
+// ── Overlay placement ─────────────────────────────────────────────
+// The minimap, its show-button and the zoom controls form one stack in a
+// corner of the canvas. The toolbar is draggable to any edge, so a fixed
+// corner meant it could be sat on — the stack now picks the corner that
+// stays clear of wherever the toolbar currently is.
+//
+// Both are positioned from the same margin and share one vertical rhythm,
+// so whichever corner they land in they line up with each other and sit
+// the same distance from the edges as the toolbar does.
+const OVERLAY_GAP = 8;
+
+function canvasOverlayCorner(dock, wrapRect, toolbarBox) {
+  // Compact mode pins the toolbar across the bottom, leaving only the top
+  // free; the stack goes top-right, clear of the header controls.
+  if (isCompactToolbarMode()) return { x: 'right', y: 'top' };
+
+  const side = dock && dock.side;
+  const ratio = clamp01(dock ? dock.ratio : 0.5);
+
+  // A left/top toolbar never reaches the default corner.
+  if (side === 'left' || side === 'top') return { x: 'right', y: 'bottom' };
+
+  if (side === 'right') {
+    // Vertical bar down the right edge. It only clears the bottom-right
+    // corner when docked high enough that its lower edge stops short of
+    // the stack — otherwise move to the left.
+    const bottom = toolbarBox ? toolbarBox.height : 0;
+    const reach = TOOLBAR_MARGIN + ratio * Math.max(1, wrapRect.height - bottom - TOOLBAR_MARGIN * 2) + bottom;
+    return reach < wrapRect.height * 0.55
+      ? { x: 'right', y: 'bottom' }
+      : { x: 'left', y: 'bottom' };
+  }
+
+  if (side === 'bottom') {
+    // Horizontal bar along the bottom. Sitting left of centre leaves the
+    // bottom-right free; otherwise drop the stack to the bottom-left.
+    return ratio > 0.5 ? { x: 'left', y: 'bottom' } : { x: 'right', y: 'bottom' };
+  }
+
+  return { x: 'right', y: 'bottom' };
+}
+
+// Places the visible members of the stack in the chosen corner, stacking
+// upward from the bottom edge (or downward from the top).
+function layoutCanvasOverlays(wrapRect, toolbarBox) {
+  const w = $('canvas-wrap');
+  if (!w) return;
+  const rect = wrapRect || w.getBoundingClientRect();
+  const corner = canvasOverlayCorner(App.toolbarDock, rect, toolbarBox);
+  const margin = TOOLBAR_MARGIN;
+
+  const nav = $('canvas-nav-controls');
+  const map = $('minimap-container');
+  const showBtn = $('minimap-show-btn');
+
+  // Bottom-up in visual order: zoom controls sit outermost, the minimap (or
+  // its collapsed stand-in) rests on top of them.
+  const stack = [nav, (map && !map.classList.contains('minimap-hidden')) ? map : showBtn]
+    .filter(el => el && el.offsetParent !== null);
+
+  let offset = margin;
+  for (const el of stack) {
+    el.style.position = 'absolute';
+    el.style.left = corner.x === 'left' ? `${margin}px` : 'auto';
+    el.style.right = corner.x === 'right' ? `${margin}px` : 'auto';
+    el.style.top = corner.y === 'top' ? `${offset}px` : 'auto';
+    el.style.bottom = corner.y === 'bottom' ? `${offset}px` : 'auto';
+    offset += el.getBoundingClientRect().height + OVERLAY_GAP;
+  }
+
+  if (map) map.dataset.corner = `${corner.y}-${corner.x}`;
 }
 
 function initToolbarDock() {
@@ -1576,7 +2044,7 @@ function toggleLPanelPin() {
   const s = $('lpanel');
   const unpinned = s.classList.toggle('unpinned');
   const btn = $('lpanel-pin-btn');
-  if (btn) btn.title = unpinned ? 'Pin left panel' : 'Unpin left panel';
+  if (btn) btn.dataset.tip = unpinned ? 'Pin left panel' : 'Unpin left panel';
   if (typeof applyToolbarDock === 'function') applyToolbarDock(false);
   try { localStorage.setItem('automata-lpanel-pinned', unpinned ? '0' : '1'); } catch (e) { }
 }
@@ -1585,36 +2053,115 @@ function toggleRPanelPin() {
   const r = $('rpanel');
   const unpinned = r.classList.toggle('unpinned');
   const btn = $('rpanel-pin-btn');
-  if (btn) btn.title = unpinned ? 'Pin right panel' : 'Unpin right panel';
+  if (btn) btn.dataset.tip = unpinned ? 'Pin right panel' : 'Unpin right panel';
   if (typeof applyToolbarDock === 'function') applyToolbarDock(false);
   try { localStorage.setItem('automata-rpanel-pinned', unpinned ? '0' : '1'); } catch (e) { }
+}
+
+const MOBILE_BUILD_PANEL_IDS = ['lpanel', 'rpanel'];
+const MOBILE_AUX_PANEL_IDS = ['algo-nav', 'gram-left', 'theory-nav'];
+const MOBILE_AUX_PANEL_BY_VIEW = {
+  algo: 'algo-nav',
+  grammar: 'gram-left',
+  theory: 'theory-nav'
+};
+
+function updateMobilePanelChrome() {
+  const openId = MOBILE_BUILD_PANEL_IDS.find(id => $(id)?.dataset.mobileCollapsed !== '1') || null;
+  const auxId = MOBILE_AUX_PANEL_BY_VIEW[App.view];
+  const auxOpen = !!auxId && $(auxId)?.dataset.mobileCollapsed !== '1';
+  const scrim = $('mobile-panel-scrim');
+  if (scrim) scrim.classList.toggle('open', !!openId);
+  const auxScrim = $('mobile-aux-sheet-scrim');
+  if (auxScrim) auxScrim.classList.toggle('open', auxOpen);
+
+  document.querySelectorAll('[data-mobile-panel-toggle]').forEach(toggle => {
+    const id = toggle.dataset.mobilePanelToggle;
+    const isOpen = id === openId || !!$(id) && $(id).dataset.mobileCollapsed !== '1';
+    toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    toggle.classList.toggle('active', isOpen);
+  });
 }
 
 function setMobilePanelCollapsed(id, collapsed, persist = true) {
   const panel = $(id);
   if (!panel) return;
   panel.dataset.mobileCollapsed = collapsed ? '1' : '0';
-  const toggle = panel.querySelector('.mobile-panel-toggle');
-  if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  panel.querySelectorAll('.mobile-panel-toggle').forEach(toggle => {
+    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  });
+  document.querySelectorAll(`[data-mobile-panel-toggle="${id}"]`).forEach(toggle => {
+    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  });
   if (persist) {
     try { localStorage.setItem(`automata-mobile-panel-${id}`, collapsed ? '1' : '0'); } catch (e) { }
   }
+  updateMobilePanelChrome();
 }
 
 function toggleMobilePanel(id, force) {
   const panel = $(id);
   if (!panel) return;
   const collapsed = force === undefined ? panel.dataset.mobileCollapsed !== '1' : !!force;
+
+  // Build panels behave like mutually exclusive bottom sheets on mobile. The
+  // auxiliary-view navigation panels remain independent because they live in
+  // their own overlay.
+  if (!collapsed && isMobilePanelLayout() && MOBILE_BUILD_PANEL_IDS.includes(id)) {
+    MOBILE_BUILD_PANEL_IDS.filter(otherId => otherId !== id).forEach(otherId => {
+      setMobilePanelCollapsed(otherId, true, false);
+    });
+  }
   setMobilePanelCollapsed(id, collapsed);
 }
 
+function closeMobilePanels() {
+  MOBILE_BUILD_PANEL_IDS.forEach(id => setMobilePanelCollapsed(id, true));
+}
+
+function closeMobileAuxNav() {
+  const id = MOBILE_AUX_PANEL_BY_VIEW[App.view];
+  if (id) setMobilePanelCollapsed(id, true);
+}
+
 function initMobilePanels() {
-  ['lpanel', 'rpanel', 'algo-nav', 'gram-left', 'theory-nav'].forEach(id => {
-    let collapsed = false;
-    try { collapsed = localStorage.getItem(`automata-mobile-panel-${id}`) === '1'; } catch (e) { }
+  let openedBuildPanel = false;
+  [...MOBILE_BUILD_PANEL_IDS, ...MOBILE_AUX_PANEL_IDS].forEach(id => {
+    let stored = null;
+    try { stored = localStorage.getItem(`automata-mobile-panel-${id}`); } catch (e) { }
+    // A fresh mobile session should reveal the canvas first. Existing explicit
+    // preferences still win, but two build sheets can never be open together.
+    const isBuildPanel = MOBILE_BUILD_PANEL_IDS.includes(id);
+    const isAuxPanel = MOBILE_AUX_PANEL_IDS.includes(id);
+    let collapsed = stored === null ? (isMobilePanelLayout() && (isBuildPanel || isAuxPanel)) : stored === '1';
+    if (isMobilePanelLayout() && isBuildPanel && !collapsed) {
+      if (openedBuildPanel) collapsed = true;
+      else openedBuildPanel = true;
+    }
     setMobilePanelCollapsed(id, collapsed, false);
   });
+  updateMobilePanelChrome();
 }
+
+// Selecting a tool should return the user to the result, not leave the
+// navigation sheet covering it. Inputs stay open so a grammar can still be
+// edited without repeatedly reopening the sheet.
+document.addEventListener('click', e => {
+  if (!isMobilePanelLayout()) return;
+  const target = e.target && e.target.closest ? e.target.closest.bind(e.target) : null;
+  const algoItem = target && target('#algo-nav .algo-item');
+  const theoryLink = target && target('#theory-nav .theory-nav-link');
+  if (algoItem) {
+    requestAnimationFrame(() => setMobilePanelCollapsed('algo-nav', true));
+    return;
+  }
+  if (theoryLink) {
+    requestAnimationFrame(() => setMobilePanelCollapsed('theory-nav', true));
+    return;
+  }
+  const grammarAction = target && target('#gram-left button:not(.mobile-panel-toggle)');
+  if (grammarAction) requestAnimationFrame(() => setMobilePanelCollapsed('gram-left', true));
+});
 
 function filterStates() {
   const q = ($('state-search')?.value || '').toLowerCase();
@@ -1694,6 +2241,8 @@ function filterAlgos() {
     grp.style.display = any ? '' : 'none';
   });
 }
+
+registerModal('settings-modal', { submit: () => confirmSettings() });
 
 function openSettingsModal() {
   const c = App.config;

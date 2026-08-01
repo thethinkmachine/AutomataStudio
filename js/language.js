@@ -457,7 +457,7 @@ function langSymChip(sym, opts = {}) {
     (!opts.plain && !v.uses[sym] && !v.wildcards ? ' dead' : '');
   const c = _le('span', cls, langIsSymbolic() ? sym : v.abbr[sym]);
   const n = v.uses[sym];
-  c.title = sym + (v.wildcards ? '' : n ? ` · ${n} transition${n > 1 ? 's' : ''}` : ' · declared in Σ but on no transition');
+  c.dataset.tip = sym + (v.wildcards ? '' : n ? ` · ${n} transition${n > 1 ? 's' : ''}` : ' · declared in Σ but on no transition');
   if (!opts.static) {
     c.addEventListener('mouseenter', () => langHighlightSymbol(sym, true));
     c.addEventListener('mouseleave', () => langHighlightSymbol(sym, false));
@@ -546,7 +546,7 @@ function renderLangFingerprint(host) {
       const label = w.length ? w.join('') : App.config.sym.eps;
       const c = _le('button', 'lang-fp-c' + (v === 'acc' ? ' acc' : v === 'unk' ? ' unk' : ''));
       c.type = 'button';
-      c.title = `${label} — ${v === 'acc' ? 'accepted' : v === 'unk' ? 'no verdict' : 'rejected'}`;
+      c.dataset.tip = `${label} — ${v === 'acc' ? 'accepted' : v === 'unk' ? 'no verdict' : 'rejected'}`;
       c.setAttribute('aria-label', c.title);
       const show = () => {
         read.innerHTML = '';
@@ -557,8 +557,8 @@ function renderLangFingerprint(host) {
       c.addEventListener('mouseenter', show);
       c.addEventListener('focus', show);
       c.addEventListener('click', () => {
-        grid.querySelectorAll('.lang-fp-c.sel').forEach(x => x.classList.remove('sel'));
-        c.classList.add('sel');
+        grid.querySelectorAll('.lang-fp-c.lang-fp-selected').forEach(x => x.classList.remove('lang-fp-selected'));
+        c.classList.add('lang-fp-selected');
         langLoadTrace(w);
       });
       cells.appendChild(c);
@@ -630,7 +630,7 @@ function renderLangTraces(host) {
     const row = _le('div', 'lang-tr-row');
     row.setAttribute('role', 'button');
     row.tabIndex = 0;
-    row.title = (w.length ? w.join(' → ') : 'ε') + '  ·  click to run in Simulate';
+    row.dataset.tip = (w.length ? w.join(' → ') : 'ε') + '  ·  click to run in Simulate';
     const syms = _le('div', 'lang-tr-syms');
     if (!w.length) syms.appendChild(_le('span', 'lang-tr-eps', App.config.sym.eps));
     else w.forEach(s => syms.appendChild(langSymChip(s)));
@@ -716,7 +716,7 @@ function renderLangTuple() {
     b.setAttribute('aria-expanded', 'false');
     b.appendChild(document.createTextNode(s));
     if (info.n != null) b.appendChild(_le('sup', null, String(info.n)));
-    b.title = `${s} — ${info.say}`;
+    b.dataset.tip = `${s} — ${info.say}`;
     b.addEventListener('click', () => {
       if (active === b) {
         b.setAttribute('aria-expanded', 'false');
@@ -774,7 +774,7 @@ function renderLangVocabList(open) {
     row.dataset.name = s.toLowerCase();
     const nm = _le('div', 'lang-voc-name');
     nm.appendChild(langSymChip(s));
-    const t = _le('span', 't', s); t.title = s;
+    const t = _le('span', 't', s); t.dataset.tip = s;
     nm.appendChild(t);
     row.appendChild(nm);
     // Meter is magnitude, so one hue on its own soft track; identity
@@ -819,9 +819,34 @@ function toggleFormalDef() {
   if (btn) {
     btn.setAttribute('aria-expanded', String(show));
     btn.classList.toggle('open', show);
-    btn.title = show ? 'Hide the full formal definition' : 'Show the full formal definition';
+    btn.dataset.tip = show ? 'Hide the full formal definition' : 'Show the full formal definition';
   }
   if (show && typeof updateDefBoxOverflowShadow === 'function') updateDefBoxOverflowShadow();
+}
+
+// Flags the claim row while the expression runs past its right edge, which
+// drives the fade. Re-run on resize as well as on re-render: the panel is
+// user-resizable, so the same text overflows or not depending on width.
+function updateLangClaimOverflow() {
+  const box = $('regex-box');
+  if (!box || !box.parentElement) return;
+  const maxScroll = Math.max(0, box.scrollWidth - box.clientWidth);
+  // Clear the fade once scrolled to the end — there is nothing further right
+  // to hint at.
+  box.parentElement.classList.toggle('has-more', maxScroll > 2 && box.scrollLeft < maxScroll - 2);
+}
+
+// Mirrors initDefBoxOverflowObserver for the claim row: the panel is
+// user-resizable, so overflow has to be re-measured on width changes and not
+// only when the text is rebuilt.
+function initLangClaimOverflowObserver() {
+  const box = $('regex-box');
+  if (!box || box._overflowObsInit) return;
+  box._overflowObsInit = true;
+  box.addEventListener('scroll', updateLangClaimOverflow);
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(updateLangClaimOverflow).observe(box);
+  }
 }
 
 // ── entry point ───────────────────────────────────────────────────
@@ -833,19 +858,16 @@ function renderLanguagePanel() {
   }
   const claim = $('regex-box');
   if (claim) claim.classList.toggle('asserted', App._regexIsDerived === false);
-  const micro = $('lang-micro');
-  if (micro) {
-    if (App._regexIsDerived === false) {
-      micro.textContent = 'asserted by machine type · fixed';
-    } else {
-      // A regex over word symbols runs to thousands of characters and only
-      // its first few lines are visible. Say how much is out of view rather
-      // than let the scrollbar imply it is nearly all there.
-      const n = (App._regexBoxPlain || '').length;
-      micro.textContent = 'derived from the graph · live' +
-        (n > 240 ? ` · ${n.toLocaleString()} chars` : '');
-    }
+  // The derived/asserted distinction is carried by the mono-gold vs
+  // serif-italic type. The copy button also reports unusually long regexes.
+  const copyBtn = $('regex-copy-btn');
+  if (copyBtn) {
+    const n = (App._regexBoxPlain || '').length;
+    copyBtn.dataset.tip = App._regexIsDerived === false || n <= 240
+      ? 'Copy regular expression'
+      : `Copy regular expression (${n.toLocaleString()} chars)`;
   }
+  updateLangClaimOverflow();
   renderLangExtension();
   renderLangTuple();
 }

@@ -1,4 +1,20 @@
-/* ─── SIDEBAR ─── */
+/* ─── SIDEBAR ───
+   Both panels' collapsible section headers share one visual spec. They had
+   drifted apart (different padding, label size, arrow size and badge style),
+   which made the two sidebars look like different components. These tokens
+   are the single source of truth for that row — change them here, not in the
+   .lp-/.rp- rules below. */
+:root {
+  --sec-head-pad: 9px 13px 7px;
+  --sec-head-gap: 8px;
+  --sec-label-size: .68rem;
+  --sec-label-tracking: .085em;
+  --sec-arrow-size: 12px;
+  /* Shared cap for the States and Transitions lists — both scroll internally
+     at the same height instead of one stretching to fill the panel. */
+  --lp-list-max-h: 168px;
+}
+
 .lpanel {
   width: var(--lpanel-width, 256px);
   min-width: var(--lpanel-width, 256px);
@@ -32,27 +48,11 @@
   flex: initial;
 }
 
-#lp-transitions {
-  flex: 1;
-  min-height: 0;
-}
-
-#lp-transitions .lp-section-body {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-
-#lp-transitions.collapsed {
-  flex: initial;
-}
-
 .lpanel .lp-section-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px 7px;
+  gap: var(--sec-head-gap);
+  padding: var(--sec-head-pad);
   cursor: pointer;
   user-select: none;
   transition: background var(--transition-fast);
@@ -70,20 +70,21 @@
 .lpanel .lp-section-header .sec-lbl {
   margin-bottom: 0;
   flex: 1;
-  font-size: .66rem;
-  letter-spacing: .1em;
+  font-size: var(--sec-label-size);
+  letter-spacing: var(--sec-label-tracking);
 }
 
+/* Fill alone carries the chip — the extra ring on top of it was what made
+   these read as heavy buttons rather than counts. */
 .lp-section-count {
-  min-width: 18px;
-  height: 18px;
-  padding: 0 6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
   border-radius: 999px;
-  border: 1px solid var(--accent-border);
   background: var(--accent-soft);
   color: var(--accent);
   font-family: var(--mono);
-  font-size: .64rem;
+  font-size: .62rem;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
@@ -92,13 +93,24 @@
   flex-shrink: 0;
 }
 
+/* A zero count is not news — mute it so populated sections stand out. */
+.lp-section-count[data-empty="1"] {
+  background: var(--surface3, var(--bg3));
+  color: var(--text3);
+}
+
 .lp-toggle-arrow {
-  width: 13px;
-  height: 13px;
+  width: var(--sec-arrow-size);
+  height: var(--sec-arrow-size);
   fill: var(--text3);
   stroke: none;
   flex-shrink: 0;
-  transition: transform var(--transition-fast), fill var(--transition-fast);
+  opacity: .75;
+  transition: transform var(--transition-fast), fill var(--transition-fast), opacity var(--transition-fast);
+}
+
+.lp-section-header:hover .lp-toggle-arrow {
+  opacity: 1;
 }
 
 .lp-collapsible.collapsed .lp-toggle-arrow {
@@ -117,8 +129,16 @@
   margin-bottom: 8px;
 }
 
+/* Same treatment as the States/Transitions lists: cap the height and scroll
+   internally so a large alphabet can't grow the section unbounded. Applies to
+   Σ, Γ and Δ, which all use this container. */
 .lp-collapsible .chips {
   min-height: 22px;
+  max-height: var(--lp-list-max-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Keeps the scrollbar off the rounded chip borders once it appears. */
+  padding-right: 5px;
 }
 
 .sec:last-child {
@@ -128,21 +148,24 @@
 
 .sec-lbl {
   font-family: var(--mono);
-  font-size: .72rem;
-  letter-spacing: .1em;
+  font-size: var(--sec-label-size);
+  letter-spacing: var(--sec-label-tracking);
   text-transform: uppercase;
   color: var(--text3);
   margin-bottom: 8px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
+/* The connector fades out toward the badge instead of butting into it at
+   full strength, which is most of what made these rows feel heavy. */
 .sec-lbl::after {
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--border);
+  margin-left: 2px;
+  background: linear-gradient(to right, var(--border), transparent);
 }
 
 .row {
@@ -262,12 +285,15 @@
   color: var(--red);
 }
 
+/* States and Transitions behave identically: both cap at the same height and
+   scroll internally rather than growing the panel. */
 .slist {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  max-height: 150px;
+  max-height: var(--lp-list-max-h);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .si {
@@ -289,7 +315,7 @@
   border-color: var(--border2);
 }
 
-.si.sel {
+.si.lp-selected {
   border-color: var(--accent-border-strong);
   background: var(--accent-soft);
 }
@@ -346,13 +372,9 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 95%;
+  max-height: var(--lp-list-max-h);
   overflow-y: auto;
-}
-
-#lp-transitions .tlist {
-  flex: 1;
-  max-height: none;
+  overscroll-behavior: contain;
 }
 
 .ti {
@@ -375,7 +397,7 @@
   border-color: var(--border2);
 }
 
-.ti.sel {
+.ti.lp-selected {
   border-color: var(--accent-border-strong);
   background: var(--accent-soft);
 }
@@ -522,13 +544,15 @@ body.panel-resizing .rpanel {
   z-index: 101;
 }
 
+/* Subordinate to the app header, not a second one: no bottom rule, and the
+   title sits at a lighter weight/colour so the eye goes to the app bar first
+   and to the section labels below it second. */
 .panel-header {
-  padding: 10px 14px;
+  padding: 8px 13px 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  border-bottom: 1px solid var(--border);
   background: var(--bg2);
   flex-shrink: 0;
   transition: opacity var(--transition-base), visibility var(--transition-base);
@@ -536,10 +560,10 @@ body.panel-resizing .rpanel {
 
 .panel-header-title {
   font-family: var(--sans);
-  font-size: .78rem;
-  font-weight: 600;
-  color: var(--text2);
-  letter-spacing: .01em;
+  font-size: .72rem;
+  font-weight: 500;
+  color: var(--text3);
+  letter-spacing: .02em;
 }
 
 .pin-btn {
@@ -575,6 +599,10 @@ body.panel-resizing .rpanel {
   display: flex;
   flex-direction: column;
   flex: 1;
+  /* Without this a flex column refuses to shrink past its content, so the
+     transitions section (flex:1, min-height:0) never actually got a bounded
+     height and grew the panel instead of scrolling inside itself. */
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -606,8 +634,8 @@ body.panel-resizing .rpanel {
 .rp-section-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 14px 8px 14px;
+  gap: var(--sec-head-gap);
+  padding: var(--sec-head-pad);
   cursor: pointer;
   user-select: none;
   transition: background var(--transition-fast);
@@ -619,13 +647,13 @@ body.panel-resizing .rpanel {
 
 .rp-section-title {
   font-family: var(--mono);
-  font-size: .72rem;
-  letter-spacing: .1em;
+  font-size: var(--sec-label-size);
+  letter-spacing: var(--sec-label-tracking);
   text-transform: uppercase;
   color: var(--text3);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex: 1;
 }
 
@@ -633,17 +661,32 @@ body.panel-resizing .rpanel {
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--border);
-  margin-left: 6px;
+  background: linear-gradient(to right, var(--border), transparent);
+  margin-left: 2px;
 }
 
 .rp-toggle-arrow {
-  width: 14px;
-  height: 14px;
+  width: var(--sec-arrow-size);
+  height: var(--sec-arrow-size);
   fill: var(--text3);
   stroke: none;
   flex-shrink: 0;
-  transition: transform var(--transition-fast);
+  opacity: .75;
+  transition: transform var(--transition-fast), opacity var(--transition-fast);
+}
+
+.rp-section-header:hover .rp-toggle-arrow {
+  opacity: 1;
+}
+
+/* Match the left panel's count chip: fill only, no ring. Scoped to the
+   header so the .badge/.bd-* pills used elsewhere keep their own look. */
+.rp-section-header .badge {
+  border-color: transparent;
+  font-size: .62rem;
+  padding: 1px 7px;
+  letter-spacing: .03em;
+  flex-shrink: 0;
 }
 
 .rp-collapsible.collapsed .rp-toggle-arrow {

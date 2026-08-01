@@ -861,14 +861,17 @@ test('renderLanguagePanel builds without throwing in both modes', () => {
   App._regexBoxPlain = '(a|b)*abb';
   assert.doesNotThrow(() => context.renderLanguagePanel());
   assert.ok(harness.getElement('lang-extension').children.length > 0);
-  assert.match(harness.getElement('lang-micro').textContent, /derived from the graph/);
+  assert.strictEqual(harness.getElement('rp-language').classList.contains('lang-asserted'), false,
+    'a derivation must not be marked as an asserted class label');
 
   reset();
   workflow();
   App._regexIsDerived = true;
   App._regexBoxPlain = 'x'.repeat(1200);
   assert.doesNotThrow(() => context.renderLanguagePanel());
-  assert.match(harness.getElement('lang-micro').textContent, /1,200 chars/,
+  // The claim is a single line, so the length of a regex too long to show
+  // is disclosed on the copy button rather than in a caption beneath it.
+  assert.match(harness.getElement('regex-copy-btn').dataset.tip, /1,200 chars/,
     'a long derivation should say how much is out of view');
 });
 
@@ -878,7 +881,10 @@ test('an asserted class label is marked as asserted, not derived', () => {
   App._regexIsDerived = false;
   App._regexBoxPlain = 'Recursively Enumerable Language';
   context.renderLanguagePanel();
-  assert.match(harness.getElement('lang-micro').textContent, /asserted by machine type/);
+  // Carried by the styling hooks — the pulsing live dot is hidden and the
+  // claim switches to the serif class-label face.
+  assert.strictEqual(harness.getElement('rp-language').classList.contains('lang-asserted'), true);
+  assert.strictEqual(harness.getElement('regex-box').classList.contains('asserted'), true);
 });
 
 test('renderLanguagePanel survives an empty canvas', () => {

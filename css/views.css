@@ -3,6 +3,277 @@
   flex: 1;
   display: flex;
   overflow: hidden;
+  position: relative;
+}
+
+/* ─── AUXILIARY VIEW MODAL ───
+   Algorithms, Grammar and Theory present as centered modal dialogs over the
+   canvas, which stays mounted underneath. They share one chrome — icon, title,
+   subtitle, close — so all three read as the same kind of object regardless of
+   how different their interiors are.
+
+   Sized in viewport units with a max cap: large enough for a two-pane
+   nav+content layout and wide tables, but always visibly inset from the edges
+   so the canvas frames it and the modal reads as *on top of* the app. */
+.aux-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 880;
+  display: none;
+  background: var(--overlay);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.aux-scrim.open {
+  display: block;
+  animation: auxScrimIn .18s ease-out;
+}
+
+.aux-overlay {
+  position: fixed;
+  z-index: 890;
+  top: 50%;
+  left: 50%;
+  width: min(1180px, 92vw);
+  height: min(860px, 88vh);
+  transform: translate(-50%, -50%);
+  display: none;
+  flex-direction: column;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--overlay-ring);
+  overflow: hidden;
+}
+
+.aux-overlay.open {
+  display: flex;
+  animation: auxOverlayIn .2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.aux-overlay:focus {
+  outline: none;
+}
+
+@keyframes auxScrimIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes auxOverlayIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(.975); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes auxOverlayInFull {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aux-overlay.open,
+  .aux-scrim.open {
+    animation: none;
+  }
+}
+
+/* ── Shared modal chrome ── */
+.aux-overlay-bar {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 15px 14px 15px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.aux-overlay-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+}
+
+.aux-overlay-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.aux-overlay-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.aux-overlay-title {
+  font-family: var(--sans);
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  color: var(--text);
+  line-height: 1.25;
+}
+
+.aux-overlay-sub {
+  font-family: var(--mono);
+  font-size: .67rem;
+  color: var(--text3);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aux-overlay-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast),
+              border-color var(--transition-fast);
+}
+
+.aux-overlay-close svg {
+  width: 15px;
+  height: 15px;
+}
+
+.aux-overlay-close:hover {
+  background: var(--red-soft);
+  border-color: var(--red-border);
+  color: var(--red);
+}
+
+.aux-overlay-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.aux-overlay-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Each view is a nav + content pair that must fill the modal. */
+.aux-overlay-body > div {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The modal supplies the outer frame and its own background, so the views'
+   left rails sit on the recessed tone and the content pane on the raised one.
+   That inversion is what separates the two panes without a heavy divider. */
+.aux-overlay .algo-nav,
+.aux-overlay .gram-left,
+.aux-overlay .theory-nav {
+  background: var(--bg);
+}
+
+.aux-overlay .algo-content,
+.aux-overlay .gram-right {
+  background: var(--bg2);
+}
+
+/* The sticky search rides on the nav rail, so it must match that tone rather
+   than the content pane's. */
+.aux-overlay .algo-search-wrap {
+  background: var(--bg);
+  padding: 12px 12px 10px;
+}
+
+/* The nav rails are the modal's inner edge, not the window's — a full-weight
+   border reads as a seam here, so lighten it. */
+.aux-overlay .algo-nav,
+.aux-overlay .gram-left,
+.aux-overlay .theory-nav {
+  border-right: 1px solid var(--border);
+}
+
+/* Breathing room matched to the modal's own chrome padding. */
+.aux-overlay .algo-content {
+  padding: 22px 26px 28px;
+}
+
+.aux-overlay .gram-right {
+  padding: 22px 26px 28px;
+}
+
+.aux-overlay .gram-left > .mobile-panel-content {
+  padding-bottom: 10px;
+}
+
+/* Theory's content pane sets its own padding inline; keep the bottom generous
+   so the last section can scroll clear of the modal edge. */
+.aux-overlay #v-theory .algo-content {
+  padding: 24px 28px 40px;
+}
+
+.aux-overlay .theory-nav-header {
+  padding: 14px 14px 12px;
+}
+
+@media (max-width: 900px) {
+  /* Full-screen below the header at this width — a centered, inset dialog
+     wastes space that the nav+content pair needs. */
+  .aux-overlay {
+    top: var(--hdr);
+    left: 0;
+    width: 100%;
+    height: calc(100% - var(--hdr));
+    transform: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /* The centered animation translates by -50%; a full-screen modal must not,
+     so it gets its own keyframes rather than redefining the shared name. */
+  .aux-overlay.open {
+    animation: auxOverlayInFull .2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .aux-overlay-bar {
+    padding: 11px 10px 11px 14px;
+    gap: 10px;
+  }
+
+  .aux-overlay-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .aux-overlay-title {
+    font-size: .92rem;
+  }
+
+  /* The modal is a fixed-height box, so its contents scroll inside it rather
+     than extending the page. */
+  .aux-overlay-body {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-direction: column;
+  }
+
+  .aux-scrim {
+    display: none !important;
+  }
 }
 
 /* Build View */
@@ -93,6 +364,9 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  /* Same reason as .lpanel-content: a flex column won't shrink below its
+     content without this, so overflow-y never engages. */
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -331,36 +605,15 @@
 }
 
 /* ── the claim: what L(M) is ────────────────────────────────────
-   Sized to its content instead of to a fixed 76px, so a two-symbol
-   regex costs two lines and a thousand-character one scrolls. */
+   One line, always. A derived regex can run to thousands of characters,
+   and wrapping it turned the panel into a wall of text that pushed the
+   rest of the section off screen. It scrolls horizontally instead, and
+   the copy button next to it is how you get the whole thing. */
 .lang-claim-wrap {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 7px;
   margin-top: 6px;
-}
-
-/* Marks a derivation that recomputes as the graph changes. Absent on
-   an asserted class label, which is a constant. */
-.lang-live {
-  width: 6px;
-  height: 6px;
-  margin-top: 7px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--gold);
-  box-shadow: 0 0 0 0 var(--gold-border);
-  animation: lang-pulse 2.6s ease-out infinite;
-}
-
-@keyframes lang-pulse {
-  0% { box-shadow: 0 0 0 0 var(--gold-border); }
-  70% { box-shadow: 0 0 0 6px transparent; }
-  100% { box-shadow: 0 0 0 0 transparent; }
-}
-
-.lang-asserted .lang-live {
-  display: none;
 }
 
 .lang-claim {
@@ -368,15 +621,42 @@
   min-width: 0;
   font-family: var(--mono);
   font-size: .78rem;
-  /* Whole multiple of the line box, so a long derivation scrolls from a
-     clean edge instead of being sliced through the middle of a row. */
   line-height: 1.5;
-  max-height: 6em;
   color: var(--gold);
-  padding-right: 24px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* The thin themed scrollbar would sit on the text baseline in a
+     single-line box; the row is short enough to drag-scroll or copy. */
+  scrollbar-width: none;
+}
+
+.lang-claim::-webkit-scrollbar {
+  height: 0;
+}
+
+/* Fades the right edge while more regex remains, so a clipped expression
+   reads as continuing rather than as ending there. Toggled by
+   updateLangClaimOverflow as the text and panel width change. */
+.lang-claim-wrap {
+  position: relative;
+}
+
+.lang-claim-wrap::after {
+  content: '';
+  position: absolute;
+  right: 26px;
+  top: 0;
+  bottom: 0;
+  width: 22px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  background: linear-gradient(to right, transparent, var(--bg2));
+}
+
+.lang-claim-wrap.has-more::after {
+  opacity: 1;
 }
 
 .lang-claim.asserted {
@@ -387,7 +667,6 @@
   word-break: normal;
 }
 
-.lang-micro,
 .lang-cap,
 .lang-foot {
   font-family: var(--mono);
@@ -397,7 +676,6 @@
   color: var(--text3);
 }
 
-.lang-micro { margin-top: 5px; }
 .lang-foot { margin-top: 7px; letter-spacing: .06em; text-transform: none; }
 
 .lang-note {
@@ -506,7 +784,7 @@
   z-index: 2;
 }
 
-.lang-fp-c.sel { box-shadow: 0 0 0 1.5px var(--accent); }
+.lang-fp-c.lang-fp-selected { box-shadow: 0 0 0 1.5px var(--accent); }
 
 .lang-fp-read {
   margin-top: 7px;
@@ -819,7 +1097,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lang-live { animation: none; }
   .lang-fp-c:hover { transform: none; }
 }
 

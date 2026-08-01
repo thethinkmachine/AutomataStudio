@@ -194,11 +194,11 @@ function renderOneDivider(g, d) {
     grp.appendChild(handle);
   });
 
-  const titleEl = makeSVG('title');
-  titleEl.textContent = kind === 'rect'
+  const dividerTip = kind === 'rect'
     ? 'Drag to move · drag a corner to resize · double-click to label · right-click for options'
     : 'Drag to move · drag an endpoint to reshape · double-click to label · right-click for options';
-  grp.appendChild(titleEl);
+  grp.setAttribute('data-tip', dividerTip);
+  grp.setAttribute('aria-label', dividerTip);
 
   attachDividerHandlers(grp, d);
   g.appendChild(grp);
@@ -529,6 +529,11 @@ function ctxStraightenDivider() {
 // ══════════════════════════════════════════════════════════════════
 //  LABEL MODAL
 // ══════════════════════════════════════════════════════════════════
+registerModal('divider-modal', {
+  submit: () => confirmDivider(),
+  onClose: () => { App.editDividerId = null; }
+});
+
 function openDividerModal(id) {
   const d = getDivider(id);
   if (!d) return;
@@ -586,14 +591,9 @@ function deleteDividerFromModal() {
 // ══════════════════════════════════════════════════════════════════
 //  TOOLBAR: the merged Shape button (draws either a divider or a rect)
 // ══════════════════════════════════════════════════════════════════
-// One toolbar slot covers both shapes rather than two near-identical buttons:
-// clicking it (re)activates whichever kind was used last, mirroring the
-// icon-swap already used for the Run button (see setRunBtnState in
-// simulation.js). Switching kind is a right-click away, matching every other
-// right-click-for-more-options surface in this app (states/edges/notes/
-// dividers/canvas background) instead of inventing a new caret/dropdown
-// affordance that would also need bespoke layout in the toolbar's 4 dock
-// orientations and its collapsed icon rail.
+// One toolbar slot covers both shapes rather than two near-identical buttons.
+// Clicking it opens the picker so the two drawing modes are discoverable;
+// keyboard shortcuts remain available for quick switching.
 const SHAPE_TOOL_ICON_LINE = '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M214.64,41.36a32,32,0,0,0-50.2,38.89L80.25,164.44a32.06,32.06,0,0,0-38.89,4.94h0a32,32,0,1,0,50.2,6.37l84.19-84.19a32,32,0,0,0,38.89-50.2Zm-139.33,162a16,16,0,0,1-22.64-22.64h0a16,16,0,0,1,22.63,0h0A16,16,0,0,1,75.31,203.33Zm128-128a16,16,0,1,1,0-22.63A16,16,0,0,1,203.33,75.3Z"/></svg>';
 const SHAPE_TOOL_ICON_RECT = '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Z"/></svg>';
 const SHAPE_TOOL_LABELS = { divider: 'Divider', rect: 'Region' };
@@ -615,7 +615,7 @@ function updateShapeToolButton(tool) {
   if (lbl) lbl.textContent = SHAPE_TOOL_LABELS[kind];
   if (kbd) kbd.textContent = SHAPE_TOOL_KBD[kind];
   const btn = $('t-shape');
-  if (btn) btn.title = `Shape — drag to draw a Divider line or Region box (last used: ${SHAPE_TOOL_LABELS[kind]}); right-click to switch; L = line, R = rectangle; click again to return to Pointer`;
+  if (btn) btn.dataset.tip = `Shape — drag to draw a Divider line or Region box (last used: ${SHAPE_TOOL_LABELS[kind]}); right-click to switch; L = line, R = rectangle; click again to return to Pointer`;
 }
 
 // Click activates the remembered kind; toggleTool's existing "click the
@@ -636,13 +636,21 @@ function showShapeToolMenu(e) {
     el.classList.toggle('active', el.dataset.shape === App.lastShapeTool);
   });
   m.style.display = 'block';
-  const w = 200, h = m.offsetHeight || 84;
-  m.style.left = Math.max(8, Math.min(e.clientX, innerWidth - w)) + 'px';
-  m.style.top = Math.max(8, Math.min(e.clientY, innerHeight - h)) + 'px';
+  const btn = $('t-shape');
+  const br = btn?.getBoundingClientRect();
+  const w = m.offsetWidth || 190;
+  const h = m.offsetHeight || 84;
+  const left = br ? br.left : e.clientX;
+  let top = br ? br.bottom + 6 : e.clientY;
+  if (top + h > innerHeight - 8 && br) top = br.top - h - 6;
+  m.style.left = Math.max(8, Math.min(left, innerWidth - w - 8)) + 'px';
+  m.style.top = Math.max(8, Math.min(top, innerHeight - h - 8)) + 'px';
+  btn?.setAttribute('aria-expanded', 'true');
 }
 function hideShapeToolMenu() {
   const m = $('shape-tool-menu');
   if (m) m.style.display = 'none';
+  $('t-shape')?.setAttribute('aria-expanded', 'false');
 }
 document.addEventListener('click', () => hideShapeToolMenu());
 

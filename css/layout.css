@@ -1,12 +1,25 @@
-/* ─── HEADER ─── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ─── HEADER ───
+   One unified bar. The workspace tab strip is the only flexible element, so it
+   absorbs all slack and every other cluster keeps its intrinsic width. */
 header {
   height: var(--hdr);
   min-height: var(--hdr);
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: stretch;
-  gap: 0;
-  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 0;
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
   z-index: 200;
@@ -16,25 +29,25 @@ header {
 .hdr-left {
   display: flex;
   align-items: center;
-  padding: 0 20px;
+  padding: 0 16px;
   border-right: 1px solid var(--border);
+  align-self: stretch;
   flex-shrink: 0;
   gap: 10px;
-}
-
-.hdr-center {
-  display: flex;
-  align-items: stretch;
-  justify-content: flex-start;
-  padding: 0;
 }
 
 .hdr-right {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 10px;
-  border-left: 1px solid var(--border);
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Related actions sit tight together; `.hdr-sep` separates the clusters. */
+.hdr-group {
+  display: flex;
+  align-items: center;
+  gap: 1px;
   flex-shrink: 0;
 }
 
@@ -72,47 +85,74 @@ header {
   padding-left: 2px;
 }
 
-/* ─── MAIN NAV TABS (IDE-style underline) ─── */
-.nav-tabs {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  background: transparent;
-  padding: 0;
-  border-radius: 0;
-  border: none;
-}
-
-.nav-btn {
-  font-family: var(--mono);
-  font-size: .75rem;
-  font-weight: 400;
-  letter-spacing: .03em;
-  padding: 0 20px;
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-top: 2px solid transparent;
-  background: transparent;
-  color: var(--text3);
-  border-radius: 0;
-  cursor: pointer;
-  transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
+/* ─── TOOLS PICKER (auxiliary views) ───
+   Algorithms / Grammar / Theory are not peers of Build, so they live behind a
+   single control rather than in a tab row. */
+.tools-picker {
   position: relative;
+  flex-shrink: 0;
 }
 
-.nav-btn:hover {
-  color: var(--text2);
-  background: var(--surface);
+.tools-btn .chevron {
+  width: 11px;
+  height: 11px;
+  fill: currentColor;
+  opacity: .65;
+  transition: transform var(--transition-fast);
 }
 
-.nav-btn.active {
+.tools-picker.open .tools-btn {
+  background: var(--surface2);
   color: var(--text);
-  background: transparent;
-  border-bottom-color: var(--accent);
-  font-weight: 500;
+  border-color: var(--border2);
+}
+
+.tools-picker.open .chevron {
+  transform: rotate(180deg);
+}
+
+/* Lit while an auxiliary view is open, so there is always a visible cue that
+   the canvas is underneath rather than gone. */
+.tools-btn.view-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+
+/* Anchored to their trigger rather than the viewport, so they override the
+   position:fixed that .ctx uses for cursor-placed context menus. The .ctx-
+   qualified selectors are needed because modals.css loads after this file and
+   its `.ctx { display: none }` would otherwise win at equal specificity. */
+.ctx.tools-menu,
+.ctx.hdr-more-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 210px;
+  display: none;
+  z-index: 950;
+}
+
+.ctx.tools-menu.open,
+.ctx.hdr-more-menu.open {
+  display: block;
+}
+
+.tools-menu .ctx-i.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ─── HEADER OVERFLOW ─── */
+.hdr-more {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.hdr-more.open > .hbtn {
+  background: var(--surface2);
+  color: var(--text);
+  border-color: var(--border2);
 }
 
 /* ─── HEADER SEPARATOR ─── */
@@ -163,6 +203,14 @@ header {
   flex-shrink: 0;
 }
 
+/* Square, label-less button. Relies on title/aria-label for its name. */
+.hbtn.icon-only {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+
 .hbtn.warn:hover {
   background: var(--red-soft);
   color: var(--red);
@@ -174,16 +222,29 @@ header {
   border-color: var(--green-border);
 }
 
-/* ─── TABS ─── */
+/* ─── TABS ───
+   The only flexible cluster in the header: it takes the remaining width so the
+   action groups on either side stay at their intrinsic size. */
+.tab-bar-wrap {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+  height: 100%;
+  overflow: hidden;
+}
+
 .tab-bar {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 1px;
   background: transparent;
-  height: var(--hdr2);
+  height: 100%;
   border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
   flex: 1;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   user-select: none;
@@ -191,6 +252,149 @@ header {
   padding: 0 4px;
   position: relative;
   transition: box-shadow var(--transition-fast);
+}
+
+/* Jump-to-tab dropdown trigger — hidden until updateTabOverflowShadows()
+   detects the strip can't fit every tab; on mobile that kicks in with far
+   fewer tabs than on desktop, so the same mechanism covers both. */
+.tab-overflow-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  align-self: center;
+  margin-right: 2px;
+  flex: 0 0 auto;
+  z-index: 1;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text3);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.tab-overflow-btn.show {
+  display: flex;
+}
+
+.tab-overflow-btn:hover {
+  background: var(--surface);
+  color: var(--text2);
+  border-color: var(--border2);
+}
+
+.tab-overflow-btn[aria-expanded="true"] {
+  background: var(--surface2);
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+
+.tab-overflow-btn svg {
+  width: 11px;
+  height: 11px;
+  fill: currentColor;
+  transition: transform var(--transition-fast);
+}
+
+.tab-overflow-btn[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.tab-overflow-menu {
+  max-height: min(60vh, 380px);
+  overflow-y: auto;
+  width: 250px;
+  /* Matches .example-menu — see the note there on clearing the header. */
+  z-index: 950;
+}
+
+.tab-overflow-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: .78rem;
+  color: var(--text2);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.tab-overflow-item:hover,
+.tab-overflow-item:focus-visible {
+  background: var(--surface3);
+  color: var(--text);
+  outline: none;
+}
+
+.tab-overflow-item.active {
+  color: var(--text);
+  background: var(--tab-active-bg);
+  font-weight: 500;
+}
+
+.tab-overflow-item-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--item-accent, var(--accent));
+  flex: 0 0 auto;
+}
+
+.tab-overflow-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-overflow-item-dirty {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--orange);
+  flex: 0 0 auto;
+}
+
+.tab-overflow-item-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text3);
+  opacity: 0;
+  flex: 0 0 auto;
+  transition: opacity var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+}
+
+.tab-overflow-item-close svg {
+  width: 9px;
+  height: 9px;
+  fill: currentColor;
+}
+
+.tab-overflow-item:hover .tab-overflow-item-close,
+.tab-overflow-item:focus-within .tab-overflow-item-close {
+  opacity: 1;
+}
+
+.tab-overflow-item-close:hover {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+@media (pointer: coarse) {
+  .tab-overflow-item-close {
+    opacity: .75;
+  }
 }
 
 .tab-bar.has-overflow-left {
@@ -215,9 +419,7 @@ header {
   gap: 6px;
   padding: 0 10px;
   border: 1px solid transparent;
-  border-bottom: none;
-  border-top-left-radius: 4px;
-  border-top-right-radius: 4px;
+  border-radius: 5px;
   font-family: var(--sans);
   font-size: .74rem;
   letter-spacing: .01em;
@@ -225,8 +427,7 @@ header {
   cursor: pointer;
   background: transparent;
   white-space: nowrap;
-  height: calc(100% - 8px);
-  margin-top: 8px;
+  height: 30px;
   position: relative;
   transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
   flex: 0 0 auto;
@@ -265,19 +466,6 @@ header {
   right: -2px;
 }
 
-.tab::after {
-  content: '';
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: -1px;
-  height: 2px;
-  border-radius: 1px 1px 0 0;
-  background: transparent;
-  opacity: 0;
-  transition: background var(--transition-fast), opacity var(--transition-fast);
-}
-
 .tab:hover {
   background: var(--tab-hover-bg);
   color: var(--text2);
@@ -289,11 +477,6 @@ header {
   color: var(--text);
   border-color: var(--tab-active-border);
   font-weight: 500;
-}
-
-.tab.active::after {
-  background: var(--tab-active-line);
-  opacity: 1;
 }
 
 .tab:focus-visible {
@@ -335,6 +518,33 @@ header {
   background: var(--orange);
   box-shadow: 0 0 0 1px var(--tab-active-bg);
   flex: 0 0 auto;
+}
+
+/* Unsaved marker on the Save button, mirroring the tab's dirty dot so the
+   same signal reads the same way in both places. Hidden until there is
+   something to save, so a clean workspace shows a plain icon. */
+#save-now-btn {
+  position: relative;
+}
+
+.save-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--orange);
+  box-shadow: 0 0 0 2px var(--bg2);
+  opacity: 0;
+  transform: scale(.6);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  pointer-events: none;
+}
+
+#save-now-btn.is-dirty .save-dot {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .tab-close {
@@ -405,6 +615,65 @@ header {
   box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
+/* ─── CLOSED-TAB UNDO TOAST ─── */
+.tab-undo-toast {
+  position: fixed;
+  top: calc(var(--hdr) + 10px);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--overlay-ring);
+  font-family: var(--sans);
+  font-size: .74rem;
+  color: var(--text2);
+  z-index: 900;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -6px);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.tab-undo-toast.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+}
+
+.tab-undo-toast button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: .68rem;
+  letter-spacing: .03em;
+  padding: 4px 6px 4px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.tab-undo-toast button:hover,
+.tab-undo-toast button:focus-visible {
+  background: var(--accent-soft-strong);
+  border-color: var(--accent-border-strong);
+}
+
+.tab-undo-toast .ctx-kbd-hint {
+  background: transparent;
+  border-color: var(--accent-border);
+  color: inherit;
+  opacity: .75;
+}
+
 /* ─── APP BODY ─── */
 .app-body {
   flex: 1;
@@ -423,62 +692,28 @@ header {
 }
 
 
-/* ─── SUB-TOOLBAR ─── */
-.sub-toolbar {
-  height: var(--hdr2);
-  min-height: var(--hdr2);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 12px;
-  background: var(--bg2);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  z-index: 100;
-}
-
-.stb-label {
-  font-family: var(--mono);
-  font-size: .6rem;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: var(--text3);
-  white-space: nowrap;
-  flex-shrink: 0;
-  padding-right: 8px;
-  border-right: 1px solid var(--border);
-  margin-right: 2px;
-}
-
-.stb-sep {
-  width: 1px;
-  height: 18px;
-  background: var(--border2);
-  flex-shrink: 0;
-}
-
 /* ─── MODEL PICKER ─── */
 .model-picker-container {
   position: relative;
-  height: calc(100% - 10px);
   display: flex;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .model-picker-btn {
-  height: 34px;
-  min-width: 180px;
+  height: 32px;
+  min-width: 150px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: 0 10px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
   transition: all var(--transition-fast);
   color: var(--text);
-  gap: 12px;
+  gap: 10px;
   user-select: none;
 }
 
@@ -557,54 +792,66 @@ header {
   display: block;
 }
 
-/* ── Example picker dropdown (Load Example button) ── */
-.example-picker {
-  position: relative;
-}
-
+/* ── Example picker dropdown (Load Example button) ──
+   Shares the document-level .ctx popover used by the tab overflow menu and
+   the canvas context menus: .ctx is position:fixed, so the menu escapes the
+   header's stacking context and overflow clipping instead of being trapped
+   inside it. Only sizing lives here; chrome comes from .ctx. */
 .example-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  min-width: 240px;
-  background: var(--bg2);
-  border: 1px solid var(--border2);
-  border-radius: 8px;
-  box-shadow: var(--shadow-lg);
-  display: none;
-  z-index: 1000;
-  padding: 6px;
-  animation: model-picker-slide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.example-picker.open .example-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  max-height: min(60vh, 380px);
+  overflow-y: auto;
+  width: 260px;
+  /* Above the header (900) so an upward flip isn't painted behind it;
+     still below the modal overlay's backdrop chrome. */
+  z-index: 950;
 }
 
 .example-menu-item {
-  font-family: var(--mono);
-  font-size: .68rem;
-  text-align: left;
-  padding: 7px 10px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
   border-radius: 6px;
+  background: transparent;
+  font-family: var(--sans);
+  font-size: .78rem;
+  text-align: left;
+  color: var(--text2);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.example-menu-item:hover,
+.example-menu-item:focus-visible {
+  background: var(--surface3);
+  color: var(--text);
+  outline: none;
+}
+
+.example-menu-item-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--text3);
+  flex: 0 0 auto;
+}
+
+.example-menu-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.example-menu-item:hover {
-  background: var(--surface);
+.example-menu-item.flagship {
   color: var(--text);
-  border-color: var(--border2);
 }
 
-.example-menu-item.flagship {
-  color: var(--accent);
+.example-menu-item.flagship .example-menu-item-dot {
+  background: var(--accent);
 }
 
 .model-cat-group {
@@ -698,7 +945,7 @@ header {
   }
   .model-picker-menu {
     position: fixed;
-    top: calc(var(--hdr) + var(--hdr2) + 10px);
+    top: calc(var(--hdr) + 10px);
     left: 10px;
     right: 10px;
     width: auto;
@@ -714,67 +961,38 @@ header {
 }
 
 @media (max-width: 900px) {
+  /* The bar stays one row and scrolls horizontally rather than wrapping, so
+     the canvas keeps the same vertical budget it has on desktop. */
   header {
-    height: auto;
-    min-height: 0;
-    grid-template-columns: 1fr;
-  }
-
-  .hdr-left,
-  .hdr-center,
-  .hdr-right {
-    border: 0;
-  }
-
-  .hdr-left {
-    padding: 12px 14px 8px;
-  }
-
-  .hdr-center {
-    padding: 0 10px 8px;
+    gap: 6px;
+    padding: 0 6px 0 0;
     overflow-x: auto;
-    justify-content: flex-start;
-  }
-
-  .hdr-right {
-    padding: 0 10px 10px;
-    overflow-x: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
   }
 
-  .nav-tabs {
-    min-width: max-content;
-  }
-
-  .nav-btn {
-    min-height: 38px;
-    padding: 0 14px;
-  }
-
-  .sub-toolbar {
-    height: auto;
-    min-height: 0;
-    padding: 8px 10px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-
-  .stb-label {
+  header::-webkit-scrollbar {
     display: none;
   }
 
-  .machine-tabs {
-    order: 1;
-    width: 100%;
-    overflow-x: auto;
-    min-height: 34px;
-    -webkit-overflow-scrolling: touch;
+  .hdr-left {
+    padding: 0 10px;
+  }
+
+  .logo {
+    font-size: 1rem;
+  }
+
+  /* Every cluster is fixed-width, so .tab-bar-wrap is the only shrinkable
+     item: without a floor it collapses to ~0 once the fixed items alone
+     exceed the viewport. Give it room for one tab plus the overflow button
+     and let the bar's own scroll absorb the remainder. */
+  .tab-bar-wrap {
+    min-width: 150px;
   }
 
   .tab-bar {
-    order: 2;
-    width: 100%;
-    min-height: 32px;
     padding: 0 4px;
     -webkit-overflow-scrolling: touch;
   }
@@ -787,8 +1005,23 @@ header {
     max-width: 9ch;
   }
 
-  .sub-toolbar > div[style*="flex:1"] {
-    display: none;
+  /* Text labels are the first thing to go when width is scarce; the icons
+     and their tooltips/aria-labels carry the meaning. */
+  .example-picker .hbtn {
+    width: 30px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+    font-size: 0;
+  }
+
+  /* The header scrolls horizontally at this width, which would clip a menu
+     anchored inside it — pin these to the viewport instead. */
+  .ctx.tools-menu,
+  .ctx.hdr-more-menu {
+    position: fixed;
+    top: calc(var(--hdr) + 6px);
+    right: 8px;
   }
 }
 
@@ -807,9 +1040,9 @@ header {
 
 @media (prefers-reduced-motion: reduce) {
   .tab,
-  .tab::after,
   .tab-close,
   .tab-bar,
+  .tab-overflow-btn,
   .app-body.tab-switching {
     transition: none !important;
     animation: none !important;

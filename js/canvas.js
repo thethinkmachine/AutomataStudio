@@ -5,6 +5,145 @@ const wrap = $('canvas-wrap');
 let isPanning = false, panStart = { x: 0, y: 0 }, camStart = { x: 0, y: 0 };
 let panPointerId = null;
 
+// Touch navigation is deliberately separate from the mouse/pen gesture
+// state below. A second finger cancels any in-progress edit gesture and owns
+// the camera until the pinch/pan ends, which prevents a node drag from turning
+// into a browser page zoom or a half-applied canvas move.
+const touchPointers = new Map();
+let touchCameraGesture = null;
+let touchLongPressTimer = null;
+let touchLongPressStart = null;
+
+function clearTouchLongPress() {
+  if (touchLongPressTimer) clearTimeout(touchLongPressTimer);
+  touchLongPressTimer = null;
+  touchLongPressStart = null;
+}
+
+function scheduleTouchLongPress(e) {
+  clearTouchLongPress();
+  touchLongPressStart = { x: e.clientX, y: e.clientY };
+  const target = e.target.closest('.sn, .edge-g, .note-g, .divider-g');
+  const menuTarget = target || wrap;
+  touchLongPressTimer = setTimeout(() => {
+    touchLongPressTimer = null;
+    cancelCanvasManipulationForTouch();
+    if (menuTarget === wrap) {
+      App.ctxCanvasPt = svgPt({ clientX: e.clientX, clientY: e.clientY });
+      showCanvasContextMenu(e.clientX, e.clientY);
+      return;
+    }
+    const menuEvent = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: e.clientX,
+      clientY: e.clientY
+    });
+    menuTarget.dispatchEvent(menuEvent);
+  }, 550);
+}
+
+function touchPair() {
+  return [...touchPointers.values()].slice(0, 2);
+}
+
+function cancelCanvasManipulationForTouch() {
+  stopAutoPan();
+  isPanning = false;
+  panPointerId = null;
+  wrap.classList.remove('panning');
+
+  if (App.marqueeRect) App.marqueeRect.remove();
+  App.marqueeRect = null;
+  App.marquee = null;
+  App.dragOffsets = null;
+  App.dragCurve = null;
+  if (typeof clearAlignGuides === 'function') clearAlignGuides();
+}
+
+function beginTouchCameraGesture() {
+  const pair = touchPair();
+  if (pair.length < 2) return;
+  const a = pair[0], b = pair[1];
+  const r = wrap.getBoundingClientRect();
+  const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+  const startZoom = App.cam.z;
+  touchCameraGesture = {
+    startCenter: center,
+    startDistance: distance,
+    startZoom,
+    startCam: { x: App.cam.x, y: App.cam.y },
+    worldAtCenter: {
+      x: (center.x - r.left - App.cam.x) / startZoom,
+      y: (center.y - r.top - App.cam.y) / startZoom
+    }
+  };
+  cancelCanvasManipulationForTouch();
+}
+
+function updateTouchCameraGesture() {
+  if (!touchCameraGesture) return;
+  const pair = touchPair();
+  if (pair.length < 2) return;
+  const a = pair[0], b = pair[1];
+  const r = wrap.getBoundingClientRect();
+  const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+  const cfg = App.config.zoom;
+  const newZoom = Math.max(cfg.min, Math.min(cfg.max,
+    touchCameraGesture.startZoom * distance / touchCameraGesture.startDistance));
+  App.cam.x = center.x - r.left - touchCameraGesture.worldAtCenter.x * newZoom;
+  App.cam.y = center.y - r.top - touchCameraGesture.worldAtCenter.y * newZoom;
+  App.cam.z = newZoom;
+  applyCamera(true);
+}
+
+function captureTouchPointerDown(e) {
+  if (e.pointerType !== 'touch') return;
+  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, .minimap-show-btn, #status-bar')) return;
+  touchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (touchPointers.size === 2) {
+    clearTouchLongPress();
+    beginTouchCameraGesture();
+    e.preventDefault();
+    e.stopPropagation();
+  } else {
+    scheduleTouchLongPress(e);
+  }
+}
+
+function captureTouchPointerMove(e) {
+  if (e.pointerType !== 'touch' || !touchPointers.has(e.pointerId)) return;
+  if (touchLongPressStart && Math.hypot(e.clientX - touchLongPressStart.x, e.clientY - touchLongPressStart.y) > 10) {
+    clearTouchLongPress();
+  }
+  touchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (touchCameraGesture) {
+    updateTouchCameraGesture();
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}
+
+function captureTouchPointerEnd(e) {
+  if (e.pointerType !== 'touch' || !touchPointers.has(e.pointerId)) return;
+  clearTouchLongPress();
+  touchPointers.delete(e.pointerId);
+  if (touchCameraGesture) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (touchPointers.size < 2) touchCameraGesture = null;
+  }
+}
+
+// Capture sees touches that start on an SVG state or edge before those nodes
+// stop propagation, so pinch can reliably take over from any edit gesture.
+wrap.addEventListener('pointerdown', captureTouchPointerDown, { capture: true });
+wrap.addEventListener('pointermove', captureTouchPointerMove, { capture: true });
+wrap.addEventListener('pointerup', captureTouchPointerEnd, { capture: true });
+wrap.addEventListener('pointercancel', captureTouchPointerEnd, { capture: true });
+
 function svgPt(e) {
   const r = wrap.getBoundingClientRect();
   return { x: (e.clientX - r.left - App.cam.x) / App.cam.z, y: (e.clientY - r.top - App.cam.y) / App.cam.z };
@@ -89,6 +228,7 @@ let _rightDragged = false;
 
 wrap.addEventListener('pointerdown', e => {
   if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, .minimap-show-btn, #status-bar')) return;
+  if (e.pointerType) wrap.dataset.lastPointerType = e.pointerType;
 
   if (e.button === 2) {
     // States/edges/notes own their right-click: they already stop propagation
@@ -117,6 +257,12 @@ wrap.addEventListener('pointerdown', e => {
     wrap.setPointerCapture(e.pointerId);
     e.preventDefault();
   } else if (App.tool === 'pointer') {
+    // On touch, an empty-canvas drag is navigation. Marquee selection remains
+    // available to mouse/pen users and can be exposed as a later mobile tool.
+    if (e.pointerType === 'touch') {
+      startPan(e);
+      return;
+    }
     // A marquee is a multi-select gesture whether or not a modifier is held.
     if (typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
     if (!(e.shiftKey || e.ctrlKey || e.metaKey)) {
@@ -525,6 +671,7 @@ function ctxCanvasAutoLayout() {
 // ── Double-click empty canvas to create a state ──
 wrap.addEventListener('dblclick', e => {
   if (App.tool !== 'pointer' && App.tool !== 'move') return;
+  if (wrap.dataset.lastPointerType === 'touch') return;
   if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, .minimap-show-btn, #status-bar')) return;
   const onSVGBg = e.target === wrap || e.target.id === 'svgCanvas' || e.target === $('cam-g');
   if (!onSVGBg) return;
@@ -962,6 +1109,7 @@ function exportPNG() {
       a.click();
       URL.revokeObjectURL(url);
       showStatus('Workspace snapshot saved!');
+      if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
     }, 'image/png');
   };
   img.src = url;

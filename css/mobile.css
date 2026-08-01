@@ -10,6 +10,13 @@
   display: contents;
 }
 
+.mobile-panel-bar,
+.mobile-panel-scrim,
+.mobile-aux-bar,
+.mobile-aux-sheet-scrim {
+  display: none;
+}
+
 @media (max-width: 900px) {
   html,
   body {
@@ -28,7 +35,6 @@
   }
 
   .hdr-sep,
-  .stb-sep,
   .panel-header {
     display: none;
   }
@@ -37,29 +43,8 @@
     display: none !important;
   }
 
-  .hdr-left,
-  .hdr-center,
-  .hdr-right {
-    width: 100%;
-  }
-
-  .hdr-right {
-    gap: 6px;
-    padding-bottom: 12px;
-  }
-
   .hbtn {
     flex: 0 0 auto;
-  }
-
-  .sub-toolbar {
-    flex-wrap: nowrap;
-    justify-content: flex-start;
-    overflow-x: auto;
-    overflow-y: visible;
-    white-space: nowrap;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
   }
 
   .model-picker-container {
@@ -68,13 +53,9 @@
   }
 
   .model-picker-btn {
-    min-width: 140px;
+    min-width: 132px;
     height: 32px;
     padding: 0 8px;
-  }
-
-  .sub-toolbar .hbtn {
-    min-height: 32px;
   }
 
   .mobile-panel-toggle {
@@ -104,10 +85,6 @@
     font-size: .85rem;
     transition: transform var(--transition-fast), color var(--transition-fast);
     flex: 0 0 auto;
-  }
-
-  .machine-tabs {
-    display: none;
   }
 
   .app-body,
@@ -289,9 +266,6 @@
   }
 
   .canvas-toolbox::-webkit-scrollbar,
-  .sub-toolbar::-webkit-scrollbar,
-  .machine-tabs::-webkit-scrollbar,
-  .nav-tabs::-webkit-scrollbar,
   .hdr-right::-webkit-scrollbar {
     display: none;
   }
@@ -358,8 +332,6 @@
   .tape-wrap,
   .canvas-toolbox,
   .canvas-nav-controls,
-  .machine-tabs,
-  .nav-tabs,
   .hdr-right,
   .sctrl {
     flex-wrap: nowrap !important;
@@ -490,10 +462,6 @@
     font-size: 1rem;
   }
 
-  .nav-btn {
-    padding: 0 12px;
-  }
-
   .mobile-machine-select {
     flex-basis: 108px;
     min-width: 108px;
@@ -536,5 +504,501 @@
 
   .note-editor-foot {
     flex-wrap: wrap;
+  }
+}
+
+/* ─── MOBILE CANVAS SHELL ───
+   On a phone the canvas is the workspace. Panels are transient sheets that
+   float above it, while the bottom dock provides a stable way back to them. */
+:root {
+  --mobile-panel-bar-height: 62px;
+}
+
+@media (max-width: 900px) {
+  html,
+  body {
+    height: 100%;
+    min-height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    min-height: 100dvh;
+  }
+
+  .app-body {
+    position: relative;
+    display: block;
+    height: calc(100dvh - var(--hdr));
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .view-container {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #v-build {
+    display: flex !important;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #v-build .canvas-area {
+    flex: 1 1 auto;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    touch-action: none;
+  }
+
+  #svgCanvas {
+    touch-action: none;
+  }
+
+  /* The build panels become sheets. Auxiliary-view navigation panels keep the
+     existing stacked treatment inside their own overlay. */
+  .lpanel,
+  .rpanel {
+    position: fixed !important;
+    top: auto !important;
+    right: 0 !important;
+    bottom: calc(var(--mobile-panel-bar-height) + env(safe-area-inset-bottom, 0px)) !important;
+    left: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: min(78dvh, 620px);
+    max-height: calc(100dvh - var(--hdr) - var(--mobile-panel-bar-height) - env(safe-area-inset-bottom, 0px) - 16px);
+    border: 1px solid var(--border2);
+    border-bottom: 0;
+    border-radius: 16px 16px 0 0;
+    background: var(--bg2);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    z-index: 160;
+    transform: translateY(0);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    will-change: transform, opacity;
+    transition: transform .28s cubic-bezier(.22, 1, .36, 1),
+      opacity .18s ease,
+      visibility 0s linear 0s;
+  }
+
+  .lpanel[data-mobile-collapsed="1"],
+  .rpanel[data-mobile-collapsed="1"] {
+    display: flex;
+    transform: translateY(calc(100% + 20px));
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition-delay: 0s, 0s, .28s;
+  }
+
+  .lpanel[data-mobile-collapsed="1"] > .mobile-panel-content,
+  .rpanel[data-mobile-collapsed="1"] > .mobile-panel-content {
+    display: flex;
+  }
+
+  .lpanel > .mobile-panel-toggle,
+  .rpanel > .mobile-panel-toggle {
+    display: none;
+  }
+
+  .lpanel .mobile-panel-content,
+  .rpanel .mobile-panel-content {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .lpanel .panel-header,
+  .rpanel .panel-header {
+    display: flex;
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding-left: 16px;
+    padding-right: 12px;
+  }
+
+  .lpanel .pin-btn,
+  .rpanel .pin-btn {
+    display: none;
+  }
+
+  .lpanel-content,
+  .rpanel-content {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-panel-scrim {
+    position: fixed;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: var(--overlay);
+    z-index: 140;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    will-change: opacity;
+    transition: opacity .2s ease, visibility 0s linear .2s;
+  }
+
+  .mobile-panel-scrim.open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s, 0s;
+  }
+
+  .mobile-panel-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    height: var(--mobile-panel-bar-height);
+    padding: 7px 12px calc(7px + env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
+    background: color-mix(in srgb, var(--bg2) 94%, transparent);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, .18);
+    z-index: 180;
+  }
+
+  .mobile-panel-bar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text2);
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .03em;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .mobile-panel-bar-btn[aria-expanded="true"] {
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
+  }
+
+  .mobile-panel-bar-icon {
+    color: currentColor;
+    font-size: .95rem;
+    line-height: 1;
+  }
+
+  .mobile-panel-bar-count {
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--surface3, var(--bg3));
+    color: var(--text3);
+    font-size: .58rem;
+    line-height: 16px;
+    text-align: center;
+  }
+
+  .mobile-panel-bar-btn[aria-expanded="true"] .mobile-panel-bar-count {
+    background: var(--accent-soft-strong);
+    color: var(--accent);
+  }
+
+  body.aux-open .mobile-panel-bar,
+  body.aux-open .mobile-panel-scrim {
+    display: none;
+  }
+
+  /* Keep the editing controls above the panel dock and out of the home-area
+     gesture region. The dock is hidden while an auxiliary view is open. */
+  .canvas-toolbox {
+    bottom: calc(var(--mobile-panel-bar-height) + env(safe-area-inset-bottom, 0px) + 12px) !important;
+  }
+
+  .status {
+    top: 12px;
+    bottom: auto;
+  }
+}
+
+@media (max-width: 900px) and (prefers-reduced-motion: reduce) {
+  .lpanel,
+  .rpanel,
+  .mobile-panel-scrim {
+    transition: none !important;
+  }
+}
+
+/* ─── MOBILE AUXILIARY TOOLS ───
+   Algorithms, Grammar and Theory are reading/work surfaces on a phone. Keep
+   their result pane full-height and move the secondary navigation into an
+   on-demand sheet opened from the compact dock at the bottom. */
+:root {
+  --mobile-aux-bar-height: 64px;
+}
+
+@media (max-width: 900px) {
+  .aux-overlay-body {
+    position: relative;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body.aux-open[data-aux-view="algo"] #v-algo,
+  body.aux-open[data-aux-view="grammar"] #v-grammar,
+  body.aux-open[data-aux-view="theory"] #v-theory {
+    position: relative;
+    display: flex !important;
+    flex: 1 1 auto;
+    flex-direction: row;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .aux-overlay .algo-content,
+  .aux-overlay .gram-right {
+    flex: 1 1 auto;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 16px 14px calc(var(--mobile-aux-bar-height) + 18px) !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .aux-overlay #v-theory .algo-content[style] {
+    padding: 16px 14px calc(var(--mobile-aux-bar-height) + 18px) !important;
+  }
+
+  .aux-overlay .algo-nav,
+  .aux-overlay .gram-left,
+  .aux-overlay .theory-nav {
+    position: absolute;
+    top: auto;
+    right: 0;
+    bottom: var(--mobile-aux-bar-height);
+    left: 0;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: min(72dvh, 540px);
+    max-height: calc(100% - var(--mobile-aux-bar-height) - 12px);
+    border: 1px solid var(--border2);
+    border-bottom: 0;
+    border-radius: 16px 16px 0 0;
+    background: var(--bg2);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    z-index: 4;
+    transform: translateY(0);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    will-change: transform, opacity;
+    transition: transform .28s cubic-bezier(.22, 1, .36, 1),
+      opacity .18s ease,
+      visibility 0s linear 0s;
+  }
+
+  .aux-overlay #algo-nav[data-mobile-collapsed="1"],
+  .aux-overlay #gram-left[data-mobile-collapsed="1"],
+  .aux-overlay #theory-nav[data-mobile-collapsed="1"] {
+    transform: translateY(calc(100% + 20px));
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition-delay: 0s, 0s, .28s;
+  }
+
+  .aux-overlay .algo-nav .mobile-panel-toggle,
+  .aux-overlay .gram-left .mobile-panel-toggle,
+  .aux-overlay .theory-nav .mobile-panel-toggle {
+    position: static;
+    display: flex;
+    flex: 0 0 auto;
+    min-height: 50px;
+    padding: 12px 16px;
+    border-top: 0;
+    border-radius: 15px 15px 0 0;
+    background: var(--surface);
+  }
+
+  .aux-overlay .algo-nav .mobile-panel-content,
+  .aux-overlay .gram-left .mobile-panel-content,
+  .aux-overlay .theory-nav .mobile-panel-content {
+    display: flex !important;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-aux-sheet-scrim {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: rgba(0, 0, 0, .32);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    z-index: 3;
+    will-change: opacity;
+    transition: opacity .2s ease, visibility 0s linear .2s;
+  }
+
+  .mobile-aux-sheet-scrim.open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s, 0s;
+  }
+
+  .mobile-aux-bar {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: none;
+    height: var(--mobile-aux-bar-height);
+    padding: 7px 12px calc(7px + env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
+    background: color-mix(in srgb, var(--bg2) 94%, transparent);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, .18);
+    z-index: 5;
+  }
+
+  body.aux-open .mobile-aux-bar {
+    display: flex;
+  }
+
+  .mobile-aux-bar-btn {
+    display: none;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    gap: 9px;
+    padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text2);
+    font-family: var(--mono);
+    text-align: left;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  body.aux-open[data-aux-view="algo"] .mobile-aux-bar-btn[data-aux-for="algo"],
+  body.aux-open[data-aux-view="grammar"] .mobile-aux-bar-btn[data-aux-for="grammar"],
+  body.aux-open[data-aux-view="theory"] .mobile-aux-bar-btn[data-aux-for="theory"] {
+    display: flex;
+  }
+
+  .mobile-aux-bar-btn:active,
+  .mobile-aux-bar-btn[aria-expanded="true"] {
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
+  }
+
+  .mobile-aux-bar-icon {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    border-radius: 8px;
+    background: var(--surface3);
+    color: currentColor;
+    font-size: .95rem;
+  }
+
+  .mobile-aux-bar-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.2;
+  }
+
+  .mobile-aux-bar-copy strong {
+    overflow: hidden;
+    color: currentColor;
+    font-size: .7rem;
+    font-weight: 500;
+    letter-spacing: .03em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-aux-bar-copy small {
+    margin-top: 2px;
+    overflow: hidden;
+    color: var(--text3);
+    font-size: .58rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-aux-bar-chevron {
+    margin-left: auto;
+    color: var(--text3);
+    font-size: 1rem;
+    transition: transform .2s ease, color .2s ease;
+  }
+
+  .mobile-aux-bar-btn[aria-expanded="true"] .mobile-aux-bar-chevron {
+    transform: rotate(180deg);
+    color: var(--accent);
+  }
+}
+
+@media (max-width: 900px) and (prefers-reduced-motion: reduce) {
+  .aux-overlay .algo-nav,
+  .aux-overlay .gram-left,
+  .aux-overlay .theory-nav,
+  .mobile-aux-sheet-scrim,
+  .mobile-aux-bar-chevron {
+    transition: none !important;
   }
 }

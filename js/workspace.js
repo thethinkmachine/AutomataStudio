@@ -1,6 +1,10 @@
 // ══════════════════════════════════════════════════════════════════
 //  HELP MODAL
 // ══════════════════════════════════════════════════════════════════
+// Read-only dialogs: nothing to lose, so a backdrop click dismisses them.
+registerModal('help-modal', { dismissOnBackdrop: true });
+registerModal('about-modal', { dismissOnBackdrop: true });
+
 function showHelpModal() { showOverlay('help-modal'); }
 function openAboutModal() { showOverlay('about-modal'); }
 

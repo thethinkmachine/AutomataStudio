@@ -1,4 +1,10 @@
 /* ─── MODALS ─── */
+/* Set by modal.js while any modal is open: stops the page behind the dialog
+   from scrolling when the pointer strays outside it. */
+body.modal-open {
+  overflow: hidden;
+}
+
 .overlay {
   position: fixed;
   inset: 0;
@@ -456,6 +462,16 @@
   min-width: 240px;
   display: none;
   animation: ctx-pop-in .12s ease-out;
+}
+
+/* The shape picker is a compact anchored popover, not a full context menu. */
+.ctx.shape-tool-menu {
+  min-width: 190px;
+}
+
+.shape-tool-menu .ctx-i.active {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 @keyframes ctx-pop-in {
@@ -1011,4 +1027,91 @@ button:focus-visible {
 
 .note-char-count-max {
   color: var(--orange);
+}
+
+/* ─── TOOLTIPS ───
+   Replaces native `title` on icon-only controls: styleable, appears promptly,
+   and works on touch (long-press), which native tooltips never do. */
+.tooltip {
+  position: fixed;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 260px;
+  padding: 6px 9px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 7px;
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--overlay-ring);
+  font-family: var(--sans);
+  font-size: .72rem;
+  line-height: 1.35;
+  color: var(--text);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-2px);
+  transition: opacity .12s ease, transform .12s ease, visibility .12s;
+}
+
+.tooltip.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+/* Short labels read best on one line, but explanatory tooltips (settings rows,
+   tool descriptions) are full sentences — those wrap into a readable block
+   instead of running off the viewport. Applied by the tooltip script when the
+   label is long enough to need it. */
+.tooltip.wrap {
+  display: block;
+  max-width: 300px;
+  /* pre-line so explicit \n in a label (e.g. the transition list's
+     from → to / label / hint) breaks where it was written, while long
+     prose still wraps at the max-width. */
+  white-space: pre-line;
+  text-align: left;
+}
+
+.tooltip.wrap .tooltip-kbd {
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: baseline;
+}
+
+/* Laid out for measurement before it is positioned, but not yet visible. */
+.tooltip.measuring {
+  visibility: hidden;
+  opacity: 0;
+  transition: none;
+}
+
+.tooltip[data-placement="above"] {
+  transform: translateY(2px);
+}
+
+.tooltip[data-placement="above"].show {
+  transform: translateY(0);
+}
+
+.tooltip-kbd {
+  font-family: var(--mono);
+  font-size: .62rem;
+  color: var(--text3);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+
+/* Touch devices get a slightly larger tap-friendly tooltip. */
+@media (pointer: coarse) {
+  .tooltip {
+    font-size: .78rem;
+    padding: 8px 11px;
+  }
 }

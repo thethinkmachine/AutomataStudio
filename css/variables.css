@@ -8,6 +8,9 @@
   --surface3: #222c42;
   --border: rgba(100, 130, 200, 0.12);
   --border2: rgba(100, 130, 200, 0.22);
+  --sb-thumb: rgba(100, 130, 200, 0.26);
+  --sb-thumb-hover: rgba(120, 150, 220, 0.44);
+  --sb-thumb-active: rgba(140, 170, 240, 0.62);
   --text: #c8d4f0;
   --text2: #7a8ab0;
   --text3: #4a5878;
@@ -26,8 +29,8 @@
   --sans: 'DM Sans', sans-serif;
   --serif: 'Crimson Pro', serif;
   --r: 8px;
-  --hdr: 52px;
-  --hdr2: 42px;
+  /* Single unified header bar; there is no longer a second toolbar row. */
+  --hdr: 48px;
   --overlay: rgba(2, 8, 20, .68);
   --overlay-ring: rgba(255, 255, 255, .025);
   --focus-ring: rgba(79, 195, 247, .08);
@@ -89,6 +92,9 @@
   --surface3: #e1eaf5;
   --border: rgba(41, 73, 109, 0.12);
   --border2: rgba(41, 73, 109, 0.2);
+  --sb-thumb: rgba(41, 73, 109, 0.24);
+  --sb-thumb-hover: rgba(41, 73, 109, 0.4);
+  --sb-thumb-active: rgba(41, 73, 109, 0.56);
   --text: #16324a;
   --text2: #496277;
   --text3: #7d92a6;
@@ -189,9 +195,23 @@ select,
   user-select: text;
 }
 
+/* ─── SCROLLBARS ───
+   The app draws its own scrollbars everywhere rather than inheriting the OS
+   ones, which differ per platform and ignore the theme. Deliberately thin:
+   a 7px thumb on a transparent track, so scrollable regions lose almost no
+   usable width and the bar reads as part of the surface it sits on.
+
+   Firefox only supports the two `scrollbar-*` properties (no pseudo-elements,
+   no hover state), so it gets `thin` + matching colours; WebKit/Blink gets the
+   pseudo-element rules below with hover and active feedback. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sb-thumb) transparent;
+}
+
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 7px;
+  height: 7px;
 }
 
 ::-webkit-scrollbar-track {
@@ -199,6 +219,33 @@ select,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border2);
-  border-radius: 2px;
+  background: var(--sb-thumb);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sb-thumb-hover);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: var(--sb-thumb-active);
+}
+
+/* Where both axes scroll, the corner would otherwise render as an opaque
+   system-grey square. */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Scrollbars are a pointing-device affordance; touch surfaces scroll by drag
+   and the bar only covers content. */
+@media (pointer: coarse) {
+  * {
+    scrollbar-width: none;
+  }
+
+  ::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
 }

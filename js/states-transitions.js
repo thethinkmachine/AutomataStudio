@@ -748,10 +748,11 @@ function ctxDeleteTrans() {
   deleteTransitions(edge.transitionIds);
 }
 
-function showOverlay(id) { $(id).classList.add('show'); }
-function closeModal(id) {
-  $(id).classList.remove('show');
-  if (id === 'trans-modal') {
+// showOverlay/closeModal now live in modal.js; each modal registers its own
+// teardown there instead of being special-cased inside a shared close.
+registerModal('trans-modal', {
+  submit: () => confirmTrans(),
+  onClose: () => {
     App.transEditId = null;
     App.transModalMode = 'add';
     App.transModalIds = [];
@@ -764,9 +765,7 @@ function closeModal(id) {
     }
     setTransitionModalMode('add');
   }
-  if (id === 'note-modal') {
-    App.editNoteId = null;
-  }
-  App._pendFrom = null; App._pendTo = null; App.transFrom = null; clearTempLine();
-}
+});
+
+registerModal('state-modal', { submit: () => confirmState() });
 

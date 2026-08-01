@@ -89,10 +89,9 @@ function renderTransitions() {
       textEl.setAttribute('dominant-baseline', 'central');
       textEl.setAttribute('text-anchor', 'middle');
 
-      const titleEl = makeSVG('title');
-      titleEl.textContent = grp.ts.map(t => transLabelDescriptive(t)).join('\n');
-      textEl.appendChild(titleEl);
-      const titleEl2 = makeSVG('title'); titleEl2.textContent = titleEl.textContent; edgeGrp.appendChild(titleEl2);
+      const edgeTip = grp.ts.map(t => transLabelDescriptive(t)).join('\n');
+      edgeGrp.setAttribute('data-tip', edgeTip);
+      edgeGrp.setAttribute('aria-label', edgeTip);
 
       edgeGrp.appendChild(pathEl);
       edgeGrp.appendChild(hitEl);
@@ -139,10 +138,9 @@ function renderTransitions() {
       textEl.setAttribute('dominant-baseline', 'central');
       textEl.setAttribute('text-anchor', 'middle');
 
-      const titleEl = makeSVG('title');
-      titleEl.textContent = grp.ts.map(t => transLabelDescriptive(t)).join('\n');
-      textEl.appendChild(titleEl);
-      const titleEl2 = makeSVG('title'); titleEl2.textContent = titleEl.textContent; edgeGrp.appendChild(titleEl2);
+      const edgeTip = grp.ts.map(t => transLabelDescriptive(t)).join('\n');
+      edgeGrp.setAttribute('data-tip', edgeTip);
+      edgeGrp.setAttribute('aria-label', edgeTip);
 
       edgeGrp.appendChild(pathEl);
       edgeGrp.appendChild(hitEl);
@@ -154,7 +152,13 @@ function renderTransitions() {
       if (grp.ts.some(t => App.selectedTransitions.has(t.id))) {
         const handle = makeSVG('circle');
         handle.classList.add('curve-handle');
-        handle.setAttribute('cx', mx); handle.setAttribute('cy', my); handle.setAttribute('r', 4.5);
+        handle.setAttribute('cx', mx); handle.setAttribute('cy', my); handle.setAttribute('r', 7);
+        handle.addEventListener('pointerdown', e => {
+          if (e.button !== 0 || App.spacePan || App.tool !== 'pointer') return;
+          e.stopPropagation();
+          App.dragCurve = { grp, from, to };
+          try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
+        });
         edgeGrp.appendChild(handle);
       }
     }
@@ -163,6 +167,7 @@ function renderTransitions() {
       if (e.button !== 0) return;
       if (App.spacePan) return;
       e.stopPropagation();
+      edgeGrp.dataset.lastPointerType = e.pointerType || 'mouse';
       if (App.tool === 'del') {
         snapshot();
         const ids = new Set(grp.ts.map(t => t.id));
@@ -192,7 +197,9 @@ function renderTransitions() {
             edgeGrp.classList.add('sel-t');
           }
         }
-        if (!isSelf) {
+        // A touch tap selects an edge. Only the explicit curve handle starts
+        // a bend gesture; this avoids turning an ordinary tap into a drag.
+        if (!isSelf && e.pointerType !== 'touch') {
           App.dragCurve = { grp, from, to };
           try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
         }
@@ -201,6 +208,7 @@ function renderTransitions() {
 
     edgeGrp.addEventListener('dblclick', e => {
       if (App.tool !== 'pointer') return;
+      if (edgeGrp.dataset.lastPointerType === 'touch') return;
       e.stopPropagation();
       openTransModal(from.id, to.id);
     });
@@ -407,9 +415,12 @@ function renderStates() {
       const o = s.output !== undefined && s.output !== '' ? s.output : App.config.sym.lambda;
       stTitle += `\nOutput: '${o}'`;
     }
-    const stTitleEl = makeSVG('title'); stTitleEl.textContent = stTitle;
-    grp.appendChild(stTitleEl);
-    grp.addEventListener('pointerdown', e => onStateDown(e, s.id));
+    grp.setAttribute('data-tip', stTitle);
+    grp.setAttribute('aria-label', stTitle);
+    grp.addEventListener('pointerdown', e => {
+      grp.dataset.lastPointerType = e.pointerType || 'mouse';
+      onStateDown(e, s.id);
+    });
     grp.addEventListener('contextmenu', e => { 
       e.preventDefault();
       App.ctxId = s.id; 
@@ -422,6 +433,7 @@ function renderStates() {
       showContextMenu('state', e.clientX, e.clientY); 
     });
     grp.addEventListener('dblclick', () => { 
+      if (grp.dataset.lastPointerType === 'touch') return;
       if (!showAccepts) return;
       App.accepts.has(s.id) ? App.accepts.delete(s.id) : App.accepts.add(s.id); 
       snapshot(); renderAll(); updateLPanel(); updateRPanel(); 
@@ -436,7 +448,12 @@ function renderStates() {
 function updateLPanelSectionMeta() {
   const setCount = (id, value) => {
     const el = $(id);
-    if (el) el.textContent = String(value);
+    if (!el) return;
+    el.textContent = String(value);
+    // Empty sections get a muted chip so a populated count reads as the
+    // signal rather than every section shouting equally.
+    if (value) el.removeAttribute('data-empty');
+    else el.setAttribute('data-empty', '1');
   };
 
   setCount('lp-count-sigma', App.sigma?.size || 0);
@@ -444,6 +461,8 @@ function updateLPanelSectionMeta() {
   setCount('lp-count-output', App.outputAlpha?.size || 0);
   setCount('lp-count-states', App.states?.length || 0);
   setCount('lp-count-trans', App.transitions?.length || 0);
+  const mobileWorkspaceCount = $('mobile-workspace-count');
+  if (mobileWorkspaceCount) mobileWorkspaceCount.textContent = String(App.states?.length || 0);
 }
 
 function updateLPanel() {
@@ -455,13 +474,15 @@ function updateLPanel() {
       const outSym = (s.output === undefined || s.output === '') ? App.config.sym.lambda : s.output;
       mooreOut = `<span style="color:var(--text3);font-size:0.75em;margin-left:4px">/ ${outSym}</span>`;
     }
-    const sel = App.selectedStates.has(s.id) ? 'sel' : '';
+    // Keep list selection separate from the generic `.sel` select-control
+    // class.  Sharing it applies control sizing/overflow rules to this row.
+    const sel = App.selectedStates.has(s.id) ? 'lp-selected' : '';
     return `<div class="si ${App.startId === s.id ? 'start' : ''} ${showAccepts && App.accepts.has(s.id) ? 'acc' : ''} ${sel}"
   onclick="focusStateFromList('${s.id}')" ondblclick="openStateModal('${s.id}')"
   onmouseenter="hlListHover('${s.id}', true)" onmouseleave="hlListHover('${s.id}', false)"
-  title="Click to focus · Double-click to edit">
+  data-tip="Click to focus · Double-click to edit">
   ${s.name}${mooreOut}
-  <button class="si-edit" onclick="event.stopPropagation(); openStateModal('${s.id}')" title="Edit state" aria-label="Edit ${s.name}">
+  <button class="si-edit" onclick="event.stopPropagation(); openStateModal('${s.id}')" data-tip="Edit state" aria-label="Edit ${s.name}">
     <svg viewBox="0 0 256 256" width="11" height="11" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"/></svg>
   </button>
   <div class="dot"></div>
@@ -470,13 +491,13 @@ function updateLPanel() {
   const tl = $('trans-list');
   tl.innerHTML = App.transitions.length ? App.transitions.map(t => {
     const fn = getState(t.from)?.name || '?', tn = getState(t.to)?.name || '?';
-    const sel = App.selectedTransitions.has(t.id) ? 'sel' : '';
+    const sel = App.selectedTransitions.has(t.id) ? 'lp-selected' : '';
     const fullTitle = `${fn} → ${tn}\n${transLabelDescriptive(t)}\nClick to focus on canvas`;
     return `<div class="ti ${sel}" onclick="focusTransFromList('${t.id}')"
   onmouseenter="hlTransListHover('${t.from}','${t.to}', true)" onmouseleave="hlTransListHover('${t.from}','${t.to}', false)"
-  title="${fullTitle.replace(/"/g, '&quot;')}">
+  data-tip="${fullTitle.replace(/"/g, '&quot;')}">
   <span class="ti-from">${fn}</span><span class="arr">–${transLabel(t)}→</span><span class="ti-to">${tn}</span>
-  <span class="dx" onclick="event.stopPropagation(); deleteTrans('${t.id}')" title="Delete transition"><svg viewBox="0 0 256 256" width="10" height="10" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span>
+  <span class="dx" onclick="event.stopPropagation(); deleteTrans('${t.id}')" data-tip="Delete transition"><svg viewBox="0 0 256 256" width="10" height="10" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span>
 </div>`;
   }).join('') : '<div class="empty-msg">No transitions</div>';
   if (typeof filterStates === 'function') filterStates();

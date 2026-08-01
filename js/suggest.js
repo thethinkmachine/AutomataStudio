@@ -402,7 +402,7 @@ function renderSymSuggest(el, state) {
       const isDead = state.liveSet && !isEps && !state.liveSet.has(s);
       const title = isEps ? 'Empty string' : (isDead ? 'No transition from the current state — would dead-end here' : '');
       return `<button type="button" class="chip sugg-chip${i === SymSuggest.activeIdx ? ' active' : ''}${isEps ? ' sugg-eps' : ''}${isDead ? ' sugg-dead' : ''}"
-        onmousedown="event.preventDefault(); acceptSuggestion(${i})" title="${title}">${label}</button>`;
+        onmousedown="event.preventDefault(); acceptSuggestion(${i})" data-tip="${title}">${label}</button>`;
     }).join('');
     statusEl.className = 'sym-suggest-status';
     updateSuggestStatusHint(state);

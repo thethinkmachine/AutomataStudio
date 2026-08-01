@@ -5,6 +5,7 @@ const vm = require('node:vm');
 const ROOT = path.resolve(__dirname, '..');
 const SCRIPT_ORDER = [
   'js/state.js',
+  'js/modal.js',
   'js/utils.js',
   'js/states-transitions.js',
   'js/simulation.js',
@@ -36,6 +37,9 @@ function createElement(id = '') {
     scrollTop: 0,
     scrollHeight: 0,
     _listeners: {},
+    // Elements are considered laid out unless a test says otherwise; the
+    // overlay code uses this to skip members that are display:none.
+    offsetParent: {},
     classList: {
       add: (...names) => names.forEach(name => classSet.add(name)),
       remove: (...names) => names.forEach(name => classSet.delete(name)),
@@ -63,7 +67,13 @@ function createElement(id = '') {
       this[name] = value;
     },
     getAttribute(name) {
-      return this[name];
+      return this[name] === undefined ? null : this[name];
+    },
+    removeAttribute(name) {
+      delete this[name];
+    },
+    hasAttribute(name) {
+      return this[name] !== undefined;
     },
     addEventListener(type, handler) {
       this._listeners[type] = handler;
@@ -151,12 +161,15 @@ function createHarness() {
     clearTimeout,
     setInterval,
     clearInterval,
+    // renderTabs defers overflow measurement to a frame; run it inline so the
+    // DOM-dependent tail is exercised rather than silently dropped.
+    requestAnimationFrame: fn => { fn(); return 0; },
+    cancelAnimationFrame: () => {},
     fetch: async () => { throw new Error('fetch not available in tests'); },
     Blob: function Blob(parts) { this.parts = parts; },
     URL: { createObjectURL: () => 'blob:test' },
     snapshot: () => {},
-    closeModal: () => {},
-    showOverlay: () => {},
+    // closeModal/showOverlay come from js/modal.js, loaded in SCRIPT_ORDER.
     setView: () => {},
     renderSigma: () => {},
     renderGamma: () => {},
@@ -168,6 +181,8 @@ function createHarness() {
   context.window = context;
   context.addEventListener = () => {};
   context.removeEventListener = () => {};
+  // Desktop by default; tests that exercise the compact layout override this.
+  context.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
   context.setMachine = m => { context.App.machine = m; };
   context.applyMachineSwitch = m => { context.App.machine = m; };
 
@@ -233,10 +248,18 @@ function createHarness() {
 
   resetApp();
 
+  // Top-level `let`/`const` in the loaded scripts (Workspaces,
+  // activeWorkspaceId, ...) are lexical bindings, not properties of the
+  // context object — reading or assigning context.X only ever touches a
+  // shadowing own-property the module code never sees. This reaches the
+  // real binding.
+  const evalInContext = expr => vm.runInContext(expr, context, { filename: 'test-eval' });
+
   return {
     context,
     getElement,
-    resetApp
+    resetApp,
+    evalInContext
   };
 }
 

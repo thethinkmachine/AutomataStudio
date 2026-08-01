@@ -1331,7 +1331,7 @@ function renderSimStep() {
     const cellsHtml = (r.cells || []).map((c, ci) => {
       const isHead = ci === r.head;
       const resClass = (isLast && step.final && isHead) ? ` ${step.final}` : '';
-      return `<div class="tc ${isHead ? 'head' : ''}${resClass}" title="${r.label} index ${ci}">${c}</div>`;
+      return `<div class="tc ${isHead ? 'head' : ''}${resClass}" data-tip="${r.label} index ${ci}">${c}</div>`;
     }).join('');
     return `<div class="mtm-tape-row">
       <span class="tape-label">${r.label}</span>

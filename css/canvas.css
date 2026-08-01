@@ -572,6 +572,18 @@
   transition: opacity .15s ease, box-shadow .15s ease, transform .15s ease;
 }
 
+/* The toolbox is a floating pill over the canvas — a visible bar inside its
+   rounded edge reads as a rendering artifact, and it only overflows when
+   docked to a short edge, where the grip already affords repositioning. */
+.canvas-toolbox {
+  scrollbar-width: none;
+}
+
+.canvas-toolbox::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 .canvas-toolbox.dragging {
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
   opacity: .88;
@@ -800,10 +812,15 @@
 }
 
 /* ─── CANVAS NAV CONTROLS ─── */
+/* Corner placement is set inline by layoutCanvasOverlays, which keeps this
+   stack clear of the draggable toolbar. The offsets here are only the
+   first-paint fallback, before that runs. */
 .canvas-nav-controls {
   position: absolute;
   bottom: 14px;
   right: 14px;
+  transition: bottom var(--transition-base), right var(--transition-base),
+              left var(--transition-base), top var(--transition-base);
   display: flex;
   align-items: center;
   gap: 2px;
@@ -883,6 +900,7 @@
 }
 
 /* ─── MINIMAP ─── */
+/* Positioned inline alongside .canvas-nav-controls — see layoutCanvasOverlays. */
 .minimap-container {
   position: absolute;
   bottom: 56px;
@@ -893,7 +911,9 @@
   border-radius: 8px;
   overflow: hidden;
   box-shadow: var(--shadow-sm);
-  transition: opacity var(--transition-fast);
+  transition: opacity var(--transition-fast), bottom var(--transition-base),
+              right var(--transition-base), left var(--transition-base),
+              top var(--transition-base);
 }
 
 .minimap-container.minimap-hidden {
@@ -963,6 +983,8 @@
   cursor: grabbing;
 }
 
+/* Stands in for the minimap when it is collapsed, and takes the same
+   inline corner placement — see layoutCanvasOverlays. */
 .minimap-show-btn {
   position: absolute;
   bottom: 56px;
@@ -976,7 +998,9 @@
   font-size: .6rem;
   color: var(--text3);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: color var(--transition-fast), background var(--transition-fast),
+              bottom var(--transition-base), right var(--transition-base),
+              left var(--transition-base), top var(--transition-base);
   display: inline-flex;
   align-items: center;
   gap: 5px;

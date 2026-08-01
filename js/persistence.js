@@ -33,11 +33,46 @@ function getWorkspaceData() {
   };
 }
 
+// ── In-app save ───────────────────────────────────────────────────
+// Distinct from the Export actions below, which produce a *file*. This
+// commits the workspace to localStorage and clears the tab's dirty mark.
+// Edits are already backed up continuously; what this adds is an explicit,
+// acknowledged save point, so the dirty dot means "not deliberately saved"
+// rather than "not downloaded".
+//
+// Returns true when the workspace was persisted, false when storage
+// rejected it (quota, private-mode) — callers that close a tab afterwards
+// must not discard work on a failed save.
+function saveWorkspace(opts = {}) {
+  const ok = saveBackup();
+  if (!ok) {
+    showStatus('Could not save — browser storage is full or unavailable');
+    return false;
+  }
+  if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
+  if (!opts.silent) showStatus('Workspace saved');
+  return true;
+}
+
+// Saves a specific tab, which may not be the active one (bulk closes walk
+// tabs that aren't on screen). Only the active tab holds live state in App,
+// so the others just need their existing snapshot flushed.
+function saveWorkspaceById(id) {
+  const ws = Workspaces.find(w => w.id === id);
+  if (!ws) return true;
+  if (id === activeWorkspaceId) return saveWorkspace({ silent: true });
+  ws.dirty = false;
+  const ok = saveBackup();
+  if (!ok) { ws.dirty = true; showStatus('Could not save — browser storage is full or unavailable'); }
+  return ok;
+}
+
 function saveJSON() {
   const data = getWorkspaceData();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'automaton.json'; a.click();
   showStatus('Saved as JSON!');
+  if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
 }
 
 function toggleSaveMenu(e) {
@@ -358,18 +393,26 @@ function migrateLegacySymbols(d) {
 
 
 // Auto Backup/Restore via LocalStorage
+// Returns true when the payload reached localStorage. The explicit Save
+// action reports failure to the user, so a quota error can no longer pass
+// silently as a successful save.
 function saveBackup() {
-  if (typeof exportWorkspaceState !== 'function' || !activeWorkspaceId) return;
+  if (typeof exportWorkspaceState !== 'function' || !activeWorkspaceId) return false;
   // Ensure the active tab gets its latest snapshot
   const act = Workspaces.find(w => w.id === activeWorkspaceId);
   if (act) act.data = exportWorkspaceState();
-  
+
   const payload = {
     tabs: Workspaces,
     activeId: activeWorkspaceId,
     config: App.config
   };
-  try { localStorage.setItem('automata-backup', JSON.stringify(payload)); } catch (e) { }
+  try {
+    localStorage.setItem('automata-backup', JSON.stringify(payload));
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 function loadBackup() {
@@ -407,7 +450,17 @@ function loadBackup() {
   } catch (e) { console.error('Backup load failed:', e); }
 }
 
-window.addEventListener('beforeunload', saveBackup);
+// Work is always flushed on the way out, so nothing is lost outright — but a
+// tab left dirty was never deliberately saved, and reloading also discards
+// the undo history and the reopen-closed-tab stack. Browsers render their own
+// generic wording here; the returnValue assignment is what triggers it.
+window.addEventListener('beforeunload', e => {
+  saveBackup();
+  if (typeof Workspaces === 'undefined' || !Workspaces.some(w => w.dirty)) return;
+  e.preventDefault();
+  e.returnValue = '';
+  return '';
+});
 
 
 // ══════════════════════════════════════════════════════════════════
@@ -428,29 +481,59 @@ function loadExample() {
 }
 
 function toggleExampleMenu(options) {
-  const picker = $('example-picker');
+  const btn = $('example-picker-btn');
   const menu = $('example-menu');
-  if (!picker || !menu) { loadExampleFile(options[0].file); return; }
-  if (picker.classList.contains('open')) { closeExampleMenu(); return; }
+  if (!btn || !menu) { loadExampleFile(options[0].file); return; }
+  if (menu.style.display === 'block') { closeExampleMenu(); return; }
+
+  // Close the other popovers that share the .ctx layer.
+  if (typeof hideTabOverflowMenu === 'function') hideTabOverflowMenu();
+  if (typeof hideTabContextMenu === 'function') hideTabContextMenu();
+  if (typeof hideContextMenu === 'function') hideContextMenu();
+  if (typeof hideCanvasContextMenu === 'function') hideCanvasContextMenu();
+
   menu.innerHTML = '';
   options.forEach((opt, i) => {
-    const btn = document.createElement('button');
-    btn.className = 'example-menu-item' + (i === 0 ? ' flagship' : '');
-    btn.textContent = opt.label || opt.file;
-    btn.onclick = e => {
+    const item = document.createElement('button');
+    item.className = 'example-menu-item' + (i === 0 ? ' flagship' : '');
+    item.type = 'button';
+    item.setAttribute('role', 'option');
+    const dot = document.createElement('span');
+    dot.className = 'example-menu-item-dot';
+    const name = document.createElement('span');
+    name.className = 'example-menu-item-name';
+    name.textContent = opt.label || opt.file;
+    item.append(dot, name);
+    item.onclick = e => {
       e.stopPropagation();
       closeExampleMenu();
       loadExampleFile(opt.file);
     };
-    menu.appendChild(btn);
+    menu.appendChild(item);
   });
-  picker.classList.add('open');
+
+  // Measure before placing so the menu can be right-aligned to the button
+  // and flipped above it when there isn't room below.
+  menu.style.display = 'block';
+  menu.style.visibility = 'hidden';
+  btn.setAttribute('aria-expanded', 'true');
+  const r = btn.getBoundingClientRect();
+  const m = menu.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(r.left, innerWidth - m.width - 8)) + 'px';
+  const below = r.bottom + 6;
+  menu.style.top = (below + m.height > innerHeight - 8
+    ? Math.max(8, r.top - 6 - m.height)
+    : below) + 'px';
+  menu.style.visibility = '';
+
   setTimeout(() => document.addEventListener('click', closeExampleMenu, { once: true }), 0);
 }
 
 function closeExampleMenu() {
-  const picker = $('example-picker');
-  if (picker) picker.classList.remove('open');
+  const menu = $('example-menu');
+  if (menu) menu.style.display = 'none';
+  const btn = $('example-picker-btn');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
 }
 
 function loadExampleFile(file) {
@@ -499,7 +582,7 @@ function showExampleCard(meta) {
   title.textContent = meta.title || 'Example';
   const close = document.createElement('button');
   close.className = 'example-card-close';
-  close.title = 'Dismiss';
+  close.dataset.tip = 'Dismiss';
   close.textContent = '×';
   close.onclick = () => { card.style.display = 'none'; };
   head.append(title, close);
@@ -522,7 +605,7 @@ function showExampleCard(meta) {
       chip.textContent = sample.w;
       const hint = [sample.label, sample.expect || (sample.out !== undefined ? `→ ${sample.out}` : '')]
         .filter(Boolean).join(' — ');
-      if (hint) chip.title = hint;
+      if (hint) chip.dataset.tip = hint;
       chip.onclick = () => {
         const inp = $('sim-in');
         if (inp) inp.value = sample.w;

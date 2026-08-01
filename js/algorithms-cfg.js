@@ -997,7 +997,7 @@ function runPDA2CFG(mode = 'raw') {
   out.innerHTML = `
 <h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
   <span>DPDA / NPDA &#8594; CFG (Sipser Triple Construction)</span>
-  <button id="copy-cfg-btn" class="icon-btn" title="Copy to Editor" ${isEmptyLanguage ? 'disabled' : ''} style="font-size:0.75rem;padding:4px 8px;border:1px solid var(--border);cursor:${isEmptyLanguage ? 'not-allowed' : 'pointer'};border-radius:4px;background:var(--bg3);color:var(--text);font-family:var(--sans);opacity:${isEmptyLanguage ? '0.55' : '1'}">Apply to Editor</button>
+  <button id="copy-cfg-btn" class="icon-btn" data-tip="Copy to Editor" ${isEmptyLanguage ? 'disabled' : ''} style="font-size:0.75rem;padding:4px 8px;border:1px solid var(--border);cursor:${isEmptyLanguage ? 'not-allowed' : 'pointer'};border-radius:4px;background:var(--bg3);color:var(--text);font-family:var(--sans);opacity:${isEmptyLanguage ? '0.55' : '1'}">Apply to Editor</button>
 </h3>
 <div style="font-size:.7rem;color:var(--text2);margin-bottom:12px;line-height:1.8">
   Non-terminal <b>[p, A, q]</b>: starting in state p with stack symbol A on top, consume some input and end in state q with A removed.<br>
