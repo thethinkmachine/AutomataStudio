@@ -8,6 +8,10 @@
 const isElectron = !!(window.electronAPI && window.electronAPI.isElectron);
 
 if (isElectron) {
+  // Lets CSS (the drag region, the window-control buttons) and markup that's
+  // only meaningful inside the packaged app key off a single selector.
+  document.documentElement.classList.add('is-electron');
+
   window.electronAPI.onMenuAction(action => {
     switch (action) {
       case 'new-tab': createTab(); break;
@@ -27,4 +31,23 @@ if (isElectron) {
       case 'about': openAboutModal(); break;
     }
   });
+
+  // Custom titlebar: the window is frameless (electron/main.js), so these
+  // buttons in the header are the only way to minimize/maximize/close.
+  document.getElementById('winctl-minimize')?.addEventListener('click', () => {
+    window.electronAPI.windowMinimize();
+  });
+  document.getElementById('winctl-maximize')?.addEventListener('click', () => {
+    window.electronAPI.windowMaximizeToggle();
+  });
+  document.getElementById('winctl-close')?.addEventListener('click', () => {
+    window.electronAPI.windowClose();
+  });
+
+  const maximizeBtn = document.getElementById('winctl-maximize');
+  const syncMaximizedState = (isMaximized) => {
+    maximizeBtn?.classList.toggle('is-maximized', isMaximized);
+  };
+  window.electronAPI.isWindowMaximized().then(syncMaximizedState);
+  window.electronAPI.onWindowMaximizedChange(syncMaximizedState);
 }

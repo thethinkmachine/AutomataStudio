@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, protocol, shell } = require('electron');
+const { app, BrowserWindow, Menu, protocol, shell, ipcMain } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 
@@ -31,6 +31,17 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow = null;
 
+// The window is frameless (see createWindow), so the page draws its own
+// minimize/maximize/close buttons in the header and calls these over IPC.
+ipcMain.on('window-minimize', () => mainWindow?.minimize());
+ipcMain.on('window-maximize-toggle', () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+});
+ipcMain.on('window-close', () => mainWindow?.close());
+ipcMain.handle('window-is-maximized', () => mainWindow?.isMaximized() ?? false);
+
 function registerAppProtocol() {
   protocol.handle('app', async (request) => {
     const url = new URL(request.url);
@@ -60,6 +71,7 @@ function createWindow() {
     minHeight: 600,
     backgroundColor: '#0f0f14',
     show: false,
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -69,6 +81,21 @@ function createWindow() {
   });
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
+
+  // Frameless means no native minimize/maximize/close buttons either, so the
+  // header's custom ones need to know which icon (maximize vs restore) to show.
+  mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized-change', true));
+  mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-maximized-change', false));
+
+  // The page's own beforeunload handler (js/persistence.js) calls preventDefault()
+  // when a workspace tab is dirty, to trigger the browser's native "leave site?"
+  // prompt. Electron has no such prompt, so left alone this silently blocks the
+  // window from ever closing — Alt+F4/Cmd+Q/the close button all become no-ops.
+  // The page already flushes a backup save unconditionally before that check runs,
+  // so nothing is lost by letting the close proceed anyway.
+  mainWindow.webContents.on('will-prevent-unload', (event) => {
+    event.preventDefault();
+  });
 
   if (devServerUrl) {
     mainWindow.loadURL(devServerUrl);

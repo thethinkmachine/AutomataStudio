@@ -217,6 +217,76 @@ header {
   border-color: var(--red-border);
 }
 
+/* ─── CUSTOM TITLEBAR (Electron only) ───
+   The Electron window is frameless (electron/main.js), so the header doubles
+   as the titlebar: most of it is a drag region, with every clickable cluster
+   punched out via no-drag so nothing under them stops being clickable. */
+.is-electron header {
+  -webkit-app-region: drag;
+  padding-right: 0;
+}
+
+.is-electron header button,
+.is-electron header input,
+.is-electron header a,
+.is-electron header [onclick],
+.is-electron header .ctx,
+.is-electron header .model-picker-menu {
+  -webkit-app-region: no-drag;
+}
+
+.winctl {
+  display: none;
+  align-self: stretch;
+  flex-shrink: 0;
+}
+
+.is-electron .winctl {
+  display: flex;
+}
+
+.winctl-btn {
+  width: 46px;
+  border: none;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.winctl-btn svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+}
+
+.winctl-btn:hover {
+  background: var(--surface);
+  color: var(--text2);
+}
+
+.winctl-close:hover {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.winctl-restore-icon {
+  display: none;
+}
+
+.winctl-maximize.is-maximized .winctl-maximize-icon {
+  display: none;
+}
+
+.winctl-maximize.is-maximized .winctl-restore-icon {
+  display: block;
+}
+
 .hbtn.success {
   color: var(--green);
   border-color: var(--green-border);
