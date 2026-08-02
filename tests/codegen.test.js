@@ -81,9 +81,9 @@ function runJS(src) {
 }
 
 // Asserts the generated recogniser agrees with the simulator everywhere.
-function assertAgrees(sigma, maxLen, label) {
+function assertAgrees(sigma, maxLen, label, style) {
   const ir = context.buildMachineIR();
-  const src = context.codegenJavaScript(ir);
+  const src = context.codegenJavaScript(ir, style ? { style } : {});
   const { accepts } = runJS(src);
   assert.equal(typeof accepts, 'function', `${label}: no accepts() exported`);
 
