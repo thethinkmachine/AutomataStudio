@@ -1048,25 +1048,9 @@ function fitToScreen(silent = false) {
   const cw = w.clientWidth, ch = w.clientHeight;
   const R = App.config.radius + 4; // state radius + some padding
   const pad = 90;
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  App.states.forEach(s => {
-    minX = Math.min(minX, s.x - R);
-    minY = Math.min(minY, s.y - R);
-    maxX = Math.max(maxX, s.x + R);
-    maxY = Math.max(maxY, s.y + R);
-  });
-  if (typeof includeNoteBounds === 'function') {
-    includeNoteBounds((x0, y0, x1, y1) => {
-      minX = Math.min(minX, x0); minY = Math.min(minY, y0);
-      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
-    });
-  }
-  if (typeof includeDividerBounds === 'function') {
-    includeDividerBounds((x0, y0, x1, y1) => {
-      minX = Math.min(minX, x0); minY = Math.min(minY, y0);
-      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
-    });
-  }
+  const b = getContentBounds(R);
+  if (!b) return;
+  const { minX, minY, maxX, maxY } = b;
   const bw = maxX - minX, bh = maxY - minY;
   const scaleX = (cw - pad * 2) / bw;
   const scaleY = (ch - pad * 2) / bh;

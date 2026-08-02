@@ -95,11 +95,17 @@ function loadJSON() { $('file-input').click(); }
 
 function handleFiles(files) {
   const f = files[0]; if (!f) return;
-  const isPng = f.name.toLowerCase().endsWith('.png');
+  const lower = f.name.toLowerCase();
+  const isPng = lower.endsWith('.png');
+  const isJflap = lower.endsWith('.jff') || lower.endsWith('.jflap');
   const reader = new FileReader();
 
   reader.onload = ev => {
     try {
+      // JFLAP files carry their own schema; importJFLAPText validates and
+      // loads them, so they never reach the workspace JSON path below.
+      if (isJflap) { importJFLAPText(ev.target.result); return; }
+
       let data;
       if (isPng) {
         const text = new TextDecoder().decode(ev.target.result);
@@ -118,6 +124,7 @@ function handleFiles(files) {
       showStatus('Workspace loaded!');
     } catch (err) {
       console.error(err);
+      if (isJflap) { showStatus(`Could not import JFLAP file: ${err.message}`); return; }
       const isCustomErr = err.message && !err.message.includes('JSON');
       showStatus(isCustomErr ? `Validation Error: ${err.message}` : (isPng ? 'Could not extract workspace data' : 'Invalid JSON file'));
     }
