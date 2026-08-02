@@ -15,6 +15,10 @@ const SCRIPT_ORDER = [
   'js/dividers.js',
   'js/workspace.js',
   'js/persistence.js',
+  'js/export-core.js',
+  'js/export-formats.js',
+  'js/export-ui.js',
+  'js/import-jflap.js',
   'js/ui.js',
   'js/algorithms-fa.js',
   'js/algorithms-cfg.js'

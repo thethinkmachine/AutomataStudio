@@ -1033,16 +1033,58 @@ function autoLayout() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  SVG EXPORT
+//  IMAGE EXPORT  (PNG / SVG)
 // ══════════════════════════════════════════════════════════════════
-function exportPNG() {
+//  Both formats start from the same prepared SVG: the live canvas,
+//  cloned, stripped of interaction state, with every theme variable and
+//  CSS rule inlined so the file renders standalone. PNG then rasterises
+//  it; SVG just serialises it. Splitting buildExportSVG() out is what
+//  makes the second format possible at all — the vector was previously
+//  built and thrown away inside the PNG path.
+
+// Bounding box of everything drawn, in world coordinates. Shared with
+// fitToScreen so a cropped export frames the machine exactly the way
+// "fit to screen" does.
+function getContentBounds(statePad = 0) {
+  if (!App.states.length) return null;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  App.states.forEach(s => {
+    minX = Math.min(minX, s.x - statePad);
+    minY = Math.min(minY, s.y - statePad);
+    maxX = Math.max(maxX, s.x + statePad);
+    maxY = Math.max(maxY, s.y + statePad);
+  });
+  if (typeof includeNoteBounds === 'function') {
+    includeNoteBounds((x0, y0, x1, y1) => {
+      minX = Math.min(minX, x0); minY = Math.min(minY, y0);
+      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
+    });
+  }
+  if (typeof includeDividerBounds === 'function') {
+    includeDividerBounds((x0, y0, x1, y1) => {
+      minX = Math.min(minX, x0); minY = Math.min(minY, y0);
+      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
+    });
+  }
+  if (!Number.isFinite(minX)) return null;
+  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+}
+
+/**
+ * @param {object} opts
+ * @param {boolean} [opts.crop]            frame the content instead of the viewport
+ * @param {number}  [opts.padding]         margin around cropped content, in px
+ * @param {boolean} [opts.includeNotes]    keep sticky notes (default true)
+ * @param {boolean} [opts.includeDividers] keep dividers/regions (default true)
+ * @param {string}  [opts.background]      'transparent' or a CSS colour
+ * @returns {{svg: string, width: number, height: number}}
+ */
+function buildExportSVG(opts = {}) {
   const svgEl = $('svgCanvas');
   const wrap = $('canvas-wrap');
-  const w = wrap.clientWidth || 800, h = wrap.clientHeight || 600;
+  let w = wrap.clientWidth || 800, h = wrap.clientHeight || 600;
 
   const clone = svgEl.cloneNode(true);
-  clone.setAttribute('width', w);
-  clone.setAttribute('height', h);
 
   // Strip transient interaction states (selection highlights, temporary lines)
   clone.querySelectorAll('.sel-st, .sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
@@ -1051,6 +1093,33 @@ function exportPNG() {
   clone.querySelectorAll('.editor-layer').forEach(n => n.remove());
   const guideLayer = clone.querySelector('#align-guides-g');
   if (guideLayer) guideLayer.innerHTML = '';
+
+  if (opts.includeNotes === false) {
+    const g = clone.querySelector('#notes-g');
+    if (g) g.innerHTML = '';
+  }
+  if (opts.includeDividers === false) {
+    const g = clone.querySelector('#dividers-g');
+    if (g) g.innerHTML = '';
+  }
+
+  // Crop: neutralise the camera and let the viewBox do the framing, so the
+  // exported file is independent of where the user happened to be panned.
+  if (opts.crop) {
+    const b = getContentBounds(App.config.radius + 4);
+    if (b) {
+      const pad = opts.padding === undefined ? 40 : Math.max(0, opts.padding);
+      const camG = clone.querySelector('#cam-g');
+      if (camG) camG.setAttribute('transform', 'translate(0,0) scale(1)');
+      w = Math.max(1, Math.round(b.width + pad * 2));
+      h = Math.max(1, Math.round(b.height + pad * 2));
+      clone.setAttribute('viewBox', `${(b.minX - pad).toFixed(2)} ${(b.minY - pad).toFixed(2)} ${w} ${h}`);
+    }
+  }
+
+  clone.setAttribute('width', w);
+  clone.setAttribute('height', h);
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
 
   // Maintain theme: Copy the current data-theme attribute (light/dark)
   const currentTheme = document.documentElement.dataset.theme;
@@ -1083,15 +1152,46 @@ function exportPNG() {
   svgStyle.textContent = `${rootStyles}\n${cssRules}\n.tarr-hit { display:none !important; }\n.note-resize-hit, .note-resize-handle { display:none !important; }\n.divider-hit, .divider-endpoint { display:none !important; }\nsvg { background: transparent; }`;
   clone.insertBefore(svgStyle, clone.firstChild);
 
+  // A painted rect rather than a CSS background: canvas rasterisation
+  // ignores the latter, so a "white background" PNG would come out clear.
+  const bg = opts.background;
+  if (bg && bg !== 'transparent') {
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    const vb = clone.getAttribute('viewBox');
+    if (vb) {
+      const [vx, vy, vw, vh] = vb.split(/[\s,]+/).map(Number);
+      rect.setAttribute('x', vx); rect.setAttribute('y', vy);
+      rect.setAttribute('width', vw); rect.setAttribute('height', vh);
+    } else {
+      rect.setAttribute('x', 0); rect.setAttribute('y', 0);
+      rect.setAttribute('width', w); rect.setAttribute('height', h);
+    }
+    rect.setAttribute('fill', bg);
+    clone.insertBefore(rect, svgStyle.nextSibling);
+  }
+
+  return { svg: new XMLSerializer().serializeToString(clone), width: w, height: h };
+}
+
+function exportSVG(opts = {}) {
+  const { svg } = buildExportSVG(opts);
+  const header = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n';
+  exportDownload(exportFilename('svg'), header + svg, 'image/svg+xml;charset=utf-8');
+  showStatus('Exported as SVG');
+  if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
+}
+
+function exportPNG(opts = {}) {
+  const res = opts.scale || App.config.exportRes || 2;
+  const embedData = opts.embedData !== false;
+  const { svg: svgStr, width: w, height: h } = buildExportSVG(opts);
+
   const canvas = document.createElement('canvas');
-  const res = App.config.exportRes || 2;
-  canvas.width = w * res;
-  canvas.height = h * res;
+  canvas.width = Math.round(w * res);
+  canvas.height = Math.round(h * res);
   const ctx = canvas.getContext('2d');
   ctx.scale(res, res);
 
-  const serializer = new XMLSerializer();
-  const svgStr = serializer.serializeToString(clone);
   const img = new Image();
   const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
   const url = URL.createObjectURL(svgBlob);
@@ -1100,15 +1200,21 @@ function exportPNG() {
     ctx.clearRect(0, 0, w, h);
     ctx.drawImage(img, 0, 0);
     canvas.toBlob(blob => {
-      const data = getWorkspaceData();
-      const meta = `\n--AutomataData--\n${JSON.stringify(data)}`;
-      const finalBlob = new Blob([blob, meta], { type: 'image/png' });
+      // The workspace JSON rides along after the PNG's own bytes, which is
+      // what lets the exported image be dropped back in and edited. Opting
+      // out produces a plain picture for anyone who'd rather not ship the
+      // full machine definition inside a screenshot.
+      const parts = [blob];
+      if (embedData) parts.push(`\n--AutomataData--\n${JSON.stringify(getWorkspaceData())}`);
+      const finalBlob = new Blob(parts, { type: 'image/png' });
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(finalBlob);
-      a.download = 'automaton.png';
+      const outUrl = URL.createObjectURL(finalBlob);
+      a.href = outUrl;
+      a.download = exportFilename('png');
       a.click();
+      setTimeout(() => { try { URL.revokeObjectURL(outUrl); } catch (e) {} }, 1000);
       URL.revokeObjectURL(url);
-      showStatus('Workspace snapshot saved!');
+      showStatus(embedData ? 'Workspace snapshot saved!' : 'Exported as PNG');
       if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
     }, 'image/png');
   };

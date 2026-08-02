@@ -514,11 +514,27 @@ function renderLangExtension() {
       'Enable "transducers accept" in Settings to list accepted inputs.'));
   } else if (langIsSymbolic()) {
     renderLangFingerprint(box);
+    renderLangExportBar(box);
   } else {
     renderLangTraces(box);
+    renderLangExportBar(box);
   }
   _langExtCache = { key, node: box };
   host.appendChild(box);
+}
+
+// The panel shows a window onto L(M); this is how that leaves the app.
+// Sampling can be slower than a render (every candidate is verified with
+// the real simulator), so it happens on click rather than eagerly here.
+function renderLangExportBar(host) {
+  if (typeof openExportCodeModal !== 'function') return;
+  const bar = _le('div', 'exp-bar');
+  const btn = _le('button', 'exp-bar-btn', 'Export words');
+  btn.type = 'button';
+  btn.dataset.tip = 'Accepted and rejected words as CSV, JSON or batch-test input';
+  btn.addEventListener('click', () => openExportCodeModal('samples'));
+  bar.appendChild(btn);
+  host.appendChild(bar);
 }
 
 // ── symbolic: the fingerprint ─────────────────────────────────────

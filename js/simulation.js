@@ -1723,16 +1723,13 @@ function parseBatchLine(line) {
   return { input: m[1].trim(), expect };
 }
 
-function runBatch() {
-  const rawLines = $('batch-in').value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-  const summaryEl = $('batch-summary');
-  if (!rawLines.length) return;
-  if (!App.startId) {
-    $('batch-result').innerHTML = `<div class="br-err">Error: No start state defined.</div>`;
-    if (summaryEl) summaryEl.style.display = 'none';
-    return;
-  }
-  const eps = App.config.sym.eps;
+// Running a batch and showing one are separate jobs. They used to be one
+// function that ended in an innerHTML assignment, which meant the results
+// only ever existed as markup — nothing could export them, and the pass/fail
+// logic could not be tested without a DOM. computeBatchResults() is now the
+// whole decision procedure and returns data; renderBatchResults() is the
+// only part that touches the page.
+function computeBatchResults(rawLines) {
   const results = rawLines.map(parseBatchLine).map(({ input: line, expect }) => {
     const raw = parseEps(line);
     const str = raw === App.config.sym.eps ? '' : raw;
@@ -1764,14 +1761,30 @@ function runBatch() {
   });
 
   const withExpectation = results.filter(r => r.expect && !r.error);
+  // An "unknown" matches no expectation — it is neither a pass nor a
+  // rejection, and folding it into either would hide the budget.
+  const passCount = withExpectation.filter(r => r.verdict === r.expect).length;
+  const unknowns = results.filter(r => r.verdict === 'unknown').length;
+  return {
+    results,
+    expected: withExpectation.length,
+    passCount,
+    unknowns,
+    allPassed: withExpectation.length > 0 && passCount === withExpectation.length,
+    machine: App.machine,
+    budget: langStepBudget()
+  };
+}
+
+function renderBatchResults(batch) {
+  const summaryEl = $('batch-summary');
+  const { results } = batch;
+
   if (summaryEl) {
-    if (withExpectation.length) {
-      // An "unknown" matches no expectation — it is neither pass nor a
-      // rejection, and folding it into either would hide the budget.
-      const passCount = withExpectation.filter(r => r.verdict === r.expect).length;
+    if (batch.expected) {
       summaryEl.style.display = 'block';
-      summaryEl.className = `batch-summary ${passCount === withExpectation.length ? 'all-pass' : 'has-fail'}`;
-      summaryEl.textContent = `${passCount} / ${withExpectation.length} expectations passed`;
+      summaryEl.className = `batch-summary ${batch.allPassed ? 'all-pass' : 'has-fail'}`;
+      summaryEl.textContent = `${batch.passCount} / ${batch.expected} expectations passed`;
     } else {
       summaryEl.style.display = 'none';
     }
@@ -1783,7 +1796,7 @@ function runBatch() {
     const outTag = r.output !== null ? ` <span style="${sub}">→ "${r.output}"</span>` : '';
     if (r.verdict === 'unknown') {
       const why = r.expect ? `expected ${r.expect}, still running` : 'still running';
-      return `<div class="br-unk">? "${r.str}" <span style="${sub}">(${why} after ${langStepBudget()} steps — not a rejection)</span></div>`;
+      return `<div class="br-unk">? "${r.str}" <span style="${sub}">(${why} after ${batch.budget} steps — not a rejection)</span></div>`;
     }
     if (r.expect) {
       const got = r.verdict;
@@ -1794,12 +1807,33 @@ function runBatch() {
     return `<div class="${r.accepted ? 'br-ok' : 'br-err'}">${r.accepted ? '✓' : '✗'} "${r.str}"${outTag}</div>`;
   }).join('');
 
-  const unknowns = results.filter(r => r.verdict === 'unknown').length;
+  const unknowns = batch.unknowns;
   const budgetNote = unknowns
-    ? `<div class="br-note">${unknowns} input${unknowns > 1 ? 's' : ''} had no verdict inside ${langStepBudget()} steps. ` +
+    ? `<div class="br-note">${unknowns} input${unknowns > 1 ? 's' : ''} had no verdict inside ${batch.budget} steps. ` +
       `Raise <em>Language Fingerprint Budget</em> in Settings › Turing Machine; whatever stays unresolved never halts.</div>`
     : '';
   $('batch-result').innerHTML = rows + budgetNote;
+  const bar = $('batch-export-bar');
+  if (bar) bar.style.display = results.length ? 'flex' : 'none';
+}
+
+function runBatch() {
+  const rawLines = $('batch-in').value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  if (!rawLines.length) return;
+  if (!App.startId) {
+    $('batch-result').innerHTML = `<div class="br-err">Error: No start state defined.</div>`;
+    const summaryEl = $('batch-summary');
+    if (summaryEl) summaryEl.style.display = 'none';
+    const bar = $('batch-export-bar');
+    if (bar) bar.style.display = 'none';
+    App.lastBatch = null;
+    return;
+  }
+  const batch = computeBatchResults(rawLines);
+  // Held so the export actions report exactly what is on screen rather than
+  // silently re-running the machine against an edited textarea.
+  App.lastBatch = batch;
+  renderBatchResults(batch);
 }
 function testDFA(tokens) {
   let cur = App.startId;
