@@ -18,6 +18,7 @@ const SCRIPT_ORDER = [
   'js/export-core.js',
   'js/export-formats.js',
   'js/export-ui.js',
+  'js/codegen.js',
   'js/import-jflap.js',
   'js/ui.js',
   'js/algorithms-fa.js',
