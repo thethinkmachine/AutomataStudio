@@ -322,6 +322,11 @@ function renderExportCodeModal() {
           ${opt.choices.map(([v, l]) => `<option value="${v}" ${val === v ? 'selected' : ''}>${l}</option>`).join('')}
         </select></label>`;
     }
+    if (opt.type === 'text') {
+      return `<label class="exp-field"><span>${opt.label}</span>
+        <input class="inp" type="text" value="${escapeHtml(val)}"
+          onchange="setExportCodeOpt('${opt.id}', this.value, 'text')"></label>`;
+    }
     return `<label class="exp-field"><span>${opt.label}</span>
       <input class="inp exp-num" type="number" value="${val}"
         ${opt.min !== undefined ? `min="${opt.min}"` : ''} ${opt.max !== undefined ? `max="${opt.max}"` : ''}
