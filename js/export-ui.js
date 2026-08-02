@@ -203,7 +203,7 @@ const ExportFormats = {
   },
   samples: {
     label: 'Language samples', group: 'Language', ext: 'csv', mime: 'text/csv',
-    blurb: 'Accepted and rejected words in shortlex order, derived from the machine itself.',
+    blurb: 'Accepted and rejected words in shortlex order, derived from the machine itself. A proven repeating configuration (loop) is counted as reject; runs that reach the step limit without a verdict are skipped as undecided (the JSON export includes their count).',
     options: [
       { id: 'format', type: 'select', label: 'As', def: 'csv', choices: [['csv', 'CSV'], ['json', 'JSON'], ['batch', 'Batch-test input'], ['markdown', 'Markdown']] },
       { id: 'accepted', type: 'number', label: 'Accepted words', def: 25, min: 0, max: 500, step: 5 },
