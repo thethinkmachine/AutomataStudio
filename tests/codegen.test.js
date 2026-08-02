@@ -224,6 +224,22 @@ test('stack and tape machines are refused, not approximated', () => {
   }
 });
 
+test('unsupported C and SCXML output uses closed block comments', () => {
+  reset();
+  App.machine = 'TM';
+  App.sigma = new Set(['a']);
+  App.states = [{ id: 's0', name: 'q0', x: 0, y: 0 }];
+  App.startId = 's0';
+  App.accepts = new Set(['s0']);
+  App.transitions = [];
+  const ir = context.buildMachineIR();
+
+  const c = context.codegenC(ir);
+  assert.match(c, /^\/\*[\s\S]*\*\/$/);
+
+  const scxml = context.codegenSCXML(ir);
+  assert.match(scxml, /^<!--[\s\S]*-->$/);
+});
 test('an empty canvas and a machine with no start state are both refused', () => {
   reset();
   assert.equal(context.codegenSupport(context.buildMachineIR()).ok, false);
@@ -257,6 +273,21 @@ test('C emits a dense transition table with -1 for dead edges', () => {
   assert.deepEqual(rows[2], [1, 0]);
 });
 
+test('C escapes quotes, backslashes, and ASCII control symbols', () => {
+  reset();
+  fa({
+    sigma: ["'", '\\', '\n', '\t', '\0', '\x1f'],
+    states: ['q0'], start: 'q0', accepts: ['q0'],
+    edges: []
+  });
+  const c = context.codegenC(context.buildMachineIR());
+  assert.ok(c.includes("'\\''"), 'apostrophe should use a C quote escape');
+  assert.ok(c.includes("'\\\\'"), 'backslash should use a C slash escape');
+  assert.ok(c.includes("'\\n'"));
+  assert.ok(c.includes("'\\t'"));
+  assert.ok(c.includes("'\\0'"));
+  assert.ok(c.includes("'\\x1f'"));
+});
 test('C marks a missing transition as dead rather than inventing one', () => {
   reset();
   fa({

@@ -129,6 +129,11 @@ function codegenEpsTargets(delta, stateName, eps) {
 }
 
 function codegenUnsupported(reason, prefix) {
+  const blockEnd = prefix === '/*' ? '*/' : prefix === '<!--' ? '-->' : null;
+  if (blockEnd) {
+    const wrapped = reason.replace(/(.{1,68})(\s|$)/g, (m, chunk) => ` ${chunk.trim()}\n`).trimEnd();
+    return `${prefix}\n Cannot generate code for this machine.\n\n${wrapped}\n${blockEnd}`;
+  }
   return `${prefix} Cannot generate code for this machine.\n${prefix}\n`
     + reason.replace(/(.{1,68})(\s|$)/g, (m, chunk) => `${prefix} ${chunk.trim()}\n`);
 }
@@ -1584,9 +1589,20 @@ function codegenCShape(ir) {
   return { names, order, idx, sigma, table, accIdx };
 }
 
-// A C character literal for a Σ symbol, with the two that need escaping.
+// A C character literal for a Σ symbol. Printable ASCII stays readable;
+// quotes, backslashes, and control bytes become valid C escapes.
 function codegenCChar(s) {
-  return `'${s === "'" ? "\\'" : s === '\\' ? '\\\\' : s}'`;
+  const ch = String(s == null ? '' : s);
+  if (ch === "'") return "'\\''";
+  if (ch === '\\') return "'\\\\'";
+  const code = ch.charCodeAt(0);
+  const named = {
+    0: '\\0', 7: '\\a', 8: '\\b', 9: '\\t',
+    10: '\\n', 11: '\\v', 12: '\\f', 13: '\\r'
+  };
+  if (named[code]) return `'${named[code]}'`;
+  if (code < 0x20 || code === 0x7F) return `'\\x${code.toString(16).padStart(2, '0')}'`;
+  return `'${ch}'`;
 }
 
 function codegenCTable(ir, opts = {}) {
