@@ -680,15 +680,15 @@ function getMachineExampleOptions() {
   return cfg.file ? [{ file: cfg.file, label: 'Example' }] : [];
 }
 
-function loadExample() {
+function loadExample(trigger) {
   const options = getMachineExampleOptions();
   if (!options.length) return;
   if (options.length === 1) { loadExampleFile(options[0].file); return; }
-  toggleExampleMenu(options);
+  toggleExampleMenu(options, trigger);
 }
 
-function toggleExampleMenu(options) {
-  const btn = $('example-picker-btn');
+function toggleExampleMenu(options, trigger) {
+  const btn = trigger || $('example-picker-btn');
   const menu = $('example-menu');
   if (!btn || !menu) { loadExampleFile(options[0].file); return; }
   if (menu.style.display === 'block') { closeExampleMenu(); return; }
