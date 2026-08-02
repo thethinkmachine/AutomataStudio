@@ -158,6 +158,7 @@ function createHarness() {
     Date,
     document,
     localStorage,
+    indexedDB: undefined,
     window: null,
     navigator: {},
     innerWidth: 1280,

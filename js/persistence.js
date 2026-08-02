@@ -43,28 +43,205 @@ function getWorkspaceData() {
 // Returns true when the workspace was persisted, false when storage
 // rejected it (quota, private-mode) — callers that close a tab afterwards
 // must not discard work on a failed save.
-function saveWorkspace(opts = {}) {
-  const ok = saveBackup();
-  if (!ok) {
-    showStatus('Could not save — browser storage is full or unavailable');
-    return false;
+let pendingWorkspaceSave = null;
+let autosaveTimer = null;
+let autosaveInProgress = false;
+let autosaveCountdownTimer = null;
+let autosaveDeadline = 0;
+const WORKSPACE_DB_NAME = 'automata-playground';
+const WORKSPACE_DB_VERSION = 1;
+const WORKSPACE_STORE_NAME = 'snapshots';
+
+// Undo/redo stacks are deliberately excluded from anything that reaches
+// storage. They can hold 300 JSON snapshots per tab, which is the single
+// largest contributor to quota failures, and reloading discards the history
+// anyway — persisting it costs the whole save the moment it tips over quota.
+function stripTabForStorage(ws) {
+  if (!ws || !ws.data) return ws;
+  const { history, future, ...data } = ws.data;
+  return { ...ws, data };
+}
+
+function getBackupPayload(savedIds = []) {
+  if (typeof exportWorkspaceState !== 'function' || !activeWorkspaceId) return null;
+  const act = Workspaces.find(w => w.id === activeWorkspaceId);
+  if (act) act.data = exportWorkspaceState();
+  const saved = new Set(savedIds);
+  return {
+    tabs: Workspaces.map(ws => stripTabForStorage(saved.has(ws.id) ? { ...ws, dirty: false } : ws)),
+    activeId: activeWorkspaceId,
+    config: App.config
+  };
+}
+
+function openWorkspaceDb() {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(WORKSPACE_DB_NAME, WORKSPACE_DB_VERSION);
+    request.onupgradeneeded = () => request.result.createObjectStore(WORKSPACE_STORE_NAME);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Could not open workspace storage'));
+  });
+}
+
+// Reads back what persistWorkspaceAsync wrote. Returns null when there is no
+// IndexedDB, no database yet, or no snapshot — every one of which is a normal
+// first-run state, so the caller falls back to the localStorage backup rather
+// than treating it as an error.
+async function readWorkspaceSnapshot() {
+  let db;
+  try {
+    db = await openWorkspaceDb();
+  } catch {
+    return null;
   }
-  if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
-  if (!opts.silent) showStatus('Workspace saved');
-  return true;
+  if (!db) return null;
+  try {
+    if (!db.objectStoreNames.contains(WORKSPACE_STORE_NAME)) return null;
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(WORKSPACE_STORE_NAME, 'readonly');
+      const req = tx.objectStore(WORKSPACE_STORE_NAME).get('current');
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error || new Error('Could not read workspace storage'));
+      tx.onabort = () => reject(tx.error || new Error('Could not read workspace storage'));
+    });
+  } catch {
+    return null;
+  } finally {
+    db.close();
+  }
+}
+
+async function persistWorkspaceAsync(payload) {
+  const db = await openWorkspaceDb();
+  if (!db) {
+    await Promise.resolve();
+    localStorage.setItem('automata-backup', JSON.stringify(payload));
+    return 'localStorage';
+  }
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(WORKSPACE_STORE_NAME, 'readwrite');
+    tx.objectStore(WORKSPACE_STORE_NAME).put(payload, 'current');
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error || new Error('Could not save workspace'));
+    tx.onabort = () => reject(tx.error || new Error('Could not save workspace'));
+  });
+  db.close();
+  return 'indexedDB';
+}
+
+async function saveWorkspace(opts = {}) {
+  if (pendingWorkspaceSave) return pendingWorkspaceSave;
+  if (typeof setSaveState === 'function') setSaveState('saving');
+
+  pendingWorkspaceSave = Promise.resolve().then(async () => {
+    const payload = getBackupPayload([activeWorkspaceId]);
+    if (!payload) return false;
+    const backend = await persistWorkspaceAsync(payload);
+    // Keep the legacy backup current for older builds and unload recovery.
+    const active = Workspaces.find(ws => ws.id === activeWorkspaceId);
+    const wasDirty = active ? active.dirty : false;
+    if (active) active.dirty = false;
+    // A failed mirror-write is reported no matter which backend took the
+    // primary copy: the two stores must not silently diverge, and reporting
+    // success here is what previously let a quota error pass as a save.
+    if (!saveBackup()) {
+      if (active) active.dirty = wasDirty;
+      throw new Error('Could not update workspace backup');
+    }
+    if (typeof renderTabs === 'function') renderTabs();
+    if (typeof setSaveState === 'function') setSaveState(Workspaces.some(ws => ws.dirty) ? 'unsaved' : 'saved');
+    if (!opts.silent) showStatus('Workspace saved');
+    return true;
+  }).catch(() => {
+    if (typeof setSaveState === 'function') setSaveState('error', 'Save failed');
+    showStatus('Could not save — storage is unavailable');
+    return false;
+  }).finally(() => {
+    pendingWorkspaceSave = null;
+  });
+
+  return pendingWorkspaceSave;
 }
 
 // Saves a specific tab, which may not be the active one (bulk closes walk
 // tabs that aren't on screen). Only the active tab holds live state in App,
 // so the others just need their existing snapshot flushed.
-function saveWorkspaceById(id) {
+async function saveWorkspaceById(id) {
   const ws = Workspaces.find(w => w.id === id);
   if (!ws) return true;
   if (id === activeWorkspaceId) return saveWorkspace({ silent: true });
-  ws.dirty = false;
-  const ok = saveBackup();
-  if (!ok) { ws.dirty = true; showStatus('Could not save — browser storage is full or unavailable'); }
-  return ok;
+  const wasDirty = ws.dirty;
+  try {
+    const payload = getBackupPayload([id]);
+    if (!payload) return false;
+    await persistWorkspaceAsync(payload);
+    ws.dirty = false;
+    if (!saveBackup()) throw new Error('Could not update workspace backup');
+    if (typeof renderTabs === 'function') renderTabs();
+    if (typeof setSaveState === 'function') setSaveState(Workspaces.some(item => item.dirty) ? 'unsaved' : 'saved');
+    return true;
+  } catch {
+    ws.dirty = wasDirty;
+    if (typeof setSaveState === 'function') setSaveState('error', 'Save failed');
+    showStatus('Could not save — browser storage is full or unavailable');
+    return false;
+  }
+}
+
+async function runAutosave() {
+  if (autosaveInProgress || pendingWorkspaceSave || typeof Workspaces === 'undefined') return;
+  const dirtyIds = Workspaces.filter(ws => ws.dirty).map(ws => ws.id);
+  if (!dirtyIds.length) return;
+  autosaveInProgress = true;
+  if (typeof setSaveState === 'function') setSaveState('saving', 'Autosaving…');
+  let allSaved = true;
+  try {
+    for (const id of dirtyIds) {
+      if (!await saveWorkspaceById(id)) allSaved = false;
+    }
+  } finally {
+    autosaveInProgress = false;
+  }
+  if (typeof setSaveState === 'function') {
+    setSaveState(allSaved && !Workspaces.some(ws => ws.dirty) ? 'saved' : allSaved ? 'unsaved' : 'error');
+  }
+}
+
+function restartAutosaveTimer() {
+  if (autosaveTimer) clearInterval(autosaveTimer);
+  if (autosaveCountdownTimer) clearInterval(autosaveCountdownTimer);
+  autosaveTimer = null;
+  autosaveCountdownTimer = null;
+  autosaveDeadline = 0;
+  const interval = Number(App.config.autosaveIntervalMs ?? 15000);
+  const countdown = $('autosave-countdown');
+  if (!Number.isFinite(interval) || interval <= 0) {
+    if (countdown) countdown.textContent = '';
+    return;
+  }
+  const safeInterval = Math.max(1000, interval);
+  // The countdown only means something when there is unsaved work for the next
+  // tick to save. On a clean workspace it counted down forever regardless,
+  // which put permanent motion in the corner of the chrome and told the user
+  // nothing. Blank unless a tab is actually dirty.
+  const updateCountdown = () => {
+    if (!countdown) return;
+    const pending = typeof Workspaces !== 'undefined' && Workspaces.some(ws => ws.dirty);
+    countdown.textContent = pending
+      ? String(Math.max(1, Math.ceil((autosaveDeadline - Date.now()) / 1000)))
+      : '';
+  };
+  autosaveDeadline = Date.now() + safeInterval;
+  updateCountdown();
+  autosaveTimer = setInterval(() => {
+    autosaveDeadline = Date.now() + safeInterval;
+    updateCountdown();
+    void runAutosave();
+  }, safeInterval);
+  autosaveCountdownTimer = setInterval(updateCountdown, 250);
+  autosaveTimer.unref?.();
+  autosaveCountdownTimer.unref?.();
 }
 
 function saveJSON() {
@@ -410,7 +587,7 @@ function saveBackup() {
   if (act) act.data = exportWorkspaceState();
 
   const payload = {
-    tabs: Workspaces,
+    tabs: Workspaces.map(stripTabForStorage),
     activeId: activeWorkspaceId,
     config: App.config
   };
@@ -422,12 +599,35 @@ function saveBackup() {
   }
 }
 
-function loadBackup() {
+// The incidental persistence that tab operations do (switch, create, close,
+// reorder). These are not user-initiated saves, so they stay quiet on success
+// — but a failure here means storage is full or unavailable, and silently
+// leaving the indicator on "Saved" would misreport the workspace as durable.
+function saveBackupChecked() {
+  const ok = saveBackup();
+  if (!ok && typeof setSaveState === 'function') setSaveState('error', 'Save failed');
+  return ok;
+}
+
+// Prefers the IndexedDB snapshot, which is where saveWorkspace puts the
+// authoritative copy; localStorage is the fallback for first run, private
+// mode, and builds that predate the IndexedDB backend.
+async function readLatestBackup() {
+  const snapshot = await readWorkspaceSnapshot();
+  if (snapshot && Array.isArray(snapshot.tabs) && snapshot.tabs.length) return snapshot;
   try {
     const raw = localStorage.getItem('automata-backup');
-    if (!raw) return;
-    const loaded = JSON.parse(raw);
-    
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function loadBackup() {
+  try {
+    const loaded = await readLatestBackup();
+    if (!loaded) return;
+
     // Check if it's the new multi-tab format
     if (loaded.tabs && Array.isArray(loaded.tabs)) {
       if (loaded.config) {
@@ -627,4 +827,3 @@ function showExampleCard(meta) {
   const simSection = $('rp-simulate');
   if (simSection) simSection.classList.remove('collapsed');
 }
-

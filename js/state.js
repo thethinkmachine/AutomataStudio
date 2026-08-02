@@ -104,6 +104,7 @@ const App = {
     // as "no verdict" rather than as rejects.
     langStepBudget: 400,
     autoSpeed: 500,
+    autosaveIntervalMs: 15000,
     radius: 30,
     zoom: { min: 0.2, max: 3, step: 0.1 },
     wheelZoom: true,

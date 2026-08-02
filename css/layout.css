@@ -600,7 +600,7 @@ header {
 .save-dot {
   position: absolute;
   top: 3px;
-  right: 3px;
+  left: 3px;
   width: 6px;
   height: 6px;
   border-radius: 999px;
@@ -612,10 +612,34 @@ header {
   pointer-events: none;
 }
 
+.autosave-countdown {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  min-width: 9px;
+  color: currentColor;
+  font-family: var(--mono);
+  font-size: .46rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  opacity: .8;
+  pointer-events: none;
+}
+
 #save-now-btn.is-dirty .save-dot {
   opacity: 1;
   transform: scale(1);
 }
+
+#save-now-btn[data-save-state="unsaved"] { color: var(--orange); }
+#save-now-btn[data-save-state="saving"] {
+  color: var(--accent);
+  animation: save-button-pulse .8s ease-in-out infinite alternate;
+}
+#save-now-btn[data-save-state="error"] { color: var(--red); }
+
+@keyframes save-button-pulse { to { opacity: .55; } }
 
 .tab-close {
   display: inline-flex;

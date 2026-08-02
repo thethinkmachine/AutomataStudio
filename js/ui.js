@@ -10,6 +10,7 @@ let draggingTabId = null;
 let tabDropTargetId = null;
 let tabDropPosition = null;
 let closedWorkspaces = [];
+let saveState = 'saved';
 
 function getWorkspaceMachine(ws) {
   if (!ws) return null;
@@ -28,6 +29,26 @@ function markActiveWorkspaceSaved() {
   if (ws && ws.dirty) {
     ws.dirty = false;
     renderTabs();
+  }
+}
+
+// The single source of truth for everything the Save button displays: its
+// colour, its tooltip, and the unsaved dot. The dot used to be toggled
+// separately from `Workspaces.some(dirty)` while the colour came from here,
+// which let the two disagree — an orange icon with no dot, or a dot left over
+// after the state moved on. Both are derived from `state` now.
+function setSaveState(state, message) {
+  saveState = state;
+  const btn = $('save-now-btn');
+  const labels = { unsaved: 'Unsaved', saving: 'Saving…', saved: 'Saved', error: 'Save failed' };
+  const label = message || labels[state] || labels.saved;
+  if (btn) {
+    btn.dataset.saveState = state;
+    btn.dataset.tip = label === 'Saved' ? 'Save workspace' : `${label} — save workspace`;
+    btn.setAttribute('aria-label', label === 'Saved' ? 'Save workspace — saved' : `${label} — save workspace`);
+    // "There is something to save" — true while unsaved, and still true when a
+    // save failed, since the work is in fact still unsaved.
+    btn.classList.toggle('is-dirty', state === 'unsaved' || state === 'error');
   }
 }
 
@@ -148,7 +169,7 @@ function handleTabDrop(id, e) {
   if (!moved) return;
 
   renderTabs();
-  saveBackup();
+  saveBackupChecked();
   requestAnimationFrame(() => focusTabElement(movedId));
 }
 
@@ -174,7 +195,7 @@ function handleTabAddDrop(e) {
   if (!moved) return;
 
   renderTabs();
-  saveBackup();
+  saveBackupChecked();
   requestAnimationFrame(() => focusTabElement(movedId));
 }
 
@@ -262,7 +283,7 @@ function commitTabRename(id, inputEl) {
 
   editingTabId = null;
   renderTabs();
-  saveBackup();
+  saveBackupChecked();
 }
 
 function renderTabs() {
@@ -323,14 +344,17 @@ function renderTabs() {
 
 // The Save button carries the same unsaved marker as the tabs. Driven from
 // renderTabs, which is already the one place dirty state changes are drawn.
+//
+// `saving` and `error` are both owned by the save itself and must survive this:
+// renderTabs runs from ~18 call sites, so recomputing the state here from
+// `dirty` alone used to wipe a "Save failed" the moment any unrelated tab
+// activity redrew — reporting a workspace as stored when it was not.
+// Whatever started those states is responsible for ending them.
 function updateSaveIndicator() {
   const btn = $('save-now-btn');
   if (!btn) return;
-  const anyDirty = Workspaces.some(w => w.dirty);
-  btn.classList.toggle('is-dirty', anyDirty);
-  const label = anyDirty ? 'Save workspace — unsaved changes' : 'Workspace saved';
-  btn.dataset.tip = label;
-  btn.setAttribute('aria-label', label);
+  if (saveState === 'saving' || saveState === 'error') return;
+  setSaveState(Workspaces.some(w => w.dirty) ? 'unsaved' : 'saved');
 }
 
 function renderTabOverflowMenu() {
@@ -436,7 +460,7 @@ function createTab(name) {
   if (typeof applyCamera === 'function') applyCamera();
   if (typeof updateLPanel === 'function') updateLPanel();
   if (typeof updateRPanel === 'function') updateRPanel();
-  saveBackup();
+  saveBackupChecked();
 }
 
 function switchTab(id) {
@@ -476,7 +500,7 @@ function switchTab(id) {
   if (typeof applyCamera === 'function') applyCamera();
   if (typeof updateLPanel === 'function') updateLPanel();
   if (typeof updateRPanel === 'function') updateRPanel();
-  saveBackup();
+  saveBackupChecked();
 }
 
 // ── Unsaved-changes guard ─────────────────────────────────────────
@@ -506,12 +530,17 @@ function confirmDiscardingTabs(ids, proceed) {
   const discardBtn = $('unsaved-discard-btn');
   if (saveBtn) {
     saveBtn.textContent = many ? 'Save all' : 'Save';
-    saveBtn.onclick = () => {
+    saveBtn.onclick = async () => {
       // A failed save must not close the tab — that would destroy the very
       // work the prompt exists to protect. saveWorkspaceById reports the
       // failure itself; leaving the dialog open lets the user retry or
       // deliberately discard.
-      const allSaved = dirty.every(ws => saveWorkspaceById(ws.id));
+      saveBtn.disabled = true;
+      let allSaved = true;
+      for (const ws of dirty) {
+        if (!await saveWorkspaceById(ws.id)) allSaved = false;
+      }
+      saveBtn.disabled = false;
       if (!allSaved) return;
       closeModal('unsaved-modal');
       proceed();
@@ -561,7 +590,7 @@ function performCloseTab(id) {
     switchTab(Workspaces[nextIdx].id);
   } else {
     renderTabs();
-    saveBackup();
+    saveBackupChecked();
   }
 }
 
@@ -590,7 +619,7 @@ function performCloseOtherTabs(id) {
     switchTab(id);
   } else {
     renderTabs();
-    saveBackup();
+    saveBackupChecked();
   }
 }
 
@@ -622,7 +651,7 @@ function performCloseTabsToRight(id) {
     switchTab(id);
   } else {
     renderTabs();
-    saveBackup();
+    saveBackupChecked();
   }
 }
 
@@ -966,7 +995,7 @@ function applyTheme(theme, persist = true) {
 function toggleTheme() {
   applyTheme(App.config.theme === 'light' ? 'dark' : 'light');
   if (typeof renderAll === 'function') renderAll();
-  saveBackup();
+  saveBackupChecked();
   showStatus(`Theme: ${App.config.theme}`);
 }
 
@@ -2291,6 +2320,7 @@ function openSettingsModal() {
   $('set-tm-steps').value = c.maxTmSteps;
   if ($('set-lang-budget')) $('set-lang-budget').value = c.langStepBudget ?? 400;
   $('set-auto-speed').value = c.autoSpeed;
+  if ($('set-autosave-interval')) $('set-autosave-interval').value = String(c.autosaveIntervalMs ?? 15000);
   $('set-radius').value = c.radius;
   if ($('set-wrap-labels')) $('set-wrap-labels').checked = c.wrapStateLabels !== false;
   if ($('set-click-highlight-mode')) $('set-click-highlight-mode').value = c.clickHighlightMode || 'off';
@@ -2339,6 +2369,11 @@ function confirmSettings() {
     c.langStepBudget = Math.max(10, parseInt($('set-lang-budget').value) || 400);
   }
   c.autoSpeed = parseInt($('set-auto-speed').value) || 500;
+  if ($('set-autosave-interval')) {
+    const interval = parseInt($('set-autosave-interval').value);
+    c.autosaveIntervalMs = Number.isFinite(interval) && interval >= 0 ? interval : 15000;
+    if (typeof restartAutosaveTimer === 'function') restartAutosaveTimer();
+  }
   if ($('sim-speed-sel')) $('sim-speed-sel').value = String(c.autoSpeed);
   if (typeof restartAutoTimerIfPlaying === 'function') restartAutoTimerIfPlaying();
   c.radius = parseInt($('set-radius').value) || 30;
@@ -2376,7 +2411,7 @@ function confirmSettings() {
   if (typeof renderGamma === 'function') renderGamma();
   closeModal('settings-modal');
   showStatus('Settings applied!');
-  saveBackup();
+  saveBackupChecked();
 }
 
 function getEditorSettingsData() {
@@ -2390,6 +2425,7 @@ function getEditorSettingsData() {
     maxTmSteps: c.maxTmSteps,
     langStepBudget: c.langStepBudget,
     autoSpeed: c.autoSpeed,
+    autosaveIntervalMs: c.autosaveIntervalMs,
     radius: c.radius,
     wrapStateLabels: !!c.wrapStateLabels,
     clickHighlightMode: c.clickHighlightMode || 'off',
@@ -2445,6 +2481,7 @@ function populateSettingsModalInputs(data) {
   if (data.maxTmSteps !== undefined) $('set-tm-steps').value = data.maxTmSteps;
   if (data.langStepBudget !== undefined && $('set-lang-budget')) $('set-lang-budget').value = data.langStepBudget;
   if (data.autoSpeed !== undefined) $('set-auto-speed').value = data.autoSpeed;
+  if (data.autosaveIntervalMs !== undefined && $('set-autosave-interval')) $('set-autosave-interval').value = data.autosaveIntervalMs;
   if (data.radius !== undefined) $('set-radius').value = data.radius;
   if (data.wrapStateLabels !== undefined && $('set-wrap-labels')) $('set-wrap-labels').checked = !!data.wrapStateLabels;
   if (data.clickHighlightMode !== undefined && $('set-click-highlight-mode')) $('set-click-highlight-mode').value = data.clickHighlightMode;

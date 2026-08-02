@@ -35,16 +35,25 @@ if (typeof initPanelResizers === 'function') initPanelResizers();
 if (typeof initCanvasResizeObserver === 'function') initCanvasResizeObserver();
 if (typeof initDefBoxOverflowObserver === 'function') initDefBoxOverflowObserver();
 if (typeof initLangClaimOverflowObserver === 'function') initLangClaimOverflowObserver();
+// Restoring now reads IndexedDB first, so it is asynchronous. Everything that
+// depends on the restored workspaces — the empty-state guard, the autosave
+// timer, and the shared-link import that may overwrite them — has to run after
+// it resolves, or it would race a still-empty Workspaces array.
+function finishBoot() {
+  if (Workspaces.length === 0) initTabs(); // Guard for fresh launch
+  if (typeof restartAutosaveTimer === 'function') restartAutosaveTimer();
+  // setMachine('DFA') above no-ops at boot because DFA is already the default,
+  // so nothing has refreshed the Language section yet — without this it would
+  // sit on its static placeholder markup until the first edit.
+  if (typeof updateRPanel === 'function') updateRPanel();
+
+  const sharedLinkLoaded = typeof loadSharedLinkFromURL === 'function' && loadSharedLinkFromURL();
+  setTimeout(() => showStatus('Esc=Pointer · V=Pan · Space+Drag=Pan · S=State · T=Transition · H=Fit · Ctrl+Z=Undo'), sharedLinkLoaded ? 3200 : 600);
+}
+
 if (typeof loadBackup === 'function') {
-  loadBackup();
+  Promise.resolve(loadBackup()).catch(e => console.error('Backup load failed:', e)).then(finishBoot);
 } else {
   initTabs(); // Create initial tab if no backup logic
+  finishBoot();
 }
-if (Workspaces.length === 0) initTabs(); // Guard for fresh launch
-// setMachine('DFA') above no-ops at boot because DFA is already the default,
-// so nothing has refreshed the Language section yet — without this it would
-// sit on its static placeholder markup until the first edit.
-if (typeof updateRPanel === 'function') updateRPanel();
-
-const _sharedLinkLoaded = typeof loadSharedLinkFromURL === 'function' && loadSharedLinkFromURL();
-setTimeout(() => showStatus('Esc=Pointer · V=Pan · Space+Drag=Pan · S=State · T=Transition · H=Fit · Ctrl+Z=Undo'), _sharedLinkLoaded ? 3200 : 600);
