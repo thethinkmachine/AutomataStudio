@@ -168,15 +168,20 @@ function exportSampleWords(opts = {}) {
   const needAcc = wantAcc - out.accepted.length;
   if (wantRej > 0 || needAcc > 0) {
     const sigma = [...App.sigma].filter(s => s !== App.config.sym.eps).sort();
-    let addedAcc = 0;
+    // A truncated graph walk may already have supplied some accepted words.
+    // Keep their token arrays so the bounded Σ* fallback can top up without
+    // duplicating them.
+    const acceptedKeys = new Set(out.accepted.map(word => JSON.stringify(word)));
     for (const word of exportSigmaStar(sigma, maxLen, budget)) {
-      if (out.rejected.length >= wantRej && addedAcc >= needAcc) break;
+      if (out.rejected.length >= wantRej && out.accepted.length >= wantAcc) break;
       const verdict = typeof langVerdict === 'function' ? langVerdict(word) : 'unk';
       if (verdict === 'unk') { out.undecided++; continue; }
       if (verdict === 'acc') {
-        // Only top up when the graph walk was unavailable or came up short;
-        // otherwise langAcceptedTraces already holds the true shortlex prefix.
-        if (addedAcc < needAcc && !canTrace) { out.accepted.push(word); addedAcc++; }
+        const key = JSON.stringify(word);
+        if (out.accepted.length < wantAcc && !acceptedKeys.has(key)) {
+          out.accepted.push(word);
+          acceptedKeys.add(key);
+        }
       } else if (out.rejected.length < wantRej) {
         out.rejected.push(word);
       }

@@ -265,16 +265,19 @@ function exportTransitionTable(ir, opts = {}) {
 // ══════════════════════════════════════════════════════════════════
 function exportSamplesText(samples, ir, opts = {}) {
   const fmt = opts.format || 'csv';
-  const acc = samples.accepted.map(w => exportWordText(w, ir));
-  const rej = samples.rejected.map(w => exportWordText(w, ir));
+  // Keep the original token arrays alongside their rendered text. A rendered
+  // vocabulary word such as "open close" contains a separator, so its string
+  // length is not its language-word length.
+  const acc = samples.accepted.map(word => ({ text: exportWordText(word, ir), length: word.length }));
+  const rej = samples.rejected.map(word => ({ text: exportWordText(word, ir), length: word.length }));
 
   if (fmt === 'json') {
     return JSON.stringify({
       machine: ir.machine,
       alphabet: ir.sigma,
       generated: new Date().toISOString(),
-      accepted: acc,
-      rejected: rej,
+      accepted: acc.map(row => row.text),
+      rejected: rej.map(row => row.text),
       undecided: samples.undecided,
       truncated: !!samples.truncated
     }, null, 2);
@@ -284,23 +287,23 @@ function exportSamplesText(samples, ir, opts = {}) {
     // Deliberately the Batch Test panel's own input syntax, so a generated
     // sample set can be pasted straight back in as a regression check.
     return [
-      ...acc.map(w => `${w} => accept`),
-      ...rej.map(w => `${w} => reject`)
+      ...acc.map(row => `${row.text} => accept`),
+      ...rej.map(row => `${row.text} => reject`)
     ].join('\n');
   }
 
   if (fmt === 'markdown') {
     const rows = [
-      ...acc.map(w => [w, 'accept', [...w].length]),
-      ...rej.map(w => [w, 'reject', [...w].length])
+      ...acc.map(row => [row.text, 'accept', row.length]),
+      ...rej.map(row => [row.text, 'reject', row.length])
     ];
     return `### ${ir.machineLabel} — language samples\n\n` + mdTable(['Word', 'Verdict', 'Length'], rows) + '\n';
   }
 
   return csvRows([
     ['word', 'verdict', 'length'],
-    ...acc.map(w => [w, 'accept', [...w].length]),
-    ...rej.map(w => [w, 'reject', [...w].length])
+    ...acc.map(row => [row.text, 'accept', row.length]),
+    ...rej.map(row => [row.text, 'reject', row.length])
   ]);
 }
 

@@ -309,6 +309,44 @@ test('sample CSV carries word, verdict, and length', () => {
   assert.match(csv, /,reject,/);
 });
 
+test('sample lengths count symbols, not rendered separators', () => {
+  const ir = { machine: 'DFA', machineLabel: 'DFA', sigma: ['open', 'close'], isSymbolic: false };
+  const samples = {
+    accepted: [['open', 'close']],
+    rejected: [['close']],
+    undecided: 0,
+    truncated: false
+  };
+  const csv = context.exportSamplesText(samples, ir, { format: 'csv' });
+  assert.match(csv, /open close,accept,2/);
+  assert.match(csv, /close,reject,1/);
+});
+
+test('a truncated trace walk is topped up from the verified Σ* fallback', () => {
+  reset();
+  App.machine = 'DFA';
+  App.sigma = new Set(['a', 'b']);
+  App.states = [
+    { id: 's0', name: 'q0', x: 0, y: 0 },
+    { id: 's1', name: 'q1', x: 90, y: 0 }
+  ];
+  App.startId = 's0';
+  App.accepts = new Set(['s1']);
+  App.transitions = [
+    { id: 't0', from: 's0', to: 's1', symbol: 'a' },
+    { id: 't1', from: 's0', to: 's1', symbol: 'b' }
+  ];
+
+  const original = context.langAcceptedTraces;
+  context.langAcceptedTraces = () => ({ traces: [['a']], truncated: true });
+  try {
+    const samples = context.exportSampleWords({ accepted: 2, rejected: 0, maxLength: 1 });
+    deepEq(samples.accepted, [['a'], ['b']]);
+  } finally {
+    context.langAcceptedTraces = original;
+  }
+});
+
 // ══════════════════════════════════════════════════════════════════
 //  BATCH: COMPUTE / RENDER SPLIT
 // ══════════════════════════════════════════════════════════════════
@@ -484,6 +522,11 @@ test('JFLAP import decodes XML entities in names', () => {
   const data = context.jflapToWorkspace(context.jflapParseXML(jff));
   assert.equal(data.states[0].name, 'a&b');
   assert.equal(data.transitions[0].symbol, '<');
+});
+
+test('JFLAP import preserves out-of-range numeric entities', () => {
+  assert.equal(context.jflapDecode('bad &#x110000; entity'), 'bad &#x110000; entity');
+  assert.equal(context.jflapDecode('bad &#999999999999999999999; entity'), 'bad &#999999999999999999999; entity');
 });
 
 test('JFLAP import rejects files it cannot honestly convert', () => {

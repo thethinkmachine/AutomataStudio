@@ -23,7 +23,9 @@ function jflapDecode(str) {
       const code = ent[1] === 'x' || ent[1] === 'X'
         ? parseInt(ent.slice(2), 16)
         : parseInt(ent.slice(1), 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : m;
+      return Number.isInteger(code) && code >= 0 && code <= 0x10FFFF
+        ? String.fromCodePoint(code)
+        : m;
     }
     return JFLAP_ENTITIES[ent] !== undefined ? JFLAP_ENTITIES[ent] : m;
   });
