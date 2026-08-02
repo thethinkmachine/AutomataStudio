@@ -11,14 +11,14 @@
 }
 
 /* ─── HEADER ───
-   One unified bar. The workspace tab strip is the only flexible element, so it
-   absorbs all slack and every other cluster keeps its intrinsic width. */
+   Identity and workspace context lead; machine/canvas controls follow; global
+   history and file actions stay anchored at the right edge. */
 header {
   height: var(--hdr);
   min-height: var(--hdr);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 0 10px 0 0;
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
@@ -30,7 +30,6 @@ header {
   display: flex;
   align-items: center;
   padding: 0 16px;
-  border-right: 1px solid var(--border);
   align-self: stretch;
   flex-shrink: 0;
   gap: 10px;
@@ -39,7 +38,7 @@ header {
 .hdr-right {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -47,8 +46,21 @@ header {
 .hdr-group {
   display: flex;
   align-items: center;
-  gap: 1px;
+  gap: 2px;
   flex-shrink: 0;
+}
+
+#hdr-canvas-actions,
+.hdr-history-actions,
+.hdr-file-actions {
+  padding: 2px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--surface) 54%, transparent);
+}
+
+.canvas-danger-sep {
+  height: 16px;
+  margin: 0 3px;
 }
 
 /* ─── LOGO ─── */
@@ -149,6 +161,10 @@ header {
   flex-shrink: 0;
 }
 
+.hdr-more-compact-actions {
+  display: none;
+}
+
 .hdr-more.open > .hbtn {
   background: var(--surface2);
   color: var(--text);
@@ -160,7 +176,7 @@ header {
   width: 1px;
   height: 20px;
   background: var(--border2);
-  margin: 0 4px;
+  margin: 0 3px;
   flex-shrink: 0;
 }
 
@@ -310,9 +326,14 @@ header {
   align-items: center;
   gap: 1px;
   background: transparent;
-  height: 100%;
-  border-left: 1px solid var(--border);
-  border-right: 1px solid var(--border);
+  /* Inset rather than flush: at height:100% the strip filled the header's
+     47px content box, putting its own 1px bottom border immediately above the
+     header's, and the two stacked into one thick-looking line. Centring it
+     leaves clear space so only the header's border reads as the edge. */
+  height: 36px;
+  align-self: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
   flex: 1;
   min-width: 0;
   overflow-x: auto;
@@ -600,7 +621,7 @@ header {
 .save-dot {
   position: absolute;
   top: 3px;
-  right: 3px;
+  left: 3px;
   width: 6px;
   height: 6px;
   border-radius: 999px;
@@ -612,10 +633,34 @@ header {
   pointer-events: none;
 }
 
+.autosave-countdown {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  min-width: 9px;
+  color: currentColor;
+  font-family: var(--mono);
+  font-size: .46rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  opacity: .8;
+  pointer-events: none;
+}
+
 #save-now-btn.is-dirty .save-dot {
   opacity: 1;
   transform: scale(1);
 }
+
+#save-now-btn[data-save-state="unsaved"] { color: var(--orange); }
+#save-now-btn[data-save-state="saving"] {
+  color: var(--accent);
+  animation: save-button-pulse .8s ease-in-out infinite alternate;
+}
+#save-now-btn[data-save-state="error"] { color: var(--red); }
+
+@keyframes save-button-pulse { to { opacity: .55; } }
 
 .tab-close {
   display: inline-flex;
@@ -772,7 +817,7 @@ header {
 
 .model-picker-btn {
   height: 32px;
-  min-width: 150px;
+  min-width: 142px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1006,7 +1051,7 @@ header {
   word-break: break-all;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .model-picker-container {
     width: auto;
   }
@@ -1030,36 +1075,30 @@ header {
   margin-left: auto;
 }
 
-@media (max-width: 900px) {
-  /* The bar stays one row and scrolls horizontally rather than wrapping, so
-     the canvas keeps the same vertical budget it has on desktop. */
+@media (max-width: 1100px) {
+  /* Keep the header stable: only the document strip scrolls. Secondary canvas,
+     view, load, and export actions remain available from the existing More menu. */
   header {
-    gap: 6px;
-    padding: 0 6px 0 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
+    gap: 4px;
+    padding-right: 6px;
+    overflow: visible;
   }
 
-  header::-webkit-scrollbar {
+  #hdr-canvas-actions,
+  .tools-picker,
+  .hdr-file-actions .hdr-load-action,
+  .hdr-file-actions .hdr-export-action,
+  header > .hdr-sep,
+  .hdr-right > .hdr-sep {
     display: none;
   }
 
-  .hdr-left {
-    padding: 0 10px;
+  .hdr-more-compact-actions {
+    display: block;
   }
 
-  .logo {
-    font-size: 1rem;
-  }
-
-  /* Every cluster is fixed-width, so .tab-bar-wrap is the only shrinkable
-     item: without a floor it collapses to ~0 once the fixed items alone
-     exceed the viewport. Give it room for one tab plus the overflow button
-     and let the bar's own scroll absorb the remainder. */
   .tab-bar-wrap {
-    min-width: 150px;
+    min-width: 96px;
   }
 
   .tab-bar {
@@ -1075,23 +1114,39 @@ header {
     max-width: 9ch;
   }
 
-  /* Text labels are the first thing to go when width is scarce; the icons
-     and their tooltips/aria-labels carry the meaning. */
-  .example-picker .hbtn {
-    width: 30px;
-    padding: 0;
-    justify-content: center;
-    gap: 0;
-    font-size: 0;
-  }
-
-  /* The header scrolls horizontally at this width, which would clip a menu
-     anchored inside it — pin these to the viewport instead. */
-  .ctx.tools-menu,
   .ctx.hdr-more-menu {
     position: fixed;
     top: calc(var(--hdr) + 6px);
     right: 8px;
+  }
+}
+
+@media (max-width: 700px) {
+  .hdr-left {
+    display: none;
+  }
+
+  .model-picker-btn {
+    min-width: 112px;
+    max-width: 124px;
+  }
+
+  .model-picker-cat {
+    max-width: 12ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .hdr-right {
+    gap: 3px;
+  }
+
+  #hdr-canvas-actions,
+  .hdr-history-actions,
+  .hdr-file-actions {
+    padding: 0;
+    background: transparent;
   }
 }
 

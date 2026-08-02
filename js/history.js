@@ -16,12 +16,21 @@ function snapshot() {
   App.future = [];
   if (App.history.length > 300) App.history.shift();
 
-  if (activeWorkspaceId) {
-    const ws = Workspaces.find(w => w.id === activeWorkspaceId);
-    if (ws && !ws.dirty) {
-      ws.dirty = true;
-      if (typeof renderTabs === 'function') renderTabs();
-    }
+  markDirty();
+}
+
+// Flags the active workspace as having unsaved changes without pushing an undo
+// entry. Some persisted state — the camera above all — is part of what gets
+// saved and restored but is not something the user undoes. Without this, panning
+// or zooming left the tab clean, so autosave skipped it entirely and the
+// viewport survived a reload only when an unrelated edit happened to be pending.
+function markDirty() {
+  if (!activeWorkspaceId || typeof Workspaces === 'undefined') return;
+  const ws = Workspaces.find(w => w.id === activeWorkspaceId);
+  if (ws && !ws.dirty) {
+    ws.dirty = true;
+    if (typeof renderTabs === 'function') renderTabs();
+    if (typeof setSaveState === 'function') setSaveState('unsaved');
   }
 }
 function undo() {

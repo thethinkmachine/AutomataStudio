@@ -1337,6 +1337,10 @@ button:focus-visible {
   max-width: 170px;
 }
 
+.exp-field .custom-select {
+  max-width: 170px;
+}
+
 .exp-preview {
   flex: 1;
   min-height: 240px;

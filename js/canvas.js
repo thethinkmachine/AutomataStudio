@@ -58,6 +58,7 @@ function cancelCanvasManipulationForTouch() {
   App.marquee = null;
   App.dragOffsets = null;
   App.dragCurve = null;
+  App.dragPendingSnapshot = false;
   if (typeof clearAlignGuides === 'function') clearAlignGuides();
 }
 
@@ -133,7 +134,10 @@ function captureTouchPointerEnd(e) {
   if (touchCameraGesture) {
     e.preventDefault();
     e.stopPropagation();
-    if (touchPointers.size < 2) touchCameraGesture = null;
+    if (touchPointers.size < 2) {
+      touchCameraGesture = null;
+      if (typeof markDirty === 'function') markDirty();
+    }
   }
 }
 
@@ -216,7 +220,12 @@ wrap.addEventListener('wheel', e => {
   }
   applyCamera(true);
   clearTimeout(_wheelIdleTimer);
-  _wheelIdleTimer = setTimeout(renderMinimap, 150);
+  // Marked once the gesture settles rather than per wheel tick, so a single
+  // scroll doesn't trigger a burst of tab re-renders.
+  _wheelIdleTimer = setTimeout(() => {
+    renderMinimap();
+    if (typeof markDirty === 'function') markDirty();
+  }, 150);
 }, { passive: false });
 
 // ══════════════════════════════════════════════════════════════════
@@ -447,6 +456,12 @@ function handlePointerMove(e) {
   }
   if (App.dragOffsets) {
     const pt = svgPt(e);
+    // First movement of a drag: capture the pre-drag positions so undo returns
+    // the states to where they were when the press started.
+    if (App.dragPendingSnapshot) {
+      App.dragPendingSnapshot = false;
+      snapshot();
+    }
     const snap = isSnapActive(e.shiftKey);
     const gSnapAmount = App.config.gridSnap || 20;
     App.selectedStates.forEach(sid => {
@@ -543,7 +558,9 @@ function endPointerInteractions() {
     isPanning = false; wrap.classList.remove('panning');
     if (panPointerId !== null) { try { wrap.releasePointerCapture(panPointerId); } catch (e) { } }
     panPointerId = null;
-    renderMinimap(); return;
+    renderMinimap();
+    if (typeof markDirty === 'function') markDirty();
+    return;
   }
   if (App.marquee) {
     App.marqueeRect.remove(); App.marqueeRect = null; App.marquee = null; renderMinimap();
@@ -551,6 +568,7 @@ function endPointerInteractions() {
   if (App.dragOffsets || App.dragCurve) {
     App.dragOffsets = null;
     App.dragCurve = null;
+    App.dragPendingSnapshot = false;
     clearAlignGuides();
     renderMinimap();
   }
@@ -735,7 +753,11 @@ function onStateDown(e, id) {
       if (s) App.dragOffsets[sid] = { x: pt.x - s.x, y: pt.y - s.y };
     });
     try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
-    snapshot();
+    // The undo entry is deliberately NOT taken here. A press that never turns
+    // into a drag is just a selection, and snapshotting on press marked the
+    // workspace dirty (and pushed a no-op undo step) for every plain click.
+    // handlePointerMove takes it on the first real movement instead.
+    App.dragPendingSnapshot = true;
   }
 }
 
@@ -884,14 +906,17 @@ function pasteClipboard(atPoint, fallbackOffset = 32) {
 // ══════════════════════════════════════════════════════════════════
 //  AUTO LAYOUT — Sugiyama-style layered graph drawing
 //
-//  1. sugiyamaBuildDAG    — drop self-loops, break cycles (DFS back-edge
-//                           removal) so every remaining edge points from
-//                           an earlier layer to a later one.
-//  2. sugiyamaAssignRanks — longest-path layering over that DAG; rank =
-//                           column (states flow left → right).
-//  3. sugiyamaOrderLayers — barycenter/median heuristic, swept down then
-//                           up a few times, to reduce edge crossings
-//                           between adjacent columns.
+//  1. sugiyamaBuildDAG          — drop self-loops, break cycles (DFS
+//                                 back-edge removal); its visit order seeds
+//                                 the layers so chains start out adjacent.
+//  2. sugiyamaRankByDistance    — BFS depth from the start state; rank =
+//                                 column (states flow left → right). Depth
+//                                 rather than longest path, so the cyclic
+//                                 graphs that automata usually are don't
+//                                 flatten into a single row.
+//  3. sugiyamaOrderLayers       — barycenter/median heuristic, swept down
+//                                 then up a few times, to reduce edge
+//                                 crossings between adjacent columns.
 //  4. Coordinates are then read straight off (rank, order-in-layer) —
 //     no simulation, no animation, one deterministic pass.
 // ══════════════════════════════════════════════════════════════════
@@ -934,24 +959,6 @@ function sugiyamaBuildDAG(states, succ, startId) {
   return { dag, visitOrder };
 }
 
-// Longest-path layering: every DAG edge goes from a strictly lower
-// rank to a strictly higher one (Kahn's algorithm over in-degree).
-function sugiyamaAssignRanks(states, dag) {
-  const indeg = new Map(states.map(s => [s.id, 0]));
-  dag.forEach(tos => tos.forEach(to => indeg.set(to, indeg.get(to) + 1)));
-  const rank = new Map(states.map(s => [s.id, 0]));
-  const queue = states.map(s => s.id).filter(id => indeg.get(id) === 0);
-  for (let i = 0; i < queue.length; i++) {
-    const u = queue[i];
-    dag.get(u).forEach(v => {
-      rank.set(v, Math.max(rank.get(v), rank.get(u) + 1));
-      indeg.set(v, indeg.get(v) - 1);
-      if (indeg.get(v) === 0) queue.push(v);
-    });
-  }
-  return rank;
-}
-
 // Barycenter heuristic: repeatedly reorder each layer by the average
 // position of its neighbors in the layer that was just fixed, sweeping
 // downward then upward so information propagates both ways. Nodes
@@ -977,10 +984,77 @@ function sugiyamaOrderLayers(layers, succ, pred, sweeps = 6) {
   }
 }
 
+// Config can arrive from the settings modal, an imported preferences blob or
+// a restored workspace, so neither value is guaranteed sane here. Both
+// helpers fall back to the documented defaults rather than propagating NaN
+// into every coordinate, which would blank the canvas.
+function layoutNodeRadius() {
+  const r = Number(App.config.radius);
+  return Number.isFinite(r) && r > 0 ? r : 30;
+}
+
+// Minimum gap keeps labels and edge arrowheads legible even if a user asks
+// for zero spacing; nodes touching edge-to-edge are unreadable.
+function layoutGap() {
+  const g = Number(App.config.layout.nodeSpacing);
+  return Number.isFinite(g) ? Math.max(8, g) : 35;
+}
+
+// Breadth-first distance from the start state, over the *original* graph
+// rather than the cycle-broken DAG.
+//
+// Longest-path layering is the textbook choice, but it only behaves on
+// genuinely acyclic input. Automata are usually strongly connected, and once
+// cycle-breaking has reduced such a graph to a spanning chain, longest-path
+// gives every state its own rank — an N-column, one-row line (the mod-5
+// divisibility DFA degenerates to 5 singleton layers). BFS depth instead
+// groups every state reachable in k steps into layer k, which keeps the
+// drawing compact and gives the crossing-reduction sweep several nodes per
+// layer to actually order.
+function sugiyamaRankByDistance(states, succ, startId) {
+  const rank = new Map(states.map(s => [s.id, null]));
+  const queue = [];
+  // Prefer the real start state; fall back to any state so disconnected or
+  // start-less machines still lay out.
+  const seed = rank.has(startId) ? startId : (states[0] && states[0].id);
+  if (seed === undefined) return new Map();
+  rank.set(seed, 0);
+  queue.push(seed);
+  for (let i = 0; i < queue.length; i++) {
+    const u = queue[i];
+    for (const v of succ.get(u)) {
+      if (rank.get(v) !== null) continue;
+      rank.set(v, rank.get(u) + 1);
+      queue.push(v);
+    }
+  }
+  // Components unreachable from the seed get their own BFS, starting one
+  // rank past the deepest node placed so far so they read as separate blocks
+  // instead of overprinting the main component.
+  let placedMax = Math.max(0, ...[...rank.values()].filter(r => r !== null));
+  states.forEach(s => {
+    if (rank.get(s.id) !== null) return;
+    const base = placedMax + 1;
+    rank.set(s.id, base);
+    const sub = [s.id];
+    for (let i = 0; i < sub.length; i++) {
+      for (const v of succ.get(sub[i])) {
+        if (rank.get(v) !== null) continue;
+        rank.set(v, rank.get(sub[i]) + 1);
+        sub.push(v);
+      }
+    }
+    placedMax = Math.max(placedMax, ...sub.map(id => rank.get(id)));
+  });
+  return rank;
+}
+
 function sugiyamaLayout(states, transitions, startId) {
   const { succ, pred } = sugiyamaAdjacency(states, transitions);
-  const { dag, visitOrder } = sugiyamaBuildDAG(states, succ, startId);
-  const rank = sugiyamaAssignRanks(states, dag);
+  // The DAG itself is no longer ranked over, but its DFS visit order still
+  // seeds each layer so connected chains start out adjacent.
+  const { visitOrder } = sugiyamaBuildDAG(states, succ, startId);
+  const rank = sugiyamaRankByDistance(states, succ, startId);
 
   const maxRank = Math.max(0, ...states.map(s => rank.get(s.id)));
   const layers = Array.from({ length: maxRank + 1 }, () => []);
@@ -991,15 +1065,24 @@ function sugiyamaLayout(states, transitions, startId) {
 
   sugiyamaOrderLayers(layers, succ, pred);
 
-  const { minRadius, nodeSpacing } = App.config.layout;
-  const layerSpacing = Math.max(minRadius, nodeSpacing * 3.4);
+  // nodeSpacing is the gap between node *edges*, so every pitch below adds
+  // one full node diameter on top of it. Measuring centre-to-centre instead
+  // (the old behaviour) let nodes overlap outright: the default spacing of
+  // 35 put rows 56px apart while a state circle is 60px across.
+  const nodeR = layoutNodeRadius();
+  const gap = layoutGap();
+  const rowPitch = 2 * nodeR + gap;
+  // Columns need room for the node pair plus the transition label riding on
+  // the edge between them, hence the wider multiple of the gap. minRadius
+  // stays a floor so the existing setting still means something.
+  const layerPitch = Math.max(App.config.layout.minRadius || 0, 2 * nodeR + gap * 3.4);
   const byId = new Map(states.map(s => [s.id, s]));
   layers.forEach((layer, r) => {
-    const span = (layer.length - 1) * nodeSpacing * 1.6;
+    const span = (layer.length - 1) * rowPitch;
     layer.forEach((id, i) => {
       const s = byId.get(id);
-      s.x = r * layerSpacing;
-      s.y = i * nodeSpacing * 1.6 - span / 2;
+      s.x = r * layerPitch;
+      s.y = i * rowPitch - span / 2;
     });
   });
 }
@@ -1009,7 +1092,14 @@ function sugiyamaLayout(states, transitions, startId) {
 // evenly-spaced ring over the layered layout.
 function circularLayout(states) {
   const n = states.length;
-  const r = Math.max(App.config.layout.minRadius, n * App.config.layout.nodeSpacing);
+  // Solve for the radius that leaves the requested gap between neighbours:
+  // the chord between adjacent nodes is 2r·sin(π/n), and it has to clear one
+  // node diameter plus the gap. Scaling the radius by n alone (the old rule)
+  // ignored node size and packed small rings too tightly.
+  const need = 2 * layoutNodeRadius() + layoutGap();
+  // A lone state belongs at the origin, not pushed out onto a ring.
+  const chordR = n > 1 ? need / (2 * Math.sin(Math.PI / n)) : 0;
+  const r = n > 1 ? Math.max(App.config.layout.minRadius || 0, chordR) : 0;
   states.forEach((s, i) => {
     const angle = (2 * Math.PI * i / n) - Math.PI / 2;
     s.x = r * Math.cos(angle);

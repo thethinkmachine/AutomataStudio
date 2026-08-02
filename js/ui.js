@@ -10,6 +10,7 @@ let draggingTabId = null;
 let tabDropTargetId = null;
 let tabDropPosition = null;
 let closedWorkspaces = [];
+let saveState = 'saved';
 
 function getWorkspaceMachine(ws) {
   if (!ws) return null;
@@ -28,6 +29,26 @@ function markActiveWorkspaceSaved() {
   if (ws && ws.dirty) {
     ws.dirty = false;
     renderTabs();
+  }
+}
+
+// The single source of truth for everything the Save button displays: its
+// colour, its tooltip, and the unsaved dot. The dot used to be toggled
+// separately from `Workspaces.some(dirty)` while the colour came from here,
+// which let the two disagree — an orange icon with no dot, or a dot left over
+// after the state moved on. Both are derived from `state` now.
+function setSaveState(state, message) {
+  saveState = state;
+  const btn = $('save-now-btn');
+  const labels = { unsaved: 'Unsaved', saving: 'Saving…', saved: 'Saved', error: 'Save failed' };
+  const label = message || labels[state] || labels.saved;
+  if (btn) {
+    btn.dataset.saveState = state;
+    btn.dataset.tip = label === 'Saved' ? 'Save workspace' : `${label} — save workspace`;
+    btn.setAttribute('aria-label', label === 'Saved' ? 'Save workspace — saved' : `${label} — save workspace`);
+    // "There is something to save" — true while unsaved, and still true when a
+    // save failed, since the work is in fact still unsaved.
+    btn.classList.toggle('is-dirty', state === 'unsaved' || state === 'error');
   }
 }
 
@@ -148,7 +169,7 @@ function handleTabDrop(id, e) {
   if (!moved) return;
 
   renderTabs();
-  saveBackup();
+  saveBackupChecked();
   requestAnimationFrame(() => focusTabElement(movedId));
 }
 
@@ -174,7 +195,7 @@ function handleTabAddDrop(e) {
   if (!moved) return;
 
   renderTabs();
-  saveBackup();
+  saveBackupChecked();
   requestAnimationFrame(() => focusTabElement(movedId));
 }
 
@@ -262,7 +283,7 @@ function commitTabRename(id, inputEl) {
 
   editingTabId = null;
   renderTabs();
-  saveBackup();
+  saveBackupChecked();
 }
 
 function renderTabs() {
@@ -323,14 +344,17 @@ function renderTabs() {
 
 // The Save button carries the same unsaved marker as the tabs. Driven from
 // renderTabs, which is already the one place dirty state changes are drawn.
+//
+// `saving` and `error` are both owned by the save itself and must survive this:
+// renderTabs runs from ~18 call sites, so recomputing the state here from
+// `dirty` alone used to wipe a "Save failed" the moment any unrelated tab
+// activity redrew — reporting a workspace as stored when it was not.
+// Whatever started those states is responsible for ending them.
 function updateSaveIndicator() {
   const btn = $('save-now-btn');
   if (!btn) return;
-  const anyDirty = Workspaces.some(w => w.dirty);
-  btn.classList.toggle('is-dirty', anyDirty);
-  const label = anyDirty ? 'Save workspace — unsaved changes' : 'Workspace saved';
-  btn.dataset.tip = label;
-  btn.setAttribute('aria-label', label);
+  if (saveState === 'saving' || saveState === 'error') return;
+  setSaveState(Workspaces.some(w => w.dirty) ? 'unsaved' : 'saved');
 }
 
 function renderTabOverflowMenu() {
@@ -436,7 +460,7 @@ function createTab(name) {
   if (typeof applyCamera === 'function') applyCamera();
   if (typeof updateLPanel === 'function') updateLPanel();
   if (typeof updateRPanel === 'function') updateRPanel();
-  saveBackup();
+  saveBackupChecked();
 }
 
 function switchTab(id) {
@@ -476,7 +500,7 @@ function switchTab(id) {
   if (typeof applyCamera === 'function') applyCamera();
   if (typeof updateLPanel === 'function') updateLPanel();
   if (typeof updateRPanel === 'function') updateRPanel();
-  saveBackup();
+  saveBackupChecked();
 }
 
 // ── Unsaved-changes guard ─────────────────────────────────────────
@@ -506,12 +530,17 @@ function confirmDiscardingTabs(ids, proceed) {
   const discardBtn = $('unsaved-discard-btn');
   if (saveBtn) {
     saveBtn.textContent = many ? 'Save all' : 'Save';
-    saveBtn.onclick = () => {
+    saveBtn.onclick = async () => {
       // A failed save must not close the tab — that would destroy the very
       // work the prompt exists to protect. saveWorkspaceById reports the
       // failure itself; leaving the dialog open lets the user retry or
       // deliberately discard.
-      const allSaved = dirty.every(ws => saveWorkspaceById(ws.id));
+      saveBtn.disabled = true;
+      let allSaved = true;
+      for (const ws of dirty) {
+        if (!await saveWorkspaceById(ws.id)) allSaved = false;
+      }
+      saveBtn.disabled = false;
       if (!allSaved) return;
       closeModal('unsaved-modal');
       proceed();
@@ -561,7 +590,7 @@ function performCloseTab(id) {
     switchTab(Workspaces[nextIdx].id);
   } else {
     renderTabs();
-    saveBackup();
+    saveBackupChecked();
   }
 }
 
@@ -590,7 +619,7 @@ function performCloseOtherTabs(id) {
     switchTab(id);
   } else {
     renderTabs();
-    saveBackup();
+    saveBackupChecked();
   }
 }
 
@@ -622,7 +651,7 @@ function performCloseTabsToRight(id) {
     switchTab(id);
   } else {
     renderTabs();
-    saveBackup();
+    saveBackupChecked();
   }
 }
 
@@ -933,8 +962,8 @@ function updateThemeButton() {
   const isLight = App.config.theme === 'light';
   const nextTheme = isLight ? 'dark' : 'light';
   const icon = isLight
-    ? `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M120,40V16a8,8,0,0,1,16,0V40a8,8,0,0,1-16,0Zm72,88a64,64,0,1,1-64-64A64.07,64.07,0,0,1,192,128Zm-16,0a48,48,0,1,0-48,48A48.05,48.05,0,0,0,176,128ZM58.34,69.66A8,8,0,0,0,69.66,58.34l-16-16A8,8,0,0,0,42.34,53.66Zm0,116.68-16,16a8,8,0,0,0,11.32,11.32l16-16a8,8,0,0,0-11.32-11.32ZM192,72a8,8,0,0,0,5.66-2.34l16-16a8,8,0,0,0-11.32-11.32l-16,16A8,8,0,0,0,192,72Zm5.66,114.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32-11.32ZM48,128a8,8,0,0,0-8-8H16a8,8,0,0,0,0,16H40A8,8,0,0,0,48,128Zm80,80a8,8,0,0,0-8,8v24a8,8,0,0,0,16,0V216A8,8,0,0,0,128,208Zm112-88H216a8,8,0,0,0,0,16h24a8,8,0,0,0,0-16Z"/></svg>`
-    : `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M233.54,142.23a8,8,0,0,0-8-2,88.08,88.08,0,0,1-109.8-109.8,8,8,0,0,0-10-10,104.84,104.84,0,0,0-52.91,37A104,104,0,0,0,136,224a103.09,103.09,0,0,0,62.52-20.88,104.84,104.84,0,0,0,37-52.91A8,8,0,0,0,233.54,142.23ZM188.9,190.34A88,88,0,0,1,65.66,67.11a89,89,0,0,1,31.4-26A106,106,0,0,0,96,56,104.11,104.11,0,0,0,200,160a106,106,0,0,0,14.92-1.06A89,89,0,0,1,188.9,190.34Z"/></svg>`;
+    ? `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M233.54,142.23a8,8,0,0,0-8-2,88.08,88.08,0,0,1-109.8-109.8,8,8,0,0,0-10-10,104.84,104.84,0,0,0-52.91,37A104,104,0,0,0,136,224a103.09,103.09,0,0,0,62.52-20.88,104.84,104.84,0,0,0,37-52.91A8,8,0,0,0,233.54,142.23ZM188.9,190.34A88,88,0,0,1,65.66,67.11a89,89,0,0,1,31.4-26A106,106,0,0,0,96,56,104.11,104.11,0,0,0,200,160a106,106,0,0,0,14.92-1.06A89,89,0,0,1,188.9,190.34Z"/></svg>`
+    : `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M120,40V16a8,8,0,0,1,16,0V40a8,8,0,0,1-16,0Zm72,88a64,64,0,1,1-64-64A64.07,64.07,0,0,1,192,128Zm-16,0a48,48,0,1,0-48,48A48.05,48.05,0,0,0,176,128ZM58.34,69.66A8,8,0,0,0,69.66,58.34l-16-16A8,8,0,0,0,42.34,53.66Zm0,116.68-16,16a8,8,0,0,0,11.32,11.32l16-16a8,8,0,0,0-11.32-11.32ZM192,72a8,8,0,0,0,5.66-2.34l16-16a8,8,0,0,0-11.32-11.32l-16,16A8,8,0,0,0,192,72Zm5.66,114.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32-11.32ZM48,128a8,8,0,0,0-8-8H16a8,8,0,0,0,0,16H40A8,8,0,0,0,48,128Zm80,80a8,8,0,0,0-8,8v24a8,8,0,0,0,16,0V216A8,8,0,0,0,128,208Zm112-88H216a8,8,0,0,0,0,16h24a8,8,0,0,0,0-16Z"/></svg>`;
 
   const svg = btn.querySelector && btn.querySelector('svg');
   if (svg) svg.outerHTML = icon;
@@ -954,7 +983,10 @@ function applyTheme(theme, persist = true) {
   syncThemeExportPalette(resolved);
   updateThemeButton();
   if ($('set-theme')) $('set-theme').value = resolved;
-  if (typeof drawMinimap === 'function') drawMinimap();
+  // The minimap paints from App.config.export.*, which syncThemeExportPalette
+  // has just rewritten, so it has to be repainted or it keeps the old theme's
+  // colours until some unrelated edit happens to trigger a redraw.
+  if (typeof renderMinimap === 'function') renderMinimap();
   if (persist) {
     try { localStorage.setItem('automata-theme', resolved); } catch (e) { }
   }
@@ -963,7 +995,7 @@ function applyTheme(theme, persist = true) {
 function toggleTheme() {
   applyTheme(App.config.theme === 'light' ? 'dark' : 'light');
   if (typeof renderAll === 'function') renderAll();
-  saveBackup();
+  saveBackupChecked();
   showStatus(`Theme: ${App.config.theme}`);
 }
 
@@ -980,6 +1012,7 @@ function zoomIn() {
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
+  if (typeof markDirty === 'function') markDirty();
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
@@ -998,6 +1031,7 @@ function zoomOut() {
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
+  if (typeof markDirty === 'function') markDirty();
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
@@ -1016,6 +1050,7 @@ function setZoomFromInput(val) {
     const w = $('canvas-wrap'); if (!w) return;
     const mx = w.clientWidth / 2, my = w.clientHeight / 2;
     App.cam = { x: mx, y: my, z: 1 };
+    if (typeof markDirty === 'function') markDirty();
     $('cam-g').classList.add('cam-smooth');
     w.classList.add('cam-smooth');
     applyCamera();
@@ -1033,6 +1068,7 @@ function setZoomFromInput(val) {
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
+  if (typeof markDirty === 'function') markDirty();
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
@@ -1042,10 +1078,43 @@ function setZoomFromInput(val) {
   }, 250);
 }
 
+// The canvas spans the full width of the workspace, but a pinned panel sits
+// beside it while an *unpinned* one is absolutely positioned on top of it
+// (see .lpanel.unpinned in css/lpanel.css). clientWidth therefore counts the
+// strip hidden underneath an overlaying panel as visible space, which pushes
+// anything centred on it off toward the covered side and makes the minimap's
+// viewport rect wider than what the user can actually see. This reports the
+// genuinely visible box, in canvas-wrap-local CSS pixels.
+function visibleCanvasBox() {
+  const w = $('canvas-wrap');
+  if (!w) return { x: 0, y: 0, w: 600, h: 400 };
+  const full = { x: 0, y: 0, w: w.clientWidth, h: w.clientHeight };
+  if (typeof w.getBoundingClientRect !== 'function') return full;
+  const wrapRect = w.getBoundingClientRect();
+  if (!wrapRect.width || !wrapRect.height) return full;
+  let left = wrapRect.left, right = wrapRect.right;
+  ['lpanel', 'rpanel'].forEach(id => {
+    const p = $(id);
+    // Only panels drawn over the canvas steal visible space; a pinned panel
+    // already shrinks canvas-wrap, so counting it would subtract twice.
+    if (!p || typeof p.getBoundingClientRect !== 'function') return;
+    if (p.classList && !p.classList.contains('unpinned')) return;
+    const r = p.getBoundingClientRect();
+    if (!r.width) return;
+    if (r.left <= wrapRect.left) left = Math.max(left, r.right);
+    else right = Math.min(right, r.left);
+  });
+  if (!(right > left)) return full;
+  return { x: left - wrapRect.left, y: 0, w: right - left, h: wrapRect.height };
+}
+
 function fitToScreen(silent = false) {
   if (!App.states.length) return;
   const w = $('canvas-wrap'); if (!w) return;
-  const cw = w.clientWidth, ch = w.clientHeight;
+  // Fit into the region the user can actually see, not the strip an
+  // overlaying panel is covering, so the machine lands centred on screen.
+  const vis = visibleCanvasBox();
+  const cw = vis.w, ch = vis.h;
   const R = App.config.radius + 4; // state radius + some padding
   const pad = 90;
   const b = getContentBounds(R);
@@ -1056,9 +1125,12 @@ function fitToScreen(silent = false) {
   const scaleY = (ch - pad * 2) / bh;
   const z = Math.max(App.config.zoom.min, Math.min(App.config.zoom.max, Math.min(scaleX, scaleY)));
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-  App.cam.x = cw / 2 - cx * z;
-  App.cam.y = ch / 2 - cy * z;
+  App.cam.x = vis.x + cw / 2 - cx * z;
+  App.cam.y = vis.y + ch / 2 - cy * z;
   App.cam.z = z;
+  // `silent` marks the programmatic fits that run on load/restore. Those must
+  // not dirty the tab — the camera they set is the one that was just restored.
+  if (!silent && typeof markDirty === 'function') markDirty();
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
@@ -1148,6 +1220,7 @@ function centerCameraOn(x, y, animate = true) {
   const w = $('canvas-wrap'); if (!w) return;
   App.cam.x = w.clientWidth / 2 - x * App.cam.z;
   App.cam.y = w.clientHeight / 2 - y * App.cam.z;
+  if (typeof markDirty === 'function') markDirty();
   if (animate) { $('cam-g').classList.add('cam-smooth'); w.classList.add('cam-smooth'); }
   applyCamera();
   if (animate) {
@@ -1244,10 +1317,13 @@ function renderMinimap() {
       maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
     });
   }
-  // Also include viewport extent
-  const vw = $('canvas-wrap')?.clientWidth || 600, vh = $('canvas-wrap')?.clientHeight || 400;
-  const vpMinX = -App.cam.x / App.cam.z, vpMinY = -App.cam.y / App.cam.z;
-  const vpMaxX = (vw - App.cam.x) / App.cam.z, vpMaxY = (vh - App.cam.y) / App.cam.z;
+  // Also include viewport extent. The rect has to track the part of the
+  // canvas that isn't hidden behind an overlaying panel, otherwise it reads
+  // wider than the visible area and sits offset from the content.
+  const vis = visibleCanvasBox();
+  const vpMinX = (vis.x - App.cam.x) / App.cam.z, vpMinY = (vis.y - App.cam.y) / App.cam.z;
+  const vpMaxX = (vis.x + vis.w - App.cam.x) / App.cam.z;
+  const vpMaxY = (vis.y + vis.h - App.cam.y) / App.cam.z;
   minX = Math.min(minX, vpMinX); minY = Math.min(minY, vpMinY);
   maxX = Math.max(maxX, vpMaxX); maxY = Math.max(maxY, vpMaxY);
   const bw = maxX - minX, bh = maxY - minY;
@@ -1345,10 +1421,16 @@ function minimapNavigate(e, animate = true) {
   // Convert minimap coords → world coords
   const worldX = (cx - canvas._mmOffX) / canvas._mmScale + canvas._mmMinX;
   const worldY = (cy2 - canvas._mmOffY) / canvas._mmScale + canvas._mmMinY;
-  // Pan camera to center on this world point
+  // Pan camera to center on this world point, within the visible region so
+  // the clicked spot lands where the viewport rect showed it — not behind an
+  // overlaying panel.
   const w = $('canvas-wrap'); if (!w) return;
-  App.cam.x = w.clientWidth / 2 - worldX * App.cam.z;
-  App.cam.y = w.clientHeight / 2 - worldY * App.cam.z;
+  const vis = visibleCanvasBox();
+  App.cam.x = vis.x + vis.w / 2 - worldX * App.cam.z;
+  App.cam.y = vis.y + vis.h / 2 - worldY * App.cam.z;
+  // Fires on every drag frame, but markDirty is a no-op once the tab is
+  // already dirty, so the repeated calls cost nothing.
+  if (typeof markDirty === 'function') markDirty();
 
   if (animate) { $('cam-g').classList.add('cam-smooth'); w.classList.add('cam-smooth'); }
   applyCamera(true);
@@ -2238,6 +2320,7 @@ function openSettingsModal() {
   $('set-tm-steps').value = c.maxTmSteps;
   if ($('set-lang-budget')) $('set-lang-budget').value = c.langStepBudget ?? 400;
   $('set-auto-speed').value = c.autoSpeed;
+  if ($('set-autosave-interval')) $('set-autosave-interval').value = String(c.autosaveIntervalMs ?? 15000);
   $('set-radius').value = c.radius;
   if ($('set-wrap-labels')) $('set-wrap-labels').checked = c.wrapStateLabels !== false;
   if ($('set-click-highlight-mode')) $('set-click-highlight-mode').value = c.clickHighlightMode || 'off';
@@ -2286,6 +2369,11 @@ function confirmSettings() {
     c.langStepBudget = Math.max(10, parseInt($('set-lang-budget').value) || 400);
   }
   c.autoSpeed = parseInt($('set-auto-speed').value) || 500;
+  if ($('set-autosave-interval')) {
+    const interval = parseInt($('set-autosave-interval').value);
+    c.autosaveIntervalMs = Number.isFinite(interval) && interval >= 0 ? interval : 15000;
+    if (typeof restartAutosaveTimer === 'function') restartAutosaveTimer();
+  }
   if ($('sim-speed-sel')) $('sim-speed-sel').value = String(c.autoSpeed);
   if (typeof restartAutoTimerIfPlaying === 'function') restartAutoTimerIfPlaying();
   c.radius = parseInt($('set-radius').value) || 30;
@@ -2297,7 +2385,10 @@ function confirmSettings() {
   c.zoom.step = parseFloat($('set-zoom-step').value) || 0.1;
   c.gridSnap = parseInt($('set-grid-snap').value) || 20;
   if ($('set-layout-algo')) c.layout.algorithm = $('set-layout-algo').value || 'sugiyama';
-  c.layout.nodeSpacing = parseInt($('set-node-spacing').value) || 35;
+  // Gap between node edges during auto-layout. Clamped so a stray 0 or a
+  // negative can't collapse the layout; layoutGap() enforces the same floor
+  // for configs that arrive from imports rather than this modal.
+  c.layout.nodeSpacing = Math.max(8, parseInt($('set-node-spacing').value) || 35);
   c.render.curveOff = parseInt($('set-curve-off').value) || 45;
   c.exportRes = parseFloat($('set-export-res').value) || 2;
   const oldSyms = { ...c.sym };
@@ -2320,7 +2411,7 @@ function confirmSettings() {
   if (typeof renderGamma === 'function') renderGamma();
   closeModal('settings-modal');
   showStatus('Settings applied!');
-  saveBackup();
+  saveBackupChecked();
 }
 
 function getEditorSettingsData() {
@@ -2334,6 +2425,7 @@ function getEditorSettingsData() {
     maxTmSteps: c.maxTmSteps,
     langStepBudget: c.langStepBudget,
     autoSpeed: c.autoSpeed,
+    autosaveIntervalMs: c.autosaveIntervalMs,
     radius: c.radius,
     wrapStateLabels: !!c.wrapStateLabels,
     clickHighlightMode: c.clickHighlightMode || 'off',
@@ -2389,6 +2481,7 @@ function populateSettingsModalInputs(data) {
   if (data.maxTmSteps !== undefined) $('set-tm-steps').value = data.maxTmSteps;
   if (data.langStepBudget !== undefined && $('set-lang-budget')) $('set-lang-budget').value = data.langStepBudget;
   if (data.autoSpeed !== undefined) $('set-auto-speed').value = data.autoSpeed;
+  if (data.autosaveIntervalMs !== undefined && $('set-autosave-interval')) $('set-autosave-interval').value = data.autosaveIntervalMs;
   if (data.radius !== undefined) $('set-radius').value = data.radius;
   if (data.wrapStateLabels !== undefined && $('set-wrap-labels')) $('set-wrap-labels').checked = !!data.wrapStateLabels;
   if (data.clickHighlightMode !== undefined && $('set-click-highlight-mode')) $('set-click-highlight-mode').value = data.clickHighlightMode;

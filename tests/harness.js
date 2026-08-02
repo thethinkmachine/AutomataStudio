@@ -158,6 +158,7 @@ function createHarness() {
     Date,
     document,
     localStorage,
+    indexedDB: undefined,
     window: null,
     navigator: {},
     innerWidth: 1280,
@@ -173,6 +174,25 @@ function createHarness() {
     fetch: async () => { throw new Error('fetch not available in tests'); },
     Blob: function Blob(parts) { this.parts = parts; },
     URL: { createObjectURL: () => 'blob:test' },
+    // js/history.js is deliberately not in SCRIPT_ORDER: loading it would
+    // replace this no-op `snapshot` with the real one, and the tests that
+    // exercise editing rely on the stub. markDirty is the one piece of that
+    // module the persistence tests need, so it is mirrored here — kept in
+    // sync with the definition in js/history.js.
+    // `Workspaces` and `activeWorkspaceId` are top-level `let` bindings inside
+    // the vm, not context properties, so this reaches them the same way the
+    // tests do — by evaluating inside the context.
+    markDirty: () => {
+      vm.runInContext(`(() => {
+        if (!activeWorkspaceId) return;
+        const ws = Workspaces.find(w => w.id === activeWorkspaceId);
+        if (ws && !ws.dirty) {
+          ws.dirty = true;
+          if (typeof renderTabs === 'function') renderTabs();
+          if (typeof setSaveState === 'function') setSaveState('unsaved');
+        }
+      })()`, context, { filename: 'harness-markDirty' });
+    },
     snapshot: () => {},
     // closeModal/showOverlay come from js/modal.js, loaded in SCRIPT_ORDER.
     setView: () => {},

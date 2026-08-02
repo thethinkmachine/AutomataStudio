@@ -22,6 +22,10 @@ function seedTabs(names, dirtyIds = []) {
   }));
   evalInContext(`Workspaces.length = 0; activeWorkspaceId = 'w0';`);
   tabs().push(...seeded);
+  // `saveState` is module-level and every test shares one vm context, so a
+  // preceding failed-save test would otherwise leave it stuck on 'error' —
+  // which updateSaveIndicator now deliberately refuses to recompute away.
+  evalInContext(`setSaveState('saved')`);
   return tabs();
 }
 
@@ -79,11 +83,11 @@ test('Discard closes the tab without saving', () => {
   assert.ok(!tabs().find(w => w.id === 'w1'), 'Discard must close the tab');
 });
 
-test('Save persists the tab and then closes it', () => {
+test('Save persists the tab and then closes it', async () => {
   seedTabs(['A', 'Scratch'], ['w1']);
   context.closeTab('w1');
 
-  getElement('unsaved-save-btn').onclick();
+  await getElement('unsaved-save-btn').onclick();
 
   assert.strictEqual(unsavedModalShown(), false, 'the dialog should close');
   assert.strictEqual(tabs().length, 1, 'Save must also close the tab');
@@ -94,14 +98,14 @@ test('Save persists the tab and then closes it', () => {
 // The prompt exists to protect unsaved work; if the save itself fails there
 // is nothing to fall back on, so closing anyway would destroy exactly what
 // the user asked to keep.
-test('a failed save keeps the tab open rather than closing it', () => {
+test('a failed save keeps the tab open rather than closing it', async () => {
   seedTabs(['A', 'Scratch'], ['w1']);
   context.closeTab('w1');
 
   const realSetItem = context.localStorage.setItem;
   context.localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
   try {
-    getElement('unsaved-save-btn').onclick();
+    await getElement('unsaved-save-btn').onclick();
   } finally {
     context.localStorage.setItem = realSetItem;
   }
@@ -155,23 +159,23 @@ test('Close to the Right prompts for a dirty tab to the right', () => {
 
 // ── Save button state ─────────────────────────────────────────────
 
-test('saveWorkspace clears the dirty flag on the active tab', () => {
+test('saveWorkspace clears the dirty flag on the active tab', async () => {
   seedTabs(['A'], ['w0']);
 
-  const ok = context.saveWorkspace();
+  const ok = await context.saveWorkspace();
 
   assert.strictEqual(ok, true);
   assert.strictEqual(tabs()[0].dirty, false, 'saving must clear the dirty mark');
 });
 
-test('saveWorkspace reports failure when storage rejects the write', () => {
+test('saveWorkspace reports failure when storage rejects the write', async () => {
   seedTabs(['A'], ['w0']);
 
   const realSetItem = context.localStorage.setItem;
   context.localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
   let ok;
   try {
-    ok = context.saveWorkspace();
+    ok = await context.saveWorkspace();
   } finally {
     context.localStorage.setItem = realSetItem;
   }
@@ -189,4 +193,30 @@ test('the save button surfaces unsaved state', () => {
   tabs().forEach(w => { w.dirty = false; });
   context.updateSaveIndicator();
   assert.strictEqual(getElement('save-now-btn').classList.contains('is-dirty'), false);
+});
+
+test('autosave defaults to fifteen seconds', () => {
+  assert.strictEqual(context.App.config.autosaveIntervalMs, 15000);
+});
+
+test('autosave countdown reflects the configured interval', () => {
+  // The countdown only runs when there is unsaved work for the next tick to
+  // save, so this needs a dirty tab to show anything at all.
+  seedTabs(['A'], ['w0']);
+  context.App.config.autosaveIntervalMs = 15000;
+  context.restartAutosaveTimer();
+  assert.strictEqual(getElement('autosave-countdown').textContent, '15');
+
+  context.App.config.autosaveIntervalMs = 0;
+  context.restartAutosaveTimer();
+  assert.strictEqual(getElement('autosave-countdown').textContent, '');
+});
+
+test('runAutosave persists and clears dirty workspaces', async () => {
+  seedTabs(['Autosave'], ['w0']);
+
+  await context.runAutosave();
+
+  assert.strictEqual(tabs()[0].dirty, false);
+  assert.ok(context.localStorage.getItem('automata-backup'));
 });
