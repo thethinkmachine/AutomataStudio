@@ -158,3 +158,115 @@ test('larger machines stay separated', () => {
   circularLayout(App.states);
   assert.ok(minSeparation(App.states) >= overlapDistance(), 'circular overlapped at n=24');
 });
+
+// ─── Minimap / viewport framing ───────────────────────────────────────────
+// An unpinned panel is absolutely positioned over the canvas rather than
+// beside it, so canvas-wrap's clientWidth includes the covered strip.
+
+// visibleCanvasBox() returns an object constructed inside the vm realm, so
+// its prototype is not the test realm's Object and deepStrictEqual rejects it
+// as "not reference-equal" despite identical contents. Compare field-wise.
+function assertBox(actual, expected) {
+  assert.deepStrictEqual(
+    { x: actual.x, y: actual.y, w: actual.w, h: actual.h },
+    expected
+  );
+}
+
+function stubGeometry(harnessCtx, getEl, { lpanel, rpanel }) {
+  const wrap = getEl('canvas-wrap');
+  wrap.clientWidth = 1280;
+  wrap.clientHeight = 800;
+  wrap.getBoundingClientRect = () => ({ left: 0, right: 1280, top: 0, bottom: 800, width: 1280, height: 800 });
+  // applyCamera (real, from js/canvas.js) writes CSS custom properties that
+  // the harness's plain-object style stub doesn't implement.
+  wrap.style.setProperty = () => {};
+  getEl('cam-g').style.setProperty = () => {};
+  const apply = (id, spec) => {
+    const p = getEl(id);
+    if (spec.unpinned) p.classList.add('unpinned'); else p.classList.remove('unpinned');
+    p.getBoundingClientRect = () => spec.rect;
+  };
+  apply('lpanel', lpanel);
+  apply('rpanel', rpanel);
+  return wrap;
+}
+
+const LEFT_OVER = { unpinned: true, rect: { left: 0, right: 256, top: 0, bottom: 800, width: 256, height: 800 } };
+const RIGHT_OVER = { unpinned: true, rect: { left: 980, right: 1280, top: 0, bottom: 800, width: 300, height: 800 } };
+const LEFT_PINNED = { unpinned: false, rect: { left: 0, right: 256, top: 0, bottom: 800, width: 256, height: 800 } };
+const RIGHT_PINNED = { unpinned: false, rect: { left: 980, right: 1280, top: 0, bottom: 800, width: 300, height: 800 } };
+
+test('visible canvas box excludes panels overlaying the canvas', () => {
+  reset();
+  stubGeometry(context, harness.getElement, { lpanel: LEFT_OVER, rpanel: RIGHT_OVER });
+  assertBox(context.visibleCanvasBox(), { x: 256, y: 0, w: 724, h: 800 });
+});
+
+test('pinned panels are not subtracted twice', () => {
+  reset();
+  // A pinned panel already shrinks canvas-wrap, so subtracting its width
+  // again would leave the viewport rect far too narrow.
+  stubGeometry(context, harness.getElement, { lpanel: LEFT_PINNED, rpanel: RIGHT_PINNED });
+  assertBox(context.visibleCanvasBox(), { x: 0, y: 0, w: 1280, h: 800 });
+});
+
+test('a panel collapsed to zero width claims no space', () => {
+  reset();
+  const collapsed = { unpinned: true, rect: { left: 0, right: 0, top: 0, bottom: 800, width: 0, height: 800 } };
+  stubGeometry(context, harness.getElement, { lpanel: collapsed, rpanel: RIGHT_PINNED });
+  assertBox(context.visibleCanvasBox(), { x: 0, y: 0, w: 1280, h: 800 });
+});
+
+test('a degenerate panel rect never yields a non-positive viewport', () => {
+  reset();
+  const swallowsCanvas = { unpinned: true, rect: { left: 0, right: 2000, top: 0, bottom: 800, width: 2000, height: 800 } };
+  stubGeometry(context, harness.getElement, { lpanel: swallowsCanvas, rpanel: RIGHT_PINNED });
+  const box = context.visibleCanvasBox();
+  assert.ok(box.w > 0 && box.h > 0, `expected a positive box, got ${JSON.stringify(box)}`);
+});
+
+test('fitToScreen centres content in the visible region, not under a panel', () => {
+  reset();
+  const { App } = context;
+  stubGeometry(context, harness.getElement, { lpanel: LEFT_OVER, rpanel: RIGHT_OVER });
+  App.states = [{ id: 'q0', label: 'q0', x: 0, y: 0 }];
+  App.transitions = [];
+  App.startId = 'q0';
+  context.fitToScreen(true);
+  // The single state sits at world origin, so the camera translation is the
+  // centre of the visible strip: 256 + 724/2 = 618, not 1280/2 = 640.
+  assert.strictEqual(App.cam.x, 618);
+});
+
+test('switching theme repaints the minimap in the new palette', () => {
+  reset();
+  const { App } = context;
+  const canvas = harness.getElement('minimap-canvas');
+  canvas.isConnected = true;
+  canvas.width = 200;
+  canvas.height = 140;
+  let fills = [];
+  canvas.getContext = () => ({
+    clearRect() {}, fillRect() { fills.push(this.fillStyle); }, beginPath() {}, arc() {},
+    moveTo() {}, lineTo() {}, stroke() {}, fill() {}, rect() {}, strokeRect() {},
+    save() {}, restore() {}, setLineDash() {},
+    set fillStyle(v) { this._f = v; }, get fillStyle() { return this._f; },
+    strokeStyle: '', lineWidth: 1
+  });
+  App.states = [{ id: 'q0', x: 0, y: 0 }];
+  App.transitions = [];
+  App.startId = 'q0';
+
+  // Regression: applyTheme called a non-existent `drawMinimap`, guarded by a
+  // typeof check, so the minimap kept the previous theme's export palette.
+  for (const theme of ['dark', 'light', 'dark']) {
+    fills = [];
+    context.applyTheme(theme, false);
+    assert.strictEqual(
+      fills[0],
+      App.config.export.bg,
+      `minimap background did not follow the ${theme} theme`
+    );
+  }
+});

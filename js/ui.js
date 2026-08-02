@@ -954,7 +954,10 @@ function applyTheme(theme, persist = true) {
   syncThemeExportPalette(resolved);
   updateThemeButton();
   if ($('set-theme')) $('set-theme').value = resolved;
-  if (typeof drawMinimap === 'function') drawMinimap();
+  // The minimap paints from App.config.export.*, which syncThemeExportPalette
+  // has just rewritten, so it has to be repainted or it keeps the old theme's
+  // colours until some unrelated edit happens to trigger a redraw.
+  if (typeof renderMinimap === 'function') renderMinimap();
   if (persist) {
     try { localStorage.setItem('automata-theme', resolved); } catch (e) { }
   }
@@ -1046,10 +1049,43 @@ function setZoomFromInput(val) {
   }, 250);
 }
 
+// The canvas spans the full width of the workspace, but a pinned panel sits
+// beside it while an *unpinned* one is absolutely positioned on top of it
+// (see .lpanel.unpinned in css/lpanel.css). clientWidth therefore counts the
+// strip hidden underneath an overlaying panel as visible space, which pushes
+// anything centred on it off toward the covered side and makes the minimap's
+// viewport rect wider than what the user can actually see. This reports the
+// genuinely visible box, in canvas-wrap-local CSS pixels.
+function visibleCanvasBox() {
+  const w = $('canvas-wrap');
+  if (!w) return { x: 0, y: 0, w: 600, h: 400 };
+  const full = { x: 0, y: 0, w: w.clientWidth, h: w.clientHeight };
+  if (typeof w.getBoundingClientRect !== 'function') return full;
+  const wrapRect = w.getBoundingClientRect();
+  if (!wrapRect.width || !wrapRect.height) return full;
+  let left = wrapRect.left, right = wrapRect.right;
+  ['lpanel', 'rpanel'].forEach(id => {
+    const p = $(id);
+    // Only panels drawn over the canvas steal visible space; a pinned panel
+    // already shrinks canvas-wrap, so counting it would subtract twice.
+    if (!p || typeof p.getBoundingClientRect !== 'function') return;
+    if (p.classList && !p.classList.contains('unpinned')) return;
+    const r = p.getBoundingClientRect();
+    if (!r.width) return;
+    if (r.left <= wrapRect.left) left = Math.max(left, r.right);
+    else right = Math.min(right, r.left);
+  });
+  if (!(right > left)) return full;
+  return { x: left - wrapRect.left, y: 0, w: right - left, h: wrapRect.height };
+}
+
 function fitToScreen(silent = false) {
   if (!App.states.length) return;
   const w = $('canvas-wrap'); if (!w) return;
-  const cw = w.clientWidth, ch = w.clientHeight;
+  // Fit into the region the user can actually see, not the strip an
+  // overlaying panel is covering, so the machine lands centred on screen.
+  const vis = visibleCanvasBox();
+  const cw = vis.w, ch = vis.h;
   const R = App.config.radius + 4; // state radius + some padding
   const pad = 90;
   const b = getContentBounds(R);
@@ -1060,9 +1096,12 @@ function fitToScreen(silent = false) {
   const scaleY = (ch - pad * 2) / bh;
   const z = Math.max(App.config.zoom.min, Math.min(App.config.zoom.max, Math.min(scaleX, scaleY)));
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-  App.cam.x = cw / 2 - cx * z;
-  App.cam.y = ch / 2 - cy * z;
+  App.cam.x = vis.x + cw / 2 - cx * z;
+  App.cam.y = vis.y + ch / 2 - cy * z;
   App.cam.z = z;
+  // `silent` marks the programmatic fits that run on load/restore. Those must
+  // not dirty the tab — the camera they set is the one that was just restored.
+  if (!silent && typeof markDirty === 'function') markDirty();
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
@@ -1249,10 +1288,13 @@ function renderMinimap() {
       maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
     });
   }
-  // Also include viewport extent
-  const vw = $('canvas-wrap')?.clientWidth || 600, vh = $('canvas-wrap')?.clientHeight || 400;
-  const vpMinX = -App.cam.x / App.cam.z, vpMinY = -App.cam.y / App.cam.z;
-  const vpMaxX = (vw - App.cam.x) / App.cam.z, vpMaxY = (vh - App.cam.y) / App.cam.z;
+  // Also include viewport extent. The rect has to track the part of the
+  // canvas that isn't hidden behind an overlaying panel, otherwise it reads
+  // wider than the visible area and sits offset from the content.
+  const vis = visibleCanvasBox();
+  const vpMinX = (vis.x - App.cam.x) / App.cam.z, vpMinY = (vis.y - App.cam.y) / App.cam.z;
+  const vpMaxX = (vis.x + vis.w - App.cam.x) / App.cam.z;
+  const vpMaxY = (vis.y + vis.h - App.cam.y) / App.cam.z;
   minX = Math.min(minX, vpMinX); minY = Math.min(minY, vpMinY);
   maxX = Math.max(maxX, vpMaxX); maxY = Math.max(maxY, vpMaxY);
   const bw = maxX - minX, bh = maxY - minY;
@@ -1350,10 +1392,16 @@ function minimapNavigate(e, animate = true) {
   // Convert minimap coords → world coords
   const worldX = (cx - canvas._mmOffX) / canvas._mmScale + canvas._mmMinX;
   const worldY = (cy2 - canvas._mmOffY) / canvas._mmScale + canvas._mmMinY;
-  // Pan camera to center on this world point
+  // Pan camera to center on this world point, within the visible region so
+  // the clicked spot lands where the viewport rect showed it — not behind an
+  // overlaying panel.
   const w = $('canvas-wrap'); if (!w) return;
-  App.cam.x = w.clientWidth / 2 - worldX * App.cam.z;
-  App.cam.y = w.clientHeight / 2 - worldY * App.cam.z;
+  const vis = visibleCanvasBox();
+  App.cam.x = vis.x + vis.w / 2 - worldX * App.cam.z;
+  App.cam.y = vis.y + vis.h / 2 - worldY * App.cam.z;
+  // Fires on every drag frame, but markDirty is a no-op once the tab is
+  // already dirty, so the repeated calls cost nothing.
+  if (typeof markDirty === 'function') markDirty();
 
   if (animate) { $('cam-g').classList.add('cam-smooth'); w.classList.add('cam-smooth'); }
   applyCamera(true);
