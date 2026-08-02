@@ -2297,7 +2297,10 @@ function confirmSettings() {
   c.zoom.step = parseFloat($('set-zoom-step').value) || 0.1;
   c.gridSnap = parseInt($('set-grid-snap').value) || 20;
   if ($('set-layout-algo')) c.layout.algorithm = $('set-layout-algo').value || 'sugiyama';
-  c.layout.nodeSpacing = parseInt($('set-node-spacing').value) || 35;
+  // Gap between node edges during auto-layout. Clamped so a stray 0 or a
+  // negative can't collapse the layout; layoutGap() enforces the same floor
+  // for configs that arrive from imports rather than this modal.
+  c.layout.nodeSpacing = Math.max(8, parseInt($('set-node-spacing').value) || 35);
   c.render.curveOff = parseInt($('set-curve-off').value) || 45;
   c.exportRes = parseFloat($('set-export-res').value) || 2;
   const oldSyms = { ...c.sym };
