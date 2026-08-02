@@ -58,6 +58,7 @@ function cancelCanvasManipulationForTouch() {
   App.marquee = null;
   App.dragOffsets = null;
   App.dragCurve = null;
+  App.dragPendingSnapshot = false;
   if (typeof clearAlignGuides === 'function') clearAlignGuides();
 }
 
@@ -133,7 +134,10 @@ function captureTouchPointerEnd(e) {
   if (touchCameraGesture) {
     e.preventDefault();
     e.stopPropagation();
-    if (touchPointers.size < 2) touchCameraGesture = null;
+    if (touchPointers.size < 2) {
+      touchCameraGesture = null;
+      if (typeof markDirty === 'function') markDirty();
+    }
   }
 }
 
@@ -216,7 +220,12 @@ wrap.addEventListener('wheel', e => {
   }
   applyCamera(true);
   clearTimeout(_wheelIdleTimer);
-  _wheelIdleTimer = setTimeout(renderMinimap, 150);
+  // Marked once the gesture settles rather than per wheel tick, so a single
+  // scroll doesn't trigger a burst of tab re-renders.
+  _wheelIdleTimer = setTimeout(() => {
+    renderMinimap();
+    if (typeof markDirty === 'function') markDirty();
+  }, 150);
 }, { passive: false });
 
 // ══════════════════════════════════════════════════════════════════
@@ -447,6 +456,12 @@ function handlePointerMove(e) {
   }
   if (App.dragOffsets) {
     const pt = svgPt(e);
+    // First movement of a drag: capture the pre-drag positions so undo returns
+    // the states to where they were when the press started.
+    if (App.dragPendingSnapshot) {
+      App.dragPendingSnapshot = false;
+      snapshot();
+    }
     const snap = isSnapActive(e.shiftKey);
     const gSnapAmount = App.config.gridSnap || 20;
     App.selectedStates.forEach(sid => {
@@ -543,7 +558,9 @@ function endPointerInteractions() {
     isPanning = false; wrap.classList.remove('panning');
     if (panPointerId !== null) { try { wrap.releasePointerCapture(panPointerId); } catch (e) { } }
     panPointerId = null;
-    renderMinimap(); return;
+    renderMinimap();
+    if (typeof markDirty === 'function') markDirty();
+    return;
   }
   if (App.marquee) {
     App.marqueeRect.remove(); App.marqueeRect = null; App.marquee = null; renderMinimap();
@@ -551,6 +568,7 @@ function endPointerInteractions() {
   if (App.dragOffsets || App.dragCurve) {
     App.dragOffsets = null;
     App.dragCurve = null;
+    App.dragPendingSnapshot = false;
     clearAlignGuides();
     renderMinimap();
   }
@@ -735,7 +753,11 @@ function onStateDown(e, id) {
       if (s) App.dragOffsets[sid] = { x: pt.x - s.x, y: pt.y - s.y };
     });
     try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
-    snapshot();
+    // The undo entry is deliberately NOT taken here. A press that never turns
+    // into a drag is just a selection, and snapshotting on press marked the
+    // workspace dirty (and pushed a no-op undo step) for every plain click.
+    // handlePointerMove takes it on the first real movement instead.
+    App.dragPendingSnapshot = true;
   }
 }
 

@@ -980,6 +980,7 @@ function zoomIn() {
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
+  if (typeof markDirty === 'function') markDirty();
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
@@ -998,6 +999,7 @@ function zoomOut() {
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
+  if (typeof markDirty === 'function') markDirty();
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
@@ -1016,6 +1018,7 @@ function setZoomFromInput(val) {
     const w = $('canvas-wrap'); if (!w) return;
     const mx = w.clientWidth / 2, my = w.clientHeight / 2;
     App.cam = { x: mx, y: my, z: 1 };
+    if (typeof markDirty === 'function') markDirty();
     $('cam-g').classList.add('cam-smooth');
     w.classList.add('cam-smooth');
     applyCamera();
@@ -1033,6 +1036,7 @@ function setZoomFromInput(val) {
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
+  if (typeof markDirty === 'function') markDirty();
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
@@ -1148,6 +1152,7 @@ function centerCameraOn(x, y, animate = true) {
   const w = $('canvas-wrap'); if (!w) return;
   App.cam.x = w.clientWidth / 2 - x * App.cam.z;
   App.cam.y = w.clientHeight / 2 - y * App.cam.z;
+  if (typeof markDirty === 'function') markDirty();
   if (animate) { $('cam-g').classList.add('cam-smooth'); w.classList.add('cam-smooth'); }
   applyCamera();
   if (animate) {
