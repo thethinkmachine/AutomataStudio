@@ -18,7 +18,7 @@ const ModalRegistry = Object.create(null);
 // The element focus returns to when a modal closes, keyed by modal id.
 const ModalReturnFocus = Object.create(null);
 
-const MODAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const MODAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * Declare a modal's behaviour.
@@ -78,6 +78,7 @@ function showOverlay(id) {
 function closeModal(id) {
   const shell = $(id);
   if (!shell) return;
+  if (typeof closeCustomSelect === 'function') closeCustomSelect();
   shell.classList.remove('show');
   shell.style.zIndex = '';
 
@@ -132,6 +133,12 @@ document.addEventListener('keydown', e => {
   if (!shell) return;
 
   if (e.key === 'Escape') {
+    if (typeof OpenCustomSelect !== 'undefined' && OpenCustomSelect) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeCustomSelect({ focus: true });
+      return;
+    }
     // The symbol-suggest popover owns Escape while it is open — dismissing a
     // completion list should not also tear down the dialog around it. This
     // listener captures on document, so it would otherwise pre-empt the
