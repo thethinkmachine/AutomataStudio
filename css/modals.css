@@ -133,9 +133,13 @@ body.modal-open {
   font-weight: 600;
   letter-spacing: .06em;
   text-transform: uppercase;
-  padding: 14px 0 8px;
-  border-top: 1px solid var(--border);
+  padding: 0 0 8px;
   margin: 14px 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-section-lbl:first-child {
+  margin-top: 0;
 }
 
 .confirm-msg {
@@ -344,6 +348,12 @@ body.modal-open {
   color: var(--accent);
   background: var(--tab-active-bg);
   border-bottom-color: var(--tab-active-line);
+}
+
+/* Wraps the tab panels. sizeSettingsPanels() locks this to the tallest
+   panel's height on open, so switching tabs no longer resizes the modal. */
+.modal-tab-panels {
+  overflow: hidden;
 }
 
 .modal-tab-content {
@@ -1420,5 +1430,386 @@ button:focus-visible {
   .exp-preview {
     min-height: 160px;
     max-height: 32vh;
+  }
+}
+
+/* Refined code/config/spec export dialog */
+.modal.export-code-modal {
+  max-width: 940px;
+  width: min(94vw, 940px);
+  height: min(760px, 88vh);
+  padding: 0;
+  overflow: hidden;
+}
+
+.export-code-modal .modal-title {
+  margin: 0;
+  padding: 22px 26px 7px;
+  border-bottom: 0;
+  font-size: 1.12rem;
+}
+
+.export-code-intro {
+  padding: 0 26px 20px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--sans);
+  font-size: .76rem;
+  line-height: 1.45;
+  color: var(--text3);
+}
+
+.export-code-modal .exp-split {
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 0;
+  flex: 1;
+}
+
+.export-code-modal .exp-side {
+  gap: 18px;
+  max-height: none;
+  min-height: 0;
+  padding: 20px 14px 22px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg2) 74%, transparent);
+}
+
+.export-code-modal .exp-group-name {
+  padding: 0 9px;
+  margin-bottom: 6px;
+  font-family: var(--sans);
+  font-weight: 600;
+  letter-spacing: .08em;
+}
+
+.export-code-modal .exp-fmt {
+  position: relative;
+  min-height: 35px;
+  padding: 8px 10px 8px 13px;
+  font-weight: 500;
+}
+
+.export-code-modal .exp-fmt.on::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.export-code-modal .exp-main {
+  min-height: 0;
+  padding: 20px 24px 0;
+}
+
+#export-code-options {
+  min-height: 0 !important;
+  padding-bottom: 4px;
+}
+
+.export-code-modal .exp-opts {
+  align-items: center;
+  gap: 10px 16px;
+  margin-bottom: 16px;
+}
+
+.export-code-modal .exp-field,
+.export-code-modal .exp-check,
+.export-code-modal .exp-blurb {
+  font-family: var(--sans);
+}
+
+.export-code-modal .exp-check {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface2);
+}
+
+.export-code-modal .exp-check input { accent-color: var(--accent); }
+.export-code-modal .exp-field > span { white-space: nowrap; }
+
+.export-code-modal .exp-preview {
+  min-height: 220px;
+  max-height: none;
+  padding: 16px 18px;
+  border-color: var(--border2);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .02);
+  line-height: 1.6;
+}
+
+.export-code-modal .exp-meta {
+  min-height: 35px;
+  display: flex;
+  align-items: center;
+  margin-top: 0;
+  font-family: var(--sans);
+}
+
+.export-code-modal .modal-foot {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 16px 24px;
+  background: color-mix(in srgb, var(--surface) 82%, var(--bg2));
+}
+
+.export-code-modal .modal-foot .btn-g:first-child { margin-right: auto; }
+
+@media (max-width: 700px) {
+  .modal.export-code-modal {
+    width: calc(100% - 20px);
+    height: min(92vh, 760px);
+  }
+
+  .export-code-modal .modal-title { padding: 18px 18px 6px; }
+  .export-code-intro { padding: 0 18px 16px; }
+
+  .export-code-modal .exp-split {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .export-code-modal .exp-side {
+    flex-direction: row;
+    gap: 8px;
+    padding: 12px 14px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .export-code-modal .exp-group { display: contents; }
+  .export-code-modal .exp-group-name { display: none; }
+  .export-code-modal .exp-fmt { width: auto; min-width: max-content; padding: 7px 10px; }
+  .export-code-modal .exp-fmt.on::before { display: none; }
+  .export-code-modal .exp-main { padding: 16px 16px 0; }
+  .export-code-modal .exp-field { flex: 1 1 180px; justify-content: space-between; }
+  .export-code-modal .exp-preview { min-height: 170px; }
+  .export-code-modal .modal-foot { padding: 12px 16px; flex-wrap: nowrap; }
+  .export-code-modal .modal-foot .btn-g,
+  .export-code-modal .modal-foot .btn-p { width: auto; }
+}
+
+/* Settings uses the same shell and split composition as code export. */
+.modal.settings-modal-wide {
+  max-width: 940px;
+  width: min(94vw, 940px);
+  height: min(760px, 88vh);
+}
+
+.settings-modal-wide .settings-split {
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 0;
+  flex: 1;
+  min-height: 0;
+}
+
+.settings-modal-wide #settings-tabs {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 2px;
+  margin: 0;
+  border-bottom: 0;
+}
+
+.settings-modal-wide #settings-tabs .modal-tab {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 35px;
+  padding: 8px 10px 8px 13px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  text-align: left;
+  font-family: var(--sans);
+  font-size: .77rem;
+  font-weight: 500;
+  color: var(--text2);
+  background: transparent;
+}
+
+.settings-modal-wide #settings-tabs .modal-tab:hover {
+  color: var(--text);
+  background: var(--surface2);
+}
+
+.settings-modal-wide #settings-tabs .modal-tab.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+
+.settings-modal-wide #settings-tabs .modal-tab.active::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.settings-modal-wide #settings-tab-panels {
+  min-width: 0;
+  min-height: 0;
+  height: auto !important;
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+
+.settings-modal-wide .modal-tab-content.active {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-modal-wide .modal-row {
+  min-height: 48px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+}
+
+.settings-modal-wide .modal-lbl {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: .76rem;
+  color: var(--text2);
+}
+
+.settings-modal-wide .modal-row > .inp,
+.settings-modal-wide .modal-row > .sel,
+.settings-modal-wide .modal-row > .custom-select {
+  flex: 0 0 210px;
+  max-width: 210px;
+}
+
+.settings-modal-wide .modal-foot {
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 700px) {
+  .modal.settings-modal-wide {
+    width: calc(100% - 20px);
+    height: min(92vh, 760px);
+  }
+
+  .settings-modal-wide .settings-split {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .settings-modal-wide #settings-tabs {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .settings-modal-wide #settings-tabs .modal-tab {
+    width: auto;
+    min-width: max-content;
+    padding: 7px 10px;
+  }
+
+  .settings-modal-wide #settings-tabs .modal-tab.active::before { display: none; }
+  .settings-modal-wide #settings-tab-panels { padding: 16px; }
+  .settings-modal-wide .modal-row { flex-wrap: nowrap; }
+  .settings-modal-wide .modal-row > .inp,
+  .settings-modal-wide .modal-row > .sel,
+  .settings-modal-wide .modal-row > .custom-select { flex: 0 1 180px; max-width: 180px; }
+  .settings-modal-wide .modal-foot { overflow-x: auto; }
+  .settings-modal-wide .modal-foot-group { flex-shrink: 0; }
+}
+
+/* Theme picker: a card grid rather than the cramped swatch-row this replaced
+   (js/ui.js renderThemeCards) — scales to any number of registered themes by
+   wrapping and scrolling vertically instead of forcing a fixed-width strip.
+   Built on the plain .modal shell (like About/Help/Confirm), not the
+   padding-stripped .export-code-modal one, so title/hint/foot spacing
+   matches the rest of the app's simple dialogs. */
+.modal.theme-modal {
+  max-width: 640px;
+  width: min(92vw, 640px);
+}
+
+.theme-modal-hint {
+  margin-bottom: 18px;
+}
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+  max-height: min(52vh, 420px);
+  padding: 2px 2px 4px;
+  overflow-y: auto;
+}
+
+.theme-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  background: var(--surface2);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--transition-fast), background var(--transition-fast), transform .1s;
+}
+
+.theme-card:hover {
+  border-color: var(--accent-border);
+  transform: translateY(-1px);
+}
+
+.theme-card.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent-border-strong);
+}
+
+.theme-card-swatch {
+  width: 100%;
+  height: 40px;
+  border-radius: 6px;
+  border: 1px solid var(--border2);
+}
+
+.theme-card-name {
+  font-family: var(--sans);
+  font-size: .76rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.theme-card-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+}
+
+@media (max-width: 700px) {
+  .modal.theme-modal {
+    width: calc(100% - 20px);
+  }
+
+  .theme-grid {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    max-height: min(60vh, 420px);
   }
 }

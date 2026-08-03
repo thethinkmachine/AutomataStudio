@@ -254,6 +254,7 @@ function openExportCodeModal(initial) {
   if (!exportRequireMachine()) return;
   const key = initial && ExportFormats[initial] ? initial : ExportUI.format;
   selectExportFormat(key, true);
+  sizeExportCodeOptions();
   showOverlay('export-code-modal');
 }
 
@@ -286,6 +287,37 @@ function exportCurrentText() {
   }
 }
 
+// Shared by the live render and by sizeExportCodeOptions (which renders
+// every format's controls offscreen just to measure them).
+function exportCodeOptionsHtml(spec, opts) {
+  const controls = (spec.options || []).map(opt => {
+    const val = opts[opt.id];
+    if (opt.type === 'check') {
+      return `<label class="exp-check"><input type="checkbox" ${val ? 'checked' : ''}
+        onchange="setExportCodeOpt('${opt.id}', this.checked, 'check')"><span>${opt.label}</span>${opt.hint ? `<em>${opt.hint}</em>` : ''}</label>`;
+    }
+    if (opt.type === 'select') {
+      return `<label class="exp-field"><span>${opt.label}</span>
+        <select class="inp" onchange="setExportCodeOpt('${opt.id}', this.value, 'select')">
+          ${opt.choices.map(([v, l]) => `<option value="${v}" ${val === v ? 'selected' : ''}>${l}</option>`).join('')}
+        </select></label>`;
+    }
+    if (opt.type === 'text') {
+      return `<label class="exp-field"><span>${opt.label}</span>
+        <input class="inp" type="text" value="${escapeHtml(val)}"
+          onchange="setExportCodeOpt('${opt.id}', this.value, 'text')"></label>`;
+    }
+    return `<label class="exp-field"><span>${opt.label}</span>
+      <input class="inp exp-num" type="number" value="${val}"
+        ${opt.min !== undefined ? `min="${opt.min}"` : ''} ${opt.max !== undefined ? `max="${opt.max}"` : ''}
+        ${opt.step !== undefined ? `step="${opt.step}"` : ''}
+        onchange="setExportCodeOpt('${opt.id}', this.value, 'number')"></label>`;
+  }).join('');
+
+  return (spec.blurb ? `<div class="exp-blurb">${spec.blurb}</div>` : '')
+    + (controls ? `<div class="exp-opts">${controls}</div>` : '');
+}
+
 function renderExportCodeModal() {
   const listHost = $('export-format-list');
   const optHost = $('export-code-options');
@@ -310,34 +342,30 @@ function renderExportCodeModal() {
       }).join('')}
     </div>`).join('');
 
-  const controls = (spec.options || []).map(opt => {
-    const val = ExportUI.opts[opt.id];
-    if (opt.type === 'check') {
-      return `<label class="exp-check"><input type="checkbox" ${val ? 'checked' : ''}
-        onchange="setExportCodeOpt('${opt.id}', this.checked, 'check')"><span>${opt.label}</span>${opt.hint ? `<em>${opt.hint}</em>` : ''}</label>`;
-    }
-    if (opt.type === 'select') {
-      return `<label class="exp-field"><span>${opt.label}</span>
-        <select class="inp" onchange="setExportCodeOpt('${opt.id}', this.value, 'select')">
-          ${opt.choices.map(([v, l]) => `<option value="${v}" ${val === v ? 'selected' : ''}>${l}</option>`).join('')}
-        </select></label>`;
-    }
-    if (opt.type === 'text') {
-      return `<label class="exp-field"><span>${opt.label}</span>
-        <input class="inp" type="text" value="${escapeHtml(val)}"
-          onchange="setExportCodeOpt('${opt.id}', this.value, 'text')"></label>`;
-    }
-    return `<label class="exp-field"><span>${opt.label}</span>
-      <input class="inp exp-num" type="number" value="${val}"
-        ${opt.min !== undefined ? `min="${opt.min}"` : ''} ${opt.max !== undefined ? `max="${opt.max}"` : ''}
-        ${opt.step !== undefined ? `step="${opt.step}"` : ''}
-        onchange="setExportCodeOpt('${opt.id}', this.value, 'number')"></label>`;
-  }).join('');
-
-  optHost.innerHTML = (spec.blurb ? `<div class="exp-blurb">${spec.blurb}</div>` : '')
-    + (controls ? `<div class="exp-opts">${controls}</div>` : '');
+  optHost.innerHTML = exportCodeOptionsHtml(spec, ExportUI.opts);
 
   renderExportCodePreview();
+}
+
+// Formats range from a bare JSON dump (no options) to Language Samples
+// (a blurb plus four fields) — swapping the options block between them
+// as-is made the modal resize with every format click, the same jarring
+// jump the Settings tabs had. Render each format's options offscreen once
+// per open, take the tallest, and lock the block to that so it stays put.
+function sizeExportCodeOptions() {
+  const optHost = $('export-code-options');
+  if (!optHost) return;
+  const liveHtml = optHost.innerHTML;
+
+  let max = 0;
+  Object.keys(ExportFormats).forEach(key => {
+    optHost.style.minHeight = '';
+    optHost.innerHTML = exportCodeOptionsHtml(ExportFormats[key], exportDefaultOpts(key));
+    max = Math.max(max, optHost.scrollHeight);
+  });
+
+  optHost.innerHTML = liveHtml;
+  optHost.style.minHeight = max + 'px';
 }
 
 function renderExportCodePreview() {
