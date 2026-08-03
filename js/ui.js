@@ -921,67 +921,64 @@ document.addEventListener('keydown', e => {
   if (e.key === '4') setView('theory');
 });
 
-const ThemeExports = {
-  dark: {
-    bg: '#080c18',
-    nodeFill: '#161d2e',
-    nodeStroke: 'rgba(100,130,200,0.22)',
-    startStroke: '#69f0ae',
-    accStroke: '#ffd54f',
-    actFill: 'rgba(79,195,247,.18)',
-    actStroke: '#4fc3f7',
-    edgeStroke: '#4a5878',
-    textFill: '#7a8ab0',
-    nodeTextFill: '#c8d4f0',
-    viewportStroke: 'rgba(79,195,247,0.6)'
-  },
-  light: {
-    bg: '#eef4fb',
-    nodeFill: '#ffffff',
-    nodeStroke: 'rgba(41,73,109,0.2)',
-    startStroke: '#198b63',
-    accStroke: '#b7791f',
-    actFill: 'rgba(23,142,216,.12)',
-    actStroke: '#178ed8',
-    edgeStroke: '#7d92a6',
-    textFill: '#496277',
-    nodeTextFill: '#16324a',
-    viewportStroke: 'rgba(23,142,216,0.45)'
-  }
-};
-
 function syncThemeExportPalette(theme) {
-  App.config.export = { ...App.config.export, ...(ThemeExports[theme] || ThemeExports.dark) };
+  const t = Themes[theme] || Themes[DEFAULT_THEME];
+  App.config.export = { ...App.config.export, ...t.export };
 }
 
-// The theme control lives in the header overflow menu as an icon + label row,
-// so only the icon is swapped — replacing innerHTML would drop the label.
-function updateThemeButton() {
-  const btn = $('theme-btn');
-  if (!btn) return;
-  const isLight = App.config.theme === 'light';
-  const nextTheme = isLight ? 'dark' : 'light';
-  const icon = isLight
-    ? `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M233.54,142.23a8,8,0,0,0-8-2,88.08,88.08,0,0,1-109.8-109.8,8,8,0,0,0-10-10,104.84,104.84,0,0,0-52.91,37A104,104,0,0,0,136,224a103.09,103.09,0,0,0,62.52-20.88,104.84,104.84,0,0,0,37-52.91A8,8,0,0,0,233.54,142.23ZM188.9,190.34A88,88,0,0,1,65.66,67.11a89,89,0,0,1,31.4-26A106,106,0,0,0,96,56,104.11,104.11,0,0,0,200,160a106,106,0,0,0,14.92-1.06A89,89,0,0,1,188.9,190.34Z"/></svg>`
-    : `<svg viewBox="0 0 256 256" fill="currentColor"><path d="M120,40V16a8,8,0,0,1,16,0V40a8,8,0,0,1-16,0Zm72,88a64,64,0,1,1-64-64A64.07,64.07,0,0,1,192,128Zm-16,0a48,48,0,1,0-48,48A48.05,48.05,0,0,0,176,128ZM58.34,69.66A8,8,0,0,0,69.66,58.34l-16-16A8,8,0,0,0,42.34,53.66Zm0,116.68-16,16a8,8,0,0,0,11.32,11.32l16-16a8,8,0,0,0-11.32-11.32ZM192,72a8,8,0,0,0,5.66-2.34l16-16a8,8,0,0,0-11.32-11.32l-16,16A8,8,0,0,0,192,72Zm5.66,114.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32-11.32ZM48,128a8,8,0,0,0-8-8H16a8,8,0,0,0,0,16H40A8,8,0,0,0,48,128Zm80,80a8,8,0,0,0-8,8v24a8,8,0,0,0,16,0V216A8,8,0,0,0,128,208Zm112-88H216a8,8,0,0,0,0,16h24a8,8,0,0,0,0-16Z"/></svg>`;
+// One card per entry in the `Themes` registry (js/themes.js) — adding a
+// theme there is enough for it to appear here with no further changes. A
+// grid inside its own modal (rather than a row squeezed into the header
+// menu) is what actually scales as the registry grows: it wraps and
+// scrolls vertically instead of forcing a fixed-width horizontal strip.
+function renderThemeCards() {
+  const grid = $('theme-grid');
+  if (!grid) return;
+  const current = App.config.theme;
+  grid.innerHTML = Object.entries(Themes).map(([id, t]) => {
+    const active = id === current;
+    const label = escapeHtml(t.label || id);
+    return `<button type="button" class="theme-card${active ? ' active' : ''}"
+      onclick="selectTheme('${id}')" role="option" aria-selected="${active}">
+      <span class="theme-card-swatch" style="background:linear-gradient(135deg, ${t.swatch[0]} 50%, ${t.swatch[1]} 50%)"></span>
+      <span class="theme-card-name">${label}</span>
+      ${active ? `<svg class="theme-card-check" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>` : ''}
+    </button>`;
+  }).join('');
+}
 
-  const svg = btn.querySelector && btn.querySelector('svg');
-  if (svg) svg.outerHTML = icon;
-  else btn.innerHTML = icon;
+function openThemeModal() {
+  renderThemeCards();
+  showOverlay('theme-modal');
+}
 
-  const label = btn.querySelector && btn.querySelector('.theme-btn-label');
-  if (label) label.textContent = `Switch to ${nextTheme} theme`;
+// The header row's small trailing label (e.g. "Nord") so the current theme
+// is visible without opening the modal.
+function updateThemeMenuLabel() {
+  const el = $('theme-btn-current');
+  if (!el) return;
+  const t = Themes[App.config.theme];
+  el.textContent = t ? t.label : '';
+}
 
-  btn.dataset.tip = `Switch to ${nextTheme} theme`;
-  btn.setAttribute('aria-label', btn.dataset.tip);
+// Builds the Settings dropdown's options from the theme registry. Run once —
+// the dropdown-enhancer (js/dropdown.js) watches the native <select> for
+// further mutations, so this never needs to run again after the first open.
+function populateThemeSelect() {
+  const sel = $('set-theme');
+  if (!sel || sel.children.length) return;
+  sel.innerHTML = Object.entries(Themes)
+    .map(([id, t]) => `<option value="${id}">${escapeHtml(t.label || id)}</option>`)
+    .join('');
 }
 
 function applyTheme(theme, persist = true) {
-  const resolved = theme === 'light' ? 'light' : 'dark';
+  const resolved = Themes[theme] ? theme : DEFAULT_THEME;
   App.config.theme = resolved;
   document.documentElement.dataset.theme = resolved;
   syncThemeExportPalette(resolved);
-  updateThemeButton();
+  renderThemeCards();
+  updateThemeMenuLabel();
   if ($('set-theme')) $('set-theme').value = resolved;
   // The minimap paints from App.config.export.*, which syncThemeExportPalette
   // has just rewritten, so it has to be repainted or it keeps the old theme's
@@ -992,11 +989,14 @@ function applyTheme(theme, persist = true) {
   }
 }
 
-function toggleTheme() {
-  applyTheme(App.config.theme === 'light' ? 'dark' : 'light');
+// Entry point for interactive theme picks (theme-modal cards); applyTheme
+// alone is also used at boot and from Settings, where a repaint/status
+// message would be premature or redundant.
+function selectTheme(theme) {
+  applyTheme(theme);
   if (typeof renderAll === 'function') renderAll();
   saveBackupChecked();
-  showStatus(`Theme: ${App.config.theme}`);
+  showStatus(`Theme: ${Themes[App.config.theme]?.label || App.config.theme}`);
 }
 
 
@@ -2312,7 +2312,8 @@ registerModal('settings-modal', { submit: () => confirmSettings() });
 
 function openSettingsModal() {
   const c = App.config;
-  $('set-theme').value = c.theme || 'dark';
+  populateThemeSelect();
+  $('set-theme').value = c.theme || DEFAULT_THEME;
   if ($('set-wheel-zoom')) $('set-wheel-zoom').checked = !!c.wheelZoom;
   if ($('set-snap-grid')) $('set-snap-grid').checked = !!c.snapToGrid;
   if ($('set-state-prefix')) $('set-state-prefix').value = c.statePrefix || 'q';
@@ -2382,7 +2383,7 @@ function sizeSettingsPanels() {
 
 function confirmSettings() {
   const c = App.config;
-  applyTheme($('set-theme').value || c.theme || 'dark');
+  applyTheme($('set-theme').value || c.theme || DEFAULT_THEME);
   if ($('set-wheel-zoom')) {
     c.wheelZoom = $('set-wheel-zoom').checked;
     try { localStorage.setItem('automata-wheel-zoom', c.wheelZoom ? '1' : '0'); } catch (e) { }
@@ -2505,6 +2506,7 @@ function importSettings(e) {
 }
 
 function populateSettingsModalInputs(data) {
+  populateThemeSelect();
   if (data.theme !== undefined) $('set-theme').value = data.theme;
   if (data.wheelZoom !== undefined && $('set-wheel-zoom')) $('set-wheel-zoom').checked = !!data.wheelZoom;
   if (data.snapToGrid !== undefined && $('set-snap-grid')) $('set-snap-grid').checked = !!data.snapToGrid;

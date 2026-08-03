@@ -94,15 +94,25 @@ function setMealyTransitionForm(h, values) {
   h.getElement('m-output').value = values.output;
 }
 
-test('theme button icon reflects the active theme', () => {
+test('theme modal renders one card per registered theme and marks the active one', () => {
   const h = createHarness();
-  const btn = h.getElement('theme-btn');
+  const grid = h.getElement('theme-grid');
   h.context.applyTheme('dark', false);
-  assert.match(btn.innerHTML, /viewBox="0 0 24 24"/);
-  assert.match(btn.innerHTML, /M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z/);
 
-  h.context.applyTheme('light', false);
-  assert.match(btn.innerHTML, /circle cx="12" cy="12" r="4"/);
+  const themeIds = Object.keys(h.context.Themes);
+  assert.strictEqual(themeIds.length > 2, true, 'expects more than the original dark/light pair');
+  themeIds.forEach(id => assert.match(grid.innerHTML, new RegExp(`selectTheme\\('${id}'\\)`)));
+  assert.match(grid.innerHTML, /theme-card active/);
+
+  h.context.applyTheme('nord', false);
+  assert.strictEqual(h.context.App.config.theme, 'nord');
+  assert.strictEqual(h.context.document.documentElement.dataset.theme, 'nord');
+});
+
+test('applyTheme falls back to the default theme for an unrecognized id', () => {
+  const h = createHarness();
+  h.context.applyTheme('not-a-real-theme', false);
+  assert.strictEqual(h.context.App.config.theme, h.context.DEFAULT_THEME);
 });
 
 test('PDA settings modal reflects the active formalism', () => {

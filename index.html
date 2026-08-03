@@ -176,9 +176,9 @@
             <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48V96a8,8,0,0,1-16,0V67.31l-42.34,42.35a8,8,0,0,1-11.32-11.32L188.69,56H160a8,8,0,0,1,0-16h48A8,8,0,0,1,216,48ZM98.34,146.34,56,188.69V160a8,8,0,0,0-16,0v48a8,8,0,0,0,8,8H96a8,8,0,0,0,0-16H67.31l42.35-42.34a8,8,0,0,0-11.32-11.32ZM208,152a8,8,0,0,0-8,8v28.69l-42.34-42.35a8,8,0,0,0-11.32,11.32L188.69,200H160a8,8,0,0,0,0,16h48a8,8,0,0,0,8-8V160A8,8,0,0,0,208,152ZM67.31,56H96a8,8,0,0,0,0-16H48a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31l42.34,42.35a8,8,0,0,0,11.32-11.32Z" /></svg>
             Fullscreen<span class="ctx-kbd-hint">F</span>
           </div>
-          <div class="ctx-i" role="menuitem" id="theme-btn" onclick="toggleTheme()">
+          <div class="ctx-i" role="menuitem" id="theme-btn" onclick="openThemeModal()">
             <svg viewBox="0 0 256 256" fill="currentColor"><path d="M233.54,142.23a8,8,0,0,0-8-2,88.08,88.08,0,0,1-109.8-109.8,8,8,0,0,0-10-10,104.84,104.84,0,0,0-52.91,37A104,104,0,0,0,136,224a103.09,103.09,0,0,0,62.52-20.88,104.84,104.84,0,0,0,37-52.91A8,8,0,0,0,233.54,142.23ZM188.9,190.34A88,88,0,0,1,65.66,67.11a89,89,0,0,1,31.4-26A106,106,0,0,0,96,56,104.11,104.11,0,0,0,200,160a106,106,0,0,0,14.92-1.06A89,89,0,0,1,188.9,190.34Z" /></svg>
-            <span class="theme-btn-label">Switch Theme</span>
+            Theme<span class="ctx-kbd-hint" id="theme-btn-current"></span>
           </div>
           <div class="ctx-i" role="menuitem" onclick="openSettingsModal()">
             <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A112.1,112.1,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.62a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.08,8.08,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8.08,8.08,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z" /></svg>
@@ -1355,10 +1355,7 @@
         </div>
         <div class="modal-row">
           <span class="modal-lbl">Theme</span>
-          <select class="inp" id="set-theme" label="Color theme">
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-          </select>
+          <select class="inp" id="set-theme" label="Color theme"></select>
         </div>
         <div class="modal-row" data-tip="When on, plain scroll zooms the canvas (Shift+scroll pans horizontally). When off, plain scroll pans and Ctrl+scroll zooms.">
           <span class="modal-lbl">Scroll Wheel Zooms Canvas</span>
@@ -1494,6 +1491,18 @@
 
   <input type="file" id="file-input" accept=".json,.png,.jff,.jflap" style="display:none" onchange="onFileLoad(event)">
   <input type="file" id="settings-file-input" accept=".json" style="display:none" onchange="importSettings(event)">
+
+  <!-- Theme Modal -->
+  <div class="overlay" id="theme-modal" role="dialog" aria-modal="true" aria-labelledby="theme-modal-title">
+    <div class="modal theme-modal">
+      <div class="modal-title" id="theme-modal-title">Theme</div>
+      <div class="modal-hint theme-modal-hint">Pick a colour theme for the workspace, canvas and diagrams.</div>
+      <div class="theme-grid" id="theme-grid" role="listbox" aria-label="Color theme"></div>
+      <div class="modal-foot">
+        <button class="btn-g" onclick="closeModal('theme-modal')">Close</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Help Modal -->
   <div class="overlay" id="help-modal" role="dialog" aria-modal="true" aria-label="Keyboard Shortcuts">
@@ -1849,6 +1858,7 @@
   <script src="js/electron-bridge.js"></script>
   <script src="js/dropdown.js"></script>
   <script src="js/modal.js"></script>
+  <script src="js/themes.js"></script>
   <script src="js/state.js"></script>
   <script src="js/history.js"></script>
   <script src="js/view.js"></script>

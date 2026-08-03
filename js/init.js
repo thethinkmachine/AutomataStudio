@@ -2,9 +2,9 @@
 //  INIT
 // ══════════════════════════════════════════════════════════════════
 try {
-  applyTheme(localStorage.getItem('automata-theme') || App.config.theme || 'dark', false);
+  applyTheme(localStorage.getItem('automata-theme') || App.config.theme || DEFAULT_THEME, false);
 } catch (e) {
-  applyTheme(App.config.theme || 'dark', false);
+  applyTheme(App.config.theme || DEFAULT_THEME, false);
 }
 renderSigma(); renderGamma(); renderGramSyms(); renderOutputAlpha();
 renderGrammarLPanel(); updateLPanel();

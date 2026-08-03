@@ -4,6 +4,7 @@ const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
 const SCRIPT_ORDER = [
+  'js/themes.js',
   'js/state.js',
   'js/modal.js',
   'js/utils.js',
@@ -214,6 +215,9 @@ function createHarness() {
   for (const rel of SCRIPT_ORDER) {
     const code = fs.readFileSync(path.join(ROOT, rel), 'utf8');
     vm.runInContext(code, context, { filename: rel });
+    if (rel === 'js/themes.js') {
+      vm.runInContext('globalThis.Themes = Themes; globalThis.DEFAULT_THEME = DEFAULT_THEME;', context);
+    }
     if (rel === 'js/state.js') {
       vm.runInContext('globalThis.App = App; globalThis.MachineTypes = MachineTypes; globalThis.SVG_NS = SVG_NS; globalThis.R = R; globalThis.$ = $;', context);
     }
