@@ -1303,6 +1303,7 @@
   <div class="overlay" id="export-code-modal" role="dialog" aria-modal="true" aria-labelledby="export-code-title">
     <div class="modal export-code-modal">
       <div class="modal-title" id="export-code-title">Export as Code, Config or Spec</div>
+      <div class="export-code-intro">Choose a format, tune its options, and review the generated output before downloading.</div>
       <div class="exp-split">
         <div class="exp-side" id="export-format-list" role="listbox" aria-label="Export format"></div>
         <div class="exp-main">
@@ -1321,19 +1322,23 @@
 
   <!-- Settings Modal -->
   <div class="overlay" id="settings-modal" role="dialog" aria-modal="true" aria-label="Engine Settings">
-    <div class="modal settings-modal-wide">
+    <div class="modal export-code-modal settings-modal-wide">
       <div class="modal-title">Engine Settings</div>
+      <div class="export-code-intro">Customize simulation behavior, rendering, machine defaults, and notation across the workspace.</div>
+      <div class="exp-split settings-split">
 
-      <div class="modal-tabs" id="settings-tabs">
-        <div class="modal-tab active" onclick="switchSettingsTab('general')">General</div>
+      <div class="exp-side modal-tabs" id="settings-tabs">
+        <div class="modal-tab active" onclick="switchSettingsTab('general')">Workspace</div>
         <div class="modal-tab" onclick="switchSettingsTab('pda')">Pushdown</div>
         <div class="modal-tab" onclick="switchSettingsTab('tm')">Turing Machine</div>
         <div class="modal-tab" onclick="switchSettingsTab('transducer')">Transducers</div>
-        <div class="modal-tab" onclick="switchSettingsTab('rendering')">Rendering</div>
-        <div class="modal-tab" onclick="switchSettingsTab('symbols')">Symbols</div>
+        <div class="modal-tab" onclick="switchSettingsTab('rendering')">Canvas &amp; Layout</div>
+        <div class="modal-tab" onclick="switchSettingsTab('symbols')">Notation</div>
       </div>
 
+      <div class="modal-tab-panels" id="settings-tab-panels">
       <div class="modal-tab-content active" id="tab-general">
+        <div class="modal-section-lbl">Playback &amp; Saving</div>
         <div class="modal-row">
           <span class="modal-lbl">Playback Speed (ms)</span>
           <input type="number" class="inp" id="set-auto-speed" label="Auto-run interval">
@@ -1359,6 +1364,9 @@
           <span class="modal-lbl">Scroll Wheel Zooms Canvas</span>
           <label class="toggle-switch"><input type="checkbox" id="set-wheel-zoom"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
         </div>
+        <div class="modal-section-lbl">Workspace Defaults</div>
+        <div class="modal-row"><span class="modal-lbl">New State Prefix</span><input type="text" class="inp" id="set-state-prefix" maxlength="12" label="New state name prefix"></div>
+        <div class="modal-row"><span class="modal-lbl">Snap to Grid by Default</span><label class="toggle-switch"><input type="checkbox" id="set-snap-grid"><span class="toggle-track"><span class="toggle-thumb"></span></span></label></div>
       </div>
 
       <div class="modal-tab-content" id="tab-pda">
@@ -1394,6 +1402,7 @@
       </div>
 
       <div class="modal-tab-content" id="tab-rendering">
+
         <div class="modal-row">
           <span class="modal-lbl">Node Radius</span>
           <input type="number" class="inp" id="set-radius" label="State node size">
@@ -1440,10 +1449,12 @@
       </div>
 
       <div class="modal-tab-content" id="tab-symbols">
+        <div class="modal-section-lbl">Machine Notation</div>
         <div class="modal-row">
           <span class="modal-lbl">Epsilon</span>
           <input type="text" class="inp" id="set-sym-eps" label="Empty string symbol" maxlength="1">
         </div>
+        <div class="modal-row"><span class="modal-lbl">Empty Output (λ)</span><input type="text" class="inp" id="set-sym-lambda" label="Empty output symbol" maxlength="1"></div>
         <div class="modal-row">
           <span class="modal-lbl">Any / Wildcard</span>
           <input type="text" class="inp" id="set-sym-any" label="Match any character symbol" maxlength="1">
@@ -1466,6 +1477,8 @@
         </div>
       </div>
 
+      </div>
+      </div>
       <div class="modal-foot modal-foot-split">
         <div class="modal-foot-group">
           <button class="btn-g" onclick="exportSettings()">Export Profile</button>

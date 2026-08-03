@@ -2314,6 +2314,8 @@ function openSettingsModal() {
   const c = App.config;
   $('set-theme').value = c.theme || 'dark';
   if ($('set-wheel-zoom')) $('set-wheel-zoom').checked = !!c.wheelZoom;
+  if ($('set-snap-grid')) $('set-snap-grid').checked = !!c.snapToGrid;
+  if ($('set-state-prefix')) $('set-state-prefix').value = c.statePrefix || 'q';
   $('set-transducer-accepts').checked = !!c.transducerAccepts;
   $('set-pda-steps').value = c.maxPdaSteps;
   $('set-pda-paradigm').value = c.pdaParadigm || 'explicit';
@@ -2331,27 +2333,51 @@ function openSettingsModal() {
   $('set-curve-off').value = c.render.curveOff;
   $('set-export-res').value = c.exportRes || 2;
   $('set-sym-eps').value = c.sym.eps;
+  if ($('set-sym-lambda')) $('set-sym-lambda').value = c.sym.lambda;
   $('set-sym-any').value = c.sym.any;
   $('set-sym-blank').value = c.sym.blank;
   $('set-sym-left').value = c.sym.leftMarker;
   $('set-sym-right').value = c.sym.rightMarker;
   $('set-sym-z0').value = c.sym.stackBottom;
-  
+
   if (typeof switchSettingsTab === 'function') switchSettingsTab('general');
+  sizeSettingsPanels();
   showOverlay('settings-modal');
 }
 
 function switchSettingsTab(tabId) {
   const tabs = document.querySelectorAll('#settings-tabs .modal-tab');
   const contents = document.querySelectorAll('#settings-modal .modal-tab-content');
-  
+
   tabs.forEach(t => t.classList.remove('active'));
   contents.forEach(c => c.classList.remove('active'));
-  
+
   const targetTab = document.querySelector(`#settings-tabs [onclick="switchSettingsTab('${tabId}')"]`);
   const targetContent = document.getElementById(`tab-${tabId}`);
   if (targetTab) targetTab.classList.add('active');
   if (targetContent) targetContent.classList.add('active');
+}
+
+// Panels vary a lot in height (Symbols vs. Transducers), so switching tabs
+// with a plain display:none/block toggle made the whole modal resize —
+// it's centered via flexbox, so both edges jumped at once. Locking the
+// panel wrapper to the tallest tab's height keeps the dialog a fixed size
+// no matter which tab is active. Run once per open: measures each panel in
+// turn (each becomes visible on its own for a synchronous layout read, so
+// nothing actually paints mid-loop) and re-picks the tallest.
+function sizeSettingsPanels() {
+  const panels = $('settings-tab-panels');
+  if (!panels) return;
+  const contents = document.querySelectorAll('#settings-modal .modal-tab-content');
+  const prevActive = document.querySelector('#settings-modal .modal-tab-content.active');
+
+  let max = 0;
+  contents.forEach(c => {
+    c.classList.add('active');
+    max = Math.max(max, c.scrollHeight);
+    if (c !== prevActive) c.classList.remove('active');
+  });
+  panels.style.height = max + 'px';
 }
 
 function confirmSettings() {
@@ -2361,6 +2387,8 @@ function confirmSettings() {
     c.wheelZoom = $('set-wheel-zoom').checked;
     try { localStorage.setItem('automata-wheel-zoom', c.wheelZoom ? '1' : '0'); } catch (e) { }
   }
+  if ($('set-snap-grid')) toggleSnapToGrid($('set-snap-grid').checked);
+  if ($('set-state-prefix')) c.statePrefix = $('set-state-prefix').value.trim() || 'q';
   c.transducerAccepts = $('set-transducer-accepts').checked;
   c.pdaParadigm = $('set-pda-paradigm').value || 'explicit';
   c.maxPdaSteps = parseInt($('set-pda-steps').value) || 2000;
@@ -2393,6 +2421,7 @@ function confirmSettings() {
   c.exportRes = parseFloat($('set-export-res').value) || 2;
   const oldSyms = { ...c.sym };
   c.sym.eps = $('set-sym-eps').value || oldSyms.eps;
+  if ($('set-sym-lambda')) c.sym.lambda = $('set-sym-lambda').value || oldSyms.lambda;
   c.sym.any = $('set-sym-any').value || oldSyms.any;
   c.sym.blank = $('set-sym-blank').value || oldSyms.blank;
   c.sym.leftMarker = $('set-sym-left').value || oldSyms.leftMarker;
@@ -2419,6 +2448,8 @@ function getEditorSettingsData() {
   return {
     theme: c.theme,
     wheelZoom: !!c.wheelZoom,
+    snapToGrid: !!c.snapToGrid,
+    statePrefix: c.statePrefix || 'q',
     pdaParadigm: c.pdaParadigm,
     transducerAccepts: !!c.transducerAccepts,
     maxPdaSteps: c.maxPdaSteps,
@@ -2436,6 +2467,7 @@ function getEditorSettingsData() {
     renderCurveOff: c.render.curveOff,
     exportRes: c.exportRes,
     symEps: c.sym.eps,
+    symLambda: c.sym.lambda,
     symAny: c.sym.any,
     symBlank: c.sym.blank,
     symLeft: c.sym.leftMarker,
@@ -2475,6 +2507,8 @@ function importSettings(e) {
 function populateSettingsModalInputs(data) {
   if (data.theme !== undefined) $('set-theme').value = data.theme;
   if (data.wheelZoom !== undefined && $('set-wheel-zoom')) $('set-wheel-zoom').checked = !!data.wheelZoom;
+  if (data.snapToGrid !== undefined && $('set-snap-grid')) $('set-snap-grid').checked = !!data.snapToGrid;
+  if (data.statePrefix !== undefined && $('set-state-prefix')) $('set-state-prefix').value = data.statePrefix;
   if (data.pdaParadigm !== undefined) $('set-pda-paradigm').value = data.pdaParadigm;
   if (data.transducerAccepts !== undefined) $('set-transducer-accepts').checked = !!data.transducerAccepts;
   if (data.maxPdaSteps !== undefined) $('set-pda-steps').value = data.maxPdaSteps;
@@ -2492,6 +2526,7 @@ function populateSettingsModalInputs(data) {
   if (data.renderCurveOff !== undefined) $('set-curve-off').value = data.renderCurveOff;
   if (data.exportRes !== undefined) $('set-export-res').value = data.exportRes;
   if (data.symEps !== undefined) $('set-sym-eps').value = data.symEps;
+  if (data.symLambda !== undefined && $('set-sym-lambda')) $('set-sym-lambda').value = data.symLambda;
   if (data.symAny !== undefined) $('set-sym-any').value = data.symAny;
   if (data.symBlank !== undefined) $('set-sym-blank').value = data.symBlank;
   if (data.symLeft !== undefined) $('set-sym-left').value = data.symLeft;
