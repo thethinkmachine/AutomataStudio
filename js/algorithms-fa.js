@@ -1,8 +1,19 @@
+import { renderSigma } from './alphabet.js';
+import { snapshot } from './history.js';
+import { deriveRegex, renderAll, updateLPanel, updateRPanel } from './render.js';
+import { epsClosure, log, simNDTM, simNPDA, stateNames, testDFA, testNFA, tokenize } from './simulation.js';
+import { $, App, R } from './state.js';
+import { getState } from './states-transitions.js';
+import { autoFitLoadedMachine, fitToScreen } from './ui.js';
+import { escapeHtml, findPdaNondeterministicPairs, isAnyTM, isClassicPDA, parseEps, showStatus } from './utils.js';
+import { applyMachineSwitch, setMachine, setView } from './view.js';
+import { getCurrentMachineSnapshot, loadBuiltMachine } from './workspace.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  ALGORITHMS VIEW
 // ══════════════════════════════════════════════════════════════════
-const ALGO_ICON_LOAD_CANVAS = '<svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor" style="margin-right:6px"><path d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/></svg>';
-function setAlgo(a) {
+export const ALGO_ICON_LOAD_CANVAS = '<svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor" style="margin-right:6px"><path d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/></svg>';
+export function setAlgo(a) {
   // Clear canvas overlay when leaving Dead State Analysis
   if (App.currentAlgo === 'deadStates' && a !== 'deadStates' && App.stateClassification) {
     App.stateClassification = null;
@@ -13,7 +24,7 @@ function setAlgo(a) {
   renderAlgo(a);
 }
 
-function renderAlgo(a) {
+export function renderAlgo(a) {
   const c = $('algo-content'); c.innerHTML = '';
   const renders = {
     table: algoTable, nfa2dfa: algoNFA2DFA, minimize: algoMinimize, equiv: algoEquiv,
@@ -32,7 +43,7 @@ function renderAlgo(a) {
 }
 
 // --- Transition Table ---
-function algoTable(c) {
+export function algoTable(c) {
   c.innerHTML = `<div class="algo-title">Transition Table δ</div>
 <div class="algo-sub">FORMAL REPRESENTATION OF THE TRANSITION FUNCTION</div>`;
   if (!App.states.length) { c.innerHTML += '<div class="card"><div style="color:var(--text3);font-size:.72rem">Build an automaton first in the Build tab.</div></div>'; return; }
@@ -59,7 +70,7 @@ function algoTable(c) {
 }
 
 // --- NFA to DFA Subset Construction ---
-function algoNFA2DFA(c) {
+export function algoNFA2DFA(c) {
   c.innerHTML = `<div class="algo-title">NFA → DFA Conversion</div>
 <div class="algo-sub">SUBSET CONSTRUCTION (POWERSET CONSTRUCTION)</div>
 <div class="info-box">Each DFA state represents a <em>subset of NFA states</em>. Starting from ε-closure(q₀), we compute transitions for each symbol and add new subsets as needed. The resulting DFA is equivalent to the original NFA.</div>`;
@@ -88,7 +99,7 @@ function algoNFA2DFA(c) {
   App._lastSubset = result;
 }
 
-function subsetConstruction() {
+export function subsetConstruction() {
   const syms = [...App.sigma];
   const isEpsNFA = App.machine === 'ε-NFA';
   const setKey = set => [...set].sort().join(',');
@@ -211,8 +222,8 @@ function subsetConstruction() {
   return { states, trans, steps };
 }
 
-let _subsetData = null;
-function loadSubsetAsDFA() {
+export let _subsetData = null;
+export function loadSubsetAsDFA() {
   const r = App._lastSubset; if (!r) return;
   snapshot();
   App.states = []; App.transitions = []; App.accepts.clear(); App.startId = null; App.stateN = 0; App.transN = 0;
@@ -237,7 +248,7 @@ function loadSubsetAsDFA() {
 }
 
 // --- DFA Minimization (Table-Filling) ---
-function algoMinimize(c) {
+export function algoMinimize(c) {
   c.innerHTML = `<div class="algo-title">DFA Minimization</div>
 <div class="algo-sub">TABLE-FILLING ALGORITHM (MYHILL-NERODE)</div>
 <div class="info-box">Two states are <em>distinguishable</em> if there exists some string that leads to an accept state from one but not the other. We iteratively mark distinguishable pairs until no new marks can be made.</div>`;
@@ -268,7 +279,7 @@ function algoMinimize(c) {
   App._lastMin = result;
 }
 
-function tableFillingMinimize() {
+export function tableFillingMinimize() {
   const reachable = getReachableStates(App.startId);
   const states = App.states.filter(s => reachable.has(s.id));
   const ids = states.map(s => s.id);
@@ -384,7 +395,7 @@ function tableFillingMinimize() {
   return { dist, groups, steps, savedTrans, savedStates, savedAccepts, savedStart };
 }
 
-function loadMinimizedDFA() {
+export function loadMinimizedDFA() {
   const r = App._lastMin; if (!r) return;
   const { groups, savedTrans, savedAccepts, savedStart } = r;
   snapshot();
@@ -422,7 +433,7 @@ function loadMinimizedDFA() {
 }
 
 // --- Regex to NFA (Thompson's Construction) ---
-function algoRE2NFA(c) {
+export function algoRE2NFA(c) {
   c.innerHTML = `<div class="algo-title">Regex → NFA</div>
 <div class="algo-sub">THOMPSON'S CONSTRUCTION</div>
 <div class="info-box">Build NFA fragments for each regex operator:<br>
@@ -445,7 +456,7 @@ function algoRE2NFA(c) {
 <div id="re-result"></div>`;
 }
 
-function doThompson() {
+export function doThompson() {
   const re = $('re-input').value.trim(); if (!re) { showStatus('Enter a regex first'); return; }
   try {
     const nfaData = thompsonBuild(re);
@@ -467,15 +478,15 @@ function doThompson() {
 }
 
 // Thompson's Construction
-let _tnc = 0;
-function tnew() { return 'n' + (++_tnc); }
-function thompsonBuild(re) {
+export let _tnc = 0;
+export function tnew() { return 'n' + (++_tnc); }
+export function thompsonBuild(re) {
   _tnc = 0;
   const ast = parseRE(re);
   const nfa = buildThompson(ast);
   return nfa;
 }
-function parseRE(re) {
+export function parseRE(re) {
   let pos = 0;
   function parseUnion() {
     let r = parseConcat();
@@ -535,7 +546,7 @@ function parseRE(re) {
   if (pos !== re.length) throw new Error(`Unexpected token '${re[pos]}'`);
   return parsed;
 }
-function buildThompson(ast) {
+export function buildThompson(ast) {
   switch (ast.t) {
     case 'lit': { const s = tnew(), e = tnew(); return { states: [s, e], trans: [{ from: s, sym: ast.ch, to: e }], start: s, accept: e }; }
     case 'eps': { const s = tnew(), e = tnew(); return { states: [s, e], trans: [{ from: s, sym: App.config.sym.eps, to: e }], start: s, accept: e }; }
@@ -580,13 +591,13 @@ function buildThompson(ast) {
     default: throw new Error('Unknown AST node: ' + ast.t);
   }
 }
-function getAllChars() {
+export function getAllChars() {
   const chars = new Set();
   for (let i = 32; i <= 126; i++) chars.add(String.fromCharCode(i));
   return [...chars];
 }
 
-function loadThompsonNFA() {
+export function loadThompsonNFA() {
   const d = App._lastThompson; if (!d) return;
   snapshot();
   App.states = []; App.transitions = []; App.accepts.clear(); App.startId = null; App.stateN = 0; App.transN = 0;
@@ -613,7 +624,7 @@ function loadThompsonNFA() {
 }
 
 // --- NFA → Regex ---
-function algoNFA2RE(c) {
+export function algoNFA2RE(c) {
   c.innerHTML = `<div class="algo-title">NFA → Regular Expression</div>
 <div class="algo-sub">GNFA STATE ELIMINATION METHOD</div>
 <div class="info-box">Convert the NFA to a <em>Generalized NFA (GNFA)</em> with a new start and accept state, then eliminate states one by one, merging their transitions into regular expressions on edges.</div>`;
@@ -625,7 +636,7 @@ function algoNFA2RE(c) {
 }
 
 // --- ε-NFA to NFA ---
-function buildEpsNFAEliminationResult() {
+export function buildEpsNFAEliminationResult() {
   if (!App.startId) return null;
 
   const syms = [...App.sigma].filter(sym => sym !== App.config.sym.eps);
@@ -695,7 +706,7 @@ function buildEpsNFAEliminationResult() {
   return { steps, transitions: newTransitions, accepts: newAccepts };
 }
 
-function algoEpsNFA2NFA(c) {
+export function algoEpsNFA2NFA(c) {
   c.innerHTML = `<div class="algo-title">ε-NFA → NFA</div>
 <div class="algo-sub">EPSILON ELIMINATION</div>
 <div class="info-box">Any NFA with epsilon transitions can be converted into an equivalent NFA without epsilon transitions. This is done by adding direct transitions that bypass the original ε-paths, and promoting states to accept states if they can reach an accept state purely via ε.</div>`;
@@ -713,7 +724,7 @@ function algoEpsNFA2NFA(c) {
 <div style="margin-top:8px"><button class="algo-btn" onclick="loadEpsEliminatedNFA()">Load NFA without ε-transitions</button></div>`;
 }
 
-function loadEpsEliminatedNFA() {
+export function loadEpsEliminatedNFA() {
   const r = buildEpsNFAEliminationResult();
   if (!r) return showStatus('No start state defined.');
 
@@ -732,7 +743,7 @@ function loadEpsEliminatedNFA() {
 }
 
 // --- DFA Complement ---
-function algoComplement(c) {
+export function algoComplement(c) {
   c.innerHTML = `<div class="algo-title">DFA Complement</div>
 <div class="algo-sub">CLOSURE UNDER COMPLEMENT</div>
 <div class="info-box">The complement of a DFA is obtained by <em>swapping accept and non-accept states</em>. First, ensure the DFA is complete (add a dead/trap state if needed).</div>`;
@@ -743,7 +754,7 @@ function algoComplement(c) {
 <div style="font-size:.7rem;color:var(--text2);margin-top:10px">Note: Original accept states become non-accepting and vice versa. All transitions remain the same.</div></div>
 <div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadComplement()">${ALGO_ICON_LOAD_CANVAS}Load Complement into Canvas</button></div>`;
 }
-function loadComplement() {
+export function loadComplement() {
   snapshot();
   // Complete the DFA first: add trap state for missing transitions (#9)
   const syms = [...App.sigma];
@@ -770,7 +781,7 @@ function loadComplement() {
 }
 
 // --- Product Construction ---
-function algoProduct(c) {
+export function algoProduct(c) {
   c.innerHTML = `<div class="algo-title">Product Construction</div>
 <div class="algo-sub">CLOSURE UNDER INTERSECTION AND UNION</div>
 <div class="info-box">Given two DFAs M₁ and M₂ over the same alphabet, their <em>product automaton</em> M₁×M₂ simulates both simultaneously. States are pairs (q₁,q₂). Used to prove closure under ∩ (both accept) and ∪ (either accepts).</div>
@@ -781,7 +792,7 @@ function algoProduct(c) {
 }
 
 // --- DFA Equivalence ---
-function algoEquiv(c) {
+export function algoEquiv(c) {
   const m2status = App.workspaceB ? `<span class="m2-status saved">M₂ saved: ${App.workspaceB.states.length} states</span>` : `<span class="m2-status">No M₂ saved</span>`;
   c.innerHTML = `<div class="algo-title">DFA Equivalence</div>
 <div class="algo-sub">ARE TWO DFAs EQUIVALENT?</div>
@@ -812,7 +823,7 @@ function algoEquiv(c) {
   <div id="eq-product-result" style="margin-top:8px"></div>
 </div>`;
 }
-function testEquivStr() {
+export function testEquivStr() {
   const str = $('eq-str').value.trim();
   const s = str === App.config.sym.eps ? '' : str;
   const tokens = tokenize(s);
@@ -824,7 +835,7 @@ function testEquivStr() {
   $('eq-result').innerHTML = `<div style="font-size:.75rem;color:${accepted ? 'var(--green)' : 'var(--red)'}">
 "${str}" is ${accepted ? 'ACCEPTED ✓' : 'REJECTED ✗'} by the current automaton.</div>`;
 }
-function runProductEquiv() {
+export function runProductEquiv() {
   const out = $('eq-product-result');
   if (!App.workspaceB) { out.innerHTML = '<div class="pump-result fail">Save an M₂ first using the button above.</div>'; return; }
   if (App.machine !== 'DFA') { out.innerHTML = '<div class="pump-result fail">Switch to DFA mode for product construction.</div>'; return; }
@@ -852,7 +863,7 @@ function runProductEquiv() {
 // ══════════════════════════════════════════════════════════════════
 //  HELPER: REACHABILITY
 // ══════════════════════════════════════════════════════════════════
-function getReachableStates(startId) {
+export function getReachableStates(startId) {
   if (!startId) return new Set();
   const visited = new Set([startId]);
   const queue = [startId];
@@ -864,7 +875,7 @@ function getReachableStates(startId) {
   }
   return visited;
 }
-function getReachableStatesGeneral(startId, transitions) {
+export function getReachableStatesGeneral(startId, transitions) {
   if (!startId) return new Set();
   const visited = new Set([startId]);
   const queue = [startId];
@@ -876,7 +887,7 @@ function getReachableStatesGeneral(startId, transitions) {
   }
   return visited;
 }
-function getCoReachableStates() {
+export function getCoReachableStates() {
   // States that can reach an accept state — BFS on reversed transitions
   const visited = new Set([...App.accepts]);
   const queue = [...App.accepts];
@@ -888,7 +899,7 @@ function getCoReachableStates() {
   }
   return visited;
 }
-function hasReachableCycle(stateSet) {
+export function hasReachableCycle(stateSet) {
   // DFS cycle detection on subgraph of stateSet
   const states = [...stateSet];
   const WHITE = 0, GRAY = 1, BLACK = 2;
@@ -907,7 +918,7 @@ function hasReachableCycle(stateSet) {
   for (const s of states) { if (color[s] === WHITE && dfs(s)) return true; }
   return false;
 }
-function findShortestAccepted(machine) {
+export function findShortestAccepted(machine) {
   // BFS on machine to find shortest accepted string
   if (!machine.startId) return null;
   const queue = [{ state: machine.startId, str: '' }];
@@ -931,7 +942,7 @@ function findShortestAccepted(machine) {
 // ══════════════════════════════════════════════════════════════════
 //  DECISION ALGORITHMS
 // ══════════════════════════════════════════════════════════════════
-function algoIsEmpty(c) {
+export function algoIsEmpty(c) {
   c.innerHTML = `<div class="algo-title">Is L(M) Empty?</div>
 <div class="algo-sub">REACHABILITY FROM START STATE</div>
 <div class="info-box">A language is empty iff no accept state is reachable from the start state via BFS/DFS on the transition graph.</div>`;
@@ -958,7 +969,7 @@ function algoIsEmpty(c) {
 </div>`;
 }
 
-function algoIsFinite(c) {
+export function algoIsFinite(c) {
   c.innerHTML = `<div class="algo-title">Is L(M) Finite?</div>
 <div class="algo-sub">CYCLE DETECTION ON USEFUL STATES</div>
 <div class="info-box">A regular language is finite iff the minimal DFA for it has no cycles among "useful" states (reachable from start AND can reach an accept state). Equivalently: the shortest/longest accepted string has bounded length.</div>`;
@@ -986,7 +997,7 @@ function algoIsFinite(c) {
 </div>`;
 }
 
-function algoIsUniversal(c) {
+export function algoIsUniversal(c) {
   c.innerHTML = `<div class="algo-title">Is L(M) Universal?</div>
 <div class="algo-sub">L(M) = Σ* ? (DFA ONLY)</div>
 <div class="info-box">A DFA accepts Σ* iff its complement accepts ∅. Complement the DFA (swap accepts/non-accepts, add trap state for missing transitions), then check if the complement's language is empty.</div>`;
@@ -1038,7 +1049,7 @@ function algoIsUniversal(c) {
 </div>`;
 }
 
-function algoFullEquiv(c) {
+export function algoFullEquiv(c) {
   const m2status = App.workspaceB ? `<span class="m2-status saved">M₂ saved: ${App.workspaceB.states.length} states</span>` : `<span class="m2-status">No M₂ saved</span>`;
   c.innerHTML = `<div class="algo-title">Full Equivalence Check</div>
 <div class="algo-sub">L(M₁) = L(M₂) VIA SYMMETRIC DIFFERENCE</div>
@@ -1065,7 +1076,7 @@ Build the product DFA with accept condition: (p,q) accepts iff exactly one of p,
 <div id="full-equiv-result" style="margin-top:12px"></div>`;
 }
 
-function runFullEquivCheck() {
+export function runFullEquivCheck() {
   const out = $('full-equiv-result');
   if (!App.workspaceB) { out.innerHTML = '<div class="pump-result fail">Save M₂ first.</div>'; return; }
   if (App.machine !== 'DFA') { out.innerHTML = '<div class="pump-result fail">Switch to DFA mode for product construction.</div>'; return; }
@@ -1095,7 +1106,7 @@ function runFullEquivCheck() {
 // ══════════════════════════════════════════════════════════════════
 //  PRODUCT DFA BUILDER
 // ══════════════════════════════════════════════════════════════════
-function buildProductDFA(m1, m2, mode) {
+export function buildProductDFA(m1, m2, mode) {
   // mode: 'intersection' | 'union' | 'diff' (symmetric difference)
   const sigma = [...new Set([...(m1.sigma || []), ...(m2.sigma || [])])];
   const trapId1 = '__trap1__', trapId2 = '__trap2__';
@@ -1138,7 +1149,7 @@ function buildProductDFA(m1, m2, mode) {
   return { states, transitions, startId: startPair, accepts, sigma };
 }
 
-function isDeterministicMachine(machine) {
+export function isDeterministicMachine(machine) {
   if (!machine || !machine.startId || !machine.transitions) return false;
   const seen = new Set();
   for (const t of machine.transitions) {
@@ -1153,7 +1164,7 @@ function isDeterministicMachine(machine) {
 // ══════════════════════════════════════════════════════════════════
 //  CLOSURE OPERATIONS
 // ══════════════════════════════════════════════════════════════════
-function m2RequiredCard(c, opName) {
+export function m2RequiredCard(c, opName) {
   const haM2 = !!App.workspaceB;
   if (!haM2) {
     c.innerHTML += `<div class="card dec-card-empty">
@@ -1171,7 +1182,7 @@ function m2RequiredCard(c, opName) {
   return true;
 }
 
-function algoClopStar(c) {
+export function algoClopStar(c) {
   c.innerHTML = `<div class="algo-title">Kleene Star (NFA Construction)</div>
 <div class="algo-sub">L* = {ε} ∪ L ∪ LL ∪ LLL ∪ ...</div>
 <div class="info-box">To build NFA for L*:<br>
@@ -1188,7 +1199,7 @@ function algoClopStar(c) {
   App._lastBuiltNFA = { key: 'star', machine: result };
 }
 
-function algoClopReversal(c) {
+export function algoClopReversal(c) {
   c.innerHTML = `<div class="algo-title">Reversal (NFA Construction)</div>
 <div class="algo-sub">L^R = {w^R : w ∈ L}</div>
 <div class="info-box">To build NFA for L^R:<br>
@@ -1204,7 +1215,7 @@ function algoClopReversal(c) {
   App._lastBuiltNFA = { key: 'reversal', machine: result };
 }
 
-function algoClopUnion(c) {
+export function algoClopUnion(c) {
   const m2status = App.workspaceB ? `<span class="m2-status saved">M₂: ${App.workspaceB.states.length} states</span>` : `<span class="m2-status">No M₂</span>`;
   c.innerHTML = `<div class="algo-title">Union with M₂ (NFA Construction)</div>
 <div class="algo-sub">L(M₁) ∪ L(M₂)</div>
@@ -1220,7 +1231,7 @@ function algoClopUnion(c) {
   App._lastBuiltNFA = { key: 'union', machine: result };
 }
 
-function algoClopIntersect(c) {
+export function algoClopIntersect(c) {
   const m2status = App.workspaceB ? `<span class="m2-status saved">M₂: ${App.workspaceB.states.length} states</span>` : `<span class="m2-status">No M₂</span>`;
   c.innerHTML = `<div class="algo-title">Intersection with M₂ (Product DFA)</div>
 <div class="algo-sub">L(M₁) ∩ L(M₂)</div>
@@ -1250,7 +1261,7 @@ function algoClopIntersect(c) {
   App._lastBuiltNFA = { key: 'intersect', machine: product };
 }
 
-function algoClopConcat(c) {
+export function algoClopConcat(c) {
   const m2status = App.workspaceB ? `<span class="m2-status saved">M₂: ${App.workspaceB.states.length} states</span>` : `<span class="m2-status">No M₂</span>`;
   c.innerHTML = `<div class="algo-title">Concatenation with M₂ (NFA Construction)</div>
 <div class="algo-sub">L(M₁) · L(M₂)</div>
@@ -1266,13 +1277,13 @@ function algoClopConcat(c) {
   App._lastBuiltNFA = { key: 'concat', machine: result };
 }
 
-function loadBuiltNFAResult(key) {
+export function loadBuiltNFAResult(key) {
   if (!App._lastBuiltNFA || App._lastBuiltNFA.key !== key) { showStatus('Run the algorithm first.'); return; }
   const m = App._lastBuiltNFA.machine;
   loadBuiltMachine(m, 'ε-NFA');
 }
 
-function renderBuiltNFAResult(m, title) {
+export function renderBuiltNFAResult(m, title) {
   const states = m.states || [];
   const trans = m.transitions || [];
   const accepts = m.accepts || [];
@@ -1293,7 +1304,7 @@ function renderBuiltNFAResult(m, title) {
 }
 
 // ──── NFA Builders ────
-function buildNFAStar(machine) {
+export function buildNFAStar(machine) {
   const prefix = 'star_';
   const states = machine.states.map(s => ({ id: prefix + s.id, name: s.name }));
   const newStart = { id: 'star_q_new', name: 'q_s' };
@@ -1314,7 +1325,7 @@ function buildNFAStar(machine) {
   return { states, transitions, startId: newStart.id, accepts, sigma: machine.sigma };
 }
 
-function buildNFAReversal(machine) {
+export function buildNFAReversal(machine) {
   const prefix = 'rev_';
   const states = machine.states.map(s => ({ id: prefix + s.id, name: s.name + '^R' }));
   // Reverse all transitions
@@ -1337,7 +1348,7 @@ function buildNFAReversal(machine) {
   return { states, transitions, startId, accepts: newAccepts, sigma: machine.sigma };
 }
 
-function buildNFAUnion(m1, m2) {
+export function buildNFAUnion(m1, m2) {
   const p1 = 'u1_', p2 = 'u2_';
   const states = [
     { id: 'union_start', name: 'q_u' },
@@ -1357,7 +1368,7 @@ function buildNFAUnion(m1, m2) {
   return { states, transitions, startId: 'union_start', accepts, sigma: [...new Set([...(m1.sigma || []), ...(m2.sigma || [])])] };
 }
 
-function buildNFAConcat(m1, m2) {
+export function buildNFAConcat(m1, m2) {
   const p1 = 'c1_', p2 = 'c2_';
   const states = [
     ...m1.states.map(s => ({ id: p1 + s.id, name: 'M1_' + s.name })),
@@ -1376,7 +1387,7 @@ function buildNFAConcat(m1, m2) {
 // ══════════════════════════════════════════════════════════════════
 //  NFA COMPUTATION TREE
 // ══════════════════════════════════════════════════════════════════
-function algoNFATree(c) {
+export function algoNFATree(c) {
   c.innerHTML = `<div class="algo-title">NFA Computation Tree</div>
 <div class="algo-sub">ALL EXECUTION PATHS FOR A STRING</div>
 <div class="info-box">Shows all possible computation branches of the NFA when reading an input string. Each level corresponds to reading one symbol. Branches split at nondeterministic choices. ε-closures are computed at each step.</div>
@@ -1393,7 +1404,7 @@ function algoNFATree(c) {
 <div id="nfa-tree-result"></div>`;
 }
 
-function buildNFATree() {
+export function buildNFATree() {
   const raw = parseEps($('nfa-tree-input').value);
   const s = raw === App.config.sym.eps ? '' : raw;
   const out = $('nfa-tree-result');
@@ -1412,7 +1423,7 @@ function buildNFATree() {
   out.innerHTML = layoutNFATree(tree, tokens);
 }
 
-function computeNFATree(tokens) {
+export function computeNFATree(tokens) {
   // Build a true per-state nondeterministic computation tree (#4)
   const MAX_NODES = 500; let nodeCount = 0;
   function makeNode(stateId, depth, sym) {
@@ -1440,7 +1451,7 @@ function computeNFATree(tokens) {
   return { label: 'Start', stateId: null, sym: '', isAccept: false, isDead: false, depth: -1, children: rootChildren, isRoot: true };
 }
 
-function layoutNFATree(root, tokens) {
+export function layoutNFATree(root, tokens) {
   const levelH = 65;
   const positions = [];
   let maxX = 0, maxY = 0;
@@ -1541,7 +1552,7 @@ function layoutNFATree(root, tokens) {
 // ══════════════════════════════════════════════════════════════════
 //  NDTM SIMULATION
 // ══════════════════════════════════════════════════════════════════
-function algoNPDA(c) {
+export function algoNPDA(c) {
   c.innerHTML = `<div class="algo-title">Nondeterministic Pushdown Automaton</div>
 <div class="algo-sub">BFS OVER STACKED COMPUTATION BRANCHES</div>
 <div class="info-box">An NPDA may have multiple enabled moves for the same state, unread input, and stack top. It accepts if <em>any</em> branch reaches acceptance. This is the full stack-machine model equivalent in power to context-free grammars.</div>`;
@@ -1569,7 +1580,7 @@ function algoNPDA(c) {
 </div>`;
 }
 
-function runNPDASim() {
+export function runNPDASim() {
   const raw = parseEps($('npda-input').value);
   const s = raw === App.config.sym.eps ? '' : raw;
   const out = $('npda-result');
@@ -1588,7 +1599,7 @@ ${result.accepted ? 'ACCEPTED ✓' : 'REJECTED ✗'} â€” ${result.branches}
 </div>`;
 }
 
-function algoNDTM(c) {
+export function algoNDTM(c) {
   c.innerHTML = `<div class="algo-title">Nondeterministic Turing Machine</div>
 <div class="algo-sub">BFS OVER ALL COMPUTATION BRANCHES</div>
 <div class="info-box">A NDTM is a TM where δ is a relation: the same (state, symbol) pair may have multiple possible transitions. An NDTM accepts if ANY computation branch reaches an accept state. Equivalent in power to a deterministic TM.</div>`;
@@ -1620,7 +1631,7 @@ function algoNDTM(c) {
 </div>`;
 }
 
-function runNDTMSim() {
+export function runNDTMSim() {
   const raw = parseEps($('ndtm-input').value);
   const s = raw === App.config.sym.eps ? '' : raw;
   const out = $('ndtm-result');
@@ -1639,7 +1650,7 @@ ${result.accepted ? 'ACCEPTED ✓' : 'REJECTED ✗'} — ${result.branches} bran
 </div>`;
 }
 
-function simNDTMLegacy(tokens) {
+export function simNDTMLegacy(tokens) {
   // BFS over configurations {state, tape, head}
   const init = { state: App.startId, tape: tokens.length ? [...tokens] : [], head: 0 };
   const queue = [init];
@@ -1720,7 +1731,7 @@ function simNDTMLegacy(tokens) {
 // ══════════════════════════════════════════════════════════════════
 //  UTM SIMULATOR
 // ══════════════════════════════════════════════════════════════════
-const UTM_DEFAULT_TM = JSON.stringify({
+export const UTM_DEFAULT_TM = JSON.stringify({
   "comment": "Accepts {0^n 1^n | n >= 1}",
   "states": ["q0", "q1", "q2", "q3", "q_accept"],
   "start": "q0",
@@ -1739,7 +1750,7 @@ const UTM_DEFAULT_TM = JSON.stringify({
   ]
 }, null, 2);
 
-const UTM_EXAMPLES = [
+export const UTM_EXAMPLES = [
   {
     label: "0ⁿ1ⁿ Recognizer (default)",
     input: "0001111",
@@ -1927,7 +1938,7 @@ const UTM_EXAMPLES = [
   }
 ];
 
-function algoUTM(c) {
+export function algoUTM(c) {
   c.innerHTML = `<div class="algo-title">Universal Turing Machine</div>
 <div class="algo-sub">META-INTERPRETER: A TM THAT SIMULATES ANY TM</div>
 <div class="info-box">
@@ -1973,7 +1984,7 @@ placeholder="Paste TM JSON here…">${UTM_DEFAULT_TM}</textarea>
 </div>`;
 }
 
-function loadUTMExample() {
+export function loadUTMExample() {
   const sel = document.getElementById('utm-example-select');
   if (!sel) return;
   const ex = UTM_EXAMPLES[parseInt(sel.value, 10)];
@@ -1986,9 +1997,9 @@ function loadUTMExample() {
 }
 
 // UTM state
-let utmSteps = [], utmIdx = 0, utmAutoTimer = null;
+export let utmSteps = [], utmIdx = 0, utmAutoTimer = null;
 
-function runUTMSim() {
+export function runUTMSim() {
   utmResetTimer();
   utmSteps = []; utmIdx = 0;
   const descEl = document.getElementById('utm-tm-desc');
@@ -2011,7 +2022,7 @@ function runUTMSim() {
   renderUTMStep();
 }
 
-function utmValidateTM(tm) {
+export function utmValidateTM(tm) {
   const errs = [];
   if (!tm.states || !Array.isArray(tm.states) || !tm.states.length) errs.push('Missing or empty "states" array.');
   if (!tm.start) errs.push('Missing "start" state.');
@@ -2028,7 +2039,7 @@ function utmValidateTM(tm) {
   return errs;
 }
 
-function simUTM(tm, w) {
+export function simUTM(tm, w) {
   const steps = [];
   const stateSet = new Set(tm.states);
   const acceptSet = new Set(tm.accept);
@@ -2081,7 +2092,7 @@ function simUTM(tm, w) {
   return steps;
 }
 
-function renderUTMStep() {
+export function renderUTMStep() {
   const outEl = document.getElementById('utm-result');
   const tapeEl = document.getElementById('utm-tape-wrap');
   if (!outEl || !tapeEl) return;
@@ -2118,13 +2129,13 @@ function renderUTMStep() {
   }, 0);
 }
 
-function utmStepFwd() { if (utmIdx < utmSteps.length - 1) { utmIdx++; renderUTMStep(); } }
-function utmStepBack() { if (utmIdx > 0) { utmIdx--; renderUTMStep(); } }
-function utmResetView() { utmResetTimer(); utmSteps = []; utmIdx = 0; const el = document.getElementById('utm-result'); if (el) el.innerHTML = ''; const t = document.getElementById('utm-tape-wrap'); if (t) t.innerHTML = ''; }
-const UTM_ICON_PLAY = '<svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>';
-const UTM_ICON_PAUSE = '<svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M200,32H160a16,16,0,0,0-16,16V208a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V48A16,16,0,0,0,200,32Zm0,176H160V48h40ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Zm0,176H56V48H96Z"/></svg>';
-function utmResetTimer() { if (utmAutoTimer) { clearInterval(utmAutoTimer); utmAutoTimer = null; } const b = document.getElementById('utm-auto-btn'); if (b) { b.classList.remove('playing'); b.innerHTML = `${UTM_ICON_PLAY} Auto`; } }
-function utmToggleAuto() {
+export function utmStepFwd() { if (utmIdx < utmSteps.length - 1) { utmIdx++; renderUTMStep(); } }
+export function utmStepBack() { if (utmIdx > 0) { utmIdx--; renderUTMStep(); } }
+export function utmResetView() { utmResetTimer(); utmSteps = []; utmIdx = 0; const el = document.getElementById('utm-result'); if (el) el.innerHTML = ''; const t = document.getElementById('utm-tape-wrap'); if (t) t.innerHTML = ''; }
+export const UTM_ICON_PLAY = '<svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>';
+export const UTM_ICON_PAUSE = '<svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M200,32H160a16,16,0,0,0-16,16V208a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V48A16,16,0,0,0,200,32Zm0,176H160V48h40ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Zm0,176H56V48H96Z"/></svg>';
+export function utmResetTimer() { if (utmAutoTimer) { clearInterval(utmAutoTimer); utmAutoTimer = null; } const b = document.getElementById('utm-auto-btn'); if (b) { b.classList.remove('playing'); b.innerHTML = `${UTM_ICON_PLAY} Auto`; } }
+export function utmToggleAuto() {
   if (utmAutoTimer) { utmResetTimer(); return; }
   const b = document.getElementById('utm-auto-btn');
   if (b) { b.classList.add('playing'); b.innerHTML = `${UTM_ICON_PAUSE} Stop`; }
@@ -2139,7 +2150,7 @@ function utmToggleAuto() {
 // ══════════════════════════════════════════════════════════════════
 //  MOORE MACHINE ALGORITHMS
 // ══════════════════════════════════════════════════════════════════
-function algoMooreTable(c) {
+export function algoMooreTable(c) {
   c.innerHTML = `<div class="algo-title">Moore Machine Table</div>
 <div class="algo-sub">TRANSITION TABLE WITH STATE OUTPUTS &#955;: Q &#8594; &#916;</div>
 <div class="info-box">Each state has an associated output symbol &#955;(q). The output produced on input string w = a&#8321;...a&#8345; is &#955;(q&#8320;)&#955;(q&#8321;)...&#955;(q&#8345;), where q&#7522; = &#948;(q&#7522;&#8331;&#8321;, a&#7522;). Output length is always |w|+1.</div>`;
@@ -2165,7 +2176,7 @@ function algoMooreTable(c) {
 <div class="nfa-result-states">${outSyms.map(o => `<div class="state-pill">${o}</div>`).join('') || '<span style="color:var(--text3);font-size:.72rem">No outputs defined</span>'}</div></div>`;
 }
 
-function algoMoore2Mealy(c) {
+export function algoMoore2Mealy(c) {
   c.innerHTML = `<div class="algo-title">Moore &#8594; Mealy Conversion</div>
 <div class="algo-sub">OUTPUT MOVES FROM STATES TO TRANSITIONS</div>
 <div class="info-box">For each Moore transition (p, a) &#8594; q with &#955;(q) = b, the equivalent Mealy transition is (p, a) &#8594; q with output b. State structure is unchanged; only output attribution shifts from destination states to incoming transitions.</div>`;
@@ -2188,7 +2199,7 @@ function algoMoore2Mealy(c) {
   c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadMooreAsMealy()">Load as Mealy Machine</button></div>`;
 }
 
-function loadMooreAsMealy() {
+export function loadMooreAsMealy() {
   if (App.machine !== 'Moore') return;
   snapshot();
   App.transitions.forEach(t => { t.output = getState(t.to)?.output || ''; });
@@ -2204,7 +2215,7 @@ function loadMooreAsMealy() {
 // ══════════════════════════════════════════════════════════════════
 //  MEALY MACHINE ALGORITHMS
 // ══════════════════════════════════════════════════════════════════
-function algoMealyTable(c) {
+export function algoMealyTable(c) {
   c.innerHTML = `<div class="algo-title">Mealy Machine Table</div>
 <div class="algo-sub">TRANSITION TABLE WITH TRANSITION OUTPUTS &#955;: Q &times; &#931; &#8594; &#916;</div>
 <div class="info-box">Each transition (q, a) &#8594; p carries an output symbol &#955;(q, a). The output produced on w = a&#8321;...a&#8345; is &#955;(q&#8320;,a&#8321;)&#955;(q&#8321;,a&#8322;)...&#955;(q&#8345;&#8331;&#8321;,a&#8345;), exactly n symbols. No output before the first input.</div>`;
@@ -2228,7 +2239,7 @@ function algoMealyTable(c) {
 <div style="font-size:.62rem;color:var(--text3);margin-top:8px">&#8594; = start state &nbsp;&nbsp; * = accept state &nbsp;&nbsp; format: next-state / output</div></div>`;
 }
 
-function algoMealy2Moore(c) {
+export function algoMealy2Moore(c) {
   c.innerHTML = `<div class="algo-title">Mealy &#8594; Moore Conversion</div>
 <div class="algo-sub">OUTPUT MOVES FROM TRANSITIONS TO STATES (STATE SPLITTING)</div>
 <div class="info-box">Each Mealy state q is split into copies (q, b) for each output symbol b that appears on any transition entering q. The Moore output of copy (q, b) is b. An initial copy (q&#8320;, &#8709;) is added for the start state with no output.</div>`;
@@ -2256,7 +2267,7 @@ function algoMealy2Moore(c) {
   App._lastMealy2Moore = result;
 }
 
-function computeMealy2Moore() {
+export function computeMealy2Moore() {
   const incomingOutputs = {};
   App.states.forEach(s => { incomingOutputs[s.id] = new Set(); });
   App.transitions.forEach(t => { if (t.output) incomingOutputs[t.to]?.add(t.output); });
@@ -2297,7 +2308,7 @@ function computeMealy2Moore() {
   return { states: mooreStates, transitions: mooreTrans, startId, accepts };
 }
 
-function loadMealyAsMoore() {
+export function loadMealyAsMoore() {
   const r = App._lastMealy2Moore; if (!r) return;
   snapshot();
   App.states = r.states.map((s, i) => ({ ...s, x: 120 + (i % 4) * 180, y: 120 + Math.floor(i / 4) * 160 }));
@@ -2317,7 +2328,7 @@ function loadMealyAsMoore() {
 // ══════════════════════════════════════════════════════════════════
 //  MULTI-TAPE TM TABLE
 // ══════════════════════════════════════════════════════════════════
-function algoMTMTable(c) {
+export function algoMTMTable(c) {
   c.innerHTML = `<div class="algo-title">Multi-Tape TM Transition Table</div>
 <div class="algo-sub">&#948;: Q &times; &#915;&#7503; &#8594; Q &times; &#915;&#7503; &times; {L,R}&#7503;</div>
 <div class="info-box">Each transition reads one symbol from each of the k tapes, writes one symbol to each tape, and moves each head independently. The table shows one row per transition: symbols read from all tapes, the destination state, and writes/directions for all tapes.</div>`;
@@ -2354,7 +2365,7 @@ function algoMTMTable(c) {
 // ══════════════════════════════════════════════════════════════════
 //  TM → UNRESTRICTED GRAMMAR (TYPE 0)
 // ══════════════════════════════════════════════════════════════════
-function algoTM2Grammar(c) {
+export function algoTM2Grammar(c) {
   c.innerHTML = `<div class="algo-title">TM &rarr; Unrestricted Grammar</div>
 <div class="algo-sub">CHOMSKY TYPE 0 REPRESENTATION</div>
 <div class="info-box">Any language accepted by a Turing Machine can be generated by an Unrestricted (Type 0) Grammar. This construction uses a marker-based approach to simulate the head movement and tape contents using phrase-structure rules.</div>`;
@@ -2428,9 +2439,9 @@ function algoTM2Grammar(c) {
 // ══════════════════════════════════════════════════════════════════
 //  DFA MINIMIZATION VISUALIZER
 // ══════════════════════════════════════════════════════════════════
-let _minViz = null;
+export let _minViz = null;
 
-function algoMinimizeVisual(c) {
+export function algoMinimizeVisual(c) {
   c.innerHTML = `<div class="algo-title">DFA Minimization: Table Filling</div>
 <div class="algo-sub">INTERACTIVE STEP-BY-STEP VISUALIZER</div>`;
   if (App.machine !== 'DFA') { c.innerHTML += '<div class="card">Switch to DFA mode to use minimization.</div>'; return; }
@@ -2453,7 +2464,7 @@ function algoMinimizeVisual(c) {
   renderMinVisTable();
 }
 
-function renderMinVisTable() {
+export function renderMinVisTable() {
   const { dist, idx, steps } = _minViz;
   const states = App.states;
   const tableWrap = $('min-vis-table-wrap');
@@ -2483,7 +2494,7 @@ function renderMinVisTable() {
   tableWrap.innerHTML = `<table class="min-table"><thead>${header}</thead><tbody>${rows}</tbody></table>`;
 }
 
-function getDistAtStep(stepIdx) {
+export function getDistAtStep(stepIdx) {
   const states = App.states, ids = states.map(s => s.id);
   const d = {};
   // 1. Initial Dist (Accept vs Non-Accept)
@@ -2503,7 +2514,7 @@ function getDistAtStep(stepIdx) {
   return d;
 }
 
-function minVisStep(delta) {
+export function minVisStep(delta) {
   _minViz.idx = Math.max(0, Math.min(_minViz.steps.length - 1, _minViz.idx + delta));
   const status = $('min-vis-status');
   status.innerHTML = `<b>Step ${_minViz.idx + 1}/${_minViz.steps.length}</b>: ${_minViz.steps[_minViz.idx].html}`;
@@ -2514,9 +2525,9 @@ function minVisStep(delta) {
 // ══════════════════════════════════════════════════════════════════
 //  THOMPSON CONSTRUCTION VISUALIZER
 // ══════════════════════════════════════════════════════════════════
-let _thViz = null;
+export let _thViz = null;
 
-function algoRE2NFAVisual(c) {
+export function algoRE2NFAVisual(c) {
   c.innerHTML = `<div class="algo-title">Thompson Construction Visualizer</div>
 <div class="algo-sub">STEP-BY-STEP ASSEMBLY</div>
 <div class="info-box">Each regex operator is mapped to an NFA fragment. Step through the construction to see how primitive NFAs are composed into larger fragments via ε-transitions.</div>
@@ -2533,7 +2544,7 @@ function algoRE2NFAVisual(c) {
 <div id="rev-result"></div>`;
 }
 
-function startThompsonViz() {
+export function startThompsonViz() {
   const re = $('rev-input')?.value?.trim();
   const out = $('rev-result');
   if (!re) { showStatus('Enter a regex first'); return; }
@@ -2556,12 +2567,12 @@ function startThompsonViz() {
 }
 
 // Maps AST node type to a human-readable label
-function thAstLabel(t) {
+export function thAstLabel(t) {
   const map = { lit: 'LITERAL', eps: 'EPSILON', union: 'UNION (|)', cat: 'CONCAT', star: 'KLEENE *', plus: 'ONE-OR-MORE +', opt: 'OPTIONAL ?', class: 'CHAR CLASS', bound: 'BOUND {n,m}', any: 'ANY (.)' };
   return map[t] || t.toUpperCase();
 }
 
-function buildThompsonVisual(ast, steps) {
+export function buildThompsonVisual(ast, steps) {
   if (!ast) return null;
 
   if (ast.t === 'lit') {
@@ -2683,7 +2694,7 @@ function buildThompsonVisual(ast, steps) {
   return nfa;
 }
 
-function renderThViz() {
+export function renderThViz() {
   const { steps, idx } = _thViz;
   const step = steps[idx];
   const out = $('rev-result');
@@ -2733,13 +2744,13 @@ function renderThViz() {
   `;
 }
 
-function thVizStep(delta) {
+export function thVizStep(delta) {
   if (!_thViz) return;
   _thViz.idx = Math.max(0, Math.min(_thViz.steps.length - 1, _thViz.idx + delta));
   renderThViz();
 }
 
-function loadThompsonNFA_Viz() {
+export function loadThompsonNFA_Viz() {
   if (!_thViz) return;
   App._lastThompson = _thViz.steps[_thViz.steps.length - 1].nfa;
   loadThompsonNFA();
@@ -2749,7 +2760,7 @@ function loadThompsonNFA_Viz() {
 // ══════════════════════════════════════════════════════════════════
 //  ε-CLOSURE TABLE
 // ══════════════════════════════════════════════════════════════════
-function algoEpsClosure(c) {
+export function algoEpsClosure(c) {
   const eps = App.config.sym.eps;
   c.innerHTML = `<div class="algo-title">ε-Closure Table</div>
 <div class="algo-sub">ε-CLOSURE OF EACH STATE IN ε-NFA</div>
@@ -2843,7 +2854,7 @@ function algoEpsClosure(c) {
 // ══════════════════════════════════════════════════════════════════
 //  DFA → RIGHT-LINEAR GRAMMAR
 // ══════════════════════════════════════════════════════════════════
-function algoDFA2RG(c) {
+export function algoDFA2RG(c) {
   const eps = App.config.sym.eps;
   c.innerHTML = `<div class="algo-title">DFA / NFA &rarr; Regular Grammar</div>
 <div class="algo-sub">RIGHT-LINEAR GRAMMAR DERIVATION (TYPE 3)</div>
@@ -2898,9 +2909,9 @@ function algoDFA2RG(c) {
 // ══════════════════════════════════════════════════════════════════
 //  REGULAR GRAMMAR → NFA
 // ══════════════════════════════════════════════════════════════════
-let _rgNFAData = null;
+export let _rgNFAData = null;
 
-function algoRG2NFA(c) {
+export function algoRG2NFA(c) {
   c.innerHTML = `<div class="algo-title">Regular Grammar &rarr; NFA</div>
 <div class="algo-sub">RIGHT-LINEAR / LEFT-LINEAR TO AUTOMATON</div>
 <div class="info-box">Enter a regular grammar using either right-linear productions (<em>A → aB</em>, <em>A → a</em>, <em>A → ε</em>) or left-linear productions (<em>A → Ba</em>, <em>A → a</em>, <em>A → ε</em>). Use one orientation consistently. Each variable becomes a state, plus one helper state.</div>
@@ -2916,7 +2927,7 @@ function algoRG2NFA(c) {
 <div id="rg-result"></div>`;
 }
 
-function buildRG2NFA() {
+export function buildRG2NFA() {
   const raw = $('rg-input')?.value?.trim();
   const startSym = $('rg-start')?.value?.trim() || 'S';
   const out = $('rg-result');
@@ -3048,7 +3059,7 @@ function buildRG2NFA() {
   }
 }
 
-function loadRG2NFAToCanvas() {
+export function loadRG2NFAToCanvas() {
   if (!_rgNFAData) return;
   snapshot();
   const { states, transitions, accepts, startId } = _rgNFAData;
@@ -3083,7 +3094,7 @@ function loadRG2NFAToCanvas() {
 // ══════════════════════════════════════════════════════════════════
 
 /** Compute a Map<stateId → 'live'|'dead'|'unreachable'> for current machine. */
-function computeStateClassification() {
+export function computeStateClassification() {
   const map = new Map();
   if (!App.startId) {
     App.states.forEach(s => map.set(s.id, 'unreachable'));
@@ -3101,19 +3112,19 @@ function computeStateClassification() {
 }
 
 /** Activate the canvas overlay from the current classification. */
-function highlightDeadStates() {
+export function highlightDeadStates() {
   App.stateClassification = computeStateClassification();
   renderAll();
 }
 
 /** Remove the canvas overlay. */
-function clearStateHighlights() {
+export function clearStateHighlights() {
   App.stateClassification = null;
   renderAll();
 }
 
 /** Algo panel renderer. */
-function algoDeadStates(c) {
+export function algoDeadStates(c) {
   c.innerHTML = `<div class="algo-title">Dead State Analysis</div>
 <div class="algo-sub">REACHABILITY &amp; PRODUCTIVITY CLASSIFICATION</div>
 <div class="info-box">

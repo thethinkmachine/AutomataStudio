@@ -1,7 +1,21 @@
+import { tokenizeRHS } from './algorithms-cfg.js';
+import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
+import { applyCamera, hideCanvasContextMenu } from './canvas.js';
+import { snapshot } from './history.js';
+import { importJFLAPText } from './import-jflap.js';
+import { closeModal, showOverlay } from './modal.js';
+import { renderAll, updateLPanel, updateRPanel } from './render.js';
+import { runSim } from './simulation.js';
+import { $, App, MachineExamples, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setWorkspaces } from './state.js';
+import { hideContextMenu } from './states-transitions.js';
+import { autoFitLoadedMachine, fitToScreen, hideTabContextMenu, hideTabOverflowMenu, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
+import { hasPdaNondeterminism, hasSingleTapeNondeterminism, isAnyPDA, performClear, resetIds, showStatus } from './utils.js';
+import { applyMachineSwitch } from './view.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  SAVE / LOAD
 // ══════════════════════════════════════════════════════════════════
-function getWorkspaceData() {
+export function getWorkspaceData() {
   const grammarData = { vars: [...App.grammar.vars], start: App.grammar.start, productions: App.grammar.productions };
   
   // Explicitly allow-list only FSM model configuration, dropping all UI/Theme data.
@@ -43,26 +57,26 @@ function getWorkspaceData() {
 // Returns true when the workspace was persisted, false when storage
 // rejected it (quota, private-mode) — callers that close a tab afterwards
 // must not discard work on a failed save.
-let pendingWorkspaceSave = null;
-let autosaveTimer = null;
-let autosaveInProgress = false;
-let autosaveCountdownTimer = null;
-let autosaveDeadline = 0;
-const WORKSPACE_DB_NAME = 'automata-playground';
-const WORKSPACE_DB_VERSION = 1;
-const WORKSPACE_STORE_NAME = 'snapshots';
+export let pendingWorkspaceSave = null;
+export let autosaveTimer = null;
+export let autosaveInProgress = false;
+export let autosaveCountdownTimer = null;
+export let autosaveDeadline = 0;
+export const WORKSPACE_DB_NAME = 'automata-playground';
+export const WORKSPACE_DB_VERSION = 1;
+export const WORKSPACE_STORE_NAME = 'snapshots';
 
 // Undo/redo stacks are deliberately excluded from anything that reaches
 // storage. They can hold 300 JSON snapshots per tab, which is the single
 // largest contributor to quota failures, and reloading discards the history
 // anyway — persisting it costs the whole save the moment it tips over quota.
-function stripTabForStorage(ws) {
+export function stripTabForStorage(ws) {
   if (!ws || !ws.data) return ws;
   const { history, future, ...data } = ws.data;
   return { ...ws, data };
 }
 
-function getBackupPayload(savedIds = []) {
+export function getBackupPayload(savedIds = []) {
   if (typeof exportWorkspaceState !== 'function' || !activeWorkspaceId) return null;
   const act = Workspaces.find(w => w.id === activeWorkspaceId);
   if (act) act.data = exportWorkspaceState();
@@ -74,7 +88,7 @@ function getBackupPayload(savedIds = []) {
   };
 }
 
-function openWorkspaceDb() {
+export function openWorkspaceDb() {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null);
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(WORKSPACE_DB_NAME, WORKSPACE_DB_VERSION);
@@ -88,7 +102,7 @@ function openWorkspaceDb() {
 // IndexedDB, no database yet, or no snapshot — every one of which is a normal
 // first-run state, so the caller falls back to the localStorage backup rather
 // than treating it as an error.
-async function readWorkspaceSnapshot() {
+export async function readWorkspaceSnapshot() {
   let db;
   try {
     db = await openWorkspaceDb();
@@ -112,7 +126,7 @@ async function readWorkspaceSnapshot() {
   }
 }
 
-async function persistWorkspaceAsync(payload) {
+export async function persistWorkspaceAsync(payload) {
   const db = await openWorkspaceDb();
   if (!db) {
     await Promise.resolve();
@@ -130,7 +144,7 @@ async function persistWorkspaceAsync(payload) {
   return 'indexedDB';
 }
 
-async function saveWorkspace(opts = {}) {
+export async function saveWorkspace(opts = {}) {
   if (pendingWorkspaceSave) return pendingWorkspaceSave;
   if (typeof setSaveState === 'function') setSaveState('saving');
 
@@ -167,7 +181,7 @@ async function saveWorkspace(opts = {}) {
 // Saves a specific tab, which may not be the active one (bulk closes walk
 // tabs that aren't on screen). Only the active tab holds live state in App,
 // so the others just need their existing snapshot flushed.
-async function saveWorkspaceById(id) {
+export async function saveWorkspaceById(id) {
   const ws = Workspaces.find(w => w.id === id);
   if (!ws) return true;
   if (id === activeWorkspaceId) return saveWorkspace({ silent: true });
@@ -189,7 +203,7 @@ async function saveWorkspaceById(id) {
   }
 }
 
-async function runAutosave() {
+export async function runAutosave() {
   if (autosaveInProgress || pendingWorkspaceSave || typeof Workspaces === 'undefined') return;
   const dirtyIds = Workspaces.filter(ws => ws.dirty).map(ws => ws.id);
   if (!dirtyIds.length) return;
@@ -208,7 +222,7 @@ async function runAutosave() {
   }
 }
 
-function restartAutosaveTimer() {
+export function restartAutosaveTimer() {
   if (autosaveTimer) clearInterval(autosaveTimer);
   if (autosaveCountdownTimer) clearInterval(autosaveCountdownTimer);
   autosaveTimer = null;
@@ -244,7 +258,7 @@ function restartAutosaveTimer() {
   autosaveCountdownTimer.unref?.();
 }
 
-function saveJSON() {
+export function saveJSON() {
   const data = getWorkspaceData();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'automaton.json'; a.click();
@@ -252,7 +266,7 @@ function saveJSON() {
   if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
 }
 
-function toggleSaveMenu(e) {
+export function toggleSaveMenu(e) {
   e.stopPropagation();
   const m = $('save-menu');
   if (!m) return;
@@ -262,15 +276,15 @@ function toggleSaveMenu(e) {
   m.style.left = Math.max(8, Math.min(r.left, innerWidth - 248)) + 'px';
   m.style.top = (r.bottom + 6) + 'px';
 }
-function hideSaveMenu() {
+export function hideSaveMenu() {
   const m = $('save-menu');
   if (m) m.style.display = 'none';
 }
 document.addEventListener('click', () => hideSaveMenu());
 
-function loadJSON() { $('file-input').click(); }
+export function loadJSON() { $('file-input').click(); }
 
-function handleFiles(files) {
+export function handleFiles(files) {
   const f = files[0]; if (!f) return;
   const lower = f.name.toLowerCase();
   const isPng = lower.endsWith('.png');
@@ -311,7 +325,7 @@ function handleFiles(files) {
   else reader.readAsText(f);
 }
 
-function onFileLoad(e) {
+export function onFileLoad(e) {
   handleFiles(e.target.files);
   e.target.value = '';
 }
@@ -337,13 +351,13 @@ window.addEventListener('drop', e => {
 // ══════════════════════════════════════════════════════════════════
 // Unicode-safe base64url codec (plain btoa/atob choke on non-Latin1 chars
 // like the ε symbols that show up in every workspace's config).
-function b64UrlEncodeUnicode(str) {
+export function b64UrlEncodeUnicode(str) {
   const bytes = new TextEncoder().encode(str);
   let binary = '';
   bytes.forEach(b => binary += String.fromCharCode(b));
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
-function b64UrlDecodeUnicode(b64url) {
+export function b64UrlDecodeUnicode(b64url) {
   let b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
   while (b64.length % 4) b64 += '=';
   const binary = atob(b64);
@@ -351,14 +365,14 @@ function b64UrlDecodeUnicode(b64url) {
   return new TextDecoder().decode(bytes);
 }
 
-const SHARE_HASH_PREFIX = '#share=';
+export const SHARE_HASH_PREFIX = '#share=';
 
-function getShareableLink() {
+export function getShareableLink() {
   const encoded = b64UrlEncodeUnicode(JSON.stringify(getWorkspaceData()));
   return `${location.origin}${location.pathname}${SHARE_HASH_PREFIX}${encoded}`;
 }
 
-function copyShareableLink() {
+export function copyShareableLink() {
   const url = getShareableLink();
   const onCopied = () => showStatus('Shareable link copied to clipboard!');
   const onFailed = () => window.prompt('Copy this link:', url);
@@ -371,7 +385,7 @@ function copyShareableLink() {
 
 // Reads a #share=… link on page load and swaps it into the current workspace,
 // the same way dropping a JSON/PNG file does.
-function loadSharedLinkFromURL() {
+export function loadSharedLinkFromURL() {
   if (!location.hash.startsWith(SHARE_HASH_PREFIX)) return false;
   const encoded = location.hash.slice(SHARE_HASH_PREFIX.length);
   // Strip the hash immediately so refreshing later doesn't re-import stale data
@@ -391,7 +405,7 @@ function loadSharedLinkFromURL() {
   }
 }
 
-function validateSchema(data) {
+export function validateSchema(data) {
   if (!data || typeof data !== 'object') throw new Error("Data must be a valid JSON object.");
   
   const validMachines = [
@@ -475,7 +489,7 @@ function validateSchema(data) {
   return true;
 }
 
-function normalizeGrammarData(grammar) {
+export function normalizeGrammarData(grammar) {
   const productions = Array.isArray(grammar?.productions) ? grammar.productions : [];
   const vars = new Set(Array.isArray(grammar?.vars) ? grammar.vars : []);
   productions.forEach(p => {
@@ -494,7 +508,7 @@ function normalizeGrammarData(grammar) {
   return { vars, start, productions: normalizedProductions };
 }
 
-function loadData(d, isExample) {
+export function loadData(d, isExample) {
   App.machine = d.machine || 'DFA'; App.sigma = new Set(d.sigma || []);
   App.stackAlpha = new Set(d.stackAlpha || [App.config.sym.stackBottom]);
   App.outputAlpha = new Set(d.outputAlpha || []);
@@ -550,7 +564,7 @@ function loadData(d, isExample) {
   if (!isExample) snapshot();
 }
 
-function migrateLegacySymbols(d) {
+export function migrateLegacySymbols(d) {
   const LEGACY_EPS = 'ε', LEGACY_BLANK = '⊔', LEGACY_Z0 = 'Z';
   const newE = App.config.sym.eps, newB = App.config.sym.blank, newZ = App.config.sym.stackBottom;
   const mapSym = s => (s === LEGACY_EPS ? newE : s === LEGACY_BLANK ? newB : s === LEGACY_Z0 ? newZ : s);
@@ -580,7 +594,7 @@ function migrateLegacySymbols(d) {
 // Returns true when the payload reached localStorage. The explicit Save
 // action reports failure to the user, so a quota error can no longer pass
 // silently as a successful save.
-function saveBackup() {
+export function saveBackup() {
   if (typeof exportWorkspaceState !== 'function' || !activeWorkspaceId) return false;
   // Ensure the active tab gets its latest snapshot
   const act = Workspaces.find(w => w.id === activeWorkspaceId);
@@ -603,7 +617,7 @@ function saveBackup() {
 // reorder). These are not user-initiated saves, so they stay quiet on success
 // — but a failure here means storage is full or unavailable, and silently
 // leaving the indicator on "Saved" would misreport the workspace as durable.
-function saveBackupChecked() {
+export function saveBackupChecked() {
   const ok = saveBackup();
   if (!ok && typeof setSaveState === 'function') setSaveState('error', 'Save failed');
   return ok;
@@ -612,7 +626,7 @@ function saveBackupChecked() {
 // Prefers the IndexedDB snapshot, which is where saveWorkspace puts the
 // authoritative copy; localStorage is the fallback for first run, private
 // mode, and builds that predate the IndexedDB backend.
-async function readLatestBackup() {
+export async function readLatestBackup() {
   const snapshot = await readWorkspaceSnapshot();
   if (snapshot && Array.isArray(snapshot.tabs) && snapshot.tabs.length) return snapshot;
   try {
@@ -623,7 +637,7 @@ async function readLatestBackup() {
   }
 }
 
-async function loadBackup() {
+export async function loadBackup() {
   try {
     const loaded = await readLatestBackup();
     if (!loaded) return;
@@ -673,21 +687,21 @@ window.addEventListener('beforeunload', e => {
 // ══════════════════════════════════════════════════════════════════
 //  LOAD EXAMPLE
 // ══════════════════════════════════════════════════════════════════
-function getMachineExampleOptions() {
+export function getMachineExampleOptions() {
   const list = (typeof MachineExamples !== 'undefined' && MachineExamples[App.machine]) || null;
   if (list && list.length) return list;
   const cfg = getMachineConfig(App.machine);
   return cfg.file ? [{ file: cfg.file, label: 'Example' }] : [];
 }
 
-function loadExample(trigger) {
+export function loadExample(trigger) {
   const options = getMachineExampleOptions();
   if (!options.length) return;
   if (options.length === 1) { loadExampleFile(options[0].file); return; }
   toggleExampleMenu(options, trigger);
 }
 
-function toggleExampleMenu(options, trigger) {
+export function toggleExampleMenu(options, trigger) {
   const btn = trigger || $('example-picker-btn');
   const menu = $('example-menu');
   if (!btn || !menu) { loadExampleFile(options[0].file); return; }
@@ -736,14 +750,14 @@ function toggleExampleMenu(options, trigger) {
   setTimeout(() => document.addEventListener('click', closeExampleMenu, { once: true }), 0);
 }
 
-function closeExampleMenu() {
+export function closeExampleMenu() {
   const menu = $('example-menu');
   if (menu) menu.style.display = 'none';
   const btn = $('example-picker-btn');
   if (btn) btn.setAttribute('aria-expanded', 'false');
 }
 
-function loadExampleFile(file) {
+export function loadExampleFile(file) {
   const executeLoad = () => {
     fetch(`js/examples/${file}.json`)
       .then(res => res.json())
@@ -776,7 +790,7 @@ function loadExampleFile(file) {
 
 // Info card in the Simulate panel describing the loaded example, with sample
 // inputs as chips that run with one click. Pass null to hide it.
-function showExampleCard(meta) {
+export function showExampleCard(meta) {
   const card = $('example-card');
   if (!card) return;
   card.innerHTML = '';

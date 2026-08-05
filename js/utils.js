@@ -1,3 +1,9 @@
+import { closeModal, registerModal, showOverlay } from './modal.js';
+import { showExampleCard } from './persistence.js';
+import { renderAll, updateLPanel, updateRPanel } from './render.js';
+import { resetSim } from './simulation.js';
+import { $, App, getBoundaryMarkers, isTwoWayFA } from './state.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  UTILS / HELPERS
 // ══════════════════════════════════════════════════════════════════
@@ -6,56 +12,56 @@
 // in js/state.js. They only ever read App and MachineTypes, and keeping them
 // here made state.js import utils.js — a cycle that decided module evaluation
 // order for the whole app.
-function buildMarkedInputTape(tokens = []) {
+export function buildMarkedInputTape(tokens = []) {
   const { left, right } = getBoundaryMarkers();
   return [left, ...tokens, right];
 }
 
-function isSingleTapeTM(m = App.machine) {
+export function isSingleTapeTM(m = App.machine) {
   return m === 'TM' || m === 'NDTM' || m === 'LBA' || m === 'ITM' || isTwoWayFA(m);
 }
 
-function isAnyTM(m = App.machine) {
+export function isAnyTM(m = App.machine) {
   return m === 'TM' || m === 'NDTM' || m === 'MTM' || m === 'LBA' || m === 'ITM';
 }
 
-function isAnyPDA(m = App.machine) {
+export function isAnyPDA(m = App.machine) {
   return m === 'DPDA' || m === 'NPDA' || m === 'PDA' || m === 'QA' || m === 'Counter' || m === '2PDA';
 }
 
-function isClassicPDA(m = App.machine) {
+export function isClassicPDA(m = App.machine) {
   return m === 'DPDA' || m === 'NPDA' || m === 'PDA';
 }
 
-function isCfgConvertiblePDA(m = App.machine) {
+export function isCfgConvertiblePDA(m = App.machine) {
   return isClassicPDA(m);
 }
 
-function isQueueAutomaton(m = App.machine) {
+export function isQueueAutomaton(m = App.machine) {
   return m === 'QA';
 }
 
-function isCounterMachine(m = App.machine) {
+export function isCounterMachine(m = App.machine) {
   return m === 'Counter';
 }
 
-function isTwoStackPDA(m = App.machine) {
+export function isTwoStackPDA(m = App.machine) {
   return m === '2PDA';
 }
 
-function isTwoWayNondeterministicFA(m = App.machine) {
+export function isTwoWayNondeterministicFA(m = App.machine) {
   return m === '2NFA';
 }
 
-function isLBA(m = App.machine) {
+export function isLBA(m = App.machine) {
   return m === 'LBA';
 }
 
-function isInfiniteTapeTM(m = App.machine) {
+export function isInfiniteTapeTM(m = App.machine) {
   return m === 'ITM';
 }
 
-function hasSingleTapeNondeterminism(transitions = App.transitions) {
+export function hasSingleTapeNondeterminism(transitions = App.transitions) {
   const seen = new Set();
   for (const t of transitions) {
     const key = `${t.from}|${t.symbol}`;
@@ -65,34 +71,34 @@ function hasSingleTapeNondeterminism(transitions = App.transitions) {
   return false;
 }
 
-function pdaReadPatternsOverlap(a, b, eps = App.config.sym.eps, any = App.config.sym.any) {
+export function pdaReadPatternsOverlap(a, b, eps = App.config.sym.eps, any = App.config.sym.any) {
   if (a === eps || b === eps) return true;
   if (a === any || b === any) return true;
   return a === b;
 }
 
-function pdaPopPatternsOverlap(a, b, eps = App.config.sym.eps, any = App.config.sym.any) {
+export function pdaPopPatternsOverlap(a, b, eps = App.config.sym.eps, any = App.config.sym.any) {
   if (a === eps || b === eps) return true;
   if (a === any || b === any) return true;
   return a === b;
 }
 
-function pdaTransitionsOverlap(a, b) {
+export function pdaTransitionsOverlap(a, b) {
   return a.from === b.from
     && pdaReadPatternsOverlap(a.symbol, b.symbol)
     && pdaPopPatternsOverlap(a.pop, b.pop);
 }
 
-function symbolsOverlap(a, b, any = App.config.sym.any) {
+export function symbolsOverlap(a, b, any = App.config.sym.any) {
   return a === b || a === any || b === any;
 }
 
-function tapeTuplesOverlap(aSyms = [], bSyms = [], any = App.config.sym.any) {
+export function tapeTuplesOverlap(aSyms = [], bSyms = [], any = App.config.sym.any) {
   if (!Array.isArray(aSyms) || !Array.isArray(bSyms) || aSyms.length !== bSyms.length) return false;
   return aSyms.every((sym, i) => symbolsOverlap(sym, bSyms[i], any));
 }
 
-function pickMostSpecificTransition(transitions = [], scoreFn = () => 0) {
+export function pickMostSpecificTransition(transitions = [], scoreFn = () => 0) {
   let best = null;
   let bestScore = -Infinity;
   for (const transition of transitions) {
@@ -109,7 +115,7 @@ function pickMostSpecificTransition(transitions = [], scoreFn = () => 0) {
   return best;
 }
 
-function findPdaNondeterministicPairs(transitions = App.transitions) {
+export function findPdaNondeterministicPairs(transitions = App.transitions) {
   const pairs = [];
   for (let i = 0; i < transitions.length; i++) {
     for (let j = i + 1; j < transitions.length; j++) {
@@ -121,11 +127,11 @@ function findPdaNondeterministicPairs(transitions = App.transitions) {
   return pairs;
 }
 
-function hasPdaNondeterminism(transitions = App.transitions) {
+export function hasPdaNondeterminism(transitions = App.transitions) {
   return findPdaNondeterministicPairs(transitions).length > 0;
 }
 
-function getPdaDeterminismConflict(candidate, transitions = App.transitions, ignoreId = null) {
+export function getPdaDeterminismConflict(candidate, transitions = App.transitions, ignoreId = null) {
   return transitions.find(t =>
     t.id !== ignoreId
     && pdaTransitionsOverlap(t, candidate)
@@ -141,13 +147,13 @@ registerModal('confirm-modal', {
   }
 });
 
-function resetIds() {
+export function resetIds() {
   App.stateN = Math.max(0, ...App.states.map(s => { const m = s.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
   App.transN = Math.max(0, ...App.transitions.map(t => { const m = t.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
   App.noteN = Math.max(0, ...(App.notes || []).map(n => { const m = n.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
   App.dividerN = Math.max(0, ...(App.dividers || []).map(d => { const m = d.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
 }
-function clearAll(silent) {
+export function clearAll(silent) {
   if (!silent && App.states.length > 0) {
     $('confirm-title').textContent = 'Clear Canvas?';
     $('confirm-msg').textContent = 'This will permanently delete all states and transitions from the workspace.';
@@ -163,7 +169,7 @@ function clearAll(silent) {
   if (!silent) showStatus('Canvas cleared');
 }
 
-function performClear() {
+export function performClear() {
   App.states = []; App.transitions = []; App.startId = null; App.accepts.clear();
   App.stateN = 0; App.transN = 0; App.history = []; App.future = [];
   App.notes = []; App.noteN = 0;
@@ -178,13 +184,13 @@ function performClear() {
   resetSim(); renderAll(); updateLPanel(); updateRPanel();
 }
 
-function showStatus(msg) {
+export function showStatus(msg) {
   const b = $('status-bar'); b.textContent = msg; b.classList.add('show');
   clearTimeout(b._t); b._t = setTimeout(() => b.classList.remove('show'), 2500);
 }
 
 
-function parseEps(str) {
+export function parseEps(str) {
   if (!str) return '';
   const s = str.trim();
   if (s.toLowerCase() === 'eps' || s.toLowerCase() === 'epsilon') return App.config.sym.eps;
@@ -194,7 +200,7 @@ function parseEps(str) {
 // Escapes a string for safe insertion as HTML text/attribute content — needed
 // wherever untrusted data (Σ symbols, stack/output alphabet symbols, all of
 // which can arrive via an imported automaton file) is interpolated into innerHTML.
-function escapeHtml(str) {
+export function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
@@ -203,6 +209,6 @@ function escapeHtml(str) {
 // produces a properly quote/backslash-escaped JS string literal; escapeHtml then
 // protects the surrounding HTML attribute (browsers HTML-decode the attribute
 // value before parsing it as JS, so both layers are required).
-function jsAttr(str) {
+export function jsAttr(str) {
   return escapeHtml(JSON.stringify(String(str)));
 }

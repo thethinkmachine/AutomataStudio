@@ -1,8 +1,11 @@
+import { renderCFLPumpVis } from './algorithms-cfg.js';
+import { $ } from './state.js';
+
 // ======================================================================
 // THEORY VIEW
 // ======================================================================
 
-const THEORY_CARD_IDS = [
+export const THEORY_CARD_IDS = [
   'th-fa',
   'th-regular',
   'th-rg',
@@ -25,7 +28,7 @@ const THEORY_CARD_IDS = [
   'th-summary'
 ];
 
-function triggerMath(el) {
+export function triggerMath(el) {
   if (typeof renderMathInElement === 'function') {
     renderMathInElement(el || document.body, {
       delimiters: [
@@ -42,7 +45,7 @@ function triggerMath(el) {
   }
 }
 
-function theoryNavClick(link) {
+export function theoryNavClick(link) {
   document.querySelectorAll('.theory-nav-link').forEach(l => l.classList.remove('active'));
   link.classList.add('active');
 
@@ -72,7 +75,7 @@ function theoryNavClick(link) {
   if (content) content.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function renderTheoryView() {
+export function renderTheoryView() {
   const cards = [
     {
       id: 'th-fa',
@@ -480,7 +483,7 @@ Because multi-tape and single-tape models are polynomially equivalent, complexit
   if (initLink) theoryNavClick(initLink);
 }
 
-function renderClosureTable() {
+export function renderClosureTable() {
   const el = $('closure-table');
   if (!el) return;
 
@@ -510,7 +513,7 @@ function renderClosureTable() {
   el.innerHTML = html;
 }
 
-function renderPumpVis() {
+export function renderPumpVis() {
   const pEl = $('pump-vis');
   const pw = $('pump-w');
   if (!pEl || !pw) return;

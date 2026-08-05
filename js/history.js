@@ -1,7 +1,14 @@
+import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
+import { renderAll, updateLPanel, updateRPanel } from './render.js';
+import { App, Workspaces, activeWorkspaceId, getMachineConfig } from './state.js';
+import { renderTabs, setSaveState } from './ui.js';
+import { isAnyTM, showStatus } from './utils.js';
+import { syncMachineSelectors } from './view.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  UNDO / REDO
 // ══════════════════════════════════════════════════════════════════
-function snapshot() {
+export function snapshot() {
   const s = JSON.stringify({
     machine: App.machine,
     states: App.states, transitions: App.transitions,
@@ -24,7 +31,7 @@ function snapshot() {
 // saved and restored but is not something the user undoes. Without this, panning
 // or zooming left the tab clean, so autosave skipped it entirely and the
 // viewport survived a reload only when an unrelated edit happened to be pending.
-function markDirty() {
+export function markDirty() {
   if (!activeWorkspaceId || typeof Workspaces === 'undefined') return;
   const ws = Workspaces.find(w => w.id === activeWorkspaceId);
   if (ws && !ws.dirty) {
@@ -33,18 +40,18 @@ function markDirty() {
     if (typeof setSaveState === 'function') setSaveState('unsaved');
   }
 }
-function undo() {
+export function undo() {
   if (App.history.length < 2) return showStatus('Nothing to undo');
   App.future.push(App.history.pop());
   restoreSnapshot(App.history[App.history.length - 1]);
 }
-function redo() {
+export function redo() {
   if (!App.future.length) return showStatus('Nothing to redo');
   const s = App.future.pop();
   App.history.push(s);
   restoreSnapshot(s);
 }
-function restoreSnapshot(s) {
+export function restoreSnapshot(s) {
   const d = JSON.parse(s);
   
   // If machine type changed during undo/redo, safely apply the machine switch internals

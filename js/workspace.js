@@ -1,3 +1,12 @@
+import { renderAlgo } from './algorithms-fa.js';
+import { snapshot } from './history.js';
+import { registerModal, showOverlay } from './modal.js';
+import { renderAll, updateLPanel, updateRPanel } from './render.js';
+import { App } from './state.js';
+import { autoFitLoadedMachine, fitToScreen } from './ui.js';
+import { showStatus } from './utils.js';
+import { applyMachineSwitch, setView } from './view.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  HELP MODAL
 // ══════════════════════════════════════════════════════════════════
@@ -5,25 +14,25 @@
 registerModal('help-modal', { dismissOnBackdrop: true });
 registerModal('about-modal', { dismissOnBackdrop: true });
 
-function showHelpModal() { showOverlay('help-modal'); }
-function openAboutModal() { showOverlay('about-modal'); }
+export function showHelpModal() { showOverlay('help-modal'); }
+export function openAboutModal() { showOverlay('about-modal'); }
 
 
 // ══════════════════════════════════════════════════════════════════
 //  WORKSPACE B (M₂)
 // ══════════════════════════════════════════════════════════════════
-function saveWorkspaceB() {
+export function saveWorkspaceB() {
   App.workspaceB = getCurrentMachineSnapshot();
   showStatus(`M₂ saved: ${App.workspaceB.states.length} states, ${App.workspaceB.transitions.length} transitions`);
   // Refresh current algo panel to update M₂ status display
   if (App.view === 'algo') renderAlgo(App.currentAlgo);
 }
-function loadWorkspaceB() {
+export function loadWorkspaceB() {
   if (!App.workspaceB) { showStatus('No M₂ saved'); return; }
   loadBuiltMachine(App.workspaceB, App.workspaceB.machine || App.machine);
   showStatus('M₂ loaded into canvas');
 }
-function getCurrentMachineSnapshot() {
+export function getCurrentMachineSnapshot() {
   return {
     machine: App.machine,
     states: App.states.map(s => ({ ...s })),
@@ -33,7 +42,7 @@ function getCurrentMachineSnapshot() {
     sigma: [...App.sigma],
   };
 }
-function loadBuiltMachine(machine, machineType) {
+export function loadBuiltMachine(machine, machineType) {
   snapshot();
   App.states = machine.states.map(s => ({ ...s }));
   App.transitions = machine.transitions.map(t => ({ ...t }));

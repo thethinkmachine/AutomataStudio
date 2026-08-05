@@ -1,3 +1,8 @@
+import { langAcceptedTraces, langCanDecide, langCanTrace, langIsSymbolic, langVerdict } from './language.js';
+import { App, Workspaces, activeWorkspaceId, getMachineConfig } from './state.js';
+import { transLabel } from './states-transitions.js';
+import { showStatus } from './utils.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  EXPORT CORE
 // ══════════════════════════════════════════════════════════════════
@@ -18,13 +23,13 @@
 // language panel's step budget this bounds *words examined*, not search
 // nodes: the walk is an odometer, so the cost is one simulation per word
 // and the budget is what keeps a 12-symbol alphabet from running away.
-const EXPORT_SAMPLE_BUDGET = 20000;
+export const EXPORT_SAMPLE_BUDGET = 20000;
 
 // ── the intermediate representation ───────────────────────────────
 // A flat, JSON-safe snapshot. Names are resolved, the start/accept
 // flags are folded into the states, and every transition carries both
 // its raw fields and the rendered label the canvas would show.
-function buildMachineIR() {
+export function buildMachineIR() {
   const cfg = getMachineConfig(App.machine);
   const sym = { ...App.config.sym };
   const byId = new Map(App.states.map(s => [s.id, s]));
@@ -102,7 +107,7 @@ function buildMachineIR() {
 // A word is an array of symbols. Rendering one depends on Σ: single
 // character symbols concatenate the way a textbook writes them, word
 // length symbols need a separator or "openClose" reads as one token.
-function exportWordText(word, ir) {
+export function exportWordText(word, ir) {
   if (!word || !word.length) return (ir && ir.sym ? ir.sym.eps : 'ε');
   const symbolic = ir ? ir.isSymbolic : (typeof langIsSymbolic === 'function' ? langIsSymbolic() : true);
   return symbolic ? word.join('') : word.join(' ');
@@ -112,7 +117,7 @@ function exportWordText(word, ir) {
 // yielded. An odometer rather than a materialised frontier: |Σ|^len gets
 // large enough at modest lengths that holding a level in memory is the
 // thing that would break first.
-function* exportSigmaStar(sigma, maxLen, budget) {
+export function* exportSigmaStar(sigma, maxLen, budget) {
   const n = sigma.length;
   let seen = 0;
   if (!n) { yield []; return; }
@@ -143,7 +148,7 @@ function* exportSigmaStar(sigma, maxLen, budget) {
  * budget are reported separately — counting a non-halting run as a reject
  * is exactly the false negative the language panel exists to avoid.
  */
-function exportSampleWords(opts = {}) {
+export function exportSampleWords(opts = {}) {
   const wantAcc = opts.accepted === undefined ? 25 : Math.max(0, opts.accepted);
   const wantRej = opts.rejected === undefined ? 25 : Math.max(0, opts.rejected);
   const maxLen = opts.maxLength === undefined ? 10 : Math.max(0, opts.maxLength);
@@ -190,7 +195,7 @@ function exportSampleWords(opts = {}) {
 // ── file + clipboard plumbing ─────────────────────────────────────
 // Mirrors saveJSON()'s approach. Kept here so a new format never has to
 // re-derive object-URL lifetime handling.
-function exportDownload(filename, content, mime) {
+export function exportDownload(filename, content, mime) {
   const blob = content instanceof Blob ? content : new Blob([content], { type: mime || 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -202,7 +207,7 @@ function exportDownload(filename, content, mime) {
   setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 1000);
 }
 
-function exportCopyText(text, okMsg) {
+export function exportCopyText(text, okMsg) {
   const done = () => showStatus(okMsg || 'Copied to clipboard');
   const failed = () => { try { window.prompt('Copy:', text); } catch (e) { showStatus('Could not copy'); } };
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -215,7 +220,7 @@ function exportCopyText(text, okMsg) {
 // ── naming ────────────────────────────────────────────────────────
 // Exports inherit the tab's name so a folder of them stays legible;
 // falling back to the machine type beats a folder of "automaton (3)".
-function exportBaseName() {
+export function exportBaseName() {
   let name = '';
   try {
     const ws = typeof Workspaces !== 'undefined' && Workspaces.find(w => w.id === activeWorkspaceId);
@@ -225,7 +230,7 @@ function exportBaseName() {
   return exportSlug(name) || 'automaton';
 }
 
-function exportSlug(str) {
+export function exportSlug(str) {
   return String(str)
     .trim()
     .replace(/[^\w\s.-]/g, '')
@@ -235,14 +240,14 @@ function exportSlug(str) {
     .toLowerCase();
 }
 
-function exportFilename(ext) {
+export function exportFilename(ext) {
   return `${exportBaseName()}.${ext}`;
 }
 
 // Turns a state name into an identifier that is legal in generated source.
 // Collisions are the caller's problem — exportUniqueIdents() below resolves
 // them, because "q0" and "q 0" must not silently become the same constant.
-function exportIdent(str, fallback) {
+export function exportIdent(str, fallback) {
   let s = String(str == null ? '' : str)
     .normalize('NFKD')
     .replace(/[^\w]/g, '_')
@@ -252,7 +257,7 @@ function exportIdent(str, fallback) {
 }
 
 // Stable, collision-free identifiers for a list of states, keyed by id.
-function exportUniqueIdents(states, transform) {
+export function exportUniqueIdents(states, transform) {
   const used = new Set();
   const map = new Map();
   states.forEach((s, i) => {
@@ -268,11 +273,11 @@ function exportUniqueIdents(states, transform) {
 }
 
 // ── shared guards ─────────────────────────────────────────────────
-function exportHasMachine() {
+export function exportHasMachine() {
   return App.states.length > 0;
 }
 
-function exportRequireMachine() {
+export function exportRequireMachine() {
   if (exportHasMachine()) return true;
   showStatus('Nothing to export — the canvas is empty');
   return false;

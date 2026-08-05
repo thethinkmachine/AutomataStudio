@@ -1,29 +1,45 @@
+import { utmStepBack, utmStepFwd, utmToggleAuto } from './algorithms-fa.js';
+import { renderGamma } from './alphabet.js';
+import { applyCamera, clearEdgeDirectionHighlight, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, nudgeSelected, pasteClipboard, selectAllStates, toggleSnapToGrid, wrap } from './canvas.js';
+import { clearDividerSelection, deleteSelectedDivider, includeDividerBounds, isRectDivider, updateShapeToolButton } from './dividers.js';
+import { markDirty, redo, snapshot, undo } from './history.js';
+import { anyModalOpen, closeModal, registerModal, showOverlay } from './modal.js';
+import { includeNoteBounds, pruneNoteAnchorsExcluding, resolveNotePos } from './notes.js';
+import { restartAutosaveTimer, saveBackupChecked, saveJSON, saveWorkspace, saveWorkspaceById } from './persistence.js';
+import { renderAll, updateLPanel, updateRPanel } from './render.js';
+import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
+import { $, App, MachineCategories, MachineTypes, R, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, migrateSystemSymbols, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
+import { getState, getTransition, hideContextMenu } from './states-transitions.js';
+import { DEFAULT_THEME, Themes } from './themes.js';
+import { clearAll, escapeHtml, showStatus } from './utils.js';
+import { AUX_VIEWS, applyMachineSwitch, closeAuxView, hideMoreMenu, hideToolsMenu, setMachine, setView } from './view.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  WORKSPACE TABS UI
 // ══════════════════════════════════════════════════════════════════
 // Tab accent reflects the workspace's machine *category* (not the exact type)
 // so a glance at the dot tells you "finite automaton" vs "stack machine" vs
 // "Turing machine" vs "transducer" without needing 18 distinct colors.
-const CATEGORY_ACCENT_VAR = { fa: '--accent', mem: '--green', tm: '--orange', special: '--purple' };
-let editingTabId = null;
-let draggingTabId = null;
-let tabDropTargetId = null;
-let tabDropPosition = null;
-let closedWorkspaces = [];
-let saveState = 'saved';
+export const CATEGORY_ACCENT_VAR = { fa: '--accent', mem: '--green', tm: '--orange', special: '--purple' };
+export let editingTabId = null;
+export let draggingTabId = null;
+export let tabDropTargetId = null;
+export let tabDropPosition = null;
+export let closedWorkspaces = [];
+export let saveState = 'saved';
 
-function getWorkspaceMachine(ws) {
+export function getWorkspaceMachine(ws) {
   if (!ws) return null;
   return ws.id === activeWorkspaceId ? App.machine : ws.data?.machine;
 }
 
-function getWorkspaceAccent(ws) {
+export function getWorkspaceAccent(ws) {
   const machine = getWorkspaceMachine(ws);
   const cat = machine && MachineTypes[machine] ? MachineTypes[machine].category : null;
   return `var(${CATEGORY_ACCENT_VAR[cat] || '--accent'})`;
 }
 
-function markActiveWorkspaceSaved() {
+export function markActiveWorkspaceSaved() {
   if (!activeWorkspaceId) return;
   const ws = Workspaces.find(w => w.id === activeWorkspaceId);
   if (ws && ws.dirty) {
@@ -37,7 +53,7 @@ function markActiveWorkspaceSaved() {
 // separately from `Workspaces.some(dirty)` while the colour came from here,
 // which let the two disagree — an orange icon with no dot, or a dot left over
 // after the state moved on. Both are derived from `state` now.
-function setSaveState(state, message) {
+export function setSaveState(state, message) {
   saveState = state;
   const btn = $('save-now-btn');
   const labels = { unsaved: 'Unsaved', saving: 'Saving…', saved: 'Saved', error: 'Save failed' };
@@ -52,7 +68,7 @@ function setSaveState(state, message) {
   }
 }
 
-function escapeTabText(value) {
+export function escapeTabText(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -61,7 +77,7 @@ function escapeTabText(value) {
     .replace(/'/g, '&#39;');
 }
 
-function updateTabOverflowShadows(tb = $('tab-bar')) {
+export function updateTabOverflowShadows(tb = $('tab-bar')) {
   if (!tb) return;
   const maxScroll = Math.max(0, tb.scrollWidth - tb.clientWidth);
   const hasOverflow = maxScroll > 2;
@@ -77,21 +93,21 @@ function updateTabOverflowShadows(tb = $('tab-bar')) {
   }
 }
 
-function focusTabElement(id) {
+export function focusTabElement(id) {
   const tb = $('tab-bar');
   if (!tb) return;
   const tab = tb.querySelector(`.tab[data-tab-id="${id}"]`);
   if (tab) tab.focus();
 }
 
-function clearTabDropMarkers(tb = $('tab-bar')) {
+export function clearTabDropMarkers(tb = $('tab-bar')) {
   if (!tb) return;
   tb.querySelectorAll('.tab.drop-before, .tab.drop-after, .tab.drop-end').forEach(el => {
     el.classList.remove('drop-before', 'drop-after', 'drop-end');
   });
 }
 
-function moveWorkspaceTab(sourceId, targetId, position = 'after') {
+export function moveWorkspaceTab(sourceId, targetId, position = 'after') {
   const fromIdx = Workspaces.findIndex(w => w.id === sourceId);
   const targetIdx = Workspaces.findIndex(w => w.id === targetId);
   if (fromIdx === -1 || targetIdx === -1 || sourceId === targetId) return false;
@@ -103,7 +119,7 @@ function moveWorkspaceTab(sourceId, targetId, position = 'after') {
   return true;
 }
 
-function moveWorkspaceTabToEnd(sourceId) {
+export function moveWorkspaceTabToEnd(sourceId) {
   const fromIdx = Workspaces.findIndex(w => w.id === sourceId);
   if (fromIdx === -1 || fromIdx === Workspaces.length - 1) return false;
   const [moved] = Workspaces.splice(fromIdx, 1);
@@ -111,7 +127,7 @@ function moveWorkspaceTabToEnd(sourceId) {
   return true;
 }
 
-function finishTabDrag() {
+export function finishTabDrag() {
   clearTabDropMarkers();
   const tb = $('tab-bar');
   if (tb) tb.querySelectorAll('.tab.dragging').forEach(el => el.classList.remove('dragging'));
@@ -120,7 +136,7 @@ function finishTabDrag() {
   tabDropPosition = null;
 }
 
-function handleTabDragStart(id, e) {
+export function handleTabDragStart(id, e) {
   if (editingTabId === id || Workspaces.length < 2) {
     e.preventDefault();
     return;
@@ -135,7 +151,7 @@ function handleTabDragStart(id, e) {
   }
 }
 
-function handleTabDragOver(id, e) {
+export function handleTabDragOver(id, e) {
   if (!draggingTabId || id === draggingTabId) return;
   e.preventDefault();
   e.stopPropagation();
@@ -154,7 +170,7 @@ function handleTabDragOver(id, e) {
   tabEl.classList.add(position === 'before' ? 'drop-before' : 'drop-after');
 }
 
-function handleTabDrop(id, e) {
+export function handleTabDrop(id, e) {
   if (!draggingTabId) return;
   e.preventDefault();
   e.stopPropagation();
@@ -173,11 +189,11 @@ function handleTabDrop(id, e) {
   requestAnimationFrame(() => focusTabElement(movedId));
 }
 
-function handleTabDragEnd() {
+export function handleTabDragEnd() {
   finishTabDrag();
 }
 
-function handleTabAddDragOver(e) {
+export function handleTabAddDragOver(e) {
   if (!draggingTabId) return;
   e.preventDefault();
   e.stopPropagation();
@@ -185,7 +201,7 @@ function handleTabAddDragOver(e) {
   if (e.currentTarget) e.currentTarget.classList.add('drop-end');
 }
 
-function handleTabAddDrop(e) {
+export function handleTabAddDrop(e) {
   if (!draggingTabId) return;
   e.preventDefault();
   e.stopPropagation();
@@ -199,14 +215,14 @@ function handleTabAddDrop(e) {
   requestAnimationFrame(() => focusTabElement(movedId));
 }
 
-function handleCreateTabKeydown(e) {
+export function handleCreateTabKeydown(e) {
   if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault();
     createTab();
   }
 }
 
-function handleTabKeydown(id, e) {
+export function handleTabKeydown(id, e) {
   if (editingTabId === id) return;
 
   if (e.key === 'Enter' || e.key === ' ') {
@@ -245,7 +261,7 @@ function handleTabKeydown(id, e) {
   }
 }
 
-function beginRenameTab(id, e) {
+export function beginRenameTab(id, e) {
   if (e) {
     e.stopPropagation();
     e.preventDefault();
@@ -254,7 +270,7 @@ function beginRenameTab(id, e) {
   renderTabs();
 }
 
-function handleTabRenameKeydown(id, e) {
+export function handleTabRenameKeydown(id, e) {
   e.stopPropagation();
   if (e.key === 'Enter') {
     e.preventDefault();
@@ -269,7 +285,7 @@ function handleTabRenameKeydown(id, e) {
   }
 }
 
-function commitTabRename(id, inputEl) {
+export function commitTabRename(id, inputEl) {
   if (editingTabId !== id) return;
   const ws = Workspaces.find(w => w.id === id);
   if (!ws) {
@@ -286,7 +302,7 @@ function commitTabRename(id, inputEl) {
   saveBackupChecked();
 }
 
-function renderTabs() {
+export function renderTabs() {
   const tb = $('tab-bar');
   if (!tb) return;
   tb.setAttribute('role', 'tablist');
@@ -350,14 +366,14 @@ function renderTabs() {
 // `dirty` alone used to wipe a "Save failed" the moment any unrelated tab
 // activity redrew — reporting a workspace as stored when it was not.
 // Whatever started those states is responsible for ending them.
-function updateSaveIndicator() {
+export function updateSaveIndicator() {
   const btn = $('save-now-btn');
   if (!btn) return;
   if (saveState === 'saving' || saveState === 'error') return;
   setSaveState(Workspaces.some(w => w.dirty) ? 'unsaved' : 'saved');
 }
 
-function renderTabOverflowMenu() {
+export function renderTabOverflowMenu() {
   const menu = $('tab-overflow-menu');
   if (!menu || menu.style.display !== 'block') return;
   menu.innerHTML = Workspaces.map(ws => {
@@ -374,7 +390,7 @@ function renderTabOverflowMenu() {
   }).join('');
 }
 
-function switchTabFromOverflow(id) {
+export function switchTabFromOverflow(id) {
   hideTabOverflowMenu();
   switchTab(id);
   requestAnimationFrame(() => {
@@ -383,7 +399,7 @@ function switchTabFromOverflow(id) {
   });
 }
 
-function toggleTabOverflowMenu(e) {
+export function toggleTabOverflowMenu(e) {
   e.stopPropagation();
   const menu = $('tab-overflow-menu');
   if (!menu) return;
@@ -409,7 +425,7 @@ function toggleTabOverflowMenu(e) {
   menu.style.visibility = '';
 }
 
-function hideTabOverflowMenu() {
+export function hideTabOverflowMenu() {
   const menu = $('tab-overflow-menu');
   if (menu) menu.style.display = 'none';
   const btn = $('tab-overflow-btn');
@@ -418,7 +434,7 @@ function hideTabOverflowMenu() {
 
 document.addEventListener('click', () => hideTabOverflowMenu());
 
-function createTab(name) {
+export function createTab(name) {
   const body = document.querySelector('.app-body');
   if (body) {
     body.classList.remove('tab-switching');
@@ -463,7 +479,7 @@ function createTab(name) {
   saveBackupChecked();
 }
 
-function switchTab(id) {
+export function switchTab(id) {
   if (id === activeWorkspaceId) return;
   
   const body = document.querySelector('.app-body');
@@ -511,7 +527,7 @@ function switchTab(id) {
 //
 // `proceed` is invoked for Save and Discard alike — Save just persists first.
 // Cancel simply never calls it, leaving the workspace untouched.
-function confirmDiscardingTabs(ids, proceed) {
+export function confirmDiscardingTabs(ids, proceed) {
   const dirty = ids
     .map(id => Workspaces.find(w => w.id === id))
     .filter(ws => ws && ws.dirty);
@@ -558,14 +574,14 @@ registerModal('unsaved-modal', {
   submit: () => { const b = $('unsaved-save-btn'); if (b && b.onclick) b.onclick(); }
 });
 
-function closeTab(id, e) {
+export function closeTab(id, e) {
   if (e) { e.stopPropagation(); e.preventDefault(); }
   if (Workspaces.length <= 1) return;
   hideTabContextMenu();
   confirmDiscardingTabs([id], () => performCloseTab(id));
 }
 
-function performCloseTab(id) {
+export function performCloseTab(id) {
   if (Workspaces.length <= 1) return;
   if (editingTabId === id) editingTabId = null;
 
@@ -594,7 +610,7 @@ function performCloseTab(id) {
   }
 }
 
-function closeOtherTabs(id) {
+export function closeOtherTabs(id) {
   hideTabContextMenu();
   if (Workspaces.length <= 1 || !Workspaces.find(w => w.id === id)) return;
   confirmDiscardingTabs(
@@ -603,7 +619,7 @@ function closeOtherTabs(id) {
   );
 }
 
-function performCloseOtherTabs(id) {
+export function performCloseOtherTabs(id) {
   if (Workspaces.length <= 1 || !Workspaces.find(w => w.id === id)) return;
   if (activeWorkspaceId) {
     const act = Workspaces.find(w => w.id === activeWorkspaceId);
@@ -623,7 +639,7 @@ function performCloseOtherTabs(id) {
   }
 }
 
-function closeTabsToRight(id) {
+export function closeTabsToRight(id) {
   hideTabContextMenu();
   const idx = Workspaces.findIndex(w => w.id === id);
   if (idx === -1 || idx >= Workspaces.length - 1) return;
@@ -633,7 +649,7 @@ function closeTabsToRight(id) {
   );
 }
 
-function performCloseTabsToRight(id) {
+export function performCloseTabsToRight(id) {
   const idx = Workspaces.findIndex(w => w.id === id);
   if (idx === -1 || idx >= Workspaces.length - 1) return;
   if (activeWorkspaceId) {
@@ -655,13 +671,13 @@ function performCloseTabsToRight(id) {
   }
 }
 
-function closeAllTabs() {
+export function closeAllTabs() {
   hideTabContextMenu();
   if (!Workspaces.length) return;
   confirmDiscardingTabs(Workspaces.map(w => w.id), performCloseAllTabs);
 }
 
-function performCloseAllTabs() {
+export function performCloseAllTabs() {
   if (!Workspaces.length) return;
   if (activeWorkspaceId) {
     const act = Workspaces.find(w => w.id === activeWorkspaceId);
@@ -676,12 +692,12 @@ function performCloseAllTabs() {
   showTabUndoToast(closed.length === 1 ? closed[0].w.name : `${closed.length} tabs`, closed.length);
 }
 
-function recordClosedWorkspace(workspace, index) {
+export function recordClosedWorkspace(workspace, index) {
   closedWorkspaces.push({ workspace, index });
   if (closedWorkspaces.length > 15) closedWorkspaces.shift();
 }
 
-function reopenClosedTab() {
+export function reopenClosedTab() {
   if (!closedWorkspaces.length) { showStatus('No recently closed tabs'); return; }
   const { workspace, index } = closedWorkspaces.pop();
   if (Workspaces.find(w => w.id === workspace.id)) { reopenClosedTab(); return; }
@@ -692,7 +708,7 @@ function reopenClosedTab() {
   showStatus(`Reopened "${workspace.name}"`);
 }
 
-function showTabUndoToast(label, count) {
+export function showTabUndoToast(label, count) {
   const toast = $('tab-undo-toast');
   if (!toast) return;
   const msg = $('tab-undo-msg');
@@ -704,7 +720,7 @@ function showTabUndoToast(label, count) {
   toast._t = setTimeout(() => toast.classList.remove('show'), 6000);
 }
 
-function hideTabUndoToast() {
+export function hideTabUndoToast() {
   const toast = $('tab-undo-toast');
   if (!toast) return;
   toast.classList.remove('show');
@@ -714,9 +730,9 @@ function hideTabUndoToast() {
 // ══════════════════════════════════════════════════════════════════
 //  TAB CONTEXT MENU
 // ══════════════════════════════════════════════════════════════════
-let tabCtxId = null;
+export let tabCtxId = null;
 
-function showTabContextMenu(id, e) {
+export function showTabContextMenu(id, e) {
   e.preventDefault();
   e.stopPropagation();
   const m = $('tab-ctx-menu');
@@ -737,20 +753,20 @@ function showTabContextMenu(id, e) {
   m.style.top = Math.max(8, Math.min(e.clientY, innerHeight - maxY)) + 'px';
 }
 
-function hideTabContextMenu() {
+export function hideTabContextMenu() {
   const m = $('tab-ctx-menu');
   if (m) m.style.display = 'none';
   tabCtxId = null;
 }
 
-function tabCtxRename() {
+export function tabCtxRename() {
   if (!tabCtxId) return;
   const id = tabCtxId;
   hideTabContextMenu();
   beginRenameTab(id);
 }
 
-function tabCtxDuplicate() {
+export function tabCtxDuplicate() {
   if (!tabCtxId) return;
   const src = Workspaces.find(w => w.id === tabCtxId);
   hideTabContextMenu();
@@ -767,33 +783,33 @@ function tabCtxDuplicate() {
   switchTab(copy.id);
 }
 
-function tabCtxClose() {
+export function tabCtxClose() {
   if (!tabCtxId) return;
   const id = tabCtxId;
   closeTab(id);
 }
 
-function tabCtxCloseOthers() {
+export function tabCtxCloseOthers() {
   if (!tabCtxId) return;
   closeOtherTabs(tabCtxId);
 }
 
-function tabCtxCloseRight() {
+export function tabCtxCloseRight() {
   if (!tabCtxId) return;
   closeTabsToRight(tabCtxId);
 }
 
-function tabCtxCloseAll() {
+export function tabCtxCloseAll() {
   closeAllTabs();
 }
 
 document.addEventListener('click', () => hideTabContextMenu());
 
-function renameTab(id, e) {
+export function renameTab(id, e) {
   beginRenameTab(id, e);
 }
 
-function initTabs() {
+export function initTabs() {
   if (Workspaces.length === 0) {
     Workspaces.push({
       id: 'ws_initial',
@@ -921,7 +937,7 @@ document.addEventListener('keydown', e => {
   if (e.key === '4') setView('theory');
 });
 
-function syncThemeExportPalette(theme) {
+export function syncThemeExportPalette(theme) {
   const t = Themes[theme] || Themes[DEFAULT_THEME];
   App.config.export = { ...App.config.export, ...t.export };
 }
@@ -931,7 +947,7 @@ function syncThemeExportPalette(theme) {
 // grid inside its own modal (rather than a row squeezed into the header
 // menu) is what actually scales as the registry grows: it wraps and
 // scrolls vertically instead of forcing a fixed-width horizontal strip.
-function renderThemeCards() {
+export function renderThemeCards() {
   const grid = $('theme-grid');
   if (!grid) return;
   const current = App.config.theme;
@@ -947,14 +963,14 @@ function renderThemeCards() {
   }).join('');
 }
 
-function openThemeModal() {
+export function openThemeModal() {
   renderThemeCards();
   showOverlay('theme-modal');
 }
 
 // The header row's small trailing label (e.g. "Nord") so the current theme
 // is visible without opening the modal.
-function updateThemeMenuLabel() {
+export function updateThemeMenuLabel() {
   const el = $('theme-btn-current');
   if (!el) return;
   const t = Themes[App.config.theme];
@@ -964,7 +980,7 @@ function updateThemeMenuLabel() {
 // Builds the Settings dropdown's options from the theme registry. Run once —
 // the dropdown-enhancer (js/dropdown.js) watches the native <select> for
 // further mutations, so this never needs to run again after the first open.
-function populateThemeSelect() {
+export function populateThemeSelect() {
   const sel = $('set-theme');
   if (!sel || sel.children.length) return;
   sel.innerHTML = Object.entries(Themes)
@@ -972,7 +988,7 @@ function populateThemeSelect() {
     .join('');
 }
 
-function applyTheme(theme, persist = true) {
+export function applyTheme(theme, persist = true) {
   const resolved = Themes[theme] ? theme : DEFAULT_THEME;
   App.config.theme = resolved;
   document.documentElement.dataset.theme = resolved;
@@ -992,7 +1008,7 @@ function applyTheme(theme, persist = true) {
 // Entry point for interactive theme picks (theme-modal cards); applyTheme
 // alone is also used at boot and from Settings, where a repaint/status
 // message would be premature or redundant.
-function selectTheme(theme) {
+export function selectTheme(theme) {
   applyTheme(theme);
   if (typeof renderAll === 'function') renderAll();
   saveBackupChecked();
@@ -1003,7 +1019,7 @@ function selectTheme(theme) {
 // ══════════════════════════════════════════════════════════════════
 //  ZOOM / FIT / MINIMAP / SIDEBAR / FILTER FUNCTIONS
 // ══════════════════════════════════════════════════════════════════
-function zoomIn() {
+export function zoomIn() {
   const w = $('canvas-wrap'); if (!w) return;
   const cfg = App.config.zoom;
   const r = w.getBoundingClientRect();
@@ -1022,7 +1038,7 @@ function zoomIn() {
   }, 250);
 }
 
-function zoomOut() {
+export function zoomOut() {
   const w = $('canvas-wrap'); if (!w) return;
   const cfg = App.config.zoom;
   const r = w.getBoundingClientRect();
@@ -1041,7 +1057,7 @@ function zoomOut() {
   }, 250);
 }
 
-function setZoomFromInput(val) {
+export function setZoomFromInput(val) {
   const num = parseFloat(val.replace('%', ''));
   if (isNaN(num)) {
     applyCamera(); return;
@@ -1085,7 +1101,7 @@ function setZoomFromInput(val) {
 // anything centred on it off toward the covered side and makes the minimap's
 // viewport rect wider than what the user can actually see. This reports the
 // genuinely visible box, in canvas-wrap-local CSS pixels.
-function visibleCanvasBox() {
+export function visibleCanvasBox() {
   const w = $('canvas-wrap');
   if (!w) return { x: 0, y: 0, w: 600, h: 400 };
   const full = { x: 0, y: 0, w: w.clientWidth, h: w.clientHeight };
@@ -1108,7 +1124,7 @@ function visibleCanvasBox() {
   return { x: left - wrapRect.left, y: 0, w: right - left, h: wrapRect.height };
 }
 
-function fitToScreen(silent = false) {
+export function fitToScreen(silent = false) {
   if (!App.states.length) return;
   const w = $('canvas-wrap'); if (!w) return;
   // Fit into the region the user can actually see, not the strip an
@@ -1141,14 +1157,14 @@ function fitToScreen(silent = false) {
   if (!silent) showStatus('Fit to screen');
 }
 
-function autoFitLoadedMachine() {
+export function autoFitLoadedMachine() {
   // Wait a tick so view switches and panel layout changes settle before fitting.
   setTimeout(() => fitToScreen(true), 50);
 }
 
 // ── Keep the diagram framed as the canvas area changes shape ──
 // (panel resize/pin/unpin, fullscreen toggle, browser window resize)
-function isMachineFullyVisible(vw, vh) {
+export function isMachineFullyVisible(vw, vh) {
   if (!App.states.length) return false;
   const R_PAD = App.config.radius + 4;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -1173,11 +1189,11 @@ function isMachineFullyVisible(vw, vh) {
   return minX >= vpMinX && minY >= vpMinY && maxX <= vpMaxX && maxY <= vpMaxY;
 }
 
-let _lastCanvasSize = null;
-let _resizeWasFullyVisible = false;
-let _resizeSettleTimer = null;
+export let _lastCanvasSize = null;
+export let _resizeWasFullyVisible = false;
+export let _resizeSettleTimer = null;
 
-function notifyCanvasResize() {
+export function notifyCanvasResize() {
   const w = $('canvas-wrap');
   if (!w) return;
   const rect = w.getBoundingClientRect();
@@ -1207,7 +1223,7 @@ function notifyCanvasResize() {
   }, 150);
 }
 
-function initCanvasResizeObserver() {
+export function initCanvasResizeObserver() {
   const w = $('canvas-wrap');
   if (!w || !('ResizeObserver' in window) || w._resizeObserverInit) return;
   w._resizeObserverInit = true;
@@ -1216,7 +1232,7 @@ function initCanvasResizeObserver() {
   new ResizeObserver(() => notifyCanvasResize()).observe(w);
 }
 
-function centerCameraOn(x, y, animate = true) {
+export function centerCameraOn(x, y, animate = true) {
   const w = $('canvas-wrap'); if (!w) return;
   App.cam.x = w.clientWidth / 2 - x * App.cam.z;
   App.cam.y = w.clientHeight / 2 - y * App.cam.z;
@@ -1229,7 +1245,7 @@ function centerCameraOn(x, y, animate = true) {
 }
 
 // ── Panel list ↔ canvas cross-highlighting ──
-function focusStateFromList(id) {
+export function focusStateFromList(id) {
   const s = getState(id); if (!s) return;
   App.selectedStates = new Set([id]);
   App.selectedTransitions.clear();
@@ -1241,12 +1257,12 @@ function focusStateFromList(id) {
   if (isMobilePanelLayout()) setMobilePanelCollapsed('lpanel', true);
 }
 
-function hlListHover(id, on) {
+export function hlListHover(id, on) {
   const el = document.querySelector(`[data-id="${id}"]`);
   if (el) el.classList.toggle('list-hover-st', on);
 }
 
-function focusTransFromList(id) {
+export function focusTransFromList(id) {
   const t = getTransition(id); if (!t) return;
   const from = getState(t.from), to = getState(t.to);
   if (!from || !to) return;
@@ -1259,19 +1275,19 @@ function focusTransFromList(id) {
   if (isMobilePanelLayout()) setMobilePanelCollapsed('lpanel', true);
 }
 
-function hlTransListHover(fromId, toId, on) {
+export function hlTransListHover(fromId, toId, on) {
   const el = document.querySelector(`[data-edge="${fromId}|${toId}"]`);
   if (el) el.classList.toggle('list-hover-t', on);
 }
 
-function filterTransitions() {
+export function filterTransitions() {
   const q = ($('trans-search')?.value || '').toLowerCase();
   document.querySelectorAll('#trans-list .ti').forEach(el => {
     el.style.display = (!q || el.textContent.toLowerCase().includes(q)) ? '' : 'none';
   });
 }
 
-function toggleFullscreen() {
+export function toggleFullscreen() {
   const elem = document.documentElement;
   if (!document.fullscreenElement) {
     elem.requestFullscreen().catch(err => showStatus(`Fullscreen failed: ${err.message}`));
@@ -1289,7 +1305,7 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 
-function renderMinimap() {
+export function renderMinimap() {
   const canvas = $('minimap-canvas'); if (!canvas) return;
   if (!canvas.isConnected) return;
   const ctx = canvas.getContext('2d');
@@ -1401,7 +1417,7 @@ function renderMinimap() {
   ctx.strokeRect(rx, ry, rw, rh);
 }
 
-function toggleMinimap() {
+export function toggleMinimap() {
   const mm = $('minimap-container'), sb = $('minimap-show-btn');
   if (!mm) return;
   const hidden = mm.classList.toggle('minimap-hidden');
@@ -1412,7 +1428,7 @@ function toggleMinimap() {
   if (typeof layoutCanvasOverlays === 'function') layoutCanvasOverlays();
 }
 
-function minimapNavigate(e, animate = true) {
+export function minimapNavigate(e, animate = true) {
   const canvas = $('minimap-canvas'); if (!canvas) return;
   if (!canvas._mmScale) return;
   const rect = canvas.getBoundingClientRect();
@@ -1443,8 +1459,8 @@ function minimapNavigate(e, animate = true) {
 }
 
 // Minimap viewport is draggable, not just click-to-jump.
-let _minimapDragging = false;
-function initMinimapDrag() {
+export let _minimapDragging = false;
+export function initMinimapDrag() {
   const canvas = $('minimap-canvas');
   if (!canvas || canvas._dragInit) return;
   canvas._dragInit = true;
@@ -1469,7 +1485,7 @@ function initMinimapDrag() {
   canvas.addEventListener('pointercancel', end);
 }
 
-function setTool(t) {
+export function setTool(t) {
   App.tool = t;
   if (App.transFrom && typeof hlState === 'function') hlState(App.transFrom, false);
   App.transFrom = null;
@@ -1508,18 +1524,18 @@ function setTool(t) {
   showStatus(msgs[t] || '');
 }
 
-function toggleTool(t) {
+export function toggleTool(t) {
   setTool(App.tool === t && t !== 'pointer' ? 'pointer' : t);
 }
 
-const TOOLBAR_DOCK_KEY = 'automata-toolbar-dock';
-const TOOLBAR_MARGIN = 12;
+export const TOOLBAR_DOCK_KEY = 'automata-toolbar-dock';
+export const TOOLBAR_MARGIN = 12;
 
-function isCompactToolbarMode() {
+export function isCompactToolbarMode() {
   return window.matchMedia && window.matchMedia('(max-width: 820px)').matches;
 }
 
-function normalizeToolbarDock(dock) {
+export function normalizeToolbarDock(dock) {
   const fallback = dock && ['top', 'bottom', 'left', 'right'].includes(dock.side)
     ? dock
     : getDefaultToolbarDock();
@@ -1527,16 +1543,16 @@ function normalizeToolbarDock(dock) {
   return { side: fallback.side, ratio: clamp01(typeof fallback.ratio === 'number' ? fallback.ratio : 0.5) };
 }
 
-function clamp01(n) {
+export function clamp01(n) {
   return Math.max(0, Math.min(1, n));
 }
 
-function getDefaultToolbarDock() {
+export function getDefaultToolbarDock() {
   const isNarrow = window.matchMedia && window.matchMedia('(max-width: 820px)').matches;
   return { side: isNarrow ? 'bottom' : 'left', ratio: 0.5 };
 }
 
-function readToolbarDock() {
+export function readToolbarDock() {
   try {
     const raw = localStorage.getItem(TOOLBAR_DOCK_KEY);
     if (raw) {
@@ -1549,13 +1565,13 @@ function readToolbarDock() {
   return normalizeToolbarDock(getDefaultToolbarDock());
 }
 
-function saveToolbarDock() {
+export function saveToolbarDock() {
   try {
     if (App.toolbarDock) localStorage.setItem(TOOLBAR_DOCK_KEY, JSON.stringify(App.toolbarDock));
   } catch (e) { }
 }
 
-function getToolbarDockFromPoint(pointerX, pointerY, wrapRect) {
+export function getToolbarDockFromPoint(pointerX, pointerY, wrapRect) {
   const distances = [
     { side: 'left', value: pointerX },
     { side: 'right', value: wrapRect.width - pointerX },
@@ -1568,7 +1584,7 @@ function getToolbarDockFromPoint(pointerX, pointerY, wrapRect) {
 // A translucent ghost clone of the toolbar, positioned exactly where it will
 // land (same positioning math as the real dock, so it can't drift out of
 // sync) — shows the actual final shape/size/orientation, not just an edge.
-function stripToolbarPreviewClone(root) {
+export function stripToolbarPreviewClone(root) {
   root.removeAttribute('onclick');
   root.setAttribute('aria-hidden', 'true');
   root.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
@@ -1576,7 +1592,7 @@ function stripToolbarPreviewClone(root) {
   root.querySelectorAll('button, input, select').forEach(el => { el.tabIndex = -1; });
 }
 
-function ensureToolbarPreview() {
+export function ensureToolbarPreview() {
   const wrap = $('canvas-wrap');
   const toolbox = $('canvas-toolbox');
   if (!wrap || !toolbox) return null;
@@ -1591,20 +1607,20 @@ function ensureToolbarPreview() {
   return preview;
 }
 
-function showToolbarPreview(dock, wrapRect) {
+export function showToolbarPreview(dock, wrapRect) {
   const preview = ensureToolbarPreview();
   if (!preview) return;
   positionToolbarNode(preview, dock, wrapRect);
   preview.classList.add('visible');
 }
 
-function removeToolbarPreview() {
+export function removeToolbarPreview() {
   const preview = $('toolbar-dock-preview');
   if (preview) preview.remove();
 }
 
-const TOOLBAR_COLLAPSE_KEY = 'automata-toolbar-collapsed';
-function toggleToolbarCollapsed(force) {
+export const TOOLBAR_COLLAPSE_KEY = 'automata-toolbar-collapsed';
+export function toggleToolbarCollapsed(force) {
   const toolbox = $('canvas-toolbox');
   if (!toolbox) return;
   App.toolbarCollapsed = force !== undefined ? !!force : !App.toolbarCollapsed;
@@ -1612,7 +1628,7 @@ function toggleToolbarCollapsed(force) {
   try { localStorage.setItem(TOOLBAR_COLLAPSE_KEY, App.toolbarCollapsed ? '1' : '0'); } catch (e) { }
   requestAnimationFrame(() => applyToolbarDock(false));
 }
-function initToolbarCollapse() {
+export function initToolbarCollapse() {
   let collapsed = false;
   try { collapsed = localStorage.getItem(TOOLBAR_COLLAPSE_KEY) === '1'; } catch (e) { }
   App.toolbarCollapsed = collapsed;
@@ -1621,14 +1637,14 @@ function initToolbarCollapse() {
   if (typeof applyToolbarDock === 'function') applyToolbarDock(false);
 }
 
-function computeToolbarRatio(side, pointerX, pointerY, wrapRect, box) {
+export function computeToolbarRatio(side, pointerX, pointerY, wrapRect, box) {
   const margin = TOOLBAR_MARGIN;
   return side === 'left' || side === 'right'
     ? clamp01((pointerY - box.height / 2 - margin) / Math.max(1, wrapRect.height - box.height - margin * 2))
     : clamp01((pointerX - box.width / 2 - margin) / Math.max(1, wrapRect.width - box.width - margin * 2));
 }
 
-function positionToolbarNode(node, dock, wrapRect) {
+export function positionToolbarNode(node, dock, wrapRect) {
   const margin = TOOLBAR_MARGIN;
   const compact = isCompactToolbarMode();
   const normalizedDock = compact ? { side: 'bottom', ratio: 0.5 } : dock;
@@ -1673,7 +1689,7 @@ function positionToolbarNode(node, dock, wrapRect) {
   return box;
 }
 
-function applyToolbarDock(persist = false) {
+export function applyToolbarDock(persist = false) {
   const toolbox = $('canvas-toolbox');
   const w = $('canvas-wrap');
   if (!toolbox || !w) return;
@@ -1699,9 +1715,9 @@ function applyToolbarDock(persist = false) {
 // Both are positioned from the same margin and share one vertical rhythm,
 // so whichever corner they land in they line up with each other and sit
 // the same distance from the edges as the toolbar does.
-const OVERLAY_GAP = 8;
+export const OVERLAY_GAP = 8;
 
-function canvasOverlayCorner(dock, wrapRect, toolbarBox) {
+export function canvasOverlayCorner(dock, wrapRect, toolbarBox) {
   // Compact mode pins the toolbar across the bottom, leaving only the top
   // free; the stack goes top-right, clear of the header controls.
   if (isCompactToolbarMode()) return { x: 'right', y: 'top' };
@@ -1734,7 +1750,7 @@ function canvasOverlayCorner(dock, wrapRect, toolbarBox) {
 
 // Places the visible members of the stack in the chosen corner, stacking
 // upward from the bottom edge (or downward from the top).
-function layoutCanvasOverlays(wrapRect, toolbarBox) {
+export function layoutCanvasOverlays(wrapRect, toolbarBox) {
   const w = $('canvas-wrap');
   if (!w) return;
   const rect = wrapRect || w.getBoundingClientRect();
@@ -1763,7 +1779,7 @@ function layoutCanvasOverlays(wrapRect, toolbarBox) {
   if (map) map.dataset.corner = `${corner.y}-${corner.x}`;
 }
 
-function initToolbarDock() {
+export function initToolbarDock() {
   App.toolbarDock = readToolbarDock();
   applyToolbarDock(false);
 
@@ -1865,7 +1881,7 @@ document.addEventListener('keyup', e => {
 //  MODEL PICKER LOGIC
 // ══════════════════════════════════════════════════════════════════
 
-function renderModelPicker() {
+export function renderModelPicker() {
   const menu = $('model-picker-menu');
   if (!menu) return;
   
@@ -1909,7 +1925,7 @@ function renderModelPicker() {
   menu.innerHTML = html;
 }
 
-function toggleModelPicker(force) {
+export function toggleModelPicker(force) {
   const container = $('model-picker-container');
   if (!container) return;
   const isOpen = force === undefined ? container.classList.contains('open') : !force;
@@ -1927,21 +1943,21 @@ function toggleModelPicker(force) {
   }
 }
 
-function closeModelPickerOnClickOutside(e) {
+export function closeModelPickerOnClickOutside(e) {
   const container = $('model-picker-container');
   if (container && !container.contains(e.target)) {
     toggleModelPicker(false);
   }
 }
 
-function selectModel(id) {
+export function selectModel(id) {
   if (MachineTypes[id] && MachineTypes[id].implemented) {
     setMachine(id);
     toggleModelPicker(false);
   }
 }
 
-function updateModelPickerLabels() {
+export function updateModelPickerLabels() {
   const m = MachineTypes[App.machine];
   if (!m) return;
   const cat = MachineCategories.find(c => c.id === m.category);
@@ -1958,14 +1974,14 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-function clearSpacePan() {
+export function clearSpacePan() {
   if (!App.spacePan) return;
   App.spacePan = false;
   const w = $('canvas-wrap');
   if (w) w.classList.remove('space-pan');
 }
 
-function cancelToolbarDrag() {
+export function cancelToolbarDrag() {
   if (!App.toolbarDragging) return;
   App.toolbarDragging = null;
   App.toolbarPreviewDock = null;
@@ -1998,23 +2014,23 @@ document.addEventListener('keydown', e => {
   e.preventDefault();
 });
 
-const PANEL_WIDTH_LIMITS = {
+export const PANEL_WIDTH_LIMITS = {
   lpanel: { min: 220, max: 420, defaultWidth: 256, storageKey: 'automata-lpanel-width', cssVar: '--lpanel-width' },
   rpanel: { min: 240, max: 480, defaultWidth: 288, storageKey: 'automata-rpanel-width', cssVar: '--rpanel-width' }
 };
-let activePanelResize = null;
+export let activePanelResize = null;
 
-function isMobilePanelLayout() {
+export function isMobilePanelLayout() {
   return !!(window.matchMedia && window.matchMedia('(max-width: 900px)').matches);
 }
 
-function clampPanelWidth(panelId, width) {
+export function clampPanelWidth(panelId, width) {
   const cfg = PANEL_WIDTH_LIMITS[panelId];
   if (!cfg) return width;
   return Math.max(cfg.min, Math.min(cfg.max, width));
 }
 
-function readStoredPanelWidth(panelId) {
+export function readStoredPanelWidth(panelId) {
   const cfg = PANEL_WIDTH_LIMITS[panelId];
   if (!cfg) return null;
   try {
@@ -2028,7 +2044,7 @@ function readStoredPanelWidth(panelId) {
   }
 }
 
-function setPanelWidth(panelId, width, persist = true) {
+export function setPanelWidth(panelId, width, persist = true) {
   const cfg = PANEL_WIDTH_LIMITS[panelId];
   if (!cfg) return null;
   const next = Math.round(clampPanelWidth(panelId, width));
@@ -2040,13 +2056,13 @@ function setPanelWidth(panelId, width, persist = true) {
   return next;
 }
 
-function applyStoredPanelWidths() {
+export function applyStoredPanelWidths() {
   if (isMobilePanelLayout()) return;
   setPanelWidth('lpanel', readStoredPanelWidth('lpanel'), false);
   setPanelWidth('rpanel', readStoredPanelWidth('rpanel'), false);
 }
 
-function startPanelResize(panelId, e) {
+export function startPanelResize(panelId, e) {
   if (e.button !== 0 || isMobilePanelLayout()) return;
   const panel = $(panelId);
   if (!panel || panel.classList.contains('unpinned')) return;
@@ -2064,7 +2080,7 @@ function startPanelResize(panelId, e) {
   e.preventDefault();
 }
 
-function handlePanelResizeMove(e) {
+export function handlePanelResizeMove(e) {
   if (!activePanelResize) return;
   const { panelId, startX, startWidth } = activePanelResize;
   const delta = e.clientX - startX;
@@ -2072,7 +2088,7 @@ function handlePanelResizeMove(e) {
   setPanelWidth(panelId, next, false);
 }
 
-function stopPanelResize() {
+export function stopPanelResize() {
   if (!activePanelResize) return;
   const { panelId } = activePanelResize;
   const panel = $(panelId);
@@ -2084,7 +2100,7 @@ function stopPanelResize() {
   if (typeof notifyCanvasResize === 'function') notifyCanvasResize();
 }
 
-function initPanelResizers() {
+export function initPanelResizers() {
   const lHandle = $('lpanel-resizer');
   const rHandle = $('rpanel-resizer');
   if (!lHandle || !rHandle || lHandle.dataset.resizeInit === '1') return;
@@ -2106,7 +2122,7 @@ function initPanelResizers() {
   applyStoredPanelWidths();
 }
 
-function toggleLPanelPin() {
+export function toggleLPanelPin() {
   const s = $('lpanel');
   const unpinned = s.classList.toggle('unpinned');
   const btn = $('lpanel-pin-btn');
@@ -2115,7 +2131,7 @@ function toggleLPanelPin() {
   try { localStorage.setItem('automata-lpanel-pinned', unpinned ? '0' : '1'); } catch (e) { }
 }
 
-function toggleRPanelPin() {
+export function toggleRPanelPin() {
   const r = $('rpanel');
   const unpinned = r.classList.toggle('unpinned');
   const btn = $('rpanel-pin-btn');
@@ -2124,15 +2140,15 @@ function toggleRPanelPin() {
   try { localStorage.setItem('automata-rpanel-pinned', unpinned ? '0' : '1'); } catch (e) { }
 }
 
-const MOBILE_BUILD_PANEL_IDS = ['lpanel', 'rpanel'];
-const MOBILE_AUX_PANEL_IDS = ['algo-nav', 'gram-left', 'theory-nav'];
-const MOBILE_AUX_PANEL_BY_VIEW = {
+export const MOBILE_BUILD_PANEL_IDS = ['lpanel', 'rpanel'];
+export const MOBILE_AUX_PANEL_IDS = ['algo-nav', 'gram-left', 'theory-nav'];
+export const MOBILE_AUX_PANEL_BY_VIEW = {
   algo: 'algo-nav',
   grammar: 'gram-left',
   theory: 'theory-nav'
 };
 
-function updateMobilePanelChrome() {
+export function updateMobilePanelChrome() {
   const openId = MOBILE_BUILD_PANEL_IDS.find(id => $(id)?.dataset.mobileCollapsed !== '1') || null;
   const auxId = MOBILE_AUX_PANEL_BY_VIEW[App.view];
   const auxOpen = !!auxId && $(auxId)?.dataset.mobileCollapsed !== '1';
@@ -2149,7 +2165,7 @@ function updateMobilePanelChrome() {
   });
 }
 
-function setMobilePanelCollapsed(id, collapsed, persist = true) {
+export function setMobilePanelCollapsed(id, collapsed, persist = true) {
   const panel = $(id);
   if (!panel) return;
   panel.dataset.mobileCollapsed = collapsed ? '1' : '0';
@@ -2165,7 +2181,7 @@ function setMobilePanelCollapsed(id, collapsed, persist = true) {
   updateMobilePanelChrome();
 }
 
-function toggleMobilePanel(id, force) {
+export function toggleMobilePanel(id, force) {
   const panel = $(id);
   if (!panel) return;
   const collapsed = force === undefined ? panel.dataset.mobileCollapsed !== '1' : !!force;
@@ -2181,16 +2197,16 @@ function toggleMobilePanel(id, force) {
   setMobilePanelCollapsed(id, collapsed);
 }
 
-function closeMobilePanels() {
+export function closeMobilePanels() {
   MOBILE_BUILD_PANEL_IDS.forEach(id => setMobilePanelCollapsed(id, true));
 }
 
-function closeMobileAuxNav() {
+export function closeMobileAuxNav() {
   const id = MOBILE_AUX_PANEL_BY_VIEW[App.view];
   if (id) setMobilePanelCollapsed(id, true);
 }
 
-function initMobilePanels() {
+export function initMobilePanels() {
   let openedBuildPanel = false;
   [...MOBILE_BUILD_PANEL_IDS, ...MOBILE_AUX_PANEL_IDS].forEach(id => {
     let stored = null;
@@ -2229,14 +2245,14 @@ document.addEventListener('click', e => {
   if (grammarAction) requestAnimationFrame(() => setMobilePanelCollapsed('gram-left', true));
 });
 
-function filterStates() {
+export function filterStates() {
   const q = ($('state-search')?.value || '').toLowerCase();
   document.querySelectorAll('#states-list .si').forEach(el => {
     el.style.display = (!q || el.textContent.toLowerCase().includes(q)) ? '' : 'none';
   });
 }
 
-function setLPSectionCollapsed(id, collapsed, persist = true) {
+export function setLPSectionCollapsed(id, collapsed, persist = true) {
   const sec = $(id);
   if (!sec) return;
   sec.classList.toggle('collapsed', !!collapsed);
@@ -2249,14 +2265,14 @@ function setLPSectionCollapsed(id, collapsed, persist = true) {
   }
 }
 
-function toggleLPSection(id) {
+export function toggleLPSection(id) {
   const sec = $(id);
   if (!sec) return;
   const collapsed = !sec.classList.contains('collapsed');
   setLPSectionCollapsed(id, collapsed, true);
 }
 
-function initLPanelSections() {
+export function initLPanelSections() {
   ['lp-alphabet', 'stack-sec', 'output-sec', 'lp-states', 'lp-transitions'].forEach(id => {
     let collapsed = false;
     try { collapsed = localStorage.getItem(`automata-lpanel-section-${id}`) === '1'; } catch (e) { }
@@ -2264,9 +2280,9 @@ function initLPanelSections() {
   });
 }
 
-const RP_SECTION_DEFAULTS = { 'rp-language': false, 'rp-simulate': false, 'rp-batch': true };
+export const RP_SECTION_DEFAULTS = { 'rp-language': false, 'rp-simulate': false, 'rp-batch': true };
 
-function setRPSectionCollapsed(id, collapsed, persist = true) {
+export function setRPSectionCollapsed(id, collapsed, persist = true) {
   const sec = $(id);
   if (!sec) return;
   sec.classList.toggle('collapsed', !!collapsed);
@@ -2277,12 +2293,12 @@ function setRPSectionCollapsed(id, collapsed, persist = true) {
   }
 }
 
-function toggleRPSection(id) {
+export function toggleRPSection(id) {
   const sec = $(id); if (!sec) return;
   setRPSectionCollapsed(id, !sec.classList.contains('collapsed'), true);
 }
 
-function initRPanelSections() {
+export function initRPanelSections() {
   Object.keys(RP_SECTION_DEFAULTS).forEach(id => {
     let collapsed = RP_SECTION_DEFAULTS[id];
     try {
@@ -2293,7 +2309,7 @@ function initRPanelSections() {
   });
 }
 
-function filterAlgos() {
+export function filterAlgos() {
   const q = ($('algo-search')?.value || '').toLowerCase();
   document.querySelectorAll('.algo-item').forEach(el => {
     el.style.display = (!q || el.textContent.toLowerCase().includes(q)) ? '' : 'none';
@@ -2310,7 +2326,7 @@ function filterAlgos() {
 
 registerModal('settings-modal', { submit: () => confirmSettings() });
 
-function openSettingsModal() {
+export function openSettingsModal() {
   const c = App.config;
   populateThemeSelect();
   $('set-theme').value = c.theme || DEFAULT_THEME;
@@ -2346,7 +2362,7 @@ function openSettingsModal() {
   showOverlay('settings-modal');
 }
 
-function switchSettingsTab(tabId) {
+export function switchSettingsTab(tabId) {
   const tabs = document.querySelectorAll('#settings-tabs .modal-tab');
   const contents = document.querySelectorAll('#settings-modal .modal-tab-content');
 
@@ -2366,7 +2382,7 @@ function switchSettingsTab(tabId) {
 // no matter which tab is active. Run once per open: measures each panel in
 // turn (each becomes visible on its own for a synchronous layout read, so
 // nothing actually paints mid-loop) and re-picks the tallest.
-function sizeSettingsPanels() {
+export function sizeSettingsPanels() {
   const panels = $('settings-tab-panels');
   if (!panels) return;
   const contents = document.querySelectorAll('#settings-modal .modal-tab-content');
@@ -2381,7 +2397,7 @@ function sizeSettingsPanels() {
   panels.style.height = max + 'px';
 }
 
-function confirmSettings() {
+export function confirmSettings() {
   const c = App.config;
   applyTheme($('set-theme').value || c.theme || DEFAULT_THEME);
   if ($('set-wheel-zoom')) {
@@ -2444,7 +2460,7 @@ function confirmSettings() {
   saveBackupChecked();
 }
 
-function getEditorSettingsData() {
+export function getEditorSettingsData() {
   const c = App.config;
   return {
     theme: c.theme,
@@ -2477,7 +2493,7 @@ function getEditorSettingsData() {
   };
 }
 
-function exportSettings() {
+export function exportSettings() {
   const data = getEditorSettingsData();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -2487,7 +2503,7 @@ function exportSettings() {
   showStatus('Settings profile exported!');
 }
 
-function importSettings(e) {
+export function importSettings(e) {
   const f = e.target.files[0];
   if (!f) return;
   e.target.value = '';
@@ -2505,7 +2521,7 @@ function importSettings(e) {
   reader.readAsText(f);
 }
 
-function populateSettingsModalInputs(data) {
+export function populateSettingsModalInputs(data) {
   populateThemeSelect();
   if (data.theme !== undefined) $('set-theme').value = data.theme;
   if (data.wheelZoom !== undefined && $('set-wheel-zoom')) $('set-wheel-zoom').checked = !!data.wheelZoom;

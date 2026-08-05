@@ -14,7 +14,7 @@
 // Nothing else needs to change: the Settings dropdown, the header theme
 // picker, localStorage persistence and settings import/export all read
 // this object and pick up new entries automatically.
-const Themes = {
+export const Themes = {
   dark: {
     label: 'Dark',
     swatch: ['#080c18', '#4fc3f7'],
@@ -374,4 +374,4 @@ const Themes = {
   }
 };
 
-const DEFAULT_THEME = 'dark';
+export const DEFAULT_THEME = 'dark';

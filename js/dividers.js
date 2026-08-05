@@ -1,3 +1,13 @@
+import { hideCanvasContextMenu, svgPt } from './canvas.js';
+import { snapshot } from './history.js';
+import { closeModal, registerModal, showOverlay } from './modal.js';
+import { hideSaveMenu } from './persistence.js';
+import { makeSVG, renderAll } from './render.js';
+import { $, App } from './state.js';
+import { hideContextMenu, showContextMenu } from './states-transitions.js';
+import { setTool, toggleTool } from './ui.js';
+import { showStatus } from './utils.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  CANVAS DIVIDERS — line & rectangle annotations that partition the canvas
 // ══════════════════════════════════════════════════════════════════
@@ -9,40 +19,40 @@
 // Both kinds are stored as the same two points (x1,y1)-(x2,y2): for a 'line'
 // they're the endpoints, for a 'rect' they're opposite corners. Keeping one
 // shape lets drawing, dragging, styling, undo and persistence stay shared.
-const DIVIDER_MIN_LEN = 12;      // a shorter drag is treated as a mis-click, not a shape
-const DIVIDER_LABEL_PAD_X = 7;
-const DIVIDER_LABEL_PAD_Y = 3;
-const DIVIDER_LABEL_MAX = 80;
-const DIVIDER_KINDS = ['line', 'rect'];
-const DIVIDER_STYLES = ['solid', 'dashed', 'dotted'];
-const DIVIDER_COLORS = ['slate', 'violet', 'indigo', 'blue', 'green', 'yellow', 'orange', 'red'];
+export const DIVIDER_MIN_LEN = 12;      // a shorter drag is treated as a mis-click, not a shape
+export const DIVIDER_LABEL_PAD_X = 7;
+export const DIVIDER_LABEL_PAD_Y = 3;
+export const DIVIDER_LABEL_MAX = 80;
+export const DIVIDER_KINDS = ['line', 'rect'];
+export const DIVIDER_STYLES = ['solid', 'dashed', 'dotted'];
+export const DIVIDER_COLORS = ['slate', 'violet', 'indigo', 'blue', 'green', 'yellow', 'orange', 'red'];
 
-function newDividerId() { return 'd' + (++App.dividerN); }
-function getDivider(id) { return App.dividers.find(d => d.id === id); }
+export function newDividerId() { return 'd' + (++App.dividerN); }
+export function getDivider(id) { return App.dividers.find(d => d.id === id); }
 
-function normalizeDividerKind(kind) {
+export function normalizeDividerKind(kind) {
   return DIVIDER_KINDS.includes(kind) ? kind : 'line';
 }
-function normalizeDividerStyle(style) {
+export function normalizeDividerStyle(style) {
   return DIVIDER_STYLES.includes(style) ? style : 'dashed';
 }
-function normalizeDividerColor(color) {
+export function normalizeDividerColor(color) {
   return DIVIDER_COLORS.includes(color) ? color : 'slate';
 }
-function isRectDivider(d) {
+export function isRectDivider(d) {
   return normalizeDividerKind(d && d.kind) === 'rect';
 }
 
-function dividerMid(d) {
+export function dividerMid(d) {
   return { x: (d.x1 + d.x2) / 2, y: (d.y1 + d.y2) / 2 };
 }
-function dividerLength(d) {
+export function dividerLength(d) {
   return Math.hypot(d.x2 - d.x1, d.y2 - d.y1);
 }
 
 // Normalized box — the two stored corners can be in any order depending on
 // which way the user dragged, but <rect> needs a positive width/height.
-function dividerRectBox(d) {
+export function dividerRectBox(d) {
   const x = Math.min(d.x1, d.x2), y = Math.min(d.y1, d.y2);
   return { x, y, w: Math.abs(d.x2 - d.x1), h: Math.abs(d.y2 - d.y1) };
 }
@@ -50,7 +60,7 @@ function dividerRectBox(d) {
 // Angle the label rides at (lines only). SVG y grows downward, so a raw atan2
 // would render text upside-down for any line pointing leftward — flipping by
 // 180° keeps every label readable left-to-right regardless of draw direction.
-function dividerLabelAngle(d) {
+export function dividerLabelAngle(d) {
   if (isRectDivider(d)) return 0;
   let deg = Math.atan2(d.y2 - d.y1, d.x2 - d.x1) * 180 / Math.PI;
   if (deg > 90) deg -= 180;
@@ -61,13 +71,13 @@ function dividerLabelAngle(d) {
 // A line's caption sits at its midpoint; a rect's rides on its top edge, where
 // it reads as a region title rather than something floating in the middle of
 // the states the rect encloses.
-function dividerLabelAnchor(d) {
+export function dividerLabelAnchor(d) {
   if (!isRectDivider(d)) return dividerMid(d);
   const box = dividerRectBox(d);
   return { x: box.x + box.w / 2, y: box.y };
 }
 
-function includeDividerBounds(cb) {
+export function includeDividerBounds(cb) {
   (App.dividers || []).forEach(d => {
     cb(Math.min(d.x1, d.x2), Math.min(d.y1, d.y2), Math.max(d.x1, d.x2), Math.max(d.y1, d.y2));
   });
@@ -76,7 +86,7 @@ function includeDividerBounds(cb) {
 // ══════════════════════════════════════════════════════════════════
 //  GEOMETRY HELPERS (snap + shift-constrain)
 // ══════════════════════════════════════════════════════════════════
-function snapDividerPoint(pt) {
+export function snapDividerPoint(pt) {
   if (!App.config.snapToGrid) return pt;
   const g = App.config.gridSnap || 20;
   return { x: Math.round(pt.x / g) * g, y: Math.round(pt.y / g) * g };
@@ -87,7 +97,7 @@ function snapDividerPoint(pt) {
 // deliberately differs from state dragging, where Shift toggles grid snap —
 // while drawing a shape these locks are the far more useful gesture, so grid
 // snap here follows the App.config.snapToGrid setting alone.
-function constrainDividerPoint(anchor, pt, shiftKey, kind = 'line') {
+export function constrainDividerPoint(anchor, pt, shiftKey, kind = 'line') {
   if (!shiftKey) return pt;
   const dx = pt.x - anchor.x, dy = pt.y - anchor.y;
   if (normalizeDividerKind(kind) === 'rect') {
@@ -104,21 +114,21 @@ function constrainDividerPoint(anchor, pt, shiftKey, kind = 'line') {
   return { x: anchor.x + Math.cos(angle) * len, y: anchor.y + Math.sin(angle) * len };
 }
 
-function resolveDividerPoint(anchor, e, shiftKey, kind) {
+export function resolveDividerPoint(anchor, e, shiftKey, kind) {
   const raw = svgPt(e);
   return snapDividerPoint(anchor ? constrainDividerPoint(anchor, raw, shiftKey, kind) : raw);
 }
 
 // Which stored coordinates a given handle controls. A line has two endpoints;
 // a rect has four corners, each owning one x and one y.
-const DIVIDER_RECT_CORNERS = {
+export const DIVIDER_RECT_CORNERS = {
   1: { x: 'x1', y: 'y1' },
   2: { x: 'x2', y: 'y1' },
   3: { x: 'x2', y: 'y2' },
   4: { x: 'x1', y: 'y2' }
 };
 
-function dividerHandles(d) {
+export function dividerHandles(d) {
   if (!isRectDivider(d)) {
     return [{ which: 1, x: d.x1, y: d.y1 }, { which: 2, x: d.x2, y: d.y2 }];
   }
@@ -130,7 +140,7 @@ function dividerHandles(d) {
 
 // The point a handle drag pivots around — the far end of a line, or the
 // diagonally opposite corner of a rect.
-function dividerHandleAnchor(d, which) {
+export function dividerHandleAnchor(d, which) {
   if (!isRectDivider(d)) {
     return which === 1 ? { x: d.x2, y: d.y2 } : { x: d.x1, y: d.y1 };
   }
@@ -142,14 +152,14 @@ function dividerHandleAnchor(d, which) {
 // ══════════════════════════════════════════════════════════════════
 //  RENDER
 // ══════════════════════════════════════════════════════════════════
-function renderDividers() {
+export function renderDividers() {
   const g = $('dividers-g');
   if (!g) return;
   g.innerHTML = '';
   (App.dividers || []).forEach(d => renderOneDivider(g, d));
 }
 
-function renderOneDivider(g, d) {
+export function renderOneDivider(g, d) {
   const kind = normalizeDividerKind(d.kind);
   const grp = makeSVG('g');
   grp.classList.add('divider-g');
@@ -209,7 +219,7 @@ function renderOneDivider(g, d) {
 
 // Writes the current coordinates onto an already-built divider group. Shared by
 // the initial render and the in-place drag update, so the two can never drift.
-function applyDividerGeometry(grp, d) {
+export function applyDividerGeometry(grp, d) {
   const rect = isRectDivider(d);
   const box = rect ? dividerRectBox(d) : null;
 
@@ -235,7 +245,7 @@ function applyDividerGeometry(grp, d) {
   layoutDividerLabel(grp, d);
 }
 
-function layoutDividerLabel(grp, d) {
+export function layoutDividerLabel(grp, d) {
   const labelG = grp.querySelector('.divider-label-g');
   if (!labelG) return;
   const text = labelG.querySelector('.divider-label');
@@ -255,7 +265,7 @@ function layoutDividerLabel(grp, d) {
 
 // Fast path used while dragging: move one divider's existing DOM in place
 // rather than re-rendering the whole layer on every pointermove.
-function updateOneDividerDOM(d) {
+export function updateOneDividerDOM(d) {
   const grp = App.domCache.dividers.get(d.id) || document.querySelector(`.divider-g[data-divider-id="${d.id}"]`);
   if (!grp) return;
   if (!App.domCache.dividers.has(d.id)) App.domCache.dividers.set(d.id, grp);
@@ -265,7 +275,7 @@ function updateOneDividerDOM(d) {
 // ══════════════════════════════════════════════════════════════════
 //  INTERACTION
 // ══════════════════════════════════════════════════════════════════
-function attachDividerHandlers(grp, d) {
+export function attachDividerHandlers(grp, d) {
   grp.addEventListener('pointerdown', e => onDividerDown(e, d.id));
   grp.addEventListener('dblclick', e => {
     e.stopPropagation();
@@ -290,7 +300,7 @@ function attachDividerHandlers(grp, d) {
   });
 }
 
-function selectDivider(id) {
+export function selectDivider(id) {
   App.selectedDividerId = id;
   document.querySelectorAll('.divider-g.divider-sel').forEach(el => el.classList.remove('divider-sel'));
   if (!id) return;
@@ -298,18 +308,18 @@ function selectDivider(id) {
   if (el) el.classList.add('divider-sel');
 }
 
-function clearDividerSelection() {
+export function clearDividerSelection() {
   selectDivider(null);
 }
 
 // Maps the active tool to the kind it draws, or null if it isn't a draw tool.
-function dividerToolKind(tool = App.tool) {
+export function dividerToolKind(tool = App.tool) {
   if (tool === 'divider') return 'line';
   if (tool === 'rect') return 'rect';
   return null;
 }
 
-function onDividerDown(e, id) {
+export function onDividerDown(e, id) {
   if (App.spacePan) return;
   if (e.button !== 0 && e.button !== 2) return;
 
@@ -341,7 +351,7 @@ function onDividerDown(e, id) {
 }
 
 // Called from canvas.js's handlePointerMove while App.dragDividerId is set.
-function dragDividerTo(e) {
+export function dragDividerTo(e) {
   const d = getDivider(App.dragDividerId);
   const off = App.dragDividerOffset;
   if (!d || !off) return;
@@ -351,7 +361,7 @@ function dragDividerTo(e) {
   updateOneDividerDOM(d);
 }
 
-function onDividerEndpointDown(e, id, which) {
+export function onDividerEndpointDown(e, id, which) {
   if (App.spacePan) return;
   if (dividerToolKind()) return;   // let the draw gesture through
   e.stopPropagation();
@@ -367,7 +377,7 @@ function onDividerEndpointDown(e, id, which) {
 }
 
 // Called from canvas.js's handlePointerMove while App.dragDividerEndpoint is set.
-function dragDividerEndpointTo(e) {
+export function dragDividerEndpointTo(e) {
   const { id, which } = App.dragDividerEndpoint;
   const d = getDivider(id);
   if (!d) return;
@@ -385,12 +395,12 @@ function dragDividerEndpointTo(e) {
   updateOneDividerDOM(d);
 }
 
-function endDividerEndpointDrag() {
+export function endDividerEndpointDrag() {
   App.dragDividerEndpoint = null;
 }
 
 // ── Drawing a new divider by dragging on empty canvas ──
-function beginDividerDraw(e) {
+export function beginDividerDraw(e) {
   const kind = dividerToolKind();
   if (!kind) return;
   const start = snapDividerPoint(svgPt(e));
@@ -405,7 +415,7 @@ function beginDividerDraw(e) {
   updateDividerDraftEl();
 }
 
-function updateDividerDraftEl() {
+export function updateDividerDraftEl() {
   const draft = App.dividerDraft;
   const el = App.dividerDraftEl;
   if (!draft || !el) return;
@@ -420,13 +430,13 @@ function updateDividerDraftEl() {
   }
 }
 
-function updateDividerDraw(e) {
+export function updateDividerDraw(e) {
   if (!App.dividerDraft) return;
   App.dividerDraft.current = resolveDividerPoint(App.dividerDraft.start, e, e.shiftKey, App.dividerDraft.kind);
   updateDividerDraftEl();
 }
 
-function finishDividerDraw() {
+export function finishDividerDraw() {
   const draft = App.dividerDraft;
   App.dividerDraft = null;
   if (App.dividerDraftEl) { App.dividerDraftEl.remove(); App.dividerDraftEl = null; }
@@ -449,7 +459,7 @@ function finishDividerDraw() {
 // ══════════════════════════════════════════════════════════════════
 //  CREATE / DELETE
 // ══════════════════════════════════════════════════════════════════
-function createDivider(kind, x1, y1, x2, y2) {
+export function createDivider(kind, x1, y1, x2, y2) {
   snapshot();
   const d = {
     id: newDividerId(),
@@ -465,14 +475,14 @@ function createDivider(kind, x1, y1, x2, y2) {
   return d;
 }
 
-function deleteDivider(id) {
+export function deleteDivider(id) {
   snapshot();
   App.dividers = App.dividers.filter(d => d.id !== id);
   if (App.selectedDividerId === id) App.selectedDividerId = null;
   renderAll();
 }
 
-function deleteSelectedDivider() {
+export function deleteSelectedDivider() {
   if (!App.selectedDividerId) return false;
   deleteDivider(App.selectedDividerId);
   return true;
@@ -481,17 +491,17 @@ function deleteSelectedDivider() {
 // ══════════════════════════════════════════════════════════════════
 //  CONTEXT MENU ACTIONS (divider mode)
 // ══════════════════════════════════════════════════════════════════
-function ctxEditDivider() {
+export function ctxEditDivider() {
   const id = App.ctxDividerId;
   hideContextMenu();
   if (id) openDividerModal(id);
 }
-function ctxDeleteDivider() {
+export function ctxDeleteDivider() {
   const id = App.ctxDividerId;
   hideContextMenu();
   if (id) deleteDivider(id);
 }
-function ctxSetDividerColor(color) {
+export function ctxSetDividerColor(color) {
   const d = getDivider(App.ctxDividerId);
   hideContextMenu();
   if (!d) return;
@@ -499,7 +509,7 @@ function ctxSetDividerColor(color) {
   d.color = normalizeDividerColor(color);
   renderAll();
 }
-function ctxSetDividerStyle(style) {
+export function ctxSetDividerStyle(style) {
   const d = getDivider(App.ctxDividerId);
   hideContextMenu();
   if (!d) return;
@@ -509,7 +519,7 @@ function ctxSetDividerStyle(style) {
 }
 // Rotates a line about its midpoint onto the nearest axis, so a hand-drawn
 // "roughly horizontal" divider can be made exactly horizontal.
-function ctxStraightenDivider() {
+export function ctxStraightenDivider() {
   const d = getDivider(App.ctxDividerId);
   hideContextMenu();
   if (!d || isRectDivider(d)) return;
@@ -534,7 +544,7 @@ registerModal('divider-modal', {
   onClose: () => { App.editDividerId = null; }
 });
 
-function openDividerModal(id) {
+export function openDividerModal(id) {
   const d = getDivider(id);
   if (!d) return;
   App.editDividerId = id;
@@ -548,27 +558,27 @@ function openDividerModal(id) {
   if (input) setTimeout(() => { input.focus(); input.select(); }, 40);
 }
 
-function setDividerModalColorUI(color) {
+export function setDividerModalColorUI(color) {
   const row = $('divider-modal-swatches');
   if (!row) return;
   row.dataset.selected = color;
   row.querySelectorAll('.note-swatch').forEach(b => b.classList.toggle('active', b.dataset.color === color));
 }
-function setDividerModalColor(color) {
+export function setDividerModalColor(color) {
   setDividerModalColorUI(normalizeDividerColor(color));
 }
 
-function setDividerModalStyleUI(style) {
+export function setDividerModalStyleUI(style) {
   const row = $('divider-modal-styles');
   if (!row) return;
   row.dataset.selected = style;
   row.querySelectorAll('.divider-style-btn').forEach(b => b.classList.toggle('active', b.dataset.style === style));
 }
-function setDividerModalStyle(style) {
+export function setDividerModalStyle(style) {
   setDividerModalStyleUI(normalizeDividerStyle(style));
 }
 
-function confirmDivider() {
+export function confirmDivider() {
   const d = getDivider(App.editDividerId);
   if (!d) { closeModal('divider-modal'); return; }
   snapshot();
@@ -581,7 +591,7 @@ function confirmDivider() {
   renderAll();
 }
 
-function deleteDividerFromModal() {
+export function deleteDividerFromModal() {
   const id = App.editDividerId;
   App.editDividerId = null;
   closeModal('divider-modal');
@@ -594,19 +604,19 @@ function deleteDividerFromModal() {
 // One toolbar slot covers both shapes rather than two near-identical buttons.
 // Clicking it opens the picker so the two drawing modes are discoverable;
 // keyboard shortcuts remain available for quick switching.
-const SHAPE_TOOL_ICON_LINE = '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M214.64,41.36a32,32,0,0,0-50.2,38.89L80.25,164.44a32.06,32.06,0,0,0-38.89,4.94h0a32,32,0,1,0,50.2,6.37l84.19-84.19a32,32,0,0,0,38.89-50.2Zm-139.33,162a16,16,0,0,1-22.64-22.64h0a16,16,0,0,1,22.63,0h0A16,16,0,0,1,75.31,203.33Zm128-128a16,16,0,1,1,0-22.63A16,16,0,0,1,203.33,75.3Z"/></svg>';
-const SHAPE_TOOL_ICON_RECT = '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Z"/></svg>';
-const SHAPE_TOOL_LABELS = { divider: 'Divider', rect: 'Region' };
-const SHAPE_TOOL_KBD = { divider: 'L', rect: 'R' };
+export const SHAPE_TOOL_ICON_LINE = '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M214.64,41.36a32,32,0,0,0-50.2,38.89L80.25,164.44a32.06,32.06,0,0,0-38.89,4.94h0a32,32,0,1,0,50.2,6.37l84.19-84.19a32,32,0,0,0,38.89-50.2Zm-139.33,162a16,16,0,0,1-22.64-22.64h0a16,16,0,0,1,22.63,0h0A16,16,0,0,1,75.31,203.33Zm128-128a16,16,0,1,1,0-22.63A16,16,0,0,1,203.33,75.3Z"/></svg>';
+export const SHAPE_TOOL_ICON_RECT = '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Z"/></svg>';
+export const SHAPE_TOOL_LABELS = { divider: 'Divider', rect: 'Region' };
+export const SHAPE_TOOL_KBD = { divider: 'L', rect: 'R' };
 
-function normalizeShapeTool(tool) {
+export function normalizeShapeTool(tool) {
   return tool === 'rect' ? 'rect' : 'divider';
 }
 
 // Repaints the toolbar button to reflect which kind is current — called
 // whenever App.lastShapeTool changes, so the icon/label/shortcut hint stay
 // truthful even when switched via keyboard (L/R) rather than the button itself.
-function updateShapeToolButton(tool) {
+export function updateShapeToolButton(tool) {
   const kind = normalizeShapeTool(tool);
   const icon = $('shape-tool-icon');
   const lbl = $('shape-tool-lbl');
@@ -620,11 +630,11 @@ function updateShapeToolButton(tool) {
 
 // Click activates the remembered kind; toggleTool's existing "click the
 // active tool again to return to Pointer" rule applies unchanged.
-function clickShapeTool() {
+export function clickShapeTool() {
   toggleTool(App.lastShapeTool);
 }
 
-function showShapeToolMenu(e) {
+export function showShapeToolMenu(e) {
   e.preventDefault();
   e.stopPropagation();
   hideContextMenu();
@@ -647,14 +657,14 @@ function showShapeToolMenu(e) {
   m.style.top = Math.max(8, Math.min(top, innerHeight - h - 8)) + 'px';
   btn?.setAttribute('aria-expanded', 'true');
 }
-function hideShapeToolMenu() {
+export function hideShapeToolMenu() {
   const m = $('shape-tool-menu');
   if (m) m.style.display = 'none';
   $('t-shape')?.setAttribute('aria-expanded', 'false');
 }
 document.addEventListener('click', () => hideShapeToolMenu());
 
-function pickShapeTool(tool) {
+export function pickShapeTool(tool) {
   hideShapeToolMenu();
   setTool(normalizeShapeTool(tool));
 }

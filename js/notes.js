@@ -1,24 +1,32 @@
+import { hideCanvasContextMenu, svgPt } from './canvas.js';
+import { snapshot } from './history.js';
+import { closeModal, registerModal, showOverlay } from './modal.js';
+import { makeSVG, renderAll } from './render.js';
+import { $, App } from './state.js';
+import { getState, getTransition, hideContextMenu, showContextMenu } from './states-transitions.js';
+import { showStatus } from './utils.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  CANVAS NOTES — free or anchored comments on states/transitions
 // ══════════════════════════════════════════════════════════════════
-const NOTE_WIDTH = 170;          // default/auto width when a note has never been resized
-const NOTE_MIN_W = 120;
-const NOTE_MIN_H = 54;
-const NOTE_MAX_W = 640;
-const NOTE_MAX_H = 480;
-const NOTE_PAD = 10;
-const NOTE_LINE_H = 15;
-const NOTE_MAX_CHARS = 2000;
+export const NOTE_WIDTH = 170;          // default/auto width when a note has never been resized
+export const NOTE_MIN_W = 120;
+export const NOTE_MIN_H = 54;
+export const NOTE_MAX_W = 640;
+export const NOTE_MAX_H = 480;
+export const NOTE_PAD = 10;
+export const NOTE_LINE_H = 15;
+export const NOTE_MAX_CHARS = 2000;
 
-function newNoteId() { return 'n' + (++App.noteN); }
-function getNote(id) { return App.notes.find(n => n.id === id); }
+export function newNoteId() { return 'n' + (++App.noteN); }
+export function getNote(id) { return App.notes.find(n => n.id === id); }
 
 // A note is auto-sized (grows/shrinks with its text) until the user drags its
 // resize handle, at which point note.w/note.h are pinned and text wraps/clips
 // to that box instead.
-function noteIsResized(note) { return note && note.w != null && note.h != null; }
+export function noteIsResized(note) { return note && note.w != null && note.h != null; }
 
-function normalizeNoteColor(color) {
+export function normalizeNoteColor(color) {
   return color === 'purple' ? 'violet' : (color || 'default');
 }
 
@@ -26,7 +34,7 @@ function normalizeNoteColor(color) {
 // anchors, or an offset from its anchors' centroid when it does. This way an
 // anchored note rides along automatically whenever a state it's pinned to
 // moves, without having to track every drag separately. ──
-function noteAnchorPoints(note) {
+export function noteAnchorPoints(note) {
   const pts = [];
   (note.anchorStates || []).forEach(id => {
     const s = getState(id);
@@ -40,7 +48,7 @@ function noteAnchorPoints(note) {
   });
   return pts;
 }
-function noteAnchorCentroid(note) {
+export function noteAnchorCentroid(note) {
   const pts = noteAnchorPoints(note);
   if (!pts.length) return null;
   return {
@@ -48,7 +56,7 @@ function noteAnchorCentroid(note) {
     y: pts.reduce((a, p) => a + p.y, 0) / pts.length
   };
 }
-function resolveNotePos(note) {
+export function resolveNotePos(note) {
   const c = noteAnchorCentroid(note);
   return c ? { x: c.x + note.x, y: c.y + note.y } : { x: note.x, y: note.y };
 }
@@ -57,7 +65,7 @@ function resolveNotePos(note) {
 // width is fixed (NOTE_WIDTH) and the height grows with content; for a
 // user-resized note both are pinned and content wraps/clips to fit, showing
 // as many lines as fit (plus a "…" overflow marker) rather than spilling out.
-function noteBoxLayout(note) {
+export function noteBoxLayout(note) {
   if (noteIsResized(note)) {
     const w = Math.max(NOTE_MIN_W, Math.min(NOTE_MAX_W, note.w));
     const h = Math.max(NOTE_MIN_H, Math.min(NOTE_MAX_H, note.h));
@@ -79,7 +87,7 @@ function noteBoxLayout(note) {
 // Lets fitToScreen / the minimap / resize-framing include note bodies in
 // their world bounding box, so a free-floating note never gets scrolled out
 // of view when a saved workspace is loaded.
-function includeNoteBounds(cb) {
+export function includeNoteBounds(cb) {
   App.notes.forEach(note => {
     const pos = resolveNotePos(note);
     const { w, h } = noteBoxLayout(note);
@@ -92,7 +100,7 @@ function includeNoteBounds(cb) {
 // anchors survive, or frozen as an absolute point if none do). Must be called
 // *before* the ids are actually removed from App.states/App.transitions —
 // otherwise their positions can no longer be resolved.
-function pruneNoteAnchorsRemoving(removedStateIds, removedTransIds) {
+export function pruneNoteAnchorsRemoving(removedStateIds, removedTransIds) {
   if (!App.notes || !App.notes.length) return;
   const removedS = new Set(removedStateIds), removedT = new Set(removedTransIds);
   if (!removedS.size && !removedT.size) return;
@@ -117,7 +125,7 @@ function pruneNoteAnchorsRemoving(removedStateIds, removedTransIds) {
 
 // Call this before mutating App.states/App.transitions (e.g. at the top of a
 // delete handler), while the ids being removed are still resolvable.
-function pruneNoteAnchorsExcluding(removedStateIds, removedTransIds) {
+export function pruneNoteAnchorsExcluding(removedStateIds, removedTransIds) {
   pruneNoteAnchorsRemoving(removedStateIds || [], removedTransIds || []);
 }
 
@@ -128,7 +136,7 @@ function pruneNoteAnchorsExcluding(removedStateIds, removedTransIds) {
 // pointing at a dangling id; the tradeoff is that if the state is *already*
 // gone by the time this runs, the note can't recover its exact prior visual
 // position and instead settles at its stored offset.
-function pruneNoteAnchors() {
+export function pruneNoteAnchors() {
   if (!App.notes || !App.notes.length) return;
   const stateIds = new Set(App.states.map(s => s.id));
   const transIds = new Set(App.transitions.map(t => t.id));
@@ -145,10 +153,10 @@ function pruneNoteAnchors() {
 // foreignObject), so notes survive the PNG export pipeline, which rasterizes
 // the SVG via drawImage(). Word-wrap operates on run boundaries so a bold
 // word never gets silently split from its markers. ──
-const NOTE_EMPTY_PLACEHOLDER = 'Double-click to edit';
+export const NOTE_EMPTY_PLACEHOLDER = 'Double-click to edit';
 // Derived, not hardcoded, so an auto-sized note and one resized to exactly
 // NOTE_WIDTH wrap identically instead of differing by a character.
-const NOTE_CHARS_PER_LINE = noteCharsPerLine(NOTE_WIDTH);
+export const NOTE_CHARS_PER_LINE = noteCharsPerLine(NOTE_WIDTH);
 
 // Splits raw markup text into { text, bold, italic, underline } runs, one per
 // styled span, without crossing newlines (callers split on '\n' first).
@@ -161,8 +169,8 @@ const NOTE_CHARS_PER_LINE = noteCharsPerLine(NOTE_WIDTH);
 // constantly in this domain — `a*b*`, `Σ*`, `(0|1)*` would silently italicize,
 // and `q_start to q_end` would silently underline. Those now render literally;
 // the trade-off is that markers can only wrap whole words, not word interiors.
-const NOTE_MARKUP_RE = /(^|[\s([{"'])(\*\*|__|\*)(?=\S)(.*?\S)\2(?=$|[\s)\]}"'.,;:!?])/g;
-function parseNoteRuns(line) {
+export const NOTE_MARKUP_RE = /(^|[\s([{"'])(\*\*|__|\*)(?=\S)(.*?\S)\2(?=$|[\s)\]}"'.,;:!?])/g;
+export function parseNoteRuns(line) {
   const runs = [];
   let last = 0, m;
   NOTE_MARKUP_RE.lastIndex = 0;
@@ -181,7 +189,7 @@ function parseNoteRuns(line) {
 
 // Word-wraps one paragraph's runs to `charsPerLine`, preserving styling
 // across the break. Returns an array of lines, each an array of runs.
-function wrapNoteRuns(runs, charsPerLine) {
+export function wrapNoteRuns(runs, charsPerLine) {
   const lines = [];
   let curLine = [], curLen = 0;
   // Commits the current line, dropping the separator space that would
@@ -218,7 +226,7 @@ function wrapNoteRuns(runs, charsPerLine) {
 
 // Full layout: raw markup text -> array of lines, each an array of styled
 // runs, wrapped to `charsPerLine`. Blank source shows a placeholder run.
-function layoutNoteText(text, charsPerLine) {
+export function layoutNoteText(text, charsPerLine) {
   const raw = String(text || '').replace(/\r\n/g, '\n');
   if (!raw.trim()) return [[{ text: NOTE_EMPTY_PLACEHOLDER, placeholder: true }]];
   const out = [];
@@ -231,13 +239,13 @@ function layoutNoteText(text, charsPerLine) {
 
 // Back-compat helper: plain-text lines only (used by bounds/export math that
 // doesn't need per-run styling).
-function wrapNoteText(text) {
+export function wrapNoteText(text) {
   return layoutNoteText(text, NOTE_CHARS_PER_LINE).map(runs => runs.map(r => r.text).join(''));
 }
 
 // How many characters fit per line for a note of the given pixel width.
 // Hoisted above its use in NOTE_CHARS_PER_LINE by function declaration.
-function noteCharsPerLine(widthPx) {
+export function noteCharsPerLine(widthPx) {
   // ~ monospace 10.5px advance width, calibrated so NOTE_WIDTH yields exactly
   // the 24 chars/line that auto-sized notes have always wrapped at.
   const approxCharPx = 6.25;
@@ -247,7 +255,7 @@ function noteCharsPerLine(widthPx) {
 // ══════════════════════════════════════════════════════════════════
 //  RENDERING
 // ══════════════════════════════════════════════════════════════════
-function renderNotes() {
+export function renderNotes() {
   const g = $('notes-g');
   if (!g) return;
   g.innerHTML = '';
@@ -256,7 +264,7 @@ function renderNotes() {
 
 // Fills `textEl` with one tspan per styled run, laid out as wrapped lines.
 // Shared by the initial render and the fast in-place update path.
-function fillNoteTextEl(textEl, lines, xLeft) {
+export function fillNoteTextEl(textEl, lines, xLeft) {
   textEl.innerHTML = '';
   lines.forEach((runs, i) => {
     runs.forEach((run, j) => {
@@ -284,7 +292,7 @@ function fillNoteTextEl(textEl, lines, xLeft) {
   });
 }
 
-function renderOneNote(g, note) {
+export function renderOneNote(g, note) {
   const pos = resolveNotePos(note);
   const { w, h, lines } = noteBoxLayout(note);
   const x = pos.x - w / 2, y = pos.y - h / 2;
@@ -353,7 +361,7 @@ function renderOneNote(g, note) {
   g.appendChild(grp);
 }
 
-function noteResizeHandlePath(cx, cy) {
+export function noteResizeHandlePath(cx, cy) {
   const s = 9;
   return `M ${cx - s} ${cy} L ${cx} ${cy} L ${cx} ${cy - s}`;
 }
@@ -362,7 +370,7 @@ function noteResizeHandlePath(cx, cy) {
 // instead of re-rendering the whole notes layer. Pass refillText:false when the
 // text can't have changed (a plain move) to skip rebuilding every tspan — that
 // teardown runs on each pointermove and is pure waste while only x/y shift.
-function updateOneNoteDOM(note, { refillText = true } = {}) {
+export function updateOneNoteDOM(note, { refillText = true } = {}) {
   const grp = App.domCache.notes.get(note.id) || document.querySelector(`.note-g[data-note-id="${note.id}"]`);
   if (!grp) return;
   if (!App.domCache.notes.has(note.id)) App.domCache.notes.set(note.id, grp);
@@ -400,14 +408,14 @@ function updateOneNoteDOM(note, { refillText = true } = {}) {
     line.setAttribute('x2', pt.x); line.setAttribute('y2', pt.y);
   });
 }
-function updateNotesDOM() {
+export function updateNotesDOM() {
   App.notes.forEach(updateOneNoteDOM);
 }
 
 // ══════════════════════════════════════════════════════════════════
 //  INTERACTION: drag, edit, context menu
 // ══════════════════════════════════════════════════════════════════
-function attachNoteHandlers(grp, note) {
+export function attachNoteHandlers(grp, note) {
   grp.addEventListener('pointerdown', e => onNoteDown(e, note.id));
   grp.addEventListener('pointerenter', () => highlightNoteAnchors(note.id));
   grp.addEventListener('pointerleave', () => {
@@ -437,7 +445,7 @@ function attachNoteHandlers(grp, note) {
   });
 }
 
-function getNoteTransitionGroupKeys(note) {
+export function getNoteTransitionGroupKeys(note) {
   const keys = new Set();
   (note.anchorTransitions || []).forEach(id => {
     const t = getTransition(id);
@@ -446,13 +454,13 @@ function getNoteTransitionGroupKeys(note) {
   return keys;
 }
 
-function clearNoteAnchorHighlight(noteId = null) {
+export function clearNoteAnchorHighlight(noteId = null) {
   const noteSelector = noteId ? `.note-g[data-note-id="${noteId}"]` : '.note-g';
   document.querySelectorAll(`${noteSelector}.note-link-active`).forEach(el => el.classList.remove('note-link-active'));
   document.querySelectorAll('.sn.note-link-st, .edge-g.note-link-t').forEach(el => el.classList.remove('note-link-st', 'note-link-t'));
 }
 
-function highlightNoteAnchors(id, pin = false) {
+export function highlightNoteAnchors(id, pin = false) {
   const note = getNote(id);
   if (!note) return;
   clearNoteAnchorHighlight();
@@ -472,12 +480,12 @@ function highlightNoteAnchors(id, pin = false) {
   });
 }
 
-function clearActiveNoteHighlight() {
+export function clearActiveNoteHighlight() {
   App.activeNoteId = null;
   clearNoteAnchorHighlight();
 }
 
-function onNoteDown(e, id) {
+export function onNoteDown(e, id) {
   if (App.spacePan) return;
   e.stopPropagation();
   if (e.button === 2) return;
@@ -500,7 +508,7 @@ function onNoteDown(e, id) {
 }
 
 // Called from canvas.js's handlePointerMove while App.dragNoteId is set.
-function dragNoteTo(e) {
+export function dragNoteTo(e) {
   const note = getNote(App.dragNoteId);
   if (!note) return;
   const pt = svgPt(e);
@@ -514,7 +522,7 @@ function dragNoteTo(e) {
 // ── Resize: drag the bottom-right handle to pin an explicit width/height.
 // Once resized, a note stops auto-growing with its text and instead wraps/
 // clips content to the box (see noteBoxLayout). ──
-function onNoteResizeDown(e, id) {
+export function onNoteResizeDown(e, id) {
   if (App.spacePan) return;
   e.stopPropagation();
   e.preventDefault();
@@ -528,7 +536,7 @@ function onNoteResizeDown(e, id) {
 }
 
 // Called from canvas.js's handlePointerMove while App.resizeNoteId is set.
-function resizeNoteTo(e) {
+export function resizeNoteTo(e) {
   const note = getNote(App.resizeNoteId);
   const start = App.resizeNoteStart;
   if (!note || !start) return;
@@ -539,13 +547,13 @@ function resizeNoteTo(e) {
   updateOneNoteDOM(note);
 }
 
-function endNoteResize() {
+export function endNoteResize() {
   App.resizeNoteId = null;
   App.resizeNoteStart = null;
 }
 
 // Drops back to auto-sizing (grows/shrinks with content again).
-function ctxResetNoteSize() {
+export function ctxResetNoteSize() {
   const id = App.ctxNoteId;
   hideContextMenu();
   const note = getNote(id);
@@ -556,7 +564,7 @@ function ctxResetNoteSize() {
   showStatus('Note size reset to auto');
 }
 
-function deleteNote(id) {
+export function deleteNote(id) {
   snapshot();
   App.notes = App.notes.filter(n => n.id !== id);
   if (App.activeNoteId === id) clearActiveNoteHighlight();
@@ -566,7 +574,7 @@ function deleteNote(id) {
 // ══════════════════════════════════════════════════════════════════
 //  CREATE
 // ══════════════════════════════════════════════════════════════════
-function createNote(x, y, anchorStates = [], anchorTransitions = []) {
+export function createNote(x, y, anchorStates = [], anchorTransitions = []) {
   snapshot();
   const id = newNoteId();
   let note;
@@ -581,7 +589,7 @@ function createNote(x, y, anchorStates = [], anchorTransitions = []) {
   return note;
 }
 
-function addAnchoredNote(states, transitions) {
+export function addAnchoredNote(states, transitions) {
   const c = noteAnchorCentroid({ anchorStates: states, anchorTransitions: transitions }) || { x: 0, y: 0 };
   const note = createNote(c.x + 95, c.y - 85, states, transitions);
   openNoteModal(note.id);
@@ -590,7 +598,7 @@ function addAnchoredNote(states, transitions) {
 // Resolves which states/transitions a new note should anchor to from a
 // context-menu click: the full current selection if the clicked item is part
 // of it, otherwise just the clicked item.
-function resolveNoteAnchorsForContext() {
+export function resolveNoteAnchorsForContext() {
   if (App.ctxMode === 'state' && App.ctxId) {
     if (App.selectedStates.has(App.ctxId) && (App.selectedStates.size > 1 || App.selectedTransitions.size > 0)) {
       return { states: [...App.selectedStates], transitions: [...App.selectedTransitions] };
@@ -607,17 +615,17 @@ function resolveNoteAnchorsForContext() {
   return { states: [], transitions: [] };
 }
 
-function ctxAddNoteState() {
+export function ctxAddNoteState() {
   const anchors = resolveNoteAnchorsForContext();
   hideContextMenu();
   addAnchoredNote(anchors.states, anchors.transitions);
 }
-function ctxAddNoteEdge() {
+export function ctxAddNoteEdge() {
   const anchors = resolveNoteAnchorsForContext();
   hideContextMenu();
   addAnchoredNote(anchors.states, anchors.transitions);
 }
-function ctxCanvasAddNote() {
+export function ctxCanvasAddNote() {
   hideCanvasContextMenu();
   const pt = App.ctxCanvasPt || { x: 0, y: 0 };
   const note = createNote(pt.x, pt.y, [], []);
@@ -627,19 +635,19 @@ function ctxCanvasAddNote() {
 // ══════════════════════════════════════════════════════════════════
 //  CONTEXT MENU ACTIONS (note mode)
 // ══════════════════════════════════════════════════════════════════
-function ctxEditNote() {
+export function ctxEditNote() {
   const id = App.ctxNoteId;
   hideContextMenu();
   if (!id) return;
   openNoteModal(id);
 }
-function ctxDeleteNote() {
+export function ctxDeleteNote() {
   const id = App.ctxNoteId;
   hideContextMenu();
   if (!id) return;
   deleteNote(id);
 }
-function ctxSetNoteColor(color) {
+export function ctxSetNoteColor(color) {
   const id = App.ctxNoteId;
   const note = getNote(id);
   hideContextMenu();
@@ -648,7 +656,7 @@ function ctxSetNoteColor(color) {
   note.color = normalizeNoteColor(color);
   renderAll();
 }
-function ctxDetachNote() {
+export function ctxDetachNote() {
   const id = App.ctxNoteId;
   hideContextMenu();
   const note = getNote(id);
@@ -661,7 +669,7 @@ function ctxDetachNote() {
   renderAll();
   showStatus('Note detached');
 }
-function ctxAnchorNoteToSelection() {
+export function ctxAnchorNoteToSelection() {
   const id = App.ctxNoteId;
   hideContextMenu();
   const note = getNote(id);
@@ -683,7 +691,7 @@ function ctxAnchorNoteToSelection() {
 // ══════════════════════════════════════════════════════════════════
 //  EDIT MODAL
 // ══════════════════════════════════════════════════════════════════
-let _noteModalColor = 'default';
+export let _noteModalColor = 'default';
 
 // Enter inserts a newline in the note textarea; Ctrl/Cmd+Enter saves.
 registerModal('note-modal', {
@@ -691,7 +699,7 @@ registerModal('note-modal', {
   onClose: () => { App.editNoteId = null; }
 });
 
-function openNoteModal(id) {
+export function openNoteModal(id) {
   const note = getNote(id);
   if (!note) return;
   App.editNoteId = id;
@@ -703,16 +711,16 @@ function openNoteModal(id) {
   showOverlay('note-modal');
   if (textEl) setTimeout(() => textEl.focus(), 50);
 }
-function setNoteModalColorUI(color) {
+export function setNoteModalColorUI(color) {
   document.querySelectorAll('#note-modal .note-swatch').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.color === color);
   });
 }
-function setNoteModalColor(color) {
+export function setNoteModalColor(color) {
   _noteModalColor = color;
   setNoteModalColorUI(color);
 }
-function confirmNote() {
+export function confirmNote() {
   const note = getNote(App.editNoteId);
   if (!note) return closeModal('note-modal');
   snapshot();
@@ -726,7 +734,7 @@ function confirmNote() {
 // identical selection) the textarea's current selection with markup
 // markers, mirroring the classic "bold/italic in a plain textarea" pattern
 // used by Markdown editors everywhere. ──
-function applyNoteFormat(kind) {
+export function applyNoteFormat(kind) {
   const ta = $('note-text');
   if (!ta) return;
   const markers = { bold: '**', italic: '*', underline: '__' };
@@ -755,7 +763,7 @@ function applyNoteFormat(kind) {
   ta.setSelectionRange(Math.min(cs, ta.value.length), Math.min(ce, ta.value.length));
 }
 
-function insertNoteNewline() {
+export function insertNoteNewline() {
   const ta = $('note-text');
   if (!ta) return;
   const { value, selectionStart: s, selectionEnd: e } = ta;
@@ -766,7 +774,7 @@ function insertNoteNewline() {
 
 // Commits an edit to the note textarea, rejecting it whole if it would exceed
 // the character cap. Returns whether the value was applied.
-function setNoteTextareaValue(ta, next) {
+export function setNoteTextareaValue(ta, next) {
   if (next.length > NOTE_MAX_CHARS) {
     showStatus(`Note is at the ${NOTE_MAX_CHARS}-character limit`);
     ta.focus();
@@ -778,7 +786,7 @@ function setNoteTextareaValue(ta, next) {
   return true;
 }
 
-function updateNoteCharCount() {
+export function updateNoteCharCount() {
   const ta = $('note-text');
   const counter = $('note-char-count');
   if (!ta || !counter) return;
@@ -786,7 +794,7 @@ function updateNoteCharCount() {
   counter.textContent = `${len} / ${NOTE_MAX_CHARS}`;
   counter.classList.toggle('note-char-count-max', len >= NOTE_MAX_CHARS);
 }
-function deleteNoteFromModal() {
+export function deleteNoteFromModal() {
   const id = App.editNoteId;
   closeModal('note-modal');
   if (!id) return;

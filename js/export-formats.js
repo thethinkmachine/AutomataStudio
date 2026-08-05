@@ -1,3 +1,5 @@
+import { exportIdent, exportUniqueIdents, exportWordText } from './export-core.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  EXPORT FORMATS
 // ══════════════════════════════════════════════════════════════════
@@ -7,7 +9,7 @@
 // ══════════════════════════════════════════════════════════════════
 
 // ── escaping ──────────────────────────────────────────────────────
-function csvCell(v) {
+export function csvCell(v) {
   const s = v == null ? '' : String(v);
   // Quote when the value could otherwise break the row apart. A leading
   // =, +, - or @ is quoted too: spreadsheets treat those as formulas, and
@@ -15,37 +17,37 @@ function csvCell(v) {
   return /[",\n\r]|^[=+\-@]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-function csvRows(rows) {
+export function csvRows(rows) {
   // CRLF is what RFC 4180 specifies and what Excel expects on import.
   return rows.map(r => r.map(csvCell).join(',')).join('\r\n');
 }
 
-function mdCell(v) {
+export function mdCell(v) {
   // A pipe would end the column early; a backslash-pipe renders literally.
   return String(v == null ? '' : v).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\n/g, ' ');
 }
 
-function mdTable(header, rows) {
+export function mdTable(header, rows) {
   const head = `| ${header.map(mdCell).join(' | ')} |`;
   const rule = `| ${header.map(() => '---').join(' | ')} |`;
   const body = rows.map(r => `| ${r.map(mdCell).join(' | ')} |`).join('\n');
   return rows.length ? `${head}\n${rule}\n${body}` : `${head}\n${rule}`;
 }
 
-function dotEscape(s) {
+export function dotEscape(s) {
   return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
 }
 
 // The symbols the app draws are Unicode; a LaTeX document that isn't set up
 // for them fails to build. Mapping the ones this app actually emits to their
 // math-mode commands keeps the output portable to a bare pdflatex run.
-const TIKZ_SYMBOL_MAP = {
+export const TIKZ_SYMBOL_MAP = {
   'ε': '\\varepsilon', 'λ': '\\lambda', 'Σ': '\\Sigma', 'Γ': '\\Gamma', 'Δ': '\\Delta',
   '⊔': '\\sqcup', '⊢': '\\vdash', '⊣': '\\dashv', '→': '\\rightarrow', '←': '\\leftarrow',
   '∅': '\\emptyset', '×': '\\times', '∪': '\\cup', '∩': '\\cap', '·': '\\cdot'
 };
 
-function texEscape(s) {
+export function texEscape(s) {
   let out = '';
   for (const ch of String(s == null ? '' : s)) {
     if (TIKZ_SYMBOL_MAP[ch]) { out += `$${TIKZ_SYMBOL_MAP[ch]}$`; continue; }
@@ -62,7 +64,7 @@ function texEscape(s) {
 // Parallel edges (same source, same target, different symbol) are one
 // arrow with a comma-joined label in every drawn notation. Keeping them
 // separate produces a diagram with three arrows stacked on one another.
-function groupParallelEdges(transitions) {
+export function groupParallelEdges(transitions) {
   const groups = new Map();
   for (const t of transitions) {
     // Serialised rather than concatenated: state ids come from imported
@@ -78,7 +80,7 @@ function groupParallelEdges(transitions) {
 // ══════════════════════════════════════════════════════════════════
 //  GRAPHVIZ DOT
 // ══════════════════════════════════════════════════════════════════
-function exportToDot(ir, opts = {}) {
+export function exportToDot(ir, opts = {}) {
   const merge = opts.mergeParallel !== false;
   const rankdir = opts.rankdir || 'LR';
   const usePositions = !!opts.usePositions;
@@ -130,7 +132,7 @@ function exportToDot(ir, opts = {}) {
 // Absolute coordinates rather than TikZ's relative `right=of` chains: the
 // user already arranged the machine on the canvas, and that layout is the
 // thing worth carrying into the paper.
-function exportToTikz(ir, opts = {}) {
+export function exportToTikz(ir, opts = {}) {
   const merge = opts.mergeParallel !== false;
   const scale = opts.scale || 0.02;   // canvas px → cm
   const standalone = !!opts.standalone;
@@ -188,11 +190,11 @@ function exportToTikz(ir, opts = {}) {
 // an edge is keyed by its input symbol alone. Stack and tape machines
 // key on more than that, so they get the flat list instead — the same
 // information, without pretending to a 2-D layout it does not have.
-function exportSupportsMatrix(ir) {
+export function exportSupportsMatrix(ir) {
   return !ir.hasStack && !ir.hasTape && ir.machine !== '2DFA' && ir.machine !== '2NFA';
 }
 
-function buildTransitionMatrix(ir) {
+export function buildTransitionMatrix(ir) {
   const cols = [...ir.sigma];
   if (ir.hasEpsilon) cols.push(ir.sym.eps);
   const header = ['State', ...cols];
@@ -223,7 +225,7 @@ function buildTransitionMatrix(ir) {
   return { header, rows };
 }
 
-function buildTransitionList(ir) {
+export function buildTransitionList(ir) {
   const header = ['From', 'Read'];
   if (ir.hasStack && !ir.hasTape) header.push('Pop', 'Push');
   if (ir.hasTape) header.push('Write', 'Move');
@@ -249,7 +251,7 @@ function buildTransitionList(ir) {
   return { header, rows };
 }
 
-function exportTransitionTable(ir, opts = {}) {
+export function exportTransitionTable(ir, opts = {}) {
   const shape = opts.shape === 'matrix' && exportSupportsMatrix(ir) ? 'matrix' : 'list';
   const { header, rows } = shape === 'matrix' ? buildTransitionMatrix(ir) : buildTransitionList(ir);
   if (opts.format === 'markdown') {
@@ -263,7 +265,7 @@ function exportTransitionTable(ir, opts = {}) {
 // ══════════════════════════════════════════════════════════════════
 //  LANGUAGE SAMPLES  (accepted + rejected words)
 // ══════════════════════════════════════════════════════════════════
-function exportSamplesText(samples, ir, opts = {}) {
+export function exportSamplesText(samples, ir, opts = {}) {
   const fmt = opts.format || 'csv';
   const acc = samples.accepted.map(w => exportWordText(w, ir));
   const rej = samples.rejected.map(w => exportWordText(w, ir));
@@ -307,7 +309,7 @@ function exportSamplesText(samples, ir, opts = {}) {
 // ══════════════════════════════════════════════════════════════════
 //  BATCH RESULTS
 // ══════════════════════════════════════════════════════════════════
-function exportBatchText(batch, opts = {}) {
+export function exportBatchText(batch, opts = {}) {
   const fmt = opts.format || 'csv';
   const rows = batch.results.map(r => ({
     input: r.str,

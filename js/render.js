@@ -1,9 +1,20 @@
+import { applyEdgeDirectionHighlight, clearEdgeDirectionHighlight, onStateDown, wrap } from './canvas.js';
+import { renderDividers } from './dividers.js';
+import { snapshot } from './history.js';
+import { renderLanguagePanel } from './language.js';
+import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
+import { $, App, R, SVG_NS, getMachineConfig } from './state.js';
+import { getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive } from './states-transitions.js';
+import { triggerMath } from './theory.js';
+import { filterStates, filterTransitions, renderMinimap } from './ui.js';
+import { isAnyPDA, isAnyTM, showStatus } from './utils.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  RENDERING
 // ══════════════════════════════════════════════════════════════════
-function makeSVG(t) { return document.createElementNS(SVG_NS, t); }
+export function makeSVG(t) { return document.createElementNS(SVG_NS, t); }
 
-function renderAll() {
+export function renderAll() {
   const cfg = getMachineConfig(App.machine);
   $('mach-badge').className = `badge ${cfg.badge}`;
   $('mach-badge').textContent = cfg.label;
@@ -26,13 +37,13 @@ function renderAll() {
   if (typeof applyEdgeDirectionHighlight === 'function') applyEdgeDirectionHighlight();
 }
 
-function groupTrans() {
+export function groupTrans() {
   const g = {};
   App.transitions.forEach(t => { const k = t.from + '→' + t.to; if (!g[k]) g[k] = { from: t.from, to: t.to, ts: [] }; g[k].ts.push(t); });
   return Object.values(g);
 }
 
-function renderTransitions() {
+export function renderTransitions() {
   const g = $('trans-g'); g.innerHTML = '';
   const lg = $('trans-lbl-g'); if (lg) lg.innerHTML = '';
   // start arrow
@@ -238,7 +249,7 @@ function renderTransitions() {
   });
 }
 
-function updateFastDOM() {
+export function updateFastDOM() {
   // Runs on every animation frame while dragging. The edge loop below used to
   // call getState() (a linear scan of App.states) twice per edge and scan
   // App.transitions twice per edge, making each frame O(edges x states) +
@@ -345,7 +356,7 @@ function updateFastDOM() {
 // so long descriptive names stack inside the fixed-radius circle
 // instead of overflowing it. Names with no such boundary are left as
 // a single line untouched.
-function splitStateLabel(name) {
+export function splitStateLabel(name) {
   if (!App.config.wrapStateLabels) return [String(name)];
   const parts = String(name).split(/[_\s-]+/).filter(Boolean);
   return parts.length > 1 ? parts : [String(name)];
@@ -353,7 +364,7 @@ function splitStateLabel(name) {
 
 // Writes `lines` into `textEl` as centered tspans and returns the line
 // count, so callers can size the font to fit the circle.
-function setStateLabelLines(textEl, lines, cx) {
+export function setStateLabelLines(textEl, lines, cx) {
   textEl.innerHTML = '';
   const lineH = 1.05;
   lines.forEach((line, i) => {
@@ -366,7 +377,7 @@ function setStateLabelLines(textEl, lines, cx) {
   textEl.setAttribute('font-size', lines.length >= 4 ? '8.5px' : lines.length === 3 ? '9.5px' : '11px');
 }
 
-function renderStates() {
+export function renderStates() {
   const g = $('states-g'); g.innerHTML = '';
   App.states.forEach(s => {
     const grp = makeSVG('g');
@@ -445,7 +456,7 @@ function renderStates() {
 // ══════════════════════════════════════════════════════════════════
 //  SIDEBAR
 // ══════════════════════════════════════════════════════════════════
-function updateLPanelSectionMeta() {
+export function updateLPanelSectionMeta() {
   const setCount = (id, value) => {
     const el = $(id);
     if (!el) return;
@@ -465,7 +476,7 @@ function updateLPanelSectionMeta() {
   if (mobileWorkspaceCount) mobileWorkspaceCount.textContent = String(App.states?.length || 0);
 }
 
-function updateLPanel() {
+export function updateLPanel() {
   const sl = $('states-list');
   const showAccepts = !(getMachineConfig(App.machine).isTransducer && !App.config.transducerAccepts);
   sl.innerHTML = App.states.length ? App.states.map(s => {
@@ -508,7 +519,7 @@ function updateLPanel() {
 // ══════════════════════════════════════════════════════════════════
 //  RIGHT PANEL: LANGUAGE
 // ══════════════════════════════════════════════════════════════════
-function updateRPanel() {
+export function updateRPanel() {
   updateFormalDef();
   updateRegex();
   // The extension of L and the clickable tuple line both depend on the
@@ -517,13 +528,13 @@ function updateRPanel() {
 }
 
 // GNFA State Elimination (textbook: add new start + new accept, eliminate interior)
-let _regexCache = { key: '', val: '' };
-function _regexCacheKey() {
+export let _regexCache = { key: '', val: '' };
+export function _regexCacheKey() {
   return App.states.map(s => s.id).join(',') + '|' +
     App.transitions.map(t => t.from + t.symbol + t.to).sort().join(',') + '|' +
     App.startId + '|' + [...App.accepts].sort().join(',');
 }
-function deriveRegex() {
+export function deriveRegex() {
   if (!App.states.length || !App.startId) return '—';
   const accs = [...App.accepts]; if (!accs.length) return '∅';
   // Cache check (#7)
@@ -591,7 +602,7 @@ function deriveRegex() {
 // slanted math-variable font instead of as a normal word. Escape the LaTeX
 // special characters and typeset anything that isn't the classic q0/s1
 // short-name convention as upright text instead.
-function escapeLatexText(str) {
+export function escapeLatexText(str) {
   return String(str ?? '')
     .replace(/\\/g, '\\textbackslash{}')
     .replace(/([_%$#&{}])/g, '\\$1')
@@ -599,19 +610,19 @@ function escapeLatexText(str) {
     .replace(/~/g, '\\textasciitilde{}');
 }
 
-function formatStateName(name) {
+export function formatStateName(name) {
   if (!name) return '\\text{—}';
   const m = /^([a-zA-Z]+)(\d+)$/.exec(name);
   if (m) return `${m[1]}_{${m[2]}}`;
   return `\\text{${escapeLatexText(name)}}`;
 }
 
-function formatSet(items) {
+export function formatSet(items) {
   if (!items || !items.length) return '\\emptyset';
   return `\\{ ${items.map(formatStateName).join(', ')} \\}`;
 }
 
-function updateFormalDef() {
+export function updateFormalDef() {
   const m = App.machine;
   const Q_str = formatSet(App.states.map(s => s.name));
   const S_str = formatSet([...App.sigma]);
@@ -788,7 +799,7 @@ function updateFormalDef() {
 // Same edge-fade hint the workspace tab bar uses, applied to the formal
 // definition box so a horizontally-scrollable Σ/Q set doesn't look like a
 // hard cutoff.
-function updateDefBoxOverflowShadow() {
+export function updateDefBoxOverflowShadow() {
   const box = $('def-box');
   if (!box) return;
   const maxScroll = Math.max(0, box.scrollWidth - box.clientWidth);
@@ -797,7 +808,7 @@ function updateDefBoxOverflowShadow() {
   box.classList.toggle('has-overflow-right', hasOverflow && box.scrollLeft < maxScroll - 2);
 }
 
-function initDefBoxOverflowObserver() {
+export function initDefBoxOverflowObserver() {
   const box = $('def-box');
   if (!box || box._overflowObsInit) return;
   box._overflowObsInit = true;
@@ -807,7 +818,7 @@ function initDefBoxOverflowObserver() {
   }
 }
 
-function copyBoxText(id) {
+export function copyBoxText(id) {
   const text = id === 'def-box'
     ? (App._defBoxLatex || $(id).textContent)
     : (App._regexBoxPlain !== undefined ? App._regexBoxPlain : $(id).textContent);
@@ -829,7 +840,7 @@ function copyBoxText(id) {
 // Plain text, not KaTeX: regex notation (| * ( )) reads fine unstyled, and
 // unlike math mode it wraps naturally instead of needing horizontal scroll —
 // and it can't misrender symbols that contain LaTeX-special characters.
-function updateRegex() {
+export function updateRegex() {
   const rb = $('regex-box'), m = App.machine;
   let txt = '';
   // A derived regex recomputes as you drag an edge; a class label is a
@@ -853,11 +864,11 @@ function updateRegex() {
   rb.textContent = txt;
 }
 
-function reUnion(a, b) { if (!a) return b; if (!b) return a; if (a === b) return a; return `${a} | ${b}`; }
+export function reUnion(a, b) { if (!a) return b; if (!b) return a; if (a === b) return a; return `${a} | ${b}`; }
 // The explicit "·" keeps concatenation unambiguous once symbols can be whole
 // words instead of single characters (e.g. "citizenFilesComplaint·officerOpensReview"
 // instead of the two runs silently glued together).
-function reConcat(a, b) {
+export function reConcat(a, b) {
   if (!a || !b) return a || b || '';
   if (a === App.config.sym.eps) return b;
   if (b === App.config.sym.eps) return a;
@@ -866,7 +877,7 @@ function reConcat(a, b) {
   const right = pb ? '(' + b + ')' : b;
   return `${left}·${right}`;
 }
-function simplifyRE(r) {
+export function simplifyRE(r) {
   if (!r) return '∅';
   const e = App.config.sym.eps;
   const escE = e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

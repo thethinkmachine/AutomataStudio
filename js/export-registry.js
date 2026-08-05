@@ -18,4 +18,4 @@
 //   blurb    one-line HTML explainer shown under the picker
 //   options  option schema; types are 'check', 'select', 'number', 'text'
 //   build    (ir, opts) => string, given the machine IR from export-core.js
-const ExportFormats = {};
+export const ExportFormats = {};
