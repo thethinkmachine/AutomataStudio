@@ -1970,62 +1970,62 @@ const CODEGEN_STYLE_OPTION_C = {
   choices: [['table', 'Transition table'], ['switch', 'Switch statements'], ['class', 'Struct + functions']]
 };
 
-if (typeof ExportFormats !== 'undefined') {
-  ExportFormats['code-js'] = {
-    label: 'JavaScript', group: 'Code', ext: 'js', mime: 'text/javascript',
-    blurb: 'Exports <code>accepts()</code> as a CommonJS module, whichever shape you pick.',
-    options: [CODEGEN_STYLE_OPTION], build: (ir, o) => codegenJavaScript(ir, o)
-  };
-  ExportFormats['code-py'] = {
-    label: 'Python', group: 'Code', ext: 'py', mime: 'text/x-python',
-    blurb: 'Module-level <code>accepts()</code>. The <code>match</code> shape needs Python 3.10+.',
-    options: [CODEGEN_STYLE_OPTION_PY], build: (ir, o) => codegenPython(ir, o)
-  };
-  ExportFormats['code-java'] = {
-    label: 'Java', group: 'Code', ext: 'java', mime: 'text/x-java-source',
-    blurb: 'Static <code>accepts()</code>; the class shape adds <code>reset()</code>/<code>step()</code>.',
-    options: [
-      CODEGEN_STYLE_OPTION,
-      { id: 'className', type: 'text', label: 'Class name', def: 'Automaton' }
-    ],
-    extFor: () => 'java',
-    build: (ir, o) => codegenJava(ir, o)
-  };
-  ExportFormats['code-c'] = {
-    label: 'C', group: 'Code', ext: 'c', mime: 'text/x-csrc',
-    blurb: 'DFAs over single-byte alphabets only. The struct shape accepts input a byte at a time.',
-    options: [CODEGEN_STYLE_OPTION_C], build: (ir, o) => codegenC(ir, o)
-  };
-  ExportFormats['code-xstate'] = {
-    label: 'XState config', group: 'Code', ext: 'js', mime: 'text/javascript',
-    blurb: 'Statechart config for XState v5. Deterministic machines only.',
-    options: [], build: ir => codegenXState(ir)
-  };
-  ExportFormats['code-scxml'] = {
-    label: 'SCXML', group: 'Code', ext: 'scxml', mime: 'application/scxml+xml',
-    blurb: 'W3C State Chart XML, for interop with SCXML runtimes.',
-    options: [], build: ir => codegenSCXML(ir)
-  };
-  ExportFormats['test-jest'] = {
-    label: 'Jest test suite', group: 'Tests', ext: 'test.js', mime: 'text/javascript',
-    blurb: 'Cases derived from L(M) — pair with the JavaScript target.',
-    options: [
-      { id: 'module', type: 'text', label: 'Import from', def: './automaton' },
-      { id: 'accepted', type: 'number', label: 'Accepted cases', def: 15, min: 0, max: 200, step: 5 },
-      { id: 'rejected', type: 'number', label: 'Rejected cases', def: 15, min: 0, max: 200, step: 5 },
-      { id: 'maxLength', type: 'number', label: 'Max length', def: 8, min: 1, max: 20, step: 1 }
-    ],
-    build: (ir, o) => codegenJest(ir, o)
-  };
-  ExportFormats['test-pytest'] = {
-    label: 'pytest suite', group: 'Tests', ext: 'py', mime: 'text/x-python',
-    blurb: 'Cases derived from L(M) — pair with the Python target.',
-    options: [
-      { id: 'module', type: 'text', label: 'Import from', def: 'automaton' },
-      { id: 'accepted', type: 'number', label: 'Accepted cases', def: 15, min: 0, max: 200, step: 5 },
-      { id: 'rejected', type: 'number', label: 'Rejected cases', def: 15, min: 0, max: 200, step: 5 },
-      { id: 'maxLength', type: 'number', label: 'Max length', def: 8, min: 1, max: 20, step: 1 }
-    ],
-    build: (ir, o) => codegenPytest(ir, o)
-  };
-}
+// Code and test-suite targets. These join the diagram/data targets that
+// js/export-ui.js contributes; the shared table lives in js/export-registry.js.
+ExportFormats['code-js'] = {
+  label: 'JavaScript', group: 'Code', ext: 'js', mime: 'text/javascript',
+  blurb: 'Exports <code>accepts()</code> as a CommonJS module, whichever shape you pick.',
+  options: [CODEGEN_STYLE_OPTION], build: (ir, o) => codegenJavaScript(ir, o)
+};
+ExportFormats['code-py'] = {
+  label: 'Python', group: 'Code', ext: 'py', mime: 'text/x-python',
+  blurb: 'Module-level <code>accepts()</code>. The <code>match</code> shape needs Python 3.10+.',
+  options: [CODEGEN_STYLE_OPTION_PY], build: (ir, o) => codegenPython(ir, o)
+};
+ExportFormats['code-java'] = {
+  label: 'Java', group: 'Code', ext: 'java', mime: 'text/x-java-source',
+  blurb: 'Static <code>accepts()</code>; the class shape adds <code>reset()</code>/<code>step()</code>.',
+  options: [
+    CODEGEN_STYLE_OPTION,
+    { id: 'className', type: 'text', label: 'Class name', def: 'Automaton' }
+  ],
+  extFor: () => 'java',
+  build: (ir, o) => codegenJava(ir, o)
+};
+ExportFormats['code-c'] = {
+  label: 'C', group: 'Code', ext: 'c', mime: 'text/x-csrc',
+  blurb: 'DFAs over single-byte alphabets only. The struct shape accepts input a byte at a time.',
+  options: [CODEGEN_STYLE_OPTION_C], build: (ir, o) => codegenC(ir, o)
+};
+ExportFormats['code-xstate'] = {
+  label: 'XState config', group: 'Code', ext: 'js', mime: 'text/javascript',
+  blurb: 'Statechart config for XState v5. Deterministic machines only.',
+  options: [], build: ir => codegenXState(ir)
+};
+ExportFormats['code-scxml'] = {
+  label: 'SCXML', group: 'Code', ext: 'scxml', mime: 'application/scxml+xml',
+  blurb: 'W3C State Chart XML, for interop with SCXML runtimes.',
+  options: [], build: ir => codegenSCXML(ir)
+};
+ExportFormats['test-jest'] = {
+  label: 'Jest test suite', group: 'Tests', ext: 'test.js', mime: 'text/javascript',
+  blurb: 'Cases derived from L(M) — pair with the JavaScript target.',
+  options: [
+    { id: 'module', type: 'text', label: 'Import from', def: './automaton' },
+    { id: 'accepted', type: 'number', label: 'Accepted cases', def: 15, min: 0, max: 200, step: 5 },
+    { id: 'rejected', type: 'number', label: 'Rejected cases', def: 15, min: 0, max: 200, step: 5 },
+    { id: 'maxLength', type: 'number', label: 'Max length', def: 8, min: 1, max: 20, step: 1 }
+  ],
+  build: (ir, o) => codegenJest(ir, o)
+};
+ExportFormats['test-pytest'] = {
+  label: 'pytest suite', group: 'Tests', ext: 'py', mime: 'text/x-python',
+  blurb: 'Cases derived from L(M) — pair with the Python target.',
+  options: [
+    { id: 'module', type: 'text', label: 'Import from', def: 'automaton' },
+    { id: 'accepted', type: 'number', label: 'Accepted cases', def: 15, min: 0, max: 200, step: 5 },
+    { id: 'rejected', type: 'number', label: 'Rejected cases', def: 15, min: 0, max: 200, step: 5 },
+    { id: 'maxLength', type: 'number', label: 'Max length', def: 8, min: 1, max: 20, step: 1 }
+  ],
+  build: (ir, o) => codegenPytest(ir, o)
+};

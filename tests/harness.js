@@ -16,6 +16,7 @@ const SCRIPT_ORDER = [
   'js/dividers.js',
   'js/workspace.js',
   'js/persistence.js',
+  'js/export-registry.js',
   'js/export-core.js',
   'js/export-formats.js',
   'js/export-ui.js',

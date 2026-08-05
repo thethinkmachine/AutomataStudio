@@ -180,6 +180,57 @@ function setR(v) { R = v; }
 const $ = id => document.getElementById(id);
 
 // ══════════════════════════════════════════════════════════════════
+//  MACHINE SHAPE PREDICATES
+// ══════════════════════════════════════════════════════════════════
+// These read nothing but App and MachineTypes, so they live here rather than in
+// utils.js. That keeps state.js free of imports, which in turn lets it evaluate
+// before every other module — the app relies on $ and App being initialised by
+// the time other modules run their top-level code.
+function getMachineConfig(m) { return MachineTypes[m] || MachineTypes['DFA']; }
+
+function isTwoWayFA(m = App.machine) {
+  return m === '2DFA' || m === '2NFA';
+}
+
+function isEndmarkerMachine(m = App.machine) {
+  return m === '2DFA' || m === '2NFA' || m === 'LBA';
+}
+
+function isReadOnlyHeadMachine(m = App.machine) {
+  return isTwoWayFA(m);
+}
+
+function isBoundaryTapeMachine(m = App.machine) {
+  return m === 'LBA';
+}
+
+function getBoundaryMarkers() {
+  return {
+    left: App.config.sym.leftMarker,
+    right: App.config.sym.rightMarker
+  };
+}
+
+function isBoundarySymbol(sym) {
+  const { left, right } = getBoundaryMarkers();
+  return sym === left || sym === right;
+}
+
+function normalizeBoundarySymbolsForMachine(m = App.machine) {
+  const { left, right } = getBoundaryMarkers();
+
+  if (App.sigma instanceof Set) {
+    App.sigma = new Set([...App.sigma].filter(sym => sym !== left && sym !== right));
+  }
+
+  if (!(App.stackAlpha instanceof Set)) return;
+  const symbols = [...App.stackAlpha].filter(sym => sym !== left && sym !== right);
+  App.stackAlpha = isBoundaryTapeMachine(m)
+    ? new Set([left, ...symbols, right])
+    : new Set(symbols);
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  WORKSPACES
 // ══════════════════════════════════════════════════════════════════
 // The open tabs and which one is live. Both are reassigned wholesale (filter,

@@ -1,50 +1,11 @@
 // ══════════════════════════════════════════════════════════════════
 //  UTILS / HELPERS
 // ══════════════════════════════════════════════════════════════════
-function getMachineConfig(m) { return MachineTypes[m] || MachineTypes['DFA']; }
-
-function isTwoWayFA(m = App.machine) {
-  return m === '2DFA' || m === '2NFA';
-}
-
-function isEndmarkerMachine(m = App.machine) {
-  return m === '2DFA' || m === '2NFA' || m === 'LBA';
-}
-
-function isReadOnlyHeadMachine(m = App.machine) {
-  return isTwoWayFA(m);
-}
-
-function isBoundaryTapeMachine(m = App.machine) {
-  return m === 'LBA';
-}
-
-function getBoundaryMarkers() {
-  return {
-    left: App.config.sym.leftMarker,
-    right: App.config.sym.rightMarker
-  };
-}
-
-function isBoundarySymbol(sym) {
-  const { left, right } = getBoundaryMarkers();
-  return sym === left || sym === right;
-}
-
-function normalizeBoundarySymbolsForMachine(m = App.machine) {
-  const { left, right } = getBoundaryMarkers();
-
-  if (App.sigma instanceof Set) {
-    App.sigma = new Set([...App.sigma].filter(sym => sym !== left && sym !== right));
-  }
-
-  if (!(App.stackAlpha instanceof Set)) return;
-  const symbols = [...App.stackAlpha].filter(sym => sym !== left && sym !== right);
-  App.stackAlpha = isBoundaryTapeMachine(m)
-    ? new Set([left, ...symbols, right])
-    : new Set(symbols);
-}
-
+// The machine-shape predicates (getMachineConfig, isTwoWayFA,
+// normalizeBoundarySymbolsForMachine, ...) that used to head this file now live
+// in js/state.js. They only ever read App and MachineTypes, and keeping them
+// here made state.js import utils.js — a cycle that decided module evaluation
+// order for the whole app.
 function buildMarkedInputTape(tokens = []) {
   const { left, right } = getBoundaryMarkers();
   return [left, ...tokens, right];

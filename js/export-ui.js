@@ -165,8 +165,10 @@ function runImageExport() {
 //  CODE / CONFIG / SPEC DIALOG
 // ══════════════════════════════════════════════════════════════════
 
-// Option schema types: 'check' (boolean), 'select' (choices), 'number'.
-const ExportFormats = {
+// Diagram, table and sample-word targets. The code and test-suite targets are
+// added by js/codegen.js; both sides write into the registry from
+// js/export-registry.js. Option schema types: 'check', 'select', 'number'.
+Object.assign(ExportFormats, {
   dot: {
     label: 'Graphviz DOT', group: 'Diagram', ext: 'dot', mime: 'text/vnd.graphviz',
     blurb: 'Render with <code>dot -Tpng machine.dot</code>, or paste into any Graphviz viewer.',
@@ -234,7 +236,7 @@ const ExportFormats = {
     options: [],
     build: () => JSON.stringify(getWorkspaceData(), null, 2)
   }
-};
+});
 
 const ExportUI = { format: 'dot', opts: {}, cache: '' };
 
