@@ -38,6 +38,7 @@ import * as render from '../js/render.js';
 import * as simulation from '../js/simulation.js';
 import * as state from '../js/state.js';
 import * as statesTransitions from '../js/states-transitions.js';
+import * as store from '../js/store.js';
 import * as suggest from '../js/suggest.js';
 import * as themes from '../js/themes.js';
 import * as theory from '../js/theory.js';
@@ -47,7 +48,7 @@ import * as view from '../js/view.js';
 import * as workspace from '../js/workspace.js';
 
 const NAMESPACES = [
-  state, themes, exportRegistry, dropdown, modal, utils, statesTransitions,
+  state, store, themes, exportRegistry, dropdown, modal, utils, statesTransitions,
   canvas, render, notes, dividers, simulation, suggest, language, alphabet,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, algorithmsFa, algorithmsCfg, theory, workspace, ui
@@ -103,6 +104,15 @@ function resetModuleState() {
   state.setActiveWorkspaceId(null);
   state.setR(baseConfig.radius);
   ui.setSaveState('saved');
+  // The incremental renderer keys its live SVG nodes off App.domCache. Left
+  // populated, a test would start out holding nodes built for the previous
+  // test's states — the diff recovers from that on its own, but tests that
+  // assert on node identity should be starting from nothing.
+  App.domCache.states.clear();
+  App.domCache.transitions.clear();
+  App.domCache.notes.clear();
+  App.domCache.dividers.clear();
+  App.domCache.startArrow = null;
 }
 
 export function resetApp() {

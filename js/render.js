@@ -5,7 +5,7 @@ import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
 import { $, App, R, SVG_NS, getMachineConfig } from './state.js';
 import { getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive } from './states-transitions.js';
-import { Change, subscribe } from './store.js';
+import { Change, emit, subscribe } from './store.js';
 import { triggerMath } from './theory.js';
 import { filterStates, filterTransitions, renderMinimap } from './ui.js';
 import { isAnyPDA, isAnyTM, showStatus } from './utils.js';
@@ -32,14 +32,13 @@ export function renderAll() {
   renderTransitions(); renderStates();
   if (typeof renderNotes === 'function') renderNotes();
   renderMinimap();
-  // Refresh cache after redraw
-  App.domCache.states.clear();
-  App.domCache.transitions.clear();
+  // domCache.states and .transitions are the renderer's own node registries now
+  // — renderStates/renderTransitions add and evict entries as they diff, so
+  // clearing and re-querying here would throw away the identity the diff needs.
+  // Notes and dividers are still rebuilt wholesale by their modules, so their
+  // caches are still refreshed from the DOM.
   App.domCache.notes.clear();
   App.domCache.dividers.clear();
-  App.domCache.startArrow = $('trans-g').querySelector('[data-start-arrow="true"]');
-  document.querySelectorAll('.sn').forEach(el => App.domCache.states.set(el.getAttribute('data-id'), el));
-  document.querySelectorAll('.edge-g').forEach(el => App.domCache.transitions.set(el.getAttribute('data-edge'), el));
   document.querySelectorAll('.note-g').forEach(el => App.domCache.notes.set(el.getAttribute('data-note-id'), el));
   document.querySelectorAll('.divider-g').forEach(el => App.domCache.dividers.set(el.getAttribute('data-divider-id'), el));
   if (App.activeNoteId && typeof highlightNoteAnchors === 'function') highlightNoteAnchors(App.activeNoteId, true);
@@ -52,246 +51,352 @@ export function groupTrans() {
   return Object.values(g);
 }
 
-export function renderTransitions() {
-  const g = $('trans-g'); g.innerHTML = '';
-  const lg = $('trans-lbl-g'); if (lg) lg.innerHTML = '';
-  // start arrow
-  if (App.startId) {
-    const s = getState(App.startId);
-    if (s) {
-      const a = makeSVG('path');
-      const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
-      a.setAttribute('d', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah / 3} ${s.y}`);
-      a.setAttribute('data-start-arrow', 'true');
-      a.setAttribute('stroke', 'var(--green)'); a.setAttribute('stroke-width', '1.5'); a.setAttribute('fill', 'none'); a.setAttribute('marker-end', 'url(#arr-g)');
-      g.appendChild(a);
-      App.domCache.startArrow = a;
-    }
-  }
-  groupTrans().forEach(grp => {
-    const from = getState(grp.from), to = getState(grp.to);
-    if (!from || !to) return;
-    const lbls = grp.ts.map(transLabel);
-    const isSelf = from.id === to.id;
-    let pathEl, textEl, hitEl;
-    const edgeGrp = makeSVG('g');
-    edgeGrp.classList.add('edge-g');
-    edgeGrp.setAttribute('data-edge', from.id + '|' + to.id);
-    if (grp.ts.some(t => App.selectedTransitions.has(t.id))) edgeGrp.classList.add('sel-t');
-
-    if (isSelf) {
-      const so = App.config.render.selfLoopOff, ss = App.config.render.selfLoopSize;
-      const d = `M ${from.x - so} ${from.y - R} A ${ss} ${ss} 0 1 1 ${from.x + so} ${from.y - R}`;
-      pathEl = makeSVG('path');
-      pathEl.setAttribute('d', d); pathEl.setAttribute('marker-end', 'url(#arr)');
-      pathEl.classList.add('tarr');
-
-      hitEl = makeSVG('path');
-      hitEl.setAttribute('d', d); hitEl.classList.add('tarr-hit');
-
-      textEl = makeSVG('text');
-      textEl.classList.add('tlbl');
-      textEl.setAttribute('id', `lbl-${from.id}|${to.id}`);
-      
-      const arcCentY = from.y - R - Math.sqrt(ss * ss - so * so);
-      const ly = arcCentY - ss;
-      const lx = from.x;
-
-      lbls.forEach((lbl, i) => {
-        const tspan = makeSVG('tspan');
-        tspan.textContent = lbl;
-        tspan.setAttribute('x', lx);
-        tspan.setAttribute('dy', i === 0 ? `-${(lbls.length - 1) * 0.6}em` : '1.2em');
-        textEl.appendChild(tspan);
-      });
-
-      textEl.setAttribute('x', lx); textEl.setAttribute('y', ly);
-      textEl.setAttribute('dominant-baseline', 'central');
-      textEl.setAttribute('text-anchor', 'middle');
-
-      const edgeTip = grp.ts.map(t => transLabelDescriptive(t)).join('\n');
-      edgeGrp.setAttribute('data-tip', edgeTip);
-      edgeGrp.setAttribute('aria-label', edgeTip);
-
-      edgeGrp.appendChild(pathEl);
-      edgeGrp.appendChild(hitEl);
-      if ($('trans-lbl-g')) $('trans-lbl-g').appendChild(textEl);
-      else edgeGrp.appendChild(textEl);
-    } else {
-      const hasRev = App.transitions.some(t => t.from === grp.to && t.to === grp.from);
-      const dx = to.x - from.x, dy = to.y - from.y, dist = Math.sqrt(dx * dx + dy * dy);
-      const ux = dx / dist, uy = dy / dist, px = -uy, py = ux;
-
-      const defCrv = hasRev ? App.config.render.curveOff : 0;
-      const crvVal = grp.ts[0].curve !== undefined ? grp.ts[0].curve : defCrv;
-
-      const mx = (from.x + to.x) / 2 + px * crvVal, my = (from.y + to.y) / 2 + py * crvVal;
-      const sx = from.x + ux * R, sy = from.y + uy * R;
-      const ex = to.x - ux * (R + App.config.render.arrowHeadSize), ey = to.y - uy * (R + App.config.render.arrowHeadSize);
-      const d = crvVal ? `M ${sx} ${sy} Q ${mx} ${my} ${ex} ${ey}` : `M ${sx} ${sy} L ${ex} ${ey}`;
-
-      pathEl = makeSVG('path');
-      pathEl.setAttribute('d', d); pathEl.setAttribute('marker-end', 'url(#arr)');
-      pathEl.classList.add('tarr');
-
-      hitEl = makeSVG('path');
-      hitEl.setAttribute('d', d);
-      hitEl.classList.add('tarr-hit');
-
-      textEl = makeSVG('text');
-      textEl.classList.add('tlbl');
-      textEl.setAttribute('id', `lbl-${from.id}|${to.id}`);
-      
-      const lx = crvVal ? (sx + 2 * mx + ex) / 4 : (sx + ex) / 2;
-      const ly = crvVal ? (sy + 2 * my + ey) / 4 : (sy + ey) / 2;
-      
-      lbls.forEach((lbl, i) => {
-        const tspan = makeSVG('tspan');
-        tspan.textContent = lbl;
-        tspan.setAttribute('x', lx);
-        tspan.setAttribute('dy', i === 0 ? `-${(lbls.length - 1) * 0.6}em` : '1.2em');
-        textEl.appendChild(tspan);
-      });
-
-      textEl.setAttribute('x', lx);
-      textEl.setAttribute('y', ly);
-      textEl.setAttribute('dominant-baseline', 'central');
-      textEl.setAttribute('text-anchor', 'middle');
-
-      const edgeTip = grp.ts.map(t => transLabelDescriptive(t)).join('\n');
-      edgeGrp.setAttribute('data-tip', edgeTip);
-      edgeGrp.setAttribute('aria-label', edgeTip);
-
-      edgeGrp.appendChild(pathEl);
-      edgeGrp.appendChild(hitEl);
-      if ($('trans-lbl-g')) $('trans-lbl-g').appendChild(textEl);
-      else edgeGrp.appendChild(textEl);
-
-      // Discoverability handle: a visible grip at the curve control point
-      // when the edge is selected, hinting that it can be dragged to bend.
-      if (grp.ts.some(t => App.selectedTransitions.has(t.id))) {
-        const handle = makeSVG('circle');
-        handle.classList.add('curve-handle');
-        handle.setAttribute('cx', mx); handle.setAttribute('cy', my); handle.setAttribute('r', 7);
-        handle.addEventListener('pointerdown', e => {
-          if (e.button !== 0 || App.spacePan || App.tool !== 'pointer') return;
-          e.stopPropagation();
-          App.dragCurve = { grp, from, to };
-          try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
-        });
-        edgeGrp.appendChild(handle);
-      }
-    }
-
-    edgeGrp.addEventListener('pointerdown', e => {
-      if (e.button !== 0) return;
-      if (App.spacePan) return;
-      e.stopPropagation();
-      edgeGrp.dataset.lastPointerType = e.pointerType || 'mouse';
-      if (App.tool === 'del') {
-        snapshot();
-        const ids = new Set(grp.ts.map(t => t.id));
-        App.transitions = App.transitions.filter(t => !ids.has(t.id));
-        renderAll(); updateLPanel(); updateRPanel();
-        return;
-      }
-      if (App.tool === 'pointer') {
-        const isSel = grp.ts.some(t => App.selectedTransitions.has(t.id));
-        const multi = e.shiftKey || e.ctrlKey || e.metaKey;
-        // Focus moved to an edge — the highlighted state is no longer the
-        // thing being read, so its lit edges would just be stale clutter.
-        if (typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
-        if (!multi && !isSel) {
-          App.selectedStates.clear();
-          App.selectedTransitions.clear();
-          document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
-          grp.ts.forEach(t => App.selectedTransitions.add(t.id));
-          edgeGrp.classList.add('sel-t');
-        } else if (multi) {
-          if (isSel) {
-            grp.ts.forEach(t => App.selectedTransitions.delete(t.id));
-            edgeGrp.classList.remove('sel-t');
-            return;
-          } else {
-            grp.ts.forEach(t => App.selectedTransitions.add(t.id));
-            edgeGrp.classList.add('sel-t');
-          }
-        }
-        // A touch tap selects an edge. Only the explicit curve handle starts
-        // a bend gesture; this avoids turning an ordinary tap into a drag.
-        if (!isSelf && e.pointerType !== 'touch') {
-          App.dragCurve = { grp, from, to };
-          try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
-        }
-      }
-    });
-
-    edgeGrp.addEventListener('dblclick', e => {
-      if (App.tool !== 'pointer') return;
-      if (edgeGrp.dataset.lastPointerType === 'touch') return;
-      e.stopPropagation();
-      openTransModal(from.id, to.id);
-    });
-
-      const onEdgeContextMenu = e => {
-        e.preventDefault();
-        e.stopPropagation();
-        App.ctxId = null;
-        App.ctxMode = 'edge';
-        App.ctxEdge = { from: from.id, to: to.id, transitionIds: grp.ts.map(t => t.id), primaryId: grp.ts[0]?.id || null };
-        // If this edge is already part of a larger selection (e.g. built with
-        // ctrl+click across states and edges), keep it intact — right-clicking
-        // shouldn't collapse a combo selection down to just this one edge.
-        const alreadySelected = grp.ts.some(t => App.selectedTransitions.has(t.id));
-        if (!alreadySelected) {
-          App.selectedStates.clear();
-          App.selectedTransitions.clear();
-          document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
-          grp.ts.forEach(t => App.selectedTransitions.add(t.id));
-          edgeGrp.classList.add('sel-t');
-        }
-        showContextMenu('edge', e.clientX, e.clientY);
-      };
-      edgeGrp.addEventListener('contextmenu', onEdgeContextMenu);
-
-    g.appendChild(edgeGrp);
-  });
+// Resolves an edge key back to the transitions it covers. The listeners below
+// call this at event time rather than closing over a group object: a node now
+// survives across renders, and grp.ts is rebuilt by groupTrans() on every one,
+// so a captured group would act on transitions that no longer exist.
+function edgeGroupFor(key) {
+  const sep = key.indexOf('|');
+  const fromId = key.slice(0, sep), toId = key.slice(sep + 1);
+  const ts = App.transitions.filter(t => t.from === fromId && t.to === toId);
+  if (!ts.length) return null;
+  const from = getState(fromId), to = getState(toId);
+  if (!from || !to) return null;
+  return { from, to, ts, grp: { from: fromId, to: toId, ts } };
 }
 
-export function updateFastDOM() {
-  // Runs on every animation frame while dragging. The edge loop below used to
-  // call getState() (a linear scan of App.states) twice per edge and scan
-  // App.transitions twice per edge, making each frame O(edges x states) +
-  // O(edges x transitions) — the dominant cost when dragging a large machine.
-  // Indexing all three once per frame turns those lookups into O(1).
+// Index of every from|to pair that carries a transition, plus the states by id.
+// Built once per pass so the geometry below can ask "is there an edge the other
+// way?" in O(1). Without it each edge scans App.transitions, which is what made
+// dragging a large machine quadratic.
+function buildEdgeIndex() {
   const stateById = new Map();
-  App.states.forEach(s => stateById.set(s.id, s));
-  const transitionPairs = new Set();
-  const firstTransByPair = new Map();
-  App.transitions.forEach(t => {
-    const pairKey = t.from + '|' + t.to;
-    transitionPairs.add(pairKey);
-    // Matches the previous .find() semantics: first transition wins.
-    if (!firstTransByPair.has(pairKey)) firstTransByPair.set(pairKey, t);
-  });
+  for (const s of App.states) stateById.set(s.id, s);
+  const tsByPair = new Map();
+  for (const t of App.transitions) {
+    const k = t.from + '|' + t.to;
+    let arr = tsByPair.get(k);
+    if (!arr) tsByPair.set(k, arr = []);
+    arr.push(t);
+  }
+  return { stateById, tsByPair };
+}
 
-  App.states.forEach(s => {
-    const grp = App.domCache.states.get(s.id) || document.querySelector(`[data-id="${s.id}"]`);
-    if (!grp) return;
-    if (!App.domCache.states.has(s.id)) App.domCache.states.set(s.id, grp);
+// Geometry for one edge. Split out because renderTransitions and updateFastDOM
+// both need it, and because it is the part that changes every frame while a
+// state is being dragged. `pairs` is the tsByPair map from buildEdgeIndex.
+function edgeGeometry(from, to, ts, pairs) {
+  const isSelf = from.id === to.id;
+  if (isSelf) {
+    const so = App.config.render.selfLoopOff, ss = App.config.render.selfLoopSize;
+    const d = `M ${from.x - so} ${from.y - R} A ${ss} ${ss} 0 1 1 ${from.x + so} ${from.y - R}`;
+    const arcCentY = from.y - R - Math.sqrt(ss * ss - so * so);
+    return { isSelf, d, lx: from.x, ly: arcCentY - ss, mx: null, my: null, crvVal: 0 };
+  }
+  const hasRev = pairs
+    ? pairs.has(to.id + '|' + from.id)
+    : App.transitions.some(t => t.from === to.id && t.to === from.id);
+  const dx = to.x - from.x, dy = to.y - from.y, dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist === 0) return null;
+  const ux = dx / dist, uy = dy / dist, px = -uy, py = ux;
+  const defCrv = hasRev ? App.config.render.curveOff : 0;
+  const crvVal = ts[0].curve !== undefined ? ts[0].curve : defCrv;
+  const mx = (from.x + to.x) / 2 + px * crvVal, my = (from.y + to.y) / 2 + py * crvVal;
+  const sx = from.x + ux * R, sy = from.y + uy * R;
+  const ex = to.x - ux * (R + App.config.render.arrowHeadSize), ey = to.y - uy * (R + App.config.render.arrowHeadSize);
+  const d = crvVal ? `M ${sx} ${sy} Q ${mx} ${my} ${ex} ${ey}` : `M ${sx} ${sy} L ${ex} ${ey}`;
+  const lx = crvVal ? (sx + 2 * mx + ex) / 4 : (sx + ex) / 2;
+  const ly = crvVal ? (sy + 2 * my + ey) / 4 : (sy + ey) / 2;
+  return { isSelf, d, lx, ly, mx, my, crvVal };
+}
 
-    const c = grp.querySelector('circle.bd');
-    if (c) { c.setAttribute('cx', s.x); c.setAttribute('cy', s.y); }
-    const r2 = grp.querySelector('circle[fill="none"]');
-    if (r2) { r2.setAttribute('cx', s.x); r2.setAttribute('cy', s.y); }
-    const t = grp.querySelector('text.slbl');
-    if (t) {
-      t.setAttribute('x', s.x); t.setAttribute('y', App.machine === 'Moore' ? s.y - App.config.render.textMargin : s.y);
-      t.querySelectorAll('tspan').forEach(ts => ts.setAttribute('x', s.x));
+function isEdgeSelected(ts) {
+  return ts.some(t => App.selectedTransitions.has(t.id));
+}
+
+// Clears selection classes the DOM is carrying directly. The edge handlers do
+// this rather than re-rendering, so it has to reach the nodes the same way.
+function clearSelectionClasses() {
+  document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
+}
+
+// Creates the stable parts of an edge: the group, its two paths, its label, and
+// its listeners. The label lives in #trans-lbl-g, not inside the group, so that
+// every label paints above every edge.
+function createEdgeNode(key) {
+  const edgeGrp = makeSVG('g');
+  edgeGrp.classList.add('edge-g');
+  edgeGrp.setAttribute('data-edge', key);
+
+  const pathEl = makeSVG('path');
+  pathEl.classList.add('tarr');
+  pathEl.setAttribute('marker-end', 'url(#arr)');
+  edgeGrp.appendChild(pathEl);
+
+  const hitEl = makeSVG('path');
+  hitEl.classList.add('tarr-hit');
+  edgeGrp.appendChild(hitEl);
+
+  const textEl = makeSVG('text');
+  textEl.classList.add('tlbl');
+  textEl.setAttribute('id', `lbl-${key}`);
+  textEl.setAttribute('dominant-baseline', 'central');
+  textEl.setAttribute('text-anchor', 'middle');
+
+  edgeGrp.__parts = { pathEl, hitEl, textEl, handle: null };
+  edgeGrp.__labelKey = null;
+
+  edgeGrp.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    if (App.spacePan) return;
+    e.stopPropagation();
+    edgeGrp.dataset.lastPointerType = e.pointerType || 'mouse';
+    const info = edgeGroupFor(key);
+    if (!info) return;
+    const { from, to, ts, grp } = info;
+    if (App.tool === 'del') {
+      snapshot();
+      const ids = new Set(ts.map(t => t.id));
+      App.transitions = App.transitions.filter(t => !ids.has(t.id));
+      emit(Change.GRAPH);
+      return;
     }
-    const ot = grp.querySelector('text.mooreout');
-    if (ot) { ot.setAttribute('x', s.x); ot.setAttribute('y', s.y + App.config.render.mooreTextMargin); }
+    if (App.tool === 'pointer') {
+      const isSel = isEdgeSelected(ts);
+      const multi = e.shiftKey || e.ctrlKey || e.metaKey;
+      // Focus moved to an edge — the highlighted state is no longer the thing
+      // being read, so its lit edges would just be stale clutter.
+      if (typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
+      if (!multi && !isSel) {
+        App.selectedStates.clear();
+        App.selectedTransitions.clear();
+        clearSelectionClasses();
+        ts.forEach(t => App.selectedTransitions.add(t.id));
+        edgeGrp.classList.add('sel-t');
+      } else if (multi) {
+        if (isSel) {
+          ts.forEach(t => App.selectedTransitions.delete(t.id));
+          edgeGrp.classList.remove('sel-t');
+          return;
+        }
+        ts.forEach(t => App.selectedTransitions.add(t.id));
+        edgeGrp.classList.add('sel-t');
+      }
+      // A touch tap selects an edge. Only the explicit curve handle starts a
+      // bend gesture; this avoids turning an ordinary tap into a drag.
+      if (from.id !== to.id && e.pointerType !== 'touch') {
+        App.dragCurve = { grp, from, to };
+        try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
+      }
+    }
   });
+
+  edgeGrp.addEventListener('dblclick', e => {
+    if (App.tool !== 'pointer') return;
+    if (edgeGrp.dataset.lastPointerType === 'touch') return;
+    e.stopPropagation();
+    const info = edgeGroupFor(key);
+    if (info) openTransModal(info.from.id, info.to.id);
+  });
+
+  edgeGrp.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    const info = edgeGroupFor(key);
+    if (!info) return;
+    const { from, to, ts } = info;
+    App.ctxId = null;
+    App.ctxMode = 'edge';
+    App.ctxEdge = { from: from.id, to: to.id, transitionIds: ts.map(t => t.id), primaryId: ts[0]?.id || null };
+    // If this edge is already part of a larger selection (e.g. built with
+    // ctrl+click across states and edges), keep it intact — right-clicking
+    // shouldn't collapse a combo selection down to just this one edge.
+    if (!isEdgeSelected(ts)) {
+      App.selectedStates.clear();
+      App.selectedTransitions.clear();
+      clearSelectionClasses();
+      ts.forEach(t => App.selectedTransitions.add(t.id));
+      edgeGrp.classList.add('sel-t');
+    }
+    showContextMenu('edge', e.clientX, e.clientY);
+  });
+
+  return edgeGrp;
+}
+
+// The curve handle only exists while the edge is selected: a visible grip at the
+// control point, hinting that the edge can be bent.
+function syncCurveHandle(edgeGrp, key, geo, selected) {
+  const parts = edgeGrp.__parts;
+  const wanted = selected && !geo.isSelf;
+  if (wanted && !parts.handle) {
+    const handle = makeSVG('circle');
+    handle.classList.add('curve-handle');
+    handle.setAttribute('r', 7);
+    handle.addEventListener('pointerdown', e => {
+      if (e.button !== 0 || App.spacePan || App.tool !== 'pointer') return;
+      e.stopPropagation();
+      const info = edgeGroupFor(key);
+      if (!info) return;
+      App.dragCurve = { grp: info.grp, from: info.from, to: info.to };
+      try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
+    });
+    edgeGrp.appendChild(handle);
+    parts.handle = handle;
+  } else if (!wanted && parts.handle) {
+    parts.handle.remove();
+    parts.handle = null;
+  }
+  if (parts.handle) {
+    parts.handle.setAttribute('cx', geo.mx);
+    parts.handle.setAttribute('cy', geo.my);
+  }
+}
+
+function syncEdgeNode(edgeGrp, from, to, ts, pairs) {
+  const geo = edgeGeometry(from, to, ts, pairs);
+  if (!geo) return false;
+  const parts = edgeGrp.__parts;
+  const selected = isEdgeSelected(ts);
+
+  edgeGrp.classList.toggle('sel-t', selected);
+  parts.pathEl.setAttribute('d', geo.d);
+  parts.hitEl.setAttribute('d', geo.d);
+
+  const lbls = ts.map(transLabel);
+  // Rebuild the tspans only when the label text changes. Geometry changes —
+  // a state moving, an edge bending — just reposition them, so dragging
+  // allocates nothing.
+  const labelKey = lbls.join('\u0001');
+  if (edgeGrp.__labelKey !== labelKey) {
+    parts.textEl.innerHTML = '';
+    lbls.forEach((lbl, i) => {
+      const tspan = makeSVG('tspan');
+      tspan.textContent = lbl;
+      tspan.setAttribute('x', geo.lx);
+      tspan.setAttribute('dy', i === 0 ? `-${(lbls.length - 1) * 0.6}em` : '1.2em');
+      parts.textEl.appendChild(tspan);
+    });
+    edgeGrp.__labelKey = labelKey;
+    edgeGrp.__labelX = geo.lx;
+  } else if (edgeGrp.__labelX !== geo.lx) {
+    for (const tspan of parts.textEl.childNodes) tspan.setAttribute('x', geo.lx);
+    edgeGrp.__labelX = geo.lx;
+  }
+  parts.textEl.setAttribute('x', geo.lx);
+  parts.textEl.setAttribute('y', geo.ly);
+
+  const edgeTip = ts.map(t => transLabelDescriptive(t)).join('\n');
+  edgeGrp.setAttribute('data-tip', edgeTip);
+  edgeGrp.setAttribute('aria-label', edgeTip);
+
+  syncCurveHandle(edgeGrp, edgeGrp.getAttribute('data-edge'), geo, selected);
+  return true;
+}
+
+// The start-state arrow is a single node, kept in the same registry style as
+// the edges so renderAll no longer has to re-query for it.
+function syncStartArrow(g) {
+  const s = App.startId ? getState(App.startId) : null;
+  if (!s) {
+    if (App.domCache.startArrow) {
+      App.domCache.startArrow.remove();
+      App.domCache.startArrow = null;
+    }
+    return;
+  }
+  let a = App.domCache.startArrow;
+  if (!a) {
+    a = makeSVG('path');
+    a.setAttribute('data-start-arrow', 'true');
+    a.setAttribute('stroke', 'var(--green)');
+    a.setAttribute('stroke-width', '1.5');
+    a.setAttribute('fill', 'none');
+    a.setAttribute('marker-end', 'url(#arr-g)');
+    App.domCache.startArrow = a;
+  }
+  const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
+  a.setAttribute('d', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah / 3} ${s.y}`);
+  // Always first in paint order, behind every edge.
+  if (a !== g.firstChild) g.insertBefore(a, g.firstChild);
+}
+
+export function renderTransitions() {
+  const g = $('trans-g');
+  const lg = $('trans-lbl-g');
+  const live = App.domCache.transitions;
+  const { tsByPair } = buildEdgeIndex();
+
+  syncStartArrow(g);
+
+  let prev = App.domCache.startArrow || null;
+  const seen = new Set();
+  for (const grp of groupTrans()) {
+    const from = getState(grp.from), to = getState(grp.to);
+    if (!from || !to) continue;
+    const key = from.id + '|' + to.id;
+    let node = live.get(key);
+    if (!node) {
+      node = createEdgeNode(key);
+      live.set(key, node);
+    }
+    if (!syncEdgeNode(node, from, to, grp.ts, tsByPair)) continue;
+    seen.add(key);
+
+    const expected = prev ? prev.nextSibling : g.firstChild;
+    if (node !== expected) g.insertBefore(node, expected);
+    prev = node;
+
+    // Labels are siblings in their own layer, so they need placing separately.
+    const textEl = node.__parts.textEl;
+    if (lg) {
+      if (textEl.parentNode !== lg) lg.appendChild(textEl);
+    } else if (textEl.parentNode !== node) {
+      node.appendChild(textEl);
+    }
+  }
+
+  for (const [key, node] of live) {
+    if (seen.has(key)) continue;
+    node.__parts.textEl.remove();
+    node.remove();
+    live.delete(key);
+  }
+}
+
+// Runs on every animation frame while dragging, so it only touches geometry —
+// no classes, no labels, no node creation.
+//
+// It shares edgeGeometry() with renderTransitions rather than keeping a second
+// copy of the curve maths, and reaches child elements through the __parts
+// references the renderer already holds instead of running a querySelector per
+// node per frame. buildEdgeIndex keeps the "is there an edge the other way?"
+// lookup O(1); without it each frame is O(edges x transitions).
+export function updateFastDOM() {
+  const { stateById, tsByPair } = buildEdgeIndex();
+  const isMoore = App.machine === 'Moore';
+
+  for (const s of App.states) {
+    const grp = App.domCache.states.get(s.id);
+    if (!grp || !grp.__parts) continue;
+    const p = grp.__parts;
+    p.circle.setAttribute('cx', s.x);
+    p.circle.setAttribute('cy', s.y);
+    if (p.ring) {
+      p.ring.setAttribute('cx', s.x);
+      p.ring.setAttribute('cy', s.y);
+    }
+    p.label.setAttribute('x', s.x);
+    p.label.setAttribute('y', isMoore ? s.y - App.config.render.textMargin : s.y);
+    if (grp.__labelX !== s.x) {
+      for (const tspan of p.label.childNodes) tspan.setAttribute('x', s.x);
+      grp.__labelX = s.x;
+    }
+    if (p.moore) {
+      p.moore.setAttribute('x', s.x);
+      p.moore.setAttribute('y', s.y + App.config.render.mooreTextMargin);
+    }
+  }
 
   const startArrow = App.domCache.startArrow;
   if (startArrow && App.startId) {
@@ -302,59 +407,31 @@ export function updateFastDOM() {
     }
   }
 
-  // Fast transitions update: only update attributes for existing edges
-  App.domCache.transitions.forEach((edgeGrp, key) => {
-    const [fid, tid] = key.split('|');
-    const from = stateById.get(fid), to = stateById.get(tid);
-    if (!from || !to) return;
-    const isSelf = fid === tid;
-    const pathEl = edgeGrp.querySelector('.tarr'), hitEl = edgeGrp.querySelector('.tarr-hit');
-    const textEl = document.getElementById(`lbl-${fid}|${tid}`) || edgeGrp.querySelector('.tlbl');
-    if (!pathEl || !textEl) return;
+  for (const [key, edgeGrp] of App.domCache.transitions) {
+    const p = edgeGrp.__parts;
+    if (!p) continue;
+    const sep = key.indexOf('|');
+    const from = stateById.get(key.slice(0, sep));
+    const to = stateById.get(key.slice(sep + 1));
+    const ts = tsByPair.get(key);
+    if (!from || !to || !ts) continue;
 
-    if (isSelf) {
-      const so = App.config.render.selfLoopOff, ss = App.config.render.selfLoopSize;
-      const d = `M ${from.x - so} ${from.y - R} A ${ss} ${ss} 0 1 1 ${from.x + so} ${from.y - R}`;
-      pathEl.setAttribute('d', d);
-      if (hitEl) hitEl.setAttribute('d', d);
-      
-      const arcCentY = from.y - R - Math.sqrt(ss * ss - so * so);
-      const ly = arcCentY - ss;
-      const lx = from.x;
-      
-      textEl.setAttribute('x', lx); textEl.setAttribute('y', ly);
-      const tspans = textEl.querySelectorAll('tspan');
-      if (tspans.length > 0) tspans.forEach(ts => ts.setAttribute('x', lx));
-    } else {
-      const hasRev = transitionPairs.has(tid + '|' + fid);
-      const dx = to.x - from.x, dy = to.y - from.y, dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist === 0) return;
-      const ux = dx / dist, uy = dy / dist, px = -uy, py = ux;
-      const defCrv = hasRev ? App.config.render.curveOff : 0;
-      // Get the curve value from the first transition in the group
-      const firstTrans = firstTransByPair.get(key);
-      const crvVal = (firstTrans && firstTrans.curve !== undefined) ? firstTrans.curve : defCrv;
+    const geo = edgeGeometry(from, to, ts, tsByPair);
+    if (!geo) continue;
 
-      const mx = (from.x + to.x) / 2 + px * crvVal, my = (from.y + to.y) / 2 + py * crvVal;
-      const sx = from.x + ux * R, sy = from.y + uy * R;
-      const ex = to.x - ux * (R + App.config.render.arrowHeadSize), ey = to.y - uy * (R + App.config.render.arrowHeadSize);
-      const d = crvVal ? `M ${sx} ${sy} Q ${mx} ${my} ${ex} ${ey}` : `M ${sx} ${sy} L ${ex} ${ey}`;
-      
-      pathEl.setAttribute('d', d);
-      if (hitEl) hitEl.setAttribute('d', d);
-      
-      const lx = crvVal ? (sx + 2 * mx + ex) / 4 : (sx + ex) / 2;
-      const ly = crvVal ? (sy + 2 * my + ey) / 4 : (sy + ey) / 2;
-
-      textEl.setAttribute('x', lx);
-      textEl.setAttribute('y', ly);
-      const tspans = textEl.querySelectorAll('tspan');
-      if (tspans.length > 0) tspans.forEach(ts => ts.setAttribute('x', lx));
-
-      const handleEl = edgeGrp.querySelector('.curve-handle');
-      if (handleEl) { handleEl.setAttribute('cx', mx); handleEl.setAttribute('cy', my); }
+    p.pathEl.setAttribute('d', geo.d);
+    p.hitEl.setAttribute('d', geo.d);
+    p.textEl.setAttribute('x', geo.lx);
+    p.textEl.setAttribute('y', geo.ly);
+    if (edgeGrp.__labelX !== geo.lx) {
+      for (const tspan of p.textEl.childNodes) tspan.setAttribute('x', geo.lx);
+      edgeGrp.__labelX = geo.lx;
     }
-  });
+    if (p.handle) {
+      p.handle.setAttribute('cx', geo.mx);
+      p.handle.setAttribute('cy', geo.my);
+    }
+  }
 
   // Anchored notes ride along with the states/edges they're pinned to.
   if (typeof updateNotesDOM === 'function') updateNotesDOM();
@@ -386,80 +463,180 @@ export function setStateLabelLines(textEl, lines, cx) {
   textEl.setAttribute('font-size', lines.length >= 4 ? '8.5px' : lines.length === 3 ? '9.5px' : '11px');
 }
 
-export function renderStates() {
-  const g = $('states-g'); g.innerHTML = '';
-  App.states.forEach(s => {
-    const grp = makeSVG('g');
-    grp.classList.add('sn');
-    grp.setAttribute('data-id', s.id);
-    if (App.startId === s.id) grp.classList.add('start-st');
-    if (App.selectedStates.has(s.id)) grp.classList.add('sel-st');
-    const showAccepts = !(getMachineConfig(App.machine).isTransducer && !App.config.transducerAccepts);
-    if (showAccepts && App.accepts.has(s.id)) grp.classList.add('acc-st');
-    // Dead/unreachable overlay (set by Dead State Analysis algo)
-    if (App.stateClassification) {
-      const cls = App.stateClassification.get(s.id);
-      if (cls === 'unreachable') grp.classList.add('unreachable-st');
-      else if (cls === 'dead') grp.classList.add('dead-st');
-    }
-    const c = makeSVG('circle');
-    c.classList.add('bd'); c.setAttribute('cx', s.x); c.setAttribute('cy', s.y); c.setAttribute('r', R);
-    grp.appendChild(c);
-    if (showAccepts && App.accepts.has(s.id)) {
-      const r2 = makeSVG('circle');
-      r2.setAttribute('cx', s.x); r2.setAttribute('cy', s.y); r2.setAttribute('r', R - 5);
-      r2.setAttribute('fill', 'none'); r2.setAttribute('stroke', 'var(--gold)'); r2.setAttribute('stroke-width', '1.5');
-      grp.appendChild(r2);
-    }
-    const t = makeSVG('text'); t.classList.add('slbl'); t.setAttribute('x', s.x);
-    t.setAttribute('y', App.machine === 'Moore' ? s.y - App.config.render.textMargin : s.y);
-    setStateLabelLines(t, splitStateLabel(s.name), s.x);
-    grp.appendChild(t);
-    if (App.machine === 'Moore') {
-      const ot = makeSVG('text'); ot.classList.add('mooreout');
-      ot.setAttribute('x', s.x); ot.setAttribute('y', s.y + App.config.render.mooreTextMargin);
-      ot.textContent = s.output !== undefined && s.output !== '' ? s.output : '—';
-      grp.appendChild(ot);
-    }
+// True when accept marks are meaningful for the current machine. Transducers
+// have no accepting states unless the setting says otherwise.
+function acceptsAreShown() {
+  return !(getMachineConfig(App.machine).isTransducer && !App.config.transducerAccepts);
+}
 
-    let stTitle = `State '${s.name}'`;
-    const isStart = App.startId === s.id;
-    const isAcc = showAccepts && App.accepts.has(s.id);
-    if (isStart || isAcc) {
-      const statuses = [];
-      if (isStart) statuses.push('Start');
-      if (isAcc) statuses.push('Accept');
-      stTitle += ` (${statuses.join(', ')})`;
-    }
-    if (App.machine === 'Moore') {
-      const o = s.output !== undefined && s.output !== '' ? s.output : App.config.sym.lambda;
-      stTitle += `\nOutput: '${o}'`;
-    }
-    grp.setAttribute('data-tip', stTitle);
-    grp.setAttribute('aria-label', stTitle);
-    grp.addEventListener('pointerdown', e => {
-      grp.dataset.lastPointerType = e.pointerType || 'mouse';
-      onStateDown(e, s.id);
-    });
-    grp.addEventListener('contextmenu', e => { 
-      e.preventDefault();
-      App.ctxId = s.id; 
-      App.ctxEdge = null;
-      App.ctxMode = 'state';
-      const toggleOpt = $('ctx-toggle-acc');
-      const renameLbl = document.querySelector('#ctx-rename .ctx-label');
-      if (toggleOpt) toggleOpt.style.display = showAccepts ? '' : 'none';
-      if (renameLbl) renameLbl.textContent = (App.machine === 'Moore' || App.machine === 'Mealy') ? 'Configure' : 'Rename';
-      showContextMenu('state', e.clientX, e.clientY); 
-    });
-    grp.addEventListener('dblclick', () => { 
-      if (grp.dataset.lastPointerType === 'touch') return;
-      if (!showAccepts) return;
-      App.accepts.has(s.id) ? App.accepts.delete(s.id) : App.accepts.add(s.id); 
-      snapshot(); renderAll(); updateLPanel(); updateRPanel(); 
-    });
-    g.appendChild(grp);
+// Builds the parts of a state node that never change: the group, its circle and
+// label, and its event listeners.
+//
+// Listeners are attached exactly once, at creation, and resolve everything they
+// need from App at event time. They must not close over the state record or
+// over derived values like acceptsAreShown() — a node now outlives the render
+// that made it, so a captured value goes stale the moment the state is renamed
+// or the machine type changes.
+function createStateNode(id) {
+  const g = makeSVG('g');
+  g.classList.add('sn');
+  g.setAttribute('data-id', id);
+
+  const circle = makeSVG('circle');
+  circle.classList.add('bd');
+  g.appendChild(circle);
+
+  const label = makeSVG('text');
+  label.classList.add('slbl');
+  g.appendChild(label);
+
+  // Child references, so syncing never has to query the subtree.
+  g.__parts = { circle, label, ring: null, moore: null };
+  // Inputs the label tspans were last built from, so they are only rebuilt when
+  // one of them actually changes.
+  g.__labelKey = null;
+
+  g.addEventListener('pointerdown', e => {
+    g.dataset.lastPointerType = e.pointerType || 'mouse';
+    onStateDown(e, id);
   });
+
+  g.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    App.ctxId = id;
+    App.ctxEdge = null;
+    App.ctxMode = 'state';
+    const toggleOpt = $('ctx-toggle-acc');
+    const renameLbl = document.querySelector('#ctx-rename .ctx-label');
+    if (toggleOpt) toggleOpt.style.display = acceptsAreShown() ? '' : 'none';
+    if (renameLbl) renameLbl.textContent = (App.machine === 'Moore' || App.machine === 'Mealy') ? 'Configure' : 'Rename';
+    showContextMenu('state', e.clientX, e.clientY);
+  });
+
+  g.addEventListener('dblclick', () => {
+    if (g.dataset.lastPointerType === 'touch') return;
+    if (!acceptsAreShown()) return;
+    App.accepts.has(id) ? App.accepts.delete(id) : App.accepts.add(id);
+    commit();
+  });
+
+  return g;
+}
+
+// Writes the current value of every visual property onto an existing node.
+//
+// Attribute and class writes are unconditional. They are cheap and idempotent,
+// and — more to the point — canvas.js and the edge handlers toggle sel-st on
+// these nodes directly, so a "what did we render last time" cache would drift
+// out of step with the DOM and leave selection highlights stuck. Only the label
+// tspans, the one genuinely expensive part, are guarded by a key.
+function syncStateNode(g, s, showAccepts) {
+  const parts = g.__parts;
+  const isStart = App.startId === s.id;
+  const isAcc = showAccepts && App.accepts.has(s.id);
+
+  g.classList.toggle('start-st', isStart);
+  g.classList.toggle('sel-st', App.selectedStates.has(s.id));
+  g.classList.toggle('acc-st', isAcc);
+  // Dead/unreachable overlay (set by Dead State Analysis algo)
+  const cls = App.stateClassification ? App.stateClassification.get(s.id) : null;
+  g.classList.toggle('unreachable-st', cls === 'unreachable');
+  g.classList.toggle('dead-st', cls === 'dead');
+
+  parts.circle.setAttribute('cx', s.x);
+  parts.circle.setAttribute('cy', s.y);
+  parts.circle.setAttribute('r', R);
+
+  if (isAcc && !parts.ring) {
+    const ring = makeSVG('circle');
+    ring.classList.add('acc-ring');
+    ring.setAttribute('fill', 'none');
+    ring.setAttribute('stroke', 'var(--gold)');
+    ring.setAttribute('stroke-width', '1.5');
+    g.insertBefore(ring, parts.label);
+    parts.ring = ring;
+  } else if (!isAcc && parts.ring) {
+    parts.ring.remove();
+    parts.ring = null;
+  }
+  if (parts.ring) {
+    parts.ring.setAttribute('cx', s.x);
+    parts.ring.setAttribute('cy', s.y);
+    parts.ring.setAttribute('r', R - 5);
+  }
+
+  const isMoore = App.machine === 'Moore';
+  parts.label.setAttribute('x', s.x);
+  parts.label.setAttribute('y', isMoore ? s.y - App.config.render.textMargin : s.y);
+  // As above: the tspans say the state's name, which a move does not change.
+  const labelKey = `${s.name}\u0001${App.config.wrapStateLabels}`;
+  if (g.__labelKey !== labelKey) {
+    setStateLabelLines(parts.label, splitStateLabel(s.name), s.x);
+    g.__labelKey = labelKey;
+    g.__labelX = s.x;
+  } else if (g.__labelX !== s.x) {
+    for (const tspan of parts.label.childNodes) tspan.setAttribute('x', s.x);
+    g.__labelX = s.x;
+  }
+
+  if (isMoore && !parts.moore) {
+    const ot = makeSVG('text');
+    ot.classList.add('mooreout');
+    g.appendChild(ot);
+    parts.moore = ot;
+  } else if (!isMoore && parts.moore) {
+    parts.moore.remove();
+    parts.moore = null;
+  }
+  if (parts.moore) {
+    parts.moore.setAttribute('x', s.x);
+    parts.moore.setAttribute('y', s.y + App.config.render.mooreTextMargin);
+    parts.moore.textContent = s.output !== undefined && s.output !== '' ? s.output : '—';
+  }
+
+  let stTitle = `State '${s.name}'`;
+  if (isStart || isAcc) {
+    const statuses = [];
+    if (isStart) statuses.push('Start');
+    if (isAcc) statuses.push('Accept');
+    stTitle += ` (${statuses.join(', ')})`;
+  }
+  if (isMoore) {
+    const o = s.output !== undefined && s.output !== '' ? s.output : App.config.sym.lambda;
+    stTitle += `\nOutput: '${o}'`;
+  }
+  g.setAttribute('data-tip', stTitle);
+  g.setAttribute('aria-label', stTitle);
+}
+
+export function renderStates() {
+  const g = $('states-g');
+  const live = App.domCache.states;
+  const showAccepts = acceptsAreShown();
+
+  // Walk App.states in order, reusing the node for each id and moving it only
+  // if it is not already where it belongs. `expected` is the node that should
+  // occupy the next slot, so an unchanged list performs no DOM writes here.
+  let prev = null;
+  const seen = new Set();
+  for (const s of App.states) {
+    seen.add(s.id);
+    let node = live.get(s.id);
+    if (!node) {
+      node = createStateNode(s.id);
+      live.set(s.id, node);
+    }
+    syncStateNode(node, s, showAccepts);
+    const expected = prev ? prev.nextSibling : g.firstChild;
+    if (node !== expected) g.insertBefore(node, expected);
+    prev = node;
+  }
+
+  for (const [id, node] of live) {
+    if (seen.has(id)) continue;
+    node.remove();
+    live.delete(id);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════

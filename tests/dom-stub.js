@@ -6,13 +6,18 @@
 // imports this first, and ES modules evaluate imports in source order.
 const elements = new Map();
 
+function detach(node) {
+  if (node && typeof node === 'object' && node.parentNode) {
+    node.parentNode.removeChild(node);
+  }
+}
+
 export function createElement(id = '') {
   const classSet = new Set();
   const el = {
     id,
     tagName: 'DIV',
     value: '',
-    innerHTML: '',
     textContent: '',
     className: '',
     dataset: {},
@@ -45,25 +50,46 @@ export function createElement(id = '') {
       },
       contains: name => classSet.has(name)
     },
+    // appendChild/insertBefore detach from the previous parent first, the way a
+    // real DOM does. The incremental renderer relies on it: reordering a node
+    // is a single insertBefore, not a remove-then-insert pair.
     appendChild(child) {
+      detach(child);
       this.children.push(child);
       if (child && typeof child === 'object') child.parentNode = this;
       return child;
     },
     removeChild(child) {
       const i = this.children.indexOf(child);
-      if (i !== -1) this.children.splice(i, 1);
+      if (i !== -1) {
+        this.children.splice(i, 1);
+        if (child && typeof child === 'object') child.parentNode = null;
+      }
       return child;
     },
     remove() {
       if (this.parentNode) this.parentNode.removeChild(this);
     },
     insertBefore(newNode, referenceNode) {
-      if (referenceNode == null) { this.children.push(newNode); return newNode; }
-      const idx = this.children.indexOf(referenceNode);
-      if (idx === -1) throw new Error('insertBefore: referenceNode is not a child of this node');
-      this.children.splice(idx, 0, newNode);
+      detach(newNode);
+      if (referenceNode == null) {
+        this.children.push(newNode);
+      } else {
+        const idx = this.children.indexOf(referenceNode);
+        if (idx === -1) throw new Error('insertBefore: referenceNode is not a child of this node');
+        this.children.splice(idx, 0, newNode);
+      }
+      if (newNode && typeof newNode === 'object') newNode.parentNode = this;
       return newNode;
+    },
+    get firstChild() { return this.children[0] || null; },
+    get lastChild() { return this.children[this.children.length - 1] || null; },
+    get childNodes() { return this.children; },
+    get nextSibling() {
+      const p = this.parentNode;
+      if (!p) return null;
+      const i = p.children.indexOf(this);
+      return i === -1 ? null : (p.children[i + 1] || null);
     },
     setAttribute(name, value) { this[name] = value; },
     getAttribute(name) { return this[name] === undefined ? null : this[name]; },
@@ -85,6 +111,21 @@ export function createElement(id = '') {
     scrollIntoView() {},
     getContext: () => null
   };
+  // Assigning innerHTML has to detach the children, or code that clears a group
+  // with `g.innerHTML = ''` would leave the stub reporting them as still there.
+  let html = '';
+  Object.defineProperty(el, 'innerHTML', {
+    get: () => html,
+    set: value => {
+      html = String(value);
+      for (const child of el.children.slice()) {
+        if (child && typeof child === 'object') child.parentNode = null;
+      }
+      el.children.length = 0;
+    },
+    enumerable: true,
+    configurable: true
+  });
   return el;
 }
 
