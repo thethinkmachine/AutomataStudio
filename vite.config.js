@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite';
 import { cpSync, mkdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = dirname(fileURLToPath(import.meta.url));
 
 // Example machines are fetched at runtime as `js/examples/<name>.json` (see
 // loadExampleFile in js/persistence.js), so they must keep that exact path.
@@ -12,8 +15,8 @@ function copyExamples() {
     name: 'copy-examples',
     apply: 'build',
     closeBundle() {
-      const from = resolve(__dirname, 'js/examples');
-      const to = resolve(__dirname, 'dist/js/examples');
+      const from = resolve(ROOT, 'js/examples');
+      const to = resolve(ROOT, 'dist/js/examples');
       mkdirSync(to, { recursive: true });
       cpSync(from, to, { recursive: true });
     }

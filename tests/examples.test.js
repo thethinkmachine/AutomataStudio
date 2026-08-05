@@ -1,8 +1,11 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const { createHarness } = require('./harness');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { createHarness } from './harness.js';
 
 // Every bundled example ships a meta.inputs list of sample strings with the
 // verdict (and, for transducers/TMs, the expected output or final tape) the

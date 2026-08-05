@@ -1,7 +1,10 @@
 import { clearTempLine } from './canvas.js';
 import { OpenCustomSelect, closeCustomSelect } from './dropdown.js';
+import { ModalRegistry, ModalReturnFocus, ModalStack } from './modal-registry.js';
 import { $, App } from './state.js';
 import { SymSuggest } from './suggest.js';
+
+export { ModalRegistry, ModalReturnFocus, ModalStack };
 
 // ══════════════════════════════════════════════════════════════════
 //  MODAL CORE
@@ -12,16 +15,9 @@ import { SymSuggest } from './suggest.js';
 //  that only make sense once several dialogs can be open at once:
 //  a topmost-wins Escape, per-modal teardown, and Enter-to-submit.
 
-// Open modals, innermost last. Escape and the Tab trap only ever act on
-// the top of this stack, so a modal opened from another modal behaves.
-export const ModalStack = [];
-
-// id → { onClose, submit, dismissOnBackdrop }. Each modal registers its
-// own teardown instead of growing a shared if-chain in closeModal.
-export const ModalRegistry = Object.create(null);
-
-// The element focus returns to when a modal closes, keyed by modal id.
-export const ModalReturnFocus = Object.create(null);
+// ModalStack, ModalRegistry and ModalReturnFocus are declared in
+// ./modal-registry.js and re-exported above — see that file for why they
+// cannot live here.
 
 export const MODAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 

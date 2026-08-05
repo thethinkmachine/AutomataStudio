@@ -1,22 +1,9 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
-const { createHarness } = require('./harness');
+import test from 'node:test';
+import assert from 'node:assert';
+import { createHarness } from './harness.js';
 
-// js/canvas.js is deliberately not in the harness's SCRIPT_ORDER: it binds
-// pointer/wheel listeners and installs a real applyCamera that needs DOM APIs
-// the stub elements don't implement, which would break the other suites. The
-// layout functions themselves are pure, so this loads the module into a
-// harness of its own.
 const harness = createHarness();
 const { context } = harness;
-vm.runInContext(
-  fs.readFileSync(path.resolve(__dirname, '..', 'js/canvas.js'), 'utf8'),
-  context,
-  { filename: 'js/canvas.js' }
-);
 
 // A state circle is App.config.radius across the middle, so any two centres
 // closer than a full diameter are drawn overlapping.

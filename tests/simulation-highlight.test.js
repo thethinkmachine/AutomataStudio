@@ -1,6 +1,6 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { createHarness } = require('./harness');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createHarness } from './harness.js';
 
 // Simulation canvas highlighting: verifies which states/edges receive the
 // act-st / sim-visited-st / sim-active-t / sim-trail-t classes as playback

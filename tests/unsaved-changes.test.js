@@ -1,9 +1,9 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const { createHarness } = require('./harness');
+import test from 'node:test';
+import assert from 'node:assert';
+import { createHarness } from './harness.js';
 
 const harness = createHarness();
-const { context, getElement, evalInContext } = harness;
+const {context, getElement} = harness;
 
 // Builds N workspaces and makes the first one active. `dirtyIds` marks which
 // of them carry unsaved changes.
@@ -20,19 +20,19 @@ function seedTabs(names, dirtyIds = []) {
     dirty: dirtyIds.includes(`w${i}`),
     data: { machine: 'dfa', states: [], transitions: [] }
   }));
-  evalInContext(`Workspaces.length = 0; activeWorkspaceId = 'w0';`);
+  context.Workspaces.length = 0; context.setActiveWorkspaceId('w0');
   tabs().push(...seeded);
   // `saveState` is module-level and every test shares one vm context, so a
   // preceding failed-save test would otherwise leave it stuck on 'error' —
   // which updateSaveIndicator now deliberately refuses to recompute away.
-  evalInContext(`setSaveState('saved')`);
+  context.setSaveState('saved');
   return tabs();
 }
 
 // Reads the live binding rather than a stale reference: the close paths
 // reassign Workspaces wholesale (`Workspaces = Workspaces.filter(...)`).
 function tabs() {
-  return evalInContext('Workspaces');
+  return context.Workspaces;
 }
 
 function unsavedModalShown() {

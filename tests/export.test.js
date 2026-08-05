@@ -1,6 +1,6 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { createHarness } = require('./harness');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createHarness } from './harness.js';
 
 // Export, interop, and the batch-runner split.
 //
@@ -34,7 +34,6 @@ function deepEq(actual, expected, msg) {
 // Top-level `const` in the loaded scripts is a lexical binding, not a
 // property of the VM's global object — reaching ExportFormats/ExportUI
 // needs an eval inside that realm.
-const inVM = expr => harness.evalInContext(expr);
 
 // ── builders ──────────────────────────────────────────────────────
 function fa({ sigma, states, start, accepts, edges, machine = 'DFA' }) {
@@ -512,7 +511,7 @@ test('every declared format builds a non-empty string for a plain DFA', () => {
   endsIn01();
   const ir = context.buildMachineIR();
 
-  Object.entries(inVM('ExportFormats')).forEach(([key, spec]) => {
+  Object.entries(context.ExportFormats).forEach(([key, spec]) => {
     if (spec.available && !spec.available()) return; // batch needs a prior run
     const opts = {};
     (spec.options || []).forEach(o => { opts[o.id] = o.def; });
@@ -526,17 +525,17 @@ test('the batch format stays unavailable until a batch has been run', () => {
   reset();
   endsIn01();
   App.lastBatch = null;
-  assert.equal(inVM('ExportFormats').batch.available(), false);
+  assert.equal(context.ExportFormats.batch.available(), false);
 
   App.lastBatch = context.computeBatchResults(['01 => accept']);
-  assert.equal(inVM('ExportFormats').batch.available(), true);
+  assert.equal(context.ExportFormats.batch.available(), true);
 });
 
 test('selecting a format resets its options to declared defaults', () => {
   reset();
   endsIn01();
   context.selectExportFormat('tikz', true);
-  const ui = inVM('ExportUI');
+  const ui = context.ExportUI;
   assert.equal(ui.format, 'tikz');
   assert.equal(ui.opts.standalone, false);
   assert.equal(ui.opts.mergeParallel, true);
@@ -546,7 +545,7 @@ test('filename extension follows the chosen sub-format', () => {
   reset();
   endsIn01();
   context.selectExportFormat('samples', true);
-  const ui = inVM('ExportUI');
+  const ui = context.ExportUI;
   ui.opts.format = 'json';
   assert.match(context.exportCodeFilename(), /\.json$/);
   ui.opts.format = 'batch';

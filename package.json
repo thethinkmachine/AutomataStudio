@@ -6,7 +6,8 @@
     "name": "Shreyan C",
     "email": "shreyan.chaubey@gmail.com"
   },
-  "main": "electron/main.js",
+  "main": "electron/main.cjs",
+  "type": "module",
   "devDependencies": {
     "concurrently": "^9.1.0",
     "cross-env": "^7.0.3",

@@ -1,6 +1,6 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const { createHarness } = require('./harness');
+import test from 'node:test';
+import assert from 'node:assert';
+import { createHarness } from './harness.js';
 
 const harness = createHarness();
 const { context, getElement } = harness;

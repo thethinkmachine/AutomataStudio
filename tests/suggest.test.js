@@ -1,17 +1,15 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const vm = require('node:vm');
-const { createHarness } = require('./harness');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createHarness } from './harness.js';
 
 function withSigma(h, symbols) {
   h.context.App.sigma = new Set(symbols);
 }
 
-// SymSuggest is a top-level `const` in suggest.js, so it's a lexical binding
-// in the vm context rather than a property on it — reach it by running a
-// tiny setter script in the same context instead of `h.context.SymSuggest`.
-function installSymSuggestSetter(h) {
-  vm.runInContext('function __setSymSuggest(t, s) { SymSuggest.target = t; SymSuggest.state = s; }', h.context);
+// SymSuggest is a plain module export, so the test can set it directly.
+function setSymSuggest(h, target, state) {
+  h.context.SymSuggest.target = target;
+  h.context.SymSuggest.state = state;
 }
 
 function makeInput(h, id, value = '') {
@@ -23,10 +21,9 @@ function makeInput(h, id, value = '') {
   return el;
 }
 
-// vm.createContext gives objects/arrays from a different realm, so
-// assert.deepEqual (prototype-sensitive) reports false mismatches even when
-// the structure is identical. Round-tripping through JSON strips the
-// cross-realm prototypes while still comparing key order-independently.
+// Compares structure only: the JSON round-trip drops undefined-valued keys and
+// any methods the suggestion objects carry, so these assertions stay about the
+// shape that matters rather than the exact object identity.
 function assertShape(actual, expected) {
   assert.deepEqual(JSON.parse(JSON.stringify(actual)), expected);
 }
@@ -154,11 +151,9 @@ test('batch input: "=> " triggers accept/reject keyword suggestions instead of �
 
 test('acceptSuggestion inserts a separator only when Σ has a multi-char symbol, to keep chip-built strings unambiguous for tokenize()', () => {
   const h = createHarness();
-  withSigma(h, ['a', 'bb']);
-  installSymSuggestSetter(h);
-  const el = makeInput(h, 'sim-in');
+  withSigma(h, ['a', 'bb']);  const el = makeInput(h, 'sim-in');
   const state = h.context.getSimSuggestState(el);
-  h.context.__setSymSuggest(el, state);
+  setSymSuggest(h, el, state);
   h.context.acceptSuggestion(state.candidates.indexOf('a'));
   assert.equal(el.value, 'a ');
   assertShape(h.context.tokenize(el.value), ['a']);
@@ -167,7 +162,7 @@ test('acceptSuggestion inserts a separator only when Σ has a multi-char symbol,
   // into the previous token — this is only safe because of the separator.
   el.selectionStart = el.value.length;
   const state2 = h.context.getSimSuggestState(el);
-  h.context.__setSymSuggest(el, state2);
+  setSymSuggest(h, el, state2);
   h.context.acceptSuggestion(state2.candidates.indexOf('bb'));
   assert.equal(el.value, 'a bb ');
   assertShape(h.context.tokenize(el.value), ['a', 'bb']);
@@ -265,17 +260,15 @@ test('Counter Machine restricts Pop/Push suggestions to its one counting symbol 
 
 test('Push: chip-clicking two single-char Γ symbols concatenates with no separator, matching the raw split(\'\') Run-time behavior', () => {
   const h = createHarness();
-  withPda(h, 'PDA', ['Z', 'A', 'B']);
-  installSymSuggestSetter(h);
-  const el = makeInput(h, 'm-push');
+  withPda(h, 'PDA', ['Z', 'A', 'B']);  const el = makeInput(h, 'm-push');
 
   const state1 = h.context.getStackSymbolSuggestState(el, true);
-  h.context.__setSymSuggest(el, state1);
+  setSymSuggest(h, el, state1);
   h.context.acceptSuggestion(state1.candidates.indexOf('A'));
   assert.equal(el.value, 'A');
 
   const state2 = h.context.getStackSymbolSuggestState(el, true);
-  h.context.__setSymSuggest(el, state2);
+  setSymSuggest(h, el, state2);
   h.context.acceptSuggestion(state2.candidates.indexOf('B'));
   assert.equal(el.value, 'AB');
 });
@@ -291,11 +284,9 @@ test('Push: an invalid character (not a single-char Γ member) is flagged as an 
 
 test('Pop: selecting the Σ wildcard from the empty-field palette sets the field to exactly Σ', () => {
   const h = createHarness();
-  withPda(h, 'PDA', ['Z', 'A']);
-  installSymSuggestSetter(h);
-  const el = makeInput(h, 'm-pop'); // Σ/ε are only ever offered from an empty field
+  withPda(h, 'PDA', ['Z', 'A']);  const el = makeInput(h, 'm-pop'); // Σ/ε are only ever offered from an empty field
   const state = h.context.getStackSymbolSuggestState(el, false);
-  h.context.__setSymSuggest(el, state);
+  setSymSuggest(h, el, state);
   h.context.acceptSuggestion(state.candidates.indexOf(h.context.App.config.sym.any));
   assert.equal(el.value, h.context.App.config.sym.any);
 });
@@ -434,11 +425,9 @@ test('correct-case residue still advances straight to the next-token palette (ca
 
 test('accepting a wrong-case suggestion inserts the canonically-cased symbol, not the typed casing', () => {
   const h = createHarness();
-  withSigma(h, ['a', 'b']);
-  installSymSuggestSetter(h);
-  const el = makeInput(h, 'sim-in', 'A');
+  withSigma(h, ['a', 'b']);  const el = makeInput(h, 'sim-in', 'A');
   const state = h.context.getSimSuggestState(el);
-  h.context.__setSymSuggest(el, state);
+  setSymSuggest(h, el, state);
   h.context.acceptSuggestion(state.candidates.indexOf('a'));
   assert.equal(el.value, 'a');
 });
@@ -568,11 +557,9 @@ test('liveness never narrows candidates or changes mode — dead symbols stay fu
 test('accepting a dead-end suggestion still works exactly like any other — liveness is purely advisory', () => {
   const h = createHarness();
   withSigma(h, ['0', '1']);
-  withDfa(h, [{ id: 't1', from: 1, to: 2, symbol: '0' }], 1, [2]);
-  installSymSuggestSetter(h);
-  const el = makeInput(h, 'sim-in');
+  withDfa(h, [{ id: 't1', from: 1, to: 2, symbol: '0' }], 1, [2]);  const el = makeInput(h, 'sim-in');
   const state = h.context.getSimSuggestState(el);
-  h.context.__setSymSuggest(el, state);
+  setSymSuggest(h, el, state);
   h.context.acceptSuggestion(state.candidates.indexOf('1')); // '1' is dead but still chooseable
   assert.equal(el.value, '1');
 });

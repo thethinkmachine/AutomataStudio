@@ -14,6 +14,7 @@
 
 import './electron-bridge.js';
 import './dropdown.js';
+import './modal-registry.js';
 import './modal.js';
 import './themes.js';
 import './state.js';
