@@ -1,7 +1,12 @@
 import { renderGramSyms } from './algorithms-cfg.js';
 import { updateLPanelSectionMeta, updateRPanel } from './render.js';
 import { $, App, isBoundarySymbol, isBoundaryTapeMachine } from './state.js';
+import { Change, subscribe } from './store.js';
 import { escapeHtml, jsAttr, showStatus } from './utils.js';
+
+subscribe(Change.ALPHABET, renderSigma);
+subscribe(Change.ALPHABET, renderGamma);
+subscribe(Change.ALPHABET, renderOutputAlpha);
 
 // ══════════════════════════════════════════════════════════════════
 //  ALPHABET

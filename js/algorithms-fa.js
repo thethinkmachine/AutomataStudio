@@ -4,6 +4,7 @@ import { deriveRegex, renderAll, updateLPanel, updateRPanel } from './render.js'
 import { epsClosure, log, simNDTM, simNPDA, stateNames, testDFA, testNFA, tokenize } from './simulation.js';
 import { $, App, R } from './state.js';
 import { getState } from './states-transitions.js';
+import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen } from './ui.js';
 import { escapeHtml, findPdaNondeterministicPairs, isAnyTM, isClassicPDA, parseEps, showStatus } from './utils.js';
 import { applyMachineSwitch, setMachine, setView } from './view.js';
@@ -17,7 +18,7 @@ export function setAlgo(a) {
   // Clear canvas overlay when leaving Dead State Analysis
   if (App.currentAlgo === 'deadStates' && a !== 'deadStates' && App.stateClassification) {
     App.stateClassification = null;
-    renderAll();
+    emit(Change.CANVAS);
   }
   App.currentAlgo = a;
   document.querySelectorAll('.algo-item').forEach(el => el.classList.toggle('active', el.dataset.algo === a));
@@ -240,7 +241,7 @@ export function loadSubsetAsDFA() {
     App.transitions.push({ id: 't' + (i + 1), from: nameMap[t.from], to: nameMap[t.to], symbol: t.sym });
   });
   App.machine = 'DFA'; setMachine('DFA');
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
   setView('build');
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
   else setTimeout(() => fitToScreen(true), 50);
@@ -425,7 +426,7 @@ export function loadMinimizedDFA() {
   App.states = newStates; App.transitions = newTrans; App.accepts = newAccepts;
   App.startId = newStart; App.stateN = groups.length; App.transN = newTrans.length;
   App.machine = 'DFA'; setMachine('DFA');
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
   setView('build');
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
   else setTimeout(() => fitToScreen(true), 50);
@@ -616,7 +617,7 @@ export function loadThompsonNFA() {
   });
   // Update sigma
   d.trans.forEach(t => { if (t.sym !== App.config.sym.eps) App.sigma.add(t.sym); });
-  renderSigma(); renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.ALPHABET, Change.GRAPH);
   setView('build');
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
   else setTimeout(() => fitToScreen(true), 50);
@@ -773,7 +774,7 @@ export function loadComplement() {
   }
   // Swap accept / non-accept
   const newAcc = new Set(App.states.filter(s => !App.accepts.has(s.id)).map(s => s.id));
-  App.accepts = newAcc; renderAll(); updateLPanel(); updateRPanel();
+  App.accepts = newAcc; emit(Change.GRAPH);
   setView('build');
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
   else setTimeout(() => fitToScreen(true), 50);
@@ -3082,7 +3083,7 @@ export function loadRG2NFAToCanvas() {
 
   App.machine = transitions.some(t => t.symbol === App.config.sym.eps) ? 'ε-NFA' : 'NFA';
   setMachine(App.machine);
-  renderSigma(); renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.ALPHABET, Change.GRAPH);
   setView('build');
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
   else setTimeout(() => fitToScreen(true), 50);

@@ -6,6 +6,7 @@ import { getWorkspaceData } from './persistence.js';
 import { makeSVG, renderAll, updateFastDOM, updateLPanel, updateRPanel } from './render.js';
 import { $, App } from './state.js';
 import { createState, deleteState, getState, hideContextMenu, newId, newTId, openTransModal } from './states-transitions.js';
+import { Change, emit } from './store.js';
 import { fitToScreen, markActiveWorkspaceSaved, renderMinimap } from './ui.js';
 import { showStatus } from './utils.js';
 
@@ -287,7 +288,7 @@ wrap.addEventListener('pointerdown', e => {
     if (typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
     if (!(e.shiftKey || e.ctrlKey || e.metaKey)) {
       App.selectedStates.clear(); App.selectedTransitions.clear();
-      renderAll();
+      emit(Change.CANVAS);
     }
     const pt = svgPt(e);
     App.marquee = { start: pt, current: pt };
@@ -855,7 +856,7 @@ export function selectAllStates() {
   clearEdgeDirectionHighlight();
   App.selectedStates = new Set(App.states.map(s => s.id));
   App.selectedTransitions = new Set(App.transitions.map(t => t.id));
-  renderAll();
+  emit(Change.CANVAS);
   showStatus(`Selected ${App.states.length} state${App.states.length === 1 ? '' : 's'}`);
 }
 
@@ -910,7 +911,7 @@ export function pasteClipboard(atPoint, fallbackOffset = 32) {
 
   App.selectedStates = new Set(newStates.map(s => s.id));
   App.selectedTransitions = new Set(newTransitions.map(t => t.id));
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
   showStatus(`Pasted ${newStates.length} state${newStates.length === 1 ? '' : 's'}`);
 }
 

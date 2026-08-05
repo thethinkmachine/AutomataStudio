@@ -8,6 +8,7 @@ import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { runSim } from './simulation.js';
 import { $, App, MachineExamples, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setWorkspaces } from './state.js';
 import { hideContextMenu } from './states-transitions.js';
+import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen, hideTabContextMenu, hideTabOverflowMenu, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
 import { hasPdaNondeterminism, hasSingleTapeNondeterminism, isAnyPDA, performClear, resetIds, showStatus } from './utils.js';
 import { applyMachineSwitch } from './view.js';
@@ -555,7 +556,7 @@ export function loadData(d, isExample) {
     applyMachineSwitch(App.machine);
   }
   renderSigma(); renderGamma(); renderOutputAlpha();
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
 
   if (d.cam) { applyCamera(); }
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();

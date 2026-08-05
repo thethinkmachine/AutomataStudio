@@ -3,6 +3,7 @@ import { showExampleCard } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim } from './simulation.js';
 import { $, App, getBoundaryMarkers, isTwoWayFA } from './state.js';
+import { Change, emit } from './store.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  UTILS / HELPERS
@@ -181,7 +182,7 @@ export function performClear() {
   App.selectedStates.clear(); App.selectedTransitions.clear();
   App.transFrom = null; App.ctxId = null; App.ctxEdge = null; App.ctxMode = null; App.editId = null;
   if (typeof showExampleCard === 'function') showExampleCard(null);
-  resetSim(); renderAll(); updateLPanel(); updateRPanel();
+  resetSim(); emit(Change.GRAPH);
 }
 
 export function showStatus(msg) {

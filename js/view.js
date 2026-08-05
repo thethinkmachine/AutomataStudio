@@ -7,6 +7,7 @@ import { anyModalOpen, closeModal, showOverlay } from './modal.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim } from './simulation.js';
 import { $, App, getMachineConfig, normalizeBoundarySymbolsForMachine } from './state.js';
+import { Change, emit } from './store.js';
 import { renderTheoryView } from './theory.js';
 import { renderTabs, updateMobilePanelChrome, updateModelPickerLabels } from './ui.js';
 import { clearAll, isAnyTM, isCounterMachine, showStatus } from './utils.js';
@@ -281,7 +282,7 @@ export function setTapeCount(n) {
       App.tapeCount = newCount;
       $('tape-count-sel').value = App.tapeCount;
       resetSim();
-      renderAll(); updateLPanel(); updateRPanel();
+      emit(Change.GRAPH);
       closeModal('confirm-modal');
     };
     showOverlay('confirm-modal');

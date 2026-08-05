@@ -4,6 +4,7 @@ import { closeModal, registerModal, showOverlay } from './modal.js';
 import { pruneNoteAnchorsExcluding } from './notes.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { $, App, getMachineConfig, isBoundarySymbol, isReadOnlyHeadMachine } from './state.js';
+import { Change, emit } from './store.js';
 import { getPdaDeterminismConflict, isAnyPDA, isCounterMachine, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus, symbolsOverlap, tapeTuplesOverlap } from './utils.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -216,7 +217,7 @@ export function createState(x, y, name) {
   const s = { id, x, y, name: name || `${App.config.statePrefix}${App.stateN - 1}` };
   App.states.push(s);
   if (!App.startId) App.startId = id;
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
   return s;
 }
 export function deleteState(id) {
@@ -230,7 +231,7 @@ export function deleteState(id) {
   App.transitions = App.transitions.filter(t => t.from !== id && t.to !== id);
   App.accepts.delete(id);
   if (App.startId === id) App.startId = App.states[0]?.id || null;
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
 }
 // ══════════════════════════════════════════════════════════════════
 //  TRANSITIONS
@@ -438,13 +439,13 @@ export function confirmTrans() {
   }
   closeModal('trans-modal');
   App.transFrom = null; clearTempLine();
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
 }
 export function deleteTrans(id) {
   snapshot();
   if (typeof pruneNoteAnchorsExcluding === 'function') pruneNoteAnchorsExcluding([], [id]);
   App.transitions = App.transitions.filter(t => t.id !== id);
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
 }
 export function deleteTransitions(ids) {
   const removeIds = new Set(ids);
@@ -452,7 +453,7 @@ export function deleteTransitions(ids) {
   snapshot();
   if (typeof pruneNoteAnchorsExcluding === 'function') pruneNoteAnchorsExcluding([], ids);
   App.transitions = App.transitions.filter(t => !removeIds.has(t.id));
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
 }
 export function transLabel(t) {
   if (isAnyPDA(App.machine)) {
@@ -582,7 +583,7 @@ export function confirmState() {
       }
     });
   }
-  closeModal('state-modal'); renderAll(); updateLPanel(); updateRPanel();
+  closeModal('state-modal'); emit(Change.GRAPH);
 }
 
 export function isConceptualStart(id) {
@@ -664,7 +665,7 @@ export function ctxStart() {
   } else {
     applyStartState(id);
   }
-  renderAll(); updateLPanel(); updateRPanel(); 
+  emit(Change.GRAPH); 
 }
 
 export function ctxToggleAcc() { 
@@ -675,7 +676,7 @@ export function ctxToggleAcc() {
   if (cfg.isTransducer && !App.config.transducerAccepts) return;
   snapshot();
   App.accepts.has(id) ? App.accepts.delete(id) : App.accepts.add(id); 
-  renderAll(); updateLPanel(); updateRPanel(); 
+  emit(Change.GRAPH); 
 }
 export function ctxRename() { 
   if (!App.ctxId) return;
@@ -746,7 +747,7 @@ export function ctxReverseTrans() {
     t.to = oldFrom;
     if (typeof t.curve === 'number' && oldFrom !== oldTo) t.curve = -t.curve;
   });
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
 }
 
 export function ctxDeleteTrans() {

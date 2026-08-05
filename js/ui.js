@@ -10,9 +10,13 @@ import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
 import { $, App, MachineCategories, MachineTypes, R, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, migrateSystemSymbols, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { getState, getTransition, hideContextMenu } from './states-transitions.js';
+import { Change, emit, subscribe } from './store.js';
 import { DEFAULT_THEME, Themes } from './themes.js';
 import { clearAll, escapeHtml, showStatus } from './utils.js';
 import { AUX_VIEWS, applyMachineSwitch, closeAuxView, hideMoreMenu, hideToolsMenu, setMachine, setView } from './view.js';
+
+subscribe(Change.TABS, renderTabs);
+subscribe(Change.SAVE, updateSaveIndicator);
 
 // ══════════════════════════════════════════════════════════════════
 //  WORKSPACE TABS UI
@@ -890,7 +894,7 @@ document.addEventListener('keydown', e => {
       });
       App.selectedStates.clear();
       App.selectedTransitions.clear();
-      renderAll(); updateLPanel(); updateRPanel();
+      emit(Change.GRAPH);
     } else if (App.selectedDividerId && typeof deleteSelectedDivider === 'function') {
       e.preventDefault();
       deleteSelectedDivider();

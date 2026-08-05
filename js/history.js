@@ -1,9 +1,32 @@
-import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
-import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { App, Workspaces, activeWorkspaceId, getMachineConfig } from './state.js';
+import { Change, emit, subscribe } from './store.js';
 import { renderTabs, setSaveState } from './ui.js';
 import { isAnyTM, showStatus } from './utils.js';
 import { syncMachineSelectors } from './view.js';
+
+/**
+ * Record an undo point and announce the change. This is the one call an edit
+ * needs to make; it replaces the four-call snapshot/render/panel/panel sequence
+ * that used to be copied to every mutation site. Pass a narrower kind (or
+ * several) when the edit did not touch the graph.
+ */
+export function commit(...kinds) {
+  snapshot();
+  emit(...(kinds.length ? kinds : [Change.GRAPH]));
+}
+
+// A structural or alphabet edit dirties the active tab. snapshot() also calls
+// markDirty directly, for paths that record an undo point without going through
+// commit(); markDirty is idempotent, so the overlap is harmless.
+//
+// Change.CANVAS deliberately does NOT dirty the tab. It means "repaint only" —
+// selection, hover and edge highlights — and none of that is part of what
+// exportWorkspaceState persists. Marking dirty there would raise the
+// unsaved-changes prompt for merely clicking a state. The camera is the one
+// repaint-only thing that IS persisted, and canvas.js calls markDirty for it
+// explicitly.
+subscribe(Change.GRAPH, markDirty);
+subscribe(Change.ALPHABET, markDirty);
 
 // ══════════════════════════════════════════════════════════════════
 //  UNDO / REDO
@@ -86,7 +109,6 @@ export function restoreSnapshot(s) {
   App.dividers = d.dividers || []; App.dividerN = d.dividerN || 0;
   if (App.selectedDividerId && !App.dividers.some(dv => dv.id === App.selectedDividerId)) App.selectedDividerId = null;
 
-  renderSigma(); renderGamma(); renderOutputAlpha();
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.ALPHABET, Change.GRAPH);
 }
 

@@ -3,6 +3,7 @@ import { saveBackup } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { stateNames, tokenize } from './simulation.js';
 import { $, App } from './state.js';
+import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen } from './ui.js';
 import { escapeHtml, isCfgConvertiblePDA, parseEps, showStatus } from './utils.js';
 import { applyMachineSwitch, setView } from './view.js';
@@ -718,7 +719,7 @@ export function loadCFGPDA() {
   if (paradigmDropdown) paradigmDropdown.value = 'explicit';
 
   applyMachineSwitch('NPDA');
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
   saveBackup(); // Required to persist to localStorage after programmatically loading a structure
   setView('build');
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();

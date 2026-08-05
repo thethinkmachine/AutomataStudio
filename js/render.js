@@ -5,9 +5,18 @@ import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
 import { $, App, R, SVG_NS, getMachineConfig } from './state.js';
 import { getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive } from './states-transitions.js';
+import { Change, subscribe } from './store.js';
 import { triggerMath } from './theory.js';
 import { filterStates, filterTransitions, renderMinimap } from './ui.js';
 import { isAnyPDA, isAnyTM, showStatus } from './utils.js';
+
+// A structural edit repaints the canvas and both side panels; a CANVAS change
+// is a repaint only, since selection and highlight edits leave the formal
+// definition and the panel contents correct.
+subscribe(Change.GRAPH, renderAll);
+subscribe(Change.GRAPH, updateLPanel);
+subscribe(Change.GRAPH, updateRPanel);
+subscribe(Change.CANVAS, renderAll);
 
 // ══════════════════════════════════════════════════════════════════
 //  RENDERING
