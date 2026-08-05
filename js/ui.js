@@ -448,7 +448,7 @@ function createTab(name) {
   editingTabId = null;
   
   importWorkspaceState(newWs.data);
-  activeWorkspaceId = newWs.id;
+  setActiveWorkspaceId(newWs.id);
 
   App.selectedStates.clear();
   App.selectedTransitions.clear();
@@ -480,7 +480,7 @@ function switchTab(id) {
     }
   }
 
-  activeWorkspaceId = id;
+  setActiveWorkspaceId(id);
   editingTabId = null;
   const curr = Workspaces.find(w => w.id === id);
   if (curr && curr.data) {
@@ -585,7 +585,7 @@ function performCloseTab(id) {
   showTabUndoToast(removed.name);
 
   if (id === activeWorkspaceId) {
-    activeWorkspaceId = null;
+    setActiveWorkspaceId(null);
     let nextIdx = Math.max(0, idx - 1);
     switchTab(Workspaces[nextIdx].id);
   } else {
@@ -611,11 +611,11 @@ function performCloseOtherTabs(id) {
   }
   const closed = Workspaces.map((w, i) => ({ w, i })).filter(({ w }) => w.id !== id);
   closed.forEach(({ w, i }) => recordClosedWorkspace(w, i));
-  Workspaces = Workspaces.filter(w => w.id === id);
+  setWorkspaces(Workspaces.filter(w => w.id === id));
   if (editingTabId && editingTabId !== id) editingTabId = null;
   showTabUndoToast(closed.length === 1 ? closed[0].w.name : `${closed.length} tabs`, closed.length);
   if (activeWorkspaceId !== id) {
-    activeWorkspaceId = null;
+    setActiveWorkspaceId(null);
     switchTab(id);
   } else {
     renderTabs();
@@ -643,11 +643,11 @@ function performCloseTabsToRight(id) {
   const closed = Workspaces.slice(idx + 1).map((w, off) => ({ w, i: idx + 1 + off }));
   closed.forEach(({ w, i }) => recordClosedWorkspace(w, i));
   const closingActive = closed.some(({ w }) => w.id === activeWorkspaceId);
-  Workspaces = Workspaces.slice(0, idx + 1);
+  setWorkspaces(Workspaces.slice(0, idx + 1));
   if (editingTabId && !Workspaces.find(w => w.id === editingTabId)) editingTabId = null;
   showTabUndoToast(closed.length === 1 ? closed[0].w.name : `${closed.length} tabs`, closed.length);
   if (closingActive) {
-    activeWorkspaceId = null;
+    setActiveWorkspaceId(null);
     switchTab(id);
   } else {
     renderTabs();
@@ -669,8 +669,8 @@ function performCloseAllTabs() {
   }
   const closed = Workspaces.map((w, i) => ({ w, i }));
   closed.forEach(({ w, i }) => recordClosedWorkspace(w, i));
-  Workspaces = [];
-  activeWorkspaceId = null;
+  setWorkspaces([]);
+  setActiveWorkspaceId(null);
   editingTabId = null;
   createTab();
   showTabUndoToast(closed.length === 1 ? closed[0].w.name : `${closed.length} tabs`, closed.length);
@@ -801,13 +801,13 @@ function initTabs() {
       dirty: false,
       data: exportWorkspaceState()
     });
-    activeWorkspaceId = 'ws_initial';
+    setActiveWorkspaceId('ws_initial');
   }
   Workspaces.forEach((ws, idx) => {
     if (!ws.name) ws.name = `Workspace ${idx + 1}`;
     ws.dirty = !!ws.dirty;
   });
-  if (!Workspaces.find(w => w.id === activeWorkspaceId)) activeWorkspaceId = Workspaces[0].id;
+  if (!Workspaces.find(w => w.id === activeWorkspaceId)) setActiveWorkspaceId(Workspaces[0].id);
   editingTabId = null;
   renderTabs();
 }
@@ -2434,7 +2434,7 @@ function confirmSettings() {
   }
 
   // Apply visual changes
-  R = c.radius;
+  setR(c.radius);
   renderAll();
   if (typeof updateLPanel === 'function') updateLPanel();
   if (typeof updateRPanel === 'function') updateRPanel();

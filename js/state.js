@@ -172,14 +172,23 @@ const App = {
   ],
 };
 const SVG_NS = 'http://www.w3.org/2000/svg';
-var R = App.config.radius;
+// Mirrors App.config.radius. ES module imports are live for reads but read-only
+// for writes, so the one place that changes it (the Settings modal) goes through
+// setR rather than assigning across the module boundary.
+let R = App.config.radius;
+function setR(v) { R = v; }
 const $ = id => document.getElementById(id);
 
 // ══════════════════════════════════════════════════════════════════
 //  WORKSPACES
 // ══════════════════════════════════════════════════════════════════
+// The open tabs and which one is live. Both are reassigned wholesale (filter,
+// slice, reset), so — like R above — cross-module writes go through setters
+// while reads use the live import binding.
 let Workspaces = [];
 let activeWorkspaceId = null;
+function setWorkspaces(v) { Workspaces = v; }
+function setActiveWorkspaceId(v) { activeWorkspaceId = v; }
 
 function exportWorkspaceState() {
   return {

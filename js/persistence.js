@@ -641,11 +641,11 @@ async function loadBackup() {
           };
       }
       
-      Workspaces = loaded.tabs;
+      setWorkspaces(loaded.tabs);
       const targetId = loaded.activeId || Workspaces[0].id;
       
       // We set activeWorkspaceId to null to force switchTab to inject the data fully
-      activeWorkspaceId = null;
+      setActiveWorkspaceId(null);
       switchTab(targetId);
     } else {
       // Monolithic fallback migration

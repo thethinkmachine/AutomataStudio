@@ -282,13 +282,6 @@ function setTapeCount(n) {
 // ══════════════════════════════════════════════════════════════════
 //  TOOLS
 // ══════════════════════════════════════════════════════════════════
-function setTool(t) {
-  App.tool = t; App.transFrom = null; clearTempLine();
-  document.querySelectorAll('.toolbox-btn[id^="t-"]').forEach(b => b.classList.remove('active'));
-  const el = $('t-' + t);
-  if (el) el.classList.add('active');
-  const curs = { pointer: 'default', move: 'grab', state: 'crosshair', trans: 'crosshair', del: 'not-allowed' };
-  $('canvas-wrap').style.cursor = curs[t] || 'default';
-  const msgs = { pointer: 'Click or drag states to interact', move: 'Drag canvas to pan · Drag state to move', state: 'Click canvas to place state', trans: 'Click source then target state', del: 'Click state to delete' };
-  showStatus(msgs[t]);
-}
+// setTool lives in js/ui.js. An older copy used to sit here too; because
+// index.html loaded ui.js second, that copy was silently overwritten at load
+// and had been dead for a while — it predated the divider/rect shape tools.
