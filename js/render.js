@@ -1,6 +1,6 @@
 import { applyEdgeDirectionHighlight, clearEdgeDirectionHighlight, onStateDown, wrap } from './canvas.js';
 import { renderDividers } from './dividers.js';
-import { snapshot } from './history.js';
+import { commit, snapshot } from './history.js';
 import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
 import { $, App, R, SVG_NS, getMachineConfig } from './state.js';

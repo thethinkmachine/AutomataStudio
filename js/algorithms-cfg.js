@@ -1193,7 +1193,6 @@ export function runChomskyClassify() {
     // Type 2 Check: LHS must be a single variable
     if (!G.vars.has(lhs)) {
         isType2 = false;
-        isType3 = false;
     }
 
     // Type 3 (Regular) Check
