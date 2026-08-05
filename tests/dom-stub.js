@@ -159,7 +159,11 @@ const globals = {
   // Supplied by the KaTeX CDN bundle in the browser. Without it triggerMath()
   // polls for the real one, and every theory-panel render would sit through the
   // full retry budget before giving up.
-  renderMathInElement: () => {}
+  renderMathInElement: () => {},
+  // loadSharedLinkFromURL reads location.hash at boot and clears it through
+  // history.replaceState.
+  location: { hash: '', pathname: '/', search: '', href: 'http://localhost/', origin: 'http://localhost' },
+  history: { replaceState() {}, pushState() {}, back() {}, forward() {} }
 };
 
 for (const [key, value] of Object.entries(globals)) {
