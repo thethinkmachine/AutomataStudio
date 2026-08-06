@@ -1,26 +1,38 @@
+import { beginDividerDraw, clearDividerSelection, dividerToolKind, dragDividerEndpointTo, dragDividerTo, endDividerEndpointDrag, finishDividerDraw, includeDividerBounds, updateDividerDraw } from './dividers.js';
+import { exportDownload, exportFilename } from './export-core.js';
+import { markDirty, snapshot } from './history.js';
+import { clearActiveNoteHighlight, dragNoteTo, endNoteResize, includeNoteBounds, resizeNoteTo } from './notes.js';
+import { getWorkspaceData } from './persistence.js';
+import { makeSVG, renderAll, updateFastDOM, updateLPanel, updateRPanel } from './render.js';
+import { $, App } from './state.js';
+import { createState, deleteState, getState, hideContextMenu, newId, newTId, openTransModal } from './states-transitions.js';
+import { Change, emit } from './store.js';
+import { fitToScreen, markActiveWorkspaceSaved, renderMinimap } from './ui.js';
+import { showStatus } from './utils.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  CANVAS / CAMERA (ZOOM & PAN)
 // ══════════════════════════════════════════════════════════════════
-const wrap = $('canvas-wrap');
-let isPanning = false, panStart = { x: 0, y: 0 }, camStart = { x: 0, y: 0 };
-let panPointerId = null;
+export const wrap = $('canvas-wrap');
+export let isPanning = false, panStart = { x: 0, y: 0 }, camStart = { x: 0, y: 0 };
+export let panPointerId = null;
 
 // Touch navigation is deliberately separate from the mouse/pen gesture
 // state below. A second finger cancels any in-progress edit gesture and owns
 // the camera until the pinch/pan ends, which prevents a node drag from turning
 // into a browser page zoom or a half-applied canvas move.
-const touchPointers = new Map();
-let touchCameraGesture = null;
-let touchLongPressTimer = null;
-let touchLongPressStart = null;
+export const touchPointers = new Map();
+export let touchCameraGesture = null;
+export let touchLongPressTimer = null;
+export let touchLongPressStart = null;
 
-function clearTouchLongPress() {
+export function clearTouchLongPress() {
   if (touchLongPressTimer) clearTimeout(touchLongPressTimer);
   touchLongPressTimer = null;
   touchLongPressStart = null;
 }
 
-function scheduleTouchLongPress(e) {
+export function scheduleTouchLongPress(e) {
   clearTouchLongPress();
   touchLongPressStart = { x: e.clientX, y: e.clientY };
   const target = e.target.closest('.sn, .edge-g, .note-g, .divider-g');
@@ -43,11 +55,11 @@ function scheduleTouchLongPress(e) {
   }, 550);
 }
 
-function touchPair() {
+export function touchPair() {
   return [...touchPointers.values()].slice(0, 2);
 }
 
-function cancelCanvasManipulationForTouch() {
+export function cancelCanvasManipulationForTouch() {
   stopAutoPan();
   isPanning = false;
   panPointerId = null;
@@ -62,7 +74,7 @@ function cancelCanvasManipulationForTouch() {
   if (typeof clearAlignGuides === 'function') clearAlignGuides();
 }
 
-function beginTouchCameraGesture() {
+export function beginTouchCameraGesture() {
   const pair = touchPair();
   if (pair.length < 2) return;
   const a = pair[0], b = pair[1];
@@ -83,7 +95,7 @@ function beginTouchCameraGesture() {
   cancelCanvasManipulationForTouch();
 }
 
-function updateTouchCameraGesture() {
+export function updateTouchCameraGesture() {
   if (!touchCameraGesture) return;
   const pair = touchPair();
   if (pair.length < 2) return;
@@ -100,7 +112,7 @@ function updateTouchCameraGesture() {
   applyCamera(true);
 }
 
-function captureTouchPointerDown(e) {
+export function captureTouchPointerDown(e) {
   if (e.pointerType !== 'touch') return;
   if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, .minimap-show-btn, #status-bar')) return;
   touchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -114,7 +126,7 @@ function captureTouchPointerDown(e) {
   }
 }
 
-function captureTouchPointerMove(e) {
+export function captureTouchPointerMove(e) {
   if (e.pointerType !== 'touch' || !touchPointers.has(e.pointerId)) return;
   if (touchLongPressStart && Math.hypot(e.clientX - touchLongPressStart.x, e.clientY - touchLongPressStart.y) > 10) {
     clearTouchLongPress();
@@ -127,7 +139,7 @@ function captureTouchPointerMove(e) {
   }
 }
 
-function captureTouchPointerEnd(e) {
+export function captureTouchPointerEnd(e) {
   if (e.pointerType !== 'touch' || !touchPointers.has(e.pointerId)) return;
   clearTouchLongPress();
   touchPointers.delete(e.pointerId);
@@ -148,13 +160,13 @@ wrap.addEventListener('pointermove', captureTouchPointerMove, { capture: true })
 wrap.addEventListener('pointerup', captureTouchPointerEnd, { capture: true });
 wrap.addEventListener('pointercancel', captureTouchPointerEnd, { capture: true });
 
-function svgPt(e) {
+export function svgPt(e) {
   const r = wrap.getBoundingClientRect();
   return { x: (e.clientX - r.left - App.cam.x) / App.cam.z, y: (e.clientY - r.top - App.cam.y) / App.cam.z };
 }
-let _pendingFrame = false;
-let _pendingMinimapRefresh = false;
-function applyCamera(skipMinimap = false) {
+export let _pendingFrame = false;
+export let _pendingMinimapRefresh = false;
+export function applyCamera(skipMinimap = false) {
   _pendingMinimapRefresh = _pendingMinimapRefresh || !skipMinimap;
   if (_pendingFrame) return;
   _pendingFrame = true;
@@ -183,15 +195,15 @@ function applyCamera(skipMinimap = false) {
 // deltaMode 1 = "line" units (common on Linux/Firefox with a physical mouse),
 // deltaMode 2 = "page" units. Both must be converted to pixels or the camera
 // barely moves on some platforms and races on others.
-const WHEEL_LINE_PX = 40;
-function normalizeWheelDeltas(e) {
+export const WHEEL_LINE_PX = 40;
+export function normalizeWheelDeltas(e) {
   let dx = e.deltaX, dy = e.deltaY;
   if (e.deltaMode === 1) { dx *= WHEEL_LINE_PX; dy *= WHEEL_LINE_PX; }
   else if (e.deltaMode === 2) { dx *= wrap.clientWidth; dy *= wrap.clientHeight; }
   return { dx, dy };
 }
 
-function wheelZoomAt(clientX, clientY, dy) {
+export function wheelZoomAt(clientX, clientY, dy) {
   const r = wrap.getBoundingClientRect();
   const mx = clientX - r.left, my = clientY - r.top;
   const sensitivity = (App.config.zoom.step || 0.1) * 0.01;
@@ -202,7 +214,7 @@ function wheelZoomAt(clientX, clientY, dy) {
   App.cam.z = newZ;
 }
 
-let _wheelIdleTimer = null;
+export let _wheelIdleTimer = null;
 wrap.addEventListener('wheel', e => {
   e.preventDefault();
   const { dx, dy } = normalizeWheelDeltas(e);
@@ -231,9 +243,9 @@ wrap.addEventListener('wheel', e => {
 // ══════════════════════════════════════════════════════════════════
 //  POINTER INTERACTIONS (pan / marquee / drag / curve-drag)
 // ══════════════════════════════════════════════════════════════════
-let lastPointerClient = null;
-let _rightDownPt = null;
-let _rightDragged = false;
+export let lastPointerClient = null;
+export let _rightDownPt = null;
+export let _rightDragged = false;
 
 wrap.addEventListener('pointerdown', e => {
   if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, .minimap-show-btn, #status-bar')) return;
@@ -276,7 +288,7 @@ wrap.addEventListener('pointerdown', e => {
     if (typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
     if (!(e.shiftKey || e.ctrlKey || e.metaKey)) {
       App.selectedStates.clear(); App.selectedTransitions.clear();
-      renderAll();
+      emit(Change.CANVAS);
     }
     const pt = svgPt(e);
     App.marquee = { start: pt, current: pt };
@@ -294,7 +306,7 @@ wrap.addEventListener('pointerdown', e => {
   }
 });
 
-function startPan(e) {
+export function startPan(e) {
   isPanning = true; panStart = { x: e.clientX, y: e.clientY }; camStart = { x: App.cam.x, y: App.cam.y };
   panPointerId = e.pointerId;
   wrap.classList.add('panning');
@@ -316,11 +328,11 @@ wrap.addEventListener('pointermove', e => {
 });
 
 // ── Auto-pan when dragging a state / marquee near the viewport edge ──
-const AUTO_PAN_MARGIN = 42;
-const AUTO_PAN_MAX_SPEED = 16;
-let autoPanRAF = null;
+export const AUTO_PAN_MARGIN = 42;
+export const AUTO_PAN_MAX_SPEED = 16;
+export let autoPanRAF = null;
 
-function computeAutoPanVector(clientX, clientY, rect) {
+export function computeAutoPanVector(clientX, clientY, rect) {
   let vx = 0, vy = 0;
   const left = clientX - rect.left, right = rect.right - clientX;
   const top = clientY - rect.top, bottom = rect.bottom - clientY;
@@ -331,11 +343,11 @@ function computeAutoPanVector(clientX, clientY, rect) {
   return { x: vx * AUTO_PAN_MAX_SPEED, y: vy * AUTO_PAN_MAX_SPEED };
 }
 
-function stopAutoPan() {
+export function stopAutoPan() {
   if (autoPanRAF) { cancelAnimationFrame(autoPanRAF); autoPanRAF = null; }
 }
 
-function startAutoPanLoop() {
+export function startAutoPanLoop() {
   if (autoPanRAF) return;
   const step = () => {
     if (!(App.dragOffsets || App.marquee || App.dividerDraft || App.dragDividerId || App.dragDividerEndpoint) || !lastPointerClient) { autoPanRAF = null; return; }
@@ -354,16 +366,16 @@ function startAutoPanLoop() {
 }
 
 // ── Snap-to-grid + alignment guides ──
-function isSnapActive(shiftKey) {
+export function isSnapActive(shiftKey) {
   return App.config.snapToGrid ? !shiftKey : !!shiftKey;
 }
 
-function clearAlignGuides() {
+export function clearAlignGuides() {
   const g = $('align-guides-g');
   if (g) g.innerHTML = '';
 }
 
-function drawAlignGuides(x, y) {
+export function drawAlignGuides(x, y) {
   const g = $('align-guides-g');
   if (!g) return;
   g.innerHTML = '';
@@ -384,7 +396,7 @@ function drawAlignGuides(x, y) {
   }
 }
 
-function toggleSnapToGrid(force) {
+export function toggleSnapToGrid(force) {
   App.config.snapToGrid = force !== undefined ? !!force : !App.config.snapToGrid;
   const btn = $('snap-toggle-btn');
   if (btn) btn.classList.toggle('active', App.config.snapToGrid);
@@ -392,10 +404,10 @@ function toggleSnapToGrid(force) {
   showStatus(App.config.snapToGrid ? 'Snap to grid: on' : 'Snap to grid: off');
 }
 
-let _activeMoveFrame = false;
-let _pendingMoveEvent = null;
+export let _activeMoveFrame = false;
+export let _pendingMoveEvent = null;
 
-function queueMouseMove(e) {
+export function queueMouseMove(e) {
   if (App.toolbarDragging) return;
   _pendingMoveEvent = {
     clientX: e.clientX,
@@ -415,7 +427,7 @@ function queueMouseMove(e) {
 
 document.addEventListener('pointermove', queueMouseMove);
 
-function handlePointerMove(e) {
+export function handlePointerMove(e) {
   if (App.toolbarDragging) return;
   lastPointerClient = e;
   if (isPanning) {
@@ -540,13 +552,13 @@ function handlePointerMove(e) {
   }
 }
 
-function checkAutoPan(e) {
+export function checkAutoPan(e) {
   const rect = wrap.getBoundingClientRect();
   const vec = computeAutoPanVector(e.clientX, e.clientY, rect);
   if (vec.x || vec.y) startAutoPanLoop(); else stopAutoPan();
 }
 
-function endPointerInteractions() {
+export function endPointerInteractions() {
   if (App.toolbarDragging) return;
   if (_pendingMoveEvent) {
     const nextMove = _pendingMoveEvent;
@@ -595,7 +607,7 @@ function endPointerInteractions() {
   }
 }
 
-function resetRightClickState() {
+export function resetRightClickState() {
   _rightDownPt = null;
   _rightDragged = false;
 }
@@ -647,7 +659,7 @@ wrap.addEventListener('contextmenu', e => {
   e.preventDefault();
 });
 
-function showCanvasContextMenu(x, y) {
+export function showCanvasContextMenu(x, y) {
   const m = $('canvas-ctx');
   if (!m) return;
   hideContextMenu();
@@ -658,30 +670,30 @@ function showCanvasContextMenu(x, y) {
   m.style.left = Math.max(8, Math.min(x, innerWidth - w)) + 'px';
   m.style.top = Math.max(8, Math.min(y, innerHeight - h)) + 'px';
 }
-function hideCanvasContextMenu() {
+export function hideCanvasContextMenu() {
   const m = $('canvas-ctx');
   if (m) m.style.display = 'none';
 }
 document.addEventListener('click', () => hideCanvasContextMenu());
 
-function ctxCanvasAddState() {
+export function ctxCanvasAddState() {
   hideCanvasContextMenu();
   const pt = App.ctxCanvasPt || { x: 0, y: 0 };
   createState(pt.x, pt.y);
 }
-function ctxCanvasPaste() {
+export function ctxCanvasPaste() {
   hideCanvasContextMenu();
   pasteClipboard(App.ctxCanvasPt);
 }
-function ctxCanvasSelectAll() {
+export function ctxCanvasSelectAll() {
   hideCanvasContextMenu();
   selectAllStates();
 }
-function ctxCanvasFit() {
+export function ctxCanvasFit() {
   hideCanvasContextMenu();
   fitToScreen();
 }
-function ctxCanvasAutoLayout() {
+export function ctxCanvasAutoLayout() {
   hideCanvasContextMenu();
   autoLayout();
 }
@@ -697,7 +709,7 @@ wrap.addEventListener('dblclick', e => {
   createState(pt.x, pt.y);
 });
 
-function onStateDown(e, id) {
+export function onStateDown(e, id) {
   if (App.spacePan) return;
   e.stopPropagation();
   if (e.button === 2) return;
@@ -761,8 +773,8 @@ function onStateDown(e, id) {
   }
 }
 
-let tempLine = null;
-function drawTempLine(x1, y1, x2, y2) {
+export let tempLine = null;
+export function drawTempLine(x1, y1, x2, y2) {
   if (!tempLine) {
     tempLine = makeSVG('line');
     tempLine.classList.add('editor-layer');
@@ -774,8 +786,8 @@ function drawTempLine(x1, y1, x2, y2) {
   }
   ['x1', 'y1', 'x2', 'y2'].forEach((a, i) => tempLine.setAttribute(a, [x1, y1, x2, y2][i]));
 }
-function clearTempLine() { if (tempLine) { tempLine.remove(); tempLine = null; } }
-function hlState(id, on) { const el = document.querySelector(`[data-id="${id}"]`); if (el) el.classList.toggle('sel-st', on); }
+export function clearTempLine() { if (tempLine) { tempLine.remove(); tempLine = null; } }
+export function hlState(id, on) { const el = document.querySelector(`[data-id="${id}"]`); if (el) el.classList.toggle('sel-st', on); }
 
 // ══════════════════════════════════════════════════════════════════
 //  DIRECTIONAL EDGE HIGHLIGHT — optionally triggered by clicking a state
@@ -785,7 +797,7 @@ function hlState(id, on) { const el = document.querySelector(`[data-id="${id}"]`
 // Repaints App.edgeHighlight onto the DOM from scratch. renderAll() calls this
 // after every redraw, so the highlight is reconstructed from App state rather
 // than living only as classes that the next render would silently wipe.
-function applyEdgeDirectionHighlight() {
+export function applyEdgeDirectionHighlight() {
   document.querySelectorAll('.edge-g.outgoing-hl, .edge-g.incoming-hl, .sn.outgoing-hl-src, .sn.incoming-hl-src').forEach(el => {
     el.classList.remove('outgoing-hl', 'incoming-hl', 'outgoing-hl-src', 'incoming-hl-src');
   });
@@ -809,7 +821,7 @@ function applyEdgeDirectionHighlight() {
 // was meant to cut through, so every multi-select gesture — shift/ctrl-click,
 // marquee, select-all, or shifting focus to an edge — drops it entirely
 // rather than accumulating.
-function clearEdgeDirectionHighlight() {
+export function clearEdgeDirectionHighlight() {
   if (!App.edgeHighlight) return;
   App.edgeHighlight = null;
   applyEdgeDirectionHighlight();
@@ -819,18 +831,18 @@ function clearEdgeDirectionHighlight() {
 // arriving at it. A self-loop matches both, since it's simultaneously the
 // state's only outgoing and only incoming edge to itself. Always replaces any
 // existing highlight — only one state is ever lit.
-function highlightEdgesForState(stateId, direction) {
+export function highlightEdgesForState(stateId, direction) {
   App.edgeHighlight = { id: stateId, direction };
   applyEdgeDirectionHighlight();
 }
 
-function ctxHighlightOutgoing() {
+export function ctxHighlightOutgoing() {
   const id = App.ctxId;
   hideContextMenu();
   if (!id) return;
   highlightEdgesForState(id, 'outgoing');
 }
-function ctxHighlightIncoming() {
+export function ctxHighlightIncoming() {
   const id = App.ctxId;
   hideContextMenu();
   if (!id) return;
@@ -839,16 +851,16 @@ function ctxHighlightIncoming() {
 // ══════════════════════════════════════════════════════════════════
 //  SELECTION: select-all, nudge, copy / paste / duplicate
 // ══════════════════════════════════════════════════════════════════
-function selectAllStates() {
+export function selectAllStates() {
   if (!App.states.length) return;
   clearEdgeDirectionHighlight();
   App.selectedStates = new Set(App.states.map(s => s.id));
   App.selectedTransitions = new Set(App.transitions.map(t => t.id));
-  renderAll();
+  emit(Change.CANVAS);
   showStatus(`Selected ${App.states.length} state${App.states.length === 1 ? '' : 's'}`);
 }
 
-function nudgeSelected(dx, dy) {
+export function nudgeSelected(dx, dy) {
   if (!App.selectedStates.size) return;
   snapshot();
   App.selectedStates.forEach(sid => {
@@ -859,7 +871,7 @@ function nudgeSelected(dx, dy) {
   renderMinimap();
 }
 
-function copySelection() {
+export function copySelection() {
   if (!App.selectedStates.size) { showStatus('No states selected to copy'); return; }
   const ids = new Set(App.selectedStates);
   const states = App.states.filter(s => ids.has(s.id)).map(s => ({ ...s, isDummyStart: false }));
@@ -868,13 +880,13 @@ function copySelection() {
   showStatus(`Copied ${states.length} state${states.length === 1 ? '' : 's'}`);
 }
 
-function duplicateSelection() {
+export function duplicateSelection() {
   if (!App.selectedStates.size) { showStatus('No states selected to duplicate'); return; }
   copySelection();
   pasteClipboard(null, 28);
 }
 
-function pasteClipboard(atPoint, fallbackOffset = 32) {
+export function pasteClipboard(atPoint, fallbackOffset = 32) {
   if (!App.clipboard || !App.clipboard.states.length) { showStatus('Nothing to paste'); return; }
   snapshot();
   const idMap = {};
@@ -899,7 +911,7 @@ function pasteClipboard(atPoint, fallbackOffset = 32) {
 
   App.selectedStates = new Set(newStates.map(s => s.id));
   App.selectedTransitions = new Set(newTransitions.map(t => t.id));
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
   showStatus(`Pasted ${newStates.length} state${newStates.length === 1 ? '' : 's'}`);
 }
 
@@ -923,7 +935,7 @@ function pasteClipboard(atPoint, fallbackOffset = 32) {
 
 // Adjacency ignoring self-loops (they don't affect layering) and
 // collapsing parallel transitions between the same pair of states.
-function sugiyamaAdjacency(states, transitions) {
+export function sugiyamaAdjacency(states, transitions) {
   const succ = new Map(states.map(s => [s.id, new Set()]));
   const pred = new Map(states.map(s => [s.id, new Set()]));
   transitions.forEach(t => {
@@ -938,7 +950,7 @@ function sugiyamaAdjacency(states, transitions) {
 // coverage of disconnected components) classifying edges to a node
 // still on the recursion stack as back-edges — dropping those breaks
 // every cycle while keeping the rest of the graph intact.
-function sugiyamaBuildDAG(states, succ, startId) {
+export function sugiyamaBuildDAG(states, succ, startId) {
   const dag = new Map(states.map(s => [s.id, new Set()]));
   const visited = new Set(), onStack = new Set();
   const visitOrder = [];
@@ -963,7 +975,7 @@ function sugiyamaBuildDAG(states, succ, startId) {
 // position of its neighbors in the layer that was just fixed, sweeping
 // downward then upward so information propagates both ways. Nodes
 // with no fixed neighbor yet just keep their current slot.
-function sugiyamaOrderLayers(layers, succ, pred, sweeps = 6) {
+export function sugiyamaOrderLayers(layers, succ, pred, sweeps = 6) {
   const positionOf = layer => new Map(layer.map((id, i) => [id, i]));
   for (let s = 0; s < sweeps; s++) {
     const downward = s % 2 === 0;
@@ -988,14 +1000,14 @@ function sugiyamaOrderLayers(layers, succ, pred, sweeps = 6) {
 // a restored workspace, so neither value is guaranteed sane here. Both
 // helpers fall back to the documented defaults rather than propagating NaN
 // into every coordinate, which would blank the canvas.
-function layoutNodeRadius() {
+export function layoutNodeRadius() {
   const r = Number(App.config.radius);
   return Number.isFinite(r) && r > 0 ? r : 30;
 }
 
 // Minimum gap keeps labels and edge arrowheads legible even if a user asks
 // for zero spacing; nodes touching edge-to-edge are unreadable.
-function layoutGap() {
+export function layoutGap() {
   const g = Number(App.config.layout.nodeSpacing);
   return Number.isFinite(g) ? Math.max(8, g) : 35;
 }
@@ -1011,7 +1023,7 @@ function layoutGap() {
 // groups every state reachable in k steps into layer k, which keeps the
 // drawing compact and gives the crossing-reduction sweep several nodes per
 // layer to actually order.
-function sugiyamaRankByDistance(states, succ, startId) {
+export function sugiyamaRankByDistance(states, succ, startId) {
   const rank = new Map(states.map(s => [s.id, null]));
   const queue = [];
   // Prefer the real start state; fall back to any state so disconnected or
@@ -1049,7 +1061,7 @@ function sugiyamaRankByDistance(states, succ, startId) {
   return rank;
 }
 
-function sugiyamaLayout(states, transitions, startId) {
+export function sugiyamaLayout(states, transitions, startId) {
   const { succ, pred } = sugiyamaAdjacency(states, transitions);
   // The DAG itself is no longer ranked over, but its DFS visit order still
   // seeds each layer so connected chains start out adjacent.
@@ -1090,7 +1102,7 @@ function sugiyamaLayout(states, transitions, startId) {
 // Original one-shot circular placement — kept as a selectable alternative
 // (Settings → Rendering → Auto-Layout Algorithm) for users who prefer an
 // evenly-spaced ring over the layered layout.
-function circularLayout(states) {
+export function circularLayout(states) {
   const n = states.length;
   // Solve for the radius that leaves the requested gap between neighbours:
   // the chord between adjacent nodes is 2r·sin(π/n), and it has to clear one
@@ -1110,7 +1122,7 @@ function circularLayout(states) {
 // ══════════════════════════════════════════════════════════════════
 //  AUTO LAYOUT
 // ══════════════════════════════════════════════════════════════════
-function autoLayout() {
+export function autoLayout() {
   if (!App.states.length) { showStatus('No states to arrange'); return; }
   snapshot();
   if (App.config.layout.algorithm === 'circular') {
@@ -1135,7 +1147,7 @@ function autoLayout() {
 // Bounding box of everything drawn, in world coordinates. Shared with
 // fitToScreen so a cropped export frames the machine exactly the way
 // "fit to screen" does.
-function getContentBounds(statePad = 0) {
+export function getContentBounds(statePad = 0) {
   if (!App.states.length) return null;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   App.states.forEach(s => {
@@ -1169,7 +1181,7 @@ function getContentBounds(statePad = 0) {
  * @param {string}  [opts.background]      'transparent' or a CSS colour
  * @returns {{svg: string, width: number, height: number}}
  */
-function buildExportSVG(opts = {}) {
+export function buildExportSVG(opts = {}) {
   const svgEl = $('svgCanvas');
   const wrap = $('canvas-wrap');
   let w = wrap.clientWidth || 800, h = wrap.clientHeight || 600;
@@ -1263,7 +1275,7 @@ function buildExportSVG(opts = {}) {
   return { svg: new XMLSerializer().serializeToString(clone), width: w, height: h };
 }
 
-function exportSVG(opts = {}) {
+export function exportSVG(opts = {}) {
   const { svg } = buildExportSVG(opts);
   const header = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n';
   exportDownload(exportFilename('svg'), header + svg, 'image/svg+xml;charset=utf-8');
@@ -1271,7 +1283,7 @@ function exportSVG(opts = {}) {
   if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
 }
 
-function exportPNG(opts = {}) {
+export function exportPNG(opts = {}) {
   const res = opts.scale || App.config.exportRes || 2;
   const embedData = opts.embedData !== false;
   const { svg: svgStr, width: w, height: h } = buildExportSVG(opts);

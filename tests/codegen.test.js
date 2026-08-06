@@ -1,7 +1,7 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const vm = require('node:vm');
-const { createHarness } = require('./harness');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import { createHarness } from './harness.js';
 
 // Code generation.
 //
@@ -20,7 +20,6 @@ const { context } = harness;
 const App = context.App;
 
 function reset() { harness.resetApp(); }
-const inVM = expr => harness.evalInContext(expr);
 
 // ── builders ──────────────────────────────────────────────────────
 function fa({ sigma, states, start, accepts, edges, machine = 'DFA' }) {
@@ -410,7 +409,7 @@ test('test generation is refused for a transducer with no accept notion', () => 
 //  REGISTRY
 // ══════════════════════════════════════════════════════════════════
 test('code and test formats are registered in the export dialog', () => {
-  const formats = inVM('ExportFormats');
+  const formats = context.ExportFormats;
   ['code-js', 'code-py', 'code-java', 'code-c', 'code-xstate', 'code-scxml', 'test-jest', 'test-pytest']
     .forEach(k => assert.ok(formats[k], `${k} is not registered`));
 
@@ -425,7 +424,7 @@ test('every registered format emits a string for a supported machine', () => {
   reset();
   endsIn01();
   const ir = context.buildMachineIR();
-  Object.entries(inVM('ExportFormats')).forEach(([key, spec]) => {
+  Object.entries(context.ExportFormats).forEach(([key, spec]) => {
     if (spec.available && !spec.available()) return;
     const opts = {};
     (spec.options || []).forEach(o => { opts[o.id] = o.def; });
@@ -446,7 +445,7 @@ test('every registered format degrades gracefully on an unsupported machine', ()
   App.transitions = [{ id: 'e0', from: 's0', to: 's0', symbol: 'a', write: 'a', dir: 'R' }];
 
   const ir = context.buildMachineIR();
-  Object.entries(inVM('ExportFormats')).forEach(([key, spec]) => {
+  Object.entries(context.ExportFormats).forEach(([key, spec]) => {
     if (spec.available && !spec.available()) return;
     const opts = {};
     (spec.options || []).forEach(o => { opts[o.id] = o.def; });

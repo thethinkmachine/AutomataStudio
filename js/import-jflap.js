@@ -1,3 +1,8 @@
+import { snapshot } from './history.js';
+import { loadData, validateSchema } from './persistence.js';
+import { App, getMachineConfig } from './state.js';
+import { hasPdaNondeterminism, hasSingleTapeNondeterminism, performClear, showStatus } from './utils.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  JFLAP IMPORT  (.jff)
 // ══════════════════════════════════════════════════════════════════
@@ -15,9 +20,9 @@
 //  rather than silently importing half a machine.
 // ══════════════════════════════════════════════════════════════════
 
-const JFLAP_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+export const JFLAP_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
 
-function jflapDecode(str) {
+export function jflapDecode(str) {
   return String(str).replace(/&(#x?[0-9a-fA-F]+|\w+);/g, (m, ent) => {
     if (ent[0] === '#') {
       const code = ent[1] === 'x' || ent[1] === 'X'
@@ -29,7 +34,7 @@ function jflapDecode(str) {
   });
 }
 
-function jflapParseAttrs(src) {
+export function jflapParseAttrs(src) {
   const attrs = {};
   const re = /([\w:.-]+)\s*=\s*("([^"]*)"|'([^']*)')/g;
   let m;
@@ -38,7 +43,7 @@ function jflapParseAttrs(src) {
 }
 
 /** @returns {{tag:string, attrs:object, children:Array, text:string}} synthetic root */
-function jflapParseXML(src) {
+export function jflapParseXML(src) {
   const clean = String(src)
     .replace(/<\?[\s\S]*?\?>/g, '')
     .replace(/<!--[\s\S]*?-->/g, '')
@@ -67,27 +72,27 @@ function jflapParseXML(src) {
   return root;
 }
 
-function jflapChild(node, tag) {
+export function jflapChild(node, tag) {
   if (!node) return null;
   return node.children.find(c => c.tag === tag) || null;
 }
-function jflapChildren(node, tag) {
+export function jflapChildren(node, tag) {
   if (!node) return [];
   return node.children.filter(c => c.tag === tag);
 }
 /** Text of a child element, entity-decoded and trimmed. null when absent. */
-function jflapText(node, tag) {
+export function jflapText(node, tag) {
   const c = jflapChild(node, tag);
   return c ? jflapDecode(c.text).trim() : null;
 }
 /** True when the child element exists at all — JFLAP's flags are empty tags. */
-function jflapFlag(node, tag) {
+export function jflapFlag(node, tag) {
   return !!jflapChild(node, tag);
 }
 
 // ── conversion ────────────────────────────────────────────────────
 // JFLAP writes an omitted symbol as an empty <read/>; that is its lambda.
-function jflapSymbol(raw, eps) {
+export function jflapSymbol(raw, eps) {
   return raw === null || raw === '' ? eps : raw;
 }
 
@@ -95,7 +100,7 @@ function jflapSymbol(raw, eps) {
  * Converts a parsed .jff tree into the workspace shape loadData() takes.
  * Throws on anything structurally unusable so the caller can report it.
  */
-function jflapToWorkspace(root, symOverride) {
+export function jflapToWorkspace(root, symOverride) {
   const sym = symOverride || App.config.sym;
   const structure = jflapChild(root, 'structure');
   if (!structure) throw new Error('Not a JFLAP file — no <structure> element.');
@@ -239,7 +244,7 @@ function jflapToWorkspace(root, symOverride) {
 // JFLAP's <type> only distinguishes families ("fa"), not the determinism
 // the app models as separate machine types, so the specific type is read
 // off the transitions the same way loadData() does for its own files.
-function jflapMachineType(type, info) {
+export function jflapMachineType(type, info) {
   const { transitions, sawEpsilonRead, maxTape, hasOutputStates } = info;
   if (type === 'moore') return 'Moore';
   if (type === 'mealy') return 'Mealy';
@@ -257,7 +262,7 @@ function jflapMachineType(type, info) {
 }
 
 // ── entry point ───────────────────────────────────────────────────
-function importJFLAPText(text) {
+export function importJFLAPText(text) {
   const data = jflapToWorkspace(jflapParseXML(text));
   validateSchema(data);
   performClear();

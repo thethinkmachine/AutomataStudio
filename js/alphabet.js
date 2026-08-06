@@ -1,7 +1,17 @@
+import { renderGramSyms } from './algorithms-cfg.js';
+import { updateLPanelSectionMeta, updateRPanel } from './render.js';
+import { $, App, isBoundarySymbol, isBoundaryTapeMachine } from './state.js';
+import { Change, subscribe } from './store.js';
+import { escapeHtml, jsAttr, showStatus } from './utils.js';
+
+subscribe(Change.ALPHABET, renderSigma);
+subscribe(Change.ALPHABET, renderGamma);
+subscribe(Change.ALPHABET, renderOutputAlpha);
+
 // ══════════════════════════════════════════════════════════════════
 //  ALPHABET
 // ══════════════════════════════════════════════════════════════════
-function addSym() {
+export function addSym() {
   const v = $('sym-in').value.trim(); if (!v) return;
     const blocked = [];
     v.split(/[,\s]+/).forEach(s => {
@@ -12,18 +22,18 @@ function addSym() {
   $('sym-in').value = ''; renderSigma(); updateRPanel(); renderGramSyms();
     if (blocked.length && typeof showStatus === 'function') showStatus('Boundary markers are reserved and cannot be added to Σ.');
 }
-  function delSym(s) { 
+  export function delSym(s) { 
     App.sigma.delete(s); 
     renderSigma(); 
     renderGramSyms(); 
   }
-function renderSigma() {
+export function renderSigma() {
   const c = $('sigma-chips');
   c.innerHTML = [...App.sigma].map(s => `<div class="chip">${escapeHtml(s)}<span class="x" onclick="delSym(${jsAttr(s)})"><svg viewBox="0 0 256 256"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span></div>`).join('')
     || '<div class="empty-msg">Add symbols</div>';
   if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
-function addGSym() {
+export function addGSym() {
   const v = $('gsym-in').value.trim(); if (!v) return;
     const blocked = [];
     v.split(/[,\s]+/).forEach(s => {
@@ -34,12 +44,12 @@ function addGSym() {
   $('gsym-in').value = ''; renderGamma();
     if (blocked.length && typeof showStatus === 'function') showStatus('Boundary markers are reserved for the tape boundary and were not added here.');
 }
-  function delGSym(s) { 
+  export function delGSym(s) { 
     if (isBoundaryTapeMachine(App.machine) && isBoundarySymbol(s)) return; 
     App.stackAlpha.delete(s); 
     renderGamma(); 
   }
-function renderGamma() {
+export function renderGamma() {
   const c = $('gamma-chips');
     c.innerHTML = [...App.stackAlpha].map(s => {
       const isBottom = s === App.config.sym.stackBottom;
@@ -50,13 +60,13 @@ function renderGamma() {
     }).join('') || '<div class="empty-msg">Add symbols</div>';
   if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
-function addOutSym() {
+export function addOutSym() {
   const v = $('outsym-in').value.trim(); if (!v) return;
   v.split(/[,\s]+/).forEach(s => { if (s) App.outputAlpha.add(s); });
   $('outsym-in').value = ''; renderOutputAlpha();
 }
-function delOutSym(s) { App.outputAlpha.delete(s); renderOutputAlpha(); }
-function renderOutputAlpha() {
+export function delOutSym(s) { App.outputAlpha.delete(s); renderOutputAlpha(); }
+export function renderOutputAlpha() {
   const c = $('output-chips');
   c.innerHTML = [...App.outputAlpha].map(s => `<div class="chip">${escapeHtml(s)}<span class="x" onclick="delOutSym(${jsAttr(s)})"><svg viewBox="0 0 256 256"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span></div>`).join('')
     || '<div class="empty-msg">Add symbols</div>';

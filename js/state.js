@@ -1,7 +1,7 @@
 // ══════════════════════════════════════════════════════════════════
 //  CORE CONFIGURATION
 // ══════════════════════════════════════════════════════════════════
-const MachineTypes = {
+export const MachineTypes = {
   'DFA': { label: 'DFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-dfa', file: 'dfa' },
   'NFA': { label: 'NFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-nfa', file: 'nfa' },
   'ε-NFA': { label: 'ε-NFA', category: 'fa', implemented: true, hasEpsilon: true, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-enfa', file: 'enfa' },
@@ -28,7 +28,7 @@ const MachineTypes = {
 
 // Example gallery per machine: first entry is the flagship shown by default,
 // the rest are alternates offered in the Load Example dropdown.
-const MachineExamples = {
+export const MachineExamples = {
   'DFA': [{ file: 'dfa', label: 'Divisible by 5' }, { file: 'dfa-classic', label: 'Classic: even number of 1s' }],
   'NFA': [{ file: 'nfa', label: 'Keyword search: cat · car · cab' }, { file: 'nfa-classic', label: 'Classic: guess the penultimate 1' }],
   'ε-NFA': [{ file: 'enfa', label: 'Float regex [+-]?d+(.d+)?' }, { file: 'enfa-classic', label: 'Classic: a* then b*' }],
@@ -50,7 +50,7 @@ const MachineExamples = {
   'FST': [{ file: 'fst', label: 'Binary → Gray code' }, { file: 'fst-classic', label: 'Classic: nondeterministic rewriter' }]
 };
 
-const MachineCategories = [
+export const MachineCategories = [
   { id: 'fa', label: 'Finite Automata', machines: ['DFA', 'NFA', 'ε-NFA', '2DFA', '2NFA'] },
   { id: 'mem', label: 'Memory Automata', machines: ['DPDA', 'NPDA', 'QA', 'Counter', '2PDA'] },
   { id: 'tm', label: 'Turing Machines', machines: ['TM', 'NDTM', 'MTM', 'LBA', 'ITM'] },
@@ -60,7 +60,7 @@ const MachineCategories = [
 // ══════════════════════════════════════════════════════════════════
 //  CORE STATE
 // ══════════════════════════════════════════════════════════════════
-const App = {
+export const App = {
   machine: 'DFA', tool: 'move', view: 'build',
   sigma: new Set(['a', 'b']),
   outputAlpha: new Set(['0', '1']),
@@ -171,17 +171,77 @@ const App = {
     { value: 'S', label: 'Stay' }
   ],
 };
-const SVG_NS = 'http://www.w3.org/2000/svg';
-var R = App.config.radius;
-const $ = id => document.getElementById(id);
+export const SVG_NS = 'http://www.w3.org/2000/svg';
+// Mirrors App.config.radius. ES module imports are live for reads but read-only
+// for writes, so the one place that changes it (the Settings modal) goes through
+// setR rather than assigning across the module boundary.
+export let R = App.config.radius;
+export function setR(v) { R = v; }
+export const $ = id => document.getElementById(id);
+
+// ══════════════════════════════════════════════════════════════════
+//  MACHINE SHAPE PREDICATES
+// ══════════════════════════════════════════════════════════════════
+// These read nothing but App and MachineTypes, so they live here rather than in
+// utils.js. That keeps state.js free of imports, which in turn lets it evaluate
+// before every other module — the app relies on $ and App being initialised by
+// the time other modules run their top-level code.
+export function getMachineConfig(m) { return MachineTypes[m] || MachineTypes['DFA']; }
+
+export function isTwoWayFA(m = App.machine) {
+  return m === '2DFA' || m === '2NFA';
+}
+
+export function isEndmarkerMachine(m = App.machine) {
+  return m === '2DFA' || m === '2NFA' || m === 'LBA';
+}
+
+export function isReadOnlyHeadMachine(m = App.machine) {
+  return isTwoWayFA(m);
+}
+
+export function isBoundaryTapeMachine(m = App.machine) {
+  return m === 'LBA';
+}
+
+export function getBoundaryMarkers() {
+  return {
+    left: App.config.sym.leftMarker,
+    right: App.config.sym.rightMarker
+  };
+}
+
+export function isBoundarySymbol(sym) {
+  const { left, right } = getBoundaryMarkers();
+  return sym === left || sym === right;
+}
+
+export function normalizeBoundarySymbolsForMachine(m = App.machine) {
+  const { left, right } = getBoundaryMarkers();
+
+  if (App.sigma instanceof Set) {
+    App.sigma = new Set([...App.sigma].filter(sym => sym !== left && sym !== right));
+  }
+
+  if (!(App.stackAlpha instanceof Set)) return;
+  const symbols = [...App.stackAlpha].filter(sym => sym !== left && sym !== right);
+  App.stackAlpha = isBoundaryTapeMachine(m)
+    ? new Set([left, ...symbols, right])
+    : new Set(symbols);
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  WORKSPACES
 // ══════════════════════════════════════════════════════════════════
-let Workspaces = [];
-let activeWorkspaceId = null;
+// The open tabs and which one is live. Both are reassigned wholesale (filter,
+// slice, reset), so — like R above — cross-module writes go through setters
+// while reads use the live import binding.
+export let Workspaces = [];
+export let activeWorkspaceId = null;
+export function setWorkspaces(v) { Workspaces = v; }
+export function setActiveWorkspaceId(v) { activeWorkspaceId = v; }
 
-function exportWorkspaceState() {
+export function exportWorkspaceState() {
   return {
     machine: App.machine,
     sigma: [...App.sigma],
@@ -210,7 +270,7 @@ function exportWorkspaceState() {
   };
 }
 
-function importWorkspaceState(data) {
+export function importWorkspaceState(data) {
   App.machine = data.machine || 'DFA';
   App.sigma = new Set(data.sigma || ['a', 'b']);
   App.outputAlpha = new Set(data.outputAlpha || ['0', '1']);
@@ -240,6 +300,10 @@ function importWorkspaceState(data) {
   if (data.config) {
     const { sym, ...loadedConfig } = data.config;
     App.config = { ...App.config, ...loadedConfig, sym: { ...App.config.sym, ...(sym || {}) } };
+    // R mirrors config.radius for the modules that imported it, and replacing
+    // config wholesale does not update it. Without this a tab saved at a
+    // different radius draws its states at the previous tab's size.
+    setR(App.config.radius);
   }
 
   if (typeof normalizeBoundarySymbolsForMachine === 'function') {
@@ -250,7 +314,7 @@ function importWorkspaceState(data) {
 // ══════════════════════════════════════════════════════════════════
 //  STATE MIGRATIONS
 // ══════════════════════════════════════════════════════════════════
-function migrateSystemSymbols(oldSyms, newSyms) {
+export function migrateSystemSymbols(oldSyms, newSyms) {
   const needsMigration = ['eps', 'any', 'blank', 'stackBottom', 'leftMarker', 'rightMarker'].some(k => oldSyms[k] !== newSyms[k]);
   if (!needsMigration) return;
 

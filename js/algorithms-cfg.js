@@ -1,15 +1,25 @@
+import { snapshot } from './history.js';
+import { saveBackup } from './persistence.js';
+import { renderAll, updateLPanel, updateRPanel } from './render.js';
+import { stateNames, tokenize } from './simulation.js';
+import { $, App } from './state.js';
+import { Change, emit } from './store.js';
+import { autoFitLoadedMachine, fitToScreen } from './ui.js';
+import { escapeHtml, isCfgConvertiblePDA, parseEps, showStatus } from './utils.js';
+import { applyMachineSwitch, setView } from './view.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  GRAMMAR VIEW
 // ══════════════════════════════════════════════════════════════════
-const G = App.grammar;
+export const G = App.grammar;
 
-function renderGramSyms() {
+export function renderGramSyms() {
   const tc = $('term-chips');
   if (!tc) return;
   tc.innerHTML = [...App.sigma].map(s => `<div class="chip" style="color:var(--gold)">${escapeHtml(s)}</div>`).join('')
     || '<span style="font-size:.65rem;color:var(--text3);font-style:italic">Mirror from Σ</span>';
 }
-function parseRawGrammar() {
+export function parseRawGrammar() {
   const text = $('grammar-input').value;
   const lines = text.split('\n').filter(l => l.trim());
   G.vars.clear();
@@ -47,7 +57,7 @@ function parseRawGrammar() {
   renderGrammarView();
 }
 
-function tokenizeRHS(str, vars) {
+export function tokenizeRHS(str, vars) {
   const raw = str.trim();
   if (raw === App.config.sym.eps || raw.toLowerCase() === 'eps' || raw.toLowerCase() === 'epsilon') return [App.config.sym.eps];
   const tokens = [];
@@ -79,7 +89,7 @@ function tokenizeRHS(str, vars) {
   return tokens.length ? tokens : [App.config.sym.eps];
 }
 
-function renderGrammarLPanel() {
+export function renderGrammarLPanel() {
   const gi = $('grammar-input');
   if (!gi) return;
   const grouped = {};
@@ -104,7 +114,7 @@ function renderGrammarLPanel() {
 
 
 /** Collects all terminals used in the current grammar */
-function getGrammarTerminals() {
+export function getGrammarTerminals() {
   const terms = new Set();
   G.productions.forEach(p => {
     (p.rhsArr || []).forEach(t => {
@@ -115,7 +125,7 @@ function getGrammarTerminals() {
   return terms;
 }
 
-function renderGrammarView() {
+export function renderGrammarView() {
   const out = $('gram-output'); if (!out) return;
   if (!G.productions.length) { out.innerHTML = '<div style="font-size:.72rem;color:var(--text3);font-style:italic">Add productions to see the grammar.</div>'; return; }
   // Group by LHS
@@ -134,7 +144,7 @@ function renderGrammarView() {
 }
 
 // --- CNF Conversion ---
-function runCNF() {
+export function runCNF() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add productions first'); return; }
   G.start = ($('start-sym')?.value) || G.start;
@@ -231,7 +241,7 @@ function runCNF() {
 }
 
 // --- CYK Parsing ---
-function runCYK() {
+export function runCYK() {
   const strLine = $('cyk-in').value.trim();
   const rawStr = parseEps(strLine);
   const str = rawStr === App.config.sym.eps ? '' : rawStr;
@@ -297,7 +307,7 @@ function runCYK() {
 }
 
 // --- String Derivation ---
-function runDerivation() {
+export function runDerivation() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   G.start = $('start-sym')?.value || G.start;
@@ -335,7 +345,7 @@ function runDerivation() {
 // ══════════════════════════════════════════════════════════════════
 //  GRAMMAR EXTENSIONS
 // ══════════════════════════════════════════════════════════════════
-function runRightmostDerivation() {
+export function runRightmostDerivation() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   G.start = $('start-sym')?.value || G.start;
@@ -368,7 +378,7 @@ function runRightmostDerivation() {
   out.innerHTML = html;
 }
 
-function runParseTree() {
+export function runParseTree() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   G.start = $('start-sym')?.value || G.start;
@@ -386,7 +396,7 @@ function runParseTree() {
   out.innerHTML = `<h3 style="font-family:var(--sans);font-size:1.1rem;margin-bottom:12px">Parse Tree (first derivation)</h3>${svgData}`;
 }
 
-function layoutParseTree(root) {
+export function layoutParseTree(root) {
   const nodeH = 40, levelH = 60, minGap = 20;
   const positions = [];
   let maxY = 0;
@@ -457,7 +467,7 @@ function layoutParseTree(root) {
   return `<svg class="parse-tree-svg" viewBox="0 0 ${svgW} ${svgH}" style="width:100%;max-width:${svgW}px">${edges}${nodes}</svg>`;
 }
 
-function runAmbiguityCheck() {
+export function runAmbiguityCheck() {
   const strLine = $('ambig-in').value.trim() || $('cyk-in').value.trim();
   const strRaw = parseEps(strLine);
   const str = strRaw === App.config.sym.eps ? '' : strRaw;
@@ -518,7 +528,7 @@ function runAmbiguityCheck() {
   out.innerHTML = html;
 }
 
-function runUselessElim() {
+export function runUselessElim() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   G.start = $('start-sym')?.value || G.start;
@@ -568,7 +578,7 @@ function runUselessElim() {
   out.innerHTML = html;
 }
 
-function runGNF() {
+export function runGNF() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   // Ensure CNF first
@@ -596,7 +606,7 @@ function runGNF() {
   out.innerHTML = html;
 }
 
-function runCFG2PDA(mode = 'topdown') {
+export function runCFG2PDA(mode = 'topdown') {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   G.start = $('start-sym')?.value || G.start;
@@ -666,7 +676,7 @@ function runCFG2PDA(mode = 'topdown') {
   App._lastCFGPDANames = [...stateNamesSet];
 }
 
-function loadCFGPDA() {
+export function loadCFGPDA() {
   if (!App._lastCFGPDA) return;
   snapshot();
   App.states = []; App.transitions = []; App.accepts.clear(); App.startId = null; App.stateN = 0; App.transN = 0;
@@ -709,7 +719,7 @@ function loadCFGPDA() {
   if (paradigmDropdown) paradigmDropdown.value = 'explicit';
 
   applyMachineSwitch('NPDA');
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
   saveBackup(); // Required to persist to localStorage after programmatically loading a structure
   setView('build');
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
@@ -720,7 +730,7 @@ function loadCFGPDA() {
 // ══════════════════════════════════════════════════════════════════
 //  CFG DECISION ALGORITHMS
 // ══════════════════════════════════════════════════════════════════
-function runCFGIsEmpty() {
+export function runCFGIsEmpty() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   G.start = $('start-sym')?.value || G.start;
@@ -746,7 +756,7 @@ function runCFGIsEmpty() {
   out.innerHTML = html;
 }
 
-function runCFGIsFinite() {
+export function runCFGIsFinite() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   G.start = $('start-sym')?.value || G.start;
@@ -807,7 +817,7 @@ function runCFGIsFinite() {
 // ══════════════════════════════════════════════════════════════════
 //  CFL PUMPING LEMMA VISUALIZATION
 // ══════════════════════════════════════════════════════════════════
-function renderCFLPumpVis() {
+export function renderCFLPumpVis() {
   const pEl = $('cfl-pump-vis'); if (!pEl) return;
   const pw = $('cfl-pump-w'); if (!pw) return;
   const w = pw.value;
@@ -842,7 +852,7 @@ function renderCFLPumpVis() {
 // ══════════════════════════════════════════════════════════════════
 //  DPDA/NPDA → CFG (Sipser Construction)
 // ══════════════════════════════════════════════════════════════════
-function runPDA2CFG(mode = 'raw') {
+export function runPDA2CFG(mode = 'raw') {
   const out = $('gram-output');
   if (!isCfgConvertiblePDA(App.machine)) {
     out.innerHTML = `<div class="cnf-step"><span class="lbl">Switch to DPDA or NPDA mode to use this conversion.</span></div>`;
@@ -1026,9 +1036,9 @@ ${isEmptyLanguage ? `<div class="pump-result fail">No productions remain after p
 // ══════════════════════════════════════════════════════════════════
 //  CYK STEP-THROUGH VISUALIZER
 // ══════════════════════════════════════════════════════════════════
-let _cykViz = null;
+export let _cykViz = null;
 
-function runCYKVisual() {
+export function runCYKVisual() {
   const str = $('cyk-in').value.trim();
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
@@ -1101,7 +1111,7 @@ function runCYKVisual() {
   renderCYKVisStep(out);
 }
 
-function renderCYKVisStep(out) {
+export function renderCYKVisStep(out) {
   if (!out) out = $('gram-output');
   if (!_cykViz) return;
   const { steps, idx, n, s, cnfStart, accepted } = _cykViz;
@@ -1152,7 +1162,7 @@ ${isLast ? `<div class="pump-result ${accepted ? 'ok' : 'fail'}" style="margin-t
 </div>` : ''}`;
 }
 
-function cykVisStep(delta) {
+export function cykVisStep(delta) {
   if (!_cykViz) return;
   _cykViz.idx = Math.max(0, Math.min(_cykViz.steps.length - 1, _cykViz.idx + delta));
   renderCYKVisStep($('gram-output'));
@@ -1164,7 +1174,7 @@ function cykVisStep(delta) {
 // ══════════════════════════════════════════════════════════════════
 
 /** Chomsky Hierarchy Classification */
-function runChomskyClassify() {
+export function runChomskyClassify() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   
@@ -1183,7 +1193,6 @@ function runChomskyClassify() {
     // Type 2 Check: LHS must be a single variable
     if (!G.vars.has(lhs)) {
         isType2 = false;
-        isType3 = false;
     }
 
     // Type 3 (Regular) Check
@@ -1223,7 +1232,7 @@ function runChomskyClassify() {
 }
 
 /** Compute First and Follow Sets */
-function computeFirstFollow() {
+export function computeFirstFollow() {
   const vars = [...G.vars];
   const first = {};
   const follow = {};
@@ -1298,7 +1307,7 @@ function computeFirstFollow() {
   return { first, follow };
 }
 
-function runFirstFollow() {
+export function runFirstFollow() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   
@@ -1320,7 +1329,7 @@ function runFirstFollow() {
 }
 
 /** LL(1) Parsing Table Generation */
-function runLL1Table() {
+export function runLL1Table() {
   const out = $('gram-output');
   if (!G.productions.length) { showStatus('Add a grammar first'); return; }
   
@@ -1382,7 +1391,7 @@ function runLL1Table() {
 }
 
 /** Remove Direct Left Recursion */
-function runLeftRecursionRemoval() {
+export function runLeftRecursionRemoval() {
     const out = $('gram-output');
     if (!G.productions.length) { showStatus('Add a grammar first'); return; }
     

@@ -1,3 +1,12 @@
+import { wrap } from './canvas.js';
+import { openExportCodeModal } from './export-ui.js';
+import { _regexCacheKey, updateDefBoxOverflowShadow } from './render.js';
+import { langStepBudget, runSim, test2DFA, test2NFA, testDFA, testFST, testNFA, testNPDA, testPDA, testTMVerdict } from './simulation.js';
+import { $, App, getMachineConfig } from './state.js';
+import { getState } from './states-transitions.js';
+import { toggleRPSection } from './ui.js';
+import { isAnyPDA, isAnyTM } from './utils.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  LANGUAGE PANEL
 // ══════════════════════════════════════════════════════════════════
@@ -17,18 +26,18 @@
 //  components are clickable and cross-highlight the canvas.
 // ══════════════════════════════════════════════════════════════════
 
-const LANG_FP_CELLS = 128;        // fingerprint budget, in cells
-const LANG_TRACE_ROWS = 6;        // rows shown before the user has to scroll
-const LANG_TRACE_PAGE = 20;       // rows fetched per scroll-triggered batch
-const LANG_TRACE_DEPTH_CAP = 300; // hard backstop on word length; the step
+export const LANG_FP_CELLS = 128;        // fingerprint budget, in cells
+export const LANG_TRACE_ROWS = 6;        // rows shown before the user has to scroll
+export const LANG_TRACE_PAGE = 20;       // rows fetched per scroll-triggered batch
+export const LANG_TRACE_DEPTH_CAP = 300; // hard backstop on word length; the step
                                    // budget below is what actually binds
-const LANG_TRACE_STEP_BUDGET = 400000; // search-tree nodes per generator,
+export const LANG_TRACE_STEP_BUDGET = 400000; // search-tree nodes per generator,
                                         // keeps a pathological graph from
                                         // freezing the tab while scrolling
 
 // ── mode ──────────────────────────────────────────────────────────
 // The one heuristic the whole section turns on.
-function langIsSymbolic() {
+export function langIsSymbolic() {
   for (const s of App.sigma) if ([...s].length !== 1) return false;
   return true;
 }
@@ -37,7 +46,7 @@ function langIsSymbolic() {
 // word the machine has not decided is drawn as "no verdict" rather than
 // silently counted as a reject. A transducer only has an accept/reject
 // notion when the user has opted into one.
-function langCanDecide() {
+export function langCanDecide() {
   const m = App.machine;
   if (getMachineConfig(m).isTransducer && !App.config.transducerAccepts) return false;
   return true;
@@ -46,14 +55,14 @@ function langCanDecide() {
 // Walking the transition graph only yields meaningful words when edges
 // consume input left to right. Two-way heads and tapes revisit cells,
 // so a path through the graph is not a word.
-function langCanTrace() {
+export function langCanTrace() {
   const m = App.machine;
   return m === 'DFA' || m === 'NFA' || m === 'ε-NFA' || isAnyPDA(m);
 }
 
 // ── the vocabulary: abbreviations, actor groups, usage ─────────────
 // camelCase / PascalCase → initials. "citizenFilesComplaint" → "cFC".
-function langAbbrev(sym) {
+export function langAbbrev(sym) {
   const parts = sym.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/[\s_\-.]+/).filter(Boolean);
   if (!parts.length) return sym.slice(0, 3);
   return parts.map((p, i) => i === 0 ? [...p][0] : [...p][0].toUpperCase()).join('');
@@ -61,18 +70,18 @@ function langAbbrev(sym) {
 
 // Actor = the leading lowercase run before the first capital. A
 // PascalCase name has none, which is itself worth surfacing.
-function langActor(sym) {
+export function langActor(sym) {
   const m = sym.match(/^[a-z][a-z0-9]*/);
   return m ? m[0] : '';
 }
 
-let _langVocab = { key: '', val: null };
-function _langVocabKey() {
+export let _langVocab = { key: '', val: null };
+export function _langVocabKey() {
   return [...App.sigma].join('') + '||' +
     App.transitions.map(t => t.symbol).sort().join('');
 }
 
-function langVocab() {
+export function langVocab() {
   const key = _langVocabKey();
   if (_langVocab.key === key && _langVocab.val) return _langVocab.val;
 
@@ -115,7 +124,7 @@ function langVocab() {
 // ── deciding a word ───────────────────────────────────────────────
 // Reuses the same verdict-only runners the batch tester uses, so a
 // word shown here is accepted by exactly the simulator the user runs.
-function langVerdict(tokens) {
+export function langVerdict(tokens) {
   const m = App.machine;
   try {
     if (isAnyTM(m)) return testTMVerdict(tokens);
@@ -135,7 +144,7 @@ function langVerdict(tokens) {
 
 // ── fingerprint (symbolic mode) ───────────────────────────────────
 // Shortlex enumeration of Σ*, whole length-blocks only.
-function langEnumerate(cap) {
+export function langEnumerate(cap) {
   const sigma = [...App.sigma].filter(s => s !== App.config.sym.eps).sort();
   const blocks = [];
   let words = [[]], total = 0, len = 0;
@@ -151,7 +160,7 @@ function langEnumerate(cap) {
 }
 
 // How many cells a fingerprint would need to reach a given length.
-function langCellsToReach(n, L) {
+export function langCellsToReach(n, L) {
   if (n <= 1) return L + 1;
   return Math.round((Math.pow(n, L + 1) - 1) / (n - 1));
 }
@@ -174,7 +183,7 @@ function langCellsToReach(n, L) {
 // A state absent from `dist` cannot reach an accept at all — that is
 // exactly the states pruning removes, and removing them is a language
 // property, so it cannot skew the ordering.
-function _langGraph() {
+export function _langGraph() {
   const eps = App.config.sym.eps;
   const any = App.config.sym.any;
   const sigma = [...App.sigma].filter(s => s !== eps).sort();
@@ -227,7 +236,7 @@ function _langGraph() {
 // included: revisiting a graph state after consuming input is a cycle by
 // definition, and a path touching no state twice is bounded by |Q| — no
 // stack discipline can stretch it further.
-function langIsInfinite() {
+export function langIsInfinite() {
   if (!App.startId || !App.accepts.size) return false;
   const g = _langGraph();
   const startSubset = new Set([...g.closure(App.startId)].filter(id => g.live.has(id)));
@@ -280,7 +289,7 @@ function langIsInfinite() {
 // which is what makes a fixed-length pass emit in lex order; length
 // dominates shortlex, so increasing the target length after each
 // exhausted pass keeps the overall sequence correct.
-function* _langTraceWords(g, state) {
+export function* _langTraceWords(g, state) {
   const startSubset = new Set([...g.closure(App.startId)].filter(id => g.live.has(id)));
   if (!startSubset.size) return;
 
@@ -323,7 +332,7 @@ function* _langTraceWords(g, state) {
   }
 }
 
-function langAcceptedTraces(K) {
+export function langAcceptedTraces(K) {
   K = K || LANG_TRACE_ROWS;
   if (!App.startId) return { traces: [], reason: 'no start state' };
   if (!App.accepts.size) return { traces: [], reason: 'no accepting state' };
@@ -340,7 +349,7 @@ function langAcceptedTraces(K) {
 }
 
 // ── the formal definition, as one line ────────────────────────────
-function langTupleSyms() {
+export function langTupleSyms() {
   const m = App.machine;
   if (m === '2PDA') return ['Q', 'Σ', 'Γ₁', 'Γ₂', 'δ', 'q₀', 'F'];
   if (m === 'QA' || m === 'Counter') return ['Q', 'Σ', 'Γ', 'δ', 'q₀', 'F'];
@@ -355,7 +364,7 @@ function langTupleSyms() {
   return ['Q', 'Σ', 'δ', 'q₀', 'F'];
 }
 
-function langTupleInfo(sym) {
+export function langTupleInfo(sym) {
   const m = App.machine;
   const names = (ids) => App.states.filter(s => ids.has(s.id)).map(s => s.name);
   const set = (arr) => arr.length ? '{' + arr.join(', ') + '}' : '∅';
@@ -383,7 +392,7 @@ function langTupleInfo(sym) {
   return { n: null, say: '', val: '—' };
 }
 
-function langDeltaSignature() {
+export function langDeltaSignature() {
   const m = App.machine;
   if (m === 'DFA') return 'Q × Σ → Q';
   if (m === 'NFA') return 'Q × Σ → P(Q)';
@@ -405,12 +414,12 @@ function langDeltaSignature() {
 // Reuses the same classes the state/transition lists use for their
 // hover highlight, so pointing at δ here looks like pointing at a
 // transition row over there.
-function langClearHighlight() {
+export function langClearHighlight() {
   document.querySelectorAll('.sn.list-hover-st').forEach(el => el.classList.remove('list-hover-st'));
   document.querySelectorAll('.edge-g.list-hover-t').forEach(el => el.classList.remove('list-hover-t'));
 }
 
-function langHighlight(sym) {
+export function langHighlight(sym) {
   langClearHighlight();
   const litStates = (ids) => ids.forEach(id => {
     const el = App.domCache.states.get(id) || document.querySelector(`.sn[data-id="${id}"]`);
@@ -432,7 +441,7 @@ function langHighlight(sym) {
 }
 
 // Highlight every transition carrying one particular input symbol.
-function langHighlightSymbol(sym, on) {
+export function langHighlightSymbol(sym, on) {
   const keys = new Set();
   App.transitions.forEach(t => { if (t.symbol === sym) keys.add(t.from + '|' + t.to); });
   keys.forEach(k => {
@@ -442,7 +451,7 @@ function langHighlightSymbol(sym, on) {
 }
 
 // ── rendering ─────────────────────────────────────────────────────
-function _le(tag, cls, txt) {
+export function _le(tag, cls, txt) {
   const n = document.createElement(tag);
   if (cls) n.className = cls;
   if (txt != null) n.textContent = txt;
@@ -451,7 +460,7 @@ function _le(tag, cls, txt) {
 
 // Hue is never the only channel: each code's first letter is the actor
 // initial, so the grouping survives CVD, greyscale and forced-colors.
-function langSymChip(sym, opts = {}) {
+export function langSymChip(sym, opts = {}) {
   const v = langVocab();
   const cls = 'lang-sym' + (v.slot[sym] ? ' g' + v.slot[sym] : '') +
     (!opts.plain && !v.uses[sym] && !v.wildcards ? ' dead' : '');
@@ -465,7 +474,7 @@ function langSymChip(sym, opts = {}) {
   return c;
 }
 
-function langLoadTrace(word) {
+export function langLoadTrace(word) {
   const input = $('sim-in');
   if (!input) return;
   input.value = word.length
@@ -482,8 +491,8 @@ function langLoadTrace(word) {
 // times over, and updateRPanel() fires on every edit — so the result is
 // memoised on the same structural key the regex cache uses. Dragging a
 // state around must not re-decide 127 words.
-let _langExtCache = { key: '', node: null };
-function _langExtKey() {
+export let _langExtCache = { key: '', node: null };
+export function _langExtKey() {
   const base = typeof _regexCacheKey === 'function'
     ? _regexCacheKey()
     : App.transitions.map(t => t.from + t.symbol + t.to).join(',');
@@ -492,7 +501,7 @@ function _langExtKey() {
     App.config.langStepBudget + '|' + App.tapeCount + '|' + base;
 }
 
-function renderLangExtension() {
+export function renderLangExtension() {
   const host = $('lang-extension');
   if (!host) return;
   host.innerHTML = '';
@@ -526,7 +535,7 @@ function renderLangExtension() {
 // The panel shows a window onto L(M); this is how that leaves the app.
 // Sampling can be slower than a render (every candidate is verified with
 // the real simulator), so it happens on click rather than eagerly here.
-function renderLangExportBar(host) {
+export function renderLangExportBar(host) {
   if (typeof openExportCodeModal !== 'function') return;
   const bar = _le('div', 'exp-bar');
   const btn = _le('button', 'exp-bar-btn', 'Export words');
@@ -538,7 +547,7 @@ function renderLangExportBar(host) {
 }
 
 // ── symbolic: the fingerprint ─────────────────────────────────────
-function renderLangFingerprint(host) {
+export function renderLangFingerprint(host) {
   const { blocks, total } = langEnumerate(LANG_FP_CELLS);
   if (!blocks.length) return;
 
@@ -608,7 +617,7 @@ function renderLangFingerprint(host) {
 // the paused search, so "6 shortest" becomes "as many as you scroll to"
 // without ever materialising L(M) as a whole — which for a machine with
 // a cycle on an accepting path is not a finite thing to materialise.
-function renderLangTraces(host) {
+export function renderLangTraces(host) {
   const v = langVocab();
 
   const head = _le('div', 'lang-head');
@@ -713,7 +722,7 @@ function renderLangTraces(host) {
 }
 
 // ── the tuple line ────────────────────────────────────────────────
-function renderLangTuple() {
+export function renderLangTuple() {
   const strip = $('lang-tuple');
   const open = $('lang-tuple-open');
   if (!strip || !open) return;
@@ -753,7 +762,7 @@ function renderLangTuple() {
   strip.appendChild(_le('span', 'lang-punc', ')'));
 }
 
-function renderLangChipBody(open, sym, info) {
+export function renderLangChipBody(open, sym, info) {
   open.innerHTML = '';
   const head = _le('div', 'lang-open-head');
   head.appendChild(_le('span', 'k', sym));
@@ -775,7 +784,7 @@ function renderLangChipBody(open, sym, info) {
 // Σ as a vocabulary: ranked by how many transitions actually use each
 // symbol. At |Σ| = 2 this is overkill; at 17 the zero-usage row is the
 // most useful thing on the panel.
-function renderLangVocabList(open) {
+export function renderLangVocabList(open) {
   const v = langVocab();
   const search = _le('input', 'lang-voc-search');
   search.type = 'search';
@@ -827,7 +836,7 @@ function renderLangVocabList(open) {
 
 // The tuple line is the default view of the definition; the full KaTeX
 // block stays one click away so nothing that used to be here is lost.
-function toggleFormalDef() {
+export function toggleFormalDef() {
   const wrap = $('def-box-wrap'), btn = $('def-toggle-btn');
   if (!wrap) return;
   const show = wrap.style.display === 'none';
@@ -843,7 +852,7 @@ function toggleFormalDef() {
 // Flags the claim row while the expression runs past its right edge, which
 // drives the fade. Re-run on resize as well as on re-render: the panel is
 // user-resizable, so the same text overflows or not depending on width.
-function updateLangClaimOverflow() {
+export function updateLangClaimOverflow() {
   const box = $('regex-box');
   if (!box || !box.parentElement) return;
   const maxScroll = Math.max(0, box.scrollWidth - box.clientWidth);
@@ -855,7 +864,7 @@ function updateLangClaimOverflow() {
 // Mirrors initDefBoxOverflowObserver for the claim row: the panel is
 // user-resizable, so overflow has to be re-measured on width changes and not
 // only when the text is rebuilt.
-function initLangClaimOverflowObserver() {
+export function initLangClaimOverflowObserver() {
   const box = $('regex-box');
   if (!box || box._overflowObsInit) return;
   box._overflowObsInit = true;
@@ -866,7 +875,7 @@ function initLangClaimOverflowObserver() {
 }
 
 // ── entry point ───────────────────────────────────────────────────
-function renderLanguagePanel() {
+export function renderLanguagePanel() {
   const wrap = $('rp-language');
   if (wrap) {
     wrap.classList.toggle('lang-vocabulary', !langIsSymbolic());

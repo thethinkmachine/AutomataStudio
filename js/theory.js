@@ -1,8 +1,11 @@
+import { renderCFLPumpVis } from './algorithms-cfg.js';
+import { $ } from './state.js';
+
 // ======================================================================
 // THEORY VIEW
 // ======================================================================
 
-const THEORY_CARD_IDS = [
+export const THEORY_CARD_IDS = [
   'th-fa',
   'th-regular',
   'th-rg',
@@ -25,7 +28,15 @@ const THEORY_CARD_IDS = [
   'th-summary'
 ];
 
-function triggerMath(el) {
+// KaTeX is a deferred CDN script, so it may not be parsed yet the first time a
+// theory panel asks to typeset. Poll for it, but give up rather than retrying
+// forever: if the CDN is blocked or offline the script never arrives, and an
+// unbounded chain of setTimeouts keeps a timer alive for the life of the page.
+// Five seconds is far longer than a deferred local script needs.
+const MATH_RETRY_MS = 100;
+const MATH_MAX_RETRIES = 50;
+
+export function triggerMath(el, attempt = 0) {
   if (typeof renderMathInElement === 'function') {
     renderMathInElement(el || document.body, {
       delimiters: [
@@ -36,13 +47,13 @@ function triggerMath(el) {
       ],
       throwOnError: false
     });
-  } else {
-    // If KaTeX isn't loaded yet, try again in 100ms
-    setTimeout(() => triggerMath(el), 100);
+    return;
   }
+  if (attempt >= MATH_MAX_RETRIES) return; // KaTeX is not coming; leave the source text as-is
+  setTimeout(() => triggerMath(el, attempt + 1), MATH_RETRY_MS);
 }
 
-function theoryNavClick(link) {
+export function theoryNavClick(link) {
   document.querySelectorAll('.theory-nav-link').forEach(l => l.classList.remove('active'));
   link.classList.add('active');
 
@@ -72,7 +83,7 @@ function theoryNavClick(link) {
   if (content) content.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function renderTheoryView() {
+export function renderTheoryView() {
   const cards = [
     {
       id: 'th-fa',
@@ -480,7 +491,7 @@ Because multi-tape and single-tape models are polynomially equivalent, complexit
   if (initLink) theoryNavClick(initLink);
 }
 
-function renderClosureTable() {
+export function renderClosureTable() {
   const el = $('closure-table');
   if (!el) return;
 
@@ -510,7 +521,7 @@ function renderClosureTable() {
   el.innerHTML = html;
 }
 
-function renderPumpVis() {
+export function renderPumpVis() {
   const pEl = $('pump-vis');
   const pw = $('pump-w');
   if (!pEl || !pw) return;

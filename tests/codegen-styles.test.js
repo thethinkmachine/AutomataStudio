@@ -1,7 +1,7 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const vm = require('node:vm');
-const { createHarness } = require('./harness');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import { createHarness } from './harness.js';
 
 // Output styles: table / switch / class.
 //
@@ -23,7 +23,6 @@ const { context } = harness;
 const App = context.App;
 
 function reset() { harness.resetApp(); }
-const inVM = expr => harness.evalInContext(expr);
 
 const unwrap = s => s
   .replace(/^\s*(\/\/|#|\/\*|<!--)\s?/gm, '')
@@ -371,7 +370,7 @@ test('C still refuses non-DFA machines in every style', () => {
 //  REGISTRY
 // ══════════════════════════════════════════════════════════════════
 test('each language target offers the style option', () => {
-  const formats = inVM('ExportFormats');
+  const formats = context.ExportFormats;
   for (const key of ['code-js', 'code-py', 'code-java', 'code-c']) {
     const style = (formats[key].options || []).find(o => o.id === 'style');
     assert.ok(style, `${key} has no style option`);
@@ -389,7 +388,7 @@ test('every language target emits a clean non-empty string in every style', () =
   const ir = context.buildMachineIR();
   for (const key of ['code-js', 'code-py', 'code-java', 'code-c']) {
     for (const style of STYLES) {
-      const out = inVM('ExportFormats')[key].build(ir, { style, className: 'Automaton' });
+      const out = context.ExportFormats[key].build(ir, { style, className: 'Automaton' });
       assert.equal(typeof out, 'string', `${key}/${style} must emit a string`);
       assert.ok(out.trim().length > 0, `${key}/${style} emitted nothing`);
       // A *quoted* undefined means an interpolated name or symbol came out

@@ -1,3 +1,11 @@
+import { copySelection, exportPNG, pasteClipboard, selectAllStates } from './canvas.js';
+import { redo, undo } from './history.js';
+import { showOverlay } from './modal.js';
+import { loadJSON, saveJSON } from './persistence.js';
+import { $, App } from './state.js';
+import { createTab, exportSettings } from './ui.js';
+import { openAboutModal } from './workspace.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  ELECTRON INTEGRATION
 // ══════════════════════════════════════════════════════════════════
@@ -5,7 +13,7 @@
 // (exposed by electron/preload.js). On the website it's undefined, so every
 // isElectron branch elsewhere in the app (persistence.js, canvas.js, ui.js)
 // falls through to the original browser Blob/<input type=file> behavior.
-const isElectron = !!(window.electronAPI && window.electronAPI.isElectron);
+export const isElectron = !!(window.electronAPI && window.electronAPI.isElectron);
 
 if (isElectron) {
   // Lets CSS (the drag region, the window-control buttons) and markup that's

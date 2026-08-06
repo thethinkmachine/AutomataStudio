@@ -1,3 +1,16 @@
+import { renderGramSyms, renderGrammarLPanel } from './algorithms-cfg.js';
+import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
+import { toggleSnapToGrid } from './canvas.js';
+import { snapshot } from './history.js';
+import { initLangClaimOverflowObserver } from './language.js';
+import { loadBackup, loadSharedLinkFromURL, restartAutosaveTimer } from './persistence.js';
+import { initDefBoxOverflowObserver, updateLPanel, updateRPanel } from './render.js';
+import { $, App, Workspaces } from './state.js';
+import { DEFAULT_THEME } from './themes.js';
+import { applyTheme, initCanvasResizeObserver, initLPanelSections, initMinimapDrag, initMobilePanels, initPanelResizers, initRPanelSections, initTabs, initToolbarCollapse, setTool, toggleLPanelPin, toggleMinimap, toggleRPanelPin } from './ui.js';
+import { showStatus } from './utils.js';
+import { setMachine, setView } from './view.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════════════════
@@ -39,7 +52,7 @@ if (typeof initLangClaimOverflowObserver === 'function') initLangClaimOverflowOb
 // depends on the restored workspaces — the empty-state guard, the autosave
 // timer, and the shared-link import that may overwrite them — has to run after
 // it resolves, or it would race a still-empty Workspaces array.
-function finishBoot() {
+export function finishBoot() {
   if (Workspaces.length === 0) initTabs(); // Guard for fresh launch
   if (typeof restartAutosaveTimer === 'function') restartAutosaveTimer();
   // setMachine('DFA') above no-ops at boot because DFA is already the default,

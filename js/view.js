@@ -1,3 +1,17 @@
+import { renderGramSyms, renderGrammarLPanel, renderGrammarView } from './algorithms-cfg.js';
+import { renderAlgo } from './algorithms-fa.js';
+import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
+import { wrap } from './canvas.js';
+import { snapshot } from './history.js';
+import { anyModalOpen, closeModal, showOverlay } from './modal.js';
+import { renderAll, updateLPanel, updateRPanel } from './render.js';
+import { resetSim } from './simulation.js';
+import { $, App, getMachineConfig, normalizeBoundarySymbolsForMachine } from './state.js';
+import { Change, emit } from './store.js';
+import { renderTheoryView } from './theory.js';
+import { renderTabs, updateMobilePanelChrome, updateModelPickerLabels } from './ui.js';
+import { clearAll, isAnyTM, isCounterMachine, showStatus } from './utils.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  VIEW MANAGEMENT
 // ══════════════════════════════════════════════════════════════════
@@ -9,11 +23,11 @@
 //  `setView('build')` calls that algorithms make to reveal their result on the
 //  canvas keep working — they now dismiss the overlay instead of swapping a
 //  pane.
-const AUX_VIEWS = ['algo', 'grammar', 'theory'];
+export const AUX_VIEWS = ['algo', 'grammar', 'theory'];
 
 // Identity for the shared modal chrome. The subtitle names what the view
 // actually operates on, which is otherwise only discoverable by reading it.
-const AUX_META = {
+export const AUX_META = {
   algo: {
     title: 'Algorithms',
     sub: 'Constructions, conversions and decision procedures',
@@ -32,7 +46,7 @@ const AUX_META = {
 };
 
 // Populates the shared modal chrome for the given aux view.
-function applyAuxChrome(v) {
+export function applyAuxChrome(v) {
   const meta = AUX_META[v];
   const title = $('aux-overlay-title');
   const sub = $('aux-overlay-sub');
@@ -42,7 +56,7 @@ function applyAuxChrome(v) {
   if (icon) icon.innerHTML = meta ? meta.icon : '';
 }
 
-function setView(v) {
+export function setView(v) {
   const wasAux = AUX_VIEWS.includes(App.view);
   App.view = v;
   const isAux = AUX_VIEWS.includes(v);
@@ -107,7 +121,7 @@ function setView(v) {
   }
 }
 
-let auxReturnFocus = null;
+export let auxReturnFocus = null;
 
 // Keeps Tab from escaping the dialog while it is open.
 document.addEventListener('keydown', e => {
@@ -135,12 +149,12 @@ document.addEventListener('keydown', e => {
 });
 
 // Returning to build is what "closing" an overlay means.
-function closeAuxView() {
+export function closeAuxView() {
   if (AUX_VIEWS.includes(App.view)) setView('build');
 }
 
 // ── Tools menu (auxiliary views) ──
-function toggleToolsMenu(e) {
+export function toggleToolsMenu(e) {
   if (e) e.stopPropagation();
   const picker = $('tools-picker');
   const menu = $('tools-menu');
@@ -153,7 +167,7 @@ function toggleToolsMenu(e) {
   if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
-function hideToolsMenu() {
+export function hideToolsMenu() {
   const menu = $('tools-menu');
   const picker = $('tools-picker');
   const btn = $('tools-btn');
@@ -163,7 +177,7 @@ function hideToolsMenu() {
 }
 
 // ── Header overflow menu ──
-function toggleMoreMenu(e) {
+export function toggleMoreMenu(e) {
   if (e) e.stopPropagation();
   const wrap = $('hdr-more');
   const menu = $('hdr-more-menu');
@@ -176,7 +190,7 @@ function toggleMoreMenu(e) {
   if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
-function hideMoreMenu() {
+export function hideMoreMenu() {
   const menu = $('hdr-more-menu');
   const wrap = $('hdr-more');
   const btn = $('hdr-more-btn');
@@ -190,7 +204,7 @@ document.addEventListener('click', () => { hideToolsMenu(); hideMoreMenu(); });
 // ══════════════════════════════════════════════════════════════════
 //  MACHINE TYPE
 // ══════════════════════════════════════════════════════════════════
-function setMachine(m) {
+export function setMachine(m) {
   if (m === App.machine) {
     syncMachineSelectors(m);
     return;
@@ -211,13 +225,13 @@ function setMachine(m) {
   applyMachineSwitch(m);
 }
 
-function syncMachineSelectors(m) {
+export function syncMachineSelectors(m) {
   if (typeof updateModelPickerLabels === 'function') {
     updateModelPickerLabels();
   }
 }
 
-function applyMachineSwitch(m) {
+export function applyMachineSwitch(m) {
   const cfg = getMachineConfig(m);
   App.machine = m;
 
@@ -255,7 +269,7 @@ function applyMachineSwitch(m) {
   showStatus('Machine: ' + m);
 }
 
-function setTapeCount(n) {
+export function setTapeCount(n) {
   const newCount = Math.max(2, Math.min(4, parseInt(n) || 2));
   if (newCount === App.tapeCount) return;
   if (App.transitions.length > 0) {
@@ -268,7 +282,7 @@ function setTapeCount(n) {
       App.tapeCount = newCount;
       $('tape-count-sel').value = App.tapeCount;
       resetSim();
-      renderAll(); updateLPanel(); updateRPanel();
+      emit(Change.GRAPH);
       closeModal('confirm-modal');
     };
     showOverlay('confirm-modal');
@@ -282,13 +296,6 @@ function setTapeCount(n) {
 // ══════════════════════════════════════════════════════════════════
 //  TOOLS
 // ══════════════════════════════════════════════════════════════════
-function setTool(t) {
-  App.tool = t; App.transFrom = null; clearTempLine();
-  document.querySelectorAll('.toolbox-btn[id^="t-"]').forEach(b => b.classList.remove('active'));
-  const el = $('t-' + t);
-  if (el) el.classList.add('active');
-  const curs = { pointer: 'default', move: 'grab', state: 'crosshair', trans: 'crosshair', del: 'not-allowed' };
-  $('canvas-wrap').style.cursor = curs[t] || 'default';
-  const msgs = { pointer: 'Click or drag states to interact', move: 'Drag canvas to pan · Drag state to move', state: 'Click canvas to place state', trans: 'Click source then target state', del: 'Click state to delete' };
-  showStatus(msgs[t]);
-}
+// setTool lives in js/ui.js. An older copy used to sit here too; because
+// index.html loaded ui.js second, that copy was silently overwritten at load
+// and had been dead for a while — it predated the divider/rect shape tools.

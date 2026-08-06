@@ -1,18 +1,28 @@
+import { clearTempLine, hideCanvasContextMenu } from './canvas.js';
+import { snapshot } from './history.js';
+import { closeModal, registerModal, showOverlay } from './modal.js';
+import { pruneNoteAnchorsExcluding } from './notes.js';
+import { renderAll, updateLPanel, updateRPanel } from './render.js';
+import { $, App, getMachineConfig, isBoundarySymbol, isReadOnlyHeadMachine } from './state.js';
+import { Change, emit } from './store.js';
+import { getPdaDeterminismConflict, isAnyPDA, isCounterMachine, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus, symbolsOverlap, tapeTuplesOverlap } from './utils.js';
+import { applyMachineSwitch } from './view.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  STATE MANAGEMENT
 // ══════════════════════════════════════════════════════════════════
-function newId() { return 's' + (++App.stateN); }
-function newTId() { return 't' + (++App.transN); }
+export function newId() { return 's' + (++App.stateN); }
+export function newTId() { return 't' + (++App.transN); }
 
-function getState(id) { return App.states.find(s => s.id === id); }
-function getTransition(id) { return App.transitions.find(t => t.id === id); }
-function getEdgeTransitions(from, to) { return App.transitions.filter(t => t.from === from && t.to === to); }
+export function getState(id) { return App.states.find(s => s.id === id); }
+export function getTransition(id) { return App.transitions.find(t => t.id === id); }
+export function getEdgeTransitions(from, to) { return App.transitions.filter(t => t.from === from && t.to === to); }
 
 // At most one right-click popover is ever open: the two menus (#ctx for
 // state/edge/note, #canvas-ctx for empty background) live in separate DOM
 // nodes, so opening one must explicitly close the other — they don't share
 // an element the way re-showing #ctx for a different target does.
-function showContextMenu(kind, x, y) {
+export function showContextMenu(kind, x, y) {
   const m = $('ctx');
   if (!m) return;
   if (typeof hideCanvasContextMenu === 'function') hideCanvasContextMenu();
@@ -24,7 +34,7 @@ function showContextMenu(kind, x, y) {
   m.style.top = Math.max(8, Math.min(y, innerHeight - maxY)) + 'px';
 }
 
-function hideContextMenu() {
+export function hideContextMenu() {
   const m = $('ctx');
   if (m) m.style.display = 'none';
   App.ctxId = null;
@@ -34,7 +44,7 @@ function hideContextMenu() {
   App.ctxDividerId = null;
 }
 
-function ensureSelectValue(sel, value) {
+export function ensureSelectValue(sel, value) {
   if (!sel || value === undefined || value === null) return;
   const strValue = String(value);
   if (strValue === '') return;
@@ -44,7 +54,7 @@ function ensureSelectValue(sel, value) {
   sel.value = strValue;
 }
 
-function setTransitionModalMode(mode) {
+export function setTransitionModalMode(mode) {
   const title = $('trans-modal-title');
   const confirmBtn = $('trans-confirm-btn');
   const isEdit = mode === 'edit';
@@ -52,7 +62,7 @@ function setTransitionModalMode(mode) {
   if (confirmBtn) confirmBtn.textContent = isEdit ? 'Save' : 'Add';
 }
 
-function buildTransitionPicker(transitions, selectedId) {
+export function buildTransitionPicker(transitions, selectedId) {
   const row = $('m-trans-row');
   const sel = $('m-trans');
   if (!row || !sel) return null;
@@ -68,7 +78,7 @@ function buildTransitionPicker(transitions, selectedId) {
   return sel;
 }
 
-function populateTransitionModal(t) {
+export function populateTransitionModal(t) {
   const cfg = getMachineConfig(App.machine);
   const { eps, any, blank } = App.config.sym;
   const markers = cfg.hasEndMarkers ? [App.config.sym.leftMarker, App.config.sym.rightMarker] : [];
@@ -165,7 +175,7 @@ function populateTransitionModal(t) {
   if (picker && t) picker.value = t.id;
 }
 
-function getTransitionFormValues() {
+export function getTransitionFormValues() {
   const cfg = getMachineConfig(App.machine);
   const { eps } = App.config.sym;
   const values = {
@@ -202,16 +212,16 @@ function getTransitionFormValues() {
   return values;
 }
 
-function createState(x, y, name) {
+export function createState(x, y, name) {
   snapshot();
   const id = newId();
   const s = { id, x, y, name: name || `${App.config.statePrefix}${App.stateN - 1}` };
   App.states.push(s);
   if (!App.startId) App.startId = id;
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
   return s;
 }
-function deleteState(id) {
+export function deleteState(id) {
   snapshot();
   // Resolve any notes anchored to this state (or edges through it) while it's
   // still live — renderAll()'s prune pass runs after the array mutation below
@@ -222,12 +232,12 @@ function deleteState(id) {
   App.transitions = App.transitions.filter(t => t.from !== id && t.to !== id);
   App.accepts.delete(id);
   if (App.startId === id) App.startId = App.states[0]?.id || null;
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
 }
 // ══════════════════════════════════════════════════════════════════
 //  TRANSITIONS
 // ══════════════════════════════════════════════════════════════════
-function openTransModal(from, to, opts = {}) {
+export function openTransModal(from, to, opts = {}) {
   const mode = opts.mode === 'edit' ? 'edit' : 'add';
   const groupTransitions = opts.transitions || getEdgeTransitions(from, to);
   const selectedId = mode === 'edit'
@@ -262,7 +272,7 @@ function openTransModal(from, to, opts = {}) {
   if (toSel && to) ensureSelectValue(toSel, to);
   showOverlay('trans-modal');
 }
-function confirmTrans() {
+export function confirmTrans() {
   const cfg = getMachineConfig(App.machine);
   const { eps } = App.config.sym;
   const values = getTransitionFormValues();
@@ -430,23 +440,23 @@ function confirmTrans() {
   }
   closeModal('trans-modal');
   App.transFrom = null; clearTempLine();
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
 }
-function deleteTrans(id) {
+export function deleteTrans(id) {
   snapshot();
   if (typeof pruneNoteAnchorsExcluding === 'function') pruneNoteAnchorsExcluding([], [id]);
   App.transitions = App.transitions.filter(t => t.id !== id);
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
 }
-function deleteTransitions(ids) {
+export function deleteTransitions(ids) {
   const removeIds = new Set(ids);
   if (!removeIds.size) return;
   snapshot();
   if (typeof pruneNoteAnchorsExcluding === 'function') pruneNoteAnchorsExcluding([], ids);
   App.transitions = App.transitions.filter(t => !removeIds.has(t.id));
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
 }
-function transLabel(t) {
+export function transLabel(t) {
   if (isAnyPDA(App.machine)) {
     if (isTwoStackPDA(App.machine)) {
       return `${t.symbol}, (${t.pop}, ${t.pop2 ?? App.config.sym.eps}) → (${t.push}, ${t.push2 ?? App.config.sym.eps})`;
@@ -466,7 +476,7 @@ function transLabel(t) {
   return t.symbol;
 }
 
-function transLabelDescriptive(t) {
+export function transLabelDescriptive(t) {
   const dirMap = { 'R': 'Right', 'L': 'Left', 'S': 'Stay' };
   if (isAnyPDA(App.machine)) {
     if (isTwoStackPDA(App.machine)) {
@@ -497,7 +507,7 @@ function transLabelDescriptive(t) {
 // ══════════════════════════════════════════════════════════════════
 //  STATE MODAL / CTX
 // ══════════════════════════════════════════════════════════════════
-function openStateModal(id) {
+export function openStateModal(id) {
   App.editId = id;
   const s = getState(id); if (!s) return;
   $('s-name').value = s.name;
@@ -546,7 +556,7 @@ function openStateModal(id) {
   }
   showOverlay('state-modal');
 }
-function confirmState() {
+export function confirmState() {
   const s = getState(App.editId); if (!s) return closeModal('state-modal');
   snapshot();
   s.name = $('s-name').value.trim() || s.name;
@@ -574,10 +584,10 @@ function confirmState() {
       }
     });
   }
-  closeModal('state-modal'); renderAll(); updateLPanel(); updateRPanel();
+  closeModal('state-modal'); emit(Change.GRAPH);
 }
 
-function isConceptualStart(id) {
+export function isConceptualStart(id) {
   if (App.startId === id) return true;
   const startState = getState(App.startId);
   if (startState && startState.isDummyStart) {
@@ -586,7 +596,7 @@ function isConceptualStart(id) {
   return false;
 }
 
-function applyStartState(targetId) {
+export function applyStartState(targetId) {
   if (App.startId === targetId) return;
   if (!App.startId) {
     App.startId = targetId;
@@ -611,26 +621,21 @@ function applyStartState(targetId) {
         App.transitions.push({ id: newTId(), from: dummyId, to: oldStart.id, symbol: eps });
       }
       App.transitions.push({ id: newTId(), from: dummyId, to: targetId, symbol: eps });
-      if (App.machine === 'NFA') {
-         App.machine = 'ε-NFA';
-         const sel = document.getElementById('mobile-machine-select');
-         if (sel) sel.value = 'ε-NFA';
-         document.querySelectorAll('.mtab').forEach(b => {
-           b.classList.toggle('active', b.textContent.trim() === 'ε-NFA');
-         });
-         const badge = document.getElementById('mach-badge');
-         if (badge) {
-           badge.textContent = 'ε-NFA';
-           badge.className = 'badge bd-enfa';
-         }
-      }
+      // A second start state is wired up with ε-moves, so the machine is no
+      // longer a plain NFA. applyMachineSwitch is the non-prompting switch —
+      // it syncs the model picker label, the badge, the alphabet panels and
+      // the machine-specific sections together. The hand-rolled version this
+      // replaces updated three elements by hand, two of which
+      // (#mobile-machine-select, .mtab) no longer exist, and never touched the
+      // picker — so the header kept reading "NFA" for an ε-NFA.
+      if (App.machine === 'NFA') applyMachineSwitch('ε-NFA');
     }
   } else {
     App.startId = targetId; 
   }
 }
 
-function removeStartState(targetId) {
+export function removeStartState(targetId) {
   if (App.startId === targetId) {
     App.startId = null;
   } else {
@@ -646,7 +651,7 @@ function removeStartState(targetId) {
   }
 }
 
-function ctxStart() { 
+export function ctxStart() { 
   if (!App.ctxId) return;
   const id = App.ctxId;
   hideContextMenu();
@@ -656,10 +661,10 @@ function ctxStart() {
   } else {
     applyStartState(id);
   }
-  renderAll(); updateLPanel(); updateRPanel(); 
+  emit(Change.GRAPH); 
 }
 
-function ctxToggleAcc() { 
+export function ctxToggleAcc() { 
   if (!App.ctxId) return;
   const id = App.ctxId;
   hideContextMenu();
@@ -667,22 +672,22 @@ function ctxToggleAcc() {
   if (cfg.isTransducer && !App.config.transducerAccepts) return;
   snapshot();
   App.accepts.has(id) ? App.accepts.delete(id) : App.accepts.add(id); 
-  renderAll(); updateLPanel(); updateRPanel(); 
+  emit(Change.GRAPH); 
 }
-function ctxRename() { 
+export function ctxRename() { 
   if (!App.ctxId) return;
   const id = App.ctxId;
   hideContextMenu();
   openStateModal(id); 
 }
-function ctxDel() { 
+export function ctxDel() { 
   if (!App.ctxId) return;
   const id = App.ctxId;
   hideContextMenu();
   deleteState(id); 
 }
 
-function ctxEditTrans() {
+export function ctxEditTrans() {
   const edge = App.ctxEdge;
   if (!edge) return;
   const transitions = edge.transitionIds.map(getTransition).filter(Boolean);
@@ -692,7 +697,7 @@ function ctxEditTrans() {
   openTransModal(edge.from, edge.to, { mode: 'edit', transId: primary.id, transitions });
 }
 
-function ctxDuplicateTrans() {
+export function ctxDuplicateTrans() {
   const edge = App.ctxEdge;
   if (!edge) return;
   const transitions = edge.transitionIds.map(getTransition).filter(Boolean);
@@ -702,7 +707,7 @@ function ctxDuplicateTrans() {
   openTransModal(edge.from, edge.to, { mode: 'add', seedId: primary.id, transitions });
 }
 
-function ctxReverseTrans() {
+export function ctxReverseTrans() {
   const edge = App.ctxEdge;
   if (!edge) return;
   hideContextMenu();
@@ -738,10 +743,10 @@ function ctxReverseTrans() {
     t.to = oldFrom;
     if (typeof t.curve === 'number' && oldFrom !== oldTo) t.curve = -t.curve;
   });
-  renderAll(); updateLPanel(); updateRPanel();
+  emit(Change.GRAPH);
 }
 
-function ctxDeleteTrans() {
+export function ctxDeleteTrans() {
   const edge = App.ctxEdge;
   if (!edge) return;
   hideContextMenu();

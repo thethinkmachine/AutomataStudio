@@ -5,11 +5,11 @@
 // This layer supplies a consistent, themeable popup and mirrors changes both
 // ways, including selects inserted dynamically into modal content.
 
-const CustomSelects = new WeakMap();
-let OpenCustomSelect = null;
-let customSelectUid = 0;
+export const CustomSelects = new WeakMap();
+export let OpenCustomSelect = null;
+export let customSelectUid = 0;
 
-function customSelectLabel(select) {
+export function customSelectLabel(select) {
   return select.getAttribute('aria-label')
     || select.getAttribute('label')
     || select.closest('label')?.querySelector('span')?.textContent?.trim()
@@ -18,7 +18,7 @@ function customSelectLabel(select) {
     || 'Select option';
 }
 
-function customSelectOptions(select) {
+export function customSelectOptions(select) {
   return Array.from(select.children).flatMap(child => {
     if (child.tagName === 'OPTGROUP') {
       return [
@@ -30,7 +30,7 @@ function customSelectOptions(select) {
   });
 }
 
-function syncCustomSelect(select) {
+export function syncCustomSelect(select) {
   const api = CustomSelects.get(select);
   if (!api) return;
   const option = select.selectedOptions?.[0] || select.options?.[select.selectedIndex] || null;
@@ -41,7 +41,7 @@ function syncCustomSelect(select) {
   api.renderOptions();
 }
 
-function closeCustomSelect({ focus = false } = {}) {
+export function closeCustomSelect({ focus = false } = {}) {
   if (!OpenCustomSelect) return;
   const api = OpenCustomSelect;
   OpenCustomSelect = null;
@@ -52,7 +52,7 @@ function closeCustomSelect({ focus = false } = {}) {
   if (focus && document.contains(api.trigger)) api.trigger.focus();
 }
 
-function positionCustomSelect(api) {
+export function positionCustomSelect(api) {
   const rect = api.trigger.getBoundingClientRect();
   const gap = 5;
   const viewportGap = 8;
@@ -74,7 +74,7 @@ function positionCustomSelect(api) {
   }
 }
 
-function setCustomSelectActive(api, index, scroll = true) {
+export function setCustomSelectActive(api, index, scroll = true) {
   const options = Array.from(api.listbox.querySelectorAll('.custom-select-option:not([aria-disabled="true"])'));
   if (!options.length) return;
   const bounded = (index + options.length) % options.length;
@@ -84,7 +84,7 @@ function setCustomSelectActive(api, index, scroll = true) {
   if (scroll) options[bounded].scrollIntoView({ block: 'nearest' });
 }
 
-function moveCustomSelectActive(api, delta) {
+export function moveCustomSelectActive(api, delta) {
   const options = Array.from(api.listbox.querySelectorAll('.custom-select-option:not([aria-disabled="true"])'));
   if (!options.length) return;
   const current = api.activeIndex >= 0
@@ -93,7 +93,7 @@ function moveCustomSelectActive(api, delta) {
   setCustomSelectActive(api, current + delta);
 }
 
-function chooseCustomSelectOption(api, option) {
+export function chooseCustomSelectOption(api, option) {
   if (!option || option.disabled || option.parentElement?.disabled) return;
   api.select.value = option.value;
   api.select.dispatchEvent(new Event('input', { bubbles: true }));
@@ -102,7 +102,7 @@ function chooseCustomSelectOption(api, option) {
   closeCustomSelect({ focus: true });
 }
 
-function openCustomSelect(api) {
+export function openCustomSelect(api) {
   if (api.select.disabled) return;
   if (OpenCustomSelect === api) {
     closeCustomSelect({ focus: true });
@@ -121,7 +121,7 @@ function openCustomSelect(api) {
   options[Math.max(0, selectedIndex)]?.scrollIntoView({ block: 'nearest' });
 }
 
-function enhanceCustomSelect(select) {
+export function enhanceCustomSelect(select) {
   if (!select || CustomSelects.has(select) || select.dataset.nativeSelect !== undefined) return;
 
   const wrapper = document.createElement('div');
@@ -279,12 +279,12 @@ function enhanceCustomSelect(select) {
   syncCustomSelect(select);
 }
 
-function initCustomSelects(root = document) {
+export function initCustomSelects(root = document) {
   if (root.matches?.('select')) enhanceCustomSelect(root);
   root.querySelectorAll?.('select').forEach(enhanceCustomSelect);
 }
 
-function destroyCustomSelects(root) {
+export function destroyCustomSelects(root) {
   const selects = [];
   if (root.matches?.('select')) selects.push(root);
   root.querySelectorAll?.('select').forEach(select => selects.push(select));
@@ -309,7 +309,7 @@ document.addEventListener('click', event => {
 window.addEventListener('resize', () => OpenCustomSelect && positionCustomSelect(OpenCustomSelect));
 window.addEventListener('scroll', () => OpenCustomSelect && positionCustomSelect(OpenCustomSelect), true);
 
-const customSelectObserver = new MutationObserver(mutations => {
+export const customSelectObserver = new MutationObserver(mutations => {
   mutations.forEach(mutation => {
     mutation.addedNodes.forEach(node => {
       if (node.nodeType === Node.ELEMENT_NODE) initCustomSelects(node);

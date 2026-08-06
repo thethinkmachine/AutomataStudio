@@ -1,6 +1,6 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { createHarness } = require('./harness');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createHarness } from './harness.js';
 
 function makeState(id, name) {
   return { id, name, x: 0, y: 0 };

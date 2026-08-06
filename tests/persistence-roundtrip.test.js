@@ -1,9 +1,9 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const { createHarness } = require('./harness');
+import test from 'node:test';
+import assert from 'node:assert';
+import { createHarness } from './harness.js';
 
 const harness = createHarness();
-const { context, evalInContext } = harness;
+const {context} = harness;
 
 // Minimal in-memory IndexedDB standing in for the real thing: enough of the
 // request/transaction shape for persistWorkspaceAsync and readWorkspaceSnapshot
@@ -64,11 +64,11 @@ function clearIndexedDB() {
 // bulky undo history, so tests can assert on both persistence and pruning.
 function seedActiveWorkspace() {
   harness.resetApp();
-  evalInContext(`Workspaces.length = 0; activeWorkspaceId = null;`);
+  context.Workspaces.length = 0; context.setActiveWorkspaceId(null);
   context.App.cam = { x: 111, y: 222, z: 3 };
   context.App.history = ['{"a":1}', '{"a":2}'];
   context.App.future = ['{"a":3}'];
-  evalInContext(`Workspaces.push({ id: 'w0', name: 'A', dirty: true, data: exportWorkspaceState() }); activeWorkspaceId = 'w0';`);
+  context.Workspaces.push({ id: 'w0', name: 'A', dirty: true, data: context.exportWorkspaceState() }); context.setActiveWorkspaceId('w0');
 }
 
 function readLocalBackup() {
@@ -166,7 +166,7 @@ test('a failed mirror-write fails the save even when IndexedDB accepted it', asy
   }
 
   assert.strictEqual(ok, false, 'a save that could not be fully written must report failure');
-  assert.strictEqual(evalInContext(`Workspaces[0].dirty`), true,
+  assert.strictEqual(context.Workspaces[0].dirty, true,
     'the dirty mark must survive a failed save — clearing it would claim work was stored');
 });
 
@@ -182,7 +182,7 @@ test('a failed save leaves the indicator in the error state', async () => {
     context.localStorage.setItem = realSetItem;
   }
 
-  assert.strictEqual(evalInContext('saveState'), 'error');
+  assert.strictEqual(context.saveState, 'error');
 });
 
 test('a successful save clears the dirty mark', async () => {
@@ -192,14 +192,14 @@ test('a successful save clears the dirty mark', async () => {
   const ok = await context.saveWorkspace({ silent: true });
 
   assert.strictEqual(ok, true);
-  assert.strictEqual(evalInContext(`Workspaces[0].dirty`), false);
-  assert.strictEqual(evalInContext('saveState'), 'saved');
+  assert.strictEqual(context.Workspaces[0].dirty, false);
+  assert.strictEqual(context.saveState, 'saved');
 });
 
 test('saveBackupChecked surfaces storage failure through the save indicator', () => {
   clearIndexedDB();
   seedActiveWorkspace();
-  evalInContext(`setSaveState('saved')`);
+  context.setSaveState('saved');
 
   const realSetItem = context.localStorage.setItem;
   context.localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
@@ -211,7 +211,7 @@ test('saveBackupChecked surfaces storage failure through the save indicator', ()
   }
 
   assert.strictEqual(ok, false);
-  assert.strictEqual(evalInContext('saveState'), 'error',
+  assert.strictEqual(context.saveState, 'error',
     'tab operations that fail to persist must not leave the UI reading "Saved"');
 });
 
@@ -221,17 +221,17 @@ test('autosave persists a tab dirtied by nothing but a camera move', async () =>
   const store = installFakeIndexedDB();
   seedActiveWorkspace();
   await context.saveWorkspace({ silent: true });
-  assert.strictEqual(evalInContext(`Workspaces[0].dirty`), false);
+  assert.strictEqual(context.Workspaces[0].dirty, false);
 
   // Pan the camera and mark it the way the canvas handlers now do.
   context.App.cam = { x: 500, y: 600, z: 2 };
-  evalInContext(`markDirty()`);
-  assert.strictEqual(evalInContext(`Workspaces[0].dirty`), true,
+  context.markDirty();
+  assert.strictEqual(context.Workspaces[0].dirty, true,
     'a camera move is a real change to persisted state');
 
   await context.runAutosave();
 
-  assert.strictEqual(evalInContext(`Workspaces[0].dirty`), false, 'autosave should have saved it');
+  assert.strictEqual(context.Workspaces[0].dirty, false, 'autosave should have saved it');
   assert.deepStrictEqual(store.get('current').tabs[0].data.cam, { x: 500, y: 600, z: 2 });
 });
 

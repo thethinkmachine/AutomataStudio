@@ -1,7 +1,13 @@
+import { makeSVG } from './render.js';
+import { $, App, R, getMachineConfig } from './state.js';
+import { getState } from './states-transitions.js';
+import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
+import { buildMarkedInputTape, isAnyPDA, isAnyTM, isQueueAutomaton, isTwoStackPDA, parseEps, pickMostSpecificTransition } from './utils.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  SIMULATION
 // ══════════════════════════════════════════════════════════════════
-function tokenize(str, sigma = App.sigma) {
+export function tokenize(str, sigma = App.sigma) {
   if (str === '' || !str) return [];
   const syms = [...sigma].filter(s => s !== App.config.sym.eps).sort((a, b) => b.length - a.length);
   function bt(segment) {
@@ -33,13 +39,13 @@ function tokenize(str, sigma = App.sigma) {
   return tokens;
 }
 
-function canApplyPdaPop(top, pop) {
+export function canApplyPdaPop(top, pop) {
   const eps = App.config.sym.eps;
   if (pop === eps) return true;
   return top !== undefined && (pop === top || pop === App.config.sym.any);
 }
 
-function runSim() {
+export function runSim() {
   resetSim();
   let raw = parseEps($('sim-in').value);
   if (raw === App.config.sym.eps) $('sim-in').value = raw;
@@ -96,9 +102,9 @@ function runSim() {
     toggleAuto();
   }
 }
-function log(html) { const t = $('trace-log'); t.innerHTML = html; t.scrollTop = t.scrollHeight; }
+export function log(html) { const t = $('trace-log'); t.innerHTML = html; t.scrollTop = t.scrollHeight; }
 
-function simDFA(tokens) {
+export function simDFA(tokens) {
   App.simSteps = [];
   let cur = App.startId;
   App.simSteps.push({ state: cur, tokens, remaining: tokens, note: `Start: ${getState(cur)?.name || '?'}` });
@@ -114,7 +120,7 @@ function simDFA(tokens) {
   App.simIdx = 0; renderSimStep();
 }
 
-function simNFA(tokens) {
+export function simNFA(tokens) {
   App.simSteps = [];
   let cur = epsClosure(new Set([App.startId]));
   App.simSteps.push({ states: [...cur], tokens, remaining: tokens, note: `Start ε-closure: {${stateNames(cur)}}` });
@@ -132,25 +138,25 @@ function simNFA(tokens) {
   App.simIdx = 0; renderSimStep();
 }
 
-function epsClosure(states) {
+export function epsClosure(states) {
   const c = new Set(states), stk = [...states];
   const eps = App.config.sym.eps;
   while (stk.length) { const s = stk.pop(); App.transitions.filter(t => t.from === s && t.symbol === eps).forEach(t => { if (!c.has(t.to)) { c.add(t.to); stk.push(t.to); } }); }
   return c;
 }
-function stateNames(ids) { return [...ids].map(id => getState(id)?.name || id).join(',') }
+export function stateNames(ids) { return [...ids].map(id => getState(id)?.name || id).join(',') }
 
-function getSingleTapeDeterministicTransition(state, sym) {
+export function getSingleTapeDeterministicTransition(state, sym) {
   const matching = App.transitions.filter(tr => tr.from === state && (tr.symbol === sym || tr.symbol === App.config.sym.any));
   return pickMostSpecificTransition(matching, tr => (tr.symbol === sym ? 1 : 0));
 }
 
-function getMultiTapeDeterministicTransition(state, syms) {
+export function getMultiTapeDeterministicTransition(state, syms) {
   const matching = App.transitions.filter(tr => tr.from === state && tr.tapeSyms && tr.tapeSyms.length === syms.length && tr.tapeSyms.every((s, i) => s === syms[i] || s === App.config.sym.any));
   return pickMostSpecificTransition(matching, tr => tr.tapeSyms.reduce((score, s, i) => score + (s === syms[i] ? 1 : 0), 0));
 }
 
-function legacySimPDA_unused(tokens) {
+export function legacySimPDA_unused(tokens) {
   App.simSteps = [];
   const isExplicit = App.config.pdaParadigm === 'explicit';
   const init = { state: App.startId, tokens, remaining: tokens, stack: isExplicit ? [App.config.sym.stackBottom] : [], note: 'Start configuration' };
@@ -196,7 +202,7 @@ function legacySimPDA_unused(tokens) {
   App.simIdx = 0; renderSimStep();
 }
 
-function simTM(tokens) {
+export function simTM(tokens) {
   App.simSteps = [];
   let tape = tokens.length ? [...tokens] : [], head = 0, state = App.startId;
   const blank = App.config.sym.blank;
@@ -226,7 +232,7 @@ function simTM(tokens) {
   App.simIdx = 0; renderSimStep();
 }
 
-function normalizeTapeConfig(tape, head) {
+export function normalizeTapeConfig(tape, head) {
   const blank = App.config.sym.blank;
   const normalizedHead = Math.max(0, head);
   const normalizedTape = tape.length ? [...tape] : [blank];
@@ -235,7 +241,7 @@ function normalizeTapeConfig(tape, head) {
   return { tape: normalizedTape, head: normalizedHead };
 }
 
-function ndtmConfigKey(state, tape, head) {
+export function ndtmConfigKey(state, tape, head) {
   const normalized = normalizeTapeConfig(tape, head);
   return `${state}|${normalized.head}|${normalized.tape.join('\u0001')}`;
 }
@@ -246,9 +252,9 @@ function ndtmConfigKey(state, tape, head) {
 // instead of grinding out the step limit and calling it a reject. The
 // tracker is capped: a machine whose tape grows without bound never
 // repeats anyway, and its keys would grow with it.
-const LOOP_TRACK_MAX = 5000;
+export const LOOP_TRACK_MAX = 5000;
 
-function makeLoopTracker() {
+export function makeLoopTracker() {
   let seen = new Map();
   return {
     // Step index where this configuration was first seen, or -1 if new.
@@ -262,19 +268,19 @@ function makeLoopTracker() {
   };
 }
 
-function markLoopStep(step, firstIdx) {
+export function markLoopStep(step, firstIdx) {
   step.final = 'loop';
   step.loopFrom = firstIdx;
   step.note += ` — LOOP: repeats step ${firstIdx}, so this machine never halts on this input`;
 }
 
-function formatTapeInstantaneousDescription(state, tape, head) {
+export function formatTapeInstantaneousDescription(state, tape, head) {
   const normalized = normalizeTapeConfig(tape, head);
   const stateName = getState(state)?.name || state;
   return `${normalized.tape.slice(0, normalized.head).join('')}[${stateName}]${normalized.tape.slice(normalized.head).join('')}`;
 }
 
-function simNDTM(tokens) {
+export function simNDTM(tokens) {
   App.simSteps = [];
   const blank = App.config.sym.blank;
   const initTape = tokens.length ? [...tokens] : [blank];
@@ -374,25 +380,25 @@ function simNDTM(tokens) {
   return { accepted, branches, maxDepth, log };
 }
 
-function pdaUsesQueueStorage(machine = App.machine) {
+export function pdaUsesQueueStorage(machine = App.machine) {
   return isQueueAutomaton(machine);
 }
 
-function pdaUsesSecondStack(machine = App.machine) {
+export function pdaUsesSecondStack(machine = App.machine) {
   return isTwoStackPDA(machine);
 }
 
-function pdaPeek(store, queueMode = false) {
+export function pdaPeek(store, queueMode = false) {
   if (!store || !store.length) return undefined;
   return queueMode ? store[0] : store[store.length - 1];
 }
 
-function pdaStoreToString(store, queueMode = false) {
+export function pdaStoreToString(store, queueMode = false) {
   if (!store || !store.length) return App.config.sym.eps;
   return queueMode ? store.join('') : [...store].reverse().join('');
 }
 
-function applyPdaStoreTransition(store, pop, push, queueMode = false) {
+export function applyPdaStoreTransition(store, pop, push, queueMode = false) {
   const eps = App.config.sym.eps;
   const nextStore = [...store];
   let popped = undefined;
@@ -409,7 +415,7 @@ function applyPdaStoreTransition(store, pop, push, queueMode = false) {
   return nextStore;
 }
 
-function createInitialPdaConfig(tokens) {
+export function createInitialPdaConfig(tokens) {
   const isExplicit = App.config.pdaParadigm === 'explicit';
   const baseStore = isExplicit ? [App.config.sym.stackBottom] : [];
   const cfg = {
@@ -426,12 +432,12 @@ function createInitialPdaConfig(tokens) {
   return cfg;
 }
 
-function pdaConfigKey(state, remaining, stack, stack2 = null) {
+export function pdaConfigKey(state, remaining, stack, stack2 = null) {
   const second = Array.isArray(stack2) ? `|${stack2.join('\u0001')}` : '';
   return `${state}|${remaining.join('\u0001')}|${stack.join('\u0001')}${second}`;
 }
 
-function isPdaAcceptingConfig(cfg) {
+export function isPdaAcceptingConfig(cfg) {
   if (App.config.pdaParadigm === 'explicit') {
     return App.accepts.has(cfg.state) && cfg.remaining.length === 0;
   }
@@ -441,7 +447,7 @@ function isPdaAcceptingConfig(cfg) {
   return cfg.remaining.length === 0 && cfg.stack.length === 0;
 }
 
-function formatPdaInstantaneousDescription(cfg) {
+export function formatPdaInstantaneousDescription(cfg) {
   const stateName = getState(cfg.state)?.name || cfg.state;
   const remaining = cfg.remaining.length ? cfg.remaining.join('') : App.config.sym.eps;
   const primary = pdaStoreToString(cfg.stack, pdaUsesQueueStorage());
@@ -452,7 +458,7 @@ function formatPdaInstantaneousDescription(cfg) {
   return `(${stateName}, ${remaining}, ${primary})`;
 }
 
-function getMatchingPdaTransitions(cfg) {
+export function getMatchingPdaTransitions(cfg) {
   const eps = App.config.sym.eps;
   const queueMode = pdaUsesQueueStorage();
   const top = pdaPeek(cfg.stack, queueMode);
@@ -467,7 +473,7 @@ function getMatchingPdaTransitions(cfg) {
   });
 }
 
-function applyPdaTransitionConfig(cfg, transition, branch = cfg.branch) {
+export function applyPdaTransitionConfig(cfg, transition, branch = cfg.branch) {
   const eps = App.config.sym.eps;
   const queueMode = pdaUsesQueueStorage();
   const nextCfg = {
@@ -486,7 +492,7 @@ function applyPdaTransitionConfig(cfg, transition, branch = cfg.branch) {
   return nextCfg;
 }
 
-function tracePdaPath(cfg) {
+export function tracePdaPath(cfg) {
   const path = [];
   let cur = cfg;
   while (cur) {
@@ -496,7 +502,7 @@ function tracePdaPath(cfg) {
   return path.reverse();
 }
 
-function formatPdaTransitionNote(prevCfg, nextCfg) {
+export function formatPdaTransitionNote(prevCfg, nextCfg) {
   const t = nextCfg.via;
   const fromName = getState(prevCfg.state)?.name || prevCfg.state;
   const toName = getState(nextCfg.state)?.name || nextCfg.state;
@@ -511,7 +517,7 @@ function formatPdaTransitionNote(prevCfg, nextCfg) {
   return `Branch ${nextCfg.branch} depth ${nextCfg.depth}: (${fromName}, ${read}, ${pop}) → (${toName}, ${push})`;
 }
 
-function buildPdaPathSteps(path, finalStatus = null, finalNote = '') {
+export function buildPdaPathSteps(path, finalStatus = null, finalNote = '') {
   const steps = path.map((cfg, idx) => {
     const step = {
       state: cfg.state,
@@ -533,7 +539,7 @@ function buildPdaPathSteps(path, finalStatus = null, finalNote = '') {
   return steps;
 }
 
-function appendPdaSummaryStep(steps, cfg, finalStatus, note) {
+export function appendPdaSummaryStep(steps, cfg, finalStatus, note) {
   const summary = {
     state: cfg.state,
     tokens: cfg.tokens,
@@ -547,7 +553,7 @@ function appendPdaSummaryStep(steps, cfg, finalStatus, note) {
   steps.push(summary);
 }
 
-function simPDA(tokens) {
+export function simPDA(tokens) {
   const init = createInitialPdaConfig(tokens);
   if (isPdaAcceptingConfig(init)) {
     App.simSteps = buildPdaPathSteps([init], 'accept');
@@ -602,7 +608,7 @@ function simPDA(tokens) {
   return { accepted: false };
 }
 
-function exploreNPDA(tokens) {
+export function exploreNPDA(tokens) {
   const init = createInitialPdaConfig(tokens);
   const queue = [init];
   const visited = new Set([pdaConfigKey(init.state, init.remaining, init.stack, init.stack2)]);
@@ -670,7 +676,7 @@ function exploreNPDA(tokens) {
   };
 }
 
-function simNPDA(tokens) {
+export function simNPDA(tokens) {
   const result = exploreNPDA(tokens);
   if (result.accepted) {
     App.simSteps = buildPdaPathSteps(result.witnessPath, 'accept');
@@ -696,7 +702,7 @@ function simNPDA(tokens) {
   };
 }
 
-function simMoore(tokens) {
+export function simMoore(tokens) {
   App.simSteps = [];
   let cur = App.startId;
   const s0 = getState(cur);
@@ -722,7 +728,7 @@ function simMoore(tokens) {
   App.simIdx = 0; renderSimStep();
 }
 
-function simMealy(tokens) {
+export function simMealy(tokens) {
   App.simSteps = [];
   let cur = App.startId;
   let outStr = '';
@@ -745,31 +751,31 @@ function simMealy(tokens) {
   App.simIdx = 0; renderSimStep();
 }
 
-function headMoveDelta(dir) {
+export function headMoveDelta(dir) {
   return dir === 'R' ? 1 : (dir === 'L' ? -1 : 0);
 }
 
-function isHeadOutOfInput(tokens, head) {
+export function isHeadOutOfInput(tokens, head) {
   return head < 0 || head >= tokens.length;
 }
 
-function twoWayDisplayTape(tokens) {
+export function twoWayDisplayTape(tokens) {
   return buildMarkedInputTape(tokens);
 }
 
-function twoWayDisplayHead(tokens, head) {
+export function twoWayDisplayHead(tokens, head) {
   return head;
 }
 
-function twoWayReadSymbol(tokens, head) {
+export function twoWayReadSymbol(tokens, head) {
   return tokens[head] ?? null;
 }
 
-function getTwoWayMatchingTransitions(state, sym) {
+export function getTwoWayMatchingTransitions(state, sym) {
   return App.transitions.filter(t => t.from === state && (t.symbol === sym || t.symbol === App.config.sym.any));
 }
 
-function buildTwoWayPathSteps(path, tokens, finalStatus = null, finalNote = '') {
+export function buildTwoWayPathSteps(path, tokens, finalStatus = null, finalNote = '') {
   const displayTape = twoWayDisplayTape(tokens);
   const steps = path.map((cfg, idx) => {
     const stateName = getState(cfg.state)?.name || cfg.state;
@@ -803,7 +809,7 @@ function buildTwoWayPathSteps(path, tokens, finalStatus = null, finalNote = '') 
   return steps;
 }
 
-function explore2DFA(tokens) {
+export function explore2DFA(tokens) {
   const tape = buildMarkedInputTape(tokens);
   const init = { state: App.startId, head: 0, depth: 0, branch: 1, parent: null, via: null };
   const path = [init];
@@ -862,7 +868,7 @@ function explore2DFA(tokens) {
   };
 }
 
-function sim2DFA(tokens) {
+export function sim2DFA(tokens) {
   const result = explore2DFA(tokens);
   App.simSteps = buildTwoWayPathSteps(result.path, tokens, result.accepted ? 'accept' : 'reject', result.finalNote);
   App.simIdx = 0;
@@ -870,7 +876,7 @@ function sim2DFA(tokens) {
   return result;
 }
 
-function explore2NFA(tokens) {
+export function explore2NFA(tokens) {
   const tape = buildMarkedInputTape(tokens);
   const init = { state: App.startId, head: 0, depth: 0, branch: 1, parent: null, via: null };
   const queue = [init];
@@ -930,7 +936,7 @@ function explore2NFA(tokens) {
   };
 }
 
-function sim2NFA(tokens) {
+export function sim2NFA(tokens) {
   const result = explore2NFA(tokens);
   const finalNote = result.accepted
     ? `Accepted in state ${getState(result.finalCfg.state)?.name || result.finalCfg.state}`
@@ -948,11 +954,11 @@ function sim2NFA(tokens) {
   return result;
 }
 
-function fstConfigKey(state, index, outRaw) {
+export function fstConfigKey(state, index, outRaw) {
   return `${state}|${index}|${outRaw}`;
 }
 
-function getMatchingFstTransitions(cfg, tokens) {
+export function getMatchingFstTransitions(cfg, tokens) {
   const eps = App.config.sym.eps;
   return App.transitions.filter(t => {
     if (t.from !== cfg.state) return false;
@@ -962,7 +968,7 @@ function getMatchingFstTransitions(cfg, tokens) {
   });
 }
 
-function applyFstTransition(cfg, transition, branch) {
+export function applyFstTransition(cfg, transition, branch) {
   const eps = App.config.sym.eps;
   const rawOut = transition.output ?? '';
   const displayOut = rawOut === '' ? App.config.sym.lambda : rawOut;
@@ -979,7 +985,7 @@ function applyFstTransition(cfg, transition, branch) {
   };
 }
 
-function buildFstPathSteps(path, tokens, finalStatus = null, finalNote = '') {
+export function buildFstPathSteps(path, tokens, finalStatus = null, finalNote = '') {
   const steps = path.map((cfg, idx) => {
     const stateName = getState(cfg.state)?.name || cfg.state;
     const step = {
@@ -1013,7 +1019,7 @@ function buildFstPathSteps(path, tokens, finalStatus = null, finalNote = '') {
   return steps;
 }
 
-function exploreFST(tokens) {
+export function exploreFST(tokens) {
   const init = {
     state: App.startId,
     index: 0,
@@ -1074,7 +1080,7 @@ function exploreFST(tokens) {
   };
 }
 
-function simFST(tokens) {
+export function simFST(tokens) {
   const result = exploreFST(tokens);
   const usesAcceptance = App.config.transducerAccepts;
   const finalStatus = usesAcceptance ? (result.accepted ? 'accept' : 'reject') : null;
@@ -1104,7 +1110,7 @@ function simFST(tokens) {
   return result;
 }
 
-function simLBA(tokens) {
+export function simLBA(tokens) {
   App.simSteps = [];
   const blank = App.config.sym.blank;
   const tape = buildMarkedInputTape(tokens);
@@ -1163,7 +1169,7 @@ function simLBA(tokens) {
   renderSimStep();
 }
 
-function materializeInfiniteTape(tapeMap, head) {
+export function materializeInfiniteTape(tapeMap, head) {
   const blank = App.config.sym.blank;
   const keys = [...tapeMap.keys(), head];
   const min = Math.min(...keys);
@@ -1175,7 +1181,7 @@ function materializeInfiniteTape(tapeMap, head) {
   return { tape, head: head - min };
 }
 
-function simITM(tokens) {
+export function simITM(tokens) {
   App.simSteps = [];
   const blank = App.config.sym.blank;
   const tape = new Map();
@@ -1227,7 +1233,7 @@ function simITM(tokens) {
   renderSimStep();
 }
 
-function simMTM(tokens, allTapeTokens) {
+export function simMTM(tokens, allTapeTokens) {
   App.simSteps = [];
   const k = App.tapeCount;
   const blank = App.config.sym.blank;
@@ -1263,7 +1269,7 @@ function simMTM(tokens, allTapeTokens) {
   App.simIdx = 0; renderSimStep();
 }
 
-function renderSimStep() {
+export function renderSimStep() {
   const step = App.simSteps[App.simIdx]; if (!step) return;
   const isLast = App.simIdx === App.simSteps.length - 1;
 
@@ -1350,11 +1356,11 @@ function renderSimStep() {
 // ══════════════════════════════════════════════════════════════════
 //  CANVAS PATH HIGHLIGHTING
 // ══════════════════════════════════════════════════════════════════
-function simMotionOk() {
+export function simMotionOk() {
   return !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 }
 
-function findSimEdgeGroup(key) {
+export function findSimEdgeGroup(key) {
   return App.domCache.transitions.get(key) || document.querySelector(`.edge-g[data-edge="${key}"]`);
 }
 
@@ -1363,7 +1369,7 @@ function findSimEdgeGroup(key) {
 // NFA-style set steps are reconstructed from the previous state set (symbol
 // move + ε-closure). NDTM exploration steps carry no path information —
 // consecutive steps are BFS order, not a run — so they highlight states only.
-function getSimStepEdgeKeys(idx) {
+export function getSimStepEdgeKeys(idx) {
   const step = App.simSteps[idx];
   if (!step) return [];
   if (step.tid) {
@@ -1374,7 +1380,7 @@ function getSimStepEdgeKeys(idx) {
   return [];
 }
 
-function getNfaSimStepEdgeKeys(idx) {
+export function getNfaSimStepEdgeKeys(idx) {
   const eps = App.config.sym.eps, any = App.config.sym.any;
   const step = App.simSteps[idx];
   const cur = new Set(step.states);
@@ -1410,7 +1416,7 @@ function getNfaSimStepEdgeKeys(idx) {
   return [...keys];
 }
 
-function clearSimCanvasHighlights() {
+export function clearSimCanvasHighlights() {
   document.querySelectorAll('.sn.act-st, .sn.rej-st, .sn.sim-visited-st')
     .forEach(el => el.classList.remove('act-st', 'rej-st', 'sim-visited-st'));
   document.querySelectorAll('.edge-g.sim-active-t, .edge-g.sim-trail-t')
@@ -1420,7 +1426,7 @@ function clearSimCanvasHighlights() {
   removeSimTokens();
 }
 
-function updateSimCanvasHighlights(step) {
+export function updateSimCanvasHighlights(step) {
   const isNewRun = App._simRenderRun !== App.simSteps;
   const advancedOne = !isNewRun && App.simIdx === App._simRenderIdx + 1;
   App._simRenderRun = App.simSteps;
@@ -1481,12 +1487,12 @@ function updateSimCanvasHighlights(step) {
   }
 }
 
-function removeSimTokens() {
+export function removeSimTokens() {
   (App._simTokens || []).forEach(t => { cancelAnimationFrame(t.raf); t.el.remove(); });
   App._simTokens = [];
 }
 
-function animateSimToken(edgeKey, dur, onDone) {
+export function animateSimToken(edgeKey, dur, onDone) {
   const grp = findSimEdgeGroup(edgeKey);
   const pathEl = grp && grp.querySelector('.tarr');
   const layer = $('sim-anim-g');
@@ -1520,7 +1526,7 @@ function animateSimToken(edgeKey, dur, onDone) {
   token.raf = requestAnimationFrame(tick);
 }
 
-function pulseSimState(id, tone = '') {
+export function pulseSimState(id, tone = '') {
   const grp = App.domCache.states.get(id) || document.querySelector(`[data-id="${id}"]`);
   const c = grp && grp.querySelector('circle.bd');
   if (!c) return;
@@ -1536,7 +1542,7 @@ function pulseSimState(id, tone = '') {
 }
 
 // ── Scrubber / transport ──
-function updateSimScrubber() {
+export function updateSimScrubber() {
   const row = $('sim-scrubber-row'), scrubber = $('sim-scrubber'), counter = $('sim-step-counter');
   if (!row || !scrubber || !counter) return;
   const total = App.simSteps.length;
@@ -1548,16 +1554,16 @@ function updateSimScrubber() {
   counter.textContent = `${total ? App.simIdx + 1 : 0} / ${total}`;
 }
 
-const SIM_ICON_ACCEPT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>';
-const SIM_ICON_REJECT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>';
-const SIM_ICON_PLAY = '<svg viewBox="0 0 256 256" fill="currentColor" width="14" height="14"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>';
-const SIM_ICON_PAUSE = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M200,28H160a20,20,0,0,0-20,20V208a20,20,0,0,0,20,20h40a20,20,0,0,0,20-20V48A20,20,0,0,0,200,28Zm-4,176H164V52h32ZM96,28H56A20,20,0,0,0,36,48V208a20,20,0,0,0,20,20H96a20,20,0,0,0,20-20V48A20,20,0,0,0,96,28ZM92,204H60V52H92Z"/></svg>';
-const SIM_ICON_REPEAT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M228,48V96a12,12,0,0,1-12,12H168a12,12,0,0,1,0-24h19l-7.8-7.8a75.55,75.55,0,0,0-53.32-22.26h-.43A75.49,75.49,0,0,0,72.39,75.57,12,12,0,1,1,55.61,58.41a99.38,99.38,0,0,1,69.87-28.47H126A99.42,99.42,0,0,1,196.2,59.23L204,67V48a12,12,0,0,1,24,0ZM183.61,180.43a75.49,75.49,0,0,1-53.09,21.63h-.43A75.55,75.55,0,0,1,76.77,179.8L69,172H88a12,12,0,0,0,0-24H40a12,12,0,0,0-12,12v48a12,12,0,0,0,24,0V189l7.8,7.8A99.42,99.42,0,0,0,130,226.06h.56a99.38,99.38,0,0,0,69.87-28.47,12,12,0,0,0-16.78-17.16Z"/></svg>';
-const SIM_ICON_SEPARATOR = '<span class="run-btn-sep">|</span>';
+export const SIM_ICON_ACCEPT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>';
+export const SIM_ICON_REJECT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>';
+export const SIM_ICON_PLAY = '<svg viewBox="0 0 256 256" fill="currentColor" width="14" height="14"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>';
+export const SIM_ICON_PAUSE = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M200,28H160a20,20,0,0,0-20,20V208a20,20,0,0,0,20,20h40a20,20,0,0,0,20-20V48A20,20,0,0,0,200,28Zm-4,176H164V52h32ZM96,28H56A20,20,0,0,0,36,48V208a20,20,0,0,0,20,20H96a20,20,0,0,0,20-20V48A20,20,0,0,0,96,28ZM92,204H60V52H92Z"/></svg>';
+export const SIM_ICON_REPEAT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M228,48V96a12,12,0,0,1-12,12H168a12,12,0,0,1,0-24h19l-7.8-7.8a75.55,75.55,0,0,0-53.32-22.26h-.43A75.49,75.49,0,0,0,72.39,75.57,12,12,0,1,1,55.61,58.41a99.38,99.38,0,0,1,69.87-28.47H126A99.42,99.42,0,0,1,196.2,59.23L204,67V48a12,12,0,0,1,24,0ZM183.61,180.43a75.49,75.49,0,0,1-53.09,21.63h-.43A75.55,75.55,0,0,1,76.77,179.8L69,172H88a12,12,0,0,0,0-24H40a12,12,0,0,0-12,12v48a12,12,0,0,0,24,0V189l7.8,7.8A99.42,99.42,0,0,0,130,226.06h.56a99.38,99.38,0,0,0,69.87-28.47,12,12,0,0,0-16.78-17.16Z"/></svg>';
+export const SIM_ICON_SEPARATOR = '<span class="run-btn-sep">|</span>';
 
 // Clicking run-btn either starts a new simulation, or — while one is
 // already playing — pauses it, mirroring standard media-control behavior.
-function handleRunBtnClick() {
+export function handleRunBtnClick() {
   if (App.autoTimer) { stopAutoPlay(); setRunBtnState('idle'); return; }
   runSim();
 }
@@ -1568,7 +1574,7 @@ function handleRunBtnClick() {
 // while the auto-play timer is running; 'accept'/'reject' only apply once
 // isLast is true and get cleared the moment you step away from the final
 // step, reset, or start a new run.
-function setRunBtnState(mode) {
+export function setRunBtnState(mode) {
   const btn = $('run-btn');
   if (!btn) return;
   btn.classList.remove('accept', 'reject');
@@ -1577,7 +1583,7 @@ function setRunBtnState(mode) {
   btn.innerHTML = App.autoTimer ? SIM_ICON_PAUSE : SIM_ICON_PLAY;
 }
 
-function updateSimVerdict(step, isLast) {
+export function updateSimVerdict(step, isLast) {
   const el = $('sim-verdict');
   if (!el) return;
   if (!isLast) { el.style.display = 'none'; setRunBtnState('idle'); return; }
@@ -1618,44 +1624,44 @@ function updateSimVerdict(step, isLast) {
   el.style.display = 'none';
 }
 
-function stopAutoPlay() {
+export function stopAutoPlay() {
   if (!App.autoTimer) return;
   clearInterval(App.autoTimer); App.autoTimer = null;
 }
 
-function stepFwd(stopAuto = true) {
+export function stepFwd(stopAuto = true) {
   if (stopAuto) stopAutoPlay();
   if (App.simIdx < App.simSteps.length - 1) { App.simIdx++; renderSimStep(); }
 }
-function stepBack() {
+export function stepBack() {
   stopAutoPlay();
   if (App.simIdx > 0) { App.simIdx--; renderSimStep(); }
 }
-function stepToStart() {
+export function stepToStart() {
   if (!App.simSteps.length) return;
   stopAutoPlay();
   App.simIdx = 0; renderSimStep();
 }
-function stepToEnd() {
+export function stepToEnd() {
   if (!App.simSteps.length) return;
   stopAutoPlay();
   App.simIdx = App.simSteps.length - 1; renderSimStep();
 }
-function scrubSim(value) {
+export function scrubSim(value) {
   const idx = parseInt(value, 10);
   if (isNaN(idx) || idx < 0 || idx >= App.simSteps.length) return;
   stopAutoPlay();
   App.simIdx = idx;
   renderSimStep();
 }
-function setAutoSpeedPreset(ms) {
+export function setAutoSpeedPreset(ms) {
   App.config.autoSpeed = parseInt(ms, 10) || 500;
   restartAutoTimerIfPlaying();
 }
 // Re-arms the auto-play interval at the current autoSpeed, but only if
 // playback is already running — called whenever autoSpeed changes so an
 // in-progress run picks up the new pace instead of finishing out the old one.
-function restartAutoTimerIfPlaying() {
+export function restartAutoTimerIfPlaying() {
   if (!App.autoTimer) return;
   clearInterval(App.autoTimer);
   App.autoTimer = setInterval(() => {
@@ -1663,7 +1669,7 @@ function restartAutoTimerIfPlaying() {
     stepFwd(false);
   }, App.config.autoSpeed);
 }
-function resetSim() {
+export function resetSim() {
   stopAutoPlay();
   App.simSteps = []; App.simIdx = 0; App.currentTokens = null;
   log('<span style="color:var(--text3);font-style:italic">Run a string to simulate…</span>');
@@ -1674,7 +1680,7 @@ function resetSim() {
   App._simRenderRun = null; App._simRenderIdx = -1;
   setRunBtnState('idle');
 }
-function toggleAuto() {
+export function toggleAuto() {
   if (App.autoTimer) { stopAutoPlay(); setRunBtnState('idle'); return; }
   App.autoTimer = setInterval(() => {
     if (App.simIdx >= App.simSteps.length - 1) { stopAutoPlay(); return; }
@@ -1684,7 +1690,7 @@ function toggleAuto() {
 }
 
 // ── Input history (↑ / ↓ recall previously-run strings) ──
-function handleSimInputKeydown(e) {
+export function handleSimInputKeydown(e) {
   if (typeof trySymSuggestKeydown === 'function' && trySymSuggestKeydown(e)) return;
   if (e.key === 'Enter') {
     e.preventDefault();
@@ -1715,7 +1721,7 @@ function handleSimInputKeydown(e) {
 // ══════════════════════════════════════════════════════════════════
 // Optional trailing "=> accept" / "=> reject" (also: acc/rej, ✓/✗, a/r)
 // turns a batch line into a pass/fail expectation instead of a plain probe.
-function parseBatchLine(line) {
+export function parseBatchLine(line) {
   const m = line.match(/^(.*?)(?:=>|→)\s*(accept|reject|acc|rej|✓|✗|a|r)\s*$/i);
   if (!m) return { input: line, expect: null };
   const tag = m[2].toLowerCase();
@@ -1729,7 +1735,7 @@ function parseBatchLine(line) {
 // logic could not be tested without a DOM. computeBatchResults() is now the
 // whole decision procedure and returns data; renderBatchResults() is the
 // only part that touches the page.
-function computeBatchResults(rawLines) {
+export function computeBatchResults(rawLines) {
   const results = rawLines.map(parseBatchLine).map(({ input: line, expect }) => {
     const raw = parseEps(line);
     const str = raw === App.config.sym.eps ? '' : raw;
@@ -1776,7 +1782,7 @@ function computeBatchResults(rawLines) {
   };
 }
 
-function renderBatchResults(batch) {
+export function renderBatchResults(batch) {
   const summaryEl = $('batch-summary');
   const { results } = batch;
 
@@ -1817,7 +1823,7 @@ function renderBatchResults(batch) {
   if (bar) bar.style.display = results.length ? 'flex' : 'none';
 }
 
-function runBatch() {
+export function runBatch() {
   const rawLines = $('batch-in').value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   if (!rawLines.length) return;
   if (!App.startId) {
@@ -1835,7 +1841,7 @@ function runBatch() {
   App.lastBatch = batch;
   renderBatchResults(batch);
 }
-function testDFA(tokens) {
+export function testDFA(tokens) {
   let cur = App.startId;
   for (const sym of tokens) {
     const t = getSingleTapeDeterministicTransition(cur, sym);
@@ -1844,7 +1850,7 @@ function testDFA(tokens) {
   }
   return App.accepts.has(cur);
 }
-function testNFA(tokens) {
+export function testNFA(tokens) {
   let cur = epsClosure(new Set([App.startId]));
   const any = App.config.sym.any;
   for (const sym of tokens) {
@@ -1855,7 +1861,7 @@ function testNFA(tokens) {
   return [...cur].some(id => App.accepts.has(id));
 }
 
-function legacyTestPDA_unused(tokens) {
+export function legacyTestPDA_unused(tokens) {
   const isExplicit = App.config.pdaParadigm === 'explicit';
   const init = {
     state: App.startId,
@@ -1902,7 +1908,7 @@ function legacyTestPDA_unused(tokens) {
   return cfgs.some(isAccepted);
 }
 
-function testPDA(tokens) {
+export function testPDA(tokens) {
   let cfg = createInitialPdaConfig(tokens);
   if (isPdaAcceptingConfig(cfg)) return true;
   const visited = new Set([pdaConfigKey(cfg.state, cfg.remaining, cfg.stack, cfg.stack2)]);
@@ -1921,19 +1927,19 @@ function testPDA(tokens) {
   return false;
 }
 
-function testNPDA(tokens) {
+export function testNPDA(tokens) {
   return exploreNPDA(tokens).accepted;
 }
 
-function test2DFA(tokens) {
+export function test2DFA(tokens) {
   return explore2DFA(tokens).accepted;
 }
 
-function test2NFA(tokens) {
+export function test2NFA(tokens) {
   return explore2NFA(tokens).accepted;
 }
 
-function testFST(tokens) {
+export function testFST(tokens) {
   const result = exploreFST(tokens);
   const outs = [...result.outputs];
   let output = '';
@@ -1958,11 +1964,11 @@ function testFST(tokens) {
 //
 // An LBA is decidable outright: its tape is bounded, so the
 // configuration space is finite and the repeat check always fires.
-function langStepBudget() {
+export function langStepBudget() {
   return Math.max(10, App.config.langStepBudget || 400);
 }
 
-function testTM3(tokens, budget) {
+export function testTM3(tokens, budget) {
   budget = budget || langStepBudget();
   const blank = App.config.sym.blank, any = App.config.sym.any;
   const tape = tokens.length ? [...tokens] : [];
@@ -1985,7 +1991,7 @@ function testTM3(tokens, budget) {
   return 'unk';
 }
 
-function testLBA3(tokens, budget) {
+export function testLBA3(tokens, budget) {
   budget = budget || langStepBudget();
   const any = App.config.sym.any;
   const { leftMarker, rightMarker } = App.config.sym;
@@ -2011,7 +2017,7 @@ function testLBA3(tokens, budget) {
   return 'unk';
 }
 
-function testITM3(tokens, budget) {
+export function testITM3(tokens, budget) {
   budget = budget || langStepBudget();
   const blank = App.config.sym.blank, any = App.config.sym.any;
   const tape = new Map();
@@ -2035,7 +2041,7 @@ function testITM3(tokens, budget) {
   return 'unk';
 }
 
-function testMTM3(tokens, budget) {
+export function testMTM3(tokens, budget) {
   budget = budget || langStepBudget();
   const k = App.tapeCount || 2, blank = App.config.sym.blank;
   const tapes = Array.from({ length: k }, (_, i) =>
@@ -2062,7 +2068,7 @@ function testMTM3(tokens, budget) {
   return 'unk';
 }
 
-function testNDTM3(tokens, budget) {
+export function testNDTM3(tokens, budget) {
   budget = budget || langStepBudget();
   const blank = App.config.sym.blank, any = App.config.sym.any;
   const init = tokens.length ? [...tokens] : [blank];
@@ -2091,7 +2097,7 @@ function testNDTM3(tokens, budget) {
   return 'rej';
 }
 
-function testTMVerdict(tokens, budget) {
+export function testTMVerdict(tokens, budget) {
   switch (App.machine) {
     case 'NDTM': return testNDTM3(tokens, budget);
     case 'MTM': return testMTM3(tokens, budget);
@@ -2101,7 +2107,7 @@ function testTMVerdict(tokens, budget) {
   }
 }
 
-function getMooreOutput(tokens) {
+export function getMooreOutput(tokens) {
   let cur = App.startId;
   const outputs = [getState(cur)?.output ?? ''];
   for (const sym of tokens) {
@@ -2112,7 +2118,7 @@ function getMooreOutput(tokens) {
   }
   return outputs.join('');
 }
-function getMealyOutput(tokens) {
+export function getMealyOutput(tokens) {
   let cur = App.startId;
   const outputs = [];
   for (const sym of tokens) {

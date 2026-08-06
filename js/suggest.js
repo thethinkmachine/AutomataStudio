@@ -1,3 +1,8 @@
+import { getGrammarTerminals } from './algorithms-cfg.js';
+import { epsClosure, tokenize } from './simulation.js';
+import { $, App } from './state.js';
+import { escapeHtml, isCounterMachine } from './utils.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  SYMBOL SUGGEST — alphabet-aware autocomplete for text fields that expect
 //  a string over Σ, Γ, or a grammar's terminal set: the Simulate / Batch Test
@@ -18,7 +23,7 @@
 //  by simpler, purpose-built state functions further down instead of
 //  computeResidueState/getSimSuggestState.
 // ══════════════════════════════════════════════════════════════════
-const SymSuggest = { target: null, state: null, suppressed: false, activeIdx: 0 };
+export const SymSuggest = { target: null, state: null, suppressed: false, activeIdx: 0 };
 
 // Case-insensitive prefix test used for *matching* candidates (so typing "A"
 // still finds "a"). Only the matching step is case-insensitive — the "is this
@@ -28,7 +33,7 @@ const SymSuggest = { target: null, state: null, suppressed: false, activeIdx: 0 
 // the field could look fine here yet fail at Run time with no warning;
 // keeping the exact-match check strict means a wrong-case match instead shows
 // up as a completable suggestion that fixes the casing for you.
-function ciStartsWith(str, prefix) {
+export function ciStartsWith(str, prefix) {
   return str.toLowerCase().startsWith(prefix.toLowerCase());
 }
 
@@ -37,7 +42,7 @@ function ciStartsWith(str, prefix) {
 // symbol that's mid-completion here is exactly what would be mid-segment
 // there. `sigmaSet` defaults to Σ (App.sigma); callers pass e.g. a grammar's
 // terminal set for the CYK/ambiguity inputs.
-function computeResidueState(before, wholeFieldEmpty, sigmaSet = App.sigma, alphabetLabel = 'Σ') {
+export function computeResidueState(before, wholeFieldEmpty, sigmaSet = App.sigma, alphabetLabel = 'Σ') {
   const eps = App.config.sym.eps;
   // A bare ε (from the eps chip, or "eps"/"epsilon" — recognized case-insensitively
   // exactly like parseEps() does at Run time) means "empty string" and is complete
@@ -101,7 +106,7 @@ function computeResidueState(before, wholeFieldEmpty, sigmaSet = App.sigma, alph
 // machines mutate a stack or tape as they step, so a "state after this
 // prefix" can't be computed by replaying symbols alone — left alone
 // entirely rather than guessing.
-function isLiveAwareMachine(m = App.machine) {
+export function isLiveAwareMachine(m = App.machine) {
   return m === 'DFA' || m === 'NFA' || m === 'ε-NFA' || m === 'Moore' || m === 'Mealy';
 }
 
@@ -109,7 +114,7 @@ function isLiveAwareMachine(m = App.machine) {
 // exactly the transition-matching rule simNFA/getSingleTapeDeterministicTransition
 // use at Run time (including the Σ-wildcard). Works for both DFA (singleton
 // set) and NFA (multi-state set) uniformly.
-function stepLiveStates(states, sym) {
+export function stepLiveStates(states, sym) {
   let nx = new Set();
   states.forEach(sid => App.transitions
     .filter(t => t.from === sid && (t.symbol === sym || t.symbol === App.config.sym.any))
@@ -122,7 +127,7 @@ function stepLiveStates(states, sym) {
 // liveness-aware, there's no start state, or the prefix itself doesn't
 // tokenize (mirrors computeResidueState's own "earlier" error case, where
 // liveness is meaningless because Run would already fail earlier).
-function getLiveStateSet(priorTokens) {
+export function getLiveStateSet(priorTokens) {
   if (!isLiveAwareMachine() || !App.startId || priorTokens === null) return null;
   let cur = epsClosure(new Set([App.startId]));
   for (const sym of priorTokens) {
@@ -136,7 +141,7 @@ function getLiveStateSet(priorTokens) {
 // outgoing transition on it (matches NFA's exists-a-surviving-branch
 // semantics; for DFA the set is always a singleton so this degrades to the
 // obvious deterministic check).
-function isSymbolLive(states, sym) {
+export function isSymbolLive(states, sym) {
   return [...states].some(sid => App.transitions.some(t => t.from === sid && (t.symbol === sym || t.symbol === App.config.sym.any)));
 }
 
@@ -146,7 +151,7 @@ function isSymbolLive(states, sym) {
 // this just interleaves the two bands. ε is pinned at the end regardless
 // (an existing invariant: it must never become the Tab-default over a real
 // symbol), so it's excluded from the partition and re-appended.
-function reorderByLiveness(candidates, liveSet) {
+export function reorderByLiveness(candidates, liveSet) {
   const eps = App.config.sym.eps;
   const hasEps = candidates.includes(eps);
   const rest = hasEps ? candidates.filter(s => s !== eps) : candidates;
@@ -156,7 +161,7 @@ function reorderByLiveness(candidates, liveSet) {
   return hasEps ? [...ordered, eps] : ordered;
 }
 
-function annotateLiveness(state, priorTokens) {
+export function annotateLiveness(state, priorTokens) {
   if (state.mode !== 'palette' && state.mode !== 'filter') return state;
   const liveSet = getLiveStateSet(priorTokens);
   if (liveSet === null) return state;
@@ -173,7 +178,7 @@ function annotateLiveness(state, priorTokens) {
   return state;
 }
 
-function getSimSuggestState(el, sigmaSet = App.sigma, alphabetLabel = 'Σ') {
+export function getSimSuggestState(el, sigmaSet = App.sigma, alphabetLabel = 'Σ') {
   const caret = el.selectionStart;
   const before = el.value.slice(0, caret);
   const state = computeResidueState(before, el.value.trim() === '', sigmaSet, alphabetLabel);
@@ -189,7 +194,7 @@ function getSimSuggestState(el, sigmaSet = App.sigma, alphabetLabel = 'Σ') {
 
 // Batch Test is a textarea: suggestions are scoped to the current line, plus
 // a special case for the trailing "=> accept/reject" expectation syntax.
-function getBatchSuggestState(el) {
+export function getBatchSuggestState(el) {
   const value = el.value, caret = el.selectionStart;
   const lineStart = value.lastIndexOf('\n', caret - 1) + 1;
   const lineBefore = value.slice(lineStart, caret);
@@ -217,7 +222,7 @@ function getBatchSuggestState(el) {
 // just against the grammar's terminal set (Σ plus any terminal already used
 // in a production) rather than Σ directly, so this is a straight reuse of
 // getSimSuggestState with that alphabet swapped in.
-function getGrammarSuggestState(el) {
+export function getGrammarSuggestState(el) {
   const terms = typeof getGrammarTerminals === 'function' ? getGrammarTerminals() : App.sigma;
   return getSimSuggestState(el, terms, 'Σ');
 }
@@ -233,7 +238,7 @@ function getGrammarSuggestState(el) {
 // check on Add. ε and Σ (the wildcard) are excluded from the base list and
 // added back explicitly by callers to avoid duplicate chips if either
 // character ever ends up in Γ through the same lax add-symbol validation.
-function getStackAlphabetCandidates() {
+export function getStackAlphabetCandidates() {
   const bottom = App.config.sym.stackBottom;
   const eps = App.config.sym.eps;
   const any = App.config.sym.any;
@@ -252,7 +257,7 @@ function getStackAlphabetCandidates() {
 // multiToken=true  → Push/Push₂: an append-only chain of single Γ
 //   characters (no separator — Run time concatenates them raw), or the
 //   field can instead be exactly ε or Σ as a whole.
-function getStackSymbolSuggestState(el, multiToken) {
+export function getStackSymbolSuggestState(el, multiToken) {
   const eps = App.config.sym.eps;
   const any = App.config.sym.any;
   const value = el.value;
@@ -287,7 +292,7 @@ function getStackSymbolSuggestState(el, multiToken) {
 // meaningful things to write — and Σ-the-wildcard (write back whatever was
 // read). No ε: an epsilon *character* written onto the tape isn't a
 // supported concept the way an epsilon *pop* is, so it's never offered here.
-function getWriteSymbolSuggestState(el) {
+export function getWriteSymbolSuggestState(el) {
   const any = App.config.sym.any;
   const blank = App.config.sym.blank;
   const value = el.value;
@@ -309,9 +314,9 @@ function getWriteSymbolSuggestState(el) {
   return { mode: 'error', residue: trimmed, candidates: [], alphabetLabel: 'Σ' };
 }
 
-const GRAMMAR_STRING_FIELD_IDS = new Set(['cyk-in', 'ambig-in']);
-const STACK_POP_FIELD_IDS = new Set(['m-pop', 'm-pop2']);
-const STACK_PUSH_FIELD_IDS = new Set(['m-push', 'm-push2']);
+export const GRAMMAR_STRING_FIELD_IDS = new Set(['cyk-in', 'ambig-in']);
+export const STACK_POP_FIELD_IDS = new Set(['m-pop', 'm-pop2']);
+export const STACK_PUSH_FIELD_IDS = new Set(['m-push', 'm-push2']);
 
 // Routes a field to the right state-builder by id. m-mtm-write-${i} fields
 // are generated dynamically (states-transitions.js) so they're matched by
@@ -320,7 +325,7 @@ const STACK_PUSH_FIELD_IDS = new Set(['m-push', 'm-push2']);
 // the Algorithms view's other "test a string against the current machine"
 // inputs (eq-str, npda-input, ndtm-input, nfa-tree-input), which all validate
 // exactly the same way Simulate's sim-in does.
-function getSuggestStateForField(el) {
+export function getSuggestStateForField(el) {
   const id = el.id;
   if (id === 'batch-in') return getBatchSuggestState(el);
   if (GRAMMAR_STRING_FIELD_IDS.has(id)) return getGrammarSuggestState(el);
@@ -332,7 +337,7 @@ function getSuggestStateForField(el) {
 
 // Caret-only refresh (click/keyup navigation): respects a prior Escape
 // dismissal so moving the cursor around doesn't pop the popover back open.
-function refreshSymSuggest(el) {
+export function refreshSymSuggest(el) {
   if (!el || document.activeElement !== el) { hideSymSuggest(); return; }
   if (SymSuggest.suppressed) return;
   const state = getSuggestStateForField(el);
@@ -345,7 +350,7 @@ function refreshSymSuggest(el) {
 
 // Typing or (re)focusing is an active signal to show suggestions again,
 // overriding any earlier Escape dismissal.
-function handleSymSuggestActive(el) {
+export function handleSymSuggestActive(el) {
   SymSuggest.suppressed = false;
   refreshSymSuggest(el);
 }
@@ -356,12 +361,12 @@ function handleSymSuggestActive(el) {
 // recompute the same state and reset the cycle position back to 0 — skip
 // the one keyup that corresponds to an arrow press trySymSuggestKeydown
 // already handled.
-function handleSymSuggestKeyup(el) {
+export function handleSymSuggestKeyup(el) {
   if (SymSuggest.skipNextKeyup) { SymSuggest.skipNextKeyup = false; return; }
   refreshSymSuggest(el);
 }
 
-function hideSymSuggest() {
+export function hideSymSuggest() {
   const pop = $('sym-suggest');
   if (pop) pop.style.display = 'none';
   if (SymSuggest.target) SymSuggest.target.classList.remove('sim-input-err');
@@ -369,12 +374,12 @@ function hideSymSuggest() {
   SymSuggest.state = null;
 }
 
-function dismissSymSuggest() {
+export function dismissSymSuggest() {
   SymSuggest.suppressed = true;
   hideSymSuggest();
 }
 
-function renderSymSuggest(el, state) {
+export function renderSymSuggest(el, state) {
   const pop = $('sym-suggest');
   const chipsEl = $('sym-suggest-chips');
   const statusEl = $('sym-suggest-status');
@@ -412,7 +417,7 @@ function renderSymSuggest(el, state) {
   positionSymSuggest(el);
 }
 
-function updateSuggestStatusHint(state) {
+export function updateSuggestStatusHint(state) {
   const statusEl = $('sym-suggest-status');
   if (!statusEl || state.mode === 'error') return;
   const active = state.candidates && state.candidates[SymSuggest.activeIdx];
@@ -427,7 +432,7 @@ function updateSuggestStatusHint(state) {
 
 // Moves the highlighted candidate without a full re-render (keeps hover
 // state intact, scrolls the new pick into view if the chip list overflows).
-function setActiveSuggestIdx(idx) {
+export function setActiveSuggestIdx(idx) {
   const chipsEl = $('sym-suggest-chips');
   if (!chipsEl) return;
   SymSuggest.activeIdx = idx;
@@ -437,7 +442,7 @@ function setActiveSuggestIdx(idx) {
   updateSuggestStatusHint(SymSuggest.state);
 }
 
-function positionSymSuggest(el) {
+export function positionSymSuggest(el) {
   const pop = $('sym-suggest');
   const r = el.getBoundingClientRect();
   const margin = 8;
@@ -455,7 +460,7 @@ function positionSymSuggest(el) {
   }
 }
 
-function acceptSuggestion(idx) {
+export function acceptSuggestion(idx) {
   const el = SymSuggest.target;
   const state = SymSuggest.state;
   if (!el || !state || !state.candidates || !state.candidates[idx]) return;
@@ -498,7 +503,7 @@ function acceptSuggestion(idx) {
 // Enter and ArrowUp/ArrowDown are deliberately left untouched — Enter always
 // runs the simulation and Up/Down always recall input history, popover open
 // or not.
-function trySymSuggestKeydown(e) {
+export function trySymSuggestKeydown(e) {
   if (SymSuggest.target !== e.target || !SymSuggest.state) return false;
   const state = SymSuggest.state;
   if (e.key === 'Escape') {
@@ -535,7 +540,7 @@ function trySymSuggestKeydown(e) {
   return false;
 }
 
-function handleBatchInputKeydown(e) {
+export function handleBatchInputKeydown(e) {
   trySymSuggestKeydown(e);
 }
 

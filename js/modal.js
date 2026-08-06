@@ -1,3 +1,11 @@
+import { clearTempLine } from './canvas.js';
+import { OpenCustomSelect, closeCustomSelect } from './dropdown.js';
+import { ModalRegistry, ModalReturnFocus, ModalStack } from './modal-registry.js';
+import { $, App } from './state.js';
+import { SymSuggest } from './suggest.js';
+
+export { ModalRegistry, ModalReturnFocus, ModalStack };
+
 // ══════════════════════════════════════════════════════════════════
 //  MODAL CORE
 // ══════════════════════════════════════════════════════════════════
@@ -7,18 +15,11 @@
 //  that only make sense once several dialogs can be open at once:
 //  a topmost-wins Escape, per-modal teardown, and Enter-to-submit.
 
-// Open modals, innermost last. Escape and the Tab trap only ever act on
-// the top of this stack, so a modal opened from another modal behaves.
-const ModalStack = [];
+// ModalStack, ModalRegistry and ModalReturnFocus are declared in
+// ./modal-registry.js and re-exported above — see that file for why they
+// cannot live here.
 
-// id → { onClose, submit, dismissOnBackdrop }. Each modal registers its
-// own teardown instead of growing a shared if-chain in closeModal.
-const ModalRegistry = Object.create(null);
-
-// The element focus returns to when a modal closes, keyed by modal id.
-const ModalReturnFocus = Object.create(null);
-
-const MODAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+export const MODAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * Declare a modal's behaviour.
@@ -28,7 +29,7 @@ const MODAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]),
  * @param {Function} [opts.submit]       primary action; Enter invokes it
  * @param {boolean} [opts.dismissOnBackdrop] close when the backdrop is clicked
  */
-function registerModal(id, opts = {}) {
+export function registerModal(id, opts = {}) {
   ModalRegistry[id] = {
     onClose: opts.onClose || null,
     submit: opts.submit || null,
@@ -36,23 +37,23 @@ function registerModal(id, opts = {}) {
   };
 }
 
-function isModalOpen(id) { return ModalStack.includes(id); }
+export function isModalOpen(id) { return ModalStack.includes(id); }
 
 /** The modal currently on top, or null when none is open. */
-function topModal() { return ModalStack.length ? ModalStack[ModalStack.length - 1] : null; }
+export function topModal() { return ModalStack.length ? ModalStack[ModalStack.length - 1] : null; }
 
 /** True while any modal is open — used to gate global canvas shortcuts. */
-function anyModalOpen() { return ModalStack.length > 0; }
+export function anyModalOpen() { return ModalStack.length > 0; }
 
 /** Focusable, visible children of a modal, in tab order. */
-function modalFocusables(shell) {
+export function modalFocusables(shell) {
   return Array.prototype.filter.call(
     shell.querySelectorAll(MODAL_FOCUSABLE),
     el => el.offsetParent !== null && !el.hasAttribute('aria-hidden')
   );
 }
 
-function showOverlay(id) {
+export function showOverlay(id) {
   const shell = $(id);
   if (!shell) return;
   if (isModalOpen(id)) return;
@@ -75,7 +76,7 @@ function showOverlay(id) {
   }
 }
 
-function closeModal(id) {
+export function closeModal(id) {
   const shell = $(id);
   if (!shell) return;
   if (typeof closeCustomSelect === 'function') closeCustomSelect();

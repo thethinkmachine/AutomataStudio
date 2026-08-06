@@ -1,3 +1,12 @@
+import { exportPNG, exportSVG, getContentBounds, wrap } from './canvas.js';
+import { buildMachineIR, exportCopyText, exportDownload, exportFilename, exportRequireMachine, exportSampleWords } from './export-core.js';
+import { exportBatchText, exportSamplesText, exportToDot, exportToTikz, exportTransitionTable } from './export-formats.js';
+import { ExportFormats } from './export-registry.js';
+import { closeModal, registerModal, showOverlay } from './modal.js';
+import { getWorkspaceData } from './persistence.js';
+import { $, App } from './state.js';
+import { escapeHtml, showStatus } from './utils.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  EXPORT DIALOGS
 // ══════════════════════════════════════════════════════════════════
@@ -15,7 +24,7 @@
 // ══════════════════════════════════════════════════════════════════
 
 // ── image dialog ──────────────────────────────────────────────────
-const ExportImageOpts = {
+export const ExportImageOpts = {
   format: 'png',
   scale: 2,
   crop: true,
@@ -32,14 +41,14 @@ registerModal('export-image-modal', {
   submit: () => runImageExport()
 });
 
-function openExportImageModal() {
+export function openExportImageModal() {
   if (!exportRequireMachine()) return;
   ExportImageOpts.scale = App.config.exportRes || 2;
   renderExportImageModal();
   showOverlay('export-image-modal');
 }
 
-function setExportImageOpt(key, value) {
+export function setExportImageOpt(key, value) {
   if (key === 'scale' || key === 'padding') value = Number(value);
   if (key === 'crop' || key === 'includeNotes' || key === 'includeDividers' || key === 'embedData') value = !!value;
   ExportImageOpts[key] = value;
@@ -47,7 +56,7 @@ function setExportImageOpt(key, value) {
   renderExportImageModal();
 }
 
-function exportImageDimensions() {
+export function exportImageDimensions() {
   const o = ExportImageOpts;
   let w, h;
   if (o.crop) {
@@ -63,7 +72,7 @@ function exportImageDimensions() {
   return { w: Math.round(w * scale), h: Math.round(h * scale) };
 }
 
-function renderExportImageModal() {
+export function renderExportImageModal() {
   const host = $('export-image-body');
   if (!host) return;
   const o = ExportImageOpts;
@@ -133,7 +142,7 @@ function renderExportImageModal() {
 }
 
 // Resolves the background choice to something buildExportSVG understands.
-function exportResolveBackground() {
+export function exportResolveBackground() {
   const o = ExportImageOpts;
   if (o.background === 'transparent') return 'transparent';
   if (o.background === 'custom') return o.customColor;
@@ -147,7 +156,7 @@ function exportResolveBackground() {
   return App.config.export.bg || '#ffffff';
 }
 
-function runImageExport() {
+export function runImageExport() {
   const o = ExportImageOpts;
   const opts = {
     crop: o.crop,
@@ -165,8 +174,10 @@ function runImageExport() {
 //  CODE / CONFIG / SPEC DIALOG
 // ══════════════════════════════════════════════════════════════════
 
-// Option schema types: 'check' (boolean), 'select' (choices), 'number'.
-const ExportFormats = {
+// Diagram, table and sample-word targets. The code and test-suite targets are
+// added by js/codegen.js; both sides write into the registry from
+// js/export-registry.js. Option schema types: 'check', 'select', 'number'.
+Object.assign(ExportFormats, {
   dot: {
     label: 'Graphviz DOT', group: 'Diagram', ext: 'dot', mime: 'text/vnd.graphviz',
     blurb: 'Render with <code>dot -Tpng machine.dot</code>, or paste into any Graphviz viewer.',
@@ -234,23 +245,23 @@ const ExportFormats = {
     options: [],
     build: () => JSON.stringify(getWorkspaceData(), null, 2)
   }
-};
+});
 
-const ExportUI = { format: 'dot', opts: {}, cache: '' };
+export const ExportUI = { format: 'dot', opts: {}, cache: '' };
 
 registerModal('export-code-modal', {
   dismissOnBackdrop: true,
   submit: () => exportCodeDownload()
 });
 
-function exportDefaultOpts(key) {
+export function exportDefaultOpts(key) {
   const spec = ExportFormats[key];
   const o = {};
   (spec.options || []).forEach(opt => { o[opt.id] = opt.def; });
   return o;
 }
 
-function openExportCodeModal(initial) {
+export function openExportCodeModal(initial) {
   if (!exportRequireMachine()) return;
   const key = initial && ExportFormats[initial] ? initial : ExportUI.format;
   selectExportFormat(key, true);
@@ -258,7 +269,7 @@ function openExportCodeModal(initial) {
   showOverlay('export-code-modal');
 }
 
-function selectExportFormat(key, keepOpen) {
+export function selectExportFormat(key, keepOpen) {
   if (!ExportFormats[key]) return;
   ExportUI.format = key;
   ExportUI.opts = exportDefaultOpts(key);
@@ -266,16 +277,16 @@ function selectExportFormat(key, keepOpen) {
   if (!keepOpen) renderExportCodePreview();
 }
 
-function setExportCodeOpt(id, value, type) {
+export function setExportCodeOpt(id, value, type) {
   if (type === 'number') value = Number(value);
   if (type === 'check') value = !!value;
   ExportUI.opts[id] = value;
   renderExportCodeModal();
 }
 
-function exportCurrentSpec() { return ExportFormats[ExportUI.format]; }
+export function exportCurrentSpec() { return ExportFormats[ExportUI.format]; }
 
-function exportCurrentText() {
+export function exportCurrentText() {
   const spec = exportCurrentSpec();
   if (!spec) return '';
   if (spec.available && !spec.available()) return spec.unavailableNote || 'Not available yet.';
@@ -289,7 +300,7 @@ function exportCurrentText() {
 
 // Shared by the live render and by sizeExportCodeOptions (which renders
 // every format's controls offscreen just to measure them).
-function exportCodeOptionsHtml(spec, opts) {
+export function exportCodeOptionsHtml(spec, opts) {
   const controls = (spec.options || []).map(opt => {
     const val = opts[opt.id];
     if (opt.type === 'check') {
@@ -318,7 +329,7 @@ function exportCodeOptionsHtml(spec, opts) {
     + (controls ? `<div class="exp-opts">${controls}</div>` : '');
 }
 
-function renderExportCodeModal() {
+export function renderExportCodeModal() {
   const listHost = $('export-format-list');
   const optHost = $('export-code-options');
   const spec = exportCurrentSpec();
@@ -352,7 +363,7 @@ function renderExportCodeModal() {
 // as-is made the modal resize with every format click, the same jarring
 // jump the Settings tabs had. Render each format's options offscreen once
 // per open, take the tallest, and lock the block to that so it stays put.
-function sizeExportCodeOptions() {
+export function sizeExportCodeOptions() {
   const optHost = $('export-code-options');
   if (!optHost) return;
   const liveHtml = optHost.innerHTML;
@@ -368,7 +379,7 @@ function sizeExportCodeOptions() {
   optHost.style.minHeight = max + 'px';
 }
 
-function renderExportCodePreview() {
+export function renderExportCodePreview() {
   const pre = $('export-code-preview');
   if (!pre) return;
   const text = exportCurrentText();
@@ -381,17 +392,17 @@ function renderExportCodePreview() {
   }
 }
 
-function exportCodeFilename() {
+export function exportCodeFilename() {
   const spec = exportCurrentSpec();
   const ext = spec.extFor ? spec.extFor(ExportUI.opts) : spec.ext;
   return exportFilename(ext);
 }
 
-function exportCodeCopy() {
+export function exportCodeCopy() {
   exportCopyText(ExportUI.cache || exportCurrentText(), `Copied ${exportCurrentSpec().label}`);
 }
 
-function exportCodeDownload() {
+export function exportCodeDownload() {
   const spec = exportCurrentSpec();
   const text = ExportUI.cache || exportCurrentText();
   exportDownload(exportCodeFilename(), text, spec.mime);
@@ -401,13 +412,13 @@ function exportCodeDownload() {
 // ── shortcuts used from the panels ────────────────────────────────
 // The Language and Batch panels each open the dialog already pointed at
 // the format that panel produces, so the common path is one click.
-function exportOpenSamples() { openExportCodeModal('samples'); }
-function exportOpenBatch() {
+export function exportOpenSamples() { openExportCodeModal('samples'); }
+export function exportOpenBatch() {
   if (!App.lastBatch) { showStatus('Run a batch test first'); return; }
   openExportCodeModal('batch');
 }
 
-function exportCopyBatchQuick() {
+export function exportCopyBatchQuick() {
   if (!App.lastBatch) { showStatus('Run a batch test first'); return; }
   exportCopyText(exportBatchText(App.lastBatch, { format: 'markdown' }), 'Batch results copied as Markdown');
 }
