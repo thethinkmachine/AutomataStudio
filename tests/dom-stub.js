@@ -12,11 +12,15 @@ function detach(node) {
   }
 }
 
-export function createElement(id = '') {
+// `tag` matters for the SVG nodes: the renderer builds a <circle> for a state
+// and a <rect> for a box, and code that has to tell them apart (the simulation
+// pulse, the node-kind diff) reads tagName. A stub that called everything DIV
+// made those branches untestable.
+export function createElement(id = '', tag = 'DIV') {
   const classSet = new Set();
   const el = {
     id,
-    tagName: 'DIV',
+    tagName: tag,
     value: '',
     textContent: '',
     className: '',
@@ -149,8 +153,8 @@ const documentStub = {
   querySelectorAll() { return []; },
   getElementById(id) { return getElement(id); },
   getElementsByClassName() { return []; },
-  createElement() { return createElement(); },
-  createElementNS() { return createElement(); },
+  createElement(tag) { return createElement('', tag || 'DIV'); },
+  createElementNS(ns, tag) { return createElement('', tag || 'DIV'); },
   createDocumentFragment() { return createElement(); },
   createTextNode(text) { return { nodeType: 3, textContent: String(text), children: [] }; },
   // view.js checks document.contains(previouslyFocused) before restoring focus.

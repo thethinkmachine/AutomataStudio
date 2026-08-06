@@ -59,8 +59,8 @@ test('moving a state updates its circle without replacing the node', () => {
   context.renderAll();
 
   assert.equal(stateNode(0), node, 'node identity must be preserved');
-  assert.equal(node.__parts.circle.getAttribute('cx'), 500);
-  assert.equal(node.__parts.circle.getAttribute('cy'), 250);
+  assert.equal(node.__parts.shape.getAttribute('cx'), 500);
+  assert.equal(node.__parts.shape.getAttribute('cy'), 250);
 });
 
 test('deleting a state removes its node and forgets it', () => {

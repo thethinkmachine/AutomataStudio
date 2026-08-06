@@ -5,7 +5,7 @@
 // global-scope code and cannot see module bindings. The functions they name
 // are re-exposed on window here.
 //
-// 215 functions across 21 modules, reached from 482 attributes:
+// 220 functions across 22 modules, reached from 484 attributes:
 //    357  static, in index.html
 //    125  in markup the app builds at runtime (algorithm cards,
 //         export dialogs, alphabet chips, context menus)
@@ -39,7 +39,8 @@ import {
 } from './alphabet.js';
 import {
   confirmState, confirmTrans, ctxDel, ctxDeleteTrans, ctxDuplicateTrans,
-  ctxEditTrans, ctxRename, ctxReverseTrans, ctxStart, ctxToggleAcc,
+  ctxEditTrans, ctxOpenSub, ctxPromote, ctxRename, ctxReverseTrans, ctxStart,
+  ctxToggleAcc,
   deleteTrans, openStateModal,
 } from './states-transitions.js';
 import {
@@ -110,6 +111,9 @@ import {
   clearAll,
 } from './utils.js';
 import {
+  ascendOne, ascendTo, enterComponent,
+} from './hierarchy.js';
+import {
   beginRenameTab, closeMobileAuxNav, closeMobilePanels, closeTab,
   commitTabRename, confirmSettings, createTab, exportSettings, filterAlgos,
   filterStates, filterTransitions, fitToScreen, focusStateFromList,
@@ -128,6 +132,8 @@ import {
 } from './ui.js';
 
 Object.assign(window, {
+  // hierarchy.js
+   ascendOne, ascendTo, enterComponent,
   // modal.js
    closeModal,
   // state.js
@@ -141,7 +147,8 @@ Object.assign(window, {
    addGSym, addOutSym, addSym, delGSym, delOutSym, delSym,
   // states-transitions.js
    confirmState, confirmTrans, ctxDel, ctxDeleteTrans, ctxDuplicateTrans,
-   ctxEditTrans, ctxRename, ctxReverseTrans, ctxStart, ctxToggleAcc,
+   ctxEditTrans, ctxOpenSub, ctxPromote, ctxRename, ctxReverseTrans, ctxStart,
+  ctxToggleAcc,
    deleteTrans, openStateModal,
   // canvas.js
    autoLayout, ctxCanvasAddState, ctxCanvasAutoLayout, ctxCanvasFit,

@@ -3,7 +3,8 @@ import { renderDividers } from './dividers.js';
 import { commit, snapshot } from './history.js';
 import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
-import { $, App, R, SVG_NS, getMachineConfig } from './state.js';
+import { $, App, R, SVG_NS, getComponent, getMachineConfig, hasHierarchy } from './state.js';
+import { descendIntoBox } from './hierarchy.js';
 import { getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive } from './states-transitions.js';
 import { Change, emit, subscribe } from './store.js';
 import { triggerMath } from './theory.js';
@@ -82,6 +83,32 @@ function buildEdgeIndex() {
   return { stateById, tsByPair };
 }
 
+// A box is a state that invokes another component rather than consuming input
+// itself. It is drawn as a rounded rectangle so that "this one delegates" reads
+// at a glance, and it is sized from R so the radius setting still scales it.
+export function nodeIsBox(s) { return !!(s && s.callee); }
+
+export function boxHalf(s) {
+  return { hw: (s.w || R * 3.2) / 2, hh: (s.h || R * 1.8) / 2 };
+}
+
+// Distance from a node's centre to its own boundary along a unit direction.
+// This is the one place the "every node is a circle of radius R" assumption
+// lived, so putting it behind a function is what lets an arrow trim correctly
+// against a rectangle without touching any of the callers' maths.
+function boundaryOffset(s, ux, uy) {
+  if (!nodeIsBox(s)) return R;
+  const { hw, hh } = boxHalf(s);
+  const tx = ux ? Math.abs(hw / ux) : Infinity;
+  const ty = uy ? Math.abs(hh / uy) : Infinity;
+  return Math.min(tx, ty);
+}
+
+// Where a self-loop and the start arrow meet the node: the top and left edge
+// respectively, which is R for a circle and the half-extent for a box.
+function topOffset(s) { return nodeIsBox(s) ? boxHalf(s).hh : R; }
+function leftOffset(s) { return nodeIsBox(s) ? boxHalf(s).hw : R; }
+
 // Geometry for one edge. Split out because renderTransitions and updateFastDOM
 // both need it, and because it is the part that changes every frame while a
 // state is being dragged. `pairs` is the tsByPair map from buildEdgeIndex.
@@ -89,8 +116,9 @@ function edgeGeometry(from, to, ts, pairs) {
   const isSelf = from.id === to.id;
   if (isSelf) {
     const so = App.config.render.selfLoopOff, ss = App.config.render.selfLoopSize;
-    const d = `M ${from.x - so} ${from.y - R} A ${ss} ${ss} 0 1 1 ${from.x + so} ${from.y - R}`;
-    const arcCentY = from.y - R - Math.sqrt(ss * ss - so * so);
+    const top = from.y - topOffset(from);
+    const d = `M ${from.x - so} ${top} A ${ss} ${ss} 0 1 1 ${from.x + so} ${top}`;
+    const arcCentY = top - Math.sqrt(ss * ss - so * so);
     return { isSelf, d, lx: from.x, ly: arcCentY - ss, mx: null, my: null, crvVal: 0 };
   }
   const hasRev = pairs
@@ -102,8 +130,10 @@ function edgeGeometry(from, to, ts, pairs) {
   const defCrv = hasRev ? App.config.render.curveOff : 0;
   const crvVal = ts[0].curve !== undefined ? ts[0].curve : defCrv;
   const mx = (from.x + to.x) / 2 + px * crvVal, my = (from.y + to.y) / 2 + py * crvVal;
-  const sx = from.x + ux * R, sy = from.y + uy * R;
-  const ex = to.x - ux * (R + App.config.render.arrowHeadSize), ey = to.y - uy * (R + App.config.render.arrowHeadSize);
+  const offFrom = boundaryOffset(from, ux, uy);
+  const offTo = boundaryOffset(to, ux, uy) + App.config.render.arrowHeadSize;
+  const sx = from.x + ux * offFrom, sy = from.y + uy * offFrom;
+  const ex = to.x - ux * offTo, ey = to.y - uy * offTo;
   const d = crvVal ? `M ${sx} ${sy} Q ${mx} ${my} ${ex} ${ey}` : `M ${sx} ${sy} L ${ex} ${ey}`;
   const lx = crvVal ? (sx + 2 * mx + ex) / 4 : (sx + ex) / 2;
   const ly = crvVal ? (sy + 2 * my + ey) / 4 : (sy + ey) / 2;
@@ -316,7 +346,8 @@ function syncStartArrow(g) {
     App.domCache.startArrow = a;
   }
   const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
-  a.setAttribute('d', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah / 3} ${s.y}`);
+  const off = leftOffset(s);
+  a.setAttribute('d', `M ${s.x - off - al} ${s.y} L ${s.x - off - ah / 3} ${s.y}`);
   // Always first in paint order, behind every edge.
   if (a !== g.firstChild) g.insertBefore(a, g.firstChild);
 }
@@ -380,14 +411,31 @@ export function updateFastDOM() {
     const grp = App.domCache.states.get(s.id);
     if (!grp || !grp.__parts) continue;
     const p = grp.__parts;
-    p.circle.setAttribute('cx', s.x);
-    p.circle.setAttribute('cy', s.y);
-    if (p.ring) {
-      p.ring.setAttribute('cx', s.x);
-      p.ring.setAttribute('cy', s.y);
+    // The shape is a <rect> for a box, so this cannot just write cx/cy — a rect
+    // ignores them silently and the box stays behind while its edges follow.
+    const isBox = nodeIsBox(s);
+    const half = isBox ? boxHalf(s) : null;
+    if (isBox) {
+      p.shape.setAttribute('x', s.x - half.hw);
+      p.shape.setAttribute('y', s.y - half.hh);
+      if (p.ring) {
+        p.ring.setAttribute('x', s.x - half.hw + 4);
+        p.ring.setAttribute('y', s.y - half.hh + 4);
+      }
+      if (p.callee) {
+        p.callee.setAttribute('x', s.x);
+        p.callee.setAttribute('y', s.y + 13);
+      }
+    } else {
+      p.shape.setAttribute('cx', s.x);
+      p.shape.setAttribute('cy', s.y);
+      if (p.ring) {
+        p.ring.setAttribute('cx', s.x);
+        p.ring.setAttribute('cy', s.y);
+      }
     }
     p.label.setAttribute('x', s.x);
-    p.label.setAttribute('y', isMoore ? s.y - App.config.render.textMargin : s.y);
+    p.label.setAttribute('y', isMoore ? s.y - App.config.render.textMargin : (isBox ? s.y - 7 : s.y));
     if (grp.__labelX !== s.x) {
       for (const tspan of p.label.childNodes) tspan.setAttribute('x', s.x);
       grp.__labelX = s.x;
@@ -403,7 +451,8 @@ export function updateFastDOM() {
     const s = stateById.get(App.startId);
     if (s) {
       const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
-      startArrow.setAttribute('d', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah / 3} ${s.y}`);
+      const off = leftOffset(s);
+      startArrow.setAttribute('d', `M ${s.x - off - al} ${s.y} L ${s.x - off - ah / 3} ${s.y}`);
     }
   }
 
@@ -477,25 +526,12 @@ function acceptsAreShown() {
 // over derived values like acceptsAreShown() — a node now outlives the render
 // that made it, so a captured value goes stale the moment the state is renamed
 // or the machine type changes.
-function createStateNode(id) {
-  const g = makeSVG('g');
-  g.classList.add('sn');
-  g.setAttribute('data-id', id);
-
-  const circle = makeSVG('circle');
-  circle.classList.add('bd');
-  g.appendChild(circle);
-
-  const label = makeSVG('text');
-  label.classList.add('slbl');
-  g.appendChild(label);
-
-  // Child references, so syncing never has to query the subtree.
-  g.__parts = { circle, label, ring: null, moore: null };
-  // Inputs the label tspans were last built from, so they are only rebuilt when
-  // one of them actually changes.
-  g.__labelKey = null;
-
+// Listeners are attached once, at node creation, and outlive every later
+// render — so they resolve the state by id at event time and never close over
+// per-render data. Shared by both node shapes: a box selects, drags, deletes
+// and opens its context menu exactly like a state, and duplicating this block
+// per shape is how the two would drift apart.
+function attachNodeListeners(g, id) {
   g.addEventListener('pointerdown', e => {
     g.dataset.lastPointerType = e.pointerType || 'mouse';
     onStateDown(e, id);
@@ -510,16 +546,56 @@ function createStateNode(id) {
     const renameLbl = document.querySelector('#ctx-rename .ctx-label');
     if (toggleOpt) toggleOpt.style.display = acceptsAreShown() ? '' : 'none';
     if (renameLbl) renameLbl.textContent = (App.machine === 'Moore' || App.machine === 'Mealy') ? 'Configure' : 'Rename';
+
+    // Sub-machine entries only exist for machines that have components, and the
+    // promote entry doubles as demote once the state is already a call site.
+    const s = getState(id);
+    const isBox = nodeIsBox(s);
+    const promoteRow = $('ctx-promote'), openRow = $('ctx-open-sub');
+    const promoteLbl = document.querySelector('#ctx-promote .ctx-label');
+    if (promoteRow) promoteRow.style.display = hasHierarchy() ? '' : 'none';
+    if (promoteLbl) promoteLbl.textContent = isBox ? 'Convert to Plain State' : 'Convert to Sub-machine';
+    if (openRow) openRow.style.display = hasHierarchy() && isBox ? '' : 'none';
     showContextMenu('state', e.clientX, e.clientY);
   });
 
   g.addEventListener('dblclick', () => {
     if (g.dataset.lastPointerType === 'touch') return;
+    // On a box, a double click means "open me" — the accept flag belongs to the
+    // component's exit nodes, not to the call site.
+    const s = getState(id);
+    if (nodeIsBox(s)) { descendIntoBox(id); return; }
     if (!acceptsAreShown()) return;
     App.accepts.has(id) ? App.accepts.delete(id) : App.accepts.add(id);
     commit();
   });
+}
 
+// `kind` is baked into the node because the two shapes are different elements.
+// renderStates evicts and rebuilds when it changes — see the note there.
+function createStateNode(id, kind) {
+  const g = makeSVG('g');
+  g.classList.add('sn');
+  if (kind === 'box') g.classList.add('sn-box');
+  g.setAttribute('data-id', id);
+  g.__kind = kind;
+
+  const shape = makeSVG(kind === 'box' ? 'rect' : 'circle');
+  shape.classList.add('bd');
+  if (kind === 'box') shape.setAttribute('rx', 10);
+  g.appendChild(shape);
+
+  const label = makeSVG('text');
+  label.classList.add('slbl');
+  g.appendChild(label);
+
+  // Child references, so syncing never has to query the subtree.
+  g.__parts = { shape, label, ring: null, moore: null, callee: null };
+  // Inputs the label tspans were last built from, so they are only rebuilt when
+  // one of them actually changes.
+  g.__labelKey = null;
+
+  attachNodeListeners(g, id);
   return g;
 }
 
@@ -543,16 +619,28 @@ function syncStateNode(g, s, showAccepts) {
   g.classList.toggle('unreachable-st', cls === 'unreachable');
   g.classList.toggle('dead-st', cls === 'dead');
 
-  parts.circle.setAttribute('cx', s.x);
-  parts.circle.setAttribute('cy', s.y);
-  parts.circle.setAttribute('r', R);
+  const isBox = nodeIsBox(s);
+  const half = isBox ? boxHalf(s) : null;
+  g.classList.toggle('box-st', isBox);
+
+  if (isBox) {
+    parts.shape.setAttribute('x', s.x - half.hw);
+    parts.shape.setAttribute('y', s.y - half.hh);
+    parts.shape.setAttribute('width', half.hw * 2);
+    parts.shape.setAttribute('height', half.hh * 2);
+  } else {
+    parts.shape.setAttribute('cx', s.x);
+    parts.shape.setAttribute('cy', s.y);
+    parts.shape.setAttribute('r', R);
+  }
 
   if (isAcc && !parts.ring) {
-    const ring = makeSVG('circle');
+    const ring = makeSVG(isBox ? 'rect' : 'circle');
     ring.classList.add('acc-ring');
     ring.setAttribute('fill', 'none');
     ring.setAttribute('stroke', 'var(--gold)');
     ring.setAttribute('stroke-width', '1.5');
+    if (isBox) ring.setAttribute('rx', 7);
     g.insertBefore(ring, parts.label);
     parts.ring = ring;
   } else if (!isAcc && parts.ring) {
@@ -560,14 +648,40 @@ function syncStateNode(g, s, showAccepts) {
     parts.ring = null;
   }
   if (parts.ring) {
-    parts.ring.setAttribute('cx', s.x);
-    parts.ring.setAttribute('cy', s.y);
-    parts.ring.setAttribute('r', R - 5);
+    if (isBox) {
+      parts.ring.setAttribute('x', s.x - half.hw + 4);
+      parts.ring.setAttribute('y', s.y - half.hh + 4);
+      parts.ring.setAttribute('width', Math.max(0, half.hw * 2 - 8));
+      parts.ring.setAttribute('height', Math.max(0, half.hh * 2 - 8));
+    } else {
+      parts.ring.setAttribute('cx', s.x);
+      parts.ring.setAttribute('cy', s.y);
+      parts.ring.setAttribute('r', R - 5);
+    }
+  }
+
+  // A box names the component it invokes underneath its own name, so a canvas
+  // full of boxes reads as call sites rather than as opaque rectangles.
+  if (isBox && !parts.callee) {
+    const ct = makeSVG('text');
+    ct.classList.add('callee-lbl');
+    g.appendChild(ct);
+    parts.callee = ct;
+  } else if (!isBox && parts.callee) {
+    parts.callee.remove();
+    parts.callee = null;
+  }
+  const calleeName = isBox ? (getComponent(s.callee)?.name || '?') : null;
+  if (parts.callee) {
+    parts.callee.setAttribute('x', s.x);
+    parts.callee.setAttribute('y', s.y + 13);
+    parts.callee.textContent = calleeName;
   }
 
   const isMoore = App.machine === 'Moore';
+  const labelDy = isMoore ? -App.config.render.textMargin : (isBox ? -7 : 0);
   parts.label.setAttribute('x', s.x);
-  parts.label.setAttribute('y', isMoore ? s.y - App.config.render.textMargin : s.y);
+  parts.label.setAttribute('y', s.y + labelDy);
   // As above: the tspans say the state's name, which a move does not change.
   const labelKey = `${s.name}\u0001${App.config.wrapStateLabels}`;
   if (g.__labelKey !== labelKey) {
@@ -594,7 +708,7 @@ function syncStateNode(g, s, showAccepts) {
     parts.moore.textContent = s.output !== undefined && s.output !== '' ? s.output : '—';
   }
 
-  let stTitle = `State '${s.name}'`;
+  let stTitle = isBox ? `Box '${s.name}' — invokes ${calleeName}` : `State '${s.name}'`;
   if (isStart || isAcc) {
     const statuses = [];
     if (isStart) statuses.push('Start');
@@ -621,9 +735,19 @@ export function renderStates() {
   const seen = new Set();
   for (const s of App.states) {
     seen.add(s.id);
+    const kind = nodeIsBox(s) ? 'box' : 'state';
     let node = live.get(s.id);
+    // Promoting a state to a box keeps its id, so the diff would happily reuse
+    // the circle forever — a <circle> quietly ignoring x/y/width/height, with
+    // nothing thrown and nothing logged. The kind is part of the node's
+    // identity, so a change to it has to evict rather than sync.
+    if (node && node.__kind !== kind) {
+      node.remove();
+      live.delete(s.id);
+      node = null;
+    }
     if (!node) {
-      node = createStateNode(s.id);
+      node = createStateNode(s.id, kind);
       live.set(s.id, node);
     }
     syncStateNode(node, s, showAccepts);

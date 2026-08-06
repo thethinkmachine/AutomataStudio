@@ -71,7 +71,7 @@ test('changing the radius reaches the renderer, not just App.config', () => {
   const { App } = h.context;
   h.context.createState(100, 100, 'q0');
   h.context.renderAll();
-  const circle = App.domCache.states.get(App.states[0].id).__parts.circle;
+  const circle = App.domCache.states.get(App.states[0].id).__parts.shape;
   const before = Number(circle.getAttribute('r'));
 
   const $ = openAndRead(h);
@@ -103,7 +103,7 @@ test('loading a file republishes the radius it was saved with', () => {
   h.context.renderAll();
 
   assert.equal(App.config.radius, 30);
-  assert.equal(Number(App.domCache.states.get('s1').__parts.circle.getAttribute('r')), 30,
+  assert.equal(Number(App.domCache.states.get('s1').__parts.shape.getAttribute('r')), 30,
     'the canvas must not keep drawing at the radius from before the load');
 });
 
@@ -122,7 +122,7 @@ test('restoring a workspace republishes its radius', () => {
   h.context.renderAll();
 
   assert.equal(App.config.radius, 18);
-  assert.equal(Number(App.domCache.states.get(App.states[0].id).__parts.circle.getAttribute('r')), 18,
+  assert.equal(Number(App.domCache.states.get(App.states[0].id).__parts.shape.getAttribute('r')), 18,
     'switching tabs must pick up that tab\'s radius');
 });
 

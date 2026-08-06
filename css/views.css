@@ -523,6 +523,12 @@
   border: 1px solid var(--purple-border);
 }
 
+.bd-rsm {
+  background: var(--indigo-soft);
+  color: var(--indigo);
+  border: 1px solid var(--indigo-border);
+}
+
 .bd-moore {
   background: var(--green-soft);
   color: var(--green);

@@ -21,6 +21,11 @@ export const MachineTypes = {
   'LBA': { label: 'LBA', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, hasEndMarkers: true, isTransducer: false, badge: 'bd-lba', file: 'lba' },
   'ITM': { label: '2-Way Infinite TM', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-itm', file: 'ittm' },
 
+  // Hierarchical. The stack an RSM needs is the CALL stack — built from the
+  // component tree at run time, not an alphabet the user edits — so hasStack
+  // stays false (no Γ panel) and hasCallStack carries the capability instead.
+  'RSM': { label: 'RSM', category: 'hier', implemented: true, hasEpsilon: true, hasStack: false, hasTape: false, hasCallStack: true, isTransducer: false, badge: 'bd-rsm', file: 'rsm' },
+
   'Moore': { label: 'Moore', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-moore', file: 'moore' },
   'Mealy': { label: 'Mealy', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-mealy', file: 'mealy' },
   'FST': { label: 'FST', category: 'special', implemented: true, hasEpsilon: true, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-fst', file: 'fst' }
@@ -54,8 +59,14 @@ export const MachineCategories = [
   { id: 'fa', label: 'Finite Automata', machines: ['DFA', 'NFA', 'ε-NFA', '2DFA', '2NFA'] },
   { id: 'mem', label: 'Memory Automata', machines: ['DPDA', 'NPDA', 'QA', 'Counter', '2PDA'] },
   { id: 'tm', label: 'Turing Machines', machines: ['TM', 'NDTM', 'MTM', 'LBA', 'ITM'] },
+  { id: 'hier', label: 'Hierarchical', machines: ['RSM'] },
   { id: 'special', label: 'Transducers', machines: ['Moore', 'Mealy', 'FST'] }
 ];
+
+// True for machines whose states may invoke another component.
+export function hasHierarchy(m = App.machine) {
+  return !!(MachineTypes[m] && MachineTypes[m].hasCallStack);
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  CORE STATE

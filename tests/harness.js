@@ -28,6 +28,7 @@ import * as exportCore from '../js/export-core.js';
 import * as exportFormats from '../js/export-formats.js';
 import * as exportRegistry from '../js/export-registry.js';
 import * as exportUi from '../js/export-ui.js';
+import * as hierarchy from '../js/hierarchy.js';
 import * as history from '../js/history.js';
 import * as importJflap from '../js/import-jflap.js';
 import * as language from '../js/language.js';
@@ -49,7 +50,7 @@ import * as workspace from '../js/workspace.js';
 
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, statesTransitions,
-  canvas, render, notes, dividers, simulation, suggest, language, alphabet,
+  canvas, render, hierarchy, notes, dividers, simulation, suggest, language, alphabet,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, algorithmsFa, algorithmsCfg, theory, workspace, ui
 ];

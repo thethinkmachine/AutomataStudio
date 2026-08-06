@@ -1,4 +1,5 @@
 import { clearTempLine, hideCanvasContextMenu } from './canvas.js';
+import { demoteToState, descendIntoBox, promoteToSubmachine } from './hierarchy.js';
 import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
 import { pruneNoteAnchorsExcluding } from './notes.js';
@@ -680,11 +681,30 @@ export function ctxRename() {
   hideContextMenu();
   openStateModal(id); 
 }
-export function ctxDel() { 
+export function ctxDel() {
   if (!App.ctxId) return;
   const id = App.ctxId;
   hideContextMenu();
-  deleteState(id); 
+  deleteState(id);
+}
+
+// Promote turns the state under the cursor into a call site; on a state that is
+// already one, the same entry demotes it back. Both keep the state's id, so
+// every edge already attached to it survives the change.
+export function ctxPromote() {
+  if (!App.ctxId) return;
+  const id = App.ctxId;
+  hideContextMenu();
+  const s = getState(id);
+  if (!s) return;
+  if (s.callee) demoteToState(id); else promoteToSubmachine(id);
+}
+
+export function ctxOpenSub() {
+  if (!App.ctxId) return;
+  const id = App.ctxId;
+  hideContextMenu();
+  descendIntoBox(id);
 }
 
 export function ctxEditTrans() {

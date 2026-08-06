@@ -1528,12 +1528,21 @@ export function animateSimToken(edgeKey, dur, onDone) {
 
 export function pulseSimState(id, tone = '') {
   const grp = App.domCache.states.get(id) || document.querySelector(`[data-id="${id}"]`);
-  const c = grp && grp.querySelector('circle.bd');
-  if (!c) return;
-  const ring = makeSVG('circle');
-  ring.setAttribute('cx', c.getAttribute('cx'));
-  ring.setAttribute('cy', c.getAttribute('cy'));
-  ring.setAttribute('r', R);
+  if (!grp) return;
+  // The pulse traces the node's own outline, so on a box it has to be a rect —
+  // querying for circle.bd alone would simply find nothing and skip the pulse.
+  const shape = grp.__parts ? grp.__parts.shape : grp.querySelector('circle.bd, rect.bd');
+  if (!shape) return;
+  const isBox = shape.tagName === 'rect';
+  const ring = makeSVG(isBox ? 'rect' : 'circle');
+  if (isBox) {
+    for (const a of ['x', 'y', 'width', 'height']) ring.setAttribute(a, shape.getAttribute(a));
+    ring.setAttribute('rx', 10);
+  } else {
+    ring.setAttribute('cx', shape.getAttribute('cx'));
+    ring.setAttribute('cy', shape.getAttribute('cy'));
+    ring.setAttribute('r', R);
+  }
   ring.classList.add('sim-pulse');
   if (tone) ring.classList.add(tone);
   grp.appendChild(ring);

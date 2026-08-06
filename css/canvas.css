@@ -3,50 +3,50 @@
   cursor: inherit;
 }
 
-.sn circle.bd {
+.sn .bd {
   fill: var(--surface);
   stroke: var(--border2);
   stroke-width: 1.5;
   transition: fill .15s, stroke .15s;
 }
 
-.sn:hover circle.bd {
+.sn:hover .bd {
   fill: var(--surface2);
   stroke: var(--accent);
 }
 
-.sn.start-st circle.bd {
+.sn.start-st .bd {
   stroke: var(--green);
 }
 
-.sn.acc-st circle.bd {
+.sn.acc-st .bd {
   stroke: var(--gold);
 }
 
-.sn.act-st circle.bd {
+.sn.act-st .bd {
   fill: var(--state-active-fill);
   stroke: var(--accent);
   filter: var(--state-active-shadow);
 }
 
-.sn.rej-st circle.bd {
+.sn.rej-st .bd {
   fill: var(--state-reject-fill);
   stroke: var(--red);
 }
 
-.sn.sel-st circle.bd {
+.sn.sel-st .bd {
   stroke: var(--purple);
   stroke-width: 2.5;
 }
 
 /* Lighter highlight when hovering the matching row in a side panel list —
    distinct from selection, just says "this is the one you're pointing at". */
-.sn.list-hover-st circle.bd {
+.sn.list-hover-st .bd {
   stroke: var(--accent);
   stroke-width: 2.5;
 }
 
-.sn.note-link-st circle.bd {
+.sn.note-link-st .bd {
   fill: var(--accent-soft);
   stroke: var(--accent);
   stroke-width: 3;
@@ -65,7 +65,7 @@
 }
 
 /* ─── Dead / Unreachable State Overlay ─── */
-.sn.unreachable-st circle.bd {
+.sn.unreachable-st .bd {
   stroke: var(--orange, #ff9800);
   stroke-width: 2;
   stroke-dasharray: 5 3;
@@ -73,7 +73,7 @@
   opacity: 0.55;
 }
 
-.sn.dead-st circle.bd {
+.sn.dead-st .bd {
   stroke: var(--text3);
   stroke-width: 2;
   stroke-dasharray: 4 4;
@@ -140,7 +140,7 @@
    arrow); indigo = flow arriving at it — deliberately distinct from every
    other hue already in use (selection is purple, accept is gold, danger is
    red) so the two directions and "plain selected" never get confused. */
-.sn.outgoing-hl-src circle.bd {
+.sn.outgoing-hl-src .bd {
   stroke: var(--green);
   stroke-width: 2.5;
   filter: drop-shadow(0 0 6px rgba(105, 240, 174, .4));
@@ -153,7 +153,7 @@
   filter: drop-shadow(0 0 5px rgba(105, 240, 174, .4));
 }
 
-.sn.incoming-hl-src circle.bd {
+.sn.incoming-hl-src .bd {
   stroke: var(--indigo);
   stroke-width: 2.5;
   filter: drop-shadow(0 0 6px rgba(124, 77, 255, .45));
@@ -170,7 +170,7 @@
    Trail = the route already traversed this run (quiet accent, accumulates
    behind the playhead). Active = the transition being taken right now
    (bright, dashes flowing in the direction of travel). */
-.sn.sim-visited-st circle.bd {
+.sn.sim-visited-st .bd {
   stroke: var(--accent);
   stroke-opacity: .5;
 }
@@ -1077,4 +1077,101 @@
   .minimap-show-btn {
     display: none !important;
   }
+}
+
+/* ─── HIERARCHY: BOXES ───
+   A box is a state that invokes another component. It is a <rect>, not a
+   <circle>, so the shared .bd selectors above cover both; only what makes a
+   box read differently lives here. */
+.sn.box-st .bd {
+  fill: var(--surface2);
+  stroke: var(--indigo);
+  stroke-dasharray: none;
+  stroke-width: 2;
+}
+
+.sn.box-st:hover .bd {
+  fill: var(--surface2);
+  stroke: var(--accent);
+}
+
+/* The component the box invokes, under its own name. */
+.callee-lbl {
+  fill: var(--text3);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+.sn.box-st.sel-st .callee-lbl,
+.sn.box-st.act-st .callee-lbl {
+  fill: var(--text2);
+}
+
+/* ─── HIERARCHY: BREADCRUMB ───
+   Overlaid on the canvas rather than laid out inside it — see the note in
+   index.html. pointer-events are off on the strip so the canvas underneath
+   still receives drags everywhere except on the crumbs themselves. */
+.hier-crumbs {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: min(70%, 640px);
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 4px 8px;
+  border: 1px solid var(--border2);
+  border-radius: 999px;
+  background: var(--surface);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .18);
+  pointer-events: none;
+}
+
+.hier-crumbs::-webkit-scrollbar {
+  display: none;
+}
+
+.hier-crumbs .crumb {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+
+.hier-crumbs button.crumb:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.hier-crumbs .crumb-here {
+  color: var(--text);
+  background: var(--accent-soft);
+  cursor: default;
+}
+
+.hier-crumbs .crumb-sep {
+  flex: 0 0 auto;
+  color: var(--text3);
+  font-size: 11px;
+  opacity: .6;
 }
