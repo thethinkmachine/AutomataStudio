@@ -300,6 +300,10 @@ export function importWorkspaceState(data) {
   if (data.config) {
     const { sym, ...loadedConfig } = data.config;
     App.config = { ...App.config, ...loadedConfig, sym: { ...App.config.sym, ...(sym || {}) } };
+    // R mirrors config.radius for the modules that imported it, and replacing
+    // config wholesale does not update it. Without this a tab saved at a
+    // different radius draws its states at the previous tab's size.
+    setR(App.config.radius);
   }
 
   if (typeof normalizeBoundarySymbolsForMachine === 'function') {

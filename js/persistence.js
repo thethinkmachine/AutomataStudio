@@ -6,7 +6,7 @@ import { importJFLAPText } from './import-jflap.js';
 import { closeModal, showOverlay } from './modal.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { runSim } from './simulation.js';
-import { $, App, MachineExamples, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setWorkspaces } from './state.js';
+import { $, App, MachineExamples, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { hideContextMenu } from './states-transitions.js';
 import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen, hideTabContextMenu, hideTabOverflowMenu, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
@@ -543,6 +543,9 @@ export function loadData(d, isExample) {
       sym: { ...App.config.sym, ...(sym || {}) },
       pdaParadigm: pdaParadigm || 'explicit'
     };
+    // See importWorkspaceState: R has to be republished whenever config is
+    // replaced, or the canvas keeps drawing at the previous radius.
+    setR(App.config.radius);
   }
   else { migrateLegacySymbols(d); }
   if (d.cam) { App.cam = { ...d.cam }; }
