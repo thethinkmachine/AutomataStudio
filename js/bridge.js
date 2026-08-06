@@ -5,7 +5,7 @@
 // global-scope code and cannot see module bindings. The functions they name
 // are re-exposed on window here.
 //
-// 214 functions across 21 modules, reached from 482 attributes:
+// 215 functions across 21 modules, reached from 482 attributes:
 //    357  static, in index.html
 //    125  in markup the app builds at runtime (algorithm cards,
 //         export dialogs, alphabet chips, context menus)
@@ -117,7 +117,8 @@ import {
   handleTabAddDrop, handleTabDragEnd, handleTabDragOver, handleTabDragStart,
   handleTabDrop, handleTabKeydown, handleTabRenameKeydown, hlListHover,
   hlTransListHover, importSettings, openSettingsModal, openThemeModal,
-  renderTabOverflowMenu, reopenClosedTab, selectTheme, setZoomFromInput,
+  renderTabOverflowMenu, reopenClosedTab, selectModel, selectTheme,
+  setZoomFromInput,
   showTabContextMenu, switchSettingsTab, switchTab, switchTabFromOverflow,
   tabCtxClose, tabCtxCloseAll, tabCtxCloseOthers, tabCtxCloseRight,
   tabCtxDuplicate, tabCtxRename, toggleFullscreen, toggleLPSection,
@@ -203,7 +204,8 @@ Object.assign(window, {
    handleTabAddDrop, handleTabDragEnd, handleTabDragOver, handleTabDragStart,
    handleTabDrop, handleTabKeydown, handleTabRenameKeydown, hlListHover,
    hlTransListHover, importSettings, openSettingsModal, openThemeModal,
-   renderTabOverflowMenu, reopenClosedTab, selectTheme, setZoomFromInput,
+   renderTabOverflowMenu, reopenClosedTab, selectModel, selectTheme,
+   setZoomFromInput,
    showTabContextMenu, switchSettingsTab, switchTab, switchTabFromOverflow,
    tabCtxClose, tabCtxCloseAll, tabCtxCloseOthers, tabCtxCloseRight,
    tabCtxDuplicate, tabCtxRename, toggleFullscreen, toggleLPSection,
