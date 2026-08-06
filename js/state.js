@@ -50,6 +50,7 @@ export const MachineExamples = {
   'MTM': [{ file: 'mtm', label: '3-tape adder — one pass' }, { file: 'mtm-classic', label: 'Classic: aⁿbⁿcⁿ with 2 tapes' }],
   'LBA': [{ file: 'lba', label: 'Powers of two, by halving' }, { file: 'lba-classic', label: 'Classic: scan to first b' }],
   'ITM': [{ file: 'ittm', label: 'The 4-state busy beaver' }, { file: 'ittm-classic', label: 'Classic: one step left' }],
+  'RSM': [{ file: 'rsm', label: 'Balanced brackets: S → ( S ) S | ε' }],
   'Moore': [{ file: 'moore', label: 'Combination lock 1101' }, { file: 'moore-classic', label: 'Classic: traffic light' }],
   'Mealy': [{ file: 'mealy', label: 'Serial binary adder' }, { file: 'mealy-classic', label: 'Classic: report each bit' }],
   'FST': [{ file: 'fst', label: 'Binary → Gray code' }, { file: 'fst-classic', label: 'Classic: nondeterministic rewriter' }]
@@ -112,6 +113,10 @@ export const App = {
     transducerAccepts: false,
     maxPdaSteps: 2000,
     maxTmSteps: 10000,
+    // How deep an RSM may recurse before the run is cut off. A machine with no
+    // base case would otherwise explore forever; hitting this reports "is there
+    // a base case?" rather than a bare reject.
+    maxCallDepth: 60,
     // Per-word budget for the Language panel's fingerprint. Deliberately
     // far smaller than maxTmSteps: the fingerprint runs one simulation per
     // cell, so this is multiplied by ~127. Words that exhaust it are drawn

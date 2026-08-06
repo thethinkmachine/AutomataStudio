@@ -75,6 +75,22 @@ Points worth keeping in mind:
 - **Subscribers live beside the functions they call** (`render.js`, `alphabet.js`, `ui.js`, `history.js`), registered at module scope. `store.js` imports nothing so `subscribe` is always reachable.
 - Declaration order in `Change` is delivery order.
 
+### Hierarchical machines (RSM)
+
+A state carrying `callee` is a **box**: it invokes another component and comes back. [js/hierarchy.js](js/hierarchy.js) owns navigation, component CRUD, validation, the simulator and the RSM→PDA compiler.
+
+**`App.states` is the live working copy of whichever component is on canvas.** `App.components[active]` is a cache valid only after `flushActiveComponent()`. **Readers flush, writers don't** — the readers are `snapshot()`, `exportWorkspaceState()`, `machineTree()` and descend/ascend. This is why 26 wholesale `App.states = ...` sites across the codebase needed no changes.
+
+Consequences worth knowing:
+
+- **Use `componentView(id)` to touch a component you didn't navigate to.** Pushing onto `getComponent(id).states` for the *active* component appears to work and is silently undone by the next flush. `componentView` resolves to `App.states` when the component is live and to the record otherwise.
+- **State/transition id counters are global across the tree**, not per component — two components numbering their own `q0` would collide in `App.domCache` and every `[data-id]` lookup. `resetIds()` walks every component.
+- **A component is a document, not an instance.** `enterComponent` navigates to a component already on the breadcrumb rather than nesting a copy, which is what makes a recursive machine editable. The simulator's `followSimFrames` deliberately does *not* dedupe, because during a run the repetition is the call depth.
+- **Node kind is part of node identity.** Promoting a state keeps its id, so `renderStates` evicts and rebuilds when `__kind` changes — a `<circle>` ignores `x`/`width` in silence. `__parts.shape` is a circle or a rect; `boundaryOffset()` in `render.js` is the single place that knew "every node is a circle of radius R".
+- **`buildMachineIR()` compiles first.** An RSM has no flat state set, so every export target and codegen backend consumes the PDA it denotes. Adding a format still means one IR consumer.
+
+Acceptance is the three-clause one: input consumed, **call stack empty**, and an accepting node of the *root*. The empty-stack clause is the whole difference from a finite automaton.
+
 ### Rendering
 
 The diagram is **SVG**, built imperatively in [js/render.js](js/render.js) (`makeSVG()` + `SVG_NS`) — no virtual DOM and no framework. `renderAll()` **diffs**: it walks `App.states` and `groupTrans()`, reusing the node registered in `App.domCache` for each state id / `"from|to"` edge key, creating only what is new and evicting only what is gone. An idle re-render allocates nothing; a 150-state machine used to recreate 745 elements and 447 listeners on every call.

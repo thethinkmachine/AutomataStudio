@@ -1,0 +1,84 @@
+{
+  "machine": "RSM",
+  "sigma": [
+    "(",
+    ")"
+  ],
+  "states": [
+    {
+      "id": "s1",
+      "x": 140,
+      "y": 240,
+      "name": "start"
+    },
+    {
+      "id": "s2",
+      "x": 380,
+      "y": 240,
+      "name": "inner",
+      "callee": "c1"
+    },
+    {
+      "id": "s3",
+      "x": 640,
+      "y": 240,
+      "name": "closed"
+    },
+    {
+      "id": "s4",
+      "x": 880,
+      "y": 240,
+      "name": "rest",
+      "callee": "c1"
+    }
+  ],
+  "startId": "s1",
+  "accepts": [
+    "s1",
+    "s4"
+  ],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s2", "symbol": "(" },
+    { "id": "t2", "from": "s2", "to": "s3", "symbol": ")" },
+    { "id": "t3", "from": "s3", "to": "s4", "symbol": "ε" }
+  ],
+  "rootComponentId": "c1",
+  "componentPath": [
+    "c1"
+  ],
+  "componentN": 1,
+  "components": [
+    {
+      "id": "c1",
+      "name": "S",
+      "startId": "s1",
+      "accepts": [
+        "s1",
+        "s4"
+      ],
+      "exitIds": [],
+      "states": [
+        { "id": "s1", "x": 140, "y": 240, "name": "start" },
+        { "id": "s2", "x": 380, "y": 240, "name": "inner", "callee": "c1" },
+        { "id": "s3", "x": 640, "y": 240, "name": "closed" },
+        { "id": "s4", "x": 880, "y": 240, "name": "rest", "callee": "c1" }
+      ],
+      "transitions": [
+        { "id": "t1", "from": "s1", "to": "s2", "symbol": "(" },
+        { "id": "t2", "from": "s2", "to": "s3", "symbol": ")" },
+        { "id": "t3", "from": "s3", "to": "s4", "symbol": "ε" }
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "id": "n1",
+      "x": 140,
+      "y": 60,
+      "w": 430,
+      "h": 120,
+      "text": "S → ( S ) S | ε\n\nTwo of these nodes are BOXES: they invoke S again rather than reading input. That self-reference is what makes the language context-free — no finite automaton can match brackets.\n\nRun \"(()())\" and watch the Call row grow and unwind."
+    }
+  ],
+  "noteN": 1
+}

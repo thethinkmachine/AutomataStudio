@@ -1,5 +1,6 @@
 import { langAcceptedTraces, langCanDecide, langCanTrace, langIsSymbolic, langVerdict } from './language.js';
-import { App, Workspaces, activeWorkspaceId, getMachineConfig } from './state.js';
+import { compileToPDA, hasBoxes } from './hierarchy.js';
+import { App, Workspaces, activeWorkspaceId, getMachineConfig, hasHierarchy } from './state.js';
 import { transLabel } from './states-transitions.js';
 import { showStatus } from './utils.js';
 
@@ -30,23 +31,41 @@ export const EXPORT_SAMPLE_BUDGET = 20000;
 // flags are folded into the states, and every transition carries both
 // its raw fields and the rendered label the canvas would show.
 export function buildMachineIR() {
-  const cfg = getMachineConfig(App.machine);
-  const sym = { ...App.config.sym };
-  const byId = new Map(App.states.map(s => [s.id, s]));
+  // A hierarchical machine has no single flat state set of its own, so what a
+  // diagram, a table or a code generator should show is the pushdown automaton
+  // it denotes. Compiling here — rather than in each format — is what keeps
+  // every consumer downstream reading exactly one shape.
+  // A single self-recursive component is still hierarchical, so the trigger is
+  // "does anything call anything", not the component count.
+  const compiled = hasHierarchy() && hasBoxes() ? compileToPDA() : null;
+  const src = compiled || {
+    machine: App.machine,
+    states: App.states,
+    transitions: App.transitions,
+    startId: App.startId,
+    accepts: [...App.accepts],
+    sigma: [...App.sigma],
+    stackAlpha: [...App.stackAlpha]
+  };
+  const acceptSet = new Set(src.accepts);
 
-  const states = App.states.map((s, i) => ({
+  const cfg = getMachineConfig(src.machine);
+  const sym = { ...App.config.sym };
+  const byId = new Map(src.states.map(s => [s.id, s]));
+
+  const states = src.states.map((s, i) => ({
     id: s.id,
     name: s.name || s.id,
     index: i,
     x: s.x || 0,
     y: s.y || 0,
-    isStart: s.id === App.startId,
-    isAccept: App.accepts.has(s.id),
+    isStart: s.id === src.startId,
+    isAccept: acceptSet.has(s.id),
     // Moore is the only model that hangs output off the state itself.
     output: s.output !== undefined ? s.output : null
   }));
 
-  const transitions = App.transitions.map(t => {
+  const transitions = src.transitions.map(t => {
     const from = byId.get(t.from);
     const to = byId.get(t.to);
     return {
@@ -75,19 +94,22 @@ export function buildMachineIR() {
   });
 
   return {
-    machine: App.machine,
-    machineLabel: cfg.label || App.machine,
+    machine: src.machine,
+    machineLabel: cfg.label || src.machine,
+    // What the user drew, when that differs from what is being exported.
+    sourceMachine: App.machine,
+    compiledFrom: compiled ? 'RSM' : null,
     sym,
-    sigma: [...App.sigma],
-    stackAlpha: [...App.stackAlpha],
+    sigma: [...src.sigma],
+    stackAlpha: [...src.stackAlpha],
     outputAlpha: [...App.outputAlpha],
     tapeCount: App.tapeCount || 1,
     states,
     transitions,
-    startId: App.startId,
-    startName: byId.get(App.startId)?.name || null,
-    accepts: [...App.accepts],
-    acceptNames: [...App.accepts].map(id => byId.get(id)?.name || id),
+    startId: src.startId,
+    startName: byId.get(src.startId)?.name || null,
+    accepts: [...src.accepts],
+    acceptNames: [...src.accepts].map(id => byId.get(id)?.name || id),
     hasEpsilon: !!cfg.hasEpsilon,
     hasStack: !!cfg.hasStack,
     hasTape: !!cfg.hasTape,

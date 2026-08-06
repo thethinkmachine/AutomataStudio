@@ -1,4 +1,5 @@
-import { makeSVG } from './render.js';
+import { followSimFrames, renderBreadcrumb, simRSM } from './hierarchy.js';
+import { makeSVG, renderAll } from './render.js';
 import { $, App, R, getMachineConfig } from './state.js';
 import { getState } from './states-transitions.js';
 import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
@@ -91,6 +92,7 @@ export function runSim() {
   else if (App.machine === 'Moore') simMoore(tokens);
   else if (App.machine === 'Mealy') simMealy(tokens);
   else if (App.machine === 'FST') simFST(tokens);
+  else if (App.machine === 'RSM') simRSM(tokens);
   else if (App.machine === 'NDTM') simNDTM(tokens);
   else if (App.machine === 'MTM') simMTM(tokens);
   else if (App.machine === 'LBA') simLBA(tokens);
@@ -1273,6 +1275,14 @@ export function renderSimStep() {
   const step = App.simSteps[App.simIdx]; if (!step) return;
   const isLast = App.simIdx === App.simSteps.length - 1;
 
+  // A hierarchical run moves between components, so the canvas follows it: step
+  // into a call and the view descends, return and it comes back up. This has to
+  // happen before the highlights below, because the repaint would wipe them.
+  if (step.frames && followSimFrames(step.frames)) {
+    renderAll();
+    renderBreadcrumb();
+  }
+
   // Log update
   const logLines = App.simSteps.slice(0, App.simIdx + 1).map((s, i) => {
     const cl = i === App.simIdx
@@ -1311,7 +1321,12 @@ export function renderSimStep() {
     
     rows.push({ label: 'In', cells: tokensToDisplay, head: tokIdx });
 
-    if (isAnyPDA(m) && step.stack) {
+    // An RSM's stack is a stack of component names — the same widget as the
+    // PDA's, which is the point: it makes "recursion is a stack" something you
+    // watch happen rather than something you are told.
+    if (m === 'RSM' && step.callStack) {
+      rows.push({ label: 'Call', cells: [...step.callStack].reverse(), head: 0 });
+    } else if (isAnyPDA(m) && step.stack) {
       if (isQueueAutomaton(m)) {
         rows.push({ label: 'Que', cells: [...step.stack], head: 0 });
       } else {
