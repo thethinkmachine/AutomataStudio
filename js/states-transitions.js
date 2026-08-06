@@ -6,6 +6,7 @@ import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { $, App, getMachineConfig, isBoundarySymbol, isReadOnlyHeadMachine } from './state.js';
 import { Change, emit } from './store.js';
 import { getPdaDeterminismConflict, isAnyPDA, isCounterMachine, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus, symbolsOverlap, tapeTuplesOverlap } from './utils.js';
+import { applyMachineSwitch } from './view.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  STATE MANAGEMENT
@@ -620,19 +621,14 @@ export function applyStartState(targetId) {
         App.transitions.push({ id: newTId(), from: dummyId, to: oldStart.id, symbol: eps });
       }
       App.transitions.push({ id: newTId(), from: dummyId, to: targetId, symbol: eps });
-      if (App.machine === 'NFA') {
-         App.machine = 'ε-NFA';
-         const sel = document.getElementById('mobile-machine-select');
-         if (sel) sel.value = 'ε-NFA';
-         document.querySelectorAll('.mtab').forEach(b => {
-           b.classList.toggle('active', b.textContent.trim() === 'ε-NFA');
-         });
-         const badge = document.getElementById('mach-badge');
-         if (badge) {
-           badge.textContent = 'ε-NFA';
-           badge.className = 'badge bd-enfa';
-         }
-      }
+      // A second start state is wired up with ε-moves, so the machine is no
+      // longer a plain NFA. applyMachineSwitch is the non-prompting switch —
+      // it syncs the model picker label, the badge, the alphabet panels and
+      // the machine-specific sections together. The hand-rolled version this
+      // replaces updated three elements by hand, two of which
+      // (#mobile-machine-select, .mtab) no longer exist, and never touched the
+      // picker — so the header kept reading "NFA" for an ε-NFA.
+      if (App.machine === 'NFA') applyMachineSwitch('ε-NFA');
     }
   } else {
     App.startId = targetId; 

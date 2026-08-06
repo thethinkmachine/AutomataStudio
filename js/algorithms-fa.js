@@ -240,7 +240,7 @@ export function loadSubsetAsDFA() {
     App.transN = i + 1;
     App.transitions.push({ id: 't' + (i + 1), from: nameMap[t.from], to: nameMap[t.to], symbol: t.sym });
   });
-  App.machine = 'DFA'; setMachine('DFA');
+  applyMachineSwitch('DFA');
   emit(Change.GRAPH);
   setView('build');
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
@@ -425,7 +425,7 @@ export function loadMinimizedDFA() {
   });
   App.states = newStates; App.transitions = newTrans; App.accepts = newAccepts;
   App.startId = newStart; App.stateN = groups.length; App.transN = newTrans.length;
-  App.machine = 'DFA'; setMachine('DFA');
+  applyMachineSwitch('DFA');
   emit(Change.GRAPH);
   setView('build');
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
@@ -602,7 +602,7 @@ export function loadThompsonNFA() {
   const d = App._lastThompson; if (!d) return;
   snapshot();
   App.states = []; App.transitions = []; App.accepts.clear(); App.startId = null; App.stateN = 0; App.transN = 0;
-  App.machine = 'ε-NFA'; setMachine('ε-NFA');
+  applyMachineSwitch('ε-NFA');
   const nameMap = {};
   d.states.forEach((s, i) => {
     const id = 's' + (i + 1); App.stateN = i + 1; nameMap[s] = id;
