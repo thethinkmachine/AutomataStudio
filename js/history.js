@@ -1,4 +1,4 @@
-import { App, Workspaces, activeWorkspaceId, getMachineConfig } from './state.js';
+import { App, Workspaces, activeWorkspaceId, adoptComponents, flushActiveComponent, getMachineConfig } from './state.js';
 import { Change, emit, subscribe } from './store.js';
 import { renderTabs, setSaveState } from './ui.js';
 import { isAnyTM, showStatus } from './utils.js';
@@ -32,9 +32,22 @@ subscribe(Change.ALPHABET, markDirty);
 //  UNDO / REDO
 // ══════════════════════════════════════════════════════════════════
 export function snapshot() {
+  // Reads the whole component tree, so it flushes first — see the COMPONENTS
+  // section in state.js for why each reader does this on its own line rather
+  // than the store doing it for everyone.
+  //
+  // Note the cost: history now holds the whole tree per entry, so a machine
+  // with N components uses roughly N times the memory it used to at the same
+  // 300-entry cap. Worth revisiting (snapshot the touched component plus a
+  // tree hash) if that ever bites.
+  flushActiveComponent();
   const s = JSON.stringify({
     machine: App.machine,
     states: App.states, transitions: App.transitions,
+    components: App.components,
+    rootComponentId: App.rootComponentId,
+    componentPath: App.componentPath,
+    componentN: App.componentN,
     startId: App.startId, accepts: [...App.accepts],
     sigma: [...App.sigma], stackAlpha: [...App.stackAlpha],
     outputAlpha: [...App.outputAlpha], tapeCount: App.tapeCount,
@@ -108,6 +121,13 @@ export function restoreSnapshot(s) {
   App.notes = d.notes || []; App.noteN = d.noteN || 0;
   App.dividers = d.dividers || []; App.dividerN = d.dividerN || 0;
   if (App.selectedDividerId && !App.dividers.some(dv => dv.id === App.selectedDividerId)) App.selectedDividerId = null;
+
+  // After the flat fields, which are the fallback root for a snapshot taken
+  // before hierarchy existed. This is also what moves the canvas back to
+  // whichever component the undone edit was made in — the snapshot carries
+  // componentPath, so undo lands where the change happened rather than
+  // wherever the user happens to be standing.
+  adoptComponents(d);
 
   emit(Change.ALPHABET, Change.GRAPH);
 }

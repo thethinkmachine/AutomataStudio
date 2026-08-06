@@ -2,7 +2,7 @@ import { closeModal, registerModal, showOverlay } from './modal.js';
 import { showExampleCard } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim } from './simulation.js';
-import { $, App, getBoundaryMarkers, isTwoWayFA } from './state.js';
+import { $, App, activeComponentId, ensureRootComponent, getBoundaryMarkers, isTwoWayFA } from './state.js';
 import { Change, emit } from './store.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -148,11 +148,26 @@ registerModal('confirm-modal', {
   }
 });
 
+const maxIdNum = items => Math.max(0, ...items.map(o => {
+  const m = String(o.id).match(/(\d+)/g);
+  return m ? Math.max(...m.map(Number)) : 0;
+}));
+
 export function resetIds() {
-  App.stateN = Math.max(0, ...App.states.map(s => { const m = s.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
-  App.transN = Math.max(0, ...App.transitions.map(t => { const m = t.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
-  App.noteN = Math.max(0, ...(App.notes || []).map(n => { const m = n.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
-  App.dividerN = Math.max(0, ...(App.dividers || []).map(d => { const m = d.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
+  // State and transition counters are global across the component tree, not
+  // per-component: two components numbering their own q0 would collide in
+  // App.domCache and in every [data-id] lookup the moment both are on screen.
+  // So this has to consider every component, not just the one on canvas.
+  const allStates = [...App.states], allTrans = [...App.transitions];
+  for (const c of App.components) {
+    if (c.id === activeComponentId()) continue;
+    if (Array.isArray(c.states)) allStates.push(...c.states);
+    if (Array.isArray(c.transitions)) allTrans.push(...c.transitions);
+  }
+  App.stateN = maxIdNum(allStates);
+  App.transN = maxIdNum(allTrans);
+  App.noteN = maxIdNum(App.notes || []);
+  App.dividerN = maxIdNum(App.dividers || []);
 }
 export function clearAll(silent) {
   if (!silent && App.states.length > 0) {
@@ -172,6 +187,11 @@ export function clearAll(silent) {
 
 export function performClear() {
   App.states = []; App.transitions = []; App.startId = null; App.accepts.clear();
+  // Clearing the canvas discards the whole component tree, not just the
+  // component that happens to be on screen — otherwise the sub-machines
+  // survive invisibly and reappear on the next descend.
+  App.components = []; App.rootComponentId = null; App.componentPath = []; App.componentN = 0;
+  ensureRootComponent();
   App.stateN = 0; App.transN = 0; App.history = []; App.future = [];
   App.notes = []; App.noteN = 0;
   App.dividers = []; App.dividerN = 0; App.selectedDividerId = null;

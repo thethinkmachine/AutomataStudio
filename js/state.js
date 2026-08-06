@@ -67,6 +67,9 @@ export const App = {
   stackAlpha: new Set(['Z']), // will be sync'd in init
   tapeCount: 2,
   states: [], transitions: [],
+  // Hierarchical machines — see the COMPONENTS section below. A flat machine is
+  // a tree of exactly one component, so nothing else has to special-case it.
+  components: [], rootComponentId: null, componentPath: [], componentN: 0,
   startId: null, accepts: new Set(),
   selectedStates: new Set(),
   selectedTransitions: new Set(),
@@ -231,6 +234,134 @@ export function normalizeBoundarySymbolsForMachine(m = App.machine) {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  COMPONENTS
+// ══════════════════════════════════════════════════════════════════
+// A hierarchical machine is a set of components. Exactly one is on the canvas
+// at a time, and App.states/transitions/startId/accepts ARE that component's
+// live working copy — so the renderer, the algorithms, and the ~26 sites that
+// reassign App.states wholesale all keep meaning exactly what they meant.
+//
+// The invariant that makes that safe:
+//
+//   The live arrays are authoritative for the active component.
+//   App.components[active] is a cache, valid only after flushActiveComponent().
+//   READERS FLUSH, WRITERS DON'T.
+//
+// The readers are the four places that need the whole tree at once: snapshot(),
+// exportWorkspaceState(), the compiler, and descend/ascend. Every writer is
+// left alone.
+//
+// Flushing from a store subscriber instead would be tidier to write and harder
+// to reason about: commit() is snapshot() + emit(), so the subscriber runs
+// *after* snapshot has serialized. Having each reader flush on its own line
+// makes the ordering local and obvious rather than a property of subscriber
+// registration order.
+
+export function newComponentId() { return 'c' + (++App.componentN); }
+
+export function getComponent(id) { return App.components.find(c => c.id === id); }
+
+export function activeComponentId() {
+  return App.componentPath[App.componentPath.length - 1] || App.rootComponentId;
+}
+
+export function activeComponent() { return getComponent(activeComponentId()); }
+
+// Writes the live arrays back into the component they belong to. The arrays are
+// shared by reference where they can be, so this is only really repairing the
+// bindings that a wholesale `App.states = ...` reassignment broke.
+export function flushActiveComponent() {
+  // Self-healing rather than boot-order dependent: every reader flushes, so
+  // making the root appear here means no code path can reach the tree before
+  // something has remembered to create it.
+  const c = activeComponent() || ensureRootComponent();
+  if (!c) return null;
+  c.states = App.states;
+  c.transitions = App.transitions;
+  c.startId = App.startId;
+  c.accepts = [...App.accepts];
+  c.cam = { ...App.cam };
+  return c;
+}
+
+// Points the live arrays at a component without flushing the outgoing one.
+// Restore paths need exactly this: the live arrays there belong to the state
+// being discarded, so writing them back is at best wasted work, and would
+// become a real bug the day adoptComponents merges into the existing tree
+// instead of replacing it wholesale.
+export function bindComponent(id, path) {
+  const target = getComponent(id);
+  if (!target) return false;
+  App.states = target.states || [];
+  App.transitions = target.transitions || [];
+  App.startId = target.startId || null;
+  App.accepts = new Set(target.accepts || []);
+  App.cam = { ...(target.cam || { x: 0, y: 0, z: 1 }) };
+  App.componentPath = path && path.length ? [...path] : [id];
+  // Selection is per-component: ids from the component being left would either
+  // dangle or, with global counters, silently point at a different node.
+  App.selectedStates.clear();
+  App.selectedTransitions.clear();
+  return true;
+}
+
+// Every machine has a root component, including the 19 flat models and every
+// file saved before hierarchy existed. Synthesizing one on load is what lets
+// the rest of the app stop caring whether a machine is hierarchical.
+export function ensureRootComponent() {
+  const root = App.rootComponentId && getComponent(App.rootComponentId);
+  if (root) {
+    if (!App.componentPath.length) App.componentPath = [App.rootComponentId];
+    return root;
+  }
+  const c = {
+    id: newComponentId(),
+    name: 'Main',
+    states: App.states,
+    transitions: App.transitions,
+    startId: App.startId,
+    accepts: [...App.accepts],
+    exitIds: [],
+    cam: { ...App.cam }
+  };
+  App.components = [c];
+  App.rootComponentId = c.id;
+  App.componentPath = [c.id];
+  return c;
+}
+
+// Adopts a serialized component tree, falling back to a single root built from
+// the flat fields when there isn't one. Shared by snapshot restore, workspace
+// import and file load, because all three face the same legacy shape.
+export function adoptComponents(data) {
+  const list = Array.isArray(data && data.components) ? data.components : null;
+  const rootId = data && data.rootComponentId;
+  if (list && list.length && rootId && list.some(c => c.id === rootId)) {
+    App.components = list;
+    App.rootComponentId = rootId;
+    App.componentN = Math.max(data.componentN || 0, App.componentN);
+    const path = (data.componentPath || []).filter(id => list.some(c => c.id === id));
+    const target = path.length ? path[path.length - 1] : rootId;
+    bindComponent(target, path.length ? path : [target]);
+    return;
+  }
+  App.components = [];
+  App.rootComponentId = null;
+  App.componentPath = [];
+  ensureRootComponent();
+}
+
+export function serializeComponents() {
+  flushActiveComponent();
+  return {
+    components: JSON.parse(JSON.stringify(App.components)),
+    rootComponentId: App.rootComponentId,
+    componentPath: [...App.componentPath],
+    componentN: App.componentN
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  WORKSPACES
 // ══════════════════════════════════════════════════════════════════
 // The open tabs and which one is live. Both are reassigned wholesale (filter,
@@ -242,7 +373,12 @@ export function setWorkspaces(v) { Workspaces = v; }
 export function setActiveWorkspaceId(v) { activeWorkspaceId = v; }
 
 export function exportWorkspaceState() {
+  // A reader of the whole tree, so it flushes first. The flat states/transitions
+  // below stay the ACTIVE component's, which is what they have always been —
+  // that is what lets an older build open this blob and show something sane.
+  const tree = serializeComponents();
   return {
+    ...tree,
     machine: App.machine,
     sigma: [...App.sigma],
     outputAlpha: [...App.outputAlpha],
@@ -305,6 +441,9 @@ export function importWorkspaceState(data) {
     // different radius draws its states at the previous tab's size.
     setR(App.config.radius);
   }
+
+  // After the flat fields, because the fallback root is built from them.
+  adoptComponents(data);
 
   if (typeof normalizeBoundarySymbolsForMachine === 'function') {
     normalizeBoundarySymbolsForMachine(App.machine);

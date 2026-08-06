@@ -6,7 +6,7 @@ import { importJFLAPText } from './import-jflap.js';
 import { closeModal, showOverlay } from './modal.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { runSim } from './simulation.js';
-import { $, App, MachineExamples, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
+import { $, App, MachineExamples, Workspaces, activeWorkspaceId, adoptComponents, exportWorkspaceState, getMachineConfig, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { hideContextMenu } from './states-transitions.js';
 import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen, hideTabContextMenu, hideTabOverflowMenu, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
@@ -527,6 +527,10 @@ export function loadData(d, isExample) {
   if (App.machine === 'PDA' || App.machine === 'DPDA') {
     App.machine = hasPdaNondeterminism(App.transitions) ? 'NPDA' : 'DPDA';
   }
+  // Before resetIds, which needs the whole tree to pick collision-free
+  // counters, and after the flat fields, which are the fallback root for a
+  // file saved before hierarchy existed.
+  adoptComponents(d);
   resetIds();
   if (d.grammar) {
     const grammar = normalizeGrammarData(d.grammar);

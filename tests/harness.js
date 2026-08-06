@@ -127,6 +127,13 @@ export function resetApp() {
   App.transitions = [];
   App.startId = null;
   App.accepts = new Set();
+  // Module-level state that survives a reset is what breaks isolation here, and
+  // the component tree is exactly that: leaving it populated would start the
+  // next test standing inside the previous test's sub-machine.
+  App.components = [];
+  App.rootComponentId = null;
+  App.componentPath = [];
+  App.componentN = 0;
   App.selectedStates = new Set();
   App.selectedTransitions = new Set();
   App.stateN = 0;
