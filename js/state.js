@@ -21,10 +21,21 @@ export const MachineTypes = {
   'LBA': { label: 'LBA', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, hasEndMarkers: true, isTransducer: false, badge: 'bd-lba', file: 'lba' },
   'ITM': { label: '2-Way Infinite TM', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-itm', file: 'ittm' },
 
-  // Hierarchical. The stack an RSM needs is the CALL stack — built from the
-  // component tree at run time, not an alphabet the user edits — so hasStack
-  // stays false (no Γ panel) and hasCallStack carries the capability instead.
-  'RSM': { label: 'RSM', category: 'hier', implemented: true, hasEpsilon: true, hasStack: false, hasTape: false, hasCallStack: true, isTransducer: false, badge: 'bd-rsm', file: 'rsm' },
+  // Hierarchical. Two capabilities, and the difference between them is the
+  // whole point of the category:
+  //
+  //   hasSuperstates — a state may CONTAIN other states. Containment is a tree,
+  //                    a tree cannot cycle, so the nesting is bounded and the
+  //                    machine flattens to an NFA. Exactly regular.
+  //   hasCallStack   — a state may REFERENCE another component by name.
+  //                    Reference is a graph, a graph can cycle, so the depth is
+  //                    unbounded and a stack is unavoidable. Exactly CFL.
+  //
+  // The stack an RSM needs is the CALL stack — built from the component tree at
+  // run time, not an alphabet the user edits — so hasStack stays false (no Γ
+  // panel) and hasCallStack carries the capability instead.
+  'HSM': { label: 'HSM', category: 'hier', implemented: true, hasEpsilon: true, hasStack: false, hasTape: false, hasSuperstates: true, hasActions: true, isTransducer: false, badge: 'bd-hsm', file: 'hsm' },
+  'RSM': { label: 'RSM', category: 'hier', implemented: true, hasEpsilon: true, hasStack: false, hasTape: false, hasSuperstates: true, hasCallStack: true, hasActions: true, isTransducer: false, badge: 'bd-rsm', file: 'rsm' },
 
   'Moore': { label: 'Moore', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-moore', file: 'moore' },
   'Mealy': { label: 'Mealy', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-mealy', file: 'mealy' },
@@ -50,7 +61,15 @@ export const MachineExamples = {
   'MTM': [{ file: 'mtm', label: '3-tape adder — one pass' }, { file: 'mtm-classic', label: 'Classic: aⁿbⁿcⁿ with 2 tapes' }],
   'LBA': [{ file: 'lba', label: 'Powers of two, by halving' }, { file: 'lba-classic', label: 'Classic: scan to first b' }],
   'ITM': [{ file: 'ittm', label: 'The 4-state busy beaver' }, { file: 'ittm-classic', label: 'Classic: one step left' }],
-  'RSM': [{ file: 'rsm', label: 'Balanced brackets: S → ( S ) S | ε' }],
+  'HSM': [
+    { file: 'hsm', label: 'Guard AI: one arrow leaves the whole region' },
+    { file: 'hsm-classic', label: 'Classic: one arrow out of superstate D' },
+    { file: 'hsm-actions', label: 'Actions: a region is a scope' },
+    { file: 'hsm-history', label: 'History: resume where you were interrupted' },
+    { file: 'hsm-guards', label: 'Guards: a flag is a state you didn’t draw' },
+    { file: 'hsm-parallel', label: 'Orthogonality: L(A ∥ B) = L(A) ∩ L(B)' }
+  ],
+  'RSM': [{ file: 'rsm', label: 'Balanced brackets: S → ( S ) S | ε' }, { file: 'rsm-classic', label: 'Classic: aⁿbⁿ from S → a S b | ε' }],
   'Moore': [{ file: 'moore', label: 'Combination lock 1101' }, { file: 'moore-classic', label: 'Classic: traffic light' }],
   'Mealy': [{ file: 'mealy', label: 'Serial binary adder' }, { file: 'mealy-classic', label: 'Classic: report each bit' }],
   'FST': [{ file: 'fst', label: 'Binary → Gray code' }, { file: 'fst-classic', label: 'Classic: nondeterministic rewriter' }]
@@ -60,13 +79,32 @@ export const MachineCategories = [
   { id: 'fa', label: 'Finite Automata', machines: ['DFA', 'NFA', 'ε-NFA', '2DFA', '2NFA'] },
   { id: 'mem', label: 'Memory Automata', machines: ['DPDA', 'NPDA', 'QA', 'Counter', '2PDA'] },
   { id: 'tm', label: 'Turing Machines', machines: ['TM', 'NDTM', 'MTM', 'LBA', 'ITM'] },
-  { id: 'hier', label: 'Hierarchical', machines: ['RSM'] },
+  { id: 'hier', label: 'Hierarchical', machines: ['HSM', 'RSM'] },
   { id: 'special', label: 'Transducers', machines: ['Moore', 'Mealy', 'FST'] }
 ];
 
-// True for machines whose states may invoke another component.
-export function hasHierarchy(m = App.machine) {
+// True for machines whose states may CONTAIN other states (Harel superstates).
+export function hasSuperstates(m = App.machine) {
+  return !!(MachineTypes[m] && MachineTypes[m].hasSuperstates);
+}
+
+// True for machines whose states may REFERENCE another component (RSM boxes).
+export function hasCallStack(m = App.machine) {
   return !!(MachineTypes[m] && MachineTypes[m].hasCallStack);
+}
+
+// True for machines whose states carry entry/exit actions and whose arrows carry
+// an action of their own. Deliberately NOT isTransducer: acceptance is unchanged
+// and Σ is still the only thing read, so every language-class claim stands. The
+// output is a side effect, which is exactly what an action is.
+export function hasActions(m = App.machine) {
+  return !!(MachineTypes[m] && MachineTypes[m].hasActions);
+}
+
+// Either kind of nesting — the breadcrumb, the component tree and the
+// hierarchy context-menu items are shared by both.
+export function hasHierarchy(m = App.machine) {
+  return hasSuperstates(m) || hasCallStack(m);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -76,6 +114,10 @@ export const App = {
   machine: 'DFA', tool: 'move', view: 'build',
   sigma: new Set(['a', 'b']),
   outputAlpha: new Set(['0', '1']),
+  // Boolean variables a guard may test and an arrow may assign. An ARRAY, not a
+  // Set: declaration order is the bit order of the valuation key, so two routes
+  // to the same valuation have to produce the same flat state id.
+  flags: [],
   stackAlpha: new Set(['Z']), // will be sync'd in init
   tapeCount: 2,
   states: [], transitions: [],
@@ -117,6 +159,20 @@ export const App = {
     // base case would otherwise explore forever; hitting this reports "is there
     // a base case?" rather than a bare reject.
     maxCallDepth: 60,
+    // Ceiling on the flattened state count when a construction is a PRODUCT
+    // rather than a relabelling — history memory today, orthogonal regions next.
+    // Those are exponential by nature, which is the succinctness result; this is
+    // what stops the exponent being paid on the simulator's hot path in silence.
+    maxFlatStates: 4000,
+    // Superstate containers. Their size is DERIVED from the bounding box of
+    // their children rather than stored, so a container can never clip a child
+    // and dragging one in or out resizes it for free. `head` is the title band,
+    // which is also the only part of the container that takes pointer events —
+    // the body is click-through so the states inside stay reachable.
+    // `closedW`/`closedH` size a COLLAPSED region, which is sized like a box
+    // rather than by its contents — the contents being exactly what it is not
+    // showing. Collapsing is a view state and never reaches the flattener.
+    superstate: { pad: 28, head: 24, minW: 190, minH: 120, closedW: 150, closedH: 56 },
     // Per-word budget for the Language panel's fingerprint. Deliberately
     // far smaller than maxTmSteps: the fingerprint runs one simulation per
     // cell, so this is multiplied by ~127. Words that exhaust it are drawn
@@ -165,6 +221,18 @@ export const App = {
   history: [], future: [],
   // Interaction
   drag: null, dragOff: { x: 0, y: 0 },
+  // Per-state offsets for the drag in flight, and whether that drag has
+  // actually moved yet. Both are armed on pointer-DOWN, so a press that stays
+  // still is indistinguishable from a drag without the second flag — which is
+  // what tells the drop step that this was a selection, not a drop. Declared
+  // here rather than sprung onto App by canvas.js so a reset can clear them.
+  // The region rects as they stood the instant a drag's first real movement was
+  // detected, before this frame's exclusion shrinks anything. containerAt hit-tests
+  // against this frozen snapshot rather than the live (exclusion-shrunk) rects, so
+  // a state that only nudges within its region is not evicted the moment the
+  // region's rendered box starts shrinking away from it. Populated on first
+  // movement, cleared with the rest of the gesture.
+  dragOffsets: null, dragCurve: null, dragPendingSnapshot: false, dragOriginRects: null,
   transFrom: null, ctxId: null, ctxEdge: null, ctxMode: null, editId: null,
   spacePan: false,
   toolbarDock: null,
@@ -178,7 +246,17 @@ export const App = {
   // Current algo
   currentAlgo: 'table',
   // DOM Cache for performance
-  domCache: { states: new Map(), transitions: new Map(), notes: new Map(), dividers: new Map(), startArrow: null },
+  domCache: { states: new Map(), transitions: new Map(), supers: new Map(), notes: new Map(), dividers: new Map(), startArrow: null },
+  // Derived superstate geometry, recomputed by the renderer once per pass and
+  // read by everything that needs a node's extent — edge trimming, hit-testing
+  // for drag-and-drop, the content bounds behind fit-to-screen and export.
+  // Map<stateId, {x, y, w, h}>.
+  superRects: new Map(),
+  // What a collapsed region is currently hiding. Computed beside the rects and
+  // read by the renderer, the edge projection, fit-to-screen and the minimap —
+  // a hidden state keeps its absolute position, so anything that measures
+  // geometry has to know it is not on screen. Set<stateId>.
+  hiddenStates: new Set(),
   // State classification overlay (null = off, Map<id → 'live'|'dead'|'unreachable'> = on)
   stateClassification: null,
   // Workspace B (M₂ for binary operations)
@@ -398,6 +476,7 @@ export function exportWorkspaceState() {
     machine: App.machine,
     sigma: [...App.sigma],
     outputAlpha: [...App.outputAlpha],
+    flags: [...(App.flags || [])],
     stackAlpha: [...App.stackAlpha],
     tapeCount: App.tapeCount,
     states: JSON.parse(JSON.stringify(App.states)),
@@ -426,6 +505,7 @@ export function importWorkspaceState(data) {
   App.machine = data.machine || 'DFA';
   App.sigma = new Set(data.sigma || ['a', 'b']);
   App.outputAlpha = new Set(data.outputAlpha || ['0', '1']);
+  App.flags = Array.isArray(data.flags) ? [...data.flags] : [];
   App.stackAlpha = new Set(data.stackAlpha || ['Z']);
   App.tapeCount = data.tapeCount || 2;
   App.states = data.states || [];

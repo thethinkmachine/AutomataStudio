@@ -1,0 +1,102 @@
+{
+  "machine": "HSM",
+  "sigma": ["move", "stop", "draw", "holster", "die"],
+  "states": [
+    { "id": "s1", "x": 520, "y": 330, "name": "Alive", "super": true, "parallel": true },
+    { "id": "s2", "x": 320, "y": 330, "name": "Body", "super": true, "parent": "s1", "initial": "s3" },
+    { "id": "s3", "x": 250, "y": 330, "name": "idle", "parent": "s2" },
+    { "id": "s4", "x": 400, "y": 330, "name": "run", "parent": "s2" },
+    { "id": "s5", "x": 720, "y": 330, "name": "Arms", "super": true, "parent": "s1", "initial": "s6" },
+    { "id": "s6", "x": 650, "y": 330, "name": "holstered", "parent": "s5" },
+    { "id": "s7", "x": 800, "y": 330, "name": "drawn", "parent": "s5" },
+    { "id": "s8", "x": 520, "y": 620, "name": "dead" }
+  ],
+  "startId": "s1",
+  "accepts": ["s4", "s7"],
+  "transitions": [
+    { "id": "t1", "from": "s3", "to": "s4", "symbol": "move" },
+    { "id": "t2", "from": "s4", "to": "s3", "symbol": "stop" },
+    { "id": "t3", "from": "s3", "to": "s3", "symbol": "draw" },
+    { "id": "t4", "from": "s3", "to": "s3", "symbol": "holster" },
+    { "id": "t5", "from": "s4", "to": "s4", "symbol": "draw" },
+    { "id": "t6", "from": "s4", "to": "s4", "symbol": "holster" },
+    { "id": "t7", "from": "s6", "to": "s7", "symbol": "draw" },
+    { "id": "t8", "from": "s7", "to": "s6", "symbol": "holster" },
+    { "id": "t9", "from": "s6", "to": "s6", "symbol": "move" },
+    { "id": "t10", "from": "s6", "to": "s6", "symbol": "stop" },
+    { "id": "t11", "from": "s7", "to": "s7", "symbol": "move" },
+    { "id": "t12", "from": "s7", "to": "s7", "symbol": "stop" },
+    { "id": "t13", "from": "s1", "to": "s8", "symbol": "die" }
+  ],
+  "stateN": 8,
+  "transN": 13,
+  "rootComponentId": "c1",
+  "componentPath": ["c1"],
+  "componentN": 1,
+  "components": [
+    {
+      "id": "c1",
+      "name": "Main",
+      "startId": "s1",
+      "accepts": ["s4", "s7"],
+      "exitIds": [],
+      "states": [
+        { "id": "s1", "x": 520, "y": 330, "name": "Alive", "super": true, "parallel": true },
+        { "id": "s2", "x": 320, "y": 330, "name": "Body", "super": true, "parent": "s1", "initial": "s3" },
+        { "id": "s3", "x": 250, "y": 330, "name": "idle", "parent": "s2" },
+        { "id": "s4", "x": 400, "y": 330, "name": "run", "parent": "s2" },
+        { "id": "s5", "x": 720, "y": 330, "name": "Arms", "super": true, "parent": "s1", "initial": "s6" },
+        { "id": "s6", "x": 650, "y": 330, "name": "holstered", "parent": "s5" },
+        { "id": "s7", "x": 800, "y": 330, "name": "drawn", "parent": "s5" },
+        { "id": "s8", "x": 520, "y": 620, "name": "dead" }
+      ],
+      "transitions": [
+        { "id": "t1", "from": "s3", "to": "s4", "symbol": "move" },
+        { "id": "t2", "from": "s4", "to": "s3", "symbol": "stop" },
+        { "id": "t3", "from": "s3", "to": "s3", "symbol": "draw" },
+        { "id": "t4", "from": "s3", "to": "s3", "symbol": "holster" },
+        { "id": "t5", "from": "s4", "to": "s4", "symbol": "draw" },
+        { "id": "t6", "from": "s4", "to": "s4", "symbol": "holster" },
+        { "id": "t7", "from": "s6", "to": "s7", "symbol": "draw" },
+        { "id": "t8", "from": "s7", "to": "s6", "symbol": "holster" },
+        { "id": "t9", "from": "s6", "to": "s6", "symbol": "move" },
+        { "id": "t10", "from": "s6", "to": "s6", "symbol": "stop" },
+        { "id": "t11", "from": "s7", "to": "s7", "symbol": "move" },
+        { "id": "t12", "from": "s7", "to": "s7", "symbol": "stop" },
+        { "id": "t13", "from": "s1", "to": "s8", "symbol": "die" }
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "id": "n1",
+      "x": 130,
+      "y": 60,
+      "w": 540,
+      "h": 175,
+      "text": "AN AND-REGION IS THE INTERSECTION.\n\nThe dashed rule down the middle of Alive is the notation for \"both of these at once\". Body and Arms are not alternatives; the machine is in one state of each, always.\n\nAccepting needs run AND drawn. Run 'move draw' — accept. 'move' alone — reject, because Arms is still holstered. 'draw' alone — reject, because Body is still idle.\n\nThat is not an analogy. On a symbol, EVERY region takes a transition or none does, so the language of an AND-region is literally the intersection of its regions' languages — the product construction that proves regular languages are closed under intersection, drawn as a picture."
+    },
+    {
+      "id": "n2",
+      "x": 130,
+      "y": 700,
+      "w": 540,
+      "h": 175,
+      "text": "AND THIS IS WHERE SUCCINCTNESS TURNS EXPONENTIAL.\n\nElsewhere a region buys you 1 arrow instead of N. Here two regions of two states denote 2x2 = 4 configurations, and a third would make 8, not 6. The picture grows by addition; the automaton it denotes grows by multiplication. That is the actual theorem about statecharts.\n\nTwo things that bite:\n\n· 'Ignore this event' is a self-loop on each LEAF. A self-loop drawn on the REGION exits and re-enters it, which snaps that region back to its default entry. Every t3–t6, t9–t12 arrow here exists for that reason.\n\n· 'die' is drawn on Alive itself, so it is GLOBAL — one arrow tears down both regions at once, and the flattening has exactly one dead configuration rather than one per surviving pair."
+    }
+  ],
+  "noteN": 2,
+  "meta": {
+    "title": "Orthogonality: L(A ∥ B) = L(A) ∩ L(B)",
+    "blurb": "Body and Arms run concurrently inside one region. Regions fire synchronously, so the language of an AND-region is the intersection of its regions' — and flattening it is the product construction. Two regions of two states denote four configurations; a third makes eight, not six.",
+    "inputs": [
+      { "w": "move draw", "expect": "accept", "label": "running and drawn" },
+      { "w": "draw move", "expect": "accept", "label": "order does not matter" },
+      { "w": "move", "expect": "reject", "label": "running, still holstered" },
+      { "w": "draw", "expect": "reject", "label": "drawn, still idle" },
+      { "w": "move draw stop", "expect": "reject", "label": "stopped again" },
+      { "w": "move draw holster draw", "expect": "accept", "label": "back to both" },
+      { "w": "move draw die", "expect": "reject", "label": "one arrow ends every region" }
+    ]
+  }
+}

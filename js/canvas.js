@@ -5,8 +5,9 @@ import { clearActiveNoteHighlight, dragNoteTo, endNoteResize, includeNoteBounds,
 import { getWorkspaceData } from './persistence.js';
 import { makeSVG, renderAll, updateFastDOM, updateLPanel, updateRPanel } from './render.js';
 import { $, App } from './state.js';
+import { childIndex, containerAt, depthIndex, expandAllRegions, isCollapsed, isSuperstate, nodeHalf, refreshSuperRects, reparentState, stateIndex, subtreeIds, topLevelOf } from './superstates.js';
 import { createState, deleteState, getState, hideContextMenu, newId, newTId, openTransModal } from './states-transitions.js';
-import { Change, emit } from './store.js';
+import { Change, batch, emit } from './store.js';
 import { fitToScreen, markActiveWorkspaceSaved, renderMinimap } from './ui.js';
 import { showStatus } from './utils.js';
 
@@ -71,6 +72,8 @@ export function cancelCanvasManipulationForTouch() {
   App.dragOffsets = null;
   App.dragCurve = null;
   App.dragPendingSnapshot = false;
+  App.dragOriginRects = null;
+  clearDropTarget();
   if (typeof clearAlignGuides === 'function') clearAlignGuides();
 }
 
@@ -427,6 +430,67 @@ export function queueMouseMove(e) {
 
 document.addEventListener('pointermove', queueMouseMove);
 
+// ══════════════════════════════════════════════════════════════════
+//  DROPPING A STATE INTO A SUPERSTATE REGION
+// ══════════════════════════════════════════════════════════════════
+// The candidate container is resolved from the POINTER, not from where the
+// dragged node's centre lands. Dropping is aimed with the cursor, and a region
+// dragged over a smaller one would otherwise never be droppable — its centre is
+// nowhere near the thing being aimed at.
+export let dropTargetId = null;
+
+// Only the top of the drag set can change parent: the contents of a region
+// being dragged travel with it and stay inside it.
+function draggedTopLevel() {
+  return topLevelOf(Object.keys(App.dragOffsets || {}), App.states);
+}
+
+function setDropHighlight(id, on) {
+  if (!id) return;
+  const el = App.domCache.supers.get(id) || document.querySelector(`.super-st[data-id="${id}"]`);
+  if (el) el.classList.toggle('drop-target', on);
+}
+
+export function updateDropTarget(pt) {
+  if (!App.dragOffsets || !App.superRects.size) return;
+  // The frozen pre-drag rects, when there are any — see the field's declaration
+  // in state.js for why the live (exclusion-shrunk) rects are the wrong ones to
+  // hit-test a still-in-progress drag against.
+  const rects = App.dragOriginRects || App.superRects;
+  const next = containerAt(pt, App.states, rects, new Set(draggedTopLevel()));
+  if (next === dropTargetId) return;
+  setDropHighlight(dropTargetId, false);
+  dropTargetId = next;
+  setDropHighlight(dropTargetId, true);
+}
+
+export function clearDropTarget() {
+  setDropHighlight(dropTargetId, false);
+  dropTargetId = null;
+}
+
+export function commitDropTarget() {
+  const target = dropTargetId;
+  clearDropTarget();
+  if (!App.dragOffsets) return;
+  // A press that never moved is a selection, not a drop. dragOffsets is armed on
+  // pointer-DOWN, so without this every plain click on a state inside a region
+  // would commit a drop onto `null` and silently evict it — and, because the
+  // drag's undo point is only taken on first movement, with nothing to undo.
+  // `dragPendingSnapshot` is exactly the "hasn't moved yet" flag onStateDown
+  // sets for this distinction; the guard lives here so every caller is safe.
+  if (App.dragPendingSnapshot) return;
+  const moving = draggedTopLevel();
+  // One render for the whole drop, however many states moved house.
+  batch(() => {
+    let changed = false;
+    for (const id of moving) {
+      if (reparentState(id, target, { takeSnapshot: false })) changed = true;
+    }
+    if (changed) markDirty();
+  });
+}
+
 export function handlePointerMove(e) {
   if (App.toolbarDragging) return;
   lastPointerClient = e;
@@ -469,24 +533,30 @@ export function handlePointerMove(e) {
   if (App.dragOffsets) {
     const pt = svgPt(e);
     // First movement of a drag: capture the pre-drag positions so undo returns
-    // the states to where they were when the press started.
+    // the states to where they were when the press started, and freeze the
+    // region rects as they stood a moment ago — before this drag's own
+    // exclusion has shrunk anything.
     if (App.dragPendingSnapshot) {
       App.dragPendingSnapshot = false;
       snapshot();
+      App.dragOriginRects = new Map(App.superRects);
     }
     const snap = isSnapActive(e.shiftKey);
     const gSnapAmount = App.config.gridSnap || 20;
-    App.selectedStates.forEach(sid => {
+    // Iterates the offsets rather than the selection, because a region drag
+    // carries states that were never selected.
+    Object.keys(App.dragOffsets).forEach(sid => {
       const s = getState(sid);
-      if (s && App.dragOffsets[sid]) {
+      if (s) {
         let nx = pt.x - App.dragOffsets[sid].x;
         let ny = pt.y - App.dragOffsets[sid].y;
         if (snap) { nx = Math.round(nx / gSnapAmount) * gSnapAmount; ny = Math.round(ny / gSnapAmount) * gSnapAmount; }
         s.x = nx; s.y = ny;
       }
     });
+    updateDropTarget(pt);
     // Alignment guides only make sense while dragging a single state.
-    if (!snap && App.selectedStates.size === 1) {
+    if (!snap && App.selectedStates.size === 1 && Object.keys(App.dragOffsets).length === 1) {
       const sid = [...App.selectedStates][0];
       const s = getState(sid);
       if (s) {
@@ -578,11 +648,21 @@ export function endPointerInteractions() {
     App.marqueeRect.remove(); App.marqueeRect = null; App.marquee = null; renderMinimap();
   }
   if (App.dragOffsets || App.dragCurve) {
+    const wasRealDrag = !!App.dragOffsets && !App.dragPendingSnapshot;
+    if (App.dragOffsets) commitDropTarget();
     App.dragOffsets = null;
     App.dragCurve = null;
     App.dragPendingSnapshot = false;
+    App.dragOriginRects = null;
     clearAlignGuides();
     renderMinimap();
+    // dragMeasureExclusion() keys off App.dragOffsets, so every render while it
+    // was still set — including the structural one commitDropTarget just
+    // triggered — measured the state's own region without it. Now that
+    // dragOffsets is genuinely null, one more repaint lets that region settle
+    // to its true final shape, whether the state left, arrived, or just moved
+    // around inside it.
+    if (wasRealDrag) emit(Change.CANVAS);
   }
   if (App.dividerDraft) {
     finishDividerDraw();
@@ -666,6 +746,11 @@ export function showCanvasContextMenu(x, y) {
   m.style.display = 'block';
   const pasteItem = $('canvas-ctx-paste');
   if (pasteItem) pasteItem.classList.toggle('disabled', !App.clipboard || !App.clipboard.states.length);
+  // Offered only when there is something folded — a collapsed region is easy to
+  // lose once the camera has moved on, and this is the way back that does not
+  // require finding it first.
+  const expandAll = $('ctx-canvas-expand-all');
+  if (expandAll) expandAll.style.display = App.states.some(isCollapsed) ? '' : 'none';
   const w = 190, h = m.offsetHeight || 170;
   m.style.left = Math.max(8, Math.min(x, innerWidth - w)) + 'px';
   m.style.top = Math.max(8, Math.min(y, innerHeight - h)) + 'px';
@@ -693,21 +778,15 @@ export function ctxCanvasFit() {
   hideCanvasContextMenu();
   fitToScreen();
 }
+export function ctxCanvasExpandAll() {
+  hideCanvasContextMenu();
+  expandAllRegions();
+  fitToScreen();
+}
 export function ctxCanvasAutoLayout() {
   hideCanvasContextMenu();
   autoLayout();
 }
-
-// ── Double-click empty canvas to create a state ──
-wrap.addEventListener('dblclick', e => {
-  if (App.tool !== 'pointer' && App.tool !== 'move') return;
-  if (wrap.dataset.lastPointerType === 'touch') return;
-  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, .minimap-show-btn, #status-bar')) return;
-  const onSVGBg = e.target === wrap || e.target.id === 'svgCanvas' || e.target === $('cam-g');
-  if (!onSVGBg) return;
-  const pt = svgPt(e);
-  createState(pt.x, pt.y);
-});
 
 export function onStateDown(e, id) {
   if (App.spacePan) return;
@@ -717,7 +796,10 @@ export function onStateDown(e, id) {
   if (App.tool === 'del') { deleteState(id); return; }
 
   const el = document.querySelector(`[data-id="${id}"]`);
-  if (el && el.parentNode) el.parentNode.appendChild(el);
+  // Raising the node under the cursor keeps it above its neighbours — but a
+  // region's layer is painted outermost-first on purpose, and reordering there
+  // would put a container on top of what it contains.
+  if (el && el.parentNode && !App.superRects.has(id)) el.parentNode.appendChild(el);
 
   if (App.tool === 'trans') {
     if (!App.transFrom) { App.transFrom = id; hlState(id, true); showStatus('Now click target state'); }
@@ -760,9 +842,13 @@ export function onStateDown(e, id) {
 
     const pt = svgPt(e);
     App.dragOffsets = {};
+    // Dragging a region drags what it contains. The offsets are per-state and
+    // absolute, so the group keeps its shape without anyone tracking a delta.
     App.selectedStates.forEach(sid => {
-      const s = getState(sid);
-      if (s) App.dragOffsets[sid] = { x: pt.x - s.x, y: pt.y - s.y };
+      for (const did of subtreeIds(sid)) {
+        const s = getState(did);
+        if (s && !App.dragOffsets[did]) App.dragOffsets[did] = { x: pt.x - s.x, y: pt.y - s.y };
+      }
     });
     try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
     // The undo entry is deliberately NOT taken here. A press that never turns
@@ -860,10 +946,24 @@ export function selectAllStates() {
   showStatus(`Selected ${App.states.length} state${App.states.length === 1 ? '' : 's'}`);
 }
 
+// Everything a whole-node operation has to act on: the selection, plus the
+// contents of every region in it. A region's own x/y is derived from its
+// children, so moving, copying or deleting one means moving, copying or
+// deleting what it contains — the drag path has always done this via
+// dragOffsets, and this is the same rule for the paths that don't drag.
+export function selectionSubtree(ids = App.selectedStates) {
+  const out = new Set();
+  for (const id of ids) for (const d of subtreeIds(id)) out.add(d);
+  return out;
+}
+
 export function nudgeSelected(dx, dy) {
   if (!App.selectedStates.size) return;
   snapshot();
-  App.selectedStates.forEach(sid => {
+  // Nudging a region by writing its own x/y does nothing: refreshSuperRects
+  // recomputes that point from the children on the very next frame. The
+  // children are the thing that moves.
+  selectionSubtree().forEach(sid => {
     const s = getState(sid);
     if (s) { s.x += dx; s.y += dy; }
   });
@@ -873,11 +973,15 @@ export function nudgeSelected(dx, dy) {
 
 export function copySelection() {
   if (!App.selectedStates.size) { showStatus('No states selected to copy'); return; }
-  const ids = new Set(App.selectedStates);
+  const ids = selectionSubtree();
   const states = App.states.filter(s => ids.has(s.id)).map(s => ({ ...s, isDummyStart: false }));
   const transitions = App.transitions.filter(t => ids.has(t.from) && ids.has(t.to)).map(t => ({ ...t }));
   App.clipboard = { states, transitions };
-  showStatus(`Copied ${states.length} state${states.length === 1 ? '' : 's'}`);
+  const regions = states.filter(isSuperstate).length;
+  App.clipboard.regions = regions;
+  showStatus(regions
+    ? `Copied ${states.length} state${states.length === 1 ? '' : 's'} in ${regions} region${regions === 1 ? '' : 's'}`
+    : `Copied ${states.length} state${states.length === 1 ? '' : 's'}`);
 }
 
 export function duplicateSelection() {
@@ -905,6 +1009,21 @@ export function pasteClipboard(atPoint, fallbackOffset = 32) {
     existingNames.add(name);
     return { ...s, id, name, x: s.x + offX, y: s.y + offY };
   });
+  // Containment travels by id, so it has to be remapped like `from`/`to`. Left
+  // alone, a pasted child keeps pointing at the ORIGINAL region and is adopted
+  // by it the moment it renders, while the pasted region is left an empty
+  // placeholder whose default entry names a state it does not contain.
+  // A copied part whose container did not come along lands at the top level.
+  for (const s of newStates) {
+    if (s.parent) {
+      const mapped = idMap[s.parent];
+      if (mapped) s.parent = mapped; else delete s.parent;
+    }
+    if (s.initial) {
+      const mapped = idMap[s.initial];
+      if (mapped) s.initial = mapped; else delete s.initial;
+    }
+  }
   App.states.push(...newStates);
   const newTransitions = App.clipboard.transitions.map(t => ({ ...t, id: newTId(), from: idMap[t.from], to: idMap[t.to] }));
   App.transitions.push(...newTransitions);
@@ -1083,18 +1202,36 @@ export function sugiyamaLayout(states, transitions, startId) {
   // 35 put rows 56px apart while a state circle is 60px across.
   const nodeR = layoutNodeRadius();
   const gap = layoutGap();
-  const rowPitch = 2 * nodeR + gap;
+  const byId = new Map(states.map(s => [s.id, s]));
+
+  // Per-node extents rather than one shared radius. A region is as big as the
+  // machine inside it, and spacing it as a circle of radius R is what let a
+  // laid-out region overlap its neighbours — or swallow them whole.
+  // With every node a circle this reduces exactly to the old uniform pitch.
+  const half = id => {
+    const { hw, hh } = nodeHalf(byId.get(id), App.superRects);
+    return { hw: Math.max(hw, nodeR), hh: Math.max(hh, nodeR) };
+  };
+
   // Columns need room for the node pair plus the transition label riding on
   // the edge between them, hence the wider multiple of the gap. minRadius
   // stays a floor so the existing setting still means something.
-  const layerPitch = Math.max(App.config.layout.minRadius || 0, 2 * nodeR + gap * 3.4);
-  const byId = new Map(states.map(s => [s.id, s]));
+  const colHW = layers.map(layer => Math.max(nodeR, ...layer.map(id => half(id).hw)));
+  const colX = [];
+  for (let r = 0, x = 0; r < layers.length; r++) {
+    if (r > 0) x += Math.max(App.config.layout.minRadius || 0, colHW[r - 1] + colHW[r] + gap * 3.4);
+    colX.push(x);
+  }
+
   layers.forEach((layer, r) => {
-    const span = (layer.length - 1) * rowPitch;
+    const heights = layer.map(id => half(id).hh * 2);
+    const span = heights.reduce((a, b) => a + b, 0) + gap * Math.max(0, layer.length - 1);
+    let y = -span / 2;
     layer.forEach((id, i) => {
       const s = byId.get(id);
-      s.x = r * layerPitch;
-      s.y = i * rowPitch - span / 2;
+      s.x = colX[r];
+      s.y = y + heights[i] / 2;
+      y += heights[i] + gap;
     });
   });
 }
@@ -1108,7 +1245,13 @@ export function circularLayout(states) {
   // the chord between adjacent nodes is 2r·sin(π/n), and it has to clear one
   // node diameter plus the gap. Scaling the radius by n alone (the old rule)
   // ignored node size and packed small rings too tightly.
-  const need = 2 * layoutNodeRadius() + layoutGap();
+  // Sized by the LARGEST node on the ring, not by the configured radius: one
+  // region among plain states would otherwise overlap both its neighbours.
+  const widest = Math.max(layoutNodeRadius(), ...states.map(s => {
+    const { hw, hh } = nodeHalf(s, App.superRects);
+    return Math.max(hw, hh);
+  }));
+  const need = 2 * widest + layoutGap();
   // A lone state belongs at the origin, not pushed out onto a ring.
   const chordR = n > 1 ? need / (2 * Math.sin(Math.PI / n)) : 0;
   const r = n > 1 ? Math.max(App.config.layout.minRadius || 0, chordR) : 0;
@@ -1122,13 +1265,92 @@ export function circularLayout(states) {
 // ══════════════════════════════════════════════════════════════════
 //  AUTO LAYOUT
 // ══════════════════════════════════════════════════════════════════
+/**
+ * Every arrow at one level of containment, with both endpoints lifted to the
+ * node at that level that stands for them.
+ *
+ * An arrow from a state deep inside region A to a state deep inside region B is
+ * an arrow from A to B as far as the level containing both is concerned — which
+ * is what makes the enclosing layout put A and B next to each other. Arrows that
+ * end up on the same node are dropped: at this level they are internal.
+ */
+function levelTransitions(levelIds, byId) {
+  const level = new Set(levelIds);
+  const lift = id => {
+    let cur = id;
+    for (let hops = 0; cur && !level.has(cur) && hops <= byId.size; hops++) {
+      cur = byId.get(cur)?.parent;
+    }
+    return level.has(cur) ? cur : null;
+  };
+  const out = [], seen = new Set();
+  for (const t of App.transitions) {
+    const from = lift(t.from), to = lift(t.to);
+    if (!from || !to || from === to) continue;
+    const key = `${from}|${to}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ id: key, from, to, symbol: t.symbol });
+  }
+  return out;
+}
+
+/**
+ * Arrange one level, then move each region on it bodily to where the layout
+ * decided it goes.
+ *
+ * The layout writes an x/y onto the region node, which is a DERIVED point — the
+ * next render recomputes it from the children. So the assignment is read as a
+ * displacement and applied to the whole subtree, which is what actually moves a
+ * region and is what keeps its interior arrangement intact.
+ */
+function layoutLevel(algo, nodes, container, byId) {
+  if (nodes.length < 1) return;
+  const before = new Map(nodes.map(n => [n.id, { x: n.x, y: n.y }]));
+  const start = container
+    ? (nodes.some(n => n.id === container.initial) ? container.initial : nodes[0].id)
+    : (nodes.some(n => n.id === App.startId) ? App.startId : nodes[0].id);
+  algo(nodes, levelTransitions(nodes.map(n => n.id), byId), start);
+  for (const n of nodes) {
+    if (!isSuperstate(n)) continue;
+    const p = before.get(n.id);
+    const dx = n.x - p.x, dy = n.y - p.y;
+    if (!dx && !dy) continue;
+    for (const id of subtreeIds(n.id)) {
+      const s = byId.get(id);
+      if (s && s !== n) { s.x += dx; s.y += dy; }
+    }
+  }
+}
+
 export function autoLayout() {
   if (!App.states.length) { showStatus('No states to arrange'); return; }
   snapshot();
-  if (App.config.layout.algorithm === 'circular') {
-    circularLayout(App.states);
+  const algo = App.config.layout.algorithm === 'circular'
+    ? nodes => circularLayout(nodes)
+    : (nodes, trans, startId) => sugiyamaLayout(nodes, trans, startId);
+
+  if (!App.states.some(isSuperstate)) {
+    // No containment: one level, and the call is exactly what it always was.
+    algo(App.states, App.transitions, App.startId);
   } else {
-    sugiyamaLayout(App.states, App.transitions, App.startId);
+    // Deepest first. A region's size is derived from its contents, so the level
+    // above cannot space it until the level below has been arranged — laying
+    // out every state in one flat pass is what previously scattered a region's
+    // children across the canvas and left its rectangle enclosing states that
+    // were never inside it.
+    const byId = stateIndex(App.states);
+    const idx = childIndex(App.states);
+    const depth = depthIndex(App.states, byId);
+    const regions = App.states.filter(isSuperstate)
+      .sort((a, b) => (depth.get(b.id) || 0) - (depth.get(a.id) || 0));
+    for (const region of regions) {
+      layoutLevel(algo, idx.get(region.id) || [], region, byId);
+      // Publish the size this level just settled on, for the level above.
+      refreshSuperRects(App.states);
+    }
+    layoutLevel(algo, App.states.filter(s => !s.parent), null, byId);
+    refreshSuperRects(App.states);
   }
   renderAll();
   fitToScreen();
@@ -1151,6 +1373,17 @@ export function getContentBounds(statePad = 0) {
   if (!App.states.length) return null;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   App.states.forEach(s => {
+    // Inside a collapsed region: it keeps its absolute position, but it is not
+    // on screen, so framing it would leave the camera showing empty canvas.
+    if (App.hiddenStates.has(s.id)) return;
+    // A region is far bigger than the point its x/y describes, so framing it
+    // by that point alone would crop the container out of a cropped export.
+    const r = App.superRects.get(s.id);
+    if (r) {
+      minX = Math.min(minX, r.x); minY = Math.min(minY, r.y);
+      maxX = Math.max(maxX, r.x + r.w); maxY = Math.max(maxY, r.y + r.h);
+      return;
+    }
     minX = Math.min(minX, s.x - statePad);
     minY = Math.min(minY, s.y - statePad);
     maxX = Math.max(maxX, s.x + statePad);

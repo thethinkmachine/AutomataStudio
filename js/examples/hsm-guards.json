@@ -1,0 +1,79 @@
+{
+  "machine": "HSM",
+  "sigma": ["takeKey", "trip", "disarm", "open", "enter", "leave"],
+  "flags": ["hasKey", "alarm"],
+  "states": [
+    { "id": "s1", "x": 180, "y": 330, "name": "hall" },
+    { "id": "s2", "x": 480, "y": 330, "name": "room" },
+    { "id": "s3", "x": 780, "y": 330, "name": "vault" }
+  ],
+  "startId": "s1",
+  "accepts": ["s3"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "takeKey", "assign": "hasKey" },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "trip", "assign": "alarm" },
+    { "id": "t3", "from": "s1", "to": "s1", "symbol": "disarm", "assign": "alarm = false" },
+    { "id": "t4", "from": "s1", "to": "s2", "symbol": "open" },
+    { "id": "t5", "from": "s2", "to": "s3", "symbol": "enter", "guard": "hasKey && !alarm" },
+    { "id": "t6", "from": "s2", "to": "s1", "symbol": "leave" }
+  ],
+  "stateN": 3,
+  "transN": 6,
+  "rootComponentId": "c1",
+  "componentPath": ["c1"],
+  "componentN": 1,
+  "components": [
+    {
+      "id": "c1",
+      "name": "Main",
+      "startId": "s1",
+      "accepts": ["s3"],
+      "exitIds": [],
+      "states": [
+        { "id": "s1", "x": 180, "y": 330, "name": "hall" },
+        { "id": "s2", "x": 480, "y": 330, "name": "room" },
+        { "id": "s3", "x": 780, "y": 330, "name": "vault" }
+      ],
+      "transitions": [
+        { "id": "t1", "from": "s1", "to": "s1", "symbol": "takeKey", "assign": "hasKey" },
+        { "id": "t2", "from": "s1", "to": "s1", "symbol": "trip", "assign": "alarm" },
+        { "id": "t3", "from": "s1", "to": "s1", "symbol": "disarm", "assign": "alarm = false" },
+        { "id": "t4", "from": "s1", "to": "s2", "symbol": "open" },
+        { "id": "t5", "from": "s2", "to": "s3", "symbol": "enter", "guard": "hasKey && !alarm" },
+        { "id": "t6", "from": "s2", "to": "s1", "symbol": "leave" }
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "id": "n1",
+      "x": 180,
+      "y": 70,
+      "w": 520,
+      "h": 195,
+      "text": "A FLAG IS A STATE YOU DIDN'T DRAW.\n\nThree states on the canvas. Run 'open enter' and it rejects; run 'takeKey open enter' and it accepts. Same two states, same arrow, different answer — so the machine is remembering something the picture does not show.\n\nStep either run and watch the Flags row: hasKey flips, and the same drawn state 'hall' appears twice with two different valuations. That is the hidden state, live.\n\nTo see it as states, open Algorithms → Hierarchical → HSM → NFA (Flatten): hall and room have each split in two, one copy per valuation of hasKey. The guard has been compiled into the state space, which is the only place a finite automaton can keep anything.\n\nThe left panel says the price out loud, as the number it actually is: drawn states → flat states."
+    },
+    {
+      "id": "n2",
+      "x": 180,
+      "y": 500,
+      "w": 520,
+      "h": 175,
+      "text": "WHY THE VARIABLES ARE BOOLEAN, AND ONLY BOOLEAN.\n\nn flags is 2^n valuations — finite, so state x valuation is finite, so the language is still regular. Exponentially more succinct than drawing the copies, and not one word more powerful.\n\nChange it to 'health < 20' and that argument collapses. An integer variable is an infinite state space; two of them is a two-counter machine, which is Turing-complete. That is not a statechart with a nicer guard, it is a different model wearing the same picture.\n\nWhen you genuinely need to count, you have left the class — and Counter and NPDA are waiting in the model picker."
+    }
+  ],
+  "noteN": 2,
+  "meta": {
+    "title": "Guards: a flag is a state you didn't draw",
+    "blurb": "Boolean flags let one arrow stand for a condition instead of a state. Flattening compiles them back into states — one copy per valuation — which is both why guards are succinct and why they add no power. Keeping the variables finite is what keeps the language regular.",
+    "inputs": [
+      { "w": "takeKey open enter", "expect": "accept", "label": "key first" },
+      { "w": "open enter", "expect": "reject", "label": "same arrow, no key" },
+      { "w": "open leave takeKey open enter", "expect": "accept", "label": "went back for it" },
+      { "w": "takeKey trip open enter", "expect": "reject", "label": "key, but the alarm is live" },
+      { "w": "takeKey trip disarm open enter", "expect": "accept", "label": "both flags now agree" },
+      { "w": "trip takeKey disarm open enter", "expect": "accept", "label": "order of the flags does not matter" },
+      { "w": "takeKey open", "expect": "reject", "label": "never entered" }
+    ]
+  }
+}

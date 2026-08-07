@@ -3,6 +3,7 @@ import { makeSVG, renderAll } from './render.js';
 import { $, App, R, getMachineConfig } from './state.js';
 import { getState } from './states-transitions.js';
 import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
+import { ancestorsOf, stateIndex } from './superstates.js';
 import { buildMarkedInputTape, isAnyPDA, isAnyTM, isQueueAutomaton, isTwoStackPDA, parseEps, pickMostSpecificTransition } from './utils.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -92,7 +93,11 @@ export function runSim() {
   else if (App.machine === 'Moore') simMoore(tokens);
   else if (App.machine === 'Mealy') simMealy(tokens);
   else if (App.machine === 'FST') simFST(tokens);
-  else if (App.machine === 'RSM') simRSM(tokens);
+  // Both hierarchical models run on the same engine. An HSM is the case where
+  // no state ever calls anything, so the call stack stays empty and the RSM
+  // acceptance rule collapses to the finite-automaton one — which is another
+  // way of saying containment adds no power.
+  else if (App.machine === 'RSM' || App.machine === 'HSM') simRSM(tokens);
   else if (App.machine === 'NDTM') simNDTM(tokens);
   else if (App.machine === 'MTM') simMTM(tokens);
   else if (App.machine === 'LBA') simLBA(tokens);
@@ -1324,7 +1329,7 @@ export function renderSimStep() {
     // An RSM's stack is a stack of component names — the same widget as the
     // PDA's, which is the point: it makes "recursion is a stack" something you
     // watch happen rather than something you are told.
-    if (m === 'RSM' && step.callStack) {
+    if (step.callStack) {
       rows.push({ label: 'Call', cells: [...step.callStack].reverse(), head: 0 });
     } else if (isAnyPDA(m) && step.stack) {
       if (isQueueAutomaton(m)) {
@@ -1335,9 +1340,41 @@ export function renderSimStep() {
       if (isTwoStackPDA(m) && step.stack2) {
         rows.push({ label: 'Stk2', cells: [...step.stack2].reverse(), head: 0 });
       }
-    } else if (['Moore', 'Mealy', 'FST'].includes(m)) {
+    }
+
+    // Additive rather than another arm of the chain above: a recursive machine
+    // with entry/exit actions has both a call stack AND an output, and the
+    // transducers reach this with neither of the branches taken.
+    if (step.outToks !== undefined) {
       const outToks = step.outToks || [];
       rows.push({ label: 'Out', cells: outToks, head: outToks.length ? outToks.length - 1 : -1 });
+    }
+
+    // The configuration the picture does NOT show. A guarded machine takes a
+    // different arrow out of the same drawn state depending on these, so
+    // without them the run is a sequence of unexplained decisions — and "a flag
+    // is a state you didn't draw" stays a claim in a note instead of a value
+    // the reader can watch flip. Same widget as the stack, deliberately: it is
+    // the same kind of thing, memory the machine carries between steps.
+    // Containment depth — the mirror of the Call row above. Being in a state
+    // means being in every region containing it, and that chain is the other
+    // half of a statechart configuration.
+    if (step.nest && step.nest.length > 1) {
+      rows.push({ label: 'Nest', cells: step.nest, head: step.nest.length - 1 });
+    }
+    if (step.vals) {
+      const prev = App.simSteps[App.simIdx - 1]?.vals;
+      const cells = Object.entries(step.vals).map(([f, on]) => `${f}=${on ? '1' : '0'}`);
+      // Point the head at whichever flag just changed, so an assignment is
+      // visible as an event rather than as a value you have to diff by eye.
+      const changed = prev
+        ? Object.keys(step.vals).findIndex(f => !!prev[f] !== !!step.vals[f])
+        : -1;
+      rows.push({ label: 'Flags', cells, head: changed });
+    }
+    if (step.mem) {
+      const cells = Object.entries(step.mem).map(([region, child]) => `${region}:${child}`);
+      if (cells.length) rows.push({ label: 'Mem', cells, head: -1 });
     }
   }
 
@@ -1460,7 +1497,10 @@ export function updateSimCanvasHighlights(step) {
   }
 
   const activeKeys = getSimStepEdgeKeys(App.simIdx);
-  const hl = step.state ? [step.state] : (step.states || []);
+  // An orthogonal configuration is in several leaves AT ONCE, so it carries all
+  // of them and every one lights up. `state` stays the representative for
+  // everything that wants a single name.
+  const hl = step.states?.length ? step.states : (step.state ? [step.state] : []);
 
   visited.forEach(id => {
     if (hl.includes(id)) return;
@@ -1477,6 +1517,23 @@ export function updateSimCanvasHighlights(step) {
     const el = document.querySelector(`[data-id="${id}"]`);
     if (el) el.classList.add(step.final === 'reject' ? 'rej-st' : 'act-st');
   });
+  // Being in a state means being in every region that contains it — that is the
+  // definition of OR-decomposition, so the containers light up with the leaf.
+  // The sweep above clears these too, since a region carries the `sn` class.
+  if (App.superRects.size) {
+    const lit = new Set();
+    // One index for the whole sweep — an NFA step can highlight every state.
+    const byId = stateIndex(App.states);
+    hl.forEach(id => ancestorsOf(id, App.states, byId).forEach(a => lit.add(a)));
+    // Same class the leaf got: a rejected run showing red leaves inside blue
+    // "active" containers would be reporting two different things about one
+    // configuration.
+    const cls = step.final === 'reject' ? 'rej-st' : 'act-st';
+    lit.forEach(a => {
+      const el = App.domCache.supers.get(a) || document.querySelector(`.super-st[data-id="${a}"]`);
+      if (el) el.classList.add(cls);
+    });
+  }
   activeKeys.forEach(k => {
     const el = findSimEdgeGroup(k);
     if (el) el.classList.add('sim-active-t');

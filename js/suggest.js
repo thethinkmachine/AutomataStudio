@@ -325,9 +325,48 @@ export const STACK_PUSH_FIELD_IDS = new Set(['m-push', 'm-push2']);
 // the Algorithms view's other "test a string against the current machine"
 // inputs (eq-str, npda-input, ndtm-input, nfa-tree-input), which all validate
 // exactly the same way Simulate's sim-in does.
+// The declared flags, offered while typing a guard or an assignment.
+//
+// A guard is an expression rather than a symbol, so the unit being completed is
+// the identifier under the caret, not the whole field. Everything else about
+// the popover is unchanged — which is the point of putting flags through this
+// engine instead of building a second one: the two mistakes guards make easy
+// are a typo that silently disables an arrow forever and a flag nobody
+// declared, and both stop being possible if the name is picked rather than
+// spelled.
+export const FLAG_FIELD_IDS = new Set(['m-guard', 'm-assign']);
+
+export function getFlagSuggestState(el) {
+  const flags = App.flags || [];
+  if (!flags.length) return { mode: 'none' };
+  const value = el.value || '';
+  const caret = el.selectionStart ?? value.length;
+  const before = value.slice(0, caret);
+  // The identifier being typed, if the caret is inside one.
+  const m = /[A-Za-z_][A-Za-z0-9_]*$/.exec(before);
+  const residue = m ? m[0] : '';
+  const prefixEnd = m ? caret - residue.length : caret;
+  // Consume the rest of the identifier the caret sits inside, so completing in
+  // the middle of a word replaces the word rather than splicing into it.
+  const rest = /^[A-Za-z0-9_]*/.exec(value.slice(caret))[0];
+  const replaceEnd = caret + rest.length;
+
+  const base = { isKeyword: true, prefixEnd, replaceEnd, allSyms: flags, alphabetLabel: 'V' };
+  if (!residue) return { mode: 'palette', candidates: flags, ...base };
+  // Already exactly a flag: nothing useful left to offer.
+  if (flags.includes(residue) && !rest) return { mode: 'none' };
+  const candidates = flags.filter(f => ciStartsWith(f, residue));
+  if (candidates.length) return { mode: 'filter', residue, candidates, ...base };
+  // Deliberately not `error`: an undeclared flag is legal input that reads
+  // false, and the transition dialog already offers to declare it. Shouting
+  // here would be the third message about one typo.
+  return { mode: 'none' };
+}
+
 export function getSuggestStateForField(el) {
   const id = el.id;
   if (id === 'batch-in') return getBatchSuggestState(el);
+  if (FLAG_FIELD_IDS.has(id)) return getFlagSuggestState(el);
   if (GRAMMAR_STRING_FIELD_IDS.has(id)) return getGrammarSuggestState(el);
   if (STACK_POP_FIELD_IDS.has(id)) return getStackSymbolSuggestState(el, false);
   if (STACK_PUSH_FIELD_IDS.has(id)) return getStackSymbolSuggestState(el, true);

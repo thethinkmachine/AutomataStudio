@@ -285,6 +285,92 @@
   color: var(--red);
 }
 
+/* A flag an arrow names but nobody declared. Dashed rather than red: it is a
+   thing to finish, not a thing that is broken — the arrow simply reads it as
+   false until it is declared, and clicking the chip declares it. */
+.chip-undeclared {
+  cursor: pointer;
+  color: var(--gold);
+  border-style: dashed;
+  border-color: var(--gold-border, var(--gold));
+  background: transparent;
+}
+
+.chip-undeclared .x {
+  color: var(--gold);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chip-undeclared:hover {
+  background: var(--gold-soft, var(--surface));
+}
+
+/* The price of the declaration, stated in the panel that makes it: n flags is
+   x2^n on the flattened machine, which is the whole succinctness claim as a
+   number the user can watch grow. */
+.flag-cost {
+  margin-top: 6px;
+  font-size: .65rem;
+  color: var(--text3);
+  line-height: 1.35;
+}
+
+.flag-cost:empty {
+  display: none;
+}
+
+/* Over the ceiling: the simulator is now answering for a different machine
+   than the one on the canvas, which is the one thing here that is not a
+   note-to-self. */
+.flag-cost-over {
+  color: var(--red);
+  font-weight: 600;
+}
+
+/* ─── SUB-MACHINE LIST ───
+   The component tree as objects you can point at. The badges carry the facts a
+   call site on the canvas cannot show: how many boxes invoke this, whether it
+   reaches itself, and whether anything reaches it at all. */
+.cmp-row {
+  gap: 6px;
+}
+
+.cmp-sites {
+  font-family: var(--mono);
+  font-size: .62rem;
+  color: var(--text3);
+  margin-left: 4px;
+}
+
+.cmp-badge {
+  font-size: .55rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+
+.cmp-root {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+}
+
+/* The one badge that is a statement about the language class, not bookkeeping:
+   a component reaching itself is why this machine needs a stack. */
+.cmp-rec {
+  color: var(--violet);
+  background: color-mix(in srgb, var(--violet) 16%, transparent);
+}
+
+.cmp-orphan {
+  color: var(--text3);
+  background: var(--surface3);
+}
+
 /* States and Transitions behave identically: both cap at the same height and
    scroll internally rather than growing the panel. */
 .slist {

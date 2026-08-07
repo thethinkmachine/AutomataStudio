@@ -452,7 +452,7 @@ export function finishDividerDraw() {
   if (!big) return;
   createDivider(kind, start.x, start.y, current.x, current.y);
   showStatus(kind === 'rect'
-    ? 'Region added — double-click it to add a label'
+    ? 'Frame added — double-click it to add a label'
     : 'Divider added — double-click it to add a label');
 }
 
@@ -549,7 +549,7 @@ export function openDividerModal(id) {
   if (!d) return;
   App.editDividerId = id;
   const title = $('divider-modal-title');
-  if (title) title.textContent = isRectDivider(d) ? 'Region' : 'Divider';
+  if (title) title.textContent = isRectDivider(d) ? 'Frame' : 'Divider';
   const input = $('divider-label');
   if (input) input.value = d.label || '';
   setDividerModalColorUI(normalizeDividerColor(d.color));
@@ -606,7 +606,12 @@ export function deleteDividerFromModal() {
 // keyboard shortcuts remain available for quick switching.
 export const SHAPE_TOOL_ICON_LINE = '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M214.64,41.36a32,32,0,0,0-50.2,38.89L80.25,164.44a32.06,32.06,0,0,0-38.89,4.94h0a32,32,0,1,0,50.2,6.37l84.19-84.19a32,32,0,0,0,38.89-50.2Zm-139.33,162a16,16,0,0,1-22.64-22.64h0a16,16,0,0,1,22.63,0h0A16,16,0,0,1,75.31,203.33Zm128-128a16,16,0,1,1,0-22.63A16,16,0,0,1,203.33,75.3Z"/></svg>';
 export const SHAPE_TOOL_ICON_RECT = '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Z"/></svg>';
-export const SHAPE_TOOL_LABELS = { divider: 'Divider', rect: 'Region' };
+// "Frame", not "Region": a region is a superstate — a container that a state is
+// genuinely INSIDE, that flattening has to reason about, and that changes the
+// machine. This one is decoration on the drawing and changes nothing. Two
+// objects sharing a name, one of them load-bearing, is how a user ends up
+// expecting the R tool to build a statechart.
+export const SHAPE_TOOL_LABELS = { divider: 'Divider', rect: 'Frame' };
 export const SHAPE_TOOL_KBD = { divider: 'L', rect: 'R' };
 
 export function normalizeShapeTool(tool) {
@@ -625,7 +630,7 @@ export function updateShapeToolButton(tool) {
   if (lbl) lbl.textContent = SHAPE_TOOL_LABELS[kind];
   if (kbd) kbd.textContent = SHAPE_TOOL_KBD[kind];
   const btn = $('t-shape');
-  if (btn) btn.dataset.tip = `Shape — drag to draw a Divider line or Region box (last used: ${SHAPE_TOOL_LABELS[kind]}); right-click to switch; L = line, R = rectangle; click again to return to Pointer`;
+  if (btn) btn.dataset.tip = `Shape — drag to draw a Divider line or Frame box (last used: ${SHAPE_TOOL_LABELS[kind]}); right-click to switch; L = line, R = rectangle; click again to return to Pointer`;
 }
 
 // Click activates the remembered kind; toggleTool's existing "click the

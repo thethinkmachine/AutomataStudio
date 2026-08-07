@@ -1,16 +1,18 @@
 import { renderGramSyms, renderGrammarLPanel, renderGrammarView } from './algorithms-cfg.js';
 import { renderAlgo } from './algorithms-fa.js';
-import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
+import { renderFlags, renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { wrap } from './canvas.js';
 import { snapshot } from './history.js';
 import { anyModalOpen, closeModal, showOverlay } from './modal.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim } from './simulation.js';
-import { $, App, getMachineConfig, normalizeBoundarySymbolsForMachine } from './state.js';
+import { $, App, MachineTypes, getMachineConfig, hasActions, hasCallStack, hasSuperstates, normalizeBoundarySymbolsForMachine } from './state.js';
 import { Change, emit } from './store.js';
+import { flattenComponent } from './superstates.js';
+import { renderComponentList } from './hierarchy.js';
 import { renderTheoryView } from './theory.js';
 import { renderTabs, updateMobilePanelChrome, updateModelPickerLabels } from './ui.js';
-import { clearAll, isAnyTM, isCounterMachine, showStatus } from './utils.js';
+import { isAnyTM, isCounterMachine, showStatus } from './utils.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  VIEW MANAGEMENT
@@ -204,25 +206,121 @@ document.addEventListener('click', () => { hideToolsMenu(); hideMoreMenu(); });
 // ══════════════════════════════════════════════════════════════════
 //  MACHINE TYPE
 // ══════════════════════════════════════════════════════════════════
+/**
+ * What switching to `to` would actually throw away, as a list of phrases.
+ *
+ * Not "what capabilities differ" but "what the machine ON THE CANVAS uses that
+ * the target cannot express". Every entry is something a state or transition
+ * currently carries, so an empty list means the switch is a pure widening and
+ * the drawing survives byte for byte.
+ *
+ * This is the difference between DFA→NFA (identical capability sets: nothing is
+ * lost, ever) and NPDA→DFA (the stack operations have nowhere to go). The old
+ * rule — "any states at all, so warn and delete" — treated both the same and
+ * made the most ordinary edit in the app, promoting a DFA to an NFA, destroy
+ * the user's work.
+ */
+export function machineSwitchLosses(from, to) {
+  const lost = [];
+  const src = MachineTypes[from] || {}, dst = MachineTypes[to] || {};
+  const eps = App.config.sym.eps;
+
+  if (src.hasStack && !dst.hasStack &&
+    App.transitions.some(t => (t.pop && t.pop !== eps) || (t.push && t.push !== eps))) {
+    lost.push('stack operations');
+  }
+  if (src.hasTape && !dst.hasTape &&
+    App.transitions.some(t => t.write !== undefined || t.dir || t.tapeDirs)) {
+    lost.push('tape writes and head moves');
+  }
+  if (src.hasEpsilon && !dst.hasEpsilon && App.transitions.some(t => t.symbol === eps)) {
+    lost.push(`${eps}-transitions`);
+  }
+  if (src.isTransducer && !dst.isTransducer &&
+    (App.states.some(s => s.output) || App.transitions.some(t => t.output))) {
+    lost.push('outputs');
+  }
+  if (hasSuperstates(from) && !hasSuperstates(to) && App.states.some(s => s.super)) {
+    lost.push('regions');
+  }
+  if (hasCallStack(from) && !hasCallStack(to) && App.states.some(s => s.callee)) {
+    lost.push('sub-machine call sites');
+  }
+  if (hasActions(from) && !hasActions(to) &&
+    (App.states.some(s => s.entry || s.exit) ||
+      App.transitions.some(t => t.action || t.guard || t.assign))) {
+    lost.push('actions and guards');
+  }
+  return lost;
+}
+
 export function setMachine(m) {
   if (m === App.machine) {
     syncMachineSelectors(m);
     return;
   }
-  if (App.states.length > 0) {
+  const losses = App.states.length ? machineSwitchLosses(App.machine, m) : [];
+  if (losses.length) {
     syncMachineSelectors(App.machine);
     $('confirm-title').textContent = 'Switch Machine Type?';
-    $('confirm-msg').textContent = `Switching to ${m} will delete your current machine work. Continue?`;
+    // Name what goes, rather than threatening the whole machine. The states and
+    // arrows themselves are never the thing being discarded here.
+    $('confirm-msg').textContent =
+      `Switching to ${m} will discard ${losses.join(', ')} — ${m} has no way to express ${losses.length === 1 ? 'that' : 'those'}. The rest of the machine is kept. Continue?`;
     const btn = $('confirm-action-btn');
     btn.onclick = () => {
-      clearAll(true);
+      stripForMachine(m);
       applyMachineSwitch(m);
       closeModal('confirm-modal');
     };
     showOverlay('confirm-modal');
     return;
   }
+  // Lossless: the target expresses everything the drawing uses, so there is
+  // nothing to confirm and nothing to delete.
   applyMachineSwitch(m);
+}
+
+/**
+ * Remove exactly the features the target cannot express, and nothing else.
+ *
+ * The states and transitions stay. Previously this was `clearAll`, which threw
+ * away the whole machine to avoid having to decide what a DFA should do with a
+ * push — but "keep the graph, drop the annotation it cannot carry" is both the
+ * obvious answer and the one that does not lose an afternoon's work.
+ */
+export function stripForMachine(to) {
+  const dst = MachineTypes[to] || {};
+  const eps = App.config.sym.eps;
+  snapshot();
+
+  if (!dst.hasEpsilon) App.transitions = App.transitions.filter(t => t.symbol !== eps);
+  if (!hasSuperstates(to)) {
+    // Flatten rather than delete: the regions were standing in for arrows, and
+    // writing those arrows out is what keeps the language the same.
+    const flat = flattenComponent({
+      states: App.states, transitions: App.transitions,
+      startId: App.startId, accepts: App.accepts
+    });
+    if (flat.states.length) {
+      App.states = flat.states;
+      App.transitions = flat.transitions;
+      App.startId = flat.startId;
+      App.accepts = new Set(flat.accepts);
+    }
+  }
+  if (!hasCallStack(to)) App.states.forEach(s => { delete s.callee; });
+  for (const t of App.transitions) {
+    if (!dst.hasStack) { delete t.pop; delete t.push; delete t.pop2; delete t.push2; }
+    if (!dst.hasTape) { delete t.write; delete t.dir; delete t.tapeSyms; delete t.tapeWrites; delete t.tapeDirs; }
+    if (!dst.isTransducer) delete t.output;
+    if (!hasActions(to)) { delete t.action; delete t.guard; delete t.assign; delete t.entryMode; }
+  }
+  for (const s of App.states) {
+    if (!dst.isTransducer) delete s.output;
+    if (!hasActions(to)) { delete s.entry; delete s.exit; }
+  }
+  if (!hasActions(to)) App.flags = [];
 }
 
 export function syncMachineSelectors(m) {
@@ -261,6 +359,17 @@ export function applyMachineSwitch(m) {
   if (stackLbl) stackLbl.textContent = isAnyTM(m) ? 'Tape Alphabet Γ' : 'Stack Alphabet Γ';
   
   $('output-sec').style.display = cfg.isTransducer ? '' : 'none';
+  // Guards ride on the same capability as actions: both are statechart
+  // annotations, and both are offered exactly where the transition dialog
+  // offers a guard field to use them in.
+  const flagsSec = $('flags-sec');
+  if (flagsSec) {
+    flagsSec.style.display = cfg.hasActions ? '' : 'none';
+    if (typeof renderFlags === 'function') renderFlags();
+  }
+  // The sub-machine list hides itself when the model has no call sites;
+  // renderComponentList owns that decision, so just ask it to re-run.
+  if (typeof renderComponentList === 'function') renderComponentList();
   $('mtm-ctrl').style.display = (m === 'MTM') ? 'flex' : 'none';
 
   updateRPanel();

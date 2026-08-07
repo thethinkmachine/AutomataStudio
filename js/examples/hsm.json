@@ -1,0 +1,80 @@
+{
+  "machine": "HSM",
+  "sigma": ["spot", "close", "miss", "ready", "hurt"],
+  "states": [
+    { "id": "s1", "x": 140, "y": 330, "name": "patrol" },
+    { "id": "s2", "x": 580, "y": 330, "name": "Combat", "super": true, "initial": "s3" },
+    { "id": "s3", "x": 460, "y": 330, "name": "approach", "parent": "s2" },
+    { "id": "s4", "x": 700, "y": 250, "name": "strike", "parent": "s2" },
+    { "id": "s5", "x": 700, "y": 420, "name": "recover", "parent": "s2" }
+  ],
+  "startId": "s1",
+  "accepts": ["s1"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s2", "symbol": "spot" },
+    { "id": "t2", "from": "s3", "to": "s4", "symbol": "close" },
+    { "id": "t3", "from": "s4", "to": "s5", "symbol": "miss" },
+    { "id": "t4", "from": "s5", "to": "s3", "symbol": "ready" },
+    { "id": "t5", "from": "s2", "to": "s1", "symbol": "hurt" }
+  ],
+  "stateN": 5,
+  "transN": 5,
+  "rootComponentId": "c1",
+  "componentPath": ["c1"],
+  "componentN": 1,
+  "components": [
+    {
+      "id": "c1",
+      "name": "Main",
+      "startId": "s1",
+      "accepts": ["s1"],
+      "exitIds": [],
+      "states": [
+        { "id": "s1", "x": 140, "y": 330, "name": "patrol" },
+        { "id": "s2", "x": 580, "y": 330, "name": "Combat", "super": true, "initial": "s3" },
+        { "id": "s3", "x": 460, "y": 330, "name": "approach", "parent": "s2" },
+        { "id": "s4", "x": 700, "y": 250, "name": "strike", "parent": "s2" },
+        { "id": "s5", "x": 700, "y": 420, "name": "recover", "parent": "s2" }
+      ],
+      "transitions": [
+        { "id": "t1", "from": "s1", "to": "s2", "symbol": "spot" },
+        { "id": "t2", "from": "s3", "to": "s4", "symbol": "close" },
+        { "id": "t3", "from": "s4", "to": "s5", "symbol": "miss" },
+        { "id": "t4", "from": "s5", "to": "s3", "symbol": "ready" },
+        { "id": "t5", "from": "s2", "to": "s1", "symbol": "hurt" }
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "id": "n1",
+      "x": 140,
+      "y": 60,
+      "w": 470,
+      "h": 190,
+      "text": "ONE arrow leaves Combat on 'hurt'.\n\nIt is not an arrow from the box — it is an arrow from all three states inside it. Getting hurt while approaching, mid-strike or recovering all send you back to patrol, and the picture says that once instead of three times.\n\nRun \"spot close miss hurt\" and watch the region light up with whatever is active inside it.\n\nRight-click Combat → Ungroup Region to see the three arrows written out. Same language, three times the ink — which is the whole argument for statecharts, and also the proof that they add no power."
+    },
+    {
+      "id": "n2",
+      "x": 140,
+      "y": 470,
+      "w": 470,
+      "h": 120,
+      "text": "Containment is a TREE, so it cannot cycle, so the nesting is finite — this flattens to an NFA and the language stays regular.\n\nSwitch the model to RSM and right-click Combat → Extract as Sub-machine. Now the same shape is a reference, references can cycle, and you are in context-free territory."
+    }
+  ],
+  "noteN": 2,
+  "meta": {
+    "title": "Guard AI: one arrow leaves the whole region",
+    "blurb": "Combat contains three states, and a single 'hurt' arrow drawn on the region stands for one arrow out of each of them. That is the entire economy of a statechart — and because containment is a tree, it flattens to an NFA and the language stays regular.",
+    "inputs": [
+      { "w": "", "expect": "accept", "label": "never left patrol" },
+      { "w": "spot hurt", "expect": "accept", "label": "hurt while approaching" },
+      { "w": "spot close hurt", "expect": "accept", "label": "hurt mid-strike" },
+      { "w": "spot close miss hurt", "expect": "accept", "label": "hurt while recovering" },
+      { "w": "spot close miss ready hurt", "expect": "accept", "label": "one full loop first" },
+      { "w": "spot", "expect": "reject", "label": "still in combat" },
+      { "w": "spot close", "expect": "reject", "label": "still in combat" }
+    ]
+  }
+}

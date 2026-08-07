@@ -35,16 +35,20 @@ import {
   toggleToolsMenu,
 } from './view.js';
 import {
-  addGSym, addOutSym, addSym, delGSym, delOutSym, delSym,
+  addFlag, addGSym, addOutSym, addSym, declareFlag, delFlag, delGSym,
+  delOutSym, delSym,
 } from './alphabet.js';
 import {
-  confirmState, confirmTrans, ctxDel, ctxDeleteTrans, ctxDuplicateTrans,
-  ctxEditTrans, ctxOpenSub, ctxPromote, ctxRename, ctxReverseTrans, ctxStart,
-  ctxToggleAcc,
-  deleteTrans, openStateModal,
+  confirmState, confirmTrans, ctxDefaultEntry, ctxDel, ctxDeleteTrans,
+  ctxDuplicateTrans, ctxEditTrans, ctxExtractRegion, ctxGroupRegion,
+  ctxInlineSub, ctxOpenSub, ctxPromote, ctxRename, ctxReverseTrans, ctxStart,
+  ctxToggleAcc, ctxToggleCollapse, ctxToggleParallel, ctxUngroupRegion,
+  declareFlagsFromModal, deleteTrans, openStateModal, syncGuardValidity,
+  syncTransModalEntryMode,
 } from './states-transitions.js';
 import {
-  autoLayout, ctxCanvasAddState, ctxCanvasAutoLayout, ctxCanvasFit,
+  autoLayout, ctxCanvasAddState, ctxCanvasAutoLayout, ctxCanvasExpandAll,
+  ctxCanvasFit,
   ctxCanvasPaste, ctxCanvasSelectAll, ctxHighlightIncoming,
   ctxHighlightOutgoing, toggleSnapToGrid,
 } from './canvas.js';
@@ -86,8 +90,9 @@ import {
 } from './export-ui.js';
 import {
   buildNFATree, buildRG2NFA, clearStateHighlights, doThompson,
-  highlightDeadStates, loadBuiltNFAResult, loadComplement,
-  loadEpsEliminatedNFA, loadMealyAsMoore, loadMinimizedDFA, loadMooreAsMealy,
+  highlightDeadStates, loadBuiltNFAResult, loadCompiledPDA, loadComplement,
+  loadEpsEliminatedNFA, loadFlattenedNFA, loadMealyAsMoore, loadMinimizedDFA,
+  loadMooreAsMealy,
   loadRG2NFAToCanvas, loadSubsetAsDFA, loadThompsonNFA, loadThompsonNFA_Viz,
   loadUTMExample, minVisStep, renderAlgo, runFullEquivCheck, runNDTMSim,
   runNPDASim, runProductEquiv, runUTMSim, setAlgo, startThompsonViz,
@@ -111,7 +116,8 @@ import {
   clearAll,
 } from './utils.js';
 import {
-  ascendOne, ascendTo, enterComponent,
+  ascendOne, ascendTo, enterComponent, promptDeleteComponent,
+  promptRenameComponent,
 } from './hierarchy.js';
 import {
   beginRenameTab, closeMobileAuxNav, closeMobilePanels, closeTab,
@@ -133,7 +139,8 @@ import {
 
 Object.assign(window, {
   // hierarchy.js
-   ascendOne, ascendTo, enterComponent,
+   ascendOne, ascendTo, enterComponent, promptDeleteComponent,
+   promptRenameComponent,
   // modal.js
    closeModal,
   // state.js
@@ -144,14 +151,18 @@ Object.assign(window, {
    closeAuxView, hideMoreMenu, setTapeCount, setView, toggleMoreMenu,
    toggleToolsMenu,
   // alphabet.js
-   addGSym, addOutSym, addSym, delGSym, delOutSym, delSym,
+   addFlag, addGSym, addOutSym, addSym, declareFlag, delFlag, delGSym,
+   delOutSym, delSym,
   // states-transitions.js
-   confirmState, confirmTrans, ctxDel, ctxDeleteTrans, ctxDuplicateTrans,
-   ctxEditTrans, ctxOpenSub, ctxPromote, ctxRename, ctxReverseTrans, ctxStart,
-  ctxToggleAcc,
-   deleteTrans, openStateModal,
+   confirmState, confirmTrans, ctxDefaultEntry, ctxDel, ctxDeleteTrans,
+   ctxDuplicateTrans, ctxEditTrans, ctxExtractRegion, ctxGroupRegion,
+   ctxInlineSub, ctxOpenSub, ctxPromote, ctxRename, ctxReverseTrans, ctxStart,
+  ctxToggleAcc, ctxToggleCollapse, ctxToggleParallel, ctxUngroupRegion,
+   declareFlagsFromModal, deleteTrans, openStateModal, syncGuardValidity,
+   syncTransModalEntryMode,
   // canvas.js
-   autoLayout, ctxCanvasAddState, ctxCanvasAutoLayout, ctxCanvasFit,
+   autoLayout, ctxCanvasAddState, ctxCanvasAutoLayout, ctxCanvasExpandAll,
+  ctxCanvasFit,
    ctxCanvasPaste, ctxCanvasSelectAll, ctxHighlightIncoming,
    ctxHighlightOutgoing, toggleSnapToGrid,
   // render.js
@@ -184,8 +195,8 @@ Object.assign(window, {
    selectExportFormat, setExportCodeOpt, setExportImageOpt,
   // algorithms-fa.js
    buildNFATree, buildRG2NFA, clearStateHighlights, doThompson,
-   highlightDeadStates, loadBuiltNFAResult, loadComplement,
-   loadEpsEliminatedNFA, loadMealyAsMoore, loadMinimizedDFA,
+   highlightDeadStates, loadBuiltNFAResult, loadCompiledPDA, loadComplement,
+   loadEpsEliminatedNFA, loadFlattenedNFA, loadMealyAsMoore, loadMinimizedDFA,
    loadMooreAsMealy, loadRG2NFAToCanvas, loadSubsetAsDFA, loadThompsonNFA,
    loadThompsonNFA_Viz, loadUTMExample, minVisStep, renderAlgo,
    runFullEquivCheck, runNDTMSim, runNPDASim, runProductEquiv, runUTMSim,

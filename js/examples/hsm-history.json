@@ -1,0 +1,88 @@
+{
+  "machine": "HSM",
+  "sigma": ["next", "pause", "resume", "resumeExact"],
+  "states": [
+    { "id": "s1", "x": 560, "y": 330, "name": "Playing", "super": true, "initial": "s2" },
+    { "id": "s2", "x": 470, "y": 250, "name": "DiscOne", "super": true, "parent": "s1", "initial": "s4" },
+    { "id": "s3", "x": 470, "y": 440, "name": "DiscTwo", "super": true, "parent": "s1", "initial": "s6" },
+    { "id": "s4", "x": 400, "y": 250, "name": "t1", "parent": "s2" },
+    { "id": "s5", "x": 540, "y": 250, "name": "t2", "parent": "s2" },
+    { "id": "s6", "x": 400, "y": 440, "name": "t3", "parent": "s3" },
+    { "id": "s7", "x": 540, "y": 440, "name": "t4", "parent": "s3" },
+    { "id": "s8", "x": 130, "y": 330, "name": "Paused" }
+  ],
+  "startId": "s1",
+  "accepts": ["s7"],
+  "transitions": [
+    { "id": "t1", "from": "s4", "to": "s5", "symbol": "next" },
+    { "id": "t2", "from": "s5", "to": "s6", "symbol": "next" },
+    { "id": "t3", "from": "s6", "to": "s7", "symbol": "next" },
+    { "id": "t4", "from": "s1", "to": "s8", "symbol": "pause" },
+    { "id": "t5", "from": "s8", "to": "s1", "symbol": "resume", "entryMode": "history" },
+    { "id": "t6", "from": "s8", "to": "s1", "symbol": "resumeExact", "entryMode": "deep" }
+  ],
+  "stateN": 8,
+  "transN": 6,
+  "rootComponentId": "c1",
+  "componentPath": ["c1"],
+  "componentN": 1,
+  "components": [
+    {
+      "id": "c1",
+      "name": "Main",
+      "startId": "s1",
+      "accepts": ["s7"],
+      "exitIds": [],
+      "states": [
+        { "id": "s1", "x": 560, "y": 330, "name": "Playing", "super": true, "initial": "s2" },
+        { "id": "s2", "x": 470, "y": 250, "name": "DiscOne", "super": true, "parent": "s1", "initial": "s4" },
+        { "id": "s3", "x": 470, "y": 440, "name": "DiscTwo", "super": true, "parent": "s1", "initial": "s6" },
+        { "id": "s4", "x": 400, "y": 250, "name": "t1", "parent": "s2" },
+        { "id": "s5", "x": 540, "y": 250, "name": "t2", "parent": "s2" },
+        { "id": "s6", "x": 400, "y": 440, "name": "t3", "parent": "s3" },
+        { "id": "s7", "x": 540, "y": 440, "name": "t4", "parent": "s3" },
+        { "id": "s8", "x": 130, "y": 330, "name": "Paused" }
+      ],
+      "transitions": [
+        { "id": "t1", "from": "s4", "to": "s5", "symbol": "next" },
+        { "id": "t2", "from": "s5", "to": "s6", "symbol": "next" },
+        { "id": "t3", "from": "s6", "to": "s7", "symbol": "next" },
+        { "id": "t4", "from": "s1", "to": "s8", "symbol": "pause" },
+        { "id": "t5", "from": "s8", "to": "s1", "symbol": "resume", "entryMode": "history" },
+        { "id": "t6", "from": "s8", "to": "s1", "symbol": "resumeExact", "entryMode": "deep" }
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "id": "n1",
+      "x": 130,
+      "y": 60,
+      "w": 520,
+      "h": 200,
+      "text": "TWO ARROWS BACK, AND THEY LAND IN DIFFERENT PLACES.\n\nOnly t4 accepts. Play three tracks, pause, and come back:\n\n  next next next pause resumeExact  →  accept\n     Ⓗ* deep: the exact leaf you left. Straight back to t4.\n\n  next next next pause resume  →  reject\n     Ⓗ shallow: the region's direct child you left — DiscTwo — and then DiscTwo's OWN default entry, which is t3. You are on the right disc and the wrong track.\n\nThat difference is the entire distinction between the two flavours, and it only shows up when the nesting is at least two deep."
+    },
+    {
+      "id": "n2",
+      "x": 130,
+      "y": 540,
+      "w": 520,
+      "h": 155,
+      "text": "History is memory, and it is still regular — which is the surprising part.\n\nWhat has to be remembered is one value from a finite set: which child was I in. So the flattened machine is the PRODUCT of the states with that memory, and Paused splits into one copy per thing Playing might be remembering.\n\nStep a run and watch the Mem row: it names the region and the child it is holding on to. To see the same thing as states, open Algorithms → Hierarchical → HSM → NFA (Flatten) and read the ids — the part after @ is the memory, with — for never-been.\n\nThe picture stays one arrow. The automaton it denotes does not — and that gap is exactly what a statechart buys you."
+    }
+  ],
+  "noteN": 2,
+  "meta": {
+    "title": "History: resume where you were interrupted",
+    "blurb": "Ⓗ resumes the child you left, Ⓗ* resumes the exact state you left. Two levels of nesting is the smallest picture in which those differ — and the flattening shows the price: one copy of everything outside per thing the region might remember.",
+    "inputs": [
+      { "w": "next next next", "expect": "accept", "label": "straight through, no pause" },
+      { "w": "next next next pause resumeExact", "expect": "accept", "label": "Ⓗ* lands back on t4" },
+      { "w": "next next next pause resume", "expect": "reject", "label": "Ⓗ lands on t3 — right disc, wrong track" },
+      { "w": "next next next pause resume next", "expect": "accept", "label": "one more next recovers it" },
+      { "w": "next pause resume next next next", "expect": "accept", "label": "Ⓗ resumes DiscOne at t1, so a track replays" },
+      { "w": "next next", "expect": "reject", "label": "stopped on t3" },
+      { "w": "next next next pause", "expect": "reject", "label": "paused is not accepting" }
+    ]
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "machine": "HSM",
+  "sigma": [
+    "a",
+    "b"
+  ],
+  "states": [
+    {
+      "id": "s1",
+      "x": 300,
+      "y": 520,
+      "name": "B"
+    },
+    {
+      "id": "s2",
+      "x": 300,
+      "y": 260,
+      "name": "D",
+      "super": true,
+      "initial": "s3"
+    },
+    {
+      "id": "s3",
+      "x": 200,
+      "y": 260,
+      "name": "A",
+      "parent": "s2"
+    },
+    {
+      "id": "s4",
+      "x": 440,
+      "y": 260,
+      "name": "C",
+      "parent": "s2"
+    }
+  ],
+  "startId": "s3",
+  "accepts": [
+    "s1"
+  ],
+  "transitions": [
+    {
+      "id": "t1",
+      "from": "s3",
+      "to": "s4",
+      "symbol": "a"
+    },
+    {
+      "id": "t2",
+      "from": "s2",
+      "to": "s1",
+      "symbol": "b"
+    }
+  ],
+  "rootComponentId": "c1",
+  "componentPath": [
+    "c1"
+  ],
+  "componentN": 1,
+  "components": [
+    {
+      "id": "c1",
+      "name": "Main",
+      "startId": "s3",
+      "accepts": [
+        "s1"
+      ],
+      "exitIds": [],
+      "states": [
+        { "id": "s1", "x": 300, "y": 520, "name": "B" },
+        { "id": "s2", "x": 300, "y": 260, "name": "D", "super": true, "initial": "s3" },
+        { "id": "s3", "x": 200, "y": 260, "name": "A", "parent": "s2" },
+        { "id": "s4", "x": 440, "y": 260, "name": "C", "parent": "s2" }
+      ],
+      "transitions": [
+        { "id": "t1", "from": "s3", "to": "s4", "symbol": "a" },
+        { "id": "t2", "from": "s2", "to": "s1", "symbol": "b" }
+      ]
+    }
+  ]
+}

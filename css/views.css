@@ -523,6 +523,12 @@
   border: 1px solid var(--purple-border);
 }
 
+.bd-hsm {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-border, var(--border2));
+}
+
 .bd-rsm {
   background: var(--indigo-soft);
   color: var(--indigo);
@@ -2109,6 +2115,48 @@
 .state-pill.both {
   border-color: rgba(79, 195, 247, .4);
   color: var(--accent);
+}
+
+/* ─── HIERARCHICAL CARDS: drawn vs. built ───
+   The size change IS the argument, so the delta column is the thing the eye
+   should land on: growth is the succinctness being paid back in ink. */
+.hier-counts {
+  margin-top: 8px;
+}
+
+.hier-counts td:first-child,
+.hier-counts th:first-child {
+  text-align: left;
+}
+
+.hier-counts .hier-grow {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.hier-counts .hier-same {
+  color: var(--text3);
+}
+
+.hier-note {
+  font-size: .7rem;
+  color: var(--text2);
+  line-height: 1.55;
+  margin-top: 10px;
+}
+
+.hier-note code {
+  font-family: var(--mono);
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--accent);
+}
+
+.hier-warn {
+  color: var(--red);
+  font-weight: 600;
 }
 
 .min-table-wrap {

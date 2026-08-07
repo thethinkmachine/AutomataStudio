@@ -1,6 +1,7 @@
 import { langAcceptedTraces, langCanDecide, langCanTrace, langIsSymbolic, langVerdict } from './language.js';
 import { compileToPDA, hasBoxes } from './hierarchy.js';
-import { App, Workspaces, activeWorkspaceId, getMachineConfig, hasHierarchy } from './state.js';
+import { flattenComponent, hasSuperstateNesting } from './superstates.js';
+import { App, Workspaces, activeWorkspaceId, getMachineConfig, hasCallStack, hasSuperstates } from './state.js';
 import { transLabel } from './states-transitions.js';
 import { showStatus } from './utils.js';
 
@@ -30,6 +31,28 @@ export const EXPORT_SAMPLE_BUDGET = 20000;
 // A flat, JSON-safe snapshot. Names are resolved, the start/accept
 // flags are folded into the states, and every transition carries both
 // its raw fields and the rendered label the canvas would show.
+// Regions written out as the finite automaton they stand for. Every leaf keeps
+// its id and name, so an exported diagram is recognisably the same machine with
+// the containers replaced by the arrows they were standing in for.
+function flattenedIR() {
+  const flat = flattenComponent({
+    states: App.states,
+    transitions: App.transitions,
+    startId: App.startId,
+    accepts: App.accepts
+  });
+  const eps = App.config.sym.eps;
+  return {
+    machine: flat.transitions.some(t => t.symbol === eps) ? 'ε-NFA' : 'NFA',
+    states: flat.states,
+    transitions: flat.transitions,
+    startId: flat.startId,
+    accepts: flat.accepts,
+    sigma: [...App.sigma],
+    stackAlpha: [...App.stackAlpha]
+  };
+}
+
 export function buildMachineIR() {
   // A hierarchical machine has no single flat state set of its own, so what a
   // diagram, a table or a code generator should show is the pushdown automaton
@@ -37,7 +60,13 @@ export function buildMachineIR() {
   // every consumer downstream reading exactly one shape.
   // A single self-recursive component is still hierarchical, so the trigger is
   // "does anything call anything", not the component count.
-  const compiled = hasHierarchy() && hasBoxes() ? compileToPDA() : null;
+  //
+  // With no calls but with regions, there is nothing to push onto — the machine
+  // denotes the finite automaton the regions flatten to, and the ε-moves it may
+  // contain decide whether that is an NFA or an ε-NFA.
+  const compiled = hasCallStack() && hasBoxes() ? compileToPDA()
+    : hasSuperstates() && hasSuperstateNesting() ? flattenedIR()
+      : null;
   const src = compiled || {
     machine: App.machine,
     states: App.states,
@@ -98,7 +127,7 @@ export function buildMachineIR() {
     machineLabel: cfg.label || src.machine,
     // What the user drew, when that differs from what is being exported.
     sourceMachine: App.machine,
-    compiledFrom: compiled ? 'RSM' : null,
+    compiledFrom: compiled ? App.machine : null,
     sym,
     sigma: [...src.sigma],
     stackAlpha: [...src.stackAlpha],

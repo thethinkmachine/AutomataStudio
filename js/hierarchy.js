@@ -1,6 +1,12 @@
+import { validateGuards } from './guards.js';
 import { commit, snapshot } from './history.js';
-import { $, App, activeComponentId, bindComponent, ensureRootComponent, flushActiveComponent, getComponent, newComponentId } from './state.js';
-import { Change, emit, subscribe } from './store.js';
+import { $, App, activeComponentId, bindComponent, ensureRootComponent, flushActiveComponent, getComponent, hasCallStack, newComponentId } from './state.js';
+import { Change, batch, emit, subscribe } from './store.js';
+import {
+  MEM_UNSET, childIndex, defaultEntry, flattenComponent, isSuperstate, leavesUnder,
+  subtreeIds, uniqueRegionName, validateSuperstates
+} from './superstates.js';
+import { newId, newTId } from './states-transitions.js';
 import { showStatus } from './utils.js';
 
 // Hierarchical machines: navigation, component CRUD, and the compiler.
@@ -102,6 +108,9 @@ export function promoteToSubmachine(stateId, name) {
   const s = App.states.find(st => st.id === stateId);
   if (!s) return false;
   if (s.callee) { showStatus('That is already a sub-machine'); return false; }
+  // A region already holds states inline; turning it into an empty call site
+  // would strand them. Extract is the move that means what this one would.
+  if (isSuperstate(s)) { showStatus(`'${s.name}' is a region — use Extract as Sub-machine`); return false; }
   snapshot();
   const c = createComponent(name || s.name);
   s.callee = c.id;
@@ -141,6 +150,197 @@ export function deleteComponent(id) {
     bindComponent(fallback, App.componentPath.slice(0, Math.max(1, idx)));
   }
   emit(Change.GRAPH);
+  return true;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  THE TOGGLE:  CONTAINMENT  ⇄  REFERENCE
+// ══════════════════════════════════════════════════════════════════
+// The same picture, drawn two ways, sitting on opposite sides of the REG/CFL
+// boundary. Extracting a region turns containment into reference; inlining a
+// sub-machine turns reference back into containment — and REFUSES when the
+// component is recursive, because inlining a thing that contains itself does not
+// terminate. That refusal is not an implementation limit. It is the proof: a
+// component you cannot inline is one no finite picture can express, which is
+// exactly what it means for the language to be beyond regular.
+//
+// Both directions preserve the language, and both use the same three facts:
+//
+//   entry(region)   ≡  start state of the component
+//   exits(region)   ≡  accepting states of the component
+//   an arrow out of a region  ≡  an arrow out of the box, taken after return
+
+/**
+ * Region → sub-machine. Its contents move into a new component, the region node
+ * keeps its id and becomes the box that calls it, and every arrow that crossed
+ * the boundary is re-attached to the box.
+ */
+export function extractRegionToSubmachine(stateId, name) {
+  const region = App.states.find(s => s.id === stateId);
+  if (!isSuperstate(region)) { showStatus('Only a region can be extracted'); return false; }
+  const inside = subtreeIds(stateId).filter(id => id !== stateId);
+  if (!inside.length) { showStatus('That region is empty — put something in it first'); return false; }
+
+  const idx = childIndex(App.states);
+  const insideSet = new Set(inside);
+  const entry = defaultEntry(stateId, App.states, idx);
+  const innerLeaves = leavesUnder(stateId, App.states, idx);
+
+  // A region has as many ways in as it has states; a component has exactly one.
+  // An arrow aimed past the default entry therefore cannot survive the move, and
+  // silently changing the language would be far worse than refusing to.
+  const nameOf = id => App.states.find(s => s.id === id)?.name || id;
+  const misAimed = App.transitions.find(t => insideSet.has(t.to) && t.to !== entry && !insideSet.has(t.from));
+  if (misAimed) {
+    showStatus(`A sub-machine has one way in, but an arrow aims at '${nameOf(misAimed.to)}' inside the region — make that the default entry first`);
+    return false;
+  }
+  if (insideSet.has(App.startId) && App.startId !== entry) {
+    showStatus(`The machine starts at '${nameOf(App.startId)}' inside the region — make it the default entry first`);
+    return false;
+  }
+
+  snapshot();
+  const c = createComponent(name || region.name);
+
+  // Everything that crossed the boundary re-attaches to the box, because a call
+  // enters at one point and returns to one point. States that had an arrow
+  // leaving the region become the component's exits — the accept ring in a
+  // sub-machine means "return to my caller".
+  const exits = new Set();
+  const outer = [], innerT = [];
+  // Several inner states leaving on the same symbol collapse to one arrow off
+  // the box, which is the whole economy of the move.
+  const seenOuter = new Set();
+  const push = t => {
+    const k = `${t.from}${t.to}${t.symbol}`;
+    if (seenOuter.has(k)) return;
+    seenOuter.add(k);
+    outer.push(t);
+  };
+  for (const t of App.transitions) {
+    const fromIn = insideSet.has(t.from), toIn = insideSet.has(t.to);
+    if (fromIn && toIn) { innerT.push(t); continue; }
+    // An arrow drawn on the REGION means "from anywhere inside it", so after the
+    // move every leaf has to be able to return and the box takes the arrow.
+    // Returning consumes no input, so leaf → return → arrow is the same run.
+    if (t.from === stateId) {
+      for (const leaf of innerLeaves) exits.add(leaf);
+      push(toIn ? { ...t, to: stateId } : t);
+      continue;
+    }
+    if (fromIn) { exits.add(t.from); push({ ...t, from: stateId }); continue; }
+    if (toIn) { push({ ...t, to: stateId }); continue; }
+    push(t);
+  }
+  // The machine starting inside the region now starts by calling it.
+  if (App.startId === entry) App.startId = stateId;
+  // An accepting state inside the region has to keep accepting: it becomes an
+  // exit, and the box becomes accepting so that returning from it accepts.
+  let boxAccepts = false;
+  for (const id of inside) {
+    if (!App.accepts.has(id)) continue;
+    App.accepts.delete(id);
+    exits.add(id);
+    boxAccepts = true;
+  }
+  if (boxAccepts) App.accepts.add(stateId);
+
+  c.states = App.states.filter(s => insideSet.has(s.id));
+  // The states are leaving this component, so their outermost level inside it
+  // becomes top-level in the new one.
+  for (const s of c.states) if (s.parent === stateId) delete s.parent;
+  c.transitions = innerT;
+  c.startId = entry;
+  c.accepts = [...exits];
+
+  App.states = App.states.filter(s => !insideSet.has(s.id));
+  App.transitions = outer;
+  delete region.super;
+  delete region.initial;
+  region.callee = c.id;
+  App.selectedStates.clear();
+
+  emit(Change.GRAPH);
+  showStatus(`'${region.name}' is now a call site for sub-machine '${c.name}' — the language is unchanged, but the model is not`);
+  return true;
+}
+
+/**
+ * Sub-machine → region. A copy of the component is inlined as the box's
+ * contents, with fresh ids so the other call sites keep their own component.
+ *
+ * Refuses on a recursive component, and says why: that refusal is the REG/CFL
+ * boundary showing up as an error message.
+ */
+export function inlineSubmachineAsRegion(stateId) {
+  const box = App.states.find(s => s.id === stateId);
+  if (!box || !box.callee) { showStatus('Only a sub-machine call site can be inlined'); return false; }
+  const target = getComponent(box.callee);
+  if (!target) { showStatus('That sub-machine no longer exists'); return false; }
+
+  const tree = machineTree();
+  if (recursiveComponents(tree).has(box.callee)) {
+    showStatus(`'${target.name}' invokes itself, so it cannot be drawn inline — that is exactly why this machine is context-free and not regular`);
+    return false;
+  }
+  const flat = flattenComponent(target);
+  if (!flat.states.length || !flat.startId) { showStatus(`'${target.name}' is empty — nothing to inline`); return false; }
+
+  snapshot();
+  const componentId = box.callee;
+  // Fresh ids: a component may have several call sites, and inlining one of
+  // them must not move states out from under the others.
+  const idMap = new Map();
+  const taken = new Set(App.states.map(s => s.name));
+  // Dropped in around where the box was, keeping the sub-machine's own layout.
+  const cx = flat.states.reduce((a, s) => a + s.x, 0) / flat.states.length;
+  const cy = flat.states.reduce((a, s) => a + s.y, 0) / flat.states.length;
+  const copies = flat.states.map(s => {
+    const id = newId();
+    idMap.set(s.id, id);
+    let name = s.name;
+    while (taken.has(name)) name += '′';
+    taken.add(name);
+    return { ...s, id, name, parent: stateId, x: box.x + (s.x - cx), y: box.y + (s.y - cy) };
+  });
+  const copyTrans = flat.transitions.map(t => {
+    const rec = { ...t, id: newTId(), from: idMap.get(t.from), to: idMap.get(t.to) };
+    delete rec.origin;
+    return rec;
+  });
+
+  // Arrows out of the box were "what happens after the call returns", so they
+  // now leave the states that were the component's exits — not the region as a
+  // whole, which would let them fire from anywhere inside it.
+  const exitIds = flat.accepts.map(id => idMap.get(id)).filter(Boolean);
+  const rewired = [];
+  for (const t of App.transitions) {
+    if (t.from !== stateId) { rewired.push(t); continue; }
+    for (const exit of exitIds) rewired.push({ ...t, id: newTId(), from: exit });
+  }
+  // Likewise the box's own accept mark: it meant "accept once this has
+  // returned", which is now the exits accepting.
+  if (App.accepts.has(stateId)) {
+    App.accepts.delete(stateId);
+    for (const exit of exitIds) App.accepts.add(exit);
+  }
+
+  delete box.callee;
+  box.super = true;
+  box.initial = idMap.get(flat.startId);
+  App.states.push(...copies);
+  App.transitions = rewired.concat(copyTrans);
+
+  // Drop the component if this was its last caller, the same rule demoteToState
+  // uses — shared work is never deleted out from under another call site.
+  const orphan = componentId !== App.rootComponentId && callSites(componentId).length === 0;
+  if (orphan) App.components = App.components.filter(x => x.id !== componentId);
+
+  emit(Change.GRAPH);
+  showStatus(orphan
+    ? `'${target.name}' inlined as a region — no stack needed, so this part is regular`
+    : `'${target.name}' inlined here; its other call sites still use the sub-machine`);
   return true;
 }
 
@@ -223,6 +423,92 @@ export function renderBreadcrumb() {
 
 subscribe(Change.GRAPH, renderBreadcrumb);
 
+/**
+ * The component tree as a list of things you can point at.
+ *
+ * The breadcrumb shows one PATH; this shows the whole SET, which is the thing
+ * regions get for free by being on the canvas and components never had. It is
+ * also the only home rename and delete have ever had — both were written,
+ * exported, and called from nowhere.
+ *
+ * The badges are the facts a call site cannot show you: how many boxes invoke
+ * this, whether it reaches itself (which is why the machine needs a stack), and
+ * whether anything reaches it at all.
+ */
+export function renderComponentList() {
+  const el = $('components-list');
+  if (!el) return;
+  const sec = $('components-sec');
+  const show = hasCallStack() && App.components.length > 0;
+  if (sec) sec.style.display = show ? '' : 'none';
+  const count = $('lp-count-components');
+  if (count) {
+    count.textContent = String(App.components.length);
+    if (App.components.length) count.removeAttribute('data-empty');
+    else count.setAttribute('data-empty', '1');
+  }
+  if (!show) { el.innerHTML = ''; return; }
+
+  // Cheap reads only — this runs on every graph change. rawCallGraph walks the
+  // component records; it does not flatten anything.
+  const graph = rawCallGraph();
+  const recursive = recursiveComponentIds(graph);
+  const reached = new Set();
+  const stack = App.rootComponentId ? [App.rootComponentId] : [];
+  while (stack.length) {
+    const n = stack.pop();
+    if (reached.has(n)) continue;
+    reached.add(n);
+    for (const m of graph.get(n) || []) stack.push(m);
+  }
+
+  const active = activeComponentId();
+  el.innerHTML = App.components.map(c => {
+    const isRoot = c.id === App.rootComponentId;
+    const sites = callSites(c.id).length;
+    const states = componentView(c.id).states.length;
+    const badges = [];
+    if (isRoot) badges.push('<span class="cmp-badge cmp-root">root</span>');
+    if (recursive.has(c.id)) badges.push('<span class="cmp-badge cmp-rec" data-tip="Invokes itself — this is what makes the machine context-free rather than regular, and why it cannot be inlined as a region">recursive</span>');
+    if (!isRoot && !reached.has(c.id)) badges.push('<span class="cmp-badge cmp-orphan" data-tip="Nothing reaches this from the root machine">unreachable</span>');
+    const sitesLbl = isRoot ? '' : `<span class="cmp-sites" data-tip="Call sites that invoke it">×${sites}</span>`;
+    return `<div class="si cmp-row ${c.id === active ? 'lp-selected' : ''}"
+  onclick="enterComponent('${c.id}')" ondblclick="promptRenameComponent('${c.id}')"
+  data-tip="${esc(c.name)} — ${states} state${states === 1 ? '' : 's'}. Click to open, double-click to rename.">
+  ${esc(c.name)}${sitesLbl}${badges.join('')}
+  ${isRoot ? '' : `<span class="dx" onclick="event.stopPropagation(); promptDeleteComponent('${c.id}')" data-tip="Delete this sub-machine — its call sites become plain states"><svg viewBox="0 0 256 256" width="10" height="10" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span>`}
+</div>`;
+  }).join('');
+}
+
+subscribe(Change.GRAPH, renderComponentList);
+
+/** Rename from the list. Wires up renameComponent, which had no caller. */
+export function promptRenameComponent(id) {
+  const c = getComponent(id);
+  if (!c) return;
+  const next = prompt(`Rename '${c.name}' to:`, c.name);
+  if (next === null) return;
+  if (renameComponent(id, next)) showStatus(`Renamed to '${getComponent(id).name}'`);
+}
+
+/**
+ * Delete from the list. Wires up deleteComponent, which had no caller.
+ *
+ * Says how many call sites it is about to turn back into plain states, because
+ * that is the part that is not visible from here.
+ */
+export function promptDeleteComponent(id) {
+  const c = getComponent(id);
+  if (!c) return;
+  const sites = callSites(id).length;
+  const warn = sites
+    ? `Delete '${c.name}'? ${sites} call site${sites === 1 ? '' : 's'} will become ${sites === 1 ? 'a plain state' : 'plain states'}.`
+    : `Delete '${c.name}'? Nothing calls it.`;
+  if (!confirm(warn)) return;
+  if (deleteComponent(id)) showStatus(`Deleted '${c.name}'`);
+}
+
 // ══════════════════════════════════════════════════════════════════
 //  THE MACHINE AS A WHOLE
 // ══════════════════════════════════════════════════════════════════
@@ -250,14 +536,30 @@ export function machineTree() {
   flushActiveComponent();
   const components = new Map();
   for (const c of App.components) {
+    // Containment is resolved here, once, so that everything downstream — the
+    // simulator, the validator, the RSM→PDA compiler, every export target —
+    // sees a component whose states are a flat set. Regions are the family that
+    // adds no power, and flattening is the constructive proof of it; making it
+    // the tree's entry point is what stops the other family from ever having to
+    // know regions exist. Leaf ids survive, so highlighting still lands on the
+    // nodes the user drew.
+    const flat = flattenComponent(c);
     components.set(c.id, {
       id: c.id,
       name: c.name,
-      states: c.states || [],
-      transitions: c.transitions || [],
-      startId: c.startId || null,
-      accepts: new Set(c.accepts || []),
-      stateById: new Map((c.states || []).map(s => [s.id, s]))
+      states: flat.states,
+      transitions: flat.transitions,
+      startId: flat.startId,
+      accepts: new Set(flat.accepts),
+      stateById: new Map(flat.states.map(s => [s.id, s])),
+      // Entry actions of the start leaf, which no transition can carry.
+      startOutput: flat.startOutput || '',
+      truncated: !!flat.truncated,
+      hasActions: !!(flat.startOutput || flat.transitions.some(t => t.output)),
+      // The component as drawn, for anything that has to report on the picture
+      // rather than on what it denotes.
+      raw: c,
+      expanded: flat.expanded
     });
   }
   return { root: App.rootComponentId, components };
@@ -273,6 +575,42 @@ export function callGraph(tree = machineTree()) {
     g.set(id, out);
   }
   return g;
+}
+
+/**
+ * The call graph straight off the component records, without flattening.
+ *
+ * `callGraph(machineTree())` is the honest version and the one every analysis
+ * uses, but machineTree() flattens every component — far too much work for the
+ * renderer, which only wants to know which boxes to mark and asks once per
+ * pass. Whether a state has a `callee` is not something flattening changes, so
+ * the cheap read is also the correct one here.
+ */
+export function rawCallGraph() {
+  const g = new Map();
+  for (const c of App.components) {
+    const out = new Set();
+    for (const s of componentView(c.id).states) if (s.callee) out.add(s.callee);
+    g.set(c.id, out);
+  }
+  return g;
+}
+
+/** Which components reach themselves — the ones that make the stack necessary. */
+export function recursiveComponentIds(g = rawCallGraph()) {
+  const found = new Set();
+  for (const start of g.keys()) {
+    const seen = new Set();
+    const stack = [...(g.get(start) || [])];
+    while (stack.length) {
+      const n = stack.pop();
+      if (n === start) { found.add(start); break; }
+      if (seen.has(n)) continue;
+      seen.add(n);
+      for (const m of g.get(n) || []) stack.push(m);
+    }
+  }
+  return found;
 }
 
 export function recursiveComponents(tree = machineTree()) {
@@ -324,6 +662,23 @@ export function validateHierarchy(tree = machineTree()) {
     }
     if (!reachable.has(id)) {
       issues.push({ level: 'warn', component: id, message: `'${c.name}' is never invoked from the root machine` });
+    }
+    // Containment problems are reported against the picture, not against the
+    // flattened result — by the time a region has been flattened away there is
+    // nothing left to complain about.
+    if (c.raw) {
+      for (const issue of validateSuperstates(c.raw)) {
+        issues.push({ ...issue, component: id });
+      }
+      for (const issue of validateGuards(c.raw.transitions || [], App.flags || [])) {
+        issues.push({ ...issue, component: id });
+      }
+    }
+    if (c.truncated) {
+      issues.push({
+        level: 'error', component: id,
+        message: `'${c.name}' flattens to more than ${App.config.maxFlatStates} states — raise the limit in Settings, or use fewer history regions and flags`
+      });
     }
   }
   return issues;
@@ -447,18 +802,93 @@ function noteFor(cfg, tree) {
 }
 
 export function buildRsmSteps(path, tokens, tree, finalStatus, finalNote) {
-  const steps = path.map(cfg => ({
-    state: cfg.state,
+  // A machine with no boxes never calls anything, so a call-stack row showing
+  // one unchanging frame is noise. This is the whole difference the UI needs to
+  // know about between an HSM run and an RSM one.
+  const showStack = hasBoxes(tree);
+  // Actions are a running side effect, so they accumulate across the path rather
+  // than being a property of any one configuration. A call enters a component,
+  // which runs that component's start entry chain — the same rule as step 0.
+  const showOut = [...tree.components.values()].some(c => c.hasActions);
+  const outToks = [];
+  let outStr = '';
+  const emitAct = cfg => {
+    let act = '';
+    if (cfg.kind === 'start') act = tree.components.get(cfg.comp)?.startOutput || '';
+    else if (cfg.kind === 'call') act = tree.components.get(cfg.comp)?.startOutput || '';
+    else act = cfg.via?.output || '';
+    if (act) { outToks.push(act); outStr += (outStr ? ' ' : '') + act; }
+  };
+  // History splits one drawn leaf into one flat state per thing the region might
+  // remember, so `cfg.state` is synthetic in exactly the way `via.id` is. Both
+  // carry `origin` back to the node the user drew, and highlighting names that.
+  const originOf = (comp, id) => tree.components.get(comp)?.stateById.get(id)?.origin || id;
+  // An orthogonal configuration is in several drawn leaves simultaneously.
+  const originsOf = (comp, id) => tree.components.get(comp)?.stateById.get(id)?.origins;
+  // The part of the configuration the picture cannot show. A run through a
+  // guarded machine takes different arrows out of the same drawn state on
+  // different visits, and without these the panel gives the reader no way to
+  // see why — the whole point of a guard is state that is not in the diagram.
+  const flatOf = (comp, id) => tree.components.get(comp)?.stateById.get(id);
+  // Memory names a REGION and one of its CHILDREN — both drawn nodes, which
+  // flattening removed. So this resolves against the component as drawn
+  // (`raw`), not against stateById, which is keyed by synthesised flat ids and
+  // would silently fall through to showing raw ids.
+  const nameIn = (comp, id) =>
+    tree.components.get(comp)?.raw?.states?.find(s => s.id === id)?.name || id;
+  // Containment depth, the mirror of the call stack.
+  //
+  // The Call row makes "recursion is a stack" something you watch happen.
+  // Containment depth is just as real and had no equivalent: a run through a
+  // three-deep nest showed a highlighted leaf and nothing about where it sat.
+  // Named against the component AS DRAWN for the same reason `mem` is — the
+  // regions were flattened away, so stateById cannot see them.
+  const rawOf = comp => tree.components.get(comp)?.raw;
+  const nestOf = (comp, flatId) => {
+    const raw = rawOf(comp);
+    if (!raw || !raw.states?.some(isSuperstate)) return null;
+    const leaf = originOf(comp, flatId);
+    const byId = new Map(raw.states.map(s => [s.id, s]));
+    const chain = [];
+    for (let cur = byId.get(leaf); cur; cur = cur.parent ? byId.get(cur.parent) : null) {
+      chain.unshift(cur.name);
+      if (chain.length > raw.states.length) break;   // a hand-edited parent cycle
+    }
+    return chain.length > 1 ? chain : null;
+  };
+
+  const steps = path.map(cfg => (emitAct(cfg), {
+    state: originOf(cfg.comp, cfg.state),
+    states: originsOf(cfg.comp, cfg.state),
+    nest: nestOf(cfg.comp, cfg.state),
+    vals: flatOf(cfg.comp, cfg.state)?.vals || null,
+    // Region name → the child it remembers, resolved to names for display.
+    mem: (() => {
+      const m = flatOf(cfg.comp, cfg.state)?.mem;
+      if (!m) return null;
+      const out = {};
+      for (const [region, child] of Object.entries(m)) {
+        out[nameIn(cfg.comp, region)] = child === MEM_UNSET || !child
+          ? '—'
+          : nameIn(cfg.comp, child);
+      }
+      return out;
+    })(),
     component: cfg.comp,
+    ...(showOut ? { outToks: [...outToks], outSoFar: outStr } : {}),
     // Component ids from the root down to the one currently executing. The
     // breadcrumb binds straight to this, so it doubles as a depth gauge:
     // Main > Expr > Expr is a machine two calls deep into itself.
     frames: [...cfg.stack.map(f => f.comp), cfg.comp],
-    callStack: [...cfg.stack.map(f => tree.components.get(f.comp)?.name || '?'),
-      tree.components.get(cfg.comp)?.name || '?'],
+    callStack: showStack
+      ? [...cfg.stack.map(f => tree.components.get(f.comp)?.name || '?'),
+        tree.components.get(cfg.comp)?.name || '?']
+      : null,
     tokens,
     remaining: tokens.slice(cfg.i),
-    tid: cfg.via?.id,
+    // `origin` is the arrow the user drew; `id` is what flattening synthesised
+    // for it. Highlighting has to name the former.
+    tid: cfg.via?.origin || cfg.via?.id,
     note: noteFor(cfg, tree)
   }));
   if (steps.length && finalStatus) {
@@ -493,6 +923,18 @@ export function simRSM(tokens) {
   else if (result.status === 'depth') { status = 'reject'; note = `Call depth limit (${App.config.maxCallDepth || 60}) reached — is there a base case?`; }
   else if (problems.length) note = problems[0].message;
   else note = 'No accepting run: input consumed, call stack empty and an accepting root state must all hold at once';
+
+  // Truncation is not a property of the verdict, so it cannot ride on the
+  // reject note: a truncated machine that ACCEPTS is the dangerous case, and
+  // reporting it only when the run happens to fail is reporting it exactly
+  // when it matters least. This answer is about a different machine, and that
+  // has to be said whichever way it came out.
+  const cut = [...tree.components.values()].filter(c => c.truncated);
+  if (cut.length) {
+    const over = `Flattening hit the ${App.config.maxFlatStates || 4000}-state ceiling in ${cut.map(c => `'${c.name}'`).join(', ')} — this verdict is for a truncated machine. Raise “Max Flattened States” in Settings → Hierarchical.`;
+    note = note ? `${over} ${note}` : over;
+    showStatus(over);
+  }
 
   App.simSteps = buildRsmSteps(path, tokens, tree, status, note);
   App.simIdx = 0;

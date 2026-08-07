@@ -1,5 +1,5 @@
 import { renderGramSyms, renderGrammarLPanel } from './algorithms-cfg.js';
-import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
+import { renderFlags, renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { toggleSnapToGrid } from './canvas.js';
 import { snapshot } from './history.js';
 import { initLangClaimOverflowObserver } from './language.js';
@@ -19,7 +19,7 @@ try {
 } catch (e) {
   applyTheme(App.config.theme || DEFAULT_THEME, false);
 }
-renderSigma(); renderGamma(); renderGramSyms(); renderOutputAlpha();
+renderSigma(); renderGamma(); renderGramSyms(); renderOutputAlpha(); renderFlags();
 renderGrammarLPanel(); updateLPanel();
 App.stackAlpha = new Set([App.config.sym.stackBottom]);
 if ($('sim-speed-sel')) $('sim-speed-sel').value = String(App.config.autoSpeed);

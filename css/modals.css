@@ -126,6 +126,31 @@ body.modal-open {
   font-size: .95em;
 }
 
+/* A malformed guard, reported where it was typed. Red rather than the muted
+   hint colour because this one is not advice: the arrow will not fire. */
+.modal-err {
+  font-family: var(--sans);
+  font-size: .68rem;
+  color: var(--red);
+  line-height: 1.5;
+}
+
+/* A flag nobody declared is a different kind of problem — the arrow parses, it
+   just reads false. Gold, and offering the fix inline. */
+.modal-hint-warn {
+  color: var(--gold);
+}
+
+.modal-hint-warn a {
+  color: var(--gold);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.inp.inp-err {
+  border-color: var(--red);
+}
+
 .modal-section-lbl {
   font-family: var(--sans);
   font-size: .65rem;
@@ -136,6 +161,16 @@ body.modal-open {
   padding: 0 0 8px;
   margin: 14px 0 10px;
   border-bottom: 1px solid var(--border);
+}
+
+/* Which region the entry-mode block is talking about — it appears and
+   disappears as the To field changes, so it has to name its subject. */
+.modal-section-note {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  color: var(--accent);
+  margin-left: 6px;
 }
 
 .modal-section-lbl:first-child {

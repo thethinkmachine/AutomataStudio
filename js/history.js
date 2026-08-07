@@ -50,7 +50,7 @@ export function snapshot() {
     componentN: App.componentN,
     startId: App.startId, accepts: [...App.accepts],
     sigma: [...App.sigma], stackAlpha: [...App.stackAlpha],
-    outputAlpha: [...App.outputAlpha], tapeCount: App.tapeCount,
+    outputAlpha: [...App.outputAlpha], flags: [...(App.flags || [])], tapeCount: App.tapeCount,
     stateN: App.stateN, transN: App.transN,
     notes: App.notes, noteN: App.noteN,
     dividers: App.dividers, dividerN: App.dividerN
@@ -103,6 +103,8 @@ export function restoreSnapshot(s) {
     if (stackLbl) stackLbl.textContent = isAnyTM(d.machine) ? 'Tape Alphabet Γ' : 'Stack Alphabet Γ';
     const outSec = document.getElementById('output-sec');
     if (outSec) outSec.style.display = cfg.isTransducer ? '' : 'none';
+    const flagSec = document.getElementById('flags-sec');
+    if (flagSec) flagSec.style.display = cfg.hasActions ? '' : 'none';
     const mtmSec = document.getElementById('mtm-ctrl');
     if (mtmSec) mtmSec.style.display = (d.machine === 'MTM') ? 'flex' : 'none';
   }
@@ -117,6 +119,7 @@ export function restoreSnapshot(s) {
   App.startId = d.startId; App.accepts = new Set(d.accepts || []);
   App.sigma = new Set(d.sigma || []); App.stackAlpha = new Set(d.stackAlpha || [App.config.sym.stackBottom]);
   App.outputAlpha = new Set(d.outputAlpha || ['0', '1']);
+  App.flags = Array.isArray(d.flags) ? [...d.flags] : [];
   App.stateN = d.stateN; App.transN = d.transN;
   App.notes = d.notes || []; App.noteN = d.noteN || 0;
   App.dividers = d.dividers || []; App.dividerN = d.dividerN || 0;

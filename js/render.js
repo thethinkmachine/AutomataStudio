@@ -3,8 +3,9 @@ import { renderDividers } from './dividers.js';
 import { commit, snapshot } from './history.js';
 import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
-import { $, App, R, SVG_NS, getComponent, getMachineConfig, hasHierarchy } from './state.js';
-import { descendIntoBox } from './hierarchy.js';
+import { $, App, R, SVG_NS, activeComponentId, getComponent, getMachineConfig, hasCallStack, hasSuperstates } from './state.js';
+import { descendIntoBox, recursiveComponentIds } from './hierarchy.js';
+import { childIndex, defaultEntry, depthIndex, isCollapsed, isParallel, isSuperstate, nodeHalf, refreshSuperRects, stateIndex, subtreeIds, toggleRegionCollapsed, topLevelOf, visibleNodeOf } from './superstates.js';
 import { getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive } from './states-transitions.js';
 import { Change, emit, subscribe } from './store.js';
 import { triggerMath } from './theory.js';
@@ -28,8 +29,14 @@ export function renderAll() {
   const cfg = getMachineConfig(App.machine);
   $('mach-badge').className = `badge ${cfg.badge}`;
   $('mach-badge').textContent = cfg.label;
+  invalidateRecursionCache();
   if (typeof pruneNoteAnchors === 'function') pruneNoteAnchors();
   if (typeof renderDividers === 'function') renderDividers();
+  // Region rectangles are derived from their contents, and the arrow maths
+  // below trims against them — so the layout pass has to run before anything
+  // asks how big a node is.
+  refreshLayout();
+  renderSuperstates();
   renderTransitions(); renderStates();
   if (typeof renderNotes === 'function') renderNotes();
   renderMinimap();
@@ -46,9 +53,45 @@ export function renderAll() {
   if (typeof applyEdgeDirectionHighlight === 'function') applyEdgeDirectionHighlight();
 }
 
+/**
+ * Where an arrow's endpoint is drawn, given what is collapsed.
+ *
+ * An arrow into a state hidden by a collapsed region has to land on the region
+ * that replaced it — otherwise it points at coordinates with nothing there.
+ * This is the whole reason collapse is a rendering concern and not just a
+ * visibility flag, and it is shared by the three places that resolve an edge:
+ * groupTrans (what to draw), edgeGroupFor (what a click means) and
+ * buildEdgeIndex (the per-frame geometry).
+ *
+ * Returns the identity function when nothing is collapsed, so the common case
+ * pays one Map lookup and no allocation.
+ */
+export function edgeProjection() {
+  if (!App.hiddenStates || !App.hiddenStates.size) return null;
+  const byId = stateIndex(App.states);
+  const cache = new Map();
+  return id => {
+    if (!App.hiddenStates.has(id)) return id;
+    let v = cache.get(id);
+    if (v === undefined) cache.set(id, v = visibleNodeOf(id, App.states, byId));
+    return v;
+  };
+}
+
 export function groupTrans() {
+  const project = edgeProjection();
   const g = {};
-  App.transitions.forEach(t => { const k = t.from + '→' + t.to; if (!g[k]) g[k] = { from: t.from, to: t.to, ts: [] }; g[k].ts.push(t); });
+  App.transitions.forEach(t => {
+    const from = project ? project(t.from) : t.from;
+    const to = project ? project(t.to) : t.to;
+    // Both ends inside the same collapsed region: an internal arrow, and
+    // showing it as a self-loop on the box would claim something about the
+    // container that is really about a state it is not showing.
+    if (from === to && (t.from !== t.to)) return;
+    const k = from + '→' + to;
+    if (!g[k]) g[k] = { from, to, ts: [] };
+    g[k].ts.push(t);
+  });
   return Object.values(g);
 }
 
@@ -59,7 +102,15 @@ export function groupTrans() {
 function edgeGroupFor(key) {
   const sep = key.indexOf('|');
   const fromId = key.slice(0, sep), toId = key.slice(sep + 1);
-  const ts = App.transitions.filter(t => t.from === fromId && t.to === toId);
+  // Through the same projection groupTrans drew with: an edge on a collapsed
+  // region stands for every arrow whose endpoints project onto it, so clicking
+  // it has to resolve to those rather than to the (nonexistent) transitions
+  // literally between the two region ids.
+  const project = edgeProjection();
+  const ts = project
+    ? App.transitions.filter(t => project(t.from) === fromId && project(t.to) === toId
+      && !(project(t.from) === project(t.to) && t.from !== t.to))
+    : App.transitions.filter(t => t.from === fromId && t.to === toId);
   if (!ts.length) return null;
   const from = getState(fromId), to = getState(toId);
   if (!from || !to) return null;
@@ -73,9 +124,15 @@ function edgeGroupFor(key) {
 function buildEdgeIndex() {
   const stateById = new Map();
   for (const s of App.states) stateById.set(s.id, s);
+  // Keyed by the pair as DRAWN, so the "is there an edge the other way?" test
+  // that decides curvature agrees with what groupTrans actually put on screen.
+  const project = edgeProjection();
   const tsByPair = new Map();
   for (const t of App.transitions) {
-    const k = t.from + '|' + t.to;
+    const from = project ? project(t.from) : t.from;
+    const to = project ? project(t.to) : t.to;
+    if (from === to && t.from !== t.to) continue;
+    const k = from + '|' + to;
     let arr = tsByPair.get(k);
     if (!arr) tsByPair.set(k, arr = []);
     arr.push(t);
@@ -88,8 +145,26 @@ function buildEdgeIndex() {
 // at a glance, and it is sized from R so the radius setting still scales it.
 export function nodeIsBox(s) { return !!(s && s.callee); }
 
-export function boxHalf(s) {
-  return { hw: (s.w || R * 3.2) / 2, hh: (s.h || R * 1.8) / 2 };
+// Half-extents of any node. Delegates to superstates.js so the three shapes —
+// circle, box, region — are sized by one rule in one place; a region's rect is
+// derived from what it contains, so it arrives through App.superRects.
+export function boxHalf(s) { return nodeHalf(s, App.superRects); }
+
+// True for the two rectangular shapes. Everything else is a circle of radius R,
+// which is what the arrow maths assumed everywhere before boxes existed.
+function nodeIsRect(s) { return nodeIsBox(s) || App.superRects.has(s && s.id); }
+
+// Which components reach themselves, memoised for one render pass.
+//
+// syncStateNode asks per box, and the answer is the same for all of them, so
+// without the memo a canvas of N boxes walks the call graph N times. Cleared at
+// the top of renderAll rather than cached on a key: the graph is cheap to walk
+// once and the alternative is a staleness bug the day someone edits a callee.
+let _recBoxes = null;
+export function invalidateRecursionCache() { _recBoxes = null; }
+function recursiveBoxIds() {
+  if (!_recBoxes) _recBoxes = recursiveComponentIds();
+  return _recBoxes;
 }
 
 // Distance from a node's centre to its own boundary along a unit direction.
@@ -97,7 +172,7 @@ export function boxHalf(s) {
 // lived, so putting it behind a function is what lets an arrow trim correctly
 // against a rectangle without touching any of the callers' maths.
 function boundaryOffset(s, ux, uy) {
-  if (!nodeIsBox(s)) return R;
+  if (!nodeIsRect(s)) return R;
   const { hw, hh } = boxHalf(s);
   const tx = ux ? Math.abs(hw / ux) : Infinity;
   const ty = uy ? Math.abs(hh / uy) : Infinity;
@@ -105,9 +180,28 @@ function boundaryOffset(s, ux, uy) {
 }
 
 // Where a self-loop and the start arrow meet the node: the top and left edge
-// respectively, which is R for a circle and the half-extent for a box.
-function topOffset(s) { return nodeIsBox(s) ? boxHalf(s).hh : R; }
-function leftOffset(s) { return nodeIsBox(s) ? boxHalf(s).hw : R; }
+// respectively, which is R for a circle and the half-extent for a rectangle.
+function topOffset(s) { return nodeIsRect(s) ? boxHalf(s).hh : R; }
+function leftOffset(s) { return nodeIsRect(s) ? boxHalf(s).hw : R; }
+
+// Which states are excluded from their container's measurement this pass.
+//
+// A state defining its region's boundary could otherwise never leave it: the
+// region would grow to follow it forever. But a region being dragged WITH its
+// contents has to keep its size. Both fall out of one rule — exclude only the
+// members of the drag set whose own parent is not also being dragged, i.e. the
+// top of the set.
+function dragMeasureExclusion() {
+  if (!App.dragOffsets || !App.superRects.size) return null;
+  const ids = Object.keys(App.dragOffsets);
+  if (!ids.length) return null;
+  return new Set(topLevelOf(ids, App.states));
+}
+
+export function refreshLayout() {
+  const exclude = dragMeasureExclusion();
+  return refreshSuperRects(App.states, exclude ? { exclude } : undefined);
+}
 
 // Geometry for one edge. Split out because renderTransitions and updateFastDOM
 // both need it, and because it is the part that changes every frame while a
@@ -404,10 +498,27 @@ export function renderTransitions() {
 // node per frame. buildEdgeIndex keeps the "is there an edge the other way?"
 // lookup O(1); without it each frame is O(edges x transitions).
 export function updateFastDOM() {
+  // Regions resize as their contents move, so their geometry is part of the
+  // per-frame work rather than something only a full render establishes.
+  const rects = App.superRects.size || App.states.some(isSuperstate) ? refreshLayout() : App.superRects;
   const { stateById, tsByPair } = buildEdgeIndex();
   const isMoore = App.machine === 'Moore';
 
+  if (rects.size) {
+    const idx = childIndex(App.states);
+    const showAccepts = acceptsAreShown();
+    for (const [id, rect] of rects) {
+      const node = App.domCache.supers.get(id);
+      const s = stateById.get(id);
+      if (!node || !s) continue;
+      // stateById is already an id → state index; passing it stops defaultEntry
+      // rebuilding one per region per frame.
+      syncSuperNode(node, s, rect, stateById.get(defaultEntry(id, App.states, idx, stateById)), showAccepts, idx);
+    }
+  }
+
   for (const s of App.states) {
+    if (rects.has(s.id)) continue;
     const grp = App.domCache.states.get(s.id);
     if (!grp || !grp.__parts) continue;
     const p = grp.__parts;
@@ -444,6 +555,9 @@ export function updateFastDOM() {
       p.moore.setAttribute('x', s.x);
       p.moore.setAttribute('y', s.y + App.config.render.mooreTextMargin);
     }
+    // Geometry only — the text is unchanged by a drag, so this reuses the
+    // cached tspans rather than rebuilding them every frame.
+    if (p.actions) syncActionLabel(grp, p, s);
   }
 
   const startArrow = App.domCache.startArrow;
@@ -547,15 +661,44 @@ function attachNodeListeners(g, id) {
     if (toggleOpt) toggleOpt.style.display = acceptsAreShown() ? '' : 'none';
     if (renameLbl) renameLbl.textContent = (App.machine === 'Moore' || App.machine === 'Mealy') ? 'Configure' : 'Rename';
 
-    // Sub-machine entries only exist for machines that have components, and the
-    // promote entry doubles as demote once the state is already a call site.
+    // The hierarchy entries split along the two families: containment (regions)
+    // is offered by every hierarchical model, reference (sub-machines) only by
+    // the one with a call stack. The pair of conversions between them is the
+    // REG↔CFL toggle, which is why both are on the same menu.
     const s = getState(id);
     const isBox = nodeIsBox(s);
-    const promoteRow = $('ctx-promote'), openRow = $('ctx-open-sub');
+    const isRegion = App.superRects.has(id);
+    const row = (rowId, on) => { const el = $(rowId); if (el) el.style.display = on ? '' : 'none'; };
+
     const promoteLbl = document.querySelector('#ctx-promote .ctx-label');
-    if (promoteRow) promoteRow.style.display = hasHierarchy() ? '' : 'none';
+    row('ctx-promote', hasCallStack() && !isRegion);
     if (promoteLbl) promoteLbl.textContent = isBox ? 'Convert to Plain State' : 'Convert to Sub-machine';
-    if (openRow) openRow.style.display = hasHierarchy() && isBox ? '' : 'none';
+    row('ctx-open-sub', hasCallStack() && isBox);
+    // Offered on regions too. Nesting one region inside another is how an
+    // orthogonal region is built ("group each concurrent part first"), and
+    // hiding this row on exactly the nodes that instruction produces left that
+    // workflow with no direct path at all.
+    row('ctx-group', hasSuperstates() && !isBox);
+    row('ctx-ungroup', hasSuperstates() && isRegion);
+    // Collapse is a VIEW change and Ungroup is an edit, so they sit next to
+    // each other deliberately: the menu is where the difference between
+    // "show me less" and "mean something else" has to be legible.
+    row('ctx-collapse', hasSuperstates() && isRegion);
+    const collapseLbl = $('ctx-collapse-lbl');
+    if (collapseLbl) collapseLbl.textContent = isCollapsed(s) ? 'Expand Region' : 'Collapse Region';
+    // Only meaningful when the region's children are themselves regions —
+    // orthogonality decomposes into concurrent regions, not concurrent states.
+    const kidsAreRegions = isRegion &&
+      childIndex(App.states).get(s.id)?.length > 1 &&
+      childIndex(App.states).get(s.id).every(isSuperstate);
+    row('ctx-parallel', hasSuperstates() && isRegion && (s.parallel || kidsAreRegions));
+    const parLbl = $('ctx-parallel-lbl');
+    if (parLbl) parLbl.textContent = s && s.parallel ? 'Make Ordinary (OR)' : 'Make Orthogonal (AND)';
+    // Both directions of the toggle: a region becomes a component, a component
+    // is inlined back into a region — the second refusing when it recurses.
+    row('ctx-extract', hasCallStack() && isRegion);
+    row('ctx-inline', hasSuperstates() && isBox);
+    row('ctx-default-entry', hasSuperstates() && !!(s && s.parent));
     showContextMenu('state', e.clientX, e.clientY);
   });
 
@@ -565,6 +708,10 @@ function attachNodeListeners(g, id) {
     // component's exit nodes, not to the call site.
     const s = getState(id);
     if (nodeIsBox(s)) { descendIntoBox(id); return; }
+    // On a region's title band, the same gesture means the same thing: show me
+    // what is inside. The two families' containers now answer double-click
+    // alike, which is the point of borrowing the collapsed form at all.
+    if (isSuperstate(s)) { toggleRegionCollapsed(id); return; }
     if (!acceptsAreShown()) return;
     App.accepts.has(id) ? App.accepts.delete(id) : App.accepts.add(id);
     commit();
@@ -671,12 +818,25 @@ function syncStateNode(g, s, showAccepts) {
     parts.callee.remove();
     parts.callee = null;
   }
-  const calleeName = isBox ? (getComponent(s.callee)?.name || '?') : null;
+  const callee = isBox ? getComponent(s.callee) : null;
+  const calleeName = isBox ? (callee?.name || '?') : null;
   if (parts.callee) {
     parts.callee.setAttribute('x', s.x);
     parts.callee.setAttribute('y', s.y + 13);
-    parts.callee.textContent = calleeName;
+    // The component's name, and — borrowed from the region's default-entry
+    // marker — where a call actually lands. A region shows its entry point with
+    // a dot and an arm; a box showed nothing at all, so the one question you
+    // have about a call site ("where does this go?") could only be answered by
+    // navigating into it and losing your place.
+    const entry = callee?.states?.find(st => st.id === callee.startId);
+    const txt = entry ? `${calleeName} → ${entry.name}` : calleeName;
+    if (parts.callee.textContent !== txt) parts.callee.textContent = txt;
   }
+  // A box whose component reaches itself is the reason this machine needs a
+  // stack — the single most important fact about an RSM diagram, and previously
+  // indistinguishable from any other box. Same move orthogonality makes: mark
+  // the one that changes the language class.
+  g.classList.toggle('rec-box', isBox && recursiveBoxIds().has(s.callee));
 
   const isMoore = App.machine === 'Moore';
   const labelDy = isMoore ? -App.config.render.textMargin : (isBox ? -7 : 0);
@@ -708,11 +868,30 @@ function syncStateNode(g, s, showAccepts) {
     parts.moore.textContent = s.output !== undefined && s.output !== '' ? s.output : '—';
   }
 
+  // Entry/exit actions, in the statechart's own notation, under the node.
+  //
+  // A Moore machine got a dedicated tspan for its output the moment it existed,
+  // and an action is the same kind of thing: a side effect attached to being in
+  // a state. Without it, a state carrying `entry / drawWeapon` is pixel-
+  // identical to one carrying nothing, and the example built to show that a
+  // region is a SCOPE draws a picture in which the thing being scoped is
+  // invisible — readable only by opening every state's dialog one at a time.
+  syncActionLabel(g, parts, s);
+
+  // An accept ring means two different things depending on where you are
+  // standing: in the ROOT it means accept, and in a sub-machine it means
+  // "return to my caller". They were drawn identically, so the canvas gave no
+  // way to tell — and "exits(c) are c.accepts" is the load-bearing half of the
+  // call semantics. Borrowed from the region, which does mark its boundary.
+  const inSub = hasCallStack() && !!App.rootComponentId &&
+    activeComponentId() !== App.rootComponentId;
+  g.classList.toggle('exit-st', isAcc && inSub);
+
   let stTitle = isBox ? `Box '${s.name}' — invokes ${calleeName}` : `State '${s.name}'`;
   if (isStart || isAcc) {
     const statuses = [];
-    if (isStart) statuses.push('Start');
-    if (isAcc) statuses.push('Accept');
+    if (isStart) statuses.push(inSub ? 'Entry' : 'Start');
+    if (isAcc) statuses.push(inSub ? 'Exit — returns to caller' : 'Accept');
     stTitle += ` (${statuses.join(', ')})`;
   }
   if (isMoore) {
@@ -721,6 +900,291 @@ function syncStateNode(g, s, showAccepts) {
   }
   g.setAttribute('data-tip', stTitle);
   g.setAttribute('aria-label', stTitle);
+}
+
+/**
+ * The `entry / act` and `exit / act` lines under a node, created on demand and
+ * removed when the actions are.
+ *
+ * Cache-keyed like the state label, and for the same reason: rebuilding tspans
+ * is the expensive part of a render, and a node that merely moved has not
+ * changed what it does.
+ *
+ * Shared by plain states and regions — `y` is the caller's business, since a
+ * region hangs them under its title band rather than under its centre.
+ */
+export function syncActionLabel(g, parts, s, x, y) {
+  const lines = [];
+  if (s.entry) lines.push(`entry / ${s.entry}`);
+  if (s.exit) lines.push(`exit / ${s.exit}`);
+
+  if (!lines.length) {
+    if (parts.actions) { parts.actions.remove(); parts.actions = null; g.__actKey = null; }
+    return;
+  }
+  if (!parts.actions) {
+    const t = makeSVG('text');
+    t.classList.add('st-actions');
+    g.appendChild(t);
+    parts.actions = t;
+    g.__actKey = null;
+  }
+  const px = x === undefined ? s.x : x;
+  const py = y === undefined ? s.y + nodeHalf(s, App.superRects).hh + 13 : y;
+  const key = lines.join('');
+  if (g.__actKey !== key) {
+    parts.actions.textContent = '';
+    lines.forEach((line, i) => {
+      const tspan = makeSVG('tspan');
+      tspan.setAttribute('x', px);
+      tspan.setAttribute('dy', i === 0 ? 0 : 11);
+      tspan.textContent = line;
+      parts.actions.appendChild(tspan);
+    });
+    g.__actKey = key;
+    g.__actX = px;
+  } else if (g.__actX !== px) {
+    for (const tspan of parts.actions.childNodes) tspan.setAttribute('x', px);
+    g.__actX = px;
+  }
+  parts.actions.setAttribute('x', px);
+  parts.actions.setAttribute('y', py);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  SUPERSTATE CONTAINERS
+// ══════════════════════════════════════════════════════════════════
+// Drawn in their own layer, under the edges, and diffed by id the same way
+// states and edges are.
+//
+// Only the title band takes pointer events. The body is deliberately
+// click-through: a container that swallowed clicks over its whole area would
+// make every state inside it unreachable, and would capture the empty-canvas
+// gestures (marquee, double-click-to-add) that happen to land in the gaps. That
+// one CSS rule is what makes containment hit-testing a non-problem rather than
+// the hard part it looks like.
+function createSuperNode(id) {
+  const g = makeSVG('g');
+  // `sn` as well as `super-st`, so every selection path that already exists —
+  // hlState, the .sn.sel-st sweep in canvas.js, the [data-id] lookups — keeps
+  // working on a region without knowing what one is.
+  g.classList.add('sn', 'super-st');
+  g.setAttribute('data-id', id);
+  g.__kind = 'super';
+
+  const body = makeSVG('rect');
+  body.classList.add('super-body');
+  body.setAttribute('rx', 14);
+  g.appendChild(body);
+
+  // A path rather than a rect: the band has to round off at the top to sit
+  // flush inside the body's corners, and square off at the bottom where it
+  // meets the interior.
+  const head = makeSVG('path');
+  head.classList.add('super-head');
+  g.appendChild(head);
+
+  const label = makeSVG('text');
+  label.classList.add('super-lbl');
+  g.appendChild(label);
+
+  // The statechart notation for a default entry: a filled dot with a short arm
+  // pointing at the child that a transition into this region actually reaches.
+  const initDot = makeSVG('circle');
+  initDot.classList.add('super-init');
+  initDot.setAttribute('r', 4);
+  g.appendChild(initDot);
+
+  const initArm = makeSVG('path');
+  initArm.classList.add('super-init-arm');
+  initArm.setAttribute('marker-end', 'url(#arr)');
+  g.appendChild(initArm);
+
+  // The dashed separators of an orthogonal region. One path for all of them:
+  // they are decoration on a single node, never hit-tested, and rebuilding one
+  // `d` string is cheaper than diffing a line per boundary.
+  const lanes = makeSVG('path');
+  lanes.classList.add('super-lanes');
+  g.appendChild(lanes);
+
+  // The collapse control, on the title band because that is the only part of a
+  // region that takes pointer events. A triangle rather than a glyph so it can
+  // be rotated in place: one path, two orientations.
+  const twisty = makeSVG('path');
+  twisty.classList.add('super-twisty');
+  twisty.setAttribute('d', 'M -3.5 -4.5 L 4 0 L -3.5 4.5 Z');
+  g.appendChild(twisty);
+
+  // What a collapsed region is standing in for. It replaces the contents, so it
+  // has to say something about them — an unlabelled box is the RSM box's worst
+  // property, not one worth borrowing.
+  const summary = makeSVG('text');
+  summary.classList.add('super-summary');
+  g.appendChild(summary);
+
+  g.__parts = { body, head, label, initDot, initArm, lanes, twisty, summary };
+  attachNodeListeners(g, id);
+
+  // Toggling is on the twisty itself, and stopPropagation keeps it from
+  // reaching the band's drag handler underneath.
+  twisty.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    e.preventDefault();
+    toggleRegionCollapsed(id);
+  });
+  return g;
+}
+
+/**
+ * Where to draw the dashed separators inside an orthogonal region.
+ *
+ * The regions are laid out by hand, so there is no row/column to read off —
+ * the dominant axis is inferred from how the child centres are spread, and a
+ * separator goes midway between each adjacent pair of facing edges. Which means
+ * dragging one region past another re-flows the dividers rather than leaving
+ * them describing a layout that no longer exists.
+ */
+function laneDividers(s, rect, idx) {
+  const kids = (idx.get(s.id) || [])
+    .map(k => App.superRects.get(k.id))
+    .filter(Boolean);
+  if (kids.length < 2) return '';
+
+  const cx = kids.map(r => r.x + r.w / 2);
+  const cy = kids.map(r => r.y + r.h / 2);
+  // Side-by-side regions want vertical rules; stacked ones want horizontal.
+  const vertical = (Math.max(...cx) - Math.min(...cx)) >= (Math.max(...cy) - Math.min(...cy));
+  const sorted = [...kids].sort((a, b) => (vertical ? a.x - b.x : a.y - b.y));
+
+  const headH = Math.min(App.config.superstate.head, rect.h);
+  const d = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const a = sorted[i - 1], b = sorted[i];
+    if (vertical) {
+      const x = (a.x + a.w + b.x) / 2;
+      d.push(`M ${x} ${rect.y + headH} L ${x} ${rect.y + rect.h}`);
+    } else {
+      const y = (a.y + a.h + b.y) / 2;
+      d.push(`M ${rect.x} ${y} L ${rect.x + rect.w} ${y}`);
+    }
+  }
+  return d.join(' ');
+}
+
+function syncSuperNode(g, s, rect, entryState, showAccepts, idx) {
+  const p = g.__parts;
+  const headH = Math.min(App.config.superstate.head, rect.h);
+  const par = isParallel(s);
+
+  g.classList.toggle('start-st', App.startId === s.id);
+  g.classList.toggle('sel-st', App.selectedStates.has(s.id));
+  g.classList.toggle('acc-st', showAccepts && App.accepts.has(s.id));
+  g.classList.toggle('par-st', par);
+  // Same overlay a plain state gets from Dead State Analysis. A region can be
+  // unreachable exactly as a state can, and leaving it out made the one node
+  // shape big enough to notice the only one the overlay ignored.
+  const cls = App.stateClassification ? App.stateClassification.get(s.id) : null;
+  g.classList.toggle('unreachable-st', cls === 'unreachable');
+  g.classList.toggle('dead-st', cls === 'dead');
+
+  p.body.setAttribute('x', rect.x);
+  p.body.setAttribute('y', rect.y);
+  p.body.setAttribute('width', rect.w);
+  p.body.setAttribute('height', rect.h);
+
+  const cr = Math.min(14, rect.w / 2, headH);
+  p.head.setAttribute('d',
+    `M ${rect.x} ${rect.y + cr} a ${cr} ${cr} 0 0 1 ${cr} ${-cr}` +
+    ` h ${rect.w - 2 * cr} a ${cr} ${cr} 0 0 1 ${cr} ${cr}` +
+    ` v ${headH - cr} h ${-rect.w} Z`);
+
+  p.label.setAttribute('x', rect.x + 12);
+  p.label.setAttribute('y', rect.y + headH / 2);
+  if (p.label.textContent !== s.name) p.label.textContent = s.name;
+
+  const closed = isCollapsed(s);
+  g.classList.toggle('closed-st', closed);
+
+  const lanes = par && !closed ? laneDividers(s, rect, idx) : '';
+  p.lanes.style.display = lanes ? '' : 'none';
+  if (lanes) p.lanes.setAttribute('d', lanes);
+
+  // Under the title band rather than under the centre: a region's centre is in
+  // the middle of its contents, and these belong to the container.
+  syncActionLabel(g, p, s, rect.x + 12, rect.y + headH + 12);
+
+  // The twisty sits at the right end of the band, pointing down when open and
+  // right when closed — the direction the contents will go.
+  p.twisty.setAttribute('transform',
+    `translate(${rect.x + rect.w - 14} ${rect.y + headH / 2}) rotate(${closed ? 0 : 90})`);
+
+  // What the box is standing in for, when it is standing in for anything.
+  const hiddenCount = closed ? subtreeIds(s.id, App.states).length - 1 : 0;
+  p.summary.style.display = closed ? '' : 'none';
+  if (closed) {
+    p.summary.setAttribute('x', rect.x + rect.w / 2);
+    p.summary.setAttribute('y', rect.y + headH + (rect.h - headH) / 2);
+    const txt = `${hiddenCount} state${hiddenCount === 1 ? '' : 's'} hidden`;
+    if (p.summary.textContent !== txt) p.summary.textContent = txt;
+  }
+
+  // The marker only means anything when there is somewhere to enter — and an
+  // orthogonal region enters ALL of its children at once, so pointing an arrow
+  // at one of them would draw a claim the simulator does not make. A collapsed
+  // region has no visible child to point at either.
+  const show = !par && !closed && !!entryState && entryState.id !== s.id;
+  p.initDot.style.display = show ? '' : 'none';
+  p.initArm.style.display = show ? '' : 'none';
+  if (show) {
+    const { hh } = boxHalf(entryState);
+    const top = entryState.y - hh;
+    const dotY = Math.max(rect.y + headH + 8, top - 22);
+    p.initDot.setAttribute('cx', entryState.x);
+    p.initDot.setAttribute('cy', dotY);
+    p.initArm.setAttribute('d', `M ${entryState.x} ${dotY + 4} L ${entryState.x} ${top - App.config.render.arrowHeadSize / 2}`);
+  }
+
+  const kidCount = (idx?.get(s.id) || []).length;
+  const tip = closed
+    ? `Region '${s.name}' — collapsed\n${hiddenCount} state${hiddenCount === 1 ? '' : 's'} hidden. Click the arrow, or double-click the title, to expand.\nThe machine is unchanged: collapsing shows less, it does not mean less.`
+    : par
+      ? `Orthogonal region '${s.name}'\n${kidCount} regions run concurrently — all entered at once`
+      : `Region '${s.name}'${entryState && entryState.id !== s.id ? `\nEnters at '${entryState.name}'` : ''}`;
+  g.setAttribute('data-tip', tip);
+  g.setAttribute('aria-label', tip);
+}
+
+export function renderSuperstates() {
+  const g = $('supers-g');
+  if (!g) return;
+  const live = App.domCache.supers;
+  const showAccepts = acceptsAreShown();
+  const idx = childIndex(App.states);
+  const byId = stateIndex(App.states);
+
+  // Outermost first, so a nested region paints on top of the one containing it.
+  const regions = App.states.filter(s => App.superRects.has(s.id));
+  const depth = depthIndex(App.states, byId);
+  regions.sort((a, b) => (depth.get(a.id) || 0) - (depth.get(b.id) || 0));
+
+  let prev = null;
+  const seen = new Set();
+  for (const s of regions) {
+    seen.add(s.id);
+    let node = live.get(s.id);
+    if (!node) { node = createSuperNode(s.id); live.set(s.id, node); }
+    const entryId = defaultEntry(s.id, App.states, idx, byId);
+    syncSuperNode(node, s, App.superRects.get(s.id), byId.get(entryId), showAccepts, idx);
+    const expected = prev ? prev.nextSibling : g.firstChild;
+    if (node !== expected) g.insertBefore(node, expected);
+    prev = node;
+  }
+
+  for (const [id, node] of live) {
+    if (seen.has(id)) continue;
+    node.remove();
+    live.delete(id);
+  }
 }
 
 export function renderStates() {
@@ -734,6 +1198,12 @@ export function renderStates() {
   let prev = null;
   const seen = new Set();
   for (const s of App.states) {
+    // Regions live in #supers-g, drawn by renderSuperstates. Leaving one out of
+    // `seen` is also what evicts the circle a plain state had before it was
+    // grouped — same eviction the box/state split needs, for the same reason.
+    if (App.superRects.has(s.id)) continue;
+    // Inside something collapsed: not drawn, and evicted for the same reason.
+    if (App.hiddenStates.has(s.id)) continue;
     seen.add(s.id);
     const kind = nodeIsBox(s) ? 'box' : 'state';
     let node = live.get(s.id);
@@ -780,6 +1250,7 @@ export function updateLPanelSectionMeta() {
   setCount('lp-count-sigma', App.sigma?.size || 0);
   setCount('lp-count-stack', App.stackAlpha?.size || 0);
   setCount('lp-count-output', App.outputAlpha?.size || 0);
+  setCount('lp-count-flags', App.flags?.length || 0);
   setCount('lp-count-states', App.states?.length || 0);
   setCount('lp-count-trans', App.transitions?.length || 0);
   const mobileWorkspaceCount = $('mobile-workspace-count');
@@ -1017,6 +1488,28 @@ export function updateFormalDef() {
       txt += `\\text{Acc} &= \\text{empty stack} \\\\`;
       txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times (\\Gamma \\cup \\{${eps}\\}) \\to ${emptyCodomain}`;
     }
+  } else if (m === 'HSM') {
+    // A statechart is an NFA plus two structural maps. Writing them out is the
+    // shortest honest statement of "this is still regular": ρ and ι are pure
+    // bookkeeping over Q, and δ never leaves it.
+    const eps = '\\varepsilon';
+    txt += `M &= (Q, \\Sigma, \\delta, \\rho, \\iota, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\rho &: Q \\to Q \\cup \\{\\bot\\} \\quad \\text{(containment)} \\\\`;
+    txt += `\\iota &: Q \\to Q \\quad \\text{(default entry)} \\\\`;
+    txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\to \\mathcal{P}(Q)`;
+  } else if (m === 'RSM') {
+    const eps = '\\varepsilon';
+    const names = App.components.map(c => c.name);
+    txt += `M &= (\\{M_c\\}_{c \\in C}, \\Sigma, \\text{main}) \\\\`;
+    txt += `C &= ${formatSet(names)} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `M_c &= (N_c, B_c, en_c, Ex_c, \\delta_c) \\\\`;
+    txt += `\\delta_c &: (N_c \\cup B_c) \\times (\\Sigma \\cup \\{${eps}\\}) \\to \\mathcal{P}(N_c \\cup B_c) \\\\`;
+    txt += `\\text{Acc} &: w \\text{ consumed} \\;\\wedge\\; \\text{stack empty} \\;\\wedge\\; Ex_{\\text{main}}`;
   } else if (m === 'Moore') {
     const D_str = formatSet([...App.outputAlpha]);
     const lambda = '\\lambda';
@@ -1163,6 +1656,12 @@ export function updateRegex() {
   else if (m === '2PDA') { txt = 'Two-Stack PDA (TM-Equivalent Power)'; }
   else if (m === 'LBA') { txt = 'Context-Sensitive Language (Endmarked Tape)'; }
   else if (m === 'ITM') { txt = 'Recursively Enumerable Language'; }
+  // The two hierarchical models, and the whole point of having both: the same
+  // kind of picture, one class apart. Neither goes through deriveRegex — it
+  // would read boxes and regions as ordinary states and confidently print a
+  // regular expression for the wrong language.
+  else if (m === 'HSM') { txt = 'Regular Language (Statechart — flattens to an NFA)'; }
+  else if (m === 'RSM') { txt = 'Context-Free Language (Recursive State Machine)'; }
   else if (isAnyPDA(m)) { txt = 'Context-Free Language'; }
   else if (isAnyTM(m)) { txt = 'Recursively Enumerable Language'; }
   else if (m === 'Moore') { txt = 'Finite-State Transducer (Moore)'; }

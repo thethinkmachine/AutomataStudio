@@ -1,5 +1,5 @@
 import { tokenizeRHS } from './algorithms-cfg.js';
-import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
+import { renderFlags, renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { applyCamera, hideCanvasContextMenu } from './canvas.js';
 import { snapshot } from './history.js';
 import { importJFLAPText } from './import-jflap.js';
@@ -36,6 +36,7 @@ export function getWorkspaceData() {
     sigma: [...App.sigma],
     stackAlpha: [...App.stackAlpha],
     outputAlpha: [...App.outputAlpha],
+    flags: [...(App.flags || [])],
     tapeCount: App.tapeCount,
     states: App.states,
     transitions: App.transitions,
@@ -513,6 +514,7 @@ export function loadData(d, isExample) {
   App.machine = d.machine || 'DFA'; App.sigma = new Set(d.sigma || []);
   App.stackAlpha = new Set(d.stackAlpha || [App.config.sym.stackBottom]);
   App.outputAlpha = new Set(d.outputAlpha || []);
+  App.flags = Array.isArray(d.flags) ? [...d.flags] : [];
   if (d.tapeCount) App.tapeCount = d.tapeCount;
   App.states = d.states || [];
   App.transitions = d.transitions || []; App.startId = d.startId || null;
@@ -562,7 +564,7 @@ export function loadData(d, isExample) {
   if (typeof applyMachineSwitch === 'function') {
     applyMachineSwitch(App.machine);
   }
-  renderSigma(); renderGamma(); renderOutputAlpha();
+  renderSigma(); renderGamma(); renderOutputAlpha(); renderFlags();
   emit(Change.GRAPH);
 
   if (d.cam) { applyCamera(); }

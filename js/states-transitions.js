@@ -1,12 +1,15 @@
+import { declareFlag } from './alphabet.js';
 import { clearTempLine, hideCanvasContextMenu } from './canvas.js';
-import { demoteToState, descendIntoBox, promoteToSubmachine } from './hierarchy.js';
+import { checkGuardSyntax, flagsUsed } from './guards.js';
+import { demoteToState, descendIntoBox, extractRegionToSubmachine, inlineSubmachineAsRegion, promoteToSubmachine } from './hierarchy.js';
+import { groupIntoSuperstate, isSuperstate, setDefaultEntry, subtreeIds, toggleParallel, toggleRegionCollapsed, ungroupSuperstate } from './superstates.js';
 import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
 import { pruneNoteAnchorsExcluding } from './notes.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
-import { $, App, getMachineConfig, isBoundarySymbol, isReadOnlyHeadMachine } from './state.js';
+import { $, App, getMachineConfig, hasActions, hasSuperstates, isBoundarySymbol, isReadOnlyHeadMachine } from './state.js';
 import { Change, emit } from './store.js';
-import { getPdaDeterminismConflict, isAnyPDA, isCounterMachine, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus, symbolsOverlap, tapeTuplesOverlap } from './utils.js';
+import { escapeHtml, getPdaDeterminismConflict, isAnyPDA, isCounterMachine, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus, symbolsOverlap, tapeTuplesOverlap } from './utils.js';
 import { applyMachineSwitch } from './view.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -113,6 +116,31 @@ export function populateTransitionModal(t) {
   $('m-mtm-extra').style.display = (App.machine === 'MTM') ? '' : 'none';
   const twoStackExtra = $('m-2pda-extra');
   if (twoStackExtra) twoStackExtra.style.display = isTwoStackPDA(App.machine) ? '' : 'none';
+  const actionsExtra = $('m-actions-extra');
+  if (actionsExtra) {
+    actionsExtra.style.display = hasActions() ? '' : 'none';
+    if (hasActions() && $('m-action')) $('m-action').value = t?.action || '';
+  }
+  const guardExtra = $('m-guard-extra');
+  if (guardExtra) {
+    guardExtra.style.display = hasActions() ? '' : 'none';
+    if (hasActions()) {
+      if ($('m-guard')) $('m-guard').value = t?.guard || '';
+      if ($('m-assign')) $('m-assign').value = t?.assign || '';
+      const hint = $('m-guard-hint');
+      const declared = App.flags || [];
+      if (hint) {
+        // escapeHtml, not raw interpolation: addFlag validates against
+        // FLAG_RE, but flags arriving from a loaded .json, a share link or a
+        // dropped PNG never pass through it.
+        hint.innerHTML = declared.length
+          ? `Flags: ${declared.map(f => `<code>${escapeHtml(f)}</code>`).join(', ')} — combine with <code>&amp;&amp;</code>, <code>||</code>, <code>!</code>, parens.`
+          : 'No flags declared yet — add them in the left panel. Guards test boolean flags only; anything that counts has left the regular languages.';
+      }
+      syncGuardValidity();
+    }
+  }
+  syncTransModalEntryMode(t?.entryMode);
 
   if (App.machine === 'Mealy' || App.machine === 'FST') {
     const { lambda } = App.config.sym;
@@ -176,6 +204,67 @@ export function populateTransitionModal(t) {
   if (picker && t) picker.value = t.id;
 }
 
+/**
+ * Reveal the entry-mode block iff the arrow currently aims at a region.
+ *
+ * Called on open AND from #m-to's change handler, because "does this arrow
+ * enter a container" is a property of a field the user can still edit. Deciding
+ * it once at open time made history unreachable for any arrow whose target was
+ * chosen after the dialog appeared — which is every arrow drawn with the
+ * transition tool from a plain state.
+ */
+export function syncTransModalEntryMode(preset) {
+  const historyExtra = $('m-history-extra');
+  if (!historyExtra) return;
+  const target = getState($('m-to')?.value);
+  const show = hasSuperstates() && isSuperstate(target);
+  historyExtra.style.display = show ? '' : 'none';
+  const sel = $('m-entry-mode');
+  if (!sel) return;
+  // Only seed from the record on open. Re-aiming the arrow keeps whatever the
+  // user has already chosen, so flipping To back and forth is not destructive.
+  if (preset !== undefined) sel.value = preset || 'default';
+  const label = $('m-entry-target');
+  if (label) label.textContent = show ? `into '${target.name}'` : '';
+}
+
+/**
+ * Report a malformed guard where it was typed. Without this a typo compiles to
+ * the constant `false` at flattening time (productFlatten swallows the parse
+ * error deliberately, so one bad arrow cannot break the whole run) and the
+ * arrow silently stops firing with nothing said anywhere the author is looking.
+ */
+export function syncGuardValidity() {
+  const err = $('m-guard-err');
+  if (!err) return;
+  const guard = ($('m-guard')?.value || '').trim();
+  const assign = ($('m-assign')?.value || '').trim();
+  const msg = checkGuardSyntax(guard, assign);
+  err.textContent = msg || '';
+  err.style.display = msg ? '' : 'none';
+  $('m-guard')?.classList.toggle('inp-err', !!msg && !!checkGuardSyntax(guard, ''));
+  $('m-assign')?.classList.toggle('inp-err', !!msg && !checkGuardSyntax(guard, ''));
+
+  // A flag this arrow names but nobody declared is not a syntax error — it
+  // reads false everywhere — so it gets the softer note rather than the red.
+  const undeclared = [...flagsUsed([{ guard, assign }])].filter(f => !(App.flags || []).includes(f));
+  const warn = $('m-guard-warn');
+  if (warn) {
+    warn.innerHTML = undeclared.length
+      ? `Not declared: ${undeclared.map(f => `<code>${escapeHtml(f)}</code>`).join(', ')} — reads false everywhere. <a href="#" onclick="declareFlagsFromModal();return false">Declare ${undeclared.length === 1 ? 'it' : 'them'}</a>`
+      : '';
+    warn.style.display = undeclared.length ? '' : 'none';
+  }
+}
+
+/** One-click fix for the note above: declare every flag this arrow mentions. */
+export function declareFlagsFromModal() {
+  const guard = ($('m-guard')?.value || '').trim();
+  const assign = ($('m-assign')?.value || '').trim();
+  for (const f of flagsUsed([{ guard, assign }])) declareFlag(f);
+  syncGuardValidity();
+}
+
 export function getTransitionFormValues() {
   const cfg = getMachineConfig(App.machine);
   const { eps } = App.config.sym;
@@ -202,6 +291,24 @@ export function getTransitionFormValues() {
     const out = $('m-output')?.value?.trim() || App.config.sym.lambda;
     values.output = out === App.config.sym.lambda ? '' : out;
   }
+  if (hasActions()) {
+    const act = ($('m-action')?.value || '').trim();
+    // Undefined rather than '' — see confirmState: an empty string would put
+    // every machine on the action-composing flattening path.
+    values.action = act || undefined;
+  }
+  if (hasActions()) {
+    const guard = ($('m-guard')?.value || '').trim();
+    const assign = ($('m-assign')?.value || '').trim();
+    values.guard = guard || undefined;
+    values.assign = assign || undefined;
+  }
+  if (hasSuperstates()) {
+    const mode = $('m-entry-mode')?.value;
+    // Same reasoning: 'default' is the absence of an entry mode, and storing it
+    // would put the machine on the memory-product path for nothing.
+    values.entryMode = (mode && mode !== 'default' && isSuperstate(getState(values.to))) ? mode : undefined;
+  }
   if (App.machine === 'MTM') {
     const k = App.tapeCount;
     const blank = App.config.sym.blank;
@@ -224,15 +331,20 @@ export function createState(x, y, name) {
 }
 export function deleteState(id) {
   snapshot();
+  // Deleting a region takes its contents with it — a container whose children
+  // survived would leave them pointing at a parent that no longer exists.
+  // Ungroup is the non-destructive door, and the two being different is the
+  // point of having both.
+  const doomed = new Set(subtreeIds(id));
   // Resolve any notes anchored to this state (or edges through it) while it's
   // still live — renderAll()'s prune pass runs after the array mutation below
   // and can no longer recover the note's pre-deletion position.
-  const orphanedTransIds = App.transitions.filter(t => t.from === id || t.to === id).map(t => t.id);
-  if (typeof pruneNoteAnchorsExcluding === 'function') pruneNoteAnchorsExcluding([id], orphanedTransIds);
-  App.states = App.states.filter(s => s.id !== id);
-  App.transitions = App.transitions.filter(t => t.from !== id && t.to !== id);
-  App.accepts.delete(id);
-  if (App.startId === id) App.startId = App.states[0]?.id || null;
+  const orphanedTransIds = App.transitions.filter(t => doomed.has(t.from) || doomed.has(t.to)).map(t => t.id);
+  if (typeof pruneNoteAnchorsExcluding === 'function') pruneNoteAnchorsExcluding([...doomed], orphanedTransIds);
+  App.states = App.states.filter(s => !doomed.has(s.id));
+  App.transitions = App.transitions.filter(t => !doomed.has(t.from) && !doomed.has(t.to));
+  doomed.forEach(d => { App.accepts.delete(d); App.selectedStates.delete(d); });
+  if (doomed.has(App.startId)) App.startId = App.states[0]?.id || null;
   emit(Change.GRAPH);
 }
 // ══════════════════════════════════════════════════════════════════
@@ -474,7 +586,18 @@ export function transLabel(t) {
     const dirs = t.tapeDirs || [t.dir || defDir];
     return syms.map((s, i) => `${s} → ${writes[i] ?? s}, ${dirs[i] ?? defDir}`).join(' | ');
   }
-  return t.symbol;
+  // The statechart convention: event / action, with the history marker on the
+  // arrowhead end. Only when there is one, so an arrow with neither still reads
+  // as the bare symbol it always did.
+  // event [guard] / action — the statechart convention, in that order.
+  let label = t.symbol;
+  if (hasActions() && t.guard) label += ` [${t.guard}]`;
+  if (hasActions() && (t.action || t.assign)) {
+    label += ` / ${[t.action, t.assign && `⟨${t.assign}⟩`].filter(Boolean).join(' ')}`;
+  }
+  if (t.entryMode === 'history') label += ' ▸Ⓗ';
+  else if (t.entryMode === 'deep') label += ' ▸Ⓗ*';
+  return label;
 }
 
 export function transLabelDescriptive(t) {
@@ -555,6 +678,20 @@ export function openStateModal(id) {
       }).join('');
     }
   }
+  const actionsExtra = $('s-actions-extra');
+  if (actionsExtra) {
+    actionsExtra.style.display = hasActions() ? '' : 'none';
+    if (hasActions()) {
+      $('s-entry').value = s.entry || '';
+      $('s-exit').value = s.exit || '';
+      const hint = $('s-actions-hint');
+      if (hint) {
+        hint.textContent = isSuperstate(s)
+          ? 'A region\'s actions fire only when the region itself is entered or left — an arrow between two states inside it does not touch them.'
+          : 'Fires whenever this state is entered or left, after any enclosing region\'s own entry action.';
+      }
+    }
+  }
   showOverlay('state-modal');
 }
 export function confirmState() {
@@ -584,6 +721,15 @@ export function confirmState() {
         t.output = out === App.config.sym.lambda ? '' : out;
       }
     });
+  }
+  if (hasActions()) {
+    const entry = ($('s-entry')?.value || '').trim();
+    const exit = ($('s-exit')?.value || '').trim();
+    // Absent rather than empty: `hasActionsAnywhere` decides whether flattening
+    // takes the composing path at all, and an empty string would switch it on
+    // for every machine anyone ever opened this dialog on.
+    if (entry) s.entry = entry; else delete s.entry;
+    if (exit) s.exit = exit; else delete s.exit;
   }
   closeModal('state-modal'); emit(Change.GRAPH);
 }
@@ -705,6 +851,92 @@ export function ctxOpenSub() {
   const id = App.ctxId;
   hideContextMenu();
   descendIntoBox(id);
+}
+
+// ── Containment (regions) ──
+// Grouping works on the whole selection when the right-clicked state is part of
+// one, which is how every other multi-select action on this menu behaves.
+export function ctxGroupRegion() {
+  if (!App.ctxId) return;
+  const id = App.ctxId;
+  hideContextMenu();
+  const ids = App.selectedStates.has(id) && App.selectedStates.size > 1
+    ? [...App.selectedStates]
+    : [id];
+  groupIntoSuperstate(ids);
+}
+
+/**
+ * Ctrl+G. The keyboard has no right-clicked node, so it works on the selection
+ * alone — which is also the only sensible reading of "group" with two things
+ * selected and no cursor involved.
+ */
+export function groupSelection() {
+  if (!hasSuperstates()) {
+    showStatus('Regions need a hierarchical model — switch to HSM or RSM');
+    return null;
+  }
+  if (!App.selectedStates.size) { showStatus('Select the states to put in a region first'); return null; }
+  return groupIntoSuperstate([...App.selectedStates]);
+}
+
+/**
+ * Ctrl+Shift+G. Dissolves every region in the selection, outermost first so
+ * ungrouping a nest does not renumber the arrows of a region that is about to
+ * be dissolved anyway.
+ */
+export function ungroupSelection() {
+  if (!hasSuperstates()) return;
+  const picked = [...App.selectedStates]
+    .map(id => getState(id))
+    .filter(isSuperstate);
+  if (!picked.length) { showStatus('Select a region to ungroup'); return; }
+  const depth = s => { let n = 0, cur = s; while (cur?.parent) { cur = getState(cur.parent); n++; } return n; };
+  picked.sort((a, b) => depth(a) - depth(b));
+  for (const region of picked) ungroupSuperstate(region.id);
+}
+
+export function ctxToggleParallel() {
+  if (!App.ctxId) return;
+  const id = App.ctxId;
+  hideContextMenu();
+  toggleParallel(id);
+}
+
+export function ctxUngroupRegion() {
+  if (!App.ctxId) return;
+  const id = App.ctxId;
+  hideContextMenu();
+  ungroupSuperstate(id);
+}
+
+export function ctxToggleCollapse() {
+  if (!App.ctxId) return;
+  const id = App.ctxId;
+  hideContextMenu();
+  toggleRegionCollapsed(id);
+}
+
+export function ctxDefaultEntry() {
+  if (!App.ctxId) return;
+  const id = App.ctxId;
+  hideContextMenu();
+  setDefaultEntry(id);
+}
+
+// ── The REG ⇄ CFL toggle ──
+export function ctxExtractRegion() {
+  if (!App.ctxId) return;
+  const id = App.ctxId;
+  hideContextMenu();
+  extractRegionToSubmachine(id);
+}
+
+export function ctxInlineSub() {
+  if (!App.ctxId) return;
+  const id = App.ctxId;
+  hideContextMenu();
+  inlineSubmachineAsRegion(id);
 }
 
 export function ctxEditTrans() {

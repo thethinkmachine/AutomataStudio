@@ -28,6 +28,7 @@ import * as exportCore from '../js/export-core.js';
 import * as exportFormats from '../js/export-formats.js';
 import * as exportRegistry from '../js/export-registry.js';
 import * as exportUi from '../js/export-ui.js';
+import * as guards from '../js/guards.js';
 import * as hierarchy from '../js/hierarchy.js';
 import * as history from '../js/history.js';
 import * as importJflap from '../js/import-jflap.js';
@@ -41,6 +42,7 @@ import * as state from '../js/state.js';
 import * as statesTransitions from '../js/states-transitions.js';
 import * as store from '../js/store.js';
 import * as suggest from '../js/suggest.js';
+import * as superstates from '../js/superstates.js';
 import * as themes from '../js/themes.js';
 import * as theory from '../js/theory.js';
 import * as ui from '../js/ui.js';
@@ -49,8 +51,8 @@ import * as view from '../js/view.js';
 import * as workspace from '../js/workspace.js';
 
 const NAMESPACES = [
-  state, store, themes, exportRegistry, dropdown, modal, utils, statesTransitions,
-  canvas, render, hierarchy, notes, dividers, simulation, suggest, language, alphabet,
+  state, store, themes, exportRegistry, dropdown, modal, utils, guards, statesTransitions,
+  canvas, render, superstates, hierarchy, notes, dividers, simulation, suggest, language, alphabet,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, algorithmsFa, algorithmsCfg, theory, workspace, ui
 ];
@@ -111,9 +113,27 @@ function resetModuleState() {
   // assert on node identity should be starting from nothing.
   App.domCache.states.clear();
   App.domCache.transitions.clear();
+  App.domCache.supers.clear();
   App.domCache.notes.clear();
   App.domCache.dividers.clear();
   App.domCache.startArrow = null;
+  // Derived geometry, so it is stale rather than wrong after a reset — but a
+  // stale rect makes a region look like it still exists to containerAt.
+  App.superRects = new Map();
+  App.hiddenStates = new Set();
+  // In-flight pointer gestures. A test that starts a drag and never ends one
+  // leaves App.dragOffsets holding ids from a machine that no longer exists, and
+  // refreshLayout() consults it on every render — so the next test measures its
+  // regions against the previous test's drag set. dropTargetId is canvas.js's
+  // own module-level binding, hence the exported clear rather than a field.
+  App.dragOffsets = null;
+  App.dragCurve = null;
+  // Leaks the "this press has not moved yet" state into the next test, where it
+  // makes the drop step treat a simulated drag as a plain click and skip it.
+  App.dragPendingSnapshot = false;
+  App.dragOriginRects = null;
+  App.marquee = null;
+  canvas.clearDropTarget();
 }
 
 export function resetApp() {
@@ -122,6 +142,7 @@ export function resetApp() {
   App.view = 'build';
   App.sigma = new Set(['a', 'b']);
   App.outputAlpha = new Set(['0', '1']);
+  App.flags = [];
   App.stackAlpha = new Set([baseConfig.sym.stackBottom]);
   App.tapeCount = 2;
   App.states = [];

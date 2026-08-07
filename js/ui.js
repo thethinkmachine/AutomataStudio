@@ -1,6 +1,6 @@
 import { utmStepBack, utmStepFwd, utmToggleAuto } from './algorithms-fa.js';
 import { renderGamma } from './alphabet.js';
-import { applyCamera, clearEdgeDirectionHighlight, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, nudgeSelected, pasteClipboard, selectAllStates, toggleSnapToGrid, wrap } from './canvas.js';
+import { applyCamera, clearEdgeDirectionHighlight, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, nudgeSelected, pasteClipboard, selectAllStates, selectionSubtree, toggleSnapToGrid, wrap } from './canvas.js';
 import { clearDividerSelection, deleteSelectedDivider, includeDividerBounds, isRectDivider, updateShapeToolButton } from './dividers.js';
 import { markDirty, redo, snapshot, undo } from './history.js';
 import { anyModalOpen, closeModal, registerModal, showOverlay } from './modal.js';
@@ -9,7 +9,7 @@ import { restartAutosaveTimer, saveBackupChecked, saveJSON, saveWorkspace, saveW
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
 import { $, App, MachineCategories, MachineTypes, R, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, migrateSystemSymbols, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
-import { getState, getTransition, hideContextMenu } from './states-transitions.js';
+import { getState, getTransition, groupSelection, hideContextMenu, ungroupSelection } from './states-transitions.js';
 import { Change, emit, subscribe } from './store.js';
 import { DEFAULT_THEME, Themes } from './themes.js';
 import { clearAll, escapeHtml, showStatus } from './utils.js';
@@ -834,6 +834,47 @@ export function initTabs() {
 
 window.addEventListener('resize', () => updateTabOverflowShadows());
 
+/**
+ * Delete every selected state and transition.
+ *
+ * A named export rather than a block inside the keydown handler because it is
+ * the sibling of `deleteState`: the two are one operation reached from the
+ * keyboard and from the context menu, and they have to agree about what
+ * deleting a region means. Being inline is how they came to disagree.
+ *
+ * Deleting a region deletes what it contains. Filtering only the selected ids
+ * left the children behind with `parent` naming a state that no longer exists —
+ * they render as top-level while still answering to `s.parent`, so every
+ * containment lookup downstream has to survive a pointer into nothing.
+ */
+export function deleteSelection() {
+  if (!App.selectedStates.size && !App.selectedTransitions.size) return;
+  snapshot();
+  const doomed = selectionSubtree();
+  if (typeof pruneNoteAnchorsExcluding === 'function') {
+    const removedTransIds = new Set(App.selectedTransitions);
+    App.transitions.forEach(t => {
+      if (doomed.has(t.from) || doomed.has(t.to)) removedTransIds.add(t.id);
+    });
+    pruneNoteAnchorsExcluding([...doomed], [...removedTransIds]);
+  }
+  App.states = App.states.filter(s => !doomed.has(s.id));
+  App.transitions = App.transitions.filter(t => !doomed.has(t.from) && !doomed.has(t.to));
+  doomed.forEach(id => {
+    if (App.startId === id) App.startId = null;
+    App.accepts.delete(id);
+  });
+  // A region whose default entry went with the delete falls back to whatever
+  // survived, rather than keeping an `initial` that names nothing.
+  App.states.forEach(s => { if (s.initial && doomed.has(s.initial)) delete s.initial; });
+  App.selectedTransitions.forEach(tid => {
+    App.transitions = App.transitions.filter(t => t.id !== tid);
+  });
+  App.selectedStates.clear();
+  App.selectedTransitions.clear();
+  emit(Change.GRAPH);
+}
+
 // ══════════════════════════════════════════════════════════════════
 //  KEYBOARD SHORTCUTS
 // ══════════════════════════════════════════════════════════════════
@@ -856,6 +897,15 @@ document.addEventListener('keydown', e => {
     if (e.key === 'c' || e.key === 'C') { if (App.view === 'build') copySelection(); }
     if (e.key === 'v' || e.key === 'V') { if (App.view === 'build') { e.preventDefault(); pasteClipboard(App._lastCanvasWorldPt || null); } }
     if (e.key === 'd' || e.key === 'D') { if (App.view === 'build') { e.preventDefault(); duplicateSelection(); } }
+    // Group/Ungroup, on the shortcut every diagram editor uses for it. The
+    // context menu is the only other way to reach either, and it needs a
+    // right-click on a node of the right kind to offer them.
+    if (e.key === 'g' || e.key === 'G') {
+      if (App.view === 'build') {
+        e.preventDefault();
+        if (e.shiftKey) ungroupSelection(); else groupSelection();
+      }
+    }
     if (e.shiftKey && (e.key === 't' || e.key === 'T')) { e.preventDefault(); reopenClosedTab(); }
     return;
   }
@@ -875,26 +925,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (App.selectedStates.size || App.selectedTransitions.size) {
       e.preventDefault();
-      snapshot();
-      if (typeof pruneNoteAnchorsExcluding === 'function') {
-        const removedTransIds = new Set(App.selectedTransitions);
-        App.transitions.forEach(t => {
-          if (App.selectedStates.has(t.from) || App.selectedStates.has(t.to)) removedTransIds.add(t.id);
-        });
-        pruneNoteAnchorsExcluding([...App.selectedStates], [...removedTransIds]);
-      }
-      App.selectedStates.forEach(id => {
-        App.states = App.states.filter(s => s.id !== id);
-        App.transitions = App.transitions.filter(t => t.from !== id && t.to !== id);
-        if (App.startId === id) App.startId = null;
-        App.accepts.delete(id);
-      });
-      App.selectedTransitions.forEach(tid => {
-        App.transitions = App.transitions.filter(t => t.id !== tid);
-      });
-      App.selectedStates.clear();
-      App.selectedTransitions.clear();
-      emit(Change.GRAPH);
+      deleteSelection();
     } else if (App.selectedDividerId && typeof deleteSelectedDivider === 'function') {
       e.preventDefault();
       deleteSelectedDivider();
@@ -1173,6 +1204,16 @@ export function isMachineFullyVisible(vw, vh) {
   const R_PAD = App.config.radius + 4;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   App.states.forEach(s => {
+    // Hidden inside a collapsed region — off screen, so out of the frame.
+    if (App.hiddenStates.has(s.id)) return;
+    // A region is its rect, not the point at its centre — the same rule
+    // getContentBounds uses, so framing here agrees with fit-to-screen.
+    const r = App.superRects.get(s.id);
+    if (r) {
+      minX = Math.min(minX, r.x); minY = Math.min(minY, r.y);
+      maxX = Math.max(maxX, r.x + r.w); maxY = Math.max(maxY, r.y + r.h);
+      return;
+    }
     minX = Math.min(minX, s.x - R_PAD); minY = Math.min(minY, s.y - R_PAD);
     maxX = Math.max(maxX, s.x + R_PAD); maxY = Math.max(maxY, s.y + R_PAD);
   });
@@ -1322,6 +1363,16 @@ export function renderMinimap() {
   const R_PAD = App.config.radius + 4;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   App.states.forEach(s => {
+    // Hidden inside a collapsed region — off screen, so out of the frame.
+    if (App.hiddenStates.has(s.id)) return;
+    // A region is its rect, not the point at its centre — the same rule
+    // getContentBounds uses, so framing here agrees with fit-to-screen.
+    const r = App.superRects.get(s.id);
+    if (r) {
+      minX = Math.min(minX, r.x); minY = Math.min(minY, r.y);
+      maxX = Math.max(maxX, r.x + r.w); maxY = Math.max(maxY, r.y + r.h);
+      return;
+    }
     minX = Math.min(minX, s.x - R_PAD); minY = Math.min(minY, s.y - R_PAD);
     maxX = Math.max(maxX, s.x + R_PAD); maxY = Math.max(maxY, s.y + R_PAD);
   });
@@ -1378,10 +1429,27 @@ export function renderMinimap() {
     });
     ctx.restore();
   }
+  // Draw region containers under the machine, as the canvas does — a dot at a
+  // region's centre would say nothing about the area it covers, which is the
+  // one thing the minimap exists to show.
+  if (App.superRects.size) {
+    ctx.save();
+    ctx.strokeStyle = App.config.export.edgeStroke;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    for (const [, r] of App.superRects) {
+      ctx.beginPath();
+      ctx.rect((r.x - minX) * mmScale + mmOffX, (r.y - minY) * mmScale + mmOffY,
+        r.w * mmScale, r.h * mmScale);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   // Draw transitions
   ctx.strokeStyle = App.config.export.edgeStroke;
   ctx.lineWidth = 1;
   App.transitions.forEach(tr => {
+    if (App.hiddenStates.has(tr.from) || App.hiddenStates.has(tr.to)) return;
     const fs = App.states.find(s => s.id === tr.from);
     const ts2 = App.states.find(s => s.id === tr.to);
     if (!fs || !ts2) return;
@@ -1390,8 +1458,10 @@ export function renderMinimap() {
     ctx.lineTo((ts2.x - minX) * mmScale + mmOffX, (ts2.y - minY) * mmScale + mmOffY);
     ctx.stroke();
   });
-  // Draw states
+  // Draw states. Regions were drawn above as their rects; a second dot at the
+  // centre of one would sit in the middle of empty space.
   App.states.forEach(s => {
+    if (App.superRects.has(s.id) || App.hiddenStates.has(s.id)) return;
     const sx = (s.x - minX) * mmScale + mmOffX;
     const sy = (s.y - minY) * mmScale + mmOffY;
     const sr = Math.max(2, R_PAD * mmScale * 0.7);
@@ -2277,7 +2347,7 @@ export function toggleLPSection(id) {
 }
 
 export function initLPanelSections() {
-  ['lp-alphabet', 'stack-sec', 'output-sec', 'lp-states', 'lp-transitions'].forEach(id => {
+  ['lp-alphabet', 'stack-sec', 'output-sec', 'flags-sec', 'components-sec', 'lp-states', 'lp-transitions'].forEach(id => {
     let collapsed = false;
     try { collapsed = localStorage.getItem(`automata-lpanel-section-${id}`) === '1'; } catch (e) { }
     setLPSectionCollapsed(id, collapsed, false);
@@ -2342,6 +2412,8 @@ export function openSettingsModal() {
   $('set-pda-paradigm').value = c.pdaParadigm || 'explicit';
   $('set-tm-steps').value = c.maxTmSteps;
   if ($('set-lang-budget')) $('set-lang-budget').value = c.langStepBudget ?? 400;
+  if ($('set-flat-states')) $('set-flat-states').value = c.maxFlatStates ?? 4000;
+  if ($('set-call-depth')) $('set-call-depth').value = c.maxCallDepth ?? 60;
   $('set-auto-speed').value = c.autoSpeed;
   if ($('set-autosave-interval')) $('set-autosave-interval').value = String(c.autosaveIntervalMs ?? 15000);
   $('set-radius').value = c.radius;
@@ -2417,6 +2489,12 @@ export function confirmSettings() {
   if ($('set-lang-budget')) {
     c.langStepBudget = Math.max(10, parseInt($('set-lang-budget').value) || 400);
   }
+  if ($('set-flat-states')) {
+    c.maxFlatStates = Math.max(100, parseInt($('set-flat-states').value) || 4000);
+  }
+  if ($('set-call-depth')) {
+    c.maxCallDepth = Math.max(2, parseInt($('set-call-depth').value) || 60);
+  }
   c.autoSpeed = parseInt($('set-auto-speed').value) || 500;
   if ($('set-autosave-interval')) {
     const interval = parseInt($('set-autosave-interval').value);
@@ -2476,6 +2554,8 @@ export function getEditorSettingsData() {
     maxPdaSteps: c.maxPdaSteps,
     maxTmSteps: c.maxTmSteps,
     langStepBudget: c.langStepBudget,
+    maxFlatStates: c.maxFlatStates,
+    maxCallDepth: c.maxCallDepth,
     autoSpeed: c.autoSpeed,
     autosaveIntervalMs: c.autosaveIntervalMs,
     radius: c.radius,
@@ -2536,6 +2616,8 @@ export function populateSettingsModalInputs(data) {
   if (data.maxPdaSteps !== undefined) $('set-pda-steps').value = data.maxPdaSteps;
   if (data.maxTmSteps !== undefined) $('set-tm-steps').value = data.maxTmSteps;
   if (data.langStepBudget !== undefined && $('set-lang-budget')) $('set-lang-budget').value = data.langStepBudget;
+  if (data.maxFlatStates !== undefined && $('set-flat-states')) $('set-flat-states').value = data.maxFlatStates;
+  if (data.maxCallDepth !== undefined && $('set-call-depth')) $('set-call-depth').value = data.maxCallDepth;
   if (data.autoSpeed !== undefined) $('set-auto-speed').value = data.autoSpeed;
   if (data.autosaveIntervalMs !== undefined && $('set-autosave-interval')) $('set-autosave-interval').value = data.autosaveIntervalMs;
   if (data.radius !== undefined) $('set-radius').value = data.radius;

@@ -95,6 +95,24 @@
   pointer-events: none;
 }
 
+/* entry / exit actions. Muted and small: they are a side effect riding along,
+   never read, and never part of the accepted language — so they must not
+   compete with the state's name for attention. */
+.st-actions {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  fill: var(--text3);
+  text-anchor: middle;
+  dominant-baseline: hanging;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* A region's hang off its title band, so they read left-aligned with it. */
+.super-st .st-actions {
+  text-anchor: start;
+}
+
 .mooreout {
   font-family: var(--mono);
   font-size: 10px;
@@ -1095,6 +1113,34 @@
   stroke: var(--accent);
 }
 
+/* A box whose component reaches itself. This is the single most consequential
+   fact about an RSM diagram — it is what makes the machine context-free rather
+   than regular, and what makes Inline as Region refuse — and it was drawn
+   exactly like every other box. Doubled border, the way an orthogonal region
+   goes solid: mark the thing that changes the language class. */
+.sn.box-st.rec-box .bd {
+  stroke: var(--violet);
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+  paint-order: stroke;
+}
+
+.sn.box-st.rec-box .callee-lbl {
+  fill: var(--violet);
+}
+
+/* An accept ring inside a sub-machine means "return to my caller", not
+   "accept". Green rather than gold, because it is an exit from a call and not
+   a verdict on the input — the root's rings keep the gold. */
+.sn.exit-st .acc-ring {
+  stroke: var(--green) !important;
+  stroke-dasharray: 3 2;
+}
+
+.sn.exit-st.acc-st .bd {
+  stroke: var(--green);
+}
+
 /* The component the box invokes, under its own name. */
 .callee-lbl {
   fill: var(--text3);
@@ -1174,4 +1220,227 @@
   color: var(--text3);
   font-size: 11px;
   opacity: .6;
+}
+
+/* ─── HIERARCHY: SUPERSTATE REGIONS ───
+   A region is a container, not a node. The body is deliberately
+   pointer-events:none — a container that swallowed clicks over its whole area
+   would make every state inside it unreachable and would eat the empty-canvas
+   gestures (marquee, double-click-to-add) that land in the gaps. The title band
+   is the only part that takes events, and it is therefore the drag handle. */
+.super-body {
+  fill: color-mix(in srgb, var(--accent) 7%, transparent);
+  stroke: var(--border2);
+  stroke-width: 1.5;
+  stroke-dasharray: 7 5;
+  pointer-events: none;
+  transition: fill .15s, stroke .15s;
+}
+
+.super-head {
+  fill: var(--surface2);
+  stroke: none;
+  pointer-events: all;
+  cursor: grab;
+}
+
+.super-lbl {
+  fill: var(--text2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  dominant-baseline: central;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* The statechart default-entry marker: filled dot, short arm, pointing at the
+   child a transition into this region actually reaches. */
+.super-init {
+  fill: var(--text3);
+  pointer-events: none;
+}
+
+.super-init-arm {
+  stroke: var(--text3);
+  stroke-width: 1.5;
+  fill: none;
+  pointer-events: none;
+}
+
+/* ORTHOGONALITY
+   The dashed rules between concurrent regions — the notation that says "all of
+   these are active at once", and the only thing on the canvas that distinguishes
+   an AND-region from a nested pile of OR-regions.
+
+   The dividers are dashed and the outer border turns SOLID, which is the UML
+   convention and happens to be exactly the contrast available here: an ordinary
+   region is already drawn dashed, so an orthogonal one cannot be marked by
+   adding dashes to it.
+
+   Derived from the child rects on every render pass and every drag frame, so
+   dragging one region past another re-flows them rather than leaving a line
+   describing a layout that has moved on. */
+.super-lanes {
+  stroke: var(--violet);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+  fill: none;
+  opacity: .75;
+  pointer-events: none;
+}
+
+.super-st.par-st .super-body {
+  stroke: var(--violet);
+  stroke-dasharray: none;
+  fill: color-mix(in srgb, var(--violet) 6%, transparent);
+}
+
+.super-st.par-st .super-lbl {
+  fill: var(--violet);
+}
+
+/* ─── COLLAPSED ───
+   Borrowed wholesale from the RSM box, because a collapsed region IS a box: an
+   opaque node standing in for a machine you are not looking at. Solid fill and
+   a solid border, since the dashes mean "things live in here" and nothing
+   visibly does any more. The machine is unchanged — this is the only state in
+   this file that is purely about how much you want to see. */
+.super-st.closed-st .super-body {
+  fill: var(--surface2);
+  stroke: var(--border2);
+  stroke-dasharray: none;
+  stroke-width: 2;
+}
+
+.super-st.closed-st:hover .super-body {
+  stroke: var(--accent);
+}
+
+.super-summary {
+  fill: var(--text3);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* The one part of a region other than the band that takes pointer events. */
+.super-twisty {
+  fill: var(--text3);
+  cursor: pointer;
+  pointer-events: all;
+  transition: fill .15s;
+}
+
+.super-twisty:hover {
+  fill: var(--accent);
+}
+
+.super-st.par-st .super-twisty {
+  fill: var(--violet);
+}
+
+/* Selection, acceptance and the active highlight still have to win over it,
+   otherwise the one region whose state matters is the one that stops reacting. */
+.super-st.par-st.sel-st .super-body,
+.super-st.par-st.act-st .super-body {
+  stroke: var(--accent);
+}
+
+.super-st.par-st.acc-st .super-body {
+  stroke: var(--gold);
+}
+
+.super-st:hover .super-head {
+  fill: var(--surface3, var(--surface2));
+}
+
+/* Purple, matching `.sn.sel-st .bd` — selection has to look like selection
+   whatever shape the node is. */
+.super-st.sel-st .super-body {
+  stroke: var(--purple);
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+  fill: color-mix(in srgb, var(--purple) 10%, transparent);
+}
+
+.super-st.sel-st .super-head {
+  fill: var(--purple-soft, var(--accent-soft));
+}
+
+.super-st.acc-st .super-body {
+  stroke: var(--gold);
+}
+
+.super-st.start-st .super-body {
+  stroke: var(--green);
+}
+
+/* Live target while a state is dragged over this region. */
+.super-st.drop-target .super-body {
+  stroke: var(--accent);
+  stroke-dasharray: none;
+  stroke-width: 2.5;
+  fill: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* Being in a state means being in every region containing it, so an active
+   leaf lights its containers as well. */
+.super-st.act-st .super-body {
+  stroke: var(--accent);
+  stroke-dasharray: none;
+  fill: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.super-st.act-st .super-head {
+  fill: var(--accent-soft);
+}
+
+/* ── Parity with the `.sn .bd` states ──
+   Every visual state a plain node can be in, a region can be in too. These were
+   the ones with no region equivalent, so a region was the one node shape that
+   silently ignored a rejected run, a panel hover, a linked note and the
+   dead/unreachable overlay. */
+.super-st.rej-st .super-body {
+  stroke: var(--red);
+  stroke-dasharray: none;
+  fill: color-mix(in srgb, var(--red) 9%, transparent);
+}
+
+.super-st.rej-st .super-head {
+  fill: color-mix(in srgb, var(--red) 16%, var(--surface2));
+}
+
+.super-st.list-hover-st .super-body {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.super-st.note-link-st .super-body {
+  stroke: var(--accent);
+  stroke-width: 3;
+  fill: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.super-st.unreachable-st .super-body {
+  stroke: var(--orange, #ff9800);
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+  opacity: .55;
+}
+
+.super-st.dead-st .super-body {
+  stroke: var(--text3);
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+  opacity: .6;
+}
+
+.super-st.unreachable-st .super-lbl,
+.super-st.dead-st .super-lbl {
+  opacity: .55;
 }

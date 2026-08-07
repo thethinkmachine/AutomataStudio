@@ -1,0 +1,79 @@
+{
+  "machine": "HSM",
+  "sigma": ["spot", "close", "miss", "ready", "hurt"],
+  "states": [
+    { "id": "s1", "x": 150, "y": 340, "name": "patrol", "entry": "scanArea", "exit": "alert" },
+    { "id": "s2", "x": 620, "y": 340, "name": "Combat", "super": true, "initial": "s3", "entry": "raiseWeapon", "exit": "holster" },
+    { "id": "s3", "x": 500, "y": 340, "name": "approach", "parent": "s2", "entry": "sprint", "exit": "brake" },
+    { "id": "s4", "x": 740, "y": 255, "name": "strike", "parent": "s2", "entry": "swing", "exit": "recoil" },
+    { "id": "s5", "x": 740, "y": 425, "name": "recover", "parent": "s2", "entry": "guardUp" }
+  ],
+  "startId": "s1",
+  "accepts": ["s1"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s2", "symbol": "spot" },
+    { "id": "t2", "from": "s3", "to": "s4", "symbol": "close", "action": "lunge" },
+    { "id": "t3", "from": "s4", "to": "s5", "symbol": "miss" },
+    { "id": "t4", "from": "s5", "to": "s3", "symbol": "ready" },
+    { "id": "t5", "from": "s2", "to": "s1", "symbol": "hurt", "action": "yell" }
+  ],
+  "stateN": 5,
+  "transN": 5,
+  "rootComponentId": "c1",
+  "componentPath": ["c1"],
+  "componentN": 1,
+  "components": [
+    {
+      "id": "c1",
+      "name": "Main",
+      "startId": "s1",
+      "accepts": ["s1"],
+      "exitIds": [],
+      "states": [
+        { "id": "s1", "x": 150, "y": 340, "name": "patrol", "entry": "scanArea", "exit": "alert" },
+        { "id": "s2", "x": 620, "y": 340, "name": "Combat", "super": true, "initial": "s3", "entry": "raiseWeapon", "exit": "holster" },
+        { "id": "s3", "x": 500, "y": 340, "name": "approach", "parent": "s2", "entry": "sprint", "exit": "brake" },
+        { "id": "s4", "x": 740, "y": 255, "name": "strike", "parent": "s2", "entry": "swing", "exit": "recoil" },
+        { "id": "s5", "x": 740, "y": 425, "name": "recover", "parent": "s2", "entry": "guardUp" }
+      ],
+      "transitions": [
+        { "id": "t1", "from": "s1", "to": "s2", "symbol": "spot" },
+        { "id": "t2", "from": "s3", "to": "s4", "symbol": "close", "action": "lunge" },
+        { "id": "t3", "from": "s4", "to": "s5", "symbol": "miss" },
+        { "id": "t4", "from": "s5", "to": "s3", "symbol": "ready" },
+        { "id": "t5", "from": "s2", "to": "s1", "symbol": "hurt", "action": "yell" }
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "id": "n1",
+      "x": 150,
+      "y": 60,
+      "w": 500,
+      "h": 210,
+      "text": "A REGION IS A SCOPE.\n\nRun 'spot close' and read the Out row.\n\n'close' goes approach → strike, both inside Combat, and emits: brake · lunge · swing. Combat's own raiseWeapon and holster do NOT fire — the arrow never left the region, so the region was never entered or exited.\n\nNow run 'spot close hurt'. The last arrow adds: recoil · holster · yell · scanArea. One arrow, unwinding two levels correctly.\n\nThe rule is the least common ancestor of the two endpoints:\n\n  exits, innermost-first, up to the LCA\n  then the arrow's own action\n  then entries, outermost-first, down to the target\n\nNothing above the LCA is touched, because nothing above it was left. 'close' has Combat as its LCA; 'hurt' has the root."
+    },
+    {
+      "id": "n2",
+      "x": 150,
+      "y": 500,
+      "w": 500,
+      "h": 130,
+      "text": "Actions cost nothing in power. They are a side effect, Σ is unchanged, and the set of accepted words is identical with every action deleted — strip them and the verdicts below do not move.\n\nWhich is why this machine is still an HSM and not a transducer: it prints, but nothing ever reads what it printed."
+    }
+  ],
+  "noteN": 2,
+  "meta": {
+    "title": "Actions: a region is a scope",
+    "blurb": "Entry and exit actions turn containment into scope. An arrow inside Combat runs no Combat action; an arrow out of it unwinds every level it actually leaves. The rule is the least common ancestor of the two endpoints — and none of it changes the language.",
+    "inputs": [
+      { "w": "", "expect": "accept", "out": "scanArea", "label": "never left patrol" },
+      { "w": "spot hurt", "expect": "accept", "out": "scanArea alert raiseWeapon sprint brake holster yell scanArea", "label": "in and straight out" },
+      { "w": "spot close", "expect": "reject", "out": "scanArea alert raiseWeapon sprint brake lunge swing", "label": "an inside move runs no Combat action" },
+      { "w": "spot close hurt", "expect": "accept", "out": "scanArea alert raiseWeapon sprint brake lunge swing recoil holster yell scanArea", "label": "leaving unwinds two levels" },
+      { "w": "spot close miss ready hurt", "expect": "accept", "out": "scanArea alert raiseWeapon sprint brake lunge swing recoil guardUp sprint brake holster yell scanArea", "label": "a full loop inside first" },
+      { "w": "spot", "expect": "reject", "out": "scanArea alert raiseWeapon sprint", "label": "entering runs the outer entry then the inner" }
+    ]
+  }
+}

@@ -1,8 +1,10 @@
 import { renderSigma } from './alphabet.js';
+import { compileToPDA, machineTree, recursiveComponents } from './hierarchy.js';
 import { snapshot } from './history.js';
 import { deriveRegex, renderAll, updateLPanel, updateRPanel } from './render.js';
 import { epsClosure, log, simNDTM, simNPDA, stateNames, testDFA, testNFA, tokenize } from './simulation.js';
-import { $, App, R } from './state.js';
+import { $, App, R, ensureRootComponent, hasCallStack, hasSuperstates } from './state.js';
+import { flattenComponent } from './superstates.js';
 import { getState } from './states-transitions.js';
 import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen } from './ui.js';
@@ -39,6 +41,7 @@ export function renderAlgo(a) {
     minimizeVisual: algoMinimizeVisual, re2nfaVisual: algoRE2NFAVisual, tm2grammar: algoTM2Grammar,
     epsClosure: algoEpsClosure, dfa2rg: algoDFA2RG, rg2nfa: algoRG2NFA,
     deadStates: algoDeadStates,
+    flatten: algoFlatten, compilePda: algoCompilePDA,
   };
   if (renders[a]) renders[a](c);
 }
@@ -3122,6 +3125,161 @@ export function highlightDeadStates() {
 export function clearStateHighlights() {
   App.stateClassification = null;
   renderAll();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  HIERARCHICAL: FLATTEN (HSM → NFA) and COMPILE (RSM → PDA)
+// ══════════════════════════════════════════════════════════════════
+// The two constructions the hierarchical models rest on, and the only two in
+// this app that were computed without ever being shown. Both already existed —
+// flattenComponent feeds machineTree(), compileToPDA feeds the export IR — so
+// every claim the models make was true and unobservable at the same time.
+//
+// They are one card each because they are one claim each:
+//
+//   containment flattens  →  regions are SUCCINCTNESS. Same language, more ink.
+//   reference compiles    →  calls are POWER. The stack is not removable.
+//
+// The numbers are the argument. A region standing in for one arrow out of six
+// leaves becomes six arrows, and seeing 1 → 6 is the whole statechart case
+// stated as arithmetic.
+
+/** Shared framing so both cards report their size change the same way. */
+function hierCountsCard(title, before, after, note) {
+  const row = (label, a, b) => {
+    const delta = b - a;
+    const sign = delta > 0 ? `+${delta}` : String(delta);
+    return `<tr><td>${label}</td><td>${a}</td><td>${b}</td>
+      <td class="${delta > 0 ? 'hier-grow' : 'hier-same'}">${delta === 0 ? '—' : sign}</td></tr>`;
+  };
+  return `<div class="card"><div class="card-title">${title}</div>
+<table class="result-table hier-counts">
+  <tr><th></th><th>Drawn</th><th>Built</th><th>Δ</th></tr>
+  ${row('States', before.states, after.states)}
+  ${row('Transitions', before.transitions, after.transitions)}
+</table>
+${note ? `<div class="hier-note">${note}</div>` : ''}</div>`;
+}
+
+export function buildFlattenedNFA() {
+  if (!hasSuperstates()) return null;
+  const flat = flattenComponent({
+    states: App.states, transitions: App.transitions,
+    startId: App.startId, accepts: App.accepts
+  });
+  if (!flat.states.length) return null;
+  const eps = App.config.sym.eps;
+  return {
+    ...flat,
+    machine: flat.transitions.some(t => t.symbol === eps) ? 'ε-NFA' : 'NFA'
+  };
+}
+
+export function algoFlatten(c) {
+  c.innerHTML = `<div class="algo-title">HSM → NFA (Flatten)</div>
+<div class="algo-sub">CONTAINMENT IS SUCCINCTNESS, NOT POWER</div>
+<div class="info-box">A region is a container, and containment is a <strong>tree</strong> — a tree cannot cycle, so the nesting is bounded and the whole picture collapses to an ordinary NFA. Flattening is the constructive proof: one arrow out of a region becomes one arrow out of every leaf inside it, an arrow into a region lands on its default entry, and a leaf accepts if any region containing it accepts. History, guards and orthogonal regions add a <em>product</em> on top of that — with memory, with the flag valuation, with the concurrent slices — which is where the state count grows and the language still does not.</div>`;
+
+  if (!hasSuperstates()) {
+    c.innerHTML += '<div class="card dec-card-empty">Switch to HSM or RSM to draw regions.</div>';
+    return;
+  }
+  if (!App.startId) { c.innerHTML += '<div class="card dec-card-empty">No start state defined.</div>'; return; }
+
+  const flat = buildFlattenedNFA();
+  if (!flat) { c.innerHTML += '<div class="card dec-card-empty">Nothing to flatten yet.</div>'; return; }
+
+  const regions = App.states.filter(s => s.super).length;
+  const budget = App.config.maxFlatStates || 4000;
+  const note = flat.truncated
+    ? `<span class="hier-warn">Stopped at the ${budget}-state ceiling — this is a TRUNCATED machine, not the one on the canvas. Raise “Max Flattened States” in Settings → Hierarchical.</span>`
+    : regions
+      ? `${regions} region${regions === 1 ? '' : 's'} dissolved. ${flat.expanded > 0
+        ? `${flat.expanded} arrow${flat.expanded === 1 ? '' : 's'} had to be written out — that number is the succinctness the regions were buying.`
+        : 'No arrow crossed a region boundary, so nothing had to be duplicated.'}`
+      : 'No regions drawn, so flattening is the identity.';
+
+  c.innerHTML += hierCountsCard('What the picture denotes',
+    { states: App.states.filter(s => !s.super).length, transitions: App.transitions.length },
+    { states: flat.states.length, transitions: flat.transitions.length },
+    note);
+
+  c.innerHTML += `<div class="card"><div class="card-title">Flattened States</div>
+<div class="nfa-result-states">${flat.states.map(s =>
+    `<div class="state-pill ${flat.accepts.includes(s.id) ? 'acc' : ''}${s.id === flat.startId ? ' start' : ''}">${escapeHtml(s.name)}</div>`
+  ).join('')}</div>
+<div class="hier-note">A name carrying <code>@</code> is a history split (state @ what the region remembers); <code>#</code> is a flag valuation; <code>∥</code> is an orthogonal configuration — several leaves active at once.</div></div>`;
+
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadFlattenedNFA()">${ALGO_ICON_LOAD_CANVAS}Load the flattened ${flat.machine} into the canvas</button></div>`;
+}
+
+export function loadFlattenedNFA() {
+  const flat = buildFlattenedNFA();
+  if (!flat) return showStatus('Nothing to flatten.');
+  snapshot();
+  App.states = flat.states.map(s => ({ ...s, parent: undefined, super: undefined, initial: undefined }));
+  App.transitions = flat.transitions.map(t => ({ ...t }));
+  App.startId = flat.startId;
+  App.accepts = new Set(flat.accepts);
+  // Flags and actions have been compiled INTO the states, so leaving the
+  // declarations behind would double a machine that no longer reads them.
+  App.flags = [];
+  applyMachineSwitch(flat.machine);
+  updateLPanel(); updateRPanel();
+  setView('build');
+  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
+  showStatus(`Flattened to ${flat.states.length} states — same language, no regions`);
+}
+
+export function algoCompilePDA(c) {
+  c.innerHTML = `<div class="algo-title">RSM → PDA (Compile)</div>
+<div class="algo-sub">REFERENCE IS POWER — THE STACK IS NOT REMOVABLE</div>
+<div class="info-box">A box <em>names</em> another component rather than containing it, and reference is a <strong>graph</strong>, which can cycle. A component that reaches itself has unbounded depth, and the only way to remember where to return is a stack. Two details carry the construction: a box becomes <strong>two</strong> states — the call site and the point after the callee returned, without which returning would land back on the call and immediately call again — and a dedicated bottom marker is pushed at the start and popped into the single accepting state, because final-state acceptance alone would accept with calls still pending.</div>`;
+
+  if (!hasCallStack()) {
+    c.innerHTML += '<div class="card dec-card-empty">Switch to RSM to draw sub-machine call sites.</div>';
+    return;
+  }
+  const tree = machineTree();
+  const compiled = compileToPDA(tree);
+  if (!compiled) { c.innerHTML += '<div class="card dec-card-empty">No start state defined.</div>'; return; }
+
+  const recursive = recursiveComponents(tree);
+  const drawnStates = [...tree.components.values()].reduce((a, comp) => a + comp.states.length, 0);
+  const drawnTrans = [...tree.components.values()].reduce((a, comp) => a + comp.transitions.length, 0);
+
+  c.innerHTML += hierCountsCard('The pushdown automaton it denotes',
+    { states: drawnStates, transitions: drawnTrans },
+    { states: compiled.states.length, transitions: compiled.transitions.length },
+    `${tree.components.size} component${tree.components.size === 1 ? '' : 's'}, ${recursive.size} recursive.`);
+
+  c.innerHTML += `<div class="card"><div class="card-title">Why this one needs a stack</div>
+<div class="hier-note">${recursive.size
+    ? `${[...recursive].map(id => `<code>${escapeHtml(tree.components.get(id)?.name || id)}</code>`).join(', ')} invoke${recursive.size === 1 ? 's' : ''} ${recursive.size === 1 ? 'itself' : 'themselves'}. There is no finite picture of that, which is exactly why it cannot be inlined as a region and why this machine is context-free rather than regular.`
+    : 'Nothing here is recursive, so the call depth is bounded — this machine is still regular, and <strong>Inline as Region</strong> on each box would draw it without a stack at all.'}</div></div>`;
+
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadCompiledPDA()">${ALGO_ICON_LOAD_CANVAS}Load the compiled NPDA into the canvas</button></div>`;
+}
+
+export function loadCompiledPDA() {
+  const compiled = compileToPDA();
+  if (!compiled) return showStatus('No start state defined.');
+  snapshot();
+  App.states = compiled.states.map(s => ({ ...s }));
+  App.transitions = compiled.transitions.map(t => ({ ...t }));
+  App.startId = compiled.startId;
+  App.accepts = new Set(compiled.accepts);
+  App.stackAlpha = new Set(compiled.stackAlpha);
+  // The component tree has been compiled away; leaving it would let a later
+  // descend walk into components nothing on the canvas refers to any more.
+  App.components = []; App.rootComponentId = null; App.componentPath = []; App.componentN = 0;
+  ensureRootComponent();
+  App.flags = [];
+  applyMachineSwitch('NPDA');
+  updateLPanel(); updateRPanel();
+  setView('build');
+  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
+  showStatus(`Compiled to an NPDA with ${App.states.length} states`);
 }
 
 /** Algo panel renderer. */

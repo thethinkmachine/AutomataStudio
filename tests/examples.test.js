@@ -26,12 +26,18 @@ function installExample(h, data) {
   App.sigma = new Set(data.sigma || []);
   App.stackAlpha = new Set(data.stackAlpha || [App.config?.sym?.stackBottom || 'Z']);
   App.outputAlpha = new Set(data.outputAlpha || []);
+  // Guarded examples declare their flags; an undeclared flag reads false, so
+  // forgetting this here would disable every guarded arrow rather than fail.
+  App.flags = [...(data.flags || [])];
   if (data.tapeCount) App.tapeCount = data.tapeCount;
   App.states = data.states;
   App.transitions = data.transitions;
   App.startId = data.startId;
   App.accepts = new Set(data.accepts || []);
   if (data.config) App.config = { ...App.config, ...data.config };
+  // Hierarchical examples carry a component tree; everything else falls back to
+  // a synthesised root built from the flat fields just assigned.
+  h.context.adoptComponents(data);
   return App;
 }
 
@@ -79,6 +85,7 @@ function runSample(h, data, w) {
   else if (m === 'LBA') ctx.simLBA(tokens);
   else if (m === 'ITM') ctx.simITM(tokens);
   else if (m === 'TM') ctx.simTM(tokens);
+  else if (m === 'RSM' || m === 'HSM') result = ctx.simRSM(tokens);
   else assert.fail(`no simulator dispatch for machine ${m}`);
 
   const last = App.simSteps[App.simSteps.length - 1];
@@ -92,10 +99,18 @@ const FLAGSHIPS = [
   'dfa', 'nfa', 'enfa', 'twdfa', 'twnfa',
   'pda', 'npda', 'queue', 'counter', 'twopda',
   'tm', 'ndtm', 'mtm', 'lba', 'ittm',
+  'hsm', 'rsm',
   'moore', 'mealy', 'fst'
 ];
 
-for (const file of FLAGSHIPS) {
+// Every flagship must declare inputs; any other example that declares them is
+// checked too, so adding one to the gallery is enough to get it covered.
+const WITH_INPUTS = fs.readdirSync(EXAMPLES_DIR)
+  .filter(f => f.endsWith('.json'))
+  .map(f => f.replace(/\.json$/, ''))
+  .filter(f => (loadExampleData(f).meta?.inputs || []).length);
+
+for (const file of [...new Set([...FLAGSHIPS, ...WITH_INPUTS])]) {
   test(`example ${file}: sample inputs behave as documented`, () => {
     const data = loadExampleData(file);
     assert.ok(data.meta && Array.isArray(data.meta.inputs) && data.meta.inputs.length,

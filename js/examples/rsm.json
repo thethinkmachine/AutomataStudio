@@ -80,5 +80,19 @@
       "text": "S → ( S ) S | ε\n\nTwo of these nodes are BOXES: they invoke S again rather than reading input. That self-reference is what makes the language context-free — no finite automaton can match brackets.\n\nRun \"(()())\" and watch the Call row grow and unwind."
     }
   ],
-  "noteN": 1
+  "noteN": 1,
+  "meta": {
+    "title": "Balanced brackets: S → ( S ) S | ε",
+    "blurb": "Two of these nodes invoke S again instead of reading input. That self-reference is what a superstate cannot express — containment is a tree and cannot cycle — and it is exactly why this language is context-free rather than regular.",
+    "inputs": [
+      { "w": "", "expect": "accept", "label": "empty" },
+      { "w": "()", "expect": "accept", "label": "one pair" },
+      { "w": "(())", "expect": "accept", "label": "nested" },
+      { "w": "()()", "expect": "accept", "label": "sequential" },
+      { "w": "(()())", "expect": "accept", "label": "both at once" },
+      { "w": "(", "expect": "reject", "label": "never closed" },
+      { "w": ")(", "expect": "reject", "label": "wrong order" },
+      { "w": "(()", "expect": "reject", "label": "one short" }
+    ]
+  }
 }

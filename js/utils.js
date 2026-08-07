@@ -193,6 +193,10 @@ export function performClear() {
   App.components = []; App.rootComponentId = null; App.componentPath = []; App.componentN = 0;
   ensureRootComponent();
   App.stateN = 0; App.transN = 0; App.history = []; App.future = [];
+  // Flags are part of the machine's declarations, like Σ and Γ — a cleared
+  // canvas that still remembers `armed` would offer it back on the next
+  // machine, and would carry it into every serialized workspace.
+  App.flags = [];
   App.notes = []; App.noteN = 0;
   App.dividers = []; App.dividerN = 0; App.selectedDividerId = null;
   App.edgeHighlight = null;

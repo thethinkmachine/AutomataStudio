@@ -317,6 +317,39 @@
             </div>
           </div>
 
+          <div class="sec lp-collapsible" id="flags-sec" style="display:none">
+            <div class="lp-section-header" onclick="toggleLPSection('flags-sec')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('flags-sec')}">
+              <span class="sec-lbl lp-section-title">Flags V</span>
+              <span class="lp-section-count" id="lp-count-flags">0</span>
+              <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+            </div>
+            <div class="lp-section-body">
+              <div class="row">
+                <input class="inp" id="flag-in" placeholder="armed, alert…" maxlength="24"
+                  onkeydown="if(event.key==='Enter')addFlag()">
+                <button class="ibtn" onclick="addFlag()"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
+              </div>
+              <div class="chips" id="flag-chips"></div>
+              <div class="flag-cost" id="flag-cost"></div>
+            </div>
+          </div>
+
+          <!-- The component tree, as a list of objects you can point at.
+               A component was previously invisible unless you happened to be
+               standing inside one: no way to see how many existed, rename one,
+               delete an unused one, or find the other call sites of the one you
+               were editing. renameComponent/deleteComponent had no UI at all. -->
+          <div class="sec lp-collapsible" id="components-sec" style="display:none">
+            <div class="lp-section-header" onclick="toggleLPSection('components-sec')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('components-sec')}">
+              <span class="sec-lbl lp-section-title">Sub-machines</span>
+              <span class="lp-section-count" id="lp-count-components">0</span>
+              <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+            </div>
+            <div class="lp-section-body">
+              <div class="slist" id="components-list"></div>
+            </div>
+          </div>
+
           <div class="sec lp-collapsible" id="lp-states">
             <div class="lp-section-header" onclick="toggleLPSection('lp-states')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('lp-states')}">
               <span class="sec-lbl lp-section-title">States Q</span>
@@ -379,6 +412,10 @@
             <g id="cam-g" transform="translate(0,0) scale(1)">
               <!-- Dividers render first so they sit behind the machine itself -->
               <g id="dividers-g"></g>
+              <!-- Superstate containers sit under the edges deliberately: an
+                   arrow crossing a region's border has to stay visible, and a
+                   region's fill would otherwise paint over it. -->
+              <g id="supers-g"></g>
               <g id="trans-g"></g>
               <g id="trans-lbl-g"></g>
               <g id="states-g"></g>
@@ -421,7 +458,7 @@
             </button>
             <button class="toolbox-btn" id="t-shape" onclick="showShapeToolMenu(event)" oncontextmenu="showShapeToolMenu(event); return false;"
               aria-haspopup="menu" aria-expanded="false"
-              data-tip="Choose a shape to draw: Divider line or Region rectangle">
+              data-tip="Choose a shape to draw: Divider line or Frame rectangle">
               <span id="shape-tool-icon" aria-hidden="true">
                 <svg viewBox="0 0 256 256" fill="currentColor"><path d="M214.64,41.36a32,32,0,0,0-50.2,38.89L80.25,164.44a32.06,32.06,0,0,0-38.89,4.94h0a32,32,0,1,0,50.2,6.37l84.19-84.19a32,32,0,0,0,38.89-50.2Zm-139.33,162a16,16,0,0,1-22.64-22.64h0a16,16,0,0,1,22.63,0h0A16,16,0,0,1,75.31,203.33Zm128-128a16,16,0,1,1,0-22.63A16,16,0,0,1,203.33,75.3Z"/></svg>
               </span>
@@ -677,6 +714,9 @@
             <div class="algo-grp">Pushdown Automata</div>
             <div class="algo-item" onclick="setAlgo('npda')" data-algo="npda">NPDA Simulation</div>
             <div class="algo-item" onclick="setAlgo('ndtm')" data-algo="ndtm">NDTM Simulation</div>
+            <div class="algo-grp">Hierarchical</div>
+            <div class="algo-item" onclick="setAlgo('flatten')" data-algo="flatten">HSM &rarr; NFA (Flatten)</div>
+            <div class="algo-item" onclick="setAlgo('compilePda')" data-algo="compilePda">RSM &rarr; PDA (Compile)</div>
             <div class="algo-grp">Regular Grammars</div>
             <div class="algo-item" onclick="setAlgo('dfa2rg')" data-algo="dfa2rg">DFA/NFA &rarr; Regular Grammar</div>
             <div class="algo-item" onclick="setAlgo('rg2nfa')" data-algo="rg2nfa">Regular Grammar &rarr; NFA</div>
@@ -1145,7 +1185,60 @@
         <div class="modal-row"><span class="modal-lbl">Output</span><select class="sel" id="m-output"></select></div>
       </div>
       <div id="m-mtm-extra" style="display:none"></div>
-      <div class="modal-row"><span class="modal-lbl">To</span><select class="sel" id="m-to"></select></div>
+      <div id="m-guard-extra" style="display:none">
+        <div class="modal-section-lbl">Condition</div>
+        <div class="modal-row"><span class="modal-lbl">Guard</span><input class="inp" id="m-guard" maxlength="120"
+            placeholder="armed &amp;&amp; !hurt" autocomplete="off"
+            onkeydown="trySymSuggestKeydown(event)"
+            oninput="syncGuardValidity(); handleSymSuggestActive(this)"
+            onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
+            onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></div>
+        <div class="modal-row"><span class="modal-lbl">Then set</span><input class="inp" id="m-assign" maxlength="120"
+            placeholder="armed = false, alert" autocomplete="off"
+            onkeydown="trySymSuggestKeydown(event)"
+            oninput="syncGuardValidity(); handleSymSuggestActive(this)"
+            onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
+            onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></div>
+        <div class="modal-row modal-row-tight">
+          <span class="modal-lbl"></span>
+          <span class="modal-hint" id="m-guard-hint">Boolean flags only — <code>&amp;&amp;</code>, <code>||</code>, <code>!</code>, parens. Flags are declared in the left panel.</span>
+        </div>
+        <div class="modal-row modal-row-tight">
+          <span class="modal-lbl"></span>
+          <span class="modal-err" id="m-guard-err" style="display:none"></span>
+        </div>
+        <div class="modal-row modal-row-tight">
+          <span class="modal-lbl"></span>
+          <span class="modal-hint modal-hint-warn" id="m-guard-warn" style="display:none"></span>
+        </div>
+      </div>
+      <div id="m-actions-extra" style="display:none">
+        <div class="modal-section-lbl">Action</div>
+        <div class="modal-row"><span class="modal-lbl">On taking</span><input class="inp" id="m-action" maxlength="48" placeholder="fireWeapon"></div>
+        <div class="modal-row modal-row-tight">
+          <span class="modal-lbl"></span>
+          <span class="modal-hint">Runs between the exit actions of the states this arrow leaves and the entry actions of the ones it enters.</span>
+        </div>
+      </div>
+      <div class="modal-row"><span class="modal-lbl">To</span><select class="sel" id="m-to"
+          onchange="syncTransModalEntryMode()"></select></div>
+      <!-- Placed AFTER the To row it depends on: whether this block applies is
+           decided by the target, so it has to be able to appear the moment the
+           target becomes a region. -->
+      <div id="m-history-extra" style="display:none">
+        <div class="modal-section-lbl">Entering the region <span class="modal-section-note" id="m-entry-target"></span></div>
+        <div class="modal-row"><span class="modal-lbl">Land on</span>
+          <select class="sel" id="m-entry-mode">
+            <option value="default">Default entry</option>
+            <option value="history">Ⓗ shallow history — resume the child you left</option>
+            <option value="deep">Ⓗ* deep history — resume the exact state you left</option>
+          </select>
+        </div>
+        <div class="modal-row modal-row-tight">
+          <span class="modal-lbl"></span>
+          <span class="modal-hint">History is finite memory, so the language stays regular — but flattening has to copy everything outside the region once per thing it might remember.</span>
+        </div>
+      </div>
       <div class="modal-foot"><button class="btn-g" onclick="closeModal('trans-modal')">Cancel</button><button
           class="btn-p" id="trans-confirm-btn" onclick="confirmTrans()">Add</button></div>
     </div>
@@ -1167,6 +1260,15 @@
       <div id="s-mealy-extra" style="display:none">
         <div class="modal-section-lbl">Outgoing Transition Outputs (λ)</div>
         <div id="s-mealy-transitions-list" class="mealy-outputs-list"></div>
+      </div>
+      <div id="s-actions-extra" style="display:none">
+        <div class="modal-section-lbl">Actions</div>
+        <div class="modal-row"><span class="modal-lbl">On entry</span><input class="inp" id="s-entry" maxlength="48" placeholder="drawWeapon"></div>
+        <div class="modal-row"><span class="modal-lbl">On exit</span><input class="inp" id="s-exit" maxlength="48" placeholder="holster"></div>
+        <div class="modal-row modal-row-tight">
+          <span class="modal-lbl"></span>
+          <span class="modal-hint" id="s-actions-hint">Actions on a region fire only when the region itself is entered or left — an arrow between two states inside it does not touch them.</span>
+        </div>
       </div>
       <div class="modal-foot"><button class="btn-g" onclick="closeModal('state-modal')">Cancel</button><button
           class="btn-p" onclick="confirmState()">Save</button></div>
@@ -1338,6 +1440,7 @@
         <div class="modal-tab" onclick="switchSettingsTab('pda')">Pushdown</div>
         <div class="modal-tab" onclick="switchSettingsTab('tm')">Turing Machine</div>
         <div class="modal-tab" onclick="switchSettingsTab('transducer')">Transducers</div>
+        <div class="modal-tab" onclick="switchSettingsTab('hier')">Hierarchical</div>
         <div class="modal-tab" onclick="switchSettingsTab('rendering')">Canvas &amp; Layout</div>
         <div class="modal-tab" onclick="switchSettingsTab('symbols')">Notation</div>
       </div>
@@ -1401,6 +1504,21 @@
         <div class="modal-row" id="set-row-transducer" data-tip="Allow Moore and Mealy machines to have accept states">
           <span class="modal-lbl">Transducer Accepts</span>
           <label class="toggle-switch"><input type="checkbox" id="set-transducer-accepts"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="tab-hier">
+        <div class="modal-row"
+          data-tip="Ceiling on the flattened state count when the construction is a PRODUCT rather than a relabelling — history memory, guard valuations, orthogonal regions. Those are exponential by nature; this is what stops the exponent being paid on the simulator's hot path in silence. A machine that exceeds it is reported as truncated rather than quietly answering for a different language.">
+          <span class="modal-lbl">Max Flattened States</span>
+          <input type="number" class="inp" id="set-flat-states" min="100" max="200000" step="100"
+            label="Flattened state ceiling">
+        </div>
+        <div class="modal-row"
+          data-tip="How deep a recursive sub-machine may call before the run gives up. A machine with no base case would otherwise explore forever; hitting this reports 'is there a base case?' rather than a bare reject.">
+          <span class="modal-lbl">Max Call Depth</span>
+          <input type="number" class="inp" id="set-call-depth" min="2" max="2000" step="1"
+            label="Recursive call depth limit">
         </div>
       </div>
 
@@ -1582,6 +1700,26 @@
           <td>Ctrl+Shift+S</td>
           <td>Export automaton as JSON</td>
         </tr>
+        <tr>
+          <td>Ctrl+A / Ctrl+C / Ctrl+V</td>
+          <td>Select all / copy / paste — a region carries its contents</td>
+        </tr>
+        <tr>
+          <td>Ctrl+D</td>
+          <td>Duplicate the selection</td>
+        </tr>
+        <tr>
+          <td>Ctrl+G</td>
+          <td>Group the selection into a region (HSM / RSM)</td>
+        </tr>
+        <tr>
+          <td>Ctrl+Shift+G</td>
+          <td>Ungroup the selected region, writing out the arrows it stood for</td>
+        </tr>
+        <tr>
+          <td>Delete / Backspace</td>
+          <td>Delete the selection — deleting a region deletes its contents</td>
+        </tr>
       </table>
       <div class="help-section">Simulation</div>
       <table class="help-table">
@@ -1700,6 +1838,33 @@
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,56H216v32H40Zm0,144V104H216v96Z" /></svg>
       Open Sub-machine
     </div>
+    <div class="ctx-i ctx-state" id="ctx-group" onclick="ctxGroupRegion()" style="display:none">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM96,96a16,16,0,1,1,16,16A16,16,0,0,1,96,96Zm48,64a16,16,0,1,1,16,16A16,16,0,0,1,144,160Z" /></svg>
+      Group into Region<span class="ctx-kbd-hint">Ctrl+G</span>
+    </div>
+    <div class="ctx-i ctx-state" id="ctx-collapse" onclick="ctxToggleCollapse()" style="display:none">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+      <span id="ctx-collapse-lbl">Collapse Region</span>
+    </div>
+    <div class="ctx-i ctx-state" id="ctx-ungroup" onclick="ctxUngroupRegion()" style="display:none">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M40,88a8,8,0,0,1,8-8H208a8,8,0,0,1,0,16H48A8,8,0,0,1,40,88Zm168,72H48a8,8,0,0,0,0,16H208a8,8,0,0,0,0-16Z" /></svg>
+      Ungroup Region<span class="ctx-kbd-hint">Ctrl+⇧G</span>
+    </div>
+    <div class="ctx-i ctx-state" id="ctx-parallel" onclick="ctxToggleParallel()" style="display:none">
+      <span class="ctx-ico">∥</span><span id="ctx-parallel-lbl">Make Orthogonal (AND)</span>
+    </div>
+    <div class="ctx-i ctx-state" id="ctx-extract" onclick="ctxExtractRegion()" style="display:none">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z" /></svg>
+      Extract as Sub-machine
+    </div>
+    <div class="ctx-i ctx-state" id="ctx-inline" onclick="ctxInlineSub()" style="display:none">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM168,120a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,120Z" /></svg>
+      Inline as Region
+    </div>
+    <div class="ctx-i ctx-state" id="ctx-default-entry" onclick="ctxDefaultEntry()" style="display:none">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm40-88a40,40,0,1,1-40-40A40,40,0,0,1,168,128Z" /></svg>
+      Set as Default Entry
+    </div>
     <div class="ctx-i ctx-state" onclick="ctxAddNoteState()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M88,96a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H96A8,8,0,0,1,88,96Zm8,40h64a8,8,0,0,0,0-16H96a8,8,0,0,0,0,16Zm32,16H96a8,8,0,0,0,0,16h32a8,8,0,0,0,0-16ZM224,48V156.69A15.86,15.86,0,0,1,219.31,168L168,219.31A15.86,15.86,0,0,1,156.69,224H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H152V160a8,8,0,0,1,8-8h48V48H48Zm120-40v28.7L196.69,168Z" /></svg>
       Add Note
@@ -1810,7 +1975,7 @@
     </div>
     <div class="ctx-i" data-shape="rect" onclick="pickShapeTool('rect')">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Z"/></svg>
-      Region (Rectangle) <span class="ctx-kbd-hint">R</span>
+      Frame (Rectangle) <span class="ctx-kbd-hint">R</span>
     </div>
   </div>
 
@@ -1865,6 +2030,13 @@
     <div class="ctx-i" onclick="ctxCanvasFit()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M200,80v32a8,8,0,0,1-16,0V88H160a8,8,0,0,1,0-16h32A8,8,0,0,1,200,80ZM96,168H72V144a8,8,0,0,0-16,0v32a8,8,0,0,0,8,8H96a8,8,0,0,0,0-16ZM232,56V200a16,16,0,0,1-16,16H40a16,16,0,0,1-16-16V56A16,16,0,0,1,40,40H216A16,16,0,0,1,232,56ZM216,200V56H40V200H216Z" /></svg>
       Fit to Screen
+    </div>
+    <!-- The way out of a deeply folded diagram. Shown only when something is
+         folded, because a collapsed region is easy to lose track of once the
+         camera has moved on. -->
+    <div class="ctx-i" id="ctx-canvas-expand-all" onclick="ctxCanvasExpandAll()" style="display:none">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M181.66,133.66l-48,48a8,8,0,0,1-11.32,0l-48-48a8,8,0,0,1,11.32-11.32L128,164.69l42.34-42.35a8,8,0,0,1,11.32,11.32Zm-96-11.32L128,80l42.34,42.34a8,8,0,0,0,11.32-11.32l-48-48a8,8,0,0,0-11.32,0l-48,48a8,8,0,0,0,11.32,11.32Z" /></svg>
+      Expand All Regions
     </div>
   </div>
 

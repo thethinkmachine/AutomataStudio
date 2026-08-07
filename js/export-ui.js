@@ -133,7 +133,7 @@ export function renderExportImageModal() {
       <span class="exp-lbl">Include</span>
       <div class="exp-checks">
         ${check('includeNotes', 'Notes')}
-        ${check('includeDividers', 'Dividers &amp; regions')}
+        ${check('includeDividers', 'Dividers &amp; frames')}
         ${isPng ? check('embedData', 'Workspace data', 'reopenable by dropping the PNG back in') : ''}
       </div>
     </div>

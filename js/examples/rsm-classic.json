@@ -1,0 +1,73 @@
+{
+  "machine": "RSM",
+  "sigma": [
+    "a",
+    "b"
+  ],
+  "states": [
+    {
+      "id": "s1",
+      "x": 160,
+      "y": 260,
+      "name": "start"
+    },
+    {
+      "id": "s2",
+      "x": 420,
+      "y": 260,
+      "name": "S",
+      "callee": "c1"
+    },
+    {
+      "id": "s3",
+      "x": 700,
+      "y": 260,
+      "name": "matched"
+    }
+  ],
+  "startId": "s1",
+  "accepts": [
+    "s1",
+    "s3"
+  ],
+  "transitions": [
+    {
+      "id": "t1",
+      "from": "s1",
+      "to": "s2",
+      "symbol": "a"
+    },
+    {
+      "id": "t2",
+      "from": "s2",
+      "to": "s3",
+      "symbol": "b"
+    }
+  ],
+  "rootComponentId": "c1",
+  "componentPath": [
+    "c1"
+  ],
+  "componentN": 1,
+  "components": [
+    {
+      "id": "c1",
+      "name": "S",
+      "startId": "s1",
+      "accepts": [
+        "s1",
+        "s3"
+      ],
+      "exitIds": [],
+      "states": [
+        { "id": "s1", "x": 160, "y": 260, "name": "start" },
+        { "id": "s2", "x": 420, "y": 260, "name": "S", "callee": "c1" },
+        { "id": "s3", "x": 700, "y": 260, "name": "matched" }
+      ],
+      "transitions": [
+        { "id": "t1", "from": "s1", "to": "s2", "symbol": "a" },
+        { "id": "t2", "from": "s2", "to": "s3", "symbol": "b" }
+      ]
+    }
+  ]
+}
