@@ -73,10 +73,14 @@ export function hasTransitionOutput(m = App.machine) {
 // rather than a branch, so the editor should refuse it. Nondeterministic
 // families (NFA, 2NFA, NPDA, NDTM) are excluded, and so are the two whose
 // semantics *are* the multiple edges: a PFA distributes probability across
-// them, and a Büchi automaton guesses among them.
+// them, and an NBA guesses among them.
 export function hasSingleValuedDelta(m = App.machine) {
   const cfg = getMachineConfig(m);
-  if (cfg.isWeighted || cfg.isOmega) return false;
+  if (cfg.isWeighted) return false;
+  // Ordering trap: half the ω-automata are precisely the single-valued case, so
+  // they have to answer before the family exemption below — otherwise the
+  // editor would happily let you draw an NBA and call it a DBA.
+  if (cfg.isOmega) return !!cfg.deterministic;
   return m === 'DFA' || m === 'Moore' || m === 'Mealy'
     || m === 'TM' || m === 'LBA' || m === 'ITM' || m === 'MTM'
     || m === '2DFA' || m === '2DFT'
@@ -93,6 +97,21 @@ export function isLBA(m = App.machine) {
 
 export function isInfiniteTapeTM(m = App.machine) {
   return m === 'ITM';
+}
+
+// The first (state, symbol) an ω-automaton's δ sends to two places, or null.
+// This is the whole difference between the two Büchi models, so it is worth
+// reporting as a pair the caller can name rather than a bare boolean.
+// Unlike hasSingleTapeNondeterminism this respects the wildcard, since one
+// `any` edge overlaps every concrete symbol out of the same state.
+export function findOmegaDeterminismConflict(transitions = App.transitions) {
+  for (let i = 0; i < transitions.length; i++) {
+    for (let j = i + 1; j < transitions.length; j++) {
+      const a = transitions[i], b = transitions[j];
+      if (a.from === b.from && symbolsOverlap(a.symbol, b.symbol)) return [a, b];
+    }
+  }
+  return null;
 }
 
 export function hasSingleTapeNondeterminism(transitions = App.transitions) {

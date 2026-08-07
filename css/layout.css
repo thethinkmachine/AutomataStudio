@@ -884,7 +884,9 @@ header {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  width: 320px;
+  /* Wide enough for the longest full name ("Two-Way Nondeterministic Finite
+     Automaton") plus its short-code chip, on one line. */
+  width: 360px;
   background: var(--bg2);
   border: 1px solid var(--border2);
   border-radius: 8px;
@@ -988,6 +990,7 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   padding: 8px 16px;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -1008,6 +1011,25 @@ header {
 .model-item-label {
   font-family: var(--sans);
   font-size: 0.85rem;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+/* The abbreviation the rest of the app uses, kept beside the full name so the
+   picker still teaches which model is which. */
+.model-item-code {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--bg3);
+  color: var(--text3);
+}
+
+.model-item.active .model-item-code {
+  color: var(--accent);
 }
 
 .model-item.disabled {

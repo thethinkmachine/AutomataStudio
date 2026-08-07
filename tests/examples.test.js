@@ -65,12 +65,15 @@ function runSample(h, data, w) {
   }
 
   // ω-automata take "u(v)", not a finite word, so they never reach toTokens.
-  if (m === 'NBA') {
+  // Both types and all four acceptance conditions share simOmega — they differ
+  // in which machines are legal and which cycles count, not in how a run is
+  // explored.
+  if (ctx.isOmegaAutomaton(m)) {
     const parsed = ctx.parseOmegaWord(w);
-    assert.ok(parsed, `Büchi input "${w}" must be written u(v)`);
+    assert.ok(parsed, `ω-automaton input "${w}" must be written u(v)`);
     const u = toTokens(ctx, parsed.prefix);
     const v = toTokens(ctx, parsed.period);
-    const res = ctx.simNBA(u, v);
+    const res = ctx.simOmega(u, v);
     return { accepted: res.accepted, last: App.simSteps[App.simSteps.length - 1] };
   }
 
@@ -106,10 +109,15 @@ const FLAGSHIPS = [
   'pda', 'npda', 'queue', 'counter', 'twopda',
   'tm', 'ndtm', 'mtm', 'lba', 'ittm',
   'moore', 'mealy', 'fst',
-  'pfa', 'buchi', 'pdt', 'twodft'
+  'pfa', 'dba', 'buchi', 'pdt', 'twodft'
 ];
 
-for (const file of FLAGSHIPS) {
+// The flagships, plus one example per remaining ω-type. Each names its own
+// machine, so replaying their samples is what proves the acceptance condition
+// really is read off the type.
+const SAMPLED = [...FLAGSHIPS, 'dcoba', 'dpa', 'dwa', 'ncoba', 'npa', 'nwa'];
+
+for (const file of SAMPLED) {
   test(`example ${file}: sample inputs behave as documented`, () => {
     const data = loadExampleData(file);
     assert.ok(data.meta && Array.isArray(data.meta.inputs) && data.meta.inputs.length,

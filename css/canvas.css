@@ -95,7 +95,10 @@
   pointer-events: none;
 }
 
-.mooreout {
+/* The second line under a state's name. A Moore output and a parity priority
+   share the slot — they never appear together — but read as different kinds of
+   thing, so the priority takes its own colour. */
+.state-sub {
   font-family: var(--mono);
   font-size: 10px;
   font-weight: 600;
@@ -103,6 +106,32 @@
   text-anchor: middle;
   dominant-baseline: central;
   pointer-events: none;
+}
+
+.state-sub.parity {
+  font-size: 11px;
+  fill: var(--orange);
+}
+
+/* Parity metadata is a compact badge, separate from the state-name text block. */
+.priority-badge {
+  pointer-events: none;
+}
+
+.priority-badge rect {
+  fill: var(--bg3);
+  stroke: var(--orange);
+  stroke-width: 1.5;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .18));
+}
+
+.priority-value {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--orange);
+  text-anchor: middle;
+  dominant-baseline: central;
 }
 
 .edge-g {

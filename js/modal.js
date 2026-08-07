@@ -177,7 +177,7 @@ document.addEventListener('keydown', e => {
     const active = document.activeElement;
     const tag = active ? active.tagName : '';
     // A textarea keeps Enter as newline; Ctrl/Cmd+Enter submits instead.
-    if (tag === 'TEXTAREA' && !(e.ctrlKey || e.metaKey)) return;
+    if ((tag === 'TEXTAREA' || active?.isContentEditable) && !(e.ctrlKey || e.metaKey)) return;
     // Let buttons and links act on their own Enter rather than double-firing.
     if (tag === 'BUTTON' || tag === 'A') return;
     e.preventDefault();

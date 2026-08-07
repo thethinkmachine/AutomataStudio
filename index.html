@@ -1163,6 +1163,13 @@
       <div id="s-moore-extra" style="display:none">
         <div class="modal-row"><span class="modal-lbl">Output λ</span><select class="sel" id="s-output"></select></div>
       </div>
+      <div id="s-parity-extra" style="display:none">
+        <div class="modal-row"><span class="modal-lbl" data-tip="A run is accepting when the least priority it visits infinitely often is even">Priority Ω</span><input type="number" class="inp" id="s-priority" min="0" max="99" step="1" label="Parity priority"></div>
+        <div class="modal-row modal-row-tight">
+          <span class="modal-lbl"></span>
+          <span class="modal-hint">Lower priorities dominate. Even accepts, odd rejects.</span>
+        </div>
+      </div>
       <div id="s-mealy-extra" style="display:none">
         <div class="modal-section-lbl">Outgoing Transition Outputs (λ)</div>
         <div id="s-mealy-transitions-list" class="mealy-outputs-list"></div>
@@ -1192,12 +1199,15 @@
             <button type="button" class="note-tb-btn" onclick="insertNoteNewline()" data-tip="New line" aria-label="Insert new line">
               <svg viewBox="0 0 256 256" fill="currentColor"><path d="M228,56V144a12,12,0,0,1-12,12H69l25.66,25.66a12,12,0,0,1-17,17l-46-46a12,12,0,0,1,0-17l46-46a12,12,0,1,1,17,17L69,112H204V56a12,12,0,0,1,24,0Z"></path></svg>
             </button>
-            <span class="note-tb-hint">Select whole words, then click a style — or type <code>**bold**</code>, <code>*italic*</code>, <code>__underline__</code> directly. Markers only apply around whole words, so <code>a*b*</code>, <code>Σ*</code> and <code>q_start</code> stay literal.</span>
+            <button type="button" class="note-tb-btn note-tb-clear" onclick="clearNoteFormatting()" data-tip="Clear formatting" aria-label="Clear formatting">
+              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216.49,79.51l-40-40a12,12,0,0,0-17,0l-120,120a12,12,0,0,0,0,17l40,40a12,12,0,0,0,17,0l32-32L151,207H128a12,12,0,0,0,0,24h64a12,12,0,0,0,0-24h-7l-39-39,70.49-70.49A12,12,0,0,0,216.49,79.51ZM88,191,65,168,168,65l23,23Z"></path></svg>
+            </button>
+            <span class="note-tb-hint"><kbd>Ctrl/Cmd+B</kbd> bold · <kbd>I</kbd> italic · <kbd>U</kbd> underline</span>
           </div>
-          <textarea class="inp note-textarea" id="note-text" rows="6" maxlength="2000"
-            placeholder="Write a note…" oninput="updateNoteCharCount()"></textarea>
+          <div class="inp note-textarea" id="note-text" contenteditable="true" role="textbox" aria-multiline="true"
+            data-placeholder="Write a note…" oninput="updateNoteEditor()" onkeydown="handleNoteEditorKeydown(event)" aria-describedby="note-editor-help"></div>
           <div class="note-editor-foot">
-            <span class="note-resize-hint">Drag a note's corner on canvas to resize it</span>
+            <span class="note-resize-hint" id="note-editor-help">Supports Markdown formatting · Ctrl/Cmd+Enter saves</span>
             <span class="note-char-count" id="note-char-count">0 / 2000</span>
           </div>
         </div>

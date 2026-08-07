@@ -92,9 +92,9 @@ test('PFA: a row that does not sum to 1 is reported, not silently renormalised',
 
 // ── Büchi ──────────────────────────────────────────────────────────
 // "Infinitely often a": q1 is entered exactly on an a.
-function infinitelyOftenA() {
+function infinitelyOftenA(type = 'NBA') {
   return machine({
-    type: 'NBA', states: ['q0', 'q1'], start: 'q0', accepts: ['q1'],
+    type, states: ['q0', 'q1'], start: 'q0', accepts: ['q1'],
     transitions: [
       { from: 'q0', to: 'q0', symbol: 'b' },
       { from: 'q0', to: 'q1', symbol: 'a' },
@@ -108,16 +108,16 @@ test('Büchi: acceptance needs F infinitely often, not F at the end', () => {
   infinitelyOftenA();
   // a(b) drives the run through the accepting state once and then never
   // again. A finite-word reading would accept it; Büchi must not.
-  assert.equal(ctx.testNBA(tok('a'), tok('b')), false);
-  assert.equal(ctx.testNBA([], tok('a')), true);
-  assert.equal(ctx.testNBA([], tok('ab')), true);
-  assert.equal(ctx.testNBA([], tok('b')), false);
+  assert.equal(ctx.testOmega(tok('a'), tok('b')), false);
+  assert.equal(ctx.testOmega([], tok('a')), true);
+  assert.equal(ctx.testOmega([], tok('ab')), true);
+  assert.equal(ctx.testOmega([], tok('b')), false);
 });
 
 test('Büchi: the prefix cannot rescue a period that avoids F', () => {
   infinitelyOftenA();
-  assert.equal(ctx.testNBA(tok('aaaa'), tok('b')), false);
-  assert.equal(ctx.testNBA(tok('bbbb'), tok('a')), true);
+  assert.equal(ctx.testOmega(tok('aaaa'), tok('b')), false);
+  assert.equal(ctx.testOmega(tok('bbbb'), tok('a')), true);
 });
 
 test('Büchi: nondeterminism is resolved by finding some accepting lasso', () => {
@@ -132,16 +132,190 @@ test('Büchi: nondeterminism is resolved by finding some accepting lasso', () =>
       { from: 'onlyB', to: 'onlyB', symbol: 'b' }
     ]
   });
-  assert.equal(ctx.testNBA(tok('aaa'), tok('b')), true, 'guess after the a-block');
-  assert.equal(ctx.testNBA([], tok('ab')), false, 'a recurs forever');
+  assert.equal(ctx.testOmega(tok('aaa'), tok('b')), true, 'guess after the a-block');
+  assert.equal(ctx.testOmega([], tok('ab')), false, 'a recurs forever');
 });
 
 test('Büchi: the witness run is a lasso whose cycle touches F', () => {
   infinitelyOftenA();
-  const r = ctx.exploreNBA([], tok('ab'));
+  const r = ctx.exploreOmega([], tok('ab'));
   assert.equal(r.accepted, true);
   assert.ok(r.loop.length > 0, 'an accepting run must close a cycle');
   assert.ok(r.loop.some(n => ctx.App.accepts.has(n.state)), 'the cycle visits F');
+});
+
+// ── DBA ────────────────────────────────────────────────────────────
+// The deterministic restriction is the entire model, and unlike DFA/NFA it
+// costs expressive power — so what is pinned here is that the restriction is
+// actually enforced, and that the run semantics stay shared with NBA.
+test('DBA: δ is single-valued, and the editor is told so', () => {
+  assert.equal(ctx.hasSingleValuedDelta('DBA'), true, 'a second edge on the same symbol is an error');
+  assert.equal(ctx.hasSingleValuedDelta('NBA'), false, 'an NBA guesses among them');
+  // The check has to beat the isOmega family exemption, not lose to it.
+  assert.equal(ctx.getMachineConfig('DBA').isOmega, true, 'a DBA is still an ω-automaton');
+});
+
+test('DBA: a wildcard edge counts as an overlap, an unrelated symbol does not', () => {
+  const any = ctx.App.config.sym.any;
+  const t = (id, from, symbol) => ({ id, from, to: from, symbol });
+  assert.equal(ctx.findOmegaDeterminismConflict([t('t1', 'q0', 'a'), t('t2', 'q0', 'b')]), null);
+  assert.equal(ctx.findOmegaDeterminismConflict([t('t1', 'q0', 'a'), t('t2', 'q1', 'a')]), null);
+  assert.ok(ctx.findOmegaDeterminismConflict([t('t1', 'q0', 'a'), t('t2', 'q0', 'a')]));
+  assert.ok(ctx.findOmegaDeterminismConflict([t('t1', 'q0', 'a'), t('t2', 'q0', any)]));
+});
+
+// "Never two a's in a row" — the shipped flagship, a safety property whose F is
+// everything except the trap.
+function neverTwoAs(type = 'DBA') {
+  return machine({
+    type, states: ['ok', 'sawA', 'dead'], start: 'ok', accepts: ['ok', 'sawA'],
+    transitions: [
+      { from: 'ok', to: 'ok', symbol: 'b' },
+      { from: 'ok', to: 'sawA', symbol: 'a' },
+      { from: 'sawA', to: 'ok', symbol: 'b' },
+      { from: 'sawA', to: 'dead', symbol: 'a' },
+      { from: 'dead', to: 'dead', symbol: 'a' },
+      { from: 'dead', to: 'dead', symbol: 'b' }
+    ]
+  });
+}
+
+test('DBA: a deterministic ω-run decides the same way through the shared explorer', () => {
+  neverTwoAs();
+  assert.equal(ctx.testOmega([], tok('ab')), true, 'alternating never repeats an a');
+  assert.equal(ctx.testOmega([], tok('b')), true);
+  assert.equal(ctx.testOmega([], tok('a')), false, 'aaa… hits the trap on the second a');
+  assert.equal(ctx.testOmega(tok('aa'), tok('b')), false, 'the trap is a sink — the b-tail cannot recover');
+  assert.equal(ctx.findOmegaDeterminismConflict(ctx.App.transitions), null, 'the example is genuinely deterministic');
+});
+
+test('DBA: the shipped GF a example is deterministic; the FG b one provably is not', () => {
+  const load = f => JSON.parse(fs.readFileSync(new URL(`../js/examples/${f}.json`, import.meta.url), 'utf8'));
+
+  // GF a sits inside the deterministic fragment...
+  const dba = load('dba-classic');
+  assert.equal(dba.machine, 'DBA');
+  assert.equal(ctx.findOmegaDeterminismConflict(dba.transitions), null);
+
+  // ...while FG b, the standard separating witness, needs the guess: the two
+  // b-edges out of "anything" are exactly the nondeterminism a DBA cannot have.
+  const nba = load('buchi-classic');
+  assert.equal(nba.machine, 'NBA');
+  assert.ok(ctx.findOmegaDeterminismConflict(nba.transitions), 'FG b cannot be drawn as a DBA');
+});
+
+// ── acceptance conditions ──────────────────────────────────────────
+// The eight ω-types are determinism × α. Both axes are read off the type, so
+// these tests change the type and nothing else — no config knob is involved.
+test('every ω-type names its own determinism and acceptance condition', () => {
+  const expected = {
+    DBA: ['buchi', true], DcoBA: ['cobuchi', true], DPA: ['parity', true], DWA: ['weak', true],
+    NBA: ['buchi', false], NcoBA: ['cobuchi', false], NPA: ['parity', false], NWA: ['weak', false]
+  };
+  for (const [type, [cond, det]] of Object.entries(expected)) {
+    assert.ok(ctx.MachineTypes[type], `${type} must have a MachineTypes entry`);
+    assert.equal(ctx.getMachineConfig(type).isOmega, true, `${type} is an ω-automaton`);
+    assert.equal(ctx.omegaAcceptanceOf(type), cond, `${type} carries the ${cond} condition`);
+    assert.equal(ctx.isDeterministicOmega(type), det, `${type} determinism`);
+    assert.equal(ctx.hasSingleValuedDelta(type), det, `${type} single-valued δ`);
+  }
+  // A non-ω machine never reports a condition, whatever else it is.
+  assert.equal(ctx.usesParityPriorities('DFA'), false, 'only ω-automata carry priorities');
+});
+
+test('co-Büchi inverts the verdict of Büchi on the same machine', () => {
+  // Identical graph, identical F — only the type differs. "infinitely often a"
+  // becomes "finitely often a", so every word flips. That is the duality, not a
+  // coincidence of these inputs.
+  infinitelyOftenA('NBA');
+  const buchi = [tok('a'), tok('b'), tok('ab')].map(v => ctx.testOmega([], v));
+  assert.deepEqual(buchi, [true, false, true]);
+
+  infinitelyOftenA('NcoBA');
+  assert.equal(ctx.testOmega([], tok('a')), false, 'aaa… visits F forever');
+  assert.equal(ctx.testOmega([], tok('b')), true, 'bbb… settles outside F');
+  assert.equal(ctx.testOmega(tok('a'), tok('b')), true, 'one a, then never again');
+  assert.equal(ctx.testOmega([], tok('ab')), false, 'a keeps recurring');
+});
+
+test('co-Büchi may pass through F on the way to a cycle that avoids it', () => {
+  // The stem is unconstrained — only the cycle has to stay outside F. A search
+  // that forbade F everywhere would wrongly reject aaa(b).
+  infinitelyOftenA('NcoBA');
+  const r = ctx.exploreOmega(tok('aaa'), tok('b'));
+  assert.equal(r.accepted, true);
+  assert.ok(r.loop.every(n => !ctx.App.accepts.has(n.state)), 'the cycle avoids F');
+  assert.ok(r.stem.some(n => ctx.App.accepts.has(n.state)), 'but the stem passed through it');
+});
+
+test('parity accepts when the least recurring priority is even', () => {
+  const setPriorities = (map) => {
+    for (const s of ctx.App.states) s.priority = map[s.name];
+  };
+  const twoState = () => machine({
+    type: 'DPA', states: ['q0', 'q1'], start: 'q0', accepts: [],
+    transitions: [
+      { from: 'q0', to: 'q0', symbol: 'b' },
+      { from: 'q0', to: 'q1', symbol: 'a' },
+      { from: 'q1', to: 'q1', symbol: 'a' },
+      { from: 'q1', to: 'q0', symbol: 'b' }
+    ]
+  });
+
+  twoState();
+  setPriorities({ q0: 0, q1: 1 });
+  assert.equal(ctx.testOmega([], tok('b')), true, 'stays in priority 0');
+  assert.equal(ctx.testOmega([], tok('ab')), true, 'cycle spans both; min 0 is even');
+  assert.equal(ctx.testOmega([], tok('a')), false, 'settles in priority 1, which is odd');
+
+  // Swap the parities and every verdict swaps with them.
+  setPriorities({ q0: 1, q1: 2 });
+  assert.equal(ctx.testOmega([], tok('b')), false, 'now stuck on odd 1');
+  assert.equal(ctx.testOmega([], tok('a')), true, 'now settles on even 2');
+  assert.equal(ctx.testOmega([], tok('ab')), false, 'min over the cycle is 1');
+});
+
+test('parity: F is ignored entirely, and a missing priority reads as 0', () => {
+  machine({
+    type: 'DPA', states: ['q0'], start: 'q0', accepts: [],
+    transitions: [{ from: 'q0', to: 'q0', symbol: 'a' }]
+  });
+  assert.equal(ctx.statePriority(ctx.App.states[0]), 0, 'no priority set means 0');
+  assert.equal(ctx.testOmega([], tok('a')), true, 'accepted with an empty F');
+  assert.equal(ctx.usesParityPriorities('DPA'), true);
+  assert.equal(ctx.usesParityPriorities('DBA'), false, 'Büchi has no priorities to read');
+});
+
+test('weak: an SCC straddling F is reported, and one that does not is clean', () => {
+  // ok/sawA/dead: {ok, sawA} is one SCC inside F, {dead} one outside it.
+  neverTwoAs('DWA');
+  assert.equal(ctx.findWeakViolation(), null, 'a genuine safety automaton is weak');
+
+  // "Infinitely often a" is the classic non-weak shape: q0 and q1 form a single
+  // SCC, and F splits it.
+  infinitelyOftenA('NWA');
+  const scc = ctx.findWeakViolation();
+  assert.ok(scc, 'an SCC containing both an accepting and a rejecting state violates weakness');
+  assert.equal(scc.length, 2);
+});
+
+test('weak: a state with no self-loop is on no cycle and cannot break weakness', () => {
+  // q0 → q1 with q1 accepting and q0 not. Neither is on a cycle, so neither can
+  // appear in any inf(r) — a naive per-state check would flag this wrongly.
+  machine({
+    type: 'DWA', states: ['q0', 'q1'], start: 'q0', accepts: ['q1'],
+    transitions: [{ from: 'q0', to: 'q1', symbol: 'a' }]
+  });
+  assert.equal(ctx.findWeakViolation(), null);
+});
+
+test('weak decides exactly as Büchi does — its extra content is the shape check', () => {
+  const words = [tok('ab'), tok('b'), tok('a')];
+  neverTwoAs('DBA');
+  const buchi = words.map(v => ctx.testOmega([], v));
+  neverTwoAs('DWA');
+  const weak = words.map(v => ctx.testOmega([], v));
+  assert.deepEqual(weak, buchi);
 });
 
 test('parseOmegaWord splits u(v) and rejects a word with no period', () => {
@@ -272,7 +446,7 @@ test('2DFT: output is empty until the machine actually prints', () => {
 // ── shared plumbing ────────────────────────────────────────────────
 test('every new machine is reachable from the model picker', () => {
   const listed = new Set(ctx.MachineCategories.flatMap(c => c.machines));
-  for (const m of ['PFA', 'NBA', 'PDT', '2DFT']) {
+  for (const m of ['PFA', 'DBA', 'DcoBA', 'DPA', 'DWA', 'NBA', 'NcoBA', 'NPA', 'NWA', 'PDT', '2DFT']) {
     assert.ok(listed.has(m), `${m} must appear in a MachineCategories group`);
     assert.ok(ctx.MachineTypes[m], `${m} must have a MachineTypes entry`);
   }
@@ -291,6 +465,28 @@ test('a saved workspace round-trips the new per-transition fields', () => {
   h.resetApp();
   ctx.importWorkspaceState(JSON.parse(JSON.stringify(pfaBlob)));
   assert.equal(ctx.App.transitions[0].weight, 0.5, 'weights survive save/load');
+});
+
+test('a saved workspace round-trips the ω-type and its priorities', () => {
+  // Both halves of α have to survive: the condition rides on the machine type,
+  // the priorities on the state records. Losing either silently changes the
+  // language of the reloaded machine.
+  neverTwoAs('DPA');
+  ctx.App.states[1].priority = 3;
+  const blob = ctx.exportWorkspaceState();
+
+  h.resetApp();
+  assert.equal(ctx.App.machine, 'DFA', 'reset returns to the default');
+  ctx.importWorkspaceState(JSON.parse(JSON.stringify(blob)));
+  assert.equal(ctx.App.machine, 'DPA');
+  assert.equal(ctx.omegaAcceptanceOf(), 'parity', 'the condition comes back with the type');
+  assert.equal(ctx.statePriority(ctx.App.states[1]), 3);
+});
+
+test('a machine type with no condition of its own reads as Büchi rather than breaking', () => {
+  infinitelyOftenA('NBA');
+  assert.equal(ctx.omegaAcceptanceOf('DFA'), 'buchi', 'the fallback is total');
+  assert.equal(ctx.testOmega([], tok('a')), true, 'and the machine still decides');
 });
 
 // ── the transduction relation, shared by FST and PDT ───────────────

@@ -3,7 +3,7 @@ import { renderDividers } from './dividers.js';
 import { commit, snapshot } from './history.js';
 import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
-import { $, App, R, SVG_NS, getMachineConfig } from './state.js';
+import { $, App, OmegaAcceptance, R, SVG_NS, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, statePriority, usesParityPriorities } from './state.js';
 import { getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
 import { Change, emit, subscribe } from './store.js';
 import { triggerMath } from './theory.js';
@@ -426,7 +426,7 @@ export function renderTransitions() {
 // lookup O(1); without it each frame is O(edges x transitions).
 export function updateFastDOM() {
   const { stateById, tsByPair } = buildEdgeIndex();
-  const isMoore = App.machine === 'Moore';
+  const hasSub = App.machine === 'Moore' || usesParityPriorities(App.machine);
 
   for (const s of App.states) {
     const grp = App.domCache.states.get(s.id);
@@ -439,14 +439,21 @@ export function updateFastDOM() {
       p.ring.setAttribute('cy', s.y);
     }
     p.label.setAttribute('x', s.x);
-    p.label.setAttribute('y', isMoore ? s.y - App.config.render.textMargin : s.y);
+    p.label.setAttribute('y', hasSub ? s.y - App.config.render.textMargin : s.y);
     if (grp.__labelX !== s.x) {
       for (const tspan of p.label.childNodes) tspan.setAttribute('x', s.x);
       grp.__labelX = s.x;
     }
-    if (p.moore) {
-      p.moore.setAttribute('x', s.x);
-      p.moore.setAttribute('y', s.y + App.config.render.mooreTextMargin);
+    if (p.sub) {
+      p.sub.setAttribute('x', s.x);
+      p.sub.setAttribute('y', s.y + App.config.render.mooreTextMargin);
+    }
+    if (p.priority) {
+      const bx = s.x + R * 0.88, by = s.y + R * 0.62;
+      p.priority.bg.setAttribute('x', bx - 10);
+      p.priority.bg.setAttribute('y', by - 8);
+      p.priority.text.setAttribute('x', bx);
+      p.priority.text.setAttribute('y', by);
     }
   }
 
@@ -518,7 +525,11 @@ export function setStateLabelLines(textEl, lines, cx) {
 
 // True when accept marks are meaningful for the current machine. Transducers
 // have no accepting states unless the setting says otherwise.
+// Under parity there is no F — α is the per-state number — so the accepting
+// ring and the double-click that toggles it would both be editing a set the
+// verdict never consults.
 function acceptsAreShown() {
+  if (usesParityPriorities(App.machine)) return false;
   return !(getMachineConfig(App.machine).isTransducer && !App.config.transducerAccepts);
 }
 
@@ -544,7 +555,7 @@ function createStateNode(id) {
   g.appendChild(label);
 
   // Child references, so syncing never has to query the subtree.
-  g.__parts = { circle, label, ring: null, moore: null };
+  g.__parts = { circle, label, ring: null, sub: null, priority: null };
   // Inputs the label tspans were last built from, so they are only rebuilt when
   // one of them actually changes.
   g.__labelKey = null;
@@ -618,9 +629,14 @@ function syncStateNode(g, s, showAccepts) {
     parts.ring.setAttribute('r', R - 5);
   }
 
+  // Two things want a second line under the name: a Moore output and a parity
+  // priority. They never coexist (one is a transducer, the other an
+  // ω-automaton), so they share the slot rather than each having their own.
   const isMoore = App.machine === 'Moore';
+  const isParity = usesParityPriorities(App.machine);
+  const hasSub = isMoore;
   parts.label.setAttribute('x', s.x);
-  parts.label.setAttribute('y', isMoore ? s.y - App.config.render.textMargin : s.y);
+  parts.label.setAttribute('y', hasSub ? s.y - App.config.render.textMargin : s.y);
   // As above: the tspans say the state's name, which a move does not change.
   const labelKey = `${s.name}\u0001${App.config.wrapStateLabels}`;
   if (g.__labelKey !== labelKey) {
@@ -632,19 +648,52 @@ function syncStateNode(g, s, showAccepts) {
     g.__labelX = s.x;
   }
 
-  if (isMoore && !parts.moore) {
+  if (hasSub && !parts.sub) {
     const ot = makeSVG('text');
-    ot.classList.add('mooreout');
+    ot.classList.add('state-sub');
     g.appendChild(ot);
-    parts.moore = ot;
-  } else if (!isMoore && parts.moore) {
-    parts.moore.remove();
-    parts.moore = null;
+    parts.sub = ot;
+  } else if (!hasSub && parts.sub) {
+    parts.sub.remove();
+    parts.sub = null;
   }
-  if (parts.moore) {
-    parts.moore.setAttribute('x', s.x);
-    parts.moore.setAttribute('y', s.y + App.config.render.mooreTextMargin);
-    parts.moore.textContent = s.output !== undefined && s.output !== '' ? s.output : '—';
+  if (parts.sub) {
+    // Unconditional, per the sync* rule — a "what did we draw last time" cache
+    // here would strand a priority on the node after the condition changed.
+    parts.sub.setAttribute('x', s.x);
+    parts.sub.setAttribute('y', s.y + App.config.render.mooreTextMargin);
+    parts.sub.classList.remove('parity');
+    parts.sub.textContent = s.output !== undefined && s.output !== '' ? s.output : '—';
+  }
+
+  // Parity priorities get their own badge at the node's lower-right edge.
+  // Keeping it independent from the name's text block prevents wrapped labels
+  // from colliding with the priority value.
+  if (isParity && !parts.priority) {
+    const badge = makeSVG('g');
+    badge.classList.add('priority-badge');
+    const bg = makeSVG('rect');
+    const text = makeSVG('text');
+    text.classList.add('priority-value');
+    badge.appendChild(bg);
+    badge.appendChild(text);
+    g.appendChild(badge);
+    parts.priority = { group: badge, bg, text };
+  } else if (!isParity && parts.priority) {
+    parts.priority.group.remove();
+    parts.priority = null;
+  }
+  if (parts.priority) {
+    const bx = s.x + R * 0.88;
+    const by = s.y + R * 0.62;
+    parts.priority.bg.setAttribute('x', bx - 10);
+    parts.priority.bg.setAttribute('y', by - 8);
+    parts.priority.bg.setAttribute('width', 20);
+    parts.priority.bg.setAttribute('height', 16);
+    parts.priority.bg.setAttribute('rx', 8);
+    parts.priority.text.setAttribute('x', bx);
+    parts.priority.text.setAttribute('y', by);
+    parts.priority.text.textContent = String(statePriority(s));
   }
 
   let stTitle = `State '${s.name}'`;
@@ -657,6 +706,10 @@ function syncStateNode(g, s, showAccepts) {
   if (isMoore) {
     const o = s.output !== undefined && s.output !== '' ? s.output : App.config.sym.lambda;
     stTitle += `\nOutput: '${o}'`;
+  }
+  if (isParity) {
+    const p = statePriority(s);
+    stTitle += `\nPriority: ${p} (${p % 2 === 0 ? 'even — accepting if least' : 'odd — rejecting if least'})`;
   }
   g.setAttribute('data-tip', stTitle);
   g.setAttribute('aria-label', stTitle);
@@ -717,12 +770,14 @@ export function updateLPanelSectionMeta() {
 
 export function updateLPanel() {
   const sl = $('states-list');
-  const showAccepts = !(getMachineConfig(App.machine).isTransducer && !App.config.transducerAccepts);
+  const showAccepts = acceptsAreShown();
   sl.innerHTML = App.states.length ? App.states.map(s => {
     let mooreOut = '';
     if (App.machine === 'Moore') {
       const outSym = (s.output === undefined || s.output === '') ? App.config.sym.lambda : s.output;
       mooreOut = `<span style="color:var(--text3);font-size:0.75em;margin-left:4px">/ ${outSym}</span>`;
+    } else if (usesParityPriorities(App.machine)) {
+      mooreOut = `<span style="color:var(--text3);font-size:0.75em;margin-left:4px">Ω ${statePriority(s)}</span>`;
     }
     // Keep list selection separate from the generic `.sel` select-control
     // class.  Sharing it applies control sizing/overflow rules to this row.
@@ -891,14 +946,31 @@ export function updateFormalDef() {
     txt += `\\delta &: Q \\times \\Sigma \\times Q \\to [0, 1] \\\\`;
     txt += `&\\textstyle\\sum_{q'} \\delta(q, a, q') = 1 \\quad \\forall q \\in Q, a \\in \\Sigma \\\\`;
     txt += `L(M) &= \\{ w : P_M(w) > \\lambda \\}`;
-  } else if (m === 'NBA') {
-    txt += `M &= (Q, \\Sigma, \\delta, q_0, F) \\\\`;
+  } else if (getMachineConfig(m).isOmega) {
+    // Two independent axes meet here. Determinism decides whether δ is a
+    // function and whether the language quantifies over runs; the acceptance
+    // condition decides the last slot of the tuple and the predicate on Inf.
+    const det = isDeterministicOmega(m);
+    const cond = omegaAcceptanceOf(m);
+    const alpha = cond === 'parity' ? '\\Omega' : 'F';
+    const inf = det ? '\\mathrm{Inf}(\\rho_w)' : '\\mathrm{Inf}(\\rho)';
+    const pred = cond === 'cobuchi' ? `${inf} \\cap F = \\emptyset`
+      : cond === 'parity' ? `\\min \\Omega(${inf}) \\equiv 0 \\pmod 2`
+        : `${inf} \\cap F \\neq \\emptyset`;
+    txt += `M &= (Q, \\Sigma, \\delta, q_0, ${alpha}) \\\\`;
     txt += `Q &= ${Q_str} \\\\`;
     txt += `\\Sigma &= ${S_str} \\\\`;
     txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times \\Sigma \\to \\mathcal{P}(Q) \\\\`;
-    txt += `L(M) &= \\{ w \\in \\Sigma^\\omega : \\exists \\rho,\\ \\mathrm{Inf}(\\rho) \\cap F \\neq \\emptyset \\}`;
+    txt += cond === 'parity'
+      ? `\\Omega &: Q \\to \\mathbb{N} \\\\`
+      : `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times \\Sigma \\to ${det ? 'Q' : '\\mathcal{P}(Q)'} \\\\`;
+    if (cond === 'weak') {
+      txt += `&\\forall\\, C \\in \\mathrm{SCC}(M):\\ C \\subseteq F \\ \\text{or}\\ C \\cap F = \\emptyset \\\\`;
+    }
+    txt += det
+      ? `L(M) &= \\{ w \\in \\Sigma^\\omega : ${pred} \\}`
+      : `L(M) &= \\{ w \\in \\Sigma^\\omega : \\exists \\rho,\\ ${pred} \\}`;
   } else if (m === 'PDT') {
     const G_str = formatSet([...App.stackAlpha]);
     const D_str = formatSet([...App.outputAlpha]);
@@ -1129,7 +1201,22 @@ export function updateRegex() {
   App._regexIsDerived = false;
   if (m === '2DFA' || m === '2NFA') { txt = 'Regular Language (Two-Way Head Motion with Endmarkers)'; }
   else if (m === 'PFA') { txt = `Stochastic Language (cut-point λ = ${App.config.pfaCutPoint})`; }
-  else if (m === 'NBA') { txt = 'ω-Regular Language (Büchi Acceptance)'; }
+  // The class an ω-automaton denotes depends on both axes, and only one cell of
+  // that table is affected by determinism. Büchi is the exception: DBA ⊊ NBA.
+  // co-Büchi determinizes (NcoBA = DcoBA) and so does parity, where both sides
+  // reach the full ω-regular class — which is the point of the condition.
+  else if (getMachineConfig(m).isOmega) {
+    const cond = omegaAcceptanceOf(m);
+    txt = cond === 'cobuchi'
+      ? 'co-Büchi ω-Language (Persistence — the Complement of a Deterministic Büchi Language)'
+      : cond === 'parity'
+        ? 'ω-Regular Language (Parity Acceptance — full power, deterministic or not)'
+        : cond === 'weak'
+          ? 'Weak ω-Language (Recognizable by a Büchi and a co-Büchi Automaton Alike)'
+          : isDeterministicOmega(m)
+            ? 'Deterministic Büchi ω-Language (Limit of a Regular Language)'
+            : 'ω-Regular Language (Büchi Acceptance)';
+  }
   else if (m === 'PDT') { txt = 'Pushdown Transduction (Context-Free Relation)'; }
   else if (m === '2DFT') { txt = 'Regular Transduction (Two-Way, MSO-Definable)'; }
   else if (m === 'QA') { txt = 'Queue Automaton Language Family'; }
