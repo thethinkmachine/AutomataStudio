@@ -1,8 +1,9 @@
 import { renderSigma } from './alphabet.js';
 import { snapshot } from './history.js';
+import { langVerdict } from './language.js';
 import { deriveRegex, renderAll, updateLPanel, updateRPanel } from './render.js';
-import { epsClosure, log, simNDTM, simNPDA, stateNames, testDFA, testNFA, tokenize } from './simulation.js';
-import { $, App, R } from './state.js';
+import { epsClosure, log, simNDTM, simNPDA, stateNames, tokenize } from './simulation.js';
+import { $, App, R, getMachineConfig } from './state.js';
 import { getState } from './states-transitions.js';
 import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen } from './ui.js';
@@ -75,10 +76,18 @@ export function algoNFA2DFA(c) {
   c.innerHTML = `<div class="algo-title">NFA → DFA Conversion</div>
 <div class="algo-sub">SUBSET CONSTRUCTION (POWERSET CONSTRUCTION)</div>
 <div class="info-box">Each DFA state represents a <em>subset of NFA states</em>. Starting from ε-closure(q₀), we compute transitions for each symbol and add new subsets as needed. The resulting DFA is equivalent to the original NFA.</div>`;
-  if (!App.startId || App.machine === 'DFA') {
-    if (App.machine === 'DFA') { c.innerHTML += '<div class="card">Your automaton is already a DFA. Switch to NFA or ε-NFA mode to use this.</div>'; return; }
-    c.innerHTML += '<div class="card">No start state defined.</div>'; return;
+  // Subset construction is only sound for a plain one-way NFA over finite
+  // words. Every other model on this canvas carries state the powerset has no
+  // room for — a probability distribution, a Büchi cycle condition, a stack, a
+  // tape — and silently dropping it would offer an "equivalent" DFA that
+  // decides a different language.
+  if (App.machine !== 'NFA' && App.machine !== 'ε-NFA') {
+    const why = App.machine === 'DFA'
+      ? 'Your automaton is already a DFA. Switch to NFA or ε-NFA mode to use this.'
+      : `Subset construction applies to NFAs and ε-NFAs. ${getMachineConfig(App.machine).label} is not one, and converting it as though it were would discard what makes it different.`;
+    c.innerHTML += `<div class="card">${why}</div>`; return;
   }
+  if (!App.startId) { c.innerHTML += '<div class="card">No start state defined.</div>'; return; }
   const result = subsetConstruction();
   if (!result.states.length) { c.innerHTML += '<div class="card">Empty NFA.</div>'; return; }
   const syms = [...App.sigma];
@@ -832,7 +841,15 @@ export function testEquivStr() {
     $('eq-result').innerHTML = `<div style="font-size:.75rem;color:var(--red)">Cannot tokenize string using the alphabet Σ.</div>`;
     return;
   }
-  const accepted = App.machine === 'DFA' ? testDFA(tokens) : testNFA(tokens);
+  // langVerdict dispatches per machine, so this reports what the simulator the
+  // user can actually run would say — rather than assuming NFA semantics for
+  // anything that is not a DFA.
+  const verdict = langVerdict(tokens);
+  if (verdict === 'unk') {
+    $('eq-result').innerHTML = `<div style="font-size:.75rem;color:var(--text2)">"${str}" — no verdict within the step budget.</div>`;
+    return;
+  }
+  const accepted = verdict === 'acc';
   $('eq-result').innerHTML = `<div style="font-size:.75rem;color:${accepted ? 'var(--green)' : 'var(--red)'}">
 "${str}" is ${accepted ? 'ACCEPTED ✓' : 'REJECTED ✗'} by the current automaton.</div>`;
 }

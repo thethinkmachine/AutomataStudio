@@ -1,8 +1,8 @@
 import { wrap } from './canvas.js';
 import { openExportCodeModal } from './export-ui.js';
 import { _regexCacheKey, updateDefBoxOverflowShadow } from './render.js';
-import { langStepBudget, runSim, test2DFA, test2NFA, testDFA, testFST, testNFA, testNPDA, testPDA, testTMVerdict } from './simulation.js';
-import { $, App, getMachineConfig } from './state.js';
+import { langStepBudget, runSim, test2DFA, test2DFT, test2NFA, testDFA, testFST, testNFA, testNPDA, testPDA, testPDT, testPFA, testTMVerdict } from './simulation.js';
+import { $, App, getMachineConfig, isOmegaAutomaton } from './state.js';
 import { getState } from './states-transitions.js';
 import { toggleRPSection } from './ui.js';
 import { isAnyPDA, isAnyTM } from './utils.js';
@@ -46,8 +46,12 @@ export function langIsSymbolic() {
 // word the machine has not decided is drawn as "no verdict" rather than
 // silently counted as a reject. A transducer only has an accept/reject
 // notion when the user has opted into one.
+// A Büchi automaton's language is a set of infinite words, so no enumeration of
+// Σ* says anything about it — the panel reports "no verdict" rather than
+// pretending the finite words it can list are members or non-members.
 export function langCanDecide() {
   const m = App.machine;
+  if (isOmegaAutomaton(m)) return false;
   if (getMachineConfig(m).isTransducer && !App.config.transducerAccepts) return false;
   return true;
 }
@@ -134,8 +138,11 @@ export function langVerdict(tokens) {
     if (m === 'NPDA' || m === 'QA' || m === 'Counter' || m === '2PDA') return testNPDA(tokens) ? 'acc' : 'rej';
     if (m === '2DFA') return test2DFA(tokens) ? 'acc' : 'rej';
     if (m === '2NFA') return test2NFA(tokens) ? 'acc' : 'rej';
+    if (m === 'PFA') return testPFA(tokens) ? 'acc' : 'rej';
     if (m === 'Moore' || m === 'Mealy') return testDFA(tokens) ? 'acc' : 'rej';
     if (m === 'FST') return testFST(tokens).accepted ? 'acc' : 'rej';
+    if (m === 'PDT') return testPDT(tokens).accepted ? 'acc' : 'rej';
+    if (m === '2DFT') { const r = test2DFT(tokens); return !r.halted ? 'unk' : (r.accepted ? 'acc' : 'rej'); }
   } catch (e) {
     return 'unk';
   }
@@ -353,13 +360,21 @@ export function langTupleSyms() {
   const m = App.machine;
   if (m === '2PDA') return ['Q', 'Σ', 'Γ₁', 'Γ₂', 'δ', 'q₀', 'F'];
   if (m === 'QA' || m === 'Counter') return ['Q', 'Σ', 'Γ', 'δ', 'q₀', 'F'];
+  // Before isAnyPDA: a PDT is a pushdown machine, but its tuple carries the
+  // output alphabet and output function that the plain PDA tuple has no slot for.
+  if (m === 'PDT') return ['Q', 'Σ', 'Γ', 'Δ', 'δ', 'λ', 'q₀', 'F'];
   if (isAnyPDA(m)) {
     return App.config.pdaParadigm === 'explicit'
       ? ['Q', 'Σ', 'Γ', 'δ', 'q₀', 'Z₀', 'F']
       : ['Q', 'Σ', 'Γ', 'δ', 'q₀'];
   }
+  if (m === '2DFT') return ['Q', 'Σ', 'Δ', 'δ', 'λ', 'q₀', 'F'];
   if (m === 'Moore' || m === 'Mealy') return ['Q', 'Σ', 'Δ', 'δ', 'λ', 'q₀'];
   if (m === 'FST') return ['Q', 'Σ', 'Δ', 'δ', 'λ', 'q₀', 'F'];
+  // PFA's last slot is Rabin's cut-point, not an output function — see the λ
+  // case in langTupleInfo, which branches on the machine for exactly this.
+  if (m === 'PFA') return ['Q', 'Σ', 'δ', 'q₀', 'F', 'λ'];
+  if (m === 'NBA') return ['Q', 'Σ', 'δ', 'q₀', 'F'];
   if (isAnyTM(m)) return ['Q', 'Σ', 'Γ', 'δ', 'q₀', 'F'];
   return ['Q', 'Σ', 'δ', 'q₀', 'F'];
 }
@@ -377,17 +392,29 @@ export function langTupleInfo(sym) {
         say: isAnyTM(m) ? 'tape alphabet' : m === 'QA' ? 'queue alphabet' : 'stack alphabet'
       };
     case 'Δ': return { n: App.outputAlpha.size, say: 'output alphabet', val: set([...App.outputAlpha]) };
-    case 'F': return { n: App.accepts.size, say: 'accepting states', val: set(names(App.accepts)) };
+    case 'F': return {
+      n: App.accepts.size,
+      say: isOmegaAutomaton(m) ? 'Büchi accepting states (visited infinitely often)' : 'accepting states',
+      val: set(names(App.accepts))
+    };
     case 'q₀': return { n: null, say: 'start state', val: getState(App.startId)?.name || '—' };
     case 'Z₀': return { n: null, say: 'initial stack symbol', val: App.config.sym.stackBottom };
     case 'δ': return { n: App.transitions.length, say: 'transition function', val: langDeltaSignature() };
     // Moore emits per state, Mealy and FST per transition, so the
     // cardinality shown has to follow the machine, not the tuple slot.
-    case 'λ': return {
-      n: m === 'Moore' ? App.states.length : App.transitions.length,
-      say: 'output function',
-      val: m === 'Moore' ? 'Q → Δ' : m === 'Mealy' ? 'Q × Σ → Δ' : 'Q × (Σ ∪ {ε}) × Q → Δ*'
-    };
+    // λ is the output function everywhere except a PFA, where it is the
+    // cut-point the accepting mass is compared against.
+    case 'λ': {
+      if (m === 'PFA') {
+        return { n: null, say: 'cut-point (accept when P(w) > λ)', val: String(App.config.pfaCutPoint) };
+      }
+      const sig = m === 'Moore' ? 'Q → Δ'
+        : m === 'Mealy' ? 'Q × Σ → Δ'
+          : m === 'PDT' ? 'Q × (Σ ∪ {ε}) × Γ × Q → Δ*'
+            : m === '2DFT' ? 'Q × Σ → Δ*'
+              : 'Q × (Σ ∪ {ε}) × Q → Δ*';
+      return { n: m === 'Moore' ? App.states.length : App.transitions.length, say: 'output function', val: sig };
+    }
   }
   return { n: null, say: '', val: '—' };
 }
@@ -399,6 +426,10 @@ export function langDeltaSignature() {
   if (m === 'ε-NFA') return 'Q × (Σ ∪ {ε}) → P(Q)';
   if (m === '2DFA') return 'Q × Σ → Q × {L, R, S}';
   if (m === '2NFA') return 'Q × Σ → P(Q × {L, R, S})';
+  if (m === '2DFT') return 'Q × Σ → Q × {L, R, S} × Δ*';
+  if (m === 'PFA') return 'Q × Σ × Q → [0, 1]';
+  if (m === 'NBA') return 'Q × Σ → P(Q)';
+  if (m === 'PDT') return 'Q × (Σ ∪ {ε}) × Γ → P(Q × Γ* × Δ*)';
   if (m === 'QA') return 'Q × (Σ ∪ {ε}) × (Γ ∪ {ε}) → P(Q × Γ*)';
   if (m === '2PDA') return 'Q × (Σ ∪ {ε}) × Γ₁ × Γ₂ → P(Q × Γ₁* × Γ₂*)';
   if (isAnyPDA(m)) return 'Q × (Σ ∪ {ε}) × Γ → ' + (m === 'NPDA' ? 'P(Q × Γ*)' : 'Q × Γ*');

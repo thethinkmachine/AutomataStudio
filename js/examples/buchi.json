@@ -1,0 +1,40 @@
+{
+  "machine": "NBA",
+  "sigma": ["a", "b"],
+  "states": [
+    { "id": "s1", "x": 240, "y": 280, "name": "waiting" },
+    { "id": "s2", "x": 640, "y": 280, "name": "saw a" }
+  ],
+  "startId": "s1",
+  "accepts": ["s2"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "b" },
+    { "id": "t2", "from": "s1", "to": "s2", "symbol": "a" },
+    { "id": "t3", "from": "s2", "to": "s2", "symbol": "a" },
+    { "id": "t4", "from": "s2", "to": "s1", "symbol": "b" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 150, "y": 70, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Büchi acceptance: a run is accepting when it visits F infinitely often — NOT when it ends in F, because an ω-word never ends. This machine sits in \"saw a\" exactly after each a, so a run passes through F infinitely often precisely when the word contains infinitely many a's. In LTL that is GF a."
+    },
+    {
+      "id": "n2", "x": 150, "y": 430, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Type an infinite word as u(v): a finite prefix then the block that repeats forever. (a) is aaa…, ab(ba) is ab bababa…. The simulator finds a lasso — a path into a cycle that keeps revisiting F — and unrolls it twice so you can see the loop. a(b) is rejected: the single a is not infinitely many."
+    }
+  ],
+  "meta": {
+    "title": "Infinitely often a",
+    "blurb": "The canonical Büchi automaton for GF a: accepts exactly those infinite words containing infinitely many a's. Acceptance is about the cycle the run settles into, not where it stops.",
+    "inputs": [
+      { "w": "(a)", "expect": "accept" },
+      { "w": "(b)", "expect": "reject" },
+      { "w": "(ab)", "expect": "accept" },
+      { "w": "a(b)", "expect": "reject" },
+      { "w": "b(a)", "expect": "accept" },
+      { "w": "abab(ab)", "expect": "accept" }
+    ]
+  }
+}

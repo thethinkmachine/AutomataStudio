@@ -3,9 +3,9 @@ import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
 import { pruneNoteAnchorsExcluding } from './notes.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
-import { $, App, getMachineConfig, isBoundarySymbol, isReadOnlyHeadMachine } from './state.js';
+import { $, App, getMachineConfig, isBoundarySymbol, isReadOnlyHeadMachine, isWeightedFA } from './state.js';
 import { Change, emit } from './store.js';
-import { getPdaDeterminismConflict, isAnyPDA, isCounterMachine, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus, symbolsOverlap, tapeTuplesOverlap } from './utils.js';
+import { getPdaDeterminismConflict, hasSingleValuedDelta, hasTransitionOutput, isAnyPDA, isCounterMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus, symbolsOverlap, tapeTuplesOverlap } from './utils.js';
 import { applyMachineSwitch } from './view.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -108,12 +108,26 @@ export function populateTransitionModal(t) {
   $('m-sym-row').style.display = App.machine === 'MTM' ? 'none' : '';
   $('m-pda-extra').style.display = isAnyPDA(App.machine) ? '' : 'none';
   $('m-tm-extra').style.display = isSingleTapeTM(App.machine) ? '' : 'none';
-  $('m-mealy-extra').style.display = (App.machine === 'Mealy' || App.machine === 'FST') ? '' : 'none';
+  $('m-mealy-extra').style.display = hasTransitionOutput(App.machine) ? '' : 'none';
   $('m-mtm-extra').style.display = (App.machine === 'MTM') ? '' : 'none';
   const twoStackExtra = $('m-2pda-extra');
   if (twoStackExtra) twoStackExtra.style.display = isTwoStackPDA(App.machine) ? '' : 'none';
+  const pfaExtra = $('m-pfa-extra');
+  if (pfaExtra) pfaExtra.style.display = isWeightedFA(App.machine) ? '' : 'none';
+  if (isWeightedFA(App.machine)) {
+    const wIn = $('m-weight');
+    if (wIn) wIn.value = t?.weight !== undefined ? String(t.weight) : '1';
+  }
+  const memoryLabels = isQueueAutomaton(App.machine)
+    ? ['Queue', 'Dequeue', 'Enqueue']
+    : isCounterMachine(App.machine)
+      ? ['Counter', 'Test', 'Update']
+      : ['Stack', 'Pop', 'Push'];
+  if ($('m-memory-title')) $('m-memory-title').textContent = memoryLabels[0];
+  if ($('m-pop-label')) $('m-pop-label').textContent = memoryLabels[1];
+  if ($('m-push-label')) $('m-push-label').textContent = memoryLabels[2];
 
-  if (App.machine === 'Mealy' || App.machine === 'FST') {
+  if (hasTransitionOutput(App.machine)) {
     const { lambda } = App.config.sym;
     const outs = [...new Set([...App.outputAlpha, lambda, ...(t?.output ? [t.output] : [])])];
     const outSel = $('m-output');
@@ -197,9 +211,13 @@ export function getTransitionFormValues() {
       ? values.symbol
       : (parseEps($('m-write')?.value) || values.symbol);
   }
-  if (App.machine === 'Mealy' || App.machine === 'FST') {
+  if (hasTransitionOutput(App.machine)) {
     const out = $('m-output')?.value?.trim() || App.config.sym.lambda;
     values.output = out === App.config.sym.lambda ? '' : out;
+  }
+  if (isWeightedFA(App.machine)) {
+    const raw = $('m-weight')?.value?.trim();
+    values.weight = raw === '' || raw === undefined ? 1 : Number(raw);
   }
   if (App.machine === 'MTM') {
     const k = App.tapeCount;
@@ -294,10 +312,10 @@ export function confirmTrans() {
       showStatus('LBA boundary markers are fixed and must be preserved on write.'); return;
     }
   }
-  if (App.machine === 'TM' || App.machine === 'LBA' || App.machine === 'ITM' || App.machine === '2DFA') {
+  if (App.machine === 'TM' || App.machine === 'LBA' || App.machine === 'ITM' || App.machine === '2DFA' || App.machine === '2DFT') {
     const conflict = App.transitions.find(t => t.id !== editId && t.from === from && symbolsOverlap(t.symbol, sym));
     if (conflict) {
-      const nondetAlt = App.machine === '2DFA' ? '2NFA' : 'NDTM';
+      const nondetAlt = App.machine === '2DFA' ? '2NFA' : App.machine === '2DFT' ? 'FST' : 'NDTM';
       showStatus(`${App.machine} already has δ(${getState(from)?.name}, '${sym}'). Use ${nondetAlt} mode if you want multiple choices for the same read symbol.`); return;
     }
   } else if (App.machine === 'DPDA' || App.machine === 'PDA') {
@@ -316,10 +334,16 @@ export function confirmTrans() {
     if (conflict) {
       showStatus(`${App.machine} already has δ(${getState(from)?.name}, '${sym}'). Each input symbol must map to one output.`); return;
     }
-  } else if (!cfg.isTransducer && App.machine !== 'NFA' && App.machine !== 'ε-NFA' && !isAnyPDA(App.machine) && !cfg.hasTape) {
+  } else if (hasSingleValuedDelta(App.machine)) {
     const conflict = App.transitions.find(t => t.id !== editId && t.from === from && t.symbol === sym);
     if (conflict) {
       showStatus(`${App.machine} already has δ(${getState(from)?.name}, '${sym}'). Each (state, symbol) pair must be unique.`); return;
+    }
+  }
+  if (isWeightedFA(App.machine)) {
+    const w = values.weight;
+    if (!Number.isFinite(w) || w < 0 || w > 1) {
+      showStatus('PFA transition probability must be a number between 0 and 1.'); return;
     }
   }
   if (isAnyPDA(App.machine)) {
@@ -403,10 +427,15 @@ export function confirmTrans() {
       delete t.write;
       delete t.dir;
     }
-    if (App.machine === 'Mealy' || App.machine === 'FST') {
+    if (hasTransitionOutput(App.machine)) {
       t.output = values.output;
     } else {
       delete t.output;
+    }
+    if (isWeightedFA(App.machine)) {
+      t.weight = values.weight;
+    } else {
+      delete t.weight;
     }
     if (App.machine === 'MTM') {
       t.tapeSyms = values.tapeSyms;
@@ -429,7 +458,8 @@ export function confirmTrans() {
       }
     }
     if (isSingleTapeTM(App.machine)) { t.write = values.write; t.dir = values.dir; }
-    if (App.machine === 'Mealy' || App.machine === 'FST') { t.output = values.output; }
+    if (hasTransitionOutput(App.machine)) { t.output = values.output; }
+    if (isWeightedFA(App.machine)) { t.weight = values.weight; }
     if (App.machine === 'MTM') {
       t.tapeSyms = values.tapeSyms;
       t.tapeWrites = values.tapeWrites;
@@ -456,16 +486,118 @@ export function deleteTransitions(ids) {
   App.transitions = App.transitions.filter(t => !removeIds.has(t.id));
   emit(Change.GRAPH);
 }
-export function transLabel(t) {
+// The emitted symbol is a suffix rather than a separate branch: a PDT edge is a
+// PDA edge that also prints, and a 2DFT edge is a 2DFA edge that also prints, so
+// each keeps its family's label and appends "/ out".
+export function outputSuffix(t) {
+  if (!hasTransitionOutput(App.machine)) return '';
+  const o = t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda;
+  return ` / ${o}`;
+}
+
+export function formatWeight(w) {
+  const n = Number(w);
+  if (!Number.isFinite(n)) return '1';
+  return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(4)));
+}
+
+function outputValue(t) {
+  return t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda;
+}
+
+function moveText(dir) {
+  return dir === 'R' ? 'move R' : dir === 'L' ? 'move L' : dir === 'S' ? 'stay' : `move ${dir}`;
+}
+
+function moveDescription(dir) {
+  return dir === 'R' ? 'Move right' : dir === 'L' ? 'Move left' : dir === 'S' ? 'Stay here' : `Move ${dir}`;
+}
+
+function actionValue(action, value, beginner) {
+  if (!beginner) return `${action} ${value}`;
+  if (value === App.config.sym.eps || value === App.config.sym.lambda || value === '') {
+    return action === 'pop' ? 'Remove nothing' : action === 'push' ? 'Add nothing' : `${action} nothing`;
+  }
+  return `${action} ${value}`;
+}
+
+// Semantic label data is independent of SVG. The canvas can render these as
+// pills while compact labels, panels and exports keep using transLabel().
+export function transLabelParts(t, beginner = false) {
+  const input = { role: 'input', text: beginner ? `Read ${t.symbol}` : String(t.symbol) };
+  if (isWeightedFA(App.machine)) {
+    const weight = formatWeight(t.weight ?? 1);
+    const probability = Number(weight);
+    return [input, { role: 'weight', text: beginner && Number.isFinite(probability) ? `Probability ${formatWeight(probability * 100)}%` : `p ${weight}` }];
+  }
   if (isAnyPDA(App.machine)) {
     if (isTwoStackPDA(App.machine)) {
-      return `${t.symbol}, (${t.pop}, ${t.pop2 ?? App.config.sym.eps}) → (${t.push}, ${t.push2 ?? App.config.sym.eps})`;
+      if (beginner) {
+        return [
+          input,
+          { role: 'memory-read', text: `Stack 1: replace ${t.pop} with ${t.push}` },
+          { role: 'memory-write', text: `Stack 2: replace ${t.pop2 ?? App.config.sym.eps} with ${t.push2 ?? App.config.sym.eps}` }
+        ];
+      }
+      return [
+        input,
+        { role: 'memory-read', text: `S1 ${t.pop}→${t.push}` },
+        { role: 'memory-write', text: `S2 ${t.pop2 ?? App.config.sym.eps}→${t.push2 ?? App.config.sym.eps}` }
+      ];
     }
-    return `${t.symbol}, ${t.pop} → ${t.push}`;
+    const parts = isQueueAutomaton(App.machine)
+      ? [input,
+        { role: 'memory-read', text: beginner ? `Remove ${t.pop} from front` : `deq ${t.pop}` },
+        { role: 'memory-write', text: beginner ? `Add ${t.push} to rear` : `enq ${t.push}` }]
+      : isCounterMachine(App.machine)
+        ? [input,
+          { role: 'memory-read', text: beginner ? `Check counter: ${t.pop}` : `test ${t.pop}` },
+          { role: 'memory-write', text: beginner ? `Change counter to ${t.push}` : `set ${t.push}` }]
+        : [input,
+          { role: 'memory-read', text: beginner ? `${actionValue('pop', t.pop, true)} from stack` : `pop ${t.pop}` },
+          { role: 'memory-write', text: beginner ? `${actionValue('push', t.push, true)} to stack` : `push ${t.push}` }];
+    if (hasTransitionOutput(App.machine)) parts.push({ role: 'output', text: beginner ? `Output ${outputValue(t)}` : `out ${outputValue(t)}` });
+    return parts;
   }
-  if (isReadOnlyHeadMachine(App.machine)) return `${t.symbol}, ${t.dir}`;
+  if (isReadOnlyHeadMachine(App.machine)) {
+    const parts = [input, { role: 'move', text: beginner ? moveDescription(t.dir) : moveText(t.dir) }];
+    if (hasTransitionOutput(App.machine)) parts.push({ role: 'output', text: beginner ? `Output ${outputValue(t)}` : `out ${outputValue(t)}` });
+    return parts;
+  }
+  if (isSingleTapeTM(App.machine)) {
+    return [input, { role: 'write', text: `${beginner ? 'Write' : 'write'} ${t.write}` }, { role: 'move', text: beginner ? moveDescription(t.dir) : moveText(t.dir) }];
+  }
+  if (App.machine === 'MTM') {
+    const syms = t.tapeSyms || [t.symbol];
+    const writes = t.tapeWrites || [t.write || t.symbol];
+    const defDir = App.directions[0].value;
+    const dirs = t.tapeDirs || [t.dir || defDir];
+    return syms.map((s, i) => ({
+      role: 'tape',
+      text: beginner
+        ? `Tape ${i + 1}: read ${s}, write ${writes[i] ?? s}, ${moveDescription(dirs[i] ?? defDir).toLowerCase()}`
+        : `T${i + 1} ${s}→${writes[i] ?? s} ${dirs[i] ?? defDir}`
+    }));
+  }
+  if (hasTransitionOutput(App.machine)) {
+    return [input, { role: 'output', text: beginner ? `Output ${outputValue(t)}` : `out ${outputValue(t)}` }];
+  }
+  return [input];
+}
+
+export function transLabel(t) {
+  if (isWeightedFA(App.machine)) return `${t.symbol} : ${formatWeight(t.weight ?? 1)}`;
+  if (isAnyPDA(App.machine)) {
+    if (isTwoStackPDA(App.machine)) {
+      return `${t.symbol}, (${t.pop}, ${t.pop2 ?? App.config.sym.eps}) → (${t.push}, ${t.push2 ?? App.config.sym.eps})${outputSuffix(t)}`;
+    }
+    if (isQueueAutomaton(App.machine)) return `${t.symbol}, deq ${t.pop} → enq ${t.push}`;
+    if (isCounterMachine(App.machine)) return `${t.symbol}, test ${t.pop} → set ${t.push}`;
+    return `${t.symbol}, ${t.pop} → ${t.push}${outputSuffix(t)}`;
+  }
+  if (isReadOnlyHeadMachine(App.machine)) return `${t.symbol}, ${t.dir}${outputSuffix(t)}`;
   if (isSingleTapeTM(App.machine)) return `${t.symbol} → ${t.write}, ${t.dir}`;
-  if (App.machine === 'Mealy' || App.machine === 'FST') return `${t.symbol} / ${t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda}`;
+  if (hasTransitionOutput(App.machine)) return `${t.symbol} / ${t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda}`;
   if (App.machine === 'MTM') {
     const syms = t.tapeSyms || [t.symbol];
     const writes = t.tapeWrites || [t.write || t.symbol];
@@ -478,19 +610,31 @@ export function transLabel(t) {
 
 export function transLabelDescriptive(t) {
   const dirMap = { 'R': 'Right', 'L': 'Left', 'S': 'Stay' };
+  const printPart = hasTransitionOutput(App.machine)
+    ? `, Print '${t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda}'`
+    : '';
+  if (isWeightedFA(App.machine)) {
+    return `Read '${t.symbol}' with probability ${formatWeight(t.weight ?? 1)}`;
+  }
   if (isAnyPDA(App.machine)) {
     if (isTwoStackPDA(App.machine)) {
-      return `Read '${t.symbol}', Pop₁ '${t.pop}', Push₁ '${t.push}', Pop₂ '${t.pop2 ?? App.config.sym.eps}', Push₂ '${t.push2 ?? App.config.sym.eps}'`;
+      return `Read '${t.symbol}', Pop₁ '${t.pop}', Push₁ '${t.push}', Pop₂ '${t.pop2 ?? App.config.sym.eps}', Push₂ '${t.push2 ?? App.config.sym.eps}'${printPart}`;
     }
-    return `Read '${t.symbol}', Pop '${t.pop}', Push '${t.push}'`;
+    if (isQueueAutomaton(App.machine)) {
+      return `Read '${t.symbol}', Dequeue '${t.pop}', Enqueue '${t.push}'`;
+    }
+    if (isCounterMachine(App.machine)) {
+      return `Read '${t.symbol}', Test '${t.pop}', Update counter to '${t.push}'`;
+    }
+    return `Read '${t.symbol}', Pop '${t.pop}', Push '${t.push}'${printPart}`;
   }
   if (isReadOnlyHeadMachine(App.machine)) {
-    return `Read '${t.symbol}', Move ${dirMap[t.dir] || t.dir}`;
+    return `Read '${t.symbol}', Move ${dirMap[t.dir] || t.dir}${printPart}`;
   }
   if (isSingleTapeTM(App.machine)) {
     return `Read '${t.symbol}', Write '${t.write}', Move ${dirMap[t.dir] || t.dir}`;
   }
-  if (App.machine === 'Mealy' || App.machine === 'FST') {
+  if (hasTransitionOutput(App.machine)) {
     const o = t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda;
     return `Read '${t.symbol}', Print '${o}'`;
   }

@@ -1,0 +1,52 @@
+{
+  "machine": "2DFT",
+  "sigma": ["a", "b"],
+  "outputAlpha": ["a", "b"],
+  "states": [
+    { "id": "s1", "x": 140, "y": 180, "name": "start" },
+    { "id": "s2", "x": 430, "y": 180, "name": "copy 1" },
+    { "id": "s3", "x": 700, "y": 180, "name": "rewind" },
+    { "id": "s4", "x": 430, "y": 420, "name": "copy 2" },
+    { "id": "s5", "x": 760, "y": 420, "name": "done" }
+  ],
+  "startId": "s1",
+  "accepts": ["s5"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s2", "symbol": "⊢", "dir": "R", "output": "" },
+    { "id": "t2", "from": "s2", "to": "s2", "symbol": "a", "dir": "R", "output": "a" },
+    { "id": "t3", "from": "s2", "to": "s2", "symbol": "b", "dir": "R", "output": "b" },
+    { "id": "t4", "from": "s2", "to": "s3", "symbol": "⊣", "dir": "L", "output": "" },
+    { "id": "t5", "from": "s3", "to": "s3", "symbol": "a", "dir": "L", "output": "" },
+    { "id": "t6", "from": "s3", "to": "s3", "symbol": "b", "dir": "L", "output": "" },
+    { "id": "t7", "from": "s3", "to": "s4", "symbol": "⊢", "dir": "R", "output": "" },
+    { "id": "t8", "from": "s4", "to": "s4", "symbol": "a", "dir": "R", "output": "a" },
+    { "id": "t9", "from": "s4", "to": "s4", "symbol": "b", "dir": "R", "output": "b" },
+    { "id": "t10", "from": "s4", "to": "s5", "symbol": "⊣", "dir": "S", "output": "" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 120, "y": 60, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "w ↦ ww, by reading the input twice. Pass 1 sweeps right printing every symbol, bounces off ⊣ and rewinds left in silence, then pass 2 sweeps right printing everything again. The two-way head is the whole trick — the input is re-read, not remembered."
+    },
+    {
+      "id": "n2", "x": 120, "y": 520, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "No one-way transducer can do this. A Mealy machine or FST prints a bounded amount per input symbol and never goes back, so its output grows at a fixed rate; doubling requires visiting each cell twice. Two-way transducers compute exactly the MSO-definable (regular) transductions — strictly more than one-way ones, but still far short of a pushdown transducer."
+    }
+  ],
+  "config": {
+    "transducerAccepts": true
+  },
+  "meta": {
+    "title": "Copy twice: w ↦ ww",
+    "blurb": "Sweeps the input printing it, rewinds, then sweeps and prints again — doubling the word. The canonical transduction that separates two-way transducers from one-way ones.",
+    "inputs": [
+      { "w": "ab", "expect": "accept", "out": "abab" },
+      { "w": "a", "expect": "accept", "out": "aa" },
+      { "w": "abb", "expect": "accept", "out": "abbabb" },
+      { "w": "ba", "expect": "accept", "out": "baba" },
+      { "w": "aabb", "expect": "accept", "out": "aabbaabb" }
+    ]
+  }
+}

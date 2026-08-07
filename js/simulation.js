@@ -1,8 +1,8 @@
 import { makeSVG } from './render.js';
-import { $, App, R, getMachineConfig } from './state.js';
+import { $, App, R, getMachineConfig, isOmegaAutomaton, isWeightedFA } from './state.js';
 import { getState } from './states-transitions.js';
 import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
-import { buildMarkedInputTape, isAnyPDA, isAnyTM, isQueueAutomaton, isTwoStackPDA, parseEps, pickMostSpecificTransition } from './utils.js';
+import { buildMarkedInputTape, isAnyPDA, isAnyTM, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, pickMostSpecificTransition } from './utils.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  SIMULATION
@@ -78,6 +78,31 @@ export function runSim() {
     return;
   }
 
+  // An ω-automaton reads u·vᵂ, not a finite string, so it parses its own input
+  // format and never reaches the finite-word tokenizer below.
+  if (isOmegaAutomaton(App.machine)) {
+    const parsed = parseOmegaWord(raw);
+    if (!parsed) {
+      log(`<span class="t-err">${App.machine} reads an infinite word. Write it as <em>u(v)</em> — a finite prefix followed by the repeating period in parentheses, e.g. <em>ab(ba)</em> or <em>(a)</em>.</span>`);
+      return;
+    }
+    const prefixStr = parsed.prefix === App.config.sym.eps ? '' : parsed.prefix;
+    const u = tokenize(prefixStr);
+    const v = tokenize(parsed.period);
+    if (u === null || v === null) {
+      log(`<span class="t-err">Input cannot be tokenized using alphabet {${[...App.sigma].join(', ')}}.</span>`);
+      return;
+    }
+    if (!v.length) {
+      log('<span class="t-err">The repeating period must be non-empty — <em>u()</em> is a finite word, not an ω-word.</span>');
+      return;
+    }
+    App.currentTokens = [...u, ...v];
+    simNBA(u, v);
+    if (App.simSteps && App.simSteps.length > 0) toggleAuto();
+    return;
+  }
+
   const str = raw === App.config.sym.eps ? '' : raw;
   const tokens = tokenize(str);
   if (tokens === null) { log(`<span class="t-err">Input cannot be tokenized using alphabet {${[...App.sigma].join(', ')}}.</span>`); return; }
@@ -88,9 +113,12 @@ export function runSim() {
   else if (App.machine === 'NPDA' || App.machine === 'QA' || App.machine === 'Counter' || App.machine === '2PDA') simNPDA(tokens);
   else if (App.machine === '2DFA') sim2DFA(tokens);
   else if (App.machine === '2NFA') sim2NFA(tokens);
+  else if (App.machine === 'PFA') simPFA(tokens);
   else if (App.machine === 'Moore') simMoore(tokens);
   else if (App.machine === 'Mealy') simMealy(tokens);
   else if (App.machine === 'FST') simFST(tokens);
+  else if (App.machine === 'PDT') simPDT(tokens);
+  else if (App.machine === '2DFT') sim2DFT(tokens);
   else if (App.machine === 'NDTM') simNDTM(tokens);
   else if (App.machine === 'MTM') simMTM(tokens);
   else if (App.machine === 'LBA') simLBA(tokens);
@@ -529,6 +557,8 @@ export function buildPdaPathSteps(path, finalStatus = null, finalNote = '') {
       note: idx === 0 ? 'Start configuration' : formatPdaTransitionNote(path[idx - 1], cfg)
     };
     if (Array.isArray(cfg.stack2)) step.stack2 = [...cfg.stack2];
+    // Present only for PDT; inert for every other pushdown family.
+    if (Array.isArray(cfg.outToks)) { step.outToks = [...cfg.outToks]; step.outSoFar = cfg.outRaw; }
     return step;
   });
   if (steps.length && finalStatus) {
@@ -788,6 +818,8 @@ export function buildTwoWayPathSteps(path, tokens, finalStatus = null, finalNote
       tid: cfg.via?.id,
       note: ''
     };
+    // Present only for 2DFT; inert for 2DFA/2NFA.
+    if (Array.isArray(cfg.outToks)) { step.outToks = [...cfg.outToks]; step.outSoFar = cfg.outRaw; }
     if (idx === 0) {
       step.note = `Start: ${stateName} at ${displayTape[cfg.head]}`;
     } else {
@@ -1019,6 +1051,17 @@ export function buildFstPathSteps(path, tokens, finalStatus = null, finalNote = 
   return steps;
 }
 
+// Which runs contribute an (input, output) pair to the transduction. With an
+// acceptance condition switched on, only accepting runs do — a run that
+// consumed the input but halted outside F is not in the relation. Without one
+// there is no F to consult, so consuming the input is the whole requirement.
+// Shared by every transducer that searches (FST, PDT) so the rule cannot drift
+// between them.
+export function transducerRunContributes(isComplete, isAccepting) {
+  if (!isComplete) return false;
+  return !App.config.transducerAccepts || isAccepting;
+}
+
 export function exploreFST(tokens) {
   const init = {
     state: App.startId,
@@ -1047,12 +1090,14 @@ export function exploreFST(tokens) {
     maxDepth = Math.max(maxDepth, cfg.depth);
 
     if (cfg.index === tokens.length) {
-      outputs.add(cfg.outRaw);
+      const accepting = App.accepts.has(cfg.state);
+      if (transducerRunContributes(true, accepting)) outputs.add(cfg.outRaw);
       if (!completedCfg) completedCfg = cfg;
-      if (App.config.transducerAccepts && App.accepts.has(cfg.state)) {
-        acceptedCfg = cfg;
-        break;
-      }
+      // Deliberately no early break. A nondeterministic transducer's answer is
+      // the *set* of outputs of its accepting runs, so stopping at the first
+      // one would report a truncated relation. The branch budget still bounds
+      // the search; the first accepting config is kept as the witness path.
+      if (App.config.transducerAccepts && accepting && !acceptedCfg) acceptedCfg = cfg;
     }
 
     const matching = getMatchingFstTransitions(cfg, tokens);
@@ -1105,6 +1150,462 @@ export function simFST(tokens) {
     }
   }
 
+  App.simIdx = 0;
+  renderSimStep();
+  return result;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  PROBABILISTIC FA
+// ══════════════════════════════════════════════════════════════════
+// A PFA run is a distribution over Q, not a state, so the simulator is the
+// forward algorithm rather than a search: one vector per input position, each
+// obtained from the last by a single stochastic matrix multiply. That makes it
+// exact and linear — there is nothing to explore and no step budget to exhaust.
+export function pfaWeight(t) {
+  const w = Number(t.weight);
+  return Number.isFinite(w) ? w : 1;
+}
+
+export function formatProbability(p) {
+  if (!Number.isFinite(p)) return '0';
+  if (Number.isInteger(p)) return String(p);
+  return String(Number(p.toFixed(4)));
+}
+
+export function pfaStepDistribution(dist, sym) {
+  const any = App.config.sym.any;
+  const next = new Map();
+  for (const [q, p] of dist) {
+    if (!p) continue;
+    for (const t of App.transitions) {
+      if (t.from !== q) continue;
+      if (t.symbol !== sym && t.symbol !== any) continue;
+      const w = pfaWeight(t);
+      if (!w) continue;
+      next.set(t.to, (next.get(t.to) || 0) + p * w);
+    }
+  }
+  return next;
+}
+
+export function pfaAcceptMass(dist) {
+  let sum = 0;
+  for (const [q, p] of dist) if (App.accepts.has(q)) sum += p;
+  return sum;
+}
+
+export function runPFA(tokens) {
+  const dists = [new Map([[App.startId, 1]])];
+  for (const sym of tokens) dists.push(pfaStepDistribution(dists[dists.length - 1], sym));
+  return dists;
+}
+
+// Rabin's cut-point rule, strictly: w ∈ L(M) iff P(w) > λ.
+export function testPFA(tokens) {
+  const dists = runPFA(tokens);
+  return pfaAcceptMass(dists[dists.length - 1]) > App.config.pfaCutPoint;
+}
+
+export function pfaDistributionCells(dist) {
+  return [...dist.entries()]
+    .filter(([, p]) => p > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([q, p]) => `${getState(q)?.name || q}:${formatProbability(p)}`);
+}
+
+// Every (state, symbol) row of a PFA's matrix must be a distribution. A row
+// that does not sum to 1 is a modelling slip the editor cannot catch per-edge,
+// so it is surfaced here rather than silently renormalised.
+export function pfaMalformedRows() {
+  const rows = new Map();
+  for (const t of App.transitions) {
+    const key = `${t.from}|${t.symbol}`;
+    rows.set(key, (rows.get(key) || 0) + pfaWeight(t));
+  }
+  const bad = [];
+  for (const [key, total] of rows) {
+    if (Math.abs(total - 1) > 1e-9) {
+      const [from, sym] = key.split('|');
+      bad.push({ from, symbol: sym, total });
+    }
+  }
+  return bad;
+}
+
+export function simPFA(tokens) {
+  App.simSteps = [];
+  const cut = App.config.pfaCutPoint;
+  const dists = runPFA(tokens);
+  dists.forEach((dist, i) => {
+    const cells = pfaDistributionCells(dist);
+    App.simSteps.push({
+      states: [...dist.keys()].filter(q => dist.get(q) > 0),
+      tokens,
+      remaining: tokens.slice(i),
+      dist: cells,
+      accMass: pfaAcceptMass(dist),
+      note: i === 0
+        ? `Start: all probability on ${getState(App.startId)?.name || App.startId}`
+        : `Read '${tokens[i - 1]}' → ${cells.length ? cells.join('  ') : 'total mass 0 — the run has died'}`
+    });
+  });
+
+  const last = App.simSteps[App.simSteps.length - 1];
+  if (last) {
+    const accepted = last.accMass > cut;
+    last.final = accepted ? 'accept' : 'reject';
+    last.note += ` | P(accept) = ${formatProbability(last.accMass)} ${accepted ? '>' : '≤'} λ = ${formatProbability(cut)} — ${accepted ? 'ACCEPT' : 'REJECT'}`;
+  }
+  const malformed = pfaMalformedRows();
+  if (last && malformed.length) {
+    last.note += ` | ⚠ ${malformed.length} (state, symbol) row${malformed.length > 1 ? 's do' : ' does'} not sum to 1`;
+  }
+  App.simIdx = 0;
+  renderSimStep();
+  return { accepted: last ? last.final === 'accept' : false, mass: last?.accMass ?? 0, malformed };
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  BÜCHI AUTOMATON (ω-WORDS)
+// ══════════════════════════════════════════════════════════════════
+// Only ultimately periodic ω-words are decidable by inspection, and they are
+// exactly the ones a user can type: u·vᵂ, written "u(v)".
+export function parseOmegaWord(raw) {
+  const m = String(raw ?? '').trim().match(/^(.*?)\(([^()]*)\)\s*(?:ω|\^ω|\^w|w)?$/);
+  if (!m) return null;
+  return { prefix: m[1].trim(), period: m[2].trim() };
+}
+
+// Positions along u·vᵂ: 0..|u|-1 index the prefix, |u|..|u|+|v|-1 the period,
+// and the period's last position wraps back to |u|. That makes the graph of
+// (state, position) pairs finite, which turns "some run visits F infinitely
+// often" into plain reachability: is there a reachable cycle through an
+// F-state? Both the verdict and the witness lasso fall out of that.
+export function buchiSymbolAt(u, v, pos) {
+  return pos < u.length ? u[pos] : v[(pos - u.length) % v.length];
+}
+
+export function buchiNextPos(u, v, pos) {
+  return pos + 1 < u.length + v.length ? pos + 1 : u.length;
+}
+
+export function buchiSuccessors(u, v, state, pos) {
+  const any = App.config.sym.any;
+  const sym = buchiSymbolAt(u, v, pos);
+  const nextPos = buchiNextPos(u, v, pos);
+  const out = [];
+  for (const t of App.transitions) {
+    if (t.from !== state) continue;
+    if (t.symbol !== sym && t.symbol !== any) continue;
+    out.push({ state: t.to, pos: nextPos, via: t });
+  }
+  return out;
+}
+
+const buchiKey = (state, pos) => `${state}|${pos}`;
+
+// Shortest cycle from `node` back to itself, as the list of nodes entered
+// (so the last element is `node` again). null when `node` is on no cycle.
+export function buchiFindCycle(u, v, node) {
+  const target = buchiKey(node.state, node.pos);
+  const parent = new Map();
+  const queue = [];
+  const relax = (from, nx) => {
+    const k = buchiKey(nx.state, nx.pos);
+    if (k === target) return true;
+    if (parent.has(k)) return false;
+    parent.set(k, { from, via: nx.via });
+    queue.push({ state: nx.state, pos: nx.pos });
+    return false;
+  };
+  const rebuild = (from, closing) => {
+    const path = [{ state: closing.state, pos: closing.pos, via: closing.via }];
+    let cur = from;
+    while (buchiKey(cur.state, cur.pos) !== target) {
+      const p = parent.get(buchiKey(cur.state, cur.pos));
+      path.unshift({ state: cur.state, pos: cur.pos, via: p.via });
+      cur = p.from;
+    }
+    return path;
+  };
+  for (const nx of buchiSuccessors(u, v, node.state, node.pos)) {
+    if (relax(node, nx)) return rebuild(node, nx);
+  }
+  while (queue.length) {
+    const cur = queue.shift();
+    for (const nx of buchiSuccessors(u, v, cur.state, cur.pos)) {
+      if (relax(cur, nx)) return rebuild(cur, nx);
+    }
+  }
+  return null;
+}
+
+export function exploreNBA(u, v) {
+  if (!v.length) return { accepted: false, reason: 'empty-period', stem: [], loop: [] };
+  if (!App.startId) return { accepted: false, reason: 'no-start', stem: [], loop: [] };
+
+  const start = { state: App.startId, pos: 0, via: null };
+  const parent = new Map([[buchiKey(start.state, start.pos), null]]);
+  const order = [start];
+  const queue = [start];
+  while (queue.length) {
+    const cur = queue.shift();
+    for (const nx of buchiSuccessors(u, v, cur.state, cur.pos)) {
+      const k = buchiKey(nx.state, nx.pos);
+      if (parent.has(k)) continue;
+      parent.set(k, { from: cur, via: nx.via });
+      const node = { state: nx.state, pos: nx.pos, via: nx.via };
+      order.push(node);
+      queue.push(node);
+    }
+  }
+
+  const traceStem = (node) => {
+    const path = [];
+    let cur = { state: node.state, pos: node.pos };
+    for (;;) {
+      const p = parent.get(buchiKey(cur.state, cur.pos));
+      path.unshift({ state: cur.state, pos: cur.pos, via: p ? p.via : null });
+      if (!p) break;
+      cur = p.from;
+    }
+    return path;
+  };
+
+  for (const node of order) {
+    if (!App.accepts.has(node.state)) continue;
+    const loop = buchiFindCycle(u, v, node);
+    if (loop) return { accepted: true, stem: traceStem(node), loop, reason: null };
+  }
+
+  // No accepting cycle. The stem to the furthest reachable node is still the
+  // most informative thing to show — it is where the run actually gets to.
+  const deepest = order[order.length - 1] || start;
+  return { accepted: false, stem: traceStem(deepest), loop: [], reason: order.length > 1 ? 'no-accepting-cycle' : 'stuck' };
+}
+
+export function testNBA(u, v) {
+  return exploreNBA(u, v).accepted;
+}
+
+export function simNBA(u, v) {
+  const result = exploreNBA(u, v);
+  const unrollings = 2;
+  const run = result.accepted
+    ? [...result.stem, ...result.loop, ...result.loop].slice(0, result.stem.length + result.loop.length * unrollings)
+    : result.stem;
+  const loopFrom = result.accepted ? result.stem.length - 1 : -1;
+
+  const reps = Math.max(1, Math.ceil((run.length + 1) / Math.max(1, v.length)) + 1);
+  const tape = [...u];
+  for (let i = 0; i < reps; i++) tape.push(...v);
+
+  App.simSteps = run.map((node, idx) => {
+    const stateName = getState(node.state)?.name || node.state;
+    const inLoop = loopFrom >= 0 && idx >= loopFrom;
+    let note;
+    if (idx === 0) {
+      note = `Start: ${stateName}`;
+    } else {
+      const fromName = getState(run[idx - 1].state)?.name || run[idx - 1].state;
+      note = `Read '${tape[idx - 1]}': ${fromName} → ${stateName}`;
+    }
+    if (App.accepts.has(node.state)) note += ' ✓ (accepting)';
+    if (inLoop) note += ` · loop iteration ${Math.floor((idx - loopFrom) / Math.max(1, result.loop.length)) + 1}`;
+    return {
+      state: node.state,
+      tokens: [...u, ...v],
+      tape: [...tape],
+      head: idx,
+      tid: node.via?.id,
+      omegaLoopFrom: loopFrom,
+      note
+    };
+  });
+
+  const last = App.simSteps[App.simSteps.length - 1];
+  if (last) {
+    if (result.accepted) {
+      const cycleStates = [...new Set(result.loop.map(n => getState(n.state)?.name || n.state))];
+      last.final = 'accept';
+      last.note += ` — ACCEPT: the cycle ${cycleStates.join(' → ')} repeats forever and visits an accepting state each time`;
+    } else {
+      last.final = 'reject';
+      last.note += result.reason === 'stuck'
+        ? ' — REJECT: no run survives the ω-word'
+        : ' — REJECT: every reachable cycle avoids F, so no run visits an accepting state infinitely often';
+    }
+  }
+  App.simIdx = 0;
+  renderSimStep();
+  return result;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  PUSHDOWN TRANSDUCER
+// ══════════════════════════════════════════════════════════════════
+// A PDT is a PDA that also prints, so it reuses the PDA configuration
+// machinery wholesale and only extends the config with the emitted string.
+// Two runs reaching the same (state, input, stack) with different output are
+// genuinely different configurations, so the output joins the visited key —
+// the same reason exploreFST keys on its own output.
+export function pdtConfigKey(cfg) {
+  return `${pdaConfigKey(cfg.state, cfg.remaining, cfg.stack, cfg.stack2)}|${cfg.outRaw}`;
+}
+
+export function applyPdtTransitionConfig(cfg, transition, branch) {
+  const next = applyPdaTransitionConfig(cfg, transition, branch);
+  const rawOut = transition.output ?? '';
+  next.outRaw = (cfg.outRaw || '') + rawOut;
+  next.outToks = [...(cfg.outToks || []), rawOut === '' ? App.config.sym.lambda : rawOut];
+  return next;
+}
+
+export function explorePDT(tokens) {
+  const init = createInitialPdaConfig(tokens);
+  init.outRaw = '';
+  init.outToks = [];
+  const queue = [init];
+  const visited = new Set([pdtConfigKey(init)]);
+  const outputs = new Set();
+  let acceptedCfg = null;
+  let completedCfg = null;
+  let lastCfg = init;
+  let branches = 0;
+  let maxDepth = 0;
+  let nextBranchId = 2;
+
+  while (queue.length && branches < App.config.maxPdaSteps) {
+    const cfg = queue.shift();
+    lastCfg = cfg;
+    branches++;
+    maxDepth = Math.max(maxDepth, cfg.depth);
+
+    const accepting = isPdaAcceptingConfig(cfg);
+    if (cfg.remaining.length === 0) {
+      if (transducerRunContributes(true, accepting)) outputs.add(cfg.outRaw);
+      if (!completedCfg) completedCfg = cfg;
+    }
+    // No early break, for the same reason as exploreFST: the relation is the
+    // set of outputs over accepting runs, not just the first one found.
+    if (accepting && !acceptedCfg) acceptedCfg = cfg;
+
+    const matching = getMatchingPdaTransitions(cfg);
+    if (!matching.length) continue;
+    matching.forEach((transition, idx) => {
+      const childBranch = matching.length === 1 || idx === 0 ? cfg.branch : nextBranchId++;
+      const nextCfg = applyPdtTransitionConfig(cfg, transition, childBranch);
+      const key = pdtConfigKey(nextCfg);
+      if (visited.has(key)) return;
+      visited.add(key);
+      queue.push(nextCfg);
+    });
+  }
+
+  const witnessCfg = acceptedCfg || completedCfg || lastCfg;
+  return {
+    accepted: !!acceptedCfg,
+    outputs,
+    witnessPath: tracePdaPath(witnessCfg),
+    finalCfg: witnessCfg,
+    unresolved: !acceptedCfg && queue.length > 0,
+    branches,
+    maxDepth
+  };
+}
+
+export function testPDT(tokens) {
+  const result = explorePDT(tokens);
+  const outs = [...result.outputs];
+  return { accepted: result.accepted, output: outs.length ? outs[0] : '', outputs: outs };
+}
+
+export function simPDT(tokens) {
+  const result = explorePDT(tokens);
+  const usesAcceptance = App.config.transducerAccepts;
+  const finalStatus = usesAcceptance ? (result.accepted ? 'accept' : 'reject') : null;
+  const finalNote = usesAcceptance
+    ? (result.accepted
+      ? 'Accepting run found'
+      : (result.unresolved
+        ? `Exploration limit ${App.config.maxPdaSteps} reached — unresolved branches remain`
+        : 'No accepting run found'))
+    : '';
+
+  App.simSteps = buildPdaPathSteps(result.witnessPath, finalStatus, finalNote);
+  const last = App.simSteps[App.simSteps.length - 1];
+  if (last) {
+    const outs = [...result.outputs];
+    if (!outs.length) last.note += ' | Output: ""';
+    else if (outs.length === 1) last.note += ` | Output: "${outs[0]}"`;
+    else last.note += ` | Outputs: {${outs.map(o => `"${o}"`).join(', ')}}`;
+  }
+  App.simIdx = 0;
+  renderSimStep();
+  return result;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  TWO-WAY TRANSDUCER
+// ══════════════════════════════════════════════════════════════════
+// Deterministic, so this is explore2DFA's walk with an output accumulator. The
+// head may revisit cells, which is exactly what lets a 2DFT compute w ↦ ww and
+// w ↦ wᴿ — transductions no one-way FST can realise.
+export function explore2DFT(tokens) {
+  const tape = buildMarkedInputTape(tokens);
+  const lambda = App.config.sym.lambda;
+  const init = { state: App.startId, head: 0, depth: 0, branch: 1, parent: null, via: null, outRaw: '', outToks: [] };
+  const path = [init];
+
+  for (let step = 0; step < App.config.maxTmSteps; step++) {
+    const cfg = path[path.length - 1];
+    if (App.accepts.has(cfg.state)) {
+      return { accepted: true, halted: true, path, finalNote: `Accepted in state ${getState(cfg.state)?.name || cfg.state}` };
+    }
+    const sym = tape[cfg.head];
+    const matching = getTwoWayMatchingTransitions(cfg.state, sym);
+    const t = pickMostSpecificTransition(matching, tr => (tr.symbol === sym ? 1 : 0));
+    if (!t) return { accepted: false, halted: true, path, finalNote: `No valid transition on '${sym}'` };
+    const nextHead = cfg.head + headMoveDelta(t.dir);
+    if (nextHead < 0 || nextHead >= tape.length) {
+      const boundSym = nextHead < 0 ? App.config.sym.leftMarker : App.config.sym.rightMarker;
+      return { accepted: false, halted: true, path, finalNote: `Transition on '${sym}' attempted to move outside ${boundSym} bound.` };
+    }
+    const rawOut = t.output ?? '';
+    path.push({
+      state: t.to,
+      head: nextHead,
+      depth: cfg.depth + 1,
+      branch: cfg.branch,
+      parent: cfg,
+      via: t,
+      outRaw: cfg.outRaw + rawOut,
+      outToks: [...cfg.outToks, rawOut === '' ? lambda : rawOut]
+    });
+  }
+
+  // A two-way head can genuinely loop. Saying "no verdict" is the honest
+  // report; calling it a rejection would assert something we did not decide.
+  return { accepted: false, halted: false, path, finalNote: `2DFT step limit ${App.config.maxTmSteps} reached` };
+}
+
+export function test2DFT(tokens) {
+  const result = explore2DFT(tokens);
+  const finalCfg = result.path[result.path.length - 1];
+  return { accepted: result.accepted, halted: result.halted, output: finalCfg?.outRaw ?? '' };
+}
+
+export function sim2DFT(tokens) {
+  const result = explore2DFT(tokens);
+  const usesAcceptance = App.config.transducerAccepts;
+  const finalStatus = !result.halted ? 'timeout' : (usesAcceptance ? (result.accepted ? 'accept' : 'reject') : null);
+  App.simSteps = buildTwoWayPathSteps(result.path, tokens, finalStatus, result.finalNote);
+  const last = App.simSteps[App.simSteps.length - 1];
+  if (last) {
+    if (!result.halted) last.limit = App.config.maxTmSteps;
+    last.note += ` | Output: "${result.path[result.path.length - 1]?.outRaw ?? ''}"`;
+  }
   App.simIdx = 0;
   renderSimStep();
   return result;
@@ -1292,10 +1793,16 @@ export function renderSimStep() {
   const m = App.machine;
   const stateName = getState(step.state)?.name || (step.states ? stateNames(step.states) : '?');
 
-  if (m === 'TM' || m === 'NDTM' || m === 'LBA' || m === 'ITM' || m === '2DFA' || m === '2NFA') {
+  // isSingleTapeTM is exactly TM/NDTM/LBA/ITM plus the two-way heads (2DFA,
+  // 2NFA, 2DFT) — MTM is deliberately not in it and keeps its own branch.
+  if (isSingleTapeTM(m)) {
     rows.push({ label: 'Tape', cells: step.tape, head: step.head });
   } else if (m === 'MTM') {
     step.tapes.forEach((t, i) => rows.push({ label: `T${i + 1}`, cells: t, head: step.heads[i] }));
+  } else if (isOmegaAutomaton(m)) {
+    // The ω-word is unrolled far enough to cover the witness lasso; the head
+    // keeps advancing into the repetitions rather than wrapping in place.
+    rows.push({ label: 'ω', cells: step.tape, head: step.head });
   } else {
     // DFA, NFA, PDA, Moore, Mealy
     const tokens = step.tokens || App.currentTokens || [];
@@ -1320,10 +1827,19 @@ export function renderSimStep() {
       if (isTwoStackPDA(m) && step.stack2) {
         rows.push({ label: 'Stk2', cells: [...step.stack2].reverse(), head: 0 });
       }
-    } else if (['Moore', 'Mealy', 'FST'].includes(m)) {
-      const outToks = step.outToks || [];
-      rows.push({ label: 'Out', cells: outToks, head: outToks.length ? outToks.length - 1 : -1 });
+    } else if (isWeightedFA(m) && step.dist) {
+      // Not a tape: one cell per state still carrying probability, so the
+      // distribution is legible as it spreads and collapses.
+      rows.push({ label: 'Pr', cells: step.dist, head: -1 });
     }
+  }
+
+  // Any machine that prints gets an output row, wherever its other rows came
+  // from — Moore/Mealy/FST alongside the input, PDT alongside the stack,
+  // 2DFT alongside the two-way tape.
+  if (getMachineConfig(m).isTransducer) {
+    const outToks = step.outToks || [];
+    rows.push({ label: 'Out', cells: outToks, head: outToks.length ? outToks.length - 1 : -1 });
   }
 
   // Header
@@ -1467,6 +1983,8 @@ export function updateSimCanvasHighlights(step) {
     if (el) el.classList.add('sim-active-t');
     const lbl = document.getElementById(`lbl-${k}`);
     if (lbl) lbl.classList.add('sim-active-lbl');
+    const pillLbl = document.getElementById(`pill-lbl-${k}`);
+    if (pillLbl) pillLbl.classList.add('sim-active-lbl');
   });
 
   // Motion: a token slides along each newly-taken edge, then the arrival
@@ -1738,6 +2256,17 @@ export function parseBatchLine(line) {
 export function computeBatchResults(rawLines) {
   const results = rawLines.map(parseBatchLine).map(({ input: line, expect }) => {
     const raw = parseEps(line);
+    // ω-automata take "u(v)", which is not a finite word and must be split
+    // before the finite-word tokenizer ever sees the parentheses.
+    if (isOmegaAutomaton(App.machine)) {
+      const parsed = parseOmegaWord(raw);
+      if (!parsed) return { str: line, accepted: false, error: true, expect };
+      const u = tokenize(parsed.prefix === App.config.sym.eps ? '' : parsed.prefix);
+      const v = tokenize(parsed.period);
+      if (u === null || v === null || !v.length) return { str: line, accepted: false, error: true, expect };
+      const ok = testNBA(u, v);
+      return { str: line, accepted: ok, output: null, expect, verdict: ok ? 'accept' : 'reject' };
+    }
     const str = raw === App.config.sym.eps ? '' : raw;
     const tokens = tokenize(str);
     if (tokens === null) return { str: line, accepted: false, error: true, expect };
@@ -1757,10 +2286,24 @@ export function computeBatchResults(rawLines) {
     else if (App.machine === '2NFA') accepted = test2NFA(tokens);
     else if (App.machine === 'Moore') { accepted = App.config.transducerAccepts ? testDFA(tokens) : undefined; output = getMooreOutput(tokens); }
     else if (App.machine === 'Mealy') { accepted = App.config.transducerAccepts ? testDFA(tokens) : undefined; output = getMealyOutput(tokens); }
+    else if (App.machine === 'PFA') accepted = testPFA(tokens);
     else if (App.machine === 'FST') {
       const fstResult = testFST(tokens);
       accepted = App.config.transducerAccepts ? fstResult.accepted : undefined;
       output = fstResult.output;
+    }
+    else if (App.machine === 'PDT') {
+      const pdtResult = testPDT(tokens);
+      accepted = App.config.transducerAccepts ? pdtResult.accepted : undefined;
+      output = pdtResult.output;
+    }
+    else if (App.machine === '2DFT') {
+      const dftResult = test2DFT(tokens);
+      // A two-way head that never halted has decided nothing — same
+      // three-valued report a Turing machine gets.
+      if (!dftResult.halted) verdict = 'unknown';
+      else accepted = App.config.transducerAccepts ? dftResult.accepted : undefined;
+      output = dftResult.output;
     }
     if (verdict === null) verdict = accepted === undefined ? undefined : (accepted ? 'accept' : 'reject');
     return { str: line, accepted, output, expect, verdict };

@@ -50,7 +50,11 @@ Imported bindings are live for reads but read-only for writes. `R`, `Workspaces`
 
 ### State
 
-`App` in [js/state.js](js/state.js) is the single mutable store: current machine, `states`/`transitions`, alphabets (as `Set`s), selection, camera, `config`, simulation cursor. `MachineTypes` there is the capability table (`hasStack`, `hasTape`, `hasEpsilon`, `isTransducer`, `hasEndMarkers`) most machine-agnostic code branches on — prefer adding a capability flag over `if (App.machine === ...)` chains. `MachineCategories` drives the model picker; `PDA` is a hidden alias of `DPDA` and is deliberately absent from it.
+`App` in [js/state.js](js/state.js) is the single mutable store: current machine, `states`/`transitions`, alphabets (as `Set`s), selection, camera, `config`, simulation cursor. `MachineTypes` there is the capability table (`hasStack`, `hasTape`, `hasEpsilon`, `isTransducer`, `hasEndMarkers`, `isWeighted`, `isOmega`) most machine-agnostic code branches on — prefer adding a capability flag over `if (App.machine === ...)` chains.
+
+Two of those flags change what a "run" is, so they cut across more than panel visibility. `isWeighted` (PFA) makes a configuration a probability distribution over Q rather than a state or a set of them, simulated by the forward algorithm and decided against `config.pfaCutPoint`. `isOmega` (Büchi) makes the input an ultimately periodic ω-word typed as `u(v)`; it bypasses the finite-word tokenizer in both `runSim` and `computeBatchResults`, and acceptance is a reachable cycle through F in the (state × position) graph, which is also where the witness lasso comes from. Anything that enumerates Σ\* — the Language panel especially — has to opt out for `isOmega` rather than report finite-word verdicts.
+
+Ordering trap: `isAnyPDA` includes `PDT` and `isTwoWayFA` includes `2DFT`, so a per-machine branch for either has to sit *above* the family check in `langTupleSyms`, `langDeltaSignature`, `updateFormalDef` and `updateRegex`, or the family answer wins and the output alphabet silently vanishes from the tuple. `MachineCategories` drives the model picker; `PDA` is a hidden alias of `DPDA` and is deliberately absent from it.
 
 Multi-tab editing lives in `Workspaces` / `activeWorkspaceId`: each tab is a serialized `exportWorkspaceState()` blob, and switching saves the live `App` into the outgoing tab and rehydrates the incoming one.
 

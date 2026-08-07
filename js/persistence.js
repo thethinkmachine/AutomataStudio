@@ -6,7 +6,7 @@ import { importJFLAPText } from './import-jflap.js';
 import { closeModal, showOverlay } from './modal.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { runSim } from './simulation.js';
-import { $, App, MachineExamples, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
+import { $, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { hideContextMenu } from './states-transitions.js';
 import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen, hideTabContextMenu, hideTabOverflowMenu, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
@@ -409,12 +409,7 @@ export function loadSharedLinkFromURL() {
 export function validateSchema(data) {
   if (!data || typeof data !== 'object') throw new Error("Data must be a valid JSON object.");
   
-  const validMachines = [
-    'DFA', 'NFA', 'ε-NFA', '2DFA', '2NFA',
-    'DPDA', 'NPDA', 'PDA', 'QA', 'Counter', '2PDA',
-    'TM', 'NDTM', 'MTM', 'LBA', 'ITM',
-    'Moore', 'Mealy', 'FST'
-  ];
+  const validMachines = Object.keys(MachineTypes);
   if (!data.machine || !validMachines.includes(data.machine)) {
     throw new Error(`Missing or unsupported machine type: ${data.machine || 'undefined'}`);
   }
@@ -429,11 +424,24 @@ export function validateSchema(data) {
   if (isAnyPDA(data.machine) && !Array.isArray(data.stackAlpha)) {
     throw new Error("Stack/queue-based machines require a 'stackAlpha' array.");
   }
-  if ((data.machine === 'Moore' || data.machine === 'Mealy' || data.machine === 'FST') && !Array.isArray(data.outputAlpha)) {
+  if (getMachineConfig(data.machine).isTransducer && !Array.isArray(data.outputAlpha)) {
     throw new Error("Transducers require an 'outputAlpha' array.");
   }
-  if ((data.machine === 'TM' || data.machine === 'NDTM' || data.machine === 'MTM' || data.machine === 'LBA' || data.machine === 'ITM') && typeof data.tapeCount !== 'number') {
-    throw new Error("Turing Machines require a numeric 'tapeCount'.");
+  if (getMachineConfig(data.machine).isWeighted) {
+    for (const t of data.transitions) {
+      if (t.weight === undefined) continue;
+      const w = Number(t.weight);
+      if (!Number.isFinite(w) || w < 0 || w > 1) {
+        throw new Error(`Transition '${t.id}' has probability '${t.weight}' — must be a number between 0 and 1.`);
+      }
+    }
+  }
+  // Only the multi-tape machine has a tape count to state; every other Turing
+  // machine has exactly one by definition. Demanding it from all of them
+  // rejected the bundled tm/ndtm examples on import — they omit the field, and
+  // loadExample never validates, so nothing caught it.
+  if (data.machine === 'MTM' && typeof data.tapeCount !== 'number') {
+    throw new Error("Multi-tape Turing Machines require a numeric 'tapeCount'.");
   }
 
   // Validate States deeply

@@ -64,6 +64,16 @@ function runSample(h, data, w) {
     return { accepted: last.final === 'accept', last };
   }
 
+  // ω-automata take "u(v)", not a finite word, so they never reach toTokens.
+  if (m === 'NBA') {
+    const parsed = ctx.parseOmegaWord(w);
+    assert.ok(parsed, `Büchi input "${w}" must be written u(v)`);
+    const u = toTokens(ctx, parsed.prefix);
+    const v = toTokens(ctx, parsed.period);
+    const res = ctx.simNBA(u, v);
+    return { accepted: res.accepted, last: App.simSteps[App.simSteps.length - 1] };
+  }
+
   const tokens = toTokens(ctx, w);
   let result = null;
   if (m === 'DFA') ctx.simDFA(tokens);
@@ -75,6 +85,9 @@ function runSample(h, data, w) {
   else if (m === 'Moore') ctx.simMoore(tokens);
   else if (m === 'Mealy') ctx.simMealy(tokens);
   else if (m === 'FST') result = ctx.simFST(tokens);
+  else if (m === 'PFA') result = ctx.simPFA(tokens);
+  else if (m === 'PDT') result = ctx.simPDT(tokens);
+  else if (m === '2DFT') result = ctx.sim2DFT(tokens);
   else if (m === 'NDTM') result = ctx.simNDTM(tokens);
   else if (m === 'LBA') ctx.simLBA(tokens);
   else if (m === 'ITM') ctx.simITM(tokens);
@@ -92,7 +105,8 @@ const FLAGSHIPS = [
   'dfa', 'nfa', 'enfa', 'twdfa', 'twnfa',
   'pda', 'npda', 'queue', 'counter', 'twopda',
   'tm', 'ndtm', 'mtm', 'lba', 'ittm',
-  'moore', 'mealy', 'fst'
+  'moore', 'mealy', 'fst',
+  'pfa', 'buchi', 'pdt', 'twodft'
 ];
 
 for (const file of FLAGSHIPS) {

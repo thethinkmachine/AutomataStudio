@@ -232,6 +232,29 @@ test('adding a second symbol to an edge updates the label in place', () => {
   assert.equal(label.children.length, 2, 'one tspan per transition in the group');
 });
 
+test('semantic pill labels are toggleable without replacing the edge node', () => {
+  machine({ states: 2 });
+  addTransition(0, 1, 'a');
+  context.renderAll();
+  const node = edgeNode(0, 1);
+  const { textEl, pillEl } = node.__parts;
+  assert.equal(textEl.style.display, '');
+  assert.equal(pillEl.style.display, 'none');
+
+  App.config.edgeLabelStyle = 'pills';
+  context.renderAll();
+
+  assert.equal(edgeNode(0, 1), node);
+  assert.equal(textEl.style.display, 'none');
+  assert.equal(pillEl.style.display, '');
+  assert.equal(pillEl.children.length, 1);
+  assert.equal(pillEl.children[0].children.length, 1);
+
+  App.config.edgeLabelStyle = 'beginner';
+  context.renderAll();
+  assert.equal(pillEl.classList.contains('edge-pill-beginner'), true);
+});
+
 test('the curve handle exists only while the edge is selected', () => {
   machine({ states: 2 });
   const t = addTransition(0, 1, 'a');

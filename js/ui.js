@@ -2340,12 +2340,14 @@ export function openSettingsModal() {
   $('set-transducer-accepts').checked = !!c.transducerAccepts;
   $('set-pda-steps').value = c.maxPdaSteps;
   $('set-pda-paradigm').value = c.pdaParadigm || 'explicit';
+  if ($('set-pfa-cutpoint')) $('set-pfa-cutpoint').value = c.pfaCutPoint ?? 0.5;
   $('set-tm-steps').value = c.maxTmSteps;
   if ($('set-lang-budget')) $('set-lang-budget').value = c.langStepBudget ?? 400;
   $('set-auto-speed').value = c.autoSpeed;
   if ($('set-autosave-interval')) $('set-autosave-interval').value = String(c.autosaveIntervalMs ?? 15000);
   $('set-radius').value = c.radius;
   if ($('set-wrap-labels')) $('set-wrap-labels').checked = c.wrapStateLabels !== false;
+  if ($('set-edge-label-style')) $('set-edge-label-style').value = ['pills', 'beginner'].includes(c.edgeLabelStyle) ? c.edgeLabelStyle : 'compact';
   if ($('set-click-highlight-mode')) $('set-click-highlight-mode').value = c.clickHighlightMode || 'off';
   $('set-zoom-step').value = c.zoom.step;
   $('set-grid-snap').value = c.gridSnap;
@@ -2412,6 +2414,12 @@ export function confirmSettings() {
   if ($('set-state-prefix')) c.statePrefix = $('set-state-prefix').value.trim() || 'q';
   c.transducerAccepts = $('set-transducer-accepts').checked;
   c.pdaParadigm = $('set-pda-paradigm').value || 'explicit';
+  if ($('set-pfa-cutpoint')) {
+    // A cut-point outside [0, 1] can never be crossed in one direction or the
+    // other, which would make every word accept or every word reject.
+    const cut = parseFloat($('set-pfa-cutpoint').value);
+    c.pfaCutPoint = Number.isFinite(cut) ? Math.min(1, Math.max(0, cut)) : 0.5;
+  }
   c.maxPdaSteps = parseInt($('set-pda-steps').value) || 2000;
   c.maxTmSteps = parseInt($('set-tm-steps').value) || 10000;
   if ($('set-lang-budget')) {
@@ -2427,6 +2435,10 @@ export function confirmSettings() {
   if (typeof restartAutoTimerIfPlaying === 'function') restartAutoTimerIfPlaying();
   c.radius = parseInt($('set-radius').value) || 30;
   if ($('set-wrap-labels')) c.wrapStateLabels = $('set-wrap-labels').checked;
+  if ($('set-edge-label-style')) {
+    const style = $('set-edge-label-style').value;
+    c.edgeLabelStyle = ['pills', 'beginner'].includes(style) ? style : 'compact';
+  }
   if ($('set-click-highlight-mode')) {
     c.clickHighlightMode = $('set-click-highlight-mode').value || 'off';
     if (c.clickHighlightMode === 'off' && typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
@@ -2472,6 +2484,7 @@ export function getEditorSettingsData() {
     snapToGrid: !!c.snapToGrid,
     statePrefix: c.statePrefix || 'q',
     pdaParadigm: c.pdaParadigm,
+    pfaCutPoint: c.pfaCutPoint,
     transducerAccepts: !!c.transducerAccepts,
     maxPdaSteps: c.maxPdaSteps,
     maxTmSteps: c.maxTmSteps,
@@ -2480,6 +2493,7 @@ export function getEditorSettingsData() {
     autosaveIntervalMs: c.autosaveIntervalMs,
     radius: c.radius,
     wrapStateLabels: !!c.wrapStateLabels,
+    edgeLabelStyle: ['pills', 'beginner'].includes(c.edgeLabelStyle) ? c.edgeLabelStyle : 'compact',
     clickHighlightMode: c.clickHighlightMode || 'off',
     zoomStep: c.zoom.step,
     gridSnap: c.gridSnap,
@@ -2532,6 +2546,7 @@ export function populateSettingsModalInputs(data) {
   if (data.snapToGrid !== undefined && $('set-snap-grid')) $('set-snap-grid').checked = !!data.snapToGrid;
   if (data.statePrefix !== undefined && $('set-state-prefix')) $('set-state-prefix').value = data.statePrefix;
   if (data.pdaParadigm !== undefined) $('set-pda-paradigm').value = data.pdaParadigm;
+  if (data.pfaCutPoint !== undefined && $('set-pfa-cutpoint')) $('set-pfa-cutpoint').value = data.pfaCutPoint;
   if (data.transducerAccepts !== undefined) $('set-transducer-accepts').checked = !!data.transducerAccepts;
   if (data.maxPdaSteps !== undefined) $('set-pda-steps').value = data.maxPdaSteps;
   if (data.maxTmSteps !== undefined) $('set-tm-steps').value = data.maxTmSteps;
@@ -2540,6 +2555,7 @@ export function populateSettingsModalInputs(data) {
   if (data.autosaveIntervalMs !== undefined && $('set-autosave-interval')) $('set-autosave-interval').value = data.autosaveIntervalMs;
   if (data.radius !== undefined) $('set-radius').value = data.radius;
   if (data.wrapStateLabels !== undefined && $('set-wrap-labels')) $('set-wrap-labels').checked = !!data.wrapStateLabels;
+  if (data.edgeLabelStyle !== undefined && $('set-edge-label-style')) $('set-edge-label-style').value = ['pills', 'beginner'].includes(data.edgeLabelStyle) ? data.edgeLabelStyle : 'compact';
   if (data.clickHighlightMode !== undefined && $('set-click-highlight-mode')) $('set-click-highlight-mode').value = data.clickHighlightMode;
   if (data.zoomStep !== undefined) $('set-zoom-step').value = data.zoomStep;
   if (data.gridSnap !== undefined) $('set-grid-snap').value = data.gridSnap;

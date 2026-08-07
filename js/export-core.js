@@ -67,6 +67,7 @@ export function buildMachineIR() {
       write: t.write ?? null,
       dir: t.dir ?? null,
       output: t.output ?? null,
+      weight: t.weight ?? null,
       tapeSyms: t.tapeSyms ? [...t.tapeSyms] : null,
       tapeWrites: t.tapeWrites ? [...t.tapeWrites] : null,
       tapeDirs: t.tapeDirs ? [...t.tapeDirs] : null,
@@ -92,6 +93,10 @@ export function buildMachineIR() {
     hasStack: !!cfg.hasStack,
     hasTape: !!cfg.hasTape,
     isTransducer: !!cfg.isTransducer,
+    isWeighted: !!cfg.isWeighted,
+    isOmega: !!cfg.isOmega,
+    hasEndMarkers: !!cfg.hasEndMarkers,
+    cutPoint: App.config.pfaCutPoint,
     // Multi-character symbols mean words can't be concatenated without a
     // separator; every format that prints a word has to know this.
     isSymbolic: typeof langIsSymbolic === 'function' ? langIsSymbolic() : true,

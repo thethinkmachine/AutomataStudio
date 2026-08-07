@@ -263,6 +263,11 @@ export function applyMachineSwitch(m) {
   $('output-sec').style.display = cfg.isTransducer ? '' : 'none';
   $('mtm-ctrl').style.display = (m === 'MTM') ? 'flex' : 'none';
 
+  // An ω-automaton reads u·vᵂ. Without saying so the placeholder invites a
+  // finite word, which is the one thing the machine cannot take.
+  const simIn = $('sim-in');
+  if (simIn) simIn.placeholder = cfg.isOmega ? 'u(v) — e.g. ab(ba)' : App.config.sym.eps;
+
   updateRPanel();
   renderAll();
   if (typeof renderTabs === 'function') renderTabs();

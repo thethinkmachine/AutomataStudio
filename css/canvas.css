@@ -267,6 +267,45 @@
   stroke-linejoin: round;
 }
 
+.edge-pill-label {
+  overflow: visible;
+  paint-order: normal;
+  stroke: none;
+}
+
+.edge-pill rect {
+  fill: color-mix(in srgb, var(--surface2) 90%, transparent);
+  stroke: color-mix(in srgb, var(--text2) 32%, transparent);
+  stroke-width: 1px;
+}
+
+.edge-pill text {
+  fill: var(--text1);
+  stroke: none;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+.edge-pill-input rect { fill: color-mix(in srgb, var(--blue) 16%, var(--surface2)); stroke: color-mix(in srgb, var(--blue) 55%, transparent); }
+.edge-pill-memory-read rect { fill: color-mix(in srgb, var(--gold) 16%, var(--surface2)); stroke: color-mix(in srgb, var(--gold) 55%, transparent); }
+.edge-pill-memory-write rect,
+.edge-pill-write rect { fill: color-mix(in srgb, var(--green) 14%, var(--surface2)); stroke: color-mix(in srgb, var(--green) 50%, transparent); }
+.edge-pill-output rect { fill: color-mix(in srgb, var(--purple) 17%, var(--surface2)); stroke: color-mix(in srgb, var(--purple) 55%, transparent); }
+.edge-pill-weight rect { fill: color-mix(in srgb, var(--purple) 13%, var(--surface2)); stroke: color-mix(in srgb, var(--purple) 48%, transparent); }
+.edge-pill-move rect,
+.edge-pill-tape rect { fill: color-mix(in srgb, var(--text2) 10%, var(--surface2)); }
+
+.edge-pill-label.sim-active-lbl .edge-pill rect {
+  stroke: var(--blue);
+  stroke-width: 1.5px;
+}
+
+.edge-pill-beginner .edge-pill text {
+  font-size: 9px;
+  font-weight: 550;
+}
+
 
 /* ─── CANVAS INTERACTIONS ─── */
 [data-tool="pointer"] .sn {

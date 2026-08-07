@@ -190,8 +190,11 @@ export function exportToTikz(ir, opts = {}) {
 // an edge is keyed by its input symbol alone. Stack and tape machines
 // key on more than that, so they get the flat list instead — the same
 // information, without pretending to a 2-D layout it does not have.
+// A weighted machine's cell is a distribution, not a destination, and a
+// two-way head's is a (destination, move) pair — neither collapses into the
+// one-entry-per-symbol grid, so both take the flat list.
 export function exportSupportsMatrix(ir) {
-  return !ir.hasStack && !ir.hasTape && ir.machine !== '2DFA' && ir.machine !== '2NFA';
+  return !ir.hasStack && !ir.hasTape && !ir.isWeighted && !ir.hasEndMarkers;
 }
 
 export function buildTransitionMatrix(ir) {
@@ -209,7 +212,7 @@ export function buildTransitionMatrix(ir) {
       if (!dests.length) return '—';
       // Mealy/FST print the emitted symbol alongside the destination;
       // the destination alone would lose the whole output function.
-      if (ir.machine === 'Mealy' || ir.machine === 'FST') {
+      if (ir.isTransducer && ir.machine !== 'Moore') {
         return ir.transitions
           .filter(t => t.from === s.id && t.symbol === sym)
           .map(t => `${t.toName}/${t.output != null && t.output !== '' ? t.output : ir.sym.lambda}`)
@@ -229,8 +232,9 @@ export function buildTransitionList(ir) {
   const header = ['From', 'Read'];
   if (ir.hasStack && !ir.hasTape) header.push('Pop', 'Push');
   if (ir.hasTape) header.push('Write', 'Move');
-  if (ir.machine === '2DFA' || ir.machine === '2NFA') header.push('Move');
+  if (!ir.hasTape && ir.hasEndMarkers) header.push('Move');
   if (ir.isTransducer) header.push('Output');
+  if (ir.isWeighted) header.push('P');
   header.push('To');
 
   const rows = ir.transitions.map(t => {
@@ -242,8 +246,9 @@ export function buildTransitionList(ir) {
         t.tapeDirs ? t.tapeDirs.join(' | ') : (t.dir ?? '')
       );
     }
-    if (ir.machine === '2DFA' || ir.machine === '2NFA') row.push(t.dir ?? '');
+    if (!ir.hasTape && ir.hasEndMarkers) row.push(t.dir ?? '');
     if (ir.isTransducer) row.push(t.output ?? '');
+    if (ir.isWeighted) row.push(t.weight ?? 1);
     row.push(t.toName);
     return row;
   });

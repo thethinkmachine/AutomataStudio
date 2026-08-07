@@ -1102,12 +1102,12 @@
       <div class="modal-row"><span class="modal-lbl">From</span><select class="sel" id="m-from"></select></div>
       <div class="modal-row" id="m-sym-row"><span class="modal-lbl">Read</span><select class="sel" id="m-sym"></select></div>
       <div id="m-pda-extra" style="display:none">
-        <div class="modal-section-lbl">Stack</div>
-        <div class="modal-row"><span class="modal-lbl">Pop</span><input class="inp" id="m-pop"
+        <div class="modal-section-lbl" id="m-memory-title">Stack</div>
+        <div class="modal-row"><span class="modal-lbl" id="m-pop-label">Pop</span><input class="inp" id="m-pop"
             placeholder="ε or symbol" autocomplete="off" onkeydown="trySymSuggestKeydown(event)"
             oninput="handleSymSuggestActive(this)" onfocus="handleSymSuggestActive(this)"
             onclick="refreshSymSuggest(this)" onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></div>
-        <div class="modal-row"><span class="modal-lbl">Push</span><input class="inp" id="m-push"
+        <div class="modal-row"><span class="modal-lbl" id="m-push-label">Push</span><input class="inp" id="m-push"
             placeholder="ε or string" autocomplete="off" onkeydown="trySymSuggestKeydown(event)"
             oninput="handleSymSuggestActive(this)" onfocus="handleSymSuggestActive(this)"
             onclick="refreshSymSuggest(this)" onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></div>
@@ -1137,6 +1137,11 @@
       <div id="m-mealy-extra" style="display:none">
         <div class="modal-section-lbl">Output</div>
         <div class="modal-row"><span class="modal-lbl">Output</span><select class="sel" id="m-output"></select></div>
+      </div>
+      <div id="m-pfa-extra" style="display:none">
+        <div class="modal-section-lbl">Probability</div>
+        <div class="modal-row"><span class="modal-lbl">P</span><input class="inp" id="m-weight" type="number"
+            min="0" max="1" step="0.05" placeholder="0 – 1" autocomplete="off"></div>
       </div>
       <div id="m-mtm-extra" style="display:none"></div>
       <div class="modal-row"><span class="modal-lbl">To</span><select class="sel" id="m-to"></select></div>
@@ -1378,6 +1383,10 @@
             <option value="empty">Acceptance by empty stack</option>
           </select>
         </div>
+        <div class="modal-row">
+          <span class="modal-lbl" data-tip="A PFA accepts w when the probability of ending in an accepting state is strictly greater than this cut-point">PFA Cut-Point λ</span>
+          <input type="number" class="inp" id="set-pfa-cutpoint" min="0" max="1" step="0.05" label="PFA cut-point">
+        </div>
       </div>
 
       <div class="modal-tab-content" id="tab-tm">
@@ -1407,6 +1416,14 @@
         <div class="modal-row" data-tip="Break long, underscore/space/hyphen-separated state names onto multiple lines so they fit inside the node instead of overflowing it.">
           <span class="modal-lbl">Wrap Long State Labels</span>
           <label class="toggle-switch"><input type="checkbox" id="set-wrap-labels"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="Show transitions as compact mathematical notation or as color-coded semantic pills on the canvas. Exports and tables keep compact notation.">
+          <span class="modal-lbl">Edge Labels</span>
+          <select class="sel" id="set-edge-label-style" label="Canvas edge label style">
+            <option value="compact">Compact notation</option>
+            <option value="pills">Clear actions</option>
+            <option value="beginner">Beginner-friendly</option>
+          </select>
         </div>
         <div class="modal-row" data-tip="When set, clicking a state on the canvas also highlights its outgoing (green) or incoming (indigo) transitions. Both directions are always available from a state's right-click menu regardless of this setting.">
           <span class="modal-lbl">Click State Highlights Edges</span>
