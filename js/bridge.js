@@ -39,8 +39,8 @@ import {
 } from './alphabet.js';
 import {
   confirmState, confirmTrans, ctxDel, ctxDeleteTrans, ctxDuplicateTrans,
-  ctxEditTrans, ctxRename, ctxReverseTrans, ctxStart, ctxToggleAcc,
-  deleteTrans, openStateModal,
+  ctxEditTrans, ctxRename, ctxResetEdgeShape, ctxReverseTrans, ctxStart,
+  ctxToggleAcc, deleteTrans, openStateModal,
 } from './states-transitions.js';
 import {
   autoLayout, ctxCanvasAddState, ctxCanvasAutoLayout, ctxCanvasFit,
@@ -141,8 +141,8 @@ Object.assign(window, {
    addGSym, addOutSym, addSym, delGSym, delOutSym, delSym,
   // states-transitions.js
    confirmState, confirmTrans, ctxDel, ctxDeleteTrans, ctxDuplicateTrans,
-   ctxEditTrans, ctxRename, ctxReverseTrans, ctxStart, ctxToggleAcc,
-   deleteTrans, openStateModal,
+   ctxEditTrans, ctxRename, ctxResetEdgeShape, ctxReverseTrans, ctxStart,
+   ctxToggleAcc, deleteTrans, openStateModal,
   // canvas.js
    autoLayout, ctxCanvasAddState, ctxCanvasAutoLayout, ctxCanvasFit,
    ctxCanvasPaste, ctxCanvasSelectAll, ctxHighlightIncoming,

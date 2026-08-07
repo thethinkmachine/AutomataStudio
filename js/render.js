@@ -1,5 +1,6 @@
 import { applyEdgeDirectionHighlight, clearEdgeDirectionHighlight, onStateDown, wrap } from './canvas.js';
 import { renderDividers } from './dividers.js';
+import { PILL_GAP, PILL_HEIGHT, PILL_ROW_H, buildLayoutContext, estimatePillLabelSize, estimateTextLabelSize, pillPartWidth } from './geometry.js';
 import { commit, snapshot } from './history.js';
 import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
@@ -45,16 +46,10 @@ export function renderAll() {
   if (typeof applyEdgeDirectionHighlight === 'function') applyEdgeDirectionHighlight();
 }
 
-export function groupTrans() {
-  const g = {};
-  App.transitions.forEach(t => { const k = t.from + '→' + t.to; if (!g[k]) g[k] = { from: t.from, to: t.to, ts: [] }; g[k].ts.push(t); });
-  return Object.values(g);
-}
-
 // Resolves an edge key back to the transitions it covers. The listeners below
 // call this at event time rather than closing over a group object: a node now
-// survives across renders, and grp.ts is rebuilt by groupTrans() on every one,
-// so a captured group would act on transitions that no longer exist.
+// survives across renders, and the layout pass regroups the transitions on
+// every one, so a captured group would act on transitions that no longer exist.
 function edgeGroupFor(key) {
   const sep = key.indexOf('|');
   const fromId = key.slice(0, sep), toId = key.slice(sep + 1);
@@ -65,49 +60,27 @@ function edgeGroupFor(key) {
   return { from, to, ts, grp: { from: fromId, to: toId, ts } };
 }
 
-// Index of every from|to pair that carries a transition, plus the states by id.
-// Built once per pass so the geometry below can ask "is there an edge the other
-// way?" in O(1). Without it each edge scans App.transitions, which is what made
-// dragging a large machine quadratic.
-function buildEdgeIndex() {
-  const stateById = new Map();
-  for (const s of App.states) stateById.set(s.id, s);
-  const tsByPair = new Map();
-  for (const t of App.transitions) {
-    const k = t.from + '|' + t.to;
-    let arr = tsByPair.get(k);
-    if (!arr) tsByPair.set(k, arr = []);
-    arr.push(t);
+// How big the label for a group of transitions will be, before it is written to
+// the DOM. geometry.js needs the box to place it clear of everything else, and
+// this module is the one that knows which of the two label styles is on and what
+// each transition reads as.
+function edgeLabelSizeFor(ts) {
+  const style = App.config.edgeLabelStyle;
+  if (style === 'pills' || style === 'beginner') {
+    return estimatePillLabelSize(ts.map(t => transLabelParts(t, style === 'beginner')));
   }
-  return { stateById, tsByPair };
+  return estimateTextLabelSize(ts.map(transLabel));
 }
 
-// Geometry for one edge. Split out because renderTransitions and updateFastDOM
-// both need it, and because it is the part that changes every frame while a
-// state is being dragged. `pairs` is the tsByPair map from buildEdgeIndex.
-function edgeGeometry(from, to, ts, pairs) {
-  const isSelf = from.id === to.id;
-  if (isSelf) {
-    const so = App.config.render.selfLoopOff, ss = App.config.render.selfLoopSize;
-    const d = `M ${from.x - so} ${from.y - R} A ${ss} ${ss} 0 1 1 ${from.x + so} ${from.y - R}`;
-    const arcCentY = from.y - R - Math.sqrt(ss * ss - so * so);
-    return { isSelf, d, lx: from.x, ly: arcCentY - ss, mx: null, my: null, crvVal: 0 };
-  }
-  const hasRev = pairs
-    ? pairs.has(to.id + '|' + from.id)
-    : App.transitions.some(t => t.from === to.id && t.to === from.id);
-  const dx = to.x - from.x, dy = to.y - from.y, dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist === 0) return null;
-  const ux = dx / dist, uy = dy / dist, px = -uy, py = ux;
-  const defCrv = hasRev ? App.config.render.curveOff : 0;
-  const crvVal = ts[0].curve !== undefined ? ts[0].curve : defCrv;
-  const mx = (from.x + to.x) / 2 + px * crvVal, my = (from.y + to.y) / 2 + py * crvVal;
-  const sx = from.x + ux * R, sy = from.y + uy * R;
-  const ex = to.x - ux * (R + App.config.render.arrowHeadSize), ey = to.y - uy * (R + App.config.render.arrowHeadSize);
-  const d = crvVal ? `M ${sx} ${sy} Q ${mx} ${my} ${ex} ${ey}` : `M ${sx} ${sy} L ${ex} ${ey}`;
-  const lx = crvVal ? (sx + 2 * mx + ex) / 4 : (sx + ex) / 2;
-  const ly = crvVal ? (sy + 2 * my + ey) / 4 : (sy + ey) / 2;
-  return { isSelf, d, lx, ly, mx, my, crvVal };
+// One layout pass over the whole diagram: every edge path, self-loop direction
+// and label position, resolved against each other.
+//
+// Both renderTransitions and updateFastDOM start here, and canvas.js calls it
+// too when it needs to know how much room the drawing takes up. It is a pure
+// read of App — nothing is cached between calls, because the positions it
+// depends on change on every frame of a drag.
+export function currentLayoutContext(opts = {}) {
+  return buildLayoutContext({ labelSizeFor: edgeLabelSizeFor, ...opts });
 }
 
 function isEdgeSelected(ts) {
@@ -230,9 +203,13 @@ function createEdgeNode(key) {
 
 // The curve handle only exists while the edge is selected: a visible grip at the
 // control point, hinting that the edge can be bent.
+//
+// A self-loop gets one too, sitting at the top of the arc. There it means
+// something different — drag it and the loop swings round the state — which is
+// the only way to move a loop off a direction the automatic placement picked.
 function syncCurveHandle(edgeGrp, key, geo, selected) {
   const parts = edgeGrp.__parts;
-  const wanted = selected && !geo.isSelf;
+  const wanted = selected;
   if (wanted && !parts.handle) {
     const handle = makeSVG('circle');
     handle.classList.add('curve-handle');
@@ -257,8 +234,7 @@ function syncCurveHandle(edgeGrp, key, geo, selected) {
   }
 }
 
-function syncEdgeNode(edgeGrp, from, to, ts, pairs) {
-  const geo = edgeGeometry(from, to, ts, pairs);
+function syncEdgeNode(edgeGrp, geo, ts) {
   if (!geo) return false;
   const parts = edgeGrp.__parts;
   const selected = isEdgeSelected(ts);
@@ -297,37 +273,38 @@ function syncEdgeNode(edgeGrp, from, to, ts, pairs) {
   const pillKey = pillRows.map(row => row.map(p => `${p.role}:${p.text}`).join('\u0002')).join('\u0001');
   if (edgeGrp.__pillKey !== pillKey) {
     parts.pillEl.innerHTML = '';
-    const rowGap = 22;
+    // Pill widths come from geometry.js because the layout pass sized the label
+    // box from the same numbers before choosing where to put it. Two independent
+    // copies of this arithmetic would drift, and the label would then be placed
+    // clear of a box that is not the one being drawn.
     pillRows.forEach((row, rowIndex) => {
-      const widths = row.map(p => Math.max(24, 12 + p.text.length * 6.2));
-      const total = widths.reduce((sum, width) => sum + width, 0) + Math.max(0, row.length - 1) * 4;
+      const widths = row.map(p => pillPartWidth(p.text));
+      const total = widths.reduce((sum, width) => sum + width, 0) + Math.max(0, row.length - 1) * PILL_GAP;
       let x = -total / 2;
       const rowEl = makeSVG('g');
       rowEl.classList.add('edge-pill-row');
-      rowEl.setAttribute('transform', `translate(0 ${rowIndex * rowGap - (pillRows.length - 1) * rowGap / 2})`);
+      rowEl.setAttribute('transform', `translate(0 ${rowIndex * PILL_ROW_H - (pillRows.length - 1) * PILL_ROW_H / 2})`);
       row.forEach((part, i) => {
         const item = makeSVG('g');
         item.classList.add('edge-pill', `edge-pill-${part.role}`);
-        item.setAttribute('transform', `translate(${x} -9)`);
+        item.setAttribute('transform', `translate(${x} ${-PILL_HEIGHT / 2})`);
         const rect = makeSVG('rect');
         rect.setAttribute('width', widths[i]);
-        rect.setAttribute('height', 18);
+        rect.setAttribute('height', PILL_HEIGHT);
         rect.setAttribute('rx', 5);
         const label = makeSVG('text');
         label.setAttribute('x', widths[i] / 2);
-        label.setAttribute('y', 9);
+        label.setAttribute('y', PILL_HEIGHT / 2);
         label.setAttribute('dominant-baseline', 'central');
         label.setAttribute('text-anchor', 'middle');
         label.textContent = part.text;
         item.appendChild(rect);
         item.appendChild(label);
         rowEl.appendChild(item);
-        x += widths[i] + 4;
+        x += widths[i] + PILL_GAP;
       });
       parts.pillEl.appendChild(rowEl);
     });
-    edgeGrp.__pillWidth = Math.max(40, ...pillRows.map(row => row.reduce((sum, p) => sum + Math.max(24, 12 + p.text.length * 6.2), 0) + Math.max(0, row.length - 1) * 4));
-    edgeGrp.__pillHeight = Math.max(18, pillRows.length * 22);
     edgeGrp.__pillKey = pillKey;
   }
   parts.pillEl.setAttribute('transform', `translate(${geo.lx} ${geo.ly})`);
@@ -374,22 +351,19 @@ export function renderTransitions() {
   const g = $('trans-g');
   const lg = $('trans-lbl-g');
   const live = App.domCache.transitions;
-  const { tsByPair } = buildEdgeIndex();
+  const ctx = currentLayoutContext();
 
   syncStartArrow(g);
 
   let prev = App.domCache.startArrow || null;
   const seen = new Set();
-  for (const grp of groupTrans()) {
-    const from = getState(grp.from), to = getState(grp.to);
-    if (!from || !to) continue;
-    const key = from.id + '|' + to.id;
+  for (const { key, ts } of ctx.groups) {
     let node = live.get(key);
     if (!node) {
       node = createEdgeNode(key);
       live.set(key, node);
     }
-    if (!syncEdgeNode(node, from, to, grp.ts, tsByPair)) continue;
+    if (!syncEdgeNode(node, ctx.geo.get(key), ts)) continue;
     seen.add(key);
 
     const expected = prev ? prev.nextSibling : g.firstChild;
@@ -419,13 +393,16 @@ export function renderTransitions() {
 // Runs on every animation frame while dragging, so it only touches geometry —
 // no classes, no labels, no node creation.
 //
-// It shares edgeGeometry() with renderTransitions rather than keeping a second
-// copy of the curve maths, and reaches child elements through the __parts
-// references the renderer already holds instead of running a querySelector per
-// node per frame. buildEdgeIndex keeps the "is there an edge the other way?"
-// lookup O(1); without it each frame is O(edges x transitions).
+// It runs the same layout pass as renderTransitions rather than keeping a second
+// copy of the routing maths, which is what makes avoidance live: loops swing
+// round and labels step aside while the state is still under the pointer,
+// instead of snapping into place on release. Child elements are reached through
+// the __parts references the renderer already holds rather than a querySelector
+// per node per frame, and the pass drops its collision stages above
+// COLLISION_BUDGET_STATES so a very large machine still drags at frame rate.
 export function updateFastDOM() {
-  const { stateById, tsByPair } = buildEdgeIndex();
+  const ctx = currentLayoutContext();
+  const stateById = ctx.stateById;
   const hasSub = App.machine === 'Moore' || usesParityPriorities(App.machine);
 
   for (const s of App.states) {
@@ -469,13 +446,7 @@ export function updateFastDOM() {
   for (const [key, edgeGrp] of App.domCache.transitions) {
     const p = edgeGrp.__parts;
     if (!p) continue;
-    const sep = key.indexOf('|');
-    const from = stateById.get(key.slice(0, sep));
-    const to = stateById.get(key.slice(sep + 1));
-    const ts = tsByPair.get(key);
-    if (!from || !to || !ts) continue;
-
-    const geo = edgeGeometry(from, to, ts, tsByPair);
+    const geo = ctx.geo.get(key);
     if (!geo) continue;
 
     p.pathEl.setAttribute('d', geo.d);

@@ -2359,6 +2359,14 @@ export function openSettingsModal() {
   if ($('set-layout-algo')) $('set-layout-algo').value = c.layout.algorithm || 'sugiyama';
   $('set-node-spacing').value = c.layout.nodeSpacing;
   $('set-curve-off').value = c.render.curveOff;
+  // An imported or restored config predating collision avoidance has none of
+  // these keys, and every pass treats "absent" as on — so the boxes have to as
+  // well, or opening Settings would silently turn them all off.
+  if ($('set-smart-loops')) $('set-smart-loops').checked = c.render.smartSelfLoops !== false;
+  if ($('set-auto-route')) $('set-auto-route').checked = c.render.autoRouteEdges !== false;
+  if ($('set-smart-labels')) $('set-smart-labels').checked = c.render.smartLabels !== false;
+  if ($('set-avoid-overlap')) $('set-avoid-overlap').checked = c.render.avoidNodeOverlap !== false;
+  if ($('set-node-clearance')) $('set-node-clearance').value = c.render.nodeClearance ?? 12;
   $('set-export-res').value = c.exportRes || 2;
   $('set-sym-eps').value = c.sym.eps;
   if ($('set-sym-lambda')) $('set-sym-lambda').value = c.sym.lambda;
@@ -2456,6 +2464,17 @@ export function confirmSettings() {
   // for configs that arrive from imports rather than this modal.
   c.layout.nodeSpacing = Math.max(8, parseInt($('set-node-spacing').value) || 35);
   c.render.curveOff = parseInt($('set-curve-off').value) || 45;
+  if ($('set-smart-loops')) c.render.smartSelfLoops = $('set-smart-loops').checked;
+  if ($('set-auto-route')) c.render.autoRouteEdges = $('set-auto-route').checked;
+  if ($('set-smart-labels')) c.render.smartLabels = $('set-smart-labels').checked;
+  if ($('set-avoid-overlap')) c.render.avoidNodeOverlap = $('set-avoid-overlap').checked;
+  if ($('set-node-clearance')) {
+    // Clamped because it is a distance every routing search steps in: zero makes
+    // "clear of a node" mean "touching it", and an outsized value pushes every
+    // label off the diagram.
+    const clearance = parseInt($('set-node-clearance').value);
+    c.render.nodeClearance = Number.isFinite(clearance) ? Math.min(80, Math.max(0, clearance)) : 12;
+  }
   c.exportRes = parseFloat($('set-export-res').value) || 2;
   const oldSyms = { ...c.sym };
   c.sym.eps = $('set-sym-eps').value || oldSyms.eps;
@@ -2505,6 +2524,11 @@ export function getEditorSettingsData() {
     layoutAlgorithm: c.layout.algorithm,
     layoutNodeSpacing: c.layout.nodeSpacing,
     renderCurveOff: c.render.curveOff,
+    renderSmartSelfLoops: c.render.smartSelfLoops !== false,
+    renderAutoRouteEdges: c.render.autoRouteEdges !== false,
+    renderSmartLabels: c.render.smartLabels !== false,
+    renderAvoidNodeOverlap: c.render.avoidNodeOverlap !== false,
+    renderNodeClearance: c.render.nodeClearance ?? 12,
     exportRes: c.exportRes,
     symEps: c.sym.eps,
     symLambda: c.sym.lambda,
@@ -2567,6 +2591,11 @@ export function populateSettingsModalInputs(data) {
   if (data.layoutAlgorithm !== undefined && $('set-layout-algo')) $('set-layout-algo').value = data.layoutAlgorithm;
   if (data.layoutNodeSpacing !== undefined) $('set-node-spacing').value = data.layoutNodeSpacing;
   if (data.renderCurveOff !== undefined) $('set-curve-off').value = data.renderCurveOff;
+  if (data.renderSmartSelfLoops !== undefined && $('set-smart-loops')) $('set-smart-loops').checked = !!data.renderSmartSelfLoops;
+  if (data.renderAutoRouteEdges !== undefined && $('set-auto-route')) $('set-auto-route').checked = !!data.renderAutoRouteEdges;
+  if (data.renderSmartLabels !== undefined && $('set-smart-labels')) $('set-smart-labels').checked = !!data.renderSmartLabels;
+  if (data.renderAvoidNodeOverlap !== undefined && $('set-avoid-overlap')) $('set-avoid-overlap').checked = !!data.renderAvoidNodeOverlap;
+  if (data.renderNodeClearance !== undefined && $('set-node-clearance')) $('set-node-clearance').value = data.renderNodeClearance;
   if (data.exportRes !== undefined) $('set-export-res').value = data.exportRes;
   if (data.symEps !== undefined) $('set-sym-eps').value = data.symEps;
   if (data.symLambda !== undefined && $('set-sym-lambda')) $('set-sym-lambda').value = data.symLambda;

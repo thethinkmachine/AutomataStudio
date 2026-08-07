@@ -265,7 +265,7 @@
         <div class="panel-header">
           <span class="panel-header-title">Workspace</span>
           <button class="pin-btn" id="lpanel-pin-btn" onclick="toggleLPanelPin()" data-tip="Unpin left panel">
-            <svg viewBox="0 0 256 256" width="14" height="14=" fill="currentColor"><path d="M235.32,81.37,174.63,20.69a16,16,0,0,0-22.63,0L98.37,74.49c-10.66-3.34-35-7.37-60.4,13.14a16,16,0,0,0-1.29,23.78L85,159.71,42.34,202.34a8,8,0,0,0,11.32,11.32L96.29,171l48.29,48.29A16,16,0,0,0,155.9,224c.38,0,.75,0,1.13,0a15.93,15.93,0,0,0,11.64-6.33c19.64-26.1,17.75-47.32,13.19-60L235.33,104A16,16,0,0,0,235.32,81.37ZM224,92.69h0l-57.27,57.46a8,8,0,0,0-1.49,9.22c9.46,18.93-1.8,38.59-9.34,48.62L48,100.08c12.08-9.74,23.64-12.31,32.48-12.31A40.13,40.13,0,0,1,96.81,91a8,8,0,0,0,9.25-1.51L163.32,32,224,92.68Z" /></svg>
+            <svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M235.32,81.37,174.63,20.69a16,16,0,0,0-22.63,0L98.37,74.49c-10.66-3.34-35-7.37-60.4,13.14a16,16,0,0,0-1.29,23.78L85,159.71,42.34,202.34a8,8,0,0,0,11.32,11.32L96.29,171l48.29,48.29A16,16,0,0,0,155.9,224c.38,0,.75,0,1.13,0a15.93,15.93,0,0,0,11.64-6.33c19.64-26.1,17.75-47.32,13.19-60L235.33,104A16,16,0,0,0,235.32,81.37ZM224,92.69h0l-57.27,57.46a8,8,0,0,0-1.49,9.22c9.46,18.93-1.8,38.59-9.34,48.62L48,100.08c12.08-9.74,23.64-12.31,32.48-12.31A40.13,40.13,0,0,1,96.81,91a8,8,0,0,0,9.25-1.51L163.32,32,224,92.68Z" /></svg>
           </button>
         </div>
         <div class="lpanel-content" id="lpanel-content">
@@ -1466,6 +1466,27 @@
           <span class="modal-lbl">Default Edge Curve</span>
           <input type="number" class="inp" id="set-curve-off" label="Base curve magnitude for bidirectional edges">
         </div>
+        <div class="modal-section-lbl">Collision Avoidance</div>
+        <div class="modal-row" data-tip="Place each self-loop on whichever side of its state is free, instead of always above it. Drag a selected loop's grip to override the choice by hand.">
+          <span class="modal-lbl">Smart Self-Loops</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-smart-loops"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="Bend an edge around any state that would otherwise sit on top of it. Edges you have curved by hand are left exactly as you set them.">
+          <span class="modal-lbl">Route Edges Around States</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-auto-route"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="Offset each transition label from its own edge, then move it clear of any state, edge or other label it would overlap.">
+          <span class="modal-lbl">Keep Labels Clear</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-smart-labels"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="On releasing a drag, nudge apart any state circles left overlapping. Off, states can be stacked exactly on top of one another.">
+          <span class="modal-lbl">Separate Overlapping States</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-avoid-overlap"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="Clear space demanded around a state circle by any edge or label routed past it.">
+          <span class="modal-lbl">Node Clearance (px)</span>
+          <input type="number" class="inp" id="set-node-clearance" min="0" max="80" label="Space edges and labels leave around a state">
+        </div>
         <div class="modal-row">
           <span class="modal-lbl">Export Resolution (×)</span>
           <input type="number" step="0.5" min="1" max="10" class="inp" id="set-export-res" label="Density of the exported PNG image">
@@ -1740,6 +1761,10 @@
     <div class="ctx-i ctx-edge" onclick="ctxReverseTrans()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,181.66l-32,32a8,8,0,0,1-11.32-11.32L188.69,184H48a8,8,0,0,1,0-16H188.69l-18.35-18.34a8,8,0,0,1,11.32-11.32l32,32A8,8,0,0,1,213.66,181.66Zm-139.32-64a8,8,0,0,0,11.32-11.32L67.31,88H208a8,8,0,0,0,0-16H67.31L85.66,53.66A8,8,0,0,0,74.34,42.34l-32,32a8,8,0,0,0,0,11.32Z" /></svg>
       Reverse Direction
+    </div>
+    <div class="ctx-i ctx-edge" onclick="ctxResetEdgeShape()" data-tip="Discard a bend or self-loop direction set by dragging, and let the diagram place this edge again">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A96,96,0,1,1,195.88,60.19L224,85.53V56a8,8,0,1,1,16,0Z" /></svg>
+      Reset Shape
     </div>
     <div class="ctx-i ctx-edge" onclick="ctxAddNoteEdge()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M88,96a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H96A8,8,0,0,1,88,96Zm8,40h64a8,8,0,0,0,0-16H96a8,8,0,0,0,0,16Zm32,16H96a8,8,0,0,0,0,16h32a8,8,0,0,0,0-16ZM224,48V156.69A15.86,15.86,0,0,1,219.31,168L168,219.31A15.86,15.86,0,0,1,156.69,224H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H152V160a8,8,0,0,1,8-8h48V48H48Zm120-40v28.7L196.69,168Z" /></svg>

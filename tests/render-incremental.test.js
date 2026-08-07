@@ -286,15 +286,20 @@ test('the curve handle exists only while the edge is selected', () => {
   assert.equal(node.__parts.handle, null);
 });
 
-test('a self-loop renders an arc and no curve handle even when selected', () => {
+test('a self-loop renders an arc, and its grip swings the loop instead of bending it', () => {
   machine({ states: 1 });
   const t = addTransition(0, 0, 'a');
-  App.selectedTransitions.add(t.id);
   context.renderAll();
 
   const node = edgeNode(0, 0);
   assert.ok(node.__parts.pathEl.getAttribute('d').includes('A'), 'self-loops are drawn as an arc');
-  assert.equal(node.__parts.handle, null, 'there is no control point to drag on a self-loop');
+  assert.equal(node.__parts.handle, null, 'unselected: no grip');
+
+  // A loop has no chord to bend, so the grip is the only way to say "put it on
+  // the other side" — without it an automatic placement could not be overridden.
+  App.selectedTransitions.add(t.id);
+  context.renderAll();
+  assert.ok(node.__parts.handle, 'a selected self-loop shows a grip to swing it round');
 });
 
 test('the start arrow is reused and repositioned, not recreated', () => {

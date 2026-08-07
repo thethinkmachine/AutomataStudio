@@ -26,7 +26,7 @@ The package is `"type": "module"`. The two Electron entry points are CommonJS an
 
 `js/` is ES modules with explicit imports and exports; `index.html` loads exactly one script, [js/main.js](js/main.js). There is no shared global scope and no load-order dependency — with one deliberate exception.
 
-**[js/bridge.js](js/bridge.js)** re-exposes 214 functions on `window`. The UI is driven by `on*="..."` attributes, which are evaluated as global-scope code and cannot see module bindings. 357 of those attributes are static in `index.html`; a further 125 are in markup the app builds at runtime (algorithm cards in `algorithms-fa.js`, the export dialogs, alphabet chips, context menus) — so grepping `index.html` alone will understate what the HTML depends on.
+**[js/bridge.js](js/bridge.js)** re-exposes 215 functions on `window`. The UI is driven by `on*="..."` attributes, which are evaluated as global-scope code and cannot see module bindings. 358 of those attributes are static in `index.html`; a further 125 are in markup the app builds at runtime (algorithm cards in `algorithms-fa.js`, the export dialogs, alphabet chips, context menus) — so grepping `index.html` alone will understate what the HTML depends on.
 
 Practical consequences:
 
@@ -89,7 +89,7 @@ Points worth keeping in mind:
 
 ### Rendering
 
-The diagram is **SVG**, built imperatively in [js/render.js](js/render.js) (`makeSVG()` + `SVG_NS`) — no virtual DOM and no framework. `renderAll()` **diffs**: it walks `App.states` and `groupTrans()`, reusing the node registered in `App.domCache` for each state id / `"from|to"` edge key, creating only what is new and evicting only what is gone. An idle re-render allocates nothing; a 150-state machine used to recreate 745 elements and 447 listeners on every call.
+The diagram is **SVG**, built imperatively in [js/render.js](js/render.js) (`makeSVG()` + `SVG_NS`) — no virtual DOM and no framework. `renderAll()` **diffs**: it walks `App.states` and the layout pass's edge groups, reusing the node registered in `App.domCache` for each state id / `"from|to"` edge key, creating only what is new and evicting only what is gone. An idle re-render allocates nothing; a 150-state machine used to recreate 745 elements and 447 listeners on every call.
 
 Two rules follow, and breaking either is silent:
 
@@ -98,9 +98,27 @@ Two rules follow, and breaking either is silent:
 
 Node internals are reached through `node.__parts` (`circle`, `label`, `ring`, `sub`; `pathEl`, `hitEl`, `textEl`, `handle`) rather than `querySelector`. `sub` is the second line under a state's name, shared by the Moore output and the parity priority — they never coexist. Edge labels live in `#trans-lbl-g`, not inside the edge group, so every label paints above every edge — deleting an edge has to detach both.
 
-`updateFastDOM()` is the drag path: geometry only, every frame, sharing `edgeGeometry()` and `__parts` with the renderer. `buildEdgeIndex()` keeps the "is there an edge the other way?" lookup O(1); without it a pass is O(edges × transitions).
+`updateFastDOM()` is the drag path: geometry only, every frame, sharing the layout pass and `__parts` with the renderer.
 
-[js/canvas.js](js/canvas.js) owns the camera (`App.cam` = `{x, y, z}`), pan/zoom and pointer gestures, with touch on a deliberately separate path from mouse/pen.
+### Geometry and collision avoidance
+
+**Where things go is [js/geometry.js](js/geometry.js); what gets drawn is `render.js`.** `buildLayoutContext()` lays the whole diagram out in one pass and returns `{stateById, tsByPair, groups, geo}`, where `geo` maps each `"from|to"` key to a finished `{d, lx, ly, mx, my, crvVal, …}`. Both `renderTransitions()` and `updateFastDOM()` start from it — via `currentLayoutContext()` in `render.js`, which supplies the label-measuring callback — so routing runs live during a drag rather than snapping into place on release.
+
+It is one pass rather than one call per edge because avoidance is global: a label can only be placed clear of the other labels once they all have positions. The four stages, each reading the last:
+
+1. **index** — states, transitions grouped per ordered pair, and a uniform spatial grid. Every "what is near here?" query goes through the grid; without it routing is O(edges × states) and label placement O(labels²).
+2. **self-loops** — twelve candidate directions scored against nearby states, the label box that would ride outside the arc, and the directions incident edges (plus the start arrow) arrive from. Up wins ties. **A loop is no longer always on top**; `t.loopAngle` is the manual override, set by dragging the grip a selected loop now shows, and cleared by "Reset Shape".
+3. **routing** — an edge whose chord runs through a third state is bent around it. A quadratic's deviation is *half* its control offset, so the search steps in node-sized increments. `t.curve` (the bend handle) always wins over it, and an edge crossing more than `MAX_ROUTE_BLOCKERS` states gives up rather than swinging 300px sideways.
+4. **labels** — offset off their own edge along the normal, on the outside of the bend, then moved only if that box overlaps a state, another label or a foreign edge. Candidates are ordered ideal-first, so an uncrowded diagram costs one collision test per label.
+
+Points worth keeping in mind:
+
+- **Label sizes are estimated, not measured.** The box has to exist before the text is in the DOM, and measuring per edge per frame would force a layout flush on every drag frame. `render.js` and `geometry.js` therefore share the pill metrics (`pillPartWidth`, `PILL_ROW_H`) — two copies of that arithmetic would place the label clear of a box that is not the one drawn.
+- **Stages 2–4 are skipped past `COLLISION_BUDGET_STATES` / `COLLISION_BUDGET_TRANSITIONS`**, where a pass no longer fits a drag frame; the geometry degrades to the plain drawing rather than getting slow. The four `App.config.render` flags (`smartSelfLoops`, `autoRouteEdges`, `smartLabels`, `avoidNodeOverlap`) switch the stages off independently, and **absent means on** — an imported config predating them must not read as "all off".
+- `resolveNodeOverlaps()` separates state circles, and `canvas.js` calls it on drop with `movable` set to the dragged ids so the crowd stays put. Coincident centres have no direction to divide by; it builds the unit vector directly rather than standing in an epsilon distance, which scaled the push by a thousand and fired the state off the canvas.
+- `includeLayoutBounds()` feeds `getContentBounds()`, so fit-to-screen and cropped exports frame loops and pushed-out labels instead of cropping them.
+
+[js/canvas.js](js/canvas.js) owns the camera (`App.cam` = `{x, y, z}`), pan/zoom and pointer gestures, with touch on a deliberately separate path from mouse/pen. `App.dragCurve` covers both edge gestures: bending a chord, or swinging a self-loop when `from === to`.
 
 ### Views
 

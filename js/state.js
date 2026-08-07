@@ -202,7 +202,16 @@ export const App = {
       curveOff: 45,
       arrowHeadSize: 6,
       textMargin: 8,
-      mooreTextMargin: 9
+      mooreTextMargin: 9,
+      // Collision avoidance (js/geometry.js). The three flags switch off the
+      // three passes independently; the distances are what "clear of" means.
+      nodeClearance: 12,       // space an edge or label leaves around a state
+      labelGap: 5,             // space a label leaves around anything else
+      minNodeGap: 8,           // space between two state circles after a drop
+      smartSelfLoops: true,    // put a loop where the node's surroundings allow
+      autoRouteEdges: true,    // bend an edge around a state in its way
+      smartLabels: true,       // move a label off whatever it would sit on
+      avoidNodeOverlap: true   // separate states dropped on top of each other
     },
     exportRes: 2,
     export: {

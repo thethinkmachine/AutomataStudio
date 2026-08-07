@@ -1,9 +1,10 @@
 import { beginDividerDraw, clearDividerSelection, dividerToolKind, dragDividerEndpointTo, dragDividerTo, endDividerEndpointDrag, finishDividerDraw, includeDividerBounds, updateDividerDraw } from './dividers.js';
 import { exportDownload, exportFilename } from './export-core.js';
+import { includeLayoutBounds, resolveNodeOverlaps } from './geometry.js';
 import { markDirty, snapshot } from './history.js';
 import { clearActiveNoteHighlight, dragNoteTo, endNoteResize, includeNoteBounds, resizeNoteTo } from './notes.js';
 import { getWorkspaceData } from './persistence.js';
-import { makeSVG, renderAll, updateFastDOM, updateLPanel, updateRPanel } from './render.js';
+import { currentLayoutContext, makeSVG, renderAll, updateFastDOM, updateLPanel, updateRPanel } from './render.js';
 import { $, App } from './state.js';
 import { createState, deleteState, getState, hideContextMenu, newId, newTId, openTransModal } from './states-transitions.js';
 import { Change, emit } from './store.js';
@@ -535,6 +536,19 @@ export function handlePointerMove(e) {
   if (App.dragCurve) {
     const pt = svgPt(e);
     const { from, to, grp } = App.dragCurve;
+    // A self-loop has no chord to bend, so the same grip means "swing the loop
+    // round the state" instead — the manual override for a direction the
+    // automatic placement got wrong. Anything but the exact centre gives an
+    // angle, and the centre itself is simply ignored.
+    if (from.id === to.id) {
+      const dx = pt.x - from.x, dy = pt.y - from.y;
+      if (dx || dy) {
+        const angle = Math.atan2(dy, dx);
+        grp.ts.forEach(t => t.loopAngle = angle);
+        if (typeof updateFastDOM === 'function') updateFastDOM(); else renderAll();
+      }
+      return;
+    }
     const dx = to.x - from.x, dy = to.y - from.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist > 0) {
@@ -578,10 +592,21 @@ export function endPointerInteractions() {
     App.marqueeRect.remove(); App.marqueeRect = null; App.marquee = null; renderMinimap();
   }
   if (App.dragOffsets || App.dragCurve) {
+    // A press that never moved is a selection, not a drag: dragPendingSnapshot
+    // is still set, nothing has been repositioned, and nudging states apart here
+    // would move the diagram in response to a plain click.
+    const moved = App.dragOffsets && !App.dragPendingSnapshot ? Object.keys(App.dragOffsets) : null;
     App.dragOffsets = null;
     App.dragCurve = null;
     App.dragPendingSnapshot = false;
     clearAlignGuides();
+    // Overlaps are settled on release rather than during the drag, so the node
+    // tracks the pointer exactly while it is held. The undo point was taken when
+    // the drag started, so the nudge is part of that same step.
+    if (moved && moved.length && App.config.render.avoidNodeOverlap !== false
+      && resolveNodeOverlaps(App.states, { movable: moved })) {
+      emit(Change.GRAPH);
+    }
     renderMinimap();
   }
   if (App.dividerDraft) {
@@ -1150,24 +1175,24 @@ export function autoLayout() {
 export function getContentBounds(statePad = 0) {
   if (!App.states.length) return null;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const grow = (x0, y0, x1, y1) => {
+    minX = Math.min(minX, x0); minY = Math.min(minY, y0);
+    maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
+  };
   App.states.forEach(s => {
     minX = Math.min(minX, s.x - statePad);
     minY = Math.min(minY, s.y - statePad);
     maxX = Math.max(maxX, s.x + statePad);
     maxY = Math.max(maxY, s.y + statePad);
   });
-  if (typeof includeNoteBounds === 'function') {
-    includeNoteBounds((x0, y0, x1, y1) => {
-      minX = Math.min(minX, x0); minY = Math.min(minY, y0);
-      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
-    });
+  // Self-loops stand well clear of their state and a crowded label can be pushed
+  // further still, so the states alone no longer bound the drawing — framing on
+  // them would crop a loop off the top of an exported diagram.
+  if (typeof currentLayoutContext === 'function') {
+    try { includeLayoutBounds(currentLayoutContext(), grow); } catch (e) { }
   }
-  if (typeof includeDividerBounds === 'function') {
-    includeDividerBounds((x0, y0, x1, y1) => {
-      minX = Math.min(minX, x0); minY = Math.min(minY, y0);
-      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
-    });
-  }
+  if (typeof includeNoteBounds === 'function') includeNoteBounds(grow);
+  if (typeof includeDividerBounds === 'function') includeDividerBounds(grow);
   if (!Number.isFinite(minX)) return null;
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
 }
