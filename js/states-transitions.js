@@ -914,6 +914,23 @@ export function ctxReverseTrans() {
   emit(Change.GRAPH);
 }
 
+// Drops the hand-set bend or loop direction, handing the edge back to the
+// automatic routing. Without this the only way out of a curve dragged to a bad
+// place is undo, which is no help once anything else has been edited since.
+export function ctxResetEdgeShape() {
+  const edge = App.ctxEdge;
+  if (!edge) return;
+  hideContextMenu();
+  const ids = new Set(edge.transitionIds);
+  const overridden = App.transitions.filter(t => ids.has(t.id)
+    && (t.curve !== undefined || t.loopAngle !== undefined));
+  if (!overridden.length) { showStatus('This edge is already placed automatically'); return; }
+  snapshot();
+  overridden.forEach(t => { delete t.curve; delete t.loopAngle; });
+  emit(Change.GRAPH);
+  showStatus('Edge shape reset');
+}
+
 export function ctxDeleteTrans() {
   const edge = App.ctxEdge;
   if (!edge) return;
