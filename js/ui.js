@@ -1899,11 +1899,16 @@ export function renderModelPicker() {
           if (!m) return '';
           const isActive = App.machine === mid;
           const isDisabled = m.implemented === false;
+          const full = m.fullName || m.label;
+          // The short code earns its slot only when it isn't already the opening
+          // words of the full name ("Moore" / "Moore Machine" reads as a stutter).
+          const showCode = !full.startsWith(mid);
           return `
-            <div class="model-item ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}" 
+            <div class="model-item ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}"
                  onclick="${isDisabled ? '' : `selectModel('${mid}')`}">
-              <span class="model-item-label">${m.label}</span>
-              ${isDisabled ? '<span class="model-item-status">Coming Soon</span>' : ''}
+              <span class="model-item-label">${full}</span>
+              ${isDisabled ? '<span class="model-item-status">Coming Soon</span>'
+                           : (showCode ? `<span class="model-item-code">${mid}</span>` : '')}
             </div>
           `;
         }).join('')}

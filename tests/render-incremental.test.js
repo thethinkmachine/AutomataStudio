@@ -181,12 +181,27 @@ test('the Moore output line is added and removed with the machine type', () => {
   App.states[0].output = '1';
   context.renderAll();
   const node = stateNode(0);
-  assert.ok(node.__parts.moore, 'Moore states carry an output line');
-  assert.equal(node.__parts.moore.textContent, '1');
+  assert.ok(node.__parts.sub, 'Moore states carry an output line');
+  assert.equal(node.__parts.sub.textContent, '1');
 
   App.machine = 'DFA';
   context.renderAll();
-  assert.equal(node.__parts.moore, null, 'the output line goes when the machine is no longer a Moore machine');
+  assert.equal(node.__parts.sub, null, 'the output line goes when the machine is no longer a Moore machine');
+});
+
+test('a parity priority uses a dedicated badge separate from the state label', () => {
+  machine({ states: 1, machineType: 'DPA' });
+  App.states[0].priority = 3;
+  context.renderAll();
+  const node = stateNode(0);
+  assert.ok(node.__parts.priority, 'a parity state carries its priority in a badge');
+  assert.equal(node.__parts.priority.text.textContent, '3');
+
+  // Switching to an ω-type without priorities retires the slot, exactly as
+  // leaving Moore does.
+  App.machine = 'DBA';
+  context.renderAll();
+  assert.equal(node.__parts.priority, null, 'Büchi has no per-state number to show');
 });
 
 // ── edge nodes ────────────────────────────────────────────────────

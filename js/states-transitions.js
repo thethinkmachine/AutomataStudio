@@ -3,7 +3,7 @@ import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
 import { pruneNoteAnchorsExcluding } from './notes.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
-import { $, App, getMachineConfig, isBoundarySymbol, isReadOnlyHeadMachine, isWeightedFA } from './state.js';
+import { $, App, getMachineConfig, isBoundarySymbol, isDeterministicOmega, isReadOnlyHeadMachine, isWeightedFA, statePriority, usesParityPriorities } from './state.js';
 import { Change, emit } from './store.js';
 import { getPdaDeterminismConflict, hasSingleValuedDelta, hasTransitionOutput, isAnyPDA, isCounterMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus, symbolsOverlap, tapeTuplesOverlap } from './utils.js';
 import { applyMachineSwitch } from './view.js';
@@ -333,6 +333,14 @@ export function confirmTrans() {
     const conflict = App.transitions.find(t => t.id !== editId && t.from === from && symbolsOverlap(t.symbol, sym));
     if (conflict) {
       showStatus(`${App.machine} already has δ(${getState(from)?.name}, '${sym}'). Each input symbol must map to one output.`); return;
+    }
+  } else if (isDeterministicOmega(App.machine)) {
+    // Overlap, not equality: buchiSuccessors takes every matching edge rather
+    // than resolving to the most specific one, so a wildcard alongside a
+    // concrete symbol is a genuine branch here even though a DFA tolerates it.
+    const conflict = App.transitions.find(t => t.id !== editId && t.from === from && symbolsOverlap(t.symbol, sym));
+    if (conflict) {
+      showStatus(`${App.machine} already has a move from ${getState(from)?.name} on '${sym}'. Switch to ${App.machine.replace(/^D/, 'N')} if you want to branch on the same symbol.`); return;
     }
   } else if (hasSingleValuedDelta(App.machine)) {
     const conflict = App.transitions.find(t => t.id !== editId && t.from === from && t.symbol === sym);
@@ -669,6 +677,15 @@ export function openStateModal(id) {
     $('s-acc').parentElement.style.display = '';
   }
   $('s-acc').checked = App.accepts.has(id);
+  // Under parity, α is the number rather than the ring — F carries no meaning,
+  // so offering the Accept toggle would invite a mode that does nothing.
+  const parityExtra = $('s-parity-extra');
+  const parity = usesParityPriorities(App.machine);
+  if (parityExtra) parityExtra.style.display = parity ? '' : 'none';
+  if (parity) {
+    $('s-acc').parentElement.style.display = 'none';
+    $('s-priority').value = String(statePriority(s));
+  }
   const mooreExtra = $('s-moore-extra');
   mooreExtra.style.display = App.machine === 'Moore' ? '' : 'none';
   if (App.machine === 'Moore') {
@@ -713,7 +730,14 @@ export function confirmState() {
     removeStartState(s.id);
   }
   
-  if ($('s-acc').checked) App.accepts.add(s.id); else App.accepts.delete(s.id);
+  if (usesParityPriorities(App.machine)) {
+    const p = parseInt($('s-priority').value, 10);
+    s.priority = Number.isInteger(p) && p >= 0 ? p : 0;
+  } else if ($('s-acc').checked) {
+    App.accepts.add(s.id);
+  } else {
+    App.accepts.delete(s.id);
+  }
   if (App.machine === 'Moore') {
     const out = $('s-output').value.trim();
     s.output = out === App.config.sym.lambda ? '' : out;

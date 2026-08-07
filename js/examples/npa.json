@@ -1,0 +1,59 @@
+{
+  "machine": "NPA",
+  "sigma": ["a", "b", "c"],
+  "states": [
+    { "id": "s0", "x": 420, "y": 130, "name": "guess", "priority": 1 },
+    { "id": "s1", "x": 180, "y": 380, "name": "A: last was a", "priority": 0 },
+    { "id": "s2", "x": 180, "y": 620, "name": "A: last was not a", "priority": 1 },
+    { "id": "s3", "x": 700, "y": 380, "name": "C: last was c", "priority": 2 },
+    { "id": "s4", "x": 700, "y": 620, "name": "C: last was not c", "priority": 1 }
+  ],
+  "startId": "s0",
+  "accepts": [],
+  "transitions": [
+    { "id": "t1", "from": "s0", "to": "s1", "symbol": "a" },
+    { "id": "t2", "from": "s0", "to": "s2", "symbol": "b" },
+    { "id": "t3", "from": "s0", "to": "s2", "symbol": "c" },
+    { "id": "t4", "from": "s0", "to": "s4", "symbol": "a" },
+    { "id": "t5", "from": "s0", "to": "s4", "symbol": "b" },
+    { "id": "t6", "from": "s0", "to": "s3", "symbol": "c" },
+    { "id": "t7", "from": "s1", "to": "s1", "symbol": "a" },
+    { "id": "t8", "from": "s1", "to": "s2", "symbol": "b" },
+    { "id": "t9", "from": "s1", "to": "s2", "symbol": "c" },
+    { "id": "t10", "from": "s2", "to": "s1", "symbol": "a" },
+    { "id": "t11", "from": "s2", "to": "s2", "symbol": "b" },
+    { "id": "t12", "from": "s2", "to": "s2", "symbol": "c" },
+    { "id": "t13", "from": "s3", "to": "s3", "symbol": "c" },
+    { "id": "t14", "from": "s3", "to": "s4", "symbol": "a" },
+    { "id": "t15", "from": "s3", "to": "s4", "symbol": "b" },
+    { "id": "t16", "from": "s4", "to": "s3", "symbol": "c" },
+    { "id": "t17", "from": "s4", "to": "s4", "symbol": "a" },
+    { "id": "t18", "from": "s4", "to": "s4", "symbol": "b" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 60, "y": 60, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Infinitely often a, OR eventually always c. The first symbol is a fork: \"guess\" sends the run into branch A (left) or branch C (right), and it never comes back. Branch A accepts when priority 0 recurs, i.e. when a keeps arriving. Branch C accepts when priority 1 stops recurring, leaving only the 2s, i.e. when everything but c dies out."
+    },
+    {
+      "id": "n2", "x": 60, "y": 780, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "The guess is a convenience, not a source of power: NPA = DPA = the full ω-regular class, so a deterministic parity automaton recognises this same union — it just has to track both branches at once instead of choosing. That equality is what makes parity the target of Safra's determinisation, and it is exactly what fails for Büchi, where DBA ⊊ NBA."
+    }
+  ],
+  "meta": {
+    "title": "Infinitely often a, or eventually always c",
+    "blurb": "A nondeterministic parity automaton that forks between two conditions on its first symbol. Nondeterminism is a convenience here — NPA = DPA — unlike under Büchi.",
+    "inputs": [
+      { "w": "(a)", "expect": "accept" },
+      { "w": "(c)", "expect": "accept" },
+      { "w": "(ab)", "expect": "accept" },
+      { "w": "ab(c)", "expect": "accept" },
+      { "w": "(ac)", "expect": "accept" },
+      { "w": "(b)", "expect": "reject" },
+      { "w": "(bc)", "expect": "reject" },
+      { "w": "abc(b)", "expect": "reject" }
+    ]
+  }
+}

@@ -2,7 +2,7 @@ import { wrap } from './canvas.js';
 import { openExportCodeModal } from './export-ui.js';
 import { _regexCacheKey, updateDefBoxOverflowShadow } from './render.js';
 import { langStepBudget, runSim, test2DFA, test2DFT, test2NFA, testDFA, testFST, testNFA, testNPDA, testPDA, testPDT, testPFA, testTMVerdict } from './simulation.js';
-import { $, App, getMachineConfig, isOmegaAutomaton } from './state.js';
+import { $, App, getMachineConfig, isDeterministicOmega, isOmegaAutomaton, omegaAcceptanceOf, statePriority, usesParityPriorities } from './state.js';
 import { getState } from './states-transitions.js';
 import { toggleRPSection } from './ui.js';
 import { isAnyPDA, isAnyTM } from './utils.js';
@@ -374,7 +374,11 @@ export function langTupleSyms() {
   // PFA's last slot is Rabin's cut-point, not an output function — see the λ
   // case in langTupleInfo, which branches on the machine for exactly this.
   if (m === 'PFA') return ['Q', 'Σ', 'δ', 'q₀', 'F', 'λ'];
-  if (m === 'NBA') return ['Q', 'Σ', 'δ', 'q₀', 'F'];
+  // Parity replaces the accepting set with a priority function, so the tuple's
+  // last slot changes name as well as meaning.
+  if (isOmegaAutomaton(m)) {
+    return ['Q', 'Σ', 'δ', 'q₀', usesParityPriorities(m) ? 'Ω' : 'F'];
+  }
   if (isAnyTM(m)) return ['Q', 'Σ', 'Γ', 'δ', 'q₀', 'F'];
   return ['Q', 'Σ', 'δ', 'q₀', 'F'];
 }
@@ -394,9 +398,21 @@ export function langTupleInfo(sym) {
     case 'Δ': return { n: App.outputAlpha.size, say: 'output alphabet', val: set([...App.outputAlpha]) };
     case 'F': return {
       n: App.accepts.size,
-      say: isOmegaAutomaton(m) ? 'Büchi accepting states (visited infinitely often)' : 'accepting states',
+      say: isOmegaAutomaton(m)
+        ? (omegaAcceptanceOf() === 'cobuchi'
+          ? 'co-Büchi states (must be visited only finitely often)'
+          : 'Büchi accepting states (visited infinitely often)')
+        : 'accepting states',
       val: set(names(App.accepts))
     };
+    case 'Ω': {
+      const used = [...new Set(App.states.map(statePriority))].sort((a, b) => a - b);
+      return {
+        n: used.length,
+        say: 'priority function (accept when the least recurring priority is even)',
+        val: used.length ? '{' + used.join(', ') + '}' : '∅'
+      };
+    }
     case 'q₀': return { n: null, say: 'start state', val: getState(App.startId)?.name || '—' };
     case 'Z₀': return { n: null, say: 'initial stack symbol', val: App.config.sym.stackBottom };
     case 'δ': return { n: App.transitions.length, say: 'transition function', val: langDeltaSignature() };
@@ -428,7 +444,9 @@ export function langDeltaSignature() {
   if (m === '2NFA') return 'Q × Σ → P(Q × {L, R, S})';
   if (m === '2DFT') return 'Q × Σ → Q × {L, R, S} × Δ*';
   if (m === 'PFA') return 'Q × Σ × Q → [0, 1]';
-  if (m === 'NBA') return 'Q × Σ → P(Q)';
+  // All eight ω-types share a tuple; the D-types differ only here, and that
+  // single arrow is what costs the DBA "finitely many a".
+  if (isOmegaAutomaton(m)) return isDeterministicOmega(m) ? 'Q × Σ → Q' : 'Q × Σ → P(Q)';
   if (m === 'PDT') return 'Q × (Σ ∪ {ε}) × Γ → P(Q × Γ* × Δ*)';
   if (m === 'QA') return 'Q × (Σ ∪ {ε}) × (Γ ∪ {ε}) → P(Q × Γ*)';
   if (m === '2PDA') return 'Q × (Σ ∪ {ε}) × Γ₁ × Γ₂ → P(Q × Γ₁* × Γ₂*)';

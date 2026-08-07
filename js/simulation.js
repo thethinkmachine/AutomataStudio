@@ -1,8 +1,8 @@
 import { makeSVG } from './render.js';
-import { $, App, R, getMachineConfig, isOmegaAutomaton, isWeightedFA } from './state.js';
+import { $, App, OmegaAcceptance, R, getMachineConfig, isDeterministicOmega, isOmegaAutomaton, isWeightedFA, omegaAcceptanceOf, statePriority } from './state.js';
 import { getState } from './states-transitions.js';
 import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
-import { buildMarkedInputTape, isAnyPDA, isAnyTM, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, pickMostSpecificTransition } from './utils.js';
+import { buildMarkedInputTape, findOmegaDeterminismConflict, isAnyPDA, isAnyTM, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, pickMostSpecificTransition } from './utils.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  SIMULATION
@@ -97,8 +97,29 @@ export function runSim() {
       log('<span class="t-err">The repeating period must be non-empty — <em>u()</em> is a finite word, not an ω-word.</span>');
       return;
     }
+    // The editor refuses to draw a branching D-type, but a loaded or imported
+    // machine has not been through it — so check again before running, the way
+    // DPDA does.
+    if (isDeterministicOmega(App.machine)) {
+      const clash = findOmegaDeterminismConflict(App.transitions);
+      if (clash) {
+        const where = getState(clash[0].from)?.name || clash[0].from;
+        log(`<span class="t-err">Nondeterministic overlap in ${App.machine} mode: ${where} has two moves on '${clash[0].symbol}'. Switch to ${App.machine.replace(/^D/, 'N')} to explore both branches.</span>`);
+        return;
+      }
+    }
+    // Weakness is a claim about the machine, not this word. A violation does
+    // not change the verdict — acceptance is still Büchi — so it is a warning
+    // rather than a refusal, and the run continues underneath it.
+    if (omegaAcceptanceOf() === 'weak') {
+      const scc = findWeakViolation();
+      if (scc) {
+        const names = scc.map(q => getState(q)?.name || q).join(', ');
+        log(`<span class="t-warn">Not a weak automaton: the cycle {${names}} contains both accepting and non-accepting states. A weak condition needs every SCC to sit wholly inside F or wholly outside it. Running it as a Büchi automaton.</span>`);
+      }
+    }
     App.currentTokens = [...u, ...v];
-    simNBA(u, v);
+    simOmega(u, v);
     if (App.simSteps && App.simSteps.length > 0) toggleAuto();
     return;
   }
@@ -1307,13 +1328,19 @@ const buchiKey = (state, pos) => `${state}|${pos}`;
 
 // Shortest cycle from `node` back to itself, as the list of nodes entered
 // (so the last element is `node` again). null when `node` is on no cycle.
-export function buchiFindCycle(u, v, node) {
+// `allow` restricts which states the cycle may pass through, which is how the
+// conditions other than Büchi are expressed: co-Büchi searches for a cycle
+// inside Q∖F, parity for one inside the states of priority ≥ some p. The
+// restriction applies to the cycle only — the stem that reaches `node` is free
+// to pass anywhere, because a finite prefix cannot affect inf(r).
+export function buchiFindCycle(u, v, node, allow = null) {
   const target = buchiKey(node.state, node.pos);
   const parent = new Map();
   const queue = [];
   const relax = (from, nx) => {
     const k = buchiKey(nx.state, nx.pos);
     if (k === target) return true;
+    if (allow && !allow(nx.state)) return false;
     if (parent.has(k)) return false;
     parent.set(k, { from, via: nx.via });
     queue.push({ state: nx.state, pos: nx.pos });
@@ -1341,7 +1368,41 @@ export function buchiFindCycle(u, v, node) {
   return null;
 }
 
-export function exploreNBA(u, v) {
+// Each condition reduces to "is there a reachable cycle of this shape?", and
+// each returns the anchor node the cycle must pass through plus the states the
+// cycle may use. Justifications, since they are not all equally obvious:
+//
+//   Büchi    — a cycle through some state of F is exactly inf(r) ∩ F ≠ ∅.
+//   co-Büchi — inf(r) ∩ F = ∅ means the run eventually stays outside F, i.e. a
+//              cycle lying wholly in Q∖F. Reaching it may cross F any number of
+//              times, which is why `allow` constrains only the cycle.
+//   parity   — anchor on a state of even priority p and forbid anything below
+//              p. The cycle then has minimum exactly p: p occurs on it, and
+//              nothing smaller is permitted. Conversely any accepting run's
+//              inf(r) is strongly connected with even minimum p, and the state
+//              carrying p sits on a cycle within it — so nothing is missed.
+//   weak     — judged as Büchi. Its extra content is a constraint on the
+//              automaton, checked separately by findWeakViolation.
+function omegaCycleCandidates(order) {
+  const cond = omegaAcceptanceOf();
+  if (cond === 'cobuchi') {
+    const outside = q => !App.accepts.has(q);
+    return order.filter(n => outside(n.state)).map(n => ({ node: n, allow: outside }));
+  }
+  if (cond === 'parity') {
+    const priOf = q => statePriority(getState(q));
+    return order
+      .filter(n => priOf(n.state) % 2 === 0)
+      .map(n => {
+        const p = priOf(n.state);
+        return { node: n, allow: q => priOf(q) >= p };
+      });
+  }
+  // buchi and weak
+  return order.filter(n => App.accepts.has(n.state)).map(n => ({ node: n, allow: null }));
+}
+
+export function exploreOmega(u, v) {
   if (!v.length) return { accepted: false, reason: 'empty-period', stem: [], loop: [] };
   if (!App.startId) return { accepted: false, reason: 'no-start', stem: [], loop: [] };
 
@@ -1373,9 +1434,8 @@ export function exploreNBA(u, v) {
     return path;
   };
 
-  for (const node of order) {
-    if (!App.accepts.has(node.state)) continue;
-    const loop = buchiFindCycle(u, v, node);
+  for (const { node, allow } of omegaCycleCandidates(order)) {
+    const loop = buchiFindCycle(u, v, node, allow);
     if (loop) return { accepted: true, stem: traceStem(node), loop, reason: null };
   }
 
@@ -1385,12 +1445,104 @@ export function exploreNBA(u, v) {
   return { accepted: false, stem: traceStem(deepest), loop: [], reason: order.length > 1 ? 'no-accepting-cycle' : 'stuck' };
 }
 
-export function testNBA(u, v) {
-  return exploreNBA(u, v).accepted;
+export function testOmega(u, v) {
+  return exploreOmega(u, v).accepted;
 }
 
-export function simNBA(u, v) {
-  const result = exploreNBA(u, v);
+// Tarjan over the *automaton* graph — states and transitions, with no input
+// word involved, because weakness is a property of the machine rather than of
+// a run. Returns the first SCC that straddles F, or null when every one of
+// them lies wholly inside or wholly outside it.
+//
+// A single state counts as an SCC only when it carries a self-loop; a state
+// with no way back to itself is on no cycle, so it cannot be in any inf(r) and
+// cannot break weakness.
+export function findWeakViolation() {
+  const succ = new Map();
+  for (const s of App.states) succ.set(s.id, []);
+  for (const t of App.transitions) if (succ.has(t.from)) succ.get(t.from).push(t.to);
+
+  const index = new Map(), low = new Map(), onStack = new Set(), stack = [];
+  let counter = 0, violation = null;
+
+  const straddles = (comp) => {
+    const inF = comp.filter(q => App.accepts.has(q)).length;
+    return inF > 0 && inF < comp.length;
+  };
+
+  // Iterative: a deep machine would blow the call stack, and the app happily
+  // loads 150-state graphs.
+  const strongConnect = (root) => {
+    const work = [{ v: root, i: 0 }];
+    index.set(root, counter); low.set(root, counter); counter++;
+    stack.push(root); onStack.add(root);
+    while (work.length) {
+      const frame = work[work.length - 1];
+      const edges = succ.get(frame.v) || [];
+      if (frame.i < edges.length) {
+        const w = edges[frame.i++];
+        if (!index.has(w)) {
+          index.set(w, counter); low.set(w, counter); counter++;
+          stack.push(w); onStack.add(w);
+          work.push({ v: w, i: 0 });
+        } else if (onStack.has(w)) {
+          low.set(frame.v, Math.min(low.get(frame.v), index.get(w)));
+        }
+        continue;
+      }
+      work.pop();
+      if (work.length) {
+        const parentV = work[work.length - 1].v;
+        low.set(parentV, Math.min(low.get(parentV), low.get(frame.v)));
+      }
+      if (low.get(frame.v) === index.get(frame.v)) {
+        const comp = [];
+        for (;;) {
+          const w = stack.pop();
+          onStack.delete(w);
+          comp.push(w);
+          if (w === frame.v) break;
+        }
+        const isCycle = comp.length > 1 || (succ.get(comp[0]) || []).includes(comp[0]);
+        if (isCycle && !violation && straddles(comp)) violation = comp;
+      }
+    }
+  };
+
+  for (const s of App.states) if (!index.has(s.id)) strongConnect(s.id);
+  return violation;
+}
+
+// How a state is annotated mid-run, and how the verdict is explained, both
+// depend on α — under co-Büchi an F-state is a liability rather than a prize,
+// and under parity the interesting fact about a state is its number.
+function omegaStateNote(stateId) {
+  const cond = omegaAcceptanceOf();
+  if (cond === 'parity') return ` · priority ${statePriority(getState(stateId))}`;
+  if (!App.accepts.has(stateId)) return '';
+  return cond === 'cobuchi' ? ' ✗ (in F — must stop recurring)' : ' ✓ (accepting)';
+}
+
+function omegaVerdictNote(result) {
+  const cond = omegaAcceptanceOf();
+  const names = result.loop.map(n => getState(n.state)?.name || n.state);
+  const cycle = [...new Set(names)].join(' → ');
+  if (result.accepted) {
+    if (cond === 'cobuchi') return ` — ACCEPT: the cycle ${cycle} repeats forever and never touches F again`;
+    if (cond === 'parity') {
+      const min = Math.min(...result.loop.map(n => statePriority(getState(n.state))));
+      return ` — ACCEPT: the cycle ${cycle} repeats forever and its least priority is ${min}, which is even`;
+    }
+    return ` — ACCEPT: the cycle ${cycle} repeats forever and visits an accepting state each time`;
+  }
+  if (result.reason === 'stuck') return ' — REJECT: no run survives the ω-word';
+  if (cond === 'cobuchi') return ' — REJECT: every reachable cycle touches F, so no run can leave it behind for good';
+  if (cond === 'parity') return ' — REJECT: every reachable cycle has an odd least priority';
+  return ' — REJECT: every reachable cycle avoids F, so no run visits an accepting state infinitely often';
+}
+
+export function simOmega(u, v) {
+  const result = exploreOmega(u, v);
   const unrollings = 2;
   const run = result.accepted
     ? [...result.stem, ...result.loop, ...result.loop].slice(0, result.stem.length + result.loop.length * unrollings)
@@ -1411,7 +1563,7 @@ export function simNBA(u, v) {
       const fromName = getState(run[idx - 1].state)?.name || run[idx - 1].state;
       note = `Read '${tape[idx - 1]}': ${fromName} → ${stateName}`;
     }
-    if (App.accepts.has(node.state)) note += ' ✓ (accepting)';
+    note += omegaStateNote(node.state);
     if (inLoop) note += ` · loop iteration ${Math.floor((idx - loopFrom) / Math.max(1, result.loop.length)) + 1}`;
     return {
       state: node.state,
@@ -1426,16 +1578,8 @@ export function simNBA(u, v) {
 
   const last = App.simSteps[App.simSteps.length - 1];
   if (last) {
-    if (result.accepted) {
-      const cycleStates = [...new Set(result.loop.map(n => getState(n.state)?.name || n.state))];
-      last.final = 'accept';
-      last.note += ` — ACCEPT: the cycle ${cycleStates.join(' → ')} repeats forever and visits an accepting state each time`;
-    } else {
-      last.final = 'reject';
-      last.note += result.reason === 'stuck'
-        ? ' — REJECT: no run survives the ω-word'
-        : ' — REJECT: every reachable cycle avoids F, so no run visits an accepting state infinitely often';
-    }
+    last.final = result.accepted ? 'accept' : 'reject';
+    last.note += omegaVerdictNote(result);
   }
   App.simIdx = 0;
   renderSimStep();
@@ -2264,7 +2408,7 @@ export function computeBatchResults(rawLines) {
       const u = tokenize(parsed.prefix === App.config.sym.eps ? '' : parsed.prefix);
       const v = tokenize(parsed.period);
       if (u === null || v === null || !v.length) return { str: line, accepted: false, error: true, expect };
-      const ok = testNBA(u, v);
+      const ok = testOmega(u, v);
       return { str: line, accepted: ok, output: null, expect, verdict: ok ? 'accept' : 'reject' };
     }
     const str = raw === App.config.sym.eps ? '' : raw;

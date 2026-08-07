@@ -128,3 +128,24 @@ test('the model picker renders an onclick naming a function that exists', () => 
     assert.equal(typeof globalThis[n], 'function', `${n} is named by the picker but not on window`);
   }
 });
+
+test('the model picker lists full names, not the compact labels', () => {
+  const h = createHarness();
+  const { MachineCategories, MachineTypes } = h.context;
+  h.context.renderModelPicker();
+  const html = h.getElement('model-picker-menu').innerHTML;
+
+  for (const mid of MachineCategories.flatMap(c => c.machines)) {
+    const m = MachineTypes[mid];
+    assert.ok(m.fullName, `${mid} needs a fullName to appear in the picker`);
+    assert.ok(
+      html.includes(`<span class="model-item-label">${m.fullName}</span>`),
+      `${mid} should be listed as "${m.fullName}"`
+    );
+  }
+
+  // The abbreviation stays visible beside the name, except where it would
+  // stutter against a full name that already opens with it.
+  assert.ok(html.includes('<span class="model-item-code">DFA</span>'));
+  assert.ok(!html.includes('<span class="model-item-code">Moore</span>'));
+});

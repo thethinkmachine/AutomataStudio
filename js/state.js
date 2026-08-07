@@ -1,37 +1,57 @@
 // ══════════════════════════════════════════════════════════════════
 //  CORE CONFIGURATION
 // ══════════════════════════════════════════════════════════════════
+// `label` is the compact name used wherever space is tight (the header button,
+// badges, formal definitions). `fullName` is the unabbreviated textbook name and
+// is what the model picker lists; it falls back to `label` if ever omitted.
 export const MachineTypes = {
-  'DFA': { label: 'DFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-dfa', file: 'dfa' },
-  'NFA': { label: 'NFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-nfa', file: 'nfa' },
-  'ε-NFA': { label: 'ε-NFA', category: 'fa', implemented: true, hasEpsilon: true, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-enfa', file: 'enfa' },
-  '2DFA': { label: '2DFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, hasEndMarkers: true, isTransducer: false, badge: 'bd-2dfa', file: 'twdfa' },
-  '2NFA': { label: '2NFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, hasEndMarkers: true, isTransducer: false, badge: 'bd-2nfa', file: 'twnfa' },
+  'DFA': { label: 'DFA', fullName: 'Deterministic Finite Automaton', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-dfa', file: 'dfa' },
+  'NFA': { label: 'NFA', fullName: 'Nondeterministic Finite Automaton', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-nfa', file: 'nfa' },
+  'ε-NFA': { label: 'ε-NFA', fullName: 'Finite Automaton with ε-Transitions', category: 'fa', implemented: true, hasEpsilon: true, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-enfa', file: 'enfa' },
+  '2DFA': { label: '2DFA', fullName: 'Two-Way Deterministic Finite Automaton', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, hasEndMarkers: true, isTransducer: false, badge: 'bd-2dfa', file: 'twdfa' },
+  '2NFA': { label: '2NFA', fullName: 'Two-Way Nondeterministic Finite Automaton', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, hasEndMarkers: true, isTransducer: false, badge: 'bd-2nfa', file: 'twnfa' },
   // isWeighted: edges carry a numeric probability rather than only a symbol, and
   // a run is a distribution over Q instead of a single state. isOmega: the input
   // is an infinite (ultimately periodic) word, so acceptance is a property of the
   // run's cycle rather than of a final configuration.
-  'PFA': { label: 'PFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, isWeighted: true, badge: 'bd-pfa', file: 'pfa' },
-  'NBA': { label: 'Büchi', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, isOmega: true, badge: 'bd-nba', file: 'buchi' },
+  'PFA': { label: 'PFA', fullName: 'Probabilistic Finite Automaton', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, isWeighted: true, badge: 'bd-pfa', file: 'pfa' },
+  // The ω-automata are one structure — Q, Σ, δ, q₀ — crossed over two axes:
+  // determinism, and the acceptance condition α that judges inf(r). Both are
+  // named by the type, so the label on screen is always the machine you have.
+  //
+  //   omegaCondition — which predicate decides a run. Drives the simulator, the
+  //                    tuple, and the class label; see the OmegaAcceptance
+  //                    registry below.
+  //   deterministic  — δ must be single-valued. Costs expressive power under
+  //                    Büchi alone: DBA ⊊ NBA, while DPA = NPA and
+  //                    DcoBA = NcoBA.
+  'DBA': { label: 'DBA', fullName: 'Deterministic Büchi Automaton', category: 'omega', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, isOmega: true, omegaCondition: 'buchi', deterministic: true, badge: 'bd-dba', file: 'dba' },
+  'DcoBA': { label: 'DcoBA', fullName: 'Deterministic co-Büchi Automaton', category: 'omega', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, isOmega: true, omegaCondition: 'cobuchi', deterministic: true, badge: 'bd-dba', file: 'dcoba' },
+  'DPA': { label: 'DPA', fullName: 'Deterministic Parity Automaton', category: 'omega', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, isOmega: true, omegaCondition: 'parity', deterministic: true, badge: 'bd-dba', file: 'dpa' },
+  'DWA': { label: 'DWA', fullName: 'Deterministic Weak Automaton', category: 'omega', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, isOmega: true, omegaCondition: 'weak', deterministic: true, badge: 'bd-dba', file: 'dwa' },
+  'NBA': { label: 'NBA', fullName: 'Nondeterministic Büchi Automaton', category: 'omega', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, isOmega: true, omegaCondition: 'buchi', deterministic: false, badge: 'bd-nba', file: 'buchi' },
+  'NcoBA': { label: 'NcoBA', fullName: 'Nondeterministic co-Büchi Automaton', category: 'omega', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, isOmega: true, omegaCondition: 'cobuchi', deterministic: false, badge: 'bd-nba', file: 'ncoba' },
+  'NPA': { label: 'NPA', fullName: 'Nondeterministic Parity Automaton', category: 'omega', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, isOmega: true, omegaCondition: 'parity', deterministic: false, badge: 'bd-nba', file: 'npa' },
+  'NWA': { label: 'NWA', fullName: 'Nondeterministic Weak Automaton', category: 'omega', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, isOmega: true, omegaCondition: 'weak', deterministic: false, badge: 'bd-nba', file: 'nwa' },
 
-  'DPDA': { label: 'DPDA', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-dpda', file: 'pda' },
-  'PDA': { label: 'PDA', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-dpda', file: 'pda' },
-  'NPDA': { label: 'NPDA', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-npda', file: 'npda' },
-  'QA': { label: 'Queue Automaton', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-qa', file: 'queue' },
-  'Counter': { label: 'Counter Machine', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-counter', file: 'counter' },
-  '2PDA': { label: '2-Stack PDA', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-2pda', file: 'twopda' },
+  'DPDA': { label: 'DPDA', fullName: 'Deterministic Pushdown Automaton', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-dpda', file: 'pda' },
+  'PDA': { label: 'PDA', fullName: 'Pushdown Automaton', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-dpda', file: 'pda' },
+  'NPDA': { label: 'NPDA', fullName: 'Nondeterministic Pushdown Automaton', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-npda', file: 'npda' },
+  'QA': { label: 'Queue Automaton', fullName: 'Queue Automaton', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-qa', file: 'queue' },
+  'Counter': { label: 'Counter Machine', fullName: 'Counter Machine', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-counter', file: 'counter' },
+  '2PDA': { label: '2-Stack PDA', fullName: 'Two-Stack Pushdown Automaton', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-2pda', file: 'twopda' },
 
-  'TM': { label: 'TM (DTM)', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-tm', file: 'tm' },
-  'NDTM': { label: 'NDTM', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-ndtm', file: 'ndtm' },
-  'MTM': { label: 'MTM', category: 'tm', implemented: true, hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-mtm', file: 'mtm' },
-  'LBA': { label: 'LBA', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, hasEndMarkers: true, isTransducer: false, badge: 'bd-lba', file: 'lba' },
-  'ITM': { label: '2-Way Infinite TM', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-itm', file: 'ittm' },
+  'TM': { label: 'TM (DTM)', fullName: 'Deterministic Turing Machine', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-tm', file: 'tm' },
+  'NDTM': { label: 'NDTM', fullName: 'Nondeterministic Turing Machine', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-ndtm', file: 'ndtm' },
+  'MTM': { label: 'MTM', fullName: 'Multi-Tape Turing Machine', category: 'tm', implemented: true, hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-mtm', file: 'mtm' },
+  'LBA': { label: 'LBA', fullName: 'Linear Bounded Automaton', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, hasEndMarkers: true, isTransducer: false, badge: 'bd-lba', file: 'lba' },
+  'ITM': { label: '2-Way Infinite TM', fullName: 'Two-Way Infinite Turing Machine', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-itm', file: 'ittm' },
 
-  'Moore': { label: 'Moore', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-moore', file: 'moore' },
-  'Mealy': { label: 'Mealy', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-mealy', file: 'mealy' },
-  'FST': { label: 'FST', category: 'special', implemented: true, hasEpsilon: true, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-fst', file: 'fst' },
-  'PDT': { label: 'Pushdown Transducer', category: 'special', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: true, badge: 'bd-pdt', file: 'pdt' },
-  '2DFT': { label: '2-Way Transducer', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, hasEndMarkers: true, isTransducer: true, badge: 'bd-2dft', file: 'twodft' }
+  'Moore': { label: 'Moore', fullName: 'Moore Machine', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-moore', file: 'moore' },
+  'Mealy': { label: 'Mealy', fullName: 'Mealy Machine', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-mealy', file: 'mealy' },
+  'FST': { label: 'FST', fullName: 'Finite State Transducer', category: 'special', implemented: true, hasEpsilon: true, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-fst', file: 'fst' },
+  'PDT': { label: 'Pushdown Transducer', fullName: 'Pushdown Transducer', category: 'special', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: true, badge: 'bd-pdt', file: 'pdt' },
+  '2DFT': { label: '2-Way Transducer', fullName: 'Two-Way Deterministic Finite Transducer', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, hasEndMarkers: true, isTransducer: true, badge: 'bd-2dft', file: 'twodft' }
 };
 
 // Example gallery per machine: first entry is the flagship shown by default,
@@ -57,13 +77,53 @@ export const MachineExamples = {
   'Mealy': [{ file: 'mealy', label: 'Serial binary adder' }, { file: 'mealy-classic', label: 'Classic: report each bit' }],
   'FST': [{ file: 'fst', label: 'Binary → Gray code' }, { file: 'fst-classic', label: 'Classic: nondeterministic rewriter' }],
   'PFA': [{ file: 'pfa', label: 'Noisy channel: does it end in a?' }, { file: 'pfa-classic', label: 'Classic: Rabin’s cut-point language' }],
+  'DBA': [{ file: 'dba', label: 'Never two a’s in a row' }, { file: 'dba-classic', label: 'Classic: infinitely often a' }],
+  'DcoBA': [{ file: 'dcoba', label: 'Eventually always b' }],
+  'DPA': [{ file: 'dpa', label: 'Eventually always b, by priority' }],
+  'DWA': [{ file: 'dwa', label: 'Never two a’s in a row' }],
   'NBA': [{ file: 'buchi', label: 'Infinitely often a' }, { file: 'buchi-classic', label: 'Classic: eventually always b' }],
+  'NcoBA': [{ file: 'ncoba', label: 'Eventually always b, with a needless guess' }],
+  'NPA': [{ file: 'npa', label: 'Infinitely often a, or eventually always c' }],
+  'NWA': [{ file: 'nwa', label: 'Never two a’s, with a needless guess' }],
   'PDT': [{ file: 'pdt', label: 'Reverse the input' }, { file: 'pdt-classic', label: 'Classic: aⁿbⁿ ↦ bⁿaⁿ' }],
   '2DFT': [{ file: 'twodft', label: 'Copy twice: w ↦ ww' }, { file: 'twodft-classic', label: 'Classic: reverse the input' }]
 };
 
+// The acceptance conditions an ω-automaton can carry, keyed by a machine type's
+// omegaCondition. All four judge the same object: inf(r), the set of states the
+// run visits infinitely often. On an ultimately periodic input that set is
+// exactly the states on the run's lasso cycle, which is why the eight types
+// share one simulator and differ only in a predicate over that cycle.
+//
+//   usesPriority — α is a per-state integer instead of a subset of Q.
+//   structural   — α is a subset of Q judged the Büchi way, but the *automaton*
+//                  must additionally satisfy a shape constraint.
+export const OmegaAcceptance = {
+  buchi: {
+    label: 'Büchi', tuple: 'F',
+    say: 'inf(r) ∩ F ≠ ∅ — some accepting state recurs forever',
+    usesPriority: false, structural: false
+  },
+  cobuchi: {
+    label: 'co-Büchi', tuple: 'F',
+    say: 'inf(r) ∩ F = ∅ — every state of F is visited only finitely often',
+    usesPriority: false, structural: false
+  },
+  parity: {
+    label: 'Parity', tuple: 'Ω',
+    say: 'the least priority recurring forever is even',
+    usesPriority: true, structural: false
+  },
+  weak: {
+    label: 'Weak', tuple: 'F',
+    say: 'Büchi acceptance, on an automaton whose every SCC lies inside F or outside it',
+    usesPriority: false, structural: true
+  }
+};
+
 export const MachineCategories = [
-  { id: 'fa', label: 'Finite Automata', machines: ['DFA', 'NFA', 'ε-NFA', '2DFA', '2NFA', 'PFA', 'NBA'] },
+  { id: 'fa', label: 'Finite Automata', machines: ['DFA', 'NFA', 'ε-NFA', '2DFA', '2NFA', 'PFA'] },
+  { id: 'omega', label: 'Omega Automata', machines: ['DBA', 'DcoBA', 'DPA', 'DWA', 'NBA', 'NcoBA', 'NPA', 'NWA'] },
   { id: 'mem', label: 'Memory Automata', machines: ['DPDA', 'NPDA', 'QA', 'Counter', '2PDA'] },
   { id: 'tm', label: 'Turing Machines', machines: ['TM', 'NDTM', 'MTM', 'LBA', 'ITM'] },
   { id: 'special', label: 'Transducers', machines: ['Moore', 'Mealy', 'FST', 'PDT', '2DFT'] }
@@ -226,6 +286,35 @@ export function isWeightedFA(m = App.machine) {
 // run's cycle, so there is no final configuration to inspect.
 export function isOmegaAutomaton(m = App.machine) {
   return !!getMachineConfig(m).isOmega;
+}
+
+// The α the current machine carries. Always a valid key — a type without an
+// explicit condition (or a workspace naming one this build does not know) reads
+// back as Büchi rather than as undefined.
+export function omegaAcceptanceOf(m = App.machine) {
+  const id = getMachineConfig(m).omegaCondition;
+  return OmegaAcceptance[id] ? id : 'buchi';
+}
+
+// True when α is a per-state priority rather than a subset of Q. This is what
+// swaps the accepting ring for a number on the node, so it gates rendering and
+// the state modal as well as the verdict.
+export function usesParityPriorities(m = App.machine) {
+  return isOmegaAutomaton(m) && OmegaAcceptance[omegaAcceptanceOf(m)].usesPriority;
+}
+
+// δ must be single-valued. Only the four D-types answer true, and only under
+// Büchi does the restriction cost languages.
+export function isDeterministicOmega(m = App.machine) {
+  const cfg = getMachineConfig(m);
+  return !!cfg.isOmega && !!cfg.deterministic;
+}
+
+// Priorities are small non-negative integers; anything missing or malformed
+// reads as 0, which is even and therefore the permissive default.
+export function statePriority(s) {
+  const p = Number(s?.priority);
+  return Number.isInteger(p) && p >= 0 ? p : 0;
 }
 
 export function isReadOnlyHeadMachine(m = App.machine) {

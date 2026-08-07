@@ -553,6 +553,7 @@
   border: 1px solid var(--purple-border);
 }
 
+.bd-dba,
 .bd-nba {
   background: var(--orange-soft);
   color: var(--orange);

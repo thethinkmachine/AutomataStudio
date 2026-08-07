@@ -16,7 +16,7 @@ export function createElement(id = '') {
   const classSet = new Set();
   const el = {
     id,
-    tagName: 'DIV',
+    tagName: String(id || 'DIV').toUpperCase(),
     value: '',
     textContent: '',
     className: '',
@@ -149,8 +149,8 @@ const documentStub = {
   querySelectorAll() { return []; },
   getElementById(id) { return getElement(id); },
   getElementsByClassName() { return []; },
-  createElement() { return createElement(); },
-  createElementNS() { return createElement(); },
+  createElement(name) { return createElement(name); },
+  createElementNS(ns, name) { return createElement(name); },
   createDocumentFragment() { return createElement(); },
   createTextNode(text) { return { nodeType: 3, textContent: String(text), children: [] }; },
   // view.js checks document.contains(previouslyFocused) before restoring focus.

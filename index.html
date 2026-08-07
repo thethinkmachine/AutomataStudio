@@ -1163,6 +1163,13 @@
       <div id="s-moore-extra" style="display:none">
         <div class="modal-row"><span class="modal-lbl">Output λ</span><select class="sel" id="s-output"></select></div>
       </div>
+      <div id="s-parity-extra" style="display:none">
+        <div class="modal-row"><span class="modal-lbl" data-tip="A run is accepting when the least priority it visits infinitely often is even">Priority Ω</span><input type="number" class="inp" id="s-priority" min="0" max="99" step="1" label="Parity priority"></div>
+        <div class="modal-row modal-row-tight">
+          <span class="modal-lbl"></span>
+          <span class="modal-hint">Lower priorities dominate. Even accepts, odd rejects.</span>
+        </div>
+      </div>
       <div id="s-mealy-extra" style="display:none">
         <div class="modal-section-lbl">Outgoing Transition Outputs (λ)</div>
         <div id="s-mealy-transitions-list" class="mealy-outputs-list"></div>
