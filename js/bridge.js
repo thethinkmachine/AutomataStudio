@@ -51,10 +51,10 @@ import {
   copyBoxText,
 } from './render.js';
 import {
-  applyNoteFormat, confirmNote, ctxAddNoteEdge, ctxAddNoteState,
+  applyNoteFormat, clearNoteFormatting, confirmNote, ctxAddNoteEdge, ctxAddNoteState,
   ctxAnchorNoteToSelection, ctxCanvasAddNote, ctxDeleteNote, ctxDetachNote,
   ctxEditNote, ctxResetNoteSize, ctxSetNoteColor, deleteNoteFromModal,
-  insertNoteNewline, setNoteModalColor, updateNoteCharCount,
+  handleNoteEditorKeydown, insertNoteNewline, setNoteModalColor, updateNoteCharCount, updateNoteEditor,
 } from './notes.js';
 import {
   confirmDivider, ctxDeleteDivider, ctxEditDivider, ctxSetDividerColor,
@@ -150,10 +150,10 @@ Object.assign(window, {
   // render.js
    copyBoxText,
   // notes.js
-   applyNoteFormat, confirmNote, ctxAddNoteEdge, ctxAddNoteState,
+   applyNoteFormat, clearNoteFormatting, confirmNote, ctxAddNoteEdge, ctxAddNoteState,
    ctxAnchorNoteToSelection, ctxCanvasAddNote, ctxDeleteNote, ctxDetachNote,
    ctxEditNote, ctxResetNoteSize, ctxSetNoteColor, deleteNoteFromModal,
-   insertNoteNewline, setNoteModalColor, updateNoteCharCount,
+   handleNoteEditorKeydown, insertNoteNewline, setNoteModalColor, updateNoteCharCount, updateNoteEditor,
   // dividers.js
    confirmDivider, ctxDeleteDivider, ctxEditDivider, ctxSetDividerColor,
    ctxSetDividerStyle, ctxStraightenDivider, deleteDividerFromModal,

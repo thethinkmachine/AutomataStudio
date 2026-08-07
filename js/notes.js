@@ -171,20 +171,39 @@ export const NOTE_CHARS_PER_LINE = noteCharsPerLine(NOTE_WIDTH);
 // the trade-off is that markers can only wrap whole words, not word interiors.
 export const NOTE_MARKUP_RE = /(^|[\s([{"'])(\*\*|__|\*)(?=\S)(.*?\S)\2(?=$|[\s)\]}"'.,;:!?])/g;
 export function parseNoteRuns(line) {
-  const runs = [];
-  let last = 0, m;
-  NOTE_MARKUP_RE.lastIndex = 0;
-  while ((m = NOTE_MARKUP_RE.exec(line))) {
-    const [, lead, marker, body] = m;
-    const markerAt = m.index + lead.length; // `lead` is context, not markup
-    if (markerAt > last) runs.push({ text: line.slice(last, markerAt) });
-    if (marker === '**') runs.push({ text: body, bold: true });
-    else if (marker === '__') runs.push({ text: body, underline: true });
-    else runs.push({ text: body, italic: true });
-    last = NOTE_MARKUP_RE.lastIndex;
+  const runs = [], active = { bold: 0, italic: 0, underline: 0 };
+  const markerStyles = { '**': ['bold'], '***': ['bold', 'italic'], '*': ['italic'], '__': ['underline'] };
+  const markerRe = /\*{1,3}|__/g;
+  let cursor = 0, match;
+  const pushText = text => {
+    if (!text) return;
+    const prev = runs[runs.length - 1];
+    const style = { bold: active.bold > 0, italic: active.italic > 0, underline: active.underline > 0 };
+    if (prev && prev.bold === style.bold && prev.italic === style.italic && prev.underline === style.underline) prev.text += text;
+    else runs.push({ text, ...style });
+  };
+  while ((match = markerRe.exec(line))) {
+    const marker = match[0], styles = markerStyles[marker];
+    const before = match.index ? line[match.index - 1] : '';
+    const after = line[match.index + marker.length] || '';
+    const leftBoundary = !before || /[\s([{"']/.test(before) || before === '*' || before === '_';
+    const rightBoundary = !after || /[\s)\]}"'.,;:!?]/.test(after) || after === '*' || after === '_';
+    const canClose = styles && styles.every(style => active[style] > 0) && rightBoundary;
+    let closeAt = line.indexOf(marker, match.index + marker.length);
+    let hasCloser = false;
+    while (closeAt !== -1) {
+      const closeAfter = line[closeAt + marker.length] || '';
+      if (!closeAfter || /[\s)\]}"'.,;:!?]/.test(closeAfter) || closeAfter === '*' || closeAfter === '_') { hasCloser = true; break; }
+      closeAt = line.indexOf(marker, closeAt + marker.length);
+    }
+    const canOpen = styles && leftBoundary && !/^\s$/.test(after) && hasCloser;
+    if (!canClose && !canOpen) continue;
+    pushText(line.slice(cursor, match.index));
+    styles.forEach(style => { active[style] += canClose ? -1 : 1; });
+    cursor = match.index + marker.length;
   }
-  if (last < line.length) runs.push({ text: line.slice(last) });
-  return runs.filter(r => r.text.length);
+  pushText(line.slice(cursor));
+  return runs;
 }
 
 // Word-wraps one paragraph's runs to `charsPerLine`, preserving styling
@@ -592,7 +611,7 @@ export function createNote(x, y, anchorStates = [], anchorTransitions = []) {
 export function addAnchoredNote(states, transitions) {
   const c = noteAnchorCentroid({ anchorStates: states, anchorTransitions: transitions }) || { x: 0, y: 0 };
   const note = createNote(c.x + 95, c.y - 85, states, transitions);
-  openNoteModal(note.id);
+  openNoteModal(note.id, { isNew: true });
 }
 
 // Resolves which states/transitions a new note should anchor to from a
@@ -629,7 +648,7 @@ export function ctxCanvasAddNote() {
   hideCanvasContextMenu();
   const pt = App.ctxCanvasPt || { x: 0, y: 0 };
   const note = createNote(pt.x, pt.y, [], []);
-  openNoteModal(note.id);
+  openNoteModal(note.id, { isNew: true });
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -692,22 +711,37 @@ export function ctxAnchorNoteToSelection() {
 //  EDIT MODAL
 // ══════════════════════════════════════════════════════════════════
 export let _noteModalColor = 'default';
+let _noteModalIsNew = false;
+let _noteModalCommitted = false;
+let _noteEditorLastValid = '';
 
 // Enter inserts a newline in the note textarea; Ctrl/Cmd+Enter saves.
 registerModal('note-modal', {
   submit: () => confirmNote(),
-  onClose: () => { App.editNoteId = null; }
+  onClose: () => {
+    if (_noteModalIsNew && !_noteModalCommitted && App.editNoteId) {
+      App.notes = App.notes.filter(n => n.id !== App.editNoteId);
+      if (App.history.length) App.history.pop();
+      renderAll();
+    }
+    App.editNoteId = null;
+    _noteModalIsNew = false;
+    _noteModalCommitted = false;
+  }
 });
 
-export function openNoteModal(id) {
+export function openNoteModal(id, { isNew = false } = {}) {
   const note = getNote(id);
   if (!note) return;
   App.editNoteId = id;
+  _noteModalIsNew = isNew;
+  _noteModalCommitted = false;
   const textEl = $('note-text');
-  if (textEl) textEl.value = note.text || '';
+  _noteEditorLastValid = note.text || '';
+  if (textEl) setNoteEditorMarkdown(textEl, _noteEditorLastValid);
   _noteModalColor = normalizeNoteColor(note.color);
   setNoteModalColorUI(_noteModalColor);
-  updateNoteCharCount();
+  updateNoteEditor();
   showOverlay('note-modal');
   if (textEl) setTimeout(() => textEl.focus(), 50);
 }
@@ -723,9 +757,14 @@ export function setNoteModalColor(color) {
 export function confirmNote() {
   const note = getNote(App.editNoteId);
   if (!note) return closeModal('note-modal');
-  snapshot();
-  note.text = ($('note-text')?.value || '').slice(0, NOTE_MAX_CHARS);
-  note.color = normalizeNoteColor(_noteModalColor);
+  const nextText = noteEditorMarkdown($('note-text')).slice(0, NOTE_MAX_CHARS);
+  const nextColor = normalizeNoteColor(_noteModalColor);
+  if (note.text !== nextText || normalizeNoteColor(note.color) !== nextColor) {
+    if (!_noteModalIsNew) snapshot();
+    note.text = nextText;
+    note.color = nextColor;
+  }
+  _noteModalCommitted = true;
   closeModal('note-modal');
   renderAll();
 }
@@ -735,53 +774,52 @@ export function confirmNote() {
 // markers, mirroring the classic "bold/italic in a plain textarea" pattern
 // used by Markdown editors everywhere. ──
 export function applyNoteFormat(kind) {
-  const ta = $('note-text');
-  if (!ta) return;
-  const markers = { bold: '**', italic: '*', underline: '__' };
-  const marker = markers[kind];
-  if (!marker) return;
-  const { value, selectionStart: s, selectionEnd: e } = ta;
-  const selected = value.slice(s, e);
-  const before = value.slice(Math.max(0, s - marker.length), s);
-  const after = value.slice(e, e + marker.length);
-  let next, cs, ce;
-  if (selected && before === marker && after === marker) {
-    // Selection is already wrapped exactly by this marker — unwrap it.
-    next = value.slice(0, s - marker.length) + selected + value.slice(e + marker.length);
-    cs = s - marker.length; ce = cs + selected.length;
-  } else if (selected) {
-    next = value.slice(0, s) + marker + selected + marker + value.slice(e);
-    cs = s + marker.length; ce = cs + selected.length;
-  } else {
-    // No selection: insert an empty pair and place the caret between them.
-    next = value.slice(0, s) + marker + marker + value.slice(e);
-    cs = ce = s + marker.length;
-  }
-  // Refuse rather than slice: truncating here would silently eat the tail of
-  // the note to make room for markers the user only meant to add.
-  if (!setNoteTextareaValue(ta, next)) return;
-  ta.setSelectionRange(Math.min(cs, ta.value.length), Math.min(ce, ta.value.length));
+  const editor = $('note-text');
+  const command = { bold: 'bold', italic: 'italic', underline: 'underline' }[kind];
+  if (!editor || !command) return;
+  editor.focus();
+  document.execCommand(command, false);
+  updateNoteEditor();
+}
+
+export function clearNoteFormatting() {
+  const editor = $('note-text');
+  if (!editor) return;
+  editor.focus();
+  const selection = window.getSelection?.();
+  if (!selection || selection.isCollapsed) document.execCommand('selectAll', false);
+  document.execCommand('removeFormat', false);
+  updateNoteEditor();
+}
+
+export function handleNoteEditorKeydown(e) {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const kind = { b: 'bold', i: 'italic', u: 'underline' }[String(e.key).toLowerCase()];
+  if (!kind) return;
+  e.preventDefault();
+  e.stopPropagation();
+  applyNoteFormat(kind);
 }
 
 export function insertNoteNewline() {
-  const ta = $('note-text');
-  if (!ta) return;
-  const { value, selectionStart: s, selectionEnd: e } = ta;
-  if (!setNoteTextareaValue(ta, value.slice(0, s) + '\n' + value.slice(e))) return;
-  const cs = Math.min(s + 1, ta.value.length);
-  ta.setSelectionRange(cs, cs);
+  const editor = $('note-text');
+  if (!editor) return;
+  editor.focus();
+  document.execCommand('insertLineBreak', false);
+  updateNoteEditor();
 }
 
 // Commits an edit to the note textarea, rejecting it whole if it would exceed
 // the character cap. Returns whether the value was applied.
-export function setNoteTextareaValue(ta, next) {
+export function setNoteTextareaValue(editor, next) {
   if (next.length > NOTE_MAX_CHARS) {
     showStatus(`Note is at the ${NOTE_MAX_CHARS}-character limit`);
-    ta.focus();
+    editor.focus();
     return false;
   }
-  ta.value = next;
-  ta.focus();
+  setNoteEditorMarkdown(editor, next);
+  _noteEditorLastValid = next;
+  editor.focus();
   updateNoteCharCount();
   return true;
 }
@@ -790,12 +828,58 @@ export function updateNoteCharCount() {
   const ta = $('note-text');
   const counter = $('note-char-count');
   if (!ta || !counter) return;
-  const len = ta.value.length;
+  const len = noteEditorMarkdown(ta).length;
   counter.textContent = `${len} / ${NOTE_MAX_CHARS}`;
   counter.classList.toggle('note-char-count-max', len >= NOTE_MAX_CHARS);
 }
+
+export function setNoteEditorMarkdown(editor, markdown) {
+  if (!editor) return;
+  editor.innerHTML = '';
+  String(markdown || '').replace(/\r\n/g, '\n').split('\n').forEach((line, i) => {
+    if (i) editor.appendChild(document.createElement('br'));
+    parseNoteRuns(line).forEach(run => {
+      let node = document.createTextNode(run.text);
+      if (run.underline) { const el = document.createElement('u'); el.appendChild(node); node = el; }
+      if (run.italic) { const el = document.createElement('em'); el.appendChild(node); node = el; }
+      if (run.bold) { const el = document.createElement('strong'); el.appendChild(node); node = el; }
+      editor.appendChild(node);
+    });
+  });
+}
+
+function serializeNoteEditorNode(node) {
+  if (!node) return '';
+  if (node.nodeType === 3) return node.textContent || '';
+  const tag = String(node.tagName || '').toUpperCase();
+  if (tag === 'BR') return '\n';
+  const inner = Array.from(node.childNodes || node.children || []).map(serializeNoteEditorNode).join('');
+  if (tag === 'B' || tag === 'STRONG') return `**${inner}**`;
+  if (tag === 'I' || tag === 'EM') return `*${inner}*`;
+  if (tag === 'U') return `__${inner}__`;
+  return inner;
+}
+
+export function noteEditorMarkdown(editor) {
+  if (!editor) return '';
+  return Array.from(editor.childNodes || editor.children || []).map(serializeNoteEditorNode).join('').replace(/\n+$/, '');
+}
+
+export function updateNoteEditor() {
+  const editor = $('note-text');
+  const markdown = noteEditorMarkdown(editor);
+  if (markdown.length > NOTE_MAX_CHARS) {
+    setNoteEditorMarkdown(editor, _noteEditorLastValid);
+    showStatus(`Note is at the ${NOTE_MAX_CHARS}-character limit`);
+  } else {
+    _noteEditorLastValid = markdown;
+  }
+  updateNoteCharCount();
+}
 export function deleteNoteFromModal() {
   const id = App.editNoteId;
+  if (_noteModalIsNew) { closeModal('note-modal'); return; }
+  _noteModalCommitted = true;
   closeModal('note-modal');
   if (!id) return;
   deleteNote(id);
