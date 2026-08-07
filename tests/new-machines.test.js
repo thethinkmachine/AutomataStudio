@@ -345,6 +345,71 @@ test('PDT: applies the same relation rule as FST', () => {
   assert.deepEqual([...ctx.explorePDT(tok('a')).outputs].sort(), ['a', 'b', 'x']);
 });
 
+// ── batch testing ──────────────────────────────────────────────────
+// The batch panel is a second decision path, independent of runSim: it
+// tokenizes its own lines and dispatches per machine. A family missing from
+// that dispatch reports "cannot tokenize" for perfectly good input.
+test('batch: PFA decides against the cut-point and scores expectations', () => {
+  coinFlipPFA(0.4);
+  const b = ctx.computeBatchResults(['a => accept', 'aa => accept']);
+  assert.equal(b.expected, 2);
+  assert.equal(b.passCount, 2);
+  assert.ok(b.results.every(r => !r.error), 'PFA input must tokenize');
+});
+
+test('batch: Büchi accepts u(v) lines and flags a word with no period', () => {
+  infinitelyOftenA();
+  const b = ctx.computeBatchResults(['(a) => accept', '(b) => reject', 'a(b)', 'abab']);
+  assert.equal(b.passCount, 2, 'both expectations hold');
+  assert.equal(b.results[2].verdict, 'reject', 'a(b) has finitely many a');
+  assert.equal(b.results[3].error, true, 'a bare finite word is not an ω-word');
+});
+
+test('batch: transducers carry their output through to the results', () => {
+  reversingPDT();
+  const pdt = ctx.computeBatchResults(['ab', 'abb']);
+  assert.deepEqual(pdt.results.map(r => r.output), ['ba', 'bba']);
+
+  doublingDFT();
+  const dft = ctx.computeBatchResults(['ab', 'a']);
+  assert.deepEqual(dft.results.map(r => r.output), ['abab', 'aa']);
+});
+
+test('batch: a 2DFT that never halts is unknown, not a rejection', () => {
+  const L = '⊢';
+  machine({
+    type: '2DFT', states: ['spin'], start: 'spin', accepts: [],
+    transitions: [
+      { from: 'spin', to: 'spin', symbol: L, dir: 'R', output: 'x' },
+      { from: 'spin', to: 'spin', symbol: 'a', dir: 'L', output: 'x' }
+    ],
+    config: { transducerAccepts: true, maxTmSteps: 200 }
+  });
+  const b = ctx.computeBatchResults(['a']);
+  assert.equal(b.results[0].verdict, 'unknown');
+  assert.equal(b.unknowns, 1);
+});
+
+test('batch results export renders for every new machine', () => {
+  const cases = [coinFlipPFA.bind(null, 0.4), infinitelyOftenA, reversingPDT, doublingDFT];
+  const lines = [['a'], ['(a)'], ['ab'], ['ab']];
+  cases.forEach((setup, i) => {
+    setup();
+    const b = ctx.computeBatchResults(lines[i]);
+    for (const format of ['markdown', 'csv']) {
+      const txt = ctx.exportBatchText(b, { format });
+      assert.ok(txt && txt.length, `${ctx.App.machine} ${format} export must produce text`);
+    }
+  });
+});
+
+test('a Büchi automaton yields no finite-word language samples', () => {
+  infinitelyOftenA();
+  const s = ctx.exportSampleWords({ accepted: 4, rejected: 4, maxLength: 3 });
+  assert.equal(s.decidable, false, 'a set of infinite words has no finite-word samples');
+  assert.equal(s.accepted.length + s.rejected.length, 0);
+});
+
 test('switching into every machine wires its panels without throwing', () => {
   // applyMachineSwitch touches the badge, the Γ/Δ sections, the model picker
   // and the simulate input. A machine missing from any of those lists fails
