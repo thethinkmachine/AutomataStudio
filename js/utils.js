@@ -2,7 +2,7 @@ import { closeModal, registerModal, showOverlay } from './modal.js';
 import { showExampleCard } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim } from './simulation.js';
-import { $, App, getBoundaryMarkers, isTwoWayFA } from './state.js';
+import { $, App, getBoundaryMarkers, getMachineConfig, isTwoWayFA } from './state.js';
 import { Change, emit } from './store.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -26,8 +26,12 @@ export function isAnyTM(m = App.machine) {
   return m === 'TM' || m === 'NDTM' || m === 'MTM' || m === 'LBA' || m === 'ITM';
 }
 
+// Everything with a pushdown store, PDT included: it shares the whole
+// configuration machinery (createInitialPdaConfig, getMatchingPdaTransitions,
+// applyPdaTransitionConfig) and differs only in accumulating output. The
+// narrower isClassicPDA below is what gates the CFG conversions.
 export function isAnyPDA(m = App.machine) {
-  return m === 'DPDA' || m === 'NPDA' || m === 'PDA' || m === 'QA' || m === 'Counter' || m === '2PDA';
+  return m === 'DPDA' || m === 'NPDA' || m === 'PDA' || m === 'QA' || m === 'Counter' || m === '2PDA' || m === 'PDT';
 }
 
 export function isClassicPDA(m = App.machine) {
@@ -52,6 +56,35 @@ export function isTwoStackPDA(m = App.machine) {
 
 export function isTwoWayNondeterministicFA(m = App.machine) {
   return m === '2NFA';
+}
+
+export function isPushdownTransducer(m = App.machine) {
+  return m === 'PDT';
+}
+
+// Where the emitted symbol lives. Moore is the odd one out — it labels states,
+// so its output rides on s.output and never on t.output. Every other transducer
+// labels edges, which is what the modal's Output row and transLabel key off.
+export function hasTransitionOutput(m = App.machine) {
+  return !!getMachineConfig(m).isTransducer && m !== 'Moore';
+}
+
+// True when a second edge for the same (state, read) is a modelling error
+// rather than a branch, so the editor should refuse it. Nondeterministic
+// families (NFA, 2NFA, NPDA, NDTM) are excluded, and so are the two whose
+// semantics *are* the multiple edges: a PFA distributes probability across
+// them, and a Büchi automaton guesses among them.
+export function hasSingleValuedDelta(m = App.machine) {
+  const cfg = getMachineConfig(m);
+  if (cfg.isWeighted || cfg.isOmega) return false;
+  return m === 'DFA' || m === 'Moore' || m === 'Mealy'
+    || m === 'TM' || m === 'LBA' || m === 'ITM' || m === 'MTM'
+    || m === '2DFA' || m === '2DFT'
+    || m === 'DPDA' || m === 'PDA';
+}
+
+export function isTwoWayTransducer(m = App.machine) {
+  return m === '2DFT';
 }
 
 export function isLBA(m = App.machine) {

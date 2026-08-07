@@ -60,11 +60,21 @@ export function codegenSupport(ir) {
   if (!ir.states.length) return { ok: false, reason: 'The canvas is empty.' };
   if (!ir.startId) return { ok: false, reason: 'This machine has no start state.' };
   if (!CODEGEN_MODELS.has(ir.machine)) {
+    // Say which piece of state the generated code would have to drop, because
+    // dropping any of them silently decides a different language.
+    const missing = ir.isWeighted
+      ? 'carries a probability distribution over states and a cut-point'
+      : ir.isOmega
+        ? 'reads infinite words and accepts on a cycle rather than at a halt'
+        : ir.hasStack ? 'needs a stack'
+          : ir.hasTape ? 'needs a tape'
+            : ir.hasEndMarkers ? 'needs a two-way head'
+              : 'needs state a flat recogniser has no room for';
     return {
       ok: false,
       reason: `Code generation covers DFA, NFA, ε-NFA, Moore and Mealy machines. `
-        + `${ir.machineLabel} needs a stack or a tape, and a generated recogniser that quietly `
-        + `dropped either would decide a different language than the one on the canvas.`
+        + `${ir.machineLabel} ${missing}, and a generated recogniser that quietly `
+        + `dropped that would decide a different language than the one on the canvas.`
     };
   }
   return { ok: true };

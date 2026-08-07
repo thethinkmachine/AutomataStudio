@@ -4,7 +4,7 @@ import { commit, snapshot } from './history.js';
 import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
 import { $, App, R, SVG_NS, getMachineConfig } from './state.js';
-import { getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive } from './states-transitions.js';
+import { getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
 import { Change, emit, subscribe } from './store.js';
 import { triggerMath } from './theory.js';
 import { filterStates, filterTransitions, renderMinimap } from './ui.js';
@@ -143,7 +143,11 @@ function createEdgeNode(key) {
   textEl.setAttribute('dominant-baseline', 'central');
   textEl.setAttribute('text-anchor', 'middle');
 
-  edgeGrp.__parts = { pathEl, hitEl, textEl, handle: null };
+  const pillEl = makeSVG('g');
+  pillEl.classList.add('tlbl', 'edge-pill-label');
+  pillEl.setAttribute('id', `pill-lbl-${key}`);
+
+  edgeGrp.__parts = { pathEl, hitEl, textEl, pillEl, handle: null };
   edgeGrp.__labelKey = null;
 
   edgeGrp.addEventListener('pointerdown', e => {
@@ -263,6 +267,9 @@ function syncEdgeNode(edgeGrp, from, to, ts, pairs) {
   parts.pathEl.setAttribute('d', geo.d);
   parts.hitEl.setAttribute('d', geo.d);
 
+  const pillMode = App.config.edgeLabelStyle === 'pills' || App.config.edgeLabelStyle === 'beginner';
+  const beginnerMode = App.config.edgeLabelStyle === 'beginner';
+
   const lbls = ts.map(transLabel);
   // Rebuild the tspans only when the label text changes. Geometry changes —
   // a state moving, an edge bending — just reposition them, so dragging
@@ -285,6 +292,48 @@ function syncEdgeNode(edgeGrp, from, to, ts, pairs) {
   }
   parts.textEl.setAttribute('x', geo.lx);
   parts.textEl.setAttribute('y', geo.ly);
+
+  const pillRows = ts.map(t => transLabelParts(t, beginnerMode));
+  const pillKey = pillRows.map(row => row.map(p => `${p.role}:${p.text}`).join('\u0002')).join('\u0001');
+  if (edgeGrp.__pillKey !== pillKey) {
+    parts.pillEl.innerHTML = '';
+    const rowGap = 22;
+    pillRows.forEach((row, rowIndex) => {
+      const widths = row.map(p => Math.max(24, 12 + p.text.length * 6.2));
+      const total = widths.reduce((sum, width) => sum + width, 0) + Math.max(0, row.length - 1) * 4;
+      let x = -total / 2;
+      const rowEl = makeSVG('g');
+      rowEl.classList.add('edge-pill-row');
+      rowEl.setAttribute('transform', `translate(0 ${rowIndex * rowGap - (pillRows.length - 1) * rowGap / 2})`);
+      row.forEach((part, i) => {
+        const item = makeSVG('g');
+        item.classList.add('edge-pill', `edge-pill-${part.role}`);
+        item.setAttribute('transform', `translate(${x} -9)`);
+        const rect = makeSVG('rect');
+        rect.setAttribute('width', widths[i]);
+        rect.setAttribute('height', 18);
+        rect.setAttribute('rx', 5);
+        const label = makeSVG('text');
+        label.setAttribute('x', widths[i] / 2);
+        label.setAttribute('y', 9);
+        label.setAttribute('dominant-baseline', 'central');
+        label.setAttribute('text-anchor', 'middle');
+        label.textContent = part.text;
+        item.appendChild(rect);
+        item.appendChild(label);
+        rowEl.appendChild(item);
+        x += widths[i] + 4;
+      });
+      parts.pillEl.appendChild(rowEl);
+    });
+    edgeGrp.__pillWidth = Math.max(40, ...pillRows.map(row => row.reduce((sum, p) => sum + Math.max(24, 12 + p.text.length * 6.2), 0) + Math.max(0, row.length - 1) * 4));
+    edgeGrp.__pillHeight = Math.max(18, pillRows.length * 22);
+    edgeGrp.__pillKey = pillKey;
+  }
+  parts.pillEl.setAttribute('transform', `translate(${geo.lx} ${geo.ly})`);
+  parts.pillEl.classList.toggle('edge-pill-beginner', beginnerMode);
+  parts.textEl.style.display = pillMode ? 'none' : '';
+  parts.pillEl.style.display = pillMode ? '' : 'none';
 
   const edgeTip = ts.map(t => transLabelDescriptive(t)).join('\n');
   edgeGrp.setAttribute('data-tip', edgeTip);
@@ -348,17 +397,20 @@ export function renderTransitions() {
     prev = node;
 
     // Labels are siblings in their own layer, so they need placing separately.
-    const textEl = node.__parts.textEl;
+    const { textEl, pillEl } = node.__parts;
     if (lg) {
       if (textEl.parentNode !== lg) lg.appendChild(textEl);
+      if (pillEl.parentNode !== lg) lg.appendChild(pillEl);
     } else if (textEl.parentNode !== node) {
       node.appendChild(textEl);
+      node.appendChild(pillEl);
     }
   }
 
   for (const [key, node] of live) {
     if (seen.has(key)) continue;
     node.__parts.textEl.remove();
+    node.__parts.pillEl.remove();
     node.remove();
     live.delete(key);
   }
@@ -423,6 +475,7 @@ export function updateFastDOM() {
     p.hitEl.setAttribute('d', geo.d);
     p.textEl.setAttribute('x', geo.lx);
     p.textEl.setAttribute('y', geo.ly);
+    p.pillEl.setAttribute('transform', `translate(${geo.lx} ${geo.ly})`);
     if (edgeGrp.__labelX !== geo.lx) {
       for (const tspan of p.textEl.childNodes) tspan.setAttribute('x', geo.lx);
       edgeGrp.__labelX = geo.lx;
@@ -828,6 +881,47 @@ export function updateFormalDef() {
     txt += `q_0 &= ${q0_str} \\\\`;
     txt += `F &= ${F_str} \\\\`;
     txt += `\\delta &: Q \\times ${mapDom} \\to ${codomain}`;
+  } else if (m === 'PFA') {
+    txt += `M &= (Q, \\Sigma, \\delta, q_0, F, \\lambda) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\lambda &= ${App.config.pfaCutPoint} \\quad \\text{(cut-point)} \\\\`;
+    txt += `\\delta &: Q \\times \\Sigma \\times Q \\to [0, 1] \\\\`;
+    txt += `&\\textstyle\\sum_{q'} \\delta(q, a, q') = 1 \\quad \\forall q \\in Q, a \\in \\Sigma \\\\`;
+    txt += `L(M) &= \\{ w : P_M(w) > \\lambda \\}`;
+  } else if (m === 'NBA') {
+    txt += `M &= (Q, \\Sigma, \\delta, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times \\Sigma \\to \\mathcal{P}(Q) \\\\`;
+    txt += `L(M) &= \\{ w \\in \\Sigma^\\omega : \\exists \\rho,\\ \\mathrm{Inf}(\\rho) \\cap F \\neq \\emptyset \\}`;
+  } else if (m === 'PDT') {
+    const G_str = formatSet([...App.stackAlpha]);
+    const D_str = formatSet([...App.outputAlpha]);
+    txt += `M &= (Q, \\Sigma, \\Gamma, \\Delta, \\delta, \\lambda, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `\\Gamma &= ${G_str} \\\\`;
+    txt += `\\Delta &= ${D_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times (\\Sigma \\cup \\{\\varepsilon\\}) \\times \\Gamma \\to \\mathcal{P}(Q \\times \\Gamma^* \\times \\Delta^*)`;
+  } else if (m === '2DFT') {
+    const D_str = formatSet([...App.outputAlpha]);
+    const left = App.config.sym.leftMarker;
+    const right = App.config.sym.rightMarker;
+    txt += `M &= (Q, \\Sigma, \\Delta, \\delta, \\lambda, q_0, F) \\\\`;
+    txt += `Q &= ${Q_str} \\\\`;
+    txt += `\\Sigma &= ${S_str} \\\\`;
+    txt += `\\Delta &= ${D_str} \\\\`;
+    txt += `q_0 &= ${q0_str} \\\\`;
+    txt += `F &= ${F_str} \\\\`;
+    txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${left}, ${right}\\}) \\to Q \\times \\{L, R, S\\} \\\\`;
+    txt += `\\lambda &: Q \\times (\\Sigma \\cup \\{${left}, ${right}\\}) \\to \\Delta^*`;
   } else if (m === '2DFA' || m === '2NFA') {
     const left = App.config.sym.leftMarker;
     const right = App.config.sym.rightMarker;
@@ -1034,6 +1128,10 @@ export function updateRegex() {
   // which one it is showing rather than styling them identically.
   App._regexIsDerived = false;
   if (m === '2DFA' || m === '2NFA') { txt = 'Regular Language (Two-Way Head Motion with Endmarkers)'; }
+  else if (m === 'PFA') { txt = `Stochastic Language (cut-point λ = ${App.config.pfaCutPoint})`; }
+  else if (m === 'NBA') { txt = 'ω-Regular Language (Büchi Acceptance)'; }
+  else if (m === 'PDT') { txt = 'Pushdown Transduction (Context-Free Relation)'; }
+  else if (m === '2DFT') { txt = 'Regular Transduction (Two-Way, MSO-Definable)'; }
   else if (m === 'QA') { txt = 'Queue Automaton Language Family'; }
   else if (m === 'Counter') { txt = 'Counter Language Family'; }
   else if (m === '2PDA') { txt = 'Two-Stack PDA (TM-Equivalent Power)'; }

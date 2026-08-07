@@ -51,6 +51,7 @@ test('confirming writes the values back into App.config', () => {
   $('set-zoom-step').value = '0.25';
   $('set-grid-snap').value = '15';
   $('set-curve-off').value = '60';
+  $('set-edge-label-style').value = 'pills';
   $('set-transducer-accepts').checked = true;
 
   h.context.confirmSettings();
@@ -63,6 +64,7 @@ test('confirming writes the values back into App.config', () => {
   assert.equal(c.zoom.step, 0.25);
   assert.equal(c.gridSnap, 15);
   assert.equal(c.render.curveOff, 60);
+  assert.equal(c.edgeLabelStyle, 'pills');
   assert.equal(c.transducerAccepts, true);
 });
 
@@ -181,18 +183,20 @@ test('settings export and re-import round-trips every field', () => {
   App.config.maxTmSteps = 4321;
   App.config.layout.nodeSpacing = 60;
   App.config.sym.any = '@';
+  App.config.edgeLabelStyle = 'beginner';
 
   const saved = h.context.getEditorSettingsData();
   assert.equal(saved.radius, 47);
   assert.equal(saved.maxTmSteps, 4321);
   assert.equal(saved.layoutNodeSpacing, 60);
   assert.equal(saved.symAny, '@');
+  assert.equal(saved.edgeLabelStyle, 'beginner');
 
   // Every key the dialog can write should be represented, or exporting your
   // settings quietly drops one.
   for (const k of ['theme', 'wheelZoom', 'snapToGrid', 'statePrefix', 'pdaParadigm',
     'transducerAccepts', 'maxPdaSteps', 'maxTmSteps', 'langStepBudget', 'autoSpeed',
-    'autosaveIntervalMs', 'radius', 'wrapStateLabels', 'clickHighlightMode', 'zoomStep',
+    'autosaveIntervalMs', 'radius', 'wrapStateLabels', 'edgeLabelStyle', 'clickHighlightMode', 'zoomStep',
     'gridSnap', 'layoutAlgorithm', 'layoutNodeSpacing', 'renderCurveOff', 'exportRes',
     'symEps', 'symLambda', 'symAny', 'symBlank', 'symLeft', 'symRight', 'symZ0']) {
     assert.ok(k in saved, `getEditorSettingsData drops ${k}`);

@@ -7,6 +7,12 @@ export const MachineTypes = {
   'ε-NFA': { label: 'ε-NFA', category: 'fa', implemented: true, hasEpsilon: true, hasStack: false, hasTape: false, isTransducer: false, badge: 'bd-enfa', file: 'enfa' },
   '2DFA': { label: '2DFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, hasEndMarkers: true, isTransducer: false, badge: 'bd-2dfa', file: 'twdfa' },
   '2NFA': { label: '2NFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, hasEndMarkers: true, isTransducer: false, badge: 'bd-2nfa', file: 'twnfa' },
+  // isWeighted: edges carry a numeric probability rather than only a symbol, and
+  // a run is a distribution over Q instead of a single state. isOmega: the input
+  // is an infinite (ultimately periodic) word, so acceptance is a property of the
+  // run's cycle rather than of a final configuration.
+  'PFA': { label: 'PFA', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, isWeighted: true, badge: 'bd-pfa', file: 'pfa' },
+  'NBA': { label: 'Büchi', category: 'fa', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: false, isOmega: true, badge: 'bd-nba', file: 'buchi' },
 
   'DPDA': { label: 'DPDA', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-dpda', file: 'pda' },
   'PDA': { label: 'PDA', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-dpda', file: 'pda' },
@@ -23,7 +29,9 @@ export const MachineTypes = {
 
   'Moore': { label: 'Moore', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-moore', file: 'moore' },
   'Mealy': { label: 'Mealy', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-mealy', file: 'mealy' },
-  'FST': { label: 'FST', category: 'special', implemented: true, hasEpsilon: true, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-fst', file: 'fst' }
+  'FST': { label: 'FST', category: 'special', implemented: true, hasEpsilon: true, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-fst', file: 'fst' },
+  'PDT': { label: 'Pushdown Transducer', category: 'special', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: true, badge: 'bd-pdt', file: 'pdt' },
+  '2DFT': { label: '2-Way Transducer', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, hasEndMarkers: true, isTransducer: true, badge: 'bd-2dft', file: 'twodft' }
 };
 
 // Example gallery per machine: first entry is the flagship shown by default,
@@ -47,14 +55,18 @@ export const MachineExamples = {
   'ITM': [{ file: 'ittm', label: 'The 4-state busy beaver' }, { file: 'ittm-classic', label: 'Classic: one step left' }],
   'Moore': [{ file: 'moore', label: 'Combination lock 1101' }, { file: 'moore-classic', label: 'Classic: traffic light' }],
   'Mealy': [{ file: 'mealy', label: 'Serial binary adder' }, { file: 'mealy-classic', label: 'Classic: report each bit' }],
-  'FST': [{ file: 'fst', label: 'Binary → Gray code' }, { file: 'fst-classic', label: 'Classic: nondeterministic rewriter' }]
+  'FST': [{ file: 'fst', label: 'Binary → Gray code' }, { file: 'fst-classic', label: 'Classic: nondeterministic rewriter' }],
+  'PFA': [{ file: 'pfa', label: 'Noisy channel: does it end in a?' }, { file: 'pfa-classic', label: 'Classic: Rabin’s cut-point language' }],
+  'NBA': [{ file: 'buchi', label: 'Infinitely often a' }, { file: 'buchi-classic', label: 'Classic: eventually always b' }],
+  'PDT': [{ file: 'pdt', label: 'Reverse the input' }, { file: 'pdt-classic', label: 'Classic: aⁿbⁿ ↦ bⁿaⁿ' }],
+  '2DFT': [{ file: 'twodft', label: 'Copy twice: w ↦ ww' }, { file: 'twodft-classic', label: 'Classic: reverse the input' }]
 };
 
 export const MachineCategories = [
-  { id: 'fa', label: 'Finite Automata', machines: ['DFA', 'NFA', 'ε-NFA', '2DFA', '2NFA'] },
+  { id: 'fa', label: 'Finite Automata', machines: ['DFA', 'NFA', 'ε-NFA', '2DFA', '2NFA', 'PFA', 'NBA'] },
   { id: 'mem', label: 'Memory Automata', machines: ['DPDA', 'NPDA', 'QA', 'Counter', '2PDA'] },
   { id: 'tm', label: 'Turing Machines', machines: ['TM', 'NDTM', 'MTM', 'LBA', 'ITM'] },
-  { id: 'special', label: 'Transducers', machines: ['Moore', 'Mealy', 'FST'] }
+  { id: 'special', label: 'Transducers', machines: ['Moore', 'Mealy', 'FST', 'PDT', '2DFT'] }
 ];
 
 // ══════════════════════════════════════════════════════════════════
@@ -110,11 +122,17 @@ export const App = {
     wheelZoom: true,
     snapToGrid: false,
     wrapStateLabels: true,
+    edgeLabelStyle: 'compact', // 'compact' | 'pills' | 'beginner'
     clickHighlightMode: 'off', // 'off' | 'outgoing' | 'incoming'
     layout: { minRadius: 80, nodeSpacing: 35, algorithm: 'sugiyama' },
     gridSnap: 20,
     sym: { eps: 'ε', any: 'Σ', blank: '⊔', leftMarker: '⊢', rightMarker: '⊣', stackBottom: 'Z', lambda: 'λ' },
     pdaParadigm: 'explicit',
+    // PFA acceptance is Rabin's cut-point rule: w ∈ L iff P(w) > cutPoint. The
+    // comparison is strict, which is what makes the cut-point "isolated" notion
+    // meaningful; 0 recovers the plain "some accepting run has positive
+    // probability" reading and matches the NFA the weights sit on top of.
+    pfaCutPoint: 0.5,
     statePrefix: 'q',
     render: {
       startArrowLen: 28,
@@ -188,12 +206,26 @@ export const $ = id => document.getElementById(id);
 // the time other modules run their top-level code.
 export function getMachineConfig(m) { return MachineTypes[m] || MachineTypes['DFA']; }
 
+// A two-way head over an endmarked, read-only input tape. 2DFT belongs here for
+// the same reason 2DFA does — it differs only in emitting output on each move,
+// which is the isTransducer flag's business, not the head's.
 export function isTwoWayFA(m = App.machine) {
-  return m === '2DFA' || m === '2NFA';
+  return m === '2DFA' || m === '2NFA' || m === '2DFT';
 }
 
 export function isEndmarkerMachine(m = App.machine) {
-  return m === '2DFA' || m === '2NFA' || m === 'LBA';
+  return !!getMachineConfig(m).hasEndMarkers;
+}
+
+// Edges carry a probability and a run is a distribution over Q, not one state.
+export function isWeightedFA(m = App.machine) {
+  return !!getMachineConfig(m).isWeighted;
+}
+
+// Reads an infinite (ultimately periodic) word; acceptance is a property of the
+// run's cycle, so there is no final configuration to inspect.
+export function isOmegaAutomaton(m = App.machine) {
+  return !!getMachineConfig(m).isOmega;
 }
 
 export function isReadOnlyHeadMachine(m = App.machine) {

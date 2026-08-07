@@ -547,6 +547,30 @@
   border: 1px solid var(--red-border);
 }
 
+.bd-pfa {
+  background: var(--purple-soft);
+  color: var(--purple);
+  border: 1px solid var(--purple-border);
+}
+
+.bd-nba {
+  background: var(--orange-soft);
+  color: var(--orange);
+  border: 1px solid var(--orange-border);
+}
+
+.bd-pdt {
+  background: var(--green-soft);
+  color: var(--green);
+  border: 1px solid var(--green-border);
+}
+
+.bd-2dft {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+}
+
 .sim-tracker {
   background: var(--bg3);
   border: 1px solid var(--border);
