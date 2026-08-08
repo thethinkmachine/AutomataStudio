@@ -20,6 +20,7 @@ import { clearElements, getElement } from './dom-stub.js';
 import * as algorithmsCfg from '../js/algorithms-cfg.js';
 import * as algorithmsFa from '../js/algorithms-fa.js';
 import * as alphabet from '../js/alphabet.js';
+import * as anim from '../js/anim.js';
 import * as canvas from '../js/canvas.js';
 import * as codegen from '../js/codegen.js';
 import * as dividers from '../js/dividers.js';
@@ -49,7 +50,7 @@ import * as view from '../js/view.js';
 import * as workspace from '../js/workspace.js';
 
 const NAMESPACES = [
-  state, store, themes, exportRegistry, dropdown, modal, utils, geometry, statesTransitions,
+  state, store, themes, exportRegistry, dropdown, modal, utils, anim, geometry, statesTransitions,
   canvas, render, notes, dividers, simulation, suggest, language, alphabet,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, algorithmsFa, algorithmsCfg, theory, workspace, ui
@@ -114,6 +115,13 @@ function resetModuleState() {
   App.domCache.notes.clear();
   App.domCache.dividers.clear();
   App.domCache.startArrow = null;
+  // Eased drawing keeps a track per edge quantity between paints. The tracks are
+  // keyed "fromId|toId", and resetApp hands back the same ids, so a test would
+  // otherwise start out easing from the previous test's geometry. (Animation is
+  // inert under the stub anyway — dom-stub runs rAF synchronously, which anim.js
+  // detects and treats as "always snap" — but the reset keeps that a property of
+  // the harness rather than a coincidence.)
+  anim.resetAnim();
 }
 
 export function resetApp() {

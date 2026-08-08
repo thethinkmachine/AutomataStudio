@@ -1,6 +1,7 @@
+import { animEnabled, beginPass, claimGroup, dropTrack, easeTrack, endPass, requestSettle, setSettlePainter, snapTrack } from './anim.js';
 import { applyEdgeDirectionHighlight, clearEdgeDirectionHighlight, onStateDown, wrap } from './canvas.js';
 import { renderDividers } from './dividers.js';
-import { PILL_GAP, PILL_HEIGHT, PILL_ROW_H, buildLayoutContext, estimatePillLabelSize, estimateTextLabelSize, pillPartWidth } from './geometry.js';
+import { PILL_GAP, PILL_HEIGHT, PILL_ROW_H, buildLayoutContext, edgeGeometryFor, estimatePillLabelSize, estimateTextLabelSize, pillPartWidth, selfLoopLabelPoint, selfLoopPath } from './geometry.js';
 import { commit, snapshot } from './history.js';
 import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
@@ -18,6 +19,18 @@ subscribe(Change.GRAPH, renderAll);
 subscribe(Change.GRAPH, updateLPanel);
 subscribe(Change.GRAPH, updateRPanel);
 subscribe(Change.CANVAS, renderAll);
+
+// The layout context the last paint computed, reused by settle frames. See
+// updateFastDOM. Every structural change repaints through renderTransitions,
+// which refreshes it, so a settle frame can never be looking at a context whose
+// states have since been replaced.
+let lastCtx = null;
+
+// The settle loop's repaint. There is no persistent render loop in this app —
+// repaints are event-driven through store.js — and a drag that ends without
+// resolving an overlap emits nothing at all, so the glide after release has to
+// drive itself. Geometry only: nothing structural can have changed.
+setSettlePainter(() => updateFastDOM({ statesMoved: false }));
 
 // ══════════════════════════════════════════════════════════════════
 //  RENDERING
@@ -81,6 +94,76 @@ function edgeLabelSizeFor(ts) {
 // depends on change on every frame of a drag.
 export function currentLayoutContext(opts = {}) {
   return buildLayoutContext({ labelSizeFor: edgeLabelSizeFor, ...opts });
+}
+
+// ── eased drawing ──
+//
+// The layout pass above answers where an edge *belongs*. This turns that into
+// where it should be drawn *this frame*, so that a decision flipping between two
+// discrete candidates — a loop direction, a routing step, a label slot — glides
+// instead of teleporting. See js/anim.js for why those flips happen at all.
+//
+// The seam is deliberately here and nowhere else: geometry.js keeps returning
+// true targets, so getContentBounds — and with it fit-to-screen and every
+// cropped export — keeps measuring the settled diagram rather than whatever is
+// mid-flight on screen.
+//
+// `dt` comes from beginPass(). A caller that does not want easing (an export,
+// anything reading the DOM back) settles first and then paints, rather than
+// asking for a different code path.
+function displayGeo(geo, dt) {
+  if (!geo || !animEnabled()) return geo;
+  const key = geo.key;
+
+  // A drag of the bend handle or the loop grip must track the pointer exactly —
+  // lag on the thing under your finger reads as the app being broken, not as
+  // motion. Everything else about the edge still eases.
+  const dc = App.dragCurve;
+  const dragging = !!dc && !!dc.from && !!dc.to && `${dc.from.id}|${dc.to.id}` === key;
+
+  // Both objects change identity on every wholesale replacement — a load, an
+  // undo, a workspace switch — while a drag mutates them in place. Since edge
+  // keys are recycled (resetIds numbers states s1, s2, … on every load), this is
+  // what stops a freshly loaded machine easing in from the previous one's shape.
+  if (claimGroup(key, geo.from, geo.to)) {
+    for (const suffix of [':a', ':c', ':lx', ':ly']) dropTrack(key + suffix);
+  }
+
+  if (geo.isSelf) {
+    const angle = dragging
+      ? snapTrack(key + ':a', geo.angle)
+      : easeTrack(key + ':a', geo.angle, dt, true);
+    // The label and the handle are derived from the eased angle rather than
+    // eased themselves, so they stay welded to the arc they annotate instead of
+    // drifting across it at their own rate.
+    const lp = selfLoopLabelPoint(geo.from, angle, geo.loop, geo.labelSize);
+    return {
+      ...geo,
+      angle,
+      d: selfLoopPath(geo.from.x, geo.from.y, angle, geo.loop),
+      mx: geo.from.x + geo.loop.extent * Math.cos(angle),
+      my: geo.from.y + geo.loop.extent * Math.sin(angle),
+      lx: lp.x,
+      ly: lp.y
+    };
+  }
+
+  const crvVal = dragging
+    ? snapTrack(key + ':c', geo.crvVal)
+    : easeTrack(key + ':c', geo.crvVal, dt);
+  // The label is eased on its own two axes because placeLabel picks from a slot
+  // list — its jumps are its own, not the curve's.
+  const lx = easeTrack(key + ':lx', geo.lx, dt);
+  const ly = easeTrack(key + ':ly', geo.ly, dt);
+  const edge = crvVal === geo.crvVal ? null : edgeGeometryFor(geo.from, geo.to, crvVal);
+  if (!edge) return { ...geo, lx, ly };
+  return {
+    ...geo,
+    crvVal, lx, ly,
+    sx: edge.sx, sy: edge.sy, ex: edge.ex, ey: edge.ey,
+    mx: edge.mx, my: edge.my,
+    d: edge.d
+  };
 }
 
 function isEdgeSelected(ts) {
@@ -351,7 +434,9 @@ export function renderTransitions() {
   const g = $('trans-g');
   const lg = $('trans-lbl-g');
   const live = App.domCache.transitions;
+  const dt = beginPass();
   const ctx = currentLayoutContext();
+  lastCtx = ctx;
 
   syncStartArrow(g);
 
@@ -363,7 +448,7 @@ export function renderTransitions() {
       node = createEdgeNode(key);
       live.set(key, node);
     }
-    if (!syncEdgeNode(node, ctx.geo.get(key), ts)) continue;
+    if (!syncEdgeNode(node, displayGeo(ctx.geo.get(key), dt), ts)) continue;
     seen.add(key);
 
     const expected = prev ? prev.nextSibling : g.firstChild;
@@ -388,6 +473,9 @@ export function renderTransitions() {
     node.remove();
     live.delete(key);
   }
+
+  endPass();
+  requestSettle();
 }
 
 // Runs on every animation frame while dragging, so it only touches geometry —
@@ -400,8 +488,15 @@ export function renderTransitions() {
 // the __parts references the renderer already holds rather than a querySelector
 // per node per frame, and the pass drops its collision stages above
 // COLLISION_BUDGET_STATES so a very large machine still drags at frame rate.
-export function updateFastDOM() {
-  const ctx = currentLayoutContext();
+export function updateFastDOM({ statesMoved = true } = {}) {
+  const dt = beginPass();
+  // A settle frame reuses the previous pass's layout: nothing has moved, only
+  // the eased values are still closing on it, so re-running four collision
+  // stages per frame for the ~165ms after every edit would be pure waste on a
+  // large machine. The drag path passes nothing and recomputes, because there
+  // the positions really did change.
+  const ctx = statesMoved || !lastCtx ? currentLayoutContext() : lastCtx;
+  lastCtx = ctx;
   const stateById = ctx.stateById;
   const hasSub = App.machine === 'Moore' || usesParityPriorities(App.machine);
 
@@ -446,7 +541,7 @@ export function updateFastDOM() {
   for (const [key, edgeGrp] of App.domCache.transitions) {
     const p = edgeGrp.__parts;
     if (!p) continue;
-    const geo = ctx.geo.get(key);
+    const geo = displayGeo(ctx.geo.get(key), dt);
     if (!geo) continue;
 
     p.pathEl.setAttribute('d', geo.d);
@@ -464,8 +559,14 @@ export function updateFastDOM() {
     }
   }
 
-  // Anchored notes ride along with the states/edges they're pinned to.
-  if (typeof updateNotesDOM === 'function') updateNotesDOM();
+  // Anchored notes ride along with the states/edges they're pinned to. A note
+  // anchors to a state's x/y or to a plain chord midpoint (notes.js), never to
+  // an edge's routed path or label slot — so on a settle frame, where no state
+  // has moved, no note can have moved either.
+  if (statesMoved && typeof updateNotesDOM === 'function') updateNotesDOM();
+
+  endPass();
+  requestSettle();
 }
 
 // Break a state name into per-line words at underscore/space/hyphen

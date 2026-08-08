@@ -229,6 +229,50 @@ export function selfLoopPath(x, y, angle, m = selfLoopMetrics()) {
   return `M ${x0} ${y0} A ${m.ss} ${m.ss} 0 1 1 ${x1} ${y1}`;
 }
 
+/**
+ * Everything about a non-self edge that follows from its control offset: where
+ * the path meets each circle, where the bend handle sits, and the path itself.
+ *
+ * Split out of the layout pass because the animation layer redraws an edge from
+ * an *eased* crvVal on its way to the DOM, and a second copy of this arithmetic
+ * would drift from this one — the same trap the pill metrics carry a warning
+ * about. render.js calls it with the eased value; buildLayoutContext calls it
+ * with the target.
+ */
+export function edgeGeometryFor(from, to, crvVal, r = nodeR(), arrowHead = num(cfg().arrowHeadSize, 6)) {
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const dist = Math.hypot(dx, dy);
+  if (!dist) return null;
+  const ux = dx / dist, uy = dy / dist, px = -uy, py = ux;
+
+  // The control point is measured from the centre-to-centre midpoint, which
+  // is also where canvas.js projects a curve drag — the handle and the gesture
+  // have to agree on the same origin or dragging jumps on the first frame.
+  const mx = (from.x + to.x) / 2 + px * crvVal, my = (from.y + to.y) / 2 + py * crvVal;
+  // Endpoints sit where the curve actually meets each circle — on the ray
+  // towards the control point, not along the straight chord. On a strongly
+  // bent edge the two differ by enough that the arrowhead used to land beside
+  // the node rather than on it. With no bend the control point is the chord
+  // midpoint and both rays collapse back onto the chord, so a straight edge is
+  // drawn exactly where it always was.
+  const sv = normalize(mx - from.x, my - from.y, ux, uy);
+  const ev = normalize(mx - to.x, my - to.y, -ux, -uy);
+  const sx = from.x + sv.x * r, sy = from.y + sv.y * r;
+  const ex = to.x + ev.x * (r + arrowHead), ey = to.y + ev.y * (r + arrowHead);
+  return {
+    sx, sy, ex, ey, mx, my, px, py, ux, uy, dist,
+    d: crvVal ? `M ${sx} ${sy} Q ${mx} ${my} ${ex} ${ey}` : `M ${sx} ${sy} L ${ex} ${ey}`
+  };
+}
+
+// Where a self-loop's label sits for a given angle: clear of the arc's outer
+// edge by the label gap plus half its own height. Shared with the animation
+// layer so an eased angle carries its label with it.
+export function selfLoopLabelPoint(s, angle, m, labelSize) {
+  const d = m.extent + labelGap() + labelSize.h / 2;
+  return { x: s.x + d * Math.cos(angle), y: s.y + d * Math.sin(angle) };
+}
+
 // Directions tried when placing a loop. Twelve is enough to always find a gap
 // between two neighbours 30° apart, and few enough that scoring them all is
 // free. Index 0 is straight up, which the bias below then prefers.
@@ -587,6 +631,7 @@ export function buildLayoutContext(opts = {}) {
     if (from.id === to.id) {
       const angle = chooseSelfLoopAngle(from, ts, ctx, loopMetrics, labelSize);
       const ux = Math.cos(angle), uy = Math.sin(angle);
+      const lp = selfLoopLabelPoint(from, angle, loopMetrics, labelSize);
       ctx.geo.set(key, {
         key, from, to, isSelf: true, angle, loop: loopMetrics, labelSize,
         d: selfLoopPath(from.x, from.y, angle, loopMetrics),
@@ -595,41 +640,30 @@ export function buildLayoutContext(opts = {}) {
         // "swing the loop round" rather than "bend the line".
         mx: from.x + loopMetrics.extent * ux,
         my: from.y + loopMetrics.extent * uy,
-        lx: from.x + (loopMetrics.extent + labelGap() + labelSize.h / 2) * ux,
-        ly: from.y + (loopMetrics.extent + labelGap() + labelSize.h / 2) * uy
+        lx: lp.x,
+        ly: lp.y
       });
       continue;
     }
 
-    const dx = to.x - from.x, dy = to.y - from.y;
-    const dist = Math.hypot(dx, dy);
-    if (!dist) continue;
-    const ux = dx / dist, uy = dy / dist, px = -uy, py = ux;
     const hasRev = tsByPair.has(to.id + '|' + from.id);
     const base = hasRev ? curveOff : 0;
     // A hand-set curve is the user's answer to this exact question, so routing
     // does not get to overrule it.
     const manual = ts.find(t => Number.isFinite(t.curve));
+    const dx0 = to.x - from.x, dy0 = to.y - from.y;
+    const dist0 = Math.hypot(dx0, dy0);
+    if (!dist0) continue;
+    const px = -dy0 / dist0, py = dx0 / dist0;
     const crvVal = manual ? manual.curve : routeCurve(from, to, ctx, px, py, base);
 
-    // The control point is measured from the centre-to-centre midpoint, which
-    // is also where canvas.js projects a curve drag — the handle and the gesture
-    // have to agree on the same origin or dragging jumps on the first frame.
-    const mx = (from.x + to.x) / 2 + px * crvVal, my = (from.y + to.y) / 2 + py * crvVal;
-    // Endpoints sit where the curve actually meets each circle — on the ray
-    // towards the control point, not along the straight chord. On a strongly
-    // bent edge the two differ by enough that the arrowhead used to land beside
-    // the node rather than on it. With no bend the control point is the chord
-    // midpoint and both rays collapse back onto the chord, so a straight edge is
-    // drawn exactly where it always was.
-    const sv = normalize(mx - from.x, my - from.y, ux, uy);
-    const ev = normalize(mx - to.x, my - to.y, -ux, -uy);
-    const sx = from.x + sv.x * r, sy = from.y + sv.y * r;
-    const ex = to.x + ev.x * (r + arrowHead), ey = to.y + ev.y * (r + arrowHead);
+    const edge = edgeGeometryFor(from, to, crvVal, r, arrowHead);
+    if (!edge) continue;
     const geo = {
       key, from, to, isSelf: false, labelSize, crvVal,
-      sx, sy, ex, ey, mx, my, px, py,
-      d: crvVal ? `M ${sx} ${sy} Q ${mx} ${my} ${ex} ${ey}` : `M ${sx} ${sy} L ${ex} ${ey}`
+      sx: edge.sx, sy: edge.sy, ex: edge.ex, ey: edge.ey,
+      mx: edge.mx, my: edge.my, px: edge.px, py: edge.py,
+      d: edge.d
     };
     const mid = pathPoint(geo, 0.5);
     geo.lx = mid.x;

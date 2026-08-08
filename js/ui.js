@@ -1,5 +1,6 @@
 import { utmStepBack, utmStepFwd, utmToggleAuto } from './algorithms-fa.js';
 import { renderGamma } from './alphabet.js';
+import { settleAll } from './anim.js';
 import { applyCamera, clearEdgeDirectionHighlight, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, nudgeSelected, pasteClipboard, selectAllStates, toggleSnapToGrid, wrap } from './canvas.js';
 import { clearDividerSelection, deleteSelectedDivider, includeDividerBounds, isRectDivider, updateShapeToolButton } from './dividers.js';
 import { markDirty, redo, snapshot, undo } from './history.js';
@@ -2366,6 +2367,7 @@ export function openSettingsModal() {
   if ($('set-auto-route')) $('set-auto-route').checked = c.render.autoRouteEdges !== false;
   if ($('set-smart-labels')) $('set-smart-labels').checked = c.render.smartLabels !== false;
   if ($('set-avoid-overlap')) $('set-avoid-overlap').checked = c.render.avoidNodeOverlap !== false;
+  if ($('set-animate-layout')) $('set-animate-layout').checked = c.render.animateLayout !== false;
   if ($('set-node-clearance')) $('set-node-clearance').value = c.render.nodeClearance ?? 12;
   $('set-export-res').value = c.exportRes || 2;
   $('set-sym-eps').value = c.sym.eps;
@@ -2468,6 +2470,7 @@ export function confirmSettings() {
   if ($('set-auto-route')) c.render.autoRouteEdges = $('set-auto-route').checked;
   if ($('set-smart-labels')) c.render.smartLabels = $('set-smart-labels').checked;
   if ($('set-avoid-overlap')) c.render.avoidNodeOverlap = $('set-avoid-overlap').checked;
+  if ($('set-animate-layout')) c.render.animateLayout = $('set-animate-layout').checked;
   if ($('set-node-clearance')) {
     // Clamped because it is a distance every routing search steps in: zero makes
     // "clear of a node" mean "touching it", and an outsized value pushes every
@@ -2491,6 +2494,10 @@ export function confirmSettings() {
 
   // Apply visual changes
   setR(c.radius);
+  // A radius change moves every endpoint, every loop and every label at once,
+  // and the animation toggle may itself have just been turned off. Either way
+  // the new settings should be what you see, not something being eased toward.
+  settleAll();
   renderAll();
   if (typeof updateLPanel === 'function') updateLPanel();
   if (typeof updateRPanel === 'function') updateRPanel();
@@ -2528,6 +2535,7 @@ export function getEditorSettingsData() {
     renderAutoRouteEdges: c.render.autoRouteEdges !== false,
     renderSmartLabels: c.render.smartLabels !== false,
     renderAvoidNodeOverlap: c.render.avoidNodeOverlap !== false,
+    renderAnimateLayout: c.render.animateLayout !== false,
     renderNodeClearance: c.render.nodeClearance ?? 12,
     exportRes: c.exportRes,
     symEps: c.sym.eps,
@@ -2595,6 +2603,7 @@ export function populateSettingsModalInputs(data) {
   if (data.renderAutoRouteEdges !== undefined && $('set-auto-route')) $('set-auto-route').checked = !!data.renderAutoRouteEdges;
   if (data.renderSmartLabels !== undefined && $('set-smart-labels')) $('set-smart-labels').checked = !!data.renderSmartLabels;
   if (data.renderAvoidNodeOverlap !== undefined && $('set-avoid-overlap')) $('set-avoid-overlap').checked = !!data.renderAvoidNodeOverlap;
+  if (data.renderAnimateLayout !== undefined && $('set-animate-layout')) $('set-animate-layout').checked = !!data.renderAnimateLayout;
   if (data.renderNodeClearance !== undefined && $('set-node-clearance')) $('set-node-clearance').value = data.renderNodeClearance;
   if (data.exportRes !== undefined) $('set-export-res').value = data.exportRes;
   if (data.symEps !== undefined) $('set-sym-eps').value = data.symEps;

@@ -211,7 +211,12 @@ export const App = {
       smartSelfLoops: true,    // put a loop where the node's surroundings allow
       autoRouteEdges: true,    // bend an edge around a state in its way
       smartLabels: true,       // move a label off whatever it would sit on
-      avoidNodeOverlap: true   // separate states dropped on top of each other
+      avoidNodeOverlap: true,  // separate states dropped on top of each other
+      // Display-only easing on the way to the DOM (js/anim.js). The stages above
+      // pick their winner from a discrete candidate set, so a one-pixel pointer
+      // move can flip a decision; this glides the drawing to the new one instead
+      // of teleporting. Targets are unaffected.
+      animateLayout: true
     },
     exportRes: 2,
     export: {
