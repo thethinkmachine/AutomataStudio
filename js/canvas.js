@@ -1,3 +1,4 @@
+import { settleAll } from './anim.js';
 import { beginDividerDraw, clearDividerSelection, dividerToolKind, dragDividerEndpointTo, dragDividerTo, endDividerEndpointDrag, finishDividerDraw, includeDividerBounds, updateDividerDraw } from './dividers.js';
 import { exportDownload, exportFilename } from './export-core.js';
 import { includeLayoutBounds, resolveNodeOverlaps } from './geometry.js';
@@ -1155,6 +1156,11 @@ export function autoLayout() {
   } else {
     sugiyamaLayout(App.states, App.transitions, App.startId);
   }
+  // Every state teleports here, so there is no continuity for an eased edge to
+  // preserve — gliding edges over states that have already jumped reads as the
+  // drawing coming apart. Settle first so the single paint below lands at target
+  // and fitToScreen measures a diagram that is not still moving.
+  settleAll();
   renderAll();
   fitToScreen();
 }
@@ -1210,6 +1216,15 @@ export function buildExportSVG(opts = {}) {
   const svgEl = $('svgCanvas');
   const wrap = $('canvas-wrap');
   let w = wrap.clientWidth || 800, h = wrap.clientHeight || 600;
+
+  // The clone below captures the *live* DOM, while the crop box further down
+  // comes from getContentBounds — which reads the layout pass, i.e. settled
+  // targets. Exporting mid-glide would put eased paths inside a frame sized for
+  // where they are headed, and crop a loop that has not arrived yet. Settling
+  // first makes the two agree; everything from here to serializeToString is
+  // synchronous, so nothing can start moving again in between.
+  settleAll();
+  updateFastDOM({ statesMoved: false });
 
   const clone = svgEl.cloneNode(true);
 

@@ -2158,6 +2158,9 @@ export function animateSimToken(edgeKey, dur, onDone) {
   const grp = findSimEdgeGroup(edgeKey);
   const pathEl = grp && grp.querySelector('.tarr');
   const layer = $('sim-anim-g');
+  // Probe only — the flight itself re-measures per frame (see tick below). A path
+  // with no length, or a host without getTotalLength at all, means there is
+  // nothing to travel along, so hand straight back to the caller.
   let len = 0;
   try { len = pathEl && layer ? pathEl.getTotalLength() : 0; } catch (e) { }
   if (!len) { if (onDone) onDone(); return; }
@@ -2180,7 +2183,12 @@ export function animateSimToken(edgeKey, dur, onDone) {
     if (!pathEl.isConnected) { finish(); return; }
     const p = Math.min(1, (now - t0) / dur);
     const e = p < 0.5 ? 2 * p * p : -1 + (4 - 2 * p) * p; // easeInOutQuad
-    const pt = pathEl.getPointAtLength(len * e);
+    // Re-read the length rather than reusing the one measured above: the edge
+    // under the token may still be easing toward a new route (js/anim.js), and a
+    // stale length against a path that has since changed leaves the token short
+    // of the arrowhead or past it. getTotalLength is path-data arithmetic, not a
+    // style or layout read, so this costs nothing per frame.
+    const pt = pathEl.getPointAtLength(pathEl.getTotalLength() * e);
     dot.setAttribute('cx', pt.x); dot.setAttribute('cy', pt.y);
     if (p < 1) token.raf = requestAnimationFrame(tick);
     else finish();
