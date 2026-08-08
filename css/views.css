@@ -470,7 +470,7 @@
 }
 
 .bd-npda {
-  background: rgba(79, 195, 247, .12);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent);
   border: 1px solid var(--accent-border);
 }
@@ -506,7 +506,7 @@
 }
 
 .bd-lba {
-  background: rgba(79, 195, 247, .12);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent);
   border: 1px solid var(--accent-border);
 }
@@ -1645,7 +1645,7 @@
 }
 
 .tc.head {
-  background: rgba(79, 195, 247, .2);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -1965,12 +1965,12 @@
 }
 
 .result-table td.marked {
-  background: rgba(255, 107, 107, .12);
+  background: color-mix(in srgb, var(--red) 12%, transparent);
   color: var(--red);
 }
 
 .result-table td.unmarked {
-  background: rgba(105, 240, 174, .08);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
   color: var(--green);
 }
 
@@ -2078,8 +2078,8 @@
 }
 
 .info-box {
-  background: rgba(79, 195, 247, .06);
-  border: 1px solid rgba(79, 195, 247, .2);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   border-radius: 7px;
   padding: 10px 13px;
   font-family: var(--mono);
@@ -2116,17 +2116,17 @@
 }
 
 .state-pill.start {
-  border-color: rgba(105, 240, 174, .4);
+  border-color: color-mix(in srgb, var(--green) 40%, transparent);
   color: var(--green);
 }
 
 .state-pill.acc {
-  border-color: rgba(255, 213, 79, .4);
+  border-color: color-mix(in srgb, var(--gold) 40%, transparent);
   color: var(--gold);
 }
 
 .state-pill.both {
-  border-color: rgba(79, 195, 247, .4);
+  border-color: var(--accent-border-strong);
   color: var(--accent);
 }
 
@@ -2245,7 +2245,7 @@
 }
 
 .cyk-cell.has-start {
-  background: rgba(105, 240, 174, .12);
+  background: color-mix(in srgb, var(--green) 12%, transparent);
   color: var(--green);
 }
 
@@ -2490,20 +2490,20 @@
 }
 
 .pump-char.x-part {
-  background: rgba(79, 195, 247, .12);
-  border-color: rgba(79, 195, 247, .3);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
   color: var(--accent);
 }
 
 .pump-char.y-part {
-  background: rgba(255, 213, 79, .12);
-  border-color: rgba(255, 213, 79, .3);
+  background: var(--gold-soft);
+  border-color: var(--gold-border);
   color: var(--gold);
 }
 
 .pump-char.z-part {
-  background: rgba(105, 240, 174, .1);
-  border-color: rgba(105, 240, 174, .3);
+  background: var(--green-soft);
+  border-color: var(--green-border);
   color: var(--green);
 }
 
@@ -2516,15 +2516,15 @@
 }
 
 .pump-result.ok {
-  background: rgba(105, 240, 174, .1);
+  background: var(--green-soft);
   color: var(--green);
-  border: 1px solid rgba(105, 240, 174, .3);
+  border: 1px solid var(--green-border);
 }
 
 .pump-result.fail {
-  background: rgba(255, 107, 107, .1);
+  background: var(--red-soft);
   color: var(--red);
-  border: 1px solid rgba(255, 107, 107, .3);
+  border: 1px solid var(--red-border);
 }
 
 .closure-grid {
@@ -2552,8 +2552,8 @@
 }
 
 .closure-item.active {
-  background: rgba(105, 240, 174, .1);
-  border-color: rgba(105, 240, 174, .35);
+  background: var(--green-soft);
+  border-color: color-mix(in srgb, var(--green) 35%, transparent);
   color: var(--green);
 }
 
@@ -2563,8 +2563,8 @@
 }
 
 .closure-item.inactive {
-  background: rgba(255, 107, 107, .05);
-  border-color: rgba(255, 107, 107, .2);
+  background: color-mix(in srgb, var(--red) 5%, transparent);
+  border-color: color-mix(in srgb, var(--red) 20%, transparent);
   color: var(--red);
 }
 
@@ -2628,7 +2628,7 @@
 }
 
 .theory-nav-link.active {
-  background: rgba(79, 195, 247, .08);
+  background: var(--focus-ring);
   color: var(--accent);
   border-left-color: var(--accent);
 }
