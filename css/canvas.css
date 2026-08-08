@@ -61,7 +61,7 @@
 .edge-g.note-link-t .tarr {
   stroke: var(--accent);
   stroke-width: 3;
-  filter: drop-shadow(0 0 7px rgba(79, 195, 247, .45));
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--accent) 45%, transparent));
 }
 
 /* ─── Dead / Unreachable State Overlay ─── */
@@ -172,27 +172,27 @@
 .sn.outgoing-hl-src circle.bd {
   stroke: var(--green);
   stroke-width: 2.5;
-  filter: drop-shadow(0 0 6px rgba(105, 240, 174, .4));
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--green) 40%, transparent));
 }
 
 .edge-g.outgoing-hl .tarr {
   stroke: var(--green);
   stroke-width: 2.5;
   marker-end: url(#arr-g);
-  filter: drop-shadow(0 0 5px rgba(105, 240, 174, .4));
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--green) 40%, transparent));
 }
 
 .sn.incoming-hl-src circle.bd {
   stroke: var(--indigo);
   stroke-width: 2.5;
-  filter: drop-shadow(0 0 6px rgba(124, 77, 255, .45));
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--indigo) 45%, transparent));
 }
 
 .edge-g.incoming-hl .tarr {
   stroke: var(--indigo);
   stroke-width: 2.5;
   marker-end: url(#arr-i);
-  filter: drop-shadow(0 0 5px rgba(124, 77, 255, .45));
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--indigo) 45%, transparent));
 }
 
 /* ─── Simulation playback highlights ───
@@ -216,7 +216,7 @@
   marker-end: url(#arr-a);
   stroke-dasharray: 7 5;
   animation: sim-dash-flow .5s linear infinite;
-  filter: drop-shadow(0 0 6px rgba(79, 195, 247, .55));
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 55%, transparent));
 }
 
 @keyframes sim-dash-flow {
@@ -236,7 +236,7 @@
   stroke: var(--bg);
   stroke-width: 1.5;
   pointer-events: none;
-  filter: drop-shadow(0 0 5px rgba(79, 195, 247, .8));
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--accent) 80%, transparent));
 }
 
 /* Arrival pulse ring — verdict-colored on the final step. */
@@ -957,7 +957,7 @@
   background: var(--bg3);
   border-color: var(--accent);
   color: var(--text);
-  box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.15);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 .cnc-sep {
