@@ -169,17 +169,18 @@ function syncMirror(row) {
 // One write path for every row: set the config, keep the dialog in step, then
 // announce the repaint.
 function applyQuick(row, value) {
-  row.set(value);
-  syncMirror(row);
-  // Settle before announcing: a row may have just switched the animation off,
-  // and the repaint should draw the new setting rather than something still
-  // easing toward it — the same reason confirmSettings settles.
-  settleAll();
-  // commit() = snapshot + emit, so the change is undoable and the tab is
-  // marked unsaved — these settings are stored per workspace, so a change here
-  // really is unsaved work. Change.CANVAS carries renderAll, which makes this
-  // the repaint too; calling the renderer as well would draw the frame twice.
-  commit(Change.CANVAS);
+  // commit() records the undo point before running the edit, so the change is
+  // undoable and the tab is marked unsaved — these settings are stored per
+  // workspace, so changing one really is unsaved work. Change.CANVAS carries
+  // renderAll, which makes this the repaint too; calling the renderer as well
+  // would draw the frame twice.
+  commit(() => {
+    row.set(value);
+    syncMirror(row);
+    // A row may have just switched the animation off, so settle before the
+    // repaint rather than drawing something still easing toward the new value.
+    settleAll();
+  }, Change.CANVAS);
 }
 
 function buildRow(row) {

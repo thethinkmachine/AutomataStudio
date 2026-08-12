@@ -178,8 +178,8 @@ test('the write path does not call a renderer directly', () => {
     assert.ok(!new RegExp(`\\b${renderer}\\s*\\(`).test(fn),
       `applyQuick calls ${renderer}() directly; emit(Change.CANVAS) already repaints`);
   }
-  // commit() is snapshot + emit: the change is announced *and* undoable.
-  assert.ok(/commit\(Change\.CANVAS\)/.test(fn),
+  // commit(edit, kind) records the undo point, runs the edit, then announces.
+  assert.ok(/commit\(\s*\(\)\s*=>/.test(fn) && /Change\.CANVAS/.test(fn),
     'applyQuick must commit the change — announcing it and recording an undo point');
 });
 

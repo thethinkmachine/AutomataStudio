@@ -7,13 +7,23 @@ import { isAnyTM, showStatus } from './utils.js';
 import { syncMachineSelectors } from './view.js';
 
 /**
- * Record an undo point and announce the change. This is the one call an edit
- * needs to make; it replaces the four-call snapshot/render/panel/panel sequence
- * that used to be copied to every mutation site. Pass a narrower kind (or
- * several) when the edit did not touch the graph.
+ * Run an edit as one undoable step: record where to come back to, apply it,
+ * then announce it. Pass a narrower kind (or several) when the edit did not
+ * touch the graph.
+ *
+ *     commit(() => { App.accepts.add(id); });
+ *     commit(() => { … }, Change.ALPHABET, Change.GRAPH);
+ *
+ * It takes the edit rather than trusting the caller to have not made it yet.
+ * The previous shape — `mutate(); commit();` — put the snapshot *after* the
+ * change, while the ~45 `snapshot(); …; emit()` sites put it before. Two
+ * orderings for one stack, and undo can only be written for one of them; the
+ * mismatch cost a step on every undo. Handing the edit in makes the wrong
+ * order unsayable.
  */
-export function commit(...kinds) {
+export function commit(edit, ...kinds) {
   snapshot();
+  if (typeof edit === 'function') edit();
   emit(...(kinds.length ? kinds : [Change.GRAPH]));
 }
 
@@ -116,8 +126,11 @@ export function snapshotSettings() {
 // ══════════════════════════════════════════════════════════════════
 //  UNDO / REDO
 // ══════════════════════════════════════════════════════════════════
-export function snapshot() {
-  const s = JSON.stringify({
+// Everything an undo point has to put back. Serialising is separate from
+// recording because undo and redo need the *current* state as a string without
+// pushing it onto the stack they are about to pop.
+function serializeState() {
+  return JSON.stringify({
     machine: App.machine,
     states: App.states, transitions: App.transitions,
     startId: App.startId, accepts: [...App.accepts],
@@ -128,7 +141,21 @@ export function snapshot() {
     dividers: App.dividers, dividerN: App.dividerN,
     config: captureSettings()
   });
-  App.history.push(s);
+}
+
+/**
+ * Record where to come back to, then make the edit.
+ *
+ * `App.history` holds *past* states only — the state you are looking at is
+ * never on it. So this is called immediately BEFORE a mutation, which is what
+ * the ~45 `snapshot(); …; emit()` sites throughout the app already do:
+ *
+ *     snapshot();
+ *     App.accepts.add(id);
+ *     emit(Change.GRAPH);
+ */
+export function snapshot() {
+  App.history.push(serializeState());
   App.future = [];
   if (App.history.length > 300) App.history.shift();
 
@@ -149,16 +176,24 @@ export function markDirty() {
     if (typeof setSaveState === 'function') setSaveState('unsaved');
   }
 }
+// Step back one entry, handing the state being left behind to redo.
+//
+// This used to discard the newest entry and restore the one *beneath* it, which
+// is only right if the newest entry is the state you are currently looking at.
+// It is not: snapshot() records the state before an edit, so the top of the
+// stack is where that edit started. Restoring the entry below it therefore
+// landed one action too early — after three edits, the first undo jumped back
+// two of them, and the third was left unreachable by redo.
 export function undo() {
-  if (App.history.length < 2) return showStatus('Nothing to undo');
-  App.future.push(App.history.pop());
-  restoreSnapshot(App.history[App.history.length - 1]);
+  if (!App.history.length) return showStatus('Nothing to undo');
+  App.future.push(serializeState());
+  restoreSnapshot(App.history.pop());
 }
+
 export function redo() {
   if (!App.future.length) return showStatus('Nothing to redo');
-  const s = App.future.pop();
-  App.history.push(s);
-  restoreSnapshot(s);
+  App.history.push(serializeState());
+  restoreSnapshot(App.future.pop());
 }
 export function restoreSnapshot(s) {
   const d = JSON.parse(s);
