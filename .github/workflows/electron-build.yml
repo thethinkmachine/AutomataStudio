@@ -1,8 +1,14 @@
 name: Electron Build
 
-# Every push to main builds installers for all three platforms and uploads them
-# as workflow artifacts, so a broken package is caught immediately. Pushing a
-# version tag (v1.2.3) additionally publishes those installers as a GitHub Release.
+# Every push to main builds installers for all three platforms, so a broken
+# package is caught immediately. Only a version tag (v1.2.3) uploads them, as
+# the input to the GitHub Release published below.
+#
+# The upload is gated because nothing consumes a non-tag build's installers: at
+# ~360 MB per push against a 2 GB quota, keeping them filled the allowance in
+# roughly six pushes and then failed every later run at the upload step -- which
+# reads as "the package is broken" when the package is fine. Building
+# unconditionally is the half that catches breakage, so that stays.
 on:
   push:
     branches: [main]
@@ -57,7 +63,12 @@ jobs:
           # hunting for a macOS identity and failing the build over it.
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      # Tags only: the release job below is the sole consumer, and it is the only
+      # job that runs on a tag. retention-days is short because the artifact is
+      # an intermediate -- once the release exists the installers live on it, in
+      # separate storage that this quota does not touch.
       - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           name: installers-${{ matrix.platform }}
           path: |
@@ -66,7 +77,7 @@ jobs:
             release/*.AppImage
             release/*.deb
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
 
   release:
     name: Publish GitHub Release
