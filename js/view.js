@@ -100,8 +100,6 @@ export function setView(v) {
   // covered by the overlay, so it has nothing meaningful to show.
   const mm = $('minimap-container');
   if (mm) mm.style.visibility = (v === 'build') ? '' : 'hidden';
-  const mmsb = $('minimap-show-btn');
-  if (mmsb) mmsb.style.visibility = (v === 'build') ? '' : 'hidden';
 
   if (v === 'algo') { renderAlgo(App.currentAlgo); }
   if (v === 'grammar') { renderGrammarLPanel(); renderGrammarView(); renderGramSyms(); }

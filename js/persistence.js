@@ -4,6 +4,7 @@ import { applyCamera, hideCanvasContextMenu } from './canvas.js';
 import { snapshot } from './history.js';
 import { importJFLAPText } from './import-jflap.js';
 import { closeModal, showOverlay } from './modal.js';
+import { refreshQuickSettings } from './quick-settings.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { runSim } from './simulation.js';
 import { $, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
@@ -554,6 +555,11 @@ export function loadData(d, isExample) {
     // See importWorkspaceState: R has to be republished whenever config is
     // replaced, or the canvas keeps drawing at the previous radius.
     setR(App.config.radius);
+    // The quick-settings popover mirrors five of these keys. It re-reads on
+    // open, which covers every path that goes through a click — but a file
+    // dropped on the canvas replaces the config without one, leaving an open
+    // popover showing the settings of the machine you just replaced.
+    refreshQuickSettings();
   }
   else { migrateLegacySymbols(d); }
   if (d.cam) { App.cam = { ...d.cam }; }

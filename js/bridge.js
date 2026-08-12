@@ -51,6 +51,9 @@ import {
   copyBoxText,
 } from './render.js';
 import {
+  openSettingsFromQuick, toggleQuickSettings,
+} from './quick-settings.js';
+import {
   applyNoteFormat, clearNoteFormatting, confirmNote, ctxAddNoteEdge, ctxAddNoteState,
   ctxAnchorNoteToSelection, ctxCanvasAddNote, ctxDeleteNote, ctxDetachNote,
   ctxEditNote, ctxResetNoteSize, ctxSetNoteColor, deleteNoteFromModal,
@@ -149,6 +152,8 @@ Object.assign(window, {
    ctxHighlightOutgoing, toggleSnapToGrid,
   // render.js
    copyBoxText,
+  // quick-settings.js
+   openSettingsFromQuick, toggleQuickSettings,
   // notes.js
    applyNoteFormat, clearNoteFormatting, confirmNote, ctxAddNoteEdge, ctxAddNoteState,
    ctxAnchorNoteToSelection, ctxCanvasAddNote, ctxDeleteNote, ctxDetachNote,

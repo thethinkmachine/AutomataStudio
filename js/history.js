@@ -1,5 +1,7 @@
-import { App, Workspaces, activeWorkspaceId, getMachineConfig } from './state.js';
+import { App, Workspaces, activeWorkspaceId, getMachineConfig, setR } from './state.js';
 import { Change, emit, subscribe } from './store.js';
+import { toggleSnapToGrid } from './canvas.js';
+import { refreshQuickSettings } from './quick-settings.js';
 import { renderTabs, setSaveState } from './ui.js';
 import { isAnyTM, showStatus } from './utils.js';
 import { syncMachineSelectors } from './view.js';
@@ -29,6 +31,89 @@ subscribe(Change.GRAPH, markDirty);
 subscribe(Change.ALPHABET, markDirty);
 
 // ══════════════════════════════════════════════════════════════════
+//  UNDOABLE SETTINGS
+// ══════════════════════════════════════════════════════════════════
+// App.config holds two different kinds of thing, and only one of them belongs
+// in the undo history.
+//
+// These are *document* settings: they describe how this machine is drawn, they
+// travel with the workspace in exportWorkspaceState, and reversing one is the
+// same sort of act as reversing a drag. Ctrl+Z covers them.
+//
+// The rest of App.config is *app preference* — theme, notation symbols, step
+// budgets, autosave interval, export resolution. Recording those would make
+// Ctrl+Z silently swap your theme or your ε symbol on the way back through an
+// unrelated edit, and restoring config.theme without applyTheme() would leave
+// the stylesheet disagreeing with the value it was set from. So the list is an
+// allowlist rather than "config minus a few".
+export const UNDOABLE_SETTINGS = [
+  'radius', 'wrapStateLabels', 'edgeLabelStyle', 'clickHighlightMode',
+  'snapToGrid', 'gridSnap',
+  'layout.algorithm', 'layout.nodeSpacing',
+  'render.curveOff', 'render.smartSelfLoops', 'render.autoRouteEdges',
+  'render.smartLabels', 'render.avoidNodeOverlap', 'render.animateLayout',
+  'render.nodeClearance'
+];
+
+function readPath(obj, path) {
+  return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+}
+
+function writePath(obj, path, value) {
+  const keys = path.split('.');
+  const last = keys.pop();
+  const target = keys.reduce((o, k) => (o[k] = o[k] || {}), obj);
+  target[last] = value;
+}
+
+export function captureSettings() {
+  const out = {};
+  for (const path of UNDOABLE_SETTINGS) {
+    const v = readPath(App.config, path);
+    if (v !== undefined) out[path] = v;
+  }
+  return out;
+}
+
+// Restores the allowlist and republishes what mirrors it. `radius` is the one
+// that has a copy living elsewhere — R, which every module imported — and
+// snapToGrid owns a button and a localStorage key, so it goes back through the
+// function that holds all three rather than being assigned.
+export function applySettings(saved) {
+  // Snapshots taken before settings were recorded simply have no config; there
+  // is nothing to restore and nothing to correct.
+  if (!saved) return;
+  const c = App.config;
+  const radiusWas = c.radius;
+  const snapWas = !!c.snapToGrid;
+
+  for (const path of UNDOABLE_SETTINGS) {
+    if (saved[path] !== undefined) writePath(c, path, saved[path]);
+  }
+
+  if (c.radius !== radiusWas) setR(c.radius);
+  if (!!c.snapToGrid !== snapWas && typeof toggleSnapToGrid === 'function') {
+    toggleSnapToGrid(!!c.snapToGrid);
+  }
+  if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
+}
+
+// Records an undo point for a settings change, but only when one of the
+// undoable values actually moved — otherwise clicking Apply with nothing
+// changed would push an entry that undoes to an identical state.
+export function snapshotSettings() {
+  const now = JSON.stringify(captureSettings());
+  const last = App.history[App.history.length - 1];
+  if (last) {
+    try {
+      if (JSON.stringify(JSON.parse(last).config || {}) === now) return false;
+    } catch (e) { /* unreadable entry — record rather than guess */ }
+  }
+  snapshot();
+  return true;
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  UNDO / REDO
 // ══════════════════════════════════════════════════════════════════
 export function snapshot() {
@@ -40,7 +125,8 @@ export function snapshot() {
     outputAlpha: [...App.outputAlpha], tapeCount: App.tapeCount,
     stateN: App.stateN, transN: App.transN,
     notes: App.notes, noteN: App.noteN,
-    dividers: App.dividers, dividerN: App.dividerN
+    dividers: App.dividers, dividerN: App.dividerN,
+    config: captureSettings()
   });
   App.history.push(s);
   App.future = [];
@@ -108,6 +194,10 @@ export function restoreSnapshot(s) {
   App.notes = d.notes || []; App.noteN = d.noteN || 0;
   App.dividers = d.dividers || []; App.dividerN = d.dividerN || 0;
   if (App.selectedDividerId && !App.dividers.some(dv => dv.id === App.selectedDividerId)) App.selectedDividerId = null;
+
+  // Before the emit: the repaint below reads radius, label style and the
+  // routing flags, so they have to be the restored ones.
+  applySettings(d.config);
 
   emit(Change.ALPHABET, Change.GRAPH);
 }

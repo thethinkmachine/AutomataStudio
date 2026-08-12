@@ -25,6 +25,7 @@ import './alphabet.js';
 import './states-transitions.js';
 import './canvas.js';
 import './render.js';
+import './quick-settings.js';
 import './notes.js';
 import './dividers.js';
 import './simulation.js';

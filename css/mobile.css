@@ -277,7 +277,7 @@
 
   .toolbox-kbd,
   .minimap-container,
-  .minimap-show-btn,
+  #minimap-toggle-btn,
   .canvas-hint,
   .zoom-indicator {
     display: none !important;
