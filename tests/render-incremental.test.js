@@ -270,6 +270,44 @@ test('semantic pill labels are toggleable without replacing the edge node', () =
   assert.equal(pillEl.classList.contains('edge-pill-beginner'), true);
 });
 
+test('hiding the edge labels empties both layers and refills them on the way back', () => {
+  machine({ states: 2 });
+  addTransition(0, 1, 'a');
+  App.config.edgeLabelStyle = 'pills';
+  context.renderAll();
+  const node = edgeNode(0, 1);
+  const { textEl, pillEl } = node.__parts;
+
+  App.config.edgeLabelStyle = 'none';
+  context.renderAll();
+
+  assert.equal(edgeNode(0, 1), node, 'the edge node survives the style change');
+  assert.equal(textEl.style.display, 'none');
+  assert.equal(pillEl.style.display, 'none');
+  assert.equal(textEl.children.length, 0, 'nothing is built for a hidden label');
+  assert.equal(pillEl.children.length, 0);
+  // The path is still drawn, and the transition is still describable.
+  assert.ok(node.__parts.pathEl.getAttribute('d'));
+  assert.ok(node.getAttribute('aria-label'));
+
+  App.config.edgeLabelStyle = 'compact';
+  context.renderAll();
+  assert.equal(textEl.style.display, '');
+  assert.equal(textEl.children.length, 1, 'the label comes back after being hidden');
+});
+
+test('a hidden edge label takes up no room in the layout', () => {
+  machine({ states: 2 });
+  addTransition(0, 0, 'a-very-long-symbol-name');
+  App.config.edgeLabelStyle = 'compact';
+  const shown = context.currentLayoutContext().geo.get(edgeKey(0, 0)).labelSize;
+  assert.ok(shown.w > 0 && shown.h > 0);
+
+  App.config.edgeLabelStyle = 'none';
+  const hiddenSize = context.currentLayoutContext().geo.get(edgeKey(0, 0)).labelSize;
+  assert.deepEqual(hiddenSize, { w: 0, h: 0 }, 'not the default fallback size');
+});
+
 test('the curve handle exists only while the edge is selected', () => {
   machine({ states: 2 });
   const t = addTransition(0, 1, 'a');

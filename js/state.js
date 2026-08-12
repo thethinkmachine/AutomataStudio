@@ -182,7 +182,7 @@ export const App = {
     wheelZoom: true,
     snapToGrid: false,
     wrapStateLabels: true,
-    edgeLabelStyle: 'compact', // 'compact' | 'pills' | 'beginner'
+    edgeLabelStyle: 'compact', // 'compact' | 'pills' | 'beginner' | 'none'
     clickHighlightMode: 'off', // 'off' | 'outgoing' | 'incoming'
     layout: { minRadius: 80, nodeSpacing: 35, algorithm: 'sugiyama' },
     gridSnap: 20,
@@ -270,6 +270,22 @@ export const SVG_NS = 'http://www.w3.org/2000/svg';
 export let R = App.config.radius;
 export function setR(v) { R = v; }
 export const $ = id => document.getElementById(id);
+
+// The canvas edge-label styles, and the one place that decides what an unknown
+// value means. Settings reads it, writes it and exports it, and render.js and
+// geometry.js branch on it — four literal lists of the valid ids drifted apart
+// the moment a fifth style was added, so they all come through here instead.
+// 'none' hides the labels altogether: nothing is drawn and, because the label
+// box also goes to zero, nothing is laid out around them either.
+export const EdgeLabelStyles = ['compact', 'pills', 'beginner', 'none'];
+
+export function normalizeEdgeLabelStyle(style) {
+  return EdgeLabelStyles.includes(style) ? style : 'compact';
+}
+
+export function edgeLabelsHidden() {
+  return App.config.edgeLabelStyle === 'none';
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  MACHINE SHAPE PREDICATES

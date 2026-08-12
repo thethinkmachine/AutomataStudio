@@ -5,7 +5,7 @@ import { PILL_GAP, PILL_HEIGHT, PILL_ROW_H, buildLayoutContext, edgeGeometryFor,
 import { commit, snapshot } from './history.js';
 import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
-import { $, App, OmegaAcceptance, R, SVG_NS, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, statePriority, usesParityPriorities } from './state.js';
+import { $, App, OmegaAcceptance, R, SVG_NS, edgeLabelsHidden, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, statePriority, usesParityPriorities } from './state.js';
 import { getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
 import { Change, emit, subscribe } from './store.js';
 import { triggerMath } from './theory.js';
@@ -79,6 +79,11 @@ function edgeGroupFor(key) {
 // each transition reads as.
 function edgeLabelSizeFor(ts) {
   const style = App.config.edgeLabelStyle;
+  // A hidden label occupies nothing, so the loop scorer, the label placer and
+  // getContentBounds all stop steering around a box that is never painted.
+  // It has to be a real zero rather than a falsy return — buildLayoutContext
+  // reads that as "no estimate available" and substitutes a default size.
+  if (style === 'none') return { w: 0, h: 0 };
   if (style === 'pills' || style === 'beginner') {
     return estimatePillLabelSize(ts.map(t => transLabelParts(t, style === 'beginner')));
   }
@@ -326,8 +331,34 @@ function syncEdgeNode(edgeGrp, geo, ts) {
   parts.pathEl.setAttribute('d', geo.d);
   parts.hitEl.setAttribute('d', geo.d);
 
+  const hidden = edgeLabelsHidden();
   const pillMode = App.config.edgeLabelStyle === 'pills' || App.config.edgeLabelStyle === 'beginner';
   const beginnerMode = App.config.edgeLabelStyle === 'beginner';
+
+  // Hiding the labels skips building them, rather than painting them and then
+  // covering them up. The cache keys are cleared with them so that switching the
+  // style back rebuilds from scratch instead of matching a stale key against an
+  // emptied node.
+  if (hidden) {
+    if (edgeGrp.__labelKey !== null) {
+      parts.textEl.innerHTML = '';
+      edgeGrp.__labelKey = null;
+      edgeGrp.__labelX = null;
+    }
+    if (edgeGrp.__pillKey !== null) {
+      parts.pillEl.innerHTML = '';
+      edgeGrp.__pillKey = null;
+    }
+    parts.textEl.style.display = 'none';
+    parts.pillEl.style.display = 'none';
+
+    const tip = ts.map(t => transLabelDescriptive(t)).join('\n');
+    edgeGrp.setAttribute('data-tip', tip);
+    edgeGrp.setAttribute('aria-label', tip);
+
+    syncCurveHandle(edgeGrp, edgeGrp.getAttribute('data-edge'), geo, selected);
+    return true;
+  }
 
   const lbls = ts.map(transLabel);
   // Rebuild the tspans only when the label text changes. Geometry changes —

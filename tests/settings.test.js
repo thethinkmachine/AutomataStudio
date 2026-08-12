@@ -206,9 +206,13 @@ test('settings export and re-import round-trips every field', () => {
 test('switching settings tabs activates exactly one panel', () => {
   const h = createHarness();
   h.context.openSettingsModal();
-  for (const tab of ['general', 'symbols']) {
+  // Every tab in the strip, so that reordering it cannot leave a tab pointing at
+  // a panel that is not there. Only the activation is asserted: deactivating the
+  // others goes through querySelectorAll, which the DOM stub does not implement.
+  for (const tab of ['general', 'rendering', 'symbols', 'pda', 'tm', 'transducer']) {
     h.context.switchSettingsTab(tab);
     const content = h.getElement(`tab-${tab}`);
+    assert.ok(content, `${tab} has no panel`);
     assert.equal(content.classList.contains('active'), true, `${tab} panel should be active`);
   }
 });

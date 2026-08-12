@@ -9,7 +9,7 @@ import { includeNoteBounds, pruneNoteAnchorsExcluding, resolveNotePos } from './
 import { restartAutosaveTimer, saveBackupChecked, saveJSON, saveWorkspace, saveWorkspaceById } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
-import { $, App, MachineCategories, MachineTypes, R, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, migrateSystemSymbols, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
+import { $, App, MachineCategories, MachineTypes, R, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { getState, getTransition, hideContextMenu } from './states-transitions.js';
 import { Change, emit, subscribe } from './store.js';
 import { DEFAULT_THEME, Themes } from './themes.js';
@@ -2353,7 +2353,7 @@ export function openSettingsModal() {
   if ($('set-autosave-interval')) $('set-autosave-interval').value = String(c.autosaveIntervalMs ?? 15000);
   $('set-radius').value = c.radius;
   if ($('set-wrap-labels')) $('set-wrap-labels').checked = c.wrapStateLabels !== false;
-  if ($('set-edge-label-style')) $('set-edge-label-style').value = ['pills', 'beginner'].includes(c.edgeLabelStyle) ? c.edgeLabelStyle : 'compact';
+  if ($('set-edge-label-style')) $('set-edge-label-style').value = normalizeEdgeLabelStyle(c.edgeLabelStyle);
   if ($('set-click-highlight-mode')) $('set-click-highlight-mode').value = c.clickHighlightMode || 'off';
   $('set-zoom-step').value = c.zoom.step;
   $('set-grid-snap').value = c.gridSnap;
@@ -2450,10 +2450,7 @@ export function confirmSettings() {
   if (typeof restartAutoTimerIfPlaying === 'function') restartAutoTimerIfPlaying();
   c.radius = parseInt($('set-radius').value) || 30;
   if ($('set-wrap-labels')) c.wrapStateLabels = $('set-wrap-labels').checked;
-  if ($('set-edge-label-style')) {
-    const style = $('set-edge-label-style').value;
-    c.edgeLabelStyle = ['pills', 'beginner'].includes(style) ? style : 'compact';
-  }
+  if ($('set-edge-label-style')) c.edgeLabelStyle = normalizeEdgeLabelStyle($('set-edge-label-style').value);
   if ($('set-click-highlight-mode')) {
     c.clickHighlightMode = $('set-click-highlight-mode').value || 'off';
     if (c.clickHighlightMode === 'off' && typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
@@ -2524,7 +2521,7 @@ export function getEditorSettingsData() {
     autosaveIntervalMs: c.autosaveIntervalMs,
     radius: c.radius,
     wrapStateLabels: !!c.wrapStateLabels,
-    edgeLabelStyle: ['pills', 'beginner'].includes(c.edgeLabelStyle) ? c.edgeLabelStyle : 'compact',
+    edgeLabelStyle: normalizeEdgeLabelStyle(c.edgeLabelStyle),
     clickHighlightMode: c.clickHighlightMode || 'off',
     zoomStep: c.zoom.step,
     gridSnap: c.gridSnap,
@@ -2592,7 +2589,7 @@ export function populateSettingsModalInputs(data) {
   if (data.autosaveIntervalMs !== undefined && $('set-autosave-interval')) $('set-autosave-interval').value = data.autosaveIntervalMs;
   if (data.radius !== undefined) $('set-radius').value = data.radius;
   if (data.wrapStateLabels !== undefined && $('set-wrap-labels')) $('set-wrap-labels').checked = !!data.wrapStateLabels;
-  if (data.edgeLabelStyle !== undefined && $('set-edge-label-style')) $('set-edge-label-style').value = ['pills', 'beginner'].includes(data.edgeLabelStyle) ? data.edgeLabelStyle : 'compact';
+  if (data.edgeLabelStyle !== undefined && $('set-edge-label-style')) $('set-edge-label-style').value = normalizeEdgeLabelStyle(data.edgeLabelStyle);
   if (data.clickHighlightMode !== undefined && $('set-click-highlight-mode')) $('set-click-highlight-mode').value = data.clickHighlightMode;
   if (data.zoomStep !== undefined) $('set-zoom-step').value = data.zoomStep;
   if (data.gridSnap !== undefined) $('set-grid-snap').value = data.gridSnap;
