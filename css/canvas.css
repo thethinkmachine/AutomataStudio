@@ -967,6 +967,133 @@
   margin: 0 2px;
 }
 
+/* ─── QUICK CANVAS SETTINGS ─── */
+/* Anchored against whichever corner layoutCanvasOverlays resolved, so it opens
+   toward the canvas interior rather than off-screen — positionQuickSettings
+   writes the offsets and stamps data-corner for the transform origin.
+   Chrome deliberately matches .minimap-container, which it stacks against:
+   same surface, border, radius and header bar. The rows inside instead follow
+   .modal-row/.modal-lbl, since that is the dialog they mirror. */
+.quick-settings {
+  position: absolute;
+  z-index: 60;
+  width: 232px;
+  max-width: calc(100vw - 28px);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  display: none;
+  transform-origin: bottom right;
+}
+
+.quick-settings[data-corner^="top"] { transform-origin: top right; }
+.quick-settings[data-corner$="left"] { transform-origin: bottom left; }
+.quick-settings[data-corner="top-left"] { transform-origin: top left; }
+
+.quick-settings.open {
+  display: block;
+  animation: qs-in var(--transition-fast) ease-out;
+}
+
+@keyframes qs-in {
+  from { opacity: 0; transform: scale(.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-settings.open { animation: none; }
+}
+
+/* Same bar as .minimap-header — these two sit stacked, so a different height,
+   font or background between them reads as a mistake. */
+.qs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+}
+
+.qs-title {
+  font-family: var(--mono);
+  font-size: .6rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.qs-more {
+  background: transparent;
+  border: none;
+  padding: 0 2px;
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--text3);
+  font-family: var(--mono);
+  font-size: .6rem;
+  letter-spacing: .04em;
+}
+
+.qs-more:hover { color: var(--accent); }
+
+.qs-body {
+  padding: 5px;
+  max-height: min(58vh, 420px);
+  overflow-y: auto;
+}
+
+/* Section heading, styled off .minimap-title rather than the modal's section
+   label, so the whole overlay stays in one voice. */
+.qs-group {
+  font-family: var(--mono);
+  font-size: .55rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text3);
+  padding: 6px 5px 2px;
+}
+
+.qs-group:first-child { padding-top: 2px; }
+
+.qs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 5px;
+  border-radius: 5px;
+  min-height: 26px;
+}
+
+.qs-row:hover { background: var(--surface); }
+
+/* Matches .modal-lbl — same family, size and colour as the dialog row this
+   mirrors, minus its 130px min-width, which would not fit here. */
+.qs-lbl {
+  font-family: var(--sans);
+  font-size: .72rem;
+  color: var(--text2);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Inherits .sel — only the metrics shrink to fit an overlay row. The row is the
+   flex parent, so the control keeps its natural size and the label is what
+   gives way when the panel is narrow. */
+.qs-sel {
+  flex: 0 0 auto;
+  max-width: 106px;
+  padding: 2px 6px;
+  font-size: .68rem;
+}
+
+.qs-toggle { flex: 0 0 auto; }
+
 /* ─── MINIMAP ─── */
 /* Positioned inline alongside .canvas-nav-controls — see layoutCanvasOverlays. */
 .minimap-container {
@@ -1031,14 +1158,6 @@
   stroke: none;
 }
 
-.minimap-show-btn svg {
-  width: 12px;
-  height: 12px;
-  fill: currentColor;
-  stroke: none;
-  flex-shrink: 0;
-}
-
 .minimap-canvas {
   display: block;
   cursor: pointer;
@@ -1049,34 +1168,6 @@
 
 .minimap-canvas.dragging {
   cursor: grabbing;
-}
-
-/* Stands in for the minimap when it is collapsed, and takes the same
-   inline corner placement — see layoutCanvasOverlays. */
-.minimap-show-btn {
-  position: absolute;
-  bottom: 56px;
-  right: 14px;
-  z-index: 50;
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-family: var(--mono);
-  font-size: .6rem;
-  color: var(--text3);
-  cursor: pointer;
-  transition: color var(--transition-fast), background var(--transition-fast),
-              bottom var(--transition-base), right var(--transition-base),
-              left var(--transition-base), top var(--transition-base);
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.minimap-show-btn:hover {
-  color: var(--text);
-  background: var(--surface);
 }
 
 @media (max-width: 900px) {
@@ -1122,11 +1213,6 @@
     width: 120px;
     height: 75px;
   }
-
-  .minimap-show-btn {
-    right: 12px;
-    bottom: 56px;
-  }
 }
 
 @media (max-width: 640px) {
@@ -1142,7 +1228,8 @@
     display: none;
   }
 
-  .minimap-show-btn {
+  /* No minimap at this width, so its nav-bar toggle goes too. */
+  #minimap-toggle-btn {
     display: none !important;
   }
 }

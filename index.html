@@ -451,10 +451,6 @@
             </div>
             <canvas class="minimap-canvas" id="minimap-canvas" width="160" height="100"></canvas>
           </div>
-          <button class="minimap-show-btn" id="minimap-show-btn" style="display:none" onclick="toggleMinimap()"
-            data-tip="Show minimap">
-            <svg viewBox="0 0 256 256" fill="currentColor"><path d="M228.92,49.69a8,8,0,0,0-6.86-1.45L160.93,63.52,99.58,32.84a8,8,0,0,0-5.52-.6l-64,16A8,8,0,0,0,24,56V200a8,8,0,0,0,9.94,7.76l61.13-15.28,61.35,30.68A8.15,8.15,0,0,0,160,224a8,8,0,0,0,1.94-.24l64-16A8,8,0,0,0,232,200V56A8,8,0,0,0,228.92,49.69ZM104,52.94l48,24V203.06l-48-24ZM40,62.25l48-12v127.5l-48,12Zm176,131.5-48,12V78.25l48-12Z" /></svg>Map
-          </button>
           <!-- Nav controls -->
           <div class="canvas-nav-controls" id="canvas-nav-controls">
             <button class="cnc-btn" onclick="zoomOut()" data-tip="Zoom out" data-tip-kbd="-">
@@ -473,6 +469,28 @@
             <button class="cnc-btn" id="snap-toggle-btn" onclick="toggleSnapToGrid()" data-tip="Snap to grid while dragging (hold Shift to invert)">
               <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H40A16,16,0,0,0,24,64V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V64A16,16,0,0,0,216,48ZM104,144V112h48v32Zm48,16v32H104V160ZM40,112H88v32H40Zm64-16V64h48V96Zm64,16h48v32H168Zm48-16H168V64h48ZM88,64V96H40V64ZM40,160H88v32H40Zm176,32H168V160h48v32Z" /></svg>
             </button>
+            <!-- Starts pressed because the minimap starts visible; init.js calls
+                 toggleMinimap() only when storage says it was left hidden. -->
+            <button class="cnc-btn active" id="minimap-toggle-btn" onclick="toggleMinimap()" aria-pressed="true"
+              data-tip="Hide minimap">
+              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M228.92,49.69a8,8,0,0,0-6.86-1.45L160.93,63.52,99.58,32.84a8,8,0,0,0-5.52-.6l-64,16A8,8,0,0,0,24,56V200a8,8,0,0,0,9.94,7.76l61.13-15.28,61.35,30.68A8.15,8.15,0,0,0,160,224a8,8,0,0,0,1.94-.24l64-16A8,8,0,0,0,232,200V56A8,8,0,0,0,228.92,49.69ZM104,52.94l48,24V203.06l-48-24ZM40,62.25l48-12v127.5l-48,12Zm176,131.5-48,12V78.25l48-12Z" /></svg>
+            </button>
+            <div class="cnc-sep"></div>
+            <button class="cnc-btn" id="quick-settings-btn" onclick="toggleQuickSettings(event)"
+              aria-haspopup="dialog" aria-expanded="false" aria-controls="quick-settings"
+              data-tip="Canvas settings">
+              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-5.86,5.86,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23L138.14,201.4a8,8,0,0,0-5-1.74h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.77,215.6a91.57,91.57,0,0,1-15-6.23L83.3,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-5.86-5.86,8,8,0,0,0-5.1-2.64L47.12,170.9a91.32,91.32,0,0,1-6.23-15L55.1,138.14a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.9,100.77a91.57,91.57,0,0,1,6.23-15L69,83.3a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,5.86-5.86A8,8,0,0,0,82.6,69.7L85.1,47.12a91.32,91.32,0,0,1,15-6.23L117.86,55.1a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.23,40.9a91.57,91.57,0,0,1,15,6.23L172.7,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,5.86,5.86,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15L200.9,117.86A8,8,0,0,0,199.16,123.34Z" /></svg>
+            </button>
+          </div>
+
+          <!-- Quick canvas settings. Every row mirrors a control in the Settings
+               dialog rather than owning its own state; see js/quick-settings.js. -->
+          <div class="quick-settings" id="quick-settings" role="dialog" aria-label="Canvas settings" aria-modal="false">
+            <div class="qs-header">
+              <span class="qs-title">Canvas</span>
+              <button class="qs-more" onclick="openSettingsFromQuick('rendering')" data-tip="All settings">More…</button>
+            </div>
+            <div class="qs-body" id="qs-body"></div>
           </div>
         </div>
 

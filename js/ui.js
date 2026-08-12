@@ -2,8 +2,9 @@ import { utmStepBack, utmStepFwd, utmToggleAuto } from './algorithms-fa.js';
 import { renderGamma } from './alphabet.js';
 import { settleAll } from './anim.js';
 import { applyCamera, clearEdgeDirectionHighlight, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, nudgeSelected, pasteClipboard, selectAllStates, toggleSnapToGrid, wrap } from './canvas.js';
+import { isQuickSettingsOpen, positionQuickSettings, refreshQuickSettings } from './quick-settings.js';
 import { clearDividerSelection, deleteSelectedDivider, includeDividerBounds, isRectDivider, updateShapeToolButton } from './dividers.js';
-import { markDirty, redo, snapshot, undo } from './history.js';
+import { markDirty, redo, snapshot, snapshotSettings, undo } from './history.js';
 import { anyModalOpen, closeModal, registerModal, showOverlay } from './modal.js';
 import { includeNoteBounds, pruneNoteAnchorsExcluding, resolveNotePos } from './notes.js';
 import { restartAutosaveTimer, saveBackupChecked, saveJSON, saveWorkspace, saveWorkspaceById } from './persistence.js';
@@ -481,6 +482,9 @@ export function createTab(name) {
   if (typeof applyCamera === 'function') applyCamera();
   if (typeof updateLPanel === 'function') updateLPanel();
   if (typeof updateRPanel === 'function') updateRPanel();
+  // Each tab carries its own config, so activating one can bring different
+  // canvas settings with it — the same reason R gets republished here.
+  if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
   saveBackupChecked();
 }
 
@@ -521,6 +525,9 @@ export function switchTab(id) {
   if (typeof applyCamera === 'function') applyCamera();
   if (typeof updateLPanel === 'function') updateLPanel();
   if (typeof updateRPanel === 'function') updateRPanel();
+  // Each tab carries its own config, so activating one can bring different
+  // canvas settings with it — the same reason R gets republished here.
+  if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
   saveBackupChecked();
 }
 
@@ -1423,13 +1430,22 @@ export function renderMinimap() {
 }
 
 export function toggleMinimap() {
-  const mm = $('minimap-container'), sb = $('minimap-show-btn');
+  const mm = $('minimap-container');
   if (!mm) return;
   const hidden = mm.classList.toggle('minimap-hidden');
-  if (sb) sb.style.display = hidden ? '' : 'none';
+  // Bringing the map back is the nav bar's job now, rather than a floating
+  // stand-in button that took the map's slot in the stack: hiding the minimap
+  // used to swap one overlay for another, which still left something parked in
+  // the corner. The toggle lives with the other canvas toggles instead, and
+  // reads as pressed while the map is up.
+  const btn = $('minimap-toggle-btn');
+  if (btn) {
+    btn.classList.toggle('active', !hidden);
+    btn.setAttribute('aria-pressed', hidden ? 'false' : 'true');
+    btn.setAttribute('data-tip', hidden ? 'Show minimap' : 'Hide minimap');
+  }
   try { localStorage.setItem('automata-minimap', hidden ? '0' : '1'); } catch (e) { }
-  // The collapsed stand-in is a different height from the map it replaces,
-  // so the stack above it has to be re-stacked.
+  // The map leaving the stack changes what sits above the nav controls.
   if (typeof layoutCanvasOverlays === 'function') layoutCanvasOverlays();
 }
 
@@ -1536,8 +1552,16 @@ export function toggleTool(t) {
 export const TOOLBAR_DOCK_KEY = 'automata-toolbar-dock';
 export const TOOLBAR_MARGIN = 12;
 
+// Must stay in step with the `@media (max-width: 900px)` block in css/canvas.css
+// that pins .canvas-toolbox across the bottom. These two disagreed — CSS at
+// 900, JS at 820 — which left an 80px band where the stylesheet had already
+// moved the toolbar to the bottom edge while this still reported "not compact",
+// so the overlay stack stayed in the bottom corner and the two bars crowded
+// each other. One constant, read by both the mode check and the default dock.
+export const COMPACT_TOOLBAR_QUERY = '(max-width: 900px)';
+
 export function isCompactToolbarMode() {
-  return window.matchMedia && window.matchMedia('(max-width: 820px)').matches;
+  return !!(window.matchMedia && window.matchMedia(COMPACT_TOOLBAR_QUERY).matches);
 }
 
 export function normalizeToolbarDock(dock) {
@@ -1553,8 +1577,7 @@ export function clamp01(n) {
 }
 
 export function getDefaultToolbarDock() {
-  const isNarrow = window.matchMedia && window.matchMedia('(max-width: 820px)').matches;
-  return { side: isNarrow ? 'bottom' : 'left', ratio: 0.5 };
+  return { side: isCompactToolbarMode() ? 'bottom' : 'left', ratio: 0.5 };
 }
 
 export function readToolbarDock() {
@@ -1722,7 +1745,24 @@ export function applyToolbarDock(persist = false) {
 // the same distance from the edges as the toolbar does.
 export const OVERLAY_GAP = 8;
 
-export function canvasOverlayCorner(dock, wrapRect, toolbarBox) {
+// Width the overlay stack needs before it can share an edge with a horizontal
+// toolbar. The nav controls are the widest member; this is that bar at its
+// current button count plus breathing room, and it is a floor rather than a
+// measurement so the corner can be resolved before anything is laid out.
+export const STACK_MIN_WIDTH = 250;
+
+// A horizontal toolbar and the overlay stack both want the bottom edge. On a
+// wide canvas they take opposite ends and never meet, which is what `ratio`
+// alone assumed. On a narrow one the toolbar spans nearly the full width and
+// there is no opposite end left — so ask whether the two actually fit side by
+// side rather than trusting which half the toolbar was dropped in.
+export function bottomEdgeHasRoomBeside(wrapRect, toolbarBox, stackWidth = STACK_MIN_WIDTH) {
+  if (!toolbarBox || !toolbarBox.width || !wrapRect || !wrapRect.width) return true;
+  // Margin outside each bar, plus one gap between them.
+  return toolbarBox.width + stackWidth + TOOLBAR_MARGIN * 3 <= wrapRect.width;
+}
+
+export function canvasOverlayCorner(dock, wrapRect, toolbarBox, stackWidth) {
   // Compact mode pins the toolbar across the bottom, leaving only the top
   // free; the stack goes top-right, clear of the header controls.
   if (isCompactToolbarMode()) return { x: 'right', y: 'top' };
@@ -1745,12 +1785,24 @@ export function canvasOverlayCorner(dock, wrapRect, toolbarBox) {
   }
 
   if (side === 'bottom') {
-    // Horizontal bar along the bottom. Sitting left of centre leaves the
-    // bottom-right free; otherwise drop the stack to the bottom-left.
+    // No room to share the edge — go over the top rather than onto the toolbar.
+    if (!bottomEdgeHasRoomBeside(wrapRect, toolbarBox, stackWidth)) return { x: 'right', y: 'top' };
+    // Otherwise sitting left of centre leaves the bottom-right free, and vice
+    // versa.
     return ratio > 0.5 ? { x: 'left', y: 'bottom' } : { x: 'right', y: 'bottom' };
   }
 
   return { x: 'right', y: 'bottom' };
+}
+
+// The toolbar's live box, or null when it is not on screen. A hidden node
+// measures as a zero rect, which every consumer here reads as "no toolbar" —
+// returning null says that outright instead of leaving zeros to be interpreted.
+export function measuredToolbarBox(toolbox) {
+  if (!toolbox || !toolbox.getBoundingClientRect) return null;
+  if (toolbox.offsetParent === null) return null;
+  const box = toolbox.getBoundingClientRect();
+  return box && box.width ? box : null;
 }
 
 // Places the visible members of the stack in the chosen corner, stacking
@@ -1759,16 +1811,31 @@ export function layoutCanvasOverlays(wrapRect, toolbarBox) {
   const w = $('canvas-wrap');
   if (!w) return;
   const rect = wrapRect || w.getBoundingClientRect();
-  const corner = canvasOverlayCorner(App.toolbarDock, rect, toolbarBox);
-  const margin = TOOLBAR_MARGIN;
 
   const nav = $('canvas-nav-controls');
   const map = $('minimap-container');
-  const showBtn = $('minimap-show-btn');
 
-  // Bottom-up in visual order: zoom controls sit outermost, the minimap (or
-  // its collapsed stand-in) rests on top of them.
-  const stack = [nav, (map && !map.classList.contains('minimap-hidden')) ? map : showBtn]
+  // Measure the toolbar whenever the caller did not just position it. Only
+  // applyToolbarDock has a box to hand; toggleMinimap and the quick-settings
+  // reposition call in with nothing, and an absent box makes canvasOverlayCorner
+  // answer differently — so the stack changed corners on clicks that had no
+  // business moving it. The corner has to depend on the DOM, not on the caller.
+  const toolbox = $('canvas-toolbox');
+  const box = toolbarBox || measuredToolbarBox(toolbox);
+
+  // Measure the widest member so that adding a button to the nav bar keeps the
+  // crowding check honest. STACK_MIN_WIDTH stands in only when there is nothing
+  // to measure — on first paint, or with the bar not yet laid out. Taking the
+  // larger of the two instead would demand 250px of clearance for a bar that
+  // genuinely measures less, and push the stack off an edge that had room.
+  const navWidth = nav && nav.getBoundingClientRect ? nav.getBoundingClientRect().width : 0;
+  const corner = canvasOverlayCorner(App.toolbarDock, rect, box, navWidth || STACK_MIN_WIDTH);
+  const margin = TOOLBAR_MARGIN;
+
+  // Bottom-up in visual order: zoom controls sit outermost, the minimap rests
+  // on top of them. A hidden map leaves nothing behind — its toggle lives in
+  // the nav bar — so the stack is just the one member.
+  const stack = [nav, (map && !map.classList.contains('minimap-hidden')) ? map : null]
     .filter(el => el && el.offsetParent !== null);
 
   let offset = margin;
@@ -1782,6 +1849,10 @@ export function layoutCanvasOverlays(wrapRect, toolbarBox) {
   }
 
   if (map) map.dataset.corner = `${corner.y}-${corner.x}`;
+
+  // The popover anchors off the corner stamped above, so it has to follow the
+  // stack when the toolbar redocks or the panel resizes underneath it.
+  if (typeof isQuickSettingsOpen === 'function' && isQuickSettingsOpen()) positionQuickSettings();
 }
 
 export function initToolbarDock() {
@@ -2499,6 +2570,13 @@ export function confirmSettings() {
   if (typeof updateLPanel === 'function') updateLPanel();
   if (typeof updateRPanel === 'function') updateRPanel();
   if (typeof renderGamma === 'function') renderGamma();
+  // The quick popover mirrors several of the controls just written, so it
+  // re-reads rather than keeping whatever it showed when it was last opened.
+  if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
+  // Undoable settings changed here should be undoable from here too, or the
+  // same setting would behave differently depending on which surface you used.
+  // No-ops when only app preferences (theme, symbols, step budgets) moved.
+  if (typeof snapshotSettings === 'function') snapshotSettings();
   closeModal('settings-modal');
   showStatus('Settings applied!');
   saveBackupChecked();

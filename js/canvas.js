@@ -116,7 +116,7 @@ export function updateTouchCameraGesture() {
 
 export function captureTouchPointerDown(e) {
   if (e.pointerType !== 'touch') return;
-  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, .minimap-show-btn, #status-bar')) return;
+  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, #status-bar')) return;
   touchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (touchPointers.size === 2) {
     clearTouchLongPress();
@@ -250,7 +250,7 @@ export let _rightDownPt = null;
 export let _rightDragged = false;
 
 wrap.addEventListener('pointerdown', e => {
-  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, .minimap-show-btn, #status-bar')) return;
+  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, #status-bar')) return;
   if (e.pointerType) wrap.dataset.lastPointerType = e.pointerType;
 
   if (e.button === 2) {
@@ -679,7 +679,7 @@ document.addEventListener('visibilitychange', () => {
 // why); state/edge targets never reach this listener since their own
 // contextmenu handlers already stopPropagation.
 wrap.addEventListener('contextmenu', e => {
-  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, .minimap-show-btn, #status-bar')) return;
+  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, #status-bar')) return;
   const onSVGBg = e.target === wrap || e.target.id === 'svgCanvas' || e.target === $('cam-g');
   if (!onSVGBg) return;
   e.preventDefault();
@@ -728,7 +728,7 @@ export function ctxCanvasAutoLayout() {
 wrap.addEventListener('dblclick', e => {
   if (App.tool !== 'pointer' && App.tool !== 'move') return;
   if (wrap.dataset.lastPointerType === 'touch') return;
-  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, .minimap-show-btn, #status-bar')) return;
+  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, #status-bar')) return;
   const onSVGBg = e.target === wrap || e.target.id === 'svgCanvas' || e.target === $('cam-g');
   if (!onSVGBg) return;
   const pt = svgPt(e);

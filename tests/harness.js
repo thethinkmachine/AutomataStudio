@@ -47,13 +47,14 @@ import * as theory from '../js/theory.js';
 import * as ui from '../js/ui.js';
 import * as utils from '../js/utils.js';
 import * as view from '../js/view.js';
+import * as quickSettings from '../js/quick-settings.js';
 import * as workspace from '../js/workspace.js';
 
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, geometry, statesTransitions,
   canvas, render, notes, dividers, simulation, suggest, language, alphabet,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
-  importJflap, algorithmsFa, algorithmsCfg, theory, workspace, ui
+  importJflap, algorithmsFa, algorithmsCfg, theory, workspace, quickSettings, ui
 ];
 
 // Live view over every module export. Names are unique across modules (the
