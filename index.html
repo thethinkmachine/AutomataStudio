@@ -1343,12 +1343,17 @@
       <div class="exp-split settings-split">
 
       <div class="exp-side modal-tabs" id="settings-tabs">
+        <!-- Ordered by reach: the tabs that apply to every machine first, then
+             the machine-family panels, which only matter once you are building
+             that kind of machine. switchSettingsTab resolves tabs by id, so this
+             strip can be reordered freely — but the first tab has to be the one
+             carrying `active` here and on its panel below. -->
         <div class="modal-tab active" onclick="switchSettingsTab('general')">Workspace</div>
+        <div class="modal-tab" onclick="switchSettingsTab('rendering')">Canvas &amp; Layout</div>
+        <div class="modal-tab" onclick="switchSettingsTab('symbols')">Notation</div>
         <div class="modal-tab" onclick="switchSettingsTab('pda')">Pushdown</div>
         <div class="modal-tab" onclick="switchSettingsTab('tm')">Turing Machine</div>
         <div class="modal-tab" onclick="switchSettingsTab('transducer')">Transducers</div>
-        <div class="modal-tab" onclick="switchSettingsTab('rendering')">Canvas &amp; Layout</div>
-        <div class="modal-tab" onclick="switchSettingsTab('symbols')">Notation</div>
       </div>
 
       <div class="modal-tab-panels" id="settings-tab-panels">
@@ -1381,42 +1386,6 @@
         <div class="modal-row"><span class="modal-lbl">Snap to Grid by Default</span><label class="toggle-switch"><input type="checkbox" id="set-snap-grid"><span class="toggle-track"><span class="toggle-thumb"></span></span></label></div>
       </div>
 
-      <div class="modal-tab-content" id="tab-pda">
-        <div class="modal-row">
-          <span class="modal-lbl">PDA Max Steps</span>
-          <input type="number" class="inp" id="set-pda-steps" label="PDA step limit">
-        </div>
-        <div class="modal-row">
-          <span class="modal-lbl" data-tip="Toggles between HUM formal definition and Sipser formalism">PDA Formalism</span>
-          <select class="inp" id="set-pda-paradigm" label="PDA Formalism Paradigm">
-            <option value="explicit">Acceptance by final state</option>
-            <option value="empty">Acceptance by empty stack</option>
-          </select>
-        </div>
-        <div class="modal-row">
-          <span class="modal-lbl" data-tip="A PFA accepts w when the probability of ending in an accepting state is strictly greater than this cut-point">PFA Cut-Point λ</span>
-          <input type="number" class="inp" id="set-pfa-cutpoint" min="0" max="1" step="0.05" label="PFA cut-point">
-        </div>
-      </div>
-
-      <div class="modal-tab-content" id="tab-tm">
-        <div class="modal-row">
-          <span class="modal-lbl">TM Max Steps</span>
-          <input type="number" class="inp" id="set-tm-steps" label="TM step limit">
-        </div>
-        <div class="modal-row" data-tip="Per-word step budget for the Language panel's fingerprint. One simulation runs per cell, so this is multiplied by roughly 127. Words that exhaust it are drawn as 'no verdict' rather than as rejects.">
-          <span class="modal-lbl">Language Fingerprint Budget</span>
-          <input type="number" class="inp" id="set-lang-budget" min="10" max="20000" step="10" label="Language fingerprint step budget">
-        </div>
-      </div>
-
-      <div class="modal-tab-content" id="tab-transducer">
-        <div class="modal-row" id="set-row-transducer" data-tip="Allow Moore and Mealy machines to have accept states">
-          <span class="modal-lbl">Transducer Accepts</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-transducer-accepts"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
-        </div>
-      </div>
-
       <div class="modal-tab-content" id="tab-rendering">
 
         <div class="modal-row">
@@ -1427,12 +1396,13 @@
           <span class="modal-lbl">Wrap Long State Labels</span>
           <label class="toggle-switch"><input type="checkbox" id="set-wrap-labels"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
         </div>
-        <div class="modal-row" data-tip="Show transitions as compact mathematical notation or as color-coded semantic pills on the canvas. Exports and tables keep compact notation.">
+        <div class="modal-row" data-tip="Show transitions as compact mathematical notation or as color-coded semantic pills on the canvas, or hide them entirely for an uncluttered diagram. Exports and tables keep compact notation.">
           <span class="modal-lbl">Edge Labels</span>
           <select class="sel" id="set-edge-label-style" label="Canvas edge label style">
             <option value="compact">Compact notation</option>
             <option value="pills">Clear actions</option>
             <option value="beginner">Beginner-friendly</option>
+            <option value="none">Hidden</option>
           </select>
         </div>
         <div class="modal-row" data-tip="When set, clicking a state on the canvas also highlights its outgoing (green) or incoming (indigo) transitions. Both directions are always available from a state's right-click menu regardless of this setting.">
@@ -1523,6 +1493,42 @@
         <div class="modal-row">
           <span class="modal-lbl">Stack Bottom</span>
           <input type="text" class="inp" id="set-sym-z0" label="PDA initial stack symbol" maxlength="1">
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="tab-pda">
+        <div class="modal-row">
+          <span class="modal-lbl">PDA Max Steps</span>
+          <input type="number" class="inp" id="set-pda-steps" label="PDA step limit">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl" data-tip="Toggles between HUM formal definition and Sipser formalism">PDA Formalism</span>
+          <select class="inp" id="set-pda-paradigm" label="PDA Formalism Paradigm">
+            <option value="explicit">Acceptance by final state</option>
+            <option value="empty">Acceptance by empty stack</option>
+          </select>
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl" data-tip="A PFA accepts w when the probability of ending in an accepting state is strictly greater than this cut-point">PFA Cut-Point λ</span>
+          <input type="number" class="inp" id="set-pfa-cutpoint" min="0" max="1" step="0.05" label="PFA cut-point">
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="tab-tm">
+        <div class="modal-row">
+          <span class="modal-lbl">TM Max Steps</span>
+          <input type="number" class="inp" id="set-tm-steps" label="TM step limit">
+        </div>
+        <div class="modal-row" data-tip="Per-word step budget for the Language panel's fingerprint. One simulation runs per cell, so this is multiplied by roughly 127. Words that exhaust it are drawn as 'no verdict' rather than as rejects.">
+          <span class="modal-lbl">Language Fingerprint Budget</span>
+          <input type="number" class="inp" id="set-lang-budget" min="10" max="20000" step="10" label="Language fingerprint step budget">
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="tab-transducer">
+        <div class="modal-row" id="set-row-transducer" data-tip="Allow Moore and Mealy machines to have accept states">
+          <span class="modal-lbl">Transducer Accepts</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-transducer-accepts"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
         </div>
       </div>
 
