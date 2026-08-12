@@ -1,7 +1,6 @@
 import { renderGramSyms, renderGrammarLPanel } from './algorithms-cfg.js';
 import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { toggleSnapToGrid } from './canvas.js';
-import { snapshot } from './history.js';
 import { initLangClaimOverflowObserver } from './language.js';
 import { loadBackup, loadSharedLinkFromURL, restartAutosaveTimer } from './persistence.js';
 import { initDefBoxOverflowObserver, updateLPanel, updateRPanel } from './render.js';
@@ -28,7 +27,9 @@ try {
   if (st === 'rect' || st === 'divider') App.lastShapeTool = st;
 } catch (e) { }
 setMachine('DFA'); setTool('pointer'); setView('build');
-snapshot();
+// No boot snapshot: App.history holds states you can go *back* to, and at boot
+// there is nothing behind the empty canvas. An entry here would make the first
+// Ctrl+Z a no-op that still consumed a press.
 // Attach minimap drag-to-navigate
 if (typeof initMinimapDrag === 'function') initMinimapDrag();
 // Restore localStorage preferences

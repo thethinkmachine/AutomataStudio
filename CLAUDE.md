@@ -71,14 +71,19 @@ Multi-tab editing lives in `Workspaces` / `activeWorkspaceId`: each tab is a ser
 **After mutating `App`, say what changed — do not call renderers directly.** [js/store.js](js/store.js) is a small publish/subscribe layer:
 
 ```js
-commit();                              // edit + undo point (the common case)
-commit(Change.ALPHABET, Change.GRAPH); // ... that also touched Σ/Γ
-emit(Change.GRAPH);                    // edit with no undo point
-emit(Change.CANVAS);                   // repaint only
-batch(() => { /* many edits */ });      // deliver once at the end
+snapshot();                            // undo point — BEFORE the edit
+App.accepts.add(id);
+emit(Change.GRAPH);                    // ... announced after it
+
+commit(() => { /* the edit */ });                          // both, in one call
+commit(() => { /* … */ }, Change.ALPHABET, Change.GRAPH);  // that also touched Σ/Γ
+emit(Change.CANVAS);                   // repaint only, no undo point
+batch(() => { /* many edits */ });     // deliver once at the end
 ```
 
-`commit()` lives in [js/history.js](js/history.js) and is `snapshot()` + `emit()`. It replaced a `snapshot(); renderAll(); updateLPanel(); updateRPanel();` sequence that was copied to ~24 sites and regularly went wrong by a call.
+**`snapshot()` records the state an edit starts *from*, so it goes before the mutation.** `App.history` holds past states; the one on screen is never on it. `undo()` pops the top and hands the state being left behind to redo. ~45 sites use the explicit two-call form above; `commit()` in [js/history.js](js/history.js) wraps it and takes the edit as a callback so the ordering cannot be got wrong.
+
+That callback is not ceremony. `commit()` used to be `snapshot(); emit()` called *after* the mutation, which put the snapshot on the wrong side of it — two orderings sharing one stack, and `undo()` can only be written for one. The mismatch cost a step on every undo and left the newest edit unreachable by redo. There is no boot snapshot for the same reason: at boot there is nothing behind the empty canvas.
 
 Points worth keeping in mind:
 

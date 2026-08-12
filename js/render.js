@@ -683,8 +683,9 @@ function createStateNode(id) {
   g.addEventListener('dblclick', () => {
     if (g.dataset.lastPointerType === 'touch') return;
     if (!acceptsAreShown()) return;
-    App.accepts.has(id) ? App.accepts.delete(id) : App.accepts.add(id);
-    commit();
+    commit(() => {
+      App.accepts.has(id) ? App.accepts.delete(id) : App.accepts.add(id);
+    });
   });
 
   return g;
