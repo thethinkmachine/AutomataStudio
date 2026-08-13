@@ -1256,6 +1256,26 @@ button:focus-visible {
   margin-bottom: 14px;
 }
 
+/* Sits under the options rather than above them: it is a consequence of what
+   was just chosen, not a description of the format. Orange rather than red —
+   the export is still correct, it just isn't the thing it looks like. The
+   per-theme --orange trio keeps it legible on every palette. */
+.exp-warn {
+  font-size: .72rem;
+  line-height: 1.5;
+  color: var(--text2);
+  background: var(--orange-soft);
+  border: 1px solid var(--orange-border);
+  border-left: 2px solid var(--orange);
+  border-radius: 0 6px 6px 0;
+  padding: 7px 10px;
+  margin: -4px 0 14px;
+}
+
+/* Several can apply at once; they read as a list, not a paragraph. */
+.exp-warn p { margin: 0; }
+.exp-warn p + p { margin-top: 5px; }
+
 .exp-blurb code {
   font-family: var(--mono);
   font-size: .95em;
@@ -1531,7 +1551,8 @@ button:focus-visible {
 
 .export-code-modal .exp-field,
 .export-code-modal .exp-check,
-.export-code-modal .exp-blurb {
+.export-code-modal .exp-blurb,
+.export-code-modal .exp-warn {
   font-family: var(--sans);
 }
 

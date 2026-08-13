@@ -270,6 +270,32 @@ export function exportTransitionTable(ir, opts = {}) {
 // ══════════════════════════════════════════════════════════════════
 //  LANGUAGE SAMPLES  (accepted + rejected words)
 // ══════════════════════════════════════════════════════════════════
+// Says whether a column is everything, and if not what to change. A test
+// suite generated from a truncated list is missing cases silently, so the
+// note is part of the artifact rather than something the dialog whispers.
+// " from q0 to q2" — omitting either end when it is the machine's own.
+export function exportRouteNote(rec) {
+  const parts = [];
+  if (rec.origin) parts.push(` from ${rec.origin}`);
+  if (rec.target) parts.push(` to ${rec.target}`);
+  return parts.join('');
+}
+
+export function exportLimitNote(samples) {
+  const why = {
+    rows: 'the requested word count was reached — raise it for more',
+    length: 'no word of that length or less is left — raise the max length for more',
+    'word-budget': 'the Σ* walk hit its budget — narrow Σ or the length band',
+    'search-budget': 'the graph search hit its budget — lower the max length'
+  };
+  const lim = samples.limits || {};
+  const lines = ['accepted', 'rejected']
+    .filter(col => lim[col])
+    .map(col => `- ${col}: incomplete — ${why[lim[col]] || lim[col]}`);
+  if (!lines.length) return '\nComplete: every word the request describes is listed.\n';
+  return '\n' + lines.join('\n') + '\n';
+}
+
 export function exportSamplesText(samples, ir, opts = {}) {
   const fmt = opts.format || 'csv';
   const acc = samples.accepted.map(w => exportWordText(w, ir));
@@ -279,11 +305,16 @@ export function exportSamplesText(samples, ir, opts = {}) {
     return JSON.stringify({
       machine: ir.machine,
       alphabet: ir.sigma,
+      origin: samples.origin,
+      target: samples.target || null,
       generated: new Date().toISOString(),
       accepted: acc,
       rejected: rej,
       undecided: samples.undecided,
-      truncated: !!samples.truncated
+      truncated: !!samples.truncated,
+      // What stopped each column, or null if nothing did. `truncated` above
+      // cannot distinguish these and is kept only for older consumers.
+      limits: samples.limits || { accepted: null, rejected: null }
     }, null, 2);
   }
 
@@ -301,7 +332,10 @@ export function exportSamplesText(samples, ir, opts = {}) {
       ...acc.map(w => [w, 'accept', [...w].length]),
       ...rej.map(w => [w, 'reject', [...w].length])
     ];
-    return `### ${ir.machineLabel} — language samples\n\n` + mdTable(['Word', 'Verdict', 'Length'], rows) + '\n';
+    return `### ${ir.machineLabel} — language samples`
+      + exportRouteNote(samples) + '\n\n'
+      + mdTable(['Word', 'Verdict', 'Length'], rows) + '\n'
+      + exportLimitNote(samples);
   }
 
   return csvRows([
@@ -309,6 +343,57 @@ export function exportSamplesText(samples, ir, opts = {}) {
     ...acc.map(w => [w, 'accept', [...w].length]),
     ...rej.map(w => [w, 'reject', [...w].length])
   ]);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  TRANSITION COVERAGE  (one accepted word per edge)
+// ══════════════════════════════════════════════════════════════════
+// One row per transition either way, covered or not: a coverage report
+// whose uncovered edges are missing from the file is not a report. The
+// reason takes the `status` cell, so the table stays one shape and sorts
+// and filters in a spreadsheet the way a reader expects.
+export function exportCoverageText(cov, ir, opts = {}) {
+  const fmt = opts.format || 'csv';
+  const withUncovered = opts.includeUncovered !== false;
+
+  const covered = cov.rows.map(r => ({ ...r, text: exportWordText(r.word, ir) }));
+  const missing = withUncovered ? cov.uncovered : [];
+
+  if (fmt === 'json') {
+    return JSON.stringify({
+      machine: ir.machine,
+      alphabet: ir.sigma,
+      origin: cov.origin,
+      target: cov.target || null,
+      generated: new Date().toISOString(),
+      covered: covered.map(r => ({
+        from: r.from, symbol: r.symbol, to: r.to, word: r.text, length: r.word.length, accept: r.accept
+      })),
+      uncovered: missing.map(r => ({ from: r.from, symbol: r.symbol, to: r.to, reason: r.reason })),
+      transitions: cov.rows.length + cov.uncovered.length
+    }, null, 2);
+  }
+
+  if (fmt === 'batch') {
+    // Every covered word is accepted by construction, so the whole file is
+    // a regression suite the Batch Test panel can run as-is.
+    return covered.map(r => `${r.text} => accept`).join('\n');
+  }
+
+  const header = ['from', 'symbol', 'to', 'word', 'length', 'accept', 'status'];
+  const rows = [
+    ...covered.map(r => [r.from, r.symbol, r.to, r.text, String(r.word.length), r.accept, 'covered']),
+    ...missing.map(r => [r.from, r.symbol, r.to, '', '', '', r.reason])
+  ];
+
+  if (fmt === 'markdown') {
+    const n = cov.rows.length, total = n + cov.uncovered.length;
+    return `### ${ir.machineLabel} — transition coverage\n\n`
+      + `${n} of ${total} transition${total === 1 ? '' : 's'} covered`
+      + (cov.origin ? `, routed${exportRouteNote(cov)}` : '') + '.\n\n'
+      + mdTable(header, rows) + '\n';
+  }
+  return csvRows([header, ...rows]);
 }
 
 // ══════════════════════════════════════════════════════════════════

@@ -1,6 +1,7 @@
 import { exportPNG, exportSVG, getContentBounds, wrap } from './canvas.js';
-import { buildMachineIR, exportCopyText, exportDownload, exportFilename, exportRequireMachine, exportSampleWords } from './export-core.js';
-import { exportBatchText, exportSamplesText, exportToDot, exportToTikz, exportTransitionTable } from './export-formats.js';
+import { buildMachineIR, exportCanTrace, exportCopyText, exportCoverageWords, exportDefaultMaxLength, exportDownload, exportFilename, exportRequireMachine, exportRouteDepth, exportSampleWords } from './export-core.js';
+import { LANG_TRACE_DEPTH_CAP } from './language.js';
+import { exportBatchText, exportCoverageText, exportSamplesText, exportToDot, exportToTikz, exportTransitionTable } from './export-formats.js';
 import { ExportFormats } from './export-registry.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
 import { getWorkspaceData } from './persistence.js';
@@ -177,6 +178,66 @@ export function runImageExport() {
 // Diagram, table and sample-word targets. The code and test-suite targets are
 // added by js/codegen.js; both sides write into the registry from
 // js/export-registry.js. Option schema types: 'check', 'select', 'number'.
+// ── option conflicts ──────────────────────────────────────────────
+// The controls in the Language group are independent knobs over one search,
+// and a few combinations mean something other than what they read like. Each
+// is legal and does exactly what it says; the warning is there because what
+// it says is not what a reader assumes. Shown only when the combination is
+// actually selected, so the common case stays uncluttered.
+
+// Batch-test input is the one sub-format that claims to be re-runnable, and
+// the only one with nowhere to record the route it was generated for: it is
+// bare `word => accept` lines, and parseBatchLine has no comment syntax to
+// hide a note in. Pasted back, those lines are judged against the machine's
+// own start and accept set, so a re-aimed route fails.
+function routeBatchWarning(o) {
+  if (o.format !== 'batch') return null;
+  const ends = [];
+  if (o.origin) ends.push('Start from');
+  if (o.target) ends.push('End at');
+  if (!ends.length) return null;
+  return `${ends.join(' and ')} ${ends.length > 1 ? 'are' : 'is'} off the default, so these lines describe that route — not the machine as drawn. Pasted into Batch Test they will fail.`;
+}
+
+// Below the route's own depth, some transition cannot appear in any exported
+// word. The default is right for the machine's own route; re-aiming it after
+// the dialog opened does not move the spinner.
+function routeDepthWarning(o) {
+  if (!o.maxLength) return null;
+  const need = exportRouteDepth(o);
+  if (!need || o.maxLength >= need) return null;
+  return `Max length ${o.maxLength} is below the ${need} this route needs, so some transitions cannot appear in any word.`;
+}
+
+function samplesWarnings(o) {
+  const out = [routeBatchWarning(o), routeDepthWarning(o)];
+
+  // "Reject" stops meaning "the machine rejects it" and starts meaning "it
+  // does not end there" — which includes words the machine really accepts.
+  if (o.target && o.rejected > 0) {
+    out.push('With End at set, the rejected words are the ones that do not finish there — including words the machine itself accepts.');
+  }
+  // The quota is one word per route, and the shortest word on a route is the
+  // one that takes its loops fewest times. Skip the short ones and the quota
+  // goes to a pumped word instead.
+  if (o.expandLoops === false && o.minLength > 0) {
+    out.push('Min length is skipping the shortest word on each route, so the one kept in its place has already been round a loop.');
+  }
+  // The loop switch rides on the graph walk, which only some machines get.
+  if (o.expandLoops === false && !exportCanTrace()) {
+    out.push('This machine is sampled by enumerating Σ* rather than by walking its graph, so there are no routes to collapse and Expand loops does nothing.');
+  }
+  return out.filter(Boolean);
+}
+
+function coverageWarnings(o) {
+  return [routeBatchWarning(o)].filter(Boolean);
+}
+
+// Every text format that offers a sub-format picker names its file the same
+// way; three copies of this drifted apart the moment one gained an option.
+const textExtFor = o => (o.format === 'json' ? 'json' : o.format === 'markdown' ? 'md' : o.format === 'batch' ? 'txt' : 'csv');
+
 Object.assign(ExportFormats, {
   dot: {
     label: 'Graphviz DOT', group: 'Diagram', ext: 'dot', mime: 'text/vnd.graphviz',
@@ -214,18 +275,54 @@ Object.assign(ExportFormats, {
   },
   samples: {
     label: 'Language samples', group: 'Language', ext: 'csv', mime: 'text/csv',
-    blurb: 'Accepted and rejected words in shortlex order, derived from the machine itself. A proven repeating configuration (loop) is counted as reject; runs that reach the step limit without a verdict are skipped as undecided (the JSON export includes their count).',
+    blurb: 'Accepted and rejected words in shortlex order, derived from the machine itself. A repeating configuration counts as reject; a run with no verdict inside the step limit is skipped as undecided.',
+    warn: samplesWarnings,
+    warnProbe: { format: 'batch', origin: '\u0000probe', target: '\u0000probe', minLength: 1, maxLength: 1, expandLoops: false, rejected: 25 },
     options: [
       { id: 'format', type: 'select', label: 'As', def: 'csv', choices: [['csv', 'CSV'], ['json', 'JSON'], ['batch', 'Batch-test input'], ['markdown', 'Markdown']] },
-      { id: 'accepted', type: 'number', label: 'Accepted words', def: 25, min: 0, max: 500, step: 5 },
-      { id: 'rejected', type: 'number', label: 'Rejected words', def: 25, min: 0, max: 500, step: 5 },
-      { id: 'maxLength', type: 'number', label: 'Max length', def: 10, min: 1, max: 24, step: 1 }
+      { id: 'origin', type: 'select', label: 'Start from', def: '',
+        choices: () => [['', 'Start state'], ...App.states.map(st => [st.id, st.name])] },
+      { id: 'target', type: 'select', label: 'End at', def: '',
+        choices: () => [['', 'Any accept state'], ...App.states.map(st => [st.id, st.name])] },
+      // Row counts are output size, not cost — the search budgets bound the
+      // work, so these are set where a spreadsheet stops coping rather than
+      // where the search would. Max length defaults to the machine's own
+      // route depth; see exportDefaultMaxLength().
+      { id: 'accepted', type: 'number', label: 'Accepted words', def: 25, min: 0, max: 10000, step: 5 },
+      { id: 'rejected', type: 'number', label: 'Rejected words', def: 25, min: 0, max: 10000, step: 5 },
+      { id: 'minLength', type: 'number', label: 'Min length', def: 0, min: 0, max: () => LANG_TRACE_DEPTH_CAP, step: 1 },
+      { id: 'maxLength', type: 'number', label: 'Max length', def: () => exportDefaultMaxLength(), min: 1, max: () => LANG_TRACE_DEPTH_CAP, step: 1 },
+      { id: 'expandLoops', type: 'check', label: 'Expand loops', def: true, hint: 'off: one word per route' }
     ],
-    extFor: o => (o.format === 'json' ? 'json' : o.format === 'markdown' ? 'md' : o.format === 'batch' ? 'txt' : 'csv'),
+    extFor: textExtFor,
     build: (ir, o) => {
       const samples = exportSampleWords(o);
       if (!samples.decidable) return '# This machine has no accept/reject notion, so L(M) cannot be sampled.';
       return exportSamplesText(samples, ir, { format: o.format });
+    }
+  },
+  coverage: {
+    label: 'Transition coverage', group: 'Language', ext: 'csv', mime: 'text/csv',
+    blurb: 'One accepted word per transition — a shortest route in, the edge, then a shortest route on to an accept. Every loop gets exercised exactly once. Edges with no such word are listed with the reason.',
+    warn: coverageWarnings,
+    warnProbe: { format: 'batch', origin: '\u0000probe', target: '\u0000probe' },
+    options: [
+      { id: 'format', type: 'select', label: 'As', def: 'csv', choices: [['csv', 'CSV'], ['json', 'JSON'], ['batch', 'Batch-test input'], ['markdown', 'Markdown']] },
+      { id: 'origin', type: 'select', label: 'Start from', def: '',
+        choices: () => [['', 'Start state'], ...App.states.map(st => [st.id, st.name])] },
+      { id: 'target', type: 'select', label: 'End at', def: '',
+        choices: () => [['', 'Any accept state'], ...App.states.map(st => [st.id, st.name])] },
+      { id: 'includeUncovered', type: 'check', label: 'List uncovered edges', def: true }
+    ],
+    extFor: textExtFor,
+    build: (ir, o) => {
+      const cov = exportCoverageWords(o);
+      if (!cov.decidable) return '# This machine has no accept/reject notion, so there is nothing to route towards.';
+      // Pairing an edge with a word means a path through the graph *is* a
+      // word — which a two-way head or a tape breaks by revisiting cells.
+      if (!cov.traceable) return `# Coverage needs a machine whose graph paths are words: DFA, NFA, ε-NFA, or the PDA family. ${ir.machineLabel} is outside that set.`;
+      if (cov.reason) return `# No coverage: ${cov.reason}.`;
+      return exportCoverageText(cov, ir, o);
     }
   },
   batch: {
@@ -234,7 +331,7 @@ Object.assign(ExportFormats, {
     options: [
       { id: 'format', type: 'select', label: 'As', def: 'csv', choices: [['csv', 'CSV'], ['json', 'JSON'], ['markdown', 'Markdown']] }
     ],
-    extFor: o => (o.format === 'json' ? 'json' : o.format === 'markdown' ? 'md' : 'csv'),
+    extFor: textExtFor,
     available: () => !!App.lastBatch,
     unavailableNote: 'Run a batch test first — the Batch Test panel is in the right sidebar.',
     build: (ir, o) => exportBatchText(App.lastBatch, { format: o.format })
@@ -254,10 +351,19 @@ registerModal('export-code-modal', {
   submit: () => exportCodeDownload()
 });
 
+// A schema field may be a function, evaluated when the dialog renders rather
+// than when the registry is declared. Two reasons, and both are load-bearing:
+// the origin picker and the max-length default depend on the machine, and
+// language.js imports this module, so reading its consts at module scope
+// would be a use-before-initialisation across that cycle.
+const optValue = v => (typeof v === 'function' ? v() : v);
+
 export function exportDefaultOpts(key) {
   const spec = ExportFormats[key];
   const o = {};
-  (spec.options || []).forEach(opt => { o[opt.id] = opt.def; });
+  // `def` may be a function: the max-length default is derived from the
+  // machine, which is not known when the registry is declared.
+  (spec.options || []).forEach(opt => { o[opt.id] = optValue(opt.def); });
   return o;
 }
 
@@ -308,9 +414,13 @@ export function exportCodeOptionsHtml(spec, opts) {
         onchange="setExportCodeOpt('${opt.id}', this.checked, 'check')"><span>${opt.label}</span>${opt.hint ? `<em>${opt.hint}</em>` : ''}</label>`;
     }
     if (opt.type === 'select') {
+      // Choices may be a function: the origin picker lists the machine's
+      // states, which are not known when the registry is declared. Both the
+      // value and the label are escaped because a state name is user text.
+      const choices = optValue(opt.choices);
       return `<label class="exp-field"><span>${opt.label}</span>
         <select class="inp" onchange="setExportCodeOpt('${opt.id}', this.value, 'select')">
-          ${opt.choices.map(([v, l]) => `<option value="${v}" ${val === v ? 'selected' : ''}>${l}</option>`).join('')}
+          ${choices.map(([v, l]) => `<option value="${escapeHtml(v)}" ${val === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}
         </select></label>`;
     }
     if (opt.type === 'text') {
@@ -318,15 +428,22 @@ export function exportCodeOptionsHtml(spec, opts) {
         <input class="inp" type="text" value="${escapeHtml(val)}"
           onchange="setExportCodeOpt('${opt.id}', this.value, 'text')"></label>`;
     }
+    const min = optValue(opt.min), max = optValue(opt.max);
     return `<label class="exp-field"><span>${opt.label}</span>
       <input class="inp exp-num" type="number" value="${val}"
-        ${opt.min !== undefined ? `min="${opt.min}"` : ''} ${opt.max !== undefined ? `max="${opt.max}"` : ''}
+        ${min !== undefined ? `min="${min}"` : ''} ${max !== undefined ? `max="${max}"` : ''}
         ${opt.step !== undefined ? `step="${opt.step}"` : ''}
         onchange="setExportCodeOpt('${opt.id}', this.value, 'number')"></label>`;
   }).join('');
 
+  // A warning is a function of the current options, so it appears only when
+  // it applies. Escaped: it can quote an option label.
+  const warnings = typeof spec.warn === 'function' ? (spec.warn(opts) || []) : [];
+  const list = [].concat(warnings).filter(Boolean);
+
   return (spec.blurb ? `<div class="exp-blurb">${spec.blurb}</div>` : '')
-    + (controls ? `<div class="exp-opts">${controls}</div>` : '');
+    + (controls ? `<div class="exp-opts">${controls}</div>` : '')
+    + (list.length ? `<div class="exp-warn">${list.map(w => `<p>${escapeHtml(w)}</p>`).join('')}</div>` : '');
 }
 
 export function renderExportCodeModal() {
@@ -359,7 +476,7 @@ export function renderExportCodeModal() {
 }
 
 // Formats range from a bare JSON dump (no options) to Language Samples
-// (a blurb plus four fields) — swapping the options block between them
+// (a blurb plus six fields) — swapping the options block between them
 // as-is made the modal resize with every format click, the same jarring
 // jump the Settings tabs had. Render each format's options offscreen once
 // per open, take the tallest, and lock the block to that so it stays put.
@@ -370,9 +487,18 @@ export function sizeExportCodeOptions() {
 
   let max = 0;
   Object.keys(ExportFormats).forEach(key => {
-    optHost.style.minHeight = '';
-    optHost.innerHTML = exportCodeOptionsHtml(ExportFormats[key], exportDefaultOpts(key));
-    max = Math.max(max, optHost.scrollHeight);
+    const spec = ExportFormats[key];
+    const defs = exportDefaultOpts(key);
+    // Defaults alone would under-measure any format that can show a warning:
+    // no default triggers one, so the block would grow past the height it was
+    // just locked to and jump exactly as this function exists to prevent.
+    // `warnProbe` is the option set that makes warn() fire, measured too.
+    const cases = spec.warnProbe ? [defs, { ...defs, ...spec.warnProbe }] : [defs];
+    for (const o of cases) {
+      optHost.style.minHeight = '';
+      optHost.innerHTML = exportCodeOptionsHtml(spec, o);
+      max = Math.max(max, optHost.scrollHeight);
+    }
   });
 
   optHost.innerHTML = liveHtml;

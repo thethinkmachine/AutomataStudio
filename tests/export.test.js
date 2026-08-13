@@ -271,6 +271,97 @@ test('sampling separates accepted from rejected words', () => {
   assert.equal(s.accepted[0].join(''), '01');
 });
 
+// The three narrowing options. The dialog's "Max length" used to reach only
+// the Σ* walk behind the rejected column, so on exactly the machines that
+// can be traced — DFA, NFA, ε-NFA, PDA — it did nothing to the accepted one.
+test('max length bounds the accepted column, not just the rejected one', () => {
+  reset();
+  endsIn01();
+  const s = context.exportSampleWords({ accepted: 20, rejected: 5, maxLength: 4 });
+  assert.ok(context.langCanTrace(), 'endsIn01 must take the graph-walk path');
+  assert.ok(s.accepted.length > 1, 'expected several accepted words');
+  s.accepted.forEach(w => assert.ok(w.length <= 4, `accepted ${w.join('')} exceeds max length`));
+  s.rejected.forEach(w => assert.ok(w.length <= 4, `rejected ${w.join('')} exceeds max length`));
+});
+
+test('min length lifts the floor on both columns', () => {
+  reset();
+  endsIn01();
+  const s = context.exportSampleWords({ accepted: 6, rejected: 6, minLength: 3, maxLength: 5 });
+  assert.ok(s.accepted.length > 0 && s.rejected.length > 0);
+  [...s.accepted, ...s.rejected].forEach(w => assert.ok(w.length >= 3, `${w.join('')} is too short`));
+  // and it is a filter, not a reordering
+  assert.equal(s.accepted[0].join(''), '001');
+});
+
+test('a min length above the max clamps instead of exporting nothing', () => {
+  reset();
+  endsIn01();
+  // The two spinners are set one at a time, so min > max is a half-finished
+  // edit. Clamping to [3,3] beats handing back a mysteriously empty file.
+  const s = context.exportSampleWords({ accepted: 5, rejected: 5, minLength: 9, maxLength: 3 });
+  assert.equal(s.decidable, true);
+  assert.ok(s.accepted.length > 0, 'expected the clamped band, not an empty one');
+  [...s.accepted, ...s.rejected].forEach(w => assert.equal(w.length, 3, `${w.join('')} left the clamped band`));
+});
+
+test('the loop switch is what the dialog sets, and on is the old behaviour', () => {
+  reset();
+  endsIn01();
+  const opts = { accepted: 8, rejected: 0, maxLength: 5 };
+  const on = context.exportSampleWords({ ...opts, expandLoops: true });
+  const off = context.exportSampleWords({ ...opts, expandLoops: false });
+
+  // Loops on must be indistinguishable from not passing the option at all.
+  deepEq(on.accepted, plain(context.exportSampleWords(opts).accepted));
+  assert.ok(off.accepted.length < on.accepted.length, 'turning loops off must drop rows');
+  // "0101" is "01" round the loop again; "001" is a route of its own.
+  const words = off.accepted.map(w => w.join(''));
+  assert.ok(words.includes('01'));
+  assert.ok(!words.includes('0101'), 'a pumped word must not survive');
+  off.accepted.forEach(w => assert.equal(context.langVerdict(w), 'acc'));
+});
+
+test('words per path stops one self-loop from filling the accepted column', () => {
+  reset();
+  // (0|1)* with everything accepting: shortlex hands back ε, 0, 1, 00, 01, …
+  // all of which are the start state's self-loops taken more times.
+  fa({
+    sigma: ['0', '1'],
+    states: ['q0'], start: 'q0', accepts: ['q0'],
+    edges: [['q0', '0', 'q0'], ['q0', '1', 'q0']]
+  });
+  const uncapped = context.exportSampleWords({ accepted: 8, rejected: 0, maxLength: 5 });
+  assert.equal(uncapped.accepted.length, 8, 'the default must still be the shortlex prefix');
+
+  const capped = context.exportSampleWords({ accepted: 8, rejected: 0, maxLength: 5, perPath: 1 });
+  assert.ok(capped.accepted.length < uncapped.accepted.length, 'the cap must remove rows');
+  // The five loop-free routes of a one-state machine with two self-loops:
+  // the empty run, each loop once, and each ordered pair of them. Every
+  // longer word repeats a step it has already taken — "00" is "0" twice,
+  // "010" returns to a step it has used — so none of them earns a row.
+  deepEq(capped.accepted.map(w => w.join('')), ['', '0', '1', '01', '10']);
+  // Still genuinely accepted, and still in shortlex order.
+  capped.accepted.forEach(w => assert.equal(context.langVerdict(w), 'acc'));
+});
+
+test('the cap is not silently applied to machines sampled through the Σ* walk', () => {
+  reset();
+  // A Moore machine is outside langCanTrace, so its samples come from the Σ*
+  // walk and there is no run skeleton to cap — perPath must be ignored
+  // rather than emptying the column.
+  App.config.transducerAccepts = true;
+  fa({
+    sigma: ['a'],
+    states: ['q0', 'q1'], start: 'q0', accepts: ['q1'],
+    edges: [['q0', 'a', 'q1']], machine: 'Moore'
+  });
+  assert.equal(context.langCanTrace(), false);
+  assert.equal(context.langCanDecide(), true);
+  const s = context.exportSampleWords({ accepted: 3, rejected: 3, maxLength: 4, perPath: 1 });
+  deepEq(s.accepted.map(w => w.join('')), ['a']);
+});
+
 test('sampling reports a transducer with no accept notion as undecidable', () => {
   reset();
   App.machine = 'Moore';
@@ -306,6 +397,670 @@ test('sample CSV carries word, verdict, and length', () => {
   assert.match(csv.split('\r\n')[0], /^word,verdict,length$/);
   assert.match(csv, /,accept,/);
   assert.match(csv, /,reject,/);
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  TRANSITION COVERAGE
+// ══════════════════════════════════════════════════════════════════
+// The mode exists because no filter over the sample words can promise edge
+// coverage: q1-b->q1 below is indistinguishable from q0-b->q1 by symbol and
+// destination, and q2-a->q0 can only be reached by re-entering q1 the way
+// the shorter word already did. Both are missing from the samples export at
+// any setting; both must appear here.
+function loopyDfa() {
+  return fa({
+    sigma: ['a', 'b', 'c'],
+    states: ['q0', 'q1', 'q2'], start: 'q0', accepts: ['q1', 'q2'],
+    edges: [
+      ['q0', 'a', 'q0'], ['q0', 'b', 'q1'], ['q1', 'b', 'q1'],
+      ['q1', 'c', 'q2'], ['q2', 'a', 'q0']
+    ]
+  });
+}
+
+// Independent of the exporter: walk the word and report what it did.
+function walk(word) {
+  let cur = App.startId;
+  const used = [];
+  for (const sym of word) {
+    const t = App.transitions.find(t => t.from === cur && t.symbol === sym);
+    if (!t) return { used, end: null };
+    used.push(t.id);
+    cur = t.to;
+  }
+  return { used, end: cur };
+}
+
+test('every transition gets a word, and every word runs through its own edge', () => {
+  reset();
+  loopyDfa();
+  const cov = context.exportCoverageWords();
+  assert.equal(cov.rows.length, App.transitions.length, 'all five edges must be covered');
+  assert.equal(cov.uncovered.length, 0);
+
+  for (const r of cov.rows) {
+    const { used, end } = walk(r.word);
+    assert.ok(used.includes(r.id), `${r.word.join('')} does not run through ${r.from}-${r.symbol}->${r.to}`);
+    assert.ok(App.accepts.has(end), `${r.word.join('')} does not end in an accept state`);
+    assert.equal(context.langVerdict(r.word), 'acc');
+    // the reported accept state is the one the word actually reaches
+    assert.equal(r.accept, App.states.find(s => s.id === end).name);
+  }
+});
+
+test('coverage reaches the two edges no sample-word setting can', () => {
+  reset();
+  loopyDfa();
+  const covered = context.exportCoverageWords().rows.map(r => `${r.from}-${r.symbol}->${r.to}`);
+  assert.ok(covered.includes('q1-b->q1'));
+  assert.ok(covered.includes('q2-a->q0'));
+
+  const samples = context.exportSampleWords({ accepted: 500, rejected: 0, maxLength: 8, expandLoops: false });
+  const sampled = new Set(samples.accepted.flatMap(w => walk(w).used));
+  const q1loop = App.transitions.find(t => t.symbol === 'b' && t.from === t.to);
+  assert.ok(!sampled.has(q1loop.id), 'the premise: samples really do miss this edge');
+});
+
+test('an edge that no accepted word can use is reported, not invented', () => {
+  reset();
+  // q0 -c-> dead goes nowhere, and the island pair is unreachable from q0.
+  fa({
+    sigma: ['a', 'b', 'c'],
+    states: ['q0', 'q1', 'dead', 'island'], start: 'q0', accepts: ['q1'],
+    edges: [['q0', 'a', 'q1'], ['q0', 'c', 'dead'], ['island', 'b', 'q1']]
+  });
+  const cov = context.exportCoverageWords();
+  deepEq(cov.rows.map(r => r.word.join('')), ['a']);
+
+  const why = Object.fromEntries(cov.uncovered.map(r => [`${r.from}-${r.symbol}->${r.to}`, r.reason]));
+  assert.match(why['q0-c->dead'], /cannot reach an accept/);
+  assert.match(why['island-b->q1'], /unreachable/);
+});
+
+test('a route the stack forbids is reported uncovered rather than exported', () => {
+  reset();
+  // The graph offers q0 -a-> q1 -b-> q2, but the b edge pops B while the a
+  // edge pushed A, so no word runs either edge. L is empty and the export
+  // must say so instead of shipping "ab" as a covering word.
+  const eps = App.config.sym.eps;
+  const Z = App.config.sym.stackBottom;
+  App.machine = 'PDA';
+  App.sigma = new Set(['a', 'b']);
+  App.stackAlpha = new Set([Z, 'A', 'B']);
+  App.states = ['q0', 'q1', 'q2'].map((n, i) => ({ id: 's' + i, name: n, x: 0, y: 0 }));
+  const id = n => App.states.find(s => s.name === n).id;
+  App.transitions = [
+    { id: 't0', from: id('q0'), to: id('q1'), symbol: 'a', pop: Z, push: 'A' + Z },
+    { id: 't1', from: id('q1'), to: id('q2'), symbol: 'b', pop: 'B', push: eps }
+  ];
+  App.startId = id('q0');
+  App.accepts = new Set([id('q2')]);
+
+  const cov = context.exportCoverageWords();
+  assert.equal(cov.rows.length, 0, 'nothing may be claimed as covered');
+  assert.equal(cov.uncovered.length, 2);
+  cov.uncovered.forEach(r => assert.match(r.reason, /no accepted word/));
+});
+
+test('an edge with no symbol to spend cannot end up inside another route', () => {
+  reset();
+  // A wildcard stands for every symbol in Σ, so with Σ emptied it stands for
+  // none and the edge is not traversable. The guard used to sit only on the
+  // edge being covered, so a wildcard in the *prefix* put a hole in the word:
+  // the export claimed q1-a->q2 was covered by "a" at length 2, and the
+  // simulator agreed because the hole matched the wildcard on the way past.
+  const ANY = App.config.sym.any;
+  App.machine = 'DFA';
+  App.sigma = new Set();
+  App.states = ['q0', 'q1', 'q2'].map((n, i) => ({ id: 's' + i, name: n, x: 0, y: 0 }));
+  App.transitions = [
+    { id: 't0', from: 's0', to: 's1', symbol: ANY },
+    { id: 't1', from: 's1', to: 's2', symbol: 'a' }
+  ];
+  App.startId = 's0';
+  App.accepts = new Set(['s2']);
+
+  const cov = context.exportCoverageWords();
+  assert.equal(cov.rows.length, 0, 'no edge is reachable, so none may be claimed');
+  for (const r of cov.rows) {
+    assert.ok(r.word.every(s => s !== undefined && s !== null), `${JSON.stringify(r.word)} has a hole`);
+  }
+  // and the depth estimate must not count a route it could not spell either
+  assert.equal(context.langRouteDepth(), 0);
+
+  // The rendered word and the reported length always describe each other.
+  const ir = context.buildMachineIR();
+  context.exportCoverageText(cov, ir, { format: 'csv' })
+    .split('\r\n').slice(1).filter(Boolean)
+    .forEach(row => {
+      const [, , , word, len] = row.split(',');
+      if (len) assert.equal([...word].length, Number(len), `"${word}" is not ${len} long`);
+    });
+});
+
+test('ε edges cost nothing in a coverage route', () => {
+  reset();
+  const eps = App.config.sym.eps;
+  fa({
+    sigma: ['a'],
+    states: ['q0', 'q1', 'q2'], start: 'q0', accepts: ['q2'],
+    edges: [['q0', eps, 'q1'], ['q1', 'a', 'q2']], machine: 'ε-NFA'
+  });
+  const cov = context.exportCoverageWords();
+  assert.equal(cov.uncovered.length, 0);
+  // the ε edge is covered by "a" — the ε contributes no symbol
+  deepEq(cov.rows.map(r => r.word.join('')), ['a', 'a']);
+});
+
+test('coverage declines the machines where a graph path is not a word', () => {
+  reset();
+  // A tape head revisits cells, so an edge does not correspond to a symbol
+  // of the input and the whole edge/word pairing would be fiction.
+  App.machine = 'TM';
+  App.sigma = new Set(['a']);
+  App.states = ['q0', 'q1'].map((n, i) => ({ id: 's' + i, name: n, x: 0, y: 0 }));
+  App.transitions = [{ id: 't0', from: 's0', to: 's1', symbol: 'a', write: 'a', dir: 'R' }];
+  App.startId = 's0';
+  App.accepts = new Set(['s1']);
+
+  assert.equal(context.langCanTrace(), false);
+  const out = context.ExportFormats.coverage.build(context.buildMachineIR(), { format: 'csv' });
+  assert.match(out, /^#/, 'must explain rather than emit an empty table');
+  assert.match(out, /outside that set/);
+});
+
+test('coverage emits CSV, Markdown, JSON and runnable batch input', () => {
+  reset();
+  loopyDfa();
+  const ir = context.buildMachineIR();
+  const cov = context.exportCoverageWords();
+
+  const csv = context.exportCoverageText(cov, ir, { format: 'csv' });
+  assert.equal(csv.split('\r\n')[0], 'from,symbol,to,word,length,accept,status');
+  assert.equal(csv.split('\r\n').filter(Boolean).length, 6, 'header plus one row per edge');
+
+  const md = context.exportCoverageText(cov, ir, { format: 'markdown' });
+  assert.match(md, /5 of 5 transitions covered/);
+
+  const json = JSON.parse(context.exportCoverageText(cov, ir, { format: 'json' }));
+  assert.equal(json.transitions, 5);
+  assert.equal(json.covered.length, 5);
+
+  const batch = context.exportCoverageText(cov, ir, { format: 'batch' });
+  batch.split('\n').forEach(line => {
+    assert.match(line, / => accept$/);
+    assert.equal(context.parseBatchLine(line).expect, 'accept');
+  });
+});
+
+test('uncovered edges can be left out of the table but never faked', () => {
+  reset();
+  fa({
+    sigma: ['a', 'c'],
+    states: ['q0', 'q1', 'dead'], start: 'q0', accepts: ['q1'],
+    edges: [['q0', 'a', 'q1'], ['q0', 'c', 'dead']]
+  });
+  const ir = context.buildMachineIR();
+  const cov = context.exportCoverageWords();
+  const withThem = context.exportCoverageText(cov, ir, { format: 'csv' });
+  const without = context.exportCoverageText(cov, ir, { format: 'csv', includeUncovered: false });
+  assert.match(withThem, /cannot reach an accept/);
+  assert.doesNotMatch(without, /cannot reach an accept/);
+  // the covered row survives either way, and no word is invented for `dead`
+  assert.match(without, /q0,a,q1,a,1,q1,covered/);
+  assert.doesNotMatch(without, /dead/);
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  CEILINGS: WHAT BOUND THE OUTPUT, AND WHERE THE BOUND COMES FROM
+// ══════════════════════════════════════════════════════════════════
+// One `truncated` boolean used to answer four different questions. A test
+// suite built from a silently truncated list is missing cases, so each
+// column now says what stopped it — and `null` means the list is complete.
+test('a complete column reports no limit at all', () => {
+  reset();
+  // A finite language: three words, and a length bound well past the longest.
+  fa({
+    sigma: ['a'],
+    states: ['q0', 'q1', 'q2'], start: 'q0', accepts: ['q1', 'q2'],
+    edges: [['q0', 'a', 'q1'], ['q1', 'a', 'q2']]
+  });
+  const s = context.exportSampleWords({ accepted: 50, rejected: 0, maxLength: 12 });
+  deepEq(s.accepted.map(w => w.join('')), ['a', 'aa']);
+  assert.equal(s.limits.accepted, null, 'nothing bound this — it is all of L');
+  assert.equal(s.limits.rejected, null, 'no rejects were asked for');
+});
+
+test('each column names the ceiling that bound it', () => {
+  reset();
+  loopyDfa();
+
+  // filled the row count
+  const rows = context.exportSampleWords({ accepted: 3, rejected: 3, maxLength: 8 });
+  assert.equal(rows.limits.accepted, 'rows');
+  assert.equal(rows.limits.rejected, 'rows');
+
+  // ran out of length: an infinite language always has longer words
+  const len = context.exportSampleWords({ accepted: 500, rejected: 500, maxLength: 3 });
+  assert.ok(len.accepted.length < 500);
+  assert.equal(len.limits.accepted, 'length');
+  assert.equal(len.limits.rejected, 'length');
+
+  // ran out of Σ* budget before filling the rejected quota
+  const budget = context.exportSampleWords({ accepted: 0, rejected: 500, maxLength: 8, budget: 12 });
+  assert.equal(budget.limits.rejected, 'word-budget');
+});
+
+test('the limit note travels in the file, not just the return value', () => {
+  reset();
+  loopyDfa();
+  const ir = context.buildMachineIR();
+
+  const cut = context.exportSampleWords({ accepted: 3, rejected: 0, maxLength: 8 });
+  assert.match(context.exportSamplesText(cut, ir, { format: 'markdown' }), /accepted: incomplete — the requested word count/);
+  assert.equal(JSON.parse(context.exportSamplesText(cut, ir, { format: 'json' })).limits.accepted, 'rows');
+
+  reset();
+  fa({ sigma: ['a'], states: ['q0', 'q1'], start: 'q0', accepts: ['q1'], edges: [['q0', 'a', 'q1']] });
+  const whole = context.exportSampleWords({ accepted: 50, rejected: 0, maxLength: 9 });
+  assert.match(context.exportSamplesText(whole, context.buildMachineIR(), { format: 'markdown' }), /^Complete:/m);
+});
+
+test('max length defaults to the machine, not to a constant', () => {
+  reset();
+  loopyDfa();
+  // The longest coverage word on this machine is "bcab"; below 4 some edge
+  // could not appear in any exported word.
+  assert.equal(context.langRouteDepth(), 4);
+  assert.equal(context.exportDefaultMaxLength(), 4);
+  assert.equal(context.exportDefaultOpts('samples').maxLength, 4);
+
+  // A longer chain moves the default with it.
+  reset();
+  fa({
+    sigma: ['a'],
+    states: ['q0', 'q1', 'q2', 'q3'], start: 'q0', accepts: ['q3'],
+    edges: [['q0', 'a', 'q1'], ['q1', 'a', 'q2'], ['q2', 'a', 'q3']]
+  });
+  assert.equal(context.exportDefaultMaxLength(), 3);
+
+  // Nothing to derive from falls back rather than producing 0.
+  reset();
+  assert.equal(context.langRouteDepth(), 0);
+  assert.equal(context.exportDefaultMaxLength(), context.EXPORT_FALLBACK_LENGTH);
+});
+
+test('the row ceilings are output size, and the length ceiling is the search cap', () => {
+  reset();
+  loopyDfa();
+  const byId = Object.fromEntries(context.ExportFormats.samples.options.map(o => [o.id, o]));
+  // 500 was arbitrary; cost is bounded by the budgets, not by the row count.
+  assert.ok(byId.accepted.max >= 10000);
+  assert.ok(byId.rejected.max >= 10000);
+  // and the length spinner now reaches as far as the search itself will go
+  const resolve = v => (typeof v === 'function' ? v() : v);
+  assert.equal(resolve(byId.maxLength.max), context.LANG_TRACE_DEPTH_CAP);
+  assert.equal(resolve(byId.minLength.max), context.LANG_TRACE_DEPTH_CAP);
+});
+
+test('deferred schema fields are never read at module scope', () => {
+  // language.js imports export-ui.js, so a const of theirs evaluated while
+  // the registry object is being built would be a TDZ error on one of the two
+  // load orders. Both must be functions, not values.
+  const byId = Object.fromEntries(context.ExportFormats.samples.options.map(o => [o.id, o]));
+  assert.equal(typeof byId.maxLength.max, 'function');
+  assert.equal(typeof byId.minLength.max, 'function');
+  assert.equal(typeof byId.maxLength.def, 'function');
+  assert.equal(typeof byId.origin.choices, 'function');
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  ROUTING FROM A CHOSEN ORIGIN
+// ══════════════════════════════════════════════════════════════════
+// Asking for words "from q1" is asking about L(M_q1), so the simulators that
+// verify each candidate have to agree about where the start is. They read
+// App.startId, so the origin is installed for the duration of the read — and
+// the thing most worth pinning down is that it never survives the call.
+test('a chosen origin changes the language the samples describe', () => {
+  reset();
+  loopyDfa();
+  const id = n => App.states.find(s => s.name === n).id;
+
+  const fromStart = context.exportSampleWords({ accepted: 6, rejected: 0, maxLength: 4 });
+  const fromQ1 = context.exportSampleWords({ accepted: 6, rejected: 0, maxLength: 4, origin: id('q1') });
+
+  // From q0 the shortest accepted word is "b"; q1 is itself accepting, so
+  // from there the empty word is in the language and "b" means the self-loop.
+  assert.equal(fromStart.accepted[0].join(''), 'b');
+  deepEq(fromQ1.accepted.slice(0, 3).map(w => w.join('')), ['', 'b', 'c']);
+  assert.equal(fromQ1.origin, 'q1');
+  assert.equal(fromStart.origin, 'q0');
+});
+
+test('the origin is restored even when the computation throws', () => {
+  reset();
+  loopyDfa();
+  const before = App.startId;
+  const id = n => App.states.find(s => s.name === n).id;
+
+  context.exportSampleWords({ accepted: 3, rejected: 3, maxLength: 3, origin: id('q2') });
+  assert.equal(App.startId, before, 'a normal call must leave the start state alone');
+
+  // Force a throw from inside the swap. _langGraph iterates App.transitions
+  // as its first act, which is well inside withOrigin's try.
+  const real = App.transitions;
+  const booby = [];
+  Object.defineProperty(booby, Symbol.iterator, { value: () => { throw new Error('boom'); } });
+  App.transitions = booby;
+  try {
+    assert.throws(
+      () => context.exportSampleWords({ accepted: 3, rejected: 3, maxLength: 3, origin: id('q2') }),
+      /boom/
+    );
+  } finally {
+    App.transitions = real;
+  }
+  assert.equal(App.startId, before, 'a throw must not strand the swapped start state');
+});
+
+test('an origin that is not a state falls back to the real start', () => {
+  reset();
+  loopyDfa();
+  const good = context.exportSampleWords({ accepted: 4, rejected: 0, maxLength: 3 });
+  const bogus = context.exportSampleWords({ accepted: 4, rejected: 0, maxLength: 3, origin: 'deleted-state-id' });
+  deepEq(bogus.accepted, plain(good.accepted));
+  assert.equal(bogus.origin, 'q0');
+  assert.equal(context.exportResolveOrigin(''), App.startId);
+});
+
+test('coverage routes its prefixes from the chosen origin', () => {
+  reset();
+  loopyDfa();
+  const id = n => App.states.find(s => s.name === n).id;
+  const cov = context.exportCoverageWords({ origin: id('q1') });
+  assert.equal(cov.origin, 'q1');
+
+  const byEdge = Object.fromEntries(cov.rows.map(r => [`${r.from}-${r.symbol}->${r.to}`, r.word.join('')]));
+  // From q1 the q1 self-loop needs no prefix at all, where from q0 it took "b".
+  assert.equal(byEdge['q1-b->q1'], 'b');
+  // And every word must run from q1, not q0.
+  for (const r of cov.rows) {
+    let cur = id('q1');
+    for (const sym of r.word) {
+      const t = App.transitions.find(t => t.from === cur && t.symbol === sym);
+      assert.ok(t, `${r.word.join('')} is not a run from q1`);
+      cur = t.to;
+    }
+    assert.ok(App.accepts.has(cur));
+  }
+});
+
+test('an end state narrows the route to words that finish there', () => {
+  reset();
+  loopyDfa();
+  const id = n => App.states.find(s => s.name === n).id;
+  const endsAt = w => {
+    let cur = App.startId;
+    for (const sym of w) cur = App.transitions.find(t => t.from === cur && t.symbol === sym).to;
+    return App.states.find(s => s.id === cur).name;
+  };
+
+  const any = context.exportSampleWords({ accepted: 6, rejected: 0, maxLength: 5 });
+  assert.deepEqual([...new Set(any.accepted.map(endsAt))].sort(), ['q1', 'q2']);
+
+  const q2 = context.exportSampleWords({ accepted: 6, rejected: 0, maxLength: 5, target: id('q2') });
+  deepEq(q2.accepted.map(w => w.join('')), ['bc', 'abc', 'bbc', 'aabc', 'abbc', 'bbbc']);
+  q2.accepted.forEach(w => assert.equal(endsAt(w), 'q2'));
+  assert.equal(q2.target, 'q2');
+  assert.equal(any.target, null, 'the default must not name a state');
+});
+
+test('the end state need not be an accepting one', () => {
+  reset();
+  loopyDfa();
+  const id = n => App.states.find(s => s.name === n).id;
+  // q0 is the start and accepts nothing; "words that reach q0" is still a
+  // sensible question, and ε is its shortest answer.
+  const s = context.exportSampleWords({ accepted: 4, rejected: 0, maxLength: 5, target: id('q0') });
+  deepEq(s.accepted.map(w => w.join('')), ['', 'a', 'aa', 'aaa']);
+});
+
+test('the same node at both ends asks for round trips, and gets them', () => {
+  reset();
+  loopyDfa();
+  const id = n => App.states.find(s => s.name === n).id;
+  const walk = (from, w) => {
+    let cur = from;
+    for (const sym of w) {
+      const t = App.transitions.find(t => t.from === cur && t.symbol === sym);
+      if (!t) return null;
+      cur = t.to;
+    }
+    return cur;
+  };
+
+  const s = context.exportSampleWords({ accepted: 6, rejected: 0, maxLength: 6, origin: id('q1'), target: id('q1') });
+  deepEq(s.accepted.map(w => w.join('') || 'ε'), ['ε', 'b', 'bb', 'bbb', 'cab', 'bbbb']);
+  s.accepted.forEach(w => assert.equal(walk(id('q1'), w), id('q1'), `${w.join('')} does not return to q1`));
+
+  // With the loop cap on, what is left is one word per distinct cycle: stay
+  // put, the self-loop, or the long way round through q2 and q0.
+  const cycles = context.exportSampleWords({
+    accepted: 20, rejected: 0, maxLength: 6, origin: id('q1'), target: id('q1'), expandLoops: false
+  });
+  deepEq(cycles.accepted.map(w => w.join('') || 'ε'), ['ε', 'b', 'cab']);
+
+  // Coverage still reaches every edge, each by a route that comes home.
+  const cov = context.exportCoverageWords({ origin: id('q1'), target: id('q1') });
+  assert.equal(cov.rows.length, App.transitions.length);
+  cov.rows.forEach(r => assert.equal(walk(id('q1'), r.word), id('q1')));
+});
+
+test('the swapped accept set is restored, including when the run throws', () => {
+  reset();
+  loopyDfa();
+  const id = n => App.states.find(s => s.name === n).id;
+  const before = [...App.accepts];
+
+  context.exportSampleWords({ accepted: 3, rejected: 3, maxLength: 3, target: id('q2') });
+  deepEq([...App.accepts], before, 'a normal call must leave the accept set alone');
+
+  const real = App.transitions;
+  const booby = [];
+  Object.defineProperty(booby, Symbol.iterator, { value: () => { throw new Error('boom'); } });
+  App.transitions = booby;
+  try {
+    assert.throws(() => context.exportSampleWords({ accepted: 3, rejected: 0, maxLength: 3, target: id('q2') }), /boom/);
+  } finally {
+    App.transitions = real;
+  }
+  deepEq([...App.accepts], before, 'a throw must not strand the swapped accept set');
+  assert.equal(App.startId, id('q0'));
+});
+
+test('coverage aims every route at the chosen end state', () => {
+  reset();
+  loopyDfa();
+  const id = n => App.states.find(s => s.name === n).id;
+  const cov = context.exportCoverageWords({ origin: id('q1'), target: id('q2') });
+  assert.equal(cov.origin, 'q1');
+  assert.equal(cov.target, 'q2');
+  assert.equal(cov.rows.length, App.transitions.length);
+
+  for (const r of cov.rows) {
+    let cur = id('q1');
+    for (const sym of r.word) {
+      const t = App.transitions.find(t => t.from === cur && t.symbol === sym);
+      assert.ok(t, `${r.word.join('')} is not a run from q1`);
+      cur = t.to;
+    }
+    assert.equal(cur, id('q2'), `${r.word.join('')} does not end at q2`);
+    assert.equal(r.accept, 'q2');
+  }
+  assert.match(context.exportCoverageText(cov, context.buildMachineIR(), { format: 'markdown' }), /routed from q1 to q2/);
+});
+
+test('an unreachable end state is reported as the end state, not as "an accept"', () => {
+  reset();
+  // q2 accepts, but nothing leads to q3 — asking to end there must say so in
+  // the terms the user asked in.
+  fa({
+    sigma: ['a'],
+    states: ['q0', 'q1', 'q3'], start: 'q0', accepts: ['q1'],
+    edges: [['q0', 'a', 'q1']]
+  });
+  const id = n => App.states.find(s => s.name === n).id;
+  const cov = context.exportCoverageWords({ target: id('q3') });
+  assert.equal(cov.rows.length, 0);
+  assert.match(cov.uncovered[0].reason, /cannot reach the end state q3/);
+
+  // and with no end state chosen the wording goes back to the accept set
+  const plain = context.exportCoverageWords();
+  assert.equal(plain.uncovered.length, 0);
+});
+
+test('the batch warning appears only when it applies, and says which end moved', () => {
+  reset();
+  loopyDfa();
+  const id = n => App.states.find(s => s.name === n).id;
+  const spec = context.ExportFormats.samples;
+  const base = context.exportDefaultOpts('samples');
+
+  // maxLength is held clear of the route-depth warning, which has its own test.
+  const roomy = { ...base, maxLength: 12, rejected: 0 };
+  const only = o => { const w = spec.warn({ ...roomy, ...o }); return w.length === 1 ? w[0] : w; };
+
+  // Silent by default, and silent for every format that is not batch.
+  deepEq(spec.warn(base), []);
+  deepEq(spec.warn({ ...roomy, origin: id('q1') }), [], 'CSV records the route in itself');
+  deepEq(spec.warn({ ...roomy, format: 'json', target: id('q2') }), []);
+  deepEq(spec.warn({ ...roomy, format: 'batch' }), [], 'default route round-trips fine');
+
+  // Fires for batch, and names the end that moved.
+  assert.match(only({ format: 'batch', origin: id('q1') }), /^Start from is off the default/);
+  assert.match(only({ format: 'batch', target: id('q2') }), /^End at is off the default/);
+  assert.match(only({ format: 'batch', origin: id('q1'), target: id('q2') }), /^Start from and End at are off/);
+
+  // It reaches the dialog, and only then.
+  const quiet = context.exportCodeOptionsHtml(spec, base);
+  const loud = context.exportCodeOptionsHtml(spec, { ...roomy, format: 'batch', origin: id('q1') });
+  assert.ok(!quiet.includes('exp-warn'));
+  assert.match(loud, /<div class="exp-warn"><p>/);
+  assert.match(loud, /will fail/);
+});
+
+// Each of these combinations is legal and does exactly what it says. The
+// warning exists because what it says is not what a reader assumes, and every
+// one of them was found by auditing the controls against each other rather
+// than by anything failing.
+test('an End state changes what "rejected" means, and the dialog says so', () => {
+  reset();
+  loopyDfa();
+  const id = n => App.states.find(s => s.name === n).id;
+  const s = context.exportSampleWords({ accepted: 0, rejected: 6, maxLength: 3, target: id('q2') });
+
+  // "b" ends at q1, which is an accepting state — the machine accepts it, and
+  // the export files it under rejected because it does not finish at q2.
+  const words = s.rejected.map(w => w.join(''));
+  assert.ok(words.includes('b'));
+  assert.equal(context.langVerdict(['b']), 'acc', 'the premise: the machine really accepts it');
+
+  const warn = context.ExportFormats.samples.warn({
+    ...context.exportDefaultOpts('samples'), maxLength: 12, target: id('q2'), rejected: 6
+  });
+  assert.ok(warn.some(w => /including words the machine itself accepts/.test(w)));
+  // and not when no rejects were asked for
+  const none = context.ExportFormats.samples.warn({
+    ...context.exportDefaultOpts('samples'), maxLength: 12, target: id('q2'), rejected: 0
+  });
+  assert.ok(!none.some(w => /machine itself accepts/.test(w)));
+});
+
+test('a min length under a loop cap keeps a pumped word instead of a plain one', () => {
+  reset();
+  loopyDfa();
+  // The quota is one word per route, and the shortest word on a route takes
+  // its loops fewest times. Skipping the short ones hands the quota to a
+  // pumped word — "bbb" is "b" round the q1 self-loop twice.
+  const plain = context.exportSampleWords({ accepted: 20, rejected: 0, maxLength: 6, expandLoops: false });
+  deepEq(plain.accepted.map(w => w.join('')), ['b', 'ab', 'bc', 'abc']);
+
+  const floored = context.exportSampleWords({ accepted: 20, rejected: 0, maxLength: 6, minLength: 3, expandLoops: false });
+  assert.ok(floored.accepted.map(w => w.join('')).includes('bbb'), 'the premise: a pumped word survives');
+
+  const warn = context.ExportFormats.samples.warn({
+    ...context.exportDefaultOpts('samples'), maxLength: 12, rejected: 0, minLength: 3, expandLoops: false
+  });
+  assert.ok(warn.some(w => /already been round a loop/.test(w)));
+});
+
+test('the loop switch admits it does nothing where there is no graph walk', () => {
+  reset();
+  App.config.transducerAccepts = true;
+  fa({
+    sigma: ['a'],
+    states: ['q0', 'q1'], start: 'q0', accepts: ['q1'],
+    edges: [['q0', 'a', 'q1'], ['q1', 'a', 'q1']], machine: 'Moore'
+  });
+  assert.equal(context.exportCanTrace(), false);
+  const on = context.exportSampleWords({ accepted: 4, rejected: 0, maxLength: 4 });
+  const off = context.exportSampleWords({ accepted: 4, rejected: 0, maxLength: 4, expandLoops: false });
+  deepEq(off.accepted, plain(on.accepted), 'the premise: the switch is inert here');
+
+  const warn = context.ExportFormats.samples.warn({
+    ...context.exportDefaultOpts('samples'), maxLength: 12, rejected: 0, expandLoops: false
+  });
+  assert.ok(warn.some(w => /Expand loops does nothing/.test(w)));
+});
+
+test('a re-aimed route can outgrow the max length that was defaulted for another', () => {
+  reset();
+  loopyDfa();
+  const id = n => App.states.find(s => s.name === n).id;
+  // The default is computed when the dialog opens, for the machine's own
+  // route. Re-aiming afterwards does not move the spinner.
+  assert.equal(context.exportDefaultMaxLength(), 4);
+  assert.equal(context.exportRouteDepth({ origin: id('q1'), target: id('q2') }), 5);
+
+  const warn = context.ExportFormats.samples.warn({
+    ...context.exportDefaultOpts('samples'), rejected: 0, origin: id('q1'), target: id('q2')
+  });
+  assert.ok(warn.some(w => /Max length 4 is below the 5/.test(w)));
+  // Raising it past the route's depth silences it.
+  const raised = context.ExportFormats.samples.warn({
+    ...context.exportDefaultOpts('samples'), rejected: 0, maxLength: 5, origin: id('q1'), target: id('q2')
+  });
+  assert.ok(!raised.some(w => /Max length/.test(w)));
+});
+
+test('a format that can warn declares a probe so the modal cannot jump', () => {
+  // sizeExportCodeOptions locks the options block to the tallest format. It
+  // measures defaults, and no default fires a warning — so any format with a
+  // `warn` has to hand it an option set that does, or the block outgrows the
+  // height it was locked to the moment the warning appears.
+  for (const [key, spec] of Object.entries(context.ExportFormats)) {
+    if (typeof spec.warn !== 'function') continue;
+    assert.ok(spec.warnProbe, `${key} declares warn() but no warnProbe`);
+    const probed = { ...context.exportDefaultOpts(key), ...spec.warnProbe };
+    assert.ok(spec.warn(probed).length, `${key}'s warnProbe does not actually fire its warning`);
+  }
+});
+
+test('the origin picker offers every state, and the default means the start', () => {
+  reset();
+  loopyDfa();
+  const spec = context.ExportFormats.samples;
+  for (const [id, head] of [['origin', 'Start state'], ['target', 'Any accept state']]) {
+    const opt = spec.options.find(o => o.id === id);
+    assert.equal(opt.def, '', `${id} must not pin a state id`);
+    deepEq(opt.choices(), [['', head], ...App.states.map(s => [s.id, s.name])]);
+  }
+
+  // A state name is user text and lands in innerHTML; it must be escaped.
+  App.states[0].name = '<img src=x onerror=alert(1)>';
+  const html = context.exportCodeOptionsHtml(spec, context.exportDefaultOpts('samples'));
+  assert.ok(!html.includes('<img'), 'a state name must not inject markup');
+  assert.match(html, /&lt;img/);
 });
 
 // ══════════════════════════════════════════════════════════════════
@@ -529,6 +1284,27 @@ test('the batch format stays unavailable until a batch has been run', () => {
 
   App.lastBatch = context.computeBatchResults(['01 => accept']);
   assert.equal(context.ExportFormats.batch.available(), true);
+});
+
+test('the sample narrowing options reach build() from the dialog', () => {
+  reset();
+  endsIn01();
+  context.selectExportFormat('samples', true);
+  const ui = context.ExportUI;
+  // Defaults must leave the format as it was before the options existed.
+  assert.equal(ui.opts.minLength, 0);
+  assert.equal(ui.opts.expandLoops, true);
+
+  context.setExportCodeOpt('minLength', '4', 'number');
+  context.setExportCodeOpt('expandLoops', false, 'check');
+  assert.equal(ui.opts.minLength, 4, 'the spinner must store a number, not a string');
+  assert.equal(ui.opts.expandLoops, false);
+
+  const csv = context.ExportFormats.samples.build(context.buildMachineIR(), ui.opts);
+  const words = csv.split('\r\n').slice(1).filter(Boolean).map(r => r.split(',')[0]);
+  assert.ok(words.length > 0);
+  words.forEach(w => assert.ok(w.length >= 4, `${w} slipped under the min length`));
+  assert.ok(!words.includes('0101'), 'the cleared checkbox must reach the search');
 });
 
 test('selecting a format resets its options to declared defaults', () => {
