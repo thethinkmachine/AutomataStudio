@@ -6,7 +6,8 @@ import { loadBackup, loadSharedLinkFromURL, restartAutosaveTimer } from './persi
 import { initDefBoxOverflowObserver, updateLPanel, updateRPanel } from './render.js';
 import { $, App, Workspaces } from './state.js';
 import { DEFAULT_THEME } from './themes.js';
-import { applyTheme, initCanvasResizeObserver, initLPanelSections, initMinimapDrag, initMobilePanels, initPanelResizers, initRPanelSections, initTabs, initToolbarCollapse, setTool, toggleLPanelPin, toggleMinimap, toggleRPanelPin } from './ui.js';
+import { initMinimap, toggleMinimap } from './minimap.js';
+import { applyTheme, initCanvasResizeObserver, initLPanelSections, initMobilePanels, initPanelResizers, initRPanelSections, initTabs, initToolbarCollapse, setTool, toggleLPanelPin, toggleRPanelPin } from './ui.js';
 import { showStatus } from './utils.js';
 import { setMachine, setView } from './view.js';
 
@@ -30,8 +31,8 @@ setMachine('DFA'); setTool('pointer'); setView('build');
 // No boot snapshot: App.history holds states you can go *back* to, and at boot
 // there is nothing behind the empty canvas. An entry here would make the first
 // Ctrl+Z a no-op that still consumed a press.
-// Attach minimap drag-to-navigate
-if (typeof initMinimapDrag === 'function') initMinimapDrag();
+// Attach the minimap's pointer, wheel and keyboard navigation.
+initMinimap();
 // Restore localStorage preferences
 try {
   if (localStorage.getItem('automata-minimap') === '0') toggleMinimap();

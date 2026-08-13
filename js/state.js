@@ -449,7 +449,13 @@ export function importWorkspaceState(data) {
     App.grammar = { vars: new Set(['S']), start: 'S', productions: [] };
   }
   if (data.config) {
-    const { sym, ...loadedConfig } = data.config;
+    // `theme` and the `export` palette it drives are an app-wide preference,
+    // restored from localStorage at boot — not something a tab owns. They ride
+    // along in the blob because exportWorkspaceState serialises App.config
+    // wholesale, and letting them land would undo applyTheme: the page keeps
+    // the theme you chose while the canvas, the minimap and every PNG export
+    // silently repaint in whichever palette the tab was last saved under.
+    const { sym, theme, export: savedExport, ...loadedConfig } = data.config;
     App.config = { ...App.config, ...loadedConfig, sym: { ...App.config.sym, ...(sym || {}) } };
     // R mirrors config.radius for the modules that imported it, and replacing
     // config wholesale does not update it. Without this a tab saved at a

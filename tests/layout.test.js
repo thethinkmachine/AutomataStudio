@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
+import { stubCanvas } from './dom-stub.js';
 import { createHarness } from './harness.js';
 
 const harness = createHarness();
@@ -229,18 +230,7 @@ test('fitToScreen centres content in the visible region, not under a panel', () 
 test('switching theme repaints the minimap in the new palette', () => {
   reset();
   const { App } = context;
-  const canvas = harness.getElement('minimap-canvas');
-  canvas.isConnected = true;
-  canvas.width = 200;
-  canvas.height = 140;
-  let fills = [];
-  canvas.getContext = () => ({
-    clearRect() {}, fillRect() { fills.push(this.fillStyle); }, beginPath() {}, arc() {},
-    moveTo() {}, lineTo() {}, stroke() {}, fill() {}, rect() {}, strokeRect() {},
-    save() {}, restore() {}, setLineDash() {},
-    set fillStyle(v) { this._f = v; }, get fillStyle() { return this._f; },
-    strokeStyle: '', lineWidth: 1
-  });
+  const ctx = stubCanvas(harness.getElement('minimap-canvas'), 200, 140);
   App.states = [{ id: 'q0', x: 0, y: 0 }];
   App.transitions = [];
   App.startId = 'q0';
@@ -248,10 +238,12 @@ test('switching theme repaints the minimap in the new palette', () => {
   // Regression: applyTheme called a non-existent `drawMinimap`, guarded by a
   // typeof check, so the minimap kept the previous theme's export palette.
   for (const theme of ['dark', 'light', 'dark']) {
-    fills = [];
+    ctx.reset();
     context.applyTheme(theme, false);
+    // The first fillRect is the background wash, before anything is drawn over it.
+    const [, , , , props] = ctx.calls('fillRect')[0];
     assert.strictEqual(
-      fills[0],
+      props.fillStyle,
       App.config.export.bg,
       `minimap background did not follow the ${theme} theme`
     );

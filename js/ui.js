@@ -3,10 +3,11 @@ import { renderGamma } from './alphabet.js';
 import { settleAll } from './anim.js';
 import { applyCamera, clearEdgeDirectionHighlight, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, nudgeSelected, pasteClipboard, selectAllStates, toggleSnapToGrid, wrap } from './canvas.js';
 import { isQuickSettingsOpen, positionQuickSettings, refreshQuickSettings } from './quick-settings.js';
-import { clearDividerSelection, deleteSelectedDivider, includeDividerBounds, isRectDivider, updateShapeToolButton } from './dividers.js';
+import { clearDividerSelection, deleteSelectedDivider, includeDividerBounds, updateShapeToolButton } from './dividers.js';
 import { markDirty, redo, snapshot, snapshotSettings, undo } from './history.js';
+import { renderMinimap, scheduleMinimap } from './minimap.js';
 import { anyModalOpen, closeModal, registerModal, showOverlay } from './modal.js';
-import { includeNoteBounds, pruneNoteAnchorsExcluding, resolveNotePos } from './notes.js';
+import { includeNoteBounds, pruneNoteAnchorsExcluding } from './notes.js';
 import { restartAutosaveTimer, saveBackupChecked, saveJSON, saveWorkspace, saveWorkspaceById } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
@@ -1010,8 +1011,10 @@ export function applyTheme(theme, persist = true) {
   if ($('set-theme')) $('set-theme').value = resolved;
   // The minimap paints from App.config.export.*, which syncThemeExportPalette
   // has just rewritten, so it has to be repainted or it keeps the old theme's
-  // colours until some unrelated edit happens to trigger a redraw.
-  if (typeof renderMinimap === 'function') renderMinimap();
+  // colours until some unrelated edit happens to trigger a redraw. Painted
+  // synchronously rather than scheduled so a theme switch never shows a frame
+  // of the old palette.
+  renderMinimap();
   if (persist) {
     try { localStorage.setItem('automata-theme', resolved); } catch (e) { }
   }
@@ -1231,7 +1234,7 @@ export function notifyCanvasResize() {
   _resizeSettleTimer = setTimeout(() => {
     _resizeSettleTimer = null;
     if (_resizeWasFullyVisible) fitToScreen(true);
-    else renderMinimap();
+    else scheduleMinimap();
   }, 150);
 }
 
@@ -1316,195 +1319,6 @@ document.addEventListener('fullscreenchange', () => {
   }
 });
 
-
-export function renderMinimap() {
-  const canvas = $('minimap-canvas'); if (!canvas) return;
-  if (!canvas.isConnected) return;
-  const ctx = canvas.getContext('2d');
-  const cw = canvas.width, ch = canvas.height;
-  ctx.clearRect(0, 0, cw, ch);
-  ctx.fillStyle = App.config.export.bg;
-  ctx.fillRect(0, 0, cw, ch);
-  if (!App.states.length) return;
-  // Compute world bounding box
-  const R_PAD = App.config.radius + 4;
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  App.states.forEach(s => {
-    minX = Math.min(minX, s.x - R_PAD); minY = Math.min(minY, s.y - R_PAD);
-    maxX = Math.max(maxX, s.x + R_PAD); maxY = Math.max(maxY, s.y + R_PAD);
-  });
-  if (typeof includeNoteBounds === 'function') {
-    includeNoteBounds((x0, y0, x1, y1) => {
-      minX = Math.min(minX, x0); minY = Math.min(minY, y0);
-      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
-    });
-  }
-  if (typeof includeDividerBounds === 'function') {
-    includeDividerBounds((x0, y0, x1, y1) => {
-      minX = Math.min(minX, x0); minY = Math.min(minY, y0);
-      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
-    });
-  }
-  // Also include viewport extent. The rect has to track the part of the
-  // canvas that isn't hidden behind an overlaying panel, otherwise it reads
-  // wider than the visible area and sits offset from the content.
-  const vis = visibleCanvasBox();
-  const vpMinX = (vis.x - App.cam.x) / App.cam.z, vpMinY = (vis.y - App.cam.y) / App.cam.z;
-  const vpMaxX = (vis.x + vis.w - App.cam.x) / App.cam.z;
-  const vpMaxY = (vis.y + vis.h - App.cam.y) / App.cam.z;
-  minX = Math.min(minX, vpMinX); minY = Math.min(minY, vpMinY);
-  maxX = Math.max(maxX, vpMaxX); maxY = Math.max(maxY, vpMaxY);
-  const bw = maxX - minX, bh = maxY - minY;
-  if (!bw || !bh) return;
-  const pad = 4;
-  const scaleX = (cw - pad * 2) / bw, scaleY = (ch - pad * 2) / bh;
-  const mmScale = Math.min(scaleX, scaleY);
-  const mmOffX = pad + (cw - pad * 2 - bw * mmScale) / 2;
-  const mmOffY = pad + (ch - pad * 2 - bh * mmScale) / 2;
-  // Save for click navigation
-  canvas._mmScale = mmScale; canvas._mmOffX = mmOffX; canvas._mmOffY = mmOffY;
-  canvas._mmMinX = minX; canvas._mmMinY = minY;
-  // Draw dividers first so they sit behind the machine, as on the canvas
-  if (App.dividers && App.dividers.length) {
-    ctx.save();
-    ctx.strokeStyle = App.config.export.textFill;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 3]);
-    App.dividers.forEach(d => {
-      const ax = (d.x1 - minX) * mmScale + mmOffX, ay = (d.y1 - minY) * mmScale + mmOffY;
-      const bx = (d.x2 - minX) * mmScale + mmOffX, by = (d.y2 - minY) * mmScale + mmOffY;
-      ctx.beginPath();
-      if (typeof isRectDivider === 'function' && isRectDivider(d)) {
-        // The two stored points are opposite corners, so a plain moveTo/lineTo
-        // would draw the box's diagonal instead of the box.
-        ctx.rect(Math.min(ax, bx), Math.min(ay, by), Math.abs(bx - ax), Math.abs(by - ay));
-      } else {
-        ctx.moveTo(ax, ay);
-        ctx.lineTo(bx, by);
-      }
-      ctx.stroke();
-    });
-    ctx.restore();
-  }
-  // Draw transitions
-  ctx.strokeStyle = App.config.export.edgeStroke;
-  ctx.lineWidth = 1;
-  App.transitions.forEach(tr => {
-    const fs = App.states.find(s => s.id === tr.from);
-    const ts2 = App.states.find(s => s.id === tr.to);
-    if (!fs || !ts2) return;
-    ctx.beginPath();
-    ctx.moveTo((fs.x - minX) * mmScale + mmOffX, (fs.y - minY) * mmScale + mmOffY);
-    ctx.lineTo((ts2.x - minX) * mmScale + mmOffX, (ts2.y - minY) * mmScale + mmOffY);
-    ctx.stroke();
-  });
-  // Draw states
-  App.states.forEach(s => {
-    const sx = (s.x - minX) * mmScale + mmOffX;
-    const sy = (s.y - minY) * mmScale + mmOffY;
-    const sr = Math.max(2, R_PAD * mmScale * 0.7);
-    ctx.beginPath();
-    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
-    ctx.fillStyle = App.accepts.has(s.id) ? App.config.export.accStroke : App.config.export.actStroke;
-    ctx.fill();
-  });
-  // Draw notes as small squares
-  if (typeof resolveNotePos === 'function') {
-    ctx.fillStyle = App.config.export.textFill;
-    App.notes.forEach(note => {
-      const pos = resolveNotePos(note);
-      const nx = (pos.x - minX) * mmScale + mmOffX;
-      const ny = (pos.y - minY) * mmScale + mmOffY;
-      const s = 3;
-      ctx.fillRect(nx - s / 2, ny - s / 2, s, s);
-    });
-  }
-  // Draw viewport rect
-  const rx = (vpMinX - minX) * mmScale + mmOffX;
-  const ry = (vpMinY - minY) * mmScale + mmOffY;
-  const rw = (vpMaxX - vpMinX) * mmScale;
-  const rh = (vpMaxY - vpMinY) * mmScale;
-  ctx.strokeStyle = App.config.export.viewportStroke || App.config.export.actStroke;
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(rx, ry, rw, rh);
-}
-
-export function toggleMinimap() {
-  const mm = $('minimap-container');
-  if (!mm) return;
-  const hidden = mm.classList.toggle('minimap-hidden');
-  // Bringing the map back is the nav bar's job now, rather than a floating
-  // stand-in button that took the map's slot in the stack: hiding the minimap
-  // used to swap one overlay for another, which still left something parked in
-  // the corner. The toggle lives with the other canvas toggles instead, and
-  // reads as pressed while the map is up.
-  const btn = $('minimap-toggle-btn');
-  if (btn) {
-    btn.classList.toggle('active', !hidden);
-    btn.setAttribute('aria-pressed', hidden ? 'false' : 'true');
-    btn.setAttribute('data-tip', hidden ? 'Show minimap' : 'Hide minimap');
-  }
-  try { localStorage.setItem('automata-minimap', hidden ? '0' : '1'); } catch (e) { }
-  // The map leaving the stack changes what sits above the nav controls.
-  if (typeof layoutCanvasOverlays === 'function') layoutCanvasOverlays();
-}
-
-export function minimapNavigate(e, animate = true) {
-  const canvas = $('minimap-canvas'); if (!canvas) return;
-  if (!canvas._mmScale) return;
-  const rect = canvas.getBoundingClientRect();
-  const cx = e.clientX - rect.left;
-  const cy2 = e.clientY - rect.top;
-  // Convert minimap coords → world coords
-  const worldX = (cx - canvas._mmOffX) / canvas._mmScale + canvas._mmMinX;
-  const worldY = (cy2 - canvas._mmOffY) / canvas._mmScale + canvas._mmMinY;
-  // Pan camera to center on this world point, within the visible region so
-  // the clicked spot lands where the viewport rect showed it — not behind an
-  // overlaying panel.
-  const w = $('canvas-wrap'); if (!w) return;
-  const vis = visibleCanvasBox();
-  App.cam.x = vis.x + vis.w / 2 - worldX * App.cam.z;
-  App.cam.y = vis.y + vis.h / 2 - worldY * App.cam.z;
-  // Fires on every drag frame, but markDirty is a no-op once the tab is
-  // already dirty, so the repeated calls cost nothing.
-  if (typeof markDirty === 'function') markDirty();
-
-  if (animate) { $('cam-g').classList.add('cam-smooth'); w.classList.add('cam-smooth'); }
-  applyCamera(true);
-  if (animate) {
-    setTimeout(() => {
-      $('cam-g').classList.remove('cam-smooth');
-      w.classList.remove('cam-smooth');
-    }, 250);
-  }
-}
-
-// Minimap viewport is draggable, not just click-to-jump.
-export let _minimapDragging = false;
-export function initMinimapDrag() {
-  const canvas = $('minimap-canvas');
-  if (!canvas || canvas._dragInit) return;
-  canvas._dragInit = true;
-  canvas.addEventListener('pointerdown', e => {
-    if (e.button !== 0) return;
-    _minimapDragging = true;
-    canvas.classList.add('dragging');
-    try { canvas.setPointerCapture(e.pointerId); } catch (err) { }
-    minimapNavigate(e, false);
-  });
-  canvas.addEventListener('pointermove', e => {
-    if (!_minimapDragging) return;
-    minimapNavigate(e, false);
-  });
-  const end = () => {
-    if (!_minimapDragging) return;
-    _minimapDragging = false;
-    canvas.classList.remove('dragging');
-    renderMinimap();
-  };
-  canvas.addEventListener('pointerup', end);
-  canvas.addEventListener('pointercancel', end);
-}
 
 export function setTool(t) {
   App.tool = t;

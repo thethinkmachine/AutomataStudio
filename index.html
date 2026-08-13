@@ -449,7 +449,10 @@
                 <svg viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg>
               </button>
             </div>
-            <canvas class="minimap-canvas" id="minimap-canvas" width="160" height="100"></canvas>
+            <!-- The backing store is resized to the CSS box × devicePixelRatio
+                 on first paint; these attributes are only the pre-paint size. -->
+            <canvas class="minimap-canvas" id="minimap-canvas" width="160" height="100" tabindex="0"
+              role="img" aria-label="Diagram overview. Drag to pan, scroll to zoom; when focused, arrow keys pan, plus and minus zoom, Home fits the diagram."></canvas>
           </div>
           <!-- Nav controls -->
           <div class="canvas-nav-controls" id="canvas-nav-controls">

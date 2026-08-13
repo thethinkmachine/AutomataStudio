@@ -128,6 +128,30 @@ test('restoring a workspace republishes its radius', () => {
     'switching tabs must pick up that tab\'s radius');
 });
 
+// exportWorkspaceState serialises App.config wholesale, so every saved tab and
+// every autosave blob carries a copy of the theme and the export palette it was
+// written under. Restoring one used to merge those back over the live config:
+// the page kept the theme you picked, while the canvas, the minimap and every
+// PNG export repainted in the saved tab's colours. It showed up as a minimap
+// in the wrong palette after a hard refresh, because boot applies the theme and
+// *then* restores the workspace asynchronously.
+test('restoring a workspace does not carry the theme it was saved under', () => {
+  const h = createHarness();
+  const { App } = h.context;
+  h.context.createState(100, 100, 'q0');
+
+  h.context.applyTheme('dark', false);
+  const savedUnderDark = h.context.exportWorkspaceState();
+
+  h.context.applyTheme('light', false);
+  const live = { ...App.config.export };
+
+  h.context.importWorkspaceState(savedUnderDark);
+
+  assert.equal(App.config.theme, 'light', 'a tab must not change the app theme');
+  assert.deepEqual(App.config.export, live, 'a tab must not change the export palette');
+});
+
 test('a blank or junk numeric field falls back instead of writing NaN', () => {
   const h = createHarness();
   const $ = openAndRead(h);

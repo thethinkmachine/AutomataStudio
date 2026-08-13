@@ -113,6 +113,9 @@ import {
   clearAll,
 } from './utils.js';
 import {
+  toggleMinimap,
+} from './minimap.js';
+import {
   beginRenameTab, closeMobileAuxNav, closeMobilePanels, closeTab,
   commitTabRename, confirmSettings, createTab, exportSettings, filterAlgos,
   filterStates, filterTransitions, fitToScreen, focusStateFromList,
@@ -125,7 +128,7 @@ import {
   showTabContextMenu, switchSettingsTab, switchTab, switchTabFromOverflow,
   tabCtxClose, tabCtxCloseAll, tabCtxCloseOthers, tabCtxCloseRight,
   tabCtxDuplicate, tabCtxRename, toggleFullscreen, toggleLPSection,
-  toggleLPanelPin, toggleMinimap, toggleMobilePanel, toggleModelPicker,
+  toggleLPanelPin, toggleMobilePanel, toggleModelPicker,
   toggleRPSection, toggleRPanelPin, toggleTabOverflowMenu, toggleTool,
   zoomIn, zoomOut,
 } from './ui.js';
@@ -201,6 +204,8 @@ Object.assign(window, {
    loadWorkspaceB, openAboutModal, saveWorkspaceB, showHelpModal,
   // utils.js
    clearAll,
+  // minimap.js
+   toggleMinimap,
   // ui.js
    beginRenameTab, closeMobileAuxNav, closeMobilePanels, closeTab,
    commitTabRename, confirmSettings, createTab, exportSettings, filterAlgos,
@@ -214,7 +219,7 @@ Object.assign(window, {
    showTabContextMenu, switchSettingsTab, switchTab, switchTabFromOverflow,
    tabCtxClose, tabCtxCloseAll, tabCtxCloseOthers, tabCtxCloseRight,
    tabCtxDuplicate, tabCtxRename, toggleFullscreen, toggleLPSection,
-   toggleLPanelPin, toggleMinimap, toggleMobilePanel, toggleModelPicker,
+   toggleLPanelPin, toggleMobilePanel, toggleModelPicker,
    toggleRPSection, toggleRPanelPin, toggleTabOverflowMenu, toggleTool,
    zoomIn, zoomOut,
 });
