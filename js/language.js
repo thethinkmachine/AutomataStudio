@@ -296,9 +296,44 @@ export function langIsInfinite() {
 // which is what makes a fixed-length pass emit in lex order; length
 // dominates shortlex, so increasing the target length after each
 // exhausted pass keeps the overall sequence correct.
-export function* _langTraceWords(g, state) {
+//
+// `opts` narrows the sequence without reordering it, for callers that want
+// a spread of the language rather than its shortlex prefix (the export
+// dialog; the sidebar list passes nothing and gets the full sequence):
+//
+//   minLen   skip words shorter than this — the deepening simply starts
+//            there, so skipped lengths cost nothing rather than being
+//            generated and filtered
+//   maxLen   stop deepening after this (still capped by DEPTH_CAP)
+//   perPath  at most this many words per loop-free path skeleton; 0 = all
+//
+// The skeleton is what makes `perPath` mean "fewer loop repeats" rather
+// than "fewer words": it is the run with its cycles collapsed out, so two
+// words share one exactly when they differ only in how many times they go
+// round. See _langPathSkeleton below.
+export function* _langTraceWords(g, state, opts = {}) {
   const startSubset = new Set([...g.closure(App.startId)].filter(id => g.live.has(id)));
   if (!startSubset.size) return;
+
+  const maxDepth = Math.min(
+    opts.maxLen === undefined || opts.maxLen === null ? LANG_TRACE_DEPTH_CAP : opts.maxLen,
+    LANG_TRACE_DEPTH_CAP
+  );
+  const minDepth = Math.max(0, opts.minLen || 0);
+  const perPath = Math.max(0, opts.perPath || 0);
+
+  // Tracked only when the cap is on: maintaining it costs an allocation per
+  // branch, and the uncapped search is the hot one.
+  const path = [];
+  const pathSeen = new Map();
+  const admit = () => {
+    if (!perPath) return true;
+    const key = _langPathSkeleton(path);
+    const n = pathSeen.get(key) || 0;
+    if (n >= perPath) return false;
+    pathSeen.set(key, n + 1);
+    return true;
+  };
 
   const subsetMinDist = (subset) => {
     let m = Infinity;
@@ -323,23 +358,61 @@ export function* _langTraceWords(g, state) {
     if (++state.steps > LANG_TRACE_STEP_BUDGET) { state.truncated = true; return; }
     if (subsetMinDist(subset) > budget) return;
     if (budget === 0) {
-      if (hasAccept(subset) && langVerdict(word) === 'acc') yield word;
+      // admit() last: it has the side effect of consuming the path's quota,
+      // so a word the simulator goes on to reject must not spend one.
+      if (hasAccept(subset) && langVerdict(word) === 'acc' && admit()) yield word;
       return;
     }
     for (const sym of g.sigma) {
       const next = step(subset, sym);
-      if (next.size) yield* dfs(next, word.concat([sym]), budget - 1);
+      if (next.size) {
+        if (perPath) path.push({ k: _langSubsetKey(next), s: sym });
+        yield* dfs(next, word.concat([sym]), budget - 1);
+        if (perPath) path.pop();
+      }
       if (state.truncated) return;
     }
   }
 
-  for (let depth = 0; depth <= LANG_TRACE_DEPTH_CAP; depth++) {
+  if (perPath) path.push({ k: _langSubsetKey(startSubset), s: null });
+  for (let depth = minDepth; depth <= maxDepth; depth++) {
     yield* dfs(startSubset, [], depth);
     if (state.truncated) return;
   }
 }
 
-export function langAcceptedTraces(K) {
+// A configuration here is a subset of states, so that is what a step of the
+// run lands on.
+export function _langSubsetKey(subset) {
+  return [...subset].sort().join(',');
+}
+
+// The run with its loops collapsed out: walk the steps, and whenever one
+// repeats a step the run has already taken, drop everything back to that
+// first occurrence. What survives touches no step twice, so "a", "aa" and
+// "aaa" all share one skeleton on a self-loop.
+//
+// A step is identified by the symbol *and* the subset it lands on, not the
+// subset alone. Keying on the subset alone reads a one-state machine as
+// having exactly one loop-free run — every word over (0|1)* would collapse
+// onto ε — which is the wrong answer to the case the cap exists for. The
+// cost of the finer key is that a cycle leaving and re-entering a state by
+// different edges is kept rather than collapsed: it is a route the other
+// words do not cover, so it survives as its own skeleton.
+export function _langPathSkeleton(path) {
+  const out = [];
+  const at = new Map();
+  for (const e of path) {
+    const k = e.s === null ? e.k : e.s + '>' + e.k;
+    const prev = at.get(k);
+    if (prev === undefined) { at.set(k, out.length); out.push(k); continue; }
+    for (let i = prev + 1; i < out.length; i++) at.delete(out[i]);
+    out.length = prev + 1;
+  }
+  return out.join('|');
+}
+
+export function langAcceptedTraces(K, opts) {
   K = K || LANG_TRACE_ROWS;
   if (!App.startId) return { traces: [], reason: 'no start state' };
   if (!App.accepts.size) return { traces: [], reason: 'no accepting state' };
@@ -347,12 +420,180 @@ export function langAcceptedTraces(K) {
   const g = _langGraph();
   const state = { steps: 0, truncated: false };
   const traces = [];
-  for (const w of _langTraceWords(g, state)) {
+  for (const w of _langTraceWords(g, state, opts)) {
     traces.push(w);
     if (traces.length >= K) break;
   }
 
   return { traces, truncated: state.truncated, reason: traces.length ? null : 'no accepted word found within the search budget' };
+}
+
+// ── transition coverage ───────────────────────────────────────────
+// The trace search answers "what words are in L?". This answers "what words
+// exercise the machine?" — one accepted word per transition, so every loop
+// is taken once and no edge goes unvisited for want of a reason to enter it.
+//
+// The two questions want different searches, which is why this is not a
+// filter over the trace list. Selecting words by language properties can
+// never guarantee edge coverage: on a machine where two edges carry the same
+// symbol into the same state, no shortlex prefix distinguishes them, and a
+// cycle can be unreachable by any word short enough to be in the list.
+//
+// Each word is built rather than found: a shortest route to the edge, the
+// edge, then a shortest route on to an accept. Both halves are 0-1 BFS with
+// ε free — the same pass `_langGraph` runs to compute `dist`, once forwards
+// from the start and once backwards from F.
+//
+// Two honest limits, both reported rather than hidden:
+//
+//   • The graph over-approximates a PDA, so a route through it need not be
+//     a word the stack allows. Every word is verified with the real
+//     simulator, and a transition whose word does not verify is listed as
+//     uncovered rather than exported as a lie.
+//   • "This word exercises this edge" is exact for a DFA with no wildcards.
+//     Under nondeterminism the word is accepted but the simulator may reach
+//     the accept by a different run, and a wildcard edge is probed with one
+//     concrete symbol that a more specific edge may claim first. The word is
+//     still accepted and still the shortest route through that edge; it is
+//     the exclusivity that weakens.
+
+// The symbol a route spends to cross `t`: null for ε (free), a concrete
+// symbol otherwise, and `undefined` when the edge cannot be spent at all —
+// a wildcard stands for every symbol in Σ, so with Σ empty it stands for
+// none. Both BFS passes skip those edges rather than putting a hole in a
+// word: a route with an unspendable symbol in it is not a route, and one
+// that reached the exporter would be a word the file could not spell.
+function _langStepSymbol(g, t, concrete) {
+  if (t.symbol === g.eps) return null;
+  return concrete(t.symbol);
+}
+
+// Shortest word from `startId` to every state it can reach.
+function _langShortestFrom(g, startId, concrete) {
+  const best = new Map([[startId, []]]);
+  const dist = new Map([[startId, 0]]);
+  const deque = [startId];
+  const done = new Set();
+  while (deque.length) {
+    const x = deque.shift();
+    if (done.has(x)) continue;
+    done.add(x);
+    const dx = dist.get(x);
+    for (const t of (g.out.get(x) || [])) {
+      const sym = _langStepSymbol(g, t, concrete);
+      if (sym === undefined) continue;
+      const free = sym === null;
+      const nd = dx + (free ? 0 : 1);
+      if (dist.has(t.to) && nd >= dist.get(t.to)) continue;
+      dist.set(t.to, nd);
+      best.set(t.to, free ? best.get(x) : best.get(x).concat([sym]));
+      if (free) deque.unshift(t.to); else deque.push(t.to);
+    }
+  }
+  return best;
+}
+
+// Shortest word from every state on to an accept, and which accept it is.
+function _langShortestToAccept(g, concrete) {
+  const best = new Map();
+  const dist = new Map();
+  const deque = [];
+  for (const a of App.accepts) { dist.set(a, 0); best.set(a, { word: [], accept: a }); deque.push(a); }
+  const done = new Set();
+  while (deque.length) {
+    const x = deque.shift();
+    if (done.has(x)) continue;
+    done.add(x);
+    const dx = dist.get(x);
+    for (const t of (g.rev.get(x) || [])) {
+      const sym = _langStepSymbol(g, t, concrete);
+      if (sym === undefined) continue;
+      const free = sym === null;
+      const nd = dx + (free ? 0 : 1);
+      if (dist.has(t.from) && nd >= dist.get(t.from)) continue;
+      dist.set(t.from, nd);
+      const bx = best.get(x);
+      best.set(t.from, { word: free ? bx.word : [sym].concat(bx.word), accept: bx.accept });
+      if (free) deque.unshift(t.from); else deque.push(t.from);
+    }
+  }
+  return best;
+}
+
+// The shared half of "route a word through this transition": one graph index
+// and both BFS passes. langRouteDepth() wants only the lengths and skips the
+// simulator; langCoverageTraces() wants the words and verifies each one.
+function _langRoutePlan() {
+  const g = _langGraph();
+  // A wildcard edge stands for all of Σ; probe it with one concrete symbol.
+  const concrete = (sym) => (sym === g.any ? g.sigma[0] : sym);
+  return {
+    g,
+    concrete,
+    prefix: _langShortestFrom(g, App.startId, concrete),
+    suffix: _langShortestToAccept(g, concrete)
+  };
+}
+
+// The route through `t`: shortest way in, the edge, shortest way on to an
+// accept — or the reason there isn't one. One place decides what a route is,
+// so the depth estimate and the coverage export cannot disagree about it.
+function _langRouteThrough(plan, t) {
+  const pre = plan.prefix.get(t.from);
+  if (!pre) return { reason: () => 'source state is unreachable' };
+  const post = plan.suffix.get(t.to);
+  if (!post) return { reason: goal => `target state cannot reach ${goal}` };
+
+  const sym = _langStepSymbol(plan.g, t, plan.concrete);
+  if (sym === undefined) return { reason: () => 'wildcard edge with an empty alphabet' };
+
+  return { word: pre.concat(sym === null ? [] : [sym], post.word), accept: post.accept };
+}
+
+// The length of the longest word transition coverage needs — the worst
+// "shortest route in, one edge, shortest route out" over every transition.
+//
+// It is what a max-length default should be derived from rather than
+// guessed: below it some edge of the machine cannot appear in any exported
+// word at all, and above it the extra length buys only longer words through
+// edges already covered. Two BFS, so it is cheap enough to compute whenever
+// the dialog opens. 0 means there is nothing to route (no start, no accept,
+// or no transitions), and the caller should fall back to a constant.
+export function langRouteDepth() {
+  if (!App.startId || !App.accepts.size || !App.transitions.length) return 0;
+  const plan = _langRoutePlan();
+  let longest = 0;
+  for (const t of App.transitions) {
+    const route = _langRouteThrough(plan, t);
+    if (route.word && route.word.length > longest) longest = route.word.length;
+  }
+  return longest;
+}
+
+export function langCoverageTraces(opts = {}) {
+  // What the suffix routes towards, for the messages only. The export can
+  // rename it when the caller has swapped the accept set for one chosen state.
+  const goal = opts.goalLabel || 'an accept';
+  const out = { rows: [], uncovered: [], reason: null };
+  if (!App.startId) { out.reason = 'no start state'; return out; }
+  if (!App.accepts.size) { out.reason = 'no accepting state'; return out; }
+  if (!App.transitions.length) { out.reason = 'no transitions'; return out; }
+
+  const plan = _langRoutePlan();
+  const nameOf = (id) => getState(id)?.name || id;
+
+  for (const t of App.transitions) {
+    const edge = { id: t.id, from: nameOf(t.from), to: nameOf(t.to), symbol: t.symbol };
+    const route = _langRouteThrough(plan, t);
+    if (route.reason) { out.uncovered.push({ ...edge, reason: route.reason(goal) }); continue; }
+    if (langVerdict(route.word) !== 'acc') {
+      out.uncovered.push({ ...edge, reason: 'no accepted word runs through this transition' });
+      continue;
+    }
+    out.rows.push({ ...edge, word: route.word, accept: nameOf(route.accept) });
+  }
+
+  return out;
 }
 
 // ── the formal definition, as one line ────────────────────────────

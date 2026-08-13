@@ -411,6 +411,128 @@ test('PDA traces are verified against the stack, not just the graph', () => {
 });
 
 // ══════════════════════════════════════════════════════════════════
+//  NARROWING THE TRACE SEQUENCE
+// ══════════════════════════════════════════════════════════════════
+// The export dialog can ask for a spread of L(M) rather than its shortlex
+// prefix. All three filters narrow the sequence; none may reorder it, and
+// none may admit a word the simulator would reject.
+
+// a*b*: two self-loops, so shortlex alone gives ε, a, b, aa, ab, bb, …
+// and the loops dominate every row after the first few.
+function aStarBStar() {
+  return fa({
+    sigma: ['a', 'b'],
+    states: ['q0', 'q1'], start: 'q0', accepts: ['q0', 'q1'],
+    edges: [['q0', 'a', 'q0'], ['q0', 'b', 'q1'], ['q1', 'b', 'q1']]
+  });
+}
+
+test('minLen and maxLen bound the traces without disturbing shortlex order', () => {
+  reset();
+  aStarBStar();
+  const words = context.langAcceptedTraces(30, { minLen: 2, maxLen: 3 })
+    .traces.map(w => w.join(''));
+
+  assert.ok(words.length > 0, 'expected some words in the band');
+  for (const w of words) {
+    assert.ok(w.length >= 2 && w.length <= 3, `${w} is outside [2,3]`);
+    assert.match(w, /^a*b*$/);
+  }
+  for (let i = 1; i < words.length; i++) {
+    assert.ok(words[i - 1].length <= words[i].length, `length must not decrease at ${i}`);
+  }
+  // The band is complete, still in shortlex: every a*b* word of length 2 then 3.
+  deepEq(words, ['aa', 'ab', 'bb', 'aaa', 'aab', 'abb', 'bbb']);
+});
+
+test('perPath keeps one word per loop-free run instead of the same word pumped', () => {
+  reset();
+  aStarBStar();
+  // a*b* has four loop-free runs: take neither loop, the q0 loop, the cross
+  // edge, or the q0 loop then the cross. Everything else repeats a step —
+  // "aa" is "a" twice, "bb" re-takes the edge landing on q1 — so a cap of 1
+  // is exactly those four, and shortlex still decides their order.
+  const one = context.langAcceptedTraces(30, { maxLen: 5, perPath: 1 })
+    .traces.map(w => w.join(''));
+  deepEq(one, ['', 'a', 'b', 'ab']);
+
+  // Raising the cap lets each of those four routes bring one more word.
+  const two = context.langAcceptedTraces(30, { maxLen: 5, perPath: 2 })
+    .traces.map(w => w.join(''));
+  deepEq(two, ['', 'a', 'b', 'aa', 'ab', 'bb', 'aab']);
+});
+
+test('perPath does not merge distinct routes that happen to end in the same state', () => {
+  reset();
+  // Two parallel edges into the accept: same states, different symbols, and
+  // neither is the other with a loop taken — so both must survive a cap of 1
+  // even though a subset-keyed skeleton would see one route.
+  fa({
+    sigma: ['a', 'b'],
+    states: ['q0', 'q1'], start: 'q0', accepts: ['q1'],
+    edges: [['q0', 'a', 'q1'], ['q0', 'b', 'q1'], ['q1', 'a', 'q1']]
+  });
+  const words = context.langAcceptedTraces(10, { maxLen: 4, perPath: 1 })
+    .traces.map(w => w.join(''));
+  assert.ok(words.includes('a') && words.includes('b'), 'both entry edges must be represented');
+  // The q1 self-loop is pumping, and pumping is what the cap removes.
+  assert.ok(!words.includes('aa') && !words.includes('baa'), 'pumped words must be gone');
+  // "ba" survives: entering q1 by b and then looping is a route no kept word
+  // covers, since a step is identified by its symbol as well as its target.
+  deepEq(words, ['a', 'b', 'ba']);
+});
+
+test('a capped trace is still a word the simulator accepts', () => {
+  reset();
+  workflow();
+  for (const w of context.langAcceptedTraces(8, { maxLen: 6, perPath: 1 }).traces) {
+    assert.equal(context.langVerdict(w), 'acc', w.join(' → '));
+  }
+});
+
+test('the skeleton collapses a repeated step and nothing else', () => {
+  // Direct on the helper: what does and does not count as going round again.
+  const sk = context._langPathSkeleton;
+  const start = { k: 'q0', s: null };
+
+  // a self-loop taken twice is the self-loop taken once
+  assert.equal(
+    sk([start, { k: 'q0', s: 'a' }, { k: 'q0', s: 'a' }, { k: 'q1', s: 'b' }]),
+    sk([start, { k: 'q0', s: 'a' }, { k: 'q1', s: 'b' }])
+  );
+  // so is a longer cycle: q0 -a-> q1 -b-> q0 -a-> q1 comes back to a step
+  // it has already taken
+  assert.equal(
+    sk([start, { k: 'q1', s: 'a' }, { k: 'q0', s: 'b' }, { k: 'q1', s: 'a' }]),
+    sk([start, { k: 'q1', s: 'a' }])
+  );
+  // a different symbol into the same state is a different step
+  assert.notEqual(
+    sk([start, { k: 'q1', s: 'a' }]),
+    sk([start, { k: 'q1', s: 'b' }])
+  );
+  // and so is the same symbol into a different state — looping on q0 and
+  // then leaving it on the same letter is two steps, not one taken twice
+  deepEq(
+    sk([start, { k: 'q0', s: 'a' }, { k: 'q1', s: 'a' }]).split('|'),
+    ['q0', 'a>q0', 'a>q1']
+  );
+});
+
+test('the sidebar list is unaffected — no options means the full shortlex sequence', () => {
+  reset();
+  aStarBStar();
+  const g = context._langGraph();
+  const state = { steps: 0, truncated: false };
+  const words = [];
+  for (const w of context._langTraceWords(g, state)) {
+    words.push(w.join(''));
+    if (words.length >= 6) break;
+  }
+  deepEq(words, ['', 'a', 'b', 'aa', 'ab', 'bb']);
+});
+
+// ══════════════════════════════════════════════════════════════════
 //  SCROLLING PAST THE OLD ROW CAP, AND THE INFINITE-LANGUAGE CHECK
 // ══════════════════════════════════════════════════════════════════
 // The old search materialised a frontier per length, capped so it would
