@@ -9,7 +9,8 @@ import { currentLayoutContext, makeSVG, renderAll, updateFastDOM, updateLPanel, 
 import { $, App } from './state.js';
 import { createState, deleteState, getState, hideContextMenu, newId, newTId, openTransModal } from './states-transitions.js';
 import { Change, emit } from './store.js';
-import { fitToScreen, markActiveWorkspaceSaved, renderMinimap } from './ui.js';
+import { scheduleMinimap } from './minimap.js';
+import { fitToScreen, markActiveWorkspaceSaved } from './ui.js';
 import { showStatus } from './utils.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -111,7 +112,7 @@ export function updateTouchCameraGesture() {
   App.cam.x = center.x - r.left - touchCameraGesture.worldAtCenter.x * newZoom;
   App.cam.y = center.y - r.top - touchCameraGesture.worldAtCenter.y * newZoom;
   App.cam.z = newZoom;
-  applyCamera(true);
+  applyCamera();
 }
 
 export function captureTouchPointerDown(e) {
@@ -167,9 +168,11 @@ export function svgPt(e) {
   return { x: (e.clientX - r.left - App.cam.x) / App.cam.z, y: (e.clientY - r.top - App.cam.y) / App.cam.z };
 }
 export let _pendingFrame = false;
-export let _pendingMinimapRefresh = false;
-export function applyCamera(skipMinimap = false) {
-  _pendingMinimapRefresh = _pendingMinimapRefresh || !skipMinimap;
+// The minimap used to be skipped during pans "for speed", which froze the one
+// thing a pan is supposed to move. It coalesces its own paints now (see
+// js/minimap.js), so the camera can just say it moved and let it decide.
+export function applyCamera() {
+  scheduleMinimap();
   if (_pendingFrame) return;
   _pendingFrame = true;
   requestAnimationFrame(() => {
@@ -187,8 +190,6 @@ export function applyCamera(skipMinimap = false) {
     if (zInput && document.activeElement !== zInput) {
       zInput.value = Math.round(App.cam.z * 100) + '%';
     }
-    if (_pendingMinimapRefresh) renderMinimap();
-    _pendingMinimapRefresh = false;
     _pendingFrame = false;
   });
 }
@@ -232,12 +233,12 @@ wrap.addEventListener('wheel', e => {
     App.cam.x -= dx;
     App.cam.y -= dy;
   }
-  applyCamera(true);
+  applyCamera();
   clearTimeout(_wheelIdleTimer);
   // Marked once the gesture settles rather than per wheel tick, so a single
-  // scroll doesn't trigger a burst of tab re-renders.
+  // scroll doesn't trigger a burst of tab re-renders. The minimap is not marked
+  // here — applyCamera above already told it, on every tick.
   _wheelIdleTimer = setTimeout(() => {
-    renderMinimap();
     if (typeof markDirty === 'function') markDirty();
   }, 150);
 }, { passive: false });
@@ -357,7 +358,7 @@ export function startAutoPanLoop() {
     const vec = computeAutoPanVector(lastPointerClient.clientX, lastPointerClient.clientY, rect);
     if (vec.x || vec.y) {
       App.cam.x += vec.x; App.cam.y += vec.y;
-      applyCamera(true);
+      applyCamera();
       handlePointerMove(lastPointerClient);
       autoPanRAF = requestAnimationFrame(step);
     } else {
@@ -435,7 +436,7 @@ export function handlePointerMove(e) {
   if (isPanning) {
     App.cam.x = camStart.x + (e.clientX - panStart.x);
     App.cam.y = camStart.y + (e.clientY - panStart.y);
-    applyCamera(true); // skip minimap during pan for speed
+    applyCamera();
     return;
   }
   if (App.marquee) {
@@ -585,12 +586,12 @@ export function endPointerInteractions() {
     isPanning = false; wrap.classList.remove('panning');
     if (panPointerId !== null) { try { wrap.releasePointerCapture(panPointerId); } catch (e) { } }
     panPointerId = null;
-    renderMinimap();
+    scheduleMinimap();
     if (typeof markDirty === 'function') markDirty();
     return;
   }
   if (App.marquee) {
-    App.marqueeRect.remove(); App.marqueeRect = null; App.marquee = null; renderMinimap();
+    App.marqueeRect.remove(); App.marqueeRect = null; App.marquee = null; scheduleMinimap();
   }
   if (App.dragOffsets || App.dragCurve) {
     // A press that never moved is a selection, not a drag: dragPendingSnapshot
@@ -608,28 +609,28 @@ export function endPointerInteractions() {
       && resolveNodeOverlaps(App.states, { movable: moved })) {
       emit(Change.GRAPH);
     }
-    renderMinimap();
+    scheduleMinimap();
   }
   if (App.dividerDraft) {
     finishDividerDraw();
-    renderMinimap();
+    scheduleMinimap();
   }
   if (App.dragDividerEndpoint) {
     endDividerEndpointDrag();
-    renderMinimap();
+    scheduleMinimap();
   }
   if (App.dragDividerId) {
     App.dragDividerId = null;
     App.dragDividerOffset = null;
-    renderMinimap();
+    scheduleMinimap();
   }
   if (App.dragNoteId) {
     App.dragNoteId = null;
-    renderMinimap();
+    scheduleMinimap();
   }
   if (App.resizeNoteId) {
     if (typeof endNoteResize === 'function') endNoteResize();
-    renderMinimap();
+    scheduleMinimap();
   }
 }
 
@@ -894,7 +895,7 @@ export function nudgeSelected(dx, dy) {
     if (s) { s.x += dx; s.y += dy; }
   });
   if (typeof updateFastDOM === 'function') updateFastDOM(); else renderAll();
-  renderMinimap();
+  scheduleMinimap();
 }
 
 export function copySelection() {

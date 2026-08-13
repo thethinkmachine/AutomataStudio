@@ -129,6 +129,87 @@ export function createElement(id = '') {
   return el;
 }
 
+// A recording CanvasRenderingContext2D. It implements the whole surface the
+// minimap paints through rather than the handful of calls one test happened to
+// need, because a missing method here is a TypeError in production code that
+// works fine in a browser — the failure mode is "the test stub is out of date",
+// which is not a useful thing to rediscover.
+//
+// Every call lands in `ops` as [name, ...args], and the settable properties are
+// captured alongside so a test can ask what colour something was drawn in.
+export function createContext2D() {
+  const ops = [];
+  const state = { fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1 };
+  const record = name => (...args) => {
+    ops.push([name, ...args, { ...state }]);
+  };
+  const ctx = {
+    ops,
+    clearRect: record('clearRect'),
+    fillRect: record('fillRect'),
+    strokeRect: record('strokeRect'),
+    beginPath: record('beginPath'),
+    closePath: record('closePath'),
+    moveTo: record('moveTo'),
+    lineTo: record('lineTo'),
+    quadraticCurveTo: record('quadraticCurveTo'),
+    bezierCurveTo: record('bezierCurveTo'),
+    arc: record('arc'),
+    arcTo: record('arcTo'),
+    ellipse: record('ellipse'),
+    rect: record('rect'),
+    roundRect: record('roundRect'),
+    fill: record('fill'),
+    stroke: record('stroke'),
+    clip: record('clip'),
+    save: record('save'),
+    restore: record('restore'),
+    translate: record('translate'),
+    scale: record('scale'),
+    rotate: record('rotate'),
+    setTransform: record('setTransform'),
+    resetTransform: record('resetTransform'),
+    setLineDash: record('setLineDash'),
+    getLineDash: () => [],
+    fillText: record('fillText'),
+    strokeText: record('strokeText'),
+    measureText: () => ({ width: 0 }),
+    createLinearGradient: () => ({ addColorStop() {} }),
+    createRadialGradient: () => ({ addColorStop() {} })
+  };
+  for (const key of ['fillStyle', 'strokeStyle', 'lineWidth', 'globalAlpha', 'lineCap',
+    'lineJoin', 'font', 'textAlign', 'textBaseline', 'shadowBlur', 'shadowColor',
+    'globalCompositeOperation', 'miterLimit', 'imageSmoothingEnabled']) {
+    Object.defineProperty(ctx, key, {
+      get: () => state[key],
+      set: v => { state[key] = v; },
+      enumerable: true,
+      configurable: true
+    });
+  }
+  /** Every recorded call to `name`, each as [...args, propertiesAtCallTime]. */
+  ctx.calls = name => ops.filter(o => o[0] === name).map(o => o.slice(1));
+  ctx.reset = () => { ops.length = 0; };
+  return ctx;
+}
+
+/**
+ * Turn an element into a canvas whose 2D context records what was drawn, and
+ * give it a measurable CSS box so devicePixelRatio sizing has something to work
+ * from. Returns the context.
+ */
+export function stubCanvas(el, cssW = 160, cssH = 100) {
+  const ctx = createContext2D();
+  el.isConnected = true;
+  el.width = cssW;
+  el.height = cssH;
+  el.getContext = () => ctx;
+  el.getBoundingClientRect = () => ({
+    left: 0, top: 0, right: cssW, bottom: cssH, x: 0, y: 0, width: cssW, height: cssH
+  });
+  return ctx;
+}
+
 export function getElement(id) {
   if (!elements.has(id)) elements.set(id, createElement(id));
   return elements.get(id);

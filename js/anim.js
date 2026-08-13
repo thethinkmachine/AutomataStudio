@@ -69,7 +69,7 @@ let gen = 0;
 // So probe once for the behaviour itself. A real browser cannot run the callback
 // before requestAnimationFrame returns; only a synchronous stub can.
 let syncRAF = null;
-function isSyncRAF() {
+export function isSyncRAF() {
   if (syncRAF !== null) return syncRAF;
   if (typeof requestAnimationFrame !== 'function') return (syncRAF = true);
   let ranInline = true;

@@ -1160,14 +1160,25 @@
 
 .minimap-canvas {
   display: block;
-  cursor: pointer;
+  cursor: crosshair;
   width: 160px;
   height: 100px;
   touch-action: none;
+  /* The backing store is devicePixelRatio-scaled, so the browser is only ever
+     downsampling — smoothing it keeps the 1px strokes from aliasing. */
+  image-rendering: auto;
+  outline: none;
 }
 
 .minimap-canvas.dragging {
-  cursor: grabbing;
+  cursor: grabbing !important;
+}
+
+/* Focusable for keyboard panning, so it needs a visible focus ring — inset,
+   because the container clips at its own radius and an outset ring would be
+   cut off on two sides. */
+.minimap-canvas:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 @media (max-width: 900px) {

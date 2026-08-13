@@ -3,13 +3,14 @@ import { applyEdgeDirectionHighlight, clearEdgeDirectionHighlight, onStateDown, 
 import { renderDividers } from './dividers.js';
 import { PILL_GAP, PILL_HEIGHT, PILL_ROW_H, buildLayoutContext, edgeGeometryFor, estimatePillLabelSize, estimateTextLabelSize, pillPartWidth, selfLoopLabelPoint, selfLoopPath } from './geometry.js';
 import { commit, snapshot } from './history.js';
+import { scheduleMinimap } from './minimap.js';
 import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
 import { $, App, OmegaAcceptance, R, SVG_NS, edgeLabelsHidden, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, statePriority, usesParityPriorities } from './state.js';
 import { getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
 import { Change, emit, subscribe } from './store.js';
 import { triggerMath } from './theory.js';
-import { filterStates, filterTransitions, renderMinimap } from './ui.js';
+import { filterStates, filterTransitions } from './ui.js';
 import { isAnyPDA, isAnyTM, showStatus } from './utils.js';
 
 // A structural edit repaints the canvas and both side panels; a CANVAS change
@@ -45,7 +46,6 @@ export function renderAll() {
   if (typeof renderDividers === 'function') renderDividers();
   renderTransitions(); renderStates();
   if (typeof renderNotes === 'function') renderNotes();
-  renderMinimap();
   // domCache.states and .transitions are the renderer's own node registries now
   // — renderStates/renderTransitions add and evict entries as they diff, so
   // clearing and re-querying here would throw away the identity the diff needs.
@@ -521,6 +521,10 @@ export function renderTransitions() {
 // COLLISION_BUDGET_STATES so a very large machine still drags at frame rate.
 export function updateFastDOM({ statesMoved = true } = {}) {
   const dt = beginPass();
+  // The drag path, so the minimap tracks a state while it is being moved
+  // rather than jumping to its new home on release. Coalesced, so the many
+  // callers below cost one paint per frame between them.
+  if (statesMoved) scheduleMinimap();
   // A settle frame reuses the previous pass's layout: nothing has moved, only
   // the eased values are still closing on it, so re-running four collision
   // stages per frame for the ~165ms after every edit would be pure waste on a

@@ -33,6 +33,7 @@ import * as geometry from '../js/geometry.js';
 import * as history from '../js/history.js';
 import * as importJflap from '../js/import-jflap.js';
 import * as language from '../js/language.js';
+import * as minimap from '../js/minimap.js';
 import * as modal from '../js/modal.js';
 import * as notes from '../js/notes.js';
 import * as persistence from '../js/persistence.js';
@@ -54,7 +55,7 @@ const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, geometry, statesTransitions,
   canvas, render, notes, dividers, simulation, suggest, language, alphabet,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
-  importJflap, algorithmsFa, algorithmsCfg, theory, workspace, quickSettings, ui
+  importJflap, algorithmsFa, algorithmsCfg, theory, workspace, quickSettings, minimap, ui
 ];
 
 // Live view over every module export. Names are unique across modules (the
@@ -123,6 +124,10 @@ function resetModuleState() {
   // detects and treats as "always snap" — but the reset keeps that a property of
   // the harness rather than a coincidence.)
   anim.resetAnim();
+  // The minimap's eased frame survives a resetApp the same way — it is module
+  // state, not App state — so a test would start out gliding in from the
+  // previous test's diagram.
+  minimap.resetMinimapFrame();
 }
 
 export function resetApp() {
