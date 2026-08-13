@@ -1,14 +1,15 @@
 name: Electron Build
 
 # Every push to main builds installers for all three platforms, so a broken
-# package is caught immediately. Only a version tag (v1.2.3) uploads them, as
-# the input to the GitHub Release published below.
+# package is caught immediately. Only a version tag (v1.2.3) publishes them.
 #
-# The upload is gated because nothing consumes a non-tag build's installers: at
-# ~360 MB per push against a 2 GB quota, keeping them filled the allowance in
-# roughly six pushes and then failed every later run at the upload step -- which
-# reads as "the package is broken" when the package is fine. Building
-# unconditionally is the half that catches breakage, so that stays.
+# Installers no longer pass through Actions artifact storage at all. That storage
+# is metered per billing cycle and is not refunded when the artifacts are
+# deleted, so a handful of ~360 MB round-trips exhausted the 2 GB allowance and
+# then blocked every upload for the rest of the cycle -- including the release
+# round-trip itself, which is why v1.2.5 was tagged but never shipped. Each job
+# now uploads its own installers straight onto the release: the same bytes,
+# billed as release assets, which that meter does not touch.
 on:
   push:
     branches: [main]
@@ -23,9 +24,39 @@ concurrency:
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
+  # Created up front, and as a draft: up front so the three platform jobs have
+  # something to upload onto without racing each other to create it, and draft so
+  # nobody sees a release carrying only whichever platform finished first.
+  create-release:
+    name: Create draft release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # --generate-notes needs history to diff the tag against
+
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --draft
+
   build:
     name: Package (${{ matrix.platform }})
+    needs: [create-release]
+    # create-release is skipped on every non-tag run, and a bare `needs` would
+    # skip the packaging along with it -- losing the breakage check that is the
+    # entire point of building on main and on PRs.
+    if: ${{ !cancelled() && needs.create-release.result != 'failure' }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -63,23 +94,30 @@ jobs:
           # hunting for a macOS identity and failing the build over it.
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      # Tags only: the release job below is the sole consumer, and it is the only
-      # job that runs on a tag. retention-days is short because the artifact is
-      # an intermediate -- once the release exists the installers live on it, in
-      # separate storage that this quota does not touch.
-      - uses: actions/upload-artifact@v4
+      # Straight onto the draft release. The empty-glob check replaces the
+      # if-no-files-found: error this step used to get from upload-artifact, and
+      # --clobber lets a re-run of one failed platform replace its own assets
+      # instead of erroring on the ones it uploaded before dying.
+      - name: Upload installers to release
         if: startsWith(github.ref, 'refs/tags/v')
-        with:
-          name: installers-${{ matrix.platform }}
-          path: |
-            release/*.exe
-            release/*.dmg
-            release/*.AppImage
-            release/*.deb
-          if-no-files-found: error
-          retention-days: 3
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(release/*.exe release/*.dmg release/*.AppImage release/*.deb)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::electron-builder produced no installers for ${{ matrix.platform }}"
+            exit 1
+          fi
+          printf '%s\n' "${files[@]}"
+          gh release upload "$GITHUB_REF_NAME" "${files[@]}" \
+            --repo "$GITHUB_REPOSITORY" --clobber
 
-  release:
+  # Undrafted only once all three platforms have uploaded, so the release is
+  # complete the moment it becomes visible. If any platform fails it stays a
+  # draft, which is the right thing to leave behind.
+  publish-release:
     name: Publish GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
@@ -87,17 +125,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - name: Create release
-        env:
+      - env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ls -la artifacts
-          gh release create "$GITHUB_REF_NAME" artifacts/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes
+          gh release edit "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" --draft=false

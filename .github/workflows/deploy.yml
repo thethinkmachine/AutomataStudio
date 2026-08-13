@@ -1,39 +1,58 @@
 name: Deploy to GitHub Pages
 
+# Publishes dist/ by force-pushing it to the gh-pages branch rather than through
+# actions/upload-pages-artifact. Both routes serve identical files; the artifact
+# route bills every deploy against the Actions storage allowance, and that
+# allowance is metered per billing cycle -- deleting the artifacts afterwards
+# frees the bytes but does not refund the consumption. ~360 MB Electron uploads
+# exhausted the 2 GB in one cycle, after which every Pages run failed at the
+# upload step and took the deploy job down with it as a skip. Pushing a branch
+# costs nothing against that meter.
+#
+# Repo setting this expects: Settings > Pages > Source = "Deploy from a branch",
+# branch gh-pages, folder / (root).
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
+# Pushing the branch *is* the deploy, so contents:write is the whole requirement.
+# pages/id-token existed for deploy-pages, which is no longer in the picture.
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+
       - run: npm ci
       - run: npm run build
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      # An orphan commit, force-pushed, so gh-pages never accumulates history --
+      # the branch stays exactly one commit deep however many times it deploys.
+      # .nojekyll stops Pages feeding the build through Jekyll, which silently
+      # drops any path with a leading underscore.
+      - name: Publish dist/ to gh-pages
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          touch .nojekyll
+          git init -q -b gh-pages
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Deploy ${GITHUB_SHA} to Pages"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
