@@ -1,9 +1,10 @@
 import { copySelection, exportPNG, pasteClipboard, selectAllStates } from './canvas.js';
 import { redo, undo } from './history.js';
-import { showOverlay } from './modal.js';
+import { closeModal, isModalOpen, registerModal, showOverlay } from './modal.js';
 import { loadJSON, saveJSON } from './persistence.js';
 import { $, App } from './state.js';
 import { createTab, exportSettings } from './ui.js';
+import { hideMoreMenu } from './view.js';
 import { openAboutModal } from './workspace.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -51,6 +52,107 @@ if (isElectron) {
   document.getElementById('winctl-close')?.addEventListener('click', () => {
     window.electronAPI.windowClose();
   });
+
+  // ── Software update ──────────────────────────────────────────────
+  // Every surface lives in the page: the main process reports state over
+  // update-status and this renders it into #update-modal, the same overlay the
+  // rest of the app uses. Nothing here calls an OS dialog.
+  registerModal('update-modal', { dismissOnBackdrop: true });
+
+  const updatesBtn = document.getElementById('updates-btn');
+  const updateTitle = document.getElementById('update-title');
+  const updateMsg = document.getElementById('update-msg');
+  const updateCode = document.getElementById('update-code');
+  const updateBar = document.getElementById('update-bar');
+  const updateFill = document.getElementById('update-bar-fill');
+  const updateInstall = document.getElementById('update-install');
+  const updateDismiss = document.getElementById('update-dismiss');
+
+  // Set once an update is on disk, by either check. It makes the menu item offer
+  // the restart instead of a pointless second check, and survives closing the
+  // modal — the download does not have to be repeated to be installed.
+  let updateStaged = null;
+
+  // `code` is only ever set on a failure, and is the one string worth quoting back
+  // to us — the sentence above it is what the reader acts on. See
+  // docs/update-error-codes.md, which has an entry per code.
+  const setUpdateView = ({ title, msg, code = null, percent = null, canInstall = false }) => {
+    updateTitle.textContent = title;
+    updateMsg.textContent = msg;
+    updateCode.hidden = !code;
+    updateCode.textContent = code ? `Error code ${code}` : '';
+    updateBar.hidden = percent === null;
+    if (percent !== null) updateFill.style.width = `${percent}%`;
+    updateInstall.hidden = !canInstall;
+    updateDismiss.textContent = canInstall ? 'Later' : 'Close';
+  };
+
+  const showStagedUpdate = () => {
+    setUpdateView({
+      title: 'Update Ready',
+      msg: `Version ${updateStaged} is ready. Your work is saved before restarting.`,
+      percent: 100,
+      canInstall: true,
+    });
+  };
+
+  window.electronAPI.onUpdateStatus(status => {
+    if (status.state === 'downloaded') {
+      updateStaged = status.version;
+      // A background download must not seize the screen. The menu item carries
+      // the news until the user asks for it.
+      if (status.silent) {
+        updatesBtn?.classList.add('active');
+        const label = document.getElementById('updates-btn-label');
+        if (label) label.textContent = 'Restart to Update';
+        return;
+      }
+      showStagedUpdate();
+      return;
+    }
+    // Progress for a download nobody opened the dialog for would fight whatever
+    // the user is doing; the staged-update path above is how that one reports.
+    if (!isModalOpen('update-modal')) return;
+
+    switch (status.state) {
+      case 'checking':
+        setUpdateView({ title: 'Checking for Updates', msg: 'Contacting the update server…' });
+        break;
+      case 'up-to-date':
+        setUpdateView({ title: 'Up to Date', msg: `You have the latest version (${status.version}).` });
+        break;
+      case 'available':
+        setUpdateView({ title: 'Update Available', msg: `Downloading version ${status.version}…`, percent: 0 });
+        break;
+      case 'downloading':
+        setUpdateView({ title: 'Update Available', msg: `Downloading… ${status.percent}%`, percent: status.percent });
+        break;
+      case 'error':
+        setUpdateView({ title: 'Update Failed', msg: status.message, code: status.code });
+        break;
+    }
+  });
+
+  updateInstall?.addEventListener('click', () => window.electronAPI.installUpdate());
+  updateDismiss?.addEventListener('click', () => closeModal('update-modal'));
+
+  // Hidden in the markup and revealed only if this build has an update channel —
+  // macOS, .deb installs and dev runs have none, and an item that can only ever
+  // report "not supported here" is worse than no item. The main process owns that
+  // decision; see canAutoUpdate in electron/main.cjs.
+  if (updatesBtn) {
+    updatesBtn.addEventListener('click', () => {
+      hideMoreMenu();
+      showOverlay('update-modal');
+      // Already downloaded: offer the restart rather than checking again.
+      if (updateStaged) { showStagedUpdate(); return; }
+      setUpdateView({ title: 'Checking for Updates', msg: 'Contacting the update server…' });
+      window.electronAPI.checkForUpdates();
+    });
+    window.electronAPI.updatesSupported()
+      .then(supported => { if (supported) updatesBtn.hidden = false; })
+      .catch(() => {});
+  }
 
   const maximizeBtn = document.getElementById('winctl-maximize');
   const syncMaximizedState = (isMaximized) => {

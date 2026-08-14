@@ -627,6 +627,50 @@ body.modal-open {
   background: var(--surface3);
 }
 
+/* display:flex above outranks the user-agent's [hidden] rule, so a hidden menu
+   item would otherwise still be laid out. Needed by #updates-btn, which ships
+   hidden and is revealed only on desktop builds that can actually update. */
+.ctx-i[hidden] {
+  display: none;
+}
+
+/* Provider errors quote the release URL, and a URL offers no break opportunity —
+   left alone it runs straight past the modal edge instead of wrapping. */
+/* Overrides .confirm-msg on two counts: provider errors quote a release URL, which
+   offers no break opportunity and would run past the modal edge; and the code line
+   below supplies its own spacing, so the shared 24px bottom margin is too much. */
+#update-msg {
+  overflow-wrap: anywhere;
+  margin-bottom: 10px;
+}
+
+/* The quotable half of a failure. Deliberately quiet: the sentence above it is
+   what the reader acts on, this is what they paste into a bug report. */
+.update-code {
+  font-family: var(--mono);
+  font-size: .7rem;
+  letter-spacing: .04em;
+  color: var(--text3);
+}
+
+/* Download progress in #update-modal. Width is the only thing JS writes. */
+.update-bar {
+  height: 6px;
+  margin-top: 16px;
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.update-bar-fill {
+  width: 0;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width var(--transition-fast);
+}
+
 .ctx-i.active {
   color: var(--accent);
 }
