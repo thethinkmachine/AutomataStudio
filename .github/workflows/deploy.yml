@@ -32,9 +32,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Vite 8 requires Node 20.19+/22.12+, and Node 20 is past end-of-life; 24 is
+      # the Active LTS and matches what the build is developed against.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - run: npm ci
