@@ -64,9 +64,15 @@ header {
 }
 
 /* ─── LOGO ─── */
+/* Centred, not baseline. The mark is taller than the wordmark and so sets this
+   box's height; under baseline alignment the text — the only baseline item —
+   pins to the top of that taller box while the mark centres in it, leaving the
+   two misaligned by ~3px and dragging the wordmark up out of the header's
+   centre. Centring both puts the mark's middle within 0.5px of the wordmark's
+   cap-height middle, which is the alignment the eye actually reads. */
 .logo-wrapper {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
   line-height: 1;
   cursor: default;
