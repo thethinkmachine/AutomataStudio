@@ -21,6 +21,7 @@
     "dev": "vite",
     "build": "vite build",
     "test": "node --test",
+    "icons": "node scripts/build-icons.mjs",
     "electron:dev": "concurrently -k -s first \"npm:dev\" \"wait-on http://localhost:5173 && cross-env ELECTRON_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "electron:preview": "npm run build && electron .",
     "electron:build": "npm run build && electron-builder"

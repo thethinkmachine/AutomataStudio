@@ -73,6 +73,25 @@ header {
   user-select: none;
 }
 
+/* The <use> in index.html pulls in #logo-mark, whose strokes are `currentColor`
+   and `var(--accent)`. Both resolve against this element, so setting `color`
+   here is what colours the mark — and why it retracks on every theme change
+   without any JS. The wrapper is baseline-aligned for the wordmark, so the mark
+   opts out and centres on it instead of sitting on the text baseline. */
+.logo-mark {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  align-self: center;
+  color: var(--text);
+  overflow: visible;
+}
+
+.logo-mark-lg {
+  width: 34px;
+  height: 34px;
+}
+
 .logo {
   font-family: var(--sans);
   font-size: 1.15rem;
