@@ -43,10 +43,12 @@ export default defineConfig({
       format: { comments: false }
     },
     // The app is one entry; a single chunk avoids a waterfall on first paint and
-    // keeps the Electron package to one script file.
+    // keeps the Electron package to one script file. Vite 8 bundles with Rolldown
+    // rather than Rollup, where this is a top-level build flag —
+    // rollupOptions.output.inlineDynamicImports still works but warns.
+    codeSplitting: false,
     rollupOptions: {
       output: {
-        inlineDynamicImports: true,
         entryFileNames: 'assets/app.[hash].js',
         assetFileNames: 'assets/app.[hash][extname]'
       }
