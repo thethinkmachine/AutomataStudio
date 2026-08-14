@@ -1,6 +1,20 @@
+// SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
+// Copyright (c) 2026 Shreyan Chaubey. See LICENSE.
+
 const { app, BrowserWindow, Menu, protocol, shell, ipcMain } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
+const fsSync = require('node:fs');
+
+// The product was renamed "Automata Playground" -> "AutomataStudio". Electron derives
+// userData from productName, so on an existing install the rename would silently point
+// the app at an empty new directory and strand every saved workspace and autosave --
+// they live in IndexedDB, which sits under userData. Auto-update makes that automatic
+// rather than opt-in, so keep using the old directory wherever it is already there.
+// New installs get the AutomataStudio path. Runs at module scope because userData is
+// resolved well before app.whenReady().
+const legacyUserData = path.join(app.getPath('appData'), 'Automata Playground');
+if (fsSync.existsSync(legacyUserData)) app.setPath('userData', legacyUserData);
 
 // Set only by `npm run electron:dev` (see package.json), which starts the Vite dev
 // server first and points this at it for live reload. Unset in both `electron:preview`
@@ -209,7 +223,7 @@ function buildMenu() {
         // which is why the page has its own header controls. An update check
         // belongs where it can be clicked on the two platforms that can update:
         // the header's more-menu, wired through the check-for-updates channel.
-        { label: 'About Automata Playground', click: () => sendMenuAction('about') },
+        { label: 'About AutomataStudio', click: () => sendMenuAction('about') },
       ],
     },
   ];

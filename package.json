@@ -1,6 +1,6 @@
 {
-  "name": "automata-playground",
-  "version": "1.5.0",
+  "name": "automatastudio",
+  "version": "2.0.0",
   "description": "A web-based visualizer and simulator for finite state machines, pushdown automata, and Turing machines.",
   "author": {
     "name": "Shreyan C",
@@ -21,13 +21,14 @@
     "dev": "vite",
     "build": "vite build",
     "test": "node --test",
+    "icons": "node scripts/build-icons.mjs",
     "electron:dev": "concurrently -k -s first \"npm:dev\" \"wait-on http://localhost:5173 && cross-env ELECTRON_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "electron:preview": "npm run build && electron .",
     "electron:build": "npm run build && electron-builder"
   },
   "build": {
     "appId": "com.automataplayground.app",
-    "productName": "Automata Playground",
+    "productName": "AutomataStudio",
     "publish": [
       {
         "provider": "github",
@@ -50,10 +51,10 @@
       ]
     },
     "nsis": {
-      "artifactName": "Automata-Playground-Setup-${version}.${ext}"
+      "artifactName": "AutomataStudio-Setup-${version}.${ext}"
     },
     "appImage": {
-      "artifactName": "Automata-Playground-${version}.${ext}"
+      "artifactName": "AutomataStudio-${version}.${ext}"
     },
     "mac": {
       "target": [

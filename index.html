@@ -19,7 +19,9 @@
 
     gtag('config', 'G-R1LKJ6JFEF');
   </script>
-  <title>Automata Playground</title>
+  <title>AutomataStudio</title>
+  <link rel="icon" type="image/svg+xml" href="svgs/favicon.svg">
+  <meta name="theme-color" content="#0A1018">
   <link
     href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&family=JetBrains+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap"
     rel="stylesheet">
@@ -38,6 +40,40 @@
 
 <body>
 
+  <!-- ══════════════ LOGO SPRITE ══════════════ -->
+  <!-- The brand mark: four states in a diamond, with one edge and its target
+       state picked out in the accent colour. Defined once here and pulled in by
+       <use> wherever it appears, so the artwork has a single source.
+
+       Colours are deliberately not the literal values from svgs/*.svg. The mono
+       strokes take `currentColor` and the highlighted state takes `var(--accent)`,
+       both of which resolve through <use> into the symbol. That is what lets one
+       copy serve all of the themes in js/themes.js rather than needing an
+       on-dark and an on-light file — the theme swaps --text and --accent, and the
+       mark follows. The exported PNG/SVG tiles in svgs/ keep their fixed colours,
+       because a favicon and an app icon have no page to inherit from.
+
+       The accent pair carries `style="…"` rather than a stroke=/fill= attribute
+       because var() is only dependable in a CSS declaration; browsers do not
+       reliably resolve it inside an SVG presentation attribute. currentColor is
+       fine there, being an SVG paint value in its own right. -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <defs>
+      <symbol id="logo-mark" viewBox="0 0 100 100">
+        <g stroke-width="6" stroke-linecap="round">
+          <line x1="50" y1="16" x2="16" y2="50" stroke="currentColor" />
+          <line x1="50" y1="16" x2="84" y2="50" stroke="currentColor" />
+          <line x1="16" y1="50" x2="50" y2="84" stroke="currentColor" />
+          <line x1="84" y1="50" x2="50" y2="84" style="stroke: var(--accent)" />
+        </g>
+        <circle cx="50" cy="16" r="11" fill="currentColor" />
+        <circle cx="16" cy="50" r="11" fill="currentColor" />
+        <circle cx="50" cy="84" r="11" fill="currentColor" />
+        <circle cx="84" cy="50" r="11" style="fill: var(--accent)" />
+      </symbol>
+    </defs>
+  </svg>
+
   <!-- ══════════════ HEADER ══════════════ -->
   <!-- Single unified bar. Build is the application itself and therefore has no
        tab: the canvas is always what sits underneath. Algorithms/Grammar/Theory
@@ -45,7 +81,8 @@
   <header>
     <div class="hdr-left">
       <div class="logo-wrapper">
-        <div class="logo">Automata <em>Playground</em></div>
+        <svg class="logo-mark" aria-hidden="true"><use href="#logo-mark" /></svg>
+        <div class="logo">Automata<em>Studio</em></div>
       </div>
     </div>
 
@@ -1736,10 +1773,11 @@
     </div>
   </div>
 
-  <div class="overlay" id="about-modal" role="dialog" aria-modal="true" aria-label="About Automata Playground">
+  <div class="overlay" id="about-modal" role="dialog" aria-modal="true" aria-label="About AutomataStudio">
     <div class="modal about-modal-wide">
       <div class="about-logo-header">
-        <div class="logo">Automata <em>Playground</em></div>
+        <svg class="logo-mark logo-mark-lg" aria-hidden="true"><use href="#logo-mark" /></svg>
+        <div class="logo">Automata<em>Studio</em></div>
         <div class="logo-author">Shreyan Chaubey</div>
       </div>
       <div class="about-body">
@@ -1749,7 +1787,7 @@
         </div>
         <div class="about-row">
           <span class="about-lbl">License</span>
-          <span class="about-val about-badge">CC BY-NC-SA 4.0</span>
+          <span class="about-val about-badge">PolyForm Noncommercial 1.0.0</span>
         </div>
         <div class="about-row">
           <span class="about-lbl">GitHub</span>

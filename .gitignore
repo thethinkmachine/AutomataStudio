@@ -214,3 +214,12 @@ dist/
 
 # Electron
 release/
+
+# build/ is electron-builder's buildResources directory (see
+# directories.buildResources in package.json) and holds the committed app icon --
+# it is not a Python build artefact, which is what the `build/` rule near the top
+# of this file is for. The directory itself has to be re-included before its
+# contents can be: git will not descend into an excluded directory, so `!build/**`
+# on its own would have no effect.
+!build/
+!build/**

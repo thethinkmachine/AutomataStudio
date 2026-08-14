@@ -5,6 +5,20 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 
+// Prepended to the bundle. The PolyForm Noncommercial License requires that every
+// "Required Notice:" line travels with any part of the software that is passed on,
+// and the deployed bundle is the copy most people will ever hold. It is a `/*!`
+// legal comment, and terser is configured below to keep those — the default
+// `comments: false` would strip this along with everything else.
+const LICENSE_BANNER = `/*!
+ * AutomataStudio -- https://github.com/thethinkmachine/AutomataStudio
+ * Required Notice: Copyright (c) 2026 Shreyan Chaubey (https://github.com/thethinkmachine)
+ * Licensed under the PolyForm Noncommercial License 1.0.0, with a supplemental
+ * grant converting this release to AGPL-3.0-or-later on 2030-08-15. See LICENSE.
+ * "AutomataStudio" is a trademark of Shreyan Chaubey and is not licensed for use
+ * as the branding of derivative works.
+ */`;
+
 // Example machines are fetched at runtime as `js/examples/<name>.json` (see
 // loadExampleFile in js/persistence.js), so they must keep that exact path.
 // During dev Vite serves them straight from the project root; for the build they
@@ -40,7 +54,9 @@ export default defineConfig({
     minify: 'terser',
     terserOptions: {
       compress: { passes: 2 },
-      format: { comments: false }
+      // Strip every comment except `/*!` legal ones, so LICENSE_BANNER survives
+      // minification. Nothing else in the source uses that marker.
+      format: { comments: /^!/ }
     },
     // The app is one entry; a single chunk avoids a waterfall on first paint and
     // keeps the Electron package to one script file. Vite 8 bundles with Rolldown
@@ -49,6 +65,7 @@ export default defineConfig({
     codeSplitting: false,
     rollupOptions: {
       output: {
+        banner: LICENSE_BANNER,
         entryFileNames: 'assets/app.[hash].js',
         assetFileNames: 'assets/app.[hash][extname]'
       }

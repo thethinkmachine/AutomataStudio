@@ -371,9 +371,11 @@ body.modal-open {
 }
 
 /* ─── ABOUT MODAL ─── */
+/* Centred for the same reason as .logo-wrapper in layout.css — here the gap is
+   wider still, a 34px mark against 18.4px text. */
 .about-logo-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   padding-bottom: 16px;
   margin-bottom: 4px;

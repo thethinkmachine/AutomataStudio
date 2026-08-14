@@ -462,6 +462,11 @@
     font-size: 1rem;
   }
 
+  .logo-mark {
+    width: 20px;
+    height: 20px;
+  }
+
   .mobile-machine-select {
     flex-basis: 108px;
     min-width: 108px;
