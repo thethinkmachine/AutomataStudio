@@ -1,0 +1,27 @@
+AutomataStudio
+An interactive visualizer and simulator for automata, grammars, and the
+classical constructions of formal language theory.
+
+Required Notice: Copyright (c) 2026 Shreyan Chaubey (https://github.com/thethinkmachine)
+
+Author and copyright holder: Shreyan Chaubey <shreyan.chaubey@gmail.com>
+Source:                      https://github.com/thethinkmachine/AutomataStudio
+
+Licensed under the PolyForm Noncommercial License 1.0.0, with supplemental
+terms that convert each release to the GNU Affero General Public License v3.0
+or later four years after its publication. See LICENSE for the full terms,
+including the Change Date that applies to this release.
+
+The PolyForm Noncommercial License requires that anyone who receives any part
+of this software from you also receives a copy of the license terms (or their
+URL) together with every "Required Notice:" line above. Keeping this file
+intact and shipping it alongside the software satisfies that obligation.
+
+Versions published before the license change remain available under
+CC BY-NC-SA 4.0; see LICENSE-PRIOR-VERSIONS.txt.
+
+Commercial licenses are available separately: shreyan.chaubey@gmail.com
+
+"AutomataStudio" and its logo are trademarks of Shreyan Chaubey and are not
+licensed for use as the branding of derivative works. See LICENSE, Part 2,
+section 3.

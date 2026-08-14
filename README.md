@@ -1,4 +1,4 @@
-# AutomataPlayground
+# AutomataStudio
 
 A web-based visualizer and simulator for finite state machines, pushdown automata, and Turing machines. It includes interactive tools for regular grammars, context-free grammars, and visual algorithm stepping.
 
@@ -8,8 +8,8 @@ A web-based visualizer and simulator for finite state machines, pushdown automat
 Run the app locally. Requires Node.js.
 
 ```bash
-git clone https://github.com/yourusername/AutomataPlayground.git
-cd AutomataPlayground
+git clone https://github.com/thethinkmachine/AutomataStudio.git
+cd AutomataStudio
 npm install
 npm run dev
 ```
@@ -42,5 +42,36 @@ on demand from **⋯ → Check for Updates**. If a check fails it shows a code �
 - Auto-layout mathematics can sometimes freeze on incredibly dense, cyclic NFA graphs. PRs welcome to improve the layout heuristic.
 - Multi-Tape Turing Machine rendering needs visual polish for tapes > 3.
 
+## Contributing
+Pull requests are welcome. Commits must be signed off (`git commit -s`) — see
+[CONTRIBUTING.md](CONTRIBUTING.md), which explains the one legal formality and why
+the project's licensing commitments depend on it.
+
 ## License
-CC BY-NC-SA 4.0
+**[PolyForm Noncommercial License 1.0.0](LICENSE)**, with a supplemental grant that
+converts each release to **AGPL-3.0-or-later** four years after it is published. The
+Change Date for the current release is **2030-08-15**.
+
+In plain terms:
+
+* **Free to use** for students, teachers, schools, universities, researchers,
+  charities, public research bodies and government institutions — that is written
+  into the license by name, not left to interpretation.
+* **Free for personal use**: study, hobby projects, experiment, private use.
+* **Not free for commercial advantage** before the Change Date. Commercial licenses
+  are available — email shreyan.chaubey@gmail.com.
+* **Guaranteed to become free software.** The conversion grant is irrevocable and
+  made in advance, so it does not depend on the author remaining active, reachable,
+  or alive. If this project is ever abandoned, it still becomes AGPL on schedule and
+  anyone can fork it.
+
+Note that PolyForm Noncommercial is *not* an OSI-approved open source license, so
+this repository is "source available" rather than open source until each release's
+Change Date.
+
+"AutomataStudio" and its logo are trademarks of Shreyan Chaubey and are not licensed
+for use as the branding of derivative works. See [LICENSE](LICENSE), Part 2, §3.
+
+Releases published before the license change remain available under CC BY-NC-SA 4.0
+([LICENSE-PRIOR-VERSIONS.txt](LICENSE-PRIOR-VERSIONS.txt)); that grant is irrevocable
+and is not withdrawn by the change.

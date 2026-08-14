@@ -1,5 +1,5 @@
 {
-  "name": "automata-playground",
+  "name": "automatastudio",
   "version": "1.5.0",
   "description": "A web-based visualizer and simulator for finite state machines, pushdown automata, and Turing machines.",
   "author": {
@@ -27,7 +27,7 @@
   },
   "build": {
     "appId": "com.automataplayground.app",
-    "productName": "Automata Playground",
+    "productName": "AutomataStudio",
     "publish": [
       {
         "provider": "github",
@@ -50,10 +50,10 @@
       ]
     },
     "nsis": {
-      "artifactName": "Automata-Playground-Setup-${version}.${ext}"
+      "artifactName": "AutomataStudio-Setup-${version}.${ext}"
     },
     "appImage": {
-      "artifactName": "Automata-Playground-${version}.${ext}"
+      "artifactName": "AutomataStudio-${version}.${ext}"
     },
     "mac": {
       "target": [

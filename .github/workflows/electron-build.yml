@@ -116,8 +116,8 @@ jobs:
       # assets to a "safe" form -- spaces to hyphens -- and writes that form into
       # latest.yml, which is also what electron-updater asks GitHub for. gh does not
       # rename; GitHub converts spaces in an asset name to dots instead. So a default
-      # "Automata Playground Setup 1.4.0.exe" lands as "Automata.Playground.Setup…" and
-      # is fetched as "Automata-Playground-Setup…", and every update 404s while the
+      # "AutomataStudio Setup 1.5.0.exe" lands as "AutomataStudio.Setup…" and
+      # is fetched as "AutomataStudio-Setup…", and every update 404s while the
       # release page looks perfectly fine. A name with no spaces is identical under all
       # three rules.
       - name: Upload installers to release

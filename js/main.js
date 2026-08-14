@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
+// Copyright (c) 2026 Shreyan Chaubey. See LICENSE.
+//
 // ══════════════════════════════════════════════════════════════════
 //  ENTRY POINT
 // ══════════════════════════════════════════════════════════════════
