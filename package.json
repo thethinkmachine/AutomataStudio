@@ -1,6 +1,6 @@
 {
   "name": "automata-playground",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "description": "A web-based visualizer and simulator for finite state machines, pushdown automata, and Turing machines.",
   "author": {
     "name": "Shreyan C",
