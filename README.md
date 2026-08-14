@@ -32,6 +32,11 @@ The codebase implements algorithms commonly found in standard theory textbooks (
 - Pumping Lemma validators (RL & CFL)
 - Closure properties and decidability matrices
 
+## Desktop app
+The Windows and Linux AppImage builds update themselves: they check on startup and
+on demand from **⋯ → Check for Updates**. If a check fails it shows a code —
+[what the update error codes mean](docs/update-error-codes.md).
+
 ## Known Issues / Roadmap
 - Mobile support is currently unfinished. Dragging canvas nodes on touchscreens causes unexpected panning and zoom issues.
 - Auto-layout mathematics can sometimes freeze on incredibly dense, cyclic NFA graphs. PRs welcome to improve the layout heuristic.

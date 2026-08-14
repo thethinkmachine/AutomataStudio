@@ -42,6 +42,16 @@ ipcMain.on('window-maximize-toggle', () => {
 ipcMain.on('window-close', () => mainWindow?.close());
 ipcMain.handle('window-is-maximized', () => mainWindow?.isMaximized() ?? false);
 
+// Backs the header's more-menu entry. The renderer asks whether this build can
+// update at all before revealing the item, so the answer has to come from the same
+// canAutoUpdate() the startup check uses -- two copies of that rule would drift,
+// and the copy in the renderer cannot see app.isPackaged or APPIMAGE anyway.
+ipcMain.handle('updates-supported', () => canAutoUpdate());
+ipcMain.on('check-for-updates', () => checkForUpdatesManually());
+// quitAndInstall closes the window on the way out, which runs the page's
+// beforeunload backup save exactly as an ordinary quit does.
+ipcMain.on('install-update', () => updater?.quitAndInstall());
+
 function registerAppProtocol() {
   protocol.handle('app', async (request) => {
     const url = new URL(request.url);
@@ -193,6 +203,12 @@ function buildMenu() {
     {
       label: 'Help',
       submenu: [
+        // No "Check for Updates" here on purpose. This menu is only ever rendered
+        // by macOS, which puts it in the system menu bar -- every other platform
+        // gets `frame: false` (see createWindow) and so draws no menu bar at all,
+        // which is why the page has its own header controls. An update check
+        // belongs where it can be clicked on the two platforms that can update:
+        // the header's more-menu, wired through the check-for-updates channel.
         { label: 'About Automata Playground', click: () => sendMenuAction('about') },
       ],
     },
@@ -201,10 +217,198 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// Auto-update reaches Windows and Linux/AppImage only, and the three exclusions
+// below are each a hard blocker rather than a preference:
+//
+//   - Unpackaged runs (electron:dev, electron:preview) have no app-update.yml —
+//     electron-builder writes that beside the packaged app, from build.publish.
+//   - macOS updates go through Squirrel.Mac, which refuses to apply an update to
+//     an unsigned app, and there is no Developer ID to sign with (electron-build.yml
+//     sets CSC_IDENTITY_AUTO_DISCOVERY=false). package.json sets mac.publish to null
+//     to match, so the mac build ships no update metadata to act on either way.
+//   - A .deb install is apt's to manage and electron-updater has no provider for it.
+//     Only an AppImage run sets APPIMAGE, which is what distinguishes the two on a
+//     Linux build that produces both.
+//
+// Anything ruled out here simply keeps the manual path: download the new installer
+// from the GitHub release.
+function canAutoUpdate() {
+  if (!app.isPackaged) return false;
+  if (process.platform === 'win32') return true;
+  if (process.platform === 'linux') return Boolean(process.env.APPIMAGE);
+  return false;
+}
+
+// The startup check and the Help menu's manual check share one updater, so the
+// listeners below are registered exactly once no matter which runs first.
+let updater = null;
+let updaterUnavailable = false;
+// Set only by the manual check, and read once, when the download lands: it is what
+// tells 'update-downloaded' whether a human is waiting on this. A startup download
+// reports itself `silent` and only marks the menu item; a requested one opens the
+// dialog the user asked for.
+let promptOnDownloaded = false;
+let manualCheckRunning = false;
+
+function getAutoUpdater() {
+  if (updater || updaterUnavailable) return updater;
+
+  // Required here rather than at the top of the file, and inside the try, because
+  // electron-updater's `autoUpdater` is a lazy getter that constructs the platform
+  // updater the moment it is read -- and construction reads app.getVersion(). At
+  // module scope that runs before `app` is ready, so a require that looks inert
+  // is really the first thing to touch the Electron app object. Loading it behind
+  // canAutoUpdate() also keeps it off every path that will never use it: dev runs,
+  // macOS, and .deb installs never load the module at all.
+  try {
+    ({ autoUpdater: updater } = require('electron-updater'));
+  } catch (err) {
+    updaterUnavailable = true;
+    console.error('[updater] unavailable:', err?.message ?? err);
+    return null;
+  }
+
+  // Load-bearing: a failed update check must be a no-op, and by default it is not.
+  // autoUpdater is an EventEmitter, so an 'error' with no listener registered
+  // becomes an uncaught exception. Being offline, or hitting a release whose
+  // latest.yml has not finished uploading, would otherwise take down an app that
+  // was working fine without ever having updated. The manual check reports failures
+  // through its own rejected promise; this keeps the process alive either way.
+  updater.on('error', (err) => {
+    console.error('[updater]', err?.message ?? err);
+  });
+
+  updater.on('download-progress', ({ percent }) => {
+    sendUpdateStatus({ state: 'downloading', percent: Math.round(percent) });
+  });
+
+  updater.on('update-downloaded', ({ version }) => {
+    // `silent` separates the startup check from a click. The startup download
+    // must not take over the screen, so the page only marks its menu item; a
+    // click opts into the dialog. Either way the update is already on disk.
+    sendUpdateStatus({ state: 'downloaded', version, silent: !promptOnDownloaded });
+    promptOnDownloaded = false;
+  });
+
+  return updater;
+}
+
+// The whole vocabulary between the two processes: main owns the updater, the page
+// owns how any of it looks. Deliberately not dialog.showMessageBox -- an OS dialog
+// is the one piece of window chrome this app does not draw itself, and it would be
+// the only framed surface in a frameless window. See js/electron-bridge.js for the
+// receiving end and index.html #update-modal for the markup.
+function sendUpdateStatus(payload) {
+  mainWindow?.webContents.send('update-status', payload);
+}
+
+// What the user is shown when a check fails. electron-updater's own errors are
+// unusable here: an HttpError stringifies to the entire response -- status, request
+// URL, then every response header, Set-Cookie included -- which fills the dialog
+// with session cookies and tells a non-developer nothing they can act on.
+//
+// So each failure becomes one of these: a sentence saying what to do, plus a stable
+// code to quote in a bug report. The code is the half that survives translation,
+// screenshots and paraphrasing, which is why it is shown even though the sentence
+// is the useful part. Keep this table and docs/update-error-codes.md in step --
+// a code with no entry there is worse than no code.
+const UpdateErrors = {
+  OFFLINE: { code: 'UPD-01', message: 'Could not reach the update server. Check your internet connection and try again.' },
+  NO_RELEASE: { code: 'UPD-02', message: 'No update information has been published yet. Please try again later.' },
+  REFUSED: { code: 'UPD-03', message: 'The update server refused the request. Please try again in a few minutes.' },
+  SERVER: { code: 'UPD-04', message: 'The update server is having problems. Please try again later.' },
+  CORRUPT: { code: 'UPD-05', message: 'The downloaded update failed its safety check and was discarded. Please try again.' },
+  UNSUPPORTED: { code: 'UPD-06', message: 'This copy cannot update itself. Please download the latest version manually.' },
+  UNKNOWN: { code: 'UPD-99', message: 'Something went wrong while checking for updates.' },
+};
+
+const NETWORK_ERRNOS = new Set([
+  'ENOTFOUND', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT',
+  'ENETUNREACH', 'EHOSTUNREACH', 'EAI_AGAIN', 'EPIPE',
+]);
+
+function classifyUpdateError(err) {
+  const text = String(err?.message ?? err);
+  if (err?.code === 'UPDATER_UNAVAILABLE') return UpdateErrors.UNSUPPORTED;
+  if (NETWORK_ERRNOS.has(err?.code)) return UpdateErrors.OFFLINE;
+  if (/checksum|sha512|signature/i.test(text)) return UpdateErrors.CORRUPT;
+
+  // The provider usually rethrows its HttpError wrapped in a plain Error, so the
+  // status survives only inside the message text -- hence the fallback parse.
+  const status = typeof err?.statusCode === 'number'
+    ? err.statusCode
+    : Number(/HttpError:\s*(\d{3})/.exec(text)?.[1]) || null;
+
+  // "Cannot find latest.yml …" means the release exists but carries no manifest,
+  // which is the same story for the user as no release at all.
+  if (status === 404 || /Cannot find .*(?:in the (?:latest )?release|update info)/i.test(text)) {
+    return UpdateErrors.NO_RELEASE;
+  }
+  if (status === 401 || status === 403 || status === 429) return UpdateErrors.REFUSED;
+  if (status !== null && status >= 500) return UpdateErrors.SERVER;
+  return UpdateErrors.UNKNOWN;
+}
+
+function initAutoUpdater() {
+  if (!canAutoUpdate()) return;
+  const u = getAutoUpdater();
+  if (!u) return;
+
+  // checkForUpdates, not checkForUpdatesAndNotify: the latter raises an OS
+  // notification, and every surface this feature has belongs inside the window.
+  // autoDownload is on, so a staged update announces itself through the
+  // 'update-downloaded' handler above, which marks the menu item and nothing more.
+  u.checkForUpdates().catch(() => {});
+}
+
+// Wired to Help > Check for Updates…, which is only built when canAutoUpdate() is
+// true -- an always-present item that can only ever answer "not supported here"
+// is worse than no item at all.
+async function checkForUpdatesManually() {
+  // checkForUpdates() reuses one in-flight promise internally, so a second click
+  // would silently resolve against the first check's result. Refusing re-entry
+  // keeps one click to one visible answer.
+  if (manualCheckRunning) return;
+  manualCheckRunning = true;
+  sendUpdateStatus({ state: 'checking' });
+  try {
+    const u = getAutoUpdater();
+    if (!u) {
+      const unavailable = new Error('The updater module failed to load.');
+      unavailable.code = 'UPDATER_UNAVAILABLE';
+      throw unavailable;
+    }
+
+    const result = await u.checkForUpdates();
+    // isUpdateAvailable is the provider's own verdict. The manifest names the latest
+    // version whether or not it is newer, so comparing version strings here would
+    // reimplement the comparison electron-updater has already done.
+    if (!result?.isUpdateAvailable) {
+      sendUpdateStatus({ state: 'up-to-date', version: app.getVersion() });
+      return;
+    }
+
+    // autoDownload is on, so the fetch is already running by the time checkForUpdates
+    // resolves; 'download-progress' and 'update-downloaded' carry it from here.
+    promptOnDownloaded = true;
+    sendUpdateStatus({ state: 'available', version: result.updateInfo.version });
+  } catch (err) {
+    promptOnDownloaded = false;
+    // The whole error goes here, where a developer can read it; only the code and
+    // the sentence cross to the window.
+    console.error('[updater] manual check failed:', err);
+    const { code, message } = classifyUpdateError(err);
+    sendUpdateStatus({ state: 'error', code, message });
+  } finally {
+    manualCheckRunning = false;
+  }
+}
+
 app.whenReady().then(() => {
   registerAppProtocol();
   buildMenu();
   createWindow();
+  initAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

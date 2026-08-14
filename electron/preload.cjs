@@ -10,6 +10,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('menu-action', listener);
   },
 
+  // Resolves false on macOS, on .deb installs and in dev, where there is no update
+  // channel — the header's "Check for Updates" item stays hidden unless this is true.
+  updatesSupported: () => ipcRenderer.invoke('updates-supported'),
+  checkForUpdates: () => ipcRenderer.send('check-for-updates'),
+  installUpdate: () => ipcRenderer.send('install-update'),
+  // callback({ state, version?, percent?, message?, silent? }); returns an
+  // unsubscribe function. State drives #update-modal; there is no OS dialog.
+  onUpdateStatus: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('update-status', listener);
+    return () => ipcRenderer.removeListener('update-status', listener);
+  },
+
   // The window is frameless — these back the custom minimize/maximize/close
   // buttons the page draws in its own header.
   windowMinimize: () => ipcRenderer.send('window-minimize'),
