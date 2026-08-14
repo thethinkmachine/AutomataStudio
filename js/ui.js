@@ -955,31 +955,320 @@ export function syncThemeExportPalette(theme) {
   App.config.export = { ...App.config.export, ...t.export };
 }
 
-// One card per entry in the `Themes` registry (js/themes.js) — adding a
-// theme there is enough for it to appear here with no further changes. A
-// grid inside its own modal (rather than a row squeezed into the header
-// menu) is what actually scales as the registry grows: it wraps and
-// scrolls vertically instead of forcing a fixed-width horizontal strip.
+// ── Theme picker ──────────────────────────────────────────────────
+// The card preview is a miniature of the thing being themed: start state,
+// active state, accepting state, two edges. A two-colour swatch cannot
+// separate 35 themes — measured across the registry, dozens of bg/accent
+// pairs are perceptually near-identical (kanagawa/nightfox, rivers/himalaya,
+// dark/cyberpunk), because what actually distinguishes them is the ring and
+// edge colours a swatch throws away. Drawing the real diagram costs nothing
+// extra: `export` already carries every colour, since it is what the PNG
+// exporter and minimap paint from.
+//
+// Geometry is identical for every card and only the colours vary, so this is
+// a template with holes rather than a layout pass.
+const THEME_PREVIEW_GEOM = {
+  start: 26, mid: 69, end: 112, cy: 23, r: 9,
+  // stem then arrowhead, for the start marker and the two edges
+  edges: [[5, 12, 11, 16], [35, 56, 55, 60], [78, 99, 98, 103]]
+};
+
+function themePreviewSVG(x) {
+  const g = THEME_PREVIEW_GEOM;
+  const stems = g.edges.map(([a, b]) => `M${a} ${g.cy}H${b}`).join('');
+  const heads = g.edges.map(([, , a, tip]) =>
+    `M${a} ${g.cy - 2.8}L${tip} ${g.cy}L${a} ${g.cy + 2.8}Z`).join('');
+  const node = (cx, fill) => `<circle cx="${cx}" cy="${g.cy}" r="${g.r}" fill="${fill}"/>`;
+  const ring = (cx, stroke, r, w) =>
+    `<circle cx="${cx}" cy="${g.cy}" r="${r}" fill="none" stroke="${stroke}" stroke-width="${w}"/>`;
+  // Fills first, then every stroke, so no ring is half-covered by a later node.
+  return `<svg class="theme-card-preview" viewBox="0 0 126 46" aria-hidden="true">
+    <rect width="126" height="46" rx="6" fill="${x.bg}"/>
+    <path d="${stems}" stroke="${x.edgeStroke}" stroke-width="1.6" fill="none"/>
+    <path d="${heads}" fill="${x.edgeStroke}"/>
+    ${node(g.start, x.nodeFill)}${node(g.mid, x.nodeFill)}${node(g.end, x.nodeFill)}
+    <circle cx="${g.mid}" cy="${g.cy}" r="${g.r}" fill="${x.actFill}"/>
+    ${ring(g.start, x.startStroke, g.r, 1.8)}
+    ${ring(g.mid, x.actStroke, g.r, 1.8)}
+    ${ring(g.end, x.accStroke, g.r, 1.5)}
+    ${ring(g.end, x.accStroke, g.r - 3.2, 1.2)}
+  </svg>`;
+}
+
+// Same rule tests/themes.test.js uses to check `color-scheme`, so the
+// grouping can never disagree with what the stylesheet declares.
+function themeIsLight(t) {
+  const c = [0, 2, 4].map(i => parseInt(t.export.bg.replace('#', '').slice(i, i + 2), 16) / 255)
+    .map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] > 0.45;
+}
+
+const CHECK_PATH = 'M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z';
+
+// Cards are toggle buttons, not listbox options: a listbox promises arrow-key
+// navigation and roving focus that this grid does not implement, and claiming
+// the role without the behaviour is worse for a screen reader than not
+// claiming it. `aria-pressed` describes exactly what these are.
 export function renderThemeCards() {
   const grid = $('theme-grid');
   if (!grid) return;
   const current = App.config.theme;
-  grid.innerHTML = Object.entries(Themes).map(([id, t]) => {
-    const active = id === current;
-    const label = escapeHtml(t.label || id);
-    return `<button type="button" class="theme-card${active ? ' active' : ''}"
-      onclick="selectTheme('${id}')" role="option" aria-selected="${active}">
-      <span class="theme-card-swatch" style="background:linear-gradient(135deg, ${t.swatch[0]} 50%, ${t.swatch[1]} 50%)"></span>
-      <span class="theme-card-name">${label}</span>
-      ${active ? `<svg class="theme-card-check" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>` : ''}
-    </button>`;
+  const groups = [['dark', 'Dark'], ['light', 'Light']];
+  grid.innerHTML = groups.map(([key, heading]) => {
+    const cards = Object.entries(Themes)
+      .filter(([, t]) => (themeIsLight(t) ? 'light' : 'dark') === key)
+      .map(([id, t]) => `<button type="button" class="theme-card${id === current ? ' active' : ''}"
+        data-theme="${id}" aria-pressed="${id === current}" tabindex="${id === current ? '0' : '-1'}"
+        title="${escapeHtml(t.label || id)}">
+        ${themePreviewSVG(t.export)}
+        <span class="theme-card-name">${escapeHtml(t.label || id)}</span>
+        <svg class="theme-card-check" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="${CHECK_PATH}"/></svg>
+      </button>`).join('');
+    return `<section class="theme-group" data-group="${key}">
+      <h3 class="theme-group-hd">${heading}</h3>
+      <div class="theme-group-grid">${cards}</div>
+    </section>`;
   }).join('');
 }
 
-export function openThemeModal() {
-  renderThemeCards();
-  showOverlay('theme-modal');
+// Only the selection marker changes on a theme switch, so applyTheme syncs
+// it in place rather than rebuilding 35 cards' worth of innerHTML — which
+// would also destroy the very card the pointer is hovering, cancelling the
+// preview that triggered it.
+export function syncThemeCardSelection() {
+  const grid = $('theme-grid');
+  if (!grid) return;
+  grid.querySelectorAll('.theme-card').forEach(el => {
+    const on = el.dataset.theme === App.config.theme;
+    el.classList.toggle('active', on);
+    el.setAttribute('aria-pressed', String(on));
+  });
 }
+
+// Substring match over label and id, with group headings hiding themselves
+// once every card beneath them is filtered out.
+function filterThemeCards() {
+  const grid = $('theme-grid');
+  const q = ($('theme-search')?.value || '').trim().toLowerCase();
+  if (!grid) return;
+  let shown = 0;
+  grid.querySelectorAll('.theme-card').forEach(el => {
+    const hit = !q || `${el.dataset.theme} ${el.textContent}`.toLowerCase().includes(q);
+    el.classList.toggle('is-filtered', !hit);
+    if (hit) shown++;
+  });
+  grid.querySelectorAll('.theme-group').forEach(sec => {
+    const any = sec.querySelector('.theme-card:not(.is-filtered)');
+    sec.classList.toggle('is-filtered', !any);
+  });
+  const empty = $('theme-empty');
+  if (empty) empty.hidden = shown > 0;
+  // Filtering can hide whichever card held the tab stop, which would leave the
+  // grid unreachable by keyboard entirely.
+  setThemeRoving();
+}
+
+// ── Grid keyboard navigation ──────────────────────────────────────
+// Rows are read off the laid-out boxes rather than assumed, because the grid
+// is `auto-fill` (column count varies with panel width), the last row of a
+// section is ragged, and Dark/Light are two separate grids stacked — so there
+// is no single column count that Up/Down could be computed from. Working from
+// geometry handles all three without knowing about any of them.
+//
+// Pure so it can be tested without a layout engine: `boxes` is one
+// {top, left, width} per *visible* card, in DOM order. Returns the index to
+// move to, or -1 meaning "leave the grid upward", which the caller turns into
+// focusing the search field.
+export function themeGridNeighbor(boxes, index, key) {
+  const n = boxes.length;
+  if (!n) return -1;
+  if (key === 'Home') return 0;
+  if (key === 'End') return n - 1;
+  if (key === 'ArrowRight') return Math.min(index + 1, n - 1);
+  if (key === 'ArrowLeft') return Math.max(index - 1, 0);
+  if (key !== 'ArrowUp' && key !== 'ArrowDown') return index;
+
+  const rowOf = b => Math.round(b.top);
+  const rows = [...new Set(boxes.map(rowOf))].sort((a, b) => a - b);
+  const target = rows[rows.indexOf(rowOf(boxes[index])) + (key === 'ArrowDown' ? 1 : -1)];
+  // Up from the first row exits to the search field; Down from the last stays.
+  if (target === undefined) return key === 'ArrowUp' ? -1 : index;
+
+  // Keep the horizontal position across the jump, so a ragged row or a
+  // narrower section lands under the finger rather than at its edge.
+  const centre = boxes[index].left + boxes[index].width / 2;
+  let best = index, bestD = Infinity;
+  boxes.forEach((b, i) => {
+    if (rowOf(b) !== target) return;
+    const d = Math.abs(b.left + b.width / 2 - centre);
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  return best;
+}
+
+function visibleThemeCards() {
+  const grid = $('theme-grid');
+  if (!grid) return [];
+  return Array.prototype.filter.call(
+    grid.querySelectorAll('.theme-card'), el => !el.classList.contains('is-filtered'));
+}
+
+// Exactly one card carries the tab stop, so Tab enters and leaves the grid in
+// one press instead of walking all 35. Preference order: the card being moved
+// to, else the selected theme, else the first visible one.
+function setThemeRoving(target) {
+  const cards = visibleThemeCards();
+  if (!cards.length) return;
+  const stop = (target && cards.includes(target) && target)
+    || cards.find(c => c.dataset.theme === App.config.theme)
+    || cards[0];
+  cards.forEach(c => c.setAttribute('tabindex', c === stop ? '0' : '-1'));
+  return stop;
+}
+
+function focusThemeCard(card) {
+  const stop = setThemeRoving(card);
+  if (stop && stop.focus) stop.focus();
+}
+
+// A non-blocking popover rather than a modal, which is what makes the rest of
+// this simple. A modal scrim (`.overlay` blurs at 6px) hides the canvas — so
+// the only way to judge a theme was to apply it on hover and unwind it after,
+// and re-theming the whole page as a pointer crosses a grid reads as flashing
+// rather than as preview. With the diagram left visible, clicking *is* the
+// preview: it applies, you see your real machine in it, and another click
+// changes your mind. The dwell timers, the origin tracking and the revert are
+// all gone with the scrim that made them necessary.
+let themePickerBound = false;
+
+export function isThemePickerOpen() {
+  const p = $('theme-panel');
+  return !!p && p.classList.contains('open');
+}
+
+export function closeThemePicker(focusTrigger = false) {
+  const p = $('theme-panel');
+  if (!p) return;
+  p.classList.remove('open');
+  const btn = $('theme-btn');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+  // The trigger lives inside the More menu, which is closed by now, so focus
+  // goes back to the button that opens it rather than to a hidden row.
+  if (focusTrigger) {
+    const more = $('hdr-more-btn');
+    if (more && more.focus) more.focus();
+  }
+}
+
+// Bound once, lazily, on first open: the grid is built by this module rather
+// than present in index.html, so there is nothing to attach to at load time.
+// Delegated rather than per-card inline handlers, which also keeps the whole
+// picker off the window surface in bridge.js.
+function bindThemePicker() {
+  if (themePickerBound) return;
+  const grid = $('theme-grid');
+  if (!grid) return;
+  themePickerBound = true;
+
+  // Selecting does not close the panel. Comparing themes is the whole task,
+  // and a picker that dismissed itself on every pick would have to be
+  // reopened to make the comparison it exists for.
+  grid.addEventListener('click', e => {
+    const card = e.target.closest('.theme-card');
+    if (card) selectTheme(card.dataset.theme);
+  });
+
+  const NAV = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End']);
+  grid.addEventListener('keydown', e => {
+    const card = e.target.closest && e.target.closest('.theme-card');
+    if (!card) return;
+    if (NAV.has(e.key)) {
+      const cards = visibleThemeCards();
+      const at = cards.indexOf(card);
+      if (at === -1) return;
+      e.preventDefault();
+      const next = themeGridNeighbor(cards.map(c => c.getBoundingClientRect()), at, e.key);
+      if (next === -1) {
+        const s = $('theme-search');
+        if (s && s.focus) s.focus();
+      } else {
+        focusThemeCard(cards[next]);
+      }
+      return;
+    }
+    // A printable key means the user is naming a theme, and there is already
+    // one place for that. Routing it to the field beats a second, invisible
+    // type-ahead that matches by different rules than the box above it.
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const s = $('theme-search');
+      if (!s) return;
+      e.preventDefault();
+      s.value += e.key;
+      s.focus();
+      filterThemeCards();
+    }
+  });
+
+  const search = $('theme-search');
+  if (search) {
+    search.addEventListener('input', filterThemeCards);
+    search.addEventListener('keydown', e => {
+      const cards = visibleThemeCards();
+      if (!cards.length) return;
+      // Down walks into the results; Enter takes the top one outright, which
+      // is the whole point of having typed — and one more click undoes it.
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        focusThemeCard(cards[0]);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        selectTheme(cards[0].dataset.theme);
+        focusThemeCard(cards[0]);
+      }
+    });
+  }
+  const close = $('theme-panel-close');
+  if (close) close.addEventListener('click', () => closeThemePicker(true));
+}
+
+export function openThemePicker() {
+  const p = $('theme-panel');
+  if (!p) return;
+  renderThemeCards();
+  bindThemePicker();
+  const search = $('theme-search');
+  if (search) search.value = '';
+  filterThemeCards();
+  p.classList.add('open');
+  const btn = $('theme-btn');
+  if (btn) btn.setAttribute('aria-expanded', 'true');
+  if (search && search.focus) search.focus();
+}
+
+export function toggleThemePicker(event) {
+  // The opening click also reaches the document listeners below and the one in
+  // view.js that dismisses the header menus. Closing that menu is wanted; this
+  // panel seeing its own opening click and closing again is not — so the
+  // propagation stops here and the menu is dismissed explicitly.
+  if (event && event.stopPropagation) event.stopPropagation();
+  hideMoreMenu();
+  if (isThemePickerOpen()) closeThemePicker();
+  else openThemePicker();
+}
+
+// Dismissal, matching quick-settings.js: a click outside, or Escape. Escape
+// still reaches here from inside the search field, because the global shortcut
+// handler that ignores form fields is a separate listener.
+document.addEventListener('click', event => {
+  if (!isThemePickerOpen()) return;
+  const p = $('theme-panel');
+  if (p && p.contains && p.contains(event.target)) return;
+  closeThemePicker();
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && isThemePickerOpen()) closeThemePicker(true);
+});
 
 // The header row's small trailing label (e.g. "Nord") so the current theme
 // is visible without opening the modal.
@@ -1006,7 +1295,7 @@ export function applyTheme(theme, persist = true) {
   App.config.theme = resolved;
   document.documentElement.dataset.theme = resolved;
   syncThemeExportPalette(resolved);
-  renderThemeCards();
+  syncThemeCardSelection();
   updateThemeMenuLabel();
   if ($('set-theme')) $('set-theme').value = resolved;
   // The minimap paints from App.config.export.*, which syncThemeExportPalette
@@ -1020,7 +1309,7 @@ export function applyTheme(theme, persist = true) {
   }
 }
 
-// Entry point for interactive theme picks (theme-modal cards); applyTheme
+// Entry point for interactive theme picks (theme-panel cards); applyTheme
 // alone is also used at boot and from Settings, where a repaint/status
 // message would be premature or redundant.
 export function selectTheme(theme) {

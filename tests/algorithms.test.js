@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
+// Safe after harness.js: it installs the DOM stub before any real module is
+// evaluated, so ui.js is already up by the time this binding resolves.
+import { themeGridNeighbor } from '../js/ui.js';
 
 function makeState(id, name) {
   return { id, name, x: 0, y: 0 };
@@ -98,15 +101,109 @@ test('theme modal renders one card per registered theme and marks the active one
   const h = createHarness();
   const grid = h.getElement('theme-grid');
   h.context.applyTheme('dark', false);
+  h.context.renderThemeCards();
 
   const themeIds = Object.keys(h.context.Themes);
   assert.strictEqual(themeIds.length > 2, true, 'expects more than the original dark/light pair');
-  themeIds.forEach(id => assert.match(grid.innerHTML, new RegExp(`selectTheme\\('${id}'\\)`)));
+  // Cards carry their id as data rather than an inline call: the grid uses one
+  // delegated listener, so `selectTheme` is no longer on the window surface.
+  themeIds.forEach(id => assert.match(grid.innerHTML, new RegExp(`data-theme="${id}"`)));
   assert.match(grid.innerHTML, /theme-card active/);
+  assert.match(grid.innerHTML, /aria-pressed="true"/);
+  // Split into light/dark sections, derived from each theme's own background.
+  assert.match(grid.innerHTML, /theme-group-hd">Dark</);
+  assert.match(grid.innerHTML, /theme-group-hd">Light</);
 
   h.context.applyTheme('nord', false);
   assert.strictEqual(h.context.App.config.theme, 'nord');
   assert.strictEqual(h.context.document.documentElement.dataset.theme, 'nord');
+});
+
+test('each theme card previews the diagram in that theme\'s own colours', () => {
+  const h = createHarness();
+  h.context.renderThemeCards();
+  const html = h.getElement('theme-grid').innerHTML;
+  // The preview is what makes 35 themes separable, and it is only separable
+  // because it uses the ring colours a two-colour swatch would discard.
+  for (const key of ['bg', 'nodeFill', 'startStroke', 'accStroke', 'actStroke', 'edgeStroke']) {
+    const colour = h.context.Themes.nord.export[key];
+    assert.ok(html.includes(colour), `nord preview should paint ${key} (${colour})`);
+  }
+});
+
+// A 3-wide grid whose last row holds only two cards — the ragged case that a
+// fixed "columns" constant gets wrong.
+//   0 1 2
+//   3 4 5
+//   6 7
+const GRID_3W = [0, 1, 2, 3, 4, 5, 6, 7].map(i => ({
+  top: Math.floor(i / 3) * 100, left: (i % 3) * 140, width: 130
+}));
+
+test('theme grid arrows move by row geometry, not by a column count', () => {
+  const nav = (i, key) => themeGridNeighbor(GRID_3W, i, key);
+
+  assert.strictEqual(nav(0, 'ArrowRight'), 1);
+  assert.strictEqual(nav(0, 'ArrowDown'), 3, 'straight down a column');
+  assert.strictEqual(nav(4, 'ArrowUp'), 1);
+  assert.strictEqual(nav(0, 'Home'), 0);
+  assert.strictEqual(nav(0, 'End'), 7);
+
+  // Down from the third column lands on the nearest card in a short row
+  // rather than running off the end of it.
+  assert.strictEqual(nav(5, 'ArrowDown'), 7);
+
+  // Edges hold rather than wrap, so a held key comes to rest.
+  assert.strictEqual(nav(7, 'ArrowRight'), 7);
+  assert.strictEqual(nav(0, 'ArrowLeft'), 0);
+  assert.strictEqual(nav(7, 'ArrowDown'), 7);
+
+  // Up from the top row leaves the grid — the caller focuses the search field.
+  assert.strictEqual(nav(1, 'ArrowUp'), -1);
+  assert.strictEqual(themeGridNeighbor([], 0, 'ArrowDown'), -1, 'empty results');
+});
+
+test('theme grid arrows cross the Dark/Light section boundary', () => {
+  // Two stacked grids: a 2-wide section, a heading gap, then a 3-wide one.
+  // Nothing about that is knowable from a column count, which is why the
+  // navigation reads the boxes.
+  const boxes = [
+    { top: 0, left: 0, width: 130 }, { top: 0, left: 140, width: 130 },
+    { top: 260, left: 0, width: 130 }, { top: 260, left: 140, width: 130 }, { top: 260, left: 280, width: 130 }
+  ];
+  assert.strictEqual(themeGridNeighbor(boxes, 1, 'ArrowDown'), 3, 'into the next section');
+  assert.strictEqual(themeGridNeighbor(boxes, 4, 'ArrowUp'), 1, 'back out of it, nearest column');
+});
+
+test('the theme picker is a panel, not a modal', () => {
+  const h = createHarness();
+  assert.strictEqual(h.context.isThemePickerOpen(), false);
+
+  h.context.openThemePicker();
+  assert.strictEqual(h.context.isThemePickerOpen(), true);
+  // Staying out of the modal stack is the whole design: joining it would bring
+  // back the focus trap and the blurring scrim that hid the canvas — the thing
+  // being previewed — and force the revert machinery back with them.
+  assert.strictEqual(h.context.anyModalOpen(), false);
+
+  h.context.closeThemePicker();
+  assert.strictEqual(h.context.isThemePickerOpen(), false);
+});
+
+test('choosing a theme persists it and leaves the picker open to compare', () => {
+  const h = createHarness();
+  h.context.applyTheme('dark');
+  h.context.openThemePicker();
+
+  h.context.selectTheme('nord');
+  assert.strictEqual(h.context.App.config.theme, 'nord');
+  assert.strictEqual(h.context.localStorage.getItem('automata-theme'), 'nord',
+    'a click is a commit — there is no separate confirm step');
+  assert.strictEqual(h.context.isThemePickerOpen(), true,
+    'comparing themes is the task, so picking one must not dismiss the panel');
+
+  h.context.closeThemePicker();
+  assert.strictEqual(h.context.App.config.theme, 'nord', 'closing never reverts');
 });
 
 test('applyTheme falls back to the default theme for an unrecognized id', () => {
