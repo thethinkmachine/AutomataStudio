@@ -2557,17 +2557,30 @@ export function openSettingsModal() {
   showOverlay('settings-modal');
 }
 
-export function switchSettingsTab(tabId) {
-  const tabs = document.querySelectorAll('#settings-tabs .modal-tab');
-  const contents = document.querySelectorAll('#settings-modal .modal-tab-content');
+// Both tabbed dialogs — Engine Settings and Keyboard Shortcuts — are the same
+// shell (.export-code-modal + .settings-modal-wide), so they switch tabs the
+// same way. The rail is scoped by id because the two are in the DOM at once,
+// and the active tab is resolved from its own onclick text, which is what the
+// markup already carries.
+function switchModalTab(railSel, modalSel, panelPrefix, handlerName, tabId) {
+  const tabs = document.querySelectorAll(`${railSel} .modal-tab`);
+  const contents = document.querySelectorAll(`${modalSel} .modal-tab-content`);
 
   tabs.forEach(t => t.classList.remove('active'));
   contents.forEach(c => c.classList.remove('active'));
 
-  const targetTab = document.querySelector(`#settings-tabs [onclick="switchSettingsTab('${tabId}')"]`);
-  const targetContent = document.getElementById(`tab-${tabId}`);
+  const targetTab = document.querySelector(`${railSel} [onclick="${handlerName}('${tabId}')"]`);
+  const targetContent = document.getElementById(panelPrefix + tabId);
   if (targetTab) targetTab.classList.add('active');
   if (targetContent) targetContent.classList.add('active');
+}
+
+export function switchSettingsTab(tabId) {
+  switchModalTab('#settings-tabs', '#settings-modal', 'tab-', 'switchSettingsTab', tabId);
+}
+
+export function switchHelpTab(tabId) {
+  switchModalTab('#help-tabs', '#help-modal', 'help-tab-', 'switchHelpTab', tabId);
 }
 
 // Panels vary a lot in height (Symbols vs. Transducers), so switching tabs

@@ -342,8 +342,7 @@
   .regex-input-wrap,
   .pump-row,
   .modal-row,
-  .modal-foot,
-  .about-row {
+  .modal-foot {
     flex-wrap: wrap;
   }
 
@@ -396,8 +395,7 @@
   }
 
   .pump-lbl,
-  .modal-lbl,
-  .about-lbl {
+  .modal-lbl {
     min-width: 0;
     width: 100%;
   }

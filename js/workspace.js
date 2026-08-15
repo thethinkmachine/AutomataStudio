@@ -2,9 +2,9 @@ import { renderAlgo } from './algorithms-fa.js';
 import { snapshot } from './history.js';
 import { registerModal, showOverlay } from './modal.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
-import { App } from './state.js';
+import { $, App } from './state.js';
 import { Change, emit } from './store.js';
-import { autoFitLoadedMachine, fitToScreen } from './ui.js';
+import { autoFitLoadedMachine, fitToScreen, switchHelpTab } from './ui.js';
 import { showStatus } from './utils.js';
 import { applyMachineSwitch, setView } from './view.js';
 
@@ -15,8 +15,25 @@ import { applyMachineSwitch, setView } from './view.js';
 registerModal('help-modal', { dismissOnBackdrop: true });
 registerModal('about-modal', { dismissOnBackdrop: true });
 
-export function showHelpModal() { showOverlay('help-modal'); }
-export function openAboutModal() { showOverlay('about-modal'); }
+// Reopens on the first tab rather than wherever it was left, matching
+// openSettingsModal.
+export function showHelpModal() {
+  if (typeof switchHelpTab === 'function') switchHelpTab('tools');
+  showOverlay('help-modal');
+}
+
+// Substituted by Vite's `define` (see vite.config.js) from package.json, so the
+// dialog cannot drift from the version electron-builder stamps on a release.
+// The guard is for the Node test run, which imports this module with no Vite in
+// front of it and would otherwise throw on an undeclared global.
+export const APP_VERSION =
+  typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
+
+export function openAboutModal() {
+  const el = $('about-version');
+  if (el) el.textContent = APP_VERSION;
+  showOverlay('about-modal');
+}
 
 
 // ══════════════════════════════════════════════════════════════════

@@ -21,13 +21,16 @@
   z-index: 880;
   display: none;
   background: var(--overlay);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
 }
 
+/* Blur only while open, and at a small radius — this one filters the live SVG
+   canvas, which stays mounted underneath so its geometry keeps measuring. See
+   the note on .overlay.show in css/modals.css. */
 .aux-scrim.open {
   display: block;
   animation: auxScrimIn .18s ease-out;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
 
 .aux-overlay {
@@ -1355,9 +1358,12 @@
   background: var(--red-soft);
 }
 
-.example-chip.chip-acc:hover,
+.example-chip.chip-acc:hover {
+  background: color-mix(in srgb, var(--green) 20%, transparent);
+}
+
 .example-chip.chip-rej:hover {
-  filter: brightness(1.15);
+  background: color-mix(in srgb, var(--red) 20%, transparent);
 }
 
 /* Verdict banner — the headline result, shown once the simulation reaches
