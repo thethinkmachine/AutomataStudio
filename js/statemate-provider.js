@@ -42,18 +42,50 @@ export const PROVIDERS = {
   openai: {
     label: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-4o',
+    model: 'gpt-5.6-luna',
     keyLabel: 'API key',
     keyHint: 'Starts with sk-',
     browserNote: 'Your key is readable by this page. Prefer the desktop app for anything shared.'
   },
+  mistralai: {
+    label: 'Mistral AI',
+    baseUrl: 'https://api.mistral.ai/v1',
+    model: 'mistral-large-latest',
+    keyLabel: 'API key',
+    keyHint: 'Starts with sk-',
+    browserNote: 'Your key is readable by this page. Prefer the desktop app for anything shared.'
+  },
+  GoogleAiStudio: {
+    label: 'Google AI Studio',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    model: 'gemini-3.7-flash',
+    keyLabel: 'API key',
+    keyHint: 'Starts with sk-',
+    browserNote: 'Your key is readable by this page. Prefer the desktop app for anything shared.'
+  },
+  cohere: {
+    label: 'Cohere',
+    baseUrl: 'https://api.cohere.com/v2/',
+    model: 'command-xlarge-nightly',
+    keyLabel: 'API key',
+    keyHint: 'Starts with cohere-',
+    browserNote: 'Your key is readable by this page. Prefer the desktop app for anything shared.'
+  },
+  openrouter_ai: {
+    label: 'OpenRouter.ai',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    model: 'openrouter/free',
+    keyLabel: 'API key',
+    keyHint: 'Starts with sk-or-',
+    browserNote: 'Your key is readable by this page. Prefer the desktop app for anything shared.'
+  },
   compatible: {
-    label: 'OpenAI-compatible',
-    baseUrl: 'http://localhost:11434/v1',
-    model: 'llama3.1',
+    label: 'Local Server (OpenAI-compatible)',
+    baseUrl: 'http://localhost:8080/v1',
+    model: 'unsloth/Qwen3.8-27B-GGUF',
     keyLabel: 'API key (optional)',
-    keyHint: 'Leave empty for a local server',
-    browserNote: 'Local servers must allow this page\'s origin — for Ollama that is OLLAMA_ORIGINS.'
+    keyHint: 'Leave empty for a local/auth-less server',
+    browserNote: 'Local servers must allow this page\'s origin.'
   }
 };
 
@@ -70,7 +102,9 @@ const DEFAULTS = {
   writeNotes: false,
   newTabForBuild: true,
   confirmReplace: false,
-  followUp: true
+  // How many past turns travel with each request. 0 is strict one-shot — the
+  // behaviour before the thread existed.
+  threadDepth: 10
 };
 
 let settings = { ...DEFAULTS };
@@ -95,7 +129,12 @@ function readStore() {
 /** Load once per session; later calls return the live object. */
 export function getStateMateSettings() {
   if (!loaded) {
-    settings = { ...DEFAULTS, ...readStore() };
+    const stored = readStore();
+    settings = { ...DEFAULTS, ...stored };
+    // `followUp` was the thread's one-turn ancestor. Someone who switched it
+    // off asked not to be remembered, so honour that rather than silently
+    // upgrading them to six turns.
+    if (stored.threadDepth === undefined && stored.followUp === false) settings.threadDepth = 0;
     loaded = true;
   }
   return settings;
@@ -178,7 +217,7 @@ function mapHttpError(status, bodyText, host) {
 //  REQUEST SHAPES
 // ══════════════════════════════════════════════════════════════════
 
-function buildRequest({ system, user, maxTokens, temperature }, s) {
+function buildRequest({ system, messages, maxTokens, temperature }, s) {
   const { baseUrl, model } = resolveEndpoint(s);
   const streaming = !hasNativeTransport();
 
@@ -195,9 +234,12 @@ function buildRequest({ system, user, maxTokens, temperature }, s) {
         model,
         max_tokens: maxTokens,
         temperature,
+        // Anthropic carries the system prompt beside the turns rather than as
+        // one of them, which is the only structural difference between the two
+        // dialects now that both take a thread.
         system,
         stream: streaming,
-        messages: [{ role: 'user', content: user }]
+        messages
       }
     };
   }
@@ -209,10 +251,7 @@ function buildRequest({ system, user, maxTokens, temperature }, s) {
     temperature,
     max_tokens: maxTokens,
     stream: streaming,
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: user }
-    ]
+    messages: [{ role: 'system', content: system }, ...messages]
   };
   // Only the hosted OpenAI API is reliably happy with a JSON response format;
   // enough compatible servers reject the field outright that asking for it
@@ -314,24 +353,29 @@ async function readStream(response, provider, onText) {
 // ══════════════════════════════════════════════════════════════════
 
 /**
- * One completion.
+ * One completion over a thread of turns.
  *
  * @param {object}   opts
  * @param {string}   opts.system
- * @param {string}   opts.user
- * @param {Function} [opts.onText]  called with (fullText, delta) as it streams
+ * @param {Array}    [opts.messages]  [{role: 'user'|'assistant', content}]
+ * @param {string}   [opts.user]      sugar for a single user turn
+ * @param {Function} [opts.onText]    called with (fullText, delta) as it streams
  * @param {AbortSignal} [opts.signal]
  * @returns {Promise<{text: string, usage: object, model: string}>}
  */
 export async function callModel({
-  system, user, onText, signal,
-  maxTokens = 4000, temperature = 0.2
+  system, user, messages, onText, signal,
+  maxTokens = 4000, temperature = 0.7, top_p=1.0
 } = {}) {
   const s = getStateMateSettings();
   if (!s.enabled) throw new ProviderError('disabled', 'StateMate is switched off.');
   if (!isStateMateReady(s)) throw new ProviderError('no-key', 'StateMate needs an API key.');
 
-  const request = buildRequest({ system, user, maxTokens, temperature }, s);
+  const turns = Array.isArray(messages) && messages.length
+    ? messages
+    : [{ role: 'user', content: user ?? '' }];
+
+  const request = buildRequest({ system, messages: turns, maxTokens, temperature }, s);
   const host = (() => {
     try { return new URL(request.url).host; } catch (e) { return request.url; }
   })();

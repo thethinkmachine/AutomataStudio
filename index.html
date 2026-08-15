@@ -495,6 +495,18 @@
               <span class="toolbox-kbd">⌘Y</span>
             </button>
           </div>
+          <!-- What the machine on the canvas is. Opens itself for a few seconds
+               after a load or a StateMate run, then folds back into the button
+               it springs from. Both are wired in js/persistence.js at the point
+               the card first has something to say, so neither needs an entry in
+               bridge.js. -->
+          <button class="canvas-info-btn" id="canvas-info-btn" type="button" hidden
+                  aria-expanded="false" aria-controls="example-card"
+                  data-tip="About this machine">
+            <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z" /></svg>
+            <span class="sr-only">About this machine</span>
+          </button>
+          <div class="example-card" id="example-card" role="region" aria-label="About this machine"></div>
           <!-- Status bar -->
           <div class="status" id="status-bar"></div>
           <!-- Minimap -->
@@ -627,7 +639,6 @@
                 <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
               </div>
               <div class="rp-section-body">
-                <div id="example-card" class="example-card" style="display:none"></div>
                 <div class="sim-row">
                   <input class="inp" id="sim-in" placeholder="ε" style="flex:1" autocomplete="off"
                     onkeydown="handleSimInputKeydown(event)" oninput="handleSymSuggestActive(this)"
@@ -1121,33 +1132,43 @@
     </div>
   </div>
 
-  <!-- StateMate: one input over examples, the exact algorithms, and the model.
+  <!-- StateMate: a session, not a picker. A transcript of what was asked and
+       what was built, a composer that sends to the model on ⏎, and slash
+       commands for everything that is not a prompt.
+
        Rendered entirely by js/statemate-ui.js — the shell below is the only
        static part, and nothing in it is reached from an on* attribute except
        the close button. -->
-  <div class="overlay" id="statemate-modal" role="dialog" aria-modal="true" aria-labelledby="sm-modal-title">
-    <div class="modal sm-modal">
-      <div class="modal-title sm-title-row">
+  <div class="overlay sm-overlay" id="statemate-modal" role="dialog" aria-modal="true" aria-labelledby="sm-modal-title">
+    <div class="modal sm-console">
+      <div class="sm-head">
         <span class="sm-title-name" id="sm-modal-title">
           <svg class="sm-title-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z" /></svg>
           StateMate
         </span>
+        <div class="sm-head-actions" id="sm-head-actions"></div>
         <button class="sm-close" type="button" onclick="closeModal('statemate-modal')" aria-label="Close StateMate" data-tip="Close">
           <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg>
         </button>
       </div>
 
-      <div class="sm-input-wrap">
-        <svg class="sm-input-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z" /></svg>
-        <input class="inp sm-input" id="sm-input" type="text" autocomplete="off" spellcheck="false"
-               placeholder="Describe a machine, or search examples…"
-               aria-label="Describe a machine to build, or search examples"
-               aria-controls="sm-body" role="combobox" aria-expanded="true" aria-autocomplete="list">
-      </div>
+      <div class="sm-log" id="sm-log" role="log" aria-live="polite" aria-label="StateMate session"></div>
 
-      <div class="sm-chips" id="sm-chips"></div>
-      <div class="sm-body" id="sm-body" role="listbox" aria-label="StateMate results" aria-live="polite"></div>
-      <div class="sm-foot" id="sm-foot"></div>
+      <div class="sm-dock">
+        <div class="sm-menu" id="sm-menu" role="listbox" aria-label="Commands" hidden></div>
+        <div class="sm-nudge-slot" id="sm-nudge"></div>
+        <div class="sm-composer" id="sm-composer">
+          <span class="sm-caret" aria-hidden="true">&rsaquo;</span>
+          <textarea class="sm-input" id="sm-input" rows="1" autocomplete="off" spellcheck="false"
+                    placeholder="Describe a machine to build — or / for commands"
+                    aria-label="Describe a machine to build, or type a slash command"
+                    aria-controls="sm-menu" aria-autocomplete="list"></textarea>
+          <button class="sm-send" id="sm-send" type="button" aria-label="Send to StateMate" data-tip="Send" data-tip-kbd="⏎">
+            <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,117.66a8,8,0,0,1-11.32,0L136,59.31V216a8,8,0,0,1-16,0V59.31L61.66,117.66a8,8,0,0,1-11.32-11.32l72-72a8,8,0,0,1,11.32,0l72,72A8,8,0,0,1,205.66,117.66Z" /></svg>
+          </button>
+        </div>
+        <div class="sm-status" id="sm-status"></div>
+      </div>
     </div>
   </div>
 
@@ -1223,14 +1244,20 @@
              the machine-family panels, which only matter once you are building
              that kind of machine. switchSettingsTab resolves tabs by id, so this
              strip can be reordered freely — but the first tab has to be the one
-             carrying `active` here and on its panel below. -->
-        <div class="modal-tab active" onclick="switchSettingsTab('general')">Workspace</div>
-        <div class="modal-tab" onclick="switchSettingsTab('ai')">StateMate</div>
-        <div class="modal-tab" onclick="switchSettingsTab('rendering')">Canvas &amp; Layout</div>
-        <div class="modal-tab" onclick="switchSettingsTab('symbols')">Notation</div>
-        <div class="modal-tab" onclick="switchSettingsTab('pda')">Pushdown</div>
-        <div class="modal-tab" onclick="switchSettingsTab('tm')">Turing Machine</div>
-        <div class="modal-tab" onclick="switchSettingsTab('transducer')">Transducers</div>
+             carrying `active` here and on its panel below.
+
+             data-tab repeats the id in the onclick so StateMate's /settings
+             command can complete over this strip by reading it, the way its
+             /algorithms command reads the .algo-item list. A tab added here is
+             completable the same day; one without the attribute simply is not
+             offered. -->
+        <div class="modal-tab active" data-tab="general" onclick="switchSettingsTab('general')">Workspace</div>
+        <div class="modal-tab" data-tab="ai" onclick="switchSettingsTab('ai')">StateMate</div>
+        <div class="modal-tab" data-tab="rendering" onclick="switchSettingsTab('rendering')">Canvas &amp; Layout</div>
+        <div class="modal-tab" data-tab="symbols" onclick="switchSettingsTab('symbols')">Notation</div>
+        <div class="modal-tab" data-tab="pda" onclick="switchSettingsTab('pda')">Pushdown</div>
+        <div class="modal-tab" data-tab="tm" onclick="switchSettingsTab('tm')">Turing Machine</div>
+        <div class="modal-tab" data-tab="transducer" onclick="switchSettingsTab('transducer')">Transducers</div>
       </div>
 
       <div class="modal-tab-panels" id="settings-tab-panels">
@@ -1279,7 +1306,11 @@
           <select class="inp" id="set-sm-provider" label="Model provider">
             <option value="anthropic">Anthropic</option>
             <option value="openai">OpenAI</option>
-            <option value="compatible">OpenAI-compatible (Ollama, LM Studio, …)</option>
+            <option value="mistralai">Mistral AI</option>
+            <option value="GoogleAiStudio">Google AI Studio</option>
+            <option value="cohere">Cohere</option>
+            <option value="openrouter_ai">OpenRouter</option>
+            <option value="compatible">Custom</option>
           </select>
         </div>
         <div class="modal-row">
@@ -1325,9 +1356,14 @@
           <span class="modal-lbl">New Machines Open a New Tab</span>
           <label class="toggle-switch"><input type="checkbox" id="set-sm-newtab"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
         </div>
-        <div class="modal-row" data-tip="Keeps your last prompt for one turn, so a follow-up like “now make it reject the empty string” knows what it refers to. No conversation is stored.">
-          <span class="modal-lbl">Remember the Last Prompt</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-sm-followup"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        <div class="modal-row" data-tip="How much of the exchange travels with each prompt, so a follow-up like “now make it reject the empty string” knows what it refers to. Only what you asked and a one-line summary of what was built is sent — never the machines themselves. Nothing is written to disk.">
+          <span class="modal-lbl">Conversation Memory</span>
+          <select class="inp" id="set-sm-thread" label="Conversation memory">
+            <option value="0">Off</option>
+            <option value="6">3 exchanges</option>
+            <option value="10">5 exchanges</option>
+            <option value="16">8 exchanges</option>
+          </select>
         </div>
         <div class="modal-row" data-tip="Let StateMate leave one or two sticky notes on the canvas explaining the construction.">
           <span class="modal-lbl">Explain with Canvas Notes</span>

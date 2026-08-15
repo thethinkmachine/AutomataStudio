@@ -27,12 +27,14 @@ export const MODAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disa
  * @param {object} [opts]
  * @param {Function} [opts.onClose]      teardown run on close
  * @param {Function} [opts.submit]       primary action; Enter invokes it
+ * @param {Function} [opts.onEscape]     first refusal on Escape; true = consumed
  * @param {boolean} [opts.dismissOnBackdrop] close when the backdrop is clicked
  */
 export function registerModal(id, opts = {}) {
   ModalRegistry[id] = {
     onClose: opts.onClose || null,
     submit: opts.submit || null,
+    onEscape: opts.onEscape || null,
     dismissOnBackdrop: !!opts.dismissOnBackdrop
   };
 }
@@ -145,6 +147,16 @@ document.addEventListener('keydown', e => {
     // listener captures on document, so it would otherwise pre-empt the
     // inline onkeydown handler that suggest.js binds to the field itself.
     if (typeof SymSuggest !== 'undefined' && SymSuggest.target === e.target && SymSuggest.state) return;
+    // A dialog with something open inside it — a completion list, a request in
+    // flight — gets first refusal, so one Escape dismisses the innermost thing
+    // rather than the whole dialog. Registering the handler rather than
+    // importing the owner keeps this module free of the modals it serves.
+    const owner = ModalRegistry[top];
+    if (owner && owner.onEscape && owner.onEscape(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     closeModal(top);

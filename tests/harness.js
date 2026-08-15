@@ -33,6 +33,7 @@ import * as geometry from '../js/geometry.js';
 import * as history from '../js/history.js';
 import * as importJflap from '../js/import-jflap.js';
 import * as language from '../js/language.js';
+import * as markdown from '../js/markdown.js';
 import * as minimap from '../js/minimap.js';
 import * as modal from '../js/modal.js';
 import * as notes from '../js/notes.js';
@@ -60,7 +61,7 @@ import * as workspace from '../js/workspace.js';
 
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, geometry, statesTransitions,
-  canvas, render, notes, dividers, simulation, suggest, language, alphabet,
+  canvas, render, notes, dividers, simulation, suggest, language, alphabet, markdown,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, algorithmsFa, algorithmsCfg, reference, workspace, quickSettings, minimap, ui,
   statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt,
@@ -138,13 +139,15 @@ function resetModuleState() {
   // previous test's diagram.
   minimap.resetMinimapFrame();
   // StateMate holds an abort controller, a one-turn follow-up slot, a
-  // few-shot cache and the palette's own draft state between calls. All four
+  // few-shot cache and the console's own transcript between calls. All four
   // survive resetApp, and a live controller leaking into the next test is
   // exactly the kind of thing that makes a suite flaky.
   statemate.resetStateMateRuntime();
   statemateProvider.resetStateMateSettings();
   statematePrompt._clearFewShotCache();
   statemateUi._resetPaletteForTests();
+  // The info card holds a pending auto-hide timer and the meta it describes.
+  persistence._resetExampleCardForTests();
 }
 
 export function resetApp() {

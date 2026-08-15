@@ -31,20 +31,20 @@ import { showExampleCard } from './persistence.js';
 import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { computeBatchResults, resetSim } from './simulation.js';
 import {
-  App, exportWorkspaceState, getMachineConfig, importWorkspaceState,
-  isOmegaAutomaton, normalizeBoundarySymbolsForMachine
+  App, activeWorkspaceId, exportWorkspaceState, getMachineConfig,
+  importWorkspaceState, isOmegaAutomaton, normalizeBoundarySymbolsForMachine
 } from './state.js';
 import { compileSpec, currentMachineSnapshot, summarizeDiff } from './statemate-compile.js';
 import { lintCandidate } from './statemate-lint.js';
 import {
-  buildRepairMessage, buildSystemPrompt, buildUserMessage
+  buildRepairMessage, buildSystemPrompt, buildUserMessage, threadMessages
 } from './statemate-prompt.js';
 import { ProviderError, callModel, getStateMateSettings } from './statemate-provider.js';
 import {
   MIN_SPEC_TESTS, StateMateError, describeSpecSize, extractSpecJSON,
-  machineToSpec, testKindFor, validateSpec
+  machineToSpec, parseTurn, testKindFor
 } from './statemate-spec.js';
-import { Change, emit, subscribe } from './store.js';
+import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, createTab, fitToScreen } from './ui.js';
 import { resetIds, showStatus } from './utils.js';
 import { applyMachineSwitch } from './view.js';
@@ -58,25 +58,55 @@ import { applyMachineSwitch } from './view.js';
 
 let activeRun = null;
 
-// One retained turn, not zero. Strict one-shot has a predictable failure:
-// "no, it should reject the empty string" gives the model no idea what "it"
-// was, because the canvas holds the machine but not the intent behind it.
-// This is one slot — not a transcript — and it expires the moment anything
-// else touches the graph.
-let followUpSlot = null;
-let applyingOwnChange = false;
+// ── the conversation ──────────────────────────────────────────────
+//  Strict one-shot has a predictable failure: "no, it should reject the empty
+//  string" gives the model no idea what "it" was, because the canvas holds the
+//  machine but not the intent behind it. This is the transcript that fixes
+//  that, and it stores intent only — a machine turn is kept as its one-line
+//  summary, never as the machine. threadMessages() explains why.
+//
+//  Not persisted, for the same reason the API key is not: exportWorkspaceState()
+//  deep-copies into every tab and getBackupPayload() writes to IndexedDB. A log
+//  of what someone was trying to build belongs in the session, not in a file
+//  they might attach to a bug report.
+//
+//  It accumulates regardless of the depth setting. `threadDepth` governs how
+//  much is *sent* — 0 is the pre-thread behaviour from the model's side — while
+//  the palette always has the full exchange to show.
+const MAX_THREAD_TURNS = 24;
 
-subscribe(Change.GRAPH, () => {
-  if (!applyingOwnChange) followUpSlot = null;
-});
+// How much of a rejected answer is echoed back as its own assistant turn
+// during a repair. Enough to be the thing being corrected, capped so a model
+// that produced 4000 tokens of nonsense does not get to pay for it twice.
+const MAX_ECHO_CHARS = 4000;
 
-export function getFollowUp() {
-  if (!getStateMateSettings().followUp) return null;
-  return followUpSlot;
+let thread = [];
+let threadKey = null;
+
+// A conversation is about one machine in one tab. Checked when the thread is
+// read rather than driven by a subscription: there is no Change for "the
+// machine type switched", and a lazy check cannot be missed the way an event
+// that never fires can.
+function currentThreadKey() {
+  return `${App.machine}::${activeWorkspaceId ?? ''}`;
 }
 
-export function clearFollowUp() {
-  followUpSlot = null;
+/** The retained exchange, newest last. Empty after a tab or machine change. */
+export function getThread() {
+  if (threadKey !== null && threadKey !== currentThreadKey()) clearThread();
+  return thread;
+}
+
+export function clearThread() {
+  thread = [];
+  threadKey = null;
+}
+
+function rememberTurn(entry) {
+  const key = currentThreadKey();
+  if (threadKey !== key) { thread = []; threadKey = key; }
+  thread.push(entry);
+  if (thread.length > MAX_THREAD_TURNS) thread = thread.slice(-MAX_THREAD_TURNS);
 }
 
 export function isStateMateRunning() {
@@ -94,8 +124,7 @@ export function cancelStateMate() {
 export function resetStateMateRuntime() {
   if (activeRun) { try { activeRun.controller.abort(); } catch (e) { } }
   activeRun = null;
-  followUpSlot = null;
-  applyingOwnChange = false;
+  clearThread();
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -167,22 +196,33 @@ export function verifyCandidate(candidate, tests) {
   }
 }
 
-/** Failed checks as the one-line-each report the repair message carries. */
+/**
+ * Failed checks, as data rather than as a sentence.
+ *
+ * These have two audiences and they need different words. The model is being
+ * told it got its own prediction wrong, in the second person — "you predicted
+ * accept, it REJECTED" — which is exactly right in a repair message and quite
+ * wrong on the result card, where it addresses a reader who predicted nothing
+ * and never saw the prediction. So the record is neutral and the phrasing is
+ * chosen at the point of use, by failureForModel or failureForUser.
+ *
+ * @returns {Array<{kind: string, word?: string, expected?: string, actual?: string, detail?: string}>}
+ */
 export function describeFailures(batch, tests, machine) {
   if (!batch) return [];
-  const lines = [];
+  const found = [];
   batch.results.forEach((r, i) => {
     const test = tests[i];
     if (!test) return;
     const word = test.w === '' ? 'ε' : test.w;
 
     if (r.error) {
-      lines.push(`"${word}" could not be read — it uses symbols outside Σ.`);
+      found.push({ kind: 'unreadable', word });
       return;
     }
     if (testKindFor(machine) === 'output') {
       if (r.outputMatches === false) {
-        lines.push(`"${word}" you predicted output "${test.out}", it emitted "${r.output ?? ''}"`);
+        found.push({ kind: 'output', word, expected: String(test.out ?? ''), actual: String(r.output ?? '') });
       }
       return;
     }
@@ -193,10 +233,32 @@ export function describeFailures(batch, tests, machine) {
       return;
     }
     if (r.verdict !== test.expect) {
-      lines.push(`"${word}" you predicted ${test.expect}, it ${r.verdict === 'accept' ? 'ACCEPTED' : 'REJECTED'}`);
+      found.push({ kind: 'verdict', word, expected: test.expect, actual: r.verdict });
     }
   });
-  return lines;
+  return found;
+}
+
+/** A failed check as the repair message puts it: second person, to the model. */
+export function failureForModel(f) {
+  if (!f) return '';
+  switch (f.kind) {
+    case 'crash': return `the machine could not be simulated: ${f.detail}`;
+    case 'unreadable': return `"${f.word}" could not be read — it uses symbols outside Σ.`;
+    case 'output': return `"${f.word}" you predicted output "${f.expected}", it emitted "${f.actual}"`;
+    default: return `"${f.word}" you predicted ${f.expected}, it ${f.actual === 'accept' ? 'ACCEPTED' : 'REJECTED'}`;
+  }
+}
+
+/** The same check as the result card puts it: about the machine, to a reader. */
+export function failureForUser(f) {
+  if (!f) return '';
+  switch (f.kind) {
+    case 'crash': return `The machine could not be simulated: ${f.detail}`;
+    case 'unreadable': return `“${f.word}” uses symbols outside Σ, so it could not be run.`;
+    case 'output': return `“${f.word}” should emit “${f.expected}”, but this machine emits “${f.actual}”.`;
+    default: return `“${f.word}” should be ${f.expected === 'accept' ? 'accepted' : 'rejected'}, but this machine ${f.actual === 'accept' ? 'accepts' : 'rejects'} it.`;
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -250,20 +312,15 @@ function assignCandidate(candidate) {
  * restores exactly what was on screen before the prompt was sent.
  */
 export function applyCandidate(candidate, { openNewTab = false, title = '' } = {}) {
-  applyingOwnChange = true;
-  try {
-    if (openNewTab) {
-      // A new tab is its own workspace with its own history, so the machine
-      // is loaded into it rather than over anything.
-      createTab(title || 'StateMate');
-      snapshot();
-      assignCandidate(candidate);
-      emit(Change.ALPHABET, Change.GRAPH);
-    } else {
-      commit(() => assignCandidate(candidate), Change.ALPHABET, Change.GRAPH);
-    }
-  } finally {
-    applyingOwnChange = false;
+  if (openNewTab) {
+    // A new tab is its own workspace with its own history, so the machine
+    // is loaded into it rather than over anything.
+    createTab(title || 'StateMate');
+    snapshot();
+    assignCandidate(candidate);
+    emit(Change.ALPHABET, Change.GRAPH);
+  } else {
+    commit(() => assignCandidate(candidate), Change.ALPHABET, Change.GRAPH);
   }
 
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
@@ -280,10 +337,97 @@ export function relayoutLastResult() {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  WRITE AUTHORITY
+// ══════════════════════════════════════════════════════════════════
+//  The one axis a model must never decide on the user's behalf: how much it
+//  may change without being asked. Task type it infers well — reply or edit,
+//  build or switch — but "may I overwrite your work" is not an inference.
+//
+//    ask      never writes. The turn is a conversation about the machine.
+//    propose  builds and verifies a candidate, then stops. The canvas is
+//             written only when the reader accepts it.
+//    auto     writes immediately, as StateMate always has.
+//
+//  All three run the identical pipeline; they differ in one branch at step 7,
+//  which is possible only because the canvas was already written exactly once
+//  and at the end. Everything before `apply` is a candidate object.
+
+export const AUTHORITIES = ['ask', 'propose', 'auto'];
+
+// Even in auto, an edit that deletes most of the machine is not the edit
+// anyone asked for — it is a replacement wearing an edit's clothes. It drops
+// to a proposal and says why, which is the whole reason auto is safe to leave
+// switched on.
+const SCOPE_REMOVAL_RATIO = 0.5;
+
+function scopeGuard(diff, before, { intent, openNewTab }) {
+  // The guard is about edits, not builds. "Build me a DFA for X" over an
+  // existing machine removes every state it had, and that is the request, not
+  // an overreach — doubly so when the build lands in a tab of its own.
+  if (intent !== 'edit' || openNewTab) return '';
+  const had = before.states.length;
+  if (!had || !diff) return '';
+  const removed = diff.statesRemoved.length;
+  if (removed > had * SCOPE_REMOVAL_RATIO) {
+    return `it removes ${removed} of the ${had} state${had === 1 ? '' : 's'} already on the canvas`;
+  }
+  return '';
+}
+
+/**
+ * A cheap fingerprint of what is on the canvas, for noticing that it moved
+ * while a proposal was pending. The diff a reader approved was computed
+ * against a particular machine; applying it over a different one silently
+ * discards whatever they did in between.
+ */
+export function machineSignature() {
+  return [
+    App.machine,
+    App.states.map(s => s.name).sort().join(','),
+    App.transitions.length
+  ].join('|');
+}
+
+/** The info card a result shows over the canvas — the same for either path. */
+function resultCardMeta(spec) {
+  return {
+    title: spec.title,
+    blurb: spec.blurb,
+    inputs: (spec.tests || []).map(t => ({
+      w: t.w,
+      expect: t.expect,
+      out: t.out,
+      label: t.out !== undefined ? `→ ${t.out}` : undefined
+    }))
+  };
+}
+
+/**
+ * Draw a result that was held back. The canvas-writing stays in this module
+ * so `apply` remains the single place the user's work is touched.
+ *
+ * @returns {object|null} the result, now applied
+ */
+export function applyPending(result) {
+  const pending = result?.pending;
+  if (!pending) return null;
+  applyCandidate(pending.candidate, { openNewTab: pending.openNewTab, title: pending.spec.title });
+  showExampleCard(resultCardMeta(pending.spec));
+  return {
+    ...result,
+    status: 'applied',
+    hold: '',
+    holdDetail: '',
+    openedNewTab: pending.openNewTab,
+    pending: null
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  THE RUN
 // ══════════════════════════════════════════════════════════════════
 
-function inferMode() {
+function inferIntent() {
   return App.states.length ? 'edit' : 'build';
 }
 
@@ -292,12 +436,15 @@ function inferMode() {
  *
  * @param {object}   opts
  * @param {string}   opts.prompt
- * @param {string}   [opts.mode]         'build' | 'edit'; inferred when absent
+ * @param {string}   [opts.intent]       'build' | 'edit'; inferred from the canvas when absent
  * @param {boolean}  [opts.attachCanvas] default from settings
+ * @param {string}   [opts.authority]    'ask' | 'propose' | 'auto'
  * @param {Function} [opts.onEvent]      progress: {type, …}
  * @returns {Promise<object>} the run result
  */
-export async function runStateMate({ prompt, mode, attachCanvas, onEvent = () => { } } = {}) {
+export async function runStateMate({
+  prompt, intent, attachCanvas, authority = 'auto', onEvent = () => { }
+} = {}) {
   const text = String(prompt || '').trim();
   if (!text) throw new StateMateError('empty', 'Type what you want built.');
 
@@ -310,7 +457,7 @@ export async function runStateMate({ prompt, mode, attachCanvas, onEvent = () =>
   const run = { controller };
   activeRun = run;
 
-  const resolvedMode = mode || inferMode();
+  const resolvedIntent = intent || inferIntent();
   const useCanvas = attachCanvas === undefined ? settings.attachCanvas : attachCanvas;
   const machine = App.machine;
   const before = currentMachineSnapshot();
@@ -327,12 +474,18 @@ export async function runStateMate({ prompt, mode, attachCanvas, onEvent = () =>
     guard();
 
     const canvasSpec = useCanvas && App.states.length ? machineToSpec() : null;
-    let user = buildUserMessage({
-      prompt: text,
-      mode: resolvedMode,
-      canvasSpec,
-      followUp: getFollowUp()
-    });
+
+    // The thread is the tail of the retained exchange; the live prompt is a
+    // turn of its own, and the canvas rides with it rather than with any of
+    // the history, so the model is always editing the machine that exists now.
+    const depth = Math.max(0, settings.threadDepth | 0);
+    const messages = [
+      ...(depth ? threadMessages(getThread().slice(-depth)) : []),
+      {
+        role: 'user',
+        content: buildUserMessage({ prompt: text, intent: resolvedIntent, canvasSpec, authority })
+      }
+    ];
 
     let attempt = 0;
     const maxAttempts = 1 + Math.max(0, Math.min(2, settings.repairAttempts ?? 1));
@@ -348,7 +501,7 @@ export async function runStateMate({ prompt, mode, attachCanvas, onEvent = () =>
       onEvent({ type: 'stage', stage: 'request', attempt });
       const response = await callModel({
         system,
-        user,
+        messages,
         signal: controller.signal,
         onText: full => {
           // "plan" is the first key in the schema specifically so it arrives
@@ -365,21 +518,50 @@ export async function runStateMate({ prompt, mode, attachCanvas, onEvent = () =>
 
       // ── 3 · parse & validate ────────────────────────────────
       onEvent({ type: 'stage', stage: 'parse' });
-      let parsed;
+      let turn;
       try {
-        parsed = extractSpecJSON(response.text);
-        spec = validateSpec(parsed, { fallbackMachine: machine });
+        // Prose is only an answer on the first attempt. Past that the model is
+        // being asked to fix a machine it already committed to, and "I would
+        // rather talk about it" is not a correction.
+        turn = parseTurn(extractSpecJSON(response.text), {
+          fallbackMachine: machine,
+          allowReply: attempt === 1
+        });
       } catch (err) {
         // A malformed answer is worth exactly one silent reformat before it
         // becomes the user's problem.
         if (attempt < maxAttempts && (err.code === 'no-json' || err.code === 'bad-json' || err.code === 'schema')) {
           onEvent({ type: 'stage', stage: 'repair', reason: err.message });
-          user = `${user}\n\nYour previous answer could not be used: ${err.message}\nReturn ONLY the JSON object described above.`;
+          messages.push(
+            { role: 'assistant', content: response.text.slice(0, MAX_ECHO_CHARS) },
+            { role: 'user', content: `That answer could not be used: ${err.message}\nReturn ONLY the JSON object described above.` }
+          );
           repaired = true;
           continue;
         }
         throw err;
       }
+
+      // ── 3a · the model had something to say instead ─────────
+      // This leaves by a door that does not pass compile, lint, verify or
+      // apply. No candidate is ever built, so there is nothing that could
+      // reach the canvas even by accident.
+      if (turn.kind === 'reply') {
+        rememberTurn({ role: 'user', text });
+        rememberTurn({ role: 'assistant', kind: 'reply', text: turn.text });
+        const replied = {
+          status: 'replied',
+          kind: 'reply',
+          reply: turn.text,
+          usage, model,
+          repaired,
+          thread: getThread()
+        };
+        onEvent({ type: 'done', result: replied });
+        return replied;
+      }
+
+      spec = turn.spec;
 
       // A model that volunteers notes when they were not asked for is adding
       // clutter to someone's diagram, so they are dropped rather than drawn.
@@ -405,7 +587,7 @@ export async function runStateMate({ prompt, mode, attachCanvas, onEvent = () =>
         } catch (err) {
           // A simulator that throws on a malformed machine is information,
           // not a crash — it becomes a repair note like any other.
-          lastFailures = [`the machine could not be simulated: ${err.message}`];
+          lastFailures = [{ kind: 'crash', detail: err.message }];
           batch = null;
         }
       }
@@ -420,12 +602,19 @@ export async function runStateMate({ prompt, mode, attachCanvas, onEvent = () =>
         failures: lastFailures.length,
         findings: lint.fatal.length
       });
-      user = buildRepairMessage({
-        prompt: text,
-        spec,
-        failures: lastFailures,
-        findings: lint.fatal
-      });
+      // The rejected answer goes back as its own assistant turn, so the model
+      // is correcting its own last message rather than a quotation of it.
+      messages.push(
+        { role: 'assistant', content: response.text.slice(0, MAX_ECHO_CHARS) },
+        {
+          role: 'user',
+          content: buildRepairMessage({
+            prompt: text,
+            failures: lastFailures.map(failureForModel),
+            findings: lint.fatal
+          })
+        }
+      );
       repaired = true;
     }
 
@@ -442,36 +631,50 @@ export async function runStateMate({ prompt, mode, attachCanvas, onEvent = () =>
       );
     }
 
-    // ── 7 · apply ─────────────────────────────────────────────
-    onEvent({ type: 'stage', stage: 'apply' });
-
-    const openNewTab = resolvedMode === 'build'
+    // ── 7 · apply, or hold ────────────────────────────────────
+    // The single branch the three authorities differ by. Everything above ran
+    // identically; nothing below this line has touched the canvas yet.
+    const openNewTab = resolvedIntent === 'build'
       && before.states.length > 0
       && settings.newTabForBuild;
 
-    applyCandidate(candidate, { openNewTab, title: spec.title });
+    const overreach = scopeGuard(diff, before, { intent: resolvedIntent, openNewTab });
+    const hold = authority === 'ask' ? 'ask'
+      : authority === 'propose' ? 'propose'
+      : (overreach ? 'scope' : '');
 
-    showExampleCard({
-      title: spec.title,
-      blurb: spec.blurb,
-      inputs: (spec.tests || []).map(t => ({
-        w: t.w,
-        expect: t.expect,
-        out: t.out,
-        label: t.out !== undefined ? `→ ${t.out}` : undefined
-      }))
-    });
+    // One stage either way — the last step of a run is deciding what happens
+    // to the candidate, and `hold` says which way it went. A stage id the UI
+    // has no row for would simply be dropped.
+    onEvent({ type: 'stage', stage: 'apply', hold });
+    if (!hold) {
+      applyCandidate(candidate, { openNewTab, title: spec.title });
+      showExampleCard(resultCardMeta(spec));
+    }
 
     const verdict = batch
       ? { passed: batch.passCount, expected: batch.expected, unknowns: batch.unknowns, allPassed: batch.allPassed }
       : null;
 
-    followUpSlot = settings.followUp
-      ? { prompt: text, summary: `${spec.title} — ${describeSpecSize(spec)}`, at: Date.now() }
-      : null;
+    // Intent, not machines: the summary is what travels to the next turn. A
+    // held proposal is remembered too — the exchange happened, and a follow-up
+    // ("no, smaller") is a correction to it whether or not it was drawn.
+    rememberTurn({ role: 'user', text });
+    rememberTurn({
+      role: 'assistant',
+      kind: 'machine',
+      text: `${spec.title} — ${describeSpecSize(spec)}${hold ? ' (proposed, not applied)' : ''}`
+    });
 
     const result = {
-      status: 'applied',
+      status: hold ? 'proposed' : 'applied',
+      kind: 'machine',
+      hold,
+      holdDetail: overreach,
+      // Everything applyPending() needs, and nothing that has been drawn. The
+      // signature is what tells the reader later that the canvas moved under
+      // the diff they are about to accept.
+      pending: hold ? { candidate, spec, openNewTab, signature: machineSignature() } : null,
       spec,
       candidate,
       diff,
@@ -482,8 +685,9 @@ export async function runStateMate({ prompt, mode, attachCanvas, onEvent = () =>
       usage,
       model,
       repaired,
-      openedNewTab: openNewTab,
-      summary: summarizeDiff(diff)
+      openedNewTab: hold ? false : openNewTab,
+      summary: summarizeDiff(diff),
+      thread: getThread()
     };
     onEvent({ type: 'done', result });
     return result;
@@ -509,7 +713,7 @@ export async function runStateMate({ prompt, mode, attachCanvas, onEvent = () =>
 
 const ERROR_COPY = {
   disabled: { text: 'StateMate is switched off.', action: 'settings', label: 'Turn it on' },
-  'no-key': { text: 'StateMate needs an API key to build machines.', action: 'settings', label: 'Set up' },
+  'no-key': { text: 'StateMate needs an API key to chat and build machines.', action: 'settings', label: 'Set up' },
   auth: { text: 'Your API key was rejected.', action: 'settings', label: 'Check key' },
   'rate-limit': { text: 'The provider is rate-limiting requests.', action: 'retry', label: 'Retry' },
   server: { text: 'The provider is having trouble right now.', action: 'retry', label: 'Retry' },
@@ -550,7 +754,48 @@ export function describeError(err) {
 export function hasWarnings(result) {
   if (!result) return false;
   if (result.batch && result.batch.expected > 0 && !result.batch.allPassed) return true;
+  if (result.spec?.caveat) return true;
   return (result.lint?.warnings?.length || 0) > 0;
+}
+
+// Severity decides which notes survive the card's line budget, so the order
+// here is the order of consequence: a machine that does not do what was
+// predicted, then things that are true but not fatal, then the edits made on
+// the way through.
+const NOTE_RANK = { fail: 0, warn: 1, fix: 2 };
+
+/**
+ * Everything a finished run has to tell the user, most consequential first.
+ * Pure, and separate from the card that draws it, so the ordering is testable.
+ *
+ * The sort is the point. These used to be concatenated in the order they were
+ * produced — fixes, warnings, then the failed check appended last — and the
+ * card renders only the first few. Four routine fixes ("Extended Σ with…",
+ * "Added the end markers to Γ") are an ordinary run, and they pushed the one
+ * line saying the machine failed its own author's predictions off the end.
+ *
+ * The model's caveat ranks with the warnings, never above them: it is a claim
+ * the model makes, not evidence the app gathered.
+ */
+export function resultNotes(result) {
+  if (!result) return [];
+
+  const notes = [
+    ...(result.lint?.fixed || []),
+    ...(result.lint?.warnings || [])
+  ];
+  if (result.spec?.caveat) notes.push({ severity: 'warn', message: result.spec.caveat });
+  if (result.failures?.length) {
+    const n = result.failures.length;
+    notes.push({
+      severity: 'fail',
+      message: `${n} check${n === 1 ? '' : 's'} failed. ${failureForUser(result.failures[0])}`
+    });
+  }
+
+  // Array.prototype.sort is stable, so notes of equal severity keep the order
+  // the pipeline produced them in.
+  return notes.sort((a, b) => (NOTE_RANK[a.severity] ?? 3) - (NOTE_RANK[b.severity] ?? 3));
 }
 
 /** The chip the result card shows for the test run. */

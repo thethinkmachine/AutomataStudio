@@ -24,8 +24,8 @@
 //  `if (machine === …)` with a paragraph in it, it belongs in the guide.
 
 import {
-  App, MachineTypes, OmegaAcceptance, getMachineConfig, isOmegaAutomaton,
-  isTwoWayFA, omegaAcceptanceOf, usesParityPriorities
+  App, MachineCategories, MachineTypes, OmegaAcceptance, getMachineConfig,
+  isOmegaAutomaton, isTwoWayFA, omegaAcceptanceOf, usesParityPriorities
 } from './state.js';
 import { MachineGuides } from './machine-guide.js';
 import {
@@ -179,10 +179,12 @@ function schemaBlock(machine, { notes = false } = {}) {
 
   return [
     '{',
+    '  "kind": "machine",',
     '  "plan": "one sentence on the idea behind your construction",',
     `  "machine": "${machine}",`,
     '  "title": "a short name for this machine",',
     '  "blurb": "one or two sentences a student would find useful",',
+    '  "caveat": "…",                   OPTIONAL — see below; omit it unless it applies',
     ...alphabets,
     '  "states": [',
     `    { ${stateFields.map(f => `"${f}": …`).join(', ')} }`,
@@ -197,6 +199,64 @@ function schemaBlock(machine, { notes = false } = {}) {
       ? ['  "notes": [ { "text": "one insight about the construction", "anchor": "<a state name>" } ]   at most two']
       : []),
     '}'
+  ].join('\n');
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  YOU ARE NOT LIMITED TO THE CURRENT MACHINE
+// ══════════════════════════════════════════════════════════════════
+//  Switching has always worked — validateSpec accepts any key in
+//  MachineTypes, compileSpec starts clean when the type changes, and
+//  assignCandidate calls applyMachineSwitch. The model simply had no way to
+//  know, so it refused perfectly buildable requests ("I build only DFAs, I
+//  cannot construct Turing machines") instead of changing the canvas.
+//
+//  Only the current machine's rules are spelled out in full — every machine's
+//  would be an enormous prompt. The signature line is what a switch needs to
+//  get the transition shape right, and the linter's repair round covers the
+//  rest, since lintCandidate judges the machine the answer actually names.
+
+function machineMenu(current) {
+  const lines = [];
+  for (const cat of MachineCategories) {
+    const entries = cat.machines
+      .filter(m => MachineTypes[m] && m !== current)
+      .map(m => {
+        const extra = transitionFieldsFor(m).filter(f => !['from', 'to', 'on'].includes(f));
+        const fields = extra.length ? ` (+ ${extra.join(', ')})` : '';
+        return `    ${m} — ${MachineTypes[m].fullName}${fields}`;
+      });
+    if (entries.length) lines.push(`  ${cat.label}:`, ...entries);
+  }
+  return lines.join('\n');
+}
+
+function switchBlock(machine) {
+  return [
+    `YOU CAN CHANGE THE MODEL. The canvas is currently a ${machine}, but "machine" is yours to set: name a different one and the app switches the canvas to it. Every transition then carries that model's fields, listed in brackets below, and its own rules apply.`,
+    machineMenu(machine),
+    `Switch when the request needs it — a language no ${machine} can recognise, or an explicit ask for another model. Say so in "caveat" when you do, because the switch replaces what is on the canvas rather than editing it. Do not switch when the request fits the current model: a needless change throws away the user's diagram.`
+  ].join('\n');
+}
+
+// The other turn. Its whole purpose is the request that is not a request for
+// a machine at all, so the copy spends most of its words fencing that off from
+// the request that is merely hard — which is what "caveat" is for — and from
+// the request that only needs a different model, which is a switch.
+function replyBlock(machine) {
+  return [
+    `THE OTHER SHAPE — only when the request is not a request for a machine:`,
+    '{',
+    '  "kind": "reply",',
+    '  "text": "a short paragraph — what you cannot do, and what you could do instead"',
+    '}',
+    `A reply draws nothing. Use it when there is no machine to build and no change to make: a question about theory, a question about the machine already on the canvas, an instruction this tool cannot carry out, a request that names no language.`,
+    `Answering is not declining. When the canvas holds a machine and the request only asks about it — "why does it reject aab", "is this minimal", "what language does it accept", "explain state q2" — reply with the answer and leave the machine alone. Rebuilding a diagram someone asked a question about is destructive, not helpful.`,
+    `Do NOT use it for a request that is merely hard, vague, or impossible to satisfy exactly — build the closest correct machine and put the gap in "caveat". Do NOT use it because the request needs a model other than ${machine} — switch instead. Never claim you can only build ${machine}s; you can build any model in the list above. If the request names any change to make, however small, build or edit rather than reply; when in doubt about that, build.`,
+    // The reply card renders markdown, so saying so is the difference between
+    // a formatted answer and one with literal asterisks in it. "text" is a
+    // JSON string either way — the newlines in it have to be escaped as \\n.
+    `"text" is rendered as Markdown: **bold**, lists, \`code\`, tables, and $TeX$ or $$display TeX$$ all typeset. Use it for structure, keep it short, and remember it is a JSON string — escape newlines as \\n. Raw HTML is not rendered.`
   ].join('\n');
 }
 
@@ -280,12 +340,16 @@ export async function buildSystemPrompt(machine = App.machine, { notes = false }
   const fewShot = await loadFewShot(machine);
 
   const parts = [
-    `You build finite-state machines for Automata Playground, a teaching tool. You are given a request and you answer with one machine, as JSON. Nothing else.`,
+    `You build automata for AutomataStudio, a teaching/designing tool for automata theory. You are given a request and you answer with one machine, as JSON. Nothing else.`,
     ``,
-    `TARGET MODEL: ${machine} — ${cfg.fullName}.`,
+    `CURRENT MODEL: ${machine} — ${cfg.fullName}. This is what the canvas holds, and what the schema and rules below describe. It is a starting point, not a limit — see YOU CAN CHANGE THE MODEL.`,
     ``,
     `OUTPUT FORMAT — a single JSON object, no prose, no code fences, keys in this order:`,
     schemaBlock(machine, { notes }),
+    ``,
+    switchBlock(machine),
+    ``,
+    replyBlock(machine),
     ``,
     fieldGlossary(machine),
     ``,
@@ -300,7 +364,11 @@ export async function buildSystemPrompt(machine = App.machine, { notes = false }
     machineRules(machine),
     ``,
     `TESTS ARE MANDATORY AND THEY WILL BE EXECUTED.`,
-    `Give at least ${MIN_SPEC_TESTS} tests, including the shortest interesting word and at least one that must be rejected. The app runs them against the machine you just described, using its real simulator, before drawing anything. If your predictions do not match what your machine does, you will be asked to fix it — so trace them yourself first.`
+    `Give at least ${MIN_SPEC_TESTS} tests, including the shortest interesting word and at least one that must be rejected. The app runs them against the machine you just described, using its real simulator, before drawing anything. If your predictions do not match what your machine does, you will be asked to fix it — so trace them yourself first.`,
+    ``,
+    `IF YOU CANNOT DO EXACTLY WHAT WAS ASKED, SAY SO IN "caveat".`,
+    `Build the closest correct machine you can, and set "caveat" to one sentence naming the gap — that the language requested is not recognisable by a ${machine}, say, and what the machine you built recognises instead. Then write tests for the machine you actually built, not for the one that was asked for. Omit "caveat" entirely when the answer is exactly what was requested: it is not for describing a machine that is correct, which is what "blurb" is for.`,
+    `"caveat" is about the MACHINE, never about you or about producing the answer. Do not write that something was corrected, repaired, fixed, revised or updated, and do not refer to a previous attempt — the user is looking at one machine and has no idea there was another. "This DFA accepts only n ≤ 3, because aⁿbⁿ is not regular" is a caveat. "The machine was corrected to accurately reflect the language" is not, and will be discarded.`
   ];
 
   const grounding = guideGrounding(machine);
@@ -320,31 +388,66 @@ export async function buildSystemPrompt(machine = App.machine, { notes = false }
 }
 
 /**
+ * Past turns, as provider messages.
+ *
+ * The transcript carries *intent*, never machines. A user turn goes verbatim;
+ * an assistant turn that built something is reduced to its one-line summary,
+ * and only a reply survives word for word.
+ *
+ * That is not a size optimisation, though it is also that. The canvas is the
+ * state: compileSpec() diffs by state name against whatever is live right
+ * now, and buildUserMessage attaches that machine fresh on every turn. Replay
+ * three past machines alongside it and the model has four candidates for
+ * "the machine" and no way to tell which one the next edit lands on.
+ */
+export function threadMessages(turns = []) {
+  return turns.map(turn => ({
+    role: turn.role,
+    content: turn.role === 'assistant' && turn.kind === 'machine'
+      ? `[built: ${turn.text}]`
+      : turn.text
+  }));
+}
+
+/**
  * The user turn. `mode` is 'build' or 'edit'; the canvas is only attached in
  * edit mode or when the user has explicitly asked for it.
  */
-export function buildUserMessage({ prompt, mode, canvasSpec = null, followUp = null }) {
+export function buildUserMessage({ prompt, intent, canvasSpec = null, authority = 'auto' }) {
   const parts = [];
-
-  if (followUp) {
-    parts.push(
-      `Earlier in this session the user asked: "${followUp.prompt}"`,
-      `You produced: ${followUp.summary}`,
-      `They are now following up. Treat the request below as a correction to that machine.`,
-      ``
-    );
-  }
 
   if (canvasSpec) {
     parts.push(
-      mode === 'edit'
-        ? `THE MACHINE CURRENTLY ON THE CANVAS — modify this. Keep the names of every state you are not changing, so the diagram survives the edit:`
+      intent === 'edit'
+        ? `THE MACHINE CURRENTLY ON THE CANVAS — the request below is about this machine:`
         : `FOR CONTEXT, the machine currently on the canvas:`,
       JSON.stringify(canvasSpec),
       ``
     );
-  } else if (mode === 'edit') {
+    // Edit mode is a subject, not an instruction. Telling the model to modify
+    // the machine made every turn an edit — ask why a state rejects a word and
+    // you got a rebuilt diagram instead of an answer, which is both wrong and
+    // destructive. The two cases are spelled out so the request decides.
+    if (intent === 'edit') {
+      parts.push(
+        `If the request asks for a change, return the modified machine, and keep the names of every state you are not changing so the diagram survives the edit.`,
+        `If the request only asks a question about this machine, answer it with a reply and change nothing.`,
+        ``
+      );
+    }
+  } else if (intent === 'edit') {
     parts.push(`The canvas is empty, so build the machine from scratch.`, ``);
+  }
+
+  // Ask mode is read-only, and saying so is the difference between an answer
+  // and a machine that gets built and thrown away. The pipeline refuses to
+  // write either way — this is what stops the wasted round trip.
+  if (authority === 'ask') {
+    parts.push(
+      `THIS TURN IS READ-ONLY. Nothing you return will be drawn on the canvas.`,
+      `Answer with "kind": "reply". If the request asks for a machine, describe the one you would build — how many states, what each one remembers, the shape of the transitions — instead of returning it. The reader can turn that description into a real build with one click.`,
+      ``
+    );
   }
 
   parts.push(`REQUEST: ${prompt}`);
@@ -356,13 +459,13 @@ export function buildUserMessage({ prompt, mode, canvasSpec = null, followUp = n
  * The repair turn. Generated, never free text: the failures the simulator and
  * linter actually found, capped so a wide failure cannot crowd out the
  * original request.
+ *
+ * It no longer restates the answer being corrected. The rejected answer is now
+ * its own assistant turn in the thread, which is both cheaper and the shape a
+ * model expects — it reads its own last message rather than a quotation of it.
  */
-export function buildRepairMessage({ prompt, spec, failures = [], findings = [] }) {
-  const parts = [
-    `Your previous answer was:`,
-    JSON.stringify(spec),
-    ``
-  ];
+export function buildRepairMessage({ prompt, failures = [], findings = [] }) {
+  const parts = [`That answer cannot be used.`, ``];
 
   if (failures.length) {
     parts.push(`It failed ${failures.length} of the checks you predicted:`);
@@ -379,12 +482,30 @@ export function buildRepairMessage({ prompt, spec, failures = [], findings = [] 
   parts.push(
     `The original request was: ${prompt}`,
     ``,
-    `Return the corrected machine. Same JSON schema, same key order, no prose.`
+    `Return the corrected machine — "kind": "machine", same schema, same key order, no prose. A reply is not an acceptable answer here.`
   );
   return parts.join('\n');
 }
 
-/** Starter prompts for the idle palette, tailored to the current machine. */
+/**
+ * Openers for the idle console.
+ *
+ * In edit mode the machine already exists, so a build prompt is the wrong
+ * offer — it would replace the thing the user is looking at. These are the
+ * two halves of that mode instead: one question, then changes, so the empty
+ * state shows that asking is a thing you can do here at all.
+ */
+export function editStarterPrompts(machine = App.machine) {
+  const cfg = getMachineConfig(machine);
+  return [
+    'what language does this accept?',
+    ...(cfg.hasTape || cfg.hasStack ? [] : ['is this the smallest machine for it?']),
+    'add a trap state for everything else',
+    'rename the states to something clearer'
+  ];
+}
+
+/** Starter prompts for the idle console, tailored to the current machine. */
 export function starterPrompts(machine = App.machine) {
   const cfg = getMachineConfig(machine);
   if (isOmegaAutomaton(machine)) {
