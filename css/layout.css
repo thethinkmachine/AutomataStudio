@@ -123,7 +123,7 @@ header {
 }
 
 /* ─── TOOLS PICKER (auxiliary views) ───
-   Algorithms / Grammar / Theory are not peers of Build, so they live behind a
+   Algorithms / Grammar / Reference are not peers of Build, so they live behind a
    single control rather than in a tab row. */
 .tools-picker {
   position: relative;

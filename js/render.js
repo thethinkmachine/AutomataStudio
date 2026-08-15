@@ -9,7 +9,7 @@ import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } f
 import { $, App, OmegaAcceptance, R, SVG_NS, edgeLabelsHidden, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, statePriority, usesParityPriorities } from './state.js';
 import { getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
 import { Change, emit, subscribe } from './store.js';
-import { triggerMath } from './theory.js';
+import { triggerMath } from './reference.js';
 import { filterStates, filterTransitions } from './ui.js';
 import { isAnyPDA, isAnyTM, showStatus } from './utils.js';
 

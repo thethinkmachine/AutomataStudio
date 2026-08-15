@@ -279,7 +279,7 @@ const globals = {
   confirm: () => true,
   indexedDB: undefined,
   // Supplied by the KaTeX CDN bundle in the browser. Without it triggerMath()
-  // polls for the real one, and every theory-panel render would sit through the
+  // polls for the real one, and every Reference page render would sit through the
   // full retry budget before giving up.
   renderMathInElement: () => {},
   // loadSharedLinkFromURL reads location.hash at boot and clears it through

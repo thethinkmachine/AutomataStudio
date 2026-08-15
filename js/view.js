@@ -8,7 +8,7 @@ import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim } from './simulation.js';
 import { $, App, getMachineConfig, normalizeBoundarySymbolsForMachine } from './state.js';
 import { Change, emit } from './store.js';
-import { renderTheoryView } from './theory.js';
+import { renderReferenceView } from './reference.js';
 import { renderTabs, updateMobilePanelChrome, updateModelPickerLabels } from './ui.js';
 import { clearAll, isAnyTM, isCounterMachine, showStatus } from './utils.js';
 
@@ -17,13 +17,13 @@ import { clearAll, isAnyTM, isCounterMachine, showStatus } from './utils.js';
 // ══════════════════════════════════════════════════════════════════
 //  Build is the application itself, not one destination among four: the canvas
 //  is always mounted and never torn down. The auxiliary views (algo, grammar,
-//  theory) render as overlays on top of it.
+//  reference) render as overlays on top of it.
 //
 //  setView() stays the single entry point for view changes, so the many
 //  `setView('build')` calls that algorithms make to reveal their result on the
 //  canvas keep working — they now dismiss the overlay instead of swapping a
 //  pane.
-export const AUX_VIEWS = ['algo', 'grammar', 'theory'];
+export const AUX_VIEWS = ['algo', 'grammar', 'reference'];
 
 // Identity for the shared modal chrome. The subtitle names what the view
 // actually operates on, which is otherwise only discoverable by reading it.
@@ -38,9 +38,9 @@ export const AUX_META = {
     sub: 'G = (V, Σ, R, S) · context-free grammar workbench',
     icon: '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M208,24H72A32,32,0,0,0,40,56V224a8,8,0,0,0,8,8H192a8,8,0,0,0,0-16H56a16,16,0,0,1,16-16H208a8,8,0,0,0,8-8V32A8,8,0,0,0,208,24Zm-8,160H72a31.82,31.82,0,0,0-16,4.29V56A16,16,0,0,1,72,40H200Z"/></svg>'
   },
-  theory: {
-    title: 'Theory Reference',
-    sub: 'Hopcroft, Motwani & Ullman · Automata, Languages & Computation',
+  reference: {
+    title: 'Automata Reference',
+    sub: 'Every machine this app can build, defined and explained',
     icon: '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M251.76,88.94l-120-64a8,8,0,0,0-7.52,0l-120,64a8,8,0,0,0,0,14.12L32,117.87v48.42a15.91,15.91,0,0,0,4.06,10.65C49.16,191.53,78.51,216,128,216a130,130,0,0,0,48-8.76V240a8,8,0,0,0,16,0V199.51a115.63,115.63,0,0,0,27.94-22.57A15.91,15.91,0,0,0,224,166.29V117.87l27.76-14.81a8,8,0,0,0,0-14.12ZM128,168a8,8,0,1,1,8-8A8,8,0,0,1,128,168Zm80-1.71c-12.36,13.65-38.65,33.71-80,33.71s-67.64-20.06-80-33.71V126.4l76.24,40.66a8,8,0,0,0,7.52,0L208,126.4Zm-80-15.16L25,96l103-54.94L231,96Z"/></svg>'
   }
 };
@@ -89,7 +89,7 @@ export function setView(v) {
   });
 
   // The left panel and toolbar stay put across every view. They used to be
-  // hidden for grammar/theory but not algo, which made the shell appear to
+  // hidden for grammar/reference but not algo, which made the shell appear to
   // collapse depending on which aux view you opened.
   $('lpanel').classList.remove('hidden');
 
@@ -103,7 +103,7 @@ export function setView(v) {
 
   if (v === 'algo') { renderAlgo(App.currentAlgo); }
   if (v === 'grammar') { renderGrammarLPanel(); renderGrammarView(); renderGramSyms(); }
-  if (v === 'theory') { renderTheoryView(); }
+  if (v === 'reference') { renderReferenceView(); }
   updateLPanel();
   if (typeof updateMobilePanelChrome === 'function') updateMobilePanelChrome();
 

@@ -44,7 +44,7 @@ import * as statesTransitions from '../js/states-transitions.js';
 import * as store from '../js/store.js';
 import * as suggest from '../js/suggest.js';
 import * as themes from '../js/themes.js';
-import * as theory from '../js/theory.js';
+import * as reference from '../js/reference.js';
 import * as ui from '../js/ui.js';
 import * as utils from '../js/utils.js';
 import * as view from '../js/view.js';
@@ -55,7 +55,7 @@ const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, geometry, statesTransitions,
   canvas, render, notes, dividers, simulation, suggest, language, alphabet,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
-  importJflap, algorithmsFa, algorithmsCfg, theory, workspace, quickSettings, minimap, ui
+  importJflap, algorithmsFa, algorithmsCfg, reference, workspace, quickSettings, minimap, ui
 ];
 
 // Live view over every module export. Names are unique across modules (the
