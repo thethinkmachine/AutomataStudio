@@ -3,7 +3,7 @@ import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { applyCamera, hideCanvasContextMenu } from './canvas.js';
 import { snapshot } from './history.js';
 import { importJFLAPText } from './import-jflap.js';
-import { closeModal, registerModal, showOverlay } from './modal.js';
+import { closeModal, showOverlay } from './modal.js';
 import { refreshQuickSettings } from './quick-settings.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { runSim } from './simulation.js';
@@ -703,19 +703,12 @@ window.addEventListener('beforeunload', e => {
 
 
 // ══════════════════════════════════════════════════════════════════
-//  LOAD EXAMPLE
+//  EXAMPLES
 // ══════════════════════════════════════════════════════════════════
-let exampleModalOptions = [];
-let exampleModalRequest = 0;
-
-registerModal('example-modal', {
-  dismissOnBackdrop: true,
-  onClose: () => {
-    exampleModalRequest++;
-    const btn = $('example-picker-btn');
-    if (btn) btn.setAttribute('aria-expanded', 'false');
-  }
-});
+//  The catalogue and the loader. The dialog that presents them belongs to
+//  js/statemate-ui.js, which puts the examples under one input alongside
+//  the exact algorithms and the model — see the note at the top of that
+//  file for why the examples stayed rather than being replaced.
 
 export function getMachineExampleOptions() {
   const list = (typeof MachineExamples !== 'undefined' && MachineExamples[App.machine]) || null;
@@ -733,11 +726,6 @@ function searchableExampleText(opt) {
     .toLocaleLowerCase();
 }
 
-function exampleResultButtons() {
-  const list = $('example-results');
-  return list ? Array.from(list.querySelectorAll('.example-result')) : [];
-}
-
 export function filterMachineExampleOptions(options, query) {
   const terms = String(query || '')
     .normalize('NFKD')
@@ -753,130 +741,27 @@ export function filterMachineExampleOptions(options, query) {
   });
 }
 
-export function renderExampleModal(query = '') {
-  const list = $('example-results');
-  const empty = $('example-empty');
-  const count = $('example-result-count');
-  if (!list || !empty || !count) return;
-
-  const matches = filterMachineExampleOptions(exampleModalOptions, query);
-  list.innerHTML = '';
-  matches.forEach((opt, i) => {
-    const item = document.createElement('button');
-    item.className = 'example-result' + (opt.featured ? ' featured' : '');
-    item.type = 'button';
-    item.setAttribute('role', 'option');
-    item.setAttribute('aria-label', `Load ${opt.meta?.title || opt.label || opt.file}`);
-
-    const head = document.createElement('span');
-    head.className = 'example-result-head';
-    const name = document.createElement('span');
-    name.className = 'example-result-name';
-    name.textContent = opt.meta?.title || opt.label || opt.file;
-    const badges = document.createElement('span');
-    badges.className = 'example-result-badges';
-    if (opt.featured) {
-      const featured = document.createElement('span');
-      featured.className = 'example-result-badge featured';
-      featured.textContent = 'Featured';
-      badges.appendChild(featured);
-    }
-    const machine = document.createElement('span');
-    machine.className = 'example-result-badge';
-    machine.textContent = App.machine;
-    badges.appendChild(machine);
-    head.append(name, badges);
-    item.appendChild(head);
-
-    if (opt.meta?.blurb) {
-      const desc = document.createElement('span');
-      desc.className = 'example-result-desc';
-      desc.textContent = opt.meta.blurb;
-      item.appendChild(desc);
-    }
-    item.onclick = () => {
-      closeModal('example-modal');
-      loadExampleFile(opt.file);
-    };
-    item.onkeydown = e => {
-      const buttons = exampleResultButtons();
-      const index = buttons.indexOf(item);
-      let target = null;
-      if (e.key === 'ArrowDown') target = buttons[Math.min(index + 1, buttons.length - 1)];
-      if (e.key === 'ArrowUp') target = index > 0 ? buttons[index - 1] : $('example-search');
-      if (e.key === 'Home') target = buttons[0];
-      if (e.key === 'End') target = buttons[buttons.length - 1];
-      if (!target) return;
-      e.preventDefault();
-      target.focus();
-    };
-    list.appendChild(item);
-  });
-
-  empty.hidden = matches.length !== 0;
-  count.textContent = `${matches.length} ${matches.length === 1 ? 'example' : 'examples'}`;
-}
-
-export function loadExample() {
-  const options = getMachineExampleOptions();
-  if (!options.length) return;
-
-  // Close lightweight popovers before the modal takes over the focus stack.
-  if (typeof hideTabOverflowMenu === 'function') hideTabOverflowMenu();
-  if (typeof hideTabContextMenu === 'function') hideTabContextMenu();
-  if (typeof hideContextMenu === 'function') hideContextMenu();
-  if (typeof hideCanvasContextMenu === 'function') hideCanvasContextMenu();
-
-  const request = ++exampleModalRequest;
-  exampleModalOptions = options.map((opt, i) => ({ ...opt, featured: i === 0, meta: null }));
-  const cfg = getMachineConfig(App.machine);
-  const title = $('example-modal-title');
-  const machineLabel = $('example-machine-label');
-  const search = $('example-search');
-  const btn = $('example-picker-btn');
-  if (title) title.textContent = `${cfg.label || App.machine} Examples`;
-  if (machineLabel) machineLabel.textContent = cfg.fullName || cfg.label || App.machine;
-  if (search) {
-    search.value = '';
-    search.oninput = () => renderExampleModal(search.value);
-    search.onkeydown = e => {
-      if (e.key !== 'ArrowDown') return;
-      const first = exampleResultButtons()[0];
-      if (!first) return;
-      e.preventDefault();
-      first.focus();
-    };
-  }
-  if (btn) btn.setAttribute('aria-expanded', 'true');
-  renderExampleModal();
-  showOverlay('example-modal');
-  if (search) search.focus();
-
-  // Labels render immediately. Rich descriptions arrive from the same JSON
-  // files the loader uses, then the active query is reapplied without moving
-  // focus or closing the dialog if one file happens to be malformed.
-  Promise.all(exampleModalOptions.map(opt =>
-    fetch(`js/examples/${opt.file}.json`)
-      .then(res => res.ok === false ? null : res.json())
-      .then(data => ({ ...opt, meta: data?.meta || null }))
-      .catch(() => opt)
-  )).then(enriched => {
-    if (request !== exampleModalRequest) return;
-    exampleModalOptions = enriched;
-    renderExampleModal(search?.value || '');
-  });
-}
-
 export function loadExampleFile(file) {
   const executeLoad = () => {
     fetch(`js/examples/${file}.json`)
       .then(res => res.json())
       .then(data => {
+        // The undo point goes before the edit, not after it. This used to end
+        // in snapshot(), which recorded the example that had just been loaded
+        // — so the first Ctrl+Z restored the example rather than the work it
+        // replaced. performClear() empties App.history as part of clearing the
+        // canvas, so the stack is carried across it by hand; without that,
+        // loading an example is an edit that cannot be undone AND discards
+        // every undo point behind it.
+        snapshot();
+        const history = App.history.slice();
         performClear();
+        App.history = history;
+        App.future = [];
+
         loadData(data, true);
         showExampleCard(data.meta);
         showStatus(`Example: ${App.machine} loaded`);
-        snapshot();
       })
       .catch(err => {
         console.error(err);

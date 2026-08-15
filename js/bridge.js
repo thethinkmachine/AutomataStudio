@@ -79,9 +79,14 @@ import {
   trySymSuggestKeydown,
 } from './suggest.js';
 import {
-  copyShareableLink, hideSaveMenu, loadExample, loadJSON, onFileLoad,
+  copyShareableLink, hideSaveMenu, loadJSON, onFileLoad,
   saveJSON, saveWorkspace, toggleSaveMenu,
 } from './persistence.js';
+// The whole StateMate feature adds exactly one name here. Everything else in
+// js/statemate-ui.js wires its listeners at creation, the way reference.js
+// does — bridge.js is the worklist for removing this seam, not a place to
+// grow it.
+import { openStateMate } from './statemate-ui.js';
 import {
   exportCodeCopy, exportCodeDownload, exportCopyBatchQuick, exportOpenBatch,
   openExportCodeModal, openExportImageModal, runImageExport,
@@ -175,8 +180,10 @@ Object.assign(window, {
    handleSymSuggestKeyup, hideSymSuggest, refreshSymSuggest,
    trySymSuggestKeydown,
   // persistence.js
-   copyShareableLink, hideSaveMenu, loadExample, loadJSON, onFileLoad,
+   copyShareableLink, hideSaveMenu, loadJSON, onFileLoad,
    saveJSON, saveWorkspace, toggleSaveMenu,
+  // statemate-ui.js
+   openStateMate,
   // export-ui.js
    exportCodeCopy, exportCodeDownload, exportCopyBatchQuick, exportOpenBatch,
    openExportCodeModal, openExportImageModal, runImageExport,

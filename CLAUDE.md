@@ -160,6 +160,30 @@ Nothing in the view is reached from an `on*` attribute: the nav links get their 
 
 PNG export can embed the workspace JSON in the image; dropping that PNG back on the canvas restores it ([js/persistence.js](js/persistence.js) `handleFiles`). Persistence also covers IndexedDB autosave, `.json` save/load, base64url share links, and JFLAP import ([js/import-jflap.js](js/import-jflap.js)).
 
+### StateMate
+
+The AI assist behind the sparkle button in the header. One prompt, one machine, no conversation. Seven modules, split by pipeline stage so each half is testable without the one before it:
+
+```
+assemble → request → parse → compile → lint → verify → apply
+              ↑                                  │
+              └────────── repair, ≤2 rounds ─────┘
+```
+
+**The canvas is written exactly once, at `apply`, or not at all.** Every stage before it produces a candidate object and touches nothing else, so a failed run — a rejected key, an unparseable answer, a DFA that turned out nondeterministic — leaves the user's work exactly as it was. That property matters more than model quality, and [tests/statemate.test.js](tests/statemate.test.js) pins it by comparing `exportWorkspaceState()` either side of a failure.
+
+- **[js/statemate-spec.js](js/statemate-spec.js)** — the dialect. Deliberately *not* the workspace save format: no ids, no coordinates, `start`/`accept` as booleans on the state. Field names differ (`on` not `symbol`, `move` not `dir`, `out` not `output`) so a model that regurgitates a save file fails loudly at the gate instead of half-working. `transitionFieldsFor`/`stateFieldsFor` derive the legal fields from `MachineTypes`, so a machine added to `state.js` is describable with no edit here. Imports `state.js` only.
+- **[js/statemate-compile.js](js/statemate-compile.js)** — spec → candidate, diffed against the live machine **by state name**. Survivors keep their id, their x/y, their anchored notes and their hand-tuned `curve`/`loopAngle`; only new states are placed, at the centroid of their placed neighbours plus `resolveNodeOverlaps`. This is the whole difference between an edit and a replacement — "add a trap state" must add one circle, not rearrange the diagram. A machine-type change starts clean rather than half-inheriting.
+- **[js/statemate-lint.js](js/statemate-lint.js)** — the machine-shape rules a schema cannot express, pure over the candidate. Three severities: `fix` is applied locally and *reported* (a fix the user cannot see is a fix they cannot distrust), `repair` costs a model round trip, `warn` never blocks. Determinism is the rule that earns its keep.
+- **`verifyCandidate`** in [js/statemate.js](js/statemate.js) — the reason to trust the output. The model must predict what its machine does on ≥3 words; those predictions are executed through `computeBatchResults()` before anything is drawn. Stash the workspace, import the candidate without emitting, decide, restore in a `finally`. `computeBatchResults` is DOM-free by construction — that split is what makes this possible.
+- **[js/statemate-prompt.js](js/statemate-prompt.js)** — assembled from the app's own registries: the field list from `MachineTypes`, the notation from `App.config.sym`, the concept text from `MachineGuides`, and a worked example produced by running the bundled example file through `machineToSpec()` — so the few-shot cannot drift from the schema.
+- **[js/statemate.js](js/statemate.js)** — the orchestrator, the repair loop, the one-turn follow-up slot, and the error copy. Applying goes through `commit()`, so one Ctrl+Z reverts the whole thing.
+- **[js/statemate-ui.js](js/statemate-ui.js)** — the palette. It owns the dialog the example picker used to own; examples are still its default result list, and an exact algorithm (`minimize`, `subset construction`) is surfaced *above* the ask row, because `algorithms-fa.js` is correct and a model is only usually correct. Listeners are attached at creation the way `reference.js` does, so the whole feature adds exactly one name to `bridge.js`.
+
+**Settings must never go in `App.config`.** `exportWorkspaceState()` deep-copies the whole config into every workspace tab and `getBackupPayload()` writes it to IndexedDB, so an API key there would be a key on disk. StateMate keeps its own store under the `automata-statemate` localStorage key ([js/statemate-provider.js](js/statemate-provider.js)), and a test asserts the key reaches none of the four serializers. `getWorkspaceData()` and `getEditorSettingsData()` happen to be allow-lists today; that is one edit away from not being true.
+
+In Electron the request goes through `statemate:request` in the main process, which sidesteps every provider's CORS policy. The browser path falls back to a direct `fetch` with the per-provider caveat surfaced in the settings tab.
+
 ### Themes
 
 Adding a theme touches two places, documented at the top of [js/themes.js](js/themes.js): a `:root[data-theme="id"]` block in `css/variables.css`, and an entry in the `Themes` registry. The entry needs an `export` palette because the SVG canvas and minimap paint from JS colour values, not CSS variables — `applyTheme()` ([js/ui.js](js/ui.js)) copies it into `App.config.export.*` and repaints.

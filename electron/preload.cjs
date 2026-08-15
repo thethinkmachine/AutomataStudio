@@ -35,4 +35,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('window-maximized-change', listener);
     return () => ipcRenderer.removeListener('window-maximized-change', listener);
   },
+
+  // StateMate's model request, proxied through the main process. The browser
+  // build has to satisfy each provider's CORS policy — Anthropic needs an
+  // explicit opt-in header, and a local Ollama needs OLLAMA_ORIGINS set. None
+  // of that applies here, and js/statemate-provider.js prefers this path
+  // whenever it exists. Resolves { ok, status, body } rather than throwing, so
+  // an HTTP error maps to the same copy in both transports.
+  statemateRequest: (payload) => ipcRenderer.invoke('statemate:request', payload),
 });
