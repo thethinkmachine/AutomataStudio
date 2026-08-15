@@ -21,7 +21,10 @@ header {
   gap: 6px;
   padding: 0 10px 0 0;
   background: var(--bg2);
-  border-bottom: 1px solid var(--border);
+  /* No bottom rule: the header, .lpanel and .rpanel are meant to read as one
+     continuous surface, and a hairline here cuts it into three. The edge the
+     eye needs is the canvas well's ring, which runs under the header only
+     across the canvas and then curves away into the panels. */
   z-index: 200;
   flex-shrink: 0;
 }
@@ -422,7 +425,7 @@ header {
   max-height: min(60vh, 380px);
   overflow-y: auto;
   width: 250px;
-  /* Matches .example-menu — see the note there on clearing the header. */
+  /* Escape the header's stacking context and overflow clipping. */
   z-index: 950;
 }
 
@@ -820,6 +823,11 @@ header {
   display: flex;
   overflow: hidden;
   position: relative;
+  /* The chrome tone, not the canvas tone. The canvas is a rounded well on top
+     of this, so its corners uncover .app-body — that uncovered quarter is the
+     concave corner each panel appears to have. Paint it --bg and the curve
+     disappears even though the radius is still there. */
+  background: var(--bg2);
 }
 
 @keyframes tabSwitchFade {
@@ -932,68 +940,6 @@ header {
 
 .model-picker-container.open .model-picker-menu {
   display: block;
-}
-
-/* ── Example picker dropdown (Load Example button) ──
-   Shares the document-level .ctx popover used by the tab overflow menu and
-   the canvas context menus: .ctx is position:fixed, so the menu escapes the
-   header's stacking context and overflow clipping instead of being trapped
-   inside it. Only sizing lives here; chrome comes from .ctx. */
-.example-menu {
-  max-height: min(60vh, 380px);
-  overflow-y: auto;
-  width: 260px;
-  /* Above the header (900) so an upward flip isn't painted behind it;
-     still below the modal overlay's backdrop chrome. */
-  z-index: 950;
-}
-
-.example-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 8px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  font-family: var(--sans);
-  font-size: .78rem;
-  text-align: left;
-  color: var(--text2);
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.example-menu-item:hover,
-.example-menu-item:focus-visible {
-  background: var(--surface3);
-  color: var(--text);
-  outline: none;
-}
-
-.example-menu-item-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--text3);
-  flex: 0 0 auto;
-}
-
-.example-menu-item-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.example-menu-item.flagship {
-  color: var(--text);
-}
-
-.example-menu-item.flagship .example-menu-item-dot {
-  background: var(--accent);
 }
 
 .model-cat-group {

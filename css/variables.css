@@ -31,7 +31,20 @@
   --r: 8px;
   /* Single unified header bar; there is no longer a second toolbar row. */
   --hdr: 48px;
+  /* The header and both sidebars are one unbroken --bg2 surface, and the canvas
+     is a well cut into it. This is the radius of that cutout — so the curve
+     belongs to the canvas, and what each panel shows at its inner corners is
+     the concave outside of it. mobile.css zeroes it where the panels stop
+     being rails and the well stops having chrome beside it. */
+  --canvas-radius: 8px;
+  /* The well had chrome on three sides only — header above, a sidebar either
+     side, and nothing under it, which left the bottom corners curving into a
+     window edge instead of into a frame. This is the sill that closes it: the
+     canvas stops short by this much and the panels carry --bg2 across the gap,
+     so the frame runs all the way round. */
+  --canvas-sill: 10px;
   --overlay: rgba(2, 8, 20, .68);
+  --overlay-blur: 3px;
   --overlay-ring: rgba(255, 255, 255, .025);
   --focus-ring: rgba(79, 195, 247, .08);
   --panel-shadow-left: 2px 0 12px rgba(0, 0, 0, .16);

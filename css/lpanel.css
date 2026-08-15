@@ -19,7 +19,9 @@
   width: var(--lpanel-width, 256px);
   min-width: var(--lpanel-width, 256px);
   background: var(--bg2);
-  border-right: 1px solid var(--border);
+  /* No rule against the canvas: the panel, the header and the right panel are
+     one surface, and the only edge in that corner of the app is the canvas
+     well's own ring. See --canvas-radius. */
   overflow: visible;
   display: flex;
   flex-direction: column;
@@ -488,6 +490,23 @@
   pointer-events: none;
 }
 
+/* An unpinned panel leaves the flow, so the canvas stretched to the window edge
+   and the well lost the chrome its corners are cut out of — the curve then had
+   nothing to curve against and read as a stray notch in the window corner.
+   Keep the frame by falling back to the sill on that side: pinned, the margin
+   is the panel itself; unpinned, it is 10px of --bg2 that the panel floats
+   over. The well is framed on all four sides in every combination.
+
+   .lpanel precedes .view-container, so ~ reaches it. .rpanel follows the canvas
+   inside #v-build, which no combinator walks backwards, hence :has(). */
+.lpanel.unpinned~.view-container .canvas-area {
+  margin-left: var(--canvas-sill);
+}
+
+#v-build:has(> .rpanel.unpinned) .canvas-area {
+  margin-right: var(--canvas-sill);
+}
+
 body.panel-resizing,
 body.panel-resizing * {
   user-select: none !important;
@@ -507,6 +526,9 @@ body.panel-resizing .rpanel {
   position: absolute;
   left: 0;
   top: 0;
+  /* Keep the panel surface running through the sill. Shortening the panel to
+     the canvas edge exposes its rectangular bottom edge as a horizontal seam;
+     the decorative fillet is moved up independently below. */
   height: 100%;
   z-index: 100;
   box-shadow: var(--panel-shadow-left);
@@ -542,6 +564,40 @@ body.panel-resizing .rpanel {
   width: 15px;
   cursor: default;
   z-index: 101;
+}
+
+/* Unpinned, the panel stops being part of the frame and floats over the well,
+   so the concave corners it had as chrome have nothing left to cut them out of
+   — the well's own corners are away at the sill line, underneath it.
+   It therefore paints its own: a strip just outside the right edge carrying a
+   --bg2 fillet at each end, transparent inside the arc. Same shape the well
+   gave it when pinned, so unpinning changes what the panel is attached to and
+   not what it looks like. ::after is the hover strip above, hence ::before. */
+.lpanel.unpinned::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: calc(-1 * var(--canvas-radius));
+  width: var(--canvas-radius);
+  pointer-events: none;
+  transition: opacity var(--transition-base);
+  transition-delay: 0.1s;
+  background:
+    radial-gradient(circle at 100% 100%,
+      transparent calc(var(--canvas-radius) - 0.5px),
+      var(--bg2) calc(var(--canvas-radius) + 0.5px)) right top / var(--canvas-radius) var(--canvas-radius) no-repeat,
+    radial-gradient(circle at 100% 0,
+      transparent calc(var(--canvas-radius) - 0.5px),
+      var(--bg2) calc(var(--canvas-radius) + 0.5px)) right 0 bottom var(--canvas-sill) / var(--canvas-radius) var(--canvas-radius) no-repeat,
+    linear-gradient(var(--bg2), var(--bg2)) right bottom / 100% var(--canvas-sill) no-repeat;
+}
+
+/* Collapsed the panel is 0 wide, which would strand the fillets against the
+   window edge. Fade them on the content's schedule. */
+.lpanel.unpinned:not(:hover)::before {
+  opacity: 0;
+  transition-delay: 0.15s;
 }
 
 /* Subordinate to the app header, not a second one: no bottom rule, and the
