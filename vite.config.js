@@ -1,9 +1,14 @@
 import { defineConfig } from 'vite';
-import { cpSync, mkdirSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
+
+// package.json is the single source of truth for the version — it is what
+// electron-builder stamps on the installers and what the updater compares
+// against, so the About dialog must not carry a second hand-edited copy.
+const pkg = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8'));
 
 // Prepended to the bundle. The PolyForm Noncommercial License requires that every
 // "Required Notice:" line travels with any part of the software that is passed on,
@@ -43,6 +48,10 @@ export default defineConfig({
   // so neither can assume the document sits at the domain root.
   base: './',
   plugins: [copyExamples()],
+  // Read back in js/workspace.js, which guards on `typeof` so the Node test
+  // run — which imports the modules directly, with no Vite in the way — does
+  // not trip over an undefined global.
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

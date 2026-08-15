@@ -9,8 +9,6 @@ body.modal-open {
   position: fixed;
   inset: 0;
   background: var(--overlay);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -20,13 +18,20 @@ body.modal-open {
   transition: opacity var(--transition-base);
 }
 
+/* The blur lives on .show, not on .overlay: twelve overlays sit in the DOM at
+   all times, and declaring a backdrop-filter on the base class asks the
+   compositor for a filtered layer behind every one of them whether or not a
+   dialog is open. The radius is small because the cost scales with it and the
+   --overlay scrim carries most of the separation. */
 .overlay.show {
   opacity: 1;
   pointer-events: all;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
 
 .modal {
-  background: linear-gradient(180deg, var(--surface) 0%, var(--bg2) 100%);
+  background: var(--surface);
   border: 1px solid var(--border2);
   border-radius: 14px;
   padding: 26px 28px;
@@ -36,7 +41,7 @@ body.modal-open {
   max-height: 85vh;
   overflow-y: auto;
   overflow-x: hidden;
-  box-shadow: var(--shadow-lg), 0 0 0 1px var(--overlay-ring), inset 0 1px 0 rgba(255, 255, 255, .03);
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--overlay-ring);
   transform: translateY(-10px) scale(.98);
   transition: transform var(--transition-base), opacity var(--transition-base);
 }
@@ -171,10 +176,12 @@ body.modal-open {
   gap: 7px;
 }
 
+/* Flat accent fill, matching the app's other primary actions (.run-btn,
+   .algo-btn). Depth comes from the glow on hover, not from shading the fill. */
 .btn-p {
   padding: 8px 18px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 100%, white 8%), var(--accent));
-  border: 1px solid var(--accent-border-strong);
+  background: var(--accent);
+  border: 1px solid transparent;
   color: var(--on-accent);
   font-family: var(--mono);
   font-size: .72rem;
@@ -182,18 +189,15 @@ body.modal-open {
   cursor: pointer;
   font-weight: 600;
   letter-spacing: .01em;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .15);
-  transition: filter var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+  transition: all var(--transition-fast);
 }
 
 .btn-p:hover {
-  filter: brightness(1.1);
-  box-shadow: var(--accent-glow), 0 1px 2px rgba(0, 0, 0, .15);
+  box-shadow: var(--accent-glow);
 }
 
 .btn-p:active {
   transform: translateY(1px);
-  filter: brightness(0.97);
 }
 
 .btn-g {
@@ -305,16 +309,12 @@ body.modal-open {
   max-width: 480px;
 }
 
-.modal.trans-modal-wide {
+.modal.about-modal-wide {
   max-width: 440px;
 }
 
-.modal.help-modal-wide {
-  max-width: 400px;
-}
-
-.modal.about-modal-wide {
-  max-width: 420px;
+.modal.trans-modal-wide {
+  max-width: 440px;
 }
 
 /* ─── TABS ─── */
@@ -371,8 +371,9 @@ body.modal-open {
 }
 
 /* ─── ABOUT MODAL ─── */
-/* Centred for the same reason as .logo-wrapper in layout.css — here the gap is
-   wider still, a 34px mark against 18.4px text. */
+
+/* Doubles as this dialog's title — see the note on the markup in index.html.
+   The border-bottom puts it in the same structural slot as .modal-title. */
 .about-logo-header {
   display: flex;
   align-items: center;
@@ -382,55 +383,42 @@ body.modal-open {
   border-bottom: 1px solid var(--border2);
 }
 
+/* Wordmark over byline, as one block beside the mark. */
+.about-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* The base rule pads the byline 2px off the left so it clears the wordmark when
+   the two sit side by side; stacked, that same padding just knocks it out of
+   alignment with the line above it. */
 .about-logo-header .logo-author {
-  opacity: 1;
-  position: static;
-  margin-top: 0;
-  font-size: 0.6rem;
+  padding-left: 0;
   pointer-events: none;
 }
 
-.about-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  margin-bottom: 4px;
+.about-blurb {
+  margin: 14px 0 18px;
 }
 
-.about-row {
-  display: flex;
-  align-items: baseline;
-  gap: 16px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
+/* The labels here are one word, and the values are long — the repository path
+   needs the room the default 130px column would take. */
+.about-modal-wide .modal-lbl {
+  min-width: 96px;
 }
 
-.about-row:last-child {
-  border-bottom: none;
-}
-
-.about-lbl {
-  font-family: var(--mono);
-  font-size: .65rem;
-  color: var(--text3);
-  min-width: 90px;
-  flex-shrink: 0;
-  letter-spacing: .04em;
-}
-
+/* One treatment for every value in the dialog. .about-badge and .about-link
+   layer chrome on top of this but must not set their own font-size — four rows
+   at four sizes is what this replaced. */
 .about-val {
   font-family: var(--mono);
   font-size: .78rem;
   color: var(--text);
 }
 
-.about-val em {
-  color: var(--accent);
-  font-style: normal;
-}
-
 .about-badge {
-  font-size: .65rem;
   color: var(--text2);
   background: var(--surface2);
   border: 1px solid var(--border2);
@@ -440,8 +428,6 @@ body.modal-open {
 }
 
 .about-link {
-  font-family: var(--mono);
-  font-size: .75rem;
   color: var(--accent);
   text-decoration: none;
   display: inline-flex;
@@ -791,6 +777,7 @@ body.modal-open {
 }
 
 /* ── Help modal ── */
+
 .help-table {
   width: 100%;
   border-collapse: collapse;
@@ -804,19 +791,11 @@ body.modal-open {
   border-bottom: 1px solid var(--border);
 }
 
+/* Fits the longest binding shown, "Ctrl + Shift + Z", without wrapping. */
 .help-table td:first-child {
   color: var(--accent);
   font-weight: 600;
-  width: 120px;
-}
-
-.help-section {
-  font-family: var(--mono);
-  font-size: .62rem;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--text3);
-  margin: 12px 0 4px;
+  width: 132px;
 }
 
 /* ── CFL pump visualization ── */
@@ -1558,7 +1537,6 @@ button:focus-visible {
   padding: 16px 18px;
   border-color: var(--border2);
   border-radius: 8px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .02);
   line-height: 1.6;
 }
 
@@ -1629,7 +1607,10 @@ button:focus-visible {
   min-height: 0;
 }
 
-.settings-modal-wide #settings-tabs {
+/* The vertical tab rail. Keyed to the classes rather than #settings-tabs so
+   every dialog built on .settings-modal-wide gets the same rail — Engine
+   Settings and Keyboard Shortcuts both use it. */
+.settings-modal-wide .modal-tabs {
   display: flex;
   flex-direction: column;
   flex-wrap: nowrap;
@@ -1638,7 +1619,7 @@ button:focus-visible {
   border-bottom: 0;
 }
 
-.settings-modal-wide #settings-tabs .modal-tab {
+.settings-modal-wide .modal-tabs .modal-tab {
   position: relative;
   display: block;
   width: 100%;
@@ -1654,18 +1635,18 @@ button:focus-visible {
   background: transparent;
 }
 
-.settings-modal-wide #settings-tabs .modal-tab:hover {
+.settings-modal-wide .modal-tabs .modal-tab:hover {
   color: var(--text);
   background: var(--surface2);
 }
 
-.settings-modal-wide #settings-tabs .modal-tab.active {
+.settings-modal-wide .modal-tabs .modal-tab.active {
   color: var(--accent);
   background: var(--accent-soft);
   border-color: var(--accent-border);
 }
 
-.settings-modal-wide #settings-tabs .modal-tab.active::before {
+.settings-modal-wide .modal-tabs .modal-tab.active::before {
   content: '';
   position: absolute;
   left: 4px;
@@ -1676,7 +1657,7 @@ button:focus-visible {
   background: var(--accent);
 }
 
-.settings-modal-wide #settings-tab-panels {
+.settings-modal-wide .modal-tab-panels {
   min-width: 0;
   min-height: 0;
   height: auto !important;
@@ -1729,19 +1710,19 @@ button:focus-visible {
     grid-template-rows: auto minmax(0, 1fr);
   }
 
-  .settings-modal-wide #settings-tabs {
+  .settings-modal-wide .modal-tabs {
     flex-direction: row;
     overflow-x: auto;
   }
 
-  .settings-modal-wide #settings-tabs .modal-tab {
+  .settings-modal-wide .modal-tabs .modal-tab {
     width: auto;
     min-width: max-content;
     padding: 7px 10px;
   }
 
-  .settings-modal-wide #settings-tabs .modal-tab.active::before { display: none; }
-  .settings-modal-wide #settings-tab-panels { padding: 16px; }
+  .settings-modal-wide .modal-tabs .modal-tab.active::before { display: none; }
+  .settings-modal-wide .modal-tab-panels { padding: 16px; }
   .settings-modal-wide .modal-row { flex-wrap: nowrap; }
   .settings-modal-wide .modal-row > .inp,
   .settings-modal-wide .modal-row > .sel,

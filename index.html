@@ -1399,168 +1399,161 @@
 
   <!-- Theme Modal -->
 
-  <!-- Help Modal -->
+  <!-- Keyboard Shortcuts. Same shell as Engine Settings — .export-code-modal
+       for the padding-less frame, .settings-modal-wide for the vertical tab
+       rail — because it has the same shape of content: many grouped rows that
+       do not fit one scroll. The bindings mirror the keydown handlers in
+       js/ui.js, js/minimap.js and js/notes.js; anything added there belongs in
+       the matching section here. -->
   <div class="overlay" id="help-modal" role="dialog" aria-modal="true" aria-label="Keyboard Shortcuts">
-    <div class="modal help-modal-wide">
-      <div class="modal-title">Keyboard Shortcuts &amp; Help</div>
-      <div class="help-section">Tools</div>
-      <table class="help-table">
-        <tr>
-          <td>Esc</td>
-          <td>Pointer — normal cursor, drag states to move</td>
-        </tr>
-        <tr>
-          <td>V</td>
-          <td>Pan — drag canvas to pan, drag states to move</td>
-        </tr>
-        <tr>
-          <td>S</td>
-          <td>State — click canvas to place state</td>
-        </tr>
-        <tr>
-          <td>T</td>
-          <td>Transition — click source then target state</td>
-        </tr>
-        <tr>
-          <td>D</td>
-          <td>Delete — click state to remove</td>
-        </tr>
-        <tr>
-          <td>X</td>
-          <td>Clear — delete all states and transitions</td>
-        </tr>
-      </table>
-      <div class="help-section">Tools</div>
-      <table class="help-table">
-        <tr>
-          <td>1</td>
-          <td>Return to the canvas</td>
-        </tr>
-        <tr>
-          <td>2</td>
-          <td>Open Algorithms</td>
-        </tr>
-        <tr>
-          <td>3</td>
-          <td>Open Grammar</td>
-        </tr>
-        <tr>
-          <td>4</td>
-          <td>Open Reference</td>
-        </tr>
-        <tr>
-          <td>Esc</td>
-          <td>Close tool, back to canvas</td>
-        </tr>
-      </table>
-      <div class="help-section">Edit</div>
-      <table class="help-table">
-        <tr>
-          <td>Ctrl+Z</td>
-          <td>Undo last action</td>
-        </tr>
-        <tr>
-          <td>Ctrl+Y</td>
-          <td>Redo last undone action</td>
-        </tr>
-        <tr>
-          <td>Ctrl+S</td>
-          <td>Save workspace</td>
-        </tr>
-        <tr>
-          <td>Ctrl+Shift+S</td>
-          <td>Export automaton as JSON</td>
-        </tr>
-      </table>
-      <div class="help-section">Simulation</div>
-      <table class="help-table">
-        <tr>
-          <td>Arrow Right / Enter</td>
-          <td>Step simulation forward</td>
-        </tr>
-        <tr>
-          <td>Arrow Left</td>
-          <td>Step simulation backward</td>
-        </tr>
-        <tr>
-          <td>Escape</td>
-          <td>Cancel current action / close modal</td>
-        </tr>
-      </table>
-      <div class="help-section">Canvas</div>
-      <table class="help-table">
-        <tr>
-          <td>Scroll Wheel</td>
-          <td>Zoom in / out</td>
-        </tr>
-        <tr>
-          <td>+ / =</td>
-          <td>Zoom in</td>
-        </tr>
-        <tr>
-          <td>− / _</td>
-          <td>Zoom out</td>
-        </tr>
-        <tr>
-          <td>H</td>
-          <td>Fit to screen (show all states)</td>
-        </tr>
-        <tr>
-          <td>F</td>
-          <td>Fullscreen mode</td>
-        </tr>
-        <tr>
-          <td>Middle Mouse / Alt+Drag</td>
-          <td>Pan the canvas</td>
-        </tr>
-        <tr>
-          <td>Double-click state</td>
-          <td>Toggle accept state</td>
-        </tr>
-        <tr>
-          <td>Right-click state / transition</td>
-          <td>Context menu (state and transition actions)</td>
-        </tr>
-        <tr>
-          <td>Space + drag</td>
-          <td>Pan the canvas temporarily</td>
-        </tr>
-        <tr>
-          <td>Drag toolbar handle</td>
-          <td>Dock the toolbar to any canvas edge</td>
-        </tr>
-        <tr>
-          <td>Click the active tool button</td>
-          <td>Return to Pointer</td>
-        </tr>
-      </table>
+    <div class="modal export-code-modal settings-modal-wide">
+      <div class="modal-title">Keyboard Shortcuts</div>
+      <div class="export-code-intro">Every key the editor listens for, grouped by what it acts on. Shortcuts are ignored while a text field has focus.</div>
+      <div class="exp-split settings-split">
+
+        <div class="exp-side modal-tabs" id="help-tabs">
+          <div class="modal-tab active" onclick="switchHelpTab('tools')">Tools</div>
+          <div class="modal-tab" onclick="switchHelpTab('editing')">Editing</div>
+          <div class="modal-tab" onclick="switchHelpTab('views')">Views &amp; Files</div>
+          <div class="modal-tab" onclick="switchHelpTab('canvas')">Canvas</div>
+          <div class="modal-tab" onclick="switchHelpTab('sim')">Simulation</div>
+        </div>
+
+        <div class="modal-tab-panels" id="help-tab-panels">
+
+          <div class="modal-tab-content active" id="help-tab-tools">
+            <div class="modal-section-lbl">Choosing a tool</div>
+            <table class="help-table">
+              <tr><td>Esc</td><td>Pointer &mdash; select and interact</td></tr>
+              <tr><td>V</td><td>Pan &mdash; drag the canvas</td></tr>
+              <tr><td>S</td><td>State &mdash; click to place</td></tr>
+              <tr><td>T</td><td>Transition &mdash; source, then target</td></tr>
+              <tr><td>L</td><td>Divider &mdash; drag to draw a line</td></tr>
+              <tr><td>R</td><td>Region &mdash; drag to draw a box</td></tr>
+              <tr><td>D</td><td>Delete &mdash; click to remove</td></tr>
+            </table>
+            <div class="modal-section-lbl">Whole canvas</div>
+            <table class="help-table">
+              <tr><td>Shift + X</td><td>Clear every state and transition</td></tr>
+              <tr><td>Click active tool</td><td>Return to Pointer</td></tr>
+            </table>
+          </div>
+
+          <div class="modal-tab-content" id="help-tab-editing">
+            <div class="modal-section-lbl">Undo and clipboard</div>
+            <table class="help-table">
+              <tr><td>Ctrl + Z</td><td>Undo</td></tr>
+              <tr><td>Ctrl + Y</td><td>Redo</td></tr>
+              <tr><td>Ctrl + Shift + Z</td><td>Redo (alternate)</td></tr>
+              <tr><td>Ctrl + C</td><td>Copy selection</td></tr>
+              <tr><td>Ctrl + V</td><td>Paste at the pointer</td></tr>
+              <tr><td>Ctrl + D</td><td>Duplicate selection</td></tr>
+            </table>
+            <div class="modal-section-lbl">Selection</div>
+            <table class="help-table">
+              <tr><td>Ctrl + A</td><td>Select all states</td></tr>
+              <tr><td>Del / Backspace</td><td>Delete selection</td></tr>
+              <tr><td>&larr; &uarr; &rarr; &darr;</td><td>Nudge by one pixel</td></tr>
+              <tr><td>Shift + arrows</td><td>Nudge by the grid step</td></tr>
+            </table>
+            <p class="modal-hint">Arrow keys move the selection when states are selected, and step the simulation otherwise.</p>
+          </div>
+
+          <div class="modal-tab-content" id="help-tab-views">
+            <div class="modal-section-lbl">Views</div>
+            <table class="help-table">
+              <tr><td>1</td><td>Canvas</td></tr>
+              <tr><td>2</td><td>Algorithms</td></tr>
+              <tr><td>3</td><td>Grammar</td></tr>
+              <tr><td>4</td><td>Reference</td></tr>
+              <tr><td>Esc</td><td>Close view, back to canvas</td></tr>
+            </table>
+            <div class="modal-section-lbl">Files and tabs</div>
+            <table class="help-table">
+              <tr><td>Ctrl + S</td><td>Save workspace</td></tr>
+              <tr><td>Ctrl + Shift + S</td><td>Export as JSON</td></tr>
+              <tr><td>Ctrl + Shift + T</td><td>Reopen last closed tab</td></tr>
+            </table>
+          </div>
+
+          <div class="modal-tab-content" id="help-tab-canvas">
+            <div class="modal-section-lbl">Zoom and framing</div>
+            <table class="help-table">
+              <tr><td>Scroll</td><td>Zoom in / out</td></tr>
+              <tr><td>+ / =</td><td>Zoom in</td></tr>
+              <tr><td>&minus; / _</td><td>Zoom out</td></tr>
+              <tr><td>H</td><td>Fit to screen</td></tr>
+              <tr><td>F</td><td>Fullscreen</td></tr>
+            </table>
+            <div class="modal-section-lbl">Pointer</div>
+            <table class="help-table">
+              <tr><td>Space + drag</td><td>Pan while held</td></tr>
+              <tr><td>Middle / Alt + drag</td><td>Pan the canvas</td></tr>
+              <tr><td>Double-click state</td><td>Toggle accepting</td></tr>
+              <tr><td>Right-click</td><td>Context menu</td></tr>
+              <tr><td>Drag toolbar grip</td><td>Dock the toolbar</td></tr>
+            </table>
+            <div class="modal-section-lbl">Minimap</div>
+            <table class="help-table">
+              <tr><td>&larr; &uarr; &rarr; &darr;</td><td>Pan the view</td></tr>
+              <tr><td>+ / &minus;</td><td>Zoom in / out</td></tr>
+              <tr><td>Home / 0</td><td>Fit to screen</td></tr>
+            </table>
+            <p class="modal-hint">Minimap keys apply while it has keyboard focus.</p>
+          </div>
+
+          <div class="modal-tab-content" id="help-tab-sim">
+            <div class="modal-section-lbl">Stepping</div>
+            <table class="help-table">
+              <tr><td>Enter / &rarr;</td><td>Step forward</td></tr>
+              <tr><td>&larr;</td><td>Step back</td></tr>
+              <tr><td>Space</td><td>Play / pause (UTM)</td></tr>
+            </table>
+            <div class="modal-section-lbl">Note editor</div>
+            <table class="help-table">
+              <tr><td>Ctrl + B</td><td>Bold</td></tr>
+              <tr><td>Ctrl + I</td><td>Italic</td></tr>
+              <tr><td>Ctrl + U</td><td>Underline</td></tr>
+            </table>
+          </div>
+
+        </div>
+      </div>
       <div class="modal-foot"><button class="btn-g" onclick="closeModal('help-modal')">Close</button></div>
     </div>
   </div>
 
+  <!-- About. The logo header is this dialog's title: it is the one modal whose
+       subject is the product itself, so the wordmark carries the identity and a
+       separate "About AutomataStudio" line would only repeat it. Every value on
+       the right is .about-val so the rows share one size; the badge and the link
+       add chrome on top of it, never their own font. The version is filled in by
+       openAboutModal() from the build-time __APP_VERSION__ define. -->
   <div class="overlay" id="about-modal" role="dialog" aria-modal="true" aria-label="About AutomataStudio">
     <div class="modal about-modal-wide">
       <div class="about-logo-header">
         <svg class="logo-mark logo-mark-lg" aria-hidden="true"><use href="#logo-mark" /></svg>
-        <div class="logo">Automata<em>Studio</em></div>
-        <div class="logo-author">Shreyan Chaubey</div>
+        <div class="about-identity">
+          <div class="logo">Automata<em>Studio</em></div>
+          <div class="logo-author">Shreyan Chaubey</div>
+        </div>
       </div>
-      <div class="about-body">
-        <div class="about-row">
-          <span class="about-lbl">Built by</span>
-          <span class="about-val">Shreyan Chaubey</span>
-        </div>
-        <div class="about-row">
-          <span class="about-lbl">License</span>
-          <span class="about-val about-badge">PolyForm Noncommercial 1.0.0</span>
-        </div>
-        <div class="about-row">
-          <span class="about-lbl">GitHub</span>
-          <a class="about-link" href="https://github.com/thethinkmachine" target="_blank" rel="noopener">
-            github.com/thethinkmachine
-            <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z" /></svg>
-          </a>
-        </div>
+      <p class="modal-hint about-blurb">A visual editor and simulator for finite automata, pushdown
+        automata, Turing machines and their grammars.</p>
+      <div class="modal-row">
+        <span class="modal-lbl">Version</span>
+        <span class="about-val" id="about-version">&mdash;</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-lbl">License</span>
+        <span class="about-val about-badge">PolyForm Noncommercial 1.0.0</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-lbl">Repository</span>
+        <a class="about-val about-link" href="https://github.com/thethinkmachine/AutomataStudio" target="_blank" rel="noopener">
+          thethinkmachine/AutomataStudio
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z" /></svg>
+        </a>
       </div>
       <div class="modal-foot">
         <button class="btn-g" onclick="closeModal('about-modal')">Close</button>
