@@ -195,6 +195,50 @@ test('parity machines carry priorities and never an accepting set', () => {
   assert.equal(spec.states[0].accept, false);
 });
 
+test('the caveat is optional, trimmed, and bounded', () => {
+  const h = createHarness();
+
+  assert.equal(h.context.validateSpec(dfaSpec()).caveat, '',
+    'an answer that is exactly what was asked for says nothing extra');
+
+  const flagged = h.context.validateSpec(dfaSpec({
+    caveat: '  aⁿbⁿ is not regular; this DFA is correct only for n ≤ 3.  '
+  }));
+  assert.equal(flagged.caveat, 'aⁿbⁿ is not regular; this DFA is correct only for n ≤ 3.');
+
+  // It renders in a four-line list beside the linter's findings, so a model
+  // that writes an essay gets cut rather than taking the card over.
+  const long = h.context.validateSpec(dfaSpec({ caveat: 'x'.repeat(900) }));
+  assert.equal(long.caveat.length, h.context.MAX_CAVEAT_CHARS);
+
+  // Severity is the app's to assign: it drives the repair loop, and a model
+  // that could mark its own answer fatal could burn round trips at will.
+  const spoofed = h.context.validateSpec(dfaSpec({ caveat: { severity: 'repair', text: 'nope' } }));
+  assert.equal(spoofed.caveat, '');
+});
+
+test('a caveat that narrates the repair instead of the machine is discarded', () => {
+  const h = createHarness();
+  const caveatOf = text => h.context.validateSpec(dfaSpec({ caveat: text })).caveat;
+
+  // What a model actually returns on the round after a failed check. It tells
+  // the user nothing — they are looking at one machine and never saw another —
+  // and it takes a line on the card a real finding could have used.
+  assert.equal(caveatOf('The machine was corrected to accurately reflect the language it recognizes'), '');
+  assert.equal(caveatOf('Fixed the missing transition from my previous answer.'), '');
+  assert.equal(caveatOf('I have repaired the nondeterminism.'), '');
+
+  // A caveat about the machine survives, including one that says it is wrong.
+  assert.match(
+    caveatOf('This DFA accepts only n ≤ 3, because aⁿbⁿ is not regular.'),
+    /not regular/
+  );
+  assert.match(
+    caveatOf('Σ was widened to include c, which the request did not mention.'),
+    /widened/
+  );
+});
+
 // ══════════════════════════════════════════════════════════════════
 //  COMPILER
 // ══════════════════════════════════════════════════════════════════
@@ -543,8 +587,14 @@ test('verification catches a machine that does not do what was claimed', () => {
   assert.equal(batch.allPassed, false);
   const failures = h.context.describeFailures(batch, spec.tests, 'DFA');
   assert.equal(failures.length, 1);
-  assert.match(failures[0], /"a"/);
-  assert.match(failures[0], /REJECTED/);
+  assert.deepEqual(failures[0], { kind: 'verdict', word: 'a', expected: 'accept', actual: 'reject' });
+
+  // The same failure, said twice, because it has two audiences. The model is
+  // told its own prediction was wrong; the reader — who predicted nothing and
+  // never saw the prediction — is told what the machine does.
+  assert.match(h.context.failureForModel(failures[0]), /"a" you predicted accept, it REJECTED/);
+  assert.match(h.context.failureForUser(failures[0]), /“a” should be accepted, but this machine rejects it/);
+  assert.ok(!/you predicted/.test(h.context.failureForUser(failures[0])));
 });
 
 test('the canvas is byte-identical after a verification run, passing or failing', () => {
@@ -612,7 +662,10 @@ test('transducer tests compare the emitted word', () => {
   const bad = [{ w: 'ab', out: '01' }];
   const wrong = h.context.verifyCandidate(candidate, bad);
   assert.equal(wrong.allPassed, false);
-  assert.match(h.context.describeFailures(wrong, bad, 'Mealy')[0], /emitted "10"/);
+  const failure = h.context.describeFailures(wrong, bad, 'Mealy')[0];
+  assert.deepEqual(failure, { kind: 'output', word: 'ab', expected: '01', actual: '10' });
+  assert.match(h.context.failureForModel(failure), /emitted "10"/);
+  assert.match(h.context.failureForUser(failure), /“ab” should emit “01”, but this machine emits “10”/);
 });
 
 // ══════════════════════════════════════════════════════════════════
@@ -755,9 +808,12 @@ test('a dead host reports the provider\'s own browser caveat', async () => {
   h.context.saveStateMateSettings({ enabled: true, provider: 'compatible', model: 'llama3.1' });
   h.context.fetch = async () => { throw new TypeError('Failed to fetch'); };
 
+  // fetch() rejects identically for a dead host and a CORS refusal, so the
+  // actionable half is the provider's own note. Compared against the registry
+  // rather than quoted, so rewording the copy is not a test failure.
   await assert.rejects(
     () => h.context.callModel({ system: 'S', user: 'U' }),
-    err => err.code === 'network' && /OLLAMA_ORIGINS/.test(err.detail)
+    err => err.code === 'network' && err.detail === h.context.PROVIDERS.compatible.browserNote
   );
 });
 
@@ -842,6 +898,30 @@ test('the prompt is derived from the machine registry, not written per machine',
   assert.ok(!/"pop"/.test(dfa), 'a DFA is never offered a stack');
 });
 
+test('the prompt tells the model it can change the model', async () => {
+  const h = createHarness();
+  const system = await h.context.buildSystemPrompt('DFA');
+
+  assert.match(system, /YOU CAN CHANGE THE MODEL/);
+  assert.match(system, /TM — .*\(\+ write, move\)/, 'a switch target arrives with the fields it needs');
+  assert.match(system, /DPDA — .*\(\+ pop, push\)/);
+  assert.ok(!/^\s+DFA — /m.test(system), 'the current model is not offered as somewhere to switch to');
+
+  // The refusal this fixes was "I build only DFAs, I cannot construct Turing
+  // machines" — a buildable request declined for a limit that does not exist.
+  assert.match(system, /Never claim you can only build DFAs/);
+});
+
+test('the prompt offers a caveat for the request it cannot honour', async () => {
+  const h = createHarness();
+  const system = await h.context.buildSystemPrompt('DFA');
+
+  assert.match(system, /"caveat"/, 'the field is in the schema block');
+  assert.match(system, /IF YOU CANNOT DO EXACTLY WHAT WAS ASKED/);
+  assert.match(system, /not recognisable by a DFA/, 'the motivating case is named for this machine');
+  assert.match(system, /Omit "caveat" entirely/, 'a correct answer must not carry one');
+});
+
 test('the prompt states this workspace\'s own notation', async () => {
   const h = createHarness();
   h.context.App.config.sym.eps = '@';
@@ -853,13 +933,57 @@ test('the user message attaches the canvas only when asked', () => {
   const h = createHarness();
   const spec = { machine: 'DFA', states: [{ name: 'q', start: true }], transitions: [] };
 
-  const withCanvas = h.context.buildUserMessage({ prompt: 'add a trap', mode: 'edit', canvasSpec: spec });
+  const withCanvas = h.context.buildUserMessage({ prompt: 'add a trap', intent: 'edit', canvasSpec: spec });
   assert.match(withCanvas, /MACHINE CURRENTLY ON THE CANVAS/);
-  assert.match(withCanvas, /Keep the names/);
+  assert.match(withCanvas, /keep the names of every state you are not changing/);
 
-  const without = h.context.buildUserMessage({ prompt: 'build one', mode: 'build' });
+  const without = h.context.buildUserMessage({ prompt: 'build one', intent: 'build' });
   assert.ok(!/CURRENTLY ON THE CANVAS/.test(without));
   assert.match(without, /REQUEST: build one/);
+});
+
+test('edit mode names a subject, not an instruction to modify', () => {
+  const h = createHarness();
+  const spec = { machine: 'DFA', states: [{ name: 'q', start: true }], transitions: [] };
+  const message = h.context.buildUserMessage({ prompt: 'why does it reject aab?', intent: 'edit', canvasSpec: spec });
+
+  // Both halves have to be present. Told only to modify, the model answers a
+  // question by rebuilding the diagram the question was about.
+  assert.match(message, /If the request asks for a change, return the modified machine/);
+  assert.match(message, /only asks a question about this machine, answer it with a reply and change nothing/);
+  assert.ok(!/— modify this/.test(message), 'the old unconditional imperative is gone');
+});
+
+test('the reply rules make room for a question about the canvas', async () => {
+  const h = createHarness();
+  const system = await h.context.buildSystemPrompt('DFA');
+
+  assert.match(system, /a question about the machine already on the canvas/);
+  assert.match(system, /Answering is not declining/);
+  // …without opening the escape hatch the reply branch has always been.
+  assert.match(system, /If the request names any change to make, however small, build or edit rather than reply/);
+  assert.match(system, /merely hard, vague, or impossible to satisfy exactly/);
+});
+
+test('a question in edit mode answers and leaves the machine alone', async () => {
+  const h = createHarness();
+  const { App } = h.context;
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+
+  // Build something first, so there is a machine to ask about.
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+  await h.context.runStateMate({ prompt: 'even number of a', intent: 'build' });
+  const before = h.context.exportWorkspaceState();
+  assert.ok(App.states.length, 'there is a machine on the canvas');
+
+  h.context.fetch = fakeFetch(() => replyTurn('It rejects "aab" because the run ends in q1, which is not accepting.'));
+  const result = await h.context.runStateMate({ prompt: 'why does it reject aab?', intent: 'edit' });
+
+  assert.equal(result.kind, 'reply');
+  assert.match(result.reply, /not accepting/);
+  // The whole point of the mode: asking about a diagram must not redraw it.
+  assert.deepEqual(h.context.exportWorkspaceState(), before,
+    'a question changed nothing on the canvas');
 });
 
 test('the repair message carries the failures, not a vague complaint', () => {
@@ -944,7 +1068,7 @@ test('a machine that stays invalid never reaches the canvas', async () => {
   h.context.fetch = fakeFetch(() => anthropicReply(broken));
 
   await assert.rejects(
-    () => h.context.runStateMate({ prompt: 'even number of a', mode: 'edit' }),
+    () => h.context.runStateMate({ prompt: 'even number of a', intent: 'edit' }),
     err => err.code === 'invalid-machine'
   );
   assert.equal(JSON.stringify(h.context.exportWorkspaceState()), before,
@@ -983,7 +1107,7 @@ test('a build over existing work opens a new tab instead of replacing it', async
   h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
 
   const tabsBefore = h.context.Workspaces.length;
-  const result = await h.context.runStateMate({ prompt: 'even number of a', mode: 'build' });
+  const result = await h.context.runStateMate({ prompt: 'even number of a', intent: 'build' });
 
   assert.equal(result.openedNewTab, true);
   assert.equal(h.context.Workspaces.length, tabsBefore + 1);
@@ -1010,40 +1134,298 @@ test('cancelling mid-run leaves nothing behind', async () => {
   assert.equal(h.context.isStateMateRunning(), false);
 });
 
-test('the follow-up slot holds one turn and expires on any other edit', async () => {
+// ══════════════════════════════════════════════════════════════════
+//  THE CONVERSATION
+// ══════════════════════════════════════════════════════════════════
+//  Two properties carry this feature. A reply turn writes nothing — pinned
+//  the same way the pipeline's other failure modes are, by comparing the
+//  serialized workspace either side of it. And the thread sends intent, never
+//  machines, because the canvas is the state and there must only ever be one
+//  candidate for "the machine" in front of the model.
+
+const replyTurn = text => anthropicReply({ kind: 'reply', text });
+
+test('the thread carries what was asked and a summary of what was built', async () => {
   const h = createHarness();
-  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', followUp: true });
-  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', threadDepth: 6 });
+  const fetchStub = fakeFetch(() => anthropicReply(dfaSpec()));
+  h.context.fetch = fetchStub;
 
   await h.context.runStateMate({ prompt: 'even number of a' });
-  const slot = h.context.getFollowUp();
-  assert.ok(slot);
-  assert.equal(slot.prompt, 'even number of a');
 
-  // Any change to the graph that is not StateMate's own drops it: the prompt
-  // no longer describes what is on the canvas.
-  h.context.emit(h.context.Change.GRAPH);
-  assert.equal(h.context.getFollowUp(), null);
+  const thread = h.context.getThread();
+  assert.deepEqual(thread.map(t => t.role), ['user', 'assistant']);
+  assert.equal(thread[0].text, 'even number of a');
+  assert.equal(thread[1].kind, 'machine');
+  assert.match(thread[1].text, /Even number of a's — 2 states, 4 transitions/);
+
+  await h.context.runStateMate({ prompt: 'now make it reject the empty string' });
+
+  // The second request opens with the first exchange, so "it" resolves.
+  const sent = fetchStub.calls[1].body.messages;
+  assert.equal(sent.length, 3);
+  assert.equal(sent[0].content, 'even number of a');
+  assert.match(sent[1].content, /^\[built: Even number of a's/);
+  assert.match(sent[2].content, /now make it reject the empty string/);
 });
 
-test('the follow-up is not stored at all when the setting is off', async () => {
+test('past machines are never replayed — only the live canvas is', async () => {
   const h = createHarness();
-  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', followUp: false });
+  h.context.saveStateMateSettings({
+    enabled: true, provider: 'anthropic', apiKey: 'k', threadDepth: 6, attachCanvas: true
+  });
+  const fetchStub = fakeFetch(() => anthropicReply(dfaSpec()));
+  h.context.fetch = fetchStub;
+
+  await h.context.runStateMate({ prompt: 'even number of a' });
+  await h.context.runStateMate({ prompt: 'add a trap state' });
+
+  const sent = fetchStub.calls[1].body.messages;
+  const history = sent.slice(0, -1).map(m => m.content).join('\n');
+
+  // Exactly one machine reaches the model, and it is the one on the canvas
+  // right now — attached to the live turn, not remembered from the last one.
+  assert.ok(!/"transitions"/.test(history), 'the history holds no machine JSON');
+  assert.match(sent[sent.length - 1].content, /MACHINE CURRENTLY ON THE CANVAS/);
+});
+
+test('depth 0 sends nothing but still keeps the exchange on screen', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', threadDepth: 0 });
+  const fetchStub = fakeFetch(() => anthropicReply(dfaSpec()));
+  h.context.fetch = fetchStub;
+
+  await h.context.runStateMate({ prompt: 'even number of a' });
+  await h.context.runStateMate({ prompt: 'again' });
+
+  assert.equal(fetchStub.calls[1].body.messages.length, 1, 'strict one-shot, as before the thread existed');
+  assert.equal(h.context.getThread().length, 4, 'both exchanges are still on screen');
+});
+
+test('the conversation does not survive a change of machine', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', threadDepth: 6 });
   h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
 
   await h.context.runStateMate({ prompt: 'even number of a' });
-  assert.equal(h.context.getFollowUp(), null);
+  assert.equal(h.context.getThread().length, 2);
+
+  // The exchange is about a machine that is no longer the one on screen.
+  h.context.App.machine = 'DPDA';
+  assert.deepEqual(h.context.getThread(), []);
+});
+
+test('naming a different model switches the canvas to it', async () => {
+  const h = createHarness();
+  const { App } = h.context;
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', verify: false });
+
+  h.context.fetch = fakeFetch(() => anthropicReply({
+    kind: 'machine',
+    machine: 'TM',
+    title: 'Appends a 1',
+    sigma: ['0', '1'],
+    stackAlpha: ['0', '1', '⊔'],
+    states: [{ name: 'scan', start: true }, { name: 'done', accept: true }],
+    transitions: [
+      { from: 'scan', to: 'scan', on: '0', write: '0', move: 'R' },
+      { from: 'scan', to: 'scan', on: '1', write: '1', move: 'R' },
+      { from: 'scan', to: 'done', on: '⊔', write: '1', move: 'S' }
+    ],
+    tests: [{ w: '01', expect: 'accept' }]
+  }));
+
+  const result = await h.context.runStateMate({ prompt: 'make a turing machine that appends a 1' });
+
+  assert.equal(result.status, 'applied');
+  assert.equal(App.machine, 'TM', 'the request needed another model, so the canvas became one');
+  assert.equal(App.states.length, 2);
+  assert.equal(h.context.App.transitions[0].dir, 'R', 'the tape fields survived the compile');
+});
+
+test('a reply is an answer, and it draws absolutely nothing', async () => {
+  const h = createHarness();
+  const { App } = h.context;
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+
+  // Something on the canvas to lose.
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+  await h.context.runStateMate({ prompt: 'even number of a' });
+  const before = JSON.stringify(h.context.exportWorkspaceState());
+
+  h.context.fetch = fakeFetch(() => replyTurn('A DFA cannot count, so there is no machine here to build.'));
+  const result = await h.context.runStateMate({ prompt: 'what is the difference between a DFA and an NFA?' });
+
+  assert.equal(result.status, 'replied');
+  assert.equal(result.kind, 'reply');
+  assert.match(result.reply, /cannot count/);
+  assert.equal(result.candidate, undefined, 'no candidate is ever compiled');
+  assert.equal(
+    JSON.stringify(h.context.exportWorkspaceState()), before,
+    'the workspace is byte-identical — a reply passes nowhere near apply'
+  );
+  assert.equal(App.states.length, 2, 'the machine that was there is still there');
+});
+
+test('a reply is remembered verbatim, unlike a machine', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', threadDepth: 6 });
+  h.context.fetch = fakeFetch(() => replyTurn('That language is not regular.'));
+
+  await h.context.runStateMate({ prompt: 'a DFA for aⁿbⁿ' });
+  const thread = h.context.getThread();
+  assert.equal(thread[1].kind, 'reply');
+  assert.equal(thread[1].text, 'That language is not regular.');
+  assert.deepEqual(
+    h.context.threadMessages(thread)[1],
+    { role: 'assistant', content: 'That language is not regular.' },
+    'a reply travels as itself; only a machine turn is reduced to a summary'
+  );
+});
+
+test('a model cannot talk its way out of a repair', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({
+    enabled: true, provider: 'anthropic', apiKey: 'k', verify: true, repairAttempts: 1
+  });
+
+  // A machine whose own predictions are wrong, then an attempt to escape the
+  // correction with prose. The escape must not be accepted as an answer.
+  const wrong = dfaSpec({ tests: [{ w: 'a', expect: 'accept' }, { w: 'aa', expect: 'reject' }] });
+  const fetchStub = fakeFetch((url, init, n) =>
+    n === 1 ? anthropicReply(wrong) : replyTurn('On reflection this is quite hard.'));
+  h.context.fetch = fetchStub;
+
+  await assert.rejects(
+    () => h.context.runStateMate({ prompt: 'even number of a' }),
+    err => err.code === 'schema' && /not a correction/.test(err.message)
+  );
+  assert.equal(fetchStub.calls.length, 2, 'the repair round happened');
+  assert.equal(h.context.App.states.length, 0, 'and nothing was drawn');
+});
+
+test('a reply is only offered on the first attempt', () => {
+  const h = createHarness();
+  const raw = { kind: 'reply', text: 'I would rather not.' };
+
+  assert.equal(h.context.parseTurn(raw, { allowReply: true }).kind, 'reply');
+  assert.throws(
+    () => h.context.parseTurn(raw, { allowReply: false }),
+    err => err.code === 'schema'
+  );
+});
+
+test('a missing kind is a machine, because that is the strictly gated path', () => {
+  const h = createHarness();
+
+  const turn = h.context.parseTurn(dfaSpec());
+  assert.equal(turn.kind, 'machine');
+  assert.equal(turn.spec.states.length, 2);
+
+  // An unknown kind falls through to the machine gate rather than being
+  // waved past as some third thing, so it fails with a real complaint.
+  assert.throws(
+    () => h.context.parseTurn({ kind: 'question', text: 'hm?' }),
+    err => err.code === 'schema' && /no states/.test(err.message)
+  );
+
+  // An empty reply is not a reply.
+  assert.throws(
+    () => h.context.parseTurn({ kind: 'reply', text: '   ' }),
+    err => err.code === 'schema'
+  );
+});
+
+test('the thread reaches none of the workspace serializers', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', threadDepth: 6 });
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+
+  await h.context.runStateMate({ prompt: 'a memorable and distinctive request' });
+  assert.ok(h.context.getThread().length);
+
+  // Same reasoning as the API key: a log of what someone was trying to build
+  // must not end up in a tab snapshot, an autosave blob or a saved file.
+  const written = [
+    JSON.stringify(h.context.exportWorkspaceState()),
+    JSON.stringify(h.context.getWorkspaceData ? h.context.getWorkspaceData() : {}),
+    JSON.stringify(h.context.getBackupPayload ? h.context.getBackupPayload() : {})
+  ].join('\n');
+  assert.ok(!/memorable and distinctive/.test(written));
 });
 
 // ══════════════════════════════════════════════════════════════════
-//  THE PALETTE
+//  RESULT NOTES
+// ══════════════════════════════════════════════════════════════════
+//  The card renders only the first few of these, so which ones survive the
+//  cut is a correctness question, not a styling one.
+
+const fix = message => ({ rule: 'r', severity: 'fix', message });
+const warn = message => ({ rule: 'r', severity: 'warn', message });
+
+test('a failed check outranks the fixes applied on the way through', () => {
+  const h = createHarness();
+  const notes = h.context.resultNotes({
+    lint: {
+      fixed: [fix('Extended Σ'), fix('Added the end markers'), fix('No start state'), fix('Normalised weights')],
+      warnings: [warn('2 states are unreachable')]
+    },
+    failures: ['"a" you predicted accept, it REJECTED']
+  });
+
+  // Five findings ahead of it used to push the one line that matters off the
+  // end of the card's four-item budget.
+  assert.match(notes[0].message, /1 check failed/);
+  assert.equal(notes[0].severity, 'fail');
+  assert.equal(notes[1].severity, 'warn');
+  assert.equal(notes.slice(2).every(n => n.severity === 'fix'), true);
+  assert.equal(notes.length, 6, 'nothing is dropped here — the card does the slicing');
+});
+
+test('equal severities keep the order the pipeline produced them in', () => {
+  const h = createHarness();
+  const notes = h.context.resultNotes({
+    lint: { fixed: [], warnings: [warn('first'), warn('second'), warn('third')] }
+  });
+  assert.deepEqual(notes.map(n => n.message), ['first', 'second', 'third']);
+});
+
+test('the model\'s caveat is shown as a warning, below what the app verified', () => {
+  const h = createHarness();
+  const result = {
+    spec: { caveat: 'aⁿbⁿ is not regular; this DFA is correct only for n ≤ 3.' },
+    lint: { fixed: [], warnings: [warn('2 states are unreachable')] },
+    failures: ['"aaaabbbb" you predicted reject, it ACCEPTED']
+  };
+  const notes = h.context.resultNotes(result);
+
+  assert.equal(notes[0].severity, 'fail');
+  // A claim the model makes ranks with the warnings, never above the evidence
+  // the app gathered itself.
+  assert.deepEqual(notes.slice(1).map(n => n.severity), ['warn', 'warn']);
+  assert.match(notes.map(n => n.message).join(' '), /not regular/);
+
+  assert.equal(h.context.hasWarnings(result), true);
+  assert.equal(h.context.hasWarnings({ spec: { caveat: 'only for n ≤ 3' }, lint: { warnings: [] } }), true,
+    'a caveat alone is enough to tone the card as a warning');
+});
+
+test('a clean run has nothing to say', () => {
+  const h = createHarness();
+  assert.deepEqual(h.context.resultNotes({ spec: { caveat: '' }, lint: { fixed: [], warnings: [] }, failures: [] }), []);
+  assert.deepEqual(h.context.resultNotes(null), []);
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  THE CONSOLE
 // ══════════════════════════════════════════════════════════════════
 //  The dialog is built entirely in JS, so "does it render" is a real
-//  question rather than a matter of markup. These check the shape of what
-//  it produces, not its styling.
+//  question rather than a matter of markup. What these pin is the one
+//  property the redesign exists for: ⏎ in the composer means exactly one
+//  thing, and the only thing that ever takes it back says so on screen.
 
-// The palette assembles rows from nested spans, so the stub keeps each piece
-// of text on the node that owns it — reading a row means walking it.
+// The console assembles lines from nested spans, so the stub keeps each piece
+// of text on the node that owns it — reading an entry means walking it.
 function deepText(node) {
   if (!node || typeof node !== 'object') return '';
   const own = typeof node.textContent === 'string' ? node.textContent : '';
@@ -1051,55 +1433,194 @@ function deepText(node) {
   return `${own} ${kids}`.trim();
 }
 
-const rowNames = h => h.getElement('sm-body').children
-  .filter(n => String(n.className).includes('sm-row'))
-  .map(deepText);
+function findAll(node, cls) {
+  const out = [];
+  (function walk(n) {
+    (n.children || []).forEach(child => {
+      if (String(child.className || '').includes(cls)) out.push(child);
+      walk(child);
+    });
+  })(node);
+  return out;
+}
 
-test('the palette opens on the examples, with no model involved', () => {
+const logText = h => deepText(h.getElement('sm-log'));
+const statusText = h => deepText(h.getElement('sm-status'));
+const menuLabels = h => h.getElement('sm-menu').children.map(deepText);
+const entryKinds = h => h.getElement('sm-log').children.map(c => String(c.className || ''));
+
+// Typing, the way the composer receives it.
+function type(h, text) {
+  const input = h.getElement('sm-input');
+  input.value = text;
+  input.oninput();
+  return input;
+}
+
+const enter = (input, extra = {}) =>
+  input.onkeydown({ key: 'Enter', preventDefault() { }, ...extra });
+
+test('the console opens on a transcript that says what ⏎ does', () => {
   const h = createHarness();
   h.context.openStateMate();
 
   const input = h.getElement('sm-input');
   assert.equal(input.value, '');
-  assert.match(input.placeholder, /examples/);
-  // With no key configured the dialog is exactly the example picker it
-  // replaced — nothing about the feature is visible until it is set up.
-  const chips = h.getElement('sm-chips').children.map(deepText);
-  assert.ok(chips.some(t => /Set up StateMate/.test(t)));
-  assert.ok(!rowNames(h).some(name => /Build with StateMate/.test(name)));
+
+  // With no key the console is the example picker it has always also been:
+  // the placeholder names the way in, and the examples are listed rather than
+  // hidden behind a command nobody has been told about.
+  assert.match(input.placeholder, /\/examples/);
+  assert.match(logText(h), /needs an API key/);
+  assert.match(statusText(h), /Set up StateMate/);
+  assert.ok(findAll(h.getElement('sm-log'), 'sm-listrow').length,
+    'the bundled machines are reachable with no model configured');
 });
 
-test('typing offers to build, and the exact algorithm outranks the model', () => {
+test('⏎ sends what was typed — no modifier, no highlighted row', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  h.context.openStateMate();
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+
+  const input = type(h, 'even number of a');
+  assert.equal(h.getElement('sm-menu').hidden, true, 'a sentence is not a command');
+  await enter(input);
+
+  const text = logText(h);
+  assert.match(text, /even number of a/, 'the turn is recorded');
+  assert.match(text, /Even number of a's/, 'and so is what came back');
+  assert.match(text, /\+2 states/);
+  assert.match(text, /3\/3 checks/);
+  // The console defaults to propose, so the machine is built and checked but
+  // waiting on the reader rather than already drawn.
+  assert.match(text, /Apply/, 'with the decision left to the reader');
+
+  assert.equal(h.context.isModalOpen('statemate-modal'), true,
+    'the console stays open — the next prompt is usually a correction to this one');
+  assert.equal(input.value, '', 'and the composer is ready for it');
+});
+
+test('a slash opens the command menu, and only it takes ⏎ back', async () => {
   const h = createHarness();
   h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
   h.context.openStateMate();
 
-  const input = h.getElement('sm-input');
-  input.value = 'strings with an even number of a';
-  input.oninput();
-  assert.match(rowNames(h)[0], /Build with StateMate/);
+  const input = type(h, '/exa');
+  assert.equal(h.getElement('sm-menu').hidden, false);
+  assert.ok(menuLabels(h).some(l => /\/examples/.test(l)));
 
-  // The algorithm catalogue is read from the markup at runtime, so the stub
-  // supplies one. "minimize" is something the app does exactly, and StateMate
-  // must lose to it.
+  // ⏎ on a command that takes arguments completes it and waits, rather than
+  // guessing which example was meant.
+  await enter(input);
+  assert.equal(input.value, '/examples ');
+  const rows = menuLabels(h);
+  assert.ok(rows.length, 'the examples themselves are the completions now');
+  assert.ok(!rows.some(l => /^\/examples/.test(l)));
+
+  // And the moment the line stops being a command, the menu stops competing.
+  type(h, 'binary numbers divisible by 3');
+  assert.equal(h.getElement('sm-menu').hidden, true);
+});
+
+test('/settings completes over the settings dialog’s own tab strip', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  h.context.openStateMate();
+
+  // The tab strip is read from the markup the way the algorithm list is, so a
+  // tab added to index.html is completable without an edit to the console.
+  const strip = [['general', 'Workspace'], ['rendering', 'Canvas & Layout'], ['', 'Unlabelled']]
+    .map(([tab, label]) => {
+      const node = h.context.document.createElement('div');
+      node.dataset.tab = tab;
+      node.textContent = label;
+      return node;
+    });
   const realQuery = h.context.document.querySelectorAll;
-  h.context.document.querySelectorAll = sel => sel === '.algo-item'
-    ? [{ dataset: { algo: 'minimize' }, textContent: 'DFA Minimize' }]
-    : [];
+  h.context.document.querySelectorAll = sel =>
+    (sel === '#settings-tabs .modal-tab' ? strip : []);
+
   try {
-    input.value = 'minimise';
-    input.oninput();
-    const names = rowNames(h);
-    const askAt = names.findIndex(n => /Build with StateMate/.test(n));
-    const algoAt = names.findIndex(n => /DFA Minimize/.test(n));
-    assert.ok(algoAt !== -1, 'the real construction is offered');
-    assert.ok(algoAt > askAt, 'both are present; the exact tool is not buried under the examples');
+    const input = type(h, '/settings ');
+    assert.deepEqual(menuLabels(h).map(l => l.split(' Open')[0]), ['Workspace', 'Canvas & Layout'],
+      'a tab with no data-tab is simply not offered');
+
+    type(h, '/settings canvas');
+    assert.deepEqual(menuLabels(h).map(l => l.split(' Open')[0]), ['Canvas & Layout']);
+
+    await enter(input);
+    // Observed through the app's own mechanism: switchSettingsTab marks the
+    // panel it reveals, rather than the test asserting on a stubbed call.
+    assert.ok(h.getElement('tab-rendering').classList.contains('active'),
+      'picking a completion opens that tab');
+    assert.equal(h.context.isModalOpen('statemate-modal'), false,
+      'and the console gets out of the way');
   } finally {
     h.context.document.querySelectorAll = realQuery;
   }
 });
 
-test('the canvas chip states its own cost and can be switched off', () => {
+test('/model goes to StateMate’s own settings, /settings to the app’s', () => {
+  const h = createHarness();
+  h.context.openStateMate();
+
+  type(h, '/');
+  const names = menuLabels(h).map(l => l.split(' ')[0]);
+  assert.ok(names.includes('/model'), 'the model has a name of its own now');
+  assert.ok(names.includes('/settings'), 'and no longer shares one with the app');
+
+  h.context.openStateMateSettings();
+  assert.ok(h.getElement('tab-ai').classList.contains('active'),
+    '/model lands on the StateMate tab');
+});
+
+test('an unknown command is reported, not sent to a language model', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  h.context.openStateMate();
+
+  let modelCalls = 0;
+  h.context.fetch = async (url, init) => {
+    if (init) modelCalls++;
+    return jsonResponse({});
+  };
+
+  const input = type(h, '/wat');
+  await enter(input);
+
+  assert.match(logText(h), /Unknown command/);
+  assert.equal(modelCalls, 0);
+});
+
+test('the exact construction is offered without taking the keystroke', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  h.context.openStateMate();
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+
+  // The algorithm catalogue is read from the markup at runtime, so the stub
+  // supplies one. "minimize" is something the app does exactly.
+  const realQuery = h.context.document.querySelectorAll;
+  h.context.document.querySelectorAll = sel => sel === '.algo-item'
+    ? [{ dataset: { algo: 'minimize' }, textContent: 'DFA Minimize' }]
+    : [];
+  try {
+    const input = type(h, 'minimise');
+    assert.match(deepText(h.getElement('sm-nudge')), /DFA Minimize/,
+      'the real construction is offered');
+
+    // …but the sentence being typed still owns ⏎. That is the whole difference
+    // between offering a tool and reinterpreting the request.
+    await enter(input);
+    assert.match(logText(h), /Even number of a's/);
+    assert.equal(deepText(h.getElement('sm-nudge')), '', 'and the offer clears with the line');
+  } finally {
+    h.context.document.querySelectorAll = realQuery;
+  }
+});
+
+test('the status bar states the canvas and is where it is switched', () => {
   const h = createHarness();
   const { App } = h.context;
   App.states = [{ id: 's1', name: 'q0', x: 0, y: 0 }, { id: 's2', name: 'q1', x: 90, y: 0 }];
@@ -1108,14 +1629,174 @@ test('the canvas chip states its own cost and can be switched off', () => {
   h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
   h.context.openStateMate();
 
-  const chip = h.getElement('sm-chips').children.find(c => /Canvas/.test(deepText(c)));
-  assert.ok(chip, 'the toggle is present');
+  const chip = h.getElement('sm-status').children.find(c => /canvas/.test(deepText(c)));
+  assert.ok(chip, 'the context that decides what the next ⏎ does is stated');
   assert.match(deepText(chip), /2 states, 1 transition/);
   assert.equal(chip.getAttribute('aria-pressed'), 'true');
 
   chip.onclick();
-  const after = h.getElement('sm-chips').children.find(c => /Canvas/.test(deepText(c)));
+  const after = h.getElement('sm-status').children.find(c => /canvas/.test(deepText(c)));
   assert.equal(after.getAttribute('aria-pressed'), 'false');
+  // Switching it is a turn in the conversation, not a silent mode change.
+  assert.match(logText(h), /stays out of your next prompt/);
+});
+
+test('the transcript outlives the dialog, and /clear forgets it', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({
+    enabled: true, provider: 'anthropic', apiKey: 'k', threadDepth: 6
+  });
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+  await h.context.runStateMate({ prompt: 'even number of a' });
+
+  // The run happened outside the console, so what it shows on opening comes
+  // from the retained thread rather than from anything it recorded itself.
+  h.context.openStateMate();
+  assert.match(logText(h), /even number of a/);
+  assert.match(logText(h), /Even number of a's — 2 states/);
+
+  const input = type(h, '/clear');
+  await enter(input);
+  assert.deepEqual(h.context.getThread(), []);
+  assert.ok(!entryKinds(h).some(c => c.includes('is-user')), 'the transcript goes with it');
+  // The machine the run drew is still on the canvas, so the empty state opens
+  // in chat + edit — it offers to talk about that machine, not to replace it.
+  assert.match(logText(h), /Ask about this DFA, or ask for a change/,
+    'and the console is back to its empty state');
+});
+
+test('a reply lands in the transcript, because nothing was drawn', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  h.context.openStateMate();
+
+  h.context.fetch = fakeFetch(() => replyTurn('There is no machine for that.'));
+  const input = type(h, 'what is a DFA?');
+  await enter(input);
+
+  assert.equal(h.context.isModalOpen('statemate-modal'), true);
+  assert.match(logText(h), /There is no machine for that/);
+  assert.ok(entryKinds(h).some(c => c.includes('is-reply')));
+  assert.equal(input.value, '', 'the composer is cleared and ready for the next turn');
+});
+
+test('a reply is rendered as markdown, and its markup is not', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  h.context.openStateMate();
+
+  h.context.fetch = fakeFetch(() => replyTurn([
+    'A **DFA** cannot count, because:',
+    '',
+    '- it has finitely many states',
+    '- `aⁿbⁿ` needs unboundedly many',
+    '',
+    'See <script>alert(1)</script> for why.'
+  ].join('\n')));
+
+  const input = type(h, 'why can a DFA not do aⁿbⁿ?');
+  await enter(input);
+
+  const findAllIn = (node, want) => {
+    const out = [];
+    (function walk(n) {
+      (n.children || []).forEach(c => {
+        if (c.tagName && String(c.tagName).toLowerCase() === want) out.push(c);
+        walk(c);
+      });
+    })(node);
+    return out;
+  };
+  const log = h.getElement('sm-log');
+
+  assert.equal(findAllIn(log, 'strong').length, 1, 'the reply is parsed, not printed');
+  assert.equal(findAllIn(log, 'li').length, 2);
+  assert.equal(findAllIn(log, 'code').length, 1);
+  // The reply is text from a remote service; the renderer builds nodes and
+  // never assigns markup, so a <script> in it is characters on the screen.
+  assert.equal(findAllIn(log, 'script').length, 0);
+  assert.match(logText(h), /<script>alert\(1\)<\/script>/);
+});
+
+test('a prompt with no key configured never reaches a provider', async () => {
+  const h = createHarness();
+  h.context.openStateMate();
+
+  let modelCalls = 0;
+  h.context.fetch = async (url, init) => {
+    if (init) modelCalls++;
+    return jsonResponse({});
+  };
+
+  const input = type(h, 'binary numbers divisible by 3');
+  await enter(input);
+
+  assert.equal(modelCalls, 0);
+  assert.match(logText(h), /API key/);
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  THE INFO CARD
+// ══════════════════════════════════════════════════════════════════
+//  It lives over the canvas now, not in the Simulate panel, and it shows
+//  itself after a run before folding back into the button at the corner.
+
+test('a result opens the card over the canvas and leaves a way back to it', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+
+  await h.context.runStateMate({ prompt: 'even number of a' });
+
+  const card = h.getElement('example-card');
+  const btn = h.getElement('canvas-info-btn');
+  assert.ok(card.classList.contains('is-open'), 'the card opened itself');
+  assert.equal(btn.hidden, true, 'the button it springs from is out of the way while it is open');
+  assert.match(deepText(card), /Even number of a's/);
+
+  // The auto-hide is a timer, so the collapse is asserted directly rather than
+  // by waiting thirteen seconds for it.
+  h.context.hideExampleCard();
+  assert.equal(card.classList.contains('is-open'), false);
+  assert.equal(btn.hidden, false, 'and the button comes back, because there is still something to read');
+
+  h.context.toggleExampleCard();
+  assert.ok(card.classList.contains('is-open'), 'the button reopens it');
+});
+
+test('nothing to say means no card and no button', () => {
+  const h = createHarness();
+  h.context.showExampleCard({ title: 'Something', blurb: 'anything' });
+  assert.equal(h.getElement('canvas-info-btn').hidden, true, 'hidden because the card is open over it');
+
+  h.context.showExampleCard(null);
+  assert.equal(h.getElement('example-card').classList.contains('is-open'), false);
+  assert.equal(h.getElement('canvas-info-btn').hidden, true,
+    'an info button that opens an empty card is worse than no button');
+
+  // And it cannot be talked into opening on nothing.
+  h.context.toggleExampleCard();
+  assert.equal(h.getElement('example-card').classList.contains('is-open'), false);
+});
+
+test('a failed check is reported to the reader, not to the model', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({
+    enabled: true, provider: 'anthropic', apiKey: 'k', verify: true, repairAttempts: 0
+  });
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec({
+    tests: [{ w: 'a', expect: 'accept' }, { w: 'aa', expect: 'accept' }]
+  })));
+
+  const result = await h.context.runStateMate({ prompt: 'even number of a' });
+  h.context.decorateResultCard(result);
+
+  const text = deepText(h.getElement('example-card'));
+  assert.match(text, /1 check failed/);
+  assert.match(text, /“a” should be accepted, but this machine rejects it/);
+  // The reader predicted nothing and never saw a prediction. Addressing them
+  // in the second person about one is the bug this pins.
+  assert.ok(!/you predicted/.test(text), 'the model-facing phrasing stays in the repair message');
 });
 
 test('the result strip reports the diff, the verdict and a way back', async () => {
@@ -1127,15 +1808,247 @@ test('the result strip reports the diff, the verdict and a way back', async () =
   h.context.decorateResultCard(result);
 
   const card = h.getElement('example-card');
-  const strip = card.children.find(c => String(c.className).includes('sm-result-strip'));
-  assert.ok(strip, 'the strip is prepended to the existing example card');
+  const classAt = i => String(card.children[i]?.className || '');
 
-  const text = deepText(strip);
-  assert.match(text, /StateMate/);
-  assert.match(text, /3\/3 checks/);
-  assert.match(text, /\+2 states/);
-  assert.match(text, /Undo/);
-  assert.match(text, /Regenerate/);
+  // The machine's own name leads the card; what changed is a line under it,
+  // and what you can do about it is a footer. A strip of diff chips above the
+  // title reads as the card's heading and buries the name in the middle.
+  assert.match(classAt(0), /example-card-head/);
+  assert.match(classAt(1), /sm-result-strip/);
+
+  const strip = card.children[1];
+  assert.match(deepText(strip), /StateMate/);
+  assert.match(deepText(strip), /3\/3 checks/);
+  assert.match(deepText(strip), /\+2 states/);
+  assert.ok(!/Undo/.test(deepText(strip)), 'the actions are no longer wedged in beside the chips');
+
+  const actions = card.children.find(c => String(c.className).includes('sm-result-actions'));
+  assert.ok(actions, 'they are a footer of their own');
+  assert.match(deepText(actions), /Undo/);
+  assert.match(deepText(actions), /Regenerate/);
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  WRITE AUTHORITY
+// ══════════════════════════════════════════════════════════════════
+//  Three modes over one branch at step 7. What each test pins is the same
+//  question asked three ways: did the canvas change, and was that the mode's
+//  promise?
+
+async function buildSomething(h) {
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+  await h.context.runStateMate({ prompt: 'even number of a', authority: 'auto' });
+  return h.context.exportWorkspaceState();
+}
+
+test('propose builds and checks a machine without drawing it', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+  const before = h.context.exportWorkspaceState();
+
+  const result = await h.context.runStateMate({ prompt: 'even number of a', authority: 'propose' });
+
+  assert.equal(result.status, 'proposed');
+  assert.equal(result.hold, 'propose');
+  assert.deepEqual(h.context.exportWorkspaceState(), before, 'nothing reached the canvas');
+  // The point of proposing rather than asking: it is a finished, verified
+  // machine, so the diff and the checks are real before you decide.
+  assert.ok(result.batch.allPassed, 'the checks ran anyway');
+  assert.deepEqual(result.summary, ['+2 states', '+4 transitions']);
+  assert.ok(result.pending, 'and it is kept, ready to draw');
+});
+
+test('applying a proposal draws exactly what was proposed', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+
+  const proposed = await h.context.runStateMate({ prompt: 'even number of a', authority: 'propose' });
+  const applied = h.context.applyPending(proposed);
+
+  assert.equal(applied.status, 'applied');
+  assert.equal(applied.pending, null);
+  assert.deepEqual(h.context.App.states.map(s => s.name).sort(), ['even', 'odd']);
+  assert.equal(h.context.App.transitions.length, 4);
+});
+
+test('ask never writes, whatever comes back', async () => {
+  const h = createHarness();
+  const before = await buildSomething(h);
+
+  // Even if the model ignores the read-only instruction and returns a machine,
+  // the pipeline refuses to draw it. The mode is enforced, not requested.
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec({
+    title: 'Something else', states: [{ name: 'x', start: true, accept: true }],
+    transitions: [{ from: 'x', to: 'x', on: 'a' }, { from: 'x', to: 'x', on: 'b' }]
+  })));
+  const result = await h.context.runStateMate({ prompt: 'what does this accept?', authority: 'ask' });
+
+  assert.equal(result.status, 'proposed');
+  assert.equal(result.hold, 'ask');
+  assert.deepEqual(h.context.exportWorkspaceState(), before, 'ask mode is read-only');
+});
+
+test('the prompt tells ask mode it is read-only', () => {
+  const h = createHarness();
+  const spec = { machine: 'DFA', states: [{ name: 'q', start: true }], transitions: [] };
+  const asked = h.context.buildUserMessage({ prompt: 'is this minimal?', intent: 'edit', canvasSpec: spec, authority: 'ask' });
+  assert.match(asked, /THIS TURN IS READ-ONLY/);
+  assert.match(asked, /describe the one you would build/);
+
+  const auto = h.context.buildUserMessage({ prompt: 'add a trap', intent: 'edit', canvasSpec: spec, authority: 'auto' });
+  assert.ok(!/READ-ONLY/.test(auto));
+});
+
+test('auto holds back an edit that removes most of the machine', async () => {
+  const h = createHarness();
+  await buildSomething(h);
+  const before = h.context.exportWorkspaceState();
+
+  // Four states in, one state out: an "edit" that is really a replacement.
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec({
+    title: 'Collapsed',
+    states: [{ name: 'only', start: true, accept: true }],
+    transitions: [{ from: 'only', to: 'only', on: 'a' }, { from: 'only', to: 'only', on: 'b' }],
+    tests: [{ w: 'a', expect: 'accept' }, { w: 'b', expect: 'accept' }, { w: 'ε', expect: 'accept' }]
+  })));
+  const result = await h.context.runStateMate({ prompt: 'simplify it', intent: 'edit', authority: 'auto' });
+
+  assert.equal(result.status, 'proposed', 'auto stopped to ask');
+  assert.equal(result.hold, 'scope');
+  assert.match(result.holdDetail, /removes 2 of the 2 states/);
+  assert.deepEqual(h.context.exportWorkspaceState(), before, 'and drew nothing meanwhile');
+});
+
+test('a build over existing work is a replacement, not an overreach', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({
+    enabled: true, provider: 'anthropic', apiKey: 'k', newTabForBuild: false
+  });
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+  await h.context.runStateMate({ prompt: 'even number of a', authority: 'auto' });
+
+  // Building removes every state the old machine had — that is the request,
+  // so the guard must not read it as an edit gone wrong.
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec({
+    title: 'Ends in b',
+    states: [{ name: 'no', start: true }, { name: 'yes', accept: true }],
+    transitions: [
+      { from: 'no', to: 'yes', on: 'b' }, { from: 'no', to: 'no', on: 'a' },
+      { from: 'yes', to: 'no', on: 'a' }, { from: 'yes', to: 'yes', on: 'b' }
+    ],
+    tests: [{ w: 'b', expect: 'accept' }, { w: 'a', expect: 'reject' }, { w: 'ab', expect: 'accept' }]
+  })));
+  const result = await h.context.runStateMate({ prompt: 'a DFA for strings ending in b', intent: 'build', authority: 'auto' });
+
+  assert.equal(result.status, 'applied');
+  assert.deepEqual(h.context.App.states.map(s => s.name).sort(), ['no', 'yes']);
+});
+
+test('the turn subject is inferred, and /new overrides it for one turn', async () => {
+  const h = createHarness();
+  const { App } = h.context;
+  h.context.saveStateMateSettings({
+    enabled: true, provider: 'anthropic', apiKey: 'k', newTabForBuild: false
+  });
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+  h.context.openStateMate();
+  type(h, '/mode auto');
+  await enter(h.getElement('sm-input'));
+
+  // Nothing on the canvas: the turn can only be a build, and there is no
+  // switch to get wrong.
+  let input = type(h, 'even number of a');
+  await enter(input);
+  assert.ok(App.states.length, 'and it built one');
+
+  // Now there is a machine, so an unqualified turn is about it.
+  const sent = () => JSON.parse(h.context.fetch.calls.at(-1).init.body).messages.at(-1).content;
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+  input = type(h, 'add a trap state');
+  await enter(input);
+  assert.match(sent(), /MACHINE CURRENTLY ON THE CANVAS/, 'the canvas is the subject');
+
+  // …unless this one turn says otherwise. /new is an override, not a mode: it
+  // carries its own prompt and leaves nothing switched on behind it.
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+  input = type(h, '/new a DFA for strings ending in b');
+  await enter(input);
+  assert.match(sent(), /FOR CONTEXT/, 'the canvas is context, not the thing being edited');
+  assert.match(sent(), /REQUEST: a DFA for strings ending in b/,
+    'and the text after the command is the prompt, not dropped');
+
+  // The next turn is about the canvas again, with nothing to switch back.
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+  input = type(h, 'rename the states');
+  await enter(input);
+  assert.match(sent(), /MACHINE CURRENTLY ON THE CANVAS/);
+});
+
+test('detaching the canvas is what makes a turn a fresh build', () => {
+  const h = createHarness();
+  const { App } = h.context;
+  App.states = [{ id: 's1', name: 'q0', x: 0, y: 0 }];
+  App.startId = 's1';
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  h.context.openStateMate();
+
+  // One switch, not two. The old build/edit toggle had to be kept in step
+  // with this one by hand, and "edit the machine I am not sending you" was a
+  // reachable state.
+  assert.match(h.getElement('sm-input').placeholder, /Ask about or change/);
+
+  const chip = h.getElement('sm-status').children.find(c => /canvas/.test(deepText(c)));
+  chip.onclick();
+  assert.match(h.getElement('sm-input').placeholder, /to build/);
+});
+
+test('the console defaults to propose and cycles with the status chip', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  h.context.openStateMate();
+
+  const chip = () => h.getElement('sm-status').children
+    .find(c => /^(ask|propose|auto)$/.test(deepText(c)));
+  assert.equal(deepText(chip()), 'propose', 'the safe default is the default');
+
+  chip().onclick();
+  assert.equal(deepText(chip()), 'auto');
+  chip().onclick();
+  assert.equal(deepText(chip()), 'ask');
+  assert.match(logText(h), /Read-only/, 'and the change says what it means');
+
+  // Authority is a standing decision, so reopening the dialog must not quietly
+  // reset it to the default.
+  h.context.closeModal('statemate-modal');
+  h.context.openStateMate();
+  assert.equal(deepText(chip()), 'ask');
+});
+
+test('a replacing edit reads as one chip per dimension, not four', () => {
+  const h = createHarness();
+  // The shape in the screenshot that prompted this: an edit that came back as
+  // a replacement. "+4 states −7 states +8 transitions −14 transitions" is the
+  // same two facts said twice, in four pills that wrap to say it.
+  const chips = h.context.summarizeDiff({
+    machineChanged: false,
+    statesAdded: ['a', 'b', 'c', 'd'],
+    statesRemoved: ['p', 'q', 'r', 's', 't', 'u', 'v'],
+    statesRenamed: [],
+    transitionsAdded: 8,
+    transitionsRemoved: 14,
+    sigmaAdded: []
+  });
+  assert.deepEqual(chips, ['+4 −7 states', '+8 −14 transitions']);
+
+  const oneWay = h.context.summarizeDiff({
+    machineChanged: false,
+    statesAdded: ['a'], statesRemoved: [], statesRenamed: [],
+    transitionsAdded: 0, transitionsRemoved: 0, sigmaAdded: []
+  });
+  assert.deepEqual(oneWay, ['+1 state'], 'a one-sided diff still reads as it always did');
 });
 
 test('canvas notes are offered only when the user asked for them', async () => {

@@ -38,6 +38,12 @@ import {
 export const MAX_SPEC_STATES = 120;
 export const MAX_SPEC_TRANSITIONS = 600;
 export const MIN_SPEC_TESTS = 3;
+export const MAX_CAVEAT_CHARS = 240;
+// Raised when the reply card learned to render markdown: structure costs
+// characters, and a table or a fenced block cut off at 1200 is a card that
+// looks broken rather than a reply that was long. Still a cap — it is the
+// backstop against a model that will not stop talking.
+export const MAX_REPLY_CHARS = 2400;
 
 /**
  * Every failure in the StateMate pipeline. `code` is what the UI maps to a
@@ -200,6 +206,10 @@ export function extractSpecJSON(text) {
 // ══════════════════════════════════════════════════════════════════
 //  VALIDATION
 // ══════════════════════════════════════════════════════════════════
+
+// Words that mean the model is talking about producing the answer rather than
+// about the machine. See the caveat handling in validateSpec.
+const PROCESS_NARRATION = /\b(correct(?:ed|ion)|repair(?:ed)?|fix(?:ed)?|revis(?:ed|ion)|(?:updat|adjust)ed to|previous (?:answer|attempt)|my (?:answer|previous))\b/i;
 
 const EPSILON_ALIASES = new Set(['eps', 'epsilon', 'ε', 'λ', 'lambda', '\\e', '', 'empty']);
 const MOVE_ALIASES = { l: 'L', left: 'L', r: 'R', right: 'R', s: 'S', stay: 'S', n: 'S', none: 'S' };
@@ -378,6 +388,25 @@ export function validateSpec(raw, { fallbackMachine = App.machine } = {}) {
   spec.title = typeof raw.title === 'string' && raw.title.trim() ? raw.title.trim() : 'StateMate machine';
   spec.blurb = typeof raw.blurb === 'string' ? raw.blurb.trim() : '';
 
+  // The one thing a model may say about its own answer beyond the machine
+  // itself: that the machine is not quite what was asked for. It exists for
+  // the request that cannot be honoured — a DFA for a non-regular language —
+  // where the alternative is a confidently drawn wrong machine and a failing
+  // check the user has to interpret unaided. Capped because it renders in a
+  // four-line list, not given a severity because severity drives the repair
+  // loop and is the app's to assign.
+  const caveat = typeof raw.caveat === 'string' ? raw.caveat.trim().slice(0, MAX_CAVEAT_CHARS) : '';
+
+  // A caveat describes the machine's relationship to the request. Coming out
+  // of a repair round a model will otherwise narrate the repair instead — "the
+  // machine was corrected to accurately reflect the language it recognizes" —
+  // which says nothing the user can act on and takes a line on the card that a
+  // real finding could have used. The prompt forbids it; this is the guard for
+  // when that is ignored. A genuine caveat about a language has no reason to
+  // reach for these words, and the cost of a false positive is one advisory
+  // line, never a wrong machine.
+  spec.caveat = PROCESS_NARRATION.test(caveat) ? '' : caveat;
+
   spec.notes = (Array.isArray(raw.notes) ? raw.notes : [])
     .slice(0, 2)
     .map(n => ({
@@ -401,6 +430,54 @@ export function validateSpec(raw, { fallbackMachine = App.machine } = {}) {
   }
 
   return spec;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  WHICH KIND OF TURN IS THIS
+// ══════════════════════════════════════════════════════════════════
+//  A model may answer with a machine or, once, with prose. Those are two
+//  different things and the difference is declared, never inferred from
+//  which keys happen to be present — inferring it is exactly the loose
+//  matching this dialect exists to prevent, and it fails in the worst
+//  direction: a machine answer truncated mid-stream would read as a
+//  malformed *reply* rather than a malformed *machine*.
+//
+//  The asymmetry is deliberate. "reply" must be spelled out, because that is
+//  the branch that writes nothing and therefore the branch a model could
+//  hide a failure behind. A missing `kind` falls through to the machine
+//  path, which validateSpec gates strictly enough that nothing gets in by
+//  omission.
+
+/**
+ * Parse one model answer into either a machine or a reply.
+ *
+ * @param {object}  raw
+ * @param {object}  [opts]
+ * @param {string}  [opts.fallbackMachine]
+ * @param {boolean} [opts.allowReply]  false inside the repair loop
+ * @returns {{kind: 'machine', spec: object} | {kind: 'reply', text: string}}
+ */
+export function parseTurn(raw, { fallbackMachine = App.machine, allowReply = true } = {}) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    fail('The answer was not a machine object.');
+  }
+
+  const kind = typeof raw.kind === 'string' ? raw.kind.trim().toLowerCase() : '';
+
+  if (kind === 'reply') {
+    // A model that has already committed to a machine does not get to talk
+    // its way out of fixing it. Without this the repair loop has a legal
+    // escape hatch, and the one model that cannot produce valid JSON is the
+    // one that will find it.
+    if (!allowReply) {
+      fail('A reply is not a correction — return the fixed machine, as JSON.');
+    }
+    const text = typeof raw.text === 'string' ? raw.text.trim().slice(0, MAX_REPLY_CHARS) : '';
+    if (!text) fail('The reply had no text.');
+    return { kind: 'reply', text };
+  }
+
+  return { kind: 'machine', spec: validateSpec(raw, { fallbackMachine }) };
 }
 
 // ══════════════════════════════════════════════════════════════════

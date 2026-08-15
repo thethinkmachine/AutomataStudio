@@ -64,43 +64,119 @@ body.modal-open {
   gap: 8px;
 }
 
-/* ─── STATEMATE PALETTE ───
-   One dialog over three things: the examples, the exact algorithms, and the
-   model. The shell is static in index.html; every row below is built by
-   js/statemate-ui.js. Sizes are fixed rather than content-driven so the
-   dialog does not resize when it switches between browsing and working. */
-.sm-modal {
-  width: min(760px, calc(100vw - 32px));
-  max-width: 760px;
-  padding: 22px 24px 14px;
-  overflow: hidden;
+/* ─── STATEMATE CONSOLE ───
+   A session, not a picker. The transcript records what was asked and what was
+   built, the composer sends to the model on ⏎, and everything that is not a
+   prompt is a slash command. One input, one meaning.
+
+   Docked to the bottom rather than floating in the middle, because the machine
+   is drawn on the canvas behind this panel and a dialog that covers its own
+   result is a dialog you have to dismiss to use. That is also why this overlay
+   drops the shared scrim and blur — the diagram above stays readable, and the
+   conversation can stay open across several turns.
+
+   The shell is static in index.html; every line inside .sm-log is built by
+   js/statemate-ui.js. */
+.sm-overlay {
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 14px 14px;
 }
 
-.sm-title-row {
-  justify-content: space-between;
+.sm-overlay.show {
+  background: linear-gradient(to bottom, transparent 34%, color-mix(in srgb, var(--overlay) 50%, transparent));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.sm-console {
+  /* The type scale. Two voices and four sizes, and the rule for which is
+     which: sans is language — what a person wrote or is meant to read;
+     mono is identifiers and instrumentation — commands, marks, counts,
+     model names, keycaps. Change a number here, not in thirty rules. */
+  --sm-prose: .84rem;   /* prompts, replies, blurbs */
+  --sm-ui: .76rem;      /* buttons, hints, step lines */
+  --sm-mono: .72rem;    /* command names, system lines */
+  --sm-micro: .63rem;   /* status bar, chips, meta */
+  --sm-lh: 1.7;
+  display: flex;
+  flex-direction: column;
+  width: min(900px, 100%);
+  max-width: none;
+  min-height: 250px;
+  max-height: min(620px, 78vh);
+  padding: 0;
+  overflow: hidden;
+  transform: translateY(16px);
+}
+
+.overlay.show .sm-console {
+  transform: translateY(0);
+}
+
+/* ── header ── */
+.sm-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  padding: 10px 10px 10px 16px;
+  border-bottom: 1px solid var(--border);
 }
 
 .sm-title-name {
+  font-family: var(--sans);
+  font-size: .86rem;
+  font-weight: 600;
+  letter-spacing: -.01em;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
+  color: var(--text);
 }
 
 .sm-title-icon {
-  width: 17px;
-  height: 17px;
-  color: var(--accent);
+  width: 15px;
+  height: 15px;
   flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.sm-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.sm-headbtn {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.sm-headbtn:hover,
+.sm-headbtn:focus-visible {
+  border-color: var(--border2);
+  background: var(--surface2);
+  color: var(--text);
+  outline: none;
 }
 
 .sm-close {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text3);
   cursor: pointer;
@@ -114,341 +190,151 @@ body.modal-open {
 }
 
 .sm-close svg {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
 }
 
-/* ── the one input ── */
-.sm-input-wrap {
-  position: relative;
-}
-
-.sm-input-icon {
-  position: absolute;
-  top: 50%;
-  left: 13px;
-  width: 16px;
-  height: 16px;
-  color: var(--text3);
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.sm-input.inp {
-  width: 100%;
-  height: 44px;
-  padding-left: 40px;
-  font-size: .84rem;
-}
-
-.sm-input.inp:focus {
-  border-color: var(--accent-border-strong);
-}
-
-/* ── context chips ── */
-.sm-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 12px 0 4px;
-  min-height: 24px;
-}
-
-.sm-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 9px;
-  border: 1px solid var(--border2);
-  border-radius: 999px;
-  background: var(--bg3);
-  color: var(--text2);
-  font-family: var(--mono);
-  font-size: .62rem;
-  line-height: 1.6;
-  white-space: nowrap;
-}
-
-.sm-chip b {
-  color: var(--text);
-  font-weight: 600;
-}
-
-.sm-chip-icon {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 auto;
-}
-
-.sm-chip-toggle {
-  cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
-}
-
-.sm-chip-toggle:hover:not(:disabled),
-.sm-chip-toggle:focus-visible {
-  border-color: var(--border2);
-  color: var(--text);
-  outline: none;
-}
-
-.sm-chip-toggle:disabled {
-  opacity: .45;
-  cursor: default;
-}
-
-.sm-chip-toggle.is-on {
-  border-color: var(--accent-border);
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.sm-chip-model {
-  color: var(--violet);
-  border-color: var(--violet-border);
-  background: var(--violet-soft);
-}
-
-.sm-chip-cta {
-  border-color: var(--accent-border-strong);
-  background: var(--accent-soft-strong);
-  color: var(--accent);
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.sm-chip-follow {
-  border-color: var(--gold-border);
-  background: var(--gold-soft);
-  color: var(--gold);
-  cursor: pointer;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* ── results ── */
-/* Bounded rather than fixed. A floor keeps the dialog from jumping when it
-   switches from browsing to the progress list, and the ceiling keeps a long
-   example set from pushing the hint bar off screen — but a machine with two
-   examples should not open onto 300px of nothing. */
-.sm-body {
-  min-height: 168px;
-  max-height: min(46vh, 360px);
+/* ── the transcript ── */
+.sm-log {
+  font-family: var(--sans);
+  font-size: var(--sm-prose);
+  line-height: var(--sm-lh);
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 15px 18px 6px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
-  margin-top: 6px;
 }
 
-.sm-sec {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 2px 6px;
-  color: var(--text3);
-  font-family: var(--mono);
-  font-size: .58rem;
-  letter-spacing: .09em;
-  text-transform: uppercase;
+.sm-entry {
+  margin-bottom: 13px;
 }
 
-.sm-sec:first-child {
-  padding-top: 4px;
+.sm-entry:last-child {
+  margin-bottom: 4px;
 }
 
-.sm-row {
-  display: block;
-  width: 100%;
-  padding: 11px 12px;
-  border: 1px solid transparent;
-  border-radius: var(--r);
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+/* Every line in the log hangs off a one-glyph gutter, the way a terminal
+   transcript does: the mark says who is speaking without a label doing it. */
+.sm-line {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr);
+  gap: 9px;
+  align-items: baseline;
 }
 
-.sm-row:hover {
-  background: var(--surface2);
-}
-
-/* Highlight is driven by the keyboard cursor, not by focus: the input keeps
-   focus the whole time so typing never has to be re-aimed. */
-.sm-row.is-active {
-  border-color: var(--accent-border);
-  background: var(--accent-soft);
-}
-
-.sm-row:focus-visible {
-  outline: none;
-  border-color: var(--accent-border-strong);
-}
-
-.sm-row-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.sm-row-name {
-  min-width: 0;
-  font-family: var(--sans);
-  font-size: .85rem;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
-.sm-row-ask .sm-row-name {
+.sm-mark-icon {
+  width: 13px;
+  height: 13px;
   color: var(--accent);
 }
 
-.sm-row-algo .sm-row-name {
-  color: var(--green);
+/* A block that hangs under the gutter instead of sitting beside it. */
+.sm-hang {
+  margin-left: 24px;
 }
 
-.sm-row-starter .sm-row-name {
-  color: var(--text2);
-  font-weight: 500;
-  font-style: italic;
-}
-
-.sm-row-badges {
-  display: flex;
-  gap: 5px;
-  flex: 0 0 auto;
-}
-
-.sm-badge {
-  padding: 2px 6px;
-  border: 1px solid var(--border2);
-  border-radius: 999px;
-  color: var(--text3);
+.sm-mark {
   font-family: var(--mono);
-  font-size: .55rem;
-  font-weight: 600;
-}
-
-.sm-badge-featured {
-  border-color: var(--accent-border-strong);
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.sm-badge-algo {
-  border-color: var(--green-border);
-  background: var(--green-soft);
-  color: var(--green);
-}
-
-.sm-badge-key {
-  border-color: var(--accent-border);
-  color: var(--accent);
-}
-
-.sm-row-sub {
-  display: -webkit-box;
-  margin-top: 4px;
-  overflow: hidden;
-  color: var(--text2);
-  font-family: var(--sans);
-  font-size: .73rem;
-  line-height: 1.5;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.sm-empty {
-  padding: 28px 16px;
+  font-size: .8rem;
+  line-height: var(--sm-lh);
   color: var(--text3);
-  font-family: var(--mono);
-  font-size: .72rem;
   text-align: center;
 }
 
-/* ── working ── */
-.sm-body-working {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 14px 4px;
-}
-
-.sm-working-prompt {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  color: var(--text2);
-  font-size: .8rem;
-  line-height: 1.5;
-}
-
-.sm-icon-spark {
-  width: 13px;
-  height: 13px;
-  margin-top: 3px;
-  flex: 0 0 auto;
+/* ── a user turn ── */
+.sm-entry.is-user .sm-mark {
   color: var(--accent);
 }
 
-.sm-stages {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.sm-user-text {
+  min-width: 0;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
-.sm-stage {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: 10px;
-  align-items: baseline;
-  padding: 5px 2px;
+/* ── a system line: a loaded example, a cleared thread, a switched mode ── */
+.sm-log .is-note {
+  font-family: var(--mono);
+  font-size: var(--sm-mono);
   color: var(--text3);
-  font-size: .79rem;
+}
+
+.sm-log .is-note .sm-mark {
+  font-size: var(--sm-mono);
+}
+
+/* ── the run in progress ── */
+.sm-run-head {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.sm-dot {
+  width: 15px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+}
+
+.sm-steps {
+  margin: 3px 0 0;
+  padding-left: 24px;
+}
+
+.sm-step {
+  font-family: var(--sans);
+  font-size: var(--sm-ui);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 1px 0;
+  color: var(--text3);
   transition: color var(--transition-fast);
 }
 
-.sm-stage.is-done {
+.sm-step.is-done {
   color: var(--text2);
 }
 
-.sm-stage.is-active {
+.sm-step.is-active {
   color: var(--text);
 }
 
-.sm-stage-mark {
-  display: grid;
-  place-items: center;
-  color: var(--text3);
+.sm-step-mark {
   font-family: var(--mono);
+  font-size: var(--sm-mono);
+  flex: 0 0 auto;
+  width: 12px;
+  color: var(--text3);
+  text-align: center;
 }
 
-.sm-stage.is-done .sm-stage-mark {
+.sm-step.is-done .sm-step-mark {
   color: var(--green);
 }
 
-.sm-stage-icon {
-  width: 11px;
-  height: 11px;
+.sm-step-icon {
+  width: 10px;
+  height: 10px;
 }
 
-.sm-stage-text {
-  display: flex;
-  gap: 9px;
-  align-items: baseline;
-  flex-wrap: wrap;
-}
-
-.sm-stage-note {
-  color: var(--text3);
+.sm-step-note {
   font-family: var(--mono);
-  font-size: .64rem;
+  font-size: var(--sm-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--text3);
 }
 
 .sm-spinner {
-  width: 10px;
-  height: 10px;
+  display: inline-block;
+  width: 9px;
+  height: 9px;
   border: 1.5px solid var(--accent-border);
   border-top-color: var(--accent);
   border-radius: 50%;
@@ -463,113 +349,316 @@ body.modal-open {
   .sm-spinner { animation-duration: 2.4s; }
 }
 
-/* The model's own one-line plan, streamed in while the rest arrives. */
+/* The model's own one-line plan, streamed in while the rest is still arriving. */
 .sm-plan {
-  display: flex;
-  gap: 6px;
+  font-family: var(--sans);
+  font-size: var(--sm-ui);
+  line-height: 1.6;
+  margin: 6px 0 0 24px;
+  padding-left: 10px;
+  border-left: 2px solid var(--violet);
+  color: var(--text2);
+  font-style: italic;
+}
+
+/* ── the cards: a machine, a reply, an error ── */
+.sm-card {
   padding: 11px 13px;
   border: 1px solid var(--border);
-  border-left: 2px solid var(--violet);
+  border-left: 2px solid var(--accent);
   border-radius: 0 var(--r) var(--r) 0;
+  background: var(--surface2);
+}
+
+.sm-card.is-reply {
+  border-left-color: var(--violet);
   background: var(--violet-soft);
-  color: var(--text2);
-  font-size: .77rem;
-  line-height: 1.55;
 }
 
-.sm-plan-quote {
-  color: var(--violet);
-  font-family: var(--serif);
-  font-size: 1.1rem;
-  line-height: 1;
-}
-
-/* ── error ── */
-.sm-body-error {
-  display: flex;
-  align-items: center;
-  padding: 8px 4px;
-}
-
-.sm-error {
-  width: 100%;
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-left: 2px solid var(--red);
-  border-radius: 0 var(--r) var(--r) 0;
+.sm-card.is-error {
+  border-left-color: var(--red);
   background: var(--red-soft);
 }
 
-.sm-error-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  color: var(--text);
-  font-size: .84rem;
-  line-height: 1.55;
+.sm-card.is-warn {
+  border-left-color: var(--gold);
 }
 
-.sm-icon-warn {
-  width: 15px;
-  height: 15px;
-  margin-top: 2px;
-  flex: 0 0 auto;
+.sm-card-title {
+  font-family: var(--sans);
+  font-size: .88rem;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: -.01em;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--text);
+}
+
+.sm-prose {
+  font-family: var(--sans);
+  font-size: var(--sm-prose);
+  line-height: var(--sm-lh);
+  color: var(--text2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ── markdown, as rendered by js/markdown.js ──
+   The reply is the one surface where the model writes prose for a person, so
+   it is the one surface that gets block structure. Everything here is scoped
+   under .sm-md: these are tag selectors, and the console must not start
+   restyling every <p> and <table> in the app.
+
+   pre-wrap comes off deliberately — the parser has already turned newlines
+   into blocks, so keeping it would double every gap it just created. */
+.sm-md {
+  white-space: normal;
+}
+
+.sm-md > :first-child { margin-top: 0; }
+.sm-md > :last-child { margin-bottom: 0; }
+
+.sm-md .md-p {
+  margin: 0 0 .7em;
+}
+
+.sm-md .md-h {
+  margin: 1.1em 0 .45em;
+  color: var(--text);
+  font-family: var(--sans);
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -.01em;
+}
+
+/* Headings inside a chat reply are section markers in a paragraph or two of
+   text, not the top of a document — so the scale is compressed and h1 is only
+   just larger than the body. */
+.sm-md h1.md-h { font-size: 1.08em; }
+.sm-md h2.md-h { font-size: 1.03em; }
+.sm-md h3.md-h { font-size: 1em; }
+.sm-md h4.md-h,
+.sm-md h5.md-h,
+.sm-md h6.md-h {
+  font-size: .95em;
+  color: var(--text2);
+}
+
+.sm-md strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.sm-md em { font-style: italic; }
+
+.sm-md del {
+  color: var(--text3);
+  text-decoration: line-through;
+}
+
+.sm-md code {
+  padding: .1em .35em;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg3);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .88em;
+  overflow-wrap: anywhere;
+}
+
+.sm-md .md-pre {
+  margin: 0 0 .7em;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  scrollbar-width: thin;
+}
+
+/* The block owns the frame; the code inside it is bare, or every fenced block
+   draws a box inside a box. */
+.sm-md .md-pre code {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-size: .9em;
+  line-height: 1.6;
+  white-space: pre;
+}
+
+.sm-md .md-list {
+  margin: 0 0 .7em;
+  padding-left: 1.4em;
+}
+
+.sm-md .md-list .md-list {
+  margin: .25em 0 0;
+}
+
+.sm-md .md-li {
+  margin: .2em 0;
+}
+
+.sm-md .md-li::marker {
+  color: var(--text3);
+}
+
+.sm-md .md-quote {
+  margin: 0 0 .7em;
+  padding: .1em 0 .1em .8em;
+  border-left: 2px solid var(--border2);
+  color: var(--text3);
+}
+
+.sm-md .md-hr {
+  margin: 1em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.sm-md .md-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sm-md .md-link:hover,
+.sm-md .md-link:focus-visible {
+  outline: none;
+  text-decoration-thickness: 2px;
+}
+
+/* An image is shown as its label and its address — see the note at the top of
+   js/markdown.js for why a reply never gets to make a request. */
+.sm-md .md-image {
+  color: var(--text3);
+  font-family: var(--mono);
+  font-size: .9em;
+}
+
+.sm-md .md-table-wrap {
+  margin: 0 0 .7em;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.sm-md .md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .95em;
+}
+
+.sm-md .md-table th,
+.sm-md .md-table td {
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.sm-md .md-table th {
+  background: var(--bg3);
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* A machine that was built and checked but not drawn. The tint says the card
+   describes something that is not on your canvas yet — every number in it is
+   a prediction rather than a report. */
+.sm-card.is-pending {
+  border-left-color: var(--gold);
+  background: var(--gold-soft);
+}
+
+.sm-hold {
+  margin-top: 6px;
+  color: var(--gold);
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  line-height: 1.5;
+}
+
+.sm-hold.is-stale {
+  margin-top: 9px;
   color: var(--red);
 }
 
-.sm-error-detail {
-  margin-top: 12px;
-  color: var(--text3);
-  font-size: .72rem;
-}
-
-.sm-error-detail summary {
-  cursor: pointer;
-  font-family: var(--mono);
-  font-size: .64rem;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-}
-
-.sm-error-detail pre {
-  max-height: 160px;
-  margin: 8px 0 0;
-  padding: 10px;
-  overflow: auto;
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text2);
-  font-family: var(--mono);
-  font-size: .66rem;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.sm-error-actions {
+.sm-chipline {
   display: flex;
-  gap: 8px;
-  margin-top: 16px;
+  gap: 5px;
+  margin-top: 7px;
+  flex-wrap: wrap;
+}
+
+.sm-chip {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  font-variant-numeric: tabular-nums;
+  padding: 1px 7px;
+  border: 1px solid var(--border2);
+  border-radius: 999px;
+  color: var(--text2);
+  white-space: nowrap;
+}
+
+.sm-chip.is-pass {
+  border-color: var(--green-border);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.sm-chip.is-fail {
+  border-color: var(--gold-border);
+  background: var(--gold-soft);
+  color: var(--gold);
+}
+
+/* Everything the run found that is true but not fatal. Shown, never silent —
+   a fix the reader cannot see is a fix they cannot distrust. */
+.sm-notes {
+  font-family: var(--sans);
+  font-size: var(--sm-ui);
+  line-height: 1.6;
+  margin: 9px 0 0;
+  padding-left: 16px;
+  color: var(--text3);
+}
+
+.sm-note.is-warn { color: var(--gold); }
+.sm-note.is-fail { color: var(--red); }
+
+.sm-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 11px;
   flex-wrap: wrap;
 }
 
 .sm-btn {
-  padding: 6px 13px;
+  font-family: var(--sans);
+  font-size: var(--sm-ui);
+  font-weight: 600;
+  padding: 4px 11px;
   border: 1px solid var(--border2);
   border-radius: 6px;
-  background: var(--surface2);
-  color: var(--text);
-  font-family: var(--sans);
-  font-size: .75rem;
-  font-weight: 600;
+  background: var(--surface);
+  color: var(--text2);
   cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
 }
 
 .sm-btn:hover,
 .sm-btn:focus-visible {
   border-color: var(--border2);
   background: var(--surface3);
+  color: var(--text);
   outline: none;
 }
 
@@ -579,51 +668,455 @@ body.modal-open {
   color: var(--accent);
 }
 
-/* ── footer hint bar ── */
-.sm-foot {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-top: 4px;
-  padding: 10px 2px 2px;
+.sm-meta {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+  margin-top: 9px;
+  padding-top: 8px;
   border-top: 1px solid var(--border);
   color: var(--text3);
-  font-size: .68rem;
+}
+
+.sm-error-detail {
+  font-family: var(--sans);
+  font-size: var(--sm-ui);
+  margin-top: 10px;
+  color: var(--text3);
+}
+
+.sm-error-detail summary {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  letter-spacing: .08em;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.sm-error-detail pre {
+  font-family: var(--mono);
+  font-size: var(--sm-mono);
+  line-height: 1.55;
+  max-height: 150px;
+  margin: 8px 0 0;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── the welcome, and the lists a slash command prints ── */
+.sm-welcome {
+  padding: 6px 0 2px;
+}
+
+.sm-welcome-line {
+  font-family: var(--sans);
+  font-size: .86rem;
+  line-height: var(--sm-lh);
+  color: var(--text2);
+}
+
+.sm-welcome-line b {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sm-kbd {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  background: var(--bg3);
+  color: var(--text2);
+}
+
+.sm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0 0 24px;
+}
+
+.sm-listrow {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.sm-listrow:hover,
+.sm-listrow:focus-visible {
+  border-color: var(--border2);
+  background: var(--surface2);
+  outline: none;
+}
+
+.sm-listrow-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sm-listrow-name {
+  font-family: var(--sans);
+  font-size: .82rem;
+  font-weight: 600;
+  min-width: 0;
+}
+
+.sm-listrow-tag {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  flex: 0 0 auto;
+  color: var(--text3);
+}
+
+.sm-listrow-sub {
+  font-family: var(--sans);
+  font-size: var(--sm-ui);
+  line-height: 1.55;
+  display: -webkit-box;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--text2);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.sm-empty {
+  font-family: var(--mono);
+  font-size: var(--sm-mono);
+  margin-left: 24px;
+  color: var(--text3);
+}
+
+/* ── the dock: completions, composer, status ── */
+.sm-dock {
+  flex: 0 0 auto;
+  padding-bottom: 4px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* The completion list for slash commands and their arguments. It replaces the
+   old result list entirely: ⏎ in the composer always sends to the model, and
+   this is the only thing that ever competes for the keystroke — which is why
+   it is only ever open while the line starts with a slash. */
+.sm-menu {
+  /* Tall enough for the whole command list without scrolling — a menu that
+     hides the last two entries hides the two nobody has discovered yet. */
+  max-height: 320px;
+  margin: 10px 12px 0;
+  padding: 5px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  background: var(--surface2);
+}
+
+.sm-menu[hidden] {
+  display: none;
+}
+
+.sm-cmd {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sm-cmd:hover {
+  background: var(--surface3);
+}
+
+.sm-cmd.is-active {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.sm-cmd-name {
+  font-family: var(--mono);
+  font-size: var(--sm-mono);
+  font-weight: 500;
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.sm-cmd-args {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  flex: 0 0 auto;
+  color: var(--text3);
+}
+
+.sm-cmd-hint {
+  font-family: var(--sans);
+  font-size: var(--sm-ui);
+  min-width: 0;
+  max-width: 52%;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--text2);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* An exact construction the app already has. It sits above the composer as a
+   note rather than a row, because algorithms-fa.js being correct is a reason
+   to offer it — not a reason to take ⏎ away from the thing being typed. */
+.sm-nudge-slot:empty {
+  display: none;
+}
+
+.sm-nudge {
+  font-family: var(--sans);
+  font-size: var(--sm-ui);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 12px 0;
+  padding: 7px 11px;
+  border: 1px solid var(--green-border);
+  border-radius: 8px;
+  background: var(--green-soft);
+  color: var(--text2);
+}
+
+.sm-nudge-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  color: var(--green);
+}
+
+.sm-nudge-link {
+  font-family: var(--sans);
+  font-size: var(--sm-ui);
+  font-weight: 600;
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--green);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sm-nudge-link:hover,
+.sm-nudge-link:focus-visible {
+  outline: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sm-composer {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 10px 12px 0;
+  padding: 9px 9px 9px 12px;
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  background: var(--bg3);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.sm-composer:focus-within {
+  border-color: var(--accent-border-strong);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.sm-composer.is-busy {
+  opacity: .6;
+}
+
+.sm-caret {
+  font-family: var(--mono);
+  font-size: .8rem;
+  line-height: var(--sm-lh);
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.sm-input {
+  font-family: var(--sans);
+  font-size: var(--sm-prose);
+  line-height: var(--sm-lh);
+  flex: 1 1 auto;
+  min-width: 0;
+  max-height: 132px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  resize: none;
+  outline: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.sm-input::placeholder {
+  color: var(--text3);
+}
+
+.sm-send {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border: 1px solid var(--accent-border);
+  border-radius: 7px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  cursor: pointer;
+  transition: background var(--transition-fast), opacity var(--transition-fast);
+}
+
+.sm-send:hover:not(:disabled),
+.sm-send:focus-visible {
+  background: var(--accent-soft-strong);
+  outline: none;
+}
+
+.sm-send:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+.sm-send svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* ── the status line ── */
+/* Everything that decides what the next ⏎ does, on one row: the machine being
+   built, whether the canvas rides along, build or edit, and which model. The
+   first three are buttons — the line states the context and is the place to
+   change it. */
+.sm-status {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  letter-spacing: .02em;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 14px 6px;
+  color: var(--text3);
   flex-wrap: wrap;
 }
 
-.sm-hint {
+.sm-stat {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  line-height: 1.7;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text3);
+  white-space: nowrap;
+}
+
+.sm-stat b {
+  font-weight: 500;
+  color: var(--text2);
+}
+
+button.sm-stat {
+  border-color: var(--border);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+}
+
+button.sm-stat:hover,
+button.sm-stat:focus-visible {
+  border-color: var(--border2);
+  background: var(--surface2);
+  color: var(--text2);
+  outline: none;
+}
+
+button.sm-stat:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.sm-stat.is-on {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.sm-stat.is-on b {
+  color: var(--accent);
+}
+
+.sm-stat.is-cta {
+  font-weight: 500;
+  border-color: var(--accent-border-strong);
+  background: var(--accent-soft-strong);
+  color: var(--accent);
+}
+
+.sm-stat-icon {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+}
+
+.sm-keys {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.sm-key {
   display: inline-flex;
   align-items: center;
   gap: 5px;
 }
 
-.sm-hint kbd {
+.sm-key kbd {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
   padding: 1px 5px;
   border: 1px solid var(--border2);
   border-radius: 4px;
   background: var(--bg3);
   color: var(--text2);
-  font-family: var(--mono);
-  font-size: .62rem;
 }
 
-.sm-foot-link {
-  margin-left: auto;
-  border: 0;
-  background: transparent;
-  color: var(--text3);
-  font-family: var(--sans);
-  font-size: .68rem;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.sm-foot-link:hover,
-.sm-foot-link:focus-visible {
-  color: var(--accent);
-  outline: none;
+@media (max-width: 720px) {
+  .sm-console { max-height: 86vh; }
+  .sm-keys { display: none; }
 }
 
 /* ─── STATEMATE SETTINGS PANEL ─── */
@@ -650,9 +1143,9 @@ body.modal-open {
 }
 
 /* ─── STATEMATE RESULT STRIP ───
-   Decorates the existing example card in the Simulate panel rather than
-   introducing a second one — a StateMate result is a title, a blurb and a
-   set of test words, which is exactly what that card already renders. */
+   Decorates the existing info card over the canvas rather than introducing a
+   second one — a StateMate result is a title, a blurb and a set of test words,
+   which is exactly what that card already renders. */
 .example-card.sm-result {
   border-color: var(--accent-border);
 }
@@ -664,10 +1157,8 @@ body.modal-open {
 .sm-result-strip {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: -2px 0 10px;
-  padding-bottom: 9px;
-  border-bottom: 1px solid var(--border);
+  gap: 7px;
+  margin: 7px 0 0;
   flex-wrap: wrap;
 }
 
@@ -677,8 +1168,8 @@ body.modal-open {
   gap: 5px;
   color: var(--accent);
   font-family: var(--mono);
-  font-size: .62rem;
-  font-weight: 600;
+  font-size: .63rem;
+  font-weight: 500;
   letter-spacing: .04em;
 }
 
@@ -689,12 +1180,13 @@ body.modal-open {
 }
 
 .sm-result-chip {
-  padding: 1px 6px;
+  padding: 1px 7px;
   border: 1px solid var(--border2);
   border-radius: 999px;
   color: var(--text2);
   font-family: var(--mono);
-  font-size: .56rem;
+  font-size: .6rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .sm-result-verdict.is-pass {
@@ -711,8 +1203,11 @@ body.modal-open {
 
 .sm-result-actions {
   display: flex;
-  gap: 4px;
-  margin-left: auto;
+  gap: 5px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
 }
 
 .sm-mini {
@@ -722,7 +1217,7 @@ body.modal-open {
   background: transparent;
   color: var(--text3);
   font-family: var(--sans);
-  font-size: .64rem;
+  font-size: .68rem;
   cursor: pointer;
   transition: color var(--transition-fast), border-color var(--transition-fast);
 }
@@ -738,7 +1233,8 @@ body.modal-open {
   margin: 10px 0 0;
   padding-left: 16px;
   color: var(--text3);
-  font-size: .68rem;
+  font-family: var(--sans);
+  font-size: .72rem;
   line-height: 1.5;
 }
 
@@ -746,37 +1242,37 @@ body.modal-open {
 .sm-result-note.is-fail { color: var(--red); }
 
 .sm-result-foot {
-  margin-top: 9px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
+  margin-top: 8px;
   color: var(--text3);
   font-family: var(--mono);
-  font-size: .58rem;
+  font-size: .62rem;
+  font-variant-numeric: tabular-nums;
   line-height: 1.5;
 }
 
 @media (max-width: 560px) {
-  .sm-modal {
-    width: calc(100vw - 20px);
-    padding: 18px 16px 12px;
+  .sm-overlay {
+    padding: 0 8px 8px;
   }
 
-  .sm-row-head {
+  .sm-console {
+    width: calc(100vw - 16px);
+  }
+
+  .sm-log {
+    padding: 12px 12px 4px;
+  }
+
+  .sm-listrow-head {
     align-items: flex-start;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
   }
 
-  .sm-row-badges {
-    flex-wrap: wrap;
-  }
-
-  .sm-body {
-    height: min(52vh, 320px);
-  }
-
-  .sm-result-actions {
-    margin-left: 0;
+  /* The hint is the first thing to go when a command row runs out of room —
+     the name is what is being picked. */
+  .sm-cmd-hint {
+    display: none;
   }
 }
 

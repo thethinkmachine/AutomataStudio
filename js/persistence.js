@@ -297,7 +297,9 @@ export function handleFiles(files) {
     try {
       // JFLAP files carry their own schema; importJFLAPText validates and
       // loads them, so they never reach the workspace JSON path below.
-      if (isJflap) { importJFLAPText(ev.target.result); return; }
+      // JFLAP carries no description of its own, so anything the previous
+      // machine had to say goes away with it.
+      if (isJflap) { importJFLAPText(ev.target.result); showExampleCard(null); return; }
 
       let data;
       if (isPng) {
@@ -314,6 +316,10 @@ export function handleFiles(files) {
       }
       validateSchema(data);
       loadData(data);
+      // A saved workspace usually has no `meta`; an example or a StateMate
+      // result saved to disk does. Either way the card is retargeted rather
+      // than left describing the machine that was just replaced.
+      showExampleCard(data.meta || null);
       showStatus('Workspace loaded!');
     } catch (err) {
       console.error(err);
@@ -783,13 +789,113 @@ export function loadExampleFile(file) {
   }
 }
 
-// Info card in the Simulate panel describing the loaded example, with sample
-// inputs as chips that run with one click. Pass null to hide it.
+// ══════════════════════════════════════════════════════════════════
+//  THE INFO CARD
+// ══════════════════════════════════════════════════════════════════
+//  What the machine on the canvas is, floating over the canvas itself. It
+//  shows itself briefly after a load or a StateMate run and then folds back
+//  into the small button at the top-left corner, which is the way back to it.
+//
+//  Two rules make the auto-hide unobtrusive rather than annoying. A card the
+//  *reader* opened never times out — only one the app opened on their behalf.
+//  And the countdown stops the moment the pointer is over the card, because
+//  the one certain sign someone is still reading is that they are pointing at
+//  it. Both are cheap; a card that vanishes mid-sentence is not.
+
+const CARD_AUTO_HIDE_MS = 13000;
+
+let cardTimer = null;
+let cardMeta = null;
+
+function clearCardTimer() {
+  if (cardTimer !== null) { clearTimeout(cardTimer); cardTimer = null; }
+}
+
+/** Collapse the card back to its button. */
+export function hideExampleCard() {
+  clearCardTimer();
+  const card = $('example-card');
+  const btn = $('canvas-info-btn');
+  if (card) card.classList.remove('is-open');
+  if (btn) {
+    btn.hidden = !cardMeta;
+    btn.setAttribute('aria-expanded', 'false');
+  }
+}
+
+/**
+ * Open the card, if there is anything to say.
+ * @param {boolean} [opts.autoHide] close again after a few seconds
+ */
+export function openExampleCard({ autoHide = false } = {}) {
+  if (!cardMeta) return;
+  clearCardTimer();
+  const card = $('example-card');
+  const btn = $('canvas-info-btn');
+  if (!card) return;
+  card.classList.add('is-open');
+  if (btn) {
+    btn.hidden = true;
+    btn.setAttribute('aria-expanded', 'true');
+  }
+  if (autoHide) {
+    cardTimer = setTimeout(hideExampleCard, CARD_AUTO_HIDE_MS);
+    // Node returns a Timeout object that keeps the process alive; a browser
+    // returns a number and has no unref. Without this every test that draws a
+    // card holds the runner open for the length of the countdown.
+    if (typeof cardTimer?.unref === 'function') cardTimer.unref();
+  }
+}
+
+export function toggleExampleCard() {
+  const card = $('example-card');
+  if (card && card.classList.contains('is-open')) hideExampleCard();
+  else openExampleCard();
+}
+
+export function exampleCardMeta() {
+  return cardMeta;
+}
+
+/** Test seam — the timer and the retained meta must not cross tests. */
+export function _resetExampleCardForTests() {
+  clearCardTimer();
+  cardMeta = null;
+}
+
+// Wired once, here rather than through an on* attribute, so the card adds no
+// names to bridge.js — the same way reference.js and statemate-ui.js do it.
+function wireCardChrome(card) {
+  const btn = $('canvas-info-btn');
+  if (btn && !btn.dataset.wired) {
+    btn.dataset.wired = '1';
+    btn.addEventListener('click', toggleExampleCard);
+  }
+  if (card && !card.dataset.wired) {
+    card.dataset.wired = '1';
+    card.addEventListener('pointerenter', clearCardTimer);
+  }
+}
+
+/**
+ * Describe the machine now on the canvas. Pass null to say nothing about it,
+ * which also takes the button away — an info button that opens an empty card
+ * is worse than no button.
+ */
 export function showExampleCard(meta) {
   const card = $('example-card');
   if (!card) return;
+  clearCardTimer();
   card.innerHTML = '';
-  if (!meta) { card.style.display = 'none'; return; }
+  cardMeta = meta || null;
+  wireCardChrome(card);
+
+  if (!meta) {
+    card.classList.remove('is-open');
+    const btn = $('canvas-info-btn');
+    if (btn) { btn.hidden = true; btn.setAttribute('aria-expanded', 'false'); }
+    return;
+  }
 
   const head = document.createElement('div');
   head.className = 'example-card-head';
@@ -800,7 +906,7 @@ export function showExampleCard(meta) {
   close.className = 'example-card-close';
   close.dataset.tip = 'Dismiss';
   close.textContent = '×';
-  close.onclick = () => { card.style.display = 'none'; };
+  close.onclick = hideExampleCard;
   head.append(title, close);
   card.appendChild(head);
 
@@ -818,7 +924,12 @@ export function showExampleCard(meta) {
       const chip = document.createElement('button');
       const tone = sample.expect === 'reject' ? ' chip-rej' : (sample.expect === 'accept' ? ' chip-acc' : '');
       chip.className = 'example-chip' + tone;
-      chip.textContent = sample.w;
+      // The empty word is a test like any other, and drawn as "" it is a blank
+      // pill that reads as a rendering fault. Show the symbol; run the real
+      // (empty) string.
+      chip.textContent = sample.w === '' || sample.w === undefined
+        ? (App.config?.sym?.eps || 'ε')
+        : sample.w;
       const hint = [sample.label, sample.expect || (sample.out !== undefined ? `→ ${sample.out}` : '')]
         .filter(Boolean).join(' — ');
       if (hint) chip.dataset.tip = hint;
@@ -832,7 +943,5 @@ export function showExampleCard(meta) {
     card.appendChild(row);
   }
 
-  card.style.display = 'block';
-  const simSection = $('rp-simulate');
-  if (simSection) simSection.classList.remove('collapsed');
+  openExampleCard({ autoHide: true });
 }

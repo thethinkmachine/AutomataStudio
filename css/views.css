@@ -1312,14 +1312,81 @@
   font-weight: 400;
 }
 
-/* Example info card — shown in the Simulate panel after loading an example:
-   what the machine does, plus sample inputs as one-click chips. */
+/* Info card — what the machine on the canvas is, plus sample inputs as
+   one-click chips. It floats over the top-left of the canvas rather than
+   sitting in the Simulate panel, because it describes the diagram and the
+   diagram is what the reader is looking at.
+
+   Kept in the DOM and toggled by class so opening and closing can animate;
+   `visibility` is what takes it out of the hit-testing when it is shut, with
+   its transition delayed so it stays clickable through the fade out. */
 .example-card {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 52;
+  width: min(310px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--border2);
-  border-radius: 7px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
   padding: 9px 11px;
-  margin-bottom: 10px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px) scale(.98);
+  transform-origin: top left;
+  transition: opacity var(--transition-fast), transform var(--transition-fast),
+              visibility 0s var(--transition-fast);
+}
+
+.example-card.is-open {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity var(--transition-fast), transform var(--transition-fast),
+              visibility 0s;
+}
+
+/* The button the card folds back into. Deliberately small: it is a way back to
+   something already read, not a call to action. */
+.canvas-info-btn {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 51;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg2);
+  color: var(--text3);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: color var(--transition-fast), border-color var(--transition-fast),
+              background var(--transition-fast);
+}
+
+.canvas-info-btn[hidden] {
+  display: none;
+}
+
+.canvas-info-btn:hover,
+.canvas-info-btn:focus-visible {
+  border-color: var(--border2);
+  background: var(--surface);
+  color: var(--accent);
+  outline: none;
+}
+
+.canvas-info-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 .example-card-head {
