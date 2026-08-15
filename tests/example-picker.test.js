@@ -7,11 +7,16 @@ const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const modalCss = readFileSync(new URL('../css/modals.css', import.meta.url), 'utf8');
 const viewCss = readFileSync(new URL('../css/views.css', import.meta.url), 'utf8');
 
-test('the Examples button opens a searchable dialog', () => {
-  assert.ok(html.includes('id="example-modal"'));
-  assert.ok(html.includes('id="example-search"'));
+// The examples now live inside StateMate rather than in a dialog of their own —
+// see the note at the top of js/statemate-ui.js for why they stayed at all.
+// What this test protects is unchanged: one searchable dialog behind the header
+// button, and no anchored dropdown.
+test('the header button opens a searchable dialog', () => {
+  assert.ok(html.includes('id="statemate-modal"'));
+  assert.ok(html.includes('id="sm-input"'));
   assert.ok(html.includes('aria-haspopup="dialog"'));
   assert.ok(!html.includes('id="example-menu"'), 'the old anchored dropdown should be gone');
+  assert.ok(!html.includes('id="example-modal"'), 'the standalone example dialog is superseded');
 });
 
 test('standard and auxiliary overlays share one backdrop blur token', () => {

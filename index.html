@@ -110,7 +110,7 @@
     <!-- Canvas actions: operate on the machine currently on the canvas. -->
     <div class="hdr-group" id="hdr-canvas-actions">
       <div class="example-picker" id="example-picker">
-        <button class="hbtn icon-only" id="example-picker-btn" type="button" aria-label="Browse example automata" aria-haspopup="dialog" aria-controls="example-modal" aria-expanded="false" onclick="loadExample()" data-tip="Browse examples">
+        <button class="hbtn icon-only" id="example-picker-btn" type="button" aria-label="Open StateMate — build, edit or browse example automata" aria-haspopup="dialog" aria-controls="statemate-modal" aria-expanded="false" onclick="openStateMate()" data-tip="StateMate & examples">
           <svg viewBox="0 0 256 256" aria-hidden="true" fill="currentColor"><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z" /></svg>
         </button>
       </div>
@@ -183,9 +183,9 @@
         </button>
         <div class="ctx hdr-more-menu" id="hdr-more-menu" role="menu" aria-label="More options">
           <div class="hdr-more-compact-actions">
-            <div class="ctx-i" role="menuitem" onclick="loadExample(event.currentTarget)">
+            <div class="ctx-i" role="menuitem" onclick="openStateMate()">
               <svg viewBox="0 0 256 256" fill="currentColor"><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88Z" /></svg>
-              Load Example
+              StateMate
             </div>
             <div class="ctx-i" role="menuitem" onclick="autoLayout()">
               <svg viewBox="0 0 256 256" fill="currentColor"><path d="M160,112h48a16,16,0,0,0,16-16V48a16,16,0,0,0-16-16H160a16,16,0,0,0-16,16V64H128a24,24,0,0,0-24,24v32H72v-8A16,16,0,0,0,56,96H24A16,16,0,0,0,8,112v32a16,16,0,0,0,16,16H56a16,16,0,0,0,16-16v-8h32v32a24,24,0,0,0,24,24h16v16a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V160a16,16,0,0,0-16-16H160a16,16,0,0,0-16,16v16H128a8,8,0,0,1-8-8V88a8,8,0,0,1,8-8h16V96A16,16,0,0,0,160,112Z" /></svg>
@@ -1121,24 +1121,33 @@
     </div>
   </div>
 
-  <div class="overlay" id="example-modal" role="dialog" aria-modal="true" aria-labelledby="example-modal-title">
-    <div class="modal example-modal">
-      <div class="modal-title example-modal-title-row">
-        <span id="example-modal-title">Examples</span>
-        <button class="example-modal-close" type="button" onclick="closeModal('example-modal')" aria-label="Close examples" data-tip="Close">
+  <!-- StateMate: one input over examples, the exact algorithms, and the model.
+       Rendered entirely by js/statemate-ui.js — the shell below is the only
+       static part, and nothing in it is reached from an on* attribute except
+       the close button. -->
+  <div class="overlay" id="statemate-modal" role="dialog" aria-modal="true" aria-labelledby="sm-modal-title">
+    <div class="modal sm-modal">
+      <div class="modal-title sm-title-row">
+        <span class="sm-title-name" id="sm-modal-title">
+          <svg class="sm-title-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z" /></svg>
+          StateMate
+        </span>
+        <button class="sm-close" type="button" onclick="closeModal('statemate-modal')" aria-label="Close StateMate" data-tip="Close">
           <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg>
         </button>
       </div>
-      <div class="example-search-wrap">
-        <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z" /></svg>
-        <input class="inp example-search" id="example-search" type="search" autocomplete="off" placeholder="Search examples" aria-label="Search examples">
+
+      <div class="sm-input-wrap">
+        <svg class="sm-input-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z" /></svg>
+        <input class="inp sm-input" id="sm-input" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Describe a machine, or search examples…"
+               aria-label="Describe a machine to build, or search examples"
+               aria-controls="sm-body" role="combobox" aria-expanded="true" aria-autocomplete="list">
       </div>
-      <div class="example-modal-meta">
-        <span id="example-machine-label"></span>
-        <span id="example-result-count" aria-live="polite"></span>
-      </div>
-      <div class="example-results" id="example-results" role="listbox" aria-label="Machine examples"></div>
-      <div class="example-empty" id="example-empty" hidden>No matching examples</div>
+
+      <div class="sm-chips" id="sm-chips"></div>
+      <div class="sm-body" id="sm-body" role="listbox" aria-label="StateMate results" aria-live="polite"></div>
+      <div class="sm-foot" id="sm-foot"></div>
     </div>
   </div>
 
@@ -1216,6 +1225,7 @@
              strip can be reordered freely — but the first tab has to be the one
              carrying `active` here and on its panel below. -->
         <div class="modal-tab active" onclick="switchSettingsTab('general')">Workspace</div>
+        <div class="modal-tab" onclick="switchSettingsTab('ai')">StateMate</div>
         <div class="modal-tab" onclick="switchSettingsTab('rendering')">Canvas &amp; Layout</div>
         <div class="modal-tab" onclick="switchSettingsTab('symbols')">Notation</div>
         <div class="modal-tab" onclick="switchSettingsTab('pda')">Pushdown</div>
@@ -1251,6 +1261,78 @@
         <div class="modal-section-lbl">Workspace Defaults</div>
         <div class="modal-row"><span class="modal-lbl">New State Prefix</span><input type="text" class="inp" id="set-state-prefix" maxlength="12" label="New state name prefix"></div>
         <div class="modal-row"><span class="modal-lbl">Snap to Grid by Default</span><label class="toggle-switch"><input type="checkbox" id="set-snap-grid"><span class="toggle-track"><span class="toggle-thumb"></span></span></label></div>
+      </div>
+
+      <!-- StateMate. These controls do NOT write App.config: exportWorkspaceState
+           and getBackupPayload both serialize the whole config, so an API key
+           living there would be written into every workspace tab and the
+           autosave blob. js/statemate-provider.js keeps its own store under its
+           own localStorage key; js/statemate-ui.js reads and writes this panel. -->
+      <div class="modal-tab-content" id="tab-ai">
+        <div class="modal-section-lbl">Connection</div>
+        <div class="modal-row" data-tip="When off, the StateMate dialog is the example picker and nothing is ever sent anywhere.">
+          <span class="modal-lbl">Enable StateMate</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-sm-enabled"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl">Provider</span>
+          <select class="inp" id="set-sm-provider" label="Model provider">
+            <option value="anthropic">Anthropic</option>
+            <option value="openai">OpenAI</option>
+            <option value="compatible">OpenAI-compatible (Ollama, LM Studio, …)</option>
+          </select>
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl">Base URL</span>
+          <input type="text" class="inp" id="set-sm-base" spellcheck="false" autocomplete="off" label="API base URL">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl">Model</span>
+          <input type="text" class="inp" id="set-sm-model" spellcheck="false" autocomplete="off" label="Model name">
+        </div>
+        <div class="modal-row">
+          <span class="modal-lbl" id="sm-key-label">API key</span>
+          <input type="password" class="inp" id="set-sm-key" spellcheck="false" autocomplete="off" label="API key">
+        </div>
+        <div class="modal-row sm-settings-actions">
+          <button class="btn-g" type="button" id="sm-test-btn">Test connection</button>
+          <button class="btn-g" type="button" id="sm-clear-key">Clear key</button>
+          <span class="sm-conn-status" id="sm-conn-status" aria-live="polite"></span>
+        </div>
+        <div class="sm-settings-note">
+          Your key is stored in this browser only and is sent directly to the provider you choose.
+          There is no server in between and nothing is logged. <span id="sm-provider-note"></span>
+        </div>
+
+        <div class="modal-section-lbl">Behaviour</div>
+        <div class="modal-row" data-tip="Send the machine currently on the canvas with your prompt, so StateMate can edit it. You can override this per prompt in the dialog.">
+          <span class="modal-lbl">Attach Canvas by Default</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-sm-attach"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="StateMate predicts what its machine does on a few words. With this on, those predictions are run through the real simulator before anything is drawn.">
+          <span class="modal-lbl">Verify with Generated Tests</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-sm-verify"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="How many times StateMate may be sent its own failures and asked to correct them. Each attempt is another request.">
+          <span class="modal-lbl">Repair Attempts</span>
+          <select class="inp" id="set-sm-repairs" label="Repair attempts">
+            <option value="0">None</option>
+            <option value="1">One</option>
+            <option value="2">Two</option>
+          </select>
+        </div>
+        <div class="modal-row" data-tip="Build results open in a new workspace tab when the canvas already has a machine on it, so nothing is replaced.">
+          <span class="modal-lbl">New Machines Open a New Tab</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-sm-newtab"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="Keeps your last prompt for one turn, so a follow-up like “now make it reject the empty string” knows what it refers to. No conversation is stored.">
+          <span class="modal-lbl">Remember the Last Prompt</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-sm-followup"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="Let StateMate leave one or two sticky notes on the canvas explaining the construction.">
+          <span class="modal-lbl">Explain with Canvas Notes</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-sm-notes"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
       </div>
 
       <div class="modal-tab-content" id="tab-rendering">

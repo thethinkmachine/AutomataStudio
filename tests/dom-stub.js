@@ -59,6 +59,25 @@ export function createElement(id = '') {
       if (child && typeof child === 'object') child.parentNode = this;
       return child;
     },
+    // append() takes several nodes at once and accepts bare strings. The app
+    // reaches for it wherever a row is assembled from parts — showExampleCard
+    // and the whole of statemate-ui.js — so a stub without it would fail on
+    // code paths that work perfectly in a browser.
+    append(...nodes) {
+      nodes.forEach(node => {
+        if (node === null || node === undefined) return;
+        if (typeof node === 'object') this.appendChild(node);
+        else this.textContent += String(node);
+      });
+    },
+    prepend(...nodes) {
+      const first = this.children[0] || null;
+      nodes.forEach(node => {
+        if (node === null || node === undefined) return;
+        if (typeof node === 'object') this.insertBefore(node, first);
+        else this.textContent = String(node) + this.textContent;
+      });
+    },
     removeChild(child) {
       const i = this.children.indexOf(child);
       if (i !== -1) {

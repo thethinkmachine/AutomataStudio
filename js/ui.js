@@ -13,6 +13,7 @@ import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
 import { $, App, MachineCategories, MachineTypes, R, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { getState, getTransition, hideContextMenu } from './states-transitions.js';
+import { applyStateMateSettings, populateStateMateSettings } from './statemate-ui.js';
 import { Change, emit, subscribe } from './store.js';
 import { DEFAULT_THEME, Themes } from './themes.js';
 import { clearAll, escapeHtml, showStatus } from './utils.js';
@@ -2552,6 +2553,11 @@ export function openSettingsModal() {
   $('set-sym-right').value = c.sym.rightMarker;
   $('set-sym-z0').value = c.sym.stackBottom;
 
+  // StateMate's panel is the one tab that does not read App.config — its
+  // settings live in their own store so an API key never reaches
+  // exportWorkspaceState or the autosave payload. See statemate-provider.js.
+  if (typeof populateStateMateSettings === 'function') populateStateMateSettings();
+
   if (typeof switchSettingsTab === 'function') switchSettingsTab('general');
   sizeSettingsPanels();
   showOverlay('settings-modal');
@@ -2693,6 +2699,11 @@ export function confirmSettings() {
   // same setting would behave differently depending on which surface you used.
   // No-ops when only app preferences (theme, symbols, step budgets) moved.
   if (typeof snapshotSettings === 'function') snapshotSettings();
+
+  // Written to its own store, not App.config, and therefore not part of the
+  // undo point above — an API key is not an edit to the machine.
+  if (typeof applyStateMateSettings === 'function') applyStateMateSettings();
+
   closeModal('settings-modal');
   showStatus('Settings applied!');
   saveBackupChecked();

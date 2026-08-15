@@ -66,6 +66,51 @@ ipcMain.on('check-for-updates', () => checkForUpdatesManually());
 // beforeunload backup save exactly as an ordinary quit does.
 ipcMain.on('install-update', () => updater?.quitAndInstall());
 
+// ── StateMate transport ───────────────────────────────────────────
+// The renderer hands over a fully-formed request and gets the raw response
+// back. Running it here rather than in the page is what makes the desktop
+// build immune to each provider's CORS policy.
+//
+// Deliberately not a general-purpose fetch bridge: only http(s) is allowed,
+// only POST is issued, and the URL is whatever the user typed into their own
+// settings. Errors resolve rather than reject so both transports map to the
+// same error copy in js/statemate.js.
+const STATEMATE_TIMEOUT_MS = 60000;
+
+ipcMain.handle('statemate:request', async (_event, payload) => {
+  const { url, headers, body } = payload || {};
+  let parsed;
+  try {
+    parsed = new URL(String(url));
+  } catch (err) {
+    return { ok: false, status: 0, body: 'That base URL is not a valid address.' };
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    return { ok: false, status: 0, body: `Unsupported protocol: ${parsed.protocol}` };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), STATEMATE_TIMEOUT_MS);
+  try {
+    const response = await fetch(parsed.toString(), {
+      method: 'POST',
+      headers: headers && typeof headers === 'object' ? headers : {},
+      body: typeof body === 'string' ? body : JSON.stringify(body ?? {}),
+      signal: controller.signal,
+    });
+    return { ok: response.ok, status: response.status, body: await response.text() };
+  } catch (err) {
+    const aborted = err && err.name === 'AbortError';
+    return {
+      ok: false,
+      status: 0,
+      body: aborted ? 'The provider did not answer in time.' : String((err && err.message) || err),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
 function registerAppProtocol() {
   protocol.handle('app', async (request) => {
     const url = new URL(request.url);

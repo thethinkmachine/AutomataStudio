@@ -41,6 +41,13 @@ import * as render from '../js/render.js';
 import * as simulation from '../js/simulation.js';
 import * as state from '../js/state.js';
 import * as statesTransitions from '../js/states-transitions.js';
+import * as statemate from '../js/statemate.js';
+import * as statemateCompile from '../js/statemate-compile.js';
+import * as statemateLint from '../js/statemate-lint.js';
+import * as statematePrompt from '../js/statemate-prompt.js';
+import * as statemateProvider from '../js/statemate-provider.js';
+import * as statemateSpec from '../js/statemate-spec.js';
+import * as statemateUi from '../js/statemate-ui.js';
 import * as store from '../js/store.js';
 import * as suggest from '../js/suggest.js';
 import * as themes from '../js/themes.js';
@@ -55,7 +62,9 @@ const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, geometry, statesTransitions,
   canvas, render, notes, dividers, simulation, suggest, language, alphabet,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
-  importJflap, algorithmsFa, algorithmsCfg, reference, workspace, quickSettings, minimap, ui
+  importJflap, algorithmsFa, algorithmsCfg, reference, workspace, quickSettings, minimap, ui,
+  statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt,
+  statemate, statemateUi
 ];
 
 // Live view over every module export. Names are unique across modules (the
@@ -128,6 +137,14 @@ function resetModuleState() {
   // state, not App state — so a test would start out gliding in from the
   // previous test's diagram.
   minimap.resetMinimapFrame();
+  // StateMate holds an abort controller, a one-turn follow-up slot, a
+  // few-shot cache and the palette's own draft state between calls. All four
+  // survive resetApp, and a live controller leaking into the next test is
+  // exactly the kind of thing that makes a suite flaky.
+  statemate.resetStateMateRuntime();
+  statemateProvider.resetStateMateSettings();
+  statematePrompt._clearFewShotCache();
+  statemateUi._resetPaletteForTests();
 }
 
 export function resetApp() {
