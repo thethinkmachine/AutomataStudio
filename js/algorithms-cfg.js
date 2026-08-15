@@ -814,40 +814,6 @@ export function runCFGIsFinite() {
   out.innerHTML = html;
 }
 
-// ══════════════════════════════════════════════════════════════════
-//  CFL PUMPING LEMMA VISUALIZATION
-// ══════════════════════════════════════════════════════════════════
-export function renderCFLPumpVis() {
-  const pEl = $('cfl-pump-vis'); if (!pEl) return;
-  const pw = $('cfl-pump-w'); if (!pw) return;
-  const w = pw.value;
-  const u = parseInt($('cfl-pump-u')?.value) || 0;
-  const v = parseInt($('cfl-pump-v')?.value) || 1;
-  const x = parseInt($('cfl-pump-x')?.value) || 1;
-  const y = parseInt($('cfl-pump-y')?.value) || 1;
-  const p = parseInt($('cfl-pump-p')?.value) || 4;
-  const pi = parseInt($('cfl-pump-i')?.value) || 2;
-  const resEl = $('cfl-pump-result'); if (!resEl) return;
-  if (u + v + x + y > w.length) { resEl.innerHTML = '<div class="pump-result fail">|uvxy| exceeds string length.</div>'; return; }
-  if (v + y < 1) { resEl.innerHTML = '<div class="pump-result fail">|vy| must be ≥ 1.</div>'; return; }
-  if (v + x + y > p) { resEl.innerHTML = '<div class="pump-result fail">|vxy| must be ≤ p.</div>'; return; }
-  const uPart = w.slice(0, u);
-  const vPart = w.slice(u, u + v);
-  const xPart = w.slice(u + v, u + v + x);
-  const yPart = w.slice(u + v + x, u + v + x + y);
-  const zPart = w.slice(u + v + x + y);
-  const pumped = uPart + vPart.repeat(pi) + xPart + yPart.repeat(pi) + zPart;
-  pEl.innerHTML =
-    [...uPart].map(c => `<div class="pump-char u-part">${c}</div>`).join('') +
-    [...vPart].map(c => `<div class="pump-char v-part">${c}</div>`).join('') +
-    [...xPart].map(c => `<div class="pump-char x-part2">${c}</div>`).join('') +
-    [...yPart].map(c => `<div class="pump-char y-part2">${c}</div>`).join('') +
-    [...zPart].map(c => `<div class="pump-char z-part2">${c}</div>`).join('');
-  const info = `u="${uPart}"(${u})  v="${vPart}"(${v})  x="${xPart}"(${x})  y="${yPart}"(${y})  z="${zPart}"`;
-  resEl.innerHTML = `<div style="font-size:.68rem;color:var(--text2);margin-bottom:6px">${info}</div>
-<div class="pump-result ok">Pumped: uv^${pi}xy^${pi}z = "${pumped}"<br>Verify i=0: "${uPart + xPart + zPart}" &nbsp; i=1: "${uPart + vPart + xPart + yPart + zPart}" &nbsp; i=2: "${uPart + vPart.repeat(2) + xPart + yPart.repeat(2) + zPart}"</div>`;
-}
-
 
 // ══════════════════════════════════════════════════════════════════
 //  DPDA/NPDA → CFG (Sipser Construction)

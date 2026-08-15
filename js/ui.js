@@ -947,7 +947,7 @@ document.addEventListener('keydown', e => {
   if (e.key === '1') setView('build');
   if (e.key === '2') setView('algo');
   if (e.key === '3') setView('grammar');
-  if (e.key === '4') setView('theory');
+  if (e.key === '4') setView('reference');
 });
 
 export function syncThemeExportPalette(theme) {
@@ -2325,11 +2325,11 @@ export function toggleRPanelPin() {
 }
 
 export const MOBILE_BUILD_PANEL_IDS = ['lpanel', 'rpanel'];
-export const MOBILE_AUX_PANEL_IDS = ['algo-nav', 'gram-left', 'theory-nav'];
+export const MOBILE_AUX_PANEL_IDS = ['algo-nav', 'gram-left', 'ref-nav'];
 export const MOBILE_AUX_PANEL_BY_VIEW = {
   algo: 'algo-nav',
   grammar: 'gram-left',
-  theory: 'theory-nav'
+  reference: 'ref-nav'
 };
 
 export function updateMobilePanelChrome() {
@@ -2416,13 +2416,13 @@ document.addEventListener('click', e => {
   if (!isMobilePanelLayout()) return;
   const target = e.target && e.target.closest ? e.target.closest.bind(e.target) : null;
   const algoItem = target && target('#algo-nav .algo-item');
-  const theoryLink = target && target('#theory-nav .theory-nav-link');
+  const referenceLink = target && target('#ref-nav .ref-nav-link');
   if (algoItem) {
     requestAnimationFrame(() => setMobilePanelCollapsed('algo-nav', true));
     return;
   }
-  if (theoryLink) {
-    requestAnimationFrame(() => setMobilePanelCollapsed('theory-nav', true));
+  if (referenceLink) {
+    requestAnimationFrame(() => setMobilePanelCollapsed('ref-nav', true));
     return;
   }
   const grammarAction = target && target('#gram-left button:not(.mobile-panel-toggle)');

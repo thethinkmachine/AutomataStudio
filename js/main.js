@@ -44,7 +44,7 @@ import './codegen.js';
 import './import-jflap.js';
 import './algorithms-fa.js';
 import './algorithms-cfg.js';
-import './theory.js';
+import './reference.js';
 import './workspace.js';
 import './utils.js';
 import './ui.js';

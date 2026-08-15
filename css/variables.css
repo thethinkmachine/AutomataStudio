@@ -2695,8 +2695,7 @@ select,
 .slist,
 .gram-output,
 .rp-section-body,
-.algo-output,
-.theory-content {
+.algo-output {
   user-select: text;
 }
 

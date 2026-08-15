@@ -92,7 +92,7 @@
   #v-build,
   #v-algo,
   #v-grammar,
-  #v-theory {
+  #v-reference {
     display: flex;
     flex-direction: column;
     flex: 0 0 auto;
@@ -105,7 +105,7 @@
   .rpanel,
   .algo-nav,
   .gram-left,
-  .theory-nav {
+  .ref-nav {
     width: 100% !important;
     min-width: 0 !important;
     max-height: none;
@@ -126,7 +126,7 @@
   #rpanel[data-mobile-collapsed="1"] > .mobile-panel-content,
   #algo-nav[data-mobile-collapsed="1"] > .mobile-panel-content,
   #gram-left[data-mobile-collapsed="1"] > .mobile-panel-content,
-  #theory-nav[data-mobile-collapsed="1"] > .mobile-panel-content {
+  #ref-nav[data-mobile-collapsed="1"] > .mobile-panel-content {
     display: none;
   }
 
@@ -134,7 +134,7 @@
   #rpanel[data-mobile-collapsed="1"] .mobile-panel-icon,
   #algo-nav[data-mobile-collapsed="1"] .mobile-panel-icon,
   #gram-left[data-mobile-collapsed="1"] .mobile-panel-icon,
-  #theory-nav[data-mobile-collapsed="1"] .mobile-panel-icon {
+  #ref-nav[data-mobile-collapsed="1"] .mobile-panel-icon {
     transform: rotate(-90deg);
     color: var(--text2);
   }
@@ -142,7 +142,7 @@
   .lpanel,
   .algo-nav,
   .gram-left,
-  .theory-nav {
+  .ref-nav {
     border-bottom: 1px solid var(--border);
   }
 
@@ -189,7 +189,7 @@
   #rpanel[data-mobile-collapsed="1"],
   #algo-nav[data-mobile-collapsed="1"],
   #gram-left[data-mobile-collapsed="1"],
-  #theory-nav[data-mobile-collapsed="1"] {
+  #ref-nav[data-mobile-collapsed="1"] {
     flex: 0 0 auto;
     height: auto;
     min-height: 0;
@@ -309,7 +309,7 @@
   .gram-right .card,
   .pump-section,
   .hierarchy-section,
-  .theory-card,
+  .ref-card,
   .grammar-display,
   .info-box {
     overflow-x: auto;
@@ -318,13 +318,13 @@
   .card,
   .pump-section,
   .hierarchy-section,
-  .theory-card {
+  .ref-card {
     padding: 14px;
   }
 
   .algo-content [style*="display:flex"],
   .gram-right [style*="display:flex"],
-  #v-theory .algo-content [style*="display:flex"] {
+  #v-reference .algo-content [style*="display:flex"] {
     flex-wrap: wrap;
   }
 
@@ -366,31 +366,27 @@
 
   .algo-nav .mobile-panel-toggle,
   .gram-left .mobile-panel-toggle,
-  .theory-nav .mobile-panel-toggle {
+  .ref-nav .mobile-panel-toggle {
     position: sticky;
     top: 0;
     z-index: 2;
   }
 
   .algo-item,
-  .theory-nav-link {
+  .ref-nav-link {
     padding-right: 12px;
   }
 
-  .theory-nav-header {
-    padding-bottom: 10px;
-  }
-
-  .theory-section {
+  .ref-section {
     margin-bottom: 24px;
   }
 
-  .theory-section-title {
+  .ref-section-title {
     gap: 8px;
     font-size: 1rem;
   }
 
-  .theory-section-sub,
+  .ref-section-sub,
   .tc-sub {
     line-height: 1.5;
   }
@@ -448,7 +444,7 @@
     max-width: 100%;
   }
 
-  #v-theory .algo-content[style] {
+  #v-reference .algo-content[style] {
     padding: 16px 14px !important;
   }
 }
@@ -764,7 +760,7 @@
 }
 
 /* ─── MOBILE AUXILIARY TOOLS ───
-   Algorithms, Grammar and Theory are reading/work surfaces on a phone. Keep
+   Algorithms, Grammar and Reference are reading/work surfaces on a phone. Keep
    their result pane full-height and move the secondary navigation into an
    on-demand sheet opened from the compact dock at the bottom. */
 :root {
@@ -780,7 +776,7 @@
 
   body.aux-open[data-aux-view="algo"] #v-algo,
   body.aux-open[data-aux-view="grammar"] #v-grammar,
-  body.aux-open[data-aux-view="theory"] #v-theory {
+  body.aux-open[data-aux-view="reference"] #v-reference {
     position: relative;
     display: flex !important;
     flex: 1 1 auto;
@@ -805,13 +801,13 @@
     overscroll-behavior: contain;
   }
 
-  .aux-overlay #v-theory .algo-content[style] {
+  .aux-overlay #v-reference .algo-content[style] {
     padding: 16px 14px calc(var(--mobile-aux-bar-height) + 18px) !important;
   }
 
   .aux-overlay .algo-nav,
   .aux-overlay .gram-left,
-  .aux-overlay .theory-nav {
+  .aux-overlay .ref-nav {
     position: absolute;
     top: auto;
     right: 0;
@@ -840,7 +836,7 @@
 
   .aux-overlay #algo-nav[data-mobile-collapsed="1"],
   .aux-overlay #gram-left[data-mobile-collapsed="1"],
-  .aux-overlay #theory-nav[data-mobile-collapsed="1"] {
+  .aux-overlay #ref-nav[data-mobile-collapsed="1"] {
     transform: translateY(calc(100% + 20px));
     opacity: 0;
     visibility: hidden;
@@ -850,7 +846,7 @@
 
   .aux-overlay .algo-nav .mobile-panel-toggle,
   .aux-overlay .gram-left .mobile-panel-toggle,
-  .aux-overlay .theory-nav .mobile-panel-toggle {
+  .aux-overlay .ref-nav .mobile-panel-toggle {
     position: static;
     display: flex;
     flex: 0 0 auto;
@@ -863,7 +859,7 @@
 
   .aux-overlay .algo-nav .mobile-panel-content,
   .aux-overlay .gram-left .mobile-panel-content,
-  .aux-overlay .theory-nav .mobile-panel-content {
+  .aux-overlay .ref-nav .mobile-panel-content {
     display: flex !important;
     flex: 1 1 auto;
     min-height: 0;
@@ -936,7 +932,7 @@
 
   body.aux-open[data-aux-view="algo"] .mobile-aux-bar-btn[data-aux-for="algo"],
   body.aux-open[data-aux-view="grammar"] .mobile-aux-bar-btn[data-aux-for="grammar"],
-  body.aux-open[data-aux-view="theory"] .mobile-aux-bar-btn[data-aux-for="theory"] {
+  body.aux-open[data-aux-view="reference"] .mobile-aux-bar-btn[data-aux-for="reference"] {
     display: flex;
   }
 
@@ -1001,7 +997,7 @@
 @media (max-width: 900px) and (prefers-reduced-motion: reduce) {
   .aux-overlay .algo-nav,
   .aux-overlay .gram-left,
-  .aux-overlay .theory-nav,
+  .aux-overlay .ref-nav,
   .mobile-aux-sheet-scrim,
   .mobile-aux-bar-chevron {
     transition: none !important;

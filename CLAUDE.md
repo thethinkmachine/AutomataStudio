@@ -26,7 +26,7 @@ The package is `"type": "module"`. The two Electron entry points are CommonJS an
 
 `js/` is ES modules with explicit imports and exports; `index.html` loads exactly one script, [js/main.js](js/main.js). There is no shared global scope and no load-order dependency — with one deliberate exception.
 
-**[js/bridge.js](js/bridge.js)** re-exposes 215 functions on `window`. The UI is driven by `on*="..."` attributes, which are evaluated as global-scope code and cannot see module bindings. 358 of those attributes are static in `index.html`; a further 125 are in markup the app builds at runtime (algorithm cards in `algorithms-fa.js`, the export dialogs, alphabet chips, context menus) — so grepping `index.html` alone will understate what the HTML depends on.
+**[js/bridge.js](js/bridge.js)** re-exposes 217 names on `window` (216 functions plus `App`). The UI is driven by `on*="..."` attributes, which are evaluated as global-scope code and cannot see module bindings. 324 of those attributes are static in `index.html`; a further 122 are in markup the app builds at runtime (algorithm cards in `algorithms-fa.js`, the export dialogs, alphabet chips, context menus) — so grepping `index.html` alone will understate what the HTML depends on.
 
 Practical consequences:
 
@@ -127,7 +127,24 @@ Points worth keeping in mind:
 
 ### Views
 
-`setView()` in [js/view.js](js/view.js) is the single entry point. The build view (canvas) is always mounted; `algo`, `grammar` and `theory` render as overlays on top of it, so canvas geometry stays measurable. Algorithms call `setView('build')` to reveal a result.
+`setView()` in [js/view.js](js/view.js) is the single entry point. The build view (canvas) is always mounted; `algo`, `grammar` and `reference` render as overlays on top of it, so canvas geometry stays measurable. Algorithms call `setView('build')` to reveal a result.
+
+### Reference
+
+The third aux view is the reference. Rendering is [js/reference.js](js/reference.js); content is data, split across two registries that share one page shape and one renderer:
+
+- **[js/machine-guide.js](js/machine-guide.js)** — one explainer per machine, keyed by `MachineTypes` key, plus the `GuideOverview` landing page.
+- **[js/concept-guide.js](js/concept-guide.js)** — the pages that are not about one machine, keyed by slug and grouped by `ConceptCategories`. Currently the Decidability section.
+
+Both import only [js/guide-blocks.js](js/guide-blocks.js), which is import-free, so both stay leaves. That module is the block vocabulary — `p`, `ul`, `math`, `mathLines`, `note`, `table`, `sec` — and **a block kind added there needs a case in `renderBlock()`**, which is the only place the two halves have to agree. `mathLines()` exists because two adjacent `math` blocks draw two boxes and read as two unrelated statements. `table()` cells are tagged `yes`/`no`/`semi`/`na` for verdict colour, and the wrapper scrolls on its own so a six-column table never widens the page.
+
+`referencePages()` is the nav order: overview, then machines grouped exactly as `MachineCategories` groups them, then the concept categories. **A machine added to `state.js` appears automatically** — with an empty page until a guide exists for it. [tests/reference.test.js](tests/reference.test.js) fails on that gap, on a concept slug listed with no guide, on a guide in no category, on a slug colliding across the two registries (they share the `ref-sec-<slug>` id namespace), and on a table row whose width does not match its header. It also pins each machine guide's formal definition to the tuple `updateFormalDef()` prints.
+
+Sections are typeset lazily on first view — there are several hundred display formulas across the guides, and the reader of any one page needs a handful.
+
+The view key is `reference`; every id and class carries a `ref-` prefix (`v-reference`, `#ref-nav` for the rail, `#ref-nav-list` for the generated links, `#ref-pages` for the generated sections, `.ref-card`, `.ref-prose`). `reference.js` also owns `triggerMath()`, which `render.js` uses for the formal-definition box and which is unrelated to the view.
+
+Nothing in the view is reached from an `on*` attribute: the nav links get their listeners at creation, which is why `reference.js` has no entry in `bridge.js`.
 
 ### Simulation
 

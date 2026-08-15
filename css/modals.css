@@ -820,35 +820,6 @@ body.modal-open {
 }
 
 /* ── CFL pump visualization ── */
-.pump-char.u-part {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
-  color: var(--accent);
-}
-
-.pump-char.v-part {
-  background: color-mix(in srgb, var(--purple) 15%, transparent);
-  border-color: var(--purple-border);
-  color: var(--purple);
-}
-
-.pump-char.x-part2 {
-  background: var(--green-soft);
-  border-color: var(--green-border);
-  color: var(--green);
-}
-
-.pump-char.y-part2 {
-  background: var(--gold-soft);
-  border-color: var(--gold-border);
-  color: var(--gold);
-}
-
-.pump-char.z-part2 {
-  background: color-mix(in srgb, var(--red) 8%, transparent);
-  border-color: color-mix(in srgb, var(--red) 25%, transparent);
-  color: var(--red);
-}
 
 /* ── Decision result cards ── */
 .dec-card-empty {
@@ -892,38 +863,6 @@ body.modal-open {
 }
 
 /* ── Decidability table ── */
-.dec-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--mono);
-  font-size: .7rem;
-}
-
-.dec-table th {
-  background: var(--surface2);
-  color: var(--text2);
-  padding: 7px 10px;
-  border: 1px solid var(--border2);
-  font-weight: 600;
-}
-
-.dec-table td {
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  text-align: center;
-}
-
-.dec-table td.yes {
-  color: var(--green);
-}
-
-.dec-table td.semi {
-  color: var(--orange);
-}
-
-.dec-table td.no {
-  color: var(--red);
-}
 
 /* ── Workspace B save button ── */
 .ws-save-btn {

@@ -5,9 +5,10 @@
 // global-scope code and cannot see module bindings. The functions they name
 // are re-exposed on window here.
 //
-// 215 functions across 21 modules, reached from 482 attributes:
-//    357  static, in index.html
-//    125  in markup the app builds at runtime (algorithm cards,
+// 217 names across 22 modules — 216 functions plus App — reached from 446
+// attributes:
+//    324  static, in index.html
+//    122  in markup the app builds at runtime (algorithm cards,
 //         export dialogs, alphabet chips, context menus)
 //
 // That second group is the reason this list is longer than a scan of
@@ -97,15 +98,12 @@ import {
   utmToggleAuto,
 } from './algorithms-fa.js';
 import {
-  cykVisStep, loadCFGPDA, parseRawGrammar, renderCFLPumpVis,
+  cykVisStep, loadCFGPDA, parseRawGrammar,
   runAmbiguityCheck, runCFG2PDA, runCFGIsEmpty, runCFGIsFinite, runCNF,
   runCYK, runCYKVisual, runChomskyClassify, runDerivation, runFirstFollow,
   runGNF, runLL1Table, runLeftRecursionRemoval, runPDA2CFG, runParseTree,
   runRightmostDerivation, runUselessElim,
 } from './algorithms-cfg.js';
-import {
-  renderPumpVis, theoryNavClick,
-} from './theory.js';
 import {
   loadWorkspaceB, openAboutModal, saveWorkspaceB, showHelpModal,
 } from './workspace.js';
@@ -193,13 +191,13 @@ Object.assign(window, {
    setAlgo, startThompsonViz, testEquivStr, thVizStep, utmResetView,
    utmStepBack, utmStepFwd, utmToggleAuto,
   // algorithms-cfg.js
-   cykVisStep, loadCFGPDA, parseRawGrammar, renderCFLPumpVis,
+   cykVisStep, loadCFGPDA, parseRawGrammar,
    runAmbiguityCheck, runCFG2PDA, runCFGIsEmpty, runCFGIsFinite, runCNF,
    runCYK, runCYKVisual, runChomskyClassify, runDerivation, runFirstFollow,
    runGNF, runLL1Table, runLeftRecursionRemoval, runPDA2CFG, runParseTree,
    runRightmostDerivation, runUselessElim,
-  // theory.js
-   renderPumpVis, theoryNavClick,
+  // reference.js has no entries: its navigation is generated in JS and its
+  // links get their listeners at creation time.
   // workspace.js
    loadWorkspaceB, openAboutModal, saveWorkspaceB, showHelpModal,
   // utils.js
