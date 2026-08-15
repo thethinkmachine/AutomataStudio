@@ -18,6 +18,15 @@
 }
 
 @media (max-width: 900px) {
+  /* The sidebars stop being docked rails here — they span the full width and
+     later in this file become bottom sheets with their own 16px top corners.
+     With no chrome left beside the canvas there is nothing for a rounded well
+     to uncover, so square it off. */
+  :root {
+    --canvas-radius: 0px;
+    --canvas-sill: 0px;
+  }
+
   html,
   body {
     height: auto;

@@ -55,7 +55,7 @@ export const MachineTypes = {
 };
 
 // Example gallery per machine: first entry is the flagship shown by default,
-// the rest are alternates offered in the Load Example dropdown.
+// the rest are alternates offered in the searchable example picker.
 export const MachineExamples = {
   'DFA': [{ file: 'dfa', label: 'Divisible by 5' }, { file: 'dfa-classic', label: 'Classic: even number of 1s' }],
   'NFA': [{ file: 'nfa', label: 'Keyword search: cat · car · cab' }, { file: 'nfa-classic', label: 'Classic: guess the penultimate 1' }],

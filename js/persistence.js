@@ -3,7 +3,7 @@ import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { applyCamera, hideCanvasContextMenu } from './canvas.js';
 import { snapshot } from './history.js';
 import { importJFLAPText } from './import-jflap.js';
-import { closeModal, showOverlay } from './modal.js';
+import { closeModal, registerModal, showOverlay } from './modal.js';
 import { refreshQuickSettings } from './quick-settings.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { runSim } from './simulation.js';
@@ -705,6 +705,18 @@ window.addEventListener('beforeunload', e => {
 // ══════════════════════════════════════════════════════════════════
 //  LOAD EXAMPLE
 // ══════════════════════════════════════════════════════════════════
+let exampleModalOptions = [];
+let exampleModalRequest = 0;
+
+registerModal('example-modal', {
+  dismissOnBackdrop: true,
+  onClose: () => {
+    exampleModalRequest++;
+    const btn = $('example-picker-btn');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+});
+
 export function getMachineExampleOptions() {
   const list = (typeof MachineExamples !== 'undefined' && MachineExamples[App.machine]) || null;
   if (list && list.length) return list;
@@ -712,67 +724,147 @@ export function getMachineExampleOptions() {
   return cfg.file ? [{ file: cfg.file, label: 'Example' }] : [];
 }
 
-export function loadExample(trigger) {
-  const options = getMachineExampleOptions();
-  if (!options.length) return;
-  if (options.length === 1) { loadExampleFile(options[0].file); return; }
-  toggleExampleMenu(options, trigger);
+function searchableExampleText(opt) {
+  return [opt.label, opt.file, opt.meta?.title, opt.meta?.blurb]
+    .filter(Boolean)
+    .join(' ')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase();
 }
 
-export function toggleExampleMenu(options, trigger) {
-  const btn = trigger || $('example-picker-btn');
-  const menu = $('example-menu');
-  if (!btn || !menu) { loadExampleFile(options[0].file); return; }
-  if (menu.style.display === 'block') { closeExampleMenu(); return; }
+function exampleResultButtons() {
+  const list = $('example-results');
+  return list ? Array.from(list.querySelectorAll('.example-result')) : [];
+}
 
-  // Close the other popovers that share the .ctx layer.
+export function filterMachineExampleOptions(options, query) {
+  const terms = String(query || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase()
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!terms.length) return options;
+  return options.filter(opt => {
+    const text = searchableExampleText(opt);
+    return terms.every(term => text.includes(term));
+  });
+}
+
+export function renderExampleModal(query = '') {
+  const list = $('example-results');
+  const empty = $('example-empty');
+  const count = $('example-result-count');
+  if (!list || !empty || !count) return;
+
+  const matches = filterMachineExampleOptions(exampleModalOptions, query);
+  list.innerHTML = '';
+  matches.forEach((opt, i) => {
+    const item = document.createElement('button');
+    item.className = 'example-result' + (opt.featured ? ' featured' : '');
+    item.type = 'button';
+    item.setAttribute('role', 'option');
+    item.setAttribute('aria-label', `Load ${opt.meta?.title || opt.label || opt.file}`);
+
+    const head = document.createElement('span');
+    head.className = 'example-result-head';
+    const name = document.createElement('span');
+    name.className = 'example-result-name';
+    name.textContent = opt.meta?.title || opt.label || opt.file;
+    const badges = document.createElement('span');
+    badges.className = 'example-result-badges';
+    if (opt.featured) {
+      const featured = document.createElement('span');
+      featured.className = 'example-result-badge featured';
+      featured.textContent = 'Featured';
+      badges.appendChild(featured);
+    }
+    const machine = document.createElement('span');
+    machine.className = 'example-result-badge';
+    machine.textContent = App.machine;
+    badges.appendChild(machine);
+    head.append(name, badges);
+    item.appendChild(head);
+
+    if (opt.meta?.blurb) {
+      const desc = document.createElement('span');
+      desc.className = 'example-result-desc';
+      desc.textContent = opt.meta.blurb;
+      item.appendChild(desc);
+    }
+    item.onclick = () => {
+      closeModal('example-modal');
+      loadExampleFile(opt.file);
+    };
+    item.onkeydown = e => {
+      const buttons = exampleResultButtons();
+      const index = buttons.indexOf(item);
+      let target = null;
+      if (e.key === 'ArrowDown') target = buttons[Math.min(index + 1, buttons.length - 1)];
+      if (e.key === 'ArrowUp') target = index > 0 ? buttons[index - 1] : $('example-search');
+      if (e.key === 'Home') target = buttons[0];
+      if (e.key === 'End') target = buttons[buttons.length - 1];
+      if (!target) return;
+      e.preventDefault();
+      target.focus();
+    };
+    list.appendChild(item);
+  });
+
+  empty.hidden = matches.length !== 0;
+  count.textContent = `${matches.length} ${matches.length === 1 ? 'example' : 'examples'}`;
+}
+
+export function loadExample() {
+  const options = getMachineExampleOptions();
+  if (!options.length) return;
+
+  // Close lightweight popovers before the modal takes over the focus stack.
   if (typeof hideTabOverflowMenu === 'function') hideTabOverflowMenu();
   if (typeof hideTabContextMenu === 'function') hideTabContextMenu();
   if (typeof hideContextMenu === 'function') hideContextMenu();
   if (typeof hideCanvasContextMenu === 'function') hideCanvasContextMenu();
 
-  menu.innerHTML = '';
-  options.forEach((opt, i) => {
-    const item = document.createElement('button');
-    item.className = 'example-menu-item' + (i === 0 ? ' flagship' : '');
-    item.type = 'button';
-    item.setAttribute('role', 'option');
-    const dot = document.createElement('span');
-    dot.className = 'example-menu-item-dot';
-    const name = document.createElement('span');
-    name.className = 'example-menu-item-name';
-    name.textContent = opt.label || opt.file;
-    item.append(dot, name);
-    item.onclick = e => {
-      e.stopPropagation();
-      closeExampleMenu();
-      loadExampleFile(opt.file);
-    };
-    menu.appendChild(item);
-  });
-
-  // Measure before placing so the menu can be right-aligned to the button
-  // and flipped above it when there isn't room below.
-  menu.style.display = 'block';
-  menu.style.visibility = 'hidden';
-  btn.setAttribute('aria-expanded', 'true');
-  const r = btn.getBoundingClientRect();
-  const m = menu.getBoundingClientRect();
-  menu.style.left = Math.max(8, Math.min(r.left, innerWidth - m.width - 8)) + 'px';
-  const below = r.bottom + 6;
-  menu.style.top = (below + m.height > innerHeight - 8
-    ? Math.max(8, r.top - 6 - m.height)
-    : below) + 'px';
-  menu.style.visibility = '';
-
-  setTimeout(() => document.addEventListener('click', closeExampleMenu, { once: true }), 0);
-}
-
-export function closeExampleMenu() {
-  const menu = $('example-menu');
-  if (menu) menu.style.display = 'none';
+  const request = ++exampleModalRequest;
+  exampleModalOptions = options.map((opt, i) => ({ ...opt, featured: i === 0, meta: null }));
+  const cfg = getMachineConfig(App.machine);
+  const title = $('example-modal-title');
+  const machineLabel = $('example-machine-label');
+  const search = $('example-search');
   const btn = $('example-picker-btn');
-  if (btn) btn.setAttribute('aria-expanded', 'false');
+  if (title) title.textContent = `${cfg.label || App.machine} Examples`;
+  if (machineLabel) machineLabel.textContent = cfg.fullName || cfg.label || App.machine;
+  if (search) {
+    search.value = '';
+    search.oninput = () => renderExampleModal(search.value);
+    search.onkeydown = e => {
+      if (e.key !== 'ArrowDown') return;
+      const first = exampleResultButtons()[0];
+      if (!first) return;
+      e.preventDefault();
+      first.focus();
+    };
+  }
+  if (btn) btn.setAttribute('aria-expanded', 'true');
+  renderExampleModal();
+  showOverlay('example-modal');
+  if (search) search.focus();
+
+  // Labels render immediately. Rich descriptions arrive from the same JSON
+  // files the loader uses, then the active query is reapplied without moving
+  // focus or closing the dialog if one file happens to be malformed.
+  Promise.all(exampleModalOptions.map(opt =>
+    fetch(`js/examples/${opt.file}.json`)
+      .then(res => res.ok === false ? null : res.json())
+      .then(data => ({ ...opt, meta: data?.meta || null }))
+      .catch(() => opt)
+  )).then(enriched => {
+    if (request !== exampleModalRequest) return;
+    exampleModalOptions = enriched;
+    renderExampleModal(search?.value || '');
+  });
 }
 
 export function loadExampleFile(file) {
