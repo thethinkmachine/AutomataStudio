@@ -1313,9 +1313,15 @@
 }
 
 /* Info card — what the machine on the canvas is, plus sample inputs as
-   one-click chips. It floats over the top-left of the canvas rather than
-   sitting in the Simulate panel, because it describes the diagram and the
-   diagram is what the reader is looking at.
+   one-click chips. It floats over the canvas rather than sitting in the
+   Simulate panel, because it describes the diagram and the diagram is what the
+   reader is looking at.
+
+   The top-left here is only a starting position: layoutCanvasInfo() in
+   js/ui.js anchors the card and its pill to whichever corner the toolbar and
+   the overlay stack have left free, and stamps the choice as `data-corner` —
+   which is what the origin rules below read, so the card always grows away
+   from its own edge rather than off the canvas.
 
    Kept in the DOM and toggled by class so opening and closing can animate;
    `visibility` is what takes it out of the hit-testing when it is shut, with
@@ -1347,6 +1353,16 @@
   transform: none;
   transition: opacity var(--transition-fast), transform var(--transition-fast),
               visibility 0s;
+}
+
+/* Follow the anchor: scale out of the corner the card is pinned to, and rise
+   from below when it is pinned to the bottom. */
+.example-card[data-corner="top-right"] { transform-origin: top right; }
+.example-card[data-corner="bottom-left"] { transform-origin: bottom left; }
+.example-card[data-corner="bottom-right"] { transform-origin: bottom right; }
+
+.example-card[data-corner^="bottom"]:not(.is-open) {
+  transform: translateY(6px) scale(.98);
 }
 
 /* The button the card folds back into. Deliberately small: it is a way back to

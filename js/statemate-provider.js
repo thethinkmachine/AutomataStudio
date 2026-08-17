@@ -26,8 +26,21 @@
 
 const STORAGE_KEY = 'automata-statemate';
 
-// A request that has not answered in this long is not going to.
-const REQUEST_TIMEOUT_MS = 45000;
+// ── the two clocks ────────────────────────────────────────────────
+//  A wall-clock timeout is the wrong instrument for a streamed answer: it
+//  cannot tell a hung request from a large machine still arriving, and 45
+//  seconds into a 60-state answer it kills a request that was working. So the
+//  budget is split — one to prove the provider is there, then one that resets
+//  on every delta and only fires when nothing has arrived for a while.
+const FIRST_BYTE_TIMEOUT_MS = 45000;
+const IDLE_TIMEOUT_MS = 30000;
+
+// ── retry ─────────────────────────────────────────────────────────
+//  Base for the exponential backoff, and the ceiling on honouring a
+//  `retry-after`: a provider asking for ten minutes is telling us to give up,
+//  not to sleep through the user's afternoon.
+const RETRY_BASE_MS = 600;
+const MAX_RETRY_WAIT_S = 60;
 
 export const PROVIDERS = {
   anthropic: {
@@ -102,6 +115,10 @@ const DEFAULTS = {
   writeNotes: false,
   newTabForBuild: true,
   confirmReplace: false,
+  // How many times a *transport* failure is retried before it becomes the
+  // user's problem. Distinct from repairAttempts, which is about the quality
+  // of an answer that did arrive.
+  maxRetries: 2,
   // How many past turns travel with each request. 0 is strict one-shot — the
   // behaviour before the thread existed.
   threadDepth: 10
@@ -113,6 +130,17 @@ let loaded = false;
 /** True inside the Electron shell, where requests can bypass CORS. */
 export function hasNativeTransport() {
   return typeof window !== 'undefined' && !!window.electronAPI?.statemateRequest;
+}
+
+/**
+ * True when the shell can stream, which is a separate question from whether it
+ * can make the request at all — an older build of the desktop app has
+ * `statemateRequest` and not this, and must keep working. Without it the
+ * desktop had no streaming, no way to cancel a request in flight, and no
+ * access to `retry-after`, because `invoke` resolves once with a whole body.
+ */
+export function hasNativeStreaming() {
+  return typeof window !== 'undefined' && !!window.electronAPI?.statemateStream;
 }
 
 function readStore() {
@@ -196,21 +224,134 @@ export class ProviderError extends Error {
   }
 }
 
-function mapHttpError(status, bodyText, host) {
-  const detail = String(bodyText || '').slice(0, 1200);
+/**
+ * The provider's own account of what went wrong.
+ *
+ * Both dialects answer a failure with `{error: {type, message}}`, and that
+ * message is almost always the actionable half — "Your credit balance is too
+ * low" beats "the provider refused the request (400)". describeError already
+ * prefers a thrown message over its own generic copy, so reading this out of
+ * the body improves every error at once rather than one at a time.
+ */
+export function readProviderError(bodyText) {
+  const raw = String(bodyText ?? '');
+  let json = null;
+  try { json = JSON.parse(raw); } catch (e) { return { type: '', message: '', raw }; }
+
+  const err = json?.error ?? json;
+  const message = typeof err === 'string' ? err
+    : typeof err?.message === 'string' ? err.message
+    : typeof json?.message === 'string' ? json.message
+    : '';
+  const type = [err?.type, err?.code, json?.type].find(v => typeof v === 'string' && v) || '';
+  return { type, message: String(message).trim(), raw };
+}
+
+/**
+ * `retry-after` is either a delay in seconds or an HTTP date, and both appear
+ * in the wild. A date already in the past is not worth waiting for.
+ */
+export function parseRetryAfter(value, now = Date.now()) {
+  if (value === null || value === undefined || value === '') return 0;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return seconds > 0 ? Math.min(seconds, MAX_RETRY_WAIT_S) : 0;
+  const at = Date.parse(String(value));
+  if (!Number.isFinite(at)) return 0;
+  const wait = Math.ceil((at - now) / 1000);
+  return wait > 0 ? Math.min(wait, MAX_RETRY_WAIT_S) : 0;
+}
+
+// The three failures whose HTTP status does not identify them. Quota is the
+// one that matters most: it arrives as a 429 as often as a 402, so read as a
+// rate limit it gets a Retry button that can never succeed.
+const CREDIT_HINTS = /insufficient[_ ]quota|credit balance|billing|payment required|exceeded your current quota|quota exceeded|no funds/i;
+const CONTEXT_HINTS = /context[_ ]length|context window|prompt is too long|maximum context|too many (?:input )?tokens|reduce the length/i;
+const MODEL_HINTS = /model[^.]{0,40}(?:not found|does not exist|unknown|unavailable)|invalid model|no such model|unsupported model/i;
+
+/**
+ * HTTP failure → a code the UI has copy for.
+ *
+ * The order matters, and it is not the order of the statuses: the three hint
+ * tests come first precisely because the status is the part that lies about
+ * them. Everything below them can be read off the number.
+ */
+function mapHttpError(status, bodyText, host, { retryAfter = 0 } = {}) {
+  const info = readProviderError(bodyText);
+  const said = info.message;
+  const detail = said && info.raw ? info.raw.slice(0, 1200) : String(bodyText || '').slice(0, 1200);
+  const say = fallback => said || fallback;
+  const looks = re => re.test(said) || re.test(info.type);
+
+  if (status === 402 || looks(CREDIT_HINTS)) {
+    return new ProviderError('credit', say('This account cannot pay for the request.'), detail);
+  }
+  if (looks(CONTEXT_HINTS)) {
+    return new ProviderError('context-length', say('The request was too long for this model.'), detail);
+  }
+  if (status === 529 || looks(/overloaded/i)) {
+    return new ProviderError('overloaded', say(`${host} is overloaded right now.`), detail, { retryAfter });
+  }
   if (status === 401 || status === 403) {
-    return new ProviderError('auth', 'Your API key was rejected.', detail);
+    return new ProviderError('auth', say('Your API key was rejected.'), detail);
   }
   if (status === 429) {
-    return new ProviderError('rate-limit', 'The provider is rate-limiting requests.', detail);
+    return new ProviderError('rate-limit', say('The provider is rate-limiting requests.'), detail, { retryAfter });
   }
-  if (status === 404) {
-    return new ProviderError('not-found', `${host} has no endpoint there — check the base URL and model.`, detail);
+  if (status === 404 || looks(MODEL_HINTS)) {
+    return new ProviderError('not-found', say(`${host} has no endpoint or model by that name — check the base URL and model.`), detail);
   }
   if (status >= 500) {
-    return new ProviderError('server', 'The provider is having trouble right now.', detail);
+    return new ProviderError('server', say('The provider is having trouble right now.'), detail, { retryAfter });
   }
-  return new ProviderError('http', `The provider refused the request (${status}).`, detail);
+  if (status === 400 || status === 422) {
+    return new ProviderError('bad-request', say(`${host} rejected the request as malformed.`), detail);
+  }
+  return new ProviderError('http', say(`The provider refused the request (${status}).`), detail);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  RETRY
+// ══════════════════════════════════════════════════════════════════
+//  Which failures are worth asking again about, and how long to wait.
+//
+//  The list is the whole design. `auth`, `credit`, `not-found` and
+//  `bad-request` are settled facts about the request — retrying one is a
+//  guaranteed second failure and, on a metered account, a second charge. The
+//  rest are statements about right now.
+
+const RETRIABLE = new Set(['rate-limit', 'overloaded', 'server', 'network', 'timeout', 'bad-response']);
+
+export function isRetriableError(err) {
+  return !!err && RETRIABLE.has(err.code);
+}
+
+/**
+ * How long before attempt `n + 1`. A `retry-after` the provider supplied wins
+ * outright — it knows when its own window reopens. Otherwise exponential with
+ * jitter, floored at half the ceiling so the first wait is a real pause rather
+ * than a busy loop that happens to have slept.
+ */
+export function backoffMs(attempt, retryAfterSeconds = 0, random = Math.random) {
+  if (retryAfterSeconds > 0) return Math.min(retryAfterSeconds, MAX_RETRY_WAIT_S) * 1000;
+  const ceiling = RETRY_BASE_MS * Math.pow(2, Math.max(0, attempt - 1));
+  return Math.round(ceiling * (0.5 + random() * 0.5));
+}
+
+/**
+ * Sleep, but let the user's cancel through.
+ *
+ * The abort has to interrupt the *wait*, not just the fetch around it:
+ * pressing escape during a four-second backoff and having nothing happen for
+ * four seconds is indistinguishable from a hang.
+ */
+export function delay(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new ProviderError('cancelled', 'Cancelled.'));
+    const finish = (fn, arg) => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); fn(arg); };
+    const onAbort = () => finish(reject, new ProviderError('cancelled', 'Cancelled.'));
+    const timer = setTimeout(() => finish(resolve), ms);
+    signal?.addEventListener('abort', onAbort);
+  });
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -219,7 +360,10 @@ function mapHttpError(status, bodyText, host) {
 
 function buildRequest({ system, messages, maxTokens, temperature }, s) {
   const { baseUrl, model } = resolveEndpoint(s);
-  const streaming = !hasNativeTransport();
+  // The shell used to force this off, because `invoke` resolves once with a
+  // whole body and cannot deliver a stream. It can now, so the only setup left
+  // without streaming is an older desktop build.
+  const streaming = !hasNativeTransport() || hasNativeStreaming();
 
   if (s.provider === 'anthropic') {
     return {
@@ -273,13 +417,15 @@ function readWholeResponse(json, provider) {
     return {
       text,
       usage: { input: json.usage?.input_tokens ?? null, output: json.usage?.output_tokens ?? null },
-      model: json.model || null
+      model: json.model || null,
+      stop: json.stop_reason || null
     };
   }
   return {
     text: json.choices?.[0]?.message?.content || '',
     usage: { input: json.usage?.prompt_tokens ?? null, output: json.usage?.completion_tokens ?? null },
-    model: json.model || null
+    model: json.model || null,
+    stop: json.choices?.[0]?.finish_reason || null
   };
 }
 
@@ -301,51 +447,149 @@ function usageFrom(event, provider) {
   return null;
 }
 
+// Why the answer stopped. `max_tokens` / `length` is the one that used to be
+// invisible: a machine cut off at the cap arrived as unparseable JSON and burnt
+// a repair round at the same cap, which could only fail the same way.
+function stopFrom(event, provider) {
+  if (provider === 'anthropic') return event.delta?.stop_reason || event.message?.stop_reason || null;
+  return event.choices?.[0]?.finish_reason || null;
+}
+
 /**
- * Read an SSE body, calling onText with each delta. Both provider dialects
- * are `data: {json}` lines with blank-line separators, so one reader serves
- * both and only the delta extraction differs.
+ * An incremental SSE reader: text in, deltas out.
+ *
+ * Split from the body loop so the same parser serves both transports — the
+ * browser's `ReadableStream` and the desktop shell's IPC chunks, which arrive
+ * as strings from another process. Both dialects are `data: {json}` lines with
+ * blank-line separators, so only the three extractors above differ.
  */
-async function readStream(response, provider, onText) {
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
+function createSSEReader(provider, onText) {
   let buffer = '';
   let text = '';
   const usage = { input: null, output: null };
   let model = null;
+  let stop = null;
+  let firstTokenAt = null;
+
+  return {
+    push(chunk) {
+      buffer += chunk;
+      let cut;
+      while ((cut = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, cut).trim();
+        buffer = buffer.slice(cut + 1);
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+
+        let event;
+        try { event = JSON.parse(payload); } catch (e) { continue; }
+
+        const delta = deltaFrom(event, provider);
+        if (delta) {
+          if (firstTokenAt === null) firstTokenAt = Date.now();
+          text += delta;
+          if (onText) onText(text, delta);
+        }
+        const u = usageFrom(event, provider);
+        if (u) {
+          if (u.input !== null) usage.input = u.input;
+          if (u.output !== null) usage.output = u.output;
+        }
+        const s = stopFrom(event, provider);
+        if (s) stop = s;
+        if (event.model) model = event.model;
+        if (event.message?.model) model = event.message.model;
+      }
+    },
+    result(startedAt) {
+      return {
+        text, usage, model, stop,
+        // Two numbers, because they answer different questions. Time to first
+        // token is why a run feels slow; tokens per second is how fast the
+        // answer then arrived, and averaging the wait into it hides both.
+        timing: { startedAt, firstTokenAt, finishedAt: Date.now(), streamed: true }
+      };
+    }
+  };
+}
+
+/**
+ * Drain a `fetch` body through the reader above, keeping the idle clock alive.
+ *
+ * `startedAt` is passed in rather than taken here, and that is the whole of
+ * what "time to first token" means. Taken here it would start after `fetch`
+ * has already resolved — that is, after the response *headers* have arrived —
+ * so it measured headers-to-first-frame, which is approximately zero on every
+ * provider that flushes the first chunk with the headers. The console showed
+ * "0.0s to first token" beside a rate implying a three-second answer.
+ */
+async function readStream(response, provider, onText, keepAlive = () => { }, startedAt = Date.now()) {
+  const reader = createSSEReader(provider, onText);
+  const body = response.body.getReader();
+  const decoder = new TextDecoder();
 
   for (;;) {
-    const { done, value } = await reader.read();
+    const { done, value } = await body.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    let cut;
-    while ((cut = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, cut).trim();
-      buffer = buffer.slice(cut + 1);
-      if (!line.startsWith('data:')) continue;
-      const payload = line.slice(5).trim();
-      if (!payload || payload === '[DONE]') continue;
-
-      let event;
-      try { event = JSON.parse(payload); } catch (e) { continue; }
-
-      const delta = deltaFrom(event, provider);
-      if (delta) {
-        text += delta;
-        if (onText) onText(text, delta);
-      }
-      const u = usageFrom(event, provider);
-      if (u) {
-        if (u.input !== null) usage.input = u.input;
-        if (u.output !== null) usage.output = u.output;
-      }
-      if (event.model) model = event.model;
-      if (event.message?.model) model = event.message.model;
-    }
+    keepAlive();
+    reader.push(decoder.decode(value, { stream: true }));
   }
+  return reader.result(startedAt);
+}
 
-  return { text, usage, model };
+/**
+ * The same, over the desktop shell's IPC channel.
+ *
+ * `statemateRequest` resolves once with a whole body, which is why the shell
+ * had no streaming, no cancellation and no `retry-after`. This is a channel
+ * instead: chunks arrive as they are read in the main process, and the end
+ * event carries the status and headers the renderer never used to see.
+ */
+function nativeStream(request, provider, onText, signal, keepAlive, host, startedAt = Date.now()) {
+  return new Promise((resolve, reject) => {
+    const reader = createSSEReader(provider, onText);
+    let handle = null;
+    let settled = false;
+
+    const done = () => { settled = true; signal?.removeEventListener('abort', onAbort); };
+    const onAbort = () => {
+      if (settled) return;
+      try { handle?.abort(); } catch (e) { /* the channel is already gone */ }
+      done();
+      reject(new ProviderError('cancelled', 'Cancelled.'));
+    };
+    signal?.addEventListener('abort', onAbort);
+
+    handle = window.electronAPI.statemateStream(
+      { url: request.url, headers: request.headers, body: JSON.stringify(request.body) },
+      {
+        onChunk: chunk => { if (!settled) { keepAlive(); reader.push(String(chunk || '')); } },
+        onEnd: end => {
+          if (settled) return;
+          done();
+          const info = end || {};
+          if (info.aborted) return reject(new ProviderError('cancelled', 'Cancelled.'));
+          if (info.timedOut) {
+            return reject(new ProviderError('timeout', `${host} stopped responding mid-answer.`));
+          }
+          if (!info.ok) {
+            if (!info.status) {
+              return reject(new ProviderError('network', `Could not reach ${host}.`, String(info.body || '')));
+            }
+            return reject(mapHttpError(info.status, info.body, host, {
+              retryAfter: parseRetryAfter(info.retryAfter)
+            }));
+          }
+          resolve(reader.result(startedAt));
+        }
+      }
+    );
+
+    // An abort that landed between constructing the promise and receiving the
+    // handle would otherwise never reach the channel.
+    if (signal?.aborted) onAbort();
+  });
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -353,64 +597,90 @@ async function readStream(response, provider, onText) {
 // ══════════════════════════════════════════════════════════════════
 
 /**
- * One completion over a thread of turns.
+ * Why the answer stopped, when that is itself the failure.
  *
- * @param {object}   opts
- * @param {string}   opts.system
- * @param {Array}    [opts.messages]  [{role: 'user'|'assistant', content}]
- * @param {string}   [opts.user]      sugar for a single user turn
- * @param {Function} [opts.onText]    called with (fullText, delta) as it streams
- * @param {AbortSignal} [opts.signal]
- * @returns {Promise<{text: string, usage: object, model: string}>}
+ * A truncated answer is not a malformed one, and the difference decides what
+ * to do about it: the orchestrator raises the cap and asks again, where
+ * `bad-json` would have sent the same request back to be reformatted at the
+ * same cap and failed identically.
  */
-export async function callModel({
-  system, user, messages, onText, signal,
-  maxTokens = 4000, temperature = 0.7, top_p=1.0
-} = {}) {
-  const s = getStateMateSettings();
-  if (!s.enabled) throw new ProviderError('disabled', 'StateMate is switched off.');
-  if (!isStateMateReady(s)) throw new ProviderError('no-key', 'StateMate needs an API key.');
+function checkStopReason(out, model, maxTokens) {
+  if (out.stop === 'max_tokens' || out.stop === 'length') {
+    throw new ProviderError(
+      'truncated',
+      `${model} ran out of room mid-answer.`,
+      String(out.text || '').slice(-800),
+      { maxTokens, partial: out.text }
+    );
+  }
+  if (out.stop === 'refusal') {
+    throw new ProviderError('refusal', `${model} declined to answer that.`, String(out.text || '').slice(0, 800));
+  }
+  return out;
+}
 
-  const turns = Array.isArray(messages) && messages.length
-    ? messages
-    : [{ role: 'user', content: user ?? '' }];
-
+/** One request, no retries. Everything that can throw a ProviderError. */
+async function requestOnce({ system, turns, maxTokens, temperature, onText, signal }, s) {
   const request = buildRequest({ system, messages: turns, maxTokens, temperature }, s);
   const host = (() => {
     try { return new URL(request.url).host; } catch (e) { return request.url; }
   })();
+  const model = resolveEndpoint(s).model;
 
-  // The desktop shell proxies through the main process: no CORS, and the
-  // renderer never has to be a trusted origin for the provider.
-  if (hasNativeTransport()) {
-    let result;
-    try {
-      result = await window.electronAPI.statemateRequest({
-        url: request.url,
-        headers: request.headers,
-        body: JSON.stringify(request.body)
-      });
-    } catch (err) {
-      throw new ProviderError('network', `Could not reach ${host}.`, String(err?.message || err));
-    }
-    if (signal?.aborted) throw new ProviderError('cancelled', 'Cancelled.');
-    if (!result.ok) throw mapHttpError(result.status, result.body, host);
-    let json;
-    try { json = JSON.parse(result.body); } catch (e) {
-      throw new ProviderError('bad-response', `${host} did not return JSON.`, String(result.body).slice(0, 1200));
-    }
-    const whole = readWholeResponse(json, s.provider);
-    if (onText && whole.text) onText(whole.text, whole.text);
-    return whole;
-  }
-
+  // The two clocks. `arm` replaces whatever is pending, so handing it the idle
+  // budget on every delta is how a long answer keeps itself alive.
   const timeout = new AbortController();
-  const timer = setTimeout(() => timeout.abort(), REQUEST_TIMEOUT_MS);
+  let timer = null;
+  let timedOut = false;
+  const arm = ms => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { timedOut = true; timeout.abort(); }, ms);
+  };
+  const keepAlive = () => arm(IDLE_TIMEOUT_MS);
   const onOuterAbort = () => timeout.abort();
   signal?.addEventListener('abort', onOuterAbort);
 
+  const startedAt = Date.now();
+  const wholeTiming = () => ({ startedAt, firstTokenAt: null, finishedAt: Date.now(), streamed: false });
+
   try {
+    // The desktop shell proxies through the main process: no CORS, and the
+    // renderer never has to be a trusted origin for the provider.
+    if (hasNativeTransport()) {
+      if (hasNativeStreaming() && request.body.stream) {
+        arm(FIRST_BYTE_TIMEOUT_MS);
+        const out = await nativeStream(request, s.provider, onText, timeout.signal, keepAlive, host, startedAt);
+        if (signal?.aborted) throw new ProviderError('cancelled', 'Cancelled.');
+        if (timedOut) throw new ProviderError('timeout', `${model} stopped responding mid-answer.`);
+        return checkStopReason(out, model, maxTokens);
+      }
+
+      let result;
+      arm(FIRST_BYTE_TIMEOUT_MS);
+      try {
+        result = await window.electronAPI.statemateRequest({
+          url: request.url,
+          headers: request.headers,
+          body: JSON.stringify(request.body)
+        });
+      } catch (err) {
+        throw new ProviderError('network', `Could not reach ${host}.`, String(err?.message || err));
+      }
+      if (signal?.aborted) throw new ProviderError('cancelled', 'Cancelled.');
+      if (!result.ok) {
+        throw mapHttpError(result.status, result.body, host, { retryAfter: parseRetryAfter(result.retryAfter) });
+      }
+      let json;
+      try { json = JSON.parse(result.body); } catch (e) {
+        throw new ProviderError('bad-response', `${host} did not return JSON.`, String(result.body).slice(0, 1200));
+      }
+      const whole = { ...readWholeResponse(json, s.provider), timing: wholeTiming() };
+      if (onText && whole.text) onText(whole.text, whole.text);
+      return checkStopReason(whole, model, maxTokens);
+    }
+
     let response;
+    arm(FIRST_BYTE_TIMEOUT_MS);
     try {
       response = await fetch(request.url, {
         method: 'POST',
@@ -420,10 +690,15 @@ export async function callModel({
       });
     } catch (err) {
       if (signal?.aborted) throw new ProviderError('cancelled', 'Cancelled.');
-      if (err?.name === 'AbortError') {
-        throw new ProviderError('timeout', `${resolveEndpoint(s).model} did not answer in time.`);
+      if (timedOut || err?.name === 'AbortError') {
+        throw new ProviderError('timeout', `${model} did not answer in time.`);
       }
-      // fetch() rejects with a bare TypeError for both a dead host and a CORS
+      // Being offline is the one case fetch's bare TypeError can be told apart
+      // from — and the only one where the answer is neither the key nor CORS.
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        throw new ProviderError('offline', 'This device is offline.');
+      }
+      // Beyond that, fetch() rejects identically for a dead host and a CORS
       // refusal, and the two are indistinguishable from script. The provider
       // note is the actionable half.
       throw new ProviderError(
@@ -435,27 +710,76 @@ export async function callModel({
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
-      const err = mapHttpError(response.status, body, host);
-      if (response.status === 429) {
-        const retry = Number(response.headers?.get?.('retry-after'));
-        if (Number.isFinite(retry) && retry > 0) err.retryAfter = retry;
-      }
-      throw err;
+      throw mapHttpError(response.status, body, host, {
+        retryAfter: parseRetryAfter(response.headers?.get?.('retry-after'))
+      });
     }
 
     // Streaming is the default, but a proxy that buffers the body away leaves
     // no reader — falling back keeps those setups working rather than failing
     // on a feature the user did not ask for.
     if (request.body.stream && response.body?.getReader) {
-      return await readStream(response, s.provider, onText);
+      keepAlive();
+      const out = await readStream(response, s.provider, onText, keepAlive, startedAt);
+      if (timedOut) throw new ProviderError('timeout', `${model} stopped responding mid-answer.`);
+      return checkStopReason(out, model, maxTokens);
     }
     const json = await response.json();
-    const whole = readWholeResponse(json, s.provider);
+    const whole = { ...readWholeResponse(json, s.provider), timing: wholeTiming() };
     if (onText && whole.text) onText(whole.text, whole.text);
-    return whole;
+    return checkStopReason(whole, model, maxTokens);
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', onOuterAbort);
+  }
+}
+
+/**
+ * One completion over a thread of turns, retried when the failure is about
+ * right now rather than about the request.
+ *
+ * @param {object}   opts
+ * @param {string}   opts.system
+ * @param {Array}    [opts.messages]   [{role: 'user'|'assistant', content}]
+ * @param {string}   [opts.user]       sugar for a single user turn
+ * @param {Function} [opts.onText]     called with (fullText, delta) as it streams
+ * @param {Function} [opts.onRetry]    ({attempt, of, waitMs, error}) before each wait
+ * @param {number}   [opts.maxRetries] defaults to the setting
+ * @param {Function} [opts.sleep]      test seam; must reject on abort
+ * @param {AbortSignal} [opts.signal]
+ * @returns {Promise<{text, usage, model, stop, timing}>}
+ */
+export async function callModel({
+  system, user, messages, onText, onRetry, signal,
+  maxTokens = 4000, temperature = 0.7, maxRetries, sleep = delay
+} = {}) {
+  const s = getStateMateSettings();
+  if (!s.enabled) throw new ProviderError('disabled', 'StateMate is switched off.');
+  if (!isStateMateReady(s)) throw new ProviderError('no-key', 'StateMate needs an API key.');
+
+  const turns = Array.isArray(messages) && messages.length
+    ? messages
+    : [{ role: 'user', content: user ?? '' }];
+
+  const budget = Math.max(0, Math.min(5, maxRetries ?? s.maxRetries ?? 0));
+  const once = () => requestOnce({ system, turns, maxTokens, temperature, onText, signal }, s);
+
+  let attempt = 0;
+  for (;;) {
+    attempt++;
+    try {
+      return await once();
+    } catch (err) {
+      const canRetry = attempt <= budget && isRetriableError(err) && !signal?.aborted;
+      if (!canRetry) throw err;
+
+      const waitMs = backoffMs(attempt, err.retryAfter || 0);
+      // Announced, not silent: an eight-second stall with no explanation is
+      // indistinguishable from a hang, and the user's only move is to give up
+      // on a request that was about to succeed.
+      if (onRetry) onRetry({ attempt, of: budget, waitMs, error: err });
+      await sleep(waitMs, signal);
+    }
   }
 }
 
@@ -469,7 +793,10 @@ export async function testConnection() {
     system: 'Reply with the single word: ok',
     user: 'ping',
     maxTokens: 16,
-    temperature: 0
+    temperature: 0,
+    // Someone watching a button wants the verdict, not a patient retry loop:
+    // "rate-limited" is itself a useful answer to "is this configured".
+    maxRetries: 0
   });
   return {
     ms: Date.now() - started,

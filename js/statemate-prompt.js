@@ -413,7 +413,32 @@ export function threadMessages(turns = []) {
  * The user turn. `mode` is 'build' or 'edit'; the canvas is only attached in
  * edit mode or when the user has explicitly asked for it.
  */
-export function buildUserMessage({ prompt, intent, canvasSpec = null, authority = 'auto' }) {
+/**
+ * The parts of the machine this turn is *pointing at*.
+ *
+ * A pointer into the machine, never a substitute for it — the whole spec is
+ * still attached above, because almost every question about one state ("why
+ * does this reject aab") can only be answered from the rest of the diagram.
+ * All-or-nothing attachment was the gap this closes: on a forty-state machine
+ * there was no way to say "this one".
+ *
+ * Everything here is named, because the dialect has no ids and a model shown
+ * `s7` has been shown a token attached to nothing.
+ */
+function focusBlock(focus) {
+  const lines = ['THE REQUEST IS ABOUT THESE PARTS OF THE MACHINE — the reader selected them on the canvas:'];
+  if (focus.states.length) lines.push(`  states: ${focus.states.join(', ')}`);
+  if (focus.transitions.length) {
+    lines.push('  transitions:');
+    focus.transitions.forEach(t => lines.push(`    ${t}`));
+  }
+  if (focus.notes.length) focus.notes.forEach(n => lines.push(`  note: ${n}`));
+  if (focus.words.length) lines.push(`  input words: ${focus.words.join(', ')}`);
+  lines.push('Treat anything unqualified in the request as referring to these. The rest of the machine is still yours to read, and to change if the request needs it.');
+  return lines.join('\n');
+}
+
+export function buildUserMessage({ prompt, intent, canvasSpec = null, authority = 'auto', focus = null }) {
   const parts = [];
 
   if (canvasSpec) {
@@ -438,6 +463,10 @@ export function buildUserMessage({ prompt, intent, canvasSpec = null, authority 
   } else if (intent === 'edit') {
     parts.push(`The canvas is empty, so build the machine from scratch.`, ``);
   }
+
+  // After the machine and before the request: it is a qualification of the
+  // request, and it is meaningless without the machine above it.
+  if (focus) parts.push(focusBlock(focus), ``);
 
   // Ask mode is read-only, and saying so is the difference between an answer
   // and a machine that gets built and thrown away. The pipeline refuses to

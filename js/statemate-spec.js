@@ -166,6 +166,50 @@ function stripFences(text) {
   return fence ? fence[1] : text;
 }
 
+const JSON_ESCAPES = { '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' };
+
+/**
+ * One string field out of JSON that has not finished arriving.
+ *
+ * A streamed answer is not parseable until its last brace lands, so anything
+ * shown while it arrives has to be read out of the partial text. That is why
+ * "plan" is the first key in the machine schema and "text" the first in a
+ * reply's: both are readable within a chunk or two of the answer starting.
+ *
+ * Tolerant by design — an unterminated value returns what there is so far, and
+ * an escape sequence split across chunk boundaries stops rather than emitting
+ * the backslash. It exists to show progress; extractSpecJSON is what decides.
+ *
+ * @returns {string|null} null when the field has not started yet
+ */
+export function partialStringField(text, key) {
+  const src = String(text || '');
+  const opener = new RegExp(`"${String(key).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\s*:\\s*"`);
+  const m = opener.exec(src);
+  if (!m) return null;
+
+  let out = '';
+  for (let i = m.index + m[0].length; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === '"') return out;               // the value closed
+    if (ch !== '\\') { out += ch; continue; }
+
+    const esc = src[i + 1];
+    if (esc === undefined) return out;        // the escape itself is split
+    if (esc === 'u') {
+      const hex = src.slice(i + 2, i + 6);
+      if (hex.length < 4) return out;
+      const code = parseInt(hex, 16);
+      if (Number.isFinite(code)) out += String.fromCharCode(code);
+      i += 5;
+      continue;
+    }
+    out += JSON_ESCAPES[esc] ?? esc;
+    i += 1;
+  }
+  return out;                                 // still arriving
+}
+
 // Only tried when a straight parse has already failed, so a curly quote
 // inside a legitimate string value is never rewritten unnecessarily.
 function normalizeQuotes(text) {
@@ -491,6 +535,127 @@ export function parseTurn(raw, { fallbackMachine = App.machine, allowReply = tru
  * example in the prompt from ever drifting from the schema, since it is
  * produced by this function rather than written by hand.
  */
+/**
+ * One internal transition in the dialect. Factored out of machineToSpec so
+ * anything that needs a single transition described — the diff, the focus
+ * block — cannot drift from what the model is shown.
+ */
+export function transitionToSpec(t, machine, nameOf = id => id) {
+  const legal = new Set(transitionFieldsFor(machine));
+  const out = { from: nameOf(t.from), to: nameOf(t.to), on: t.symbol };
+  if (legal.has('write')) out.write = t.write;
+  if (legal.has('move')) out.move = t.dir;
+  if (legal.has('pop')) out.pop = t.pop;
+  if (legal.has('push')) out.push = t.push;
+  if (legal.has('pop2')) out.pop2 = t.pop2;
+  if (legal.has('push2')) out.push2 = t.push2;
+  if (legal.has('out')) out.out = t.output ?? '';
+  if (legal.has('weight')) out.weight = t.weight ?? 1;
+  if (legal.has('tapeSyms')) {
+    out.tapeSyms = t.tapeSyms;
+    out.tapeWrites = t.tapeWrites;
+    out.tapeDirs = t.tapeDirs;
+  }
+  return out;
+}
+
+/**
+ * What a spec transition reads on and does, without its endpoints — the middle
+ * of the arrow. One function per machine family rather than per machine, since
+ * the families are what decide which fields exist.
+ */
+export function specTransitionDetail(t, machine = App.machine) {
+  const eps = App.config.sym.eps;
+  const on = t.on === '' || t.on === undefined ? eps : t.on;
+  const legal = new Set(transitionFieldsFor(machine));
+
+  if (legal.has('tapeSyms')) {
+    const reads = (t.tapeSyms || []).join(',');
+    const writes = (t.tapeWrites || []).join(',');
+    const dirs = (t.tapeDirs || []).join(',');
+    return `[${reads}] → [${writes}], ${dirs}`;
+  }
+  if (legal.has('write')) return `${on} → ${t.write ?? on}, ${t.move ?? '?'}`;
+  if (legal.has('pop')) {
+    const stack = `${t.pop ?? eps}/${t.push ?? eps}`;
+    const second = legal.has('pop2') ? `; ${t.pop2 ?? eps}/${t.push2 ?? eps}` : '';
+    return `${on}, ${stack}${second}`;
+  }
+  if (legal.has('move')) return `${on}, ${t.move ?? '?'}`;
+  if (legal.has('out')) return `${on} / ${t.out ?? ''}`;
+  if (legal.has('weight')) return `${on} : ${t.weight ?? 1}`;
+  return String(on);
+}
+
+/** The whole arrow, as one line: `q0 --a--> q1`. */
+export function specTransitionLabel(t, machine = App.machine) {
+  return `${t.from} --${specTransitionDetail(t, machine)}--> ${t.to}`;
+}
+
+/**
+ * Selected parts of the live machine, named the way the model knows them.
+ *
+ * This is the one place the canvas's ids have to be turned into something a
+ * prompt can carry, and turning them into *names* rather than passing them
+ * through is the whole point: the dialect has no ids, so an id in the focus
+ * block would be a token the model has never seen attached to anything.
+ *
+ * Refs are resolved late, at send time, so a chip added before a rename still
+ * points at the right state. One that no longer resolves is counted rather
+ * than guessed at.
+ *
+ * @param {Array<object>} refs  [{kind: 'states'|'transitions'|'notes'|'word', ids?, w?}]
+ */
+export function resolveContextRefs(refs = [], source = null) {
+  const src = source || { machine: App.machine, states: App.states, transitions: App.transitions, notes: App.notes };
+  const machine = src.machine || App.machine;
+  const byId = new Map((src.states || []).map(s => [s.id, s]));
+  const nameOf = id => byId.get(id)?.name || id;
+  const transById = new Map((src.transitions || []).map(t => [t.id, t]));
+  const noteById = new Map((src.notes || []).map(n => [n.id, n]));
+
+  const out = { states: [], transitions: [], notes: [], words: [], missing: 0 };
+  const seen = new Set();
+  const once = (bucket, value) => {
+    const key = `${bucket}::${value}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out[bucket].push(value);
+  };
+
+  refs.forEach(ref => {
+    if (!ref) return;
+    if (ref.kind === 'word') {
+      const w = String(ref.w ?? '');
+      once('words', w === '' ? App.config.sym.eps : w);
+      return;
+    }
+    (ref.ids || []).forEach(id => {
+      if (ref.kind === 'states') {
+        if (!byId.has(id)) return void out.missing++;
+        once('states', nameOf(id));
+      } else if (ref.kind === 'transitions') {
+        const t = transById.get(id);
+        if (!t) return void out.missing++;
+        once('transitions', specTransitionLabel(transitionToSpec(t, machine, nameOf), machine));
+      } else if (ref.kind === 'notes') {
+        const n = noteById.get(id);
+        if (!n) return void out.missing++;
+        once('notes', String(n.text || '').trim());
+      }
+    });
+  });
+
+  out.notes = out.notes.filter(Boolean);
+  return out;
+}
+
+/** True when a resolved focus has anything in it worth sending. */
+export function focusIsEmpty(focus) {
+  if (!focus) return true;
+  return !focus.states.length && !focus.transitions.length && !focus.notes.length && !focus.words.length;
+}
+
 export function machineToSpec(source = null, { includeTests = false } = {}) {
   const src = source || {
     machine: App.machine,
@@ -521,24 +686,7 @@ export function machineToSpec(source = null, { includeTests = false } = {}) {
       if (machine === 'Moore') out.out = s.output ?? '';
       return out;
     }),
-    transitions: (src.transitions || []).map(t => {
-      const legal = new Set(transitionFieldsFor(machine));
-      const out = { from: nameOf(t.from), to: nameOf(t.to), on: t.symbol };
-      if (legal.has('write')) out.write = t.write;
-      if (legal.has('move')) out.move = t.dir;
-      if (legal.has('pop')) out.pop = t.pop;
-      if (legal.has('push')) out.push = t.push;
-      if (legal.has('pop2')) out.pop2 = t.pop2;
-      if (legal.has('push2')) out.push2 = t.push2;
-      if (legal.has('out')) out.out = t.output ?? '';
-      if (legal.has('weight')) out.weight = t.weight ?? 1;
-      if (legal.has('tapeSyms')) {
-        out.tapeSyms = t.tapeSyms;
-        out.tapeWrites = t.tapeWrites;
-        out.tapeDirs = t.tapeDirs;
-      }
-      return out;
-    })
+    transitions: (src.transitions || []).map(t => transitionToSpec(t, machine, nameOf))
   };
 
   if (cfg.hasStack) spec.stackAlpha = [...(src.stackAlpha instanceof Set ? src.stackAlpha : (src.stackAlpha || []))];

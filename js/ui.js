@@ -13,7 +13,9 @@ import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
 import { $, App, MachineCategories, MachineTypes, R, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { getState, getTransition, hideContextMenu } from './states-transitions.js';
-import { applyStateMateSettings, populateStateMateSettings } from './statemate-ui.js';
+import {
+  applyStateMateSettings, askStateMateAboutSelection, openStateMate, populateStateMateSettings
+} from './statemate-ui.js';
 import { Change, emit, subscribe } from './store.js';
 import { DEFAULT_THEME, Themes } from './themes.js';
 import { clearAll, escapeHtml, showStatus } from './utils.js';
@@ -855,6 +857,11 @@ document.addEventListener('keydown', e => {
   // step the simulation underneath the dialog. Escape and Enter are handled
   // by modal.js, which sees them first from its capture-phase listener.
   if (typeof anyModalOpen === 'function' && anyModalOpen()) return;
+  // A dock is not blocking — the canvas under the StateMate console is live,
+  // and these shortcuts are how it is driven. But a key pressed with the focus
+  // still inside the panel belongs to the panel: tabbing to a transcript
+  // button and pressing "s" must not switch the canvas tool underneath it.
+  if (e.target.closest && e.target.closest('.sm-console')) return;
   if (e.ctrlKey || e.metaKey) {
     if (e.key === 'z') { e.preventDefault(); undo(); }
     if (e.key === 'y' || e.key === 'Z') { e.preventDefault(); redo(); }
@@ -867,6 +874,17 @@ document.addEventListener('keydown', e => {
     if (e.key === 'v' || e.key === 'V') { if (App.view === 'build') { e.preventDefault(); pasteClipboard(App._lastCanvasWorldPt || null); } }
     if (e.key === 'd' || e.key === 'D') { if (App.view === 'build') { e.preventDefault(); duplicateSelection(); } }
     if (e.shiftKey && (e.key === 't' || e.key === 'T')) { e.preventDefault(); reopenClosedTab(); }
+    // The header sparkle was the only way to reach StateMate. With a selection
+    // live, this carries it in as the subject of the prompt — which is the
+    // question people actually have in front of a diagram.
+    if (e.key === 'k' || e.key === 'K') {
+      e.preventDefault();
+      if (App.view === 'build' && (App.selectedStates.size || App.selectedTransitions.size)) {
+        askStateMateAboutSelection();
+      } else {
+        openStateMate();
+      }
+    }
     return;
   }
   if (e.key === 'v' || e.key === 'V') setTool('move');
@@ -882,6 +900,9 @@ document.addEventListener('keydown', e => {
   // undo path — require Shift so a stray keypress can't wipe the workspace.
   if ((e.key === 'x' || e.key === 'X') && e.shiftKey) clearAll();
   if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); }
+  // The sparkle, as a key. It opens or restores — openStateMate is never a
+  // no-op — which is the other end of Escape putting the console away.
+  if (e.key === '`') { e.preventDefault(); openStateMate(); }
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (App.selectedStates.size || App.selectedTransitions.size) {
       e.preventDefault();
@@ -1899,6 +1920,141 @@ export function canvasOverlayCorner(dock, wrapRect, toolbarBox, stackWidth) {
   return { x: 'right', y: 'bottom' };
 }
 
+// ── the info pill ─────────────────────────────────────────────────
+//  "About this machine" describes the diagram rather than driving it, so it is
+//  the one overlay with no claim on any particular corner — which is exactly
+//  what let it be sat on. It was pinned to the top-left, and the toolbar docks
+//  wherever it is dragged, top-left included.
+//
+//  So it takes whichever corner is free, preferring the one it has always had.
+//  The obstacles are *computed* rather than measured back out of the DOM: the
+//  toolbar's rect comes from the same dock arithmetic that positions it and the
+//  stack's from the offsets it was just placed at, so the answer holds on the
+//  frame everything moves rather than one behind it.
+//
+//  The pill and the card share a corner, and it is chosen for the *card* —
+//  the bigger of the two — so opening the thing never makes it jump.
+
+// The toolbar's box in wrap coordinates, or null when it is not on screen.
+// Mirrors positionToolbarNode rather than reading its style back, for the
+// reason above.
+export function toolbarRectIn(dock, wrapRect, toolbarBox) {
+  if (!toolbarBox || !toolbarBox.width || !wrapRect || !wrapRect.width) return null;
+  const margin = TOOLBAR_MARGIN;
+  const { width, height } = toolbarBox;
+  if (isCompactToolbarMode()) {
+    return {
+      left: margin, top: Math.max(0, wrapRect.height - height - margin),
+      width: Math.max(0, wrapRect.width - margin * 2), height
+    };
+  }
+  const side = (dock && dock.side) || 'left';
+  const ratio = clamp01(dock ? dock.ratio : 0.5);
+  const horizontal = side === 'top' || side === 'bottom';
+  const availX = Math.max(1, wrapRect.width - width - margin * 2);
+  const availY = Math.max(1, wrapRect.height - height - margin * 2);
+  return {
+    left: horizontal ? margin + ratio * availX
+      : side === 'left' ? margin : Math.max(margin, wrapRect.width - width - margin),
+    top: horizontal ? (side === 'top' ? margin : Math.max(margin, wrapRect.height - height - margin))
+      : margin + ratio * availY,
+    width, height
+  };
+}
+
+// Clearance, not just a miss: two overlays a pixel apart read as one smudge.
+export const OVERLAY_CLEARANCE = 8;
+
+function overlapArea(a, b, pad = 0) {
+  if (!a || !b) return 0;
+  const x = Math.min(a.left + a.width + pad, b.left + b.width) - Math.max(a.left - pad, b.left);
+  const y = Math.min(a.top + a.height + pad, b.top + b.height) - Math.max(a.top - pad, b.top);
+  return x > 0 && y > 0 ? x * y : 0;
+}
+
+function cornerRect(corner, wrapRect, size) {
+  const m = TOOLBAR_MARGIN;
+  return {
+    left: corner.x === 'left' ? m : Math.max(m, wrapRect.width - size.width - m),
+    top: corner.y === 'top' ? m : Math.max(m, wrapRect.height - size.height - m),
+    width: size.width, height: size.height
+  };
+}
+
+// Preference order, and it is the tie-break rather than the rule: the top-left
+// is where the card has always opened and where its title reads first.
+export const INFO_CORNER_ORDER = [
+  { x: 'left', y: 'top' }, { x: 'right', y: 'top' },
+  { x: 'left', y: 'bottom' }, { x: 'right', y: 'bottom' }
+];
+
+/**
+ * The first corner nothing else wants — or, on a canvas where every corner is
+ * spoken for, the one it fights over least.
+ *
+ * Scoring by overlap area rather than stopping at the first clear corner costs
+ * nothing (a free corner scores zero and returns immediately) and is what makes
+ * the small-canvas case degrade instead of falling back to a corner the toolbar
+ * is sitting on.
+ */
+export function canvasInfoCorner(wrapRect, size, obstacles = []) {
+  let best = INFO_CORNER_ORDER[0];
+  let bestCost = Infinity;
+  for (const corner of INFO_CORNER_ORDER) {
+    const box = cornerRect(corner, wrapRect, size);
+    let cost = 0;
+    for (const o of obstacles) cost += overlapArea(box, o, OVERLAY_CLEARANCE);
+    if (cost === 0) return corner;
+    if (cost < bestCost) { bestCost = cost; best = corner; }
+  }
+  return best;
+}
+
+function measureBox(el) {
+  if (!el || !el.getBoundingClientRect) return null;
+  const box = el.getBoundingClientRect();
+  return box && box.width ? { width: box.width, height: box.height } : null;
+}
+
+/**
+ * Anchor the info pill and its card to a free corner.
+ *
+ * Both are moved together and stamped with the corner, which is what the CSS
+ * grows the card from — a card anchored bottom-right that still expands
+ * downward off its own origin reads as a mistake.
+ */
+export function layoutCanvasInfo(wrapRect, obstacles = []) {
+  const btn = $('canvas-info-btn');
+  const card = $('example-card');
+  if (!btn && !card) return null;
+
+  // The card, measured even while shut: `visibility: hidden` still lays out,
+  // and sizing the anchor off the button would move it the moment the card
+  // opened over the toolbar the button had cleared.
+  const size = measureBox(card) || measureBox(btn);
+  if (!size) return null;
+
+  const margin = TOOLBAR_MARGIN;
+  const corner = canvasInfoCorner(wrapRect, size, obstacles);
+  [btn, card].forEach(el => {
+    if (!el || !el.style) return;
+    el.style.position = 'absolute';
+    el.style.left = corner.x === 'left' ? `${margin}px` : 'auto';
+    el.style.right = corner.x === 'right' ? `${margin}px` : 'auto';
+    el.style.top = corner.y === 'top' ? `${margin}px` : 'auto';
+    el.style.bottom = corner.y === 'bottom' ? `${margin}px` : 'auto';
+    if (el.dataset) el.dataset.corner = `${corner.y}-${corner.x}`;
+  });
+  return corner;
+}
+
+/** Re-anchor after the card's own content changes size. */
+export function repositionCanvasInfo() {
+  const w = $('canvas-wrap');
+  if (!w || !w.getBoundingClientRect) return;
+  layoutCanvasOverlays(w.getBoundingClientRect());
+}
+
 // The toolbar's live box, or null when it is not on screen. A hidden node
 // measures as a zero rect, which every consumer here reads as "no toolbar" —
 // returning null says that outright instead of leaving zeros to be interpreted.
@@ -1943,16 +2099,28 @@ export function layoutCanvasOverlays(wrapRect, toolbarBox) {
     .filter(el => el && el.offsetParent !== null);
 
   let offset = margin;
+  // Where each member ended up, in wrap coordinates. The info pill picks its
+  // own corner around these, and reading them back off the DOM would be a
+  // frame behind the assignments above.
+  const placed = [];
   for (const el of stack) {
     el.style.position = 'absolute';
     el.style.left = corner.x === 'left' ? `${margin}px` : 'auto';
     el.style.right = corner.x === 'right' ? `${margin}px` : 'auto';
     el.style.top = corner.y === 'top' ? `${offset}px` : 'auto';
     el.style.bottom = corner.y === 'bottom' ? `${offset}px` : 'auto';
-    offset += el.getBoundingClientRect().height + OVERLAY_GAP;
+    const size = el.getBoundingClientRect();
+    placed.push({
+      left: corner.x === 'left' ? margin : Math.max(0, rect.width - size.width - margin),
+      top: corner.y === 'top' ? offset : Math.max(0, rect.height - size.height - offset),
+      width: size.width, height: size.height
+    });
+    offset += size.height + OVERLAY_GAP;
   }
 
   if (map) map.dataset.corner = `${corner.y}-${corner.x}`;
+
+  layoutCanvasInfo(rect, [toolbarRectIn(App.toolbarDock, rect, box), ...placed]);
 
   // The popover anchors off the corner stamped above, so it has to follow the
   // stack when the toolbar redocks or the panel resizes underneath it.
