@@ -86,7 +86,9 @@ import {
 // js/statemate-ui.js wires its listeners at creation, the way reference.js
 // does — bridge.js is the worklist for removing this seam, not a place to
 // grow it.
-import { openStateMate } from './statemate-ui.js';
+import {
+  ctxAddToStateMateContext, ctxAskStateMate, ctxCanvasAskStateMate, openStateMate
+} from './statemate-ui.js';
 import {
   exportCodeCopy, exportCodeDownload, exportCopyBatchQuick, exportOpenBatch,
   openExportCodeModal, openExportImageModal, runImageExport,
@@ -184,6 +186,10 @@ Object.assign(window, {
    saveJSON, saveWorkspace, toggleSaveMenu,
   // statemate-ui.js
    openStateMate,
+  // …plus the three right-click entry points. The header button is no longer
+  // the only way in: a diagram you are pointing at is the most common reason
+  // to want StateMate, and the menu is where pointing already happens.
+   ctxAskStateMate, ctxAddToStateMateContext, ctxCanvasAskStateMate,
   // export-ui.js
    exportCodeCopy, exportCodeDownload, exportCopyBatchQuick, exportOpenBatch,
    openExportCodeModal, openExportImageModal, runImageExport,

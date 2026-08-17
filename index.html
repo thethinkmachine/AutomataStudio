@@ -110,7 +110,7 @@
     <!-- Canvas actions: operate on the machine currently on the canvas. -->
     <div class="hdr-group" id="hdr-canvas-actions">
       <div class="example-picker" id="example-picker">
-        <button class="hbtn icon-only" id="example-picker-btn" type="button" aria-label="Open StateMate — build, edit or browse example automata" aria-haspopup="dialog" aria-controls="statemate-modal" aria-expanded="false" onclick="openStateMate()" data-tip="StateMate & examples">
+        <button class="hbtn icon-only" id="example-picker-btn" type="button" aria-label="Open StateMate — build, edit or browse example automata" aria-haspopup="dialog" aria-controls="statemate-modal" aria-expanded="false" onclick="openStateMate()" data-tip="StateMate & examples" data-tip-kbd="*">
           <svg viewBox="0 0 256 256" aria-hidden="true" fill="currentColor"><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z" /></svg>
         </button>
       </div>
@@ -1139,23 +1139,54 @@
        Rendered entirely by js/statemate-ui.js — the shell below is the only
        static part, and nothing in it is reached from an on* attribute except
        the close button. -->
-  <div class="overlay sm-overlay" id="statemate-modal" role="dialog" aria-modal="true" aria-labelledby="sm-modal-title">
+  <!-- A dock, not a dialog: no aria-modal, because the canvas behind it stays
+       live and reachable. See the `dock` option in js/modal.js. -->
+  <div class="overlay sm-overlay" id="statemate-modal" role="dialog" aria-labelledby="sm-modal-title">
     <div class="modal sm-console">
-      <div class="sm-head">
+      <!-- While minimized this strip is the whole console, and clicking it is
+           the way back up — see setMinimized() in js/statemate-ui.js. -->
+      <div class="sm-head" id="sm-head">
         <span class="sm-title-name" id="sm-modal-title">
           <svg class="sm-title-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z" /></svg>
           StateMate
         </span>
         <div class="sm-head-actions" id="sm-head-actions"></div>
+        <!-- Minimize, not close: the session, the thread and a request in
+             flight all survive it. Its label and its caret flip in
+             applyMinimized(). -->
+        <button class="sm-min" id="sm-min" type="button" aria-label="Minimize StateMate" aria-expanded="true" data-tip="Minimize" data-tip-kbd="Ctrl+K">
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+        </button>
         <button class="sm-close" type="button" onclick="closeModal('statemate-modal')" aria-label="Close StateMate" data-tip="Close">
           <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg>
         </button>
       </div>
 
-      <div class="sm-log" id="sm-log" role="log" aria-live="polite" aria-label="StateMate session"></div>
+      <!-- The one-line spoken summary of what just happened. It sits outside
+           the dock rather than in it because minimizing hides the dock, and a
+           run that finishes behind a collapsed console still has to be
+           announced. -->
+      <p class="sm-sr" id="sm-live" role="status" aria-live="polite"></p>
+
+      <!-- aria-live is off on purpose. The transcript is rebuilt as entries
+           arrive, and a live region over the whole of it re-announces the
+           session on every event; #sm-live above carries the one-line summary
+           a screen reader should actually hear. -->
+      <div class="sm-logwrap">
+        <div class="sm-log" id="sm-log" role="log" aria-live="off" aria-label="StateMate session"></div>
+        <button class="sm-jump" id="sm-jump" type="button" hidden data-tip="Jump to the latest" aria-label="Jump to the latest message">
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,149.66l-72,72a8,8,0,0,1-11.32,0l-72-72a8,8,0,0,1,11.32-11.32L120,196.69V40a8,8,0,0,1,16,0V196.69l58.34-58.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+          <span>Latest</span>
+        </button>
+      </div>
 
       <div class="sm-dock">
         <div class="sm-menu" id="sm-menu" role="listbox" aria-label="Commands" hidden></div>
+        <!-- Set while a past turn is being rewritten; built by renderEditing(). -->
+        <div class="sm-editing-slot" id="sm-editing"></div>
+        <!-- Selected parts of the diagram this prompt is about; built by
+             renderContext() in js/statemate-ui.js, empty most of the time. -->
+        <div class="sm-context-slot" id="sm-context" aria-label="Prompt context"></div>
         <div class="sm-nudge-slot" id="sm-nudge"></div>
         <div class="sm-composer" id="sm-composer">
           <span class="sm-caret" aria-hidden="true">&rsaquo;</span>
@@ -1363,6 +1394,9 @@
             <option value="6">3 exchanges</option>
             <option value="10">5 exchanges</option>
             <option value="16">8 exchanges</option>
+            <option value="20">10 exchanges</option>
+            <option value="100">50 exchanges</option>
+            <option value="200">100 exchanges</option>
           </select>
         </div>
         <div class="modal-row" data-tip="Let StateMate leave one or two sticky notes on the canvas explaining the construction.">
@@ -1719,6 +1753,21 @@
 
   <!-- ══════ CTX MENU ══════ -->
   <div class="ctx" id="ctx">
+    <!-- StateMate, on whatever was right-clicked. Selection-aware through
+         resolveNoteAnchorsForContext, so right-clicking one of several
+         selected states acts on the selection. -->
+    <!-- `ctx-sm` rather than the three per-mode classes: the mode rules in
+         css/modals.css hide by class, so an item carrying all three would be
+         hidden in every mode. It is hidden for dividers only. -->
+    <div class="ctx-i ctx-sm" onclick="ctxAskStateMate()">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88Z" /></svg>
+      Ask StateMate About This…
+    </div>
+    <div class="ctx-i ctx-sm" onclick="ctxAddToStateMateContext()" data-tip="Keep this as context for your next StateMate prompt, without opening the console">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,120H136V40a8,8,0,0,0-16,0v80H40a8,8,0,0,0,0,16h80v80a8,8,0,0,0,16,0V136h80a8,8,0,0,0,0-16Z" /></svg>
+      Add to StateMate Context
+    </div>
+    <div class="ctx-divider ctx-sm"></div>
     <div class="ctx-i ctx-state" onclick="ctxStart()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M221.66,133.66l-72,72a8,8,0,0,1-11.32-11.32L196.69,136H40a8,8,0,0,1,0-16H196.69L138.34,61.66a8,8,0,0,1,11.32-11.32l72,72A8,8,0,0,1,221.66,133.66Z" /></svg>
       Set Start
@@ -1877,6 +1926,11 @@
 
   <!-- ══════ CANVAS BACKGROUND CTX MENU ══════ -->
   <div class="ctx" id="canvas-ctx">
+    <div class="ctx-i" onclick="ctxCanvasAskStateMate()">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88Z" /></svg>
+      Ask StateMate…
+    </div>
+    <div class="ctx-divider"></div>
     <div class="ctx-i" onclick="ctxCanvasAddState()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm48-88a8,8,0,0,1-8,8H136v32a8,8,0,0,1-16,0V136H88a8,8,0,0,1,0-16h32V88a8,8,0,0,1,16,0v32h32A8,8,0,0,1,176,128Z" /></svg>
       Add State Here

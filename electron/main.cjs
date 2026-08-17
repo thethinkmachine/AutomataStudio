@@ -76,29 +76,48 @@ ipcMain.on('install-update', () => updater?.quitAndInstall());
 // settings. Errors resolve rather than reject so both transports map to the
 // same error copy in js/statemate.js.
 const STATEMATE_TIMEOUT_MS = 60000;
+// The streamed path splits that budget the way js/statemate-provider.js does:
+// one clock to prove the provider is there, then one that resets on every chunk.
+// A wall-clock limit cannot tell a hung request from a large machine still
+// arriving, and kills the second along with the first.
+const STATEMATE_FIRST_BYTE_MS = 45000;
+const STATEMATE_IDLE_MS = 30000;
 
-ipcMain.handle('statemate:request', async (_event, payload) => {
-  const { url, headers, body } = payload || {};
+function statemateTarget(url) {
   let parsed;
   try {
     parsed = new URL(String(url));
   } catch (err) {
-    return { ok: false, status: 0, body: 'That base URL is not a valid address.' };
+    return { error: 'That base URL is not a valid address.' };
   }
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    return { ok: false, status: 0, body: `Unsupported protocol: ${parsed.protocol}` };
+    return { error: `Unsupported protocol: ${parsed.protocol}` };
   }
+  return { url: parsed.toString() };
+}
+
+ipcMain.handle('statemate:request', async (_event, payload) => {
+  const { url, headers, body } = payload || {};
+  const target = statemateTarget(url);
+  if (target.error) return { ok: false, status: 0, body: target.error };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), STATEMATE_TIMEOUT_MS);
   try {
-    const response = await fetch(parsed.toString(), {
+    const response = await fetch(target.url, {
       method: 'POST',
       headers: headers && typeof headers === 'object' ? headers : {},
       body: typeof body === 'string' ? body : JSON.stringify(body ?? {}),
       signal: controller.signal,
     });
-    return { ok: response.ok, status: response.status, body: await response.text() };
+    return {
+      ok: response.ok,
+      status: response.status,
+      // The renderer cannot see response headers across `invoke`, and without
+      // this a rate limit's own "wait n seconds" was unreachable on the desktop.
+      retryAfter: response.headers.get('retry-after') || '',
+      body: await response.text(),
+    };
   } catch (err) {
     const aborted = err && err.name === 'AbortError';
     return {
@@ -108,6 +127,83 @@ ipcMain.handle('statemate:request', async (_event, payload) => {
     };
   } finally {
     clearTimeout(timer);
+  }
+});
+
+// ── the streamed path ─────────────────────────────────────────────
+// `invoke` resolves once, with a whole body, so the shell could not stream, and
+// a request in flight could not be cancelled — pressing escape reported success
+// while the tokens kept being paid for. This is a channel instead: chunks go
+// out as they are read, and `statemate:abort` reaches the fetch.
+const statemateStreams = new Map();
+
+ipcMain.on('statemate:abort', (_event, payload) => {
+  const controller = statemateStreams.get(payload && payload.id);
+  if (controller) controller.abort();
+});
+
+ipcMain.on('statemate:stream', async (event, payload) => {
+  const { id, url, headers, body } = payload || {};
+  if (!id) return;
+
+  const send = (channel, message) => {
+    if (!event.sender.isDestroyed()) event.sender.send(channel, { id, ...message });
+  };
+  const target = statemateTarget(url);
+  if (target.error) return send('statemate:end', { ok: false, status: 0, body: target.error });
+
+  const controller = new AbortController();
+  statemateStreams.set(id, controller);
+
+  let timer = null;
+  let timedOut = false;
+  const arm = (ms) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { timedOut = true; controller.abort(); }, ms);
+  };
+
+  try {
+    arm(STATEMATE_FIRST_BYTE_MS);
+    const response = await fetch(target.url, {
+      method: 'POST',
+      headers: headers && typeof headers === 'object' ? headers : {},
+      body: typeof body === 'string' ? body : JSON.stringify(body ?? {}),
+      signal: controller.signal,
+    });
+    const retryAfter = response.headers.get('retry-after') || '';
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      return send('statemate:end', { ok: false, status: response.status, body: text, retryAfter });
+    }
+    // A proxy that buffered the body away leaves no reader; hand the whole
+    // thing over as one chunk rather than failing on a feature nobody asked for.
+    if (!response.body || typeof response.body.getReader !== 'function') {
+      send('statemate:chunk', { chunk: await response.text() });
+      return send('statemate:end', { ok: true, status: response.status, retryAfter });
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      arm(STATEMATE_IDLE_MS);
+      send('statemate:chunk', { chunk: decoder.decode(value, { stream: true }) });
+    }
+    send('statemate:end', { ok: true, status: response.status, retryAfter });
+  } catch (err) {
+    const aborted = err && err.name === 'AbortError';
+    send('statemate:end', {
+      ok: false,
+      status: 0,
+      aborted: aborted && !timedOut,
+      timedOut,
+      body: String((err && err.message) || err),
+    });
+  } finally {
+    clearTimeout(timer);
+    statemateStreams.delete(id);
   }
 });
 

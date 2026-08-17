@@ -10,7 +10,7 @@ import { runSim } from './simulation.js';
 import { $, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { hideContextMenu } from './states-transitions.js';
 import { Change, emit } from './store.js';
-import { autoFitLoadedMachine, fitToScreen, hideTabContextMenu, hideTabOverflowMenu, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
+import { autoFitLoadedMachine, fitToScreen, hideTabContextMenu, hideTabOverflowMenu, initTabs, markActiveWorkspaceSaved, renderTabs, repositionCanvasInfo, setSaveState, switchTab } from './ui.js';
 import { hasPdaNondeterminism, hasSingleTapeNondeterminism, isAnyPDA, performClear, resetIds, showStatus } from './utils.js';
 import { applyMachineSwitch } from './view.js';
 
@@ -943,5 +943,9 @@ export function showExampleCard(meta) {
     card.appendChild(row);
   }
 
+  // The corner is chosen for the card's footprint, and the footprint is only
+  // final now that the blurb and the chips are in it — a card that grew two
+  // rows taller may no longer clear the toolbar it was anchored beside.
+  repositionCanvasInfo();
   openExampleCard({ autoHide: true });
 }

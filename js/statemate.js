@@ -31,7 +31,7 @@ import { showExampleCard } from './persistence.js';
 import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { computeBatchResults, resetSim } from './simulation.js';
 import {
-  App, activeWorkspaceId, exportWorkspaceState, getMachineConfig,
+  App, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig,
   importWorkspaceState, isOmegaAutomaton, normalizeBoundarySymbolsForMachine
 } from './state.js';
 import { compileSpec, currentMachineSnapshot, summarizeDiff } from './statemate-compile.js';
@@ -42,10 +42,11 @@ import {
 import { ProviderError, callModel, getStateMateSettings } from './statemate-provider.js';
 import {
   MIN_SPEC_TESTS, StateMateError, describeSpecSize, extractSpecJSON,
-  machineToSpec, parseTurn, testKindFor
+  focusIsEmpty, machineToSpec, parseTurn, partialStringField, resolveContextRefs,
+  testKindFor
 } from './statemate-spec.js';
 import { Change, emit } from './store.js';
-import { autoFitLoadedMachine, createTab, fitToScreen } from './ui.js';
+import { autoFitLoadedMachine, createTab, fitToScreen, switchTab } from './ui.js';
 import { resetIds, showStatus } from './utils.js';
 import { applyMachineSwitch } from './view.js';
 
@@ -73,15 +74,32 @@ let activeRun = null;
 //  It accumulates regardless of the depth setting. `threadDepth` governs how
 //  much is *sent* — 0 is the pre-thread behaviour from the model's side — while
 //  the palette always has the full exchange to show.
-const MAX_THREAD_TURNS = 24;
+//
+//  ── why it is a tree ─────────────────────────────────────────────
+//  Because retry is. "Ask again" used to append: the rejected answer stayed in
+//  the thread, so the next request opened with "[built: Even-length DFA]" and
+//  then asked for the same thing again — the model was being told to redo work
+//  it could see it had already done. A correct retry truncates the thread to
+//  before that turn, which is exactly a branch, so the two are one feature and
+//  are implemented once.
+//
+//  `getThread()` returns the **active path**, so every caller that has ever
+//  read a flat list still does. The branching lives entirely behind
+//  branchFrom / selectSibling / removeTurn.
+const MAX_THREAD_TURNS = 24;   // on the active path
+const MAX_THREAD_NODES = 72;   // including branches nobody is reading
 
 // How much of a rejected answer is echoed back as its own assistant turn
 // during a repair. Enough to be the thing being corrected, capped so a model
 // that produced 4000 tokens of nonsense does not get to pay for it twice.
 const MAX_ECHO_CHARS = 4000;
 
-let thread = [];
+let nodes = new Map();   // id → {id, parentId, activeChild, role, kind, text, at}
+let order = [];          // ids in creation order: sibling order, and prune order
+let head = null;         // the newest turn on the active path
+let rootActive = null;   // which root-level branch the path starts from
 let threadKey = null;
+let turnN = 0;
 
 // A conversation is about one machine in one tab. Checked when the thread is
 // read rather than driven by a subscription: there is no Change for "the
@@ -91,22 +109,285 @@ function currentThreadKey() {
   return `${App.machine}::${activeWorkspaceId ?? ''}`;
 }
 
+function childrenOf(parentId) {
+  const out = [];
+  for (const id of order) {
+    const node = nodes.get(id);
+    if (node && node.parentId === parentId) out.push(node);
+  }
+  return out;
+}
+
+/**
+ * The end of the branch that starts at `id`: follow the remembered choice at
+ * each fork, newest child where none was ever made. Without a remembered
+ * choice, stepping back onto a branch would land on whichever child happened
+ * to be created last rather than the one that was being read.
+ */
+function deepest(id) {
+  let at = id;
+  for (let guard = 0; guard < MAX_THREAD_NODES + 1; guard++) {
+    const node = nodes.get(at);
+    if (!node) return at;
+    const kids = childrenOf(at);
+    if (!kids.length) return at;
+    at = (kids.find(k => k.id === node.activeChild) || kids[kids.length - 1]).id;
+  }
+  return at;
+}
+
 /** The retained exchange, newest last. Empty after a tab or machine change. */
 export function getThread() {
   if (threadKey !== null && threadKey !== currentThreadKey()) clearThread();
-  return thread;
+  const path = [];
+  let at = head;
+  for (let guard = 0; at && guard <= MAX_THREAD_NODES; guard++) {
+    const node = nodes.get(at);
+    if (!node) break;
+    path.push(node);
+    at = node.parentId;
+  }
+  return path.reverse();
 }
 
 export function clearThread() {
-  thread = [];
+  nodes = new Map();
+  order = [];
+  head = null;
+  rootActive = null;
   threadKey = null;
+}
+
+/** Everything under `id`, `id` included. */
+function subtreeOf(id) {
+  const doomed = new Set();
+  const walk = at => {
+    if (doomed.has(at)) return;
+    doomed.add(at);
+    childrenOf(at).forEach(kid => walk(kid.id));
+  };
+  walk(id);
+  return doomed;
+}
+
+function dropSubtree(id) {
+  const doomed = subtreeOf(id);
+  doomed.forEach(d => nodes.delete(d));
+  order = order.filter(o => !doomed.has(o));
+  nodes.forEach(node => { if (doomed.has(node.activeChild)) node.activeChild = null; });
+  if (doomed.has(rootActive)) rootActive = null;
+  return doomed;
+}
+
+// Off-path branches are the cheapest thing to forget, so they go first: an
+// abandoned attempt is by definition one nobody came back to. Only once they
+// are gone does the oldest *intent* on the path get dropped, by detaching its
+// successor rather than by taking the whole conversation with it.
+function pruneThread() {
+  if (nodes.size > MAX_THREAD_NODES) {
+    const onPath = new Set(getThread().map(n => n.id));
+    while (nodes.size > MAX_THREAD_NODES) {
+      const victim = order.find(id => !onPath.has(id));
+      if (!victim) break;
+      dropSubtree(victim);
+    }
+  }
+
+  let path = getThread();
+  while (path.length > MAX_THREAD_TURNS) {
+    const oldest = path[0];
+    const next = path[1];
+    if (!next) break;
+    next.parentId = null;
+    rootActive = next.id;
+    dropSubtree(oldest.id);
+    path = getThread();
+  }
 }
 
 function rememberTurn(entry) {
   const key = currentThreadKey();
-  if (threadKey !== key) { thread = []; threadKey = key; }
-  thread.push(entry);
-  if (thread.length > MAX_THREAD_TURNS) thread = thread.slice(-MAX_THREAD_TURNS);
+  if (threadKey !== key) { clearThread(); threadKey = key; }
+
+  const node = { activeChild: null, at: Date.now(), ...entry, id: 't' + (++turnN), parentId: head };
+  nodes.set(node.id, node);
+  order.push(node.id);
+  if (node.parentId) {
+    const parent = nodes.get(node.parentId);
+    if (parent) parent.activeChild = node.id;
+  } else {
+    rootActive = node.id;
+  }
+  head = node.id;
+  pruneThread();
+  return node;
+}
+
+// ── branching ─────────────────────────────────────────────────────
+
+/**
+ * Rewind to just before `id`, so the next turn recorded becomes its sibling.
+ *
+ * This is what retry and edit-and-resend both do; they differ only in whether
+ * the text sent is the same. It rewinds the **conversation** and never the
+ * canvas — the machine a past turn drew is still drawn, which is why a pending
+ * proposal carries machineSignature() as well.
+ *
+ * @returns {string} the text of the turn being replaced, or ''
+ */
+export function branchFrom(id) {
+  const node = nodes.get(id);
+  if (!node) return '';
+  head = node.parentId;
+  if (node.parentId) {
+    const parent = nodes.get(node.parentId);
+    if (parent) parent.activeChild = null;
+  } else {
+    rootActive = null;
+  }
+  return node.role === 'user' ? String(node.text || '') : '';
+}
+
+/** The alternatives at this fork, and which one is being read. */
+export function siblingsOf(id) {
+  const node = nodes.get(id);
+  if (!node) return { list: [], index: -1 };
+  const list = childrenOf(node.parentId);
+  return { list, index: list.findIndex(n => n.id === id) };
+}
+
+/** Read a different branch: make it active all the way up, then follow it down. */
+export function selectSibling(id) {
+  if (!nodes.has(id)) return false;
+  let cur = nodes.get(id);
+  while (cur) {
+    const parent = cur.parentId ? nodes.get(cur.parentId) : null;
+    if (parent) parent.activeChild = cur.id;
+    else rootActive = cur.id;
+    cur = parent;
+  }
+  head = deepest(id);
+  return true;
+}
+
+/**
+ * Forget a turn and everything that followed from it.
+ *
+ * Deliberately does not touch the canvas: a machine that was drawn is still
+ * drawn, and quietly reverting someone's diagram because they tidied their
+ * transcript would be the worst kind of surprise. Reverting is what a
+ * checkpoint is for.
+ */
+export function removeTurn(id) {
+  const node = nodes.get(id);
+  if (!node) return false;
+  const parentId = node.parentId;
+  const wasOnPath = getThread().some(n => n.id === id);
+
+  dropSubtree(id);
+
+  if (wasOnPath || !nodes.has(head)) {
+    if (parentId && nodes.has(parentId)) {
+      head = parentId;
+    } else {
+      // The path started here. Fall back to whichever branch is newest rather
+      // than to nothing, or a surviving alternative becomes unreachable.
+      const roots = childrenOf(null);
+      head = roots.length ? deepest(roots[roots.length - 1].id) : null;
+      rootActive = roots.length ? roots[roots.length - 1].id : null;
+    }
+  }
+  return true;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  CHECKPOINTS
+// ══════════════════════════════════════════════════════════════════
+//  Why the Undo button needed replacing: it called undo(), which pops the top
+//  of App.history. Immediately after a turn that is the turn; three manual
+//  edits later it is one of those, and the tooltip saying "undo everything
+//  StateMate just did" was simply false.
+//
+//  A checkpoint is the workspace as it stood before a turn, restored as one
+//  new commit rather than by popping the stack — so it is correct however much
+//  happened in between, and it makes every past turn revertible rather than
+//  only the last one.
+//
+//  Module state, never persisted, for the same reason as the API key and the
+//  thread: exportWorkspaceState() deep-copies into every tab and
+//  getBackupPayload() writes to IndexedDB.
+
+const MAX_CHECKPOINTS = 12;
+
+let checkpoints = new Map();
+let checkpointN = 0;
+
+/** @returns {string} an id to hand to restoreCheckpoint */
+export function captureCheckpoint(label = '') {
+  const id = 'cp' + (++checkpointN);
+  const state = exportWorkspaceState();
+  checkpoints.set(id, {
+    id,
+    label,
+    at: Date.now(),
+    workspaceId: activeWorkspaceId ?? null,
+    // The undo stacks are the most expensive part of a workspace snapshot and
+    // irrelevant here — a checkpoint is a place to come back to, not a history.
+    // `config` is dropped so restoring a machine cannot revert a theme or a
+    // notation symbol the user changed since.
+    state: { ...state, history: [], future: [], config: undefined }
+  });
+  // Insertion-ordered, so the first key is the oldest.
+  while (checkpoints.size > MAX_CHECKPOINTS) {
+    checkpoints.delete(checkpoints.keys().next().value);
+  }
+  return id;
+}
+
+export function hasCheckpoint(id) {
+  return !!id && checkpoints.has(id);
+}
+
+/** What a checkpoint would restore, for the button that offers it. */
+export function checkpointInfo(id) {
+  const cp = checkpoints.get(id);
+  if (!cp) return null;
+  return {
+    id: cp.id,
+    label: cp.label,
+    at: cp.at,
+    otherTab: !!cp.workspaceId && cp.workspaceId !== activeWorkspaceId,
+    states: cp.state.states?.length || 0
+  };
+}
+
+/**
+ * Put the workspace back as it was, as a single undoable step.
+ *
+ * The history is threaded through the import deliberately: importWorkspaceState
+ * assigns App.history from its payload, so restoring a stashed `[]` would
+ * discard the undo point commit() had just recorded and make the restore
+ * itself irreversible.
+ */
+export function restoreCheckpoint(id) {
+  const cp = checkpoints.get(id);
+  if (!cp) return false;
+  // Only into a tab that still exists: switchTab sets the active id before it
+  // looks the workspace up, so a closed one would leave the app pointing at a
+  // tab that is not there. Restoring into whichever tab is open is the sane
+  // fallback — the machine is what the reader asked to get back.
+  const stillOpen = cp.workspaceId && Workspaces.some(w => w.id === cp.workspaceId);
+  if (stillOpen && cp.workspaceId !== activeWorkspaceId) switchTab(cp.workspaceId);
+
+  commit(() => {
+    importWorkspaceState({ ...cp.state, history: App.history, future: App.future });
+    App.selectedStates.clear();
+    App.selectedTransitions.clear();
+    resetSim();
+  }, Change.ALPHABET, Change.GRAPH);
+
+  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
+  return true;
 }
 
 export function isStateMateRunning() {
@@ -125,6 +406,9 @@ export function resetStateMateRuntime() {
   if (activeRun) { try { activeRun.controller.abort(); } catch (e) { } }
   activeRun = null;
   clearThread();
+  checkpoints = new Map();
+  checkpointN = 0;
+  turnN = 0;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -310,8 +594,16 @@ function assignCandidate(candidate) {
  * The snapshot goes before the mutation — commit() takes the edit as a
  * callback precisely so that ordering cannot be got wrong. One Ctrl+Z
  * restores exactly what was on screen before the prompt was sent.
+ *
+ * @returns {string} a checkpoint id for the state this overwrote, or '' when
+ *   the machine landed in a tab of its own and so overwrote nothing.
  */
 export function applyCandidate(candidate, { openNewTab = false, title = '' } = {}) {
+  // Captured before anything moves, and only when there is something to come
+  // back to: a build into a fresh tab replaced nothing, so a "restore" there
+  // would be a promise to undo an empty canvas.
+  const checkpoint = openNewTab ? '' : captureCheckpoint(title);
+
   if (openNewTab) {
     // A new tab is its own workspace with its own history, so the machine
     // is loaded into it rather than over anything.
@@ -325,6 +617,7 @@ export function applyCandidate(candidate, { openNewTab = false, title = '' } = {
 
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
   else fitToScreen(true);
+  return checkpoint;
 }
 
 /**
@@ -411,7 +704,10 @@ function resultCardMeta(spec) {
 export function applyPending(result) {
   const pending = result?.pending;
   if (!pending) return null;
-  applyCandidate(pending.candidate, { openNewTab: pending.openNewTab, title: pending.spec.title });
+  const checkpoint = applyCandidate(pending.candidate, {
+    openNewTab: pending.openNewTab,
+    title: pending.spec.title
+  });
   showExampleCard(resultCardMeta(pending.spec));
   return {
     ...result,
@@ -419,6 +715,7 @@ export function applyPending(result) {
     hold: '',
     holdDetail: '',
     openedNewTab: pending.openNewTab,
+    checkpoint,
     pending: null
   };
 }
@@ -431,6 +728,12 @@ function inferIntent() {
   return App.states.length ? 'edit' : 'build';
 }
 
+// The output cap, and how far a truncated answer may raise it. A machine cut
+// off at the cap used to arrive as unparseable JSON and burn a repair round at
+// the *same* cap, which could only fail the same way.
+const BASE_MAX_TOKENS = 4000;
+const MAX_OUTPUT_TOKENS = 16000;
+
 /**
  * One prompt, start to finish.
  *
@@ -439,11 +742,14 @@ function inferIntent() {
  * @param {string}   [opts.intent]       'build' | 'edit'; inferred from the canvas when absent
  * @param {boolean}  [opts.attachCanvas] default from settings
  * @param {string}   [opts.authority]    'ask' | 'propose' | 'auto'
+ * @param {Array}    [opts.context]      selection refs; see resolveContextRefs
+ * @param {string}   [opts.branch]       a turn id to replace rather than follow
  * @param {Function} [opts.onEvent]      progress: {type, …}
  * @returns {Promise<object>} the run result
  */
 export async function runStateMate({
-  prompt, intent, attachCanvas, authority = 'auto', onEvent = () => { }
+  prompt, intent, attachCanvas, authority = 'auto', context = [], branch = '',
+  onEvent = () => { }
 } = {}) {
   const text = String(prompt || '').trim();
   if (!text) throw new StateMateError('empty', 'Type what you want built.');
@@ -451,6 +757,11 @@ export async function runStateMate({
   // One request in flight at a time — a second ask supersedes the first
   // rather than racing it onto the canvas.
   if (activeRun) cancelStateMate();
+
+  // Retry and edit-and-resend: rewind before assembling, so the turn about to
+  // be recorded becomes a sibling of the one being replaced rather than its
+  // successor. The rejected answer then never reaches the model at all.
+  if (branch) branchFrom(branch);
 
   const settings = getStateMateSettings();
   const controller = new AbortController();
@@ -475,23 +786,101 @@ export async function runStateMate({
 
     const canvasSpec = useCanvas && App.states.length ? machineToSpec() : null;
 
+    // Selected parts of the diagram, resolved to names here rather than in the
+    // prompt builder: ids are what the canvas uses and the one thing the
+    // dialect has never had, so this is the boundary they stop at.
+    const resolvedFocus = resolveContextRefs(context);
+    const focus = focusIsEmpty(resolvedFocus) ? null : resolvedFocus;
+
     // The thread is the tail of the retained exchange; the live prompt is a
     // turn of its own, and the canvas rides with it rather than with any of
     // the history, so the model is always editing the machine that exists now.
     const depth = Math.max(0, settings.threadDepth | 0);
-    const messages = [
-      ...(depth ? threadMessages(getThread().slice(-depth)) : []),
-      {
-        role: 'user',
-        content: buildUserMessage({ prompt: text, intent: resolvedIntent, canvasSpec, authority })
-      }
-    ];
+    const history = depth ? threadMessages(getThread().slice(-depth)) : [];
+    const liveTurn = withCanvas => ({
+      role: 'user',
+      content: buildUserMessage({
+        prompt: text,
+        intent: resolvedIntent,
+        canvasSpec: withCanvas ? canvasSpec : null,
+        authority,
+        focus
+      })
+    });
+    let messages = [...history, liveTurn(true)];
+    let historyCount = history.length;
 
     let attempt = 0;
     const maxAttempts = 1 + Math.max(0, Math.min(2, settings.repairAttempts ?? 1));
     let spec = null, candidate = null, diff = null, lint = null, batch = null;
-    let usage = null, model = null, repaired = false;
+    let usage = null, model = null, repaired = false, timing = null;
     let lastFailures = [], lastFindings = [];
+
+    // Two self-heals, each allowed once, neither of which spends a repair
+    // attempt: they are not about the quality of an answer, they are about the
+    // request being the wrong size.
+    let maxTokens = BASE_MAX_TOKENS;
+    let grewCap = false, trimmed = false;
+    const retries = [];
+
+    /** One request, with the two size self-heals folded in. */
+    const ask = async () => {
+      for (;;) {
+        guard();
+        try {
+          return await callModel({
+            system,
+            messages,
+            signal: controller.signal,
+            maxTokens,
+            onRetry: info => {
+              retries.push({ code: info.error?.code, waitMs: info.waitMs });
+              onEvent({
+                type: 'retry',
+                attempt: info.attempt,
+                of: info.of,
+                waitMs: info.waitMs,
+                code: info.error?.code,
+                message: info.error?.message
+              });
+            },
+            onText: full => {
+              // Both fields are first in their schema for exactly this reason:
+              // they are readable a chunk or two into an answer that will not
+              // parse for several seconds yet.
+              const planned = partialStringField(full, 'plan');
+              if (planned) onEvent({ type: 'plan', text: planned.replace(/\s+/g, ' ') });
+
+              // Guarded on the declared kind, or a machine carrying canvas
+              // notes — which have a "text" of their own — would stream its
+              // first note as if it were a reply.
+              if (partialStringField(full, 'kind') === 'reply') {
+                const said = partialStringField(full, 'text');
+                if (said) onEvent({ type: 'reply-delta', text: said });
+              }
+            }
+          });
+        } catch (err) {
+          if (err?.code === 'truncated' && !grewCap && maxTokens < MAX_OUTPUT_TOKENS) {
+            grewCap = true;
+            maxTokens = Math.min(maxTokens * 2, MAX_OUTPUT_TOKENS);
+            onEvent({ type: 'stage', stage: 'request', note: `answer was cut off — retrying with room for ${maxTokens}` });
+            continue;
+          }
+          if (err?.code === 'context-length' && !trimmed) {
+            trimmed = true;
+            // The conversation and the attached machine are the two things
+            // that can be given up without giving up the request.
+            messages = messages.slice(historyCount);
+            messages[0] = liveTurn(false);
+            historyCount = 0;
+            onEvent({ type: 'stage', stage: 'request', note: 'too long — retrying without the history' });
+            continue;
+          }
+          throw err;
+        }
+      }
+    };
 
     while (attempt < maxAttempts) {
       attempt++;
@@ -499,22 +888,11 @@ export async function runStateMate({
 
       // ── 2 · request ─────────────────────────────────────────
       onEvent({ type: 'stage', stage: 'request', attempt });
-      const response = await callModel({
-        system,
-        messages,
-        signal: controller.signal,
-        onText: full => {
-          // "plan" is the first key in the schema specifically so it arrives
-          // early enough to show while the rest is still streaming.
-          const planned = full.match(/"plan"\s*:\s*"((?:[^"\\]|\\.)*)/);
-          if (planned) {
-            onEvent({ type: 'plan', text: planned[1].replace(/\\"/g, '"').replace(/\\n/g, ' ') });
-          }
-        }
-      });
+      const response = await ask();
       guard();
       usage = response.usage;
       model = response.model;
+      timing = response.timing;
 
       // ── 3 · parse & validate ────────────────────────────────
       onEvent({ type: 'stage', stage: 'parse' });
@@ -547,14 +925,21 @@ export async function runStateMate({
       // apply. No candidate is ever built, so there is nothing that could
       // reach the canvas even by accident.
       if (turn.kind === 'reply') {
-        rememberTurn({ role: 'user', text });
-        rememberTurn({ role: 'assistant', kind: 'reply', text: turn.text });
+        const userTurn = rememberTurn({ role: 'user', text });
+        const assistantTurn = rememberTurn({ role: 'assistant', kind: 'reply', text: turn.text });
+        // The ids are how the console attaches its retry, branch and delete
+        // controls to the thread; without them its entries and the thread are
+        // two lists that happen to be the same length.
+        onEvent({ type: 'turn', userId: userTurn.id, assistantId: assistantTurn.id });
         const replied = {
           status: 'replied',
           kind: 'reply',
           reply: turn.text,
-          usage, model,
+          usage, model, timing,
+          retries,
           repaired,
+          turnId: userTurn.id,
+          answerId: assistantTurn.id,
           thread: getThread()
         };
         onEvent({ type: 'done', result: replied });
@@ -647,8 +1032,9 @@ export async function runStateMate({
     // to the candidate, and `hold` says which way it went. A stage id the UI
     // has no row for would simply be dropped.
     onEvent({ type: 'stage', stage: 'apply', hold });
+    let checkpoint = '';
     if (!hold) {
-      applyCandidate(candidate, { openNewTab, title: spec.title });
+      checkpoint = applyCandidate(candidate, { openNewTab, title: spec.title });
       showExampleCard(resultCardMeta(spec));
     }
 
@@ -659,18 +1045,31 @@ export async function runStateMate({
     // Intent, not machines: the summary is what travels to the next turn. A
     // held proposal is remembered too — the exchange happened, and a follow-up
     // ("no, smaller") is a correction to it whether or not it was drawn.
-    rememberTurn({ role: 'user', text });
-    rememberTurn({
+    const userTurn = rememberTurn({ role: 'user', text });
+    const assistantTurn = rememberTurn({
       role: 'assistant',
       kind: 'machine',
       text: `${spec.title} — ${describeSpecSize(spec)}${hold ? ' (proposed, not applied)' : ''}`
     });
+    onEvent({ type: 'turn', userId: userTurn.id, assistantId: assistantTurn.id });
 
     const result = {
       status: hold ? 'proposed' : 'applied',
       kind: 'machine',
       hold,
       holdDetail: overreach,
+      // Where to come back to. Empty for a held proposal, which has not been
+      // drawn, and for a build into a new tab, which replaced nothing.
+      checkpoint,
+      turnId: userTurn.id,
+      answerId: assistantTurn.id,
+      timing,
+      retries,
+      // Reported rather than silent, the way the linter's fixes are: both of
+      // these changed what was asked, and a change the reader cannot see is
+      // one they cannot distrust.
+      grewCap,
+      trimmed,
       // Everything applyPending() needs, and nothing that has been drawn. The
       // signature is what tells the reader later that the canvas moved under
       // the diff they are about to accept.
@@ -716,12 +1115,24 @@ const ERROR_COPY = {
   'no-key': { text: 'StateMate needs an API key to chat and build machines.', action: 'settings', label: 'Set up' },
   auth: { text: 'Your API key was rejected.', action: 'settings', label: 'Check key' },
   'rate-limit': { text: 'The provider is rate-limiting requests.', action: 'retry', label: 'Retry' },
+  // Distinct from a rate limit even though it usually arrives as one: waiting
+  // does not fix it, so offering Retry sends the user round a loop that cannot
+  // close. The action is the account, not the button.
+  credit: { text: 'This account cannot pay for the request — check its billing or credit balance.', action: 'settings', label: 'Open settings' },
+  overloaded: { text: 'The provider is overloaded right now.', action: 'retry', label: 'Retry' },
   server: { text: 'The provider is having trouble right now.', action: 'retry', label: 'Retry' },
   'not-found': { text: 'That model or base URL does not exist.', action: 'settings', label: 'Open settings' },
   http: { text: 'The provider refused the request.', action: 'settings', label: 'Open settings' },
+  'bad-request': { text: 'The provider rejected the request as malformed.', action: 'settings', label: 'Open settings' },
   network: { text: 'Could not reach the provider.', action: 'settings', label: 'Open settings' },
+  offline: { text: 'This device is offline.', action: 'retry', label: 'Retry' },
   timeout: { text: 'The model did not answer in time.', action: 'retry', label: 'Retry' },
   'bad-response': { text: 'The provider did not return JSON.', action: 'retry', label: 'Retry' },
+  // Both survived the one self-heal each is allowed, so the machine really is
+  // too big for this model rather than merely bigger than the first guess.
+  truncated: { text: 'The answer was cut off before the machine was finished.', action: 'retry', label: 'Try again' },
+  'context-length': { text: 'The request is too long for this model, even without the conversation.', action: 'settings', label: 'Open settings' },
+  refusal: { text: 'The model declined to answer that.', action: 'none', label: '' },
   'no-json': { text: "StateMate's answer was not a machine.", action: 'retry', label: 'Try again' },
   'bad-json': { text: "StateMate's answer was not valid JSON.", action: 'retry', label: 'Try again' },
   schema: { text: 'StateMate returned an incomplete machine.', action: 'retry', label: 'Try again' },
@@ -744,10 +1155,58 @@ export function describeError(err) {
   const text = err?.message && err.message !== 'Cancelled.' && err.code !== 'empty'
     ? err.message
     : copy.text;
-  const extra = err?.code === 'rate-limit' && err.retryAfter
-    ? ` Try again in ${err.retryAfter}s.`
-    : '';
+  const waitable = err?.code === 'rate-limit' || err?.code === 'overloaded';
+  const extra = waitable && err.retryAfter ? ` Try again in ${err.retryAfter}s.` : '';
   return { ...copy, text: text + extra, detail: err?.detail || null };
+}
+
+/**
+ * How fast the answer arrived, when it arrived as a stream.
+ *
+ * Two numbers rather than one, because they answer different questions: time to
+ * first token is why a run *felt* slow, and tokens per second is how fast the
+ * answer then came. Averaging the wait into the rate hides both. Deliberately
+ * null on the buffered path — a rate computed over a response that arrived all
+ * at once is fiction.
+ */
+// Below this the "rate" is dominated by measurement error rather than by
+// throughput: a local server that answers a cached completion in three
+// milliseconds is not doing seventy thousand tokens a second, and printing that
+// makes every other number on the line look made up too.
+const MIN_RATE_WINDOW_MS = 40;
+
+export function throughput(result) {
+  const t = result?.timing;
+  const out = result?.usage?.output;
+  if (!t) return null;
+  const totalMs = t.finishedAt - t.startedAt;
+  if (!t.streamed || !t.firstTokenAt) return { tps: null, ttftMs: null, totalMs };
+  const windowMs = t.finishedAt - t.firstTokenAt;
+  return {
+    tps: out && windowMs >= MIN_RATE_WINDOW_MS ? out / (windowMs / 1000) : null,
+    ttftMs: t.firstTokenAt - t.startedAt,
+    totalMs
+  };
+}
+
+/** The instrumentation line under a result: model, tokens, rate, retries. */
+export function resultMetaBits(result) {
+  const bits = [];
+  if (!result) return bits;
+  if (result.model) bits.push(result.model);
+  if (result.usage?.input || result.usage?.output) {
+    bits.push(`${result.usage.input ?? '?'} in / ${result.usage.output ?? '?'} out`);
+  }
+  const rate = throughput(result);
+  if (rate?.tps) bits.push(`${rate.tps.toFixed(1)} tok/s`);
+  if (rate?.ttftMs != null) bits.push(`${(rate.ttftMs / 1000).toFixed(1)}s to first token`);
+  else if (rate?.totalMs != null) bits.push(`${(rate.totalMs / 1000).toFixed(1)}s`);
+  if (result.retries?.length) {
+    bits.push(`${result.retries.length} retr${result.retries.length === 1 ? 'y' : 'ies'}`);
+  }
+  if (result.repaired) bits.push('repaired once');
+  if (result.openedNewTab) bits.push('opened in a new tab');
+  return bits;
 }
 
 /** Whether a run's verdict should be shown as a warning rather than a pass. */
@@ -784,6 +1243,19 @@ export function resultNotes(result) {
     ...(result.lint?.fixed || []),
     ...(result.lint?.warnings || [])
   ];
+  // The two self-heals in the request loop. `trimmed` in particular changed
+  // what was asked — the conversation and the attached machine both went — so
+  // an answer that reads as forgetful has a reason on the card.
+  if (result.trimmed) {
+    notes.push({
+      rule: 'trimmed',
+      severity: 'warn',
+      message: 'The request was too long, so the conversation and the attached machine were dropped for this turn.'
+    });
+  }
+  if (result.grewCap) {
+    notes.push({ rule: 'grew-cap', severity: 'fix', message: 'The first answer was cut off, so it was asked again with room for a longer one.' });
+  }
   if (result.spec?.caveat) notes.push({ severity: 'warn', message: result.spec.caveat });
   if (result.failures?.length) {
     const n = result.failures.length;

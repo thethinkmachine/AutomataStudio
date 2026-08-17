@@ -28,8 +28,13 @@ export function showContextMenu(kind, x, y) {
   if (typeof hideCanvasContextMenu === 'function') hideCanvasContextMenu();
   m.dataset.mode = kind;
   m.style.display = 'block';
+  // These are the menu's own dimensions, used to keep it inside the viewport.
+  // They have to grow with the rows: every mode except `divider` now carries
+  // the two StateMate items and a rule, and a stale height here means a menu
+  // opened near the bottom of the screen quietly loses its last entries.
+  const smRows = kind === 'divider' ? 0 : 66;
   const maxX = kind === 'edge' ? 260 : (kind === 'note' || kind === 'divider') ? 240 : 220;
-  const maxY = kind === 'edge' ? 190 : kind === 'note' ? 240 : kind === 'divider' ? 210 : 150;
+  const maxY = (kind === 'edge' ? 190 : kind === 'note' ? 240 : kind === 'divider' ? 210 : 150) + smRows;
   m.style.left = Math.max(8, Math.min(x, innerWidth - maxX)) + 'px';
   m.style.top = Math.max(8, Math.min(y, innerHeight - maxY)) + 'px';
 }

@@ -75,6 +75,14 @@ body.modal-open {
    drops the shared scrim and blur — the diagram above stays readable, and the
    conversation can stay open across several turns.
 
+   And why it drops pointer-events with them. Readable was never the whole of
+   it: the canvas behind the console is meant to be *usable* — click a state,
+   pan, zoom, run a word — while the conversation about it stays open. An
+   .overlay takes the whole viewport and `pointer-events: all` on .show, which
+   made the diagram a picture of itself and turned a click on it into a
+   dismissal. The overlay passes the pointer through; the panel takes it back.
+   The blocking half of the plumbing is off in js/modal.js, under `dock`.
+
    The shell is static in index.html; every line inside .sm-log is built by
    js/statemate-ui.js. */
 .sm-overlay {
@@ -83,10 +91,15 @@ body.modal-open {
   padding: 0 14px 14px;
 }
 
+/* No scrim and no gradient. The gradient was doing the separating before the
+   panel became glass; behind a translucent panel it is just a dark wash
+   bleeding up through the transcript, and .modal's shadow and ring already say
+   "in front of" more clearly than tinting the canvas does. */
 .sm-overlay.show {
-  background: linear-gradient(to bottom, transparent 34%, color-mix(in srgb, var(--overlay) 50%, transparent));
+  background: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  pointer-events: none;
 }
 
 .sm-console {
@@ -99,6 +112,7 @@ body.modal-open {
   --sm-mono: .72rem;    /* command names, system lines */
   --sm-micro: .63rem;   /* status bar, chips, meta */
   --sm-lh: 1.7;
+  position: relative;   /* the off-screen live region is absolute within it */
   display: flex;
   flex-direction: column;
   width: min(900px, 100%);
@@ -108,6 +122,55 @@ body.modal-open {
   padding: 0;
   overflow: hidden;
   transform: translateY(16px);
+  /* ── glass, and only here ──
+     Every other dialog in this app sits behind a 3px scrim; the console
+     deliberately sits behind nothing, because the diagram under it is live and
+     still the reader's. Translucency is that sentence in paint, which is the
+     whole justification — it would be ornament on the settings dialog.
+
+     It is safe because of *where* it shows. Everything carrying text is an
+     opaque surface sitting on top: the cards, the composer, the completion
+     menu, the chips. The glass reads in the negative space around them — the
+     margin beside a 680px reply, the gutter, the header — so no prose is ever
+     asked to sit on a blurred, moving diagram. Keep it that way: a translucent
+     *card* is where this stops being tasteful and starts being unreadable.
+
+     80% is measured rather than guessed, and the window is narrow. At 86% the
+     effect is invisible in the dark themes — a dark surface over a dark canvas
+     is a dark surface — so it costs a compositor layer and returns nothing. At
+     70% a *dialog* opening behind the dock becomes legible through it, which
+     is the point where glass stops being depth and starts being noise. Expect
+     it to read plainly in the light themes and quietly in the dark ones; that
+     asymmetry is inherent to the trick, not a bug in this number.
+
+     Blur is affordable on a panel this size, but it recomputes whenever what
+     is behind it repaints — which is exactly during the panning the dock
+     exists to allow. Raise it and check a drag, not a screenshot.
+
+     The filter itself is declared on .show below, for the reason given over
+     .overlay.show: a backdrop-filter asks the compositor to keep a rasterized
+     copy of everything behind the element, and the closed console is still in
+     the DOM at opacity 0 in front of the canvas. Declared here it never went
+     away — the page was being snapshotted behind an invisible panel all
+     session, and closing tore that layer down in one frame, which is a
+     full-viewport repaint and reads as a blink. The translucent background
+     stays: a colour is not a filter and costs nothing to composite. */
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+}
+
+/* The panel is the only part of the overlay that takes the pointer — and only
+   while the console is open.
+   `pointer-events` is inherited, and `.overlay`'s `none` is what keeps twelve
+   closed dialogs from intercepting anything: they are all still in the DOM,
+   at opacity 0, in front of the page. Declaring `auto` on .sm-console itself
+   overrode that inheritance for the closed console too, leaving an invisible
+   900px panel over the bottom of the canvas — exactly where the toolbar is —
+   swallowing every click and showing a text cursor for its own textarea.
+   Scoped to .show, it takes the pointer only when it is on screen. */
+.sm-overlay.show .sm-console {
+  pointer-events: auto;
+  backdrop-filter: blur(18px) saturate(118%);
+  -webkit-backdrop-filter: blur(18px) saturate(118%);
 }
 
 .overlay.show .sm-console {
@@ -169,7 +232,8 @@ body.modal-open {
   outline: none;
 }
 
-.sm-close {
+.sm-close,
+.sm-min {
   width: 26px;
   height: 26px;
   display: grid;
@@ -183,7 +247,9 @@ body.modal-open {
 }
 
 .sm-close:hover,
-.sm-close:focus-visible {
+.sm-close:focus-visible,
+.sm-min:hover,
+.sm-min:focus-visible {
   background: var(--surface2);
   color: var(--text);
   outline: none;
@@ -194,7 +260,88 @@ body.modal-open {
   height: 13px;
 }
 
+/* One caret, turned over. Down is "put it away", and while it is away the same
+   glyph points back at the panel it would restore — which is a cheaper thing to
+   read than two icons that have to be told apart. */
+.sm-min svg {
+  width: 12px;
+  height: 12px;
+  transition: transform var(--transition-base);
+}
+
+.sm-overlay.is-min .sm-min svg {
+  transform: rotate(180deg);
+}
+
+/* ── minimized ──
+   Collapsed to the header strip. Nothing about the session lives in the DOM —
+   the transcript, the thread and a request in flight all outlive this — so it
+   is reversible in a way closing deliberately is not: closing interrupts a run.
+
+   Shrink-wrapped rather than left 900px wide, because the point of putting the
+   console away is the diagram underneath it, and a full-width bar across the
+   bottom of the canvas is most of the panel's footprint with none of its use. */
+.sm-overlay.is-min .sm-console {
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+  /* A pill, because collapsed this is one control rather than a surface with
+     things on it, and the panel's 14px corner reads as a dialog with its body
+     cut off at this height. Past half the height, so it stays a capsule
+     whatever the strip ends up carrying. */
+  border-radius: 999px;
+}
+
+.sm-overlay.is-min .sm-logwrap,
+.sm-overlay.is-min .sm-dock {
+  display: none;
+}
+
+.sm-overlay.is-min .sm-head {
+  /* Tighter than the open header, and asymmetric: the round ends need more
+     room on the text side than the buttons do, or the name sits in the curve. */
+  gap: 8px;
+  padding: 6px 7px 6px 16px;
+  border-bottom: none;
+  /* The whole strip is the way back up, the way a collapsed dock usually is.
+     The buttons on it keep their own jobs — see the head click handler. */
+  cursor: pointer;
+}
+
+/* What the console can still say from one strip: a run in flight, or the turns
+   that landed while it was down. Both are counts of things the reader would
+   otherwise have to restore the panel to find out about. */
+.sm-minstat {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text3);
+  white-space: nowrap;
+}
+
+.sm-minstat.is-new {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 /* ── the transcript ── */
+/* The wrapper exists for one child: the jump control, which has to sit at the
+   bottom edge of the scrolling area rather than at the bottom of the panel —
+   the dock's height moves with the menu, the context basket and the composer. */
+.sm-logwrap {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .sm-log {
   font-family: var(--sans);
   font-size: var(--sm-prose);
@@ -205,6 +352,58 @@ body.modal-open {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
+}
+
+/* Shown only once the reader has scrolled away from the end — which is also
+   the only time the transcript stops following the newest line. Scrolling up
+   to re-read a turn used to be undone by the next streamed token. */
+.sm-jump {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  position: absolute;
+  right: 16px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--border2);
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--text2);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.sm-jump[hidden] {
+  display: none;
+}
+
+.sm-jump:hover,
+.sm-jump:focus-visible {
+  background: var(--surface3);
+  color: var(--text);
+  outline: none;
+}
+
+.sm-jump svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* The spoken summary of a turn. Off screen, never display:none — a live region
+   that is not rendered is a live region that is never announced. */
+.sm-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .sm-entry {
@@ -248,11 +447,155 @@ body.modal-open {
   color: var(--accent);
 }
 
+/* The other half of the conversation. It hugs its text and stops at the same
+   measure the reply does, so the two read as turns rather than as a paragraph
+   followed by a panel.
+   The type is deliberately untouched — same family, size and line-height as
+   the composer, because it is the same text before and after ⏎. Only the
+   surface under it is new. */
 .sm-user-text {
+  width: fit-content;
   min-width: 0;
+  max-width: min(74ch, 100%);
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px 12px 12px 5px;
+  background: color-mix(in srgb, var(--accent-soft) 65%, var(--surface2));
   color: var(--text);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* The turn being rewritten. A ring rather than the border-left bar the rest of
+   the console uses: this one is already a bubble, and a bar down one side of a
+   rounded corner is the shape the cards were just taken off. */
+.sm-entry.is-editing .sm-user-text {
+  border-color: var(--gold-border);
+  background: color-mix(in srgb, var(--gold-soft) 80%, var(--surface2));
+}
+
+/* The content half of an `sm-line` grid, for entries that stack a card and a
+   tool row: a third child of the grid itself lands back in the 15px gutter. */
+.sm-col,
+.sm-user-body {
+  min-width: 0;
+}
+
+/* ── the per-entry tools ──
+   Timestamps, the branch stepper, and the few things you can do to a turn
+   after the fact. Mono throughout: a time and a fork index are instrumentation,
+   not language. Revealed on hover so a read-through of the transcript is not a
+   read-through of its controls — but always present for the keyboard, which is
+   why it is opacity rather than display. */
+.sm-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 3px;
+  min-height: 20px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.sm-entry:hover .sm-tools,
+.sm-tools:focus-within {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  /* No hover to reveal them with, so they simply stay. */
+  .sm-tools { opacity: 1; }
+}
+
+/* Glyph-only: four labels per turn turned a transcript into a page of
+   controls. The name lives on aria-label and data-tip, so it is a hover or a
+   screen reader away rather than gone. */
+.sm-tool {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.sm-tool-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.sm-tool:hover,
+.sm-tool:focus-visible {
+  border-color: var(--border2);
+  background: var(--surface2);
+  color: var(--text);
+  outline: none;
+}
+
+/* Deleting a turn is the one irreversible thing in the row, so it says so on
+   the way to being pressed rather than only afterwards. */
+.sm-tool[aria-label^="Delete"]:hover,
+.sm-tool[aria-label^="Delete"]:focus-visible {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.sm-stamp {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--text3);
+}
+
+/* ── the branch stepper ──
+   Only rendered when a fork exists, so an ordinary conversation shows nothing
+   and the branching is invisible until there is some. */
+.sm-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 3px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface2);
+}
+
+.sm-branch-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+}
+
+.sm-branch-icon {
+  width: 9px;
+  height: 9px;
+}
+
+.sm-branch-btn:hover,
+.sm-branch-btn:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+
+.sm-branch-at {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--text2);
 }
 
 /* ── a system line: a loaded example, a cleared thread, a switched mode ── */
@@ -361,27 +704,98 @@ body.modal-open {
   font-style: italic;
 }
 
+/* A wait the app chose, announced. A silent stall while a rate limit clears is
+   indistinguishable from a hang. */
+.sm-retry {
+  font-family: var(--sans);
+  font-size: var(--sm-ui);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 4px 0 0 24px;
+  color: var(--gold);
+}
+
+.sm-retry .sm-step-mark {
+  color: var(--gold);
+}
+
+/* A reply as it streams: plain text, in the reply's own voice and colour, until
+   it is whole enough to be parsed as Markdown. */
+.sm-stream {
+  margin: 7px 0 0 24px;
+  padding-left: 10px;
+  border-left: 2px solid var(--violet);
+  color: var(--text2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* ── the cards: a machine, a reply, an error ── */
+/* ── the cards ──
+   A reply is prose written for a person to read, so the card's job is to be a
+   good page for it and then get out of the way.
+
+   What was here was the generic assistant-bubble treatment: a flat tinted
+   slab, a coloured bar replacing its left edge, and square corners on that
+   side — which reads as a callout in a docs site rather than a turn in a
+   conversation. Three things replace it, and only one of them is colour:
+
+   · **a surface**, not a rectangle of different paint — a vertical falloff, a
+     lit top edge and a hairline border, so the card sits *on* the transcript
+   · **a measure** — a reply is capped at ~74 characters and hugs its own text,
+     which is what makes it a bubble in a column rather than a full-width wall;
+     a 900px line is the single thing most responsible for prose looking
+     unconsidered, and a flat tint over all of it was the second
+   · **the kind in the edge, not in a bar** — a coloured spine down one side is
+     the same ornament as the border it replaced, just narrower. The card's own
+     border carries the colour instead, over a tint faint enough to leave the
+     prose alone. One shape, tinted; nothing stuck to it. */
 .sm-card {
-  padding: 11px 13px;
+  padding: 12px 15px;
   border: 1px solid var(--border);
-  border-left: 2px solid var(--accent);
-  border-radius: 0 var(--r) var(--r) 0;
-  background: var(--surface2);
+  border-radius: 12px;
+  background: linear-gradient(to bottom,
+      color-mix(in srgb, var(--surface3) 45%, var(--surface2)),
+      var(--surface2) 72%);
+  /* The lit top edge is what reads as "made" rather than "filled". Derived
+     from --text so it inverts with the theme instead of assuming a dark one. */
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--text) 8%, transparent),
+    0 1px 2px rgba(0, 0, 0, .1);
+  transition: box-shadow var(--transition-fast);
 }
 
+/* Hover lifts the card by its own light rather than by its border — the border
+   is carrying which kind of turn this is, and neutralising it on hover would
+   throw that away for the duration of the pointer being there. */
+.sm-entry:hover .sm-card {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--text) 13%, transparent),
+    0 2px 6px rgba(0, 0, 0, .13);
+}
+
+/* A reply hugs its text and stops at a readable measure. Both matter: the
+   width is what stops it reading as a page of documentation, and `fit-content`
+   is what stops a two-word answer from drawing a 900px box to hold it. */
 .sm-card.is-reply {
-  border-left-color: var(--violet);
-  background: var(--violet-soft);
-}
-
-.sm-card.is-error {
-  border-left-color: var(--red);
-  background: var(--red-soft);
+  width: fit-content;
+  max-width: min(74ch, 100%);
+  border-color: var(--violet-border);
+  background: linear-gradient(to bottom,
+      color-mix(in srgb, var(--violet-soft) 42%, var(--surface2)),
+      var(--surface2) 78%);
 }
 
 .sm-card.is-warn {
-  border-left-color: var(--gold);
+  border-color: var(--gold-border);
+}
+
+.sm-card.is-error {
+  border-color: var(--red-border);
+  background: linear-gradient(to bottom,
+      color-mix(in srgb, var(--red-soft) 70%, var(--surface2)),
+      var(--surface2) 72%);
 }
 
 .sm-card-title {
@@ -413,8 +827,18 @@ body.modal-open {
 
    pre-wrap comes off deliberately — the parser has already turned newlines
    into blocks, so keeping it would double every gap it just created. */
+/* A reply is the turn's whole content rather than a note attached to one, so
+   it reads at full strength; --text2 is for the supporting lines around it. */
+.sm-card.is-reply .sm-prose {
+  color: var(--text);
+}
+
 .sm-md {
   white-space: normal;
+  /* Balances the ragged edge and keeps a single word off its own last line.
+     Cheap on a paragraph this size, and it is most of the difference between
+     prose that looks typeset and prose that looks poured in. */
+  text-wrap: pretty;
 }
 
 .sm-md > :first-child { margin-top: 0; }
@@ -572,9 +996,15 @@ body.modal-open {
 /* A machine that was built and checked but not drawn. The tint says the card
    describes something that is not on your canvas yet — every number in it is
    a prediction rather than a report. */
+/* A held proposal is the one card that should catch the eye across the room:
+   it is the only state in the console waiting on a decision. Declared after
+   .is-warn because a card can be both, and "waiting on you" outranks
+   "something to know about" at equal specificity. */
 .sm-card.is-pending {
-  border-left-color: var(--gold);
-  background: var(--gold-soft);
+  border-color: color-mix(in srgb, var(--gold) 55%, transparent);
+  background: linear-gradient(to bottom,
+      color-mix(in srgb, var(--gold-soft) 85%, var(--surface2)),
+      var(--surface2) 78%);
 }
 
 .sm-hold {
@@ -668,15 +1098,104 @@ body.modal-open {
   color: var(--accent);
 }
 
+/* What the turn cost: the model, the tokens, the two timings. A footnote, and
+   ruled like one — the hairline fades out instead of running the full width,
+   which would read as a divider between two things of equal weight. */
 .sm-meta {
   font-family: var(--mono);
   font-size: var(--sm-micro);
   line-height: 1.55;
   font-variant-numeric: tabular-nums;
-  margin-top: 9px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 7px;
+  margin-top: 11px;
+  padding-top: 9px;
   color: var(--text3);
+}
+
+.sm-meta::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(to right, var(--border2), transparent 65%);
+}
+
+/* The model is the one bit that is a name rather than a number. */
+.sm-meta-model {
+  color: var(--text2);
+}
+
+.sm-meta-sep {
+  color: var(--border2);
+}
+
+/* ── the diff ──
+   The counts in the chip line are the summary; this is what actually changed.
+   Mono, because every line is an identifier. It scrolls in its own box: an MTM
+   transition line is wider than the console, and the page body must never
+   scroll sideways to accommodate one. */
+.sm-diff {
+  font-family: var(--mono);
+  font-size: var(--sm-mono);
+  margin-top: 9px;
+}
+
+.sm-diff-summary {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  letter-spacing: .06em;
+  padding: 2px 0;
+  color: var(--text3);
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.sm-diff-summary:hover {
+  color: var(--text2);
+}
+
+.sm-diff-body {
+  max-height: 220px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--bg);
+  scrollbar-width: thin;
+}
+
+.sm-diff-line {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 8px;
+  line-height: 1.62;
+  color: var(--text2);
+  white-space: pre;
+}
+
+.sm-diff-op {
+  text-align: center;
+  color: var(--text3);
+}
+
+.sm-diff-text {
+  min-width: 0;
+}
+
+.sm-diff-line.is-add { color: var(--green); }
+.sm-diff-line.is-del { color: var(--red); }
+.sm-diff-line.is-mod { color: var(--gold); }
+.sm-diff-line.is-add .sm-diff-op { color: var(--green); }
+.sm-diff-line.is-del .sm-diff-op { color: var(--red); }
+.sm-diff-line.is-mod .sm-diff-op { color: var(--gold); }
+
+.sm-diff-line.is-ctx {
+  color: var(--text3);
+  font-style: italic;
 }
 
 .sm-error-detail {
@@ -805,11 +1324,15 @@ body.modal-open {
 }
 
 /* ── the dock: completions, composer, status ── */
+/* Denser than the transcript above it: this half is controls, and a control
+   wants to look like it is resting on something. Still translucent, or an
+   opaque block across the bottom two-thirds would leave the glass showing in a
+   strip and read as a mistake. */
 .sm-dock {
   flex: 0 0 auto;
   padding-bottom: 4px;
   border-top: 1px solid var(--border);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 66%, transparent);
 }
 
 /* The completion list for slash commands and their arguments. It replaces the
@@ -891,6 +1414,110 @@ body.modal-open {
   display: none;
 }
 
+/* ── the context basket ──
+   The parts of the diagram the next prompt is about, sitting directly above the
+   composer because that is what they qualify. Empty and gone most of the time:
+   the selection arrives from the canvas, not from here. */
+.sm-context-slot:empty {
+  display: none;
+}
+
+.sm-ctxbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 7px 12px 0;
+}
+
+.sm-ctxbar-label {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  letter-spacing: .08em;
+  color: var(--text3);
+  text-transform: uppercase;
+}
+
+.sm-ctxchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 4px 2px 7px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: var(--accent-soft);
+}
+
+.sm-ctxchip-tag {
+  display: inline-grid;
+  place-items: center;
+  color: var(--text3);
+}
+
+.sm-ctxchip-icon {
+  width: 11px;
+  height: 11px;
+}
+
+/* The name is the button: clicking a chip selects what it points at, which is
+   the answer to "which one was that again". */
+.sm-ctxchip-name {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  max-width: 28ch;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sm-ctxchip-name:hover,
+.sm-ctxchip-name:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+
+.sm-ctxchip-x {
+  font-size: var(--sm-micro);
+  line-height: 1;
+  padding: 2px 3px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+}
+
+.sm-ctxchip-x:hover,
+.sm-ctxchip-x:focus-visible {
+  background: var(--surface2);
+  color: var(--text);
+  outline: none;
+}
+
+.sm-ctxbar-clear {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+}
+
+.sm-ctxbar-clear:hover,
+.sm-ctxbar-clear:focus-visible {
+  border-color: var(--border2);
+  color: var(--text);
+  outline: none;
+}
+
 .sm-nudge {
   font-family: var(--sans);
   font-size: var(--sm-ui);
@@ -931,6 +1558,54 @@ body.modal-open {
   text-underline-offset: 2px;
 }
 
+/* ── rewriting a past turn ──
+   ⏎ means something different while this is up — it replaces a turn rather
+   than adding one — so the state it describes has to be visible where the
+   caret is, not only in a placeholder the first keystroke covers up. */
+.sm-editing-slot:empty {
+  display: none;
+}
+
+.sm-editing {
+  font-family: var(--sans);
+  font-size: var(--sm-ui);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 12px 0;
+  padding: 7px 11px;
+  border: 1px solid var(--gold-border);
+  border-radius: 8px;
+  background: var(--gold-soft);
+  color: var(--text2);
+}
+
+.sm-editing-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  color: var(--gold);
+}
+
+.sm-editing-cancel {
+  font-family: var(--sans);
+  font-size: var(--sm-ui);
+  font-weight: 600;
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--gold);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sm-editing-cancel:hover,
+.sm-editing-cancel:focus-visible {
+  outline: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .sm-composer {
   display: flex;
   align-items: flex-start;
@@ -948,8 +1623,12 @@ body.modal-open {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.sm-composer.is-busy {
-  opacity: .6;
+/* Dimmed to say "not yours yet" — but only the parts that are waiting. The
+   send button is the stop button during a run, and greying out the one control
+   that ends the wait is the opposite of what the dimming is for. */
+.sm-composer.is-busy .sm-input,
+.sm-composer.is-busy .sm-caret {
+  opacity: .55;
 }
 
 .sm-caret {
@@ -1004,6 +1683,20 @@ body.modal-open {
 .sm-send:disabled {
   opacity: .35;
   cursor: default;
+}
+
+/* While a request is in flight the send button becomes the stop button rather
+   than going grey. Escape still interrupts, but a keystroke advertised in a
+   placeholder is not an affordance — the control the eye is already on is. */
+.sm-send.is-stop {
+  border-color: var(--red-border);
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.sm-send.is-stop:hover,
+.sm-send.is-stop:focus-visible {
+  background: color-mix(in srgb, var(--red) 22%, transparent);
 }
 
 .sm-send svg {
@@ -1117,6 +1810,44 @@ button.sm-stat:disabled {
 @media (max-width: 720px) {
   .sm-console { max-height: 86vh; }
   .sm-keys { display: none; }
+}
+
+/* Asked not to see through things — a real accessibility setting, and the
+   console is a reading surface first. The glass is decoration on top of a
+   panel that works without it, so it comes off cleanly. */
+@media (prefers-reduced-transparency: reduce) {
+  .sm-console {
+    background: var(--surface);
+  }
+
+  /* Matched to where the filter is declared — the glass moved to .show, and a
+     bare .sm-console here would no longer outrank it. */
+  .sm-overlay.show .sm-console {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .sm-dock {
+    background: var(--surface);
+  }
+}
+
+/* On a phone the dock is most of the panel — menu, context, nudge, composer and
+   status — and the per-entry tools are permanently visible because there is no
+   hover to reveal them with. Both get trimmed rather than left to squeeze the
+   transcript into a slot. */
+@media (max-width: 560px) {
+  .sm-log { padding: 12px 13px 6px; }
+  .sm-menu { max-height: 40vh; margin: 8px 9px 0; }
+  .sm-composer,
+  .sm-nudge,
+  .sm-editing { margin: 8px 9px 0; }
+  .sm-status { gap: 6px; padding: 8px 10px 5px; }
+  /* The clock is the first thing to go: it is the least of the four and the
+     only one that is not a control. */
+  .sm-stamp { display: none; }
+  .sm-tools { gap: 0; }
+  .sm-jump { right: 12px; }
 }
 
 /* ─── STATEMATE SETTINGS PANEL ─── */
@@ -1706,7 +2437,11 @@ button.sm-stat:disabled {
 .ctx[data-mode="note"] .ctx-shape,
 .ctx[data-mode="divider"] .ctx-state,
 .ctx[data-mode="divider"] .ctx-edge,
-.ctx[data-mode="divider"] .ctx-note {
+.ctx[data-mode="divider"] .ctx-note,
+/* The StateMate rows carry no per-mode class, because these rules hide by
+   class and an item tagged for all three modes would be hidden in each of
+   them. A divider is the one target StateMate has nothing to say about. */
+.ctx[data-mode="divider"] .ctx-sm {
   display: none;
 }
 
@@ -3188,4 +3923,38 @@ button:focus-visible {
   .theme-grid {
     max-height: min(46vh, 340px);
   }
+}
+
+/* ── labelled actions with a leading glyph ──
+   The label stays on these — they are decisions with consequences, where a bare
+   icon would be a guess — but the glyph is what the eye finds first. */
+.sm-btn,
+.sm-mini,
+.sm-headbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sm-btn-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  opacity: .85;
+}
+
+.sm-mini .sm-btn-icon,
+.sm-headbtn .sm-btn-icon {
+  width: 11px;
+  height: 11px;
+}
+
+.sm-btn-primary .sm-btn-icon {
+  opacity: 1;
+}
+
+/* The disclosure's own marker, so the row reads as something that opens. */
+.sm-diff-summary::marker,
+.sm-diff-summary::-webkit-details-marker {
+  color: var(--text3);
 }

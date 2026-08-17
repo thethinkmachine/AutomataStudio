@@ -3,7 +3,7 @@ import { renderAlgo } from './algorithms-fa.js';
 import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { wrap } from './canvas.js';
 import { snapshot } from './history.js';
-import { anyModalOpen, closeModal, showOverlay } from './modal.js';
+import { anyDockOpen, anyModalOpen, closeModal, showOverlay } from './modal.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim } from './simulation.js';
 import { $, App, getMachineConfig, normalizeBoundarySymbolsForMachine } from './state.js';
@@ -126,8 +126,10 @@ document.addEventListener('keydown', e => {
   if (e.key !== 'Tab') return;
   if (!AUX_VIEWS.includes(App.view)) return;
   // A modal (e.g. the machine-switch confirm) can open on top of an aux view;
-  // while one is up it owns the focus trap.
+  // while one is up it owns the focus trap. A dock traps nothing, but Tab has
+  // to be able to reach it, so this trap stands down for one too.
   if (typeof anyModalOpen === 'function' && anyModalOpen()) return;
+  if (typeof anyDockOpen === 'function' && anyDockOpen()) return;
   const shell = $('aux-overlay');
   if (!shell) return;
   const focusable = shell.querySelectorAll(

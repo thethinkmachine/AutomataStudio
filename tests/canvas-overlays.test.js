@@ -141,6 +141,95 @@ test('overlays hidden entirely are skipped', () => {
   assert.strictEqual(nav.style.bottom, '12px', 'the remaining member still anchors to the corner');
 });
 
+// ── The info pill ─────────────────────────────────────────────────
+//  "About this machine" describes the diagram rather than driving it, so it
+//  has no claim on a corner — which is how it came to be pinned under a
+//  toolbar that can be dragged to the same one. It now takes whichever corner
+//  is free, and the card is what the corner is measured for, so opening it
+//  never makes the anchor jump.
+
+function seedInfo({ open = false, card = { width: 310, height: 140 } } = {}) {
+  const { nav, map } = seedOverlays();
+  const btn = getElement('canvas-info-btn');
+  const cardEl = getElement('example-card');
+  btn.getBoundingClientRect = () => ({ width: 24, height: 24 });
+  cardEl.getBoundingClientRect = () => card;
+  cardEl.classList.toggle('is-open', open);
+  return { nav, map, btn, card: cardEl };
+}
+
+const anchorOf = el => `${el.style.top !== 'auto' ? 'top' : 'bottom'}-${el.style.left !== 'auto' ? 'left' : 'right'}`;
+
+test('the info pill keeps its home corner while nothing is in it', () => {
+  const { btn, card } = seedInfo();
+  // Docked down the left edge but centred vertically — it never reaches the
+  // top-left, and a corner test that asked only "which side?" would move the
+  // card for nothing.
+  context.App.toolbarDock = { side: 'left', ratio: 0.5 };
+
+  context.layoutCanvasOverlays(WRAP, toolbarBox('left'));
+
+  assert.strictEqual(anchorOf(card), 'top-left');
+  assert.strictEqual(anchorOf(btn), 'top-left', 'the pill and its card share an anchor');
+  assert.strictEqual(card.dataset.corner, 'top-left', 'and the CSS is told, so it grows the right way');
+});
+
+test('a toolbar dragged onto the pill moves the pill, not the toolbar', () => {
+  const { btn, card } = seedInfo();
+  // Along the top edge, hard left: the bar now covers the corner the card
+  // opens into.
+  context.App.toolbarDock = { side: 'top', ratio: 0 };
+
+  context.layoutCanvasOverlays(WRAP, toolbarBox('top'));
+
+  assert.strictEqual(anchorOf(card), 'top-right');
+  assert.strictEqual(anchorOf(btn), 'top-right');
+  assert.strictEqual(card.dataset.corner, 'top-right');
+});
+
+test('the corner is measured for the card, so opening it does not move it', () => {
+  const shut = seedInfo({ open: false });
+  context.App.toolbarDock = { side: 'top', ratio: 0.18 };
+  context.layoutCanvasOverlays(WRAP, toolbarBox('top'));
+  const anchor = anchorOf(shut.card);
+
+  // The button alone would have cleared this toolbar; the card it opens into
+  // does not. Sizing the anchor off the button would move it on open.
+  assert.strictEqual(anchor, 'top-right');
+
+  const open = seedInfo({ open: true });
+  context.App.toolbarDock = { side: 'top', ratio: 0.18 };
+  context.layoutCanvasOverlays(WRAP, toolbarBox('top'));
+  assert.strictEqual(anchorOf(open.card), anchor, 'the open card lands where the pill was');
+});
+
+test('the pill also stays off the minimap stack', () => {
+  // Nothing along the top is free — a full-width bar — so the only corners
+  // left are the bottom two, one of which the stack is in.
+  const { btn, card } = seedInfo();
+  context.App.toolbarDock = { side: 'top', ratio: 0.5 };
+
+  context.layoutCanvasOverlays(WRAP, { width: 1176, height: 56 });
+
+  assert.strictEqual(anchorOf(card), 'bottom-left', 'the stack owns the bottom-right');
+  assert.strictEqual(anchorOf(btn), 'bottom-left');
+});
+
+test('with every corner spoken for it takes the one it fights over least', () => {
+  // A canvas barely bigger than the card, and a toolbar across the middle of
+  // it: no corner is clear, and the answer has to be a corner rather than
+  // nothing.
+  const { card } = seedInfo();
+  const tiny = { left: 0, top: 0, width: 360, height: 200 };
+  getElement('canvas-wrap').getBoundingClientRect = () => tiny;
+  context.App.toolbarDock = { side: 'left', ratio: 0.5 };
+
+  const corner = context.layoutCanvasInfo(tiny, [{ left: 0, top: 0, width: 360, height: 200 }]);
+
+  assert.ok(corner && corner.x && corner.y, 'a corner is always chosen');
+  assert.strictEqual(card.style.position, 'absolute', 'and it is still placed');
+});
+
 // ── Language claim overflow ───────────────────────────────────────
 // The claim is a single line now, so a long regex is clipped rather than
 // wrapped; the fade is the only cue that it continues.
@@ -343,4 +432,62 @@ test('a toolbar that is not on screen measures as absent, not as zero-width', ()
   } finally {
     toolbox.offsetParent = realParent;
   }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  A CLOSED OVERLAY MUST NOT TAKE THE POINTER
+// ══════════════════════════════════════════════════════════════════
+//  Twelve overlays sit in the DOM at all times, in front of the page at
+//  opacity 0. What keeps them from swallowing every click is one declaration
+//  — `.overlay { pointer-events: none }` — and the fact that `pointer-events`
+//  is *inherited*: the children get it for free, and `.overlay.show` hands it
+//  back only while the dialog is open.
+//
+//  Which makes a `pointer-events: auto` on any child of an overlay a trap. It
+//  overrides the inherited `none` in both states, so the closed dialog goes on
+//  intercepting the pointer, invisibly. The StateMate console is docked to the
+//  bottom at 900px wide, so declaring it unscoped put an invisible panel over
+//  the canvas toolbar that ate every click and showed a text cursor for its own
+//  textarea — with nothing on screen to explain it.
+//
+//  A source-level assertion because no screenshot can catch it: the failing
+//  state looks exactly like the working one.
+
+import { readFileSync as readCssFile } from 'node:fs';
+import { fileURLToPath as cssPath } from 'node:url';
+
+const MODAL_CSS = readCssFile(cssPath(new URL('../css/modals.css', import.meta.url)), 'utf8');
+
+/** Every `selector { … }` rule in a stylesheet, comments stripped. */
+function cssRules(source) {
+  const text = source.replace(/\/\*[\s\S]*?\*\//g, '');
+  return [...text.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .map(m => ({ selector: m[1].trim().replace(/\s+/g, ' '), body: m[2] }));
+}
+
+test('nothing inside an overlay claims the pointer while the overlay is closed', () => {
+  const offenders = cssRules(MODAL_CSS)
+    .filter(rule => /pointer-events\s*:\s*(auto|all)\s*[;}]?/.test(rule.body))
+    // Rules for the overlay itself are how the mechanism works; this is about
+    // its children, which inherit and must not opt out unconditionally.
+    .filter(rule => !/^\.overlay(\.show)?$/.test(rule.selector))
+    .filter(rule => !/\.show\b/.test(rule.selector));
+
+  assert.deepEqual(offenders.map(r => r.selector), [],
+    'a child of an overlay may only take the pointer under .show — otherwise the '
+    + 'closed dialog keeps intercepting clicks it cannot be seen to be intercepting');
+});
+
+test('the StateMate dock passes the pointer through, and its panel takes it back', () => {
+  const rules = cssRules(MODAL_CSS);
+
+  const overlay = rules.find(r => r.selector === '.sm-overlay.show');
+  assert.ok(overlay, '.sm-overlay.show exists');
+  assert.match(overlay.body, /pointer-events\s*:\s*none/,
+    'the dock does not block the canvas it is docked over');
+
+  const panel = rules.find(r => /\.sm-console$/.test(r.selector) && /pointer-events/.test(r.body));
+  assert.ok(panel, 'the panel declares its own pointer-events');
+  assert.match(panel.selector, /\.show\b/, 'scoped to the open console');
+  assert.match(panel.body, /pointer-events\s*:\s*auto/);
 });
