@@ -1752,7 +1752,17 @@ test('a result opens the card over the canvas and leaves a way back to it', asyn
   const btn = h.getElement('canvas-info-btn');
   assert.ok(card.classList.contains('is-open'), 'the card opened itself');
   assert.equal(btn.hidden, true, 'the button it springs from is out of the way while it is open');
-  assert.match(deepText(card), /Even number of a's/);
+  // The title is the field you edit, so it is a value rather than text — see
+  // the header of tests/machine-card.test.js.
+  const titleField = (function find(node) {
+    for (const child of node.children || []) {
+      if (String(child.className || '').split(/\s+/).includes('example-card-title')) return child;
+      const hit = find(child);
+      if (hit) return hit;
+    }
+    return null;
+  })(card);
+  assert.match(titleField?.value || '', /Even number of a's/);
 
   // The auto-hide is a timer, so the collapse is asserted directly rather than
   // by waiting thirteen seconds for it.

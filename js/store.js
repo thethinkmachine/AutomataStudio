@@ -31,6 +31,12 @@ export const Change = {
   // Redraw only: selection, highlights, camera. No structural edit, so the
   // panels and the formal definition are already correct.
   CANVAS: 'canvas',
+  // The info card's contents — what this machine is called, what it does, and
+  // the words worth trying on it. Its own kind rather than part of GRAPH: it
+  // is persisted (so unlike CANVAS it dirties the tab) but it is not the
+  // machine (so unlike GRAPH it must not drag the panels and the whole
+  // diagram through a re-render because a blurb was reworded).
+  META: 'meta',
   // The open workspace tabs, their names or their dirty flags.
   TABS: 'tabs',
   // The save indicator's state.

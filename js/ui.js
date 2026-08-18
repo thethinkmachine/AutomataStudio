@@ -8,7 +8,7 @@ import { markDirty, redo, snapshot, snapshotSettings, undo } from './history.js'
 import { renderMinimap, scheduleMinimap } from './minimap.js';
 import { anyModalOpen, closeModal, registerModal, showOverlay } from './modal.js';
 import { includeNoteBounds, pruneNoteAnchorsExcluding } from './notes.js';
-import { restartAutosaveTimer, saveBackupChecked, saveJSON, saveWorkspace, saveWorkspaceById } from './persistence.js';
+import { CARD_AUTO_HIDE_MS, restartAutosaveTimer, saveBackupChecked, saveJSON, saveWorkspace, saveWorkspaceById } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
 import { $, App, MachineCategories, MachineTypes, R, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
@@ -489,6 +489,10 @@ export function createTab(name) {
   // Each tab carries its own config, so activating one can bring different
   // canvas settings with it — the same reason R gets republished here.
   if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
+  // And its own description. importWorkspaceState has already written
+  // App.meta; this is what redraws the info card from it, so a tab's card
+  // does not linger over the next tab's diagram.
+  emit(Change.META);
   saveBackupChecked();
 }
 
@@ -532,6 +536,10 @@ export function switchTab(id) {
   // Each tab carries its own config, so activating one can bring different
   // canvas settings with it — the same reason R gets republished here.
   if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
+  // And its own description. importWorkspaceState has already written
+  // App.meta; this is what redraws the info card from it, so a tab's card
+  // does not linger over the next tab's diagram.
+  emit(Change.META);
   saveBackupChecked();
 }
 
@@ -862,6 +870,11 @@ document.addEventListener('keydown', e => {
   // still inside the panel belongs to the panel: tabbing to a transcript
   // button and pressing "s" must not switch the canvas tool underneath it.
   if (e.target.closest && e.target.closest('.sm-console')) return;
+  // Same reasoning for the info card, which is a floating panel over a live
+  // canvas rather than a dialog. Its editor is mostly text fields, already
+  // covered by the tag check above — but its buttons are not, and Delete on a
+  // focused "remove this word" button must not delete the selected state.
+  if (e.target.closest && e.target.closest('.example-card')) return;
   if (e.ctrlKey || e.metaKey) {
     if (e.key === 'z') { e.preventDefault(); undo(); }
     if (e.key === 'y' || e.key === 'Z') { e.preventDefault(); redo(); }
@@ -1992,22 +2005,79 @@ export const INFO_CORNER_ORDER = [
  * The first corner nothing else wants — or, on a canvas where every corner is
  * spoken for, the one it fights over least.
  *
- * Scoring by overlap area rather than stopping at the first clear corner costs
- * nothing (a free corner scores zero and returns immediately) and is what makes
- * the small-canvas case degrade instead of falling back to a corner the toolbar
- * is sitting on.
+ * Scoring by overlap area rather than stopping at the first clear corner is
+ * what makes the small-canvas case degrade instead of falling back to a corner
+ * the toolbar is sitting on.
+ *
+ * `soft` is the second question, asked only of the corners that tied on the
+ * first: the diagram itself. Covering the machine is not the same kind of
+ * mistake as covering a control — the machine can be panned out from under the
+ * card, and a card that moved to the far corner every time a state was drawn
+ * near it would be worse than one sitting over a bit of whitespace. So it can
+ * only ever break a tie, never outweigh a real collision, and it is measured
+ * without clearance because touching the drawing is not overlapping it.
  */
-export function canvasInfoCorner(wrapRect, size, obstacles = []) {
-  let best = INFO_CORNER_ORDER[0];
-  let bestCost = Infinity;
+export function canvasInfoCorner(wrapRect, size, obstacles = [], soft = []) {
+  let best = null;
+  let bestHard = Infinity;
+  let bestSoft = Infinity;
   for (const corner of INFO_CORNER_ORDER) {
     const box = cornerRect(corner, wrapRect, size);
-    let cost = 0;
-    for (const o of obstacles) cost += overlapArea(box, o, OVERLAY_CLEARANCE);
-    if (cost === 0) return corner;
-    if (cost < bestCost) { bestCost = cost; best = corner; }
+    let hard = 0;
+    for (const o of obstacles) hard += overlapArea(box, o, OVERLAY_CLEARANCE);
+    if (hard > bestHard) continue;
+    let softCost = 0;
+    for (const o of soft) softCost += overlapArea(box, o);
+    // Strictly better on one of the two, or the earlier corner keeps it — which
+    // is what makes INFO_CORNER_ORDER the tie-break it is documented to be.
+    if (hard < bestHard || softCost < bestSoft) {
+      best = corner; bestHard = hard; bestSoft = softCost;
+    }
   }
-  return best;
+  return best || INFO_CORNER_ORDER[0];
+}
+
+/**
+ * An element's box in wrap coordinates, or null when it is not on screen.
+ *
+ * Deliberately not gated on `offsetParent`: the StateMate console is a fixed
+ * overlay, whose offsetParent is null even while it is covering half the
+ * canvas. Zero-sized is the honest test for "not showing".
+ */
+export function overlayRectIn(el, wrapRect) {
+  if (!el || !el.getBoundingClientRect || !wrapRect) return null;
+  const box = el.getBoundingClientRect();
+  if (!box || !box.width || !box.height) return null;
+  return {
+    left: box.left - (wrapRect.left || 0),
+    top: box.top - (wrapRect.top || 0),
+    width: box.width, height: box.height
+  };
+}
+
+/**
+ * The drawing's own box, in wrap coordinates. `getContentBounds` answers in
+ * world coordinates, so the camera is what turns it into somewhere on screen.
+ */
+export function machineRectIn(wrapRect) {
+  if (!wrapRect) return null;
+  const b = typeof getContentBounds === 'function' ? getContentBounds(App.config.radius) : null;
+  if (!b || !Number.isFinite(b.minX)) return null;
+  const z = App.cam.z || 1;
+  return {
+    left: b.minX * z + App.cam.x, top: b.minY * z + App.cam.y,
+    width: Math.max(0, b.width * z), height: Math.max(0, b.height * z)
+  };
+}
+
+// The console is docked across the bottom of the canvas with no scrim, which is
+// the whole point of it — but it is the biggest thing that can appear over the
+// diagram, and the card has to get out from under it rather than be read
+// through it. Collapsed to its strip it is still an obstacle, just a short one.
+function stateMateRectIn(wrapRect) {
+  const overlay = $('statemate-modal');
+  if (!overlay || !overlay.classList || !overlay.classList.contains('show')) return null;
+  return overlayRectIn(overlay.querySelector?.('.sm-console'), wrapRect);
 }
 
 function measureBox(el) {
@@ -2035,7 +2105,11 @@ export function layoutCanvasInfo(wrapRect, obstacles = []) {
   if (!size) return null;
 
   const margin = TOOLBAR_MARGIN;
-  const corner = canvasInfoCorner(wrapRect, size, obstacles);
+  // The console is asked for here rather than passed in, for the same reason
+  // layoutCanvasOverlays measures the toolbar itself: the corner has to depend
+  // on the DOM, not on which caller happened to know about it.
+  const hard = [...obstacles, stateMateRectIn(wrapRect)];
+  const corner = canvasInfoCorner(wrapRect, size, hard, [machineRectIn(wrapRect)]);
   [btn, card].forEach(el => {
     if (!el || !el.style) return;
     el.style.position = 'absolute';
@@ -2694,6 +2768,7 @@ export function openSettingsModal() {
   if ($('set-lang-budget')) $('set-lang-budget').value = c.langStepBudget ?? 400;
   $('set-auto-speed').value = c.autoSpeed;
   if ($('set-autosave-interval')) $('set-autosave-interval').value = String(c.autosaveIntervalMs ?? 15000);
+  if ($('set-card-autohide')) $('set-card-autohide').value = String(c.cardAutoHideMs ?? CARD_AUTO_HIDE_MS);
   $('set-radius').value = c.radius;
   if ($('set-wrap-labels')) $('set-wrap-labels').checked = c.wrapStateLabels !== false;
   if ($('set-edge-label-style')) $('set-edge-label-style').value = normalizeEdgeLabelStyle(c.edgeLabelStyle);
@@ -2807,6 +2882,12 @@ export function confirmSettings() {
     c.autosaveIntervalMs = Number.isFinite(interval) && interval >= 0 ? interval : 15000;
     if (typeof restartAutosaveTimer === 'function') restartAutosaveTimer();
   }
+  if ($('set-card-autohide')) {
+    // 0 is a real answer here — "never fold the card away" — so an unparseable
+    // value falls back to the default rather than to zero.
+    const hide = parseInt($('set-card-autohide').value);
+    c.cardAutoHideMs = Number.isFinite(hide) && hide >= 0 ? hide : CARD_AUTO_HIDE_MS;
+  }
   if ($('sim-speed-sel')) $('sim-speed-sel').value = String(c.autoSpeed);
   if (typeof restartAutoTimerIfPlaying === 'function') restartAutoTimerIfPlaying();
   c.radius = parseInt($('set-radius').value) || 30;
@@ -2892,6 +2973,7 @@ export function getEditorSettingsData() {
     langStepBudget: c.langStepBudget,
     autoSpeed: c.autoSpeed,
     autosaveIntervalMs: c.autosaveIntervalMs,
+    cardAutoHideMs: c.cardAutoHideMs,
     radius: c.radius,
     wrapStateLabels: !!c.wrapStateLabels,
     edgeLabelStyle: normalizeEdgeLabelStyle(c.edgeLabelStyle),
@@ -2960,6 +3042,7 @@ export function populateSettingsModalInputs(data) {
   if (data.langStepBudget !== undefined && $('set-lang-budget')) $('set-lang-budget').value = data.langStepBudget;
   if (data.autoSpeed !== undefined) $('set-auto-speed').value = data.autoSpeed;
   if (data.autosaveIntervalMs !== undefined && $('set-autosave-interval')) $('set-autosave-interval').value = data.autosaveIntervalMs;
+  if (data.cardAutoHideMs !== undefined && $('set-card-autohide')) $('set-card-autohide').value = data.cardAutoHideMs;
   if (data.radius !== undefined) $('set-radius').value = data.radius;
   if (data.wrapStateLabels !== undefined && $('set-wrap-labels')) $('set-wrap-labels').checked = !!data.wrapStateLabels;
   if (data.edgeLabelStyle !== undefined && $('set-edge-label-style')) $('set-edge-label-style').value = normalizeEdgeLabelStyle(data.edgeLabelStyle);

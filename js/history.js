@@ -39,6 +39,10 @@ export function commit(edit, ...kinds) {
 // explicitly.
 subscribe(Change.GRAPH, markDirty);
 subscribe(Change.ALPHABET, markDirty);
+// Change.META is the third: the info card's text is part of what
+// exportWorkspaceState and getWorkspaceData write, so rewording a blurb is an
+// unsaved change in exactly the way moving the camera is.
+subscribe(Change.META, markDirty);
 
 // ══════════════════════════════════════════════════════════════════
 //  UNDOABLE SETTINGS
@@ -139,6 +143,7 @@ function serializeState() {
     stateN: App.stateN, transN: App.transN,
     notes: App.notes, noteN: App.noteN,
     dividers: App.dividers, dividerN: App.dividerN,
+    meta: App.meta,
     config: captureSettings()
   });
 }
@@ -228,12 +233,13 @@ export function restoreSnapshot(s) {
   App.stateN = d.stateN; App.transN = d.transN;
   App.notes = d.notes || []; App.noteN = d.noteN || 0;
   App.dividers = d.dividers || []; App.dividerN = d.dividerN || 0;
+  App.meta = d.meta || null;
   if (App.selectedDividerId && !App.dividers.some(dv => dv.id === App.selectedDividerId)) App.selectedDividerId = null;
 
   // Before the emit: the repaint below reads radius, label style and the
   // routing flags, so they have to be the restored ones.
   applySettings(d.config);
 
-  emit(Change.ALPHABET, Change.GRAPH);
+  emit(Change.ALPHABET, Change.GRAPH, Change.META);
 }
 

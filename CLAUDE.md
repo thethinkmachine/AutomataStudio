@@ -89,6 +89,7 @@ Points worth keeping in mind:
 
 - **Delivery is synchronous.** `fitToScreen` and `autoFitLoadedMachine` measure the DOM on the line after an edit; deferring would hand them stale geometry. `batch()` is the opt-in for coalescing.
 - **`Change.CANVAS` does not dirty the tab.** It means selection/highlight repaints, which `exportWorkspaceState` does not persist — dirtying there would raise the unsaved-changes prompt for clicking a state. The camera is the exception that *is* persisted, and `canvas.js` calls `markDirty()` for it explicitly.
+- **`Change.META` is the info card's text, and it is its own kind for two reasons.** It *is* persisted, so unlike `CANVAS` it dirties the tab; it is not the machine, so unlike `GRAPH` it must not drag the panels and the whole diagram through a re-render because a blurb was reworded. `persistence.js` subscribes the card renderer to `META` and only the button's visibility to `GRAPH` — a full redraw on `GRAPH` would wipe StateMate's result strip off the card between the run and the reading of it.
 - **Subscribers live beside the functions they call** (`render.js`, `alphabet.js`, `ui.js`, `history.js`), registered at module scope. `store.js` imports nothing so `subscribe` is always reachable.
 - Declaration order in `Change` is delivery order.
 
@@ -159,6 +160,20 @@ Nothing in the view is reached from an `on*` attribute: the nav links get their 
 [js/export-core.js](js/export-core.js) normalizes `App` into a machine **IR** via `buildMachineIR()`. Everything downstream consumes only the IR: [js/export-formats.js](js/export-formats.js) (DOT, TikZ, tables, sample words) and [js/codegen.js](js/codegen.js) (JS/Python/Java in table/switch/class styles). Both register their targets into `ExportFormats` from [js/export-registry.js](js/export-registry.js); [js/export-ui.js](js/export-ui.js) owns the dialogs. Adding a target means adding a registry entry and an IR consumer, not touching `App`.
 
 PNG export can embed the workspace JSON in the image; dropping that PNG back on the canvas restores it ([js/persistence.js](js/persistence.js) `handleFiles`). Persistence also covers IndexedDB autosave, `.json` save/load, base64url share links, and JFLAP import ([js/import-jflap.js](js/import-jflap.js)).
+
+### The machine card
+
+The (i) button over the canvas opens **`App.meta`** — `{title, blurb, inputs}`, what this machine is in its author's words, with the test words worth trying on it as runnable chips. Rendering and editing are both the card section at the end of [js/persistence.js](js/persistence.js).
+
+**It is on `App` rather than in that module because it is document content, and that is the whole of the design.** It used to be a module-scoped `cardMeta`, written only by the example loader and by StateMate, and two things followed: a machine you drew yourself could never have a card, and a machine that did have one lost it on the first save, because `getWorkspaceData` never wrote `meta` back out. Putting it on `App` fixes both at once — `exportWorkspaceState` carries it between tabs, `getWorkspaceData` writes it to the `.json`, the embedded PNG and the share link, and `serializeState` puts it on the undo stack, so one Ctrl+Z reverts a reworded blurb the same way it reverts a dragged state.
+
+Points worth keeping in mind:
+
+- **`normalizeCardMeta()` is the gate, and it runs on the way in from every writer.** Blank fields are dropped rather than stored as `''`, and a card of nothing but blanks normalizes to `null` — so "has a description" stays one truthiness test everywhere else. A row is dropped for having no `w` at all, never for `w === ''`: the empty word is a legitimate test, drawn as `ε` and run as `""`.
+- **The editor is inline, and edits are held in a draft.** A dialog would cover the machine the description is about. `cardDraft` is a working copy that only reaches `App.meta` at Save, so Cancel is free, an abandoned edit never dirties the tab, and a form opened and closed unchanged spends no undo point.
+- **The button is offered for an *undescribed* machine too** — that is the entry point, and without it the editor is unreachable for anything you drew yourself. With a description it opens the card; with none it opens the editor; with neither a description nor a machine it stays away, because a button that opens an empty card is worse than no button.
+- Every path that hydrates `App` from a blob has to announce `Change.META` or the card is left describing the machine it replaced: both tab-activation paths in `ui.js`, `restoreSnapshot`, and StateMate's `restoreCheckpoint`.
+- Nothing here is reached from an `on*` attribute — chrome is wired at creation the way `reference.js` does it, so the whole feature adds no names to `bridge.js`.
 
 ### StateMate
 

@@ -79,7 +79,7 @@ import {
   trySymSuggestKeydown,
 } from './suggest.js';
 import {
-  copyShareableLink, hideSaveMenu, loadJSON, onFileLoad,
+  copyShareableLink, ctxCanvasDescribe, hideSaveMenu, loadJSON, onFileLoad,
   saveJSON, saveWorkspace, toggleSaveMenu,
 } from './persistence.js';
 // The whole StateMate feature adds exactly one name here. Everything else in
@@ -183,7 +183,7 @@ Object.assign(window, {
    trySymSuggestKeydown,
   // persistence.js
    copyShareableLink, hideSaveMenu, loadJSON, onFileLoad,
-   saveJSON, saveWorkspace, toggleSaveMenu,
+   ctxCanvasDescribe, saveJSON, saveWorkspace, toggleSaveMenu,
   // statemate-ui.js
    openStateMate,
   // …plus the three right-click entry points. The header button is no longer
