@@ -44,7 +44,6 @@
      so the frame runs all the way round. */
   --canvas-sill: 10px;
   --overlay: rgba(2, 8, 20, .68);
-  --overlay-blur: 3px;
   --overlay-ring: rgba(255, 255, 255, .025);
   --focus-ring: rgba(79, 195, 247, .08);
   --panel-shadow-left: 2px 0 12px rgba(0, 0, 0, .16);

@@ -18,20 +18,24 @@ body.modal-open {
   transition: opacity var(--transition-base);
 }
 
-/* The blur lives on .show, not on .overlay: twelve overlays sit in the DOM at
-   all times, and declaring a backdrop-filter on the base class asks the
-   compositor for a filtered layer behind every one of them whether or not a
-   dialog is open. The radius is small because the cost scales with it and the
-   --overlay scrim carries most of the separation. */
+/* The scrim only dims — it does not blur. Blurring the page and blurring the
+   panel on top of it is blurring the same pixels twice, which costs a second
+   compositor layer and looks muddier than one clean pass: the panel's own
+   backdrop-filter (below) already reaches the page directly, at full detail,
+   through its own translucency. One blur, on the thing that is actually
+   glass. */
 .overlay.show {
   opacity: 1;
   pointer-events: all;
-  backdrop-filter: blur(var(--overlay-blur));
-  -webkit-backdrop-filter: blur(var(--overlay-blur));
 }
 
+/* Glass, the same trick as the StateMate console and for the same reason: a
+   translucent panel is what reads as "on top of" a live page, not a flat
+   opaque card in front of a blurred one. 80%/18px/saturate(118%) are the
+   numbers tuned there — see the note over .sm-console — reused as-is so every
+   dialog in the app, StateMate included, reads as one surface language. */
 .modal {
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
   border: 1px solid var(--border2);
   border-radius: 14px;
   padding: 26px 28px;
@@ -46,8 +50,27 @@ body.modal-open {
   transition: transform var(--transition-base), opacity var(--transition-base);
 }
 
+/* Scoped to .show for the reason given over .sm-console: a backdrop-filter
+   keeps a rasterized copy of whatever sits behind the element, and a closed
+   dialog is still in the DOM at opacity 0 — twelve of them, permanently, if
+   declared on the bare .modal instead. */
 .overlay.show .modal {
   transform: translateY(0) scale(1);
+  backdrop-filter: blur(18px) saturate(118%);
+  -webkit-backdrop-filter: blur(18px) saturate(118%);
+}
+
+/* Same accessibility escape hatch as the console: glass is decoration on a
+   panel that reads fine without it. */
+@media (prefers-reduced-transparency: reduce) {
+  .modal {
+    background: var(--surface);
+  }
+
+  .overlay.show .modal {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 .modal-title {
@@ -62,6 +85,47 @@ body.modal-open {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.modal-title-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Every dialog gets one of these now, StateMate and the aux view included —
+   .sm-close is the pattern this copies. The one place it is not a sibling of
+   .modal-title-text is #about-modal, which has no title row; there it sits
+   in .about-logo-header instead, and margin-left: auto is what lets it land
+   correctly in either row without a second rule. */
+.modal-close {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.modal-close:hover,
+.modal-close:focus-visible {
+  background: var(--surface2);
+  color: var(--text);
+  outline: none;
+}
+
+.modal-close svg {
+  width: 13px;
+  height: 13px;
 }
 
 /* ─── STATEMATE CONSOLE ───
@@ -2119,20 +2183,25 @@ button.sm-stat:disabled {
   gap: 7px;
 }
 
-/* Flat accent fill, matching the app's other primary actions (.run-btn,
-   .algo-btn). Depth comes from the glow on hover, not from shading the fill. */
+/* Flat, like every other control in the app — inputs, chips, toggles, the
+   dropdowns. An embossed/gradient button was tried here and it read as its
+   own material next to those, not as one of them. --sans rather than --mono:
+   a button label is language ("Discard", "Apply Settings"), the same
+   distinction the StateMate console type scale makes — mono is for
+   identifiers and instrumentation, not for words a person reads as a
+   sentence. */
 .btn-p {
   padding: 8px 18px;
   background: var(--accent);
   border: 1px solid transparent;
   color: var(--on-accent);
-  font-family: var(--mono);
-  font-size: .72rem;
+  font-family: var(--sans);
+  font-size: .8rem;
+  font-weight: 600;
+  letter-spacing: -.005em;
   border-radius: 7px;
   cursor: pointer;
-  font-weight: 600;
-  letter-spacing: .01em;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
 }
 
 .btn-p:hover {
@@ -2148,12 +2217,12 @@ button.sm-stat:disabled {
   background: var(--surface2);
   border: 1px solid var(--border2);
   color: var(--text2);
-  font-family: var(--mono);
-  font-size: .72rem;
+  font-family: var(--sans);
+  font-size: .8rem;
+  font-weight: 500;
   border-radius: 7px;
   cursor: pointer;
-  font-weight: 500;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
 }
 
 .btn-g:hover {

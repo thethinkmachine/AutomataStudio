@@ -19,9 +19,21 @@ test('the header button opens a searchable dialog', () => {
   assert.ok(!html.includes('id="example-modal"'), 'the standalone example dialog is superseded');
 });
 
-test('standard and auxiliary overlays share one backdrop blur token', () => {
-  assert.match(modalCss, /backdrop-filter:\s*blur\(var\(--overlay-blur\)\)/);
-  assert.match(viewCss, /backdrop-filter:\s*blur\(var\(--overlay-blur\)\)/);
+// Every dialog in the app — the standard .modal system, the StateMate
+// console, and the auxiliary Algorithms/Grammar/Reference overlay — blurs
+// the same way: the panel is glass (translucent background, its own
+// backdrop-filter), and the full-page scrim behind it only dims. Blurring
+// both the page and the panel on top of it would be the same pixels blurred
+// twice, so the scrims must never carry their own backdrop-filter.
+test('every dialog blurs on its own panel, never on the full-page scrim', () => {
+  const glassRecipe = /backdrop-filter:\s*blur\(18px\)\s*saturate\(118%\)/;
+  assert.match(modalCss, glassRecipe, '.modal should use the shared glass recipe');
+  assert.match(viewCss, glassRecipe, '.aux-overlay should use the shared glass recipe');
+
+  assert.ok(!/\.overlay\.show\s*\{[^}]*backdrop-filter/.test(modalCss),
+    '.overlay.show (the scrim) should not blur the page');
+  assert.ok(!/\.aux-scrim\.open\s*\{[^}]*backdrop-filter/.test(viewCss),
+    '.aux-scrim.open (the scrim) should not blur the page');
 });
 
 test('example search matches labels, files, and loaded metadata', () => {

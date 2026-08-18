@@ -954,7 +954,12 @@
   <!-- ══════ MODALS ══════ -->
   <div class="overlay" id="trans-modal" role="dialog" aria-modal="true" aria-labelledby="trans-modal-title">
     <div class="modal trans-modal-wide">
-      <div class="modal-title" id="trans-modal-title">Add Transition</div>
+      <div class="modal-title">
+        <span class="modal-title-text" id="trans-modal-title">Add Transition</span>
+        <button class="modal-close" type="button" onclick="closeModal('trans-modal')" aria-label="Close">
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+        </button>
+      </div>
       <div class="modal-row" id="m-trans-row" style="display:none"><span class="modal-lbl">Transition</span><select class="sel" id="m-trans"></select></div>
       <div class="modal-row"><span class="modal-lbl">From</span><select class="sel" id="m-from"></select></div>
       <div class="modal-row" id="m-sym-row"><span class="modal-lbl">Read</span><select class="sel" id="m-sym"></select></div>
@@ -1009,7 +1014,12 @@
 
   <div class="overlay" id="state-modal" role="dialog" aria-modal="true" aria-label="Configure State">
     <div class="modal">
-      <div class="modal-title">Configure State</div>
+      <div class="modal-title">
+        <span class="modal-title-text">Configure State</span>
+        <button class="modal-close" type="button" onclick="closeModal('state-modal')" aria-label="Close">
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+        </button>
+      </div>
       <div class="modal-row"><span class="modal-lbl">Name</span><input class="inp" id="s-name" maxlength="24" placeholder="q0" aria-describedby="s-name-hint"></div>
       <div class="modal-row modal-row-tight" id="s-name-hint-row">
         <span class="modal-lbl"></span>
@@ -1038,7 +1048,12 @@
 
   <div class="overlay" id="note-modal" role="dialog" aria-modal="true" aria-label="Note">
     <div class="modal note-modal-wide">
-      <div class="modal-title">Note</div>
+      <div class="modal-title">
+        <span class="modal-title-text">Note</span>
+        <button class="modal-close" type="button" onclick="closeModal('note-modal')" aria-label="Close">
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+        </button>
+      </div>
       <div class="modal-row note-editor-row">
         <span class="modal-lbl">Text</span>
         <div class="note-editor">
@@ -1092,7 +1107,12 @@
   <!-- ══════ DIVIDER MODAL ══════ -->
   <div class="overlay" id="divider-modal" role="dialog" aria-modal="true" aria-labelledby="divider-modal-title">
     <div class="modal">
-      <div class="modal-title" id="divider-modal-title">Divider</div>
+      <div class="modal-title">
+        <span class="modal-title-text" id="divider-modal-title">Divider</span>
+        <button class="modal-close" type="button" onclick="closeModal('divider-modal')" aria-label="Close">
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+        </button>
+      </div>
       <div class="modal-row">
         <span class="modal-lbl">Label</span>
         <input class="inp" id="divider-label" type="text" maxlength="80" placeholder="Optional — e.g. “Phase 1 / Phase 2”">
@@ -1205,7 +1225,12 @@
 
   <div class="overlay" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
     <div class="modal">
-      <div class="modal-title" id="confirm-title">Confirm Action</div>
+      <div class="modal-title">
+        <span class="modal-title-text" id="confirm-title">Confirm Action</span>
+        <button class="modal-close" type="button" onclick="closeModal('confirm-modal')" aria-label="Close">
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+        </button>
+      </div>
       <div id="confirm-msg" class="confirm-msg">
         Are you sure you want to proceed?
       </div>
@@ -1220,7 +1245,12 @@
        reuse the two-button #confirm-modal above. -->
   <div class="overlay" id="unsaved-modal" role="dialog" aria-modal="true" aria-labelledby="unsaved-title">
     <div class="modal">
-      <div class="modal-title" id="unsaved-title">Unsaved changes</div>
+      <div class="modal-title">
+        <span class="modal-title-text" id="unsaved-title">Unsaved changes</span>
+        <button class="modal-close" type="button" onclick="closeModal('unsaved-modal')" aria-label="Close">
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+        </button>
+      </div>
       <div id="unsaved-msg" class="confirm-msg"></div>
       <div class="modal-foot">
         <button class="btn-g" id="unsaved-cancel-btn" onclick="closeModal('unsaved-modal')">Cancel</button>
@@ -1233,7 +1263,12 @@
   <!-- ══════ EXPORT AS IMAGE ══════ -->
   <div class="overlay" id="export-image-modal" role="dialog" aria-modal="true" aria-labelledby="export-image-title">
     <div class="modal export-image-modal">
-      <div class="modal-title" id="export-image-title">Export as Image</div>
+      <div class="modal-title">
+        <span class="modal-title-text" id="export-image-title">Export as Image</span>
+        <button class="modal-close" type="button" onclick="closeModal('export-image-modal')" aria-label="Close">
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+        </button>
+      </div>
       <div class="exp-body" id="export-image-body"></div>
       <div class="modal-foot">
         <button class="btn-g" onclick="closeModal('export-image-modal')">Cancel</button>
@@ -1245,7 +1280,12 @@
   <!-- ══════ EXPORT AS CODE / CONFIG / SPEC ══════ -->
   <div class="overlay" id="export-code-modal" role="dialog" aria-modal="true" aria-labelledby="export-code-title">
     <div class="modal export-code-modal">
-      <div class="modal-title" id="export-code-title">Export as Code, Config or Spec</div>
+      <div class="modal-title">
+        <span class="modal-title-text" id="export-code-title">Export as Code, Config or Spec</span>
+        <button class="modal-close" type="button" onclick="closeModal('export-code-modal')" aria-label="Close">
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+        </button>
+      </div>
       <div class="export-code-intro">Choose a format, tune its options, and review the generated output before downloading.</div>
       <div class="exp-split">
         <div class="exp-side" id="export-format-list" role="listbox" aria-label="Export format"></div>
@@ -1266,7 +1306,12 @@
   <!-- Settings Modal -->
   <div class="overlay" id="settings-modal" role="dialog" aria-modal="true" aria-label="Engine Settings">
     <div class="modal export-code-modal settings-modal-wide">
-      <div class="modal-title">Engine Settings</div>
+      <div class="modal-title">
+        <span class="modal-title-text">Engine Settings</span>
+        <button class="modal-close" type="button" onclick="closeModal('settings-modal')" aria-label="Close">
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+        </button>
+      </div>
       <div class="export-code-intro">Customize simulation behavior, rendering, machine defaults, and notation across the workspace.</div>
       <div class="exp-split settings-split">
 
@@ -1579,7 +1624,12 @@
        the matching section here. -->
   <div class="overlay" id="help-modal" role="dialog" aria-modal="true" aria-label="Keyboard Shortcuts">
     <div class="modal export-code-modal settings-modal-wide">
-      <div class="modal-title">Keyboard Shortcuts</div>
+      <div class="modal-title">
+        <span class="modal-title-text">Keyboard Shortcuts</span>
+        <button class="modal-close" type="button" onclick="closeModal('help-modal')" aria-label="Close">
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+        </button>
+      </div>
       <div class="export-code-intro">Every key the editor listens for, grouped by what it acts on. Shortcuts are ignored while a text field has focus.</div>
       <div class="exp-split settings-split">
 
@@ -1709,6 +1759,9 @@
           <div class="logo">Automata<em>Studio</em></div>
           <div class="logo-author">Shreyan Chaubey</div>
         </div>
+        <button class="modal-close" type="button" onclick="closeModal('about-modal')" aria-label="Close">
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+        </button>
       </div>
       <p class="modal-hint about-blurb">A visual editor and simulator for finite automata, pushdown
         automata, Turing machines and their grammars.</p>
@@ -1738,7 +1791,12 @@
        opens it, which is why nothing here is wired through bridge.js. -->
   <div class="overlay" id="update-modal" role="dialog" aria-modal="true" aria-labelledby="update-title">
     <div class="modal">
-      <div class="modal-title" id="update-title">Checking for Updates</div>
+      <div class="modal-title">
+        <span class="modal-title-text" id="update-title">Checking for Updates</span>
+        <button class="modal-close" type="button" onclick="closeModal('update-modal')" aria-label="Close">
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+        </button>
+      </div>
       <div class="confirm-msg" id="update-msg">Contacting the update server…</div>
       <div class="update-code" id="update-code" hidden></div>
       <div class="update-bar" id="update-bar" hidden>

@@ -23,16 +23,21 @@
   background: var(--overlay);
 }
 
-/* Blur only while open, and at a small radius — this one filters the live SVG
-   canvas, which stays mounted underneath so its geometry keeps measuring. See
-   the note on .overlay.show in css/modals.css. */
+/* The scrim only dims — the live SVG canvas underneath stays sharp, and the
+   panel's own glass (below) is what blurs it. See the note on .overlay.show
+   in css/modals.css: blurring the page and blurring the panel on top of it
+   is the same pixels blurred twice. */
 .aux-scrim.open {
   display: block;
   animation: auxScrimIn .18s ease-out;
-  backdrop-filter: blur(var(--overlay-blur));
-  -webkit-backdrop-filter: blur(var(--overlay-blur));
 }
 
+/* Glass, the same recipe as every other dialog in the app — see the note over
+   .sm-console in css/modals.css. Declared here because the panel is what is
+   actually translucent; .algo-nav/.gram-left/.ref-nav and .algo-content/
+   .gram-right below only need their own translucent tone, not a second
+   filter, since they paint on top of what this backdrop-filter already
+   blurred. */
 .aux-overlay {
   position: fixed;
   z-index: 890;
@@ -43,16 +48,50 @@
   transform: translate(-50%, -50%);
   display: none;
   flex-direction: column;
-  background: var(--bg2);
+  background: color-mix(in srgb, var(--bg2) 80%, transparent);
   border: 1px solid var(--border2);
   border-radius: 14px;
   box-shadow: var(--shadow-lg), 0 0 0 1px var(--overlay-ring);
   overflow: hidden;
 }
 
+/* Scoped to .open for the reason given over .sm-console: a backdrop-filter
+   keeps a rasterized copy of whatever sits behind the element, and the modal
+   is still in the DOM, just hidden, while closed. */
 .aux-overlay.open {
   display: flex;
   animation: auxOverlayIn .2s cubic-bezier(0.22, 1, 0.36, 1);
+  backdrop-filter: blur(18px) saturate(118%);
+  -webkit-backdrop-filter: blur(18px) saturate(118%);
+}
+
+/* Same accessibility escape hatch as every other glass panel: decoration on
+   top of a modal that reads fine without it. */
+@media (prefers-reduced-transparency: reduce) {
+  .aux-overlay {
+    background: var(--bg2);
+  }
+
+  .aux-overlay.open {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .aux-overlay-bar {
+    background: var(--surface);
+  }
+
+  .aux-overlay .algo-nav,
+  .aux-overlay .gram-left,
+  .aux-overlay .ref-nav,
+  .aux-overlay .algo-search-wrap {
+    background: var(--bg);
+  }
+
+  .aux-overlay .algo-content,
+  .aux-overlay .gram-right {
+    background: var(--bg2);
+  }
 }
 
 .aux-overlay:focus {
@@ -87,7 +126,7 @@
   align-items: center;
   gap: 13px;
   padding: 15px 14px 15px 20px;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -182,22 +221,25 @@
 
 /* The modal supplies the outer frame and its own background, so the views'
    left rails sit on the recessed tone and the content pane on the raised one.
-   That inversion is what separates the two panes without a heavy divider. */
+   That inversion is what separates the two panes without a heavy divider.
+   Both tones are translucent at the modal's own 80%, not opaque — an opaque
+   pane here would paper over the glass the modal is built from and leave
+   only a thin blurred sliver visible at its edges. */
 .aux-overlay .algo-nav,
 .aux-overlay .gram-left,
 .aux-overlay .ref-nav {
-  background: var(--bg);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
 }
 
 .aux-overlay .algo-content,
 .aux-overlay .gram-right {
-  background: var(--bg2);
+  background: color-mix(in srgb, var(--bg2) 80%, transparent);
 }
 
 /* The sticky search rides on the nav rail, so it must match that tone rather
    than the content pane's. */
 .aux-overlay .algo-search-wrap {
-  background: var(--bg);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
   padding: 12px 12px 10px;
 }
 
@@ -2163,28 +2205,36 @@
   letter-spacing: .04em;
 }
 
+/* Same flat treatment as .btn-p/.btn-g in css/modals.css — see the note
+   there. Kept as its own rule rather than reused wholesale because the
+   padding and base font-size here are the algorithms panel's own scale. */
 .algo-btn {
   padding: 7px 16px;
   background: var(--accent);
-  border: none;
+  border: 1px solid transparent;
   color: var(--on-accent);
-  font-family: var(--mono);
-  font-size: .7rem;
+  font-family: var(--sans);
+  font-size: .76rem;
+  font-weight: 600;
   border-radius: 6px;
   cursor: pointer;
-  font-weight: 500;
-  transition: all .15s;
+  transition: box-shadow .15s, transform .15s;
   margin-right: 8px;
 }
 
 .algo-btn:hover {
-  background: var(--accent);
+  box-shadow: var(--accent-glow);
+}
+
+.algo-btn:active {
+  transform: translateY(1px);
 }
 
 .algo-btn.sec {
   background: var(--surface2);
   color: var(--text2);
   border: 1px solid var(--border2);
+  font-weight: 500;
 }
 
 .algo-btn.sec:hover {

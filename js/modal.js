@@ -98,8 +98,12 @@ export function showOverlay(id) {
   // whatever button happens to come first in its header.
   if (isDock(id)) return;
   const focusables = modalFocusables(shell);
-  if (focusables.length) {
-    focusables[0].focus();
+  // .modal-close sits first in the markup (the title row), but it is not the
+  // field a keyboard user opened the dialog to reach — skip it for the
+  // initial focus only; it stays a normal stop in the Tab trap otherwise.
+  const target = focusables.find(el => !el.classList.contains('modal-close')) || focusables[0];
+  if (target) {
+    target.focus();
   } else if (shell.firstElementChild && shell.firstElementChild.focus) {
     shell.firstElementChild.focus();
   }
