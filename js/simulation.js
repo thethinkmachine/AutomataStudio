@@ -1,8 +1,9 @@
 import { makeSVG } from './render.js';
-import { $, App, OmegaAcceptance, R, getMachineConfig, isDeterministicOmega, isOmegaAutomaton, isWeightedFA, omegaAcceptanceOf, statePriority } from './state.js';
+import { $, App, OmegaAcceptance, R, getMachineConfig, isDeterministicOmega, isOmegaAutomaton, isWeightedFA, omegaAcceptanceOf, statePriority, usesTwoWayTape } from './state.js';
 import { getState } from './states-transitions.js';
 import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
 import { buildMarkedInputTape, findOmegaDeterminismConflict, isAnyPDA, isAnyTM, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, pickMostSpecificTransition } from './utils.js';
+import { Tape, makeTapes, tapesKey } from './tape.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  SIMULATION
@@ -253,23 +254,29 @@ export function legacySimPDA_unused(tokens) {
 
 export function simTM(tokens) {
   App.simSteps = [];
-  let tape = tokens.length ? [...tokens] : [], head = 0, state = App.startId;
-  const blank = App.config.sym.blank;
+  const tape = new Tape(tokens, App.config.sym.blank, usesTwoWayTape());
+  let state = App.startId;
   let via = null;
   const loop = makeLoopTracker();
   for (let step = 0; step < App.config.maxTmSteps; step++) {
-    while (tape.length <= head) tape.push(blank);
-    const sym = tape[head];
-    App.simSteps.push({ state, tokens, tape: [...tape], head, tid: via, note: `State:${getState(state)?.name} Read:'${sym}'` });
+    const sym = tape.read();
+    // The head index the UI draws is relative to the window the tape
+    // reports, not the cell number — on a two-way tape those differ the
+    // moment it grows leftward.
+    const snap = tape.snapshot();
+    // On a two-way tape the drawn index is not the cell number, so the note
+    // carries the cell — otherwise "head 0" means two different places
+    // before and after the tape grows leftward.
+    const cellNote = tape.twoWay ? ` @${tape.head}` : '';
+    App.simSteps.push({ state, tokens, tape: snap.tape, head: snap.head, tid: via, note: `State:${getState(state)?.name} Read:'${sym}'${cellNote}` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
-    const at = loop.seenAt(ndtmConfigKey(state, tape, head), App.simSteps.length - 1);
+    const at = loop.seenAt(`${state}|${tape.key()}`, App.simSteps.length - 1);
     if (at >= 0) { markLoopStep(App.simSteps[App.simSteps.length - 1], at); break; }
     const t = getSingleTapeDeterministicTransition(state, sym);
     if (!t) { App.simSteps[App.simSteps.length - 1].final = 'reject'; App.simSteps[App.simSteps.length - 1].note += ' — REJECT'; break; }
-    const writeSym = (!t.write || t.write === App.config.sym.any) ? sym : t.write;
-    tape[head] = writeSym; state = t.to; via = t.id;
-    const move = t.dir === 'R' ? 1 : (t.dir === 'L' ? -1 : 0);
-    head += move; if (head < 0) head = 0;
+    tape.write((!t.write || t.write === App.config.sym.any) ? sym : t.write);
+    state = t.to; via = t.id;
+    tape.move(t.dir);
   }
   const lastTM = App.simSteps[App.simSteps.length - 1];
   // Still running is not the same as rejecting — reporting a timeout as a
@@ -288,11 +295,6 @@ export function normalizeTapeConfig(tape, head) {
   while (normalizedTape.length <= normalizedHead) normalizedTape.push(blank);
   while (normalizedTape.length > normalizedHead + 1 && normalizedTape[normalizedTape.length - 1] === blank) normalizedTape.pop();
   return { tape: normalizedTape, head: normalizedHead };
-}
-
-export function ndtmConfigKey(state, tape, head) {
-  const normalized = normalizeTapeConfig(tape, head);
-  return `${state}|${normalized.head}|${normalized.tape.join('\u0001')}`;
 }
 
 // ── loop detection for the deterministic tape machines ────────────
@@ -331,10 +333,9 @@ export function formatTapeInstantaneousDescription(state, tape, head) {
 
 export function simNDTM(tokens) {
   App.simSteps = [];
-  const blank = App.config.sym.blank;
-  const initTape = tokens.length ? [...tokens] : [blank];
-  const queue = [{ state: App.startId, tape: initTape, head: 0, depth: 0, branch: 1 }];
-  const visited = new Set([ndtmConfigKey(App.startId, initTape, 0)]);
+  const startTape = new Tape(tokens, App.config.sym.blank, usesTwoWayTape());
+  const queue = [{ state: App.startId, tape: startTape, depth: 0, branch: 1 }];
+  const visited = new Set([`${App.startId}|${startTape.key()}`]);
   let accepted = false;
   let branches = 0;
   let maxDepth = 0;
@@ -344,10 +345,10 @@ export function simNDTM(tokens) {
   while (queue.length && branches < App.config.maxTmSteps) {
     const cfg = queue.shift();
     const { state, depth, branch } = cfg;
-    const normalized = normalizeTapeConfig(cfg.tape, cfg.head);
-    const tape = normalized.tape;
-    const head = normalized.head;
-    const sym = tape[head];
+    const snap = cfg.tape.snapshot();
+    const tape = snap.tape;
+    const head = snap.head;
+    const sym = cfg.tape.read();
     const stateName = getState(state)?.name || state;
     const idStr = formatTapeInstantaneousDescription(state, tape, head);
     branches++;
@@ -383,7 +384,7 @@ export function simNDTM(tokens) {
     App.simSteps.push(step);
 
     const subs = [
-      `Read '${sym}' at head position ${head}.`,
+      `Read '${sym}' at head position ${cfg.tape.twoWay ? cfg.tape.head : head}.`,
       `Depth ${depth} · ID: ${idStr}`
     ];
     if (matching.length > 1) {
@@ -392,14 +393,13 @@ export function simNDTM(tokens) {
     log.push(`Branch ${branch}: exploring <em>${stateName}</em><span class="step-sub">${subs.join('<br>')}</span>`);
 
     matching.forEach(tr => {
-      const nextTape = [...tape];
-      nextTape[head] = (!tr.write || tr.write === App.config.sym.any) ? sym : tr.write;
-      const move = tr.dir === 'R' ? 1 : (tr.dir === 'L' ? -1 : 0);
-      const nextHead = Math.max(0, head + move);
-      const nextKey = ndtmConfigKey(tr.to, nextTape, nextHead);
+      const nextTape = cfg.tape.clone();
+      nextTape.write((!tr.write || tr.write === App.config.sym.any) ? sym : tr.write);
+      nextTape.move(tr.dir);
+      const nextKey = `${tr.to}|${nextTape.key()}`;
       if (visited.has(nextKey)) return;
       visited.add(nextKey);
-      queue.push({ state: tr.to, tape: nextTape, head: nextHead, depth: depth + 1, branch: nextBranchId++ });
+      queue.push({ state: tr.to, tape: nextTape, depth: depth + 1, branch: nextBranchId++ });
     });
   }
 
@@ -409,7 +409,7 @@ export function simNDTM(tokens) {
     const finalNote = unresolved
       ? `NO VERDICT: exploration limit ${App.config.maxTmSteps} reached — unresolved branches remain`
       : 'All branches halted without acceptance — REJECT';
-    const fallbackTape = App.simSteps.at(-1)?.tape || [...initTape];
+    const fallbackTape = App.simSteps.at(-1)?.tape || startTape.snapshot().tape;
     const fallbackHead = App.simSteps.at(-1)?.head ?? 0;
     const fallbackState = App.simSteps.at(-1)?.state || App.startId;
     App.simSteps.push({
@@ -1757,12 +1757,7 @@ export function sim2DFT(tokens) {
 
 export function simLBA(tokens) {
   App.simSteps = [];
-  const blank = App.config.sym.blank;
-  const tape = buildMarkedInputTape(tokens);
-  const leftBound = 0;
-  const rightBound = tape.length - 1;
-  const { leftMarker, rightMarker } = App.config.sym;
-  let head = 0;
+  const tape = makeLbaTape(tokens);
   let state = App.startId;
   let via = null;
   // An LBA's tape is bounded, so its configuration space is finite and this
@@ -1770,14 +1765,15 @@ export function simLBA(tokens) {
   const loop = makeLoopTracker();
 
   for (let step = 0; step < App.config.maxTmSteps; step++) {
-    const sym = tape[head];
-    App.simSteps.push({ state, tokens, tape: [...tape], head, tid: via, note: `State:${getState(state)?.name} Read:'${sym}'` });
+    const sym = tape.read();
+    const snap = tape.snapshot();
+    App.simSteps.push({ state, tokens, tape: snap.tape, head: snap.head, tid: via, note: `State:${getState(state)?.name} Read:'${sym}'` });
     if (App.accepts.has(state)) {
       App.simSteps[App.simSteps.length - 1].final = 'accept';
       App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT';
       break;
     }
-    const at = loop.seenAt(`${state}|${head}|${tape.join('')}`, App.simSteps.length - 1);
+    const at = loop.seenAt(`${state}|${tape.key()}`, App.simSteps.length - 1);
     if (at >= 0) { markLoopStep(App.simSteps[App.simSteps.length - 1], at); break; }
     const t = getSingleTapeDeterministicTransition(state, sym);
     if (!t) {
@@ -1785,24 +1781,24 @@ export function simLBA(tokens) {
       App.simSteps[App.simSteps.length - 1].note += ' — REJECT';
       break;
     }
-    const writeSym = (!t.write || t.write === App.config.sym.any) ? sym : t.write;
-    tape[head] = (sym === leftMarker || sym === rightMarker) ? sym : writeSym;
-    const nextHead = head + headMoveDelta(t.dir);
+    // The markers refuse the write themselves — see Tape.immutable.
+    tape.write((!t.write || t.write === App.config.sym.any) ? sym : t.write);
     state = t.to; via = t.id;
-    if (nextHead < leftBound || nextHead > rightBound) {
-      const boundSym = nextHead < leftBound ? '⊢' : '⊣';
+    // Which end it ran off is worth naming, so ask before moving.
+    const heading = t.dir === 'L' ? App.config.sym.leftMarker : App.config.sym.rightMarker;
+    if (!tape.move(t.dir)) {
+      const after = tape.snapshot();
       App.simSteps.push({
         state,
         tokens,
-        tape: [...tape],
-        head,
+        tape: after.tape,
+        head: after.head,
         tid: via,
-        note: `Attempted to move outside the ${boundSym} boundary. — REJECT`,
+        note: `Attempted to move outside the ${heading} boundary. — REJECT`,
         final: 'reject'
       });
       break;
     }
-    head = nextHead;
   }
 
   const last = App.simSteps[App.simSteps.length - 1];
@@ -1814,95 +1810,34 @@ export function simLBA(tokens) {
   renderSimStep();
 }
 
-export function materializeInfiniteTape(tapeMap, head) {
-  const blank = App.config.sym.blank;
-  const keys = [...tapeMap.keys(), head];
-  const min = Math.min(...keys);
-  const max = Math.max(...keys);
-  const tape = [];
-  for (let i = min; i <= max; i++) {
-    tape.push(tapeMap.has(i) ? tapeMap.get(i) : blank);
-  }
-  return { tape, head: head - min };
-}
-
+// Same machine, two-way tape — which the Tape already knows. See testITM3.
 export function simITM(tokens) {
-  App.simSteps = [];
-  const blank = App.config.sym.blank;
-  const tape = new Map();
-  if (tokens.length) tokens.forEach((sym, i) => tape.set(i, sym));
-  else tape.set(0, blank);
-
-  let head = 0;
-  let state = App.startId;
-  let via = null;
-  const loop = makeLoopTracker();
-
-  for (let step = 0; step < App.config.maxTmSteps; step++) {
-    const sym = tape.has(head) ? tape.get(head) : blank;
-    const snap = materializeInfiniteTape(tape, head);
-    App.simSteps.push({
-      state,
-      tokens,
-      tape: snap.tape,
-      head: snap.head,
-      tid: via,
-      note: `State:${getState(state)?.name} Read:'${sym}' @${head}`
-    });
-    if (App.accepts.has(state)) {
-      App.simSteps[App.simSteps.length - 1].final = 'accept';
-      App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT';
-      break;
-    }
-    const at = loop.seenAt(`${state}|${snap.head}|${snap.tape.join('')}`, App.simSteps.length - 1);
-    if (at >= 0) { markLoopStep(App.simSteps[App.simSteps.length - 1], at); break; }
-    const t = getSingleTapeDeterministicTransition(state, sym);
-    if (!t) {
-      App.simSteps[App.simSteps.length - 1].final = 'reject';
-      App.simSteps[App.simSteps.length - 1].note += ' — REJECT';
-      break;
-    }
-    const writeSym = (!t.write || t.write === App.config.sym.any) ? sym : t.write;
-    if (writeSym === blank) tape.delete(head);
-    else tape.set(head, writeSym);
-    head += headMoveDelta(t.dir);
-    state = t.to; via = t.id;
-  }
-
-  const last = App.simSteps[App.simSteps.length - 1];
-  if (last && !last.final) {
-    last.final = 'timeout'; last.limit = App.config.maxTmSteps;
-    last.note += ` — NO VERDICT: still running after ${App.config.maxTmSteps} steps`;
-  }
-  App.simIdx = 0;
-  renderSimStep();
+  return simTM(tokens);
 }
 
 export function simMTM(tokens, allTapeTokens) {
   App.simSteps = [];
   const k = App.tapeCount;
   const blank = App.config.sym.blank;
+  const twoWay = usesTwoWayTape();
   const tapes = allTapeTokens
-    ? Array.from({ length: k }, (_, i) => { const tok = allTapeTokens[i]; return (tok && tok.length) ? [...tok] : [blank]; })
-    : Array.from({ length: k }, (_, i) => i === 0 ? (tokens.length ? [...tokens] : [blank]) : [blank]);
-  const heads = Array(k).fill(0);
+    ? Array.from({ length: k }, (_, i) => new Tape(allTapeTokens[i] || [], blank, twoWay))
+    : makeTapes(k, tokens, blank, twoWay);
   let state = App.startId;
   let via = null;
   const loop = makeLoopTracker();
   for (let step = 0; step < App.config.maxTmSteps; step++) {
-    tapes.forEach((tape, i) => { while (tape.length <= heads[i]) tape.push(blank); });
-    const syms = tapes.map((tape, i) => tape[heads[i]]);
-    App.simSteps.push({ state, tokens, tapes: tapes.map(t => [...t]), heads: [...heads], tid: via, note: `State:${getState(state)?.name} Read:[${syms.join(',')}]` });
+    const syms = tapes.map(tape => tape.read());
+    const snaps = tapes.map(tape => tape.snapshot());
+    App.simSteps.push({ state, tokens, tapes: snaps.map(s => s.tape), heads: snaps.map(s => s.head), tid: via, note: `State:${getState(state)?.name} Read:[${syms.join(',')}]` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
-    const at = loop.seenAt(`${state}|${heads.join(',')}|${tapes.map(t => t.join('')).join('')}`, App.simSteps.length - 1);
+    const at = loop.seenAt(tapesKey(state, tapes), App.simSteps.length - 1);
     if (at >= 0) { markLoopStep(App.simSteps[App.simSteps.length - 1], at); break; }
     const t = getMultiTapeDeterministicTransition(state, syms);
     if (!t) { App.simSteps[App.simSteps.length - 1].final = 'reject'; App.simSteps[App.simSteps.length - 1].note += ' — REJECT'; break; }
     for (let i = 0; i < k; i++) {
-      tapes[i][heads[i]] = t.tapeWrites[i] || syms[i];
-      const move = t.tapeDirs[i] === 'R' ? 1 : (t.tapeDirs[i] === 'L' ? -1 : 0);
-      heads[i] += move;
-      if (heads[i] < 0) heads[i] = 0;
+      tapes[i].write(t.tapeWrites[i] || syms[i]);
+      tapes[i].move(t.tapeDirs[i]);
     }
     state = t.to; via = t.id;
   }
@@ -2665,98 +2600,87 @@ export function langStepBudget() {
 
 export function testTM3(tokens, budget) {
   budget = budget || langStepBudget();
-  const blank = App.config.sym.blank, any = App.config.sym.any;
-  const tape = tokens.length ? [...tokens] : [];
-  let head = 0, state = App.startId;
+  const any = App.config.sym.any;
+  const tape = new Tape(tokens, App.config.sym.blank, usesTwoWayTape());
+  let state = App.startId;
   const seen = new Set();
   for (let step = 0; step < budget; step++) {
-    while (tape.length <= head) tape.push(blank);
     if (App.accepts.has(state)) return 'acc';
-    const key = ndtmConfigKey(state, tape, head);
+    const key = `${state}|${tape.key()}`;
     if (seen.has(key)) return 'rej';
     seen.add(key);
-    const sym = tape[head];
+    const sym = tape.read();
     const t = getSingleTapeDeterministicTransition(state, sym);
     if (!t) return 'rej';
-    tape[head] = (!t.write || t.write === any) ? sym : t.write;
-    head += headMoveDelta(t.dir);
-    if (head < 0) head = 0;
+    tape.write((!t.write || t.write === any) ? sym : t.write);
+    tape.move(t.dir);
     state = t.to;
   }
   return 'unk';
+}
+
+/**
+ * An LBA's tape is its input between two end markers, and nothing more:
+ * bounded on both sides, with the markers themselves unwritable. That is
+ * the whole of what makes it linear-bounded, so it is stated once here
+ * rather than reassembled in each of the two simulators.
+ */
+export function makeLbaTape(tokens) {
+  const { leftMarker, rightMarker, blank } = App.config.sym;
+  return new Tape(buildMarkedInputTape(tokens), blank, false, {
+    rightBound: tokens.length + 1,
+    immutable: new Set([leftMarker, rightMarker])
+  });
 }
 
 export function testLBA3(tokens, budget) {
   budget = budget || langStepBudget();
   const any = App.config.sym.any;
-  const { leftMarker, rightMarker } = App.config.sym;
-  const tape = buildMarkedInputTape(tokens);
-  const rightBound = tape.length - 1;
-  let head = 0, state = App.startId;
+  const tape = makeLbaTape(tokens);
+  let state = App.startId;
   const seen = new Set();
   for (let step = 0; step < budget; step++) {
     if (App.accepts.has(state)) return 'acc';
-    const key = `${state}|${head}|${tape.join('')}`;
+    const key = `${state}|${tape.key()}`;
     if (seen.has(key)) return 'rej';
     seen.add(key);
-    const sym = tape[head];
+    const sym = tape.read();
     const t = getSingleTapeDeterministicTransition(state, sym);
     if (!t) return 'rej';
-    const writeSym = (!t.write || t.write === any) ? sym : t.write;
-    tape[head] = (sym === leftMarker || sym === rightMarker) ? sym : writeSym;
-    const nextHead = head + headMoveDelta(t.dir);
+    // The markers refuse the write themselves — see Tape.immutable.
+    tape.write((!t.write || t.write === any) ? sym : t.write);
     state = t.to;
-    if (nextHead < 0 || nextHead > rightBound) return 'rej';
-    head = nextHead;
+    // Running off either end is what bounds an LBA, and it is a halt
+    // rather than a stall — the tape reports, this decides.
+    if (!tape.move(t.dir)) return 'rej';
   }
   return 'unk';
 }
 
+// ITM is a deterministic single-tape machine whose tape happens to be
+// two-way, and `usesTwoWayTape` already answers that — so this *is*
+// testTM3. A second copy of the loop is only a way for the two to drift.
 export function testITM3(tokens, budget) {
-  budget = budget || langStepBudget();
-  const blank = App.config.sym.blank, any = App.config.sym.any;
-  const tape = new Map();
-  tokens.forEach((sym, i) => tape.set(i, sym));
-  let head = 0, state = App.startId;
-  const seen = new Set();
-  for (let step = 0; step < budget; step++) {
-    if (App.accepts.has(state)) return 'acc';
-    const snap = materializeInfiniteTape(tape, head);
-    const key = `${state}|${snap.head}|${snap.tape.join('')}`;
-    if (seen.has(key)) return 'rej';
-    seen.add(key);
-    const sym = tape.has(head) ? tape.get(head) : blank;
-    const t = getSingleTapeDeterministicTransition(state, sym);
-    if (!t) return 'rej';
-    const writeSym = (!t.write || t.write === any) ? sym : t.write;
-    if (writeSym === blank) tape.delete(head); else tape.set(head, writeSym);
-    head += headMoveDelta(t.dir);
-    state = t.to;
-  }
-  return 'unk';
+  return testTM3(tokens, budget);
 }
 
 export function testMTM3(tokens, budget) {
   budget = budget || langStepBudget();
-  const k = App.tapeCount || 2, blank = App.config.sym.blank;
-  const tapes = Array.from({ length: k }, (_, i) =>
-    i === 0 ? (tokens.length ? [...tokens] : [blank]) : [blank]);
-  const heads = Array(k).fill(0);
+  const k = App.tapeCount || 2;
+  const tapes = makeTapes(k, tokens, App.config.sym.blank, usesTwoWayTape());
   let state = App.startId;
   const seen = new Set();
   for (let step = 0; step < budget; step++) {
-    tapes.forEach((tape, i) => { while (tape.length <= heads[i]) tape.push(blank); });
     if (App.accepts.has(state)) return 'acc';
-    const key = `${state}|${heads.join(',')}|${tapes.map(t => t.join('')).join('')}`;
+    const key = tapesKey(state, tapes);
     if (seen.has(key)) return 'rej';
     seen.add(key);
-    const syms = tapes.map((tape, i) => tape[heads[i]]);
+    const syms = tapes.map(tape => tape.read());
     const t = getMultiTapeDeterministicTransition(state, syms);
     if (!t) return 'rej';
     for (let i = 0; i < k; i++) {
-      tapes[i][heads[i]] = t.tapeWrites[i] || syms[i];
-      heads[i] += headMoveDelta(t.tapeDirs[i]);
-      if (heads[i] < 0) heads[i] = 0;
+      tapes[i].write(t.tapeWrites[i] || syms[i]);
+      tapes[i].move(t.tapeDirs[i]);
     }
     state = t.to;
   }
@@ -2765,27 +2689,30 @@ export function testMTM3(tokens, budget) {
 
 export function testNDTM3(tokens, budget) {
   budget = budget || langStepBudget();
-  const blank = App.config.sym.blank, any = App.config.sym.any;
-  const init = tokens.length ? [...tokens] : [blank];
-  const queue = [{ state: App.startId, tape: init, head: 0 }];
-  const visited = new Set([ndtmConfigKey(App.startId, init, 0)]);
+  const any = App.config.sym.any;
+  const start = new Tape(tokens, App.config.sym.blank, usesTwoWayTape());
+  const queue = [{ state: App.startId, tape: start }];
+  // The key comes off the tape, which normalizes its own window — so two
+  // configurations that differ only in how far the tape has grown compare
+  // equal. With absolute indices a two-way tape renumbers every cell the
+  // moment it grows leftward and the frontier never closes.
+  const visited = new Set([`${App.startId}|${start.key()}`]);
   let expanded = 0;
   while (queue.length) {
     if (expanded++ >= budget) return 'unk';
     const cfg = queue.shift();
     if (App.accepts.has(cfg.state)) return 'acc';
-    const norm = normalizeTapeConfig(cfg.tape, cfg.head);
-    const tape = norm.tape, head = norm.head, sym = tape[head];
+    const sym = cfg.tape.read();
     const matching = App.transitions.filter(tr =>
       tr.from === cfg.state && (tr.symbol === sym || tr.symbol === any));
     for (const tr of matching) {
-      const next = [...tape];
-      next[head] = (!tr.write || tr.write === any) ? sym : tr.write;
-      const nh = Math.max(0, head + headMoveDelta(tr.dir));
-      const key = ndtmConfigKey(tr.to, next, nh);
+      const next = cfg.tape.clone();
+      next.write((!tr.write || tr.write === any) ? sym : tr.write);
+      next.move(tr.dir);
+      const key = `${tr.to}|${next.key()}`;
       if (visited.has(key)) continue;
       visited.add(key);
-      queue.push({ state: tr.to, tape: next, head: nh });
+      queue.push({ state: tr.to, tape: next });
     }
   }
   // Frontier exhausted with nothing accepting — a definitive answer.

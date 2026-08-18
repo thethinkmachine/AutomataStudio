@@ -45,7 +45,7 @@ export const MachineTypes = {
   'NDTM': { label: 'NDTM', fullName: 'Nondeterministic Turing Machine', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-ndtm', file: 'ndtm' },
   'MTM': { label: 'MTM', fullName: 'Multi-Tape Turing Machine', category: 'tm', implemented: true, hasEpsilon: true, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-mtm', file: 'mtm' },
   'LBA': { label: 'LBA', fullName: 'Linear Bounded Automaton', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, hasEndMarkers: true, isTransducer: false, badge: 'bd-lba', file: 'lba' },
-  'ITM': { label: '2-Way Infinite TM', fullName: 'Two-Way Infinite Turing Machine', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-itm', file: 'ittm' },
+  'ITM': { label: '2-Way Infinite TM', fullName: 'Two-Way Infinite Turing Machine', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, isTransducer: false, twoWayTape: true, badge: 'bd-itm', file: 'ittm' },
 
   'Moore': { label: 'Moore', fullName: 'Moore Machine', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-moore', file: 'moore' },
   'Mealy': { label: 'Mealy', fullName: 'Mealy Machine', category: 'special', implemented: true, hasEpsilon: false, hasStack: false, hasTape: false, isTransducer: true, badge: 'bd-mealy', file: 'mealy' },
@@ -179,6 +179,13 @@ export const App = {
   config: {
     theme: 'dark',
     transducerAccepts: false,
+    // Whether a Turing machine's tape extends left of its input. This is a
+    // property of the tape, not of the machine, so it is a setting rather
+    // than a family of extra machine types: it makes TM, NDTM and MTM
+    // two-way exactly as ITM already is. Textbooks and JFLAP both take the
+    // two-way tape as standard; the app's default stays bounded so an
+    // existing machine keeps deciding what it decided.
+    twoWayTape: false,
     maxPdaSteps: 2000,
     maxTmSteps: 10000,
     // Per-word budget for the Language panel's fingerprint. Deliberately
@@ -316,6 +323,21 @@ export function getMachineConfig(m) { return MachineTypes[m] || MachineTypes['DF
 // which is the isTransducer flag's business, not the head's.
 export function isTwoWayFA(m = App.machine) {
   return m === '2DFA' || m === '2NFA' || m === '2DFT';
+}
+
+// Does this machine's tape extend left of its input?
+//
+// Two sources, because there are two kinds of answer. ITM says so by *being*
+// what it is — the type is the claim, and no setting should be able to make a
+// "Two-Way Infinite TM" bounded. TM, NDTM and MTM take it from the setting,
+// which is what makes a two-way multi-tape machine a tape choice rather than
+// a sixth entry in the machine picker.
+//
+// LBA is excluded deliberately: its tape is bounded at *both* ends by the end
+// markers, and that is the machine's definition rather than its tape's.
+export function usesTwoWayTape(m = App.machine) {
+  if (m === 'LBA') return false;
+  return !!getMachineConfig(m).twoWayTape || !!App.config.twoWayTape;
 }
 
 

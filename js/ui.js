@@ -2761,6 +2761,7 @@ export function openSettingsModal() {
   if ($('set-snap-grid')) $('set-snap-grid').checked = !!c.snapToGrid;
   if ($('set-state-prefix')) $('set-state-prefix').value = c.statePrefix || 'q';
   $('set-transducer-accepts').checked = !!c.transducerAccepts;
+  if ($('set-two-way-tape')) $('set-two-way-tape').checked = !!c.twoWayTape;
   $('set-pda-steps').value = c.maxPdaSteps;
   $('set-pda-paradigm').value = c.pdaParadigm || 'explicit';
   if ($('set-pfa-cutpoint')) $('set-pfa-cutpoint').value = c.pfaCutPoint ?? 0.5;
@@ -2864,6 +2865,7 @@ export function confirmSettings() {
   if ($('set-snap-grid')) toggleSnapToGrid($('set-snap-grid').checked);
   if ($('set-state-prefix')) c.statePrefix = $('set-state-prefix').value.trim() || 'q';
   c.transducerAccepts = $('set-transducer-accepts').checked;
+  if ($('set-two-way-tape')) c.twoWayTape = $('set-two-way-tape').checked;
   c.pdaParadigm = $('set-pda-paradigm').value || 'explicit';
   if ($('set-pfa-cutpoint')) {
     // A cut-point outside [0, 1] can never be crossed in one direction or the
@@ -2968,6 +2970,7 @@ export function getEditorSettingsData() {
     pdaParadigm: c.pdaParadigm,
     pfaCutPoint: c.pfaCutPoint,
     transducerAccepts: !!c.transducerAccepts,
+    twoWayTape: !!c.twoWayTape,
     maxPdaSteps: c.maxPdaSteps,
     maxTmSteps: c.maxTmSteps,
     langStepBudget: c.langStepBudget,
@@ -3037,6 +3040,7 @@ export function populateSettingsModalInputs(data) {
   if (data.pdaParadigm !== undefined) $('set-pda-paradigm').value = data.pdaParadigm;
   if (data.pfaCutPoint !== undefined && $('set-pfa-cutpoint')) $('set-pfa-cutpoint').value = data.pfaCutPoint;
   if (data.transducerAccepts !== undefined) $('set-transducer-accepts').checked = !!data.transducerAccepts;
+  if (data.twoWayTape !== undefined && $('set-two-way-tape')) $('set-two-way-tape').checked = !!data.twoWayTape;
   if (data.maxPdaSteps !== undefined) $('set-pda-steps').value = data.maxPdaSteps;
   if (data.maxTmSteps !== undefined) $('set-tm-steps').value = data.maxTmSteps;
   if (data.langStepBudget !== undefined && $('set-lang-budget')) $('set-lang-budget').value = data.langStepBudget;

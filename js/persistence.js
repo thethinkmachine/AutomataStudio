@@ -23,6 +23,7 @@ export function getWorkspaceData() {
   // Explicitly allow-list only FSM model configuration, dropping all UI/Theme data.
   const cleanConfig = {
     transducerAccepts: App.config.transducerAccepts,
+    twoWayTape: App.config.twoWayTape,
     maxPdaSteps: App.config.maxPdaSteps,
     maxTmSteps: App.config.maxTmSteps,
     pdaParadigm: App.config.pdaParadigm,
@@ -535,6 +536,11 @@ export function loadData(d, isExample) {
   App.stackAlpha = new Set(d.stackAlpha || [App.config.sym.stackBottom]);
   App.outputAlpha = new Set(d.outputAlpha || []);
   if (d.tapeCount) App.tapeCount = d.tapeCount;
+  // The tape model travels with the machine that assumes it — a JFLAP file
+  // is written for a two-way tape and decides a different language without
+  // one. Only an explicit boolean applies, so a file that says nothing
+  // leaves the user's setting alone.
+  if (typeof d.twoWayTape === 'boolean') App.config.twoWayTape = d.twoWayTape;
   App.states = d.states || [];
   App.transitions = d.transitions || []; App.startId = d.startId || null;
   App.accepts = new Set(d.accepts || []);
