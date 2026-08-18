@@ -1331,14 +1331,14 @@
   top: 12px;
   left: 12px;
   z-index: 52;
-  width: min(310px, calc(100% - 24px));
+  width: min(320px, calc(100% - 24px));
   max-height: calc(100% - 24px);
   overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--border2);
-  border-radius: 8px;
+  border-radius: 10px;
   box-shadow: var(--shadow-sm);
-  padding: 9px 11px;
+  padding: 10px 12px 11px;
   opacity: 0;
   visibility: hidden;
   transform: translateY(-6px) scale(.98);
@@ -1403,75 +1403,174 @@
 .canvas-info-btn svg {
   width: 14px;
   height: 14px;
+  flex: 0 0 auto;
+}
+
+/* Undescribed, the button stops being a circle and becomes a label, because a
+   circle is a way back to something and there is nothing behind it yet. */
+.canvas-info-btn.is-invite {
+  width: auto;
+  gap: 5px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  border-style: dashed;
+}
+
+.canvas-info-label {
+  font-family: var(--sans);
+  font-size: .66rem;
+  font-weight: 600;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+
+.canvas-info-btn:not(.is-invite) .canvas-info-label {
+  display: none;
 }
 
 .example-card-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
-.example-card-title {
-  font-family: var(--sans);
-  font-weight: 700;
-  font-size: .78rem;
-  color: var(--text);
-  /* Long names wrap rather than push the edit and dismiss buttons off the
-     card — the head is a flex row and text has no intrinsic minimum here. */
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-wrap: anywhere;
+.example-card-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
 }
 
 .example-card-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: 50%;
   color: var(--text3);
-  font-size: .9rem;
+  font-size: 1rem;
   line-height: 1;
   cursor: pointer;
-  padding: 0 2px;
 }
 
-.example-card-close:hover {
+.example-card-close:hover,
+.example-card-close:focus-visible {
   color: var(--text);
+  background: var(--bg2);
+  border-color: var(--border);
+  outline: none;
 }
 
-.example-card-blurb {
+/* ── The fields ──
+   There is no edit mode any more, so these are writable at all times and have
+   to read as text until they are touched: no border and no ground at rest, a
+   faint ground under the pointer to say a field is there, and a real box only
+   once the caret is in it. The negative margin is what keeps the *text* lined
+   up with the rest of the card while the padded box hangs outside it — without
+   it, everything the card says sits five pixels in from everything it draws. */
+.example-card-input,
+.example-card-area {
+  width: calc(100% + 10px);
+  box-sizing: border-box;
+  margin-left: -5px;
   font-family: var(--sans);
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 2px 5px;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.example-card-input:hover,
+.example-card-area:hover {
+  background: var(--bg2);
+}
+
+.example-card-input:focus,
+.example-card-area:focus {
+  background: var(--bg2);
+  border-color: var(--accent-border);
+  outline: none;
+}
+
+.example-card-input::placeholder,
+.example-card-area::placeholder {
+  color: var(--text3);
+}
+
+.example-card-title {
+  font-weight: 700;
+  font-size: .78rem;
+  line-height: 1.35;
+  /* Long names shrink the field rather than push the × off the card — the head
+     is a flex row and an input has an intrinsic width of its own. */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Sized to its content by autoGrow() rather than by a scrollbar or a drag
+   handle: this is one sentence about a machine, and a two-line window onto a
+   four-line sentence is the shape that made the old card need an editor. */
+.example-card-area {
+  margin-top: 2px;
   font-size: .7rem;
   line-height: 1.45;
   color: var(--text2);
-  margin-top: 5px;
+  resize: none;
+  overflow: hidden;
 }
 
+/* ── Test words ──
+   A chip runs its word on click — the one thing the card does that no panel
+   does — so the two edit gestures sit beside that rather than on top of it:
+   the verdict mark cycles, and the × removes. Editing the text is the
+   deliberate one (double-click, or F2), because it is the only one that could
+   be mistaken for a run. */
 .example-card-chips {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 5px;
-  margin-top: 8px;
+  margin-top: 9px;
 }
 
+/* The pill is sized by its controls rather than by its text. The old card put
+   the verdict on a .58rem pill and the remove on a bare ×, which are the right
+   *weight* on screen and far too small to hit — a verdict you have to aim at
+   is one you leave wrong. Everything clickable in here is therefore at least
+   22px in both directions, and the type stays small inside it. */
 .example-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  max-width: 100%;
+  min-height: 26px;
+  padding: 2px 3px 2px 10px;
   font-family: var(--mono);
   font-size: .66rem;
-  padding: 3px 8px;
+  line-height: 1.3;
   border-radius: 999px;
   border: 1px solid var(--border2);
   background: var(--bg2);
   color: var(--text2);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  transition: border-color var(--transition-fast), background var(--transition-fast),
+              color var(--transition-fast);
 }
 
 .example-chip:hover {
   color: var(--text);
   border-color: var(--accent-border);
+}
+
+.example-chip:focus-within {
+  border-color: var(--accent-border);
+  background: var(--bg3);
 }
 
 .example-chip.chip-acc {
@@ -1494,213 +1593,145 @@
   background: color-mix(in srgb, var(--red) 20%, transparent);
 }
 
-/* The editor. Same card, same corner, same width — only the body swaps, so
-   describing a machine happens where the description will appear rather than
-   in a dialog drawn over the machine it is about. */
-.example-card.is-editing {
-  width: min(330px, calc(100% - 24px));
-}
-
-.example-card-tools {
-  display: flex;
+/* Baseline-free: the word sits on the chip's own centre line, the same one the
+   two round controls are centred on. `align-self: stretch` put it on the
+   chip's full height instead, which is what left the text riding high against
+   the buttons beside it. */
+.example-chip-run {
+  display: inline-flex;
   align-items: center;
-  gap: 2px;
-  flex: 0 0 auto;
-}
-
-/* The way in. Deliberately as quiet as the × beside it: annotating is
-   something you go looking for, not something the card should be asking for. */
-.example-card-btn {
+  min-width: 0;
+  max-width: 17ch;
+  height: 20px;
+  padding: 0 2px 0 0;
+  font: inherit;
+  color: inherit;
   background: transparent;
   border: none;
-  color: var(--text3);
-  font-size: .78rem;
-  line-height: 1;
   cursor: pointer;
-  padding: 0 2px;
-  transition: color var(--transition-fast);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.example-card-btn:hover,
-.example-card-btn:focus-visible {
-  color: var(--accent);
+.example-chip-run:focus-visible {
   outline: none;
+  text-decoration: underline;
 }
 
-.example-card-field {
-  display: block;
-  margin-top: 8px;
-}
-
-.example-card-flabel {
-  display: block;
-  font-family: var(--sans);
-  font-size: .6rem;
-  font-weight: 600;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  color: var(--text3);
-  margin-bottom: 3px;
-}
-
-/* The name field is prose and the word fields are input to a machine, so they
-   take the two different families for the two different jobs — the same split
-   the StateMate console makes between --sans and --mono. */
-.example-card-input,
-.example-card-area {
-  width: 100%;
-  box-sizing: border-box;
-  font-family: var(--sans);
-  font-size: .7rem;
-  line-height: 1.4;
-  color: var(--text);
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 4px 6px;
-  transition: border-color var(--transition-fast);
-}
-
-.example-card-area {
-  resize: vertical;
-  min-height: 46px;
-}
-
-.example-card-input:focus,
-.example-card-area:focus {
-  border-color: var(--accent-border);
-  outline: none;
-}
-
-.example-card-input::placeholder,
-.example-card-area::placeholder {
-  color: var(--text3);
-}
-
-.example-card-words {
-  margin-top: 10px;
-}
-
-.example-card-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.example-card-row {
-  display: flex;
+/* The verdict and the remove share one box — same size, same radius, same
+   centre line — so the row of controls on a chip is a row rather than a
+   collection. Everything that differs between them is what they *say*: a dot
+   against a ×, and a neutral hover against a red one. */
+.example-chip-expect,
+.example-chip-drop {
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-family: var(--sans);
+  line-height: 1;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: opacity var(--transition-fast), background var(--transition-fast),
+              border-color var(--transition-fast);
 }
 
-/* A word is an input to the machine, not language about it. */
+/* Optically centred rather than metrically: ● and ○ have no descender and sit
+   high in the em box, so the box itself is what centres them. */
+.example-chip-expect {
+  font-size: .6rem;
+  opacity: .8;
+}
+
+.example-chip-expect:hover,
+.example-chip-expect:focus-visible {
+  opacity: 1;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+  outline: none;
+}
+
+/* Shown only when the chip is under the pointer or holds focus — three
+   controls on every pill at rest is a row of noise, and removing a word is
+   the one of the three that is not routine. Same 22px target as the verdict
+   when it is there; on a coarse pointer there is no hover to reveal it, so it
+   is simply always there. */
+.example-chip-drop {
+  display: none;
+  font-size: .8rem;
+  opacity: .65;
+}
+
+.example-chip:hover .example-chip-drop,
+.example-chip:focus-within .example-chip-drop {
+  display: inline-flex;
+}
+
+.example-chip-drop:hover,
+.example-chip-drop:focus-visible {
+  color: var(--red);
+  opacity: 1;
+  background: var(--red-soft);
+  border-color: var(--red-border);
+  outline: none;
+}
+
+@media (hover: none) {
+  .example-chip-drop { display: inline-flex; }
+}
+
+/* A word being typed is still a chip. It gets the field's own width from
+   sizeWordInput() rather than the 100% every other field takes, so the pill
+   grows with the word instead of becoming a text box the width of the card. */
 .example-card-word {
-  flex: 1 1 auto;
-  min-width: 0;
+  width: auto;
+  margin: 0;
+  padding: 0;
   font-family: var(--mono);
   font-size: .66rem;
-}
-
-/* Not a select: three states, cycled in place, so the control is the same size
-   as the chip it becomes and the row does not reflow when the answer changes.
-   It carries the chip's own colours for that reason. */
-.example-card-expect {
-  flex: 0 0 auto;
-  font-family: var(--mono);
-  font-size: .58rem;
-  padding: 3px 6px;
-  border-radius: 999px;
-  border: 1px solid var(--border2);
-  background: var(--bg2);
-  color: var(--text3);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all var(--transition-fast);
-}
-
-.example-card-expect.chip-acc {
-  border-color: var(--green-border);
-  color: var(--green);
-  background: var(--green-soft);
-}
-
-.example-card-expect.chip-rej {
-  border-color: var(--red-border);
-  color: var(--red);
-  background: var(--red-soft);
-}
-
-.example-card-drop {
-  flex: 0 0 auto;
   background: transparent;
-  border: none;
-  color: var(--text3);
-  font-size: .8rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0 2px;
-  transition: color var(--transition-fast);
+  border-color: transparent;
 }
 
-.example-card-drop:hover {
-  color: var(--red);
+.example-card-word:hover,
+.example-card-word:focus {
+  background: transparent;
+  border-color: transparent;
 }
 
+/* Sized to the chips it sits in the row with, not to its own glyph — a + that
+   is a different height from every pill beside it reads as a stray control
+   rather than as the next item in the list. */
 .example-card-add {
-  margin-top: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
   font-family: var(--sans);
-  font-size: .62rem;
-  padding: 3px 8px;
-  border-radius: 5px;
+  font-size: .88rem;
+  line-height: 1;
+  border-radius: 999px;
   border: 1px dashed var(--border2);
   background: transparent;
   color: var(--text3);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: color var(--transition-fast), border-color var(--transition-fast);
 }
 
-.example-card-add:hover {
+.example-card-add:hover,
+.example-card-add:focus-visible {
   color: var(--accent);
   border-color: var(--accent-border);
-}
-
-.example-card-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-  margin-top: 11px;
-}
-
-.example-card-cancel,
-.example-card-save {
-  font-family: var(--sans);
-  font-size: .66rem;
-  font-weight: 600;
-  padding: 4px 11px;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.example-card-cancel {
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text2);
-}
-
-.example-card-cancel:hover {
-  color: var(--text);
-  border-color: var(--border2);
-}
-
-.example-card-save {
-  border: 1px solid var(--accent-border);
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.example-card-save:hover {
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  outline: none;
 }
 
 /* Verdict banner — the headline result, shown once the simulation reaches

@@ -188,6 +188,10 @@ export const App = {
     langStepBudget: 400,
     autoSpeed: 500,
     autosaveIntervalMs: 15000,
+    // How long the info card waits before folding back into its (i) button,
+    // after the *app* opened it on a load or a StateMate run. A card the reader
+    // opened never times out at all, and 0 here means neither one does.
+    cardAutoHideMs: 13000,
     radius: 30,
     zoom: { min: 0.2, max: 3, step: 0.1 },
     wheelZoom: true,
@@ -313,6 +317,7 @@ export function getMachineConfig(m) { return MachineTypes[m] || MachineTypes['DF
 export function isTwoWayFA(m = App.machine) {
   return m === '2DFA' || m === '2NFA' || m === '2DFT';
 }
+
 
 export function isEndmarkerMachine(m = App.machine) {
   return !!getMachineConfig(m).hasEndMarkers;

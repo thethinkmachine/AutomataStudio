@@ -153,7 +153,7 @@ test('the API key does not follow the card into storage', () => {
 
 // ── The way in ────────────────────────────────────────────────────
 
-test('an undescribed machine is offered the editor, an empty canvas is offered nothing', () => {
+test('an undescribed machine is offered the card, an empty canvas is offered nothing', () => {
   const h = createHarness();
   const btn = h.getElement('canvas-info-btn');
 
@@ -172,173 +172,249 @@ test('an undescribed machine is offered the editor, an empty canvas is offered n
   assert.equal(btn.dataset.tip, 'About this machine');
 });
 
-test('opening the card of an undescribed machine opens the editor', () => {
+// ── One card, and it is the editor ────────────────────────────────
+//  There is no ✎ and no mode: the fields are always writable, so the tests
+//  below are about *when* what is typed becomes App.meta, not about how to
+//  get at a form.
+
+test('an undescribed machine opens the same card, empty and ready to be typed into', () => {
   const h = createHarness();
   drawMachine(h);
 
   h.context.toggleExampleCard();
   const card = h.getElement('example-card');
   assert.ok(card.classList.contains('is-open'));
-  assert.ok(card.classList.contains('is-editing'),
-    'there is nothing to read yet, so the card opens as the thing that fixes that');
-  assert.ok(h.context.isEditingExampleCard());
-  assert.match(deepText(card), /Describe this machine/);
-  assert.ok(findOne(card, 'example-card-save'), 'and there is a way to commit it');
+
+  const title = findOne(card, 'example-card-title');
+  assert.ok(title, 'the card is its own editor — there is no mode to enter first');
+  assert.equal(title.value, '');
+  assert.equal(title.placeholder, 'Name this machine',
+    'an empty card says what goes in it rather than sitting blank');
+  assert.ok(findOne(card, 'example-card-add'), 'and there is a way to add the first test word');
 });
 
-test('a described card reads, and carries the way back into the editor', () => {
+test('a described card reads, and the text it reads is the field you edit', () => {
   const h = createHarness();
   drawMachine(h);
   h.context.showExampleCard(SAMPLE);
 
   const card = h.getElement('example-card');
-  assert.equal(h.context.isEditingExampleCard(), false, 'a load lands in the reading state');
-  assert.match(deepText(card), /Even number of a’s/);
-  assert.match(deepText(card), /Two states, flipped by every a/);
+  assert.equal(h.context.isEditingExampleCard(), false, 'a load lands with the caret nowhere');
+  assert.equal(findOne(card, 'example-card-title').value, SAMPLE.title);
+  assert.equal(findOne(card, 'example-card-area').value, SAMPLE.blurb);
 
   const chips = findAll(card, 'example-chip');
   assert.equal(chips.length, 2);
-  assert.equal(chips[0].textContent, 'ε', 'the empty word is drawn as ε and run as ""');
-  assert.ok(String(chips[1].className).includes('chip-rej'));
-
-  const pencil = findOne(card, 'example-card-btn');
-  assert.ok(pencil, 'the edit affordance the card never used to have');
-  pencil.onclick();
-  assert.ok(h.context.isEditingExampleCard());
+  assert.equal(findOne(chips[0], 'example-chip-run').textContent, 'ε',
+    'the empty word is drawn as ε and run as ""');
+  assert.ok(chips[1].classList.contains('chip-rej'));
 });
 
-// ── Editing ───────────────────────────────────────────────────────
-
-test('the editor is seeded from the card and writes it back on Save', () => {
+test('a field commits when you leave it, and not while you are typing', () => {
   const h = createHarness();
   drawMachine(h);
   h.context.showExampleCard(SAMPLE);
-  h.context.editExampleCard();
 
-  const card = h.getElement('example-card');
-  const inputs = findAll(card, 'example-card-input');
-  assert.equal(inputs[0].value, SAMPLE.title, 'the name field starts at what the card says');
-  assert.equal(findOne(card, 'example-card-area').value, SAMPLE.blurb);
-
-  inputs[0].value = 'Odd number of b’s';
-  inputs[0].oninput();
+  const title = findOne(h.getElement('example-card'), 'example-card-title');
+  title.onfocus();
+  assert.ok(h.context.isEditingExampleCard(), 'a card being typed into never times out');
+  title.value = 'Odd number of b’s';
   assert.equal(h.context.App.meta.title, SAMPLE.title,
-    'typing has not touched the card yet — the draft is held aside so Cancel is free');
+    'typing has not touched the card — a commit per keystroke is an undo point per keystroke');
 
-  h.context.saveCardEdit();
+  title.onblur();
   assert.equal(h.context.App.meta.title, 'Odd number of b’s');
   assert.equal(h.context.App.meta.blurb, SAMPLE.blurb, 'the untouched fields came through');
   assert.equal(h.context.isEditingExampleCard(), false);
-  assert.match(deepText(h.getElement('example-card')), /Odd number of b’s/);
 });
 
-test('Cancel really cancels, down to the test words', () => {
+test('a local commit does not redraw the card out from under the pointer', () => {
   const h = createHarness();
   drawMachine(h);
   h.context.showExampleCard(SAMPLE);
-  h.context.editExampleCard();
 
+  // The node identity is the assertion: rebuilding the card on our own write
+  // destroys whatever the gesture that caused the write was standing on — the
+  // next chip in the row, or the field being tabbed out of.
   const card = h.getElement('example-card');
-  findAll(card, 'example-card-input')[0].value = 'wrong';
-  findAll(card, 'example-card-input')[0].oninput();
-  // The rows are copied, not aliased — mutating one must not reach App.meta.
-  findOne(card, 'example-card-drop').onclick();
+  const blurb = findOne(card, 'example-card-area');
+  const title = findOne(card, 'example-card-title');
+  title.onfocus();
+  title.value = 'Renamed';
+  title.onblur();
 
-  h.context.cancelCardEdit();
-  assert.equal(h.context.App.meta.title, SAMPLE.title);
-  assert.equal(h.context.App.meta.inputs.length, 2, 'the deleted row was only ever deleted in the draft');
+  assert.equal(findOne(h.getElement('example-card'), 'example-card-area'), blurb,
+    'the blurb field is the same node it was before the title was committed');
 });
 
-test('test words can be added, cycled through their verdicts and removed', () => {
+test('Escape puts a field back to what the card says', () => {
   const h = createHarness();
   drawMachine(h);
-  h.context.editExampleCard();
+  h.context.showExampleCard(SAMPLE);
+
+  const title = findOne(h.getElement('example-card'), 'example-card-title');
+  title.onfocus();
+  title.value = 'half-typed';
+  title.onkeydown({ key: 'Escape', stopPropagation() {} });
+
+  assert.equal(title.value, SAMPLE.title, 'the field reverted rather than the card closing');
+  assert.equal(h.context.App.meta.title, SAMPLE.title);
+});
+
+// ── Test words ────────────────────────────────────────────────────
+
+test('a word is added, typed, cycled and removed without leaving the card', () => {
+  const h = createHarness();
+  drawMachine(h);
+  h.context.toggleExampleCard();
   const card = () => h.getElement('example-card');
 
   findOne(card(), 'example-card-add').onclick();
-  let rows = findAll(card(), 'example-card-row');
-  assert.equal(rows.length, 1);
+  const chip = findOne(card(), 'example-chip');
+  assert.ok(chip.classList.contains('is-pending'),
+    'a new chip is DOM until it has been typed into — the + is not itself an edit');
+  assert.equal(h.context.App.meta, null);
 
-  const word = findOne(rows[0], 'example-card-word');
+  const word = findOne(chip, 'example-card-word');
   word.value = 'abba';
-  word.oninput();
+  word.onblur();
+  assert.deepEqual(h.context.App.meta.inputs, [{ w: 'abba', expect: 'accept' }]);
 
   // Three states, cycled in place: accept → reject → no verdict. A word worth
   // trying with nothing claimed about the outcome is a legitimate thing to
   // write down, so it is a stop on the cycle rather than an absence.
-  const verdict = () => findOne(findAll(card(), 'example-card-row')[0], 'example-card-expect');
-  assert.equal(verdict().textContent, 'accept');
-  verdict().onclick();
-  assert.equal(verdict().textContent, 'reject');
-  verdict().onclick();
-  assert.equal(verdict().textContent, 'no verdict');
-
-  findOne(card(), 'example-card-add').onclick();
-  assert.equal(findAll(card(), 'example-card-row').length, 2);
-  findOne(findAll(card(), 'example-card-row')[1], 'example-card-drop').onclick();
-  assert.equal(findAll(card(), 'example-card-row').length, 1);
-
-  const title = findAll(card(), 'example-card-input')[0];
-  title.value = 'Palindromes';
-  title.oninput();
-  h.context.saveCardEdit();
-
+  // One shape at three weights. A ✕ here was the same glyph as the remove
+  // button beside it, so a rejecting chip appeared to carry two close buttons
+  // and the verdict looked destructive; the colour carries accept-vs-reject,
+  // and the mark only has to carry claimed-vs-not.
+  const mark = () => findOne(findOne(card(), 'example-chip'), 'example-chip-expect');
+  assert.equal(mark().textContent, '●');
+  mark().onclick();
+  assert.equal(mark().textContent, '○');
+  assert.equal(h.context.App.meta.inputs[0].expect, 'reject');
+  mark().onclick();
+  assert.equal(mark().textContent, '·');
   assert.deepEqual(h.context.App.meta.inputs, [{ w: 'abba' }],
     'no verdict is stored as no verdict, not as an empty string');
+
+  findOne(findOne(card(), 'example-chip'), 'example-chip-drop').onclick();
+  assert.equal(h.context.App.meta, null, 'the last thing the card said is gone with it');
+});
+
+test('the empty word can be added, because a field whose placeholder is ε must accept ε', () => {
+  const h = createHarness();
+  drawMachine(h);
+  h.context.showExampleCard({ title: 'Named', inputs: [{ w: 'a', expect: 'accept' }] });
+
+  findOne(h.getElement('example-card'), 'example-card-add').onclick();
+  const pending = findAll(h.getElement('example-card'), 'example-chip')
+    .find(c => c.classList.contains('is-pending'));
+  // Left empty on purpose. The + used to drop an untouched chip, which made
+  // the empty word the one input the card could not be given with a pointer.
+  findOne(pending, 'example-card-word').onblur();
+
+  assert.deepEqual(h.context.App.meta.inputs, [
+    { w: 'a', expect: 'accept' }, { w: '', expect: 'accept' }
+  ]);
+  assert.equal(findOne(findAll(h.getElement('example-card'), 'example-chip')[1], 'example-chip-run')
+    .textContent, 'ε', 'and it is drawn as ε rather than as a blank pill');
+});
+
+test('a word is committed once, however it was committed', () => {
+  const h = createHarness();
+  drawMachine(h);
+  h.context.toggleExampleCard();
+  const card = () => h.getElement('example-card');
+
+  findOne(card(), 'example-card-add').onclick();
+  const pending = findOne(card(), 'example-chip');
+  const word = findOne(pending, 'example-card-word');
+  word.value = 'abba';
+
+  // ⏎ commits and redraws the row, which destroys this field — and a
+  // destroyed field that held focus fires blur on its way out, landing back in
+  // the commit. Every word added with the keyboard used to arrive twice.
+  word.onkeydown({ key: 'Enter', preventDefault() {} });
+  if (word.onblur) word.onblur();
+
+  assert.deepEqual(h.context.App.meta.inputs.map(s => s.w), ['abba'],
+    'one word typed is one word on the card');
+});
+
+test('Escape takes a new word back without adding it', () => {
+  const h = createHarness();
+  drawMachine(h);
+  h.context.showExampleCard({ title: 'Named', inputs: [{ w: 'a' }] });
+
+  findOne(h.getElement('example-card'), 'example-card-add').onclick();
+  const pending = findAll(h.getElement('example-card'), 'example-chip')
+    .find(c => c.classList.contains('is-pending'));
+  const word = findOne(pending, 'example-card-word');
+  word.value = 'never';
+  word.onkeydown({ key: 'Escape', stopPropagation() {} });
+  if (word.onblur) word.onblur();
+
+  assert.deepEqual(h.context.App.meta.inputs.map(s => s.w), ['a'],
+    'the gesture that discards a word is Escape, not a guess about intent');
+});
+
+test('clicking a word runs it, because that is what a card can do that a panel cannot', () => {
+  const h = createHarness();
+  drawMachine(h);
+  h.context.showExampleCard(SAMPLE);
+
+  const chips = findAll(h.getElement('example-card'), 'example-chip');
+  findOne(chips[1], 'example-chip-run').onclick();
+  assert.equal(h.getElement('sim-in').value, 'a',
+    'the run part still runs — editing the text is the deliberate gesture beside it');
 });
 
 test('emptying the fields is how a description is taken back', () => {
   const h = createHarness();
   drawMachine(h);
   h.context.showExampleCard(SAMPLE);
-  h.context.editExampleCard();
+  const card = () => h.getElement('example-card');
 
-  const card = h.getElement('example-card');
-  const title = findAll(card, 'example-card-input')[0];
+  const title = findOne(card(), 'example-card-title');
   title.value = '';
-  title.oninput();
-  const blurb = findOne(card, 'example-card-area');
+  title.onblur();
+  const blurb = findOne(card(), 'example-card-area');
   blurb.value = '';
-  blurb.oninput();
-  findAll(card, 'example-card-drop').forEach(b => b.onclick());
-  // Rows are removed by index against a re-rendered list, so drop the rest one
-  // at a time rather than trusting a single pass over a stale node list.
-  while (findAll(h.getElement('example-card'), 'example-card-drop').length) {
-    findAll(h.getElement('example-card'), 'example-card-drop')[0].onclick();
+  blurb.onblur();
+  while (findAll(card(), 'example-chip-drop').length) {
+    findAll(card(), 'example-chip-drop')[0].onclick();
   }
 
-  h.context.saveCardEdit();
   assert.equal(h.context.App.meta, null);
-  assert.equal(h.getElement('example-card').classList.contains('is-open'), false,
+  assert.equal(card().classList.contains('is-open'), false,
     'and the card folds away rather than sitting there empty');
 });
 
 // ── One undoable step, one dirty tab ──────────────────────────────
 
-test('saving a description is one Ctrl+Z, and Ctrl+Z brings the old one back', () => {
+test('rewording the card is one Ctrl+Z, and Ctrl+Z brings the old wording back', () => {
   const h = createHarness();
   h.context.initTabs();
   drawMachine(h);
   h.context.showExampleCard(SAMPLE);
 
   const depth = h.context.App.history.length;
-  h.context.editExampleCard();
-  const title = findAll(h.getElement('example-card'), 'example-card-input')[0];
+  const title = findOne(h.getElement('example-card'), 'example-card-title');
+  title.onfocus();
   title.value = 'Renamed';
-  title.oninput();
-  h.context.saveCardEdit();
+  title.onblur();
 
   assert.equal(h.context.App.history.length, depth + 1, 'one edit, one undo point');
   h.context.undo();
   assert.equal(h.context.App.meta.title, SAMPLE.title, 'the wording came back with it');
-  assert.match(deepText(h.getElement('example-card')), /Even number of a’s/,
-    'and the card redrew, because restoreSnapshot announces the change');
+  assert.equal(findOne(h.getElement('example-card'), 'example-card-title').value, SAMPLE.title,
+    'and the card redrew, because an undo is not one of this module’s own writes');
 
   h.context.redo();
   assert.equal(h.context.App.meta.title, 'Renamed');
 });
 
-test('a form opened and closed unchanged is not an edit', () => {
+test('a field looked at and left alone is not an edit', () => {
   const h = createHarness();
   h.context.initTabs();
   drawMachine(h);
@@ -346,12 +422,13 @@ test('a form opened and closed unchanged is not an edit', () => {
   h.context.markActiveWorkspaceSaved();
 
   const depth = h.context.App.history.length;
-  h.context.editExampleCard();
-  h.context.saveCardEdit();
+  const title = findOne(h.getElement('example-card'), 'example-card-title');
+  title.onfocus();
+  title.onblur();
 
   assert.equal(h.context.App.history.length, depth, 'no undo point for a no-op');
   assert.equal(h.context.Workspaces.find(w => w.id === h.context.activeWorkspaceId).dirty, false,
-    'and no unsaved-changes prompt for having looked at the form');
+    'and no unsaved-changes prompt for having put the caret in a field');
 });
 
 test('rewording the card dirties the tab, because the card is saved with it', () => {
@@ -361,14 +438,29 @@ test('rewording the card dirties the tab, because the card is saved with it', ()
   h.context.showExampleCard(SAMPLE);
   h.context.markActiveWorkspaceSaved();
 
-  h.context.editExampleCard();
-  const title = findAll(h.getElement('example-card'), 'example-card-input')[0];
+  const title = findOne(h.getElement('example-card'), 'example-card-title');
   title.value = 'Reworded';
-  title.oninput();
-  h.context.saveCardEdit();
+  title.onblur();
 
   assert.equal(h.context.Workspaces.find(w => w.id === h.context.activeWorkspaceId).dirty, true,
     'Change.META marks dirty for the same reason the camera does — it is persisted');
+});
+
+// ── The countdown ─────────────────────────────────────────────────
+
+test('how long the card waits is a setting, and 0 means it never folds away', () => {
+  const h = createHarness();
+  drawMachine(h);
+
+  h.context.App.config.cardAutoHideMs = 0;
+  h.context.showExampleCard(SAMPLE);
+  assert.equal(h.getElement('example-card').classList.contains('is-open'), true);
+  assert.equal(h.context.getEditorSettingsData().cardAutoHideMs, 0,
+    'and it rides in the settings file with every other preference');
+
+  // The API key guard, at the point a new key was added to what is written.
+  h.context.App.config.cardAutoHideMs = h.context.CARD_AUTO_HIDE_MS;
+  assert.equal(h.context.getEditorSettingsData().cardAutoHideMs, 13000);
 });
 
 // ── Not being clobbered ───────────────────────────────────────────
@@ -403,19 +495,19 @@ test('a machine loaded over another takes its description with it', () => {
     'the previous machine’s card is not left behind the fade to be found on the next open');
 });
 
-test('an abandoned draft does not survive the card closing', () => {
+test('nothing half-typed survives the card closing', () => {
   const h = createHarness();
   drawMachine(h);
-  h.context.editExampleCard();
-  const title = findAll(h.getElement('example-card'), 'example-card-input')[0];
+  h.context.toggleExampleCard();
+  const title = findOne(h.getElement('example-card'), 'example-card-title');
+  title.onfocus();
   title.value = 'half-typed';
-  title.oninput();
 
   h.context.hideExampleCard();
   assert.equal(h.context.isEditingExampleCard(), false);
-  assert.equal(h.context.App.meta, null);
+  assert.equal(h.context.App.meta, null, 'a field never left is a field never committed');
 
   h.context.toggleExampleCard();
-  const restarted = findAll(h.getElement('example-card'), 'example-card-input')[0];
-  assert.equal(restarted.value, '', 'the editor reopens blank rather than mid-sentence');
+  assert.equal(findOne(h.getElement('example-card'), 'example-card-title').value, '',
+    'and the card reopens blank rather than mid-sentence');
 });

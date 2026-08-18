@@ -798,15 +798,19 @@ export function loadExampleFile(file) {
 // ══════════════════════════════════════════════════════════════════
 //  THE INFO CARD
 // ══════════════════════════════════════════════════════════════════
+//  THE INFO CARD
+// ══════════════════════════════════════════════════════════════════
 //  What the machine on the canvas is, floating over the canvas itself. It
 //  shows itself briefly after a load or a StateMate run and then folds back
 //  into the small button at the top-left corner, which is the way back to it.
 //
 //  Two rules make the auto-hide unobtrusive rather than annoying. A card the
 //  *reader* opened never times out — only one the app opened on their behalf.
-//  And the countdown stops the moment the pointer is over the card, because
-//  the one certain sign someone is still reading is that they are pointing at
-//  it. Both are cheap; a card that vanishes mid-sentence is not.
+//  And the countdown stops the moment the pointer is over the card or the
+//  caret is in it, because the one certain sign someone is still reading is
+//  that they are pointing at it. How long it waits is App.config.cardAutoHideMs
+//  (0 = never), because "it vanished while I was reading" and "it sat there in
+//  my way" are both real complaints and neither is a bug.
 //
 //  It is also *writable*, which is why the text lives in `App.meta` rather
 //  than in a module-scoped variable here. The card used to be readable only,
@@ -819,29 +823,79 @@ export function loadExampleFile(file) {
 //  to the .json and the embedded PNG and the share link, and serializeState
 //  puts it on the undo stack beside the diagram it describes.
 //
-//  The editor is inline rather than a modal. A dialog would cover the machine
-//  the description is about, and every field here is one line of text or one
-//  word — this is annotation, not a form.
+//  ── There is one card, and it is the editor ──
+//
+//  The card used to have two states: a read view, and an edit *mode* reached
+//  through a ✎ and left through Save or Cancel. There is now one view whose
+//  fields happen to be writable — click the title and the caret is in the
+//  title. That is one less thing to discover, but it also moves where the
+//  commit boundary is, and the three rules that keep it honest are:
+//
+//    * **A field commits when you leave it**, on ⏎ or on blur, and never per
+//      keystroke — otherwise every letter is an undo point. Escape puts the
+//      field back to what App.meta says and gives up focus, which is what
+//      Cancel used to be, at the granularity of the thing you were editing.
+//    * **A commit of ours does not redraw the card.** `localMetaWrite` is up
+//      while our own `commit()` runs, so the Change.META subscriber stands
+//      down: the DOM is already what the write says, and rebuilding it under
+//      a pointer that is mid-gesture (cycling a verdict, clicking the next
+//      chip) destroys the node the gesture is on. Every other writer of
+//      App.meta — undo, a load, a tab switch — still gets the full redraw.
+//    * **A word being typed for the first time is not in App.meta yet.** The
+//      chip the + button makes is `pending`: it lives in the DOM, commits on
+//      ⏎ or on blur, and removes itself if it is abandoned empty. Committing
+//      on the click instead would put a bare ε on the card and cost an undo
+//      point to take back, and would make "add a word" two steps of history
+//      for one thing the reader did.
+//
+//  A chip still *runs* its word on click — that is the one thing the card can
+//  do that no panel can, and losing it to an edit gesture would be a poor
+//  trade. Editing a chip's text is therefore the deliberate gesture beside it:
+//  double-click, or F2 from the keyboard.
 
-const CARD_AUTO_HIDE_MS = 13000;
-// Caps, not validation: the card is 310px wide and floats over the diagram,
+// Default countdown. App.config.cardAutoHideMs is what actually runs; this is
+// what an imported config predating the setting reads as.
+export const CARD_AUTO_HIDE_MS = 13000;
+// Caps, not validation: the card is ~320px wide and floats over the diagram,
 // so the limit is what still reads as a card rather than what fits in memory.
 export const CARD_TITLE_MAX = 70;
 export const CARD_BLURB_MAX = 400;
 export const CARD_WORD_MAX = 60;
 export const CARD_WORDS_MAX = 12;
 
-// The verdict a test word carries, cycled by the button beside it. The empty
+// The verdict a test word carries, cycled by the mark on its chip. The empty
 // string is a word worth trying with nothing claimed about the outcome — the
 // honest state for "watch what happens here", and the one a chip typed into a
 // blank row starts from if the author does not commit to an answer.
 const EXPECT_CYCLE = ['accept', 'reject', ''];
+// A filled dot, an open ring, and a faint dot — one shape at three weights,
+// which is what makes the three states read as one control at a glance. They
+// were a ✓ and an ✕ until the ✕ turned out to be the same glyph as the remove
+// button two pixels away: a rejecting chip appeared to carry two close
+// buttons, and the one that meant "expected to reject" looked destructive.
+// The colour already carries accept-vs-reject; the mark only has to carry
+// *claimed* vs *not claimed*.
+const EXPECT_MARK = { accept: '●', reject: '○', '': '·' };
+const EXPECT_TIP = {
+  accept: 'Expected to be accepted — click to change',
+  reject: 'Expected to be rejected — click to change',
+  '': 'No verdict claimed — click to change'
+};
 
 let cardTimer = null;
-// The working copy while the editor is open, null otherwise. Edits are held
-// here and not written to App.meta until Save, so Cancel is free and an
-// abandoned edit never reaches the undo stack or dirties the tab.
-let cardDraft = null;
+// The card's own nodes, set as it is drawn: `{title, blurb, chips, add}`, with
+// each chip carrying `__parts` of its own. Reached this way rather than through
+// querySelector for the same reason render.js does it — the node is already in
+// hand at the one place that made it, and a selector is a second description of
+// the DOM that can drift from the first.
+let cardParts = {};
+// Up while this module's own commit() runs. The card's DOM is already what the
+// write says, so redrawing it would only destroy the node the gesture that
+// caused the write is standing on.
+let localMetaWrite = false;
+// Which field the caret is in, or null. Read by isEditingExampleCard, and the
+// reason a card being typed into never times out.
+let cardFocusField = null;
 
 function clearCardTimer() {
   if (cardTimer !== null) { clearTimeout(cardTimer); cardTimer = null; }
@@ -876,7 +930,7 @@ export function normalizeCardMeta(meta) {
 
 /** Is there a description to read, or a machine that could have one? */
 function cardOffered() {
-  return !!App.meta || !!cardDraft || App.states.length > 0;
+  return !!App.meta || App.states.length > 0;
 }
 
 function cardIsOpen() {
@@ -884,20 +938,23 @@ function cardIsOpen() {
   return !!card && card.classList.contains('is-open');
 }
 
-/** Collapse the card back to its button, discarding an open draft. */
+/** How long an app-opened card waits before folding away; 0 never does. */
+function cardAutoHideMs() {
+  const ms = App.config?.cardAutoHideMs;
+  return Number.isFinite(ms) ? Math.max(0, ms) : CARD_AUTO_HIDE_MS;
+}
+
+/** Collapse the card back to its button, dropping anything half-typed. */
 export function hideExampleCard() {
   clearCardTimer();
-  const hadDraft = !!cardDraft;
-  cardDraft = null;
+  cardFocusField = null;
   const card = $('example-card');
   const btn = $('canvas-info-btn');
   if (card) card.classList.remove('is-open');
-  // The draft is gone, so the card is back to whatever App.meta says. Redraw
-  // it now rather than leaving a half-typed form behind the fade, to be found
-  // still sitting there on the next open.
-  if (card && hadDraft) renderExampleCard();
+  // Redraw from App.meta rather than leaving a half-typed field behind the
+  // fade, to be found still sitting there on the next open.
+  if (card) renderExampleCard();
   if (card) card.classList.remove('is-open');
-  if (card) card.classList.remove('is-editing');
   if (btn) {
     btn.hidden = !cardOffered();
     btn.setAttribute('aria-expanded', 'false');
@@ -907,10 +964,11 @@ export function hideExampleCard() {
 
 /**
  * Open the card. With nothing written about the machine yet this opens the
- * editor instead of an empty card — the button is only offered at all when
- * there is either something to read or something to describe.
+ * same card with its fields empty and the caret in the title — the button is
+ * only offered at all when there is either something to read or something to
+ * describe.
  *
- * @param {boolean} [opts.autoHide] close again after a few seconds
+ * @param {boolean} [opts.autoHide] close again after App.config.cardAutoHideMs
  */
 export function openExampleCard({ autoHide = false } = {}) {
   if (!cardOffered()) return;
@@ -918,16 +976,19 @@ export function openExampleCard({ autoHide = false } = {}) {
   const card = $('example-card');
   const btn = $('canvas-info-btn');
   if (!card) return;
-  if (!App.meta && !cardDraft) cardDraft = blankDraft();
   card.classList.add('is-open');
   if (btn) {
     btn.hidden = true;
     btn.setAttribute('aria-expanded', 'true');
   }
   renderExampleCard();
-  // Never against a form the reader is typing into.
-  if (autoHide && !cardDraft) {
-    cardTimer = setTimeout(hideExampleCard, CARD_AUTO_HIDE_MS);
+  // An undescribed machine opens on the one field that has to be filled in
+  // first; a described one opens as something to read, caret nowhere.
+  if (!App.meta) focusCardField('title');
+
+  const wait = cardAutoHideMs();
+  if (autoHide && wait > 0) {
+    cardTimer = setTimeout(hideExampleCard, wait);
     // Node returns a Timeout object that keeps the process alive; a browser
     // returns a number and has no unref. Without this every test that draws a
     // card holds the runner open for the length of the countdown.
@@ -940,86 +1001,96 @@ export function toggleExampleCard() {
   else openExampleCard();
 }
 
+/**
+ * Open the card with the caret already in it — the canvas context menu's way
+ * in, and the answer to "how do I describe a machine I drew myself?".
+ *
+ * The (i) button has always offered this, but a 24px circle in a corner is a
+ * way *back* to something already read, not somewhere anyone looks to start
+ * writing. Right-clicking the canvas is.
+ */
+export function ctxCanvasDescribe() {
+  hideCanvasContextMenu();
+  openExampleCard();
+  focusCardField('title');
+}
+
 export function exampleCardMeta() {
   return App.meta;
 }
 
-/** Is the editor open? For the tests, and for anyone asking before a redraw. */
+/** Is the caret in one of the card's fields? For the tests, and for the timer. */
 export function isEditingExampleCard() {
-  return !!cardDraft;
+  return !!cardFocusField;
 }
 
-/** Test seam — the timer and an open draft must not cross tests. */
+/** Test seam — the timer and a stale focus must not cross tests. */
 export function _resetExampleCardForTests() {
   clearCardTimer();
-  cardDraft = null;
+  cardFocusField = null;
+  localMetaWrite = false;
+  cardParts = {};
 }
 
-// ── Editing ───────────────────────────────────────────────────────
+// ── Writing ───────────────────────────────────────────────────────
 
-function blankDraft() {
-  return { title: '', blurb: '', inputs: [] };
-}
-
-/** A working copy of App.meta, deep enough that Cancel really cancels. */
-function draftFrom(meta) {
-  if (!meta) return blankDraft();
+/** A mutable copy of what the card currently says, safe to edit in place. */
+function metaDraft() {
+  const m = App.meta;
   return {
-    title: meta.title || '',
-    blurb: meta.blurb || '',
+    title: m?.title || '',
+    blurb: m?.blurb || '',
     // Rows keep whatever else they arrived with — a StateMate result labels
     // its words with the transducer output it predicted, and rewording the
     // blurb is no reason to throw that away.
-    inputs: (meta.inputs || []).map(s => ({ ...s }))
+    inputs: (m?.inputs || []).map(s => ({ ...s }))
   };
 }
 
-/** Open the editor over the card, seeded with what it currently says. */
-export function editExampleCard() {
-  clearCardTimer();
-  cardDraft = draftFrom(App.meta);
-  const card = $('example-card');
-  if (card) card.classList.add('is-open');
-  const btn = $('canvas-info-btn');
-  if (btn) { btn.hidden = true; btn.setAttribute('aria-expanded', 'true'); }
-  renderExampleCard();
-  const first = card?.querySelector?.('.example-card-input');
-  if (first && first.focus) first.focus();
+/**
+ * Write an edited draft back as one undoable step, and answer whether anything
+ * actually changed. A field opened and left alone is not an edit: it spends no
+ * undo point and does not dirty the tab.
+ *
+ * The Change.META subscriber stands down for the duration — see the header.
+ */
+function writeCardMeta(draft) {
+  const next = normalizeCardMeta(draft);
+  if (JSON.stringify(next ?? null) === JSON.stringify(App.meta ?? null)) return false;
+  localMetaWrite = true;
+  try {
+    commit(() => { App.meta = next; }, Change.META);
+  } finally {
+    localMetaWrite = false;
+  }
+  return true;
 }
 
-/** Abandon the edit and go back to what the card said before it. */
-export function cancelCardEdit() {
-  cardDraft = null;
-  renderExampleCard();
-  // Nothing was written, so a card that had nothing to say still has nothing
-  // to say — fold it away rather than leave an empty shell open.
-  if (!App.meta) hideExampleCard();
+/** Commit one field of the card, by name. */
+function setCardField(name, value) {
+  const draft = metaDraft();
+  draft[name] = value;
+  return writeCardMeta(draft);
+}
+
+/** Commit an edit to the word list, given as a function over the rows. */
+function editCardWords(fn) {
+  const draft = metaDraft();
+  fn(draft.inputs);
+  return writeCardMeta(draft);
+}
+
+function cardWords() {
+  return Array.isArray(App.meta?.inputs) ? App.meta.inputs : [];
 }
 
 /**
- * Write the draft to App.meta as one undoable step.
- *
- * This is the only path that changes what the card says by hand, so it is the
- * only one that snapshots. Saving an empty form clears the card deliberately:
- * emptying the fields is how the author says "never mind".
+ * The card cleared itself — every field emptied — so there is nothing left to
+ * read. Fold it away rather than leave an empty shell floating over the
+ * diagram; the (i) button is still there to start again from.
  */
-export function saveCardEdit() {
-  if (!cardDraft) return;
-  const next = normalizeCardMeta(cardDraft);
-  const unchanged = JSON.stringify(next ?? null) === JSON.stringify(App.meta ?? null);
-  cardDraft = null;
-
-  if (unchanged) {
-    // A form opened and closed is not an edit. Redraw out of the editor
-    // without spending an undo point or dirtying the tab for it.
-    renderExampleCard();
-    if (!App.meta) hideExampleCard();
-    return;
-  }
-
-  commit(() => { App.meta = next; }, Change.META);
+function foldIfEmpty() {
   if (!App.meta) hideExampleCard();
-  showStatus(next ? 'Description saved' : 'Description cleared');
 }
 
 // ── Rendering ─────────────────────────────────────────────────────
@@ -1040,11 +1111,45 @@ function cardButton(cls, label, tip, onClick) {
   return b;
 }
 
-function field(labelText, control) {
-  const wrap = elem('label', 'example-card-field');
-  wrap.append(elem('span', 'example-card-flabel', labelText));
-  wrap.append(control);
-  return wrap;
+/** Grow a textarea to its content, so a blurb is never a two-line window. */
+function autoGrow(area) {
+  if (!area || !area.style || typeof area.scrollHeight !== 'number') return;
+  area.style.height = 'auto';
+  area.style.height = `${Math.min(220, area.scrollHeight)}px`;
+}
+
+/** Put the caret in a named field, if the card is showing one. */
+function focusCardField(name) {
+  const node = cardParts[name];
+  if (node && node.focus) node.focus();
+}
+
+/**
+ * Wire a seamless field: focus bookkeeping, commit on blur, and Escape to put
+ * it back. `read` is what the field should say according to App.meta, so
+ * Escape and the commit-was-a-no-op case share one source of truth.
+ */
+function wireField(node, name, { read, write, onEnter }) {
+  node.dataset.field = name;
+  node.onfocus = () => { cardFocusField = name; clearCardTimer(); };
+  node.onblur = () => {
+    if (cardFocusField === name) cardFocusField = null;
+    write(node.value);
+  };
+  node.onkeydown = e => {
+    if (e.key === 'Escape') {
+      // Handled here rather than by the card's own listener so that a field
+      // reverts to its saved text; the listener below only closes the card.
+      e.stopPropagation();
+      node.value = read();
+      if (node.blur) node.blur();
+      return;
+    }
+    if (e.key === 'Enter' && onEnter) {
+      e.preventDefault();
+      onEnter(node);
+    }
+  };
 }
 
 // Wired once, here rather than through an on* attribute, so the card adds no
@@ -1058,169 +1163,331 @@ function wireCardChrome(card) {
   if (card && !card.dataset.wired) {
     card.dataset.wired = '1';
     card.addEventListener('pointerenter', clearCardTimer);
-    // Escape backs out of the editor from any field, without touching
-    // App.meta. The card is not a modal, so modal.js never sees this key and
-    // the chain that dismisses dialogs is not involved.
+    // Escape from the card itself — not from a field, which reverts instead
+    // and stops the event — puts the card away. The card is not a modal, so
+    // modal.js never sees this key and the dialog chain is not involved.
     card.addEventListener('keydown', e => {
-      if (e.key !== 'Escape' || !cardDraft) return;
+      if (e.key !== 'Escape') return;
       e.stopPropagation();
-      cancelCardEdit();
+      hideExampleCard();
     });
   }
 }
 
-function renderReadCard(card, meta) {
+function renderHead(card, meta) {
   const head = elem('div', 'example-card-head');
-  head.append(elem('span', 'example-card-title', meta.title || 'This machine'));
+
+  const title = elem('input', 'example-card-input example-card-title');
+  title.type = 'text';
+  title.value = meta.title || '';
+  title.maxLength = CARD_TITLE_MAX;
+  title.placeholder = 'Name this machine';
+  title.setAttribute('aria-label', 'Machine name');
+  wireField(title, 'title', {
+    read: () => App.meta?.title || '',
+    write: value => { if (setCardField('title', value)) foldIfEmpty(); },
+    // ⏎ in a one-line field means "done", the way it does in the tab rename
+    // and the state rename. The blurb below is the exception, because a
+    // description is allowed more than one line.
+    onEnter: node => node.blur && node.blur()
+  });
+  head.append(title);
+  cardParts.title = title;
+
   const tools = elem('span', 'example-card-tools');
-  tools.append(cardButton('example-card-btn', '✎', 'Edit this description', editExampleCard));
   tools.append(cardButton('example-card-close', '×', 'Dismiss', hideExampleCard));
   head.append(tools);
   card.appendChild(head);
-
-  if (meta.blurb) card.appendChild(elem('div', 'example-card-blurb', meta.blurb));
-
-  if (Array.isArray(meta.inputs) && meta.inputs.length) {
-    const row = elem('div', 'example-card-chips');
-    meta.inputs.forEach(sample => {
-      const tone = sample.expect === 'reject' ? ' chip-rej' : (sample.expect === 'accept' ? ' chip-acc' : '');
-      const chip = elem('button', 'example-chip' + tone);
-      chip.type = 'button';
-      // The empty word is a test like any other, and drawn as "" it is a blank
-      // pill that reads as a rendering fault. Show the symbol; run the real
-      // (empty) string.
-      chip.textContent = sample.w === '' || sample.w === undefined
-        ? (App.config?.sym?.eps || 'ε')
-        : sample.w;
-      const hint = [sample.label, sample.expect || (sample.out !== undefined ? `→ ${sample.out}` : '')]
-        .filter(Boolean).join(' — ');
-      if (hint) chip.dataset.tip = hint;
-      chip.onclick = () => {
-        const inp = $('sim-in');
-        if (inp) inp.value = sample.w;
-        runSim();
-      };
-      row.appendChild(chip);
-    });
-    card.appendChild(row);
-  }
 }
 
-function renderEditCard(card, draft) {
-  const head = elem('div', 'example-card-head');
-  head.append(elem('span', 'example-card-title', App.meta ? 'Edit description' : 'Describe this machine'));
-  const tools = elem('span', 'example-card-tools');
-  tools.append(cardButton('example-card-close', '×', 'Cancel', cancelCardEdit));
-  head.append(tools);
-  card.appendChild(head);
-
-  const title = elem('input', 'example-card-input');
-  title.type = 'text';
-  title.value = draft.title;
-  title.maxLength = CARD_TITLE_MAX;
-  title.placeholder = 'Even number of a’s';
-  title.oninput = () => { draft.title = title.value; };
-  // ⏎ in a one-line field means "done", the way it does in the tab rename and
-  // the state rename. The textarea below is the exception, because a blurb is
-  // allowed more than one line.
-  title.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); saveCardEdit(); } };
-  card.appendChild(field('Name', title));
-
+function renderBlurb(card, meta) {
   const blurb = elem('textarea', 'example-card-area');
-  blurb.value = draft.blurb;
+  blurb.value = meta.blurb || '';
   blurb.maxLength = CARD_BLURB_MAX;
-  blurb.rows = 3;
+  blurb.rows = 2;
   blurb.placeholder = 'What does it accept, and how?';
-  blurb.oninput = () => { draft.blurb = blurb.value; };
-  card.appendChild(field('What it does', blurb));
-
-  const words = elem('div', 'example-card-words');
-  words.append(elem('span', 'example-card-flabel', 'Test words'));
-  const rows = elem('div', 'example-card-rows');
-
-  draft.inputs.forEach((sample, i) => {
-    const row = elem('div', 'example-card-row');
-
-    const word = elem('input', 'example-card-input example-card-word');
-    word.type = 'text';
-    word.value = sample.w ?? '';
-    word.maxLength = CARD_WORD_MAX;
-    // The placeholder is ε because a row left blank *is* the empty word — the
-    // chip will read ε too, so the field shows what it is about to become
-    // rather than the usual "type here".
-    word.placeholder = App.config?.sym?.eps || 'ε';
-    word.oninput = () => { sample.w = word.value; };
-    word.onkeydown = e => {
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
-      // ⏎ on the last row adds another, which is how a list of words gets
-      // typed; anywhere else it saves, because there is nothing to add.
-      if (i === draft.inputs.length - 1 && draft.inputs.length < CARD_WORDS_MAX) addCardWord();
-      else saveCardEdit();
-    };
-    row.append(word);
-
-    const expect = sample.expect === 'accept' || sample.expect === 'reject' ? sample.expect : '';
-    const tone = expect === 'accept' ? ' chip-acc' : (expect === 'reject' ? ' chip-rej' : '');
-    row.append(cardButton(
-      'example-card-expect' + tone,
-      expect || 'no verdict',
-      'What should happen — click to cycle',
-      () => {
-        sample.expect = EXPECT_CYCLE[(EXPECT_CYCLE.indexOf(expect) + 1) % EXPECT_CYCLE.length];
-        renderExampleCard();
-      }
-    ));
-
-    row.append(cardButton('example-card-drop', '×', 'Remove this word', () => {
-      draft.inputs.splice(i, 1);
-      renderExampleCard();
-    }));
-
-    rows.append(row);
+  blurb.setAttribute('aria-label', 'What this machine does');
+  wireField(blurb, 'blurb', {
+    read: () => App.meta?.blurb || '',
+    write: value => { if (setCardField('blurb', value)) foldIfEmpty(); }
   });
-
-  words.append(rows);
-  if (draft.inputs.length < CARD_WORDS_MAX) {
-    words.append(cardButton('example-card-add', '+ Add word', 'Add a test word', addCardWord));
-  }
-  card.appendChild(words);
-
-  const actions = elem('div', 'example-card-actions');
-  actions.append(cardButton('example-card-cancel', 'Cancel', 'Discard these changes', cancelCardEdit));
-  actions.append(cardButton('example-card-save', 'Save', 'Save this description', saveCardEdit));
-  card.appendChild(actions);
+  blurb.oninput = () => autoGrow(blurb);
+  card.appendChild(blurb);
+  cardParts.blurb = blurb;
+  autoGrow(blurb);
 }
 
-function addCardWord() {
-  if (!cardDraft || cardDraft.inputs.length >= CARD_WORDS_MAX) return;
-  cardDraft.inputs.push({ w: '', expect: 'accept' });
-  renderExampleCard();
-  const fields = $('example-card')?.querySelectorAll?.('.example-card-word');
-  const last = fields && fields[fields.length - 1];
-  if (last && last.focus) last.focus();
+/** Run a word on the canvas — the one thing the card does that no panel does. */
+function runCardWord(word) {
+  const inp = $('sim-in');
+  if (inp) inp.value = word;
+  runSim();
 }
 
 /**
- * Draw the card from App.meta — or from the open draft, which wins, because
- * that is what the reader is typing into. Subscribed to Change.META, so
- * everything that writes App.meta and announces it lands here: an undo, a tab
- * switch, a loaded file, a StateMate result.
+ * One test word: a chip that runs on click, with the verdict as a mark you can
+ * cycle and a × that only shows itself when the chip is under the pointer.
+ *
+ * A pending chip is one the + button just made. It is not in App.meta yet, so
+ * its index is one past the end and its commit appends; abandoning it empty
+ * removes it and costs nothing.
+ */
+function chipNode(sample, i, { pending = false } = {}) {
+  const expect = sample.expect === 'accept' || sample.expect === 'reject' ? sample.expect : '';
+  const chip = elem('span', 'example-chip');
+  // Through classList rather than baked into the class string, because
+  // cycleChipVerdict takes them off again the same way — one node, one place
+  // its state is written from.
+  if (expect === 'accept') chip.classList.add('chip-acc');
+  if (expect === 'reject') chip.classList.add('chip-rej');
+  if (pending) chip.classList.add('is-pending');
+  chip.dataset.i = String(i);
+  chip.dataset.expect = expect;
+
+  const run = elem('button', 'example-chip-run');
+  run.type = 'button';
+  // The empty word is a test like any other, and drawn as "" it is a blank
+  // pill that reads as a rendering fault. Show the symbol; run the real
+  // (empty) string.
+  const word = sample.w === undefined || sample.w === null ? '' : String(sample.w);
+  run.textContent = word === '' ? (App.config?.sym?.eps || 'ε') : word;
+  const hint = [sample.label, expect || (sample.out !== undefined ? `→ ${sample.out}` : '')]
+    .filter(Boolean).join(' — ');
+  run.dataset.tip = hint ? `${hint} · double-click to edit` : 'Run this word · double-click to edit';
+  run.setAttribute('aria-label', `Run ${word === '' ? 'the empty word' : word}`);
+  run.onclick = () => runCardWord(word);
+  run.ondblclick = e => { e.preventDefault(); editChipWord(chip); };
+  // The rename gesture reachable without a pointer. F2 is what renames things
+  // everywhere else a list of short names is edited in place.
+  run.onkeydown = e => { if (e.key === 'F2') { e.preventDefault(); editChipWord(chip); } };
+  chip.append(run);
+
+  const mark = cardButton('example-chip-expect', EXPECT_MARK[expect], EXPECT_TIP[expect],
+    () => cycleChipVerdict(chip));
+  chip.append(mark);
+
+  const drop = cardButton('example-chip-drop', '×', 'Remove this word', () => dropChip(chip));
+  chip.append(drop);
+  chip.__parts = { run, mark, drop, word: null };
+  return chip;
+}
+
+/** Swap a chip's word for an input, in place. */
+function editChipWord(chip) {
+  if (!chip || !chip.__parts || chip.__parts.word) return;
+  const run = chip.__parts.run;
+  const i = Number(chip.dataset.i);
+  const pending = chip.classList.contains('is-pending');
+  const current = pending ? '' : String(cardWords()[i]?.w ?? '');
+
+  const input = elem('input', 'example-card-input example-card-word');
+  input.type = 'text';
+  input.value = current;
+  input.maxLength = CARD_WORD_MAX;
+  // The placeholder is ε because a field left blank *is* the empty word — the
+  // chip will read ε too, so it shows what it is about to become rather than
+  // the usual "type here".
+  input.placeholder = App.config?.sym?.eps || 'ε';
+  input.setAttribute('aria-label', 'Test word');
+  input.dataset.field = `word-${i}`;
+  input.onfocus = () => { cardFocusField = `word-${i}`; clearCardTimer(); };
+  input.oninput = () => sizeWordInput(input);
+  input.onblur = () => {
+    if (cardFocusField === `word-${i}`) cardFocusField = null;
+    commitChipWord(chip, input.value);
+  };
+  input.onkeydown = e => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      // Escape is the way to take a word back: a new one leaves nothing
+      // behind, an edited one goes back to what it said.
+      if (pending) removePendingChip(chip);
+      else redrawChips();
+      return;
+    }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    // ⏎ commits, and on the last chip offers another — which is how a list of
+    // words gets typed.
+    const wasLast = pending || i === cardWords().length - 1;
+    commitChipWord(chip, input.value);
+    if (wasLast && cardWords().length < CARD_WORDS_MAX) addCardWord();
+  };
+
+  chip.insertBefore(input, run || null);
+  if (run && run.remove) run.remove();
+  chip.__parts.run = null;
+  chip.__parts.word = input;
+  sizeWordInput(input);
+  if (input.focus) input.focus();
+  if (input.select) input.select();
+  repositionCanvasInfo();
+}
+
+// The field is as wide as what is in it, so a chip being edited stays a chip
+// rather than becoming a text box the width of the card.
+function sizeWordInput(input) {
+  if (!input || !input.style) return;
+  const len = Math.max(1, String(input.value || input.placeholder || '').length);
+  input.style.width = `${Math.min(22, len + 1)}ch`;
+}
+
+/**
+ * Write a chip's word back, exactly once.
+ *
+ * **Once** is the whole of the first bug this guards. Committing redraws the
+ * row, which destroys the field being typed into — and a destroyed field that
+ * had focus fires `blur` on its way out, which lands back here. So ⏎ committed
+ * the word and then its own blur committed it a second time, and a pending
+ * chip appends: every word added with the keyboard arrived twice.
+ *
+ * **The empty word is a word.** A pending chip used to be dropped on blur
+ * unless it had been typed into, on the theory that a + clicked by accident
+ * should leave nothing behind — but the field a + opens is one whose
+ * placeholder is ε, and ε is a legitimate test. That rule made the empty word
+ * the one input the card could not be given with a pointer at all. The + now
+ * always adds a word; Escape and the × are how one is taken back, which is a
+ * gesture rather than a guess about intent.
+ */
+function commitChipWord(chip, value) {
+  if (!chip || chip.dataset.committed === '1') return;
+  chip.dataset.committed = '1';
+  // Belt and braces for the same re-entry: the node is about to be discarded,
+  // and a discarded field must not have anything left to say.
+  if (chip.__parts?.word) chip.__parts.word.onblur = null;
+
+  if (chip.classList.contains('is-pending')) {
+    const expect = chip.dataset.expect || '';
+    editCardWords(rows => {
+      if (rows.length < CARD_WORDS_MAX) rows.push(expect ? { w: value, expect } : { w: value });
+    });
+  } else {
+    const i = Number(chip.dataset.i);
+    editCardWords(rows => { if (rows[i]) rows[i].w = value; });
+  }
+  redrawChips();
+  foldIfEmpty();
+}
+
+function cycleChipVerdict(chip) {
+  const now = chip.dataset.expect || '';
+  const next = EXPECT_CYCLE[(EXPECT_CYCLE.indexOf(now) + 1) % EXPECT_CYCLE.length];
+  chip.dataset.expect = next;
+  chip.classList.remove('chip-acc', 'chip-rej');
+  if (next === 'accept') chip.classList.add('chip-acc');
+  if (next === 'reject') chip.classList.add('chip-rej');
+  const mark = chip.__parts?.mark;
+  if (mark) {
+    mark.textContent = EXPECT_MARK[next];
+    mark.dataset.tip = EXPECT_TIP[next];
+    mark.setAttribute('aria-label', EXPECT_TIP[next]);
+  }
+  // A pending chip has nothing to write to yet; its verdict rides on the node
+  // until the word beside it is committed.
+  if (chip.classList.contains('is-pending')) return;
+  const i = Number(chip.dataset.i);
+  editCardWords(rows => {
+    if (!rows[i]) return;
+    if (next) rows[i].expect = next;
+    else delete rows[i].expect;
+  });
+}
+
+function dropChip(chip) {
+  if (chip.classList.contains('is-pending')) { removePendingChip(chip); return; }
+  const i = Number(chip.dataset.i);
+  editCardWords(rows => rows.splice(i, 1));
+  redrawChips();
+  foldIfEmpty();
+}
+
+function removePendingChip(chip) {
+  // Removing a node that holds focus fires its blur, which would otherwise
+  // land in commitChipWord and add the word this is discarding — the same
+  // re-entry the commit guard is about, arriving from the other direction.
+  chip.dataset.committed = '1';
+  if (chip.__parts?.word) chip.__parts.word.onblur = null;
+  if (chip.parentNode && chip.parentNode.removeChild) chip.parentNode.removeChild(chip);
+  if (cardParts.pending === chip) cardParts.pending = null;
+  cardFocusField = null;
+  repositionCanvasInfo();
+}
+
+/** Add a word: a chip that is not in App.meta until it has been typed into. */
+export function addCardWord() {
+  const row = cardParts.chips;
+  if (!row || cardParts.pending) return;
+  if (cardWords().length >= CARD_WORDS_MAX) return;
+  const chip = chipNode({ w: '', expect: 'accept' }, cardWords().length, { pending: true });
+  cardParts.pending = chip;
+  row.insertBefore(chip, cardParts.add || null);
+  editChipWord(chip);
+}
+
+/**
+ * Redraw the word row only. Rows are addressed by index, so a commit that
+ * changes their number has to renumber the chips — but the fields above are
+ * left alone, which is what lets a word be edited without the caret jumping
+ * out of the blurb.
+ */
+function redrawChips() {
+  const row = cardParts.chips;
+  if (!row) return;
+  // Any field in the row is about to be discarded, and a discarded field that
+  // held focus fires blur on the way out. Nothing it says then is wanted: the
+  // write it would report has either just happened or has just been undone.
+  (row.children || []).forEach(chip => {
+    if (chip.dataset) chip.dataset.committed = '1';
+    if (chip.__parts?.word) chip.__parts.word.onblur = null;
+  });
+  row.innerHTML = '';
+  fillChips(row);
+  repositionCanvasInfo();
+}
+
+function fillChips(row) {
+  cardParts.pending = null;
+  cardParts.add = null;
+  cardWords().forEach((sample, i) => row.append(chipNode(sample, i)));
+  if (cardWords().length < CARD_WORDS_MAX) {
+    cardParts.add = cardButton('example-card-add', '+', 'Add a test word', addCardWord);
+    row.append(cardParts.add);
+  }
+}
+
+function renderChips(card) {
+  const row = elem('div', 'example-card-chips');
+  cardParts.chips = row;
+  fillChips(row);
+  card.appendChild(row);
+}
+
+/**
+ * Draw the card from App.meta. Subscribed to Change.META, so everything that
+ * writes it and announces it lands here: an undo, a tab switch, a loaded file,
+ * a StateMate result — everything, that is, except this module's own commits,
+ * which have already put the DOM where they want it.
  */
 export function renderExampleCard() {
   const card = $('example-card');
   if (!card) return;
   card.innerHTML = '';
+  cardParts = {};
   wireCardChrome(card);
-  card.classList.toggle('is-editing', !!cardDraft);
 
-  if (cardDraft) renderEditCard(card, cardDraft);
-  else if (App.meta) renderReadCard(card, App.meta);
-  else {
+  // Closed and undescribed is the one case with nothing to draw. Open, the
+  // card is its own editor, so an empty one is a card of placeholders rather
+  // than no card at all.
+  if (!App.meta && !cardIsOpen()) {
     card.classList.remove('is-open');
     syncCanvasInfoButton();
     return;
   }
+
+  const meta = App.meta || {};
+  renderHead(card, meta);
+  renderBlurb(card, meta);
+  renderChips(card);
 
   // The corner is chosen for the card's footprint, and the footprint is only
   // final now that the fields and the chips are in it — a card that grew two
@@ -1231,15 +1498,24 @@ export function renderExampleCard() {
 /**
  * Show or hide the (i) button. It is offered whenever there is a description
  * to read *or* a machine that could have one — the second half is what makes
- * the editor reachable at all for a machine you drew yourself. With neither,
- * it stays away: a button that opens an empty card is worse than no button.
+ * the card reachable at all for a machine you drew yourself. With neither, it
+ * stays away: a button that opens an empty card is worse than no button.
  */
 export function syncCanvasInfoButton() {
   const btn = $('canvas-info-btn');
   if (!btn) return;
   const wasHidden = btn.hidden;
+  const described = !!App.meta;
   btn.hidden = cardIsOpen() || !cardOffered();
-  if (!btn.hidden) btn.dataset.tip = App.meta ? 'About this machine' : 'Describe this machine';
+  btn.dataset.tip = described ? 'About this machine' : 'Describe this machine';
+  // A bare (i) is a way back to something already read. With nothing written
+  // about the machine yet there is nothing to go back *to*, and the same
+  // circle then reads as decoration — so it says what it does instead. This is
+  // the second half of the answer to "how do I describe a machine I drew?",
+  // the first being the canvas context menu.
+  btn.classList.toggle('is-invite', !described);
+  const label = btn.querySelector?.('.canvas-info-label');
+  if (label) label.textContent = described ? '' : 'Describe';
   if (wasHidden !== btn.hidden) repositionCanvasInfo();
 }
 
@@ -1248,7 +1524,7 @@ export function syncCanvasInfoButton() {
 // result decorates the card in place, and redrawing on every edit to the
 // diagram would wipe that strip off between the run and the reading of it.
 subscribe(Change.GRAPH, syncCanvasInfoButton);
-subscribe(Change.META, renderExampleCard);
+subscribe(Change.META, () => { if (!localMetaWrite) renderExampleCard(); });
 
 /**
  * Describe the machine now on the canvas. Pass null to say nothing about it,
@@ -1262,10 +1538,11 @@ export function showExampleCard(meta) {
   const card = $('example-card');
   if (!card) return;
   clearCardTimer();
-  cardDraft = null;
+  cardFocusField = null;
   App.meta = normalizeCardMeta(meta);
 
   if (!App.meta) {
+    card.classList.remove('is-open');
     renderExampleCard();
     hideExampleCard();
     return;

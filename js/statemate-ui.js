@@ -96,7 +96,7 @@ import {
 import { editStarterPrompts, starterPrompts } from './statemate-prompt.js';
 import { describeSpecSize, resolveContextRefs } from './statemate-spec.js';
 import { Change, emit, subscribe } from './store.js';
-import { fitToScreen, openSettingsModal, switchSettingsTab } from './ui.js';
+import { fitToScreen, openSettingsModal, repositionCanvasInfo, switchSettingsTab } from './ui.js';
 import { showStatus } from './utils.js';
 import { setView } from './view.js';
 
@@ -1950,6 +1950,10 @@ function unreadCount() {
 function applyMinimized() {
   const shell = $(MODAL_ID);
   if (shell && shell.classList) shell.classList.toggle('is-min', Session.minimized);
+  // The console is an obstacle the info card routes around, and putting it
+  // away or bringing it back changes its footprint by most of the panel — so
+  // the card gets its corner re-picked here, the way it is on a redock.
+  repositionCanvasInfo();
   const button = $('sm-min');
   if (!button) return;
   button.setAttribute('aria-expanded', String(!Session.minimized));
@@ -2697,6 +2701,8 @@ registerModal(MODAL_ID, {
     if (isStateMateRunning()) cancelStateMate();
     const btnEl = $('example-picker-btn');
     if (btnEl) btnEl.setAttribute('aria-expanded', 'false');
+    // The bottom of the canvas is free again; the card may want it back.
+    repositionCanvasInfo();
   }
 });
 
@@ -2809,6 +2815,9 @@ export function openStateMate() {
   renderContext();
   showOverlay(MODAL_ID);
   focusInput();
+  // Now that the console is on screen and measurable, move the info card out
+  // from under it — applyMinimized above ran while it was still hidden.
+  repositionCanvasInfo();
 
   // Rich descriptions arrive from the same JSON files the loader uses. The
   // list is already usable; this only fills in the blurbs, and a malformed
