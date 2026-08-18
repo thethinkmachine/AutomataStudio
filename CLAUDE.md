@@ -151,6 +151,27 @@ Nothing in the view is reached from an `on*` attribute: the nav links get their 
 
 [js/simulation.js](js/simulation.js) dispatches from `runSim()` to a per-family simulator (`simDFA`, `simNFA`, `simPDA`, `simNPDA`, `simTM`, `simNDTM`, `sim2DFA`, `simMoore`, …). All produce the same artifact: a flat `App.simSteps` array the UI scrubs with `App.simIdx`. Nondeterministic machines explore first (`exploreNPDA`, `explore2NFA`) then linearize the winning path. Step budgets are in `App.config` (`maxPdaSteps`, `maxTmSteps`, `langStepBudget`).
 
+### The tape
+
+**Where the head may go is a property of the tape, not of the machine driving it**, and [js/tape.js](js/tape.js) is the object that holds it. Determinism, tape count and end markers were already independent axes; boundedness-at-the-left was a fourth with nowhere to live, so it was written out as `if (head < 0) head = 0` in `testTM3`, `testMTM3` and `simTM`, again as `Math.max(0, …)` in the two nondeterministic explorers, and a sixth time inside `normalizeTapeConfig`.
+
+That clamp is not a tape model. A bounded tape should refuse to move left; re-reading cell 0 forever is neither halting nor moving, and since the loop detector then calls the configuration repeated, a machine that scans off the front of its input is **decided wrongly rather than refused** — reported as a clean rejection, indistinguishable from a real one. Every Turing machine imported from a `.jff` hit exactly that, JFLAP's tape being two-way.
+
+One implementation serves all three models: cells live in a `Map` keyed by integer, which has no least index; a bounded tape is that `Map` plus a floor at 0; and an **LBA's is that plus a ceiling (`rightBound`) and two cells that refuse to be written (`immutable`)** — which is the whole of what makes it linear-bounded, stated once in `makeLbaTape` rather than reassembled in `testLBA3` and `simLBA`. `tape.js` imports nothing and takes `blank` as an argument, so a tape is testable without a machine, an `App` or a DOM.
+
+**`move()` and `write()` report a refusal rather than acting on one**, because the callers disagree about what it means: a bounded TM shrugs and re-reads the cell, an LBA rejects. Baking either answer into the tape would just move the old duplication somewhere new.
+
+Points worth keeping in mind:
+
+- **`usesTwoWayTape` in [js/state.js](js/state.js) answers from two places, and the order matters.** `ITM` says so by *being* what it is — no setting may make a machine labelled "Two-Way Infinite TM" bounded — while `TM`, `NDTM` and `MTM` read `App.config.twoWayTape`. That setting is what makes a two-way multi-tape or nondeterministic machine a *tape choice* rather than two more rows in the machine picker. `LBA` is excluded outright: bounded at both ends is its definition, not its tape's.
+- **`key()` is origin-independent, and that is the whole of loop detection.** A two-way tape renumbers every cell the moment it grows leftward, so a key built from absolute indices calls two identical configurations different and the frontier never closes. It is built from `snapshot()`, whose window starts at the leftmost of the head and the written cells — pointedly *not* at cell 0, which would anchor it to an origin the machine cannot see. Trailing blanks are trimmed for the same reason: a head that ran right over blank tape and came back is in the configuration it started from.
+- **A blank write deletes the cell** rather than storing a blank, or a tape scrubbed back to empty keeps every cell it ever touched and no two such configurations compare equal. The trailing-blank trim in `key()` is therefore **off for a right-bounded tape**: there a trailing blank is a cell the machine wrote, not tape the head has not reached, and trimming would call two different configurations the same.
+- **The storage abstraction stops at the tape.** The PDA family was already factored this way — `applyPdaStoreTransition`/`pdaPeek`/`pdaStoreToString` take a `queueMode` flag, so DPDA/NPDA/QA/Counter/2PDA share one store. The two-way *heads* (`2DFA`, `2NFA`, `2DFT`) deliberately stay separate: they never write, and running off an end is a halt condition rather than a move to refuse, so `Tape` would be the wrong shape for them.
+- **The drawn head index is not the cell number.** `snapshot()` returns both; on a two-way tape they diverge as soon as it grows left, which is why `simTM` puts the cell in its note.
+- `testITM3` and `simITM` are now one-line delegations to the `TM` pair — the difference lives in the tape, and a second copy of the loop is only a way for the two to drift.
+
+`App.config.twoWayTape` defaults to **false**, so an existing machine keeps deciding what it decided; the setting is in Settings → Turing, and travels with a workspace through `getWorkspaceData`'s allow-list. [tests/tape.test.js](tests/tape.test.js) pins the tape itself, the axis, and that one machine decides differently under the two models.
+
 ### Algorithms
 
 [js/algorithms-fa.js](js/algorithms-fa.js) and [js/algorithms-cfg.js](js/algorithms-cfg.js) hold the textbook constructions, one pair per algorithm: `algoXxx(container)` renders the interactive card, `runXxx()`/`buildXxx()` computes and returns a machine or grammar, `loadXxxResult()` puts it on the canvas. Keeping compute separate from render is what makes them testable — tests call the `build*`/`run*` half directly.
@@ -160,6 +181,21 @@ Nothing in the view is reached from an `on*` attribute: the nav links get their 
 [js/export-core.js](js/export-core.js) normalizes `App` into a machine **IR** via `buildMachineIR()`. Everything downstream consumes only the IR: [js/export-formats.js](js/export-formats.js) (DOT, TikZ, tables, sample words) and [js/codegen.js](js/codegen.js) (JS/Python/Java in table/switch/class styles). Both register their targets into `ExportFormats` from [js/export-registry.js](js/export-registry.js); [js/export-ui.js](js/export-ui.js) owns the dialogs. Adding a target means adding a registry entry and an IR consumer, not touching `App`.
 
 PNG export can embed the workspace JSON in the image; dropping that PNG back on the canvas restores it ([js/persistence.js](js/persistence.js) `handleFiles`). Persistence also covers IndexedDB autosave, `.json` save/load, base64url share links, and JFLAP import ([js/import-jflap.js](js/import-jflap.js)).
+
+### JFLAP import
+
+The reader is hand-rolled rather than `DOMParser`-based — `.jff` is machine-written and regular enough that a focused reader covers it and stays testable without a DOM. `<type>` names a *family*, so the specific machine type is read back off the transitions by `jflapMachineType` the same way `loadData()` does for the app's own files.
+
+**JFLAP 6.1 added a notation 4.x has no equivalent for, and reading it literally fails silently.** A `<read>` may name a set of symbols bound to a variable — `y, a } w` — with `<write>w</write>` meaning "put back whatever you just read", so one edge stands for one transition per listed symbol. Read as a plain symbol it becomes an eight-character tape symbol no cell can ever hold: the edge draws, Σ and Γ fill with garbage, and the machine rejects everything with no error anywhere. `jflapParseRead` classifies the three forms and the transition loop `flatMap`s a set into one transition per symbol; **the negated form `! a, b } w` cannot be expanded inline** because it subtracts from an alphabet that is not complete until every transition has been read, so it is parked in `deferred` and resolved in a second pass.
+
+Points worth keeping in mind:
+
+- **A `<push>` string is characters, not a symbol.** JFLAP stack symbols are single characters and `AZ` pushes A then Z; putting `"AZ"` in Γ adds a symbol nothing can match. `addStackSymbols` is the one place that decides this.
+- **`<tapes>` has to be read before `jflapMachineType`**, or a 3-tape file whose transitions only touch 2 classifies as a single-tape `TM`. The widest transition is a lower bound on the tape count, never the answer.
+- **What could not be converted is reported, never dropped quietly.** `jflapToWorkspace` returns a `warnings` array — an expanded variable edge, a `<block>` whose interior was not inlined, a second `<initial/>`, a PDA whose empty-stack acceptance the app does not model — and `importJFLAPText` writes it to the machine card rather than the status bar, which holds one line for 2.5 seconds. These are caveats the reader has to weigh against the diagram, so they have to still be there a minute later. `warnings` is not part of the save format; `getWorkspaceData` is an allow-list and drops it.
+- **Structures with no `<automaton>` each name themselves** (`UNSUPPORTED_TYPES`) — "no `<automaton>` element" tells someone who exported a regular expression nothing.
+
+**JFLAP's tape is two-way infinite, unconditionally, for every Turing machine it writes.** That is a fact about the file rather than a guess about the machine in it, so `jflapToWorkspace` returns `twoWayTape: true` and `loadData` applies it — there is nothing to detect from the transitions and no machine type to pick. See [the tape](#the-tape) for why that is a setting rather than a family of extra machine types.
 
 ### The machine card
 
