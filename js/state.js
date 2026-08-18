@@ -143,6 +143,17 @@ export const App = {
   selectedStates: new Set(),
   selectedTransitions: new Set(),
   stateN: 0, transN: 0,
+  // What this machine *is*, in the author's own words — the info card over the
+  // canvas. `null` when nothing has been said about it, which is the state a
+  // blank canvas starts in and the state loading an undescribed file returns
+  // it to. Shape: { title, blurb, inputs: [{ w, expect, label, out }] }.
+  //
+  // It lives on App rather than in js/persistence.js — where it was module
+  // state — because it is document content: exportWorkspaceState carries it
+  // between tabs, getWorkspaceData writes it to the .json, and serializeState
+  // puts it on the undo stack. A description that survived neither a save nor
+  // a tab switch is one nobody would bother writing.
+  meta: null,
   // Canvas notes (comments), anchored to states/transitions or free-floating
   notes: [], noteN: 0,
   activeNoteId: null,
@@ -405,6 +416,7 @@ export function exportWorkspaceState() {
     accepts: [...App.accepts],
     stateN: App.stateN,
     transN: App.transN,
+    meta: App.meta ? JSON.parse(JSON.stringify(App.meta)) : null,
     notes: JSON.parse(JSON.stringify(App.notes)),
     noteN: App.noteN,
     dividers: JSON.parse(JSON.stringify(App.dividers)),
@@ -433,6 +445,7 @@ export function importWorkspaceState(data) {
   App.accepts = new Set(data.accepts || []);
   App.stateN = data.stateN || 0;
   App.transN = data.transN || 0;
+  App.meta = data.meta || null;
   App.notes = data.notes || [];
   App.noteN = data.noteN || 0;
   App.dividers = data.dividers || [];

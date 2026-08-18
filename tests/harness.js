@@ -170,6 +170,10 @@ export function resetApp() {
   App.noteN = 0;
   App.dividers = [];
   App.dividerN = 0;
+  // The info card's text. App state since it became editable, so it is
+  // App state a test can leak — a described machine in one test would
+  // otherwise hand the next one a card it never asked for.
+  App.meta = null;
   App.selectedDividerId = null;
   App.config = JSON.parse(JSON.stringify(baseConfig));
   App.cam = { x: 0, y: 0, z: 1 };

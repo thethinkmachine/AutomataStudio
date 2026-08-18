@@ -495,11 +495,13 @@
               <span class="toolbox-kbd">⌘Y</span>
             </button>
           </div>
-          <!-- What the machine on the canvas is. Opens itself for a few seconds
-               after a load or a StateMate run, then folds back into the button
-               it springs from. Both are wired in js/persistence.js at the point
-               the card first has something to say, so neither needs an entry in
-               bridge.js. -->
+          <!-- What the machine on the canvas is — and, since the card is
+               editable, what its author says it is. Opens itself for a few
+               seconds after a load or a StateMate run, then folds back into
+               the button it springs from; the button is also offered for an
+               undescribed machine, where it opens the editor instead. Body and
+               chrome are built and wired in js/persistence.js from App.meta,
+               so neither needs an entry in bridge.js. -->
           <button class="canvas-info-btn" id="canvas-info-btn" type="button" hidden
                   aria-expanded="false" aria-controls="example-card"
                   data-tip="About this machine">

@@ -1417,6 +1417,11 @@
   font-weight: 700;
   font-size: .78rem;
   color: var(--text);
+  /* Long names wrap rather than push the edit and dismiss buttons off the
+     card — the head is a flex row and text has no intrinsic minimum here. */
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .example-card-close {
@@ -1487,6 +1492,215 @@
 
 .example-chip.chip-rej:hover {
   background: color-mix(in srgb, var(--red) 20%, transparent);
+}
+
+/* The editor. Same card, same corner, same width — only the body swaps, so
+   describing a machine happens where the description will appear rather than
+   in a dialog drawn over the machine it is about. */
+.example-card.is-editing {
+  width: min(330px, calc(100% - 24px));
+}
+
+.example-card-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+/* The way in. Deliberately as quiet as the × beside it: annotating is
+   something you go looking for, not something the card should be asking for. */
+.example-card-btn {
+  background: transparent;
+  border: none;
+  color: var(--text3);
+  font-size: .78rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  transition: color var(--transition-fast);
+}
+
+.example-card-btn:hover,
+.example-card-btn:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+
+.example-card-field {
+  display: block;
+  margin-top: 8px;
+}
+
+.example-card-flabel {
+  display: block;
+  font-family: var(--sans);
+  font-size: .6rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 3px;
+}
+
+/* The name field is prose and the word fields are input to a machine, so they
+   take the two different families for the two different jobs — the same split
+   the StateMate console makes between --sans and --mono. */
+.example-card-input,
+.example-card-area {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--sans);
+  font-size: .7rem;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 6px;
+  transition: border-color var(--transition-fast);
+}
+
+.example-card-area {
+  resize: vertical;
+  min-height: 46px;
+}
+
+.example-card-input:focus,
+.example-card-area:focus {
+  border-color: var(--accent-border);
+  outline: none;
+}
+
+.example-card-input::placeholder,
+.example-card-area::placeholder {
+  color: var(--text3);
+}
+
+.example-card-words {
+  margin-top: 10px;
+}
+
+.example-card-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.example-card-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* A word is an input to the machine, not language about it. */
+.example-card-word {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: .66rem;
+}
+
+/* Not a select: three states, cycled in place, so the control is the same size
+   as the chip it becomes and the row does not reflow when the answer changes.
+   It carries the chip's own colours for that reason. */
+.example-card-expect {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: .58rem;
+  padding: 3px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+  background: var(--bg2);
+  color: var(--text3);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+
+.example-card-expect.chip-acc {
+  border-color: var(--green-border);
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.example-card-expect.chip-rej {
+  border-color: var(--red-border);
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.example-card-drop {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  color: var(--text3);
+  font-size: .8rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  transition: color var(--transition-fast);
+}
+
+.example-card-drop:hover {
+  color: var(--red);
+}
+
+.example-card-add {
+  margin-top: 5px;
+  font-family: var(--sans);
+  font-size: .62rem;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px dashed var(--border2);
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.example-card-add:hover {
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+
+.example-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 11px;
+}
+
+.example-card-cancel,
+.example-card-save {
+  font-family: var(--sans);
+  font-size: .66rem;
+  font-weight: 600;
+  padding: 4px 11px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.example-card-cancel {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text2);
+}
+
+.example-card-cancel:hover {
+  color: var(--text);
+  border-color: var(--border2);
+}
+
+.example-card-save {
+  border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.example-card-save:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 /* Verdict banner — the headline result, shown once the simulation reaches

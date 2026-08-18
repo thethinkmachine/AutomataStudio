@@ -384,7 +384,10 @@ export function restoreCheckpoint(id) {
     App.selectedStates.clear();
     App.selectedTransitions.clear();
     resetSim();
-  }, Change.ALPHABET, Change.GRAPH);
+    // Change.META because the checkpoint carries the card the machine had
+    // before the run — reverting a result has to take its description with
+    // it, or the canvas says one thing and the card still says another.
+  }, Change.ALPHABET, Change.GRAPH, Change.META);
 
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
   return true;

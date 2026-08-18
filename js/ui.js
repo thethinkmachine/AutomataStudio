@@ -489,6 +489,10 @@ export function createTab(name) {
   // Each tab carries its own config, so activating one can bring different
   // canvas settings with it — the same reason R gets republished here.
   if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
+  // And its own description. importWorkspaceState has already written
+  // App.meta; this is what redraws the info card from it, so a tab's card
+  // does not linger over the next tab's diagram.
+  emit(Change.META);
   saveBackupChecked();
 }
 
@@ -532,6 +536,10 @@ export function switchTab(id) {
   // Each tab carries its own config, so activating one can bring different
   // canvas settings with it — the same reason R gets republished here.
   if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
+  // And its own description. importWorkspaceState has already written
+  // App.meta; this is what redraws the info card from it, so a tab's card
+  // does not linger over the next tab's diagram.
+  emit(Change.META);
   saveBackupChecked();
 }
 
@@ -862,6 +870,11 @@ document.addEventListener('keydown', e => {
   // still inside the panel belongs to the panel: tabbing to a transcript
   // button and pressing "s" must not switch the canvas tool underneath it.
   if (e.target.closest && e.target.closest('.sm-console')) return;
+  // Same reasoning for the info card, which is a floating panel over a live
+  // canvas rather than a dialog. Its editor is mostly text fields, already
+  // covered by the tag check above — but its buttons are not, and Delete on a
+  // focused "remove this word" button must not delete the selected state.
+  if (e.target.closest && e.target.closest('.example-card')) return;
   if (e.ctrlKey || e.metaKey) {
     if (e.key === 'z') { e.preventDefault(); undo(); }
     if (e.key === 'y' || e.key === 'Z') { e.preventDefault(); redo(); }

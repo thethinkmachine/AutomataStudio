@@ -1,7 +1,7 @@
 import { tokenizeRHS } from './algorithms-cfg.js';
 import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { applyCamera, hideCanvasContextMenu } from './canvas.js';
-import { snapshot } from './history.js';
+import { commit, snapshot } from './history.js';
 import { importJFLAPText } from './import-jflap.js';
 import { closeModal, showOverlay } from './modal.js';
 import { refreshQuickSettings } from './quick-settings.js';
@@ -9,7 +9,7 @@ import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { runSim } from './simulation.js';
 import { $, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { hideContextMenu } from './states-transitions.js';
-import { Change, emit } from './store.js';
+import { Change, emit, subscribe } from './store.js';
 import { autoFitLoadedMachine, fitToScreen, hideTabContextMenu, hideTabOverflowMenu, initTabs, markActiveWorkspaceSaved, renderTabs, repositionCanvasInfo, setSaveState, switchTab } from './ui.js';
 import { hasPdaNondeterminism, hasSingleTapeNondeterminism, isAnyPDA, performClear, resetIds, showStatus } from './utils.js';
 import { applyMachineSwitch } from './view.js';
@@ -45,7 +45,13 @@ export function getWorkspaceData() {
     notes: App.notes,
     dividers: App.dividers,
     grammar: grammarData,
-    cam: App.cam
+    cam: App.cam,
+    // What the author says this machine is. Dropped here for as long as the
+    // card was read-only, which is what made a description a property of the
+    // file you loaded rather than of the machine you have — save once and it
+    // was gone. Null when there is nothing to say; the load path reads
+    // `data.meta` and has always tolerated its absence.
+    meta: App.meta
   };
 }
 
@@ -801,44 +807,126 @@ export function loadExampleFile(file) {
 //  And the countdown stops the moment the pointer is over the card, because
 //  the one certain sign someone is still reading is that they are pointing at
 //  it. Both are cheap; a card that vanishes mid-sentence is not.
+//
+//  It is also *writable*, which is why the text lives in `App.meta` rather
+//  than in a module-scoped variable here. The card used to be readable only,
+//  and reachable only by loading something that arrived with a description —
+//  a bundled example, or a StateMate result — so a machine you drew yourself
+//  could never have one, and a described machine lost its description the
+//  moment you saved over it, because saveJSON never wrote `meta` back out.
+//  Putting it on App fixes both at once by making the card document content:
+//  exportWorkspaceState carries it between tabs, getWorkspaceData writes it
+//  to the .json and the embedded PNG and the share link, and serializeState
+//  puts it on the undo stack beside the diagram it describes.
+//
+//  The editor is inline rather than a modal. A dialog would cover the machine
+//  the description is about, and every field here is one line of text or one
+//  word — this is annotation, not a form.
 
 const CARD_AUTO_HIDE_MS = 13000;
+// Caps, not validation: the card is 310px wide and floats over the diagram,
+// so the limit is what still reads as a card rather than what fits in memory.
+export const CARD_TITLE_MAX = 70;
+export const CARD_BLURB_MAX = 400;
+export const CARD_WORD_MAX = 60;
+export const CARD_WORDS_MAX = 12;
+
+// The verdict a test word carries, cycled by the button beside it. The empty
+// string is a word worth trying with nothing claimed about the outcome — the
+// honest state for "watch what happens here", and the one a chip typed into a
+// blank row starts from if the author does not commit to an answer.
+const EXPECT_CYCLE = ['accept', 'reject', ''];
 
 let cardTimer = null;
-let cardMeta = null;
+// The working copy while the editor is open, null otherwise. Edits are held
+// here and not written to App.meta until Save, so Cancel is free and an
+// abandoned edit never reaches the undo stack or dirties the tab.
+let cardDraft = null;
 
 function clearCardTimer() {
   if (cardTimer !== null) { clearTimeout(cardTimer); cardTimer = null; }
 }
 
-/** Collapse the card back to its button. */
+/**
+ * Trim a card down to what is worth keeping, or to null when that is nothing.
+ * Empty fields are dropped rather than stored, so "has a card" stays one
+ * truthiness test everywhere else instead of a search for a non-blank field.
+ */
+export function normalizeCardMeta(meta) {
+  if (!meta || typeof meta !== 'object') return null;
+  const title = String(meta.title ?? '').trim().slice(0, CARD_TITLE_MAX);
+  const blurb = String(meta.blurb ?? '').trim().slice(0, CARD_BLURB_MAX);
+  const inputs = (Array.isArray(meta.inputs) ? meta.inputs : [])
+    // The empty word is a legitimate test, so a row is dropped for being
+    // *absent* rather than for being empty — w: '' is content.
+    .filter(s => s && s.w !== undefined && s.w !== null)
+    .slice(0, CARD_WORDS_MAX)
+    .map(s => {
+      const row = { ...s, w: String(s.w).slice(0, CARD_WORD_MAX) };
+      if (row.expect !== 'accept' && row.expect !== 'reject') delete row.expect;
+      return row;
+    });
+  if (!title && !blurb && !inputs.length) return null;
+  const out = {};
+  if (title) out.title = title;
+  if (blurb) out.blurb = blurb;
+  if (inputs.length) out.inputs = inputs;
+  return out;
+}
+
+/** Is there a description to read, or a machine that could have one? */
+function cardOffered() {
+  return !!App.meta || !!cardDraft || App.states.length > 0;
+}
+
+function cardIsOpen() {
+  const card = $('example-card');
+  return !!card && card.classList.contains('is-open');
+}
+
+/** Collapse the card back to its button, discarding an open draft. */
 export function hideExampleCard() {
   clearCardTimer();
+  const hadDraft = !!cardDraft;
+  cardDraft = null;
   const card = $('example-card');
   const btn = $('canvas-info-btn');
   if (card) card.classList.remove('is-open');
+  // The draft is gone, so the card is back to whatever App.meta says. Redraw
+  // it now rather than leaving a half-typed form behind the fade, to be found
+  // still sitting there on the next open.
+  if (card && hadDraft) renderExampleCard();
+  if (card) card.classList.remove('is-open');
+  if (card) card.classList.remove('is-editing');
   if (btn) {
-    btn.hidden = !cardMeta;
+    btn.hidden = !cardOffered();
     btn.setAttribute('aria-expanded', 'false');
+    if (!btn.hidden) btn.dataset.tip = App.meta ? 'About this machine' : 'Describe this machine';
   }
 }
 
 /**
- * Open the card, if there is anything to say.
+ * Open the card. With nothing written about the machine yet this opens the
+ * editor instead of an empty card — the button is only offered at all when
+ * there is either something to read or something to describe.
+ *
  * @param {boolean} [opts.autoHide] close again after a few seconds
  */
 export function openExampleCard({ autoHide = false } = {}) {
-  if (!cardMeta) return;
+  if (!cardOffered()) return;
   clearCardTimer();
   const card = $('example-card');
   const btn = $('canvas-info-btn');
   if (!card) return;
+  if (!App.meta && !cardDraft) cardDraft = blankDraft();
   card.classList.add('is-open');
   if (btn) {
     btn.hidden = true;
     btn.setAttribute('aria-expanded', 'true');
   }
-  if (autoHide) {
+  renderExampleCard();
+  // Never against a form the reader is typing into.
+  if (autoHide && !cardDraft) {
     cardTimer = setTimeout(hideExampleCard, CARD_AUTO_HIDE_MS);
     // Node returns a Timeout object that keeps the process alive; a browser
     // returns a number and has no unref. Without this every test that draws a
@@ -848,19 +936,115 @@ export function openExampleCard({ autoHide = false } = {}) {
 }
 
 export function toggleExampleCard() {
-  const card = $('example-card');
-  if (card && card.classList.contains('is-open')) hideExampleCard();
+  if (cardIsOpen()) hideExampleCard();
   else openExampleCard();
 }
 
 export function exampleCardMeta() {
-  return cardMeta;
+  return App.meta;
 }
 
-/** Test seam — the timer and the retained meta must not cross tests. */
+/** Is the editor open? For the tests, and for anyone asking before a redraw. */
+export function isEditingExampleCard() {
+  return !!cardDraft;
+}
+
+/** Test seam — the timer and an open draft must not cross tests. */
 export function _resetExampleCardForTests() {
   clearCardTimer();
-  cardMeta = null;
+  cardDraft = null;
+}
+
+// ── Editing ───────────────────────────────────────────────────────
+
+function blankDraft() {
+  return { title: '', blurb: '', inputs: [] };
+}
+
+/** A working copy of App.meta, deep enough that Cancel really cancels. */
+function draftFrom(meta) {
+  if (!meta) return blankDraft();
+  return {
+    title: meta.title || '',
+    blurb: meta.blurb || '',
+    // Rows keep whatever else they arrived with — a StateMate result labels
+    // its words with the transducer output it predicted, and rewording the
+    // blurb is no reason to throw that away.
+    inputs: (meta.inputs || []).map(s => ({ ...s }))
+  };
+}
+
+/** Open the editor over the card, seeded with what it currently says. */
+export function editExampleCard() {
+  clearCardTimer();
+  cardDraft = draftFrom(App.meta);
+  const card = $('example-card');
+  if (card) card.classList.add('is-open');
+  const btn = $('canvas-info-btn');
+  if (btn) { btn.hidden = true; btn.setAttribute('aria-expanded', 'true'); }
+  renderExampleCard();
+  const first = card?.querySelector?.('.example-card-input');
+  if (first && first.focus) first.focus();
+}
+
+/** Abandon the edit and go back to what the card said before it. */
+export function cancelCardEdit() {
+  cardDraft = null;
+  renderExampleCard();
+  // Nothing was written, so a card that had nothing to say still has nothing
+  // to say — fold it away rather than leave an empty shell open.
+  if (!App.meta) hideExampleCard();
+}
+
+/**
+ * Write the draft to App.meta as one undoable step.
+ *
+ * This is the only path that changes what the card says by hand, so it is the
+ * only one that snapshots. Saving an empty form clears the card deliberately:
+ * emptying the fields is how the author says "never mind".
+ */
+export function saveCardEdit() {
+  if (!cardDraft) return;
+  const next = normalizeCardMeta(cardDraft);
+  const unchanged = JSON.stringify(next ?? null) === JSON.stringify(App.meta ?? null);
+  cardDraft = null;
+
+  if (unchanged) {
+    // A form opened and closed is not an edit. Redraw out of the editor
+    // without spending an undo point or dirtying the tab for it.
+    renderExampleCard();
+    if (!App.meta) hideExampleCard();
+    return;
+  }
+
+  commit(() => { App.meta = next; }, Change.META);
+  if (!App.meta) hideExampleCard();
+  showStatus(next ? 'Description saved' : 'Description cleared');
+}
+
+// ── Rendering ─────────────────────────────────────────────────────
+
+function elem(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function cardButton(cls, label, tip, onClick) {
+  const b = elem('button', cls, label);
+  b.type = 'button';
+  if (tip) b.dataset.tip = tip;
+  b.setAttribute('aria-label', tip || label);
+  b.onclick = onClick;
+  return b;
+}
+
+function field(labelText, control) {
+  const wrap = elem('label', 'example-card-field');
+  wrap.append(elem('span', 'example-card-flabel', labelText));
+  wrap.append(control);
+  return wrap;
 }
 
 // Wired once, here rather than through an on* attribute, so the card adds no
@@ -874,56 +1058,34 @@ function wireCardChrome(card) {
   if (card && !card.dataset.wired) {
     card.dataset.wired = '1';
     card.addEventListener('pointerenter', clearCardTimer);
+    // Escape backs out of the editor from any field, without touching
+    // App.meta. The card is not a modal, so modal.js never sees this key and
+    // the chain that dismisses dialogs is not involved.
+    card.addEventListener('keydown', e => {
+      if (e.key !== 'Escape' || !cardDraft) return;
+      e.stopPropagation();
+      cancelCardEdit();
+    });
   }
 }
 
-/**
- * Describe the machine now on the canvas. Pass null to say nothing about it,
- * which also takes the button away — an info button that opens an empty card
- * is worse than no button.
- */
-export function showExampleCard(meta) {
-  const card = $('example-card');
-  if (!card) return;
-  clearCardTimer();
-  card.innerHTML = '';
-  cardMeta = meta || null;
-  wireCardChrome(card);
-
-  if (!meta) {
-    card.classList.remove('is-open');
-    const btn = $('canvas-info-btn');
-    if (btn) { btn.hidden = true; btn.setAttribute('aria-expanded', 'false'); }
-    return;
-  }
-
-  const head = document.createElement('div');
-  head.className = 'example-card-head';
-  const title = document.createElement('span');
-  title.className = 'example-card-title';
-  title.textContent = meta.title || 'Example';
-  const close = document.createElement('button');
-  close.className = 'example-card-close';
-  close.dataset.tip = 'Dismiss';
-  close.textContent = '×';
-  close.onclick = hideExampleCard;
-  head.append(title, close);
+function renderReadCard(card, meta) {
+  const head = elem('div', 'example-card-head');
+  head.append(elem('span', 'example-card-title', meta.title || 'This machine'));
+  const tools = elem('span', 'example-card-tools');
+  tools.append(cardButton('example-card-btn', '✎', 'Edit this description', editExampleCard));
+  tools.append(cardButton('example-card-close', '×', 'Dismiss', hideExampleCard));
+  head.append(tools);
   card.appendChild(head);
 
-  if (meta.blurb) {
-    const blurb = document.createElement('div');
-    blurb.className = 'example-card-blurb';
-    blurb.textContent = meta.blurb;
-    card.appendChild(blurb);
-  }
+  if (meta.blurb) card.appendChild(elem('div', 'example-card-blurb', meta.blurb));
 
   if (Array.isArray(meta.inputs) && meta.inputs.length) {
-    const row = document.createElement('div');
-    row.className = 'example-card-chips';
+    const row = elem('div', 'example-card-chips');
     meta.inputs.forEach(sample => {
-      const chip = document.createElement('button');
       const tone = sample.expect === 'reject' ? ' chip-rej' : (sample.expect === 'accept' ? ' chip-acc' : '');
-      chip.className = 'example-chip' + tone;
+      const chip = elem('button', 'example-chip' + tone);
+      chip.type = 'button';
       // The empty word is a test like any other, and drawn as "" it is a blank
       // pill that reads as a rendering fault. Show the symbol; run the real
       // (empty) string.
@@ -942,10 +1104,171 @@ export function showExampleCard(meta) {
     });
     card.appendChild(row);
   }
+}
+
+function renderEditCard(card, draft) {
+  const head = elem('div', 'example-card-head');
+  head.append(elem('span', 'example-card-title', App.meta ? 'Edit description' : 'Describe this machine'));
+  const tools = elem('span', 'example-card-tools');
+  tools.append(cardButton('example-card-close', '×', 'Cancel', cancelCardEdit));
+  head.append(tools);
+  card.appendChild(head);
+
+  const title = elem('input', 'example-card-input');
+  title.type = 'text';
+  title.value = draft.title;
+  title.maxLength = CARD_TITLE_MAX;
+  title.placeholder = 'Even number of a’s';
+  title.oninput = () => { draft.title = title.value; };
+  // ⏎ in a one-line field means "done", the way it does in the tab rename and
+  // the state rename. The textarea below is the exception, because a blurb is
+  // allowed more than one line.
+  title.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); saveCardEdit(); } };
+  card.appendChild(field('Name', title));
+
+  const blurb = elem('textarea', 'example-card-area');
+  blurb.value = draft.blurb;
+  blurb.maxLength = CARD_BLURB_MAX;
+  blurb.rows = 3;
+  blurb.placeholder = 'What does it accept, and how?';
+  blurb.oninput = () => { draft.blurb = blurb.value; };
+  card.appendChild(field('What it does', blurb));
+
+  const words = elem('div', 'example-card-words');
+  words.append(elem('span', 'example-card-flabel', 'Test words'));
+  const rows = elem('div', 'example-card-rows');
+
+  draft.inputs.forEach((sample, i) => {
+    const row = elem('div', 'example-card-row');
+
+    const word = elem('input', 'example-card-input example-card-word');
+    word.type = 'text';
+    word.value = sample.w ?? '';
+    word.maxLength = CARD_WORD_MAX;
+    // The placeholder is ε because a row left blank *is* the empty word — the
+    // chip will read ε too, so the field shows what it is about to become
+    // rather than the usual "type here".
+    word.placeholder = App.config?.sym?.eps || 'ε';
+    word.oninput = () => { sample.w = word.value; };
+    word.onkeydown = e => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      // ⏎ on the last row adds another, which is how a list of words gets
+      // typed; anywhere else it saves, because there is nothing to add.
+      if (i === draft.inputs.length - 1 && draft.inputs.length < CARD_WORDS_MAX) addCardWord();
+      else saveCardEdit();
+    };
+    row.append(word);
+
+    const expect = sample.expect === 'accept' || sample.expect === 'reject' ? sample.expect : '';
+    const tone = expect === 'accept' ? ' chip-acc' : (expect === 'reject' ? ' chip-rej' : '');
+    row.append(cardButton(
+      'example-card-expect' + tone,
+      expect || 'no verdict',
+      'What should happen — click to cycle',
+      () => {
+        sample.expect = EXPECT_CYCLE[(EXPECT_CYCLE.indexOf(expect) + 1) % EXPECT_CYCLE.length];
+        renderExampleCard();
+      }
+    ));
+
+    row.append(cardButton('example-card-drop', '×', 'Remove this word', () => {
+      draft.inputs.splice(i, 1);
+      renderExampleCard();
+    }));
+
+    rows.append(row);
+  });
+
+  words.append(rows);
+  if (draft.inputs.length < CARD_WORDS_MAX) {
+    words.append(cardButton('example-card-add', '+ Add word', 'Add a test word', addCardWord));
+  }
+  card.appendChild(words);
+
+  const actions = elem('div', 'example-card-actions');
+  actions.append(cardButton('example-card-cancel', 'Cancel', 'Discard these changes', cancelCardEdit));
+  actions.append(cardButton('example-card-save', 'Save', 'Save this description', saveCardEdit));
+  card.appendChild(actions);
+}
+
+function addCardWord() {
+  if (!cardDraft || cardDraft.inputs.length >= CARD_WORDS_MAX) return;
+  cardDraft.inputs.push({ w: '', expect: 'accept' });
+  renderExampleCard();
+  const fields = $('example-card')?.querySelectorAll?.('.example-card-word');
+  const last = fields && fields[fields.length - 1];
+  if (last && last.focus) last.focus();
+}
+
+/**
+ * Draw the card from App.meta — or from the open draft, which wins, because
+ * that is what the reader is typing into. Subscribed to Change.META, so
+ * everything that writes App.meta and announces it lands here: an undo, a tab
+ * switch, a loaded file, a StateMate result.
+ */
+export function renderExampleCard() {
+  const card = $('example-card');
+  if (!card) return;
+  card.innerHTML = '';
+  wireCardChrome(card);
+  card.classList.toggle('is-editing', !!cardDraft);
+
+  if (cardDraft) renderEditCard(card, cardDraft);
+  else if (App.meta) renderReadCard(card, App.meta);
+  else {
+    card.classList.remove('is-open');
+    syncCanvasInfoButton();
+    return;
+  }
 
   // The corner is chosen for the card's footprint, and the footprint is only
-  // final now that the blurb and the chips are in it — a card that grew two
+  // final now that the fields and the chips are in it — a card that grew two
   // rows taller may no longer clear the toolbar it was anchored beside.
   repositionCanvasInfo();
+}
+
+/**
+ * Show or hide the (i) button. It is offered whenever there is a description
+ * to read *or* a machine that could have one — the second half is what makes
+ * the editor reachable at all for a machine you drew yourself. With neither,
+ * it stays away: a button that opens an empty card is worse than no button.
+ */
+export function syncCanvasInfoButton() {
+  const btn = $('canvas-info-btn');
+  if (!btn) return;
+  const wasHidden = btn.hidden;
+  btn.hidden = cardIsOpen() || !cardOffered();
+  if (!btn.hidden) btn.dataset.tip = App.meta ? 'About this machine' : 'Describe this machine';
+  if (wasHidden !== btn.hidden) repositionCanvasInfo();
+}
+
+// The button appears with the first state and goes away with the last, so it
+// tracks the graph. Deliberately *not* a full card re-render: a StateMate
+// result decorates the card in place, and redrawing on every edit to the
+// diagram would wipe that strip off between the run and the reading of it.
+subscribe(Change.GRAPH, syncCanvasInfoButton);
+subscribe(Change.META, renderExampleCard);
+
+/**
+ * Describe the machine now on the canvas. Pass null to say nothing about it,
+ * which also takes the card away.
+ *
+ * This is the loaders' entry point — a bundled example, a dropped file, a
+ * StateMate result — so it writes App.meta and draws without an undo point of
+ * its own; each of those paths already records one for the load as a whole.
+ */
+export function showExampleCard(meta) {
+  const card = $('example-card');
+  if (!card) return;
+  clearCardTimer();
+  cardDraft = null;
+  App.meta = normalizeCardMeta(meta);
+
+  if (!App.meta) {
+    renderExampleCard();
+    hideExampleCard();
+    return;
+  }
   openExampleCard({ autoHide: true });
 }
