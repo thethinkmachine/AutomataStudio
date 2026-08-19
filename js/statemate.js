@@ -1114,7 +1114,7 @@ export async function runStateMate({
 //  strings are testable without a DOM.
 
 const ERROR_COPY = {
-  disabled: { text: 'StateMate is switched off.', action: 'settings', label: 'Turn it on' },
+  disabled: { text: 'StateMate is switched off. Enable it and add an API key to chat and build machines.', action: 'settings', label: 'Turn it on' },
   'no-key': { text: 'StateMate needs an API key to chat and build machines.', action: 'settings', label: 'Set up' },
   auth: { text: 'Your API key was rejected.', action: 'settings', label: 'Check key' },
   'rate-limit': { text: 'The provider is rate-limiting requests.', action: 'retry', label: 'Retry' },

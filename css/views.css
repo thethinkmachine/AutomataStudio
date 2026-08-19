@@ -357,8 +357,9 @@
 
 /* Right Panel */
 .rpanel {
-  width: var(--rpanel-width, 288px);
-  min-width: var(--rpanel-width, 288px);
+  width: min(var(--rpanel-width, 288px), 42vw);
+  min-width: min(var(--rpanel-width, 288px), 42vw);
+  max-width: 480px;
   background: var(--bg2);
   /* Borderless for the same reason as .lpanel — the canvas well carries the
      only edge between chrome and canvas. */
@@ -368,6 +369,7 @@
   transition: width var(--transition-base), min-width var(--transition-base);
   position: relative;
   z-index: 10;
+  container-type: inline-size;
 }
 
 .rpanel-content {

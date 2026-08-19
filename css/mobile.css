@@ -581,6 +581,7 @@
     left: 0 !important;
     width: 100% !important;
     min-width: 0 !important;
+    max-width: none;
     height: min(78dvh, 620px);
     max-height: calc(100dvh - var(--hdr) - var(--mobile-panel-bar-height) - env(safe-area-inset-bottom, 0px) - 16px);
     border: 1px solid var(--border2);
@@ -641,6 +642,36 @@
   .lpanel .pin-btn,
   .rpanel .pin-btn {
     display: none;
+  }
+
+  .mobile-rpanel-close {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text3);
+  }
+
+  .mobile-rpanel-close:hover,
+  .mobile-rpanel-close:focus-visible {
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+  }
+
+  .mobile-rpanel-close svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .rpanel-tab {
+    min-height: 34px;
+    font-size: .72rem;
   }
 
   .lpanel-content,
