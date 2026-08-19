@@ -23,38 +23,21 @@ export const MODAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disa
 
 /**
  * Declare a modal's behaviour.
- * @param {string} id                    overlay element id
+ * @param {string} id                    modal element id
  * @param {object} [opts]
  * @param {Function} [opts.onClose]      teardown run on close
  * @param {Function} [opts.submit]       primary action; Enter invokes it
  * @param {Function} [opts.onEscape]     first refusal on Escape; true = consumed
  * @param {boolean} [opts.dismissOnBackdrop] close when the backdrop is clicked
- * @param {boolean} [opts.dock]          a panel, not a dialog — see below
  */
 export function registerModal(id, opts = {}) {
   ModalRegistry[id] = {
     onClose: opts.onClose || null,
     submit: opts.submit || null,
     onEscape: opts.onEscape || null,
-    dismissOnBackdrop: !!opts.dismissOnBackdrop,
-    dock: !!opts.dock
+    dismissOnBackdrop: !!opts.dismissOnBackdrop
   };
 }
-
-// ── docks ─────────────────────────────────────────────────────────
-//  A dock is a panel that happens to be built out of the overlay plumbing: it
-//  wants open/close, the Escape chain and the return-focus bookkeeping, and it
-//  wants *none* of the blocking. StateMate is the case — a console docked to
-//  the bottom whose whole premise is that the diagram behind it stays usable,
-//  which it cannot be while an inert full-viewport overlay sits over it.
-//
-//  So a dock stays on ModalStack (Escape and close still route through here)
-//  but is skipped by everything that blocks the page: the scroll lock, the Tab
-//  trap, the generic autofocus, and the `anyModalOpen()` gate that shuts off
-//  canvas shortcuts. The pointer half of it is CSS — the overlay drops
-//  pointer-events and the panel takes them back.
-
-export function isDock(id) { return !!ModalRegistry[id]?.dock; }
 
 export function isModalOpen(id) { return ModalStack.includes(id); }
 
@@ -62,14 +45,9 @@ export function isModalOpen(id) { return ModalStack.includes(id); }
 export function topModal() { return ModalStack.length ? ModalStack[ModalStack.length - 1] : null; }
 
 /**
- * True while a *blocking* modal is open — used to gate global canvas shortcuts.
- * Docks are deliberately not counted: the canvas under one is live, so the
- * shortcuts that drive it have to keep working.
+ * True while a modal is open — used to gate global canvas shortcuts.
  */
-export function anyModalOpen() { return ModalStack.some(id => !isDock(id)); }
-
-/** True while any dock is open. Owns Tab where the aux views would trap it. */
-export function anyDockOpen() { return ModalStack.some(isDock); }
+export function anyModalOpen() { return ModalStack.length > 0; }
 
 /** Focusable, visible children of a modal, in tab order. */
 export function modalFocusables(shell) {
@@ -90,13 +68,10 @@ export function showOverlay(id) {
   // Stack later modals above earlier ones so the backdrop of the inner one
   // covers the outer dialog rather than sliding underneath it.
   shell.style.zIndex = String(900 + ModalStack.length);
-  if (!isDock(id)) document.body.classList.add('modal-open');
+  document.body.classList.add('modal-open');
 
   // Autofocus the first field so keyboard users land inside the dialog.
   // Modals that focus a specific control do it themselves after this call.
-  // A dock always focuses its own control, and the generic pass would land on
-  // whatever button happens to come first in its header.
-  if (isDock(id)) return;
   const focusables = modalFocusables(shell);
   if (focusables.length) {
     focusables[0].focus();
@@ -114,8 +89,8 @@ export function closeModal(id) {
 
   const idx = ModalStack.indexOf(id);
   if (idx !== -1) ModalStack.splice(idx, 1);
-  // Recomputed rather than tied to an empty stack: a dock left open underneath
-  // a dialog must not keep the page scroll-locked after the dialog closes.
+  // Recomputed rather than tied to the modal being closed: another dialog may
+  // still be open underneath it.
   if (!anyModalOpen()) document.body.classList.remove('modal-open');
 
   const entry = ModalRegistry[id];
@@ -193,9 +168,6 @@ document.addEventListener('keydown', e => {
   }
 
   if (e.key === 'Tab') {
-    // A dock does not trap Tab: it is a panel beside the page, and the page
-    // behind it is meant to be reachable.
-    if (isDock(top)) return;
     const visible = modalFocusables(shell);
     if (!visible.length) return;
     const first = visible[0];

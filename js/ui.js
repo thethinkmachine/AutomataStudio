@@ -10,11 +10,13 @@ import { anyModalOpen, closeModal, registerModal, showOverlay } from './modal.js
 import { includeNoteBounds, pruneNoteAnchorsExcluding } from './notes.js';
 import { CARD_AUTO_HIDE_MS, restartAutosaveTimer, saveBackupChecked, saveJSON, saveWorkspace, saveWorkspaceById } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
+import { getActiveRPanelTab, isRPanelTabActive, RPANEL_TAB_NAMES, RPANEL_TABS, setActiveRPanelTab } from './rpanel-state.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
 import { $, App, MachineCategories, MachineTypes, R, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { getState, getTransition, hideContextMenu } from './states-transitions.js';
 import {
-  applyStateMateSettings, askStateMateAboutSelection, openStateMate, populateStateMateSettings
+  applyStateMateSettings, askStateMateAboutSelection, openStateMate, populateStateMateSettings,
+  stowStateMate
 } from './statemate-ui.js';
 import { Change, emit, subscribe } from './store.js';
 import { DEFAULT_THEME, Themes } from './themes.js';
@@ -865,11 +867,11 @@ document.addEventListener('keydown', e => {
   // step the simulation underneath the dialog. Escape and Enter are handled
   // by modal.js, which sees them first from its capture-phase listener.
   if (typeof anyModalOpen === 'function' && anyModalOpen()) return;
-  // A dock is not blocking — the canvas under the StateMate console is live,
-  // and these shortcuts are how it is driven. But a key pressed with the focus
-  // still inside the panel belongs to the panel: tabbing to a transcript
-  // button and pressing "s" must not switch the canvas tool underneath it.
-  if (e.target.closest && e.target.closest('.sm-console')) return;
+  // A panel is not blocking — the canvas beside StateMate is live, and these
+  // shortcuts are how it is driven. But a key pressed with the focus still
+  // inside the panel belongs to the panel: tabbing to a transcript button and
+  // pressing "s" must not switch the canvas tool underneath it.
+  if (e.target.closest && e.target.closest('.sm-panel')) return;
   // Same reasoning for the info card, which is a floating panel over a live
   // canvas rather than a dialog. Its editor is mostly text fields, already
   // covered by the tag check above — but its buttons are not, and Delete on a
@@ -2038,24 +2040,6 @@ export function canvasInfoCorner(wrapRect, size, obstacles = [], soft = []) {
 }
 
 /**
- * An element's box in wrap coordinates, or null when it is not on screen.
- *
- * Deliberately not gated on `offsetParent`: the StateMate console is a fixed
- * overlay, whose offsetParent is null even while it is covering half the
- * canvas. Zero-sized is the honest test for "not showing".
- */
-export function overlayRectIn(el, wrapRect) {
-  if (!el || !el.getBoundingClientRect || !wrapRect) return null;
-  const box = el.getBoundingClientRect();
-  if (!box || !box.width || !box.height) return null;
-  return {
-    left: box.left - (wrapRect.left || 0),
-    top: box.top - (wrapRect.top || 0),
-    width: box.width, height: box.height
-  };
-}
-
-/**
  * The drawing's own box, in wrap coordinates. `getContentBounds` answers in
  * world coordinates, so the camera is what turns it into somewhere on screen.
  */
@@ -2068,16 +2052,6 @@ export function machineRectIn(wrapRect) {
     left: b.minX * z + App.cam.x, top: b.minY * z + App.cam.y,
     width: Math.max(0, b.width * z), height: Math.max(0, b.height * z)
   };
-}
-
-// The console is docked across the bottom of the canvas with no scrim, which is
-// the whole point of it — but it is the biggest thing that can appear over the
-// diagram, and the card has to get out from under it rather than be read
-// through it. Collapsed to its strip it is still an obstacle, just a short one.
-function stateMateRectIn(wrapRect) {
-  const overlay = $('statemate-modal');
-  if (!overlay || !overlay.classList || !overlay.classList.contains('show')) return null;
-  return overlayRectIn(overlay.querySelector?.('.sm-console'), wrapRect);
 }
 
 function measureBox(el) {
@@ -2105,11 +2079,11 @@ export function layoutCanvasInfo(wrapRect, obstacles = []) {
   if (!size) return null;
 
   const margin = TOOLBAR_MARGIN;
-  // The console is asked for here rather than passed in, for the same reason
-  // layoutCanvasOverlays measures the toolbar itself: the corner has to depend
-  // on the DOM, not on which caller happened to know about it.
-  const hard = [...obstacles, stateMateRectIn(wrapRect)];
-  const corner = canvasInfoCorner(wrapRect, size, hard, [machineRectIn(wrapRect)]);
+  // StateMate used to be asked for here: it was a dock across the bottom of the
+  // canvas and the biggest thing that could appear over the diagram. As the
+  // right panel's second tab it takes layout space instead of covering
+  // anything, so the wrap it is measured against has already shrunk by it.
+  const corner = canvasInfoCorner(wrapRect, size, obstacles, [machineRectIn(wrapRect)]);
   [btn, card].forEach(el => {
     if (!el || !el.style) return;
     el.style.position = 'absolute';
@@ -2565,6 +2539,110 @@ export function toggleRPanelPin() {
   if (btn) btn.dataset.tip = unpinned ? 'Pin right panel' : 'Unpin right panel';
   if (typeof applyToolbarDock === 'function') applyToolbarDock(false);
   try { localStorage.setItem('automata-rpanel-pinned', unpinned ? '0' : '1'); } catch (e) { }
+}
+
+// ── the right panel's two tabs ────────────────────────────────────
+//  Inspector and StateMate share one right edge, one pin, one resizer and one
+//  mobile sheet. StateMate was a dock across the bottom of the canvas, which
+//  made it the only durable surface in the app that covered the diagram rather
+//  than making room for it; as a tab it makes room like everything else, and
+//  loses the private minimize/close/Escape-ladder vocabulary it needed to
+//  compensate. See the note over .sm-panel in css/modals.css.
+//
+//  Which tab is which lives in rpanel-state.js, so the list the strip is
+//  painted from is the list a selection is validated against.
+
+/** Paint the tab strip and tabpanels from the native right-panel state. */
+export function syncRPanelTabs() {
+  const on = getActiveRPanelTab();
+  const panel = $('rpanel');
+  if (panel) panel.dataset.activePanel = on;
+  Object.entries(RPANEL_TABS).forEach(([name, ids]) => {
+    const tab = $(ids.tab);
+    const tabpanel = $(ids.panel);
+    const active = name === on;
+    if (tab) {
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-selected', String(active));
+      tab.setAttribute('tabindex', active ? '0' : '-1');
+    }
+    if (tabpanel) {
+      tabpanel.hidden = !active;
+      tabpanel.setAttribute('aria-hidden', String(!active));
+    }
+  });
+}
+
+/** Select a right-panel tab without invoking a panel's enter/leave lifecycle. */
+export function activateRPanelTab(name) {
+  const active = setActiveRPanelTab(name);
+  syncRPanelTabs();
+  return active;
+}
+
+/**
+ * Make the right panel visible enough to read.
+ *
+ * An unpinned panel is collapsed to a hover rail, so a panel opened onto it
+ * would reveal nothing. Pinning is the honest fix — the reader asked for the
+ * panel, and a button that appears to do nothing is worse than one that takes
+ * the width it needs.
+ *
+ * Only an opening calls this, and `showRPanelTab` never calls it directly.
+ * Selecting the *Inspector* must not: the strip is inside the panel, so reaching
+ * it means the panel is already readable, and pinning writes to localStorage —
+ * clicking "Inspector" on a hover-revealed panel would quietly change a
+ * preference the reader set on purpose. Selecting StateMate goes through
+ * `openStateMate`, which does reveal, because it ends by focusing the composer
+ * and an unpinned panel hides its content the moment the pointer leaves.
+ */
+export function revealRPanel() {
+  const r = $('rpanel');
+  if (r && r.classList && r.classList.contains('unpinned')) toggleRPanelPin();
+  if (isMobilePanelLayout() && r?.dataset.mobileCollapsed === '1') {
+    toggleMobilePanel('rpanel', false);
+  }
+}
+
+/**
+ * Select a tab through its panel's lifecycle.
+ *
+ * Leaving StateMate is deliberately not destructive: nothing about the session
+ * lives in the DOM, so there is nothing for a tab switch to tear down. That is
+ * the whole difference from the ✕ this replaced. Both branches end in
+ * `activateRPanelTab`, so the strip is painted once by whichever ran, and
+ * neither reveals the panel from here — `openStateMate` does its own, for the
+ * reason in `revealRPanel`, and selecting the Inspector must not.
+ */
+export function showRPanelTab(name) {
+  if (name === 'statemate') openStateMate({ resume: true });
+  else stowStateMate();
+  if (!isRPanelTabActive(name)) activateRPanelTab(name);
+}
+
+export function initRPanelTabs() {
+  // Wired at creation the way reference.js does it, so the tabs add no names
+  // to bridge.js.
+  Object.entries(RPANEL_TABS).forEach(([name, ids]) => {
+    const tab = $(ids.tab);
+    if (!tab || tab._rpTabInit) return;
+    tab._rpTabInit = true;
+    tab.addEventListener('click', () => showRPanelTab(name));
+    tab.addEventListener('keydown', e => {
+      const names = RPANEL_TAB_NAMES;
+      const index = names.indexOf(name);
+      let next = null;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = names[(index + 1) % names.length];
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = names[(index - 1 + names.length) % names.length];
+      if (e.key === 'Home') next = names[0];
+      if (e.key === 'End') next = names[names.length - 1];
+      if (!next) return;
+      e.preventDefault();
+      showRPanelTab(next);
+      $(RPANEL_TABS[next].tab)?.focus();
+    });
+  });
+  syncRPanelTabs();
 }
 
 export const MOBILE_BUILD_PANEL_IDS = ['lpanel', 'rpanel'];

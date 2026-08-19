@@ -478,16 +478,45 @@ test('nothing inside an overlay claims the pointer while the overlay is closed',
     + 'closed dialog keeps intercepting clicks it cannot be seen to be intercepting');
 });
 
-test('the StateMate dock passes the pointer through, and its panel takes it back', () => {
+test('StateMate is a panel in flow, with none of the dock plumbing left behind', () => {
   const rules = cssRules(MODAL_CSS);
 
-  const overlay = rules.find(r => r.selector === '.sm-overlay.show');
-  assert.ok(overlay, '.sm-overlay.show exists');
-  assert.match(overlay.body, /pointer-events\s*:\s*none/,
-    'the dock does not block the canvas it is docked over');
+  // The dock was an `.overlay` + `.modal` that spent a dozen rules undoing its
+  // own inheritance — transparent ground, no backdrop-filter, pointer-events
+  // off and then back on — so that the canvas underneath stayed usable. As the
+  // right panel's second tab it does not cover the canvas at all, and every
+  // one of those rules is gone rather than rewritten. Asserted at source
+  // because the failing state looks exactly like the working one: a stray
+  // `.sm-overlay` rule would silently reintroduce a full-viewport layer.
+  const stale = rules.filter(r => /\.sm-(overlay|console)\b/.test(r.selector));
+  assert.deepEqual(stale.map(r => r.selector), [],
+    'the overlay and its console are gone; .sm-panel is the surface now');
 
-  const panel = rules.find(r => /\.sm-console$/.test(r.selector) && /pointer-events/.test(r.body));
-  assert.ok(panel, 'the panel declares its own pointer-events');
-  assert.match(panel.selector, /\.show\b/, 'scoped to the open console');
-  assert.match(panel.body, /pointer-events\s*:\s*auto/);
+  const panel = rules.find(r => r.selector === '.sm-panel');
+  assert.ok(panel, '.sm-panel is declared');
+  assert.doesNotMatch(panel.body, /position\s*:\s*(fixed|absolute)/,
+    'a panel takes layout space rather than floating over the canvas');
+  const hiddenPanel = rules.find(r => r.selector === '.sm-panel[hidden]');
+  assert.match(hiddenPanel?.body || '', /display\s*:\s*none/,
+    'the inactive native tabpanel is removed from layout');
+
+  // No glass anywhere in the panel. It was justified by the live diagram
+  // underneath, and there is no longer a diagram underneath — a backdrop
+  // filter here would cost a compositor layer that re-rasterizes on every pan
+  // and return nothing.
+  const glass = rules.filter(r => /^\.sm-/.test(r.selector) && /backdrop-filter/.test(r.body));
+  assert.deepEqual(glass.map(r => r.selector), [],
+    'the translucency went with the dock that justified it');
+});
+
+test('the StateMate panel lives inside the right panel, not the overlay stack', () => {
+  const html = readCssFile(cssPath(new URL('../index.html', import.meta.url)), 'utf8');
+  const rpanel = html.slice(html.indexOf('<div class="rpanel"'), html.indexOf('AUXILIARY VIEWS'));
+
+  assert.ok(rpanel.includes('id="statemate-panel"'),
+    'the console is a child of the right panel');
+  assert.ok(rpanel.includes('id="rpanel-tab-statemate"') && rpanel.includes('id="rpanel-tab-inspector"'),
+    'and the strip that switches between it and the Inspector is in the panel header');
+  assert.ok(!/<div class="overlay[^"]*" id="statemate-panel"/.test(html),
+    'it is no longer registered markup-side as an overlay');
 });

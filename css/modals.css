@@ -64,45 +64,35 @@ body.modal-open {
   gap: 8px;
 }
 
-/* ─── STATEMATE CONSOLE ───
+/* ─── STATEMATE PANEL ───
    A session, not a picker. The transcript records what was asked and what was
    built, the composer sends to the model on ⏎, and everything that is not a
    prompt is a slash command. One input, one meaning.
 
-   Docked to the bottom rather than floating in the middle, because the machine
-   is drawn on the canvas behind this panel and a dialog that covers its own
-   result is a dialog you have to dismiss to use. That is also why this overlay
-   drops the shared scrim and blur — the diagram above stays readable, and the
-   conversation can stay open across several turns.
+   **It is the right panel's second tab, and everything below follows from
+   that.** It used to be an `.overlay` + `.modal` docked across the bottom of
+   the canvas, which meant it was a dialog spending a dozen rules undoing its
+   own inheritance — transparent background, no backdrop-filter, pointer-events
+   off and then back on, padding zeroed and max-width unset. It is now a native
+   tabpanel, with neither overlay inheritance nor modal lifecycle state.
 
-   And why it drops pointer-events with them. Readable was never the whole of
-   it: the canvas behind the console is meant to be *usable* — click a state,
-   pan, zoom, run a word — while the conversation about it stays open. An
-   .overlay takes the whole viewport and `pointer-events: all` on .show, which
-   made the diagram a picture of itself and turned a click on it into a
-   dismissal. The overlay passes the pointer through; the panel takes it back.
-   The blocking half of the plumbing is off in js/modal.js, under `dock`.
+   Three things go away with the dock, and each is a rule that no longer needs
+   writing rather than a feature removed:
+
+   - **The glass.** `blur(18px) saturate(118%)` over an 80% surface existed to
+     say "the diagram under this is live and still yours". A panel in flow does
+     not sit over the diagram, so it says that outright — and the compositor
+     layer that re-rasterized on every pan frame goes with it.
+   - **The minimize.** Putting the console away without closing it is the pin
+     and the Inspector tab, which is the vocabulary every other panel here
+     already speaks. No `is-min`, no 999px pill, no strip to click.
+   - **The Escape ladder.** Escape dismisses the completion menu, then
+     interrupts a run, and is then the canvas's again — leaving is a tab, not a
+     keystroke, so there is no rung between them and the page.
 
    The shell is static in index.html; every line inside .sm-log is built by
    js/statemate-ui.js. */
-.sm-overlay {
-  align-items: flex-end;
-  justify-content: center;
-  padding: 0 14px 14px;
-}
-
-/* No scrim and no gradient. The gradient was doing the separating before the
-   panel became glass; behind a translucent panel it is just a dark wash
-   bleeding up through the transcript, and .modal's shadow and ring already say
-   "in front of" more clearly than tinting the canvas does. */
-.sm-overlay.show {
-  background: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  pointer-events: none;
-}
-
-.sm-console {
+.sm-panel {
   /* The type scale. Two voices and four sizes, and the rule for which is
      which: sans is language — what a person wrote or is meant to read;
      mono is identifiers and instrumentation — commands, marks, counts,
@@ -115,107 +105,129 @@ body.modal-open {
   position: relative;   /* the off-screen live region is absolute within it */
   display: flex;
   flex-direction: column;
-  width: min(900px, 100%);
-  max-width: none;
-  min-height: 250px;
-  max-height: min(620px, 78vh);
-  padding: 0;
+  /* Same reason as .rpanel-content: a flex column will not shrink below its
+     content, so the transcript would grow the panel instead of scrolling. */
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg2);
   overflow: hidden;
-  transform: translateY(16px);
-  /* ── glass, and only here ──
-     Every other dialog in this app sits behind a 3px scrim; the console
-     deliberately sits behind nothing, because the diagram under it is live and
-     still the reader's. Translucency is that sentence in paint, which is the
-     whole justification — it would be ornament on the settings dialog.
-
-     It is safe because of *where* it shows. Everything carrying text is an
-     opaque surface sitting on top: the cards, the composer, the completion
-     menu, the chips. The glass reads in the negative space around them — the
-     margin beside a 680px reply, the gutter, the header — so no prose is ever
-     asked to sit on a blurred, moving diagram. Keep it that way: a translucent
-     *card* is where this stops being tasteful and starts being unreadable.
-
-     80% is measured rather than guessed, and the window is narrow. At 86% the
-     effect is invisible in the dark themes — a dark surface over a dark canvas
-     is a dark surface — so it costs a compositor layer and returns nothing. At
-     70% a *dialog* opening behind the dock becomes legible through it, which
-     is the point where glass stops being depth and starts being noise. Expect
-     it to read plainly in the light themes and quietly in the dark ones; that
-     asymmetry is inherent to the trick, not a bug in this number.
-
-     Blur is affordable on a panel this size, but it recomputes whenever what
-     is behind it repaints — which is exactly during the panning the dock
-     exists to allow. Raise it and check a drag, not a screenshot.
-
-     The filter itself is declared on .show below, for the reason given over
-     .overlay.show: a backdrop-filter asks the compositor to keep a rasterized
-     copy of everything behind the element, and the closed console is still in
-     the DOM at opacity 0 in front of the canvas. Declared here it never went
-     away — the page was being snapshotted behind an invisible panel all
-     session, and closing tore that layer down in one frame, which is a
-     full-viewport repaint and reads as a blink. The translucent background
-     stays: a colour is not a filter and costs nothing to composite. */
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
 }
 
-/* The panel is the only part of the overlay that takes the pointer — and only
-   while the console is open.
-   `pointer-events` is inherited, and `.overlay`'s `none` is what keeps twelve
-   closed dialogs from intercepting anything: they are all still in the DOM,
-   at opacity 0, in front of the page. Declaring `auto` on .sm-console itself
-   overrode that inheritance for the closed console too, leaving an invisible
-   900px panel over the bottom of the canvas — exactly where the toolbar is —
-   swallowing every click and showing a text cursor for its own textarea.
-   Scoped to .show, it takes the pointer only when it is on screen. */
-.sm-overlay.show .sm-console {
-  pointer-events: auto;
-  backdrop-filter: blur(18px) saturate(118%);
-  -webkit-backdrop-filter: blur(18px) saturate(118%);
+/* A native tabpanel is selected by the right-panel controller. It never joins
+   the modal stack and needs no modal-derived `.show` state. */
+.sm-panel[hidden] {
+  display: none;
 }
 
-.overlay.show .sm-console {
-  transform: translateY(0);
+/* `hidden` is authoritative; this selector is a defensive layout fallback for
+   older saved markup restored before the controller's first sync. */
+.rpanel[data-active-panel="statemate"] .rpanel-content {
+  display: none;
 }
 
-/* ── header ── */
-.sm-head {
+/* ── the tab strip ──
+   This is sidebar navigation, not a compact form control. The active panel is
+   carried by type and a quiet underline instead of a bordered control inside
+   another bordered control. */
+.rpanel-tabs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  flex: 1 1 auto;
+  align-self: stretch;
+  gap: 0;
+  min-width: 0;
+  min-height: 36px;
+}
+
+.rpanel-tab {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex: 0 0 auto;
-  padding: 10px 10px 10px 16px;
-  border-bottom: 1px solid var(--border);
-}
-
-.sm-title-name {
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
   font-family: var(--sans);
-  font-size: .86rem;
-  font-weight: 600;
-  letter-spacing: -.01em;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  font-size: .72rem;
+  font-weight: 500;
+  color: var(--text3);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.rpanel-tab::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  bottom: 0;
+  left: 10px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: transparent;
+}
+
+.rpanel-tab:hover,
+.rpanel-tab:focus-visible {
+  background: var(--surface);
+  color: var(--text2);
+  outline: none;
+}
+
+.rpanel-tab.active {
   color: var(--text);
 }
 
-.sm-title-icon {
-  width: 15px;
-  height: 15px;
+.rpanel-tab.active::after {
+  background: var(--accent);
+}
+
+.rp-tab-icon {
+  width: 13px;
+  height: 13px;
   flex: 0 0 auto;
   color: var(--accent);
 }
 
-.sm-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
+/* What the tab can still say for a panel that is not showing: a run in flight,
+   or the turns that landed while the Inspector was up. Both are counts of
+   things the reader would otherwise have to switch tabs to find out about. */
+.rp-tab-badge {
+  font-family: var(--mono);
+  font-size: .58rem;
+  line-height: 1;
+  min-width: 16px;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  white-space: nowrap;
 }
 
-.sm-headbtn {
-  font-family: var(--mono);
-  font-size: var(--sm-micro);
-  padding: 3px 9px;
+.rp-tab-badge[hidden] {
+  display: none;
+}
+
+.sm-head-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.rpanel[data-active-panel="inspector"] .sm-head-actions {
+  display: none;
+}
+
+.sm-head-menu-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
@@ -224,111 +236,88 @@ body.modal-open {
   transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 
-.sm-headbtn:hover,
-.sm-headbtn:focus-visible {
+.sm-head-menu-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.sm-head-menu-btn:hover,
+.sm-head-menu-btn:focus-visible,
+.sm-head-actions.is-open .sm-head-menu-btn {
   border-color: var(--border2);
-  background: var(--surface2);
+  background: var(--surface);
   color: var(--text);
   outline: none;
 }
 
-.sm-close,
-.sm-min {
-  width: 26px;
-  height: 26px;
+.sm-head-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 40;
   display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text3);
-  cursor: pointer;
-}
-
-.sm-close:hover,
-.sm-close:focus-visible,
-.sm-min:hover,
-.sm-min:focus-visible {
+  width: max-content;
+  min-width: 188px;
+  max-width: calc(100cqw - 20px);
+  padding: 5px;
+  border: 1px solid var(--border2);
+  border-radius: 9px;
   background: var(--surface2);
-  color: var(--text);
-  outline: none;
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--overlay-ring);
+  animation: ctx-pop-in .12s ease-out;
 }
 
-.sm-close svg {
-  width: 13px;
-  height: 13px;
-}
-
-/* One caret, turned over. Down is "put it away", and while it is away the same
-   glyph points back at the panel it would restore — which is a cheaper thing to
-   read than two icons that have to be told apart. */
-.sm-min svg {
-  width: 12px;
-  height: 12px;
-  transition: transform var(--transition-base);
-}
-
-.sm-overlay.is-min .sm-min svg {
-  transform: rotate(180deg);
-}
-
-/* ── minimized ──
-   Collapsed to the header strip. Nothing about the session lives in the DOM —
-   the transcript, the thread and a request in flight all outlive this — so it
-   is reversible in a way closing deliberately is not: closing interrupts a run.
-
-   Shrink-wrapped rather than left 900px wide, because the point of putting the
-   console away is the diagram underneath it, and a full-width bar across the
-   bottom of the canvas is most of the panel's footprint with none of its use. */
-.sm-overlay.is-min .sm-console {
-  width: auto;
-  min-width: 0;
-  min-height: 0;
-  max-height: none;
-  /* A pill, because collapsed this is one control rather than a surface with
-     things on it, and the panel's 14px corner reads as a dialog with its body
-     cut off at this height. Past half the height, so it stays a capsule
-     whatever the strip ends up carrying. */
-  border-radius: 999px;
-}
-
-.sm-overlay.is-min .sm-logwrap,
-.sm-overlay.is-min .sm-dock {
+.sm-head-menu[hidden] {
   display: none;
 }
 
-.sm-overlay.is-min .sm-head {
-  /* Tighter than the open header, and asymmetric: the round ends need more
-     room on the text side than the buttons do, or the name sits in the curve. */
-  gap: 8px;
-  padding: 6px 7px 6px 16px;
-  border-bottom: none;
-  /* The whole strip is the way back up, the way a collapsed dock usually is.
-     The buttons on it keep their own jobs — see the head click handler. */
-  cursor: pointer;
-}
-
-/* What the console can still say from one strip: a run in flight, or the turns
-   that landed while it was down. Both are counts of things the reader would
-   otherwise have to restore the panel to find out about. */
-.sm-minstat {
-  font-family: var(--mono);
-  font-size: var(--sm-micro);
-  display: inline-flex;
+.sm-head-menu-item {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--text3);
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: .76rem;
+  text-align: left;
   white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.sm-minstat.is-new {
-  border-color: var(--accent-border);
-  background: var(--accent-soft);
-  color: var(--accent);
+.sm-head-menu-item:hover,
+.sm-head-menu-item:focus-visible {
+  background: var(--surface3);
+  outline: none;
+}
+
+.sm-head-menu-item svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  opacity: .82;
+}
+
+.sm-head-menu-item.is-danger {
+  margin-top: 3px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 6px 6px;
+  color: var(--red);
+}
+
+.sm-head-menu-item.is-danger:hover,
+.sm-head-menu-item.is-danger:focus-visible {
+  background: var(--red-soft);
+}
+
+.sm-head-menu-item[hidden] {
+  display: none;
 }
 
 /* ── the transcript ── */
@@ -348,7 +337,7 @@ body.modal-open {
   line-height: var(--sm-lh);
   flex: 1 1 auto;
   min-height: 0;
-  padding: 15px 18px 6px;
+  padding: 18px 16px 10px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -752,27 +741,20 @@ body.modal-open {
      border carries the colour instead, over a tint faint enough to leave the
      prose alone. One shape, tinted; nothing stuck to it. */
 .sm-card {
-  padding: 12px 15px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: linear-gradient(to bottom,
-      color-mix(in srgb, var(--surface3) 45%, var(--surface2)),
-      var(--surface2) 72%);
-  /* The lit top edge is what reads as "made" rather than "filled". Derived
-     from --text so it inverts with the theme instead of assuming a dark one. */
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--text) 8%, transparent),
-    0 1px 2px rgba(0, 0, 0, .1);
-  transition: box-shadow var(--transition-fast);
+  padding: 10px 0 6px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transition: border-color var(--transition-fast);
 }
 
 /* Hover lifts the card by its own light rather than by its border — the border
    is carrying which kind of turn this is, and neutralising it on hover would
    throw that away for the duration of the pointer being there. */
 .sm-entry:hover .sm-card {
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--text) 13%, transparent),
-    0 2px 6px rgba(0, 0, 0, .13);
+  border-color: var(--border2);
 }
 
 /* A reply hugs its text and stops at a readable measure. Both matter: the
@@ -781,21 +763,15 @@ body.modal-open {
 .sm-card.is-reply {
   width: fit-content;
   max-width: min(74ch, 100%);
-  border-color: var(--violet-border);
-  background: linear-gradient(to bottom,
-      color-mix(in srgb, var(--violet-soft) 42%, var(--surface2)),
-      var(--surface2) 78%);
+  border-top-color: var(--violet-border);
 }
 
 .sm-card.is-warn {
-  border-color: var(--gold-border);
+  border-top-color: var(--gold-border);
 }
 
 .sm-card.is-error {
-  border-color: var(--red-border);
-  background: linear-gradient(to bottom,
-      color-mix(in srgb, var(--red-soft) 70%, var(--surface2)),
-      var(--surface2) 72%);
+  border-top-color: var(--red-border);
 }
 
 .sm-card-title {
@@ -1230,7 +1206,7 @@ body.modal-open {
 
 /* ── the welcome, and the lists a slash command prints ── */
 .sm-welcome {
-  padding: 6px 0 2px;
+  padding: 2px 0 4px;
 }
 
 .sm-welcome-line {
@@ -1259,14 +1235,14 @@ body.modal-open {
 .sm-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin: 8px 0 0 24px;
+  gap: 4px;
+  margin: 10px 0 0 24px;
 }
 
 .sm-listrow {
   display: block;
   width: 100%;
-  padding: 7px 10px;
+  padding: 8px 10px;
   border: 1px solid transparent;
   border-radius: var(--r);
   background: transparent;
@@ -1330,9 +1306,11 @@ body.modal-open {
    strip and read as a mistake. */
 .sm-dock {
   flex: 0 0 auto;
-  padding-bottom: 4px;
+  min-width: 0;
+  padding: 10px 12px 12px;
   border-top: 1px solid var(--border);
-  background: color-mix(in srgb, var(--surface) 66%, transparent);
+  background: inherit;
+  overflow-x: hidden;
 }
 
 /* The completion list for slash commands and their arguments. It replaces the
@@ -1343,7 +1321,7 @@ body.modal-open {
   /* Tall enough for the whole command list without scrolling — a menu that
      hides the last two entries hides the two nobody has discovered yet. */
   max-height: 320px;
-  margin: 10px 12px 0;
+  margin: 0 0 10px;
   padding: 5px;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -1427,7 +1405,7 @@ body.modal-open {
   align-items: center;
   flex-wrap: wrap;
   gap: 5px;
-  padding: 7px 12px 0;
+  padding: 0 0 8px;
 }
 
 .sm-ctxbar-label {
@@ -1530,6 +1508,12 @@ body.modal-open {
   border-radius: 8px;
   background: var(--green-soft);
   color: var(--text2);
+  min-width: 0;
+}
+
+.sm-nudge > :not(.sm-nudge-icon) {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .sm-nudge-icon {
@@ -1578,6 +1562,12 @@ body.modal-open {
   border-radius: 8px;
   background: var(--gold-soft);
   color: var(--text2);
+  min-width: 0;
+}
+
+.sm-editing > :not(.sm-editing-icon) {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .sm-editing-icon {
@@ -1610,12 +1600,14 @@ body.modal-open {
   display: flex;
   align-items: flex-start;
   gap: 9px;
-  margin: 10px 12px 0;
-  padding: 9px 9px 9px 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 7px 8px 7px 10px;
   border: 1px solid var(--border2);
   border-radius: 10px;
   background: var(--bg3);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  overflow: hidden;
 }
 
 .sm-composer:focus-within {
@@ -1645,7 +1637,8 @@ body.modal-open {
   line-height: var(--sm-lh);
   flex: 1 1 auto;
   min-width: 0;
-  max-height: 132px;
+  max-height: 96px;
+  min-height: 26px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1663,8 +1656,8 @@ body.modal-open {
 .sm-send {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   flex: 0 0 auto;
   border: 1px solid var(--accent-border);
   border-radius: 7px;
@@ -1715,10 +1708,12 @@ body.modal-open {
   letter-spacing: .02em;
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 9px 14px 6px;
+  min-width: 0;
+  gap: 6px;
+  padding: 8px 2px 0;
   color: var(--text3);
   flex-wrap: wrap;
+  overflow: hidden;
 }
 
 .sm-stat {
@@ -1729,12 +1724,19 @@ body.modal-open {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 7px;
+  padding: 3px 7px;
   border: 1px solid transparent;
   border-radius: 999px;
   background: transparent;
   color: var(--text3);
   white-space: nowrap;
+  max-width: 100%;
+}
+
+.sm-stat > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sm-stat b {
@@ -1784,53 +1786,9 @@ button.sm-stat:disabled {
   flex: 0 0 auto;
 }
 
-.sm-keys {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-left: auto;
-}
-
-.sm-key {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.sm-key kbd {
-  font-family: var(--mono);
-  font-size: var(--sm-micro);
-  padding: 1px 5px;
-  border: 1px solid var(--border2);
-  border-radius: 4px;
-  background: var(--bg3);
-  color: var(--text2);
-}
-
-@media (max-width: 720px) {
-  .sm-console { max-height: 86vh; }
-  .sm-keys { display: none; }
-}
-
-/* Asked not to see through things — a real accessibility setting, and the
-   console is a reading surface first. The glass is decoration on top of a
-   panel that works without it, so it comes off cleanly. */
-@media (prefers-reduced-transparency: reduce) {
-  .sm-console {
-    background: var(--surface);
-  }
-
-  /* Matched to where the filter is declared — the glass moved to .show, and a
-     bare .sm-console here would no longer outrank it. */
-  .sm-overlay.show .sm-console {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-
-  .sm-dock {
-    background: var(--surface);
-  }
-}
+/* No prefers-reduced-transparency block any more: there is nothing to see
+   through. The panel and its dock are opaque surfaces, which is what becoming
+   a panel bought — see the note over .sm-panel. */
 
 /* On a phone the dock is most of the panel — menu, context, nudge, composer and
    status — and the per-entry tools are permanently visible because there is no
@@ -1838,11 +1796,11 @@ button.sm-stat:disabled {
    transcript into a slot. */
 @media (max-width: 560px) {
   .sm-log { padding: 12px 13px 6px; }
-  .sm-menu { max-height: 40vh; margin: 8px 9px 0; }
-  .sm-composer,
+  .sm-dock { padding: 9px 10px 10px; }
+  .sm-menu { max-height: 40vh; }
   .sm-nudge,
-  .sm-editing { margin: 8px 9px 0; }
-  .sm-status { gap: 6px; padding: 8px 10px 5px; }
+  .sm-editing { margin: 0 0 8px; }
+  .sm-status { gap: 5px; padding-top: 8px; }
   /* The clock is the first thing to go: it is the least of the four and the
      only one that is not a control. */
   .sm-stamp { display: none; }
@@ -1982,14 +1940,6 @@ button.sm-stat:disabled {
 }
 
 @media (max-width: 560px) {
-  .sm-overlay {
-    padding: 0 8px 8px;
-  }
-
-  .sm-console {
-    width: calc(100vw - 16px);
-  }
-
   .sm-log {
     padding: 12px 12px 4px;
   }
@@ -3929,8 +3879,7 @@ button:focus-visible {
    The label stays on these — they are decisions with consequences, where a bare
    icon would be a guess — but the glyph is what the eye finds first. */
 .sm-btn,
-.sm-mini,
-.sm-headbtn {
+.sm-mini {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -3943,8 +3892,7 @@ button:focus-visible {
   opacity: .85;
 }
 
-.sm-mini .sm-btn-icon,
-.sm-headbtn .sm-btn-icon {
+.sm-mini .sm-btn-icon {
   width: 11px;
   height: 11px;
 }

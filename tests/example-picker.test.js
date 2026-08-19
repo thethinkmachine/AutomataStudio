@@ -9,12 +9,14 @@ const viewCss = readFileSync(new URL('../css/views.css', import.meta.url), 'utf8
 
 // The examples now live inside StateMate rather than in a dialog of their own —
 // see the note at the top of js/statemate-ui.js for why they stayed at all.
-// What this test protects is unchanged: one searchable dialog behind the header
-// button, and no anchored dropdown.
-test('the header button opens a searchable dialog', () => {
-  assert.ok(html.includes('id="statemate-modal"'));
+// What this test protects is unchanged: one searchable StateMate surface behind
+// the header button, and no anchored dropdown.
+test('the header button opens the searchable StateMate panel', () => {
+  assert.ok(html.includes('id="statemate-panel"'));
   assert.ok(html.includes('id="sm-input"'));
-  assert.ok(html.includes('aria-haspopup="dialog"'));
+  assert.ok(html.includes('aria-controls="statemate-panel"'));
+  const button = html.match(/<button[^>]+id="example-picker-btn"[^>]*>/)?.[0] || '';
+  assert.ok(!button.includes('aria-haspopup="dialog"'));
   assert.ok(!html.includes('id="example-menu"'), 'the old anchored dropdown should be gone');
   assert.ok(!html.includes('id="example-modal"'), 'the standalone example dialog is superseded');
 });

@@ -15,7 +15,7 @@
 //      activeWorkspaceId, R); Object.assign would freeze a stale value, and
 //      tests assert on the current one.
 import './dom-stub.js';
-import { clearElements, getElement } from './dom-stub.js';
+import { clearElements, dispatchDocumentEvent, getElement } from './dom-stub.js';
 
 import * as algorithmsCfg from '../js/algorithms-cfg.js';
 import * as algorithmsFa from '../js/algorithms-fa.js';
@@ -39,6 +39,7 @@ import * as modal from '../js/modal.js';
 import * as notes from '../js/notes.js';
 import * as persistence from '../js/persistence.js';
 import * as render from '../js/render.js';
+import * as rpanelState from '../js/rpanel-state.js';
 import * as simulation from '../js/simulation.js';
 import * as state from '../js/state.js';
 import * as statesTransitions from '../js/states-transitions.js';
@@ -61,7 +62,7 @@ import * as workspace from '../js/workspace.js';
 
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, geometry, statesTransitions,
-  canvas, render, notes, dividers, simulation, suggest, language, alphabet, markdown,
+  canvas, render, rpanelState, notes, dividers, simulation, suggest, language, alphabet, markdown,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, algorithmsFa, algorithmsCfg, reference, workspace, quickSettings, minimap, ui,
   statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt,
@@ -117,6 +118,7 @@ function resetModuleState() {
   state.setWorkspaces([]);
   state.setActiveWorkspaceId(null);
   state.setR(baseConfig.radius);
+  rpanelState.resetRPanelTab();
   ui.setSaveState('saved');
   // The incremental renderer keys its live SVG nodes off App.domCache. Left
   // populated, a test would start out holding nodes built for the previous
@@ -206,12 +208,12 @@ export function resetApp() {
 
 resetApp();
 
-export { getElement };
+export { dispatchDocumentEvent, getElement };
 
 // Kept so the per-test `const h = createHarness()` call sites read the same as
 // before. There is only ever one module graph now, so this resets it and hands
 // back the same facade rather than building an isolated one.
 export function createHarness() {
   resetApp();
-  return { context, getElement, resetApp };
+  return { context, getElement, resetApp, dispatchDocumentEvent };
 }

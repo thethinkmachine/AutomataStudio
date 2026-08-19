@@ -35,30 +35,16 @@
 //  is the one Claude Code follows — a model may infer what you meant, but not
 //  how much of your work it is allowed to overwrite.
 //
-//  The panel is docked to the bottom and drops the overlay's scrim, because
-//  the machine is drawn on the canvas behind it — a dialog that hides its own
-//  result is one you have to dismiss to use. It stays open across turns for
-//  the same reason the transcript exists: the second prompt is usually a
-//  correction to the first.
+//  StateMate is the Inspector's sibling in the right sidebar. The diagram keeps
+//  its own uncovered workspace, while the pin, resizer and mobile sheet are
+//  shared with the rest of the panel UI. It is an ordinary tabpanel: selection,
+//  visibility and keyboard navigation belong to the right-panel controller,
+//  while this module owns only the conversation's enter/leave lifecycle.
 //
-//  **And it is a dock rather than a dialog**, which is the same sentence
-//  carried through to the pointer: the canvas behind it is live. Click a
-//  state, pan, zoom, run a word, with the conversation about it still open.
-//  Registered with `dock: true` (js/modal.js), which gives up the scroll lock,
-//  the Tab trap and the `anyModalOpen()` gate; the overlay gives up
-//  pointer-events and the panel takes them back (css/modals.css). Nothing was
-//  gained by blocking — the diagram was visible and inert, and a click meant
-//  to select a state dismissed the console instead. The status line hears
-//  about what happens out there through the store, which is how a selection
-//  made *while* the console is open reaches the context basket.
-//
-//  **And a dock can be put away without being closed.** Minimizing collapses
-//  the panel to its header strip; the transcript, the thread, a held proposal
-//  and a request in flight all survive it, because none of them live in the
-//  DOM. Closing is the destructive one — its teardown interrupts a run — which
-//  is why the ✕ keeps its place beside the caret rather than being replaced by
-//  it, and why opening always restores: the strip is a way to put the console
-//  aside, not a state to come back to.
+//  Selecting Inspector stows StateMate without ending its session. The
+//  transcript, thread, held proposal and request in flight all survive because
+//  none of them live in the visible DOM. The StateMate tab reports work and
+//  unread turns while the Inspector is showing.
 //
 //  Two rules follow from the transcript being a thing people read rather than
 //  watch. **It is diffed, not rebuilt** — entries are keyed by object identity
@@ -72,7 +58,8 @@
 //  name to bridge.js — the entry point the header button calls.
 
 import { hlState } from './canvas.js';
-import { closeModal, isModalOpen, registerModal, showOverlay } from './modal.js';
+import { topModal } from './modal.js';
+import { isRPanelTabActive } from './rpanel-state.js';
 import { $, App, getMachineConfig } from './state.js';
 import { undo } from './history.js';
 import { renderMarkdown } from './markdown.js';
@@ -96,11 +83,11 @@ import {
 import { editStarterPrompts, starterPrompts } from './statemate-prompt.js';
 import { describeSpecSize, resolveContextRefs } from './statemate-spec.js';
 import { Change, emit, subscribe } from './store.js';
-import { fitToScreen, openSettingsModal, repositionCanvasInfo, switchSettingsTab } from './ui.js';
+import { activateRPanelTab, fitToScreen, openSettingsModal, revealRPanel, switchSettingsTab } from './ui.js';
 import { showStatus } from './utils.js';
 import { setView } from './view.js';
 
-const MODAL_ID = 'statemate-modal';
+const PANEL_ID = 'statemate-panel';
 
 // The console's own state. `log` is the transcript; it is rebuilt from the
 // retained thread whenever the two disagree, so a run started from anywhere
@@ -141,11 +128,12 @@ const Session = {
   // The turn the composer is currently rewriting, if any. Set by "edit", so ⏎
   // replaces that turn rather than following it.
   editing: '',
-  // Collapsed to the header strip — the console is still open, and everything
-  // about the session outlives it. See the minimize section below.
-  minimized: false,
-  minSince: 0,          // where the transcript had got to when it went down
-  logTop: 0             // the reader's scroll position, which display:none loses
+  // Where the transcript had got to when the Inspector tab last took the
+  // panel, and the reader's scroll position, which display:none loses. There
+  // is no `stowed` flag beside them: rpanel-state.js already answers that, and
+  // no `resume` flag either — that is an argument to openStateMate.
+  minSince: 0,
+  logTop: 0
 };
 
 // ══════════════════════════════════════════════════════════════════
@@ -346,7 +334,7 @@ function matchingAlgorithms(query, { min = 3 } = {}) {
 }
 
 function openAlgorithm(id) {
-  closeModal(MODAL_ID);
+  stowStateMate();
   setView('algo');
   // setAlgo lives on the global surface with the rest of the algorithm panel's
   // handlers; reaching it that way avoids a cycle back into algorithms-fa.js.
@@ -642,10 +630,12 @@ function syncLogWithThread() {
 
 // ── the empty state ──────────────────────────────────────────────
 //  It has one job: say what ⏎ does. With no key it has a second one, and the
-//  examples are it — this dialog is still the only way to reach them.
+//  examples are it — this panel is still the main way to reach them.
 
 function renderWelcome(host) {
-  const ready = isStateMateReady();
+  const settings = getStateMateSettings();
+  const enabled = !!settings.enabled;
+  const ready = isStateMateReady(settings);
   const cfg = getMachineConfig(App.machine);
   const wrap = el('div', 'sm-entry sm-welcome');
 
@@ -666,6 +656,9 @@ function renderWelcome(host) {
     body.append(document.createTextNode(
       '. StateMate draws it on the canvas, then runs its own test words against it before you see it.'
     ));
+  } else if (!enabled) {
+    body.append(el('b', null, 'StateMate is disabled.'));
+    body.append(document.createTextNode(' Browse the bundled examples here, or enable StateMate in Settings; it needs an API key to send prompts.'));
   } else {
     body.append(el('b', null, 'StateMate builds and edits automata from a prompt.'));
     body.append(document.createTextNode(' It needs an API key first — your key stays in this browser.'));
@@ -675,7 +668,7 @@ function renderWelcome(host) {
 
   if (!ready) {
     const actions = el('div', 'sm-actions sm-hang');
-    actions.append(btn('sm-btn sm-btn-primary', 'Set up StateMate', openStateMateSettings));
+    actions.append(btn('sm-btn sm-btn-primary', enabled ? 'Set up StateMate' : 'Enable StateMate', openStateMateSettings));
     wrap.append(actions);
   }
 
@@ -701,7 +694,7 @@ function renderWelcome(host) {
     host.append(starters);
   }
 
-  // With no key the examples are the whole of what this dialog can do, so they
+  // With no key the examples are the whole of what this panel can do, so they
   // are listed rather than hidden behind a command nobody has been told about.
   if (!ready) {
     host.append(exampleList(''));
@@ -913,7 +906,7 @@ function revertTurn(entry) {
 }
 
 /**
- * Frame the machine on the canvas the console is docked over.
+ * Frame the machine on the canvas beside the console.
  *
  * Silent, because this is a look rather than an edit: `fitToScreen()` would
  * otherwise mark the tab dirty for a camera the reader only asked to see.
@@ -994,7 +987,7 @@ function renderMachine(entry) {
           'The canvas has changed since this was proposed, so the numbers above no longer describe it.'));
       }
     } else {
-      // The console is a dock, so looking at the machine no longer costs the
+      // The console is a sibling panel, so looking at the machine no longer costs the
       // conversation: this frames it behind the panel instead of dismissing.
       actions.append(actionBtn('sm-btn sm-btn-primary', ICONS.eyeOpen, 'Show on canvas',
         showOnCanvas, { tip: 'Frame the diagram on the canvas behind the console' }));
@@ -1231,7 +1224,7 @@ function exampleList(query) {
   const list = el('div', 'sm-list');
   matches.forEach(opt => {
     const row = btn('sm-listrow', null, () => {
-      closeModal(MODAL_ID);
+      stowStateMate();
       loadExampleFile(opt.file);
     });
     const head = el('div', 'sm-listrow-head');
@@ -1332,9 +1325,21 @@ function settingsTabs() {
     .filter(tab => tab.id && tab.label);
 }
 
-/** Open the app's settings, optionally on a named tab. */
+/**
+ * Open the app's settings, optionally on a named tab.
+ *
+ * The panel is deliberately *not* stowed on the way. A dialog covers the whole
+ * app, so there is nothing for the panel to be in the way of — and stowing
+ * moved the focus to the Inspector tab a moment before `showOverlay` recorded
+ * `document.activeElement` as where to put it back, so closing Settings landed
+ * on the Inspector with StateMate put away. That is left over from the dock,
+ * where this line was `closeModal(MODAL_ID)` and the dialog and the console
+ * really did compete for the same screen. Staying put also means a changed key
+ * or model is repainted into the status line the reader is looking at, which is
+ * what `applyStateMateSettings` re-renders for.
+ */
 function openAppSettings(tabId = '') {
-  closeModal(MODAL_ID);
+  closeHeadMenu();
   openSettingsModal();
   if (tabId && typeof switchSettingsTab === 'function') switchSettingsTab(tabId);
 }
@@ -1347,7 +1352,7 @@ const Commands = [
     suggest: query => filterMachineExampleOptions(Session.examples, query).slice(0, 8).map(opt => ({
       label: opt.meta?.title || opt.label || opt.file,
       hint: opt.meta?.blurb || 'Load this example',
-      run: () => { closeModal(MODAL_ID); loadExampleFile(opt.file); }
+      run: () => { stowStateMate(); loadExampleFile(opt.file); }
     })),
     run: query => {
       push({
@@ -1855,6 +1860,10 @@ function renderNudge() {
 // context that had since moved — "change this DFA" after the canvas was
 // detached, "describe a DFA" after one was built.
 function renderChrome() {
+  // The tab is the only part of StateMate on screen while it is stowed, so the
+  // badge is redrawn with everything else rather than at the three places a
+  // turn can end.
+  syncTabBadge();
   renderHeadActions();
   renderStatus();
   renderContext();
@@ -1917,104 +1926,191 @@ function syncPlaceholder() {
     : composerPlaceholder();
 }
 
-// ── minimize ─────────────────────────────────────────────────────
-//  The last thing between the console and the canvas it is docked over is its
-//  own height. Minimizing gives that up and keeps everything else: the
-//  transcript, the thread, the held proposal and a request in flight all
-//  survive, because none of them live in the DOM. **Closing is the destructive
-//  one** — its teardown interrupts a run — so this is deliberately not that,
-//  and the ✕ stays beside it rather than being replaced by it.
+// ── stowing ──────────────────────────────────────────────────────
+//  Putting StateMate away is selecting the Inspector tab, and it is not
+//  destructive: the transcript, the thread, a held proposal and a request in
+//  flight all survive, because none of them live in the DOM. There is nothing
+//  for a tab switch to tear down, which is why the ✕ that used to sit beside
+//  the minimize — and did tear a run down — is gone rather than relocated.
 //
-//  Opening, by contrast, is never a no-op: the sparkle button, ⌘K and "ask
-//  about this selection" all land in openStateMate, and a console that stayed
-//  down for them would read as a broken button. So minimized is a way to put
-//  the panel aside, not a state to come back to.
+//  So there is one exit where there were two. The right-panel state is the
+//  single answer to which sibling is visible; StateMate keeps no shadow copy.
+//
+//  Opening is still never a no-op: the sparkle button, ⌘K and "ask about this
+//  selection" all land in openStateMate, and a tab that stayed hidden for them
+//  would read as a broken button.
 
 const UNREAD_KINDS = new Set(['machine', 'reply', 'error']);
 
+/** True while the right panel is showing the Inspector instead. */
+function stowed() { return !isRPanelTabActive('statemate'); }
+
 /**
- * Turns that landed while the console was down.
+ * Turns that landed while StateMate was stowed.
  *
  * Derived from the transcript rather than tallied as entries arrive:
- * `minSince` is where it had got to when the console went down, and a run
- * entry is replaced *in place* by whatever it turns out to be. So an
- * interrupted run counts for nothing and a repaired one counts once, with no
- * bookkeeping at the three places a turn can end.
+ * `minSince` is where it had got to when the tab was left, and a run entry is
+ * replaced *in place* by whatever it turns out to be. So an interrupted run
+ * counts for nothing and a repaired one counts once, with no bookkeeping at
+ * the three places a turn can end.
  */
 function unreadCount() {
-  if (!Session.minimized) return 0;
+  if (!stowed()) return 0;
   return Session.log.slice(Session.minSince).filter(e => UNREAD_KINDS.has(e.kind)).length;
 }
 
-/** Write the collapsed state to the DOM — the class, and the button's two faces. */
-function applyMinimized() {
-  const shell = $(MODAL_ID);
-  if (shell && shell.classList) shell.classList.toggle('is-min', Session.minimized);
-  // The console is an obstacle the info card routes around, and putting it
-  // away or bringing it back changes its footprint by most of the panel — so
-  // the card gets its corner re-picked here, the way it is on a redock.
-  repositionCanvasInfo();
-  const button = $('sm-min');
-  if (!button) return;
-  button.setAttribute('aria-expanded', String(!Session.minimized));
-  button.setAttribute('aria-label', Session.minimized ? 'Restore StateMate' : 'Minimize StateMate');
-  button.dataset.tip = Session.minimized ? 'Restore' : 'Minimize';
+/**
+ * What the tab can say for a panel that is not showing.
+ *
+ * This is the collapsed console's status strip, moved onto the thing that is
+ * still on screen. A run in flight outranks a count: it is what the reader is
+ * waiting on, and the count is about to change anyway.
+ *
+ * The badge only — painting the strip is `syncRPanelTabs`, and this is called
+ * from every chrome render, so folding the two together repainted two tabs and
+ * two tabpanels to change one digit.
+ */
+function syncTabBadge() {
+  const badge = $('sm-tab-badge');
+  if (!badge) return;
+  const away = stowed();
+  const unread = away ? unreadCount() : 0;
+  const busy = away && Session.busy;
+  const text = busy ? '…' : (unread ? String(unread) : '');
+  badge.textContent = text;
+  badge.hidden = !text;
+  // Described only when it says something; an empty badge is hidden, and
+  // "0 new" on a hidden element is a line for a screen reader to read out.
+  if (text) badge.setAttribute('aria-label', busy ? 'StateMate is working' : `${unread} new`);
+  else badge.removeAttribute('aria-label');
 }
 
-function setMinimized(next) {
-  const to = !!next;
-  if (to === Session.minimized) return;
+/**
+ * Remember where the reader was, then hand the panel to the Inspector.
+ *
+ * Every route out — the tab, ⌘K, Escape and a slash command that opens a
+ * dialog — arrives here, so scroll and unread bookkeeping cannot diverge.
+ */
+export function stowStateMate() {
+  if (stowed()) return;
+  // A hidden element does not keep its scroll offset, so it is read here
+  // rather than in onClose, which runs once the panel is already down. A
+  // reader who scrolled up to re-read a turn should find it there on the way
+  // back — the same decision scrollLogToEnd respects.
   const log = $('sm-log');
+  Session.logTop = log ? log.scrollTop : 0;
+  closeHeadMenu();
+  Session.exampleRequest++;
+  const live = Session.run ? Session.log.indexOf(Session.run) : -1;
+  Session.minSince = live === -1 ? Session.log.length : live;
+  const opener = $('example-picker-btn');
+  if (opener) opener.setAttribute('aria-expanded', 'false');
+  activateRPanelTab('inspector');
+  syncTabBadge();
+  $('rpanel-tab-inspector')?.focus();
+}
 
-  if (to) {
-    // A run in flight is the first thing the reader is waiting on, so the
-    // count starts *at* it rather than after it — the entry is replaced in
-    // place by whatever it turns out to be.
-    const live = Session.run ? Session.log.indexOf(Session.run) : -1;
-    Session.minSince = live === -1 ? Session.log.length : live;
-    // A hidden element does not keep its scroll offset, and a reader who
-    // scrolled up to re-read a turn should find it there on the way back —
-    // the same decision scrollLogToEnd respects.
-    Session.logTop = log ? log.scrollTop : 0;
+function headMenuOpen() {
+  return $('sm-head-menu')?.hidden === false;
+}
+
+function headMenuItems() {
+  return [$('sm-head-settings'), $('sm-head-clear')]
+    .filter(item => item && !item.hidden && !item.disabled);
+}
+
+function closeHeadMenu({ restoreFocus = false } = {}) {
+  const host = $('sm-head-actions');
+  const menu = $('sm-head-menu');
+  const trigger = $('sm-head-menu-btn');
+  if (menu) menu.hidden = true;
+  if (host) host.classList.remove('is-open');
+  if (trigger) {
+    trigger.setAttribute('aria-expanded', 'false');
+    if (restoreFocus && trigger.focus) trigger.focus();
   }
+}
 
-  Session.minimized = to;
-  applyMinimized();
-  renderChrome();
+function openHeadMenu(edge = 'first') {
+  const host = $('sm-head-actions');
+  const menu = $('sm-head-menu');
+  const trigger = $('sm-head-menu-btn');
+  if (!host || !menu || !trigger || stowed()) return;
+  menu.hidden = false;
+  host.classList.add('is-open');
+  trigger.setAttribute('aria-expanded', 'true');
+  const items = headMenuItems();
+  const target = edge === 'last' ? items[items.length - 1] : items[0];
+  if (target?.focus) target.focus();
+}
 
-  if (to) return;
-  if (log && !Session.pinned) log.scrollTop = Session.logTop;
-  scrollLogToEnd();
-  focusInput();
+function onHeadMenuKeydown(event) {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    if (event.stopPropagation) event.stopPropagation();
+    closeHeadMenu({ restoreFocus: true });
+    return;
+  }
+  // Tab is allowed to continue through the header normally; the popup simply
+  // gets out of the way instead of trapping focus in a two-item loop.
+  if (event.key === 'Tab') {
+    closeHeadMenu();
+    return;
+  }
+  const items = headMenuItems();
+  if (!items.length) return;
+  const at = Math.max(0, items.indexOf(event.target));
+  let next = -1;
+  if (event.key === 'ArrowDown') next = (at + 1) % items.length;
+  if (event.key === 'ArrowUp') next = (at - 1 + items.length) % items.length;
+  if (event.key === 'Home') next = 0;
+  if (event.key === 'End') next = items.length - 1;
+  if (next === -1) return;
+  event.preventDefault();
+  items[next].focus();
 }
 
 function renderHeadActions() {
   const host = $('sm-head-actions');
-  if (!host) return;
-  host.innerHTML = '';
+  const trigger = $('sm-head-menu-btn');
+  const menu = $('sm-head-menu');
+  const settings = $('sm-head-settings');
+  const clear = $('sm-head-clear');
+  if (!host || !trigger || !menu || !settings || !clear) return;
 
-  // Collapsed, the strip carries state rather than controls: Clear and
-  // Settings act on a transcript that is not on screen to be acted on.
-  if (Session.minimized) {
-    const unread = unreadCount();
-    if (Session.busy) {
-      const chip = el('span', 'sm-minstat');
-      chip.append(el('span', 'sm-spinner'));
-      chip.append(el('span', null, 'Working…'));
-      host.append(chip);
-    } else if (unread) {
-      host.append(el('span', 'sm-minstat is-new', `${unread} new`));
-    }
-    return;
-  }
+  clear.hidden = getThread().length === 0;
+  if (host.dataset.wired) return;
+  host.dataset.wired = '1';
 
-  if (getThread().length) {
-    host.append(actionBtn('sm-headbtn', ICONS.trash, 'Clear', clearSession,
-      { tip: 'Forget the conversation' }));
-  }
-  host.append(actionBtn('sm-headbtn', ICONS.gear, 'Settings', openStateMateSettings,
-    { tip: 'API key, model and behaviour' }));
+  trigger.addEventListener('click', event => {
+    if (event?.stopPropagation) event.stopPropagation();
+    if (headMenuOpen()) closeHeadMenu({ restoreFocus: true });
+    else openHeadMenu();
+  });
+  trigger.addEventListener('keydown', event => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    openHeadMenu(event.key === 'ArrowUp' ? 'last' : 'first');
+  });
+  menu.addEventListener('keydown', onHeadMenuKeydown);
+  settings.addEventListener('click', () => {
+    closeHeadMenu();
+    openStateMateSettings();
+  });
+  clear.addEventListener('click', () => {
+    closeHeadMenu();
+    clearSession();
+  });
 }
+
+// A menu in a persistent panel should behave like the app-header menus: work
+// on the canvas or anywhere else dismisses it without changing the active tab.
+document.addEventListener('click', event => {
+  if (!headMenuOpen()) return;
+  const host = $('sm-head-actions');
+  if (host?.contains?.(event.target)) return;
+  closeHeadMenu();
+});
 
 function statChip(text, { on = false, cta = false, onclick = null, tip = '', bold = '', disabled = false } = {}) {
   const node = onclick ? el('button', 'sm-stat') : el('span', 'sm-stat');
@@ -2075,7 +2171,7 @@ function renderStatus() {
       bar.append(focus);
     }
 
-    // The canvas under the dock is live, so a selection can be made *while*
+    // The canvas beside the panel is live, so a selection can be made *while*
     // the console is open — which is the whole reason the basket exists and
     // was, until the panel stopped blocking, impossible without closing it.
     // Offered only when there is something selected that is not already in.
@@ -2116,20 +2212,6 @@ function renderStatus() {
     setup.insertBefore(icon(ICONS.spark, 'sm-stat-icon'), setup.firstChild);
     bar.append(setup);
   }
-
-  const keys = el('div', 'sm-keys');
-  const hints = isStateMateRunning()
-    ? [['esc', 'interrupt']]
-    : menuOpen()
-      ? [['↑↓', 'move'], ['⏎', 'pick'], ['esc', 'dismiss']]
-      : [['⏎', 'send'], ['⇧⏎', 'newline'], ['⇧⇥', AUTHORITY_COPY[Session.authority].label], ['/', 'commands'], ['esc', 'minimize']];
-  hints.forEach(([key, what]) => {
-    const hint = el('span', 'sm-key');
-    hint.append(el('kbd', null, key));
-    hint.append(el('span', null, what));
-    keys.append(hint);
-  });
-  bar.append(keys);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -2137,10 +2219,10 @@ function renderStatus() {
 // ══════════════════════════════════════════════════════════════════
 
 function focusInput() {
-  // A minimized console has no composer on screen. Focusing it is a no-op in
-  // the browser and a lie everywhere else — the caret would be reported as
-  // being somewhere the reader cannot see.
-  if (Session.minimized) return;
+  // A stowed panel has no composer on screen. Focusing it is a no-op in the
+  // browser and a lie everywhere else — the caret would be reported as being
+  // somewhere the reader cannot see.
+  if (stowed()) return;
   const input = $('sm-input');
   if (input) input.focus();
 }
@@ -2222,7 +2304,7 @@ function autosize() {
   const input = $('sm-input');
   if (!input || !input.style) return;
   input.style.height = 'auto';
-  const h = Math.min(Number(input.scrollHeight) || 0, 132);
+  const h = Math.min(Number(input.scrollHeight) || 0, 96);
   if (h) input.style.height = `${h}px`;
 }
 
@@ -2249,9 +2331,10 @@ function setBusy(busy) {
     sendBtn.innerHTML = '';
     sendBtn.append(icon(busy ? ICONS.stop : ICONS.send, 'sm-send-icon'));
   }
-  // The minimized strip states this too, and it is the only thing on screen
-  // while it is down — so the run's start and end are both rendered from here
-  // rather than left to whoever happens to redraw the header next.
+  // The tab badge states this too, and while StateMate is stowed it is the
+  // only thing on screen — so the run's start and end are both rendered from
+  // here rather than left to whoever happens to redraw the header next.
+  syncTabBadge();
   renderHeadActions();
   syncPlaceholder();
 }
@@ -2261,12 +2344,12 @@ function setBusy(busy) {
  * somewhere else.
  *
  * A run ends whenever it ends, and by then the focus may be on the canvas
- * behind the dock or on a control in the transcript. Grabbing it back there is
+ * beside the panel or on a control in the transcript. Grabbing it back there is
  * the same bug as scrolling to the bottom under someone who scrolled up.
  */
 function refocusComposer() {
   const active = typeof document !== 'undefined' ? document.activeElement : null;
-  const shell = $(MODAL_ID);
+  const shell = $(PANEL_ID);
   const ours = !active
     || active === document.body
     || (shell && typeof shell.contains === 'function' && shell.contains(active));
@@ -2275,7 +2358,9 @@ function refocusComposer() {
 
 function composerPlaceholder() {
   const cfg = getMachineConfig(App.machine);
-  if (!isStateMateReady()) return 'Set up StateMate to build machines — or type /examples';
+  const settings = getStateMateSettings();
+  if (!settings.enabled) return 'StateMate is disabled — type /examples or enable it in Settings';
+  if (!isStateMateReady(settings)) return 'Set up StateMate to build machines — or type /examples';
   // Rewriting a past turn is the one state where ⏎ does something other than
   // add to the conversation, so it says so where the caret is.
   if (Session.editing) return 'Rewrite this prompt — ⏎ replaces that turn';
@@ -2322,14 +2407,14 @@ function submitComposer() {
 }
 
 function onInputKeydown(e) {
-  if (e.key === 'Escape') return;   // handled by onEscape below, before the modal sees it
+  if (e.key === 'Escape') return;   // handled by the panel's capture listener
 
   // ⌘K opened this; with the caret in the composer it puts it back down, so
   // the one keystroke is the whole toggle. The other half is in ui.js, which
   // ignores keys aimed at the console precisely so this can answer them.
   if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
     e.preventDefault();
-    return setMinimized(true);
+    return stowStateMate();
   }
 
   // The arrows do one of two things and the menu has first claim: while it is
@@ -2396,7 +2481,18 @@ function firstTokenLabel(startedAt) {
 async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
   const text = String(prompt || '').trim();
   if (!text) return;
-  if (!isStateMateReady()) {
+  const settings = getStateMateSettings();
+  // Both refusals keep the prompt on screen. The composer is already cleared by
+  // the time send() runs and renderErrorEntry does not print the prompt it was
+  // handed, so without the user entry the typed sentence is simply gone — and
+  // the reader has to retype it after switching StateMate on.
+  if (!settings.enabled) {
+    push({ kind: 'user', text });
+    push({ kind: 'error', prompt: text, error: { code: 'disabled' } });
+    renderLog();
+    return;
+  }
+  if (!isStateMateReady(settings)) {
     push({ kind: 'user', text });
     push({ kind: 'error', prompt: text, error: { code: 'no-key' } });
     renderLog();
@@ -2438,7 +2534,6 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
   renderMenu();
   renderNudge();
 
-  const settings = getStateMateSettings();
   const sentContext = Session.context.slice();
   let firstTokenSeen = false;
   const startedAt = Date.now();
@@ -2658,57 +2753,54 @@ export function decorateResultCard(result) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  OPEN / CLOSE
+//  PANEL LIFECYCLE
 // ══════════════════════════════════════════════════════════════════
 
-registerModal(MODAL_ID, {
-  // A dock, not a dialog: the canvas behind it stays live, so the console
-  // keeps its Escape chain and its close bookkeeping and gives up the scroll
-  // lock, the Tab trap and the pointer. See `dock` in js/modal.js.
-  dock: true,
-  // …and with the canvas reachable, a click on it is work rather than a
-  // dismissal. Closing is the ✕, Escape, or the header button that opened it.
-  dismissOnBackdrop: false,
-  // Escape has three jobs here and the modal core owns the last one. Taking
-  // the first two through the registry keeps modal.js from importing this
-  // module — the same reason the symbol-suggest popover is exempted there.
-  onEscape: () => {
-    if (menuOpen()) {
-      // The menu goes, the line stays. Clearing the composer here meant
-      // dismissing a completion list also deleted the command being written.
-      Session.menuHidden = true;
-      renderMenu();
-      renderStatus();
-      return true;
-    }
-    if (isStateMateRunning()) {
-      cancelStateMate();
-      return true;
-    }
-    // Escape puts the console away rather than tearing it down. A session is
-    // worth more than the keystroke that dismisses a dialog, and closing is
-    // the one that ends a run and hands the transcript back to the thread.
-    // The ladder still bottoms out: with the strip already down Escape is not
-    // consumed, so the second one closes and the third belongs to the canvas.
-    if (!Session.minimized) {
-      setMinimized(true);
-      return true;
-    }
-    return false;
-  },
-  onClose: () => {
-    Session.exampleRequest++;
-    if (isStateMateRunning()) cancelStateMate();
-    const btnEl = $('example-picker-btn');
-    if (btnEl) btnEl.setAttribute('aria-expanded', 'false');
-    // The bottom of the canvas is free again; the card may want it back.
-    repositionCanvasInfo();
+/** StateMate's own Escape ladder; false means the panel itself should stow. */
+export function handleStateMateEscape() {
+  if (headMenuOpen()) {
+    closeHeadMenu({ restoreFocus: true });
+    return true;
   }
-});
+  if (menuOpen()) {
+    Session.menuHidden = true;
+    renderMenu();
+    renderStatus();
+    return true;
+  }
+  if (isStateMateRunning()) {
+    cancelStateMate();
+    return true;
+  }
+  return false;
+}
+
+// Panels do not belong to ModalStack, so StateMate's non-blocking Escape ladder
+// is routed here rather than through modal.js.
+//
+// Scoped to keystrokes made *inside the panel*, and that scope is the whole
+// point. Being the selected tab is a sticky state, not a claim on the keyboard:
+// a listener guarded only by "StateMate is showing" holds Escape for as long as
+// the tab stays up, and since this captures on document, its stopPropagation
+// pre-empts every other Escape in the app before that key reaches the target.
+// Cancelling a half-drawn transition, leaving an aux view, dismissing the
+// symbol-suggest popover, the tools menu, a dropdown or the machine-card editor
+// would all stop working and stow the panel instead — which contradicts the one
+// premise the tab is built on, that the canvas beside it is live. modal.js makes
+// the same exemption for the suggest popover, and for the same reason.
+//
+// A real modal opened above StateMate keeps priority.
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || stowed() || topModal()) return;
+  if (!e.target?.closest?.('.rpanel')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (!handleStateMateEscape()) stowStateMate();
+}, true);
 
 // ── the canvas underneath ────────────────────────────────────────
-//  A dock does not freeze what it sits over, so the diagram can change while
-//  the console is open: a state selected, a transition drawn, a word run, an
+//  A panel does not freeze the canvas beside it, so the diagram can change
+//  while the console is open: a state selected, a transition drawn, a word run, an
 //  undo. Everything here that *states* the canvas has to hear about it.
 //
 //  Subscribed at module scope beside the functions they call, the way
@@ -2716,13 +2808,13 @@ registerModal(MODAL_ID, {
 //  closed one costs nothing.
 
 subscribe(Change.CANVAS, () => {
-  if (!isModalOpen(MODAL_ID)) return;
+  if (stowed()) return;
   renderContext();
   renderStatus();
 });
 
 subscribe(Change.GRAPH, () => {
-  if (!isModalOpen(MODAL_ID)) return;
+  if (stowed()) return;
   // A held proposal was computed against a particular machine, and its card
   // says so by comparing signatures at render time. An edit made behind the
   // console is exactly the case that comparison exists for, so the card has to
@@ -2740,9 +2832,20 @@ subscribe(Change.GRAPH, () => {
   }
 });
 
-/** The header button's entry point — the one name this feature adds to bridge.js. */
-export function openStateMate() {
-  // Close the lightweight popovers before the modal takes the focus stack.
+/**
+ * The header button's entry point — the one name this feature adds to bridge.js.
+ *
+ * @param {Object}  [opts]
+ * @param {boolean} [opts.resume]  true when the reader is stepping back onto
+ *   the tab, which is a resumption rather than an opening: it keeps where the
+ *   reader had scrolled to. Only the tab strip passes it; the sparkle button,
+ *   ⌘K and "ask about this selection" are all openings, and land on the newest
+ *   line whatever the last reader had scrolled to. Passed rather than left on
+ *   `Session` so the caller's intent is at the call site instead of in a flag
+ *   one function sets for another to find.
+ */
+export function openStateMate({ resume = false } = {}) {
+  // Close lightweight popovers before moving focus into the panel.
   ['hideTabOverflowMenu', 'hideTabContextMenu', 'hideContextMenu', 'hideCanvasContextMenu']
     .forEach(fn => {
       if (typeof window !== 'undefined' && typeof window[fn] === 'function') window[fn]();
@@ -2752,17 +2855,31 @@ export function openStateMate() {
   Session.menu = { rows: [], index: 0 };
   Session.menuHidden = false;
   Session.historyAt = -1;
-  // Opening lands on the newest line, whatever the last session's reader had
-  // scrolled to.
-  Session.pinned = true;
-  // A half-finished rewrite does not survive closing the dialog: ⏎ would
+  // Stepping over to the Inspector and back is not a new session, and
+  // re-reading a turn is a decision the way scrolling up is — so a resumption
+  // keeps where the reader was, and an opening goes to the newest line.
+  if (!resume) { Session.pinned = true; Session.logTop = 0; }
+  // A half-finished rewrite does not survive leaving the panel: ⏎ would
   // otherwise replace a turn the reader has stopped looking at.
   Session.editing = '';
   // Authority is deliberately *not* reset on open. It is a standing decision
   // about how much this tool may touch your work, and one that silently
-  // reverted to the default every time the dialog opened would be worse than
+  // reverted to the default every time the panel opened would be worse than
   // no setting at all.
   syncLogWithThread();
+
+  // Selected and revealed before anything is painted, so every render below
+  // reads the panel as showing: `stowed()` gates the badge, the head menu and
+  // focusInput, and half a pass taken while it still said otherwise would have
+  // to be undone at the end.
+  //
+  // Revealing happens on a resumption too, unlike the scroll position: an
+  // unpinned panel is a hover rail with `visibility: hidden` content and no
+  // :focus-within exception, and this ends in focusInput — so the alternative
+  // is a caret in a field that vanishes when the pointer leaves. Selecting the
+  // Inspector reveals nothing, which is the asymmetry: see revealRPanel.
+  revealRPanel();
+  activateRPanelTab('statemate');
 
   const request = ++Session.exampleRequest;
   Session.examples = getMachineExampleOptions().map(opt => ({ ...opt, meta: null }));
@@ -2788,23 +2905,6 @@ export function openStateMate() {
   const jump = $('sm-jump');
   if (jump) jump.onclick = () => { scrollLogToEnd(true); focusInput(); };
 
-  const minBtn = $('sm-min');
-  if (minBtn) minBtn.onclick = () => setMinimized(!Session.minimized);
-
-  // Collapsed, the strip itself is the way back up — except where the click
-  // landed on one of its own buttons, which have their own jobs.
-  const head = $('sm-head');
-  if (head) {
-    head.onclick = e => {
-      if (!Session.minimized) return;
-      if (e && e.target && typeof e.target.closest === 'function' && e.target.closest('button')) return;
-      setMinimized(false);
-    };
-  }
-
-  // Opening is never a no-op — see the note above setMinimized.
-  setMinimized(false);
-
   const opener = $('example-picker-btn');
   if (opener) opener.setAttribute('aria-expanded', 'true');
 
@@ -2813,15 +2913,14 @@ export function openStateMate() {
   renderMenu();
   renderNudge();
   renderContext();
-  showOverlay(MODAL_ID);
+  const restored = $('sm-log');
+  if (restored && !Session.pinned) restored.scrollTop = Session.logTop;
+  scrollLogToEnd();
   focusInput();
-  // Now that the console is on screen and measurable, move the info card out
-  // from under it — applyMinimized above ran while it was still hidden.
-  repositionCanvasInfo();
 
   // Rich descriptions arrive from the same JSON files the loader uses. The
   // list is already usable; this only fills in the blurbs, and a malformed
-  // file must not close the dialog or move the focus.
+  // file must not switch the panel or move the focus.
   Promise.all(Session.examples.map(opt =>
     fetch(`js/examples/${opt.file}.json`)
       .then(res => (res.ok === false ? null : res.json()))
@@ -2917,7 +3016,8 @@ export function populateStateMateSettings() {
 }
 
 export function applyStateMateSettings() {
-  saveStateMateSettings({
+  const previous = getStateMateSettings();
+  const next = saveStateMateSettings({
     enabled: !!getValue('set-sm-enabled', false),
     provider: getValue('set-sm-provider', 'anthropic'),
     baseUrl: String(getValue('set-sm-base', '')).trim(),
@@ -2930,6 +3030,15 @@ export function applyStateMateSettings() {
     newTabForBuild: !!getValue('set-sm-newtab', true),
     threadDepth: Number(getValue('set-sm-thread', '10')) || 0
   });
+  if (previous.enabled && !next.enabled && isStateMateRunning()) cancelStateMate();
+  if (!stowed()) {
+    renderLog();
+    renderMenu();
+    renderNudge();
+    renderContext();
+    syncTabBadge();
+  }
+  return next;
 }
 
 async function runConnectionTest() {
@@ -2978,7 +3087,6 @@ export function _resetPaletteForTests() {
   Session.welcome = false;
   Session.pinned = true;
   Session.busy = false;
-  Session.minimized = false;
   Session.minSince = 0;
   Session.logTop = 0;
 }

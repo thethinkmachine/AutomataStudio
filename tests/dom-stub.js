@@ -238,13 +238,30 @@ export function clearElements() {
   elements.clear();
 }
 
+// Document-level listeners, recorded so a test can deliver a key to them.
+// Several features listen for the same key on document — modal.js, the canvas
+// shortcuts, StateMate's Escape ladder — and which of them may claim it is a
+// question about *phase*, not about registration order, so the delivery below
+// models capture-before-bubble and honours stopPropagation.
+const documentListeners = [];
+
 const documentStub = {
   documentElement: { dataset: {}, style: { setProperty() {}, removeProperty() {} }, classList: createElement().classList },
   body: createElement('body'),
   head: createElement('head'),
   activeElement: null,
-  addEventListener() {},
-  removeEventListener() {},
+  addEventListener(type, handler, options) {
+    if (typeof handler !== 'function') return;
+    documentListeners.push({
+      type,
+      handler,
+      capture: options === true || !!(options && options.capture)
+    });
+  },
+  removeEventListener(type, handler) {
+    const at = documentListeners.findIndex(l => l.type === type && l.handler === handler);
+    if (at !== -1) documentListeners.splice(at, 1);
+  },
   querySelector() { return null; },
   querySelectorAll() { return []; },
   getElementById(id) { return getElement(id); },
@@ -257,6 +274,36 @@ const documentStub = {
   contains() { return false; },
   execCommand() { return true; }
 };
+
+/**
+ * Deliver an event to the document listeners the app registered at module scope.
+ *
+ * Capture listeners run first and `stopPropagation` ends the delivery, the way a
+ * real DOM behaves — a capture-phase listener on document that stops the event
+ * pre-empts every bubble-phase one, which is exactly the failure mode worth
+ * testing. Returns the event so the caller can read `defaultPrevented`.
+ *
+ * @param {string} type
+ * @param {object} [init]  event fields; `target` defaults to document.body.
+ */
+export function dispatchDocumentEvent(type, init = {}) {
+  const event = {
+    type,
+    target: documentStub.body,
+    defaultPrevented: false,
+    propagationStopped: false,
+    preventDefault() { event.defaultPrevented = true; },
+    stopPropagation() { event.propagationStopped = true; },
+    stopImmediatePropagation() { event.propagationStopped = true; },
+    ...init
+  };
+  const phase = capture => documentListeners.filter(l => l.type === type && l.capture === capture);
+  for (const listener of [...phase(true), ...phase(false)]) {
+    if (event.propagationStopped) break;
+    listener.handler(event);
+  }
+  return event;
+}
 
 const localStorageData = new Map();
 const localStorageStub = {
