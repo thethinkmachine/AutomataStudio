@@ -157,14 +157,17 @@ export const App = {
   // Canvas notes (comments), anchored to states/transitions or free-floating
   notes: [], noteN: 0,
   activeNoteId: null,
+  // Notes, dividers and regions are selected exactly the way states and
+  // transitions are: their own id sets, filled by click / shift-click /
+  // marquee / select-all and emptied by Escape. Anything on the canvas is an
+  // object you can pick, move as a group, and Delete.
+  selectedNotes: new Set(),
   ctxNoteId: null, editNoteId: null,
-  dragNoteId: null, dragNoteOffset: { x: 0, y: 0 },
   resizeNoteId: null, resizeNoteStart: null,
   // Canvas dividers (annotation line segments that partition the canvas)
   dividers: [], dividerN: 0,
-  selectedDividerId: null,
+  selectedDividers: new Set(),
   ctxDividerId: null, editDividerId: null,
-  dragDividerId: null, dragDividerOffset: null,
   dragDividerEndpoint: null,
   dividerDraft: null, dividerDraftEl: null,
   // Which shape kind the merged toolbar button draws: 'divider' (line) or
@@ -477,7 +480,8 @@ export function importWorkspaceState(data) {
   App.noteN = data.noteN || 0;
   App.dividers = data.dividers || [];
   App.dividerN = data.dividerN || 0;
-  App.selectedDividerId = null;
+  App.selectedNotes.clear();
+  App.selectedDividers.clear();
   App.cam = data.cam || { x: 0, y: 0, z: 1 };
   App.history = data.history || [];
   App.future = data.future || [];

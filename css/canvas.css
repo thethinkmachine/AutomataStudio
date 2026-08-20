@@ -614,6 +614,14 @@
   stroke-width: 2.25;
 }
 
+/* Selection reads the same on a note as on a state: the purple ring. The
+   anchor-link highlight above is a different fact — "these are the things this
+   note points at" — so it stays the accent colour and can coexist with it. */
+.note-g.sel-note .note-body {
+  stroke: var(--purple);
+  stroke-width: 2.5;
+}
+
 .cam-smooth,
 .cam-smooth::before {
   transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1), background-position 0.25s cubic-bezier(0.2, 0, 0, 1), background-size 0.25s cubic-bezier(0.2, 0, 0, 1);

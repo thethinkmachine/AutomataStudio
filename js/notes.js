@@ -1,4 +1,4 @@
-import { hideCanvasContextMenu, svgPt } from './canvas.js';
+import { beginSelectionDrag, clearSelection, hideCanvasContextMenu, pickObject, svgPt } from './canvas.js';
 import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
 import { makeSVG, renderAll } from './render.js';
@@ -318,6 +318,7 @@ export function renderOneNote(g, note) {
 
   const grp = makeSVG('g');
   grp.classList.add('note-g');
+  if (App.selectedNotes.has(note.id)) grp.classList.add('sel-note');
   if (App.activeNoteId === note.id) grp.classList.add('note-link-active');
   if (noteIsResized(note)) grp.classList.add('note-resized');
   grp.setAttribute('data-note-id', note.id);
@@ -449,6 +450,13 @@ export function attachNoteHandlers(grp, note) {
   grp.addEventListener('contextmenu', e => {
     e.preventDefault();
     e.stopPropagation();
+    // Right-clicking an unselected note takes it, the way it does for an edge;
+    // a note already part of a larger selection keeps that selection intact.
+    if (!App.selectedNotes.has(note.id)) {
+      clearSelection();
+      App.selectedNotes.add(note.id);
+      syncNoteSelectionClasses();
+    }
     App.ctxId = null;
     App.ctxEdge = null;
     App.ctxMode = 'note';
@@ -504,6 +512,15 @@ export function clearActiveNoteHighlight() {
   clearNoteAnchorHighlight();
 }
 
+// Repaints .sel-note from App.selectedNotes. Notes are rebuilt wholesale by
+// renderNotes, but selection also changes without a render (click, marquee),
+// so it has to be writable straight onto the nodes.
+export function syncNoteSelectionClasses() {
+  document.querySelectorAll('.note-g').forEach(el => {
+    el.classList.toggle('sel-note', App.selectedNotes.has(el.getAttribute('data-note-id')));
+  });
+}
+
 export function onNoteDown(e, id) {
   if (App.spacePan) return;
   e.stopPropagation();
@@ -514,28 +531,38 @@ export function onNoteDown(e, id) {
 
   const note = getNote(id);
   if (!note) return;
-  highlightNoteAnchors(id, true);
-  const pos = resolveNotePos(note);
-  const pt = svgPt(e);
-  snapshot();
-  App.dragNoteId = id;
-  App.dragNoteOffset = { x: pt.x - pos.x, y: pt.y - pos.y };
+  const multi = e.shiftKey || e.ctrlKey || e.metaKey;
+  if (App.tool === 'move') {
+    clearSelection();
+    App.selectedNotes.add(id);
+    syncNoteSelectionClasses();
+  } else if (!pickObject(App.selectedNotes, id, multi)) {
+    return;   // ctrl-click deselected it
+  }
+  if (!multi) highlightNoteAnchors(id, true);
+  // The whole selection travels together, and the undo point is taken on the
+  // first real movement — so a plain click on a note costs no history step.
+  beginSelectionDrag(svgPt(e));
   // Deliberately no setPointerCapture here: move-tracking already works via
   // the document-level pointermove listener, and capturing on `wrap` would
   // retarget the resulting dblclick to it — misfiring the canvas background's
   // "empty double-click creates a state" handler instead of opening this note.
 }
 
-// Called from canvas.js's handlePointerMove while App.dragNoteId is set.
-export function dragNoteTo(e) {
-  const note = getNote(App.dragNoteId);
-  if (!note) return;
-  const pt = svgPt(e);
-  const nx = pt.x - App.dragNoteOffset.x, ny = pt.y - App.dragNoteOffset.y;
-  const c = noteAnchorCentroid(note);
-  if (c) { note.x = nx - c.x; note.y = ny - c.y; }
-  else { note.x = nx; note.y = ny; }
-  updateOneNoteDOM(note, { refillText: false });
+// Called from canvas.js's handlePointerMove: moves every selected note the
+// drag captured an offset for.
+export function dragSelectedNotesTo(pt) {
+  const offsets = App.dragNoteOffsets;
+  if (!offsets) return;
+  Object.keys(offsets).forEach(id => {
+    const note = getNote(id);
+    if (!note) return;
+    const nx = pt.x - offsets[id].x, ny = pt.y - offsets[id].y;
+    const c = noteAnchorCentroid(note);
+    if (c) { note.x = nx - c.x; note.y = ny - c.y; }
+    else { note.x = nx; note.y = ny; }
+    updateOneNoteDOM(note, { refillText: false });
+  });
 }
 
 // ── Resize: drag the bottom-right handle to pin an explicit width/height.
@@ -585,9 +612,18 @@ export function ctxResetNoteSize() {
 
 export function deleteNote(id) {
   snapshot();
-  App.notes = App.notes.filter(n => n.id !== id);
-  if (App.activeNoteId === id) clearActiveNoteHighlight();
+  removeNotes([id]);
   renderAll();
+}
+
+// Drops notes without taking an undo point — the caller owns the snapshot,
+// which is what lets Delete remove a mixed selection in one history step.
+export function removeNotes(ids) {
+  const gone = new Set(ids);
+  if (!gone.size) return;
+  App.notes = App.notes.filter(n => !gone.has(n.id));
+  gone.forEach(id => App.selectedNotes.delete(id));
+  if (gone.has(App.activeNoteId)) clearActiveNoteHighlight();
 }
 
 // ══════════════════════════════════════════════════════════════════

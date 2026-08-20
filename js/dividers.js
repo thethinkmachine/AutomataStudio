@@ -1,4 +1,4 @@
-import { hideCanvasContextMenu, svgPt } from './canvas.js';
+import { beginSelectionDrag, clearSelection, hideCanvasContextMenu, pickObject, svgPt } from './canvas.js';
 import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
 import { hideSaveMenu } from './persistence.js';
@@ -167,7 +167,7 @@ export function renderOneDivider(g, d) {
   grp.setAttribute('data-kind', kind);
   grp.setAttribute('data-color', normalizeDividerColor(d.color));
   grp.setAttribute('data-style', normalizeDividerStyle(d.style));
-  if (App.selectedDividerId === d.id) grp.classList.add('divider-sel');
+  if (App.selectedDividers.has(d.id)) grp.classList.add('divider-sel');
 
   // Two shapes, mirroring the .tarr / .tarr-hit split used for edges: a wide
   // transparent one catches the pointer, the thin visible one is decoration.
@@ -287,6 +287,7 @@ export function attachDividerHandlers(grp, d) {
     App.ctxId = null;
     App.ctxEdge = null;
     App.ctxNoteId = null;
+    if (!App.selectedDividers.has(d.id)) selectDivider(d.id);
     App.ctxMode = 'divider';
     App.ctxDividerId = d.id;
     document.querySelectorAll('#ctx .ctx-divider-style').forEach(el => {
@@ -300,16 +301,20 @@ export function attachDividerHandlers(grp, d) {
   });
 }
 
+// Selects exactly this divider, dropping everything else — the entry point
+// for code that acts on one shape (creating it, editing it from a dialog).
 export function selectDivider(id) {
-  App.selectedDividerId = id;
-  document.querySelectorAll('.divider-g.divider-sel').forEach(el => el.classList.remove('divider-sel'));
+  clearSelection();
   if (!id) return;
-  const el = App.domCache.dividers.get(id) || document.querySelector(`.divider-g[data-divider-id="${id}"]`);
-  if (el) el.classList.add('divider-sel');
+  App.selectedDividers.add(id);
+  syncDividerSelectionClasses();
 }
 
-export function clearDividerSelection() {
-  selectDivider(null);
+// Repaints .divider-sel from App.selectedDividers.
+export function syncDividerSelectionClasses() {
+  document.querySelectorAll('.divider-g').forEach(el => {
+    el.classList.toggle('divider-sel', App.selectedDividers.has(el.getAttribute('data-divider-id')));
+  });
 }
 
 // Maps the active tool to the kind it draws, or null if it isn't a draw tool.
@@ -339,26 +344,34 @@ export function onDividerDown(e, id) {
 
   const d = getDivider(id);
   if (!d) return;
-  selectDivider(id);
-  const pt = svgPt(e);
-  snapshot();
-  App.dragDividerId = id;
-  // Store the grab offset for both points so the shape translates rigidly.
-  App.dragDividerOffset = { x1: d.x1 - pt.x, y1: d.y1 - pt.y, x2: d.x2 - pt.x, y2: d.y2 - pt.y };
+  const multi = e.shiftKey || e.ctrlKey || e.metaKey;
+  if (App.tool === 'move') {
+    selectDivider(id);
+  } else if (!pickObject(App.selectedDividers, id, multi)) {
+    return;   // ctrl-click deselected it
+  }
+  // The grab offsets for both points are captured for every selected shape, so
+  // each one translates rigidly and the whole selection moves together.
+  beginSelectionDrag(svgPt(e));
   // Deliberately no setPointerCapture — see the matching note in onNoteDown:
   // capturing on `wrap` would retarget the dblclick and misfire the canvas
   // background's "double-click creates a state" handler.
 }
 
-// Called from canvas.js's handlePointerMove while App.dragDividerId is set.
-export function dragDividerTo(e) {
-  const d = getDivider(App.dragDividerId);
-  const off = App.dragDividerOffset;
-  if (!d || !off) return;
-  const pt = snapDividerPoint(svgPt(e));
-  d.x1 = pt.x + off.x1; d.y1 = pt.y + off.y1;
-  d.x2 = pt.x + off.x2; d.y2 = pt.y + off.y2;
-  updateOneDividerDOM(d);
+// Called from canvas.js's handlePointerMove: moves every selected divider the
+// drag captured offsets for.
+export function dragSelectedDividersTo(raw) {
+  const offsets = App.dragDividerOffsets;
+  if (!offsets) return;
+  const pt = snapDividerPoint(raw);
+  Object.keys(offsets).forEach(id => {
+    const d = getDivider(id);
+    if (!d) return;
+    const off = offsets[id];
+    d.x1 = pt.x + off.x1; d.y1 = pt.y + off.y1;
+    d.x2 = pt.x + off.x2; d.y2 = pt.y + off.y2;
+    updateOneDividerDOM(d);
+  });
 }
 
 export function onDividerEndpointDown(e, id, which) {
@@ -372,7 +385,6 @@ export function onDividerEndpointDown(e, id, which) {
   if (!d) return;
   selectDivider(id);
   snapshot();
-  App.dragDividerId = null;
   App.dragDividerEndpoint = { id, which };
 }
 
@@ -477,15 +489,17 @@ export function createDivider(kind, x1, y1, x2, y2) {
 
 export function deleteDivider(id) {
   snapshot();
-  App.dividers = App.dividers.filter(d => d.id !== id);
-  if (App.selectedDividerId === id) App.selectedDividerId = null;
+  removeDividers([id]);
   renderAll();
 }
 
-export function deleteSelectedDivider() {
-  if (!App.selectedDividerId) return false;
-  deleteDivider(App.selectedDividerId);
-  return true;
+// Drops dividers without taking an undo point — the caller owns the snapshot,
+// so Delete can clear a mixed selection in one history step.
+export function removeDividers(ids) {
+  const gone = new Set(ids);
+  if (!gone.size) return;
+  App.dividers = App.dividers.filter(d => !gone.has(d.id));
+  gone.forEach(id => App.selectedDividers.delete(id));
 }
 
 // ══════════════════════════════════════════════════════════════════

@@ -1,13 +1,13 @@
 import { utmStepBack, utmStepFwd, utmToggleAuto } from './algorithms-fa.js';
 import { renderGamma } from './alphabet.js';
 import { settleAll } from './anim.js';
-import { applyCamera, clearEdgeDirectionHighlight, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, nudgeSelected, pasteClipboard, selectAllStates, toggleSnapToGrid, wrap } from './canvas.js';
+import { applyCamera, clearEdgeDirectionHighlight, clearSelection, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, nudgeSelected, pasteClipboard, selectAllStates, toggleSnapToGrid, wrap } from './canvas.js';
 import { isQuickSettingsOpen, positionQuickSettings, refreshQuickSettings } from './quick-settings.js';
-import { clearDividerSelection, deleteSelectedDivider, includeDividerBounds, updateShapeToolButton } from './dividers.js';
+import { includeDividerBounds, removeDividers, updateShapeToolButton } from './dividers.js';
 import { markDirty, redo, snapshot, snapshotSettings, undo } from './history.js';
 import { renderMinimap, scheduleMinimap } from './minimap.js';
 import { anyModalOpen, closeModal, registerModal, showOverlay } from './modal.js';
-import { includeNoteBounds, pruneNoteAnchorsExcluding } from './notes.js';
+import { includeNoteBounds, pruneNoteAnchorsExcluding, removeNotes } from './notes.js';
 import { CARD_AUTO_HIDE_MS, restartAutosaveTimer, saveBackupChecked, saveJSON, saveWorkspace, saveWorkspaceById } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import {
@@ -923,7 +923,7 @@ document.addEventListener('keydown', e => {
   // no-op — which is the other end of Escape putting the console away.
   if (e.key === '`') { e.preventDefault(); openStateMate(); }
   if (e.key === 'Delete' || e.key === 'Backspace') {
-    if (App.selectedStates.size || App.selectedTransitions.size) {
+    if (App.selectedStates.size || App.selectedTransitions.size || App.selectedNotes.size || App.selectedDividers.size) {
       e.preventDefault();
       snapshot();
       if (typeof pruneNoteAnchorsExcluding === 'function') {
@@ -942,12 +942,15 @@ document.addEventListener('keydown', e => {
       App.selectedTransitions.forEach(tid => {
         App.transitions = App.transitions.filter(t => t.id !== tid);
       });
+      // Notes and dividers go in the same history step as the states and
+      // edges beside them — one selection, one Delete, one undo.
+      if (typeof removeNotes === 'function') removeNotes([...App.selectedNotes]);
+      if (typeof removeDividers === 'function') removeDividers([...App.selectedDividers]);
       App.selectedStates.clear();
       App.selectedTransitions.clear();
+      App.selectedNotes.clear();
+      App.selectedDividers.clear();
       emit(Change.GRAPH);
-    } else if (App.selectedDividerId && typeof deleteSelectedDivider === 'function') {
-      e.preventDefault();
-      deleteSelectedDivider();
     }
   }
   if (e.key === 'Escape') {
@@ -961,15 +964,11 @@ document.addEventListener('keydown', e => {
       // Escape from an auxiliary view returns to the canvas.
       closeAuxView();
     } else {
-      App.selectedStates.clear();
-      App.selectedTransitions.clear();
-      document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
-      if (typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
-      if (typeof clearDividerSelection === 'function') clearDividerSelection();
+      clearSelection();
       App.transFrom = null; clearTempLine(); setTool('pointer');
     }
   }
-  if (e.key.startsWith('Arrow') && App.selectedStates.size && App.view === 'build') {
+  if (e.key.startsWith('Arrow') && (App.selectedStates.size || App.selectedNotes.size || App.selectedDividers.size) && App.view === 'build') {
     e.preventDefault();
     const amt = e.shiftKey ? (App.config.gridSnap || 20) : 1;
     const dx = e.key === 'ArrowRight' ? amt : e.key === 'ArrowLeft' ? -amt : 0;

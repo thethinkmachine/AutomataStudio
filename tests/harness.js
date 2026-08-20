@@ -176,7 +176,8 @@ export function resetApp() {
   // App state a test can leak — a described machine in one test would
   // otherwise hand the next one a card it never asked for.
   App.meta = null;
-  App.selectedDividerId = null;
+  App.selectedNotes.clear();
+  App.selectedDividers.clear();
   App.config = JSON.parse(JSON.stringify(baseConfig));
   App.cam = { x: 0, y: 0, z: 1 };
   App.history = [];
