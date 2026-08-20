@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Themes, DEFAULT_THEME } from '../js/themes.js';
 
@@ -22,6 +22,15 @@ import { Themes, DEFAULT_THEME } from '../js/themes.js';
 const root = new URL('../', import.meta.url);
 const readCss = name => readFileSync(fileURLToPath(new URL(`css/${name}`, root)), 'utf8');
 const VARIABLES = readCss('variables.css');
+
+// Every stylesheet except the one that declares the palette. Read from the
+// directory rather than listed by hand: the list went stale the moment
+// css/lpanel.css was folded into css/panels.css, which both broke this file
+// and left the merged stylesheet unscanned -- the failure mode it exists to
+// catch, arriving through a rename.
+const THEMED_SHEETS = readdirSync(fileURLToPath(new URL('css/', root)))
+  .filter(f => f.endsWith('.css') && f !== 'variables.css')
+  .sort();
 
 // The base `:root` block IS the dark theme; the other 20 are overrides.
 const cssThemeIds = [...VARIABLES.matchAll(/:root\[data-theme="([^"]+)"\]/g)].map(m => m[1]);
@@ -118,7 +127,7 @@ test('no stylesheet hardcodes the dark theme\'s palette', () => {
     '179,136,255': '--violet',
   };
   const offenders = [];
-  for (const file of ['canvas.css', 'views.css', 'modals.css', 'layout.css', 'lpanel.css', 'dropdowns.css', 'mobile.css']) {
+  for (const file of THEMED_SHEETS) {
     readCss(file).split('\n').forEach((line, n) => {
       for (const m of line.matchAll(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/g)) {
         const key = `${m[1]},${m[2]},${m[3]}`;

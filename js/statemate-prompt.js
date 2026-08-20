@@ -438,8 +438,21 @@ function focusBlock(focus) {
   return lines.join('\n');
 }
 
-export function buildUserMessage({ prompt, intent, canvasSpec = null, authority = 'auto', focus = null }) {
+export function buildUserMessage({ prompt, intent, canvasSpec = null, authority = 'auto', focus = null, images = 0 }) {
   const parts = [];
+
+  // The pictures themselves are content parts on the same turn — see
+  // toProviderContent in statemate-provider.js — and this is the sentence that
+  // says what they are for. Without it a diagram is just an image the model
+  // may or may not decide the request is about; the transcription instruction
+  // is what turns a photographed drawing into a machine.
+  if (images) {
+    parts.push(
+      `${images === 1 ? 'An image is' : `${images} images are`} attached to this turn. If ${images === 1 ? 'it shows' : 'they show'} a state diagram, a transition table or handwritten notes, read the machine out of ${images === 1 ? 'it' : 'them'} — states, start state, accepting states and every transition — and use that as the request's subject.`,
+      `Say in "caveat" what you could not make out, rather than inventing it.`,
+      ``
+    );
+  }
 
   if (canvasSpec) {
     parts.push(
