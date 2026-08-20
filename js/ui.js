@@ -10,7 +10,11 @@ import { anyModalOpen, closeModal, registerModal, showOverlay } from './modal.js
 import { includeNoteBounds, pruneNoteAnchorsExcluding } from './notes.js';
 import { CARD_AUTO_HIDE_MS, restartAutosaveTimer, saveBackupChecked, saveJSON, saveWorkspace, saveWorkspaceById } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
-import { getActiveRPanelTab, isRPanelTabActive, RPANEL_TAB_NAMES, RPANEL_TABS, setActiveRPanelTab } from './rpanel-state.js';
+import {
+  getActivePanelTab, getTabSide, isPanelTabActive,
+  PANEL_SIDES, PANEL_TAB_NAMES, PANEL_TABS, panelTabNames,
+  setActivePanelTab, setTabSide
+} from './panel-state.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
 import { $, App, MachineCategories, MachineTypes, R, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { getState, getTransition, hideContextMenu } from './states-transitions.js';
@@ -2523,84 +2527,151 @@ export function initPanelResizers() {
   applyStoredPanelWidths();
 }
 
-export function toggleLPanelPin() {
-  const s = $('lpanel');
-  const unpinned = s.classList.toggle('unpinned');
-  const btn = $('lpanel-pin-btn');
-  if (btn) btn.dataset.tip = unpinned ? 'Pin left panel' : 'Unpin left panel';
+const PANEL_LABEL = { lpanel: 'left panel', rpanel: 'right panel' };
+
+/**
+ * Pin or unpin either sidebar.
+ *
+ * One function for both sides. It was two copies differing in three string
+ * literals, which is how the left panel came to hide a hand-picked list of its
+ * children on unpin while the right one hid all of them.
+ */
+export function togglePanelPin(side) {
+  const panel = $(side);
+  if (!panel) return;
+  const unpinned = panel.classList.toggle('unpinned');
+  const btn = $(`${side}-pin-btn`);
+  if (btn) btn.dataset.tip = `${unpinned ? 'Pin' : 'Unpin'} ${PANEL_LABEL[side]}`;
   if (typeof applyToolbarDock === 'function') applyToolbarDock(false);
-  try { localStorage.setItem('automata-lpanel-pinned', unpinned ? '0' : '1'); } catch (e) { }
+  try { localStorage.setItem(`automata-${side}-pinned`, unpinned ? '0' : '1'); } catch (e) { }
 }
 
-export function toggleRPanelPin() {
-  const r = $('rpanel');
-  const unpinned = r.classList.toggle('unpinned');
-  const btn = $('rpanel-pin-btn');
-  if (btn) btn.dataset.tip = unpinned ? 'Pin right panel' : 'Unpin right panel';
-  if (typeof applyToolbarDock === 'function') applyToolbarDock(false);
-  try { localStorage.setItem('automata-rpanel-pinned', unpinned ? '0' : '1'); } catch (e) { }
-}
+// The two names the `onclick=` attributes and bridge.js know it by.
+export function toggleLPanelPin() { togglePanelPin('lpanel'); }
+export function toggleRPanelPin() { togglePanelPin('rpanel'); }
 
-// ── the right panel's two tabs ────────────────────────────────────
-//  Inspector and StateMate share one right edge, one pin, one resizer and one
-//  mobile sheet. StateMate was a dock across the bottom of the canvas, which
-//  made it the only durable surface in the app that covered the diagram rather
-//  than making room for it; as a tab it makes room like everything else, and
-//  loses the private minimize/close/Escape-ladder vocabulary it needed to
-//  compensate. See the note over .sm-panel in css/modals.css.
+// ── the sidebars' tabs ────────────────────────────────────────────
+//  Both edges are the same component: a header with a tab strip, a body of
+//  tabpanels, a pin, a resizer and a mobile sheet. StateMate was a dock across
+//  the bottom of the canvas, which made it the only durable surface in the app
+//  that covered the diagram rather than making room for it; as a tab it makes
+//  room like everything else, and loses the private minimize/close/Escape-ladder
+//  vocabulary it needed to compensate. See the note over .sm-panel in
+//  css/modals.css.
 //
-//  Which tab is which lives in rpanel-state.js, so the list the strip is
-//  painted from is the list a selection is validated against.
+//  Which tab is which — and, for a movable one, which side it is on — lives in
+//  panel-state.js, so the list a strip is painted from is the list a selection
+//  is validated against and the list the DOM pass moves nodes by.
 
-/** Paint the tab strip and tabpanels from the native right-panel state. */
-export function syncRPanelTabs() {
-  const on = getActiveRPanelTab();
-  const panel = $('rpanel');
-  if (panel) panel.dataset.activePanel = on;
-  Object.entries(RPANEL_TABS).forEach(([name, ids]) => {
-    const tab = $(ids.tab);
-    const tabpanel = $(ids.panel);
-    const active = name === on;
-    if (tab) {
-      tab.classList.toggle('active', active);
-      tab.setAttribute('aria-selected', String(active));
-      tab.setAttribute('tabindex', active ? '0' : '-1');
-    }
-    if (tabpanel) {
-      tabpanel.hidden = !active;
-      tabpanel.setAttribute('aria-hidden', String(!active));
-    }
-  });
+/** The element a side's tabpanels are children of. */
+function panelBody(side) {
+  return $(`${side}-mobile-content`);
 }
 
-/** Select a right-panel tab without invoking a panel's enter/leave lifecycle. */
-export function activateRPanelTab(name) {
-  const active = setActiveRPanelTab(name);
-  syncRPanelTabs();
+/** Paint both tab strips and every tabpanel from the panel state. */
+export function syncPanelTabs() {
+  PANEL_SIDES.forEach(side => {
+    const on = getActivePanelTab(side);
+    const panel = $(side);
+    if (panel) panel.dataset.activePanel = on || '';
+    panelTabNames(side).forEach(name => {
+      const ids = PANEL_TABS[name];
+      const tab = $(ids.tab);
+      const tabpanel = $(ids.panel);
+      const active = name === on;
+      if (tab) {
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', String(active));
+        tab.setAttribute('tabindex', active ? '0' : '-1');
+      }
+      if (tabpanel) {
+        tabpanel.hidden = !active;
+        tabpanel.setAttribute('aria-hidden', String(!active));
+      }
+    });
+  });
+  // StateMate's ⋯ menu is part of its tab, not of the right panel: it follows
+  // the panel between edges and is only offered while that panel is showing.
+  const actions = $('sm-head-actions');
+  if (actions) actions.hidden = !isPanelTabActive('statemate');
+}
+
+/** Select a tab without invoking a panel's enter/leave lifecycle. */
+export function activatePanelTab(name) {
+  const side = getTabSide(name);
+  if (!side) return null;
+  const active = setActivePanelTab(side, name);
+  syncPanelTabs();
   return active;
 }
 
 /**
- * Make the right panel visible enough to read.
+ * Put a movable tab's button, tabpanel and header chrome on the side that owns
+ * it now.
  *
- * An unpinned panel is collapsed to a hover rail, so a panel opened onto it
- * would reveal nothing. Pinning is the honest fix — the reader asked for the
- * panel, and a button that appears to do nothing is worse than one that takes
- * the width it needs.
- *
- * Only an opening calls this, and `showRPanelTab` never calls it directly.
- * Selecting the *Inspector* must not: the strip is inside the panel, so reaching
- * it means the panel is already readable, and pinning writes to localStorage —
- * clicking "Inspector" on a hover-revealed panel would quietly change a
- * preference the reader set on purpose. Selecting StateMate goes through
- * `openStateMate`, which does reveal, because it ends by focusing the composer
- * and an unpinned panel hides its content the moment the pointer leaves.
+ * The single place the DOM is moved, so "which panel is StateMate on" has one
+ * answer (panel-state.js) and one consequence (this). Appending is enough for
+ * both order and re-parenting: `.panel-header` is never moved, so it stays the
+ * body's first child, and the strips list tabs in declaration order.
  */
-export function revealRPanel() {
-  const r = $('rpanel');
-  if (r && r.classList && r.classList.contains('unpinned')) toggleRPanelPin();
-  if (isMobilePanelLayout() && r?.dataset.mobileCollapsed === '1') {
-    toggleMobilePanel('rpanel', false);
+export function applyPanelLayout() {
+  PANEL_SIDES.forEach(side => {
+    const strip = $(`${side}-tabs`);
+    const body = panelBody(side);
+    panelTabNames(side).forEach(name => {
+      const ids = PANEL_TABS[name];
+      const tab = $(ids.tab);
+      const tabpanel = $(ids.panel);
+      if (strip && tab && tab.parentNode !== strip) strip.appendChild(tab);
+      if (body && tabpanel && tabpanel.parentNode !== body) body.appendChild(tabpanel);
+    });
+  });
+  const host = getTabSide('statemate');
+  const pin = $(`${host}-pin-btn`);
+  const actions = $('sm-head-actions');
+  if (pin?.parentNode && actions && actions.parentNode !== pin.parentNode) {
+    pin.parentNode.insertBefore(actions, pin);
+  }
+  syncPanelTabs();
+}
+
+/**
+ * Move StateMate to the other sidebar and remember the choice.
+ *
+ * Not in `App.config`: that is deep-copied into every workspace tab and written
+ * to IndexedDB, and where a panel sits is a property of this browser rather
+ * than of the machine being edited.
+ */
+export function setStateMatePanel(side) {
+  if (!PANEL_SIDES.includes(side) || getTabSide('statemate') === side) return;
+  setTabSide('statemate', side);
+  try { localStorage.setItem('automata-statemate-panel', side); } catch (e) { }
+  applyPanelLayout();
+  showPanelTab('statemate');
+}
+
+/**
+ * Make a sidebar visible enough to read.
+ *
+ * An unpinned panel is collapsed to a hover rail, so a tab opened onto it would
+ * reveal nothing. Pinning is the honest fix — the reader asked for the panel,
+ * and a button that appears to do nothing is worse than one that takes the
+ * width it needs.
+ *
+ * Only an opening calls this, and `showPanelTab` never calls it directly.
+ * Selecting a panel's *default* tab must not: the strip is inside the panel, so
+ * reaching it means the panel is already readable, and pinning writes to
+ * localStorage — clicking "Inspector" on a hover-revealed panel would quietly
+ * change a preference the reader set on purpose. Selecting StateMate goes
+ * through `openStateMate`, which does reveal, because it ends by focusing the
+ * composer and an unpinned panel hides its content the moment the pointer
+ * leaves.
+ */
+export function revealPanel(side) {
+  const panel = $(side);
+  if (panel?.classList?.contains('unpinned')) togglePanelPin(side);
+  if (isMobilePanelLayout() && panel?.dataset.mobileCollapsed === '1') {
+    toggleMobilePanel(side, false);
   }
 }
 
@@ -2610,26 +2681,34 @@ export function revealRPanel() {
  * Leaving StateMate is deliberately not destructive: nothing about the session
  * lives in the DOM, so there is nothing for a tab switch to tear down. That is
  * the whole difference from the ✕ this replaced. Both branches end in
- * `activateRPanelTab`, so the strip is painted once by whichever ran, and
+ * `activatePanelTab`, so the strip is painted once by whichever ran, and
  * neither reveals the panel from here — `openStateMate` does its own, for the
- * reason in `revealRPanel`, and selecting the Inspector must not.
+ * reason in `revealPanel`, and selecting a default tab must not.
  */
-export function showRPanelTab(name) {
+export function showPanelTab(name) {
   if (name === 'statemate') openStateMate({ resume: true });
-  else stowStateMate();
-  if (!isRPanelTabActive(name)) activateRPanelTab(name);
+  // Only a selection on StateMate's own side displaces it; the other panel's
+  // tabs have nothing to do with it now that it can be on either edge.
+  else if (getTabSide(name) === getTabSide('statemate')) stowStateMate();
+  if (!isPanelTabActive(name)) activatePanelTab(name);
 }
 
-export function initRPanelTabs() {
+export function initPanelTabs() {
+  try {
+    const side = localStorage.getItem('automata-statemate-panel');
+    if (side) setTabSide('statemate', side);
+  } catch (e) { }
   // Wired at creation the way reference.js does it, so the tabs add no names
   // to bridge.js.
-  Object.entries(RPANEL_TABS).forEach(([name, ids]) => {
-    const tab = $(ids.tab);
-    if (!tab || tab._rpTabInit) return;
-    tab._rpTabInit = true;
-    tab.addEventListener('click', () => showRPanelTab(name));
+  PANEL_TAB_NAMES.forEach(name => {
+    const tab = $(PANEL_TABS[name].tab);
+    if (!tab || tab._panelTabInit) return;
+    tab._panelTabInit = true;
+    tab.addEventListener('click', () => showPanelTab(name));
     tab.addEventListener('keydown', e => {
-      const names = RPANEL_TAB_NAMES;
+      // The walk is over the tabs on *this* strip, read at event time: a
+      // movable tab changes both strips' contents when it moves.
+      const names = panelTabNames(getTabSide(name));
       const index = names.indexOf(name);
       let next = null;
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = names[(index + 1) % names.length];
@@ -2638,11 +2717,11 @@ export function initRPanelTabs() {
       if (e.key === 'End') next = names[names.length - 1];
       if (!next) return;
       e.preventDefault();
-      showRPanelTab(next);
-      $(RPANEL_TABS[next].tab)?.focus();
+      showPanelTab(next);
+      $(PANEL_TABS[next].tab)?.focus();
     });
   });
-  syncRPanelTabs();
+  applyPanelLayout();
 }
 
 export const MOBILE_BUILD_PANEL_IDS = ['lpanel', 'rpanel'];

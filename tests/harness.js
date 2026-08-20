@@ -39,7 +39,7 @@ import * as modal from '../js/modal.js';
 import * as notes from '../js/notes.js';
 import * as persistence from '../js/persistence.js';
 import * as render from '../js/render.js';
-import * as rpanelState from '../js/rpanel-state.js';
+import * as panelState from '../js/panel-state.js';
 import * as simulation from '../js/simulation.js';
 import * as state from '../js/state.js';
 import * as statesTransitions from '../js/states-transitions.js';
@@ -62,7 +62,7 @@ import * as workspace from '../js/workspace.js';
 
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, geometry, statesTransitions,
-  canvas, render, rpanelState, notes, dividers, simulation, suggest, language, alphabet, markdown,
+  canvas, render, panelState, notes, dividers, simulation, suggest, language, alphabet, markdown,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, algorithmsFa, algorithmsCfg, reference, workspace, quickSettings, minimap, ui,
   statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt,
@@ -118,7 +118,7 @@ function resetModuleState() {
   state.setWorkspaces([]);
   state.setActiveWorkspaceId(null);
   state.setR(baseConfig.radius);
-  rpanelState.resetRPanelTab();
+  panelState.resetPanelTabs();
   ui.setSaveState('saved');
   // The incremental renderer keys its live SVG nodes off App.domCache. Left
   // populated, a test would start out holding nodes built for the previous

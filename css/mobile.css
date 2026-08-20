@@ -644,7 +644,7 @@
     display: none;
   }
 
-  .mobile-rpanel-close {
+  .mobile-panel-close {
     width: 32px;
     height: 32px;
     display: grid;
@@ -657,19 +657,19 @@
     color: var(--text3);
   }
 
-  .mobile-rpanel-close:hover,
-  .mobile-rpanel-close:focus-visible {
+  .mobile-panel-close:hover,
+  .mobile-panel-close:focus-visible {
     background: var(--surface);
     color: var(--text);
     outline: none;
   }
 
-  .mobile-rpanel-close svg {
+  .mobile-panel-close svg {
     width: 15px;
     height: 15px;
   }
 
-  .rpanel-tab {
+  .panel-tab {
     min-height: 34px;
     font-size: .72rem;
   }

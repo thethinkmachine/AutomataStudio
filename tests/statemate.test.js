@@ -1512,7 +1512,7 @@ test('⏎ sends what was typed — no modifier, no highlighted row', async () =>
   // waiting on the reader rather than already drawn.
   assert.match(text, /Apply/, 'with the decision left to the reader');
 
-  assert.equal(h.context.getActiveRPanelTab(), 'statemate',
+  assert.equal(h.context.getActivePanelTab('rpanel'), 'statemate',
     'the console stays open — the next prompt is usually a correction to this one');
   assert.equal(input.value, '', 'and the composer is ready for it');
 });
@@ -1570,7 +1570,7 @@ test('/settings completes over the settings dialog’s own tab strip', async () 
     // panel it reveals, rather than the test asserting on a stubbed call.
     assert.ok(h.getElement('tab-rendering').classList.contains('active'),
       'picking a completion opens that tab');
-    assert.equal(h.context.getActiveRPanelTab(), 'statemate',
+    assert.equal(h.context.getActivePanelTab('rpanel'), 'statemate',
       'and the panel stays selected: a dialog covers it anyway, and stowing '
       + 'first would hand the closing focus to the Inspector tab');
   } finally {
@@ -1691,7 +1691,7 @@ test('a reply lands in the transcript, because nothing was drawn', async () => {
   const input = type(h, 'what is a DFA?');
   await enter(input);
 
-  assert.equal(h.context.getActiveRPanelTab(), 'statemate');
+  assert.equal(h.context.getActivePanelTab('rpanel'), 'statemate');
   assert.match(logText(h), /There is no machine for that/);
   assert.ok(entryKinds(h).some(c => c.includes('is-reply')));
   assert.equal(input.value, '', 'the composer is cleared and ready for the next turn');
@@ -3009,7 +3009,7 @@ test('the StateMate tab keeps the canvas live rather than blocking it', () => {
 
   h.context.openStateMate();
 
-  assert.equal(h.context.getActiveRPanelTab(), 'statemate');
+  assert.equal(h.context.getActivePanelTab('rpanel'), 'statemate');
   assert.equal(h.context.ModalStack.includes('statemate-panel'), false,
     'a tabpanel never enters the modal stack');
   // A full-viewport overlay made the diagram a picture of itself: no clicking
@@ -3100,13 +3100,13 @@ test('the send button is the stop button while a run is in flight', async () => 
 //  sit beside the minimize, that is not destructive. These pin the one exit,
 //  the one thing the tab can still say, and the run that survives it.
 
-const stowed = h => h.context.getActiveRPanelTab() !== 'statemate';
+const stowed = h => h.context.getActivePanelTab('rpanel') !== 'statemate';
 const badge = h => {
   const b = h.getElement('sm-tab-badge');
   return b.hidden ? '' : String(b.textContent || '');
 };
 const tabActive = (h, name) =>
-  h.getElement(`rpanel-tab-${name}`).classList.contains('active');
+  h.getElement(`panel-tab-${name}`).classList.contains('active');
 
 test('stowing hands the panel to the Inspector without ending the session', async () => {
   const h = createHarness();
@@ -3118,11 +3118,11 @@ test('stowing hands the panel to the Inspector without ending the session', asyn
   assert.equal(tabActive(h, 'statemate'), true, 'the tab says which panel is showing');
   assert.equal(tabActive(h, 'inspector'), false);
 
-  h.context.showRPanelTab('inspector');
+  h.context.showPanelTab('inspector');
   assert.equal(stowed(h), true);
   assert.equal(tabActive(h, 'inspector'), true);
 
-  h.context.showRPanelTab('statemate');
+  h.context.showPanelTab('statemate');
   assert.equal(stowed(h), false);
   // Nothing about the session lives in the DOM, so the transcript comes back
   // as it was rather than being rebuilt from the thread.
@@ -3139,12 +3139,12 @@ test('coming back to the tab resumes; opening StateMate goes to the newest line'
   log.scrollTop = 40;
   log.onscroll();                       // the reader scrolled up to re-read a turn
 
-  h.context.showRPanelTab('inspector');
-  h.context.showRPanelTab('statemate');
+  h.context.showPanelTab('inspector');
+  h.context.showPanelTab('statemate');
   assert.equal(log.scrollTop, 40,
     'stepping over to the Inspector and back is one session, so the place is kept');
 
-  h.context.showRPanelTab('inspector');
+  h.context.showPanelTab('inspector');
   h.context.openStateMate();
   assert.equal(log.scrollTop, 900,
     'but the sparkle button, ⌘K and "ask about this selection" are openings');
@@ -3152,26 +3152,26 @@ test('coming back to the tab resumes; opening StateMate goes to the newest line'
 
 test('the tab strip is wired at creation, so it adds no name to bridge.js', () => {
   const h = createHarness();
-  h.context.initRPanelTabs();
+  h.context.initPanelTabs();
   h.context.openStateMate();
 
-  h.getElement('rpanel-tab-inspector')._listeners.click();
+  h.getElement('panel-tab-inspector')._listeners.click();
   assert.equal(stowed(h), true, 'clicking the Inspector tab stows StateMate');
-  h.getElement('rpanel-tab-statemate')._listeners.click();
+  h.getElement('panel-tab-statemate')._listeners.click();
   assert.equal(stowed(h), false);
 });
 
 test('selecting the Inspector does not pin a panel the reader left unpinned', () => {
   const h = createHarness();
-  h.context.initRPanelTabs();
+  h.context.initPanelTabs();
   h.context.openStateMate();
   const panel = h.getElement('rpanel');
   panel.classList.add('unpinned');
 
-  h.getElement('rpanel-tab-inspector')._listeners.click();
+  h.getElement('panel-tab-inspector')._listeners.click();
   assert.equal(panel.classList.contains('unpinned'), true,
     'the strip is inside the panel, so reaching it means the panel is already readable');
-  h.getElement('rpanel-tab-statemate')._listeners.click();
+  h.getElement('panel-tab-statemate')._listeners.click();
   assert.equal(panel.classList.contains('unpinned'), false,
     'while a deliberate open does take the width it needs');
 });
@@ -3197,18 +3197,18 @@ test('opening StateMate also opens the collapsed mobile right-panel sheet', () =
 
 test('the right-panel tabs expose one selected, keyboard-focusable panel', () => {
   const h = createHarness();
-  h.context.initRPanelTabs();
+  h.context.initPanelTabs();
   h.context.openStateMate();
 
   assert.equal(h.getElement('rpanel').dataset.activePanel, 'statemate');
-  assert.equal(h.getElement('rpanel-tab-statemate').getAttribute('tabindex'), '0');
-  assert.equal(h.getElement('rpanel-tab-inspector').getAttribute('tabindex'), '-1');
+  assert.equal(h.getElement('panel-tab-statemate').getAttribute('tabindex'), '0');
+  assert.equal(h.getElement('panel-tab-inspector').getAttribute('tabindex'), '-1');
   assert.equal(h.getElement('statemate-panel').getAttribute('aria-hidden'), 'false');
   assert.equal(h.getElement('statemate-panel').hidden, false);
   assert.equal(h.getElement('rpanel-content').getAttribute('aria-hidden'), 'true');
 
   let prevented = false;
-  h.getElement('rpanel-tab-statemate')._listeners.keydown({
+  h.getElement('panel-tab-statemate')._listeners.keydown({
     key: 'ArrowLeft', preventDefault() { prevented = true; }
   });
   assert.equal(prevented, true);
@@ -3352,7 +3352,7 @@ test('stowing returns focus to the Inspector tab, not the distant opener', () =>
   const h = createHarness();
   h.context.openStateMate();
   let focused = false;
-  h.getElement('rpanel-tab-inspector').focus = () => { focused = true; };
+  h.getElement('panel-tab-inspector').focus = () => { focused = true; };
   h.context.stowStateMate();
   assert.equal(focused, true);
 });
@@ -3368,7 +3368,7 @@ test('leaving does not interrupt a run — only the stop control does', async ()
     // a separate control. With one non-destructive exit there is nothing to
     // put beside: a tab switch keeps the run. Once — the tab is a toggle.
     if (++attempts === 1) {
-      h.context.showRPanelTab('inspector');
+      h.context.showPanelTab('inspector');
       assert.equal(h.context.isStateMateRunning(), true, 'the request is untouched');
       assert.equal(badge(h), '…', 'and the tab is where it is reported');
     }

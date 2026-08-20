@@ -59,7 +59,7 @@
 
 import { hlState } from './canvas.js';
 import { topModal } from './modal.js';
-import { isRPanelTabActive } from './rpanel-state.js';
+import { defaultPanelTab, getTabSide, isPanelTabActive, PANEL_TABS } from './panel-state.js';
 import { $, App, getMachineConfig } from './state.js';
 import { undo } from './history.js';
 import { renderMarkdown } from './markdown.js';
@@ -83,7 +83,7 @@ import {
 import { editStarterPrompts, starterPrompts } from './statemate-prompt.js';
 import { describeSpecSize, resolveContextRefs } from './statemate-spec.js';
 import { Change, emit, subscribe } from './store.js';
-import { activateRPanelTab, fitToScreen, openSettingsModal, revealRPanel, switchSettingsTab } from './ui.js';
+import { activatePanelTab, fitToScreen, openSettingsModal, revealPanel, setStateMatePanel, switchSettingsTab } from './ui.js';
 import { showStatus } from './utils.js';
 import { setView } from './view.js';
 
@@ -130,7 +130,7 @@ const Session = {
   editing: '',
   // Where the transcript had got to when the Inspector tab last took the
   // panel, and the reader's scroll position, which display:none loses. There
-  // is no `stowed` flag beside them: rpanel-state.js already answers that, and
+  // is no `stowed` flag beside them: panel-state.js already answers that, and
   // no `resume` flag either — that is an argument to openStateMate.
   minSince: 0,
   logTop: 0
@@ -1942,8 +1942,11 @@ function syncPlaceholder() {
 
 const UNREAD_KINDS = new Set(['machine', 'reply', 'error']);
 
-/** True while the right panel is showing the Inspector instead. */
-function stowed() { return !isRPanelTabActive('statemate'); }
+/** True while StateMate's host panel is showing its other tab instead. */
+function stowed() { return !isPanelTabActive('statemate'); }
+
+/** The sidebar StateMate is a tab of right now — either one. */
+function homeSide() { return getTabSide('statemate'); }
 
 /**
  * Turns that landed while StateMate was stowed.
@@ -1966,7 +1969,7 @@ function unreadCount() {
  * still on screen. A run in flight outranks a count: it is what the reader is
  * waiting on, and the count is about to change anyway.
  *
- * The badge only — painting the strip is `syncRPanelTabs`, and this is called
+ * The badge only — painting the strip is `syncPanelTabs`, and this is called
  * from every chrome render, so folding the two together repainted two tabs and
  * two tabpanels to change one digit.
  */
@@ -2005,9 +2008,13 @@ export function stowStateMate() {
   Session.minSince = live === -1 ? Session.log.length : live;
   const opener = $('example-picker-btn');
   if (opener) opener.setAttribute('aria-expanded', 'false');
-  activateRPanelTab('inspector');
+  // Whatever the host panel's other tab is — Inspector on the right, Workspace
+  // on the left. Naming 'inspector' here made stowing a no-op once StateMate
+  // could sit on the left edge.
+  const back = defaultPanelTab(homeSide());
+  activatePanelTab(back);
   syncTabBadge();
-  $('rpanel-tab-inspector')?.focus();
+  $(PANEL_TABS[back]?.tab)?.focus();
 }
 
 function headMenuOpen() {
@@ -2015,9 +2022,12 @@ function headMenuOpen() {
 }
 
 function headMenuItems() {
-  return [$('sm-head-settings'), $('sm-head-clear')]
+  return [$('sm-head-settings'), $('sm-head-move'), $('sm-head-clear')]
     .filter(item => item && !item.hidden && !item.disabled);
 }
+
+/** The edge StateMate is not on — what "Move to…" means right now. */
+function otherSide() { return homeSide() === 'lpanel' ? 'rpanel' : 'lpanel'; }
 
 function closeHeadMenu({ restoreFocus = false } = {}) {
   const host = $('sm-head-actions');
@@ -2075,10 +2085,17 @@ function renderHeadActions() {
   const trigger = $('sm-head-menu-btn');
   const menu = $('sm-head-menu');
   const settings = $('sm-head-settings');
+  const move = $('sm-head-move');
   const clear = $('sm-head-clear');
   if (!host || !trigger || !menu || !settings || !clear) return;
 
   clear.hidden = getThread().length === 0;
+  // Named by where it goes, not by where it is: the label is the whole of the
+  // control, and it flips every time the item is used.
+  const moveLabel = $('sm-head-move-label');
+  const target = otherSide() === 'lpanel' ? 'left' : 'right';
+  if (moveLabel) moveLabel.textContent = `Move to ${target} panel`;
+  if (move) move.setAttribute('aria-label', `Move StateMate to the ${target} panel`);
   if (host.dataset.wired) return;
   host.dataset.wired = '1';
 
@@ -2096,6 +2113,14 @@ function renderHeadActions() {
   settings.addEventListener('click', () => {
     closeHeadMenu();
     openStateMateSettings();
+  });
+  move?.addEventListener('click', () => {
+    closeHeadMenu();
+    // setStateMatePanel re-selects StateMate on the side it arrives at, so the
+    // reader is looking at the conversation they just moved, not at whichever
+    // tab happened to be up over there.
+    setStateMatePanel(otherSide());
+    renderHeadActions();
   });
   clear.addEventListener('click', () => {
     closeHeadMenu();
@@ -2792,7 +2817,10 @@ export function handleStateMateEscape() {
 // A real modal opened above StateMate keeps priority.
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape' || stowed() || topModal()) return;
-  if (!e.target?.closest?.('.rpanel')) return;
+  // The panel that hosts StateMate, not "the right panel" — it can be either
+  // edge, and claiming Escape on the wrong one would both disable it there and
+  // fail to claim it where the console actually is.
+  if (!e.target?.closest?.(`.${homeSide()}`)) return;
   e.preventDefault();
   e.stopPropagation();
   if (!handleStateMateEscape()) stowStateMate();
@@ -2877,9 +2905,9 @@ export function openStateMate({ resume = false } = {}) {
   // unpinned panel is a hover rail with `visibility: hidden` content and no
   // :focus-within exception, and this ends in focusInput — so the alternative
   // is a caret in a field that vanishes when the pointer leaves. Selecting the
-  // Inspector reveals nothing, which is the asymmetry: see revealRPanel.
-  revealRPanel();
-  activateRPanelTab('statemate');
+  // The other tab reveals nothing, which is the asymmetry: see revealPanel.
+  revealPanel(homeSide());
+  activatePanelTab('statemate');
 
   const request = ++Session.exampleRequest;
   Session.examples = getMachineExampleOptions().map(opt => ({ ...opt, meta: null }));
