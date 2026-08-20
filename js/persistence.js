@@ -546,7 +546,8 @@ export function loadData(d, isExample) {
   App.accepts = new Set(d.accepts || []);
   App.notes = Array.isArray(d.notes) ? d.notes : [];
   App.dividers = Array.isArray(d.dividers) ? d.dividers : [];
-  App.selectedDividerId = null;
+  App.selectedNotes.clear();
+  App.selectedDividers.clear();
   if (App.machine === 'TM' && hasSingleTapeNondeterminism(App.transitions)) {
     App.machine = 'NDTM';
   }

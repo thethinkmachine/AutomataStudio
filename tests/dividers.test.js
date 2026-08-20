@@ -35,7 +35,7 @@ test('deleteDivider removes only the target and clears its selection', () => {
   deleteDivider(b.id);
   assert.strictEqual(App.dividers.length, 1);
   assert.strictEqual(App.dividers[0].id, 'd1');
-  assert.strictEqual(App.selectedDividerId, null);
+  assert.strictEqual(App.selectedDividers.has(b.id), false);
 });
 
 test('shift-constrain snaps a segment to the nearest 45° spoke', () => {

@@ -234,7 +234,9 @@ export function restoreSnapshot(s) {
   App.notes = d.notes || []; App.noteN = d.noteN || 0;
   App.dividers = d.dividers || []; App.dividerN = d.dividerN || 0;
   App.meta = d.meta || null;
-  if (App.selectedDividerId && !App.dividers.some(dv => dv.id === App.selectedDividerId)) App.selectedDividerId = null;
+  // A restored snapshot can be missing objects the selection still names.
+  App.selectedNotes.forEach(id => { if (!App.notes.some(n => n.id === id)) App.selectedNotes.delete(id); });
+  App.selectedDividers.forEach(id => { if (!App.dividers.some(dv => dv.id === id)) App.selectedDividers.delete(id); });
 
   // Before the emit: the repaint below reads radius, label style and the
   // routing flags, so they have to be the restored ones.

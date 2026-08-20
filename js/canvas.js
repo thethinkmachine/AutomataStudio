@@ -1,9 +1,9 @@
 import { settleAll } from './anim.js';
-import { beginDividerDraw, clearDividerSelection, dividerToolKind, dragDividerEndpointTo, dragDividerTo, endDividerEndpointDrag, finishDividerDraw, includeDividerBounds, updateDividerDraw } from './dividers.js';
+import { beginDividerDraw, dividerMid, dividerToolKind, dragDividerEndpointTo, dragSelectedDividersTo, endDividerEndpointDrag, finishDividerDraw, getDivider, includeDividerBounds, syncDividerSelectionClasses, updateDividerDraw, updateOneDividerDOM } from './dividers.js';
 import { exportDownload, exportFilename } from './export-core.js';
 import { includeLayoutBounds, resolveNodeOverlaps } from './geometry.js';
 import { markDirty, snapshot } from './history.js';
-import { clearActiveNoteHighlight, dragNoteTo, endNoteResize, includeNoteBounds, resizeNoteTo } from './notes.js';
+import { clearActiveNoteHighlight, dragSelectedNotesTo, endNoteResize, getNote, includeNoteBounds, resizeNoteTo, resolveNotePos, syncNoteSelectionClasses } from './notes.js';
 import { getWorkspaceData } from './persistence.js';
 import { currentLayoutContext, makeSVG, renderAll, updateFastDOM, updateLPanel, updateRPanel } from './render.js';
 import { $, App } from './state.js';
@@ -273,8 +273,12 @@ wrap.addEventListener('pointerdown', e => {
   const onTransition = !!e.target.closest('#trans-g');
   const onBackground = onSVGBg || onTransition;
   if (!onBackground) return;
-  if (typeof clearActiveNoteHighlight === 'function') clearActiveNoteHighlight();
-  if (typeof clearDividerSelection === 'function') clearDividerSelection();
+  // A press on empty canvas drops the selection — every kind of it — with two
+  // exceptions: a modified press, which is the start of an additive marquee,
+  // and the transition tool, whose half-drawn edge marks its source state with
+  // the very same class the selection uses.
+  const additive = App.tool === 'pointer' && (e.shiftKey || e.ctrlKey || e.metaKey);
+  if (!additive && App.tool !== 'trans') clearSelection();
 
   if (typeof dividerToolKind === 'function' && dividerToolKind()) {
     beginDividerDraw(e);
@@ -287,12 +291,11 @@ wrap.addEventListener('pointerdown', e => {
       startPan(e);
       return;
     }
-    // A marquee is a multi-select gesture whether or not a modifier is held.
-    if (typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
-    if (!(e.shiftKey || e.ctrlKey || e.metaKey)) {
-      App.selectedStates.clear(); App.selectedTransitions.clear();
-      emit(Change.CANVAS);
-    }
+    // A marquee is a multi-select gesture whether or not a modifier is held:
+    // an unmodified one started by clearing above, a modified one adds to what
+    // is already selected.
+    if (e.shiftKey || e.ctrlKey || e.metaKey) clearEdgeDirectionHighlight();
+    else emit(Change.CANVAS);
     const pt = svgPt(e);
     App.marquee = { start: pt, current: pt };
     App.marqueeRect = makeSVG('rect');
@@ -353,7 +356,7 @@ export function stopAutoPan() {
 export function startAutoPanLoop() {
   if (autoPanRAF) return;
   const step = () => {
-    if (!(App.dragOffsets || App.marquee || App.dividerDraft || App.dragDividerId || App.dragDividerEndpoint) || !lastPointerClient) { autoPanRAF = null; return; }
+    if (!(App.dragOffsets || App.marquee || App.dividerDraft || App.dragDividerEndpoint) || !lastPointerClient) { autoPanRAF = null; return; }
     const rect = wrap.getBoundingClientRect();
     const vec = computeAutoPanVector(lastPointerClient.clientX, lastPointerClient.clientY, rect);
     if (vec.x || vec.y) {
@@ -466,6 +469,16 @@ export function handlePointerMove(e) {
         }
       }
     });
+    App.notes.forEach(n => {
+      const pos = resolveNotePos(n);
+      if (pos.x >= mx && pos.x <= mx + mw && pos.y >= my && pos.y <= my + mh) App.selectedNotes.add(n.id);
+    });
+    App.dividers.forEach(d => {
+      const mid = dividerMid(d);
+      if (mid.x >= mx && mid.x <= mx + mw && mid.y >= my && mid.y <= my + mh) App.selectedDividers.add(d.id);
+    });
+    syncNoteSelectionClasses();
+    syncDividerSelectionClasses();
     checkAutoPan(e);
     return;
   }
@@ -507,6 +520,8 @@ export function handlePointerMove(e) {
     } else {
       clearAlignGuides();
     }
+    dragSelectedNotesTo(pt);
+    dragSelectedDividersTo(pt);
     if (typeof updateFastDOM === 'function') updateFastDOM(); else renderAll();
     checkAutoPan(e);
     return;
@@ -518,16 +533,6 @@ export function handlePointerMove(e) {
   }
   if (App.dragDividerEndpoint) {
     dragDividerEndpointTo(e);
-    checkAutoPan(e);
-    return;
-  }
-  if (App.dragDividerId) {
-    dragDividerTo(e);
-    checkAutoPan(e);
-    return;
-  }
-  if (App.dragNoteId) {
-    if (typeof dragNoteTo === 'function') dragNoteTo(e);
     checkAutoPan(e);
     return;
   }
@@ -600,6 +605,7 @@ export function endPointerInteractions() {
     const moved = App.dragOffsets && !App.dragPendingSnapshot ? Object.keys(App.dragOffsets) : null;
     App.dragOffsets = null;
     App.dragCurve = null;
+    endSelectionDrag();
     App.dragPendingSnapshot = false;
     clearAlignGuides();
     // Overlaps are settled on release rather than during the drag, so the node
@@ -617,15 +623,6 @@ export function endPointerInteractions() {
   }
   if (App.dragDividerEndpoint) {
     endDividerEndpointDrag();
-    scheduleMinimap();
-  }
-  if (App.dragDividerId) {
-    App.dragDividerId = null;
-    App.dragDividerOffset = null;
-    scheduleMinimap();
-  }
-  if (App.dragNoteId) {
-    App.dragNoteId = null;
     scheduleMinimap();
   }
   if (App.resizeNoteId) {
@@ -754,49 +751,29 @@ export function onStateDown(e, id) {
   if (App.tool === 'move' || App.tool === 'pointer') {
     if (App.tool === 'pointer') {
       const multi = e.shiftKey || e.ctrlKey || e.metaKey;
-      if (!multi && !App.selectedStates.has(id)) {
-        App.selectedStates.clear();
-        App.selectedTransitions.clear();
-        document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
-        App.selectedStates.add(id);
-        if (el) el.classList.add('sel-st');
+      const wasSelected = App.selectedStates.has(id);
+      if (!pickObject(App.selectedStates, id, multi)) return;   // ctrl-click deselected it
+      if (multi) {
+        clearEdgeDirectionHighlight();
+      } else if (!wasSelected) {
         if (App.config.clickHighlightMode === 'outgoing' || App.config.clickHighlightMode === 'incoming') {
           highlightEdgesForState(id, App.config.clickHighlightMode);
         } else {
           clearEdgeDirectionHighlight();
         }
-
-      } else if (multi) {
-        clearEdgeDirectionHighlight();
-        if (App.selectedStates.has(id)) {
-          App.selectedStates.delete(id);
-          if (el) el.classList.remove('sel-st');
-          return;
-        } else {
-          App.selectedStates.add(id);
-          if (el) el.classList.add('sel-st');
-        }
       }
     } else {
-      App.selectedStates.clear();
-      App.selectedTransitions.clear();
-      document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
+      clearSelection();
       App.selectedStates.add(id);
       if (el) el.classList.add('sel-st');
     }
 
-    const pt = svgPt(e);
-    App.dragOffsets = {};
-    App.selectedStates.forEach(sid => {
-      const s = getState(sid);
-      if (s) App.dragOffsets[sid] = { x: pt.x - s.x, y: pt.y - s.y };
-    });
-    try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
     // The undo entry is deliberately NOT taken here. A press that never turns
     // into a drag is just a selection, and snapshotting on press marked the
     // workspace dirty (and pushed a no-op undo step) for every plain click.
     // handlePointerMove takes it on the first real movement instead.
-    App.dragPendingSnapshot = true;
+    beginSelectionDrag(svgPt(e));
+    try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
   }
 }
 
@@ -815,6 +792,94 @@ export function drawTempLine(x1, y1, x2, y2) {
 }
 export function clearTempLine() { if (tempLine) { tempLine.remove(); tempLine = null; } }
 export function hlState(id, on) { const el = document.querySelector(`[data-id="${id}"]`); if (el) el.classList.toggle('sel-st', on); }
+
+// ══════════════════════════════════════════════════════════════════
+//  SELECTION — one model for everything on the canvas
+// ══════════════════════════════════════════════════════════════════
+// States, transitions, notes and dividers/regions are all selectable objects,
+// each with its own id set on App. The four sets are always cleared together:
+// a note left selected behind an Escape would be picked up by the next Delete,
+// which is exactly the kind of surprise a single selection model prevents.
+export function clearSelection() {
+  App.selectedStates.clear();
+  App.selectedTransitions.clear();
+  App.selectedNotes.clear();
+  App.selectedDividers.clear();
+  syncSelectionClasses();
+  clearEdgeDirectionHighlight();
+  clearActiveNoteHighlight();
+}
+
+export function selectionCount() {
+  return App.selectedStates.size + App.selectedTransitions.size
+    + App.selectedNotes.size + App.selectedDividers.size;
+}
+
+// Repaints selection classes from the id sets. States and edges are re-synced
+// by their own renderers, but the handlers below also toggle classes directly
+// without a render, so clearing has to reach the nodes the same way.
+export function syncSelectionClasses() {
+  document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
+  App.selectedStates.forEach(id => hlState(id, true));
+  App.selectedTransitions.forEach(tid => {
+    const t = App.transitions.find(x => x.id === tid);
+    if (!t) return;
+    const el = document.querySelector(`[data-edge="${t.from}|${t.to}"]`);
+    if (el) el.classList.add('sel-t');
+  });
+  syncNoteSelectionClasses();
+  syncDividerSelectionClasses();
+}
+
+// Click semantics shared by every kind: shift/ctrl toggles membership, a plain
+// click on something unselected replaces the whole selection with it, and a
+// plain click on something already selected leaves the selection alone so a
+// multi-object drag can start from any member of it.
+export function pickObject(set, id, multi) {
+  if (multi) {
+    if (set.has(id)) { set.delete(id); syncSelectionClasses(); return false; }
+    set.add(id);
+    syncSelectionClasses();
+    return true;
+  }
+  if (!set.has(id)) {
+    clearSelection();
+    set.add(id);
+    syncSelectionClasses();
+  }
+  return true;
+}
+
+// ── Dragging the selection ──
+// One gesture moves everything selected, whichever member it started on, so
+// the drag offsets for all three movable kinds are captured together.
+export function beginSelectionDrag(pt) {
+  App.dragOffsets = {};
+  App.selectedStates.forEach(sid => {
+    const s = getState(sid);
+    if (s) App.dragOffsets[sid] = { x: pt.x - s.x, y: pt.y - s.y };
+  });
+  App.dragNoteOffsets = {};
+  App.selectedNotes.forEach(nid => {
+    const note = getNote(nid);
+    if (!note) return;
+    const pos = resolveNotePos(note);
+    App.dragNoteOffsets[nid] = { x: pt.x - pos.x, y: pt.y - pos.y };
+  });
+  App.dragDividerOffsets = {};
+  App.selectedDividers.forEach(did => {
+    const d = getDivider(did);
+    if (!d) return;
+    App.dragDividerOffsets[did] = { x1: d.x1 - pt.x, y1: d.y1 - pt.y, x2: d.x2 - pt.x, y2: d.y2 - pt.y };
+  });
+  // The undo entry is deliberately NOT taken here — see onStateDown.
+  App.dragPendingSnapshot = true;
+}
+
+export function endSelectionDrag() {
+  App.dragNoteOffsets = null;
+  App.dragDividerOffsets = null;
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  DIRECTIONAL EDGE HIGHLIGHT — optionally triggered by clicking a state
@@ -879,21 +944,39 @@ export function ctxHighlightIncoming() {
 //  SELECTION: select-all, nudge, copy / paste / duplicate
 // ══════════════════════════════════════════════════════════════════
 export function selectAllStates() {
-  if (!App.states.length) return;
+  if (!App.states.length && !App.notes.length && !App.dividers.length) return;
   clearEdgeDirectionHighlight();
   App.selectedStates = new Set(App.states.map(s => s.id));
   App.selectedTransitions = new Set(App.transitions.map(t => t.id));
+  App.selectedNotes = new Set(App.notes.map(n => n.id));
+  App.selectedDividers = new Set(App.dividers.map(d => d.id));
   emit(Change.CANVAS);
-  showStatus(`Selected ${App.states.length} state${App.states.length === 1 ? '' : 's'}`);
+  const n = App.states.length;
+  const extra = App.notes.length + App.dividers.length;
+  showStatus(`Selected ${n} state${n === 1 ? '' : 's'}${extra ? ` and ${extra} annotation${extra === 1 ? '' : 's'}` : ''}`);
 }
 
+// Arrow keys move whatever is selected. Transitions have no position of their
+// own, so a selection of nothing but edges is not something to nudge — and
+// snapshotting for it would spend an undo step on a no-op.
 export function nudgeSelected(dx, dy) {
-  if (!App.selectedStates.size) return;
+  if (!(App.selectedStates.size || App.selectedNotes.size || App.selectedDividers.size)) return;
   snapshot();
   App.selectedStates.forEach(sid => {
     const s = getState(sid);
     if (s) { s.x += dx; s.y += dy; }
   });
+  App.selectedNotes.forEach(nid => {
+    const note = getNote(nid);
+    if (note) { note.x += dx; note.y += dy; }
+  });
+  App.selectedDividers.forEach(did => {
+    const d = getDivider(did);
+    if (!d) return;
+    d.x1 += dx; d.y1 += dy; d.x2 += dx; d.y2 += dy;
+    updateOneDividerDOM(d);
+  });
+  // updateFastDOM carries the states and, with them, the notes.
   if (typeof updateFastDOM === 'function') updateFastDOM(); else renderAll();
   scheduleMinimap();
 }

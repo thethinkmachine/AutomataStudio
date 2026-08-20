@@ -1,5 +1,5 @@
 import { animEnabled, beginPass, claimGroup, dropTrack, easeTrack, endPass, requestSettle, setSettlePainter, snapTrack } from './anim.js';
-import { applyEdgeDirectionHighlight, clearEdgeDirectionHighlight, onStateDown, wrap } from './canvas.js';
+import { applyEdgeDirectionHighlight, clearEdgeDirectionHighlight, clearSelection, onStateDown, wrap } from './canvas.js';
 import { renderDividers } from './dividers.js';
 import { PILL_GAP, PILL_HEIGHT, PILL_ROW_H, buildLayoutContext, edgeGeometryFor, estimatePillLabelSize, estimateTextLabelSize, pillPartWidth, selfLoopLabelPoint, selfLoopPath } from './geometry.js';
 import { commit, snapshot } from './history.js';
@@ -175,12 +175,6 @@ function isEdgeSelected(ts) {
   return ts.some(t => App.selectedTransitions.has(t.id));
 }
 
-// Clears selection classes the DOM is carrying directly. The edge handlers do
-// this rather than re-rendering, so it has to reach the nodes the same way.
-function clearSelectionClasses() {
-  document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
-}
-
 // Creates the stable parts of an edge: the group, its two paths, its label, and
 // its listeners. The label lives in #trans-lbl-g, not inside the group, so that
 // every label paints above every edge.
@@ -233,9 +227,9 @@ function createEdgeNode(key) {
       // being read, so its lit edges would just be stale clutter.
       if (typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
       if (!multi && !isSel) {
-        App.selectedStates.clear();
-        App.selectedTransitions.clear();
-        clearSelectionClasses();
+        // An edge is an object like any other: taking it drops whatever else
+        // was selected, notes and dividers included.
+        clearSelection();
         ts.forEach(t => App.selectedTransitions.add(t.id));
         edgeGrp.classList.add('sel-t');
       } else if (multi) {
@@ -277,9 +271,7 @@ function createEdgeNode(key) {
     // ctrl+click across states and edges), keep it intact — right-clicking
     // shouldn't collapse a combo selection down to just this one edge.
     if (!isEdgeSelected(ts)) {
-      App.selectedStates.clear();
-      App.selectedTransitions.clear();
-      clearSelectionClasses();
+      clearSelection();
       ts.forEach(t => App.selectedTransitions.add(t.id));
       edgeGrp.classList.add('sel-t');
     }
