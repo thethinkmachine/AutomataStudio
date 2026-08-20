@@ -114,102 +114,10 @@ body.modal-open {
   overflow: hidden;
 }
 
-/* A native tabpanel is selected by the right-panel controller. It never joins
-   the modal stack and needs no modal-derived `.show` state. */
-.sm-panel[hidden] {
-  display: none;
-}
-
-/* `hidden` is authoritative; this selector is a defensive layout fallback for
-   older saved markup restored before the controller's first sync. */
-.rpanel[data-active-panel="statemate"] .rpanel-content {
-  display: none;
-}
-
-/* ── the tab strip ──
-   This is sidebar navigation, not a compact form control. The active panel is
-   carried by type and a quiet underline instead of a bordered control inside
-   another bordered control. */
-.rpanel-tabs {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  flex: 1 1 auto;
-  align-self: stretch;
-  gap: 0;
-  min-width: 0;
-  min-height: 36px;
-}
-
-.rpanel-tab {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 0 8px;
-  border: 0;
-  background: transparent;
-  font-family: var(--sans);
-  font-size: .72rem;
-  font-weight: 500;
-  color: var(--text3);
-  cursor: pointer;
-  transition: color var(--transition-fast), background var(--transition-fast);
-}
-
-.rpanel-tab::after {
-  content: '';
-  position: absolute;
-  right: 10px;
-  bottom: 0;
-  left: 10px;
-  height: 2px;
-  border-radius: 2px 2px 0 0;
-  background: transparent;
-}
-
-.rpanel-tab:hover,
-.rpanel-tab:focus-visible {
-  background: var(--surface);
-  color: var(--text2);
-  outline: none;
-}
-
-.rpanel-tab.active {
-  color: var(--text);
-}
-
-.rpanel-tab.active::after {
-  background: var(--accent);
-}
-
-.rp-tab-icon {
-  width: 13px;
-  height: 13px;
-  flex: 0 0 auto;
-  color: var(--accent);
-}
-
-/* What the tab can still say for a panel that is not showing: a run in flight,
-   or the turns that landed while the Inspector was up. Both are counts of
-   things the reader would otherwise have to switch tabs to find out about. */
-.rp-tab-badge {
-  font-family: var(--mono);
-  font-size: .58rem;
-  line-height: 1;
-  min-width: 16px;
-  padding: 2px 4px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-border);
-  color: var(--accent);
-  white-space: nowrap;
-}
-
-.rp-tab-badge[hidden] {
-  display: none;
-}
+/* A native tabpanel, selected by the panel controller. It never joins the modal
+   stack and needs no modal-derived `.show` state — and it is hidden by the one
+   rule that hides every tabpanel in either sidebar, in css/panels.css, rather
+   than by a copy of it here. */
 
 .sm-head-actions {
   position: relative;
@@ -218,7 +126,7 @@ body.modal-open {
   flex: 0 0 auto;
 }
 
-.rpanel[data-active-panel="inspector"] .sm-head-actions {
+.sm-head-actions[hidden] {
   display: none;
 }
 
@@ -331,15 +239,53 @@ body.modal-open {
   min-height: 0;
 }
 
+/* The transcript scrolls in one direction only, and that is what stops the
+   bubbles being clipped.
+   `overflow-y: auto` alone does not mean "scroll vertically": a box that scrolls
+   on one axis computes `visible` to `auto` on the other, so the log was a
+   two-axis scroller. One wide thing anywhere in the session — a display formula,
+   a fenced block, a long identifier, a row of chips — made the whole column
+   horizontally scrollable, and every turn above and below it was then cut off at
+   both edges by a viewport wider than the panel. The wide things all carry their
+   own `overflow-x: auto` (`.md-pre`, `.md-table-wrap`, `.katex-display` below),
+   so clamping the axis here scrolls the one block that needs it instead of the
+   transcript around it.
+   `scrollbar-gutter: stable` reserves the track whether or not the bar is
+   showing, so a bubble ends at the same place either way rather than being
+   crowded to the edge the moment the session gets long enough to scroll. */
 .sm-log {
   font-family: var(--sans);
   font-size: var(--sm-prose);
   line-height: var(--sm-lh);
   flex: 1 1 auto;
   min-height: 0;
-  padding: 18px 16px 10px;
+  min-width: 0;
+  padding: 18px 14px 10px;
   overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+/* Nothing in a turn may set its own width from its content: a grid or flex item
+   floors at min-content unless it is told not to, which is how a single
+   unbreakable token used to widen the entire column. */
+.sm-entry,
+.sm-line > *,
+.sm-col,
+.sm-user-body {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Display math is typeset at whatever width the formula needs, so it is the one
+   block most likely to be wider than a 288px panel. It scrolls itself. */
+.sm-md .katex-display,
+.sm-card .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
   scrollbar-width: thin;
 }
 
@@ -711,10 +657,18 @@ body.modal-open {
 
 /* A reply as it streams: plain text, in the reply's own voice and colour, until
    it is whole enough to be parsed as Markdown. */
+/* Already the bubble it is about to become, so the answer does not change shape
+   under the reader the moment it finishes parsing — only the type inside it
+   goes from plain text to blocks. */
 .sm-stream {
+  width: fit-content;
+  min-width: 0;
+  max-width: min(74ch, calc(100% - 24px));
   margin: 7px 0 0 24px;
-  padding-left: 10px;
-  border-left: 2px solid var(--violet);
+  padding: 10px 13px 11px;
+  border: 1px solid var(--violet-border);
+  border-radius: 5px 12px 12px 12px;
+  background: color-mix(in srgb, var(--violet-soft) 60%, var(--surface2));
   color: var(--text2);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -740,38 +694,52 @@ body.modal-open {
      the same ornament as the border it replaced, just narrower. The card's own
      border carries the colour instead, over a tint faint enough to leave the
      prose alone. One shape, tinted; nothing stuck to it. */
+/* One shape for every assistant turn, tinted by kind.
+
+   What was here was a hairline rule with the content hanging under it, and it
+   had two problems that are really one. A rule is a *separator*, so a turn
+   looked like a section of one long document rather than like something said
+   back to you — the user's side of the conversation was a bubble and the
+   assistant's side was a horizontal line. And the moment a variant painted a
+   fill behind that same box (the held proposal did), the box had no horizontal
+   padding and square corners, so the fill ran the full width of the column with
+   the text flush against both edges: a bubble that reads as having been cut off
+   by the panel rather than as fitting inside it.
+
+   So: a bubble. Inset from the column, padded, rounded, capped at the same
+   ~74-character measure a reply always was, and hugging its own content so a
+   two-word answer does not draw a box the width of the panel to hold it. The
+   corner nearest the gutter mark is tightened the way .sm-user-text tightens
+   the one nearest its own — opposite corners, because the two turns point at
+   each other. */
 .sm-card {
-  padding: 10px 0 6px;
-  border: 0;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  transition: border-color var(--transition-fast);
-}
-
-/* Hover lifts the card by its own light rather than by its border — the border
-   is carrying which kind of turn this is, and neutralising it on hover would
-   throw that away for the duration of the pointer being there. */
-.sm-entry:hover .sm-card {
-  border-color: var(--border2);
-}
-
-/* A reply hugs its text and stops at a readable measure. Both matter: the
-   width is what stops it reading as a page of documentation, and `fit-content`
-   is what stops a two-word answer from drawing a 900px box to hold it. */
-.sm-card.is-reply {
   width: fit-content;
+  min-width: 0;
   max-width: min(74ch, 100%);
-  border-top-color: var(--violet-border);
+  padding: 10px 13px 11px;
+  border: 1px solid var(--border);
+  border-radius: 5px 12px 12px 12px;
+  background: var(--surface2);
+  box-shadow: none;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+/* The kind lives in the border and a tint faint enough to leave the prose
+   alone. No spine, no bar: a coloured stripe down one side is the ornament the
+   card's own edge already is. */
+.sm-card.is-reply {
+  border-color: var(--violet-border);
+  background: color-mix(in srgb, var(--violet-soft) 60%, var(--surface2));
 }
 
 .sm-card.is-warn {
-  border-top-color: var(--gold-border);
+  border-color: var(--gold-border);
+  background: color-mix(in srgb, var(--gold-soft) 55%, var(--surface2));
 }
 
 .sm-card.is-error {
-  border-top-color: var(--red-border);
+  border-color: var(--red-border);
+  background: color-mix(in srgb, var(--red-soft) 55%, var(--surface2));
 }
 
 .sm-card-title {
@@ -975,12 +943,19 @@ body.modal-open {
 /* A held proposal is the one card that should catch the eye across the room:
    it is the only state in the console waiting on a decision. Declared after
    .is-warn because a card can be both, and "waiting on you" outranks
-   "something to know about" at equal specificity. */
+   "something to know about" at equal specificity.
+
+   It is the only card that raises its voice above the tint every other one
+   carries: a stronger edge, a vertical falloff rather than a flat wash, and the
+   only shadow in the transcript. Everything else about the box — the measure,
+   the padding, the corners — comes from .sm-card, so a proposal is the same
+   bubble as a reply and not a second kind of object. */
 .sm-card.is-pending {
   border-color: color-mix(in srgb, var(--gold) 55%, transparent);
   background: linear-gradient(to bottom,
       color-mix(in srgb, var(--gold-soft) 85%, var(--surface2)),
       var(--surface2) 78%);
+  box-shadow: var(--shadow-sm);
 }
 
 .sm-hold {
@@ -1307,7 +1282,9 @@ body.modal-open {
 .sm-dock {
   flex: 0 0 auto;
   min-width: 0;
-  padding: 10px 12px 12px;
+  /* Inline padding matches .sm-log's, so a user turn sits directly above the
+     composer it was typed in rather than inset from it by two pixels. */
+  padding: 10px 14px 12px;
   border-top: 1px solid var(--border);
   background: inherit;
   overflow-x: hidden;
@@ -1795,8 +1772,10 @@ button.sm-stat:disabled {
    hover to reveal them with. Both get trimmed rather than left to squeeze the
    transcript into a slot. */
 @media (max-width: 560px) {
-  .sm-log { padding: 12px 13px 6px; }
-  .sm-dock { padding: 9px 10px 10px; }
+  /* Same inline padding as the dock, so a sent turn and the composer it came
+     from still line up on both edges. */
+  .sm-log { padding: 12px 11px 6px; }
+  .sm-dock { padding: 9px 11px 10px; }
   .sm-menu { max-height: 40vh; }
   .sm-nudge,
   .sm-editing { margin: 0 0 8px; }
@@ -1940,10 +1919,8 @@ button.sm-stat:disabled {
 }
 
 @media (max-width: 560px) {
-  .sm-log {
-    padding: 12px 12px 4px;
-  }
-
+  /* The log's padding is set once, in the block above with the dock's — a
+     second copy here silently won and put the two back out of step. */
   .sm-listrow-head {
     align-items: flex-start;
     flex-direction: column;

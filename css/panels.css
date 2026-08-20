@@ -1,4 +1,11 @@
-/* ─── SIDEBAR ───
+/* ─── THE TWO SIDEBARS ───
+   Both panels live here. They are the same component twice — a header with a
+   tab strip, a scrolling body of tabpanels, a pin and a resizer — so their
+   shared chrome (.panel-header, .panel-tabs, .panel-tab, .pin-btn,
+   .panel-resizer) is written once and the two sides differ only in which edge
+   they are anchored to. The .rpanel rules used to sit in views.css and the tab
+   strip in modals.css, which is how the two drifted apart in the first place.
+
    Both panels' collapsible section headers share one visual spec. They had
    drifted apart (different padding, label size, arrow size and badge style),
    which made the two sidebars look like different components. These tokens
@@ -25,6 +32,10 @@
   overflow: visible;
   display: flex;
   flex-direction: column;
+  /* Same as .rpanel: the tab strip sheds parts of itself by the width of the
+     panel it is in, which is a width the viewport knows nothing about — this
+     panel is resizable and pinnable independently of the window. */
+  container-type: inline-size;
   transition: width var(--transition-base), min-width var(--transition-base);
   position: relative;
   z-index: 10;
@@ -541,14 +552,16 @@ body.panel-resizing .rpanel {
   transition-delay: 0.15s;
 }
 
-.lpanel.unpinned .lpanel-content,
-.lpanel.unpinned .panel-header {
+/* Every child, not a list of them. The list was .lpanel-content plus
+   .panel-header, which silently stopped covering the panel the moment a third
+   tabpanel could be hosted here — a moved StateMate would have stayed painted
+   over the canvas with the panel collapsed to its rail. */
+.lpanel.unpinned > :not(style) {
   transition: opacity var(--transition-base), visibility var(--transition-base);
   transition-delay: 0.1s;
 }
 
-.lpanel.unpinned:not(:hover) .lpanel-content,
-.lpanel.unpinned:not(:hover) .panel-header {
+.lpanel.unpinned:not(:hover) > :not(style) {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -604,7 +617,7 @@ body.panel-resizing .rpanel {
    title sits at a lighter weight/colour so the eye goes to the app bar first
    and to the section labels below it second. */
 .panel-header {
-  padding: 8px 10px;
+  padding: 8px 10px 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -616,20 +629,208 @@ body.panel-resizing .rpanel {
   border-bottom: 1px solid var(--border);
 }
 
-.mobile-rpanel-close {
+.mobile-panel-close {
   display: none;
 }
 
-.rpanel .panel-header {
-  padding-bottom: 0;
+/* ── the tab strip ──
+   This is sidebar navigation, not a compact form control. The active panel is
+   carried by type and a quiet underline instead of a bordered control inside
+   another bordered control. */
+/* Auto columns rather than a fixed two: the left panel has one tab, the right
+   has two, and StateMate moving between them changes both counts at once. */
+.panel-tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  justify-content: start;
+  flex: 1 1 auto;
+  align-self: stretch;
+  gap: 2px;
+  min-width: 0;
+  min-height: 36px;
+  /* One pixel taller than the header's content box, so the selected tab's own
+     fill lands *on* the header's bottom rule and breaks it. That break is the
+     whole tab metaphor: the rule separates chrome from content everywhere
+     except under the tab you are reading, where the two are the same thing. */
+  margin-bottom: -1px;
 }
 
-.panel-header-title {
+.panel-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  /* The track is `minmax(0, 1fr)`, so a tab is *allowed* to be narrower than its
+     own text — but only the tab is clipped, not the label inside it, and a
+     label that overflows its button is drawn straight over the next tab.
+     `overflow: hidden` is the backstop; .panel-tab-label below is what makes
+     the name shorten legibly instead of just disappearing at the cut. */
+  overflow: hidden;
+  padding: 0 8px;
+  /* Transparent on every tab rather than present on the selected one, or the
+     label shifts a pixel each way as selection moves. */
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
   font-family: var(--sans);
   font-size: .72rem;
   font-weight: 500;
   color: var(--text3);
-  letter-spacing: .02em;
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+/* An element, not the bare text node it replaced: `text-overflow` has nothing
+   to apply to on the anonymous flex item a loose string becomes, so the name
+   has to be something the ellipsis can be put on. */
+.panel-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The accent rides the tab's top edge rather than sitting under it as a rule.
+   Under the tab is where the header's hairline is, and the selected tab's job
+   is to *break* that line, not to draw a second one over it. It needs no radius
+   of its own: .panel-tab clips to its own rounded corners, so the cap picks up
+   the curve it is sitting inside. */
+.panel-tab::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: transparent;
+}
+
+/* The unselected tabs are what make the selected one a tab.
+   The header and the panel body are the same fill (see the note over `header`
+   in css/layout.css — they are meant to read as one surface), so an outline
+   alone would be a curve drawn on flat paint. Recessing the tabs you are *not*
+   reading is what lifts the one you are up to the level of the content below
+   it. --bg is the ground under everything and is darker than --bg2 in every
+   theme, so this deepens whichever way a palette runs. */
+.panel-tab:not(.active) {
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+}
+
+.panel-tab:hover {
+  background: var(--surface);
+  color: var(--text2);
+}
+
+/* A ring rather than the hover fill. The selected tab already carries a fill,
+   so a focus style made of background alone is invisible on exactly the tab the
+   roving tabindex lands on first. Inset, because the tab clips to its own
+   rounded corners and an outset ring would be cut off at them — and with no
+   radius of its own, since an outline follows the element's. */
+.panel-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* Continuous with the panel below it: same fill, an outline that stops at the
+   header rule, and the extra pixel from .panel-tabs' negative margin covering
+   that rule so the two meet with nothing between them. */
+.panel-tab.active {
+  color: var(--text);
+  background: var(--bg2);
+  border-color: var(--border);
+}
+
+.panel-tab.active:hover {
+  background: var(--bg2);
+  color: var(--text);
+}
+
+.panel-tab.active::after {
+  background: var(--accent);
+}
+
+/* A lone tab is a label, not a tab. It takes the width of its own text instead
+   of stretching the full header the way a pair does, and it drops the shape
+   entirely — outline, fill and accent cap. With nothing to be selected
+   *instead of*, a tab cut out of the header rule says nothing, and the left
+   panel would carry a mark the right one only earns by having a choice on it.
+   Move StateMate onto this edge and the whole shape comes back, because then
+   there is a choice here too. */
+.panel-tabs:has(> .panel-tab:only-child) {
+  grid-auto-columns: auto;
+}
+
+.panel-tabs > .panel-tab:only-child,
+.panel-tabs > .panel-tab:only-child:hover {
+  justify-content: flex-start;
+  padding-left: 4px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text);
+  cursor: default;
+}
+
+.panel-tabs > .panel-tab:only-child::after {
+  display: none;
+}
+
+.panel-tab-icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+/* Two tabs in a 256px panel that is also carrying a ⋯ and a pin do not fit as
+   drawn, and an ellipsis is the worse of the two ways to lose that argument —
+   "Workspac…" and "StateMa…" costs the reader the ends of both names to keep
+   two glyphs that repeat what the names already say. So the icon is what goes
+   first, and the width it frees goes to the words.
+
+   Keyed to the panel, not the viewport: these panels are resized and pinned
+   independently of the window, so the width that decides this is one only the
+   container knows. A lone tab is exempt — it has the whole strip. */
+@container (max-width: 300px) {
+  .panel-tab:not(:only-child) {
+    /* Still 5px: with the icon gone the gap is the one between the name and the
+       unread badge, which is the last thing that should close up. */
+    gap: 5px;
+    padding: 0 5px;
+  }
+
+  .panel-tab:not(:only-child) .panel-tab-icon {
+    display: none;
+  }
+
+  .panel-tab:not(:only-child)::after {
+    right: 5px;
+    left: 5px;
+  }
+}
+
+/* What the tab can still say for a panel that is not showing: a run in flight,
+   or the turns that landed while the Inspector was up. Both are counts of
+   things the reader would otherwise have to switch tabs to find out about. */
+.panel-tab-badge {
+  font-family: var(--mono);
+  font-size: .58rem;
+  line-height: 1;
+  min-width: 16px;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.panel-tab-badge[hidden] {
+  display: none;
 }
 
 .pin-btn {
@@ -661,6 +862,21 @@ body.panel-resizing .rpanel {
   transform: rotate(-45deg);
 }
 
+/* ─── TABPANELS ───
+   `hidden` is what the controller sets, and it has to be what actually hides
+   these. Every tabpanel in both sidebars is a flex column, and `display: flex`
+   in an author rule beats the user-agent's `[hidden] { display: none }` — so an
+   unselected panel stayed laid out and painted straight through the selected
+   one. What used to cover that was a single `.rpanel[data-active-panel=…]`
+   selector naming one panel by hand; this is the rule for all of them, so a tab
+   added to either side is hidden by being unselected rather than by someone
+   remembering to write it a selector. */
+.lpanel-content[hidden],
+.rpanel-content[hidden],
+.sm-panel[hidden] {
+  display: none;
+}
+
 .lpanel-content {
   display: flex;
   flex-direction: column;
@@ -690,6 +906,106 @@ body.panel-resizing .rpanel {
 
 .lpanel-search-inp:focus {
   border-color: var(--accent);
+}
+
+/* Right Panel */
+.rpanel {
+  width: min(var(--rpanel-width, 288px), 42vw);
+  min-width: min(var(--rpanel-width, 288px), 42vw);
+  max-width: 480px;
+  background: var(--bg2);
+  /* Borderless for the same reason as .lpanel — the canvas well carries the
+     only edge between chrome and canvas. */
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  transition: width var(--transition-base), min-width var(--transition-base);
+  position: relative;
+  z-index: 10;
+  container-type: inline-size;
+}
+
+.rpanel-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  /* Same reason as .lpanel-content: a flex column won't shrink below its
+     content without this, so overflow-y never engages. */
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.rpanel.unpinned {
+  position: absolute;
+  right: 0;
+  top: 0;
+  /* Same as .lpanel.unpinned: the panel surface continues through the sill;
+     only its decorative bottom fillet aligns with the canvas edge. */
+  height: 100%;
+  z-index: 100;
+  box-shadow: var(--panel-shadow-right);
+  transition-delay: 0.1s;
+}
+
+.rpanel.unpinned:not(:hover) {
+  width: 0;
+  min-width: 0;
+  transition-delay: 0.15s;
+}
+
+.rpanel.unpinned> :not(style) {
+  transition: opacity var(--transition-base), visibility var(--transition-base);
+  transition-delay: 0.1s;
+}
+
+.rpanel.unpinned:not(:hover)> :not(style) {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition-delay: 0.15s;
+}
+
+.rpanel.unpinned::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -15px;
+  width: 15px;
+  cursor: default;
+  z-index: 101;
+}
+
+/* Mirror of .lpanel.unpinned::before — see the note there. ::before is this
+   panel's hover strip, so the fillets go on ::after. */
+.rpanel.unpinned::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * var(--canvas-radius));
+  width: var(--canvas-radius);
+  pointer-events: none;
+  transition: opacity var(--transition-base);
+  transition-delay: 0.1s;
+  background:
+    radial-gradient(circle at 0 100%,
+      transparent calc(var(--canvas-radius) - 0.5px),
+      var(--bg2) calc(var(--canvas-radius) + 0.5px)) left top / var(--canvas-radius) var(--canvas-radius) no-repeat,
+    radial-gradient(circle at 0 0,
+      transparent calc(var(--canvas-radius) - 0.5px),
+      var(--bg2) calc(var(--canvas-radius) + 0.5px)) left 0 bottom var(--canvas-sill) / var(--canvas-radius) var(--canvas-radius) no-repeat,
+    linear-gradient(var(--bg2), var(--bg2)) left bottom / 100% var(--canvas-sill) no-repeat;
+}
+
+.rpanel.unpinned:not(:hover)::after {
+  opacity: 0;
+  transition-delay: 0.15s;
+}
+
+.rpanel.unpinned .pin-btn svg {
+  transform: rotate(45deg);
 }
 
 /* ─── RPANEL COLLAPSIBLE SECTIONS ─── */
@@ -843,16 +1159,45 @@ body.panel-resizing .rpanel {
     display: none;
   }
 
-  .lpanel.unpinned .lpanel-content,
-  .lpanel.unpinned .panel-header,
-  .lpanel.unpinned:not(:hover) .lpanel-content,
-  .lpanel.unpinned:not(:hover) .panel-header {
+  .lpanel.unpinned > :not(style),
+  .lpanel.unpinned:not(:hover) > :not(style) {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .rpanel {
+    width: 100%;
+    min-width: 0;
+    max-height: 34vh;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .rpanel.unpinned,
+  .rpanel.unpinned:not(:hover) {
+    position: relative;
+    right: auto;
+    top: auto;
+    height: auto;
+    width: 100%;
+    min-width: 0;
+    box-shadow: none;
+    transition-delay: 0s;
+  }
+
+  .rpanel.unpinned::before {
+    display: none;
+  }
+
+  .rpanel.unpinned > :not(style),
+  .rpanel.unpinned:not(:hover) > :not(style) {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
   }
 
   .panel-header {
-    padding: 8px 10px;
+    padding: 8px 10px 0;
   }
 }

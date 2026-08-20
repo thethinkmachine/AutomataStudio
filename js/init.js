@@ -7,7 +7,7 @@ import { initDefBoxOverflowObserver, updateLPanel, updateRPanel } from './render
 import { $, App, Workspaces } from './state.js';
 import { DEFAULT_THEME } from './themes.js';
 import { initMinimap, toggleMinimap } from './minimap.js';
-import { applyTheme, initCanvasResizeObserver, initLPanelSections, initMobilePanels, initPanelResizers, initRPanelSections, initRPanelTabs, initTabs, initToolbarCollapse, setTool, toggleLPanelPin, toggleRPanelPin } from './ui.js';
+import { applyTheme, initCanvasResizeObserver, initLPanelSections, initMobilePanels, initPanelResizers, initRPanelSections, initPanelTabs, initTabs, initToolbarCollapse, setTool, toggleLPanelPin, toggleRPanelPin } from './ui.js';
 import { showStatus } from './utils.js';
 import { setMachine, setView } from './view.js';
 
@@ -47,7 +47,7 @@ if (typeof initMobilePanels === 'function') initMobilePanels();
 if (typeof initLPanelSections === 'function') initLPanelSections();
 if (typeof initRPanelSections === 'function') initRPanelSections();
 if (typeof initPanelResizers === 'function') initPanelResizers();
-if (typeof initRPanelTabs === 'function') initRPanelTabs();
+if (typeof initPanelTabs === 'function') initPanelTabs();
 if (typeof initCanvasResizeObserver === 'function') initCanvasResizeObserver();
 if (typeof initDefBoxOverflowObserver === 'function') initDefBoxOverflowObserver();
 if (typeof initLangClaimOverflowObserver === 'function') initLangClaimOverflowObserver();

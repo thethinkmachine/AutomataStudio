@@ -515,7 +515,7 @@ test('the StateMate panel lives inside the right panel, not the overlay stack', 
 
   assert.ok(rpanel.includes('id="statemate-panel"'),
     'the console is a child of the right panel');
-  assert.ok(rpanel.includes('id="rpanel-tab-statemate"') && rpanel.includes('id="rpanel-tab-inspector"'),
+  assert.ok(rpanel.includes('id="panel-tab-statemate"') && rpanel.includes('id="panel-tab-inspector"'),
     'and the strip that switches between it and the Inspector is in the panel header');
   assert.ok(!/<div class="overlay[^"]*" id="statemate-panel"/.test(html),
     'it is no longer registered markup-side as an overlay');
