@@ -188,6 +188,15 @@ export function resetApp() {
   App.editId = null;
   App.simSteps = [];
   App.simIdx = 0;
+  // Stopped, not just forgotten. Playback is a real setInterval, and runSim()
+  // starts one on every run — so any test that runs a word (a card chip is the
+  // one gesture that does it through the UI) leaves one ticking. Nulling the
+  // handle here orphans it: the next tick finds a reset App, reads
+  // `simIdx >= simSteps.length - 1`, calls stopAutoPlay, and that returns early
+  // because `App.autoTimer` is already null. The interval then fires every
+  // 500ms for the life of the process, doing nothing but holding the event loop
+  // open — the whole file passes and node never exits.
+  if (App.autoTimer) clearInterval(App.autoTimer);
   App.autoTimer = null;
   if (App.grammar) {
     App.grammar.vars = new Set(['S']);

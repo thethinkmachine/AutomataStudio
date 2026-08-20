@@ -77,8 +77,9 @@ import {
 } from './statemate.js';
 import { summarizeDiff } from './statemate-compile.js';
 import {
-  PROVIDERS, getStateMateSettings, isStateMateReady, providerConfig,
-  resolveEndpoint, saveStateMateSettings, testConnection
+  PROVIDERS, cachedModels, clearModelCache, getStateMateSettings, isStateMateReady,
+  listModels, providerConfig, resolveEndpoint, saveStateMateSettings, supportsImages,
+  testConnection
 } from './statemate-provider.js';
 import { editStarterPrompts, starterPrompts } from './statemate-prompt.js';
 import { describeSpecSize, resolveContextRefs } from './statemate-spec.js';
@@ -120,6 +121,10 @@ const Session = {
   // snapshots: resolved to names at send time, so a chip added before a rename
   // still points at the right state. See resolveContextRefs.
   context: [],
+  // Images attached to the next prompt, for a model that reads them. Cleared
+  // when it is sent: an attachment is part of one request, not a standing
+  // setting the way the context basket is.
+  images: [],
   // turn id → the rich entry that was built for it. A branch switch rebuilds
   // the transcript from the thread, and the thread only remembers a machine
   // turn as a one-line summary — without this, stepping back onto a branch
@@ -226,6 +231,236 @@ const ICONS = {
   stop: 'M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Z',
   eyeClose: 'M53.92,34.62A8,8,0,1,0,42.08,45.38L61.32,66.55C25,88.84,9.38,123.2,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208a127.11,127.11,0,0,0,52.07-10.83l22,24.21a8,8,0,1,0,11.84-10.76Zm47.33,75.84,41.67,45.85a32,32,0,0,1-41.67-45.85ZM128,192c-30.78,0-57.67-11.19-79.93-33.25A133.16,133.16,0,0,1,25,128c4.69-8.79,19.66-33.39,47.35-49.38l18,19.75a48,48,0,0,0,63.66,70l14.73,16.2A112,112,0,0,1,128,192Zm6-95.43a8,8,0,0,1,3-15.72,48.16,48.16,0,0,1,38.77,42.64,8,8,0,0,1-7.22,8.71,6.39,6.39,0,0,1-.75,0,8,8,0,0,1-8-7.26A32.09,32.09,0,0,0,134,96.57Zm113.28,34.69c-.42.94-10.55,23.37-33.36,43.8a8,8,0,1,1-10.67-11.92A132.77,132.77,0,0,0,231.05,128a133.15,133.15,0,0,0-23.12-30.77C185.67,75.19,158.78,64,128,64a118.37,118.37,0,0,0-19.36,1.57A8,8,0,1,1,106,49.79,134,134,0,0,1,128,48c34.88,0,66.57,13.26,91.66,38.35,18.83,18.83,27.3,37.62,27.65,38.41A8,8,0,0,1,247.31,131.26Z',
 };
+
+// ══════════════════════════════════════════════════════════════════
+//  ATTACHMENTS
+// ══════════════════════════════════════════════════════════════════
+//  A picture of a diagram is the one input this console could not take, and it
+//  is the one people already have: a photograph of a whiteboard, a screenshot
+//  of a figure in a problem set, a scan of a hand-drawn table. The pipeline
+//  behind it is unchanged — an image is content on the live user turn and
+//  nothing else — so everything downstream of `request` neither knows nor
+//  needs to know that this turn had one.
+//
+//  Three rules, and all three are about the request rather than the picture:
+//
+//  • **Only a model that can read one is offered the button.** supportsImages()
+//    answers from the provider's own listing where there is one, so this
+//    follows the model field rather than a second setting.
+//  • **They are downscaled before they are encoded.** A phone photograph is
+//    four megabytes and about eight thousand tokens' worth of detail nobody
+//    needs to read `q0 -a-> q1`; ATTACH_MAX_PX is roughly what a diagram is
+//    still legible at.
+//  • **They ride with the live turn only.** See the note in statemate.js.
+
+const ATTACH_LIMIT = 4;
+const ATTACH_MAX_PX = 1400;
+const ATTACH_MAX_BYTES = 8 * 1024 * 1024;
+const ATTACH_TYPES = /^image\/(png|jpeg|jpg|webp|gif)$/i;
+
+/** Read a File into a data URL, or reject. */
+function readAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('That file could not be read.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Shrink a data URL to fit ATTACH_MAX_PX, re-encoded as JPEG.
+ *
+ * Best-effort by design: a browser without a working canvas, an animated GIF
+ * whose first frame is not what was meant, a decode that fails — every one of
+ * those falls back to the original bytes, because a slightly large attachment
+ * is a better outcome than a refused one.
+ */
+async function downscale(dataUrl, mime) {
+  if (typeof document === 'undefined' || typeof Image === 'undefined') return { dataUrl, mime };
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('decode failed'));
+      el.src = dataUrl;
+    });
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    if (!w || !h) return { dataUrl, mime };
+    const scale = Math.min(1, ATTACH_MAX_PX / Math.max(w, h));
+    if (scale === 1 && dataUrl.length < 1.5e6) return { dataUrl, mime };
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(w * scale));
+    canvas.height = Math.max(1, Math.round(h * scale));
+    const ctx = canvas.getContext && canvas.getContext('2d');
+    if (!ctx) return { dataUrl, mime };
+    // A diagram is usually black on transparent; flattened onto nothing it
+    // becomes black on black the moment it is encoded as JPEG.
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const out = canvas.toDataURL('image/jpeg', 0.86);
+    return out && out.startsWith('data:image/jpeg') ? { dataUrl: out, mime: 'image/jpeg' } : { dataUrl, mime };
+  } catch (e) {
+    return { dataUrl, mime };
+  }
+}
+
+/** Whether the configured model can be sent one at all. */
+function visionReady() {
+  const settings = getStateMateSettings();
+  return isStateMateReady(settings) && supportsImages(resolveEndpoint(settings).model, settings);
+}
+
+/**
+ * Take files from the picker, a paste or a drop.
+ *
+ * Everything that can go wrong with an attachment is said in the status line
+ * rather than thrown: these arrive from a gesture, and a gesture that silently
+ * does nothing is indistinguishable from one the app did not receive.
+ */
+async function attachFiles(files) {
+  const incoming = Array.from(files || []).filter(f => f && ATTACH_TYPES.test(f.type || ''));
+  if (!incoming.length) {
+    showStatus('Only PNG, JPEG, WebP or GIF images can be attached');
+    return 0;
+  }
+  if (!visionReady()) {
+    showStatus(`${resolveEndpoint().model || 'This model'} does not read images — pick a vision model in Settings`);
+    return 0;
+  }
+
+  let added = 0;
+  for (const file of incoming) {
+    if (Session.images.length >= ATTACH_LIMIT) {
+      showStatus(`Up to ${ATTACH_LIMIT} images per prompt`);
+      break;
+    }
+    if (file.size > ATTACH_MAX_BYTES) {
+      showStatus(`${file.name || 'That image'} is too large`);
+      continue;
+    }
+    let raw;
+    try { raw = await readAsDataURL(file); } catch (e) {
+      showStatus(`${file.name || 'That image'} could not be read`);
+      continue;
+    }
+    const { dataUrl, mime } = await downscale(raw, file.type || 'image/png');
+    const comma = dataUrl.indexOf(',');
+    if (comma === -1) continue;
+    Session.images.push({
+      name: file.name || 'image',
+      mime,
+      // The bare base64 is what the provider layer wants; the whole URL is
+      // what the thumbnail wants, and re-deriving either from the other on
+      // every render is arithmetic over a megabyte of string.
+      data: dataUrl.slice(comma + 1),
+      url: dataUrl
+    });
+    added++;
+  }
+
+  renderAttachments();
+  syncPlaceholder();
+  if (added) showStatus(`${added} image${added === 1 ? '' : 's'} attached to the next prompt`);
+  return added;
+}
+
+function removeAttachment(img) {
+  Session.images = Session.images.filter(i => i !== img);
+  renderAttachments();
+  syncPlaceholder();
+}
+
+export function clearStateMateAttachments() {
+  Session.images = [];
+  renderAttachments();
+}
+
+/** The strip of thumbnails above the composer. Empty most of the time. */
+function renderAttachments() {
+  const host = $('sm-attach');
+  const button = $('sm-attach-btn');
+  if (button) {
+    // Hidden rather than disabled for a model with no vision: a control that
+    // is present but refuses is a question ("why not?") the composer has no
+    // room to answer, and the model name is right there in Settings.
+    const ok = visionReady();
+    button.hidden = !ok;
+    button.classList.toggle('is-on', !!Session.images.length);
+  }
+  if (!host) return;
+  host.innerHTML = '';
+  if (!Session.images.length) return;
+
+  const bar = el('div', 'sm-attachbar');
+  Session.images.forEach(img => {
+    const chip = el('span', 'sm-attachchip');
+    const thumb = el('img', 'sm-attachchip-img');
+    thumb.src = img.url;
+    thumb.alt = '';
+    chip.append(thumb);
+    chip.append(el('span', 'sm-attachchip-name', img.name));
+    chip.append(btn('sm-attachchip-x', '✕', () => removeAttachment(img),
+      { tip: 'Leave this out of the next prompt' }));
+    bar.append(chip);
+  });
+  if (Session.images.length > 1) {
+    bar.append(btn('sm-attachbar-clear', 'clear', clearStateMateAttachments,
+      { tip: 'Remove every attachment' }));
+  }
+  host.append(bar);
+}
+
+/** Wired once, from openStateMate, beside the composer's other listeners. */
+function wireAttachments() {
+  const picker = $('sm-file');
+  const button = $('sm-attach-btn');
+  const composer = $('sm-composer');
+  const input = $('sm-input');
+
+  if (button && !button.dataset.wired) {
+    button.dataset.wired = '1';
+    button.onclick = () => $('sm-file')?.click?.();
+  }
+  if (picker && !picker.dataset.wired) {
+    picker.dataset.wired = '1';
+    picker.onchange = () => {
+      const files = picker.files;
+      // Cleared before the await, so picking the same file twice in a row is
+      // two attachments rather than one and a change event that never fires.
+      attachFiles(files).finally(() => { picker.value = ''; });
+    };
+  }
+  if (input && !input.dataset.wiredPaste) {
+    input.dataset.wiredPaste = '1';
+    input.addEventListener('paste', event => {
+      const items = Array.from(event.clipboardData?.items || []);
+      const files = items.filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
+      if (!files.length) return;
+      // Only once there is something to take: a paste of text must stay a
+      // paste of text, including a screenshot's filename copied as a string.
+      event.preventDefault();
+      attachFiles(files);
+    });
+  }
+  if (composer && !composer.dataset.wiredDrop) {
+    composer.dataset.wiredDrop = '1';
+    const stop = event => { event.preventDefault(); event.stopPropagation(); };
+    composer.addEventListener('dragover', event => {
+      stop(event);
+      composer.classList.add('is-dropping');
+    });
+    composer.addEventListener('dragleave', () => composer.classList.remove('is-dropping'));
+    composer.addEventListener('drop', event => {
+      stop(event);
+      composer.classList.remove('is-dropping');
+      attachFiles(event.dataTransfer?.files);
+    });
+  }
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  CONTEXT
@@ -715,6 +950,21 @@ function renderUser(entry) {
 
   const body = el('div', 'sm-user-body');
   body.append(el('div', 'sm-user-text', entry.text));
+
+  // Thumbnails, not just a count: what was sent is part of the turn, and a
+  // reply that misread a photograph is only explicable beside the photograph.
+  // They are the transcript's copy — the request's own were cleared at send.
+  if (entry.images?.length) {
+    const strip = el('div', 'sm-user-images');
+    entry.images.forEach(img => {
+      const thumb = el('img', 'sm-user-image');
+      thumb.src = img.url;
+      thumb.alt = img.name || 'attached image';
+      thumb.title = img.name || '';
+      strip.append(thumb);
+    });
+    body.append(strip);
+  }
 
   // Retry and edit are the same operation — replace this turn rather than
   // follow it — and both go through `branch`, so the answer being replaced
@@ -2535,12 +2785,20 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
   }
   Session.editing = '';
 
+  // Taken and cleared before the turn is recorded, like the composer's own
+  // line: an attachment belongs to the prompt it was sent with, and leaving it
+  // in the strip would silently put it on the next one too. The transcript
+  // keeps its own reference, so the turn still shows what was sent.
+  const sentImages = Session.images.slice();
+  Session.images = [];
+  renderAttachments();
+
   Session.lastPrompt = text;
   Session.historyAt = -1;
   if (Session.history[Session.history.length - 1] !== text) Session.history.push(text);
 
   // Not flagged as a turn yet — keyEntry does that once the thread has one.
-  push({ kind: 'user', text });
+  push({ kind: 'user', text, images: sentImages });
 
   const entry = push({
     kind: 'run',
@@ -2570,6 +2828,7 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
       attachCanvas: effectiveAttach(),
       authority: Session.authority,
       context: sentContext,
+      images: sentImages,
       branch: branchAt,
       onEvent: event => {
         // The two streamed fields go through the targeted update: a token
@@ -2927,6 +3186,8 @@ export function openStateMate({ resume = false } = {}) {
     send$.onclick = () => (isStateMateRunning() ? cancelStateMate() : submitComposer());
   }
 
+  wireAttachments();
+
   const log = $('sm-log');
   if (log) log.onscroll = onLogScroll;
 
@@ -2936,13 +3197,27 @@ export function openStateMate({ resume = false } = {}) {
   const opener = $('example-picker-btn');
   if (opener) opener.setAttribute('aria-expanded', 'true');
 
+  // Whether this open keeps the reader's place is decided *here*, before any
+  // render, not read back off `Session.pinned` afterwards: renderLog() is
+  // allowed to force-pin — the welcome branch does, and rightly, since an
+  // empty transcript has no place to keep — and a render that may overrule
+  // the caller would slam a reader who had scrolled up to re-read a turn
+  // back to the tail on every tab switch.
+  const keepPlace = !Session.pinned;
   setBusy(isStateMateRunning());
   renderLog();
   renderMenu();
   renderNudge();
   renderContext();
+  renderAttachments();
   const restored = $('sm-log');
-  if (restored && !Session.pinned) restored.scrollTop = Session.logTop;
+  if (restored && keepPlace) {
+    // The pin is half the position: restoring the offset while the render
+    // left the flag pinned would have scrollLogToEnd undo it on the next line.
+    Session.pinned = false;
+    restored.scrollTop = Session.logTop;
+    syncJump();
+  }
   scrollLogToEnd();
   focusInput();
 
@@ -3002,6 +3277,198 @@ function syncProviderHints() {
   if (keyLabel) keyLabel.textContent = preset.keyLabel;
 }
 
+// ── the model list ────────────────────────────────────────────────
+//  Most providers publish what a key may use, and the model field was a
+//  spelling test over it: a typo is a 404 whose message names the model, which
+//  is the one thing the reader was already sure of.
+//
+//  The completion list is a <datalist>, so the browser does the matching as
+//  the name is typed and the field stays a plain text input for a model the
+//  listing has never heard of — a preview, a fine-tune, a local server's own
+//  name for a file on disk. Nothing here can make a model unusable; the worst
+//  case is the empty list this started as.
+
+let modelFetch = 0;
+
+/** The connection fields as they stand in the dialog, over the saved settings. */
+function formSettings() {
+  return {
+    ...getStateMateSettings(),
+    provider: getValue('set-sm-provider', 'anthropic'),
+    baseUrl: String(getValue('set-sm-base', '')).trim(),
+    model: String(getValue('set-sm-model', '')).trim(),
+    apiKey: String(getValue('set-sm-key', '')).trim()
+  };
+}
+
+function setModelStatus(text, kind = '') {
+  const node = $('sm-models-status');
+  if (!node) return;
+  node.textContent = text;
+  node.className = `sm-conn-status${kind ? ` ${kind}` : ''}`;
+}
+
+// The listing as it stands, and where the keyboard is in the open menu. Module
+// state rather than DOM state because the menu is rebuilt on every keystroke —
+// the same reason the console's own command menu keeps its index this way.
+let modelRows = [];
+let modelIndex = -1;
+
+function setModelOptions(models) {
+  modelRows = Array.isArray(models) ? models : [];
+  modelIndex = -1;
+}
+
+/** The rows matching what has been typed so far. Substring, not prefix: a name is `vendor/model` as often as not. */
+function matchingModels(query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return modelRows.slice(0, 60);
+  return modelRows
+    .filter(m => m.id.toLowerCase().includes(q) || (m.label || '').toLowerCase().includes(q))
+    .slice(0, 60);
+}
+
+function closeModelMenu() {
+  const menu = $('sm-model-menu');
+  const field = $('set-sm-model');
+  if (menu) menu.hidden = true;
+  if (field) field.setAttribute('aria-expanded', 'false');
+  modelIndex = -1;
+}
+
+function chooseModel(id) {
+  const field = $('set-sm-model');
+  if (field) field.value = id;
+  closeModelMenu();
+  // The attach button follows the model, and this is the moment it changed.
+  renderAttachments();
+  setModelStatus(supportsImages(id, formSettings()) ? 'reads images' : 'text only');
+}
+
+/**
+ * Draw the menu under the field.
+ *
+ * It is opened by typing and by focusing, and it closes on Escape, on a
+ * choice, and on the blur — the field underneath stays authoritative
+ * throughout, so a name that matches nothing is simply a name the listing does
+ * not have rather than a rejected input.
+ */
+function renderModelMenu({ open = true } = {}) {
+  const menu = $('sm-model-menu');
+  const field = $('set-sm-model');
+  if (!menu || !field) return;
+
+  const rows = matchingModels(field.value);
+  menu.innerHTML = '';
+  if (!open || !rows.length) return closeModelMenu();
+
+  if (modelIndex >= rows.length) modelIndex = rows.length - 1;
+
+  rows.forEach((m, i) => {
+    const row = el('div', `sm-model-row${i === modelIndex ? ' is-active' : ''}`);
+    row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', String(i === modelIndex));
+    row.append(el('span', 'sm-model-id', m.id));
+    // Vision is the one capability the console's own UI changes shape for, so
+    // it is the one the picker states — and it states it by asking the same
+    // function the composer asks. Reading `m.vision` here instead let the two
+    // disagree: the row carries what the *listing* said, which is undefined
+    // for every provider that publishes bare names, while the paperclip is
+    // decided by supportsImages falling through to the name table.
+    if (supportsImages(m.id, formSettings())) row.append(el('span', 'sm-model-tag', 'vision'));
+    if (m.label) row.append(el('span', 'sm-model-label', m.label));
+    // The last resort for a name too long for the menu even at its full
+    // width. Native title rather than the app's data-tip: this is a fallback
+    // for text that is already truncated, and it has to work with no styling
+    // and no listener.
+    row.title = m.label ? `${m.id} — ${m.label}` : m.id;
+    // mousedown, not click: the field's blur fires first and would close the
+    // menu out from under the pointer.
+    row.onmousedown = event => { event.preventDefault(); chooseModel(m.id); };
+    menu.append(row);
+  });
+
+  menu.hidden = false;
+  field.setAttribute('aria-expanded', 'true');
+}
+
+/** ↑/↓ walk the menu, ⏎ takes the highlighted row, Esc closes without changing the field. */
+function onModelKeydown(event) {
+  const menu = $('sm-model-menu');
+  const open = menu && !menu.hidden;
+  const rows = matchingModels($('set-sm-model')?.value);
+
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    if (!rows.length) return;
+    event.preventDefault();
+    if (!open) { modelIndex = 0; return renderModelMenu(); }
+    const step = event.key === 'ArrowDown' ? 1 : -1;
+    modelIndex = (modelIndex + step + rows.length) % rows.length;
+    return renderModelMenu();
+  }
+  if (event.key === 'Enter' && open && modelIndex >= 0 && rows[modelIndex]) {
+    event.preventDefault();
+    // Stopped here, or the settings dialog takes ⏎ as its Save.
+    event.stopPropagation();
+    return chooseModel(rows[modelIndex].id);
+  }
+  if (event.key === 'Escape' && open) {
+    event.preventDefault();
+    event.stopPropagation();
+    return closeModelMenu();
+  }
+}
+
+/**
+ * Ask the provider what it has.
+ *
+ * Never blocking and never fatal: the dialog's own values are saved first, so
+ * the list is for the endpoint being configured rather than the one that was
+ * configured last, and a failure is a line of status text beside a field that
+ * still works.
+ */
+async function loadModelList({ refresh = false, quiet = false } = {}) {
+  const request = ++modelFetch;
+  // The dialog's own values, not the saved ones: the list is for the endpoint
+  // being configured. Reading them rather than saving them is the point —
+  // Cancel has to still mean cancel.
+  const settings = formSettings();
+  if (!isStateMateReady(settings)) {
+    if (!quiet) setModelStatus('Add a key first', 'is-bad');
+    return;
+  }
+
+  const cached = !refresh && cachedModels(settings);
+  if (cached) {
+    setModelOptions(cached);
+    renderAttachments();
+    if (!quiet) { setModelStatus(`${cached.length} models`, 'is-ok'); renderModelMenu(); }
+    return;
+  }
+
+  if (!quiet) setModelStatus('Fetching…', 'is-busy');
+  const button = $('sm-models-btn');
+  if (button) button.disabled = true;
+  try {
+    const models = await listModels({ refresh, settings });
+    // A slower earlier request must not overwrite a newer list.
+    if (request !== modelFetch) return;
+    setModelOptions(models);
+    // The vision verdict may have just changed, and the composer's attach
+    // button is drawn from it.
+    renderAttachments();
+    setModelStatus(models.length ? `${models.length} models` : 'No models listed', models.length ? 'is-ok' : '');
+    // Only when the field is the thing being used: a list that opens itself
+    // over the rows below while someone is typing a key is an interruption.
+    if (typeof document !== 'undefined' && document.activeElement === $('set-sm-model')) renderModelMenu();
+  } catch (err) {
+    if (request !== modelFetch) return;
+    if (!quiet) setModelStatus(describeError(err).text, 'is-bad');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 export function populateStateMateSettings() {
   const s = getStateMateSettings();
   setValue('set-sm-enabled', s.enabled);
@@ -3023,8 +3490,48 @@ export function populateStateMateSettings() {
   const provider = $('set-sm-provider');
   if (provider && !provider.dataset.wired) {
     provider.dataset.wired = '1';
-    provider.addEventListener('change', syncProviderHints);
+    provider.addEventListener('change', () => {
+      syncProviderHints();
+      // The old provider's models are not this one's, and leaving them in the
+      // list would complete a name the new endpoint has never heard of.
+      setModelOptions([]);
+      closeModelMenu();
+      setModelStatus('');
+      loadModelList({ quiet: true });
+    });
   }
+
+  const models = $('sm-models-btn');
+  if (models && !models.dataset.wired) {
+    models.dataset.wired = '1';
+    models.addEventListener('click', async () => {
+      await loadModelList({ refresh: true });
+      // Pressing the button is asking to see them, so the menu opens even
+      // though the caret is on the button rather than in the field.
+      $('set-sm-model')?.focus?.();
+      renderModelMenu();
+    });
+  }
+
+  const modelField = $('set-sm-model');
+  if (modelField && !modelField.dataset.wired) {
+    modelField.dataset.wired = '1';
+    // The list is what makes typing a name a choice rather than a recall, so
+    // it is fetched when the field is first touched — not only when someone
+    // finds the button.
+    modelField.addEventListener('focus', () => {
+      renderModelMenu();
+      loadModelList({ quiet: true });
+    });
+    modelField.addEventListener('input', () => { modelIndex = -1; renderModelMenu(); });
+    modelField.addEventListener('keydown', onModelKeydown);
+    modelField.addEventListener('blur', () => setTimeout(closeModelMenu, 120));
+  }
+
+  setModelOptions(cachedModels() || []);
+  closeModelMenu();
+  setModelStatus('');
+  loadModelList({ quiet: true });
 
   const test = $('sm-test-btn');
   if (test && !test.dataset.wired) {
@@ -3059,11 +3566,19 @@ export function applyStateMateSettings() {
     threadDepth: Number(getValue('set-sm-thread', '10')) || 0
   });
   if (previous.enabled && !next.enabled && isStateMateRunning()) cancelStateMate();
+  // A changed key or base URL is a different listing, and the old one would
+  // otherwise answer for the new endpoint until the next reload.
+  if (previous.apiKey !== next.apiKey || previous.baseUrl !== next.baseUrl || previous.provider !== next.provider) {
+    clearModelCache();
+  }
   if (!stowed()) {
     renderLog();
     renderMenu();
     renderNudge();
     renderContext();
+    // The model decides whether images can be attached at all, so the strip
+    // and its button follow it.
+    renderAttachments();
     syncTabBadge();
   }
   return next;
@@ -3111,6 +3626,7 @@ export function _resetPaletteForTests() {
   Session.context = [];
   Session.entries = new Map();
   Session.editing = '';
+  Session.images = [];
   Session.nodes = new Map();
   Session.welcome = false;
   Session.pinned = true;

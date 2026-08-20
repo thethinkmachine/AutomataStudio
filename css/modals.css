@@ -1473,6 +1473,132 @@ body.modal-open {
   outline: none;
 }
 
+/* ── attachments ───────────────────────────────────────────────────
+   The strip of images riding with the next prompt, and the paperclip that
+   fills it. Both sit in the dock above the composer, beside the context
+   chips they are the picture equivalent of — same chip shape, same "leave
+   this out" ✕, so the two read as one row of things about to be sent.
+
+   The button is a quieter sibling of .sm-send: same 30px box, no fill until
+   it is holding something, because the composer must still have exactly one
+   control that looks like the primary act. */
+.sm-attachbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 0 0 8px;
+}
+
+.sm-attachchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 2px 4px 2px 3px;
+  border: 1px solid var(--border2);
+  border-radius: 999px;
+  background: var(--bg3);
+}
+
+.sm-attachchip-img {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  object-fit: cover;
+  background: var(--bg2);
+}
+
+.sm-attachchip-name {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  max-width: 20ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text2);
+}
+
+.sm-attachchip-x,
+.sm-attachbar-clear {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  padding: 1px 5px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+}
+
+.sm-attachchip-x:hover,
+.sm-attachchip-x:focus-visible,
+.sm-attachbar-clear:hover,
+.sm-attachbar-clear:focus-visible {
+  border-color: var(--border2);
+  color: var(--text);
+  outline: none;
+}
+
+.sm-attach-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.sm-attach-btn:hover,
+.sm-attach-btn:focus-visible {
+  border-color: var(--border2);
+  color: var(--text);
+  outline: none;
+}
+
+/* Holding something: the strip above says what, so this only has to say that
+   there is one. */
+.sm-attach-btn.is-on {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.sm-attach-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* A drop target has to say so before the file is let go of. */
+.sm-composer.is-dropping {
+  border-color: var(--accent-border-strong);
+  background: var(--accent-soft);
+}
+
+/* What was sent, kept with the turn: a reply that misread a photograph is only
+   explicable beside the photograph. */
+.sm-user-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.sm-user-image {
+  width: 84px;
+  height: 84px;
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--bg2);
+}
+
 .sm-nudge {
   font-family: var(--sans);
   font-size: var(--sm-ui);
@@ -3881,5 +4007,123 @@ button:focus-visible {
 /* The disclosure's own marker, so the row reads as something that opens. */
 .sm-diff-summary::marker,
 .sm-diff-summary::-webkit-details-marker {
+  color: var(--text3);
+}
+
+/* `hidden` is what the controller sets when the model cannot read images, so
+   `hidden` has to be what hides — an author `display: grid` beats the user
+   agent's [hidden] rule, exactly as it does for the sidebars' tabpanels. */
+.sm-attach-btn[hidden] { display: none; }
+
+/* ── the model picker ──────────────────────────────────────────────
+   A menu of our own under the model field rather than a <datalist>: the
+   native one opens when the browser feels like it and has nowhere to say
+   "fetching" or why a fetch failed, which is most of what this has to
+   communicate. The field itself is untouched — a model the provider does not
+   list is still typeable, which is the whole reason this is a text input with
+   a menu instead of a <select>. */
+.sm-model-field {
+  display: flex;
+}
+
+.settings-modal-wide .modal-row > .sm-model-field {
+  flex: 0 0 210px;
+  max-width: 210px;
+}
+
+/* The menu is anchored to the *row*, not to the field inside it.
+   `.sm-model-field` is 210px — the width every control in this dialog is
+   pinned to — and a menu positioned against it inherited that width through
+   its own `left: 0; right: 0`, so every model name longer than about
+   twenty-four characters was ellipsized. Anthropic and OpenAI both publish
+   dated ids well past that, which made the listing unreadable exactly where
+   it is needed: `claude-sonnet-4-…`, `gpt-4.1-mini-…`, and nothing to
+   distinguish them by.
+
+   Widening had to come from somewhere with a real edge to stop at. The row is
+   that edge: it spans the label as well as the field, so the menu gets ~3x
+   the width and still cannot reach past the panel and start it scrolling
+   sideways. Hence the anchor here rather than a `width: max-content` and a
+   guessed maximum. */
+.modal-row:has(> .sm-model-field) {
+  position: relative;
+}
+
+.sm-model-field > .inp {
+  width: 100%;
+}
+
+.sm-model-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  background: var(--bg2);
+  box-shadow: 0 12px 28px rgb(0 0 0 / .28);
+}
+
+/* `hidden` is what the controller sets, so `hidden` is what hides. */
+.sm-model-menu[hidden] { display: none; }
+
+.sm-model-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.sm-model-row:hover,
+.sm-model-row.is-active {
+  background: var(--accent-soft);
+}
+
+/* The id is the row's identity — what gets written into the field and sent to
+   the provider — so it keeps its width and gives it up last. `flex-shrink: 1`
+   against the label's 6 is what orders that: with the label at the default 1
+   the two shrank in proportion to their widths, and a long id therefore lost
+   more of itself than the display name beside it, which is the half a reader
+   can already infer. */
+.sm-model-id {
+  font-family: var(--mono);
+  font-size: .74rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+/* Vision is the one capability the console changes shape for — it decides
+   whether the composer offers the paperclip at all — so it is the one the
+   picker states. */
+.sm-model-tag {
+  font-family: var(--mono);
+  font-size: .62rem;
+  letter-spacing: .06em;
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.sm-model-label {
+  font-family: var(--sans);
+  font-size: .68rem;
+  flex: 1 6 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text3);
 }

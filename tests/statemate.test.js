@@ -3130,9 +3130,17 @@ test('stowing hands the panel to the Inspector without ending the session', asyn
   assert.match(logText(h), /Apply/, 'including the proposal still waiting on the reader');
 });
 
-test('coming back to the tab resumes; opening StateMate goes to the newest line', () => {
+test('coming back to the tab resumes; opening StateMate goes to the newest line', async () => {
   const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', maxRetries: 0 });
   h.context.openStateMate();
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+  // There has to be a turn to scroll away from: on an empty transcript
+  // renderLog() takes the welcome branch and force-pins, so the premise below
+  // would not be true and the assertions would pass or fail for the wrong
+  // reason.
+  await enter(type(h, 'even number of a'));
+
   const log = h.getElement('sm-log');
   log.scrollHeight = 900;
   log.clientHeight = 300;
@@ -3148,6 +3156,26 @@ test('coming back to the tab resumes; opening StateMate goes to the newest line'
   h.context.openStateMate();
   assert.equal(log.scrollTop, 900,
     'but the sparkle button, ⌘K and "ask about this selection" are openings');
+});
+
+test('a render that force-pins does not overrule a resumption', () => {
+  // renderLog() force-pins on an empty transcript, which is right — there is
+  // no place to keep — but openStateMate used to read `Session.pinned` back
+  // *after* rendering, so any force-pin during a render silently cancelled the
+  // caller's resume. Harmless here; a genuine bug on the first other path that
+  // force-pins, where a reader mid-transcript would be slammed to the tail.
+  const h = createHarness();
+  h.context.openStateMate();
+  const log = h.getElement('sm-log');
+  log.scrollHeight = 900;
+  log.clientHeight = 300;
+  log.scrollTop = 40;
+  log.onscroll();
+
+  h.context.stowStateMate();
+  h.context.openStateMate({ resume: true });
+  assert.equal(log.scrollTop, 40,
+    'the resume decision is made before the render, not read back off it');
 });
 
 test('the tab strip is wired at creation, so it adds no name to bridge.js', () => {
@@ -3607,4 +3635,240 @@ test('time to first token is measured from the request, not from its headers', a
   assert.ok(rate.ttftMs >= 70,
     `time to first token came back as ${rate.ttftMs}ms after an 80ms wait`);
   assert.ok(rate.totalMs >= rate.ttftMs, 'and the total covers the wait too');
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  MODEL DISCOVERY AND IMAGE ATTACHMENTS
+// ══════════════════════════════════════════════════════════════════
+//  Two features, one property between them: the model listing is what decides
+//  whether an image may be attached at all, so the reader of the list and the
+//  capability check are pinned together.
+
+test('the three /models dialects read into one shape', () => {
+  const h = createHarness();
+  const { readModelList } = h.context;
+
+  // OpenAI and every compatible server: {data: [{id}]}.
+  const openai = readModelList({ data: [{ id: 'gpt-4o' }, { id: 'text-embedding-3-small' }] }, 'openai');
+  assert.deepEqual(openai.map(m => m.id), ['gpt-4o']);   // the embedding model is not a chat model
+
+  // Anthropic adds a display name.
+  const anthropic = readModelList(
+    { data: [{ id: 'claude-sonnet-5', display_name: 'Claude Sonnet 5' }] }, 'anthropic');
+  assert.equal(anthropic[0].label, 'Claude Sonnet 5');
+
+  // Google prefixes every name with `models/` and lists what each one can do.
+  const google = readModelList({
+    models: [
+      { name: 'models/gemini-3.7-flash', supportedGenerationMethods: ['generateContent'] },
+      { name: 'models/text-bison', supportedGenerationMethods: ['generateText'] }
+    ]
+  }, 'GoogleAiStudio');
+  assert.deepEqual(google.map(m => m.id), ['gemini-3.7-flash']);
+
+  // Cohere's, keyed by `name` rather than `id`.
+  const cohere = readModelList({ models: [{ name: 'command-r-plus' }] }, 'cohere');
+  assert.deepEqual(cohere.map(m => m.id), ['command-r-plus']);
+});
+
+test('a listing that states its modalities is believed over the name', () => {
+  const h = createHarness();
+  const rows = h.context.readModelList({
+    data: [
+      // A name the hint list would never guess, said outright by the provider.
+      { id: 'acme/seer-1', architecture: { input_modalities: ['text', 'image'] } },
+      // And the reverse: a name that looks like vision, listed as text only.
+      { id: 'acme/gpt-4o-mini-text', architecture: { input_modalities: ['text'] } }
+    ]
+  }, 'openrouter_ai');
+  assert.equal(rows.find(m => m.id === 'acme/seer-1').vision, true);
+  assert.equal(rows.find(m => m.id === 'acme/gpt-4o-mini-text').vision, false);
+});
+
+test('supportsImages answers from the name when nothing has been listed', () => {
+  const h = createHarness();
+  const { supportsImages } = h.context;
+  const at = (provider, model) => ({ provider, model, apiKey: 'k', enabled: true, baseUrl: '' });
+
+  assert.equal(supportsImages('gpt-4o', at('openai')), true);
+  assert.equal(supportsImages('claude-sonnet-5', at('anthropic')), true);
+  assert.equal(supportsImages('Qwen2-VL-7B', at('compatible')), true);
+  assert.equal(supportsImages('mistral-large-latest', at('mistralai')), false);
+  assert.equal(supportsImages('', at('openai')), false);
+});
+
+test('the name table reads a family and its exceptions differently', () => {
+  const h = createHarness();
+  const { visionFromName } = h.context;
+
+  // Each pair is one family split by a rule that a single alternation cannot
+  // express — which is why these were wrong in both directions before. The
+  // left column reads images; the right column is the sibling that does not.
+  const pairs = [
+    ['o3', 'o3-mini'],
+    ['o1', 'o1-mini'],
+    ['llama-3.2-90b', 'llama-3.2-1b'],
+    ['gemma-3-27b-it', 'gemma-3-1b-it'],
+    ['gpt-4-turbo', 'gpt-4-0613'],
+    ['grok-4', 'grok-3']
+  ];
+  for (const [sees, blind] of pairs) {
+    assert.equal(visionFromName(sees), true, `${sees} reads images`);
+    assert.equal(visionFromName(blind), false, `${blind} does not`);
+  }
+
+  // A name nobody has a rule for is not "text only" — it is unanswered, and
+  // the difference is what lets a local server be trusted about its own
+  // models while a hosted one is not.
+  assert.equal(visionFromName('acme-mystery-7b'), undefined);
+  assert.equal(visionFromName(''), undefined);
+});
+
+test('a model nobody could answer for is trusted locally and not remotely', () => {
+  const h = createHarness();
+  const { supportsImages, readModelList } = h.context;
+  const at = provider => ({ provider, model: '', apiKey: 'k', enabled: true, baseUrl: '' });
+
+  // Being *in* the listing is not itself an answer: a bare list of names says
+  // nothing about modalities, and reading that silence as a listed "no" is
+  // what made a local server contradict the rule below for its own models.
+  const rows = readModelList({ data: [{ id: 'acme-mystery-7b' }] }, 'compatible');
+  assert.equal(rows[0].vision, undefined, 'the row says "nobody said", not "no"');
+
+  assert.equal(supportsImages('acme-mystery-7b', at('compatible')), true,
+    'a local endpoint\'s owner knows what they are running');
+  assert.equal(supportsImages('acme-mystery-7b', at('openai')), false,
+    'a hosted one would just fail the request with an error about a hidden field');
+});
+
+test('a listing that states its modalities is believed in every dialect it says it in', () => {
+  const h = createHarness();
+  const { readModelList } = h.context;
+  const visionOf = (json, provider, id) =>
+    readModelList(json, provider).find(m => m.id === id)?.vision;
+
+  // OpenRouter's older single string, which was read as no statement at all.
+  assert.equal(visionOf({ data: [{ id: 'acme/one', architecture: { modality: 'text+image->text' } }] },
+    'openrouter_ai', 'acme/one'), true);
+  // The boolean some local gateways publish, and the capability array others do.
+  assert.equal(visionOf({ data: [{ id: 'acme/two', vision: true }] }, 'compatible', 'acme/two'), true);
+  assert.equal(visionOf({ data: [{ id: 'acme/three', capabilities: ['completion', 'vision'] }] },
+    'compatible', 'acme/three'), true);
+
+  // And the point of all of it: a statement outranks the name, both ways.
+  assert.equal(visionOf({ data: [{ id: 'gpt-4o-text-only', input_modalities: ['text'] }] },
+    'compatible', 'gpt-4o-text-only'), false);
+  // Cohere's shape reaches the same reader rather than a second copy of it.
+  assert.equal(visionOf({ models: [{ name: 'command-a-vision-07-2025' }] },
+    'cohere', 'command-a-vision-07-2025'), true);
+});
+
+test('the model menu is as wide as its row, not as wide as the 210px field', () => {
+  // A source assertion because the failure is invisible in every other way:
+  // the menu renders, the rows are right, and the names are simply cut off.
+  // The whole fix is which element is the containing block, so that is what
+  // is pinned — re-adding `position: relative` to the field would silently
+  // clamp the menu back to the width of one settings control.
+  const css = readFileSync(new URL('../css/modals.css', import.meta.url), 'utf8');
+  const rule = name => {
+    const at = css.indexOf(`\n${name} {`);
+    assert.notEqual(at, -1, `css/modals.css declares ${name}`);
+    return css.slice(at, css.indexOf('}', at));
+  };
+
+  assert.doesNotMatch(rule('.sm-model-field'), /position\s*:/,
+    'the 210px field must not be the containing block');
+  assert.match(rule('.modal-row:has(> .sm-model-field)'), /position\s*:\s*relative/,
+    'the row is, so the menu spans the label as well as the field');
+  // Left and right both anchored is what makes the row's width the menu's.
+  const menu = rule('.sm-model-menu');
+  assert.match(menu, /left\s*:\s*0/);
+  assert.match(menu, /right\s*:\s*0/);
+});
+
+test('an image never reaches a model that cannot read one', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({
+    enabled: true, apiKey: 'k', provider: 'openai',
+    // No vision in the name and nothing listed, so the picture is dropped.
+    model: 'mistral-large-latest', verify: false, threadDepth: 0
+  });
+
+  let sent = null;
+  h.context.fetch = async (url, init) => {
+    sent = JSON.parse(init.body);
+    return {
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({ kind: 'reply', text: 'ok' }) } }] }),
+      text: async () => ''
+    };
+  };
+
+  const result = await h.context.runStateMate({
+    prompt: 'what is this?',
+    images: [{ mime: 'image/png', data: 'AAAA' }]
+  });
+
+  assert.equal(result.imagesDropped, 1);
+  // The live turn is still a plain string — no content parts anywhere.
+  assert.ok(sent.messages.every(m => typeof m.content === 'string'));
+  assert.ok(!JSON.stringify(sent).includes('AAAA'));
+  // And it is reported rather than swallowed.
+  assert.ok(h.context.resultNotes(result).some(n => n.rule === 'no-vision'));
+});
+
+test('an image reaches a vision model in that provider\'s own dialect', async () => {
+  const h = createHarness();
+  const call = async provider => {
+    h.context.saveStateMateSettings({
+      enabled: true, apiKey: 'k', provider,
+      model: provider === 'anthropic' ? 'claude-sonnet-5' : 'gpt-4o',
+      verify: false, threadDepth: 0
+    });
+    let sent = null;
+    h.context.fetch = async (url, init) => {
+      sent = JSON.parse(init.body);
+      const answer = JSON.stringify({ kind: 'reply', text: 'ok' });
+      return {
+        ok: true,
+        json: async () => (provider === 'anthropic'
+          ? { content: [{ type: 'text', text: answer }] }
+          : { choices: [{ message: { content: answer } }] }),
+        text: async () => ''
+      };
+    };
+    await h.context.runStateMate({
+      prompt: 'read this',
+      images: [{ mime: 'image/png', data: 'AAAA' }]
+    });
+    return sent.messages[sent.messages.length - 1].content;
+  };
+
+  const anthropic = await call('anthropic');
+  assert.deepEqual(anthropic[0], { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } });
+  assert.equal(anthropic[1].type, 'text');
+
+  const openai = await call('openai');
+  assert.deepEqual(openai[0], { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } });
+  assert.equal(openai[1].type, 'text');
+});
+
+test('a turn with no image stays a plain string', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({
+    enabled: true, apiKey: 'k', provider: 'compatible', model: 'local', verify: false, threadDepth: 0
+  });
+  let sent = null;
+  h.context.fetch = async (url, init) => {
+    sent = JSON.parse(init.body);
+    return {
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({ kind: 'reply', text: 'ok' }) } }] }),
+      text: async () => ''
+    };
+  };
+  await h.context.runStateMate({ prompt: 'hello' });
+  // Enough compatible servers only accept the string form that sending an
+  // array for a turn with nothing but text in it would break setups that work.
+  assert.ok(sent.messages.every(m => typeof m.content === 'string'));
 });

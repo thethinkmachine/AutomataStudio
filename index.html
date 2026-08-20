@@ -823,12 +823,19 @@
                      renderContext() in js/statemate-ui.js, empty most of the time. -->
                 <div class="sm-context-slot" id="sm-context" aria-label="Prompt context"></div>
                 <div class="sm-nudge-slot" id="sm-nudge"></div>
+                <!-- Images attached to the next prompt, for a model that reads
+                     them; built by renderAttachments() in js/statemate-ui.js. -->
+                <div class="sm-attach-slot" id="sm-attach" aria-label="Attached images"></div>
                 <div class="sm-composer" id="sm-composer">
                   <span class="sm-caret" aria-hidden="true">&rsaquo;</span>
+                  <input type="file" id="sm-file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
                   <textarea class="sm-input" id="sm-input" rows="1" autocomplete="off" spellcheck="false"
                             placeholder="Describe a machine to build — or / for commands"
                             aria-label="Describe a machine to build, or type a slash command"
                             aria-controls="sm-menu" aria-autocomplete="list"></textarea>
+                  <button class="sm-attach-btn" id="sm-attach-btn" type="button" aria-label="Attach an image" data-tip="Attach an image">
+                    <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M209.66,122.34a8,8,0,0,1,0,11.32l-82.05,82a56,56,0,0,1-79.2-79.21L147.67,35.73a40,40,0,1,1,56.61,56.55L105,193A24,24,0,1,1,71,159L154.3,74.38A8,8,0,1,1,165.7,85.6L82.39,170.31a8,8,0,1,0,11.27,11.36L192.93,81A24,24,0,1,0,159,47L59.76,147.68a40,40,0,1,0,56.53,56.62l82.06-82A8,8,0,0,1,209.66,122.34Z" /></svg>
+                  </button>
                   <button class="sm-send" id="sm-send" type="button" aria-label="Send to StateMate" data-tip="Send" data-tip-kbd="⏎">
                     <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,117.66a8,8,0,0,1-11.32,0L136,59.31V216a8,8,0,0,1-16,0V59.31L61.66,117.66a8,8,0,0,1-11.32-11.32l72-72a8,8,0,0,1,11.32,0l72,72A8,8,0,0,1,205.66,117.66Z" /></svg>
                   </button>
@@ -1408,19 +1415,45 @@
         </div>
         <div class="modal-row">
           <span class="modal-lbl">Base URL</span>
-          <input type="text" class="inp" id="set-sm-base" spellcheck="false" autocomplete="off" label="API base URL">
+          <input type="text" class="inp" id="set-sm-base" spellcheck="false"
+                 autocomplete="off" name="statemate-base" data-form-type="other"
+                 data-1p-ignore data-lpignore="true" label="API base URL">
         </div>
         <div class="modal-row">
           <span class="modal-lbl">Model</span>
-          <input type="text" class="inp" id="set-sm-model" spellcheck="false" autocomplete="off" label="Model name">
+          <!-- The provider's own /models listing, fetched by js/statemate-ui.js
+               and filtered as the name is typed. A menu of our own rather than
+               a <datalist>: the native one is invisible until the browser
+               decides to open it and has nowhere to say "fetching" or why a
+               fetch failed, which is most of what this has to communicate.
+               The field stays a plain text input, so a model the listing has
+               never heard of is still typeable. -->
+          <div class="sm-model-field">
+            <!-- The autofill attributes are not decoration. A text input sitting
+                 above a type="password" input is what every browser's password
+                 heuristic looks for, so Chrome offered a saved username here and
+                 drew it directly over the model menu. `new-password` on the key
+                 below is what breaks the pair; the rest are the per-manager opt
+                 outs (1Password, LastPass, Dashlane) for the field itself. -->
+            <input type="text" class="inp" id="set-sm-model" spellcheck="false"
+                   autocomplete="off" name="statemate-model" data-form-type="other"
+                   data-1p-ignore data-lpignore="true"
+                   role="combobox" aria-expanded="false" aria-controls="sm-model-menu"
+                   aria-autocomplete="list" label="Model name">
+            <div class="sm-model-menu" id="sm-model-menu" role="listbox" aria-label="Available models" hidden></div>
+          </div>
         </div>
         <div class="modal-row">
           <span class="modal-lbl" id="sm-key-label">API key</span>
-          <input type="password" class="inp" id="set-sm-key" spellcheck="false" autocomplete="off" label="API key">
+          <input type="password" class="inp" id="set-sm-key" spellcheck="false"
+                 autocomplete="new-password" name="statemate-key" data-form-type="other"
+                 data-1p-ignore data-lpignore="true" label="API key">
         </div>
         <div class="modal-row sm-settings-actions">
+          <button class="btn-g" type="button" id="sm-models-btn">Fetch models</button>
           <button class="btn-g" type="button" id="sm-test-btn">Test connection</button>
           <button class="btn-g" type="button" id="sm-clear-key">Clear key</button>
+          <span class="sm-conn-status" id="sm-models-status" aria-live="polite"></span>
           <span class="sm-conn-status" id="sm-conn-status" aria-live="polite"></span>
         </div>
         <div class="sm-settings-note">

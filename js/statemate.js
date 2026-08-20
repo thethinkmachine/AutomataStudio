@@ -39,7 +39,7 @@ import { lintCandidate } from './statemate-lint.js';
 import {
   buildRepairMessage, buildSystemPrompt, buildUserMessage, threadMessages
 } from './statemate-prompt.js';
-import { ProviderError, callModel, getStateMateSettings } from './statemate-provider.js';
+import { ProviderError, callModel, getStateMateSettings, supportsImages } from './statemate-provider.js';
 import {
   MIN_SPEC_TESTS, StateMateError, describeSpecSize, extractSpecJSON,
   focusIsEmpty, machineToSpec, parseTurn, partialStringField, resolveContextRefs,
@@ -746,13 +746,14 @@ const MAX_OUTPUT_TOKENS = 16000;
  * @param {boolean}  [opts.attachCanvas] default from settings
  * @param {string}   [opts.authority]    'ask' | 'propose' | 'auto'
  * @param {Array}    [opts.context]      selection refs; see resolveContextRefs
+ * @param {Array}    [opts.images]       [{mime, data}] base64 pictures for a VL model
  * @param {string}   [opts.branch]       a turn id to replace rather than follow
  * @param {Function} [opts.onEvent]      progress: {type, …}
  * @returns {Promise<object>} the run result
  */
 export async function runStateMate({
   prompt, intent, attachCanvas, authority = 'auto', context = [], branch = '',
-  onEvent = () => { }
+  images = [], onEvent = () => { }
 } = {}) {
   const text = String(prompt || '').trim();
   if (!text) throw new StateMateError('empty', 'Type what you want built.');
@@ -767,6 +768,15 @@ export async function runStateMate({
   if (branch) branchFrom(branch);
 
   const settings = getStateMateSettings();
+
+  // Dropped rather than refused when the model cannot read them: the prompt is
+  // still a legitimate request without its illustration, and failing the whole
+  // turn over an attachment would be the worse of the two answers. The console
+  // says which happened, so this is never silent.
+  const wanted = Array.isArray(images) ? images.filter(i => i && i.mime && i.data) : [];
+  const visual = !wanted.length || supportsImages();
+  const pictures = visual ? wanted : [];
+
   const controller = new AbortController();
   const run = { controller };
   activeRun = run;
@@ -800,16 +810,25 @@ export async function runStateMate({
     // the history, so the model is always editing the machine that exists now.
     const depth = Math.max(0, settings.threadDepth | 0);
     const history = depth ? threadMessages(getThread().slice(-depth)) : [];
-    const liveTurn = withCanvas => ({
-      role: 'user',
-      content: buildUserMessage({
+    // Pictures ride with the live turn only, never with the thread: the thread
+    // keeps what was *asked*, and a page of screenshots replayed on every
+    // follow-up would be the largest thing in the request and the one part of
+    // it the model has already answered. Attaching again is one click.
+    const liveTurn = withCanvas => {
+      const prose = buildUserMessage({
         prompt: text,
         intent: resolvedIntent,
         canvasSpec: withCanvas ? canvasSpec : null,
         authority,
-        focus
-      })
-    });
+        focus,
+        images: pictures.length
+      });
+      const content = pictures.length
+        ? [...pictures.map(img => ({ type: 'image', mime: img.mime, data: img.data })),
+           { type: 'text', text: prose }]
+        : prose;
+      return { role: 'user', content };
+    };
     let messages = [...history, liveTurn(true)];
     let historyCount = history.length;
 
@@ -938,6 +957,7 @@ export async function runStateMate({
           status: 'replied',
           kind: 'reply',
           reply: turn.text,
+          imagesDropped: wanted.length - pictures.length,
           usage, model, timing,
           retries,
           repaired,
@@ -1073,6 +1093,10 @@ export async function runStateMate({
       // one they cannot distrust.
       grewCap,
       trimmed,
+      // Attachments the configured model could not have read. Same rule: a
+      // picture that was quietly left out of the request would explain an
+      // answer that ignores it, and only if it is said.
+      imagesDropped: wanted.length - pictures.length,
       // Everything applyPending() needs, and nothing that has been drawn. The
       // signature is what tells the reader later that the canvas moved under
       // the diff they are about to accept.
@@ -1254,6 +1278,14 @@ export function resultNotes(result) {
       rule: 'trimmed',
       severity: 'warn',
       message: 'The request was too long, so the conversation and the attached machine were dropped for this turn.'
+    });
+  }
+  if (result.imagesDropped) {
+    const n = result.imagesDropped;
+    notes.push({
+      rule: 'no-vision',
+      severity: 'warn',
+      message: `${n} image${n === 1 ? ' was' : 's were'} left out: this model does not read images. Pick a vision model in Settings.`
     });
   }
   if (result.grewCap) {

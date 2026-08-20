@@ -457,6 +457,7 @@ import { readFileSync as readCssFile } from 'node:fs';
 import { fileURLToPath as cssPath } from 'node:url';
 
 const MODAL_CSS = readCssFile(cssPath(new URL('../css/modals.css', import.meta.url)), 'utf8');
+const PANELS_CSS = readCssFile(cssPath(new URL('../css/panels.css', import.meta.url)), 'utf8');
 
 /** Every `selector { … }` rule in a stylesheet, comments stripped. */
 function cssRules(source) {
@@ -496,7 +497,12 @@ test('StateMate is a panel in flow, with none of the dock plumbing left behind',
   assert.ok(panel, '.sm-panel is declared');
   assert.doesNotMatch(panel.body, /position\s*:\s*(fixed|absolute)/,
     'a panel takes layout space rather than floating over the canvas');
-  const hiddenPanel = rules.find(r => r.selector === '.sm-panel[hidden]');
+  // The hiding rule is not StateMate's own: `hidden` is what the panel
+  // controller sets, and one rule in panels.css makes it hide every tabpanel
+  // on both sides — so this is matched out of a selector list there rather
+  // than looked up as a rule of its own here.
+  const hiddenPanel = cssRules(PANELS_CSS).find(r =>
+    r.selector.split(',').some(sel => sel.trim() === '.sm-panel[hidden]'));
   assert.match(hiddenPanel?.body || '', /display\s*:\s*none/,
     'the inactive native tabpanel is removed from layout');
 

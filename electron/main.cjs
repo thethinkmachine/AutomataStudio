@@ -97,17 +97,21 @@ function statemateTarget(url) {
 }
 
 ipcMain.handle('statemate:request', async (_event, payload) => {
-  const { url, headers, body } = payload || {};
+  const { url, headers, body, method } = payload || {};
   const target = statemateTarget(url);
   if (target.error) return { ok: false, status: 0, body: target.error };
 
+  // GET is the model listing; a body on it is rejected by fetch outright,
+  // which is why the method decides whether there is one rather than the
+  // caller remembering to leave it out.
+  const verb = String(method || 'POST').toUpperCase() === 'GET' ? 'GET' : 'POST';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), STATEMATE_TIMEOUT_MS);
   try {
     const response = await fetch(target.url, {
-      method: 'POST',
+      method: verb,
       headers: headers && typeof headers === 'object' ? headers : {},
-      body: typeof body === 'string' ? body : JSON.stringify(body ?? {}),
+      ...(verb === 'GET' ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body ?? {}) }),
       signal: controller.signal,
     });
     return {

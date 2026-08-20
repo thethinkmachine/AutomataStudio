@@ -358,8 +358,34 @@ export function delay(ms, signal) {
 //  REQUEST SHAPES
 // ══════════════════════════════════════════════════════════════════
 
+/**
+ * A turn's content, in the dialect of whichever provider is configured.
+ *
+ * A turn is a plain string almost always, and stays one — the two dialects
+ * only diverge once a picture is in it. The app's own neutral shape is
+ * `{type: 'text', text}` and `{type: 'image', mime, data}` with `data` the
+ * bare base64, because that is what Anthropic wants and a `data:` URL is one
+ * template literal away from it, while the reverse means parsing the URL back
+ * apart at the boundary.
+ */
+function toProviderContent(content, provider) {
+  if (!Array.isArray(content)) return content;
+  const parts = content.map(part => {
+    if (part?.type !== 'image') return { type: 'text', text: String(part?.text ?? '') };
+    return provider === 'anthropic'
+      ? { type: 'image', source: { type: 'base64', media_type: part.mime, data: part.data } }
+      : { type: 'image_url', image_url: { url: `data:${part.mime};base64,${part.data}` } };
+  });
+  // A one-part text turn is written back out as a string: enough compatible
+  // servers only accept the string form that sending an array for a turn with
+  // no picture in it would break setups that work today.
+  if (parts.length === 1 && parts[0].type === 'text') return parts[0].text;
+  return parts;
+}
+
 function buildRequest({ system, messages, maxTokens, temperature }, s) {
   const { baseUrl, model } = resolveEndpoint(s);
+  messages = (messages || []).map(m => ({ ...m, content: toProviderContent(m.content, s.provider) }));
   // The shell used to force this off, because `invoke` resolves once with a
   // whole body and cannot deliver a stream. It can now, so the only setup left
   // without streaming is an older desktop build.
@@ -803,4 +829,281 @@ export async function testConnection() {
     model: result.model || resolveEndpoint().model,
     text: (result.text || '').trim().slice(0, 40)
   };
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  MODEL DISCOVERY
+// ══════════════════════════════════════════════════════════════════
+//  Every provider here answers `GET /models` with the list of names its key
+//  may actually use, so the model field does not have to be a spelling test.
+//  Three dialects, the same shape as the completion endpoints: Anthropic and
+//  the OpenAI-compatible crowd return `{data: [...]}`, Google returns
+//  `{models: [...]}` with a `models/` prefix on every name, Cohere returns
+//  `{models: [...]}` keyed by `name`.
+//
+//  A failure here is never fatal: the field stays a free-text input and the
+//  list is a convenience over it. That is why listModels() throws a
+//  ProviderError like everything else, and every caller in the UI swallows it.
+
+/** Where the list lives, per dialect. */
+function modelsRequest(s) {
+  const { baseUrl } = resolveEndpoint(s);
+  if (s.provider === 'anthropic') {
+    return {
+      url: `${baseUrl}/v1/models?limit=1000`,
+      headers: {
+        'x-api-key': s.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      }
+    };
+  }
+  if (s.provider === 'GoogleAiStudio') {
+    // The key rides in the query string here rather than in a header, which is
+    // Google's own convention for this API and the reason this is not simply
+    // the generic branch below.
+    const key = s.apiKey ? `?key=${encodeURIComponent(s.apiKey)}&pageSize=1000` : '?pageSize=1000';
+    return { url: `${baseUrl}/models${key}`, headers: {} };
+  }
+  const headers = {};
+  if (s.apiKey) headers.authorization = `Bearer ${s.apiKey}`;
+  return { url: `${baseUrl}/models`, headers };
+}
+
+// Models that are not chat models at all. Offering an embedding or a
+// text-to-speech model as something to build a DFA with is worse than offering
+// nothing: the request fails at the provider with an error about the model.
+const NOT_CHAT = /(embed|embedding|whisper|tts|audio-speech|dall-e|moderation|rerank|image-gen|imagen|veo|stable-diffusion)/i;
+
+/**
+ * What can read a picture, when nothing but the name is known.
+ *
+ * An ordered table rather than one alternation, because the interesting cases
+ * are *exceptions*: o3 reads images and o3-mini does not, Llama 3.2 90B does
+ * and 3.2 1B does not, Gemma 3 does and Gemma 3 1B does not. A flat regex
+ * cannot say "this family, except these", so it got them wrong in both
+ * directions — `o[34]-` tagged o3-mini as vision while leaving bare o3 and o1
+ * as text, and `grok-[2-9]` claimed vision for every Grok when only Grok 4 and
+ * the models with `vision` in the name have it.
+ *
+ * First match wins, so a narrower rule is written *above* the family rule it
+ * carves out. `undefined` — no rule matched — is not "text only": it is
+ * nobody having said, which is a distinction supportsImages needs to make.
+ */
+const VISION_RULES = [
+  // ── what the name says outright ──
+  // Above everything, because a model that describes itself outranks any
+  // guess made from the family it belongs to — it is what keeps grok-2-vision
+  // out of the Grok exception two rules below. The trailing class allows a
+  // digit so deepseek-vl2 and its kind still read as what they say they are.
+  [/(^|[-_./])(vl|vision|multimodal|omni)([-_./\d]|$)/i, true],
+
+  // ── exceptions, each above the family rule it contradicts ──
+  // The distilled o-series: same generation, no image input.
+  [/(^|[-_./])o[13]-mini/i, false],
+  // Llama 3.2 is two model families under one number; only 11B and 90B see.
+  [/llama-?3[._]?2-(1b|3b)/i, false],
+  [/gemma-3-1b/i, false],
+  // GPT-4 as originally shipped, before turbo. `gpt-4o` and `gpt-4.1` are
+  // other models entirely and must not be caught here.
+  [/^gpt-4(-(?!turbo)|$)/i, false],
+  // Grok gained image input at 4. The vision-named variants were taken by the
+  // first rule, so this is safe to state flatly.
+  [/grok-[23](-|$)/i, false],
+
+  // ── families ──
+  [/gpt-4o|chatgpt-4o|gpt-4\.|gpt-4-turbo|gpt-5/i, true],
+  // o1, o3, o4 and whatever follows — the minis were taken out above.
+  [/(^|[-_./])o[1-9](-|$)/i, true],
+  [/claude-(3|4|5|opus|sonnet|haiku)/i, true],
+  [/gemini|gemma-3/i, true],
+  [/llama-?3[._]?2|llama-?4/i, true],
+  [/pixtral|mistral-small-3\.[1-9]|mistral-medium-3/i, true],
+  [/grok-([4-9]|\d\d)/i, true],
+  [/glm-[\d.]*v(-|$)/i, true],
+  [/llava|internvl|cogvlm|idefics|moondream|minicpm-v|nvlm|step-1v/i, true],
+  [/phi-[\w.]*(vision|multimodal)/i, true]
+];
+
+/**
+ * The name's verdict, or `undefined` when no rule covers it.
+ * Exported for the tests: every pair in the table above is a claim about a
+ * real model, and a claim is worth pinning.
+ */
+export function visionFromName(model) {
+  const name = String(model || '');
+  if (!name) return undefined;
+  for (const [pattern, verdict] of VISION_RULES) if (pattern.test(name)) return verdict;
+  return undefined;
+}
+
+/**
+ * What the *listing* said about image input, or `undefined` if it did not say.
+ *
+ * A provider that states its modalities is the authority and always outranks
+ * the name. Only OpenRouter's shape was read before, so every gateway that
+ * publishes the fact in one of the other shapes was answered by guesswork.
+ */
+function listedVision(m) {
+  const arch = m?.architecture || {};
+  const mods = arch.input_modalities || m?.input_modalities || m?.modalities;
+  if (Array.isArray(mods)) return mods.some(x => String(x).toLowerCase() === 'image');
+  // OpenRouter's older single string, e.g. "text+image->text".
+  if (typeof arch.modality === 'string') return /(^|\+)image(\+|-|$)/i.test(arch.modality);
+  if (typeof m?.vision === 'boolean') return m.vision;
+  const caps = m?.capabilities;
+  if (Array.isArray(caps)) return caps.some(c => String(c).toLowerCase() === 'vision');
+  if (caps && typeof caps.vision === 'boolean') return caps.vision;
+  return undefined;
+}
+
+/**
+ * Read one provider's list into `{id, label, vision}` rows.
+ *
+ * `vision` carries three answers, not two: true, false, and `undefined` for
+ * "neither the listing nor the name table knows". Collapsing the third into
+ * false made a model nobody had heard of indistinguishable from one known to
+ * be text-only — which is how a local server that lists its models ended up
+ * contradicting supportsImages' own rule that an unknown local name is
+ * trusted.
+ */
+export function readModelList(json, provider) {
+  const rows = [];
+  const push = (id, label, vision) => {
+    const name = String(id || '').trim();
+    if (!name || NOT_CHAT.test(name)) return;
+    rows.push({
+      id: name,
+      label: label && label !== name ? String(label) : '',
+      // The listing when it said anything, the name table when it did not,
+      // and undefined when neither could answer.
+      vision: vision === undefined ? visionFromName(name) : !!vision
+    });
+  };
+
+  // listedVision is asked on every branch rather than only on the one shape it
+  // was written for: a gateway that publishes modalities is the authority
+  // whichever dialect it speaks, and which dialect that is has nothing to do
+  // with whether it says.
+  if (provider === 'GoogleAiStudio') {
+    (json?.models || []).forEach(m => {
+      const methods = m?.supportedGenerationMethods || m?.supportedActions || [];
+      if (methods.length && !methods.includes('generateContent')) return;
+      push(String(m?.name || '').replace(/^models\//, ''), m?.displayName, listedVision(m));
+    });
+  } else if (Array.isArray(json?.models)) {
+    // Cohere's shape, and the compatible servers that copied it.
+    json.models.forEach(m => push(m?.name || m?.id, m?.display_name, listedVision(m)));
+  } else {
+    (json?.data || []).forEach(m => {
+      push(m?.id || m?.name, m?.display_name || m?.name, listedVision(m));
+    });
+  }
+
+  const seen = new Set();
+  return rows
+    .filter(r => (seen.has(r.id) ? false : seen.add(r.id)))
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+// One list per endpoint, because the settings panel asks on open, on every
+// provider change and on every keystroke in the model field.
+const modelCache = new Map();
+
+function modelCacheKey(s) {
+  const { baseUrl } = resolveEndpoint(s);
+  return `${s.provider} ${baseUrl} ${s.apiKey ? '1' : '0'}`;
+}
+
+/**
+ * The models this key may use, or a ProviderError saying why not.
+ *
+ * @param {object}  [opts]
+ * @param {boolean} [opts.refresh]  ignore the cache
+ * @param {AbortSignal} [opts.signal]
+ * @returns {Promise<Array<{id, label, vision}>>}
+ */
+export async function listModels({ refresh = false, signal, settings } = {}) {
+  // The settings are a parameter because the panel asks about the endpoint
+  // being *typed*, which has not been saved yet and must not be saved just to
+  // populate a completion list.
+  const s = settings || getStateMateSettings();
+  const key = modelCacheKey(s);
+  if (!refresh && modelCache.has(key)) return modelCache.get(key);
+
+  const request = modelsRequest(s);
+  const host = (() => {
+    try { return new URL(request.url).host; } catch (e) { return request.url; }
+  })();
+
+  let bodyText = '';
+  if (hasNativeTransport()) {
+    let result;
+    try {
+      result = await window.electronAPI.statemateRequest({
+        url: request.url, headers: request.headers, method: 'GET'
+      });
+    } catch (err) {
+      throw new ProviderError('network', `Could not reach ${host}.`, String(err?.message || err));
+    }
+    bodyText = String(result.body || '');
+    if (!result.ok) {
+      if (!result.status) throw new ProviderError('network', `Could not reach ${host}.`, bodyText);
+      throw mapHttpError(result.status, bodyText, host);
+    }
+  } else {
+    let response;
+    try {
+      response = await fetch(request.url, { method: 'GET', headers: request.headers, signal });
+    } catch (err) {
+      if (signal?.aborted) throw new ProviderError('cancelled', 'Cancelled.');
+      throw new ProviderError('network', `Your browser could not reach ${host}.`,
+        providerConfig(s.provider).browserNote);
+    }
+    bodyText = await response.text().catch(() => '');
+    if (!response.ok) throw mapHttpError(response.status, bodyText, host);
+  }
+
+  let json;
+  try { json = JSON.parse(bodyText); } catch (e) {
+    throw new ProviderError('bad-response', `${host} did not return a model list.`, bodyText.slice(0, 800));
+  }
+
+  const models = readModelList(json, s.provider);
+  modelCache.set(key, models);
+  return models;
+}
+
+/** Whatever a previous listModels() learnt, without asking again. */
+export function cachedModels(s = getStateMateSettings()) {
+  return modelCache.get(modelCacheKey(s)) || null;
+}
+
+export function clearModelCache() {
+  modelCache.clear();
+}
+
+/**
+ * Whether a model can be sent a picture.
+ *
+ * The listing is the authority when it said anything — OpenRouter and Google
+ * both publish input modalities — and the name is the fallback. An unknown
+ * name answers *true* for a local server, whose model names are arbitrary and
+ * whose owner knows what they are running; elsewhere the hint list decides,
+ * because silently accepting an attachment a hosted model will reject costs a
+ * request and an error about a field the user cannot see.
+ */
+export function supportsImages(model = resolveEndpoint().model, s = getStateMateSettings()) {
+  const name = String(model || '');
+  if (!name) return false;
+  const known = (modelCache.get(modelCacheKey(s)) || []).find(m => m.id === name);
+  // A listed row only decides when it actually knows. `known.vision` being
+  // undefined means the row is in the listing and nothing said what it can
+  // read, which is the same state as a name that was never listed at all —
+  // so it falls through to the same two answers below rather than being read
+  // as a listed "no".
+  if (known && known.vision !== undefined) return known.vision;
+  const byName = visionFromName(name);
+  if (byName !== undefined) return byName;
+  return s.provider === 'compatible';
 }
