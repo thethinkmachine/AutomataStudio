@@ -5,6 +5,17 @@ body.modal-open {
   overflow: hidden;
 }
 
+/* `visibility` is what takes a closed dialog out of the tab order, and it has
+   to be here rather than only on .show: opacity and pointer-events hide a thing
+   from the eye and the pointer but leave every control inside it reachable by
+   Tab. All thirteen overlays live in the DOM permanently, so without this line
+   more than a hundred invisible controls sit in the page's focus order and Tab
+   from the toolbar walks into them.
+
+   It is transitioned rather than switched because visibility interpolates
+   discretely with one special case — when either endpoint is `visible`, the
+   visible value holds for the whole duration — so the dialog stays painted
+   through its own fade-out and disappears only at the end. */
 .overlay {
   position: fixed;
   inset: 0;
@@ -14,8 +25,9 @@ body.modal-open {
   justify-content: center;
   z-index: 900;
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
-  transition: opacity var(--transition-base);
+  transition: opacity var(--transition-base), visibility var(--transition-base);
 }
 
 /* The blur lives on .show, not on .overlay: twelve overlays sit in the DOM at
@@ -25,16 +37,25 @@ body.modal-open {
    --overlay scrim carries most of the separation. */
 .overlay.show {
   opacity: 1;
+  visibility: visible;
   pointer-events: all;
   backdrop-filter: blur(var(--overlay-blur));
   -webkit-backdrop-filter: blur(var(--overlay-blur));
 }
 
+/* The padding is a pair of custom properties rather than a literal because the
+   sticky title and footer below bleed to the dialog's edges with a matching
+   negative margin. Two copies of that number drift the moment a breakpoint
+   changes one of them, so the narrow-screen rule in css/mobile.css retunes the
+   tokens and the negative margins follow. */
 .modal {
+  --modal-px: 28px;
+  --modal-py: 26px;
   background: var(--surface);
   border: 1px solid var(--border2);
   border-radius: 14px;
-  padding: 26px 28px;
+  padding: var(--modal-py) var(--modal-px);
+  position: relative;
   min-width: 280px;
   max-width: 380px;
   width: 90%;
@@ -50,18 +71,97 @@ body.modal-open {
   transform: translateY(0) scale(1);
 }
 
+/* The title is an <h2>, so the UA margin has to go explicitly; the negative
+   left/right/top margins pull it back out to the dialog's edges so that, once
+   it is sticky, its fill covers the full width of what scrolls under it and the
+   dialog's own padding-top does not scroll away above it.
+
+   Sticky rather than a flex header over a scrolling body: the small dialogs put
+   their content straight in .modal with no wrapper to scroll, and the three
+   wide ones (.export-code-modal, .settings-modal-wide, .wizard-modal-wide) are
+   already flex columns with overflow hidden, where a sticky child is inert. So
+   this is the one treatment that fits both without restructuring the markup. */
 .modal-title {
   font-family: var(--sans);
   font-size: 1.08rem;
   font-weight: 600;
   letter-spacing: -.01em;
   color: var(--text);
-  margin-bottom: 18px;
-  padding-bottom: 14px;
+  margin: calc(var(--modal-py) * -1) calc(var(--modal-px) * -1) 18px;
+  padding: var(--modal-py) var(--modal-px) 14px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+
+/* Carries the id the dialog is named by and the text its own code rewrites, so
+   the injected close button is a sibling that no textContent write can reach.
+   It takes the flex row's growth so a title whose last child pushes right (the
+   wizard's machine-type badge) still lands against the close button rather than
+   against the end of its own text. */
+.modal-title-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* ─── CLOSE BUTTON ───
+   Injected into every dialog by installModalChrome() in js/modal.js rather than
+   written thirteen times, so a dialog added later gets one for free. It rides
+   in the title's flex row — inside the sticky element, so it stays reachable in
+   a dialog tall enough to scroll — and `margin-left: auto` pins it to the far
+   edge whatever else the title carries (the wizard's icon and type badge, for
+   one). Dialogs with no .modal-title get the absolutely positioned variant. */
+.modal-close {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.modal-close svg {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+  pointer-events: none;
+}
+
+.modal-close:hover {
+  background: var(--surface3);
+  border-color: var(--border2);
+  color: var(--text);
+}
+
+.modal-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* No title to sit in — .about-modal-wide leads with its logo header instead. */
+.modal-close.modal-close-float {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  margin-left: 0;
+  z-index: 3;
 }
 
 /* ─── STATEMATE PANEL ───
@@ -2143,22 +2243,34 @@ button.sm-stat:disabled {
   margin-top: 0;
 }
 
+/* Prose, so --sans: this is a sentence addressed to the reader, not an
+   identifier or a piece of instrumentation. It was set in --mono, which is the
+   only place in the app where a plain English question is. */
 .confirm-msg {
   font-size: .83rem;
   color: var(--text2);
   line-height: 1.55;
   margin-bottom: 24px;
-  font-family: var(--mono);
+  font-family: var(--sans);
 }
 
+/* Sticky to the bottom for the same reason the title is sticky to the top: in
+   a dialog taller than the viewport the actions must not scroll out of reach.
+   The negative margins bleed it to the dialog's edges so its fill covers the
+   content passing underneath, and the padding puts the buttons back where the
+   dialog's own padding would have. */
 .modal-foot {
   display: flex;
   gap: 8px;
-  margin-top: 20px;
-  padding-top: 16px;
+  margin: 20px calc(var(--modal-px) * -1) calc(var(--modal-py) * -1);
+  padding: 16px var(--modal-px) var(--modal-py);
   border-top: 1px solid var(--border);
   justify-content: flex-end;
   flex-wrap: wrap;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--surface);
 }
 
 /* Two clusters pinned to opposite ends of the footer, e.g. import/export on
@@ -2172,62 +2284,204 @@ button.sm-stat:disabled {
   gap: 7px;
 }
 
+/* Pushes one button — and everything before it — to the left edge of the
+   footer, leaving the rest packed right. It is a footer layout utility rather
+   than something baked into a colour variant: .btn-danger-ghost used to carry
+   `margin-right: auto` itself, which meant every destructive button was
+   left-pinned whether or not that was wanted, and any non-destructive button
+   that wanted the same position had to reinvent it. */
+.modal-foot-start {
+  margin-right: auto;
+}
+
+/* ─── DIALOG BUTTONS ───
+   Two bases, .btn-p (primary) and .btn-g (secondary), plus colour modifiers.
+   What they share — the box, the type, the states — is declared once here so a
+   modifier only ever changes colour, and the two systems that grew up beside
+   these (.sm-btn in the console, the wizard's overrides) have nothing left to
+   reimplement.
+
+   The face is --sans. These are language — "Cancel", "Export", "Download" —
+   and the rule the rest of the app follows is that --mono is for identifiers
+   and instrumentation. They were set in --mono, which is why a button in the
+   StateMate console and a button in a dialog did not look like the same
+   control.
+
+   inline-flex with a gap is the icon slot: a label plus an optional .btn-icon
+   lays itself out with no per-dialog rule. The wizard's .wiz-primary existed
+   only to add these three lines back to .btn-p. */
+.btn-p,
+.btn-g {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 18px;
+  font-family: var(--sans);
+  font-size: .78rem;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  /* Named rather than `all`: these buttons also animate transform on :active
+     and are laid out by a flex footer, and `transition: all` puts a tween on
+     every geometric property that happens to change. */
+  transition: background var(--transition-fast), border-color var(--transition-fast),
+    color var(--transition-fast), box-shadow var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.btn-icon {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+  flex-shrink: 0;
+}
+
 /* Flat accent fill, matching the app's other primary actions (.run-btn,
    .algo-btn). Depth comes from the glow on hover, not from shading the fill. */
 .btn-p {
-  padding: 8px 18px;
   background: var(--accent);
-  border: 1px solid transparent;
   color: var(--on-accent);
-  font-family: var(--mono);
-  font-size: .72rem;
-  border-radius: 7px;
-  cursor: pointer;
   font-weight: 600;
   letter-spacing: .01em;
-  transition: all var(--transition-fast);
 }
 
-.btn-p:hover {
+.btn-p:hover:not(:disabled) {
   box-shadow: var(--accent-glow);
-}
-
-.btn-p:active {
-  transform: translateY(1px);
+  background: color-mix(in srgb, var(--accent) 92%, var(--text));
 }
 
 .btn-g {
-  padding: 8px 18px;
   background: var(--surface2);
-  border: 1px solid var(--border2);
+  border-color: var(--border2);
   color: var(--text2);
-  font-family: var(--mono);
-  font-size: .72rem;
-  border-radius: 7px;
-  cursor: pointer;
   font-weight: 500;
-  transition: all var(--transition-fast);
 }
 
-.btn-g:hover {
+.btn-g:hover:not(:disabled) {
   background: var(--surface3);
   border-color: var(--border2);
   color: var(--text);
 }
 
-.btn-g:active {
+.btn-p:active:not(:disabled),
+.btn-g:active:not(:disabled) {
   transform: translateY(1px);
 }
 
-.btn-danger-ghost {
-  color: var(--red) !important;
-  border-color: var(--red-border) !important;
-  background: transparent !important;
-  margin-right: auto;
+/* The ring is drawn in the button's own colour rather than always in the
+   accent, or a destructive action gets an accent-coloured focus ring. */
+.btn-p:focus-visible,
+.btn-g:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.btn-danger-ghost:hover {
-  background: var(--red-soft) !important;
+/* ── Disabled ──
+   There was no disabled state at all: a gated primary action painted exactly
+   like a live one, so no dialog could express "not yet". Declared on both bases
+   so a modifier's colours are overridden too. */
+.btn-p:disabled,
+.btn-g:disabled,
+.btn-p[aria-disabled="true"],
+.btn-g[aria-disabled="true"] {
+  background: var(--surface2);
+  border-color: var(--border);
+  color: var(--text3);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: .6;
+}
+
+/* ── Busy ──
+   Set by the caller around an async action (an export, an update check). The
+   label stays put and keeps its width — swapping it for a spinner would resize
+   the footer mid-click — and the button stops taking pointer events. */
+.btn-p.is-busy,
+.btn-g.is-busy {
+  cursor: progress;
+  pointer-events: none;
+  color: transparent;
+}
+
+.btn-p.is-busy::after,
+.btn-g.is-busy::after {
+  content: "";
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-color: var(--on-accent) transparent var(--on-accent) transparent;
+  animation: btn-spin .7s linear infinite;
+}
+
+.btn-g.is-busy::after {
+  border-color: var(--text2) transparent var(--text2) transparent;
+}
+
+.btn-p.is-busy,
+.btn-g.is-busy {
+  position: relative;
+}
+
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Danger ──
+   Two weights: a ghost for a destructive action offered alongside others
+   (Delete, Discard), and a fill for one that is the dialog's primary action.
+   Neither carries a `margin-right: auto` any more — position is
+   .modal-foot-start's job, so a destructive button can sit anywhere. The
+   !important flags these used to need are gone with it: the modifier is now
+   written to win on specificity instead. */
+.btn-g.btn-danger-ghost {
+  color: var(--red);
+  border-color: var(--red-border);
+  background: transparent;
+}
+
+.btn-g.btn-danger-ghost:hover:not(:disabled) {
+  background: var(--red-soft);
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.btn-g.btn-danger-ghost:focus-visible,
+.btn-p.btn-danger:focus-visible {
+  outline-color: var(--red);
+}
+
+.btn-p.btn-danger {
+  background: var(--red);
+  color: #fff;
+}
+
+.btn-p.btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--red) 88%, #000);
+  box-shadow: 0 0 0 3px var(--red-soft);
+}
+
+/* The press and the spinner are motion; the colour changes are not, and
+   removing those would leave the buttons with no hover feedback at all. */
+@media (prefers-reduced-motion: reduce) {
+  .btn-p,
+  .btn-g {
+    transition: background var(--transition-fast), border-color var(--transition-fast),
+      color var(--transition-fast);
+  }
+
+  .btn-p:active:not(:disabled),
+  .btn-g:active:not(:disabled) {
+    transform: none;
+  }
+
+  .btn-p.is-busy::after,
+  .btn-g.is-busy::after {
+    animation-duration: 2.4s;
+  }
 }
 
 /* ─── TOGGLE SWITCH ───
@@ -2309,6 +2563,13 @@ button.sm-stat:disabled {
   max-width: 440px;
 }
 
+/* About is short enough that its footer never needs pinning. Keeping the
+   shared sticky positioning here makes the footer latch above the repository
+   row in a short viewport, leaving an empty block below it. */
+.about-modal-wide .modal-foot {
+  position: static;
+}
+
 .modal.trans-modal-wide {
   max-width: 440px;
 }
@@ -2322,22 +2583,37 @@ button.sm-stat:disabled {
   margin-bottom: 22px;
 }
 
+/* A <button role="tab">, not a <div onclick>. These were divs, which meant the
+   seven Engine Settings panels and the five Keyboard Shortcuts panels could not
+   be reached from the keyboard at all. Being a button also brings the reset
+   below: appearance, the inherited font, and the UA's own border and alignment
+   all have to be undone for the strip to look as it did. */
 .modal-tab {
+  appearance: none;
   font-family: var(--sans);
   font-size: 0.78rem;
   font-weight: 500;
   color: var(--text3);
   cursor: pointer;
   padding: 8px 12px;
+  border: 0;
   border-radius: 7px 7px 0 0;
   border-bottom: 2px solid transparent;
-  transition: all var(--transition-fast);
+  background: transparent;
+  text-align: left;
+  transition: color var(--transition-fast), background var(--transition-fast),
+    border-color var(--transition-fast);
   white-space: nowrap;
 }
 
 .modal-tab:hover {
   color: var(--text2);
   background: var(--tab-hover-bg);
+}
+
+.modal-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .modal-tab.active {
@@ -2352,18 +2628,47 @@ button.sm-stat:disabled {
   overflow: hidden;
 }
 
+/* [hidden] is what the tab controller sets, so it has to be what hides — the
+   same rule css/panels.css states for the sidebar tabpanels, and for the same
+   reason: an author `display` rule beats the UA's `[hidden] { display: none }`,
+   so a panel keeps painting through the selected one.
+
+   That is why visibility is no longer keyed on `.active`. It was
+   `.modal-tab-content { display: none }` plus `.active { display: block }`,
+   which is a (0,2,0) selector — it outranks `[hidden]` at (0,1,1), so setting
+   the attribute would have done nothing while the class was still on. `.active`
+   remains as the state class the tab strip styles from; the attribute decides
+   what is drawn. */
 .modal-tab-content {
-  display: none;
+  display: block;
   animation: modal-tab-fade-in var(--transition-base);
 }
 
-.modal-tab-content.active {
-  display: block;
+.modal-tab-content[hidden] {
+  display: none;
+}
+
+/* The panel is focusable (tabindex="0") so a keyboard reader can leave the tab
+   strip and land in the content it selected; it is not an interactive control,
+   so it gets no ring of its own. */
+.modal-tab-content:focus {
+  outline: none;
+}
+
+.modal-tab-content:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 @keyframes modal-tab-fade-in {
   from { opacity: 0; transform: translateY(2px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-tab-content {
+    animation: none;
+  }
 }
 
 /* ─── ABOUT MODAL ─── */
@@ -4152,9 +4457,15 @@ button:focus-visible {
   padding: 22px 24px 18px;
 }
 
+/* The wizard is a flex column with overflow hidden and its own padding, so its
+   title is not a sticky bar over a scrolling dialog and must not inherit the
+   base's negative bleed margins. Written as a shorthand so all four sides are
+   overridden, not just the one being tuned. */
 .wizard-modal-wide .modal-title {
-  margin-bottom: 12px;
+  margin: 0 0 12px;
+  padding: 0 0 14px;
   flex-shrink: 0;
+  position: static;
 }
 
 .wiz-title-icon {
@@ -4832,6 +5143,10 @@ button:focus-visible {
 .wiz-foot {
   flex-shrink: 0;
   align-items: center;
+  /* Same opt-out as .wizard-modal-wide .modal-title above. */
+  margin: 16px 0 0;
+  padding: 14px 0 0;
+  position: static;
 }
 
 .wiz-foot-left {
@@ -4870,11 +5185,9 @@ button:focus-visible {
   color: var(--accent);
 }
 
-.wiz-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
+/* .wiz-primary is gone: it existed only to give .btn-p an inline-flex row and a
+   gap so the Next button could carry a caret. That is the base button's icon
+   slot now — see the note over .btn-p / .btn-g — and the icon uses .btn-icon. */
 
 /* Narrow windows: the grids stop being grids rather than shrinking every
    column past legibility. A wrapped rule is still one rule — the row keeps

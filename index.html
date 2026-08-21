@@ -1098,7 +1098,7 @@
   <!-- ══════ MODALS ══════ -->
   <div class="overlay" id="trans-modal" role="dialog" aria-modal="true" aria-labelledby="trans-modal-title">
     <div class="modal trans-modal-wide">
-      <div class="modal-title" id="trans-modal-title">Add Transition</div>
+      <h2 class="modal-title"><span class="modal-title-text" id="trans-modal-title">Add Transition</span></h2>
       <div class="modal-row" id="m-trans-row" style="display:none"><span class="modal-lbl">Transition</span><select class="sel" id="m-trans"></select></div>
       <div class="modal-row"><span class="modal-lbl">From</span><select class="sel" id="m-from"></select></div>
       <div class="modal-row" id="m-sym-row"><span class="modal-lbl">Read</span><select class="sel" id="m-sym"></select></div>
@@ -1151,9 +1151,9 @@
     </div>
   </div>
 
-  <div class="overlay" id="state-modal" role="dialog" aria-modal="true" aria-label="Configure State">
+  <div class="overlay" id="state-modal" role="dialog" aria-modal="true" aria-labelledby="state-modal-title">
     <div class="modal">
-      <div class="modal-title">Configure State</div>
+      <h2 class="modal-title"><span class="modal-title-text" id="state-modal-title">Configure State</span></h2>
       <div class="modal-row"><span class="modal-lbl">Name</span><input class="inp" id="s-name" maxlength="24" placeholder="q0" aria-describedby="s-name-hint"></div>
       <div class="modal-row modal-row-tight" id="s-name-hint-row">
         <span class="modal-lbl"></span>
@@ -1180,9 +1180,9 @@
     </div>
   </div>
 
-  <div class="overlay" id="note-modal" role="dialog" aria-modal="true" aria-label="Note">
+  <div class="overlay" id="note-modal" role="dialog" aria-modal="true" aria-labelledby="note-modal-title">
     <div class="modal note-modal-wide">
-      <div class="modal-title">Note</div>
+      <h2 class="modal-title"><span class="modal-title-text" id="note-modal-title">Note</span></h2>
       <div class="modal-row note-editor-row">
         <span class="modal-lbl">Text</span>
         <div class="note-editor">
@@ -1226,7 +1226,7 @@
         </div>
       </div>
       <div class="modal-foot">
-        <button class="btn-g btn-danger-ghost" onclick="deleteNoteFromModal()">Delete</button>
+        <button class="btn-g btn-danger-ghost modal-foot-start" onclick="deleteNoteFromModal()">Delete</button>
         <button class="btn-g" onclick="closeModal('note-modal')">Cancel</button>
         <button class="btn-p" onclick="confirmNote()">Save</button>
       </div>
@@ -1236,7 +1236,7 @@
   <!-- ══════ DIVIDER MODAL ══════ -->
   <div class="overlay" id="divider-modal" role="dialog" aria-modal="true" aria-labelledby="divider-modal-title">
     <div class="modal">
-      <div class="modal-title" id="divider-modal-title">Divider</div>
+      <h2 class="modal-title"><span class="modal-title-text" id="divider-modal-title">Divider</span></h2>
       <div class="modal-row">
         <span class="modal-lbl">Label</span>
         <input class="inp" id="divider-label" type="text" maxlength="80" placeholder="Optional — e.g. “Phase 1 / Phase 2”">
@@ -1269,16 +1269,16 @@
         </div>
       </div>
       <div class="modal-foot">
-        <button class="btn-g btn-danger-ghost" onclick="deleteDividerFromModal()">Delete</button>
+        <button class="btn-g btn-danger-ghost modal-foot-start" onclick="deleteDividerFromModal()">Delete</button>
         <button class="btn-g" onclick="closeModal('divider-modal')">Cancel</button>
         <button class="btn-p" onclick="confirmDivider()">Save</button>
       </div>
     </div>
   </div>
 
-  <div class="overlay" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+  <div class="overlay" id="confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-msg">
     <div class="modal">
-      <div class="modal-title" id="confirm-title">Confirm Action</div>
+      <h2 class="modal-title"><span class="modal-title-text" id="confirm-title">Confirm Action</span></h2>
       <div id="confirm-msg" class="confirm-msg">
         Are you sure you want to proceed?
       </div>
@@ -1291,13 +1291,13 @@
 
   <!-- Unsaved-changes prompt. Three-way (Save / Discard / Cancel), so it can't
        reuse the two-button #confirm-modal above. -->
-  <div class="overlay" id="unsaved-modal" role="dialog" aria-modal="true" aria-labelledby="unsaved-title">
+  <div class="overlay" id="unsaved-modal" role="alertdialog" aria-modal="true" aria-labelledby="unsaved-title" aria-describedby="unsaved-msg">
     <div class="modal">
-      <div class="modal-title" id="unsaved-title">Unsaved changes</div>
+      <h2 class="modal-title"><span class="modal-title-text" id="unsaved-title">Unsaved changes</span></h2>
       <div id="unsaved-msg" class="confirm-msg"></div>
       <div class="modal-foot">
         <button class="btn-g" id="unsaved-cancel-btn" onclick="closeModal('unsaved-modal')">Cancel</button>
-        <button class="btn-g btn-danger-ghost" id="unsaved-discard-btn">Discard</button>
+        <button class="btn-g btn-danger-ghost modal-foot-start" id="unsaved-discard-btn">Discard</button>
         <button class="btn-p" id="unsaved-save-btn">Save</button>
       </div>
     </div>
@@ -1306,7 +1306,7 @@
   <!-- ══════ EXPORT AS IMAGE ══════ -->
   <div class="overlay" id="export-image-modal" role="dialog" aria-modal="true" aria-labelledby="export-image-title">
     <div class="modal export-image-modal">
-      <div class="modal-title" id="export-image-title">Export as Image</div>
+      <h2 class="modal-title"><span class="modal-title-text" id="export-image-title">Export as Image</span></h2>
       <div class="exp-body" id="export-image-body"></div>
       <div class="modal-foot">
         <button class="btn-g" onclick="closeModal('export-image-modal')">Cancel</button>
@@ -1318,7 +1318,7 @@
   <!-- ══════ EXPORT AS CODE / CONFIG / SPEC ══════ -->
   <div class="overlay" id="export-code-modal" role="dialog" aria-modal="true" aria-labelledby="export-code-title">
     <div class="modal export-code-modal">
-      <div class="modal-title" id="export-code-title">Export as Code, Config or Spec</div>
+      <h2 class="modal-title"><span class="modal-title-text" id="export-code-title">Export as Code, Config or Spec</span></h2>
       <div class="export-code-intro">Choose a format, tune its options, and review the generated output before downloading.</div>
       <div class="exp-split">
         <div class="exp-side" id="export-format-list" role="listbox" aria-label="Export format"></div>
@@ -1347,20 +1347,20 @@
        js/wizard.js and js/wizard-copy.js respectively. -->
   <div class="overlay" id="wizard-modal" role="dialog" aria-modal="true" aria-labelledby="wiz-title">
     <div class="modal wizard-modal-wide">
-      <div class="modal-title" id="wiz-title">Build a machine</div>
+      <h2 class="modal-title"><span class="modal-title-text" id="wiz-title">Build a machine</span></h2>
       <ol class="wiz-rail" id="wiz-rail" aria-label="Steps"></ol>
       <div class="wiz-body" id="wiz-body"></div>
       <div class="modal-foot modal-foot-split wiz-foot" id="wiz-foot"></div>
     </div>
   </div>
 
-  <div class="overlay" id="settings-modal" role="dialog" aria-modal="true" aria-label="Engine Settings">
+  <div class="overlay" id="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
     <div class="modal export-code-modal settings-modal-wide">
-      <div class="modal-title">Engine Settings</div>
+      <h2 class="modal-title"><span class="modal-title-text" id="settings-modal-title">Engine Settings</span></h2>
       <div class="export-code-intro">Customize simulation behavior, rendering, machine defaults, and notation across the workspace.</div>
       <div class="exp-split settings-split">
 
-      <div class="exp-side modal-tabs" id="settings-tabs">
+      <div class="exp-side modal-tabs" id="settings-tabs" role="tablist" aria-orientation="vertical" aria-label="Settings sections">
         <!-- Ordered by reach: the tabs that apply to every machine first, then
              the machine-family panels, which only matter once you are building
              that kind of machine. switchSettingsTab resolves tabs by id, so this
@@ -1372,17 +1372,17 @@
              /algorithms command reads the .algo-item list. A tab added here is
              completable the same day; one without the attribute simply is not
              offered. -->
-        <div class="modal-tab active" data-tab="general" onclick="switchSettingsTab('general')">Workspace</div>
-        <div class="modal-tab" data-tab="ai" onclick="switchSettingsTab('ai')">StateMate</div>
-        <div class="modal-tab" data-tab="rendering" onclick="switchSettingsTab('rendering')">Canvas &amp; Layout</div>
-        <div class="modal-tab" data-tab="symbols" onclick="switchSettingsTab('symbols')">Notation</div>
-        <div class="modal-tab" data-tab="pda" onclick="switchSettingsTab('pda')">Pushdown</div>
-        <div class="modal-tab" data-tab="tm" onclick="switchSettingsTab('tm')">Turing Machine</div>
-        <div class="modal-tab" data-tab="transducer" onclick="switchSettingsTab('transducer')">Transducers</div>
+        <button type="button" class="modal-tab active" role="tab" id="settings-tab-general" aria-controls="tab-general" aria-selected="true" tabindex="0" data-tab="general" onclick="switchSettingsTab('general')">Workspace</button>
+        <button type="button" class="modal-tab" role="tab" id="settings-tab-ai" aria-controls="tab-ai" aria-selected="false" tabindex="-1" data-tab="ai" onclick="switchSettingsTab('ai')">StateMate</button>
+        <button type="button" class="modal-tab" role="tab" id="settings-tab-rendering" aria-controls="tab-rendering" aria-selected="false" tabindex="-1" data-tab="rendering" onclick="switchSettingsTab('rendering')">Canvas &amp; Layout</button>
+        <button type="button" class="modal-tab" role="tab" id="settings-tab-symbols" aria-controls="tab-symbols" aria-selected="false" tabindex="-1" data-tab="symbols" onclick="switchSettingsTab('symbols')">Notation</button>
+        <button type="button" class="modal-tab" role="tab" id="settings-tab-pda" aria-controls="tab-pda" aria-selected="false" tabindex="-1" data-tab="pda" onclick="switchSettingsTab('pda')">Pushdown</button>
+        <button type="button" class="modal-tab" role="tab" id="settings-tab-tm" aria-controls="tab-tm" aria-selected="false" tabindex="-1" data-tab="tm" onclick="switchSettingsTab('tm')">Turing Machine</button>
+        <button type="button" class="modal-tab" role="tab" id="settings-tab-transducer" aria-controls="tab-transducer" aria-selected="false" tabindex="-1" data-tab="transducer" onclick="switchSettingsTab('transducer')">Transducers</button>
       </div>
 
       <div class="modal-tab-panels" id="settings-tab-panels">
-      <div class="modal-tab-content active" id="tab-general">
+      <div class="modal-tab-content active" id="tab-general" role="tabpanel" aria-labelledby="settings-tab-general" tabindex="0">
         <div class="modal-section-lbl">Playback &amp; Saving</div>
         <div class="modal-row">
           <span class="modal-lbl">Playback Speed (ms)</span>
@@ -1425,7 +1425,7 @@
            living there would be written into every workspace tab and the
            autosave blob. js/statemate-provider.js keeps its own store under its
            own localStorage key; js/statemate-ui.js reads and writes this panel. -->
-      <div class="modal-tab-content" id="tab-ai">
+      <div class="modal-tab-content" id="tab-ai" role="tabpanel" aria-labelledby="settings-tab-ai" tabindex="0" hidden>
         <div class="modal-section-lbl">Connection</div>
         <div class="modal-row" data-tip="When off, the StateMate dialog is the example picker and nothing is ever sent anywhere.">
           <span class="modal-lbl">Enable StateMate</span>
@@ -1530,7 +1530,7 @@
         </div>
       </div>
 
-      <div class="modal-tab-content" id="tab-rendering">
+      <div class="modal-tab-content" id="tab-rendering" role="tabpanel" aria-labelledby="settings-tab-rendering" tabindex="0" hidden>
 
         <div class="modal-row">
           <span class="modal-lbl">Node Radius</span>
@@ -1611,7 +1611,7 @@
         </div>
       </div>
 
-      <div class="modal-tab-content" id="tab-symbols">
+      <div class="modal-tab-content" id="tab-symbols" role="tabpanel" aria-labelledby="settings-tab-symbols" tabindex="0" hidden>
         <div class="modal-section-lbl">Machine Notation</div>
         <div class="modal-row">
           <span class="modal-lbl">Epsilon</span>
@@ -1640,7 +1640,7 @@
         </div>
       </div>
 
-      <div class="modal-tab-content" id="tab-pda">
+      <div class="modal-tab-content" id="tab-pda" role="tabpanel" aria-labelledby="settings-tab-pda" tabindex="0" hidden>
         <div class="modal-row">
           <span class="modal-lbl">PDA Max Steps</span>
           <input type="number" class="inp" id="set-pda-steps" label="PDA step limit">
@@ -1658,7 +1658,7 @@
         </div>
       </div>
 
-      <div class="modal-tab-content" id="tab-tm">
+      <div class="modal-tab-content" id="tab-tm" role="tabpanel" aria-labelledby="settings-tab-tm" tabindex="0" hidden>
         <div class="modal-row" data-tip="Let the tape extend left of the input, as textbooks and JFLAP do. Off, the head stops at the first cell. Does not affect the 2-Way Infinite TM, which is always two-way, or the LBA, which is bounded by its end markers.">
           <span class="modal-lbl">Two-Way Infinite Tape</span>
           <label class="toggle-switch"><input type="checkbox" id="set-two-way-tape"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
@@ -1677,7 +1677,7 @@
         </div>
       </div>
 
-      <div class="modal-tab-content" id="tab-transducer">
+      <div class="modal-tab-content" id="tab-transducer" role="tabpanel" aria-labelledby="settings-tab-transducer" tabindex="0" hidden>
         <div class="modal-row" id="set-row-transducer" data-tip="Allow Moore and Mealy machines to have accept states">
           <span class="modal-lbl">Transducer Accepts</span>
           <label class="toggle-switch"><input type="checkbox" id="set-transducer-accepts"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
@@ -1710,23 +1710,23 @@
        do not fit one scroll. The bindings mirror the keydown handlers in
        js/ui.js, js/minimap.js and js/notes.js; anything added there belongs in
        the matching section here. -->
-  <div class="overlay" id="help-modal" role="dialog" aria-modal="true" aria-label="Keyboard Shortcuts">
+  <div class="overlay" id="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-modal-title">
     <div class="modal export-code-modal settings-modal-wide">
-      <div class="modal-title">Keyboard Shortcuts</div>
+      <h2 class="modal-title"><span class="modal-title-text" id="help-modal-title">Keyboard Shortcuts</span></h2>
       <div class="export-code-intro">Every key the editor listens for, grouped by what it acts on. Shortcuts are ignored while a text field has focus.</div>
       <div class="exp-split settings-split">
 
-        <div class="exp-side modal-tabs" id="help-tabs">
-          <div class="modal-tab active" onclick="switchHelpTab('tools')">Tools</div>
-          <div class="modal-tab" onclick="switchHelpTab('editing')">Editing</div>
-          <div class="modal-tab" onclick="switchHelpTab('views')">Views &amp; Files</div>
-          <div class="modal-tab" onclick="switchHelpTab('canvas')">Canvas</div>
-          <div class="modal-tab" onclick="switchHelpTab('sim')">Simulation</div>
+        <div class="exp-side modal-tabs" id="help-tabs" role="tablist" aria-orientation="vertical" aria-label="Shortcut groups">
+          <button type="button" class="modal-tab active" role="tab" id="help-tab-btn-tools" aria-controls="help-tab-tools" aria-selected="true" tabindex="0" data-tab="tools" onclick="switchHelpTab('tools')">Tools</button>
+          <button type="button" class="modal-tab" role="tab" id="help-tab-btn-editing" aria-controls="help-tab-editing" aria-selected="false" tabindex="-1" data-tab="editing" onclick="switchHelpTab('editing')">Editing</button>
+          <button type="button" class="modal-tab" role="tab" id="help-tab-btn-views" aria-controls="help-tab-views" aria-selected="false" tabindex="-1" data-tab="views" onclick="switchHelpTab('views')">Views &amp; Files</button>
+          <button type="button" class="modal-tab" role="tab" id="help-tab-btn-canvas" aria-controls="help-tab-canvas" aria-selected="false" tabindex="-1" data-tab="canvas" onclick="switchHelpTab('canvas')">Canvas</button>
+          <button type="button" class="modal-tab" role="tab" id="help-tab-btn-sim" aria-controls="help-tab-sim" aria-selected="false" tabindex="-1" data-tab="sim" onclick="switchHelpTab('sim')">Simulation</button>
         </div>
 
         <div class="modal-tab-panels" id="help-tab-panels">
 
-          <div class="modal-tab-content active" id="help-tab-tools">
+          <div class="modal-tab-content active" id="help-tab-tools" role="tabpanel" aria-labelledby="help-tab-btn-tools" tabindex="0">
             <div class="modal-section-lbl">Choosing a tool</div>
             <table class="help-table">
               <tr><td>Esc</td><td>Pointer &mdash; select and interact</td></tr>
@@ -1744,7 +1744,7 @@
             </table>
           </div>
 
-          <div class="modal-tab-content" id="help-tab-editing">
+          <div class="modal-tab-content" id="help-tab-editing" role="tabpanel" aria-labelledby="help-tab-btn-editing" tabindex="0" hidden>
             <div class="modal-section-lbl">Undo and clipboard</div>
             <table class="help-table">
               <tr><td>Ctrl + Z</td><td>Undo</td></tr>
@@ -1764,7 +1764,7 @@
             <p class="modal-hint">Arrow keys move the selection when states are selected, and step the simulation otherwise.</p>
           </div>
 
-          <div class="modal-tab-content" id="help-tab-views">
+          <div class="modal-tab-content" id="help-tab-views" role="tabpanel" aria-labelledby="help-tab-btn-views" tabindex="0" hidden>
             <div class="modal-section-lbl">Views</div>
             <table class="help-table">
               <tr><td>1</td><td>Canvas</td></tr>
@@ -1781,7 +1781,7 @@
             </table>
           </div>
 
-          <div class="modal-tab-content" id="help-tab-canvas">
+          <div class="modal-tab-content" id="help-tab-canvas" role="tabpanel" aria-labelledby="help-tab-btn-canvas" tabindex="0" hidden>
             <div class="modal-section-lbl">Zoom and framing</div>
             <table class="help-table">
               <tr><td>Scroll</td><td>Zoom in / out</td></tr>
@@ -1807,7 +1807,7 @@
             <p class="modal-hint">Minimap keys apply while it has keyboard focus.</p>
           </div>
 
-          <div class="modal-tab-content" id="help-tab-sim">
+          <div class="modal-tab-content" id="help-tab-sim" role="tabpanel" aria-labelledby="help-tab-btn-sim" tabindex="0" hidden>
             <div class="modal-section-lbl">Stepping</div>
             <table class="help-table">
               <tr><td>Enter / &rarr;</td><td>Step forward</td></tr>
@@ -1834,12 +1834,12 @@
        the right is .about-val so the rows share one size; the badge and the link
        add chrome on top of it, never their own font. The version is filled in by
        openAboutModal() from the build-time __APP_VERSION__ define. -->
-  <div class="overlay" id="about-modal" role="dialog" aria-modal="true" aria-label="About AutomataStudio">
+  <div class="overlay" id="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-modal-title">
     <div class="modal about-modal-wide">
       <div class="about-logo-header">
         <svg class="logo-mark logo-mark-lg" aria-hidden="true"><use href="#logo-mark" /></svg>
         <div class="about-identity">
-          <div class="logo">Automata<em>Studio</em></div>
+          <h2 class="logo" id="about-modal-title">Automata<em>Studio</em></h2>
           <div class="logo-author">Shreyan Chaubey</div>
         </div>
       </div>
@@ -1869,9 +1869,9 @@
   <!-- Software update. Desktop only, and driven entirely from
        js/electron-bridge.js over the update-status channel — the web build never
        opens it, which is why nothing here is wired through bridge.js. -->
-  <div class="overlay" id="update-modal" role="dialog" aria-modal="true" aria-labelledby="update-title">
+  <div class="overlay" id="update-modal" role="dialog" aria-modal="true" aria-labelledby="update-title" aria-describedby="update-msg">
     <div class="modal">
-      <div class="modal-title" id="update-title">Checking for Updates</div>
+      <h2 class="modal-title"><span class="modal-title-text" id="update-title">Checking for Updates</span></h2>
       <div class="confirm-msg" id="update-msg">Contacting the update server…</div>
       <div class="update-code" id="update-code" hidden></div>
       <div class="update-bar" id="update-bar" hidden>

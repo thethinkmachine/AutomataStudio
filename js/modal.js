@@ -29,13 +29,17 @@ export const MODAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disa
  * @param {Function} [opts.submit]       primary action; Enter invokes it
  * @param {Function} [opts.onEscape]     first refusal on Escape; true = consumed
  * @param {boolean} [opts.dismissOnBackdrop] close when the backdrop is clicked
+ * @param {string|Function} [opts.initialFocus] what to focus on open — an id, a
+ *   selector within the dialog, or a function returning an element. Absent
+ *   means the first focusable child in DOM order.
  */
 export function registerModal(id, opts = {}) {
   ModalRegistry[id] = {
     onClose: opts.onClose || null,
     submit: opts.submit || null,
     onEscape: opts.onEscape || null,
-    dismissOnBackdrop: !!opts.dismissOnBackdrop
+    dismissOnBackdrop: !!opts.dismissOnBackdrop,
+    initialFocus: opts.initialFocus || null
   };
 }
 
@@ -57,10 +61,80 @@ export function modalFocusables(shell) {
   );
 }
 
+// ── Close button ──────────────────────────────────────────────────
+// Not one of the thirteen dialogs had one: Escape and — for the four that opt
+// into it — a backdrop click were the only ways out, which leaves About and
+// Keyboard Shortcuts with a single focusable control between them and no exit
+// at all on a touch device.
+//
+// It is injected rather than written thirteen times so a dialog added later
+// gets one without remembering to, the way js/reference.js wires its own
+// chrome at creation. It goes inside .modal-title, which is the sticky bar, so
+// it stays reachable in a dialog tall enough to scroll — and it is appended to
+// the <h2> rather than to the <span class="modal-title-text"> inside it,
+// because several dialogs rewrite their title text (the transition editor, the
+// divider editor, the update dialog, every confirm) and the wizard rebuilds its
+// title on every step. Writing to the span cannot disturb a sibling.
+//
+// A dialog with no .modal-title — About leads with its logo lockup — gets the
+// absolutely positioned variant instead.
+
+// Phosphor's `x`, built as nodes rather than assigned as innerHTML — the same
+// stance js/markdown.js takes, and the reason the whole app has one HTML parse
+// site to audit rather than several.
+const CLOSE_PATH = 'M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z';
+
+function closeGlyph() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 256 256');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', CLOSE_PATH);
+  svg.appendChild(path);
+  return svg;
+}
+
+/**
+ * Give a dialog the chrome every dialog gets. Idempotent — called on every
+ * open, so it also covers a dialog whose shell was built at runtime.
+ */
+export function installModalChrome(shell) {
+  if (!shell) return;
+  const box = shell.querySelector('.modal');
+  if (!box || box.querySelector('.modal-close')) return;
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'modal-close';
+  btn.setAttribute('aria-label', 'Close dialog');
+  btn.appendChild(closeGlyph());
+  btn.addEventListener('click', () => closeModal(shell.id));
+
+  const title = box.querySelector('.modal-title');
+  if (title) {
+    title.appendChild(btn);
+  } else {
+    btn.classList.add('modal-close-float');
+    box.insertBefore(btn, box.firstChild);
+  }
+}
+
+/** Resolve a registered initialFocus declaration against an open dialog. */
+function resolveInitialFocus(shell, decl) {
+  if (!decl) return null;
+  let el = null;
+  if (typeof decl === 'function') el = decl();
+  else if (typeof decl === 'string') el = shell.querySelector(decl) || $(decl);
+  return el && typeof el.focus === 'function' && shell.contains(el) ? el : null;
+}
+
 export function showOverlay(id) {
   const shell = $(id);
   if (!shell) return;
   if (isModalOpen(id)) return;
+
+  installModalChrome(shell);
 
   ModalReturnFocus[id] = document.activeElement;
   shell.classList.add('show');
@@ -70,8 +144,19 @@ export function showOverlay(id) {
   shell.style.zIndex = String(900 + ModalStack.length);
   document.body.classList.add('modal-open');
 
-  // Autofocus the first field so keyboard users land inside the dialog.
-  // Modals that focus a specific control do it themselves after this call.
+  // Where focus lands is the dialog's to declare — `initialFocus` on its
+  // registration — because the fallback is "first focusable in DOM order",
+  // which is the close button or a Cancel as often as it is the field the
+  // reader came to fill in. Dialogs used to fix that by calling focus() again
+  // after this returned, which is a second focus move the reader can see.
+  const entry = ModalRegistry[id];
+  const wanted = resolveInitialFocus(shell, entry && entry.initialFocus);
+  if (wanted) {
+    wanted.focus();
+    if (typeof wanted.select === 'function' && wanted.tagName === 'INPUT') wanted.select();
+    return;
+  }
+
   const focusables = modalFocusables(shell);
   if (focusables.length) {
     focusables[0].focus();

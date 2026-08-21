@@ -364,6 +364,29 @@
     margin-right: 0;
   }
 
+  /* Full-width buttons stack in DOM order, so the primary — last in the markup
+     because it is rightmost on the desktop — lands at the bottom, nearest the
+     thumb. That is what wrapping already produced, but only as a side effect of
+     `flex-wrap`; declaring the column says it on purpose and stops the order
+     from depending on how the labels happen to measure.
+
+     The two wide dialogs keep their row: their buttons stay `width: auto` (see
+     css/modals.css) so there is nothing to stack. */
+  .modal-foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .export-code-modal .modal-foot {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  /* Nothing to push against once the row is a column. */
+  .modal-foot .modal-foot-start {
+    margin-right: 0;
+  }
+
   .sctrl-steps {
     overflow-x: auto;
   }
@@ -498,8 +521,12 @@
     grid-template-columns: 1fr;
   }
 
+  /* Retunes the tokens rather than the padding, so the sticky title's and
+     footer's negative bleed margins in css/modals.css track the new value
+     instead of overhanging by the desktop one. */
   .modal {
-    padding: 18px 16px;
+    --modal-px: 16px;
+    --modal-py: 18px;
     min-width: 0;
     width: calc(100% - 20px);
   }

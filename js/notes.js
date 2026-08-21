@@ -754,6 +754,8 @@ let _noteEditorLastValid = '';
 // Enter inserts a newline in the note textarea; Ctrl/Cmd+Enter saves.
 registerModal('note-modal', {
   submit: () => confirmNote(),
+  // The editor, not the first toolbar button showOverlay would otherwise pick.
+  initialFocus: '#note-text',
   onClose: () => {
     if (_noteModalIsNew && !_noteModalCommitted && App.editNoteId) {
       App.notes = App.notes.filter(n => n.id !== App.editNoteId);
@@ -779,7 +781,6 @@ export function openNoteModal(id, { isNew = false } = {}) {
   setNoteModalColorUI(_noteModalColor);
   updateNoteEditor();
   showOverlay('note-modal');
-  if (textEl) setTimeout(() => textEl.focus(), 50);
 }
 export function setNoteModalColorUI(color) {
   document.querySelectorAll('#note-modal .note-swatch').forEach(btn => {
