@@ -17,18 +17,32 @@ import { isAnyPDA, isAnyTM } from './utils.js';
 //
 //    symbolic   — every symbol is one character. L is shown as a
 //                 fingerprint: Σ* in shortlex order, one cell per
-//                 word, accepted cells lit.
+//                 word, accepted cells lit. Σ* has no end, so the
+//                 grid scrolls: a sentinel pulls the next rows out
+//                 of a paused enumeration, the way the trace list
+//                 below does, and a cell is decided only once it is
+//                 about to be looked at.
 //    vocabulary — some symbol is a word. Σ* is exponential in |Σ|,
 //                 so at (say) 17 event names a fingerprint never
-//                 reaches a length that holds an accepted word. L is
-//                 shown as accepted traces instead: shortlex over
-//                 L(M) itself, found by walking the machine.
+//                 reaches a length that holds an accepted word — not
+//                 at any amount of scrolling. L is shown as accepted
+//                 traces instead: shortlex over L(M) itself, found by
+//                 walking the machine.
 //
 //  Both sit under the same one-line formal definition whose
 //  components are clickable and cross-highlight the canvas.
 // ══════════════════════════════════════════════════════════════════
 
-export const LANG_FP_CELLS = 128;        // fingerprint budget, in cells
+export const LANG_FP_ROW_CELLS = 20;     // cells drawn on one gutter row; the
+                                         // column count in css/views.css is the
+                                         // same number and has to stay so
+export const LANG_FP_ROWS = 8;           // rows drawn before the reader must scroll
+export const LANG_FP_PAGE = 6;           // rows pulled per scroll-triggered batch
+export const LANG_FP_CELL_CAP = 8192;    // hard backstop: one full simulation per cell
+export const LANG_FP_DEPTH_CAP = 512;    // hard backstop on word length. Binds only
+                                         // for a one-symbol Σ, where a block never
+                                         // grows and the cell cap alone would let
+                                         // the reader scroll to length 8192
 export const LANG_TRACE_ROWS = 6;        // rows shown before the user has to scroll
 export const LANG_TRACE_PAGE = 20;       // rows fetched per scroll-triggered batch
 export const LANG_TRACE_DEPTH_CAP = 300; // hard backstop on word length; the step
@@ -142,20 +156,85 @@ export function langVerdict(tokens) {
 }
 
 // ── fingerprint (symbolic mode) ───────────────────────────────────
-// Shortlex enumeration of Σ*, whole length-blocks only.
-export function langEnumerate(cap) {
-  const sigma = [...App.sigma].filter(s => s !== App.config.sym.eps).sort();
-  const blocks = [];
-  let words = [[]], total = 0, len = 0;
-  while (words.length) {
-    if (total + words.length > cap) break;
-    blocks.push({ len, words });
-    total += words.length; len++;
-    const next = [];
-    for (const w of words) for (const s of sigma) next.push(w.concat([s]));
-    words = next;
+// Shortlex over Σ*: shorter words first, ties broken on the alphabet's
+// own order, with the *last* symbol varying fastest inside a length.
+//
+// Words are addressed, not accumulated. The i-th word of length L is i
+// written in base |Σ|, so the enumeration can start drawing at any
+// offset without building — or holding — everything before it. That is
+// what lets the grid be scrolled rather than budgeted: a length block
+// is |Σ|^L words, which at seventeen event names is a hundred thousand
+// arrays by length four, and the reader who scrolls that far looks at
+// twenty of them at a time.
+export function langSigmaOrdered() {
+  return [...App.sigma].filter(s => s !== App.config.sym.eps).sort();
+}
+
+export function langWordAt(sigma, len, idx) {
+  const n = sigma.length;
+  if (!n) return [];
+  const w = new Array(len);
+  for (let k = len - 1; k >= 0; k--) { w[k] = sigma[idx % n]; idx = Math.floor(idx / n); }
+  return w;
+}
+
+// The fingerprint as a stream of gutter rows, ready to draw and paused
+// between them. Two shapes, and the size of Σ picks which:
+//
+//   |Σ| ≥ 2 — one row per length block, wrapped every LANG_FP_ROW_CELLS
+//             cells. The block is the unit being compared, so it gets
+//             the gutter number and a line of its own.
+//   |Σ| ≤ 1 — one row per LANG_FP_ROW_CELLS *lengths*. A unary block
+//             holds exactly one word, so a row per block is a column of
+//             single cells — 128 rows tall, one cell wide, with the
+//             length gutter counting to 127. That is not a fingerprint
+//             of anything: what a unary language has to show is its
+//             period, and a period is only visible along a ribbon.
+//
+// A row is addressed, not just drawn: `len` plus `off` locates its first
+// word in the enumeration, and `span` says the row walks lengths rather
+// than a block. That is enough to rebuild any cell's word from where the
+// cell sits, which is what lets the grid carry no per-cell data at all.
+//
+// `state.capped` says the stream stopped at a backstop rather than at
+// the end of Σ*, which is the difference between "that is all of it"
+// and "there is more, we stopped counting".
+export function* langFingerprintRows(state = {}, opts = {}) {
+  const sigma = langSigmaOrdered();
+  const n = sigma.length;
+  const cellCap = opts.cellCap ?? LANG_FP_CELL_CAP;
+  const depthCap = opts.depthCap ?? LANG_FP_DEPTH_CAP;
+  const rowCells = opts.rowCells ?? LANG_FP_ROW_CELLS;
+  state.capped = false;
+
+  // With no symbols at all, Σ* is {ε} — one cell, and genuinely all of it.
+  if (!n) { yield { len: 0, off: 0, words: [[]], span: false }; return; }
+
+  let cells = 0;
+
+  if (n === 1) {
+    for (let len = 0; len <= depthCap && cells < cellCap;) {
+      const start = len, words = [];
+      while (words.length < rowCells && len <= depthCap && cells < cellCap) {
+        words.push(langWordAt(sigma, len, 0)); len++; cells++;
+      }
+      yield { len: start, off: 0, words, span: true };
+    }
+    state.capped = true;   // Σ* over one symbol never runs out
+    return;
   }
-  return { blocks, total, sigma };
+
+  for (let len = 0, size = 1; len <= depthCap; len++, size *= n) {
+    for (let i = 0; i < size; i += rowCells) {
+      if (cells >= cellCap) { state.capped = true; return; }
+      const take = Math.min(rowCells, size - i, cellCap - cells);
+      const words = new Array(take);
+      for (let k = 0; k < take; k++) words[k] = langWordAt(sigma, len, i + k);
+      cells += take;
+      yield { len, off: i, words, span: false };
+    }
+  }
+  state.capped = true;
 }
 
 // How many cells a fingerprint would need to reach a given length.
@@ -792,9 +871,33 @@ export function renderLangExportBar(host) {
 }
 
 // ── symbolic: the fingerprint ─────────────────────────────────────
+const LANG_SUPS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+
+// A long unary word is drawn as aⁿ. At length 300 the string itself is
+// not something anyone reads, and the exponent is the only part of it
+// that varies from the cell before.
+export function langFpLabel(w) {
+  if (!w.length) return App.config.sym.eps;
+  if (w.length > 8 && w.every(s => s === w[0])) {
+    return w[0] + String(w.length).replace(/\d/g, d => LANG_SUPS[+d]);
+  }
+  return w.join('');
+}
+
+// Backed by a live generator, the same way the trace list is: the grid
+// starts at LANG_FP_ROWS rows and a sentinel at the bottom pulls the
+// next page straight out of the paused enumeration, so the reader
+// scrolls into Σ* instead of being handed 128 cells and a full stop.
+// Nothing past the drawn rows has been decided — a cell costs one real
+// simulation, so cells are paid for as they are looked at, which is
+// also why the counts and the legend are running totals over what is
+// on screen rather than over a budget fixed in advance.
 export function renderLangFingerprint(host) {
-  const { blocks, total } = langEnumerate(LANG_FP_CELLS);
-  if (!blocks.length) return;
+  const streamState = { capped: false };
+  const rows = langFingerprintRows(streamState);
+  // Fixed for the life of this node: _langExtKey folds Σ in, so a change
+  // to the alphabet rebuilds the grid rather than reusing it.
+  const sigma = langSigmaOrdered();
 
   const head = _le('div', 'lang-head');
   head.appendChild(_le('span', 'lang-cap', 'fingerprint'));
@@ -802,57 +905,177 @@ export function renderLangFingerprint(host) {
   head.appendChild(count);
   host.appendChild(head);
 
-  const grid = _le('div', 'lang-fp');
-  const read = _le('div', 'lang-fp-read');
-  let nAcc = 0, nRej = 0, nUnk = 0;
+  const scroll = _le('div', 'lang-fp');
+  const grid = _le('div', 'lang-fp-grid');
+  const sentinel = _le('div', 'lang-fp-sentinel');
+  scroll.appendChild(grid);
+  scroll.appendChild(sentinel);
 
-  for (const blk of blocks) {
-    const row = _le('div', 'lang-fp-row');
-    row.appendChild(_le('div', 'lang-fp-len', String(blk.len)));
-    const cells = _le('div', 'lang-fp-cells');
-    for (const w of blk.words) {
-      const v = langVerdict(w);
-      if (v === 'acc') nAcc++; else if (v === 'unk') nUnk++; else nRej++;
-      const label = w.length ? w.join('') : App.config.sym.eps;
-      const c = _le('button', 'lang-fp-c' + (v === 'acc' ? ' acc' : v === 'unk' ? ' unk' : ''));
-      c.type = 'button';
-      c.dataset.tip = `${label} — ${v === 'acc' ? 'accepted' : v === 'unk' ? 'no verdict' : 'rejected'}`;
-      c.setAttribute('aria-label', c.title);
-      const show = () => {
-        read.innerHTML = '';
-        read.appendChild(_le('span', 'w', label));
-        read.appendChild(_le('span', 'v-' + v,
-          v === 'acc' ? 'accepted' : v === 'unk' ? 'no verdict' : 'rejected'));
-      };
-      c.addEventListener('mouseenter', show);
-      c.addEventListener('focus', show);
-      c.addEventListener('click', () => {
-        grid.querySelectorAll('.lang-fp-c.lang-fp-selected').forEach(x => x.classList.remove('lang-fp-selected'));
-        c.classList.add('lang-fp-selected');
-        langLoadTrace(w);
-      });
-      cells.appendChild(c);
-    }
-    row.appendChild(cells);
-    grid.appendChild(row);
-  }
-  host.appendChild(grid);
-  host.appendChild(read);
-  count.textContent = `${nAcc} of ${total}`;
+  // The readout is two nodes for the life of the grid, written over on
+  // hover, rather than two built per cell the pointer crosses.
+  const read = _le('div', 'lang-fp-read');
+  const readWord = _le('span', 'w');
+  const readVerdict = _le('span');
+  read.appendChild(readWord);
+  read.appendChild(readVerdict);
 
   const legend = _le('div', 'lang-legend');
-  const kv = (cls, txt) => { const s = _le('span'); s.appendChild(_le('i', cls)); s.appendChild(document.createTextNode(txt)); return s; };
-  legend.appendChild(kv('k-acc', `accept ${nAcc}`));
-  legend.appendChild(kv('k-rej', `reject ${nRej}`));
-  if (nUnk) legend.appendChild(kv('k-unk', `no verdict ${nUnk}`));
-  host.appendChild(legend);
+  const foot = _le('div', 'lang-foot');
 
-  // The hatched cells are the honest part: raising the budget resolves the
-  // slow ones, and whatever is left never halts at any budget.
-  if (nUnk) {
-    host.appendChild(_le('div', 'lang-foot',
-      `${nUnk} word${nUnk > 1 ? 's' : ''} still running after ${langStepBudget()} steps — ` +
-      'not rejections. Raise the budget in Settings › Turing Machine; whatever stays hatched never halts.'));
+  let nAcc = 0, nRej = 0, nUnk = 0, shown = 0, deepest = 0;
+  let exhausted = false, selected = null;
+  const say = v => v === 'acc' ? 'accepted' : v === 'unk' ? 'no verdict' : 'rejected';
+
+  // ── a cell is where it sits ──────────────────────────────────────
+  // Nothing per-cell is stored or closed over: the row records the one
+  // (len, off) pair its twenty cells share, and a cell's word is
+  // rebuilt from that plus its index at the moment it is wanted. It is
+  // the rule render.js follows for states and edges, and here it is
+  // what makes a long scroll affordable — a listener per cell per
+  // event would be 24,576 of them at the cell cap, each closing over a
+  // word array that then cannot be collected.
+  //
+  // The verdicts ride along as one character per cell in a single
+  // string on the row — describing a cell must not re-decide its word,
+  // which for a Turing machine is a second full run per hover.
+  const cellAt = (el) => {
+    const cells = el && el.parentNode;
+    const at = cells && cells._fpAt;
+    if (!at) return null;
+    const i = Array.prototype.indexOf.call(cells.children, el);
+    if (i < 0) return null;
+    return {
+      w: at.span ? langWordAt(sigma, at.len + i, 0) : langWordAt(sigma, at.len, at.off + i),
+      v: at.v[i] === 'a' ? 'acc' : at.v[i] === 'u' ? 'unk' : 'rej'
+    };
+  };
+
+  const reveal = (el) => {
+    const cell = cellAt(el);
+    if (!cell) return;
+    readWord.textContent = langFpLabel(cell.w);
+    readVerdict.className = 'v-' + cell.v;
+    readVerdict.textContent = say(cell.v);
+  };
+
+  grid.addEventListener('pointerover', e => reveal(e.target));
+  grid.addEventListener('focusin', e => reveal(e.target));
+  grid.addEventListener('click', e => {
+    const cell = cellAt(e.target);
+    if (!cell) return;
+    if (selected) selected.classList.remove('lang-fp-selected');
+    selected = e.target;
+    e.target.classList.add('lang-fp-selected');
+    langLoadTrace(cell.w);
+  });
+
+  const addRow = (r) => {
+    const row = _le('div', 'lang-fp-row');
+    const last = r.len + (r.span ? r.words.length - 1 : 0);
+    // The gutter carries one number even when the row spans lengths;
+    // the range is a tooltip, because a gutter wide enough for "20–39"
+    // is a gutter that eats a cell's worth of the grid beside it.
+    // A continuation row's gutter is blank on purpose: the number
+    // appearing is what says a new length has started, which is the
+    // only thing separating one wrapped block from four small ones.
+    const gutter = _le('div', 'lang-fp-len', r.off ? '' : String(r.len));
+    gutter.dataset.tip = r.off
+      ? `length ${r.len}, continued`
+      : r.span && last > r.len
+        ? `lengths ${r.len}–${last}`
+        : `${r.words.length} word${r.words.length > 1 ? 's' : ''} of length ${r.len}`;
+    row.appendChild(gutter);
+
+    const cells = _le('div', 'lang-fp-cells');
+    const verdicts = new Array(r.words.length);
+    for (let i = 0; i < r.words.length; i++) {
+      const w = r.words[i];
+      const v = langVerdict(w);
+      verdicts[i] = v === 'acc' ? 'a' : v === 'unk' ? 'u' : 'r';
+      if (v === 'acc') nAcc++; else if (v === 'unk') nUnk++; else nRej++;
+      shown++;
+      if (w.length > deepest) deepest = w.length;
+      const c = _le('button', 'lang-fp-c' + (v === 'acc' ? ' acc' : v === 'unk' ? ' unk' : ''));
+      // The accessible name is the one thing a cell carries, because it
+      // has to be there before an assistive technology asks rather than
+      // when a pointer arrives. There is deliberately no `data-tip` to
+      // go with it: the readout under the grid says the same sentence
+      // immediately and in a fixed place, and a tooltip chasing the
+      // pointer across eleven-pixel cells is the same text again, later
+      // and harder to read.
+      c.setAttribute('aria-label', `${langFpLabel(w)} — ${say(v)}`);
+      cells.appendChild(c);
+    }
+    cells._fpAt = { len: r.len, off: r.off, span: r.span, v: verdicts.join('') };
+    row.appendChild(cells);
+    grid.appendChild(row);
+  };
+
+  // Built once and written over, so a pull updates three strings rather
+  // than tearing the legend down and rebuilding it.
+  const kv = (cls) => {
+    const el = _le('span');
+    el.appendChild(_le('i', cls));
+    const t = _le('span');
+    el.appendChild(t);
+    return { el, t };
+  };
+  const kAcc = kv('k-acc'), kRej = kv('k-rej'), kUnk = kv('k-unk');
+  legend.appendChild(kAcc.el);
+  legend.appendChild(kRej.el);
+  let unkShown = false;
+
+  const update = () => {
+    count.textContent = `${nAcc} of ${shown}`;
+    kAcc.t.textContent = `accept ${nAcc}`;
+    kRej.t.textContent = `reject ${nRej}`;
+    if (nUnk) {
+      kUnk.t.textContent = `no verdict ${nUnk}`;
+      if (!unkShown) { legend.appendChild(kUnk.el); unkShown = true; }
+    }
+
+    const parts = [`to length ${deepest}`];
+    if (!exhausted) parts.push('scroll for more');
+    else if (streamState.capped) parts.push(`stopped at ${shown} words — Σ* goes on`);
+    else parts.push('that is all of Σ*');
+    // The hatched cells are the honest part: raising the budget resolves
+    // the slow ones, and whatever is left never halts at any budget.
+    if (nUnk) {
+      parts.push(`${nUnk} still running after ${langStepBudget()} steps — not rejections. ` +
+        'Raise the budget in Settings › Turing Machine; whatever stays hatched never halts');
+    }
+    foot.textContent = parts.join(' · ');
+  };
+
+  let io = null;
+  const pull = (n) => {
+    if (exhausted) return;
+    for (let i = 0; i < n; i++) {
+      const nx = rows.next();
+      if (nx.done) { exhausted = true; break; }
+      addRow(nx.value);
+    }
+    update();
+    if (exhausted && io) { io.disconnect(); io = null; }
+  };
+
+  // A stale grid may still hold a live observer watching its sentinel;
+  // renderLangExtension calls this before the subtree goes unreachable.
+  host._cleanup = () => { if (io) { io.disconnect(); io = null; } };
+
+  pull(LANG_FP_ROWS);
+  if (!shown) return;
+
+  host.appendChild(scroll);
+  host.appendChild(read);
+  host.appendChild(legend);
+  host.appendChild(foot);
+
+  if (!exhausted && typeof IntersectionObserver === 'function') {
+    io = new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) pull(LANG_FP_PAGE);
+    }, { root: scroll, threshold: 0 });
+    io.observe(sentinel);
   }
 }
 

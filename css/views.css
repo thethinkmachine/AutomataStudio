@@ -699,16 +699,42 @@
    same picture accept the same language. */
 .lang-fp {
   margin-top: 5px;
+  /* ~8 rows before it scrolls. A sentinel at the bottom pulls the next
+     page out of the paused enumeration, so the grid is a window onto
+     Σ* rather than a budget of 128 cells. The axis is clamped on
+     purpose: a box that scrolls on one axis computes `visible` to
+     `auto` on the other, and a two-axis scroller here would cut every
+     row off at both edges the moment one row was a pixel too wide.
+     The padding is what the hover pop grows into — without it a cell
+     on the first row or at either edge is clipped as it scales. */
+  max-height: 232px;
+  overflow: hidden auto;
+  scrollbar-gutter: stable;
+  padding: 3px;
+}
+
+.lang-fp-grid {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
+.lang-fp-sentinel { height: 1px; }
+
 .lang-fp-row {
   display: grid;
-  grid-template-columns: 14px 1fr;
+  /* Wide enough for three digits: a one-symbol Σ counts lengths rather
+     than words, so the gutter reaches the hundreds. */
+  grid-template-columns: 22px 1fr;
   gap: 5px;
   align-items: start;
+  /* Scrolled far enough this grid holds thousands of cells, and all but
+     the ~16 rows in view are behind the reader. Rows outside the
+     scrollport skip layout and paint entirely; `auto` in the intrinsic
+     size means each one keeps the height it last had, so the scrollbar
+     does not jump as they come back into view. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 14px;
 }
 
 .lang-fp-len {
@@ -722,6 +748,9 @@
 
 .lang-fp-cells {
   display: grid;
+  /* LANG_FP_ROW_CELLS in js/language.js is this number. The stream
+     hands over rows already cut to it, so the two have to agree or a
+     row wraps where nothing said it should. */
   grid-template-columns: repeat(20, 1fr);
   gap: 2px;
 }

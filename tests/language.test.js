@@ -599,38 +599,97 @@ test('a self-loop that cannot reach any accept does not count as making the lang
 // ══════════════════════════════════════════════════════════════════
 //  FINGERPRINT ENUMERATION
 // ══════════════════════════════════════════════════════════════════
-test('langEnumerate emits whole shortlex blocks within the cell budget', () => {
+// Every word the stream would draw, in the order it would draw them.
+function fpWords(opts) {
+  const out = [];
+  for (const r of context.langFingerprintRows({}, opts)) out.push(...r.words);
+  return out;
+}
+
+test('the fingerprint stream draws one gutter row per length block', () => {
   reset();
   App.sigma = new Set(['a', 'b']);
-  const { blocks, total } = context.langEnumerate(128);
-  assert.equal(total, 127, '1+2+4+...+64');
-  deepEq(blocks.map(b => b.len), [0, 1, 2, 3, 4, 5, 6]);
-  deepEq(blocks.map(b => b.words.length), [1, 2, 4, 8, 16, 32, 64]);
+  const rows = [...context.langFingerprintRows({}, { depthCap: 4 })];
+  deepEq(rows.map(r => r.len), [0, 1, 2, 3, 4]);
+  deepEq(rows.map(r => r.words.length), [1, 2, 4, 8, 16]);
+  assert.ok(rows.every(r => r.off === 0 && !r.span));
+  deepEq(rows[2].words, [['a', 'a'], ['a', 'b'], ['b', 'a'], ['b', 'b']],
+    'shortlex, last symbol varying fastest');
 });
 
-test('a 17-symbol alphabet exhausts the budget before length 2', () => {
-  // The arithmetic that killed the fingerprint for word alphabets.
+test('a block wider than a row is paged, and every page after the first says so', () => {
   reset();
-  App.sigma = new Set(WF_SIGMA);
-  const { blocks, total } = context.langEnumerate(128);
-  deepEq(blocks.map(b => b.len), [0, 1]);
-  assert.equal(total, 18);
-  assert.equal(context.langCellsToReach(17, 2), 307);
-  assert.equal(context.langCellsToReach(17, 3), 5220);
+  App.sigma = new Set(['a', 'b']);
+  const rows = [...context.langFingerprintRows({}, { depthCap: 6 })]
+    .filter(r => r.len === 6);
+  deepEq(rows.map(r => r.words.length), [20, 20, 20, 4], '64 words, 20 to a row');
+  deepEq(rows.map(r => r.off), [0, 20, 40, 60],
+    'a row is addressed, so a cell can be located from where it sits');
+});
+
+test('a one-symbol alphabet is a ribbon: one row per twenty lengths, not one per word', () => {
+  // The layout bug this replaced. A unary block holds exactly one word,
+  // so a row per block was 128 rows of a single cell — a column, with
+  // the period a unary language actually has nowhere to show itself.
+  reset();
+  App.sigma = new Set(['a']);
+  const rows = [...context.langFingerprintRows({}, { depthCap: 49 })];
+  assert.equal(rows.length, 3, '50 lengths at 20 to a row');
+  deepEq(rows.map(r => r.len), [0, 20, 40]);
+  deepEq(rows.map(r => r.words.length), [20, 20, 10]);
+  assert.ok(rows.every(r => r.span && r.off === 0));
+  assert.equal(rows[1].words[0].length, 20, 'the row is lengths 20..39');
+});
+
+test('an empty alphabet is one cell and genuinely all of it', () => {
+  reset();
+  App.sigma = new Set();
+  const state = {};
+  const rows = [...context.langFingerprintRows(state)];
+  deepEq(rows.map(r => r.words), [[[]]]);
+  assert.equal(state.capped, false, 'Σ* = {ε} ends, it is not cut short');
+});
+
+test('the cell cap stops the stream mid-block and reports that it did', () => {
+  reset();
+  App.sigma = new Set(['a', 'b']);
+  const state = {};
+  const words = fpWords({ cellCap: 50 });
+  assert.equal(words.length, 50);
+  [...context.langFingerprintRows(state, { cellCap: 50 })];
+  assert.equal(state.capped, true);
+  // A one-symbol Σ never exhausts either, however deep it is scrolled.
+  App.sigma = new Set(['a']);
+  const unary = {};
+  [...context.langFingerprintRows(unary, { depthCap: 4 })];
+  assert.equal(unary.capped, true);
+});
+
+test('a long unary word is labelled by its exponent', () => {
+  reset();
+  App.sigma = new Set(['a']);
+  assert.equal(context.langFpLabel([]), App.config.sym.eps);
+  assert.equal(context.langFpLabel(['a', 'a', 'a']), 'aaa');
+  assert.equal(context.langFpLabel(Array(12).fill('a')), 'a¹²');
+  assert.equal(context.langFpLabel([...'abababababab']), 'abababababab',
+    'only a run of one symbol collapses');
 });
 
 test('langCellsToReach degenerates correctly for a one-symbol alphabet', () => {
   assert.equal(context.langCellsToReach(1, 4), 5);
   assert.equal(context.langCellsToReach(2, 6), 127);
+  // The arithmetic that keeps word alphabets on the trace list instead.
+  assert.equal(context.langCellsToReach(17, 2), 307);
+  assert.equal(context.langCellsToReach(17, 3), 5220);
 });
 
 test('the fingerprint of (a|b)*abb has the expected accept count', () => {
   reset();
   endsWithAbb();
-  const { blocks } = context.langEnumerate(128);
-  let acc = 0, total = 0;
-  for (const b of blocks) for (const w of b.words) { total++; if (context.langVerdict(w) === 'acc') acc++; }
-  assert.equal(total, 127);
+  const words = fpWords({ depthCap: 6 });
+  let acc = 0;
+  for (const w of words) if (context.langVerdict(w) === 'acc') acc++;
+  assert.equal(words.length, 127, '1+2+4+...+64');
   assert.equal(acc, 15, 'lengths 3..6 contribute 1+2+4+8');
 });
 
@@ -722,9 +781,8 @@ test('an LBA always decides — its configuration space is finite', () => {
       ['l3', 'a', 'a', 'L', 'l3'], ['l3', 'Y', 'Y', 'L', 'l3'], ['l3', 'X', 'X', 'R', 'l1']
     ]
   });
-  const { blocks } = context.langEnumerate(128);
   let unknown = 0;
-  for (const b of blocks) for (const w of b.words) if (context.testLBA3(w, 400) === 'unk') unknown++;
+  for (const w of fpWords({ depthCap: 6 })) if (context.testLBA3(w, 400) === 'unk') unknown++;
   assert.equal(unknown, 0, 'a bounded tape must never leave a word undecided');
 });
 
