@@ -2973,29 +2973,96 @@ export function openSettingsModal() {
 
 // Both tabbed dialogs — Engine Settings and Keyboard Shortcuts — are the same
 // shell (.export-code-modal + .settings-modal-wide), so they switch tabs the
-// same way. The rail is scoped by id because the two are in the DOM at once,
-// and the active tab is resolved from its own onclick text, which is what the
-// markup already carries.
-function switchModalTab(railSel, modalSel, panelPrefix, handlerName, tabId) {
-  const tabs = document.querySelectorAll(`${railSel} .modal-tab`);
-  const contents = document.querySelectorAll(`${modalSel} .modal-tab-content`);
+// same way. The rail is scoped by id because the two are in the DOM at once.
+//
+// The tabs are <button role="tab">s. They were <div onclick>s, which meant the
+// seven settings panels and the five shortcut panels could not be reached from
+// the keyboard at all — the one strip in the app that had not had the treatment
+// js/panel-state.js gives the sidebars. Three things follow, and they are the
+// same three the sidebar strip maintains:
+//
+//   • `aria-selected` is the state a screen reader reads, so it is written on
+//     every tab, not just the selected one.
+//   • Exactly one tab is in the page's tab order at a time (a roving
+//     tabindex), so Tab steps past the whole strip rather than through it, and
+//     the arrows walk it.
+//   • `hidden` is what hides a panel — see the note in css/modals.css. The
+//     `.active` class is now only what the strip styles from.
+//
+// The target is resolved by data-tab rather than by matching the onclick
+// attribute's text, which is what this did before: it made the selector depend
+// on the exact spelling of a handler call, so the help rail — which carried no
+// data-tab — could not be addressed any other way.
+function switchModalTab(railSel, modalSel, panelPrefix, tabPrefix, tabId) {
+  // Deselect everything, then select the target by id. The sweep cannot do both
+  // jobs: it runs through querySelectorAll, and the target has to be reachable
+  // even when that returns nothing — which is how the tests observe this, and
+  // how the previous version of this function was written for the same reason.
+  document.querySelectorAll(`${railSel} .modal-tab`).forEach(t => {
+    t.classList.remove('active');
+    t.setAttribute('aria-selected', 'false');
+    t.tabIndex = -1;
+  });
+  document.querySelectorAll(`${modalSel} .modal-tab-content`).forEach(c => {
+    c.classList.remove('active');
+    c.hidden = true;
+  });
 
-  tabs.forEach(t => t.classList.remove('active'));
-  contents.forEach(c => c.classList.remove('active'));
+  const targetTab = document.getElementById(tabPrefix + tabId);
+  if (targetTab) {
+    targetTab.classList.add('active');
+    targetTab.setAttribute('aria-selected', 'true');
+    targetTab.tabIndex = 0;
+  }
 
-  const targetTab = document.querySelector(`${railSel} [onclick="${handlerName}('${tabId}')"]`);
   const targetContent = document.getElementById(panelPrefix + tabId);
-  if (targetTab) targetTab.classList.add('active');
-  if (targetContent) targetContent.classList.add('active');
+  if (targetContent) {
+    targetContent.classList.add('active');
+    targetContent.hidden = false;
+  }
 }
 
 export function switchSettingsTab(tabId) {
-  switchModalTab('#settings-tabs', '#settings-modal', 'tab-', 'switchSettingsTab', tabId);
+  switchModalTab('#settings-tabs', '#settings-modal', 'tab-', 'settings-tab-', tabId);
 }
 
 export function switchHelpTab(tabId) {
-  switchModalTab('#help-tabs', '#help-modal', 'help-tab-', 'switchHelpTab', tabId);
+  switchModalTab('#help-tabs', '#help-modal', 'help-tab-', 'help-tab-btn-', tabId);
 }
+
+// Arrow/Home/End over a modal tab strip. Delegated on document rather than
+// bound per tab so it costs one listener for both dialogs, and read at event
+// time so it stays correct if a rail is ever built at runtime. Selecting moves
+// focus with it, which is what makes an arrow walk feel like a walk — the
+// panel changes under the reader as they go, matching the sidebar strip.
+document.addEventListener('keydown', e => {
+  // Duck-typed rather than `instanceof Element`: the DOM stub the tests run
+  // against has no Element constructor, and a listener that throws on document
+  // takes every handler after it down with it.
+  const tab = e.target && typeof e.target.closest === 'function' ? e.target.closest('.modal-tab') : null;
+  if (!tab) return;
+  const rail = tab.closest('[role="tablist"]');
+  if (!rail) return;
+
+  const tabs = Array.from(rail.querySelectorAll('.modal-tab'));
+  const i = tabs.indexOf(tab);
+  if (i === -1) return;
+
+  // The rails are vertical, but Left/Right are accepted too: the strip is a
+  // list either way, and a reader who reaches for the wrong axis should not
+  // find the keys dead.
+  let next = -1;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+  else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+  else if (e.key === 'Home') next = 0;
+  else if (e.key === 'End') next = tabs.length - 1;
+  else return;
+
+  e.preventDefault();
+  e.stopPropagation();
+  tabs[next].click();
+  tabs[next].focus();
+});
 
 // Panels vary a lot in height (Symbols vs. Transducers), so switching tabs
 // with a plain display:none/block toggle made the whole modal resize —
@@ -3012,9 +3079,13 @@ export function sizeSettingsPanels() {
 
   let max = 0;
   contents.forEach(c => {
-    c.classList.add('active');
+    // `hidden`, not `.active` — the attribute is what draws a panel now, so
+    // measuring through the class would measure a box that is still display:none
+    // and lock the dialog to the height of whichever panel happened to be open.
+    const wasHidden = c.hidden;
+    c.hidden = false;
     max = Math.max(max, c.scrollHeight);
-    if (c !== prevActive) c.classList.remove('active');
+    if (c !== prevActive) c.hidden = wasHidden;
   });
   panels.style.height = max + 'px';
 }

@@ -368,11 +368,11 @@ function renderFoot() {
   back.disabled = Wizard.step === 0;
   right.append(back);
 
-  const primary = btn('btn-p wiz-primary', null, last ? create : goNext);
+  const primary = btn('btn-p', null, last ? create : goNext);
   primary.append(el('span', null, last
     ? (Wizard.mode === 'edit' ? 'Update machine' : 'Create machine')
     : 'Next'));
-  primary.append(icon(last ? ICONS.check : ICONS.caretRight, 'wiz-btn-icon'));
+  primary.append(icon(last ? ICONS.check : ICONS.caretRight, 'btn-icon'));
   right.append(primary);
   foot.append(right);
 }

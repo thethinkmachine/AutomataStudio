@@ -554,6 +554,10 @@ export function ctxStraightenDivider() {
 //  LABEL MODAL
 // ══════════════════════════════════════════════════════════════════
 registerModal('divider-modal', {
+  // The label is what this dialog is for, so it is what opens focused.
+  // showOverlay's fallback would land on the close button; the 40ms timer this
+  // replaces was a second, visible focus move racing the open animation.
+  initialFocus: '#divider-label',
   submit: () => confirmDivider(),
   onClose: () => { App.editDividerId = null; }
 });
@@ -569,7 +573,6 @@ export function openDividerModal(id) {
   setDividerModalColorUI(normalizeDividerColor(d.color));
   setDividerModalStyleUI(normalizeDividerStyle(d.style));
   showOverlay('divider-modal');
-  if (input) setTimeout(() => { input.focus(); input.select(); }, 40);
 }
 
 export function setDividerModalColorUI(color) {
