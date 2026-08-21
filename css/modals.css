@@ -4127,3 +4127,782 @@ button:focus-visible {
   white-space: nowrap;
   color: var(--text3);
 }
+
+/* ─── THE MACHINE WIZARD ───
+   One question per screen, over the draft in js/wizard.js. The dialog is a
+   flex column with a pinned rail and footer and a scrolling body: a step is
+   allowed to be long (a twelve-state machine's list is), and when it is, the
+   step you are on and the way forward must both still be on screen.
+
+   Everything below is built on the shared modal vocabulary — .modal,
+   .modal-foot, .inp, .sel, .chip, .btn-p/.btn-g, .toggle-switch — so the
+   wizard reads as the same app as the dialogs beside it. What is new here is
+   the rail, the row grids, and the two kinds of aside (a note, which
+   explains, and an issue, which objects). */
+
+.modal.wizard-modal-wide {
+  max-width: 760px;
+  width: 94%;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  /* The body scrolls, not the dialog: the rail and the footer are the two
+     things that must never leave. */
+  overflow: hidden;
+  padding: 22px 24px 18px;
+}
+
+.wizard-modal-wide .modal-title {
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.wiz-title-icon {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* The machine being built, said once in the title rather than repeated at
+   the top of every step. */
+.wiz-title-badge {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: .64rem;
+  letter-spacing: .04em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  border-radius: 20px;
+  padding: 2px 9px;
+}
+
+/* ── The rail ──
+   Backwards is always allowed and forwards only as far as the answers reach,
+   so a locked step is drawn as unreachable rather than hidden — knowing there
+   are three questions left is part of knowing where you are. */
+.wiz-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.wiz-rail-item {
+  display: flex;
+}
+
+.wiz-rail-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 20px;
+  padding: 3px 10px 3px 4px;
+  cursor: pointer;
+  color: var(--text3);
+  transition: all var(--transition-fast);
+}
+
+.wiz-rail-num {
+  font-family: var(--mono);
+  font-size: .6rem;
+  width: 17px;
+  height: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  color: inherit;
+  flex-shrink: 0;
+}
+
+.wiz-rail-label {
+  font-family: var(--sans);
+  font-size: .7rem;
+  white-space: nowrap;
+}
+
+.wiz-rail-step:hover:not(:disabled) {
+  color: var(--text2);
+  background: var(--tab-hover-bg);
+}
+
+.wiz-rail-step.is-done {
+  color: var(--text2);
+}
+
+.wiz-rail-step.is-done .wiz-rail-num {
+  border-color: var(--green-border);
+  color: var(--green);
+}
+
+.wiz-rail-step.is-current {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+
+.wiz-rail-step.is-current .wiz-rail-num {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.wiz-rail-step:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+/* ── The body ── */
+.wiz-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  padding-right: 2px;
+}
+
+.wiz-q {
+  margin-bottom: 16px;
+}
+
+.wiz-question {
+  font-family: var(--sans);
+  font-size: .95rem;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  color: var(--text);
+  margin: 0 0 6px;
+}
+
+/* Capped at a readable measure. These are two or three sentences of prose in
+   a dialog otherwise made of controls, and a 700px line of explanation is one
+   nobody finishes. */
+.wiz-desc {
+  font-family: var(--sans);
+  font-size: .78rem;
+  line-height: 1.6;
+  color: var(--text2);
+  margin: 0;
+  max-width: 62ch;
+}
+
+/* ── Asides ──
+   A note explains; an issue objects. Different jobs, so different shapes:
+   the note is quiet and unbordered on the left, the issue is tinted. */
+.wiz-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 11px;
+  margin-bottom: 14px;
+  font-family: var(--sans);
+  font-size: .74rem;
+  line-height: 1.55;
+  color: var(--text2);
+}
+
+.wiz-note-icon,
+.wiz-issue-icon {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.wiz-note-icon {
+  color: var(--text3);
+}
+
+.wiz-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wiz-issues:not(:empty) {
+  margin-top: 14px;
+}
+
+.wiz-issue {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  border-radius: 8px;
+  padding: 8px 11px;
+  font-family: var(--sans);
+  font-size: .74rem;
+  line-height: 1.5;
+}
+
+.wiz-issue.is-error {
+  background: var(--red-soft);
+  border: 1px solid var(--red-border);
+  color: var(--red);
+}
+
+.wiz-issue.is-warn {
+  background: var(--gold-soft);
+  border: 1px solid var(--gold-border);
+  color: var(--gold);
+}
+
+/* ── Fields ── */
+.wiz-field {
+  margin-bottom: 16px;
+}
+
+.wiz-field-lbl {
+  display: block;
+  font-family: var(--sans);
+  font-size: .72rem;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.wiz-field-hint {
+  font-family: var(--sans);
+  font-size: .68rem;
+  line-height: 1.55;
+  color: var(--text3);
+  margin: 6px 0 0;
+  max-width: 62ch;
+}
+
+.wiz-field .sel,
+.wiz-field .inp {
+  width: 100%;
+}
+
+.wiz-blurb {
+  resize: vertical;
+  min-height: 62px;
+  line-height: 1.5;
+}
+
+/* ── Which machine ── */
+.wiz-model-group {
+  margin-bottom: 18px;
+}
+
+.wiz-model-group-lbl {
+  font-family: var(--sans);
+  font-size: .63rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 8px;
+}
+
+.wiz-model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+  gap: 7px;
+}
+
+.wiz-model {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  text-align: left;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 9px;
+  padding: 9px 11px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.wiz-model:hover {
+  border-color: var(--accent-border);
+  background: var(--surface);
+}
+
+.wiz-model.is-active {
+  border-color: var(--accent-border-strong);
+  background: var(--accent-soft);
+}
+
+.wiz-model-name {
+  font-family: var(--mono);
+  font-size: .74rem;
+  color: var(--accent);
+}
+
+.wiz-model-full {
+  font-family: var(--sans);
+  font-size: .7rem;
+  color: var(--text2);
+  line-height: 1.35;
+}
+
+.wiz-model-tag {
+  font-family: var(--sans);
+  font-size: .66rem;
+  color: var(--text3);
+  line-height: 1.45;
+}
+
+/* ── Alphabets ── */
+.wiz-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 26px;
+  margin-bottom: 10px;
+}
+
+.wiz-chips .chip {
+  font-size: .74rem;
+  padding: 3px 5px 3px 10px;
+}
+
+.wiz-chips .chip.is-locked {
+  color: var(--text2);
+  padding-right: 10px;
+  border-style: dashed;
+}
+
+.wiz-chip-sym {
+  font-family: var(--mono);
+}
+
+.wiz-chips .x {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  color: var(--text3);
+  display: inline-flex;
+}
+
+.wiz-chip-x {
+  width: 11px;
+  height: 11px;
+  fill: currentColor;
+}
+
+.wiz-chips .x:hover {
+  color: var(--red);
+}
+
+.wiz-add-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Clickable, and that is the point: a reader who cannot start from nothing
+   can start from one of these and edit it. */
+.wiz-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.wiz-examples-lbl {
+  font-family: var(--sans);
+  font-size: .68rem;
+  color: var(--text3);
+}
+
+.wiz-example {
+  font-family: var(--mono);
+  font-size: .68rem;
+  background: transparent;
+  border: 1px dashed var(--border2);
+  border-radius: 20px;
+  padding: 3px 10px;
+  color: var(--text2);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wiz-example:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+  border-style: solid;
+}
+
+/* ── Rows ── */
+.wiz-filter {
+  margin-bottom: 10px;
+}
+
+.wiz-filter .inp {
+  width: 100%;
+}
+
+/* Deliberately not its own scroller. The body already scrolls, and a list
+   inside it with its own bar is two nested scroll contexts over one column of
+   rows — the reader's wheel then means different things an inch apart. The
+   header row is sticky instead, so a long list keeps its column names. */
+.wiz-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wiz-row {
+  display: grid;
+  align-items: center;
+  gap: 7px;
+}
+
+.wiz-row-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  padding: 2px 2px 4px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wiz-col-lbl {
+  font-family: var(--sans);
+  font-size: .62rem;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--text3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wiz-col-lbl[data-tip] {
+  cursor: help;
+}
+
+.wiz-row-spacer {
+  width: 28px;
+}
+
+.wiz-state-row {
+  grid-template-columns: 24px minmax(0, 1.5fr) minmax(0, 1fr) 28px;
+}
+
+.wiz-states.has-out .wiz-state-row {
+  grid-template-columns: 24px minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, .9fr) 28px;
+}
+
+/* One column per field the machine actually has, from transitionFieldsFor()
+   — which is why an MTM, a 2PDA and a DFA all lay out without a special
+   case here. */
+.wiz-trans-row {
+  grid-template-columns: repeat(var(--wiz-cols, 3), minmax(0, 1fr)) 28px;
+}
+
+.wiz-test-row {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 28px;
+}
+
+.wiz-radio {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  justify-self: center;
+}
+
+.wiz-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--sans);
+  font-size: .72rem;
+  color: var(--text2);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.wiz-check input {
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.wiz-row .inp,
+.wiz-row .sel {
+  width: 100%;
+  min-width: 0;
+}
+
+.wiz-num {
+  text-align: right;
+}
+
+.wiz-row-del {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text3);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  justify-self: end;
+}
+
+.wiz-row-del:hover:not(:disabled) {
+  background: var(--red-soft);
+  border-color: var(--red-border);
+  color: var(--red);
+}
+
+.wiz-row-del:disabled {
+  opacity: .3;
+  cursor: not-allowed;
+}
+
+.wiz-icon-sm {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+
+.wiz-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 7px;
+  background: transparent;
+  border: 1px dashed var(--border2);
+  border-radius: 8px;
+  color: var(--text2);
+  font-family: var(--sans);
+  font-size: .74rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.wiz-add-btn:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.wiz-btn-icon {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+  flex-shrink: 0;
+}
+
+/* ── Multi-tape rules ──
+   Fourteen fields on one line is a horizontal scroll bar with a machine
+   somewhere inside it, so a tape machine's rule is a block: the states on
+   top, then one line per tape. */
+.wiz-tape-block {
+  border: 1px solid var(--border2);
+  border-radius: 9px;
+  padding: 9px 11px;
+  background: var(--bg3);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wiz-tape-top {
+  grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr) 28px;
+}
+
+.wiz-tape-line {
+  grid-template-columns: 52px minmax(0, 1fr) 16px minmax(0, 1fr) minmax(0, .9fr);
+}
+
+.wiz-tape-lbl {
+  font-family: var(--mono);
+  font-size: .64rem;
+  color: var(--text3);
+}
+
+.wiz-arrow {
+  font-family: var(--mono);
+  font-size: .74rem;
+  color: var(--text3);
+  text-align: center;
+}
+
+/* ── Review ── */
+.wiz-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wiz-summary-machine {
+  font-family: var(--sans);
+  font-size: .86rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wiz-summary-size {
+  font-family: var(--mono);
+  font-size: .68rem;
+  color: var(--text3);
+}
+
+.wiz-diff {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+
+.wiz-diff-chip {
+  font-family: var(--mono);
+  font-size: .66rem;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  padding: 2px 9px;
+  color: var(--text2);
+}
+
+.wiz-findings {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wiz-finding {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-family: var(--sans);
+  font-size: .73rem;
+  line-height: 1.5;
+  color: var(--text2);
+}
+
+.wiz-finding.is-repair {
+  color: var(--red);
+}
+
+.wiz-finding.is-warn {
+  color: var(--gold);
+}
+
+.wiz-finding.is-fix {
+  color: var(--text3);
+}
+
+/* ── Footer ── */
+.wiz-foot {
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.wiz-foot-left {
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.wiz-progress {
+  font-family: var(--mono);
+  font-size: .64rem;
+  letter-spacing: .04em;
+  color: var(--text3);
+  white-space: nowrap;
+}
+
+/* A way out of edit mode that is available without being loud: it is one
+   reader in twenty who wants it, and they want it on the first screen. */
+.wiz-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--sans);
+  font-size: .7rem;
+  color: var(--text3);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wiz-link:hover {
+  color: var(--accent);
+}
+
+.wiz-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* Narrow windows: the grids stop being grids rather than shrinking every
+   column past legibility. A wrapped rule is still one rule — the row keeps
+   its own gap and the labels above it are dropped, since a two-column
+   fragment of a five-column header names the wrong fields. */
+@media (max-width: 720px) {
+  .modal.wizard-modal-wide {
+    max-width: 100%;
+    width: 96%;
+    padding: 18px 16px 14px;
+  }
+
+  .wiz-row-head {
+    display: none;
+  }
+
+  .wiz-state-row,
+  .wiz-states.has-out .wiz-state-row,
+  .wiz-trans-row,
+  .wiz-test-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) 28px;
+  }
+
+  .wiz-tape-line {
+    grid-template-columns: 46px minmax(0, 1fr) 14px minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .wiz-model-grid {
+    grid-template-columns: 1fr;
+  }
+}

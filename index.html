@@ -109,11 +109,20 @@
 
     <!-- Canvas actions: operate on the machine currently on the canvas. -->
     <div class="hdr-group" id="hdr-canvas-actions">
-      <div class="example-picker" id="example-picker">
-        <button class="hbtn icon-only" id="example-picker-btn" type="button" aria-label="Open StateMate — build, edit or browse example automata" aria-controls="statemate-panel" aria-expanded="false" onclick="openStateMate()" data-tip="StateMate & examples" data-tip-kbd="*">
-          <svg viewBox="0 0 256 256" aria-hidden="true" fill="currentColor"><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z" /></svg>
-        </button>
-      </div>
+      <!-- One button in two modes, and the canvas decides which: a plus on an
+           empty canvas builds a machine by asking questions, a pencil on a
+           canvas with a machine on it edits that machine with the answers
+           already filled in. syncWizardButton() in js/wizard-ui.js swaps the
+           glyph, the label and the tooltip, subscribed to Change.GRAPH.
+           The plus is circled deliberately — the tab bar's "create workspace"
+           control is a bare plus, and two identical glyphs in one header
+           meaning two different things is a trap. -->
+      <button class="hbtn icon-only" id="machine-wizard-btn" type="button"
+              aria-haspopup="dialog" aria-controls="wizard-modal" aria-expanded="false"
+              aria-label="Build a machine step by step" onclick="openMachineWizard()"
+              data-tip="Build a machine" data-tip-kbd="N">
+        <svg viewBox="0 0 256 256" aria-hidden="true" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm48-88a8,8,0,0,1-8,8H136v32a8,8,0,0,1-16,0V136H88a8,8,0,0,1,0-16h32V88a8,8,0,0,1,16,0v32h32A8,8,0,0,1,176,128Z" /></svg>
+      </button>
       <div class="hdr-sep canvas-danger-sep"></div>
       <button class="hbtn warn icon-only" onclick="clearAll()" data-tip="Clear canvas" data-tip-kbd="⇧X" aria-label="Clear canvas">
         <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
@@ -183,6 +192,10 @@
         </button>
         <div class="ctx hdr-more-menu" id="hdr-more-menu" role="menu" aria-label="More options">
           <div class="hdr-more-compact-actions">
+            <div class="ctx-i" role="menuitem" onclick="openMachineWizard()">
+              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm48-88a8,8,0,0,1-8,8H136v32a8,8,0,0,1-16,0V136H88a8,8,0,0,1,0-16h32V88a8,8,0,0,1,16,0v32h32A8,8,0,0,1,176,128Z" /></svg>
+              New machine<span class="ctx-kbd-hint">N</span>
+            </div>
             <div class="ctx-i" role="menuitem" onclick="openStateMate()">
               <svg viewBox="0 0 256 256" fill="currentColor"><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88Z" /></svg>
               StateMate
@@ -1324,6 +1337,23 @@
   </div>
 
   <!-- Settings Modal -->
+  <!-- ─── THE MACHINE WIZARD ───
+       Built entirely by js/wizard-ui.js: the rail, the body and the footer
+       are all generated, and every listener is attached at creation. That is
+       why there is not one on*= attribute below — the whole feature adds a
+       single name to js/bridge.js, the way js/reference.js does.
+
+       What goes in each step, and what each step says, are decided in
+       js/wizard.js and js/wizard-copy.js respectively. -->
+  <div class="overlay" id="wizard-modal" role="dialog" aria-modal="true" aria-labelledby="wiz-title">
+    <div class="modal wizard-modal-wide">
+      <div class="modal-title" id="wiz-title">Build a machine</div>
+      <ol class="wiz-rail" id="wiz-rail" aria-label="Steps"></ol>
+      <div class="wiz-body" id="wiz-body"></div>
+      <div class="modal-foot modal-foot-split wiz-foot" id="wiz-foot"></div>
+    </div>
+  </div>
+
   <div class="overlay" id="settings-modal" role="dialog" aria-modal="true" aria-label="Engine Settings">
     <div class="modal export-code-modal settings-modal-wide">
       <div class="modal-title">Engine Settings</div>
@@ -1632,6 +1662,10 @@
         <div class="modal-row" data-tip="Let the tape extend left of the input, as textbooks and JFLAP do. Off, the head stops at the first cell. Does not affect the 2-Way Infinite TM, which is always two-way, or the LBA, which is bounded by its end markers.">
           <span class="modal-lbl">Two-Way Infinite Tape</span>
           <label class="toggle-switch"><input type="checkbox" id="set-two-way-tape"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="A deterministic machine that returns to a configuration it has already been in will return to it forever, so playback stops there and reports a proven non-halt instead of a timeout. Turn it off to watch a machine that never halts keep running to the step limit — the verdict then degrades from “never halts” to “no verdict”. Affects step-by-step playback only; batch runs and the Language panel keep deciding.">
+          <span class="modal-lbl">Stop At A Repeated Configuration</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-detect-loops"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
         </div>
         <div class="modal-row">
           <span class="modal-lbl">TM Max Steps</span>

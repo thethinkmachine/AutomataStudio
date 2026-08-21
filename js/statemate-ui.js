@@ -2256,8 +2256,6 @@ export function stowStateMate() {
   Session.exampleRequest++;
   const live = Session.run ? Session.log.indexOf(Session.run) : -1;
   Session.minSince = live === -1 ? Session.log.length : live;
-  const opener = $('example-picker-btn');
-  if (opener) opener.setAttribute('aria-expanded', 'false');
   // Whatever the host panel's other tab is — Inspector on the right, Workspace
   // on the left. Naming 'inspector' here made stowing a no-op once StateMate
   // could sit on the left edge.
@@ -3193,9 +3191,6 @@ export function openStateMate({ resume = false } = {}) {
 
   const jump = $('sm-jump');
   if (jump) jump.onclick = () => { scrollLogToEnd(true); focusInput(); };
-
-  const opener = $('example-picker-btn');
-  if (opener) opener.setAttribute('aria-expanded', 'true');
 
   // Whether this open keeps the reader's place is decided *here*, before any
   // render, not read back off `Session.pinned` afterwards: renderLog() is

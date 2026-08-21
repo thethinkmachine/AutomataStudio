@@ -18,6 +18,7 @@ import {
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
 import { $, App, MachineCategories, MachineTypes, R, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { getState, getTransition, hideContextMenu } from './states-transitions.js';
+import { openMachineWizard } from './wizard-ui.js';
 import {
   applyStateMateSettings, askStateMateAboutSelection, openStateMate, populateStateMateSettings,
   stowStateMate
@@ -893,8 +894,9 @@ document.addEventListener('keydown', e => {
     if (e.key === 'v' || e.key === 'V') { if (App.view === 'build') { e.preventDefault(); pasteClipboard(App._lastCanvasWorldPt || null); } }
     if (e.key === 'd' || e.key === 'D') { if (App.view === 'build') { e.preventDefault(); duplicateSelection(); } }
     if (e.shiftKey && (e.key === 't' || e.key === 'T')) { e.preventDefault(); reopenClosedTab(); }
-    // The header sparkle was the only way to reach StateMate. With a selection
-    // live, this carries it in as the subject of the prompt — which is the
+    // StateMate has no header button of its own — that slot is the wizard's —
+    // so this and the panel tab are its two front doors. With a selection
+    // live, this carries it in as the subject of the prompt, which is the
     // question people actually have in front of a diagram.
     if (e.key === 'k' || e.key === 'K') {
       e.preventDefault();
@@ -922,6 +924,10 @@ document.addEventListener('keydown', e => {
   // The sparkle, as a key. It opens or restores — openStateMate is never a
   // no-op — which is the other end of Escape putting the console away.
   if (e.key === '`') { e.preventDefault(); openStateMate(); }
+  // The header's other entry point: build a machine by answering questions,
+  // or edit the one on the canvas the same way. Which of the two it is comes
+  // off the canvas, here as everywhere else.
+  if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openMachineWizard(); }
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (App.selectedStates.size || App.selectedTransitions.size || App.selectedNotes.size || App.selectedDividers.size) {
       e.preventDefault();
@@ -2918,6 +2924,8 @@ export function openSettingsModal() {
   if ($('set-state-prefix')) $('set-state-prefix').value = c.statePrefix || 'q';
   $('set-transducer-accepts').checked = !!c.transducerAccepts;
   if ($('set-two-way-tape')) $('set-two-way-tape').checked = !!c.twoWayTape;
+  // Absent reads as on — see detectsLoops() in js/state.js.
+  if ($('set-detect-loops')) $('set-detect-loops').checked = c.detectLoops !== false;
   $('set-pda-steps').value = c.maxPdaSteps;
   $('set-pda-paradigm').value = c.pdaParadigm || 'explicit';
   if ($('set-pfa-cutpoint')) $('set-pfa-cutpoint').value = c.pfaCutPoint ?? 0.5;
@@ -3022,6 +3030,7 @@ export function confirmSettings() {
   if ($('set-state-prefix')) c.statePrefix = $('set-state-prefix').value.trim() || 'q';
   c.transducerAccepts = $('set-transducer-accepts').checked;
   if ($('set-two-way-tape')) c.twoWayTape = $('set-two-way-tape').checked;
+  if ($('set-detect-loops')) c.detectLoops = $('set-detect-loops').checked;
   c.pdaParadigm = $('set-pda-paradigm').value || 'explicit';
   if ($('set-pfa-cutpoint')) {
     // A cut-point outside [0, 1] can never be crossed in one direction or the
@@ -3127,6 +3136,7 @@ export function getEditorSettingsData() {
     pfaCutPoint: c.pfaCutPoint,
     transducerAccepts: !!c.transducerAccepts,
     twoWayTape: !!c.twoWayTape,
+    detectLoops: c.detectLoops !== false,
     maxPdaSteps: c.maxPdaSteps,
     maxTmSteps: c.maxTmSteps,
     langStepBudget: c.langStepBudget,
@@ -3197,6 +3207,7 @@ export function populateSettingsModalInputs(data) {
   if (data.pfaCutPoint !== undefined && $('set-pfa-cutpoint')) $('set-pfa-cutpoint').value = data.pfaCutPoint;
   if (data.transducerAccepts !== undefined) $('set-transducer-accepts').checked = !!data.transducerAccepts;
   if (data.twoWayTape !== undefined && $('set-two-way-tape')) $('set-two-way-tape').checked = !!data.twoWayTape;
+  if (data.detectLoops !== undefined && $('set-detect-loops')) $('set-detect-loops').checked = data.detectLoops !== false;
   if (data.maxPdaSteps !== undefined) $('set-pda-steps').value = data.maxPdaSteps;
   if (data.maxTmSteps !== undefined) $('set-tm-steps').value = data.maxTmSteps;
   if (data.langStepBudget !== undefined && $('set-lang-budget')) $('set-lang-budget').value = data.langStepBudget;

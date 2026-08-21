@@ -7,18 +7,42 @@ const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const modalCss = readFileSync(new URL('../css/modals.css', import.meta.url), 'utf8');
 const viewCss = readFileSync(new URL('../css/views.css', import.meta.url), 'utf8');
 
-// The examples now live inside StateMate rather than in a dialog of their own —
-// see the note at the top of js/statemate-ui.js for why they stayed at all.
-// What this test protects is unchanged: one searchable StateMate surface behind
-// the header button, and no anchored dropdown.
-test('the header button opens the searchable StateMate panel', () => {
+// The examples live inside StateMate rather than in a dialog of their own — see
+// the note at the top of js/statemate-ui.js for why they stayed at all. One
+// searchable surface, and no anchored dropdown.
+//
+// StateMate no longer has a header button: that slot is the machine wizard's.
+// What this pins is that losing it cost StateMate nothing — the panel tab, the
+// ⋯ menu and the two keyboard routes are all still there — because a surface
+// reachable only from a button that has been repurposed is a surface nobody
+// finds again.
+test('StateMate is a searchable panel, reachable without a header button', () => {
   assert.ok(html.includes('id="statemate-panel"'));
   assert.ok(html.includes('id="sm-input"'));
+  assert.ok(html.includes('id="panel-tab-statemate"'), 'the panel tab is the primary route');
   assert.ok(html.includes('aria-controls="statemate-panel"'));
-  const button = html.match(/<button[^>]+id="example-picker-btn"[^>]*>/)?.[0] || '';
-  assert.ok(!button.includes('aria-haspopup="dialog"'));
+  assert.ok(html.includes('onclick="openStateMate()"'), 'and the ⋯ menu is the second');
+  assert.ok(!html.includes('id="example-picker-btn"'), 'the header sparkle is gone');
   assert.ok(!html.includes('id="example-menu"'), 'the old anchored dropdown should be gone');
   assert.ok(!html.includes('id="example-modal"'), 'the standalone example dialog is superseded');
+});
+
+// The button that replaced it. Two modes, one element — js/wizard-ui.js swaps
+// the glyph on Change.GRAPH — so the markup carries the create-mode icon and
+// the dialog it controls, and nothing else.
+test('the header button opens the machine wizard', () => {
+  const button = html.match(/<button[^>]+id="machine-wizard-btn"[^>]*>/s)?.[0] || '';
+  assert.ok(button, 'the wizard button is in the header');
+  assert.ok(button.includes('onclick="openMachineWizard()"'));
+  assert.ok(button.includes('aria-haspopup="dialog"'));
+  assert.ok(button.includes('aria-controls="wizard-modal"'));
+  assert.ok(html.includes('id="wizard-modal"'), 'and the dialog it names exists');
+
+  // The rail, the body and the footer are all generated, so the shell holds
+  // their hosts and not one inline handler.
+  const shell = html.match(/<div class="overlay" id="wizard-modal"[\s\S]*?\n  <\/div>/)?.[0] || '';
+  assert.ok(shell.includes('id="wiz-rail"') && shell.includes('id="wiz-body"') && shell.includes('id="wiz-foot"'));
+  assert.ok(!/\son[a-z]+=/.test(shell), 'the wizard dialog wires itself at creation');
 });
 
 test('standard and auxiliary overlays share one backdrop blur token', () => {

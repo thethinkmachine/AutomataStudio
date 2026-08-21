@@ -50,53 +50,26 @@ function stripBlanks(cells, ctx) {
 }
 
 // Runs one sample through the machine's simulator; returns { accepted, last }.
+//
+// The dispatch is the app's own: parseMachineInput reads the sample the way
+// this machine reads input — a finite word, an ω-word written u(v), one
+// segment per tape — and simulateMachine hands it to the right simulator.
+// This used to be a seventeen-branch copy of runSim's chain living in the
+// test file, which meant a machine could be added to the app and replayed
+// here as a Turing machine without either of them noticing.
 function runSample(h, data, w) {
   const ctx = h.context;
   const App = ctx.App;
   const m = data.machine;
 
-  if (m === 'MTM') {
-    const parts = w.split(',');
-    assert.equal(parts.length, App.tapeCount, `MTM input "${w}" needs one segment per tape`);
-    const tapeTokens = parts.map(p => toTokens(ctx, p.trim()));
-    ctx.simMTM(tapeTokens[0], tapeTokens);
-    const last = App.simSteps[App.simSteps.length - 1];
-    return { accepted: last.final === 'accept', last };
+  const parsed = ctx.parseMachineInput(m, w);
+  assert.ok(parsed.ok, `${m} could not read the sample "${w}": ${parsed.error}`);
+  if (ctx.isMultiTape(m) && w.includes(',')) {
+    assert.equal(parsed.input.tapes.length, App.tapeCount,
+      `MTM input "${w}" needs one segment per tape`);
   }
 
-  // ω-automata take "u(v)", not a finite word, so they never reach toTokens.
-  // Both types and all four acceptance conditions share simOmega — they differ
-  // in which machines are legal and which cycles count, not in how a run is
-  // explored.
-  if (ctx.isOmegaAutomaton(m)) {
-    const parsed = ctx.parseOmegaWord(w);
-    assert.ok(parsed, `ω-automaton input "${w}" must be written u(v)`);
-    const u = toTokens(ctx, parsed.prefix);
-    const v = toTokens(ctx, parsed.period);
-    const res = ctx.simOmega(u, v);
-    return { accepted: res.accepted, last: App.simSteps[App.simSteps.length - 1] };
-  }
-
-  const tokens = toTokens(ctx, w);
-  let result = null;
-  if (m === 'DFA') ctx.simDFA(tokens);
-  else if (m === 'NFA' || m === 'ε-NFA') ctx.simNFA(tokens);
-  else if (m === 'PDA' || m === 'DPDA') result = ctx.simPDA(tokens);
-  else if (m === 'NPDA' || m === 'QA' || m === 'Counter' || m === '2PDA') result = ctx.simNPDA(tokens);
-  else if (m === '2DFA') result = ctx.sim2DFA(tokens);
-  else if (m === '2NFA') result = ctx.sim2NFA(tokens);
-  else if (m === 'Moore') ctx.simMoore(tokens);
-  else if (m === 'Mealy') ctx.simMealy(tokens);
-  else if (m === 'FST') result = ctx.simFST(tokens);
-  else if (m === 'PFA') result = ctx.simPFA(tokens);
-  else if (m === 'PDT') result = ctx.simPDT(tokens);
-  else if (m === '2DFT') result = ctx.sim2DFT(tokens);
-  else if (m === 'NDTM') result = ctx.simNDTM(tokens);
-  else if (m === 'LBA') ctx.simLBA(tokens);
-  else if (m === 'ITM') ctx.simITM(tokens);
-  else if (m === 'TM') ctx.simTM(tokens);
-  else assert.fail(`no simulator dispatch for machine ${m}`);
-
+  const result = ctx.simulateMachine(m, parsed.input);
   const last = App.simSteps[App.simSteps.length - 1];
   const accepted = result && typeof result.accepted === 'boolean'
     ? result.accepted

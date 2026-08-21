@@ -26,7 +26,7 @@ The package is `"type": "module"`. The two Electron entry points are CommonJS an
 
 `js/` is ES modules with explicit imports and exports; `index.html` loads exactly one script, [js/main.js](js/main.js). There is no shared global scope and no load-order dependency — with one deliberate exception.
 
-**[js/bridge.js](js/bridge.js)** re-exposes 217 names on `window` (216 functions plus `App`). The UI is driven by `on*="..."` attributes, which are evaluated as global-scope code and cannot see module bindings. 324 of those attributes are static in `index.html`; a further 122 are in markup the app builds at runtime (algorithm cards in `algorithms-fa.js`, the export dialogs, alphabet chips, context menus) — so grepping `index.html` alone will understate what the HTML depends on.
+**[js/bridge.js](js/bridge.js)** re-exposes 223 names on `window` (222 functions plus `App`). The UI is driven by `on*="..."` attributes, which are evaluated as global-scope code and cannot see module bindings. 337 of those attributes are static in `index.html`; a further 122 are in markup the app builds at runtime (algorithm cards in `algorithms-fa.js`, the export dialogs, alphabet chips, context menus) — so grepping `index.html` alone will understate what the HTML depends on.
 
 Practical consequences:
 
@@ -39,7 +39,7 @@ Practical consequences:
 ES modules make most ordering irrelevant, but three rules are load-bearing and cheap to break:
 
 - **[js/state.js](js/state.js) imports nothing.** Several modules run top-level code against `$` and `App` — `canvas.js` resolves `#canvas-wrap`, `algorithms-cfg.js` aliases `App.grammar` — which only works because `state.js` is a leaf and therefore fully evaluated first. Don't add an import to it. The machine-shape predicates (`getMachineConfig`, `isAnyTM`, `normalizeBoundarySymbolsForMachine`, …) live there rather than in `utils.js` for exactly this reason.
-- **Shared mutable containers live in leaf modules.** A hoisted function is reachable across an import cycle before its own module finishes evaluating, but the `const` it closes over is not — reading it throws *"Cannot access before initialization."* This bit `registerModal` (eight modules call it at module scope) and `ExportFormats` (written by both `export-ui.js` and `codegen.js`). Both containers now sit in import-free modules: [js/modal-registry.js](js/modal-registry.js) and [js/export-registry.js](js/export-registry.js). [js/store.js](js/store.js) is import-free for the same reason — modules `subscribe` at module scope. Follow that pattern for anything else written at module scope from more than one place.
+- **Shared mutable containers live in leaf modules.** A hoisted function is reachable across an import cycle before its own module finishes evaluating, but the `const` it closes over is not — reading it throws *"Cannot access before initialization."* This bit `registerModal` (eight modules call it at module scope) and `ExportFormats` (written by both `export-ui.js` and `codegen.js`). Both containers now sit in import-free modules: [js/modal-registry.js](js/modal-registry.js) and [js/export-registry.js](js/export-registry.js). [js/machines/registry.js](js/machines/registry.js) is the third and the same shape: seven family modules call `defineFamily` at module scope. [js/store.js](js/store.js) is import-free for the same reason — modules `subscribe` at module scope. Follow that pattern for anything else written at module scope from more than one place.
 - **`js/init.js` runs last.** It is the boot sequence, imported last by `main.js`, after `bridge.js`.
 
 Circular imports between the UI modules (`canvas` ↔ `render` ↔ `ui` and friends) are expected and safe — every one resolves a function reference at call time.
@@ -56,13 +56,15 @@ Two of those flags change what a "run" is, so they cut across more than panel vi
 
 **The eight ω-automata are one structure over two axes**, and both are named by the type, so the label on screen is always the machine you have. The `Omega Automata` group is determinism × α: `DBA`/`DcoBA`/`DPA`/`DWA` and `NBA`/`NcoBA`/`NPA`/`NWA`. Each `MachineTypes` entry carries `omegaCondition` (`buchi`, `cobuchi`, `parity`, `weak` — catalogued in the `OmegaAcceptance` registry) and `deterministic`, read back through `omegaAcceptanceOf`, `usesParityPriorities` and `isDeterministicOmega`. **There is no config knob**; adding a ninth type means adding a row, not a setting.
 
-Determinism is enforced three times over: `hasSingleValuedDelta`, the editor's `isDeterministicOmega` branch in `states-transitions.js`, and once more before an ω-run starts, since a loaded or imported machine never passed through the editor. That editor check tests symbol *overlap* rather than equality, because `buchiSuccessors` takes every matching edge instead of resolving to the most specific one the way the deterministic finite-word simulators do.
+Determinism is enforced twice, from one declaration each time. The editor asks the machine for its `determinism` rule (`js/machines/omega.js`); the run asks it for its `guards`, since a loaded or imported machine never passed through the editor. Both tests are the same one — symbol *overlap* rather than equality, because `buchiSuccessors` takes every matching edge instead of resolving to the most specific one the way the deterministic finite-word simulators do — and `hasSingleValuedDelta` reads the same `deterministicDelta` flag, so the three cannot disagree.
 
 All four conditions judge the same object: `inf(r)`, which on an ultimately periodic word is exactly the states on the run's lasso cycle. So each is a predicate over a cycle, and `exploreOmega` serves all eight types by choosing an anchor node plus an `allow` filter in `omegaCycleCandidates` — the filter constrains the *cycle* only, since a finite stem cannot affect `inf(r)`, which is what lets co-Büchi pass through F on the way in. `parity` is the one that changes the data model: α becomes a per-state integer `s.priority`, so F, the accepting ring and the double-click toggle all go away (`acceptsAreShown`), and the number takes over the Moore output's sub-label slot. `weak` decides exactly as `buchi`; its extra content is `findWeakViolation`, a Tarjan pass over the *automaton* asserting every SCC lies wholly inside F or wholly outside it.
 
 Between them the two axes decide expressive power, and it is not uniform: `DBA ⊊ NBA`, but `DPA = NPA` = the full ω-regular class, and `NcoBA = DcoBA ⊊ ω-regular`. Büchi is the only cell where determinism costs languages — which is why `dcoba.json` and `dpa.json` both recognize `FG b`, the language `buchi-classic.json` can only reach by guessing, and why `ncoba.json` and `nwa.json` carry a deliberately redundant branch.
 
-Ordering trap: `isAnyPDA` includes `PDT` and `isTwoWayFA` includes `2DFT`, so a per-machine branch for either has to sit *above* the family check in `langTupleSyms`, `langDeltaSignature`, `updateFormalDef` and `updateRegex`, or the family answer wins and the output alphabet silently vanishes from the tuple. `hasSingleValuedDelta` has the same shape inverted — the `isOmega` branch answers `cfg.deterministic` rather than a blanket `false`, or the editor will let you draw an NBA and call it a DBA. `MachineCategories` drives the model picker; `PDA` is a hidden alias of `DPDA` and is deliberately absent from it.
+`MachineCategories` drives the model picker; `PDA` is a hidden alias of `DPDA` and is deliberately absent from it.
+
+**The ordering traps that used to live here are gone, and it is worth knowing what they were.** `isAnyPDA` includes `PDT` and `isTwoWayFA` includes `2DFT`, so a per-machine branch for either had to sit *above* the family check in `langTupleSyms`, `langDeltaSignature`, `updateFormalDef` and `updateRegex`, or the family answer won and the output alphabet silently vanished from the tuple. `hasSingleValuedDelta` had the same shape inverted: its `isOmega` branch had to answer `cfg.deterministic` rather than a blanket `false`, or the editor would let you draw an NBA and call it a DBA. Both were properties of a *list read in order*. Each machine now declares its own tuple, δ signature and determinism rule (see [The machines](#the-machines)), and a per-type lookup has no order to get wrong.
 
 Multi-tab editing lives in `Workspaces` / `activeWorkspaceId`: each tab is a serialized `exportWorkspaceState()` blob, and switching saves the live `App` into the outgoing tab and rehydrates the incoming one.
 
@@ -167,9 +169,63 @@ The view key is `reference`; every id and class carries a `ref-` prefix (`v-refe
 
 Nothing in the view is reached from an `on*` attribute: the nav links get their listeners at creation, which is why `reference.js` has no entry in `bridge.js`.
 
+### The machines
+
+**Everything a machine *is* lives under [js/machines/](js/machines/), one module per family, and every consumer asks the registry rather than the type's name.**
+
+That is the newest structural line in the app and the reason for it is worth stating plainly. Each question about a machine — how it reads its input, what its transitions carry, how it decides a word, what its tuple is, whether a second edge on the same symbol is a branch or a mistake — used to be answered by an `if` chain over `App.machine`, in a different file per question. There were five of them — `runSim`, `computeBatchResults`, `langVerdict`, `langTupleSyms`, `langDeltaSignature` — and **each ended in a silent `else`**: `runSim`'s fell through to `simTM`, `langVerdict`'s to `'unk'`, `langTupleSyms`'s to a DFA's five-tuple. A machine added to `MachineTypes` and wired into four of the five did not fail — it ran as a Turing machine in the player, reported a DFA's tuple in the panel, and offered a queue's fields in the editor. Counting only dispatch (not codegen's per-language Moore/Mealy emitters, which are a different job), the app tested `App.machine` against a literal name 106 times; it now does so 39 times, and none of those decide how a machine runs.
+
+```
+js/machines/
+  registry.js    import-free. defineMachine / defineFamily, and the lookups.
+  runtime.js     DOM-free. What more than one family needs: the tokenizer,
+                 the ε-closure, "which transition fires", loop tracking.
+  index.js       imports the families (registration is a module-scope side
+                 effect) and exposes the dispatch every consumer uses.
+  finite.js      DFA, NFA, ε-NFA
+  weighted.js    PFA
+  omega.js       DBA, DcoBA, DPA, DWA, NBA, NcoBA, NPA, NWA
+  pushdown.js    DPDA, PDA, NPDA, QA, Counter, 2PDA, PDT
+  turing.js      TM, NDTM, MTM, LBA, ITM
+  transducer.js  Moore, Mealy, FST
+  twoway.js      2DFA, 2NFA, 2DFT
+```
+
+**Families are drawn along shared mechanism, not along the model picker's groups.** PDT is a pushdown machine that happens to emit, so it lives with the PDAs whose configuration machinery it uses; 2DFT is a two-way head that happens to emit, so it lives with the two-way heads. Putting either with the transducers would mean copying a store or a head to keep it company.
+
+A definition is a plain object, registered per *type* — never per family with a fallthrough — so DPDA and NPDA share an implementation by spreading one base and differ where they differ:
+
+| field | what it answers |
+| --- | --- |
+| `family` | the mechanism this type shares. `isAnyTM`/`isAnyPDA` in `utils.js` read it. |
+| `parseInput(raw)` | the run box's text → what `simulate`/`decide` take. `{ok, input, tokens}` or `{ok: false, error}`. Absent means a finite word. |
+| `guards` | claims about the *machine* a run should not start under — a D-type whose δ branches, a weak automaton whose SCCs straddle F. `refuse` stops, `warn` prints and continues. |
+| `simulate(input)` | the step-by-step run: writes `App.simSteps`, paints. |
+| `decide(input, opts)` | the DOM-free verdict, `{verdict: 'acc'\|'rej'\|'unk', output}`. |
+| `schema` | `transitionFields` / `stateFields` / `alphabetFields`. |
+| `formal` | `tuple()`, `delta()`, plus the labels (`storeSay`, `outputSay`). |
+| `determinism` | `{conflict, say}` — how this machine refuses a second edge, and what it tells the reader. Absent means a second edge is a branch. |
+| flags | `deterministicDelta`, `multiTape`, `options`, `storeLabels`. |
+
+Points worth keeping in mind:
+
+- **`registry.js` imports nothing**, because family modules call `defineFamily` at module scope and a shared mutable container written from several modules at module scope has to sit in a leaf — the same rule as `modal-registry.js` and `export-registry.js`.
+- **The machine modules are DOM-free except for one call.** A simulator ends with `renderSimStep()` from `simulation.js`; nothing else in `js/machines/` touches the page. That is what keeps `decide` runnable with no page at all, which `computeBatchResults`, the Language fingerprint and StateMate's `verifyCandidate` all depend on.
+- **A machine says what went wrong; the player decides what an error looks like.** `parseInput` and `guards` return sentences, and `runSim` wraps them in `t-err` / `t-warn`.
+- **`decide()` ignores `App.config.transducerAccepts`.** Whether a transducer is allowed to *have* a verdict is the caller's policy — a machine that emits `011` on a word either consumed it or did not, and that does not change when a checkbox does. `computeBatchResults` is where the answer gets dropped.
+- **Adding a machine is two edits**: a row in `MachineTypes` ([js/state.js](js/state.js)) and a `defineMachine` call in the family module whose mechanism it shares. [tests/machines.test.js](tests/machines.test.js) walks `MachineTypes` rather than a list of its own, so the second edit is not optional: nine assertions fail until the definition exists, and more until it answers every question.
+
 ### Simulation
 
-[js/simulation.js](js/simulation.js) dispatches from `runSim()` to a per-family simulator (`simDFA`, `simNFA`, `simPDA`, `simNPDA`, `simTM`, `simNDTM`, `sim2DFA`, `simMoore`, …). All produce the same artifact: a flat `App.simSteps` array the UI scrubs with `App.simIdx`. Nondeterministic machines explore first (`exploreNPDA`, `explore2NFA`) then linearize the winning path. Step budgets are in `App.config` (`maxPdaSteps`, `maxTmSteps`, `langStepBudget`).
+[js/simulation.js](js/simulation.js) is now the **player** — what a *run* is, rather than what a machine is. It owns the run box, the trace log, the step tracker, the scrubber, playback and the batch tester, and nothing about any particular machine. `runSim()` is four lines of dispatch: parse the input the way this machine reads input, run this machine's guards, record what the canvas highlights against, hand the result to this machine's simulator.
+
+All simulators produce the same artifact: a flat `App.simSteps` array the UI scrubs with `App.simIdx`. Nondeterministic machines explore first (`exploreNPDA`, `explore2NFA`) then linearize the winning path with `traceSearchPath`. Step budgets are in `App.config` (`maxPdaSteps`, `maxTmSteps`, `langStepBudget`).
+
+**Loop detection is what turns "would run forever" into a decision**, and `App.config.detectLoops` is the switch for it. A deterministic tape machine that revisits a configuration will revisit it forever, so `makeLoopTracker()` stops playback there and `markLoopStep` reports a *proven* non-halt — strictly more than the step budget can tell you, which is why it is on by default. Switching it off is a playback choice: the machine runs to `maxTmSteps` and `markTimeoutStep` reports **no verdict**, never a rejection. You switch it off to *watch* a machine not halt.
+
+Three things keep that honest. **The setting acts inside `makeLoopTracker()` (in [js/machines/runtime.js](js/machines/runtime.js)) and nowhere else**, which is what scopes it: that function is used only by `simTM`, `simLBA` and `simMTM`, so the batch deciders (`testTM3` and friends, each with its own repeat check) carry on deciding — there the repeat *is* the answer, and replacing a correct reject with "no verdict" in a table nobody is watching run would be a loss with nothing bought. **Both the step note and the verdict banner name the setting** when it is off, or a machine the app could have decided reports "no verdict" with nothing on screen to explain why. And **`detectsLoops()` reads absent as on** — a workspace or settings profile written before the setting existed must not load with its verdicts quietly downgraded, the same rule the four `App.config.render` flags follow.
+
+It travels with the workspace through `getWorkspaceData`'s allow-list, beside `twoWayTape`: both change what a run decides, and a file that decides differently when someone else opens it is a file that lies. Settings → Turing.
 
 ### The tape
 
@@ -256,7 +312,7 @@ Two guards ride along. **`scopeGuard` drops `auto` to a proposal when an *edit* 
 
 **Switching machine type has always worked** — `validateSpec` accepts any `MachineTypes` key, `compileSpec` starts clean on a type change, `assignCandidate` calls `applyMachineSwitch`. What was missing was telling the model, which refused buildable requests instead ("I build only DFAs"). `switchBlock` in the prompt lists every other machine with the extra transition fields it needs; only the current machine's full rules are spelled out, and the linter's repair round covers a switch that gets the shape wrong, since `lintCandidate` judges the machine the answer actually names.
 
-- **[js/statemate-spec.js](js/statemate-spec.js)** — the dialect, plus `parseTurn` above it. Deliberately *not* the workspace save format: no ids, no coordinates, `start`/`accept` as booleans on the state. Field names differ (`on` not `symbol`, `move` not `dir`, `out` not `output`) so a model that regurgitates a save file fails loudly at the gate instead of half-working. `transitionFieldsFor`/`stateFieldsFor` derive the legal fields from `MachineTypes`, so a machine added to `state.js` is describable with no edit here. `caveat` is the model's one line about a gap between the request and the machine — capped, unsevered (severity is the app's), and dropped when it narrates the repair rather than describing the machine. Imports `state.js` only.
+- **[js/statemate-spec.js](js/statemate-spec.js)** — the dialect, plus `parseTurn` above it. Deliberately *not* the workspace save format: no ids, no coordinates, `start`/`accept` as booleans on the state. Field names differ (`on` not `symbol`, `move` not `dir`, `out` not `output`) so a model that regurgitates a save file fails loudly at the gate instead of half-working. `transitionFieldsFor`/`stateFieldsFor` read the legal fields off the machine's own definition, which is the same list the editor draws its rows from and the wizard asks its questions from — so a machine cannot be describable to the model and un-editable on the canvas at the same time. `caveat` is the model's one line about a gap between the request and the machine — capped, unsevered (severity is the app's), and dropped when it narrates the repair rather than describing the machine. Imports `state.js` and the machine registry only — still nothing about the UI, the provider or the pipeline it feeds.
 - **[js/statemate-compile.js](js/statemate-compile.js)** — spec → candidate, diffed against the live machine **by state name**. Survivors keep their id, their x/y, their anchored notes and their hand-tuned `curve`/`loopAngle`; only new states are placed, at the centroid of their placed neighbours plus `resolveNodeOverlaps`. This is the whole difference between an edit and a replacement — "add a trap state" must add one circle, not rearrange the diagram. A machine-type change starts clean rather than half-inheriting.
 - **[js/statemate-lint.js](js/statemate-lint.js)** — the machine-shape rules a schema cannot express, pure over the candidate. Three severities: `fix` is applied locally and *reported* (a fix the user cannot see is a fix they cannot distrust), `repair` costs a model round trip, `warn` never blocks. Determinism is the rule that earns its keep.
 - **`verifyCandidate`** in [js/statemate.js](js/statemate.js) — the reason to trust the output. The model must predict what its machine does on ≥3 words; those predictions are executed through `computeBatchResults()` before anything is drawn. Stash the workspace, import the candidate without emitting, decide, restore in a `finally`. `computeBatchResults` is DOM-free by construction — that split is what makes this possible.
@@ -308,6 +364,43 @@ Two guards ride along. **`scopeGuard` drops `auto` to a proposal when an *edit* 
 
 In Electron the request goes through `statemate:request` in the main process, which sidesteps every provider's CORS policy. The browser path falls back to a direct `fetch` with the per-provider caveat surfaced in the settings tab.
 
+### The machine wizard
+
+The `+` over the canvas. **A machine, built by answering questions instead of by drawing one** — the alphabet, then the states, then the transitions, each with a sentence saying what the thing being asked for *is*. It exists for the reader who knows what they want the machine to do and does not yet know what a state is.
+
+**It is the second caller of StateMate's pipeline, not a second copy of it.** The route from a declaratively described machine to a machine on the canvas was already built and already tested, and nothing in it is about a model provider:
+
+```
+draftToSpec()      js/wizard.js — answers → the spec dialect
+validateSpec()     js/statemate-spec.js — schema, one start state, references
+compileSpec()      js/statemate-compile.js — spec → candidate, diffed by state name
+lintCandidate()    js/statemate-lint.js — the machine-shape rules
+applyCandidate()   js/statemate.js — one commit(), one Ctrl+Z
+```
+
+Everything that route guarantees StateMate is therefore true of the wizard for free: the canvas is written **exactly once, at the end, or not at all**, so a cancelled or invalid run leaves the reader's work untouched; and an edit keeps the ids, coordinates, anchored notes and hand-tuned `curve`/`loopAngle` of every state it did not touch. It is also why the wizard covers **every machine in `MachineTypes`** — `transitionFieldsFor` / `stateFieldsFor` / `alphabetFieldsFor` read the fields off the machine's definition, and `optionsFor` reads its knobs off the same place, so a machine is buildable through the wizard the day its definition exists, with no edit here.
+
+Three modules, split so the two that decide things are testable without a dialog:
+
+- **[js/wizard-copy.js](js/wizard-copy.js)** — data only, imports nothing. Every question, description and field label. **Variants are keyed by flavour, never by machine name**: `states.parity` is what every machine with priorities says, and there is no `states.DPA`. The three genuinely per-machine sentences live in `FIELD_COPY_BY_MACHINE`, which is small on purpose — a queue's ends are not a stack's, and calling them push and pop would be technically true and useless.
+- **[js/wizard.js](js/wizard.js)** — the draft, the step list, validation, and `applyDraft()`. No DOM.
+- **[js/wizard-ui.js](js/wizard-ui.js)** — the dialog. Listeners are attached at creation the way [js/reference.js](js/reference.js) does it, so the whole feature adds exactly **one** name to `bridge.js`.
+
+Points worth keeping in mind:
+
+- **The button is one button in two modes, and the canvas decides which.** A blank canvas gets a Phosphor `plus-circle` and builds; a canvas with a machine on it gets a `pencil-simple` and edits that machine, prefilled from `machineToSpec()` — the same view of the canvas StateMate's prompt is built from. That is what keeps the first screen from opening with a fork ("new, or edit?") the app can answer by looking. `syncWizardButton()` is subscribed to `Change.GRAPH`, so drawing the first state flips the mode. The plus is *circled* deliberately: the tab bar's "create workspace" control is a bare plus, and two identical glyphs in one header meaning two different things is a trap.
+- **Rows reference each other by key, not by name.** A transition's `from` is a draft-local key resolved to a state name only in `draftToSpec()`. If transitions held names, renaming `q0` in the wizard would orphan every rule that left it — and the wizard would be the one surface in the app where renaming a state breaks the machine.
+- **State names are unique under `stateNameKey`, not as strings.** That function is exported from `statemate-compile.js` rather than reimplemented, because the compiler matches states by it: accepting "Even" and "even" as two states here would silently merge them there.
+- **Typing never re-renders.** A text field writes into the draft and refreshes only the issue list and the footer; re-rendering the step would take the caret with it. Only structural changes — a row added, the machine changed, a step moved — rebuild the body.
+- **A blocked Next stays clickable and says what is wrong**, rather than going grey. The validation is not visible until a step has been marked seen, so a disabled button there is a dead control with no explanation.
+- **In edit mode, a lint finding the machine already had is downgraded to a warning.** Otherwise an imported DFA that was never deterministic could not have its title fixed through the wizard that did not break it.
+- **Where the result lands follows the mode**, so there is no radio button for it: edit replaces the machine it was filled in from, and a fresh build over an occupied canvas opens a tab of its own. Nothing the reader drew disappears behind a wizard.
+- **The draft outlives the dialog.** Nothing is written until Create, so closing is free and reopening resumes — the same non-destructive leave StateMate's panel has. It is rebuilt only when `machineSignature()` says the canvas moved underneath it, because that draft is stale prefill rather than a resumable answer.
+- The `options` step exists only when there is something to ask: MTM's tape count, PFA's cut point, and the two-way tape setting for the tape machines that have a choice about it. `ITM` is two-way by being what it is and `LBA` is bounded at both ends by definition, so neither is offered it.
+- A list grows a filter box only past twelve rows. Below that a filter is a control with nothing to do, and most machines built here have three states.
+
+[tests/wizard.test.js](tests/wizard.test.js) pins the derivation — every machine's draft becomes a spec `validateSpec` accepts, and the questions match what that machine actually has. [tests/wizard-apply.test.js](tests/wizard-apply.test.js) pins the invariants: `exportWorkspaceState()` is unchanged either side of a cancelled or refused run, and **opening the wizard on a machine and pressing Create without touching anything gives back the same machine** — ids, coordinates, curves and anchored notes included, which is the whole difference between an edit and a redraw.
+
 ### Themes
 
 Adding a theme touches two places, documented at the top of [js/themes.js](js/themes.js): a `:root[data-theme="id"]` block in `css/variables.css`, and an entry in the `Themes` registry. The entry needs an `export` palette because the SVG canvas and minimap paint from JS colour values, not CSS variables — `applyTheme()` ([js/ui.js](js/ui.js)) copies it into `App.config.export.*` and repaints.
@@ -318,7 +411,7 @@ Adding a theme touches two places, documented at the top of [js/themes.js](js/th
 
 ## Tests
 
-`node:test` + `node:assert`, ESM. [tests/harness.js](tests/harness.js) imports the real modules; [tests/dom-stub.js](tests/dom-stub.js) installs a fake DOM, `localStorage`, `location` and friends on `globalThis` — it must be imported first, which is why it is a separate module (imports are evaluated before any module body).
+`node:test` + `node:assert`, ESM. [tests/harness.js](tests/harness.js) imports the real modules — including each of the machine modules, since the machines' own functions (`simTM`, `testFST`, `decideMachine`) are reached through `context` the way every other export is; [tests/dom-stub.js](tests/dom-stub.js) installs a fake DOM, `localStorage`, `location` and friends on `globalThis` — it must be imported first, which is why it is a separate module (imports are evaluated before any module body).
 
 `context` is a flat live view over every module export, plus browser globals proxied in both directions so tests can install fakes (`context.indexedDB = fake`, `context.matchMedia = () => …`). It uses getters rather than copying, because several exports are `let` bindings the app reassigns (`saveState`, `Workspaces`, `R`).
 

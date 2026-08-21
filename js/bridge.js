@@ -5,9 +5,9 @@
 // global-scope code and cannot see module bindings. The functions they name
 // are re-exposed on window here.
 //
-// 217 names across 22 modules — 216 functions plus App — reached from 446
+// 223 names across 23 modules — 222 functions plus App — reached from 459
 // attributes:
-//    324  static, in index.html
+//    337  static, in index.html
 //    122  in markup the app builds at runtime (algorithm cards,
 //         export dialogs, alphabet chips, context menus)
 //
@@ -86,6 +86,9 @@ import {
 // js/statemate-ui.js wires its listeners at creation, the way reference.js
 // does — bridge.js is the worklist for removing this seam, not a place to
 // grow it.
+import {
+  openMachineWizard,
+} from './wizard-ui.js';
 import {
   ctxAddToStateMateContext, ctxAskStateMate, ctxCanvasAskStateMate, openStateMate
 } from './statemate-ui.js';
@@ -184,6 +187,9 @@ Object.assign(window, {
   // persistence.js
    copyShareableLink, hideSaveMenu, loadJSON, onFileLoad,
    ctxCanvasDescribe, saveJSON, saveWorkspace, toggleSaveMenu,
+  // wizard-ui.js — the whole wizard, in one name. Everything else inside it
+  // is wired at creation, so nothing else needs to be here.
+   openMachineWizard,
   // statemate-ui.js
    openStateMate,
   // …plus the three right-click entry points. The header button is no longer

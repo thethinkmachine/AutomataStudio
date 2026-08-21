@@ -6,6 +6,7 @@ import { importJFLAPText } from './import-jflap.js';
 import { closeModal, showOverlay } from './modal.js';
 import { refreshQuickSettings } from './quick-settings.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
+import { isMultiTape } from './machines/index.js';
 import { runSim } from './simulation.js';
 import { $, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { hideContextMenu } from './states-transitions.js';
@@ -24,6 +25,7 @@ export function getWorkspaceData() {
   const cleanConfig = {
     transducerAccepts: App.config.transducerAccepts,
     twoWayTape: App.config.twoWayTape,
+    detectLoops: App.config.detectLoops,
     maxPdaSteps: App.config.maxPdaSteps,
     maxTmSteps: App.config.maxTmSteps,
     pdaParadigm: App.config.pdaParadigm,
@@ -454,7 +456,7 @@ export function validateSchema(data) {
   // machine has exactly one by definition. Demanding it from all of them
   // rejected the bundled tm/ndtm examples on import — they omit the field, and
   // loadExample never validates, so nothing caught it.
-  if (data.machine === 'MTM' && typeof data.tapeCount !== 'number') {
+  if (isMultiTape(data.machine) && typeof data.tapeCount !== 'number') {
     throw new Error("Multi-tape Turing Machines require a numeric 'tapeCount'.");
   }
 
@@ -541,6 +543,7 @@ export function loadData(d, isExample) {
   // one. Only an explicit boolean applies, so a file that says nothing
   // leaves the user's setting alone.
   if (typeof d.twoWayTape === 'boolean') App.config.twoWayTape = d.twoWayTape;
+  if (typeof d.detectLoops === 'boolean') App.config.detectLoops = d.detectLoops;
   App.states = d.states || [];
   App.transitions = d.transitions || []; App.startId = d.startId || null;
   App.accepts = new Set(d.accepts || []);

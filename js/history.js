@@ -1,4 +1,5 @@
 import { App, Workspaces, activeWorkspaceId, getMachineConfig, setR } from './state.js';
+import { isMultiTape } from './machines/index.js';
 import { Change, emit, subscribe } from './store.js';
 import { toggleSnapToGrid } from './canvas.js';
 import { refreshQuickSettings } from './quick-settings.js';
@@ -217,7 +218,7 @@ export function restoreSnapshot(s) {
     const outSec = document.getElementById('output-sec');
     if (outSec) outSec.style.display = cfg.isTransducer ? '' : 'none';
     const mtmSec = document.getElementById('mtm-ctrl');
-    if (mtmSec) mtmSec.style.display = (d.machine === 'MTM') ? 'flex' : 'none';
+    if (mtmSec) mtmSec.style.display = isMultiTape(d.machine) ? 'flex' : 'none';
   }
   
   if (d.tapeCount !== undefined) {

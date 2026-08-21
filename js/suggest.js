@@ -1,5 +1,5 @@
 import { getGrammarTerminals } from './algorithms-cfg.js';
-import { epsClosure, tokenize } from './simulation.js';
+import { epsClosure, tokenize } from './machines/runtime.js';
 import { $, App } from './state.js';
 import { escapeHtml, isCounterMachine } from './utils.js';
 

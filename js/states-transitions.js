@@ -2,10 +2,11 @@ import { clearTempLine, hideCanvasContextMenu } from './canvas.js';
 import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
 import { pruneNoteAnchorsExcluding } from './notes.js';
-import { renderAll, updateLPanel, updateRPanel } from './render.js';
-import { $, App, getMachineConfig, isBoundarySymbol, isDeterministicOmega, isReadOnlyHeadMachine, isWeightedFA, statePriority, usesParityPriorities } from './state.js';
+import { renderAll } from './render.js';
+import { $, App, getMachineConfig, isBoundarySymbol, isReadOnlyHeadMachine, isWeightedFA, statePriority, usesParityPriorities } from './state.js';
 import { Change, emit } from './store.js';
-import { getPdaDeterminismConflict, hasSingleValuedDelta, hasTransitionOutput, isAnyPDA, isCounterMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus, symbolsOverlap, tapeTuplesOverlap } from './utils.js';
+import { hasStateOutput, hasTransitionOutput, isAnyPDA, isCounterMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
+import { isMultiTape, machineDeterminism, machineStoreLabels, transitionHasField } from './machines/index.js';
 import { applyMachineSwitch } from './view.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -110,29 +111,39 @@ export function populateTransitionModal(t) {
     }
   }
 
-  $('m-sym-row').style.display = App.machine === 'MTM' ? 'none' : '';
-  $('m-pda-extra').style.display = isAnyPDA(App.machine) ? '' : 'none';
-  $('m-tm-extra').style.display = isSingleTapeTM(App.machine) ? '' : 'none';
-  $('m-mealy-extra').style.display = hasTransitionOutput(App.machine) ? '' : 'none';
-  $('m-mtm-extra').style.display = (App.machine === 'MTM') ? '' : 'none';
+  // Which rows this dialog shows is exactly which fields the machine's
+  // transitions carry, and the machine says which those are — the same
+  // list the wizard asks its questions from and the StateMate dialect
+  // validates against. Six predicates used to answer it here, and each
+  // one was a place a new machine could be editable in the dialog but
+  // undescribable to the model, or the other way round.
+  const has = field => transitionHasField(App.machine, field);
+  // A multi-tape machine reads one symbol per tape, so the single Read
+  // row is replaced by the per-tape block rather than sitting above it.
+  $('m-sym-row').style.display = has('tapeSyms') ? 'none' : '';
+  $('m-pda-extra').style.display = has('pop') ? '' : 'none';
+  $('m-tm-extra').style.display = has('move') ? '' : 'none';
+  $('m-mealy-extra').style.display = has('out') ? '' : 'none';
+  $('m-mtm-extra').style.display = has('tapeSyms') ? '' : 'none';
   const twoStackExtra = $('m-2pda-extra');
-  if (twoStackExtra) twoStackExtra.style.display = isTwoStackPDA(App.machine) ? '' : 'none';
+  if (twoStackExtra) twoStackExtra.style.display = has('pop2') ? '' : 'none';
   const pfaExtra = $('m-pfa-extra');
-  if (pfaExtra) pfaExtra.style.display = isWeightedFA(App.machine) ? '' : 'none';
-  if (isWeightedFA(App.machine)) {
+  if (pfaExtra) pfaExtra.style.display = has('weight') ? '' : 'none';
+  if (has('weight')) {
     const wIn = $('m-weight');
     if (wIn) wIn.value = t?.weight !== undefined ? String(t.weight) : '1';
   }
-  const memoryLabels = isQueueAutomaton(App.machine)
-    ? ['Queue', 'Dequeue', 'Enqueue']
-    : isCounterMachine(App.machine)
-      ? ['Counter', 'Test', 'Update']
-      : ['Stack', 'Pop', 'Push'];
-  if ($('m-memory-title')) $('m-memory-title').textContent = memoryLabels[0];
-  if ($('m-pop-label')) $('m-pop-label').textContent = memoryLabels[1];
-  if ($('m-push-label')) $('m-push-label').textContent = memoryLabels[2];
+  // What this machine calls its store. A queue's ends are not a stack's,
+  // and calling them push and pop would be technically true and useless.
+  // (The wizard says the same thing at greater length in wizard-copy.js;
+  // three-word labels for a form and a sentence with a hint are different
+  // registers, not a duplicated fact.)
+  const [storeTitle, popLabel, pushLabel] = machineStoreLabels(App.machine);
+  if ($('m-memory-title')) $('m-memory-title').textContent = storeTitle;
+  if ($('m-pop-label')) $('m-pop-label').textContent = popLabel;
+  if ($('m-push-label')) $('m-push-label').textContent = pushLabel;
 
-  if (hasTransitionOutput(App.machine)) {
+  if (has('out')) {
     const { lambda } = App.config.sym;
     const outs = [...new Set([...App.outputAlpha, lambda, ...(t?.output ? [t.output] : [])])];
     const outSel = $('m-output');
@@ -142,7 +153,7 @@ export function populateTransitionModal(t) {
     }
   }
 
-  if (isSingleTapeTM(App.machine)) {
+  if (has('move')) {
     const dirSel = $('m-dir');
     if (dirSel) {
       dirSel.innerHTML = App.directions.map(d => `<option value="${d.value}">${d.label} (${d.value})</option>`).join('');
@@ -153,7 +164,7 @@ export function populateTransitionModal(t) {
     if (writeRow) writeRow.style.display = isReadOnlyHeadMachine(App.machine) ? 'none' : '';
   }
 
-  if (App.machine === 'MTM') {
+  if (has('tapeSyms')) {
     const k = App.tapeCount;
     const dirOpts = App.directions.map(d => `<option value="${d.value}">${d.label} (${d.value})</option>`).join('');
     const symOpts = syms.map(s => `<option value="${s}">${s}</option>`).join('');
@@ -180,7 +191,7 @@ export function populateTransitionModal(t) {
     const pdaPush = $('m-push');
     if (pdaPop) pdaPop.value = t?.pop ?? eps;
     if (pdaPush) pdaPush.value = t?.push ?? eps;
-    if (isTwoStackPDA(App.machine)) {
+    if (has('pop2')) {
       const pdaPop2 = $('m-pop2');
       const pdaPush2 = $('m-push2');
       if (pdaPop2) pdaPop2.value = t?.pop2 ?? eps;
@@ -194,37 +205,40 @@ export function populateTransitionModal(t) {
   if (picker && t) picker.value = t.id;
 }
 
+// Reading the dialog back. Which fields to read is the same question as
+// which rows were shown, so it is asked the same way.
 export function getTransitionFormValues() {
   const cfg = getMachineConfig(App.machine);
   const { eps } = App.config.sym;
+  const has = field => transitionHasField(App.machine, field);
   const values = {
     from: $('m-from')?.value,
     to: $('m-to')?.value,
-    symbol: App.machine === 'MTM' ? null : $('m-sym')?.value
+    symbol: has('tapeSyms') ? null : $('m-sym')?.value
   };
-  if (isAnyPDA(App.machine)) {
+  if (has('pop')) {
     values.pop = parseEps($('m-pop')?.value) || eps;
     values.push = parseEps($('m-push')?.value) || eps;
-    if (isTwoStackPDA(App.machine)) {
+    if (has('pop2')) {
       values.pop2 = parseEps($('m-pop2')?.value) || eps;
       values.push2 = parseEps($('m-push2')?.value) || eps;
     }
   }
-  if (isSingleTapeTM(App.machine)) {
+  if (has('move')) {
     values.dir = $('m-dir')?.value || App.directions[0].value;
     values.write = isReadOnlyHeadMachine(App.machine)
       ? values.symbol
       : (parseEps($('m-write')?.value) || values.symbol);
   }
-  if (hasTransitionOutput(App.machine)) {
+  if (has('out')) {
     const out = $('m-output')?.value?.trim() || App.config.sym.lambda;
     values.output = out === App.config.sym.lambda ? '' : out;
   }
-  if (isWeightedFA(App.machine)) {
+  if (has('weight')) {
     const raw = $('m-weight')?.value?.trim();
     values.weight = raw === '' || raw === undefined ? 1 : Number(raw);
   }
-  if (App.machine === 'MTM') {
+  if (has('tapeSyms')) {
     const k = App.tapeCount;
     const blank = App.config.sym.blank;
     values.tapeSyms = Array.from({ length: k }, (_, i) => $(`m-mtm-read-${i}`)?.value || blank);
@@ -317,41 +331,16 @@ export function confirmTrans() {
       showStatus('LBA boundary markers are fixed and must be preserved on write.'); return;
     }
   }
-  if (App.machine === 'TM' || App.machine === 'LBA' || App.machine === 'ITM' || App.machine === '2DFA' || App.machine === '2DFT') {
-    const conflict = App.transitions.find(t => t.id !== editId && t.from === from && symbolsOverlap(t.symbol, sym));
-    if (conflict) {
-      const nondetAlt = App.machine === '2DFA' ? '2NFA' : App.machine === '2DFT' ? 'FST' : 'NDTM';
-      showStatus(`${App.machine} already has δ(${getState(from)?.name}, '${sym}'). Use ${nondetAlt} mode if you want multiple choices for the same read symbol.`); return;
-    }
-  } else if (App.machine === 'DPDA' || App.machine === 'PDA') {
-    const conflict = getPdaDeterminismConflict({ from, symbol: sym, pop: values.pop }, App.transitions, editId);
-    if (conflict) {
-      showStatus(`DPDA already has an overlapping move from ${getState(from)?.name}. Switch to NPDA mode if you want branching on the same configuration.`); return;
-    }
-  } else if (App.machine === 'MTM') {
-    const candidateSyms = values.tapeSyms || [];
-    const conflict = App.transitions.find(t => t.id !== editId && t.from === from && tapeTuplesOverlap(t.tapeSyms || [t.symbol], candidateSyms));
-    if (conflict) {
-      showStatus(`MTM already has a transition for (${getState(from)?.name}, [${candidateSyms.join(', ')}]). Each read tuple must be unique.`); return;
-    }
-  } else if (App.machine === 'Moore' || App.machine === 'Mealy') {
-    const conflict = App.transitions.find(t => t.id !== editId && t.from === from && symbolsOverlap(t.symbol, sym));
-    if (conflict) {
-      showStatus(`${App.machine} already has δ(${getState(from)?.name}, '${sym}'). Each input symbol must map to one output.`); return;
-    }
-  } else if (isDeterministicOmega(App.machine)) {
-    // Overlap, not equality: buchiSuccessors takes every matching edge rather
-    // than resolving to the most specific one, so a wildcard alongside a
-    // concrete symbol is a genuine branch here even though a DFA tolerates it.
-    const conflict = App.transitions.find(t => t.id !== editId && t.from === from && symbolsOverlap(t.symbol, sym));
-    if (conflict) {
-      showStatus(`${App.machine} already has a move from ${getState(from)?.name} on '${sym}'. Switch to ${App.machine.replace(/^D/, 'N')} if you want to branch on the same symbol.`); return;
-    }
-  } else if (hasSingleValuedDelta(App.machine)) {
-    const conflict = App.transitions.find(t => t.id !== editId && t.from === from && t.symbol === sym);
-    if (conflict) {
-      showStatus(`${App.machine} already has δ(${getState(from)?.name}, '${sym}'). Each (state, symbol) pair must be unique.`); return;
-    }
+  // Determinism, enforced by the machine's own rule. What counts as a
+  // clash differs — equality for a DFA, symbol overlap for a tape head or
+  // a D-type ω-automaton, a whole store configuration for a DPDA, a read
+  // tuple for an MTM — and so does what the reader should be told to do
+  // about it, so both live with the machine. A machine that returns no
+  // rule is one where a second edge is a branch, not a mistake.
+  const rule = machineDeterminism(App.machine);
+  if (rule) {
+    const conflict = rule.conflict({ ...values, from, symbol: sym }, editId);
+    if (conflict) { showStatus(rule.say({ ...values, from, symbol: sym }, conflict)); return; }
   }
   if (isWeightedFA(App.machine)) {
     const w = values.weight;
@@ -450,7 +439,7 @@ export function confirmTrans() {
     } else {
       delete t.weight;
     }
-    if (App.machine === 'MTM') {
+    if (isMultiTape(App.machine)) {
       t.tapeSyms = values.tapeSyms;
       t.tapeWrites = values.tapeWrites;
       t.tapeDirs = values.tapeDirs;
@@ -473,7 +462,7 @@ export function confirmTrans() {
     if (isSingleTapeTM(App.machine)) { t.write = values.write; t.dir = values.dir; }
     if (hasTransitionOutput(App.machine)) { t.output = values.output; }
     if (isWeightedFA(App.machine)) { t.weight = values.weight; }
-    if (App.machine === 'MTM') {
+    if (isMultiTape(App.machine)) {
       t.tapeSyms = values.tapeSyms;
       t.tapeWrites = values.tapeWrites;
       t.tapeDirs = values.tapeDirs;
@@ -580,7 +569,7 @@ export function transLabelParts(t, beginner = false) {
   if (isSingleTapeTM(App.machine)) {
     return [input, { role: 'write', text: `${beginner ? 'Write' : 'write'} ${t.write}` }, { role: 'move', text: beginner ? moveDescription(t.dir) : moveText(t.dir) }];
   }
-  if (App.machine === 'MTM') {
+  if (isMultiTape(App.machine)) {
     const syms = t.tapeSyms || [t.symbol];
     const writes = t.tapeWrites || [t.write || t.symbol];
     const defDir = App.directions[0].value;
@@ -611,7 +600,7 @@ export function transLabel(t) {
   if (isReadOnlyHeadMachine(App.machine)) return `${t.symbol}, ${t.dir}${outputSuffix(t)}`;
   if (isSingleTapeTM(App.machine)) return `${t.symbol} → ${t.write}, ${t.dir}`;
   if (hasTransitionOutput(App.machine)) return `${t.symbol} / ${t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda}`;
-  if (App.machine === 'MTM') {
+  if (isMultiTape(App.machine)) {
     const syms = t.tapeSyms || [t.symbol];
     const writes = t.tapeWrites || [t.write || t.symbol];
     const defDir = App.directions[0].value;
@@ -651,7 +640,7 @@ export function transLabelDescriptive(t) {
     const o = t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda;
     return `Read '${t.symbol}', Print '${o}'`;
   }
-  if (App.machine === 'MTM') {
+  if (isMultiTape(App.machine)) {
     const syms = t.tapeSyms || [t.symbol];
     const writes = t.tapeWrites || [t.write || t.symbol];
     const defDir = App.directions[0].value;
@@ -692,8 +681,8 @@ export function openStateModal(id) {
     $('s-priority').value = String(statePriority(s));
   }
   const mooreExtra = $('s-moore-extra');
-  mooreExtra.style.display = App.machine === 'Moore' ? '' : 'none';
-  if (App.machine === 'Moore') {
+  mooreExtra.style.display = hasStateOutput(App.machine) ? '' : 'none';
+  if (hasStateOutput(App.machine)) {
     const { lambda } = App.config.sym;
     const outs = [...new Set([...App.outputAlpha, lambda])];
     $('s-output').innerHTML = outs.map(o => `<option value="${o}">${o}</option>`).join('');
@@ -743,7 +732,7 @@ export function confirmState() {
   } else {
     App.accepts.delete(s.id);
   }
-  if (App.machine === 'Moore') {
+  if (hasStateOutput(App.machine)) {
     const out = $('s-output').value.trim();
     s.output = out === App.config.sym.lambda ? '' : out;
   }

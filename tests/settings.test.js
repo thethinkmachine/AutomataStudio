@@ -219,12 +219,35 @@ test('settings export and re-import round-trips every field', () => {
   // Every key the dialog can write should be represented, or exporting your
   // settings quietly drops one.
   for (const k of ['theme', 'wheelZoom', 'snapToGrid', 'statePrefix', 'pdaParadigm',
-    'transducerAccepts', 'maxPdaSteps', 'maxTmSteps', 'langStepBudget', 'autoSpeed',
+    'transducerAccepts', 'twoWayTape', 'detectLoops',
+    'maxPdaSteps', 'maxTmSteps', 'langStepBudget', 'autoSpeed',
     'autosaveIntervalMs', 'radius', 'wrapStateLabels', 'edgeLabelStyle', 'clickHighlightMode', 'zoomStep',
     'gridSnap', 'layoutAlgorithm', 'layoutNodeSpacing', 'renderCurveOff', 'exportRes',
     'symEps', 'symLambda', 'symAny', 'symBlank', 'symLeft', 'symRight', 'symZ0']) {
     assert.ok(k in saved, `getEditorSettingsData drops ${k}`);
   }
+});
+
+test('the settings that change what a run decides travel with the workspace', () => {
+  const h = createHarness();
+  const { App } = h.context;
+  App.config.detectLoops = false;
+  App.config.twoWayTape = true;
+
+  // Both are model configuration rather than editor chrome: a file that
+  // decides differently when someone else opens it is a file that lies.
+  const saved = h.context.getWorkspaceData();
+  assert.equal(saved.config.detectLoops, false);
+  assert.equal(saved.config.twoWayTape, true);
+
+  App.config.detectLoops = true;
+  App.config.twoWayTape = false;
+  h.context.loadData(saved);
+  assert.equal(App.config.detectLoops, false);
+  assert.equal(App.config.twoWayTape, true);
+
+  App.config.detectLoops = true;
+  App.config.twoWayTape = false;
 });
 
 test('switching settings tabs activates exactly one panel', () => {
