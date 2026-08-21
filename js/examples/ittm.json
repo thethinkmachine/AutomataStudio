@@ -1,0 +1,49 @@
+{
+  "machine": "ITM",
+  "sigma": ["1"],
+  "stackAlpha": ["1", "⊔"],
+  "tapeCount": 1,
+  "states": [
+    { "id": "s1", "x": 300, "y": 140, "name": "A" },
+    { "id": "s2", "x": 580, "y": 140, "name": "B" },
+    { "id": "s3", "x": 580, "y": 400, "name": "C" },
+    { "id": "s4", "x": 300, "y": 400, "name": "D" },
+    { "id": "s5", "x": 840, "y": 270, "name": "halt" }
+  ],
+  "startId": "s1",
+  "accepts": ["s5"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s2", "symbol": "⊔", "write": "1", "dir": "R" },
+    { "id": "t2", "from": "s1", "to": "s2", "symbol": "1", "write": "1", "dir": "L" },
+    { "id": "t3", "from": "s2", "to": "s1", "symbol": "⊔", "write": "1", "dir": "L" },
+    { "id": "t4", "from": "s2", "to": "s3", "symbol": "1", "write": "⊔", "dir": "L" },
+    { "id": "t5", "from": "s3", "to": "s5", "symbol": "⊔", "write": "1", "dir": "R" },
+    { "id": "t6", "from": "s3", "to": "s4", "symbol": "1", "write": "1", "dir": "L" },
+    { "id": "t7", "from": "s4", "to": "s4", "symbol": "⊔", "write": "1", "dir": "R" },
+    { "id": "t8", "from": "s4", "to": "s1", "symbol": "1", "write": "⊔", "dir": "R" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 30, "y": 60, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "The 4-state busy beaver champion (Brady, 1983). Started on a BLANK tape it scribbles back and forth for exactly 107 steps, prints 13 ones, and halts. No 4-state machine that halts does more — proving that took years."
+    },
+    {
+      "id": "n2", "x": 30, "y": 230, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Leave the input EMPTY (ε) and press run. The head wanders left of its starting cell — that's why this lives on the two-way infinite tape."
+    },
+    {
+      "id": "n3", "x": 30, "y": 400, "color": "orange",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "The 5-state version was only settled in 2024: it runs 47,176,870 steps before halting. Six states already outruns the observable universe. This is where computation stops being predictable."
+    }
+  ],
+  "meta": {
+    "title": "The 4-state busy beaver",
+    "blurb": "The most famous tiny machine in computer science: from a blank tape it runs exactly 107 steps, prints 13 ones, and halts — the maximum any 4-state machine can do. Run it with empty input.",
+    "inputs": [
+      { "w": "ε", "expect": "accept", "label": "blank tape → 107 steps, 13 ones" }
+    ]
+  }
+}
