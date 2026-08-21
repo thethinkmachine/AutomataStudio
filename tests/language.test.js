@@ -786,6 +786,97 @@ test('a stay-loop halts playback immediately instead of running the limit', () =
   assert.match(last.note, /never halts/);
 });
 
+// ── and the setting that turns it off ──
+// Loop detection is what turns "would run forever" into a decision, so
+// switching it off costs a verdict. That is the trade the setting exists to
+// offer — you switch it off to *watch* a machine not halt — and these pin both
+// halves of it: playback stops deciding, and everything that is not playback
+// carries on deciding exactly as before.
+
+function stayLoop() {
+  tape({
+    sigma: ['a'], states: ['q0', 'qacc'], start: 'q0', accepts: ['qacc'],
+    rules: [['q0', 'a', 'a', 'S', 'q0'], ['q0', 'B', 'B', 'R', 'qacc']]
+  });
+}
+
+test('with loop detection off, a looping machine runs to the step budget', () => {
+  reset();
+  stayLoop();
+  App.config.detectLoops = false;
+  App.config.maxTmSteps = 50;
+
+  context.simTM(toks('a'));
+  const last = App.simSteps[App.simSteps.length - 1];
+
+  assert.equal(App.simSteps.length, 50, 'it ran the whole budget instead of stopping at the repeat');
+  // The verdict degrades from a proven non-halt to an honest non-answer, and
+  // it must never become a rejection: still running is not the same as no.
+  assert.equal(last.final, 'timeout');
+  assert.equal(last.limit, 50);
+  assert.match(last.note, /NO VERDICT/);
+  // …and it says why it could not decide, or a machine the app could have
+  // decided reports nothing to explain itself.
+  assert.match(last.note, /loop detection is off/);
+
+  App.config.detectLoops = true;
+  App.config.maxTmSteps = 10000;
+});
+
+test('the setting is playback only — batch runs still decide', () => {
+  reset();
+  stayLoop();
+  App.config.detectLoops = false;
+
+  // testTM3 keeps its own repeat check, because there the repeat *is* the
+  // answer. Replacing a correct reject with "no verdict" in a table nobody is
+  // watching run would be a loss with nothing bought.
+  assert.equal(context.testTMVerdict(toks('a')), 'rej');
+
+  App.config.detectLoops = true;
+});
+
+test('a multi-tape machine follows the same setting', () => {
+  reset();
+  tape({
+    machine: 'MTM',
+    sigma: ['a'], states: ['m0', 'macc'], start: 'm0', accepts: ['macc'],
+    rules: []
+  });
+  App.tapeCount = 2;
+  App.transitions = [{
+    id: 'e0', from: App.states[0].id, to: App.states[0].id,
+    tapeSyms: ['a', App.config.sym.blank],
+    tapeWrites: ['a', App.config.sym.blank],
+    tapeDirs: ['S', 'S']
+  }];
+
+  context.simMTM(toks('a'));
+  assert.equal(App.simSteps[App.simSteps.length - 1].final, 'loop');
+
+  App.config.detectLoops = false;
+  App.config.maxTmSteps = 30;
+  context.simMTM(toks('a'));
+  assert.equal(App.simSteps[App.simSteps.length - 1].final, 'timeout');
+  assert.equal(App.simSteps.length, 30);
+
+  App.config.detectLoops = true;
+  App.config.maxTmSteps = 10000;
+});
+
+test('a config saved before the setting existed reads as detection on', () => {
+  reset();
+  stayLoop();
+  // Absent must not read as "off": a workspace from an older build would
+  // otherwise load with its verdicts quietly downgraded.
+  delete App.config.detectLoops;
+  assert.equal(context.detectsLoops(), true);
+
+  context.simTM(toks('a'));
+  assert.equal(App.simSteps[App.simSteps.length - 1].final, 'loop');
+  App.config.detectLoops = true;
+});
+
 test('a two-state oscillator is caught as a loop', () => {
   reset();
   tape({

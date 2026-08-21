@@ -3,6 +3,7 @@ import { showExampleCard } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim } from './simulation.js';
 import { $, App, getBoundaryMarkers, getMachineConfig, isTwoWayFA } from './state.js';
+import { inFamily, machineDef } from './machines/registry.js';
 import { Change, emit } from './store.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -18,12 +19,23 @@ export function buildMarkedInputTape(tokens = []) {
   return [left, ...tokens, right];
 }
 
+// ── the families ──────────────────────────────────────────────────
+// A family is what a set of machines shares an implementation along, so
+// the registry is what knows the membership: js/machines/turing.js is
+// where the five Turing machines are defined, and listing their names
+// again here is how the two drift. Adding LBA to the family module and
+// forgetting this line used to give a machine that ran as a Turing
+// machine and reported a DFA's tuple.
+
+// Everything with one drawn tape — the Turing machines except MTM, plus
+// the two-way heads, which are not Turing machines but are displayed as
+// one strip with a head on it.
 export function isSingleTapeTM(m = App.machine) {
-  return m === 'TM' || m === 'NDTM' || m === 'LBA' || m === 'ITM' || isTwoWayFA(m);
+  return (inFamily(m, 'turing') && !machineDef(m)?.multiTape) || isTwoWayFA(m);
 }
 
 export function isAnyTM(m = App.machine) {
-  return m === 'TM' || m === 'NDTM' || m === 'MTM' || m === 'LBA' || m === 'ITM';
+  return inFamily(m, 'turing');
 }
 
 // Everything with a pushdown store, PDT included: it shares the whole
@@ -31,7 +43,7 @@ export function isAnyTM(m = App.machine) {
 // applyPdaTransitionConfig) and differs only in accumulating output. The
 // narrower isClassicPDA below is what gates the CFG conversions.
 export function isAnyPDA(m = App.machine) {
-  return m === 'DPDA' || m === 'NPDA' || m === 'PDA' || m === 'QA' || m === 'Counter' || m === '2PDA' || m === 'PDT';
+  return inFamily(m, 'pushdown');
 }
 
 export function isClassicPDA(m = App.machine) {
@@ -62,29 +74,26 @@ export function isPushdownTransducer(m = App.machine) {
   return m === 'PDT';
 }
 
-// Where the emitted symbol lives. Moore is the odd one out — it labels states,
-// so its output rides on s.output and never on t.output. Every other transducer
-// labels edges, which is what the modal's Output row and transLabel key off.
-export function hasTransitionOutput(m = App.machine) {
-  return !!getMachineConfig(m).isTransducer && m !== 'Moore';
-}
+// Where the emitted symbol lives, asked from both ends. Defined beside the
+// schema it reads (js/machines/index.js) and re-exported here, because most
+// of the callers are UI modules that already import utils.js — and two
+// homes for one predicate is the duplication it was written to remove.
+export { hasStateOutput, hasTransitionOutput } from './machines/index.js';
 
 // True when a second edge for the same (state, read) is a modelling error
 // rather than a branch, so the editor should refuse it. Nondeterministic
 // families (NFA, 2NFA, NPDA, NDTM) are excluded, and so are the two whose
 // semantics *are* the multiple edges: a PFA distributes probability across
 // them, and an NBA guesses among them.
+//
+// Each machine declares this for itself, which is what removed the
+// ordering trap the answer used to carry: half the ω-automata are
+// precisely the single-valued case, so they had to be tested *before* the
+// "nondeterministic families are exempt" rule — and a list that has to be
+// read in the right order is a list that will eventually be read in the
+// wrong one, letting the editor draw an NBA and call it a DBA.
 export function hasSingleValuedDelta(m = App.machine) {
-  const cfg = getMachineConfig(m);
-  if (cfg.isWeighted) return false;
-  // Ordering trap: half the ω-automata are precisely the single-valued case, so
-  // they have to answer before the family exemption below — otherwise the
-  // editor would happily let you draw an NBA and call it a DBA.
-  if (cfg.isOmega) return !!cfg.deterministic;
-  return m === 'DFA' || m === 'Moore' || m === 'Mealy'
-    || m === 'TM' || m === 'LBA' || m === 'ITM' || m === 'MTM'
-    || m === '2DFA' || m === '2DFT'
-    || m === 'DPDA' || m === 'PDA';
+  return !!machineDef(m)?.deterministicDelta;
 }
 
 export function isTwoWayTransducer(m = App.machine) {

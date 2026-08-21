@@ -41,6 +41,21 @@ import * as persistence from '../js/persistence.js';
 import * as render from '../js/render.js';
 import * as panelState from '../js/panel-state.js';
 import * as simulation from '../js/simulation.js';
+// The machine layer: the registry, the shared runtime, and one module per
+// family. Imported here for the same reason as every other namespace — the
+// tests reach the machines' own functions (simTM, testFST, decideMachine)
+// through `context`, and those functions moved out of simulation.js when
+// the machines stopped being an if-chain inside it.
+import * as machineRegistry from '../js/machines/registry.js';
+import * as machineRuntime from '../js/machines/runtime.js';
+import * as machines from '../js/machines/index.js';
+import * as machineFinite from '../js/machines/finite.js';
+import * as machineWeighted from '../js/machines/weighted.js';
+import * as machineOmega from '../js/machines/omega.js';
+import * as machinePushdown from '../js/machines/pushdown.js';
+import * as machineTuring from '../js/machines/turing.js';
+import * as machineTransducer from '../js/machines/transducer.js';
+import * as machineTwoWay from '../js/machines/twoway.js';
 import * as state from '../js/state.js';
 import * as statesTransitions from '../js/states-transitions.js';
 import * as statemate from '../js/statemate.js';
@@ -59,14 +74,20 @@ import * as utils from '../js/utils.js';
 import * as view from '../js/view.js';
 import * as quickSettings from '../js/quick-settings.js';
 import * as workspace from '../js/workspace.js';
+import * as wizard from '../js/wizard.js';
+import * as wizardCopy from '../js/wizard-copy.js';
+import * as wizardUi from '../js/wizard-ui.js';
 
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, geometry, statesTransitions,
-  canvas, render, panelState, notes, dividers, simulation, suggest, language, alphabet, markdown,
+  canvas, render, panelState, notes, dividers,
+  machineRegistry, machineRuntime, machineFinite, machineWeighted, machineOmega,
+  machinePushdown, machineTuring, machineTransducer, machineTwoWay, machines,
+  simulation, suggest, language, alphabet, markdown,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, algorithmsFa, algorithmsCfg, reference, workspace, quickSettings, minimap, ui,
   statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt,
-  statemate, statemateUi
+  statemate, statemateUi, wizardCopy, wizard, wizardUi
 ];
 
 // Live view over every module export. Names are unique across modules (the
@@ -150,6 +171,9 @@ function resetModuleState() {
   statemateUi._resetPaletteForTests();
   // The info card holds a pending auto-hide timer and the meta it describes.
   persistence._resetExampleCardForTests();
+  // The wizard's draft deliberately outlives its dialog, so it also outlives
+  // a test unless it is cleared here.
+  wizard.resetWizard();
 }
 
 export function resetApp() {

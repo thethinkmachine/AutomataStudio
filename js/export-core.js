@@ -1,7 +1,7 @@
 import { LANG_TRACE_DEPTH_CAP, langAcceptedTraces, langCanDecide, langCanTrace, langCoverageTraces, langIsInfinite, langIsSymbolic, langRouteDepth, langVerdict } from './language.js';
 import { App, Workspaces, activeWorkspaceId, getMachineConfig } from './state.js';
 import { transLabel } from './states-transitions.js';
-import { showStatus } from './utils.js';
+import { hasStateOutput, showStatus } from './utils.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  EXPORT CORE
@@ -134,6 +134,11 @@ export function buildMachineIR() {
     hasStack: !!cfg.hasStack,
     hasTape: !!cfg.hasTape,
     isTransducer: !!cfg.isTransducer,
+    // Which end of the machine emits. Carried on the IR rather than looked
+    // up downstream, because everything past this point consumes only the
+    // IR — an exporter that asked the live App would stop working on a blob
+    // that did not come from the canvas.
+    hasStateOutput: hasStateOutput(App.machine),
     isWeighted: !!cfg.isWeighted,
     isOmega: !!cfg.isOmega,
     hasEndMarkers: !!cfg.hasEndMarkers,

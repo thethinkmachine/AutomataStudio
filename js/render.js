@@ -11,7 +11,7 @@ import { getState, openTransModal, showContextMenu, transLabel, transLabelDescri
 import { Change, emit, subscribe } from './store.js';
 import { triggerMath } from './reference.js';
 import { filterStates, filterTransitions } from './ui.js';
-import { isAnyPDA, isAnyTM, showStatus } from './utils.js';
+import { hasStateOutput, isAnyPDA, isAnyTM, showStatus } from './utils.js';
 
 // A structural edit repaints the canvas and both side panels; a CANVAS change
 // is a repaint only, since selection and highlight edits leave the formal
@@ -525,7 +525,7 @@ export function updateFastDOM({ statesMoved = true } = {}) {
   const ctx = statesMoved || !lastCtx ? currentLayoutContext() : lastCtx;
   lastCtx = ctx;
   const stateById = ctx.stateById;
-  const hasSub = App.machine === 'Moore' || usesParityPriorities(App.machine);
+  const hasSub = hasStateOutput(App.machine) || usesParityPriorities(App.machine);
 
   for (const s of App.states) {
     const grp = App.domCache.states.get(s.id);
@@ -732,7 +732,7 @@ function syncStateNode(g, s, showAccepts) {
   // Two things want a second line under the name: a Moore output and a parity
   // priority. They never coexist (one is a transducer, the other an
   // ω-automaton), so they share the slot rather than each having their own.
-  const isMoore = App.machine === 'Moore';
+  const isMoore = hasStateOutput(App.machine);
   const isParity = usesParityPriorities(App.machine);
   const hasSub = isMoore;
   parts.label.setAttribute('x', s.x);
@@ -873,7 +873,7 @@ export function updateLPanel() {
   const showAccepts = acceptsAreShown();
   sl.innerHTML = App.states.length ? App.states.map(s => {
     let mooreOut = '';
-    if (App.machine === 'Moore') {
+    if (hasStateOutput(App.machine)) {
       const outSym = (s.output === undefined || s.output === '') ? App.config.sym.lambda : s.output;
       mooreOut = `<span style="color:var(--text3);font-size:0.75em;margin-left:4px">/ ${outSym}</span>`;
     } else if (usesParityPriorities(App.machine)) {

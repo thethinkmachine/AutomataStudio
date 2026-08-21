@@ -191,6 +191,12 @@ export const App = {
     twoWayTape: false,
     maxPdaSteps: 2000,
     maxTmSteps: 10000,
+    // Whether the step-by-step tape simulators stop at a repeated
+    // configuration. On, a machine that provably never halts is *decided* —
+    // it will repeat forever, so the word is not accepted. Off, it runs to
+    // maxTmSteps and reports no verdict, which is what you want when the
+    // machine not halting is the thing you came to watch. See detectsLoops().
+    detectLoops: true,
     // Per-word budget for the Language panel's fingerprint. Deliberately
     // far smaller than maxTmSteps: the fingerprint runs one simulation per
     // cell, so this is multiplied by ~127. Words that exhaust it are drawn
@@ -343,6 +349,22 @@ export function usesTwoWayTape(m = App.machine) {
   return !!getMachineConfig(m).twoWayTape || !!App.config.twoWayTape;
 }
 
+
+// Does the step-by-step simulator stop when a tape machine repeats a
+// configuration?
+//
+// A deterministic machine that revisits a configuration will revisit it
+// forever, so stopping there reports a *proven* non-halt rather than a
+// timeout — which is strictly more than the step budget can tell you, and why
+// this is on by default. Turning it off is a playback choice: the machine runs
+// to maxTmSteps and the verdict degrades from "never halts" to "no verdict".
+//
+// **Absent reads as on.** A workspace or settings profile saved before this
+// setting existed must not load as one with detection switched off — the same
+// rule the four App.config.render flags follow.
+export function detectsLoops() {
+  return App.config.detectLoops !== false;
+}
 
 export function isEndmarkerMachine(m = App.machine) {
   return !!getMachineConfig(m).hasEndMarkers;

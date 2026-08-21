@@ -28,9 +28,15 @@
 //  to drag a UI module into the other's import graph.
 
 import {
-  App, MachineTypes, getMachineConfig, isOmegaAutomaton, isTwoWayFA,
+  App, MachineTypes, getMachineConfig, isOmegaAutomaton,
   statePriority, usesParityPriorities
 } from './state.js';
+// The dialect still knows nothing about the UI, the provider or the
+// pipeline it feeds — only about what each machine carries, which is the
+// one thing a schema has to know.
+import {
+  alphabetFieldsOf, hasStateOutput, isMultiTape, stateFieldsOf, transitionFieldsOf
+} from './machines/index.js';
 
 // A machine bigger than this is past the collision-avoidance budget in
 // geometry.js — drawing it would be slow and unreadable, so it is refused
@@ -62,55 +68,30 @@ export class StateMateError extends Error {
 // ══════════════════════════════════════════════════════════════════
 //  WHAT EACH MACHINE'S TRANSITIONS AND STATES MAY CARRY
 // ══════════════════════════════════════════════════════════════════
-// Derived from MachineTypes rather than listed per machine, so a machine
-// added to state.js is describable here without touching this file.
+// Read off the machine's own definition (js/machines/), which is the same
+// place the editor and the wizard read it from. It used to be derived here
+// from the capability flags, and the derivation carried an ordering trap
+// of its own — the tape check had to come before the stack check, because
+// every Turing machine in MachineTypes carries hasStack as well as hasTape.
+// A machine now says what its transitions carry instead of the schema
+// inferring it from what it can do.
 
 /**
  * Legal transition keys for a machine, in the order the prompt should
- * present them. Ordering trap, same as langTupleSyms: the tape check has to
- * come before the stack check, because every TM in MachineTypes carries
- * hasStack: true as well as hasTape.
+ * present them.
  */
 export function transitionFieldsFor(machine) {
-  const cfg = getMachineConfig(machine);
-  const fields = ['from', 'to', 'on'];
-
-  if (cfg.hasTape) {
-    if (machine === 'MTM') fields.push('tapeSyms', 'tapeWrites', 'tapeDirs');
-    else fields.push('write', 'move');
-  } else if (cfg.hasStack) {
-    fields.push('pop', 'push');
-    if (machine === '2PDA') fields.push('pop2', 'push2');
-  } else if (isTwoWayFA(machine)) {
-    // A two-way head moves without writing.
-    fields.push('move');
-  }
-
-  // Moore hangs its output off the state, so its transitions carry none.
-  if (cfg.isTransducer && machine !== 'Moore') fields.push('out');
-  if (cfg.isWeighted) fields.push('weight');
-  return fields;
+  return transitionFieldsOf(machine);
 }
 
 /** Legal state keys for a machine. */
 export function stateFieldsFor(machine) {
-  const fields = ['name', 'start'];
-  // Parity replaces F with a per-state priority: there is no accepting set to
-  // mark, and offering one invites the model to produce both.
-  if (usesParityPriorities(machine)) fields.push('priority');
-  else fields.push('accept');
-  if (machine === 'Moore') fields.push('out');
-  return fields;
+  return stateFieldsOf(machine);
 }
 
 /** Alphabet keys a spec for this machine must or may carry. */
 export function alphabetFieldsFor(machine) {
-  const cfg = getMachineConfig(machine);
-  const fields = ['sigma'];
-  if (cfg.hasStack) fields.push('stackAlpha');
-  if (cfg.isTransducer) fields.push('outputAlpha');
-  if (machine === 'MTM') fields.push('tapeCount');
-  return fields;
+  return alphabetFieldsOf(machine);
 }
 
 // The spec dialect ↔ the internal transition field names. The compiler is the
@@ -328,7 +309,7 @@ export function validateSpec(raw, { fallbackMachine = App.machine } = {}) {
       // something meaningless rather than something wrong — drop it quietly.
       out.accept = false;
     }
-    if (machine === 'Moore') {
+    if (hasStateOutput(machine)) {
       out.out = s.out !== undefined ? String(s.out) : (s.output !== undefined ? String(s.output) : '');
     }
     return out;
@@ -356,7 +337,7 @@ export function validateSpec(raw, { fallbackMachine = App.machine } = {}) {
     }
   }
   if (cfg.isTransducer) spec.outputAlpha = asStringArray(raw.outputAlpha) || [];
-  if (machine === 'MTM') {
+  if (isMultiTape(machine)) {
     const n = Number(raw.tapeCount);
     spec.tapeCount = Number.isInteger(n) && n >= 2 && n <= 4 ? n : App.tapeCount;
   }
@@ -683,7 +664,7 @@ export function machineToSpec(source = null, { includeTests = false } = {}) {
       const out = { name: s.name || s.id, start: s.id === src.startId };
       if (parity) out.priority = statePriority(s);
       else out.accept = accepts.has(s.id);
-      if (machine === 'Moore') out.out = s.output ?? '';
+      if (hasStateOutput(machine)) out.out = s.output ?? '';
       return out;
     }),
     transitions: (src.transitions || []).map(t => transitionToSpec(t, machine, nameOf))
@@ -691,7 +672,7 @@ export function machineToSpec(source = null, { includeTests = false } = {}) {
 
   if (cfg.hasStack) spec.stackAlpha = [...(src.stackAlpha instanceof Set ? src.stackAlpha : (src.stackAlpha || []))];
   if (cfg.isTransducer) spec.outputAlpha = [...(src.outputAlpha instanceof Set ? src.outputAlpha : (src.outputAlpha || []))];
-  if (machine === 'MTM') spec.tapeCount = src.tapeCount || 2;
+  if (isMultiTape(machine)) spec.tapeCount = src.tapeCount || 2;
   if (includeTests && Array.isArray(src.tests)) spec.tests = src.tests;
 
   return spec;

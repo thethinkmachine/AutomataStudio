@@ -201,7 +201,7 @@ export function buildTransitionMatrix(ir) {
   const cols = [...ir.sigma];
   if (ir.hasEpsilon) cols.push(ir.sym.eps);
   const header = ['State', ...cols];
-  if (ir.machine === 'Moore') header.push('Output');
+  if (ir.hasStateOutput) header.push('Output');
 
   const rows = ir.states.map(s => {
     const mark = `${s.isStart ? '→' : ''}${s.isAccept ? '*' : ''}`;
@@ -212,7 +212,7 @@ export function buildTransitionMatrix(ir) {
       if (!dests.length) return '—';
       // Mealy/FST print the emitted symbol alongside the destination;
       // the destination alone would lose the whole output function.
-      if (ir.isTransducer && ir.machine !== 'Moore') {
+      if (ir.isTransducer && !ir.hasStateOutput) {
         return ir.transitions
           .filter(t => t.from === s.id && t.symbol === sym)
           .map(t => `${t.toName}/${t.output != null && t.output !== '' ? t.output : ir.sym.lambda}`)
@@ -221,7 +221,7 @@ export function buildTransitionMatrix(ir) {
       return dests.length > 1 ? `{${dests.join(', ')}}` : dests[0];
     });
     const row = [`${mark}${s.name}`, ...cells];
-    if (ir.machine === 'Moore') row.push(s.output != null ? s.output : '');
+    if (ir.hasStateOutput) row.push(s.output != null ? s.output : '');
     return row;
   });
 

@@ -1,7 +1,7 @@
 import { snapshot } from './history.js';
 import { saveBackup } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
-import { stateNames, tokenize } from './simulation.js';
+import { stateNames, tokenize } from './machines/runtime.js';
 import { $, App } from './state.js';
 import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen } from './ui.js';

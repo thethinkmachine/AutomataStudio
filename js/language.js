@@ -1,8 +1,10 @@
 import { wrap } from './canvas.js';
 import { openExportCodeModal } from './export-ui.js';
 import { _regexCacheKey, updateDefBoxOverflowShadow } from './render.js';
-import { langStepBudget, runSim, test2DFA, test2DFT, test2NFA, testDFA, testFST, testNFA, testNPDA, testPDA, testPDT, testPFA, testTMVerdict } from './simulation.js';
-import { $, App, getMachineConfig, isDeterministicOmega, isOmegaAutomaton, omegaAcceptanceOf, statePriority, usesParityPriorities } from './state.js';
+import { runSim } from './simulation.js';
+import { decideWord, inFamily, machineFormal } from './machines/index.js';
+import { langStepBudget } from './machines/runtime.js';
+import { $, App, getMachineConfig, isOmegaAutomaton, omegaAcceptanceOf, statePriority } from './state.js';
 import { getState } from './states-transitions.js';
 import { toggleRPSection } from './ui.js';
 import { isAnyPDA, isAnyTM } from './utils.js';
@@ -61,7 +63,7 @@ export function langCanDecide() {
 // so a path through the graph is not a word.
 export function langCanTrace() {
   const m = App.machine;
-  return m === 'DFA' || m === 'NFA' || m === 'ε-NFA' || isAnyPDA(m);
+  return inFamily(m, 'finite') || isAnyPDA(m);
 }
 
 // ── the vocabulary: abbreviations, actor groups, usage ─────────────
@@ -126,27 +128,17 @@ export function langVocab() {
 }
 
 // ── deciding a word ───────────────────────────────────────────────
-// Reuses the same verdict-only runners the batch tester uses, so a
-// word shown here is accepted by exactly the simulator the user runs.
+// The same verdict the batch tester and StateMate's verification get,
+// from the same place: a word shown here is accepted by exactly the
+// machine the reader runs. `null` back from decideWord means this
+// machine does not read finite words at all — an ω-automaton — and no
+// enumeration of Σ* says anything about its language.
 export function langVerdict(tokens) {
-  const m = App.machine;
   try {
-    if (isAnyTM(m)) return testTMVerdict(tokens);
-    if (m === 'DFA') return testDFA(tokens) ? 'acc' : 'rej';
-    if (m === 'NFA' || m === 'ε-NFA') return testNFA(tokens) ? 'acc' : 'rej';
-    if (m === 'DPDA' || m === 'PDA') return testPDA(tokens) ? 'acc' : 'rej';
-    if (m === 'NPDA' || m === 'QA' || m === 'Counter' || m === '2PDA') return testNPDA(tokens) ? 'acc' : 'rej';
-    if (m === '2DFA') return test2DFA(tokens) ? 'acc' : 'rej';
-    if (m === '2NFA') return test2NFA(tokens) ? 'acc' : 'rej';
-    if (m === 'PFA') return testPFA(tokens) ? 'acc' : 'rej';
-    if (m === 'Moore' || m === 'Mealy') return testDFA(tokens) ? 'acc' : 'rej';
-    if (m === 'FST') return testFST(tokens).accepted ? 'acc' : 'rej';
-    if (m === 'PDT') return testPDT(tokens).accepted ? 'acc' : 'rej';
-    if (m === '2DFT') { const r = test2DFT(tokens); return !r.halted ? 'unk' : (r.accepted ? 'acc' : 'rej'); }
+    return decideWord(App.machine, tokens)?.verdict ?? 'unk';
   } catch (e) {
     return 'unk';
   }
-  return 'unk';
 }
 
 // ── fingerprint (symbolic mode) ───────────────────────────────────
@@ -597,31 +589,14 @@ export function langCoverageTraces(opts = {}) {
 }
 
 // ── the formal definition, as one line ────────────────────────────
+// Which components a machine's tuple has, and what δ's signature reads,
+// are facts about that machine — so both come from its definition rather
+// than from a chain of thirty string comparisons whose *order* was
+// load-bearing. (It was: a PDT had to be tested before the pushdown
+// family or the output alphabet silently vanished from the tuple, and a
+// 2DFT before the two-way heads for the same reason.)
 export function langTupleSyms() {
-  const m = App.machine;
-  if (m === '2PDA') return ['Q', 'Σ', 'Γ₁', 'Γ₂', 'δ', 'q₀', 'F'];
-  if (m === 'QA' || m === 'Counter') return ['Q', 'Σ', 'Γ', 'δ', 'q₀', 'F'];
-  // Before isAnyPDA: a PDT is a pushdown machine, but its tuple carries the
-  // output alphabet and output function that the plain PDA tuple has no slot for.
-  if (m === 'PDT') return ['Q', 'Σ', 'Γ', 'Δ', 'δ', 'λ', 'q₀', 'F'];
-  if (isAnyPDA(m)) {
-    return App.config.pdaParadigm === 'explicit'
-      ? ['Q', 'Σ', 'Γ', 'δ', 'q₀', 'Z₀', 'F']
-      : ['Q', 'Σ', 'Γ', 'δ', 'q₀'];
-  }
-  if (m === '2DFT') return ['Q', 'Σ', 'Δ', 'δ', 'λ', 'q₀', 'F'];
-  if (m === 'Moore' || m === 'Mealy') return ['Q', 'Σ', 'Δ', 'δ', 'λ', 'q₀'];
-  if (m === 'FST') return ['Q', 'Σ', 'Δ', 'δ', 'λ', 'q₀', 'F'];
-  // PFA's last slot is Rabin's cut-point, not an output function — see the λ
-  // case in langTupleInfo, which branches on the machine for exactly this.
-  if (m === 'PFA') return ['Q', 'Σ', 'δ', 'q₀', 'F', 'λ'];
-  // Parity replaces the accepting set with a priority function, so the tuple's
-  // last slot changes name as well as meaning.
-  if (isOmegaAutomaton(m)) {
-    return ['Q', 'Σ', 'δ', 'q₀', usesParityPriorities(m) ? 'Ω' : 'F'];
-  }
-  if (isAnyTM(m)) return ['Q', 'Σ', 'Γ', 'δ', 'q₀', 'F'];
-  return ['Q', 'Σ', 'δ', 'q₀', 'F'];
+  return machineFormal(App.machine)?.tuple?.() || ['Q', 'Σ', 'δ', 'q₀', 'F'];
 }
 
 export function langTupleInfo(sym) {
@@ -634,7 +609,7 @@ export function langTupleInfo(sym) {
     case 'Γ': case 'Γ₁': case 'Γ₂':
       return {
         n: App.stackAlpha.size, val: set([...App.stackAlpha]),
-        say: isAnyTM(m) ? 'tape alphabet' : m === 'QA' ? 'queue alphabet' : 'stack alphabet'
+        say: machineFormal(m)?.storeSay || 'stack alphabet'
       };
     case 'Δ': return { n: App.outputAlpha.size, say: 'output alphabet', val: set([...App.outputAlpha]) };
     case 'F': return {
@@ -657,47 +632,27 @@ export function langTupleInfo(sym) {
     case 'q₀': return { n: null, say: 'start state', val: getState(App.startId)?.name || '—' };
     case 'Z₀': return { n: null, say: 'initial stack symbol', val: App.config.sym.stackBottom };
     case 'δ': return { n: App.transitions.length, say: 'transition function', val: langDeltaSignature() };
-    // Moore emits per state, Mealy and FST per transition, so the
-    // cardinality shown has to follow the machine, not the tuple slot.
-    // λ is the output function everywhere except a PFA, where it is the
-    // cut-point the accepting mass is compared against.
+    // λ is the output function everywhere except a PFA, where the same
+    // letter names the cut-point the accepting mass is compared against.
+    // Moore emits per state and everyone else per transition, so the
+    // cardinality shown follows the machine rather than the tuple slot.
     case 'λ': {
-      if (m === 'PFA') {
+      const formal = machineFormal(m);
+      if (formal?.cutPoint) {
         return { n: null, say: 'cut-point (accept when P(w) > λ)', val: String(App.config.pfaCutPoint) };
       }
-      const sig = m === 'Moore' ? 'Q → Δ'
-        : m === 'Mealy' ? 'Q × Σ → Δ'
-          : m === 'PDT' ? 'Q × (Σ ∪ {ε}) × Γ × Q → Δ*'
-            : m === '2DFT' ? 'Q × Σ → Δ*'
-              : 'Q × (Σ ∪ {ε}) × Q → Δ*';
-      return { n: m === 'Moore' ? App.states.length : App.transitions.length, say: 'output function', val: sig };
+      return {
+        n: formal?.outputPerState ? App.states.length : App.transitions.length,
+        say: 'output function',
+        val: formal?.outputSay || 'Q × (Σ ∪ {ε}) × Q → Δ*'
+      };
     }
   }
   return { n: null, say: '', val: '—' };
 }
 
 export function langDeltaSignature() {
-  const m = App.machine;
-  if (m === 'DFA') return 'Q × Σ → Q';
-  if (m === 'NFA') return 'Q × Σ → P(Q)';
-  if (m === 'ε-NFA') return 'Q × (Σ ∪ {ε}) → P(Q)';
-  if (m === '2DFA') return 'Q × Σ → Q × {L, R, S}';
-  if (m === '2NFA') return 'Q × Σ → P(Q × {L, R, S})';
-  if (m === '2DFT') return 'Q × Σ → Q × {L, R, S} × Δ*';
-  if (m === 'PFA') return 'Q × Σ × Q → [0, 1]';
-  // All eight ω-types share a tuple; the D-types differ only here, and that
-  // single arrow is what costs the DBA "finitely many a".
-  if (isOmegaAutomaton(m)) return isDeterministicOmega(m) ? 'Q × Σ → Q' : 'Q × Σ → P(Q)';
-  if (m === 'PDT') return 'Q × (Σ ∪ {ε}) × Γ → P(Q × Γ* × Δ*)';
-  if (m === 'QA') return 'Q × (Σ ∪ {ε}) × (Γ ∪ {ε}) → P(Q × Γ*)';
-  if (m === '2PDA') return 'Q × (Σ ∪ {ε}) × Γ₁ × Γ₂ → P(Q × Γ₁* × Γ₂*)';
-  if (isAnyPDA(m)) return 'Q × (Σ ∪ {ε}) × Γ → ' + (m === 'NPDA' ? 'P(Q × Γ*)' : 'Q × Γ*');
-  if (m === 'MTM') { const k = App.tapeCount || 2; return `Q × Γ^${k} → Q × Γ^${k} × {L, R, S}^${k}`; }
-  if (m === 'NDTM') return 'Q × Γ → P(Q × Γ × {L, R, S})';
-  if (isAnyTM(m)) return 'Q × Γ → Q × Γ × {L, R, S}';
-  if (m === 'Moore' || m === 'Mealy') return 'Q × Σ → Q';
-  if (m === 'FST') return 'Q × (Σ ∪ {ε}) → P(Q)';
-  return '';
+  return machineFormal(App.machine)?.delta?.() || '';
 }
 
 // ── canvas cross-highlight ────────────────────────────────────────
