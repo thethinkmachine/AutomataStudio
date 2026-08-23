@@ -774,6 +774,39 @@ test('the OpenAI request uses a bearer token and asks for JSON', async () => {
   assert.equal(out.text, '{"machine":"NFA"}');
 });
 
+test('native tool schemas use the Anthropic and OpenAI request shapes', async () => {
+  const h = createHarness();
+  const tool = h.context.STATEMATE_NATIVE_TOOLS.find(row => row.name === 'get_machine_summary');
+
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', model: 'claude-sonnet-5' });
+  let fetchStub = fakeFetch(() => jsonResponse({
+    content: [{ type: 'tool_use', id: 'anthropic-call', name: 'get_machine_summary', input: {} }],
+    stop_reason: 'tool_use'
+  }));
+  h.context.fetch = fetchStub;
+  const anthropic = await h.context.callModel({ system: 'S', user: 'U', tools: [tool] });
+  assert.equal(fetchStub.calls[0].body.tools[0].name, 'get_machine_summary');
+  assert.deepEqual(fetchStub.calls[0].body.tools[0].input_schema, tool.parameters);
+  assert.deepEqual(anthropic.toolCalls, [{ id: 'anthropic-call', name: 'get_machine_summary', arguments: {} }]);
+  assert.equal(anthropic.rawContent[0].type, 'tool_use');
+
+  h.context.saveStateMateSettings({ enabled: true, provider: 'openai', apiKey: 'k', model: 'gpt-4o' });
+  fetchStub = fakeFetch(() => jsonResponse({
+    choices: [{
+      finish_reason: 'tool_calls',
+      message: {
+        content: null,
+        tool_calls: [{ id: 'openai-call', type: 'function', function: { name: 'get_machine_summary', arguments: '{}' } }]
+      }
+    }]
+  }));
+  h.context.fetch = fetchStub;
+  const openai = await h.context.callModel({ system: 'S', user: 'U', tools: [tool] });
+  assert.equal(fetchStub.calls[0].body.tools[0].function.name, 'get_machine_summary');
+  assert.deepEqual(openai.toolCalls, [{ id: 'openai-call', name: 'get_machine_summary', arguments: {} }]);
+  assert.equal(openai.rawToolCalls[0].id, 'openai-call');
+});
+
 test('a local OpenAI-compatible server needs no key and is not asked for a JSON format', async () => {
   const h = createHarness();
   h.context.saveStateMateSettings({ enabled: true, provider: 'compatible', apiKey: '', model: 'llama3.1' });
@@ -1010,6 +1043,156 @@ function anthropicReply(spec) {
     model: 'claude-sonnet-5'
   });
 }
+
+function toolReply(calls) {
+  return anthropicReply({ kind: 'tool', calls });
+}
+
+function simpleAgentCalls() {
+  return [
+    { id: 'create', name: 'create_candidate', arguments: { machine: 'DFA', sigma: ['a', 'b'], title: 'Agent DFA' } },
+    { id: 'q0', name: 'add_state', arguments: { name: 'q0', start: true, accept: true } },
+    { id: 'q1', name: 'add_state', arguments: { name: 'q1' } },
+    { id: 't0', name: 'add_transition', arguments: { from: 'q0', to: 'q1', on: 'a' } },
+    { id: 't1', name: 'add_transition', arguments: { from: 'q1', to: 'q0', on: 'a' } },
+    { id: 'finish', name: 'finish', arguments: { blurb: 'Built with private tools.', tests: [{ w: 'aa', expect: 'accept' }] } }
+  ];
+}
+
+test('agent tools can build over multiple turns and apply through the normal gate', async () => {
+  const h = createHarness();
+  const { App } = h.context;
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', agentTools: true });
+  h.context.fetch = fakeFetch((_url, _init, call) => call === 1
+    ? toolReply(simpleAgentCalls().slice(0, 5))
+    : toolReply([simpleAgentCalls()[5]]));
+
+  const events = [];
+  const result = await h.context.runStateMate({ prompt: 'build a parity DFA', intent: 'build', onEvent: event => events.push(event) });
+
+  assert.equal(result.status, 'applied');
+  assert.equal(result.agent.steps, 2);
+  assert.equal(result.agent.tools, 6);
+  assert.equal(App.states.length, 2);
+  assert.equal(App.transitions.length, 2);
+  assert.ok(events.some(event => event.type === 'agent' && event.stage === 'tools'));
+  assert.ok(events.some(event => event.type === 'agent' && event.stage === 'tool-results'));
+});
+
+test('chat mode denies candidate-write tools at the registry boundary', () => {
+  const h = createHarness();
+  const session = h.context.createAgentSession({ machine: 'DFA', sigma: [], states: [], transitions: [] }, { intent: 'build' });
+  const result = h.context.executeAgentToolCalls([
+    { id: '1', name: 'create_candidate', arguments: { machine: 'DFA', sigma: ['a'] } }
+  ], session, { authority: 'ask' });
+  assert.equal(result[0].ok, false);
+  assert.equal(result[0].error.code, 'read-only');
+});
+
+test('ask_user pauses an agent and the next prompt resumes its private candidate without history', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', agentTools: true, threadDepth: 0 });
+  h.context.fetch = fakeFetch((_url, _init, call) => call === 1
+    ? toolReply([
+      { id: 'create', name: 'create_candidate', arguments: { machine: 'DFA', sigma: ['a'] } },
+      { id: 'state', name: 'add_state', arguments: { name: 'q0', start: true, accept: true } },
+      { id: 'loop', name: 'add_transition', arguments: { from: 'q0', to: 'q0', on: 'a' } },
+      { id: 'ask', name: 'ask_user', arguments: { question: 'Should the empty word be accepted?' } }
+    ])
+    : toolReply([{ id: 'finish', name: 'finish', arguments: { title: 'Resumed DFA', tests: [] } }]));
+
+  const first = await h.context.runStateMate({ prompt: 'build a DFA for a', intent: 'build' });
+  assert.equal(first.kind, 'reply');
+  assert.equal(first.waiting, true);
+  assert.match(first.reply, /empty word/);
+  assert.equal(h.context.App.states.length, 0);
+
+  const second = await h.context.runStateMate({ prompt: 'accept it', intent: 'build' });
+  assert.equal(second.status, 'applied');
+  assert.equal(second.spec.title, 'Resumed DFA');
+  assert.equal(h.context.App.states.length, 1);
+  assert.equal(h.context.App.accepts.size, 1);
+  const sent = h.context.fetch.calls[1].body.messages.at(-1).content;
+  assert.match(sent, /The original request was: build a DFA for a/);
+});
+
+test('request_approval turns an otherwise automatic agent result into a proposal', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', agentTools: true });
+  h.context.fetch = fakeFetch((_url, _init, call) => call === 1
+    ? toolReply(simpleAgentCalls().slice(0, 5))
+    : toolReply([{ id: 'approval', name: 'request_approval', arguments: { reason: 'Please inspect the generated transitions.' } }]));
+  const result = await h.context.runStateMate({ prompt: 'build a DFA', intent: 'build', authority: 'auto' });
+  assert.equal(result.status, 'proposed');
+  assert.equal(result.hold, 'agent');
+  assert.match(result.agentHoldDetail, /inspect the generated transitions/);
+  assert.equal(h.context.App.states.length, 0);
+});
+
+test('Anthropic native tool continuation preserves tool_use and correlated tool_result blocks', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', agentTools: true });
+  h.context.fetch = fakeFetch((_url, _init, call) => call === 1
+    ? jsonResponse({
+      content: [{ type: 'tool_use', id: 'summary-1', name: 'get_machine_summary', input: {} }],
+      stop_reason: 'tool_use'
+    })
+    : toolReply([{ id: 'finish', name: 'finish', arguments: { reply: 'The canvas is empty.' } }]));
+
+  const result = await h.context.runStateMate({ prompt: 'describe the canvas', intent: 'edit' });
+  assert.equal(result.kind, 'reply');
+  const continuation = h.context.fetch.calls[1].body.messages;
+  assert.equal(continuation.at(-2).role, 'assistant');
+  assert.equal(continuation.at(-2).content[0].type, 'tool_use');
+  assert.equal(continuation.at(-1).role, 'user');
+  assert.equal(continuation.at(-1).content[0].type, 'tool_result');
+  assert.equal(continuation.at(-1).content[0].tool_use_id, 'summary-1');
+});
+
+test('OpenAI native tool continuation preserves tool_calls and correlated tool messages', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'openai', apiKey: 'k', agentTools: true });
+  h.context.fetch = fakeFetch((_url, _init, call) => call === 1
+    ? jsonResponse({
+      choices: [{
+        finish_reason: 'tool_calls',
+        message: {
+          content: null,
+          tool_calls: [{ id: 'summary-1', type: 'function', function: { name: 'get_machine_summary', arguments: '{}' } }]
+        }
+      }]
+    })
+    : jsonResponse({ choices: [{ message: { content: JSON.stringify({ kind: 'tool', calls: [{ id: 'finish', name: 'finish', arguments: { reply: 'The canvas is empty.' } }] }) } }] }));
+
+  const result = await h.context.runStateMate({ prompt: 'describe the canvas', intent: 'edit' });
+  assert.equal(result.kind, 'reply');
+  const continuation = h.context.fetch.calls[1].body.messages;
+  assert.equal(continuation.at(-2).role, 'assistant');
+  assert.equal(continuation.at(-2).tool_calls[0].id, 'summary-1');
+  assert.equal(continuation.at(-1).role, 'tool');
+  assert.equal(continuation.at(-1).tool_call_id, 'summary-1');
+});
+
+test('agent algorithms and layout operate on the private candidate', () => {
+  const h = createHarness();
+  const session = h.context.createAgentSession({ machine: 'DFA', sigma: ['a'], states: [], transitions: [] }, { intent: 'build' });
+  h.context.executeAgentToolCalls([
+    { id: 'create', name: 'create_candidate', arguments: { machine: 'DFA', sigma: ['a'] } },
+    { id: 's0', name: 'add_state', arguments: { name: 'q0', start: true, accept: true } },
+    { id: 's1', name: 'add_state', arguments: { name: 'q1' } },
+    { id: 't0', name: 'add_transition', arguments: { from: 'q0', to: 'q1', on: 'a' } },
+    { id: 't1', name: 'add_transition', arguments: { from: 'q1', to: 'q1', on: 'a' } },
+    { id: 'layout', name: 'auto_layout_candidate', arguments: { algorithm: 'circular' } }
+  ], session);
+  assert.equal(session.candidate.states.length, 2);
+  assert.ok(session.draft.states.every(state => Number.isFinite(state.x) && Number.isFinite(state.y)));
+  const summary = h.context.executeAgentToolCalls([
+    { id: 'lint', name: 'lint_machine', arguments: {} },
+    { id: 'simulate', name: 'simulate_word', arguments: { word: '' } }
+  ], session);
+  assert.equal(summary[0].ok, true);
+  assert.equal(summary[1].ok, true);
+});
 
 test('a good answer is drawn, and one Ctrl+Z takes it back', async () => {
   const h = createHarness();
@@ -2058,6 +2241,35 @@ test('the console defaults to propose and cycles with the status chip', async ()
   h.context.stowStateMate();
   h.context.openStateMate();
   assert.equal(deepText(chip()), COPY.ask.label);
+});
+
+test('the behavior switch persists Standard or Agentic independently of write authority', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({
+    enabled: true, provider: 'anthropic', apiKey: 'k', agentTools: true, maxRetries: 0
+  });
+  h.context.openStateMate();
+
+  const standard = h.getElement('sm-behavior-standard');
+  const agentic = h.getElement('sm-behavior-agentic');
+  assert.equal(agentic.getAttribute('aria-checked'), 'true');
+  assert.equal(standard.getAttribute('aria-checked'), 'false');
+  assert.match(statusText(h), /Build/, 'behavior does not replace Chat/Build/Auto authority');
+
+  standard.onclick();
+  assert.equal(h.context.getStateMateSettings().agentTools, false);
+  assert.equal(standard.getAttribute('aria-checked'), 'true');
+  assert.equal(h.getElement('set-sm-agent-tools').checked, false);
+
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
+  await enter(type(h, 'even number of a'));
+  assert.equal(h.context.fetch.calls[0].body.tools, undefined,
+    'Standard uses the original one-response request shape');
+
+  agentic.onclick();
+  assert.equal(h.context.getStateMateSettings().agentTools, true);
+  assert.equal(agentic.getAttribute('aria-checked'), 'true');
+  assert.equal(h.getElement('set-sm-agent-tools').checked, true);
 });
 
 test('a replacing edit reads as one chip per dimension, not four', () => {

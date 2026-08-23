@@ -109,6 +109,8 @@ const DEFAULTS = {
   model: '',
   apiKey: '',
   // Behaviour
+  agentTools: true,
+  agentMaxSteps: 16,
   attachCanvas: true,
   verify: true,
   repairAttempts: 1,
@@ -371,6 +373,7 @@ export function delay(ms, signal) {
 function toProviderContent(content, provider) {
   if (!Array.isArray(content)) return content;
   const parts = content.map(part => {
+    if (part?.type === 'tool_use' || part?.type === 'tool_result') return part;
     if (part?.type !== 'image') return { type: 'text', text: String(part?.text ?? '') };
     return provider === 'anthropic'
       ? { type: 'image', source: { type: 'base64', media_type: part.mime, data: part.data } }
@@ -383,13 +386,16 @@ function toProviderContent(content, provider) {
   return parts;
 }
 
-function buildRequest({ system, messages, maxTokens, temperature }, s) {
+function buildRequest({ system, messages, maxTokens, temperature, tools }, s) {
   const { baseUrl, model } = resolveEndpoint(s);
   messages = (messages || []).map(m => ({ ...m, content: toProviderContent(m.content, s.provider) }));
   // The shell used to force this off, because `invoke` resolves once with a
   // whole body and cannot deliver a stream. It can now, so the only setup left
   // without streaming is an older desktop build.
-  const streaming = !hasNativeTransport() || hasNativeStreaming();
+  // Native tool calls are returned as structured blocks. Keep that round
+  // buffered so the provider boundary can preserve call ids and arguments;
+  // text-envelope turns continue to stream as before.
+  const streaming = !tools?.length && (!hasNativeTransport() || hasNativeStreaming());
 
   if (s.provider === 'anthropic') {
     return {
@@ -409,7 +415,12 @@ function buildRequest({ system, messages, maxTokens, temperature }, s) {
         // dialects now that both take a thread.
         system,
         stream: streaming,
-        messages
+        messages,
+        ...(tools?.length ? { tools: tools.map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          input_schema: tool.parameters
+        })) } : {})
       }
     };
   }
@@ -426,7 +437,15 @@ function buildRequest({ system, messages, maxTokens, temperature }, s) {
   // Only the hosted OpenAI API is reliably happy with a JSON response format;
   // enough compatible servers reject the field outright that asking for it
   // there costs more requests than it saves.
-  if (s.provider === 'openai') body.response_format = { type: 'json_object' };
+  if (s.provider === 'openai' && !tools?.length) body.response_format = { type: 'json_object' };
+  if (s.provider === 'openai' && tools?.length) body.tools = tools.map(tool => ({
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters
+    }
+  }));
   if (streaming) body.stream_options = { include_usage: true };
 
   return { url: `${baseUrl}/chat/completions`, headers, body };
@@ -436,19 +455,33 @@ function buildRequest({ system, messages, maxTokens, temperature }, s) {
 
 function readWholeResponse(json, provider) {
   if (provider === 'anthropic') {
-    const text = (json.content || [])
+    const blocks = json.content || [];
+    const text = blocks
       .filter(part => part.type === 'text')
       .map(part => part.text)
       .join('');
     return {
       text,
+      rawContent: blocks,
+      toolCalls: blocks.filter(part => part.type === 'tool_use').map(part => ({
+        id: part.id,
+        name: part.name,
+        arguments: part.input && typeof part.input === 'object' ? part.input : {}
+      })),
       usage: { input: json.usage?.input_tokens ?? null, output: json.usage?.output_tokens ?? null },
       model: json.model || null,
       stop: json.stop_reason || null
     };
   }
+  const message = json.choices?.[0]?.message || {};
   return {
-    text: json.choices?.[0]?.message?.content || '',
+    text: message.content || '',
+    rawToolCalls: message.tool_calls || [],
+    toolCalls: (message.tool_calls || []).map(call => {
+      let argumentsValue = {};
+      try { argumentsValue = JSON.parse(call.function?.arguments || '{}'); } catch (_error) { }
+      return { id: call.id, name: call.function?.name || '', arguments: argumentsValue };
+    }),
     usage: { input: json.usage?.prompt_tokens ?? null, output: json.usage?.completion_tokens ?? null },
     model: json.model || null,
     stop: json.choices?.[0]?.finish_reason || null
@@ -646,8 +679,8 @@ function checkStopReason(out, model, maxTokens) {
 }
 
 /** One request, no retries. Everything that can throw a ProviderError. */
-async function requestOnce({ system, turns, maxTokens, temperature, onText, signal }, s) {
-  const request = buildRequest({ system, messages: turns, maxTokens, temperature }, s);
+async function requestOnce({ system, turns, maxTokens, temperature, onText, signal, tools }, s) {
+  const request = buildRequest({ system, messages: turns, maxTokens, temperature, tools }, s);
   const host = (() => {
     try { return new URL(request.url).host; } catch (e) { return request.url; }
   })();
@@ -744,7 +777,11 @@ async function requestOnce({ system, turns, maxTokens, temperature, onText, sign
     // Streaming is the default, but a proxy that buffers the body away leaves
     // no reader — falling back keeps those setups working rather than failing
     // on a feature the user did not ask for.
-    if (request.body.stream && response.body?.getReader) {
+    // Some proxies and test transports expose an SSE body even when the
+    // request was buffered for native tool calls. Prefer the readable body
+    // whenever JSON parsing is unavailable, so those transports keep the
+    // same streaming-compatible behavior.
+    if (response.body?.getReader && (request.body.stream || typeof response.json !== 'function')) {
       keepAlive();
       const out = await readStream(response, s.provider, onText, keepAlive, startedAt);
       if (timedOut) throw new ProviderError('timeout', `${model} stopped responding mid-answer.`);
@@ -777,7 +814,7 @@ async function requestOnce({ system, turns, maxTokens, temperature, onText, sign
  */
 export async function callModel({
   system, user, messages, onText, onRetry, signal,
-  maxTokens = 4000, temperature = 0.7, maxRetries, sleep = delay
+  maxTokens = 4000, temperature = 0.7, maxRetries, sleep = delay, tools = []
 } = {}) {
   const s = getStateMateSettings();
   if (!s.enabled) throw new ProviderError('disabled', 'StateMate is switched off.');
@@ -788,7 +825,7 @@ export async function callModel({
     : [{ role: 'user', content: user ?? '' }];
 
   const budget = Math.max(0, Math.min(5, maxRetries ?? s.maxRetries ?? 0));
-  const once = () => requestOnce({ system, turns, maxTokens, temperature, onText, signal }, s);
+  const once = () => requestOnce({ system, turns, maxTokens, temperature, onText, signal, tools }, s);
 
   let attempt = 0;
   for (;;) {

@@ -59,6 +59,7 @@ import * as machineTwoWay from '../js/machines/twoway.js';
 import * as state from '../js/state.js';
 import * as statesTransitions from '../js/states-transitions.js';
 import * as statemate from '../js/statemate.js';
+import * as statemateAgent from '../js/statemate-agent.js';
 import * as statemateCompile from '../js/statemate-compile.js';
 import * as statemateLint from '../js/statemate-lint.js';
 import * as statematePrompt from '../js/statemate-prompt.js';
@@ -86,7 +87,7 @@ const NAMESPACES = [
   simulation, suggest, language, alphabet, markdown,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, algorithmsFa, algorithmsCfg, reference, workspace, quickSettings, minimap, ui,
-  statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt,
+  statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt, statemateAgent,
   statemate, statemateUi, wizardCopy, wizard, wizardUi
 ];
 

@@ -28,8 +28,9 @@
 //      and a model is only usually correct, but that is a reason to offer the
 //      tool, not a reason to reinterpret what you typed
 //
-//  **There is exactly one setting here, and it is write authority** — ask,
-//  propose, auto, on Shift+Tab. Everything else about a turn is inferred:
+//  There are two independent controls here. **Behavior** chooses a standard
+//  one-response run or the multi-step private tool loop. **Write authority**
+//  is ask, propose or auto, on Shift+Tab. Everything else is inferred:
 //  whether it is about the machine on the canvas (turnIntent), and whether it
 //  wants an answer or an edit (the model decides, from the prompt). The rule
 //  is the one Claude Code follows — a model may infer what you meant, but not
@@ -505,6 +506,17 @@ export const AUTHORITY_COPY = {
   }
 };
 
+export const BEHAVIOR_COPY = {
+  standard: {
+    label: 'Standard',
+    tip: 'One model response builds or answers without using StateMate tools.'
+  },
+  agentic: {
+    label: 'Agentic',
+    tip: 'StateMate may inspect, edit and test a private candidate over several tool steps.'
+  }
+};
+
 function setAuthority(next, { quiet = false } = {}) {
   if (!AUTHORITIES.includes(next)) return;
   Session.authority = next;
@@ -516,6 +528,38 @@ function setAuthority(next, { quiet = false } = {}) {
 function cycleAuthority() {
   const at = AUTHORITIES.indexOf(Session.authority);
   setAuthority(AUTHORITIES[(at + 1) % AUTHORITIES.length]);
+}
+
+function renderBehaviorMode() {
+  const settings = getStateMateSettings();
+  const mode = settings.agentTools === false ? 'standard' : 'agentic';
+  const busy = isStateMateRunning();
+  const group = $('sm-behavior-switch');
+  if (group) group.dataset.mode = mode;
+
+  for (const id of Object.keys(BEHAVIOR_COPY)) {
+    const button = $(`sm-behavior-${id}`);
+    if (!button) continue;
+    const selected = id === mode;
+    button.textContent = BEHAVIOR_COPY[id].label;
+    button.classList.toggle('is-active', selected);
+    button.setAttribute('aria-checked', String(selected));
+    button.dataset.tip = BEHAVIOR_COPY[id].tip;
+    button.disabled = busy;
+    button.onclick = () => setBehaviorMode(id);
+  }
+}
+
+function setBehaviorMode(mode) {
+  if (!BEHAVIOR_COPY[mode] || isStateMateRunning()) return;
+  const agentTools = mode === 'agentic';
+  saveStateMateSettings({ agentTools });
+  // Keep a settings dialog opened over the panel in sync with the quick
+  // switch, without requiring Apply before its visible value catches up.
+  const setting = $('set-sm-agent-tools');
+  if (setting) setting.checked = agentTools;
+  renderBehaviorMode();
+  showStatus(`StateMate behavior: ${BEHAVIOR_COPY[mode].label}`);
 }
 
 function effectiveAttach() {
@@ -1036,6 +1080,22 @@ function renderRun(entry) {
   });
   wrap.append(steps);
 
+  if (entry.agentEvents?.length) {
+    const activity = el('div', 'sm-agent-activity');
+    activity.append(el('div', 'sm-agent-label', 'Agent activity'));
+    entry.agentEvents.slice(-12).forEach(event => {
+      const row = el('div', 'sm-agent-event');
+      const label = event.stage === 'tools'
+        ? `Tool call${event.calls?.length === 1 ? '' : 's'}: ${(event.calls || []).map(call => call.name).join(', ')}`
+        : event.stage === 'tool-results'
+          ? `${(event.results || []).filter(result => result.ok).length}/${(event.results || []).length} tool results returned`
+          : event.stage === 'resumed' ? 'Resumed the private candidate' : 'Agent started';
+      row.textContent = label;
+      activity.append(row);
+    });
+    wrap.append(activity);
+  }
+
   // A wait the app chose has to say so. A silent eight-second stall while a
   // rate limit clears is indistinguishable from a hang, and the user's only
   // move is to abandon a request that was about to succeed.
@@ -1185,6 +1245,8 @@ function renderMachine(entry) {
       ? `Held back — ${result.holdDetail}. Check it before it lands.`
       : result.hold === 'ask'
         ? 'Ask mode is read-only, so this was not drawn.'
+        : result.hold === 'agent' && result.agentHoldDetail
+          ? `Review requested — ${result.agentHoldDetail}`
         : 'Not drawn yet — this is what would change.';
     card.append(el('div', 'sm-hold', reason));
   }
@@ -2609,6 +2671,7 @@ function setBusy(busy) {
   // here rather than left to whoever happens to redraw the header next.
   syncTabBadge();
   renderHeadActions();
+  renderBehaviorMode();
   syncPlaceholder();
 }
 
@@ -2806,6 +2869,7 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
     reply: '',
     ttft: '',
     retry: '',
+    agentEvents: [],
     stages: STAGE_ORDER.map(s => ({ ...s, status: 'idle', note: '' }))
   });
   Session.run = entry;
@@ -2857,6 +2921,16 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
           const userEntry = [...Session.log].reverse().find(e => e.kind === 'user' && !e.turnId);
           if (userEntry) keyEntry(userEntry, event.userId);
           entry.turnId = event.assistantId;
+          return;
+        }
+        if (event.type === 'agent') {
+          entry.agentEvents.push(event);
+          if (entry.agentEvents.length > 24) entry.agentEvents.shift();
+          const note = event.stage === 'tools'
+            ? `${event.calls?.length || 0} tool${event.calls?.length === 1 ? '' : 's'}`
+            : event.stage === 'resumed' ? 'resuming candidate' : 'agent active';
+          setStage(entry, 'request', 'active', note);
+          renderLog();
           return;
         }
         if (event.type !== 'stage') return;
@@ -2920,6 +2994,8 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
       announce(`StateMate proposed ${machineEntry.title}: ${machineEntry.chips.join(', ')}. Not drawn yet.`);
       showStatus(result.hold === 'scope'
         ? 'StateMate held a large edit back — review it in the console'
+        : result.hold === 'agent'
+          ? 'StateMate requested approval — review it in the console'
         : 'StateMate proposed a machine — review it in the console');
       return result;
     }
@@ -3471,6 +3547,8 @@ export function populateStateMateSettings() {
   setValue('set-sm-base', s.baseUrl);
   setValue('set-sm-model', s.model);
   setValue('set-sm-key', s.apiKey);
+  setValue('set-sm-agent-tools', s.agentTools !== false);
+  setValue('set-sm-agent-steps', String(s.agentMaxSteps ?? 16));
   setValue('set-sm-attach', s.attachCanvas);
   setValue('set-sm-verify', s.verify);
   setValue('set-sm-repairs', String(s.repairAttempts ?? 1));
@@ -3553,6 +3631,8 @@ export function applyStateMateSettings() {
     baseUrl: String(getValue('set-sm-base', '')).trim(),
     model: String(getValue('set-sm-model', '')).trim(),
     apiKey: String(getValue('set-sm-key', '')).trim(),
+    agentTools: !!getValue('set-sm-agent-tools', true),
+    agentMaxSteps: Number(getValue('set-sm-agent-steps', '16')) || 16,
     attachCanvas: !!getValue('set-sm-attach', true),
     verify: !!getValue('set-sm-verify', true),
     repairAttempts: Number(getValue('set-sm-repairs', '1')) || 0,
@@ -3574,6 +3654,8 @@ export function applyStateMateSettings() {
     // The model decides whether images can be attached at all, so the strip
     // and its button follow it.
     renderAttachments();
+    renderBehaviorMode();
+    renderStatus();
     syncTabBadge();
   }
   return next;
