@@ -41,6 +41,10 @@ import {
 } from './statemate-prompt.js';
 import { ProviderError, callModel, getStateMateSettings, supportsImages } from './statemate-provider.js';
 import {
+  MAX_AGENT_STEPS, agentFinishedTurn, agentToolInstructions, createAgentSession,
+  executeAgentToolCalls, parseAgentToolTurn, STATEMATE_NATIVE_TOOLS, toolResultsMessage
+} from './statemate-agent.js';
+import {
   MIN_SPEC_TESTS, StateMateError, describeSpecSize, extractSpecJSON,
   focusIsEmpty, machineToSpec, parseTurn, partialStringField, resolveContextRefs,
   testKindFor
@@ -58,6 +62,7 @@ import { applyMachineSwitch } from './view.js';
 //  tests is exactly the kind of thing that makes a suite flaky.
 
 let activeRun = null;
+let suspendedAgent = null;
 
 // ── the conversation ──────────────────────────────────────────────
 //  Strict one-shot has a predictable failure: "no, it should reject the empty
@@ -408,6 +413,7 @@ export function cancelStateMate() {
 export function resetStateMateRuntime() {
   if (activeRun) { try { activeRun.controller.abort(); } catch (e) { } }
   activeRun = null;
+  suspendedAgent = null;
   clearThread();
   checkpoints = new Map();
   checkpointN = 0;
@@ -794,7 +800,9 @@ export async function runStateMate({
   try {
     // ── 1 · assemble ──────────────────────────────────────────
     onEvent({ type: 'stage', stage: 'request' });
-    const system = await buildSystemPrompt(machine, { notes: !!settings.writeNotes });
+    const system = settings.agentTools === false
+      ? await buildSystemPrompt(machine, { notes: !!settings.writeNotes })
+      : `${await buildSystemPrompt(machine, { notes: !!settings.writeNotes })}\n\n${agentToolInstructions()}`;
     guard();
 
     const canvasSpec = useCanvas && App.states.length ? machineToSpec() : null;
@@ -831,12 +839,44 @@ export async function runStateMate({
     };
     let messages = [...history, liveTurn(true)];
     let historyCount = history.length;
+    // Hosted Anthropic and OpenAI APIs can carry tool calls as structured
+    // messages. Local/compatible providers keep the JSON envelope path so
+    // their varying tool dialects do not change the existing contract.
+    const nativeTools = settings.agentTools !== false &&
+      (settings.provider === 'anthropic' || settings.provider === 'openai')
+      ? STATEMATE_NATIVE_TOOLS
+      : [];
 
     let attempt = 0;
+    let repairRounds = 0;
     const maxAttempts = 1 + Math.max(0, Math.min(2, settings.repairAttempts ?? 1));
     let spec = null, candidate = null, diff = null, lint = null, batch = null;
+    let agentCandidate = null, agentDiff = null;
     let usage = null, model = null, repaired = false, timing = null;
     let lastFailures = [], lastFindings = [];
+    const resumeKey = currentThreadKey();
+    let agentSession = settings.agentTools !== false &&
+      suspendedAgent?.key === resumeKey && suspendedAgent.signature === machineSignature()
+      ? suspendedAgent.session
+      : null;
+    if (agentSession) {
+      suspendedAgent = null;
+      agentSession.finished = null;
+      const original = agentSession.originalPrompt
+        ? `The original request was: ${agentSession.originalPrompt}`
+        : 'Continue the pending request';
+      const notice = `${original}\nThis answers your pending question. Continue with the same private candidate and use tools before finishing if needed.`;
+      const live = messages[messages.length - 1];
+      if (typeof live?.content === 'string') live.content = `${notice}\n\n${live.content}`;
+      else if (Array.isArray(live?.content)) live.content.push({ type: 'text', text: notice });
+      onEvent({ type: 'agent', stage: 'resumed' });
+    } else if (suspendedAgent?.key === resumeKey) {
+      // The canvas moved while the question was waiting; the private draft was
+      // computed against an obsolete base, or Standard behavior was selected.
+      // Either way it cannot be resumed honestly.
+      suspendedAgent = null;
+    }
+    let agentSteps = 0;
 
     // Two self-heals, each allowed once, neither of which spends a repair
     // attempt: they are not about the quality of an answer, they are about the
@@ -853,6 +893,7 @@ export async function runStateMate({
           return await callModel({
             system,
             messages,
+            tools: nativeTools,
             signal: controller.signal,
             maxTokens,
             onRetry: info => {
@@ -904,8 +945,10 @@ export async function runStateMate({
       }
     };
 
-    while (attempt < maxAttempts) {
-      attempt++;
+    while (attempt < maxAttempts || agentSession) {
+      // Tool turns are continuations of the same answer, not repair attempts.
+      // The ordinary JSON path still uses the historical repair budget.
+      if (!agentSession) attempt++;
       guard();
 
       // ── 2 · request ─────────────────────────────────────────
@@ -915,11 +958,95 @@ export async function runStateMate({
       usage = response.usage;
       model = response.model;
       timing = response.timing;
+      let turn;
+
+      // A capable model can spend several turns investigating a private
+      // candidate. The legacy complete-spec response remains valid, so this
+      // branch is entered only when the explicit tool envelope is present.
+      const nativeToolCalls = settings.agentTools === false || !nativeTools.length
+        ? null
+        : (Array.isArray(response.toolCalls) && response.toolCalls.length ? response.toolCalls : null);
+      let toolCalls = nativeToolCalls;
+      try { if (!toolCalls) toolCalls = settings.agentTools === false ? null : parseAgentToolTurn(response.text); } catch (err) {
+        if (agentSession) throw err;
+      }
+      if (toolCalls) {
+        if (!agentSession) {
+          agentSession = createAgentSession(before, { intent: resolvedIntent, focus, prompt: text });
+          onEvent({ type: 'agent', stage: 'started' });
+        }
+        agentSteps++;
+        const agentMaxSteps = Math.max(1, Math.min(MAX_AGENT_STEPS, Number(settings.agentMaxSteps) || MAX_AGENT_STEPS));
+        if (agentSteps > agentMaxSteps) {
+          throw new StateMateError('agent-limit', `StateMate reached the ${agentMaxSteps}-step tool limit.`);
+        }
+        onEvent({ type: 'agent', stage: 'tools', calls: toolCalls.map(c => ({ id: c.id, name: c.name, arguments: c.arguments })) });
+        const results = executeAgentToolCalls(toolCalls, agentSession, { authority });
+        onEvent({ type: 'agent', stage: 'tool-results', results });
+        const finished = agentFinishedTurn(agentSession);
+        if (finished?.kind === 'reply') {
+          if (finished.waiting) suspendedAgent = { key: resumeKey, signature: machineSignature(), session: agentSession };
+          const userTurn = rememberTurn({ role: 'user', text });
+          const assistantTurn = rememberTurn({ role: 'assistant', kind: 'reply', text: finished.text });
+          onEvent({ type: 'turn', userId: userTurn.id, assistantId: assistantTurn.id });
+          const replied = {
+            status: 'replied', kind: 'reply', reply: finished.text,
+            waiting: !!finished.waiting, usage, model, timing, repaired,
+            agent: { steps: agentSteps, tools: agentSession.calls.length },
+            turnId: userTurn.id, answerId: assistantTurn.id, thread: getThread()
+          };
+          onEvent({ type: 'done', result: replied });
+          return replied;
+        }
+        if (finished?.kind === 'machine') {
+          turn = { kind: 'machine', spec: finished.spec };
+          spec = turn.spec;
+          agentCandidate = finished.candidate || null;
+          agentDiff = finished.diff || null;
+          onEvent({ type: 'stage', stage: 'parse' });
+          // Continue below through the same compile/lint/verify/apply gate as
+          // a one-shot answer. The candidate session is intentionally not
+          // installed into App here; it has already been sandboxed by tools.
+        } else {
+          if (nativeToolCalls) {
+            if (settings.provider === 'anthropic') {
+              messages.push(
+                { role: 'assistant', content: response.rawContent || [] },
+                { role: 'user', content: results.map(result => ({
+                  type: 'tool_result',
+                  tool_use_id: result.id,
+                  content: JSON.stringify(result)
+                })) }
+              );
+            } else {
+              messages.push(
+                { role: 'assistant', content: response.text || null, tool_calls: response.rawToolCalls || [] },
+                ...results.map(result => ({
+                  role: 'tool',
+                  tool_call_id: result.id,
+                  content: JSON.stringify(result)
+                }))
+              );
+            }
+          } else {
+            messages.push(
+              { role: 'assistant', content: response.text.slice(0, MAX_ECHO_CHARS) },
+              { role: 'user', content: toolResultsMessage(results, agentSession) }
+            );
+          }
+          continue;
+        }
+      }
 
       // ── 3 · parse & validate ────────────────────────────────
-      onEvent({ type: 'stage', stage: 'parse' });
-      let turn;
+      if (!toolCalls) onEvent({ type: 'stage', stage: 'parse' });
       try {
+        if (toolCalls && agentFinishedTurn(agentSession)?.kind === 'machine') {
+          const finished = agentFinishedTurn(agentSession);
+          turn = { kind: 'machine', spec: finished.spec };
+          agentCandidate = finished.candidate || null;
+          agentDiff = finished.diff || null;
+        } else {
         // Prose is only an answer on the first attempt. Past that the model is
         // being asked to fix a machine it already committed to, and "I would
         // rather talk about it" is not a correction.
@@ -927,10 +1054,12 @@ export async function runStateMate({
           fallbackMachine: machine,
           allowReply: attempt === 1
         });
+        }
       } catch (err) {
         // A malformed answer is worth exactly one silent reformat before it
         // becomes the user's problem.
-        if (attempt < maxAttempts && (err.code === 'no-json' || err.code === 'bad-json' || err.code === 'schema')) {
+        if (repairRounds < maxAttempts - 1 && (err.code === 'no-json' || err.code === 'bad-json' || err.code === 'schema')) {
+          repairRounds++;
           onEvent({ type: 'stage', stage: 'repair', reason: err.message });
           messages.push(
             { role: 'assistant', content: response.text.slice(0, MAX_ECHO_CHARS) },
@@ -961,6 +1090,7 @@ export async function runStateMate({
           usage, model, timing,
           retries,
           repaired,
+          agent: agentSession ? { steps: agentSteps, tools: agentSession.calls.length } : null,
           turnId: userTurn.id,
           answerId: assistantTurn.id,
           thread: getThread()
@@ -977,7 +1107,14 @@ export async function runStateMate({
 
       // ── 4 · compile ─────────────────────────────────────────
       onEvent({ type: 'stage', stage: 'compile', size: describeSpecSize(spec) });
-      ({ candidate, diff } = compileSpec(spec, before));
+      ({ candidate, diff } = agentCandidate && agentDiff
+        ? { candidate: agentCandidate, diff: agentDiff }
+        : compileSpec(spec, before));
+      // A repair or a later continuation must use a fresh compilation. The
+      // override is only for the finished transaction that explicitly carried
+      // its private candidate through the tool boundary.
+      agentCandidate = null;
+      agentDiff = null;
 
       // ── 5 · lint ────────────────────────────────────────────
       onEvent({ type: 'stage', stage: 'lint' });
@@ -1002,7 +1139,7 @@ export async function runStateMate({
       guard();
 
       const needsRepair = lint.fatal.length || lastFailures.length;
-      if (!needsRepair || attempt >= maxAttempts) break;
+      if (!needsRepair || repairRounds >= maxAttempts - 1) break;
 
       onEvent({
         type: 'stage',
@@ -1023,6 +1160,7 @@ export async function runStateMate({
           })
         }
       );
+      repairRounds++;
       repaired = true;
     }
 
@@ -1049,6 +1187,7 @@ export async function runStateMate({
     const overreach = scopeGuard(diff, before, { intent: resolvedIntent, openNewTab });
     const hold = authority === 'ask' ? 'ask'
       : authority === 'propose' ? 'propose'
+      : agentSession?.forceProposal ? 'agent'
       : (overreach ? 'scope' : '');
 
     // One stage either way — the last step of a run is deciding what happens
@@ -1081,6 +1220,7 @@ export async function runStateMate({
       kind: 'machine',
       hold,
       holdDetail: overreach,
+      agentHoldDetail: agentSession?.forceProposal || '',
       // Where to come back to. Empty for a held proposal, which has not been
       // drawn, and for a build into a new tab, which replaced nothing.
       checkpoint,
@@ -1111,6 +1251,7 @@ export async function runStateMate({
       usage,
       model,
       repaired,
+      agent: agentSession ? { steps: agentSteps, tools: agentSession.calls.length } : null,
       openedNewTab: hold ? false : openNewTab,
       summary: summarizeDiff(diff),
       thread: getThread()
@@ -1165,6 +1306,12 @@ const ERROR_COPY = {
   schema: { text: 'StateMate returned an incomplete machine.', action: 'retry', label: 'Try again' },
   'unknown-machine': { text: 'StateMate proposed a model this app does not build.', action: 'retry', label: 'Try again' },
   'too-large': { text: 'That machine is too large to draw.', action: 'retry', label: 'Try again' },
+  'agent-limit': { text: 'StateMate used too many tool steps without finishing.', action: 'retry', label: 'Try again' },
+  'agent-tool': { text: 'A StateMate tool could not complete that action.', action: 'retry', label: 'Try again' },
+  'agent-draft': { text: 'StateMate’s private candidate is incomplete.', action: 'retry', label: 'Try again' },
+  'bad-request': { text: 'The provider rejected StateMate’s request format.', action: 'retry', label: 'Try again' },
+  refusal: { text: 'The provider declined this request.', action: 'retry', label: 'Try again' },
+  offline: { text: 'This device is offline.', action: 'retry', label: 'Try again' },
   'invalid-machine': { text: 'The result was not a valid machine, so nothing was changed.', action: 'retry', label: 'Try again' },
   empty: { text: 'Type what you want built.', action: 'none', label: '' },
   cancelled: { text: 'Cancelled.', action: 'none', label: '' }

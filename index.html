@@ -839,6 +839,19 @@
                 <!-- Images attached to the next prompt, for a model that reads
                      them; built by renderAttachments() in js/statemate-ui.js. -->
                 <div class="sm-attach-slot" id="sm-attach" aria-label="Attached images"></div>
+                <div class="sm-behavior-switch" id="sm-behavior-switch" role="radiogroup"
+                     aria-label="StateMate behavior">
+                  <button class="sm-behavior-option" id="sm-behavior-standard" type="button"
+                          role="radio" aria-checked="false"
+                          data-tip="One model response builds or answers without using StateMate tools">
+                    Standard
+                  </button>
+                  <button class="sm-behavior-option" id="sm-behavior-agentic" type="button"
+                          role="radio" aria-checked="true"
+                          data-tip="StateMate may inspect, edit and test a private candidate over several tool steps">
+                    Agentic
+                  </button>
+                </div>
                 <div class="sm-composer" id="sm-composer">
                   <span class="sm-caret" aria-hidden="true">&rsaquo;</span>
                   <input type="file" id="sm-file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
@@ -1492,6 +1505,19 @@
         </div>
 
         <div class="modal-section-lbl">Behaviour</div>
+        <div class="modal-row" data-tip="Allow StateMate to inspect, simulate and edit a private candidate over several tool steps before it answers or proposes a change.">
+          <span class="modal-lbl">Use Agent Tools</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-sm-agent-tools"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="Maximum number of model turns in one agent run. A lower limit reduces cost; a higher limit helps with complex edits.">
+          <span class="modal-lbl">Agent Step Limit</span>
+          <select class="inp" id="set-sm-agent-steps" label="Agent step limit">
+            <option value="4">4 steps</option>
+            <option value="8">8 steps</option>
+            <option value="12">12 steps</option>
+            <option value="16">16 steps</option>
+          </select>
+        </div>
         <div class="modal-row" data-tip="Send the machine currently on the canvas with your prompt, so StateMate can edit it. You can override this per prompt in the dialog.">
           <span class="modal-lbl">Attach Canvas by Default</span>
           <label class="toggle-switch"><input type="checkbox" id="set-sm-attach"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
