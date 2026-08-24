@@ -25,6 +25,17 @@
   :root {
     --canvas-radius: 0px;
     --canvas-sill: 0px;
+    /* The header is two rows here — see the grid below. `--hdr` stays the
+       whole of it, because that is what everything measuring from underneath
+       the header means by it: the aux views' `top`, the bottom sheets'
+       height, and the popups that hang off a header control. */
+    --hdr-bar: 44px;
+    /* Sized around the strip rather than picked: `.tab-bar` is 36px on the
+       desktop and stays 36px here, so this is that plus its clearance. The
+       control row is 44 rather than the desktop's 48 — the same controls at
+       the same sizes, with a phone's tighter band around them. */
+    --hdr-tabs: 42px;
+    --hdr: calc(var(--hdr-bar) + var(--hdr-tabs));
   }
 
   html,
@@ -39,108 +50,104 @@
     min-height: 100svh;
   }
 
-  /* ── the header scrolls sideways ──────────────────────────────
-     It used to divide the width up instead, and at 390px that left the
-     workspace strip 82px of content area to draw a 106px tab in — one
-     document, its name cut in half, and no way to widen it because every
-     other group was holding its own share. Nothing was gained by the
-     squeeze: the groups are all irreducible (a tab name, a machine name,
-     four icon buttons), so shrinking them only made each unreadable in
-     place of letting the row be longer than the screen.
+  /* ── the header is two rows here, and neither slides under the other ──
+     It used to be one row that scrolled sideways, with the machine picker
+     pinned to the leading edge and the action cluster to the trailing one.
+     That solved the squeeze it was written for — at 390px a single row left
+     the workspace strip 82px of content area to draw a 106px tab in — but it
+     paid for it with two opaque blocks passing over the tabs, which is the
+     one thing a header must not look like it is doing. A control that covers
+     the document you are scrolling reads as a rendering fault rather than as
+     something pinned, and the picker sitting on top of a half-covered tab
+     name is the same misreading twice.
 
-     `overflow-x: auto` computes `overflow-y` from `visible` to `auto`, so
-     it is pinned to `hidden` — a header that can scroll vertically is a
-     header that can be nudged half a line off the top. The popups that
-     hang out of this box are all `position: fixed` (see the model picker
-     and theme panel below, and `.ctx` for the two menus), which is what
-     keeps them from being clipped by a scroll container. */
+     The groups are still irreducible, so the width still has to come from
+     somewhere; it comes from a second row instead of from a scroll. Row one
+     is the controls — logo, machine picker, actions — at their natural size,
+     and it never moves. Row two is the workspace strip alone, scrolling on
+     its own the way it does on the desktop: one horizontal scroller under
+     the finger instead of two nested ones, and `updateTabOverflowShadows`
+     with its jump-to-tab button working here for the same reason it works
+     there.
+
+     The second row also pays for the first. Every abbreviation the old row
+     made — the dropped wordmark, the dropped category line, the 9ch tab name
+     — was buying width for a strip that no longer needs it, so all three are
+     back; see the 520px block at the end of this file. */
   header {
     position: relative;
-    overflow-x: auto;
-    overflow-y: hidden;
-    justify-content: flex-start;
-    /* Left only. A scroll container's trailing padding is part of its
-       scrollable area, and a sticky `right: 0` resolves against the padding
-       box — so 8px here parked the pinned actions 8px short of the edge and
-       let the tabs scroll through the gap behind them. The trailing space is
-       the pinned cluster's own padding instead. */
-    padding: 0 0 0 8px;
-    scrollbar-width: none;
-    /* Or a swipe that runs out of header carries on into the page. */
-    overscroll-behavior-inline: contain;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  header::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* Nothing in a scrolling header may grow or shrink; doing both instead of
-     scrolling is what the header was already for. Written as `[class]`
-     rather than `*` on purpose: `.tab-bar-wrap` and the rest carry a
-     `flex: 1` of their own, and a bare `header > *` loses to every one of
-     them on specificity — silently, with the row still dividing itself up. */
-  header > [class] {
-    flex: 0 0 auto;
-  }
-
-  /* One scroller, not two nested ones. The strip had its own horizontal
-     scroll because the header would not give it room — now that the header
-     scrolls, a second scroller inside it is a trap: a swipe that starts on
-     a tab moves the strip and a swipe two pixels above it moves the header,
-     with nothing on screen saying which is which. `updateTabOverflowShadows`
-     measures `scrollWidth - clientWidth`, so the jump-to-tab button retires
-     itself here without being told. */
-  .tab-bar-wrap {
+    display: grid;
+    /* logo | picker, holding whatever slack there is | actions */
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: var(--hdr-bar) var(--hdr-tabs);
+    align-items: center;
+    column-gap: 6px;
+    padding: 0 8px;
+    /* Nothing here scrolls, so nothing here clips: the model picker menu and
+       the theme panel are `position: fixed` below out of preference rather
+       than necessity, and the two `.ctx` menus stay reachable either way. */
     overflow: visible;
-    min-width: 0;
-  }
-
-  .tab-bar {
-    overflow: visible;
-    flex: 0 0 auto;
-  }
-
-  /* The picker names what you are editing, so it cannot be something you
-     scroll to find. It moves ahead of the document strip and pins to the
-     leading edge; the logo is the one thing here that may scroll away,
-     being the one thing that is not a control. The reading order still runs
-     tabs → picker → actions, which for a row of independent controls is a
-     mismatch worth the picker being permanently legible. */
-  header > .model-picker-container {
-    order: -1;
-    position: sticky;
-    left: 0;
-    z-index: 3;
-    background: var(--bg2);
-    box-shadow: 12px 0 12px -8px var(--tab-overflow-shadow);
   }
 
   header > .hdr-left {
-    order: -2;
+    grid-row: 1;
+    grid-column: 1;
   }
 
-  /* The document strip is what got longer; the actions are what have to stay
-     reachable. Sticking them to the trailing edge is what makes the scroll
-     usable at all — six workspaces would otherwise put Save six hundred
-     pixels to the right of Undo. The `margin-left: auto` is the other half:
-     an auto margin absorbs free space when there is any, so on a short strip
-     the cluster sits at the edge instead of stranded mid-header, and
-     computes to nothing once the row overflows and sticky takes over. */
+  /* The picker names what you are editing, so it stays legible without having
+     to be pinned in front of anything — it simply has a fixed place now. */
+  header > .model-picker-container {
+    grid-row: 1;
+    grid-column: 2;
+    justify-self: start;
+    min-width: 0;
+  }
+
   header > .hdr-right {
-    position: sticky;
-    right: 0;
-    margin-left: auto;
-    padding-left: 10px;
-    padding-right: 8px;
-    /* Opaque, and above everything it slides over: the tab strip's own
-       border and the active tab's fill are both painted by positioned
-       elements, so this needs a stacking order rather than just a colour. */
-    background: var(--bg2);
-    /* Or an opaque block sliding over the tabs reads as a rendering fault
-       rather than as something pinned in front of them. */
-    box-shadow: -14px 0 14px -8px var(--tab-overflow-shadow);
-    z-index: 3;
+    grid-row: 1;
+    grid-column: 3;
+    justify-self: end;
+  }
+
+  /* The strip is the row rather than a share of one. Placement is the only
+     thing that changed: it is the desktop strip — same 36px, same hairline,
+     same radius, same overflow and therefore the same overflow shadows — laid
+     out on a line of its own instead of competing for one.
+
+     `min-width: 0` is load-bearing rather than tidy. A grid item spanning
+     `1 / -1` contributes its minimum size to the columns it crosses, and a
+     scroll container's automatic minimum is its content — so without this the
+     tabs would size the columns, push the picker and the actions apart, and
+     put the squeeze back one row up. */
+  header > .tab-bar-wrap {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    min-width: 0;
+    align-self: stretch;
+  }
+
+  /* The strip hugs its tabs rather than filling the row. On the desktop it
+     stretches, and that costs nothing because the picker bounds it a couple
+     of hundred pixels away; given a whole row to fill it becomes an outlined
+     box with one tab at the far left of it, which reads as a container that
+     failed to load rather than as a strip with room to grow. `max-width` is
+     what keeps the overflow: past the row it stops growing and scrolls, so
+     `updateTabOverflowShadows` and the jump-to-tab button are unaffected. */
+  .tab-bar {
+    flex: 0 1 auto;
+    max-width: 100%;
+  }
+
+  /* The strip was starved at 1100px and the tab name was cut to 9ch to cope.
+     It has a row of its own now, so the name goes back to the measure it has
+     on the desktop; `.tab`'s 156px cap stays as the backstop for a name long
+     enough to fill the strip on its own. */
+  .tab-name {
+    max-width: 12ch;
+  }
+
+  .tab.active .tab-name {
+    max-width: 14ch;
   }
 
   .hdr-sep,
@@ -148,10 +155,10 @@
     display: none;
   }
 
-  /* Two popups anchored to header children with `position: absolute` — the
-     scroll container would clip both to a 48px strip. Fixed, they are also
-     simply better here: a 360px menu does not fit a 390px phone anchored to
-     a button two thirds of the way across it. */
+  /* Two popups anchored to header children with `position: absolute`. Fixed
+     here because a 360px menu does not fit a 390px phone anchored to a button
+     two thirds of the way across it — and hung below the whole header rather
+     than below its own row, or the machine list would open across the tabs. */
   .model-picker-menu {
     position: fixed;
     top: calc(var(--hdr) + 6px);
@@ -1291,32 +1298,32 @@
 /* Below this the wordmark is 100px of a 390px header spent saying something
    the mark already says. The mark stays — it is the logo, and an app with no
    mark anywhere reads as a page that failed to finish loading. */
+/* The wordmark and the machine picker's category line used to go here, both
+   because the header was one scrolling row and every pixel one of them took
+   was a pixel off the workspace strip. The strip has a row of its own now, so
+   that budget is gone and both are back: what is left over on the control row
+   is space, and space is what a header with a title on one end and actions on
+   the other is supposed to have. Taking the two out of it did not buy the
+   strip anything — it only made the row look like it had failed to load. */
 @media (max-width: 520px) {
-  .hdr-left .logo {
-    display: none;
-  }
-
-  /* The category line goes, and the button becomes the machine's short code
-     alone. It is the redundant half — the menu this button opens is grouped
-     by category and repeats it — and keeping it meant a button wide enough
-     to be half-covered by the pinned actions on arrival, showing "FINITE A"
-     cut mid-word, which reads as a broken box rather than as a row that
-     scrolls. */
-  .model-picker-cat {
-    display: none;
-  }
-
-  .model-picker-btn {
-    min-width: 0;
-    max-width: 120px;
-    gap: 4px;
-  }
-
   .model-picker-type {
     font-size: .8rem;
   }
 
   .hdr-left {
     padding-right: 4px;
+  }
+}
+
+/* Below this the control row genuinely runs out: the mark, a wordmark, a
+   machine name and four buttons do not fit 430px, and the middle column is
+   the one that gives, so the picker would be crushed rather than the wordmark
+   dropped. The mark stays — it is the logo, and an app with no mark anywhere
+   reads as a page that failed to finish loading. The category line stays too:
+   it is the narrower of the two by a third, and it is the half that says what
+   kind of machine you are looking at. */
+@media (max-width: 440px) {
+  .hdr-left .logo {
+    display: none;
   }
 }
