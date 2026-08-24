@@ -1068,3 +1068,28 @@
     transition: none !important;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   SHORT VIEWPORTS
+   ══════════════════════════════════════════════════════════════════
+   Keyed on height, not width: a narrow phone and a short desktop window are
+   different problems, and only the second one makes a three-line confirm
+   dialog scroll. `85vh` leaves a seventh of the screen unused, which on a
+   300px-tall window is 45px a dialog could have had — enough that dialogs
+   overflowed by a dozen pixels and looked cut off rather than scrollable. */
+@media (max-height: 620px) {
+  .modal {
+    --modal-py: 16px;
+    max-height: calc(100dvh - 20px);
+  }
+
+  /* The gap under the title is the first thing that can go: it is breathing
+     room, and on a short screen the line it separates is worth more. */
+  .modal-title {
+    margin-bottom: 12px;
+  }
+
+  .modal-foot {
+    margin-top: 14px;
+  }
+}

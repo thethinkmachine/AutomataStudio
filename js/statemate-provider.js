@@ -386,19 +386,60 @@ function toProviderContent(content, provider) {
   return parts;
 }
 
+/**
+ * Anthropic prompt caching, which is the whole of the answer to an agentic run
+ * hammering a rate limit.
+ *
+ * A tool round is a full request: the tools, the system prompt and the entire
+ * history go up again every time. In this app that fixed prefix is ~4,600
+ * tokens, and a sixteen-round run resends it sixteen times before any history
+ * is counted. Caching is a *prefix match* and the render order is
+ * `tools` → `system` → `messages`, so one breakpoint on the last system block
+ * covers both the tool declarations and the prompt; a second on the last
+ * message lets the tool history accrue hits as it grows. Two of the four
+ * breakpoints a request may carry.
+ *
+ * This is only safe because the prefix is byte-stable: `buildSystemPrompt` is
+ * deterministic and the tool list is built from a frozen registry in a fixed
+ * order. Interpolating a timestamp or a request id into either would silently
+ * turn every read into a write. `usage.cache_read_input_tokens` is what says
+ * whether it is working.
+ */
+function withCacheBreakpoints(body, { system, messages }) {
+  const CACHE = { type: 'ephemeral' };
+  body.system = [{ type: 'text', text: String(system ?? ''), cache_control: CACHE }];
+
+  const turns = body.messages;
+  const last = turns[turns.length - 1];
+  if (!last) return body;
+  // A string content has no block to mark, so it becomes one. Anything already
+  // in block form is marked in place, on its final block.
+  if (typeof last.content === 'string') {
+    last.content = [{ type: 'text', text: last.content, cache_control: CACHE }];
+  } else if (Array.isArray(last.content) && last.content.length) {
+    const tail = last.content[last.content.length - 1];
+    last.content[last.content.length - 1] = { ...tail, cache_control: CACHE };
+  }
+  return body;
+}
+
 function buildRequest({ system, messages, maxTokens, temperature, tools }, s) {
   const { baseUrl, model } = resolveEndpoint(s);
   messages = (messages || []).map(m => ({ ...m, content: toProviderContent(m.content, s.provider) }));
   // The shell used to force this off, because `invoke` resolves once with a
   // whole body and cannot deliver a stream. It can now, so the only setup left
   // without streaming is an older desktop build.
-  // Native tool calls are returned as structured blocks. Keep that round
-  // buffered so the provider boundary can preserve call ids and arguments;
-  // text-envelope turns continue to stream as before.
-  const streaming = !tools?.length && (!hasNativeTransport() || hasNativeStreaming());
+  // Attaching tools used to force it off as well, so that the reader could
+  // take call ids and arguments off a whole JSON body. That cost every agentic
+  // run its stream — including the turns that call no tool at all — so the
+  // plan preview went dark exactly where a run had got long enough to need it.
+  // The SSE reader assembles the structured blocks itself now, into the same
+  // shape `readWholeResponse` returns, so nothing downstream can tell a
+  // streamed tool call from a buffered one.
+  const streaming = !hasNativeTransport() || hasNativeStreaming();
 
   if (s.provider === 'anthropic') {
-    return {
+    const request = {
       url: `${baseUrl}/v1/messages`,
       headers: {
         'content-type': 'application/json',
@@ -423,6 +464,8 @@ function buildRequest({ system, messages, maxTokens, temperature, tools }, s) {
         })) } : {})
       }
     };
+    withCacheBreakpoints(request.body, { system, messages });
+    return request;
   }
 
   const headers = { 'content-type': 'application/json' };
@@ -529,6 +572,54 @@ function createSSEReader(provider, onText) {
   let model = null;
   let stop = null;
   let firstTokenAt = null;
+  // The two dialects stream a tool call differently and neither delivers one
+  // whole. Anthropic opens a content block, streams its arguments as JSON
+  // fragments and closes it; OpenAI streams a parallel array in which only the
+  // first frame for an index carries the id and the name. Both are assembled
+  // here rather than at the call site, because the call site is the one place
+  // that must not know which transport it got.
+  const blocks = [];
+  const calls = [];
+
+  const readAnthropicBlock = event => {
+    if (event.type === 'content_block_start') {
+      const block = event.content_block || {};
+      blocks[event.index] = block.type === 'tool_use'
+        ? { type: 'tool_use', id: block.id, name: block.name, input: {}, json: '' }
+        : { ...block };
+      return;
+    }
+    if (event.type === 'content_block_delta') {
+      const block = blocks[event.index];
+      if (!block) return;
+      if (typeof event.delta?.partial_json === 'string') block.json += event.delta.partial_json;
+      else if (typeof event.delta?.text === 'string') block.text = `${block.text || ''}${event.delta.text}`;
+      return;
+    }
+    if (event.type === 'content_block_stop') {
+      const block = blocks[event.index];
+      // A call with no arguments streams no fragments at all, so an absent
+      // body and an unparseable one both mean `{}` rather than a failure: the
+      // tool registry validates arguments anyway, and refusing the whole turn
+      // here would throw away the text blocks beside it.
+      if (block?.type === 'tool_use') {
+        try { block.input = block.json ? JSON.parse(block.json) : {}; } catch (e) { block.input = {}; }
+      }
+    }
+  };
+
+  const readOpenAIToolCalls = event => {
+    const streamed = event.choices?.[0]?.delta?.tool_calls;
+    if (!Array.isArray(streamed)) return;
+    streamed.forEach((call, position) => {
+      const at = Number.isInteger(call.index) ? call.index : position;
+      const row = calls[at] || (calls[at] = { id: '', type: 'function', function: { name: '', arguments: '' } });
+      if (call.id) row.id = call.id;
+      if (call.type) row.type = call.type;
+      if (call.function?.name) row.function.name = call.function.name;
+      if (typeof call.function?.arguments === 'string') row.function.arguments += call.function.arguments;
+    });
+  };
 
   return {
     push(chunk) {
@@ -559,11 +650,14 @@ function createSSEReader(provider, onText) {
         if (s) stop = s;
         if (event.model) model = event.model;
         if (event.message?.model) model = event.message.model;
+
+        if (provider === 'anthropic') readAnthropicBlock(event);
+        else readOpenAIToolCalls(event);
       }
     },
     result(startedAt) {
       return {
-        text, usage, model, stop,
+        text, usage, model, stop, ...structured(),
         // Two numbers, because they answer different questions. Time to first
         // token is why a run feels slow; tokens per second is how fast the
         // answer then arrived, and averaging the wait into it hides both.
@@ -571,6 +665,36 @@ function createSSEReader(provider, onText) {
       };
     }
   };
+
+  /** The assembled blocks, in the shape the buffered reader returns. */
+  function structured() {
+    if (provider === 'anthropic') {
+      // A transport that streams text without ever opening a content block
+      // still has to hand back a usable assistant turn, or a tool round
+      // continuing after it would echo an empty message.
+      const content = blocks.filter(Boolean).map(({ json, ...block }) => block);
+      if (!content.length && text) content.push({ type: 'text', text });
+      return {
+        rawContent: content,
+        toolCalls: content
+          .filter(block => block.type === 'tool_use')
+          .map(block => ({
+            id: block.id,
+            name: block.name,
+            arguments: block.input && typeof block.input === 'object' ? block.input : {}
+          }))
+      };
+    }
+    const rawToolCalls = calls.filter(Boolean);
+    return {
+      rawToolCalls,
+      toolCalls: rawToolCalls.map(call => {
+        let argumentsValue = {};
+        try { argumentsValue = JSON.parse(call.function?.arguments || '{}'); } catch (e) { }
+        return { id: call.id, name: call.function?.name || '', arguments: argumentsValue };
+      })
+    };
+  }
 }
 
 /**
@@ -777,10 +901,9 @@ async function requestOnce({ system, turns, maxTokens, temperature, onText, sign
     // Streaming is the default, but a proxy that buffers the body away leaves
     // no reader — falling back keeps those setups working rather than failing
     // on a feature the user did not ask for.
-    // Some proxies and test transports expose an SSE body even when the
-    // request was buffered for native tool calls. Prefer the readable body
-    // whenever JSON parsing is unavailable, so those transports keep the
-    // same streaming-compatible behavior.
+    // The second test is for a transport that exposes an SSE body with no
+    // `json` method: it has nothing to fall back *to*, so the reader is the
+    // only way to read it at all.
     if (response.body?.getReader && (request.body.stream || typeof response.json !== 'function')) {
       keepAlive();
       const out = await readStream(response, s.provider, onText, keepAlive, startedAt);

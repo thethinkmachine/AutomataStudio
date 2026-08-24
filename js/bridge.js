@@ -5,7 +5,7 @@
 // global-scope code and cannot see module bindings. The functions they name
 // are re-exposed on window here.
 //
-// 223 names across 23 modules — 222 functions plus App — reached from 459
+// 225 names across 23 modules — 224 functions plus App — reached from 459
 // attributes:
 //    337  static, in index.html
 //    122  in markup the app builds at runtime (algorithm cards,
@@ -41,7 +41,7 @@ import {
 import {
   confirmState, confirmTrans, ctxDel, ctxDeleteTrans, ctxDuplicateTrans,
   ctxEditTrans, ctxRename, ctxResetEdgeShape, ctxReverseTrans, ctxStart,
-  ctxToggleAcc, deleteTrans, openStateModal,
+  ctxToggleAcc, deleteState, deleteTrans, editTransFromList, openStateModal,
 } from './states-transitions.js';
 import {
   autoLayout, ctxCanvasAddState, ctxCanvasAutoLayout, ctxCanvasFit,
@@ -156,7 +156,7 @@ Object.assign(window, {
   // states-transitions.js
    confirmState, confirmTrans, ctxDel, ctxDeleteTrans, ctxDuplicateTrans,
    ctxEditTrans, ctxRename, ctxResetEdgeShape, ctxReverseTrans, ctxStart,
-   ctxToggleAcc, deleteTrans, openStateModal,
+   ctxToggleAcc, deleteState, deleteTrans, editTransFromList, openStateModal,
   // canvas.js
    autoLayout, ctxCanvasAddState, ctxCanvasAutoLayout, ctxCanvasFit,
    ctxCanvasPaste, ctxCanvasSelectAll, ctxHighlightIncoming,

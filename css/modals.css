@@ -94,9 +94,34 @@ body.modal-open {
   align-items: center;
   gap: 8px;
   position: sticky;
-  top: 0;
+  /* Not `0`. A sticky inset is measured against the element's *margin* box, so
+     the negative bleed margin above is subtracted from the offset the browser
+     pins to: with `top: 0` the title's border box comes to rest --modal-py
+     *below* the scrollport, opening a strip at the top of the dialog that the
+     body scrolls through uncovered and is cut off in. Cancelling the margin
+     here pins the border box flush to the scrollport edge, which is what the
+     bleed was for. Same reasoning for .modal-foot's `bottom`. */
+  top: calc(var(--modal-py) * -1);
   z-index: 2;
   background: var(--surface);
+  /* Declared here rather than only in the scrolled rule so the shadow fades
+     in and out instead of appearing the instant a scroll begins. */
+  box-shadow: 0 14px 12px -12px transparent;
+  transition: box-shadow var(--transition-fast);
+}
+
+/* A hairline says "the chrome ends here". It cannot also say "and there is
+   more of the body above this line", which is what an opaque pinned bar over
+   scrolled content needs to say — without it a sentence cut through its
+   ascenders reads as a rendering fault. js/modal.js sets both classes.
+
+   --tab-overflow-shadow is the app's existing "there is more past this edge"
+   colour, already carried by the workspace tab strip and the algorithm rail,
+   so the affordance reads the same here and tracks the theme. It has to: a
+   fixed rgba(0,0,0,…) is invisible on a dark ground, which is the half of the
+   theme range these dialogs are most often read in. */
+.modal.is-scrolled > .modal-title {
+  box-shadow: 0 14px 12px -12px var(--tab-overflow-shadow);
 }
 
 /* Carries the id the dialog is named by and the text its own code rewrites, so
@@ -714,19 +739,79 @@ body.modal-open {
   padding: 6px 8px;
   border-left: 2px solid var(--accent-border);
   color: var(--text3);
-  font-family: var(--mono);
   font-size: var(--sm-micro);
 }
 
+/* The header is a sentence on the left and instrumentation on the right, so
+   the two halves take the two faces: --sans is language, --mono is counts. */
 .sm-agent-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   color: var(--text2);
   font-family: var(--sans);
+  font-size: var(--sm-ui);
   font-weight: 600;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+}
+
+.sm-agent-count {
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--text3);
+  flex: 0 0 auto;
+}
+
+/* One call, one row: mark, tool name, and what it was asked to do. The name
+   and its argument are both identifiers, which is why the whole row is mono
+   while the header above it is not. */
+.sm-agent-call {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 1px 0;
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.sm-agent-mark {
+  flex: 0 0 auto;
+  width: 10px;
+  text-align: center;
+  color: var(--text3);
+}
+
+.sm-agent-call.is-ok .sm-agent-mark { color: var(--green); }
+.sm-agent-call.is-fail .sm-agent-mark { color: var(--red); }
+
+.sm-agent-name {
+  color: var(--text2);
+  flex: 0 0 auto;
+}
+
+/* A call still running is the one thing on this list that has not resolved,
+   so it is the one thing here that is not dimmed. */
+.sm-agent-call.is-running .sm-agent-name { color: var(--text); }
+.sm-agent-call.is-folded .sm-agent-mark,
+.sm-agent-call.is-folded .sm-agent-detail { color: var(--text3); }
+
+.sm-agent-detail {
+  color: var(--text3);
+  min-width: 0;
+}
+
+.sm-agent-error {
+  color: var(--red);
+  min-width: 0;
 }
 
 .sm-agent-event {
-  padding: 1px 0;
+  padding: 2px 0 0;
+  font-family: var(--sans);
+  color: var(--text3);
   overflow-wrap: anywhere;
 }
 
@@ -2333,9 +2418,17 @@ button.sm-stat:disabled {
   justify-content: flex-end;
   flex-wrap: wrap;
   position: sticky;
-  bottom: 0;
+  /* Cancels the negative bleed margin the same way .modal-title's `top` does,
+     and for the same reason — see the note there. */
+  bottom: calc(var(--modal-py) * -1);
   z-index: 2;
   background: var(--surface);
+  box-shadow: 0 -14px 12px -12px transparent;
+  transition: box-shadow var(--transition-fast);
+}
+
+.modal.has-more > .modal-foot {
+  box-shadow: 0 -14px 12px -12px var(--tab-overflow-shadow);
 }
 
 /* Two clusters pinned to opposite ends of the footer, e.g. import/export on

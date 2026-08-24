@@ -723,6 +723,15 @@ function fakeFetch(handler) {
   return fn;
 }
 
+// Anthropic carries the system prompt and the most recent turn as content
+// blocks rather than strings, because that is where the cache breakpoints go.
+// Every other provider still sends plain strings, so these read through both.
+const blockText = content => (typeof content === 'string'
+  ? content
+  : (content || []).filter(part => part.type === 'text').map(part => part.text).join(''));
+const systemText = call => blockText(call.body.system);
+const lastTurn = call => blockText(call.body.messages.at(-1).content);
+
 function jsonResponse(payload, { ok = true, status = 200 } = {}) {
   return {
     ok,
@@ -750,8 +759,8 @@ test('the Anthropic request carries the model, the key and the browser opt-in', 
   assert.equal(call.init.headers['x-api-key'], 'sk-ant-test');
   assert.equal(call.init.headers['anthropic-dangerous-direct-browser-access'], 'true');
   assert.equal(call.body.model, 'claude-sonnet-5');
-  assert.equal(call.body.system, 'S');
-  assert.equal(call.body.messages[0].content, 'U');
+  assert.equal(systemText(call), 'S');
+  assert.equal(lastTurn(call), 'U');
   assert.equal(out.text, '{"machine":"DFA"}');
   assert.deepEqual(out.usage, { input: 11, output: 4 });
 });
@@ -1055,6 +1064,7 @@ function simpleAgentCalls() {
     { id: 'q1', name: 'add_state', arguments: { name: 'q1' } },
     { id: 't0', name: 'add_transition', arguments: { from: 'q0', to: 'q1', on: 'a' } },
     { id: 't1', name: 'add_transition', arguments: { from: 'q1', to: 'q0', on: 'a' } },
+    { id: 'check', name: 'simulate_words', arguments: { words: ['aa', 'a'] } },
     { id: 'finish', name: 'finish', arguments: { blurb: 'Built with private tools.', tests: [{ w: 'aa', expect: 'accept' }] } }
   ];
 }
@@ -1065,18 +1075,93 @@ test('agent tools can build over multiple turns and apply through the normal gat
   h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', agentTools: true });
   h.context.fetch = fakeFetch((_url, _init, call) => call === 1
     ? toolReply(simpleAgentCalls().slice(0, 5))
-    : toolReply([simpleAgentCalls()[5]]));
+    : toolReply(simpleAgentCalls().slice(5)));
 
   const events = [];
   const result = await h.context.runStateMate({ prompt: 'build a parity DFA', intent: 'build', onEvent: event => events.push(event) });
 
   assert.equal(result.status, 'applied');
   assert.equal(result.agent.steps, 2);
-  assert.equal(result.agent.tools, 6);
+  assert.equal(result.agent.tools, 7);
+  assert.equal(result.agentUnchecked, false, 'the model traced its own machine before handing it over');
   assert.equal(App.states.length, 2);
   assert.equal(App.transitions.length, 2);
   assert.ok(events.some(event => event.type === 'agent' && event.stage === 'tools'));
   assert.ok(events.some(event => event.type === 'agent' && event.stage === 'tool-results'));
+});
+
+test('finish is refused until the candidate has been exercised, and an edit puts it back', () => {
+  const h = createHarness();
+  const session = h.context.createAgentSession(
+    { machine: 'DFA', sigma: [], states: [], transitions: [] }, { intent: 'build' }
+  );
+
+  const built = h.context.executeAgentToolCalls([
+    { id: '1', name: 'create_candidate', arguments: { machine: 'DFA', sigma: ['a'] } },
+    { id: '2', name: 'add_state', arguments: { name: 'q0', start: true, accept: true } },
+    { id: '3', name: 'add_transition', arguments: { from: 'q0', to: 'q0', on: 'a' } },
+    { id: '4', name: 'simulate_words', arguments: { words: ['a', 'aa'] } },
+    // The trace above is now stale: what was checked is not what is being
+    // handed over.
+    { id: '5', name: 'add_state', arguments: { name: 'q1' } },
+    { id: '6', name: 'finish', arguments: { tests: [{ w: 'a', expect: 'accept' }] } }
+  ], session);
+
+  assert.equal(built[3].ok, true);
+  assert.equal(built[5].ok, false);
+  assert.equal(built[5].error.code, 'agent-unchecked');
+  assert.equal(h.context.agentFinishedTurn(session), null, 'nothing was handed over');
+
+  const settled = h.context.executeAgentToolCalls([
+    { id: '7', name: 'simulate_words', arguments: { words: ['a', 'aa'] } },
+    { id: '8', name: 'finish', arguments: { tests: [{ w: 'a', expect: 'accept' }] } }
+  ], session);
+
+  assert.equal(settled[0].ok, true);
+  assert.equal(settled[1].ok, true);
+  const finished = h.context.agentFinishedTurn(session);
+  assert.equal(finished.kind, 'machine');
+  assert.equal(finished.unchecked, false);
+});
+
+test('re-laying out a candidate carries its check forward rather than clearing it', () => {
+  const h = createHarness();
+  const session = h.context.createAgentSession(
+    { machine: 'DFA', sigma: [], states: [], transitions: [] }, { intent: 'build' }
+  );
+  const out = h.context.executeAgentToolCalls([
+    { id: '1', name: 'create_candidate', arguments: { machine: 'DFA', sigma: ['a'] } },
+    { id: '2', name: 'add_state', arguments: { name: 'q0', start: true, accept: true } },
+    { id: '3', name: 'add_transition', arguments: { from: 'q0', to: 'q0', on: 'a' } },
+    { id: '4', name: 'simulate_words', arguments: { words: ['a'] } },
+    // Moving circles cannot change what the machine decides.
+    { id: '5', name: 'auto_layout_candidate', arguments: {} },
+    { id: '6', name: 'finish', arguments: { tests: [{ w: 'a', expect: 'accept' }] } }
+  ], session);
+
+  assert.equal(out[4].ok, true);
+  assert.equal(out[5].ok, true, 'a re-layout does not send a traced candidate back to be traced again');
+  assert.equal(h.context.agentFinishedTurn(session).kind, 'machine');
+});
+
+test('an agent that never checks its work still lands, and the result says so', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', agentTools: true });
+  // Every turn after the build is the same blind finish, so the gate refuses
+  // it twice and then has to let the run end with an answer.
+  h.context.fetch = fakeFetch((_url, _init, call) => call === 1
+    ? toolReply(simpleAgentCalls().slice(0, 5))
+    : toolReply([simpleAgentCalls()[6]]));
+
+  const result = await h.context.runStateMate({ prompt: 'build a parity DFA', intent: 'build' });
+
+  assert.equal(result.status, 'applied');
+  assert.equal(result.agent.steps, 4, 'one build turn, two refusals, and the one that lands');
+  assert.equal(result.agentUnchecked, true);
+  assert.ok(
+    h.context.resultNotes(result).some(note => note.rule === 'agent-unchecked'),
+    'a check that did not happen is reported, not assumed'
+  );
 });
 
 test('chat mode denies candidate-write tools at the registry boundary', () => {
@@ -1112,7 +1197,7 @@ test('ask_user pauses an agent and the next prompt resumes its private candidate
   assert.equal(second.spec.title, 'Resumed DFA');
   assert.equal(h.context.App.states.length, 1);
   assert.equal(h.context.App.accepts.size, 1);
-  const sent = h.context.fetch.calls[1].body.messages.at(-1).content;
+  const sent = lastTurn(h.context.fetch.calls[1]);
   assert.match(sent, /The original request was: build a DFA for a/);
 });
 
@@ -1149,6 +1234,55 @@ test('Anthropic native tool continuation preserves tool_use and correlated tool_
   assert.equal(continuation.at(-1).content[0].tool_use_id, 'summary-1');
 });
 
+test('a whole agentic run works over the stream, which is now the default transport', async () => {
+  const h = createHarness();
+  const { App } = h.context;
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', agentTools: true });
+
+  // One streamed tool_use block per call, indexed the way Anthropic indexes
+  // them, with the arguments split across two frames.
+  const streamed = calls => sseResponse([
+    'data: {"type":"message_start","message":{"model":"claude-sonnet-5","usage":{"input_tokens":10}}}\n\n',
+    ...calls.flatMap((call, index) => {
+      const json = JSON.stringify(call.arguments);
+      const cut = Math.ceil(json.length / 2);
+      return [
+        `data: ${JSON.stringify({
+          type: 'content_block_start',
+          index,
+          content_block: { type: 'tool_use', id: call.id, name: call.name, input: {} }
+        })}\n\n`,
+        `data: ${JSON.stringify({
+          type: 'content_block_delta', index, delta: { type: 'input_json_delta', partial_json: json.slice(0, cut) }
+        })}\n\n`,
+        `data: ${JSON.stringify({
+          type: 'content_block_delta', index, delta: { type: 'input_json_delta', partial_json: json.slice(cut) }
+        })}\n\n`,
+        `data: ${JSON.stringify({ type: 'content_block_stop', index })}\n\n`
+      ];
+    }),
+    'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":20}}\n\n'
+  ]);
+
+  const fetchStub = fakeFetch((_url, _init, call) => call === 1
+    ? streamed(simpleAgentCalls().slice(0, 5))
+    : streamed(simpleAgentCalls().slice(5)));
+  h.context.fetch = fetchStub;
+
+  const result = await h.context.runStateMate({ prompt: 'build a parity DFA', intent: 'build' });
+
+  assert.equal(result.status, 'applied');
+  assert.equal(result.agent.steps, 2);
+  assert.equal(App.states.length, 2);
+  assert.equal(App.transitions.length, 2);
+  assert.equal(fetchStub.calls[0].body.stream, true);
+  // The reassembled blocks are what the second request echoes back, so a
+  // streamed round has to correlate exactly as a buffered one did.
+  const continuation = fetchStub.calls[1].body.messages;
+  assert.equal(continuation.at(-2).content[0].type, 'tool_use');
+  assert.equal(continuation.at(-1).content[0].tool_use_id, 'create');
+});
+
 test('OpenAI native tool continuation preserves tool_calls and correlated tool messages', async () => {
   const h = createHarness();
   h.context.saveStateMateSettings({ enabled: true, provider: 'openai', apiKey: 'k', agentTools: true });
@@ -1171,6 +1305,535 @@ test('OpenAI native tool continuation preserves tool_calls and correlated tool m
   assert.equal(continuation.at(-2).tool_calls[0].id, 'summary-1');
   assert.equal(continuation.at(-1).role, 'tool');
   assert.equal(continuation.at(-1).tool_call_id, 'summary-1');
+});
+
+// A candidate with one accept-everything state, in whatever machine is asked
+// for — enough for the read tools to have something to answer about.
+function loopCandidate(h, machine, sigma = ['a', 'b']) {
+  const session = h.context.createAgentSession(
+    { machine, sigma: [], states: [], transitions: [] }, { intent: 'build' }
+  );
+  h.context.executeAgentToolCalls([
+    { id: 'c', name: 'create_candidate', arguments: { machine, sigma } },
+    { id: 's', name: 'add_state', arguments: { name: 'q0', start: true, accept: true } },
+    ...sigma.map((symbol, i) => ({
+      id: `t${i}`, name: 'add_transition', arguments: { from: 'q0', to: 'q0', on: symbol }
+    }))
+  ], session);
+  return session;
+}
+
+function toolResult(h, session, name, args = {}) {
+  const out = h.context.executeAgentToolCalls([{ id: 'x', name, arguments: args }], session)[0];
+  assert.ok(out.ok, out.ok ? '' : `${name} failed: ${out.error?.message}`);
+  return out.result;
+}
+
+test('get_machine_rules answers determinism from the app, for every machine', () => {
+  const h = createHarness();
+  // Walks the registry rather than a list of its own, the way machines.test.js
+  // does: the list this replaced named two machines that do not exist and
+  // missed eight that do.
+  for (const machine of Object.keys(h.context.MachineTypes)) {
+    const rules = toolResult(h, loopCandidate(h, machine, ['a']), 'get_machine_rules');
+    assert.equal(
+      rules.deterministic,
+      h.context.hasSingleValuedDelta(machine),
+      `${machine}: the tool and the app disagree about whether δ may branch`
+    );
+    assert.deepEqual(rules.transitionFields, h.context.transitionFieldsFor(machine));
+  }
+});
+
+test('get_machine_rules says how this machine\'s input and tests are written', () => {
+  const h = createHarness();
+  const omega = toolResult(h, loopCandidate(h, 'DBA'), 'get_machine_rules');
+  assert.match(omega.inputSyntax, /u\(v\)/);
+  assert.equal(omega.testsDeclare, 'expect');
+
+  const mealy = toolResult(h, loopCandidate(h, 'Mealy'), 'get_machine_rules');
+  assert.equal(mealy.testsDeclare, 'out', 'a transducer test compares an emitted word, not a verdict');
+
+  const tm = toolResult(h, loopCandidate(h, 'TM'), 'get_machine_rules');
+  assert.equal(tm.blank, h.context.App.config.sym.blank);
+  assert.equal(toolResult(h, loopCandidate(h, 'DFA'), 'get_machine_rules').blank, null);
+});
+
+test('generated test words are in the machine\'s own input syntax, and they run', () => {
+  const h = createHarness();
+  for (const machine of ['DBA', 'NBA', 'DcoBA', 'DPA', 'NWA']) {
+    const session = loopCandidate(h, machine);
+    const words = toolResult(h, session, 'generate_test_words', { max_length: 3 });
+    assert.ok(words.length, `${machine} generated nothing`);
+    assert.ok(words.every(word => /^[^()]*\([^()]+\)$/.test(word)), `${machine}: ${words[0]} is not an ω-word`);
+
+    // The point of the syntax: every one of them reaches the machine. These
+    // used to be finite words, so every generated test was a parse error.
+    const runs = toolResult(h, session, 'simulate_words', { words: words.slice(0, 12) });
+    assert.equal(runs.errors, undefined, `${machine}: ${JSON.stringify(runs.errors?.[0])}`);
+  }
+  // A finite-word machine is untouched.
+  const plain = toolResult(h, loopCandidate(h, 'DFA'), 'generate_test_words', { max_length: 2 });
+  assert.deepEqual(plain, ['', 'a', 'b', 'aa', 'ab', 'ba', 'bb']);
+});
+
+test('a word the machine cannot read comes back with the machine\'s own sentence', () => {
+  const h = createHarness();
+  const runs = toolResult(h, loopCandidate(h, 'DBA'), 'simulate_words', { words: ['ab', 'a(b)'] });
+
+  assert.equal(runs.errors.length, 1);
+  assert.equal(runs.errors[0].word, 'ab');
+  assert.match(runs.errors[0].why, /infinite word/, 'a bare `error: true` said nothing the model could act on');
+  assert.doesNotMatch(runs.errors[0].why, /<em>/, 'the run box renders markup; a model has no use for it');
+  assert.deepEqual(runs.accept, ['a(b)']);
+});
+
+test('many runs come back grouped by verdict rather than one object per word', () => {
+  const h = createHarness();
+  const session = h.context.createAgentSession(
+    { machine: 'DFA', sigma: [], states: [], transitions: [] }, { intent: 'build' }
+  );
+  h.context.executeAgentToolCalls([
+    { id: '1', name: 'create_candidate', arguments: { machine: 'DFA', sigma: ['a'] } },
+    { id: '2', name: 'add_state', arguments: { name: 'even', start: true, accept: true } },
+    { id: '3', name: 'add_state', arguments: { name: 'odd' } },
+    { id: '4', name: 'add_transition', arguments: { from: 'even', to: 'odd', on: 'a' } },
+    { id: '5', name: 'add_transition', arguments: { from: 'odd', to: 'even', on: 'a' } }
+  ], session);
+
+  const runs = toolResult(h, session, 'simulate_words', { words: ['', 'a', 'aa', 'aaa'] });
+  assert.equal(runs.checked, 4);
+  assert.deepEqual(runs.accept, ['', 'aa']);
+  assert.deepEqual(runs.reject, ['a', 'aaa']);
+
+  // The shape is the point: a hundred words used to be a hundred four-field
+  // objects, most of a round's budget spent on repeated key names.
+  const many = toolResult(h, session, 'simulate_words', {
+    words: toolResult(h, session, 'generate_test_words', { max_length: 6 })
+  });
+  assert.ok(JSON.stringify(many).length < 1000, 'a batch of 64 words should not cost kilobytes');
+});
+
+// Two edges out of q0 on 'a' — the shape a match cannot address on its own.
+function branchingCandidate(h) {
+  const session = h.context.createAgentSession(
+    { machine: 'NFA', sigma: [], states: [], transitions: [] }, { intent: 'build' }
+  );
+  h.context.executeAgentToolCalls([
+    { id: '1', name: 'create_candidate', arguments: { machine: 'NFA', sigma: ['a', 'b'] } },
+    { id: '2', name: 'add_state', arguments: { name: 'q0', start: true } },
+    { id: '3', name: 'add_state', arguments: { name: 'q1', accept: true } },
+    { id: '4', name: 'add_transition', arguments: { from: 'q0', to: 'q0', on: 'a' } },
+    { id: '5', name: 'add_transition', arguments: { from: 'q0', to: 'q1', on: 'a' } },
+    { id: '6', name: 'add_transition', arguments: { from: 'q1', to: 'q1', on: 'b' } }
+  ], session);
+  return session;
+}
+
+const refsOf = (h, session) =>
+  toolResult(h, session, 'get_transitions').map(row => row.ref);
+
+test('a round bigger than the budget is trimmed, not destroyed', () => {
+  const h = createHarness();
+  const { MAX_TOOL_CALLS_PER_STEP } = h.context;
+  const session = h.context.createAgentSession(
+    { machine: 'DFA', sigma: [], states: [], transitions: [] }, { intent: 'build' }
+  );
+
+  const calls = [
+    { id: 'c', name: 'create_candidate', arguments: { machine: 'DFA', sigma: ['a', 'b'] } },
+    ...Array.from({ length: 5 }, (_, i) => ({
+      id: `s${i}`, name: 'add_state', arguments: { name: `q${i}`, start: i === 0, accept: i === 4 }
+    })),
+    ...Array.from({ length: 13 }, (_, i) => ({
+      id: `t${i}`, name: 'add_transition', arguments: { from: `q${i % 5}`, to: `q${(i + 1) % 5}`, on: i % 2 ? 'a' : 'b' }
+    })),
+    { id: 'fin', name: 'finish', arguments: { title: 'X', tests: [{ w: 'a', expect: 'accept' }] } }
+  ];
+  const out = h.context.executeAgentToolCalls(calls, session);
+
+  // Both native dialects require a result per call id, so a trimmed round is
+  // a smaller round, never a partial answer.
+  assert.equal(out.length, calls.length, 'every call was answered');
+  assert.equal(out.filter(r => r.ok).length, MAX_TOOL_CALLS_PER_STEP);
+  assert.match(out.find(r => !r.ok).error.message, /Send this one again/);
+
+  // The whole point: it used to throw, and inside an agent session a throw
+  // ends the run — so a model one call over lost every edit it had just made.
+  const summary = h.context.executeAgentToolCalls(
+    [{ id: 'g', name: 'get_machine_summary', arguments: {} }], session
+  )[0].result;
+  assert.equal(summary.states, 5, 'the work that fit survived');
+});
+
+test('finish waits when the round it arrived in was trimmed', () => {
+  const h = createHarness();
+  const session = h.context.createAgentSession(
+    { machine: 'DFA', sigma: [], states: [], transitions: [] }, { intent: 'build' }
+  );
+  const filler = Array.from({ length: h.context.MAX_TOOL_CALLS_PER_STEP }, (_, i) => ({
+    id: `f${i}`, name: 'get_machine_summary', arguments: {}
+  }));
+  const out = h.context.executeAgentToolCalls([
+    ...filler,
+    { id: 'edit', name: 'create_candidate', arguments: { machine: 'DFA', sigma: ['a'] } },
+    { id: 'fin', name: 'finish', arguments: { title: 'X' } }
+  ], session);
+
+  assert.equal(out.at(-2).ok, false, 'the edit did not fit');
+  assert.equal(out.at(-1).ok, false, 'so the finish that assumed it must not go through');
+  assert.match(out.at(-1).error.message, /then finish/);
+  assert.equal(h.context.agentFinishedTurn(session), null, 'nothing was handed over');
+});
+
+test('a full round still finishes when nothing was held back', () => {
+  const h = createHarness();
+  const session = h.context.createAgentSession(
+    { machine: 'DFA', sigma: [], states: [], transitions: [] }, { intent: 'build' }
+  );
+  const fill = h.context.MAX_TOOL_CALLS_PER_STEP - 3;
+  const out = h.context.executeAgentToolCalls([
+    { id: 'c', name: 'create_candidate', arguments: { machine: 'DFA', sigma: ['a'] } },
+    { id: 's', name: 'add_state', arguments: { name: 'q0', start: true, accept: true } },
+    { id: 't', name: 'add_transition', arguments: { from: 'q0', to: 'q0', on: 'a' } },
+    ...Array.from({ length: fill }, (_, i) => ({ id: `k${i}`, name: 'lint_machine', arguments: {} })),
+    { id: 'fin', name: 'finish', arguments: { title: 'X', tests: [{ w: 'a', expect: 'accept' }] } }
+  ], session);
+
+  // Control is exempt from the round cap — it is call 17 of 17 and nothing was
+  // held, so the candidate is exactly what the model built.
+  assert.equal(out.at(-1).ok, true);
+  assert.equal(h.context.agentFinishedTurn(session).kind, 'machine');
+});
+
+test('a spent run budget still leaves a way out, and holds nothing back that did not run', () => {
+  const h = createHarness();
+  const session = h.context.createAgentSession(
+    { machine: 'DFA', sigma: [], states: [], transitions: [] }, { intent: 'build' }
+  );
+  session.ranCount = h.context.MAX_AGENT_TOOL_CALLS;
+
+  const out = h.context.executeAgentToolCalls([
+    { id: 'r', name: 'get_machine_summary', arguments: {} },
+    { id: 'a', name: 'ask_user', arguments: { question: 'Which one?' } }
+  ], session);
+
+  assert.equal(out[0].ok, false);
+  assert.match(out[0].error.message, /budget is spent/);
+  // ask_user delivers nothing, so making it wait on a held round would cost a
+  // round trip and buy no safety.
+  assert.equal(out[1].ok, true, 'a question is still reachable with the budget spent');
+  assert.equal(h.context.agentFinishedTurn(session).kind, 'reply');
+});
+
+test('a call that never ran does not spend the run budget', () => {
+  const h = createHarness();
+  const session = h.context.createAgentSession(
+    { machine: 'DFA', sigma: [], states: [], transitions: [] }, { intent: 'build' }
+  );
+  h.context.executeAgentToolCalls(
+    Array.from({ length: 25 }, (_, i) => ({ id: `g${i}`, name: 'get_machine_summary', arguments: {} })),
+    session
+  );
+  assert.equal(session.ranCount, h.context.MAX_TOOL_CALLS_PER_STEP,
+    'the nine that were held back would otherwise have eaten the run budget too');
+});
+
+test('an over-long round on the envelope transport is a round, not a dead run', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', agentTools: true });
+  // parseAgentToolTurn used to throw here, and inside an agent session that is
+  // fatal — while the hosted native path had no per-round limit at all.
+  const over = [
+    ...Array.from({ length: 20 }, (_, i) => ({ id: `n${i}`, name: 'get_machine_summary', arguments: {} }))
+  ];
+  assert.equal(h.context.parseAgentToolTurn(JSON.stringify({ kind: 'tool', calls: over })).length, 20,
+    'parsing does not judge the size of a round');
+
+  h.context.fetch = fakeFetch((_url, _init, call) => call === 1
+    ? toolReply([...simpleAgentCalls().slice(0, 5), ...over])
+    : toolReply(simpleAgentCalls().slice(5)));
+
+  const result = await h.context.runStateMate({ prompt: 'build a parity DFA', intent: 'build' });
+  assert.equal(result.status, 'applied', 'the run survived a round it could not fit');
+});
+
+test('a transition ref survives the edits that move its position', () => {
+  const h = createHarness();
+  const session = branchingCandidate(h);
+  assert.deepEqual(refsOf(h, session), ['t1', 't2', 't3']);
+
+  h.context.executeAgentToolCalls([{ id: 'x', name: 'remove_transition', arguments: { ref: 't1' } }], session);
+  // t3 is now at position 1. Its name did not change, which is the point.
+  assert.deepEqual(refsOf(h, session), ['t2', 't3']);
+
+  const removed = toolResult(h, session, 'remove_transition', { ref: 't3' }).removed;
+  assert.equal(removed.on, 'b');
+  assert.deepEqual(refsOf(h, session), ['t2']);
+});
+
+test('a position is refused rather than resolved, because a stale one cannot be told from a live one', () => {
+  const h = createHarness();
+  const session = branchingCandidate(h);
+  // The trap: read the list, remove something, then act on a position read
+  // before the removal — in one round, which a model may batch.
+  const out = h.context.executeAgentToolCalls([
+    { id: 'a', name: 'remove_transition', arguments: { ref: 't1' } },
+    { id: 'b', name: 'update_transition', arguments: { index: 0, patch: { on: 'b' } } }
+  ], session);
+
+  assert.equal(out[0].ok, true);
+  assert.equal(out[1].ok, false, 'this used to silently patch a different transition');
+  assert.match(out[1].error.message, /ref/);
+  assert.equal(toolResult(h, session, 'get_transitions')[0].on, 'a', 'and nothing was patched');
+});
+
+test('an ambiguous match is refused with the refs it hit', () => {
+  const h = createHarness();
+  const session = branchingCandidate(h);
+
+  const out = h.context.executeAgentToolCalls([
+    { id: 'x', name: 'remove_transition', arguments: { from: 'q0', on: 'a' } }
+  ], session);
+
+  assert.equal(out[0].ok, false, 'one of the two branches used to be removed arbitrarily');
+  assert.match(out[0].error.message, /matches 2 transitions \(t1, t2\)/);
+  assert.equal(toolResult(h, session, 'get_transitions').length, 3);
+
+  // Named, it goes through — the refusal names the refs so the next call is
+  // one keystroke rather than another search.
+  assert.equal(toolResult(h, session, 'remove_transition', { ref: 't2' }).removed.to, 'q1');
+});
+
+test('an unambiguous match still works, and a dead ref says so', () => {
+  const h = createHarness();
+  const session = branchingCandidate(h);
+
+  const patched = toolResult(h, session, 'update_transition', { from: 'q1', on: 'b', patch: { to: 'q0' } });
+  assert.equal(patched.transition.to, 'q0');
+  assert.equal(patched.transition.ref, 't3', 'patching does not re-mint the handle');
+
+  const dead = h.context.executeAgentToolCalls([
+    { id: 'x', name: 'update_transition', arguments: { ref: 't99', patch: { on: 'b' } } }
+  ], session);
+  assert.equal(dead[0].ok, false);
+  assert.match(dead[0].error.message, /may have been removed/);
+
+  const blind = h.context.executeAgentToolCalls([
+    { id: 'y', name: 'update_transition', arguments: { patch: { on: 'b' } } }
+  ], session);
+  assert.equal(blind[0].ok, false, 'an empty match addresses every transition, which is not an address');
+});
+
+test('a ref is draft-local and never reaches the spec or the canvas', () => {
+  const h = createHarness();
+  const session = branchingCandidate(h);
+  assert.ok(toolResult(h, session, 'get_machine_spec').transitions[0].ref, 'the model can see it');
+
+  const spec = h.context.validateSpec(
+    { ...toolResult(h, session, 'get_machine_spec'), tests: [] }, { fallbackMachine: 'NFA' }
+  );
+  assert.equal(spec.transitions[0].ref, undefined, 'validateSpec builds from legal fields only');
+
+  const { candidate } = h.context.compileSpec(spec, { machine: 'NFA', sigma: ['a', 'b'], states: [], transitions: [] });
+  assert.ok(candidate.transitions.every(row => row.ref === undefined));
+});
+
+test('a wholesale replacement mints fresh refs without reusing a retired one', () => {
+  const h = createHarness();
+  const session = branchingCandidate(h);
+  h.context.executeAgentToolCalls([{ id: 'x', name: 'remove_transition', arguments: { ref: 't2' } }], session);
+
+  // minimize_dfa / convert_nfa_to_dfa / replace_candidate_from_spec all swap
+  // the transition list out from under the refs.
+  toolResult(h, session, 'convert_nfa_to_dfa');
+  const refs = refsOf(h, session);
+  assert.ok(refs.length, 'the converted machine has transitions');
+  assert.equal(new Set(refs).size, refs.length, 'refs are unique');
+  assert.ok(refs.every(ref => !['t1', 't2', 't3'].includes(ref)), 'a retired ref never comes back around');
+});
+
+test('trace_word names the step where a run went wrong', () => {
+  const h = createHarness();
+  const session = h.context.createAgentSession(
+    { machine: 'DFA', sigma: [], states: [], transitions: [] }, { intent: 'build' }
+  );
+  h.context.executeAgentToolCalls([
+    { id: '1', name: 'create_candidate', arguments: { machine: 'DFA', sigma: ['a', 'b'] } },
+    { id: '2', name: 'add_state', arguments: { name: 'even', start: true, accept: true } },
+    { id: '3', name: 'add_state', arguments: { name: 'odd' } },
+    { id: '4', name: 'add_transition', arguments: { from: 'even', to: 'odd', on: 'a' } },
+    { id: '5', name: 'add_transition', arguments: { from: 'odd', to: 'even', on: 'a' } }
+  ], session);
+
+  const trace = toolResult(h, session, 'trace_word', { word: 'aab' });
+  assert.equal(trace.verdict, 'reject');
+  assert.equal(trace.steps, 4);
+  assert.deepEqual(trace.trace.map(step => step.state), ['even', 'odd', 'even', 'even']);
+  assert.match(trace.trace.at(-1).note, /No δ\(even,'b'\)/, 'the whole point is naming where it stopped');
+  assert.equal(trace.trace.at(-1).final, 'reject');
+
+  // Ids are the one thing the spec dialect has never had.
+  const text = JSON.stringify(trace);
+  assert.doesNotMatch(text, /"s\d+"/, 'a trace speaks in names, not canvas ids');
+});
+
+test('a long run keeps its ends and counts the middle', () => {
+  const h = createHarness();
+  const session = h.context.createAgentSession(
+    { machine: 'TM', sigma: [], states: [], transitions: [] }, { intent: 'build' }
+  );
+  h.context.executeAgentToolCalls([
+    { id: '1', name: 'create_candidate', arguments: { machine: 'TM', sigma: ['a'] } },
+    { id: '2', name: 'add_state', arguments: { name: 'go', start: true } },
+    { id: '3', name: 'add_transition', arguments: { from: 'go', to: 'go', on: 'a', write: 'a', move: 'R' } },
+    { id: '4', name: 'add_transition', arguments: { from: 'go', to: 'go', on: '⊔', write: 'a', move: 'R' } }
+  ], session);
+
+  const trace = toolResult(h, session, 'trace_word', { word: 'aaa' });
+  assert.ok(trace.steps > 100, 'this machine does not halt');
+  assert.equal(trace.trace.length, 20);
+  assert.equal(trace.elided, trace.steps - 20);
+  assert.equal(trace.trace[0].at, 0);
+  assert.equal(trace.trace.at(-1).at, trace.steps - 1, 'the last step is where it stopped, not step 20');
+  // 'timeout' and 'loop' are verdicts the batch deciders flatten to "unknown".
+  assert.equal(trace.verdict, 'timeout');
+});
+
+test('a trace carries the store the machine actually uses', () => {
+  const h = createHarness();
+  const session = h.context.createAgentSession(
+    { machine: 'TM', sigma: [], states: [], transitions: [] }, { intent: 'build' }
+  );
+  h.context.executeAgentToolCalls([
+    { id: '1', name: 'create_candidate', arguments: { machine: 'TM', sigma: ['a'] } },
+    { id: '2', name: 'add_state', arguments: { name: 'scan', start: true } },
+    { id: '3', name: 'add_state', arguments: { name: 'done', accept: true } },
+    { id: '4', name: 'add_transition', arguments: { from: 'scan', to: 'scan', on: 'a', write: 'b', move: 'R' } },
+    { id: '5', name: 'add_transition', arguments: { from: 'scan', to: 'done', on: '⊔', write: '⊔', move: 'R' } }
+  ], session);
+
+  const trace = toolResult(h, session, 'trace_word', { word: 'aa' });
+  assert.equal(trace.verdict, 'accept');
+  assert.equal(typeof trace.trace[1].tape, 'string');
+  assert.equal(typeof trace.trace[1].head, 'number');
+  assert.match(trace.trace.at(-1).tape, /^bb/, 'the tape shows what the machine wrote');
+});
+
+test('tracing a candidate leaves the player and its panel alone', () => {
+  const h = createHarness();
+  const { App, document } = h.context;
+  const session = loopCandidate(h, 'DFA');
+
+  // What the reader was looking at before the model traced anything.
+  App.simSteps = [{ note: 'the reader\'s own run' }];
+  App.simIdx = 0;
+  document.getElementById('trace-log').innerHTML = 'the reader\'s own trace';
+
+  toolResult(h, session, 'trace_word', { word: 'ab' });
+
+  assert.deepEqual(App.simSteps, [{ note: 'the reader\'s own run' }], 'App.simSteps is not in exportWorkspaceState, so withWorkspace alone would not have restored it');
+  assert.equal(App.simIdx, 0);
+  assert.equal(document.getElementById('trace-log').innerHTML, 'the reader\'s own trace',
+    'a private candidate must not replay itself across the reader\'s panel');
+});
+
+test('a word this machine cannot read is reported, not thrown', () => {
+  const h = createHarness();
+  const trace = toolResult(h, loopCandidate(h, 'DBA'), 'trace_word', { word: 'ab' });
+  assert.equal(trace.error, true);
+  assert.match(trace.why, /infinite word/);
+});
+
+test('tracing counts as checking the candidate', () => {
+  const h = createHarness();
+  const session = loopCandidate(h, 'DFA');
+  const out = h.context.executeAgentToolCalls([
+    { id: '1', name: 'add_state', arguments: { name: 'extra' } },
+    { id: '2', name: 'trace_word', arguments: { word: 'ab' } },
+    { id: '3', name: 'finish', arguments: { tests: [{ w: 'ab', expect: 'accept' }] } }
+  ], session);
+  assert.equal(out[2].ok, true, 'running the real simulator is exactly what the finish gate asks for');
+});
+
+test('the repair round shows the model what its machine did, not just that it was wrong', () => {
+  const h = createHarness();
+  const base = { machine: 'DFA', sigma: ['a', 'b'], states: [], transitions: [] };
+  const session = h.context.createAgentSession(base, { intent: 'build' });
+  h.context.executeAgentToolCalls([
+    { id: '1', name: 'create_candidate', arguments: { machine: 'DFA', sigma: ['a', 'b'] } },
+    { id: '2', name: 'add_state', arguments: { name: 'even', start: true, accept: true } },
+    { id: '3', name: 'add_state', arguments: { name: 'odd' } },
+    { id: '4', name: 'add_transition', arguments: { from: 'even', to: 'odd', on: 'a' } },
+    { id: '5', name: 'add_transition', arguments: { from: 'odd', to: 'even', on: 'a' } }
+  ], session);
+  const spec = h.context.validateSpec(
+    { ...toolResult(h, session, 'get_machine_spec'), tests: [] }, { fallbackMachine: 'DFA' }
+  );
+  const { candidate } = h.context.compileSpec(spec, base);
+
+  const failures = [{ kind: 'verdict', word: 'aab', expected: 'accept', actual: 'reject' }];
+  const traces = h.context.traceFailures(candidate, failures);
+  assert.equal(traces.length, 1);
+
+  const message = h.context.buildRepairMessage({
+    prompt: 'an even number of as',
+    failures: failures.map(h.context.failureForModel),
+    findings: [],
+    traces
+  });
+  assert.match(message, /step by step/);
+  assert.match(message, /No δ\(even,'b'\)/, 'the failing step is named in the message that asks for a fix');
+  // A crash has no path to show and must not take the message down with it.
+  assert.deepEqual(h.context.traceFailures(candidate, [{ kind: 'crash', detail: 'boom' }]), []);
+});
+
+test('an oversized result gives up half of itself instead of the whole round', () => {
+  const h = createHarness();
+  const session = loopCandidate(h, 'DFA', ['a', 'b', 'c', 'd', 'e']);
+  const round = h.context.executeAgentToolCalls([
+    { id: 'g1', name: 'generate_test_words', arguments: { max_length: 6 } },
+    { id: 'g2', name: 'generate_test_words', arguments: { max_length: 6 } },
+    { id: 'g3', name: 'generate_test_words', arguments: { max_length: 6 } },
+    { id: 'sum', name: 'get_machine_summary', arguments: {} },
+    { id: 'st', name: 'get_state', arguments: { name: 'q0' } }
+  ], session);
+
+  assert.ok(JSON.stringify(round).length > 9000, 'the round has to be over the cap to be a test of this');
+  const delivered = JSON.parse(h.context.toolResultsMessage(round, session));
+
+  assert.equal(delivered.results.length, 5, 'every call still has an answer');
+  // The two small ones are the whole point: they used to be discarded along
+  // with the big one, and replaced by a sentence naming none of them.
+  const small = delivered.results.find(row => row.id === 'sum');
+  assert.equal(small.truncated, undefined);
+  assert.equal(small.result.machine, 'DFA');
+  assert.equal(delivered.results.find(row => row.id === 'st').result.state.name, 'q0');
+
+  const clipped = delivered.results.filter(row => row.truncated);
+  assert.ok(clipped.length, 'something gave way');
+  assert.ok(clipped.every(row => Array.isArray(row.result) && row.result.length), 'and kept a usable half');
+  assert.match(clipped[0].truncated, /narrower query/);
+});
+
+test('the subset construction matches state names the way the compiler does', () => {
+  const h = createHarness();
+  const session = h.context.createAgentSession(
+    { machine: 'NFA', sigma: [], states: [], transitions: [] }, { intent: 'build' }
+  );
+  h.context.executeAgentToolCalls([
+    { id: '1', name: 'create_candidate', arguments: { machine: 'NFA', sigma: ['a'] } },
+    { id: '2', name: 'add_state', arguments: { name: 'q0', start: true } },
+    { id: '3', name: 'add_state', arguments: { name: 'q1', accept: true } },
+    // Names are unique under stateNameKey, so this is the same state — and it
+    // is what the compiler resolves it to.
+    { id: '4', name: 'add_transition', arguments: { from: 'Q0', to: 'Q1', on: 'a' } }
+  ], session);
+
+  const converted = toolResult(h, session, 'convert_nfa_to_dfa');
+  assert.equal(converted.machine, 'DFA');
+  const runs = toolResult(h, session, 'simulate_words', { words: ['a', ''] });
+  assert.deepEqual(runs.accept, ['a'], 'strict name matching used to drop the edge and accept nothing');
 });
 
 test('agent algorithms and layout operate on the private candidate', () => {
@@ -1235,7 +1898,7 @@ test('a wrong first answer is repaired without the user seeing anything but a sl
   assert.equal(result.batch.allPassed, true);
   assert.deepEqual(result.lint.fatal, []);
   // The repair message must contain the actual failure, not a restatement.
-  assert.match(fetchStub.calls[1].body.messages.at(-1).content, /deterministic|predicted/);
+  assert.match(lastTurn(fetchStub.calls[1]), /deterministic|predicted/);
 });
 
 test('a machine that stays invalid never reaches the canvas', async () => {
@@ -1276,7 +1939,7 @@ test('unparseable output gets one silent reformat before it becomes the user\'s 
   const result = await h.context.runStateMate({ prompt: 'even number of a' });
   assert.equal(result.status, 'applied');
   assert.equal(fetchStub.calls.length, 2);
-  assert.match(fetchStub.calls[1].body.messages.at(-1).content, /ONLY the JSON object/);
+  assert.match(lastTurn(fetchStub.calls[1]), /ONLY the JSON object/);
 });
 
 test('a build over existing work opens a new tab instead of replacing it', async () => {
@@ -1349,7 +2012,7 @@ test('the thread carries what was asked and a summary of what was built', async 
   assert.equal(sent.length, 3);
   assert.equal(sent[0].content, 'even number of a');
   assert.match(sent[1].content, /^\[built: Even number of a's/);
-  assert.match(sent[2].content, /now make it reject the empty string/);
+  assert.match(blockText(sent[2].content), /now make it reject the empty string/);
 });
 
 test('past machines are never replayed — only the live canvas is', async () => {
@@ -1369,7 +2032,7 @@ test('past machines are never replayed — only the live canvas is', async () =>
   // Exactly one machine reaches the model, and it is the one on the canvas
   // right now — attached to the live turn, not remembered from the last one.
   assert.ok(!/"transitions"/.test(history), 'the history holds no machine JSON');
-  assert.match(sent[sent.length - 1].content, /MACHINE CURRENTLY ON THE CANVAS/);
+  assert.match(blockText(sent[sent.length - 1].content), /MACHINE CURRENTLY ON THE CANVAS/);
 });
 
 test('depth 0 sends nothing but still keeps the exchange on screen', async () => {
@@ -2177,7 +2840,7 @@ test('the turn subject is inferred, and /new overrides it for one turn', async (
   assert.ok(App.states.length, 'and it built one');
 
   // Now there is a machine, so an unqualified turn is about it.
-  const sent = () => JSON.parse(h.context.fetch.calls.at(-1).init.body).messages.at(-1).content;
+  const sent = () => blockText(JSON.parse(h.context.fetch.calls.at(-1).init.body).messages.at(-1).content);
   h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec()));
   input = type(h, 'add a trap state');
   await enter(input);
@@ -2241,6 +2904,105 @@ test('the console defaults to propose and cycles with the status chip', async ()
   h.context.stowStateMate();
   h.context.openStateMate();
   assert.equal(deepText(chip()), COPY.ask.label);
+});
+
+// Class names of the pipeline rows, in order — 'is-done', 'is-active' or
+// absent for idle.
+const stageStates = h => findAll(h.getElement('sm-log'), 'sm-step')
+  .map(row => String(row.className || ''))
+  .filter(name => /^sm-step( |$)/.test(name))
+  .map(name => name.replace('sm-step', '').trim());
+
+test('a run that goes backwards does not keep the ticks it earned going forwards', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', repairAttempts: 1 });
+  h.context.openStateMate();
+
+  let midRepair = null;
+  h.context.fetch = fakeFetch((_url, _init, call) => {
+    // On the second request the run has been through parse, compile and
+    // verify once, failed, and come back to `request`.
+    if (call === 2) midRepair = stageStates(h);
+    // A machine that contradicts its own prediction, so verify fails and the
+    // repair round re-enters `request`.
+    return anthropicReply(call === 1
+      ? dfaSpec({ tests: [{ w: 'a', expect: 'accept' }, { w: 'aa', expect: 'reject' }, { w: 'ε', expect: 'accept' }] })
+      : dfaSpec());
+  });
+
+  await enter(type(h, 'even number of a'));
+
+  assert.ok(midRepair, 'the run repaired, which is what this test needs');
+  assert.equal(midRepair.filter(state => state === 'is-active').length, 1,
+    'exactly one stage can be happening at a time');
+  assert.equal(midRepair[0], 'is-active', 'and it is the one being redone');
+  assert.ok(midRepair.slice(1).every(state => state !== 'is-done'),
+    'parse and compile used to keep their ticks while their work was being redone');
+});
+
+test('the agent shows what each tool did and whether it worked', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({
+    enabled: true, provider: 'anthropic', apiKey: 'k', agentTools: true, agentMaxSteps: 16
+  });
+  h.context.openStateMate();
+
+  let midRun = null;
+  h.context.fetch = fakeFetch((_url, _init, call) => {
+    if (call === 2) midRun = logText(h);
+    return call === 1
+      ? toolReply(simpleAgentCalls().slice(0, 5))
+      : toolReply(simpleAgentCalls().slice(5));
+  });
+
+  await enter(type(h, 'build a parity DFA'));
+
+  assert.ok(midRun, 'the first round rendered before the second request went out');
+  // The invariant, not the mechanism.
+  assert.match(midRun, /On a private copy/);
+  assert.match(midRun, /round 1 of 16/, 'where the run is against its own budget');
+
+  // The tool names are the content; the arguments say what each was asked to do.
+  assert.match(midRun, /create_candidate/);
+  assert.match(midRun, /DFA over \{a, b\}/);
+  assert.match(midRun, /add_state/);
+  assert.match(midRun, /q0/);
+  assert.match(midRun, /add_transition/);
+  assert.match(midRun, /q0 —a→ q1/);
+
+  // What it replaced: a label repeated once per call, and a count that said
+  // the least useful half of the outcome.
+  assert.doesNotMatch(midRun, /Tool call:/);
+  assert.doesNotMatch(midRun, /tool results returned/);
+});
+
+test('a refused tool call says why, on the row that was refused', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', agentTools: true });
+  h.context.openStateMate();
+
+  let midRun = null;
+  let marks = [];
+  h.context.fetch = fakeFetch((_url, _init, call) => {
+    // Read while the run is in flight: the run entry is replaced by the
+    // result card the moment it finishes.
+    if (call === 2) {
+      midRun = logText(h);
+      marks = findAll(h.getElement('sm-log'), 'sm-agent-call').map(row => String(row.className || ''));
+    }
+    // finish before anything has been checked: the gate sends it back.
+    return call === 1
+      ? toolReply([...simpleAgentCalls().slice(0, 5), simpleAgentCalls()[6]])
+      : toolReply(simpleAgentCalls().slice(5));
+  });
+
+  await enter(type(h, 'build a parity DFA'));
+
+  assert.match(midRun, /finish/);
+  assert.match(midRun, /last been checked|last checked/,
+    'a refusal replaces the detail: why it would not matters more than what it was asked');
+  assert.ok(marks.some(name => name.includes('is-ok')), 'the calls that worked are marked');
+  assert.ok(marks.some(name => name.includes('is-fail')), 'and the one that did not');
 });
 
 test('the behavior switch persists Standard or Agentic independently of write authority', async () => {
@@ -2396,6 +3158,88 @@ test('an Anthropic stream is reassembled, and the plan surfaces early', async ()
   assert.match(seen[0], /"plan"/, 'the plan is in the first delta, which is what the progress view shows');
 });
 
+test('the Anthropic request marks the prefix it resends every round', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  const stub = fakeFetch(() => jsonResponse({ content: [{ type: 'text', text: '{}' }] }));
+  h.context.fetch = stub;
+
+  await h.context.callModel({
+    system: 'S'.repeat(40), messages: [{ role: 'user', content: 'U' }],
+    tools: h.context.STATEMATE_NATIVE_TOOLS
+  });
+
+  const body = stub.calls[0].body;
+  // Render order is tools → system → messages, so one breakpoint on the last
+  // system block covers the tool declarations too.
+  assert.deepEqual(body.system.at(-1).cache_control, { type: 'ephemeral' });
+  assert.ok(body.tools.length, 'and the tools are what it is covering');
+  // A second on the last turn, so a growing tool history accrues hits.
+  assert.deepEqual(body.messages.at(-1).content.at(-1).cache_control, { type: 'ephemeral' });
+  assert.equal(blockText(body.messages.at(-1).content), 'U', 'the turn still says what it said');
+});
+
+test('marking the last turn does not mark the ones before it', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  const stub = fakeFetch(() => jsonResponse({ content: [{ type: 'text', text: '{}' }] }));
+  h.context.fetch = stub;
+
+  await h.context.callModel({
+    system: 'S', messages: [
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'second' },
+      { role: 'user', content: 'third' }
+    ]
+  });
+
+  const turns = stub.calls[0].body.messages;
+  assert.equal(turns[0].content, 'first', 'earlier turns are left as they were');
+  assert.equal(turns[1].content, 'second');
+  assert.deepEqual(turns[2].content.at(-1).cache_control, { type: 'ephemeral' });
+  // Four breakpoints per request is the ceiling; this uses two.
+  const marks = JSON.stringify(stub.calls[0].body).match(/cache_control/g) || [];
+  assert.equal(marks.length, 2);
+});
+
+test('the cached prefix is byte-stable, or every read would be a write', async () => {
+  const h = createHarness();
+  // The one property caching depends on. A timestamp or a request id anywhere
+  // in the system prompt or the tool list would silently undo all of this.
+  const first = await h.context.buildSystemPrompt('DFA', { notes: false });
+  const second = await h.context.buildSystemPrompt('DFA', { notes: false });
+  assert.equal(first, second);
+  assert.equal(
+    JSON.stringify(h.context.STATEMATE_NATIVE_TOOLS),
+    JSON.stringify(h.context.STATEMATE_NATIVE_TOOLS),
+    'the tool list renders at position 0 — a varying order caches nothing'
+  );
+});
+
+test('native tools and the envelope instructions are never sent together', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({
+    enabled: true, provider: 'anthropic', apiKey: 'k', agentTools: true
+  });
+  const stub = fakeFetch(() => anthropicReply(dfaSpec()));
+  h.context.fetch = stub;
+  await h.context.runStateMate({ prompt: 'even number of a', intent: 'build' });
+
+  const system = systemText(stub.calls[0]);
+  assert.ok(stub.calls[0].body.tools.length, 'the tools are declared natively');
+  assert.doesNotMatch(system, /"kind":"tool"/,
+    'teaching the JSON envelope beside a native tool declaration is a contradiction, '
+    + 'and ~1,300 tokens of one on every round of every run');
+
+  // A provider without native tools still gets taught the envelope.
+  h.context.saveStateMateSettings({ provider: 'ollama', apiKey: 'k', baseUrl: 'http://localhost:11434/v1' });
+  const local = fakeFetch(() => jsonResponse({ choices: [{ message: { content: JSON.stringify(dfaSpec()) } }] }));
+  h.context.fetch = local;
+  await h.context.runStateMate({ prompt: 'even number of a', intent: 'build' });
+  assert.match(String(local.calls[0].body.messages[0].content), /"kind":"tool"/);
+  assert.equal(local.calls[0].body.tools, undefined);
+});
+
 test('an OpenAI stream is reassembled and [DONE] is not parsed as an event', async () => {
   const h = createHarness();
   h.context.saveStateMateSettings({ enabled: true, provider: 'openai', apiKey: 'k' });
@@ -2408,6 +3252,111 @@ test('an OpenAI stream is reassembled and [DONE] is not parsed as an event', asy
   const out = await h.context.callModel({ system: 'S', user: 'U' });
   assert.equal(out.text, '{"machine":"DFA"}');
   assert.deepEqual(out.usage, { input: 9, output: 3 });
+});
+
+test('attaching tools no longer turns the stream off', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  const fetchStub = fakeFetch(() => sseResponse([
+    'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
+    'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}\n\n'
+  ]));
+  h.context.fetch = fetchStub;
+
+  await h.context.callModel({ system: 'S', user: 'U', tools: h.context.STATEMATE_NATIVE_TOOLS });
+
+  assert.equal(fetchStub.calls[0].body.stream, true,
+    'a tool round used to be buffered, which took the plan preview down with it');
+  assert.ok(fetchStub.calls[0].body.tools.length, 'and it still carries the tools');
+});
+
+test('the prose beside a tool call streams to the console as the plan', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', agentTools: true });
+  h.context.fetch = fakeFetch((_url, _init, call) => call === 1
+    ? sseResponse([
+      'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Tracking parity "}}\n\n',
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"over two states."}}\n\n',
+      'data: {"type":"content_block_stop","index":0}\n\n',
+      'data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"s","name":"get_machine_summary","input":{}}}\n\n',
+      'data: {"type":"content_block_stop","index":1}\n\n'
+    ])
+    : toolReply([{ id: 'done', name: 'finish', arguments: { reply: 'The canvas is empty.' } }]));
+
+  const events = [];
+  await h.context.runStateMate({ prompt: 'describe it', intent: 'edit', onEvent: event => events.push(event) });
+
+  const plans = events.filter(event => event.type === 'plan');
+  assert.ok(plans.length >= 2, 'the reader watched it arrive rather than waiting for the round to end');
+  assert.equal(plans.at(-1).text, 'Tracking parity over two states.');
+});
+
+test('an Anthropic tool call is assembled from its JSON fragments as it streams', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  h.context.fetch = async () => sseResponse([
+    'data: {"type":"message_start","message":{"model":"claude-sonnet-5","usage":{"input_tokens":11}}}\n\n',
+    'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
+    'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Adding a state."}}\n\n',
+    'data: {"type":"content_block_stop","index":0}\n\n',
+    'data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call-1","name":"add_state","input":{}}}\n\n',
+    'data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"name\\":"}}\n\n',
+    'data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\\"q0\\",\\"start\\":true}"}}\n\n',
+    'data: {"type":"content_block_stop","index":1}\n\n',
+    'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}\n\n'
+  ]);
+
+  const seen = [];
+  const out = await h.context.callModel({
+    system: 'S', user: 'U', tools: h.context.STATEMATE_NATIVE_TOOLS, onText: full => seen.push(full)
+  });
+
+  // The prose beside the call still streams — that is the plan preview.
+  assert.equal(out.text, 'Adding a state.');
+  assert.ok(seen.length, 'the reader saw the text arrive');
+  assert.deepEqual(out.toolCalls, [
+    { id: 'call-1', name: 'add_state', arguments: { name: 'q0', start: true } }
+  ]);
+  // rawContent is echoed back as the assistant turn of the next round, so the
+  // tool_use block has to survive the stream intact beside its text.
+  assert.deepEqual(out.rawContent, [
+    { type: 'text', text: 'Adding a state.' },
+    { type: 'tool_use', id: 'call-1', name: 'add_state', input: { name: 'q0', start: true } }
+  ]);
+});
+
+test('an OpenAI tool call is assembled across frames that name it only once', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'openai', apiKey: 'k' });
+  h.context.fetch = async () => sseResponse([
+    'data: {"choices":[{"delta":{"content":"working"}}]}\n\n',
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"add_state","arguments":"{\\"name\\":"}}]}}]}\n\n',
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"q0\\"}"}}]}}]}\n\n',
+    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+    'data: [DONE]\n\n'
+  ]);
+
+  const out = await h.context.callModel({ system: 'S', user: 'U', tools: h.context.STATEMATE_NATIVE_TOOLS });
+
+  assert.equal(out.text, 'working');
+  assert.deepEqual(out.toolCalls, [{ id: 'c1', name: 'add_state', arguments: { name: 'q0' } }]);
+  // The raw call is echoed back verbatim, arguments still a string.
+  assert.deepEqual(out.rawToolCalls, [
+    { id: 'c1', type: 'function', function: { name: 'add_state', arguments: '{"name":"q0"}' } }
+  ]);
+});
+
+test('a tool call with no arguments streams no fragments and still parses', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  h.context.fetch = async () => sseResponse([
+    'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"c","name":"lint_machine","input":{}}}\n\n',
+    'data: {"type":"content_block_stop","index":0}\n\n'
+  ]);
+
+  const out = await h.context.callModel({ system: 'S', user: 'U', tools: h.context.STATEMATE_NATIVE_TOOLS });
+  assert.deepEqual(out.toolCalls, [{ id: 'c', name: 'lint_machine', arguments: {} }]);
 });
 
 test('a stream that stops mid-object fails as a missing machine, not a crash', async () => {
@@ -2847,7 +3796,7 @@ test('the focus block points into the machine rather than replacing it', async (
     context: [{ kind: 'states', ids: [odd.id] }]
   });
 
-  const sent = stub.calls[0].body.messages.at(-1).content;
+  const sent = lastTurn(stub.calls[0]);
   assert.match(sent, /THESE PARTS OF THE MACHINE/);
   assert.match(sent, /states: odd/);
   assert.ok(!sent.includes(odd.id), 'the canvas id never leaves the app');
@@ -3152,7 +4101,7 @@ test('a selection becomes context, rides with the prompt, and is spent', async (
   h.context.fetch = stub;
   await enter(type(h, 'why does this reject a?'));
 
-  assert.match(stub.calls[0].body.messages.at(-1).content, /states: odd/);
+  assert.match(lastTurn(stub.calls[0]), /states: odd/);
   // The basket described *that* sentence. Left armed it would silently qualify
   // every prompt after it.
   assert.equal(findAll(h.getElement('sm-context'), 'sm-ctxchip').length, 0);

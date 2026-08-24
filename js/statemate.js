@@ -42,7 +42,8 @@ import {
 import { ProviderError, callModel, getStateMateSettings, supportsImages } from './statemate-provider.js';
 import {
   MAX_AGENT_STEPS, agentFinishedTurn, agentToolInstructions, createAgentSession,
-  executeAgentToolCalls, parseAgentToolTurn, STATEMATE_NATIVE_TOOLS, toolResultsMessage
+  executeAgentToolCalls, parseAgentToolTurn, STATEMATE_NATIVE_TOOLS, toolResultsMessage,
+  traceCandidateWord
 } from './statemate-agent.js';
 import {
   MIN_SPEC_TESTS, StateMateError, describeSpecSize, extractSpecJSON,
@@ -800,7 +801,18 @@ export async function runStateMate({
   try {
     // ── 1 · assemble ──────────────────────────────────────────
     onEvent({ type: 'stage', stage: 'request' });
-    const system = settings.agentTools === false
+    // Hosted Anthropic and OpenAI carry tool calls as structured messages.
+    // Local and compatible providers keep the JSON envelope, so their varying
+    // tool dialects do not change the existing contract. Decided here rather
+    // than at the request, because it decides what the system prompt says.
+    const useNativeTools = settings.agentTools !== false &&
+      (settings.provider === 'anthropic' || settings.provider === 'openai');
+    // `agentToolInstructions()` teaches the *envelope* — return
+    // {"kind":"tool","calls":[…]}. Sending it alongside a native tool
+    // declaration was a contradiction as well as a waste: ~1,300 tokens per
+    // round telling a model to use a protocol it was not being given, on
+    // every round of every agentic run.
+    const system = settings.agentTools === false || useNativeTools
       ? await buildSystemPrompt(machine, { notes: !!settings.writeNotes })
       : `${await buildSystemPrompt(machine, { notes: !!settings.writeNotes })}\n\n${agentToolInstructions()}`;
     guard();
@@ -839,13 +851,7 @@ export async function runStateMate({
     };
     let messages = [...history, liveTurn(true)];
     let historyCount = history.length;
-    // Hosted Anthropic and OpenAI APIs can carry tool calls as structured
-    // messages. Local/compatible providers keep the JSON envelope path so
-    // their varying tool dialects do not change the existing contract.
-    const nativeTools = settings.agentTools !== false &&
-      (settings.provider === 'anthropic' || settings.provider === 'openai')
-      ? STATEMATE_NATIVE_TOOLS
-      : [];
+    const nativeTools = useNativeTools ? STATEMATE_NATIVE_TOOLS : [];
 
     let attempt = 0;
     let repairRounds = 0;
@@ -908,6 +914,18 @@ export async function runStateMate({
               });
             },
             onText: full => {
+              // With native tools attached the answer is prose beside a tool
+              // call rather than an envelope, so there is no `plan` field to
+              // read and the running commentary *is* the plan. Text that opens
+              // as JSON is still the complete-spec path, which reads its plan
+              // field below. Routing it here is also what puts time to first
+              // token back on the card: the console stamps it on the first
+              // plan or reply delta, and a buffered round has neither.
+              if (nativeTools.length && !full.trimStart().startsWith('{')) {
+                const said = full.trim();
+                if (said) onEvent({ type: 'plan', text: said.replace(/\s+/g, ' ') });
+                return;
+              }
               // Both fields are first in their schema for exactly this reason:
               // they are readable a chunk or two into an answer that will not
               // parse for several seconds yet.
@@ -1156,7 +1174,8 @@ export async function runStateMate({
           content: buildRepairMessage({
             prompt: text,
             failures: lastFailures.map(failureForModel),
-            findings: lint.fatal
+            findings: lint.fatal,
+            traces: traceFailures(candidate, lastFailures)
           })
         }
       );
@@ -1221,6 +1240,11 @@ export async function runStateMate({
       hold,
       holdDetail: overreach,
       agentHoldDetail: agentSession?.forceProposal || '',
+      // The model was asked to trace its own machine before handing it over
+      // and finished without doing so. Reported for the same reason the
+      // linter's fixes are: a check that did not happen is not something the
+      // reader can be left to assume happened.
+      agentUnchecked: !!agentSession?.unchecked,
       // Where to come back to. Empty for a held proposal, which has not been
       // drawn, and for a build into a new tab, which replaced nothing.
       checkpoint,
@@ -1395,6 +1419,31 @@ export function hasWarnings(result) {
 // here is the order of consequence: a machine that does not do what was
 // predicted, then things that are true but not fatal, then the edits made on
 // the way through.
+// Three, because the repair message carries them in full and a machine that
+// fails eight predictions has one wrong idea rather than eight.
+const MAX_REPAIR_TRACES = 3;
+
+/**
+ * The path each contradicted word actually took, for the repair round.
+ *
+ * A crash has no path to show, and an unreadable word never reached the
+ * machine — `trace_word` reports that itself, so both are left to say so in
+ * their own words rather than being filtered into silence here.
+ */
+export function traceFailures(candidate, failures) {
+  const words = [...new Set(
+    (failures || [])
+      .filter(f => f && f.kind !== 'crash' && f.word !== undefined)
+      .map(f => f.word)
+  )].slice(0, MAX_REPAIR_TRACES);
+
+  return words.map(word => {
+    // A simulator that throws on a malformed machine is the lint's business,
+    // not this message's: the failure line above it still stands.
+    try { return traceCandidateWord(candidate, word); } catch (e) { return null; }
+  }).filter(Boolean);
+}
+
 const NOTE_RANK = { fail: 0, warn: 1, fix: 2 };
 
 /**
@@ -1437,6 +1486,13 @@ export function resultNotes(result) {
   }
   if (result.grewCap) {
     notes.push({ rule: 'grew-cap', severity: 'fix', message: 'The first answer was cut off, so it was asked again with room for a longer one.' });
+  }
+  if (result.agentUnchecked) {
+    notes.push({
+      rule: 'agent-unchecked',
+      severity: 'warn',
+      message: 'StateMate never traced this machine while building it, though it was asked to twice. Its own checks are the only evidence it behaves as described.'
+    });
   }
   if (result.spec?.caveat) notes.push({ severity: 'warn', message: result.spec.caveat });
   if (result.failures?.length) {

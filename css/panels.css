@@ -333,8 +333,42 @@
   background: var(--accent-soft);
 }
 
-.si-edit {
+/* ─── ROW ACTIONS ───
+   The same pair of controls ends every row in both lists — see rowActions() in
+   js/render.js for why they are written once. A state used to carry a pencil
+   and no delete; a transition a delete and no pencil, built as a <span> rather
+   than a button, so it was the one of the two that no keyboard could reach.
+
+   The wrapper is what pushes the pair right, not the first button: with
+   `margin-left: auto` on the button, hiding one of the two moved the other. */
+/* Holds everything the row *says*, so the actions sit outside it and a long
+   name is truncated rather than pushing them off the panel. */
+.lp-row-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A transition row is three separately sized segments (see .ti-from and .arr
+   below), so its body stays a flex line; a state row is one name and ellipsizes
+   as ordinary text. */
+.ti .lp-row-body {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lp-row-acts {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  flex: 0 0 auto;
+}
+
+.lp-row-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -351,14 +385,37 @@
   transition: opacity .12s, background .12s, color .12s;
 }
 
-.si:hover .si-edit,
-.si:focus-within .si-edit {
+.si:hover .lp-row-btn,
+.si:focus-within .lp-row-btn,
+.ti:hover .lp-row-btn,
+.ti:focus-within .lp-row-btn {
   opacity: 1;
 }
 
-.si-edit:hover {
+/* A hover-revealed control is unreachable on a touch device, which has no
+   hover to reveal it with — the pencil simply did not exist there. */
+@media (hover: none) {
+  .lp-row-btn {
+    opacity: 1;
+  }
+}
+
+.lp-row-btn:hover {
   background: var(--surface3);
+}
+
+.lp-row-btn.is-edit:hover {
   color: var(--accent);
+}
+
+.lp-row-btn.is-del:hover {
+  color: var(--red);
+}
+
+.lp-row-btn:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .si .dot {
@@ -426,26 +483,17 @@
   flex: 0 1 auto;
 }
 
+/* Shrinks but does not grow: growing is what used to strand the destination
+   state against the far edge of the row, with a gap where the label should
+   have been. Shrinking is the part that matters — it is the segment that
+   ellipsizes when a whole-word alphabet makes the label the long one. */
 .ti .arr {
   color: var(--accent);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 1.5em;
-  flex: 1 1 auto;
-}
-
-.ti .dx {
-  margin-left: auto;
-  cursor: pointer;
-  color: var(--text3);
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-}
-
-.ti .dx:hover {
-  color: var(--red);
+  flex: 0 1 auto;
 }
 
 .empty-msg {

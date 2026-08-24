@@ -76,6 +76,7 @@ import {
   relayoutLastResult, removeTurn, restoreCheckpoint, resultMetaBits, resultNotes,
   runStateMate, selectSibling, siblingsOf, testHint, verdictLabel
 } from './statemate.js';
+import { MAX_AGENT_STEPS } from './statemate-agent.js';
 import { summarizeDiff } from './statemate-compile.js';
 import {
   PROVIDERS, cachedModels, clearModelCache, getStateMateSettings, isStateMateReady,
@@ -1044,6 +1045,58 @@ function renderNote(entry) {
   return row;
 }
 
+// What each tool was *asked to do*, in a few words. The tool name is the verb
+// and the reader can already see it; this is the object of the sentence — the
+// state being added, the word being traced, the transition being removed.
+// Empty when the call has no identifying argument, which is most reads.
+const clipArg = (text, n = 44) => {
+  const said = String(text ?? '').replace(/\s+/g, ' ').trim();
+  return said.length > n ? `${said.slice(0, n - 1)}…` : said;
+};
+// The empty word is a legitimate argument and draws as ε, the way it does
+// everywhere else a word is shown.
+const asWord = value => (value === '' ? 'ε' : clipArg(value));
+const asMatch = a => [a.from, a.on, a.to].some(v => v !== undefined)
+  ? `${a.from ?? '?'} —${a.on ?? '?'}→ ${a.to ?? '?'}`
+  : '';
+
+const CALL_DETAIL = {
+  create_candidate: a => [a.machine, a.sigma?.length ? `over {${a.sigma.join(', ')}}` : ''].filter(Boolean).join(' '),
+  replace_candidate_from_spec: a => a.spec?.machine || '',
+  set_machine_type: a => a.machine,
+  set_alphabet: a => (a.sigma ? `{${a.sigma.join(', ')}}` : ''),
+  add_state: a => clipArg(a.name),
+  update_state: a => (a.rename ? `${clipArg(a.name)} → ${clipArg(a.rename)}` : clipArg(a.name)),
+  remove_state: a => clipArg(a.name),
+  get_state: a => clipArg(a.name),
+  add_transition: a => `${clipArg(a.from)} —${a.on ?? 'ε'}→ ${clipArg(a.to)}`,
+  update_transition: a => a.ref || asMatch(a),
+  remove_transition: a => a.ref || asMatch(a),
+  get_transitions: a => asMatch(a),
+  simulate_word: a => asWord(a.word),
+  trace_word: a => asWord(a.word),
+  simulate_words: a => `${(a.words || []).length} words`,
+  generate_test_words: a => (a.max_length === undefined ? '' : `up to ${a.max_length}`),
+  add_canvas_note: a => clipArg(a.text),
+  auto_layout_candidate: a => a.algorithm || '',
+  checkpoint_candidate: a => clipArg(a.label),
+  restore_candidate: a => clipArg(a.label),
+  complete_dfa: a => clipArg(a.trap_name),
+  ask_user: a => clipArg(a.question, 60),
+  request_approval: a => clipArg(a.reason, 60),
+  finish: a => (a.reply !== undefined ? 'with a reply' : clipArg(a.title))
+};
+
+function describeCall(call) {
+  const detail = CALL_DETAIL[call.name];
+  try { return detail ? detail(call.arguments || {}) || '' : ''; } catch (e) { return ''; }
+}
+
+// The last two rounds are shown call by call; everything older folds to a
+// line. A run may spend sixteen rounds, and ninety-six rows of history push
+// the thing currently happening off the screen it is happening on.
+const AGENT_ROUNDS_SHOWN = 2;
+
 const STAGE_ORDER = [
   { id: 'request', label: 'Asking' },
   { id: 'parse', label: 'Reading the answer' },
@@ -1080,19 +1133,51 @@ function renderRun(entry) {
   });
   wrap.append(steps);
 
-  if (entry.agentEvents?.length) {
+  if (entry.agentRounds?.length) {
     const activity = el('div', 'sm-agent-activity');
-    activity.append(el('div', 'sm-agent-label', 'Agent activity'));
-    entry.agentEvents.slice(-12).forEach(event => {
-      const row = el('div', 'sm-agent-event');
-      const label = event.stage === 'tools'
-        ? `Tool call${event.calls?.length === 1 ? '' : 's'}: ${(event.calls || []).map(call => call.name).join(', ')}`
-        : event.stage === 'tool-results'
-          ? `${(event.results || []).filter(result => result.ok).length}/${(event.results || []).length} tool results returned`
-          : event.stage === 'resumed' ? 'Resumed the private candidate' : 'Agent started';
-      row.textContent = label;
-      activity.append(row);
+
+    // The label says the invariant, not the mechanism: every one of these
+    // calls is against a copy, and the canvas is written once at the end or
+    // not at all. That is the fact a reader watching tools run wants.
+    const head = el('div', 'sm-agent-label');
+    head.append(el('span', null, 'On a private copy'));
+    const tools = entry.agentRounds.reduce((n, round) => n + round.calls.length, 0);
+    const rounds = entry.agentRounds.length;
+    head.append(el('span', 'sm-agent-count',
+      `round ${rounds}${entry.agentMax ? ` of ${entry.agentMax}` : ''} · ${tools} tool${tools === 1 ? '' : 's'}`));
+    activity.append(head);
+
+    entry.agentRounds.forEach((round, index) => {
+      if (index < rounds - AGENT_ROUNDS_SHOWN) {
+        const failed = round.calls.filter(call => call.status === 'fail').length;
+        const row = el('div', 'sm-agent-call is-folded');
+        row.append(el('span', 'sm-agent-mark', '·'));
+        row.append(el('span', 'sm-agent-detail',
+          `${round.calls.length} tool${round.calls.length === 1 ? '' : 's'}`));
+        if (failed) row.append(el('span', 'sm-agent-error', `${failed} refused`));
+        activity.append(row);
+        return;
+      }
+      round.calls.forEach(call => {
+        const row = el('div', `sm-agent-call is-${call.status}`);
+        const mark = el('span', 'sm-agent-mark');
+        if (call.status === 'ok') mark.append(icon(ICONS.check, 'sm-step-icon'));
+        else if (call.status === 'fail') mark.textContent = '✗';
+        else mark.textContent = '⎿';
+        row.append(mark);
+        row.append(el('span', 'sm-agent-name', call.name));
+        // A refusal replaces the detail rather than sitting beside it: what it
+        // was asked to do matters less than why it would not.
+        if (call.status === 'fail') row.append(el('span', 'sm-agent-error', clipArg(call.error, 72)));
+        else {
+          const detail = describeCall(call);
+          if (detail) row.append(el('span', 'sm-agent-detail', detail));
+        }
+        activity.append(row);
+      });
     });
+
+    if (entry.agentNote) activity.append(el('div', 'sm-agent-event', entry.agentNote));
     wrap.append(activity);
   }
 
@@ -2806,6 +2891,15 @@ function setStage(entry, id, status, stageNote) {
   for (let i = 0; i < index; i++) entry.stages[i].status = 'done';
   entry.stages[index].status = status;
   if (stageNote !== undefined) entry.stages[index].note = stageNote;
+  // And everything after it has not happened *yet* — which matters because a
+  // run can go backwards. A repair round and every tool round re-enter
+  // `request`, and without this the stages a previous attempt reached kept
+  // their ticks: the console showed "Reading the answer ✓ / Checking the
+  // shape ✓" for work being redone, with two rows spinning at once.
+  for (let i = index + 1; i < entry.stages.length; i++) {
+    entry.stages[i].status = 'idle';
+    entry.stages[i].note = '';
+  }
 }
 
 // Measured from ⏎ rather than from the request, because that is the wait the
@@ -2869,7 +2963,9 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
     reply: '',
     ttft: '',
     retry: '',
-    agentEvents: [],
+    agentRounds: [],
+    agentMax: 0,
+    agentNote: '',
     stages: STAGE_ORDER.map(s => ({ ...s, status: 'idle', note: '' }))
   });
   Session.run = entry;
@@ -2924,12 +3020,33 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
           return;
         }
         if (event.type === 'agent') {
-          entry.agentEvents.push(event);
-          if (entry.agentEvents.length > 24) entry.agentEvents.shift();
-          const note = event.stage === 'tools'
-            ? `${event.calls?.length || 0} tool${event.calls?.length === 1 ? '' : 's'}`
-            : event.stage === 'resumed' ? 'resuming candidate' : 'agent active';
-          setStage(entry, 'request', 'active', note);
+          // A round is one answer's worth of calls, and its results arrive as
+          // a second event — so they are merged into the round they belong to
+          // rather than logged after it. "Tool call: x" followed by "1/1 tool
+          // results returned" was two lines to say one thing, and the second
+          // said the least useful half of it: whether each call *worked* was
+          // the part that never reached the screen at all.
+          if (event.stage === 'tools') {
+            entry.agentRounds.push({
+              calls: (event.calls || []).map(call => ({
+                id: call.id, name: call.name, arguments: call.arguments || {}, status: 'running', error: ''
+              }))
+            });
+            entry.agentMax = Math.max(1, Math.min(MAX_AGENT_STEPS, Number(settings.agentMaxSteps) || MAX_AGENT_STEPS));
+          } else if (event.stage === 'tool-results') {
+            const round = entry.agentRounds[entry.agentRounds.length - 1];
+            const byId = new Map((event.results || []).map(result => [result.id, result]));
+            (round?.calls || []).forEach(call => {
+              const result = byId.get(call.id);
+              if (!result) return;
+              call.status = result.ok ? 'ok' : 'fail';
+              call.error = result.ok ? '' : (result.error?.message || 'refused');
+            });
+          } else if (event.stage === 'resumed') {
+            entry.agentNote = 'Resumed the candidate it was working on.';
+          }
+          const round = entry.agentRounds.length;
+          setStage(entry, 'request', 'active', round ? `round ${round}` : 'starting');
           renderLog();
           return;
         }
