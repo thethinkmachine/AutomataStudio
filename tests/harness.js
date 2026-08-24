@@ -40,7 +40,10 @@ import * as notes from '../js/notes.js';
 import * as persistence from '../js/persistence.js';
 import * as render from '../js/render.js';
 import * as panelState from '../js/panel-state.js';
+import * as panelSections from '../js/panel-sections.js';
+import * as panelSectionsUi from '../js/panel-sections-ui.js';
 import * as simulation from '../js/simulation.js';
+import * as tapeView from '../js/tape-view.js';
 // The machine layer: the registry, the shared runtime, and one module per
 // family. Imported here for the same reason as every other namespace — the
 // tests reach the machines' own functions (simTM, testFST, decideMachine)
@@ -81,10 +84,10 @@ import * as wizardUi from '../js/wizard-ui.js';
 
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, geometry, statesTransitions,
-  canvas, render, panelState, notes, dividers,
+  canvas, render, panelState, panelSections, panelSectionsUi, notes, dividers,
   machineRegistry, machineRuntime, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineTuring, machineTransducer, machineTwoWay, machines,
-  simulation, suggest, language, alphabet, markdown,
+  simulation, tapeView, suggest, language, alphabet, markdown,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, algorithmsFa, algorithmsCfg, reference, workspace, quickSettings, minimap, ui,
   statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt, statemateAgent,
@@ -141,6 +144,7 @@ function resetModuleState() {
   state.setActiveWorkspaceId(null);
   state.setR(baseConfig.radius);
   panelState.resetPanelTabs();
+  panelSectionsUi.resetSectionReorder();
   ui.setSaveState('saved');
   // The incremental renderer keys its live SVG nodes off App.domCache. Left
   // populated, a test would start out holding nodes built for the previous

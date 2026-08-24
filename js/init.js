@@ -7,7 +7,8 @@ import { initDefBoxOverflowObserver, updateLPanel, updateRPanel } from './render
 import { $, App, Workspaces } from './state.js';
 import { DEFAULT_THEME } from './themes.js';
 import { initMinimap, toggleMinimap } from './minimap.js';
-import { applyTheme, initCanvasResizeObserver, initLPanelSections, initMobilePanels, initPanelResizers, initRPanelSections, initPanelTabs, initTabs, initToolbarCollapse, setTool, toggleLPanelPin, toggleRPanelPin } from './ui.js';
+import { initPanelSectionReorder } from './panel-sections-ui.js';
+import { applyTheme, initCanvasResizeObserver, initLPanelSections, initMobilePanelBar, initMobilePanels, initPanelResizers, initRPanelSections, initPanelTabs, initTabs, initToolbarCollapse, setTool, toggleLPanelPin, toggleRPanelPin } from './ui.js';
 import { showStatus } from './utils.js';
 import { setMachine, setView } from './view.js';
 
@@ -44,8 +45,11 @@ try {
   if (typeof initToolbarCollapse === 'function') initToolbarCollapse();
 } catch (e) { }
 if (typeof initMobilePanels === 'function') initMobilePanels();
+if (typeof initMobilePanelBar === 'function') initMobilePanelBar();
 if (typeof initLPanelSections === 'function') initLPanelSections();
 if (typeof initRPanelSections === 'function') initRPanelSections();
+// After the collapse state, since the grips go into headers this may reveal.
+initPanelSectionReorder();
 if (typeof initPanelResizers === 'function') initPanelResizers();
 if (typeof initPanelTabs === 'function') initPanelTabs();
 if (typeof initCanvasResizeObserver === 'function') initCanvasResizeObserver();

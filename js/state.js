@@ -38,7 +38,7 @@ export const MachineTypes = {
   'PDA': { label: 'PDA', fullName: 'Pushdown Automaton', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-dpda', file: 'pda' },
   'NPDA': { label: 'NPDA', fullName: 'Nondeterministic Pushdown Automaton', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-npda', file: 'npda' },
   'QA': { label: 'Queue Automaton', fullName: 'Queue Automaton', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-qa', file: 'queue' },
-  'Counter': { label: 'Counter Machine', fullName: 'Counter Machine', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-counter', file: 'counter' },
+  'Counter': { label: 'Counter Automaton', fullName: 'One-Counter Automaton', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-counter', file: 'counter' },
   '2PDA': { label: '2-Stack PDA', fullName: 'Two-Stack Pushdown Automaton', category: 'mem', implemented: true, hasEpsilon: true, hasStack: true, hasTape: false, isTransducer: false, badge: 'bd-2pda', file: 'twopda' },
 
   'TM': { label: 'TM (DTM)', fullName: 'Deterministic Turing Machine', category: 'tm', implemented: true, hasEpsilon: false, hasStack: true, hasTape: true, isTransducer: false, badge: 'bd-tm', file: 'tm' },
@@ -276,7 +276,12 @@ export const App = {
   toolbarPreviewDock: null,
   transEditId: null, transModalMode: 'add', transModalIds: [],
   // Simulation
-  simSteps: [], simIdx: 0, autoTimer: null,
+  // `simInput` is the word the steps in `simSteps` were produced from. It is
+  // what lets the run button tell "resume this run" from "start a new one":
+  // pausing and playing again must not silently re-run from step 0, and
+  // editing the run box before pressing play must not silently resume the
+  // previous word. See handleRunBtnClick.
+  simSteps: [], simIdx: 0, simInput: null, autoTimer: null,
   // Grammar
   grammar: { vars: new Set(['S']), start: 'S', productions: [] },
   // Current algo

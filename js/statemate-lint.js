@@ -25,8 +25,8 @@ import {
   App, getMachineConfig, isOmegaAutomaton, isTwoWayFA, usesParityPriorities
 } from './state.js';
 import {
-  hasSingleValuedDelta, isAnyPDA, isAnyTM, pdaTransitionsOverlap,
-  symbolsOverlap, tapeTuplesOverlap
+  counterBottomViolation, hasSingleValuedDelta, isAnyPDA, isAnyTM,
+  isCounterMachine, pdaTransitionsOverlap, symbolsOverlap, tapeTuplesOverlap
 } from './utils.js';
 
 /** @returns {{rule: string, severity: string, message: string}} */
@@ -258,6 +258,25 @@ export function lintCandidate(candidate) {
       candidate.stackAlpha = [...gamma, ...added];
       const label = cfg.hasTape ? 'Γ (tape)' : 'Γ (stack)';
       findings.push(finding('gamma-extended', 'fix', `Extended ${label} with ${added.map(s => `"${s}"`).join(', ')}.`));
+    }
+  }
+
+  // ── the counter's bottom marker ──────────────────────────────
+  // Γ is pinned to two symbols for this machine, and that alone constrains
+  // nothing: an unconstrained two-symbol stack is a full pushdown store. The
+  // counter is the height, so Z has to stay underneath it — see
+  // counterBottomViolation(). A candidate that buries it has built an NPDA
+  // and called it a counter, which the verdicts will not reveal.
+  if (isCounterMachine(m)) {
+    let offender = null, reason = null;
+    for (const t of transitions) {
+      reason = counterBottomViolation(t.pop, t.push, sym);
+      if (reason) { offender = t; break; }
+    }
+    if (offender) {
+      findings.push(finding('counter-bottom', 'warn',
+        `The transition ${nameOf(offender.from)} → ${nameOf(offender.to)} ${reason}, so the store stops being a counter.` +
+        ` Keep "${sym.stackBottom}" at the bottom and count with the other symbol.`));
     }
   }
 

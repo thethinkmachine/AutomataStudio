@@ -51,7 +51,7 @@ export function simTM(tokens) {
     // carries the cell — otherwise "head 0" means two different places
     // before and after the tape grows leftward.
     const cellNote = tape.twoWay ? ` @${tape.head}` : '';
-    App.simSteps.push({ state, tokens, tape: snap.tape, head: snap.head, tid: via, note: `State:${getState(state)?.name} Read:'${sym}'${cellNote}` });
+    App.simSteps.push({ state, tokens, tape: snap.tape, head: snap.head, view: tape.view(), tid: via, note: `State:${getState(state)?.name} Read:'${sym}'${cellNote}` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
     const at = loop.seenAt(`${state}|${tape.key()}`, App.simSteps.length - 1);
     if (at >= 0) { markLoopStep(App.simSteps[App.simSteps.length - 1], at); break; }
@@ -94,6 +94,7 @@ export function simNDTM(tokens) {
       tokens,
       tape: [...tape],
       head,
+      view: cfg.tape.view(),
       branch,
       note: `Branch ${branch} depth ${depth}: ${stateName} reads '${sym}'`
     };
@@ -178,7 +179,7 @@ export function simMTM(tokens, allTapeTokens) {
   for (let step = 0; step < App.config.maxTmSteps; step++) {
     const syms = tapes.map(tape => tape.read());
     const snaps = tapes.map(tape => tape.snapshot());
-    App.simSteps.push({ state, tokens, tapes: snaps.map(s => s.tape), heads: snaps.map(s => s.head), tid: via, note: `State:${getState(state)?.name} Read:[${syms.join(',')}]` });
+    App.simSteps.push({ state, tokens, tapes: snaps.map(s => s.tape), heads: snaps.map(s => s.head), views: tapes.map(tape => tape.view()), tid: via, note: `State:${getState(state)?.name} Read:[${syms.join(',')}]` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
     const at = loop.seenAt(tapesKey(state, tapes), App.simSteps.length - 1);
     if (at >= 0) { markLoopStep(App.simSteps[App.simSteps.length - 1], at); break; }
@@ -207,7 +208,7 @@ export function simLBA(tokens) {
   for (let step = 0; step < App.config.maxTmSteps; step++) {
     const sym = tape.read();
     const snap = tape.snapshot();
-    App.simSteps.push({ state, tokens, tape: snap.tape, head: snap.head, tid: via, note: `State:${getState(state)?.name} Read:'${sym}'` });
+    App.simSteps.push({ state, tokens, tape: snap.tape, head: snap.head, view: tape.view(), tid: via, note: `State:${getState(state)?.name} Read:'${sym}'` });
     if (App.accepts.has(state)) {
       App.simSteps[App.simSteps.length - 1].final = 'accept';
       App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT';
@@ -233,6 +234,7 @@ export function simLBA(tokens) {
         tokens,
         tape: after.tape,
         head: after.head,
+        view: tape.view(),
         tid: via,
         note: `Attempted to move outside the ${heading} boundary. — REJECT`,
         final: 'reject'

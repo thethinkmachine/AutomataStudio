@@ -5,7 +5,7 @@ import { pruneNoteAnchorsExcluding } from './notes.js';
 import { renderAll } from './render.js';
 import { $, App, getMachineConfig, isBoundarySymbol, isReadOnlyHeadMachine, isWeightedFA, statePriority, usesParityPriorities } from './state.js';
 import { Change, emit } from './store.js';
-import { hasStateOutput, hasTransitionOutput, isAnyPDA, isCounterMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
+import { counterBottomViolation, hasStateOutput, hasTransitionOutput, isAnyPDA, isCounterMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
 import { isMultiTape, machineDeterminism, machineStoreLabels, transitionHasField } from './machines/index.js';
 import { applyMachineSwitch } from './view.js';
 
@@ -389,13 +389,17 @@ export function confirmTrans() {
       const counterSym = [...App.stackAlpha].find(symEl => symEl !== bottom) || '1';
       const counterAllowed = new Set([eps, bottom, counterSym, App.config.sym.any]);
       if (!counterAllowed.has(values.pop)) {
-        showStatus(`Counter Machine pop must use only '${counterSym}', '${bottom}', '${App.config.sym.any}', or ε.`); return;
+        showStatus(`Counter Automaton pop must use only '${counterSym}', '${bottom}', '${App.config.sym.any}', or ε.`); return;
       }
       if (values.push && values.push !== eps && values.push !== App.config.sym.any) {
         const invalidCounterPush = values.push.split('').filter(c => c !== counterSym && c !== bottom);
         if (invalidCounterPush.length > 0) {
-          showStatus(`Counter Machine push may only use '${counterSym}' (and optional '${bottom}'). Invalid: ${invalidCounterPush.join(', ')}.`); return;
+          showStatus(`Counter Automaton push may only use '${counterSym}' (and optional '${bottom}'). Invalid: ${invalidCounterPush.join(', ')}.`); return;
         }
+      }
+      const bottomIssue = counterBottomViolation(values.pop, values.push);
+      if (bottomIssue) {
+        showStatus(`Counter Automaton push ${bottomIssue} — '${bottom}' marks zero, so it stays at the bottom.`); return;
       }
     }
   }

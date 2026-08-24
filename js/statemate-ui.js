@@ -2383,6 +2383,16 @@ function syncTabBadge() {
   // "0 new" on a hidden element is a line for a screen reader to read out.
   if (text) badge.setAttribute('aria-label', busy ? 'StateMate is working' : `${unread} new`);
   else badge.removeAttribute('aria-label');
+
+  // The mobile bar's button carries the same news as a dot. A count there
+  // would not fit beside a 19px icon, and "there is something new" is the
+  // whole of what a bar button has room to say.
+  const dot = $('mobile-statemate-dot');
+  if (dot) {
+    dot.hidden = !text;
+    if (text) dot.setAttribute('aria-label', busy ? 'StateMate is working' : `${unread} new`);
+    else dot.removeAttribute('aria-label');
+  }
 }
 
 /**

@@ -473,6 +473,67 @@ test('an ε-transition on a machine without them is fatal', () => {
   assert.ok(lint.fatal.some(f => f.rule === 'epsilon-illegal'));
 });
 
+// The counter is the stack's *height*, and that is only a number while the
+// bottom marker stays underneath it. Pinning |Γ| = 2 does not say so: an
+// unconstrained two-symbol stack is a full pushdown store, since any stack
+// alphabet binary-encodes into two symbols. A candidate that buries Z has
+// built an NPDA and called it a counter, and no verdict will reveal it.
+function counterSpec(transitions) {
+  return {
+    machine: 'Counter',
+    sigma: ['a', 'b'],
+    stackAlpha: ['1', 'Z'],
+    states: [{ name: 'up', start: true }, { name: 'down' }, { name: 'acc', accept: true }],
+    transitions,
+    tests: [{ w: 'ab', expect: 'accept' }, { w: 'a', expect: 'reject' }, { w: '', expect: 'reject' }]
+  };
+}
+
+const counterAnBn = [
+  { from: 'up', to: 'up', on: 'a', pop: 'Z', push: '1Z' },
+  { from: 'up', to: 'up', on: 'a', pop: '1', push: '11' },
+  { from: 'up', to: 'down', on: 'b', pop: '1', push: 'ε' },
+  { from: 'down', to: 'down', on: 'b', pop: '1', push: 'ε' },
+  { from: 'down', to: 'acc', on: 'ε', pop: 'Z', push: 'Z' }
+];
+
+test('a counter that keeps its bottom marker at the bottom passes', () => {
+  const h = createHarness();
+  const lint = h.context.lintCandidate(candidateOf(h, counterSpec(counterAnBn)));
+  assert.ok(!lint.findings.some(f => f.rule === 'counter-bottom'),
+    'the zero test — pop Z, push it straight back — is the idiom, not a violation');
+});
+
+test('a counter that buries its bottom marker is reported', () => {
+  const h = createHarness();
+  const spec = counterSpec([...counterAnBn, { from: 'up', to: 'down', on: 'b', pop: '1', push: 'Z1' }]);
+  const found = h.context.lintCandidate(candidateOf(h, spec))
+    .findings.find(f => f.rule === 'counter-bottom');
+  assert.ok(found, 'a Z pushed without being popped turns the counter into a stack');
+  assert.match(found.message, /up → down/, 'the offending transition is named');
+  assert.equal(found.severity, 'warn', 'true and worth saying, but never a blocked run');
+});
+
+test('the bottom-marker rule is about position, not about the alphabet', () => {
+  const h = createHarness();
+  const { counterBottomViolation } = h.context;
+  const sym = h.context.App.config.sym;
+
+  assert.equal(counterBottomViolation('Z', 'Z', sym), null, 'the zero test');
+  assert.equal(counterBottomViolation('Z', '1Z', sym), null, 'increment from zero');
+  assert.equal(counterBottomViolation('1', '11', sym), null, 'increment');
+  assert.equal(counterBottomViolation('ε', '1', sym), null, 'increment without looking');
+  assert.equal(counterBottomViolation('1', 'ε', sym), null, 'decrement');
+  // Popping Z and pushing nothing is how a counter accepts by empty store.
+  assert.equal(counterBottomViolation('Z', 'ε', sym), null, 'empty-store acceptance');
+
+  assert.match(counterBottomViolation('1', '1Z', sym), /without having popped/);
+  assert.match(counterBottomViolation('Z', 'Z1', sym), /above the counter/);
+  assert.match(counterBottomViolation('Z', 'ZZ', sym), /2 times/);
+  // A wildcard pop matched something unknown, so it cannot have been Z.
+  assert.match(counterBottomViolation(sym.any, '1Z', sym), /without having popped/);
+});
+
 test('a tape transition with no head direction is fatal', () => {
   const h = createHarness();
   const candidate = candidateOf(h, {

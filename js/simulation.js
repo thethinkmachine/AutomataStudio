@@ -20,6 +20,7 @@ import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
 import { isAnyPDA, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps } from './utils.js';
 import { decideMachine, machineGuards, parseMachineInput, simulateMachine } from './machines/index.js';
 import { langStepBudget, stateNames } from './machines/runtime.js';
+import { renderTracker, resetTracker } from './tape-view.js';
 
 export function runSim() {
   resetSim();
@@ -52,6 +53,11 @@ export function runSim() {
   // What the canvas highlights against. A multi-tape run has no single
   // token list, and says so by handing back null rather than a guess.
   if (parsed.tokens) App.currentTokens = parsed.tokens;
+
+  // The word these steps belong to, so a later press of play can tell
+  // "carry on" from "run this instead". Recorded after the guards, since a
+  // refused run has no steps to resume.
+  App.simInput = raw;
 
   simulateMachine(m, parsed.input);
 
@@ -101,26 +107,101 @@ export function renderSimStep() {
   // Unified Tracker System
   const trackerEl = $('sim-tracker');
   trackerEl.style.display = 'block';
-  
-  let rows = [];
-  const m = App.machine;
+
+  const rows = trackerRows(step);
+  const finalClass = (isLast && step.final) ? step.final : '';
+  rows.forEach(r => { r.finalClass = finalClass; });
+
   const stateName = getState(step.state)?.name || (step.states ? stateNames(step.states) : '?');
+  renderTrackerHeader(trackerEl, stateName, rows);
+  renderTracker(trackerBody(trackerEl), rows);
+
+  updateSimCanvasHighlights(step);
+
+  updateSimScrubber();
+  updateSimVerdict(step, isLast);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  THE STEP TRACKER
+// ══════════════════════════════════════════════════════════════════
+// What a step *shows*; js/tape-view.js is how a row of it is drawn.
+//
+// A row is one of two things and the difference is not cosmetic. A tape
+// has ends — a wall the head cannot pass, or blank cells running on
+// forever — and which ends it has is the whole difference between a TM,
+// an ITM, an LBA and a two-way head. That fact comes from the tape
+// itself, as `step.view`, for the same reason the clamp does: a machine
+// name branch here would be a second, drifting copy of js/tape.js.
+//
+// A stack, a queue, an output and a probability distribution are *not*
+// tapes, and are deliberately not drawn as ones. They get cells and no
+// ends, because a stack's ends are a top and a bottom rather than a wall
+// and an infinity, and drawing a wall at the bottom of a stack would be
+// claiming something about it that is not true.
+
+/**
+ * A finite word, said in the tape vocabulary.
+ *
+ * The input row of a DFA really is a strip bounded at both ends, so it is
+ * described as one rather than getting a row shape of its own — the
+ * reader who has just watched an LBA scan between two markers should not
+ * have to learn a second idiom to read a DFA's input.
+ */
+function wordView(cells, head, opts = {}) {
+  return {
+    say: opts.say,
+    kind: 'tape',
+    cells,
+    head,
+    origin: 0,
+    leftBound: 0,
+    rightBound: cells.length - 1,
+    markers: [],
+    blank: App.config.sym.blank,
+    // Not read-only — nothing is being *declined* here. A DFA's input is a
+    // word being consumed rather than a tape the machine chooses not to
+    // write to, and saying "read-only" of it would put a caveat on the
+    // commonest row in the app to describe a restriction that is not one.
+    readOnly: false
+  };
+}
+
+/**
+ * A tape row, from the tape if the simulator sent one.
+ *
+ * The fallback matters: `step.view` is new, and a step can reach here
+ * without one — a machine module that has not been taught to send it, or
+ * a run restored from somewhere that predates it. Falling back to a plain
+ * bounded strip draws the cells correctly and simply declines to claim
+ * anything about the ends, which is better than guessing at them from the
+ * machine's name.
+ */
+function tapeRow(label, view, cells, head) {
+  return { label, view: view || wordView(cells || [], head ?? -1) };
+}
+
+function trackerRows(step) {
+  const m = App.machine;
+  const rows = [];
 
   // isSingleTapeTM is exactly TM/NDTM/LBA/ITM plus the two-way heads (2DFA,
   // 2NFA, 2DFT) — MTM is deliberately not in it and keeps its own branch.
   if (isSingleTapeTM(m)) {
-    rows.push({ label: 'Tape', cells: step.tape, head: step.head });
+    rows.push(tapeRow('Tape', step.view, step.tape, step.head));
   } else if (m === 'MTM') {
-    step.tapes.forEach((t, i) => rows.push({ label: `T${i + 1}`, cells: t, head: step.heads[i] }));
+    step.tapes.forEach((t, i) => rows.push(
+      tapeRow(`T${i + 1}`, step.views && step.views[i], t, step.heads[i])
+    ));
   } else if (isOmegaAutomaton(m)) {
     // The ω-word is unrolled far enough to cover the witness lasso; the head
     // keeps advancing into the repetitions rather than wrapping in place.
-    rows.push({ label: 'ω', cells: step.tape, head: step.head });
+    rows.push(tapeRow('ω', step.view, step.tape, step.head));
   } else {
     // DFA, NFA, PDA, Moore, Mealy
     const tokens = step.tokens || App.currentTokens || [];
     const tokensToDisplay = tokens.length ? tokens : [App.config.sym.eps];
-    
+
     // Determine token index (which one was JUST read)
     let tokIdx = -1;
     if (step.remaining) {
@@ -128,17 +209,27 @@ export function renderSimStep() {
     } else {
       tokIdx = App.simIdx - 1;
     }
-    
-    rows.push({ label: 'In', cells: tokensToDisplay, head: tokIdx });
+
+    // The empty word is drawn as the ε placeholder, which is one cell holding
+    // a symbol that is not in it — so the length comes from the tokens.
+    rows.push({
+      label: 'In',
+      view: wordView(tokensToDisplay, tokIdx, {
+        say: {
+          badge: `|w| = ${tokens.length}`,
+          tip: `The input word: ${tokens.length} symbol${tokens.length === 1 ? '' : 's'}, read left to right. The head marks the symbol just consumed.`
+        }
+      })
+    });
 
     if (isAnyPDA(m) && step.stack) {
       if (isQueueAutomaton(m)) {
-        rows.push({ label: 'Que', cells: [...step.stack], head: 0 });
+        rows.push({ label: 'Que', cells: [...step.stack], head: 0, capL: 'front', capR: 'back' });
       } else {
-        rows.push({ label: 'Stk', cells: [...step.stack].reverse(), head: 0 });
+        rows.push({ label: 'Stk', cells: [...step.stack].reverse(), head: 0, capL: 'top', capR: 'bottom' });
       }
       if (isTwoStackPDA(m) && step.stack2) {
-        rows.push({ label: 'Stk2', cells: [...step.stack2].reverse(), head: 0 });
+        rows.push({ label: 'Stk2', cells: [...step.stack2].reverse(), head: 0, capL: 'top', capR: 'bottom' });
       }
     } else if (isWeightedFA(m) && step.dist) {
       // Not a tape: one cell per state still carrying probability, so the
@@ -152,34 +243,61 @@ export function renderSimStep() {
   // 2DFT alongside the two-way tape.
   if (getMachineConfig(m).isTransducer) {
     const outToks = step.outToks || [];
-    rows.push({ label: 'Out', cells: outToks, head: outToks.length ? outToks.length - 1 : -1 });
+    rows.push({ label: 'Out', cells: outToks, head: outToks.length ? outToks.length - 1 : -1, capR: 'newest' });
   }
 
-  // Header
-  const headerHtml = `<div class="tracker-header">
-    State: <span class="tracker-val-st">${stateName}</span> &nbsp;
-    ${rows.map(r => `${r.label}:<span class="tracker-val-sym">${(r.head >= 0 && r.cells && r.cells[r.head]) || '—'}</span>`).join(' &nbsp; ')}
-  </div>`;
+  return rows;
+}
 
-  // Row Rendering
-  const rowsHtml = rows.map(r => {
-    const cellsHtml = (r.cells || []).map((c, ci) => {
-      const isHead = ci === r.head;
-      const resClass = (isLast && step.final && isHead) ? ` ${step.final}` : '';
-      return `<div class="tc ${isHead ? 'head' : ''}${resClass}" data-tip="${r.label} index ${ci}">${c}</div>`;
-    }).join('');
-    return `<div class="mtm-tape-row">
-      <span class="tape-label">${r.label}</span>
-      <span class="tape-cells">${cellsHtml}</span>
-    </div>`;
-  }).join('');
+/**
+ * The tracker is a header and a body, and the body is the part
+ * js/tape-view.js caches its nodes in — so the two cannot share an
+ * element, or rewriting the header would throw away every cell.
+ */
+function trackerBody(trackerEl) {
+  let body = trackerEl.__tvBody;
+  if (!body || body.parentNode !== trackerEl) {
+    body = document.createElement('div');
+    body.className = 'tv-body';
+    trackerEl.appendChild(body);
+    trackerEl.__tvBody = body;
+  }
+  return body;
+}
 
-  trackerEl.innerHTML = headerHtml + rowsHtml;
+/**
+ * One line saying where the machine is: the state, and what is under
+ * each head.
+ *
+ * A tape row also gets its *cell number*, which is the one thing the row
+ * of boxes cannot say on its own — on a two-way tape the drawn position
+ * and the cell diverge the moment the tape grows leftward, which is why
+ * simTM had to put `@-3` in its note.
+ */
+function renderTrackerHeader(trackerEl, stateName, rows) {
+  let head = trackerEl.__tvHeader;
+  if (!head || head.parentNode !== trackerEl) {
+    head = document.createElement('div');
+    head.className = 'tracker-header';
+    trackerEl.insertBefore(head, trackerEl.firstChild);
+    trackerEl.__tvHeader = head;
+  }
+  const parts = rows.map(r => {
+    const view = r.view;
+    const cells = view ? view.cells : (r.cells || []);
+    const idx = view ? view.head : (r.head ?? -1);
+    const sym = (idx >= 0 && cells[idx] !== undefined) ? cells[idx] : '—';
+    const at = (view && idx >= 0 && view.origin !== undefined)
+      ? `<span class="tracker-val-at">@${view.origin + idx}</span>`
+      : '';
+    return `${r.label}:<span class="tracker-val-sym">${escapeCell(sym)}</span>${at}`;
+  });
+  head.innerHTML = `State: <span class="tracker-val-st">${escapeCell(stateName)}</span>`
+    + (parts.length ? ' &nbsp; ' + parts.join(' &nbsp; ') : '');
+}
 
-  updateSimCanvasHighlights(step);
-
-  updateSimScrubber();
-  updateSimVerdict(step, isLast);
+function escapeCell(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -400,11 +518,35 @@ export const SIM_ICON_PAUSE = '<svg viewBox="0 0 256 256" width="14" height="14"
 export const SIM_ICON_REPEAT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M228,48V96a12,12,0,0,1-12,12H168a12,12,0,0,1,0-24h19l-7.8-7.8a75.55,75.55,0,0,0-53.32-22.26h-.43A75.49,75.49,0,0,0,72.39,75.57,12,12,0,1,1,55.61,58.41a99.38,99.38,0,0,1,69.87-28.47H126A99.42,99.42,0,0,1,196.2,59.23L204,67V48a12,12,0,0,1,24,0ZM183.61,180.43a75.49,75.49,0,0,1-53.09,21.63h-.43A75.55,75.55,0,0,1,76.77,179.8L69,172H88a12,12,0,0,0,0-24H40a12,12,0,0,0-12,12v48a12,12,0,0,0,24,0V189l7.8,7.8A99.42,99.42,0,0,0,130,226.06h.56a99.38,99.38,0,0,0,69.87-28.47,12,12,0,0,0-16.78-17.16Z"/></svg>';
 export const SIM_ICON_SEPARATOR = '<span class="run-btn-sep">|</span>';
 
-// Clicking run-btn either starts a new simulation, or — while one is
-// already playing — pauses it, mirroring standard media-control behavior.
+// Clicking run-btn plays, pauses, resumes or replays — one button, the way
+// a media control works.
+//
+// **Pause then play resumes; it does not start over.** It used to call
+// runSim() unconditionally, which begins with resetSim() — so pausing to
+// look at a configuration and pressing play again threw the run away and
+// re-ran it from step 0. That is the one thing a pause button must not do,
+// and it made pausing useless on exactly the runs worth pausing: a long
+// tape machine, where getting back to where you were meant holding the
+// step key. Resuming is not a new capability either — the ▶| button already
+// advances the same paused run without re-simulating.
+//
+// Two things are deliberately *not* resumed. A run sitting on its last step
+// has nothing to resume, and the button is already showing the replay icon
+// by then, so it re-runs. And a run whose word no longer matches the run box
+// re-runs too: editing the box and pressing play means "run this", and
+// silently continuing the previous word would be the same class of surprise
+// in the other direction.
 export function handleRunBtnClick() {
   if (App.autoTimer) { stopAutoPlay(); setRunBtnState('idle'); return; }
+  if (canResumeSim()) { toggleAuto(); return; }
   runSim();
+}
+
+/** Is there a paused run left to carry on with, for the word in the box? */
+export function canResumeSim() {
+  if (!App.simSteps.length) return false;
+  if (App.simIdx >= App.simSteps.length - 1) return false;
+  return App.simInput !== null && App.simInput === parseEps($('sim-in').value);
 }
 
 // Run doubles as the verdict/transport readout — recoloring/relabeling this
@@ -514,9 +656,9 @@ export function restartAutoTimerIfPlaying() {
 }
 export function resetSim() {
   stopAutoPlay();
-  App.simSteps = []; App.simIdx = 0; App.currentTokens = null;
+  App.simSteps = []; App.simIdx = 0; App.currentTokens = null; App.simInput = null;
   log('<span style="color:var(--text3);font-style:italic">Run a string to simulate…</span>');
-  $('sim-tracker').innerHTML = ''; $('sim-tracker').style.display = 'none';
+  resetTracker($('sim-tracker')); $('sim-tracker').style.display = 'none';
   const verdict = $('sim-verdict'); if (verdict) verdict.style.display = 'none';
   const scrubRow = $('sim-scrubber-row'); if (scrubRow) scrubRow.style.display = 'none';
   clearSimCanvasHighlights();

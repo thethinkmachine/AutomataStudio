@@ -369,3 +369,20 @@ test('no start state stops every machine before it parses anything', () => {
     assert.match(runInput('a'), /No start state/, m);
   }
 });
+
+// A machine's δ signature is written out by hand, one string per type, and
+// the strings are close enough to copy from each other — Counter's was
+// DPDA's, so the Language panel reported a branching machine as
+// single-valued while the runtime explored. The codomain is a power set
+// exactly when δ may take more than one value, and hasSingleValuedDelta is
+// what already knows which that is. A PFA is the one machine excluded, and
+// legitimately: its δ is a weight function into [0, 1], not a set-valued map.
+test('a nondeterministic machine writes a power set into its δ signature', () => {
+  for (const m of ALL()) {
+    if (ctx.MachineTypes[m].isWeighted) continue;
+    const delta = ctx.machineFormal(m)?.delta?.();
+    assert.ok(delta, `${m} states no δ signature`);
+    assert.equal(/P\(/.test(delta), !ctx.hasSingleValuedDelta(m),
+      `${m} declares δ as "${delta}" but hasSingleValuedDelta says ${ctx.hasSingleValuedDelta(m)}`);
+  }
+});

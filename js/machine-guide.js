@@ -760,13 +760,14 @@ const MEM_GUIDES = {
 
   'Counter': {
     slug: 'counter',
-    title: 'Counter Machine',
+    title: 'One-Counter Automaton',
     tagline: 'A pushdown automaton whose stack holds a single number',
     accent: 'var(--green)',
     klass: 'One-counter languages',
     sections: [
       sec('What it is',
         p(`A counter machine is a pushdown automaton whose stack alphabet has been cut down to two symbols: one counter symbol, and the bottom marker Z. A stack over such an alphabet holds no information beyond its height, so it <em>is</em> a natural number, and the only operations are increment, decrement, and testing whether it is zero.`),
+        p(`The name is worth pinning down, because it is shared. In much of the literature a <em>counter machine</em> or <em>register machine</em> is Minsky's model: several counters, no input word to read, and Turing-complete with two of them. This page is about the <em>one-counter automaton</em> — one counter, an input word, and strictly weaker than a pushdown automaton. The two are related, and the relation is below: a second counter is already all of it.`),
         p(`The zero test is what the bottom marker provides. Seeing Z on top means the counter is empty; seeing the counter symbol means it is positive. Without such a test the model would be strictly weaker, because it could never react to having counted back down.`)),
 
       sec('Formal definition',
@@ -791,7 +792,8 @@ const MEM_GUIDES = {
       sec('In this editor',
         ul(
           `Switching to this model rewrites Γ to exactly two symbols — the bottom marker and one counter symbol — and the transition editor rejects anything else in the pop and push fields.`,
-          `Increment by popping the counter symbol and pushing two of them; decrement by popping one and pushing nothing; test for zero by popping Z and pushing it straight back.`,
+          `Increment by popping the counter symbol and pushing two of them, or by popping nothing and pushing one; decrement by popping one and pushing nothing; test for zero by popping Z and pushing it straight back.`,
+          `The bottom marker may only be pushed back onto the counter it was just popped from, and only underneath the rest. Burying it, or pushing a second one, would make the store an ordinary two-symbol stack — which reaches every context-free language rather than the one-counter ones — so the editor refuses it.`,
           `Everything else — branching, breadth-first exploration, step budget, acceptance paradigm — behaves as for the nondeterministic pushdown automaton.`))
     ]
   },
