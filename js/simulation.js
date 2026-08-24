@@ -63,7 +63,27 @@ export function runSim() {
 export function log(html) { const t = $('trace-log'); t.innerHTML = html; t.scrollTop = t.scrollHeight; }
 
 
+// ── running a machine with no page to run it on ────────────────────
+//
+// Every simulator ends with `renderSimStep()`, and that call is the only place
+// in a run that touches the page — which is exactly what StateMate's trace
+// tool must not do. It runs a *private* candidate, so a paint here would
+// replay a machine that is not on the reader's canvas across their trace log,
+// tape tracker, canvas highlights, scrubber and verdict banner at once.
+//
+// A counter rather than a boolean so nesting cannot un-silence an outer run,
+// and restored in a `finally` so a simulator that throws cannot leave the real
+// player mute. `App.simSteps` is written either way — reading it back is how
+// the caller gets its trace.
+let quietDepth = 0;
+
+export function runQuietly(fn) {
+  quietDepth++;
+  try { return fn(); } finally { quietDepth--; }
+}
+
 export function renderSimStep() {
+  if (quietDepth) return;
   const step = App.simSteps[App.simIdx]; if (!step) return;
   const isLast = App.simIdx === App.simSteps.length - 1;
 

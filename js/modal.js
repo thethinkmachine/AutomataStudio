@@ -120,6 +120,29 @@ export function installModalChrome(shell) {
   }
 }
 
+/**
+ * Whether a dialog is hiding content above or below its sticky bars.
+ *
+ * The title and footer are opaque and pinned, so a dialog taller than the
+ * viewport hides its content *behind* them — and with a hairline as the only
+ * edge, a sentence cut halfway through its ascenders reads as a clipping bug
+ * rather than as "there is more here". A short window is all it takes: a
+ * confirm dialog overflowing by thirteen pixels looked broken.
+ *
+ * Two classes rather than one, because the two ends are independently true.
+ */
+export function syncModalScroll(box) {
+  if (!box || !box.classList) return;
+  const height = Number(box.scrollHeight);
+  const visible = Number(box.clientHeight);
+  const at = Number(box.scrollTop);
+  if (!Number.isFinite(height) || !Number.isFinite(visible) || !Number.isFinite(at)) return;
+  // A pixel of slack: sub-pixel layout leaves a fraction of overflow on
+  // dialogs that visibly have none, which would shadow every title in the app.
+  box.classList.toggle('is-scrolled', at > 1);
+  box.classList.toggle('has-more', height - visible - at > 1);
+}
+
 /** Resolve a registered initialFocus declaration against an open dialog. */
 function resolveInitialFocus(shell, decl) {
   if (!decl) return null;
@@ -135,6 +158,21 @@ export function showOverlay(id) {
   if (isModalOpen(id)) return;
 
   installModalChrome(shell);
+
+  // Watched once per dialog, not once per open: the box outlives every open,
+  // and thirteen dialogs opened repeatedly would otherwise stack listeners.
+  const box = shell.querySelector('.modal');
+  if (box && !box.dataset.scrollWatch) {
+    box.dataset.scrollWatch = '1';
+    box.addEventListener('scroll', () => syncModalScroll(box), { passive: true });
+  }
+
+  const measure = () => {
+    syncModalScroll(box);
+    // Again next frame: `show` is what makes the dialog visible, and a
+    // dialog whose body is built at open time has not been laid out yet.
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => syncModalScroll(box));
+  };
 
   ModalReturnFocus[id] = document.activeElement;
   shell.classList.add('show');
@@ -154,6 +192,7 @@ export function showOverlay(id) {
   if (wanted) {
     wanted.focus();
     if (typeof wanted.select === 'function' && wanted.tagName === 'INPUT') wanted.select();
+    measure();
     return;
   }
 
@@ -163,6 +202,7 @@ export function showOverlay(id) {
   } else if (shell.firstElementChild && shell.firstElementChild.focus) {
     shell.firstElementChild.focus();
   }
+  measure();
 }
 
 export function closeModal(id) {

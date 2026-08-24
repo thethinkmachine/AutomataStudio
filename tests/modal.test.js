@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { createHarness, getElement } from './harness.js';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // The base dialog shell.
 //
@@ -173,4 +178,113 @@ test('measuring the settings panels reveals them the way the tabs now hide them'
   assert.doesNotThrow(() => h.context.sizeSettingsPanels());
   assert.equal(getElement('tab-general').hidden, false,
     'the panel that was open is still open afterwards');
+});
+
+// ── the scroll cue ────────────────────────────────────────────────
+//
+// The sticky title and footer are opaque, so a dialog taller than the window
+// hides its content behind them. With a hairline as the only edge, a sentence
+// cut through its ascenders reads as a clipping bug — a confirm dialog
+// overflowing by thirteen pixels was the report.
+
+const box = (scrollHeight, clientHeight, scrollTop) => {
+  const classes = new Set();
+  return {
+    scrollHeight, clientHeight, scrollTop,
+    classList: {
+      toggle: (name, on) => { if (on) classes.add(name); else classes.delete(name); },
+      has: name => classes.has(name)
+    },
+    has: name => classes.has(name)
+  };
+};
+
+test('a dialog that fits carries no scroll cue', () => {
+  const h = createHarness();
+  const el = box(220, 220, 0);
+  h.context.syncModalScroll(el);
+  assert.equal(el.has('is-scrolled'), false);
+  assert.equal(el.has('has-more'), false, 'a shadow under every title in the app is worse than none');
+});
+
+test('the two ends are independently true', () => {
+  const h = createHarness();
+
+  const top = box(600, 300, 0);
+  h.context.syncModalScroll(top);
+  assert.equal(top.has('is-scrolled'), false, 'nothing is hidden above the title yet');
+  assert.equal(top.has('has-more'), true, 'but the footer is covering something');
+
+  const middle = box(600, 300, 150);
+  h.context.syncModalScroll(middle);
+  assert.equal(middle.has('is-scrolled'), true);
+  assert.equal(middle.has('has-more'), true);
+
+  const bottom = box(600, 300, 300);
+  h.context.syncModalScroll(bottom);
+  assert.equal(bottom.has('is-scrolled'), true);
+  assert.equal(bottom.has('has-more'), false);
+});
+
+test('a sub-pixel fraction of overflow is not a scroll', () => {
+  const h = createHarness();
+  const el = box(300.4, 300, 0.3);
+  h.context.syncModalScroll(el);
+  assert.equal(el.has('is-scrolled'), false);
+  assert.equal(el.has('has-more'), false);
+});
+
+test('an element that cannot be measured is left alone', () => {
+  const h = createHarness();
+  const el = box(undefined, undefined, undefined);
+  h.context.syncModalScroll(el);
+  assert.equal(el.has('is-scrolled'), false);
+  assert.equal(el.has('has-more'), false);
+  assert.doesNotThrow(() => h.context.syncModalScroll(null));
+});
+
+// ── the sticky bleed ──────────────────────────────────────────────
+//
+// A sticky inset is resolved against the element's *margin* box, so the
+// negative bleed margin that pulls the title and footer out to the dialog's
+// edges is subtracted from the offset the browser pins them to. With `top: 0`
+// the title came to rest --modal-py below the scrollport and the footer the
+// same distance above it, leaving a strip at each end of a scrolling dialog
+// that the body passed through in the open and was cut off in — the fields
+// sliced through the middle with nothing over them. Cancelling the margin in
+// the inset is what puts each bar's border box against the edge it belongs to.
+//
+// There is no JS here to exercise and the stub computes no styles, so this
+// reads the rule. It is worth reading: nothing about the wrong version throws,
+// renders blank or fails a screenshot of a dialog short enough to fit.
+const modalsCss = readFileSync(join(ROOT, 'css/modals.css'), 'utf8');
+
+function ruleBody(css, selector) {
+  const i = css.indexOf(selector + ' {');
+  assert.notEqual(i, -1, `${selector} is missing from css/modals.css`);
+  return css.slice(i, css.indexOf('}', i));
+}
+
+test('the sticky bars cancel their own bleed margin in the inset', () => {
+  const title = ruleBody(modalsCss, '.modal-title');
+  assert.match(title, /margin:\s*calc\(var\(--modal-py\) \* -1\)/,
+    'the title still bleeds to the top edge');
+  assert.match(title, /\btop:\s*calc\(var\(--modal-py\) \* -1\);/,
+    'and the inset still cancels that margin');
+
+  const foot = ruleBody(modalsCss, '.modal-foot');
+  assert.match(foot, /margin:[^;]*calc\(var\(--modal-py\) \* -1\);/,
+    'the footer still bleeds to the bottom edge');
+  assert.match(foot, /\bbottom:\s*calc\(var\(--modal-py\) \* -1\);/,
+    'and the inset still cancels that margin');
+});
+
+// A literal rgba(0, 0, 0, ...) is invisible against a dark ground, which is
+// half the range these dialogs are read in. --tab-overflow-shadow is the
+// app's existing "there is more past this edge" colour and follows the theme.
+test('the scroll cue is drawn in the themed overflow colour', () => {
+  for (const selector of ['.modal.is-scrolled > .modal-title', '.modal.has-more > .modal-foot']) {
+    const body = ruleBody(modalsCss, selector);
+    assert.match(body, /box-shadow:[^;]*var\(--tab-overflow-shadow\)/, selector);
+  }
 });

@@ -506,12 +506,41 @@ export function buildUserMessage({ prompt, intent, canvasSpec = null, authority 
  * its own assistant turn in the thread, which is both cheaper and the shape a
  * model expects — it reads its own last message rather than a quotation of it.
  */
-export function buildRepairMessage({ prompt, failures = [], findings = [] }) {
+/** One traced step, as a line under the failure it explains. */
+function repairTraceLine(step) {
+  const bits = [`${step.at}.`, step.note || ''];
+  if (step.stack !== undefined) bits.push(`stack:[${step.stack}]`);
+  if (step.stack2 !== undefined) bits.push(`stack2:[${step.stack2}]`);
+  if (step.tape !== undefined) bits.push(`tape:${step.tape} head:${step.head}`);
+  if (step.tapes) bits.push(`tapes:${step.tapes.join(' | ')} heads:${(step.heads || []).join(',')}`);
+  if (step.out !== undefined) bits.push(`out:${step.out}`);
+  return `    ${bits.filter(Boolean).join(' ')}`;
+}
+
+export function buildRepairMessage({ prompt, failures = [], findings = [], traces = [] }) {
   const parts = [`That answer cannot be used.`, ``];
 
   if (failures.length) {
     parts.push(`It failed ${failures.length} of the checks you predicted:`);
     failures.slice(0, 8).forEach(f => parts.push(`  ${f}`));
+    parts.push(``);
+  }
+
+  // The path each contradicted word actually took. Without it this message
+  // says a machine is wrong and gives nothing to look at, so the cheapest
+  // correct move available is to re-read the transition list and guess —
+  // which is how a repair round turns into a rewrite.
+  if (traces.length) {
+    parts.push(`Here is what those words did, step by step, in your machine:`);
+    traces.forEach(trace => {
+      if (trace.error) {
+        parts.push(`  "${trace.word}" — could not be read: ${trace.why}`);
+        return;
+      }
+      const elided = trace.elided ? ` — ${trace.steps} steps, ${trace.elided} omitted from the middle` : '';
+      parts.push(`  "${trace.word}" — ${trace.verdict}${elided}`);
+      (trace.trace || []).forEach(step => parts.push(repairTraceLine(step)));
+    });
     parts.push(``);
   }
 
