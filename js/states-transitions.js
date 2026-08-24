@@ -474,6 +474,18 @@ export function confirmTrans() {
   App.transFrom = null; clearTempLine();
   emit(Change.GRAPH);
 }
+// The Transitions δ list's pencil, and its double-click. It resolves the edge
+// the transition sits on and opens the editor with that transition selected —
+// the same route ctxEditTrans takes from the canvas context menu, so the list
+// and the diagram open the same dialog on the same row. openTransModal fills
+// the picker from getEdgeTransitions(), so a parallel edge is still reachable
+// from the dialog once it is open.
+export function editTransFromList(id) {
+  const t = getTransition(id);
+  if (!t) return;
+  openTransModal(t.from, t.to, { mode: 'edit', transId: id });
+}
+
 export function deleteTrans(id) {
   snapshot();
   if (typeof pruneNoteAnchorsExcluding === 'function') pruneNoteAnchorsExcluding([], [id]);

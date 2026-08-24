@@ -11,7 +11,7 @@ import { getState, openTransModal, showContextMenu, transLabel, transLabelDescri
 import { Change, emit, subscribe } from './store.js';
 import { triggerMath } from './reference.js';
 import { filterStates, filterTransitions } from './ui.js';
-import { hasStateOutput, isAnyPDA, isAnyTM, showStatus } from './utils.js';
+import { escapeHtml, hasStateOutput, isAnyPDA, isAnyTM, showStatus } from './utils.js';
 
 // A structural edit repaints the canvas and both side panels; a CANVAS change
 // is a repaint only, since selection and highlight edits leave the formal
@@ -868,6 +868,25 @@ export function updateLPanelSectionMeta() {
   if (mobileWorkspaceCount) mobileWorkspaceCount.textContent = String(App.states?.length || 0);
 }
 
+// Every row in the States Q and Transitions δ lists ends in the same pair of
+// controls, so the pair is written once. They were not the same before: a state
+// carried a pencil and no way to delete, a transition carried a delete and no
+// way to edit, and the two were built from different elements — the pencil a
+// <button>, the × a <span>, which is why only one of them could be reached by
+// Tab or fired with Enter. Both are buttons here, both reveal on hover or focus,
+// and both stop the click from reaching the row's own focus-the-canvas handler.
+const LP_ICON_EDIT = 'M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z';
+const LP_ICON_DELETE = 'M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z';
+
+function lpRowBtn(call, label, path, cls) {
+  return `<button type="button" class="lp-row-btn ${cls}" onclick="event.stopPropagation(); ${call}"
+    data-tip="${label}" aria-label="${label}"><svg viewBox="0 0 256 256" width="11" height="11" fill="currentColor"><path d="${path}"/></svg></button>`;
+}
+
+function rowActions(editCall, editLabel, deleteCall, deleteLabel) {
+  return `<span class="lp-row-acts">${lpRowBtn(editCall, editLabel, LP_ICON_EDIT, 'is-edit')}${lpRowBtn(deleteCall, deleteLabel, LP_ICON_DELETE, 'is-del')}</span>`;
+}
+
 export function updateLPanel() {
   const sl = $('states-list');
   const showAccepts = acceptsAreShown();
@@ -886,10 +905,9 @@ export function updateLPanel() {
   onclick="focusStateFromList('${s.id}')" ondblclick="openStateModal('${s.id}')"
   onmouseenter="hlListHover('${s.id}', true)" onmouseleave="hlListHover('${s.id}', false)"
   data-tip="Click to focus · Double-click to edit">
-  ${s.name}${mooreOut}
-  <button class="si-edit" onclick="event.stopPropagation(); openStateModal('${s.id}')" data-tip="Edit state" aria-label="Edit ${s.name}">
-    <svg viewBox="0 0 256 256" width="11" height="11" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"/></svg>
-  </button>
+  <span class="lp-row-body">${escapeHtml(s.name)}${mooreOut}</span>
+  ${rowActions(`openStateModal('${s.id}')`, `Edit state ${escapeHtml(s.name)}`,
+    `deleteState('${s.id}')`, `Delete state ${escapeHtml(s.name)}`)}
   <div class="dot"></div>
 </div>`;
   }).join('') : '<div class="empty-msg">No states</div>';
@@ -897,12 +915,14 @@ export function updateLPanel() {
   tl.innerHTML = App.transitions.length ? App.transitions.map(t => {
     const fn = getState(t.from)?.name || '?', tn = getState(t.to)?.name || '?';
     const sel = App.selectedTransitions.has(t.id) ? 'lp-selected' : '';
-    const fullTitle = `${fn} → ${tn}\n${transLabelDescriptive(t)}\nClick to focus on canvas`;
-    return `<div class="ti ${sel}" onclick="focusTransFromList('${t.id}')"
+    const fullTitle = `${fn} → ${tn}\n${transLabelDescriptive(t)}\nClick to focus · Double-click to edit`;
+    const label = escapeHtml(`${fn} –${transLabel(t)}→ ${tn}`);
+    return `<div class="ti ${sel}" onclick="focusTransFromList('${t.id}')" ondblclick="editTransFromList('${t.id}')"
   onmouseenter="hlTransListHover('${t.from}','${t.to}', true)" onmouseleave="hlTransListHover('${t.from}','${t.to}', false)"
   data-tip="${fullTitle.replace(/"/g, '&quot;')}">
-  <span class="ti-from">${fn}</span><span class="arr">–${transLabel(t)}→</span><span class="ti-to">${tn}</span>
-  <span class="dx" onclick="event.stopPropagation(); deleteTrans('${t.id}')" data-tip="Delete transition"><svg viewBox="0 0 256 256" width="10" height="10" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span>
+  <span class="lp-row-body"><span class="ti-from">${escapeHtml(fn)}</span><span class="arr">–${escapeHtml(transLabel(t))}→</span><span class="ti-to">${escapeHtml(tn)}</span></span>
+  ${rowActions(`editTransFromList('${t.id}')`, `Edit transition ${label}`,
+    `deleteTrans('${t.id}')`, `Delete transition ${label}`)}
 </div>`;
   }).join('') : '<div class="empty-msg">No transitions</div>';
   if (typeof filterStates === 'function') filterStates();
