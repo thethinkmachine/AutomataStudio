@@ -116,6 +116,39 @@ export class Tape {
   }
 
   /**
+   * The window, plus the shape of the tape it is a window *onto*.
+   *
+   * The snapshot above says what the cells hold; it does not say whether
+   * the head could keep going. That is the one fact separating TM from
+   * ITM from LBA from a read-only two-way head, and until this existed it
+   * was the one fact the tracker could not draw — four different tapes
+   * rendered as the same flat row of boxes. It comes from here rather
+   * than from a machine-name branch in the renderer for the same reason
+   * the clamp does: where the head may go is a property of the tape.
+   *
+   * Bounds are absolute cell numbers, not window offsets, and `null`
+   * means "no wall on this side" — which is what the drawing has to
+   * distinguish, since a bounded end and an unbounded one that happens
+   * to be blank look identical cell for cell.
+   */
+  view() {
+    const { tape, head, origin } = this.snapshot();
+    return {
+      kind: 'tape',
+      cells: tape,
+      head,
+      origin,
+      leftBound: this.twoWay ? null : 0,
+      rightBound: this.rightBound,
+      // Symbols, not positions — an end marker is a marker by being
+      // unwritable, which is a fact about the symbol here.
+      markers: this.immutable ? [...this.immutable] : [],
+      blank: this.blank,
+      readOnly: false
+    };
+  }
+
+  /**
    * A string identifying this configuration for loop detection.
    *
    * It is built from the snapshot, so it is *origin-independent*: a

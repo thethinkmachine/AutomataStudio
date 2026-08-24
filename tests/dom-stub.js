@@ -19,7 +19,6 @@ export function createElement(id = '') {
     tagName: String(id || 'DIV').toUpperCase(),
     value: '',
     textContent: '',
-    className: '',
     dataset: {},
     style: { setProperty() {}, removeProperty() {}, getPropertyValue: () => '' },
     children: [],
@@ -89,6 +88,20 @@ export function createElement(id = '') {
     remove() {
       if (this.parentNode) this.parentNode.removeChild(this);
     },
+    // Swapping a node in place, in one operation, the way the tape tracker
+    // rebuilds an end cap: the position in the child list is what has to be
+    // preserved, which a remove-then-append pair would lose.
+    replaceChild(newNode, oldNode) {
+      const idx = this.children.indexOf(oldNode);
+      if (idx === -1) throw new Error('replaceChild: oldNode is not a child of this node');
+      detach(newNode);
+      // detach may have shifted our own list if newNode was already a child.
+      const at = this.children.indexOf(oldNode);
+      this.children.splice(at, 1, newNode);
+      if (newNode && typeof newNode === 'object') newNode.parentNode = this;
+      if (oldNode && typeof oldNode === 'object') oldNode.parentNode = null;
+      return oldNode;
+    },
     insertBefore(newNode, referenceNode) {
       detach(newNode);
       if (referenceNode == null) {
@@ -130,6 +143,21 @@ export function createElement(id = '') {
     scrollIntoView() {},
     getContext: () => null
   };
+  // `className` and `classList` are two views of one set, the way a real DOM
+  // keeps them. Held apart — a plain string beside a Set — code that sets the
+  // class at creation and refines it with classList.add afterwards reads back
+  // whichever half the test happens to look at, and the two disagree with no
+  // error anywhere. The tape tracker builds its end caps exactly that way.
+  Object.defineProperty(el, 'className', {
+    get: () => [...classSet].join(' '),
+    set: value => {
+      classSet.clear();
+      String(value).split(/\s+/).forEach(n => { if (n) classSet.add(n); });
+    },
+    enumerable: true,
+    configurable: true
+  });
+
   // Assigning innerHTML has to detach the children, or code that clears a group
   // with `g.innerHTML = ''` would leave the stub reporting them as still there.
   let html = '';

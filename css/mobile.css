@@ -39,13 +39,135 @@
     min-height: 100svh;
   }
 
+  /* ── the header scrolls sideways ──────────────────────────────
+     It used to divide the width up instead, and at 390px that left the
+     workspace strip 82px of content area to draw a 106px tab in — one
+     document, its name cut in half, and no way to widen it because every
+     other group was holding its own share. Nothing was gained by the
+     squeeze: the groups are all irreducible (a tab name, a machine name,
+     four icon buttons), so shrinking them only made each unreadable in
+     place of letting the row be longer than the screen.
+
+     `overflow-x: auto` computes `overflow-y` from `visible` to `auto`, so
+     it is pinned to `hidden` — a header that can scroll vertically is a
+     header that can be nudged half a line off the top. The popups that
+     hang out of this box are all `position: fixed` (see the model picker
+     and theme panel below, and `.ctx` for the two menus), which is what
+     keeps them from being clipped by a scroll container. */
   header {
     position: relative;
+    overflow-x: auto;
+    overflow-y: hidden;
+    justify-content: flex-start;
+    /* Left only. A scroll container's trailing padding is part of its
+       scrollable area, and a sticky `right: 0` resolves against the padding
+       box — so 8px here parked the pinned actions 8px short of the edge and
+       let the tabs scroll through the gap behind them. The trailing space is
+       the pinned cluster's own padding instead. */
+    padding: 0 0 0 8px;
+    scrollbar-width: none;
+    /* Or a swipe that runs out of header carries on into the page. */
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  header::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Nothing in a scrolling header may grow or shrink; doing both instead of
+     scrolling is what the header was already for. Written as `[class]`
+     rather than `*` on purpose: `.tab-bar-wrap` and the rest carry a
+     `flex: 1` of their own, and a bare `header > *` loses to every one of
+     them on specificity — silently, with the row still dividing itself up. */
+  header > [class] {
+    flex: 0 0 auto;
+  }
+
+  /* One scroller, not two nested ones. The strip had its own horizontal
+     scroll because the header would not give it room — now that the header
+     scrolls, a second scroller inside it is a trap: a swipe that starts on
+     a tab moves the strip and a swipe two pixels above it moves the header,
+     with nothing on screen saying which is which. `updateTabOverflowShadows`
+     measures `scrollWidth - clientWidth`, so the jump-to-tab button retires
+     itself here without being told. */
+  .tab-bar-wrap {
+    overflow: visible;
+    min-width: 0;
+  }
+
+  .tab-bar {
+    overflow: visible;
+    flex: 0 0 auto;
+  }
+
+  /* The picker names what you are editing, so it cannot be something you
+     scroll to find. It moves ahead of the document strip and pins to the
+     leading edge; the logo is the one thing here that may scroll away,
+     being the one thing that is not a control. The reading order still runs
+     tabs → picker → actions, which for a row of independent controls is a
+     mismatch worth the picker being permanently legible. */
+  header > .model-picker-container {
+    order: -1;
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: var(--bg2);
+    box-shadow: 12px 0 12px -8px var(--tab-overflow-shadow);
+  }
+
+  header > .hdr-left {
+    order: -2;
+  }
+
+  /* The document strip is what got longer; the actions are what have to stay
+     reachable. Sticking them to the trailing edge is what makes the scroll
+     usable at all — six workspaces would otherwise put Save six hundred
+     pixels to the right of Undo. The `margin-left: auto` is the other half:
+     an auto margin absorbs free space when there is any, so on a short strip
+     the cluster sits at the edge instead of stranded mid-header, and
+     computes to nothing once the row overflows and sticky takes over. */
+  header > .hdr-right {
+    position: sticky;
+    right: 0;
+    margin-left: auto;
+    padding-left: 10px;
+    padding-right: 8px;
+    /* Opaque, and above everything it slides over: the tab strip's own
+       border and the active tab's fill are both painted by positioned
+       elements, so this needs a stacking order rather than just a colour. */
+    background: var(--bg2);
+    /* Or an opaque block sliding over the tabs reads as a rendering fault
+       rather than as something pinned in front of them. */
+    box-shadow: -14px 0 14px -8px var(--tab-overflow-shadow);
+    z-index: 3;
   }
 
   .hdr-sep,
   .panel-header {
     display: none;
+  }
+
+  /* Two popups anchored to header children with `position: absolute` — the
+     scroll container would clip both to a 48px strip. Fixed, they are also
+     simply better here: a 360px menu does not fit a 390px phone anchored to
+     a button two thirds of the way across it. */
+  .model-picker-menu {
+    position: fixed;
+    top: calc(var(--hdr) + 6px);
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: calc(100svh - var(--hdr) - 24px);
+  }
+
+  .theme-panel {
+    position: fixed;
+    top: calc(var(--hdr) + 6px);
+    right: 8px;
+    left: auto;
+    max-height: calc(100svh - var(--hdr) - 24px);
+    overflow-y: auto;
   }
 
   .panel-resizer {
@@ -63,8 +185,35 @@
 
   .model-picker-btn {
     min-width: 132px;
+    max-width: 190px;
     height: 32px;
     padding: 0 8px;
+  }
+
+  /* "2-Way Infinite TM" wrapped onto a second line and spilled out of a
+     32px button. Both lines are one identifier each and neither has a
+     sensible break, so they truncate instead — the full name is one tap
+     away in the menu the button opens. */
+  .model-picker-info {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .model-picker-cat,
+  .model-picker-type {
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* The logo comes back. The header scrolls now, so the space it takes is
+     no longer taken from anything — and an app whose name is nowhere on
+     screen reads as a page that failed to finish loading. */
+  .hdr-left {
+    display: flex;
+    padding: 0 8px 0 0;
+    gap: 8px;
   }
 
   .mobile-panel-toggle {
@@ -481,11 +630,11 @@
 
 @media (max-width: 640px) {
   .hdr-left {
-    padding-bottom: 6px;
+    padding: 0 6px 0 0;
   }
 
   .logo {
-    font-size: 1rem;
+    font-size: .92rem;
   }
 
   .logo-mark {
@@ -546,7 +695,7 @@
    On a phone the canvas is the workspace. Panels are transient sheets that
    float above it, while the bottom dock provides a stable way back to them. */
 :root {
-  --mobile-panel-bar-height: 62px;
+  --mobile-panel-bar-height: 66px;
 }
 
 @media (max-width: 900px) {
@@ -734,14 +883,17 @@
     transition-delay: 0s, 0s;
   }
 
+  /* Three buttons, one per panel tab — see the note over the markup. The
+     tracks are equal so the bar reads as a set of peers rather than as a
+     row whose widths encode a hierarchy nobody meant. */
   .mobile-panel-bar {
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
     height: var(--mobile-panel-bar-height);
     padding: 7px 12px calc(7px + env(safe-area-inset-bottom, 0px));
     box-sizing: border-box;
@@ -751,50 +903,92 @@
     z-index: 180;
   }
 
+  /* Icon over label, the way every other bottom bar on a phone is built:
+     three names side by side at 390px do not fit on one line beside their
+     glyphs, and the previous bar solved that by having two buttons and
+     calling one of them "Panels". */
   .mobile-panel-bar-btn {
+    position: relative;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: 3px;
     min-width: 0;
-    min-height: 44px;
-    padding: 0 10px;
+    min-height: 46px;
+    padding: 4px 2px;
     border: 1px solid transparent;
     border-radius: 10px;
     background: transparent;
     color: var(--text2);
-    font-family: var(--mono);
-    font-size: .68rem;
-    letter-spacing: .03em;
+    font-family: var(--sans);
+    font-size: .62rem;
+    letter-spacing: .01em;
     cursor: pointer;
     touch-action: manipulation;
+    transition: color var(--transition-fast), background var(--transition-fast);
   }
 
-  .mobile-panel-bar-btn[aria-expanded="true"] {
+  .mobile-panel-bar-btn.is-open {
     color: var(--accent);
     background: var(--accent-soft);
     border-color: var(--accent-border);
   }
 
+  .mobile-panel-bar-btn:active {
+    background: var(--surface);
+  }
+
+  .mobile-panel-bar-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.1;
+  }
+
   .mobile-panel-bar-icon {
+    width: 19px;
+    height: 19px;
     color: currentColor;
-    font-size: .95rem;
-    line-height: 1;
+    flex: 0 0 auto;
+  }
+
+  /* The counts ride on the icon rather than after the label — a third
+     element on the row is what made the old bar's items different widths. */
+  .mobile-panel-bar-count,
+  .mobile-panel-bar-dot {
+    position: absolute;
+    top: 3px;
+    left: 50%;
+    margin-left: 5px;
+  }
+
+  .mobile-panel-bar-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--accent);
+  }
+
+  .mobile-panel-bar-dot[hidden] {
+    display: none;
   }
 
   .mobile-panel-bar-count {
-    min-width: 16px;
-    height: 16px;
+    min-width: 15px;
+    height: 15px;
     padding: 0 4px;
     border-radius: 999px;
     background: var(--surface3, var(--bg3));
     color: var(--text3);
-    font-size: .58rem;
-    line-height: 16px;
+    font-family: var(--mono);
+    font-size: .54rem;
+    line-height: 15px;
     text-align: center;
   }
 
-  .mobile-panel-bar-btn[aria-expanded="true"] .mobile-panel-bar-count {
+  .mobile-panel-bar-btn.is-open .mobile-panel-bar-count {
     background: var(--accent-soft-strong);
     color: var(--accent);
   }
@@ -1091,5 +1285,38 @@
 
   .modal-foot {
     margin-top: 14px;
+  }
+}
+
+/* Below this the wordmark is 100px of a 390px header spent saying something
+   the mark already says. The mark stays — it is the logo, and an app with no
+   mark anywhere reads as a page that failed to finish loading. */
+@media (max-width: 520px) {
+  .hdr-left .logo {
+    display: none;
+  }
+
+  /* The category line goes, and the button becomes the machine's short code
+     alone. It is the redundant half — the menu this button opens is grouped
+     by category and repeats it — and keeping it meant a button wide enough
+     to be half-covered by the pinned actions on arrival, showing "FINITE A"
+     cut mid-word, which reads as a broken box rather than as a row that
+     scrolls. */
+  .model-picker-cat {
+    display: none;
+  }
+
+  .model-picker-btn {
+    min-width: 0;
+    max-width: 120px;
+    gap: 4px;
+  }
+
+  .model-picker-type {
+    font-size: .8rem;
+  }
+
+  .hdr-left {
+    padding-right: 4px;
   }
 }

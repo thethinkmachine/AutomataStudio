@@ -16,7 +16,7 @@
 // can revisit a cell, so termination is a reachability question over
 // (state, position) pairs rather than a walk of length |w|.
 
-import { App } from '../state.js';
+import { App, getBoundaryMarkers } from '../state.js';
 import { renderSimStep } from '../simulation.js';
 import { getState } from '../states-transitions.js';
 import { buildMarkedInputTape, pickMostSpecificTransition } from '../utils.js';
@@ -39,6 +39,30 @@ export function twoWayDisplayHead(tokens, head) {
   return head;
 }
 
+/**
+ * What these heads run over, said in the tape tracker's own vocabulary.
+ *
+ * They do not use js/tape.js — see the note above — so the descriptor is
+ * built here rather than asked for. It is still the same object the
+ * tracker draws for a real Tape, because the reader is owed the same
+ * answer to the same question: this input is walled at both ends, the
+ * walls are the end markers, and nothing on it can be written.
+ */
+export function twoWayTapeView(displayTape, head) {
+  const { left, right } = getBoundaryMarkers();
+  return {
+    kind: 'tape',
+    cells: [...displayTape],
+    head,
+    origin: 0,
+    leftBound: 0,
+    rightBound: displayTape.length - 1,
+    markers: [left, right],
+    blank: App.config.sym.blank,
+    readOnly: true
+  };
+}
+
 export function twoWayReadSymbol(tokens, head) {
   return tokens[head] ?? null;
 }
@@ -56,6 +80,7 @@ export function buildTwoWayPathSteps(path, tokens, finalStatus = null, finalNote
       tokens,
       tape: [...displayTape],
       head: twoWayDisplayHead(displayTape, cfg.head),
+      view: twoWayTapeView(displayTape, twoWayDisplayHead(displayTape, cfg.head)),
       branch: cfg.branch,
       tid: cfg.via?.id,
       note: ''

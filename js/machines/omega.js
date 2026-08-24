@@ -304,6 +304,23 @@ export function simOmega(u, v) {
       tokens: [...u, ...v],
       tape: [...tape],
       head: idx,
+      // An ω-word is bounded on the left and runs on forever to the right —
+      // but not into blank tape the way an ITM's does. What continues is v,
+      // over and over, so the view says so and the tracker draws the
+      // repetition rather than an ellipsis that means "nothing more".
+      view: {
+        kind: 'tape',
+        cells: [...tape],
+        head: idx,
+        origin: 0,
+        leftBound: 0,
+        rightBound: null,
+        markers: [],
+        blank: App.config.sym.blank,
+        readOnly: true,
+        periodFrom: u.length,
+        periodLen: v.length
+      },
       tid: node.via?.id,
       omegaLoopFrom: loopFrom,
       note

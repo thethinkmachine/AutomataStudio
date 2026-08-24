@@ -530,7 +530,10 @@ defineFamily(pushdown, {
   'Counter': {
     ...branching,
     storeLabels: ['Counter', 'Test', 'Update'],
-    formal: { tuple: () => ['Q', 'Σ', 'Γ', 'δ', 'q₀', 'F'], delta: () => 'Q × (Σ ∪ {ε}) × Γ → Q × Γ*' }
+    // Branching, like QA and 2PDA above — the codomain is a power set. This
+    // string used to be DPDA's, copied verbatim, so the Language panel
+    // reported the machine as single-valued while the runtime explored.
+    formal: { tuple: () => ['Q', 'Σ', 'Γ', 'δ', 'q₀', 'F'], delta: () => 'Q × (Σ ∪ {ε}) × (Γ ∪ {ε}) → P(Q × Γ*)' }
   },
   '2PDA': {
     ...branching,

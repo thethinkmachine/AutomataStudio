@@ -741,8 +741,8 @@ function inferIntent() {
 // The output cap, and how far a truncated answer may raise it. A machine cut
 // off at the cap used to arrive as unparseable JSON and burn a repair round at
 // the *same* cap, which could only fail the same way.
-const BASE_MAX_TOKENS = 4000;
-const MAX_OUTPUT_TOKENS = 16000;
+const BASE_MAX_TOKENS = 16000;
+const MAX_OUTPUT_TOKENS = 64000;
 
 /**
  * One prompt, start to finish.

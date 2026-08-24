@@ -1340,7 +1340,7 @@ export function updateRegex() {
   else if (m === 'PDT') { txt = 'Pushdown Transduction (Context-Free Relation)'; }
   else if (m === '2DFT') { txt = 'Regular Transduction (Two-Way, MSO-Definable)'; }
   else if (m === 'QA') { txt = 'Queue Automaton Language Family'; }
-  else if (m === 'Counter') { txt = 'Counter Language Family'; }
+  else if (m === 'Counter') { txt = 'One-Counter Language'; }
   else if (m === '2PDA') { txt = 'Two-Stack PDA (TM-Equivalent Power)'; }
   else if (m === 'LBA') { txt = 'Context-Sensitive Language (Endmarked Tape)'; }
   else if (m === 'ITM') { txt = 'Recursively Enumerable Language'; }

@@ -1249,3 +1249,98 @@ body.panel-resizing .rpanel {
     padding: 8px 10px 0;
   }
 }
+
+
+/* ── reordering a section ────────────────────────────────────────
+   The grip is the drag handle, and it is a control of its own rather than
+   the header being overloaded: the header already collapses the section,
+   from a click and from Enter/Space, so a drag started there would have to
+   be guessed at from pointer travel and the keyboard would be left with no
+   way to reorder at all. See js/panel-sections-ui.js.
+
+   It follows .lp-row-btn's rule — revealed on :hover and :focus-within,
+   and always shown where there is no hover to reveal it with. */
+.panel-sec-grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 18px;
+  margin-left: -4px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text3);
+  cursor: grab;
+  opacity: 0;
+  flex-shrink: 0;
+  /* Or a touch drag scrolls the panel instead of moving the section. */
+  touch-action: none;
+  transition: opacity .12s, background .12s, color .12s;
+}
+
+.lp-section-header:hover .panel-sec-grip,
+.lp-section-header:focus-within .panel-sec-grip,
+.rp-section-header:hover .panel-sec-grip,
+.rp-section-header:focus-within .panel-sec-grip {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .panel-sec-grip {
+    opacity: 1;
+  }
+}
+
+.panel-sec-grip:hover {
+  background: var(--surface3);
+  color: var(--text2);
+}
+
+.panel-sec-grip:focus-visible {
+  opacity: 1;
+  outline: 1px solid var(--accent-border-strong);
+  outline-offset: 1px;
+}
+
+.panel-sec-grip:active {
+  cursor: grabbing;
+}
+
+/* The section being dragged. It stays in the flow and moves between slots as
+   the pointer crosses its neighbours' midpoints, so what is on screen during
+   the drag is the result — lifting it is what says which one is moving. */
+.lp-collapsible.is-reordering,
+.rp-collapsible.is-reordering {
+  position: relative;
+  z-index: 2;
+  cursor: grabbing;
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .22);
+  border-radius: 6px;
+}
+
+.lp-collapsible.is-reordering .panel-sec-grip,
+.rp-collapsible.is-reordering .panel-sec-grip {
+  opacity: 1;
+  color: var(--accent);
+}
+
+/* While a drag is in flight the other headers must not light up under the
+   pointer as it passes over them — a hover highlight there reads as a drop
+   target, which is not what it is. */
+.has-reorder .lp-section-header:hover,
+.has-reorder .rp-section-header:hover {
+  background: transparent;
+}
+
+.has-reorder {
+  cursor: grabbing;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-sec-grip {
+    transition: none;
+  }
+}

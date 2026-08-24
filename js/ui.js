@@ -15,6 +15,7 @@ import {
   PANEL_SIDES, PANEL_TAB_NAMES, PANEL_TABS, panelTabNames,
   setActivePanelTab, setTabSide
 } from './panel-state.js';
+import { declaredSectionIds, sectionStartsCollapsed } from './panel-sections.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
 import { $, App, MachineCategories, MachineTypes, R, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { getState, getTransition, hideContextMenu } from './states-transitions.js';
@@ -2696,6 +2697,7 @@ export function showPanelTab(name) {
   // tabs have nothing to do with it now that it can be on either edge.
   else if (getTabSide(name) === getTabSide('statemate')) stowStateMate();
   if (!isPanelTabActive(name)) activatePanelTab(name);
+  syncMobilePanelBar();
 }
 
 export function initPanelTabs() {
@@ -2767,7 +2769,62 @@ export function setMobilePanelCollapsed(id, collapsed, persist = true) {
   if (persist) {
     try { localStorage.setItem(`automata-mobile-panel-${id}`, collapsed ? '1' : '0'); } catch (e) { }
   }
+  syncMobilePanelBar();
   updateMobilePanelChrome();
+}
+
+// ── the mobile panel bar ──────────────────────────────────────────
+//
+// One button per panel *tab*, not per panel. "Panels" named a container
+// rather than anything the reader wants, and it hid the fact that the right
+// sheet holds two different things — you tapped it to reach StateMate and
+// landed on the Inspector, or the other way round, with the bar giving no
+// sign either existed. The names here are the panel tabs' own names, so the
+// mobile bar and the desktop strips cannot describe the app differently, and
+// **the side is asked for rather than assumed**: StateMate is movable, so a
+// button hard-wired to `rpanel` would stop working the moment it was moved.
+
+/** The tab a mobile bar button opens, and where that tab currently lives. */
+function mobileBarTarget(name) {
+  const side = getTabSide(name);
+  return side ? { name, side } : null;
+}
+
+/**
+ * Opens the sheet showing a tab — or closes it, if that is already what is
+ * on screen. A bar button is a toggle for the thing it names, which is why
+ * the test is the tab and not just the panel.
+ */
+export function toggleMobilePanelTab(name) {
+  const target = mobileBarTarget(name);
+  if (!target) return;
+  const panel = $(target.side);
+  const open = panel && panel.dataset.mobileCollapsed !== '1';
+  if (open && isPanelTabActive(name)) { setMobilePanelCollapsed(target.side, true); return; }
+  // showPanelTab first: the sheet slides up already showing what was asked
+  // for, rather than showing the last tab and swapping under the reader.
+  showPanelTab(name);
+  toggleMobilePanel(target.side, false);
+}
+
+/** Marks the button whose tab is the one currently on screen. */
+export function syncMobilePanelBar() {
+  document.querySelectorAll('[data-mobile-tab]').forEach(btn => {
+    const name = btn.getAttribute('data-mobile-tab');
+    const target = mobileBarTarget(name);
+    const panel = target && $(target.side);
+    const showing = !!panel && panel.dataset.mobileCollapsed !== '1' && isPanelTabActive(name);
+    btn.setAttribute('aria-expanded', showing ? 'true' : 'false');
+    btn.classList.toggle('is-open', showing);
+  });
+}
+
+/** Listeners at creation, so the bar adds no names to bridge.js. */
+export function initMobilePanelBar() {
+  document.querySelectorAll('[data-mobile-tab]').forEach(btn => {
+    btn.addEventListener('click', () => toggleMobilePanelTab(btn.getAttribute('data-mobile-tab')));
+  });
+  syncMobilePanelBar();
 }
 
 export function toggleMobilePanel(id, force) {
@@ -2861,15 +2918,25 @@ export function toggleLPSection(id) {
   setLPSectionCollapsed(id, collapsed, true);
 }
 
+// The list of sections comes from js/panel-sections.js rather than from a
+// copy here. It was a copy, and the drift it invites is not hypothetical:
+// this array and RP_SECTION_DEFAULTS' keys were two of three places the ids
+// were written down, and a section in one and not the other is a section that
+// silently never restores its collapsed state.
 export function initLPanelSections() {
-  ['lp-alphabet', 'stack-sec', 'output-sec', 'lp-states', 'lp-transitions'].forEach(id => {
-    let collapsed = false;
-    try { collapsed = localStorage.getItem(`automata-lpanel-section-${id}`) === '1'; } catch (e) { }
+  declaredSectionIds('lpanel').forEach(id => {
+    let collapsed = sectionStartsCollapsed(id);
+    try {
+      const raw = localStorage.getItem(`automata-lpanel-section-${id}`);
+      if (raw !== null) collapsed = raw === '1';
+    } catch (e) { }
     setLPSectionCollapsed(id, collapsed, false);
   });
 }
 
-export const RP_SECTION_DEFAULTS = { 'rp-language': false, 'rp-simulate': false, 'rp-batch': true };
+export const RP_SECTION_DEFAULTS = Object.fromEntries(
+  declaredSectionIds('rpanel').map(id => [id, sectionStartsCollapsed(id)])
+);
 
 export function setRPSectionCollapsed(id, collapsed, persist = true) {
   const sec = $(id);
@@ -2888,8 +2955,8 @@ export function toggleRPSection(id) {
 }
 
 export function initRPanelSections() {
-  Object.keys(RP_SECTION_DEFAULTS).forEach(id => {
-    let collapsed = RP_SECTION_DEFAULTS[id];
+  declaredSectionIds('rpanel').forEach(id => {
+    let collapsed = sectionStartsCollapsed(id);
     try {
       const raw = localStorage.getItem(`automata-rpanel-section-${id}`);
       if (raw !== null) collapsed = raw === '1';

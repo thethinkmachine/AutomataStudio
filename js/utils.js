@@ -62,6 +62,31 @@ export function isCounterMachine(m = App.machine) {
   return m === 'Counter';
 }
 
+// What makes a one-counter automaton a counter is not |Γ| = 2. A stack over
+// two symbols is an ordinary pushdown stack — any stack alphabet binary-
+// encodes into it — so a machine free to write Z wherever it likes reaches
+// every context-free language, which is strictly more than the one-counter
+// languages this model is supposed to have. The counter is the *height*, and
+// the height is only a number while the bottom marker stays at the bottom and
+// occurs exactly once. The alphabet check in confirmTrans() says which symbols
+// a push may use; this says where they may go.
+//
+// Returns null, or the clause naming what is wrong with this push. Popping Z
+// and pushing nothing is deliberately allowed: under the empty-store paradigm
+// that is how a counter machine accepts.
+export function counterBottomViolation(pop, push, sym = App.config.sym) {
+  const bottom = sym.stackBottom;
+  if (!push || push === sym.eps || push === sym.any) return null;
+  const s = String(push);
+  const marks = [...s].filter(c => c === bottom).length;
+  if (marks === 0) return null;
+  // A wildcard pop matched something unknown, so it cannot have been Z.
+  if (pop !== bottom) return `pushes '${bottom}' without having popped it`;
+  if (marks > 1) return `pushes '${bottom}' ${marks} times`;
+  if (s.slice(-1) !== bottom) return `pushes '${bottom}' above the counter`;
+  return null;
+}
+
 export function isTwoStackPDA(m = App.machine) {
   return m === '2PDA';
 }

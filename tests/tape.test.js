@@ -230,3 +230,61 @@ test('makeLbaTape bounds the tape to the input plus its markers', () => {
   tape.head = 3;
   assert.equal(tape.move('R'), false, 'nor on the right');
 });
+
+// ── what the tape says about its own shape ────────────────────────
+//
+// snapshot() says what the cells hold; view() says whether the head could
+// keep going, which is the one fact the tracker could not draw before it
+// existed — a wall and blank tape running on forever look identical cell
+// for cell. It comes from here rather than from a machine-name branch in
+// the renderer for the same reason the clamp does.
+
+test('view() reports a bounded tape as walled at cell 0 and open on the right', () => {
+  const t = new Tape(['a', 'b'], BLANK, false);
+  const v = t.view();
+  assert.equal(v.leftBound, 0);
+  assert.equal(v.rightBound, null, 'null is "no wall", not "wall at zero"');
+  assert.deepEqual(v.cells, ['a', 'b']);
+  assert.equal(v.origin, 0);
+});
+
+test('view() reports a two-way tape as walled on neither side', () => {
+  const t = new Tape(['a'], BLANK, true);
+  t.move('L');
+  const v = t.view();
+  assert.equal(v.leftBound, null);
+  assert.equal(v.rightBound, null);
+  // The window has grown leftward, so the drawn head is 0 and the *cell*
+  // is −1 — which is exactly why the view carries the origin.
+  assert.equal(v.head, 0);
+  assert.equal(v.origin, -1);
+  assert.equal(v.origin + v.head, -1, 'the cell the machine is actually on');
+});
+
+test('view() reports an LBA tape as walled at both ends, with its markers', () => {
+  harness.resetApp();
+  const { App, makeLbaTape } = context;
+  const v = makeLbaTape(['a', 'b']).view();
+  assert.equal(v.leftBound, 0);
+  assert.equal(v.rightBound, 3, 'the input plus its two markers');
+  assert.deepEqual(v.markers.sort(),
+    [App.config.sym.leftMarker, App.config.sym.rightMarker].sort());
+});
+
+test('the bounds view() reports are the ones the tape enforces', () => {
+  // The point of asking the tape rather than the machine: a drawn wall the
+  // head can walk through would be worse than no wall at all.
+  for (const t of [
+    new Tape(['a'], BLANK, false),
+    new Tape(['a'], BLANK, true),
+    new Tape(['a', 'b'], BLANK, false, { rightBound: 1 })
+  ]) {
+    const v = t.view();
+    t.head = v.leftBound === null ? -50 : v.leftBound;
+    assert.equal(t.move('L'), v.leftBound === null,
+      'a left wall is drawn exactly when the tape refuses to pass it');
+    t.head = v.rightBound === null ? 50 : v.rightBound;
+    assert.equal(t.move('R'), v.rightBound === null,
+      'and likewise on the right');
+  }
+});

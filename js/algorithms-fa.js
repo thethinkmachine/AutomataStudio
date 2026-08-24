@@ -3,6 +3,7 @@ import { snapshot } from './history.js';
 import { langVerdict } from './language.js';
 import { deriveRegex, renderAll, updateLPanel, updateRPanel } from './render.js';
 import { log } from './simulation.js';
+import { renderTracker, resetTracker } from './tape-view.js';
 import { simNPDA } from './machines/pushdown.js';
 import { simNDTM } from './machines/turing.js';
 import { epsClosure, stateNames, tokenize } from './machines/runtime.js';
@@ -2000,7 +2001,7 @@ placeholder="Paste TM JSON here…">${UTM_DEFAULT_TM}</textarea>
 <button class="sbtn" id="utm-auto-btn" onclick="utmToggleAuto()" data-tip="Auto-play" style="display:flex;align-items:center;justify-content:center;gap:4px"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg> Auto</button>
 <button class="sbtn" onclick="utmResetView()" data-tip="Reset"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg></button>
   </div>
-  <div id="utm-tape-wrap" style="display:flex;flex-wrap:nowrap;overflow-x:auto;gap:2px;min-height:36px;margin-bottom:8px;padding:4px 0;"></div>
+  <div id="utm-tape-wrap" class="tv-body" style="margin-bottom:8px"></div>
   <div id="utm-result"></div>
 </div>`;
 }
@@ -2120,12 +2121,27 @@ export function renderUTMStep() {
   if (!utmSteps.length) return;
   const step = utmSteps[utmIdx];
 
-  // Render tape
+  // The UTM's tape is an ordinary one-way infinite tape, so it is drawn by
+  // the same renderer the step tracker uses rather than by a second set of
+  // inline styles — the reader who has just watched a TM run here should not
+  // meet a differently-shaped tape one view over.
   const BLANK = App.config.sym.blank;
   const tapeDisplay = [...step.tape]; while (tapeDisplay.length <= step.head) tapeDisplay.push(BLANK);
-  tapeEl.innerHTML = tapeDisplay.map((c, i) =>
-    `<div style="min-width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:.8rem;border:1px solid ${i === step.head ? 'var(--accent)' : 'var(--border2)'};border-radius:3px;background:${i === step.head ? 'var(--surface3)' : 'var(--surface)'};color:${i === step.head ? 'var(--accent)' : 'var(--text)'};">${c}</div>`
-  ).join('') + `<div style="min-width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:.65rem;color:var(--text3);border:1px dashed var(--border);border-radius:3px;">…</div>`;
+  renderTracker(tapeEl, [{
+    label: 'Tape',
+    finalClass: (utmIdx === utmSteps.length - 1 && step.final) ? step.final : '',
+    view: {
+      kind: 'tape',
+      cells: tapeDisplay,
+      head: step.head,
+      origin: 0,
+      leftBound: 0,
+      rightBound: null,
+      markers: [],
+      blank: BLANK,
+      readOnly: false
+    }
+  }]);
 
   // Render trace log
   const lines = utmSteps.slice(0, utmIdx + 1).map((s, i) => {
@@ -2152,7 +2168,7 @@ export function renderUTMStep() {
 
 export function utmStepFwd() { if (utmIdx < utmSteps.length - 1) { utmIdx++; renderUTMStep(); } }
 export function utmStepBack() { if (utmIdx > 0) { utmIdx--; renderUTMStep(); } }
-export function utmResetView() { utmResetTimer(); utmSteps = []; utmIdx = 0; const el = document.getElementById('utm-result'); if (el) el.innerHTML = ''; const t = document.getElementById('utm-tape-wrap'); if (t) t.innerHTML = ''; }
+export function utmResetView() { utmResetTimer(); utmSteps = []; utmIdx = 0; const el = document.getElementById('utm-result'); if (el) el.innerHTML = ''; const t = document.getElementById('utm-tape-wrap'); if (t) resetTracker(t); }
 export const UTM_ICON_PLAY = '<svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>';
 export const UTM_ICON_PAUSE = '<svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M200,32H160a16,16,0,0,0-16,16V208a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V48A16,16,0,0,0,200,32Zm0,176H160V48h40ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Zm0,176H56V48H96Z"/></svg>';
 export function utmResetTimer() { if (utmAutoTimer) { clearInterval(utmAutoTimer); utmAutoTimer = null; } const b = document.getElementById('utm-auto-btn'); if (b) { b.classList.remove('playing'); b.innerHTML = `${UTM_ICON_PLAY} Auto`; } }
