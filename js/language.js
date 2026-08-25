@@ -4,6 +4,7 @@ import { _regexCacheKey, updateDefBoxOverflowShadow } from './render.js';
 import { runSim } from './simulation.js';
 import { decideWord, inFamily, machineFormal } from './machines/index.js';
 import { langStepBudget } from './machines/runtime.js';
+import { runParallel, shouldParallelize } from './parallel/pool.js';
 import { $, App, getMachineConfig, isOmegaAutomaton, omegaAcceptanceOf, statePriority } from './state.js';
 import { getState } from './states-transitions.js';
 import { toggleRPSection } from './ui.js';
@@ -924,6 +925,18 @@ export function renderLangFingerprint(host) {
 
   let nAcc = 0, nRej = 0, nUnk = 0, shown = 0, deepest = 0;
   let exhausted = false, selected = null;
+
+  // Verdicts primed by the worker pool, keyed by word. Local to this render
+  // rather than module state, because the grid is rebuilt whenever the machine
+  // or Σ changes — a cache outliving that would colour cells for a machine
+  // that is no longer on the canvas. A miss simply decides here, which is what
+  // the whole grid did before the pool existed.
+  const primed = new Map();
+  const wordKey = (w) => w.join('\u0000');
+  const verdictOf = (w) => {
+    const k = wordKey(w);
+    return primed.has(k) ? primed.get(k) : langVerdict(w);
+  };
   const say = v => v === 'acc' ? 'accepted' : v === 'unk' ? 'no verdict' : 'rejected';
 
   // ── a cell is where it sits ──────────────────────────────────────
@@ -990,7 +1003,7 @@ export function renderLangFingerprint(host) {
     const verdicts = new Array(r.words.length);
     for (let i = 0; i < r.words.length; i++) {
       const w = r.words[i];
-      const v = langVerdict(w);
+      const v = verdictOf(w);
       verdicts[i] = v === 'acc' ? 'a' : v === 'unk' ? 'u' : 'r';
       if (v === 'acc') nAcc++; else if (v === 'unk') nUnk++; else nRej++;
       shown++;
@@ -1059,6 +1072,44 @@ export function renderLangFingerprint(host) {
     if (exhausted && io) { io.disconnect(); io = null; }
   };
 
+  // The scroll-driven pull, which is the one worth spreading: a page is a few
+  // hundred words, and on a Turing machine each is a run to the step budget.
+  // The rows are taken off the generator first — that part is cheap and must
+  // stay ordered — then every word on them is decided across the pool at once
+  // and the verdicts are waiting in `primed` by the time addRow asks.
+  //
+  // The first pull stays synchronous on purpose. It decides whether the grid
+  // is drawn at all (`if (!shown) return`), so making it async would mean
+  // appending a fingerprint that might turn out to have no cells in it.
+  let pulling = false;
+  const pullPrimed = async (n) => {
+    // The observer fires repeatedly while the sentinel is in view; without
+    // this a slow page would start a second pull over the same rows.
+    if (exhausted || pulling) return;
+    pulling = true;
+    try {
+      const pending = [];
+      for (let i = 0; i < n; i++) {
+        const nx = rows.next();
+        if (nx.done) { exhausted = true; break; }
+        pending.push(nx.value);
+      }
+      const words = pending.flatMap(r => r.words);
+      if (shouldParallelize(words.length, App.machine)) {
+        const verdicts = await runParallel({
+          kind: 'words', items: words, machine: App.machine,
+          serial: (ws) => ws.map(langVerdict)
+        });
+        for (let i = 0; i < words.length; i++) primed.set(wordKey(words[i]), verdicts[i]);
+      }
+      for (const r of pending) addRow(r);
+      update();
+      if (exhausted && io) { io.disconnect(); io = null; }
+    } finally {
+      pulling = false;
+    }
+  };
+
   // A stale grid may still hold a live observer watching its sentinel;
   // renderLangExtension calls this before the subtree goes unreachable.
   host._cleanup = () => { if (io) { io.disconnect(); io = null; } };
@@ -1073,7 +1124,7 @@ export function renderLangFingerprint(host) {
 
   if (!exhausted && typeof IntersectionObserver === 'function') {
     io = new IntersectionObserver(entries => {
-      if (entries.some(e => e.isIntersecting)) pull(LANG_FP_PAGE);
+      if (entries.some(e => e.isIntersecting)) pullPrimed(LANG_FP_PAGE);
     }, { root: scroll, threshold: 0 });
     io.observe(sentinel);
   }

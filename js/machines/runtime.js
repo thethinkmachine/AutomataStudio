@@ -12,9 +12,8 @@
 // StateMate's verifyCandidate all depend on it. A single $() in this file
 // would take that away from all three at once.
 
-import { App, detectsLoops } from '../state.js';
-import { getState } from '../states-transitions.js';
-import { pickMostSpecificTransition, symbolsOverlap } from '../utils.js';
+import { App, detectsLoops, getState } from '../state.js';
+import { pickMostSpecificTransition, symbolsOverlap } from './predicates.js';
 
 // ── reading the input ─────────────────────────────────────────────
 // Symbols may be whole words, so a typed string is split on the same

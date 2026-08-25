@@ -10,9 +10,8 @@
 // diagram — the NFA asks whether *some* branch accepts, which is this
 // machine with λ = 0 and every weight rounded up to 1.
 
-import { App } from '../state.js';
-import { renderSimStep } from '../simulation.js';
-import { getState } from '../states-transitions.js';
+import { App, getState } from '../state.js';
+import { renderSimStep } from './paint.js';
 import { accepted } from './runtime.js';
 import { defineMachine } from './registry.js';
 

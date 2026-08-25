@@ -3,7 +3,7 @@ import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
 import { pruneNoteAnchorsExcluding } from './notes.js';
 import { renderAll } from './render.js';
-import { $, App, getMachineConfig, isBoundarySymbol, isReadOnlyHeadMachine, isWeightedFA, statePriority, usesParityPriorities } from './state.js';
+import { $, App, getMachineConfig, getState, isBoundarySymbol, isReadOnlyHeadMachine, isWeightedFA, statePriority, usesParityPriorities } from './state.js';
 import { Change, emit } from './store.js';
 import { counterBottomViolation, hasStateOutput, hasTransitionOutput, isAnyPDA, isCounterMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
 import { isMultiTape, machineDeterminism, machineStoreLabels, transitionHasField } from './machines/index.js';
@@ -15,7 +15,9 @@ import { applyMachineSwitch } from './view.js';
 export function newId() { return 's' + (++App.stateN); }
 export function newTId() { return 't' + (++App.transN); }
 
-export function getState(id) { return App.states.find(s => s.id === id); }
+// Re-exported so the many UI call sites that already import it from here
+// keep working; the definition moved to the leaf that owns App.states.
+export { getState };
 export function getTransition(id) { return App.transitions.find(t => t.id === id); }
 export function getEdgeTransitions(from, to) { return App.transitions.filter(t => t.from === from && t.to === to); }
 

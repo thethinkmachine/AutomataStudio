@@ -59,6 +59,12 @@ import * as machinePushdown from '../js/machines/pushdown.js';
 import * as machineTuring from '../js/machines/turing.js';
 import * as machineTransducer from '../js/machines/transducer.js';
 import * as machineTwoWay from '../js/machines/twoway.js';
+import * as machinePredicates from '../js/machines/predicates.js';
+import * as machineBatch from '../js/machines/batch.js';
+import * as machinePaint from '../js/machines/paint.js';
+import * as parallelPool from '../js/parallel/pool.js';
+import * as parallelSnapshot from '../js/parallel/snapshot.js';
+import * as parallelCore from '../js/parallel/decide-core.js';
 import * as state from '../js/state.js';
 import * as statesTransitions from '../js/states-transitions.js';
 import * as statemate from '../js/statemate.js';
@@ -87,6 +93,7 @@ const NAMESPACES = [
   canvas, render, panelState, panelSections, panelSectionsUi, notes, dividers,
   machineRegistry, machineRuntime, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineTuring, machineTransducer, machineTwoWay, machines,
+  machinePredicates, machineBatch, machinePaint, parallelPool, parallelSnapshot, parallelCore,
   simulation, tapeView, suggest, language, alphabet, markdown,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, algorithmsFa, algorithmsCfg, reference, workspace, quickSettings, minimap, ui,
@@ -161,6 +168,10 @@ function resetModuleState() {
   // inert under the stub anyway — dom-stub runs rAF synchronously, which anim.js
   // detects and treats as "always snap" — but the reset keeps that a property of
   // the harness rather than a coincidence.)
+  // The worker pool holds live workers, a job epoch and — the one that would
+  // actually corrupt a run — a latched `disabled` flag set the first time a
+  // worker cannot be constructed. See resetPool().
+  parallelPool.resetPool();
   anim.resetAnim();
   // The minimap's eased frame survives a resetApp the same way — it is module
   // state, not App state — so a test would start out gliding in from the

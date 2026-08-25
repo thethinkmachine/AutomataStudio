@@ -20,7 +20,10 @@ import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
 import { isAnyPDA, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps } from './utils.js';
 import { decideMachine, machineGuards, parseMachineInput, simulateMachine } from './machines/index.js';
 import { langStepBudget, stateNames } from './machines/runtime.js';
+import { computeBatchResults, decideBatchRows, summarizeBatch } from './machines/batch.js';
+import { poolSize, runParallel, shouldParallelize } from './parallel/pool.js';
 import { renderTracker, resetTracker } from './tape-view.js';
+import { setSimStepPainter } from './machines/paint.js';
 
 export function runSim() {
   resetSim();
@@ -87,6 +90,13 @@ export function runQuietly(fn) {
   quietDepth++;
   try { return fn(); } finally { quietDepth--; }
 }
+
+// The machine layer calls this through js/machines/paint.js rather than
+// importing it from here, so that importing a simulator does not drag the
+// renderer in behind it. Installing the binding is this module's job because
+// this module owns the function; it happens as simulation.js evaluates, which
+// on the main thread is long before any run can start.
+setSimStepPainter(renderSimStep);
 
 export function renderSimStep() {
   if (quietDepth) return;
@@ -704,75 +714,12 @@ export function handleSimInputKeydown(e) {
 // ══════════════════════════════════════════════════════════════════
 //  BATCH TESTING
 // ══════════════════════════════════════════════════════════════════
-// Optional trailing "=> accept" / "=> reject" (also: acc/rej, ✓/✗, a/r)
-// turns a batch line into a pass/fail expectation instead of a plain probe.
-export function parseBatchLine(line) {
-  const m = line.match(/^(.*?)(?:=>|→)\s*(accept|reject|acc|rej|✓|✗|a|r)\s*$/i);
-  if (!m) return { input: line, expect: null };
-  const tag = m[2].toLowerCase();
-  const expect = (tag === 'accept' || tag === 'acc' || tag === '✓' || tag === 'a') ? 'accept' : 'reject';
-  return { input: m[1].trim(), expect };
-}
-
-// Running a batch and showing one are separate jobs. They used to be one
-// function that ended in an innerHTML assignment, which meant the results
-// only ever existed as markup — nothing could export them, and the pass/fail
-// logic could not be tested without a DOM. computeBatchResults() is now the
-// whole decision procedure and returns data; renderBatchResults() is the
-// only part that touches the page.
-//
-// It is also machine-agnostic. Both halves of a row — how the line is read
-// and what the machine answers — come from the registry, so the eighteen
-// branches this used to carry are down to one question the caller is
-// entitled to ask: is a transducer allowed to have a verdict at all?
-export function computeBatchResults(rawLines) {
-  const m = App.machine;
-  // Whether a transducer decides anything is App.config.transducerAccepts,
-  // and that is the *caller's* policy: the machine always answers, and this
-  // is where the answer is dropped when the setting is off. `undefined`
-  // means "no verdict was asked for", which renderBatchResults draws as a
-  // bullet rather than as a tick or a cross.
-  const transducer = !!getMachineConfig(m).isTransducer;
-
-  const results = rawLines.map(parseBatchLine).map(({ input: line, expect }) => {
-    const parsed = parseMachineInput(m, parseEps(line));
-    if (!parsed.ok) return { str: line, accepted: false, error: true, expect };
-
-    const { verdict, output } = decideMachine(m, parsed.input);
-    // A run still going at the budget has not rejected, and reporting it as
-    // one would be a false negative — the mistake that makes undecidability
-    // invisible. Turing machines and an unhalted two-way head both land here.
-    const undecided = verdict === 'unk';
-    const accepted = undecided ? false
-      : transducer ? (App.config.transducerAccepts ? verdict === 'acc' : undefined)
-        : verdict === 'acc';
-
-    return {
-      str: line,
-      accepted,
-      output: output ?? null,
-      expect,
-      verdict: undecided ? 'unknown'
-        : accepted === undefined ? undefined
-          : accepted ? 'accept' : 'reject'
-    };
-  });
-
-  const withExpectation = results.filter(r => r.expect && !r.error);
-  // An "unknown" matches no expectation — it is neither a pass nor a
-  // rejection, and folding it into either would hide the budget.
-  const passCount = withExpectation.filter(r => r.verdict === r.expect).length;
-  const unknowns = results.filter(r => r.verdict === 'unknown').length;
-  return {
-    results,
-    expected: withExpectation.length,
-    passCount,
-    unknowns,
-    allPassed: withExpectation.length > 0 && passCount === withExpectation.length,
-    machine: App.machine,
-    budget: langStepBudget()
-  };
-}
+// The deciding half of the batch tester moved to js/machines/batch.js so a
+// worker can run it — see the header there. Re-exported from here because
+// this is where every caller already imports it from, and because a batch
+// run is still a *run*: the player owns the control flow, the machine layer
+// owns the verdict.
+export { computeBatchResults, decideBatchRows, parseBatchLine, summarizeBatch } from './machines/batch.js';
 
 export function renderBatchResults(batch) {
   const summaryEl = $('batch-summary');
@@ -815,7 +762,14 @@ export function renderBatchResults(batch) {
   if (bar) bar.style.display = results.length ? 'flex' : 'none';
 }
 
+// Incremented on every run, so a parallel result that lands after the reader
+// has started another one — of either kind — is dropped instead of painting
+// over it. The serial branch bumps it too: a short run started while a long
+// one is still out must not be overwritten when the long one returns.
+let batchRunToken = 0;
+
 export function runBatch() {
+  const token = ++batchRunToken;
   const rawLines = $('batch-in').value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   if (!rawLines.length) return;
   if (!App.startId) {
@@ -827,11 +781,46 @@ export function runBatch() {
     App.lastBatch = null;
     return;
   }
-  const batch = computeBatchResults(rawLines);
-  // Held so the export actions report exactly what is on screen rather than
-  // silently re-running the machine against an edited textarea.
-  App.lastBatch = batch;
-  renderBatchResults(batch);
+  // Every row is an independent run over one unchanging machine, which is the
+  // one workload in the app that goes wide for free. Under the threshold — or
+  // wherever workers are unavailable — this is the same synchronous call it
+  // always was, and both paths run the identical decideBatchRows().
+  if (!shouldParallelize(rawLines.length, App.machine)) {
+    const batch = computeBatchResults(rawLines);
+    // Held so the export actions report exactly what is on screen rather than
+    // silently re-running the machine against an edited textarea.
+    App.lastBatch = batch;
+    renderBatchResults(batch);
+    return;
+  }
+
+  renderBatchPending(rawLines.length);
+  runParallel({
+    kind: 'batch', items: rawLines, machine: App.machine, serial: decideBatchRows
+  }).then(rows => {
+    // A second Run pressed while this one was out supersedes it — the results
+    // on screen must be the ones for the words in the box now.
+    if (token !== batchRunToken) return;
+    const batch = summarizeBatch(rows);
+    App.lastBatch = batch;
+    renderBatchResults(batch);
+  });
+}
+
+// A parallel batch is the only one that can take long enough to need saying
+// so. Deliberately plain: the results table replaces this the moment the pool
+// returns, and a progress bar that is usually on screen for 80ms is noise.
+function renderBatchPending(n) {
+  // The previous run's rows are no longer what the box says, and the export
+  // actions read App.lastBatch — so it goes now rather than when the pool
+  // returns, or a fast click exports results for words that are gone.
+  App.lastBatch = null;
+  const el = $('batch-result');
+  if (el) el.innerHTML = `<div class="br-note">Running ${n} words on ${poolSize()} threads…</div>`;
+  const summaryEl = $('batch-summary');
+  if (summaryEl) summaryEl.style.display = 'none';
+  const bar = $('batch-export-bar');
+  if (bar) bar.style.display = 'none';
 }
 
 

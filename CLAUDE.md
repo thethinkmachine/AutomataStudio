@@ -218,6 +218,9 @@ js/machines/
   turing.js      TM, NDTM, MTM, LBA, ITM
   transducer.js  Moore, Mealy, FST
   twoway.js      2DFA, 2NFA, 2DFT
+  predicates.js  import-free. The machine-shape predicates the layer reads.
+  paint.js       import-free. The late-bound renderSimStep hook.
+  batch.js       the batch tester's deciding half, with no page attached.
 ```
 
 **Families are drawn along shared mechanism, not along the model picker's groups.** PDT is a pushdown machine that happens to emit, so it lives with the PDAs whose configuration machinery it uses; 2DFT is a two-way head that happens to emit, so it lives with the two-way heads. Putting either with the transducers would mean copying a store or a head to keep it company.
@@ -239,7 +242,7 @@ A definition is a plain object, registered per *type* — never per family with 
 Points worth keeping in mind:
 
 - **`registry.js` imports nothing**, because family modules call `defineFamily` at module scope and a shared mutable container written from several modules at module scope has to sit in a leaf — the same rule as `modal-registry.js` and `export-registry.js`.
-- **The machine modules are DOM-free except for one call.** A simulator ends with `renderSimStep()` from `simulation.js`; nothing else in `js/machines/` touches the page. That is what keeps `decide` runnable with no page at all, which `computeBatchResults`, the Language fingerprint and StateMate's `verifyCandidate` all depend on.
+- **The machine modules are DOM-free, and now so is everything they import.** A simulator still ends with `renderSimStep()`, but it comes from [js/machines/paint.js](js/machines/paint.js) — an import-free leaf holding a hook that `simulation.js` installs at module scope — rather than from `simulation.js` itself. That distinction is the whole of what changed: the layer was always DOM-free in what it *did*, and DOM-bound in what it *imported*, which is the half a module graph cares about. `runtime.js` pulled `pickMostSpecificTransition` and `symbolsOverlap` out of `utils.js`, and `getState` out of `states-transitions.js`, so importing a simulator evaluated `canvas.js` — which resolves `#canvas-wrap` as it goes. The predicates moved to [js/machines/predicates.js](js/machines/predicates.js) (re-exported by `utils.js`, so no call site changed), `getState` moved to `state.js` (re-exported by `states-transitions.js`, likewise), and `js/machines/**` now imports nothing but leaves. **Adding a UI import anywhere under `js/machines/` silently costs the app its worker pool**, so [tests/parallel.test.js](tests/parallel.test.js) asserts the import graph directly.
 - **A machine says what went wrong; the player decides what an error looks like.** `parseInput` and `guards` return sentences, and `runSim` wraps them in `t-err` / `t-warn`.
 - **`decide()` ignores `App.config.transducerAccepts`.** Whether a transducer is allowed to *have* a verdict is the caller's policy — a machine that emits `011` on a word either consumed it or did not, and that does not change when a checkbox does. `computeBatchResults` is where the answer gets dropped.
 - **Adding a machine is two edits**: a row in `MachineTypes` ([js/state.js](js/state.js)) and a `defineMachine` call in the family module whose mechanism it shares. [tests/machines.test.js](tests/machines.test.js) walks `MachineTypes` rather than a list of its own, so the second edit is not optional: nine assertions fail until the definition exists, and more until it answers every question.
@@ -257,6 +260,30 @@ All simulators produce the same artifact: a flat `App.simSteps` array the UI scr
 Three things keep that honest. **The setting acts inside `makeLoopTracker()` (in [js/machines/runtime.js](js/machines/runtime.js)) and nowhere else**, which is what scopes it: that function is used only by `simTM`, `simLBA` and `simMTM`, so the batch deciders (`testTM3` and friends, each with its own repeat check) carry on deciding — there the repeat *is* the answer, and replacing a correct reject with "no verdict" in a table nobody is watching run would be a loss with nothing bought. **Both the step note and the verdict banner name the setting** when it is off, or a machine the app could have decided reports "no verdict" with nothing on screen to explain why. And **`detectsLoops()` reads absent as on** — a workspace or settings profile written before the setting existed must not load with its verdicts quietly downgraded, the same rule the four `App.config.render` flags follow.
 
 It travels with the workspace through `getWorkspaceData`'s allow-list, beside `twoWayTape`: both change what a run decides, and a file that decides differently when someone else opens it is a file that lies. Settings → Turing.
+
+### Going wide
+
+**Deciding a word is single-threaded; deciding a *list* of them is not.** [js/parallel/](js/parallel/) is a worker pool over the two workloads in the app that are the same shape — N independent runs over one unchanging machine — and nothing else. It is an optimisation, never a capability: every path through it ends in a verdict, and the verdict is the one the serial path would have produced.
+
+```
+snapshot.js       App -> a structured-cloneable machine, and back
+decide-core.js    one message in, one message out. The part with a test.
+decide.worker.js  three lines of plumbing around decide-core
+pool.js           sizing, the work queue, and every way back to serial
+```
+
+The two callers are `runBatch()` in [js/simulation.js](js/simulation.js) and the Language fingerprint's scroll-driven `pullPrimed()` in [js/language.js](js/language.js). Both keep their serial path and take the pool only when `shouldParallelize()` says the job is big enough to pay for it.
+
+Points worth keeping in mind:
+
+- **The serial and parallel paths are the same function, not two implementations.** [js/machines/batch.js](js/machines/batch.js) splits the batch tester into `decideBatchRows()` (the map, which is what a worker runs on a slice) and `summarizeBatch()` (the fold, which is cheap and always runs on the main thread over the merged rows). `computeBatchResults()` is those two composed. A batch that scored differently depending on how many cores the reader has would be far worse than a slow batch, so there is deliberately no second copy that could drift.
+- **Order is carried, never assumed.** Chunks complete in whatever order the scheduler decides, so each carries the offset it started at and is written back into place. Nothing downstream sees completion order.
+- **Every failure ends in the serial computation.** No `Worker` constructor (the `node --test` run, and any CSP that refuses one), a worker that throws, a worker that dies mid-job, a chunk answered against a stale machine — each comes back as a hole, and the holes are filled by running those items here. `runParallel` also counts liveness, because if *every* worker dies on load nothing would call `finish()` and the caller would await a promise that never settles.
+- **`disabled` is latched, which makes it exactly the state that leaks between tests.** Once a CSP has refused a worker it will refuse the next one, so retrying per batch would cost a throw each time. `resetPool()` exists for `resetModuleState()` in [tests/harness.js](tests/harness.js): without it, the one test exercising the all-workers-died path would send every later test down the serial branch, and they would keep passing while testing nothing.
+- **Small work must not get slower.** Spawning eight workers to decide twenty DFA words costs more than deciding them, so `MIN_ITEMS_FOR_POOL` is 32 — but a Turing machine word is a run to `maxTmSteps`, so `EXPENSIVE` machines go wide from four. Workers are then kept warm for a minute, because a second batch or another scroll page usually follows within seconds.
+- **The snapshot is not the save format.** `getWorkspaceData()` carries the camera, notes, dividers and the info card, none of which change a verdict, and it lives in a DOM-bound module. `snapshotMachine()` carries exactly what `js/machines/**` reads — the list came from grepping the layer for `App.`, and [tests/parallel.test.js](tests/parallel.test.js) re-derives it, so a simulator that starts reading a new field fails there rather than deciding differently on a worker than on the main thread.
+- **The first fingerprint pull stays synchronous.** It is what decides whether the grid is drawn at all (`if (!shown) return`), so making it async would mean appending a fingerprint that might turn out to have no cells in it. Only the scroll pages — where the cells actually accumulate, up to the cell cap — are primed through the pool.
+- **`build.worker.format` is `'es'` in [vite.config.js](vite.config.js)**, because the worker is constructed with `{ type: 'module' }`. Vite's default is `iife`, which happens to parse as a module while the bundle stays self-contained — a coincidence rather than a guarantee, and one that stops holding the moment the worker needs a shared chunk.
 
 ### The tape
 
