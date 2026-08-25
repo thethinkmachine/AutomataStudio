@@ -299,6 +299,14 @@ export const App = {
     { value: 'S', label: 'Stay' }
   ],
 };
+// The graph lookup the machine layer runs on. It lived in
+// states-transitions.js beside getTransition/getEdgeTransitions, which is a UI
+// module — so every simulator importing it dragged canvas.js and render.js in
+// behind it, and the machine layer could not be evaluated without a document.
+// It reads App.states and nothing else, so it belongs in the leaf that owns
+// App. states-transitions.js re-exports it, and every call site is unchanged.
+export function getState(id) { return App.states.find(s => s.id === id); }
+
 export const SVG_NS = 'http://www.w3.org/2000/svg';
 // Mirrors App.config.radius. ES module imports are live for reads but read-only
 // for writes, so the one place that changes it (the Settings modal) goes through

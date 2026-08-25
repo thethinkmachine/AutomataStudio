@@ -7,9 +7,8 @@
 // matching edge, the accepting test at the end — lives in runtime.js
 // because the tape machines and the transducers share it too.
 
-import { App } from '../state.js';
-import { renderSimStep } from '../simulation.js';
-import { getState } from '../states-transitions.js';
+import { App, getState } from '../state.js';
+import { renderSimStep } from './paint.js';
 import { accepted, epsClosure, firstIdenticalTransition, getSingleTapeDeterministicTransition, nameOfState, stateNames } from './runtime.js';
 import { defineFamily } from './registry.js';
 

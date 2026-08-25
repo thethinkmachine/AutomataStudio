@@ -27,11 +27,10 @@
 // An LBA is decidable outright: its tape is bounded, so the configuration
 // space is finite and the repeat check always fires.
 
-import { App, usesTwoWayTape } from '../state.js';
-import { renderSimStep } from '../simulation.js';
-import { getState } from '../states-transitions.js';
+import { App, getState, usesTwoWayTape } from '../state.js';
+import { renderSimStep } from './paint.js';
 import { Tape, makeTapes, tapesKey } from '../tape.js';
-import { buildMarkedInputTape, tapeTuplesOverlap } from '../utils.js';
+import { buildMarkedInputTape, tapeTuplesOverlap } from './predicates.js';
 import { firstOverlappingTransition, formatTapeInstantaneousDescription, getMultiTapeDeterministicTransition, getSingleTapeDeterministicTransition, langStepBudget, makeLoopTracker, nameOfState, markLoopStep, markTimeoutStep, parseWordInput, tokenize } from './runtime.js';
 import { defineFamily, machineDef } from './registry.js';
 

@@ -16,10 +16,9 @@
 // can revisit a cell, so termination is a reachability question over
 // (state, position) pairs rather than a walk of length |w|.
 
-import { App, getBoundaryMarkers } from '../state.js';
-import { renderSimStep } from '../simulation.js';
-import { getState } from '../states-transitions.js';
-import { buildMarkedInputTape, pickMostSpecificTransition } from '../utils.js';
+import { App, getBoundaryMarkers, getState } from '../state.js';
+import { renderSimStep } from './paint.js';
+import { buildMarkedInputTape, pickMostSpecificTransition } from './predicates.js';
 import { accepted, firstOverlappingTransition, nameOfState, traceSearchPath, transduced } from './runtime.js';
 import { defineFamily } from './registry.js';
 

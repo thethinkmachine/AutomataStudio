@@ -52,6 +52,15 @@ export default defineConfig({
   // run — which imports the modules directly, with no Vite in the way — does
   // not trip over an undefined global.
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  // js/parallel/decide.worker.js is loaded with `{ type: 'module' }`, so the
+  // built worker has to be a module too. Vite's default worker format is
+  // 'iife', which happens to parse as a module while it stays self-contained —
+  // that is a coincidence, not a guarantee, and it stops being true the moment
+  // the worker bundle needs a shared chunk. Declaring it keeps the two ends of
+  // the contract stated in one place.
+  worker: {
+    format: 'es'
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

@@ -11,10 +11,9 @@
 // it *is* a PDA, sharing every one of those functions, and differs only
 // in accumulating output as it goes.
 
-import { App } from '../state.js';
-import { renderSimStep } from '../simulation.js';
-import { getState } from '../states-transitions.js';
-import { getPdaDeterminismConflict, isQueueAutomaton, isTwoStackPDA } from '../utils.js';
+import { App, getState } from '../state.js';
+import { renderSimStep } from './paint.js';
+import { getPdaDeterminismConflict, isQueueAutomaton, isTwoStackPDA } from './predicates.js';
 import { accepted, nameOfState, traceSearchPath, transduced, transducerRunContributes } from './runtime.js';
 import { defineFamily } from './registry.js';
 

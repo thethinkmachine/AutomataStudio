@@ -17,10 +17,9 @@
 // DPA = NPA = the full ω-regular class and DcoBA = NcoBA ⊊ ω-regular.
 // Büchi is the only cell where determinism costs languages.
 
-import { App, omegaAcceptanceOf, statePriority } from '../state.js';
-import { renderSimStep } from '../simulation.js';
-import { getState } from '../states-transitions.js';
-import { findOmegaDeterminismConflict } from '../utils.js';
+import { App, getState, omegaAcceptanceOf, statePriority } from '../state.js';
+import { renderSimStep } from './paint.js';
+import { findOmegaDeterminismConflict } from './predicates.js';
 import { accepted, firstOverlappingTransition, nameOfState, tokenize } from './runtime.js';
 import { defineFamily } from './registry.js';
 

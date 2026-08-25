@@ -21,9 +21,8 @@
 // rather than the flag: PDT with the pushdown machines, 2DFT with the
 // two-way heads.
 
-import { App } from '../state.js';
-import { renderSimStep } from '../simulation.js';
-import { getState } from '../states-transitions.js';
+import { App, getState } from '../state.js';
+import { renderSimStep } from './paint.js';
 import { accepted, firstOverlappingTransition, getSingleTapeDeterministicTransition, nameOfState, traceSearchPath, transduced, transducerRunContributes } from './runtime.js';
 import { testDFA } from './finite.js';
 import { defineFamily } from './registry.js';
