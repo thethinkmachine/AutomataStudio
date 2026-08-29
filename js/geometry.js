@@ -1,4 +1,5 @@
-import { App, R } from './state.js';
+import { App, R, stateById as stateIndex } from './state.js';
+import { rectHasSegment } from './viewport.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  DIAGRAM GEOMETRY
@@ -561,13 +562,16 @@ function placeLabel(geo, ctx) {
  * @param {boolean}  [opts.collide] force the avoidance passes on or off.
  * @returns {{stateById: Map, tsByPair: Map, groups: Array, geo: Map}}
  */
-export function buildLayoutContext(opts = {}) {
-  const labelSizeFor = typeof opts.labelSizeFor === 'function' ? opts.labelSizeFor : defaultLabelSize;
-  const states = App.states || [];
-  const transitions = App.transitions || [];
+// Cached grouping. See buildLayoutContext for why it is safe to hold across
+// frames, and js/state.js's stateIndex for the validation this mirrors.
+let _grpArr = null, _grpLen = -1, _grpFirst = null, _grpLast = null;
+let _grpStates = null, _grpVal = null;
 
-  const stateById = new Map();
-  for (const s of states) stateById.set(s.id, s);
+function groupTransitions(transitions, stateById) {
+  const n = transitions.length;
+  if (_grpVal && _grpArr === transitions && _grpLen === n
+    && _grpFirst === transitions[0] && _grpLast === transitions[n - 1]
+    && _grpStates === stateById) return _grpVal;
 
   const tsByPair = new Map();
   for (const t of transitions) {
@@ -586,13 +590,53 @@ export function buildLayoutContext(opts = {}) {
     if (from && to) groups.push({ key, from, to, ts });
   }
 
+  _grpArr = transitions; _grpLen = n;
+  _grpFirst = transitions[0]; _grpLast = transitions[n - 1];
+  // The state index is itself replaced whenever App.states changes, so holding
+  // it by identity is what makes "a state was deleted" invalidate the groups.
+  _grpStates = stateById;
+  _grpVal = { tsByPair, groups };
+  return _grpVal;
+}
+
+/** Tests replace the model wholesale in ways the validator can coincide on. */
+export function invalidateLayoutGroups() { _grpArr = null; _grpVal = null; }
+
+export function buildLayoutContext(opts = {}) {
+  const labelSizeFor = typeof opts.labelSizeFor === 'function' ? opts.labelSizeFor : defaultLabelSize;
+  const states = App.states || [];
+  const transitions = App.transitions || [];
+
+  // The one id -> state index the whole app shares, rather than a private copy
+  // built per pass. On a drag frame this pass runs once per frame.
+  const stateById = stateIndex();
+
+  // Grouping is a function of the transition list and the state list, and of
+  // neither one's coordinates — so it survives every frame of a drag, which is
+  // exactly when this pass runs sixty times a second. Validated the same way
+  // the state index is (see getState): array identity, length, and the two end
+  // elements catch every mutation the app performs.
+  const { tsByPair, groups } = groupTransitions(transitions, stateById);
+
   const collide = opts.collide !== undefined
     ? !!opts.collide
     : states.length <= COLLISION_BUDGET_STATES && transitions.length <= COLLISION_BUDGET_TRANSITIONS;
 
+  // A cull rect turns stages 2-3 into a pass over the edges near the screen
+  // rather than over all of them. It is deliberately ignored while `collide` is
+  // on: avoidance is global — a label is placed clear of the labels that exist —
+  // so laying out a subset would put an edge in a different place depending on
+  // where the camera happened to be. The two regimes do not overlap in practice
+  // (a machine big enough to cull is past the collision budget), and where they
+  // could, correctness wins.
+  const view = !collide && opts.viewport ? opts.viewport : null;
+  // How far outside the rect a curve can still bleed: a quadratic's deviation is
+  // half its control offset, and a self-loop stands off by its own extent.
+  const viewPad = view ? Math.max(num(cfg().curveOff, 45), 2 * nodeR() + 40) : 0;
+
   const cell = 2 * nodeR() + nodeClearance() * 2;
   const ctx = {
-    stateById, tsByPair, groups, states, collide,
+    stateById, tsByPair, groups, states, collide, view,
     nodeGrid: makeGrid(cell),
     incidentDirs: new Map(),
     edgeGrid: makeGrid(cell),
@@ -602,7 +646,9 @@ export function buildLayoutContext(opts = {}) {
     geo: new Map()
   };
 
-  for (const s of states) gridAdd(ctx.nodeGrid, s.x, s.y, s);
+  // Only the avoidance stages query it, so a pass that has skipped them does not
+  // pay to fill it — that loop alone was a thousand grid inserts per drag frame.
+  if (collide) for (const s of states) gridAdd(ctx.nodeGrid, s.x, s.y, s);
 
   // Directions an edge leaves or arrives at each state, so a self-loop can be
   // put somewhere an arrowhead is not already landing. The start arrow counts:
@@ -626,6 +672,9 @@ export function buildLayoutContext(opts = {}) {
   // ── stage 2 + 3: paths ──
   for (const g of groups) {
     const { from, to, ts, key } = g;
+    // Off-screen edges get no geometry, which is also what tells renderTransitions
+    // to evict their nodes: syncEdgeNode already declines a group with no geo.
+    if (view && !rectHasSegment(view, from.x, from.y, to.x, to.y, viewPad)) continue;
     const labelSize = labelSizeFor(ts, from.id === to.id) || { w: 30, h: TEXT_LINE_H };
 
     if (from.id === to.id) {
@@ -743,6 +792,57 @@ function sampleEdge(ctx, geo) {
 //  NODE OVERLAP
 // ══════════════════════════════════════════════════════════════════
 
+// Above this many states the all-pairs loop below is replaced by a grid sweep.
+// The threshold is not a quality knob — both paths separate the same circles to
+// the same distance — it is where building the grid starts costing less than the
+// comparisons it saves.
+const OVERLAP_GRID_STATES = 60;
+
+// Every pair within `min` of each other, found through a uniform grid whose cell
+// is `min`, so each state only ever tests the nine cells around it. The all-pairs
+// version is 24 passes of n²/2: dropping a single state on a 1000-state machine
+// meant twelve million distance tests before the pointer came back, which is the
+// whole of why a drop used to hang.
+//
+// Ordering matters and is preserved. The pairs come out in list order — a state
+// against its own later neighbours — because the coincident-centre case derives
+// its separation direction from the pair's indices, and a different visiting
+// order would fan a pile out differently.
+function forEachNearPair(list, min, fn) {
+  const cell = min;
+  const grid = new Map();
+  const key = (cx, cy) => cx + ',' + cy;
+  // The cell each state was filed under, kept rather than recomputed. The pass
+  // moves states as it goes, so asking a state which cell it is in *now* would
+  // send the query looking in a neighbourhood the grid never filed its partners
+  // into — which is how a pile of coincident states came apart into a pile of
+  // slightly-less-coincident ones and the relaxation declared itself finished.
+  const cells = new Int32Array(list.length * 2);
+  for (let i = 0; i < list.length; i++) {
+    const s = list[i];
+    const cx = Math.floor(s.x / cell), cy = Math.floor(s.y / cell);
+    cells[i * 2] = cx; cells[i * 2 + 1] = cy;
+    const k = key(cx, cy);
+    const bucket = grid.get(k);
+    if (bucket) bucket.push(i); else grid.set(k, [i]);
+  }
+  for (let i = 0; i < list.length; i++) {
+    const cx = cells[i * 2], cy = cells[i * 2 + 1];
+    for (let ox = -1; ox <= 1; ox++) {
+      for (let oy = -1; oy <= 1; oy++) {
+        const bucket = grid.get(key(cx + ox, cy + oy));
+        if (!bucket) continue;
+        for (const j of bucket) {
+          // Each unordered pair once, in the same orientation the all-pairs
+          // loop would have visited it.
+          if (j <= i) continue;
+          fn(i, j);
+        }
+      }
+    }
+  }
+}
+
 /**
  * Pushes overlapping state circles apart until every pair clears `gap`.
  *
@@ -762,38 +862,50 @@ export function resolveNodeOverlaps(states, opts = {}) {
   const movable = opts.movable ? new Set(opts.movable) : null;
   const canMove = s => !movable || movable.has(s.id);
   const iterations = opts.iterations || 24;
+  // `grid` forces one path or the other. The two produce equivalent separations
+  // — that is what the threshold assumes — so it exists to let a test say so,
+  // rather than to offer a choice worth making.
+  const useGrid = opts.grid !== undefined
+    ? (!!opts.grid && min > 0)
+    : (list.length > OVERLAP_GRID_STATES && min > 0);
   let moved = false;
 
   for (let pass = 0; pass < iterations; pass++) {
     let worst = 0;
-    for (let i = 0; i < list.length; i++) {
-      for (let j = i + 1; j < list.length; j++) {
-        const a = list[i], b = list[j];
-        const aFree = canMove(a), bFree = canMove(b);
-        if (!aFree && !bFree) continue;
-        const dx = b.x - a.x, dy = b.y - a.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist >= min) continue;
-        // Exactly coincident centres have no direction to separate along, so
-        // one is derived from the pair's position in the list — deterministic,
-        // and different for each pair, so a pile fans out instead of stacking.
-        // The unit vector is built here rather than by dividing through by a
-        // stand-in distance: dividing by an epsilon scales the push by a
-        // thousand and throws the state clear off the canvas.
-        let ux, uy;
-        if (dist < 0.001) {
-          const seed = ((i * 7 + j * 13) % 16) * (Math.PI / 8);
-          ux = Math.cos(seed); uy = Math.sin(seed);
-        } else {
-          ux = dx / dist; uy = dy / dist;
-        }
-        const push = min - dist;
-        worst = Math.max(worst, push);
-        const shareA = aFree ? (bFree ? 0.5 : 1) : 0;
-        const shareB = bFree ? (aFree ? 0.5 : 1) : 0;
-        a.x -= ux * push * shareA; a.y -= uy * push * shareA;
-        b.x += ux * push * shareB; b.y += uy * push * shareB;
-        moved = true;
+    const pair = (i, j) => {
+      const a = list[i], b = list[j];
+      const aFree = canMove(a), bFree = canMove(b);
+      if (!aFree && !bFree) return;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist >= min) return;
+      // Exactly coincident centres have no direction to separate along, so
+      // one is derived from the pair's position in the list — deterministic,
+      // and different for each pair, so a pile fans out instead of stacking.
+      // The unit vector is built here rather than by dividing through by a
+      // stand-in distance: dividing by an epsilon scales the push by a
+      // thousand and throws the state clear off the canvas.
+      let ux, uy;
+      if (dist < 0.001) {
+        const seed = ((i * 7 + j * 13) % 16) * (Math.PI / 8);
+        ux = Math.cos(seed); uy = Math.sin(seed);
+      } else {
+        ux = dx / dist; uy = dy / dist;
+      }
+      const push = min - dist;
+      worst = Math.max(worst, push);
+      const shareA = aFree ? (bFree ? 0.5 : 1) : 0;
+      const shareB = bFree ? (aFree ? 0.5 : 1) : 0;
+      a.x -= ux * push * shareA; a.y -= uy * push * shareA;
+      b.x += ux * push * shareB; b.y += uy * push * shareB;
+      moved = true;
+    };
+
+    if (useGrid) {
+      forEachNearPair(list, min, pair);
+    } else {
+      for (let i = 0; i < list.length; i++) {
+        for (let j = i + 1; j < list.length; j++) pair(i, j);
       }
     }
     if (worst < 0.5) break;

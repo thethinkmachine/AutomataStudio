@@ -1644,6 +1644,16 @@
           <span class="modal-lbl">Node Clearance (px)</span>
           <input type="number" class="inp" id="set-node-clearance" min="0" max="80" label="Space edges and labels leave around a state">
         </div>
+        <div class="modal-section-lbl">Large Machines</div>
+        <div class="modal-row" data-tip="Past a few hundred states, build only the part of the diagram near the screen and drop the rest as you pan away from it. The machine is unchanged — every state is still simulated, exported and measured. Off, the whole diagram exists at once, which is what makes a thousand-state machine slow to pan.">
+          <span class="modal-lbl">Draw Only What Is On Screen</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-cull-offscreen"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="Zoomed far enough out that a label is a two-pixel smear, stop drawing labels and draw the graph alone. Only ever applies to machines large enough to be culled.">
+          <span class="modal-lbl">Drop Labels When Zoomed Out</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-zoom-lod"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+
         <div class="modal-row">
           <span class="modal-lbl">Export Resolution (×)</span>
           <input type="number" step="0.5" min="1" max="10" class="inp" id="set-export-res" label="Density of the exported PNG image">

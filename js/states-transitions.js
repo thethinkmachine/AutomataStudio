@@ -18,7 +18,24 @@ export function newTId() { return 't' + (++App.transN); }
 // Re-exported so the many UI call sites that already import it from here
 // keep working; the definition moved to the leaf that owns App.states.
 export { getState };
-export function getTransition(id) { return App.transitions.find(t => t.id === id); }
+// Indexed for the same reason getState is (see js/state.js): resolving a
+// selection of two thousand ids by linear scan is four million comparisons, and
+// syncSelectionClasses does exactly that after a select-all. Validated rather
+// than invalidated — App.transitions is pushed to, filtered and reassigned from
+// a dozen places, and none of them announces it.
+let _tIdx = null, _tArr = null, _tLen = -1, _tFirst = null, _tLast = null;
+
+function transitionIndex() {
+  const arr = App.transitions || [];
+  const n = arr.length;
+  if (_tArr === arr && _tLen === n && _tFirst === arr[0] && _tLast === arr[n - 1]) return _tIdx;
+  const map = new Map();
+  for (let i = 0; i < n; i++) map.set(arr[i].id, arr[i]);
+  _tIdx = map; _tArr = arr; _tLen = n; _tFirst = arr[0]; _tLast = arr[n - 1];
+  return map;
+}
+
+export function getTransition(id) { return transitionIndex().get(id); }
 export function getEdgeTransitions(from, to) { return App.transitions.filter(t => t.from === from && t.to === to); }
 
 // At most one right-click popover is ever open: the two menus (#ctx for

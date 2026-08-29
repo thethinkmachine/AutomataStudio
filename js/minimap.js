@@ -38,7 +38,7 @@ import { applyCamera, normalizeWheelDeltas } from './canvas.js';
 import { includeDividerBounds, isRectDivider } from './dividers.js';
 import { markDirty } from './history.js';
 import { includeNoteBounds, noteBoxLayout, resolveNotePos } from './notes.js';
-import { $, App } from './state.js';
+import { $, App, stateById } from './state.js';
 import { Change, subscribe } from './store.js';
 import { fitToScreen, layoutCanvasOverlays, visibleCanvasBox } from './ui.js';
 
@@ -395,7 +395,16 @@ function drawNotes(ctx, pal, px, py, scale) {
 // Parallel transitions between the same pair share one drawn edge — the canvas
 // draws them as one path with a stacked label, and stroking five identical
 // curves here would only darken the line.
+// Cached: the pairs depend on the transition list and on nothing that moves, so
+// a pan does not rebuild them. Validated the same way the state index is —
+// array identity, length and the two end elements. See js/state.js.
+let _pairsArr = null, _pairsLen = -1, _pairsFirst = null, _pairsLast = null, _pairsVal = null;
+
 function edgePairs() {
+  const list = App.transitions;
+  const n = list.length;
+  if (_pairsVal && _pairsArr === list && _pairsLen === n
+    && _pairsFirst === list[0] && _pairsLast === list[n - 1]) return _pairsVal;
   const byPair = new Map();
   for (const t of App.transitions) {
     const key = t.from + '|' + t.to;
@@ -404,13 +413,18 @@ function edgePairs() {
     if (e.curve === null && Number.isFinite(t.curve)) e.curve = t.curve;
     if (e.loopAngle === null && Number.isFinite(t.loopAngle)) e.loopAngle = t.loopAngle;
   }
+  _pairsArr = list; _pairsLen = n; _pairsFirst = list[0]; _pairsLast = list[n - 1];
+  _pairsVal = byPair;
   return byPair;
 }
 
+// Every edge is stroked in one colour at one width, so the whole diagram is one
+// path and one stroke() rather than one of each per edge. On a 2000-transition
+// machine that is the difference between four thousand canvas calls per pan
+// frame and two — and the map repaints on every frame of every pan.
 function drawEdges(ctx, pal, px, py, scale) {
   if (!App.transitions.length) return;
-  const byId = new Map();
-  for (const s of App.states) byId.set(s.id, s);
+  const byId = stateById();
 
   const pairs = edgePairs();
   const r = App.config.radius || 22;
@@ -421,8 +435,9 @@ function drawEdges(ctx, pal, px, py, scale) {
   ctx.strokeStyle = pal.edgeStroke;
   ctx.globalAlpha = 0.8;
   ctx.lineWidth = Math.max(0.6, Math.min(1.5, r * 0.06 * scale + 0.5));
+  ctx.beginPath();
 
-  for (const [key, e] of pairs) {
+  for (const [, e] of pairs) {
     const from = byId.get(e.from), to = byId.get(e.to);
     if (!from || !to) continue;
 
@@ -434,9 +449,10 @@ function drawEdges(ctx, pal, px, py, scale) {
       const nodeR = Math.max(NODE_R_MIN, Math.min(NODE_R_MAX, r * scale));
       const cx = px(from.x) + Math.cos(a) * (nodeR + loopR * 0.55);
       const cy = py(from.y) + Math.sin(a) * (nodeR + loopR * 0.55);
-      ctx.beginPath();
+      // The moveTo is what keeps this a subpath of its own: without it the arc
+      // is joined to wherever the previous edge ended by a line across the map.
+      ctx.moveTo(cx + loopR, cy);
       ctx.arc(cx, cy, loopR, 0, Math.PI * 2);
-      ctx.stroke();
       continue;
     }
 
@@ -449,7 +465,6 @@ function drawEdges(ctx, pal, px, py, scale) {
     // distinguishable. The collision-avoidance detour is deliberately not
     // reproduced — at this scale it would move a line by under a pixel.
     const crv = e.curve !== null ? e.curve : (pairs.has(e.to + '|' + e.from) ? curveOff : 0);
-    ctx.beginPath();
     ctx.moveTo(ax, ay);
     if (crv) {
       const nx = -dy / dist, ny = dx / dist;
@@ -457,8 +472,8 @@ function drawEdges(ctx, pal, px, py, scale) {
     } else {
       ctx.lineTo(bx, by);
     }
-    ctx.stroke();
   }
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -468,11 +483,22 @@ function drawEdges(ctx, pal, px, py, scale) {
 //   accepting  a second ring outside, in the accept colour
 //   selected   accent fill and ring
 //   running    solid accent with a halo — the simulation cursor
+// Batched by style, for the same reason the edges are: a thousand states meant
+// a thousand beginPath/fill/stroke triples per pan frame, and there are only
+// ever a handful of distinct styles among them. Each bucket becomes one path,
+// filled once and stroked once.
+//
+// This does change one thing, and it is worth being explicit about: within a
+// bucket every fill now happens before every stroke, so two overlapping nodes
+// of the *same* style show both outlines rather than the later one covering the
+// earlier. At two-pixel radii on a thumbnail that is invisible, and separate
+// buckets still paint in the order they were first seen.
 function drawStates(ctx, pal, px, py, scale) {
   if (!App.states.length) return;
   const active = simActiveStates();
   const sel = App.selectedStates;
   const nodeR = Math.max(NODE_R_MIN, Math.min(NODE_R_MAX, (App.config.radius || 22) * scale));
+  const circle = (x, y, r) => { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2); };
 
   ctx.save();
   ctx.lineWidth = 1;
@@ -482,40 +508,56 @@ function drawStates(ctx, pal, px, py, scale) {
   if (active) {
     ctx.globalAlpha = 0.22;
     ctx.fillStyle = pal.actStroke;
+    ctx.beginPath();
     for (const s of App.states) {
       if (!active.has(s.id)) continue;
-      ctx.beginPath();
-      ctx.arc(px(s.x), py(s.y), nodeR + Math.max(2, nodeR * 0.9), 0, Math.PI * 2);
-      ctx.fill();
+      circle(px(s.x), py(s.y), nodeR + Math.max(2, nodeR * 0.9));
     }
+    ctx.fill();
   }
 
   ctx.globalAlpha = 1;
+  // style key -> {fill, stroke, width, pts}
+  const buckets = new Map();
+  const rings = [];
   for (const s of App.states) {
     const x = px(s.x), y = py(s.y);
     const isActive = active && active.has(s.id);
     const isSel = sel && sel.has(s.id);
     const isAcc = App.accepts.has(s.id);
 
-    ctx.beginPath();
-    ctx.arc(x, y, nodeR, 0, Math.PI * 2);
-    ctx.fillStyle = isActive ? pal.actStroke : isSel ? pal.actFill : pal.nodeFill;
-    ctx.fill();
-    ctx.strokeStyle = isActive || isSel ? pal.actStroke
+    const fill = isActive ? pal.actStroke : isSel ? pal.actFill : pal.nodeFill;
+    const stroke = isActive || isSel ? pal.actStroke
       : s.id === App.startId ? pal.startStroke
         : isAcc ? pal.accStroke : pal.nodeStroke;
-    ctx.lineWidth = isActive || isSel ? 1.3 : 1;
-    ctx.stroke();
+    const width = isActive || isSel ? 1.3 : 1;
+    const key = fill + '|' + stroke + '|' + width;
+    let b = buckets.get(key);
+    if (!b) { b = { fill, stroke, width, pts: [] }; buckets.set(key, b); }
+    b.pts.push(x, y);
 
-    if (isAcc) {
-      ctx.beginPath();
-      ctx.arc(x, y, nodeR + Math.max(1.2, nodeR * 0.35), 0, Math.PI * 2);
-      ctx.strokeStyle = pal.accStroke;
-      ctx.globalAlpha = 0.9;
-      ctx.lineWidth = 0.9;
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
+    if (isAcc) rings.push(x, y);
+  }
+
+  for (const b of buckets.values()) {
+    ctx.beginPath();
+    for (let i = 0; i < b.pts.length; i += 2) circle(b.pts[i], b.pts[i + 1], nodeR);
+    ctx.fillStyle = b.fill;
+    ctx.fill();
+    ctx.strokeStyle = b.stroke;
+    ctx.lineWidth = b.width;
+    ctx.stroke();
+  }
+
+  if (rings.length) {
+    const rr = nodeR + Math.max(1.2, nodeR * 0.35);
+    ctx.beginPath();
+    for (let i = 0; i < rings.length; i += 2) circle(rings[i], rings[i + 1], rr);
+    ctx.strokeStyle = pal.accStroke;
+    ctx.globalAlpha = 0.9;
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
   ctx.restore();
 }
