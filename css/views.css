@@ -2213,6 +2213,16 @@
   color: var(--orange);
 }
 
+/* The log holds the tail of a run, not the whole of it — a Turing machine's is
+   ten thousand lines and the panel scrolls itself to the bottom. The count is
+   the standing note that there is more above; the scrubber is what reaches it.
+   Muted rather than accented: it is not a step. */
+.sim-log-elided {
+  color: var(--text3);
+  font-style: italic;
+  opacity: .8;
+}
+
 .tape-wrap {
   display: flex;
   gap: 2px;

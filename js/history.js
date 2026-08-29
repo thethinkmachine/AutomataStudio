@@ -160,10 +160,34 @@ function serializeState() {
  *     App.accepts.add(id);
  *     emit(Change.GRAPH);
  */
+// Two limits, because one of them is the wrong shape on its own. A depth of 300
+// is generous for a ten-state machine and ruinous for a thousand-state one: an
+// entry there is the whole workspace as JSON, a third of a megabyte, so three
+// hundred of them is a hundred megabytes of retained string for a session that
+// has done nothing but drag states around. The byte budget is what actually
+// bounds the memory; the depth stays because on a small machine it is the
+// friendlier limit and is never the one that bites.
+export const HISTORY_MAX_ENTRIES = 300;
+export const HISTORY_MAX_BYTES = 24 * 1024 * 1024;
+
+function historyBytes() {
+  let n = 0;
+  for (const entry of App.history) n += entry.length;
+  return n;
+}
+
 export function snapshot() {
   App.history.push(serializeState());
   App.future = [];
-  if (App.history.length > 300) App.history.shift();
+  if (App.history.length > HISTORY_MAX_ENTRIES) App.history.shift();
+  // Summed rather than tracked incrementally: undo and redo move entries
+  // between the two stacks, and a counter maintained in three places is a
+  // counter that drifts. Three hundred additions cost nothing next to the
+  // stringify that just happened.
+  let bytes = historyBytes();
+  while (App.history.length > 1 && bytes > HISTORY_MAX_BYTES) {
+    bytes -= App.history.shift().length;
+  }
 
   markDirty();
 }

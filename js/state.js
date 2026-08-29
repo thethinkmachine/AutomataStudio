@@ -305,7 +305,39 @@ export const App = {
 // behind it, and the machine layer could not be evaluated without a document.
 // It reads App.states and nothing else, so it belongs in the leaf that owns
 // App. states-transitions.js re-exports it, and every call site is unchanged.
-export function getState(id) { return App.states.find(s => s.id === id); }
+// A linear scan here is the app's single most-multiplied cost: 112 call sites,
+// several of them inside per-transition or per-frame loops, so on a 1000-state
+// machine one render pass alone spent millions of comparisons resolving ids the
+// caller already had. The index is a plain id → state Map, rebuilt lazily.
+//
+// Nothing in the app announces that App.states changed — it is pushed to,
+// filtered and wholesale reassigned from twenty places — so the index validates
+// itself instead of being invalidated. Array identity plus length plus the
+// identity of the two end elements catches every mutation the app actually
+// performs (push, splice, filter, reassign); the one shape it could miss,
+// replacing an element in place at the same index, no call site does.
+let _idxMap = null, _idxArr = null, _idxLen = -1, _idxFirst = null, _idxLast = null;
+
+function stateIndex() {
+  const arr = App.states || [];
+  const n = arr.length;
+  if (_idxArr === arr && _idxLen === n && _idxFirst === arr[0] && _idxLast === arr[n - 1]) return _idxMap;
+  const map = new Map();
+  for (let i = 0; i < n; i++) map.set(arr[i].id, arr[i]);
+  _idxMap = map; _idxArr = arr; _idxLen = n; _idxFirst = arr[0]; _idxLast = arr[n - 1];
+  return map;
+}
+
+export function getState(id) { return stateIndex().get(id); }
+
+// The same index, for callers that resolve many ids at once (the layout pass,
+// the minimap, the exporters) and would otherwise each build their own copy.
+export function stateById() { return stateIndex(); }
+
+// Tests and the workspace loader replace App.states behind the validator's back
+// in ways that can coincide on all four checks (an empty array swapped for
+// another empty array). Cheap insurance, called from resetApp and loadData.
+export function invalidateStateIndex() { _idxArr = null; _idxLen = -1; }
 
 export const SVG_NS = 'http://www.w3.org/2000/svg';
 // Mirrors App.config.radius. ES module imports are live for reads but read-only

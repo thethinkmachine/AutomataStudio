@@ -10,6 +10,7 @@ import { anyModalOpen, closeModal, registerModal, showOverlay } from './modal.js
 import { includeNoteBounds, pruneNoteAnchorsExcluding, removeNotes } from './notes.js';
 import { CARD_AUTO_HIDE_MS, restartAutosaveTimer, saveBackupChecked, saveJSON, saveWorkspace, saveWorkspaceById } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
+import { filterList } from './panel-list.js';
 import {
   getActivePanelTab, getTabSide, isPanelTabActive,
   PANEL_SIDES, PANEL_TAB_NAMES, PANEL_TABS, panelTabNames,
@@ -1632,10 +1633,7 @@ export function hlTransListHover(fromId, toId, on) {
 }
 
 export function filterTransitions() {
-  const q = ($('trans-search')?.value || '').toLowerCase();
-  document.querySelectorAll('#trans-list .ti').forEach(el => {
-    el.style.display = (!q || el.textContent.toLowerCase().includes(q)) ? '' : 'none';
-  });
+  filterList($('trans-list'), $('trans-search')?.value || '');
 }
 
 export function toggleFullscreen() {
@@ -2891,11 +2889,11 @@ document.addEventListener('click', e => {
   if (grammarAction) requestAnimationFrame(() => setMobilePanelCollapsed('gram-left', true));
 });
 
+// The filter narrows the list's data rather than hiding rows that were built to
+// be hidden — which is the only version that works once the list draws a window
+// onto a thousand states instead of all of them. See js/panel-list.js.
 export function filterStates() {
-  const q = ($('state-search')?.value || '').toLowerCase();
-  document.querySelectorAll('#states-list .si').forEach(el => {
-    el.style.display = (!q || el.textContent.toLowerCase().includes(q)) ? '' : 'none';
-  });
+  filterList($('states-list'), $('state-search')?.value || '');
 }
 
 export function setLPSectionCollapsed(id, collapsed, persist = true) {
@@ -3019,6 +3017,10 @@ export function openSettingsModal() {
   if ($('set-avoid-overlap')) $('set-avoid-overlap').checked = c.render.avoidNodeOverlap !== false;
   if ($('set-animate-layout')) $('set-animate-layout').checked = c.render.animateLayout !== false;
   if ($('set-node-clearance')) $('set-node-clearance').value = c.render.nodeClearance ?? 12;
+  // Same "absent means on" rule as the four above: a workspace or settings
+  // profile written before windowing existed must not open with it switched off.
+  if ($('set-cull-offscreen')) $('set-cull-offscreen').checked = c.render.cullOffscreen !== false;
+  if ($('set-zoom-lod')) $('set-zoom-lod').checked = c.render.zoomLOD !== false;
   $('set-export-res').value = c.exportRes || 2;
   $('set-sym-eps').value = c.sym.eps;
   if ($('set-sym-lambda')) $('set-sym-lambda').value = c.sym.lambda;
@@ -3215,6 +3217,8 @@ export function confirmSettings() {
   if ($('set-smart-labels')) c.render.smartLabels = $('set-smart-labels').checked;
   if ($('set-avoid-overlap')) c.render.avoidNodeOverlap = $('set-avoid-overlap').checked;
   if ($('set-animate-layout')) c.render.animateLayout = $('set-animate-layout').checked;
+  if ($('set-cull-offscreen')) c.render.cullOffscreen = $('set-cull-offscreen').checked;
+  if ($('set-zoom-lod')) c.render.zoomLOD = $('set-zoom-lod').checked;
   if ($('set-node-clearance')) {
     // Clamped because it is a distance every routing search steps in: zero makes
     // "clear of a node" mean "touching it", and an outsized value pushes every
@@ -3295,6 +3299,8 @@ export function getEditorSettingsData() {
     renderSmartLabels: c.render.smartLabels !== false,
     renderAvoidNodeOverlap: c.render.avoidNodeOverlap !== false,
     renderAnimateLayout: c.render.animateLayout !== false,
+    renderCullOffscreen: c.render.cullOffscreen !== false,
+    renderZoomLOD: c.render.zoomLOD !== false,
     renderNodeClearance: c.render.nodeClearance ?? 12,
     exportRes: c.exportRes,
     symEps: c.sym.eps,
@@ -3366,6 +3372,8 @@ export function populateSettingsModalInputs(data) {
   if (data.renderSmartLabels !== undefined && $('set-smart-labels')) $('set-smart-labels').checked = !!data.renderSmartLabels;
   if (data.renderAvoidNodeOverlap !== undefined && $('set-avoid-overlap')) $('set-avoid-overlap').checked = !!data.renderAvoidNodeOverlap;
   if (data.renderAnimateLayout !== undefined && $('set-animate-layout')) $('set-animate-layout').checked = !!data.renderAnimateLayout;
+  if (data.renderCullOffscreen !== undefined && $('set-cull-offscreen')) $('set-cull-offscreen').checked = !!data.renderCullOffscreen;
+  if (data.renderZoomLOD !== undefined && $('set-zoom-lod')) $('set-zoom-lod').checked = !!data.renderZoomLOD;
   if (data.renderNodeClearance !== undefined && $('set-node-clearance')) $('set-node-clearance').value = data.renderNodeClearance;
   if (data.exportRes !== undefined) $('set-export-res').value = data.exportRes;
   if (data.symEps !== undefined) $('set-sym-eps').value = data.symEps;

@@ -15,7 +15,7 @@
 
 import { makeSVG } from './render.js';
 import { $, App, R, detectsLoops, getMachineConfig, isOmegaAutomaton, isWeightedFA } from './state.js';
-import { getState } from './states-transitions.js';
+import { getState, getTransition } from './states-transitions.js';
 import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
 import { isAnyPDA, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
 import { decideMachine, machineGuards, parseMachineInput, simulateMachine } from './machines/index.js';
@@ -98,20 +98,38 @@ export function runQuietly(fn) {
 // on the main thread is long before any run can start.
 setSimStepPainter(renderSimStep);
 
+// Steps kept in the trace log. Generous next to the panel's height — scrolling
+// back through the last few hundred steps of a run is a real thing to want, and
+// scrolling back through ten thousand is what the scrubber is for.
+export const SIM_LOG_TAIL = 400;
+
 export function renderSimStep() {
   if (quietDepth) return;
   const step = App.simSteps[App.simIdx]; if (!step) return;
   const isLast = App.simIdx === App.simSteps.length - 1;
 
-  // Log update
-  const logLines = App.simSteps.slice(0, App.simIdx + 1).map((s, i) => {
+  // Log update.
+  //
+  // Only the tail is written. The log used to be rebuilt from step 0 on every
+  // tick, which is quadratic in the length of the run and the reason playing
+  // back a Turing machine got slower the longer it ran: at maxTmSteps a single
+  // tick meant building and parsing ten thousand divs, ten thousand times over.
+  // The log scrolls itself to the bottom, so everything above the last screenful
+  // was being built to be scrolled past; the count stands in for it instead, and
+  // the scrubber is what actually navigates a long run.
+  const from = Math.max(0, App.simIdx + 1 - SIM_LOG_TAIL);
+  let logLines = from
+    ? `<div class="t-step sim-log-elided">… ${from.toLocaleString()} earlier step${from === 1 ? '' : 's'}</div>`
+    : '';
+  for (let i = from; i <= App.simIdx; i++) {
+    const s = App.simSteps[i];
     const cl = i === App.simIdx
       ? (s.final === 'accept' ? 't-ok'
         : (s.final === 'reject' || s.final === 'loop') ? 't-err'
           : s.final === 'timeout' ? 't-warn' : 't-step')
       : '';
-    return `<div class="${cl}">${i}: ${s.note}</div>`;
-  }).join('');
+    logLines += `<div class="${cl}">${i}: ${s.note}</div>`;
+  }
   log(logLines);
 
   // Unified Tracker System
@@ -393,7 +411,7 @@ export function getSimStepEdgeKeys(idx) {
   const step = App.simSteps[idx];
   if (!step) return [];
   if (step.tid) {
-    const t = App.transitions.find(tr => tr.id === step.tid);
+    const t = getTransition(step.tid);
     return t ? [t.from + '|' + t.to] : [];
   }
   if (step.states) return getNfaSimStepEdgeKeys(idx);
@@ -436,14 +454,49 @@ export function getNfaSimStepEdgeKeys(idx) {
   return [...keys];
 }
 
+// What the last paint lit, so undoing it is a walk over a few dozen elements
+// rather than four document-wide selector matches per step of playback.
+let simLit = [];
+
+function litAdd(el, ...classes) {
+  if (!el) return;
+  el.classList.add(...classes);
+  simLit.push([el, classes]);
+}
+
 export function clearSimCanvasHighlights() {
-  document.querySelectorAll('.sn.act-st, .sn.rej-st, .sn.sim-visited-st')
-    .forEach(el => el.classList.remove('act-st', 'rej-st', 'sim-visited-st'));
-  document.querySelectorAll('.edge-g.sim-active-t, .edge-g.sim-trail-t')
-    .forEach(el => el.classList.remove('sim-active-t', 'sim-trail-t'));
-  document.querySelectorAll('.tlbl.sim-active-lbl').forEach(el => el.classList.remove('sim-active-lbl'));
-  document.querySelectorAll('.sim-pulse').forEach(el => el.remove());
+  for (const [el, classes] of simLit) el.classList.remove(...classes);
+  simLit = [];
+  // Pulses are transient rings the animation appends and removes itself; the
+  // sweep is a safety net for the ones whose animationend never fired, and it is
+  // scoped to the states layer rather than the document.
+  const layer = $('states-g');
+  if (layer) layer.querySelectorAll('.sim-pulse').forEach(el => el.remove());
   removeSimTokens();
+}
+
+// The trail — every state and edge the run has been through — accumulates as
+// the playhead advances, so it is carried forward rather than recomputed. It
+// used to be rebuilt from step 0 on every step, and each of those steps resolved
+// its transition by scanning App.transitions: at a machine's ten-thousandth step
+// that is twenty million comparisons, for one frame of playback, and the run got
+// slower with every step it took.
+//
+// Only a jump backwards costs a rebuild, which is what a scrub is and is
+// bounded by where it lands.
+function trailUpTo(idx) {
+  let c = App._simTrail;
+  if (!c || c.run !== App.simSteps || c.upTo > idx) {
+    c = { run: App.simSteps, upTo: 0, visited: new Set(), keys: new Set() };
+  }
+  for (let i = c.upTo; i < idx; i++) {
+    const s = App.simSteps[i];
+    (s.states || (s.state ? [s.state] : [])).forEach(id => c.visited.add(id));
+    getSimStepEdgeKeys(i).forEach(k => c.keys.add(k));
+  }
+  c.upTo = Math.max(c.upTo, idx);
+  App._simTrail = c;
+  return c;
 }
 
 export function updateSimCanvasHighlights(step) {
@@ -454,41 +507,35 @@ export function updateSimCanvasHighlights(step) {
 
   clearSimCanvasHighlights();
 
-  // Trail: everything traversed before the current step accumulates
-  // behind the playhead, so the whole route stays visible.
-  const visited = new Set();
-  const trailKeys = new Set();
-  for (let i = 0; i < App.simIdx; i++) {
-    const s = App.simSteps[i];
-    (s.states || (s.state ? [s.state] : [])).forEach(id => visited.add(id));
-    getSimStepEdgeKeys(i).forEach(k => trailKeys.add(k));
-  }
+  const trail = trailUpTo(App.simIdx);
+  const visited = trail.visited;
+  const trailKeys = trail.keys;
 
   const activeKeys = getSimStepEdgeKeys(App.simIdx);
+  const activeSet = new Set(activeKeys);
   const hl = step.state ? [step.state] : (step.states || []);
+  const hlSet = new Set(hl);
 
+  // The registries rather than the document: after culling only the drawn
+  // window has nodes, and a state the trail passed through that is currently
+  // off screen has nothing to mark.
   visited.forEach(id => {
-    if (hl.includes(id)) return;
-    const el = document.querySelector(`[data-id="${id}"]`);
-    if (el) el.classList.add('sim-visited-st');
+    if (hlSet.has(id)) return;
+    litAdd(App.domCache.states.get(id), 'sim-visited-st');
   });
   trailKeys.forEach(k => {
-    if (activeKeys.includes(k)) return;
-    const el = findSimEdgeGroup(k);
-    if (el) el.classList.add('sim-trail-t');
+    if (activeSet.has(k)) return;
+    litAdd(findSimEdgeGroup(k), 'sim-trail-t');
   });
 
   hl.forEach(id => {
-    const el = document.querySelector(`[data-id="${id}"]`);
-    if (el) el.classList.add(step.final === 'reject' ? 'rej-st' : 'act-st');
+    litAdd(App.domCache.states.get(id) || document.querySelector(`[data-id="${id}"]`),
+      step.final === 'reject' ? 'rej-st' : 'act-st');
   });
   activeKeys.forEach(k => {
-    const el = findSimEdgeGroup(k);
-    if (el) el.classList.add('sim-active-t');
-    const lbl = document.getElementById(`lbl-${k}`);
-    if (lbl) lbl.classList.add('sim-active-lbl');
-    const pillLbl = document.getElementById(`pill-lbl-${k}`);
-    if (pillLbl) pillLbl.classList.add('sim-active-lbl');
+    litAdd(findSimEdgeGroup(k), 'sim-active-t');
+    litAdd(document.getElementById(`lbl-${k}`), 'sim-active-lbl');
+    litAdd(document.getElementById(`pill-lbl-${k}`), 'sim-active-lbl');
   });
 
   // Motion: a token slides along each newly-taken edge, then the arrival
@@ -736,6 +783,11 @@ export function resetSim() {
   const scrubRow = $('sim-scrubber-row'); if (scrubRow) scrubRow.style.display = 'none';
   clearSimCanvasHighlights();
   App._simRenderRun = null; App._simRenderIdx = -1;
+  // The accumulated trail is keyed on the steps array it was built from, and
+  // the assignment above hands out a new one — but clearing it here keeps that
+  // an explicit reset rather than a consequence of how resetSim happens to
+  // empty the run.
+  App._simTrail = null;
   setRunBtnState('idle');
 }
 export function toggleAuto() {

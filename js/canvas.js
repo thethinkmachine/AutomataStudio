@@ -5,9 +5,9 @@ import { includeLayoutBounds, resolveNodeOverlaps } from './geometry.js';
 import { markDirty, snapshot } from './history.js';
 import { clearActiveNoteHighlight, dragSelectedNotesTo, endNoteResize, getNote, includeNoteBounds, resizeNoteTo, resolveNotePos, syncNoteSelectionClasses } from './notes.js';
 import { getWorkspaceData } from './persistence.js';
-import { currentLayoutContext, makeSVG, renderAll, updateFastDOM, updateLPanel, updateRPanel } from './render.js';
+import { currentLayoutContext, makeSVG, renderAll, repaintForCamera, updateFastDOM, updateLPanel, updateRPanel, withFullRender } from './render.js';
 import { $, App } from './state.js';
-import { createState, deleteState, getState, hideContextMenu, newId, newTId, openTransModal } from './states-transitions.js';
+import { createState, deleteState, getState, getTransition, hideContextMenu, newId, newTId, openTransModal } from './states-transitions.js';
 import { Change, emit } from './store.js';
 import { scheduleMinimap } from './minimap.js';
 import { fitToScreen, markActiveWorkspaceSaved } from './ui.js';
@@ -173,6 +173,11 @@ export let _pendingFrame = false;
 // js/minimap.js), so the camera can just say it moved and let it decide.
 export function applyCamera() {
   scheduleMinimap();
+  // On a machine large enough to be windowed, the camera decides what exists.
+  // It is a no-op — one rect comparison — until the screen has actually left
+  // the drawn window, so an ordinary pan still costs a transform and nothing
+  // else. See js/viewport.js.
+  repaintForCamera();
   if (_pendingFrame) return;
   _pendingFrame = true;
   requestAnimationFrame(() => {
@@ -464,7 +469,7 @@ export function handlePointerMove(e) {
       if (midX >= mx && midX <= mx + mw && midY >= my && midY <= my + mh) {
         if (!App.selectedTransitions.has(t.id)) {
           App.selectedTransitions.add(t.id);
-          const el = document.querySelector(`[data-edge="${t.from}|${t.to}"]`);
+          const el = App.domCache.transitions.get(t.from + '|' + t.to);
           if (el) el.classList.add('sel-t');
         }
       }
@@ -791,7 +796,13 @@ export function drawTempLine(x1, y1, x2, y2) {
   ['x1', 'y1', 'x2', 'y2'].forEach((a, i) => tempLine.setAttribute(a, [x1, y1, x2, y2][i]));
 }
 export function clearTempLine() { if (tempLine) { tempLine.remove(); tempLine = null; } }
-export function hlState(id, on) { const el = document.querySelector(`[data-id="${id}"]`); if (el) el.classList.toggle('sel-st', on); }
+// The renderer's node registry first: after a select-all this is called once per
+// state, and a document-wide selector match per call is a thousand scans of the
+// canvas to find a node the renderer is already holding by id.
+export function hlState(id, on) {
+  const el = App.domCache.states.get(id) || document.querySelector(`[data-id="${id}"]`);
+  if (el) el.classList.toggle('sel-st', on);
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  SELECTION — one model for everything on the canvas
@@ -819,14 +830,27 @@ export function selectionCount() {
 // by their own renderers, but the handlers below also toggle classes directly
 // without a render, so clearing has to reach the nodes the same way.
 export function syncSelectionClasses() {
-  document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
+  // Cleared through the renderer's registries rather than a selector match:
+  // every state and edge node on the canvas is in one of the two, so this is a
+  // walk over what is drawn instead of a query over the whole document — and on
+  // a windowed canvas what is drawn is a few hundred nodes, not fifteen
+  // thousand. A node the renderer has evicted is out of the document with its
+  // classes, and comes back clean.
+  for (const [, n] of App.domCache.states) n.classList.remove('sel-st');
+  for (const [, n] of App.domCache.transitions) n.classList.remove('sel-t');
   App.selectedStates.forEach(id => hlState(id, true));
+  // Parallel transitions share one drawn edge, so the keys are collected first:
+  // selecting five edges between the same pair must not mean five lookups and
+  // five class writes on the same node.
+  const keys = new Set();
   App.selectedTransitions.forEach(tid => {
-    const t = App.transitions.find(x => x.id === tid);
-    if (!t) return;
-    const el = document.querySelector(`[data-edge="${t.from}|${t.to}"]`);
-    if (el) el.classList.add('sel-t');
+    const t = getTransition(tid);
+    if (t) keys.add(t.from + '|' + t.to);
   });
+  for (const key of keys) {
+    const el = App.domCache.transitions.get(key) || document.querySelector(`[data-edge="${key}"]`);
+    if (el) el.classList.add('sel-t');
+  }
   syncNoteSelectionClasses();
   syncDividerSelectionClasses();
 }
@@ -889,22 +913,30 @@ export function endSelectionDrag() {
 // Repaints App.edgeHighlight onto the DOM from scratch. renderAll() calls this
 // after every redraw, so the highlight is reconstructed from App state rather
 // than living only as classes that the next render would silently wipe.
+// What the last call lit, so clearing it is a walk over a handful of elements
+// rather than a selector match across the whole canvas. renderAll calls this on
+// every repaint, highlight or not, and on a large machine that query was a scan
+// of thousands of nodes to find the nothing that was usually there. A node the
+// renderer has since evicted is simply a no-op removal.
+let litElements = [];
+
 export function applyEdgeDirectionHighlight() {
-  document.querySelectorAll('.edge-g.outgoing-hl, .edge-g.incoming-hl, .sn.outgoing-hl-src, .sn.incoming-hl-src').forEach(el => {
+  for (const el of litElements) {
     el.classList.remove('outgoing-hl', 'incoming-hl', 'outgoing-hl-src', 'incoming-hl-src');
-  });
+  }
+  litElements = [];
   const hl = App.edgeHighlight;
   if (!hl) return;
   const srcCls = hl.direction === 'incoming' ? 'incoming-hl-src' : 'outgoing-hl-src';
   const edgeCls = hl.direction === 'incoming' ? 'incoming-hl' : 'outgoing-hl';
   const srcEl = App.domCache.states.get(hl.id) || document.querySelector(`.sn[data-id="${hl.id}"]`);
-  if (srcEl) srcEl.classList.add(srcCls);
+  if (srcEl) { srcEl.classList.add(srcCls); litElements.push(srcEl); }
   App.transitions.forEach(t => {
     const matches = hl.direction === 'incoming' ? t.to === hl.id : t.from === hl.id;
     if (!matches) return;
     const key = t.from + '|' + t.to;
     const el = App.domCache.transitions.get(key) || document.querySelector(`.edge-g[data-edge="${key}"]`);
-    if (el) el.classList.add(edgeCls);
+    if (el) { el.classList.add(edgeCls); litElements.push(el); }
   });
 }
 
@@ -1297,6 +1329,14 @@ export function getContentBounds(statePad = 0) {
  * @returns {{svg: string, width: number, height: number}}
  */
 export function buildExportSVG(opts = {}) {
+  // A cropped export frames the *machine*, and the crop box comes from the
+  // layout pass rather than from the DOM — so on a windowed canvas the clone
+  // below has to be given the whole diagram first, or the file is a viewBox
+  // around a machine containing only the part that was on screen.
+  return withFullRender(() => buildExportSVGFromDOM(opts));
+}
+
+function buildExportSVGFromDOM(opts = {}) {
   const svgEl = $('svgCanvas');
   const wrap = $('canvas-wrap');
   let w = wrap.clientWidth || 800, h = wrap.clientHeight || 600;

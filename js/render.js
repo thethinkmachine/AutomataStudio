@@ -3,6 +3,8 @@ import { applyEdgeDirectionHighlight, clearEdgeDirectionHighlight, clearSelectio
 import { renderDividers } from './dividers.js';
 import { PILL_GAP, PILL_HEIGHT, PILL_ROW_H, buildLayoutContext, edgeGeometryFor, estimatePillLabelSize, estimateTextLabelSize, pillPartWidth, selfLoopLabelPoint, selfLoopPath } from './geometry.js';
 import { commit, snapshot } from './history.js';
+import { setListItems } from './panel-list.js';
+import { cullNeedsRepaint, cullViewport, cullingActive, edgeLabelLOD, invalidateCull, rectHasPoint, stateLabelLOD, suspendCulling } from './viewport.js';
 import { scheduleMinimap } from './minimap.js';
 import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
@@ -44,7 +46,10 @@ export function renderAll() {
   $('mach-badge').textContent = cfg.label;
   if (typeof pruneNoteAnchors === 'function') pruneNoteAnchors();
   if (typeof renderDividers === 'function') renderDividers();
-  renderTransitions(); renderStates();
+  // One cull decision for the whole pass, so the states and the edges cannot
+  // disagree about where the screen is. See js/viewport.js.
+  const view = cullViewport();
+  renderTransitions(view); renderStates(view);
   if (typeof renderNotes === 'function') renderNotes();
   // domCache.states and .transitions are the renderer's own node registries now
   // — renderStates/renderTransitions add and evict entries as they diff, so
@@ -57,6 +62,56 @@ export function renderAll() {
   document.querySelectorAll('.divider-g').forEach(el => App.domCache.dividers.set(el.getAttribute('data-divider-id'), el));
   if (App.activeNoteId && typeof highlightNoteAnchors === 'function') highlightNoteAnchors(App.activeNoteId, true);
   if (typeof applyEdgeDirectionHighlight === 'function') applyEdgeDirectionHighlight();
+}
+
+/**
+ * Runs `fn` with the whole machine on the canvas, then puts the window back.
+ *
+ * Culling makes the DOM a view of the model rather than a copy of it, which is
+ * invisible to everything that *looks* at the canvas and fatal to the two things
+ * that read it back: buildExportSVG clones the live SVG, so a cropped export
+ * taken mid-pan would contain the part of the machine that happened to be on
+ * screen and a viewBox sized for all of it.
+ *
+ * The repaint on the way out is not optional either — leaving fifteen thousand
+ * nodes in the document after an export would undo the whole optimisation for
+ * the rest of the session.
+ */
+export function withFullRender(fn) {
+  if (!cullingActive()) return fn();
+  try {
+    return suspendCulling(() => {
+      renderTransitions(null);
+      renderStates(null);
+      return fn();
+    });
+  } finally {
+    invalidateCull();
+    // One decision for both, the way renderAll does it — two calls each asking
+    // for their own rect could disagree if the camera moved in between.
+    const view = cullViewport();
+    renderTransitions(view);
+    renderStates(view);
+  }
+}
+
+/**
+ * A camera move repaints by moving one transform; this is the exception. When
+ * the pan or zoom has taken the screen outside the drawn window — or across a
+ * level-of-detail threshold — the window has to be rebuilt. Coalesced to one
+ * pass per frame, because a wheel gesture arrives as a burst of events.
+ */
+let camRepaintPending = false;
+export function repaintForCamera() {
+  if (camRepaintPending || !cullNeedsRepaint()) return;
+  camRepaintPending = true;
+  const run = () => {
+    camRepaintPending = false;
+    const view = cullViewport();
+    renderTransitions(view);
+    renderStates(view);
+  };
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run); else run();
 }
 
 // Resolves an edge key back to the transitions it covers. The listeners below
@@ -314,7 +369,7 @@ function syncCurveHandle(edgeGrp, key, geo, selected) {
   }
 }
 
-function syncEdgeNode(edgeGrp, geo, ts) {
+function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
   if (!geo) return false;
   const parts = edgeGrp.__parts;
   const selected = isEdgeSelected(ts);
@@ -323,7 +378,11 @@ function syncEdgeNode(edgeGrp, geo, ts) {
   parts.pathEl.setAttribute('d', geo.d);
   parts.hitEl.setAttribute('d', geo.d);
 
-  const hidden = edgeLabelsHidden();
+  // Zoomed far enough out a label is a two-pixel smear: it costs a text node, a
+  // shaping pass and a raster, and says nothing. `lod` takes the same branch as
+  // the "labels off" setting — the point of that branch being that a hidden
+  // label is never built, rather than built and then covered up.
+  const hidden = lod || edgeLabelsHidden();
   const pillMode = App.config.edgeLabelStyle === 'pills' || App.config.edgeLabelStyle === 'beginner';
   const beginnerMode = App.config.edgeLabelStyle === 'beginner';
 
@@ -453,25 +512,31 @@ function syncStartArrow(g) {
   if (a !== g.firstChild) g.insertBefore(a, g.firstChild);
 }
 
-export function renderTransitions() {
+export function renderTransitions(view = cullViewport()) {
   const g = $('trans-g');
   const lg = $('trans-lbl-g');
   const live = App.domCache.transitions;
   const dt = beginPass();
-  const ctx = currentLayoutContext();
+  const ctx = currentLayoutContext({ viewport: view });
   lastCtx = ctx;
 
   syncStartArrow(g);
 
+  const lod = edgeLabelLOD();
   let prev = App.domCache.startArrow || null;
   const seen = new Set();
   for (const { key, ts } of ctx.groups) {
+    // The layout pass lays out only what is near the screen, so a missing geo
+    // *is* the cull result. Testing it before the node is created is what keeps
+    // an off-screen edge from being built and torn down on every pan frame.
+    const geo = ctx.geo.get(key);
+    if (!geo) continue;
     let node = live.get(key);
     if (!node) {
       node = createEdgeNode(key);
       live.set(key, node);
     }
-    if (!syncEdgeNode(node, displayGeo(ctx.geo.get(key), dt), ts)) continue;
+    if (!syncEdgeNode(node, displayGeo(geo, dt), ts, lod)) continue;
     seen.add(key);
 
     const expected = prev ? prev.nextSibling : g.firstChild;
@@ -522,15 +587,23 @@ export function updateFastDOM({ statesMoved = true } = {}) {
   // stages per frame for the ~165ms after every edit would be pure waste on a
   // large machine. The drag path passes nothing and recomputes, because there
   // the positions really did change.
-  const ctx = statesMoved || !lastCtx ? currentLayoutContext() : lastCtx;
+  const ctx = statesMoved || !lastCtx ? currentLayoutContext({ viewport: cullViewport() }) : lastCtx;
   lastCtx = ctx;
   const stateById = ctx.stateById;
-  const hasSub = hasStateOutput(App.machine) || usesParityPriorities(App.machine);
 
-  for (const s of App.states) {
-    const grp = App.domCache.states.get(s.id);
-    if (!grp || !grp.__parts) continue;
+  // The registry, not App.states. They are the same list on a small machine and
+  // very different on a culled one, and the registry is by definition the set
+  // with something to write to — walking the model would be a thousand map
+  // misses per frame to find the fifty nodes that exist.
+  for (const [id, grp] of App.domCache.states) {
+    if (!grp.__parts) continue;
+    const s = stateById.get(id);
+    if (!s) continue;
     const p = grp.__parts;
+    // Asked of the node rather than of the machine: zoomed out far enough the
+    // sub-label is not drawn at all, and the name then belongs on the centre
+    // line rather than raised to make room for something that is not there.
+    const hasSub = !!p.sub;
     p.circle.setAttribute('cx', s.x);
     p.circle.setAttribute('cy', s.y);
     if (p.ring) {
@@ -694,7 +767,7 @@ function createStateNode(id) {
 // these nodes directly, so a "what did we render last time" cache would drift
 // out of step with the DOM and leave selection highlights stuck. Only the label
 // tspans, the one genuinely expensive part, are guarded by a key.
-function syncStateNode(g, s, showAccepts) {
+function syncStateNode(g, s, showAccepts, lod = false) {
   const parts = g.__parts;
   const isStart = App.startId === s.id;
   const isAcc = showAccepts && App.accepts.has(s.id);
@@ -732,14 +805,28 @@ function syncStateNode(g, s, showAccepts) {
   // Two things want a second line under the name: a Moore output and a parity
   // priority. They never coexist (one is a transducer, the other an
   // ω-automaton), so they share the slot rather than each having their own.
-  const isMoore = hasStateOutput(App.machine);
-  const isParity = usesParityPriorities(App.machine);
+  // What the machine *has* and what is *drawn* part company here: at LOD the
+  // sub-label and the priority badge are not painted, but the tooltip still has
+  // to say what the state is — hovering is how you read a node too small to
+  // read, so it is the one thing that must not thin out with the drawing.
+  const hasMoore = hasStateOutput(App.machine);
+  const hasParity = usesParityPriorities(App.machine);
+  const isMoore = hasMoore && !lod;
+  const isParity = hasParity && !lod;
   const hasSub = isMoore;
   parts.label.setAttribute('x', s.x);
   parts.label.setAttribute('y', hasSub ? s.y - App.config.render.textMargin : s.y);
   // As above: the tspans say the state's name, which a move does not change.
-  const labelKey = `${s.name}\u0001${App.config.wrapStateLabels}`;
-  if (g.__labelKey !== labelKey) {
+  // The LOD key is a value of its own rather than an empty name, so returning
+  // from a zoomed-out view rebuilds the tspans instead of matching a stale key.
+  const labelKey = lod ? '::lod::' : `${s.name}\u0001${App.config.wrapStateLabels}`;
+  if (lod) {
+    if (g.__labelKey !== labelKey) {
+      parts.label.innerHTML = '';
+      g.__labelKey = labelKey;
+      g.__labelX = s.x;
+    }
+  } else if (g.__labelKey !== labelKey) {
     setStateLabelLines(parts.label, splitStateLabel(s.name), s.x);
     g.__labelKey = labelKey;
     g.__labelX = s.x;
@@ -803,11 +890,11 @@ function syncStateNode(g, s, showAccepts) {
     if (isAcc) statuses.push('Accept');
     stTitle += ` (${statuses.join(', ')})`;
   }
-  if (isMoore) {
+  if (hasMoore) {
     const o = s.output !== undefined && s.output !== '' ? s.output : App.config.sym.lambda;
     stTitle += `\nOutput: '${o}'`;
   }
-  if (isParity) {
+  if (hasParity) {
     const p = statePriority(s);
     stTitle += `\nPriority: ${p} (${p % 2 === 0 ? 'even — accepting if least' : 'odd — rejecting if least'})`;
   }
@@ -815,10 +902,14 @@ function syncStateNode(g, s, showAccepts) {
   g.setAttribute('aria-label', stTitle);
 }
 
-export function renderStates() {
+export function renderStates(view = cullViewport()) {
   const g = $('states-g');
   const live = App.domCache.states;
   const showAccepts = acceptsAreShown();
+  const lod = stateLabelLOD();
+  // A state's ink is its circle, its accepting ring and its name; none of them
+  // reach further than a radius and a little slack from its centre.
+  const pad = R + 24;
 
   // Walk App.states in order, reusing the node for each id and moving it only
   // if it is not already where it belongs. `expected` is the node that should
@@ -826,13 +917,14 @@ export function renderStates() {
   let prev = null;
   const seen = new Set();
   for (const s of App.states) {
+    if (view && !rectHasPoint(view, s.x, s.y, pad)) continue;
     seen.add(s.id);
     let node = live.get(s.id);
     if (!node) {
       node = createStateNode(s.id);
       live.set(s.id, node);
     }
-    syncStateNode(node, s, showAccepts);
+    syncStateNode(node, s, showAccepts, lod);
     const expected = prev ? prev.nextSibling : g.firstChild;
     if (node !== expected) g.insertBefore(node, expected);
     prev = node;
@@ -887,21 +979,23 @@ function rowActions(editCall, editLabel, deleteCall, deleteLabel) {
   return `<span class="lp-row-acts">${lpRowBtn(editCall, editLabel, LP_ICON_EDIT, 'is-edit')}${lpRowBtn(deleteCall, deleteLabel, LP_ICON_DELETE, 'is-del')}</span>`;
 }
 
-export function updateLPanel() {
-  const sl = $('states-list');
+// The two lists are handed to js/panel-list.js as data plus a row renderer,
+// rather than being joined into one enormous innerHTML string. What a row says
+// stays here; how many of them exist at a time is that module's problem. The
+// markup is unchanged, inline handlers included, so nothing moves in bridge.js.
+export function stateRowHTML(s) {
   const showAccepts = acceptsAreShown();
-  sl.innerHTML = App.states.length ? App.states.map(s => {
-    let mooreOut = '';
-    if (hasStateOutput(App.machine)) {
-      const outSym = (s.output === undefined || s.output === '') ? App.config.sym.lambda : s.output;
-      mooreOut = `<span style="color:var(--text3);font-size:0.75em;margin-left:4px">/ ${outSym}</span>`;
-    } else if (usesParityPriorities(App.machine)) {
-      mooreOut = `<span style="color:var(--text3);font-size:0.75em;margin-left:4px">Ω ${statePriority(s)}</span>`;
-    }
-    // Keep list selection separate from the generic `.sel` select-control
-    // class.  Sharing it applies control sizing/overflow rules to this row.
-    const sel = App.selectedStates.has(s.id) ? 'lp-selected' : '';
-    return `<div class="si ${App.startId === s.id ? 'start' : ''} ${showAccepts && App.accepts.has(s.id) ? 'acc' : ''} ${sel}"
+  let mooreOut = '';
+  if (hasStateOutput(App.machine)) {
+    const outSym = (s.output === undefined || s.output === '') ? App.config.sym.lambda : s.output;
+    mooreOut = `<span style="color:var(--text3);font-size:0.75em;margin-left:4px">/ ${outSym}</span>`;
+  } else if (usesParityPriorities(App.machine)) {
+    mooreOut = `<span style="color:var(--text3);font-size:0.75em;margin-left:4px">Ω ${statePriority(s)}</span>`;
+  }
+  // Keep list selection separate from the generic `.sel` select-control
+  // class.  Sharing it applies control sizing/overflow rules to this row.
+  const sel = App.selectedStates.has(s.id) ? 'lp-selected' : '';
+  return `<div class="si ${App.startId === s.id ? 'start' : ''} ${showAccepts && App.accepts.has(s.id) ? 'acc' : ''} ${sel}"
   onclick="focusStateFromList('${s.id}')" ondblclick="openStateModal('${s.id}')"
   onmouseenter="hlListHover('${s.id}', true)" onmouseleave="hlListHover('${s.id}', false)"
   data-tip="Click to focus · Double-click to edit">
@@ -910,21 +1004,44 @@ export function updateLPanel() {
     `deleteState('${s.id}')`, `Delete state ${escapeHtml(s.name)}`)}
   <div class="dot"></div>
 </div>`;
-  }).join('') : '<div class="empty-msg">No states</div>';
-  const tl = $('trans-list');
-  tl.innerHTML = App.transitions.length ? App.transitions.map(t => {
-    const fn = getState(t.from)?.name || '?', tn = getState(t.to)?.name || '?';
-    const sel = App.selectedTransitions.has(t.id) ? 'lp-selected' : '';
-    const fullTitle = `${fn} → ${tn}\n${transLabelDescriptive(t)}\nClick to focus · Double-click to edit`;
-    const label = escapeHtml(`${fn} –${transLabel(t)}→ ${tn}`);
-    return `<div class="ti ${sel}" onclick="focusTransFromList('${t.id}')" ondblclick="editTransFromList('${t.id}')"
+}
+
+export function transRowHTML(t) {
+  const fn = getState(t.from)?.name || '?', tn = getState(t.to)?.name || '?';
+  const sel = App.selectedTransitions.has(t.id) ? 'lp-selected' : '';
+  const fullTitle = `${fn} → ${tn}\n${transLabelDescriptive(t)}\nClick to focus · Double-click to edit`;
+  const label = escapeHtml(`${fn} –${transLabel(t)}→ ${tn}`);
+  return `<div class="ti ${sel}" onclick="focusTransFromList('${t.id}')" ondblclick="editTransFromList('${t.id}')"
   onmouseenter="hlTransListHover('${t.from}','${t.to}', true)" onmouseleave="hlTransListHover('${t.from}','${t.to}', false)"
   data-tip="${fullTitle.replace(/"/g, '&quot;')}">
   <span class="lp-row-body"><span class="ti-from">${escapeHtml(fn)}</span><span class="arr">–${escapeHtml(transLabel(t))}→</span><span class="ti-to">${escapeHtml(tn)}</span></span>
   ${rowActions(`editTransFromList('${t.id}')`, `Edit transition ${label}`,
     `deleteTrans('${t.id}')`, `Delete transition ${label}`)}
 </div>`;
-  }).join('') : '<div class="empty-msg">No transitions</div>';
+}
+
+// What the search box matches a row against. It used to read the rendered row's
+// textContent, which is only available for rows that exist — the filter has to
+// answer for the ones that do not.
+function stateRowText(s) {
+  if (hasStateOutput(App.machine)) return `${s.name} / ${s.output ?? ''}`;
+  if (usesParityPriorities(App.machine)) return `${s.name} ${statePriority(s)}`;
+  return String(s.name);
+}
+
+function transRowText(t) {
+  return `${getState(t.from)?.name || '?'} ${transLabel(t)} ${getState(t.to)?.name || '?'}`;
+}
+
+export function updateLPanel() {
+  setListItems($('states-list'), App.states, {
+    html: stateRowHTML, text: stateRowText,
+    empty: '<div class="empty-msg">No states</div>'
+  });
+  setListItems($('trans-list'), App.transitions, {
+    html: transRowHTML, text: transRowText,
+    empty: '<div class="empty-msg">No transitions</div>'
+  });
   if (typeof filterStates === 'function') filterStates();
   if (typeof filterTransitions === 'function') filterTransitions();
   updateLPanelSectionMeta();
@@ -948,9 +1065,20 @@ export function _regexCacheKey() {
     App.transitions.map(t => t.from + t.symbol + t.to).sort().join(',') + '|' +
     App.startId + '|' + [...App.accepts].sort().join(',');
 }
+// State elimination is cubic in |Q| and allocates a |Q|² edge table before it
+// starts, so a 400-state DFA is not a slow computation — it is a locked tab and
+// a gigabyte of strings, and the expression it would eventually reach is longer
+// than the machine it came from. The panel says what it is not doing rather
+// than doing it: the claim is still true, just not derived. Anything above this
+// is far past the size a regular expression is a useful way to read a language.
+export const REGEX_DERIVE_MAX_STATES = 120;
+
 export function deriveRegex() {
   if (!App.states.length || !App.startId) return '—';
   const accs = [...App.accepts]; if (!accs.length) return '∅';
+  if (App.states.length > REGEX_DERIVE_MAX_STATES) {
+    return `Regular Language (${App.states.length} states — too large to convert to a regular expression)`;
+  }
   // Cache check (#7)
   const ck = _regexCacheKey();
   if (_regexCache.key === ck) return _regexCache.val;
@@ -1031,8 +1159,20 @@ export function formatStateName(name) {
   return `\\text{${escapeLatexText(name)}}`;
 }
 
+// Past this many members a set is printed with its ends and its size. This is
+// not only a cost decision, though it is one: KaTeX typesets a thousand-element
+// Q into a thousand boxes on every structural edit, and the def box then scrolls
+// sideways for a screen and a half. It is also the more useful line — nobody
+// reads the four hundredth member, and "|Q| = 1000" is the fact they came for.
+const SET_PRINT_CAP = 40;
+
 export function formatSet(items) {
   if (!items || !items.length) return '\\emptyset';
+  if (items.length > SET_PRINT_CAP) {
+    const head = items.slice(0, SET_PRINT_CAP - 8).map(formatStateName).join(', ');
+    const tail = items.slice(-4).map(formatStateName).join(', ');
+    return `\\{ ${head}, \\ldots, ${tail} \\}\\ (${items.length}\\text{ elements})`;
+  }
   return `\\{ ${items.map(formatStateName).join(', ')} \\}`;
 }
 
@@ -1349,7 +1489,13 @@ export function updateRegex() {
   else if (m === 'Moore') { txt = 'Finite-State Transducer (Moore)'; }
   else if (m === 'Mealy') { txt = 'Finite-State Transducer (Mealy)'; }
   else if (m === 'FST') { txt = 'Finite-State Transducer (Nondeterministic)'; }
-  else { txt = deriveRegex() || '∅'; App._regexIsDerived = true; }
+  else {
+    txt = deriveRegex() || '∅';
+    // The derived/asserted split is what the panel styles from, and past
+    // REGEX_DERIVE_MAX_STATES the sentence above is a claim about the class,
+    // not an expression this machine was converted into.
+    App._regexIsDerived = App.states.length <= REGEX_DERIVE_MAX_STATES;
+  }
 
   App._regexBoxPlain = txt;
   rb.textContent = txt;

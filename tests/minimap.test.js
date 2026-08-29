@@ -91,8 +91,19 @@ test('a self-loop draws an arc beside its state, not a zero-length line', () => 
 
 // The canvas draws parallel transitions as one path with a stacked label;
 // stroking five identical curves here only darkens the line.
+//
+// Counted as a difference rather than against a fixed number: the states and
+// the viewport rectangle open subpaths of their own, and how many they open is
+// a drawing detail — the claim here is only that a second and third transition
+// between the same pair add nothing.
 test('parallel transitions between a pair share one drawn edge', () => {
-  const ctx = setup();
+  let ctx = setup();
+  twoStates();
+  App.transitions = [{ id: 't0', from: 'q0', to: 'q1', symbol: 'a' }];
+  context.renderMinimap();
+  const one = ctx.calls('moveTo').length;
+
+  ctx = setup();
   twoStates();
   App.transitions = [
     { id: 't0', from: 'q0', to: 'q1', symbol: 'a' },
@@ -100,9 +111,7 @@ test('parallel transitions between a pair share one drawn edge', () => {
     { id: 't2', from: 'q0', to: 'q1', symbol: 'c' }
   ];
   context.renderMinimap();
-  // moveTo comes from each edge plus the two viewport round-rects (scrim and
-  // outline). Three parallel transitions must contribute one, not three.
-  assert.strictEqual(ctx.calls('moveTo').length, 1 + 2);
+  assert.strictEqual(ctx.calls('moveTo').length, one);
 });
 
 test('a reverse pair splays so the two directions stay distinguishable', () => {

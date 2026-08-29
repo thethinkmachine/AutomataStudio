@@ -41,6 +41,7 @@ import * as persistence from '../js/persistence.js';
 import * as render from '../js/render.js';
 import * as panelState from '../js/panel-state.js';
 import * as panelSections from '../js/panel-sections.js';
+import * as panelList from '../js/panel-list.js';
 import * as panelSectionsUi from '../js/panel-sections-ui.js';
 import * as simulation from '../js/simulation.js';
 import * as tapeView from '../js/tape-view.js';
@@ -78,6 +79,7 @@ import * as statemateUi from '../js/statemate-ui.js';
 import * as store from '../js/store.js';
 import * as suggest from '../js/suggest.js';
 import * as themes from '../js/themes.js';
+import * as viewport from '../js/viewport.js';
 import * as reference from '../js/reference.js';
 import * as ui from '../js/ui.js';
 import * as utils from '../js/utils.js';
@@ -89,8 +91,8 @@ import * as wizardCopy from '../js/wizard-copy.js';
 import * as wizardUi from '../js/wizard-ui.js';
 
 const NAMESPACES = [
-  state, store, themes, exportRegistry, dropdown, modal, utils, anim, geometry, statesTransitions,
-  canvas, render, panelState, panelSections, panelSectionsUi, notes, dividers,
+  state, store, themes, exportRegistry, dropdown, modal, utils, anim, viewport, geometry, statesTransitions,
+  canvas, render, panelState, panelSections, panelSectionsUi, panelList, notes, dividers,
   machineRegistry, machineRuntime, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, parallelPool, parallelSnapshot, parallelCore,
@@ -147,6 +149,12 @@ const baseDirections = JSON.parse(JSON.stringify(App.directions));
 // left alone — each stores its own cache key and recomputes when the key
 // changes, so a stale entry can never be served to a reset App.
 function resetModuleState() {
+  state.invalidateStateIndex();
+  // The layout pass caches its edge grouping against the state index; both are
+  // validated rather than invalidated, and a test can replace the model in a way
+  // the validators coincide on (an empty array for an empty array).
+  geometry.invalidateLayoutGroups();
+  viewport.invalidateCull();
   state.setWorkspaces([]);
   state.setActiveWorkspaceId(null);
   state.setR(baseConfig.radius);
@@ -172,6 +180,11 @@ function resetModuleState() {
   // actually corrupt a run — a latched `disabled` flag set the first time a
   // worker cannot be constructed. See resetPool().
   parallelPool.resetPool();
+  // The two left-panel lists hold their data, their scroll listener and their
+  // measured row pitch per host element. clearElements() replaces the hosts, so
+  // without this a list would keep a listener on a detached node and reuse a
+  // pitch measured against the previous test's rows.
+  panelList.resetPanelLists();
   anim.resetAnim();
   // The minimap's eased frame survives a resetApp the same way — it is module
   // state, not App state — so a test would start out gliding in from the
