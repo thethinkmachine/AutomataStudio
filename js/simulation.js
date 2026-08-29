@@ -17,7 +17,7 @@ import { makeSVG } from './render.js';
 import { $, App, R, detectsLoops, getMachineConfig, isOmegaAutomaton, isWeightedFA } from './state.js';
 import { getState } from './states-transitions.js';
 import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
-import { isAnyPDA, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps } from './utils.js';
+import { isAnyPDA, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
 import { decideMachine, machineGuards, parseMachineInput, simulateMachine } from './machines/index.js';
 import { langStepBudget, stateNames } from './machines/runtime.js';
 import { computeBatchResults, decideBatchRows, summarizeBatch } from './machines/batch.js';
@@ -289,6 +289,10 @@ function renderTrackerHeader(trackerEl, stateName, rows) {
   if (!head || head.parentNode !== trackerEl) {
     head = document.createElement('div');
     head.className = 'tracker-header';
+    const text = document.createElement('span');
+    text.className = 'tracker-header-text';
+    head.appendChild(text);
+    head.appendChild(makeTrackerCopyBtn());
     trackerEl.insertBefore(head, trackerEl.firstChild);
     trackerEl.__tvHeader = head;
   }
@@ -302,12 +306,71 @@ function renderTrackerHeader(trackerEl, stateName, rows) {
       : '';
     return `${r.label}:<span class="tracker-val-sym">${escapeCell(sym)}</span>${at}`;
   });
-  head.innerHTML = `State: <span class="tracker-val-st">${escapeCell(stateName)}</span>`
+  head.firstChild.innerHTML = `State: <span class="tracker-val-st">${escapeCell(stateName)}</span>`
     + (parts.length ? ' &nbsp; ' + parts.join(' &nbsp; ') : '');
 }
 
 function escapeCell(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * The whole row — every cell, not just the one under the head — as plain
+ * text. Symbols join with nothing between them when every one is a single
+ * character (the ordinary case: tape and stack alphabets are), or with a
+ * space when any symbol is longer, so a multi-character symbol doesn't
+ * fuse with its neighbour into a string the reader would have to re-split.
+ */
+function rowText(row) {
+  const view = row.view;
+  const cells = (view ? view.cells : (row.cells || [])).map(String);
+  const spaced = cells.some(s => s.length > 1);
+  return cells.join(spaced ? ' ' : '');
+}
+
+// The def-box / regex-box copy icon (index.html's .box-copy-btn), reused
+// here rather than redrawn — same affordance, same glyph, wherever a panel
+// offers to copy its own content.
+const COPY_ICON_SVG = '<svg viewBox="0 0 256 256" fill="currentColor" width="12" height="12">'
+  + '<path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z" />'
+  + '</svg>';
+
+// Built once per tracker header rather than written into index.html: unlike
+// the def-box/regex-box copies, this one lives inside a node the tracker
+// itself creates, so it is wired the way reference.js and the wizard button
+// are — a listener attached at creation — and adds nothing to bridge.js.
+function makeTrackerCopyBtn() {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'tracker-copy-btn';
+  btn.setAttribute('data-tip', 'Copy tape contents');
+  btn.setAttribute('aria-label', 'Copy tape contents');
+  btn.innerHTML = COPY_ICON_SVG;
+  btn.addEventListener('click', copyTapeContents);
+  return btn;
+}
+
+function copyTapeContents(evt) {
+  // Captured now rather than read off `evt` inside the .then() below: a
+  // DOM event's currentTarget is cleared once dispatch finishes, which is
+  // well before the clipboard promise settles.
+  const btn = evt && evt.currentTarget;
+  const step = App.simSteps[App.simIdx];
+  if (!step) { showStatus('Nothing to copy — run a simulation first'); return; }
+  const rows = trackerRows(step);
+  const text = rows.map(r => `${r.label}: ${rowText(r)}`).join('\n');
+  if (!navigator.clipboard || !navigator.clipboard.writeText) {
+    showStatus('Clipboard access unavailable');
+    return;
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    showStatus(rows.length > 1 ? 'Copied tape contents' : `Copied ${rows[0].label} contents`);
+    if (btn) {
+      btn.classList.add('copied');
+      clearTimeout(btn._copiedTimer);
+      btn._copiedTimer = setTimeout(() => btn.classList.remove('copied'), 1200);
+    }
+  }).catch(() => showStatus('Copy failed — clipboard access blocked'));
 }
 
 // ══════════════════════════════════════════════════════════════════

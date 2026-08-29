@@ -530,8 +530,48 @@
   padding-bottom: 4px;
   border-bottom: 1px solid var(--border);
   display: flex;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 2px 10px;
+}
+
+.tracker-header-text {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+/* Same affordance as .box-copy-btn (def-box/regex-box), sized down for a
+   header this small and laid out as a flex item — pinned to the row's end
+   by margin-left:auto rather than position:absolute, since this header has
+   no fixed height for a box to be positioned against. */
+.tracker-copy-btn {
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text3);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.tracker-copy-btn:hover {
+  background: var(--surface3);
+  color: var(--text);
+  border-color: var(--border2);
+}
+
+.tracker-copy-btn.copied {
+  color: var(--green);
 }
 
 .tracker-val-st {
