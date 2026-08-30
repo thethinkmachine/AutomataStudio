@@ -1541,33 +1541,41 @@
   font-weight: 400;
 }
 
-/* Info card — what the machine on the canvas is, plus sample inputs as
-   one-click chips. It floats over the canvas rather than sitting in the
-   Simulate panel, because it describes the diagram and the diagram is what the
-   reader is looking at.
+/* ═══ THE MACHINE CARD ═══
+   What the machine on the canvas is, floating over the diagram it describes
+   rather than sitting in a panel, because the diagram is what the reader is
+   looking at. Built and wired from App.meta in js/machine-card.js.
 
-   The top-left here is only a starting position: layoutCanvasInfo() in
-   js/ui.js anchors the card and its pill to whichever corner the toolbar and
-   the overlay stack have left free, and stamps the choice as `data-corner` —
-   which is what the origin rules below read, so the card always grows away
-   from its own edge rather than off the canvas.
+   The corner is not fixed: layoutCanvasInfo() in js/ui.js anchors the card and
+   its button to whichever corner the toolbar and the overlay stack have left
+   free, and stamps the choice as `data-corner` — which is what the transform
+   origins below read, so the card always grows away from its own edge.
 
    Kept in the DOM and toggled by class so opening and closing can animate;
-   `visibility` is what takes it out of the hit-testing when it is shut, with
-   its transition delayed so it stays clickable through the fade out. */
+   `visibility` is what takes a shut card out of hit-testing, with its
+   transition delayed so it stays clickable through the fade out. */
 .example-card {
   position: absolute;
   top: 12px;
   left: 12px;
   z-index: 52;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
   width: min(320px, calc(100% - 24px));
   max-height: calc(100% - 24px);
-  overflow-y: auto;
+  /* One axis, deliberately. `overflow-y: auto` alone computes the *other* axis
+     from `visible` to `auto` as well, so one wide thing anywhere in the card —
+     a long title, an unbreakable test word, a StateMate diff line — turned the
+     whole card into a sideways scroller and cut every row in it off at both
+     edges. Anything genuinely wide scrolls inside its own box instead. */
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  padding: 11px 13px 12px;
   background: var(--surface);
   border: 1px solid var(--border2);
-  border-radius: 10px;
-  box-shadow: var(--shadow-sm);
-  padding: 10px 12px 11px;
+  border-radius: 11px;
+  box-shadow: var(--shadow-md);
   opacity: 0;
   visibility: hidden;
   transform: translateY(-6px) scale(.98);
@@ -1576,12 +1584,28 @@
               visibility 0s var(--transition-fast);
 }
 
+/* The card takes the focus when a reader opens it, so that its Escape has
+   somewhere to fire from — but it is a region rather than a control, and a
+   ring around the whole card would say otherwise. */
+.example-card:focus {
+  outline: none;
+}
+
 .example-card.is-open {
   opacity: 1;
   visibility: visible;
   transform: none;
   transition: opacity var(--transition-fast), transform var(--transition-fast),
               visibility 0s;
+}
+
+/* The card is a stack with one gap, so a section spaces itself from that
+   rather than from a margin of its own — StateMate's result strip, notes and
+   footer included. `flex: none` is what keeps them at their own height: a flex
+   child in a scrolling column is shrinkable by default, so the word row was
+   squashed the moment the blurb ran long. */
+.example-card > * {
+  flex: none;
 }
 
 /* Follow the anchor: scale out of the corner the card is pinned to, and rise
@@ -1594,8 +1618,9 @@
   transform: translateY(6px) scale(.98);
 }
 
-/* The button the card folds back into. Deliberately small: it is a way back to
-   something already read, not a call to action. */
+/* ── The button the card folds into ──
+   Deliberately small: it is a way back to something already read, not a call
+   to action. */
 .canvas-info-btn {
   position: absolute;
   top: 12px;
@@ -1608,7 +1633,7 @@
   height: 24px;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 50%;
+  border-radius: 999px;
   background: var(--bg2);
   color: var(--text3);
   cursor: pointer;
@@ -1617,13 +1642,11 @@
               background var(--transition-fast);
 }
 
-.canvas-info-btn[hidden] {
-  display: none;
-}
+.canvas-info-btn[hidden] { display: none; }
 
 .canvas-info-btn:hover,
 .canvas-info-btn:focus-visible {
-  border-color: var(--border2);
+  border-color: var(--accent-border);
   background: var(--surface);
   color: var(--accent);
   outline: none;
@@ -1635,13 +1658,12 @@
   flex: 0 0 auto;
 }
 
-/* Undescribed, the button stops being a circle and becomes a label, because a
-   circle is a way back to something and there is nothing behind it yet. */
+/* Undescribed, the button stops being a circle and becomes a label: a circle
+   is a way back to something, and there is nothing behind it yet. */
 .canvas-info-btn.is-invite {
   width: auto;
   gap: 5px;
   padding: 0 10px 0 8px;
-  border-radius: 999px;
   border-style: dashed;
 }
 
@@ -1653,38 +1675,33 @@
   white-space: nowrap;
 }
 
-.canvas-info-btn:not(.is-invite) .canvas-info-label {
-  display: none;
-}
+.canvas-info-btn:not(.is-invite) .canvas-info-label { display: none; }
 
+/* ── The head ── */
 .example-card-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 6px;
-}
-
-.example-card-tools {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex: 0 0 auto;
 }
 
 .example-card-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
   padding: 0;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 50%;
+  border-radius: 999px;
   color: var(--text3);
-  font-size: 1rem;
+  font-family: var(--sans);
+  font-size: .95rem;
   line-height: 1;
   cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast),
+              border-color var(--transition-fast);
 }
 
 .example-card-close:hover,
@@ -1696,61 +1713,61 @@
 }
 
 /* ── The fields ──
-   There is no edit mode any more, so these are writable at all times and have
-   to read as text until they are touched: no border and no ground at rest, a
-   faint ground under the pointer to say a field is there, and a real box only
-   once the caret is in it. The negative margin is what keeps the *text* lined
-   up with the rest of the card while the padded box hangs outside it — without
-   it, everything the card says sits five pixels in from everything it draws. */
-.example-card-input,
-.example-card-area {
-  width: calc(100% + 10px);
+   There is no edit mode, so these are writable at all times and have to read
+   as text until they are touched: no border and no ground at rest, a ground
+   under the pointer to say a field is there, and a ring once the caret is in
+   it. Both are drawn *outside* the box with a spread shadow rather than with
+   padding, so the text never moves between the three states and a five-pixel
+   inset can never be the reason the card gains a scrollbar. */
+.example-card-input {
+  display: block;
+  width: 100%;
   box-sizing: border-box;
-  margin-left: -5px;
-  font-family: var(--sans);
-  color: var(--text);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  padding: 2px 5px;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-
-.example-card-input:hover,
-.example-card-area:hover {
-  background: var(--bg2);
-}
-
-.example-card-input:focus,
-.example-card-area:focus {
-  background: var(--bg2);
-  border-color: var(--accent-border);
+  color: var(--text);
+  font-family: var(--sans);
   outline: none;
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.example-card-input::placeholder,
-.example-card-area::placeholder {
+.example-card-input:hover {
+  background: var(--bg2);
+  box-shadow: 0 0 0 5px var(--bg2);
+}
+
+.example-card-input:focus {
+  background: var(--bg2);
+  box-shadow: 0 0 0 5px var(--bg2), 0 0 0 6px var(--accent-border);
+}
+
+.example-card-input::placeholder {
   color: var(--text3);
 }
 
 .example-card-title {
-  font-weight: 700;
-  font-size: .78rem;
-  line-height: 1.35;
+  flex: 1 1 auto;
   /* Long names shrink the field rather than push the × off the card — the head
      is a flex row and an input has an intrinsic width of its own. */
-  flex: 1 1 auto;
   min-width: 0;
+  font-size: .79rem;
+  font-weight: 700;
+  line-height: 1.4;
+  /* A name too long for the card ends in an ellipsis rather than being cut
+     through a glyph; putting the caret in it scrolls to the text as usual. */
+  text-overflow: ellipsis;
 }
 
 /* Sized to its content by autoGrow() rather than by a scrollbar or a drag
    handle: this is one sentence about a machine, and a two-line window onto a
    four-line sentence is the shape that made the old card need an editor. */
 .example-card-area {
-  margin-top: 2px;
-  font-size: .7rem;
-  line-height: 1.45;
   color: var(--text2);
+  font-size: .705rem;
+  line-height: 1.5;
   resize: none;
   overflow: hidden;
 }
@@ -1761,96 +1778,92 @@
    the verdict mark cycles, and the × removes. Editing the text is the
    deliberate one (double-click, or F2), because it is the only one that could
    be mistaken for a run. */
-.example-card-chips {
+.example-card-words {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 5px;
-  margin-top: 9px;
+  margin-top: 2px;
 }
 
-/* The pill is sized by its controls rather than by its text. The old card put
-   the verdict on a .58rem pill and the remove on a bare ×, which are the right
-   *weight* on screen and far too small to hit — a verdict you have to aim at
-   is one you leave wrong. Everything clickable in here is therefore at least
-   22px in both directions, and the type stays small inside it. */
+/* The pill is sized by its controls rather than by its text: everything
+   clickable in here is 20px in both directions, because a verdict you have to
+   aim at is one you leave wrong. The verdict leads and the remove trails, so
+   the row reads status → word → action, and neither round control can be
+   mistaken for the other. */
 .example-chip {
   display: inline-flex;
   align-items: center;
   gap: 1px;
   max-width: 100%;
-  min-height: 26px;
-  padding: 2px 3px 2px 10px;
-  font-family: var(--mono);
-  font-size: .66rem;
-  line-height: 1.3;
-  border-radius: 999px;
+  height: 24px;
+  padding: 0 2px;
   border: 1px solid var(--border2);
+  border-radius: 999px;
   background: var(--bg2);
   color: var(--text2);
+  font-family: var(--mono);
+  font-size: .66rem;
+  line-height: 1;
   transition: border-color var(--transition-fast), background var(--transition-fast),
               color var(--transition-fast);
 }
 
-.example-chip:hover {
-  color: var(--text);
-  border-color: var(--accent-border);
-}
-
-.example-chip:focus-within {
-  border-color: var(--accent-border);
-  background: var(--bg3);
-}
+.example-chip:hover { color: var(--text); border-color: var(--accent-border); }
+.example-chip:focus-within { border-color: var(--accent-border); background: var(--bg3); }
 
 .example-chip.chip-acc {
   border-color: var(--green-border);
-  color: var(--green);
   background: var(--green-soft);
+  color: var(--green);
 }
 
 .example-chip.chip-rej {
   border-color: var(--red-border);
-  color: var(--red);
   background: var(--red-soft);
+  color: var(--red);
 }
 
-.example-chip.chip-acc:hover {
-  background: color-mix(in srgb, var(--green) 20%, transparent);
+.example-chip.chip-acc:hover { background: color-mix(in srgb, var(--green) 18%, transparent); }
+.example-chip.chip-rej:hover { background: color-mix(in srgb, var(--red) 18%, transparent); }
+
+.example-chip.is-pending {
+  border-style: dashed;
 }
 
-.example-chip.chip-rej:hover {
-  background: color-mix(in srgb, var(--red) 20%, transparent);
-}
+/* The word sits on the chip's own centre line, the same one the two round
+   controls are centred on — `align-self: stretch` put it on the chip's full
+   height instead, which left the text riding high against the buttons.
 
-/* Baseline-free: the word sits on the chip's own centre line, the same one the
-   two round controls are centred on. `align-self: stretch` put it on the
-   chip's full height instead, which is what left the text riding high against
-   the buttons beside it. */
+   It is an inline *block*, not an inline-flex, and that is what makes the
+   ellipsis below work at all: `text-overflow` has nothing to apply to on the
+   anonymous flex item a bare string becomes, so a long word was cut off
+   mid-glyph — the same trap `.panel-tab-label` exists to avoid. Centring is
+   then `line-height`, matching the box. */
 .example-chip-run {
-  display: inline-flex;
-  align-items: center;
+  display: inline-block;
   min-width: 0;
-  max-width: 17ch;
+  max-width: 16ch;
   height: 20px;
-  padding: 0 2px 0 0;
+  padding: 0 4px;
   font: inherit;
+  /* After `font: inherit`, which carries the chip's line-height with it. */
+  line-height: 20px;
   color: inherit;
   background: transparent;
-  border: none;
+  border: 0;
+  border-radius: 999px;
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.example-chip-run:focus-visible {
-  outline: none;
-  text-decoration: underline;
-}
+.example-chip-run:focus-visible { outline: none; text-decoration: underline; }
 
 /* The verdict and the remove share one box — same size, same radius, same
-   centre line — so the row of controls on a chip is a row rather than a
-   collection. Everything that differs between them is what they *say*: a dot
+   centre line — so the controls on a chip read as a pair rather than as a
+   collection. Everything that differs between them is what they say: a dot
    against a ×, and a neutral hover against a red one. */
 .example-chip-expect,
 .example-chip-drop {
@@ -1861,19 +1874,19 @@
   width: 20px;
   height: 20px;
   padding: 0;
-  font-family: var(--sans);
-  line-height: 1;
   color: inherit;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 50%;
+  border-radius: 999px;
+  font-family: var(--sans);
+  line-height: 1;
   cursor: pointer;
-  transition: opacity var(--transition-fast), background var(--transition-fast),
-              border-color var(--transition-fast);
+  transition: opacity var(--transition-fast), color var(--transition-fast),
+              background var(--transition-fast), border-color var(--transition-fast);
 }
 
-/* Optically centred rather than metrically: ● and ○ have no descender and sit
-   high in the em box, so the box itself is what centres them. */
+/* ● and ○ have no descender and sit high in the em box, so the box is what
+   centres them optically. */
 .example-chip-expect {
   font-size: .6rem;
   opacity: .8;
@@ -1887,81 +1900,93 @@
   outline: none;
 }
 
-/* Shown only when the chip is under the pointer or holds focus — three
-   controls on every pill at rest is a row of noise, and removing a word is
-   the one of the three that is not routine. Same 22px target as the verdict
-   when it is there; on a coarse pointer there is no hover to reveal it, so it
-   is simply always there. */
+/* Faded at rest rather than absent, and never removed from the flow: three
+   controls on every pill is a row of noise, but a × that appears on hover and
+   *takes up room* shifts every chip after it, so the row reflows under the
+   pointer. The slot is always there; only the ink comes and goes. */
 .example-chip-drop {
-  display: none;
-  font-size: .8rem;
-  opacity: .65;
+  font-size: .78rem;
+  opacity: 0;
 }
 
 .example-chip:hover .example-chip-drop,
-.example-chip:focus-within .example-chip-drop {
-  display: inline-flex;
-}
+.example-chip:focus-within .example-chip-drop { opacity: .65; }
 
 .example-chip-drop:hover,
 .example-chip-drop:focus-visible {
-  color: var(--red);
   opacity: 1;
+  color: var(--red);
   background: var(--red-soft);
   border-color: var(--red-border);
   outline: none;
 }
 
+/* No hover to reveal it with, so it is simply always there. */
 @media (hover: none) {
-  .example-chip-drop { display: inline-flex; }
+  .example-chip-drop { opacity: .65; }
 }
 
-/* A word being typed is still a chip. It gets the field's own width from
-   sizeWordInput() rather than the 100% every other field takes, so the pill
-   grows with the word instead of becoming a text box the width of the card. */
+/* A word being typed is still a chip. It takes its width from sizeWordField()
+   rather than the 100% every other field takes, so the pill grows with the
+   word instead of becoming a text box the width of the card — and it keeps the
+   chip's own ground rather than growing a second one inside it. */
 .example-card-word {
   width: auto;
-  margin: 0;
-  padding: 0;
+  height: 20px;
+  padding: 0 4px;
   font-family: var(--mono);
   font-size: .66rem;
-  background: transparent;
-  border-color: transparent;
+  color: inherit;
 }
 
 .example-card-word:hover,
 .example-card-word:focus {
   background: transparent;
-  border-color: transparent;
+  box-shadow: none;
 }
 
-/* Sized to the chips it sits in the row with, not to its own glyph — a + that
-   is a different height from every pill beside it reads as a stray control
-   rather than as the next item in the list. */
+/* Sized to the chips beside it, not to its own glyph — a + that is a different
+   height from every pill in the row reads as a stray control rather than as
+   the next item in the list. */
 .example-card-add {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   padding: 0;
-  font-family: var(--sans);
-  font-size: .88rem;
-  line-height: 1;
-  border-radius: 999px;
   border: 1px dashed var(--border2);
+  border-radius: 999px;
   background: transparent;
   color: var(--text3);
+  font-family: var(--sans);
+  font-size: .85rem;
+  line-height: 1;
   cursor: pointer;
-  transition: color var(--transition-fast), border-color var(--transition-fast);
+  transition: color var(--transition-fast), border-color var(--transition-fast),
+              background var(--transition-fast);
 }
 
 .example-card-add:hover,
 .example-card-add:focus-visible {
   color: var(--accent);
   border-color: var(--accent-border);
+  background: var(--accent-soft);
   outline: none;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .example-card,
+  /* The card takes the focus when a reader opens it, so that its Escape has
+   somewhere to fire from — but it is a region rather than a control, and a
+   ring around the whole card would say otherwise. */
+.example-card:focus {
+  outline: none;
+}
+
+.example-card.is-open { transition: opacity var(--transition-fast), visibility 0s; transform: none; }
+}
+
 
 /* Verdict banner — the headline result, shown once the simulation reaches
    its final step, instead of leaving accept/reject buried in the trace log. */

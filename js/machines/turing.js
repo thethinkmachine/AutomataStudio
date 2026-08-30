@@ -164,30 +164,88 @@ export function simNDTM(tokens) {
   return { accepted, branches, maxDepth, log };
 }
 
-export function simMTM(tokens, allTapeTokens) {
+/**
+ * The k tapes a run starts on, from either shape parseMultiTapeInput hands
+ * back: one word, which goes on tape 1, or one word per tape.
+ *
+ * Unwrapping used to happen in the definition's `simulate` line and
+ * nowhere else, so `decide` got the raw `{tapes: […]}` object and passed
+ * it to makeTapes as if it were a token list — every multi-tape run in
+ * the batch tester threw "tokens.forEach is not a function", and with it
+ * every StateMate verification of a multi-tape candidate. A word read one
+ * way by the player and another by the decider is the asymmetry itself,
+ * so both now start here.
+ */
+function multiTapeSeed(k, input, blank, twoWay) {
+  const perTape = Array.isArray(input) ? null : (Array.isArray(input?.tapes) ? input.tapes : null);
+  return perTape
+    ? Array.from({ length: k }, (_, i) => new Tape(perTape[i] || [], blank, twoWay))
+    : makeTapes(k, Array.isArray(input) ? input : [], blank, twoWay);
+}
+
+/**
+ * The token list a step is highlighted against — tape 1's, which is where
+ * the single-value form puts the whole word. With one word per tape the
+ * heads are on different tapes and there is no single list to highlight,
+ * which is what parseMultiTapeInput already says by returning tokens: null.
+ */
+function multiTapeTokens(input) {
+  return Array.isArray(input) ? input : (input?.tapes?.[0] || []);
+}
+
+/**
+ * One multi-tape step: every head writes, then every head moves.
+ *
+ * The wildcard is the reason this is a function rather than two lines
+ * repeated. A single-tape machine has always read `write === any` as
+ * "put back what you read" — simTM, testTM3, simNDTM and testNDTM3 all
+ * say so — but the two multi-tape loops wrote the wildcard *symbol*
+ * itself onto the tape. A rule the reader can build in the dialog (the
+ * per-tape Read menu offers the wildcard, and Write is a free text box)
+ * therefore stamped a Σ into the cells and left the machine reading a
+ * symbol that is in no alphabet, with no error anywhere.
+ *
+ * The heads move only once every tape has been written, which is what
+ * makes the k writes simultaneous rather than sequential.
+ */
+function applyMultiTapeStep(tapes, t, syms) {
+  const any = App.config.sym.any;
+  for (let i = 0; i < tapes.length; i++) {
+    const write = t.tapeWrites?.[i];
+    tapes[i].write((!write || write === any) ? syms[i] : write);
+  }
+  for (let i = 0; i < tapes.length; i++) tapes[i].move(t.tapeDirs?.[i]);
+}
+
+// One parameter, deliberately. simulateMachine calls simulate(input, m),
+// so a second positional here silently receives the machine *name* — which
+// is what a legacy per-tape argument in this slot did, seeding every tape
+// empty and leaving the run with nothing to read.
+export function simMTM(input) {
   App.simSteps = [];
   const k = App.tapeCount;
   const blank = App.config.sym.blank;
   const twoWay = usesTwoWayTape();
-  const tapes = allTapeTokens
-    ? Array.from({ length: k }, (_, i) => new Tape(allTapeTokens[i] || [], blank, twoWay))
-    : makeTapes(k, tokens, blank, twoWay);
+  const tokens = multiTapeTokens(input);
+  const tapes = multiTapeSeed(k, input, blank, twoWay);
   let state = App.startId;
   let via = null;
   const loop = makeLoopTracker();
   for (let step = 0; step < App.config.maxTmSteps; step++) {
     const syms = tapes.map(tape => tape.read());
     const snaps = tapes.map(tape => tape.snapshot());
-    App.simSteps.push({ state, tokens, tapes: snaps.map(s => s.tape), heads: snaps.map(s => s.head), views: tapes.map(tape => tape.view()), tid: via, note: `State:${getState(state)?.name} Read:[${syms.join(',')}]` });
+    // On a two-way tape the drawn head index is not the cell number, so
+    // the note carries the cells — the same reason simTM does. With k
+    // heads there are k of them, and "head 0" naming a different place on
+    // each tape is exactly the confusion worth spending the characters on.
+    const cellNote = twoWay ? ` @[${tapes.map(tape => tape.head).join(',')}]` : '';
+    App.simSteps.push({ state, tokens, tapes: snaps.map(s => s.tape), heads: snaps.map(s => s.head), views: tapes.map(tape => tape.view()), tid: via, note: `State:${getState(state)?.name} Read:[${syms.join(',')}]${cellNote}` });
     if (App.accepts.has(state)) { App.simSteps[App.simSteps.length - 1].final = 'accept'; App.simSteps[App.simSteps.length - 1].note += ' — ACCEPT'; break; }
     const at = loop.seenAt(tapesKey(state, tapes), App.simSteps.length - 1);
     if (at >= 0) { markLoopStep(App.simSteps[App.simSteps.length - 1], at); break; }
     const t = getMultiTapeDeterministicTransition(state, syms);
     if (!t) { App.simSteps[App.simSteps.length - 1].final = 'reject'; App.simSteps[App.simSteps.length - 1].note += ' — REJECT'; break; }
-    for (let i = 0; i < k; i++) {
-      tapes[i].write(t.tapeWrites[i] || syms[i]);
-      tapes[i].move(t.tapeDirs[i]);
-    }
+    applyMultiTapeStep(tapes, t, syms);
     state = t.to; via = t.id;
   }
   const lastMTM = App.simSteps[App.simSteps.length - 1];
@@ -321,10 +379,10 @@ export function testITM3(tokens, budget) {
   return testTM3(tokens, budget);
 }
 
-export function testMTM3(tokens, budget) {
+export function testMTM3(input, budget) {
   budget = budget || langStepBudget();
   const k = App.tapeCount || 2;
-  const tapes = makeTapes(k, tokens, App.config.sym.blank, usesTwoWayTape());
+  const tapes = multiTapeSeed(k, input, App.config.sym.blank, usesTwoWayTape());
   let state = App.startId;
   const seen = new Set();
   for (let step = 0; step < budget; step++) {
@@ -335,10 +393,7 @@ export function testMTM3(tokens, budget) {
     const syms = tapes.map(tape => tape.read());
     const t = getMultiTapeDeterministicTransition(state, syms);
     if (!t) return 'rej';
-    for (let i = 0; i < k; i++) {
-      tapes[i].write(t.tapeWrites[i] || syms[i]);
-      tapes[i].move(t.tapeDirs[i]);
-    }
+    applyMultiTapeStep(tapes, t, syms);
     state = t.to;
   }
   return 'unk';
@@ -466,8 +521,10 @@ defineFamily(turing, {
       say: c => `MTM already has a transition for (${nameOfState(c.from)}, [${(c.tapeSyms || []).join(', ')}]). Each read tuple must be unique.`
     },
     // parseMultiTapeInput hands back either a plain token list (the
-    // single-value form) or one list per tape.
-    simulate: input => Array.isArray(input) ? simMTM(input) : simMTM(input.tapes[0], input.tapes),
+    // single-value form) or one list per tape, and both simulators read
+    // both — see multiTapeSeed. Unwrapping here instead is what left the
+    // decider taking an object where it expected an array.
+    simulate: simMTM,
     decide: decideWith(testMTM3),
     parseInput: parseMultiTapeInput,
     schema: {

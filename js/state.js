@@ -70,7 +70,7 @@ export const MachineExamples = {
   '2PDA': [{ file: 'twopda', label: 'aⁿbⁿcⁿ — beyond one stack' }, { file: 'twopda-classic', label: 'Classic: two-stack handoff' }],
   'TM': [{ file: 'tm', label: 'Binary addition a+b' }, { file: 'tm-classic', label: 'Classic: binary increment' }],
   'NDTM': [{ file: 'ndtm', label: 'Composite? Guess a factor' }, { file: 'ndtm-classic', label: 'Classic: guess the last 1' }],
-  'MTM': [{ file: 'mtm', label: '3-tape adder — one pass' }, { file: 'mtm-classic', label: 'Classic: aⁿbⁿcⁿ with 2 tapes' }],
+  'MTM': [{ file: 'mtm-alu', label: '4-tape ALU — add, and, or, xor, not' }, { file: 'mtm', label: '3-tape adder — one pass' }, { file: 'mtm-palindrome', label: 'Palindromes in linear time' }, { file: 'mtm-classic', label: 'Classic: aⁿbⁿcⁿ with 2 tapes' }],
   'LBA': [{ file: 'lba', label: 'Powers of two, by halving' }, { file: 'lba-classic', label: 'Classic: scan to first b' }],
   'ITM': [{ file: 'ittm', label: 'The 4-state busy beaver' }, { file: 'ittm-classic', label: 'Classic: one step left' }],
   'Moore': [{ file: 'moore', label: 'Combination lock 1101' }, { file: 'moore-classic', label: 'Classic: traffic light' }],
@@ -189,6 +189,11 @@ export const App = {
     // two-way tape as standard; the app's default stays bounded so an
     // existing machine keeps deciding what it decided.
     twoWayTape: false,
+    // How many tapes a multi-tape machine may be given. The arity itself is
+    // not capped by the app — see clampTapeCount — this is the reader's own
+    // ceiling, so the picker offers a list worth reading rather than every
+    // number up to the hard limit. Settings → Turing.
+    maxTapeCount: 8,
     maxPdaSteps: 2000,
     maxTmSteps: 10000,
     // Whether the step-by-step tape simulators stop at a repeated
@@ -389,6 +394,47 @@ export function isTwoWayFA(m = App.machine) {
 //
 // LBA is excluded deliberately: its tape is bounded at *both* ends by the end
 // markers, and that is the machine's definition rather than its tape's.
+// ── how many tapes ────────────────────────────────────────────────
+// A multi-tape machine's arity used to be the literal 2..4, written out in
+// seven places — the picker's markup, the picker's clamp, the wizard's
+// clamp, the wizard's validation, the wizard's option list, StateMate's
+// schema and its agent tool. Four is not a fact about anything: k tapes are
+// k Tape objects and k columns on a transition, and nothing in the
+// simulators, the tracker or the save format counts to four.
+
+/** Fewer than two tapes is a single-tape machine, which is a different type. */
+export const MIN_TAPES = 2;
+
+/**
+ * The hard ceiling, which is a UI limit rather than a theoretical one.
+ * Every rule of a k-tape machine is a k-column row and the tracker draws k
+ * rows, so this is the point past which the *dialog* stops being usable —
+ * the machine layer itself has no opinion.
+ */
+export const TAPE_LIMIT = 64;
+
+/**
+ * The largest arity the reader may choose right now.
+ *
+ * Never smaller than the machine already on the canvas: the setting bounds
+ * what you can pick, never what you can open. A file declaring twelve tapes
+ * is a twelve-tape machine whatever this reader's preference says, and a
+ * picker that could not show its own machine's arity would be the
+ * two-places-for-one-number bug again.
+ */
+export function maxTapes() {
+  const set = Number(App.config?.maxTapeCount);
+  const ceiling = Number.isInteger(set) ? Math.min(Math.max(set, MIN_TAPES), TAPE_LIMIT) : 8;
+  return Math.max(ceiling, clampTapeCount(App.tapeCount));
+}
+
+/** Any integer arity, held inside the bounds the app can actually draw. */
+export function clampTapeCount(n) {
+  const v = Math.floor(Number(n));
+  if (!Number.isFinite(v)) return MIN_TAPES;
+  return Math.max(MIN_TAPES, Math.min(TAPE_LIMIT, v));
+}
+
 export function usesTwoWayTape(m = App.machine) {
   if (m === 'LBA') return false;
   return !!getMachineConfig(m).twoWayTape || !!App.config.twoWayTape;
@@ -530,12 +576,35 @@ export function exportWorkspaceState() {
   };
 }
 
+/**
+ * An empty workspace: what a new tab starts as, and what Clear returns to.
+ *
+ * There were two of these and they disagreed. The new-tab literal in
+ * `ui.js` reset the machine, all three alphabets, the tape count, the
+ * camera and the grammar; `performClear()` emptied the graph and left every
+ * one of them standing — so Clear handed back a canvas that still carried
+ * the previous machine's Σ and Γ, the old grammar in the Grammar view, and
+ * the camera parked wherever the deleted diagram used to be, which reads as
+ * a blank *screen* rather than a blank workspace. One definition, so
+ * "empty" cannot mean two things.
+ */
+export function blankWorkspaceData() {
+  return {
+    machine: 'DFA', sigma: ['a', 'b'], outputAlpha: ['0', '1'], stackAlpha: ['Z'],
+    tapeCount: MIN_TAPES,
+    states: [], transitions: [], startId: null, accepts: [], stateN: 0, transN: 0,
+    notes: [], noteN: 0, dividers: [], dividerN: 0, meta: null,
+    cam: { x: 0, y: 0, z: 1 },
+    history: [], future: [], grammar: { vars: ['S'], start: 'S', productions: [] }
+  };
+}
+
 export function importWorkspaceState(data) {
   App.machine = data.machine || 'DFA';
   App.sigma = new Set(data.sigma || ['a', 'b']);
   App.outputAlpha = new Set(data.outputAlpha || ['0', '1']);
   App.stackAlpha = new Set(data.stackAlpha || ['Z']);
-  App.tapeCount = data.tapeCount || 2;
+  App.tapeCount = clampTapeCount(data.tapeCount || MIN_TAPES);
   App.states = data.states || [];
   App.transitions = data.transitions || [];
   App.startId = data.startId || null;

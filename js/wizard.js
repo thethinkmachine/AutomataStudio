@@ -46,8 +46,7 @@
 import { showExampleCard } from './persistence.js';
 import {
   App, MachineTypes, getMachineConfig, isBoundarySymbol, isEndmarkerMachine,
-  isTwoWayFA, isWeightedFA, omegaAcceptanceOf, statePriority, usesParityPriorities
-} from './state.js';
+  isTwoWayFA, isWeightedFA, omegaAcceptanceOf, statePriority, usesParityPriorities, MIN_TAPES, TAPE_LIMIT, clampTapeCount } from './state.js';
 import { applyCandidate, machineSignature } from './statemate.js';
 import { compileSpec, stateNameKey } from './statemate-compile.js';
 import { lintCandidate } from './statemate-lint.js';
@@ -55,7 +54,7 @@ import {
   MAX_SPEC_STATES, StateMateError, alphabetFieldsFor, machineToSpec,
   stateFieldsFor, transitionFieldsFor, validateSpec
 } from './statemate-spec.js';
-import { hasStateOutput, isMultiTape, machineOptions } from './machines/index.js';
+import { hasStateOutput, isMultiTape, machineOptions, setTapeArity } from './machines/index.js';
 import { hasSingleValuedDelta } from './utils.js';
 import {
   FIELD_COPY, FIELD_COPY_BY_MACHINE, OPTION_COPY, READ_HINTS, STATE_FIELD_COPY,
@@ -422,19 +421,18 @@ export function removeTransition(draft, key) {
   draft.transitions = draft.transitions.filter(t => t.key !== key);
 }
 
-/** Keep every per-tape array exactly as wide as the tape count. */
+/**
+ * Keep every per-tape array exactly as wide as the tape count.
+ *
+ * The reshaping itself is setTapeArity, which the canvas's tape picker
+ * also calls — a draft row and a canvas transition are the same shape
+ * here, and two copies would be two answers to "what does a newly added
+ * tape start as".
+ */
 export function setDraftTapeCount(draft, n) {
-  const count = Math.max(2, Math.min(4, Number(n) || 2));
+  const count = clampTapeCount(n);
   draft.tapeCount = count;
-  const blank = App.config.sym.blank;
-  draft.transitions.forEach(t => {
-    ['tapeSyms', 'tapeWrites', 'tapeDirs'].forEach(f => {
-      if (!Array.isArray(t[f])) return;
-      const fill = f === 'tapeDirs' ? 'S' : blank;
-      while (t[f].length < count) t[f].push(fill);
-      t[f] = t[f].slice(0, count);
-    });
-  });
+  setTapeArity(draft.transitions, count);
 }
 
 export function addTest(draft) {
@@ -603,7 +601,9 @@ export function stepIssues(draft, stepId) {
   if (stepId === 'options') {
     if (isMultiTape(machine)) {
       const n = Number(draft.tapeCount);
-      if (!Number.isInteger(n) || n < 2 || n > 4) out.push(issue('tapeCount', 'A multi-tape machine has between 2 and 4 tapes.'));
+      if (!Number.isInteger(n) || n < MIN_TAPES || n > TAPE_LIMIT) {
+        out.push(issue('tapeCount', `A multi-tape machine has between ${MIN_TAPES} and ${TAPE_LIMIT} tapes.`));
+      }
     }
     if (isWeightedFA(machine)) {
       const c = Number(draft.cutPoint);

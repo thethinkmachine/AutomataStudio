@@ -88,7 +88,12 @@ const FLAGSHIPS = [
 // The flagships, plus one example per remaining ω-type. Each names its own
 // machine, so replaying their samples is what proves the acceptance condition
 // really is read off the type.
-const SAMPLED = [...FLAGSHIPS, 'dcoba', 'dpa', 'dwa', 'ncoba', 'npa', 'nwa'];
+// The flagships, the remaining omega types, and the two multi-tape examples
+// that exist to be *read* — the ALU because it is the widest machine in the
+// set (four tapes, five opcodes) and the palindrome because its whole point
+// is the running time, which only holds if it really halts where it claims.
+const SAMPLED = [...FLAGSHIPS, 'dcoba', 'dpa', 'dwa', 'ncoba', 'npa', 'nwa',
+  'mtm-alu', 'mtm-palindrome'];
 
 for (const file of SAMPLED) {
   test(`example ${file}: sample inputs behave as documented`, () => {

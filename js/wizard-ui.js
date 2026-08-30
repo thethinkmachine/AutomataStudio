@@ -30,8 +30,7 @@ import { closeModal, isModalOpen, registerModal, showOverlay } from './modal.js'
 import { MachineGuides } from './machine-guide.js';
 import {
   $, App, MachineCategories, MachineTypes, getMachineConfig, isBoundarySymbol,
-  isEndmarkerMachine, usesParityPriorities
-} from './state.js';
+  isEndmarkerMachine, usesParityPriorities, MIN_TAPES, maxTapes } from './state.js';
 import { summarizeDiff } from './statemate-compile.js';
 import { describeSpecSize, testKindFor, transitionFieldsFor } from './statemate-spec.js';
 import { Change, subscribe } from './store.js';
@@ -553,6 +552,12 @@ function renderChips(host, key) {
 //  STEP: MACHINE OPTIONS
 // ══════════════════════════════════════════════════════════════════
 
+/** Every arity the reader may pick, from MIN_TAPES up to the setting. */
+function tapeCountChoices() {
+  const top = Math.max(maxTapes(), Number(draft().tapeCount) || MIN_TAPES);
+  return Array.from({ length: top - MIN_TAPES + 1 }, (_, i) => MIN_TAPES + i);
+}
+
 function buildOptionsStep() {
   const host = el('div', 'wiz-options');
 
@@ -562,7 +567,9 @@ function buildOptionsStep() {
     if (name === 'tapeCount') {
       const select = el('select', 'sel');
       select.id = 'wiz-tape-count';
-      [2, 3, 4].forEach(n => {
+      // Not [2, 3, 4]: how many tapes are offerable is Settings → Turing,
+      // and maxTapes() also rises to cover a draft that already has more.
+      tapeCountChoices().forEach(n => {
         const opt = el('option', null, `${n} tapes`);
         opt.value = String(n);
         if (Number(draft().tapeCount) === n) opt.selected = true;

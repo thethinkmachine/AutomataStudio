@@ -2,8 +2,11 @@ import { closeModal, registerModal, showOverlay } from './modal.js';
 import { showExampleCard } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim } from './simulation.js';
-import { $, App } from './state.js';
+import { $, App, blankWorkspaceData, importWorkspaceState } from './state.js';
 import { Change, emit } from './store.js';
+import { snapshot } from './history.js';
+import { applyCamera } from './canvas.js';
+import { applyMachineSwitch } from './view.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  UTILS / HELPERS
@@ -48,34 +51,94 @@ export function resetIds() {
   App.noteN = Math.max(0, ...(App.notes || []).map(n => { const m = n.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
   App.dividerN = Math.max(0, ...(App.dividers || []).map(d => { const m = d.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
 }
+/**
+ * The Clear button: back to an empty workspace, not just an empty canvas.
+ *
+ * It used to call performClear(), which empties the graph and nothing else —
+ * so a cleared workspace kept the previous machine's Σ and Γ, its grammar,
+ * its machine card and the camera parked over where the diagram had been.
+ * That is a blank *screen*; the tab beside it that says "Workspace 2" is a
+ * blank workspace, and the two being different was the whole complaint.
+ * Both now start from the same blankWorkspaceData().
+ */
 export function clearAll(silent) {
-  if (!silent && App.states.length > 0) {
-    $('confirm-title').textContent = 'Clear Canvas?';
-    $('confirm-msg').textContent = 'This will permanently delete all states and transitions from the workspace.';
+  const worthAsking = App.states.length > 0 || App.transitions.length > 0
+    || (App.notes || []).length > 0 || (App.dividers || []).length > 0
+    || !!App.meta || (App.grammar?.productions || []).length > 0;
+  if (!silent && worthAsking) {
+    $('confirm-title').textContent = 'Clear Workspace?';
+    $('confirm-msg').textContent = 'This resets the workspace to its defaults. '
+      + 'Other tabs are left untouched.';
     const btn = $('confirm-action-btn');
     btn.onclick = () => {
-      performClear();
+      resetWorkspace();
       closeModal('confirm-modal');
     };
     showOverlay('confirm-modal');
     return;
   }
-  performClear();
-  if (!silent) showStatus('Canvas cleared');
+  resetWorkspace();
+  if (!silent) showStatus('Workspace cleared');
 }
 
+/**
+ * Everything back to the state a new tab opens in.
+ *
+ * The undo point comes first and is the only one: clearing a workspace is
+ * one edit, and Ctrl+Z brings the whole thing back — which is what makes a
+ * reset this wide safe to offer behind a single button.
+ */
+export function resetWorkspace() {
+  snapshot();
+  // The blank workspace carries empty history/future like any other loaded
+  // blob, and importWorkspaceState assigns them — which would throw away the
+  // undo point taken on the line above, leaving Clear the one edit in the app
+  // that cannot be taken back. The stacks are the session's, not the
+  // document's, so they are carried across the import.
+  const history = App.history;
+  const future = App.future;
+  importWorkspaceState(blankWorkspaceData());
+  App.history = history;
+  App.future = future;
+  clearTransientPointers();
+  if (typeof showExampleCard === 'function') showExampleCard(null);
+  resetSim();
+  // The machine type is part of what was reset, so the panels, badges and
+  // per-machine sections have to be told — emit(GRAPH) redraws the diagram
+  // but does not re-shape the editor around a different machine.
+  if (typeof applyMachineSwitch === 'function') applyMachineSwitch(App.machine);
+  if (typeof applyCamera === 'function') applyCamera();
+  emit(Change.ALPHABET, Change.META, Change.GRAPH, Change.CANVAS);
+}
+
+/**
+ * Selections and edit targets that would otherwise outlive what they point
+ * at — a stray Ctrl+D or arrow-key nudge just after a clear would act on an
+ * id that no longer exists.
+ */
+function clearTransientPointers() {
+  App.edgeHighlight = null;
+  App.selectedStates.clear(); App.selectedTransitions.clear();
+  App.selectedNotes.clear(); App.selectedDividers.clear();
+  App.transFrom = null; App.ctxId = null; App.ctxEdge = null; App.ctxMode = null; App.editId = null;
+}
+
+/**
+ * The graph and everything anchored to it, with the machine and its
+ * alphabets left standing.
+ *
+ * This is what switching machine type wants: the diagram cannot survive the
+ * switch, but Σ can and should — retyping the alphabet because you moved
+ * from a DFA to a PDA over it would be busywork. The Clear button wants
+ * resetWorkspace() instead, and conflating the two is what made Clear a
+ * half-measure.
+ */
 export function performClear() {
   App.states = []; App.transitions = []; App.startId = null; App.accepts.clear();
   App.stateN = 0; App.transN = 0; App.history = []; App.future = [];
   App.notes = []; App.noteN = 0;
   App.dividers = []; App.dividerN = 0;
-  App.edgeHighlight = null;
-  // Selections/edit targets can otherwise outlive the states and
-  // transitions they point at — a stray Ctrl+D or arrow-key nudge right
-  // after Clear would then act on an id that no longer exists.
-  App.selectedStates.clear(); App.selectedTransitions.clear();
-  App.selectedNotes.clear(); App.selectedDividers.clear();
-  App.transFrom = null; App.ctxId = null; App.ctxEdge = null; App.ctxMode = null; App.editId = null;
+  clearTransientPointers();
   if (typeof showExampleCard === 'function') showExampleCard(null);
   resetSim(); emit(Change.GRAPH);
 }

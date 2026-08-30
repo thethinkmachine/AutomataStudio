@@ -25,14 +25,14 @@
 
 import {
   App, MachineCategories, MachineTypes, OmegaAcceptance, getMachineConfig,
-  isOmegaAutomaton, isTwoWayFA, omegaAcceptanceOf, usesParityPriorities
-} from './state.js';
+  isOmegaAutomaton, isTwoWayFA, omegaAcceptanceOf, usesParityPriorities, MIN_TAPES, maxTapes } from './state.js';
 import { MachineGuides } from './machine-guide.js';
 import {
   MAX_SPEC_STATES, MIN_SPEC_TESTS, machineToSpec, stateFieldsFor,
   testKindFor, transitionFieldsFor
 } from './statemate-spec.js';
 import { hasSingleValuedDelta, isAnyTM } from './utils.js';
+import { isMultiTape } from './machines/index.js';
 
 // One line per spec field. Kept beside the field list rather than in the
 // prompt text so the two cannot disagree about what exists.
@@ -169,7 +169,7 @@ function schemaBlock(machine, { notes = false } = {}) {
     alphabets.push(`  "stackAlpha": [ … ],             ${label}`);
   }
   if (cfg.isTransducer) alphabets.push(`  "outputAlpha": [ … ],            the output alphabet Δ`);
-  if (machine === 'MTM') alphabets.push(`  "tapeCount": ${App.tapeCount},                   number of tapes (2–4)`);
+  if (isMultiTape(machine)) alphabets.push(`  "tapeCount": ${App.tapeCount},                   number of tapes (${MIN_TAPES}–${maxTapes()})`);
 
   const testLine = kind === 'omega'
     ? `  "tests": [ { "w": "a(bc)", "expect": "accept" }, … ]   ω-words as u(v): stem u, then v repeated forever`

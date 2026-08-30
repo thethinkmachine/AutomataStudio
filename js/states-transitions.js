@@ -107,7 +107,14 @@ export function populateTransitionModal(t) {
   const cfg = getMachineConfig(App.machine);
   const { eps, any, blank } = App.config.sym;
   const markers = cfg.hasEndMarkers ? [App.config.sym.leftMarker, App.config.sym.rightMarker] : [];
-  const syms = [...new Set([...(cfg.hasEpsilon ? [eps] : []), any, ...App.sigma, ...markers, ...(cfg.hasTape ? [blank] : [])])];
+  // A tape machine reads Γ, not Σ. The menu offered Σ ∪ {⊔} only, so every
+  // work symbol the machine writes — the X of a crossing-off pass, and on a
+  // multi-tape machine essentially the whole content of tapes 2..k — was a
+  // symbol you could write and then had no way to select as a read. Σ stays
+  // in the list because the input is written on the tape and reading it back
+  // is the commonest rule there is.
+  const tapeSyms = cfg.hasTape ? [...App.stackAlpha, blank] : [];
+  const syms = [...new Set([...(cfg.hasEpsilon ? [eps] : []), any, ...App.sigma, ...tapeSyms, ...markers])];
 
   const fromSel = $('m-from');
   const toSel = $('m-to');
