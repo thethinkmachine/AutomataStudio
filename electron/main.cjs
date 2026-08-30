@@ -13,8 +13,19 @@ const fsSync = require('node:fs');
 // rather than opt-in, so keep using the old directory wherever it is already there.
 // New installs get the AutomataStudio path. Runs at module scope because userData is
 // resolved well before app.whenReady().
-const legacyUserData = path.join(app.getPath('appData'), 'Automata Playground');
-if (fsSync.existsSync(legacyUserData)) app.setPath('userData', legacyUserData);
+//
+// The name to look for is the one Electron actually wrote, which is package.json's
+// `name` -- "automata-playground" -- not the display name. A single candidate spelled
+// "Automata Playground" was wrong on both counts (space, capitals), so this migration
+// never once fired: every machine that updated through the rename left its workspaces
+// behind in the old directory while the app started fresh in the new one. Both
+// spellings are checked now, most-likely first, because a directory that is not there
+// costs one stat and a directory that is there is somebody's saved work.
+const LEGACY_USER_DATA_NAMES = ['automata-playground', 'Automata Playground'];
+for (const name of LEGACY_USER_DATA_NAMES) {
+  const dir = path.join(app.getPath('appData'), name);
+  if (fsSync.existsSync(dir)) { app.setPath('userData', dir); break; }
+}
 
 // Set only by `npm run electron:dev` (see package.json), which starts the Vite dev
 // server first and points this at it for live reload. Unset in both `electron:preview`
@@ -62,9 +73,34 @@ ipcMain.handle('window-is-maximized', () => mainWindow?.isMaximized() ?? false);
 // and the copy in the renderer cannot see app.isPackaged or APPIMAGE anyway.
 ipcMain.handle('updates-supported', () => canAutoUpdate());
 ipcMain.on('check-for-updates', () => checkForUpdatesManually());
+// The other half of sendUpdateStatus: the page asks for the state it may have
+// missed. update-status is a broadcast into a window that is still loading, so
+// without this the renderer's only knowledge of the updater is whatever happened
+// to arrive after its listener existed. See lastUpdateStatus.
+ipcMain.handle('update-state', () => lastUpdateStatus);
+
 // quitAndInstall closes the window on the way out, which runs the page's
 // beforeunload backup save exactly as an ordinary quit does.
-ipcMain.on('install-update', () => updater?.quitAndInstall());
+//
+// It can also decline, and silently: BaseUpdater.install() returns false without
+// throwing when quitAndInstallCalled is already set or the downloaded file is no
+// longer known, and dispatchError's only listener writes to a console a packaged
+// GUI app does not have. The page was left showing "Restart & Install" over a
+// button that had become a no-op for the rest of the session -- which reads as an
+// update that refuses to install. A refusal is now an error like any other.
+ipcMain.on('install-update', () => {
+  if (!updater) {
+    sendUpdateStatus({ state: 'error', ...UpdateErrors.UNSUPPORTED });
+    return;
+  }
+  try {
+    updater.quitAndInstall();
+  } catch (err) {
+    console.error('[updater] install failed:', err);
+    const { code, message } = classifyUpdateError(err);
+    sendUpdateStatus({ state: 'error', code, message });
+  }
+});
 
 // ── StateMate transport ───────────────────────────────────────────
 // The renderer hands over a fully-formed request and gets the raw response
@@ -435,6 +471,13 @@ function getAutoUpdater() {
   // through its own rejected promise; this keeps the process alive either way.
   updater.on('error', (err) => {
     console.error('[updater]', err?.message ?? err);
+    // Forwarded as well as logged, because this is the only channel a *failed
+    // install* has: quitAndInstall() reports through dispatchError rather than by
+    // throwing. It stays safe for a background check because the renderer drops an
+    // error arriving while #update-modal is closed -- so a failed startup check is
+    // still the no-op it has to be, and a failed click is not.
+    const { code, message } = classifyUpdateError(err);
+    sendUpdateStatus({ state: 'error', code, message });
   });
 
   updater.on('download-progress', ({ percent }) => {
@@ -457,7 +500,18 @@ function getAutoUpdater() {
 // is the one piece of window chrome this app does not draw itself, and it would be
 // the only framed surface in a frameless window. See js/electron-bridge.js for the
 // receiving end and index.html #update-modal for the markup.
+// The last thing sent, replayed over the 'update-state' channel above. Broadcasts
+// are fire-and-forget into a window that may not have finished loading: the startup
+// check begins at whenReady, while js/electron-bridge.js does not register its
+// listener until the whole module graph has evaluated. On the second and later
+// launches the installer is already in the pending cache, so 'update-downloaded'
+// fires a second or two in -- squarely inside that gap -- and the page never heard
+// that an update was staged, never offered the install, and re-checked from scratch
+// on the next launch. Forever.
+let lastUpdateStatus = null;
+
 function sendUpdateStatus(payload) {
+  lastUpdateStatus = payload;
   mainWindow?.webContents.send('update-status', payload);
 }
 
@@ -508,6 +562,22 @@ function classifyUpdateError(err) {
   return UpdateErrors.UNKNOWN;
 }
 
+// electron-updater never empties its own pending directory, so the installer for a
+// version that has since been installed stays on disk at full size -- two of them
+// here, 100 MB each, for 2.0.0 and 2.5.0. It is only cleared on the way to
+// *replacing* it (a cached file whose checksum no longer matches the manifest), and
+// "there is nothing newer to install" never takes that path. So do it here, which is
+// the one moment the answer is known to be that.
+async function clearStaleUpdateCache(u) {
+  try {
+    await u.downloadedUpdateHelper?.clear();
+  } catch (err) {
+    // Best-effort: a locked or missing cache is not a reason to fail a check that
+    // has already succeeded.
+    console.error('[updater] could not clear pending cache:', err?.message ?? err);
+  }
+}
+
 function initAutoUpdater() {
   if (!canAutoUpdate()) return;
   const u = getAutoUpdater();
@@ -517,7 +587,9 @@ function initAutoUpdater() {
   // notification, and every surface this feature has belongs inside the window.
   // autoDownload is on, so a staged update announces itself through the
   // 'update-downloaded' handler above, which marks the menu item and nothing more.
-  u.checkForUpdates().catch(() => {});
+  u.checkForUpdates()
+    .then(result => { if (result && !result.isUpdateAvailable) clearStaleUpdateCache(u); })
+    .catch(() => {});
 }
 
 // Wired to Help > Check for Updates…, which is only built when canAutoUpdate() is
@@ -544,6 +616,7 @@ async function checkForUpdatesManually() {
     // reimplement the comparison electron-updater has already done.
     if (!result?.isUpdateAvailable) {
       sendUpdateStatus({ state: 'up-to-date', version: app.getVersion() });
+      clearStaleUpdateCache(u);
       return;
     }
 
