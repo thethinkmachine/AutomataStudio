@@ -1,7 +1,7 @@
 import { utmStepBack, utmStepFwd, utmToggleAuto } from './algorithms-fa.js';
 import { renderGamma } from './alphabet.js';
 import { settleAll } from './anim.js';
-import { applyCamera, clearEdgeDirectionHighlight, clearSelection, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, nudgeSelected, pasteClipboard, selectAllStates, toggleSnapToGrid, wrap } from './canvas.js';
+import { applyCamera, clampZoom, clearEdgeDirectionHighlight, clearSelection, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, minZoom, nudgeSelected, pasteClipboard, selectAllStates, toggleSnapToGrid, wrap } from './canvas.js';
 import { isQuickSettingsOpen, positionQuickSettings, refreshQuickSettings } from './quick-settings.js';
 import { includeDividerBounds, removeDividers, updateShapeToolButton } from './dividers.js';
 import { markDirty, redo, snapshot, snapshotSettings, undo } from './history.js';
@@ -1388,10 +1388,9 @@ export function zoomIn() {
 
 export function zoomOut() {
   const w = $('canvas-wrap'); if (!w) return;
-  const cfg = App.config.zoom;
   const r = w.getBoundingClientRect();
   const mx = r.width / 2, my = r.height / 2;
-  const newZ = Math.max(cfg.min, App.cam.z / 1.25);
+  const newZ = Math.max(minZoom(), App.cam.z / 1.25);
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
@@ -1425,8 +1424,7 @@ export function setZoomFromInput(val) {
     return;
   }
   const w = $('canvas-wrap'); if (!w) return;
-  const cfg = App.config.zoom;
-  const newZ = Math.max(cfg.min, Math.min(cfg.max, num / 100));
+  const newZ = clampZoom(num / 100);
 
   const mx = w.clientWidth / 2, my = w.clientHeight / 2;
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
@@ -1487,7 +1485,7 @@ export function fitToScreen(silent = false) {
   const bw = maxX - minX, bh = maxY - minY;
   const scaleX = (cw - pad * 2) / bw;
   const scaleY = (ch - pad * 2) / bh;
-  const z = Math.max(App.config.zoom.min, Math.min(App.config.zoom.max, Math.min(scaleX, scaleY)));
+  const z = clampZoom(Math.min(scaleX, scaleY));
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
   App.cam.x = vis.x + cw / 2 - cx * z;
   App.cam.y = vis.y + ch / 2 - cy * z;

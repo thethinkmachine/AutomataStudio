@@ -572,7 +572,11 @@ export function animateSimToken(edgeKey, dur, onDone) {
   try { len = pathEl && layer ? pathEl.getTotalLength() : 0; } catch (e) { }
   if (!len) { if (onDone) onDone(); return; }
   const dot = makeSVG('circle');
-  dot.setAttribute('r', 5);
+  // The radius is in world units, so the camera divides it: on a machine drawn
+  // at 8% a 5px token is half a pixel of the one thing that says which edge is
+  // being taken right now. It is sized against the zoom instead, never below
+  // its own 5px, so it stays the same dot on screen however far out you are.
+  dot.setAttribute('r', Math.max(5, 5 / (App.cam?.z || 1)));
   dot.classList.add('sim-token');
   const p0 = pathEl.getPointAtLength(0);
   dot.setAttribute('cx', p0.x); dot.setAttribute('cy', p0.y);
