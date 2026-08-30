@@ -15,6 +15,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updatesSupported: () => ipcRenderer.invoke('updates-supported'),
   checkForUpdates: () => ipcRenderer.send('check-for-updates'),
   installUpdate: () => ipcRenderer.send('install-update'),
+  // The state the page may have missed. update-status is broadcast into a window
+  // that is still loading, and the startup check can resolve before this script's
+  // consumer exists — see lastUpdateStatus in electron/main.cjs. Resolves null when
+  // nothing has been reported yet.
+  updateState: () => ipcRenderer.invoke('update-state'),
   // callback({ state, version?, percent?, message?, silent? }); returns an
   // unsubscribe function. State drives #update-modal; there is no OS dialog.
   onUpdateStatus: (callback) => {

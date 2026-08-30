@@ -87,7 +87,16 @@ if (isElectron) {
     updateDismiss.textContent = canInstall ? 'Later' : 'Close';
   };
 
+  const markStaged = () => {
+    updatesBtn?.classList.add('active');
+    const label = document.getElementById('updates-btn-label');
+    if (label) label.textContent = 'Restart to Update';
+  };
+
   const showStagedUpdate = () => {
+    // Also marks the header: once an update is on disk that is what the menu item
+    // says, whether the dialog was opened for it or replayed into it at boot.
+    markStaged();
     setUpdateView({
       title: 'Update Ready',
       msg: `Version ${updateStaged} is ready. Your work is saved before restarting.`,
@@ -96,17 +105,13 @@ if (isElectron) {
     });
   };
 
-  window.electronAPI.onUpdateStatus(status => {
+  const applyUpdateStatus = status => {
+    if (!status) return;
     if (status.state === 'downloaded') {
       updateStaged = status.version;
       // A background download must not seize the screen. The menu item carries
       // the news until the user asks for it.
-      if (status.silent) {
-        updatesBtn?.classList.add('active');
-        const label = document.getElementById('updates-btn-label');
-        if (label) label.textContent = 'Restart to Update';
-        return;
-      }
+      if (status.silent) { markStaged(); return; }
       showStagedUpdate();
       return;
     }
@@ -131,7 +136,18 @@ if (isElectron) {
         setUpdateView({ title: 'Update Failed', msg: status.message, code: status.code });
         break;
     }
-  });
+  };
+
+  window.electronAPI.onUpdateStatus(applyUpdateStatus);
+
+  // The state that was reported before this listener existed. The startup check
+  // begins at app.whenReady() while this module is still being evaluated, and a
+  // broadcast into a loading window is simply lost -- which on every launch after
+  // the first is the launch where the installer is already cached and
+  // 'update-downloaded' therefore lands within a second or two. Without this the
+  // page never learned the update was staged, never offered to install it, and
+  // downloaded it again on the next launch, forever.
+  window.electronAPI.updateState?.().then(applyUpdateStatus).catch(() => {});
 
   updateInstall?.addEventListener('click', () => window.electronAPI.installUpdate());
   updateDismiss?.addEventListener('click', () => closeModal('update-modal'));

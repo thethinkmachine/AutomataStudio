@@ -198,7 +198,9 @@ function resetModuleState() {
   statemateProvider.resetStateMateSettings();
   statematePrompt._clearFewShotCache();
   statemateUi._resetPaletteForTests();
-  // The info card holds a pending auto-hide timer and the meta it describes.
+  // The machine card (js/machine-card.js, re-exported here through
+  // persistence.js) holds a pending auto-hide timer, a half-typed field and
+  // the nodes of the last render.
   persistence._resetExampleCardForTests();
   // The wizard's draft deliberately outlives its dialog, so it also outlives
   // a test unless it is cleared here.

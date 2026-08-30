@@ -12,8 +12,7 @@ import { parseMachineInput, simulateMachine } from './machines/index.js';
 import { computeBatchResults, runQuietly } from './simulation.js';
 import {
   App, MachineTypes, exportWorkspaceState, getMachineConfig, importWorkspaceState,
-  isOmegaAutomaton
-} from './state.js';
+  isOmegaAutomaton, MIN_TAPES, TAPE_LIMIT } from './state.js';
 import { compileSpec, computeDiff } from './statemate-compile.js';
 import { lintCandidate } from './statemate-lint.js';
 import {
@@ -756,7 +755,7 @@ const DEFINITIONS = {
       s.draft.sigma = [...new Set(a.sigma.map(String))];
       if (Array.isArray(a.stackAlpha)) s.draft.stackAlpha = [...new Set(a.stackAlpha.map(String))];
       if (Array.isArray(a.outputAlpha)) s.draft.outputAlpha = [...new Set(a.outputAlpha.map(String))];
-      if (a.tapeCount !== undefined) s.draft.tapeCount = integer(a.tapeCount, 2, 2, 4);
+      if (a.tapeCount !== undefined) s.draft.tapeCount = integer(a.tapeCount, MIN_TAPES, MIN_TAPES, TAPE_LIMIT);
       changed(s);
       return candidateSummary(s);
     }

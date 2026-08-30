@@ -18,7 +18,7 @@ import {
 } from './panel-state.js';
 import { declaredSectionIds, sectionStartsCollapsed } from './panel-sections.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
-import { $, App, MachineCategories, MachineTypes, R, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
+import { $, App, MIN_TAPES, MachineCategories, blankWorkspaceData, MachineTypes, R, TAPE_LIMIT, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, maxTapes, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { getState, getTransition, hideContextMenu } from './states-transitions.js';
 import { openMachineWizard } from './wizard-ui.js';
 import {
@@ -28,7 +28,7 @@ import {
 import { Change, emit, subscribe } from './store.js';
 import { DEFAULT_THEME, Themes } from './themes.js';
 import { clearAll, escapeHtml, showStatus } from './utils.js';
-import { AUX_VIEWS, applyMachineSwitch, closeAuxView, hideMoreMenu, hideToolsMenu, setMachine, setView } from './view.js';
+import { AUX_VIEWS, applyMachineSwitch, closeAuxView, hideMoreMenu, hideToolsMenu, setMachine, setView, syncTapeCountUI } from './view.js';
 
 subscribe(Change.TABS, renderTabs);
 subscribe(Change.SAVE, updateSaveIndicator);
@@ -473,11 +473,7 @@ export function createTab(name) {
     id: 'ws_' + Date.now() + '_' + Math.random().toString(36).substring(2,9),
     name: wsName,
     dirty: false,
-    data: {
-      machine: 'DFA', sigma: ['a', 'b'], outputAlpha: ['0', '1'], stackAlpha: ['Z'], tapeCount: 2,
-      states: [], transitions: [], startId: null, accepts: [], stateN: 0, transN: 0, cam: { x: 0, y: 0, z: 1 },
-      history: [], future: [], grammar: { vars: ['S'], start: 'S', productions: [] }
-    }
+    data: blankWorkspaceData()
   };
   Workspaces.push(newWs);
   editingTabId = null;
@@ -2994,6 +2990,7 @@ export function openSettingsModal() {
   $('set-pda-steps').value = c.maxPdaSteps;
   $('set-pda-paradigm').value = c.pdaParadigm || 'explicit';
   if ($('set-pfa-cutpoint')) $('set-pfa-cutpoint').value = c.pfaCutPoint ?? 0.5;
+  if ($('set-max-tapes')) $('set-max-tapes').value = maxTapes();
   $('set-tm-steps').value = c.maxTmSteps;
   if ($('set-lang-budget')) $('set-lang-budget').value = c.langStepBudget ?? 400;
   $('set-auto-speed').value = c.autoSpeed;
@@ -3179,6 +3176,12 @@ export function confirmSettings() {
     c.pfaCutPoint = Number.isFinite(cut) ? Math.min(1, Math.max(0, cut)) : 0.5;
   }
   c.maxPdaSteps = parseInt($('set-pda-steps').value) || 2000;
+  if ($('set-max-tapes')) {
+    // Clamped to what the app can draw, never below the machine on the
+    // canvas — syncTapeCountUI rebuilds the picker from the result.
+    c.maxTapeCount = Math.max(MIN_TAPES, Math.min(TAPE_LIMIT, parseInt($('set-max-tapes').value) || 8));
+    syncTapeCountUI();
+  }
   c.maxTmSteps = parseInt($('set-tm-steps').value) || 10000;
   if ($('set-lang-budget')) {
     c.langStepBudget = Math.max(10, parseInt($('set-lang-budget').value) || 400);
@@ -3280,6 +3283,7 @@ export function getEditorSettingsData() {
     twoWayTape: !!c.twoWayTape,
     detectLoops: c.detectLoops !== false,
     maxPdaSteps: c.maxPdaSteps,
+    maxTapeCount: c.maxTapeCount,
     maxTmSteps: c.maxTmSteps,
     langStepBudget: c.langStepBudget,
     autoSpeed: c.autoSpeed,
@@ -3353,6 +3357,7 @@ export function populateSettingsModalInputs(data) {
   if (data.twoWayTape !== undefined && $('set-two-way-tape')) $('set-two-way-tape').checked = !!data.twoWayTape;
   if (data.detectLoops !== undefined && $('set-detect-loops')) $('set-detect-loops').checked = data.detectLoops !== false;
   if (data.maxPdaSteps !== undefined) $('set-pda-steps').value = data.maxPdaSteps;
+  if (data.maxTapeCount !== undefined && $('set-max-tapes')) $('set-max-tapes').value = data.maxTapeCount;
   if (data.maxTmSteps !== undefined) $('set-tm-steps').value = data.maxTmSteps;
   if (data.langStepBudget !== undefined && $('set-lang-budget')) $('set-lang-budget').value = data.langStepBudget;
   if (data.autoSpeed !== undefined) $('set-auto-speed').value = data.autoSpeed;

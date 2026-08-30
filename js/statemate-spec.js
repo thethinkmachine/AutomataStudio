@@ -29,8 +29,7 @@
 
 import {
   App, MachineTypes, getMachineConfig, isOmegaAutomaton,
-  statePriority, usesParityPriorities
-} from './state.js';
+  statePriority, usesParityPriorities, MIN_TAPES, TAPE_LIMIT } from './state.js';
 // The dialect still knows nothing about the UI, the provider or the
 // pipeline it feeds — only about what each machine carries, which is the
 // one thing a schema has to know.
@@ -339,7 +338,7 @@ export function validateSpec(raw, { fallbackMachine = App.machine } = {}) {
   if (cfg.isTransducer) spec.outputAlpha = asStringArray(raw.outputAlpha) || [];
   if (isMultiTape(machine)) {
     const n = Number(raw.tapeCount);
-    spec.tapeCount = Number.isInteger(n) && n >= 2 && n <= 4 ? n : App.tapeCount;
+    spec.tapeCount = Number.isInteger(n) && n >= MIN_TAPES && n <= TAPE_LIMIT ? n : App.tapeCount;
   }
 
   // ── transitions ──────────────────────────────────────────────

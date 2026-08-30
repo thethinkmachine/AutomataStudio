@@ -2187,9 +2187,11 @@ button.sm-stat:disabled {
 }
 
 /* ─── STATEMATE RESULT STRIP ───
-   Decorates the existing info card over the canvas rather than introducing a
-   second one — a StateMate result is a title, a blurb and a set of test words,
-   which is exactly what that card already renders. */
+   Decorates the machine card over the canvas rather than introducing a second
+   one — a StateMate result is a title, a blurb and a set of test words, which
+   is exactly what that card already renders. The card is a flex stack with one
+   gap of its own, so nothing here carries a vertical margin; a section that
+   wants a wider break says so with padding beside its rule. */
 .example-card.sm-result {
   border-color: var(--accent-border);
 }
@@ -2202,7 +2204,6 @@ button.sm-stat:disabled {
   display: flex;
   align-items: center;
   gap: 7px;
-  margin: 7px 0 0;
   flex-wrap: wrap;
 }
 
@@ -2248,7 +2249,6 @@ button.sm-stat:disabled {
 .sm-result-actions {
   display: flex;
   gap: 5px;
-  margin-top: 10px;
   padding-top: 9px;
   border-top: 1px solid var(--border);
   flex-wrap: wrap;
@@ -2274,7 +2274,7 @@ button.sm-stat:disabled {
 }
 
 .sm-result-notes {
-  margin: 10px 0 0;
+  margin: 0;
   padding-left: 16px;
   color: var(--text3);
   font-family: var(--sans);
@@ -2286,7 +2286,6 @@ button.sm-stat:disabled {
 .sm-result-note.is-fail { color: var(--red); }
 
 .sm-result-foot {
-  margin-top: 8px;
   color: var(--text3);
   font-family: var(--mono);
   font-size: .62rem;

@@ -5,12 +5,13 @@ import { wrap } from './canvas.js';
 import { snapshot } from './history.js';
 import { anyModalOpen, closeModal, showOverlay } from './modal.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
+import { isMultiTape, setTapeArity, tapeArityCollisions } from './machines/index.js';
 import { resetSim } from './simulation.js';
-import { $, App, getMachineConfig, normalizeBoundarySymbolsForMachine } from './state.js';
-import { Change, emit } from './store.js';
+import { $, App, MIN_TAPES, clampTapeCount, getMachineConfig, maxTapes, normalizeBoundarySymbolsForMachine } from './state.js';
+import { Change, emit, subscribe } from './store.js';
 import { renderReferenceView } from './reference.js';
 import { renderTabs, updateMobilePanelChrome, updateModelPickerLabels } from './ui.js';
-import { clearAll, isAnyTM, isCounterMachine, showStatus } from './utils.js';
+import { isAnyTM, isCounterMachine, performClear, showStatus } from './utils.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  VIEW MANAGEMENT
@@ -213,7 +214,11 @@ export function setMachine(m) {
     $('confirm-msg').textContent = `Switching to ${m} will delete your current machine work. Continue?`;
     const btn = $('confirm-action-btn');
     btn.onclick = () => {
-      clearAll(true);
+      // performClear, not clearAll: the diagram cannot survive the switch but
+      // Σ and Γ can, and retyping the alphabet because you moved from a DFA
+      // to a PDA over it would be busywork. clearAll is the Clear button,
+      // which resets the whole workspace including the alphabets.
+      performClear();
       applyMachineSwitch(m);
       closeModal('confirm-modal');
     };
@@ -259,7 +264,10 @@ export function applyMachineSwitch(m) {
   if (stackLbl) stackLbl.textContent = isAnyTM(m) ? 'Tape Alphabet Γ' : 'Stack Alphabet Γ';
   
   $('output-sec').style.display = cfg.isTransducer ? '' : 'none';
-  $('mtm-ctrl').style.display = (m === 'MTM') ? 'flex' : 'none';
+  $('mtm-ctrl').style.display = isMultiTape(m) ? 'flex' : 'none';
+  // Revealing the control is not the same as filling it in. Switching to a
+  // multi-tape machine showed a picker still reading whatever it last read.
+  syncTapeCountUI();
 
   // An ω-automaton reads u·vᵂ. Without saying so the placeholder invites a
   // finite word, which is the one thing the machine cannot take.
@@ -272,28 +280,87 @@ export function applyMachineSwitch(m) {
   showStatus('Machine: ' + m);
 }
 
+/**
+ * The tape picker says what App.tapeCount is, not what it last said.
+ *
+ * Nothing synced it from the machine, so opening a 3-tape file left it
+ * reading "2" — a wrong number over a machine whose δ is drawn in Γ³, and
+ * a trap as well as a lie: setTapeCount compares against App.tapeCount, so
+ * the reader's next act was to pick the number already on screen and have
+ * the machine reshaped for agreeing with them. It is synced on every graph
+ * change for the same reason the formal-definition box beside it is — both
+ * are the machine's own arity, read back.
+ */
+export function syncTapeCountUI() {
+  const sel = $('tape-count-sel');
+  if (!sel) return;
+  // The list itself follows the setting, so raising Settings → Turing →
+  // Maximum Tapes is the whole of what makes a fifth tape offerable. It is
+  // rebuilt rather than filtered because maxTapes() also rises to cover a
+  // machine that already has more tapes than the reader's preference.
+  const top = maxTapes();
+  const want = Array.from({ length: top - MIN_TAPES + 1 }, (_, i) => String(MIN_TAPES + i));
+  const have = Array.from(sel.options || []).map(o => o.value);
+  if (have.length !== want.length || want.some((v, i) => have[i] !== v)) {
+    sel.innerHTML = want.map(v => `<option value="${v}">${v}</option>`).join('');
+  }
+  sel.value = String(clampTapeCount(App.tapeCount));
+}
+subscribe(Change.GRAPH, syncTapeCountUI);
+
 export function setTapeCount(n) {
-  const newCount = Math.max(2, Math.min(4, parseInt(n) || 2));
-  if (newCount === App.tapeCount) return;
-  if (App.transitions.length > 0) {
-    $('confirm-title').textContent = 'Change Tape Count?';
-    $('confirm-msg').textContent = `Changing to ${newCount} tapes will clear all existing multi-tape transitions. Continue?`;
-    const btn = $('confirm-action-btn');
-    btn.onclick = () => {
-      snapshot();
-      App.transitions = [];
-      App.tapeCount = newCount;
-      $('tape-count-sel').value = App.tapeCount;
-      resetSim();
-      emit(Change.GRAPH);
-      closeModal('confirm-modal');
-    };
-    showOverlay('confirm-modal');
+  const newCount = clampTapeCount(n);
+  // The select has already moved by the time onchange fires, so every path
+  // that does not take the new number has to put it back — including this
+  // one, where the reader picked the number the machine already has.
+  if (newCount === App.tapeCount) { syncTapeCountUI(); return; }
+
+  const apply = () => {
+    snapshot();
+    App.tapeCount = newCount;
+    // Reshaped, not discarded — see setTapeArity. A rule that read
+    // [a, b] on two tapes still reads [a, b] on three; what is new is a
+    // third head that starts blank and stays put.
+    setTapeArity(App.transitions, newCount);
+    resetSim();
+    // Γ^k is in the formal definition, the tuple and every per-tape label,
+    // and none of them are told by an assignment. The old no-transitions
+    // path emitted nothing at all, so the panel went on describing a
+    // machine with the previous number of tapes.
+    emit(Change.GRAPH);
+  };
+
+  // Widening adds a tape that does nothing, so there is nothing to lose and
+  // nothing to ask. Narrowing drops a column off every rule, which is the
+  // only direction that can cost the reader work.
+  if (newCount > App.tapeCount || !App.transitions.length) {
+    apply();
+    showStatus(`Tapes: ${newCount}`);
     return;
   }
-  App.tapeCount = newCount;
-  $('tape-count-sel').value = App.tapeCount;
-  resetSim();
+
+  const dropped = App.tapeCount - newCount;
+  const collisions = tapeArityCollisions(App.transitions, newCount);
+  // Put the picker back on the machine's real arity *before* asking, the
+  // way setMachine restores the model picker: refusing then leaves a
+  // control that already agrees with the machine, and accepting re-syncs
+  // it through the emit in apply(). Nothing has to be undone on cancel,
+  // and the shared confirm dialog keeps its one registration.
+  syncTapeCountUI();
+  $('confirm-title').textContent = 'Remove a Tape?';
+  $('confirm-msg').textContent =
+    `Narrowing to ${newCount} tapes drops what every transition does on tape${dropped > 1 ? 's' : ''} `
+    + `${Array.from({ length: dropped }, (_, i) => newCount + i + 1).join(' and ')}. `
+    + (collisions.length
+      ? `${collisions.length} pair${collisions.length > 1 ? 's' : ''} of rules that differ only on the tape${dropped > 1 ? 's' : ''} being removed will then read the same tuple. `
+      : '')
+    + 'Continue?';
+  const btn = $('confirm-action-btn');
+  btn.onclick = () => {
+    apply();
+    closeModal('confirm-modal');
+  };
+  showOverlay('confirm-modal');
 }
 
 // ══════════════════════════════════════════════════════════════════

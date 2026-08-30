@@ -20,6 +20,7 @@
 import { App } from '../state.js';
 import { machineDef, requireMachineDef } from './registry.js';
 import { parseWordInput } from './runtime.js';
+import { tapeTuplesOverlap } from './predicates.js';
 
 // Evaluated for their registrations. Order is the model picker's order,
 // which is also the order machineIds() reports.
@@ -154,6 +155,71 @@ export function machineOptions(m) {
 /** Does this machine draw more than one tape? */
 export function isMultiTape(m) {
   return !!machineDef(m)?.multiTape;
+}
+
+/** The three fields a multi-tape transition carries one column of per tape. */
+export const TAPE_ARITY_FIELDS = ['tapeSyms', 'tapeWrites', 'tapeDirs'];
+
+/**
+ * Every per-tape array on these transitions, exactly as wide as `count`.
+ *
+ * Changing the tape count used to *delete every transition*, which made
+ * the control unusable for the one thing anybody wants it for: adding a
+ * work tape to a machine that already works. Nothing about a k-tape rule
+ * stops being true when a (k+1)th tape appears — so widening pads with a
+ * blank read, a blank write and a stationary head, which is the new tape
+ * doing nothing, and the machine goes on deciding exactly what it decided.
+ * Narrowing genuinely drops the trailing columns, which is why its caller
+ * asks first.
+ *
+ * One rule rather than two: the wizard's draft rows and the canvas's
+ * transitions are the same shape here, and a second copy is only a way
+ * for the picker and the wizard to disagree about what a third tape
+ * starts as.
+ *
+ * @returns {boolean} whether anything was actually reshaped.
+ */
+export function setTapeArity(transitions, count, blank = App.config.sym.blank) {
+  let touched = false;
+  for (const t of transitions || []) {
+    for (const field of TAPE_ARITY_FIELDS) {
+      if (!Array.isArray(t[field])) continue;
+      const fill = field === 'tapeDirs' ? 'S' : blank;
+      if (t[field].length === count) continue;
+      while (t[field].length < count) t[field].push(fill);
+      t[field] = t[field].slice(0, count);
+      touched = true;
+    }
+  }
+  return touched;
+}
+
+/**
+ * Does narrowing to `count` tapes leave two rules out of one state reading
+ * the same tuple?
+ *
+ * Dropping a column can merge transitions that differed only on the tape
+ * being removed, and δ of a multi-tape machine is single-valued — so the
+ * reader is told before it happens rather than left with a machine that
+ * silently picks one of two rules. Read tuples are compared for *overlap*,
+ * the same test the editor refuses a second edge with.
+ */
+export function tapeArityCollisions(transitions, count) {
+  const rows = (transitions || []).filter(t => Array.isArray(t.tapeSyms));
+  const clash = [];
+  for (let i = 0; i < rows.length; i++) {
+    for (let j = i + 1; j < rows.length; j++) {
+      if (rows[i].from !== rows[j].from) continue;
+      // Only a clash the narrowing *creates*. Two rules that already
+      // overlap at the current width are a machine the reader already
+      // had, and blaming the tape count for it would be a false alarm.
+      if (tapeTuplesOverlap(rows[i].tapeSyms, rows[j].tapeSyms)) continue;
+      if (tapeTuplesOverlap(rows[i].tapeSyms.slice(0, count), rows[j].tapeSyms.slice(0, count))) {
+        clash.push([rows[i], rows[j]]);
+      }
+    }
+  }
+  return clash;
 }
 
 /**
