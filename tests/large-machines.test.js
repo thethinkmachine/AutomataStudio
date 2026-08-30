@@ -389,3 +389,46 @@ test('a small machine still gets the full depth', () => {
   }
   assert.equal(App.history.length, context.HISTORY_MAX_ENTRIES);
 });
+
+// ── how far out the camera may go ─────────────────────────────────
+//
+// A fixed 20% floor is a wall on exactly the machines that need to be seen
+// whole: fit-to-screen was clamped up to a zoom that does not fit, so the
+// button silently stopped fitting and panning by hand was the only way around
+// the diagram.
+
+test('the zoom floor follows the diagram, so a big machine can be seen whole', () => {
+  build(1000, 2000);
+  const floor = context.minZoom();
+  assert.ok(floor < App.config.zoom.min,
+    `a 1000-state machine may zoom past the configured floor (got ${floor})`);
+  assert.ok(floor >= context.ZOOM_HARD_FLOOR, 'and never past the hard floor');
+  assert.equal(context.clampZoom(0.0001), floor, 'the clamp is that floor');
+});
+
+test('a small machine keeps the configured floor', () => {
+  build(6, 8, 'DFA');
+  assert.equal(context.minZoom(), App.config.zoom.min);
+});
+
+test('fit-to-screen actually frames a thousand-state machine', () => {
+  build(1000, 2000);
+  // Spread it out until framing it genuinely needs less than the configured
+  // 20% — which is the case the old clamp turned into a promise it could not
+  // keep, silently leaving a third of the machine off screen.
+  App.states.forEach((st, i) => {
+    st.x = 100 + (i % 40) * 220;
+    st.y = 100 + Math.floor(i / 40) * 220;
+  });
+  context.fitToScreen(true);
+  assert.ok(App.cam.z < App.config.zoom.min, 'this machine needs to go past the old floor');
+  const b = context.getContentBounds(App.config.radius + 4);
+  const z = App.cam.z;
+  const left = App.cam.x + b.minX * z, right = App.cam.x + b.maxX * z;
+  const top = App.cam.y + b.minY * z, bottom = App.cam.y + b.maxY * z;
+  const w = getElement('canvas-wrap');
+  assert.ok(left >= -1 && right <= w.clientWidth + 1,
+    `the whole width is on screen (${left.toFixed(0)}..${right.toFixed(0)} in ${w.clientWidth})`);
+  assert.ok(top >= -1 && bottom <= w.clientHeight + 1,
+    `the whole height is on screen (${top.toFixed(0)}..${bottom.toFixed(0)} in ${w.clientHeight})`);
+});

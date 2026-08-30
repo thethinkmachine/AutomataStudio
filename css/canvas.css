@@ -27,11 +27,15 @@
   fill: var(--state-active-fill);
   stroke: var(--accent);
   filter: var(--state-active-shadow);
+  /* Screen-space, so the playhead's ring is still a ring at 8% zoom rather
+     than a sub-pixel hint — the same reason the trail carries it below. */
+  vector-effect: non-scaling-stroke;
 }
 
 .sn.rej-st circle.bd {
   fill: var(--state-reject-fill);
   stroke: var(--red);
+  vector-effect: non-scaling-stroke;
 }
 
 .sn.sel-st circle.bd {
@@ -201,13 +205,17 @@
    (bright, dashes flowing in the direction of travel). */
 .sn.sim-visited-st circle.bd {
   stroke: var(--accent);
-  stroke-opacity: .5;
+  stroke-opacity: .65;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
 }
 
 .edge-g.sim-trail-t .tarr {
   stroke: var(--accent);
   marker-end: url(#arr-a);
-  opacity: .35;
+  stroke-width: 1.5;
+  opacity: .45;
+  vector-effect: non-scaling-stroke;
 }
 
 .edge-g.sim-active-t .tarr {
@@ -217,6 +225,7 @@
   stroke-dasharray: 7 5;
   animation: sim-dash-flow .5s linear infinite;
   filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 55%, transparent));
+  vector-effect: non-scaling-stroke;
 }
 
 @keyframes sim-dash-flow {
@@ -230,11 +239,40 @@
   font-weight: 700;
 }
 
+/* ─── The run, seen from far out ───
+   A stroke width is in world units, so the camera divides it: at 8% zoom the
+   trail marking the path the computation took is a fifth of a pixel and loses
+   to the theme's own background — on exactly the machines too big to read any
+   other way. `vector-effect: non-scaling-stroke` above pins every simulation
+   stroke to screen pixels, which is the whole of the fix: the trail stops
+   thinning as you pull back, and at any zoom it is the same line it is at 100%.
+
+   It does *not* get thicker. Under a non-scaling stroke the browser sizes the
+   arrow marker against that screen-space width too, so widening the line
+   inflates its arrowheads into blobs several times the size of the states they
+   point at — a diagram of arrows with a machine somewhere behind it. What
+   changes past the label LOD is the marker and the opacity, not the weight:
+   the heads come off, because at four pixels a state an arrowhead is noise and
+   the route is the whole content, and the trail stops being quiet since there
+   is nothing else left on screen for it to be quiet against. `.zoom-far` is
+   set by applyCamera() in js/canvas.js at the threshold the labels drop out
+   at, so "the names went" and "the trail came forward" are one place on the
+   zoom dial. */
+.zoom-far .edge-g.sim-trail-t .tarr {
+  marker-end: none;
+  opacity: .85;
+}
+
+.zoom-far .edge-g.sim-active-t .tarr {
+  marker-end: none;
+}
+
 /* The dot that rides the active edge into the next state. */
 .sim-token {
   fill: var(--accent);
   stroke: var(--bg);
   stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
   pointer-events: none;
   filter: drop-shadow(0 0 5px color-mix(in srgb, var(--accent) 80%, transparent));
 }

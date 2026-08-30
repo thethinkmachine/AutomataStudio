@@ -10,8 +10,9 @@ import { $, App } from './state.js';
 import { createState, deleteState, getState, getTransition, hideContextMenu, newId, newTId, openTransModal } from './states-transitions.js';
 import { Change, emit } from './store.js';
 import { scheduleMinimap } from './minimap.js';
-import { fitToScreen, markActiveWorkspaceSaved } from './ui.js';
+import { fitToScreen, markActiveWorkspaceSaved, visibleCanvasBox } from './ui.js';
 import { showStatus } from './utils.js';
+import { LOD_LABEL_ZOOM } from './viewport.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  CANVAS / CAMERA (ZOOM & PAN)
@@ -106,9 +107,7 @@ export function updateTouchCameraGesture() {
   const r = wrap.getBoundingClientRect();
   const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
-  const cfg = App.config.zoom;
-  const newZoom = Math.max(cfg.min, Math.min(cfg.max,
-    touchCameraGesture.startZoom * distance / touchCameraGesture.startDistance));
+  const newZoom = clampZoom(touchCameraGesture.startZoom * distance / touchCameraGesture.startDistance);
   App.cam.x = center.x - r.left - touchCameraGesture.worldAtCenter.x * newZoom;
   App.cam.y = center.y - r.top - touchCameraGesture.worldAtCenter.y * newZoom;
   App.cam.z = newZoom;
@@ -167,6 +166,58 @@ export function svgPt(e) {
   const r = wrap.getBoundingClientRect();
   return { x: (e.clientX - r.left - App.cam.x) / App.cam.z, y: (e.clientY - r.top - App.cam.y) / App.cam.z };
 }
+// ── How far out the camera may go ──
+// The floor on zoom is a property of the *diagram*, not a constant. 20% is
+// generous for a ten-state machine and a wall for a thousand-state one, whose
+// whole-machine view wants 6% — clamped up to 20%, fit-to-screen could not
+// frame the machine it was pointed at and the only way around the diagram was
+// to pan it by hand. So the floor is the configured minimum *or* the zoom that
+// frames the whole drawing with room to spare, whichever is lower.
+//
+// A wheel gesture asks sixty times a second, so the answer is memoised for the
+// length of one. Nothing announces that a state moved, and during a zoom
+// nothing is moving; the short life is what keeps a state dragged out to the
+// edge from leaving a stale wall behind it.
+export const ZOOM_HARD_FLOOR = 0.01;   // below this a state is a sub-pixel dot
+const ZOOM_OUT_HEADROOM = 0.6;         // how far past a snug fit the camera may go
+const MIN_ZOOM_TTL = 400;
+let _minZoomCache = null;
+
+export function minZoom() {
+  const base = App.config?.zoom?.min ?? 0.2;
+  if (!App.states.length) return base;
+  const now = Date.now();
+  const c = _minZoomCache;
+  if (c && c.states === App.states && c.n === App.states.length && now - c.t < MIN_ZOOM_TTL) return c.z;
+  // The state circles rather than getContentBounds: a floor does not need to
+  // know where a pushed-out label landed, and that call runs the whole layout
+  // pass — which a wheel gesture must not do. The headroom below covers the
+  // difference many times over.
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const pad = (App.config.radius || 26) + 40;
+  App.states.forEach(st => {
+    if (st.x < minX) minX = st.x;
+    if (st.y < minY) minY = st.y;
+    if (st.x > maxX) maxX = st.x;
+    if (st.y > maxY) maxY = st.y;
+  });
+  let z = base;
+  if (Number.isFinite(minX)) {
+    const vis = typeof visibleCanvasBox === 'function' ? visibleCanvasBox() : null;
+    const cw = Math.max(1, (vis?.w || wrap.clientWidth || 800) - 180);
+    const ch = Math.max(1, (vis?.h || wrap.clientHeight || 600) - 180);
+    const fit = Math.min(cw / Math.max(1, maxX - minX + pad * 2),
+      ch / Math.max(1, maxY - minY + pad * 2));
+    z = Math.max(ZOOM_HARD_FLOOR, Math.min(base, fit * ZOOM_OUT_HEADROOM));
+  }
+  _minZoomCache = { states: App.states, n: App.states.length, t: now, z };
+  return z;
+}
+
+export function clampZoom(z) {
+  return Math.max(minZoom(), Math.min(App.config.zoom.max, z));
+}
+
 export let _pendingFrame = false;
 // The minimap used to be skipped during pans "for speed", which froze the one
 // thing a pan is supposed to move. It coalesces its own paints now (see
@@ -189,6 +240,12 @@ export function applyCamera() {
       wrap.style.setProperty('--cam-x', `${App.cam.x}px`);
       wrap.style.setProperty('--cam-y', `${App.cam.y}px`);
       wrap.style.setProperty('--cam-z', App.cam.z);
+      // Zoomed far enough out that the diagram is a map rather than a drawing.
+      // The simulation highlights read that flag and get bolder, because at 8%
+      // the thing worth seeing is which way the run went, not what any one edge
+      // is labelled. Same threshold the label LOD uses, so "the names dropped
+      // out" and "the trail thickened" happen at one place on the zoom dial.
+      if (wrap.classList) wrap.classList.toggle('zoom-far', App.cam.z < LOD_LABEL_ZOOM);
     }
 
     const zInput = $('zoom-ind');
@@ -216,7 +273,7 @@ export function wheelZoomAt(clientX, clientY, dy) {
   const mx = clientX - r.left, my = clientY - r.top;
   const sensitivity = (App.config.zoom.step || 0.1) * 0.01;
   const factor = Math.exp(-dy * sensitivity);
-  const newZ = Math.max(App.config.zoom.min, Math.min(App.config.zoom.max, App.cam.z * factor));
+  const newZ = clampZoom(App.cam.z * factor);
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;

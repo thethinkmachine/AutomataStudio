@@ -34,7 +34,7 @@
 // strokes are 1px on any display.
 
 import { animMotionOk, isSyncRAF } from './anim.js';
-import { applyCamera, normalizeWheelDeltas } from './canvas.js';
+import { applyCamera, clampZoom, normalizeWheelDeltas } from './canvas.js';
 import { includeDividerBounds, isRectDivider } from './dividers.js';
 import { markDirty } from './history.js';
 import { includeNoteBounds, noteBoxLayout, resolveNotePos } from './notes.js';
@@ -689,9 +689,8 @@ export function initMinimap() {
     const pt = pointToWorld(canvas, e);
     if (!pt) return;
     const { dy } = normalizeWheelDeltas(e);
-    const cfg = App.config.zoom;
-    const factor = Math.exp(-dy * (cfg.step || 0.1) * 0.01);
-    App.cam.z = Math.max(cfg.min, Math.min(cfg.max, App.cam.z * factor));
+    const factor = Math.exp(-dy * (App.config.zoom.step || 0.1) * 0.01);
+    App.cam.z = clampZoom(App.cam.z * factor);
     // Zooming holds the pointed-at world point in view rather than the screen
     // centre, so the thing you aimed at is the thing you end up looking at.
     centreCameraOn(pt.x, pt.y, false);
@@ -700,7 +699,6 @@ export function initMinimap() {
   canvas.addEventListener('keydown', e => {
     const c = viewportCentreWorld();
     const stepX = c.hw * 0.3, stepY = c.hh * 0.3;
-    const cfg = App.config.zoom;
     let handled = true;
     switch (e.key) {
       case 'ArrowLeft': centreCameraOn(c.x - stepX, c.y, true); break;
@@ -708,10 +706,10 @@ export function initMinimap() {
       case 'ArrowUp': centreCameraOn(c.x, c.y - stepY, true); break;
       case 'ArrowDown': centreCameraOn(c.x, c.y + stepY, true); break;
       case '+': case '=':
-        App.cam.z = Math.min(cfg.max, App.cam.z * 1.25);
+        App.cam.z = clampZoom(App.cam.z * 1.25);
         centreCameraOn(c.x, c.y, true); break;
       case '-': case '_':
-        App.cam.z = Math.max(cfg.min, App.cam.z / 1.25);
+        App.cam.z = clampZoom(App.cam.z / 1.25);
         centreCameraOn(c.x, c.y, true); break;
       case 'Home': case '0': fitToScreen(true); break;
       default: handled = false;

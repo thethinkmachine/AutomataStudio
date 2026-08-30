@@ -308,7 +308,18 @@
   background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
   background-size: calc(40px * var(--cam-z, 1)) calc(40px * var(--cam-z, 1));
   background-position: var(--cam-x, 0px) var(--cam-y, 0px);
-  opacity: .35;
+  /* The cell scales with the camera but the line stays 1px, so zooming out
+     raises the share of the screen the grid covers: a 40px cell at 100% is one
+     part line in forty, and at 8% it is one in three — the grid stops being a
+     reference and becomes a hatch, moiréing against a diagram whose edges are
+     by then about as thick as it is. So it fades out as its cell closes: full
+     strength at a 24px cell and gone by 12px, which is the point past which
+     nothing is being placed against it anyway. A ramp rather than a threshold,
+     or the grid would pop in and out on a slow scroll-zoom.
+
+     --cam-z is set by applyCamera() in js/canvas.js; it is unregistered, so it
+     substitutes textually into the calc and the fallback covers first paint. */
+  opacity: calc(.35 * clamp(0, (var(--cam-z, 1) * 40 - 12) / 12, 1));
 }
 
 .canvas-area::after {
