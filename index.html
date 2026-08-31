@@ -1647,6 +1647,10 @@
           <input type="number" class="inp" id="set-node-clearance" min="0" max="80" label="Space edges and labels leave around a state">
         </div>
         <div class="modal-section-lbl">Large Machines</div>
+        <div class="modal-row" data-tip="Past a few hundred states, simplify the canvas on its own: hide edge labels, stop easing layout changes, draw the minimap less often and save less frequently. Your settings are remembered exactly as they are and come back the moment the machine is small enough again. Off, everything is drawn at any size — on a machine this large that is a canvas you cannot read.">
+          <span class="modal-lbl">Simplify Very Large Machines</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-large-machine-auto"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
         <div class="modal-row" data-tip="Past a few hundred states, build only the part of the diagram near the screen and drop the rest as you pan away from it. The machine is unchanged — every state is still simulated, exported and measured. Off, the whole diagram exists at once, which is what makes a thousand-state machine slow to pan.">
           <span class="modal-lbl">Draw Only What Is On Screen</span>
           <label class="toggle-switch"><input type="checkbox" id="set-cull-offscreen"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>

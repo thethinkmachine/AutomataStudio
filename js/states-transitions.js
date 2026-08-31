@@ -3,7 +3,7 @@ import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
 import { pruneNoteAnchorsExcluding } from './notes.js';
 import { renderAll } from './render.js';
-import { $, App, getMachineConfig, getState, isBoundarySymbol, isReadOnlyHeadMachine, isWeightedFA, statePriority, usesParityPriorities } from './state.js';
+import { $, App, getMachineConfig, getState, isBoundarySymbol, isReadOnlyHeadMachine, isWeightedFA, statePriority, usesParityPriorities, wrapStateLabelsOn } from './state.js';
 import { Change, emit } from './store.js';
 import { counterBottomViolation, hasStateOutput, hasTransitionOutput, isAnyPDA, isCounterMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
 import { isMultiTape, machineDeterminism, machineStoreLabels, transitionHasField } from './machines/index.js';
@@ -692,6 +692,150 @@ export function transLabelDescriptive(t) {
   return `Read '${t.symbol}'`;
 }
 
+// A ceiling on the *assembled* tooltip, and the only one.
+//
+// It used to be two caps — a transition count and a tape count — and they were
+// wrong twice over. They multiplied, so five transitions on a twelve-tape
+// machine was still seventy-one rows; and worse, what they trimmed was simply
+// gone. A tooltip that says "+5 more" and offers no way to reach them is a
+// worse answer than a long tooltip, because the reader can see that something
+// is being withheld and has nothing to do about it. On a large machine, where
+// the edge labels are not drawn at all, those five may be the whole reason the
+// edge was hovered.
+//
+// So the content is whole and the *box* is what is bounded: js/tooltip.js gives
+// it a max-height and makes it scrollable and hoverable when it overflows. This
+// number only exists so that a pathological edge cannot build an unbounded grid
+// on hover — it is far past anything a reader will meet, and when it does trim
+// it says so.
+const TIP_MAX_ROWS = 120;
+
+/**
+ * The same description as transLabelDescriptive, laid out in columns.
+ *
+ * Rows are separated by \n and cells within a row by \t; js/tooltip.js turns
+ * that into a grid, and a row with one cell spans the whole width. It is a
+ * string rather than a structure because it travels through `data-tip`, which
+ * is an attribute — so every existing tooltip keeps working and this is a
+ * richer thing to put in one, not a second tooltip system.
+ *
+ * Prose stays the accessible name. A screen reader should hear "Read a, write
+ * b, move right", not a table read left to right, and the two forms are
+ * deliberately generated side by side so neither can quietly stop matching.
+ *
+ * The branch order mirrors transLabelDescriptive's exactly, and has to: the
+ * family predicates overlap (isAnyPDA includes PDT, isMultiTape is reached only
+ * after the single-tape test), so a reordered copy is a copy that disagrees.
+ *
+ * Values are unquoted here. In prose the quotes are what separate a symbol from
+ * the sentence around it; in a table the column already does that, and on a
+ * five-tape machine fifteen pairs of quotes are the difference between a table
+ * you scan and one you read.
+ */
+export function transTipRows(t) {
+  const dirMap = { 'R': 'Right', 'L': 'Left', 'S': 'Stay' };
+  const dirName = d => dirMap[d] || d;
+  const rows = [];
+  const add = (k, v) => rows.push(`${k}\t${v}`);
+  const printRow = () => {
+    if (!hasTransitionOutput(App.machine)) return;
+    add('Print', t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda);
+  };
+
+  if (isWeightedFA(App.machine)) {
+    add('Read', t.symbol);
+    add('Probability', formatWeight(t.weight ?? 1));
+    return rows.join('\n');
+  }
+  if (isAnyPDA(App.machine)) {
+    add('Read', t.symbol);
+    if (isTwoStackPDA(App.machine)) {
+      const eps = App.config.sym.eps;
+      add('Stack 1', `pop ${t.pop}\tpush ${t.push}`);
+      add('Stack 2', `pop ${t.pop2 ?? eps}\tpush ${t.push2 ?? eps}`);
+    } else if (isQueueAutomaton(App.machine)) {
+      add('Dequeue', t.pop);
+      add('Enqueue', t.push);
+    } else if (isCounterMachine(App.machine)) {
+      add('Test', t.pop);
+      add('Counter', t.push);
+    } else {
+      add('Pop', t.pop);
+      add('Push', t.push);
+    }
+    printRow();
+    return rows.join('\n');
+  }
+  if (isReadOnlyHeadMachine(App.machine)) {
+    add('Read', t.symbol);
+    add('Move', dirName(t.dir));
+    printRow();
+    return rows.join('\n');
+  }
+  if (isSingleTapeTM(App.machine)) {
+    add('Read', t.symbol);
+    add('Write', t.write);
+    add('Move', dirName(t.dir));
+    return rows.join('\n');
+  }
+  if (hasTransitionOutput(App.machine)) {
+    add('Read', t.symbol);
+    printRow();
+    return rows.join('\n');
+  }
+  if (isMultiTape(App.machine)) {
+    // The one machine that earns a real table: five tapes as a sentence is the
+    // wall of text this exists to replace.
+    const syms = t.tapeSyms || [t.symbol];
+    const writes = t.tapeWrites || [t.write || t.symbol];
+    const defDir = App.directions[0].value;
+    const dirs = t.tapeDirs || [t.dir || defDir];
+    rows.push('Tape\tRead\tWrite\tMove');
+
+    syms.forEach((sym, i) => {
+      rows.push(`${i + 1}\t${sym}\t${writes[i] ?? sym}\t${dirName(dirs[i] ?? defDir)}`);
+    });
+    return rows.join('\n');
+  }
+  add('Read', t.symbol);
+  return rows.join('\n');
+}
+
+/**
+ * The tooltip for a whole edge: which edge it is, then what each of its
+ * transitions does.
+ *
+ * The header is not decoration. With the large-machine profile on, the edge
+ * labels are not drawn at all, so hovering is how a transition is read — and an
+ * unlabelled arrow among a thousand others needs to say which two states it
+ * joins before it says anything else.
+ */
+export function edgeTipFor(ts) {
+  if (!ts || !ts.length) return '';
+  const from = getState(ts[0].from), to = getState(ts[0].to);
+  const head = from && to
+    ? (from.id === to.id ? `${from.name} ↺` : `${from.name} → ${to.name}`)
+    : null;
+  // '---' is a rule spanning the grid. Between transitions it is what says
+  // "this is a second rule on the same arrow" rather than more of the first.
+  const rows = head ? [head, '---'] : [];
+  let drawn = 0;
+  for (const t of ts) {
+    const block = transTipRows(t);
+    if (!block) continue;
+    const lines = block.split('\n');
+    // The first block goes in whatever it costs — a tooltip showing no
+    // transition at all would be worse than a tall one. After that the
+    // ceiling applies, rule included.
+    if (drawn && rows.length + 1 + lines.length > TIP_MAX_ROWS) break;
+    if (drawn) rows.push('---');
+    rows.push(...lines);
+    drawn++;
+  }
+  if (ts.length > drawn) rows.push(`+${ts.length - drawn} more on this edge`);
+  return rows.join('\n');
+}
+
 // ══════════════════════════════════════════════════════════════════
 //  STATE MODAL / CTX
 // ══════════════════════════════════════════════════════════════════
@@ -701,7 +845,7 @@ export function openStateModal(id) {
   $('s-name').value = s.name;
   const hint = $('s-name-hint');
   if (hint) {
-    hint.innerHTML = App.config.wrapStateLabels
+    hint.innerHTML = wrapStateLabelsOn()
       ? 'Use <code>_</code>, space or <code>-</code> to break long names onto multiple lines inside the node.'
       : 'Long names will overflow the node — enable "Wrap Long State Labels" in Settings → Rendering to break them at <code>_</code>, space or <code>-</code>.';
   }

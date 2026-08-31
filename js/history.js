@@ -1,4 +1,4 @@
-import { App, Workspaces, activeWorkspaceId, getMachineConfig, setR } from './state.js';
+import { App, Workspaces, activeWorkspaceId, getMachineConfig, largeMachineProfile, setR } from './state.js';
 import { isMultiTape } from './machines/index.js';
 import { Change, emit, subscribe } from './store.js';
 import { toggleSnapToGrid } from './canvas.js';
@@ -169,6 +169,18 @@ function serializeState() {
 // friendlier limit and is never the one that bites.
 export const HISTORY_MAX_ENTRIES = 300;
 export const HISTORY_MAX_BYTES = 24 * 1024 * 1024;
+// And a third, under the large-machine profile. The byte budget alone already
+// bounds the memory, but it bounds it by *evicting*, so a thousand-state
+// machine sits permanently at the cap with eighty entries of a third of a
+// megabyte each, shifting one off the front on every edit. Capping the depth
+// directly settles it sooner and keeps the stack a size the reader might
+// actually walk back through. The per-edit stringify is not avoidable — it is
+// what an undo point *is* — so this is a memory bound, not a frame one.
+export const HISTORY_MAX_ENTRIES_LARGE = 60;
+
+export function historyDepthLimit() {
+  return largeMachineProfile() ? HISTORY_MAX_ENTRIES_LARGE : HISTORY_MAX_ENTRIES;
+}
 
 function historyBytes() {
   let n = 0;
@@ -179,7 +191,7 @@ function historyBytes() {
 export function snapshot() {
   App.history.push(serializeState());
   App.future = [];
-  if (App.history.length > HISTORY_MAX_ENTRIES) App.history.shift();
+  while (App.history.length > historyDepthLimit()) App.history.shift();
   // Summed rather than tracked incrementally: undo and redo move entries
   // between the two stacks, and a counter maintained in three places is a
   // counter that drifts. Three hundred additions cost nothing next to the

@@ -171,16 +171,24 @@ test('a quick change announces the repaint exactly once', () => {
 // emissions cannot see it (one emit either way), so this reads the source.
 test('the write path does not call a renderer directly', () => {
   const src = readFileSync(new URL('../js/quick-settings.js', import.meta.url), 'utf8');
-  const body = src.slice(src.indexOf('function applyQuick'));
-  const fn = body.slice(0, body.indexOf('\n}'));
+  const fn = name => {
+    const at = src.indexOf(`function ${name}(`);
+    assert.notEqual(at, -1, `${name} not found`);
+    return src.slice(at, src.indexOf('\n}', at));
+  };
 
-  for (const renderer of ['renderAll', 'renderTransitions', 'updateFastDOM', 'updateLPanel', 'updateRPanel']) {
-    assert.ok(!new RegExp(`\\b${renderer}\\s*\\(`).test(fn),
-      `applyQuick calls ${renderer}() directly; emit(Change.CANVAS) already repaints`);
+  // applyQuick is the gate — it may put a question before the write — and
+  // writeQuick is the write. Neither may repaint.
+  for (const name of ['applyQuick', 'writeQuick']) {
+    for (const renderer of ['renderAll', 'renderTransitions', 'updateFastDOM', 'updateLPanel', 'updateRPanel']) {
+      assert.ok(!fn(name).includes(renderer + '('),
+        `${name} calls ${renderer}() directly; emit(Change.CANVAS) already repaints`);
+    }
   }
   // commit(edit, kind) records the undo point, runs the edit, then announces.
-  assert.ok(/commit\(\s*\(\)\s*=>/.test(fn) && /Change\.CANVAS/.test(fn),
-    'applyQuick must commit the change — announcing it and recording an undo point');
+  const write = fn('writeQuick');
+  assert.ok(/commit\(\s*\(\)\s*=>/.test(write) && /Change\.CANVAS/.test(write),
+    'writeQuick must commit the change — announcing it and recording an undo point');
 });
 
 // Config is replaced wholesale by more than the Settings dialog: each workspace
@@ -198,7 +206,10 @@ test('every path that replaces App.config refreshes the popover', () => {
     return src.slice(at, src.indexOf('\n}', at));
   };
 
-  for (const name of ['switchTab', 'createTab', 'confirmSettings']) {
+  // applySettings, not confirmSettings: the latter is now the pre-flight that
+  // gates the large-machine override, and the former is where the dialog
+  // actually writes App.config.
+  for (const name of ['switchTab', 'createTab', 'applySettings']) {
     assert.match(fn(uiSrc, name), /refreshQuickSettings\(\)/,
       `${name} replaces or rewrites App.config without refreshing the popover`);
   }

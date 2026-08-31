@@ -174,6 +174,10 @@ function resetModuleState() {
   glyphs.resetGlyphCache();
   exportFonts.resetFontCache();
   ui.setSaveState('saved');
+  // Whether the large-machine profile was on last time anything looked. Held
+  // across a reset it would swallow the announcement for the next test's
+  // machine, or announce one for a machine that never crossed the line.
+  ui.resetLargeMachineProfileWatch();
   // The incremental renderer keys its live SVG nodes off App.domCache. Left
   // populated, a test would start out holding nodes built for the previous
   // test's states — the diff recovers from that on its own, but tests that

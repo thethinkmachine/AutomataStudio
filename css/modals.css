@@ -3499,6 +3499,14 @@ button:focus-visible {
   line-height: 1.35;
   color: var(--text);
   white-space: nowrap;
+  /* No overflow of its own, deliberately. What may need to scroll is
+     .tooltip-body below, and a prose tooltip needs nothing: it has a max-width
+     and it wraps. Clipping here would cut a long single-line label off inside
+     the box rather than letting it spill, which is the one thing worse than
+     spilling. */
+  /* The default, and it is the right one for a tooltip that fits: it sits over
+     the canvas, so one that could be hovered would take the pointer off the
+     diagram it is describing. Lifted only by .is-reachable below. */
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
@@ -3510,6 +3518,41 @@ button:focus-visible {
   opacity: 1;
   visibility: visible;
   transform: translateY(0);
+}
+
+/* The content, in a box of its own, because the scroll cannot live on .tooltip:
+   a browser paints the scrollbar's gutter without clipping it to the element's
+   own border-radius, so a scrolling tooltip came back with two square corners
+   down the side the scrollbar was on. The outer box keeps the radius and clips
+   to it (.is-grid below); this one scrolls.
+
+   Inline by default, which is what keeps a keycap chip on the same line as the
+   last word of its label — the chip is a sibling, so a block here would drop it
+   onto a line of its own. Nothing else depends on it: overflow does not apply to
+   an inline box, and a prose tooltip has nothing to scroll. */
+.tooltip-body {
+  display: inline;
+}
+
+/* The exception: a tooltip whose content did not fit, which is therefore
+   scrollable and so has to be reachable — a scrollbar the pointer passes
+   straight through is not a scrollbar. Set by js/tooltip.js from a *measurement*
+   of the body (scrollHeight > clientHeight) rather than from the content's kind,
+   so an ordinary tooltip is never made to block the canvas on the chance that it
+   might have overflowed. Leaving the anchor then hides after a grace period
+   instead of at once, because reaching the tooltip means crossing the gap
+   between the two.
+
+   The class goes on the outer box because that is what the pointer meets, even
+   though the measurement is of the inner one.
+
+   Gated on .show as well, for the same reason every other rule in this file is:
+   the close transition keeps the tooltip painted while it fades, and one that
+   took the pointer on the way out would intercept a click nobody can see it
+   intercepting. */
+.tooltip.is-reachable.show {
+  pointer-events: auto;
+  cursor: default;
 }
 
 /* Short labels read best on one line, but explanatory tooltips (settings rows,
@@ -3524,6 +3567,108 @@ button:focus-visible {
      prose still wraps at the max-width. */
   white-space: pre-line;
   text-align: left;
+}
+
+/* A tabular label — see renderGrid() in js/tooltip.js.
+   A table is as wide as its columns, bounded only by the window. The prose
+   widths above are a *measure* — a line length chosen so a sentence is readable
+   — and that reasoning does not transfer: a column of "Write" narrowed to a
+   measure does not read better, it breaks into "Wri/te". So there is no number
+   here beyond the viewport, and if the columns still do not fit, the body
+   scrolls (vertically — see below).
+
+   `overflow: hidden` is what makes the rounded corners survive that scroll: it
+   clips the body to this box's border-radius, which the body's own scrollbar
+   gutter would otherwise paint straight over. */
+.tooltip.is-grid {
+  display: block;
+  max-width: calc(100vw - 24px);
+  white-space: normal;
+  text-align: left;
+  overflow: hidden;
+}
+
+/* The bounded, scrolling box — the only tooltip that ever needs one.
+
+   Vertical only, and the horizontal axis is what needs the explanation. The
+   columns are max-content, so this box shrink-to-fits to exactly the table's
+   width — and then the vertical scrollbar takes its 7px out of the content box,
+   leaving the table 7px too wide for the space it just sized itself to. That is
+   a horizontal scrollbar on a table that fits, every time one is tall enough to
+   scroll at all. Nothing is lost by refusing it: the outer box is capped at the
+   viewport, and a transition table is four short columns, so the content is
+   narrower than the window on anything but a phone — where there is no hover to
+   scroll with in the first place. */
+.tooltip.is-grid .tooltip-body {
+  display: block;
+  max-height: min(70vh, calc(100vh - 40px));
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.tooltip-grid {
+  display: grid;
+  align-items: baseline;
+  gap: 2px 12px;
+}
+
+/* Columns are max-content: a cell is a symbol, a tape index or a direction, and
+   every one of them is short. Set in js/tooltip.js, where the column count is
+   known. They are deliberately not allowed to shrink — a squeezed column breaks
+   its own header mid-word, which is what a table is for. */
+
+/* Values are identifiers — symbols, tape indices, state names — so they take
+   --mono, the same rule the rest of the app follows. The key column is the
+   label for a row rather than part of what it says, so it recedes. */
+.tooltip-cell {
+  font-family: var(--mono);
+  /* Never break a cell. .tooltip.is-grid sets white-space: normal on the box so
+     the heading and the hint can wrap; without this the cells inherit it, and a
+     table whose columns each wrap is not a table. */
+  white-space: nowrap;
+}
+
+.tooltip-key {
+  font-family: var(--sans);
+  color: var(--text3);
+}
+
+/* A heading or a hint: full width, and allowed to wrap, since unlike the cells
+   it is a phrase rather than a symbol. */
+.tooltip-span {
+  grid-column: 1 / -1;
+  font-family: var(--sans);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* "+3 more" — what the cap left out. Said rather than silently dropped. */
+.tooltip-more {
+  grid-column: 1 / -1;
+  font-family: var(--sans);
+  font-size: .92em;
+  color: var(--text3);
+}
+
+.tooltip-grid > .tooltip-span:first-child {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* '---' between two blocks: what says "a second rule on the same arrow" rather
+   than more of the first. */
+.tooltip-rule {
+  grid-column: 1 / -1;
+  height: 1px;
+  margin: 3px 0;
+  background: var(--border);
+}
+
+.tooltip.is-grid .tooltip-kbd {
+  display: inline-block;
+  margin: 6px 0 0;
+  vertical-align: baseline;
 }
 
 .tooltip.wrap .tooltip-kbd {

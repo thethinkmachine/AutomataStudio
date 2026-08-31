@@ -205,6 +205,63 @@ export function showOverlay(id) {
   measure();
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  THE SHARED CONFIRM
+// ══════════════════════════════════════════════════════════════════
+// #confirm-modal is one dialog reused by every "are you sure?" in the app, so
+// its Enter key has to dispatch to whatever handler is currently attached
+// rather than to a fixed function. The registration used to live in utils.js;
+// it is here because askConfirm() below needs the same onClose hook to tell a
+// cancel from a confirm, and two registrations for one id would overwrite each
+// other silently.
+let confirmCancel = null;
+
+registerModal('confirm-modal', {
+  submit: () => {
+    const btn = $('confirm-action-btn');
+    if (btn && btn.onclick) btn.onclick();
+  },
+  onClose: () => {
+    // Reset the label rather than leaving the last caller's wording for the
+    // next one: the sites that drive this dialog by hand set the title and the
+    // message and never touch the button, so a stale verb would ride along.
+    const btn = $('confirm-action-btn');
+    if (btn) {
+      btn.textContent = 'Confirm';
+      if (btn.classList) btn.classList.remove('btn-danger');
+    }
+    const cancel = confirmCancel;
+    confirmCancel = null;
+    if (cancel) cancel();
+  }
+});
+
+/**
+ * Ask a yes/no question through #confirm-modal.
+ *
+ * Anything that dismisses the dialog without pressing the action button — the
+ * Cancel button, the injected ×, Escape, the backdrop — is a cancel, so
+ * `onCancel` runs from onClose rather than from a listener on any one of them.
+ * `onConfirm` clears the pending cancel before closing, or confirming would
+ * fire both.
+ */
+export function askConfirm({ title, message, confirmLabel = 'Confirm', danger = false, onConfirm, onCancel }) {
+  if ($('confirm-title')) $('confirm-title').textContent = title;
+  if ($('confirm-msg')) $('confirm-msg').textContent = message;
+  const btn = $('confirm-action-btn');
+  if (btn) {
+    btn.textContent = confirmLabel;
+    if (btn.classList) btn.classList.toggle('btn-danger', !!danger);
+    btn.onclick = () => {
+      confirmCancel = null;
+      closeModal('confirm-modal');
+      if (onConfirm) onConfirm();
+    };
+  }
+  confirmCancel = onCancel || null;
+  showOverlay('confirm-modal');
+}
+
 export function closeModal(id) {
   const shell = $(id);
   if (!shell) return;

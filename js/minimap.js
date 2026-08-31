@@ -38,7 +38,7 @@ import { applyCamera, clampZoom, normalizeWheelDeltas } from './canvas.js';
 import { includeDividerBounds, isRectDivider } from './dividers.js';
 import { markDirty } from './history.js';
 import { includeNoteBounds, noteBoxLayout, resolveNotePos } from './notes.js';
-import { $, App, stateById } from './state.js';
+import { $, App, largeMachineProfile, stateById } from './state.js';
 import { Change, subscribe } from './store.js';
 import { fitToScreen, layoutCanvasOverlays, visibleCanvasBox } from './ui.js';
 
@@ -102,11 +102,27 @@ export function scheduleMinimap() {
   requestAnimationFrame(tick);
 }
 
+// The floor between two paints under the large-machine profile. The map is a
+// glance, not a readout: at a thousand transitions a repaint is a thousand path
+// commands, and spending one of those on every frame of a pan is the map
+// competing with the diagram it is a picture of. ~15fps is still a live map.
+const LARGE_FRAME_MS = 66;
+
 function tick(t) {
   armed = false;
   const now = typeof t === 'number' ? t : nowMs();
   // First frame after an idle period has no previous timestamp to subtract.
   const dt = lastT ? now - lastT : 16;
+  // Re-arm without painting rather than painting less often *and* advancing the
+  // glide by a stale dt. lastT is deliberately left where it is, so the frame
+  // that does land is handed the accumulated time — the easing law is
+  // frame-rate independent (see stepView), which is exactly what makes a
+  // dropped frame here cost smoothness and not position.
+  if (lastT && dt < LARGE_FRAME_MS && largeMachineProfile()) {
+    armed = true;
+    requestAnimationFrame(tick);
+    return;
+  }
   lastT = now;
   if (paint(dt)) return;
   armed = true;

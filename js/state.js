@@ -252,7 +252,11 @@ export const App = {
       // pick their winner from a discrete candidate set, so a one-pixel pointer
       // move can flip a decision; this glides the drawing to the new one instead
       // of teleporting. Targets are unaffected.
-      animateLayout: true
+      animateLayout: true,
+      // Whether the app may simplify itself once the machine is past what a
+      // frame can draw in full. See largeMachineProfile() below for what that
+      // turns off, and why it is one answer rather than six more settings.
+      largeMachineAuto: true
     },
     exportRes: 2,
     export: {
@@ -365,7 +369,121 @@ export function normalizeEdgeLabelStyle(style) {
 }
 
 export function edgeLabelsHidden() {
-  return App.config.edgeLabelStyle === 'none';
+  return App.config.edgeLabelStyle === 'none' || largeMachineProfile();
+}
+
+// True when the labels are off because of the machine's size rather than
+// because the reader asked for it. That is the only difference the two settings
+// surfaces have to explain, and the only thing the override changes.
+export function edgeLabelsAutoHidden() {
+  return App.config.edgeLabelStyle !== 'none' && largeMachineProfile();
+}
+
+// One reader for "is wrapping on", so render.js's label cache cannot key on a
+// different answer than the one being drawn.
+//
+// It deliberately does *not* consult largeMachineProfile(), and that is the
+// line the profile is drawn along: the profile turns off what costs frames,
+// never what costs nothing. Wrapping is a handful of extra tspans behind the
+// cull window — while un-wrapping a name like NEW_ACCOUNT_OPENED overflows its
+// circle, on exactly the diagram that is already hardest to read. The profile
+// keeps state names, so breaking their layout would be the worst of both.
+export function wrapStateLabelsOn() {
+  return App.config.wrapStateLabels !== false;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  THE LARGE-MACHINE PROFILE
+// ══════════════════════════════════════════════════════════════════
+// Past a certain size the app stops drawing everything it *could* draw, and
+// most of that is already automatic: js/viewport.js windows the DOM and drops
+// labels below a zoom, js/geometry.js skips the three avoidance stages,
+// js/panel-list.js draws a window rather than a row per item, the trace log
+// keeps a tail, the undo stack is capped in bytes, minZoom() lets the camera
+// pull back far enough to frame the whole thing. Each of those states its own
+// threshold because each is answering its own question.
+//
+// What was missing was the other half — the costs that scale with the machine
+// and were gated on nothing at all:
+//
+//   * every edge label is built, at any zoom above the LOD threshold, for the
+//     whole cull window — which is nine screens of content, so a machine dense
+//     enough to be worth culling paints a wall of pills over its own diagram
+//   * every edge's geometry is *eased* to its new position after any structural
+//     change, so thousands of tracks keep rAF busy until they settle
+//   * autosave stringifies every workspace into IndexedDB on a fixed timer,
+//     which on a thousand-state machine is megabytes on the main thread
+//   * the minimap repaints on every frame of every pan
+//
+// State-name wrapping is deliberately *not* on that list — see
+// wrapStateLabelsOn() for where the line is drawn.
+//
+// They are turned off by the same fact about the machine, so that fact is
+// stated once, here, rather than as five thresholds in five modules.
+//
+// The line is the collision budget. It was measured rather than guessed (see
+// the note over the constants) and "past what a layout pass can afford in a
+// frame" is a good definition of "too big to draw in full" — so this reuses it
+// instead of introducing a sixth number the others can drift from.
+//
+// Two properties are what make this safe to switch on by default:
+//
+//   * It is *derived*, never written. Nothing here touches App.config, so the
+//     reader's settings are remembered exactly as they were, the tab is not
+//     dirtied, the .json is not rewritten, and lifting the override restores
+//     the machine's own appearance with no state to unwind. It also means the
+//     profile covers every path into a large machine — a load, an import, a
+//     subset construction that blows up on the canvas, an undo back into one —
+//     rather than only the one that happened to remember to ask.
+//   * The override follows the same rule as the four render flags above:
+//     absent means on, so a workspace written before this existed does not
+//     load with the profile disabled.
+//
+// Settings → Canvas and the quick-settings popover both offer the override, and
+// both ask before letting you turn it off — on the machines this fires for, the
+// result is a canvas you cannot read.
+
+// Where a collision-avoidance pass stops fitting a 60fps frame, timed on a
+// deliberately hostile diagram: states packed two diameters apart with edges
+// running clear across the field. A machine that size is already unreadable at
+// any zoom that shows it whole, so nothing legible is given up. js/geometry.js
+// re-exports both, which is where they used to be declared.
+export const COLLISION_BUDGET_STATES = 200;
+export const COLLISION_BUDGET_TRANSITIONS = 700;
+
+/** Whether this machine is past what the app can draw in full. */
+export function machineIsLarge() {
+  return (App.states?.length || 0) > COLLISION_BUDGET_STATES
+    || (App.transitions?.length || 0) > COLLISION_BUDGET_TRANSITIONS;
+}
+
+/** Whether the app is currently simplifying itself for the machine's size. */
+export function largeMachineProfile() {
+  return App.config?.render?.largeMachineAuto !== false && machineIsLarge();
+}
+
+/**
+ * What the reader is asked before the profile is switched off, in the numbers
+ * of the machine in front of them.
+ *
+ * Both surfaces that offer the override — Settings → Canvas and the
+ * quick-settings popover — spread this into askConfirm() and supply only the
+ * handlers, so the same decision cannot be described two ways. It lives here
+ * rather than in either of them because this module is the one both can reach:
+ * quick-settings.js must not import ui.js.
+ */
+export function largeMachineOverridePrompt() {
+  const st = (App.states?.length || 0).toLocaleString();
+  const tr = (App.transitions?.length || 0).toLocaleString();
+  return {
+    title: 'Are you sure?',
+    message: `This machine has ${st} states and ${tr} transitions. Drawing every `
+      + 'edge label, easing every layout change and repainting the minimap on every '
+      + 'frame will cause extreme stutter. Your '
+      + 'settings are kept either way — you can switch this back on at any time.',
+    confirmLabel: 'Draw it anyway',
+    danger: true
+  };
 }
 
 // ══════════════════════════════════════════════════════════════════

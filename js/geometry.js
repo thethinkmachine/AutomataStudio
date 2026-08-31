@@ -1,4 +1,4 @@
-import { App, R, stateById as stateIndex } from './state.js';
+import { App, COLLISION_BUDGET_STATES, COLLISION_BUDGET_TRANSITIONS, R, stateById as stateIndex } from './state.js';
 import { rectHasSegment } from './viewport.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -54,13 +54,11 @@ export const UP = -Math.PI / 2;
 // limits matter: routing scales with how many states an edge can run into, and
 // label placement with how many other labels are competing for the space.
 //
-// The numbers come from timing the pass on a deliberately hostile diagram —
-// states packed two diameters apart with edges running clear across the field —
-// where 200 states and 700 transitions is about where a pass reaches a 60fps
-// frame. A machine that size is already unreadable at any zoom that shows it
-// whole, so nothing legible is being given up.
-export const COLLISION_BUDGET_STATES = 200;
-export const COLLISION_BUDGET_TRANSITIONS = 700;
+// Declared in js/state.js and re-exported here, where they used to live. The
+// same two numbers are the large-machine profile's threshold, and that module
+// is import-free and so cannot reach this one — see largeMachineProfile() for
+// why the profile reuses this line rather than measuring its own.
+export { COLLISION_BUDGET_STATES, COLLISION_BUDGET_TRANSITIONS } from './state.js';
 
 function num(v, fallback) {
   const n = Number(v);

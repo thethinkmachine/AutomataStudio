@@ -90,6 +90,17 @@
   opacity: 0.55;
 }
 
+/* An accepting state's inner ring is decoration, not a second target. It is a
+   painted 1.5px annulus 5px inside the rim, so with the default visiblePainted
+   it hit-tests on its own stroke — a pointerover for a *descendant* of the state
+   already being hovered. The tooltip module forgives that now, but the pointer
+   crossing it also produced a pointerout from the circle, so an accepting state
+   flickered where a plain one did not. Nothing is lost: the filled circle
+   underneath is in the same group and carries the listeners. */
+.acc-ring {
+  pointer-events: none;
+}
+
 .slbl {
   font-family: var(--mono);
   font-size: 11px;

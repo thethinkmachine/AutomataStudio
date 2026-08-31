@@ -144,6 +144,11 @@ test('zooming far enough out drops the labels, and zooming back in restores them
   };
 
   build(1000, 2000);
+  // The camera is the axis under test. A machine this size is also past the
+  // large-machine profile, which hides the labels at every zoom — so the
+  // profile is switched off here, or the assertions below would pass without
+  // the LOD threshold doing any of the work. The profile has its own file.
+  App.config.render.largeMachineAuto = false;
   App.cam.z = 1;
   assert.equal(context.edgeLabelLOD(), false);
   context.renderAll();
