@@ -441,17 +441,40 @@
         <div class="canvas-area" id="canvas-wrap">
           <svg id="svgCanvas">
             <defs>
-              <marker id="arr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-                <polygon points="0 0,8 3,0 6" fill="var(--text3)" />
-              </marker>
-              <marker id="arr-g" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-                <polygon points="0 0,8 3,0 6" fill="var(--green)" />
-              </marker>
-              <marker id="arr-a" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-                <polygon points="0 0,8 3,0 6" fill="var(--accent)" />
-              </marker>
-              <marker id="arr-i" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-                <polygon points="0 0,8 3,0 6" fill="var(--indigo)" />
+              <!-- ─── The arrowhead ───
+                   Three things here, and each one was a way for the head to
+                   stop looking like the end of its own line.
+
+                   `markerUnits="userSpaceOnUse"`. The default is `strokeWidth`,
+                   which sizes the marker against the line it caps: selecting an
+                   edge, highlighting one by direction, or playing a run all take
+                   the stroke to 2.5, so the head grew by two thirds to a 20×15
+                   blob on a 30px state — and 17 of those units are a *straight*
+                   run laid over the last 17 units of a curve, which is what made
+                   a bent edge read as an arrow snapped on at an angle. In world
+                   units it is the same head on every edge whatever the stroke,
+                   and short enough that the curve under it has nowhere to go.
+
+                   A stealth dart, not a flat-backed triangle. The notch at x=2.8
+                   is where the stroke runs *into* the fill, so the line and the
+                   head close up into one shape instead of a wedge parked on the
+                   end of a line — and there is no 6:1 shoulder where the two
+                   meet. Past the notch the head is solid, and at the path's end
+                   (x=7) it is 4.8 wide, so the stroke is covered rather than
+                   poking out of the point.
+
+                   refX sits 4 short of the tip, so the tip overhangs the path's
+                   end by 4. `render.arrowHeadSize` (6) is how far short of the
+                   circle the edge stops, which leaves the point 2px off the ring
+                   — the old 1×stroke overhang left it 4.5px short, floating.
+                   The two are coupled: an overhang larger than that stop-short
+                   distance would put the tip inside the node. -->
+              <marker id="arr" markerWidth="11" markerHeight="7.5" refX="7" refY="3.75"
+                      markerUnits="userSpaceOnUse" orient="auto">
+                <!-- The `fill` attribute is the fallback; css/canvas.css paints this
+                     `context-stroke`, which is the whole reason there is one marker
+                     here and not one per colour. See the note over `.tarr`. -->
+                <polygon points="0 0,11 3.75,0 7.5,2.8 3.75" fill="var(--text3)" />
               </marker>
             </defs>
             <g id="cam-g" transform="translate(0,0) scale(1)">

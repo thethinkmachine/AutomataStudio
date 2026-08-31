@@ -169,6 +169,28 @@
   pointer-events: stroke;
 }
 
+/* ─── The head is painted from the line ───
+   A marker takes no paint from the element it caps, so an edge whose `stroke`
+   changes — hover, selection, either directional highlight, the sim trail, the
+   active edge — used to keep the resting grey arrowhead: the one place on the
+   canvas where a single edge is drawn in two colours at once.
+
+   Naming a second marker per colour fixes the colour and not the timing.
+   `marker-end` is a *discrete* property, so it cannot interpolate: the head
+   would swap at t=0 while the stroke under it fades over the .15s above, and
+   the head would lead its own line by the whole duration. `context-stroke`
+   resolves to the referencing element's stroke as it is *used*, so the head
+   carries the animating value frame by frame and the two cannot come apart —
+   which is also why there is one marker in the <defs> and not five.
+
+   The `fill` attribute on that polygon is the fallback, and it is the resting
+   grey rather than black: a browser without `context-stroke` (pre-97 Chrome,
+   pre-16.4 Safari) lands on exactly the behaviour that shipped before this,
+   and it is already older than the `color-mix()` this file leans on below. */
+#svgCanvas defs marker > polygon {
+  fill: context-stroke;
+}
+
 .edge-g:hover .tarr {
   stroke: var(--accent);
 }
@@ -193,7 +215,6 @@
 .edge-g.outgoing-hl .tarr {
   stroke: var(--green);
   stroke-width: 2.5;
-  marker-end: url(#arr-g);
   filter: drop-shadow(0 0 5px color-mix(in srgb, var(--green) 40%, transparent));
 }
 
@@ -206,7 +227,6 @@
 .edge-g.incoming-hl .tarr {
   stroke: var(--indigo);
   stroke-width: 2.5;
-  marker-end: url(#arr-i);
   filter: drop-shadow(0 0 5px color-mix(in srgb, var(--indigo) 45%, transparent));
 }
 
@@ -223,7 +243,6 @@
 
 .edge-g.sim-trail-t .tarr {
   stroke: var(--accent);
-  marker-end: url(#arr-a);
   stroke-width: 1.5;
   opacity: .45;
   vector-effect: non-scaling-stroke;
@@ -232,7 +251,6 @@
 .edge-g.sim-active-t .tarr {
   stroke: var(--accent);
   stroke-width: 2.5;
-  marker-end: url(#arr-a);
   stroke-dasharray: 7 5;
   animation: sim-dash-flow .5s linear infinite;
   filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 55%, transparent));
@@ -258,17 +276,20 @@
    stroke to screen pixels, which is the whole of the fix: the trail stops
    thinning as you pull back, and at any zoom it is the same line it is at 100%.
 
-   It does *not* get thicker. Under a non-scaling stroke the browser sizes the
-   arrow marker against that screen-space width too, so widening the line
-   inflates its arrowheads into blobs several times the size of the states they
-   point at — a diagram of arrows with a machine somewhere behind it. What
-   changes past the label LOD is the marker and the opacity, not the weight:
-   the heads come off, because at four pixels a state an arrowhead is noise and
-   the route is the whole content, and the trail stops being quiet since there
-   is nothing else left on screen for it to be quiet against. `.zoom-far` is
-   set by applyCamera() in js/canvas.js at the threshold the labels drop out
-   at, so "the names went" and "the trail came forward" are one place on the
-   zoom dial. */
+   It does *not* get thicker, and the arrowheads are why. They are drawn in
+   world units now (`markerUnits="userSpaceOnUse"` — see the <defs> in
+   index.html), so a heavier stroke no longer inflates them; but they are still
+   world units, which means the camera divides *them* even though it no longer
+   divides the line. Widening the trail here would leave a fatter and fatter
+   line running into a head shrinking away from it — the two would come apart
+   exactly where the head meets the stroke. So what changes past the label LOD
+   is the marker and the opacity, not the weight: the heads come off, because
+   at four pixels a state an arrowhead is a sub-pixel smudge and the route is
+   the whole content, and the trail stops being quiet since there is nothing
+   else left on screen for it to be quiet against. `.zoom-far` is set by
+   applyCamera() in js/canvas.js at the threshold the labels drop out at, so
+   "the names went" and "the trail came forward" are one place on the zoom
+   dial. */
 .zoom-far .edge-g.sim-trail-t .tarr {
   marker-end: none;
   opacity: .85;
