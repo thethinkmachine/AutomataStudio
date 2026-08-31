@@ -34,6 +34,7 @@ export function createElement(id = '') {
     offsetWidth: 800,
     offsetHeight: 600,
     _listeners: {},
+    _attrs: new Map(),
     // Elements count as laid out unless a test says otherwise; the overlay code
     // uses this to skip members that are display:none.
     offsetParent: {},
@@ -123,10 +124,43 @@ export function createElement(id = '') {
       const i = p.children.indexOf(this);
       return i === -1 ? null : (p.children[i + 1] || null);
     },
-    setAttribute(name, value) { this[name] = value; },
+    // Attributes are kept twice on purpose: as plain properties, which is what
+    // most of the app and most of these tests read back, and in `_attrs`, which
+    // is the only way to answer "what attributes does this node have?" -- a
+    // property bag cannot be told apart from the element's own fields. Anything
+    // that copies a node's attributes rather than naming them needs the second,
+    // which js/glyphs.js does when it swaps a <text> for the group of outlines
+    // that replaces it.
+    setAttribute(name, value) { this[name] = value; this._attrs.set(name, String(value)); },
+    // The namespace is recorded but not modelled: the stub has one attribute
+    // space, and nothing here distinguishes `xlink:href` from `href` beyond the
+    // name it is written under -- which is exactly what the serializer sees.
+    setAttributeNS(ns, name, value) { this.setAttribute(name, value); },
     getAttribute(name) { return this[name] === undefined ? null : this[name]; },
-    removeAttribute(name) { delete this[name]; },
+    getAttributeNS(ns, name) { return this.getAttribute(name); },
+    removeAttribute(name) { delete this[name]; this._attrs.delete(name); },
     hasAttribute(name) { return this[name] !== undefined; },
+    get attributes() {
+      return [...this._attrs].map(([name, value]) => ({ name, value }));
+    },
+    // Swapping *this* node for another, which is replaceChild seen from the
+    // child's side -- the node being replaced is the one holding the reference.
+    replaceWith(node) {
+      if (!this.parentNode) return;
+      this.parentNode.replaceChild(node, this);
+    },
+    getElementsByTagName(tag) {
+      const want = String(tag).toUpperCase();
+      const out = [];
+      const walk = node => {
+        for (const child of node.children || []) {
+          if (child && child.tagName === want) out.push(child);
+          if (child && child.children) walk(child);
+        }
+      };
+      walk(this);
+      return out;
+    },
     addEventListener(type, handler) { this._listeners[type] = handler; },
     removeEventListener(type) { delete this._listeners[type]; },
     dispatchEvent() { return true; },

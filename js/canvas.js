@@ -1,6 +1,8 @@
 import { settleAll } from './anim.js';
 import { beginDividerDraw, dividerMid, dividerToolKind, dragDividerEndpointTo, dragSelectedDividersTo, endDividerEndpointDrag, finishDividerDraw, getDivider, includeDividerBounds, syncDividerSelectionClasses, updateDividerDraw, updateOneDividerDOM } from './dividers.js';
 import { exportDownload, exportFilename } from './export-core.js';
+import { fontFaceCSS } from './export-fonts.js';
+import { applyOutlines, loadGlyphTables, planOutlines } from './glyphs.js';
 import { includeLayoutBounds, resolveNodeOverlaps } from './geometry.js';
 import { markDirty, snapshot } from './history.js';
 import { clearActiveNoteHighlight, dragSelectedNotesTo, endNoteResize, getNote, includeNoteBounds, resizeNoteTo, resolveNotePos, syncNoteSelectionClasses } from './notes.js';
@@ -1385,15 +1387,35 @@ export function getContentBounds(statePad = 0) {
  * @param {string}  [opts.background]      'transparent' or a CSS colour
  * @returns {{svg: string, width: number, height: number}}
  */
-export function buildExportSVG(opts = {}) {
-  // A cropped export frames the *machine*, and the crop box comes from the
-  // layout pass rather than from the DOM — so on a windowed canvas the clone
-  // below has to be given the whole diagram first, or the file is a viewBox
-  // around a machine containing only the part that was on screen.
-  return withFullRender(() => buildExportSVGFromDOM(opts));
+export async function buildExportSVG(opts = {}) {
+  // Three phases around one await, and the shape is forced by two constraints
+  // that pull opposite ways.
+  //
+  // The measuring has to happen inside withFullRender: a cropped export frames
+  // the *machine*, its crop box comes from the layout pass, and js/glyphs.js
+  // reads each character's position off the live DOM — so on a windowed canvas
+  // both would otherwise see only the part that was on screen.
+  //
+  // But the glyph tables are fetched, and withFullRender restores the windowed
+  // render in a `finally`. An async callback would hand it a promise, and the
+  // window would be back before the work that needed it had run. So the staging
+  // pass measures and plans synchronously, the fetch happens outside it, and
+  // what comes back is applied to a clone nothing is measuring any more.
+  const staged = withFullRender(() => stageExportSVG(opts));
+  const tables = await loadGlyphTables(staged.outline);
+  const outlined = applyOutlines(staged.outline, tables, staged.clone);
+
+  // Only what could not be outlined, and only for a raster target. PNG
+  // rasterises the string below and throws it away, so an embedded face costs
+  // the image nothing; in an .svg file the same bytes would sit there
+  // permanently, which is the cost the outlines exist to avoid.
+  const fontCss = opts.embedFonts && outlined.left > 0 ? await fontFaceCSS() : '';
+  return finishExportSVG(staged, fontCss, opts);
 }
 
-function buildExportSVGFromDOM(opts = {}) {
+// Everything that has to see the whole diagram: the clone, the character
+// positions behind the outlines, and the crop box.
+function stageExportSVG(opts = {}) {
   const svgEl = $('svgCanvas');
   const wrap = $('canvas-wrap');
   let w = wrap.clientWidth || 800, h = wrap.clientHeight || 600;
@@ -1408,6 +1430,12 @@ function buildExportSVGFromDOM(opts = {}) {
   updateFastDOM({ statesMoved: false });
 
   const clone = svgEl.cloneNode(true);
+
+  // Before any structural edit, because the plan pairs the live tree's <text>
+  // elements with the clone's by index. Removing a node from one and not the
+  // other is what would make them disagree; applyOutlines then skips a planned
+  // element that the edits below went on to drop.
+  const outline = planOutlines(svgEl, clone);
 
   // Strip transient interaction states (selection highlights, temporary lines)
   clone.querySelectorAll('.sel-st, .sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
@@ -1428,6 +1456,7 @@ function buildExportSVGFromDOM(opts = {}) {
 
   // Crop: neutralise the camera and let the viewBox do the framing, so the
   // exported file is independent of where the user happened to be panned.
+  let viewBox = null;
   if (opts.crop) {
     const b = getContentBounds(App.config.radius + 4);
     if (b) {
@@ -1436,13 +1465,24 @@ function buildExportSVGFromDOM(opts = {}) {
       if (camG) camG.setAttribute('transform', 'translate(0,0) scale(1)');
       w = Math.max(1, Math.round(b.width + pad * 2));
       h = Math.max(1, Math.round(b.height + pad * 2));
-      clone.setAttribute('viewBox', `${(b.minX - pad).toFixed(2)} ${(b.minY - pad).toFixed(2)} ${w} ${h}`);
+      viewBox = `${(b.minX - pad).toFixed(2)} ${(b.minY - pad).toFixed(2)} ${w} ${h}`;
     }
   }
 
+  return { clone, outline, w, h, viewBox };
+}
+
+// The half that needs nothing but the clone: framing, the inlined stylesheet,
+// the painted background, and the serialisation.
+function finishExportSVG(staged, fontCss, opts = {}) {
+  const { clone, w, h, viewBox } = staged;
+  if (viewBox) clone.setAttribute('viewBox', viewBox);
   clone.setAttribute('width', w);
   clone.setAttribute('height', h);
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  // The <use> references js/glyphs.js emits carry an xlink:href alongside the
+  // SVG 2 href, for consumers that only read the older form.
+  clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
 
   // Maintain theme: Copy the current data-theme attribute (light/dark)
   const currentTheme = document.documentElement.dataset.theme;
@@ -1472,7 +1512,11 @@ function buildExportSVGFromDOM(opts = {}) {
   }
 
   // 3. Glue it together and ensure hit-areas are hidden in the final export
-  svgStyle.textContent = `${rootStyles}\n${cssRules}\n.tarr-hit { display:none !important; }\n.note-resize-hit, .note-resize-handle { display:none !important; }\n.divider-hit, .divider-endpoint { display:none !important; }\nsvg { background: transparent; }`;
+  //
+  // fontCss is empty for an .svg file and for any export whose text was fully
+  // outlined. It is the cross-origin @font-face rules the loop above cannot
+  // reach, re-fetched and inlined as data URIs — see js/export-fonts.js.
+  svgStyle.textContent = `${fontCss}\n${rootStyles}\n${cssRules}\n.tarr-hit { display:none !important; }\n.note-resize-hit, .note-resize-handle { display:none !important; }\n.divider-hit, .divider-endpoint { display:none !important; }\nsvg { background: transparent; }`;
   clone.insertBefore(svgStyle, clone.firstChild);
 
   // A painted rect rather than a CSS background: canvas rasterisation
@@ -1496,18 +1540,21 @@ function buildExportSVGFromDOM(opts = {}) {
   return { svg: new XMLSerializer().serializeToString(clone), width: w, height: h };
 }
 
-export function exportSVG(opts = {}) {
-  const { svg } = buildExportSVG(opts);
+export async function exportSVG(opts = {}) {
+  const { svg } = await buildExportSVG(opts);
   const header = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n';
   exportDownload(exportFilename('svg'), header + svg, 'image/svg+xml;charset=utf-8');
   showStatus('Exported as SVG');
   if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
 }
 
-export function exportPNG(opts = {}) {
+export async function exportPNG(opts = {}) {
   const res = opts.scale || App.config.exportRes || 2;
   const embedData = opts.embedData !== false;
-  const { svg: svgStr, width: w, height: h } = buildExportSVG(opts);
+  // embedFonts is the backstop for anything js/glyphs.js could not outline.
+  // It is free here and only here: the rules live in the string handed to
+  // the rasteriser and never reach the .png.
+  const { svg: svgStr, width: w, height: h } = await buildExportSVG({ ...opts, embedFonts: true });
 
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(w * res);

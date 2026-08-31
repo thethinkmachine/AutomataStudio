@@ -24,20 +24,26 @@ const LICENSE_BANNER = `/*!
  * as the branding of derivative works.
  */`;
 
-// Example machines are fetched at runtime as `js/examples/<name>.json` (see
-// loadExampleFile in js/persistence.js), so they must keep that exact path.
-// During dev Vite serves them straight from the project root; for the build they
-// are copied verbatim rather than hashed, because the URL is constructed at
-// runtime from the machine name and cannot be rewritten by the bundler.
-function copyExamples() {
+// Two sets of JSON are fetched at runtime by a URL built from a name, so neither
+// can be hashed or rewritten by the bundler and both must keep their exact path:
+// the example machines (`js/examples/<name>.json`, loadExampleFile in
+// js/persistence.js) and the glyph outline tables (`js/glyphs/<face>.json`,
+// loadFace in js/glyphs.js). During dev Vite serves them straight from the
+// project root; for the build they are copied verbatim.
+//
+// The glyph tables are deliberately not imported: a static import would put
+// ~320KB into the single bundle that only someone exporting an image ever
+// needs, and only two of the four faces are read by a typical diagram.
+function copyRuntimeAssets() {
   return {
-    name: 'copy-examples',
+    name: 'copy-runtime-assets',
     apply: 'build',
     closeBundle() {
-      const from = resolve(ROOT, 'js/examples');
-      const to = resolve(ROOT, 'dist/js/examples');
-      mkdirSync(to, { recursive: true });
-      cpSync(from, to, { recursive: true });
+      for (const dir of ['js/examples', 'js/glyphs']) {
+        const to = resolve(ROOT, 'dist', dir);
+        mkdirSync(to, { recursive: true });
+        cpSync(resolve(ROOT, dir), to, { recursive: true });
+      }
     }
   };
 }
@@ -47,7 +53,7 @@ export default defineConfig({
   // (/<repo>/) and the desktop build serves dist/ over the custom app:// scheme,
   // so neither can assume the document sits at the domain root.
   base: './',
-  plugins: [copyExamples()],
+  plugins: [copyRuntimeAssets()],
   // Read back in js/workspace.js, which guards on `typeof` so the Node test
   // run — which imports the modules directly, with no Vite in the way — does
   // not trip over an undefined global.
