@@ -18,6 +18,49 @@ import { applyMachineSwitch } from './view.js';
 // ══════════════════════════════════════════════════════════════════
 //  SAVE / LOAD
 // ══════════════════════════════════════════════════════════════════
+// ── The file rounds its geometry; the machine does not ────────────
+// A coordinate is a float the moment a state has been dragged, and
+// `100.35847091674805` is eighteen characters written twice per state — on a
+// diagram of any size the file is mostly coordinates. Whole pixels are
+// invisible at the zoom a diagram is read at (a state is 28 of them across the
+// radius, and the stroke around it is wider than the error), so the precision
+// buys nothing that reaches a reader.
+//
+// It happens **here, on the way out, and never on `App`**. Rounding a state as
+// it is dragged would quantise the drag itself, and the layout passes iterate
+// on their own output — `resolveNodeOverlaps` pushes a state a fraction at a
+// time — where a rounding error accumulates into a visible drift. So the
+// machine on screen keeps full precision and the file gets whole numbers.
+//
+// `exportWorkspaceState` deliberately does *not* do this, which is the line
+// between the two serializers: a tab switch and an undo have to give back
+// exactly the machine that was there, not one within half a pixel of it.
+//
+// The value is the decimal places to keep; 0 means a whole number. Only
+// `loopAngle` (radians, where a whole number is a quarter turn) and the
+// camera's zoom need any.
+const SAVE_PRECISION = {
+  state: { x: 0, y: 0 },
+  transition: { curve: 0, loopAngle: 3 },
+  note: { x: 0, y: 0, w: 0, h: 0 },
+  divider: { x1: 0, y1: 0, x2: 0, y2: 0 },
+  cam: { x: 0, y: 0, z: 4 }
+};
+
+// Copies rather than edits, so the object on `App` is untouched, and rounds
+// only the fields named — anything else a state or a note carries rides along
+// as it is.
+function roundForSave(obj, precision) {
+  if (!obj || typeof obj !== 'object') return obj;
+  const out = { ...obj };
+  for (const key in precision) {
+    const v = out[key];
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    out[key] = precision[key] ? Number(v.toFixed(precision[key])) : Math.round(v);
+  }
+  return out;
+}
+
 export function getWorkspaceData() {
   const grammarData = { vars: [...App.grammar.vars], start: App.grammar.start, productions: App.grammar.productions };
   
@@ -42,14 +85,14 @@ export function getWorkspaceData() {
     stackAlpha: [...App.stackAlpha],
     outputAlpha: [...App.outputAlpha],
     tapeCount: App.tapeCount,
-    states: App.states,
-    transitions: App.transitions,
+    states: App.states.map(x => roundForSave(x, SAVE_PRECISION.state)),
+    transitions: App.transitions.map(x => roundForSave(x, SAVE_PRECISION.transition)),
     startId: App.startId,
     accepts: [...App.accepts],
-    notes: App.notes,
-    dividers: App.dividers,
+    notes: App.notes.map(x => roundForSave(x, SAVE_PRECISION.note)),
+    dividers: App.dividers.map(x => roundForSave(x, SAVE_PRECISION.divider)),
     grammar: grammarData,
-    cam: App.cam,
+    cam: roundForSave(App.cam, SAVE_PRECISION.cam),
     // What the author says this machine is. Dropped here for as long as the
     // card was read-only, which is what made a description a property of the
     // file you loaded rather than of the machine you have — save once and it
@@ -368,49 +411,141 @@ window.addEventListener('drop', e => {
 //  SHAREABLE LINK
 // ══════════════════════════════════════════════════════════════════
 // Unicode-safe base64url codec (plain btoa/atob choke on non-Latin1 chars
-// like the ε symbols that show up in every workspace's config).
-export function b64UrlEncodeUnicode(str) {
-  const bytes = new TextEncoder().encode(str);
+// like the ε symbols that show up in every workspace's config). The byte
+// halves are separate because the compressed payload below is bytes that were
+// never a string, and round-tripping it through TextDecoder would corrupt it.
+function bytesToB64Url(bytes) {
+  // fromCharCode.apply over a whole array overflows the argument stack on a
+  // payload of any real size, which is precisely the payload that gets shared.
+  const CHUNK = 0x8000;
   let binary = '';
-  bytes.forEach(b => binary += String.fromCharCode(b));
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
-export function b64UrlDecodeUnicode(b64url) {
+function b64UrlToBytes(b64url) {
   let b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
   while (b64.length % 4) b64 += '=';
-  const binary = atob(b64);
-  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+}
+export function b64UrlEncodeUnicode(str) {
+  return bytesToB64Url(new TextEncoder().encode(str));
+}
+export function b64UrlDecodeUnicode(b64url) {
+  return new TextDecoder().decode(b64UrlToBytes(b64url));
+}
+
+// ── The payload is DEFLATEd ───────────────────────────────────────
+// A workspace is JSON carrying the same two dozen key names once per state and
+// once per transition, which is the shape DEFLATE is best at: a 300-state
+// machine goes from a 60KB link to a 7.8KB one, a 1000-state one from 200KB to
+// 30KB. Length is the whole issue —
+// the hash never reaches a server, but every chat client, mail client and
+// issue tracker between the two people has its own idea of how long a URL may
+// be, and the ones that *truncate* rather than refuse hand back a payload that
+// decodes to nothing. Base64 costs a third on top of the JSON, so the
+// uncompressed link was ~1.35× a file that is mostly repetition.
+//
+// Compressing is best-effort. `CompressionStream` is asynchronous and not
+// everywhere (Safari < 16.4, and any context that has stripped it), so a
+// failure falls through to the old encoding: an uncompressed link is a longer
+// link, never a broken one.
+//
+// `SHARE_COMPRESSED_MARK` is what the reader dispatches on, and `.` is outside
+// the base64url alphabet — so a link written before this existed can never be
+// mistaken for a compressed one, and every one of them still opens.
+export const SHARE_COMPRESSED_MARK = 'z.';
+const SHARE_CODEC = 'deflate-raw';
+
+function canCompress() {
+  return typeof CompressionStream === 'function' && typeof ReadableStream === 'function';
+}
+
+// The bytes are pushed through the transform by hand rather than through
+// Blob().stream() or Response.arrayBuffer(), so the only globals this needs
+// are the two streams it names — the codec stays usable anywhere the app runs.
+async function pipeBytes(bytes, transform) {
+  const source = new ReadableStream({ start(c) { c.enqueue(bytes); c.close(); } });
+  const reader = source.pipeThrough(transform).getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    total += value.length;
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) { out.set(c, at); at += c.length; }
+  return out;
+}
+
+// Resolves to a marked, compressed payload, or to null when this browser
+// cannot compress — the caller decides what to do with the second answer.
+export async function compressToB64Url(str) {
+  if (!canCompress()) return null;
+  try {
+    const out = await pipeBytes(new TextEncoder().encode(str), new CompressionStream(SHARE_CODEC));
+    return SHARE_COMPRESSED_MARK + bytesToB64Url(out);
+  } catch (err) {
+    console.warn('Share link compression unavailable, falling back to plain base64:', err);
+    return null;
+  }
+}
+
+// The one reader for both link generations.
+export async function decodeSharePayload(payload) {
+  if (!payload.startsWith(SHARE_COMPRESSED_MARK)) return b64UrlDecodeUnicode(payload);
+  const bytes = b64UrlToBytes(payload.slice(SHARE_COMPRESSED_MARK.length));
+  const out = await pipeBytes(bytes, new DecompressionStream(SHARE_CODEC));
+  return new TextDecoder().decode(out);
 }
 
 export const SHARE_HASH_PREFIX = '#share=';
 
-export function getShareableLink() {
-  const encoded = b64UrlEncodeUnicode(JSON.stringify(getWorkspaceData()));
-  return `${location.origin}${location.pathname}${SHARE_HASH_PREFIX}${encoded}`;
+export async function getShareableLink() {
+  const json = JSON.stringify(getWorkspaceData());
+  const payload = (await compressToB64Url(json)) ?? b64UrlEncodeUnicode(json);
+  return `${location.origin}${location.pathname}${SHARE_HASH_PREFIX}${payload}`;
 }
 
 export function copyShareableLink() {
-  const url = getShareableLink();
+  const link = getShareableLink();
   const onCopied = () => showStatus('Shareable link copied to clipboard!');
-  const onFailed = () => window.prompt('Copy this link:', url);
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(url).then(onCopied).catch(onFailed);
-  } else {
-    onFailed();
+  const onFailed = () => link.then(url => window.prompt('Copy this link:', url), () => {});
+  const viaText = () => {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) return onFailed();
+    link.then(url => navigator.clipboard.writeText(url)).then(onCopied, onFailed);
+  };
+  // Compressing puts a tick between the click and the write, and Safari grants
+  // the clipboard only inside the gesture that asked for it. Handing write() a
+  // promise is the sanctioned way to hold that grant open while the payload is
+  // still being built; writeText is the path for everything with no
+  // ClipboardItem, and the prompt is the path for everything else.
+  if (navigator.clipboard?.write && typeof ClipboardItem === 'function') {
+    try {
+      const blob = link.then(url => new Blob([url], { type: 'text/plain' }));
+      navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]).then(onCopied, viaText);
+      return;
+    } catch (err) {
+      // Firefox accepted a promise here only from 125 on; older ones throw.
+    }
   }
+  viaText();
 }
 
 // Reads a #share=… link on page load and swaps it into the current workspace,
 // the same way dropping a JSON/PNG file does.
-export function loadSharedLinkFromURL() {
+export async function loadSharedLinkFromURL() {
   if (!location.hash.startsWith(SHARE_HASH_PREFIX)) return false;
   const encoded = location.hash.slice(SHARE_HASH_PREFIX.length);
   // Strip the hash immediately so refreshing later doesn't re-import stale data
   // over whatever the user has since built.
   history.replaceState(null, '', location.pathname + location.search);
   try {
-    const data = JSON.parse(b64UrlDecodeUnicode(encoded));
+    const data = JSON.parse(await decodeSharePayload(encoded));
     validateSchema(data);
     loadData(data);
     saveBackup();

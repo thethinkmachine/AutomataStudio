@@ -59,7 +59,7 @@ if (typeof initLangClaimOverflowObserver === 'function') initLangClaimOverflowOb
 // depends on the restored workspaces — the empty-state guard, the autosave
 // timer, and the shared-link import that may overwrite them — has to run after
 // it resolves, or it would race a still-empty Workspaces array.
-export function finishBoot() {
+export async function finishBoot() {
   if (Workspaces.length === 0) initTabs(); // Guard for fresh launch
   if (typeof restartAutosaveTimer === 'function') restartAutosaveTimer();
   // setMachine('DFA') above no-ops at boot because DFA is already the default,
@@ -67,7 +67,10 @@ export function finishBoot() {
   // sit on its static placeholder markup until the first edit.
   if (typeof updateRPanel === 'function') updateRPanel();
 
-  const sharedLinkLoaded = typeof loadSharedLinkFromURL === 'function' && loadSharedLinkFromURL();
+  // Reading the link is asynchronous now that the payload is compressed; the
+  // whole of finishBoot already runs off a promise, so awaiting it here costs
+  // nothing and keeps the status hint timed against what actually happened.
+  const sharedLinkLoaded = typeof loadSharedLinkFromURL === 'function' && await loadSharedLinkFromURL();
   setTimeout(() => showStatus('Esc=Pointer · V=Pan · Space+Drag=Pan · S=State · T=Transition · H=Fit · Ctrl+Z=Undo'), sharedLinkLoaded ? 3200 : 600);
 }
 

@@ -39,6 +39,8 @@ import * as modal from '../js/modal.js';
 import * as notes from '../js/notes.js';
 import * as persistence from '../js/persistence.js';
 import * as render from '../js/render.js';
+import * as exportFonts from '../js/export-fonts.js';
+import * as glyphs from '../js/glyphs.js';
 import * as panelState from '../js/panel-state.js';
 import * as panelSections from '../js/panel-sections.js';
 import * as panelList from '../js/panel-list.js';
@@ -125,7 +127,11 @@ const BROWSER_GLOBALS = [
   'document', 'localStorage', 'window', 'indexedDB', 'navigator', 'fetch',
   'Blob', 'URL', 'matchMedia', 'requestAnimationFrame', 'cancelAnimationFrame',
   'innerWidth', 'innerHeight', 'getComputedStyle', 'setTimeout', 'clearTimeout',
-  'setInterval', 'clearInterval', 'ResizeObserver', 'IntersectionObserver'
+  'setInterval', 'clearInterval', 'ResizeObserver', 'IntersectionObserver',
+  // The share-link reader takes its payload off location.hash and clears it
+  // through history.replaceState, so a test that wants to open a link has to be
+  // able to install both.
+  'location', 'history'
 ];
 for (const key of BROWSER_GLOBALS) {
   Object.defineProperty(context, key, {
@@ -160,6 +166,13 @@ function resetModuleState() {
   state.setR(baseConfig.radius);
   panelState.resetPanelTabs();
   panelSectionsUi.resetSectionReorder();
+  // Both memoise a *failure* as well as a success — a glyph face that could not
+  // be fetched, and font bytes that could not be — so that one refusal does not
+  // cost a request per export. That makes them exactly the state a test would
+  // otherwise inherit, and the inheriting test would pass while exercising the
+  // fallback rather than the thing it names.
+  glyphs.resetGlyphCache();
+  exportFonts.resetFontCache();
   ui.setSaveState('saved');
   // The incremental renderer keys its live SVG nodes off App.domCache. Left
   // populated, a test would start out holding nodes built for the previous
