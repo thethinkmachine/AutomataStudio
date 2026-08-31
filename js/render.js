@@ -1043,7 +1043,48 @@ function transRowText(t) {
   return `${getState(t.from)?.name || '?'} ${transLabel(t)} ${getState(t.to)?.name || '?'}`;
 }
 
+// What the two lists last drew. updateLPanel rebuilds both of them on every
+// emit(Change.GRAPH) — 6.95ms on a 200-state machine, roughly a fifth of the
+// whole delivery — including the many edits that change neither. Toggling one
+// accept mark redrew 200 state rows and 400 transition rows.
+//
+// The key is built from what the rows actually render rather than from
+// structure alone, because a rename changes no id and a retargeted or relabelled
+// edge changes no count. Transition fields are enumerated rather than listed:
+// they differ per machine (a TM carries write/move, a PDA pop/push, an MTM three
+// arrays), so a hand-written list here would fall behind the next machine added
+// and silently stop redrawing for it. Geometry is skipped — curve and loopAngle
+// are not drawn in a list, and an edge drag would otherwise bust the key on drop
+// for a row that reads identically.
+//
+// The filter strings are part of it because filterStates/filterTransitions run
+// inside updateLPanel and narrow what is shown; without them, typing in the
+// search box would be a no-op whenever the machine had not moved.
+const LP_KEY_SKIP_FIELDS = new Set(['curve', 'loopAngle']);
+export let _lpanelPainted = null;
+export function _resetLpanelPainted() { _lpanelPainted = null; }
+
+function lpanelKey() {
+  const p = [App.machine, App.startId, [...App.accepts].sort().join(',')];
+  for (const st of App.states) p.push(st.id, st.name, st.output ?? '', st.priority ?? '');
+  for (const t of App.transitions) {
+    for (const k of Object.keys(t)) {
+      if (LP_KEY_SKIP_FIELDS.has(k)) continue;
+      p.push(k, String(t[k]));
+    }
+  }
+  p.push($('state-search')?.value || '', $('trans-search')?.value || '');
+  return p.join('\u0001');
+}
+
 export function updateLPanel() {
+  const key = lpanelKey();
+  const list = $('states-list');
+  // Tested against the DOM as well as the key, the way the other two guards are:
+  // a machine switch and a panel re-mount both rebuild these lists from nothing,
+  // and a cache saying "already drawn" would then describe a subtree that is gone.
+  if (key === _lpanelPainted && list && list.childNodes.length) return;
+  _lpanelPainted = key;
   setListItems($('states-list'), App.states, {
     html: stateRowHTML, text: stateRowText,
     empty: '<div class="empty-msg">No states</div>'
