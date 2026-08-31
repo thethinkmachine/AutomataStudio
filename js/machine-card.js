@@ -765,4 +765,34 @@ export function syncCanvasInfoButton() {
 // result decorates the card in place, and redrawing on every edit to the
 // diagram would wipe that strip off between the run and the reading of it.
 subscribe(Change.GRAPH, syncCanvasInfoButton);
-subscribe(Change.META, () => { if (!selfWrite) renderExampleCard(); });
+// Guarded on the card's own contents, not on the emit.
+//
+// renderExampleCard ends in repositionCanvasInfo(), which calls
+// getBoundingClientRect on #canvas-wrap and so forces a synchronous layout
+// flush against the whole diagram — 8.4ms on a 200-state machine, and it is
+// paid even on the early-return path where App.meta is null and the card is
+// closed, i.e. when there is nothing to draw at all.
+//
+// That would be fine if META meant "the card changed", but it does not: every
+// path that rehydrates App announces it, so restoreSnapshot (each undo and
+// redo), both tab-activation paths and StateMate's restoreCheckpoint all pay
+// the reflow to redraw a card that usually did not move.
+//
+// Only the subscriber is guarded. Every direct caller is a live interaction
+// with the card — opening it, committing a field, adding a test word — where
+// module state the signature cannot see has changed and a redraw is the point.
+export let _metaPainted = null;
+function metaSignature() {
+  const m = App.meta;
+  if (!m) return '';
+  // Small by construction: a title, a blurb and a handful of test words.
+  return JSON.stringify(m);
+}
+subscribe(Change.META, () => {
+  if (selfWrite) return;
+  const sig = metaSignature();
+  if (sig === _metaPainted) return;
+  _metaPainted = sig;
+  renderExampleCard();
+});
+export function _resetMetaPainted() { _metaPainted = null; }

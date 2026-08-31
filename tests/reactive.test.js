@@ -6,6 +6,9 @@ import { Change, changed, emit } from '../js/store.js';
 import { REACTIVITY_LIVE, ReactiveSet, createMemo, reactiveRoot } from '../js/reactive.js';
 import { updateFormalDef, _defBoxPainted } from '../js/render.js';
 import { renderLanguagePanel } from '../js/language.js';
+// Namespace import: machine-card's exports are not in the harness context, and an
+// ESM namespace read is live, so this tracks the module's own `let`.
+import * as card from '../js/machine-card.js';
 
 // Reactivity.
 //
@@ -271,4 +274,90 @@ test('a memo reading a value an earlier subscriber writes must not be memoised o
   const b = settleLangPanel();
   assert.equal(a, b, 'the key must be stable across repeated settles');
   assert.ok(!/undefined/.test(a), `the key must not carry unset values: ${a}`);
+});
+
+// ── The left panel's two lists ────────────────────────────────────
+// updateLPanel rebuilt both on every emit(Change.GRAPH) — 6.95ms on a
+// 200-state machine — including edits that changed neither list.
+
+test('an unchanged machine does not rebuild the States and Transitions lists', () => {
+  harness.resetApp();
+  fa({ edges: [['q0', 'a', 'q1']] });
+  emit(Change.GRAPH);
+  const painted = context._lpanelPainted;
+  assert.ok(painted, 'the first draw must record a key');
+  emit(Change.GRAPH);
+  assert.equal(context._lpanelPainted, painted, 'nothing changed, nothing rebuilt');
+});
+
+test('a rename rebuilds them, though no id or count moved', () => {
+  harness.resetApp();
+  fa({ edges: [['q0', 'a', 'q1']] });
+  emit(Change.GRAPH);
+  const before = context._lpanelPainted;
+  App.states[0].name = 'start';
+  emit(Change.GRAPH);
+  assert.notEqual(context._lpanelPainted, before, 'the row text changed and must redraw');
+});
+
+test('a relabelled edge rebuilds them, whatever fields its machine carries', () => {
+  harness.resetApp();
+  fa({ edges: [['q0', 'a', 'q1']] });
+  emit(Change.GRAPH);
+  const before = context._lpanelPainted;
+  // The key enumerates a transition's own keys rather than a hand-written list,
+  // so a field belonging to some other machine still counts.
+  App.transitions[0].write = 'X';
+  emit(Change.GRAPH);
+  assert.notEqual(context._lpanelPainted, before, 'a new field must be part of the key');
+});
+
+test('geometry is not part of the key', () => {
+  harness.resetApp();
+  fa({ edges: [['q0', 'a', 'q1']] });
+  emit(Change.GRAPH);
+  const before = context._lpanelPainted;
+  App.transitions[0].curve = 42;
+  App.transitions[0].loopAngle = 1.5;
+  App.states[0].x = 999;
+  emit(Change.GRAPH);
+  assert.equal(context._lpanelPainted, before, 'a list shows no coordinates');
+});
+
+// ── The machine card's forced reflow ──────────────────────────────
+// renderExampleCard ends in repositionCanvasInfo(), a getBoundingClientRect on
+// the canvas — 8.4ms of forced layout, paid even when the card is closed and
+// App.meta is null. Every undo announces META, so every undo used to pay it.
+
+test('a META announcement that did not change the card is dropped', () => {
+  harness.resetApp();
+  App.meta = { title: 'Divisible by 5', blurb: 'counts mod 5', inputs: [{ w: '101' }] };
+  emit(Change.META);
+  const painted = card._metaPainted;
+  assert.ok(painted, 'the first announcement must draw');
+
+  // What restoreSnapshot does on every undo: rehydrate and announce, with the
+  // card's contents identical.
+  emit(Change.META);
+  assert.equal(card._metaPainted, painted, 'an unchanged card must not redraw');
+});
+
+test('an actual change to the card still draws', () => {
+  harness.resetApp();
+  App.meta = { title: 'A', blurb: 'b', inputs: [] };
+  emit(Change.META);
+  const before = card._metaPainted;
+  App.meta = { title: 'A', blurb: 'b reworded', inputs: [] };
+  emit(Change.META);
+  assert.notEqual(card._metaPainted, before, 'a reworded blurb must redraw');
+});
+
+test('clearing the card is a change, not a no-op', () => {
+  harness.resetApp();
+  App.meta = { title: 'A', blurb: 'b', inputs: [] };
+  emit(Change.META);
+  const before = card._metaPainted;
+  App.meta = null;
+  emit(Change.META);
+  assert.notEqual(card._metaPainted, before, 'losing a description must redraw');
 });

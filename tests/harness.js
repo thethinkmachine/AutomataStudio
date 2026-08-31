@@ -38,6 +38,7 @@ import * as minimap from '../js/minimap.js';
 import * as modal from '../js/modal.js';
 import * as notes from '../js/notes.js';
 import * as persistence from '../js/persistence.js';
+import * as machineCard from '../js/machine-card.js';
 import * as render from '../js/render.js';
 import * as exportFonts from '../js/export-fonts.js';
 import * as glyphs from '../js/glyphs.js';
@@ -180,6 +181,10 @@ function resetModuleState() {
   render._resetDefBoxPainted();
   // Same shape, for the Language panel's paint guard.
   language._resetLangPanelPainted();
+  // ... the two lists in the left panel ...
+  render._resetLpanelPainted();
+  // ... and the machine card, whose guard exists to skip a forced reflow.
+  machineCard._resetMetaPainted();
   ui.setSaveState('saved');
   // Whether the large-machine profile was on last time anything looked. Held
   // across a reset it would swallow the announcement for the next test's
