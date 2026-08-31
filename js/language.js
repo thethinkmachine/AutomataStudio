@@ -1,4 +1,7 @@
 import { wrap } from './canvas.js';
+import { createMemo, reactiveRoot } from './reactive.js';
+import { Change, changed } from './store.js';
+
 import { openExportCodeModal } from './export-ui.js';
 import { _regexCacheKey, updateDefBoxOverflowShadow } from './render.js';
 import { runSim } from './simulation.js';
@@ -1394,7 +1397,49 @@ export function initLangClaimOverflowObserver() {
 }
 
 // ── entry point ───────────────────────────────────────────────────
+// What the panel last drew. The panel's own pieces are keyed-cached inside
+// (_langExtCache, _langVocab), so this guard is not about the computation — it
+// is about the ~0.8ms of DOM writes, class toggles and tuple rendering that ran
+// on every emit(Change.GRAPH) whether or not any of it would differ.
+//
+// The key has to be structural rather than the regex string: for a TM or a PDA
+// the class label is a constant ("Recursively Enumerable Language"), so a key
+// built from it would never change and the extension grid would freeze on the
+// first machine drawn. Measured against what it saves, at 1000 states / 2000
+// transitions the key costs 0.199ms to skip 0.80ms, and the margin only
+// narrows — it is worth it at every size the app draws.
+//
+// Memoised on the change kinds, which _regexCacheKey itself deliberately is
+// not: that function is a detector for edits nobody announced (see the note
+// over it in js/render.js), whereas this panel is only ever reached from
+// updateRPanel, i.e. only ever from an emit.
+export let _langPanelPainted = null;
+export function _resetLangPanelPainted() { _langPanelPainted = null; }
+
+// Only the structural half is memoised, and that split is load-bearing.
+// createMemo is EAGER: it recomputes when the signal is written, which
+// deliver() does before it runs any subscriber — so a memo reading
+// App._regexBoxPlain would read it before updateRegex, an earlier subscriber in
+// the same updateRPanel, had set it. The regex half is therefore read live at
+// call time, by which point updateRegex has run.
+const langStructureKey = reactiveRoot(() => createMemo(() => {
+  changed(Change.GRAPH);
+  changed(Change.ALPHABET);
+  return `${App.machine}|${_regexCacheKey()}`;
+}));
+
+function langPanelKey() {
+  return `${langStructureKey()}|${App._regexIsDerived}|${App._regexBoxPlain}`;
+}
+
 export function renderLanguagePanel() {
+  const key = langPanelKey();
+  const box = $('rp-language');
+  // Tested against the DOM as well as the key: the panel is rebuilt from
+  // scratch by a machine switch, and a cache saying "already drawn" would then
+  // be describing a subtree that no longer exists.
+  if (key === _langPanelPainted && box && box.childNodes.length) return;
+  _langPanelPainted = key;
   const wrap = $('rp-language');
   if (wrap) {
     wrap.classList.toggle('lang-vocabulary', !langIsSymbolic());

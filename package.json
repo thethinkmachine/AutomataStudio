@@ -20,7 +20,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test",
+    "test": "node --conditions=browser --conditions=development --test",
     "icons": "node scripts/build-icons.mjs",
     "glyphs": "node scripts/build-glyphs.mjs",
     "electron:dev": "concurrently -k -s first \"npm:dev\" \"wait-on http://localhost:5173 && cross-env ELECTRON_DEV_SERVER_URL=http://localhost:5173 electron .\"",
@@ -73,6 +73,8 @@
     }
   },
   "dependencies": {
-    "electron-updater": "^6.8.9"
+    "@solid-primitives/set": "^0.7.4",
+    "electron-updater": "^6.8.9",
+    "solid-js": "^1.9.15"
   }
 }
