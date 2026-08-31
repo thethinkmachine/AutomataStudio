@@ -16,11 +16,12 @@
 // Rows are deliberately few. The bar is "changes what the canvas looks like,
 // and you want it while drawing"; anything you set once belongs in the dialog,
 // which the More… link opens on the matching tab.
-import { $, App, EdgeLabelStyles, normalizeEdgeLabelStyle } from './state.js';
+import { $, App, EdgeLabelStyles, largeMachineOverridePrompt, machineIsLarge, normalizeEdgeLabelStyle } from './state.js';
 import { settleAll } from './anim.js';
 import { clearEdgeDirectionHighlight, toggleSnapToGrid } from './canvas.js';
 import { Change } from './store.js';
 import { commit } from './history.js';
+import { askConfirm } from './modal.js';
 
 // `mirrors` is the id of the Settings control holding the same value. `get`
 // reads it out of App.config; `set` writes it back. A row never repaints —
@@ -125,6 +126,21 @@ const QUICK_ROWS = [
     mirrors: 'set-animate-layout',
     get: () => App.config.render.animateLayout !== false,
     set: v => { App.config.render.animateLayout = v; }
+  },
+  {
+    id: 'qs-large-machine',
+    type: 'toggle',
+    group: 'Large machines',
+    label: 'Simplify when large',
+    tip: 'Past a few hundred states, hide edge labels, stop easing layout changes, '
+      + 'repaint the minimap less often and save less frequently. Your settings are '
+      + 'remembered and come back when the machine is small enough again.',
+    mirrors: 'set-large-machine-auto',
+    get: () => App.config.render.largeMachineAuto !== false,
+    set: v => { App.config.render.largeMachineAuto = v; },
+    // Only turning it *off*, and only while it is actually doing something.
+    // Turning it back on is free and never asks.
+    confirm: v => !v && machineIsLarge()
   }
 ];
 
@@ -169,6 +185,23 @@ function syncMirror(row) {
 // One write path for every row: set the config, keep the dialog in step, then
 // announce the repaint.
 function applyQuick(row, value) {
+  // A row may declare that a value is worth asking about. The question is put
+  // before anything is written, and a refusal re-reads the popover rather than
+  // reverting by hand — the control is already showing the value that was
+  // refused, and refreshQuickSettings is the one thing that knows how to put
+  // every kind of row back.
+  if (row.confirm && row.confirm(value)) {
+    askConfirm({
+      ...largeMachineOverridePrompt(),
+      onConfirm: () => writeQuick(row, value),
+      onCancel: () => refreshQuickSettings()
+    });
+    return;
+  }
+  writeQuick(row, value);
+}
+
+function writeQuick(row, value) {
   // commit() records the undo point before running the edit, so the change is
   // undoable and the tab is marked unsaved — these settings are stored per
   // workspace, so changing one really is unsaved work. Change.CANVAS carries

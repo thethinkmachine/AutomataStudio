@@ -1,4 +1,4 @@
-import { App } from './state.js';
+import { App, largeMachineProfile } from './state.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  LAYOUT ANIMATION
@@ -102,10 +102,17 @@ export function animMotionOk() {
  * The config flag follows the collision-avoidance convention: absent means on,
  * so a workspace or preferences blob written before this existed does not read
  * as "animation disabled".
+ *
+ * The large-machine profile is the fourth reason it can be off. An edge carries
+ * four eased tracks, so a structural change to a thousand-state machine leaves
+ * several thousand of them converging — rAF stays busy for as long as that
+ * takes, on exactly the diagram that could least afford it. The easing is
+ * display-only, so dropping it costs the drawing nothing but the glide.
  */
 export function animEnabled() {
   const r = (App.config && App.config.render) || {};
-  return r.animateLayout !== false && !isSyncRAF() && animMotionOk();
+  return r.animateLayout !== false && !largeMachineProfile()
+    && !isSyncRAF() && animMotionOk();
 }
 
 // animEnabled() ends in matchMedia(), which allocates a MediaQueryList on every

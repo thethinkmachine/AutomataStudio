@@ -8,7 +8,7 @@ import { refreshQuickSettings } from './quick-settings.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { showExampleCard } from './machine-card.js';
 import { isMultiTape } from './machines/index.js';
-import { $, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
+import { $, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, largeMachineProfile, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { hideContextMenu } from './states-transitions.js';
 import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen, hideTabContextMenu, hideTabOverflowMenu, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
@@ -277,13 +277,30 @@ export async function runAutosave() {
   }
 }
 
+// How often a tick may fire. A tick is JSON.stringify over every workspace,
+// written to IndexedDB on the main thread — a few kilobytes on an ordinary
+// machine and several megabytes on a thousand-state one, where the reader gets
+// a visible hitch every fifteen seconds for a save nothing asked for.
+//
+// Stretched rather than switched off. Autosave is what makes a crash survivable
+// and a large machine is the one you would least like to redraw, so the profile
+// buys frames by saving less often, never by not saving. 0 still means off, and
+// a reader who set a *longer* interval than the floor keeps theirs.
+export const LARGE_AUTOSAVE_INTERVAL_MS = 60000;
+
+export function effectiveAutosaveInterval() {
+  const interval = Number(App.config.autosaveIntervalMs ?? 15000);
+  if (!Number.isFinite(interval) || interval <= 0) return interval;
+  return largeMachineProfile() ? Math.max(interval, LARGE_AUTOSAVE_INTERVAL_MS) : interval;
+}
+
 export function restartAutosaveTimer() {
   if (autosaveTimer) clearInterval(autosaveTimer);
   if (autosaveCountdownTimer) clearInterval(autosaveCountdownTimer);
   autosaveTimer = null;
   autosaveCountdownTimer = null;
   autosaveDeadline = 0;
-  const interval = Number(App.config.autosaveIntervalMs ?? 15000);
+  const interval = effectiveAutosaveInterval();
   const countdown = $('autosave-countdown');
   if (!Number.isFinite(interval) || interval <= 0) {
     if (countdown) countdown.textContent = '';

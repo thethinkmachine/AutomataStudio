@@ -6,7 +6,7 @@ import { isQuickSettingsOpen, positionQuickSettings, refreshQuickSettings } from
 import { includeDividerBounds, removeDividers, updateShapeToolButton } from './dividers.js';
 import { markDirty, redo, snapshot, snapshotSettings, undo } from './history.js';
 import { renderMinimap, scheduleMinimap } from './minimap.js';
-import { anyModalOpen, closeModal, registerModal, showOverlay } from './modal.js';
+import { anyModalOpen, askConfirm, closeModal, registerModal, showOverlay } from './modal.js';
 import { includeNoteBounds, pruneNoteAnchorsExcluding, removeNotes } from './notes.js';
 import { CARD_AUTO_HIDE_MS, restartAutosaveTimer, saveBackupChecked, saveJSON, saveWorkspace, saveWorkspaceById } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
@@ -18,7 +18,7 @@ import {
 } from './panel-state.js';
 import { declaredSectionIds, sectionStartsCollapsed } from './panel-sections.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
-import { $, App, MIN_TAPES, MachineCategories, blankWorkspaceData, MachineTypes, R, TAPE_LIMIT, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, maxTapes, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
+import { $, App, MIN_TAPES, MachineCategories, blankWorkspaceData, MachineTypes, R, TAPE_LIMIT, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, largeMachineOverridePrompt, largeMachineProfile, machineIsLarge, maxTapes, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { getState, getTransition, hideContextMenu } from './states-transitions.js';
 import { openMachineWizard } from './wizard-ui.js';
 import {
@@ -3016,6 +3016,7 @@ export function openSettingsModal() {
   // profile written before windowing existed must not open with it switched off.
   if ($('set-cull-offscreen')) $('set-cull-offscreen').checked = c.render.cullOffscreen !== false;
   if ($('set-zoom-lod')) $('set-zoom-lod').checked = c.render.zoomLOD !== false;
+  if ($('set-large-machine-auto')) $('set-large-machine-auto').checked = c.render.largeMachineAuto !== false;
   $('set-export-res').value = c.exportRes || 2;
   $('set-sym-eps').value = c.sym.eps;
   if ($('set-sym-lambda')) $('set-sym-lambda').value = c.sym.lambda;
@@ -3154,7 +3155,83 @@ export function sizeSettingsPanels() {
   panels.style.height = max + 'px';
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  THE LARGE-MACHINE PROFILE
+// ══════════════════════════════════════════════════════════════════
+// The profile itself is derived — see largeMachineProfile() in js/state.js —
+// so nothing has to be applied when it comes on. Everything that reads it gets
+// the new answer on its next call, which for the drawing is the render that
+// crossing the threshold caused in the first place.
+//
+// Two things are not reads, and they are why this exists:
+//
+//   * the autosave timer is a live setInterval, so a machine that grows past
+//     the threshold keeps the fifteen-second period it was armed with
+//   * a flip has to be *said*. A reader whose edge labels vanish between one
+//     subset construction and the next is looking at a bug unless something
+//     tells them otherwise, and this is the only surface that can.
+//
+// It is idempotent — a flip is a change of a boolean — so it is safe to call
+// from anywhere that might have caused one, and it is. `null` rather than
+// `false` at rest, or the app would announce the profile on the first render
+// of a small machine.
+let lastLargeProfile = null;
+
+// The watcher's whole job is to notice a *change*, so a stale "it was already
+// on" is exactly the state a test would inherit and then not see announced.
+export function resetLargeMachineProfileWatch() { lastLargeProfile = null; }
+
+export function syncLargeMachineProfile() {
+  const now = largeMachineProfile();
+  if (now === lastLargeProfile) return;
+  const first = lastLargeProfile === null;
+  lastLargeProfile = now;
+  // Re-arm the timer against the period the profile now implies.
+  if (typeof restartAutosaveTimer === 'function') restartAutosaveTimer();
+  // Coming on mid-glide would otherwise leave every eased track stranded where
+  // it happened to be when the easing was switched off.
+  if (now && typeof settleAll === 'function') settleAll();
+  if (first && !now) return;
+  showStatus(now
+    ? 'Large machine — canvas simplified for performance. Settings → Canvas to override.'
+    : 'Full canvas detail restored.');
+}
+
+subscribe(Change.GRAPH, syncLargeMachineProfile);
+// The override is written from the quick-settings popover, which announces
+// Change.CANVAS rather than GRAPH — the machine did not change, only what is
+// drawn of it.
+subscribe(Change.CANVAS, syncLargeMachineProfile);
+
+/**
+ * The gate on turning the profile off.
+ *
+ * It asks only when the answer costs something: the machine has to be large
+ * enough for the profile to be doing work right now, and the reader has to be
+ * turning it off rather than on. Turning it back on is always free and never
+ * asks.
+ */
+export function askLargeMachineOverride(proceed, revert) {
+  askConfirm({ ...largeMachineOverridePrompt(), onConfirm: proceed, onCancel: revert });
+}
+
+/**
+ * Apply is the one place the dialog writes, so the one place the gate can sit
+ * without splitting the transaction. The pre-flight runs before any control is
+ * read: cancelling puts the toggle back and leaves every other staged edit
+ * exactly where the reader left it, so nothing has to be unwound.
+ */
 export function confirmSettings() {
+  const box = $('set-large-machine-auto');
+  const turningOff = box && !box.checked && App.config.render.largeMachineAuto !== false;
+  if (turningOff && machineIsLarge()) {
+    askLargeMachineOverride(applySettings, () => { box.checked = true; });
+    return;
+  }
+  applySettings();
+}
+
+export function applySettings() {
   const c = App.config;
   applyTheme($('set-theme').value || c.theme || DEFAULT_THEME);
   if ($('set-wheel-zoom')) {
@@ -3220,6 +3297,7 @@ export function confirmSettings() {
   if ($('set-animate-layout')) c.render.animateLayout = $('set-animate-layout').checked;
   if ($('set-cull-offscreen')) c.render.cullOffscreen = $('set-cull-offscreen').checked;
   if ($('set-zoom-lod')) c.render.zoomLOD = $('set-zoom-lod').checked;
+  if ($('set-large-machine-auto')) c.render.largeMachineAuto = $('set-large-machine-auto').checked;
   if ($('set-node-clearance')) {
     // Clamped because it is a distance every routing search steps in: zero makes
     // "clear of a node" mean "touching it", and an outsized value pushes every
@@ -3263,6 +3341,11 @@ export function confirmSettings() {
   // undo point above — an API key is not an edit to the machine.
   if (typeof applyStateMateSettings === 'function') applyStateMateSettings();
 
+  // applySettings calls the renderers directly rather than emitting, so the
+  // subscribers above never see the override change. Idempotent, so this is a
+  // no-op on every apply that did not move it.
+  syncLargeMachineProfile();
+
   closeModal('settings-modal');
   showStatus('Settings applied!');
   saveBackupChecked();
@@ -3303,6 +3386,7 @@ export function getEditorSettingsData() {
     renderAnimateLayout: c.render.animateLayout !== false,
     renderCullOffscreen: c.render.cullOffscreen !== false,
     renderZoomLOD: c.render.zoomLOD !== false,
+    renderLargeMachineAuto: c.render.largeMachineAuto !== false,
     renderNodeClearance: c.render.nodeClearance ?? 12,
     exportRes: c.exportRes,
     symEps: c.sym.eps,
@@ -3377,6 +3461,7 @@ export function populateSettingsModalInputs(data) {
   if (data.renderAnimateLayout !== undefined && $('set-animate-layout')) $('set-animate-layout').checked = !!data.renderAnimateLayout;
   if (data.renderCullOffscreen !== undefined && $('set-cull-offscreen')) $('set-cull-offscreen').checked = !!data.renderCullOffscreen;
   if (data.renderZoomLOD !== undefined && $('set-zoom-lod')) $('set-zoom-lod').checked = !!data.renderZoomLOD;
+  if (data.renderLargeMachineAuto !== undefined && $('set-large-machine-auto')) $('set-large-machine-auto').checked = !!data.renderLargeMachineAuto;
   if (data.renderNodeClearance !== undefined && $('set-node-clearance')) $('set-node-clearance').value = data.renderNodeClearance;
   if (data.exportRes !== undefined) $('set-export-res').value = data.exportRes;
   if (data.symEps !== undefined) $('set-sym-eps').value = data.symEps;

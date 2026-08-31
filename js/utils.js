@@ -1,4 +1,4 @@
-import { closeModal, registerModal, showOverlay } from './modal.js';
+import { closeModal, showOverlay } from './modal.js';
 import { showExampleCard } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim } from './simulation.js';
@@ -35,15 +35,6 @@ export {
 
 export { hasStateOutput, hasTransitionOutput } from './machines/index.js';
 
-
-// Callers rebind #confirm-action-btn per prompt, so Enter has to dispatch to
-// whatever handler is currently attached rather than a fixed function.
-registerModal('confirm-modal', {
-  submit: () => {
-    const btn = $('confirm-action-btn');
-    if (btn && btn.onclick) btn.onclick();
-  }
-});
 
 export function resetIds() {
   App.stateN = Math.max(0, ...App.states.map(s => { const m = s.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));

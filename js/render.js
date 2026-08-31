@@ -8,8 +8,8 @@ import { cullNeedsRepaint, cullViewport, cullingActive, edgeLabelLOD, invalidate
 import { scheduleMinimap } from './minimap.js';
 import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
-import { $, App, OmegaAcceptance, R, SVG_NS, edgeLabelsHidden, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, statePriority, usesParityPriorities } from './state.js';
-import { getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
+import { $, App, OmegaAcceptance, R, SVG_NS, edgeLabelsHidden, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, statePriority, usesParityPriorities, wrapStateLabelsOn } from './state.js';
+import { edgeTipFor, getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
 import { Change, emit, subscribe } from './store.js';
 import { triggerMath } from './reference.js';
 import { filterStates, filterTransitions } from './ui.js';
@@ -138,7 +138,11 @@ function edgeLabelSizeFor(ts) {
   // getContentBounds all stop steering around a box that is never painted.
   // It has to be a real zero rather than a falsy return — buildLayoutContext
   // reads that as "no estimate available" and substitutes a default size.
-  if (style === 'none') return { w: 0, h: 0 };
+  //
+  // edgeLabelsHidden() rather than the style alone, so the large-machine
+  // profile takes this branch too: on the diagrams it fires for, laying every
+  // edge out around a box that is never drawn is the expensive half.
+  if (edgeLabelsHidden()) return { w: 0, h: 0 };
   if (style === 'pills' || style === 'beginner') {
     return estimatePillLabelSize(ts.map(t => transLabelParts(t, style === 'beginner')));
   }
@@ -403,9 +407,12 @@ function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
     parts.textEl.style.display = 'none';
     parts.pillEl.style.display = 'none';
 
-    const tip = ts.map(t => transLabelDescriptive(t)).join('\n');
-    edgeGrp.setAttribute('data-tip', tip);
-    edgeGrp.setAttribute('aria-label', tip);
+    // The tooltip is a grid and the accessible name is prose — see
+    // edgeTipFor(). Two renderings of one description, and this is the branch
+    // where the labels are not drawn at all, so the tooltip is the only way
+    // left to read the edge.
+    edgeGrp.setAttribute('data-tip', edgeTipFor(ts));
+    edgeGrp.setAttribute('aria-label', ts.map(t => transLabelDescriptive(t)).join('\n'));
 
     syncCurveHandle(edgeGrp, edgeGrp.getAttribute('data-edge'), geo, selected);
     return true;
@@ -477,9 +484,8 @@ function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
   parts.textEl.style.display = pillMode ? 'none' : '';
   parts.pillEl.style.display = pillMode ? '' : 'none';
 
-  const edgeTip = ts.map(t => transLabelDescriptive(t)).join('\n');
-  edgeGrp.setAttribute('data-tip', edgeTip);
-  edgeGrp.setAttribute('aria-label', edgeTip);
+  edgeGrp.setAttribute('data-tip', edgeTipFor(ts));
+  edgeGrp.setAttribute('aria-label', ts.map(t => transLabelDescriptive(t)).join('\n'));
 
   syncCurveHandle(edgeGrp, edgeGrp.getAttribute('data-edge'), geo, selected);
   return true;
@@ -675,7 +681,7 @@ export function updateFastDOM({ statesMoved = true } = {}) {
 // instead of overflowing it. Names with no such boundary are left as
 // a single line untouched.
 export function splitStateLabel(name) {
-  if (!App.config.wrapStateLabels) return [String(name)];
+  if (!wrapStateLabelsOn()) return [String(name)];
   const parts = String(name).split(/[_\s-]+/).filter(Boolean);
   return parts.length > 1 ? parts : [String(name)];
 }
@@ -819,7 +825,7 @@ function syncStateNode(g, s, showAccepts, lod = false) {
   // As above: the tspans say the state's name, which a move does not change.
   // The LOD key is a value of its own rather than an empty name, so returning
   // from a zoomed-out view rebuilds the tspans instead of matching a stale key.
-  const labelKey = lod ? '::lod::' : `${s.name}\u0001${App.config.wrapStateLabels}`;
+  const labelKey = lod ? '::lod::' : `${s.name}\u0001${wrapStateLabelsOn()}`;
   if (lod) {
     if (g.__labelKey !== labelKey) {
       parts.label.innerHTML = '';
@@ -1009,7 +1015,10 @@ export function stateRowHTML(s) {
 export function transRowHTML(t) {
   const fn = getState(t.from)?.name || '?', tn = getState(t.to)?.name || '?';
   const sel = App.selectedTransitions.has(t.id) ? 'lp-selected' : '';
-  const fullTitle = `${fn} → ${tn}\n${transLabelDescriptive(t)}\nClick to focus · Double-click to edit`;
+  // The same grid the canvas edge shows, plus what a click here does. Tabs
+  // and newlines both survive an attribute value, which is what lets the
+  // columnar form travel through data-tip at all.
+  const fullTitle = `${edgeTipFor([t])}\n---\nClick to focus · Double-click to edit`;
   const label = escapeHtml(`${fn} –${transLabel(t)}→ ${tn}`);
   return `<div class="ti ${sel}" onclick="focusTransFromList('${t.id}')" ondblclick="editTransFromList('${t.id}')"
   onmouseenter="hlTransListHover('${t.from}','${t.to}', true)" onmouseleave="hlTransListHover('${t.from}','${t.to}', false)"
