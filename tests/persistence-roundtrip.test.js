@@ -245,3 +245,94 @@ test('autosave is a no-op when nothing is dirty', async () => {
 
   assert.strictEqual(store.get('current'), undefined, 'a clean workspace must not trigger a write');
 });
+
+// ── The file rounds its geometry; the machine does not ────────────
+
+function dragged() {
+  harness.resetApp();
+  const { App } = context;
+  App.machine = 'DFA';
+  App.sigma = new Set(['a']);
+  App.states = [
+    { id: 's0', name: 'q0', x: 100.35847091674805, y: 240.7412839471625 },
+    { id: 's1', name: 'q1', x: -12.5, y: 0.49, priority: 2, output: 'x' }
+  ];
+  App.transitions = [
+    { id: 't0', from: 's0', to: 's1', symbol: 'a', curve: 24.918273645 },
+    { id: 't1', from: 's1', to: 's1', symbol: 'a', loopAngle: 1.5707963267948966 }
+  ];
+  App.notes = [{ id: 'n0', text: 'hi', x: 3.7, y: 9.2, w: 180.4, h: 90.6, anchorStates: [], anchorTransitions: [] }];
+  App.dividers = [{ id: 'd0', kind: 'line', x1: 1.4, y1: 2.6, x2: 3.5, y2: 4.5 }];
+  App.startId = 's0';
+  App.accepts = new Set(['s1']);
+  App.cam = { x: -412.3849172, y: 88.10394857, z: 0.83471926354 };
+}
+
+test('a saved coordinate is a whole number', () => {
+  dragged();
+  const data = context.getWorkspaceData();
+
+  // Math.round takes a .5 toward +∞; either pixel is the same pixel.
+  assert.deepStrictEqual(data.states.map(s => [s.x, s.y]), [[100, 241], [-12, 0]]);
+  assert.deepStrictEqual([data.notes[0].x, data.notes[0].y, data.notes[0].w, data.notes[0].h], [4, 9, 180, 91]);
+  assert.deepStrictEqual([data.dividers[0].x1, data.dividers[0].y1, data.dividers[0].x2, data.dividers[0].y2], [1, 3, 4, 5]);
+  assert.deepStrictEqual([data.cam.x, data.cam.y], [-412, 88]);
+  assert.strictEqual(data.transitions[0].curve, 25);
+});
+
+test('the two that need decimals keep them', () => {
+  dragged();
+  const data = context.getWorkspaceData();
+  // A whole number of radians is a quarter turn, and a whole-numbered zoom is
+  // one zoom level — rounding either is not a sub-pixel change.
+  assert.strictEqual(data.transitions[1].loopAngle, 1.571);
+  assert.strictEqual(data.cam.z, 0.8347);
+});
+
+test('rounding is a property of the file, never of the machine', () => {
+  dragged();
+  const { App } = context;
+  const before = JSON.stringify([App.states, App.transitions, App.notes, App.dividers, App.cam]);
+  context.getWorkspaceData();
+  assert.strictEqual(JSON.stringify([App.states, App.transitions, App.notes, App.dividers, App.cam]), before,
+    'the machine on screen keeps full precision — the layout passes iterate on their own output');
+});
+
+test('a field the rounder does not know about rides along untouched', () => {
+  dragged();
+  const data = context.getWorkspaceData();
+  assert.strictEqual(data.states[1].priority, 2);
+  assert.strictEqual(data.states[1].output, 'x');
+  assert.strictEqual(data.transitions[0].symbol, 'a');
+});
+
+test('a rounded machine is about half the link a dragged one was', async () => {
+  harness.resetApp();
+  const { App } = context;
+  App.machine = 'DFA';
+  App.sigma = new Set(['a', 'b']);
+  App.states = [];
+  App.transitions = [];
+  App.accepts = new Set();
+  for (let i = 0; i < 300; i++) {
+    App.states.push({
+      id: 's' + i, name: 'q' + i,
+      x: 100 + (i % 40) * 90 + Math.sin(i) * 0.35847091674805,
+      y: 100 + Math.floor(i / 40) * 90 + Math.cos(i) * 0.7412839471625
+    });
+  }
+  App.startId = 's0';
+  App.accepts.add('s299');
+  for (let i = 0; i < 600; i++) {
+    App.transitions.push({ id: 't' + i, from: 's' + (i % 300), to: 's' + ((i * 7 + 3) % 300), symbol: i % 2 ? 'a' : 'b' });
+  }
+
+  const rounded = context.getWorkspaceData();
+  // The same blob with the machine's own floats put back — what the file used
+  // to carry.
+  const raw = { ...rounded, states: App.states, transitions: App.transitions, cam: App.cam };
+
+  const packed = async o => (await context.compressToB64Url(JSON.stringify(o))).length;
+  const [was, is] = [await packed(raw), await packed(rounded)];
+  assert.ok(is * 1.5 < was, `${is} vs ${was}`);
+});

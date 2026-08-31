@@ -940,7 +940,7 @@ test('every error code the pipeline throws has a sentence and a button', () => {
 //  SECURITY
 // ══════════════════════════════════════════════════════════════════
 
-test('the API key reaches none of the workspace serializers', () => {
+test('the API key reaches none of the workspace serializers', async () => {
   const h = createHarness();
   const KEY = 'sk-ant-super-secret-value';
   h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: KEY });
@@ -952,7 +952,7 @@ test('the API key reaches none of the workspace serializers', () => {
   assert.ok(!JSON.stringify(h.context.getWorkspaceData()).includes(KEY));
   assert.ok(!JSON.stringify(h.context.App.config).includes(KEY));
   // …and the share link is built from getWorkspaceData, so it is covered too.
-  assert.ok(!h.context.getShareableLink().includes(KEY));
+  assert.ok(!(await h.context.getShareableLink()).includes(KEY));
   // The settings profile is a fourth serializer, and it is the one a user is
   // most likely to hand to someone else.
   assert.ok(!JSON.stringify(h.context.getEditorSettingsData()).includes(KEY));
