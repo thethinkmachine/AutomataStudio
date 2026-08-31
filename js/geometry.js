@@ -214,7 +214,16 @@ export function selfLoopMetrics() {
   const chordOut = r * Math.cos(spread);     // chord midpoint, measured outward
   const bulge = Math.sqrt(ss * ss - so * so); // chord midpoint to the arc's centre
   const centreOut = chordOut + bulge;
-  return { so, ss, spread, chordOut, bulge, centreOut, extent: centreOut + ss };
+  // How far short of the state circle the arc's closing foot stops, for the
+  // same reason `arrowHeadSize` holds an ordinary edge back: the head is drawn
+  // backwards from a point ahead of the path's end, so an arc that closes *on*
+  // the circle puts the tip inside the node and leaves a flat, chopped-off stub
+  // sitting on the ring. Clamped against the arc's own radius, since the trim
+  // below is an arc length and a large enough one would run past the foot it is
+  // trimming. The opening foot stays on the circle, where a line with no head
+  // on it should start.
+  const endGap = clamp(num(cfg().arrowHeadSize, 6), 0, ss * 0.5);
+  return { so, ss, spread, chordOut, bulge, centreOut, endGap, extent: centreOut + ss };
 }
 
 // The arc, drawn from θ−spread to θ+spread the long way round. Sweep and
@@ -224,7 +233,17 @@ export function selfLoopPath(x, y, angle, m = selfLoopMetrics()) {
   const r = nodeR();
   const a0 = angle - m.spread, a1 = angle + m.spread;
   const x0 = x + r * Math.cos(a0), y0 = y + r * Math.sin(a0);
-  const x1 = x + r * Math.cos(a1), y1 = y + r * Math.sin(a1);
+  // The closing foot is pulled back *along the arc* rather than outward from
+  // the state, which is what leaves the loop the shape it already had: the arc
+  // keeps its own centre and radius and only ends `endGap` of arc length early,
+  // so the foot lifts off the circle along a tangent that still points into the
+  // node. Moving it radially instead would hand the browser a chord its radius
+  // no longer fits and the whole loop would be redrawn around a different
+  // centre. Sweep is 1, so travel is the increasing-φ direction and trimming
+  // the end means subtracting from φ.
+  const cx = x + m.centreOut * Math.cos(angle), cy = y + m.centreOut * Math.sin(angle);
+  const phi = Math.atan2(y + r * Math.sin(a1) - cy, x + r * Math.cos(a1) - cx) - m.endGap / m.ss;
+  const x1 = cx + m.ss * Math.cos(phi), y1 = cy + m.ss * Math.sin(phi);
   return `M ${x0} ${y0} A ${m.ss} ${m.ss} 0 1 1 ${x1} ${y1}`;
 }
 

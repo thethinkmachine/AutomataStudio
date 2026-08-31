@@ -510,11 +510,17 @@ function syncStartArrow(g) {
     a.setAttribute('stroke', 'var(--green)');
     a.setAttribute('stroke-width', '1.5');
     a.setAttribute('fill', 'none');
-    a.setAttribute('marker-end', 'url(#arr-g)');
+    a.setAttribute('marker-end', 'url(#arr)');
     App.domCache.startArrow = a;
   }
+  // Stops short of the circle by the same `arrowHeadSize` every other edge
+  // does, so the start arrow's head lands on the ring exactly where an incoming
+  // transition's does. It used to stop at a third of that, which was right only
+  // while the head's overhang was a stroke width; against the marker's fixed
+  // overhang (see the <defs> in index.html) it would drive the point into the
+  // node and leave a stub on the ring.
   const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
-  a.setAttribute('d', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah / 3} ${s.y}`);
+  a.setAttribute('d', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah} ${s.y}`);
   // Always first in paint order, behind every edge.
   if (a !== g.firstChild) g.insertBefore(a, g.firstChild);
 }
@@ -641,7 +647,7 @@ export function updateFastDOM({ statesMoved = true } = {}) {
     const s = stateById.get(App.startId);
     if (s) {
       const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
-      startArrow.setAttribute('d', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah / 3} ${s.y}`);
+      startArrow.setAttribute('d', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah} ${s.y}`);
     }
   }
 
