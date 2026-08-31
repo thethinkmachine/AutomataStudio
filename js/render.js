@@ -10,7 +10,8 @@ import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
 import { $, App, OmegaAcceptance, R, SVG_NS, edgeLabelsHidden, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, statePriority, usesParityPriorities, wrapStateLabelsOn } from './state.js';
 import { edgeTipFor, getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
-import { Change, emit, subscribe } from './store.js';
+import { Change, changed, emit, subscribe } from './store.js';
+import { createMemo, reactiveRoot } from './reactive.js';
 import { triggerMath } from './reference.js';
 import { filterStates, filterTransitions } from './ui.js';
 import { escapeHtml, hasStateOutput, isAnyPDA, isAnyTM, showStatus } from './utils.js';
@@ -1069,6 +1070,12 @@ export function updateRPanel() {
 
 // GNFA State Elimination (textbook: add new start + new accept, eliminate interior)
 export let _regexCache = { key: '', val: '' };
+// Deliberately NOT memoised on the change kinds, unlike the formal definition
+// below. This key is a change *detector*: it exists to notice edits that were
+// made without announcing themselves, which is why deriveRegex can be called
+// straight after a direct write to App.accepts and still be correct. Hanging it
+// off emit() would make it circular — it would report "nothing changed" for
+// precisely the mutations it is there to catch.
 export function _regexCacheKey() {
   return App.states.map(s => s.id).join(',') + '|' +
     App.transitions.map(t => t.from + t.symbol + t.to).sort().join(',') + '|' +
@@ -1185,7 +1192,7 @@ export function formatSet(items) {
   return `\\{ ${items.map(formatStateName).join(', ')} \\}`;
 }
 
-export function updateFormalDef() {
+function buildFormalDefLatex() {
   const m = App.machine;
   const Q_str = formatSet(App.states.map(s => s.name));
   const S_str = formatSet([...App.sigma]);
@@ -1410,9 +1417,50 @@ export function updateFormalDef() {
   }
   txt += ` \\end{aligned} $$`;
 
+  return txt;
+}
+
+// The formal definition, memoised on the structural change kinds and on the
+// ReactiveSets it reads (Σ, Γ, the output alphabet and F, via state.js).
+//
+// The reason this is worth a memo is the last two lines of updateFormalDef:
+// an innerHTML write and a full KaTeX re-typeset of the tuple, which ran on
+// EVERY emit(Change.GRAPH). Most graph changes do not touch what this box
+// displays at all — adding, editing or deleting a transition leaves Q, Σ, q0
+// and F alone, because δ is shown as a signature rather than as a listing —
+// so the app was re-typesetting identical mathematics on the majority of
+// edits, including every drop that nudged a neighbour.
+//
+// The string is still rebuilt per structural change: the states are plain
+// objects on purpose (see js/reactive.js on why App is not a store proxy), so
+// there is nothing finer to depend on than "the graph changed". Rebuilding a
+// string is cheap; typesetting it is not, which is why the skip is decided on
+// the built value rather than on the dependency.
+const defLatex = reactiveRoot(() => createMemo(() => {
+  changed(Change.GRAPH);
+  changed(Change.ALPHABET);
+  return buildFormalDefLatex();
+}));
+
+// What is currently painted into #def-box, so a recomputation that lands on the
+// same string costs nothing. Reset by resetModuleState() in the test harness.
+export let _defBoxPainted = null;
+export function _resetDefBoxPainted() { _defBoxPainted = null; }
+
+export function updateFormalDef() {
+  const txt = defLatex();
   App._defBoxLatex = txt;
   const defBox = $('def-box');
+  if (!defBox) return;
+  // The box can be repainted from under us (a theme change rebuilds the panel,
+  // and the first paint has nothing in it), so the guard tests the DOM as well
+  // as the memo rather than trusting the cache alone.
+  if (txt === _defBoxPainted && defBox.innerHTML) {
+    updateDefBoxOverflowShadow();
+    return;
+  }
   defBox.innerHTML = txt;
+  _defBoxPainted = txt;
   if (typeof triggerMath === 'function') triggerMath(defBox);
   updateDefBoxOverflowShadow();
 }

@@ -173,6 +173,13 @@ function resetModuleState() {
   // fallback rather than the thing it names.
   glyphs.resetGlyphCache();
   exportFonts.resetFontCache();
+  // What the formal-definition box last painted. It exists so an unchanged
+  // machine does not re-typeset its tuple, which means a test that rebuilds the
+  // same machine would otherwise inherit a cache saying the box is already
+  // correct — and the box belongs to the previous test's document.
+  render._resetDefBoxPainted();
+  // Same shape, for the Language panel's paint guard.
+  language._resetLangPanelPainted();
   ui.setSaveState('saved');
   // Whether the large-machine profile was on last time anything looked. Held
   // across a reset it would swallow the announcement for the next test's

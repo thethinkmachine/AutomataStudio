@@ -1,3 +1,5 @@
+import { createVersion, reactiveRoot } from './reactive.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  CHANGE STORE
 // ══════════════════════════════════════════════════════════════════
@@ -13,10 +15,25 @@
 // call renderAll twice, or snapshot after mutating something snapshot doesn't
 // capture. The replacement is `commit(Change.GRAPH)`.
 //
-// This module deliberately has no imports. Subscribers register at module
-// scope, and a hoisted `subscribe` in an import-free module is reachable from
-// anywhere in the graph regardless of evaluation order (see the notes in
-// js/modal-registry.js for why that matters here).
+// This module imports only js/reactive.js, which imports only Solid, which
+// imports nothing of ours. That keeps the property the old "no imports at all"
+// rule was protecting: store.js is still a leaf of the *app's* graph, so
+// subscribers can register at module scope from anywhere and a hoisted
+// `subscribe` stays reachable regardless of evaluation order (see the notes in
+// js/modal-registry.js for why that matters here). Do not import an app module
+// here.
+//
+// Alongside the subscriber list there is now a version signal per change kind.
+// The two are not alternatives and neither replaces the other:
+//
+//   subscribe/emit stays the dispatch. Ordering is a documented contract
+//   (declaration order in Change, not emit order) and 22 function calls are
+//   not a cost worth reorganising around.
+//
+//   changed(kind) is the invalidation token derived values hang off. It is
+//   what lets updateFormalDef skip a KaTeX re-typeset when the machine's
+//   *structure* did not change — which is the actual expense a plain
+//   emit(Change.GRAPH) used to pay on every state drag. See js/render.js.
 
 // What changed, not who should react to it.
 //
@@ -45,6 +62,26 @@ export const Change = {
 
 const subscribers = new Map();
 for (const kind of Object.values(Change)) subscribers.set(kind, []);
+
+// One version signal per change kind, bumped by deliver(). Memos read these to
+// know they may be stale; they are deliberately write-only from the app's side
+// (nothing subscribes an *effect* to them) so a bump costs a counter increment
+// and marks lazy memos dirty, rather than eagerly recomputing anything.
+const versions = reactiveRoot(() => {
+  const m = new Map();
+  for (const kind of Object.values(Change)) m.set(kind, createVersion());
+  return m;
+});
+
+/**
+ * Track a change kind from inside a memo or effect. Returns an opaque counter;
+ * the value means nothing, reading it is the point.
+ */
+export function changed(kind) {
+  const v = versions.get(kind);
+  if (!v) throw new Error(`changed: unknown change kind "${kind}"`);
+  return v[0]();
+}
 
 let batchDepth = 0;
 let pending = null;
@@ -106,6 +143,22 @@ export function batch(fn) {
 // always redraws in the same sequence.
 function deliver(kinds) {
   const seen = new Set(kinds);
+  // Invalidate first, dispatch second. Subscribers such as updateRPanel read
+  // derived memos, so those have to be marked stale before anyone reads them —
+  // the other order hands the panels the previous edit's values.
+  //
+  // Wrapped for the same reason the subscriber loop below is. Solid's memos are
+  // EAGER: writing the signal recomputes every memo depending on it, right here,
+  // so a memo body that throws would abort the whole delivery — taking the
+  // canvas down because a panel's derived string could not be built. A memo that
+  // throws keeps its previous value, which is stale but survivable.
+  for (const kind of seen) {
+    try {
+      versions.get(kind)?.[1]();
+    } catch (err) {
+      console.error(`store: a derived value for "${kind}" threw`, err);
+    }
+  }
   for (const kind of Object.values(Change)) {
     if (!seen.has(kind)) continue;
     for (const fn of subscribers.get(kind).slice()) {

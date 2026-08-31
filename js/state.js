@@ -1,3 +1,13 @@
+// js/state.js imports exactly one module, and only because Solid is not ours.
+//
+// The standing rule is that this file imports nothing, because several modules
+// run top-level code against `App` and `$` and rely on state.js being fully
+// evaluated first. js/reactive.js imports Solid and nothing else, and Solid
+// cannot import back into the app, so the subgraph is closed and state.js is
+// still a leaf of the *app's* module graph. That is the property the rule
+// protects. Do not add an import of an app module here.
+import { ReactiveSet } from './reactive.js';
+
 // ══════════════════════════════════════════════════════════════════
 //  CORE CONFIGURATION
 // ══════════════════════════════════════════════════════════════════
@@ -132,16 +142,57 @@ export const MachineCategories = [
 // ══════════════════════════════════════════════════════════════════
 //  CORE STATE
 // ══════════════════════════════════════════════════════════════════
+// ── Reactive set fields ───────────────────────────────────────────
+// Σ, Γ, the output alphabet, F and the four selection sets are Sets that the
+// app mutates in place — App.accepts.add(id) — 76 times across the codebase,
+// and reassigns wholesale a further 33 times from twelve modules. A plain Set
+// notifies nothing on either path, and a ReactiveSet that some later
+// assignment quietly replaced with a plain Set would stop notifying with no
+// error anywhere: the panels would simply go stale.
+//
+// So reactivity is installed on the *field*, not left to the call sites. The
+// setter coerces whatever it is handed into a ReactiveSet, which means every
+// existing `App.sigma = new Set(...)` keeps working untouched and cannot
+// downgrade the field. `.add`/`.delete`/`.clear`/`.has`/`.size`/spread are
+// unchanged, and ReactiveSet is a real `instanceof Set`, so the shape tests in
+// normalizeBoundarySymbolsForMachine still hold.
+//
+// The setter builds a NEW set rather than refilling the existing one. That is
+// load-bearing: exportWithOverrides in js/export-core.js saves App.accepts,
+// assigns a temporary, and restores the saved reference in a finally — refilling
+// in place would empty the very object it saved and lose the machine's real
+// accept marks.
+function installReactiveSetField(obj, key) {
+  let backing = obj[key] instanceof ReactiveSet
+    ? obj[key]
+    : new ReactiveSet(obj[key] || []);
+  Object.defineProperty(obj, key, {
+    get() { return backing; },
+    set(v) { backing = v instanceof ReactiveSet ? v : new ReactiveSet(v || []); },
+    enumerable: true,
+    configurable: true
+  });
+}
+
+// The CFG view's variable set, with the same protection. Built by a function
+// because App.grammar is reassigned wholesale on load and on reset, and a
+// grammar whose vars were a plain Set would be a silently dead panel.
+function makeGrammar(vars = ['S'], start = 'S', productions = []) {
+  const g = { vars: new ReactiveSet(vars), start, productions };
+  installReactiveSetField(g, 'vars');
+  return g;
+}
+
 export const App = {
   machine: 'DFA', tool: 'move', view: 'build',
-  sigma: new Set(['a', 'b']),
-  outputAlpha: new Set(['0', '1']),
-  stackAlpha: new Set(['Z']), // will be sync'd in init
+  sigma: new ReactiveSet(['a', 'b']),
+  outputAlpha: new ReactiveSet(['0', '1']),
+  stackAlpha: new ReactiveSet(['Z']), // will be sync'd in init
   tapeCount: 2,
   states: [], transitions: [],
-  startId: null, accepts: new Set(),
-  selectedStates: new Set(),
-  selectedTransitions: new Set(),
+  startId: null, accepts: new ReactiveSet(),
+  selectedStates: new ReactiveSet(),
+  selectedTransitions: new ReactiveSet(),
   stateN: 0, transN: 0,
   // What this machine *is*, in the author's own words — the info card over the
   // canvas. `null` when nothing has been said about it, which is the state a
@@ -161,12 +212,12 @@ export const App = {
   // transitions are: their own id sets, filled by click / shift-click /
   // marquee / select-all and emptied by Escape. Anything on the canvas is an
   // object you can pick, move as a group, and Delete.
-  selectedNotes: new Set(),
+  selectedNotes: new ReactiveSet(),
   ctxNoteId: null, editNoteId: null,
   resizeNoteId: null, resizeNoteStart: null,
   // Canvas dividers (annotation line segments that partition the canvas)
   dividers: [], dividerN: 0,
-  selectedDividers: new Set(),
+  selectedDividers: new ReactiveSet(),
   ctxDividerId: null, editDividerId: null,
   dragDividerEndpoint: null,
   dividerDraft: null, dividerDraftEl: null,
@@ -292,7 +343,7 @@ export const App = {
   // previous word. See handleRunBtnClick.
   simSteps: [], simIdx: 0, simInput: null, autoTimer: null,
   // Grammar
-  grammar: { vars: new Set(['S']), start: 'S', productions: [] },
+  grammar: makeGrammar(),
   // Current algo
   currentAlgo: 'table',
   // DOM Cache for performance
@@ -308,6 +359,14 @@ export const App = {
     { value: 'S', label: 'Stay' }
   ],
 };
+
+// Installed after the literal, so the fields above read as plain declarations
+// and the reactive machinery is stated once rather than nine times.
+for (const key of [
+  'sigma', 'outputAlpha', 'stackAlpha', 'accepts',
+  'selectedStates', 'selectedTransitions', 'selectedNotes', 'selectedDividers'
+]) installReactiveSetField(App, key);
+
 // The graph lookup the machine layer runs on. It lived in
 // states-transitions.js beside getTransition/getEdgeTransitions, which is a UI
 // module — so every simulator importing it dragged canvas.js and render.js in
@@ -744,7 +803,7 @@ export function importWorkspaceState(data) {
     App.grammar.start = data.grammar.start;
     App.grammar.productions = data.grammar.productions || [];
   } else {
-    App.grammar = { vars: new Set(['S']), start: 'S', productions: [] };
+    App.grammar = makeGrammar();
   }
   if (data.config) {
     // `theme` and the `export` palette it drives are an app-wide preference,
