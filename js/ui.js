@@ -4,7 +4,7 @@ import { settleAll } from './anim.js';
 import { applyCamera, clampZoom, clearEdgeDirectionHighlight, clearSelection, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, minZoom, nudgeSelected, pasteClipboard, selectAllStates, toggleSnapToGrid, wrap } from './canvas.js';
 import { isQuickSettingsOpen, positionQuickSettings, refreshQuickSettings } from './quick-settings.js';
 import { includeDividerBounds, removeDividers, updateShapeToolButton } from './dividers.js';
-import { markDirty, redo, snapshot, snapshotSettings, undo } from './history.js';
+import { markDirty, redo, snapshot, snapshotSettings, trimStowedHistory, undo } from './history.js';
 import { renderMinimap, scheduleMinimap } from './minimap.js';
 import { anyModalOpen, askConfirm, closeModal, registerModal, showOverlay } from './modal.js';
 import { includeNoteBounds, pruneNoteAnchorsExcluding, removeNotes } from './notes.js';
@@ -453,6 +453,24 @@ export function hideTabOverflowMenu() {
 
 document.addEventListener('click', () => hideTabOverflowMenu());
 
+/**
+ * Write the live workspace back into its own tab record, on the way to
+ * activating or closing a different one.
+ *
+ * The trim is what stops every background tab from retaining a full undo
+ * stack — see trimStowedHistory in js/history.js. It happens here rather than
+ * inside exportWorkspaceState() because that function has three other kinds
+ * of caller (StateMate's stash/restore above all) which must round-trip a
+ * workspace exactly, undo stack included.
+ */
+function stowActiveWorkspace() {
+  if (!activeWorkspaceId) return null;
+  const act = Workspaces.find(w => w.id === activeWorkspaceId);
+  if (!act) return null;
+  act.data = trimStowedHistory(exportWorkspaceState());
+  return act;
+}
+
 export function createTab(name) {
   const body = document.querySelector('.app-body');
   if (body) {
@@ -461,12 +479,7 @@ export function createTab(name) {
     body.classList.add('tab-switching');
   }
 
-  if (activeWorkspaceId) {
-    const act = Workspaces.find(w => w.id === activeWorkspaceId);
-    if (act) {
-      act.data = exportWorkspaceState();
-    }
-  }
+  stowActiveWorkspace();
 
   let wsName = name || `Workspace ${Workspaces.length + 1}`;
   const newWs = {
@@ -511,12 +524,7 @@ export function switchTab(id) {
     body.classList.add('tab-switching');
   }
 
-  if (activeWorkspaceId) {
-    const act = Workspaces.find(w => w.id === activeWorkspaceId);
-    if (act) {
-      act.data = exportWorkspaceState();
-    }
-  }
+  stowActiveWorkspace();
 
   setActiveWorkspaceId(id);
   editingTabId = null;
@@ -620,10 +628,7 @@ export function performCloseTab(id) {
   // Keep the active workspace's in-flight edits in its snapshot before it's
   // possibly the one being removed, so a reopen restores exactly what was on
   // screen rather than whatever was last saved on a prior switch.
-  if (activeWorkspaceId) {
-    const act = Workspaces.find(w => w.id === activeWorkspaceId);
-    if (act) act.data = exportWorkspaceState();
-  }
+  stowActiveWorkspace();
 
   const [removed] = Workspaces.splice(idx, 1);
   recordClosedWorkspace(removed, idx);
@@ -650,10 +655,7 @@ export function closeOtherTabs(id) {
 
 export function performCloseOtherTabs(id) {
   if (Workspaces.length <= 1 || !Workspaces.find(w => w.id === id)) return;
-  if (activeWorkspaceId) {
-    const act = Workspaces.find(w => w.id === activeWorkspaceId);
-    if (act) act.data = exportWorkspaceState();
-  }
+  stowActiveWorkspace();
   const closed = Workspaces.map((w, i) => ({ w, i })).filter(({ w }) => w.id !== id);
   closed.forEach(({ w, i }) => recordClosedWorkspace(w, i));
   setWorkspaces(Workspaces.filter(w => w.id === id));
@@ -681,10 +683,7 @@ export function closeTabsToRight(id) {
 export function performCloseTabsToRight(id) {
   const idx = Workspaces.findIndex(w => w.id === id);
   if (idx === -1 || idx >= Workspaces.length - 1) return;
-  if (activeWorkspaceId) {
-    const act = Workspaces.find(w => w.id === activeWorkspaceId);
-    if (act) act.data = exportWorkspaceState();
-  }
+  stowActiveWorkspace();
   const closed = Workspaces.slice(idx + 1).map((w, off) => ({ w, i: idx + 1 + off }));
   closed.forEach(({ w, i }) => recordClosedWorkspace(w, i));
   const closingActive = closed.some(({ w }) => w.id === activeWorkspaceId);
@@ -708,10 +707,7 @@ export function closeAllTabs() {
 
 export function performCloseAllTabs() {
   if (!Workspaces.length) return;
-  if (activeWorkspaceId) {
-    const act = Workspaces.find(w => w.id === activeWorkspaceId);
-    if (act) act.data = exportWorkspaceState();
-  }
+  stowActiveWorkspace();
   const closed = Workspaces.map((w, i) => ({ w, i }));
   closed.forEach(({ w, i }) => recordClosedWorkspace(w, i));
   setWorkspaces([]);

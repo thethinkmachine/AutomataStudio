@@ -616,6 +616,17 @@ export function hasExpensiveRuns(m = App.machine) {
 // anything a finite automaton reaches on a word a person types.
 export const LAZY_STEP_THRESHOLD = 2000;
 
+// Past this many symbols, a run is worth a word of warning before it starts.
+//
+// Not a limit — the run is correct at any length and, since a step became an
+// index rather than a copy of the unread suffix (js/machines/step-log.js),
+// it is cheap: 186 bytes a step, so a 64,000-symbol word is 11 MB where it
+// used to exhaust a 4 GB heap. What is still linear in the word is the *drawn*
+// input row, which is one cell per symbol in the tape tracker, so a word of
+// this size is a slow paint rather than a lost tab. The reader is told which
+// of the two they are about to get instead of finding out.
+export const INPUT_LENGTH_NOTICE = 5000;
+
 /**
  * The worst case number of steps this run can materialize.
  *
@@ -856,8 +867,15 @@ export function exportWorkspaceState() {
     dividers: JSON.parse(JSON.stringify(App.dividers)),
     dividerN: App.dividerN,
     cam: { ...App.cam },
-    history: App.history.map(h => JSON.parse(JSON.stringify(h))),
-    future: App.future.map(h => JSON.parse(JSON.stringify(h))),
+    // A copy of the *array*, not of its entries. Every entry is already a
+    // JSON string — serializeState() returns JSON.stringify(…), and
+    // historyBytes() sums entry.length — so the round trip these two lines
+    // used to make re-escaped each entry into a new string and parsed it back
+    // out, twice the stack's size in transient garbage per tab switch and per
+    // autosave, to arrive at a value equal to the one it started with.
+    // Strings are immutable; there is nothing for a deep copy to defend.
+    history: [...App.history],
+    future: [...App.future],
     grammar: {
       vars: [...App.grammar.vars],
       start: App.grammar.start,

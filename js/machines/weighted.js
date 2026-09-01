@@ -14,6 +14,7 @@ import { App, getState } from '../state.js';
 import { renderSimStep } from './paint.js';
 import { accepted } from './runtime.js';
 import { defineMachine } from './registry.js';
+import { wordStep } from './step-log.js';
 
 // A PFA run is a distribution over Q, not a state, so the simulator is the
 // forward algorithm rather than a search: one vector per input position, each
@@ -96,16 +97,16 @@ export function simPFA(tokens) {
   const dists = runPFA(tokens);
   dists.forEach((dist, i) => {
     const cells = pfaDistributionCells(dist);
-    App.simSteps.push({
+    App.simSteps.push(wordStep({
       states: [...dist.keys()].filter(q => dist.get(q) > 0),
       tokens,
-      remaining: tokens.slice(i),
+      pos: i,
       dist: cells,
       accMass: pfaAcceptMass(dist),
       note: i === 0
         ? `Start: all probability on ${getState(App.startId)?.name || App.startId}`
         : `Read '${tokens[i - 1]}' → ${cells.length ? cells.join('  ') : 'total mass 0 — the run has died'}`
-    });
+    }));
   });
 
   const last = App.simSteps[App.simSteps.length - 1];
