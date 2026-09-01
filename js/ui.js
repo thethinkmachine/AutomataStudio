@@ -18,7 +18,7 @@ import {
 } from './panel-state.js';
 import { declaredSectionIds, sectionStartsCollapsed } from './panel-sections.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
-import { $, App, MIN_TAPES, MachineCategories, blankWorkspaceData, MachineTypes, R, TAPE_LIMIT, Workspaces, activeWorkspaceId, exportWorkspaceState, importWorkspaceState, largeMachineOverridePrompt, largeMachineProfile, machineIsLarge, maxTapes, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
+import { $, App, MIN_TAPES, MachineCategories, blankWorkspaceData, MachineTypes, R, TAPE_LIMIT, Workspaces, activeWorkspaceId, execMode, exportWorkspaceState, importWorkspaceState, largeMachineOverridePrompt, largeMachineProfile, machineIsLarge, maxTapes, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { getState, getTransition, hideContextMenu } from './states-transitions.js';
 import { openMachineWizard } from './wizard-ui.js';
 import {
@@ -2992,6 +2992,7 @@ export function openSettingsModal() {
   $('set-tm-steps').value = c.maxTmSteps;
   if ($('set-lang-budget')) $('set-lang-budget').value = c.langStepBudget ?? 400;
   $('set-auto-speed').value = c.autoSpeed;
+  if ($('set-exec-mode')) $('set-exec-mode').value = execMode();
   if ($('set-autosave-interval')) $('set-autosave-interval').value = String(c.autosaveIntervalMs ?? 15000);
   if ($('set-card-autohide')) $('set-card-autohide').value = String(c.cardAutoHideMs ?? CARD_AUTO_HIDE_MS);
   $('set-radius').value = c.radius;
@@ -3262,6 +3263,10 @@ export function applySettings() {
     c.langStepBudget = Math.max(10, parseInt($('set-lang-budget').value) || 400);
   }
   c.autoSpeed = parseInt($('set-auto-speed').value) || 500;
+  if ($('set-exec-mode')) {
+    const mode = $('set-exec-mode').value;
+    c.execMode = (mode === 'eager' || mode === 'lazy') ? mode : 'auto';
+  }
   if ($('set-autosave-interval')) {
     const interval = parseInt($('set-autosave-interval').value);
     c.autosaveIntervalMs = Number.isFinite(interval) && interval >= 0 ? interval : 15000;
@@ -3368,6 +3373,12 @@ export function getEditorSettingsData() {
     maxTmSteps: c.maxTmSteps,
     langStepBudget: c.langStepBudget,
     autoSpeed: c.autoSpeed,
+    // Deliberately here and not in getWorkspaceData()'s allow-list. detectLoops
+    // and twoWayTape travel with a workspace because they change what a run
+    // *decides*, and a file that decides differently for the next reader is a
+    // file that lies. This changes only when the steps are computed — the
+    // verdict is the same one either way — so it stays a preference.
+    execMode: execMode(),
     autosaveIntervalMs: c.autosaveIntervalMs,
     cardAutoHideMs: c.cardAutoHideMs,
     radius: c.radius,
@@ -3443,6 +3454,7 @@ export function populateSettingsModalInputs(data) {
   if (data.maxTmSteps !== undefined) $('set-tm-steps').value = data.maxTmSteps;
   if (data.langStepBudget !== undefined && $('set-lang-budget')) $('set-lang-budget').value = data.langStepBudget;
   if (data.autoSpeed !== undefined) $('set-auto-speed').value = data.autoSpeed;
+  if (data.execMode !== undefined && $('set-exec-mode')) $('set-exec-mode').value = data.execMode;
   if (data.autosaveIntervalMs !== undefined && $('set-autosave-interval')) $('set-autosave-interval').value = data.autosaveIntervalMs;
   if (data.cardAutoHideMs !== undefined && $('set-card-autohide')) $('set-card-autohide').value = data.cardAutoHideMs;
   if (data.radius !== undefined) $('set-radius').value = data.radius;

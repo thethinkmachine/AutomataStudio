@@ -21,6 +21,7 @@
 //     an optimisation, never a capability, and nothing above it may need it.
 //   • Not making small work slower. Spawning eight workers to decide twenty
 //     DFA words costs more than deciding them. See shouldParallelize().
+import { hasExpensiveRuns } from '../state.js';
 import { snapshotMachine } from './snapshot.js';
 
 // One worker per hardware thread. The main thread is blocked awaiting the
@@ -36,7 +37,12 @@ const MIN_ITEMS_FOR_POOL = 32;
 
 // Machines whose per-word cost is high enough that even a short list is worth
 // spreading. A TM at maxTmSteps is ~10,000 steps of work for one word.
-const EXPENSIVE = new Set(['TM', 'NDTM', 'MTM', 'LBA', 'ITM', 'NPDA', 'PDA', '2NFA', '2DFA', '2DFT', 'QA', '2PDA', 'Counter', 'PDT']);
+//
+// The judgement itself is hasExpensiveRuns() in js/state.js, which the player
+// also reads to decide whether to stream a run rather than precompute it —
+// the same fact about the machine, asked by two callers. It used to be a set
+// of type names here, which a machine added to MachineTypes falls silently out
+// of: no parallelism, no error, nothing to notice.
 const MIN_ITEMS_EXPENSIVE = 4;
 
 // Workers are kept warm between runs — a Language panel re-render or a second
@@ -69,7 +75,7 @@ export function parallelAvailable() {
  */
 export function shouldParallelize(count, machine) {
   if (!parallelAvailable()) return false;
-  const floor = EXPENSIVE.has(machine) ? MIN_ITEMS_EXPENSIVE : MIN_ITEMS_FOR_POOL;
+  const floor = hasExpensiveRuns(machine) ? MIN_ITEMS_EXPENSIVE : MIN_ITEMS_FOR_POOL;
   return count >= floor;
 }
 

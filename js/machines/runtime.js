@@ -13,7 +13,29 @@
 // would take that away from all three at once.
 
 import { App, detectsLoops, getState } from '../state.js';
+import { renderSimStep } from './paint.js';
 import { pickMostSpecificTransition, symbolsOverlap } from './predicates.js';
+
+// ── running a step source to the end, the old way ─────────────────
+// Every streaming simulator has a one-line eager wrapper built on this, so
+// `simTM(tokens)` still means what it has always meant: run the whole thing,
+// write App.simSteps, paint. The player no longer takes that route — it holds
+// a cursor and pulls (see js/machines/run.js) — but the batch deciders' tests,
+// StateMate and every direct caller do, and a generator that could only be
+// consumed lazily would have broken all of them to buy nothing.
+export function playEagerly(source) {
+  const iter = typeof source.next === 'function' ? source : source[Symbol.iterator]();
+  const steps = [];
+  let r = iter.next();
+  while (!r.done) { steps.push(r.value); r = iter.next(); }
+  App.simSteps = steps;
+  App.simIdx = 0;
+  renderSimStep();
+  // A generator's return value, not a step — the run statistics simNDTM and
+  // the explorers answer with. Dropping it here would quietly break every
+  // caller that reads one.
+  return r.value;
+}
 
 // ── reading the input ─────────────────────────────────────────────
 // Symbols may be whole words, so a typed string is split on the same

@@ -18,7 +18,9 @@
 // tests/machines.test.js fails until both exist.
 
 import { App } from '../state.js';
+import { withPainterSuppressed } from './paint.js';
 import { machineDef, requireMachineDef } from './registry.js';
+import { makeRun } from './run.js';
 import { parseWordInput } from './runtime.js';
 import { tapeTuplesOverlap } from './predicates.js';
 
@@ -74,9 +76,40 @@ export function machineGuards(m, input) {
   return fired;
 }
 
-/** The step-by-step run. Writes App.simSteps and paints. */
+/** The step-by-step run, all of it at once. Writes App.simSteps and paints. */
 export function simulateMachine(m, input) {
   return requireMachineDef(m).simulate(input, m);
+}
+
+/**
+ * The step-by-step run as a *cursor*, which is what the player holds.
+ *
+ * A machine that declares `stream` builds one step per iteration and can hand
+ * them over as they are computed; the cursor pulls, so playback is what drives
+ * the computation and a ten-thousand-step tape machine costs nothing until it
+ * is watched. See js/machines/run.js.
+ *
+ * A machine that declares none is search-based — `simNPDA`, `sim2NFA`,
+ * `simFST`, the ω-automata and the deterministic PDA, all of which explore the
+ * configuration space and only then linearize the winning path. No prefix of
+ * their trace exists until the search has finished, so there is nothing to
+ * stream and the run arrives complete however the reader has set the execution
+ * mode. Collecting it here suppresses the paint, because the player has not yet
+ * decided what to show and the eager simulators end by drawing a step.
+ */
+export function streamMachine(m, input) {
+  const def = requireMachineDef(m);
+  if (def.stream) return makeRun(def.stream(input, m));
+  const steps = withPainterSuppressed(() => {
+    def.simulate(input, m);
+    return App.simSteps || [];
+  });
+  return makeRun(steps);
+}
+
+/** Whether this machine's trace can be produced a step at a time. */
+export function machineStreams(m) {
+  return typeof machineDef(m)?.stream === 'function';
 }
 
 /**
