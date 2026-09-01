@@ -600,7 +600,15 @@ export function updateFastDOM({ statesMoved = true } = {}) {
   // stages per frame for the ~165ms after every edit would be pure waste on a
   // large machine. The drag path passes nothing and recomputes, because there
   // the positions really did change.
-  const ctx = statesMoved || !lastCtx ? currentLayoutContext({ viewport: cullViewport() }) : lastCtx;
+  // `since` is what turns a drag frame into an incremental relayout: the pass
+  // diffs the previous frame's recorded positions to find what moved and
+  // rebuilds only the edges and labels that could have been affected. It is
+  // handed only here, on the path that runs sixty times a second — a structural
+  // edit goes through renderAll and takes a full pass, which is what keeps the
+  // approximation in relayout() from accumulating past one gesture.
+  const ctx = statesMoved || !lastCtx
+    ? currentLayoutContext({ viewport: cullViewport(), since: lastCtx })
+    : lastCtx;
   lastCtx = ctx;
   const stateById = ctx.stateById;
 
