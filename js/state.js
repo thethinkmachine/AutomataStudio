@@ -511,11 +511,31 @@ export function wrapStateLabelsOn() {
 // both ask before letting you turn it off — on the machines this fires for, the
 // result is a canvas you cannot read.
 
-// Where a collision-avoidance pass stops fitting a 60fps frame, timed on a
+// Where a collision-avoidance pass stops fitting a frame, timed on a
 // deliberately hostile diagram: states packed two diameters apart with edges
 // running clear across the field. A machine that size is already unreadable at
 // any zoom that shows it whole, so nothing legible is given up. js/geometry.js
 // re-exports both, which is where they used to be declared.
+//
+// **What this number bounds changed when the drag path became incremental**,
+// and it is worth being precise about, because the old reason no longer holds.
+// It used to bound a *drag frame*: every frame re-routed every edge and
+// re-placed every label, so at 200 states a drag cost ~22ms against a 16.7ms
+// budget — which made the worst machine in the app the one sitting just under
+// this line, since one state more and the stages were skipped entirely and the
+// same frame cost ~1ms. relayout() in js/geometry.js rebuilds only what a
+// change could have altered, and with the stages forced on past this line a
+// drag frame measures 2-5ms at 800 states. Drags are no longer the constraint.
+//
+// What the number bounds now is the *full* pass, which runs on a structural
+// edit rather than per frame: ~26ms at 200 states, ~42ms at 400, ~58ms at 800.
+// That is a dropped frame or two per edit, not a stutter while dragging. So
+// raising it is now possible in a way it was not — 200-400 state machines
+// would get routed edges and avoided labels for a hitch on each edit — but it
+// is deliberately not raised here, for two reasons: the trade is a judgement
+// about quality rather than a measurement, and largeMachineProfile() reads the
+// same line for a cost this has not re-measured (drawing an edge label is
+// mostly raster, which no Node timing sees). Decouple the two before moving it.
 export const COLLISION_BUDGET_STATES = 200;
 export const COLLISION_BUDGET_TRANSITIONS = 700;
 
