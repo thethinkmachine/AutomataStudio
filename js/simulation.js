@@ -14,16 +14,17 @@
 // silently became.
 
 import { makeSVG } from './render.js';
-import { $, App, R, detectsLoops, getMachineConfig, isOmegaAutomaton, isWeightedFA } from './state.js';
+import { $, App, R, detectsLoops, execMode, getMachineConfig, isOmegaAutomaton, isWeightedFA, runsLazily } from './state.js';
 import { getState, getTransition } from './states-transitions.js';
 import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
 import { isAnyPDA, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
-import { decideMachine, machineGuards, parseMachineInput, simulateMachine } from './machines/index.js';
+import { decideMachine, machineGuards, parseMachineInput, simulateMachine, streamMachine } from './machines/index.js';
 import { langStepBudget, stateNames } from './machines/runtime.js';
 import { computeBatchResults, decideBatchRows, summarizeBatch } from './machines/batch.js';
 import { poolSize, runParallel, shouldParallelize } from './parallel/pool.js';
 import { renderTracker, resetTracker } from './tape-view.js';
-import { setSimStepPainter } from './machines/paint.js';
+import { isPainterSuppressed, setSimStepPainter, withPainterSuppressed } from './machines/paint.js';
+import { makeRun } from './machines/run.js';
 
 export function runSim() {
   resetSim();
@@ -62,12 +63,81 @@ export function runSim() {
   // refused run has no steps to resume.
   App.simInput = raw;
 
-  simulateMachine(m, parsed.input);
+  beginRun(streamMachine(m, parsed.input), parsed.tokens?.length ?? 0, m);
 
   // Unified playback: automatically start the animation if it loaded correctly
   if (App.simSteps && App.simSteps.length > 0) {
     toggleAuto();
   }
+}
+
+// How many steps a single drain slice may take before the loop gives the page
+// back. "Go to the end" on a machine that never halts is otherwise an
+// unbounded loop on the main thread — the run is bounded by maxTmSteps, but
+// ten thousand tape snapshots is long enough to lose the frame and the Escape
+// key with it.
+const DRAIN_SLICE = 500;
+
+/**
+ * Take a run from the machine layer and make it the one on screen.
+ *
+ * Eager and lazy differ here and nowhere else. Eager drains the cursor before
+ * the first frame, which is exactly what the app did when every simulator ran
+ * to completion and wrote App.simSteps; lazy materializes only the first step
+ * and lets playback pull the rest. Either way `App.simSteps` is the cursor's
+ * array — the same object for the life of the run — so every reader of it, the
+ * trace log's tail and the minimap and StateMate included, is untouched.
+ */
+export function beginRun(run, inputLen = 0, m = App.machine) {
+  App.simRun = run;
+  App.simSteps = run.steps;
+  const lazy = run.streaming && runsLazily(inputLen, m);
+  if (lazy) run.at(0);
+  else run.drain();
+  streamNote = noteForRun(run, lazy, m);
+  App.simIdx = 0;
+  renderSimStep();
+  return run;
+}
+
+// The one-line explanation of why the step counter is showing a '+'. It is a
+// property of the run rather than of a step, so it lives beside the run and is
+// re-emitted by every log render — written into the log once at the top and
+// then wiped by the next tick would be worse than not saying it at all.
+//
+// Only the automatic path says anything. A reader who chose a mode needs no
+// narration, and a run that finished on its first pull is not streaming in any
+// sense they could observe.
+let streamNote = '';
+
+function noteForRun(run, lazy, m) {
+  if (!lazy || run.done || execMode() !== 'auto') return '';
+  const cfg = getMachineConfig(m);
+  const limit = cfg.hasTape ? App.config.maxTmSteps : App.config.maxPdaSteps;
+  return '<div class="t-warn sim-log-stream">Streaming: this machine can run to '
+    + `${limit.toLocaleString()} steps, so each is computed as it plays.</div>`;
+}
+
+/** The run on screen, or an empty one before anything has been run. */
+function currentRun() {
+  if (!App.simRun || App.simRun.steps !== App.simSteps) {
+    // A direct caller wrote App.simSteps without going through beginRun —
+    // every eager simulator does, and so does every test that calls one. An
+    // array source is adopted by reference and reported done, so the transport
+    // works unchanged on a run this module did not start.
+    App.simRun = makeRun(App.simSteps || []);
+  }
+  return App.simRun;
+}
+
+/** Materialize the step at `idx` if the run can still reach it. */
+function stepAt(idx) {
+  return currentRun().at(idx);
+}
+
+/** Is there more run to come than has been materialized? */
+export function runIsComplete() {
+  return currentRun().done;
 }
 export function log(html) { const t = $('trace-log'); t.innerHTML = html; t.scrollTop = t.scrollHeight; }
 
@@ -84,11 +154,12 @@ export function log(html) { const t = $('trace-log'); t.innerHTML = html; t.scro
 // and restored in a `finally` so a simulator that throws cannot leave the real
 // player mute. `App.simSteps` is written either way — reading it back is how
 // the caller gets its trace.
-let quietDepth = 0;
-
+// The counter itself lives in js/machines/paint.js, so the machine layer can
+// collect a run without the page — streamMachine() does exactly that for the
+// simulators that cannot stream. Two counters for one property would be two
+// ways for a run to be half-silenced.
 export function runQuietly(fn) {
-  quietDepth++;
-  try { return fn(); } finally { quietDepth--; }
+  return withPainterSuppressed(fn);
 }
 
 // The machine layer calls this through js/machines/paint.js rather than
@@ -104,7 +175,7 @@ setSimStepPainter(renderSimStep);
 export const SIM_LOG_TAIL = 400;
 
 export function renderSimStep() {
-  if (quietDepth) return;
+  if (isPainterSuppressed()) return;
   const step = App.simSteps[App.simIdx]; if (!step) return;
   const isLast = App.simIdx === App.simSteps.length - 1;
 
@@ -118,7 +189,8 @@ export function renderSimStep() {
   // was being built to be scrolled past; the count stands in for it instead, and
   // the scrubber is what actually navigates a long run.
   const from = Math.max(0, App.simIdx + 1 - SIM_LOG_TAIL);
-  let logLines = from
+  let logLines = streamNote;
+  logLines += from
     ? `<div class="t-step sim-log-elided">… ${from.toLocaleString()} earlier step${from === 1 ? '' : 's'}</div>`
     : '';
   for (let i = from; i <= App.simIdx; i++) {
@@ -626,13 +698,18 @@ export function pulseSimState(id, tone = '') {
 export function updateSimScrubber() {
   const row = $('sim-scrubber-row'), scrubber = $('sim-scrubber'), counter = $('sim-step-counter');
   if (!row || !scrubber || !counter) return;
-  const total = App.simSteps.length;
-  row.style.display = total > 1 ? 'flex' : 'none';
+  // Under a streaming run this is what has been materialized, not the length
+  // of the run — which is not knowable until the machine halts. The counter
+  // says so with a '+' rather than quietly reporting a total that will grow;
+  // the slider addresses the prefix and its max moves with it.
+  const known = App.simSteps.length;
+  const complete = runIsComplete();
+  row.style.display = known > 1 ? 'flex' : 'none';
   if (document.activeElement !== scrubber) {
-    scrubber.max = String(Math.max(0, total - 1));
+    scrubber.max = String(Math.max(0, known - 1));
     scrubber.value = String(App.simIdx);
   }
-  counter.textContent = `${total ? App.simIdx + 1 : 0} / ${total}`;
+  counter.textContent = `${known ? App.simIdx + 1 : 0} / ${known}${complete ? '' : '+'}`;
 }
 
 export const SIM_ICON_ACCEPT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>';
@@ -669,7 +746,10 @@ export function handleRunBtnClick() {
 /** Is there a paused run left to carry on with, for the word in the box? */
 export function canResumeSim() {
   if (!App.simSteps.length) return false;
-  if (App.simIdx >= App.simSteps.length - 1) return false;
+  // At the frontier of a run that has not finished is a resumable position:
+  // the next press pulls the next step. Only a *finished* run sitting on its
+  // last step has nothing left to carry on with.
+  if (App.simIdx >= App.simSteps.length - 1 && runIsComplete()) return false;
   return App.simInput !== null && App.simInput === parseEps($('sim-in').value);
 }
 
@@ -734,13 +814,16 @@ export function updateSimVerdict(step, isLast) {
 }
 
 export function stopAutoPlay() {
+  stopDraining();
   if (!App.autoTimer) return;
   clearInterval(App.autoTimer); App.autoTimer = null;
 }
 
 export function stepFwd(stopAuto = true) {
   if (stopAuto) stopAutoPlay();
-  if (App.simIdx < App.simSteps.length - 1) { App.simIdx++; renderSimStep(); }
+  // The pull is the bounds check: on a streaming run the next step may not
+  // exist yet, and asking for it is what computes it.
+  if (stepAt(App.simIdx + 1)) { App.simIdx++; renderSimStep(); }
 }
 export function stepBack() {
   stopAutoPlay();
@@ -754,7 +837,29 @@ export function stepToStart() {
 export function stepToEnd() {
   if (!App.simSteps.length) return;
   stopAutoPlay();
+  // On a streaming run "the end" is a computation rather than an index, so it
+  // is drained in slices with the page given back between them — a machine
+  // that never halts runs to its budget here, and holding the main thread for
+  // all of it would take the Escape key with it.
+  const run = currentRun();
+  if (!run.done) {
+    const tick = () => {
+      run.drain(DRAIN_SLICE);
+      App.simIdx = Math.max(0, App.simSteps.length - 1);
+      renderSimStep();
+      if (!run.done) App.simDrainTimer = setTimeout(tick, 0);
+      else App.simDrainTimer = null;
+    };
+    stopDraining();
+    tick();
+    return;
+  }
   App.simIdx = App.simSteps.length - 1; renderSimStep();
+}
+
+/** Stop a "go to the end" that is still draining a streaming run. */
+export function stopDraining() {
+  if (App.simDrainTimer) { clearTimeout(App.simDrainTimer); App.simDrainTimer = null; }
 }
 export function scrubSim(value) {
   const idx = parseInt(value, 10);
@@ -774,13 +879,21 @@ export function restartAutoTimerIfPlaying() {
   if (!App.autoTimer) return;
   clearInterval(App.autoTimer);
   App.autoTimer = setInterval(() => {
-    if (App.simIdx >= App.simSteps.length - 1) { stopAutoPlay(); return; }
+    // stepFwd pulls, so on a streaming run playback is what drives the
+    // computation: the machine advances one step per tick because the animation
+    // asked for it, rather than the whole run having been built beforehand.
+    if (!stepAt(App.simIdx + 1)) { stopAutoPlay(); return; }
     stepFwd(false);
   }, App.config.autoSpeed);
 }
 export function resetSim() {
   stopAutoPlay();
   App.simSteps = []; App.simIdx = 0; App.currentTokens = null; App.simInput = null;
+  // The cursor goes with the steps it was producing. An abandoned generator is
+  // collected on its own; what must not survive is a run whose `steps` array is
+  // no longer the one App.simSteps points at.
+  App.simRun = null;
+  streamNote = '';
   log('<span style="color:var(--text3);font-style:italic">Run a string to simulate…</span>');
   resetTracker($('sim-tracker')); $('sim-tracker').style.display = 'none';
   const verdict = $('sim-verdict'); if (verdict) verdict.style.display = 'none';
@@ -797,7 +910,10 @@ export function resetSim() {
 export function toggleAuto() {
   if (App.autoTimer) { stopAutoPlay(); setRunBtnState('idle'); return; }
   App.autoTimer = setInterval(() => {
-    if (App.simIdx >= App.simSteps.length - 1) { stopAutoPlay(); return; }
+    // stepFwd pulls, so on a streaming run playback is what drives the
+    // computation: the machine advances one step per tick because the animation
+    // asked for it, rather than the whole run having been built beforehand.
+    if (!stepAt(App.simIdx + 1)) { stopAutoPlay(); return; }
     stepFwd(false);
   }, App.config.autoSpeed);
   setRunBtnState('playing');

@@ -78,6 +78,12 @@ export function defineMachine(id, def) {
  *
  *   defineFamily(pushdown, { DPDA: { simulate: simPDA }, NPDA: { … } })
  *
+ * `simulate` runs the whole trace and paints. `stream`, where a machine has
+ * one, is the same run as a generator yielding one step at a time — the player
+ * prefers it so a long run is computed as it is watched rather than before it
+ * is drawn. A machine whose trace comes out of a search has no `stream`, and
+ * that is a fact about the machine rather than a gap; see streamMachine().
+ *
  * The overrides are what keep this from becoming another if-chain — the
  * base holds what the family shares and the entry holds what one type
  * does differently, so neither has to test for the other.

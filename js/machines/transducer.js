@@ -23,58 +23,68 @@
 
 import { App, getState } from '../state.js';
 import { renderSimStep } from './paint.js';
-import { accepted, firstOverlappingTransition, getSingleTapeDeterministicTransition, nameOfState, traceSearchPath, transduced, transducerRunContributes } from './runtime.js';
+import { accepted, firstOverlappingTransition, getSingleTapeDeterministicTransition, nameOfState, playEagerly, traceSearchPath, transduced, transducerRunContributes } from './runtime.js';
 import { testDFA } from './finite.js';
 import { defineFamily } from './registry.js';
 
-export function simMoore(tokens) {
-  App.simSteps = [];
+export function* streamMoore(tokens) {
   let cur = App.startId;
   const s0 = getState(cur);
   const initOut = s0?.output ?? '';
   let outStr = initOut;
   let outputs = [initOut];
-  App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Start: ${s0?.name} — ${App.config.sym.lambda}: '${initOut}'` });
+  let last = { state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Start: ${s0?.name} — ${App.config.sym.lambda}: '${initOut}'` };
+  yield last;
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
     const t = getSingleTapeDeterministicTransition(cur, sym);
-    if (!t) { App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' }); break; }
+    if (!t) {
+      last = { state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' };
+      yield last;
+      break;
+    }
     cur = t.to;
     const sc = getState(cur);
     const out = sc?.output ?? '';
     outStr += out;
     outputs.push(out);
-    App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Read '${sym}' → ${sc?.name} — ${App.config.sym.lambda}: '${out}'`, tid: t.id });
+    last = { state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Read '${sym}' → ${sc?.name} — ${App.config.sym.lambda}: '${out}'`, tid: t.id };
+    yield last;
   }
-  const last = App.simSteps[App.simSteps.length - 1];
   const showAccepts = App.config.transducerAccepts;
   if (!last.final && showAccepts) { last.final = App.accepts.has(cur) ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }
   last.note += ` | Output: "${outStr}"`;
-  App.simIdx = 0; renderSimStep();
 }
 
-export function simMealy(tokens) {
-  App.simSteps = [];
+export function simMoore(tokens) { playEagerly(streamMoore(tokens)); }
+
+export function* streamMealy(tokens) {
   let cur = App.startId;
   let outStr = '';
   let outputs = [];
-  App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Start: ${getState(cur)?.name}` });
+  let last = { state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Start: ${getState(cur)?.name}` };
+  yield last;
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
     const t = getSingleTapeDeterministicTransition(cur, sym);
-    if (!t) { App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' }); break; }
+    if (!t) {
+      last = { state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' };
+      yield last;
+      break;
+    }
     const out = t.output ?? '?';
     outStr += out;
     outputs.push(out);
     cur = t.to;
-    App.simSteps.push({ state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Read '${sym}' → ${getState(cur)?.name} — out: '${out}'`, tid: t.id });
+    last = { state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Read '${sym}' → ${getState(cur)?.name} — out: '${out}'`, tid: t.id };
+    yield last;
   }
-  const last = App.simSteps[App.simSteps.length - 1];
   const showAccepts = App.config.transducerAccepts;
   if (!last.final && showAccepts) { last.final = App.accepts.has(cur) ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }
   if (outStr.length) last.note += ` | Output: "${outStr}"`;
-  App.simIdx = 0; renderSimStep();
 }
+
+export function simMealy(tokens) { playEagerly(streamMealy(tokens)); }
 
 // ══════════════════════════════════════════════════════════════════
 //  FINITE STATE TRANSDUCER
@@ -305,6 +315,7 @@ const transducer = {
 defineFamily(transducer, {
   'Moore': {
     simulate: simMoore,
+    stream: streamMoore,
     deterministicDelta: true,
     determinism: transducerDeterminism,
     decide: tokens => transduced(testDFA(tokens), getMooreOutput(tokens)),
@@ -324,6 +335,7 @@ defineFamily(transducer, {
   },
   'Mealy': {
     simulate: simMealy,
+    stream: streamMealy,
     deterministicDelta: true,
     determinism: transducerDeterminism,
     decide: tokens => transduced(testDFA(tokens), getMealyOutput(tokens)),

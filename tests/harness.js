@@ -47,6 +47,8 @@ import * as panelSections from '../js/panel-sections.js';
 import * as panelList from '../js/panel-list.js';
 import * as panelSectionsUi from '../js/panel-sections-ui.js';
 import * as simulation from '../js/simulation.js';
+import * as tape from '../js/tape.js';
+import * as tapeLog from '../js/tape-log.js';
 import * as tapeView from '../js/tape-view.js';
 // The machine layer: the registry, the shared runtime, and one module per
 // family. Imported here for the same reason as every other namespace — the
@@ -66,6 +68,7 @@ import * as machineTwoWay from '../js/machines/twoway.js';
 import * as machinePredicates from '../js/machines/predicates.js';
 import * as machineBatch from '../js/machines/batch.js';
 import * as machinePaint from '../js/machines/paint.js';
+import * as machineRun from '../js/machines/run.js';
 import * as parallelPool from '../js/parallel/pool.js';
 import * as parallelSnapshot from '../js/parallel/snapshot.js';
 import * as parallelCore from '../js/parallel/decide-core.js';
@@ -98,8 +101,8 @@ const NAMESPACES = [
   canvas, render, panelState, panelSections, panelSectionsUi, panelList, notes, dividers,
   machineRegistry, machineRuntime, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineTuring, machineTransducer, machineTwoWay, machines,
-  machinePredicates, machineBatch, machinePaint, parallelPool, parallelSnapshot, parallelCore,
-  simulation, tapeView, suggest, language, alphabet, markdown,
+  machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,
+  simulation, tape, tapeLog, tapeView, suggest, language, alphabet, markdown,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, algorithmsFa, algorithmsCfg, reference, workspace, quickSettings, minimap, ui,
   statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt, statemateAgent,

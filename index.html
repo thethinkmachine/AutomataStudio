@@ -1439,6 +1439,14 @@
           <span class="modal-lbl">Playback Speed (ms)</span>
           <input type="number" class="inp" id="set-auto-speed" label="Auto-run interval">
         </div>
+        <div class="modal-row" data-tip="How a run is produced. Precompute builds every step before the first frame — instant scrubbing over the whole run, and a long pause on a machine that runs to its step limit. Stream computes each step as playback reaches it, so a Turing machine starts immediately and its accept/reject banner arrives when the run gets there. Automatic streams only the machines whose runs can be long. Verdicts are identical either way; the batch tester and the Language panel are not affected.">
+          <span class="modal-lbl">Execution</span>
+          <select class="inp" id="set-exec-mode" label="Execution mode">
+            <option value="auto">Automatic</option>
+            <option value="eager">Always precompute</option>
+            <option value="lazy">Always stream</option>
+          </select>
+        </div>
         <div class="modal-row" data-tip="Automatically saves dirty workspaces after the selected interval. Choose Off to save manually only.">
           <span class="modal-lbl">Autosave</span>
           <select class="inp" id="set-autosave-interval" label="Autosave interval">

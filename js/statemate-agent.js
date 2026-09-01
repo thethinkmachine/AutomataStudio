@@ -8,8 +8,8 @@
 // an edit while the live canvas remains untouched.
 
 import { circularLayout, sugiyamaLayout } from './canvas.js';
-import { parseMachineInput, simulateMachine } from './machines/index.js';
-import { computeBatchResults, runQuietly } from './simulation.js';
+import { parseMachineInput, streamMachine } from './machines/index.js';
+import { computeBatchResults } from './simulation.js';
 import {
   App, MachineTypes, exportWorkspaceState, getMachineConfig, importWorkspaceState,
   isOmegaAutomaton, MIN_TAPES, TAPE_LIMIT } from './state.js';
@@ -298,19 +298,17 @@ function projectTrace(word, steps, candidate) {
 export function traceCandidateWord(candidate, word) {
   const text = String(word ?? '');
   return withWorkspace(candidate, () => {
-    const steps = App.simSteps;
-    const idx = App.simIdx;
-    try {
-      const parsed = parseMachineInput(candidate.machine, text);
-      if (!parsed.ok) {
-        return { word: text, error: true, why: plain(parsed.error) || 'The input could not be read by this machine.' };
-      }
-      runQuietly(() => simulateMachine(candidate.machine, parsed.input));
-      return projectTrace(text, App.simSteps || [], candidate);
-    } finally {
-      App.simSteps = steps;
-      App.simIdx = idx;
+    const parsed = parseMachineInput(candidate.machine, text);
+    if (!parsed.ok) {
+      return { word: text, error: true, why: plain(parsed.error) || 'The input could not be read by this machine.' };
     }
+    // A run of its own rather than the player's. streamMachine hands back a
+    // cursor over a private steps array and paints nothing, so there is no
+    // longer anything of the reader's to stash and put back — which is what
+    // the stash either side of this was for.
+    const run = streamMachine(candidate.machine, parsed.input);
+    run.drain();
+    return projectTrace(text, run.steps, candidate);
   });
 }
 

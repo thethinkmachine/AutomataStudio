@@ -24,6 +24,27 @@
 // paint, and it only ever calls decide(), which never reaches this function.
 let painter = null;
 
+// Painting is suppressed rather than uninstalled while a run is being collected
+// for something other than the reader's screen — StateMate's trace tool, and
+// the player's own eager collection of a simulator that cannot stream. A
+// counter rather than a boolean so nesting cannot un-silence an outer run, and
+// restored in a `finally` so a simulator that throws cannot leave the real
+// player mute.
+let suppressed = 0;
+
+/** Whether painting is currently suppressed. js/simulation.js checks it too:
+ *  the player calls its own renderSimStep directly, which does not pass through
+ *  the hook below, and a direct call inside a suppressed block must stay mute. */
+export function isPainterSuppressed() {
+  return suppressed > 0;
+}
+
+/** Run `fn` with renderSimStep() a no-op. Returns whatever `fn` returns. */
+export function withPainterSuppressed(fn) {
+  suppressed++;
+  try { return fn(); } finally { suppressed--; }
+}
+
 /** Installed once, at module scope, by js/simulation.js. */
 export function setSimStepPainter(fn) {
   painter = typeof fn === 'function' ? fn : null;
@@ -37,5 +58,5 @@ export function hasSimStepPainter() {
 
 /** What the simulators call. Signature is the painter's — currently no args. */
 export function renderSimStep(...args) {
-  if (painter) painter(...args);
+  if (painter && !suppressed) painter(...args);
 }

@@ -8,43 +8,50 @@
 // because the tape machines and the transducers share it too.
 
 import { App, getState } from '../state.js';
-import { renderSimStep } from './paint.js';
-import { accepted, epsClosure, firstIdenticalTransition, getSingleTapeDeterministicTransition, nameOfState, stateNames } from './runtime.js';
+import { accepted, epsClosure, firstIdenticalTransition, getSingleTapeDeterministicTransition, nameOfState, playEagerly, stateNames } from './runtime.js';
 import { defineFamily } from './registry.js';
 
-export function simDFA(tokens) {
-  App.simSteps = [];
+export function* streamDFA(tokens) {
   let cur = App.startId;
-  App.simSteps.push({ state: cur, tokens, remaining: tokens, note: `Start: ${getState(cur)?.name || '?'}` });
+  let last = { state: cur, tokens, remaining: tokens, note: `Start: ${getState(cur)?.name || '?'}` };
+  yield last;
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
     const t = getSingleTapeDeterministicTransition(cur, sym);
-    if (!t) { App.simSteps.push({ state: cur, tokens, remaining: tokens.slice(i), note: `No δ(${getState(cur)?.name},'${sym}') — Implicit REJECT`, final: 'reject' }); break; }
+    if (!t) {
+      last = { state: cur, tokens, remaining: tokens.slice(i), note: `No δ(${getState(cur)?.name},'${sym}') — Implicit REJECT`, final: 'reject' };
+      yield last;
+      return;
+    }
     cur = t.to;
-    App.simSteps.push({ state: cur, tokens, remaining: tokens.slice(i + 1), note: `Read '${sym}' → ${getState(cur)?.name}`, tid: t.id });
+    last = { state: cur, tokens, remaining: tokens.slice(i + 1), note: `Read '${sym}' → ${getState(cur)?.name}`, tid: t.id };
+    yield last;
   }
-  const last = App.simSteps[App.simSteps.length - 1];
+  // The word ran out rather than the machine stopping, so the verdict belongs
+  // on the step already handed over — see the note in streamTM.
   if (!last.final) { last.final = App.accepts.has(cur) ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }
-  App.simIdx = 0; renderSimStep();
 }
 
-export function simNFA(tokens) {
-  App.simSteps = [];
+export function simDFA(tokens) { playEagerly(streamDFA(tokens)); }
+
+export function* streamNFA(tokens) {
   let cur = epsClosure(new Set([App.startId]));
-  App.simSteps.push({ states: [...cur], tokens, remaining: tokens, note: `Start ε-closure: {${stateNames(cur)}}` });
+  let last = { states: [...cur], tokens, remaining: tokens, note: `Start ε-closure: {${stateNames(cur)}}` };
+  yield last;
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i]; let nx = new Set();
     cur.forEach(sid => App.transitions.filter(t => t.from === sid && (t.symbol === sym || t.symbol === App.config.sym.any)).forEach(t => nx.add(t.to)));
     nx = epsClosure(nx);
     cur = nx;
-    App.simSteps.push({ states: [...cur], tokens, remaining: tokens.slice(i + 1), note: `Read '${sym}' → {${stateNames(cur) || '∅'}}` });
+    last = { states: [...cur], tokens, remaining: tokens.slice(i + 1), note: `Read '${sym}' → {${stateNames(cur) || '∅'}}` };
+    yield last;
     if (!cur.size) break;
   }
-  const last = App.simSteps[App.simSteps.length - 1];
   const acc = [...cur].some(id => App.accepts.has(id));
   if (!last.final) { last.final = acc ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }
-  App.simIdx = 0; renderSimStep();
 }
+
+export function simNFA(tokens) { playEagerly(streamNFA(tokens)); }
 
 // ── deciding ──────────────────────────────────────────────────────
 
@@ -88,6 +95,7 @@ const finite = {
 defineFamily(finite, {
   'DFA': {
     simulate: simDFA,
+    stream: streamDFA,
     deterministicDelta: true,
     // Equality, not overlap: getSingleTapeDeterministicTransition resolves
     // a wildcard against a concrete symbol by specificity, so the two can
@@ -101,6 +109,7 @@ defineFamily(finite, {
   },
   'NFA': {
     simulate: simNFA,
+    stream: streamNFA,
     decide: tokens => accepted(testNFA(tokens)),
     formal: { ...finite.formal, delta: () => 'Q × Σ → P(Q)' }
   },
@@ -109,6 +118,7 @@ defineFamily(finite, {
   // differs only in δ's domain admitting ε.
   'ε-NFA': {
     simulate: simNFA,
+    stream: streamNFA,
     decide: tokens => accepted(testNFA(tokens)),
     formal: { ...finite.formal, delta: () => 'Q × (Σ ∪ {ε}) → P(Q)' }
   }

@@ -253,6 +253,11 @@ export const App = {
     // maxTmSteps and reports no verdict, which is what you want when the
     // machine not halting is the thing you came to watch. See detectsLoops().
     detectLoops: true,
+    // How a run is produced: see runsLazily() below. 'auto' is the default and
+    // absent reads as 'auto', the same rule the render flags follow, so a
+    // workspace or settings profile written before this existed does not load
+    // pinned to one strategy.
+    execMode: 'auto',
     // Per-word budget for the Language panel's fingerprint. Deliberately
     // far smaller than maxTmSteps: the fingerprint runs one simulation per
     // cell, so this is multiplied by ~127. Words that exhaust it are drawn
@@ -341,7 +346,11 @@ export const App = {
   // pausing and playing again must not silently re-run from step 0, and
   // editing the run box before pressing play must not silently resume the
   // previous word. See handleRunBtnClick.
+  // `simRun` is the cursor producing `simSteps` — see js/machines/run.js. The
+  // steps array is the cursor's own, so the two are one object graph rather
+  // than two copies; `simDrainTimer` is the sliced "go to the end".
   simSteps: [], simIdx: 0, simInput: null, autoTimer: null,
+  simRun: null, simDrainTimer: null,
   // Grammar
   grammar: makeGrammar(),
   // Current algo
@@ -543,6 +552,91 @@ export function largeMachineOverridePrompt() {
     confirmLabel: 'Draw it anyway',
     danger: true
   };
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  HOW A RUN IS PRODUCED
+// ══════════════════════════════════════════════════════════════════
+// The app used to precompute every run and then visualize it. The player now
+// holds a cursor over the steps instead (js/machines/run.js), which can be
+// drained up front — eager, exactly what it always did — or pulled as the
+// animation asks for each step.
+//
+// **The trigger is run length, not machine size, and that distinction is the
+// whole of why this is not another thing largeMachineProfile() turns off.**
+// The two are close to uncorrelated here: a 1000-state DFA on a 12-symbol word
+// is 13 steps and precomputing it is free, while a 3-state Turing machine is
+// maxTmSteps steps each carrying a tape snapshot, and it is that one which
+// freezes the tab. Keying this on states-and-transitions would switch strategy
+// on precisely the machines that never needed it.
+//
+// So it is projected instead, from the machine's own mechanism and the length
+// of the word — both known before the run starts.
+
+/**
+ * Machines whose runs are long enough to be worth spreading or streaming.
+ *
+ * Derived from the capability flags rather than listed by name, because a name
+ * list is a thing a machine added to MachineTypes silently falls out of — and
+ * the failure is invisible in both directions: no parallelism for a batch, no
+ * streaming for a run, nothing raised. Every member of the list this replaced
+ * was one of these three shapes.
+ *
+ * js/parallel/pool.js reads it for its own question ("is one word's work worth
+ * a worker?"), which is the same underlying fact stated once.
+ */
+export function hasExpensiveRuns(m = App.machine) {
+  const cfg = getMachineConfig(m);
+  return !!(cfg.hasTape || cfg.hasStack || isTwoWayFA(m));
+}
+
+// Where materializing a run up front stops being free. Well under the budgets
+// the tape machines run to (maxTmSteps is 10,000 by default), because the cost
+// is per step object and a tape machine's carries a tape snapshot; well over
+// anything a finite automaton reaches on a word a person types.
+export const LAZY_STEP_THRESHOLD = 2000;
+
+/**
+ * The worst case number of steps this run can materialize.
+ *
+ * A projection, not a prediction: most runs stop long before it. That is the
+ * right side to be wrong on — the decision is whether to pay a cost up front,
+ * and a run that turns out short costs nothing extra for having been streamed.
+ */
+export function projectedRunSteps(m = App.machine, inputLen = 0) {
+  const cfg = getMachineConfig(m);
+  if (cfg.hasTape) return App.config.maxTmSteps;
+  if (cfg.hasStack) return App.config.maxPdaSteps;
+  // A two-way head cannot repeat a (state, position) pair without looping, so
+  // its run is bounded by the product rather than by the word.
+  if (isTwoWayFA(m)) return Math.max(1, inputLen) * Math.max(1, App.states?.length || 1);
+  // One step per symbol, plus the start.
+  return inputLen + 1;
+}
+
+/** 'auto' | 'eager' | 'lazy', with absent reading as 'auto'. */
+export function execMode() {
+  const m = App.config?.execMode;
+  return m === 'eager' || m === 'lazy' ? m : 'auto';
+}
+
+/**
+ * Whether this run should be pulled rather than precomputed.
+ *
+ * Auto biases toward streaming when it is uncertain, because the two mistakes
+ * are not the same size: streaming a short run costs a few microseconds of
+ * generator overhead, while precomputing a long one is the frozen tab this
+ * exists to prevent.
+ *
+ * It is a *policy*. Whether the machine can actually stream is a separate
+ * question the run answers for itself (js/machines/run.js) — a search-based
+ * simulator arrives complete whatever is set here, and that is honest rather
+ * than a fallback, since no prefix of its trace exists before the search ends.
+ */
+export function runsLazily(inputLen = 0, m = App.machine) {
+  const mode = execMode();
+  if (mode !== 'auto') return mode === 'lazy';
+  return projectedRunSteps(m, inputLen) > LAZY_STEP_THRESHOLD;
 }
 
 // ══════════════════════════════════════════════════════════════════
