@@ -178,6 +178,58 @@ export const HISTORY_MAX_BYTES = 24 * 1024 * 1024;
 // what an undo point *is* — so this is a memory bound, not a frame one.
 export const HISTORY_MAX_ENTRIES_LARGE = 60;
 
+// And a fourth, for a tab the reader is not looking at.
+//
+// The two limits above bound the *live* stack, which is the one being pushed
+// to. They say nothing about the other tabs, and every one of those holds a
+// full stack of its own: exportWorkspaceState() copies history and future
+// into the tab's blob, and Workspaces keeps every blob alive. Measured on a
+// 200-state machine with 60 edits per tab, the stacks were 3,579 KB of a
+// 3,641 KB tab — 98% of it — and eight such tabs retained 105 MB.
+//
+// stripTabForStorage() already makes this call for persistence, naming the
+// stacks as the single largest cause of quota failure. The same reasoning is
+// what this is: a stack you are not editing against is worth keeping some of,
+// and is not worth a hundred megabytes.
+//
+// It is a trim rather than a drop, so switching back to a tab still finds its
+// recent history. What it costs is depth: a background tab remembers the last
+// HISTORY_STOWED_MAX_ENTRIES edits rather than all 300 of them.
+export const HISTORY_STOWED_MAX_ENTRIES = 40;
+export const HISTORY_STOWED_MAX_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Cap the undo and redo stacks of a workspace blob on its way into the
+ * background. Mutates the blob rather than copying it — the caller has just
+ * built it and nothing else holds it yet.
+ *
+ * The *newest* entries are what survive, because both stacks are popped from
+ * the end: the top of App.history is the edit undo reaches first.
+ */
+export function trimStowedHistory(data) {
+  if (!data) return data;
+  for (const key of ['history', 'future']) {
+    const stack = data[key];
+    if (!Array.isArray(stack) || !stack.length) continue;
+    let kept = stack.length > HISTORY_STOWED_MAX_ENTRIES
+      ? stack.slice(stack.length - HISTORY_STOWED_MAX_ENTRIES)
+      : stack;
+    // Then by bytes, for the machine whose forty entries are still a third of
+    // a megabyte each. One entry always survives, the way snapshot()'s own
+    // byte loop keeps one.
+    let bytes = 0;
+    for (const entry of kept) bytes += entry.length;
+    let from = 0;
+    while (from < kept.length - 1 && bytes > HISTORY_STOWED_MAX_BYTES) {
+      bytes -= kept[from].length;
+      from++;
+    }
+    if (from) kept = kept.slice(from);
+    if (kept !== stack) data[key] = kept;
+  }
+  return data;
+}
+
 export function historyDepthLimit() {
   return largeMachineProfile() ? HISTORY_MAX_ENTRIES_LARGE : HISTORY_MAX_ENTRIES;
 }

@@ -21,6 +21,7 @@ import { renderSimStep } from './paint.js';
 import { buildMarkedInputTape, pickMostSpecificTransition } from './predicates.js';
 import { accepted, firstOverlappingTransition, nameOfState, traceSearchPath, transduced } from './runtime.js';
 import { defineFamily } from './registry.js';
+import { OUT_EMPTY, outPush, outStep } from './step-log.js';
 
 export function headMoveDelta(dir) {
   return dir === 'R' ? 1 : (dir === 'L' ? -1 : 0);
@@ -51,7 +52,10 @@ export function twoWayTapeView(displayTape, head) {
   const { left, right } = getBoundaryMarkers();
   return {
     kind: 'tape',
-    cells: [...displayTape],
+    // Shared, not copied: these heads never write, so one array serves every
+    // step of the run. Copying it per step made a run quadratic in the input
+    // — the cost js/tape-log.js removed for the machines that *do* write.
+    cells: displayTape,
     head,
     origin: 0,
     leftBound: 0,
@@ -74,10 +78,12 @@ export function buildTwoWayPathSteps(path, tokens, finalStatus = null, finalNote
   const displayTape = twoWayDisplayTape(tokens);
   const steps = path.map((cfg, idx) => {
     const stateName = getState(cfg.state)?.name || cfg.state;
-    const step = {
+    // `tape` is the one display tape, shared by every step for the same
+    // reason `view.cells` is — see twoWayTapeView.
+    const props = {
       state: cfg.state,
       tokens,
-      tape: [...displayTape],
+      tape: displayTape,
       head: twoWayDisplayHead(displayTape, cfg.head),
       view: twoWayTapeView(displayTape, twoWayDisplayHead(displayTape, cfg.head)),
       branch: cfg.branch,
@@ -85,7 +91,9 @@ export function buildTwoWayPathSteps(path, tokens, finalStatus = null, finalNote
       note: ''
     };
     // Present only for 2DFT; inert for 2DFA/2NFA.
-    if (Array.isArray(cfg.outToks)) { step.outToks = [...cfg.outToks]; step.outSoFar = cfg.outRaw; }
+    const emits = cfg.outNode !== undefined;
+    if (emits) { props.outNode = cfg.outNode; props.outSoFar = cfg.outRaw; }
+    const step = emits ? outStep(props) : props;
     if (idx === 0) {
       step.note = `Start: ${stateName} at ${displayTape[cfg.head]}`;
     } else {
@@ -269,7 +277,7 @@ export function test2NFA(tokens) {
 export function explore2DFT(tokens) {
   const tape = buildMarkedInputTape(tokens);
   const lambda = App.config.sym.lambda;
-  const init = { state: App.startId, head: 0, depth: 0, branch: 1, parent: null, via: null, outRaw: '', outToks: [] };
+  const init = { state: App.startId, head: 0, depth: 0, branch: 1, parent: null, via: null, outRaw: '', outNode: OUT_EMPTY };
   const path = [init];
 
   for (let step = 0; step < App.config.maxTmSteps; step++) {
@@ -295,7 +303,7 @@ export function explore2DFT(tokens) {
       parent: cfg,
       via: t,
       outRaw: cfg.outRaw + rawOut,
-      outToks: [...cfg.outToks, rawOut === '' ? lambda : rawOut]
+      outNode: outPush(cfg.outNode, rawOut === '' ? lambda : rawOut)
     });
   }
 

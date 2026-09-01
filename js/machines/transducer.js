@@ -26,20 +26,21 @@ import { renderSimStep } from './paint.js';
 import { accepted, firstOverlappingTransition, getSingleTapeDeterministicTransition, nameOfState, playEagerly, traceSearchPath, transduced, transducerRunContributes } from './runtime.js';
 import { testDFA } from './finite.js';
 import { defineFamily } from './registry.js';
+import { OUT_EMPTY, outPush, outStep } from './step-log.js';
 
 export function* streamMoore(tokens) {
   let cur = App.startId;
   const s0 = getState(cur);
   const initOut = s0?.output ?? '';
   let outStr = initOut;
-  let outputs = [initOut];
-  let last = { state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Start: ${s0?.name} — ${App.config.sym.lambda}: '${initOut}'` };
+  let outNode = outPush(OUT_EMPTY, initOut);
+  let last = outStep({ state: cur, tokens, outNode, outSoFar: outStr, note: `Start: ${s0?.name} — ${App.config.sym.lambda}: '${initOut}'` });
   yield last;
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
     const t = getSingleTapeDeterministicTransition(cur, sym);
     if (!t) {
-      last = { state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' };
+      last = outStep({ state: cur, tokens, outNode, outSoFar: outStr, note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' });
       yield last;
       break;
     }
@@ -47,8 +48,8 @@ export function* streamMoore(tokens) {
     const sc = getState(cur);
     const out = sc?.output ?? '';
     outStr += out;
-    outputs.push(out);
-    last = { state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Read '${sym}' → ${sc?.name} — ${App.config.sym.lambda}: '${out}'`, tid: t.id };
+    outNode = outPush(outNode, out);
+    last = outStep({ state: cur, tokens, outNode, outSoFar: outStr, note: `Read '${sym}' → ${sc?.name} — ${App.config.sym.lambda}: '${out}'`, tid: t.id });
     yield last;
   }
   const showAccepts = App.config.transducerAccepts;
@@ -61,22 +62,22 @@ export function simMoore(tokens) { playEagerly(streamMoore(tokens)); }
 export function* streamMealy(tokens) {
   let cur = App.startId;
   let outStr = '';
-  let outputs = [];
-  let last = { state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Start: ${getState(cur)?.name}` };
+  let outNode = OUT_EMPTY;
+  let last = outStep({ state: cur, tokens, outNode, outSoFar: outStr, note: `Start: ${getState(cur)?.name}` });
   yield last;
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
     const t = getSingleTapeDeterministicTransition(cur, sym);
     if (!t) {
-      last = { state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' };
+      last = outStep({ state: cur, tokens, outNode, outSoFar: outStr, note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' });
       yield last;
       break;
     }
     const out = t.output ?? '?';
     outStr += out;
-    outputs.push(out);
+    outNode = outPush(outNode, out);
     cur = t.to;
-    last = { state: cur, tokens, outToks: [...outputs], outSoFar: outStr, note: `Read '${sym}' → ${getState(cur)?.name} — out: '${out}'`, tid: t.id };
+    last = outStep({ state: cur, tokens, outNode, outSoFar: outStr, note: `Read '${sym}' → ${getState(cur)?.name} — out: '${out}'`, tid: t.id });
     yield last;
   }
   const showAccepts = App.config.transducerAccepts;
@@ -119,7 +120,7 @@ export function applyFstTransition(cfg, transition, branch) {
     depth: cfg.depth + 1,
     branch,
     outRaw: cfg.outRaw + rawOut,
-    outToks: [...cfg.outToks, displayOut],
+    outNode: outPush(cfg.outNode, displayOut),
     parent: cfg,
     via: transition
   };
@@ -128,15 +129,15 @@ export function applyFstTransition(cfg, transition, branch) {
 export function buildFstPathSteps(path, tokens, finalStatus = null, finalNote = '') {
   const steps = path.map((cfg, idx) => {
     const stateName = getState(cfg.state)?.name || cfg.state;
-    const step = {
+    const step = outStep({
       state: cfg.state,
       tokens,
-      outToks: [...cfg.outToks],
+      outNode: cfg.outNode,
       outSoFar: cfg.outRaw,
       branch: cfg.branch,
       tid: cfg.via?.id,
       note: ''
-    };
+    });
     if (idx === 0) {
       step.note = `Start: ${stateName}`;
     } else {
@@ -166,7 +167,7 @@ export function exploreFST(tokens) {
     depth: 0,
     branch: 1,
     outRaw: '',
-    outToks: [],
+    outNode: OUT_EMPTY,
     parent: null,
     via: null
   };

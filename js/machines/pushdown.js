@@ -16,6 +16,7 @@ import { renderSimStep } from './paint.js';
 import { getPdaDeterminismConflict, isQueueAutomaton, isTwoStackPDA } from './predicates.js';
 import { accepted, nameOfState, traceSearchPath, transduced, transducerRunContributes } from './runtime.js';
 import { defineFamily } from './registry.js';
+import { OUT_EMPTY, outPush, wordOutStep, wordStep } from './step-log.js';
 
 export function canApplyPdaPop(top, pop) {
   const eps = App.config.sym.eps;
@@ -64,7 +65,10 @@ export function createInitialPdaConfig(tokens) {
   const cfg = {
     state: App.startId,
     tokens,
-    remaining: [...tokens],
+    // A position into `tokens` rather than a copy of the unread suffix. The
+    // suffix is what the reader is shown, but it is never anything other
+    // than tokens.slice(pos) — see js/machines/step-log.js.
+    pos: 0,
     stack: [...baseStore],
     depth: 0,
     branch: 1,
@@ -75,24 +79,28 @@ export function createInitialPdaConfig(tokens) {
   return cfg;
 }
 
-export function pdaConfigKey(state, remaining, stack, stack2 = null) {
+// The unread input is a suffix of one array that never changes during a run,
+// so its *position* identifies it exactly — and identifying it that way is
+// both cheaper to build and cheaper to compare than joining the suffix on
+// every configuration the search touches.
+export function pdaConfigKey(state, pos, stack, stack2 = null) {
   const second = Array.isArray(stack2) ? `|${stack2.join('\u0001')}` : '';
-  return `${state}|${remaining.join('\u0001')}|${stack.join('\u0001')}${second}`;
+  return `${state}|${pos}|${stack.join('\u0001')}${second}`;
 }
 
 export function isPdaAcceptingConfig(cfg) {
   if (App.config.pdaParadigm === 'explicit') {
-    return App.accepts.has(cfg.state) && cfg.remaining.length === 0;
+    return App.accepts.has(cfg.state) && cfg.pos >= cfg.tokens.length;
   }
   if (pdaUsesSecondStack()) {
-    return cfg.remaining.length === 0 && cfg.stack.length === 0 && (cfg.stack2 || []).length === 0;
+    return cfg.pos >= cfg.tokens.length && cfg.stack.length === 0 && (cfg.stack2 || []).length === 0;
   }
-  return cfg.remaining.length === 0 && cfg.stack.length === 0;
+  return cfg.pos >= cfg.tokens.length && cfg.stack.length === 0;
 }
 
 export function formatPdaInstantaneousDescription(cfg) {
   const stateName = getState(cfg.state)?.name || cfg.state;
-  const remaining = cfg.remaining.length ? cfg.remaining.join('') : App.config.sym.eps;
+  const remaining = cfg.pos < cfg.tokens.length ? cfg.tokens.slice(cfg.pos).join('') : App.config.sym.eps;
   const primary = pdaStoreToString(cfg.stack, pdaUsesQueueStorage());
   if (pdaUsesSecondStack()) {
     const secondary = pdaStoreToString(cfg.stack2 || []);
@@ -108,7 +116,7 @@ export function getMatchingPdaTransitions(cfg) {
   const top2 = pdaUsesSecondStack() ? pdaPeek(cfg.stack2 || []) : undefined;
   return App.transitions.filter(t => {
     if (t.from !== cfg.state) return false;
-    const readOk = t.symbol === eps || (cfg.remaining.length > 0 && (t.symbol === cfg.remaining[0] || t.symbol === App.config.sym.any));
+    const readOk = t.symbol === eps || (cfg.pos < cfg.tokens.length && (t.symbol === cfg.tokens[cfg.pos] || t.symbol === App.config.sym.any));
     const popOk = canApplyPdaPop(top, t.pop);
     const pop2Sym = t.pop2 || eps;
     const pop2Ok = !pdaUsesSecondStack() || canApplyPdaPop(top2, pop2Sym);
@@ -122,7 +130,7 @@ export function applyPdaTransitionConfig(cfg, transition, branch = cfg.branch) {
   const nextCfg = {
     state: transition.to,
     tokens: cfg.tokens,
-    remaining: transition.symbol === eps ? [...cfg.remaining] : cfg.remaining.slice(1),
+    pos: transition.symbol === eps ? cfg.pos : cfg.pos + 1,
     stack: applyPdaStoreTransition(cfg.stack, transition.pop || eps, transition.push || eps, queueMode),
     depth: cfg.depth + 1,
     branch,
@@ -152,19 +160,24 @@ export function formatPdaTransitionNote(prevCfg, nextCfg) {
 
 export function buildPdaPathSteps(path, finalStatus = null, finalNote = '') {
   const steps = path.map((cfg, idx) => {
-    const step = {
+    // The stack is shared rather than copied: applyPdaStoreTransition builds
+    // a fresh array per configuration and nothing mutates one afterwards, so
+    // a copy here is a second array holding what the first one already says.
+    // Every reader downstream copies before reversing or joining.
+    const props = {
       state: cfg.state,
       tokens: cfg.tokens,
-      remaining: [...cfg.remaining],
-      stack: [...cfg.stack],
+      pos: cfg.pos,
+      stack: cfg.stack,
       branch: cfg.branch,
       tid: cfg.via?.id,
       note: idx === 0 ? 'Start configuration' : formatPdaTransitionNote(path[idx - 1], cfg)
     };
-    if (Array.isArray(cfg.stack2)) step.stack2 = [...cfg.stack2];
+    if (Array.isArray(cfg.stack2)) props.stack2 = cfg.stack2;
     // Present only for PDT; inert for every other pushdown family.
-    if (Array.isArray(cfg.outToks)) { step.outToks = [...cfg.outToks]; step.outSoFar = cfg.outRaw; }
-    return step;
+    const emits = cfg.outNode !== undefined;
+    if (emits) { props.outNode = cfg.outNode; props.outSoFar = cfg.outRaw; }
+    return emits ? wordOutStep(props) : wordStep(props);
   });
   if (steps.length && finalStatus) {
     const last = steps[steps.length - 1];
@@ -175,16 +188,16 @@ export function buildPdaPathSteps(path, finalStatus = null, finalNote = '') {
 }
 
 export function appendPdaSummaryStep(steps, cfg, finalStatus, note) {
-  const summary = {
+  const summary = wordStep({
     state: cfg.state,
     tokens: cfg.tokens,
-    remaining: [...cfg.remaining],
-    stack: [...cfg.stack],
+    pos: cfg.pos,
+    stack: cfg.stack,
     branch: cfg.branch,
     note,
     final: finalStatus
-  };
-  if (Array.isArray(cfg.stack2)) summary.stack2 = [...cfg.stack2];
+  });
+  if (Array.isArray(cfg.stack2)) summary.stack2 = cfg.stack2;
   steps.push(summary);
 }
 
@@ -197,7 +210,7 @@ export function simPDA(tokens) {
   }
 
   let cfg = init;
-  const visited = new Set([pdaConfigKey(cfg.state, cfg.remaining, cfg.stack, cfg.stack2)]);
+  const visited = new Set([pdaConfigKey(cfg.state, cfg.pos, cfg.stack, cfg.stack2)]);
 
   for (let step = 0; step < App.config.maxPdaSteps; step++) {
     const matching = getMatchingPdaTransitions(cfg);
@@ -220,7 +233,7 @@ export function simPDA(tokens) {
     }
 
     const nextCfg = applyPdaTransitionConfig(cfg, matching[0], cfg.branch);
-    const nextKey = pdaConfigKey(nextCfg.state, nextCfg.remaining, nextCfg.stack, nextCfg.stack2);
+    const nextKey = pdaConfigKey(nextCfg.state, nextCfg.pos, nextCfg.stack, nextCfg.stack2);
     if (visited.has(nextKey)) {
       App.simSteps = buildPdaPathSteps(traceSearchPath(cfg));
       appendPdaSummaryStep(App.simSteps, cfg, 'reject', 'Repeated configuration detected — possible ε-loop — REJECT');
@@ -246,7 +259,7 @@ export function simPDA(tokens) {
 export function exploreNPDA(tokens) {
   const init = createInitialPdaConfig(tokens);
   const queue = [init];
-  const visited = new Set([pdaConfigKey(init.state, init.remaining, init.stack, init.stack2)]);
+  const visited = new Set([pdaConfigKey(init.state, init.pos, init.stack, init.stack2)]);
   const log = [];
   let acceptedCfg = null;
   let branches = 0;
@@ -274,7 +287,7 @@ export function exploreNPDA(tokens) {
       continue;
     }
 
-    const nextRead = cfg.remaining[0] || App.config.sym.eps;
+    const nextRead = cfg.tokens[cfg.pos] || App.config.sym.eps;
     const primaryTop = pdaPeek(cfg.stack, pdaUsesQueueStorage());
     const primaryTopLabel = isQueueAutomaton() ? 'Queue front' : 'Stack top';
     const subs = [
@@ -293,7 +306,7 @@ export function exploreNPDA(tokens) {
     matching.forEach((transition, idx) => {
       const childBranch = matching.length === 1 || idx === 0 ? cfg.branch : nextBranchId++;
       const nextCfg = applyPdaTransitionConfig(cfg, transition, childBranch);
-      const key = pdaConfigKey(nextCfg.state, nextCfg.remaining, nextCfg.stack, nextCfg.stack2);
+      const key = pdaConfigKey(nextCfg.state, nextCfg.pos, nextCfg.stack, nextCfg.stack2);
       if (visited.has(key)) return;
       visited.add(key);
       queue.push(nextCfg);
@@ -340,13 +353,13 @@ export function simNPDA(tokens) {
 export function testPDA(tokens) {
   let cfg = createInitialPdaConfig(tokens);
   if (isPdaAcceptingConfig(cfg)) return true;
-  const visited = new Set([pdaConfigKey(cfg.state, cfg.remaining, cfg.stack, cfg.stack2)]);
+  const visited = new Set([pdaConfigKey(cfg.state, cfg.pos, cfg.stack, cfg.stack2)]);
 
   for (let step = 0; step < App.config.maxPdaSteps; step++) {
     const matching = getMatchingPdaTransitions(cfg);
     if (matching.length !== 1) return false;
     const nextCfg = applyPdaTransitionConfig(cfg, matching[0], cfg.branch);
-    const nextKey = pdaConfigKey(nextCfg.state, nextCfg.remaining, nextCfg.stack, nextCfg.stack2);
+    const nextKey = pdaConfigKey(nextCfg.state, nextCfg.pos, nextCfg.stack, nextCfg.stack2);
     if (visited.has(nextKey)) return false;
     visited.add(nextKey);
     cfg = nextCfg;
@@ -369,21 +382,21 @@ export function testNPDA(tokens) {
 // genuinely different configurations, so the output joins the visited key —
 // the same reason exploreFST keys on its own output.
 export function pdtConfigKey(cfg) {
-  return `${pdaConfigKey(cfg.state, cfg.remaining, cfg.stack, cfg.stack2)}|${cfg.outRaw}`;
+  return `${pdaConfigKey(cfg.state, cfg.pos, cfg.stack, cfg.stack2)}|${cfg.outRaw}`;
 }
 
 export function applyPdtTransitionConfig(cfg, transition, branch) {
   const next = applyPdaTransitionConfig(cfg, transition, branch);
   const rawOut = transition.output ?? '';
   next.outRaw = (cfg.outRaw || '') + rawOut;
-  next.outToks = [...(cfg.outToks || []), rawOut === '' ? App.config.sym.lambda : rawOut];
+  next.outNode = outPush(cfg.outNode, rawOut === '' ? App.config.sym.lambda : rawOut);
   return next;
 }
 
 export function explorePDT(tokens) {
   const init = createInitialPdaConfig(tokens);
   init.outRaw = '';
-  init.outToks = [];
+  init.outNode = OUT_EMPTY;
   const queue = [init];
   const visited = new Set([pdtConfigKey(init)]);
   const outputs = new Set();
@@ -401,7 +414,7 @@ export function explorePDT(tokens) {
     maxDepth = Math.max(maxDepth, cfg.depth);
 
     const accepting = isPdaAcceptingConfig(cfg);
-    if (cfg.remaining.length === 0) {
+    if (cfg.pos >= cfg.tokens.length) {
       if (transducerRunContributes(true, accepting)) outputs.add(cfg.outRaw);
       if (!completedCfg) completedCfg = cfg;
     }

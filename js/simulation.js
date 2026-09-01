@@ -14,7 +14,7 @@
 // silently became.
 
 import { makeSVG } from './render.js';
-import { $, App, R, detectsLoops, execMode, getMachineConfig, isOmegaAutomaton, isWeightedFA, runsLazily } from './state.js';
+import { $, App, INPUT_LENGTH_NOTICE, R, detectsLoops, execMode, getMachineConfig, isOmegaAutomaton, isWeightedFA, runsLazily } from './state.js';
 import { getState, getTransition } from './states-transitions.js';
 import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
 import { isAnyPDA, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
@@ -54,6 +54,14 @@ export function runSim() {
     log(`<span class="t-warn">${fired.warn}</span>`);
   }
 
+  // A long word is not refused — see INPUT_LENGTH_NOTICE. It is announced,
+  // because the tape tracker draws a cell per symbol and the reader should
+  // know that is what the pause is before they meet it.
+  const wordLen = parsed.tokens?.length ?? 0;
+  if (wordLen > INPUT_LENGTH_NOTICE) {
+    log(`<span class="t-warn">${wordLen.toLocaleString()} symbols — the run itself is cheap, but the input row draws a cell for each one, so the tracker will take a moment to paint.</span>`);
+  }
+
   // What the canvas highlights against. A multi-tape run has no single
   // token list, and says so by handing back null rather than a guess.
   if (parsed.tokens) App.currentTokens = parsed.tokens;
@@ -63,7 +71,7 @@ export function runSim() {
   // refused run has no steps to resume.
   App.simInput = raw;
 
-  beginRun(streamMachine(m, parsed.input), parsed.tokens?.length ?? 0, m);
+  beginRun(streamMachine(m, parsed.input), wordLen, m);
 
   // Unified playback: automatically start the animation if it loaded correctly
   if (App.simSteps && App.simSteps.length > 0) {
@@ -303,9 +311,12 @@ function trackerRows(step) {
     const tokensToDisplay = tokens.length ? tokens : [App.config.sym.eps];
 
     // Determine token index (which one was JUST read)
+    // `pos` is how far the head has got, so the symbol just read is the one
+    // before it. Asking for `step.remaining` here would build the suffix
+    // array only to measure it — see js/machines/step-log.js.
     let tokIdx = -1;
-    if (step.remaining) {
-      tokIdx = tokens.length - step.remaining.length - 1;
+    if (typeof step.pos === 'number') {
+      tokIdx = step.pos - 1;
     } else {
       tokIdx = App.simIdx - 1;
     }
@@ -501,7 +512,12 @@ export function getNfaSimStepEdgeKeys(idx) {
   } else {
     const prev = App.simSteps[idx - 1];
     const prevStates = prev.states || (prev.state ? [prev.state] : []);
-    const sym = prev.remaining && prev.remaining.length ? prev.remaining[0] : null;
+    // The next symbol the previous step had to read, taken by index rather
+    // than off the front of a suffix this would otherwise have to build.
+    const prevToks = prev.tokens;
+    const sym = (prevToks && typeof prev.pos === 'number' && prev.pos < prevToks.length)
+      ? prevToks[prev.pos]
+      : null;
     seed = new Set();
     if (sym !== null) {
       prevStates.forEach(sid => App.transitions.forEach(t => {

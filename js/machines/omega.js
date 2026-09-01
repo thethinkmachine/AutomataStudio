@@ -285,6 +285,7 @@ export function simOmega(u, v) {
   const reps = Math.max(1, Math.ceil((run.length + 1) / Math.max(1, v.length)) + 1);
   const tape = [...u];
   for (let i = 0; i < reps; i++) tape.push(...v);
+  const word = [...u, ...v];
 
   App.simSteps = run.map((node, idx) => {
     const stateName = getState(node.state)?.name || node.state;
@@ -300,8 +301,11 @@ export function simOmega(u, v) {
     if (inLoop) note += ` · loop iteration ${Math.floor((idx - loopFrom) / Math.max(1, result.loop.length)) + 1}`;
     return {
       state: node.state,
-      tokens: [...u, ...v],
-      tape: [...tape],
+      // All three of these are constant for the whole run, so they are built
+      // once above and shared. Copied per step they made an ω-run quadratic
+      // in the unrolled word — three times over.
+      tokens: word,
+      tape,
       head: idx,
       // An ω-word is bounded on the left and runs on forever to the right —
       // but not into blank tape the way an ITM's does. What continues is v,
@@ -309,7 +313,7 @@ export function simOmega(u, v) {
       // repetition rather than an ellipsis that means "nothing more".
       view: {
         kind: 'tape',
-        cells: [...tape],
+        cells: tape,
         head: idx,
         origin: 0,
         leftBound: 0,

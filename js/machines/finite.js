@@ -10,21 +10,22 @@
 import { App, getState } from '../state.js';
 import { accepted, epsClosure, firstIdenticalTransition, getSingleTapeDeterministicTransition, nameOfState, playEagerly, stateNames } from './runtime.js';
 import { defineFamily } from './registry.js';
+import { wordStep } from './step-log.js';
 
 export function* streamDFA(tokens) {
   let cur = App.startId;
-  let last = { state: cur, tokens, remaining: tokens, note: `Start: ${getState(cur)?.name || '?'}` };
+  let last = wordStep({ state: cur, tokens, pos: 0, note: `Start: ${getState(cur)?.name || '?'}` });
   yield last;
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
     const t = getSingleTapeDeterministicTransition(cur, sym);
     if (!t) {
-      last = { state: cur, tokens, remaining: tokens.slice(i), note: `No δ(${getState(cur)?.name},'${sym}') — Implicit REJECT`, final: 'reject' };
+      last = wordStep({ state: cur, tokens, pos: i, note: `No δ(${getState(cur)?.name},'${sym}') — Implicit REJECT`, final: 'reject' });
       yield last;
       return;
     }
     cur = t.to;
-    last = { state: cur, tokens, remaining: tokens.slice(i + 1), note: `Read '${sym}' → ${getState(cur)?.name}`, tid: t.id };
+    last = wordStep({ state: cur, tokens, pos: i + 1, note: `Read '${sym}' → ${getState(cur)?.name}`, tid: t.id });
     yield last;
   }
   // The word ran out rather than the machine stopping, so the verdict belongs
@@ -36,14 +37,14 @@ export function simDFA(tokens) { playEagerly(streamDFA(tokens)); }
 
 export function* streamNFA(tokens) {
   let cur = epsClosure(new Set([App.startId]));
-  let last = { states: [...cur], tokens, remaining: tokens, note: `Start ε-closure: {${stateNames(cur)}}` };
+  let last = wordStep({ states: [...cur], tokens, pos: 0, note: `Start ε-closure: {${stateNames(cur)}}` });
   yield last;
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i]; let nx = new Set();
     cur.forEach(sid => App.transitions.filter(t => t.from === sid && (t.symbol === sym || t.symbol === App.config.sym.any)).forEach(t => nx.add(t.to)));
     nx = epsClosure(nx);
     cur = nx;
-    last = { states: [...cur], tokens, remaining: tokens.slice(i + 1), note: `Read '${sym}' → {${stateNames(cur) || '∅'}}` };
+    last = wordStep({ states: [...cur], tokens, pos: i + 1, note: `Read '${sym}' → {${stateNames(cur) || '∅'}}` });
     yield last;
     if (!cur.size) break;
   }
