@@ -48,6 +48,7 @@ import {
 } from './panel-sections.js';
 import { applySectionOrder } from './panel-sections-ui.js';
 import { redrawAllLists } from './panel-list.js';
+import { beginShakeTrack, endShakeTrack, noteShakeSample } from './panel-shake.js';
 import { Change, subscribe } from './store.js';
 
 /** How much of a window must stay reachable when it is clamped into view. */
@@ -557,6 +558,10 @@ function beginMove(id, e) {
   // window. See floatLayerRect().
   layerRect = null;
   const g = liveGeom(el, id);
+  // Armed on the press, not on the first sample: the shake is measured from
+  // where the window was taken hold of, so the leg that fires it is a leg of
+  // this gesture and not of whatever the pointer did before it.
+  beginShakeTrack();
   gesture = {
     kind: 'move', id, el,
     pointerId: e.pointerId,
@@ -707,6 +712,9 @@ function onPointerMove(e) {
   }
   e.preventDefault();
   if (gesture.kind === 'move') {
+    // Only a move, and only a window that is already out — see the note at the
+    // top of panel-shake.js for why a tear-off is not shakeable.
+    if (noteShakeSample(e.clientX, e.clientY)) reanchorAfterShake();
     gesture.geom = moveFloatTo(gesture.id,
       gesture.originX + (e.clientX - gesture.startX),
       gesture.originY + (e.clientY - gesture.startY)) || gesture.geom;
@@ -731,12 +739,36 @@ function onPointerMove(e) {
   gesture.geom = g;
 }
 
+/**
+ * Keeps the window under the pointer across the layout the shake just caused.
+ *
+ * A window's coordinates are local to the canvas well, and unpinning a sidebar
+ * *moves* that well: an unpinned panel is absolutely positioned over the
+ * canvas rather than beside it, so the well grows and its left edge travels.
+ * The drag is a mapping from screen space into that local space, and the
+ * mapping has just changed underneath it — left alone, the window jumps
+ * sideways by the width of the panel that got out of the way, at the exact
+ * moment the reader is holding it.
+ *
+ * `setPanelPinned` has already written the class, and reading the box forces
+ * the layout flush that resolves it, so the new origin is available here
+ * rather than a frame later when the ResizeObserver gets round to it.
+ */
+function reanchorAfterShake() {
+  const before = floatLayerRect();
+  layerRect = null;
+  const after = floatLayerRect();
+  gesture.originX += before.left - after.left;
+  gesture.originY += before.top - after.top;
+}
+
 function onPointerUp(e) {
   if (!gesture) return;
   if (e && e.pointerId !== undefined && gesture.pointerId !== undefined &&
     e.pointerId !== gesture.pointerId) return;
   const { id, el, geom, active, kind, pointerId } = gesture;
   gesture = null;
+  endShakeTrack();
   el.classList.remove('is-float-moving', 'is-float-sizing');
   try { el.releasePointerCapture(pointerId); } catch (err) { /* already gone */ }
   if (!active) return;
@@ -810,6 +842,13 @@ function reclampAll() {
     Object.keys(states).forEach(id => {
       const el = sectionEl(id);
       if (!el || !el.classList.contains('panel-float')) return;
+      // Never the window in the reader's hand. A record is where a window was
+      // *left*, and a drag has not committed one yet — so re-applying it mid-
+      // gesture snaps the window back to where the drag started. That is not
+      // hypothetical: the shake unpins the sidebars, which resizes the well,
+      // which delivers a tick here on the very next frame of the drag that
+      // caused it. The gesture is the authority on a window it is holding.
+      if (gesture && gesture.id === id) return;
       const g = clampGeom(states[id], rect, sectionMinSize(id));
       if (sameGeom(g, states[id])) return;
       applyGeom(el, g);
@@ -900,6 +939,16 @@ function subscribeOnce() {
   }
 }
 
+/**
+ * The re-clamp, exposed for the tests.
+ *
+ * Its only caller is the `ResizeObserver`, which a test DOM never fires — and
+ * the invariant it carries (a drag owns the window it is holding) is one the
+ * shake gesture walks straight into, since unpinning the sidebars resizes the
+ * well on the very next frame of the drag that caused it.
+ */
+export const _floatTests = { reclampAll };
+
 /** Whether a move or resize is in flight — the tests' way in. */
 export function isMovingFloat() {
   return !!(gesture && gesture.active);
@@ -911,6 +960,7 @@ export function isMovingFloat() {
  */
 export function resetPanelFloat() {
   gesture = null;
+  endShakeTrack();
   suspended = false;
   raiseSeq = 0;
   layerRect = null;

@@ -17,6 +17,7 @@ import {
   setActivePanelTab, setTabSide
 } from './panel-state.js';
 import { declaredSectionIds, sectionStartsCollapsed } from './panel-sections.js';
+import { setShakeToMinimizeEnabled, shakeToMinimizeEnabled } from './panel-state.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
 import { $, App, MIN_TAPES, MachineCategories, blankWorkspaceData, MachineTypes, R, TAPE_LIMIT, Workspaces, activeWorkspaceId, execMode, exportWorkspaceState, importWorkspaceState, largeMachineOverridePrompt, largeMachineProfile, machineIsLarge, maxTapes, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { getState, getTransition, hideContextMenu } from './states-transitions.js';
@@ -2523,21 +2524,42 @@ export function initPanelResizers() {
 
 const PANEL_LABEL = { lpanel: 'left panel', rpanel: 'right panel' };
 
+/** Whether a sidebar is docked beside the canvas rather than a hover rail. */
+export function isPanelPinned(side) {
+  const panel = $(side);
+  return !!panel && !panel.classList.contains('unpinned');
+}
+
 /**
  * Pin or unpin either sidebar.
  *
  * One function for both sides. It was two copies differing in three string
  * literals, which is how the left panel came to hide a hand-picked list of its
  * children on unpin while the right one hid all of them.
+ *
+ * Stated as "put it in this state" rather than as a toggle, and `togglePanelPin`
+ * asks for the state it wants. A caller that knows the answer it wants — the
+ * shake gesture putting both panels away, or bringing back exactly the ones it
+ * put away — would otherwise have to read the class and decide whether to call,
+ * which is the same test written once per caller and wrong the first time one
+ * of them forgets it. Answering `false` for "it was already like that" is what
+ * lets the gesture report what it actually did.
  */
-export function togglePanelPin(side) {
+export function setPanelPinned(side, pinned) {
   const panel = $(side);
-  if (!panel) return;
-  const unpinned = panel.classList.toggle('unpinned');
+  if (!panel) return false;
+  const unpinned = !pinned;
+  if (panel.classList.contains('unpinned') === unpinned) return false;
+  panel.classList.toggle('unpinned', unpinned);
   const btn = $(`${side}-pin-btn`);
   if (btn) btn.dataset.tip = `${unpinned ? 'Pin' : 'Unpin'} ${PANEL_LABEL[side]}`;
   if (typeof applyToolbarDock === 'function') applyToolbarDock(false);
   try { localStorage.setItem(`automata-${side}-pinned`, unpinned ? '0' : '1'); } catch (e) { }
+  return true;
+}
+
+export function togglePanelPin(side) {
+  if ($(side)) setPanelPinned(side, !isPanelPinned(side));
 }
 
 // The two names the `onclick=` attributes and bridge.js know it by.
@@ -3011,6 +3033,10 @@ export function openSettingsModal() {
   if ($('set-node-clearance')) $('set-node-clearance').value = c.render.nodeClearance ?? 12;
   // Same "absent means on" rule as the four above: a workspace or settings
   // profile written before windowing existed must not open with it switched off.
+  // Not out of `c`: a preference about which sidebars this reader likes on
+  // screen is not a property of the machine, and `App.config` is deep-copied
+  // into every workspace tab and written into the `.json`. See panel-state.js.
+  if ($('set-shake-minimize')) $('set-shake-minimize').checked = shakeToMinimizeEnabled();
   if ($('set-cull-offscreen')) $('set-cull-offscreen').checked = c.render.cullOffscreen !== false;
   if ($('set-zoom-lod')) $('set-zoom-lod').checked = c.render.zoomLOD !== false;
   if ($('set-large-machine-auto')) $('set-large-machine-auto').checked = c.render.largeMachineAuto !== false;
@@ -3296,6 +3322,7 @@ export function applySettings() {
   if ($('set-smart-labels')) c.render.smartLabels = $('set-smart-labels').checked;
   if ($('set-avoid-overlap')) c.render.avoidNodeOverlap = $('set-avoid-overlap').checked;
   if ($('set-animate-layout')) c.render.animateLayout = $('set-animate-layout').checked;
+  if ($('set-shake-minimize')) setShakeToMinimizeEnabled($('set-shake-minimize').checked);
   if ($('set-cull-offscreen')) c.render.cullOffscreen = $('set-cull-offscreen').checked;
   if ($('set-zoom-lod')) c.render.zoomLOD = $('set-zoom-lod').checked;
   if ($('set-large-machine-auto')) c.render.largeMachineAuto = $('set-large-machine-auto').checked;
