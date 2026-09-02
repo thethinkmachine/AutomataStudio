@@ -1344,3 +1344,425 @@ body.panel-resizing .rpanel {
     transition: none;
   }
 }
+
+/* ─── FLOATING PANEL SECTIONS ───
+   A section pulled out of its panel and put over the canvas. See
+   js/panel-float.js for why these are windows rather than modals: the whole
+   point is that the canvas underneath stays live, so there is no scrim, no
+   focus trap and no z-index anywhere near the modal layer.
+
+   The layer sits inside .canvas-area, which is a rounded well with
+   overflow:hidden — so a window dragged to the edge is clipped by the same
+   curve the diagram is, and can never be dropped on top of a panel. */
+.panel-float-layer {
+  /* One radius, and the title bar's is this less the 1px border it sits
+     inside — two literals would drift the moment either is tuned. */
+  --float-radius: 10px;
+  --float-radius-inner: 9px;
+  position: absolute;
+  inset: 0;
+  /* The layer is not a surface, it is a coordinate space. Only the windows in
+     it take the pointer, so every canvas gesture survives everywhere a window
+     is not actually drawn. */
+  pointer-events: none;
+  z-index: 60;
+}
+
+.panel-float {
+  position: absolute;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  /* `clip` rather than `hidden`, with a margin: the resize bands straddle the
+     border, and `hidden` would cut off their outer half. The `hidden` line
+     first is the fallback — an engine without `overflow-clip-margin` keeps the
+     rounded corners and loses only the outside of the bands, which still
+     leaves them grabbable from within.
+
+     The catch, and it is the whole reason --float-radius exists below: a clip
+     margin inflates the clip rectangle, and an inflated clip is a *rectangle*.
+     The parent's border-radius stops clipping its children altogether, so any
+     child with a background of its own paints its square corners straight into
+     the window's rounded ones. Only the title bar has one, and it now carries
+     its own radius rather than borrowing the parent's clip. */
+  overflow: hidden;
+  overflow: clip;
+  overflow-clip-margin: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--float-radius);
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--overlay-ring);
+}
+
+/* ─── what a section loses by leaving ───
+   The left panel's section rules are scoped to `.lpanel` — `.lpanel .sec.lp-collapsible`,
+   `.lpanel .lp-section-header`, `.lpanel .lp-section-body` — so a section that
+   is no longer inside that element stops matching every one of them, and the
+   unscoped `.sec { padding: 12px 14px }` starts matching instead. The window
+   came out with an unpadded, barely-hittable title strip inside a box with
+   12px of stray padding around it.
+
+   Restated here against `.panel-float` rather than by unscoping the originals:
+   the panel's own rules are about a section in a stack of siblings, and a
+   window has no siblings. The right panel's equivalents are already unscoped
+   and need nothing. */
+/* Padding only. The section's own `border-bottom` — the rule separating it
+   from the sibling below it in a stack — is already replaced by the window's
+   `border` shorthand above, which is both later in this file and matches at
+   the same specificity as `.sec`. Restating it as `none` here at (0,2,0) beat
+   that shorthand and left every left-panel window with three sides. */
+.panel-float.sec,
+.panel-float.sec.lp-collapsible {
+  padding: 0;
+}
+
+/* The header is the title bar: it stops scrolling with the content, keeps the
+   padding that makes it a hit target, and takes the grab cursor the move
+   gesture promises. */
+.panel-float > .lp-section-header,
+.panel-float > .rp-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sec-head-gap);
+  padding: var(--sec-head-pad);
+  user-select: none;
+  flex: 0 0 auto;
+  cursor: grab;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  /* Its own, because the parent's no longer clips it — see the note on
+     `overflow-clip-margin` above. Without this the title bar's square fill
+     squares off both top corners of every window. */
+  border-radius: var(--float-radius-inner) var(--float-radius-inner) 0 0;
+  /* Or a touch drag pans the canvas under the window instead of moving it. */
+  touch-action: none;
+}
+
+/* Collapsed, the title bar *is* the window — there is no body under it to be
+   square against, so it takes the radius on all four corners rather than
+   leaving two of them over the rounded ground below. */
+.panel-float.collapsed > .lp-section-header,
+.panel-float.collapsed > .rp-section-header {
+  border-radius: var(--float-radius-inner);
+  border-bottom-color: transparent;
+}
+
+/* The title and the count chip are not separately grabbable — without this the
+   cursor flickers back to the inherited one as the pointer crosses them. The
+   two real controls below set their own. */
+.panel-float > .lp-section-header *,
+.panel-float > .rp-section-header * {
+  cursor: inherit;
+}
+
+/* The reorder grip has nothing to reorder out here — a window has no
+   neighbours and no position in a stack. The whole title bar is the drag
+   handle now, so a second one would be a control that looks like it does
+   something different and does not. */
+.panel-float .panel-sec-grip {
+  display: none;
+}
+
+/* Minimize and close, in that order, which is the order every desktop puts
+   them in — and the arrow is inserted before the button in the markup because
+   *that* is the right order in the panel, where the button means "pull out".
+   `order` is what lets one DOM serve both without a second insertion path. */
+.panel-float > .lp-section-header .lp-toggle-arrow,
+.panel-float > .rp-section-header .rp-toggle-arrow {
+  order: 1;
+  cursor: pointer;
+  /* It is the minimize control now, not a disclosure hint on a row that is
+     itself clickable — so it needs to be a target rather than a mark. */
+  box-sizing: content-box;
+  padding: 3px;
+  margin: -3px;
+  border-radius: 3px;
+  opacity: 1;
+  transition: background var(--transition-fast), opacity var(--transition-fast);
+}
+
+.panel-float > .lp-section-header .lp-toggle-arrow:hover,
+.panel-float > .rp-section-header .rp-toggle-arrow:hover {
+  background: var(--surface3);
+}
+
+.panel-float > .lp-section-header .panel-float-btn,
+.panel-float > .rp-section-header .panel-float-btn {
+  order: 2;
+  cursor: pointer;
+}
+
+.panel-float > .lp-section-header .sec-lbl {
+  margin-bottom: 0;
+  flex: 1;
+  font-size: var(--sec-label-size);
+  letter-spacing: var(--sec-label-tracking);
+}
+
+.panel-float.is-float-moving > .lp-section-header,
+.panel-float.is-float-moving > .rp-section-header {
+  cursor: grabbing;
+}
+
+
+/* A collapsed window is its title strip — the "minimized" state, and it is the
+   collapse the section already had rather than a second thing to persist.
+
+   `!important` because applyGeom() writes the height inline and must go on
+   holding the size to come back to; the alternative is reaching into
+   toggleLPSection to clear and restore it, which is how a stored size gets
+   lost. There is no body under the strip, so the resize grip's band goes too —
+   and it takes both selectors, because `.panel-float.sec.lp-collapsible` above
+   is (0,3,0) and a plainer rule here would lose to its padding shorthand on
+   every left-panel section. */
+.panel-float.collapsed,
+.panel-float.collapsed.sec.lp-collapsible {
+  height: auto !important;
+}
+
+
+.panel-float.is-float-moving,
+.panel-float.is-float-sizing {
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--accent-border);
+  user-select: none;
+}
+
+/* Inside a window the lists have the window's height to fill, not the panel's
+   cap — otherwise pulling States Q out to read it would leave it the same
+   short strip it was in the rail, with the rest of the window blank under it.
+   The body becomes the column that hands its leftover height down, and the
+   list is the one child that takes it; the search box above it keeps its own
+   height. `min-height: 0` on both, or a flex child refuses to shrink below its
+   content and the window scrolls instead of the list. */
+.panel-float > .lp-section-body,
+.panel-float > .rp-section-body {
+  padding: 8px 14px 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* One axis. A box that scrolls on one computes the other from `visible` to
+     `auto`, and one wide row — a long transition label, a formula — would make
+     the whole window a sideways scroller and cut every row off at both edges.
+     The same rule `.sm-log` and the machine card follow. */
+  overflow: hidden auto;
+}
+
+/* Exactly one child of a window takes its spare height, and the registry says
+   which — see `sectionFill` in js/panel-sections.js. Everything else keeps the
+   height it was drawn for, so resizing a window grows the list or the trace log
+   and leaves the fields, rows and transport controls above it alone. Two
+   flexible children would share the slack between them, which is how a resize
+   turns into a layout nobody designed. */
+.panel-float .panel-float-fill {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  /* And the slack goes to the *bottom* of the region, not into its rows.
+     `.chips` is a wrapping flex container, and a wrapped flex container's
+     default `align-content: stretch` shares spare height out among its lines —
+     so growing the window turned every alphabet chip into a tall pill with a
+     letter floating in the middle of it. Only multi-line flex containers and
+     grids read this, so it is a no-op for the column lists and the log, which
+     is why it can sit on the shared rule rather than on `.chips`: the next
+     section to declare a wrapping region gets it right without knowing to.
+
+     `align-items` is deliberately *not* set alongside it — on the column lists
+     that would shrink each row to its content width instead of the full
+     width of the panel. */
+  align-content: flex-start;
+}
+
+/* And the rest keep theirs. Without this a column of `flex` children still
+   shrinks them all to fit a window smaller than their content, which is the
+   same stretching seen from the other end.
+
+   `:not(.panel-float-fill)` is load-bearing, and it is the cascade deciding
+   rather than the words: this selector and the fill rule above are both
+   (0,2,0), so at equal specificity the later one wins and the fill region
+   came out `flex: 1 0 auto` — grow yes, shrink never. With its `max-height`
+   already lifted, a States Q window shorter than its list then refused to
+   shrink the list at all and the *body* scrolled instead, taking the search
+   box and the trace log's transport controls off the top of the window. That
+   is precisely the failure the note over `.lp-section-body`'s `min-height: 0`
+   says this must not have. Excluding the fill costs one pseudo-class and
+   leaves each rule saying only what it means. */
+.panel-float > .lp-section-body > *:not(.panel-float-fill),
+.panel-float > .rp-section-body > *:not(.panel-float-fill) {
+  flex-shrink: 0;
+}
+
+/* ─── the pop-out / close button ───
+   One control with two jobs, because they are the same job read in the two
+   directions: out of the panel, and back into it. It is also the whole of the
+   feature's keyboard access — a tear-off is a pointer gesture, and without a
+   button there would be no other way in. */
+.panel-float-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity .12s, background .12s, color .12s;
+}
+
+.lp-section-header:hover .panel-float-btn,
+.lp-section-header:focus-within .panel-float-btn,
+.rp-section-header:hover .panel-float-btn,
+.rp-section-header:focus-within .panel-float-btn {
+  opacity: 1;
+}
+
+/* A window's close button is not an affordance to go looking for. */
+.panel-float .panel-float-btn {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .panel-float-btn {
+    opacity: 1;
+  }
+}
+
+.panel-float-btn:hover {
+  background: var(--surface3);
+  color: var(--text2);
+}
+
+.panel-float .panel-float-btn:hover {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.panel-float-btn:focus-visible {
+  opacity: 1;
+  outline: 1px solid var(--accent-border-strong);
+  outline-offset: 1px;
+}
+
+/* ─── the resize edges ───
+   Eight invisible bands straddling the window's border, which is how every
+   desktop does it: the cursor is the affordance and nothing is drawn. What was
+   here before was a single visible corner grip — resizable from one direction
+   only, so widening a window from the left meant moving it first, and drawn as
+   a gradient that read as a decoration bolted onto a card rather than as the
+   edge of a window.
+
+   Only on a window: in the panel a section's height is the panel's business.
+   And not on a collapsed one, which is a title strip with nothing to resize —
+   written as `:not(.collapsed)` on this rule rather than as a `.collapsed`
+   override, because both are (0,2,0) and at equal specificity the last rule in
+   the file wins, so the override was silently doing nothing. */
+.panel-float-resize {
+  display: none;
+}
+
+.panel-float:not(.collapsed) > .panel-float-resize {
+  display: block;
+  position: absolute;
+  /* Or a touch drag pans the canvas under the window instead of sizing it. */
+  touch-action: none;
+  z-index: 2;
+}
+
+.panel-float:not(.collapsed) > .panel-float-resize-n,
+.panel-float:not(.collapsed) > .panel-float-resize-s {
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.panel-float:not(.collapsed) > .panel-float-resize-e,
+.panel-float:not(.collapsed) > .panel-float-resize-w {
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.panel-float:not(.collapsed) > .panel-float-resize-n { top: -5px; }
+.panel-float:not(.collapsed) > .panel-float-resize-s { bottom: -5px; }
+.panel-float:not(.collapsed) > .panel-float-resize-e { right: -5px; }
+.panel-float:not(.collapsed) > .panel-float-resize-w { left: -5px; }
+
+/* The corners are last and sit above the edges, so the diagonal wins wherever
+   two bands overlap — which is the whole of the corner. 5px of each band is
+   outside the border and 3px inside, so the window's own scrollbar keeps most
+   of its width. */
+.panel-float:not(.collapsed) > .panel-float-resize-ne,
+.panel-float:not(.collapsed) > .panel-float-resize-nw,
+.panel-float:not(.collapsed) > .panel-float-resize-se,
+.panel-float:not(.collapsed) > .panel-float-resize-sw {
+  width: 14px;
+  height: 14px;
+  z-index: 3;
+}
+
+.panel-float:not(.collapsed) > .panel-float-resize-ne { top: -5px; right: -5px; cursor: nesw-resize; }
+.panel-float:not(.collapsed) > .panel-float-resize-nw { top: -5px; left: -5px; cursor: nwse-resize; }
+.panel-float:not(.collapsed) > .panel-float-resize-se { bottom: -5px; right: -5px; cursor: nwse-resize; }
+.panel-float:not(.collapsed) > .panel-float-resize-sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
+
+/* ─── the emptied panel ───
+   A blank rail under a tab strip reads as a bug rather than as the layout the
+   reader chose, so it says what happened and offers the way back. */
+.panel-float-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 18px;
+  text-align: center;
+}
+
+.panel-float-empty p {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: .74rem;
+  line-height: 1.5;
+  color: var(--text3);
+}
+
+.panel-float-return {
+  font-size: .72rem;
+  padding: 5px 12px;
+}
+
+/* ─── desktop and Electron only ───
+   Not a breakpoint but a device test, and the same one js/panel-float.js asks:
+   a window wants a pointer that can hover a 6px resize band and hold a title
+   bar precisely, and below the breakpoint the panels are bottom sheets with no
+   room to float anything over. A tablet in landscape passes a width test and
+   fails every other one, so all three are asked — and the `not all and` form
+   is the negation of the whole conjunction, which is what "anything less than
+   a desktop" means.
+
+   js/panel-float.js suspends the feature without forgetting what the reader
+   chose on a desktop, so this is the belt to its braces: it covers the frame
+   between a resize and the pass that answers it, and it takes the pop-out
+   button off a device that has no use for it. */
+@media not all and (min-width: 901px) and (hover: hover) and (pointer: fine) {
+  .panel-float-layer {
+    display: none;
+  }
+
+  .panel-float-btn {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-float-btn {
+    transition: none;
+  }
+}

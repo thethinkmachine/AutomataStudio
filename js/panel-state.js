@@ -108,3 +108,43 @@ export function resetPanelTabs() {
 }
 
 resetPanelTabs();
+
+// ── shake to minimize ─────────────────────────────────────────────
+//
+// Shaking a floating section's window puts both sidebars away, and shaking it
+// again brings them back — Aero Shake, aimed at the two things a window is
+// competing with for the screen. The gesture itself lives in
+// [js/panel-shake.js](panel-shake.js); what is here is only whether it is
+// armed, because that is a *preference about the panels* and this is where
+// those live.
+//
+// It goes in `localStorage` rather than in `App.config` for the same reason
+// the pinned flags, the tab side and the section order do: `App.config` is
+// deep-copied into every workspace tab and written into the `.json`, so a
+// setting kept there would travel to the next reader of a file and quietly
+// re-answer a question they had answered for themselves. Which sidebars this
+// person likes on screen is not a property of the machine.
+//
+// Absent means **on**, the rule the four `render.*` flags follow: a profile
+// written before the gesture existed must not read as "the reader turned it
+// off".
+
+const SHAKE_KEY = 'automata-shake-minimize';
+
+export function shakeToMinimizeEnabled() {
+  try {
+    return localStorage.getItem(SHAKE_KEY) !== '0';
+  } catch (e) {
+    return true;
+  }
+}
+
+export function setShakeToMinimizeEnabled(on) {
+  try {
+    // Stored only when it is *off*, so the default stays the absence of a
+    // preference and can still be changed for a reader who never expressed one.
+    if (on) localStorage.removeItem(SHAKE_KEY);
+    else localStorage.setItem(SHAKE_KEY, '0');
+  } catch (e) { /* private mode; correct for this session either way */ }
+  return !!on;
+}

@@ -34,12 +34,24 @@
 // does it, so the whole feature adds nothing to `bridge.js`.
 
 import {
-  PANEL_SECTIONS, PANEL_SECTION_SIDES, declaredSectionIds,
-  sectionOrder, setSectionOrder, moveSection
+  PANEL_SECTIONS, PANEL_SECTION_SIDES, declaredSectionIds, dockedSectionIds,
+  isSectionFloating, sectionOrder, setSectionOrder, moveSection
 } from './panel-sections.js';
+import {
+  commitFloatGeom, dockSection, floatLayerRect, floatSection, floatingEnabled,
+  moveFloatTo, syncPanelEmpty
+} from './panel-float.js';
 
 /** Pointer travel, in px, before a press becomes a drag. */
 const DRAG_THRESHOLD = 3;
+
+/**
+ * How far outside the panel a reorder drag has to travel before it becomes a
+ * tear-off. Generous, because the two gestures start identically: everything
+ * up to this point is still a reorder, and a reader nudging a section past the
+ * panel's edge on the way up or down must not have it come away in their hand.
+ */
+const TEAR_THRESHOLD = 40;
 
 /** How close to a scrolling panel's edge before the drag scrolls it. */
 const EDGE_SCROLL_ZONE = 28;
@@ -108,12 +120,23 @@ export function applySectionOrder(side) {
   const container = containerOf(side);
   if (!container) return;
   const current = domOrder(side);
-  const want = sectionOrder(side);
-  if (want.every((id, i) => current[i] === id)) return;
-  want.forEach(id => {
-    const el = sectionEl(id);
-    if (el) container.appendChild(el);
-  });
+  // The docked ones only. A floating section is not a child of the container,
+  // so `domOrder` already leaves it out — but `sectionOrder` does not, and
+  // appending it here would yank every window back into its panel on the next
+  // reorder, a collapse, or a machine switch.
+  const want = dockedSectionIds(side);
+  if (want.length !== current.length || !want.every((id, i) => current[i] === id)) {
+    want.forEach(id => {
+      const el = sectionEl(id);
+      if (el) container.appendChild(el);
+    });
+  }
+  // Outside the early return, because a grip's label counts the sections that
+  // are *in the panel* — "Reorder Simulate, 2 of 3" — and floating one changes
+  // that count without changing the order of what is left. Docking the last
+  // section back is the case that made it visible: the DOM already agrees with
+  // the order, so the pass returned before relabelling and every grip in the
+  // panel went on claiming a total that was one short.
   syncGripLabels(side);
 }
 
@@ -156,20 +179,34 @@ function announce(message) {
 
 function endDrag(commit) {
   if (!drag) return;
-  const { side, el, grip, pointerId } = drag;
+  const { side, el, grip, pointerId, floating } = drag;
   const container = containerOf(side);
 
-  if (!commit && drag.before !== undefined) {
-    // Escape puts it back exactly where it was, which is the whole reason
-    // the gesture remembers anything at all.
-    if (drag.before) container.insertBefore(el, drag.before);
-    else container.appendChild(el);
+  if (!commit) {
+    // Escape puts it back exactly where it was, which is the whole reason the
+    // gesture remembers anything at all — and once the drag can also change
+    // which *parent* the section has, "where it was" is a parent as well as a
+    // neighbour.
+    if (floating) dockSection(el.id);
+    if (drag.before !== undefined) {
+      if (drag.before) container.insertBefore(el, drag.before);
+      else container.appendChild(el);
+    }
+  } else if (floating) {
+    // The move painted every frame and wrote nothing; this is the one write.
+    commitFloatGeom(el.id, drag.geom);
   }
 
   el.classList.remove('is-reordering');
   if (container) container.classList.remove('has-reorder');
   try { grip.releasePointerCapture(pointerId); } catch (e) { /* already gone */ }
   drag = null;
+
+  if (commit && floating) {
+    syncGripLabels(side);
+    announce(`${sectionName(side, el.id)} floating over the canvas`);
+    return;
+  }
 
   const order = domOrder(side);
   if (commit) {
@@ -198,6 +235,82 @@ function moveToPointer(y) {
   }
 }
 
+/**
+ * How far outside its panel the pointer has travelled, in px. Zero while it is
+ * still inside.
+ *
+ * Horizontal only. A section dragged off the top or bottom of a tall panel is
+ * being reordered past its neighbours, which is the gesture the reader is
+ * already in; only leaving *sideways* is unambiguous about wanting out.
+ */
+function outsideBy(container, x) {
+  if (!container || typeof container.getBoundingClientRect !== 'function') return 0;
+  const r = container.getBoundingClientRect();
+  // A panel with no width is an *unpinned* one that has auto-closed, which
+  // happens mid-drag the moment the pointer leaves it. Reporting "inside" here
+  // told the gesture the window had been brought back over its panel, so it
+  // docked itself into a rail that is `visibility: hidden` — the window simply
+  // vanished. There is no panel to be inside of, so it is outside.
+  if (!r.width) return Infinity;
+  if (x < r.left) return r.left - x;
+  if (x > r.right) return x - r.right;
+  return 0;
+}
+
+/**
+ * Turns a reorder into a window, mid-gesture.
+ *
+ * The pointer keeps its grip on the same spot of the same element — `grabDX`
+ * and `grabDY` were measured at the press — so nothing jumps under the hand at
+ * the moment the section comes away. The section keeps the size it had in the
+ * panel: pulling something out should not also resize it.
+ */
+function tearOff(e) {
+  const { side, el } = drag;
+  const rect = floatLayerRect();
+  const w = Math.round(drag.grabW || 280);
+  const h = Math.round(drag.grabH || 260);
+  const g = floatSection(el.id, {
+    x: e.clientX - rect.left - drag.grabDX,
+    y: e.clientY - rect.top - drag.grabDY,
+    w, h
+  });
+  if (!g) return false;
+  drag.floating = true;
+  drag.geom = g;
+  el.classList.remove('is-reordering');
+  const container = containerOf(side);
+  if (container) container.classList.remove('has-reorder');
+  syncPanelEmpty(side);
+  return true;
+}
+
+/**
+ * Whether a panel is showing enough of itself to drop a window back into.
+ *
+ * An unpinned panel is a hover rail whose children are `visibility: hidden`,
+ * and docking into one puts the section somewhere the reader cannot see and
+ * did not ask for. Belt to `outsideBy`'s braces: that answers about the
+ * pointer, this about the panel.
+ */
+function panelIsOpen(side) {
+  const panel = document.getElementById(side);
+  if (!panel || typeof panel.getBoundingClientRect !== 'function') return true;
+  const r = panel.getBoundingClientRect();
+  return !r || !('width' in r) || r.width > 8;
+}
+
+/** And back: dropping a window over its own panel re-docks it. */
+function tearBack() {
+  const { side, el } = drag;
+  dockSection(el.id);
+  drag.floating = false;
+  drag.geom = null;
+  el.classList.add('is-reordering');
+  const container = containerOf(side);
+  if (container) container.classList.add('has-reorder');
+}
+
 /** Keeps a long panel usable: dragging near an edge scrolls it. */
 function edgeScroll(container, y) {
   const r = container.getBoundingClientRect();
@@ -208,7 +321,11 @@ function edgeScroll(container, y) {
 function onPointerMove(e) {
   if (!drag) return;
   if (!drag.active) {
-    if (Math.abs(e.clientY - drag.startY) < DRAG_THRESHOLD) return;
+    // Either axis, now: a press that travels sideways out of the panel is a
+    // tear-off, and gating the whole gesture on vertical travel would mean a
+    // reader pulling straight out got nothing until they wobbled.
+    if (Math.abs(e.clientY - drag.startY) < DRAG_THRESHOLD &&
+      Math.abs(e.clientX - drag.startX) < DRAG_THRESHOLD) return;
     drag.active = true;
     drag.el.classList.add('is-reordering');
     const container = containerOf(drag.side);
@@ -216,6 +333,25 @@ function onPointerMove(e) {
   }
   e.preventDefault();
   const container = containerOf(drag.side);
+
+  if (drag.floating) {
+    // Back over the panel it came from is the way to put it back, and the
+    // midpoint walk below then shows where it will land — the same affordance
+    // read in the other direction, for free.
+    if (container && outsideBy(container, e.clientX) === 0 && panelIsOpen(drag.side)) {
+      tearBack();
+      moveToPointer(e.clientY);
+      return;
+    }
+    const rect = floatLayerRect();
+    drag.geom = moveFloatTo(drag.el.id,
+      e.clientX - rect.left - drag.grabDX,
+      e.clientY - rect.top - drag.grabDY) || drag.geom;
+    return;
+  }
+
+  if (floatingEnabled() && outsideBy(container, e.clientX) > TEAR_THRESHOLD && tearOff(e)) return;
+
   if (container) edgeScroll(container, e.clientY);
   moveToPointer(e.clientY);
 }
@@ -238,11 +374,30 @@ function onKeyDown(e) {
 
 function beginDrag(side, el, grip, e) {
   if (drag) endDrag(true);
+  // Where in the section the reader took hold of it, so a tear-off can keep
+  // that spot under the pointer instead of snapping the window to a corner.
+  let grabDX = 12;
+  let grabDY = 12;
+  let grabW = 280;
+  let grabH = 260;
+  if (typeof el.getBoundingClientRect === 'function') {
+    const r = el.getBoundingClientRect();
+    if (r.width) {
+      grabDX = e.clientX - r.left;
+      grabDY = e.clientY - r.top;
+      grabW = r.width;
+      grabH = r.height;
+    }
+  }
   drag = {
     side, el, grip,
     pointerId: e.pointerId,
+    startX: e.clientX,
     startY: e.clientY,
     active: false,
+    floating: false,
+    geom: null,
+    grabDX, grabDY, grabW, grabH,
     before: el.nextSibling
   };
   try { grip.setPointerCapture(e.pointerId); } catch (err) { /* mouse still works */ }
@@ -270,13 +425,18 @@ function installGrip(side, id) {
   grip.addEventListener('click', ev => { ev.stopPropagation(); ev.preventDefault(); });
   grip.addEventListener('pointerdown', ev => {
     if (ev.button !== undefined && ev.button !== 0) return;
+    // A floating section has no position in the panel to reorder. Deliberately
+    // *without* stopping propagation, so the press reaches the header's own
+    // move gesture and the grip goes on being what it looks like — the thing
+    // you take hold of to move this section around.
+    if (isSectionFloating(id)) return;
     ev.stopPropagation();
     ev.preventDefault();
     beginDrag(side, el, grip, ev);
   });
   grip.addEventListener('keydown', ev => {
     const delta = ev.key === 'ArrowUp' ? -1 : ev.key === 'ArrowDown' ? 1 : 0;
-    if (!delta) return;
+    if (!delta || isSectionFloating(id)) return;
     ev.preventDefault();
     ev.stopPropagation();
     // Moved past the *visible* neighbours, not the declared ones: stepping
@@ -325,6 +485,15 @@ export function initPanelSectionReorder() {
   // the same reason StateMate's Escape ladder listens in the capture phase.
   document.addEventListener('keydown', onKeyDown, true);
 }
+
+/**
+ * The two questions a tear-off drag asks about a panel, exposed for the tests.
+ *
+ * Both were one bug: an unpinned panel auto-closes the moment the pointer
+ * leaves it, which is *during* the drag that is pulling a section out of it,
+ * and a zero-width panel used to answer "the pointer is inside me".
+ */
+export const _dropTests = { outsideBy, panelIsOpen };
 
 /** Whether a reorder gesture is in flight — the tests' way in. */
 export function isReorderingSections() {
