@@ -198,6 +198,12 @@ function displayGeo(geo, dt) {
     const angle = dragging
       ? snapTrack(key + ':a', geo.angle)
       : easeTrack(key + ':a', geo.angle, dt, true);
+    // A settled track returns its target unchanged (see easeTrack), so this is
+    // exactly "nothing about this loop is mid-glide" — and the derived values
+    // below would all rebuild to what `geo` already holds. Returning it saves an
+    // object spread and a path rebuild per settled edge per frame, which on a
+    // drag is every edge but the handful the moved state touched.
+    if (angle === geo.angle) return geo;
     // The label and the handle are derived from the eased angle rather than
     // eased themselves, so they stay welded to the arc they annotate instead of
     // drifting across it at their own rate.
@@ -220,6 +226,9 @@ function displayGeo(geo, dt) {
   // list — its jumps are its own, not the curve's.
   const lx = easeTrack(key + ':lx', geo.lx, dt);
   const ly = easeTrack(key + ':ly', geo.ly, dt);
+  // Same early-out as the self-loop branch above: all three tracks settled means
+  // the drawn edge is the laid-out edge, so there is nothing to build.
+  if (crvVal === geo.crvVal && lx === geo.lx && ly === geo.ly) return geo;
   const edge = crvVal === geo.crvVal ? null : edgeGeometryFor(geo.from, geo.to, crvVal);
   if (!edge) return { ...geo, lx, ly };
   return {
@@ -229,6 +238,32 @@ function displayGeo(geo, dt) {
     mx: edge.mx, my: edge.my,
     d: edge.d
   };
+}
+
+// ── geometry writes ──
+//
+// A drag moves one state out of two hundred, and updateFastDOM below writes
+// every node's coordinates on every frame regardless: at 200 states that is
+// ~2,800 setAttribute calls per frame to move one circle. An attribute write is
+// not free even when the value is identical — it re-parses the value and
+// invalidates style for the element — so the cheapest write is the one not
+// made.
+//
+// The value last written is cached **on the element**, under a name no
+// attribute uses, so there is exactly one place that writes and caches and the
+// two cannot fall out of step. That is the whole reason this is a helper rather
+// than a guard at each call site: the cache is only safe while every writer of
+// these attributes goes through it. This is the same rule `__labelKey` and
+// `__labelX` already follow for the parts that are expensive to rebuild — see
+// the note in CLAUDE.md about `sync*` writing classes unconditionally, which
+// still holds: classes are toggled from canvas.js behind the renderer's back,
+// and geometry is not.
+function setGeoAttr(el, name, value) {
+  const k = '__v_' + name;
+  if (el[k] === value) return false;
+  el[k] = value;
+  el.setAttribute(name, value);
+  return true;
 }
 
 function isEdgeSelected(ts) {
@@ -369,8 +404,8 @@ function syncCurveHandle(edgeGrp, key, geo, selected) {
     parts.handle = null;
   }
   if (parts.handle) {
-    parts.handle.setAttribute('cx', geo.mx);
-    parts.handle.setAttribute('cy', geo.my);
+    setGeoAttr(parts.handle, 'cx', geo.mx);
+    setGeoAttr(parts.handle, 'cy', geo.my);
   }
 }
 
@@ -380,8 +415,8 @@ function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
   const selected = isEdgeSelected(ts);
 
   edgeGrp.classList.toggle('sel-t', selected);
-  parts.pathEl.setAttribute('d', geo.d);
-  parts.hitEl.setAttribute('d', geo.d);
+  setGeoAttr(parts.pathEl, 'd', geo.d);
+  setGeoAttr(parts.hitEl, 'd', geo.d);
 
   // Zoomed far enough out a label is a two-pixel smear: it costs a text node, a
   // shaping pass and a raster, and says nothing. `lod` takes the same branch as
@@ -439,8 +474,8 @@ function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
     for (const tspan of parts.textEl.childNodes) tspan.setAttribute('x', geo.lx);
     edgeGrp.__labelX = geo.lx;
   }
-  parts.textEl.setAttribute('x', geo.lx);
-  parts.textEl.setAttribute('y', geo.ly);
+  setGeoAttr(parts.textEl, 'x', geo.lx);
+  setGeoAttr(parts.textEl, 'y', geo.ly);
 
   const pillRows = ts.map(t => transLabelParts(t, beginnerMode));
   const pillKey = pillRows.map(row => row.map(p => `${p.role}:${p.text}`).join('\u0002')).join('\u0001');
@@ -480,7 +515,7 @@ function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
     });
     edgeGrp.__pillKey = pillKey;
   }
-  parts.pillEl.setAttribute('transform', `translate(${geo.lx} ${geo.ly})`);
+  setGeoAttr(parts.pillEl, 'transform', `translate(${geo.lx} ${geo.ly})`);
   parts.pillEl.classList.toggle('edge-pill-beginner', beginnerMode);
   parts.textEl.style.display = pillMode ? 'none' : '';
   parts.pillEl.style.display = pillMode ? '' : 'none';
@@ -520,7 +555,7 @@ function syncStartArrow(g) {
   // overhang (see the <defs> in index.html) it would drive the point into the
   // node and leave a stub on the ring.
   const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
-  a.setAttribute('d', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah} ${s.y}`);
+  setGeoAttr(a, 'd', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah} ${s.y}`);
   // Always first in paint order, behind every edge.
   if (a !== g.firstChild) g.insertBefore(a, g.firstChild);
 }
@@ -589,6 +624,49 @@ export function renderTransitions(view = cullViewport()) {
 // the __parts references the renderer already holds rather than a querySelector
 // per node per frame, and the pass drops its collision stages above
 // COLLISION_BUDGET_STATES so a very large machine still drags at frame rate.
+// ── one paint per frame ──
+//
+// updateFastDOM used to be called straight from the pointermove handler, so the
+// whole layout pass and every DOM write ran once per *event* rather than once
+// per frame. Pointer events are not frame-aligned: a 1000Hz mouse, or any frame
+// where the browser queues two moves behind a long task, ran the pass two or
+// three times to paint one frame — and only the last of those was ever seen.
+//
+// The model still moves synchronously with the pointer, so a gesture reads the
+// positions it just wrote; only the paint is deferred to the next frame.
+//
+// The pending flag is a boolean rather than the rAF handle because a
+// synchronous requestAnimationFrame — which is what the test DOM installs —
+// runs the callback *before* the handle is assigned, so a handle-based guard
+// would latch on at 0 and refuse every later frame. anim.js makes the same
+// allowance for the same stub.
+let fastDOMPending = false;
+let fastDOMStatesMoved = false;
+
+export function scheduleFastDOM({ statesMoved = true } = {}) {
+  // Whether states moved is OR-ed across everything coalesced into this frame:
+  // a settle frame folded in with a drag frame is still a drag frame.
+  if (statesMoved) fastDOMStatesMoved = true;
+  if (fastDOMPending) return;
+  fastDOMPending = true;
+  const run = () => {
+    fastDOMPending = false;
+    const moved = fastDOMStatesMoved;
+    fastDOMStatesMoved = false;
+    updateFastDOM({ statesMoved: moved });
+  };
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run);
+  else run();
+}
+
+/** Paints now, dropping any frame this scheduler was holding. */
+export function flushFastDOM() {
+  fastDOMPending = false;
+  const moved = fastDOMStatesMoved;
+  fastDOMStatesMoved = false;
+  updateFastDOM({ statesMoved: moved });
+}
+
 export function updateFastDOM({ statesMoved = true } = {}) {
   const dt = beginPass();
   // The drag path, so the minimap tracks a state while it is being moved
@@ -625,28 +703,28 @@ export function updateFastDOM({ statesMoved = true } = {}) {
     // sub-label is not drawn at all, and the name then belongs on the centre
     // line rather than raised to make room for something that is not there.
     const hasSub = !!p.sub;
-    p.circle.setAttribute('cx', s.x);
-    p.circle.setAttribute('cy', s.y);
+    setGeoAttr(p.circle, 'cx', s.x);
+    setGeoAttr(p.circle, 'cy', s.y);
     if (p.ring) {
-      p.ring.setAttribute('cx', s.x);
-      p.ring.setAttribute('cy', s.y);
+      setGeoAttr(p.ring, 'cx', s.x);
+      setGeoAttr(p.ring, 'cy', s.y);
     }
-    p.label.setAttribute('x', s.x);
-    p.label.setAttribute('y', hasSub ? s.y - App.config.render.textMargin : s.y);
+    setGeoAttr(p.label, 'x', s.x);
+    setGeoAttr(p.label, 'y', hasSub ? s.y - App.config.render.textMargin : s.y);
     if (grp.__labelX !== s.x) {
       for (const tspan of p.label.childNodes) tspan.setAttribute('x', s.x);
       grp.__labelX = s.x;
     }
     if (p.sub) {
-      p.sub.setAttribute('x', s.x);
-      p.sub.setAttribute('y', s.y + App.config.render.mooreTextMargin);
+      setGeoAttr(p.sub, 'x', s.x);
+      setGeoAttr(p.sub, 'y', s.y + App.config.render.mooreTextMargin);
     }
     if (p.priority) {
       const bx = s.x + R * 0.88, by = s.y + R * 0.62;
-      p.priority.bg.setAttribute('x', bx - 10);
-      p.priority.bg.setAttribute('y', by - 8);
-      p.priority.text.setAttribute('x', bx);
-      p.priority.text.setAttribute('y', by);
+      setGeoAttr(p.priority.bg, 'x', bx - 10);
+      setGeoAttr(p.priority.bg, 'y', by - 8);
+      setGeoAttr(p.priority.text, 'x', bx);
+      setGeoAttr(p.priority.text, 'y', by);
     }
   }
 
@@ -655,7 +733,7 @@ export function updateFastDOM({ statesMoved = true } = {}) {
     const s = stateById.get(App.startId);
     if (s) {
       const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
-      startArrow.setAttribute('d', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah} ${s.y}`);
+      setGeoAttr(startArrow, 'd', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah} ${s.y}`);
     }
   }
 
@@ -665,18 +743,18 @@ export function updateFastDOM({ statesMoved = true } = {}) {
     const geo = displayGeo(ctx.geo.get(key), dt);
     if (!geo) continue;
 
-    p.pathEl.setAttribute('d', geo.d);
-    p.hitEl.setAttribute('d', geo.d);
-    p.textEl.setAttribute('x', geo.lx);
-    p.textEl.setAttribute('y', geo.ly);
-    p.pillEl.setAttribute('transform', `translate(${geo.lx} ${geo.ly})`);
+    setGeoAttr(p.pathEl, 'd', geo.d);
+    setGeoAttr(p.hitEl, 'd', geo.d);
+    setGeoAttr(p.textEl, 'x', geo.lx);
+    setGeoAttr(p.textEl, 'y', geo.ly);
+    setGeoAttr(p.pillEl, 'transform', `translate(${geo.lx} ${geo.ly})`);
     if (edgeGrp.__labelX !== geo.lx) {
       for (const tspan of p.textEl.childNodes) tspan.setAttribute('x', geo.lx);
       edgeGrp.__labelX = geo.lx;
     }
     if (p.handle) {
-      p.handle.setAttribute('cx', geo.mx);
-      p.handle.setAttribute('cy', geo.my);
+      setGeoAttr(p.handle, 'cx', geo.mx);
+      setGeoAttr(p.handle, 'cy', geo.my);
     }
   }
 
@@ -801,8 +879,8 @@ function syncStateNode(g, s, showAccepts, lod = false) {
   g.classList.toggle('unreachable-st', cls === 'unreachable');
   g.classList.toggle('dead-st', cls === 'dead');
 
-  parts.circle.setAttribute('cx', s.x);
-  parts.circle.setAttribute('cy', s.y);
+  setGeoAttr(parts.circle, 'cx', s.x);
+  setGeoAttr(parts.circle, 'cy', s.y);
   parts.circle.setAttribute('r', R);
 
   if (isAcc && !parts.ring) {
@@ -818,8 +896,8 @@ function syncStateNode(g, s, showAccepts, lod = false) {
     parts.ring = null;
   }
   if (parts.ring) {
-    parts.ring.setAttribute('cx', s.x);
-    parts.ring.setAttribute('cy', s.y);
+    setGeoAttr(parts.ring, 'cx', s.x);
+    setGeoAttr(parts.ring, 'cy', s.y);
     parts.ring.setAttribute('r', R - 5);
   }
 
@@ -835,8 +913,8 @@ function syncStateNode(g, s, showAccepts, lod = false) {
   const isMoore = hasMoore && !lod;
   const isParity = hasParity && !lod;
   const hasSub = isMoore;
-  parts.label.setAttribute('x', s.x);
-  parts.label.setAttribute('y', hasSub ? s.y - App.config.render.textMargin : s.y);
+  setGeoAttr(parts.label, 'x', s.x);
+  setGeoAttr(parts.label, 'y', hasSub ? s.y - App.config.render.textMargin : s.y);
   // As above: the tspans say the state's name, which a move does not change.
   // The LOD key is a value of its own rather than an empty name, so returning
   // from a zoomed-out view rebuilds the tspans instead of matching a stale key.
@@ -868,8 +946,8 @@ function syncStateNode(g, s, showAccepts, lod = false) {
   if (parts.sub) {
     // Unconditional, per the sync* rule — a "what did we draw last time" cache
     // here would strand a priority on the node after the condition changed.
-    parts.sub.setAttribute('x', s.x);
-    parts.sub.setAttribute('y', s.y + App.config.render.mooreTextMargin);
+    setGeoAttr(parts.sub, 'x', s.x);
+    setGeoAttr(parts.sub, 'y', s.y + App.config.render.mooreTextMargin);
     parts.sub.classList.remove('parity');
     parts.sub.textContent = s.output !== undefined && s.output !== '' ? s.output : '—';
   }
@@ -894,13 +972,13 @@ function syncStateNode(g, s, showAccepts, lod = false) {
   if (parts.priority) {
     const bx = s.x + R * 0.88;
     const by = s.y + R * 0.62;
-    parts.priority.bg.setAttribute('x', bx - 10);
-    parts.priority.bg.setAttribute('y', by - 8);
+    setGeoAttr(parts.priority.bg, 'x', bx - 10);
+    setGeoAttr(parts.priority.bg, 'y', by - 8);
     parts.priority.bg.setAttribute('width', 20);
     parts.priority.bg.setAttribute('height', 16);
     parts.priority.bg.setAttribute('rx', 8);
-    parts.priority.text.setAttribute('x', bx);
-    parts.priority.text.setAttribute('y', by);
+    setGeoAttr(parts.priority.text, 'x', bx);
+    setGeoAttr(parts.priority.text, 'y', by);
     parts.priority.text.textContent = String(statePriority(s));
   }
 

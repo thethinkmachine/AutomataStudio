@@ -7,7 +7,7 @@ import { includeLayoutBounds, resolveNodeOverlaps } from './geometry.js';
 import { markDirty, snapshot } from './history.js';
 import { clearActiveNoteHighlight, dragSelectedNotesTo, endNoteResize, getNote, includeNoteBounds, resizeNoteTo, resolveNotePos, syncNoteSelectionClasses } from './notes.js';
 import { getWorkspaceData } from './persistence.js';
-import { currentLayoutContext, makeSVG, renderAll, repaintForCamera, updateFastDOM, updateLPanel, updateRPanel, withFullRender } from './render.js';
+import { currentLayoutContext, makeSVG, renderAll, repaintForCamera, scheduleFastDOM, updateFastDOM, updateLPanel, updateRPanel, withFullRender } from './render.js';
 import { $, App } from './state.js';
 import { createState, deleteState, getState, getTransition, hideContextMenu, newId, newTId, openTransModal } from './states-transitions.js';
 import { Change, emit } from './store.js';
@@ -84,7 +84,7 @@ export function beginTouchCameraGesture() {
   const pair = touchPair();
   if (pair.length < 2) return;
   const a = pair[0], b = pair[1];
-  const r = wrap.getBoundingClientRect();
+  const r = wrapRect();
   const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
   const startZoom = App.cam.z;
@@ -106,7 +106,7 @@ export function updateTouchCameraGesture() {
   const pair = touchPair();
   if (pair.length < 2) return;
   const a = pair[0], b = pair[1];
-  const r = wrap.getBoundingClientRect();
+  const r = wrapRect();
   const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
   const newZoom = clampZoom(touchCameraGesture.startZoom * distance / touchCameraGesture.startDistance);
@@ -164,8 +164,52 @@ wrap.addEventListener('pointermove', captureTouchPointerMove, { capture: true })
 wrap.addEventListener('pointerup', captureTouchPointerEnd, { capture: true });
 wrap.addEventListener('pointercancel', captureTouchPointerEnd, { capture: true });
 
-export function svgPt(e) {
+// ── the canvas well's box ──
+//
+// `getBoundingClientRect` on #canvas-wrap forces a synchronous layout flush
+// against the whole diagram — the same 8.4ms that renderExampleCard's guard
+// exists for. Every pointermove during a drag read it at least twice: once in
+// svgPt to convert the pointer, and once in checkAutoPan, which runs
+// *immediately after* updateFastDOM has written a few hundred SVG attributes.
+// A read straight after a write is the one ordering that cannot be answered
+// from the browser's cache, so that second call re-laid the entire SVG on
+// every frame of every drag.
+//
+// This is the same arrangement panel-float.js already makes for the same
+// element and the same reason: cache the box, and let a ResizeObserver say when
+// it has moved. Every way the well can move changes its *size* — a viewport
+// resize, a panel pinned or dragged wider, the toolbar collapsing, a sheet
+// opening — so size is a sufficient signal. With no observer to arm it (the
+// test DOM) it measures every time, exactly as it did before.
+let wellRect = null;
+let wellRectArmed = false;
+
+/** Drops the cached box, so the next read measures. */
+export function invalidateWellRect() { wellRect = null; }
+
+export function wrapRect() {
+  if (wellRectArmed && wellRect) return wellRect;
   const r = wrap.getBoundingClientRect();
+  const out = { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+  if (wellRectArmed) wellRect = out;
+  return out;
+}
+
+if (typeof ResizeObserver === 'function' && wrap && typeof wrap.getBoundingClientRect === 'function') {
+  try {
+    new ResizeObserver(() => { wellRect = null; }).observe(wrap);
+    // A scroll moves the box without resizing it. The app does not scroll the
+    // document today, but a stale origin would put every pointer coordinate out
+    // by the scroll offset, which is far worse than the read it saves.
+    addEventListener('scroll', () => { wellRect = null; }, { passive: true, capture: true });
+    wellRectArmed = true;
+  } catch (err) {
+    wellRectArmed = false;
+  }
+}
+
+export function svgPt(e) {
+  const r = wrapRect();
   return { x: (e.clientX - r.left - App.cam.x) / App.cam.z, y: (e.clientY - r.top - App.cam.y) / App.cam.z };
 }
 // ── How far out the camera may go ──
@@ -271,7 +315,7 @@ export function normalizeWheelDeltas(e) {
 }
 
 export function wheelZoomAt(clientX, clientY, dy) {
-  const r = wrap.getBoundingClientRect();
+  const r = wrapRect();
   const mx = clientX - r.left, my = clientY - r.top;
   const sensitivity = (App.config.zoom.step || 0.1) * 0.01;
   const factor = Math.exp(-dy * sensitivity);
@@ -427,7 +471,7 @@ export function startAutoPanLoop() {
   if (autoPanRAF) return;
   const step = () => {
     if (!(App.dragOffsets || App.marquee || App.dividerDraft || App.dragDividerEndpoint) || !lastPointerClient) { autoPanRAF = null; return; }
-    const rect = wrap.getBoundingClientRect();
+    const rect = wrapRect();
     const vec = computeAutoPanVector(lastPointerClient.clientX, lastPointerClient.clientY, rect);
     if (vec.x || vec.y) {
       App.cam.x += vec.x; App.cam.y += vec.y;
@@ -592,7 +636,7 @@ export function handlePointerMove(e) {
     }
     dragSelectedNotesTo(pt);
     dragSelectedDividersTo(pt);
-    if (typeof updateFastDOM === 'function') updateFastDOM(); else renderAll();
+    if (typeof scheduleFastDOM === 'function') scheduleFastDOM(); else renderAll();
     checkAutoPan(e);
     return;
   }
@@ -622,7 +666,7 @@ export function handlePointerMove(e) {
       if (dx || dy) {
         const angle = Math.atan2(dy, dx);
         grp.ts.forEach(t => t.loopAngle = angle);
-        if (typeof updateFastDOM === 'function') updateFastDOM(); else renderAll();
+        if (typeof scheduleFastDOM === 'function') scheduleFastDOM(); else renderAll();
       }
       return;
     }
@@ -633,7 +677,7 @@ export function handlePointerMove(e) {
       const cx = (from.x + to.x) / 2, cy = (from.y + to.y) / 2;
       const proj = (pt.x - cx) * px + (pt.y - cy) * py;
       grp.ts.forEach(t => t.curve = proj);
-      if (typeof updateFastDOM === 'function') updateFastDOM(); else renderAll();
+      if (typeof scheduleFastDOM === 'function') scheduleFastDOM(); else renderAll();
     }
     return;
   }
@@ -644,7 +688,7 @@ export function handlePointerMove(e) {
 }
 
 export function checkAutoPan(e) {
-  const rect = wrap.getBoundingClientRect();
+  const rect = wrapRect();
   const vec = computeAutoPanVector(e.clientX, e.clientY, rect);
   if (vec.x || vec.y) startAutoPanLoop(); else stopAutoPan();
 }
