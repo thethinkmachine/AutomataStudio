@@ -512,6 +512,14 @@ const singleTapeDeterminism = {
 
 const turing = {
   family: 'turing',
+  // Building blocks are a Turing-family capability, and the reason is
+  // mechanical rather than a matter of taste. A block is inlined, and control
+  // leaves it along an exit edge that must consume nothing — `Σ / Σ, S`, read
+  // anything, put it back, do not move. Only a machine with a stay move and a
+  // wildcard write can express that; anywhere else the exit would eat a symbol
+  // and inlining would change the language. Declared rather than tested for by
+  // name, so a sixth tape machine gets it by joining the family.
+  supportsBlocks: true,
   // The tape-shape setting, offered to exactly the machines usesTwoWayTape()
   // reads it for. ITM and LBA override it away: ITM is two-way by being what
   // it is, and LBA is bounded at both ends by definition, so neither has a

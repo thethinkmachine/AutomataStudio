@@ -388,7 +388,9 @@
 .si:hover .lp-row-btn,
 .si:focus-within .lp-row-btn,
 .ti:hover .lp-row-btn,
-.ti:focus-within .lp-row-btn {
+.ti:focus-within .lp-row-btn,
+.blib-row:hover .lp-row-btn,
+.blib-row:focus-within .lp-row-btn {
   opacity: 1;
 }
 
@@ -1765,4 +1767,127 @@ body.panel-resizing .rpanel {
   .panel-float-btn {
     transition: none;
   }
+}
+
+/* The Blocks list: every block in the machine, at every depth. The path under
+   the name is what tells two blocks called `add` in different ALUs apart. */
+.blist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+/* A <button>, not a <div onclick>. The States Q and Transitions δ rows learned
+   this the hard way (see rowActions in js/render.js): a row that opens something
+   has to be reachable with Tab and firable with Enter, and a div is neither. */
+.bi {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.bi:hover {
+  background: var(--bg3, var(--bg));
+}
+
+.bi:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* The level the reader is standing on, so the list says where they are as well
+   as where they could go. */
+.bi.is-current {
+  background: var(--bg3, var(--bg));
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.bi-name {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bi-sub {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── the block library ──
+   Saved definitions, under the blocks this machine already has. Two lists in
+   one section rather than a dialog of their own: "the blocks in this machine"
+   and "the blocks I can drop into it" are the same question asked twice, and a
+   fourteenth overlay to answer the second one would be a surface to find rather
+   than a list to read. */
+/* Both of these are `display: flex`, which outranks the user agent's
+   `[hidden] { display: none }` — the same rule .scope-bar and .sm-panel need,
+   and the reason an empty Library heading would otherwise sit in every panel
+   that has never saved a block. */
+.blist[hidden],
+.blib-head[hidden] {
+  display: none;
+}
+
+.blib-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 2px 4px;
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.blib-head::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* A row is a div holding two buttons, never a button holding a button: nesting
+   them is invalid and the inner one stops being reachable. Same shape as .si
+   and .ti, which is why it borrows .lp-row-acts and .lp-row-btn wholesale. */
+.blib-row {
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+}
+
+.blib-row:hover {
+  background: var(--bg3, var(--bg));
+}
+
+.blib-row .bi {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
+.blib-row .bi:hover {
+  background: none;
+}
+
+.blib-row .lp-row-acts {
+  padding-right: 6px;
 }

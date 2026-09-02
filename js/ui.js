@@ -1,7 +1,10 @@
 import { utmStepBack, utmStepFwd, utmToggleAuto } from './algorithms-fa.js';
 import { renderGamma } from './alphabet.js';
 import { settleAll } from './anim.js';
-import { applyCamera, clampZoom, clearEdgeDirectionHighlight, clearSelection, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, minZoom, nudgeSelected, pasteClipboard, selectAllStates, toggleSnapToGrid, wrap } from './canvas.js';
+import { applyCamera, clampZoom, clearEdgeDirectionHighlight, clearSelection, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, minZoom, nudgeSelected, pasteClipboard, selectAllStates, selectionCount, toggleSnapToGrid, wrap } from './canvas.js';
+import { getBlock, removeBlock } from './blocks.js';
+import { viewStates } from './view-graph.js';
+import { leaveBlockScope, syncScopeBar } from './scope.js';
 import { isQuickSettingsOpen, positionQuickSettings, refreshQuickSettings } from './quick-settings.js';
 import { includeDividerBounds, removeDividers, updateShapeToolButton } from './dividers.js';
 import { markDirty, redo, snapshot, snapshotSettings, trimStowedHistory, undo } from './history.js';
@@ -9,7 +12,7 @@ import { renderMinimap, scheduleMinimap } from './minimap.js';
 import { anyModalOpen, askConfirm, closeModal, registerModal, showOverlay } from './modal.js';
 import { includeNoteBounds, pruneNoteAnchorsExcluding, removeNotes } from './notes.js';
 import { CARD_AUTO_HIDE_MS, restartAutosaveTimer, saveBackupChecked, saveJSON, saveWorkspace, saveWorkspaceById } from './persistence.js';
-import { renderAll, updateLPanel, updateRPanel } from './render.js';
+import { renderAll, updateBlockList, updateLPanel, updateRPanel } from './render.js';
 import { filterList } from './panel-list.js';
 import {
   getActivePanelTab, getTabSide, isPanelTabActive,
@@ -531,6 +534,14 @@ export function createTab(name) {
   // App.meta; this is what redraws the info card from it, so a tab's card
   // does not linger over the next tab's diagram.
   emit(Change.META);
+  // And its own scope and its own blocks. Both paths here call renderAll()
+  // directly and never `emit(Change.GRAPH)`, so every GRAPH subscriber that is
+  // not renderAll itself is skipped — which is why the breadcrumb vanished on a
+  // reload: the boot restore comes through here, App.scope was restored
+  // correctly, and nothing ever told the bar to draw it. Exactly the rule the
+  // comment above states for Change.META.
+  if (typeof syncScopeBar === 'function') syncScopeBar();
+  if (typeof updateBlockList === 'function') updateBlockList();
   saveBackupChecked();
 }
 
@@ -573,6 +584,14 @@ export function switchTab(id) {
   // App.meta; this is what redraws the info card from it, so a tab's card
   // does not linger over the next tab's diagram.
   emit(Change.META);
+  // And its own scope and its own blocks. Both paths here call renderAll()
+  // directly and never `emit(Change.GRAPH)`, so every GRAPH subscriber that is
+  // not renderAll itself is skipped — which is why the breadcrumb vanished on a
+  // reload: the boot restore comes through here, App.scope was restored
+  // correctly, and nothing ever told the bar to draw it. Exactly the rule the
+  // comment above states for Change.META.
+  if (typeof syncScopeBar === 'function') syncScopeBar();
+  if (typeof updateBlockList === 'function') updateBlockList();
   saveBackupChecked();
 }
 
@@ -954,6 +973,11 @@ document.addEventListener('keydown', e => {
         pruneNoteAnchorsExcluding([...App.selectedStates], [...removedTransIds]);
       }
       App.selectedStates.forEach(id => {
+        // A selected block id deletes the whole subtree behind the box — every
+        // state at every depth, and the records that grouped them. The selection
+        // model is deliberately one set for both kinds (a block is a node you
+        // click, drag and delete), so this is the one branch that has to know.
+        if (getBlock(id)) { removeBlock(id); return; }
         App.states = App.states.filter(s => s.id !== id);
         App.transitions = App.transitions.filter(t => t.from !== id && t.to !== id);
         if (App.startId === id) App.startId = null;
@@ -983,9 +1007,17 @@ document.addEventListener('keydown', e => {
     } else if (typeof AUX_VIEWS !== 'undefined' && AUX_VIEWS.includes(App.view)) {
       // Escape from an auxiliary view returns to the canvas.
       closeAuxView();
-    } else {
+    } else if (selectionCount() || App.transFrom) {
       clearSelection();
       App.transFrom = null; clearTempLine(); setTool('pointer');
+    } else if (!leaveBlockScope()) {
+      // Last in the ladder, deliberately. Escape already dismisses a menu,
+      // closes an aux view, cancels a half-drawn transition and clears the
+      // selection; going out one level of a block is what is left when none of
+      // those applied, so drilling in never costs the reader the key's other
+      // jobs. leaveBlockScope answers false at the top level, and this falls
+      // through to the same reset it always did.
+      setTool('pointer');
     }
   }
   if (e.key.startsWith('Arrow') && (App.selectedStates.size || App.selectedNotes.size || App.selectedDividers.size) && App.view === 'build') {
@@ -1527,12 +1559,19 @@ export function autoFitLoadedMachine() {
 // ── Keep the diagram framed as the canvas area changes shape ──
 // (panel resize/pin/unpin, fullscreen toggle, browser window resize)
 export function isMachineFullyVisible(vw, vh) {
-  if (!App.states.length) return false;
+  // What is drawn, and each node's own extent. On App.states this asked whether
+  // the whole machine fitted while the reader was inside a block looking at four
+  // states of it — so the answer was about a diagram that is not on screen, and
+  // a block's box was measured as a point.
+  const drawn = viewStates();
+  if (!drawn.length) return false;
   const R_PAD = App.config.radius + 4;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  App.states.forEach(s => {
-    minX = Math.min(minX, s.x - R_PAD); minY = Math.min(minY, s.y - R_PAD);
-    maxX = Math.max(maxX, s.x + R_PAD); maxY = Math.max(maxY, s.y + R_PAD);
+  drawn.forEach(s => {
+    const hw = s.box ? s.box.w / 2 : R_PAD;
+    const hh = s.box ? s.box.h / 2 : R_PAD;
+    minX = Math.min(minX, s.x - hw); minY = Math.min(minY, s.y - hh);
+    maxX = Math.max(maxX, s.x + hw); maxY = Math.max(maxY, s.y + hh);
   });
   if (typeof includeNoteBounds === 'function') {
     includeNoteBounds((x0, y0, x1, y1) => {
@@ -2187,6 +2226,73 @@ export function statusRectIn(wrapRect) {
   return { left: box.left - wrapRect.left, top: box.top - wrapRect.top, width: box.width, height: box.height };
 }
 
+/**
+ * The breadcrumb's box, so the info pill dodges it — and its own top offset, so
+ * it dodges a top-docked toolbar.
+ *
+ * It arrived with a hard-coded `top: 52px` and a z-index below every other
+ * canvas overlay, which put it underneath the toolbar whenever the toolbar was
+ * docked top — the two want exactly the same strip. The toolbar is the one with
+ * a dock the reader chose, so the bar moves.
+ */
+export function positionScopeBar(wrapRect, toolbarRect) {
+  const el = $('scope-bar');
+  if (!el) return null;
+  // The info pill leads the strip and the bar follows it, rather than the two
+  // contending for the same corner. Handing the pill's corner search a bar to
+  // route around looked like the tidier answer and is the wrong one twice: the
+  // pill's first choice *is* top-left, so every drill-in threw the machine's
+  // description to the far side of the canvas and back on the way out; and the
+  // bar is measured on the frame its own offset is written, so a box that has
+  // not been laid out yet reports zero and is not an obstacle at all — which
+  // is the state the two were actually colliding in. Sharing the strip
+  // left-to-right needs neither to move.
+  const left = SCOPE_BAR_LEFT + infoPillWidth();
+  el.style.setProperty('--scope-bar-left', `${left}px`);
+  const base = SCOPE_BAR_TOP;
+  // The bar leads the top strip from the left, so what stands on it is anything
+  // overlapping that end of the strip — a top dock, and equally a left dock,
+  // which is a tall column in exactly the corner the bar now starts from. The
+  // test was written for a centred bar and measured a band around the midpoint,
+  // which a left-docked toolbar passes through without ever touching it.
+  const box = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+  const width = (box && box.width) || SCOPE_BAR_MIN_W;
+  const clash = toolbarRect && toolbarRect.top < base + SCOPE_BAR_H
+    && toolbarRect.left < left + width
+    && toolbarRect.left + toolbarRect.width > left;
+  const top = clash ? toolbarRect.top + toolbarRect.height + OVERLAY_GAP : base;
+  el.style.setProperty('--scope-bar-top', `${top}px`);
+  // An obstacle only while it is actually showing crumbs. `hidden` alone is not
+  // the whole test: the bar is emptied and hidden together, and a bar with
+  // nothing in it occupies nothing whether or not the attribute is set.
+  if (el.hidden || !el.childNodes || !el.childNodes.length) return null;
+  if (!box || !box.width || !box.height) return null;
+  return { left: box.left - wrapRect.left, top: box.top - wrapRect.top, width: box.width, height: box.height };
+}
+
+// Mirrors the `top` and `left` fallbacks in css/canvas.css, and the bar's own
+// height, which is only needed to decide whether a docked toolbar is standing
+// on it. SCOPE_BAR_MIN_W stands in only before the bar has been laid out — the
+// clash test reads its real width whenever there is one.
+const SCOPE_BAR_TOP = 12;
+const SCOPE_BAR_LEFT = 12;
+const SCOPE_BAR_H = 28;
+const SCOPE_BAR_MIN_W = 160;
+
+/**
+ * How much of the top-left strip the info pill has taken, gap included — zero
+ * when it is not showing, so a machine with no description gives the bar the
+ * whole edge. Measured rather than assumed: the pill is a 24px circle when the
+ * machine is described and a wider dashed label when it is not, and hard-coding
+ * either leaves the bar overlapping in the other case.
+ */
+function infoPillWidth() {
+  const btn = $('canvas-info-btn');
+  if (!btn || btn.hidden || !btn.getBoundingClientRect) return 0;
+  const box = btn.getBoundingClientRect();
+  return box && box.width ? box.width + OVERLAY_GAP : 0;
+}
+
 // Places the visible members of the stack in the chosen corner, stacking
 // upward from the bottom edge (or downward from the top).
 export function layoutCanvasOverlays(wrapRect, toolbarBox) {
@@ -2246,7 +2352,11 @@ export function layoutCanvasOverlays(wrapRect, toolbarBox) {
 
   if (map) map.dataset.corner = `${corner.y}-${corner.x}`;
 
-  layoutCanvasInfo(rect, [toolbarRectIn(App.toolbarDock, rect, box), statusRectIn(rect), ...placed]);
+  const toolbarRect = toolbarRectIn(App.toolbarDock, rect, box);
+  // The breadcrumb is an overlay like any other: it has to clear the toolbar,
+  // and the info pill has to clear it.
+  const scopeRect = positionScopeBar(rect, toolbarRect);
+  layoutCanvasInfo(rect, [toolbarRect, statusRectIn(rect), scopeRect, ...placed]);
 
   // The popover anchors off the corner stamped above, so it has to follow the
   // stack when the toolbar redocks or the panel resizes underneath it.

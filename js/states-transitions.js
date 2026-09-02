@@ -8,6 +8,7 @@ import { Change, emit } from './store.js';
 import { counterBottomViolation, hasStateOutput, hasTransitionOutput, isAnyPDA, isCounterMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
 import { isMultiTape, machineDeterminism, machineStoreLabels, transitionHasField } from './machines/index.js';
 import { applyMachineSwitch } from './view.js';
+import { viewStates } from './view-graph.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  STATE MANAGEMENT
@@ -53,8 +54,9 @@ export function showContextMenu(kind, x, y) {
   // the two StateMate items and a rule, and a stale height here means a menu
   // opened near the bottom of the screen quietly loses its last entries.
   const smRows = kind === 'divider' ? 0 : 66;
-  const maxX = kind === 'edge' ? 260 : (kind === 'note' || kind === 'divider') ? 240 : 220;
-  const maxY = (kind === 'edge' ? 190 : kind === 'note' ? 240 : kind === 'divider' ? 210 : 150) + smRows;
+  const maxX = kind === 'edge' ? 260 : (kind === 'note' || kind === 'divider') ? 240 : kind === 'block' ? 250 : 220;
+  const maxY = (kind === 'edge' ? 190 : kind === 'note' ? 240 : kind === 'divider' ? 210
+    : kind === 'block' ? 200 : 150) + smRows;
   m.style.left = Math.max(8, Math.min(x, innerWidth - maxX)) + 'px';
   m.style.top = Math.max(8, Math.min(y, innerHeight - maxY)) + 'px';
 }
@@ -118,12 +120,26 @@ export function populateTransitionModal(t) {
 
   const fromSel = $('m-from');
   const toSel = $('m-to');
+  // The states on screen, not every state in the machine. Inside a building
+  // block the two are very different lists — a CPU is three thousand states —
+  // and a From/To menu offering all of them is one you cannot find anything in.
+  // Ports are derived rather than owned, so there is nothing there to wire to.
+  // ensureSelectValue below still restores a value from outside the list, which
+  // is what keeps editing an edge that crosses a boundary from losing its end.
+  // Real states only. `viewStates()` also holds the block boxes and the scope's
+  // ports, and neither is something a transition can end on: picking a box put
+  // `to: "b1"` on a transition, where `b1` names no state the machine has — it
+  // was saved to the file, counted in the Transitions δ list, and drawn nowhere,
+  // because the projection has no endpoint to resolve. A state is the node kind
+  // with no `kind` at all, which is the same test updateLPanel uses.
+  const pickable = viewStates().filter(s => s.kind === undefined);
+  const options = pickable.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
   if (fromSel) {
-    fromSel.innerHTML = App.states.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    fromSel.innerHTML = options;
     if (t?.from) ensureSelectValue(fromSel, t.from);
   }
   if (toSel) {
-    toSel.innerHTML = App.states.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    toSel.innerHTML = options;
     if (t?.to) ensureSelectValue(toSel, t.to);
   }
 

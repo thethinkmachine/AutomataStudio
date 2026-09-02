@@ -1,7 +1,7 @@
 import { animEnabled, beginPass, claimGroup, dropTrack, easeTrack, endPass, requestSettle, setSettlePainter, snapTrack } from './anim.js';
-import { applyEdgeDirectionHighlight, clearEdgeDirectionHighlight, clearSelection, onStateDown, wrap } from './canvas.js';
+import { applyEdgeDirectionHighlight, clearEdgeDirectionHighlight, clearSelection, onPortDown, resetPortPlacement, onStateDown, wrap } from './canvas.js';
 import { renderDividers } from './dividers.js';
-import { PILL_GAP, PILL_HEIGHT, PILL_ROW_H, buildLayoutContext, edgeGeometryFor, estimatePillLabelSize, estimateTextLabelSize, pillPartWidth, selfLoopLabelPoint, selfLoopPath } from './geometry.js';
+import { PILL_GAP, PILL_HEIGHT, PILL_ROW_H, buildLayoutContext, edgeGeometryFor, estimatePillLabelSize, estimateTextLabelSize, pillPartWidth, selfLoopLabelPoint, selfLoopPath, startNodeId } from './geometry.js';
 import { commit, snapshot } from './history.js';
 import { setListItems } from './panel-list.js';
 import { cullNeedsRepaint, cullViewport, cullingActive, edgeLabelLOD, invalidateCull, rectHasPoint, stateLabelLOD, suspendCulling } from './viewport.js';
@@ -9,6 +9,11 @@ import { scheduleMinimap } from './minimap.js';
 import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
 import { $, App, OmegaAcceptance, R, SVG_NS, edgeLabelsHidden, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, statePriority, usesParityPriorities, wrapStateLabelsOn } from './state.js';
+import { BLOCK_STRIP_H, blockPreviewGraph, blockPreviewKey, getNode, viewEdgeGroup, viewStates } from './view-graph.js';
+import { machineSupportsBlocks } from './machines/index.js';
+import { allBlocks } from './blocks-ui.js';
+import { thumbBounds, thumbEdgePairs, thumbEdgePath, thumbEdgeSegments, thumbFit, thumbNodeRadius } from './graph-thumb.js';
+import { enterBlockScope } from './scope.js';
 import { edgeTipFor, getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
 import { Change, changed, emit, subscribe } from './store.js';
 import { createMemo, reactiveRoot } from './reactive.js';
@@ -21,6 +26,7 @@ import { escapeHtml, hasStateOutput, isAnyPDA, isAnyTM, showStatus } from './uti
 // definition and the panel contents correct.
 subscribe(Change.GRAPH, renderAll);
 subscribe(Change.GRAPH, updateLPanel);
+subscribe(Change.GRAPH, updateBlockList);
 subscribe(Change.GRAPH, updateRPanel);
 subscribe(Change.CANVAS, renderAll);
 
@@ -122,9 +128,13 @@ export function repaintForCamera() {
 function edgeGroupFor(key) {
   const sep = key.indexOf('|');
   const fromId = key.slice(0, sep), toId = key.slice(sep + 1);
-  const ts = App.transitions.filter(t => t.from === fromId && t.to === toId);
-  if (!ts.length) return null;
-  const from = getState(fromId), to = getState(toId);
+  // Through the projection, not by filtering App.transitions: a drawn edge into
+  // a collapsed block is the pair `s5|b1`, which does not exist in the model,
+  // so the model cannot answer for it. A port edge has no transitions behind it
+  // at all and answers null, which is what makes it inert to every listener.
+  const ts = viewEdgeGroup(key);
+  if (!ts || !ts.length) return null;
+  const from = getNode(fromId), to = getNode(toId);
   if (!from || !to) return null;
   return { from, to, ts, grp: { from: fromId, to: toId, ts } };
 }
@@ -144,6 +154,9 @@ function edgeLabelSizeFor(ts) {
   // profile takes this branch too: on the diagrams it fires for, laying every
   // edge out around a box that is never drawn is the expensive half.
   if (edgeLabelsHidden()) return { w: 0, h: 0 };
+  // Same reasoning for a scope's boundary edges: they carry no rule, so they
+  // draw no label, so nothing should be laid out around one.
+  if (ts.every(t => t.port)) return { w: 0, h: 0 };
   if (style === 'pills' || style === 'beginner') {
     return estimatePillLabelSize(ts.map(t => transLabelParts(t, style === 'beginner')));
   }
@@ -238,6 +251,27 @@ function displayGeo(geo, dt) {
     mx: edge.mx, my: edge.my,
     d: edge.d
   };
+}
+
+/**
+ * Where the start arrow is drawn, for whichever node control starts at.
+ *
+ * One function because there are two callers — the full render and the drag
+ * path — and they had drifted: the drag path resolved `App.startId` against the
+ * drawn states and measured a circle's radius, so with the start state inside a
+ * block it found nothing at all and the arrow simply stayed where it was until
+ * the next full render. The half-width is asked of the node, since a block is a
+ * box and a state is a circle.
+ */
+function startArrowD(node) {
+  const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
+  const half = node.box ? node.box.w / 2 : R;
+  return `M ${node.x - half - al} ${node.y} L ${node.x - half - ah} ${node.y}`;
+}
+
+/** Is this drawn edge the boundary of a scope rather than a rule? */
+function isPortEdge(ts) {
+  return !ts.length || ts.every(t => t.port);
 }
 
 // ── geometry writes ──
@@ -422,7 +456,12 @@ function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
   // shaping pass and a raster, and says nothing. `lod` takes the same branch as
   // the "labels off" setting — the point of that branch being that a hidden
   // label is never built, rather than built and then covered up.
-  const hidden = lod || edgeLabelsHidden();
+  // A port edge is derived — it stands for the boundary of the scope rather
+  // than for a rule — so it has no transition behind it and nothing to say.
+  // Labelled anyway it reads `undefined → undefined, undefined`, which is what
+  // asking transLabel() for the label of a thing that is not a transition
+  // produces.
+  const hidden = lod || edgeLabelsHidden() || isPortEdge(ts);
   const pillMode = App.config.edgeLabelStyle === 'pills' || App.config.edgeLabelStyle === 'beginner';
   const beginnerMode = App.config.edgeLabelStyle === 'beginner';
 
@@ -447,13 +486,22 @@ function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
     // edgeTipFor(). Two renderings of one description, and this is the branch
     // where the labels are not drawn at all, so the tooltip is the only way
     // left to read the edge.
-    edgeGrp.setAttribute('data-tip', edgeTipFor(ts));
-    edgeGrp.setAttribute('aria-label', ts.map(t => transLabelDescriptive(t)).join('\n'));
+    if (isPortEdge(ts)) {
+      const say = 'The boundary of this block — control crosses here.';
+      edgeGrp.setAttribute('data-tip', say);
+      edgeGrp.setAttribute('aria-label', say);
+      edgeGrp.classList.add('port-edge');
+    } else {
+      edgeGrp.classList.remove('port-edge');
+      edgeGrp.setAttribute('data-tip', edgeTipFor(ts));
+      edgeGrp.setAttribute('aria-label', ts.map(t => transLabelDescriptive(t)).join('\n'));
+    }
 
     syncCurveHandle(edgeGrp, edgeGrp.getAttribute('data-edge'), geo, selected);
     return true;
   }
 
+  edgeGrp.classList.remove('port-edge');
   const lbls = ts.map(transLabel);
   // Rebuild the tspans only when the label text changes. Geometry changes —
   // a state moving, an edge bending — just reposition them, so dragging
@@ -530,7 +578,10 @@ function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
 // The start-state arrow is a single node, kept in the same registry style as
 // the edges so renderAll no longer has to re-query for it.
 function syncStartArrow(g) {
-  const s = App.startId ? getState(App.startId) : null;
+  // The drawn node, which is the block's box when the start state is inside a
+  // collapsed one — and nothing at all when it is in a branch of the tree the
+  // reader has not drilled into.
+  const s = App.startId ? getNode(startNodeId()) : null;
   if (!s) {
     if (App.domCache.startArrow) {
       App.domCache.startArrow.remove();
@@ -554,8 +605,7 @@ function syncStartArrow(g) {
   // while the head's overhang was a stroke width; against the marker's fixed
   // overhang (see the <defs> in index.html) it would drive the point into the
   // node and leave a stub on the ring.
-  const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
-  setGeoAttr(a, 'd', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah} ${s.y}`);
+  setGeoAttr(a, 'd', startArrowD(s));
   // Always first in paint order, behind every edge.
   if (a !== g.firstChild) g.insertBefore(a, g.firstChild);
 }
@@ -699,6 +749,11 @@ export function updateFastDOM({ statesMoved = true } = {}) {
     const s = stateById.get(id);
     if (!s) continue;
     const p = grp.__parts;
+    // A block and a port are boxes, and moving one is a handful of attribute
+    // writes on the box itself — never a rebuild of the preview inside it,
+    // which is keyed on the interior and cannot have changed by a drag out here.
+    if (grp.__kind === 'block') { moveBlockNode(grp, s); continue; }
+    if (grp.__kind === 'port') { movePortNode(grp, s); continue; }
     // Asked of the node rather than of the machine: zoomed out far enough the
     // sub-label is not drawn at all, and the name then belongs on the centre
     // line rather than raised to make room for something that is not there.
@@ -730,11 +785,13 @@ export function updateFastDOM({ statesMoved = true } = {}) {
 
   const startArrow = App.domCache.startArrow;
   if (startArrow && App.startId) {
-    const s = stateById.get(App.startId);
-    if (s) {
-      const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
-      setGeoAttr(startArrow, 'd', `M ${s.x - R - al} ${s.y} L ${s.x - R - ah} ${s.y}`);
-    }
+    // The *drawn* node, which is the block's box when the start state is inside
+    // a collapsed one. Resolved against App.startId the lookup simply missed —
+    // that id names a state this level does not draw — so the arrow sat where it
+    // was through the whole drag and only caught up on the next full render,
+    // which is what a click on the background happens to cause.
+    const s = getNode(startNodeId());
+    if (s) setGeoAttr(startArrow, 'd', startArrowD(s));
   }
 
   for (const [key, edgeGrp] of App.domCache.transitions) {
@@ -768,6 +825,43 @@ export function updateFastDOM({ statesMoved = true } = {}) {
   requestSettle();
 }
 
+// Geometry only, on the drag path. The preview inside a block is deliberately
+// untouched: it is keyed on the interior, and dragging the box changes nothing
+// about what is in it — rebuilding it per frame is exactly the cost the key
+// exists to avoid.
+function moveBlockNode(grp, node) {
+  const p = grp.__parts;
+  const w = node.box.w, h = node.box.h;
+  const x = node.x - w / 2, y = node.y - h / 2;
+  p.body.setAttribute('x', x);
+  p.body.setAttribute('y', y);
+  p.title.setAttribute('x', x + 8);
+  p.title.setAttribute('y', y + BLOCK_STRIP_H / 2 + 4);
+  p.count.setAttribute('x', x + w - 8);
+  p.count.setAttribute('y', y + BLOCK_STRIP_H / 2 + 4);
+  // The whole preview rides on one transform rather than being re-laid-out: it
+  // was drawn for the box at __previewAt, so moving the box moves it.
+  //
+  // The clip rect is deliberately NOT moved with it, and that was the bug that
+  // made a dragged block go blank. `clipPathUnits` defaults to `userSpaceOnUse`,
+  // and an element's own `transform` establishes the user space its `clip-path`
+  // is resolved in — so the translate below already carries the clip along with
+  // the preview. Writing the new position onto the rect as well moved it twice,
+  // and two boxes' worth of offset puts the clip clean off the block, which
+  // clips the whole interior away.
+  const at = grp.__previewAt;
+  if (at) p.preview.setAttribute('transform', `translate(${x - at.x} ${y - at.y})`);
+}
+
+function movePortNode(grp, node) {
+  const p = grp.__parts;
+  const w = node.box.w, h = node.box.h;
+  p.body.setAttribute('x', node.x - w / 2);
+  p.body.setAttribute('y', node.y - h / 2);
+  p.label.setAttribute('x', node.x);
+  p.label.setAttribute('y', node.y + 4);
+}
+
 // Break a state name into per-line words at underscore/space/hyphen
 // boundaries, e.g. "NEW_ACCOUNT_OPENED" -> ["NEW","ACCOUNT","OPENED"],
 // so long descriptive names stack inside the fixed-radius circle
@@ -775,7 +869,9 @@ export function updateFastDOM({ statesMoved = true } = {}) {
 // a single line untouched.
 export function splitStateLabel(name) {
   if (!wrapStateLabelsOn()) return [String(name)];
-  const parts = String(name).split(/[_\s-]+/).filter(Boolean);
+  // `/` joins a building block's name to its interior state's — `copy/scan` —
+  // so it wraps like the other separators rather than overflowing the circle.
+  const parts = String(name).split(/[_\s/-]+/).filter(Boolean);
   return parts.length > 1 ? parts : [String(name)];
 }
 
@@ -844,6 +940,13 @@ function createStateNode(id) {
     const toggleOpt = $('ctx-toggle-acc');
     const renameLbl = document.querySelector('#ctx-rename .ctx-label');
     if (toggleOpt) toggleOpt.style.display = acceptsAreShown() ? '' : 'none';
+    // Only a machine with a stay move can leave a block without consuming a
+    // symbol, so only those can have one at all (see machineSupportsBlocks).
+    // Offered on the others, the row led to a naming dialog and *then* a toast
+    // saying it was never possible — a refusal three steps after the click that
+    // should have been the answer.
+    const groupOpt = $('ctx-group-block');
+    if (groupOpt) groupOpt.style.display = machineSupportsBlocks() ? '' : 'none';
     if (renameLbl) renameLbl.textContent = (App.machine === 'Moore' || App.machine === 'Mealy') ? 'Configure' : 'Rename';
     showContextMenu('state', e.clientX, e.clientY);
   });
@@ -1001,29 +1104,353 @@ function syncStateNode(g, s, showAccepts, lod = false) {
   g.setAttribute('aria-label', stTitle);
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  BUILDING BLOCKS, AS NODES
+// ══════════════════════════════════════════════════════════════════
+// A block is drawn as what it contains: a box, a title strip across the top,
+// and under it the machine inside, drawn the way the minimap draws the whole
+// diagram. That is not decoration — it is how a reader tells the adder from the
+// multiplier at a glance, the same way they read the minimap.
+//
+// The geometry comes from js/graph-thumb.js, which the minimap also uses, so
+// the preview and the map cannot drift into two things that merely look alike.
+//
+// It is real SVG rather than a <canvas> in a <foreignObject>, and that is not a
+// preference: buildExportSVG rasterises through `img.src = blob:`, and an SVG
+// loaded *as an image* renders no foreignObject content at all — every block
+// would export as an empty box. Real elements also follow the theme and scale
+// with the zoom, which a rasterised thumbnail does not.
+
+function createBlockNode(id) {
+  const g = makeSVG('g');
+  g.classList.add('bn');
+  g.setAttribute('data-id', id);
+  g.setAttribute('data-block-id', id);
+  g.__kind = 'block';
+
+  const body = makeSVG('rect');
+  body.classList.add('bn-body');
+  g.appendChild(body);
+
+  // The preview is clipped to the body, and lives in its own group. That is
+  // load-bearing rather than tidy: everything inside it is rebuilt only when the
+  // interior changes, so a drag moves the box without touching a hundred child
+  // elements — which is what makes updateFastDOM affordable with blocks on
+  // screen.
+  const clip = makeSVG('clipPath');
+  clip.setAttribute('id', 'bn-clip-' + id);
+  const clipRect = makeSVG('rect');
+  clip.appendChild(clipRect);
+  const defs = $('canvas-defs');
+  (defs || g).appendChild(clip);
+
+  const preview = makeSVG('g');
+  preview.classList.add('bn-preview');
+  preview.setAttribute('clip-path', 'url(#bn-clip-' + id + ')');
+  const pvEdges = makeSVG('path');
+  pvEdges.classList.add('bn-pv-edges');
+  preview.appendChild(pvEdges);
+  const pvNodes = makeSVG('g');
+  pvNodes.classList.add('bn-pv-nodes');
+  preview.appendChild(pvNodes);
+  g.appendChild(preview);
+
+  // There is deliberately no filled title strip. It was a second fill laid over
+  // the body, and painting a rectangle on top of a rounded one is a shape
+  // problem with no good answer: square, it left pointed ears past the box's top
+  // corners; rounded to match, the two radii met in a visible notch. The title
+  // does not need a band behind it to read as a title — the box already frames
+  // it. BLOCK_STRIP_H survives as *reserved space*: the preview is clipped to
+  // start below it, so nothing is ever drawn under the name.
+  const title = makeSVG('text');
+  title.classList.add('bn-title');
+  g.appendChild(title);
+  const count = makeSVG('text');
+  count.classList.add('bn-count');
+  g.appendChild(count);
+
+  g.__parts = { body, title, count, preview, pvEdges, pvNodes, clip, clipRect };
+  g.__previewKey = null;
+
+  // Opening is decided on `pointerdown`, from two presses of our own, and NOT
+  // from the native `dblclick` — which never arrives here. onStateDown ends in
+  // `wrap.setPointerCapture(e.pointerId)`, and a captured pointer retargets the
+  // compatibility mouse events to the capturing element, so the second click and
+  // the `dblclick` are computed against `#canvas-wrap` rather than against this
+  // group. Two things followed: this listener never ran, and the canvas's own
+  // dblclick handler saw `e.target === wrap`, passed its "empty background"
+  // test, and created a state on top of the block being opened. js/panel-float.js
+  // records the same retargeting trap for the same reason.
+  g.addEventListener('pointerdown', e => {
+    const touch = (e.pointerType || 'mouse') === 'touch';
+    g.dataset.lastPointerType = e.pointerType || 'mouse';
+    const now = Date.now();
+    const near = g.__lastDownAt && now - g.__lastDownAt < DOUBLE_PRESS_MS;
+    g.__lastDownAt = now;
+    if (near && !touch && e.button === 0) {
+      g.__lastDownAt = 0;
+      e.preventDefault();
+      e.stopPropagation();
+      enterBlockScope(id);
+      return;
+    }
+    onStateDown(e, id);
+  });
+  g.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    App.ctxId = id;
+    App.ctxEdge = null;
+    App.ctxMode = 'block';
+    showContextMenu('block', e.clientX, e.clientY);
+  });
+  return g;
+}
+
+// The window in which two presses on a block mean "open it". The platform
+// default is ~500ms and this is the same gesture, judged by us because the
+// native event cannot reach the node — see createBlockNode.
+const DOUBLE_PRESS_MS = 450;
+
+// The body's corner radius. One shape now carries it, which is the point: see
+// createBlockNode for why there is no second filled shape on top of it.
+const BLOCK_RADIUS = 10;
+
+// How many drawn elements one preview may build. A block with three hundred
+// states in it says so on the strip and draws a readable sample rather than
+// three hundred dots nobody can tell apart.
+const PREVIEW_MAX_NODES = 120;
+
+function syncBlockNode(g, node, lod) {
+  const p = g.__parts;
+  const w = node.box.w, h = node.box.h;
+  const x = node.x - w / 2, y = node.y - h / 2;
+
+  g.classList.toggle('sel-st', App.selectedStates.has(node.id));
+
+  p.body.setAttribute('x', x);
+  p.body.setAttribute('y', y);
+  p.body.setAttribute('width', w);
+  p.body.setAttribute('height', h);
+  p.body.setAttribute('rx', BLOCK_RADIUS);
+
+  p.title.setAttribute('x', x + 8);
+  p.title.setAttribute('y', y + BLOCK_STRIP_H / 2 + 4);
+  p.title.textContent = node.name;
+
+  p.count.setAttribute('x', x + w - 8);
+  p.count.setAttribute('y', y + BLOCK_STRIP_H / 2 + 4);
+
+  // Below the label threshold a preview is a smudge costing a hundred elements,
+  // so it goes at the same place on the zoom dial the names do. The key is
+  // derived rather than invalidated, because nothing announces that a state
+  // inside a block moved — the same trick stateIndex() uses.
+  //
+  // **Everything past this line is behind the key, and that is the point.**
+  // blockPreviewGraph() walks App.states *and* App.transitions once per block,
+  // so calling it before the guard — to count what is inside — made an idle
+  // repaint cost the whole machine per block on screen. Measured on twelve boxes
+  // over 4800 states: 6.4ms of an 8.3ms repaint, on a canvas drawing twelve
+  // nodes. `largeMachineProfile()` cannot rescue that either, because
+  // drawnSize() correctly reports twelve — the profile stays off while the frame
+  // costs what a 4800-state machine costs. The count is cached beside the key
+  // for the same reason.
+  const key = lod ? '::lod::' : blockPreviewKey(node.id) + '|' + Math.round(w) + '|' + Math.round(h);
+  const stale = g.__previewKey !== key;
+  let inside = null;
+  if (stale) {
+    inside = blockPreviewGraph(node.id);
+    g.__previewKey = key;
+    // The *count* is cached, never the graph: holding the graph would pin every
+    // member state and every edge of the block's interior for as long as the
+    // node is on screen, which is the memory half of the cost this guard avoids.
+    g.__previewTotal = inside ? inside.nodes.length : 0;
+  }
+  const total = g.__previewTotal || 0;
+  p.count.textContent = lod ? '' : String(total);
+  // Written every sync, not only on a rebuild: the tip names the block, and a
+  // rename changes the name without changing anything the preview key is built
+  // from.
+  syncBlockTip(g, node, total);
+
+  // The preview is drawn in absolute coordinates for this box, and the drag
+  // path then slides it with one transform. Recording where it was drawn is
+  // what lets that translate be a delta rather than an accumulating offset.
+  if (stale) {
+    p.preview.setAttribute('transform', '');
+    g.__previewAt = { x, y };
+  }
+
+  // The clip is the body below the strip: the preview must never paint over the
+  // title, and a rounded body cannot clip its own children.
+  //
+  // It is written in the frame the preview was *drawn* in, not where the box is
+  // now, and those are different the moment a block is dragged. `clipPathUnits`
+  // defaults to `userSpaceOnUse` and the preview's own transform establishes the
+  // space its `clip-path` resolves in — so the translate moveBlockNode wrote
+  // carries the clip along with the content, and writing the box's new position
+  // onto the rect here moved the clip a second time. Past a box's width that put
+  // it clean off the block, and the whole interior was clipped away: a preview
+  // that vanished on some blocks and not others, depending on how far each had
+  // been dragged. The two must share one frame, and `__previewAt` is it.
+  const at = g.__previewAt || { x, y };
+  const pv = { x: at.x + 1, y: at.y + BLOCK_STRIP_H, w: w - 2, h: h - BLOCK_STRIP_H - 1 };
+  p.clipRect.setAttribute('x', pv.x);
+  p.clipRect.setAttribute('y', pv.y);
+  p.clipRect.setAttribute('width', Math.max(0, pv.w));
+  p.clipRect.setAttribute('height', Math.max(0, pv.h));
+
+  if (!stale) return;
+
+  if (lod || !inside) {
+    p.pvEdges.setAttribute('d', '');
+    p.pvNodes.innerHTML = '';
+    return;
+  }
+  drawPreview(p, inside, pv);
+}
+
+function drawPreview(p, inside, box) {
+  const nodes = inside.nodes.slice(0, PREVIEW_MAX_NODES);
+  const shown = new Set(nodes.map(n => n.id));
+  const bounds = thumbBounds(nodes, R, n => (n.box ? Math.hypot(n.box.w, n.box.h) / 2 : R));
+  const fit = thumbFit(bounds, { x: box.x, y: box.y, w: box.w, h: box.h });
+  const r = thumbNodeRadius(fit.scale, R);
+
+  const pairs = thumbEdgePairs(inside.edges.filter(e => shown.has(e.from) && shown.has(e.to)));
+  p.pvEdges.setAttribute('d', thumbEdgePath(
+    thumbEdgeSegments(pairs, inside.byId, fit, r, App.config.render.curveOff)));
+
+  // A nested block draws as a tiny rect rather than a circle, so the silhouette
+  // itself says there is another level below this one.
+  p.pvNodes.innerHTML = '';
+  for (const n of nodes) {
+    const el = makeSVG(n.kind === 'block' ? 'rect' : 'circle');
+    if (n.kind === 'block') {
+      el.setAttribute('x', fit.px(n.x) - r);
+      el.setAttribute('y', fit.py(n.y) - r * 0.72);
+      el.setAttribute('width', r * 2);
+      el.setAttribute('height', r * 1.44);
+      el.setAttribute('rx', Math.max(0.6, r * 0.28));
+      el.classList.add('bn-pv-block');
+    } else {
+      el.setAttribute('cx', fit.px(n.x));
+      el.setAttribute('cy', fit.py(n.y));
+      el.setAttribute('r', r);
+      el.classList.add('bn-pv-node');
+      if (App.accepts.has(n.id)) el.classList.add('is-accept');
+      if (n.id === App.startId) el.classList.add('is-start');
+    }
+    p.pvNodes.appendChild(el);
+  }
+}
+
+function syncBlockTip(g, node, total) {
+  const tip = 'Block ‘' + node.name + '’\n'
+    + total + ' item' + (total === 1 ? '' : 's') + ' inside'
+    + '\nDouble-click to open';
+  g.setAttribute('data-tip', tip);
+  g.setAttribute('aria-label', tip);
+}
+
+// ── ports ──
+// The tabs on the edge of a drilled-in scope. They are derived and carry no
+// transitions of their own; what they do is say where control arrives from and
+// where each exit hands it back, which is most of what a reader drills in to
+// find out. Without them a drilled-in view reads as a disconnected fragment.
+//
+// They are not selectable — there is no port in the model to select, and Delete
+// over one would have nothing to delete — but they *are* draggable, because
+// where a tab sits is a legibility question the placement pass can only guess
+// at. `onPortDown` writes the offset onto the block record; placePorts then
+// stands down for that port. Same relationship `t.curve` has to auto-routing.
+function createPortNode(id) {
+  const g = makeSVG('g');
+  g.classList.add('pn');
+  g.setAttribute('data-id', id);
+  g.__kind = 'port';
+  const body = makeSVG('rect');
+  body.classList.add('pn-body');
+  g.appendChild(body);
+  const label = makeSVG('text');
+  label.classList.add('pn-label');
+  g.appendChild(label);
+  g.__parts = { body, label };
+  g.addEventListener('pointerdown', e => onPortDown(e, id));
+  // Double-click hands a hand-placed tab back to the placement pass — the
+  // "Reset Shape" a bent edge gets, in the one gesture a port has spare. It is
+  // read off the node rather than guarded here, so a port that was never moved
+  // simply has nothing to reset.
+  g.addEventListener('dblclick', e => {
+    e.stopPropagation();
+    resetPortPlacement(id);
+  });
+  // Click to go back out, which is the other half of double-click to go in.
+  // Suppressed by a drag: `onPortDown` arms the swallow the moment the pointer
+  // travels, the way js/panel-float.js does it for a window's title bar — or
+  // every reposition would end by leaving the scope it repositioned in.
+  g.addEventListener('click', e => {
+    if (g.__dragged) { g.__dragged = false; e.stopPropagation(); return; }
+    enterBlockScope(null, { up: 1 });
+  });
+  return g;
+}
+
+function syncPortNode(g, node) {
+  const p = g.__parts;
+  const w = node.box.w, h = node.box.h;
+  g.classList.toggle('is-in', node.dir === 'in');
+  g.classList.toggle('is-out', node.dir === 'out');
+  g.classList.toggle('is-manual', !!node.manual);
+  p.body.setAttribute('x', node.x - w / 2);
+  p.body.setAttribute('y', node.y - h / 2);
+  p.body.setAttribute('width', w);
+  p.body.setAttribute('height', h);
+  p.body.setAttribute('rx', h / 2);
+  p.label.setAttribute('x', node.x);
+  p.label.setAttribute('y', node.y + 4);
+  p.label.textContent = node.name;
+  const where = node.dir === 'in' ? 'Control enters here' : 'Control leaves here';
+  const tip = where + ' (' + node.name + '). Drag to move it'
+    + (node.manual ? ', double-click to place it automatically again' : '')
+    + '. Click to go back out.';
+  g.setAttribute('data-tip', tip);
+  g.setAttribute('aria-label', tip);
+}
+
 export function renderStates(view = cullViewport()) {
   const g = $('states-g');
   const live = App.domCache.states;
   const showAccepts = acceptsAreShown();
   const lod = stateLabelLOD();
-  // A state's ink is its circle, its accepting ring and its name; none of them
-  // reach further than a radius and a little slack from its centre.
-  const pad = R + 24;
 
-  // Walk App.states in order, reusing the node for each id and moving it only
-  // if it is not already where it belongs. `expected` is the node that should
-  // occupy the next slot, so an unchanged list performs no DOM writes here.
+  // The projection, not App.states: inside a block those are very different
+  // lists, and with no blocks on the canvas they are the same one. See
+  // js/view-graph.js.
+  //
+  // A state's ink reaches a radius and a little slack from its centre; a block's
+  // reaches half its box, so the cull pad is asked of the node rather than being
+  // one number for the pass.
   let prev = null;
   const seen = new Set();
-  for (const s of App.states) {
+  for (const s of viewStates()) {
+    const pad = (s.box ? Math.max(s.box.w, s.box.h) / 2 : R) + 24;
     if (view && !rectHasPoint(view, s.x, s.y, pad)) continue;
     seen.add(s.id);
     let node = live.get(s.id);
+    const kind = s.kind || 'state';
+    // A node whose kind changed is a different drawing entirely — a state just
+    // grouped into a block, say — so it is replaced rather than re-synced onto
+    // parts that do not exist on it.
+    if (node && (node.__kind || 'state') !== kind) { evictNode(node); node = null; }
     if (!node) {
-      node = createStateNode(s.id);
+      node = kind === 'block' ? createBlockNode(s.id)
+        : kind === 'port' ? createPortNode(s.id)
+          : createStateNode(s.id);
       live.set(s.id, node);
     }
-    syncStateNode(node, s, showAccepts, lod);
+    if (kind === 'block') syncBlockNode(node, s, lod);
+    else if (kind === 'port') syncPortNode(node, s);
+    else syncStateNode(node, s, showAccepts, lod);
     const expected = prev ? prev.nextSibling : g.firstChild;
     if (node !== expected) g.insertBefore(node, expected);
     prev = node;
@@ -1031,9 +1458,17 @@ export function renderStates(view = cullViewport()) {
 
   for (const [id, node] of live) {
     if (seen.has(id)) continue;
-    node.remove();
+    evictNode(node);
     live.delete(id);
   }
+}
+
+// A block's clipPath lives in <defs>, outside its own group, so evicting the
+// node has to take it too — otherwise a session of drilling in and out leaves a
+// clipPath per block per visit in the document.
+function evictNode(node) {
+  if (node.__parts && node.__parts.clip) node.__parts.clip.remove();
+  node.remove();
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1053,8 +1488,73 @@ export function updateLPanelSectionMeta() {
   setCount('lp-count-sigma', App.sigma?.size || 0);
   setCount('lp-count-stack', App.stackAlpha?.size || 0);
   setCount('lp-count-output', App.outputAlpha?.size || 0);
-  setCount('lp-count-states', App.states?.length || 0);
-  setCount('lp-count-trans', App.transitions?.length || 0);
+  // The counts follow the lists under them, which show this level rather than
+  // the whole machine. The formal definition beside them still reports |Q| for
+  // the machine, which is the honest number there: a block is a drawing, and
+  // every state inside one is a state the machine really has.
+  const drawn = viewStates();
+  const shown = new Set(drawn.map(s => s.id));
+  setCount('lp-count-states', drawn.filter(s => s.kind === undefined).length);
+  setCount('lp-count-trans', (App.transitions || []).filter(t => shown.has(t.from) && shown.has(t.to)).length);
+  setCount('lp-count-blocks', (App.blocks?.length || 0));
+}
+
+// What the Blocks list draws, cheaply: the records themselves change on a
+// rename, a re-parent, a group or a delete, and the member counts change only
+// when a state's `blockId` does — which is what the states array's own identity
+// test catches. Deliberately not built from allBlocks(), which is the expensive
+// thing this key exists to skip.
+function blockListKey() {
+  const bl = App.blocks || [];
+  const st = App.states || [];
+  const parts = [(App.scope || []).join('/'), bl.length, st.length, st[0]?.id, st[st.length - 1]?.id];
+  for (const b of bl) parts.push(b.id, b.name, b.parent || '');
+  return parts.join('|');
+}
+
+/**
+ * Every block in the machine, at whatever depth, as a list you can jump from.
+ *
+ * Double-clicking a box on the canvas opens it, but that only ever reaches what
+ * is on screen — inside a CPU the multiplier is three levels down and its box
+ * is not drawn until you are standing next to it. The path is what makes the
+ * list readable: two blocks called `add` in different ALUs are one name and two
+ * rows, and the path is the only thing that tells them apart.
+ */
+let _blockListPainted = null;
+export function _resetBlockListPainted() { _blockListPainted = null; }
+
+export function updateBlockList() {
+  const host = $('block-list');
+  if (!host) return;
+  // Guarded, because this is subscribed to *every* GRAPH emit and allBlocks()
+  // costs one pass over App.states per block — a drag, an accept toggle or a
+  // simulation step would otherwise pay blocks × states to redraw rows that had
+  // not changed. The key is what the rows actually draw, the way lpanelKey() is.
+  // Tested on the markup rather than on childNodes: this list is written as one
+  // innerHTML string, so the string *is* what "already drawn" means — and a
+  // workspace switch that replaced the panel's subtree leaves it empty, which is
+  // exactly when the cache must not be believed.
+  const key = blockListKey();
+  if (key === _blockListPainted && host.innerHTML) return;
+  _blockListPainted = key;
+  const rows = allBlocks();
+  if (!rows.length) {
+    host.innerHTML = '<div class="empty-msg">No blocks</div>';
+    return;
+  }
+  const here = (App.scope || [])[(App.scope || []).length - 1] || null;
+  // A <button>, not a <div onclick>: a row that opens something has to be
+  // reachable with Tab and firable with Enter, which is the rule the States Q
+  // and Transitions δ rows already follow.
+  host.innerHTML = rows.map(b => `
+    <button type="button" class="bi${b.id === here ? ' is-current' : ''}" onclick="openBlockFromList('${b.id}')"
+         data-tip="Open ${escapeHtml(b.name)}"${b.id === here ? ' aria-current="true"' : ''}>
+      <div class="lp-row-body">
+        <div class="bi-name">${escapeHtml(b.name)}</div>
+        <div class="bi-sub">${b.path ? escapeHtml(b.path) + ' · ' : ''}${b.members} state${b.members === 1 ? '' : 's'}${b.children ? ` · ${b.children} block${b.children === 1 ? '' : 's'}` : ''}</div>
+      </div>
+    </button>`).join('');
 }
 
 // Every row in the States Q and Transitions δ lists ends in the same pair of
@@ -1155,7 +1655,10 @@ export let _lpanelPainted = null;
 export function _resetLpanelPainted() { _lpanelPainted = null; }
 
 function lpanelKey() {
-  const p = [App.machine, App.startId, [...App.accepts].sort().join(',')];
+  // The scope is part of the key: drilling into a block changes what these two
+  // lists show without changing one state or one transition, so a key built
+  // from the machine alone would leave the previous level's rows on screen.
+  const p = [App.machine, App.startId, (App.scope || []).join('/'), [...App.accepts].sort().join(',')];
   for (const st of App.states) p.push(st.id, st.name, st.output ?? '', st.priority ?? '');
   for (const t of App.transitions) {
     for (const k of Object.keys(t)) {
@@ -1175,11 +1678,16 @@ export function updateLPanel() {
   // and a cache saying "already drawn" would then describe a subtree that is gone.
   if (key === _lpanelPainted && list && list.childNodes.length) return;
   _lpanelPainted = key;
-  setListItems($('states-list'), App.states, {
+  // What is on screen, not the whole machine. Inside a block these are that
+  // block's own states and rules, which is the point of being inside it; at the
+  // top level with no blocks they are the same two lists they always were.
+  const drawn = viewStates();
+  const shown = new Set(drawn.map(s => s.id));
+  setListItems($('states-list'), drawn.filter(s => s.kind === undefined), {
     html: stateRowHTML, text: stateRowText,
     empty: '<div class="empty-msg">No states</div>'
   });
-  setListItems($('trans-list'), App.transitions, {
+  setListItems($('trans-list'), App.transitions.filter(t => shown.has(t.from) && shown.has(t.to)), {
     html: transRowHTML, text: transRowText,
     empty: '<div class="empty-msg">No transitions</div>'
   });

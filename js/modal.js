@@ -230,10 +230,18 @@ registerModal('confirm-modal', {
       btn.textContent = 'Confirm';
       if (btn.classList) btn.classList.remove('btn-danger');
     }
+    // Emptied rather than left standing: the next caller is usually a plain
+    // yes/no question, and a field from the last one would still be in its
+    // tab order and still be the thing initialFocus lands on.
+    const field = $('confirm-field');
+    if (field) { field.innerHTML = ''; field.hidden = true; }
     const cancel = confirmCancel;
     confirmCancel = null;
     if (cancel) cancel();
-  }
+  },
+  // The field when there is one, so a "name this block" dialog opens with the
+  // caret in the box rather than on the close button.
+  initialFocus: () => $('confirm-field')?.firstElementChild || null
 });
 
 /**
@@ -245,9 +253,15 @@ registerModal('confirm-modal', {
  * `onConfirm` clears the pending cancel before closing, or confirming would
  * fire both.
  */
-export function askConfirm({ title, message, confirmLabel = 'Confirm', danger = false, onConfirm, onCancel }) {
+export function askConfirm({ title, message, confirmLabel = 'Confirm', danger = false, field = null, onConfirm, onCancel }) {
   if ($('confirm-title')) $('confirm-title').textContent = title;
   if ($('confirm-msg')) $('confirm-msg').textContent = message;
+  const slot = $('confirm-field');
+  if (slot) {
+    slot.innerHTML = '';
+    slot.hidden = !field;
+    if (field) slot.appendChild(field);
+  }
   const btn = $('confirm-action-btn');
   if (btn) {
     btn.textContent = confirmLabel;

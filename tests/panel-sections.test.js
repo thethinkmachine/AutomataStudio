@@ -14,8 +14,20 @@ import { createHarness } from './harness.js';
 const harness = createHarness();
 const { context } = harness;
 
-const LP = ['lp-alphabet', 'stack-sec', 'output-sec', 'lp-states', 'lp-transitions'];
-const RP = ['rp-language', 'rp-simulate', 'rp-batch'];
+// Derived from the registry, not written out again. The whole point of the file
+// below is that there is one list of sections; a copy of it here would be a
+// second one, and adding a section would mean editing it in two places — which
+// is precisely the failure the registry exists to prevent.
+const LP = context.declaredSectionIds('lpanel');
+const RP = context.declaredSectionIds('rpanel');
+
+/** The declared order with two entries swapped: a custom order, whatever the
+ *  registry currently holds. */
+function shuffled(ids) {
+  const out = ids.slice();
+  [out[0], out[out.length - 1]] = [out[out.length - 1], out[0]];
+  return out;
+}
 
 function clearOrders() {
   ['lpanel', 'rpanel'].forEach(side => context.resetSectionOrder(side));
@@ -30,8 +42,9 @@ test('the declared order is the order absent any preference', () => {
 
 test('a saved order is what comes back', () => {
   clearOrders();
-  context.setSectionOrder('rpanel', ['rp-batch', 'rp-simulate', 'rp-language']);
-  assert.deepEqual(context.sectionOrder('rpanel'), ['rp-batch', 'rp-simulate', 'rp-language']);
+  const custom = shuffled(RP);
+  context.setSectionOrder('rpanel', custom);
+  assert.deepEqual(context.sectionOrder('rpanel'), custom);
   assert.equal(context.sectionOrderIsCustom('rpanel'), true);
 });
 
@@ -40,7 +53,7 @@ test('the default order is stored as the absence of a preference', () => {
   // later change to the declared order still reaches a reader who never
   // expressed one. Storing a copy of the default would freeze them out.
   clearOrders();
-  context.setSectionOrder('rpanel', ['rp-batch', 'rp-language', 'rp-simulate']);
+  context.setSectionOrder('rpanel', shuffled(RP));
   assert.notEqual(context.localStorage.getItem('automata-rpanel-section-order'), null);
   context.setSectionOrder('rpanel', RP);
   assert.equal(context.localStorage.getItem('automata-rpanel-section-order'), null);
@@ -49,8 +62,8 @@ test('the default order is stored as the absence of a preference', () => {
 test('a saved id the registry no longer has is dropped', () => {
   clearOrders();
   context.localStorage.setItem('automata-rpanel-section-order',
-    JSON.stringify(['rp-gone', 'rp-batch', 'rp-language', 'rp-simulate']));
-  assert.deepEqual(context.sectionOrder('rpanel'), ['rp-batch', 'rp-language', 'rp-simulate']);
+    JSON.stringify(['rp-gone', ...RP]));
+  assert.deepEqual(context.sectionOrder('rpanel'), RP);
 });
 
 test('a section the saved order predates lands where it was declared', () => {
@@ -178,16 +191,17 @@ test('reordering keeps every section, not just the visible ones', () => {
   // an output. They stay in the DOM, so they keep their place in the order.
   mountPanels();
   context.$('stack-sec').style.display = 'none';
-  context.setSectionOrder('lpanel', ['lp-states', 'stack-sec', 'lp-alphabet', 'output-sec', 'lp-transitions']);
+  const custom = shuffled(LP);
+  context.setSectionOrder('lpanel', custom);
   context.applySectionOrder('lpanel');
-  assert.deepEqual(domIds('lpanel'),
-    ['lp-states', 'stack-sec', 'lp-alphabet', 'output-sec', 'lp-transitions']);
+  assert.deepEqual(domIds('lpanel'), custom);
   context.$('stack-sec').style.display = '';
 });
 
 test('the order survives a reload — it is read back, not held in memory', () => {
   mountPanels();
-  context.setSectionOrder('lpanel', ['lp-transitions', 'lp-states', 'lp-alphabet', 'stack-sec', 'output-sec']);
+  const custom = shuffled(LP);
+  context.setSectionOrder('lpanel', custom);
 
   // Put the DOM back the way the markup has it, the way a fresh page would.
   const container = context.$('lpanel-content');
@@ -195,5 +209,5 @@ test('the order survives a reload — it is read back, not held in memory', () =
   assert.deepEqual(domIds('lpanel'), LP);
 
   context.applySectionOrder('lpanel');
-  assert.equal(domIds('lpanel')[0], 'lp-transitions');
+  assert.equal(domIds('lpanel')[0], custom[0]);
 });

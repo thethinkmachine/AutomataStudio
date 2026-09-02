@@ -26,6 +26,9 @@ import './history.js';
 import './view.js';
 import './alphabet.js';
 import './states-transitions.js';
+import './blocks.js';
+import './graph-thumb.js';
+import './view-graph.js';
 import './canvas.js';
 import './render.js';
 import './minimap.js';
@@ -58,6 +61,8 @@ import './wizard-ui.js';
 import './workspace.js';
 import './utils.js';
 import './ui.js';
+import './scope.js';
+import './blocks-ui.js';
 import './tooltip.js';
 
 import './bridge.js';

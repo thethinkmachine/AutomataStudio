@@ -1321,3 +1321,312 @@
     display: none !important;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   BUILDING BLOCKS
+   ══════════════════════════════════════════════════════════════════
+   A block is a subroutine drawn as one node, and what it is drawn as is what
+   it contains: a box, a title strip across the top, and under it the machine
+   inside — the same drawing the minimap makes of the whole diagram, from the
+   same code (js/graph-thumb.js).
+
+   The strip quotes .minimap-header deliberately. The two are the same idea in
+   two places — a small frame with a name on it and a diagram under it — and a
+   reader who has learned to read one has learned to read the other. */
+
+/* A block follows the tool cursor exactly as a state does (`.sn` is
+   `cursor: inherit` with a `[data-tool=…]` table below it). Hard-coding `grab`
+   here made a block claim it was draggable under the Delete tool, where a state
+   correctly says `not-allowed`, and under Transition, where it says crosshair —
+   the cursor lying about what the click will do. */
+.bn {
+  cursor: inherit;
+}
+
+.bn-body {
+  fill: var(--bg2);
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.sn.sel-st circle.bd,
+.bn.sel-st .bn-body {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+/* There is deliberately no filled title strip, and no rule under it. A second
+   fill laid over the body is a shape problem with no good answer: square, its
+   corners stick out past the body's radius as two pointed ears; rounded to
+   match, the two radii meet in a visible notch. The box already frames the
+   title, so the band was removed rather than reshaped — `BLOCK_STRIP_H` in
+   js/view-graph.js survives only as reserved space the preview is clipped
+   below, so nothing is ever drawn under the name. */
+
+.bn-title {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--text);
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+/* The item count, in the identifier face because it is instrumentation rather
+   than language — the same split the StateMate console draws. */
+.bn-count {
+  font-family: var(--mono);
+  font-size: 9px;
+  fill: var(--text3);
+  text-anchor: end;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+/* The preview never takes the pointer: the whole box is one target, and a click
+   that landed on a two-pixel dot inside it would be a click on nothing. */
+.bn-preview {
+  pointer-events: none;
+}
+
+.bn-pv-edges {
+  fill: none;
+  stroke: var(--text3);
+  stroke-width: 0.8;
+  opacity: 0.7;
+}
+
+.bn-pv-node {
+  fill: var(--bg);
+  stroke: var(--text3);
+  stroke-width: 0.7;
+  opacity: 0.95;
+}
+
+.bn-pv-node.is-accept {
+  stroke: var(--gold);
+}
+
+.bn-pv-node.is-start {
+  stroke: var(--green);
+}
+
+/* A nested block draws as a rect inside the preview, so the silhouette itself
+   says there is another level below this one. */
+.bn-pv-block {
+  fill: var(--bg);
+  stroke: var(--accent);
+  stroke-width: 0.7;
+  opacity: 0.9;
+}
+
+/* ── ports ──
+   The tabs on the edge of a drilled-in scope: where the host hands control in,
+   and where each exit hands it back. Dashed, because they are not part of the
+   machine — they are the machine's boundary, drawn so a sub-machine does not
+   read as a disconnected fragment. */
+/* Grab, not pointer: a port is dragged to place it and clicked to leave the
+   scope, and the drag is the gesture worth advertising — the click has the
+   breadcrumb and Escape saying the same thing. `grabbing` while held is what
+   distinguishes a reposition from a press that is on its way to being a click. */
+.pn {
+  cursor: grab;
+}
+
+.pn:active {
+  cursor: grabbing;
+}
+
+.pn-body {
+  fill: transparent;
+  stroke: var(--accent);
+  stroke-width: 1.2;
+  stroke-dasharray: 5 3;
+  opacity: 0.75;
+}
+
+.pn.is-out .pn-body {
+  stroke: var(--gold);
+}
+
+.pn:hover .pn-body {
+  opacity: 1;
+}
+
+/* A hand-placed tab is drawn solid: the dash says "derived, placed for you",
+   so a port the reader has put somewhere deliberately should stop claiming to
+   be. It is the same thing `t.curve` does to an auto-routed edge. */
+.pn.is-manual .pn-body {
+  stroke-dasharray: none;
+  opacity: 1;
+}
+
+.pn-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  fill: var(--text2);
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+/* ── the breadcrumb ──
+   Where you are in the hierarchy, over the canvas. Hidden at the top level:
+   a bar that said "Machine" and nothing else would be chrome for a state the
+   reader is in most of the time. */
+.scope-bar {
+  position: absolute;
+  /* On the top strip with the other canvas chrome — the info pill sits at 12px
+     and the status toast at 10px, and a bar centred at 52px read as a fourth
+     row of its own rather than as part of the same layer. It leads the strip
+     from the left because the info pill routes around obstacles and this does
+     not: while you are inside a block, where you are outranks a description of
+     the machine you are in. The offset stays a custom property because a
+     top-docked toolbar occupies exactly this strip — js/ui.js pushes the bar
+     below it (see positionScopeBar) rather than the two fighting over one
+     magic number. */
+  top: var(--scope-bar-top, 12px);
+  /* Set by positionScopeBar, which offsets past the info pill so the two share
+     the strip rather than stacking. The fallback is the bare inset, correct
+     before that has run and on a machine with no description. */
+  left: var(--scope-bar-left, 12px);
+  /* With the rest of the canvas overlays (49–60), not underneath them. At 6 it
+     sat below the toolbox, the info card, the zoom cluster and the status toast
+     — every one of which could bury the one thing that says where you are. */
+  z-index: 51;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: min(70%, 640px);
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* A scroller dropped into the canvas well has to declare what it allows:
+     `touch-action: none` on `.canvas-area` intersects down the ancestor chain,
+     so without this a breadcrumb deeper than the bar is wide cannot be scrolled
+     by a finger at all — the trap css/mobile.css records for the old toolbox. */
+  touch-action: pan-x;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg2);
+  /* The token, not a literal: a fixed rgba shadow is invisible against the dark
+     themes and the wrong colour against the light ones, and it left this bar
+     the one overlay on the canvas that did not sit on the same surface as
+     .canvas-nav-controls and .canvas-info-btn. */
+  box-shadow: var(--shadow-sm);
+  transition: top var(--transition-base);
+}
+
+/* `hidden` is what js/scope.js sets, so `hidden` has to be what hides. The
+   `display: flex` above is an author rule and outranks the user agent's
+   `[hidden] { display: none }` — so without this line the bar never went away
+   and every machine, blocks or not, carried an empty bordered pill over the top
+   of its canvas. The same rule `.sm-panel[hidden]` and `.panel-tab-badge[hidden]`
+   exist for in css/panels.css. */
+.scope-bar[hidden] {
+  display: none;
+}
+
+.scope-bar::-webkit-scrollbar {
+  display: none;
+}
+
+/* The same "there is more past this edge" fade the workspace tab strip and
+   the formal-definition box use — js/scope.js toggles these off App.scope's
+   own scroll position. Without it a deep block hierarchy just clips mid-word
+   at the container edge with nothing on screen to say it is scrollable. */
+.scope-bar.has-overflow-left {
+  box-shadow: inset 14px 0 12px -12px var(--tab-overflow-shadow);
+}
+
+.scope-bar.has-overflow-right {
+  box-shadow: inset -14px 0 12px -12px var(--tab-overflow-shadow);
+}
+
+.scope-bar.has-overflow-left.has-overflow-right {
+  box-shadow: inset 14px 0 12px -12px var(--tab-overflow-shadow), inset -14px 0 12px -12px var(--tab-overflow-shadow);
+}
+
+/* A crumb is a .cnc-btn that happens to carry a word: the same transparent
+   ground, the same 5px radius, the same 1px transparent border holding a slot
+   for the focus ring, and the same transition. The pair used to have a hover
+   and nothing else — no focus ring at all, on the one canvas overlay whose
+   controls a keyboard reader has to walk through to get anywhere. */
+.scope-crumb,
+.scope-back {
+  font-family: var(--sans);
+  font-size: .66rem;
+  font-weight: 500;
+  color: var(--text2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 3px 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+
+.scope-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 3px 5px;
+  color: var(--text3);
+}
+
+.scope-back svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.scope-crumb:hover,
+.scope-back:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.scope-crumb:focus-visible,
+.scope-back:focus-visible {
+  outline: none;
+  background: var(--surface);
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+
+/* The level you are on is not a link, so it does not offer to be pressed — and
+   it is a real `disabled` button rather than one that merely looks inert, or a
+   keyboard reader tabs onto it and presses Enter to nothing. */
+.scope-crumb.is-current,
+.scope-crumb:disabled {
+  color: var(--text);
+  font-weight: 600;
+  cursor: default;
+  opacity: 1;
+}
+
+.scope-crumb.is-current:hover,
+.scope-crumb:disabled:hover {
+  background: transparent;
+  border-color: transparent;
+}
+
+.scope-sep {
+  color: var(--text3);
+  font-size: .66rem;
+  user-select: none;
+}
+
+
+/* A scope's boundary edge is not a rule the machine follows, so it is drawn as
+   the annotation it is: dashed, quiet, and not something to click. */
+.port-edge .tarr,
+.port-edge path {
+  stroke-dasharray: 5 3;
+  opacity: 0.6;
+}
+
+.port-edge {
+  pointer-events: none;
+}

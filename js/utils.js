@@ -41,6 +41,7 @@ export function resetIds() {
   App.transN = Math.max(0, ...App.transitions.map(t => { const m = t.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
   App.noteN = Math.max(0, ...(App.notes || []).map(n => { const m = n.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
   App.dividerN = Math.max(0, ...(App.dividers || []).map(d => { const m = d.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
+  App.blockN = Math.max(0, ...(App.blocks || []).map(b => { const m = b.id.match(/(\d+)/g); return m ? Math.max(...m.map(Number)) : 0; }));
 }
 /**
  * The Clear button: back to an empty workspace, not just an empty canvas.
@@ -129,6 +130,11 @@ export function performClear() {
   App.stateN = 0; App.transN = 0; App.history = []; App.future = [];
   App.notes = []; App.noteN = 0;
   App.dividers = []; App.dividerN = 0;
+  // The blocks go with the diagram they grouped. Leaving the records behind
+  // would leave every one of them pointing at a state that no longer exists —
+  // which blockIsIntact() would then drop on the next read, so this is the
+  // same answer arrived at eagerly rather than a second policy.
+  App.blocks = []; App.blockN = 0; App.scope = [];
   clearTransientPointers();
   if (typeof showExampleCard === 'function') showExampleCard(null);
   resetSim(); emit(Change.GRAPH);
