@@ -189,6 +189,28 @@ function measure(rec) {
   }
 }
 
+/**
+ * Redraws every declared list against its container's current height.
+ *
+ * The window is sliced from `host.clientHeight`, read at draw time — and a
+ * draw only happens on a scroll or on the next `updateLPanel`. That was fine
+ * while a list's height was the panel's, which nothing changes without also
+ * changing the machine; a section pulled out into a resizable window is the
+ * case where the box grows under a list that has no reason to redraw, leaving
+ * a page of blank below the last row until the reader scrolls or edits.
+ *
+ * Every list rather than the ones inside the resized window: there are two of
+ * them, each redrawing a windowed page of rows, and knowing which host sits
+ * inside which section would mean a second copy of the panel's structure here.
+ */
+export function redrawAllLists() {
+  for (const rec of lists.values()) {
+    if (!rec.host) continue;
+    rec.start = rec.end = -1;
+    draw(rec, true);
+  }
+}
+
 /** Tests reset module singletons; a stale host would keep a detached listener. */
 export function resetPanelLists() {
   for (const rec of lists.values()) {

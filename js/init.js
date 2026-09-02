@@ -8,6 +8,7 @@ import { $, App, Workspaces } from './state.js';
 import { DEFAULT_THEME } from './themes.js';
 import { initMinimap, toggleMinimap } from './minimap.js';
 import { initPanelSectionReorder } from './panel-sections-ui.js';
+import { initPanelFloat } from './panel-float.js';
 import { applyTheme, initCanvasResizeObserver, initLPanelSections, initMobilePanelBar, initMobilePanels, initPanelResizers, initRPanelSections, initPanelTabs, initTabs, initToolbarCollapse, setTool, toggleLPanelPin, toggleRPanelPin } from './ui.js';
 import { showStatus } from './utils.js';
 import { setMachine, setView } from './view.js';
@@ -50,6 +51,9 @@ if (typeof initLPanelSections === 'function') initLPanelSections();
 if (typeof initRPanelSections === 'function') initRPanelSections();
 // After the collapse state, since the grips go into headers this may reveal.
 initPanelSectionReorder();
+// And after the reorder: a section restored to a window over the canvas is one
+// `applySectionOrder` must already know to leave out of the panel.
+initPanelFloat();
 if (typeof initPanelResizers === 'function') initPanelResizers();
 if (typeof initPanelTabs === 'function') initPanelTabs();
 if (typeof initCanvasResizeObserver === 'function') initCanvasResizeObserver();

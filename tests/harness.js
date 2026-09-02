@@ -46,6 +46,7 @@ import * as panelState from '../js/panel-state.js';
 import * as panelSections from '../js/panel-sections.js';
 import * as panelList from '../js/panel-list.js';
 import * as panelSectionsUi from '../js/panel-sections-ui.js';
+import * as panelFloat from '../js/panel-float.js';
 import * as simulation from '../js/simulation.js';
 import * as tape from '../js/tape.js';
 import * as tapeLog from '../js/tape-log.js';
@@ -98,7 +99,7 @@ import * as wizardUi from '../js/wizard-ui.js';
 
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, viewport, geometry, statesTransitions,
-  canvas, render, panelState, panelSections, panelSectionsUi, panelList, notes, dividers,
+  canvas, render, panelState, panelSections, panelSectionsUi, panelFloat, panelList, notes, dividers,
   machineRegistry, machineRuntime, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,
@@ -170,6 +171,10 @@ function resetModuleState() {
   state.setR(baseConfig.radius);
   panelState.resetPanelTabs();
   panelSectionsUi.resetSectionReorder();
+  // A window left mid-drag would have the next test moving the last one's
+  // section, and the float records are localStorage — which the stub keeps
+  // across a resetApp, so a section torn out here would still be out there.
+  panelFloat.resetPanelFloat();
   // Both memoise a *failure* as well as a success — a glyph face that could not
   // be fetched, and font bytes that could not be — so that one refusal does not
   // cost a request per export. That makes them exactly the state a test would

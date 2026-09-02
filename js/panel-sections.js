@@ -31,11 +31,11 @@ export const PANEL_SECTIONS = Object.freeze({
     titleClass: 'lp-section-title',
     storeKey: 'automata-lpanel-section',
     sections: Object.freeze([
-      Object.freeze({ id: 'lp-alphabet', collapsed: false }),
-      Object.freeze({ id: 'stack-sec', collapsed: false }),
-      Object.freeze({ id: 'output-sec', collapsed: false }),
-      Object.freeze({ id: 'lp-states', collapsed: false }),
-      Object.freeze({ id: 'lp-transitions', collapsed: false })
+      Object.freeze({ id: 'lp-alphabet', collapsed: false, minW: 240, minH: 170, fill: '.chips' }),
+      Object.freeze({ id: 'stack-sec', collapsed: false, minW: 240, minH: 170, fill: '.chips' }),
+      Object.freeze({ id: 'output-sec', collapsed: false, minW: 240, minH: 170, fill: '.chips' }),
+      Object.freeze({ id: 'lp-states', collapsed: false, minW: 240, minH: 200, fill: '.slist' }),
+      Object.freeze({ id: 'lp-transitions', collapsed: false, minW: 300, minH: 200, fill: '.tlist' })
     ])
   }),
   rpanel: Object.freeze({
@@ -44,9 +44,9 @@ export const PANEL_SECTIONS = Object.freeze({
     titleClass: 'rp-section-title',
     storeKey: 'automata-rpanel-section',
     sections: Object.freeze([
-      Object.freeze({ id: 'rp-language', collapsed: false }),
-      Object.freeze({ id: 'rp-simulate', collapsed: false }),
-      Object.freeze({ id: 'rp-batch', collapsed: true })
+      Object.freeze({ id: 'rp-language', collapsed: false, minW: 300, minH: 200 }),
+      Object.freeze({ id: 'rp-simulate', collapsed: false, minW: 320, minH: 240, fill: '.trace-log' }),
+      Object.freeze({ id: 'rp-batch', collapsed: true, minW: 320, minH: 220, fill: '.batch-result' })
     ])
   })
 });
@@ -181,4 +181,170 @@ export function moveSection(side, id, index) {
 export function resetSectionOrder(side) {
   try { localStorage.removeItem(orderKey(side)); } catch (e) { /* ignore */ }
   return declaredSectionIds(side);
+}
+
+// ── floating a section out of its panel ───────────────────────────
+//
+// A section is **docked** or **floating**. Floating means the same element,
+// reparented into a layer over the canvas — see [js/panel-float.js](panel-float.js)
+// for why that is one `appendChild` rather than a second copy of the section.
+//
+// The geometry is screen space: px from the top-left of the canvas well. These
+// are instruments rather than annotations — a Simulate window that scrolled
+// away when you panned the machine would be useless, and at 8% zoom a
+// world-anchored one would be twenty pixels wide. Notes and dividers are the
+// world-anchored kind and already exist; this is the other thing.
+//
+// Docked is stored as the *absence* of a record, the same rule `sectionOrder`
+// follows, so a section dragged back into its panel leaves nothing behind.
+
+/** A floating window narrower or shorter than this is not readable. */
+export const FLOAT_MIN_W = 200;
+export const FLOAT_MIN_H = 110;
+
+function floatKey(side) {
+  const cfg = PANEL_SECTIONS[side];
+  return cfg ? `${cfg.storeKey}-float` : null;
+}
+
+/**
+ * The one part of a section that should absorb a window's spare height, as a
+ * selector — or nothing, when none of it should.
+ *
+ * This is the answer to "the content stretches when I resize". A window is
+ * taller than its content is *supposed* to be, and what to do with the slack
+ * is a property of the section rather than of the window: States Q has a list
+ * that should grow and scroll, Simulate has a trace log that should, and the
+ * Language card is a stack of boxes where stretching anything at all just
+ * spreads it out. So the default is that **nothing** stretches — the content
+ * keeps its natural height at the top of the window and the body scrolls when
+ * there is not enough room — and a section names its one elastic region if it
+ * has one.
+ *
+ * One region, deliberately. Two flexible children share the slack between
+ * them, which is how a resize turns into a layout nobody designed.
+ */
+export function sectionFill(id) {
+  const side = sectionSide(id);
+  const entry = side && PANEL_SECTIONS[side].sections.find(s => s.id === id);
+  return (entry && entry.fill) || null;
+}
+
+/**
+ * The smallest a section's window may be made.
+ *
+ * Per section rather than one number for all of them, because what "too small
+ * to use" means is a property of the content: the alphabet is a wrapping field
+ * of chips and shrinks gracefully, while Simulate is a labelled row of
+ * transport controls with a tape strip under it and stops being operable
+ * long before that. `FLOAT_MIN_*` stays as the floor a section that declares
+ * nothing gets, so adding a section costs no edit here.
+ */
+export function sectionMinSize(id) {
+  const side = sectionSide(id);
+  const entry = side && PANEL_SECTIONS[side].sections.find(s => s.id === id);
+  return {
+    w: Math.max(FLOAT_MIN_W, (entry && entry.minW) || 0),
+    h: Math.max(FLOAT_MIN_H, (entry && entry.minH) || 0)
+  };
+}
+
+function num(v, fallback) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * Every float record of a side, reconciled against the registry.
+ *
+ * Read rather than trusted for the same two reasons the order is: an id the
+ * registry no longer has would keep a window on screen with nothing to put in
+ * it, and a record whose geometry did not survive a JSON round trip would
+ * position a window at NaN, which paints nowhere and cannot be dragged back.
+ */
+export function floatStates(side) {
+  const key = floatKey(side);
+  if (!key) return {};
+  const declared = declaredSectionIds(side);
+  let parsed = null;
+  try {
+    const raw = localStorage.getItem(key);
+    parsed = raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return {};
+  }
+  if (!parsed || typeof parsed !== 'object') return {};
+  const out = {};
+  for (const id of declared) {
+    const g = parsed[id];
+    if (!g || typeof g !== 'object') continue;
+    const min = sectionMinSize(id);
+    out[id] = {
+      x: num(g.x, 24), y: num(g.y, 24),
+      w: Math.max(min.w, num(g.w, 280)),
+      h: Math.max(min.h, num(g.h, 260))
+    };
+  }
+  return out;
+}
+
+/** Where a section is floating, or null when it is docked. */
+export function floatState(id) {
+  const side = sectionSide(id);
+  return side ? (floatStates(side)[id] || null) : null;
+}
+
+export function isSectionFloating(id) {
+  return !!floatState(id);
+}
+
+/** The floating sections of a side, in declared order. */
+export function floatingSectionIds(side) {
+  const states = floatStates(side);
+  return declaredSectionIds(side).filter(id => states[id]);
+}
+
+/** The docked ones — what `applySectionOrder` may put back in the panel. */
+export function dockedSectionIds(side) {
+  const states = floatStates(side);
+  return sectionOrder(side).filter(id => !states[id]);
+}
+
+/**
+ * Records where a section is floating, or docks it when handed null.
+ *
+ * Writing the whole side at once rather than one key per section: the records
+ * are read together on every layout pass, and a key per section would leave a
+ * removed section's geometry in storage forever with nothing to reconcile it
+ * against.
+ */
+export function setFloatState(id, geom) {
+  const side = sectionSide(id);
+  if (!side) return null;
+  const states = floatStates(side);
+  if (geom) {
+    const min = sectionMinSize(id);
+    states[id] = {
+      x: num(geom.x, 24), y: num(geom.y, 24),
+      w: Math.max(min.w, num(geom.w, 280)),
+      h: Math.max(min.h, num(geom.h, 260))
+    };
+  } else {
+    delete states[id];
+  }
+  const key = floatKey(side);
+  try {
+    // Docked is the absence of a preference, so a side with nothing floating
+    // holds no record at all rather than an empty object.
+    if (!Object.keys(states).length) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(states));
+  } catch (e) { /* private mode; correct for this session either way */ }
+  return geom ? states[id] : null;
+}
+
+/** Docks every section of a side. */
+export function resetFloatStates(side) {
+  const key = floatKey(side);
+  if (!key) return;
+  try { localStorage.removeItem(key); } catch (e) { /* ignore */ }
 }
