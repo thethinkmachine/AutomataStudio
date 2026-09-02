@@ -460,6 +460,41 @@ header {
   font-weight: 500;
 }
 
+/* Below 900px the strip and its `+` are hidden, so this listbox is the only
+   place a workspace can be made. It is offered everywhere rather than only
+   there: a menu that lists your documents and cannot open a new one is a menu
+   with a hole in it, and the row costs nothing on a desktop. */
+.tab-overflow-new {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 7px 8px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 6px 6px;
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: .78rem;
+  color: var(--text3);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.tab-overflow-new:hover,
+.tab-overflow-new:focus-visible {
+  background: var(--surface3);
+  color: var(--text);
+  outline: none;
+}
+
+/* An `<svg>` with no intrinsic size fills whatever box it is given, and this
+   row is a flex item with room — without this it drew a 400px plus sign. */
+.tab-overflow-new svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  fill: currentColor;
+}
+
 .tab-overflow-item-dot {
   width: 7px;
   height: 7px;

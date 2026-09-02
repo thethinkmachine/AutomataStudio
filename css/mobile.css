@@ -10,8 +10,16 @@
   display: contents;
 }
 
+/* The mobile-only chrome, off by default. Every one of these is turned on
+   inside a `@media (max-width: 900px)` block below; declaring them off here is
+   what keeps a phone-shaped control from appearing on a desktop the moment
+   somebody adds a rule that forgets the query. */
+.mobile-bar,
 .mobile-panel-bar,
 .mobile-panel-scrim,
+.mobile-more-menu,
+.mobile-sheet-head,
+.mobile-ws-btn,
 .mobile-aux-bar,
 .mobile-aux-sheet-scrim {
   display: none;
@@ -39,108 +47,126 @@
     min-height: 100svh;
   }
 
-  /* ── the header scrolls sideways ──────────────────────────────
-     It used to divide the width up instead, and at 390px that left the
-     workspace strip 82px of content area to draw a 106px tab in — one
-     document, its name cut in half, and no way to widen it because every
-     other group was holding its own share. Nothing was gained by the
-     squeeze: the groups are all irreducible (a tab name, a machine name,
-     four icon buttons), so shrinking them only made each unreadable in
-     place of letting the row be longer than the screen.
+  /* ── the header stops being a scroller ───────────────────────
+     It was one, with the machine picker pinned to the leading edge and the
+     action cluster to the trailing edge, and the workspace strip scrolling
+     through the ~133px between them. That is a peephole, not a strip: a tab is
+     156px wide, so no whole tab was ever visible, and a header that pans
+     sideways above a canvas that pans sideways is a gesture collision besides.
 
-     `overflow-x: auto` computes `overflow-y` from `visible` to `auto`, so
-     it is pinned to `hidden` — a header that can scroll vertically is a
-     header that can be nudged half a line off the top. The popups that
-     hang out of this box are all `position: fixed` (see the model picker
-     and theme panel below, and `.ctx` for the two menus), which is what
-     keeps them from being clipped by a scroll container. */
+     So the strip goes, and with it the scroll, both sticky clusters and their
+     shadows. The header is a plain row again: the machine, the workspace it is
+     in, and the two actions that have to be one tap away. Everything removed
+     from here is still reachable — the workspaces from the button below, undo
+     from the bottom bar, redo and the rest from its More popover. */
   header {
     position: relative;
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow: hidden;
     justify-content: flex-start;
-    /* Left only. A scroll container's trailing padding is part of its
-       scrollable area, and a sticky `right: 0` resolves against the padding
-       box — so 8px here parked the pinned actions 8px short of the edge and
-       let the tabs scroll through the gap behind them. The trailing space is
-       the pinned cluster's own padding instead. */
-    padding: 0 0 0 8px;
-    scrollbar-width: none;
-    /* Or a swipe that runs out of header carries on into the page. */
-    overscroll-behavior-inline: contain;
-    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+    padding: 0 8px;
   }
 
-  header::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* Nothing in a scrolling header may grow or shrink; doing both instead of
-     scrolling is what the header was already for. Written as `[class]`
-     rather than `*` on purpose: `.tab-bar-wrap` and the rest carry a
-     `flex: 1` of their own, and a bare `header > *` loses to every one of
-     them on specificity — silently, with the row still dividing itself up. */
+  /* Irreducible things do not shrink; the workspace button is the one that
+     absorbs whatever is left. */
   header > [class] {
     flex: 0 0 auto;
   }
 
-  /* One scroller, not two nested ones. The strip had its own horizontal
-     scroll because the header would not give it room — now that the header
-     scrolls, a second scroller inside it is a trap: a swipe that starts on
-     a tab moves the strip and a swipe two pixels above it moves the header,
-     with nothing on screen saying which is which. `updateTabOverflowShadows`
-     measures `scrollWidth - clientWidth`, so the jump-to-tab button retires
-     itself here without being told. */
+  /* The strip is the wrong thing to give the narrowest row on the device: on a
+     phone there are one to three workspaces and switching is rare. The button
+     that replaces it names the active one and opens the same listbox the
+     strip's own overflow button opens, so there is one list rather than two. */
   .tab-bar-wrap {
-    overflow: visible;
+    display: none;
+  }
+
+  /* The one thing in the row that may take what is left, and the only one that
+     needs the `header > ` prefix to say so: the blanket rule above is (0,1,1)
+     and a bare class is (0,1,0), so `flex: 1 1 auto` on its own loses to it
+     silently and the button collapses to its text. Capped, or on a tablet it
+     stretches a two-word name across a third of the header. */
+  header > .mobile-ws-btn {
+    flex: 1 1 auto;
+    max-width: 200px;
+  }
+
+  .mobile-ws-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     min-width: 0;
+    height: 32px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface);
+    color: var(--text2);
+    font-family: var(--sans);
+    font-size: .74rem;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
-  .tab-bar {
-    overflow: visible;
+  .mobile-ws-btn:active {
+    background: var(--surface2);
+    border-color: var(--border2);
+    color: var(--text);
+  }
+
+  /* The tab strip's accent dot, kept: it is how a workspace is told apart at a
+     glance everywhere else in the app, and the button is now the only place
+     the active one is named. */
+  .mobile-ws-dot {
+    width: 7px;
+    height: 7px;
     flex: 0 0 auto;
+    border-radius: 999px;
+    background: var(--ws-accent, var(--accent));
   }
 
-  /* The picker names what you are editing, so it cannot be something you
-     scroll to find. It moves ahead of the document strip and pins to the
-     leading edge; the logo is the one thing here that may scroll away,
-     being the one thing that is not a control. The reading order still runs
-     tabs → picker → actions, which for a row of independent controls is a
-     mismatch worth the picker being permanently legible. */
-  header > .model-picker-container {
-    order: -1;
-    position: sticky;
-    left: 0;
-    z-index: 3;
-    background: var(--bg2);
-    box-shadow: 12px 0 12px -8px var(--tab-overflow-shadow);
+  .mobile-ws-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
   }
 
-  header > .hdr-left {
-    order: -2;
+  .mobile-ws-dirty {
+    width: 6px;
+    height: 6px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: var(--text3);
   }
 
-  /* The document strip is what got longer; the actions are what have to stay
-     reachable. Sticking them to the trailing edge is what makes the scroll
-     usable at all — six workspaces would otherwise put Save six hundred
-     pixels to the right of Undo. The `margin-left: auto` is the other half:
-     an auto margin absorbs free space when there is any, so on a short strip
-     the cluster sits at the edge instead of stranded mid-header, and
-     computes to nothing once the row overflows and sticky takes over. */
+  .mobile-ws-dirty[hidden] {
+    display: none;
+  }
+
+  .mobile-ws-btn .chevron {
+    width: 11px;
+    height: 11px;
+    flex: 0 0 auto;
+    color: var(--text3);
+  }
+
+  /* Undo has a cell in the bottom bar, where a thumb can reach it, and redo is
+     in the popover beside it. Two more 30px targets at the top of the screen
+     would be the same controls twice. */
+  .hdr-history-actions {
+    display: none;
+  }
+
+  /* An auto margin absorbs whatever is spare, so the actions sit at the
+     trailing edge on a tablet and compute to nothing on a phone, where there
+     is none. */
   header > .hdr-right {
-    position: sticky;
-    right: 0;
     margin-left: auto;
-    padding-left: 10px;
-    padding-right: 8px;
-    /* Opaque, and above everything it slides over: the tab strip's own
-       border and the active tab's fill are both painted by positioned
-       elements, so this needs a stacking order rather than just a colour. */
-    background: var(--bg2);
-    /* Or an opaque block sliding over the tabs reads as a rendering fault
-       rather than as something pinned in front of them. */
-    box-shadow: -14px 0 14px -8px var(--tab-overflow-shadow);
-    z-index: 3;
+    gap: 4px;
   }
 
   .hdr-sep,
@@ -184,8 +210,8 @@
   }
 
   .model-picker-btn {
-    min-width: 132px;
-    max-width: 190px;
+    min-width: 108px;
+    max-width: 150px;
     height: 32px;
     padding: 0 8px;
   }
@@ -207,9 +233,9 @@
     text-overflow: ellipsis;
   }
 
-  /* The logo comes back. The header scrolls now, so the space it takes is
-     no longer taken from anything — and an app whose name is nowhere on
-     screen reads as a page that failed to finish loading. */
+  /* The mark stays — an app whose logo is nowhere on screen reads as a page
+     that failed to finish loading. The wordmark beside it goes at 520px; see
+     the block at the end of this file. */
   .hdr-left {
     display: flex;
     padding: 0 8px 0 0;
@@ -355,102 +381,17 @@
     overflow: hidden;
   }
 
-  .canvas-area {
-    min-height: clamp(320px, 52svh, 560px);
-    height: clamp(320px, 52svh, 560px);
-  }
-
-  .status {
-    left: 12px;
-    right: 12px;
-    top: 12px;
-    transform: none;
-    max-width: none;
-    white-space: normal;
-    text-align: center;
-    line-height: 1.5;
-  }
-
-  .canvas-toolbox {
-    left: 12px;
-    right: 12px;
-    bottom: 12px;
-    top: auto;
-    transform: none;
-    width: auto;
-    gap: 6px;
-    max-width: none;
-    overflow-x: auto;
-    padding: 6px 8px;
-    border-radius: 18px;
-    justify-content: flex-start;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-
-  .canvas-toolbox[data-dock="top"],
-  .canvas-toolbox[data-dock="bottom"] {
-    flex-direction: row;
-    align-items: center;
-    min-width: 0;
-    padding: 6px 8px;
-  }
-
-  .canvas-toolbox[data-dock="left"],
-  .canvas-toolbox[data-dock="right"] {
-    flex-direction: row;
-    align-items: center;
-    min-width: 0;
-    padding: 6px 8px;
-  }
-
-  .toolbox-grip {
-    width: 28px;
-    min-height: 28px;
-  }
-
-  .canvas-toolbox[data-dock="top"] .toolbox-grip,
-  .canvas-toolbox[data-dock="bottom"] .toolbox-grip,
-  .canvas-toolbox[data-dock="floating"] .toolbox-grip {
-    width: 28px;
-    min-height: 28px;
-    margin-right: 2px;
-  }
-
-  .canvas-toolbox[data-dock="top"] .toolbox-btn,
-  .canvas-toolbox[data-dock="bottom"] .toolbox-btn {
-    min-width: 58px;
-    padding: 7px 9px;
-  }
-
-  .canvas-toolbox::-webkit-scrollbar,
-  .hdr-right::-webkit-scrollbar {
-    display: none;
-  }
-
-  .toolbox-btn {
-    min-width: 50px;
-    padding: 7px 8px;
-  }
-
-  .toolbox-kbd,
+  /* The toolbox, the zoom cluster and the status toast used to be laid out
+     here — three overlays sharing `top: 12px` at one end and a stack of bars
+     at the other. They are the mobile shell's business now; see the block
+     under "THE MOBILE SHELL" below, which is the one place that decides what
+     floats over a phone's canvas. */
   .minimap-container,
   #minimap-toggle-btn,
   .canvas-hint,
-  .zoom-indicator {
+  .zoom-indicator,
+  .toolbox-kbd {
     display: none !important;
-  }
-
-  .toolbox-sep {
-    width: 1px;
-    height: auto;
-    margin: 0 2px;
-  }
-
-  .canvas-nav-controls {
-    top: 12px;
-    right: 12px;
-    bottom: auto;
   }
 
   .lang-claim,
@@ -488,7 +429,6 @@
 
   #utm-tape-wrap,
   .tape-wrap,
-  .canvas-toolbox,
   .canvas-nav-controls,
   .hdr-right,
   .sctrl {
@@ -642,28 +582,9 @@
     height: 20px;
   }
 
-  .mobile-machine-select {
-    flex-basis: 108px;
-    min-width: 108px;
-    max-width: 108px;
-  }
-
   .hbtn {
     font-size: .64rem;
     padding: 5px 8px;
-  }
-
-  .toolbox-lbl {
-    font-size: .55rem;
-  }
-
-  .cnc-zoom-input {
-    width: 38px;
-  }
-
-  .canvas-area {
-    min-height: clamp(280px, 46svh, 460px);
-    height: clamp(280px, 46svh, 460px);
   }
 
   .closure-grid {
@@ -691,11 +612,27 @@
   }
 }
 
-/* ─── MOBILE CANVAS SHELL ───
-   On a phone the canvas is the workspace. Panels are transient sheets that
-   float above it, while the bottom dock provides a stable way back to them. */
+/* ══════════════════════════════════════════════════════════════════
+   THE MOBILE SHELL
+   ══════════════════════════════════════════════════════════════════
+   On a phone the canvas is the app, and everything else is one bar along the
+   bottom of the screen.
+
+   What this replaced was three of them. The floating toolbox sat above a
+   three-button panel bar which sat above the home indicator, with the zoom
+   cluster and the status toast overlapping each other at the top — about a
+   quarter of the screen given to chrome that mostly repeated the header. And
+   the toolbox did not work: nine labelled buttons is ~640px of content in a
+   ~366px box, and `touch-action: none` on `.canvas-area` intersects down the
+   ancestor chain, so no finger could scroll it to the half that was off
+   screen. There is one bar now, the tools are cells in it, and nothing floats
+   over the canvas except the status toast, the info pill and one Fit button.
+
+   One height token for both bars. They used to be 66px and 64px, which is two
+   numbers for one edge of one screen. */
 :root {
-  --mobile-panel-bar-height: 66px;
+  --mobile-bar-h: 56px;
+  --mobile-bar-inset: calc(var(--mobile-bar-h) + env(safe-area-inset-bottom, 0px));
 }
 
 @media (max-width: 900px) {
@@ -746,23 +683,247 @@
     touch-action: none;
   }
 
-  /* The build panels become sheets. Auxiliary-view navigation panels keep the
-     existing stacked treatment inside their own overlay. */
+  /* `touch-action: none` above is inherited *in effect* — the browser
+     intersects the value down the ancestor chain — so every scrollable overlay
+     inside the canvas has to say what it allows or it silently cannot be
+     scrolled by a finger. That is precisely how the old toolbox came to have
+     four permanently unreachable buttons. Anything dropped into the canvas
+     well from here on needs a line in this rule. */
+  .canvas-toolbox,
+  .example-card,
+  .quick-settings,
+  .mobile-more-menu {
+    touch-action: pan-y;
+  }
+
+  /* ── the toolbox is gone ──────────────────────────────────────
+     Its contents are the mobile bar's cells and the bar's More popover.
+     `!important` because js/view.js writes `display: flex` inline on every
+     view change; the toolbar's dock arithmetic then measures it as a hidden
+     node (offsetParent null) and correctly reports "no toolbar", so the
+     overlay stack stops reserving a strip for something that is not there. */
+  .canvas-toolbox,
+  .toolbar-preview {
+    display: none !important;
+  }
+
+  /* ── what is left over the canvas ─────────────────────────────
+     The zoom stepper, the snap toggle, auto-layout and the settings gear all
+     move into More: pinch is the zoom control on a phone, so a −/+/% trio is
+     three targets saying what two fingers already say. Fit to screen is the
+     exception and keeps a button, because it is the recovery tap after a
+     pinch goes wrong and burying the way back to your own diagram two taps
+     deep is the wrong trade. */
+  .canvas-nav-controls {
+    padding: 0;
+    border-radius: 999px;
+    background: var(--bg2);
+    box-shadow: var(--shadow-md);
+  }
+
+  .canvas-nav-controls > *:not(#cnc-fit-btn) {
+    display: none !important;
+  }
+
+  #cnc-fit-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+  }
+
+  #cnc-fit-btn svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  /* A centred pill again, not a bar pinned to both edges. Full width, it ran
+     under the info pill at one end and the zoom cluster at the other, so every
+     message the app printed came out clipped at both ends. Capped short of the
+     edges so the pill and the Fit button keep their corners, and wrapping,
+     because a sentence has to fit 390px. */
+  .status {
+    left: 50%;
+    right: auto;
+    top: 10px;
+    bottom: auto;
+    transform: translateX(-50%);
+    max-width: min(320px, calc(100% - 72px));
+    white-space: normal;
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  /* ── the bar ──────────────────────────────────────────────────
+     Six equal cells. Equal because they are peers: a row whose widths encode
+     a hierarchy nobody meant is worse than a plain grid. At 390px that is
+     61px a cell, comfortably over the 44px minimum, and the whole bar is
+     56px plus the home area. */
+  .mobile-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 2px;
+    height: var(--mobile-bar-inset);
+    padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
+    background: color-mix(in srgb, var(--bg2) 92%, transparent);
+    -webkit-backdrop-filter: saturate(140%) blur(14px);
+    backdrop-filter: saturate(140%) blur(14px);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, .18);
+    z-index: 180;
+  }
+
+  /* Icon over label. Three names side by side at 390px do not fit on one line
+     beside their glyphs, which is what the previous bar solved by having two
+     buttons and calling one of them "Panels". */
+  .mobile-bar-btn {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-width: 0;
+    padding: 3px 2px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text3);
+    font-family: var(--sans);
+    font-size: .6rem;
+    letter-spacing: .01em;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: color var(--transition-fast), background var(--transition-fast),
+      border-color var(--transition-fast);
+  }
+
+  .mobile-bar-btn:active {
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  /* One treatment for "this mode is on" and "this sheet is up" — they are the
+     same claim about the same bar, and two of them would read as two kinds of
+     control. */
+  .mobile-bar-btn.is-on,
+  .mobile-bar-btn.is-open,
+  .mobile-bar-btn[aria-expanded="true"] {
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
+  }
+
+  .mobile-bar-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  .mobile-bar-icon {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
+    color: currentColor;
+  }
+
+  .mobile-bar-icon svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+  }
+
+  /* The trans glyph is drawn with strokes rather than a fill. */
+  .mobile-bar-icon svg[stroke] {
+    fill: none;
+    stroke: currentColor;
+  }
+
+  .mobile-bar-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.1;
+  }
+
+  /* Rides the icon rather than following the label: a third element on the row
+     is what made the old bar's cells different widths. */
+  .mobile-bar-dot {
+    position: absolute;
+    top: 2px;
+    left: 50%;
+    margin-left: 6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--accent);
+  }
+
+  .mobile-bar-dot[hidden] {
+    display: none;
+  }
+
+  /* ── the More popover ─────────────────────────────────────────
+     Opens upward off its cell — the bar is on the bottom edge, so there is
+     never room below it. Fixed, because the canvas well is a scroll and
+     transform context and would clip it. */
+  .mobile-more-menu {
+    position: fixed;
+    display: none;
+    min-width: 208px;
+    max-width: calc(100vw - 16px);
+    z-index: 190;
+  }
+
+  .mobile-more-menu.open {
+    display: block;
+  }
+
+  .mobile-more-menu .ctx-i {
+    min-height: 42px;
+  }
+
+  /* This listbox is the workspace switcher on a phone, so its rows are targets
+     rather than menu lines — 30px is a miss as often as a hit. */
+  .tab-overflow-menu {
+    min-width: 240px;
+  }
+
+  .tab-overflow-item,
+  .tab-overflow-new {
+    min-height: 40px;
+  }
+
+  /* ── the sheet ────────────────────────────────────────────────
+     Detents, because `min(78dvh, 620px)` above a 100px bar left about 76px of
+     canvas on a 390×844 phone — you could not watch a run while the trace log
+     describing it was open, which is the only reason to put it in a sheet
+     rather than in a dialog. Half by default, full when dragged up or the head
+     is tapped, dismissed when dragged down from half. */
   .lpanel,
   .rpanel {
     position: fixed !important;
     top: auto !important;
     right: 0 !important;
-    bottom: calc(var(--mobile-panel-bar-height) + env(safe-area-inset-bottom, 0px)) !important;
+    bottom: var(--mobile-bar-inset) !important;
     left: 0 !important;
     width: 100% !important;
     min-width: 0 !important;
     max-width: none;
-    height: min(78dvh, 620px);
-    max-height: calc(100dvh - var(--hdr) - var(--mobile-panel-bar-height) - env(safe-area-inset-bottom, 0px) - 16px);
+    height: 52dvh;
+    max-height: calc(100dvh - var(--hdr) - var(--mobile-bar-inset) - 12px);
     border: 1px solid var(--border2);
     border-bottom: 0;
-    border-radius: 16px 16px 0 0;
+    border-radius: 18px 18px 0 0;
     background: var(--bg2);
     box-shadow: var(--shadow-lg);
     overflow: hidden;
@@ -773,8 +934,21 @@
     pointer-events: auto;
     will-change: transform, opacity;
     transition: transform .28s cubic-bezier(.22, 1, .36, 1),
+      height .24s cubic-bezier(.22, 1, .36, 1),
       opacity .18s ease,
       visibility 0s linear 0s;
+  }
+
+  .lpanel[data-detent="full"],
+  .rpanel[data-detent="full"] {
+    height: 88dvh;
+  }
+
+  /* A drag is frame-by-frame, so the eased height has to come off or the sheet
+     lags the finger by a quarter second. */
+  .lpanel.is-dragging,
+  .rpanel.is-dragging {
+    transition: none;
   }
 
   .lpanel[data-mobile-collapsed="1"],
@@ -784,7 +958,7 @@
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    transition-delay: 0s, 0s, .28s;
+    transition-delay: 0s, 0s, 0s, .28s;
   }
 
   .lpanel[data-mobile-collapsed="1"] > .mobile-panel-content,
@@ -800,54 +974,124 @@
   .lpanel .mobile-panel-content,
   .rpanel .mobile-panel-content {
     display: flex;
+    flex: 1 1 auto;
     width: 100%;
-    height: 100%;
     min-height: 0;
     overflow: hidden;
   }
 
+  /* The desktop tab strip goes: it lists only its own panel's tabs, and on a
+     phone the three surfaces live on two panels that are two different sheets.
+     The injected strip below lists all three and switches sheets. */
   .lpanel .panel-header,
   .rpanel .panel-header {
-    display: flex;
-    flex: 0 0 auto;
-    min-height: 44px;
-    padding-left: 16px;
-    padding-right: 12px;
-  }
-
-  .lpanel .pin-btn,
-  .rpanel .pin-btn {
     display: none;
   }
 
-  .mobile-panel-close {
-    width: 32px;
-    height: 32px;
+  /* ── the sheet's head ─────────────────────────────────────────
+     Built by installSheetChrome() in js/mobile.js rather than written into
+     both panels' markup — the same reasoning as installModalChrome(). */
+  .mobile-sheet-head {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+    gap: 6px;
+    padding: 5px 10px 8px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* The grab handle is a full-width target with a small mark in it. A 40px
+     pill is a hard thing to catch one-handed, and the whole strip is what the
+     gesture is on anyway. */
+  .mobile-sheet-grab {
     display: grid;
     place-items: center;
-    flex: 0 0 auto;
+    width: 100%;
+    height: 20px;
     padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: grab;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-sheet-grab span {
+    display: block;
+    width: 40px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--border2);
+    transition: background var(--transition-fast), width var(--transition-fast);
+  }
+
+  .mobile-sheet-grab:active span {
+    background: var(--text3);
+    width: 52px;
+  }
+
+  .mobile-sheet-tabs {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 3px;
+    padding: 3px;
+    border-radius: 10px;
+    background: var(--bg);
+  }
+
+  .mobile-sheet-tab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+    min-height: 32px;
+    padding: 0 8px;
     border: 1px solid transparent;
-    border-radius: 6px;
+    border-radius: 8px;
     background: transparent;
     color: var(--text3);
+    font-family: var(--sans);
+    font-size: .72rem;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: color var(--transition-fast), background var(--transition-fast),
+      border-color var(--transition-fast);
   }
 
-  .mobile-panel-close:hover,
-  .mobile-panel-close:focus-visible {
-    background: var(--surface);
+  .mobile-sheet-tab.is-on {
+    background: var(--bg2);
+    border-color: var(--border2);
     color: var(--text);
-    outline: none;
+    box-shadow: var(--shadow-sm);
   }
 
-  .mobile-panel-close svg {
+  .mobile-sheet-tab-icon {
+    display: grid;
+    place-items: center;
     width: 15px;
     height: 15px;
+    flex: 0 0 auto;
   }
 
-  .panel-tab {
-    min-height: 34px;
-    font-size: .72rem;
+  .mobile-sheet-tab-icon svg {
+    width: 15px;
+    height: 15px;
+    fill: currentColor;
+  }
+
+  .mobile-sheet-tab-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .lpanel .pin-btn,
+  .rpanel .pin-btn,
+  .mobile-panel-close {
+    display: none;
   }
 
   .lpanel-content,
@@ -857,6 +1101,14 @@
     overflow-x: hidden;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* StateMate is a flex column with its own scroller (the transcript) and a
+     composer pinned under it, so it must not become a scroll box itself —
+     that would carry the composer off the bottom of the sheet. It only needs
+     to be allowed to shrink. */
+  #statemate-panel {
+    min-height: 0;
   }
 
   .mobile-panel-scrim {
@@ -883,149 +1135,37 @@
     transition-delay: 0s, 0s;
   }
 
-  /* Three buttons, one per panel tab — see the note over the markup. The
-     tracks are equal so the bar reads as a set of peers rather than as a
-     row whose widths encode a hierarchy nobody meant. */
+  /* The old bar's three buttons are one cell now; the ids are gone with it. */
   .mobile-panel-bar {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 4px;
-    height: var(--mobile-panel-bar-height);
-    padding: 7px 12px calc(7px + env(safe-area-inset-bottom, 0px));
-    box-sizing: border-box;
-    background: color-mix(in srgb, var(--bg2) 94%, transparent);
-    border-top: 1px solid var(--border);
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, .18);
-    z-index: 180;
+    display: none !important;
   }
 
-  /* Icon over label, the way every other bottom bar on a phone is built:
-     three names side by side at 390px do not fit on one line beside their
-     glyphs, and the previous bar solved that by having two buttons and
-     calling one of them "Panels". */
-  .mobile-panel-bar-btn {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    min-width: 0;
-    min-height: 46px;
-    padding: 4px 2px;
-    border: 1px solid transparent;
-    border-radius: 10px;
-    background: transparent;
-    color: var(--text2);
-    font-family: var(--sans);
-    font-size: .62rem;
-    letter-spacing: .01em;
-    cursor: pointer;
-    touch-action: manipulation;
-    transition: color var(--transition-fast), background var(--transition-fast);
-  }
-
-  .mobile-panel-bar-btn.is-open {
-    color: var(--accent);
-    background: var(--accent-soft);
-    border-color: var(--accent-border);
-  }
-
-  .mobile-panel-bar-btn:active {
-    background: var(--surface);
-  }
-
-  .mobile-panel-bar-label {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    line-height: 1.1;
-  }
-
-  .mobile-panel-bar-icon {
-    width: 19px;
-    height: 19px;
-    color: currentColor;
-    flex: 0 0 auto;
-  }
-
-  /* The counts ride on the icon rather than after the label — a third
-     element on the row is what made the old bar's items different widths. */
-  .mobile-panel-bar-count,
-  .mobile-panel-bar-dot {
-    position: absolute;
-    top: 3px;
-    left: 50%;
-    margin-left: 5px;
-  }
-
-  .mobile-panel-bar-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 999px;
-    background: var(--accent);
-  }
-
-  .mobile-panel-bar-dot[hidden] {
-    display: none;
-  }
-
-  .mobile-panel-bar-count {
-    min-width: 15px;
-    height: 15px;
-    padding: 0 4px;
-    border-radius: 999px;
-    background: var(--surface3, var(--bg3));
-    color: var(--text3);
-    font-family: var(--mono);
-    font-size: .54rem;
-    line-height: 15px;
-    text-align: center;
-  }
-
-  .mobile-panel-bar-btn.is-open .mobile-panel-bar-count {
-    background: var(--accent-soft-strong);
-    color: var(--accent);
-  }
-
-  body.aux-open .mobile-panel-bar,
+  /* The bar is hidden while an auxiliary view is up — the aux bar takes the
+     same slot, at the same height — so the Fit button and the info pill move
+     down to the canvas's own edge with it. Measured in JS rather than
+     described here (compactBottomInset in js/ui.js), because both are placed
+     with inline styles. */
+  body.aux-open .mobile-bar:not(.mobile-aux-bar),
   body.aux-open .mobile-panel-scrim {
     display: none;
-  }
-
-  /* Keep the editing controls above the panel dock and out of the home-area
-     gesture region. The dock is hidden while an auxiliary view is open. */
-  .canvas-toolbox {
-    bottom: calc(var(--mobile-panel-bar-height) + env(safe-area-inset-bottom, 0px) + 12px) !important;
-  }
-
-  .status {
-    top: 12px;
-    bottom: auto;
   }
 }
 
 @media (max-width: 900px) and (prefers-reduced-motion: reduce) {
   .lpanel,
   .rpanel,
-  .mobile-panel-scrim {
+  .mobile-panel-scrim,
+  .mobile-sheet-grab span {
     transition: none !important;
   }
 }
 
-/* ─── MOBILE AUXILIARY TOOLS ───
-   Algorithms, Grammar and Reference are reading/work surfaces on a phone. Keep
-   their result pane full-height and move the secondary navigation into an
-   on-demand sheet opened from the compact dock at the bottom. */
-:root {
-  --mobile-aux-bar-height: 64px;
-}
-
+/* ─── AUXILIARY VIEWS ───
+   Algorithms, Grammar and Reference are reading surfaces on a phone: the
+   result pane takes the height and the secondary navigation opens as a sheet
+   from the bar. That bar is the *same* bar — one height, one grid, one type
+   scale — because swapping a differently shaped one in at the same coordinates
+   is what made the bottom of the screen read as two unrelated apps. */
 @media (max-width: 900px) {
   .aux-overlay-body {
     position: relative;
@@ -1055,13 +1195,13 @@
     min-width: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 16px 14px calc(var(--mobile-aux-bar-height) + 18px) !important;
+    padding: 16px 14px calc(var(--mobile-bar-inset) + 18px) !important;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }
 
   .aux-overlay #v-reference .algo-content[style] {
-    padding: 16px 14px calc(var(--mobile-aux-bar-height) + 18px) !important;
+    padding: 16px 14px calc(var(--mobile-bar-inset) + 18px) !important;
   }
 
   .aux-overlay .algo-nav,
@@ -1070,15 +1210,15 @@
     position: absolute;
     top: auto;
     right: 0;
-    bottom: var(--mobile-aux-bar-height);
+    bottom: var(--mobile-bar-inset);
     left: 0;
     width: 100% !important;
     min-width: 0 !important;
-    height: min(72dvh, 540px);
-    max-height: calc(100% - var(--mobile-aux-bar-height) - 12px);
+    height: min(64dvh, 520px);
+    max-height: calc(100% - var(--mobile-bar-inset) - 12px);
     border: 1px solid var(--border2);
     border-bottom: 0;
-    border-radius: 16px 16px 0 0;
+    border-radius: 18px 18px 0 0;
     background: var(--bg2);
     box-shadow: var(--shadow-lg);
     overflow: hidden;
@@ -1103,17 +1243,34 @@
     transition-delay: 0s, 0s, .28s;
   }
 
+  /* Same head as the build sheet: a grab mark over a title strip. The element
+     is the panel's own collapse button rather than an injected one — it
+     already exists, already toggles the sheet, and giving it the mark is
+     cheaper than a second implementation of the same head. The mark is drawn
+     with ::before so the button keeps one child and one accessible name. */
   .aux-overlay .algo-nav .mobile-panel-toggle,
   .aux-overlay .gram-left .mobile-panel-toggle,
   .aux-overlay .ref-nav .mobile-panel-toggle {
-    position: static;
+    position: relative;
     display: flex;
     flex: 0 0 auto;
-    min-height: 50px;
-    padding: 12px 16px;
+    min-height: 52px;
+    padding: 18px 16px 12px;
     border-top: 0;
-    border-radius: 15px 15px 0 0;
-    background: var(--surface);
+    border-radius: 17px 17px 0 0;
+    background: var(--bg2);
+  }
+
+  .aux-overlay .mobile-panel-toggle::before {
+    content: "";
+    position: absolute;
+    top: 7px;
+    left: 50%;
+    width: 40px;
+    height: 4px;
+    margin-left: -20px;
+    border-radius: 999px;
+    background: var(--border2);
   }
 
   .aux-overlay .algo-nav .mobile-panel-content,
@@ -1152,104 +1309,30 @@
     transition-delay: 0s, 0s;
   }
 
+  /* Absolute inside the overlay rather than fixed: the aux views are a dialog
+     over the canvas, and their bar belongs to it. Two cells wide, so the grid
+     is told how many rather than inferring three from `grid-auto-flow`. */
   .mobile-aux-bar {
     position: absolute;
-    right: 0;
-    bottom: 0;
-    left: 0;
     display: none;
-    height: var(--mobile-aux-bar-height);
-    padding: 7px 12px calc(7px + env(safe-area-inset-bottom, 0px));
-    box-sizing: border-box;
-    background: color-mix(in srgb, var(--bg2) 94%, transparent);
-    border-top: 1px solid var(--border);
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, .18);
     z-index: 5;
   }
 
   body.aux-open .mobile-aux-bar {
-    display: flex;
-  }
-
-  .mobile-aux-bar-btn {
-    display: none;
-    align-items: center;
-    width: 100%;
-    min-width: 0;
-    min-height: 44px;
-    gap: 9px;
-    padding: 0 12px;
-    border: 1px solid transparent;
-    border-radius: 10px;
-    background: transparent;
-    color: var(--text2);
-    font-family: var(--mono);
-    text-align: left;
-    cursor: pointer;
-    touch-action: manipulation;
-  }
-
-  body.aux-open[data-aux-view="algo"] .mobile-aux-bar-btn[data-aux-for="algo"],
-  body.aux-open[data-aux-view="grammar"] .mobile-aux-bar-btn[data-aux-for="grammar"],
-  body.aux-open[data-aux-view="reference"] .mobile-aux-bar-btn[data-aux-for="reference"] {
-    display: flex;
-  }
-
-  .mobile-aux-bar-btn:active,
-  .mobile-aux-bar-btn[aria-expanded="true"] {
-    color: var(--accent);
-    background: var(--accent-soft);
-    border-color: var(--accent-border);
-  }
-
-  .mobile-aux-bar-icon {
     display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    flex: 0 0 28px;
-    border-radius: 8px;
-    background: var(--surface3);
-    color: currentColor;
-    font-size: .95rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
   }
 
-  .mobile-aux-bar-copy {
+  /* One nav cell per view, and only the open view's is drawn — so the bar has
+     the same two cells whichever tool is up. */
+  .mobile-aux-nav-btn {
+    display: none;
+  }
+
+  body.aux-open[data-aux-view="algo"] .mobile-aux-nav-btn[data-aux-for="algo"],
+  body.aux-open[data-aux-view="grammar"] .mobile-aux-nav-btn[data-aux-for="grammar"],
+  body.aux-open[data-aux-view="reference"] .mobile-aux-nav-btn[data-aux-for="reference"] {
     display: flex;
-    flex-direction: column;
-    min-width: 0;
-    line-height: 1.2;
-  }
-
-  .mobile-aux-bar-copy strong {
-    overflow: hidden;
-    color: currentColor;
-    font-size: .7rem;
-    font-weight: 500;
-    letter-spacing: .03em;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .mobile-aux-bar-copy small {
-    margin-top: 2px;
-    overflow: hidden;
-    color: var(--text3);
-    font-size: .58rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .mobile-aux-bar-chevron {
-    margin-left: auto;
-    color: var(--text3);
-    font-size: 1rem;
-    transition: transform .2s ease, color .2s ease;
-  }
-
-  .mobile-aux-bar-btn[aria-expanded="true"] .mobile-aux-bar-chevron {
-    transform: rotate(180deg);
-    color: var(--accent);
   }
 }
 
@@ -1257,8 +1340,7 @@
   .aux-overlay .algo-nav,
   .aux-overlay .gram-left,
   .aux-overlay .ref-nav,
-  .mobile-aux-sheet-scrim,
-  .mobile-aux-bar-chevron {
+  .mobile-aux-sheet-scrim {
     transition: none !important;
   }
 }

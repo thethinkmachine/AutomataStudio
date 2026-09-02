@@ -9,7 +9,7 @@ import { DEFAULT_THEME } from './themes.js';
 import { initMinimap, toggleMinimap } from './minimap.js';
 import { initPanelSectionReorder } from './panel-sections-ui.js';
 import { initPanelFloat } from './panel-float.js';
-import { applyTheme, initCanvasResizeObserver, initLPanelSections, initMobilePanelBar, initMobilePanels, initPanelResizers, initRPanelSections, initPanelTabs, initTabs, initToolbarCollapse, setTool, toggleLPanelPin, toggleRPanelPin } from './ui.js';
+import { applyTheme, initCanvasResizeObserver, initLPanelSections, initMobilePanelBar, initMobilePanels, initPanelResizers, initRPanelSections, initPanelTabs, initTabs, initToolbarCollapse, isMobilePanelLayout, setTool, toggleLPanelPin, toggleRPanelPin } from './ui.js';
 import { showStatus } from './utils.js';
 import { setMachine, setView } from './view.js';
 
@@ -46,7 +46,6 @@ try {
   if (typeof initToolbarCollapse === 'function') initToolbarCollapse();
 } catch (e) { }
 if (typeof initMobilePanels === 'function') initMobilePanels();
-if (typeof initMobilePanelBar === 'function') initMobilePanelBar();
 if (typeof initLPanelSections === 'function') initLPanelSections();
 if (typeof initRPanelSections === 'function') initRPanelSections();
 // After the collapse state, since the grips go into headers this may reveal.
@@ -56,6 +55,9 @@ initPanelSectionReorder();
 initPanelFloat();
 if (typeof initPanelResizers === 'function') initPanelResizers();
 if (typeof initPanelTabs === 'function') initPanelTabs();
+// After the tabs: the mobile sheet's head carries a strip of every tab, and
+// `applyPanelLayout` is what decides which panel each one is on.
+if (typeof initMobilePanelBar === 'function') initMobilePanelBar();
 if (typeof initCanvasResizeObserver === 'function') initCanvasResizeObserver();
 if (typeof initDefBoxOverflowObserver === 'function') initDefBoxOverflowObserver();
 if (typeof initLangClaimOverflowObserver === 'function') initLangClaimOverflowObserver();
@@ -75,7 +77,14 @@ export async function finishBoot() {
   // whole of finishBoot already runs off a promise, so awaiting it here costs
   // nothing and keeps the status hint timed against what actually happened.
   const sharedLinkLoaded = typeof loadSharedLinkFromURL === 'function' && await loadSharedLinkFromURL();
-  setTimeout(() => showStatus('Esc=Pointer · V=Pan · Space+Drag=Pan · S=State · T=Transition · H=Fit · Ctrl+Z=Undo'), sharedLinkLoaded ? 3200 : 600);
+  // Seven keyboard shortcuts, on a device with no keyboard, in a toast that
+  // covers the top of the canvas for four seconds — every one of them names a
+  // key a phone does not have. The touch shell says the same things with its
+  // own labels, so there is nothing to replace it with.
+  const bootHint = isMobilePanelLayout()
+    ? 'Pick a tool below · pinch to zoom'
+    : 'Esc=Pointer · V=Pan · Space+Drag=Pan · S=State · T=Transition · H=Fit · Ctrl+Z=Undo';
+  setTimeout(() => showStatus(bootHint), sharedLinkLoaded ? 3200 : 600);
 }
 
 if (typeof loadBackup === 'function') {

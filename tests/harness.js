@@ -48,6 +48,7 @@ import * as panelList from '../js/panel-list.js';
 import * as panelSectionsUi from '../js/panel-sections-ui.js';
 import * as panelFloat from '../js/panel-float.js';
 import * as panelShake from '../js/panel-shake.js';
+import * as mobile from '../js/mobile.js';
 import * as simulation from '../js/simulation.js';
 import * as tape from '../js/tape.js';
 import * as tapeLog from '../js/tape-log.js';
@@ -100,7 +101,7 @@ import * as wizardUi from '../js/wizard-ui.js';
 
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, viewport, geometry, statesTransitions,
-  canvas, render, panelState, panelSections, panelSectionsUi, panelFloat, panelShake, panelList, notes, dividers,
+  canvas, render, panelState, panelSections, panelSectionsUi, panelFloat, panelShake, panelList, mobile, notes, dividers,
   machineRegistry, machineRuntime, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,
@@ -179,6 +180,8 @@ function resetModuleState() {
   // The shake's cooldown latches, and what it stashed is what a later shake
   // would put back — both would leak a gesture into the next test.
   panelShake.resetPanelShake();
+  // The mobile sheet's detent, which is module state and outlives the elements.
+  mobile.resetMobileShell();
   // Both memoise a *failure* as well as a success — a glyph face that could not
   // be fetched, and font bytes that could not be — so that one refusal does not
   // cost a request per export. That makes them exactly the state a test would
