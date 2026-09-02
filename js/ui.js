@@ -30,6 +30,7 @@ import { Change, emit, subscribe } from './store.js';
 import { DEFAULT_THEME, Themes } from './themes.js';
 import { clearAll, escapeHtml, showStatus } from './utils.js';
 import { AUX_VIEWS, applyMachineSwitch, closeAuxView, hideMoreMenu, hideToolsMenu, setMachine, setView, syncTapeCountUI } from './view.js';
+import { hideMobileMore, initMobileShell, setMobileSheetDetent, syncMobileBar, syncMobileTools, syncMobileWorkspaceButton } from './mobile.js';
 
 subscribe(Change.TABS, renderTabs);
 subscribe(Change.SAVE, updateSaveIndicator);
@@ -108,8 +109,15 @@ export function updateTabOverflowShadows(tb = $('tab-bar')) {
   // alternative to hunting via horizontal scroll or drag.
   const btn = $('tab-overflow-btn');
   if (btn) {
-    btn.classList.toggle('show', hasOverflow);
-    if (!hasOverflow) hideTabOverflowMenu();
+    // Below 900px the strip is not a scroller — css/mobile.css hands the
+    // header the scroll and leaves `.tab-bar` `overflow: visible`, so
+    // `scrollWidth - clientWidth` is 0 and `hasOverflow` is false however many
+    // workspaces there are. Gating on it retired this button on exactly the
+    // screen where hunting by drag is worst, and the mobile header now hides
+    // the strip outright, so the list has to be reachable regardless.
+    const show = hasOverflow || isMobilePanelLayout();
+    btn.classList.toggle('show', show);
+    if (!show) hideTabOverflowMenu();
   }
 }
 
@@ -362,6 +370,10 @@ export function renderTabs() {
     }
   };
 
+  // The strip is hidden below 900px; the header carries a button naming the
+  // active workspace instead, and it is drawn from the same list.
+  if (typeof syncMobileWorkspaceButton === 'function') syncMobileWorkspaceButton();
+
   tb.onscroll = () => updateTabOverflowShadows(tb);
   requestAnimationFrame(() => {
     updateTabOverflowShadows(tb);
@@ -407,7 +419,14 @@ export function renderTabOverflowMenu() {
       ${Workspaces.length > 1 ? `<button class="tab-overflow-item-close" type="button" aria-label="Close ${safeName}" onclick="event.stopPropagation(); closeTab('${ws.id}', event); renderTabOverflowMenu();"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button>` : ''}
     </div>
   `;
-  }).join('');
+  }).join('') + `
+    <div class="tab-overflow-new" role="option" aria-selected="false" tabindex="0"
+         onclick="hideTabOverflowMenu(); createTab();"
+         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();hideTabOverflowMenu();createTab();}">
+      <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></svg>
+      New workspace
+    </div>
+  `;
 }
 
 export function switchTabFromOverflow(id) {
@@ -1671,6 +1690,10 @@ export function setTool(t) {
     try { localStorage.setItem('automata-shape-tool', t); } catch (e) { }
   }
   if (typeof updateShapeToolButton === 'function') updateShapeToolButton(App.lastShapeTool);
+  // The mobile bar carries three of these tools as cells and the rest behind
+  // its More popover, so it is lit from here rather than keeping a second
+  // record of which tool is on.
+  if (typeof syncMobileTools === 'function') syncMobileTools();
 
   const msgs = {
     pointer: 'Click or drag states to interact',
@@ -1902,9 +1925,12 @@ export function bottomEdgeHasRoomBeside(wrapRect, toolbarBox, stackWidth = STACK
 }
 
 export function canvasOverlayCorner(dock, wrapRect, toolbarBox, stackWidth) {
-  // Compact mode pins the toolbar across the bottom, leaving only the top
-  // free; the stack goes top-right, clear of the header controls.
-  if (isCompactToolbarMode()) return { x: 'right', y: 'top' };
+  // Compact mode has no toolbar over the canvas at all — the tools are cells
+  // in the bottom bar (js/mobile.js) and the stack is one Fit button. It goes
+  // bottom-right, just above the bar, because the top belongs to the status
+  // toast and the info pill: three overlays used to share `top: 12px` there,
+  // with the zoom cluster painting over the right end of every message.
+  if (isCompactToolbarMode()) return { x: 'right', y: 'bottom' };
 
   const side = dock && dock.side;
   const ratio = clamp01(dock ? dock.ratio : 0.5);
@@ -2078,18 +2104,26 @@ export function layoutCanvasInfo(wrapRect, obstacles = []) {
   if (!size) return null;
 
   const margin = TOOLBAR_MARGIN;
+  // Same clearance the stack takes: on a phone the bottom edge belongs to the
+  // mobile bar, and a card measured against the canvas's own would open under
+  // it. Applied to the corner search too, or the scoring would keep choosing a
+  // corner that only looks free.
+  const bottomInset = margin + compactBottomInset(wrapRect);
+  // Built field by field rather than spread: a live DOMRect keeps its
+  // properties on the prototype as getters, so `{ ...rect }` is `{}`.
+  const searchRect = { width: wrapRect.width, height: Math.max(1, wrapRect.height - (bottomInset - margin)) };
   // StateMate used to be asked for here: it was a dock across the bottom of the
   // canvas and the biggest thing that could appear over the diagram. As the
   // right panel's second tab it takes layout space instead of covering
   // anything, so the wrap it is measured against has already shrunk by it.
-  const corner = canvasInfoCorner(wrapRect, size, obstacles, [machineRectIn(wrapRect)]);
+  const corner = canvasInfoCorner(searchRect, size, obstacles, [machineRectIn(wrapRect)]);
   [btn, card].forEach(el => {
     if (!el || !el.style) return;
     el.style.position = 'absolute';
     el.style.left = corner.x === 'left' ? `${margin}px` : 'auto';
     el.style.right = corner.x === 'right' ? `${margin}px` : 'auto';
     el.style.top = corner.y === 'top' ? `${margin}px` : 'auto';
-    el.style.bottom = corner.y === 'bottom' ? `${margin}px` : 'auto';
+    el.style.bottom = corner.y === 'bottom' ? `${bottomInset}px` : 'auto';
     if (el.dataset) el.dataset.corner = `${corner.y}-${corner.x}`;
   });
   return corner;
@@ -2110,6 +2144,47 @@ export function measuredToolbarBox(toolbox) {
   if (toolbox.offsetParent === null) return null;
   const box = toolbox.getBoundingClientRect();
   return box && box.width ? box : null;
+}
+
+/**
+ * How far the mobile bar reaches up into the canvas well.
+ *
+ * Zero on a desktop, and zero on a phone whenever the bar is not on screen —
+ * it is `display: none` while an auxiliary view is open, and a hidden node
+ * measures as a zero rect, which is read here as "nothing in the way" rather
+ * than left as zeros for a caller to interpret.
+ */
+export function compactBottomInset(wrapRect) {
+  if (!isCompactToolbarMode()) return 0;
+  const bar = $('mobile-bar');
+  if (!bar || !bar.getBoundingClientRect) return 0;
+  // Deliberately *not* `offsetParent === null`, which is how the rest of this
+  // file asks whether a node is on screen: the bar is `position: fixed`, and a
+  // fixed element has no offsetParent at all. Read that way it always answered
+  // "hidden", the inset was always zero, and the Fit button sat underneath the
+  // bar. A hidden node measures as a zero rect, which is the same test one
+  // step later and holds for both kinds of positioning.
+  const box = bar.getBoundingClientRect();
+  if (!box.height || !box.width) return 0;
+  return Math.max(0, wrapRect.bottom - box.top);
+}
+
+/**
+ * The status toast's box, so the info pill can dodge it.
+ *
+ * It is the one overlay `layoutCanvasInfo` never knew about, which on a phone
+ * — where the toast is a wide centred pill rather than a short one lost in a
+ * wide canvas — put the pill under every message the app printed. Measured
+ * while hidden: the toast is faded with `opacity`, so it lays out whether or
+ * not it is showing, and a corner that only became unavailable once a message
+ * arrived would move the pill under the reader's finger.
+ */
+export function statusRectIn(wrapRect) {
+  const el = $('status-bar');
+  if (!el || !el.getBoundingClientRect) return null;
+  const box = el.getBoundingClientRect();
+  if (!box.width || !box.height) return null;
+  return { left: box.left - wrapRect.left, top: box.top - wrapRect.top, width: box.width, height: box.height };
 }
 
 // Places the visible members of the stack in the chosen corner, stacking
@@ -2145,7 +2220,11 @@ export function layoutCanvasOverlays(wrapRect, toolbarBox) {
   const stack = [nav, (map && !map.classList.contains('minimap-hidden')) ? map : null]
     .filter(el => el && el.offsetParent !== null);
 
-  let offset = margin;
+  // On a phone the bottom edge is the mobile bar's, not the canvas's. It is a
+  // fixed element over the viewport, so the clearance is measured rather than
+  // read off a token — `env(safe-area-inset-bottom)` is in the bar's height
+  // and there is no way to ask CSS for it from here.
+  let offset = margin + (corner.y === 'bottom' ? compactBottomInset(rect) : 0);
   // Where each member ended up, in wrap coordinates. The info pill picks its
   // own corner around these, and reading them back off the DOM would be a
   // frame behind the assignments above.
@@ -2167,7 +2246,7 @@ export function layoutCanvasOverlays(wrapRect, toolbarBox) {
 
   if (map) map.dataset.corner = `${corner.y}-${corner.x}`;
 
-  layoutCanvasInfo(rect, [toolbarRectIn(App.toolbarDock, rect, box), ...placed]);
+  layoutCanvasInfo(rect, [toolbarRectIn(App.toolbarDock, rect, box), statusRectIn(rect), ...placed]);
 
   // The popover anchors off the corner stamped above, so it has to follow the
   // stack when the toolbar redocks or the panel resizes underneath it.
@@ -2817,24 +2896,22 @@ export function toggleMobilePanelTab(name) {
   toggleMobilePanel(target.side, false);
 }
 
-/** Marks the button whose tab is the one currently on screen. */
+/**
+ * Repaint whatever names the panel a sheet is showing.
+ *
+ * There used to be three bar buttons here, one per tab. There is one cell now,
+ * named for the tab it opens, with the other two on a strip across the sheet's
+ * own head — see js/mobile.js, which owns the drawing. This stays as the hook
+ * every caller already knew about, so the panel controller does not have to
+ * learn that the mobile bar changed shape.
+ */
 export function syncMobilePanelBar() {
-  document.querySelectorAll('[data-mobile-tab]').forEach(btn => {
-    const name = btn.getAttribute('data-mobile-tab');
-    const target = mobileBarTarget(name);
-    const panel = target && $(target.side);
-    const showing = !!panel && panel.dataset.mobileCollapsed !== '1' && isPanelTabActive(name);
-    btn.setAttribute('aria-expanded', showing ? 'true' : 'false');
-    btn.classList.toggle('is-open', showing);
-  });
+  if (typeof syncMobileBar === 'function') syncMobileBar();
 }
 
-/** Listeners at creation, so the bar adds no names to bridge.js. */
+/** Kept as the boot entry point the sequence in js/init.js already calls. */
 export function initMobilePanelBar() {
-  document.querySelectorAll('[data-mobile-tab]').forEach(btn => {
-    btn.addEventListener('click', () => toggleMobilePanelTab(btn.getAttribute('data-mobile-tab')));
-  });
-  syncMobilePanelBar();
+  if (typeof initMobileShell === 'function') initMobileShell();
 }
 
 export function toggleMobilePanel(id, force) {

@@ -977,8 +977,6 @@ export function updateLPanelSectionMeta() {
   setCount('lp-count-output', App.outputAlpha?.size || 0);
   setCount('lp-count-states', App.states?.length || 0);
   setCount('lp-count-trans', App.transitions?.length || 0);
-  const mobileWorkspaceCount = $('mobile-workspace-count');
-  if (mobileWorkspaceCount) mobileWorkspaceCount.textContent = String(App.states?.length || 0);
 }
 
 // Every row in the States Q and Transitions δ lists ends in the same pair of

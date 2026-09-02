@@ -60,15 +60,63 @@ test('a right-docked toolbar pushes the stack aside only when it hangs low', () 
   );
 });
 
-test('compact mode sends the stack to the top, clear of the bottom toolbar', () => {
+// Compact mode has no toolbar over the canvas at all any more — the tools are
+// cells in the mobile bar — so the bottom corner is free and the stack takes
+// it. The top is what is spoken for there: the status toast is a centred pill
+// and the info pill sits beside it, and three overlays sharing `top: 12px` is
+// what this used to produce.
+test('compact mode keeps the stack in the bottom corner, above the mobile bar', () => {
   const realMatchMedia = context.matchMedia;
   context.matchMedia = () => ({ matches: true });
   try {
     assert.deepStrictEqual(
       { ...context.canvasOverlayCorner({ side: 'bottom', ratio: 0.5 }, WRAP, toolbarBox('bottom')) },
-      { x: 'right', y: 'top' },
-      'compact mode pins the toolbar across the bottom'
+      { x: 'right', y: 'bottom' },
+      'the toolbar is not on the canvas in compact mode, so nothing displaces the stack'
     );
+  } finally {
+    context.matchMedia = realMatchMedia;
+  }
+});
+
+// The bar is a fixed element over the viewport and the overlays are absolute
+// inside the canvas well, so the clearance is measured rather than read off a
+// token — `env(safe-area-inset-bottom)` is inside the bar's own height and
+// there is no way to ask CSS for it from here.
+test('the stack clears the mobile bar rather than the canvas edge', () => {
+  const realMatchMedia = context.matchMedia;
+  const { nav } = seedOverlays({ minimapHidden: true });
+  const bar = getElement('mobile-bar');
+  // 64px of bar reaching up into an 800px-tall well.
+  bar.offsetParent = getElement('app-body');
+  bar.getBoundingClientRect = () => ({ left: 0, top: 736, right: 1200, bottom: 800, width: 1200, height: 64 });
+  context.matchMedia = () => ({ matches: true });
+  try {
+    context.App.toolbarDock = { side: 'bottom', ratio: 0.5 };
+    context.layoutCanvasOverlays({ ...WRAP, bottom: 800 });
+    assert.strictEqual(nav.style.bottom, '76px', '12px margin above a 64px bar');
+  } finally {
+    context.matchMedia = realMatchMedia;
+    bar.offsetParent = null;
+  }
+});
+
+// A bar that is not on screen — an auxiliary view is open, or this is a
+// desktop — is no clearance at all. It is asked by *rect* and never by
+// `offsetParent`, which is how the rest of this file tests visibility: the bar
+// is `position: fixed`, which has no offsetParent at all, so read that way it
+// always answered "hidden", the inset was always zero, and the Fit button sat
+// underneath the bar it was supposed to clear.
+test('a hidden mobile bar reserves nothing', () => {
+  const realMatchMedia = context.matchMedia;
+  const { nav } = seedOverlays({ minimapHidden: true });
+  const bar = getElement('mobile-bar');
+  bar.getBoundingClientRect = () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 });
+  context.matchMedia = () => ({ matches: true });
+  try {
+    context.App.toolbarDock = { side: 'bottom', ratio: 0.5 };
+    context.layoutCanvasOverlays({ ...WRAP, bottom: 800 });
+    assert.strictEqual(nav.style.bottom, '12px');
   } finally {
     context.matchMedia = realMatchMedia;
   }
@@ -85,6 +133,15 @@ function seedOverlays({ minimapHidden = false } = {}) {
   wrap.getBoundingClientRect = () => WRAP;
   nav.getBoundingClientRect = () => ({ width: 160, height: 36 });
   map.getBoundingClientRect = () => ({ width: 174, height: 122 });
+  // The status toast is an obstacle for the info pill. It is `position:
+  // absolute` and laid out whether or not a message is showing, so it is
+  // stubbed here rather than per test: a corner that only became unavailable
+  // once a message arrived would move the pill under the reader's finger.
+  const status = getElement('status-bar');
+  status.getBoundingClientRect = () => ({ left: 500, top: 10, right: 700, bottom: 34, width: 200, height: 24 });
+  // The bar is off unless a test turns it on; the stub's default 800x600 rect
+  // would otherwise reserve most of the well.
+  getElement('mobile-bar').getBoundingClientRect = () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 });
 
   if (minimapHidden) map.classList.add('minimap-hidden');
   else map.classList.remove('minimap-hidden');

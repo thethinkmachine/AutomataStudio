@@ -5,7 +5,7 @@
 // global-scope code and cannot see module bindings. The functions they name
 // are re-exposed on window here.
 //
-// 225 names across 23 modules — 224 functions plus App — reached from 459
+// 226 names across 23 modules — 225 functions plus App — reached from 461
 // attributes:
 //    337  static, in index.html
 //    122  in markup the app builds at runtime (algorithm cards,
@@ -133,6 +133,7 @@ import {
   hlTransListHover, importSettings, openSettingsModal,
   renderTabOverflowMenu, reopenClosedTab, selectModel, toggleThemePicker,
   setZoomFromInput,
+  hideTabOverflowMenu,
   showTabContextMenu, switchHelpTab, switchSettingsTab, switchTab, switchTabFromOverflow,
   tabCtxClose, tabCtxCloseAll, tabCtxCloseOthers, tabCtxCloseRight,
   tabCtxDuplicate, tabCtxRename, toggleFullscreen, toggleLPSection,
@@ -233,6 +234,7 @@ Object.assign(window, {
    hlTransListHover, importSettings, openSettingsModal,
    renderTabOverflowMenu, reopenClosedTab, selectModel, toggleThemePicker,
    setZoomFromInput,
+   hideTabOverflowMenu,
    showTabContextMenu, switchHelpTab, switchSettingsTab, switchTab, switchTabFromOverflow,
    tabCtxClose, tabCtxCloseAll, tabCtxCloseOthers, tabCtxCloseRight,
    tabCtxDuplicate, tabCtxRename, toggleFullscreen, toggleLPSection,
