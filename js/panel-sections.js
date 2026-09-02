@@ -35,7 +35,8 @@ export const PANEL_SECTIONS = Object.freeze({
       Object.freeze({ id: 'stack-sec', collapsed: false, minW: 240, minH: 170, fill: '.chips' }),
       Object.freeze({ id: 'output-sec', collapsed: false, minW: 240, minH: 170, fill: '.chips' }),
       Object.freeze({ id: 'lp-states', collapsed: false, minW: 240, minH: 200, fill: '.slist' }),
-      Object.freeze({ id: 'lp-transitions', collapsed: false, minW: 300, minH: 200, fill: '.tlist' })
+      Object.freeze({ id: 'lp-transitions', collapsed: false, minW: 300, minH: 200, fill: '.tlist' }),
+      Object.freeze({ id: 'lp-blocks', collapsed: true, minW: 260, minH: 180, fill: '.blist' })
     ])
   }),
   rpanel: Object.freeze({

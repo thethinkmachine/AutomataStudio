@@ -44,6 +44,7 @@ const SAVE_PRECISION = {
   transition: { curve: 0, loopAngle: 3 },
   note: { x: 0, y: 0, w: 0, h: 0 },
   divider: { x1: 0, y1: 0, x2: 0, y2: 0 },
+  block: { x: 0, y: 0, w: 0, h: 0 },
   cam: { x: 0, y: 0, z: 4 }
 };
 
@@ -91,6 +92,11 @@ export function getWorkspaceData() {
     accepts: [...App.accepts],
     notes: App.notes.map(x => roundForSave(x, SAVE_PRECISION.note)),
     dividers: App.dividers.map(x => roundForSave(x, SAVE_PRECISION.divider)),
+    // Building blocks. `blockId` on a state needs nothing here — roundForSave
+    // copies a state whole and rounds only the fields it names, so any field
+    // the app adds rides along untouched.
+    blocks: (App.blocks || []).map(x => roundForSave(x, SAVE_PRECISION.block)),
+    scope: [...(App.scope || [])],
     grammar: grammarData,
     cam: roundForSave(App.cam, SAVE_PRECISION.cam),
     // What the author says this machine is. Dropped here for as long as the
@@ -118,7 +124,7 @@ export let autosaveInProgress = false;
 export let autosaveCountdownTimer = null;
 export let autosaveDeadline = 0;
 export const WORKSPACE_DB_NAME = 'automata-playground';
-export const WORKSPACE_DB_VERSION = 1;
+export const WORKSPACE_DB_VERSION = 2;
 export const WORKSPACE_STORE_NAME = 'snapshots';
 
 // Undo/redo stacks are deliberately excluded from anything that reaches
@@ -147,9 +153,25 @@ export function openWorkspaceDb() {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null);
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(WORKSPACE_DB_NAME, WORKSPACE_DB_VERSION);
-    request.onupgradeneeded = () => request.result.createObjectStore(WORKSPACE_STORE_NAME);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(WORKSPACE_STORE_NAME)) db.createObjectStore(WORKSPACE_STORE_NAME);
+      // The building-block library. A definition is a whole machine, so it
+      // belongs here beside the workspace snapshots rather than in
+      // localStorage, which is where this app's quota failures already live —
+      // and emphatically not in App.config, which is deep-copied into every
+      // workspace tab and written into every file the reader saves.
+      if (!db.objectStoreNames.contains('blocks')) db.createObjectStore('blocks');
+    };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || new Error('Could not open workspace storage'));
+    // A version bump cannot proceed while another tab still holds the database
+    // open at the old version: `onupgradeneeded` never fires, `onsuccess` and
+    // `onerror` never fire either, and the promise simply never settles — so
+    // every awaiting caller (the boot restore, every autosave) hangs silently
+    // and forever. Answering null instead sends them down the same path a
+    // browser with no IndexedDB takes, which they all already handle.
+    request.onblocked = () => resolve(null);
   });
 }
 
@@ -703,6 +725,10 @@ export function loadData(d, isExample) {
   App.accepts = new Set(d.accepts || []);
   App.notes = Array.isArray(d.notes) ? d.notes : [];
   App.dividers = Array.isArray(d.dividers) ? d.dividers : [];
+  App.blocks = Array.isArray(d.blocks) ? d.blocks : [];
+  App.scope = Array.isArray(d.scope)
+    ? d.scope.filter(id => App.blocks.some(b => b.id === id))
+    : [];
   App.selectedNotes.clear();
   App.selectedDividers.clear();
   if (App.machine === 'TM' && hasSingleTapeNondeterminism(App.transitions)) {

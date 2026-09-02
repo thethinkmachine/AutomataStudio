@@ -38,7 +38,10 @@ import { applyCamera, clampZoom, normalizeWheelDeltas } from './canvas.js';
 import { includeDividerBounds, isRectDivider } from './dividers.js';
 import { markDirty } from './history.js';
 import { includeNoteBounds, noteBoxLayout, resolveNotePos } from './notes.js';
-import { $, App, largeMachineProfile, stateById } from './state.js';
+import { $, App, largeMachineProfile } from './state.js';
+import { viewGraph, viewStates, viewTransitions } from './view-graph.js';
+import { thumbEdgePairs, thumbEdgeSegments, thumbNodeRadius } from './graph-thumb.js';
+import { startNodeId } from './geometry.js';
 import { Change, subscribe } from './store.js';
 import { fitToScreen, layoutCanvasOverlays, visibleCanvasBox } from './ui.js';
 
@@ -68,9 +71,9 @@ const SNAP_ZOOM_RATIO = 4;
 const SNAP_PAN_SPANS = 3;
 // Smallest world span the map will frame, so a single state does not fill it.
 const MIN_SPAN = 120;
-// Drawn node radius, clamped: a 200-state diagram must not shrink its states
-// to nothing, and a two-state one must not blow them up into circles.
-const NODE_R_MIN = 1.6, NODE_R_MAX = 7;
+// The drawn node radius is clamped by thumbNodeRadius in js/graph-thumb.js —
+// shared with a building block's preview, so the map and the block draw a node
+// at the same size for the same zoom.
 
 // ── frame state ───────────────────────────────────────────────────
 
@@ -165,8 +168,15 @@ function computeGoal(cssW, cssH) {
     if (bx > x1) x1 = bx; if (by > y1) y1 = by;
   };
 
+  // The projection, not the model: with a block open the canvas is showing its
+  // contents, and a map framed on the whole machine would be a map of somewhere
+  // else. See js/view-graph.js.
   const r = App.config.radius + 4;
-  for (const s of App.states) add(s.x - r, s.y - r, s.x + r, s.y + r);
+  for (const s of viewStates()) {
+    const hw = s.box ? s.box.w / 2 : r;
+    const hh = s.box ? s.box.h / 2 : r;
+    add(s.x - hw, s.y - hh, s.x + hw, s.y + hh);
+  }
   includeNoteBounds(add);
   includeDividerBounds(add);
 
@@ -335,7 +345,7 @@ function paint(dt) {
   retarget(W, H);
   const settled = stepView(dt);
 
-  const hasContent = App.states.length || App.notes.length || App.dividers.length;
+  const hasContent = viewStates().length || App.notes.length || App.dividers.length;
   if (!hasContent) { canvas._mm = null; return settled; }
 
   // World → CSS pixels. One scale for both axes, because computeGoal already
@@ -414,24 +424,17 @@ function drawNotes(ctx, pal, px, py, scale) {
 // Cached: the pairs depend on the transition list and on nothing that moves, so
 // a pan does not rebuild them. Validated the same way the state index is —
 // array identity, length and the two end elements. See js/state.js.
-let _pairsArr = null, _pairsLen = -1, _pairsFirst = null, _pairsLast = null, _pairsVal = null;
+let _pairsArr = null, _pairsVal = null;
 
 function edgePairs() {
-  const list = App.transitions;
-  const n = list.length;
-  if (_pairsVal && _pairsArr === list && _pairsLen === n
-    && _pairsFirst === list[0] && _pairsLast === list[n - 1]) return _pairsVal;
-  const byPair = new Map();
-  for (const t of App.transitions) {
-    const key = t.from + '|' + t.to;
-    let e = byPair.get(key);
-    if (!e) { e = { from: t.from, to: t.to, curve: null, loopAngle: null }; byPair.set(key, e); }
-    if (e.curve === null && Number.isFinite(t.curve)) e.curve = t.curve;
-    if (e.loopAngle === null && Number.isFinite(t.loopAngle)) e.loopAngle = t.loopAngle;
-  }
-  _pairsArr = list; _pairsLen = n; _pairsFirst = list[0]; _pairsLast = list[n - 1];
-  _pairsVal = byPair;
-  return byPair;
+  // The projection's transitions, which inside a block are that block's own —
+  // and whose array identity is stable across a drag, so the cache below still
+  // survives every frame of a pan.
+  const list = viewTransitions();
+  if (_pairsVal && _pairsArr === list) return _pairsVal;
+  _pairsArr = list;
+  _pairsVal = thumbEdgePairs(list);
+  return _pairsVal;
 }
 
 // Every edge is stroked in one colour at one width, so the whole diagram is one
@@ -439,13 +442,12 @@ function edgePairs() {
 // machine that is the difference between four thousand canvas calls per pan
 // frame and two — and the map repaints on every frame of every pan.
 function drawEdges(ctx, pal, px, py, scale) {
-  if (!App.transitions.length) return;
-  const byId = stateById();
-
   const pairs = edgePairs();
+  if (!pairs.size) return;
+  const byId = viewGraph().byId;
   const r = App.config.radius || 22;
-  const loopR = Math.max(1.4, r * 0.62 * scale);
   const curveOff = (App.config.render && App.config.render.curveOff) || 45;
+  const nodeR = thumbNodeRadius(scale, r);
 
   ctx.save();
   ctx.strokeStyle = pal.edgeStroke;
@@ -453,45 +455,27 @@ function drawEdges(ctx, pal, px, py, scale) {
   ctx.lineWidth = Math.max(0.6, Math.min(1.5, r * 0.06 * scale + 0.5));
   ctx.beginPath();
 
-  for (const [, e] of pairs) {
-    const from = byId.get(e.from), to = byId.get(e.to);
-    if (!from || !to) continue;
-
-    if (from === to) {
-      // A self-loop drawn as from→to is a zero-length segment, which strokes
-      // nothing at all — the old map showed loop-heavy machines as loose dots.
-      // Up is the layout's default direction; a dragged loop stores its own.
-      const a = Number.isFinite(e.loopAngle) ? e.loopAngle : -Math.PI / 2;
-      const nodeR = Math.max(NODE_R_MIN, Math.min(NODE_R_MAX, r * scale));
-      const cx = px(from.x) + Math.cos(a) * (nodeR + loopR * 0.55);
-      const cy = py(from.y) + Math.sin(a) * (nodeR + loopR * 0.55);
+  // The shapes come from js/graph-thumb.js, which is also what a building
+  // block's preview draws with — one description, two painters. A block that
+  // merely looked like the minimap would drift away from it; this cannot.
+  for (const seg of thumbEdgeSegments(pairs, byId, { px, py, scale }, nodeR, curveOff)) {
+    if (seg.kind === 'loop') {
       // The moveTo is what keeps this a subpath of its own: without it the arc
       // is joined to wherever the previous edge ended by a line across the map.
-      ctx.moveTo(cx + loopR, cy);
-      ctx.arc(cx, cy, loopR, 0, Math.PI * 2);
-      continue;
-    }
-
-    const ax = px(from.x), ay = py(from.y), bx = px(to.x), by = py(to.y);
-    const dx = bx - ax, dy = by - ay;
-    const dist = Math.hypot(dx, dy);
-    if (!dist) continue;
-    // Mirrors buildLayoutContext's routing decision cheaply: a hand-set bend
-    // wins, otherwise a pair with a reverse edge splays so the two are
-    // distinguishable. The collision-avoidance detour is deliberately not
-    // reproduced — at this scale it would move a line by under a pixel.
-    const crv = e.curve !== null ? e.curve : (pairs.has(e.to + '|' + e.from) ? curveOff : 0);
-    ctx.moveTo(ax, ay);
-    if (crv) {
-      const nx = -dy / dist, ny = dx / dist;
-      ctx.quadraticCurveTo((ax + bx) / 2 + nx * crv * scale, (ay + by) / 2 + ny * crv * scale, bx, by);
+      ctx.moveTo(seg.cx + seg.r, seg.cy);
+      ctx.arc(seg.cx, seg.cy, seg.r, 0, Math.PI * 2);
+    } else if (seg.kind === 'line') {
+      ctx.moveTo(seg.ax, seg.ay);
+      ctx.lineTo(seg.bx, seg.by);
     } else {
-      ctx.lineTo(bx, by);
+      ctx.moveTo(seg.ax, seg.ay);
+      ctx.quadraticCurveTo(seg.cx, seg.cy, seg.bx, seg.by);
     }
   }
   ctx.stroke();
   ctx.restore();
 }
+
 
 // Encoding, so the map answers "what am I looking at" without the labels:
 //   plain      node fill, hairline ring
@@ -510,10 +494,11 @@ function drawEdges(ctx, pal, px, py, scale) {
 // earlier. At two-pixel radii on a thumbnail that is invisible, and separate
 // buckets still paint in the order they were first seen.
 function drawStates(ctx, pal, px, py, scale) {
-  if (!App.states.length) return;
+  const drawn = viewStates();
+  if (!drawn.length) return;
   const active = simActiveStates();
   const sel = App.selectedStates;
-  const nodeR = Math.max(NODE_R_MIN, Math.min(NODE_R_MAX, (App.config.radius || 22) * scale));
+  const nodeR = thumbNodeRadius(scale, App.config.radius || 22);
   const circle = (x, y, r) => { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2); };
 
   ctx.save();
@@ -525,7 +510,7 @@ function drawStates(ctx, pal, px, py, scale) {
     ctx.globalAlpha = 0.22;
     ctx.fillStyle = pal.actStroke;
     ctx.beginPath();
-    for (const s of App.states) {
+    for (const s of drawn) {
       if (!active.has(s.id)) continue;
       circle(px(s.x), py(s.y), nodeR + Math.max(2, nodeR * 0.9));
     }
@@ -536,15 +521,27 @@ function drawStates(ctx, pal, px, py, scale) {
   // style key -> {fill, stroke, width, pts}
   const buckets = new Map();
   const rings = [];
-  for (const s of App.states) {
+  const boxes = [];
+  // Hoisted: the map repaints on every frame of every pan, and this is a
+  // constant for the pass.
+  const startNode = startNodeId();
+  for (const s of drawn) {
     const x = px(s.x), y = py(s.y);
+    // A block is a box on the canvas, so it is a box on the map: the map is the
+    // canvas zoomed out, and a block drawn as a circle there would be the one
+    // place the two disagreed about what is on screen.
+    if (s.kind === 'block') {
+      boxes.push(x, y, Math.max(1.5, (s.box.w / 2) * scale), Math.max(1.2, (s.box.h / 2) * scale));
+      continue;
+    }
+    if (s.kind === 'port') continue;
     const isActive = active && active.has(s.id);
     const isSel = sel && sel.has(s.id);
     const isAcc = App.accepts.has(s.id);
 
     const fill = isActive ? pal.actStroke : isSel ? pal.actFill : pal.nodeFill;
     const stroke = isActive || isSel ? pal.actStroke
-      : s.id === App.startId ? pal.startStroke
+      : s.id === startNode ? pal.startStroke
         : isAcc ? pal.accStroke : pal.nodeStroke;
     const width = isActive || isSel ? 1.3 : 1;
     const key = fill + '|' + stroke + '|' + width;
@@ -563,6 +560,21 @@ function drawStates(ctx, pal, px, py, scale) {
     ctx.strokeStyle = b.stroke;
     ctx.lineWidth = b.width;
     ctx.stroke();
+  }
+
+  if (boxes.length) {
+    ctx.beginPath();
+    for (let i = 0; i < boxes.length; i += 4) {
+      roundRectPath(ctx, boxes[i] - boxes[i + 2], boxes[i + 1] - boxes[i + 3],
+        boxes[i + 2] * 2, boxes[i + 3] * 2, Math.min(2.5, boxes[i + 2] * 0.35));
+    }
+    ctx.fillStyle = pal.nodeFill;
+    ctx.fill();
+    ctx.strokeStyle = pal.actStroke;
+    ctx.globalAlpha = 0.75;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   if (rings.length) {

@@ -52,6 +52,10 @@ import {
   copyBoxText,
 } from './render.js';
 import {
+  ctxDeleteBlock, ctxGroupIntoBlock, ctxOpenBlock, ctxRenameBlock,
+  ctxSaveBlockToLibrary, ctxUngroupBlock, openBlockFromList,
+} from './blocks-ui.js';
+import {
   openSettingsFromQuick, toggleQuickSettings,
 } from './quick-settings.js';
 import {
@@ -164,6 +168,9 @@ Object.assign(window, {
    ctxHighlightOutgoing, toggleSnapToGrid,
   // render.js
    copyBoxText,
+  // blocks-ui.js
+   ctxDeleteBlock, ctxGroupIntoBlock, ctxOpenBlock, ctxRenameBlock,
+   ctxSaveBlockToLibrary, ctxUngroupBlock, openBlockFromList,
   // quick-settings.js
    openSettingsFromQuick, toggleQuickSettings,
   // notes.js

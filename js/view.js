@@ -5,7 +5,7 @@ import { wrap } from './canvas.js';
 import { snapshot } from './history.js';
 import { anyModalOpen, closeModal, showOverlay } from './modal.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
-import { isMultiTape, setTapeArity, tapeArityCollisions } from './machines/index.js';
+import { isMultiTape, machineSupportsBlocks, setTapeArity, tapeArityCollisions } from './machines/index.js';
 import { resetSim } from './simulation.js';
 import { $, App, MIN_TAPES, clampTapeCount, getMachineConfig, maxTapes, normalizeBoundarySymbolsForMachine } from './state.js';
 import { Change, emit, subscribe } from './store.js';
@@ -264,6 +264,12 @@ export function applyMachineSwitch(m) {
   if (stackLbl) stackLbl.textContent = isAnyTM(m) ? 'Tape Alphabet Γ' : 'Stack Alphabet Γ';
   
   $('output-sec').style.display = cfg.isTransducer ? '' : 'none';
+  // Only a machine with a stay move can leave a block without eating a symbol,
+  // so the Blocks section follows the machine the way the stack and output
+  // sections do. Left standing it read "No blocks" on every DFA forever — a
+  // permanently empty section for a feature that machine cannot have.
+  const blocksSec = $('lp-blocks');
+  if (blocksSec) blocksSec.style.display = machineSupportsBlocks(m) ? '' : 'none';
   $('mtm-ctrl').style.display = isMultiTape(m) ? 'flex' : 'none';
   // Revealing the control is not the same as filling it in. Switching to a
   // multi-tape machine showed a picker still reading whatever it last read.

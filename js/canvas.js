@@ -3,7 +3,9 @@ import { beginDividerDraw, dividerMid, dividerToolKind, dragDividerEndpointTo, d
 import { exportDownload, exportFilename } from './export-core.js';
 import { fontFaceCSS } from './export-fonts.js';
 import { applyOutlines, loadGlyphTables, planOutlines } from './glyphs.js';
-import { includeLayoutBounds, resolveNodeOverlaps } from './geometry.js';
+import { includeLayoutBounds, resolveNodeOverlaps, startNodeId } from './geometry.js';
+import { getBlock, inlineBlock, outlineBlock } from './blocks.js';
+import { getNode, invalidateViewGraph, isPortNode, scopeId, viewStates, viewTransitions } from './view-graph.js';
 import { markDirty, snapshot } from './history.js';
 import { clearActiveNoteHighlight, dragSelectedNotesTo, endNoteResize, getNote, includeNoteBounds, resizeNoteTo, resolveNotePos, syncNoteSelectionClasses } from './notes.js';
 import { getWorkspaceData } from './persistence.js';
@@ -118,7 +120,7 @@ export function updateTouchCameraGesture() {
 
 export function captureTouchPointerDown(e) {
   if (e.pointerType !== 'touch') return;
-  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, #status-bar, .panel-float')) return;
+  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, #status-bar, .panel-float, .scope-bar')) return;
   touchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (touchPointers.size === 2) {
     clearTouchLongPress();
@@ -187,21 +189,30 @@ let _minZoomCache = null;
 
 export function minZoom() {
   const base = App.config?.zoom?.min ?? 0.2;
-  if (!App.states.length) return base;
+  // Keyed on what is *drawn*, because that is what the floor is computed from.
+  // Against App.states the cache went stale in exactly the case that matters:
+  // drilling into a block changes the whole diagram without changing that array
+  // at all, so a machine-sized floor was still being handed out for a view of
+  // four states — and the reader could not zoom out to see them.
+  const drawn = viewStates();
+  if (!drawn.length) return base;
   const now = Date.now();
   const c = _minZoomCache;
-  if (c && c.states === App.states && c.n === App.states.length && now - c.t < MIN_ZOOM_TTL) return c.z;
+  if (c && c.states === drawn && c.n === drawn.length && now - c.t < MIN_ZOOM_TTL) return c.z;
   // The state circles rather than getContentBounds: a floor does not need to
   // know where a pushed-out label landed, and that call runs the whole layout
   // pass — which a wheel gesture must not do. The headroom below covers the
   // difference many times over.
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   const pad = (App.config.radius || 26) + 40;
-  App.states.forEach(st => {
-    if (st.x < minX) minX = st.x;
-    if (st.y < minY) minY = st.y;
-    if (st.x > maxX) maxX = st.x;
-    if (st.y > maxY) maxY = st.y;
+  drawn.forEach(st => {
+    // A block is a box, so its own extent is what has to fit, not a point.
+    const hw = st.box ? st.box.w / 2 : 0;
+    const hh = st.box ? st.box.h / 2 : 0;
+    if (st.x - hw < minX) minX = st.x - hw;
+    if (st.y - hh < minY) minY = st.y - hh;
+    if (st.x + hw > maxX) maxX = st.x + hw;
+    if (st.y + hh > maxY) maxY = st.y + hh;
   });
   let z = base;
   if (Number.isFinite(minX)) {
@@ -212,7 +223,7 @@ export function minZoom() {
       ch / Math.max(1, maxY - minY + pad * 2));
     z = Math.max(ZOOM_HARD_FLOOR, Math.min(base, fit * ZOOM_OUT_HEADROOM));
   }
-  _minZoomCache = { states: App.states, n: App.states.length, t: now, z };
+  _minZoomCache = { states: drawn, n: drawn.length, t: now, z };
   return z;
 }
 
@@ -287,8 +298,11 @@ wrap.addEventListener('wheel', e => {
   // its own content — the canvas must not zoom out from under a list the
   // reader is scrolling. Every other canvas gesture already excludes the
   // overlays that sit on it; the wheel had no such list because until now
-  // nothing on the canvas scrolled.
-  if (e.target.closest && e.target.closest('.panel-float')) return;
+  // nothing on the canvas scrolled. The breadcrumb is the second thing that
+  // does: without this it never got a chance to scroll itself, since the
+  // camera zoomed on every tick first and called preventDefault before the
+  // bar's own wheel handler ran.
+  if (e.target.closest && e.target.closest('.panel-float, .scope-bar')) return;
   e.preventDefault();
   const { dx, dy } = normalizeWheelDeltas(e);
   const zoomGesture = e.ctrlKey || e.metaKey || (App.config.wheelZoom && !e.shiftKey);
@@ -321,7 +335,7 @@ export let _rightDownPt = null;
 export let _rightDragged = false;
 
 wrap.addEventListener('pointerdown', e => {
-  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, #status-bar, .panel-float')) return;
+  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, #status-bar, .panel-float, .scope-bar')) return;
   if (e.pointerType) wrap.dataset.lastPointerType = e.pointerType;
 
   if (e.button === 2) {
@@ -506,6 +520,9 @@ document.addEventListener('pointermove', queueMouseMove);
 export function handlePointerMove(e) {
   if (App.toolbarDragging) return;
   lastPointerClient = e;
+  // Before the pan test: a port drag takes the pointer capture, and a captured
+  // pointer still delivers moves here.
+  if (App.dragPort) { dragPortTo(svgPt(e)); return; }
   if (isPanning) {
     App.cam.x = camStart.x + (e.clientX - panStart.x);
     App.cam.y = camStart.y + (e.clientY - panStart.y);
@@ -520,14 +537,23 @@ export function handlePointerMove(e) {
     const mh = Math.abs(App.marquee.start.y - App.marquee.current.y);
     App.marqueeRect.setAttribute('x', mx); App.marqueeRect.setAttribute('y', my);
     App.marqueeRect.setAttribute('width', mw); App.marqueeRect.setAttribute('height', mh);
-    App.states.forEach(s => {
+    // The drawn graph: a marquee selects the boxes and circles on screen, which
+    // inside a block are its members and not the whole machine. Ports are
+    // derived rather than owned, so there is nothing there to select.
+    viewStates().forEach(s => {
+      if (isPortNode(s)) return;
       if (s.x >= mx && s.x <= mx + mw && s.y >= my && s.y <= my + mh) {
         if (!App.selectedStates.has(s.id)) { App.selectedStates.add(s.id); hlState(s.id, true); }
       }
     });
-    // Select transitions whose midpoints are in the marquee
-    App.transitions.forEach(t => {
-      const from = getState(t.from), to = getState(t.to);
+    // Select transitions whose midpoints are in the marquee.
+    // The drawn edges, not the model's: on App.transitions this swept edges from
+    // every other scope in the machine — their endpoints have coordinates
+    // wherever they were left — and could not select a crossing edge at all,
+    // since getState() answers null for a block id.
+    viewTransitions().forEach(t => {
+      if (t.port) return;
+      const from = getNode(t.from), to = getNode(t.to);
       if (!from || !to) return;
       // Approximate center including potential curve
       const midX = (from.x + to.x) / 2, midY = (from.y + to.y) / 2;
@@ -563,7 +589,10 @@ export function handlePointerMove(e) {
     const snap = isSnapActive(e.shiftKey);
     const gSnapAmount = App.config.gridSnap || 20;
     App.selectedStates.forEach(sid => {
-      const s = getState(sid);
+      // A block's box moves the same way a state's circle does, so the drag
+      // asks the projection rather than the model — getState answers null for
+      // a block id, which used to be a selection that could not be dragged.
+      const s = getNode(sid);
       if (s && App.dragOffsets[sid]) {
         let nx = pt.x - App.dragOffsets[sid].x;
         let ny = pt.y - App.dragOffsets[sid].y;
@@ -574,11 +603,11 @@ export function handlePointerMove(e) {
     // Alignment guides only make sense while dragging a single state.
     if (!snap && App.selectedStates.size === 1) {
       const sid = [...App.selectedStates][0];
-      const s = getState(sid);
+      const s = getNode(sid);
       if (s) {
         const TOL = 6 / App.cam.z;
         let bestX = null, bestY = null;
-        App.states.forEach(o => {
+        viewStates().forEach(o => {
           if (o.id === sid) return;
           if (bestX === null && Math.abs(o.x - s.x) < TOL) bestX = o.x;
           if (bestY === null && Math.abs(o.y - s.y) < TOL) bestY = o.y;
@@ -665,6 +694,16 @@ export function endPointerInteractions() {
     if (typeof markDirty === 'function') markDirty();
     return;
   }
+  if (App.dragPort) {
+    const moved = App.dragPort.moved;
+    App.dragPort = null;
+    // Only a drag that actually moved is an edit. A press that stayed put left
+    // no snapshot and changed no offset, so there is nothing to announce — and
+    // announcing anyway would dirty the workspace for a click that is on its way
+    // to being "go back out".
+    if (moved) { emit(Change.GRAPH); scheduleMinimap(); }
+    return;
+  }
   if (App.marquee) {
     App.marqueeRect.remove(); App.marqueeRect = null; App.marquee = null; scheduleMinimap();
   }
@@ -682,7 +721,7 @@ export function endPointerInteractions() {
     // tracks the pointer exactly while it is held. The undo point was taken when
     // the drag started, so the nudge is part of that same step.
     if (moved && moved.length && App.config.render.avoidNodeOverlap !== false
-      && resolveNodeOverlaps(App.states, { movable: moved })) {
+      && resolveNodeOverlaps(viewStates(), { movable: moved })) {
       emit(Change.GRAPH);
     }
     scheduleMinimap();
@@ -747,7 +786,7 @@ document.addEventListener('visibilitychange', () => {
 // why); state/edge targets never reach this listener since their own
 // contextmenu handlers already stopPropagation.
 wrap.addEventListener('contextmenu', e => {
-  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, #status-bar, .panel-float')) return;
+  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, #status-bar, .panel-float, .scope-bar')) return;
   const onSVGBg = e.target === wrap || e.target.id === 'svgCanvas' || e.target === $('cam-g');
   if (!onSVGBg) return;
   e.preventDefault();
@@ -792,16 +831,110 @@ export function ctxCanvasAutoLayout() {
   autoLayout();
 }
 
-// ── Double-click empty canvas to create a state ──
-wrap.addEventListener('dblclick', e => {
-  if (App.tool !== 'pointer' && App.tool !== 'move') return;
-  if (wrap.dataset.lastPointerType === 'touch') return;
-  if (e.target.closest('.canvas-toolbox, .minimap-container, .canvas-nav-controls, #status-bar, .panel-float')) return;
-  const onSVGBg = e.target === wrap || e.target.id === 'svgCanvas' || e.target === $('cam-g');
-  if (!onSVGBg) return;
+// ── There is deliberately no "double-click the canvas to create a state" ──
+// It was removed rather than narrowed, and the reason is worth keeping: the
+// canvas captures the pointer on every press of a node (`onStateDown` ends in
+// `wrap.setPointerCapture`), and a captured pointer retargets the compatibility
+// mouse events to the capturing element — so this handler's own "is the target
+// the empty background?" test answered *yes* for a double-click on a block, and
+// created a state on top of the block the reader was trying to open. The test
+// could not be fixed from inside it, because by then the real target is gone.
+//
+// Nothing is lost: the State tool, the toolbox, the mobile bar's State cell and
+// the wizard all create states, and each of them says so. Blocks are opened by
+// two presses handled in js/render.js, where the node itself sees them.
+
+/**
+ * Press on a port tab.
+ *
+ * A port is not selectable — there is nothing in the model to select, and a
+ * Delete over one would have nothing to delete — so this is its own small drag
+ * rather than a call into `beginSelectionDrag`. What it writes is an offset from
+ * the port's anchor state onto the block record, which is what `placePorts`
+ * reads back and stands down for.
+ *
+ * The offset is stored rather than the position: a port belongs to the state it
+ * is attached to, so moving that state has to carry its tab along. Storing an
+ * absolute point would leave the tab behind the first time its anchor moved.
+ */
+export function onPortDown(e, id) {
+  if (App.spacePan) return;
+  if (e.button !== 0) return;
+  e.stopPropagation();
+  const node = getNode(id);
+  if (!node || !isPortNode(node)) return;
+  const anchor = getState(node.anchor);
+  if (!anchor) return;
   const pt = svgPt(e);
-  createState(pt.x, pt.y);
-});
+  App.dragPort = {
+    id,
+    block: scopeId(),
+    // Where in the tab the reader took hold, so it does not jump under the hand.
+    grabX: pt.x - node.x,
+    grabY: pt.y - node.y,
+    moved: false
+  };
+  try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
+}
+
+/** Drive a port drag from a move event. Returns true when it handled one. */
+function dragPortTo(pt) {
+  const d = App.dragPort;
+  if (!d) return false;
+  const node = getNode(d.id);
+  const anchor = node && getState(node.anchor);
+  if (!node || !anchor) return true;
+  // The undo point is taken on the first real movement, not on the press — the
+  // rule js/canvas.js already follows for states, notes and dividers, so a press
+  // that never travels is a click rather than a no-op edit on the stack.
+  if (!d.moved) {
+    d.moved = true;
+    snapshot();
+    const el = document.querySelector(`[data-id="${d.id}"]`);
+    if (el) el.__dragged = true;
+  }
+  const x = pt.x - d.grabX, y = pt.y - d.grabY;
+  setPortOffset(d.block, d.id, x - anchor.x, y - anchor.y);
+  invalidateViewGraph();
+  updateFastDOM();
+  return true;
+}
+
+/**
+ * Write a port's hand-set offset onto the block record.
+ *
+ * On the record because a port reaches no serializer of its own and a block
+ * does — `roundForSave` copies a block whole, so this rides along the way
+ * `blockId` does on a state, through the save file, the share link, the undo
+ * stack and a tab switch alike.
+ */
+export function setPortOffset(blockId, portId, dx, dy) {
+  const b = getBlock(blockId);
+  if (!b) return;
+  if (!b.ports) b.ports = {};
+  b.ports[portId] = { dx, dy };
+}
+
+/** Forget a port's hand-set offset, handing it back to the placement pass. */
+export function clearPortOffset(blockId, portId) {
+  const b = getBlock(blockId);
+  if (!b || !b.ports) return;
+  delete b.ports[portId];
+}
+
+/**
+ * Hand one port back to the placement pass — the "Reset Shape" a bent edge
+ * gets. One commit, so a single Ctrl+Z puts the reader's placement back.
+ */
+export function resetPortPlacement(id) {
+  const block = scopeId();
+  const b = getBlock(block);
+  if (!b || !b.ports || !b.ports[id]) return;
+  snapshot();
+  clearPortOffset(block, id);
+  invalidateViewGraph();
+  emit(Change.GRAPH);
+}
 
 export function onStateDown(e, id) {
   if (App.spacePan) return;
@@ -945,7 +1078,7 @@ export function pickObject(set, id, multi) {
 export function beginSelectionDrag(pt) {
   App.dragOffsets = {};
   App.selectedStates.forEach(sid => {
-    const s = getState(sid);
+    const s = getNode(sid);
     if (s) App.dragOffsets[sid] = { x: pt.x - s.x, y: pt.y - s.y };
   });
   App.dragNoteOffsets = {};
@@ -996,7 +1129,12 @@ export function applyEdgeDirectionHighlight() {
   const edgeCls = hl.direction === 'incoming' ? 'incoming-hl' : 'outgoing-hl';
   const srcEl = App.domCache.states.get(hl.id) || document.querySelector(`.sn[data-id="${hl.id}"]`);
   if (srcEl) { srcEl.classList.add(srcCls); litElements.push(srcEl); }
-  App.transitions.forEach(t => {
+  // Through the projection, because the *drawn* key is what the DOM is registered
+  // under: an edge that crosses a block's boundary is drawn as `b1|s1`, a pair
+  // the model does not contain, so building the key from the transition's own
+  // endpoints looked up a node that is not there and quietly lit nothing.
+  viewTransitions().forEach(t => {
+    if (t.port) return;
     const matches = hl.direction === 'incoming' ? t.to === hl.id : t.from === hl.id;
     if (!matches) return;
     const key = t.from + '|' + t.to;
@@ -1041,16 +1179,19 @@ export function ctxHighlightIncoming() {
 //  SELECTION: select-all, nudge, copy / paste / duplicate
 // ══════════════════════════════════════════════════════════════════
 export function selectAllStates() {
-  if (!App.states.length && !App.notes.length && !App.dividers.length) return;
+  const drawn = viewStates().filter(s => !isPortNode(s));
+  if (!drawn.length && !App.notes.length && !App.dividers.length) return;
   clearEdgeDirectionHighlight();
-  App.selectedStates = new Set(App.states.map(s => s.id));
-  App.selectedTransitions = new Set(App.transitions.map(t => t.id));
+  // What is on screen, which inside a block is that block's contents. Select-all
+  // reaching states the reader cannot see would make the next Delete a surprise.
+  App.selectedStates = new Set(drawn.map(s => s.id));
+  App.selectedTransitions = new Set(viewTransitions().filter(t => t.id && !t.port).map(t => t.id));
   App.selectedNotes = new Set(App.notes.map(n => n.id));
   App.selectedDividers = new Set(App.dividers.map(d => d.id));
   emit(Change.CANVAS);
-  const n = App.states.length;
   const extra = App.notes.length + App.dividers.length;
-  showStatus(`Selected ${n} state${n === 1 ? '' : 's'}${extra ? ` and ${extra} annotation${extra === 1 ? '' : 's'}` : ''}`);
+  const n = drawn.length;
+  showStatus(`Selected ${n} item${n === 1 ? '' : 's'}${extra ? ` and ${extra} annotation${extra === 1 ? '' : 's'}` : ''}`);
 }
 
 // Arrow keys move whatever is selected. Transitions have no position of their
@@ -1060,7 +1201,7 @@ export function nudgeSelected(dx, dy) {
   if (!(App.selectedStates.size || App.selectedNotes.size || App.selectedDividers.size)) return;
   snapshot();
   App.selectedStates.forEach(sid => {
-    const s = getState(sid);
+    const s = getNode(sid);
     if (s) { s.x += dx; s.y += dy; }
   });
   App.selectedNotes.forEach(nid => {
@@ -1083,8 +1224,18 @@ export function copySelection() {
   const ids = new Set(App.selectedStates);
   const states = App.states.filter(s => ids.has(s.id)).map(s => ({ ...s, isDummyStart: false }));
   const transitions = App.transitions.filter(t => ids.has(t.from) && ids.has(t.to)).map(t => ({ ...t }));
-  App.clipboard = { states, transitions };
-  showStatus(`Copied ${states.length} state${states.length === 1 ? '' : 's'}`);
+  // A selected block is a node the reader clicked, so Ctrl+C has to mean
+  // something for it. It used to mean nothing at all: `ids` held `b1`, no state
+  // matched, and the clipboard came back empty with "Copied 0 states" — then
+  // "Nothing to paste". A block is copied as its *definition*, which is the
+  // same thing the library stores, so pasting it goes through the tested
+  // inlineBlock path rather than a second copier that could disagree with it.
+  const blocks = [...ids]
+    .map(id => (getBlock(id) ? outlineBlock(id) : null))
+    .filter(Boolean);
+  App.clipboard = { states, transitions, blocks };
+  const n = states.length + blocks.length;
+  showStatus(`Copied ${n} item${n === 1 ? '' : 's'}`);
 }
 
 export function duplicateSelection() {
@@ -1093,8 +1244,13 @@ export function duplicateSelection() {
   pasteClipboard(null, 28);
 }
 
+/** Everything on the clipboard, of either kind. */
+function clipboardCount(c) {
+  return (c?.states?.length || 0) + (c?.blocks?.length || 0);
+}
+
 export function pasteClipboard(atPoint, fallbackOffset = 32) {
-  if (!App.clipboard || !App.clipboard.states.length) { showStatus('Nothing to paste'); return; }
+  if (!clipboardCount(App.clipboard)) { showStatus('Nothing to paste'); return; }
   snapshot();
   const idMap = {};
   let offX = fallbackOffset, offY = fallbackOffset;
@@ -1104,22 +1260,45 @@ export function pasteClipboard(atPoint, fallbackOffset = 32) {
     offX = atPoint.x - cx; offY = atPoint.y - cy;
   }
   const existingNames = new Set(App.states.map(s => s.name));
+  // A paste lands where the reader is standing. `{...s}` carries the source's
+  // own `blockId`, so states copied while drilled into a block used to arrive
+  // still claiming to belong to it: paste at the top level and they vanished
+  // straight back inside the block they were copied from, with nothing on
+  // screen to say where they had gone.
+  const here = scopeId();
   const newStates = App.clipboard.states.map(s => {
     const id = newId();
     idMap[s.id] = id;
     let name = s.name;
     while (existingNames.has(name)) name = name + '_copy';
     existingNames.add(name);
-    return { ...s, id, name, x: s.x + offX, y: s.y + offY };
+    const copy = { ...s, id, name, x: s.x + offX, y: s.y + offY };
+    if (here) copy.blockId = here; else delete copy.blockId;
+    return copy;
   });
   App.states.push(...newStates);
   const newTransitions = App.clipboard.transitions.map(t => ({ ...t, id: newTId(), from: idMap[t.from], to: idMap[t.to] }));
   App.transitions.push(...newTransitions);
 
-  App.selectedStates = new Set(newStates.map(s => s.id));
+  // Blocks are placed through inlineBlock, the same path the library uses, so a
+  // pasted block is a real independent copy — fresh ids all the way down — and
+  // not a second record pointing at the original's states.
+  const newBlocks = [];
+  for (const def of App.clipboard.blocks || []) {
+    try {
+      const placed = inlineBlock(def, { parent: here, x: (def.x || 0) + offX, y: (def.y || 0) + offY });
+      if (placed) newBlocks.push(placed.block);
+    } catch (e) {
+      showStatus(e.message || 'Could not paste that block');
+    }
+  }
+  invalidateViewGraph();
+
+  App.selectedStates = new Set([...newStates.map(s => s.id), ...newBlocks.map(b => b.id)]);
   App.selectedTransitions = new Set(newTransitions.map(t => t.id));
   emit(Change.GRAPH);
-  showStatus(`Pasted ${newStates.length} state${newStates.length === 1 ? '' : 's'}`);
+  const n = newStates.length + newBlocks.length;
+  showStatus(`Pasted ${n} item${n === 1 ? '' : 's'}`);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1330,12 +1509,19 @@ export function circularLayout(states) {
 //  AUTO LAYOUT
 // ══════════════════════════════════════════════════════════════════
 export function autoLayout() {
-  if (!App.states.length) { showStatus('No states to arrange'); return; }
+  // Arrange what is *drawn*, not what the machine holds. On App.states a block
+  // was invisible to both algorithms — its members were shuffled about inside a
+  // box that never moved, so Arrange left every block sitting exactly where it
+  // was while the diagram around it was rebuilt. Ports are derived and have no
+  // position of their own to arrange.
+  const nodes = viewStates().filter(s => !isPortNode(s));
+  if (!nodes.length) { showStatus('No states to arrange'); return; }
   snapshot();
+  const edges = viewTransitions().filter(t => !t.port);
   if (App.config.layout.algorithm === 'circular') {
-    circularLayout(App.states);
+    circularLayout(nodes);
   } else {
-    sugiyamaLayout(App.states, App.transitions, App.startId);
+    sugiyamaLayout(nodes, edges, startNodeId());
   }
   // Every state teleports here, so there is no continuity for an eased edge to
   // preserve — gliding edges over states that have already jumped reads as the
@@ -1360,17 +1546,21 @@ export function autoLayout() {
 // fitToScreen so a cropped export frames the machine exactly the way
 // "fit to screen" does.
 export function getContentBounds(statePad = 0) {
-  if (!App.states.length) return null;
+  if (!viewStates().length) return null;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   const grow = (x0, y0, x1, y1) => {
     minX = Math.min(minX, x0); minY = Math.min(minY, y0);
     maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
   };
-  App.states.forEach(s => {
-    minX = Math.min(minX, s.x - statePad);
-    minY = Math.min(minY, s.y - statePad);
-    maxX = Math.max(maxX, s.x + statePad);
-    maxY = Math.max(maxY, s.y + statePad);
+  // The drawn graph, and each node's own extent: a block is a box wider than
+  // the caller's uniform pad, and framing on the pad alone would crop it.
+  viewStates().forEach(s => {
+    const hw = s.box ? s.box.w / 2 : 0;
+    const hh = s.box ? s.box.h / 2 : 0;
+    minX = Math.min(minX, s.x - Math.max(statePad, hw));
+    minY = Math.min(minY, s.y - Math.max(statePad, hh));
+    maxX = Math.max(maxX, s.x + Math.max(statePad, hw));
+    maxY = Math.max(maxY, s.y + Math.max(statePad, hh));
   });
   // Self-loops stand well clear of their state and a crowded label can be pushed
   // further still, so the states alone no longer bound the drawing — framing on

@@ -2395,6 +2395,17 @@ button.sm-stat:disabled {
 /* Prose, so --sans: this is a sentence addressed to the reader, not an
    identifier or a piece of instrumentation. It was set in --mono, which is the
    only place in the app where a plain English question is. */
+/* The optional field in the shared confirm dialog — a name, usually. It lives
+   here with the dialog it is part of rather than in css/canvas.css, which is
+   where the block feature first put it. */
+.confirm-field {
+  margin: 10px 0 2px;
+}
+
+.confirm-field .inp {
+  width: 100%;
+}
+
 .confirm-msg {
   font-size: .83rem;
   color: var(--text2);
@@ -2941,20 +2952,19 @@ button.sm-stat:disabled {
   margin: 4px 6px;
 }
 
-.ctx[data-mode="state"] .ctx-edge,
-.ctx[data-mode="state"] .ctx-note,
-.ctx[data-mode="state"] .ctx-shape,
-.ctx[data-mode="edge"] .ctx-state,
-.ctx[data-mode="edge"] .ctx-note,
-.ctx[data-mode="edge"] .ctx-shape,
-.ctx[data-mode="note"] .ctx-state,
-.ctx[data-mode="note"] .ctx-edge,
-.ctx[data-mode="note"] .ctx-shape,
-.ctx[data-mode="divider"] .ctx-state,
-.ctx[data-mode="divider"] .ctx-edge,
-.ctx[data-mode="divider"] .ctx-note,
+/* One rule per row *class*, not one per (mode, class) pair. Written the other
+   way round this list grows as the square of the number of modes, and adding a
+   fifth — blocks — meant four new selectors plus one in each of the four modes
+   already there. A row is hidden unless its own mode is the live one, which is
+   the same statement said once. Absent data-mode hides everything, which is
+   stricter than before and is never a state the menu is opened in. */
+.ctx:not([data-mode="state"]) .ctx-state,
+.ctx:not([data-mode="edge"]) .ctx-edge,
+.ctx:not([data-mode="note"]) .ctx-note,
+.ctx:not([data-mode="divider"]) .ctx-shape,
+.ctx:not([data-mode="block"]) .ctx-block,
 /* The StateMate rows carry no per-mode class, because these rules hide by
-   class and an item tagged for all three modes would be hidden in each of
+   class and an item tagged for all the modes would be hidden in each of
    them. A divider is the one target StateMate has nothing to say about. */
 .ctx[data-mode="divider"] .ctx-sm {
   display: none;
@@ -3174,7 +3184,13 @@ button.sm-stat:disabled {
   opacity: 0;
   transition: opacity .25s;
   white-space: nowrap;
-  z-index: 10;
+  /* Above .scope-bar's 51 (css/canvas.css), not just the rest of the canvas
+     chrome at 49-60: the breadcrumb persists and the toast fades in a couple
+     of seconds, and enterBlockScope() fires both from the same call — a
+     status message is what the reader is meant to be reading right then, so
+     it should win the stack rather than have its text spliced by the bar
+     sitting on top of it. */
+  z-index: 52;
 }
 
 .status.show {

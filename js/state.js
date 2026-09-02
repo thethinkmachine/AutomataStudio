@@ -218,6 +218,26 @@ export const App = {
   // Canvas dividers (annotation line segments that partition the canvas)
   dividers: [], dividerN: 0,
   selectedDividers: new ReactiveSet(),
+  // ── Building blocks ─────────────────────────────────────────────
+  // A block is a subroutine drawn as one node, whose interior is *inlined*
+  // into the machine below rather than nested inside it. So `App.states` is
+  // always the flat machine — every simulator, decider, worker and exporter
+  // reads it exactly as it always did — and a block is a grouping over it:
+  // a record here, plus `blockId` on each interior state naming its immediate
+  // container. `parent` on the record makes containment a tree, which is what
+  // gives unbounded nesting depth with nothing to recurse.
+  //
+  //   { id, name, parent, entry, exits: [{ id, label }], x, y, w, h,
+  //     source, version, collapsed }
+  //
+  // Nothing announces that `App.states` changed — it is pushed to, filtered
+  // and reassigned from around twenty places — so blocks are *validated on
+  // read* rather than invalidated. See blockIsIntact() in js/blocks.js.
+  blocks: [], blockN: 0,
+  // Which block the canvas is currently drawn inside: a path of block ids,
+  // [] for the top level. Carried by every serializer from the start so that
+  // drill-in navigation is purely additive; nothing reads it yet.
+  scope: [],
   ctxDividerId: null, editDividerId: null,
   dragDividerEndpoint: null,
   dividerDraft: null, dividerDraftEl: null,
@@ -407,6 +427,20 @@ function stateIndex() {
 
 export function getState(id) { return stateIndex().get(id); }
 
+// How two state names are compared for "the same state". js/statemate-compile.js
+// matches a spec's states against the canvas by this, js/wizard.js keeps its
+// draft unique under it, and js/blocks.js has to agree with both when it
+// uniquifies the names it inlines — a block whose interior silently merged with
+// an outer state would be a machine nobody wrote.
+//
+// It lives here rather than beside its first caller for the reason getState
+// does: statemate-compile.js imports canvas.js, so anything that reached for it
+// there had to drag the DOM in behind it. That module re-exports this, so every
+// existing call site is unchanged.
+export function stateNameKey(name) {
+  return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 // The same index, for callers that resolve many ids at once (the layout pass,
 // the minimap, the exporters) and would otherwise each build their own copy.
 export function stateById() { return stateIndex(); }
@@ -539,10 +573,43 @@ export function wrapStateLabelsOn() {
 export const COLLISION_BUDGET_STATES = 200;
 export const COLLISION_BUDGET_TRANSITIONS = 700;
 
-/** Whether this machine is past what the app can draw in full. */
+// How much the canvas is currently *drawing*, which is not how big the machine
+// is. Inside a hierarchy of building blocks the two come apart completely: a
+// CPU is three thousand states in App.states while the reader is looking at
+// eight boxes, and judging the render profile on the model would strip the edge
+// labels and the eased layout off an eight-node diagram.
+//
+// js/view-graph.js publishes it here rather than this file asking for it,
+// because state.js is import-free — the same late-binding pattern
+// js/machines/paint.js uses for the step painter. Absent, it answers the
+// machine's own size, which is what a canvas with no blocks on it draws.
+// Installed as a *function*, not pushed as a value. Pushed, it goes stale the
+// moment anything replaces App.states without the projection having been read
+// since — which is most of what a loader does, and it would leave the profile
+// judging the previous machine.
+let drawnSizeSource = null;
+export function setDrawnSizeSource(fn) {
+  drawnSizeSource = typeof fn === 'function' ? fn : null;
+}
+
+export function drawnSize() {
+  if (drawnSizeSource) {
+    try { return drawnSizeSource(); } catch (e) { /* fall through to the model */ }
+  }
+  return { states: App.states?.length || 0, transitions: App.transitions?.length || 0 };
+}
+
+/**
+ * Whether what is *drawn* is past what the app can draw in full.
+ *
+ * The profile turns off what costs frames, so it judges the frame's own
+ * workload. What scales with the *model* rather than the view — the undo
+ * stack's byte budget, the autosave stringify — is bounded separately and by
+ * its own numbers.
+ */
 export function machineIsLarge() {
-  return (App.states?.length || 0) > COLLISION_BUDGET_STATES
-    || (App.transitions?.length || 0) > COLLISION_BUDGET_TRANSITIONS;
+  const n = drawnSize();
+  return n.states > COLLISION_BUDGET_STATES || n.transitions > COLLISION_BUDGET_TRANSITIONS;
 }
 
 /** Whether the app is currently simplifying itself for the machine's size. */
@@ -866,6 +933,9 @@ export function exportWorkspaceState() {
     noteN: App.noteN,
     dividers: JSON.parse(JSON.stringify(App.dividers)),
     dividerN: App.dividerN,
+    blocks: JSON.parse(JSON.stringify(App.blocks || [])),
+    blockN: App.blockN,
+    scope: [...(App.scope || [])],
     cam: { ...App.cam },
     // A copy of the *array*, not of its entries. Every entry is already a
     // JSON string — serializeState() returns JSON.stringify(…), and
@@ -903,6 +973,7 @@ export function blankWorkspaceData() {
     tapeCount: MIN_TAPES,
     states: [], transitions: [], startId: null, accepts: [], stateN: 0, transN: 0,
     notes: [], noteN: 0, dividers: [], dividerN: 0, meta: null,
+    blocks: [], blockN: 0, scope: [],
     cam: { x: 0, y: 0, z: 1 },
     history: [], future: [], grammar: { vars: ['S'], start: 'S', productions: [] }
   };
@@ -925,6 +996,12 @@ export function importWorkspaceState(data) {
   App.noteN = data.noteN || 0;
   App.dividers = data.dividers || [];
   App.dividerN = data.dividerN || 0;
+  App.blocks = data.blocks || [];
+  App.blockN = data.blockN || 0;
+  // A scope naming a block this blob does not have would draw an empty canvas
+  // with no way back, so it is filtered rather than trusted — the same rule
+  // sectionOrder() applies to a saved panel order.
+  App.scope = (data.scope || []).filter(id => (App.blocks || []).some(b => b.id === id));
   App.selectedNotes.clear();
   App.selectedDividers.clear();
   App.cam = data.cam || { x: 0, y: 0, z: 1 };
