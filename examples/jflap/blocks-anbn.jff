@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--Turing machine with building blocks: a^n b^n.
+
+    Six blocks, each a tiny machine that does one thing and halts with the head
+    on a symbol that says what happened. The outer diagram is nothing but those
+    blocks and the symbol each one halts on:
+
+      skipX  -a-> crossA -x-> findB -b-> crossB -y-> rewind -x-> skipX
+      skipX  -y-> sweepY -[blank]-> accept
+      skipX  -[blank]-> accept          (the empty word)
+
+    Anything with no edge halts where it stands and rejects: skipX on a b means
+    more b's than a's, and findB running out of b's means more a's than b's.-->
+<structure>
+	<type>turing</type>
+	<automaton>
+		<!--The list of states.-->
+		<block id="0" name="skipX">
+			<tag>skipX</tag>
+			<x>120.0</x>
+			<y>140.0</y>
+			<initial/>
+		</block>
+		<block id="1" name="crossA">
+			<tag>crossA</tag>
+			<x>340.0</x>
+			<y>140.0</y>
+		</block>
+		<block id="2" name="findB">
+			<tag>findB</tag>
+			<x>560.0</x>
+			<y>140.0</y>
+		</block>
+		<block id="3" name="crossB">
+			<tag>crossB</tag>
+			<x>780.0</x>
+			<y>140.0</y>
+		</block>
+		<block id="4" name="rewind">
+			<tag>rewind</tag>
+			<x>780.0</x>
+			<y>320.0</y>
+		</block>
+		<block id="5" name="sweepY">
+			<tag>sweepY</tag>
+			<x>120.0</x>
+			<y>320.0</y>
+		</block>
+		<state id="6" name="accept">
+			<x>340.0</x>
+			<y>320.0</y>
+			<final/>
+		</state>
+		<!--The list of transitions.-->
+		<!--An uncrossed a is waiting: cross it off.-->
+		<transition block="true">
+			<from>0</from>
+			<to>1</to>
+			<read>a</read>
+		</transition>
+		<!--Every a is crossed off. Check what is left of the b's.-->
+		<transition block="true">
+			<from>0</from>
+			<to>5</to>
+			<read>y</read>
+		</transition>
+		<!--Nothing on the tape at all: the empty word.-->
+		<transition block="true">
+			<from>0</from>
+			<to>6</to>
+			<read></read>
+		</transition>
+		<!--crossA halts on the x it wrote; go and find the matching b.-->
+		<transition block="true">
+			<from>1</from>
+			<to>2</to>
+			<read>x</read>
+		</transition>
+		<!--findB halts on a b; cross it off.-->
+		<transition block="true">
+			<from>2</from>
+			<to>3</to>
+			<read>b</read>
+		</transition>
+		<!--crossB halts on the y it wrote; go back to the front.-->
+		<transition block="true">
+			<from>3</from>
+			<to>4</to>
+			<read>y</read>
+		</transition>
+		<!--rewind halts on cell 0, which is crossed off by now.-->
+		<transition block="true">
+			<from>4</from>
+			<to>0</to>
+			<read>x</read>
+		</transition>
+		<!--Nothing but crossed-off cells to the end: the counts matched.-->
+		<transition block="true">
+			<from>5</from>
+			<to>6</to>
+			<read></read>
+		</transition>
+	</automaton>
+
+	<!--The blocks' interiors. JFLAP writes each as an element beside
+	    <automaton>, named by the block's <tag> — not nested inside <block>.-->
+
+	<!--Walk right over the crossed-off a's and halt on the first cell that is
+	    not one, so the outer diagram can read it.-->
+	<skipX>
+		<state id="0" name="scan">
+			<x>80.0</x>
+			<y>80.0</y>
+			<initial/>
+		</state>
+		<state id="1" name="atFirst">
+			<x>260.0</x>
+			<y>80.0</y>
+			<final/>
+		</state>
+		<transition>
+			<from>0</from>
+			<to>0</to>
+			<read>x</read>
+			<write>x</write>
+			<move>R</move>
+		</transition>
+		<transition>
+			<from>0</from>
+			<to>1</to>
+			<read>a</read>
+			<write>a</write>
+			<move>S</move>
+		</transition>
+		<transition>
+			<from>0</from>
+			<to>1</to>
+			<read>b</read>
+			<write>b</write>
+			<move>S</move>
+		</transition>
+		<transition>
+			<from>0</from>
+			<to>1</to>
+			<read>y</read>
+			<write>y</write>
+			<move>S</move>
+		</transition>
+		<transition>
+			<from>0</from>
+			<to>1</to>
+			<read></read>
+			<write></write>
+			<move>S</move>
+		</transition>
+	</skipX>
+
+	<!--Cross this a off, and stay on it so the outer edge has an x to read.-->
+	<crossA>
+		<state id="0" name="here">
+			<x>80.0</x>
+			<y>80.0</y>
+			<initial/>
+		</state>
+		<state id="1" name="crossed">
+			<x>260.0</x>
+			<y>80.0</y>
+			<final/>
+		</state>
+		<transition>
+			<from>0</from>
+			<to>1</to>
+			<read>a</read>
+			<write>x</write>
+			<move>S</move>
+		</transition>
+	</crossA>
+
+	<!--Walk right to the leftmost b still standing. Running out of them is a
+	    halt in a non-final state, which is the rejection for a^n b^m, m < n.-->
+	<findB>
+		<state id="0" name="seek">
+			<x>80.0</x>
+			<y>80.0</y>
+			<initial/>
+		</state>
+		<state id="1" name="found">
+			<x>260.0</x>
+			<y>80.0</y>
+			<final/>
+		</state>
+		<transition>
+			<from>0</from>
+			<to>0</to>
+			<read>x</read>
+			<write>x</write>
+			<move>R</move>
+		</transition>
+		<transition>
+			<from>0</from>
+			<to>0</to>
+			<read>a</read>
+			<write>a</write>
+			<move>R</move>
+		</transition>
+		<transition>
+			<from>0</from>
+			<to>0</to>
+			<read>y</read>
+			<write>y</write>
+			<move>R</move>
+		</transition>
+		<transition>
+			<from>0</from>
+			<to>1</to>
+			<read>b</read>
+			<write>b</write>
+			<move>S</move>
+		</transition>
+	</findB>
+
+	<!--Cross this b off, and stay on it.-->
+	<crossB>
+		<state id="0" name="here">
+			<x>80.0</x>
+			<y>80.0</y>
+			<initial/>
+		</state>
+		<state id="1" name="crossed">
+			<x>260.0</x>
+			<y>80.0</y>
+			<final/>
+		</state>
+		<transition>
+			<from>0</from>
+			<to>1</to>
+			<read>b</read>
+			<write>y</write>
+			<move>S</move>
+		</transition>
+	</crossB>
+
+	<!--Walk left off the front of the word, then step back onto cell 0.-->
+	<rewind>
+		<state id="0" name="left">
+			<x>80.0</x>
+			<y>80.0</y>
+			<initial/>
+		</state>
+		<state id="1" name="atStart">
+			<x>260.0</x>
+			<y>80.0</y>
+			<final/>
+		</state>
+		<transition>
+			<from>0</from>
+			<to>0</to>
+			<read>a</read>
+			<write>a</write>
+			<move>L</move>
+		</transition>
+		<transition>
+			<from>0</from>
+			<to>0</to>
+			<read>b</read>
+			<write>b</write>
+			<move>L</move>
+		</transition>
+		<transition>
+			<from>0</from>
+			<to>0</to>
+			<read>x</read>
+			<write>x</write>
+			<move>L</move>
+		</transition>
+		<transition>
+			<from>0</from>
+			<to>0</to>
+			<read>y</read>
+			<write>y</write>
+			<move>L</move>
+		</transition>
+		<transition>
+			<from>0</from>
+			<to>1</to>
+			<read></read>
+			<write></write>
+			<move>R</move>
+		</transition>
+	</rewind>
+
+	<!--Walk right over the crossed-off b's. Halting on a b left standing is the
+	    rejection for a^n b^m, m > n.-->
+	<sweepY>
+		<state id="0" name="scan">
+			<x>80.0</x>
+			<y>80.0</y>
+			<initial/>
+		</state>
+		<state id="1" name="end">
+			<x>260.0</x>
+			<y>80.0</y>
+			<final/>
+		</state>
+		<transition>
+			<from>0</from>
+			<to>0</to>
+			<read>y</read>
+			<write>y</write>
+			<move>R</move>
+		</transition>
+		<transition>
+			<from>0</from>
+			<to>1</to>
+			<read>b</read>
+			<write>b</write>
+			<move>S</move>
+		</transition>
+		<transition>
+			<from>0</from>
+			<to>1</to>
+			<read></read>
+			<write></write>
+			<move>S</move>
+		</transition>
+	</sweepY>
+</structure>

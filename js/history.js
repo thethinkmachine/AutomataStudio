@@ -145,6 +145,10 @@ function serializeState() {
     stateN: App.stateN, transN: App.transN,
     notes: App.notes, noteN: App.noteN,
     dividers: App.dividers, dividerN: App.dividerN,
+    // Building blocks are document content, so one Ctrl+Z takes back placing
+    // one the way it takes back drawing a state. `blockId` rides along on the
+    // states themselves — this is stringifying them whole.
+    blocks: App.blocks, blockN: App.blockN, scope: App.scope,
     meta: App.meta,
     // The grammar rides along for the same reason App.meta does: it is part of
     // what getWorkspaceData saves, so one Ctrl+Z has to take back a retyped
@@ -332,6 +336,8 @@ export function restoreSnapshot(s) {
   App.stateN = d.stateN; App.transN = d.transN;
   App.notes = d.notes || []; App.noteN = d.noteN || 0;
   App.dividers = d.dividers || []; App.dividerN = d.dividerN || 0;
+  App.blocks = d.blocks || []; App.blockN = d.blockN || 0;
+  App.scope = (d.scope || []).filter(id => App.blocks.some(b => b.id === id));
   App.meta = d.meta || null;
   // Guarded rather than defaulted: an entry written before the grammar was
   // recorded here — one restored from IndexedDB across a version — must leave

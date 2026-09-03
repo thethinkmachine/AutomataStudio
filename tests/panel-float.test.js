@@ -14,8 +14,10 @@ import { createHarness } from './harness.js';
 const harness = createHarness();
 const { context } = harness;
 
-const LP = ['lp-alphabet', 'stack-sec', 'output-sec', 'lp-states', 'lp-transitions'];
-const RP = ['rp-language', 'rp-simulate', 'rp-batch'];
+// Derived from the registry rather than written out again: js/panel-sections.js
+// is the one list of sections, and a copy here would be a second one.
+const LP = context.declaredSectionIds('lpanel');
+const RP = context.declaredSectionIds('rpanel');
 
 /**
  * A device the feature is for.
@@ -206,11 +208,12 @@ test('applySectionOrder leaves the floating ones where they are', () => {
   context.floatSection('lp-states', { x: 20, y: 20, w: 360, h: 280 });
   const layer = context.$('panel-float-layer');
 
-  context.setSectionOrder('lpanel', ['lp-transitions', 'lp-alphabet', 'stack-sec', 'output-sec', 'lp-states']);
+  const custom = ['lp-transitions', ...LP.filter(id => id !== 'lp-transitions')];
+  context.setSectionOrder('lpanel', custom);
   context.applySectionOrder('lpanel');
 
   assert.ok(layer.children.includes(context.$('lp-states')), 'still a window');
-  assert.deepEqual(domIds('lpanel'), ['lp-transitions', 'lp-alphabet', 'stack-sec', 'output-sec']);
+  assert.deepEqual(domIds('lpanel'), custom.filter(id => id !== 'lp-states'));
 });
 
 test('a floating section keeps its place in the order it is not occupying', () => {
@@ -240,7 +243,10 @@ test('a panel whose only sections are hidden is empty too', () => {
   // for machines that have neither. A panel showing nothing needs its empty
   // state whether the sections left or were merely hidden.
   mount();
-  ['lp-alphabet', 'lp-states', 'lp-transitions'].forEach(id => context.floatSection(id));
+  // Everything but the two the machine switch hides, so what is left is only
+  // the hidden pair — derived, so a section added later is covered too.
+  LP.filter(id => id !== 'stack-sec' && id !== 'output-sec')
+    .forEach(id => context.floatSection(id));
   context.$('stack-sec').style.display = 'none';
   context.$('output-sec').style.display = 'none';
   context.syncPanelEmpty('lpanel');

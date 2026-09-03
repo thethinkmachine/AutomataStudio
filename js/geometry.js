@@ -1,4 +1,5 @@
-import { App, COLLISION_BUDGET_STATES, COLLISION_BUDGET_TRANSITIONS, R, stateById as stateIndex } from './state.js';
+import { App, COLLISION_BUDGET_STATES, COLLISION_BUDGET_TRANSITIONS, R } from './state.js';
+import { viewGraph } from './view-graph.js';
 import { rectHasSegment } from './viewport.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -67,6 +68,12 @@ function num(v, fallback) {
 
 function cfg() { return (App.config && App.config.render) || {}; }
 
+/** The drawn node the start arrow points at, which may be a block's box. */
+export function startNodeId() {
+  if (!App.startId) return null;
+  return viewGraph().owner.get(App.startId) || null;
+}
+
 export function nodeClearance() { return Math.max(0, num(cfg().nodeClearance, DEFAULTS.nodeClearance)); }
 export function labelGap() { return Math.max(0, num(cfg().labelGap, DEFAULTS.labelGap)); }
 export function minNodeGap() { return Math.max(0, num(cfg().minNodeGap, DEFAULTS.minNodeGap)); }
@@ -76,9 +83,107 @@ export function minNodeGap() { return Math.max(0, num(cfg().minNodeGap, DEFAULTS
 // value means "on".
 function wants(flag) { return cfg()[flag] !== false; }
 
-// The radius the app is currently drawing states at. R is a live binding that
-// the settings modal reassigns through setR, so it is read per call.
-function nodeR() { return num(R, 30); }
+// ══════════════════════════════════════════════════════════════════
+//  NODE SHAPE
+// ══════════════════════════════════════════════════════════════════
+// A state is a circle of radius R. A building block is a box, and it is
+// bigger — it carries a title strip and a live preview of the machine inside
+// it — so the "keep clear" distances below can no longer be one number read
+// from the config.
+//
+// The rule that keeps that from spreading through the whole file:
+//
+//   **Routing and overlap use a circumscribed radius; only the drawn endpoint
+//   uses the box.**
+//
+// Conservative where it is invisible — an edge routes a little wide around a
+// block — and exact where it shows, which is the arrowhead landing on the box's
+// edge rather than beside it. The alternative, exact rectangle geometry in the
+// avoidance passes, would mean a segment/rect intersection inside
+// nodesNearChord and curveClears, on the hot path, to buy a few pixels nobody
+// can see.
+//
+// Everything here answers the plain circle for a node that declares nothing, so
+// a machine with no blocks in it lays out exactly as it always did.
+
+/**
+ * The clearance radius of a node: its own `r`, or the app's state radius.
+ *
+ * R is a live binding the settings modal reassigns through setR, so it is read
+ * per call rather than captured.
+ */
+function nodeR(node) {
+  const own = node && node.r;
+  return Number.isFinite(own) && own > 0 ? own : num(R, 30);
+}
+
+/** A node's box, when it has one, or null for a circle. */
+function nodeBox(node) {
+  const b = node && node.box;
+  return b && Number.isFinite(b.w) && Number.isFinite(b.h) ? b : null;
+}
+
+/**
+ * The largest clearance radius in play.
+ *
+ * The avoidance passes query a spatial grid over a *box* and then test each
+ * candidate exactly. The query has to be wide enough for the biggest node that
+ * could be in it — miss one and an edge routes straight through a block — while
+ * the per-candidate test stays each node's own. Query wide, test exact.
+ */
+function maxNodeR(states) {
+  let max = num(R, 30);
+  for (const s of states || []) {
+    const r = nodeR(s);
+    if (r > max) max = r;
+  }
+  return max;
+}
+
+/** The widest node the context knows about, or the plain state radius. */
+function ctxMaxR(ctx) {
+  return Number.isFinite(ctx && ctx.maxR) ? ctx.maxR : num(R, 30);
+}
+
+/**
+ * Where a ray leaving `node`'s centre along (vx, vy) crosses its boundary,
+ * plus `extra` further out.
+ *
+ * A circle is the radius along the ray. A box is the nearer of the two axis
+ * crossings — the standard centre-to-edge intersection — which is what puts an
+ * arrowhead on the side of a block the edge actually arrives at rather than on
+ * a circle drawn around it.
+ */
+function boundaryPoint(node, vx, vy, extra) {
+  const box = nodeBox(node);
+  let reach;
+  if (box) {
+    const ax = Math.abs(vx), ay = Math.abs(vy);
+    const tx = ax > 1e-9 ? (box.w / 2) / ax : Infinity;
+    const ty = ay > 1e-9 ? (box.h / 2) / ay : Infinity;
+    reach = Math.min(tx, ty);
+    if (!Number.isFinite(reach)) reach = nodeR(node);
+  } else {
+    reach = nodeR(node);
+  }
+  return { x: node.x + vx * (reach + extra), y: node.y + vy * (reach + extra) };
+}
+
+// Self-loop metrics depend only on a node's radius and three config numbers, and
+// a pass asks for them once per self-loop — so they are memoised per radius
+// rather than recomputed. Keyed on the config too, because the settings modal
+// changes those three and a stale arc would be drawn around the wrong centre.
+let _lmKey = null, _lmMap = null;
+
+function loopMetricsFor(node) {
+  const c = cfg();
+  const key = `${c.selfLoopOff}|${c.selfLoopSize}|${c.arrowHeadSize}|${num(R, 30)}`;
+  if (_lmKey !== key) { _lmKey = key; _lmMap = new Map(); }
+  const r = nodeR(node);
+  let m = _lmMap.get(r);
+  if (!m) { m = selfLoopMetrics(node); _lmMap.set(r, m); }
+  return m;
+}
 
 // ── small vector / interval helpers ──
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
@@ -206,8 +311,8 @@ function defaultLabelSize(ts) {
 // settings modal, an imported profile, a restored workspace), so they are
 // clamped here: an offset wider than the node or an arc smaller than its own
 // chord has no solution and would put NaN into every coordinate.
-export function selfLoopMetrics() {
-  const r = nodeR();
+export function selfLoopMetrics(node) {
+  const r = nodeR(node);
   const so = clamp(num(cfg().selfLoopOff, 12), 2, r * 0.85);
   const ss = Math.max(so + 4, num(cfg().selfLoopSize, 22));
   const spread = Math.asin(so / r);          // half the angle the arc's feet span
@@ -223,14 +328,21 @@ export function selfLoopMetrics() {
   // trimming. The opening foot stays on the circle, where a line with no head
   // on it should start.
   const endGap = clamp(num(cfg().arrowHeadSize, 6), 0, ss * 0.5);
-  return { so, ss, spread, chordOut, bulge, centreOut, endGap, extent: centreOut + ss };
+  // `r` rides along because selfLoopPath draws the arc's feet on the node it
+  // belongs to, and the animation layer redraws from an eased angle against
+  // these same metrics — a second read of nodeR() there could not know which
+  // node it was for.
+  return { r, so, ss, spread, chordOut, bulge, centreOut, endGap, extent: centreOut + ss };
 }
 
 // The arc, drawn from θ−spread to θ+spread the long way round. Sweep and
 // large-arc are fixed: rotating the configuration preserves orientation, so the
 // same pair of flags bulges outward along θ whichever way θ points.
 export function selfLoopPath(x, y, angle, m = selfLoopMetrics()) {
-  const r = nodeR();
+  // The radius the metrics were built for, not a fresh read of the app's state
+  // radius: an arc's feet sit on the node it belongs to, and this is also
+  // called from the animation layer with an eased angle and no node in hand.
+  const r = Number.isFinite(m.r) ? m.r : nodeR();
   const a0 = angle - m.spread, a1 = angle + m.spread;
   const x0 = x + r * Math.cos(a0), y0 = y + r * Math.sin(a0);
   // The closing foot is pulled back *along the arc* rather than outward from
@@ -257,7 +369,7 @@ export function selfLoopPath(x, y, angle, m = selfLoopMetrics()) {
  * about. render.js calls it with the eased value; buildLayoutContext calls it
  * with the target.
  */
-export function edgeGeometryFor(from, to, crvVal, r = nodeR(), arrowHead = num(cfg().arrowHeadSize, 6)) {
+export function edgeGeometryFor(from, to, crvVal, rFrom, rTo, arrowHead = num(cfg().arrowHeadSize, 6)) {
   const dx = to.x - from.x, dy = to.y - from.y;
   const dist = Math.hypot(dx, dy);
   if (!dist) return null;
@@ -275,8 +387,14 @@ export function edgeGeometryFor(from, to, crvVal, r = nodeR(), arrowHead = num(c
   // drawn exactly where it always was.
   const sv = normalize(mx - from.x, my - from.y, ux, uy);
   const ev = normalize(mx - to.x, my - to.y, -ux, -uy);
-  const sx = from.x + sv.x * r, sy = from.y + sv.y * r;
-  const ex = to.x + ev.x * (r + arrowHead), ey = to.y + ev.y * (r + arrowHead);
+  // Each end is trimmed against its own node's boundary. `rFrom`/`rTo` are an
+  // override for a caller that already knows the radius; absent, each node
+  // answers for itself, which is also how a box is met exactly rather than
+  // through a circle drawn round it.
+  const a = boundaryPoint(Number.isFinite(rFrom) ? { x: from.x, y: from.y, r: rFrom } : from, sv.x, sv.y, 0);
+  const b = boundaryPoint(Number.isFinite(rTo) ? { x: to.x, y: to.y, r: rTo } : to, ev.x, ev.y, arrowHead);
+  const sx = a.x, sy = a.y;
+  const ex = b.x, ey = b.y;
   return {
     sx, sy, ex, ey, mx, my, px, py, ux, uy, dist,
     d: crvVal ? `M ${sx} ${sy} Q ${mx} ${my} ${ex} ${ey}` : `M ${sx} ${sy} L ${ex} ${ey}`
@@ -315,11 +433,10 @@ function loopCandidateAngles() {
 function scoreLoopAngle(s, angle, near, dirs, m, labelSize) {
   const ux = Math.cos(angle), uy = Math.sin(angle);
   const lcx = s.x + m.centreOut * ux, lcy = s.y + m.centreOut * uy;
-  const r = nodeR();
-  const keepOut = m.ss + r + nodeClearance();
+  const clear = nodeClearance();
+  const gap = labelGap();
   let score = 0;
 
-  const labelPad = r + labelGap();
   const box = labelSize ? rectAt(
     s.x + (m.extent + labelGap() + labelSize.h / 2) * ux,
     s.y + (m.extent + labelGap() + labelSize.h / 2) * uy,
@@ -327,11 +444,14 @@ function scoreLoopAngle(s, angle, near, dirs, m, labelSize) {
 
   for (const o of near) {
     if (o.id === s.id) continue;
-    const overlap = keepOut - Math.hypot(o.x - lcx, o.y - lcy);
+    // Both distances are the *other* node's, not this one's — a loop on a small
+    // state still has to clear a big block standing beside it.
+    const or = nodeR(o);
+    const overlap = (m.ss + or + clear) - Math.hypot(o.x - lcx, o.y - lcy);
     if (overlap > 0) score += overlap * 4;
     // The label rides outside the arc, so a direction can be clear for the loop
     // and still be wrong for the text.
-    if (box) score += circleRectOverlap(o.x, o.y, labelPad, box) * 2;
+    if (box) score += circleRectOverlap(o.x, o.y, or + gap, box) * 2;
   }
 
   // An edge arriving where the loop wants to sit is not an overlap the way a
@@ -354,7 +474,9 @@ export function chooseSelfLoopAngle(s, ts, ctx, m, labelSize) {
   if (manual) return manual.loopAngle;
   if (!ctx || !ctx.collide || !wants('smartSelfLoops')) return UP;
 
-  const reach = m.extent + (labelSize ? labelSize.w + labelSize.h : 0) + nodeR() + nodeClearance();
+  // The widest node in play rather than this one's: the query has to reach
+  // whatever could be near, and the per-candidate test above is exact.
+  const reach = m.extent + (labelSize ? labelSize.w + labelSize.h : 0) + ctxMaxR(ctx) + nodeClearance();
   const near = gridQuery(ctx.nodeGrid, s.x - reach, s.y - reach, s.x + reach, s.y + reach, ctx.states);
   const dirs = ctx.incidentDirs.get(s.id) || [];
 
@@ -382,10 +504,13 @@ export function chooseSelfLoopAngle(s, ts, ctx, m, labelSize) {
 // the offset search needs — a candidate bend can only be checked against nodes
 // it was told about, so the search radius and the query radius have to match.
 function nodesNearChord(from, to, ctx, slack) {
-  const r = nodeR(), clear = nodeClearance();
-  const pad = r + clear + slack;
-  const x0 = Math.min(from.x, to.x) - pad, x1 = Math.max(from.x, to.x) + pad;
-  const y0 = Math.min(from.y, to.y) - pad, y1 = Math.max(from.y, to.y) + pad;
+  const clear = nodeClearance();
+  // The query box is sized for the widest node that could be in it; each
+  // candidate is then tested against its own radius. With every node the same
+  // size the two are one number and this is the pass it always was.
+  const queryPad = ctxMaxR(ctx) + clear + slack;
+  const x0 = Math.min(from.x, to.x) - queryPad, x1 = Math.max(from.x, to.x) + queryPad;
+  const y0 = Math.min(from.y, to.y) - queryPad, y1 = Math.max(from.y, to.y) + queryPad;
   const near = gridQuery(ctx.nodeGrid, x0, y0, x1, y1, ctx.states);
   const hits = [];
   for (const o of near) {
@@ -394,7 +519,7 @@ function nodesNearChord(from, to, ctx, slack) {
     // Only the interior counts: a state overlapping an endpoint is a node-node
     // overlap, and bending the edge cannot fix it.
     if (t <= 0.02 || t >= 0.98) continue;
-    if (dist < pad) hits.push({ node: o, dist, t });
+    if (dist < nodeR(o) + clear + slack) hits.push({ node: o, dist, t });
   }
   return hits;
 }
@@ -404,13 +529,15 @@ function nodesNearChord(from, to, ctx, slack) {
 // problem, and nine samples along a curve this short are indistinguishable
 // from it.
 function curveClears(from, to, crv, px, py, hits) {
-  const need = nodeR() + nodeClearance();
+  const clear = nodeClearance();
   const mx = (from.x + to.x) / 2 + px * crv, my = (from.y + to.y) / 2 + py * crv;
   for (let i = 1; i <= 9; i++) {
     const t = i / 10;
     const p = quadPoint(from.x, from.y, mx, my, to.x, to.y, t);
     for (const h of hits) {
-      if (Math.hypot(p.x - h.node.x, p.y - h.node.y) < need) return false;
+      // Each blocker is cleared by its own radius: a curve that has got round
+      // a state has not necessarily got round the block beside it.
+      if (Math.hypot(p.x - h.node.x, p.y - h.node.y) < nodeR(h.node) + clear) return false;
     }
   }
   return true;
@@ -428,9 +555,18 @@ const ROUTE_STEPS = 4;
 // out is harder to follow than the one it replaced.
 const MAX_ROUTE_BLOCKERS = 10;
 
+/**
+ * How far one step of the routing search bends an edge.
+ *
+ * Declared once because relayout() has to reproduce the exact band this search
+ * covers — see the note there. Sized on the widest node, since the step exists
+ * to clear whatever is in the way.
+ */
+function routeStep(ctx) { return ctxMaxR(ctx) + nodeClearance(); }
+
 export function routeCurve(from, to, ctx, px, py, base, out) {
   if (!ctx || !ctx.collide || !wants('autoRouteEdges')) return base;
-  const step = nodeR() + nodeClearance();
+  const step = routeStep(ctx);
   // A quadratic's deviation from its chord is half its control offset, so this
   // is how far the widest candidate below actually swings.
   const reach = (Math.abs(base) + ROUTE_STEPS * step) / 2;
@@ -494,11 +630,13 @@ const LABEL_PUSHES = [0, 1, 2];
 // obstacles per test and every edge sample within a hundred pixels.
 function labelPenalty(box, ctx, ownKey) {
   const gap = labelGap();
-  const pad = nodeR() + gap;
+  // Query for the widest node that could reach this box; charge each one its
+  // own radius. Same rule as nodesNearChord: query wide, test exact.
+  const pad = ctxMaxR(ctx) + gap;
   let penalty = 0;
 
   for (const o of gridQuery(ctx.nodeGrid, box.x - pad, box.y - pad, box.x + box.w + pad, box.y + box.h + pad, ctx.states)) {
-    penalty += circleRectOverlap(o.x, o.y, pad, box) * 3;
+    penalty += circleRectOverlap(o.x, o.y, nodeR(o) + gap, box) * 3;
   }
 
   const grown = { x: box.x - gap, y: box.y - gap, w: box.w + gap * 2, h: box.h + gap * 2 };
@@ -630,12 +768,19 @@ export function invalidateLayoutGroups() { _grpArr = null; _grpVal = null; }
 
 export function buildLayoutContext(opts = {}) {
   const labelSizeFor = typeof opts.labelSizeFor === 'function' ? opts.labelSizeFor : defaultLabelSize;
-  const states = App.states || [];
-  const transitions = App.transitions || [];
-
-  // The one id -> state index the whole app shares, rather than a private copy
-  // built per pass. On a drag frame this pass runs once per frame.
-  const stateById = stateIndex();
+  // What the canvas is *showing*, not what the machine *is*. Inside a block the
+  // two are very different; with no blocks on the canvas they are the same
+  // arrays. See js/view-graph.js — feeding the projection in here is what
+  // carries renderTransitions, updateFastDOM, getContentBounds, fit-to-screen,
+  // the exporters and the minimap along with it, rather than each of them
+  // deciding separately what is on screen.
+  //
+  // The projection is cached and identity-stable across a drag, which relayout()
+  // depends on: it refuses the incremental path when `prev.states !== states`.
+  const view$ = viewGraph();
+  const states = view$.states;
+  const transitions = view$.transitions;
+  const stateById = view$.byId;
 
   // Grouping is a function of the transition list and the state list, and of
   // neither one's coordinates — so it survives every frame of a drag, which is
@@ -656,9 +801,12 @@ export function buildLayoutContext(opts = {}) {
   // (a machine big enough to cull is past the collision budget), and where they
   // could, correctness wins.
   const view = !collide && opts.viewport ? opts.viewport : null;
+  // The widest node in the diagram. Every grid cell, query pad and search step
+  // below is sized on it — see the note over nodeR().
+  const maxR = maxNodeR(states);
   // How far outside the rect a curve can still bleed: a quadratic's deviation is
   // half its control offset, and a self-loop stands off by its own extent.
-  const viewPad = view ? Math.max(num(cfg().curveOff, 45), 2 * nodeR() + 40) : 0;
+  const viewPad = view ? Math.max(num(cfg().curveOff, 45), 2 * maxR + 40) : 0;
 
   // ── the incremental path ──
   // Only where `collide` is on, which is the only regime that costs anything:
@@ -668,9 +816,9 @@ export function buildLayoutContext(opts = {}) {
     if (reused) return reused;
   }
 
-  const cell = 2 * nodeR() + nodeClearance() * 2;
+  const cell = 2 * maxR + nodeClearance() * 2;
   const ctx = {
-    stateById, tsByPair, groups, states, collide, view,
+    stateById, tsByPair, groups, states, collide, view, maxR,
     nodeGrid: makeGrid(cell),
     incidentDirs: new Map(),
     edgeGrid: makeGrid(cell),
@@ -706,15 +854,20 @@ export function buildLayoutContext(opts = {}) {
       pushDir(ctx.incidentDirs, g.from.id, a);
       pushDir(ctx.incidentDirs, g.to.id, a + Math.PI);
     }
-    if (App.startId && stateById.has(App.startId)) pushDir(ctx.incidentDirs, App.startId, Math.PI);
+    // The start arrow comes in horizontally from the left, and a loop placed
+    // there would be drawn through it. Where the start state is inside a
+    // collapsed block it is the *block* the arrow lands on.
+    const startNode = startNodeId();
+    if (startNode && stateById.has(startNode)) pushDir(ctx.incidentDirs, startNode, Math.PI);
   }
 
-  const loopMetrics = selfLoopMetrics();
   const arrowHead = num(cfg().arrowHeadSize, 6);
   const curveOff = num(cfg().curveOff, 45);
-  const r = nodeR();
 
-  ctx.env = { loopMetrics, arrowHead, curveOff, r, viewPad, labelSizeFor };
+  // No single `loopMetrics` any more: an arc's feet sit on the node it belongs
+  // to, so the metrics are per radius. loopMetricsFor memoises them, which is
+  // what keeps that from being a recomputation per self-loop per frame.
+  ctx.env = { arrowHead, curveOff, viewPad, labelSizeFor };
 
   // ── stage 2 + 3: paths ──
   for (const g of groups) computeGroupGeo(g, ctx);
@@ -739,7 +892,7 @@ export function buildLayoutContext(opts = {}) {
  */
 function computeGroupGeo(g, ctx) {
   const { stateById, tsByPair, view, geo: out } = ctx;
-  const { loopMetrics, arrowHead, curveOff, r, viewPad, labelSizeFor } = ctx.env;
+  const { arrowHead, curveOff, viewPad, labelSizeFor } = ctx.env;
   {
     const { from, to, ts, key } = g;
     // Off-screen edges get no geometry, which is also what tells renderTransitions
@@ -748,6 +901,7 @@ function computeGroupGeo(g, ctx) {
     const labelSize = labelSizeFor(ts, from.id === to.id) || { w: 30, h: TEXT_LINE_H };
 
     if (from.id === to.id) {
+      const loopMetrics = loopMetricsFor(from);
       const angle = chooseSelfLoopAngle(from, ts, ctx, loopMetrics, labelSize);
       const ux = Math.cos(angle), uy = Math.sin(angle);
       const lp = selfLoopLabelPoint(from, angle, loopMetrics, labelSize);
@@ -777,7 +931,10 @@ function computeGroupGeo(g, ctx) {
     const probe = {};
     const crvVal = manual ? manual.curve : routeCurve(from, to, ctx, px, py, base, probe);
 
-    const edge = edgeGeometryFor(from, to, crvVal, r, arrowHead);
+    // No radius override: each end is trimmed against its own node, which is
+    // what puts an arrowhead on the edge of a block rather than on a circle
+    // drawn around it.
+    const edge = edgeGeometryFor(from, to, crvVal, undefined, undefined, arrowHead);
     if (!edge) return;
     const geo = {
       key, from, to, isSelf: false, labelSize, crvVal,
@@ -857,19 +1014,26 @@ function relayout(prev, { groups, stateById, states, labelSizeFor }) {
   if (!prev.pos || !prev.manual || prev.states !== states) return null;
   if (prev.env?.labelSizeFor !== labelSizeFor) return null;
 
-  const r = nodeR();
+  // The widest node, for the same reason buildLayoutContext takes one: the
+  // bands below have to cover whatever could be in them.
+  const maxR = maxNodeR(states);
   // Not a guess: this is the exact band routeCurve searches. It asks
-  // nodesNearChord for states within `r + clearance + slack` of the *chord*,
-  // with slack at most (curveOff + ROUTE_STEPS * (r + clearance)) / 2 — a
-  // quadratic deviates by half its control offset. Testing against the drawn
-  // path instead was the earlier mistake and it missed edges two ways at once:
-  // the radius was too small, and an already-bent edge has been routed *away*
-  // from the chord a moved state is standing on.
+  // nodesNearChord for states within `maxR + clearance + slack` of the *chord*,
+  // with slack at most (curveOff + ROUTE_STEPS * routeStep) / 2 — a quadratic
+  // deviates by half its control offset. Testing against the drawn path instead
+  // was the earlier mistake and it missed edges two ways at once: the radius was
+  // too small, and an already-bent edge has been routed *away* from the chord a
+  // moved state is standing on.
+  //
+  // routeStep is read through the same function routeCurve uses, so the two
+  // cannot drift — which they would the moment one of them started sizing on a
+  // block and the other on a state.
+  const step = routeStep({ maxR });
   const curveOff = Math.abs(num(cfg().curveOff, 45));
-  const routePad = r + nodeClearance() + (curveOff + ROUTE_STEPS * (r + nodeClearance())) / 2;
+  const routePad = maxR + nodeClearance() + (curveOff + ROUTE_STEPS * step) / 2;
   // What routeCurve's cheap early-out looks at, matched exactly.
-  const nearPad = r + nodeClearance() + curveOff / 2 + 4;
-  const labelReach = r + labelGap() + TEXT_LINE_H;
+  const nearPad = maxR + nodeClearance() + curveOff / 2 + 4;
+  const labelReach = maxR + labelGap() + TEXT_LINE_H;
 
   const moved = [];
   for (const s of states) {
@@ -935,10 +1099,10 @@ function relayout(prev, { groups, stateById, states, labelSizeFor }) {
   // plain arithmetic — measured at a fraction of a millisecond at 200 states —
   // where maintaining them incrementally would mean removal from three grids
   // for a saving smaller than the bookkeeping.
-  const cell = 2 * r + nodeClearance() * 2;
+  const cell = 2 * maxR + nodeClearance() * 2;
   const ctx = {
     stateById, tsByPair: prev.tsByPair, groups, states,
-    collide: true, view: null,
+    collide: true, view: null, maxR,
     nodeGrid: makeGrid(cell),
     incidentDirs: new Map(),
     edgeGrid: makeGrid(cell),
@@ -963,7 +1127,8 @@ function relayout(prev, { groups, stateById, states, labelSizeFor }) {
     pushDir(ctx.incidentDirs, g.from.id, a);
     pushDir(ctx.incidentDirs, g.to.id, a + Math.PI);
   }
-  if (App.startId && stateById.has(App.startId)) pushDir(ctx.incidentDirs, App.startId, Math.PI);
+  const startNode = startNodeId();
+  if (startNode && stateById.has(startNode)) pushDir(ctx.incidentDirs, startNode, Math.PI);
 
   // Clean edges keep the geo object they had, samples and label box included.
   for (const g of groups) {
@@ -1134,7 +1299,13 @@ export function resolveNodeOverlaps(states, opts = {}) {
   const list = states || [];
   if (list.length < 2) return false;
   const gap = opts.gap !== undefined ? opts.gap : minNodeGap();
-  const min = 2 * nodeR() + gap;
+  // Two nodes clear each other by the sum of their own radii, so the separation
+  // is a property of the pair rather than one number for the diagram. The grid
+  // cell still has to be the widest possible pair, or a big node and a small one
+  // would be filed two cells apart and never tested against each other.
+  const maxR = maxNodeR(list);
+  const min = 2 * maxR + gap;
+  const minFor = (a, b) => nodeR(a) + nodeR(b) + gap;
   const movable = opts.movable ? new Set(opts.movable) : null;
   const canMove = s => !movable || movable.has(s.id);
   const iterations = opts.iterations || 24;
@@ -1154,7 +1325,8 @@ export function resolveNodeOverlaps(states, opts = {}) {
       if (!aFree && !bFree) return;
       const dx = b.x - a.x, dy = b.y - a.y;
       const dist = Math.hypot(dx, dy);
-      if (dist >= min) return;
+      const want = minFor(a, b);
+      if (dist >= want) return;
       // Exactly coincident centres have no direction to separate along, so
       // one is derived from the pair's position in the list — deterministic,
       // and different for each pair, so a pile fans out instead of stacking.
@@ -1168,7 +1340,7 @@ export function resolveNodeOverlaps(states, opts = {}) {
       } else {
         ux = dx / dist; uy = dy / dist;
       }
-      const push = min - dist;
+      const push = want - dist;
       worst = Math.max(worst, push);
       const shareA = aFree ? (bFree ? 0.5 : 1) : 0;
       const shareB = bFree ? (aFree ? 0.5 : 1) : 0;
@@ -1200,6 +1372,17 @@ export function resolveNodeOverlaps(states, opts = {}) {
  */
 export function includeLayoutBounds(ctx, grow) {
   if (!ctx) return;
+  // A node bigger than the app's state radius bounds itself. getContentBounds
+  // grows by one `statePad` for every state, which is right for circles that
+  // are all the same size and too small for a block — and a block with no edges
+  // on it would otherwise be cropped out of a fitted view entirely. Skipped for
+  // a plain state, so this is a no-op on a machine with no blocks in it.
+  for (const s of ctx.states || []) {
+    const box = nodeBox(s);
+    const hw = box ? box.w / 2 : (Number.isFinite(s.r) ? s.r : 0);
+    const hh = box ? box.h / 2 : (Number.isFinite(s.r) ? s.r : 0);
+    if (hw || hh) grow(s.x - hw, s.y - hh, s.x + hw, s.y + hh);
+  }
   for (const geo of ctx.geo.values()) {
     const { w, h } = geo.labelSize || { w: 0, h: 0 };
     grow(geo.lx - w / 2, geo.ly - h / 2, geo.lx + w / 2, geo.ly + h / 2);

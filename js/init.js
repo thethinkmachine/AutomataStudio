@@ -1,5 +1,6 @@
 import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { toggleSnapToGrid } from './canvas.js';
+import { renderBlockLibrary } from './blocks-ui.js';
 import { initLangClaimOverflowObserver } from './language.js';
 import { loadBackup, loadSharedLinkFromURL, restartAutosaveTimer } from './persistence.js';
 import { initDefBoxOverflowObserver, updateLPanel, updateRPanel } from './render.js';
@@ -71,6 +72,12 @@ export async function finishBoot() {
   // so nothing has refreshed the Language section yet — without this it would
   // sit on its static placeholder markup until the first edit.
   if (typeof updateRPanel === 'function') updateRPanel();
+  // The saved block definitions. Read once at boot and then only when the
+  // library itself changes (a save, a delete) — it is an IndexedDB round trip,
+  // and nothing about drawing the machine can alter it.
+  if (typeof renderBlockLibrary === 'function') {
+    Promise.resolve(renderBlockLibrary()).catch(() => { });
+  }
 
   // Reading the link is asynchronous now that the payload is compressed; the
   // whole of finishBoot already runs off a promise, so awaiting it here costs

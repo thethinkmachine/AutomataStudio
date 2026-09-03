@@ -30,6 +30,11 @@ import * as grammarExamples from '../js/grammar/examples.js';
 import * as algorithmsFa from '../js/algorithms-fa.js';
 import * as alphabet from '../js/alphabet.js';
 import * as anim from '../js/anim.js';
+import * as blocks from '../js/blocks.js';
+import * as blocksUi from '../js/blocks-ui.js';
+import * as viewGraph from '../js/view-graph.js';
+import * as graphThumb from '../js/graph-thumb.js';
+import * as scope from '../js/scope.js';
 import * as canvas from '../js/canvas.js';
 import * as codegen from '../js/codegen.js';
 import * as dividers from '../js/dividers.js';
@@ -110,7 +115,7 @@ import * as wizardUi from '../js/wizard-ui.js';
 
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, viewport, geometry, statesTransitions,
-  canvas, render, panelState, panelSections, panelSectionsUi, panelFloat, panelShake, panelList, mobile, notes, dividers,
+  blocks, blocksUi, viewGraph, graphThumb, scope, canvas, render, panelState, panelSections, panelSectionsUi, panelFloat, panelShake, panelList, mobile, notes, dividers,
   machineRegistry, machineRuntime, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,
@@ -178,6 +183,15 @@ function resetModuleState() {
   // the validators coincide on (an empty array for an empty array).
   geometry.invalidateLayoutGroups();
   viewport.invalidateCull();
+  // The block index validates itself the way the state index does, and a test
+  // can replace App.blocks with an equal-looking array the validator coincides
+  // on (an empty one for an empty one).
+  blocks.invalidateBlockIndex();
+  // The canvas draws a *projection* of the machine, cached and validated the
+  // same way — and a test can replace the model with one the validator
+  // coincides on, so the projection is dropped outright.
+  viewGraph.invalidateViewGraph();
+  scope.resetScopeCameras();
   state.setWorkspaces([]);
   state.setActiveWorkspaceId(null);
   state.setR(baseConfig.radius);
@@ -211,6 +225,7 @@ function resetModuleState() {
   language._resetLangPanelPainted();
   // ... the two lists in the left panel ...
   render._resetLpanelPainted();
+  render._resetBlockListPainted();
   // ... and the machine card, whose guard exists to skip a forced reflow.
   machineCard._resetMetaPainted();
   ui.setSaveState('saved');
@@ -284,6 +299,9 @@ export function resetApp() {
   App.noteN = 0;
   App.dividers = [];
   App.dividerN = 0;
+  App.blocks = [];
+  App.blockN = 0;
+  App.scope = [];
   // The info card's text. App state since it became editable, so it is
   // App state a test can leak — a described machine in one test would
   // otherwise hand the next one a card it never asked for.

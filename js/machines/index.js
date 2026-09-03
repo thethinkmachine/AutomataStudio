@@ -190,6 +190,18 @@ export function isMultiTape(m) {
   return !!machineDef(m)?.multiTape;
 }
 
+/**
+ * May this machine be built out of building blocks?
+ *
+ * A block is inlined, and control leaves it along an exit edge that consumes
+ * nothing — which needs a stay move and a wildcard write. Declared per family
+ * rather than tested for by name, so this cannot fall out of step with the
+ * machines that actually have them. See js/blocks.js.
+ */
+export function machineSupportsBlocks(m = App.machine) {
+  return !!machineDef(m)?.supportsBlocks;
+}
+
 /** The three fields a multi-tape transition carries one column of per tape. */
 export const TAPE_ARITY_FIELDS = ['tapeSyms', 'tapeWrites', 'tapeDirs'];
 

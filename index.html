@@ -442,6 +442,29 @@
               </div>
             </div>
           </div>
+          <!-- Every block in the machine, at every depth. Double-clicking a box
+               on the canvas opens it, but that only reaches what is on screen —
+               this is how you get to the multiplier three levels down without
+               drilling through its parents first. -->
+          <div class="sec lp-collapsible" id="lp-blocks">
+            <div class="lp-section-header" onclick="toggleLPSection('lp-blocks')" role="button" aria-expanded="false" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('lp-blocks')}">
+              <span class="sec-lbl lp-section-title">Blocks</span>
+              <span class="lp-section-count" id="lp-count-blocks">0</span>
+              <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+            </div>
+            <div class="lp-section-body">
+              <div class="blist" id="block-list">
+                <div class="empty-msg">No blocks</div>
+              </div>
+              <!-- Saved definitions, and the only way back to one: a block kept
+                   with "Save to Library…" is a whole machine in IndexedDB, and
+                   until this list existed there was nothing anywhere that could
+                   place, list or delete one. Rows are built by js/blocks-ui.js
+                   with their listeners attached at creation. -->
+              <div class="blib-head" id="block-library-head" hidden>Library</div>
+              <div class="blist" id="block-library-list" hidden></div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="panel-resizer panel-resizer-right" id="lpanel-resizer" role="separator" aria-orientation="vertical" aria-label="Resize left panel" data-tip="Resize left panel"></div>
@@ -453,8 +476,11 @@
       <!-- ─── BUILD VIEW ─── -->
       <div id="v-build" style="display:flex">
         <div class="canvas-area" id="canvas-wrap">
+          <!-- Where you are inside the block hierarchy. Empty and hidden at the
+               top level; js/scope.js fills it and attaches its own listeners. -->
+          <nav class="scope-bar" id="scope-bar" aria-label="Block location" hidden></nav>
           <svg id="svgCanvas">
-            <defs>
+            <defs id="canvas-defs">
               <!-- ─── The arrowhead ───
                    Three things here, and each one was a way for the head to
                    stop looking like the end of its own line.
@@ -1328,6 +1354,11 @@
       <div id="confirm-msg" class="confirm-msg">
         Are you sure you want to proceed?
       </div>
+      <!-- One optional field, for the questions that are "what should it be
+           called?" rather than "are you sure?". Permanent in the DOM like every
+           other dialog's controls, emptied on close — a second overlay for one
+           text input would be a fourteenth dialog whose only content is a name. -->
+      <div id="confirm-field" class="confirm-field" hidden></div>
       <div class="modal-foot">
         <button class="btn-g" onclick="closeModal('confirm-modal')">Cancel</button>
         <button class="btn-p" id="confirm-action-btn">Confirm</button>
@@ -2014,9 +2045,33 @@
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,136v64a8,8,0,0,1-16,0V155.32L45.66,221.66a8,8,0,0,1-11.32-11.32L100.68,144H56a8,8,0,0,1,0-16h64A8,8,0,0,1,128,136ZM208,32H80A16,16,0,0,0,64,48V96a8,8,0,0,0,16,0V48H208V176H160a8,8,0,0,0,0,16h48a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Z" /></svg>
       Highlight Incoming Edges
     </div>
+    <div class="ctx-i ctx-state" id="ctx-group-block" onclick="ctxGroupIntoBlock()" data-tip="Wrap the selected states into one block you can open, reuse and drop somewhere else">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM168,88v80a8,8,0,0,1-8,8H96a8,8,0,0,1-8-8V88a8,8,0,0,1,8-8h64A8,8,0,0,1,168,88Zm-16,8H104v64h48Z" /></svg>
+      Group into Block
+    </div>
     <div class="ctx-i ctx-state danger" onclick="ctxDel()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
       Delete
+    </div>
+    <div class="ctx-i ctx-block" onclick="ctxOpenBlock()">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72ZM40,56H92.69l16,16H40Zm176,144H40V88H216Z" /></svg>
+      Open Block
+    </div>
+    <div class="ctx-i ctx-block" onclick="ctxRenameBlock()">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" /></svg>
+      Rename Block
+    </div>
+    <div class="ctx-i ctx-block" onclick="ctxSaveBlockToLibrary()" data-tip="Keep this block so you can drop copies of it into any machine">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M219.31,80,176,36.69A15.86,15.86,0,0,0,164.69,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V91.31A15.86,15.86,0,0,0,219.31,80ZM168,208H88V152h80Zm40,0H184V152a16,16,0,0,0-16-16H88a16,16,0,0,0-16,16v56H48V48H164.69L208,91.31V208ZM160,72a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h56A8,8,0,0,1,160,72Z" /></svg>
+      Save to Library…
+    </div>
+    <div class="ctx-i ctx-block" onclick="ctxUngroupBlock()" data-tip="Put the states back on this level and drop the box">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M228.24,155.76a6,6,0,0,1-8.48,8.48L192,136.49V208a16,16,0,0,1-16,16H80a16,16,0,0,1-16-16V136.49L36.24,164.24a6,6,0,0,1-8.48-8.48l38-38a6,6,0,0,1,8.48,0l38,38a6,6,0,1,1-8.48,8.48L76,136.49V208h96V136.49l-27.76,27.75a6,6,0,0,1-8.48-8.48l38-38a6,6,0,0,1,8.48,0ZM80,48h96a8,8,0,0,0,0-16H80a8,8,0,0,0,0,16Z" /></svg>
+      Ungroup Block
+    </div>
+    <div class="ctx-i ctx-block danger" onclick="ctxDeleteBlock()">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
+      Delete Block and Contents
     </div>
     <div class="ctx-i ctx-edge" onclick="ctxEditTrans()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" /></svg>
