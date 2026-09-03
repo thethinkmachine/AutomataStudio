@@ -108,13 +108,6 @@ import {
   utmToggleAuto,
 } from './algorithms-fa.js';
 import {
-  cykVisStep, loadCFGPDA, parseRawGrammar,
-  runAmbiguityCheck, runCFG2PDA, runCFGIsEmpty, runCFGIsFinite, runCNF,
-  runCYK, runCYKVisual, runChomskyClassify, runDerivation, runFirstFollow,
-  runGNF, runLL1Table, runLeftRecursionRemoval, runPDA2CFG, runParseTree,
-  runRightmostDerivation, runUselessElim,
-} from './algorithms-cfg.js';
-import {
   loadWorkspaceB, openAboutModal, saveWorkspaceB, showHelpModal,
 } from './workspace.js';
 import {
@@ -210,12 +203,8 @@ Object.assign(window, {
    runFullEquivCheck, runNDTMSim, runNPDASim, runProductEquiv, runUTMSim,
    setAlgo, startThompsonViz, testEquivStr, thVizStep, utmResetView,
    utmStepBack, utmStepFwd, utmToggleAuto,
-  // algorithms-cfg.js
-   cykVisStep, loadCFGPDA, parseRawGrammar,
-   runAmbiguityCheck, runCFG2PDA, runCFGIsEmpty, runCFGIsFinite, runCNF,
-   runCYK, runCYKVisual, runChomskyClassify, runDerivation, runFirstFollow,
-   runGNF, runLL1Table, runLeftRecursionRemoval, runPDA2CFG, runParseTree,
-   runRightmostDerivation, runUselessElim,
+  // js/grammar-ui.js has no entries either: every listener in the grammar
+  // workbench is attached at creation, the way reference.js does it.
   // reference.js has no entries: its navigation is generated in JS and its
   // links get their listeners at creation time.
   // workspace.js

@@ -17,34 +17,11 @@ import { createHarness } from './harness.js';
 //
 // A build passes either way, which is why these are tests rather than lint.
 
-test('classifying a grammar whose LHS is not a single variable does not throw', () => {
-  const h = createHarness();
-  const { App } = h.context;
-
-  // S -> a is fine; AB -> a is not context-free, and that is the branch that
-  // used to assign to an undeclared isType3.
-  App.grammar.vars = new Set(['S', 'A', 'B']);
-  App.grammar.start = 'S';
-  App.grammar.productions = [
-    { lhs: 'S', rhs: 'a', rhsArr: ['a'] },
-    { lhs: 'AB', rhs: 'a', rhsArr: ['a'] }
-  ];
-
-  assert.doesNotThrow(() => h.context.runChomskyClassify());
-  assert.match(h.getElement('gram-output').innerHTML, /Type 0\/1/,
-    'a multi-symbol LHS puts the grammar above context-free');
-});
-
-test('a regular grammar still classifies as Type 3', () => {
-  const h = createHarness();
-  const { App } = h.context;
-  App.grammar.vars = new Set(['S']);
-  App.grammar.start = 'S';
-  App.grammar.productions = [{ lhs: 'S', rhs: 'aS', rhsArr: ['a', 'S'] }];
-
-  h.context.runChomskyClassify();
-  assert.match(h.getElement('gram-output').innerHTML, /Type 3/);
-});
+// The two grammar-classification cases that used to sit here moved to
+// tests/grammar-analysis.test.js when the classifier did. They were about the
+// same undeclared-global regression this file catalogues, but the classifier
+// is now a pure function over a grammar model rather than a renderer, so the
+// assertion is on the value it returns rather than on the markup it printed.
 
 test('double-clicking a state toggles whether it accepts', () => {
   const h = createHarness();

@@ -1,4 +1,3 @@
-import { renderGramSyms, renderGrammarLPanel } from './algorithms-cfg.js';
 import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { toggleSnapToGrid } from './canvas.js';
 import { initLangClaimOverflowObserver } from './language.js';
@@ -21,8 +20,8 @@ try {
 } catch (e) {
   applyTheme(App.config.theme || DEFAULT_THEME, false);
 }
-renderSigma(); renderGamma(); renderGramSyms(); renderOutputAlpha();
-renderGrammarLPanel(); updateLPanel();
+renderSigma(); renderGamma(); renderOutputAlpha();
+updateLPanel();
 App.stackAlpha = new Set([App.config.sym.stackBottom]);
 if ($('sim-speed-sel')) $('sim-speed-sel').value = String(App.config.autoSpeed);
 try {

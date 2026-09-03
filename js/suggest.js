@@ -1,4 +1,4 @@
-import { getGrammarTerminals } from './algorithms-cfg.js';
+import { grammarSuggestTerminals } from './grammar-ui.js';
 import { epsClosure, tokenize } from './machines/runtime.js';
 import { $, App } from './state.js';
 import { escapeHtml, isCounterMachine } from './utils.js';
@@ -223,7 +223,7 @@ export function getBatchSuggestState(el) {
 // in a production) rather than Σ directly, so this is a straight reuse of
 // getSimSuggestState with that alphabet swapped in.
 export function getGrammarSuggestState(el) {
-  const terms = typeof getGrammarTerminals === 'function' ? getGrammarTerminals() : App.sigma;
+  const terms = typeof grammarSuggestTerminals === 'function' ? grammarSuggestTerminals() : App.sigma;
   return getSimSuggestState(el, terms, 'Σ');
 }
 
@@ -314,7 +314,7 @@ export function getWriteSymbolSuggestState(el) {
   return { mode: 'error', residue: trimmed, candidates: [], alphabetLabel: 'Σ' };
 }
 
-export const GRAMMAR_STRING_FIELD_IDS = new Set(['cyk-in', 'ambig-in']);
+export const GRAMMAR_STRING_FIELD_IDS = new Set(['gram-in-word']);
 export const STACK_POP_FIELD_IDS = new Set(['m-pop', 'm-pop2']);
 export const STACK_PUSH_FIELD_IDS = new Set(['m-push', 'm-push2']);
 
@@ -495,6 +495,12 @@ export function acceptSuggestion(idx) {
   el.value = newValue;
   el.focus();
   el.setSelectionRange(newCaret, newCaret);
+  // Every field wired through `on*` attributes reads the element when it runs,
+  // so this write reaches them by itself. The Grammar workbench holds the
+  // field's value in a model instead and re-renders from it, so it has to hear
+  // that the popover wrote — accepting a symbol there would otherwise show in
+  // the box and be missing from the word the tool was answering about.
+  try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) { /* no Event */ }
   refreshSymSuggest(el);
 }
 

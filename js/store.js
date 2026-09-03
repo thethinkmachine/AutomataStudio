@@ -54,6 +54,12 @@ export const Change = {
   // machine (so unlike GRAPH it must not drag the panels and the whole
   // diagram through a re-render because a blurb was reworded).
   META: 'meta',
+  // The grammar in the Grammar workbench. Its own kind for the same two
+  // reasons META is: it is persisted (so it dirties the tab, unlike CANVAS)
+  // but it is not the machine (so it must not drag the diagram, the panels
+  // and the formal definition through a re-render because a production was
+  // retyped, which is what emitting GRAPH for it would do on every keystroke).
+  GRAMMAR: 'grammar',
   // The open workspace tabs, their names or their dirty flags.
   TABS: 'tabs',
   // The save indicator's state.

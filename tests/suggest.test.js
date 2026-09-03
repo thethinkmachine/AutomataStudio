@@ -151,7 +151,8 @@ test('batch input: "=> " triggers accept/reject keyword suggestions instead of �
 
 test('acceptSuggestion inserts a separator only when Σ has a multi-char symbol, to keep chip-built strings unambiguous for tokenize()', () => {
   const h = createHarness();
-  withSigma(h, ['a', 'bb']);  const el = makeInput(h, 'sim-in');
+  withSigma(h, ['a', 'bb']);
+  const el = makeInput(h, 'sim-in');
   const state = h.context.getSimSuggestState(el);
   setSymSuggest(h, el, state);
   h.context.acceptSuggestion(state.candidates.indexOf('a'));
@@ -169,13 +170,13 @@ test('acceptSuggestion inserts a separator only when Σ has a multi-char symbol,
 });
 
 // ══════════════════════════════════════════════════════════════════
-//  Tier 1 — Grammar view: CYK / ambiguity-check "string" inputs
+//  Tier 1 — Grammar workbench: the tools' "word" field
 // ══════════════════════════════════════════════════════════════════
 
 test('getGrammarSuggestState behaves like getSimSuggestState when the grammar has no extra terminals', () => {
   const h = createHarness();
   withSigma(h, ['0', '1']);
-  const el = makeInput(h, 'cyk-in');
+  const el = makeInput(h, 'gram-in-word');
   const state = h.context.getGrammarSuggestState(el);
   assertShape(state, { mode: 'palette', residue: '', candidates: ['0', '1', 'ε'], allSyms: ['0', '1'], prefixEnd: 0, replaceEnd: 0 });
 });
@@ -185,21 +186,20 @@ test('getGrammarSuggestState offers terminals used in productions even if not in
   withSigma(h, ['0', '1']);
   h.context.App.grammar.vars = new Set(['S']);
   h.context.App.grammar.productions = [{ lhs: 'S', rhsArr: ['S', 'c'] }];
-  const el = makeInput(h, 'cyk-in');
+  const el = makeInput(h, 'gram-in-word');
   const state = h.context.getGrammarSuggestState(el);
   assert.equal(state.mode, 'palette');
   assert.ok(state.candidates.includes('c'), 'expected the production terminal "c" to be offered');
 });
 
-test('the dispatcher routes cyk-in/ambig-in through getGrammarSuggestState', () => {
+test("the dispatcher routes the workbench's word field through getGrammarSuggestState", () => {
   const h = createHarness();
   withSigma(h, ['0', '1']);
-  h.context.App.grammar.productions = [{ lhs: 'S', rhsArr: ['c'] }];
-  for (const id of ['cyk-in', 'ambig-in']) {
-    const el = makeInput(h, id);
-    const state = h.context.getSuggestStateForField(el);
-    assert.ok(state.candidates.includes('c'), `expected ${id} to see the grammar terminal "c"`);
-  }
+  h.context.App.grammar.vars = new Set(['S']);
+  h.context.App.grammar.productions = [{ lhs: 'S', rhs: 'c', rhsArr: ['c'] }];
+  const el = makeInput(h, 'gram-in-word');
+  const state = h.context.getSuggestStateForField(el);
+  assert.ok(state.candidates.includes('c'), 'expected the word field to see the grammar terminal "c"');
 });
 
 // ══════════════════════════════════════════════════════════════════
@@ -260,7 +260,8 @@ test('Counter Machine restricts Pop/Push suggestions to its one counting symbol 
 
 test('Push: chip-clicking two single-char Γ symbols concatenates with no separator, matching the raw split(\'\') Run-time behavior', () => {
   const h = createHarness();
-  withPda(h, 'PDA', ['Z', 'A', 'B']);  const el = makeInput(h, 'm-push');
+  withPda(h, 'PDA', ['Z', 'A', 'B']);
+  const el = makeInput(h, 'm-push');
 
   const state1 = h.context.getStackSymbolSuggestState(el, true);
   setSymSuggest(h, el, state1);
@@ -284,7 +285,8 @@ test('Push: an invalid character (not a single-char Γ member) is flagged as an 
 
 test('Pop: selecting the Σ wildcard from the empty-field palette sets the field to exactly Σ', () => {
   const h = createHarness();
-  withPda(h, 'PDA', ['Z', 'A']);  const el = makeInput(h, 'm-pop'); // Σ/ε are only ever offered from an empty field
+  withPda(h, 'PDA', ['Z', 'A']);
+  const el = makeInput(h, 'm-pop'); // Σ/ε are only ever offered from an empty field
   const state = h.context.getStackSymbolSuggestState(el, false);
   setSymSuggest(h, el, state);
   h.context.acceptSuggestion(state.candidates.indexOf(h.context.App.config.sym.any));
@@ -425,7 +427,8 @@ test('correct-case residue still advances straight to the next-token palette (ca
 
 test('accepting a wrong-case suggestion inserts the canonically-cased symbol, not the typed casing', () => {
   const h = createHarness();
-  withSigma(h, ['a', 'b']);  const el = makeInput(h, 'sim-in', 'A');
+  withSigma(h, ['a', 'b']);
+  const el = makeInput(h, 'sim-in', 'A');
   const state = h.context.getSimSuggestState(el);
   setSymSuggest(h, el, state);
   h.context.acceptSuggestion(state.candidates.indexOf('a'));
@@ -530,8 +533,10 @@ test('liveness is only computed for sim-in — Grammar\'s reuse of getSimSuggest
   const h = createHarness();
   withSigma(h, ['0', '1']);
   withDfa(h, [{ id: 't1', from: 1, to: 2, symbol: '0' }], 1, [2]);
-  const state = h.context.getGrammarSuggestState(makeInput(h, 'cyk-in'));
+  const state = h.context.getGrammarSuggestState(makeInput(h, 'gram-in-word'));
   assert.equal(state.liveSet, undefined);
+  assert.ok(h.context.GRAMMAR_STRING_FIELD_IDS.has('gram-in-word'),
+    'the id has to be the one the workbench actually builds, or the field routes to the canvas machine’s Σ instead');
 });
 
 test('liveness is not computed for machine families that mutate a stack/tape (PDA, TM, ...) — replaying tokens alone can\'t reproduce their state', () => {
@@ -557,7 +562,8 @@ test('liveness never narrows candidates or changes mode — dead symbols stay fu
 test('accepting a dead-end suggestion still works exactly like any other — liveness is purely advisory', () => {
   const h = createHarness();
   withSigma(h, ['0', '1']);
-  withDfa(h, [{ id: 't1', from: 1, to: 2, symbol: '0' }], 1, [2]);  const el = makeInput(h, 'sim-in');
+  withDfa(h, [{ id: 't1', from: 1, to: 2, symbol: '0' }], 1, [2]);
+  const el = makeInput(h, 'sim-in');
   const state = h.context.getSimSuggestState(el);
   setSymSuggest(h, el, state);
   h.context.acceptSuggestion(state.candidates.indexOf('1')); // '1' is dead but still chooseable

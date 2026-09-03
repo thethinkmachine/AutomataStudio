@@ -2706,7 +2706,8 @@ select,
 .lang-claim,
 .def-box,
 .slist,
-.gram-output,
+.gram-result,
+.gram-rules,
 .rp-section-body,
 .algo-output {
   user-select: text;

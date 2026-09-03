@@ -151,17 +151,17 @@ const DECIDABILITY = {
         p(`CYK is dynamic programming over the substrings of w. Let T[i, j] be the set of variables deriving the substring of length j starting at position i. The length-1 row comes straight from the terminal productions, and each longer entry is built from every way of splitting the substring in two:`),
         math(`T[i,j] = \\{\\, A \\ :\\ A \\to BC \\in R,\\ B \\in T[i,k],\\ C \\in T[i+k,\\,j-k],\\ 1 \\le k < j \\,\\}`),
         p(`The word is in the language exactly when the start variable appears in the single top cell T[1, n]. There are O(n²) cells and each costs O(n) splits, so the running time is <b>O(n³ · |G|)</b> — polynomial, but genuinely more expensive than the linear membership test a finite automaton enjoys.`),
-        p(`The Algorithms and Grammar views carry <b>CYK</b> and a step-by-step <b>CYK (Visual)</b> that fills the triangular table one diagonal at a time.`)),
+        p(`The Grammar workbench's <b>CYK table</b> shows the finished triangle and scrubs through the fill one write at a time; <b>Parse a word</b> answers the same question and adds the derivation and the tree, over the rules you wrote rather than over their Chomsky normal form.`)),
 
       sec('Emptiness',
         p(`Is L(G) = ∅? Decidable by finding which variables can produce anything at all. Call a variable <b>productive</b> if some string of terminals can be derived from it, and compute the productive set by closure: a variable is productive if it has a production whose right-hand side consists entirely of terminals and already-productive variables. Start from the productions with all-terminal right-hand sides and iterate until nothing new is added.`),
         math(`L(G) = \\emptyset \\iff S \\text{ is not productive}`),
-        p(`The iteration adds at least one variable per round and there are finitely many variables, so it terminates. The Grammar view's <b>isEmpty?</b> shows the productive set it computed alongside the verdict.`)),
+        p(`The iteration adds at least one variable per round and there are finitely many variables, so it terminates. The Grammar workbench's <b>Is L(G) empty?</b> shows the generating set it computed alongside the verdict.`)),
 
       sec('Finiteness',
         p(`Is L(G) finite? Decidable, and structurally the same argument as for finite automata: an infinite language needs a cycle that is both reachable and useful.`),
         p(`Remove the useless variables first — the non-productive ones and the unreachable ones — because a cycle among useless variables generates nothing. Then build the dependency graph on what remains, with an edge A → B whenever B appears on the right-hand side of a production of A. The language is infinite exactly when that graph has a cycle reachable from S.`),
-        p(`A cycle means some variable derives a sentential form containing itself, A ⇒⁺ αAβ with αβ ≠ ε, which can be repeated any number of times. The Grammar view's <b>isFinite?</b> reports the cycle it found.`)),
+        p(`A cycle means some variable derives a sentential form containing itself, A ⇒⁺ αAβ with αβ ≠ ε, which can be repeated any number of times. The Grammar workbench's <b>Is L(G) finite?</b> names the cycle it found — and when there is none, lists the language outright.`)),
 
       sec('What becomes undecidable, and the reason it does',
         p(`The undecidable questions about context-free languages all reduce from one combinatorial problem — the Post Correspondence Problem, which asks whether a finite set of domino-like string pairs can be laid in some order so that the concatenation of the tops equals the concatenation of the bottoms. That problem is undecidable, and grammars are expressive enough to encode it.`),
@@ -178,7 +178,7 @@ const DECIDABILITY = {
 
       sec('Ambiguity, and what the app actually computes',
         p(`A grammar is <b>ambiguous</b> when some word has two distinct parse trees — equivalently, two distinct leftmost derivations. The classic case is an arithmetic-expression grammar with no precedence, where <code>id + id * id</code> can be read two ways.`),
-        p(`Ambiguity of a grammar is undecidable, so no tool can settle it in general. The Grammar view's <b>Check Ambiguity</b> is therefore a <em>witness finder</em>, not a decision procedure: it searches for two different leftmost derivations of one word you supply, up to a bounded derivation depth. Finding a pair is conclusive — the grammar is ambiguous and you can see both trees. Finding none is not: it reports only that the word had a single derivation within the depth searched, which is why its wording says "likely" rather than "is".`),
+        p(`Ambiguity of a grammar is undecidable, so no tool can settle it in general. The Grammar workbench's <b>Check ambiguity</b> is therefore a <em>witness finder</em>, not a decision procedure: it searches for two structurally different parse trees for one word you supply. Finding a pair is conclusive — the grammar is ambiguous, and both trees are drawn side by side. Finding one is not: it reports only that this word had a single derivation within the search it ran, and says so.`),
         note(`This is the honest shape for any tool built on an undecidable question. A positive answer can be a proof; a negative one can only ever be a failure to find a witness within a budget.`)),
 
       sec('Determinism buys the questions back',

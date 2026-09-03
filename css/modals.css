@@ -3181,40 +3181,6 @@ button.sm-stat:disabled {
   opacity: 1;
 }
 
-/* ── Parse tree ── */
-.parse-tree-svg {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  display: block;
-  margin: 8px 0;
-}
-
-.pt-node-nt {
-  fill: color-mix(in srgb, var(--accent) 15%, transparent);
-  stroke: var(--accent);
-  stroke-width: 1.5;
-}
-
-.pt-node-t {
-  fill: var(--gold-soft);
-  stroke: var(--gold);
-  stroke-width: 1.5;
-}
-
-.pt-text {
-  font-family: var(--mono);
-  font-size: 11px;
-  text-anchor: middle;
-  dominant-baseline: central;
-  fill: var(--text);
-}
-
-.pt-edge {
-  stroke: var(--border2);
-  stroke-width: 1;
-}
-
 /* ── Computation tree ── */
 .ct-node {
   font-family: var(--mono);
