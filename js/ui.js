@@ -530,10 +530,13 @@ export function createTab(name) {
   // Each tab carries its own config, so activating one can bring different
   // canvas settings with it — the same reason R gets republished here.
   if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
-  // And its own description. importWorkspaceState has already written
-  // App.meta; this is what redraws the info card from it, so a tab's card
-  // does not linger over the next tab's diagram.
-  emit(Change.META);
+  // And its own description, and its own grammar. importWorkspaceState has
+  // already written App.meta and App.grammar; this is what redraws the info
+  // card and the Grammar workbench from them, so a tab's card does not linger
+  // over the next tab's diagram — and the editor does not go on showing the
+  // previous tab's rules, which the next keystroke would then write into this
+  // one.
+  emit(Change.META, Change.GRAMMAR);
   // And its own scope and its own blocks. Both paths here call renderAll()
   // directly and never `emit(Change.GRAPH)`, so every GRAPH subscriber that is
   // not renderAll itself is skipped — which is why the breadcrumb vanished on a
@@ -580,10 +583,13 @@ export function switchTab(id) {
   // Each tab carries its own config, so activating one can bring different
   // canvas settings with it — the same reason R gets republished here.
   if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
-  // And its own description. importWorkspaceState has already written
-  // App.meta; this is what redraws the info card from it, so a tab's card
-  // does not linger over the next tab's diagram.
-  emit(Change.META);
+  // And its own description, and its own grammar. importWorkspaceState has
+  // already written App.meta and App.grammar; this is what redraws the info
+  // card and the Grammar workbench from them, so a tab's card does not linger
+  // over the next tab's diagram — and the editor does not go on showing the
+  // previous tab's rules, which the next keystroke would then write into this
+  // one.
+  emit(Change.META, Change.GRAMMAR);
   // And its own scope and its own blocks. Both paths here call renderAll()
   // directly and never `emit(Change.GRAPH)`, so every GRAPH subscriber that is
   // not renderAll itself is skipped — which is why the breadcrumb vanished on a
@@ -2931,10 +2937,10 @@ export function initPanelTabs() {
 }
 
 export const MOBILE_BUILD_PANEL_IDS = ['lpanel', 'rpanel'];
-export const MOBILE_AUX_PANEL_IDS = ['algo-nav', 'gram-left', 'ref-nav'];
+export const MOBILE_AUX_PANEL_IDS = ['algo-nav', 'gram-nav', 'ref-nav'];
 export const MOBILE_AUX_PANEL_BY_VIEW = {
   algo: 'algo-nav',
-  grammar: 'gram-left',
+  grammar: 'gram-nav',
   reference: 'ref-nav'
 };
 
@@ -3084,8 +3090,11 @@ document.addEventListener('click', e => {
     requestAnimationFrame(() => setMobilePanelCollapsed('ref-nav', true));
     return;
   }
-  const grammarAction = target && target('#gram-left button:not(.mobile-panel-toggle)');
-  if (grammarAction) requestAnimationFrame(() => setMobilePanelCollapsed('gram-left', true));
+  // The grammar rail is a list of tool links now, the same shape the other two
+  // rails have — the old one held the grammar textarea as well, which is why it
+  // used to have to exclude its own inputs from this.
+  const grammarLink = target && target('#gram-nav .gram-nav-link');
+  if (grammarLink) requestAnimationFrame(() => setMobilePanelCollapsed('gram-nav', true));
 });
 
 // The filter narrows the list's data rather than hiding rows that were built to

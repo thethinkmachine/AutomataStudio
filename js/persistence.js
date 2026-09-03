@@ -1,4 +1,4 @@
-import { tokenizeRHS } from './algorithms-cfg.js';
+import { tokenizeSymbols } from './grammar/parse.js';
 import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { applyCamera } from './canvas.js';
 import { snapshot } from './history.js';
@@ -698,11 +698,13 @@ export function normalizeGrammarData(grammar) {
   const start = grammar?.start || productions[0]?.lhs || '';
   const normalizedProductions = productions.map(p => {
     const rhs = typeof p?.rhs === 'string' ? p.rhs : App.config.sym.eps;
+    // A legacy production carries only {lhs, rhs}, so its right-hand side is
+    // re-read against the *declared* variable set — the one the file names,
+    // not one inferred from the rules, which is what made the old tokenizer's
+    // answer depend on the order the rules were written in.
     const rhsArr = Array.isArray(p?.rhsArr)
       ? [...p.rhsArr]
-      : (typeof tokenizeRHS === 'function'
-        ? tokenizeRHS(rhs, vars)
-        : (rhs === App.config.sym.eps ? [App.config.sym.eps] : rhs.split('')));
+      : (rhs === App.config.sym.eps ? [App.config.sym.eps] : tokenizeSymbols(rhs, vars));
     return { ...p, rhs, rhsArr };
   });
   return { vars, start, productions: normalizedProductions };
@@ -775,7 +777,9 @@ export function loadData(d, isExample) {
     applyMachineSwitch(App.machine);
   }
   renderSigma(); renderGamma(); renderOutputAlpha();
-  emit(Change.GRAPH);
+  // Change.GRAMMAR because a loaded file carries one: without it the Grammar
+  // workbench keeps the rules of whatever was open before the load.
+  emit(Change.GRAPH, Change.GRAMMAR);
 
   if (d.cam) { applyCamera(); }
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();

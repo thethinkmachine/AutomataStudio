@@ -44,6 +44,7 @@ subscribe(Change.ALPHABET, markDirty);
 // exportWorkspaceState and getWorkspaceData write, so rewording a blurb is an
 // unsaved change in exactly the way moving the camera is.
 subscribe(Change.META, markDirty);
+subscribe(Change.GRAMMAR, markDirty);
 
 // ══════════════════════════════════════════════════════════════════
 //  UNDOABLE SETTINGS
@@ -149,6 +150,15 @@ function serializeState() {
     // states themselves — this is stringifying them whole.
     blocks: App.blocks, blockN: App.blockN, scope: App.scope,
     meta: App.meta,
+    // The grammar rides along for the same reason App.meta does: it is part of
+    // what getWorkspaceData saves, so one Ctrl+Z has to take back a retyped
+    // rule the way it takes back a dragged state. Left out, the workbench put
+    // an entry on this stack per keystroke and undid none of them.
+    grammar: {
+      vars: [...App.grammar.vars],
+      start: App.grammar.start,
+      productions: App.grammar.productions
+    },
     config: captureSettings()
   });
 }
@@ -329,6 +339,14 @@ export function restoreSnapshot(s) {
   App.blocks = d.blocks || []; App.blockN = d.blockN || 0;
   App.scope = (d.scope || []).filter(id => App.blocks.some(b => b.id === id));
   App.meta = d.meta || null;
+  // Guarded rather than defaulted: an entry written before the grammar was
+  // recorded here — one restored from IndexedDB across a version — must leave
+  // the grammar standing rather than wipe it.
+  if (d.grammar) {
+    App.grammar.vars = new Set(d.grammar.vars || []);
+    App.grammar.start = d.grammar.start || '';
+    App.grammar.productions = d.grammar.productions || [];
+  }
   // A restored snapshot can be missing objects the selection still names.
   App.selectedNotes.forEach(id => { if (!App.notes.some(n => n.id === id)) App.selectedNotes.delete(id); });
   App.selectedDividers.forEach(id => { if (!App.dividers.some(dv => dv.id === id)) App.selectedDividers.delete(id); });
@@ -337,6 +355,6 @@ export function restoreSnapshot(s) {
   // routing flags, so they have to be the restored ones.
   applySettings(d.config);
 
-  emit(Change.ALPHABET, Change.GRAPH, Change.META);
+  emit(Change.ALPHABET, Change.GRAPH, Change.META, Change.GRAMMAR);
 }
 

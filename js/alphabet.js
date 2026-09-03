@@ -1,4 +1,4 @@
-import { renderGramSyms } from './algorithms-cfg.js';
+import { renderGramSyms } from './grammar-ui.js';
 import { updateLPanelSectionMeta, updateRPanel } from './render.js';
 import { $, App, isBoundarySymbol, isBoundaryTapeMachine } from './state.js';
 import { Change, subscribe } from './store.js';
@@ -7,6 +7,9 @@ import { escapeHtml, jsAttr, showStatus } from './utils.js';
 subscribe(Change.ALPHABET, renderSigma);
 subscribe(Change.ALPHABET, renderGamma);
 subscribe(Change.ALPHABET, renderOutputAlpha);
+// Σ is shared with the Grammar workbench: a symbol added here is a terminal a
+// word can be typed over there.
+subscribe(Change.ALPHABET, renderGramSyms);
 
 // ══════════════════════════════════════════════════════════════════
 //  ALPHABET
@@ -25,7 +28,7 @@ export function addSym() {
   export function delSym(s) { 
     App.sigma.delete(s); 
     renderSigma(); 
-    renderGramSyms(); 
+    renderGramSyms();
   }
 export function renderSigma() {
   const c = $('sigma-chips');

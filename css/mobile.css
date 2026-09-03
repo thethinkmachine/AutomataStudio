@@ -288,7 +288,7 @@
   .lpanel,
   .rpanel,
   .algo-nav,
-  .gram-left,
+  .gram-nav,
   .ref-nav {
     width: 100% !important;
     min-width: 0 !important;
@@ -309,7 +309,7 @@
   #lpanel[data-mobile-collapsed="1"] > .mobile-panel-content,
   #rpanel[data-mobile-collapsed="1"] > .mobile-panel-content,
   #algo-nav[data-mobile-collapsed="1"] > .mobile-panel-content,
-  #gram-left[data-mobile-collapsed="1"] > .mobile-panel-content,
+  #gram-nav[data-mobile-collapsed="1"] > .mobile-panel-content,
   #ref-nav[data-mobile-collapsed="1"] > .mobile-panel-content {
     display: none;
   }
@@ -317,7 +317,7 @@
   #lpanel[data-mobile-collapsed="1"] .mobile-panel-icon,
   #rpanel[data-mobile-collapsed="1"] .mobile-panel-icon,
   #algo-nav[data-mobile-collapsed="1"] .mobile-panel-icon,
-  #gram-left[data-mobile-collapsed="1"] .mobile-panel-icon,
+  #gram-nav[data-mobile-collapsed="1"] .mobile-panel-icon,
   #ref-nav[data-mobile-collapsed="1"] .mobile-panel-icon {
     transform: rotate(-90deg);
     color: var(--text2);
@@ -325,7 +325,7 @@
 
   .lpanel,
   .algo-nav,
-  .gram-left,
+  .gram-nav,
   .ref-nav {
     border-bottom: 1px solid var(--border);
   }
@@ -365,14 +365,14 @@
   .lpanel-content,
   .rpanel-content,
   .algo-content,
-  .gram-right {
+  .gram-main {
     overflow: visible;
   }
 
   #lpanel[data-mobile-collapsed="1"],
   #rpanel[data-mobile-collapsed="1"],
   #algo-nav[data-mobile-collapsed="1"],
-  #gram-left[data-mobile-collapsed="1"],
+  #gram-nav[data-mobile-collapsed="1"],
   #ref-nav[data-mobile-collapsed="1"] {
     flex: 0 0 auto;
     height: auto;
@@ -399,17 +399,14 @@
     max-width: none;
   }
 
-  .algo-content,
-  .gram-right {
+  .algo-content {
     padding: 16px 14px;
   }
 
   .algo-content .card,
-  .gram-right .card,
   .pump-section,
   .hierarchy-section,
   .ref-card,
-  .grammar-display,
   .info-box {
     overflow-x: auto;
   }
@@ -422,7 +419,6 @@
   }
 
   .algo-content [style*="display:flex"],
-  .gram-right [style*="display:flex"],
   #v-reference .algo-content [style*="display:flex"] {
     flex-wrap: wrap;
   }
@@ -485,7 +481,7 @@
   }
 
   .algo-nav .mobile-panel-toggle,
-  .gram-left .mobile-panel-toggle,
+  .gram-nav .mobile-panel-toggle,
   .ref-nav .mobile-panel-toggle {
     position: sticky;
     top: 0;
@@ -536,7 +532,10 @@
   .result-table td,
   .dec-table th,
   .dec-table td,
-  .cyk-cell,
+  .gram-table th,
+  .gram-table td,
+  .gram-cyk th,
+  .gram-cyk td,
   .min-table th,
   .min-table td {
     padding: 6px 8px;
@@ -545,14 +544,14 @@
   .result-table,
   .dec-table,
   .help-table,
-  .cyk-table,
+  .gram-cyk,
+  .gram-table,
   .min-table {
     font-size: .66rem;
   }
 
-  .parse-tree-svg,
   .algo-content svg,
-  .gram-right svg {
+  .gram-main svg {
     max-width: 100%;
     height: auto;
   }
@@ -1186,8 +1185,7 @@
     overflow: hidden;
   }
 
-  .aux-overlay .algo-content,
-  .aux-overlay .gram-right {
+  .aux-overlay .algo-content {
     flex: 1 1 auto;
     width: 100%;
     height: 100%;
@@ -1200,12 +1198,60 @@
     overscroll-behavior: contain;
   }
 
+  /* The grammar workbench keeps its own split here rather than becoming one
+     scroller: the editor is what every result is about, and a phone is the
+     screen where scrolling it out of sight costs the most. It stops being
+     *resizable* — a drag handle over a bottom sheet is a gesture collision —
+     and gives up most of its height, but it stays put. */
+  .aux-overlay .gram-main {
+    flex: 1 1 auto;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .gram-ed-bar,
+  .gram-ed-body,
+  .gram-diag,
+  .gram-ed-foot {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .gram-ed-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .gram-ed-acts {
+    gap: 4px;
+  }
+
+  .gram-source,
+  .gram-editor .gram-rules {
+    min-height: 74px;
+    max-height: 22vh;
+    resize: none;
+  }
+
+  .gram-result {
+    padding: 16px 14px calc(var(--mobile-bar-inset) + 18px);
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .gram-examples {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .aux-overlay #v-reference .algo-content[style] {
     padding: 16px 14px calc(var(--mobile-bar-inset) + 18px) !important;
   }
 
   .aux-overlay .algo-nav,
-  .aux-overlay .gram-left,
+  .aux-overlay .gram-nav,
   .aux-overlay .ref-nav {
     position: absolute;
     top: auto;
@@ -1234,7 +1280,7 @@
   }
 
   .aux-overlay #algo-nav[data-mobile-collapsed="1"],
-  .aux-overlay #gram-left[data-mobile-collapsed="1"],
+  .aux-overlay #gram-nav[data-mobile-collapsed="1"],
   .aux-overlay #ref-nav[data-mobile-collapsed="1"] {
     transform: translateY(calc(100% + 20px));
     opacity: 0;
@@ -1249,7 +1295,7 @@
      cheaper than a second implementation of the same head. The mark is drawn
      with ::before so the button keeps one child and one accessible name. */
   .aux-overlay .algo-nav .mobile-panel-toggle,
-  .aux-overlay .gram-left .mobile-panel-toggle,
+  .aux-overlay .gram-nav .mobile-panel-toggle,
   .aux-overlay .ref-nav .mobile-panel-toggle {
     position: relative;
     display: flex;
@@ -1274,7 +1320,7 @@
   }
 
   .aux-overlay .algo-nav .mobile-panel-content,
-  .aux-overlay .gram-left .mobile-panel-content,
+  .aux-overlay .gram-nav .mobile-panel-content,
   .aux-overlay .ref-nav .mobile-panel-content {
     display: flex !important;
     flex: 1 1 auto;
@@ -1338,7 +1384,7 @@
 
 @media (max-width: 900px) and (prefers-reduced-motion: reduce) {
   .aux-overlay .algo-nav,
-  .aux-overlay .gram-left,
+  .aux-overlay .gram-nav,
   .aux-overlay .ref-nav,
   .mobile-aux-sheet-scrim {
     transition: none !important;

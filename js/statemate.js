@@ -392,8 +392,9 @@ export function restoreCheckpoint(id) {
     resetSim();
     // Change.META because the checkpoint carries the card the machine had
     // before the run — reverting a result has to take its description with
-    // it, or the canvas says one thing and the card still says another.
-  }, Change.ALPHABET, Change.GRAPH, Change.META);
+    // it, or the canvas says one thing and the card still says another. And
+    // Change.GRAMMAR for the same reason: the blob carries one.
+  }, Change.ALPHABET, Change.GRAPH, Change.META, Change.GRAMMAR);
 
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
   return true;

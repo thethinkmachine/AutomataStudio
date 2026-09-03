@@ -100,7 +100,7 @@ export function resetWorkspace() {
   // but does not re-shape the editor around a different machine.
   if (typeof applyMachineSwitch === 'function') applyMachineSwitch(App.machine);
   if (typeof applyCamera === 'function') applyCamera();
-  emit(Change.ALPHABET, Change.META, Change.GRAPH, Change.CANVAS);
+  emit(Change.ALPHABET, Change.META, Change.GRAMMAR, Change.GRAPH, Change.CANVAS);
 }
 
 /**

@@ -8,7 +8,7 @@ import { runSim } from './simulation.js';
 import { decideWord, inFamily, machineFormal } from './machines/index.js';
 import { langStepBudget } from './machines/runtime.js';
 import { runParallel, shouldParallelize } from './parallel/pool.js';
-import { $, App, getMachineConfig, isOmegaAutomaton, omegaAcceptanceOf, statePriority } from './state.js';
+import { $, App, getMachineConfig, hasExpensiveRuns, isOmegaAutomaton, omegaAcceptanceOf, statePriority } from './state.js';
 import { getState } from './states-transitions.js';
 import { toggleRPSection } from './ui.js';
 import { isAnyPDA, isAnyTM } from './utils.js';
@@ -54,6 +54,22 @@ export const LANG_TRACE_DEPTH_CAP = 300; // hard backstop on word length; the st
 export const LANG_TRACE_STEP_BUDGET = 400000; // search-tree nodes per generator,
                                         // keeps a pathological graph from
                                         // freezing the tab while scrolling
+
+// The other budget, and on a stack or tape machine it is the one that binds.
+//
+// A search-tree node is a set union over the graph; a *verdict* is a whole run
+// of the real simulator, because the graph over-approximates a PDA and every
+// candidate has to be checked against the machine itself. On a finite
+// automaton those two costs are the same order and the node budget alone is
+// enough. On an NPDA a verdict is an exploration to `maxPdaSteps` with a stack
+// that grows as it goes — measured at ~10ms on the PDA the CFG → NPDA
+// construction builds for an arithmetic-expression grammar — so 400,000 nodes
+// is hours of wall clock, and the panel that ran this on `emit(Change.GRAPH)`
+// simply never came back. The list is a window onto L(M) that already reports
+// having stopped early, so the honest fix is to count what is expensive.
+export const LANG_TRACE_VERDICT_BUDGET = 20000;      // cheap machines: a backstop
+export const LANG_TRACE_VERDICT_BUDGET_EXPENSIVE = 150;  // a stack or a tape:
+                                        // one run is milliseconds, not microseconds
 
 // ── mode ──────────────────────────────────────────────────────────
 // The one heuristic the whole section turns on.
@@ -428,14 +444,23 @@ export function* _langTraceWords(g, state, opts = {}) {
     return dest;
   };
 
+  const verdictBudget = hasExpensiveRuns()
+    ? LANG_TRACE_VERDICT_BUDGET_EXPENSIVE
+    : LANG_TRACE_VERDICT_BUDGET;
+
   function* dfs(subset, word, budget) {
     if (state.truncated) return;
     if (++state.steps > LANG_TRACE_STEP_BUDGET) { state.truncated = true; return; }
     if (subsetMinDist(subset) > budget) return;
     if (budget === 0) {
+      if (!hasAccept(subset)) return;
+      // Counted before the run rather than after it: the budget is there to
+      // bound the time spent, and a run already started has already spent it.
+      state.verdicts = (state.verdicts || 0) + 1;
+      if (state.verdicts > verdictBudget) { state.truncated = true; return; }
       // admit() last: it has the side effect of consuming the path's quota,
       // so a word the simulator goes on to reject must not spend one.
-      if (hasAccept(subset) && langVerdict(word) === 'acc' && admit()) yield word;
+      if (langVerdict(word) === 'acc' && admit()) yield word;
       return;
     }
     for (const sym of g.sigma) {
@@ -493,7 +518,7 @@ export function langAcceptedTraces(K, opts) {
   if (!App.accepts.size) return { traces: [], reason: 'no accepting state' };
 
   const g = _langGraph();
-  const state = { steps: 0, truncated: false };
+  const state = { steps: 0, verdicts: 0, truncated: false };
   const traces = [];
   for (const w of _langTraceWords(g, state, opts)) {
     traces.push(w);
@@ -1161,7 +1186,7 @@ export function renderLangTraces(host) {
   if (!App.accepts.size) { host.appendChild(_le('div', 'lang-note', 'no accepting state')); return; }
 
   const g = _langGraph();
-  const searchState = { steps: 0, truncated: false };
+  const searchState = { steps: 0, verdicts: 0, truncated: false };
   const gen = _langTraceWords(g, searchState);
   const infinite = langIsInfinite();
 

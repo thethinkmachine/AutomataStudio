@@ -46,7 +46,7 @@ import './export-ui.js';
 import './codegen.js';
 import './import-jflap.js';
 import './algorithms-fa.js';
-import './algorithms-cfg.js';
+import './grammar-ui.js';
 import './reference.js';
 import './statemate-spec.js';
 import './statemate-provider.js';

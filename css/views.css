@@ -184,13 +184,13 @@
    left rails sit on the recessed tone and the content pane on the raised one.
    That inversion is what separates the two panes without a heavy divider. */
 .aux-overlay .algo-nav,
-.aux-overlay .gram-left,
+.aux-overlay .gram-nav,
 .aux-overlay .ref-nav {
   background: var(--bg);
 }
 
 .aux-overlay .algo-content,
-.aux-overlay .gram-right {
+.aux-overlay .gram-main {
   background: var(--bg2);
 }
 
@@ -204,7 +204,7 @@
 /* The nav rails are the modal's inner edge, not the window's — a full-weight
    border reads as a seam here, so lighten it. */
 .aux-overlay .algo-nav,
-.aux-overlay .gram-left,
+.aux-overlay .gram-nav,
 .aux-overlay .ref-nav {
   border-right: 1px solid var(--border);
 }
@@ -214,11 +214,10 @@
   padding: 22px 26px 28px;
 }
 
-.aux-overlay .gram-right {
-  padding: 22px 26px 28px;
-}
-
-.aux-overlay .gram-left > .mobile-panel-content {
+/* .gram-main deliberately takes no padding: it is the flex column holding a
+   sticky editor over a scrolling result, and padding here would put a gap
+   above the editor and inside the scrollport at once. Each child pads itself. */
+.aux-overlay .gram-nav > .mobile-panel-content {
   padding-bottom: 10px;
 }
 
@@ -2521,6 +2520,13 @@
   text-transform: uppercase;
 }
 
+/* The arrow column in the Algorithms view's TM → Grammar table. The rest of
+   the old .prod-* family went with the grammar view that printed it; this one
+   still has a writer in js/algorithms-fa.js. */
+.prod-arrow {
+  color: var(--accent);
+}
+
 .result-table {
   width: 100%;
   border-collapse: collapse;
@@ -2754,156 +2760,1222 @@
   color: var(--green);
 }
 
-/* ─── GRAMMAR VIEW ─── */
+/* ══════════════════════════════════════════════════════════════════
+   GRAMMAR WORKBENCH
+   ══════════════════════════════════════════════════════════════════
+   Nav rail + content, the shape .algo-nav and .ref-nav already establish —
+   the rail borrows their chrome from the .aux-overlay rules above rather
+   than restating it, which is why #gram-nav carries the .algo-nav class.
+
+   What is particular to this view is the split inside the content pane: a
+   sticky grammar card over a scrolling result. The card is the subject and
+   the result is about it, so the two must be readable together; and because
+   a CYK table or a parse tree wants the whole pane, the card folds to its
+   own footer strip rather than scrolling away. */
+
 #v-grammar {
   flex: 1;
   display: flex;
   overflow: hidden;
 }
 
-.gram-left {
-  width: 300px;
-  min-width: 300px;
-  background: var(--bg2);
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
+.gram-nav {
+  width: 208px;
+  min-width: 208px;
 }
 
-.gram-right {
+.gram-main {
   flex: 1;
-  overflow-y: auto;
-  padding: 20px 24px;
-}
-
-.prod-list {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  max-height: 220px;
-  overflow-y: auto;
-  margin-bottom: 8px;
+  overflow: hidden;
 }
 
-.prod-item {
+/* ── The grammar card ─────────────────────────────────────────── */
+/* Sticky by being a flex sibling that does not scroll, rather than by
+   position: sticky — the result below is its own scroll container, so the
+   card never enters it and cannot be scrolled past. */
+.gram-editor {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+}
+
+.gram-ed-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px 10px;
+}
+
+.gram-ed-title {
+  font-family: var(--sans);
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-right: 2px;
+}
+
+/* One segmented control, two states. `.active` is the fill rather than an
+   outline so the pair reads as one control with a position in it. */
+.gram-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+}
+
+.gram-seg-btn {
+  font-family: var(--sans);
+  font-size: .68rem;
+  padding: 4px 11px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.gram-seg-btn:hover {
+  color: var(--text);
+}
+
+.gram-seg-btn.active {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.gram-seg-btn:focus-visible,
+.gram-ed-btn:focus-visible,
+.gram-ed-fold:focus-visible,
+.gram-nav-link:focus-visible,
+.gram-chip:focus-visible,
+.gram-word:focus-visible,
+.gram-btn:focus-visible,
+.gram-example:focus-visible,
+.gram-scrub-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.gram-ed-acts {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-family: var(--mono);
-  font-size: .78rem;
-}
-
-.prod-arrow {
-  color: var(--accent);
-}
-
-.prod-rhs {
-  color: var(--text);
-  flex: 1;
-}
-
-.prod-del {
-  cursor: pointer;
-  color: var(--text3);
   margin-left: auto;
-  font-size: .8rem;
 }
 
-.prod-del:hover {
+.gram-ed-btn {
+  font-family: var(--sans);
+  font-size: .68rem;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text2);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast),
+              border-color var(--transition-fast);
+}
+
+.gram-ed-btn:hover {
+  background: var(--surface2);
+  color: var(--text);
+  border-color: var(--border2);
+}
+
+.gram-ed-danger:hover {
+  background: var(--red-soft);
+  border-color: var(--red-border);
   color: var(--red);
 }
 
-.cyk-table {
-  border-collapse: collapse;
-  font-family: var(--mono);
-  font-size: .72rem;
-  margin-top: 8px;
+.gram-ed-fold {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
 }
 
-.cyk-cell {
-  border: 1px solid var(--border2);
-  padding: 6px 10px;
-  text-align: center;
-  min-width: 56px;
+.gram-ed-fold svg {
+  width: 14px;
+  height: 14px;
+  transition: transform var(--transition-fast);
+}
+
+.gram-ed-fold:hover {
   background: var(--surface);
   color: var(--text);
-  transition: background .2s;
 }
 
-.cyk-cell.has-start {
-  background: color-mix(in srgb, var(--green) 12%, transparent);
+.gram-editor.is-folded .gram-ed-fold svg {
+  transform: rotate(-90deg);
+}
+
+.gram-ed-body {
+  padding: 0 18px;
+  min-height: 0;
+  display: flex;
+}
+
+/* The two views are the same box: one shows the text, the other shows what
+   the parser made of it. Swapping them by display keeps the card's height
+   from jumping between the two. */
+.gram-source {
+  flex: 1;
+  min-width: 0;
+  min-height: 108px;
+  max-height: 34vh;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: .82rem;
+  line-height: 1.7;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--text);
+}
+
+.gram-source:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.gram-editor.has-errors .gram-source {
+  border-color: var(--red-border);
+}
+
+.gram-editor .gram-rules {
+  display: none;
+}
+
+.gram-editor.mode-rules .gram-source {
+  display: none;
+}
+
+.gram-editor.mode-rules .gram-rules {
+  display: block;
+}
+
+.gram-editor.is-folded .gram-ed-body,
+.gram-editor.is-folded .gram-diag {
+  display: none;
+}
+
+/* ── The parsed rules ─────────────────────────────────────────── */
+.gram-rules {
+  flex: 1;
+  min-width: 0;
+  max-height: 34vh;
+  overflow: hidden auto;
+  font-family: var(--mono);
+  font-size: .82rem;
+  line-height: 1.9;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+}
+
+.gram-rules.is-result,
+.gram-rules.is-step {
+  max-height: none;
+  margin: 8px 0 0;
+}
+
+.grule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+  white-space: normal;
+}
+
+/* Fixed width whether or not the mark is there, so the arrows line up down
+   the column instead of the start symbol's row being indented past them. */
+.gstart {
+  display: inline-block;
+  width: 12px;
+  color: var(--accent);
+  font-size: .78rem;
+  line-height: 1;
+}
+
+.garr {
+  color: var(--text3);
+  margin: 0 2px;
+}
+
+.gbar {
+  color: var(--text3);
+  margin: 0 6px;
+  opacity: .6;
+}
+
+.gsym-v {
+  color: var(--accent);
+}
+
+.gsym-t {
+  color: var(--gold);
+}
+
+.gsym-e {
+  color: var(--text3);
+  font-style: italic;
+}
+
+.gram-empty {
+  color: var(--text3);
+  font-style: italic;
+  font-size: .75rem;
+}
+
+/* ── Diagnostics ──────────────────────────────────────────────── */
+/* Between the field and the footer, so "what is wrong" sits where the eye
+   already is after typing rather than in a status bar somewhere else. */
+.gram-diag {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 18px 0;
+}
+
+.gram-diag.is-empty {
+  display: none;
+}
+
+.gram-diag-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: .72rem;
+  line-height: 1.5;
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.gram-diag-row.is-error {
+  background: var(--red-soft);
+  border-color: var(--red-border);
+  color: var(--red);
+}
+
+.gram-diag-row.is-warn {
+  background: var(--surface2);
+  color: var(--orange);
+}
+
+.gram-diag-row.is-info {
+  background: var(--surface);
+  color: var(--text3);
+}
+
+.gram-diag-line {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: .6rem;
+  opacity: .8;
+}
+
+.gram-diag-msg code {
+  font-family: var(--mono);
+  font-size: .95em;
+}
+
+/* ── The footer: the tuple, at a glance ───────────────────────── */
+.gram-ed-foot {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 18px 12px;
+  font-family: var(--mono);
+  font-size: .68rem;
+  color: var(--text3);
+}
+
+.gram-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A select over V, not a free-text field — the old one accepted the name of
+   a variable the grammar did not have and every tool then answered about a
+   start symbol that derived nothing. */
+.gram-start-sel {
+  font-family: var(--mono);
+  font-size: .7rem;
+  padding: 3px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.gram-foot-fact b {
+  color: var(--text2);
+  font-weight: 500;
+}
+
+/* ── The result pane ──────────────────────────────────────────── */
+.gram-result {
+  flex: 1;
+  min-height: 0;
+  /* `hidden auto`, never `overflow-y: auto` — a box that scrolls on one axis
+     computes the other from `visible` to `auto`, so one wide thing anywhere in
+     a result (a CYK table, a parse tree, a long derivation) turned the whole
+     pane into a sideways scroller and cut every block above and below it off
+     at both edges. Everything wide here carries its own overflow-x, which is
+     the half that should scroll. Same rule as .sm-log and the machine card. */
+  overflow: hidden auto;
+  padding: 20px 22px 32px;
+  background: var(--bg2);
+}
+
+.gram-res-head {
+  margin-bottom: 14px;
+}
+
+.gram-res-title {
+  font-family: var(--sans);
+  font-size: 1.08rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 3px;
+}
+
+.gram-res-sub {
+  font-family: var(--sans);
+  font-size: .76rem;
+  color: var(--text3);
+  margin: 0;
+  max-width: 68ch;
+}
+
+.gram-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.gram-input {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 240px;
+  max-width: 420px;
+}
+
+.gram-input-label {
+  font-family: var(--mono);
+  font-size: .58rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.gram-input-field,
+.gram-input-area {
+  font-family: var(--mono);
+  font-size: .8rem;
+  padding: 7px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--text);
+}
+
+.gram-input-area {
+  min-height: 92px;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.gram-input-field:focus,
+.gram-input-area:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.gram-stub {
+  padding: 16px 18px;
+  border-radius: 10px;
+  border: 1px dashed var(--border2);
+  background: var(--bg3);
+  font-size: .82rem;
+  color: var(--text2);
+  line-height: 1.6;
+  max-width: 70ch;
+}
+
+.gram-stub p {
+  margin: 0 0 10px;
+}
+
+/* ── Blocks ───────────────────────────────────────────────────── */
+.gram-sec {
+  margin: 18px 0 0;
+}
+
+.gram-sec-title {
+  font-family: var(--sans);
+  font-size: .84rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gram-sec-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.gram-p {
+  font-size: .84rem;
+  line-height: 1.7;
+  color: var(--text2);
+  margin: 0 0 10px;
+  max-width: 72ch;
+}
+
+.gram-note {
+  font-size: .8rem;
+  line-height: 1.65;
+  color: var(--text2);
+  background: var(--surface2);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 12px 0;
+  max-width: 76ch;
+}
+
+.gram-note code {
+  font-family: var(--mono);
+  font-size: .92em;
+  color: var(--accent);
+}
+
+.gram-note.is-warn {
+  background: var(--surface2);
+  border-left: 2px solid var(--orange);
+  color: var(--text2);
+}
+
+.gram-note.is-err {
+  background: var(--red-soft);
+  border-left: 2px solid var(--red);
+  color: var(--text);
+}
+
+/* The headline answer. The mark carries the colour so the sentence beside
+   it stays readable text rather than a block of green or red. */
+.gram-verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  margin: 0 0 14px;
+}
+
+.gram-verdict.is-ok {
+  border-color: var(--green-border, var(--border));
+  background: color-mix(in srgb, var(--green) 8%, var(--bg3));
+}
+
+.gram-verdict.is-no {
+  border-color: var(--red-border);
+  background: var(--red-soft);
+}
+
+.gram-verdict-mark {
+  font-size: 1rem;
+  line-height: 1.35;
+  flex: 0 0 auto;
+}
+
+/* A verdict names the word it is about, and a word can be long. `min-width: 0`
+   is what lets the text wrap instead of forcing the flex line wider than the
+   pane — the pane clips its horizontal axis, so an unwrapped detail would be
+   cut off rather than scrolled to. */
+.gram-verdict-body {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.gram-verdict.is-ok .gram-verdict-mark {
   color: var(--green);
 }
 
-.cyk-cell.empty-cell {
+.gram-verdict.is-no .gram-verdict-mark {
+  color: var(--red);
+}
+
+.gram-verdict-title {
+  font-family: var(--sans);
+  font-size: .92rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.gram-verdict-detail {
+  font-size: .8rem;
+  line-height: 1.6;
+  color: var(--text2);
+  margin-top: 3px;
+  max-width: 74ch;
+}
+
+.gram-verdict-detail code {
+  font-family: var(--mono);
+  color: var(--accent);
+}
+
+.gram-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.gram-fact {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 6px 11px;
+  border-radius: 7px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+}
+
+.gram-fact-k {
+  font-family: var(--mono);
+  font-size: .58rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
   color: var(--text3);
 }
 
-.cyk-cell.header {
+.gram-fact-v {
+  font-size: .78rem;
+  color: var(--text);
+}
+
+.gram-fact-v.mono {
+  font-family: var(--mono);
+}
+
+/* Each chip is the entry to the tool that acts on it — a property with
+   nowhere to go is a fact the reader has to hunt the tool for. */
+.gram-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0 0 16px;
+}
+
+.gram-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text2);
+  font-family: var(--sans);
+  font-size: .74rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast),
+              color var(--transition-fast);
+}
+
+.gram-chip:hover:not(:disabled) {
+  background: var(--surface2);
+  border-color: var(--border2);
+  color: var(--text);
+}
+
+.gram-chip:disabled {
+  cursor: default;
+}
+
+.gram-chip.is-ok .gram-chip-label {
+  color: var(--green);
+}
+
+.gram-chip.is-no .gram-chip-label {
+  color: var(--orange);
+}
+
+.gram-chip-detail {
+  font-family: var(--mono);
+  font-size: .62rem;
+  color: var(--text3);
+}
+
+.gram-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+
+.gram-word {
+  font-family: var(--mono);
+  font-size: .74rem;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--gold);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.gram-word:hover {
+  background: var(--surface2);
+  border-color: var(--border2);
+}
+
+/* ── Stages of a construction ─────────────────────────────────── */
+.gram-steps {
+  list-style: none;
+  counter-reset: gram-step;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gram-step {
+  counter-increment: gram-step;
+  position: relative;
+  padding: 12px 14px 12px 42px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+}
+
+.gram-step::before {
+  content: counter(gram-step);
+  position: absolute;
+  left: 13px;
+  top: 12px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
   background: var(--surface2);
   color: var(--accent);
-}
-
-.deriv-step {
   font-family: var(--mono);
+  font-size: .6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gram-step-label {
+  font-family: var(--sans);
   font-size: .78rem;
-  padding: 6px 10px;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.gram-step-note {
+  font-size: .76rem;
   line-height: 1.6;
-  margin-bottom: 4px;
+  color: var(--text3);
+  margin-top: 3px;
+  max-width: 76ch;
 }
 
-.deriv-step .nt {
-  color: var(--accent);
+.gram-step-note code {
+  font-family: var(--mono);
+  color: var(--text2);
 }
 
-.deriv-step .term {
+/* ── Tables ───────────────────────────────────────────────────── */
+/* The wrapper scrolls on its own so an LL(1) table over a dozen terminals
+   never widens the pane — the same rule .ref-table-wrap follows. */
+.gram-table-wrap {
+  overflow-x: auto;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  margin: 0 0 14px;
+}
+
+.gram-table-wrap.is-tall {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.gram-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: .72rem;
+  line-height: 1.5;
+}
+
+.gram-table-wrap.is-wide .gram-table {
+  white-space: nowrap;
+}
+
+/* A header that *is* a symbol keeps its case: `id` and `ID` are two different
+   terminals, and the LL(1) table's columns are terminals. */
+.gram-table-wrap.is-symbol-head thead th {
+  text-transform: none;
+  font-family: var(--mono);
+  font-size: .68rem;
   color: var(--gold);
 }
 
-.cnf-step {
+.gram-table th,
+.gram-table td {
+  padding: 7px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.gram-table tbody tr:last-child th,
+.gram-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.gram-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface2);
+  color: var(--text3);
+  font-weight: 500;
+  font-size: .6rem;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.gram-table tbody th {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.gram-table .v-yes { color: var(--green); }
+.gram-table .v-no { color: var(--red); }
+.gram-table .v-semi { color: var(--orange); }
+.gram-table .v-na { color: var(--text2); }
+
+.gram-table code {
+  font-size: .95em;
+  color: var(--text2);
+}
+
+/* ── Derivations ──────────────────────────────────────────────── */
+.gram-deriv {
+  display: flex;
+  flex-direction: column;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  overflow: hidden auto;
+  max-height: 420px;
+  margin: 0 0 14px;
+}
+
+.gram-deriv-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 13px;
+  font-family: var(--mono);
+  font-size: .76rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.gram-deriv-row:last-child {
+  border-bottom: 0;
+}
+
+.gram-deriv-op {
+  color: var(--text3);
+}
+
+.gram-deriv-form {
+  color: var(--text);
+  word-break: break-word;
+}
+
+.gram-deriv-rule {
+  font-size: .64rem;
+  color: var(--text3);
+  white-space: nowrap;
+}
+
+/* ── Parse trees ──────────────────────────────────────────────── */
+.gram-tree-wrap {
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  padding: 10px;
+  overflow-x: auto;
+  margin: 0 0 14px;
+}
+
+.gram-tree {
+  display: block;
+}
+
+.gtree-edge {
+  stroke: var(--border2);
+  stroke-width: 1.4;
+}
+
+.gtree-var {
+  fill: var(--surface2);
+  stroke: var(--accent);
+  stroke-width: 1.2;
+}
+
+.gtree-term {
+  fill: var(--bg2);
+  stroke: var(--gold);
+  stroke-width: 1.2;
+}
+
+.gtree-eps {
+  fill: var(--bg2);
+  stroke: var(--border2);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 2;
+}
+
+.gtree-text {
+  font-family: var(--mono);
+  font-size: 11px;
+  fill: var(--text);
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.gram-tree-frontier {
+  margin-top: 8px;
+  font-family: var(--sans);
+  font-size: .68rem;
+  color: var(--text3);
+}
+
+.gram-tree-frontier .mono {
+  font-family: var(--mono);
+  color: var(--gold);
+}
+
+/* ── The CYK triangle ─────────────────────────────────────────── */
+.gram-cyk {
+  border-collapse: collapse;
   font-family: var(--mono);
   font-size: .7rem;
-  padding: 8px 12px;
+  margin: 0;
+}
+
+.gram-cyk th,
+.gram-cyk td {
+  border: 1px solid var(--border2);
+  padding: 6px 10px;
+  text-align: center;
+  min-width: 54px;
+}
+
+.gcyk-h {
+  background: var(--surface2);
+  color: var(--text3);
+  font-weight: 500;
+}
+
+.gcyk-corner {
+  font-size: .6rem;
+  opacity: .7;
+}
+
+.gcyk-sym {
+  display: block;
+  color: var(--gold);
+  font-size: .62rem;
+}
+
+.gcyk-cell {
+  background: var(--surface);
+  color: var(--text);
+  transition: background var(--transition-fast), outline-color var(--transition-fast);
+}
+
+.gcyk-cell.is-empty {
+  color: var(--text3);
+}
+
+.gcyk-cell.is-start {
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+  color: var(--green);
+}
+
+/* The cell the current step is writing to, drawn with an outline rather
+   than a fill so it can sit on top of the accepting cell's colour without
+   either of the two being lost. */
+.gcyk-cell.is-active {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.gcyk-off {
   background: var(--bg3);
-  border: 1px solid var(--border);
+}
+
+/* ── The step transport ───────────────────────────────────────── */
+.gram-scrub {
+  margin: 0 0 14px;
+}
+
+.gram-scrub-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.gram-scrub-btn {
+  font-family: var(--sans);
+  font-size: .7rem;
+  padding: 5px 11px;
   border-radius: 6px;
-  margin-bottom: 6px;
-}
-
-.cnf-step .lbl {
-  color: var(--purple);
-  margin-right: 8px;
-}
-
-.grammar-display {
-  font-family: var(--mono);
-  font-size: .78rem;
-  line-height: 2;
-  padding: 12px;
-  background: var(--bg3);
   border: 1px solid var(--border);
-  border-radius: 7px;
-  margin-bottom: 12px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
 }
 
-.grammar-display .nt {
+.gram-scrub-btn:hover:not(:disabled) {
+  background: var(--surface2);
+  border-color: var(--border2);
+}
+
+.gram-scrub-btn:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.gram-scrub-btn.is-ghost {
+  color: var(--text3);
+}
+
+.gram-scrub-range {
+  flex: 1;
+  min-width: 80px;
+  accent-color: var(--accent);
+}
+
+.gram-scrub-count {
+  font-family: var(--mono);
+  font-size: .66rem;
+  color: var(--text3);
+  min-width: 62px;
+  text-align: right;
+}
+
+.gram-scrub-note {
+  font-size: .76rem;
+  line-height: 1.6;
+  color: var(--text2);
+  background: var(--surface2);
+  border-radius: 7px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+}
+
+.gram-scrub-note code {
+  font-family: var(--mono);
   color: var(--accent);
 }
 
-.grammar-display .t {
-  color: var(--gold);
+/* ── Two of a thing, side by side ─────────────────────────────── */
+.gram-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
 }
 
-.grammar-display .eps {
+/* Two parse trees are wide and their comparison is vertical, so they stack;
+   two derivations are narrow and theirs is horizontal, so they do not. */
+.gram-split.is-stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 1100px) {
+  .gram-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.gram-split-col {
+  min-width: 0;
+}
+
+.gram-split-col > .gram-sec:first-child {
+  margin-top: 0;
+}
+
+/* ── Actions ──────────────────────────────────────────────────── */
+.gram-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 4px;
+}
+
+.gram-btn {
+  font-family: var(--sans);
+  font-size: .76rem;
+  padding: 7px 14px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.gram-btn:hover {
+  background: var(--surface2);
+  border-color: var(--border2);
+}
+
+.gram-btn.is-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+.gram-btn.is-primary:hover {
+  filter: brightness(1.08);
+}
+
+/* ── The library ──────────────────────────────────────────────── */
+.gram-examples {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.gram-example {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.gram-example:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.gram-example-name {
+  font-family: var(--sans);
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.gram-example-blurb {
+  font-family: var(--sans);
+  font-size: .72rem;
+  line-height: 1.5;
   color: var(--text3);
+}
+
+.gram-example-src {
+  font-family: var(--mono);
+  font-size: .67rem;
+  line-height: 1.65;
+  color: var(--accent);
+  margin-top: 3px;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* ── The rail ─────────────────────────────────────────────────── */
+.gram-nav-group {
+  font-family: var(--mono);
+  font-size: .58rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text3);
+  padding: 14px 14px 4px;
+}
+
+.gram-nav-link {
+  display: block;
+  font-family: var(--sans);
+  font-size: .76rem;
+  color: var(--text2);
+  padding: 6px 14px 6px 16px;
+  cursor: pointer;
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  transition: background var(--transition-fast), color var(--transition-fast),
+              border-color var(--transition-fast);
+}
+
+.gram-nav-link:hover {
+  background: var(--surface);
+  color: var(--text);
+  border-left-color: var(--border2);
+}
+
+.gram-nav-link.active {
+  background: var(--focus-ring);
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
+
+.gram-nav-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ─── REFERENCE VIEW ─── */
@@ -3220,7 +4292,7 @@
   #v-grammar,
   #v-reference,
   .algo-content,
-  .gram-right {
+  .gram-main {
     min-height: 0;
     min-width: 0;
   }
@@ -3250,7 +4322,7 @@
   }
 
   .algo-nav,
-  .gram-left,
+  .gram-nav,
   .ref-nav {
     width: 100% !important;
     min-width: 0 !important;
@@ -3260,7 +4332,7 @@
   }
 
   .algo-content,
-  .gram-right {
+  .gram-main {
     padding: 16px;
     overflow: auto;
   }
@@ -3306,7 +4378,7 @@
 
   .rpanel,
   .algo-nav,
-  .gram-left,
+  .gram-nav,
   .ref-nav {
     max-height: 32vh;
   }

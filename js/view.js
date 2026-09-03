@@ -1,4 +1,4 @@
-import { renderGramSyms, renderGrammarLPanel, renderGrammarView } from './algorithms-cfg.js';
+import { renderGrammarView } from './grammar-ui.js';
 import { renderAlgo } from './algorithms-fa.js';
 import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { wrap } from './canvas.js';
@@ -36,7 +36,7 @@ export const AUX_META = {
   },
   grammar: {
     title: 'Grammar',
-    sub: 'G = (V, Σ, R, S) · context-free grammar workbench',
+    sub: 'G = (V, Σ, R, S) · write a grammar, then take it apart',
     icon: '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M208,24H72A32,32,0,0,0,40,56V224a8,8,0,0,0,8,8H192a8,8,0,0,0,0-16H56a16,16,0,0,1,16-16H208a8,8,0,0,0,8-8V32A8,8,0,0,0,208,24Zm-8,160H72a31.82,31.82,0,0,0-16,4.29V56A16,16,0,0,1,72,40H200Z"/></svg>'
   },
   reference: {
@@ -103,7 +103,7 @@ export function setView(v) {
   if (mm) mm.style.visibility = (v === 'build') ? '' : 'hidden';
 
   if (v === 'algo') { renderAlgo(App.currentAlgo); }
-  if (v === 'grammar') { renderGrammarLPanel(); renderGrammarView(); renderGramSyms(); }
+  if (v === 'grammar') { renderGrammarView(); }
   if (v === 'reference') { renderReferenceView(); }
   updateLPanel();
   if (typeof updateMobilePanelChrome === 'function') updateMobilePanelChrome();

@@ -17,7 +17,16 @@
 import './dom-stub.js';
 import { clearElements, dispatchDocumentEvent, getElement } from './dom-stub.js';
 
-import * as algorithmsCfg from '../js/algorithms-cfg.js';
+import * as grammarUi from '../js/grammar-ui.js';
+import * as grammarModel from '../js/grammar/model.js';
+import * as grammarParse from '../js/grammar/parse.js';
+import * as grammarAnalysis from '../js/grammar/analysis.js';
+import * as grammarTransform from '../js/grammar/transform.js';
+import * as grammarParsing from '../js/grammar/parsing.js';
+import * as grammarConvert from '../js/grammar/convert.js';
+import * as grammarTree from '../js/grammar/tree.js';
+import * as grammarRegistry from '../js/grammar/registry.js';
+import * as grammarExamples from '../js/grammar/examples.js';
 import * as algorithmsFa from '../js/algorithms-fa.js';
 import * as alphabet from '../js/alphabet.js';
 import * as anim from '../js/anim.js';
@@ -112,7 +121,8 @@ const NAMESPACES = [
   machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,
   simulation, tape, tapeLog, tapeView, suggest, language, alphabet, markdown,
   view, history, persistence, exportCore, exportFormats, exportUi, codegen,
-  importJflap, algorithmsFa, algorithmsCfg, reference, workspace, quickSettings, minimap, ui,
+  importJflap, algorithmsFa, grammarUi, grammarModel, grammarParse, grammarAnalysis, grammarTransform,
+  grammarParsing, grammarConvert, grammarTree, grammarRegistry, grammarExamples, reference, workspace, quickSettings, minimap, ui,
   statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt, statemateAgent,
   statemate, statemateUi, wizardCopy, wizard, wizardUi
 ];
@@ -196,6 +206,9 @@ function resetModuleState() {
   panelShake.resetPanelShake();
   // The mobile sheet's detent, which is module state and outlives the elements.
   mobile.resetMobileShell();
+  // The workbench's open tool and its fields. A word typed in one case would
+  // otherwise be the word the next case's tool answers about.
+  grammarUi.resetGrammarView();
   // Both memoise a *failure* as well as a success — a glyph face that could not
   // be fetched, and font bytes that could not be — so that one refusal does not
   // cost a request per export. That makes them exactly the state a test would
