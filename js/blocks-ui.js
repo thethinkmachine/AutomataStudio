@@ -20,12 +20,13 @@
 
 import {
   blockAncestry, blockChildren, blockMembers, getBlock, inlineBlock, liveBlocks,
-  machineSupportsBlocks, outlineBlock, removeBlock, uniqueBlockName,
+  blockRemovalIds, machineSupportsBlocks, outlineBlock, removeBlock, uniqueBlockName,
   validateBlockDefinition, blockDefinitionCycle, BLOCK_NAME_SEP
 } from './blocks.js';
 import { clearSelection } from './canvas.js';
 import { commit } from './history.js';
 import { askConfirm } from './modal.js';
+import { pruneNoteAnchorsExcluding } from './notes.js';
 import { openWorkspaceDb } from './persistence.js';
 import { enterBlockScope, syncScopeBar } from './scope.js';
 import { $, App, getState, stateNameKey } from './state.js';
@@ -173,6 +174,15 @@ export function ungroupBlock(id) {
       if (parent) s.blockId = parent; else delete s.blockId;
     }
     for (const child of blockChildren(id)) child.parent = parent;
+    // The notes written inside this block come up with its states. Left behind,
+    // `noteScopeOf` would answer null for a block that no longer exists and they
+    // would all surface at the *top* level rather than at the one their states
+    // just landed on — the right rescue for a deleted block and the wrong answer
+    // for a dissolved one, which knows its own parent.
+    for (const n of App.notes || []) {
+      if (n.scope !== id) continue;
+      if (parent) n.scope = parent; else delete n.scope;
+    }
     App.blocks = (App.blocks || []).filter(x => x.id !== id);
     invalidateViewGraph();
   }, Change.GRAPH);
@@ -326,7 +336,16 @@ export function ctxDeleteBlock() {
     confirmLabel: 'Delete',
     danger: true,
     onConfirm: () => {
-      commit(() => { removeBlock(id); invalidateViewGraph(); }, Change.GRAPH);
+      commit(() => {
+        // While the ids are still resolvable, so a note *outside* the block that
+        // anchors into it keeps the position it was drawn at rather than jumping
+        // to its stored offset. The notes written inside go with the block —
+        // removeBlock takes those.
+        const gone = blockRemovalIds(id);
+        pruneNoteAnchorsExcluding([...gone.states], gone.transitions);
+        removeBlock(id);
+        invalidateViewGraph();
+      }, Change.GRAPH);
       showStatus(`Deleted ${b.name}`);
     }
   });

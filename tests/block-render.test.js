@@ -413,3 +413,57 @@ test('the start arrow follows a block being dragged, without a full render', () 
   assert.equal(arrow.getAttribute('d'), after,
     'and the drag path put it exactly where a full render does');
 });
+
+// ── the preview follows its box ───────────────────────────────────
+//
+// The interior is laid out in absolute canvas coordinates once and then *slid*,
+// which is what keeps a drag frame from rebuilding a hundred child elements. So
+// something has to write that translate, and for a long time only the drag path
+// did — while `blockPreviewKey` is built from the *members'* positions, which a
+// block moving does not change. Every path that moves a box and ends in a full
+// render therefore left the diagram behind: Arrange, a paste, an undo, an
+// arrow-key nudge, a collision push, the JFLAP importer's spread. On a machine
+// whose layout had been rearranged that is a canvas of empty boxes with their
+// diagrams scattered across the background.
+
+test('a block moved by anything but a drag takes its preview with it', () => {
+  tmCanvas();
+  const block = placeBlock('seek', 4, { x: 100, y: 100 });
+  context.renderAll();
+  const g = blockNode(block.id);
+  const drawnAt = { ...g.__previewAt };
+
+  // What autoLayout, paste, undo and spreadForBlocks all do: write the record.
+  block.x = 900;
+  block.y = 640;
+  context.renderAll();
+
+  const box = { x: Number(g.__parts.body.getAttribute('x')), y: Number(g.__parts.body.getAttribute('y')) };
+  assert.equal(g.__parts.preview.getAttribute('transform'),
+    `translate(${box.x - drawnAt.x} ${box.y - drawnAt.y})`,
+    'the preview is slid under the box it belongs to');
+
+  // And the clip stays written where the preview was *drawn*. clipPathUnits is
+  // userSpaceOnUse, so the transform above already carries it — writing the new
+  // position onto the rect as well moves it twice, and two boxes' worth of
+  // offset clips the whole interior away.
+  assert.equal(Number(g.__parts.clipRect.getAttribute('x')), drawnAt.x + 1);
+});
+
+test('a rebuild resets the slide rather than compounding it', () => {
+  tmCanvas();
+  const block = placeBlock('seek', 4, { x: 100, y: 100 });
+  context.renderAll();
+  const g = blockNode(block.id);
+
+  block.x = 500;
+  context.renderAll();
+  assert.notEqual(g.__parts.preview.getAttribute('transform'), '');
+
+  // Moving a member changes the key, so the interior is laid out afresh at the
+  // box's current position — and the translate has to go with it.
+  context.blockMembers(block.id)[0].x += 40;
+  context.renderAll();
+  assert.equal(g.__parts.preview.getAttribute('transform'), '');
+  assert.equal(g.__previewAt.x, Number(g.__parts.body.getAttribute('x')));
+});

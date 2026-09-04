@@ -146,3 +146,92 @@ test('a restored snapshot drops selected objects it no longer holds', () => {
   assert.ok(!App.selectedNotes.has('n99'));
   assert.ok(!App.selectedDividers.has('d99'));
 });
+
+// ── the marquee ───────────────────────────────────────────────────
+// The sweep rebuilds the selection from the baseline captured at the press on
+// every move. Written as an add-only sweep it could take an object in and
+// never give it back: dragging past a state and back, or shrinking the box off
+// one, left it selected with nothing on screen still covering it — and the
+// next Delete took it.
+
+/** Drives the real pointerdown/move listeners over the canvas background. */
+function marquee(from, to) {
+  const wrap = context.wrap;
+  wrap.setPointerCapture = () => { };
+  const at = (x, y) => ({
+    target: wrap, button: 0, pointerId: 1, pointerType: 'mouse',
+    clientX: x, clientY: y, preventDefault() { }
+  });
+  wrap._listeners.pointerdown(at(from.x, from.y));
+  const drag = { to(x, y) { context.handlePointerMove(at(x, y)); return drag; } };
+  return drag.to(to.x, to.y);
+}
+
+test('a marquee releases what it is dragged back off', () => {
+  reset();
+  const { App, createState } = context;
+  App.tool = 'pointer';
+  const near = createState(0, 0);
+  const far = createState(300, 0);
+
+  const drag = marquee({ x: -50, y: -50 }, { x: 400, y: 50 });
+  assert.deepStrictEqual([...App.selectedStates].sort(), [near.id, far.id].sort());
+
+  // Back over the near state only: the far one is no longer in the box, so it
+  // is no longer selected.
+  drag.to(50, 50);
+  assert.deepStrictEqual([...App.selectedStates], [near.id]);
+  assert.strictEqual(
+    App.domCache.states.get(far.id).classList.contains('sel-st'), false,
+    'and the node it had highlighted is repainted'
+  );
+});
+
+test('a marquee that covers nothing ends with nothing selected', () => {
+  reset();
+  const { App, createState } = context;
+  App.tool = 'pointer';
+  createState(0, 0);
+
+  marquee({ x: -50, y: -50 }, { x: 50, y: 50 }).to(-40, -40);
+  assert.strictEqual(App.selectedStates.size, 0);
+});
+
+test('a modified marquee keeps what was selected before it started', () => {
+  reset();
+  const { App, createState } = context;
+  App.tool = 'pointer';
+  const kept = createState(0, 0);
+  const swept = createState(300, 0);
+  App.selectedStates.add(kept.id);
+
+  const wrap = context.wrap;
+  wrap.setPointerCapture = () => { };
+  const at = (x, y) => ({
+    target: wrap, button: 0, pointerId: 1, pointerType: 'mouse', shiftKey: true,
+    clientX: x, clientY: y, preventDefault() { }
+  });
+  wrap._listeners.pointerdown(at(200, -50));
+  context.handlePointerMove(at(400, 50));
+  assert.deepStrictEqual([...App.selectedStates].sort(), [kept.id, swept.id].sort());
+
+  // Shrunk back off the swept state — the baseline it was added to survives.
+  context.handlePointerMove(at(210, -40));
+  assert.deepStrictEqual([...App.selectedStates], [kept.id]);
+});
+
+test('a marquee releases notes and dividers too', () => {
+  reset();
+  const { App, createNote, createDivider } = context;
+  App.tool = 'pointer';
+  const note = createNote(100, 100);
+  const region = createDivider('rect', 100, 100, 300, 300);
+
+  const drag = marquee({ x: -50, y: -50 }, { x: 500, y: 500 });
+  assert.ok(App.selectedNotes.has(note.id));
+  assert.ok(App.selectedDividers.has(region.id));
+
+  drag.to(-40, -40);
+  assert.strictEqual(App.selectedNotes.size, 0);
+  assert.strictEqual(App.selectedDividers.size, 0);
+});

@@ -241,6 +241,37 @@
   vector-effect: non-scaling-stroke;
 }
 
+/* A run does not stop at a block's edge — it steps inside, where there is
+   nothing on screen to mark. The box standing in for those states is what the
+   reader can see, so it takes the playhead's marks: the machine is flat, and
+   which node is drawn for a state is the projection's answer (js/view-graph.js),
+   not the run's. Written against `.bn-body` because a block is a rounded rect
+   where a state is a circle, and the ink is the only difference. */
+.bn.act-st .bn-body,
+.pn.act-st .pn-body {
+  fill: var(--state-active-fill);
+  stroke: var(--accent);
+  stroke-width: 2;
+  filter: var(--state-active-shadow);
+  vector-effect: non-scaling-stroke;
+}
+
+.bn.rej-st .bn-body,
+.pn.rej-st .pn-body {
+  fill: var(--state-reject-fill);
+  stroke: var(--red);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.bn.sim-visited-st .bn-body,
+.pn.sim-visited-st .pn-body {
+  stroke: var(--accent);
+  stroke-opacity: .65;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
 .edge-g.sim-trail-t .tarr {
   stroke: var(--accent);
   stroke-width: 1.5;
@@ -317,7 +348,20 @@
   pointer-events: none;
   transform-box: fill-box;
   transform-origin: center;
+  /* Screen-space, like every other simulation stroke above: a 2px ring divided
+     by the camera is nothing at the zoom a large machine is read at, which is
+     where an arrival is hardest to spot in the first place. */
+  vector-effect: non-scaling-stroke;
   animation: sim-pulse .5s ease-out forwards;
+}
+
+/* The same arrival, on a box. The ratio is what carries the meaning, not the
+   distance: 1.7x of a 22px circle is a ring that reads at a glance and 1.7x of a
+   200px block is a sweep across half the diagram. A box is already the largest
+   thing on the canvas, so it needs the smaller ramp and a little longer to be
+   read. */
+.sim-pulse.is-box {
+  animation: sim-pulse-box .55s ease-out forwards;
 }
 
 .sim-pulse.rej {
@@ -336,6 +380,18 @@
 
   to {
     transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+@keyframes sim-pulse-box {
+  from {
+    transform: scale(1);
+    opacity: .9;
+  }
+
+  to {
+    transform: scale(1.14);
     opacity: 0;
   }
 }
@@ -1405,6 +1461,56 @@
 
 .bn-pv-node.is-accept {
   stroke: var(--gold);
+}
+
+/* ─── The run, inside a preview ───
+   A box on the canvas is a small drawing of the machine inside it, so the
+   playback marks have to reach one level in: without these the box lights up
+   and the dot that is actually running stays the same grey as the twenty around
+   it, which says "something in here" and nothing more.
+
+   The dots are 1.6–7px, so the mark cannot be a stroke weight — at the bottom
+   of that range a 1px ring is the whole node. It is a fill change plus a glow,
+   which reads at any of those sizes, and the glow is what carries it when the
+   dot itself is two pixels across. */
+.bn-pv-node.is-visited {
+  fill: color-mix(in srgb, var(--accent) 45%, var(--bg2));
+}
+
+.bn-pv-node.is-active,
+.bn-pv-block.is-active {
+  fill: var(--accent);
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent) 85%, transparent));
+}
+
+.bn-pv-node.is-rej,
+.bn-pv-block.is-rej {
+  fill: var(--red);
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--red) 85%, transparent));
+}
+
+.bn-pv-block.is-visited {
+  fill: color-mix(in srgb, var(--accent) 30%, var(--bg2));
+}
+
+/* The transition being taken, over the quiet edges and under the dots — the
+   paint order the canvas itself uses. Empty `d` the rest of the time, which is
+   why it costs nothing on a box the run is nowhere near. It carries no dash
+   animation: at this scale a 7-5 dash pattern on a twelve-pixel edge is one
+   dash, flickering. */
+.bn-pv-active {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent) 70%, transparent));
+}
+
+.bn-pv-active.is-rej {
+  stroke: var(--red);
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--red) 70%, transparent));
 }
 
 .bn-pv-node.is-start {

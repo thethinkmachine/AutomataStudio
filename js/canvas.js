@@ -7,11 +7,11 @@ import { includeLayoutBounds, resolveNodeOverlaps, startNodeId } from './geometr
 import { getBlock, inlineBlock, outlineBlock } from './blocks.js';
 import { getNode, invalidateViewGraph, isPortNode, scopeId, viewStates, viewTransitions } from './view-graph.js';
 import { markDirty, snapshot } from './history.js';
-import { clearActiveNoteHighlight, dragSelectedNotesTo, endNoteResize, getNote, includeNoteBounds, resizeNoteTo, resolveNotePos, syncNoteSelectionClasses } from './notes.js';
+import { clearActiveNoteHighlight, dragSelectedNotesTo, endNoteResize, getNote, includeNoteBounds, resizeNoteTo, resolveNotePos, syncNoteSelectionClasses, visibleNotes } from './notes.js';
 import { getWorkspaceData } from './persistence.js';
-import { currentLayoutContext, makeSVG, renderAll, repaintForCamera, scheduleFastDOM, updateFastDOM, updateLPanel, updateRPanel, withFullRender } from './render.js';
+import { currentLayoutContext, drawnEdgeEl, makeSVG, renderAll, repaintForCamera, scheduleFastDOM, updateFastDOM, updateLPanel, updateRPanel, withFullRender } from './render.js';
 import { $, App } from './state.js';
-import { createState, deleteState, getState, getTransition, hideContextMenu, newId, newTId, openTransModal } from './states-transitions.js';
+import { createState, deleteState, getState, hideContextMenu, newId, newTId, openTransModal } from './states-transitions.js';
 import { Change, emit } from './store.js';
 import { scheduleMinimap } from './minimap.js';
 import { fitToScreen, markActiveWorkspaceSaved, visibleCanvasBox } from './ui.js';
@@ -425,7 +425,20 @@ wrap.addEventListener('pointerdown', e => {
     if (e.shiftKey || e.ctrlKey || e.metaKey) clearEdgeDirectionHighlight();
     else emit(Change.CANVAS);
     const pt = svgPt(e);
-    App.marquee = { start: pt, current: pt };
+    // The sweep below rebuilds the selection from this baseline on every move,
+    // so a marquee dragged back over something it had covered releases it. An
+    // unmodified press cleared above, so the baseline is empty; a modified one
+    // keeps what was already selected and the marquee only ever adds to it.
+    App.marquee = {
+      start: pt,
+      current: pt,
+      base: {
+        states: new Set(App.selectedStates),
+        transitions: new Set(App.selectedTransitions),
+        notes: new Set(App.selectedNotes),
+        dividers: new Set(App.selectedDividers),
+      },
+    };
     App.marqueeRect = makeSVG('rect');
     App.marqueeRect.setAttribute('class', 'marquee-rect');
     $('cam-g').appendChild(App.marqueeRect);
@@ -581,44 +594,54 @@ export function handlePointerMove(e) {
     const mh = Math.abs(App.marquee.start.y - App.marquee.current.y);
     App.marqueeRect.setAttribute('x', mx); App.marqueeRect.setAttribute('y', my);
     App.marqueeRect.setAttribute('width', mw); App.marqueeRect.setAttribute('height', mh);
+    // Each move rebuilds the four sets from the baseline captured at the press
+    // rather than adding to whatever the last frame left behind. Written as an
+    // add-only sweep, the box could take an object in and never give it back:
+    // shrinking the marquee off a state, or dragging past one and back, left it
+    // selected with nothing on screen still covering it.
+    const base = App.marquee.base;
+    const inBox = (x, y) => x >= mx && x <= mx + mw && y >= my && y <= my + mh;
     // The drawn graph: a marquee selects the boxes and circles on screen, which
     // inside a block are its members and not the whole machine. Ports are
     // derived rather than owned, so there is nothing there to select.
+    const states = new Set(base.states);
     viewStates().forEach(s => {
       if (isPortNode(s)) return;
-      if (s.x >= mx && s.x <= mx + mw && s.y >= my && s.y <= my + mh) {
-        if (!App.selectedStates.has(s.id)) { App.selectedStates.add(s.id); hlState(s.id, true); }
-      }
+      if (inBox(s.x, s.y)) states.add(s.id);
     });
     // Select transitions whose midpoints are in the marquee.
     // The drawn edges, not the model's: on App.transitions this swept edges from
     // every other scope in the machine — their endpoints have coordinates
     // wherever they were left — and could not select a crossing edge at all,
     // since getState() answers null for a block id.
+    const transitions = new Set(base.transitions);
     viewTransitions().forEach(t => {
       if (t.port) return;
       const from = getNode(t.from), to = getNode(t.to);
       if (!from || !to) return;
       // Approximate center including potential curve
-      const midX = (from.x + to.x) / 2, midY = (from.y + to.y) / 2;
-      if (midX >= mx && midX <= mx + mw && midY >= my && midY <= my + mh) {
-        if (!App.selectedTransitions.has(t.id)) {
-          App.selectedTransitions.add(t.id);
-          const el = App.domCache.transitions.get(t.from + '|' + t.to);
-          if (el) el.classList.add('sel-t');
-        }
-      }
+      if (inBox((from.x + to.x) / 2, (from.y + to.y) / 2)) transitions.add(t.id);
     });
-    App.notes.forEach(n => {
+    // The drawn ones, for the reason the transition sweep above gives: a marquee
+    // that selects what is not on screen makes the next Delete a surprise.
+    const notes = new Set(base.notes);
+    visibleNotes().forEach(n => {
       const pos = resolveNotePos(n);
-      if (pos.x >= mx && pos.x <= mx + mw && pos.y >= my && pos.y <= my + mh) App.selectedNotes.add(n.id);
+      if (inBox(pos.x, pos.y)) notes.add(n.id);
     });
+    const dividers = new Set(base.dividers);
     App.dividers.forEach(d => {
       const mid = dividerMid(d);
-      if (mid.x >= mx && mid.x <= mx + mw && mid.y >= my && mid.y <= my + mh) App.selectedDividers.add(d.id);
+      if (inBox(mid.x, mid.y)) dividers.add(d.id);
     });
-    syncNoteSelectionClasses();
-    syncDividerSelectionClasses();
+    replaceSet(App.selectedStates, states);
+    replaceSet(App.selectedTransitions, transitions);
+    replaceSet(App.selectedNotes, notes);
+    replaceSet(App.selectedDividers, dividers);
+    // Repainted wholesale rather than per hit: a release has to reach a node
+    // the last frame highlighted, and parallel edges share one drawn element,
+    // so which edges are still selected decides whether it keeps its class.
+    syncSelectionClasses();
     checkAutoPan(e);
     return;
   }
@@ -1063,6 +1086,18 @@ export function clearSelection() {
   clearActiveNoteHighlight();
 }
 
+// Brings a selection set to `next` by the difference rather than by clearing
+// and refilling it. These are reactive sets and the marquee rebuilds them on
+// every frame of a drag, so a wholesale clear would announce the whole
+// selection as gone and back again sixty times a second.
+function replaceSet(set, next) {
+  // Snapshotted before the deletes: a ReactiveSet writes a signal on every
+  // mutation, and mutating one through its own live iterator is not something
+  // to rely on.
+  for (const id of [...set]) if (!next.has(id)) set.delete(id);
+  for (const id of next) if (!set.has(id)) set.add(id);
+}
+
 export function selectionCount() {
   return App.selectedStates.size + App.selectedTransitions.size
     + App.selectedNotes.size + App.selectedDividers.size;
@@ -1081,18 +1116,20 @@ export function syncSelectionClasses() {
   for (const [, n] of App.domCache.states) n.classList.remove('sel-st');
   for (const [, n] of App.domCache.transitions) n.classList.remove('sel-t');
   App.selectedStates.forEach(id => hlState(id, true));
-  // Parallel transitions share one drawn edge, so the keys are collected first:
-  // selecting five edges between the same pair must not mean five lookups and
-  // five class writes on the same node.
-  const keys = new Set();
+  // Parallel transitions share one drawn edge, so the elements are collected
+  // first: selecting five edges between the same pair must not mean five lookups
+  // and five class writes on the same node. Resolved through the projection,
+  // because a selected edge that crosses into a block is drawn as `s5|b1` — a
+  // pair the model does not contain, so a key built from the transition's own
+  // endpoints found nothing and the edge stayed unhighlighted while very much
+  // being in `App.selectedTransitions`. Delete then took it, which is the worst
+  // version of that: a selection you cannot see is one you cannot check.
+  const els = new Set();
   App.selectedTransitions.forEach(tid => {
-    const t = getTransition(tid);
-    if (t) keys.add(t.from + '|' + t.to);
+    const el = drawnEdgeEl(tid);
+    if (el) els.add(el);
   });
-  for (const key of keys) {
-    const el = App.domCache.transitions.get(key) || document.querySelector(`[data-edge="${key}"]`);
-    if (el) el.classList.add('sel-t');
-  }
+  for (const el of els) el.classList.add('sel-t');
   syncNoteSelectionClasses();
   syncDividerSelectionClasses();
 }
@@ -1224,16 +1261,17 @@ export function ctxHighlightIncoming() {
 // ══════════════════════════════════════════════════════════════════
 export function selectAllStates() {
   const drawn = viewStates().filter(s => !isPortNode(s));
-  if (!drawn.length && !App.notes.length && !App.dividers.length) return;
+  const notes = visibleNotes();
+  if (!drawn.length && !notes.length && !App.dividers.length) return;
   clearEdgeDirectionHighlight();
   // What is on screen, which inside a block is that block's contents. Select-all
   // reaching states the reader cannot see would make the next Delete a surprise.
   App.selectedStates = new Set(drawn.map(s => s.id));
   App.selectedTransitions = new Set(viewTransitions().filter(t => t.id && !t.port).map(t => t.id));
-  App.selectedNotes = new Set(App.notes.map(n => n.id));
+  App.selectedNotes = new Set(notes.map(n => n.id));
   App.selectedDividers = new Set(App.dividers.map(d => d.id));
   emit(Change.CANVAS);
-  const extra = App.notes.length + App.dividers.length;
+  const extra = notes.length + App.dividers.length;
   const n = drawn.length;
   showStatus(`Selected ${n} item${n === 1 ? '' : 's'}${extra ? ` and ${extra} annotation${extra === 1 ? '' : 's'}` : ''}`);
 }

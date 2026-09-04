@@ -3,7 +3,7 @@ import { createMemo, reactiveRoot } from './reactive.js';
 import { Change, changed } from './store.js';
 
 import { openExportCodeModal } from './export-ui.js';
-import { _regexCacheKey, updateDefBoxOverflowShadow } from './render.js';
+import { _regexCacheKey, drawnEdgeEl, drawnStateEl, updateDefBoxOverflowShadow } from './render.js';
 import { runSim } from './simulation.js';
 import { decideWord, inFamily, machineFormal } from './machines/index.js';
 import { langStepBudget } from './machines/runtime.js';
@@ -772,19 +772,28 @@ export function langClearHighlight() {
   document.querySelectorAll('.edge-g.list-hover-t').forEach(el => el.classList.remove('list-hover-t'));
 }
 
+// Hovering a symbol in the tuple lights what it stands for. The panel reports
+// the *machine* — |Q| counts every state at every depth, which is the honest
+// number there — so the highlight has to project: a state inside a collapsed
+// block is shown by that block's box, and an edge crossing into one is drawn as
+// `s5|b1`. Unprojected, hovering Q on a machine built out of blocks lit the
+// handful of states left at the top level and nothing else, which says the
+// opposite of what the number beside it says.
 export function langHighlight(sym) {
   langClearHighlight();
-  const litStates = (ids) => ids.forEach(id => {
-    const el = App.domCache.states.get(id) || document.querySelector(`.sn[data-id="${id}"]`);
-    if (el) el.classList.add('list-hover-st');
-  });
+  const litStates = (ids) => {
+    const els = new Set();
+    ids.forEach(id => { const el = drawnStateEl(id); if (el) els.add(el); });
+    els.forEach(el => el.classList.add('list-hover-st'));
+  };
   const litEdges = (pred) => {
-    const keys = new Set();
-    App.transitions.forEach(t => { if (pred(t)) keys.add(t.from + '|' + t.to); });
-    keys.forEach(k => {
-      const el = App.domCache.transitions.get(k) || document.querySelector(`.edge-g[data-edge="${k}"]`);
-      if (el) el.classList.add('list-hover-t');
+    const els = new Set();
+    App.transitions.forEach(t => {
+      if (!pred(t)) return;
+      const el = drawnEdgeEl(t.id);
+      if (el) els.add(el);
     });
+    els.forEach(el => el.classList.add('list-hover-t'));
   };
   if (sym === 'Q') litStates(App.states.map(s => s.id));
   else if (sym === 'F') litStates([...App.accepts]);
@@ -795,12 +804,13 @@ export function langHighlight(sym) {
 
 // Highlight every transition carrying one particular input symbol.
 export function langHighlightSymbol(sym, on) {
-  const keys = new Set();
-  App.transitions.forEach(t => { if (t.symbol === sym) keys.add(t.from + '|' + t.to); });
-  keys.forEach(k => {
-    const el = App.domCache.transitions.get(k) || document.querySelector(`.edge-g[data-edge="${k}"]`);
-    if (el) el.classList.toggle('list-hover-t', on);
+  const els = new Set();
+  App.transitions.forEach(t => {
+    if (t.symbol !== sym) return;
+    const el = drawnEdgeEl(t.id);
+    if (el) els.add(el);
   });
+  els.forEach(el => el.classList.toggle('list-hover-t', on));
 }
 
 // ── rendering ─────────────────────────────────────────────────────

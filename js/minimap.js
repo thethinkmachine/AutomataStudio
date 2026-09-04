@@ -39,7 +39,7 @@ import { includeDividerBounds, isRectDivider } from './dividers.js';
 import { markDirty } from './history.js';
 import { includeNoteBounds, noteBoxLayout, resolveNotePos } from './notes.js';
 import { $, App, largeMachineProfile } from './state.js';
-import { viewGraph, viewStates, viewTransitions } from './view-graph.js';
+import { viewGraph, viewStates, viewTransitions, visibleNodeIdFor } from './view-graph.js';
 import { thumbEdgePairs, thumbEdgeSegments, thumbNodeRadius } from './graph-thumb.js';
 import { startNodeId } from './geometry.js';
 import { Change, subscribe } from './store.js';
@@ -311,12 +311,22 @@ function roundRectPath(ctx, x, y, w, h, r) {
 // record a single `state`, the subset/nondeterministic ones an array — this is
 // the whole reason the minimap is worth looking at mid-run on a big machine,
 // where the active state is usually off screen.
+// Answered in *drawn* node ids, because that is what drawStates compares
+// against: the map paints the projection, and a run that has stepped inside a
+// block names states the projection draws no node for. Resolved, the box
+// standing in for them carries the halo — unresolved, the marker simply
+// disappeared for the whole of the time the run was inside.
 function simActiveStates() {
   const step = App.simSteps && App.simSteps[App.simIdx];
   if (!step) return null;
-  if (Array.isArray(step.states)) return step.states.length ? new Set(step.states) : null;
-  if (step.state) return new Set([step.state]);
-  return null;
+  const ids = Array.isArray(step.states) ? step.states : (step.state ? [step.state] : []);
+  if (!ids.length) return null;
+  const drawn = new Set();
+  for (const id of ids) {
+    const node = visibleNodeIdFor(id);
+    if (node) drawn.add(node);
+  }
+  return drawn.size ? drawn : null;
 }
 
 function paint(dt) {

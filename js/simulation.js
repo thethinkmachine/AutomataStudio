@@ -25,6 +25,7 @@ import { poolSize, runParallel, shouldParallelize } from './parallel/pool.js';
 import { renderTracker, resetTracker } from './tape-view.js';
 import { isPainterSuppressed, setSimStepPainter, withPainterSuppressed } from './machines/paint.js';
 import { makeRun } from './machines/run.js';
+import { nodeIdAtScope, viewEdgeKeyFor, viewGraph, visibleNodeIdFor } from './view-graph.js';
 
 export function runSim() {
   resetSim();
@@ -482,7 +483,32 @@ export function simMotionOk() {
 }
 
 export function findSimEdgeGroup(key) {
+  if (!key) return null;
   return App.domCache.transitions.get(key) || document.querySelector(`.edge-g[data-edge="${key}"]`);
+}
+
+// ── the run, projected onto what is drawn ─────────────────────────
+// The machine is flat and the canvas is a projection of it (js/view-graph.js),
+// so a run's own ids are not always ids the canvas has anything under. A step
+// inside a block names a state that is not drawn, and a step that crosses a
+// block's boundary names a transition drawn as `x2|b1` — a pair the *model*
+// does not contain. Built from the transition's own endpoints, every one of
+// those lookups came back empty: no trail, no active edge, no travelling token
+// and no pulse, from the first step a run touched a block onward. The run was
+// correct throughout; the whole of what was lost was the drawing of it.
+//
+// So both halves go through the projection. What resolves to nothing is dropped
+// rather than guessed at: an edge *wholly inside* a block is not on screen, and
+// the box standing in for it is already lit by the state half below.
+
+/** The drawn edge a real transition is part of, or null when it is not drawn. */
+function drawnEdgeKey(t) {
+  return t ? viewEdgeKeyFor(t.id) : null;
+}
+
+/** The drawn node a real state is shown by — itself, or the box it is inside. */
+function drawnNodeId(stateId) {
+  return visibleNodeIdFor(stateId) || null;
 }
 
 // Edge(s) traversed to arrive at step `idx`, as "from|to" keys matching the
@@ -491,21 +517,53 @@ export function findSimEdgeGroup(key) {
 // move + ε-closure). NDTM exploration steps carry no path information —
 // consecutive steps are BFS order, not a run — so they highlight states only.
 export function getSimStepEdgeKeys(idx) {
+  const keyOf = viewGraph().keyOf;
+  const keys = new Set();
+  for (const t of simStepTransitions(idx)) {
+    const key = keyOf.get(t.id);
+    // The *drawn* edge, which several real transitions can share — a Set is
+    // what keeps a block's four incoming rules one highlight. What resolves to
+    // nothing is an edge wholly inside a block, which is not on screen at all.
+    if (key) keys.add(key);
+  }
+  return [...keys];
+}
+
+/**
+ * The real transitions a step was taken along.
+ *
+ * Split out from the keys because the two halves of the highlight want
+ * different things from it: the canvas wants the *drawn* edge, and a block's
+ * preview wants the transition itself, to find the mark for it one level in.
+ * Written twice they would be two answers to "which edge fired", and the
+ * preview would light one the canvas did not.
+ */
+function simStepTransitions(idx) {
   const step = App.simSteps[idx];
   if (!step) return [];
   if (step.tid) {
     const t = getTransition(step.tid);
-    return t ? [t.from + '|' + t.to] : [];
+    return t ? [t] : [];
   }
-  if (step.states) return getNfaSimStepEdgeKeys(idx);
+  if (step.states) return nfaStepTransitions(idx);
   return [];
 }
 
 export function getNfaSimStepEdgeKeys(idx) {
+  const keyOf = viewGraph().keyOf;
+  const keys = new Set();
+  for (const t of nfaStepTransitions(idx)) {
+    const key = keyOf.get(t.id);
+    if (key) keys.add(key);
+  }
+  return [...keys];
+}
+
+function nfaStepTransitions(idx) {
   const eps = App.config.sym.eps, any = App.config.sym.any;
+  const out = [];
   const step = App.simSteps[idx];
   const cur = new Set(step.states);
-  const keys = new Set();
   let seed;
   if (idx === 0) {
     seed = new Set([App.startId]);
@@ -522,7 +580,7 @@ export function getNfaSimStepEdgeKeys(idx) {
     if (sym !== null) {
       prevStates.forEach(sid => App.transitions.forEach(t => {
         if (t.from === sid && (t.symbol === sym || t.symbol === any) && cur.has(t.to)) {
-          keys.add(t.from + '|' + t.to);
+          out.push(t);
           seed.add(t.to);
         }
       }));
@@ -534,17 +592,23 @@ export function getNfaSimStepEdgeKeys(idx) {
     const s = stk.pop();
     App.transitions.forEach(t => {
       if (t.from === s && t.symbol === eps && cur.has(t.to)) {
-        keys.add(t.from + '|' + t.to);
+        out.push(t);
         if (!seen.has(t.to)) { seen.add(t.to); stk.push(t.to); }
       }
     });
   }
-  return [...keys];
+  return out;
 }
 
 // What the last paint lit, so undoing it is a walk over a few dozen elements
 // rather than four document-wide selector matches per step of playback.
 let simLit = [];
+
+// The preview paths whose `d` the last paint wrote. Kept apart from simLit
+// because what has to be undone there is an attribute rather than a class —
+// and blanking every block's path unconditionally would mean a write per box on
+// screen per step, on boxes with no run anywhere near them.
+let simLitPaths = [];
 
 function litAdd(el, ...classes) {
   if (!el) return;
@@ -555,6 +619,8 @@ function litAdd(el, ...classes) {
 export function clearSimCanvasHighlights() {
   for (const [el, classes] of simLit) el.classList.remove(...classes);
   simLit = [];
+  for (const el of simLitPaths) el.setAttribute('d', '');
+  simLitPaths = [];
   // Pulses are transient rings the animation appends and removes itself; the
   // sweep is a safety net for the ones whose animationend never fired, and it is
   // scoped to the states layer rather than the document.
@@ -573,9 +639,15 @@ export function clearSimCanvasHighlights() {
 // Only a jump backwards costs a rebuild, which is what a scrub is and is
 // bounded by where it lands.
 function trailUpTo(idx) {
+  // The keys are *drawn* keys, so the scope is part of what makes the cache
+  // valid: drilling into a block while a run is paused changes which node every
+  // step of it is shown by, and a trail carried across that would be a set of
+  // keys for a diagram that is no longer on screen. Rebuilding costs what a
+  // backward scrub costs, and only on a scope change.
+  const scopeKey = (App.scope || []).join('/');
   let c = App._simTrail;
-  if (!c || c.run !== App.simSteps || c.upTo > idx) {
-    c = { run: App.simSteps, upTo: 0, visited: new Set(), keys: new Set() };
+  if (!c || c.run !== App.simSteps || c.upTo > idx || c.scope !== scopeKey) {
+    c = { run: App.simSteps, scope: scopeKey, upTo: 0, visited: new Set(), keys: new Set() };
   }
   for (let i = c.upTo; i < idx; i++) {
     const s = App.simSteps[i];
@@ -602,13 +674,20 @@ export function updateSimCanvasHighlights(step) {
   const activeKeys = getSimStepEdgeKeys(App.simIdx);
   const activeSet = new Set(activeKeys);
   const hl = step.state ? [step.state] : (step.states || []);
-  const hlSet = new Set(hl);
+
+  // Resolved to *drawn* nodes before anything is compared, and deduped there:
+  // several states inside one block are one box on screen, so a set of real ids
+  // would light it once per member and — worse — the "is this one already
+  // active?" test below would answer about ids the canvas does not have.
+  const hlNodes = new Set();
+  hl.forEach(id => { const n = drawnNodeId(id); if (n) hlNodes.add(n); });
+  const visitedNodes = new Set();
+  visited.forEach(id => { const n = drawnNodeId(id); if (n && !hlNodes.has(n)) visitedNodes.add(n); });
 
   // The registries rather than the document: after culling only the drawn
   // window has nodes, and a state the trail passed through that is currently
   // off screen has nothing to mark.
-  visited.forEach(id => {
-    if (hlSet.has(id)) return;
+  visitedNodes.forEach(id => {
     litAdd(App.domCache.states.get(id), 'sim-visited-st');
   });
   trailKeys.forEach(k => {
@@ -616,7 +695,7 @@ export function updateSimCanvasHighlights(step) {
     litAdd(findSimEdgeGroup(k), 'sim-trail-t');
   });
 
-  hl.forEach(id => {
+  hlNodes.forEach(id => {
     litAdd(App.domCache.states.get(id) || document.querySelector(`[data-id="${id}"]`),
       step.final === 'reject' ? 'rej-st' : 'act-st');
   });
@@ -626,12 +705,22 @@ export function updateSimCanvasHighlights(step) {
     litAdd(document.getElementById(`pill-lbl-${k}`), 'sim-active-lbl');
   });
 
+  // ── one level in ──
+  // A box on the canvas is a small drawing of the machine inside it, so the
+  // marks above stop one level short of what the reader can actually see: the
+  // box lights, and the dot that is really running stays the same grey as the
+  // twenty around it. These write onto elements the preview already built, so
+  // the cost is a class per mark and nothing is rebuilt — see markPreviewRun.
+  markPreviewRun(hl, visited, simStepTransitions(App.simIdx), step);
+
   // Motion: a token slides along each newly-taken edge, then the arrival
   // state pulses (verdict-colored on the final step). Only on a single
   // forward step — scrubbing and jumps update instantly.
   if (!simMotionOk()) return;
   const tone = step.final === 'reject' ? 'rej' : step.final === 'accept' ? 'acc' : '';
-  const pulseAll = () => hl.forEach(id => pulseSimState(id, tone));
+  // Over the drawn nodes, so a run that has stepped inside a block pulses the
+  // box once rather than pulsing nothing four times.
+  const pulseAll = () => hlNodes.forEach(id => pulseSimNode(id, tone));
   if (advancedOne && activeKeys.length) {
     const dur = App.autoTimer
       ? Math.max(160, Math.min(App.config.autoSpeed * 0.6, 500))
@@ -641,6 +730,66 @@ export function updateSimCanvasHighlights(step) {
     });
   } else if ((advancedOne && step.final) || (isNewRun && App.simIdx === 0)) {
     pulseAll();
+  }
+}
+
+/**
+ * The run, marked inside the previews the blocks on screen are drawing.
+ *
+ * **Nothing here rebuilds a preview**, and that is the whole of why it is
+ * affordable. `renderAll` draws a preview only when `blockPreviewKey` changes,
+ * and a run changes no position and no transition — so the dots and the edge
+ * subpaths this writes to were built once and are still there. Per step the
+ * work is: a short ancestry walk per marked state (nodeIdAtScope), a Map get
+ * per mark, and one `d` write per box the run is actually inside. It runs on a
+ * step change rather than on a frame, so it is off the render path entirely.
+ *
+ * What it deliberately does not do is send a travelling token in there. At
+ * preview scale an interior edge is a dozen pixels and a node is two, so the
+ * dot would be larger than the states it travels between — the one part of the
+ * canvas animation that does not survive being shrunk.
+ */
+function markPreviewRun(active, visited, transitions, step) {
+  const boxes = App.domCache.states;
+  const activeCls = step.final === 'reject' ? 'is-rej' : 'is-active';
+
+  // A state is marked in a preview only when it is *inside* a box — a state at
+  // this scope is drawn as itself and already has the canvas mark.
+  const markState = (stateId, cls) => {
+    const boxId = drawnNodeId(stateId);
+    if (!boxId || boxId === stateId) return;
+    const g = boxes.get(boxId);
+    if (!g || !g.__pvIndex) return;   // off screen, or blanked by the zoom LOD
+    const pvId = nodeIdAtScope(stateId, boxId);
+    const el = pvId && g.__pvIndex.get(pvId);
+    if (el) litAdd(el, cls);
+  };
+
+  visited.forEach(id => markState(id, 'is-visited'));
+  active.forEach(id => markState(id, activeCls));
+
+  // The edge, which is only drawn when both ends are immediate members of the
+  // same box: an edge deeper than that is inside the nested rect the state half
+  // has already lit, and one crossing the box's own boundary is the canvas edge
+  // above.
+  const byBox = new Map();
+  for (const t of transitions) {
+    const boxId = drawnNodeId(t.from);
+    if (!boxId || boxId === t.from || drawnNodeId(t.to) !== boxId) continue;
+    const g = boxes.get(boxId);
+    if (!g || !g.__pvEdgeD) continue;
+    const a = nodeIdAtScope(t.from, boxId), b = nodeIdAtScope(t.to, boxId);
+    if (!a || !b || a === b) continue;
+    const d = g.__pvEdgeD.get(a + '|' + b);
+    if (!d) continue;
+    const acc = byBox.get(g);
+    if (acc) acc.push(d); else byBox.set(g, [d]);
+  }
+  for (const [g, parts] of byBox) {
+    const el = g.__parts.pvActive;
+    el.setAttribute('d', parts.join(' '));
+    simLitPaths.push(el);
+    if (step.final === 'reject') litAdd(el, 'is-rej');
   }
 }
 
@@ -695,19 +844,53 @@ export function animateSimToken(edgeKey, dur, onDone) {
   token.raf = requestAnimationFrame(tick);
 }
 
-export function pulseSimState(id, tone = '') {
-  const grp = App.domCache.states.get(id) || document.querySelector(`[data-id="${id}"]`);
-  const c = grp && grp.querySelector('circle.bd');
-  if (!c) return;
-  const ring = makeSVG('circle');
-  ring.setAttribute('cx', c.getAttribute('cx'));
-  ring.setAttribute('cy', c.getAttribute('cy'));
-  ring.setAttribute('r', R);
+/**
+ * The arrival ring, on a *drawn* node — which is a circle for a state and a box
+ * for a block or a port.
+ *
+ * The shape is asked of the node rather than assumed, because the ring has to
+ * trace the outline the reader can see: a circle of radius R centred on a box
+ * two hundred pixels wide is a ring floating inside it, which reads as a second
+ * unexplained mark rather than as "control arrived here".
+ *
+ * The scale is the shape's too. `.sim-pulse` grows 1.7x from its own centre,
+ * which is right for a 22px circle and far too much for a block's box — it
+ * would sweep out over half the diagram. `.is-box` is the gentler ramp.
+ */
+export function pulseSimNode(nodeId, tone = '') {
+  const grp = App.domCache.states.get(nodeId) || document.querySelector(`[data-id="${nodeId}"]`);
+  if (!grp) return;
+  const parts = grp.__parts || {};
+  const box = (grp.__kind === 'block' || grp.__kind === 'port') ? parts.body : null;
+  let ring;
+  if (box) {
+    ring = makeSVG('rect');
+    ring.setAttribute('x', box.getAttribute('x'));
+    ring.setAttribute('y', box.getAttribute('y'));
+    ring.setAttribute('width', box.getAttribute('width'));
+    ring.setAttribute('height', box.getAttribute('height'));
+    const rx = box.getAttribute('rx');
+    if (rx) ring.setAttribute('rx', rx);
+    ring.classList.add('is-box');
+  } else {
+    const c = parts.circle || (grp.querySelector && grp.querySelector('circle.bd'));
+    if (!c) return;
+    ring = makeSVG('circle');
+    ring.setAttribute('cx', c.getAttribute('cx'));
+    ring.setAttribute('cy', c.getAttribute('cy'));
+    ring.setAttribute('r', R);
+  }
   ring.classList.add('sim-pulse');
   if (tone) ring.classList.add(tone);
   grp.appendChild(ring);
   ring.addEventListener('animationend', () => ring.remove());
   setTimeout(() => ring.remove(), 900); // safety net if animations are disabled
+}
+
+/** The same, addressed by a *machine* state id. */
+export function pulseSimState(id, tone = '') {
+  const nodeId = drawnNodeId(id);
+  if (nodeId) pulseSimNode(nodeId, tone);
 }
 
 // ── Scrubber / transport ──

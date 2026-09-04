@@ -9,10 +9,10 @@ import { scheduleMinimap } from './minimap.js';
 import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
 import { $, App, OmegaAcceptance, R, SVG_NS, edgeLabelsHidden, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, statePriority, usesParityPriorities, wrapStateLabelsOn } from './state.js';
-import { BLOCK_STRIP_H, blockPreviewGraph, blockPreviewKey, getNode, viewEdgeGroup, viewStates } from './view-graph.js';
+import { BLOCK_STRIP_H, blockPreviewGraph, blockPreviewKey, getNode, viewEdgeGroup, viewEdgeKeyFor, viewStates, visibleNodeIdFor } from './view-graph.js';
 import { machineSupportsBlocks } from './machines/index.js';
 import { allBlocks } from './blocks-ui.js';
-import { thumbBounds, thumbEdgePairs, thumbEdgePath, thumbEdgeSegments, thumbFit, thumbNodeRadius } from './graph-thumb.js';
+import { thumbBounds, thumbEdgePairs, thumbEdgePath, thumbEdgeSegments, thumbSubpath, thumbFit, thumbNodeRadius } from './graph-thumb.js';
 import { enterBlockScope } from './scope.js';
 import { edgeTipFor, getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
 import { Change, changed, emit, subscribe } from './store.js';
@@ -137,6 +137,40 @@ function edgeGroupFor(key) {
   const from = getNode(fromId), to = getNode(toId);
   if (!from || !to) return null;
   return { from, to, ts, grp: { from: fromId, to: toId, ts } };
+}
+
+// ── a machine id, resolved to the thing on screen ─────────────────
+// The two lookups every surface that lights something on the canvas needs, in
+// one place because they were being written out per surface and the model's own
+// ids are *almost* always right — which is what makes getting them wrong so
+// quiet. A state inside a collapsed block has no node of its own, and an edge
+// that crosses a block's boundary is registered under `s5|b1`, a pair the model
+// does not contain. Built from the model's ids, both lookups simply come back
+// empty, and the caller lights nothing at all with nothing to say it failed.
+//
+// The registry first and a selector second, the way every other lookup here is
+// written: after culling only the drawn window has nodes, and a state that is
+// currently off screen has nothing to mark. The fallback is deliberately not
+// scoped to `.sn` — the answer may be a block's box or a port's tab.
+
+/**
+ * The element standing for a real state: its own circle, or the box of whichever
+ * block it is inside. Null when it is in some other branch of the tree entirely.
+ */
+export function drawnStateEl(stateId) {
+  const id = visibleNodeIdFor(stateId);
+  if (!id) return null;
+  return App.domCache.states.get(id) || document.querySelector(`[data-id="${id}"]`);
+}
+
+/**
+ * The edge group a real transition is drawn as, or null when it is not drawn —
+ * which an edge wholly inside a collapsed block genuinely is not.
+ */
+export function drawnEdgeEl(transitionId) {
+  const key = viewEdgeKeyFor(transitionId);
+  if (!key) return null;
+  return App.domCache.transitions.get(key) || document.querySelector(`.edge-g[data-edge="${key}"]`);
 }
 
 // How big the label for a group of transitions will be, before it is written to
@@ -849,8 +883,36 @@ function moveBlockNode(grp, node) {
   // the preview. Writing the new position onto the rect as well moved it twice,
   // and two boxes' worth of offset puts the clip clean off the block, which
   // clips the whole interior away.
+  slideBlockPreview(grp, x, y);
+}
+
+/**
+ * Puts a block's preview back under its box.
+ *
+ * **One function because there are two callers**, and they had drifted — the
+ * same shape of bug `startArrowD()` carries its own note about. The drag path
+ * called it; the full render did not, and a full render is the *only* thing
+ * that runs after Arrange, a paste, an undo, an arrow-key nudge, a collision
+ * push or the JFLAP importer's spread. Every one of those writes a block
+ * record's coordinates without a member state moving — which is what
+ * `blockPreviewKey` is built from, so the preview was neither rebuilt nor
+ * re-translated and simply stayed where the box used to be. On a machine whose
+ * layout had been rearranged, that is a canvas of empty boxes with their
+ * diagrams scattered across the background.
+ *
+ * The translate is a delta from `__previewAt` — where the preview was *drawn* —
+ * rather than an absolute position, because the interior is laid out in
+ * absolute canvas coordinates once and then slid, which is what keeps a drag
+ * frame from rebuilding a hundred child elements. The clip rect rides along:
+ * `clipPathUnits` defaults to `userSpaceOnUse`, so this transform establishes
+ * the space the clip resolves in, which is why the rect stays written at
+ * `__previewAt` and must never be moved as well.
+ */
+function slideBlockPreview(grp, x, y) {
   const at = grp.__previewAt;
-  if (at) p.preview.setAttribute('transform', `translate(${x - at.x} ${y - at.y})`);
+  if (!at) return;
+  const dx = x - at.x, dy = y - at.y;
+  grp.__parts.preview.setAttribute('transform', dx || dy ? `translate(${dx} ${dy})` : '');
 }
 
 function movePortNode(grp, node) {
@@ -1150,6 +1212,14 @@ function createBlockNode(id) {
   const pvEdges = makeSVG('path');
   pvEdges.classList.add('bn-pv-edges');
   preview.appendChild(pvEdges);
+  // The edge a run is taking right now, drawn over the quiet ones and under the
+  // node dots — the order the canvas itself uses. It is a *second path* rather
+  // than a class on the first because every preview edge shares one `d`: at this
+  // scale a path per edge is a hundred elements per box, which is exactly the
+  // cost the single path exists to avoid. One more path is one more element.
+  const pvActive = makeSVG('path');
+  pvActive.classList.add('bn-pv-active');
+  preview.appendChild(pvActive);
   const pvNodes = makeSVG('g');
   pvNodes.classList.add('bn-pv-nodes');
   preview.appendChild(pvNodes);
@@ -1169,7 +1239,7 @@ function createBlockNode(id) {
   count.classList.add('bn-count');
   g.appendChild(count);
 
-  g.__parts = { body, title, count, preview, pvEdges, pvNodes, clip, clipRect };
+  g.__parts = { body, title, count, preview, pvEdges, pvActive, pvNodes, clip, clipRect };
   g.__previewKey = null;
 
   // Opening is decided on `pointerdown`, from two presses of our own, and NOT
@@ -1278,6 +1348,11 @@ function syncBlockNode(g, node, lod) {
   if (stale) {
     p.preview.setAttribute('transform', '');
     g.__previewAt = { x, y };
+  } else {
+    // The box may have moved since the preview was drawn, by any of the paths
+    // that end in a full render rather than in a drag frame. See
+    // slideBlockPreview — this is the half that was missing.
+    slideBlockPreview(g, x, y);
   }
 
   // The clip is the body below the strip: the preview must never paint over the
@@ -1303,13 +1378,17 @@ function syncBlockNode(g, node, lod) {
 
   if (lod || !inside) {
     p.pvEdges.setAttribute('d', '');
+    p.pvActive.setAttribute('d', '');
     p.pvNodes.innerHTML = '';
+    g.__pvIndex = null;
+    g.__pvEdgeD = null;
     return;
   }
-  drawPreview(p, inside, pv);
+  drawPreview(g, inside, pv);
 }
 
-function drawPreview(p, inside, box) {
+function drawPreview(g, inside, box) {
+  const p = g.__parts;
   const nodes = inside.nodes.slice(0, PREVIEW_MAX_NODES);
   const shown = new Set(nodes.map(n => n.id));
   const bounds = thumbBounds(nodes, R, n => (n.box ? Math.hypot(n.box.w, n.box.h) / 2 : R));
@@ -1317,8 +1396,26 @@ function drawPreview(p, inside, box) {
   const r = thumbNodeRadius(fit.scale, R);
 
   const pairs = thumbEdgePairs(inside.edges.filter(e => shown.has(e.from) && shown.has(e.to)));
-  p.pvEdges.setAttribute('d', thumbEdgePath(
-    thumbEdgeSegments(pairs, inside.byId, fit, r, App.config.render.curveOff)));
+  const segments = thumbEdgeSegments(pairs, inside.byId, fit, r, App.config.render.curveOff);
+  p.pvEdges.setAttribute('d', thumbEdgePath(segments));
+  p.pvActive.setAttribute('d', '');
+
+  // ── what the playback highlight addresses ──
+  // Two lookups, built in the loops that were already running rather than by a
+  // second pass: a state's dot, and one drawn edge's subpath. Both live only as
+  // long as the preview does — they are dropped whenever it is rebuilt or the
+  // LOD blanks it, and the node is evicted with the box when it scrolls off.
+  //
+  // The *graph* is deliberately still not retained (see the note in
+  // syncBlockNode): these hold ids and elements that are alive anyway, plus one
+  // short string per drawn edge — the same characters `pvEdges` already carries,
+  // split up. Both are bounded by PREVIEW_MAX_NODES, which is what bounds the
+  // preview itself.
+  const index = new Map();
+  const edgeD = new Map();
+  for (const s of segments) edgeD.set(s.key, thumbSubpath(s));
+  g.__pvIndex = index;
+  g.__pvEdgeD = edgeD;
 
   // A nested block draws as a tiny rect rather than a circle, so the silhouette
   // itself says there is another level below this one.
@@ -1340,6 +1437,7 @@ function drawPreview(p, inside, box) {
       if (App.accepts.has(n.id)) el.classList.add('is-accept');
       if (n.id === App.startId) el.classList.add('is-start');
     }
+    index.set(n.id, el);
     p.pvNodes.appendChild(el);
   }
 }
