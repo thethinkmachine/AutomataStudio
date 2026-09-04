@@ -1,6 +1,6 @@
 {
   "name": "automatastudio",
-  "version": "2.1.0",
+  "version": "2.7.2",
   "description": "A web-based visualizer and simulator for finite state machines, pushdown automata, and Turing machines.",
   "author": {
     "name": "Shreyan C",

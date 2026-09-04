@@ -2,7 +2,7 @@ import { tokenizeSymbols } from './grammar/parse.js';
 import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { applyCamera } from './canvas.js';
 import { snapshot } from './history.js';
-import { importJFLAPText } from './import-jflap.js';
+import { importJFLAPData, readJFLAPText } from './import-jflap.js';
 import { closeModal, showOverlay } from './modal.js';
 import { refreshQuickSettings } from './quick-settings.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
@@ -12,7 +12,7 @@ import { $, APP_VERSION, App, MachineExamples, MachineTypes, Workspaces, activeW
 import { WORKSPACE_EXT, fileStem, hasFileHost, noteOpenDocument, openFileDialog, saveFileAs, suggestedFileName, writeFile } from './file-host.js';
 import { hideContextMenu } from './states-transitions.js';
 import { Change, emit } from './store.js';
-import { autoFitLoadedMachine, fitToScreen, hideTabContextMenu, hideTabOverflowMenu, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
+import { autoFitLoadedMachine, createTab, fitToScreen, hideTabContextMenu, hideTabOverflowMenu, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
 import { hasPdaNondeterminism, hasSingleTapeNondeterminism, isAnyPDA, performClear, resetIds, showStatus } from './utils.js';
 import { applyMachineSwitch } from './view.js';
 
@@ -921,6 +921,65 @@ export function saveJSON() {
   if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
 }
 
+// ── One Save ──────────────────────────────────────────────────────
+//  What Ctrl+S and the header's Save button both mean. They were two different
+//  things bound to one advertised shortcut: the button persisted the workspace
+//  into browser storage while the keystroke also wrote — on the website,
+//  *downloaded* — a file. So Ctrl+S on the site dropped a fresh copy into the
+//  Downloads folder on every press, and the button whose tooltip reads "Ctrl+S"
+//  produced no file at all.
+//
+//  The two hosts still differ, because what there is to save differs:
+//
+//    desktop  the file this workspace came from, asking where the first time,
+//             and the workspace record behind it
+//    website  the workspace, in this browser — there is no file to write, and
+//             Save As (Ctrl+Shift+S) is how one is produced
+//
+//  What does not differ is that the button and the keystroke are one act.
+export async function saveNow() {
+  if (!hasFileHost()) return saveWorkspace();
+  const ok = await saveDocument();
+  await saveWorkspace({ silent: true });
+  return ok;
+}
+
+// ── Saying which host this is ─────────────────────────────────────
+//  The file verbs mean different things in the two builds and the labels have
+//  to say which. A reader on the website who clicks "Save workspace" and then
+//  goes looking in their Downloads folder has been told the wrong thing, and
+//  concludes that saving is broken rather than that it saved somewhere else —
+//  and the one control that does write a file was a menu item called "Save
+//  Machine As…" inside a tray called "Export".
+//
+//  Written once at boot rather than branched on at hover: `hasFileHost()`
+//  cannot change during a session, and a label that asks per hover is a second
+//  place for the two answers to drift apart.
+const DOCUMENT_LABELS = {
+  host: {
+    saveTip: 'Save machine to its file',
+    saveAria: 'Save machine',
+    saveAs: 'Save Machine As…',
+  },
+  browser: {
+    saveTip: 'Save workspace in this browser',
+    saveAria: 'Save workspace',
+    saveAs: 'Download Machine (.automaton)',
+  },
+};
+
+export function syncDocumentLabels() {
+  const copy = hasFileHost() ? DOCUMENT_LABELS.host : DOCUMENT_LABELS.browser;
+
+  const save = $('save-now-btn');
+  if (save) {
+    save.setAttribute('data-tip', copy.saveTip);
+    save.setAttribute('aria-label', copy.saveAria);
+  }
+  const saveAs = $('save-menu-save-as');
+  if (saveAs) saveAs.textContent = copy.saveAs;
+}
+
 export function toggleSaveMenu(e) {
   e.stopPropagation();
   const m = $('save-menu');
@@ -956,6 +1015,88 @@ export async function openDocument() {
   return applyOpenedDocument(res);
 }
 
+// ── The boot gate ─────────────────────────────────────────────────
+//  A file the OS hands over on a *cold* launch arrives before the app has
+//  finished restoring its workspaces, and the two then race for the canvas.
+//  The renderer collects that path the moment `electron-bridge.js` is
+//  evaluated — first in main.js, so before init.js has even run — while
+//  `loadBackup()` is an IndexedDB round trip that resolves later and ends in
+//  `switchTab`, which rehydrates `App` from the stored tab. The file loaded,
+//  and was then overwritten by whatever had been on the canvas last time.
+//
+//  Which is exactly the shape the reader sees: opening a file into a *running*
+//  app is fine, because there is nothing left to restore, and opening one by
+//  double-clicking it is not.
+//
+//  So a document from the host is held until the restore has finished. It is a
+//  queue rather than a single slot because `second-instance` can deliver while
+//  the first launch is still booting.
+
+let bootRestored = false;
+const queuedExternalOpens = [];
+
+// Called once, at the end of the boot sequence — see finishBoot in js/init.js.
+// Anything the OS handed over in the meantime lands now, in arrival order.
+export function markBootRestored() {
+  if (bootRestored) return;
+  bootRestored = true;
+  const queued = queuedExternalOpens.splice(0, queuedExternalOpens.length);
+  for (const doc of queued) applyOpenedDocument(doc);
+}
+
+// Module state that would otherwise leak between tests.
+export function _resetBootGateForTests() {
+  bootRestored = false;
+  queuedExternalOpens.length = 0;
+}
+
+// The entry point for a file the OS handed us — a double-click, an "Open
+// With", a path on the command line, or a second launch while this one is
+// already running. Every one of those may arrive before the restore has run.
+export function openExternalDocument(doc) {
+  if (!bootRestored) { queuedExternalOpens.push(doc); return false; }
+  return applyOpenedDocument(doc);
+}
+
+// ── Where an opened document lands ────────────────────────────────
+//  Opening a file must never destroy the machine already on the canvas. A tab
+//  *is* a document here, so the rule is the one every editor with tabs uses:
+//
+//    the file is already open  → go to the tab holding it
+//    this tab is untouched     → read it into this one
+//    otherwise                 → open a tab for it
+//
+//  "Untouched" is about content rather than about the dirty flag: a workspace
+//  restored from the backup is not dirty and is very much occupied. A tab that
+//  already has a file of its own is never reused either, whatever is drawn on
+//  it — that path is what Ctrl+S writes, and reusing the tab would silently
+//  retarget the reader's save at a different file.
+
+function workspaceIsUntouched() {
+  const ws = activeWorkspace();
+  if (!ws) return true;
+  if (ws.filePath) return false;
+  return !App.states.length
+    && !(App.notes || []).length
+    && !(App.dividers || []).length
+    && !(App.blocks || []).length
+    && !(App.grammar?.productions || []).length
+    && !App.meta;
+}
+
+// Moves to the tab the document should be read into, creating one when the
+// canvas is occupied. Called only once the payload is known to parse, so a
+// file that will not open costs neither a tab nor the machine on screen.
+function placeOpenedDocument(filePath) {
+  const existing = filePath && Workspaces.find(w => w.filePath === filePath);
+  if (existing) {
+    if (existing.id !== activeWorkspaceId) switchTab(existing.id);
+    return;
+  }
+  if (workspaceIsUntouched()) return;
+  createTab(filePath ? fileStem(filePath) : undefined);
+}
+
 // A document the host handed over: from the Open dialog, from a double-click,
 // from an "Open With", or from a path on the command line. `binary` is a PNG,
 // which carries the workspace in a trailing text chunk and so has to arrive as
@@ -965,7 +1106,7 @@ export function applyOpenedDocument(doc) {
   const payload = doc.binary
     ? Uint8Array.from(atob(doc.base64 || ''), c => c.charCodeAt(0)).buffer
     : doc.text;
-  const ok = applyDocument(payload, doc.path);
+  const ok = applyDocument(payload, doc.path, { filePath: doc.path });
   // A file that would not parse is not the file this workspace is; binding the
   // path anyway would point Ctrl+S at it and overwrite it with something else.
   if (ok) bindActiveFile(doc.path, { rename: true });
@@ -974,42 +1115,63 @@ export function applyOpenedDocument(doc) {
 
 // ── Reading one ───────────────────────────────────────────────────
 
+// Reads a payload without touching anything on screen. `payload` is text, or
+// an ArrayBuffer for a PNG; `name` decides which, and is a filename rather
+// than a path so every caller can supply it.
+//
+// Split out from applying because the tab a document lands in is decided
+// *between* the two: a file that will not parse has to leave the reader
+// exactly where they were, with no empty tab to close. It throws the way each
+// underlying reader throws — applyDocument owns the copy for every failure.
+function readDocumentPayload(payload, name) {
+  const lower = String(name || '').toLowerCase();
+  if (lower.endsWith('.jff') || lower.endsWith('.jflap')) {
+    // JFLAP files carry their own schema; readJFLAPText validates them, so
+    // they never reach the workspace JSON path below.
+    return { kind: 'jflap', data: readJFLAPText(payload) };
+  }
+  if (lower.endsWith('.png')) {
+    const text = new TextDecoder().decode(payload);
+    const parts = text.split("\n--AutomataData--\n");
+    if (parts.length < 2) return { kind: 'png', missing: true };
+    const data = JSON.parse(parts[1]);
+    validateSchema(data);
+    return { kind: 'workspace', data };
+  }
+  const data = JSON.parse(payload);
+  validateSchema(data);
+  return { kind: 'workspace', data };
+}
+
 // The one parser, shared by the drop handler, the file input and the host.
-// `payload` is text, or an ArrayBuffer for a PNG; `name` decides which, and is
-// a filename rather than a path so the two callers can both supply it.
+// `opts.filePath` is the file this came from where there is one — a drop and
+// the hidden input have a name and no path — and is what decides whether the
+// document is already open in a tab.
 //
 // Returns whether the document was applied, because the caller has to know
 // before it binds a path to the workspace.
-export function applyDocument(payload, name) {
+export function applyDocument(payload, name, opts = {}) {
   const lower = String(name || '').toLowerCase();
   const isPng = lower.endsWith('.png');
   const isJflap = lower.endsWith('.jff') || lower.endsWith('.jflap');
   try {
-    // JFLAP files carry their own schema; importJFLAPText validates and
-    // loads them, so they never reach the workspace JSON path below.
+    const read = readDocumentPayload(payload, name);
+    if (read.missing) {
+      showStatus('Error: No workspace data found in this PNG');
+      return false;
+    }
+
+    placeOpenedDocument(opts.filePath || null);
+
     // JFLAP carries no description of its own, so anything the previous
     // machine had to say goes away with it.
-    if (isJflap) { importJFLAPText(payload); showExampleCard(null); return true; }
+    if (read.kind === 'jflap') { importJFLAPData(read.data); showExampleCard(null); return true; }
 
-    let data;
-    if (isPng) {
-      const text = new TextDecoder().decode(payload);
-      const marker = "\n--AutomataData--\n";
-      const parts = text.split(marker);
-      if (parts.length < 2) {
-        showStatus('Error: No workspace data found in this PNG');
-        return false;
-      }
-      data = JSON.parse(parts[1]);
-    } else {
-      data = JSON.parse(payload);
-    }
-    validateSchema(data);
-    loadData(data);
+    loadData(read.data);
     // A saved workspace usually has no `meta`; an example or a StateMate
     // result saved to disk does. Either way the card is retargeted rather
     // than left describing the machine that was just replaced.
-    showExampleCard(data.meta || null);
+    showExampleCard(read.data.meta || null);
     showStatus('Machine loaded');
     return true;
   } catch (err) {
@@ -1030,6 +1192,10 @@ export function handleFiles(files) {
   // never binds a file to the workspace: it loads the machine and leaves Ctrl+S
   // meaning whatever it meant before, rather than silently retargeting it at a
   // file the reader only dragged in to look at.
+  //
+  // With no path there is no tab to go back to either, so a drop onto an
+  // occupied canvas opens a new tab like every other way in. See WHERE AN
+  // OPENED DOCUMENT LANDS above.
   reader.onload = ev => { applyDocument(ev.target.result, f.name); };
   if (isPng) reader.readAsArrayBuffer(f);
   else reader.readAsText(f);

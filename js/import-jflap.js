@@ -805,9 +805,23 @@ function spreadForBlocks() {
 }
 
 // ── entry point ───────────────────────────────────────────────────
-export function importJFLAPText(text) {
+// Reading and applying are two steps, because the caller has to know whether a
+// file *is* one before deciding where to put it. A .jff that will not parse
+// must not cost the reader a tab, still less the machine they were looking at
+// — see WHERE AN OPENED DOCUMENT LANDS in js/persistence.js.
+//
+// Throws on anything it cannot read, exactly as the combined function did.
+export function readJFLAPText(text) {
   const data = jflapToWorkspace(jflapParseXML(text));
   validateSchema(data);
+  return data;
+}
+
+export function importJFLAPText(text) {
+  return importJFLAPData(readJFLAPText(text));
+}
+
+export function importJFLAPData(data) {
   performClear();
   loadData(data);
 

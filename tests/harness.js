@@ -221,6 +221,9 @@ function resetModuleState() {
   // The legacy-database adoption is memoised on its promise, so one test's
   // adoption would otherwise stand in for the next test's.
   persistence._resetLegacyAdoptionForTests();
+  // Whether the boot restore has finished, and anything the host handed over
+  // before it did. Both latch for the life of a session.
+  persistence._resetBootGateForTests();
   glyphs.resetGlyphCache();
   exportFonts.resetFontCache();
   // What the formal-definition box last painted. It exists so an unchanged

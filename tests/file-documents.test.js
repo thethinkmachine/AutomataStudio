@@ -319,3 +319,262 @@ test('the host is told what the window is editing', async () => {
   assert.strictEqual(noted.path, '/tmp/picked.automaton');
   removeFakeHost();
 });
+
+// ── Where an opened document lands ────────────────────────────────
+//  Opening a file must never destroy the machine already on the canvas, and on
+//  a cold launch it must not be destroyed *by* the restore either — which is
+//  the one the reader hits, because it is the path a double-click takes.
+
+// A workspace with a machine actually drawn on it. `seedWorkspace` leaves the
+// tab occupied but `harness.resetApp()` in docFor() empties it again, which is
+// the untouched case; this is the other one.
+//
+// Split in two because resetApp() also clears the boot gate — so the cold-launch
+// cases below have to stand a session up *without* resetting, exactly as
+// loadBackup() does when a queued document is already waiting on it.
+function restoreSession(name = 'Occupied') {
+  context.App.machine = 'DFA';
+  context.App.states = [{ id: 's9', name: 'busy', x: 0, y: 0 }];
+  context.App.startId = 's9';
+  context.Workspaces.length = 0;
+  context.Workspaces.push({ id: 'w0', name, dirty: false, data: context.exportWorkspaceState() });
+  context.setActiveWorkspaceId('w0');
+}
+
+function occupiedWorkspace(name = 'Occupied') {
+  harness.resetApp();
+  context.setActiveWorkspaceId(null);
+  restoreSession(name);
+}
+
+// The bytes of a saved document, without disturbing what is on the canvas now.
+function documentTextFor(stateName) {
+  const keep = {
+    states: context.App.states, startId: context.App.startId,
+    accepts: context.App.accepts, transitions: context.App.transitions
+  };
+  context.App.states = [{ id: 'sA', name: stateName, x: 5, y: 5 }];
+  context.App.startId = 'sA';
+  context.App.accepts = new Set();
+  context.App.transitions = [];
+  const text = JSON.stringify(context.getWorkspaceData());
+  Object.assign(context.App, keep);
+  return text;
+}
+
+test('an occupied canvas gets a tab for the file rather than being overwritten', () => {
+  installFakeHost();
+  occupiedWorkspace();
+  const text = documentTextFor('opened');
+
+  const ok = context.applyOpenedDocument({ ok: true, path: '/home/x/opened.automaton', text });
+
+  assert.strictEqual(ok, true);
+  assert.strictEqual(context.Workspaces.length, 2, 'the machine on screen is not the file being opened');
+  assert.strictEqual(context.Workspaces[0].data.states.length, 1, 'the tab it was on keeps its machine');
+  assert.strictEqual(context.Workspaces[1].name, 'opened');
+  assert.strictEqual(context.activeFilePath(), '/home/x/opened.automaton');
+  assert.strictEqual(context.App.states[0].name, 'opened');
+  removeFakeHost();
+});
+
+test('an untouched tab is read into rather than left empty beside the file', () => {
+  installFakeHost();
+  const doc = docFor('/home/x/palindrome.automaton');
+
+  context.applyOpenedDocument(doc);
+
+  assert.strictEqual(context.Workspaces.length, 1, 'a blank canvas is where a file belongs');
+  removeFakeHost();
+});
+
+test('a tab that already has a file of its own is never reused', () => {
+  installFakeHost();
+  const doc = docFor('/home/x/first.automaton');
+  context.applyOpenedDocument(doc);
+  assert.strictEqual(context.Workspaces.length, 1);
+
+  // Blank again — but bound to a file, which is what Ctrl+S writes.
+  context.App.states = [];
+  const second = { ok: true, path: '/home/x/second.automaton', text: doc.text };
+  context.applyOpenedDocument(second);
+
+  assert.strictEqual(context.Workspaces.length, 2,
+    'reusing it would silently retarget the reader Ctrl+S at a different file');
+  assert.strictEqual(context.Workspaces[0].filePath, '/home/x/first.automaton');
+  assert.strictEqual(context.activeFilePath(), '/home/x/second.automaton');
+  removeFakeHost();
+});
+
+test('opening a file that is already open goes to its tab', () => {
+  installFakeHost();
+  const doc = docFor('/home/x/one.automaton');
+  context.applyOpenedDocument(doc);
+  const firstId = context.Workspaces[0].id;
+  context.createTab('Elsewhere');
+  assert.notStrictEqual(context.activeWorkspaceId, firstId);
+
+  context.applyOpenedDocument(doc);
+
+  assert.strictEqual(context.Workspaces.length, 2, 'a second copy of one file is two documents that disagree');
+  assert.strictEqual(context.activeWorkspaceId, firstId);
+  removeFakeHost();
+});
+
+test('a file that will not parse costs neither a tab nor the machine on screen', () => {
+  installFakeHost();
+  occupiedWorkspace();
+
+  const ok = context.applyOpenedDocument({ ok: true, path: '/home/x/broken.automaton', text: '{ not json' });
+
+  assert.strictEqual(ok, false);
+  assert.strictEqual(context.Workspaces.length, 1, 'an empty tab to close is not a diagnostic');
+  assert.strictEqual(context.App.states[0].name, 'busy');
+  removeFakeHost();
+});
+
+// ── The boot gate ─────────────────────────────────────────────────
+
+test('a file the OS hands over on a cold launch waits for the restore', () => {
+  installFakeHost();
+  harness.resetApp();
+  context.Workspaces.length = 0;
+  context.setActiveWorkspaceId(null);
+  const text = documentTextFor('from-the-os');
+
+  // The renderer subscribes while electron-bridge.js is being evaluated, which
+  // is before init.js has run at all — so this is what a double-click delivers.
+  const applied = context.openExternalDocument({ ok: true, path: '/home/x/from-the-os.automaton', text });
+  assert.strictEqual(applied, false, 'held, not dropped');
+  assert.strictEqual(context.Workspaces.length, 0, 'nothing has touched the canvas yet');
+
+  // ... and now the restore lands, exactly as loadBackup() does.
+  restoreSession('Last session');
+  context.markBootRestored();
+
+  assert.strictEqual(context.Workspaces.length, 2);
+  assert.strictEqual(context.App.states[0].name, 'from-the-os',
+    'the file the reader double-clicked is the one they end up looking at');
+  assert.strictEqual(context.Workspaces[0].data.states[0].name, 'busy',
+    'and the session that was restored is still there beside it');
+  removeFakeHost();
+});
+
+test('once the restore has finished a handed-over file lands immediately', () => {
+  installFakeHost();
+  occupiedWorkspace();
+  context.markBootRestored();
+  const text = documentTextFor('warm');
+
+  const applied = context.openExternalDocument({ ok: true, path: '/home/x/warm.automaton', text });
+
+  assert.strictEqual(applied, true, 'a running app has nothing left to restore');
+  assert.strictEqual(context.App.states[0].name, 'warm');
+  removeFakeHost();
+});
+
+test('the gate releases what it held in arrival order', () => {
+  installFakeHost();
+  harness.resetApp();
+  context.Workspaces.length = 0;
+  context.setActiveWorkspaceId(null);
+  const first = documentTextFor('first');
+  const second = documentTextFor('second');
+
+  context.openExternalDocument({ ok: true, path: '/home/x/first.automaton', text: first });
+  context.openExternalDocument({ ok: true, path: '/home/x/second.automaton', text: second });
+  restoreSession('Last session');
+  context.markBootRestored();
+
+  assert.deepStrictEqual(context.Workspaces.map(w => w.name), ['Last session', 'first', 'second']);
+  removeFakeHost();
+});
+
+// ── One Save ──────────────────────────────────────────────────────
+//  The button and the shortcut are one act. They were two: the header's Save
+//  button persisted the workspace while Ctrl+S, which is what that button's
+//  tooltip advertises, also produced a file — a download, on the website, on
+//  every press.
+
+// Records what, if anything, reached the Downloads folder.
+function watchDownloads(run) {
+  const realCreate = context.document.createElement;
+  const seen = [];
+  context.document.createElement = tag => {
+    const el = realCreate.call(context.document, tag);
+    if (tag === 'a') el.click = () => { seen.push(el.download); };
+    return el;
+  };
+  try { return { seen, result: run() }; }
+  finally { context.document.createElement = realCreate; }
+}
+
+test('on the website Save keeps the workspace and downloads nothing', async () => {
+  removeFakeHost();
+  seedWorkspace();
+  const { seen, result } = watchDownloads(() => context.saveNow());
+  await result;
+
+  assert.deepStrictEqual(seen, [],
+    'a fresh copy in Downloads on every press is not what the Save button does');
+  assert.strictEqual(context.Workspaces[0].dirty, false, 'the workspace is what was saved');
+});
+
+test('on the website Save As is still the download', async () => {
+  removeFakeHost();
+  seedWorkspace();
+  const { seen, result } = watchDownloads(() => context.saveDocumentAs());
+  await result;
+
+  assert.deepStrictEqual(seen, ['Parity Check.automaton']);
+});
+
+test('on the desktop Save writes the file and the workspace record', async () => {
+  const calls = installFakeHost();
+  seedWorkspace();
+  context.Workspaces[0].filePath = '/tmp/bound.automaton';
+
+  await context.saveNow();
+
+  const write = calls.find(c => c.op === 'write');
+  assert.ok(write, 'Save means save, not "ask me where to put another copy"');
+  assert.strictEqual(write.path, '/tmp/bound.automaton');
+  assert.strictEqual(context.Workspaces[0].dirty, false);
+  removeFakeHost();
+});
+
+test('the labels say which host this is', () => {
+  const saveBtn = context.$('save-now-btn');
+  const saveAs = context.$('save-menu-save-as');
+  assert.ok(saveBtn && saveAs, 'both are in the markup for syncDocumentLabels to write');
+
+  removeFakeHost();
+  context.syncDocumentLabels();
+  assert.match(saveBtn.getAttribute('data-tip'), /browser/i,
+    'a reader told "Save workspace" goes looking in Downloads and finds nothing');
+  assert.match(saveAs.textContent, /download/i,
+    'on the website the one control that writes a file has to say so');
+
+  installFakeHost();
+  context.syncDocumentLabels();
+  assert.match(saveBtn.getAttribute('data-tip'), /file/i);
+  assert.strictEqual(saveAs.textContent, 'Save Machine As…');
+  removeFakeHost();
+});
+
+test('a machine saved in the browser opens again', () => {
+  removeFakeHost();
+  seedWorkspace();
+  context.App.states = [{ id: 's0', name: 'q0', x: 10, y: 10 }, { id: 's1', name: 'q1', x: 90, y: 10 }];
+  context.App.transitions = [{ id: 't0', from: 's0', to: 's1', symbol: 'a' }];
+  context.App.accepts = new Set(['s1']);
+  const { seen } = watchDownloads(() => context.saveJSON());
+  assert.deepStrictEqual(seen, ['Parity Check.automaton']);
+
+  // The same bytes, back through the hidden file input's parser.
+  const text = JSON.stringify(context.getWorkspaceData());
+  harness.resetApp();
+  assert.strictEqual(context.applyDocument(text, seen[0]), true);
+  assert.deepStrictEqual(context.App.states.map(s => s.name), ['q0', 'q1']);
+  assert.strictEqual(context.App.transitions.length, 1);
+});

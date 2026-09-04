@@ -2,7 +2,7 @@ import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { toggleSnapToGrid } from './canvas.js';
 import { renderBlockLibrary } from './blocks-ui.js';
 import { initLangClaimOverflowObserver } from './language.js';
-import { loadBackup, loadSharedLinkFromURL, restartAutosaveTimer } from './persistence.js';
+import { loadBackup, loadSharedLinkFromURL, markBootRestored, restartAutosaveTimer, syncDocumentLabels } from './persistence.js';
 import { initDefBoxOverflowObserver, updateLPanel, updateRPanel } from './render.js';
 import { $, App, Workspaces } from './state.js';
 import { DEFAULT_THEME } from './themes.js';
@@ -45,6 +45,10 @@ try {
   if (localStorage.getItem('automata-snap-grid') === '1') toggleSnapToGrid(true);
   if (typeof initToolbarCollapse === 'function') initToolbarCollapse();
 } catch (e) { }
+// What Save, Save As and Open mean differs between the website and the desktop
+// build, and the labels have to say which — see SAYING WHICH HOST THIS IS in
+// js/persistence.js. Written once, because the answer cannot change.
+if (typeof syncDocumentLabels === 'function') syncDocumentLabels();
 if (typeof initMobilePanels === 'function') initMobilePanels();
 if (typeof initLPanelSections === 'function') initLPanelSections();
 if (typeof initRPanelSections === 'function') initRPanelSections();
@@ -83,6 +87,12 @@ export async function finishBoot() {
   // whole of finishBoot already runs off a promise, so awaiting it here costs
   // nothing and keeps the status hint timed against what actually happened.
   const sharedLinkLoaded = typeof loadSharedLinkFromURL === 'function' && await loadSharedLinkFromURL();
+  // The workspaces are restored and the link, if there was one, has been read.
+  // Only now is it safe to let a file the OS handed us onto the canvas: on a
+  // cold launch that path arrives while electron-bridge.js is being evaluated,
+  // long before any of the above, and the restore would land on top of it. See
+  // THE BOOT GATE in js/persistence.js.
+  if (typeof markBootRestored === 'function') markBootRestored();
   // Seven keyboard shortcuts, on a device with no keyboard, in a toast that
   // covers the top of the canvas for four seconds — every one of them names a
   // key a phone does not have. The touch shell says the same things with its
