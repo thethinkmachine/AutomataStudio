@@ -7,7 +7,7 @@ import { viewStates } from './view-graph.js';
 import { leaveBlockScope, syncScopeBar } from './scope.js';
 import { isQuickSettingsOpen, positionQuickSettings, refreshQuickSettings } from './quick-settings.js';
 import { includeDividerBounds, removeDividers, updateShapeToolButton } from './dividers.js';
-import { markViewDirty, redo, snapshot, snapshotSettings, trimStowedHistory, undo } from './history.js';
+import { markDirty, redo, snapshot, snapshotSettings, trimStowedHistory, undo } from './history.js';
 import { renderMinimap, scheduleMinimap } from './minimap.js';
 import { anyModalOpen, askConfirm, closeModal, registerModal, showOverlay } from './modal.js';
 import { includeNoteBounds, pruneNoteAnchorsExcluding, removeNotes } from './notes.js';
@@ -66,13 +66,10 @@ export function getWorkspaceAccent(ws) {
 export function markActiveWorkspaceSaved() {
   if (!activeWorkspaceId) return;
   const ws = Workspaces.find(w => w.id === activeWorkspaceId);
-  // The quiet camera mark goes with it: whatever wrote the workspace wrote the
-  // viewport too, so leaving it set would keep asking for a write that has
-  // already happened. Only `dirty` decides whether the strip needs redrawing —
-  // `viewDirty` draws nothing.
-  const wasDirty = ws && ws.dirty;
-  if (ws) { ws.dirty = false; ws.viewDirty = false; }
-  if (wasDirty) renderTabs();
+  if (ws && ws.dirty) {
+    ws.dirty = false;
+    renderTabs();
+  }
 }
 
 // The single source of truth for everything the Save button displays: its
@@ -895,7 +892,6 @@ export function initTabs() {
   Workspaces.forEach((ws, idx) => {
     if (!ws.name) ws.name = `Workspace ${idx + 1}`;
     ws.dirty = !!ws.dirty;
-    ws.viewDirty = !!ws.viewDirty;
   });
   if (!Workspaces.find(w => w.id === activeWorkspaceId)) setActiveWorkspaceId(Workspaces[0].id);
   editingTabId = null;
@@ -1439,7 +1435,7 @@ export function zoomIn() {
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
-  if (typeof markViewDirty === 'function') markViewDirty();
+  if (typeof markDirty === 'function') markDirty();
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
@@ -1457,7 +1453,7 @@ export function zoomOut() {
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
-  if (typeof markViewDirty === 'function') markViewDirty();
+  if (typeof markDirty === 'function') markDirty();
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
@@ -1476,7 +1472,7 @@ export function setZoomFromInput(val) {
     const w = $('canvas-wrap'); if (!w) return;
     const mx = w.clientWidth / 2, my = w.clientHeight / 2;
     App.cam = { x: mx, y: my, z: 1 };
-    if (typeof markViewDirty === 'function') markViewDirty();
+    if (typeof markDirty === 'function') markDirty();
     $('cam-g').classList.add('cam-smooth');
     w.classList.add('cam-smooth');
     applyCamera();
@@ -1493,7 +1489,7 @@ export function setZoomFromInput(val) {
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
-  if (typeof markViewDirty === 'function') markViewDirty();
+  if (typeof markDirty === 'function') markDirty();
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
@@ -1555,7 +1551,7 @@ export function fitToScreen(silent = false) {
   App.cam.z = z;
   // `silent` marks the programmatic fits that run on load/restore. Those must
   // not dirty the tab — the camera they set is the one that was just restored.
-  if (!silent && typeof markViewDirty === 'function') markViewDirty();
+  if (!silent && typeof markDirty === 'function') markDirty();
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
@@ -1652,7 +1648,7 @@ export function centerCameraOn(x, y, animate = true) {
   const w = $('canvas-wrap'); if (!w) return;
   App.cam.x = w.clientWidth / 2 - x * App.cam.z;
   App.cam.y = w.clientHeight / 2 - y * App.cam.z;
-  if (typeof markViewDirty === 'function') markViewDirty();
+  if (typeof markDirty === 'function') markDirty();
   if (animate) { $('cam-g').classList.add('cam-smooth'); w.classList.add('cam-smooth'); }
   applyCamera();
   if (animate) {

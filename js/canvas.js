@@ -6,7 +6,7 @@ import { applyOutlines, loadGlyphTables, planOutlines } from './glyphs.js';
 import { includeLayoutBounds, resolveNodeOverlaps, startNodeId } from './geometry.js';
 import { getBlock, inlineBlock, outlineBlock } from './blocks.js';
 import { getNode, invalidateViewGraph, isPortNode, scopeId, viewStates, viewTransitions } from './view-graph.js';
-import { markViewDirty, snapshot } from './history.js';
+import { markDirty, snapshot } from './history.js';
 import { clearActiveNoteHighlight, dragSelectedNotesTo, endNoteResize, getNote, includeNoteBounds, resizeNoteTo, resolveNotePos, syncNoteSelectionClasses } from './notes.js';
 import { getWorkspaceData } from './persistence.js';
 import { currentLayoutContext, makeSVG, renderAll, repaintForCamera, scheduleFastDOM, updateFastDOM, updateLPanel, updateRPanel, withFullRender } from './render.js';
@@ -154,7 +154,7 @@ export function captureTouchPointerEnd(e) {
     e.stopPropagation();
     if (touchPointers.size < 2) {
       touchCameraGesture = null;
-      if (typeof markViewDirty === 'function') markViewDirty();
+      if (typeof markDirty === 'function') markDirty();
     }
   }
 }
@@ -367,7 +367,7 @@ wrap.addEventListener('wheel', e => {
   // scroll doesn't trigger a burst of tab re-renders. The minimap is not marked
   // here — applyCamera above already told it, on every tick.
   _wheelIdleTimer = setTimeout(() => {
-    if (typeof markViewDirty === 'function') markViewDirty();
+    if (typeof markDirty === 'function') markDirty();
   }, 150);
 }, { passive: false });
 
@@ -735,7 +735,7 @@ export function endPointerInteractions() {
     if (panPointerId !== null) { try { wrap.releasePointerCapture(panPointerId); } catch (e) { } }
     panPointerId = null;
     scheduleMinimap();
-    if (typeof markViewDirty === 'function') markViewDirty();
+    if (typeof markDirty === 'function') markDirty();
     return;
   }
   if (App.dragPort) {
