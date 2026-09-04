@@ -1,8 +1,10 @@
 import { beginSelectionDrag, clearSelection, hideCanvasContextMenu, pickObject, svgPt } from './canvas.js';
 import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
-import { makeSVG, renderAll } from './render.js';
+import { drawnEdgeEl, drawnStateEl, makeSVG, renderAll } from './render.js';
 import { $, App } from './state.js';
+import { getBlock } from './blocks.js';
+import { nodeIdAtScope, scopeId } from './view-graph.js';
 import { getState, getTransition, hideContextMenu, showContextMenu } from './states-transitions.js';
 import { showStatus } from './utils.js';
 
@@ -30,20 +32,91 @@ export function normalizeNoteColor(color) {
   return color === 'purple' ? 'violet' : (color || 'default');
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  WHICH LEVEL A NOTE LIVES ON
+// ══════════════════════════════════════════════════════════════════
+// A note is written *somewhere* — at the top level, or inside a block a reader
+// had drilled into — and until it said so it was drawn at every level at once.
+// That is not a highlight bug like the ones around it; it is a note being in
+// the wrong place. `note.scope` is the block it belongs to, absent for the top
+// level, which is what every note written before this existed already was.
+//
+// **Absent means the top level, so nothing had to be added to a serializer.**
+// `roundForSave` copies a note whole and rounds only the fields it names, and
+// `exportWorkspaceState` is a JSON deep copy — so `scope` rides along exactly
+// as `blockId` does on a state, and the field is written only when it is not
+// null, which keeps a file with no blocks in it byte-identical to before.
+
+/** The scope a note belongs to, with a block that has since gone dropped. */
+export function noteScopeOf(note) {
+  const id = note && note.scope;
+  // Validated on read rather than invalidated: nothing announces that a block
+  // record went, and a note whose block was deleted must surface at the top
+  // level rather than become invisible everywhere. The same rule liveScope()
+  // and blockIsIntact() follow.
+  return id && getBlock(id) ? id : null;
+}
+
+/** True when a note belongs on the level currently being drawn. */
+export function noteInScope(note) {
+  return noteScopeOf(note) === scopeId();
+}
+
+/** The notes this level draws. */
+export function visibleNotes() {
+  return (App.notes || []).filter(noteInScope);
+}
+
 // ── Anchoring: a note's stored (x, y) is an absolute point when it has no
 // anchors, or an offset from its anchors' centroid when it does. This way an
 // anchored note rides along automatically whenever a state it's pinned to
 // moves, without having to track every drag separately. ──
+
+/**
+ * Where an anchor sits, as seen from one particular level.
+ *
+ * **The level is the note's own, never the reader's**, and that is the whole of
+ * what makes this safe. A note anchored to a state that has since been grouped
+ * into a block should point at the box — that is the "one level down" case and
+ * the reason any of this projects at all. But `pruneNoteAnchorsRemoving` calls
+ * this to *hold a note still* while its anchors are taken away, and it runs over
+ * every note at every level: resolved against whatever scope the reader happens
+ * to be standing on, the same note answers two different positions and the prune
+ * freezes it at the wrong one. Asking about the note's own level gives one
+ * answer whoever is asking.
+ *
+ * Which also means no view graph is consulted: `nodeIdAtScope` walks the block
+ * tree, and both a state and a block carry their own coordinates. Nothing here
+ * depends on what is currently drawn.
+ */
+function anchorPoint(stateId, scope) {
+  const nodeId = nodeIdAtScope(stateId, scope);
+  // Not under this level at all, or under it directly: either way the state's
+  // own position is the honest answer — the first is a note whose anchor has
+  // gone somewhere else entirely, and freezing it where the state is keeps the
+  // prune's bookkeeping exactly as it was.
+  if (!nodeId || nodeId === stateId) {
+    const s = getState(stateId);
+    return s ? { x: s.x, y: s.y } : null;
+  }
+  const b = getBlock(nodeId);
+  return b ? { x: b.x || 0, y: b.y || 0 } : null;
+}
+
 export function noteAnchorPoints(note) {
+  const scope = noteScopeOf(note);
   const pts = [];
   (note.anchorStates || []).forEach(id => {
-    const s = getState(id);
-    if (s) pts.push({ x: s.x, y: s.y });
+    const p = anchorPoint(id, scope);
+    if (p) pts.push(p);
   });
   (note.anchorTransitions || []).forEach(id => {
     const t = getTransition(id);
     if (!t) return;
-    const from = getState(t.from), to = getState(t.to);
+    const from = anchorPoint(t.from, scope), to = anchorPoint(t.to, scope);
+    // Both ends against the same level, so an edge crossing into a block is a
+    // midpoint between the state outside and the box — the line the reader can
+    // actually see — rather than between one drawn node and one that is not.
     if (from && to) pts.push({ x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 });
   });
   return pts;
@@ -88,7 +161,10 @@ export function noteBoxLayout(note) {
 // their world bounding box, so a free-floating note never gets scrolled out
 // of view when a saved workspace is loaded.
 export function includeNoteBounds(cb) {
-  App.notes.forEach(note => {
+  // The drawn ones. Fit-to-screen and a cropped export frame what is on screen,
+  // and a note two levels down would otherwise pull the frame out to wherever
+  // its anchors happen to sit.
+  visibleNotes().forEach(note => {
     const pos = resolveNotePos(note);
     const { w, h } = noteBoxLayout(note);
     cb(pos.x - w / 2, pos.y - h / 2, pos.x + w / 2, pos.y + h / 2);
@@ -278,7 +354,7 @@ export function renderNotes() {
   const g = $('notes-g');
   if (!g) return;
   g.innerHTML = '';
-  App.notes.forEach(note => renderOneNote(g, note));
+  visibleNotes().forEach(note => renderOneNote(g, note));
 }
 
 // Fills `textEl` with one tspan per styled run, laid out as wrapped lines.
@@ -429,7 +505,7 @@ export function updateOneNoteDOM(note, { refillText = true } = {}) {
   });
 }
 export function updateNotesDOM() {
-  App.notes.forEach(updateOneNoteDOM);
+  visibleNotes().forEach(updateOneNoteDOM);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -472,15 +548,6 @@ export function attachNoteHandlers(grp, note) {
   });
 }
 
-export function getNoteTransitionGroupKeys(note) {
-  const keys = new Set();
-  (note.anchorTransitions || []).forEach(id => {
-    const t = getTransition(id);
-    if (t) keys.add(`${t.from}|${t.to}`);
-  });
-  return keys;
-}
-
 export function clearNoteAnchorHighlight(noteId = null) {
   const noteSelector = noteId ? `.note-g[data-note-id="${noteId}"]` : '.note-g';
   document.querySelectorAll(`${noteSelector}.note-link-active`).forEach(el => el.classList.remove('note-link-active'));
@@ -496,13 +563,16 @@ export function highlightNoteAnchors(id, pin = false) {
   const noteEl = App.domCache.notes.get(id) || document.querySelector(`.note-g[data-note-id="${id}"]`);
   if (noteEl && (pin || App.activeNoteId === id)) noteEl.classList.add('note-link-active');
 
+  // The box a state is inside when it is not drawn itself — the same rule the
+  // playback highlight follows. A note anchored to something in a block should
+  // point at the block, not at nothing.
   (note.anchorStates || []).forEach(stateId => {
-    const el = App.domCache.states.get(stateId) || document.querySelector(`.sn[data-id="${stateId}"]`);
+    const el = drawnStateEl(stateId);
     if (el) el.classList.add('note-link-st');
   });
 
-  getNoteTransitionGroupKeys(note).forEach(key => {
-    const el = App.domCache.transitions.get(key) || document.querySelector(`.edge-g[data-edge="${key}"]`);
+  (note.anchorTransitions || []).forEach(id => {
+    const el = drawnEdgeEl(id);
     if (el) el.classList.add('note-link-t');
   });
 }
@@ -618,6 +688,21 @@ export function deleteNote(id) {
 
 // Drops notes without taking an undo point — the caller owns the snapshot,
 // which is what lets Delete remove a mixed selection in one history step.
+/**
+ * Drops from the selection any note this level does not draw.
+ *
+ * Called on a scope change. Before notes had a level they were all drawn, so a
+ * stale selection was at least a visible one; now Delete over a selection made
+ * on the way past would take a note nobody can see. Narrow on purpose — it is
+ * about the kind this change made invisible, and says nothing about the rest of
+ * the selection.
+ */
+export function dropOffscreenNoteSelection() {
+  if (!App.selectedNotes || !App.selectedNotes.size) return;
+  const here = new Set(visibleNotes().map(n => n.id));
+  for (const id of [...App.selectedNotes]) if (!here.has(id)) App.selectedNotes.delete(id);
+}
+
 export function removeNotes(ids) {
   const gone = new Set(ids);
   if (!gone.size) return;
@@ -639,6 +724,10 @@ export function createNote(x, y, anchorStates = [], anchorTransitions = []) {
   } else {
     note = { id, text: '', color: 'yellow', anchorStates: [], anchorTransitions: [], x, y };
   }
+  // Written only when it is not the top level, so a machine with no blocks in
+  // it saves exactly the bytes it saved before.
+  const scope = scopeId();
+  if (scope) note.scope = scope;
   App.notes.push(note);
   renderAll();
   return note;

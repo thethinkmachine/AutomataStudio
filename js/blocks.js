@@ -674,17 +674,62 @@ export function machineAsBlockDefinition(opts = {}) {
  * Like inlineBlock, this neither snapshots nor emits: deleting a block is one
  * edit, and the caller owns the undo point.
  */
-export function removeBlock(id) {
+/**
+ * What removing a block would take with it: every state at every depth behind
+ * the box, and every transition touching one.
+ *
+ * Exported because the *callers* need it before the call. `pruneNoteAnchors-
+ * Excluding` has to run while the ids are still resolvable, so a note anchored
+ * into the subtree can be held where it was drawn — and the Delete key's own
+ * prune names `App.selectedStates`, which for a block holds the box's id and no
+ * state at all, so it named nothing and the notes settled at their stored
+ * offsets instead. One declaration, so what is pruned cannot drift from what is
+ * removed.
+ */
+export function blockRemovalIds(id) {
   const subtree = new Set(blockSubtree(id));
-  if (!subtree.size) return false;
-  const doomed = new Set((App.states || [])
+  const states = new Set((App.states || [])
     .filter(s => s.blockId && subtree.has(s.blockId))
     .map(s => s.id));
+  const transitions = (App.transitions || [])
+    .filter(t => states.has(t.from) || states.has(t.to))
+    .map(t => t.id);
+  return { subtree, states, transitions };
+}
+
+export function removeBlock(id) {
+  const { subtree, states: doomed } = blockRemovalIds(id);
+  if (!subtree.size) return false;
   if (!doomed.size && !subtree.size) return false;
 
   App.states = (App.states || []).filter(s => !doomed.has(s.id));
   App.transitions = (App.transitions || []).filter(t => !doomed.has(t.from) && !doomed.has(t.to));
   App.blocks = (App.blocks || []).filter(b => !subtree.has(b.id));
+  // The notes written *inside* the subtree go with it. Surfacing them at the
+  // top level instead — which is what `noteScopeOf` does for a scope that has
+  // simply stopped existing — is the right rescue for a record that vanished by
+  // accident and the wrong answer for one the reader deliberately deleted: a
+  // block with thirty notes in it would empty thirty notes onto the machine
+  // above, at coordinates from another level, every one of them pointing at
+  // states this call has just removed. Deleting a block means deleting what was
+  // in it, and one Ctrl+Z brings the notes back with everything else, because
+  // serializeState carries them.
+  //
+  // A note that merely *anchors* into the subtree is left alone: it lives
+  // outside, so it is not part of what was deleted, and pruneNoteAnchors drops
+  // its dangling anchors on the next render and freezes it where it was.
+  //
+  // Filtered here rather than through removeNotes() because notes.js reaches the
+  // DOM and this module deliberately imports nothing that does. The two model
+  // fields that can point at a gone note are cleared with it.
+  if ((App.notes || []).length) {
+    const orphaned = new Set(App.notes.filter(n => n.scope && subtree.has(n.scope)).map(n => n.id));
+    if (orphaned.size) {
+      App.notes = App.notes.filter(n => !orphaned.has(n.id));
+      orphaned.forEach(id => App.selectedNotes.delete(id));
+      if (orphaned.has(App.activeNoteId)) App.activeNoteId = null;
+    }
+  }
   for (const sid of doomed) App.accepts.delete(sid);
   if (doomed.has(App.startId)) App.startId = App.states[0]?.id || null;
   invalidateBlockIndex();

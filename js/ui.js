@@ -2,7 +2,7 @@ import { utmStepBack, utmStepFwd, utmToggleAuto } from './algorithms-fa.js';
 import { renderGamma } from './alphabet.js';
 import { settleAll } from './anim.js';
 import { applyCamera, clampZoom, clearEdgeDirectionHighlight, clearSelection, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, minZoom, nudgeSelected, pasteClipboard, selectAllStates, selectionCount, toggleSnapToGrid, wrap } from './canvas.js';
-import { getBlock, removeBlock } from './blocks.js';
+import { blockRemovalIds, getBlock, removeBlock } from './blocks.js';
 import { viewStates } from './view-graph.js';
 import { leaveBlockScope, syncScopeBar } from './scope.js';
 import { isQuickSettingsOpen, positionQuickSettings, refreshQuickSettings } from './quick-settings.js';
@@ -981,7 +981,18 @@ document.addEventListener('keydown', e => {
         App.transitions.forEach(t => {
           if (App.selectedStates.has(t.from) || App.selectedStates.has(t.to)) removedTransIds.add(t.id);
         });
-        pruneNoteAnchorsExcluding([...App.selectedStates], [...removedTransIds]);
+        // A selected *block* is one id standing for a whole subtree, so naming
+        // the selection alone named the box and not one state inside it: a note
+        // out here anchored into the block was never seen by the prune and
+        // settled at its stored offset instead of holding where it was drawn.
+        const removedStateIds = new Set(App.selectedStates);
+        App.selectedStates.forEach(id => {
+          if (!getBlock(id)) return;
+          const gone = blockRemovalIds(id);
+          gone.states.forEach(sid => removedStateIds.add(sid));
+          gone.transitions.forEach(tid => removedTransIds.add(tid));
+        });
+        pruneNoteAnchorsExcluding([...removedStateIds], [...removedTransIds]);
       }
       App.selectedStates.forEach(id => {
         // A selected block id deletes the whole subtree behind the box — every

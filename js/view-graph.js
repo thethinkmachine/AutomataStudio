@@ -269,9 +269,27 @@ function refresh(g) {
       // nothing to copy here — and copying them is exactly what used to undo
       // every drag, nudge and collision push a frame after it happened.
       node.name = b.name;
-      const size = blockSize(b);
-      node.box = size;
-      node.r = boxRadius(size.w, size.h);
+      // **A derived size is never recomputed here, and that is the difference
+      // between this function being O(1) and being O(blocks x states).**
+      // blockSize() falls through to blockMembers() + blockChildren() when the
+      // record carries no size of its own — and inlineBlock leaves them null, so
+      // that is the ordinary case rather than the exception. Both of those are
+      // unindexed filters that allocate, and viewGraph() is on the hot path:
+      // edgeLabelsHidden() reaches it once per edge label, and every surface
+      // that resolves a machine id to a drawn one reaches it per item. A
+      // select-all over 2000 transitions on a machine with eight blocks measured
+      // at 617ms against 7ms without them.
+      //
+      // It is safe to skip because what a derived size is derived *from* — the
+      // states and blocks — cannot change without stillValid() failing and the
+      // whole projection being rebuilt. Only a hand-set size can change under a
+      // cache hit, and reading two numbers off the record is what that costs.
+      if (Number.isFinite(b.w) && Number.isFinite(b.h)) {
+        if (node.box.w !== b.w || node.box.h !== b.h) {
+          node.box = { w: b.w, h: b.h };
+          node.r = boxRadius(b.w, b.h);
+        }
+      }
     } else {
       const anchor = getState(node.anchor);
       if (!anchor) continue;
@@ -586,6 +604,40 @@ export function blockPreviewGraph(blockId) {
     edges.push({ from, to, curve: t.curve, loopAngle: t.loopAngle });
   }
   return { nodes, byId, edges };
+}
+
+/**
+ * Which node the level `scope` draws for a real state — the state itself when it
+ * is an immediate member of that level, or the box of whichever child block
+ * contains it. Null when the state is not under that level at all.
+ *
+ * **`visibleNodeIdFor` for an arbitrary level**, which is why it is not called
+ * something about previews any more. It has two callers that want different
+ * things from the same fact: a block's preview marking the transition a run is
+ * taking (there the level is the block, and the answer is a dot or a nested
+ * rect), and a note working out where it sits (there the level is the note's
+ * own, which is deliberately *not* the one the reader is standing on).
+ *
+ * A walk up the ancestry rather than an ownerMap, because the map is built for
+ * one scope and cached, and this is asked about others — for a handful of ids at
+ * a time, so depth is what it costs and depth is small. `visibleNodeIdFor` stays
+ * the fast path for the scope actually on screen.
+ */
+export function nodeIdAtScope(stateId, scope) {
+  const s = getState(stateId);
+  if (!s) return null;
+  const at = scope || null;
+  let cur = s.blockId || null;
+  if (cur === at) return stateId;
+  const seen = new Set();
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    const b = getBlock(cur);
+    if (!b) return null;
+    if ((b.parent || null) === at) return cur;
+    cur = b.parent || null;
+  }
+  return null;
 }
 
 /**

@@ -21,6 +21,8 @@ import { $, App } from './state.js';
 import { Change, emit, subscribe } from './store.js';
 import { invalidateViewGraph, liveScope, scopeTrail } from './view-graph.js';
 import { showStatus } from './utils.js';
+import { updateSimCanvasHighlights } from './simulation.js';
+import { dropOffscreenNoteSelection } from './notes.js';
 
 // Where the camera was, per scope path. Session state rather than document
 // state: it is a property of this reader's navigation, not of the machine, so
@@ -70,6 +72,18 @@ export function enterBlockScope(blockId, opts = {}) {
     fitToScreen(true);
   }
   renderBreadcrumb();
+
+  // A drill-in evicts every node the previous scope drew, and the playhead's
+  // marks went with them — so a run paused inside a block was invisible from
+  // the moment you went in to look at it, which is the one time you would.
+  // Repainted rather than carried, because *which* node shows a given state is
+  // exactly what the scope change decides (js/view-graph.js).
+  const step = App.simSteps && App.simSteps[App.simIdx];
+  if (step) updateSimCanvasHighlights(step);
+
+  // A note belongs to one level now, so a selection made before the move can no
+  // longer be seen — and Delete would take it anyway.
+  dropOffscreenNoteSelection();
 
   const b = next.length ? getBlock(next[next.length - 1]) : null;
   showStatus(b ? `Inside ${b.name}` : 'Back to the top level');

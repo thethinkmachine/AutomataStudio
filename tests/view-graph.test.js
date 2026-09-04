@@ -362,3 +362,81 @@ test('ports reach no serializer', () => {
   assert.ok(!blob.includes('__in__'), 'the entry tab is derived, never stored');
   assert.ok(!blob.includes('__out__'), 'and so is every exit tab');
 });
+
+// ── a cache hit has to actually be cheap ──────────────────────────
+//
+// viewGraph() is on the hot path in a way that is easy to forget: the layout
+// pass runs it per frame, edgeLabelsHidden() reaches it once per edge label, and
+// every surface that resolves a machine id to a drawn one reaches it per item.
+// So "the cache hit" is not an optimisation on top of a correct answer — it is
+// the answer, and anything O(machine) inside it is a stall rather than a slow
+// frame.
+//
+// What made it one: refresh() called blockSize(), which falls through to
+// blockMembers() + blockChildren() whenever a record carries no size of its own
+// — and inlineBlock leaves those null, so that is the ordinary case, not the
+// exception. Both are unindexed filters that allocate. A select-all over 2000
+// transitions measured 617ms with eight blocks against 7ms without.
+
+test('a cache hit recomputes no derived size', () => {
+  tmCanvas();
+  const { block } = context.inlineBlock(def('seek', 6), { x: 200, y: 200 });
+  context.invalidateViewGraph();
+  const node = context.viewGraph().byId.get(block.id);
+  const box = node.box;
+
+  for (let i = 0; i < 5; i++) context.viewGraph();
+
+  // Object identity, not equality: an equal box rebuilt each time is exactly the
+  // walk over the machine this is here to catch, and it looks identical from the
+  // outside. What a derived size derives from cannot change without stillValid()
+  // failing and the projection being rebuilt outright.
+  assert.equal(context.viewGraph().byId.get(block.id).box, box);
+});
+
+test('a hand-set size is still picked up on a cache hit', () => {
+  tmCanvas();
+  const { block } = context.inlineBlock(def('seek', 6), { x: 200, y: 200 });
+  context.invalidateViewGraph();
+  context.viewGraph();
+
+  // The one thing that *can* change without any array changing identity: the
+  // reader resizing the box. Two reads off the record is what that costs.
+  block.w = 260; block.h = 180;
+  const node = context.viewGraph().byId.get(block.id);
+  assert.deepEqual(node.box, { w: 260, h: 180 });
+});
+
+test('blocks do not make a selection sweep scale with the machine', () => {
+  const build = (nStates, nBlocks) => {
+    harness.resetApp();
+    const { App } = context;
+    App.machine = 'DFA';
+    App.sigma = new Set(['a']);
+    for (let i = 0; i < nStates; i++) App.states.push({ id: 's' + i, x: i * 5, y: (i % 40) * 5, name: 'q' + i });
+    for (let i = 0; i + 1 < nStates; i++) App.transitions.push({ id: 't' + i, from: 's' + i, to: 's' + (i + 1), symbol: 'a' });
+    App.startId = 's0';
+    const per = Math.floor(nStates / (nBlocks + 1));
+    for (let b = 0; b < nBlocks; b++) {
+      const id = 'blk' + b;
+      App.blocks.push({ id, name: 'B' + b, parent: null, entry: 's' + (b * per + 1), exits: [], x: b * 300, y: 900, w: null, h: null, collapsed: true });
+      for (let i = b * per + 1; i < (b + 1) * per; i++) App.states[i].blockId = id;
+    }
+    context.invalidateViewGraph();
+    App.selectedTransitions = new Set(App.transitions.map(t => t.id));
+  };
+  const time = (nStates, nBlocks) => {
+    build(nStates, nBlocks);
+    context.syncSelectionClasses();          // warm
+    const t = Date.now();
+    for (let i = 0; i < 3; i++) context.syncSelectionClasses();
+    return Date.now() - t;
+  };
+
+  const plain = time(2000, 0);
+  const withBlocks = time(2000, 8);
+  // Wall-clock, and deliberately loose — it is here to catch a reintroduced walk
+  // over the machine, not to pin a budget. The regression it guards was 88x.
+  assert.ok(withBlocks <= Math.max(60, plain * 6),
+    `selection with blocks (${withBlocks}ms) should not dwarf without (${plain}ms)`);
+});

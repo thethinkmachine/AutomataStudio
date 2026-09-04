@@ -113,6 +113,11 @@ export function thumbEdgePairs(transitions) {
  *   { kind: 'line',  ax, ay, bx, by }
  *   { kind: 'curve', ax, ay, cx, cy, bx, by }     quadratic
  *
+ * Each carries the `key` of the pair it was built from, so a caller that wants
+ * to draw one of them differently — a block's preview marking the transition a
+ * run is taking right now — can find it without a second pass that could
+ * disagree with this one about which edges there are. The minimap ignores it.
+ *
  * The routing decision is mirrored cheaply rather than reproduced: a hand-set
  * bend wins, and otherwise a pair with a reverse edge splays so the two are
  * distinguishable. The collision-avoidance detour is deliberately left out — at
@@ -123,7 +128,7 @@ export function thumbEdgeSegments(pairs, byId, project, nodeR, curveOff = 45) {
   const { px, py, scale } = project;
   const loopR = Math.max(1.4, nodeR * 0.62);
   const out = [];
-  for (const [, e] of pairs) {
+  for (const [key, e] of pairs) {
     const from = byId.get(e.from), to = byId.get(e.to);
     if (!from || !to) continue;
 
@@ -131,6 +136,7 @@ export function thumbEdgeSegments(pairs, byId, project, nodeR, curveOff = 45) {
       // Up is the layout's default direction; a dragged loop stores its own.
       const a = Number.isFinite(e.loopAngle) ? e.loopAngle : -Math.PI / 2;
       out.push({
+        key,
         kind: 'loop',
         cx: px(from.x) + Math.cos(a) * (nodeR + loopR * 0.55),
         cy: py(from.y) + Math.sin(a) * (nodeR + loopR * 0.55),
@@ -144,10 +150,10 @@ export function thumbEdgeSegments(pairs, byId, project, nodeR, curveOff = 45) {
     const dist = Math.hypot(dx, dy);
     if (!dist) continue;
     const crv = e.curve !== null ? e.curve : (pairs.has(e.to + '|' + e.from) ? curveOff : 0);
-    if (!crv) { out.push({ kind: 'line', ax, ay, bx, by }); continue; }
+    if (!crv) { out.push({ key, kind: 'line', ax, ay, bx, by }); continue; }
     const nx = -dy / dist, ny = dx / dist;
     out.push({
-      kind: 'curve', ax, ay, bx, by,
+      key, kind: 'curve', ax, ay, bx, by,
       cx: (ax + bx) / 2 + nx * crv * scale,
       cy: (ay + by) / 2 + ny * crv * scale
     });
@@ -165,18 +171,19 @@ export function thumbEdgeSegments(pairs, byId, project, nodeR, curveOff = 45) {
  */
 export function thumbEdgePath(segments) {
   const d = [];
-  for (const s of segments) {
-    if (s.kind === 'loop') {
-      d.push(`M ${r2(s.cx - s.r)} ${r2(s.cy)}`);
-      d.push(`a ${r2(s.r)} ${r2(s.r)} 0 1 0 ${r2(s.r * 2)} 0`);
-      d.push(`a ${r2(s.r)} ${r2(s.r)} 0 1 0 ${r2(-s.r * 2)} 0`);
-    } else if (s.kind === 'line') {
-      d.push(`M ${r2(s.ax)} ${r2(s.ay)} L ${r2(s.bx)} ${r2(s.by)}`);
-    } else {
-      d.push(`M ${r2(s.ax)} ${r2(s.ay)} Q ${r2(s.cx)} ${r2(s.cy)} ${r2(s.bx)} ${r2(s.by)}`);
-    }
-  }
+  for (const s of segments) d.push(thumbSubpath(s));
   return d.join(' ');
+}
+
+/** One segment as its own subpath — the piece thumbEdgePath is built from. */
+export function thumbSubpath(s) {
+  if (s.kind === 'loop') {
+    return `M ${r2(s.cx - s.r)} ${r2(s.cy)}`
+      + ` a ${r2(s.r)} ${r2(s.r)} 0 1 0 ${r2(s.r * 2)} 0`
+      + ` a ${r2(s.r)} ${r2(s.r)} 0 1 0 ${r2(-s.r * 2)} 0`;
+  }
+  if (s.kind === 'line') return `M ${r2(s.ax)} ${r2(s.ay)} L ${r2(s.bx)} ${r2(s.by)}`;
+  return `M ${r2(s.ax)} ${r2(s.ay)} Q ${r2(s.cx)} ${r2(s.cy)} ${r2(s.bx)} ${r2(s.by)}`;
 }
 
 // Two decimals. A preview is a few dozen pixels across, so the third one is
