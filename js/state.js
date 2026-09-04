@@ -8,6 +8,22 @@
 // protects. Do not add an import of an app module here.
 import { ReactiveSet } from './reactive.js';
 
+// ── The build's own version ───────────────────────────────────────
+// Substituted by Vite's `define` (see vite.config.js) from package.json, so
+// nothing that reports a version can drift from the one electron-builder
+// stamps on a release. The guard is for the Node test run, which imports this
+// module with no Vite in front of it and would otherwise throw on an
+// undeclared global.
+//
+// It lives here rather than beside the About dialog that first needed it
+// because the save format now stamps it into every file, and `persistence.js`
+// reaching into `workspace.js` for a `const` would be reading a binding across
+// an import cycle — the one thing that throws rather than resolving late. A
+// leaf has no such cycle to be caught in. `workspace.js` re-exports it, so the
+// name still resolves where it always did.
+export const APP_VERSION =
+  typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
+
 // ══════════════════════════════════════════════════════════════════
 //  CORE CONFIGURATION
 // ══════════════════════════════════════════════════════════════════

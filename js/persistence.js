@@ -8,7 +8,7 @@ import { refreshQuickSettings } from './quick-settings.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { showExampleCard } from './machine-card.js';
 import { isMultiTape } from './machines/index.js';
-import { $, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, largeMachineProfile, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
+import { $, APP_VERSION, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, largeMachineProfile, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { hideContextMenu } from './states-transitions.js';
 import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen, hideTabContextMenu, hideTabOverflowMenu, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
@@ -62,6 +62,119 @@ function roundForSave(obj, precision) {
   return out;
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  THE DOCUMENT'S VERSION
+// ══════════════════════════════════════════════════════════════════
+//  A file, a share link, a PNG payload and an IndexedDB record all carry the
+//  same document, so they all carry the same three fields — and every one of
+//  them goes through `migrateWorkspaceDoc` on the way in.
+//
+//  `format` is what the thing *is*, so a JSON file that happens to have a
+//  `machine` key is not mistaken for one of ours. `schema` is the only field
+//  that gates behaviour. `app` is informational: it is what a bug report needs
+//  and what a migration author reads, and nothing branches on it — a build
+//  number is not a schema, and treating it as one is how you end up unable to
+//  ship a patch release.
+export const WORKSPACE_FORMAT = 'automata-studio/workspace';
+
+//  Bump this only when a reader written for the previous number would get the
+//  document *wrong* — a field that changed meaning, a default that flipped, a
+//  shape that moved. Adding an optional field is not a bump: every reader in
+//  this file already treats absence as a default, which is what let `blocks`,
+//  `scope`, `meta` and `grammar` all arrive without one.
+//
+//  1 — the first numbered schema. Everything written before it reads as 0.
+export const SCHEMA_VERSION = 1;
+
+// What a document with no `schema` field is. Every file this app wrote before
+// the field existed, plus every hand-written and third-party one.
+export const LEGACY_SCHEMA = 0;
+
+export function readSchemaVersion(d) {
+  const raw = d?.schema;
+  return Number.isInteger(raw) && raw >= 0 ? raw : LEGACY_SCHEMA;
+}
+
+// The refusal, kept separate from the migration so the file-load path can
+// report it before anything has been touched.
+//
+// A document from the future is refused rather than read on a hope. The
+// failure it prevents is the quiet one: a newer build's file loads, the fields
+// this reader does not know about are dropped on the floor, and the next save
+// writes the loss back out. Better to say so and leave the file alone.
+export function assertReadableSchema(d) {
+  const found = readSchemaVersion(d);
+  if (found > SCHEMA_VERSION) {
+    throw new Error(
+      `This file was written by a newer version of AutomataStudio `
+      + `(format ${found}, this build reads ${SCHEMA_VERSION})`
+      + `${d?.app ? ` — it says it came from ${d.app}` : ''}. Update to open it.`
+    );
+  }
+  return found;
+}
+
+// ── The chain ─────────────────────────────────────────────────────
+//  MIGRATIONS[n] takes a document at schema n and returns one at n + 1. They
+//  run in order, so a v0 file passes through every step; each one only has to
+//  know about the single change it is named for.
+//
+//  A migration may mutate the document it is handed. Every caller parses fresh
+//  — from a file, a link, a fetch or a storage record — so there is no shared
+//  object to scribble on, and deep-copying a thousand-state machine on every
+//  load to avoid a hazard that does not exist would be a real cost for none.
+const MIGRATIONS = [
+  // 0 → 1. Nothing about the machine changed; what changed is that the
+  // document now says which schema it is. The one genuine v0 concern is the
+  // symbol migration, which has always been keyed on `config` being absent —
+  // a file predating the configurable-symbol era spells ε, ⊔ and Z literally,
+  // and the reader's own symbols may differ.
+  d => {
+    if (!d.config) migrateLegacySymbols(d);
+    return d;
+  }
+];
+
+// The one way in. Idempotent by construction: it stamps the current schema, so
+// a document that has already been through it takes no step. That is what lets
+// `loadData` call it as a backstop for the paths that skip `validateSchema`
+// (examples, storage records, algorithm results) without the migrations
+// running twice on the paths that do not.
+export function migrateWorkspaceDoc(d) {
+  if (!d || typeof d !== 'object') return d;
+  let at = assertReadableSchema(d);
+  let doc = d;
+  while (at < SCHEMA_VERSION) {
+    doc = MIGRATIONS[at](doc) || doc;
+    at++;
+  }
+  doc.format = WORKSPACE_FORMAT;
+  doc.schema = SCHEMA_VERSION;
+  return doc;
+}
+
+// ── Normalisations, which are not migrations ──────────────────────
+//  These re-derive a machine *type* from the transitions, and they deliberately
+//  run for a document of any schema — including one this build just wrote.
+//  They are not corrections to an old format: a JFLAP import, a hand-edited
+//  file and an algorithm result can all produce a nondeterministic δ under a
+//  deterministic type name, and none of those has a version to key on.
+//
+//  Keeping them out of MIGRATIONS is the point. A migration is allowed to
+//  assume it runs once, on the way up from a known older shape; these have to
+//  hold every time, forever.
+export function normalizeMachineType(d) {
+  if (d.machine === 'TM' && hasSingleTapeNondeterminism(d.transitions || [])) {
+    return 'NDTM';
+  }
+  // PDA is a hidden alias of DPDA and is deliberately absent from the model
+  // picker; both re-derive from whether δ actually branches.
+  if (d.machine === 'PDA' || d.machine === 'DPDA') {
+    return hasPdaNondeterminism(d.transitions || []) ? 'NPDA' : 'DPDA';
+  }
+  return d.machine;
+}
+
 export function getWorkspaceData() {
   const grammarData = { vars: [...App.grammar.vars], start: App.grammar.start, productions: App.grammar.productions };
   
@@ -80,6 +193,12 @@ export function getWorkspaceData() {
   };
 
   return {
+    // What this is and how to read it. See THE DOCUMENT'S VERSION above —
+    // these three lead the object so that a human opening the file in an
+    // editor sees them first.
+    format: WORKSPACE_FORMAT,
+    schema: SCHEMA_VERSION,
+    app: APP_VERSION,
     machine: App.machine,
     config: cleanConfig,
     sigma: [...App.sigma],
@@ -599,6 +718,10 @@ export async function loadSharedLinkFromURL() {
 
 export function validateSchema(data) {
   if (!data || typeof data !== 'object') throw new Error("Data must be a valid JSON object.");
+
+  // Before anything else: a document from a newer build is refused outright
+  // rather than read with its unknown fields silently dropped.
+  assertReadableSchema(data);
   
   const validMachines = Object.keys(MachineTypes);
   if (!data.machine || !validMachines.includes(data.machine)) {
@@ -711,6 +834,11 @@ export function normalizeGrammarData(grammar) {
 }
 
 export function loadData(d, isExample) {
+  // Every path in — a file, a link, a PNG, a storage record, an example, an
+  // algorithm result — comes through here, so this is where the chain runs.
+  // `validateSchema` has already refused a future document on the paths that
+  // validate; this is the backstop for the ones that do not.
+  d = migrateWorkspaceDoc(d);
   App.machine = d.machine || 'DFA'; App.sigma = new Set(d.sigma || []);
   App.stackAlpha = new Set(d.stackAlpha || [App.config.sym.stackBottom]);
   App.outputAlpha = new Set(d.outputAlpha || []);
@@ -733,13 +861,9 @@ export function loadData(d, isExample) {
     : [];
   App.selectedNotes.clear();
   App.selectedDividers.clear();
-  if (App.machine === 'TM' && hasSingleTapeNondeterminism(App.transitions)) {
-    App.machine = 'NDTM';
-  }
-  // Migration for legacy PDA type
-  if (App.machine === 'PDA' || App.machine === 'DPDA') {
-    App.machine = hasPdaNondeterminism(App.transitions) ? 'NPDA' : 'DPDA';
-  }
+  // Re-derived from the transitions on every load, whatever the schema said —
+  // see normalizeMachineType for why this is not a migration.
+  App.machine = normalizeMachineType({ machine: App.machine, transitions: App.transitions });
   resetIds();
   if (d.grammar) {
     const grammar = normalizeGrammarData(d.grammar);
@@ -765,7 +889,9 @@ export function loadData(d, isExample) {
     // popover showing the settings of the machine you just replaced.
     refreshQuickSettings();
   }
-  else { migrateLegacySymbols(d); }
+  // The `else` that used to call migrateLegacySymbols here is gone: that is a
+  // v0 concern and it now runs in MIGRATIONS[0], before any of this reads the
+  // document. Running it here as well would map an already-mapped symbol.
   if (d.cam) { App.cam = { ...d.cam }; }
 
   if (typeof normalizeBoundarySymbolsForMachine === 'function') {
