@@ -1,7 +1,7 @@
 import { $, App } from './state.js';
 import { Change, emit, subscribe } from './store.js';
 import { commit, snapshot } from './history.js';
-import { saveBackup } from './persistence.js';
+import { persistTabState } from './persistence.js';
 import { inFamily } from './machines/registry.js';
 import { isCfgConvertiblePDA, showStatus } from './utils.js';
 import { applyMachineSwitch, setView } from './view.js';
@@ -934,7 +934,7 @@ function loadPdaToCanvas(res) {
 
   applyMachineSwitch('NPDA');
   emit(Change.ALPHABET, Change.GRAPH);
-  saveBackup();
+  persistTabState();
   setView('build');
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
   else setTimeout(() => fitToScreen(true), 50);
@@ -964,7 +964,7 @@ function loadFaToCanvas(res) {
 
   applyMachineSwitch(res.machine);
   emit(Change.ALPHABET, Change.GRAPH);
-  saveBackup();
+  persistTabState();
   setView('build');
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
   else setTimeout(() => fitToScreen(true), 50);

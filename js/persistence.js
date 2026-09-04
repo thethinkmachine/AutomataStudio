@@ -242,10 +242,6 @@ export let autosaveTimer = null;
 export let autosaveInProgress = false;
 export let autosaveCountdownTimer = null;
 export let autosaveDeadline = 0;
-export const WORKSPACE_DB_NAME = 'automata-playground';
-export const WORKSPACE_DB_VERSION = 2;
-export const WORKSPACE_STORE_NAME = 'snapshots';
-
 // Undo/redo stacks are deliberately excluded from anything that reaches
 // storage. They can hold 300 JSON snapshots per tab, which is the single
 // largest contributor to quota failures, and reloading discards the history
@@ -256,6 +252,10 @@ export function stripTabForStorage(ws) {
   return { ...ws, data };
 }
 
+// The monolithic shape: every workspace in one object. It is what the
+// localStorage copy holds and what the pre-v3 IndexedDB record held, so it is
+// still the shape `loadBackup` reads — but it is no longer what a save
+// *writes* when IndexedDB is available. See THE STORAGE LAYOUT below.
 export function getBackupPayload(savedIds = []) {
   if (typeof exportWorkspaceState !== 'function' || !activeWorkspaceId) return null;
   const act = Workspaces.find(w => w.id === activeWorkspaceId);
@@ -268,15 +268,202 @@ export function getBackupPayload(savedIds = []) {
   };
 }
 
-export function openWorkspaceDb() {
+export const WORKSPACE_DB_NAME = 'automata-studio';
+// The database this one was called before the product was renamed. It is not
+// dead weight: an IndexedDB database is identified by its *name*, so renaming
+// it points the app at a fresh, empty one and every existing reader's
+// workspaces and block library become unreachable in a single release — the
+// app simply boots to an empty canvas with nothing to say about it.
+//
+// electron/main.cjs carries the same scar for userData, where the rename
+// stranded every saved workspace because the migration looked for the wrong
+// spelling and so never once fired. This is that lesson applied on the way in
+// rather than after the fact: the old database is adopted, once, the first
+// time the new one is opened.
+export const LEGACY_DB_NAMES = ['automata-playground'];
+// 3 — one record per workspace. See THE STORAGE LAYOUT below.
+export const WORKSPACE_DB_VERSION = 3;
+// The v2 store: a single record, key 'current', holding every workspace at
+// once. Kept — read-only — as the migration source. Dropping it would mean a
+// reader who rolls back to an older build finds no tabs at all.
+export const WORKSPACE_STORE_NAME = 'snapshots';
+export const WORKSPACE_TABS_STORE = 'workspaces';
+export const WORKSPACE_META_STORE = 'meta';
+export const WORKSPACE_META_KEY = 'current';
+
+// ══════════════════════════════════════════════════════════════════
+//  THE STORAGE LAYOUT
+// ══════════════════════════════════════════════════════════════════
+//  `workspaces` holds one record per tab, keyed by its id; `meta` holds the
+//  one record that says which tabs exist, in what order, which is active, and
+//  what the config is. That split is the whole of this stage, and the cost it
+//  removes is worth stating plainly.
+//
+//  Until v3 there was a single record under `snapshots/'current'` carrying
+//  *every* workspace. So autosaving one dirty tab meant serialising all of
+//  them — `getBackupPayload` maps over the whole of `Workspaces` — writing the
+//  lot to IndexedDB, and then serialising them a second time for a synchronous
+//  `localStorage.setItem` on the main thread, into a ~5MB quota. Eight tabs
+//  open and the reader paid for eight machines, twice, every fifteen seconds,
+//  to record a change to one of them. That is the quota failure the comments
+//  around `stripTabForStorage` keep circling, and it is O(all tabs) for a
+//  change of size one.
+//
+//  Now a save writes the record that changed plus the small meta record.
+//
+//  Two things follow that are easy to get wrong:
+//
+//  - **The meta record is the index, so the tab records are garbage.** A tab
+//    closed while the app is shut, or a write that failed halfway, leaves a
+//    record nothing points at. Rather than tracking deletions — which is one
+//    more thing for a crash to interrupt — every meta write sweeps the store
+//    and drops what `order` does not name, in the same transaction. That is
+//    the rule `stateIndex()` and `blockIsIntact()` already follow: validate on
+//    read, never rely on having been told.
+//
+//  - **localStorage came off the hot path, not out of the design.** It is
+//    still the entire backend when there is no IndexedDB, and still the
+//    last-resort copy written on the way out. What it is no longer is a mirror
+//    refreshed on every autosave and every tab click. It is refreshed at the
+//    two moments a reader would recognise as checkpoints — an explicit Save,
+//    and unload — so the stale-fallback window is bounded by something a
+//    person can reason about.
+
+function reqDone(request, what) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error(what));
+  });
+}
+
+function txDone(tx, what) {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error(what));
+    tx.onabort = () => reject(tx.error || new Error(what));
+  });
+}
+
+// Opens a database only if it is already there. `open` with no version opens
+// whatever version exists — and fires `onupgradeneeded` when it had to create
+// one, which is how "this did not exist" is detected without `databases()`,
+// which Firefox lacked until recently and which no test stub has. A database we
+// created just to look inside is deleted again rather than left as litter.
+function openIfExists(name) {
+  return new Promise(resolve => {
+    let req;
+    try {
+      req = indexedDB.open(name);
+    } catch {
+      resolve(null);
+      return;
+    }
+    let existed = true;
+    req.onupgradeneeded = () => { existed = false; };
+    req.onsuccess = () => {
+      const db = req.result;
+      if (existed) { resolve(db); return; }
+      db.close();
+      try { indexedDB.deleteDatabase(name); } catch { /* litter, not a failure */ }
+      resolve(null);
+    };
+    req.onerror = () => resolve(null);
+    req.onblocked = () => resolve(null);
+  });
+}
+
+function storeIsEmpty(db, name) {
+  if (!db.objectStoreNames.contains(name)) return Promise.resolve(true);
+  return new Promise(resolve => {
+    try {
+      const req = db.transaction(name, 'readonly').objectStore(name).count();
+      req.onsuccess = () => resolve(!req.result);
+      req.onerror = () => resolve(true);
+    } catch { resolve(true); }
+  });
+}
+
+async function copyStore(from, to, name) {
+  if (!from.objectStoreNames.contains(name) || !to.objectStoreNames.contains(name)) return;
+  const readTx = from.transaction(name, 'readonly');
+  const src = readTx.objectStore(name);
+  if (typeof src.getAllKeys !== 'function' || typeof src.getAll !== 'function') return;
+  const keys = await reqDone(src.getAllKeys(), 'Could not list legacy records');
+  const values = await reqDone(src.getAll(), 'Could not read legacy records');
+  if (!keys || !keys.length) return;
+
+  const writeTx = to.transaction(name, 'readwrite');
+  const done = txDone(writeTx, 'Could not adopt legacy records');
+  const target = writeTx.objectStore(name);
+  keys.forEach((key, i) => target.put(values[i], key));
+  await done;
+}
+
+// Runs at most once per session, and at most once ever in practice — it copies
+// nothing when the new database already has anything in it. Memoised on the
+// promise rather than a boolean, because `blocks-ui.js` opens this database too
+// and can easily get there first; two concurrent adoptions would race on the
+// same stores.
+let legacyAdoption = null;
+
+function adoptLegacyDatabases() {
+  if (legacyAdoption) return legacyAdoption;
+  legacyAdoption = (async () => {
+    let target = null;
+    try {
+      target = await rawOpenWorkspaceDb();
+      if (!target) return;
+      // Anything already here means this reader has used the renamed database,
+      // so there is nothing to adopt and copying would overwrite live work.
+      const empty = await Promise.all(
+        [WORKSPACE_TABS_STORE, WORKSPACE_META_STORE, WORKSPACE_STORE_NAME, 'blocks']
+          .map(name => storeIsEmpty(target, name))
+      );
+      if (!empty.every(Boolean)) return;
+
+      for (const name of LEGACY_DB_NAMES) {
+        const source = await openIfExists(name);
+        if (!source) continue;
+        try {
+          // Every store, because the block library lives here too — a rename
+          // that carried the workspaces and dropped the blocks would be half a
+          // migration and much harder to notice.
+          for (const store of [WORKSPACE_STORE_NAME, WORKSPACE_TABS_STORE, WORKSPACE_META_STORE, 'blocks']) {
+            await copyStore(source, target, store);
+          }
+        } finally {
+          source.close();
+        }
+        break;
+      }
+    } catch { /* a failed adoption must not stop the app opening */ } finally {
+      target?.close();
+    }
+  })();
+  return legacyAdoption;
+}
+
+// Cleared by tests/harness.js: the memo would otherwise let one test's
+// adoption stand in for the next test's.
+export function _resetLegacyAdoptionForTests() {
+  legacyAdoption = null;
+}
+
+// The plain open, with no adoption in front of it — what the adoption itself
+// uses, and what would otherwise recurse.
+function rawOpenWorkspaceDb() {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null);
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(WORKSPACE_DB_NAME, WORKSPACE_DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(WORKSPACE_STORE_NAME)) db.createObjectStore(WORKSPACE_STORE_NAME);
+      // One record per workspace, plus the index that names them. See THE
+      // STORAGE LAYOUT above.
+      if (!db.objectStoreNames.contains(WORKSPACE_TABS_STORE)) db.createObjectStore(WORKSPACE_TABS_STORE);
+      if (!db.objectStoreNames.contains(WORKSPACE_META_STORE)) db.createObjectStore(WORKSPACE_META_STORE);
       // The building-block library. A definition is a whole machine, so it
-      // belongs here beside the workspace snapshots rather than in
+      // belongs here beside the workspace records rather than in
       // localStorage, which is where this app's quota failures already live —
       // and emphatically not in App.config, which is deep-copied into every
       // workspace tab and written into every file the reader saves.
@@ -294,10 +481,153 @@ export function openWorkspaceDb() {
   });
 }
 
-// Reads back what persistWorkspaceAsync wrote. Returns null when there is no
-// IndexedDB, no database yet, or no snapshot — every one of which is a normal
-// first-run state, so the caller falls back to the localStorage backup rather
-// than treating it as an error.
+// The one every caller uses. The adoption runs before the handle is handed
+// over, so nothing downstream has to know the database was ever called
+// anything else.
+export async function openWorkspaceDb() {
+  if (typeof indexedDB === 'undefined') return null;
+  await adoptLegacyDatabases();
+  return rawOpenWorkspaceDb();
+}
+
+// The tab records to write, refreshed from live `App` for the active one.
+// Marked clean because writing them is what makes them so; a tab not named
+// here keeps whatever mark it was last written with.
+function tabRecordsFor(ids) {
+  const act = Workspaces.find(w => w.id === activeWorkspaceId);
+  if (act && typeof exportWorkspaceState === 'function') act.data = exportWorkspaceState();
+  const want = new Set(ids);
+  return Workspaces.filter(w => want.has(w.id)).map(w => stripTabForStorage({ ...w, dirty: false }));
+}
+
+// The index. Small and bounded — ids, a name per tab, and the config — so it
+// is cheap to rewrite on every tab click, which is exactly what tab operations
+// do. `schema` is stamped so a future layout change has the same one field to
+// key on that a document does.
+function metaRecordNow() {
+  return {
+    schema: SCHEMA_VERSION,
+    app: APP_VERSION,
+    activeId: activeWorkspaceId,
+    order: Workspaces.map(w => w.id),
+    config: App.config,
+    savedAt: Date.now()
+  };
+}
+
+// Writes the named tab records and the index, in one transaction, and sweeps
+// records the index no longer names. Answers which backend took the write, so
+// callers can tell a real save from the localStorage fallback.
+export async function writeWorkspaceRecords(ids = []) {
+  let db = null;
+  try {
+    db = await openWorkspaceDb();
+  } catch {
+    db = null;
+  }
+  if (!db) {
+    // No IndexedDB, or a blocked version bump. localStorage is the whole
+    // backend here, so it takes the full payload exactly as it always did.
+    await Promise.resolve();
+    const payload = getBackupPayload(ids);
+    // Null when there is no active workspace to describe. Writing it would
+    // put the string "null" where a good backup was and lose the reader's
+    // tabs on the next boot.
+    if (!payload) return 'localStorage';
+    localStorage.setItem('automata-backup', JSON.stringify(payload));
+    return 'localStorage';
+  }
+  try {
+    const records = tabRecordsFor(ids);
+    const meta = metaRecordNow();
+
+    // Nothing is awaited between opening this transaction and issuing its last
+    // request, and `txDone` attaches its handlers before the first await. That
+    // is not style: an IndexedDB transaction commits as soon as control returns
+    // to the event loop with no request outstanding, so an `await` in the
+    // middle can leave the writes that follow it throwing into a transaction
+    // that is already gone — and a completion handler attached afterwards
+    // never fires at all, which is a save that hangs rather than one that
+    // fails. The sweep below is a separate transaction for exactly this reason.
+    const tx = db.transaction([WORKSPACE_TABS_STORE, WORKSPACE_META_STORE], 'readwrite');
+    const written = txDone(tx, 'Could not save workspace');
+    const tabs = tx.objectStore(WORKSPACE_TABS_STORE);
+    for (const rec of records) tabs.put(rec, rec.id);
+    tx.objectStore(WORKSPACE_META_STORE).put(meta, WORKSPACE_META_KEY);
+    await written;
+
+    await sweepOrphanRecords(db, new Set(meta.order));
+    return 'indexedDB';
+  } finally {
+    db.close();
+  }
+}
+
+// Drops workspace records the index no longer names — a tab closed while the
+// app was shut, or a write that failed partway. Best-effort by design: an
+// environment without `getAllKeys` still gets correct saves, it just keeps
+// orphans nothing will ever read. Failing a save over unreachable garbage
+// would be the wrong trade, so every path here swallows.
+async function sweepOrphanRecords(db, live) {
+  try {
+    const readTx = db.transaction(WORKSPACE_TABS_STORE, 'readonly');
+    const store = readTx.objectStore(WORKSPACE_TABS_STORE);
+    if (typeof store.getAllKeys !== 'function') return;
+    const keys = await reqDone(store.getAllKeys(), 'Could not list workspace records');
+    const dead = (keys || []).filter(key => !live.has(key));
+    if (!dead.length) return;
+
+    const delTx = db.transaction(WORKSPACE_TABS_STORE, 'readwrite');
+    const swept = txDone(delTx, 'Could not sweep workspace records');
+    const target = delTx.objectStore(WORKSPACE_TABS_STORE);
+    for (const key of dead) target.delete(key);
+    await swept;
+  } catch { /* orphans are invisible to every reader; leaving them is safe */ }
+}
+
+// Reads the v3 layout back into the shape `loadBackup` has always taken:
+// `{tabs, activeId, config}`. Null when there is nothing there.
+async function readRecordLayout(db) {
+  if (!db.objectStoreNames.contains(WORKSPACE_META_STORE)) return null;
+  if (!db.objectStoreNames.contains(WORKSPACE_TABS_STORE)) return null;
+
+  const metaTx = db.transaction(WORKSPACE_META_STORE, 'readonly');
+  const meta = await reqDone(
+    metaTx.objectStore(WORKSPACE_META_STORE).get(WORKSPACE_META_KEY),
+    'Could not read workspace index'
+  );
+  if (!meta || !Array.isArray(meta.order) || !meta.order.length) return null;
+
+  // A second transaction, because the one above is finished with — see the
+  // note in writeWorkspaceRecords. Every get is issued synchronously here,
+  // before the first await, so the transaction cannot commit out from under
+  // them; awaiting them one at a time would be a transaction per tab and boot
+  // latency proportional to how many are open.
+  const tabsTx = db.transaction(WORKSPACE_TABS_STORE, 'readonly');
+  const store = tabsTx.objectStore(WORKSPACE_TABS_STORE);
+  const pending = meta.order.map(
+    id => reqDone(store.get(id), 'Could not read a workspace').catch(() => null)
+  );
+  const tabs = (await Promise.all(pending)).filter(Boolean);
+  if (!tabs.length) return null;
+  return { tabs, activeId: meta.activeId, config: meta.config };
+}
+
+// The v2 single record, which is what every existing install has.
+async function readLegacySnapshot(db) {
+  if (!db.objectStoreNames.contains(WORKSPACE_STORE_NAME)) return null;
+  const tx = db.transaction(WORKSPACE_STORE_NAME, 'readonly');
+  const found = await reqDone(
+    tx.objectStore(WORKSPACE_STORE_NAME).get('current'),
+    'Could not read workspace storage'
+  );
+  return found || null;
+}
+
+// Reads back whatever IndexedDB holds, newest layout first. Returns null when
+// there is no IndexedDB, no database yet, or nothing saved — every one of
+// which is a normal first-run state, so the caller falls back to the
+// localStorage backup rather than treating it as an error.
 export async function readWorkspaceSnapshot() {
   let db;
   try {
@@ -307,14 +637,16 @@ export async function readWorkspaceSnapshot() {
   }
   if (!db) return null;
   try {
-    if (!db.objectStoreNames.contains(WORKSPACE_STORE_NAME)) return null;
-    return await new Promise((resolve, reject) => {
-      const tx = db.transaction(WORKSPACE_STORE_NAME, 'readonly');
-      const req = tx.objectStore(WORKSPACE_STORE_NAME).get('current');
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error || new Error('Could not read workspace storage'));
-      tx.onabort = () => reject(tx.error || new Error('Could not read workspace storage'));
-    });
+    const current = await readRecordLayout(db);
+    if (current) return { ...current, source: 'records' };
+    // Nothing in the v3 layout. An install that predates it has its tabs in
+    // the v2 record; hand them back and let the next save write them out as
+    // records. Migrating here rather than on write is deliberate — a reader
+    // who opens the app and closes it again has lost nothing, and a migration
+    // that only runs when there is something to migrate cannot corrupt a
+    // fresh install.
+    const legacy = await readLegacySnapshot(db);
+    return legacy ? { ...legacy, source: 'legacy' } : null;
   } catch {
     return null;
   } finally {
@@ -322,22 +654,41 @@ export async function readWorkspaceSnapshot() {
   }
 }
 
-export async function persistWorkspaceAsync(payload) {
-  const db = await openWorkspaceDb();
-  if (!db) {
-    await Promise.resolve();
-    localStorage.setItem('automata-backup', JSON.stringify(payload));
-    return 'localStorage';
+// ── Tab-structure writes ──────────────────────────────────────────
+//  Creating, closing, renaming, reordering and switching tabs all change the
+//  index and nothing else about the machine on screen. They fire through here.
+//
+//  Coalesced, because a bulk close calls this once per tab and each call is a
+//  transaction: without it, closing eight tabs opens eight overlapping writes
+//  that all describe the same final state. A request arriving while one is in
+//  flight sets a flag and is served by a single re-run afterwards.
+let tabStateWriteInFlight = null;
+let tabStateWriteAgain = false;
+
+// A write left in flight would have the next test's tab operation served by
+// the previous one's coalescing pass. Cleared by tests/harness.js.
+export function _resetTabStateWritesForTests() {
+  tabStateWriteInFlight = null;
+  tabStateWriteAgain = false;
+}
+
+export function persistTabState() {
+  if (tabStateWriteInFlight) {
+    tabStateWriteAgain = true;
+    return tabStateWriteInFlight;
   }
-  await new Promise((resolve, reject) => {
-    const tx = db.transaction(WORKSPACE_STORE_NAME, 'readwrite');
-    tx.objectStore(WORKSPACE_STORE_NAME).put(payload, 'current');
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error || new Error('Could not save workspace'));
-    tx.onabort = () => reject(tx.error || new Error('Could not save workspace'));
-  });
-  db.close();
-  return 'indexedDB';
+  const run = async () => {
+    do {
+      tabStateWriteAgain = false;
+      await writeWorkspaceRecords(activeWorkspaceId ? [activeWorkspaceId] : []);
+    } while (tabStateWriteAgain);
+  };
+  tabStateWriteInFlight = run()
+    .catch(() => {
+      if (typeof setSaveState === 'function') setSaveState('error', 'Save failed');
+    })
+    .finally(() => { tabStateWriteInFlight = null; });
+  return tabStateWriteInFlight;
 }
 
 export async function saveWorkspace(opts = {}) {
@@ -345,17 +696,16 @@ export async function saveWorkspace(opts = {}) {
   if (typeof setSaveState === 'function') setSaveState('saving');
 
   pendingWorkspaceSave = Promise.resolve().then(async () => {
-    const payload = getBackupPayload([activeWorkspaceId]);
-    if (!payload) return false;
-    const backend = await persistWorkspaceAsync(payload);
-    // Keep the legacy backup current for older builds and unload recovery.
+    if (typeof exportWorkspaceState !== 'function' || !activeWorkspaceId) return false;
+    const backend = await writeWorkspaceRecords([activeWorkspaceId]);
     const active = Workspaces.find(ws => ws.id === activeWorkspaceId);
     const wasDirty = active ? active.dirty : false;
     if (active) active.dirty = false;
-    // A failed mirror-write is reported no matter which backend took the
-    // primary copy: the two stores must not silently diverge, and reporting
-    // success here is what previously let a quota error pass as a save.
-    if (!saveBackup()) {
+    // An explicit Save is one of the two checkpoints where the localStorage
+    // copy is brought back up to date — see THE STORAGE LAYOUT. When
+    // localStorage *is* the backend the write above already did it, and a
+    // second one would be the double serialisation this stage removed.
+    if (backend !== 'localStorage' && !saveBackup()) {
       if (active) active.dirty = wasDirty;
       throw new Error('Could not update workspace backup');
     }
@@ -376,18 +726,18 @@ export async function saveWorkspace(opts = {}) {
 
 // Saves a specific tab, which may not be the active one (bulk closes walk
 // tabs that aren't on screen). Only the active tab holds live state in App,
-// so the others just need their existing snapshot flushed.
+// so the others just need their existing record written.
+//
+// This is autosave's path, so it writes one record and does not touch
+// localStorage — which is the whole point of the record layout.
 export async function saveWorkspaceById(id) {
   const ws = Workspaces.find(w => w.id === id);
   if (!ws) return true;
   if (id === activeWorkspaceId) return saveWorkspace({ silent: true });
   const wasDirty = ws.dirty;
   try {
-    const payload = getBackupPayload([id]);
-    if (!payload) return false;
-    await persistWorkspaceAsync(payload);
+    await writeWorkspaceRecords([id]);
     ws.dirty = false;
-    if (!saveBackup()) throw new Error('Could not update workspace backup');
     if (typeof renderTabs === 'function') renderTabs();
     if (typeof setSaveState === 'function') setSaveState(Workspaces.some(item => item.dirty) ? 'unsaved' : 'saved');
     return true;
@@ -940,10 +1290,15 @@ export function migrateLegacySymbols(d) {
 }
 
 
-// Auto Backup/Restore via LocalStorage
-// Returns true when the payload reached localStorage. The explicit Save
-// action reports failure to the user, so a quota error can no longer pass
-// silently as a successful save.
+// ── The localStorage copy ─────────────────────────────────────────
+// The whole backend when there is no IndexedDB, and otherwise the last-resort
+// copy — see THE STORAGE LAYOUT. It writes every workspace at once, which is
+// why it is no longer on the autosave or tab-operation path: it is refreshed
+// at the two checkpoints a reader would recognise, an explicit Save and
+// unload, and nowhere else.
+//
+// Returns true when the payload reached localStorage, so a quota error cannot
+// pass silently as a successful save.
 export function saveBackup() {
   if (typeof exportWorkspaceState !== 'function' || !activeWorkspaceId) return false;
   // Ensure the active tab gets its latest snapshot
@@ -968,9 +1323,17 @@ export function saveBackup() {
 // — but a failure here means storage is full or unavailable, and silently
 // leaving the indicator on "Saved" would misreport the workspace as durable.
 export function saveBackupChecked() {
-  const ok = saveBackup();
-  if (!ok && typeof setSaveState === 'function') setSaveState('error', 'Save failed');
-  return ok;
+  // Tab operations change the index — which tabs exist, their order, which is
+  // active — plus, for a switch, the outgoing tab's own record. Both are the
+  // record write, so this no longer serialises every workspace into
+  // localStorage to record that one of them was renamed.
+  //
+  // The write is asynchronous and reports its own failure through the save
+  // indicator, which is how `saveWorkspace` has always reported. The return
+  // value is kept for the call sites that read like a checked call; no caller
+  // has ever branched on it.
+  void persistTabState();
+  return true;
 }
 
 // Prefers the IndexedDB snapshot, which is where saveWorkspace puts the
@@ -981,7 +1344,10 @@ export async function readLatestBackup() {
   if (snapshot && Array.isArray(snapshot.tabs) && snapshot.tabs.length) return snapshot;
   try {
     const raw = localStorage.getItem('automata-backup');
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return { ...parsed, source: 'localStorage' };
   } catch {
     return null;
   }
@@ -1011,6 +1377,16 @@ export async function loadBackup() {
       // We set activeWorkspaceId to null to force switchTab to inject the data fully
       setActiveWorkspaceId(null);
       switchTab(targetId);
+
+      // Restored from somewhere that is not the record layout — a v2 database,
+      // or the localStorage fallback. Write the records out now rather than
+      // waiting for the reader's first edit, so that the very next boot is a
+      // cheap one and the legacy record stops being the thing keeping the tabs
+      // alive. switchTab's own incidental write would mostly cover this; doing
+      // it here is what makes it a decision rather than a side effect.
+      if (loaded.source && loaded.source !== 'records') {
+        void persistTabState();
+      }
     } else {
       // Monolithic fallback migration
       loadData(loaded);
@@ -1026,6 +1402,10 @@ export async function loadBackup() {
 // the undo history and the reopen-closed-tab stack. Browsers render their own
 // generic wording here; the returnValue assignment is what triggers it.
 window.addEventListener('beforeunload', e => {
+  // The second checkpoint. Autosave and every tab operation have already put
+  // the records in IndexedDB, but an edit made since the last tick has not
+  // been written anywhere — and an asynchronous write started here is not
+  // guaranteed to finish. So the synchronous copy stays, once, on the way out.
   saveBackup();
   if (typeof Workspaces === 'undefined' || !Workspaces.some(w => w.dirty)) return;
   e.preventDefault();

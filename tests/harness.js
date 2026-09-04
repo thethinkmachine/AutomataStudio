@@ -214,6 +214,12 @@ function resetModuleState() {
   // cost a request per export. That makes them exactly the state a test would
   // otherwise inherit, and the inheriting test would pass while exercising the
   // fallback rather than the thing it names.
+  // A tab-state write left in flight would have the next test's tab operation
+  // served by the previous one's coalescing pass rather than its own.
+  persistence._resetTabStateWritesForTests();
+  // The legacy-database adoption is memoised on its promise, so one test's
+  // adoption would otherwise stand in for the next test's.
+  persistence._resetLegacyAdoptionForTests();
   glyphs.resetGlyphCache();
   exportFonts.resetFontCache();
   // What the formal-definition box last painted. It exists so an unchanged
