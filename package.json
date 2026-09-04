@@ -70,7 +70,18 @@
         "deb"
       ],
       "category": "Education"
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": "automaton",
+        "name": "AutomataStudio Machine",
+        "description": "AutomataStudio Machine",
+        "role": "Editor",
+        "rank": "Owner",
+        "mimeType": "application/x-automatastudio+json",
+        "icon": "build/icon.png"
+      }
+    ]
   },
   "dependencies": {
     "@solid-primitives/set": "^0.7.4",

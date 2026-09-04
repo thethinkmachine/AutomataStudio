@@ -41,6 +41,40 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('window-maximized-change', listener);
   },
 
+  // ── Files ───────────────────────────────────────────────────────
+  // The filesystem the website does not have. js/file-host.js is the only
+  // consumer, and it is what lets "save the file I opened" be a thing that can
+  // be expressed at all — a Blob download has no path, so before these the
+  // desktop build could not offer Save, only Save A Copy Somewhere.
+  //
+  // Each resolves { ok, ... } rather than throwing, so a cancel (`ok: false,
+  // canceled: true`) is distinguishable from a failure and never reported as
+  // one.
+  saveFileAs: (payload) => ipcRenderer.invoke('file:save-dialog', payload),
+  writeFile: (payload) => ipcRenderer.invoke('file:write', payload),
+  openFile: () => ipcRenderer.invoke('file:open-dialog'),
+  readFile: (filePath) => ipcRenderer.invoke('file:read', filePath),
+
+  // What the window is editing: the macOS proxy icon and edited dot, and the
+  // OS Recent Files list.
+  noteDocument: (payload) => ipcRenderer.send('file:note-document', payload),
+
+  // A file the OS handed us — a double-click, an "Open With", a path on the
+  // command line, or a second launch while this one is running. callback({ path,
+  // text }) or ({ path, base64, binary }) for a PNG.
+  //
+  // The pending collection is the half that is easy to miss: a path that
+  // arrived before this listener existed — which is the case whenever the app
+  // was *launched* by double-clicking a file, the commonest way there is — is
+  // held in the main process, and asking for it is how the renderer finds out.
+  // Without it, opening the app by its own file type shows an empty canvas.
+  onOpenFile: (callback) => {
+    const listener = (_event, doc) => callback(doc);
+    ipcRenderer.on('file:opened', listener);
+    ipcRenderer.invoke('file:take-pending').then((doc) => { if (doc) callback(doc); });
+    return () => ipcRenderer.removeListener('file:opened', listener);
+  },
+
   // StateMate's model request, proxied through the main process. The browser
   // build has to satisfy each provider's CORS policy — Anthropic needs an
   // explicit opt-in header, and a local Ollama needs OLLAMA_ORIGINS set. None

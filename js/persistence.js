@@ -8,7 +8,8 @@ import { refreshQuickSettings } from './quick-settings.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { showExampleCard } from './machine-card.js';
 import { isMultiTape } from './machines/index.js';
-import { $, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, largeMachineProfile, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
+import { $, APP_VERSION, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, largeMachineProfile, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
+import { WORKSPACE_EXT, fileStem, hasFileHost, noteOpenDocument, openFileDialog, saveFileAs, suggestedFileName, writeFile } from './file-host.js';
 import { hideContextMenu } from './states-transitions.js';
 import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen, hideTabContextMenu, hideTabOverflowMenu, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
@@ -62,6 +63,119 @@ function roundForSave(obj, precision) {
   return out;
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  THE DOCUMENT'S VERSION
+// ══════════════════════════════════════════════════════════════════
+//  A file, a share link, a PNG payload and an IndexedDB record all carry the
+//  same document, so they all carry the same three fields — and every one of
+//  them goes through `migrateWorkspaceDoc` on the way in.
+//
+//  `format` is what the thing *is*, so a JSON file that happens to have a
+//  `machine` key is not mistaken for one of ours. `schema` is the only field
+//  that gates behaviour. `app` is informational: it is what a bug report needs
+//  and what a migration author reads, and nothing branches on it — a build
+//  number is not a schema, and treating it as one is how you end up unable to
+//  ship a patch release.
+export const WORKSPACE_FORMAT = 'automata-studio/workspace';
+
+//  Bump this only when a reader written for the previous number would get the
+//  document *wrong* — a field that changed meaning, a default that flipped, a
+//  shape that moved. Adding an optional field is not a bump: every reader in
+//  this file already treats absence as a default, which is what let `blocks`,
+//  `scope`, `meta` and `grammar` all arrive without one.
+//
+//  1 — the first numbered schema. Everything written before it reads as 0.
+export const SCHEMA_VERSION = 1;
+
+// What a document with no `schema` field is. Every file this app wrote before
+// the field existed, plus every hand-written and third-party one.
+export const LEGACY_SCHEMA = 0;
+
+export function readSchemaVersion(d) {
+  const raw = d?.schema;
+  return Number.isInteger(raw) && raw >= 0 ? raw : LEGACY_SCHEMA;
+}
+
+// The refusal, kept separate from the migration so the file-load path can
+// report it before anything has been touched.
+//
+// A document from the future is refused rather than read on a hope. The
+// failure it prevents is the quiet one: a newer build's file loads, the fields
+// this reader does not know about are dropped on the floor, and the next save
+// writes the loss back out. Better to say so and leave the file alone.
+export function assertReadableSchema(d) {
+  const found = readSchemaVersion(d);
+  if (found > SCHEMA_VERSION) {
+    throw new Error(
+      `This file was written by a newer version of AutomataStudio `
+      + `(format ${found}, this build reads ${SCHEMA_VERSION})`
+      + `${d?.app ? ` — it says it came from ${d.app}` : ''}. Update to open it.`
+    );
+  }
+  return found;
+}
+
+// ── The chain ─────────────────────────────────────────────────────
+//  MIGRATIONS[n] takes a document at schema n and returns one at n + 1. They
+//  run in order, so a v0 file passes through every step; each one only has to
+//  know about the single change it is named for.
+//
+//  A migration may mutate the document it is handed. Every caller parses fresh
+//  — from a file, a link, a fetch or a storage record — so there is no shared
+//  object to scribble on, and deep-copying a thousand-state machine on every
+//  load to avoid a hazard that does not exist would be a real cost for none.
+const MIGRATIONS = [
+  // 0 → 1. Nothing about the machine changed; what changed is that the
+  // document now says which schema it is. The one genuine v0 concern is the
+  // symbol migration, which has always been keyed on `config` being absent —
+  // a file predating the configurable-symbol era spells ε, ⊔ and Z literally,
+  // and the reader's own symbols may differ.
+  d => {
+    if (!d.config) migrateLegacySymbols(d);
+    return d;
+  }
+];
+
+// The one way in. Idempotent by construction: it stamps the current schema, so
+// a document that has already been through it takes no step. That is what lets
+// `loadData` call it as a backstop for the paths that skip `validateSchema`
+// (examples, storage records, algorithm results) without the migrations
+// running twice on the paths that do not.
+export function migrateWorkspaceDoc(d) {
+  if (!d || typeof d !== 'object') return d;
+  let at = assertReadableSchema(d);
+  let doc = d;
+  while (at < SCHEMA_VERSION) {
+    doc = MIGRATIONS[at](doc) || doc;
+    at++;
+  }
+  doc.format = WORKSPACE_FORMAT;
+  doc.schema = SCHEMA_VERSION;
+  return doc;
+}
+
+// ── Normalisations, which are not migrations ──────────────────────
+//  These re-derive a machine *type* from the transitions, and they deliberately
+//  run for a document of any schema — including one this build just wrote.
+//  They are not corrections to an old format: a JFLAP import, a hand-edited
+//  file and an algorithm result can all produce a nondeterministic δ under a
+//  deterministic type name, and none of those has a version to key on.
+//
+//  Keeping them out of MIGRATIONS is the point. A migration is allowed to
+//  assume it runs once, on the way up from a known older shape; these have to
+//  hold every time, forever.
+export function normalizeMachineType(d) {
+  if (d.machine === 'TM' && hasSingleTapeNondeterminism(d.transitions || [])) {
+    return 'NDTM';
+  }
+  // PDA is a hidden alias of DPDA and is deliberately absent from the model
+  // picker; both re-derive from whether δ actually branches.
+  if (d.machine === 'PDA' || d.machine === 'DPDA') {
+    return hasPdaNondeterminism(d.transitions || []) ? 'NPDA' : 'DPDA';
+  }
+  return d.machine;
+}
+
 export function getWorkspaceData() {
   const grammarData = { vars: [...App.grammar.vars], start: App.grammar.start, productions: App.grammar.productions };
   
@@ -80,6 +194,12 @@ export function getWorkspaceData() {
   };
 
   return {
+    // What this is and how to read it. See THE DOCUMENT'S VERSION above —
+    // these three lead the object so that a human opening the file in an
+    // editor sees them first.
+    format: WORKSPACE_FORMAT,
+    schema: SCHEMA_VERSION,
+    app: APP_VERSION,
     machine: App.machine,
     config: cleanConfig,
     sigma: [...App.sigma],
@@ -123,10 +243,6 @@ export let autosaveTimer = null;
 export let autosaveInProgress = false;
 export let autosaveCountdownTimer = null;
 export let autosaveDeadline = 0;
-export const WORKSPACE_DB_NAME = 'automata-playground';
-export const WORKSPACE_DB_VERSION = 2;
-export const WORKSPACE_STORE_NAME = 'snapshots';
-
 // Undo/redo stacks are deliberately excluded from anything that reaches
 // storage. They can hold 300 JSON snapshots per tab, which is the single
 // largest contributor to quota failures, and reloading discards the history
@@ -137,6 +253,10 @@ export function stripTabForStorage(ws) {
   return { ...ws, data };
 }
 
+// The monolithic shape: every workspace in one object. It is what the
+// localStorage copy holds and what the pre-v3 IndexedDB record held, so it is
+// still the shape `loadBackup` reads — but it is no longer what a save
+// *writes* when IndexedDB is available. See THE STORAGE LAYOUT below.
 export function getBackupPayload(savedIds = []) {
   if (typeof exportWorkspaceState !== 'function' || !activeWorkspaceId) return null;
   const act = Workspaces.find(w => w.id === activeWorkspaceId);
@@ -149,15 +269,202 @@ export function getBackupPayload(savedIds = []) {
   };
 }
 
-export function openWorkspaceDb() {
+export const WORKSPACE_DB_NAME = 'automata-studio';
+// The database this one was called before the product was renamed. It is not
+// dead weight: an IndexedDB database is identified by its *name*, so renaming
+// it points the app at a fresh, empty one and every existing reader's
+// workspaces and block library become unreachable in a single release — the
+// app simply boots to an empty canvas with nothing to say about it.
+//
+// electron/main.cjs carries the same scar for userData, where the rename
+// stranded every saved workspace because the migration looked for the wrong
+// spelling and so never once fired. This is that lesson applied on the way in
+// rather than after the fact: the old database is adopted, once, the first
+// time the new one is opened.
+export const LEGACY_DB_NAMES = ['automata-playground'];
+// 3 — one record per workspace. See THE STORAGE LAYOUT below.
+export const WORKSPACE_DB_VERSION = 3;
+// The v2 store: a single record, key 'current', holding every workspace at
+// once. Kept — read-only — as the migration source. Dropping it would mean a
+// reader who rolls back to an older build finds no tabs at all.
+export const WORKSPACE_STORE_NAME = 'snapshots';
+export const WORKSPACE_TABS_STORE = 'workspaces';
+export const WORKSPACE_META_STORE = 'meta';
+export const WORKSPACE_META_KEY = 'current';
+
+// ══════════════════════════════════════════════════════════════════
+//  THE STORAGE LAYOUT
+// ══════════════════════════════════════════════════════════════════
+//  `workspaces` holds one record per tab, keyed by its id; `meta` holds the
+//  one record that says which tabs exist, in what order, which is active, and
+//  what the config is. That split is the whole of this stage, and the cost it
+//  removes is worth stating plainly.
+//
+//  Until v3 there was a single record under `snapshots/'current'` carrying
+//  *every* workspace. So autosaving one dirty tab meant serialising all of
+//  them — `getBackupPayload` maps over the whole of `Workspaces` — writing the
+//  lot to IndexedDB, and then serialising them a second time for a synchronous
+//  `localStorage.setItem` on the main thread, into a ~5MB quota. Eight tabs
+//  open and the reader paid for eight machines, twice, every fifteen seconds,
+//  to record a change to one of them. That is the quota failure the comments
+//  around `stripTabForStorage` keep circling, and it is O(all tabs) for a
+//  change of size one.
+//
+//  Now a save writes the record that changed plus the small meta record.
+//
+//  Two things follow that are easy to get wrong:
+//
+//  - **The meta record is the index, so the tab records are garbage.** A tab
+//    closed while the app is shut, or a write that failed halfway, leaves a
+//    record nothing points at. Rather than tracking deletions — which is one
+//    more thing for a crash to interrupt — every meta write sweeps the store
+//    and drops what `order` does not name, in the same transaction. That is
+//    the rule `stateIndex()` and `blockIsIntact()` already follow: validate on
+//    read, never rely on having been told.
+//
+//  - **localStorage came off the hot path, not out of the design.** It is
+//    still the entire backend when there is no IndexedDB, and still the
+//    last-resort copy written on the way out. What it is no longer is a mirror
+//    refreshed on every autosave and every tab click. It is refreshed at the
+//    two moments a reader would recognise as checkpoints — an explicit Save,
+//    and unload — so the stale-fallback window is bounded by something a
+//    person can reason about.
+
+function reqDone(request, what) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error(what));
+  });
+}
+
+function txDone(tx, what) {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error(what));
+    tx.onabort = () => reject(tx.error || new Error(what));
+  });
+}
+
+// Opens a database only if it is already there. `open` with no version opens
+// whatever version exists — and fires `onupgradeneeded` when it had to create
+// one, which is how "this did not exist" is detected without `databases()`,
+// which Firefox lacked until recently and which no test stub has. A database we
+// created just to look inside is deleted again rather than left as litter.
+function openIfExists(name) {
+  return new Promise(resolve => {
+    let req;
+    try {
+      req = indexedDB.open(name);
+    } catch {
+      resolve(null);
+      return;
+    }
+    let existed = true;
+    req.onupgradeneeded = () => { existed = false; };
+    req.onsuccess = () => {
+      const db = req.result;
+      if (existed) { resolve(db); return; }
+      db.close();
+      try { indexedDB.deleteDatabase(name); } catch { /* litter, not a failure */ }
+      resolve(null);
+    };
+    req.onerror = () => resolve(null);
+    req.onblocked = () => resolve(null);
+  });
+}
+
+function storeIsEmpty(db, name) {
+  if (!db.objectStoreNames.contains(name)) return Promise.resolve(true);
+  return new Promise(resolve => {
+    try {
+      const req = db.transaction(name, 'readonly').objectStore(name).count();
+      req.onsuccess = () => resolve(!req.result);
+      req.onerror = () => resolve(true);
+    } catch { resolve(true); }
+  });
+}
+
+async function copyStore(from, to, name) {
+  if (!from.objectStoreNames.contains(name) || !to.objectStoreNames.contains(name)) return;
+  const readTx = from.transaction(name, 'readonly');
+  const src = readTx.objectStore(name);
+  if (typeof src.getAllKeys !== 'function' || typeof src.getAll !== 'function') return;
+  const keys = await reqDone(src.getAllKeys(), 'Could not list legacy records');
+  const values = await reqDone(src.getAll(), 'Could not read legacy records');
+  if (!keys || !keys.length) return;
+
+  const writeTx = to.transaction(name, 'readwrite');
+  const done = txDone(writeTx, 'Could not adopt legacy records');
+  const target = writeTx.objectStore(name);
+  keys.forEach((key, i) => target.put(values[i], key));
+  await done;
+}
+
+// Runs at most once per session, and at most once ever in practice — it copies
+// nothing when the new database already has anything in it. Memoised on the
+// promise rather than a boolean, because `blocks-ui.js` opens this database too
+// and can easily get there first; two concurrent adoptions would race on the
+// same stores.
+let legacyAdoption = null;
+
+function adoptLegacyDatabases() {
+  if (legacyAdoption) return legacyAdoption;
+  legacyAdoption = (async () => {
+    let target = null;
+    try {
+      target = await rawOpenWorkspaceDb();
+      if (!target) return;
+      // Anything already here means this reader has used the renamed database,
+      // so there is nothing to adopt and copying would overwrite live work.
+      const empty = await Promise.all(
+        [WORKSPACE_TABS_STORE, WORKSPACE_META_STORE, WORKSPACE_STORE_NAME, 'blocks']
+          .map(name => storeIsEmpty(target, name))
+      );
+      if (!empty.every(Boolean)) return;
+
+      for (const name of LEGACY_DB_NAMES) {
+        const source = await openIfExists(name);
+        if (!source) continue;
+        try {
+          // Every store, because the block library lives here too — a rename
+          // that carried the workspaces and dropped the blocks would be half a
+          // migration and much harder to notice.
+          for (const store of [WORKSPACE_STORE_NAME, WORKSPACE_TABS_STORE, WORKSPACE_META_STORE, 'blocks']) {
+            await copyStore(source, target, store);
+          }
+        } finally {
+          source.close();
+        }
+        break;
+      }
+    } catch { /* a failed adoption must not stop the app opening */ } finally {
+      target?.close();
+    }
+  })();
+  return legacyAdoption;
+}
+
+// Cleared by tests/harness.js: the memo would otherwise let one test's
+// adoption stand in for the next test's.
+export function _resetLegacyAdoptionForTests() {
+  legacyAdoption = null;
+}
+
+// The plain open, with no adoption in front of it — what the adoption itself
+// uses, and what would otherwise recurse.
+function rawOpenWorkspaceDb() {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null);
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(WORKSPACE_DB_NAME, WORKSPACE_DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(WORKSPACE_STORE_NAME)) db.createObjectStore(WORKSPACE_STORE_NAME);
+      // One record per workspace, plus the index that names them. See THE
+      // STORAGE LAYOUT above.
+      if (!db.objectStoreNames.contains(WORKSPACE_TABS_STORE)) db.createObjectStore(WORKSPACE_TABS_STORE);
+      if (!db.objectStoreNames.contains(WORKSPACE_META_STORE)) db.createObjectStore(WORKSPACE_META_STORE);
       // The building-block library. A definition is a whole machine, so it
-      // belongs here beside the workspace snapshots rather than in
+      // belongs here beside the workspace records rather than in
       // localStorage, which is where this app's quota failures already live —
       // and emphatically not in App.config, which is deep-copied into every
       // workspace tab and written into every file the reader saves.
@@ -175,10 +482,153 @@ export function openWorkspaceDb() {
   });
 }
 
-// Reads back what persistWorkspaceAsync wrote. Returns null when there is no
-// IndexedDB, no database yet, or no snapshot — every one of which is a normal
-// first-run state, so the caller falls back to the localStorage backup rather
-// than treating it as an error.
+// The one every caller uses. The adoption runs before the handle is handed
+// over, so nothing downstream has to know the database was ever called
+// anything else.
+export async function openWorkspaceDb() {
+  if (typeof indexedDB === 'undefined') return null;
+  await adoptLegacyDatabases();
+  return rawOpenWorkspaceDb();
+}
+
+// The tab records to write, refreshed from live `App` for the active one.
+// Marked clean because writing them is what makes them so; a tab not named
+// here keeps whatever mark it was last written with.
+function tabRecordsFor(ids) {
+  const act = Workspaces.find(w => w.id === activeWorkspaceId);
+  if (act && typeof exportWorkspaceState === 'function') act.data = exportWorkspaceState();
+  const want = new Set(ids);
+  return Workspaces.filter(w => want.has(w.id)).map(w => stripTabForStorage({ ...w, dirty: false }));
+}
+
+// The index. Small and bounded — ids, a name per tab, and the config — so it
+// is cheap to rewrite on every tab click, which is exactly what tab operations
+// do. `schema` is stamped so a future layout change has the same one field to
+// key on that a document does.
+function metaRecordNow() {
+  return {
+    schema: SCHEMA_VERSION,
+    app: APP_VERSION,
+    activeId: activeWorkspaceId,
+    order: Workspaces.map(w => w.id),
+    config: App.config,
+    savedAt: Date.now()
+  };
+}
+
+// Writes the named tab records and the index, in one transaction, and sweeps
+// records the index no longer names. Answers which backend took the write, so
+// callers can tell a real save from the localStorage fallback.
+export async function writeWorkspaceRecords(ids = []) {
+  let db = null;
+  try {
+    db = await openWorkspaceDb();
+  } catch {
+    db = null;
+  }
+  if (!db) {
+    // No IndexedDB, or a blocked version bump. localStorage is the whole
+    // backend here, so it takes the full payload exactly as it always did.
+    await Promise.resolve();
+    const payload = getBackupPayload(ids);
+    // Null when there is no active workspace to describe. Writing it would
+    // put the string "null" where a good backup was and lose the reader's
+    // tabs on the next boot.
+    if (!payload) return 'localStorage';
+    localStorage.setItem('automata-backup', JSON.stringify(payload));
+    return 'localStorage';
+  }
+  try {
+    const records = tabRecordsFor(ids);
+    const meta = metaRecordNow();
+
+    // Nothing is awaited between opening this transaction and issuing its last
+    // request, and `txDone` attaches its handlers before the first await. That
+    // is not style: an IndexedDB transaction commits as soon as control returns
+    // to the event loop with no request outstanding, so an `await` in the
+    // middle can leave the writes that follow it throwing into a transaction
+    // that is already gone — and a completion handler attached afterwards
+    // never fires at all, which is a save that hangs rather than one that
+    // fails. The sweep below is a separate transaction for exactly this reason.
+    const tx = db.transaction([WORKSPACE_TABS_STORE, WORKSPACE_META_STORE], 'readwrite');
+    const written = txDone(tx, 'Could not save workspace');
+    const tabs = tx.objectStore(WORKSPACE_TABS_STORE);
+    for (const rec of records) tabs.put(rec, rec.id);
+    tx.objectStore(WORKSPACE_META_STORE).put(meta, WORKSPACE_META_KEY);
+    await written;
+
+    await sweepOrphanRecords(db, new Set(meta.order));
+    return 'indexedDB';
+  } finally {
+    db.close();
+  }
+}
+
+// Drops workspace records the index no longer names — a tab closed while the
+// app was shut, or a write that failed partway. Best-effort by design: an
+// environment without `getAllKeys` still gets correct saves, it just keeps
+// orphans nothing will ever read. Failing a save over unreachable garbage
+// would be the wrong trade, so every path here swallows.
+async function sweepOrphanRecords(db, live) {
+  try {
+    const readTx = db.transaction(WORKSPACE_TABS_STORE, 'readonly');
+    const store = readTx.objectStore(WORKSPACE_TABS_STORE);
+    if (typeof store.getAllKeys !== 'function') return;
+    const keys = await reqDone(store.getAllKeys(), 'Could not list workspace records');
+    const dead = (keys || []).filter(key => !live.has(key));
+    if (!dead.length) return;
+
+    const delTx = db.transaction(WORKSPACE_TABS_STORE, 'readwrite');
+    const swept = txDone(delTx, 'Could not sweep workspace records');
+    const target = delTx.objectStore(WORKSPACE_TABS_STORE);
+    for (const key of dead) target.delete(key);
+    await swept;
+  } catch { /* orphans are invisible to every reader; leaving them is safe */ }
+}
+
+// Reads the v3 layout back into the shape `loadBackup` has always taken:
+// `{tabs, activeId, config}`. Null when there is nothing there.
+async function readRecordLayout(db) {
+  if (!db.objectStoreNames.contains(WORKSPACE_META_STORE)) return null;
+  if (!db.objectStoreNames.contains(WORKSPACE_TABS_STORE)) return null;
+
+  const metaTx = db.transaction(WORKSPACE_META_STORE, 'readonly');
+  const meta = await reqDone(
+    metaTx.objectStore(WORKSPACE_META_STORE).get(WORKSPACE_META_KEY),
+    'Could not read workspace index'
+  );
+  if (!meta || !Array.isArray(meta.order) || !meta.order.length) return null;
+
+  // A second transaction, because the one above is finished with — see the
+  // note in writeWorkspaceRecords. Every get is issued synchronously here,
+  // before the first await, so the transaction cannot commit out from under
+  // them; awaiting them one at a time would be a transaction per tab and boot
+  // latency proportional to how many are open.
+  const tabsTx = db.transaction(WORKSPACE_TABS_STORE, 'readonly');
+  const store = tabsTx.objectStore(WORKSPACE_TABS_STORE);
+  const pending = meta.order.map(
+    id => reqDone(store.get(id), 'Could not read a workspace').catch(() => null)
+  );
+  const tabs = (await Promise.all(pending)).filter(Boolean);
+  if (!tabs.length) return null;
+  return { tabs, activeId: meta.activeId, config: meta.config };
+}
+
+// The v2 single record, which is what every existing install has.
+async function readLegacySnapshot(db) {
+  if (!db.objectStoreNames.contains(WORKSPACE_STORE_NAME)) return null;
+  const tx = db.transaction(WORKSPACE_STORE_NAME, 'readonly');
+  const found = await reqDone(
+    tx.objectStore(WORKSPACE_STORE_NAME).get('current'),
+    'Could not read workspace storage'
+  );
+  return found || null;
+}
+
+// Reads back whatever IndexedDB holds, newest layout first. Returns null when
+// there is no IndexedDB, no database yet, or nothing saved — every one of
+// which is a normal first-run state, so the caller falls back to the
+// localStorage backup rather than treating it as an error.
 export async function readWorkspaceSnapshot() {
   let db;
   try {
@@ -188,14 +638,16 @@ export async function readWorkspaceSnapshot() {
   }
   if (!db) return null;
   try {
-    if (!db.objectStoreNames.contains(WORKSPACE_STORE_NAME)) return null;
-    return await new Promise((resolve, reject) => {
-      const tx = db.transaction(WORKSPACE_STORE_NAME, 'readonly');
-      const req = tx.objectStore(WORKSPACE_STORE_NAME).get('current');
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error || new Error('Could not read workspace storage'));
-      tx.onabort = () => reject(tx.error || new Error('Could not read workspace storage'));
-    });
+    const current = await readRecordLayout(db);
+    if (current) return { ...current, source: 'records' };
+    // Nothing in the v3 layout. An install that predates it has its tabs in
+    // the v2 record; hand them back and let the next save write them out as
+    // records. Migrating here rather than on write is deliberate — a reader
+    // who opens the app and closes it again has lost nothing, and a migration
+    // that only runs when there is something to migrate cannot corrupt a
+    // fresh install.
+    const legacy = await readLegacySnapshot(db);
+    return legacy ? { ...legacy, source: 'legacy' } : null;
   } catch {
     return null;
   } finally {
@@ -203,22 +655,41 @@ export async function readWorkspaceSnapshot() {
   }
 }
 
-export async function persistWorkspaceAsync(payload) {
-  const db = await openWorkspaceDb();
-  if (!db) {
-    await Promise.resolve();
-    localStorage.setItem('automata-backup', JSON.stringify(payload));
-    return 'localStorage';
+// ── Tab-structure writes ──────────────────────────────────────────
+//  Creating, closing, renaming, reordering and switching tabs all change the
+//  index and nothing else about the machine on screen. They fire through here.
+//
+//  Coalesced, because a bulk close calls this once per tab and each call is a
+//  transaction: without it, closing eight tabs opens eight overlapping writes
+//  that all describe the same final state. A request arriving while one is in
+//  flight sets a flag and is served by a single re-run afterwards.
+let tabStateWriteInFlight = null;
+let tabStateWriteAgain = false;
+
+// A write left in flight would have the next test's tab operation served by
+// the previous one's coalescing pass. Cleared by tests/harness.js.
+export function _resetTabStateWritesForTests() {
+  tabStateWriteInFlight = null;
+  tabStateWriteAgain = false;
+}
+
+export function persistTabState() {
+  if (tabStateWriteInFlight) {
+    tabStateWriteAgain = true;
+    return tabStateWriteInFlight;
   }
-  await new Promise((resolve, reject) => {
-    const tx = db.transaction(WORKSPACE_STORE_NAME, 'readwrite');
-    tx.objectStore(WORKSPACE_STORE_NAME).put(payload, 'current');
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error || new Error('Could not save workspace'));
-    tx.onabort = () => reject(tx.error || new Error('Could not save workspace'));
-  });
-  db.close();
-  return 'indexedDB';
+  const run = async () => {
+    do {
+      tabStateWriteAgain = false;
+      await writeWorkspaceRecords(activeWorkspaceId ? [activeWorkspaceId] : []);
+    } while (tabStateWriteAgain);
+  };
+  tabStateWriteInFlight = run()
+    .catch(() => {
+      if (typeof setSaveState === 'function') setSaveState('error', 'Save failed');
+    })
+    .finally(() => { tabStateWriteInFlight = null; });
+  return tabStateWriteInFlight;
 }
 
 export async function saveWorkspace(opts = {}) {
@@ -226,17 +697,16 @@ export async function saveWorkspace(opts = {}) {
   if (typeof setSaveState === 'function') setSaveState('saving');
 
   pendingWorkspaceSave = Promise.resolve().then(async () => {
-    const payload = getBackupPayload([activeWorkspaceId]);
-    if (!payload) return false;
-    const backend = await persistWorkspaceAsync(payload);
-    // Keep the legacy backup current for older builds and unload recovery.
+    if (typeof exportWorkspaceState !== 'function' || !activeWorkspaceId) return false;
+    const backend = await writeWorkspaceRecords([activeWorkspaceId]);
     const active = Workspaces.find(ws => ws.id === activeWorkspaceId);
     const wasDirty = active ? active.dirty : false;
     if (active) active.dirty = false;
-    // A failed mirror-write is reported no matter which backend took the
-    // primary copy: the two stores must not silently diverge, and reporting
-    // success here is what previously let a quota error pass as a save.
-    if (!saveBackup()) {
+    // An explicit Save is one of the two checkpoints where the localStorage
+    // copy is brought back up to date — see THE STORAGE LAYOUT. When
+    // localStorage *is* the backend the write above already did it, and a
+    // second one would be the double serialisation this stage removed.
+    if (backend !== 'localStorage' && !saveBackup()) {
       if (active) active.dirty = wasDirty;
       throw new Error('Could not update workspace backup');
     }
@@ -257,18 +727,18 @@ export async function saveWorkspace(opts = {}) {
 
 // Saves a specific tab, which may not be the active one (bulk closes walk
 // tabs that aren't on screen). Only the active tab holds live state in App,
-// so the others just need their existing snapshot flushed.
+// so the others just need their existing record written.
+//
+// This is autosave's path, so it writes one record and does not touch
+// localStorage — which is the whole point of the record layout.
 export async function saveWorkspaceById(id) {
   const ws = Workspaces.find(w => w.id === id);
   if (!ws) return true;
   if (id === activeWorkspaceId) return saveWorkspace({ silent: true });
   const wasDirty = ws.dirty;
   try {
-    const payload = getBackupPayload([id]);
-    if (!payload) return false;
-    await persistWorkspaceAsync(payload);
+    await writeWorkspaceRecords([id]);
     ws.dirty = false;
-    if (!saveBackup()) throw new Error('Could not update workspace backup');
     if (typeof renderTabs === 'function') renderTabs();
     if (typeof setSaveState === 'function') setSaveState(Workspaces.some(item => item.dirty) ? 'unsaved' : 'saved');
     return true;
@@ -352,11 +822,102 @@ export function restartAutosaveTimer() {
   autosaveCountdownTimer.unref?.();
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  DOCUMENTS
+// ══════════════════════════════════════════════════════════════════
+//  Two hosts, one set of verbs. On the desktop a workspace has a *file* — a
+//  path it came from and can be written back to — so Save means save. On the
+//  website there is no path, a save is a download, and Save can only ever mean
+//  "put another copy in the Downloads folder". [js/file-host.js](js/file-host.js)
+//  is where that difference lives; everything below reads the same in both.
+//
+//  The path is tracked per workspace (`ws.filePath`), not globally, because
+//  tabs are independent documents — and it rides in the tab record, so closing
+//  the app and reopening it leaves Ctrl+S still meaning the file you were
+//  working on.
+
+// The active tab, which is what a document verb acts on.
+function activeWorkspace() {
+  return Workspaces.find(w => w.id === activeWorkspaceId) || null;
+}
+
+// Records which file the active workspace is now, and tells the host so the
+// title, the macOS proxy icon and the Recent Files list follow.
+function bindActiveFile(filePath, { rename = false } = {}) {
+  const ws = activeWorkspace();
+  if (ws) {
+    ws.filePath = filePath || null;
+    if (rename && filePath) ws.name = fileStem(filePath) || ws.name;
+  }
+  noteOpenDocument(filePath, { dirty: !!ws?.dirty });
+  if (typeof renderTabs === 'function') renderTabs();
+}
+
+export function activeFilePath() {
+  return activeWorkspace()?.filePath || null;
+}
+
+// The document, as it goes to disk or into a download.
+function documentText() {
+  return JSON.stringify(getWorkspaceData(), null, 2);
+}
+
+// ── Saving ────────────────────────────────────────────────────────
+
+// The primary save. On the desktop it writes the file this workspace came
+// from, asking for a location only the first time; in the browser there is no
+// file, so it stays the download it has always been.
+export async function saveDocument() {
+  if (!hasFileHost()) { saveJSON(); return true; }
+  const path = activeFilePath();
+  if (!path) return saveDocumentAs();
+
+  const res = await writeFile(path, documentText());
+  if (!res.ok) {
+    // A cancel cannot happen on this path — there is no dialog — so anything
+    // that is not success is a real failure worth reporting.
+    showStatus(`Could not save: ${res.error || 'unknown error'}`);
+    if (typeof setSaveState === 'function') setSaveState('error', 'Save failed');
+    return false;
+  }
+  bindActiveFile(path);
+  showStatus(`Saved ${fileStem(path)}${WORKSPACE_EXT}`);
+  if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
+  return true;
+}
+
+// Always asks. In the browser this is the plain download, because a download
+// *is* a "where should this go" prompt as far as the user is concerned.
+export async function saveDocumentAs() {
+  if (!hasFileHost()) { saveJSON(); return true; }
+  const ws = activeWorkspace();
+  const suggestion = activeFilePath() || suggestedFileName(ws?.name || 'machine');
+
+  const res = await saveFileAs(documentText(), suggestion);
+  // Escape is the reader changing their mind. Reporting it as a failure is a
+  // bug they will believe, so it is silent.
+  if (res.canceled) return false;
+  if (!res.ok) {
+    showStatus(`Could not save: ${res.error || 'unknown error'}`);
+    return false;
+  }
+  bindActiveFile(res.path, { rename: true });
+  showStatus(`Saved ${fileStem(res.path)}${WORKSPACE_EXT}`);
+  if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
+  return true;
+}
+
+// The browser's save: a Blob and an `<a download>`. Named after the workspace
+// now — it was `automaton.json` every single time, so every save after the
+// first landed as `automaton (1)`, `automaton (2)`, a folder of files none of
+// which say what is in them.
 export function saveJSON() {
-  const data = getWorkspaceData();
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'automaton.json'; a.click();
-  showStatus('Saved as JSON!');
+  const blob = new Blob([documentText()], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = suggestedFileName(activeWorkspace()?.name || 'machine');
+  a.click();
+  showStatus('Machine saved');
   if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
 }
 
@@ -376,51 +937,100 @@ export function hideSaveMenu() {
 }
 document.addEventListener('click', () => hideSaveMenu());
 
-export function loadJSON() { $('file-input').click(); }
+// ── Opening ───────────────────────────────────────────────────────
+
+// The native dialog where there is one, the hidden `<input type=file>` where
+// there is not.
+export function loadJSON() {
+  if (!hasFileHost()) { $('file-input').click(); return; }
+  void openDocument();
+}
+
+export async function openDocument() {
+  const res = await openFileDialog();
+  if (res.canceled) return false;
+  if (!res.ok) {
+    showStatus(`Could not open: ${res.error || 'unknown error'}`);
+    return false;
+  }
+  return applyOpenedDocument(res);
+}
+
+// A document the host handed over: from the Open dialog, from a double-click,
+// from an "Open With", or from a path on the command line. `binary` is a PNG,
+// which carries the workspace in a trailing text chunk and so has to arrive as
+// bytes — decoding it as UTF-8 first would mangle everything before the marker.
+export function applyOpenedDocument(doc) {
+  if (!doc || !doc.path) return false;
+  const payload = doc.binary
+    ? Uint8Array.from(atob(doc.base64 || ''), c => c.charCodeAt(0)).buffer
+    : doc.text;
+  const ok = applyDocument(payload, doc.path);
+  // A file that would not parse is not the file this workspace is; binding the
+  // path anyway would point Ctrl+S at it and overwrite it with something else.
+  if (ok) bindActiveFile(doc.path, { rename: true });
+  return ok;
+}
+
+// ── Reading one ───────────────────────────────────────────────────
+
+// The one parser, shared by the drop handler, the file input and the host.
+// `payload` is text, or an ArrayBuffer for a PNG; `name` decides which, and is
+// a filename rather than a path so the two callers can both supply it.
+//
+// Returns whether the document was applied, because the caller has to know
+// before it binds a path to the workspace.
+export function applyDocument(payload, name) {
+  const lower = String(name || '').toLowerCase();
+  const isPng = lower.endsWith('.png');
+  const isJflap = lower.endsWith('.jff') || lower.endsWith('.jflap');
+  try {
+    // JFLAP files carry their own schema; importJFLAPText validates and
+    // loads them, so they never reach the workspace JSON path below.
+    // JFLAP carries no description of its own, so anything the previous
+    // machine had to say goes away with it.
+    if (isJflap) { importJFLAPText(payload); showExampleCard(null); return true; }
+
+    let data;
+    if (isPng) {
+      const text = new TextDecoder().decode(payload);
+      const marker = "\n--AutomataData--\n";
+      const parts = text.split(marker);
+      if (parts.length < 2) {
+        showStatus('Error: No workspace data found in this PNG');
+        return false;
+      }
+      data = JSON.parse(parts[1]);
+    } else {
+      data = JSON.parse(payload);
+    }
+    validateSchema(data);
+    loadData(data);
+    // A saved workspace usually has no `meta`; an example or a StateMate
+    // result saved to disk does. Either way the card is retargeted rather
+    // than left describing the machine that was just replaced.
+    showExampleCard(data.meta || null);
+    showStatus('Machine loaded');
+    return true;
+  } catch (err) {
+    console.error(err);
+    if (isJflap) { showStatus(`Could not import JFLAP file: ${err.message}`); return false; }
+    const isCustomErr = err.message && !err.message.includes('JSON');
+    showStatus(isCustomErr ? `Validation Error: ${err.message}` : (isPng ? 'Could not extract workspace data' : 'Could not read this file'));
+    return false;
+  }
+}
 
 export function handleFiles(files) {
   const f = files[0]; if (!f) return;
-  const lower = f.name.toLowerCase();
-  const isPng = lower.endsWith('.png');
-  const isJflap = lower.endsWith('.jff') || lower.endsWith('.jflap');
+  const isPng = f.name.toLowerCase().endsWith('.png');
   const reader = new FileReader();
-
-  reader.onload = ev => {
-    try {
-      // JFLAP files carry their own schema; importJFLAPText validates and
-      // loads them, so they never reach the workspace JSON path below.
-      // JFLAP carries no description of its own, so anything the previous
-      // machine had to say goes away with it.
-      if (isJflap) { importJFLAPText(ev.target.result); showExampleCard(null); return; }
-
-      let data;
-      if (isPng) {
-        const text = new TextDecoder().decode(ev.target.result);
-        const marker = "\n--AutomataData--\n";
-        const parts = text.split(marker);
-        if (parts.length < 2) {
-          showStatus('Error: No workspace data found in this PNG');
-          return;
-        }
-        data = JSON.parse(parts[1]);
-      } else {
-        data = JSON.parse(ev.target.result);
-      }
-      validateSchema(data);
-      loadData(data);
-      // A saved workspace usually has no `meta`; an example or a StateMate
-      // result saved to disk does. Either way the card is retargeted rather
-      // than left describing the machine that was just replaced.
-      showExampleCard(data.meta || null);
-      showStatus('Workspace loaded!');
-    } catch (err) {
-      console.error(err);
-      if (isJflap) { showStatus(`Could not import JFLAP file: ${err.message}`); return; }
-      const isCustomErr = err.message && !err.message.includes('JSON');
-      showStatus(isCustomErr ? `Validation Error: ${err.message}` : (isPng ? 'Could not extract workspace data' : 'Invalid JSON file'));
-    }
-  };
-
+  // A file dropped from the desktop has a name but no path — the browser does
+  // not give one, and Electron's `File.path` was removed in v32. So a drop
+  // never binds a file to the workspace: it loads the machine and leaves Ctrl+S
+  // meaning whatever it meant before, rather than silently retargeting it at a
+  // file the reader only dragged in to look at.
+  reader.onload = ev => { applyDocument(ev.target.result, f.name); };
   if (isPng) reader.readAsArrayBuffer(f);
   else reader.readAsText(f);
 }
@@ -599,6 +1209,10 @@ export async function loadSharedLinkFromURL() {
 
 export function validateSchema(data) {
   if (!data || typeof data !== 'object') throw new Error("Data must be a valid JSON object.");
+
+  // Before anything else: a document from a newer build is refused outright
+  // rather than read with its unknown fields silently dropped.
+  assertReadableSchema(data);
   
   const validMachines = Object.keys(MachineTypes);
   if (!data.machine || !validMachines.includes(data.machine)) {
@@ -711,6 +1325,11 @@ export function normalizeGrammarData(grammar) {
 }
 
 export function loadData(d, isExample) {
+  // Every path in — a file, a link, a PNG, a storage record, an example, an
+  // algorithm result — comes through here, so this is where the chain runs.
+  // `validateSchema` has already refused a future document on the paths that
+  // validate; this is the backstop for the ones that do not.
+  d = migrateWorkspaceDoc(d);
   App.machine = d.machine || 'DFA'; App.sigma = new Set(d.sigma || []);
   App.stackAlpha = new Set(d.stackAlpha || [App.config.sym.stackBottom]);
   App.outputAlpha = new Set(d.outputAlpha || []);
@@ -733,13 +1352,9 @@ export function loadData(d, isExample) {
     : [];
   App.selectedNotes.clear();
   App.selectedDividers.clear();
-  if (App.machine === 'TM' && hasSingleTapeNondeterminism(App.transitions)) {
-    App.machine = 'NDTM';
-  }
-  // Migration for legacy PDA type
-  if (App.machine === 'PDA' || App.machine === 'DPDA') {
-    App.machine = hasPdaNondeterminism(App.transitions) ? 'NPDA' : 'DPDA';
-  }
+  // Re-derived from the transitions on every load, whatever the schema said —
+  // see normalizeMachineType for why this is not a migration.
+  App.machine = normalizeMachineType({ machine: App.machine, transitions: App.transitions });
   resetIds();
   if (d.grammar) {
     const grammar = normalizeGrammarData(d.grammar);
@@ -765,7 +1380,9 @@ export function loadData(d, isExample) {
     // popover showing the settings of the machine you just replaced.
     refreshQuickSettings();
   }
-  else { migrateLegacySymbols(d); }
+  // The `else` that used to call migrateLegacySymbols here is gone: that is a
+  // v0 concern and it now runs in MIGRATIONS[0], before any of this reads the
+  // document. Running it here as well would map an already-mapped symbol.
   if (d.cam) { App.cam = { ...d.cam }; }
 
   if (typeof normalizeBoundarySymbolsForMachine === 'function') {
@@ -814,10 +1431,15 @@ export function migrateLegacySymbols(d) {
 }
 
 
-// Auto Backup/Restore via LocalStorage
-// Returns true when the payload reached localStorage. The explicit Save
-// action reports failure to the user, so a quota error can no longer pass
-// silently as a successful save.
+// ── The localStorage copy ─────────────────────────────────────────
+// The whole backend when there is no IndexedDB, and otherwise the last-resort
+// copy — see THE STORAGE LAYOUT. It writes every workspace at once, which is
+// why it is no longer on the autosave or tab-operation path: it is refreshed
+// at the two checkpoints a reader would recognise, an explicit Save and
+// unload, and nowhere else.
+//
+// Returns true when the payload reached localStorage, so a quota error cannot
+// pass silently as a successful save.
 export function saveBackup() {
   if (typeof exportWorkspaceState !== 'function' || !activeWorkspaceId) return false;
   // Ensure the active tab gets its latest snapshot
@@ -842,9 +1464,17 @@ export function saveBackup() {
 // — but a failure here means storage is full or unavailable, and silently
 // leaving the indicator on "Saved" would misreport the workspace as durable.
 export function saveBackupChecked() {
-  const ok = saveBackup();
-  if (!ok && typeof setSaveState === 'function') setSaveState('error', 'Save failed');
-  return ok;
+  // Tab operations change the index — which tabs exist, their order, which is
+  // active — plus, for a switch, the outgoing tab's own record. Both are the
+  // record write, so this no longer serialises every workspace into
+  // localStorage to record that one of them was renamed.
+  //
+  // The write is asynchronous and reports its own failure through the save
+  // indicator, which is how `saveWorkspace` has always reported. The return
+  // value is kept for the call sites that read like a checked call; no caller
+  // has ever branched on it.
+  void persistTabState();
+  return true;
 }
 
 // Prefers the IndexedDB snapshot, which is where saveWorkspace puts the
@@ -855,7 +1485,10 @@ export async function readLatestBackup() {
   if (snapshot && Array.isArray(snapshot.tabs) && snapshot.tabs.length) return snapshot;
   try {
     const raw = localStorage.getItem('automata-backup');
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return { ...parsed, source: 'localStorage' };
   } catch {
     return null;
   }
@@ -885,6 +1518,16 @@ export async function loadBackup() {
       // We set activeWorkspaceId to null to force switchTab to inject the data fully
       setActiveWorkspaceId(null);
       switchTab(targetId);
+
+      // Restored from somewhere that is not the record layout — a v2 database,
+      // or the localStorage fallback. Write the records out now rather than
+      // waiting for the reader's first edit, so that the very next boot is a
+      // cheap one and the legacy record stops being the thing keeping the tabs
+      // alive. switchTab's own incidental write would mostly cover this; doing
+      // it here is what makes it a decision rather than a side effect.
+      if (loaded.source && loaded.source !== 'records') {
+        void persistTabState();
+      }
     } else {
       // Monolithic fallback migration
       loadData(loaded);
@@ -900,6 +1543,10 @@ export async function loadBackup() {
 // the undo history and the reopen-closed-tab stack. Browsers render their own
 // generic wording here; the returnValue assignment is what triggers it.
 window.addEventListener('beforeunload', e => {
+  // The second checkpoint. Autosave and every tab operation have already put
+  // the records in IndexedDB, but an edit made since the last tick has not
+  // been written anywhere — and an asynchronous write started here is not
+  // guaranteed to finish. So the synchronous copy stays, once, on the way out.
   saveBackup();
   if (typeof Workspaces === 'undefined' || !Workspaces.some(w => w.dirty)) return;
   e.preventDefault();

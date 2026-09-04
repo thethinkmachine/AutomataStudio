@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 Shreyan Chaubey. See LICENSE.
 
-const { app, BrowserWindow, Menu, protocol, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, protocol, shell, ipcMain, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
@@ -66,6 +66,184 @@ ipcMain.on('window-maximize-toggle', () => {
 });
 ipcMain.on('window-close', () => mainWindow?.close());
 ipcMain.handle('window-is-maximized', () => mainWindow?.isMaximized() ?? false);
+
+// ══════════════════════════════════════════════════════════════════
+//  FILES
+// ══════════════════════════════════════════════════════════════════
+//  Until now this process exposed no filesystem at all, and the desktop build
+//  saved through the same Blob + <a download> path as the website — which is
+//  why it had no Save As dialog of its own, no Ctrl+S that meant "save", no
+//  double-click-to-open and no Recent Files. `will-download` in createWindow
+//  papered over the first of those; the rest need a path, which a download
+//  never has.
+//
+//  Every handler answers `{ ok, ... }` rather than throwing, so the renderer
+//  reads one shape and a cancel is distinguishable from a failure. A cancel is
+//  the reader changing their mind and must never be reported as an error.
+
+const WORKSPACE_EXT = 'automaton';
+
+const OPEN_FILTERS = [
+  { name: 'AutomataStudio Machine', extensions: [WORKSPACE_EXT] },
+  { name: 'All supported', extensions: [WORKSPACE_EXT, 'json', 'png', 'jff', 'jflap'] },
+  { name: 'Workspace JSON', extensions: ['json'] },
+  { name: 'JFLAP', extensions: ['jff', 'jflap'] },
+  { name: 'PNG with embedded workspace', extensions: ['png'] },
+  { name: 'All files', extensions: ['*'] },
+];
+
+const SAVE_FILTERS = [
+  { name: 'AutomataStudio Machine', extensions: [WORKSPACE_EXT] },
+  { name: 'Workspace JSON', extensions: ['json'] },
+];
+
+// A PNG carries the workspace in a trailing text chunk, so it has to reach the
+// renderer as bytes rather than as UTF-8 — decoding it first would mangle
+// everything before the marker. Base64 is the transport because the IPC
+// boundary is structured-clone and a latin1 string round-trips badly.
+async function readDocument(filePath) {
+  const isPng = path.extname(filePath).toLowerCase() === '.png';
+  if (isPng) {
+    const buf = await fs.readFile(filePath);
+    return { ok: true, path: filePath, base64: buf.toString('base64'), binary: true };
+  }
+  return { ok: true, path: filePath, text: await fs.readFile(filePath, 'utf8') };
+}
+
+ipcMain.handle('file:open-dialog', async () => {
+  if (!mainWindow) return { ok: false, error: 'No window' };
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Open Machine',
+    properties: ['openFile'],
+    filters: OPEN_FILTERS,
+  });
+  if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true };
+  try {
+    const doc = await readDocument(result.filePaths[0]);
+    rememberDocument(doc.path);
+    return doc;
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('file:read', async (_event, filePath) => {
+  if (typeof filePath !== 'string' || !filePath) return { ok: false, error: 'No path' };
+  try {
+    return await readDocument(filePath);
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('file:save-dialog', async (_event, payload) => {
+  if (!mainWindow) return { ok: false, error: 'No window' };
+  const { text, defaultPath } = payload || {};
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Save Machine',
+    defaultPath: defaultPath || `machine.${WORKSPACE_EXT}`,
+    filters: SAVE_FILTERS,
+  });
+  if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+  try {
+    await fs.writeFile(result.filePath, String(text ?? ''), 'utf8');
+    rememberDocument(result.filePath);
+    return { ok: true, path: result.filePath };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('file:write', async (_event, payload) => {
+  const { path: filePath, text } = payload || {};
+  if (typeof filePath !== 'string' || !filePath) return { ok: false, error: 'No path' };
+  try {
+    await fs.writeFile(filePath, String(text ?? ''), 'utf8');
+    rememberDocument(filePath);
+    return { ok: true, path: filePath };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// What the window is editing: the macOS proxy icon and edited dot, and the OS
+// Recent Files list. Cosmetic, and the difference between an app that has
+// documents and one that merely reads them.
+ipcMain.on('file:note-document', (_event, payload) => {
+  const { path: filePath, dirty } = payload || {};
+  if (!mainWindow) return;
+  if (process.platform === 'darwin') {
+    mainWindow.setRepresentedFilename(filePath || '');
+    mainWindow.setDocumentEdited(!!dirty);
+  }
+  if (filePath) rememberDocument(filePath);
+});
+
+function rememberDocument(filePath) {
+  // Populates the macOS dock menu and the Windows jump list. Unsupported on
+  // Linux, where it is a no-op rather than an error.
+  try { app.addRecentDocument(filePath); } catch { /* not everywhere */ }
+}
+
+// ── A file the OS hands us ────────────────────────────────────────
+//  Three ways in, and they arrive at different moments: macOS sends `open-file`
+//  (possibly before the window exists), Windows and Linux put the path in argv,
+//  and a second launch while this one is running arrives through
+//  `second-instance` — which only fires at all because of the lock below.
+//
+//  `pendingOpenPath` is what bridges the timing: a path that arrives before the
+//  renderer is listening is held, and `file:take-pending` is how the renderer
+//  collects it once it is ready. Without that, opening the app *by* double-
+//  clicking a file — the commonest way there is — would open an empty canvas.
+
+let pendingOpenPath = null;
+
+function looksLikeDocument(arg) {
+  if (typeof arg !== 'string' || !arg || arg.startsWith('-')) return false;
+  const ext = path.extname(arg).toLowerCase();
+  return ['.automaton', '.json', '.jff', '.jflap', '.png'].includes(ext);
+}
+
+function documentFromArgv(argv) {
+  return (argv || []).slice(1).find(looksLikeDocument) || null;
+}
+
+async function deliverOpenPath(filePath) {
+  if (!filePath) return;
+  if (!mainWindow || mainWindow.webContents.isLoading()) {
+    pendingOpenPath = filePath;
+    return;
+  }
+  try {
+    const doc = await readDocument(filePath);
+    rememberDocument(filePath);
+    mainWindow.webContents.send('file:opened', doc);
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  } catch (err) {
+    console.error('[files] could not open', filePath, err);
+  }
+}
+
+// The renderer asks once, when it has a listener attached.
+ipcMain.handle('file:take-pending', async () => {
+  const filePath = pendingOpenPath;
+  pendingOpenPath = null;
+  if (!filePath) return null;
+  try {
+    rememberDocument(filePath);
+    return await readDocument(filePath);
+  } catch {
+    return null;
+  }
+});
+
+// Registered at module scope: on macOS this can fire before `whenReady`, and a
+// handler installed later would miss the very event that launched the app.
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  void deliverOpenPath(filePath);
+});
 
 // Backs the header's more-menu entry. The renderer asks whether this build can
 // update at all before revealing the item, so the answer has to come from the same
@@ -356,7 +534,8 @@ function buildMenu() {
         { label: 'New Workspace Tab', click: () => sendMenuAction('new-tab') },
         { type: 'separator' },
         { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => sendMenuAction('open') },
-        { label: 'Save As JSON…', click: () => sendMenuAction('save') },
+        { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => sendMenuAction('save') },
+        { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenuAction('save-as') },
         { label: 'Export as PNG…', click: () => sendMenuAction('export-png') },
         { type: 'separator' },
         { label: 'Export Settings…', click: () => sendMenuAction('export-settings') },
@@ -636,16 +815,44 @@ async function checkForUpdatesManually() {
   }
 }
 
-app.whenReady().then(() => {
-  registerAppProtocol();
-  buildMenu();
-  createWindow();
-  initAutoUpdater();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+// Double-clicking a second `.automaton` file while the app is running must open
+// it *here*, not start a second copy with its own window, its own IndexedDB
+// connection and its own idea of which tabs exist. Two instances sharing one
+// userData directory is also how the version-bump deadlock `openWorkspaceDb`
+// guards against actually happens in the wild.
+//
+// The loser exits immediately; the winner is handed its argv through
+// `second-instance`, which is where the path it was asked to open arrives.
+const gotInstanceLock = app.requestSingleInstanceLock();
+if (!gotInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const filePath = documentFromArgv(argv);
+    if (filePath) void deliverOpenPath(filePath);
+    else if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
   });
-});
+
+  app.whenReady().then(() => {
+    registerAppProtocol();
+    buildMenu();
+    createWindow();
+    initAutoUpdater();
+
+    // Windows and Linux pass the double-clicked file on the command line. It
+    // is held rather than sent: the renderer is not listening yet, and
+    // `file:take-pending` is how it collects this once it is.
+    const launchedWith = documentFromArgv(process.argv);
+    if (launchedWith) pendingOpenPath = launchedWith;
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
