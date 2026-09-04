@@ -9,6 +9,7 @@ import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { showExampleCard } from './machine-card.js';
 import { isMultiTape } from './machines/index.js';
 import { $, APP_VERSION, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, largeMachineProfile, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
+import { WORKSPACE_EXT, fileStem, hasFileHost, noteOpenDocument, openFileDialog, saveFileAs, suggestedFileName, writeFile } from './file-host.js';
 import { hideContextMenu } from './states-transitions.js';
 import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen, hideTabContextMenu, hideTabOverflowMenu, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
@@ -821,11 +822,102 @@ export function restartAutosaveTimer() {
   autosaveCountdownTimer.unref?.();
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  DOCUMENTS
+// ══════════════════════════════════════════════════════════════════
+//  Two hosts, one set of verbs. On the desktop a workspace has a *file* — a
+//  path it came from and can be written back to — so Save means save. On the
+//  website there is no path, a save is a download, and Save can only ever mean
+//  "put another copy in the Downloads folder". [js/file-host.js](js/file-host.js)
+//  is where that difference lives; everything below reads the same in both.
+//
+//  The path is tracked per workspace (`ws.filePath`), not globally, because
+//  tabs are independent documents — and it rides in the tab record, so closing
+//  the app and reopening it leaves Ctrl+S still meaning the file you were
+//  working on.
+
+// The active tab, which is what a document verb acts on.
+function activeWorkspace() {
+  return Workspaces.find(w => w.id === activeWorkspaceId) || null;
+}
+
+// Records which file the active workspace is now, and tells the host so the
+// title, the macOS proxy icon and the Recent Files list follow.
+function bindActiveFile(filePath, { rename = false } = {}) {
+  const ws = activeWorkspace();
+  if (ws) {
+    ws.filePath = filePath || null;
+    if (rename && filePath) ws.name = fileStem(filePath) || ws.name;
+  }
+  noteOpenDocument(filePath, { dirty: !!ws?.dirty });
+  if (typeof renderTabs === 'function') renderTabs();
+}
+
+export function activeFilePath() {
+  return activeWorkspace()?.filePath || null;
+}
+
+// The document, as it goes to disk or into a download.
+function documentText() {
+  return JSON.stringify(getWorkspaceData(), null, 2);
+}
+
+// ── Saving ────────────────────────────────────────────────────────
+
+// The primary save. On the desktop it writes the file this workspace came
+// from, asking for a location only the first time; in the browser there is no
+// file, so it stays the download it has always been.
+export async function saveDocument() {
+  if (!hasFileHost()) { saveJSON(); return true; }
+  const path = activeFilePath();
+  if (!path) return saveDocumentAs();
+
+  const res = await writeFile(path, documentText());
+  if (!res.ok) {
+    // A cancel cannot happen on this path — there is no dialog — so anything
+    // that is not success is a real failure worth reporting.
+    showStatus(`Could not save: ${res.error || 'unknown error'}`);
+    if (typeof setSaveState === 'function') setSaveState('error', 'Save failed');
+    return false;
+  }
+  bindActiveFile(path);
+  showStatus(`Saved ${fileStem(path)}${WORKSPACE_EXT}`);
+  if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
+  return true;
+}
+
+// Always asks. In the browser this is the plain download, because a download
+// *is* a "where should this go" prompt as far as the user is concerned.
+export async function saveDocumentAs() {
+  if (!hasFileHost()) { saveJSON(); return true; }
+  const ws = activeWorkspace();
+  const suggestion = activeFilePath() || suggestedFileName(ws?.name || 'machine');
+
+  const res = await saveFileAs(documentText(), suggestion);
+  // Escape is the reader changing their mind. Reporting it as a failure is a
+  // bug they will believe, so it is silent.
+  if (res.canceled) return false;
+  if (!res.ok) {
+    showStatus(`Could not save: ${res.error || 'unknown error'}`);
+    return false;
+  }
+  bindActiveFile(res.path, { rename: true });
+  showStatus(`Saved ${fileStem(res.path)}${WORKSPACE_EXT}`);
+  if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
+  return true;
+}
+
+// The browser's save: a Blob and an `<a download>`. Named after the workspace
+// now — it was `automaton.json` every single time, so every save after the
+// first landed as `automaton (1)`, `automaton (2)`, a folder of files none of
+// which say what is in them.
 export function saveJSON() {
-  const data = getWorkspaceData();
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'automaton.json'; a.click();
-  showStatus('Saved as JSON!');
+  const blob = new Blob([documentText()], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = suggestedFileName(activeWorkspace()?.name || 'machine');
+  a.click();
+  showStatus('Machine saved');
   if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
 }
 
@@ -845,51 +937,100 @@ export function hideSaveMenu() {
 }
 document.addEventListener('click', () => hideSaveMenu());
 
-export function loadJSON() { $('file-input').click(); }
+// ── Opening ───────────────────────────────────────────────────────
+
+// The native dialog where there is one, the hidden `<input type=file>` where
+// there is not.
+export function loadJSON() {
+  if (!hasFileHost()) { $('file-input').click(); return; }
+  void openDocument();
+}
+
+export async function openDocument() {
+  const res = await openFileDialog();
+  if (res.canceled) return false;
+  if (!res.ok) {
+    showStatus(`Could not open: ${res.error || 'unknown error'}`);
+    return false;
+  }
+  return applyOpenedDocument(res);
+}
+
+// A document the host handed over: from the Open dialog, from a double-click,
+// from an "Open With", or from a path on the command line. `binary` is a PNG,
+// which carries the workspace in a trailing text chunk and so has to arrive as
+// bytes — decoding it as UTF-8 first would mangle everything before the marker.
+export function applyOpenedDocument(doc) {
+  if (!doc || !doc.path) return false;
+  const payload = doc.binary
+    ? Uint8Array.from(atob(doc.base64 || ''), c => c.charCodeAt(0)).buffer
+    : doc.text;
+  const ok = applyDocument(payload, doc.path);
+  // A file that would not parse is not the file this workspace is; binding the
+  // path anyway would point Ctrl+S at it and overwrite it with something else.
+  if (ok) bindActiveFile(doc.path, { rename: true });
+  return ok;
+}
+
+// ── Reading one ───────────────────────────────────────────────────
+
+// The one parser, shared by the drop handler, the file input and the host.
+// `payload` is text, or an ArrayBuffer for a PNG; `name` decides which, and is
+// a filename rather than a path so the two callers can both supply it.
+//
+// Returns whether the document was applied, because the caller has to know
+// before it binds a path to the workspace.
+export function applyDocument(payload, name) {
+  const lower = String(name || '').toLowerCase();
+  const isPng = lower.endsWith('.png');
+  const isJflap = lower.endsWith('.jff') || lower.endsWith('.jflap');
+  try {
+    // JFLAP files carry their own schema; importJFLAPText validates and
+    // loads them, so they never reach the workspace JSON path below.
+    // JFLAP carries no description of its own, so anything the previous
+    // machine had to say goes away with it.
+    if (isJflap) { importJFLAPText(payload); showExampleCard(null); return true; }
+
+    let data;
+    if (isPng) {
+      const text = new TextDecoder().decode(payload);
+      const marker = "\n--AutomataData--\n";
+      const parts = text.split(marker);
+      if (parts.length < 2) {
+        showStatus('Error: No workspace data found in this PNG');
+        return false;
+      }
+      data = JSON.parse(parts[1]);
+    } else {
+      data = JSON.parse(payload);
+    }
+    validateSchema(data);
+    loadData(data);
+    // A saved workspace usually has no `meta`; an example or a StateMate
+    // result saved to disk does. Either way the card is retargeted rather
+    // than left describing the machine that was just replaced.
+    showExampleCard(data.meta || null);
+    showStatus('Machine loaded');
+    return true;
+  } catch (err) {
+    console.error(err);
+    if (isJflap) { showStatus(`Could not import JFLAP file: ${err.message}`); return false; }
+    const isCustomErr = err.message && !err.message.includes('JSON');
+    showStatus(isCustomErr ? `Validation Error: ${err.message}` : (isPng ? 'Could not extract workspace data' : 'Could not read this file'));
+    return false;
+  }
+}
 
 export function handleFiles(files) {
   const f = files[0]; if (!f) return;
-  const lower = f.name.toLowerCase();
-  const isPng = lower.endsWith('.png');
-  const isJflap = lower.endsWith('.jff') || lower.endsWith('.jflap');
+  const isPng = f.name.toLowerCase().endsWith('.png');
   const reader = new FileReader();
-
-  reader.onload = ev => {
-    try {
-      // JFLAP files carry their own schema; importJFLAPText validates and
-      // loads them, so they never reach the workspace JSON path below.
-      // JFLAP carries no description of its own, so anything the previous
-      // machine had to say goes away with it.
-      if (isJflap) { importJFLAPText(ev.target.result); showExampleCard(null); return; }
-
-      let data;
-      if (isPng) {
-        const text = new TextDecoder().decode(ev.target.result);
-        const marker = "\n--AutomataData--\n";
-        const parts = text.split(marker);
-        if (parts.length < 2) {
-          showStatus('Error: No workspace data found in this PNG');
-          return;
-        }
-        data = JSON.parse(parts[1]);
-      } else {
-        data = JSON.parse(ev.target.result);
-      }
-      validateSchema(data);
-      loadData(data);
-      // A saved workspace usually has no `meta`; an example or a StateMate
-      // result saved to disk does. Either way the card is retargeted rather
-      // than left describing the machine that was just replaced.
-      showExampleCard(data.meta || null);
-      showStatus('Workspace loaded!');
-    } catch (err) {
-      console.error(err);
-      if (isJflap) { showStatus(`Could not import JFLAP file: ${err.message}`); return; }
-      const isCustomErr = err.message && !err.message.includes('JSON');
-      showStatus(isCustomErr ? `Validation Error: ${err.message}` : (isPng ? 'Could not extract workspace data' : 'Invalid JSON file'));
-    }
-  };
-
+  // A file dropped from the desktop has a name but no path — the browser does
+  // not give one, and Electron's `File.path` was removed in v32. So a drop
+  // never binds a file to the workspace: it loads the machine and leaves Ctrl+S
+  // meaning whatever it meant before, rather than silently retargeting it at a
+  // file the reader only dragged in to look at.
+  reader.onload = ev => { applyDocument(ev.target.result, f.name); };
   if (isPng) reader.readAsArrayBuffer(f);
   else reader.readAsText(f);
 }

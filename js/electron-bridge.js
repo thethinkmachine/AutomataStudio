@@ -1,7 +1,7 @@
 import { copySelection, exportPNG, pasteClipboard, selectAllStates } from './canvas.js';
 import { redo, undo } from './history.js';
 import { closeModal, isModalOpen, registerModal, showOverlay } from './modal.js';
-import { loadJSON, saveJSON } from './persistence.js';
+import { applyOpenedDocument, loadJSON, saveDocument, saveDocumentAs } from './persistence.js';
 import { $, App } from './state.js';
 import { createTab, exportSettings } from './ui.js';
 import { hideMoreMenu } from './view.js';
@@ -25,7 +25,8 @@ if (isElectron) {
     switch (action) {
       case 'new-tab': createTab(); break;
       case 'open': loadJSON(); break;
-      case 'save': saveJSON(); break;
+      case 'save': void saveDocument(); break;
+      case 'save-as': void saveDocumentAs(); break;
       case 'export-png': exportPNG(); break;
       case 'export-settings': exportSettings(); break;
       case 'import-settings':
@@ -40,6 +41,15 @@ if (isElectron) {
       case 'about': openAboutModal(); break;
     }
   });
+
+  // A file the OS handed over: a double-click on a .automaton, an "Open With",
+  // a path on the command line, or a second launch while this one is running.
+  //
+  // Subscribing also *collects* a path that arrived before this listener
+  // existed — which is the case whenever the app was launched by double-
+  // clicking a file, the commonest way there is. Without that collection the
+  // app opens its own file type to an empty canvas.
+  window.electronAPI.onOpenFile(doc => { applyOpenedDocument(doc); });
 
   // Custom titlebar: the window is frameless (electron/main.js), so these
   // buttons in the header are the only way to minimize/maximize/close.

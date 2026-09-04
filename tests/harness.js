@@ -51,6 +51,7 @@ import * as markdown from '../js/markdown.js';
 import * as minimap from '../js/minimap.js';
 import * as modal from '../js/modal.js';
 import * as notes from '../js/notes.js';
+import * as fileHost from '../js/file-host.js';
 import * as persistence from '../js/persistence.js';
 import * as machineCard from '../js/machine-card.js';
 import * as render from '../js/render.js';
@@ -120,7 +121,7 @@ const NAMESPACES = [
   machinePushdown, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,
   simulation, tape, tapeLog, tapeView, suggest, language, alphabet, markdown,
-  view, history, persistence, exportCore, exportFormats, exportUi, codegen,
+  view, history, fileHost, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, algorithmsFa, grammarUi, grammarModel, grammarParse, grammarAnalysis, grammarTransform,
   grammarParsing, grammarConvert, grammarTree, grammarRegistry, grammarExamples, reference, workspace, quickSettings, minimap, ui,
   statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt, statemateAgent,

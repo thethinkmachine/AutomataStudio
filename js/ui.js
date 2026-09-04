@@ -11,7 +11,7 @@ import { markDirty, redo, snapshot, snapshotSettings, trimStowedHistory, undo } 
 import { renderMinimap, scheduleMinimap } from './minimap.js';
 import { anyModalOpen, askConfirm, closeModal, registerModal, showOverlay } from './modal.js';
 import { includeNoteBounds, pruneNoteAnchorsExcluding, removeNotes } from './notes.js';
-import { CARD_AUTO_HIDE_MS, restartAutosaveTimer, saveBackupChecked, saveJSON, saveWorkspace, saveWorkspaceById } from './persistence.js';
+import { CARD_AUTO_HIDE_MS, restartAutosaveTimer, saveBackupChecked, saveDocument, saveDocumentAs, saveWorkspace, saveWorkspaceById } from './persistence.js';
 import { renderAll, updateBlockList, updateLPanel, updateRPanel } from './render.js';
 import { filterList } from './panel-list.js';
 import {
@@ -926,8 +926,16 @@ document.addEventListener('keydown', e => {
     if (e.key === 'y' || e.key === 'Z') { e.preventDefault(); redo(); }
     // Ctrl+S is the in-app save; Ctrl+Shift+S exports a JSON file, which is
     // what Ctrl+S used to do.
-    if (e.key === 's') { e.preventDefault(); saveWorkspace(); }
-    if (e.key === 'S' && e.shiftKey) { e.preventDefault(); saveJSON(); }
+    // Ctrl+S is the document save: on the desktop it writes the file this
+    // workspace came from, asking for a location the first time. In the browser
+    // there is no file, so saveDocument falls through to the download and the
+    // workspace save below is what actually persists.
+    if (e.key === 's') {
+      e.preventDefault();
+      void saveDocument();
+      saveWorkspace({ silent: true });
+    }
+    if (e.key === 'S' && e.shiftKey) { e.preventDefault(); void saveDocumentAs(); }
     if (e.key === 'a' || e.key === 'A') { e.preventDefault(); if (App.view === 'build') selectAllStates(); }
     if (e.key === 'c' || e.key === 'C') { if (App.view === 'build') copySelection(); }
     if (e.key === 'v' || e.key === 'V') { if (App.view === 'build') { e.preventDefault(); pasteClipboard(App._lastCanvasWorldPt || null); } }
