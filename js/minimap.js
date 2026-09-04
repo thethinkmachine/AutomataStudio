@@ -36,7 +36,7 @@
 import { animMotionOk, isSyncRAF } from './anim.js';
 import { applyCamera, clampZoom, normalizeWheelDeltas } from './canvas.js';
 import { includeDividerBounds, isRectDivider } from './dividers.js';
-import { markDirty } from './history.js';
+import { markViewDirty } from './history.js';
 import { includeNoteBounds, noteBoxLayout, resolveNotePos } from './notes.js';
 import { $, App, largeMachineProfile } from './state.js';
 import { viewGraph, viewStates, viewTransitions } from './view-graph.js';
@@ -629,8 +629,8 @@ function centreCameraOn(wx, wy, animate) {
   const vis = visibleCanvasBox();
   App.cam.x = vis.x + vis.w / 2 - wx * App.cam.z;
   App.cam.y = vis.y + vis.h / 2 - wy * App.cam.z;
-  // A no-op once the tab is already dirty, so calling it per drag frame is free.
-  markDirty();
+  // A no-op once the tab is already marked, so calling it per drag frame is free.
+  markViewDirty();
 
   const cam = $('cam-g');
   if (animate && cam) {
