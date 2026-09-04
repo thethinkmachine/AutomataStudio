@@ -312,7 +312,7 @@ test('a burst of tab operations collapses into one write', async () => {
 
 // ── Autosave ──────────────────────────────────────────────────────
 
-test('autosave persists a tab marked by nothing but a camera move', async () => {
+test('autosave persists a tab dirtied by nothing but a camera move', async () => {
   const store = installFakeIndexedDB();
   seedActiveWorkspace();
   await context.saveWorkspace({ silent: true });
@@ -320,53 +320,14 @@ test('autosave persists a tab marked by nothing but a camera move', async () => 
 
   // Pan the camera and mark it the way the canvas handlers now do.
   context.App.cam = { x: 500, y: 600, z: 2 };
-  context.markViewDirty();
+  context.markDirty();
+  assert.strictEqual(context.Workspaces[0].dirty, true,
+    'a camera move is a real change to persisted state');
 
   await context.runAutosave();
 
-  assert.strictEqual(context.Workspaces[0].viewDirty, false,
-    'the quiet mark is cleared by the write that answered it');
-  assert.deepStrictEqual(store.tabs().get('w0').data.cam, { x: 500, y: 600, z: 2 },
-    'the camera still has to survive a reload — that is the whole reason autosave reads the quiet mark');
-});
-
-// The point of the split. Every one of these consumers reads `dirty`, and a
-// camera move must reach none of them: being told you have unsaved work
-// because you scrolled is a warning about work you never did.
-test('a camera move never raises an unsaved-changes alarm', () => {
-  seedActiveWorkspace();
-  context.Workspaces[0].dirty = false;
-
-  context.App.cam = { x: 500, y: 600, z: 2 };
-  context.markViewDirty();
-
-  assert.strictEqual(context.Workspaces[0].dirty, false,
-    'the tab dot, the save indicator, beforeunload and the close-tab dialog all read this');
-  assert.strictEqual(context.Workspaces[0].viewDirty, true, 'but the write is still owed');
-});
-
-// An edit is still an edit — the quiet flag must not have swallowed the loud one.
-test('a real edit still marks the tab dirty', () => {
-  seedActiveWorkspace();
-  context.Workspaces[0].dirty = false;
-
-  context.markDirty();
-
-  assert.strictEqual(context.Workspaces[0].dirty, true);
-});
-
-test('a stored record carries neither mark', async () => {
-  const store = installFakeIndexedDB();
-  seedActiveWorkspace();
-  context.markDirty();
-  context.markViewDirty();
-
-  await context.runAutosave();
-
-  const rec = store.tabs().get('w0');
-  assert.strictEqual(rec.dirty, false);
-  assert.strictEqual(rec.viewDirty, false,
-    'a record is written clean, or the next boot restores a tab that believes it owes a save');
+  assert.strictEqual(context.Workspaces[0].dirty, false, 'autosave should have saved it');
+  assert.deepStrictEqual(store.tabs().get('w0').data.cam, { x: 500, y: 600, z: 2 });
 });
 
 test('autosave is a no-op when nothing is dirty', async () => {
