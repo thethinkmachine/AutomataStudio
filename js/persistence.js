@@ -263,7 +263,7 @@ export function getBackupPayload(savedIds = []) {
   if (act) act.data = exportWorkspaceState();
   const saved = new Set(savedIds);
   return {
-    tabs: Workspaces.map(ws => stripTabForStorage(saved.has(ws.id) ? { ...ws, dirty: false } : ws)),
+    tabs: Workspaces.map(ws => stripTabForStorage(saved.has(ws.id) ? { ...ws, dirty: false, viewDirty: false } : ws)),
     activeId: activeWorkspaceId,
     config: App.config
   };
@@ -498,7 +498,8 @@ function tabRecordsFor(ids) {
   const act = Workspaces.find(w => w.id === activeWorkspaceId);
   if (act && typeof exportWorkspaceState === 'function') act.data = exportWorkspaceState();
   const want = new Set(ids);
-  return Workspaces.filter(w => want.has(w.id)).map(w => stripTabForStorage({ ...w, dirty: false }));
+  return Workspaces.filter(w => want.has(w.id))
+    .map(w => stripTabForStorage({ ...w, dirty: false, viewDirty: false }));
 }
 
 // The index. Small and bounded — ids, a name per tab, and the config — so it
@@ -701,13 +702,14 @@ export async function saveWorkspace(opts = {}) {
     const backend = await writeWorkspaceRecords([activeWorkspaceId]);
     const active = Workspaces.find(ws => ws.id === activeWorkspaceId);
     const wasDirty = active ? active.dirty : false;
-    if (active) active.dirty = false;
+    const wasViewDirty = active ? active.viewDirty : false;
+    if (active) { active.dirty = false; active.viewDirty = false; }
     // An explicit Save is one of the two checkpoints where the localStorage
     // copy is brought back up to date — see THE STORAGE LAYOUT. When
     // localStorage *is* the backend the write above already did it, and a
     // second one would be the double serialisation this stage removed.
     if (backend !== 'localStorage' && !saveBackup()) {
-      if (active) active.dirty = wasDirty;
+      if (active) { active.dirty = wasDirty; active.viewDirty = wasViewDirty; }
       throw new Error('Could not update workspace backup');
     }
     if (typeof renderTabs === 'function') renderTabs();
@@ -736,14 +738,17 @@ export async function saveWorkspaceById(id) {
   if (!ws) return true;
   if (id === activeWorkspaceId) return saveWorkspace({ silent: true });
   const wasDirty = ws.dirty;
+  const wasViewDirty = ws.viewDirty;
   try {
     await writeWorkspaceRecords([id]);
     ws.dirty = false;
+    ws.viewDirty = false;
     if (typeof renderTabs === 'function') renderTabs();
     if (typeof setSaveState === 'function') setSaveState(Workspaces.some(item => item.dirty) ? 'unsaved' : 'saved');
     return true;
   } catch {
     ws.dirty = wasDirty;
+    ws.viewDirty = wasViewDirty;
     if (typeof setSaveState === 'function') setSaveState('error', 'Save failed');
     showStatus('Could not save — browser storage is full or unavailable');
     return false;
@@ -752,10 +757,19 @@ export async function saveWorkspaceById(id) {
 
 export async function runAutosave() {
   if (autosaveInProgress || pendingWorkspaceSave || typeof Workspaces === 'undefined') return;
-  const dirtyIds = Workspaces.filter(ws => ws.dirty).map(ws => ws.id);
+  // Both marks, and this is the only place the quiet one is read. `dirty` is an
+  // edit; `viewDirty` is the camera, which exportWorkspaceState carries and so
+  // has to be written if the reader's view is to survive a reload — but which
+  // must not raise an unsaved-changes prompt on the way there. See
+  // markViewDirty in js/history.js.
+  const dirtyIds = Workspaces.filter(ws => ws.dirty || ws.viewDirty).map(ws => ws.id);
   if (!dirtyIds.length) return;
   autosaveInProgress = true;
-  if (typeof setSaveState === 'function') setSaveState('saving', 'Autosaving…');
+  // Silent when the only reason to write is the camera: an indicator that
+  // flashes "Autosaving…" because the reader scrolled is the same false alarm
+  // the quiet mark exists to remove, just briefer.
+  const loud = Workspaces.some(ws => ws.dirty);
+  if (loud && typeof setSaveState === 'function') setSaveState('saving', 'Autosaving…');
   let allSaved = true;
   try {
     for (const id of dirtyIds) {
@@ -764,7 +778,7 @@ export async function runAutosave() {
   } finally {
     autosaveInProgress = false;
   }
-  if (typeof setSaveState === 'function') {
+  if ((loud || !allSaved) && typeof setSaveState === 'function') {
     setSaveState(allSaved && !Workspaces.some(ws => ws.dirty) ? 'saved' : allSaved ? 'unsaved' : 'error');
   }
 }

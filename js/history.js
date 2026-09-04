@@ -36,8 +36,8 @@ export function commit(edit, ...kinds) {
 // selection, hover and edge highlights — and none of that is part of what
 // exportWorkspaceState persists. Marking dirty there would raise the
 // unsaved-changes prompt for merely clicking a state. The camera is the one
-// repaint-only thing that IS persisted, and canvas.js calls markDirty for it
-// explicitly.
+// repaint-only thing that IS persisted, and it takes the quiet mark
+// (markViewDirty) rather than this one — it is saved, but it is not an edit.
 subscribe(Change.GRAPH, markDirty);
 subscribe(Change.ALPHABET, markDirty);
 // Change.META is the third: the info card's text is part of what
@@ -271,10 +271,13 @@ export function snapshot() {
 }
 
 // Flags the active workspace as having unsaved changes without pushing an undo
-// entry. Some persisted state — the camera above all — is part of what gets
-// saved and restored but is not something the user undoes. Without this, panning
-// or zooming left the tab clean, so autosave skipped it entirely and the
-// viewport survived a reload only when an unrelated edit happened to be pending.
+// entry. Some persisted state is part of what gets saved and restored but is
+// not something the user undoes.
+//
+// This is the *loud* mark: it is what the tab's unsaved dot, the save
+// indicator, the autosave countdown, the beforeunload prompt and the
+// close-tab dialog all read. Use it only for a change the reader would call
+// an edit. The camera is not one — see markViewDirty below.
 export function markDirty() {
   if (!activeWorkspaceId || typeof Workspaces === 'undefined') return;
   const ws = Workspaces.find(w => w.id === activeWorkspaceId);
@@ -283,6 +286,30 @@ export function markDirty() {
     if (typeof renderTabs === 'function') renderTabs();
     if (typeof setSaveState === 'function') setSaveState('unsaved');
   }
+}
+
+// The quiet mark, and the whole of the difference is who reads it.
+//
+// The camera is persisted — exportWorkspaceState carries `cam`, so where you
+// were looking is part of the workspace — but it is not an *edit*. Marking it
+// with markDirty() meant panning fed seven consumers that have no business
+// caring about the viewport: the tab's unsaved dot, the overflow menu's, the
+// mobile one, the orange save indicator, the autosave countdown, and — the two
+// that actually cost the reader something — the browser's "you have unsaved
+// changes" prompt and the save-before-closing dialog. Scrolling the canvas
+// warned you that you were about to lose work you had not done.
+//
+// So the viewport gets a flag of its own. `runAutosave` unions it into the set
+// of tabs it writes, which is what keeps the camera surviving a reload; nothing
+// else reads it. Cleared wherever `dirty` is cleared, because the write that
+// clears one has just written the other.
+//
+// Idempotent for the same reason markDirty is: minimap navigation calls this
+// per drag frame.
+export function markViewDirty() {
+  if (!activeWorkspaceId || typeof Workspaces === 'undefined') return;
+  const ws = Workspaces.find(w => w.id === activeWorkspaceId);
+  if (ws) ws.viewDirty = true;
 }
 // Step back one entry, handing the state being left behind to redo.
 //
