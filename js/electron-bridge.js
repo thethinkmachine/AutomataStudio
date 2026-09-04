@@ -1,7 +1,7 @@
 import { copySelection, exportPNG, pasteClipboard, selectAllStates } from './canvas.js';
 import { redo, undo } from './history.js';
 import { closeModal, isModalOpen, registerModal, showOverlay } from './modal.js';
-import { applyOpenedDocument, loadJSON, saveDocument, saveDocumentAs } from './persistence.js';
+import { loadJSON, openExternalDocument, saveDocumentAs, saveNow } from './persistence.js';
 import { $, App } from './state.js';
 import { createTab, exportSettings } from './ui.js';
 import { hideMoreMenu } from './view.js';
@@ -25,7 +25,7 @@ if (isElectron) {
     switch (action) {
       case 'new-tab': createTab(); break;
       case 'open': loadJSON(); break;
-      case 'save': void saveDocument(); break;
+      case 'save': void saveNow(); break;
       case 'save-as': void saveDocumentAs(); break;
       case 'export-png': exportPNG(); break;
       case 'export-settings': exportSettings(); break;
@@ -49,7 +49,13 @@ if (isElectron) {
   // existed — which is the case whenever the app was launched by double-
   // clicking a file, the commonest way there is. Without that collection the
   // app opens its own file type to an empty canvas.
-  window.electronAPI.onOpenFile(doc => { applyOpenedDocument(doc); });
+  //
+  // That collection is why this goes through openExternalDocument rather than
+  // applying straight away: this module is evaluated first in main.js, so a
+  // cold launch delivers the file *before* loadBackup() has restored the
+  // workspaces — and the restore then overwrote it. See THE BOOT GATE in
+  // js/persistence.js.
+  window.electronAPI.onOpenFile(doc => { openExternalDocument(doc); });
 
   // Custom titlebar: the window is frameless (electron/main.js), so these
   // buttons in the header are the only way to minimize/maximize/close.

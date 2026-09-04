@@ -84,7 +84,7 @@ import {
 } from './suggest.js';
 import {
   copyShareableLink, ctxCanvasDescribe, hideSaveMenu, loadJSON, onFileLoad,
-  saveDocument, saveDocumentAs, saveJSON, saveWorkspace, toggleSaveMenu,
+  saveDocument, saveDocumentAs, saveJSON, saveNow, saveWorkspace, toggleSaveMenu,
 } from './persistence.js';
 // The whole StateMate feature adds exactly one name here. Everything else in
 // js/statemate-ui.js wires its listeners at creation, the way reference.js
@@ -187,7 +187,7 @@ Object.assign(window, {
    trySymSuggestKeydown,
   // persistence.js
    copyShareableLink, hideSaveMenu, loadJSON, onFileLoad,
-   ctxCanvasDescribe, saveDocument, saveDocumentAs, saveJSON, saveWorkspace, toggleSaveMenu,
+   ctxCanvasDescribe, saveDocument, saveDocumentAs, saveJSON, saveNow, saveWorkspace, toggleSaveMenu,
   // wizard-ui.js — the whole wizard, in one name. Everything else inside it
   // is wired at creation, so nothing else needs to be here.
    openMachineWizard,
