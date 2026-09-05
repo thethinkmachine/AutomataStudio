@@ -1,0 +1,48 @@
+{
+  "machine": "2DFT",
+  "sigma": ["a", "b"],
+  "outputAlpha": ["a", "b"],
+  "states": [
+    { "id": "s1", "x": 160, "y": 200, "name": "start" },
+    { "id": "s2", "x": 460, "y": 200, "name": "scan right" },
+    { "id": "s3", "x": 460, "y": 430, "name": "print left" },
+    { "id": "s4", "x": 160, "y": 430, "name": "done" }
+  ],
+  "startId": "s1",
+  "accepts": ["s4"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s2", "symbol": "⊢", "dir": "R", "output": "" },
+    { "id": "t2", "from": "s2", "to": "s2", "symbol": "a", "dir": "R", "output": "" },
+    { "id": "t3", "from": "s2", "to": "s2", "symbol": "b", "dir": "R", "output": "" },
+    { "id": "t4", "from": "s2", "to": "s3", "symbol": "⊣", "dir": "L", "output": "" },
+    { "id": "t5", "from": "s3", "to": "s3", "symbol": "a", "dir": "L", "output": "a" },
+    { "id": "t6", "from": "s3", "to": "s3", "symbol": "b", "dir": "L", "output": "b" },
+    { "id": "t7", "from": "s3", "to": "s4", "symbol": "⊢", "dir": "S", "output": "" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 140, "y": 70, "color": "purple",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Reversal without a stack. Run right to the ⊣ endmarker printing nothing, then walk back left printing each symbol as you pass it. Reading the tape backwards is all the machine needs — no memory beyond the current state."
+    },
+    {
+      "id": "n2", "x": 140, "y": 540, "color": "orange",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Compare with the pushdown transducer example, which reverses the same words using a stack and ε-moves. Both compute w ↦ wᴿ; the 2DFT gets there with a finite state set and a head that can turn around, which is why reversal is a REGULAR transduction rather than a genuinely context-free one."
+    }
+  ],
+  "config": {
+    "transducerAccepts": true
+  },
+  "meta": {
+    "title": "Classic: reverse the input",
+    "blurb": "Scans right in silence, then prints on the way back — computing w ↦ wᴿ with a finite state set and a two-way head, no stack required.",
+    "inputs": [
+      { "w": "ab", "expect": "accept", "out": "ba" },
+      { "w": "abb", "expect": "accept", "out": "bba" },
+      { "w": "aab", "expect": "accept", "out": "baa" },
+      { "w": "abab", "expect": "accept", "out": "baba" },
+      { "w": "a", "expect": "accept", "out": "a" }
+    ]
+  }
+}

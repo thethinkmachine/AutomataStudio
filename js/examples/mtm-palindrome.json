@@ -1,0 +1,401 @@
+{
+  "machine": "MTM",
+  "sigma": [
+    "a",
+    "b"
+  ],
+  "stackAlpha": [
+    "a",
+    "b",
+    "A",
+    "B",
+    "⊔"
+  ],
+  "tapeCount": 2,
+  "states": [
+    {
+      "id": "mark",
+      "x": 180,
+      "y": 300,
+      "name": "mark"
+    },
+    {
+      "id": "copy",
+      "x": 480,
+      "y": 300,
+      "name": "copy"
+    },
+    {
+      "id": "rewind",
+      "x": 780,
+      "y": 300,
+      "name": "rewind"
+    },
+    {
+      "id": "check",
+      "x": 1080,
+      "y": 300,
+      "name": "check"
+    },
+    {
+      "id": "done",
+      "x": 1380,
+      "y": 300,
+      "name": "done"
+    }
+  ],
+  "startId": "mark",
+  "accepts": [
+    "done"
+  ],
+  "transitions": [
+    {
+      "id": "t1",
+      "from": "mark",
+      "to": "copy",
+      "symbol": "a",
+      "tapeSyms": [
+        "a",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "A",
+        "a"
+      ],
+      "tapeDirs": [
+        "R",
+        "R"
+      ]
+    },
+    {
+      "id": "t2",
+      "from": "mark",
+      "to": "copy",
+      "symbol": "b",
+      "tapeSyms": [
+        "b",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "B",
+        "b"
+      ],
+      "tapeDirs": [
+        "R",
+        "R"
+      ]
+    },
+    {
+      "id": "t3",
+      "from": "mark",
+      "to": "done",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "⊔"
+      ],
+      "tapeDirs": [
+        "S",
+        "S"
+      ]
+    },
+    {
+      "id": "t4",
+      "from": "copy",
+      "to": "copy",
+      "symbol": "a",
+      "tapeSyms": [
+        "a",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "a",
+        "a"
+      ],
+      "tapeDirs": [
+        "R",
+        "R"
+      ]
+    },
+    {
+      "id": "t5",
+      "from": "copy",
+      "to": "copy",
+      "symbol": "b",
+      "tapeSyms": [
+        "b",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "b",
+        "b"
+      ],
+      "tapeDirs": [
+        "R",
+        "R"
+      ]
+    },
+    {
+      "id": "t6",
+      "from": "copy",
+      "to": "rewind",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "⊔"
+      ],
+      "tapeDirs": [
+        "S",
+        "L"
+      ]
+    },
+    {
+      "id": "t7",
+      "from": "rewind",
+      "to": "rewind",
+      "symbol": "a",
+      "tapeSyms": [
+        "a",
+        "Σ"
+      ],
+      "tapeWrites": [
+        "a",
+        "Σ"
+      ],
+      "tapeDirs": [
+        "L",
+        "S"
+      ]
+    },
+    {
+      "id": "t8",
+      "from": "rewind",
+      "to": "rewind",
+      "symbol": "b",
+      "tapeSyms": [
+        "b",
+        "Σ"
+      ],
+      "tapeWrites": [
+        "b",
+        "Σ"
+      ],
+      "tapeDirs": [
+        "L",
+        "S"
+      ]
+    },
+    {
+      "id": "t9",
+      "from": "rewind",
+      "to": "rewind",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "Σ"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "Σ"
+      ],
+      "tapeDirs": [
+        "L",
+        "S"
+      ]
+    },
+    {
+      "id": "t10",
+      "from": "rewind",
+      "to": "check",
+      "symbol": "A",
+      "tapeSyms": [
+        "A",
+        "Σ"
+      ],
+      "tapeWrites": [
+        "A",
+        "Σ"
+      ],
+      "tapeDirs": [
+        "S",
+        "S"
+      ]
+    },
+    {
+      "id": "t11",
+      "from": "rewind",
+      "to": "check",
+      "symbol": "B",
+      "tapeSyms": [
+        "B",
+        "Σ"
+      ],
+      "tapeWrites": [
+        "B",
+        "Σ"
+      ],
+      "tapeDirs": [
+        "S",
+        "S"
+      ]
+    },
+    {
+      "id": "t12",
+      "from": "check",
+      "to": "check",
+      "symbol": "A",
+      "tapeSyms": [
+        "A",
+        "a"
+      ],
+      "tapeWrites": [
+        "A",
+        "a"
+      ],
+      "tapeDirs": [
+        "R",
+        "L"
+      ]
+    },
+    {
+      "id": "t13",
+      "from": "check",
+      "to": "check",
+      "symbol": "B",
+      "tapeSyms": [
+        "B",
+        "b"
+      ],
+      "tapeWrites": [
+        "B",
+        "b"
+      ],
+      "tapeDirs": [
+        "R",
+        "L"
+      ]
+    },
+    {
+      "id": "t14",
+      "from": "check",
+      "to": "check",
+      "symbol": "a",
+      "tapeSyms": [
+        "a",
+        "a"
+      ],
+      "tapeWrites": [
+        "a",
+        "a"
+      ],
+      "tapeDirs": [
+        "R",
+        "L"
+      ]
+    },
+    {
+      "id": "t15",
+      "from": "check",
+      "to": "check",
+      "symbol": "b",
+      "tapeSyms": [
+        "b",
+        "b"
+      ],
+      "tapeWrites": [
+        "b",
+        "b"
+      ],
+      "tapeDirs": [
+        "R",
+        "L"
+      ]
+    },
+    {
+      "id": "t16",
+      "from": "check",
+      "to": "done",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "Σ"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "Σ"
+      ],
+      "tapeDirs": [
+        "S",
+        "S"
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "id": "n1",
+      "x": 60,
+      "y": 40,
+      "color": "blue",
+      "anchorStates": [],
+      "anchorTransitions": [],
+      "text": "Palindromes in linear time — the textbook reason to want a second tape. Copy the input onto tape 2, rewind tape 1, then read tape 1 forwards against tape 2 backwards. Every symbol is visited a constant number of times, so this is Θ(n); a one-tape machine has to shuttle end to end and costs Θ(n²)."
+    },
+    {
+      "id": "n2",
+      "x": 60,
+      "y": 470,
+      "color": "green",
+      "anchorStates": [],
+      "anchorTransitions": [],
+      "text": "Cell 0 of tape 1 is stamped A or B on the very first step. A bounded tape cannot tell the reader it has hit the left wall — the head simply stops — so the stamp is what the rewind halts on. A and B live in Γ and never in Σ: they are work symbols, and they still say which letter was there."
+    },
+    {
+      "id": "n3",
+      "x": 60,
+      "y": 700,
+      "color": "amber",
+      "anchorStates": [],
+      "anchorTransitions": [],
+      "text": "A mismatch is refused by having no rule for it, so the machine simply stops — there is no reject state to draw. Input format: w,ε — tape 2 starts empty."
+    }
+  ],
+  "meta": {
+    "title": "Palindromes in linear time",
+    "blurb": "Copy, rewind, compare: tape 1 read forwards against tape 2 read backwards. The construction a second tape exists for — Θ(n) here against Θ(n²) for the same language on one tape.",
+    "inputs": [
+      {
+        "w": "abba,ε",
+        "expect": "accept",
+        "label": "abba"
+      },
+      {
+        "w": "aba,ε",
+        "expect": "accept",
+        "label": "aba"
+      },
+      {
+        "w": "abab,ε",
+        "expect": "reject",
+        "label": "abab — not a palindrome"
+      },
+      {
+        "w": "a,ε",
+        "expect": "accept",
+        "label": "one letter"
+      },
+      {
+        "w": "ε,ε",
+        "expect": "accept",
+        "label": "the empty word"
+      }
+    ]
+  }
+}

@@ -1,0 +1,58 @@
+{
+    "machine": "Moore",
+    "sigma": [
+        "tick"
+    ],
+    "outputAlpha": [
+        "RED",
+        "GREEN",
+        "YELLOW"
+    ],
+    "states": [
+        {
+            "id": "s1",
+            "x": 160,
+            "y": 200,
+            "name": "q_red",
+            "output": "RED"
+        },
+        {
+            "id": "s2",
+            "x": 360,
+            "y": 200,
+            "name": "q_green",
+            "output": "GREEN"
+        },
+        {
+            "id": "s3",
+            "x": 560,
+            "y": 200,
+            "name": "q_yellow",
+            "output": "YELLOW"
+        }
+    ],
+    "startId": "s1",
+    "accepts": [
+        "s1"
+    ],
+    "transitions": [
+        {
+            "id": "t1",
+            "from": "s1",
+            "to": "s2",
+            "symbol": "tick"
+        },
+        {
+            "id": "t2",
+            "from": "s2",
+            "to": "s3",
+            "symbol": "tick"
+        },
+        {
+            "id": "t3",
+            "from": "s3",
+            "to": "s1",
+            "symbol": "tick"
+        }
+    ]
+}
