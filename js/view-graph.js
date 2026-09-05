@@ -40,7 +40,7 @@
 // arrays changing identity.
 
 import {
-  blockChildren, blockMembers, getBlock, liveBlocks, localStateName
+  blockAncestry, blockChildren, blockMembers, blockPath, getBlock, liveBlocks, localStateName
 } from './blocks.js';
 import { App, getState, setDrawnSizeSource } from './state.js';
 
@@ -56,9 +56,45 @@ export const BLOCK_MAX_H = 220;
 export const BLOCK_STRIP_H = 22;
 
 /** How far a port sits from the state it is attached to. */
-export const PORT_GAP = 110;
-export const PORT_W = 96;
-export const PORT_H = 30;
+export const PORT_GAP = 118;
+
+// A tab is sized to what it says, between these. It used to be a flat 96px
+// whatever the label, so every real state name ran clean out of both ends of
+// the box — `ADDR_L_leaf_14 -> ADDR_L_count_14` in a 96px pill, drawn over the
+// diagram with nothing behind it. Capped, because a tab is boundary chrome and
+// a 400px one would be the widest thing on the canvas; what does not fit is
+// truncated from the *front*, since machine-generated names differ at the end.
+export const PORT_MIN_W = 84;
+export const PORT_MAX_W = 208;
+export const PORT_H = 34;
+export const PORT_PAD = 11;
+
+// Two rows: the role in small caps, the other end in mono under it. The app
+// says everything else this way — LANGUAGE / MTM, FINGERPRINT / 0 OF 257,
+// ALPHABET Σ / 2 — and a tab that only ever said `from q3` was the one piece of
+// canvas chrome with no way to tell what kind of thing it was naming.
+const PORT_ROLE_PX = 4.9;    // 7px uppercase, +letter-spacing
+const PORT_TARGET_PX = 5.35; // 9px mono
+const PORT_ROLE_MAX = 22;
+const PORT_TARGET_MAX = 30;
+
+/** Trim from the front: generated names differ at the end (`…leaf_14`). */
+function clipTail(text, max) {
+  const t = String(text || '');
+  return t.length <= max ? t : '…' + t.slice(t.length - (max - 1));
+}
+
+/** The tab's box, from what it has to say. */
+function portBox(role, target) {
+  const w = Math.max(
+    PORT_MIN_W,
+    Math.min(PORT_MAX_W, Math.ceil(Math.max(
+      role.length * PORT_ROLE_PX,
+      target.length * PORT_TARGET_PX
+    )) + PORT_PAD * 2)
+  );
+  return { w, h: PORT_H };
+}
 
 /**
  * The size a block is drawn at: what the reader set, or one derived from how
@@ -160,15 +196,17 @@ export function viewGraph() {
   return cache;
 }
 
-// The render profile judges what is *drawn*, not how big the machine is — see
-// machineIsLarge(). state.js is import-free, so the answer is installed there as
-// a function rather than pushed as a value: pushed, it would go stale the moment
-// anything replaced App.states without the projection having been read since,
-// which is most of what a loader does.
-setDrawnSizeSource(() => {
-  const g = viewGraph();
-  return { states: g.states.length, transitions: g.transitions.length };
-});
+// What the render profile judges — see machineIsLarge(). state.js is
+// import-free, so the answer is installed there as a function rather than
+// pushed as a value: pushed, it would go stale the moment anything replaced
+// App.states without the projection having been read since, which is most of
+// what a loader does.
+//
+// It answers the *weight* of the level, not its node count. See the note over
+// `weight` in build(): a box stands for a whole subtree, and it costs one — to
+// preview, to key, to stringify and to copy onto the undo stack — whether the
+// reader is looking at the boxes or at what is inside them.
+setDrawnSizeSource(() => viewGraph().weight);
 
 export function viewStates() { return viewGraph().states; }
 export function viewTransitions() { return viewGraph().transitions; }
@@ -291,7 +329,10 @@ function refresh(g) {
         }
       }
     } else {
-      const anchor = getState(node.anchor);
+      // Through byId rather than getState: a port now anchors on whatever drawn
+      // node the crossing touches, and an edge that leaves a *nested* block for
+      // the level above is anchored on that block's box.
+      const anchor = g.byId.get(node.anchor);
       if (!anchor) continue;
       node.x = anchor.x + node.dx;
       node.y = anchor.y + node.dy;
@@ -338,11 +379,27 @@ function build() {
   const transitions = [];
   const edges = new Map();
   const keyOf = new Map();
+  // Edges wholly inside a child block, which the box is standing in for. They
+  // are not drawn, and until now they were not counted either — see `weight`
+  // below for why the count is what the render profile has to judge.
+  let inner = 0;
+  // Every edge with exactly one end under this scope. The `continue` below used
+  // to be where they died: an edge whose other end is anywhere but here was
+  // dropped, and the only crossings that survived were the two the block record
+  // *declared*. So an edge from inside a nested block to the grandparent level
+  // was drawn nowhere at all, and an edge into a member that is not the entry
+  // was invisible from inside and indistinguishable from the entry's from
+  // outside. See collectCrossing.
+  const crossings = { in: new Map(), out: new Map() };
   for (const t of App.transitions || []) {
     const from = owner.get(t.from);
     const to = owner.get(t.to);
+    if (here && !from !== !to) {
+      collectCrossing(crossings, t, from, to);
+      continue;
+    }
     if (!from || !to) continue;
-    if (from === to && from !== t.from) continue;
+    if (from === to && from !== t.from) { inner++; continue; }
     const key = from + '|' + to;
     // Object.create rather than a copy: `curve` and `loopAngle` are written on
     // the *real* transition by a bend drag, and a copied field would be a stale
@@ -356,8 +413,34 @@ function build() {
     g.real.push(t);
   }
 
+  // ── what this level stands for ──
+  //
+  // **A box is not one node, and judging the render profile as though it were
+  // is what let a three-thousand-state machine hide inside eight boxes and be
+  // called small.** A box carries a live preview of its interior, so it costs a
+  // `blockPreviewGraph` walk, a `blockPreviewKey` scan of the whole machine and
+  // up to `previewNodeBudget()` elements — and the machine behind it costs a
+  // full `JSON.stringify` on every autosave tick and a full workspace copy per
+  // undo entry, neither of which cares how many boxes it is drawn as. The note
+  // over `syncBlockNode` in js/render.js measured that frame: twelve boxes over
+  // 4800 states, 6.4ms of an 8.3ms repaint, with the profile off throughout,
+  // because drawnSize() correctly reported twelve.
+  //
+  // So the weight of a level is **the subtree the reader is standing in**, at
+  // every depth: `owner` already maps every state under this scope — its own,
+  // and every descendant of every child block however deep — to the drawn node
+  // that stands for it, so its size is that count and costs nothing extra. The
+  // good half of judging the view survives intact: drill into an eight-state
+  // adder and the weight is eight, because that subtree really is eight states,
+  // and the labels and the easing come back.
+  //
+  // Cached beside the projection and never recomputed on a hit, by the same
+  // argument the note in refresh() makes for a derived block size: what this is
+  // derived from cannot change without stillValid() failing.
+  const weight = { states: owner.size, transitions: transitions.length + inner };
+
   // ── ports ──
-  const ports = here ? buildPorts(here, byId, owner) : [];
+  const ports = here ? buildPorts(here, byId, crossings) : [];
   for (const p of ports) {
     states.push(p.node);
     byId.set(p.node.id, p.node);
@@ -369,7 +452,7 @@ function build() {
   // a port follows the state it is anchored to, and neither changes any array's
   // identity when it moves.
   const dynamic = states.filter(nd => nd.kind === 'block' || nd.kind === 'port');
-  return { states, transitions, byId, owner, edges, keyOf, scope, here, dynamic };
+  return { states, transitions, byId, owner, edges, keyOf, scope, here, dynamic, weight };
 }
 
 function proxy(t, from, to) {
@@ -422,71 +505,181 @@ function ownerMap(here, childIds) {
 }
 
 /**
- * The tabs on the edge of a scope: where the host hands control in, and where
- * each exit hands it back.
+ * A boundary crossing, filed under the drawn node on this side of it.
  *
- * Derived from the block record and the machine's real wiring, never stored.
- * A drilled-in view without them is a disconnected fragment — you can see the
- * sub-machine and nothing about how it is reached, which is most of what you
- * drilled in to find out.
+ * The anchor is a *drawn node*, not a state: an edge leaving a nested block for
+ * the level above is anchored on that block's box, because that box is the only
+ * thing on screen standing for the state it actually leaves from.
  */
-function buildPorts(blockId, byId, owner) {
+function collectCrossing(crossings, t, from, to) {
+  const dir = from ? 'out' : 'in';
+  const anchor = from || to;
+  const other = from ? t.to : t.from;
+  const list = crossings[dir].get(anchor);
+  if (list) list.push({ t, other });
+  else crossings[dir].set(anchor, [{ t, other }]);
+}
+
+/**
+ * Where the other end of a crossing lives, relative to the scope being drawn.
+ *
+ * A tab reading `from u` is enough one level down and useless four levels down,
+ * where "which level is u on?" is the whole question. So the answer carries how
+ * far out it is: nothing for the level immediately outside (much the commonest
+ * case, and the one the fixed label already read correctly), `↑2` and up for a
+ * further ancestor, and the full path for a sibling subtree, which is not "up"
+ * from here at all.
+ */
+function relativeTo(stateId, here) {
+  const s = getState(stateId);
+  if (!s) return { name: stateId, hops: 0, path: String(stateId) };
+  const name = localStateName(s);
+  const path = blockPath(s.blockId) ? blockPath(s.blockId) + '/' + name : name;
+  const container = s.blockId || null;
+  const outward = [...blockAncestry(here).map(b => b.id).reverse(), null];
+  const hops = outward.indexOf(container);   // 0 is `here` itself, 1 the level outside
+  if (hops < 0) return { name, hops: -1, path };   // a sibling branch: not up from here
+  return { name, hops, path };
+}
+
+/**
+ * What a tab says, as the two rows it says it in.
+ *
+ * `role` is what this boundary crossing *is* — the block's own word for it
+ * (`yes`, `carry`) when it declared one, `ENTRY` for the way in it declared,
+ * and `FROM` / `TO` for a crossing it did not. That is the half the old label
+ * could not carry: a tab reading `done → B/m2` and a tab reading `from u` were
+ * the same shape and the same colour, so nothing on the canvas said which of
+ * them the block had actually promised.
+ *
+ * `target` is the other end, nearest first, with how far out it is and a count
+ * of the rest. The full list, with full paths, is the tooltip's job.
+ */
+function crossingLabel(role, list, here, bare = null) {
+  if (!list || !list.length) return { role, target: bare ?? '—', empty: true };
+  const ends = [];
+  const seen = new Set();
+  for (const c of list) {
+    // Stamped on the crossing while the walk is being done anyway, so the
+    // tooltip does not repeat it per hover. It is the *full* path, because the
+    // tab has room for a local name and a hop count and the tooltip is where
+    // the reader goes to find out which level that actually was.
+    const rel = relativeTo(c.other, here);
+    c.path = rel.path;
+    c.hops = rel.hops;
+    if (seen.has(c.other)) continue;
+    seen.add(c.other);
+    ends.push(rel);
+  }
+  const first = ends[0];
+  const hop = first.hops > 1 ? `↑${first.hops} ` : first.hops < 0 ? '↗ ' : '';
+  const more = ends.length > 1 ? ` +${ends.length - 1}` : '';
+  return {
+    role,
+    target: clipTail(`${hop}${first.name}`, PORT_TARGET_MAX) + more,
+    count: ends.length
+  };
+}
+
+/**
+ * The tabs on the edge of a scope: every edge that crosses this boundary, and
+ * which of them the block declared.
+ *
+ * **A port describes the wiring, not the record.** `entry` and `exits` are what
+ * a block *declares*; the crossings are what the machine actually does, and the
+ * two diverge the moment anyone draws an edge. Reading only the declaration is
+ * what made four different edges invisible from inside a block:
+ *
+ *   - an edge to any level above the immediately enclosing one, at any depth
+ *   - an edge into a member that is not the entry
+ *   - an edge out of a state that is not a declared exit
+ *   - the second, third and fourth target of a declared exit, because the tab
+ *     rendered `to[0]` and dropped the rest without saying so
+ *
+ * An undeclared crossing gets a tab of its own, marked as undeclared rather
+ * than quietly drawn like the others — a block whose boundary is not the one it
+ * declares is not a clean subroutine, and inlining it somewhere else would not
+ * compose. That is worth saying on the diagram.
+ *
+ * Ids are chosen so every offset a reader has already hand-placed still
+ * resolves: the entry tab keeps `__in__` and a declared exit keeps
+ * `__out__:<i>:<state>`. Only the tabs that did not exist before are new.
+ */
+function buildPorts(blockId, byId, crossings) {
   const b = getBlock(blockId);
   if (!b) return [];
   const out = [];
-
-  const entry = getState(b.entry);
-  if (entry && byId.has(entry.id)) {
-    const from = [...new Set((App.transitions || [])
-      .filter(t => t.to === b.entry && owner.get(t.from) !== blockId && !byId.has(t.from))
-      .map(t => getState(t.from)?.name)
-      .filter(Boolean))];
+  const tab = (id, dir, anchorId, label, extra) => {
+    const anchor = byId.get(anchorId);
+    if (!anchor) return;
+    const role = clipTail(String(label.role || '').toUpperCase(), PORT_ROLE_MAX);
+    const target = label.target;
+    const box = portBox(role, target);
+    const node = {
+      id, kind: 'port', dir,
+      // Carried onto the node, which it was not: `crossingLabel` set it and
+      // nothing copied it across, so `node.empty` read undefined everywhere and
+      // the `.is-empty` styling worked only by way of its own fallback.
+      empty: !!label.empty,
+      anchor: anchorId,
+      dx: dir === 'in' ? -PORT_GAP : PORT_GAP,
+      dy: 0,
+      x: anchor.x + (dir === 'in' ? -PORT_GAP : PORT_GAP),
+      y: anchor.y,
+      box,
+      r: boxRadius(box.w, box.h),
+      role,
+      target,
+      // Kept because the tests, the aria label and anything that wants one
+      // string still ask for a name.
+      name: `${role.toLowerCase()} ${target}`,
+      ...extra
+    };
     out.push({
-      node: {
-        id: '__in__',
-        kind: 'port',
-        dir: 'in',
-        anchor: entry.id,
-        dx: -PORT_GAP, dy: 0,
-        x: entry.x - PORT_GAP,
-        y: entry.y,
-        box: { w: PORT_W, h: PORT_H },
-        r: boxRadius(PORT_W, PORT_H),
-        name: from.length ? `from ${from.slice(0, 2).join(', ')}` : 'from the host'
-      },
-      edge: { id: '__pin__', from: '__in__', to: entry.id, port: true }
+      node,
+      edge: dir === 'in'
+        ? { id: '__pin__' + out.length, from: id, to: anchorId, port: true }
+        : { id: '__pout__' + out.length, from: anchorId, to: id, port: true }
     });
+  };
+
+  // ── in ──
+  // The entry keeps `__in__` whether or not anything currently arrives at it:
+  // a declared way in with no wiring yet is still what the block says about
+  // itself, and dropping the tab would make "nothing arrives here" and "this is
+  // not the entry" look identical.
+  const inbound = crossings.in;
+  if (byId.has(b.entry)) {
+    tab('__in__', 'in', b.entry,
+      crossingLabel('entry', inbound.get(b.entry), blockId, 'nothing yet'),
+      { declared: true, crossings: inbound.get(b.entry) || [] });
+  }
+  for (const [anchorId, list] of inbound) {
+    if (anchorId === b.entry) continue;
+    tab('__in__:' + anchorId, 'in', anchorId,
+      crossingLabel('from', list, blockId),
+      { declared: false, crossings: list });
   }
 
+  // ── out ──
+  // Declared exits first, and by index, because a block may hand control back
+  // from one state under two labels — "yes" and "no" out of the same
+  // comparison. Keyed on the state alone the second tab overwrote the first.
+  const outbound = crossings.out;
+  const claimed = new Set();
   (b.exits || []).forEach((exit, i) => {
-    const s = getState(exit.id);
-    if (!s || !byId.has(s.id)) return;
-    const to = [...new Set((App.transitions || [])
-      .filter(t => t.from === exit.id && !byId.has(t.to))
-      .map(t => getState(t.to)?.name)
-      .filter(Boolean))];
-    // The index is part of the id, not just the state. A block may hand control
-    // back from one state under two different labels — "yes" and "no" out of the
-    // same comparison — and keyed on the state alone both tabs took one id: the
-    // second overwrote the first in `byId`, both edges resolved to one key, and
-    // the diagram showed a single unnamed exit where there were two answers.
-    const id = '__out__:' + i + ':' + exit.id;
-    out.push({
-      node: {
-        id,
-        kind: 'port',
-        dir: 'out',
-        anchor: s.id,
-        dx: PORT_GAP, dy: (i - ((b.exits.length - 1) / 2)) * (PORT_H + 18),
-        x: s.x + PORT_GAP,
-        y: s.y,
-        box: { w: PORT_W, h: PORT_H },
-        r: boxRadius(PORT_W, PORT_H),
-        name: to.length ? `${exit.label} → ${to[0]}` : exit.label
-      },
-      edge: { id: '__pout__' + i, from: s.id, to: id, port: true }
-    });
+    if (!byId.has(exit.id)) return;
+    claimed.add(exit.id);
+    tab('__out__:' + i + ':' + exit.id, 'out', exit.id,
+      crossingLabel(exit.label || 'exit', outbound.get(exit.id), blockId, 'nothing yet'),
+      { declared: true, label: exit.label, crossings: outbound.get(exit.id) || [] });
   });
+  for (const [anchorId, list] of outbound) {
+    if (claimed.has(anchorId)) continue;
+    tab('__out__:x:' + anchorId, 'out', anchorId,
+      crossingLabel('to', list, blockId),
+      { declared: false, crossings: list });
+  }
 
   placePorts(out, byId, blockId);
   return out;
@@ -520,9 +713,22 @@ const PORT_DIRS = [
 function placePorts(ports, byId, blockId) {
   const placed = [];
   const saved = (getBlock(blockId) || {}).ports || {};
+  // Tabs sharing one anchor are fanned apart before the search runs, or two
+  // exits off one state start from the same candidate and the second pays a
+  // collision cost for standing where the first already is.
+  const perAnchor = new Map();
   for (const p of ports) {
-    const anchor = getState(p.node.anchor);
+    const n = perAnchor.get(p.node.anchor) || 0;
+    perAnchor.set(p.node.anchor, n + 1);
+  }
+  const seenAt = new Map();
+  for (const p of ports) {
+    const anchor = byId.get(p.node.anchor);
     if (!anchor) continue;
+    const total = perAnchor.get(p.node.anchor) || 1;
+    const nth = seenAt.get(p.node.anchor) || 0;
+    seenAt.set(p.node.anchor, nth + 1);
+    p.node.dy = (nth - (total - 1) / 2) * (PORT_H + 18);
     const manual = saved[p.node.id];
     if (manual && Number.isFinite(manual.dx) && Number.isFinite(manual.dy)) {
       p.node.dx = manual.dx; p.node.dy = manual.dy;

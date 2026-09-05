@@ -181,12 +181,14 @@ test('closing returns the same node to the slot the order gives it', () => {
 
 test('a window returns to the reader\'s order, not the declared one', () => {
   mount();
-  context.setSectionOrder('rpanel', ['rp-batch', 'rp-simulate', 'rp-language']);
+  const order = [...RP].reverse();
+  context.setSectionOrder('rpanel', order);
   context.applySectionOrder('rpanel');
-  context.floatSection('rp-simulate');
-  assert.deepEqual(domIds('rpanel'), ['rp-batch', 'rp-language']);
-  context.dockSection('rp-simulate');
-  assert.deepEqual(domIds('rpanel'), ['rp-batch', 'rp-simulate', 'rp-language']);
+  const out = order[1];                       // somewhere in the middle
+  context.floatSection(out);
+  assert.deepEqual(domIds('rpanel'), order.filter(id => id !== out));
+  context.dockSection(out);
+  assert.deepEqual(domIds('rpanel'), order, 'back in the slot the reader gave it');
 });
 
 test('toggling is the same act read in both directions', () => {
@@ -681,7 +683,9 @@ test('one region of a section absorbs a window\'s spare height', () => {
     });
   });
   assert.equal(context.sectionFill('lp-states'), '.slist');
-  assert.equal(context.sectionFill('rp-simulate'), '.trace-log');
+  assert.equal(context.sectionFill('rp-simulate'), '.sim-tracker');
+  assert.equal(context.sectionFill('rp-trace'), '.trace-log',
+    'the log is its own card now, and it is the thing in it that grows');
   assert.equal(context.sectionFill('rp-language'), null,
     'a stack of boxes has nothing that should grow');
 });
@@ -885,17 +889,21 @@ test('a grip counts the sections in the panel, and a window has left it', () => 
     };
   });
 
+  // Counted off the registry rather than restated, so adding a section to the
+  // panel does not make this test wrong about the behaviour it is pinning.
+  const n = RP.length;
+  const last = RP[n - 1];
   context.applySectionOrder('rpanel');
-  assert.match(labels['rp-language'], /1 of 3/);
-  assert.match(labels['rp-batch'], /3 of 3/);
+  assert.match(labels[RP[0]], new RegExp(`1 of ${n}`));
+  assert.match(labels[last], new RegExp(`${n} of ${n}`));
 
-  context.floatSection('rp-batch', { x: 20, y: 20, w: 340, h: 260 });
-  assert.match(labels['rp-language'], /1 of 2/, 'the panel has one fewer section in it');
-  assert.match(labels['rp-simulate'], /2 of 2/);
+  context.floatSection(last, { x: 20, y: 20, w: 340, h: 260 });
+  assert.match(labels[RP[0]], new RegExp(`1 of ${n - 1}`), 'one fewer section in the panel');
+  assert.match(labels[RP[n - 2]], new RegExp(`${n - 1} of ${n - 1}`));
 
-  context.dockSection('rp-batch');
-  assert.match(labels['rp-language'], /1 of 3/, 'and it is back');
-  assert.match(labels['rp-batch'], /3 of 3/);
+  context.dockSection(last);
+  assert.match(labels[RP[0]], new RegExp(`1 of ${n}`), 'and it is back');
+  assert.match(labels[last], new RegExp(`${n} of ${n}`));
 });
 
 // ── the cascade, which no assertion about the DOM can reach ───────

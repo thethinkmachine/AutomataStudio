@@ -20,6 +20,11 @@ import { App } from '../state.js';
 // App fields the machine layer reads. Sets are listed separately because they
 // are the only members that do not survive a structured clone as themselves.
 const SET_FIELDS = ['sigma', 'outputAlpha', 'stackAlpha', 'accepts'];
+// `simStart` deliberately does *not* ride along, and its absence is the point:
+// a worker only ever decides, and deciding is about the machine. decideMachine()
+// in js/machines/index.js lifts the run-box override for exactly the same reason
+// on the main thread, so a verdict computed on a worker is the verdict computed
+// here — which is the whole contract this snapshot exists to keep.
 const PLAIN_FIELDS = ['machine', 'tapeCount', 'startId'];
 
 /** Everything a worker needs to decide a word on the machine now on screen. */

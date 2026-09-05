@@ -7,7 +7,7 @@ import { closeModal, showOverlay } from './modal.js';
 import { refreshQuickSettings } from './quick-settings.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { showExampleCard } from './machine-card.js';
-import { isMultiTape } from './machines/index.js';
+import { isMultiTape, machineSupportsBlocks } from './machines/index.js';
 import { $, APP_VERSION, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, largeMachineProfile, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { WORKSPACE_EXT, fileStem, hasFileHost, noteOpenDocument, openFileDialog, saveFileAs, suggestedFileName, writeFile } from './file-host.js';
 import { hideContextMenu } from './states-transitions.js';
@@ -1512,7 +1512,18 @@ export function loadData(d, isExample) {
   App.accepts = new Set(d.accepts || []);
   App.notes = Array.isArray(d.notes) ? d.notes : [];
   App.dividers = Array.isArray(d.dividers) ? d.dividers : [];
-  App.blocks = Array.isArray(d.blocks) ? d.blocks : [];
+  // Filtered rather than trusted, the same rule the scope line below follows,
+  // and for a stronger reason: a document naming a machine with no stay move
+  // and carrying blocks anyway is describing something the app cannot express —
+  // an exit edge there would consume a symbol, so the grouping is not a
+  // subroutine. It cannot come from this app any more (blockPlacementRefusal
+  // in js/blocks.js is asked on every path onto a canvas) but it can come from
+  // a hand-edited file or one written before that guard existed, and the flat
+  // machine underneath is perfectly good — so the grouping goes and not one
+  // state, transition or verdict with it, which is the same call
+  // js/import-jflap.js makes for a JFLAP file. The states keep their stale
+  // `blockId` for exactly one read: pruneBlocks' sweep is what drops it.
+  App.blocks = Array.isArray(d.blocks) && machineSupportsBlocks(App.machine) ? d.blocks : [];
   App.scope = Array.isArray(d.scope)
     ? d.scope.filter(id => App.blocks.some(b => b.id === id))
     : [];

@@ -32,7 +32,9 @@ import {
   testKindFor, transitionFieldsFor
 } from './statemate-spec.js';
 import { hasSingleValuedDelta, isAnyTM } from './utils.js';
-import { isMultiTape } from './machines/index.js';
+import { isMultiTape, machineSupportsBlocks } from './machines/index.js';
+import { blockMembers } from './blocks.js';
+import { scopeTrail } from './view-graph.js';
 
 // One line per spec field. Kept beside the field list rather than in the
 // prompt text so the two cannot disagree about what exists.
@@ -177,6 +179,21 @@ function schemaBlock(machine, { notes = false } = {}) {
       ? `  "tests": [ { "w": "abb", "out": "011" }, … ]          the exact output word this machine emits`
       : `  "tests": [ { "w": "abb", "expect": "accept" }, … ]    "accept" or "reject"`;
 
+  // Blocks are shown only to a machine that can have them, and the paragraph
+  // under this is what makes "omit it" the safe default: absent means unchanged,
+  // so a model that never mentions the hierarchy cannot destroy it.
+  const blocks = machineSupportsBlocks(machine)
+    ? [
+      '  "blocks": [                      OPTIONAL — a subroutine drawn as one box; omit unless changing them',
+      '    { "name": "ALU/add", "parent": "ALU", "entry": "<a state name>",',
+      '      "exits": [ { "state": "<a state name>", "label": "carry" } ] }',
+      '  ],'
+    ]
+    : [];
+  const stateShape = stateFields.map(f => `"${f}": …`)
+    .concat(machineSupportsBlocks(machine) ? ['"block": "ALU/add"   OPTIONAL'] : [])
+    .join(', ');
+
   return [
     '{',
     '  "kind": "machine",',
@@ -186,8 +203,9 @@ function schemaBlock(machine, { notes = false } = {}) {
     '  "blurb": "one or two sentences a student would find useful",',
     '  "caveat": "…",                   OPTIONAL — see below; omit it unless it applies',
     ...alphabets,
+    ...blocks,
     '  "states": [',
-    `    { ${stateFields.map(f => `"${f}": …`).join(', ')} }`,
+    `    { ${stateShape} }`,
     '  ],',
     '  "transitions": [',
     `    { ${transFields.map(f => `"${f}": …`).join(', ')} }`,
@@ -229,6 +247,29 @@ function machineMenu(current) {
     if (entries.length) lines.push(`  ${cat.label}:`, ...entries);
   }
   return lines.join('\n');
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  BLOCKS
+// ══════════════════════════════════════════════════════════════════
+//  A block is a subroutine drawn as one node, and it adds no computational
+//  power — the expansion is the proof, and the machine stays flat. So the
+//  states array a model is handed is the whole machine at every depth, and
+//  nothing here changes what it may build; what it changes is whether an edit
+//  *destroys* a grouping the reader spent an hour making.
+//
+//  The rule the whole paragraph exists to state is **absent means unchanged**.
+//  That is what makes "omit it" the safe default and what lets every prompt
+//  written before this field existed go on meaning what it meant.
+
+function blocksBlock(machine) {
+  if (!machineSupportsBlocks(machine)) return '';
+  return [
+    `BLOCKS. A block is a sub-machine drawn as one box on the canvas: control enters at its "entry" state and leaves from its "exits". It adds no power — the app inlines it, so the machine you are given is already flat, with every state at every depth in "states" and the block path written into its name (\`ALU/add/scan\`).`,
+    `A block is addressed by its PATH, not its bare name, because a name is unique only among its siblings: "ALU/add" and "FPU/add" are two different blocks.`,
+    `**If you are not changing the hierarchy, omit "blocks" and omit "block" on every state.** They are then left exactly as they are. Sending "blocks" is a declaration that it is now the whole tree — anything you leave out of it stops being a block, and its states come back out onto the level above.`,
+    `Never restate the tree just to echo it back. Send it only to create a block, dissolve one, or move states between them.`
+  ].join('\n');
 }
 
 function switchBlock(machine) {
@@ -348,6 +389,7 @@ export async function buildSystemPrompt(machine = App.machine, { notes = false }
     schemaBlock(machine, { notes }),
     ``,
     switchBlock(machine),
+    blocksBlock(machine),
     ``,
     replyBlock(machine),
     ``,
@@ -438,6 +480,58 @@ function focusBlock(focus) {
   return lines.join('\n');
 }
 
+/**
+ * How the block being shown is reached, and where it hands control back.
+ *
+ * A scoped spec without this is a disconnected fragment — you can see the
+ * sub-machine and nothing about how it is entered, which is most of what a
+ * question about it turns on. The same reason a drilled-in view draws ports.
+ *
+ * It is stated as *prose beside* the machine rather than as fields inside it,
+ * because it describes the machine **around** the one being shown, and that one
+ * is not on the table: nothing the model returns may change it, and a field it
+ * could write to would say otherwise.
+ */
+function boundaryBlock(sc) {
+  const cap = xs => xs.slice(0, 8).map(c => `${c.from} → ${c.to}`).join('; ')
+    + (xs.length > 8 ? `; and ${xs.length - 8} more` : '');
+  const lines = [`ITS BOUNDARY. Control enters this block at "${sc.entry}".`];
+  lines.push(sc.exits.length
+    ? `It declares ${sc.exits.length} exit${sc.exits.length === 1 ? '' : 's'}: `
+      + sc.exits.map(e => `"${e.label}" at ${e.state}`).join(', ') + '.'
+    : `It declares no exits.`);
+  if (sc.crossings.in.length) lines.push(`Reached from outside by: ${cap(sc.crossings.in)}.`);
+  if (sc.crossings.out.length) lines.push(`Leaves for outside by: ${cap(sc.crossings.out)}.`);
+  lines.push(
+    `Those outside states are NOT in the machine above and you cannot change them. `
+    + `Keep the entry and the exits where they are unless the request asks otherwise — `
+    + `they are what the rest of the machine is wired to.`
+  );
+  return lines.join('\n');
+}
+
+/**
+ * The level the reader is looking at, as a sentence.
+ *
+ * Empty at the top level, which is the overwhelmingly common case and where
+ * the flat machine and the drawn one are the same thing -- so a machine with no
+ * blocks in it sends exactly the prompt it always sent.
+ */
+function scopeBlock() {
+  const trail = scopeTrail();
+  if (!trail.length) return '';
+  const path = trail.map(b => b.name).join('/');
+  const names = blockMembers(trail[trail.length - 1].id).map(s => s.name);
+  const shown = names.slice(0, 12).join(', ');
+  return [
+    `THE READER IS INSIDE THE BLOCK "${path}". The machine above is flat, as it always is -- `
+    + `a block is a grouping over it, not a separate machine -- but only this level is on their screen.`,
+    `Its states are: ${shown}${names.length > 12 ? `, and ${names.length - 12} more` : ''}.`,
+    `Read "this", "here" and an unqualified state name as belonging to that block unless the request says otherwise, `
+    + `and prefer an answer about it to one about the whole machine.`
+  ].join('\n');
+}
+
 export function buildUserMessage({ prompt, intent, canvasSpec = null, authority = 'auto', focus = null, images = 0 }) {
   const parts = [];
 
@@ -455,13 +549,23 @@ export function buildUserMessage({ prompt, intent, canvasSpec = null, authority 
   }
 
   if (canvasSpec) {
+    // When the reader is inside a block, the subject *is* that block — the spec
+    // above was cut down to it (scopedSource), so the heading has to say so or
+    // the model reads a forty-state fragment as a whole machine that is missing
+    // most of itself.
+    const sc = canvasSpec.scope;
     parts.push(
-      intent === 'edit'
-        ? `THE MACHINE CURRENTLY ON THE CANVAS — the request below is about this machine:`
-        : `FOR CONTEXT, the machine currently on the canvas:`,
+      sc
+        ? (intent === 'edit'
+          ? `THE BLOCK THE READER IS INSIDE — "${sc.path}". The request below is about this block and everything nested in it, NOT the machine around it:`
+          : `FOR CONTEXT, the block the reader is inside — "${sc.path}":`)
+        : (intent === 'edit'
+          ? `THE MACHINE CURRENTLY ON THE CANVAS — the request below is about this machine:`
+          : `FOR CONTEXT, the machine currently on the canvas:`),
       JSON.stringify(canvasSpec),
       ``
     );
+    if (sc) parts.push(boundaryBlock(sc), ``);
     // Edit mode is a subject, not an instruction. Telling the model to modify
     // the machine made every turn an edit — ask why a state rejects a word and
     // you got a rebuilt diagram instead of an answer, which is both wrong and
@@ -476,6 +580,22 @@ export function buildUserMessage({ prompt, intent, canvasSpec = null, authority 
   } else if (intent === 'edit') {
     parts.push(`The canvas is empty, so build the machine from scratch.`, ``);
   }
+
+  // Where the reader is standing, when that is not the top level.
+  //
+  // The machine sent above is flat -- every state at every depth, with the path
+  // written into its name -- because that is what the machine *is*: blocks are a
+  // grouping over a flat machine and inlining is their semantics. But "this"
+  // means something different depending on which level is on screen, and until
+  // this line the model had no way to know that a reader asking why the adder
+  // rejects `11+01` was looking at forty of the three thousand states it was
+  // handed.
+  // Only when the machine above is the *whole* one. A scoped spec has already
+  // said where the reader is, in its heading and its boundary; saying it again
+  // here would be the same fact twice, once as a qualification of a machine
+  // that is no longer being sent.
+  const where = canvasSpec && !canvasSpec.scope ? scopeBlock() : '';
+  if (where) parts.push(where, ``);
 
   // After the machine and before the request: it is a qualification of the
   // request, and it is meaningless without the machine above it.

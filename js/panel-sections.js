@@ -46,7 +46,15 @@ export const PANEL_SECTIONS = Object.freeze({
     storeKey: 'automata-rpanel-section',
     sections: Object.freeze([
       Object.freeze({ id: 'rp-language', collapsed: false, minW: 300, minH: 200 }),
-      Object.freeze({ id: 'rp-simulate', collapsed: false, minW: 320, minH: 240, fill: '.trace-log' }),
+      Object.freeze({ id: 'rp-simulate', collapsed: false, minW: 320, minH: 200, fill: '.sim-tracker' }),
+      // The trace log is its own card. It was the tail of Simulate, which meant
+      // the two things a run produces — a transport you operate and a history
+      // you read — shared one box, one scroll and one collapse: reading back
+      // through a run pushed the play button off the top of the panel, and
+      // collapsing the transport took the log with it. They are also the two
+      // sections most worth pulling out into windows *separately*, which the
+      // section registry can only offer per card.
+      Object.freeze({ id: 'rp-trace', collapsed: false, minW: 300, minH: 200, fill: '.trace-log' }),
       Object.freeze({ id: 'rp-batch', collapsed: true, minW: 320, minH: 220, fill: '.batch-result' })
     ])
   })

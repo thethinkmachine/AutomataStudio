@@ -192,6 +192,25 @@ export function lintCandidate(candidate) {
     }
   }
 
+  // ── blocks ───────────────────────────────────────────────────
+  // The hierarchy is carried through the compiler rather than described to the
+  // model on every turn, so a candidate can dissolve a block without ever
+  // mentioning it: delete the state that was its entry and the record fails
+  // blockIsIntact() and is pruned on the next read. That is the right
+  // behaviour and the wrong silence — a reader who asked for a trap state and
+  // got their ALU dismantled should be told which one went.
+  const liveIds = new Set(states.map(s => s.id));
+  const dissolved = (candidate.blocks || [])
+    .filter(b => !liveIds.has(b.entry))
+    .map(b => b.name)
+    .filter(Boolean);
+  if (dissolved.length) {
+    findings.push(finding('block-dissolved', 'warn',
+      dissolved.length === 1
+        ? `The block "${dissolved[0]}" lost its entry state, so it is no longer a block.`
+        : `${dissolved.length} blocks lost their entry states, so they are no longer blocks: ${dissolved.join(', ')}.`));
+  }
+
   // ── end markers ──────────────────────────────────────────────
   // An endmarked machine reads ⊢ and ⊣ from the tape, never from Σ. A model
   // that put them in the input alphabet has made a category error that would

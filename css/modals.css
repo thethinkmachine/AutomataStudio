@@ -5070,10 +5070,15 @@ button:focus-visible {
   padding: 3px 5px 3px 10px;
 }
 
+/* Locked is a constraint this machine has, not something absent — so it is the
+   app's disabled treatment (dimmed, no pointer) rather than a dashed edge,
+   which is reserved for what is not part of the machine. See the rule at the
+   top of css/views.css. */
 .wiz-chips .chip.is-locked {
   color: var(--text2);
   padding-right: 10px;
-  border-style: dashed;
+  opacity: .62;
+  cursor: not-allowed;
 }
 
 .wiz-chip-sym {

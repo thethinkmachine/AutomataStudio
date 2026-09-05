@@ -88,8 +88,14 @@
 }
 
 /* Fill alone carries the chip — the extra ring on top of it was what made
-   these read as heavy buttons rather than counts. */
-.lp-section-count {
+   these read as heavy buttons rather than counts.
+
+   Both panels, from one rule. The right panel's Trace count was written into
+   the markup with a class nothing styled, so it drew as a bare "0" beside a
+   pill on every other section — the same drift .panel-header and .panel-tab
+   were pulled together to stop. */
+.lp-section-count,
+.rp-section-count {
   min-width: 16px;
   height: 16px;
   padding: 0 5px;
@@ -107,7 +113,8 @@
 }
 
 /* A zero count is not news — mute it so populated sections stand out. */
-.lp-section-count[data-empty="1"] {
+.lp-section-count[data-empty="1"],
+.rp-section-count[data-empty="1"] {
   background: var(--surface3, var(--bg3));
   color: var(--text3);
 }
@@ -281,20 +288,47 @@
   gap: 4px;
 }
 
+/* A <button>, not the <span onclick> it was. Same lesson rowActions() in
+   js/render.js learned for the list rows: a control that deletes something has
+   to be reachable with Tab and firable with Enter, and a span is neither — so
+   of everything in the panel, Σ, Γ and Δ were the three lists whose only
+   destructive control no keyboard could reach and no screen reader could name.
+
+   The 9px glyph is also a 9px target. It keeps its size — a chip is 20px tall
+   and a bigger mark would crowd the symbol beside it — and the *button* around
+   it is padded out to something a pointer can actually land on. */
 .chip .x {
   cursor: pointer;
   color: var(--text3);
   display: inline-flex;
-  transition: color .12s;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-right: -3px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  transition: color .12s, background .12s;
 }
 
 .chip .x svg {
   width: 9px;
   height: 9px;
   fill: currentColor;
+  flex-shrink: 0;
 }
 
 .chip .x:hover {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.chip .x:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
   color: var(--red);
 }
 
@@ -931,6 +965,10 @@ body.panel-resizing .rpanel {
   display: flex;
   flex-direction: column;
   flex: 1;
+  /* Reaching the end of the panel must not start scrolling whatever is behind
+     it. The mobile sheet already asked for this; the desktop rail is the same
+     scroller and was chaining out of the panel into the page. */
+  overscroll-behavior: contain;
   /* Without this a flex column refuses to shrink past its content, so the
      transitions section (flex:1, min-height:0) never actually got a bounded
      height and grew the panel instead of scrolling inside itself. */
@@ -956,6 +994,9 @@ body.panel-resizing .rpanel {
 
 .lpanel-search-inp:focus {
   border-color: var(--accent);
+  /* .inp, .sel and .algo-search-inp all draw this ring; these two were the
+     fields in the panel that changed only their border colour on focus. */
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 /* Right Panel */
@@ -979,6 +1020,8 @@ body.panel-resizing .rpanel {
   flex: 1;
   display: flex;
   flex-direction: column;
+  /* Same as .lpanel-content. */
+  overscroll-behavior: contain;
   /* Same reason as .lpanel-content: a flex column won't shrink below its
      content without this, so overflow-y never engages. */
   min-height: 0;
@@ -1077,6 +1120,16 @@ body.panel-resizing .rpanel {
   background: var(--surface);
 }
 
+/* The same ring the left panel's header has. These headers were plain
+   `<div onclick>`s — no role, no tabindex, no key handler — so of the two
+   sidebars only one could be collapsed from a keyboard, and the four right
+   panel sections had no focus state to give because nothing could focus
+   them. See the note in index.html. */
+.rp-section-header:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+
 .rp-section-title {
   font-family: var(--mono);
   font-size: var(--sec-label-size);
@@ -1123,6 +1176,16 @@ body.panel-resizing .rpanel {
 
 .rp-collapsible.collapsed .rp-toggle-arrow {
   transform: rotate(-90deg);
+}
+
+/* The class hides the body, the way `.lp-collapsible.collapsed` already does.
+   Only the inline `display` written by setRPSectionCollapsed was doing this,
+   which meant the markup had to ship a section's collapsed state twice — as a
+   class on the section and as a style attribute on its body — and a section
+   declared collapsed in the registry but not in the markup flashed open on
+   every boot until the pass caught up. */
+.rp-collapsible.collapsed .rp-section-body {
+  display: none;
 }
 
 .rp-section-body {
@@ -1758,7 +1821,13 @@ body.panel-resizing .rpanel {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* The same cap .slist and .tlist take, and for the same reason: a machine
+     built out of blocks has as many rows here as it has states there. Without
+     a height to overflow, the `overflow-y` below never engaged at all — the
+     list simply grew and pushed the Library heading under it off the panel. */
+  max-height: var(--lp-list-max-h);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* A <button>, not a <div onclick>. The States Q and Transitions δ rows learned

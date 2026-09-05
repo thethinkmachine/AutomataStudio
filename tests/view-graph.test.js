@@ -146,19 +146,100 @@ test('adding a state rebuilds the projection', () => {
 
 function getBlockRecord(App, id) { return App.blocks.find(b => b.id === id); }
 
-// ── the render profile judges the view ────────────────────────────
+// ── the render profile weighs the level, through the boxes ────────
+//
+// A box is not one node. It carries a live preview of its interior — a walk of
+// the machine to build, a scan of the machine to key, and up to a budget of
+// elements to draw — and the states behind it cost a full stringify on every
+// autosave tick and a full workspace copy per undo entry, whatever they are
+// drawn as. Judged on the *node count* of the projection, an arbitrarily large
+// machine could hide inside a handful of boxes and be called small.
+//
+// So the profile weighs the subtree the reader is standing in, at every depth.
+// That keeps the good half of judging the view — a genuinely small level is
+// still drawn in full — and drops the belief that a box is small.
 
-test('a hierarchy of eight boxes is not a large machine', () => {
+test('a large machine hidden inside eight boxes is still a large machine', () => {
   const App = tmCanvas();
-  // Three thousand states, all of them inside blocks, and eight boxes drawn.
   for (let b = 0; b < 8; b++) context.inlineBlock(def('unit ' + b, 60), { x: b * 400, y: 0 });
   context.invalidateViewGraph();
 
   assert.ok(App.states.length > context.COLLISION_BUDGET_STATES,
     'the machine really is past the budget');
   assert.equal(context.viewStates().length, 8, 'and the canvas is drawing eight boxes');
+  assert.equal(context.machineIsLarge(), true,
+    'which cost what 480 states cost, with the profile off throughout');
+});
+
+test('the weight reaches through nesting, however deep', () => {
+  const App = tmCanvas();
+  // One box at the top level holding one state and one further box, and every
+  // other state a level below that. Counted a level at a time the top weighs
+  // two and the level inside it weighs two — and 240 states go unnoticed.
+  App.states = [
+    { id: 'gate', x: 0, y: 0, name: 'ALU/gate', blockId: 'outer' },
+    ...Array.from({ length: 240 }, (_, i) => ({
+      id: 's' + i, x: i * 20, y: 60, name: 'ALU/add/s' + i, blockId: 'inner'
+    }))
+  ];
+  App.transitions = [];
+  App.blocks = [
+    { id: 'outer', name: 'ALU', parent: null, entry: 'gate', exits: [], x: 0, y: 0 },
+    { id: 'inner', name: 'add', parent: 'outer', entry: 's0', exits: [], x: 0, y: 60 }
+  ];
+  context.invalidateBlockIndex();
+  context.invalidateViewGraph();
+
+  assert.equal(context.viewStates().length, 1, 'one box drawn');
+  assert.equal(context.drawnSize().states, 241, 'and it stands for all of them');
+  assert.equal(context.machineIsLarge(), true);
+
+  // And the machine around it does not decide: going inside the box that holds
+  // nothing directly still weighs what is underneath it.
+  assert.equal(context.enterBlockScope('outer'), true);
+  context.invalidateViewGraph();
+  assert.equal(context.viewStates().length, 3, 'a state, a box and an entry tab');
+  assert.equal(context.machineIsLarge(), true, 'still weighing what is under the box');
+});
+
+test('a small level inside a large machine is drawn in full', () => {
+  // The half of judging the view that was right, and the reason the weight is
+  // the subtree rather than the machine: an eight-state adder is an eight-state
+  // diagram whatever it is nested in, and stripping its labels would buy
+  // nothing.
+  const App = tmCanvas();
+  for (let b = 0; b < 8; b++) context.inlineBlock(def('unit ' + b, 60), { x: b * 400, y: 0 });
+  const small = context.inlineBlock(def('adder', 4), { x: 0, y: 600 });
+  context.invalidateViewGraph();
+  assert.equal(context.machineIsLarge(), true, 'large at the top');
+
+  assert.equal(context.enterBlockScope(small.block.id), true);
+  context.invalidateViewGraph();
+  assert.equal(context.drawnSize().states, 4);
   assert.equal(context.machineIsLarge(), false,
-    'so the profile does not strip the labels off an eight-node diagram');
+    'so the labels and the easing come back inside it');
+});
+
+test('the preview budget is part of the profile', () => {
+  // The previews are what a level made of boxes costs, so announcing the
+  // profile while still drawing them at full size would be announcing a
+  // simplification that had not happened.
+  const App = tmCanvas();
+  context.inlineBlock(def('unit', 4), { x: 0, y: 0 });
+  context.invalidateViewGraph();
+  assert.equal(context.machineIsLarge(), false);
+  assert.equal(context.previewNodeBudget(), context.PREVIEW_MAX_NODES);
+
+  for (let b = 0; b < 8; b++) context.inlineBlock(def('unit ' + b, 60), { x: b * 400, y: 900 });
+  context.invalidateViewGraph();
+  assert.equal(context.machineIsLarge(), true);
+  assert.equal(context.previewNodeBudget(), context.PREVIEW_MAX_NODES_LARGE);
+  assert.ok(context.PREVIEW_MAX_NODES_LARGE < context.PREVIEW_MAX_NODES);
+
+  // And the override lifts it with everything else.
+  App.config.render.largeMachineAuto = false;
+  assert.equal(context.previewNodeBudget(), context.PREVIEW_MAX_NODES);
+  delete App.config.render.largeMachineAuto;
 });
 
 test('a large machine with no blocks is still a large machine', () => {

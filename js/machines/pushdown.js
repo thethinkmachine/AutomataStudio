@@ -11,7 +11,9 @@
 // it *is* a PDA, sharing every one of those functions, and differs only
 // in accumulating output as it goes.
 
-import { App, getState } from '../state.js';
+import {
+  App, getState, runStartId
+} from '../state.js';
 import { renderSimStep } from './paint.js';
 import { getPdaDeterminismConflict, isQueueAutomaton, isTwoStackPDA } from './predicates.js';
 import { accepted, nameOfState, traceSearchPath, transduced, transducerRunContributes } from './runtime.js';
@@ -63,7 +65,7 @@ export function createInitialPdaConfig(tokens) {
   const isExplicit = App.config.pdaParadigm === 'explicit';
   const baseStore = isExplicit ? [App.config.sym.stackBottom] : [];
   const cfg = {
-    state: App.startId,
+    state: runStartId(),
     tokens,
     // A position into `tokens` rather than a copy of the unread suffix. The
     // suffix is what the reader is shown, but it is never anything other

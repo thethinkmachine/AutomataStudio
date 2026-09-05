@@ -4,12 +4,13 @@ import { exportDownload, exportFilename } from './export-core.js';
 import { fontFaceCSS } from './export-fonts.js';
 import { applyOutlines, loadGlyphTables, planOutlines } from './glyphs.js';
 import { includeLayoutBounds, resolveNodeOverlaps, startNodeId } from './geometry.js';
-import { getBlock, inlineBlock, outlineBlock } from './blocks.js';
+import { blockPlacementRefusal, getBlock, inlineBlock, outlineBlock } from './blocks.js';
+import { transitionShapeRefusal } from './machines/index.js';
 import { getNode, invalidateViewGraph, isPortNode, scopeId, viewStates, viewTransitions } from './view-graph.js';
 import { markDirty, snapshot } from './history.js';
 import { clearActiveNoteHighlight, dragSelectedNotesTo, endNoteResize, getNote, includeNoteBounds, resizeNoteTo, resolveNotePos, syncNoteSelectionClasses, visibleNotes } from './notes.js';
 import { getWorkspaceData } from './persistence.js';
-import { currentLayoutContext, drawnEdgeEl, makeSVG, renderAll, repaintForCamera, scheduleFastDOM, updateFastDOM, updateLPanel, updateRPanel, withFullRender } from './render.js';
+import { currentLayoutContext, drawnEdgeEl, drawnStateEl, makeSVG, renderAll, repaintForCamera, scheduleFastDOM, updateFastDOM, updateLPanel, updateRPanel, withFullRender } from './render.js';
 import { $, App } from './state.js';
 import { createState, deleteState, getState, hideContextMenu, newId, newTId, openTransModal } from './states-transitions.js';
 import { Change, emit } from './store.js';
@@ -579,7 +580,7 @@ export function handlePointerMove(e) {
   lastPointerClient = e;
   // Before the pan test: a port drag takes the pointer capture, and a captured
   // pointer still delivers moves here.
-  if (App.dragPort) { dragPortTo(svgPt(e)); return; }
+  if (App.dragPort) { dragPortTo(svgPt(e), e); return; }
   if (isPanning) {
     App.cam.x = camStart.x + (e.clientX - panStart.x);
     App.cam.y = camStart.y + (e.clientY - panStart.y);
@@ -762,8 +763,11 @@ export function endPointerInteractions() {
     return;
   }
   if (App.dragPort) {
-    const moved = App.dragPort.moved;
+    // `dragPendingSnapshot` is still set when the press never travelled, which
+    // is exactly "this was a click".
+    const moved = !App.dragPendingSnapshot;
     App.dragPort = null;
+    App.dragPendingSnapshot = false;
     // Only a drag that actually moved is an edit. A press that stayed put left
     // no snapshot and changed no offset, so there is nothing to announce — and
     // announcing anyway would dirty the workspace for a click that is on its way
@@ -865,7 +869,10 @@ export function showCanvasContextMenu(x, y) {
   hideContextMenu();
   m.style.display = 'block';
   const pasteItem = $('canvas-ctx-paste');
-  if (pasteItem) pasteItem.classList.toggle('disabled', !App.clipboard || !App.clipboard.states.length);
+  // Counted the same way pasteClipboard counts it — a clipboard holding only a
+  // block has no states on it, so gating on states alone greyed the row out
+  // for a paste Ctrl+V would have performed.
+  if (pasteItem) pasteItem.classList.toggle('disabled', !clipboardCount(App.clipboard));
   const w = 190, h = m.offsetHeight || 170;
   m.style.left = Math.max(8, Math.min(x, innerWidth - w)) + 'px';
   m.style.top = Math.max(8, Math.min(y, innerHeight - h)) + 'px';
@@ -924,13 +931,28 @@ export function ctxCanvasAutoLayout() {
  * is attached to, so moving that state has to carry its tab along. Storing an
  * absolute point would leave the tab behind the first time its anchor moved.
  */
+/**
+ * The drawn node a port hangs off — a state, or the box of a nested block.
+ *
+ * Through the projection, not `getState`. A tab used to be attached to a state
+ * and only a state, so `getState(node.anchor)` was the whole answer; a tab now
+ * anchors on whatever is on screen at its end of the crossing, and an edge that
+ * leaves a *nested* block for the level above is anchored on that block's box.
+ * `getState` answers null for a box, so both of these returned early and the
+ * tab silently would not move — no error, no cursor change, nothing to see
+ * except a control that ignores you.
+ */
+function portAnchor(node) {
+  return node ? getNode(node.anchor) : null;
+}
+
 export function onPortDown(e, id) {
   if (App.spacePan) return;
   if (e.button !== 0) return;
   e.stopPropagation();
   const node = getNode(id);
   if (!node || !isPortNode(node)) return;
-  const anchor = getState(node.anchor);
+  const anchor = portAnchor(node);
   if (!anchor) return;
   const pt = svgPt(e);
   App.dragPort = {
@@ -938,32 +960,50 @@ export function onPortDown(e, id) {
     block: scopeId(),
     // Where in the tab the reader took hold, so it does not jump under the hand.
     grabX: pt.x - node.x,
-    grabY: pt.y - node.y,
-    moved: false
+    grabY: pt.y - node.y
   };
+  // The shared flag, not a private one. A press is a click until it travels,
+  // and the undo point is taken on the first movement — the rule every other
+  // draggable thing on this canvas already follows, and a second copy of it is
+  // a second thing to get wrong.
+  App.dragPendingSnapshot = true;
   try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
 }
 
-/** Drive a port drag from a move event. Returns true when it handled one. */
-function dragPortTo(pt) {
+/**
+ * Drive a port drag from a move event. Returns true when it handled one.
+ *
+ * **A tab drags by the same rules as everything else on this canvas**, which it
+ * did not: it kept a private `moved` flag where the rest of the app uses
+ * `App.dragPendingSnapshot`, and it honoured neither grid snap nor auto-pan, so
+ * holding Shift did nothing and dragging a tab toward the edge of the viewport
+ * stopped at the edge instead of bringing the diagram with it. Three ways for
+ * one gesture to behave unlike its neighbours, each invisible until you try it.
+ */
+function dragPortTo(pt, e) {
   const d = App.dragPort;
   if (!d) return false;
   const node = getNode(d.id);
-  const anchor = node && getState(node.anchor);
+  const anchor = node && portAnchor(node);
   if (!node || !anchor) return true;
-  // The undo point is taken on the first real movement, not on the press — the
-  // rule js/canvas.js already follows for states, notes and dividers, so a press
-  // that never travels is a click rather than a no-op edit on the stack.
-  if (!d.moved) {
-    d.moved = true;
+  // First movement of a drag: the undo point records where the tab started, so
+  // a press that never travels is a click rather than a no-op edit on the stack.
+  if (App.dragPendingSnapshot) {
+    App.dragPendingSnapshot = false;
     snapshot();
     const el = document.querySelector(`[data-id="${d.id}"]`);
     if (el) el.__dragged = true;
   }
-  const x = pt.x - d.grabX, y = pt.y - d.grabY;
+  let x = pt.x - d.grabX, y = pt.y - d.grabY;
+  if (isSnapActive(e?.shiftKey)) {
+    const g = App.config.gridSnap || 20;
+    x = Math.round(x / g) * g;
+    y = Math.round(y / g) * g;
+  }
   setPortOffset(d.block, d.id, x - anchor.x, y - anchor.y);
   invalidateViewGraph();
   updateFastDOM();
+  if (e) checkAutoPan(e);
   return true;
 }
 
@@ -1003,6 +1043,39 @@ export function resetPortPlacement(id) {
   emit(Change.GRAPH);
 }
 
+/**
+ * The real state behind a drawn node, for an edge being drawn.
+ *
+ * A state answers itself. A block answers its entry when an edge is arriving
+ * and its exit when one is leaving, which is what those fields *are* — control
+ * enters a block at its entry and leaves from an exit, and an edge drawn to the
+ * box means the same thing an edge drawn to the entry means. A block with
+ * several exits cannot be answered for, so it says which ones there are and
+ * leaves the reader to drill in and pick; guessing would put the edge on one of
+ * them, and the wrong one is silent.
+ *
+ * A port answers nothing: it is derived, it is not in the model, and there is
+ * nothing there to wire to.
+ */
+function wireEndpoint(id, side) {
+  const node = getNode(id);
+  if (!node || !node.kind) return id;                 // a state, which is the usual case
+  if (node.kind === 'port') return null;
+  const b = getBlock(id);
+  if (!b) return null;
+  if (side === 'to') {
+    if (!getState(b.entry)) { showStatus(`${b.name} has no entry state to arrive at`); return null; }
+    return b.entry;
+  }
+  const exits = (b.exits || []).filter(x => getState(x.id));
+  if (!exits.length) { showStatus(`${b.name} declares no exit to leave from`); return null; }
+  if (exits.length > 1) {
+    showStatus(`${b.name} has ${exits.length} exits — open it and draw from the one you mean`);
+    return null;
+  }
+  return exits[0].id;
+}
+
 export function onStateDown(e, id) {
   if (App.spacePan) return;
   e.stopPropagation();
@@ -1014,8 +1087,40 @@ export function onStateDown(e, id) {
   if (el && el.parentNode) el.parentNode.appendChild(el);
 
   if (App.tool === 'trans') {
-    if (!App.transFrom) { App.transFrom = id; hlState(id, true); showStatus('Now click target state'); }
-    else { const f = App.transFrom; App.transFrom = null; hlState(f, false); clearTempLine(); openTransModal(f, id); }
+    // A block box is a node the reader can click, and it is not a state. Passed
+    // straight through, it wrote `to: "b1"` onto a real transition — an endpoint
+    // naming no state the machine has, saved to the file, counted in the
+    // Transitions δ list and drawn nowhere, because the projection has nothing
+    // to resolve it to. The transition editor's own menus were narrowed to real
+    // states for exactly this; the canvas is the other half of it.
+    //
+    // Refusing the click is the smaller fix and the worse one: while drilled in
+    // there is otherwise *no* way to draw an edge that crosses the boundary,
+    // and drawing one to a box is the obvious gesture for it. So the box is
+    // resolved to the state the reader must have meant — a block is entered at
+    // its entry and left from an exit, which is what those two fields are for.
+    //
+    // Each click is resolved for the side it is actually on. Both ends used to
+    // be resolved up front and the gesture gated on the *target*, so a click
+    // starting an edge asked "can control arrive here?" before asking the
+    // question it was actually about — and refused on the answer. Nothing
+    // reachable came of it, because a block whose entry names no state is
+    // pruned before any of this runs (blockIsIntact), but it is one prune rule
+    // away from being a refusal message about the wrong end of the edge.
+    if (!App.transFrom) {
+      const source = wireEndpoint(id, 'from');
+      if (!source) return;
+      App.transFrom = source;
+      // The resolved state, not the clicked box: hlState resolves it back to
+      // whatever draws it, so the mark goes on and comes off the same node.
+      hlState(source, true);
+      showStatus('Now click target state');
+    } else {
+      const target = wireEndpoint(id, 'to');
+      if (!target) return;
+      const f = App.transFrom; App.transFrom = null;
+      hlState(f, false); clearTempLine(); openTransModal(f, target);
+    }
     return;
   }
   if (App.tool === 'move' || App.tool === 'pointer') {
@@ -1064,8 +1169,25 @@ export function clearTempLine() { if (tempLine) { tempLine.remove(); tempLine = 
 // The renderer's node registry first: after a select-all this is called once per
 // state, and a document-wide selector match per call is a thousand scans of the
 // canvas to find a node the renderer is already holding by id.
+/**
+ * Light the node that stands for a state, which is not always the state.
+ *
+ * Through the projection, because the half-drawn transition it marks may now
+ * start inside a block: `wireEndpoint` resolves a click on a box to that
+ * block's exit, and `App.transFrom` is that exit's id from then on. Looked up
+ * directly, the mark went on the box on the way in — the id the reader clicked
+ * — and every one of the four places that takes it off again passes
+ * `App.transFrom`, which is a state the current scope does not draw. So the
+ * highlight went on and could not come off, and the box read as selected until
+ * something else happened to repaint it.
+ *
+ * `drawnStateEl` is the shared answer to "which element shows this state", and
+ * it falls back to the raw id, so a plain state on a plain canvas resolves to
+ * exactly what it always did.
+ */
 export function hlState(id, on) {
-  const el = App.domCache.states.get(id) || document.querySelector(`[data-id="${id}"]`);
+  const el = drawnStateEl(id) || App.domCache.states.get(id)
+    || document.querySelector(`[data-id="${id}"]`);
   if (el) el.classList.toggle('sel-st', on);
 }
 
@@ -1315,7 +1437,14 @@ export function copySelection() {
   const blocks = [...ids]
     .map(id => (getBlock(id) ? outlineBlock(id) : null))
     .filter(Boolean);
-  App.clipboard = { states, transitions, blocks };
+  // Which machine these were drawn on. A block definition records its own
+  // (outlineBlock stamps it), but a loose state and its transitions record
+  // nothing, and a transition is a plain object whose every field is optional —
+  // so without this there is nothing at paste time to notice that a DFA is
+  // being handed rules with `tapeSyms` on them. Session state: `App.clipboard`
+  // reaches no serializer, so there is no absent-means-what question to answer
+  // for an older file.
+  App.clipboard = { machine: App.machine, states, transitions, blocks };
   const n = states.length + blocks.length;
   showStatus(`Copied ${n} item${n === 1 ? '' : 's'}`);
 }
@@ -1333,6 +1462,32 @@ function clipboardCount(c) {
 
 export function pasteClipboard(atPoint, fallbackOffset = 32) {
   if (!clipboardCount(App.clipboard)) { showStatus('Nothing to paste'); return; }
+  // ── which machine this was copied from ──
+  // The clipboard outlives the machine it was filled from — nothing clears it
+  // on a machine switch, and deliberately so: copy on a TM, look at something
+  // else, switch back and paste. That makes copy the one gesture in the app
+  // that crosses machines, and this the one place a fragment of one machine can
+  // arrive at another. Until it was asked, it did: copy on an MTM, switch the
+  // canvas to a DFA, Ctrl+V, and the states, their tape-shaped transitions and
+  // any block records among them all landed, with nothing anywhere refusing
+  // them and nothing on screen to say the machine was now deciding against
+  // rules it cannot read.
+  //
+  // Two questions, one for each kind of thing on the clipboard, and the first
+  // covers the second's interior too — a block's transitions become the host's
+  // when it is inlined. Asked in that order because "a DFA cannot have blocks
+  // at all" is the more specific sentence and the one the reader means.
+  //
+  // Both are asked **before the snapshot**, and the whole paste is refused
+  // rather than part of it: pasting the states and dropping the block would
+  // leave the interior of a subroutine loose on the canvas under names
+  // (`ALU/add/scan`) that no longer mean anything, and pasting the states
+  // without their transitions would be a diagram of the wiring you copied with
+  // the wiring taken out. Nothing is written, and the clipboard is kept, so
+  // switching back and pasting there still works.
+  const blocked = (App.clipboard.blocks || []).map(def => blockPlacementRefusal(def)).find(Boolean)
+    || transitionShapeRefusal(App.clipboard.machine, App.machine, 'This selection');
+  if (blocked) { showStatus(blocked); return; }
   snapshot();
   const idMap = {};
   let offX = fallbackOffset, offY = fallbackOffset;

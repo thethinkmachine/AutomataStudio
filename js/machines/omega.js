@@ -17,7 +17,9 @@
 // DPA = NPA = the full ω-regular class and DcoBA = NcoBA ⊊ ω-regular.
 // Büchi is the only cell where determinism costs languages.
 
-import { App, getState, omegaAcceptanceOf, statePriority } from '../state.js';
+import {
+  App, getState, omegaAcceptanceOf, runStartId, statePriority
+} from '../state.js';
 import { renderSimStep } from './paint.js';
 import { findOmegaDeterminismConflict } from './predicates.js';
 import { accepted, firstOverlappingTransition, nameOfState, tokenize } from './runtime.js';
@@ -137,9 +139,9 @@ function omegaCycleCandidates(order) {
 
 export function exploreOmega(u, v) {
   if (!v.length) return { accepted: false, reason: 'empty-period', stem: [], loop: [] };
-  if (!App.startId) return { accepted: false, reason: 'no-start', stem: [], loop: [] };
+  if (!runStartId()) return { accepted: false, reason: 'no-start', stem: [], loop: [] };
 
-  const start = { state: App.startId, pos: 0, via: null };
+  const start = { state: runStartId(), pos: 0, via: null };
   const parent = new Map([[buchiKey(start.state, start.pos), null]]);
   const order = [start];
   const queue = [start];

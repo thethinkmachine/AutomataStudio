@@ -62,15 +62,37 @@ function emptyDraft(machine) {
   };
 }
 
-/** A transaction-local machine and its audit trail. */
-export function createAgentSession(base, { intent = 'edit', focus = null, prompt = '' } = {}) {
+/**
+ * A transaction-local machine and its audit trail.
+ *
+ * **`scope` is the same cut the one-shot path takes**, and it has to be here
+ * too or agentic mode is the one route past the guard. Two halves, and both
+ * were missing:
+ *
+ *   - The draft is built from the *scoped* source, because that is what the
+ *     model was shown. It was built from the whole machine, so the console
+ *     described an eight-state adder while `get_candidate` answered with six
+ *     hundred states — the model reading two different machines under one name.
+ *   - `refreshCandidate` compiles against that scope. Without it a spec naming
+ *     only the block's states — which is exactly what a model rewrites after
+ *     being handed only the block — is diffed against the whole machine and
+ *     reads as an edit that deleted everything around it. `replace_candidate_-
+ *     from_spec` is one tool call away from that, and it is silent and total.
+ *
+ * `base` stays the *whole* machine either way, because that is what
+ * keepOutsideScope carries the untouched remainder through from.
+ */
+export function createAgentSession(base, { intent = 'edit', focus = null, prompt = '', scope = null } = {}) {
   const source = clone(base);
-  const hasMachine = source.states?.length > 0;
+  const shown = scope?.source ? clone(scope.source) : source;
+  const hasMachine = shown.states?.length > 0;
   const draft = hasMachine && intent === 'edit'
-    ? { ...machineToSpec(source), tests: [], title: 'StateMate edit', blurb: '', caveat: '', notes: [] }
+    ? { ...machineToSpec(shown), tests: [], title: 'StateMate edit', blurb: '', caveat: '', notes: [] }
     : emptyDraft(source.machine);
   const session = {
     base: source,
+    // Only the subtree; the source it was cut from has done its job above.
+    scope: scope ? { subtree: [...(scope.subtree || [])] } : null,
     draft,
     candidate: null,
     diff: null,
@@ -119,7 +141,9 @@ function ensureRefs(session) {
 function refreshCandidate(session) {
   try {
     const spec = validateSpec(session.draft, { fallbackMachine: session.base.machine });
-    const { candidate, diff } = compileSpec(spec, session.base);
+    // Bounded to the subtree the model was shown, exactly as the one-shot path
+    // bounds it. Null at the top level, where it is the whole machine anyway.
+    const { candidate, diff } = compileSpec(spec, session.base, { scope: session.scope });
     if (session.layoutOverrides) {
       const positions = new Map(session.layoutOverrides.map(row => [key(row.name), row]));
       candidate.states.forEach(row => {
@@ -202,6 +226,12 @@ function withWorkspace(candidate, run) {
       accepts: candidate.accepts || [],
       notes: candidate.notes || [],
       dividers: candidate.dividers || [],
+      // Carried so the candidate on the bench is the candidate, not a flattened
+      // copy of it. Blocks change no verdict — inlining is the semantics, and
+      // the machine is flat either way — but a tool that reads the draft back
+      // should not describe a hierarchy the caller never removed.
+      blocks: candidate.blocks || [],
+      scope: [],
       history: [],
       future: []
     });

@@ -1,4 +1,41 @@
 /* ─── VIEWS ─── */
+/* ══════════════════════════════════════════════════════════════════
+   A DASHED OUTLINE MEANS "NOT PART OF THE MACHINE"
+   ══════════════════════════════════════════════════════════════════
+   One rule, because it was doing five jobs and none of them legibly. A dashed
+   border was carrying *absence* (a blank tape cell), *a draft* (an uncommitted
+   test word), *an invitation* (add one here), *a constraint* (a locked chip)
+   and *a decided fault* (a proven loop) — so it told the reader nothing except
+   that something was unusual, and they had to work out which unusual from
+   context every time.
+
+   What it means now, and the only thing it means:
+
+       dashed    derived, drafted, absent, or offered — something that is not
+                 (yet) part of the machine, and that no serializer carries
+       solid     something the machine actually has
+
+   The three that used to break the rule, and why each is solid now:
+
+     .tv-cell.is-head.loop   a proven loop is a *decision* — the machine never
+                             halts, so the input is not accepted, which is
+                             strictly more than the step budget can tell you
+                             (see "Loop detection" in CLAUDE.md). Drawing the
+                             app's most definite verdict as an absence was the
+                             single worst case of this.
+     .lang-sym.dead          a dead symbol is a real fact about a real machine.
+                             It is quiet because it is uninteresting, not
+                             because it is missing; quiet is opacity and colour.
+     .wiz-chips .chip.is-locked  a locked chip is a constraint the machine has,
+                             not a thing that is absent. Disabled is the idiom,
+                             and the app has one.
+
+   Everything still dashed is genuinely one of the four: .tv-cell.is-blank
+   (tape the machine has not written), .tv-cell.is-ghost (a projected repeat),
+   .example-chip.is-pending (a word not committed yet), .example-card-add,
+   .gram-stub, .canvas-info-btn.is-invite, .wiz-example (all "add one here"),
+   and .pn-body (a port, derived on every rebuild). ══════════════════════════ */
+
 .view-container {
   flex: 1;
   display: flex;
@@ -805,12 +842,18 @@
   border-top-color: var(--orange);
 }
 
-/* A proven loop is a decided non-acceptance, so it wears the reject
-   colour; the dashed edge says it got there by never halting. */
+/* A proven loop is a decided non-acceptance, so it wears the reject colour —
+   and it wears it SOLID. It is the most definite thing the player can say: the
+   machine never halts, so the input is not accepted, which is strictly more
+   than the step budget can tell you. Drawing it as a dashed outline said the
+   opposite, and put the app's firmest verdict in the same visual bracket as an
+   unwritten tape cell. The doubled border is what distinguishes it from an
+   ordinary reject without borrowing the dash. */
 .tv-cell.is-head.loop {
   background: var(--red-soft);
   border-color: var(--red);
-  border-style: dashed;
+  border-style: double;
+  border-width: 3px;
   color: var(--red);
   box-shadow: 0 0 10px var(--red-border);
 }
@@ -1189,10 +1232,14 @@
   color: var(--gold);
 }
 
+/* A dead symbol is a real fact about a real machine — it is uninteresting, not
+   absent. Quiet is what colour and opacity are for; the dash was claiming the
+   symbol was not there. */
 .lang-sym.dead {
   background: transparent;
-  border-style: dashed;
+  border-color: var(--border);
   color: var(--text3);
+  opacity: .7;
 }
 
 /* ── the machine, as one line ───────────────────────────────────*/
@@ -2049,6 +2096,98 @@
   font-size: .72rem;
 }
 
+/* ── how a block run ended ──
+   A block has no accepting states of its own — they are dropped when it is
+   inlined, because a block finishing is not the machine accepting — so this
+   banner never says accept or reject. It says which exit control left by, and
+   green is right for that: the block did the thing it declares it does.
+
+   `--orange` for a way out the block never declared, on the same reasoning
+   .pn.is-stray carries on the canvas: it is a finding, not a fault. The block
+   works; it is not *reusable*, because a copy of it placed elsewhere would have
+   that wire hanging off a state its definition never mentioned.
+
+   `--red` only for a block that never handed control back at all, which is the
+   one outcome a caller downstream of it could wait on forever. */
+.sim-verdict.block-exit {
+  background: var(--green-soft);
+  border-color: var(--green-border);
+  color: var(--green);
+  font-weight: 600;
+}
+
+.sim-verdict.block-exit.is-stray {
+  background: var(--orange-soft);
+  border-color: var(--orange-border);
+  color: var(--orange);
+}
+
+.sim-verdict.block-exit.is-stuck {
+  background: var(--red-soft);
+  border-color: var(--red-border);
+  color: var(--red);
+}
+
+.sim-verdict.block-exit .sim-verdict-out {
+  font-weight: 600;
+  font-size: .72rem;
+}
+
+/* ── what the run is about ──
+   Hidden at the top level, so a machine with no blocks in it shows exactly the
+   run box it always showed. The label is --sans because it is a word addressed
+   to the reader; the machine and block names in the select are identifiers, so
+   the control itself is --mono, which is the rule the rest of the app follows. */
+.sim-subject-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sim-subject-row[hidden] {
+  display: none;
+}
+
+.sim-subject-lbl {
+  font-family: var(--sans);
+  font-size: .68rem;
+  font-weight: 600;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  flex: none;
+}
+
+.sim-subject-sel {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: .7rem;
+  padding: 3px 6px;
+  height: 24px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.sim-break-lbl {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-family: var(--sans);
+  font-size: .68rem;
+  color: var(--text3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sim-break-lbl[hidden] {
+  display: none;
+}
+
 .sim-verdict-lbl {
   color: var(--text2);
   font-weight: 600;
@@ -2222,8 +2361,21 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 10px 12px;
-  margin-top: 14px;
-  overflow-y: auto;
+  /* No top margin. It had one from when it was the tail of the Simulate
+     section and needed separating from the transport above it; as its own
+     card it is the first thing in its body, and the margin was 14px of dead
+     space between the Trace heading and the log it heads. */
+  overflow: hidden auto;
+  /* One axis, deliberately. A box that scrolls on one computes the other from
+     `visible` to `auto`, so a single wide step — a tape window on a machine
+     that has run a long way — made the whole log a sideways scroller and cut
+     every line above and below it off at both edges. The same rule .sm-log and
+     the machine card follow. Nothing is lost to it: a long tape breaks where
+     it has to rather than running off the side. */
+  overflow-wrap: anywhere;
+  /* And the end of the log is the end of the scroll, not the start of the
+     panel's. */
+  overscroll-behavior: contain;
   font-family: var(--mono);
   font-size: .75rem;
   color: var(--text2);
@@ -2252,10 +2404,48 @@
    ten thousand lines and the panel scrolls itself to the bottom. The count is
    the standing note that there is more above; the scrubber is what reaches it.
    Muted rather than accented: it is not a step. */
-.sim-log-elided {
+/* ── the rest of the run ──
+   It was a count and nothing else, which made a claim it had no right to: the
+   steps above are not gone, they are only not drawn, because a log rebuilt from
+   step 0 on every tick is quadratic in the length of the run. So the line is a
+   control — click it, or scroll to the top of the log, and the previous page is
+   drawn in behind you.
+
+   Sticky, because it is the way *up* out of a scroller and a reader who has
+   scrolled looking for it should not have to scroll further to find it. Full
+   width and quiet: it is not a step, and it must not read as one. */
+.sim-log-more {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  margin: 0 0 4px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: var(--bg2);
   color: var(--text3);
+  font-family: inherit;
+  font-size: inherit;
   font-style: italic;
-  opacity: .8;
+  text-align: left;
+  cursor: pointer;
+  opacity: .85;
+  transition: background var(--transition-fast), color var(--transition-fast),
+    border-color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.sim-log-more:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent);
+  opacity: 1;
+}
+
+.sim-log-more:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .tape-wrap {
@@ -2325,6 +2515,7 @@
   border: 1px solid var(--border);
   max-height: 160px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .br-ok {

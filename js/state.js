@@ -441,6 +441,27 @@ function stateIndex() {
   return map;
 }
 
+/**
+ * Where a run starts.
+ *
+ * `App.startId` is the machine's start state and stays exactly that: it draws
+ * the start arrow, it is q0 in the formal definition, and it is what every
+ * exporter writes. `App.simStart` is a *run* starting somewhere else — running
+ * one block on its own begins at that block's entry — and it is session state
+ * that reaches no serializer, so a file never records a machine whose start is
+ * not its start.
+ *
+ * One function rather than an argument threaded through every simulator: the
+ * machine layer reads the start state in about twenty-five places, and a
+ * parameter that twenty-four of them passed on would be the twenty-fifth
+ * quietly deciding from the wrong state. tests/block-run.test.js asserts that
+ * `App.startId` appears nowhere under js/machines/.
+ *
+ * It rides in the worker snapshot for the same reason every other field there
+ * does: a verdict computed on a worker must be the verdict computed here.
+ */
+export function runStartId() { return App.simStart || App.startId; }
+
 export function getState(id) { return stateIndex().get(id); }
 
 // How two state names are compared for "the same state". js/statemate-compile.js
@@ -589,11 +610,26 @@ export function wrapStateLabelsOn() {
 export const COLLISION_BUDGET_STATES = 200;
 export const COLLISION_BUDGET_TRANSITIONS = 700;
 
-// How much the canvas is currently *drawing*, which is not how big the machine
-// is. Inside a hierarchy of building blocks the two come apart completely: a
-// CPU is three thousand states in App.states while the reader is looking at
-// eight boxes, and judging the render profile on the model would strip the edge
-// labels and the eased layout off an eight-node diagram.
+// How much the level the reader is standing in *weighs* — its own states plus
+// everything under every box on it, at every depth.
+//
+// **A box is not one node.** It carries a live preview of its interior, so it
+// costs a walk of the machine to build, a scan of the machine to key, and up to
+// previewNodeBudget() elements to draw; and the states behind it cost a full
+// stringify on every autosave tick and a full workspace copy per undo entry,
+// none of which cares how many boxes they are drawn as. Counting the *nodes* of
+// the projection therefore let an arbitrarily large machine hide inside a
+// handful of boxes and be called small — a three-thousand-state CPU drawn as
+// eight boxes got full edge labels, eased layout, fifteen-second autosaves and a
+// three-hundred-deep undo stack, and the note over syncBlockNode() in
+// js/render.js had already measured the frame that resulted: twelve boxes over
+// 4800 states, 6.4ms of an 8.3ms repaint, with the profile off throughout.
+//
+// The good half of judging the view survives, and it is the half worth keeping:
+// this is the *subtree*, not the machine, so drilling into an eight-state adder
+// inside that CPU weighs eight and gets its labels and its easing back. What the
+// old rule got right was that a small view should be drawn in full; what it got
+// wrong was believing a box was small.
 //
 // js/view-graph.js publishes it here rather than this file asking for it,
 // because state.js is import-free — the same late-binding pattern
@@ -616,12 +652,11 @@ export function drawnSize() {
 }
 
 /**
- * Whether what is *drawn* is past what the app can draw in full.
+ * Whether the level the reader is standing in is past what the app can draw and
+ * keep in full.
  *
- * The profile turns off what costs frames, so it judges the frame's own
- * workload. What scales with the *model* rather than the view — the undo
- * stack's byte budget, the autosave stringify — is bounded separately and by
- * its own numbers.
+ * It judges the subtree — this level and everything under every box on it, at
+ * every depth — because that is what the level actually costs. See drawnSize().
  */
 export function machineIsLarge() {
   const n = drawnSize();
@@ -631,6 +666,26 @@ export function machineIsLarge() {
 /** Whether the app is currently simplifying itself for the machine's size. */
 export function largeMachineProfile() {
   return App.config?.render?.largeMachineAuto !== false && machineIsLarge();
+}
+
+// How many nodes a block's preview may draw.
+//
+// The preview is what a box costs, so it is what the profile has to reach — on
+// a level made of boxes the labels, the easing and the minimap are a handful of
+// elements between them, and the previews are hundreds. Turning the profile on
+// for such a level and leaving the previews at full size would be announcing a
+// simplification that had not happened.
+//
+// It stays a silhouette rather than going blank. Blanking is what the zoom LOD
+// already does below LOD_LABEL_ZOOM, and it is right there — at four pixels a
+// state there is nothing to recognise — but at reading zoom the shape is the
+// whole reason the box is a drawing instead of a label, and a reader who can
+// still see the diagram should still be able to tell two blocks apart.
+export const PREVIEW_MAX_NODES = 120;
+export const PREVIEW_MAX_NODES_LARGE = 28;
+
+export function previewNodeBudget() {
+  return largeMachineProfile() ? PREVIEW_MAX_NODES_LARGE : PREVIEW_MAX_NODES;
 }
 
 /**
@@ -644,11 +699,19 @@ export function largeMachineProfile() {
  * quick-settings.js must not import ui.js.
  */
 export function largeMachineOverridePrompt() {
-  const st = (App.states?.length || 0).toLocaleString();
-  const tr = (App.transitions?.length || 0).toLocaleString();
+  // The numbers the profile actually judged, not the machine's. At the top
+  // level they are the same and this reads as it always did; inside a block
+  // they are that block's subtree, which is what the decision is about — a
+  // prompt quoting three thousand states over a level weighing two hundred
+  // would be asking about something else.
+  const n = drawnSize();
+  const inside = (App.scope || []).length > 0;
+  const st = (n.states || 0).toLocaleString();
+  const tr = (n.transitions || 0).toLocaleString();
   return {
     title: 'Are you sure?',
-    message: `This machine has ${st} states and ${tr} transitions. Drawing every `
+    message: `${inside ? 'This block holds' : 'This machine has'} ${st} states and `
+      + `${tr} transitions. Drawing every `
       + 'edge label, easing every layout change and repainting the minimap on every '
       + 'frame will cause extreme stutter. Your '
       + 'settings are kept either way — you can switch this back on at any time.',

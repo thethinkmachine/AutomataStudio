@@ -357,7 +357,7 @@
               <span class="panel-tab-label">Workspace</span>
             </button>
           </div>
-          <button class="pin-btn" id="lpanel-pin-btn" onclick="toggleLPanelPin()" data-tip="Unpin left panel">
+          <button class="pin-btn" id="lpanel-pin-btn" onclick="toggleLPanelPin()" aria-label="Unpin left panel" aria-pressed="true" data-tip="Unpin left panel">
             <svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M235.32,81.37,174.63,20.69a16,16,0,0,0-22.63,0L98.37,74.49c-10.66-3.34-35-7.37-60.4,13.14a16,16,0,0,0-1.29,23.78L85,159.71,42.34,202.34a8,8,0,0,0,11.32,11.32L96.29,171l48.29,48.29A16,16,0,0,0,155.9,224c.38,0,.75,0,1.13,0a15.93,15.93,0,0,0,11.64-6.33c19.64-26.1,17.75-47.32,13.19-60L235.33,104A16,16,0,0,0,235.32,81.37ZM224,92.69h0l-57.27,57.46a8,8,0,0,0-1.49,9.22c9.46,18.93-1.8,38.59-9.34,48.62L48,100.08c12.08-9.74,23.64-12.31,32.48-12.31A40.13,40.13,0,0,1,96.81,91a8,8,0,0,0,9.25-1.51L163.32,32,224,92.68Z" /></svg>
           </button>
           <button class="mobile-panel-close" type="button" onclick="toggleMobilePanel('lpanel', true)"
@@ -377,7 +377,7 @@
               <div class="row">
                 <input class="inp" id="sym-in" placeholder="a, b, 0…" maxlength="33"
                   onkeydown="if(event.key==='Enter')addSym()">
-                <button class="ibtn" onclick="addSym()"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
+                <button class="ibtn" onclick="addSym()" aria-label="Add input symbol" data-tip="Add to Σ"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
               </div>
               <div class="chips" id="sigma-chips"></div>
             </div>
@@ -393,7 +393,7 @@
               <div class="row">
                 <input class="inp" id="gsym-in" placeholder="Z, A…" maxlength="5"
                   onkeydown="if(event.key==='Enter')addGSym()">
-                <button class="ibtn" onclick="addGSym()"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
+                <button class="ibtn" onclick="addGSym()" aria-label="Add stack symbol" data-tip="Add to Γ"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
               </div>
               <div class="chips" id="gamma-chips"></div>
             </div>
@@ -409,7 +409,7 @@
               <div class="row">
                 <input class="inp" id="outsym-in" placeholder="0, 1…" maxlength="10"
                   onkeydown="if(event.key==='Enter')addOutSym()">
-                <button class="ibtn" onclick="addOutSym()"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
+                <button class="ibtn" onclick="addOutSym()" aria-label="Add output symbol" data-tip="Add to Δ"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
               </div>
               <div class="chips" id="output-chips"></div>
             </div>
@@ -725,7 +725,7 @@
                   </button>
                 </div>
               </div>
-              <button class="pin-btn" id="rpanel-pin-btn" onclick="toggleRPanelPin()" data-tip="Unpin right panel">
+              <button class="pin-btn" id="rpanel-pin-btn" onclick="toggleRPanelPin()" aria-label="Unpin right panel" aria-pressed="true" data-tip="Unpin right panel">
                 <svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M235.32,81.37,174.63,20.69a16,16,0,0,0-22.63,0L98.37,74.49c-10.66-3.34-35-7.37-60.4,13.14a16,16,0,0,0-1.29,23.78L85,159.71,42.34,202.34a8,8,0,0,0,11.32,11.32L96.29,171l48.29,48.29A16,16,0,0,0,155.9,224c.38,0,.75,0,1.13,0a15.93,15.93,0,0,0,11.64-6.33c19.64-26.1,17.75-47.32,13.19-60L235.33,104A16,16,0,0,0,235.32,81.37ZM224,92.69h0l-57.27,57.46a8,8,0,0,0-1.49,9.22c9.46,18.93-1.8,38.59-9.34,48.62L48,100.08c12.08-9.74,23.64-12.31,32.48-12.31A40.13,40.13,0,0,1,96.81,91a8,8,0,0,0,9.25-1.51L163.32,32,224,92.68Z" /></svg>
               </button>
               <button class="mobile-panel-close" type="button" onclick="toggleMobilePanel('rpanel', true)"
@@ -735,9 +735,16 @@
             </div>
             <div class="rpanel-content" id="rpanel-content" role="tabpanel"
                  aria-labelledby="panel-tab-inspector">
-            <!-- Language section -->
+            <!-- Language section.
+
+                 Every header here carries role/tabindex/aria-expanded and a
+                 key handler, exactly as the left panel's do. They were plain
+                 `<div onclick>`s, so the four sections of the right panel were
+                 the only ones in the app that no keyboard could collapse and
+                 no screen reader could report the state of — the same half of a
+                 control rowActions() found missing on the list rows. -->
             <div class="rp-collapsible" id="rp-language">
-              <div class="rp-section-header" onclick="toggleRPSection('rp-language')">
+              <div class="rp-section-header" onclick="toggleRPSection('rp-language')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-language')}">
                 <span class="rp-section-title">Language</span>
                 <span class="badge bd-dfa" id="mach-badge">DFA</span>
                 <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
@@ -783,17 +790,33 @@
             </div>
             <!-- Simulate section -->
             <div class="rp-collapsible" id="rp-simulate">
-              <div class="rp-section-header" onclick="toggleRPSection('rp-simulate')">
+              <div class="rp-section-header" onclick="toggleRPSection('rp-simulate')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-simulate')}">
                 <span class="rp-section-title">Simulate</span>
                 <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
               </div>
               <div class="rp-section-body">
+                <!-- What the run is about. Hidden at the top level, where the
+                     machine is the only subject there is and a picker with one
+                     option would be chrome for the state the reader is in
+                     nearly all of the time. Inside a block it offers that block
+                     and every one it is nested in, so from within CPU/ALU/add
+                     you can run the adder, the ALU or the CPU without going
+                     back out to do it. js/run-scope.js owns what it means. -->
+                <div class="sim-subject-row" id="sim-subject-row" hidden>
+                  <label class="sim-subject-lbl" for="sim-subject">Run</label>
+                  <select class="sim-subject-sel" id="sim-subject" onchange="setRunSubjectFromUI(this.value)"
+                    data-tip="What to run. A block starts at its entry and stops when control leaves it — the answer is which exit it left by, because a block has no accepting states of its own."></select>
+                  <label class="sim-break-lbl" id="sim-break-lbl" hidden>
+                    <input type="checkbox" id="sim-break" onchange="setBreakScopeFromUI(this.checked)">
+                    <span>Break in</span>
+                  </label>
+                </div>
                 <div class="sim-row">
                   <input class="inp" id="sim-in" placeholder="ε" style="flex:1" autocomplete="off"
                     onkeydown="handleSimInputKeydown(event)" oninput="handleSymSuggestActive(this)"
                     onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
                     onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
-                  <button class="run-btn" id="run-btn" onclick="handleRunBtnClick()">
+                  <button class="run-btn" id="run-btn" onclick="handleRunBtnClick()" aria-label="Run" data-tip="Run">
                     <svg viewBox="0 0 256 256" fill="currentColor" width="14" height="14"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z" /></svg>
                   </button>
                 </div>
@@ -830,13 +853,26 @@
                   </select>
                 </div>
                 <div id="sim-tracker" class="sim-tracker" style="display:none"></div>
-                <div class="trace-log" id="trace-log"><span style="color:var(--text3);font-style:italic">Run a string to
+              </div>
+            </div>
+            <!-- Trace section. Its own card rather than the tail of Simulate:
+                 a transport you operate and a history you read are two things,
+                 and sharing one scroll meant reading back through a run pushed
+                 the play button off the top of the panel. -->
+            <div class="rp-collapsible" id="rp-trace">
+              <div class="rp-section-header" onclick="toggleRPSection('rp-trace')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-trace')}">
+                <span class="rp-section-title">Trace</span>
+                <span class="rp-section-count" id="rp-count-trace">0</span>
+                <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+              </div>
+              <div class="rp-section-body">
+                <div class="trace-log" id="trace-log" onscroll="handleTraceScroll()"><span style="color:var(--text3);font-style:italic">Run a string to
                     simulate…</span></div>
               </div>
             </div>
             <!-- Batch Test section (collapsed by default) -->
             <div class="rp-collapsible collapsed" id="rp-batch">
-              <div class="rp-section-header" onclick="toggleRPSection('rp-batch')">
+              <div class="rp-section-header" onclick="toggleRPSection('rp-batch')" role="button" aria-expanded="false" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-batch')}">
                 <span class="rp-section-title">Batch Test</span>
                 <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
               </div>
@@ -1871,6 +1907,7 @@
               <tr><td>Ctrl + Y</td><td>Redo</td></tr>
               <tr><td>Ctrl + Shift + Z</td><td>Redo (alternate)</td></tr>
               <tr><td>Ctrl + C</td><td>Copy selection</td></tr>
+              <tr><td>Ctrl + X</td><td>Cut selection</td></tr>
               <tr><td>Ctrl + V</td><td>Paste at the pointer</td></tr>
               <tr><td>Ctrl + D</td><td>Duplicate selection</td></tr>
             </table>
@@ -2049,6 +2086,14 @@
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM168,88v80a8,8,0,0,1-8,8H96a8,8,0,0,1-8-8V88a8,8,0,0,1,8-8h64A8,8,0,0,1,168,88Zm-16,8H104v64h48Z" /></svg>
       Group into Block
     </div>
+    <div class="ctx-i ctx-state" onclick="ctxCut()" data-tip="Take it away and keep it on the clipboard">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M198.36,210.18A8,8,0,0,1,187.64,214L128,166.36,68.36,214a8,8,0,0,1-10.72-11.9l.2-.18,53.7-42.89L86.65,143.2a36,36,0,1,1,8.55-13.53l32.8,20.44,32.8-20.44a36,36,0,1,1,8.55,13.53l-24.89,15.51,53.7,42.89.2.18A8,8,0,0,1,198.36,210.18ZM64,132a20,20,0,1,0-20-20A20,20,0,0,0,64,132Zm128,0a20,20,0,1,0-20-20A20,20,0,0,0,192,132Z" /></svg>
+      Cut
+    </div>
+    <div class="ctx-i ctx-state" onclick="ctxCopy()">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z" /></svg>
+      Copy
+    </div>
     <div class="ctx-i ctx-state danger" onclick="ctxDel()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
       Delete
@@ -2068,6 +2113,14 @@
     <div class="ctx-i ctx-block" onclick="ctxUngroupBlock()" data-tip="Put the states back on this level and drop the box">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M228.24,155.76a6,6,0,0,1-8.48,8.48L192,136.49V208a16,16,0,0,1-16,16H80a16,16,0,0,1-16-16V136.49L36.24,164.24a6,6,0,0,1-8.48-8.48l38-38a6,6,0,0,1,8.48,0l38,38a6,6,0,1,1-8.48,8.48L76,136.49V208h96V136.49l-27.76,27.75a6,6,0,0,1-8.48-8.48l38-38a6,6,0,0,1,8.48,0ZM80,48h96a8,8,0,0,0,0-16H80a8,8,0,0,0,0,16Z" /></svg>
       Ungroup Block
+    </div>
+    <div class="ctx-i ctx-block" onclick="ctxCut()" data-tip="Take it away and keep it on the clipboard">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M198.36,210.18A8,8,0,0,1,187.64,214L128,166.36,68.36,214a8,8,0,0,1-10.72-11.9l.2-.18,53.7-42.89L86.65,143.2a36,36,0,1,1,8.55-13.53l32.8,20.44,32.8-20.44a36,36,0,1,1,8.55,13.53l-24.89,15.51,53.7,42.89.2.18A8,8,0,0,1,198.36,210.18ZM64,132a20,20,0,1,0-20-20A20,20,0,0,0,64,132Zm128,0a20,20,0,1,0-20-20A20,20,0,0,0,192,132Z" /></svg>
+      Cut
+    </div>
+    <div class="ctx-i ctx-block" onclick="ctxCopy()">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z" /></svg>
+      Copy
     </div>
     <div class="ctx-i ctx-block danger" onclick="ctxDeleteBlock()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>

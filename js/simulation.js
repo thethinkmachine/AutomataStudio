@@ -13,11 +13,11 @@
 // `else simTM(tokens)` — which is what a machine type nobody had wired up
 // silently became.
 
-import { makeSVG } from './render.js';
+import { makeSVG, setSectionCount } from './render.js';
 import { $, App, INPUT_LENGTH_NOTICE, R, detectsLoops, execMode, getMachineConfig, isOmegaAutomaton, isWeightedFA, runsLazily } from './state.js';
 import { getState, getTransition } from './states-transitions.js';
 import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
-import { isAnyPDA, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
+import { escapeHtml, isAnyPDA, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
 import { decideMachine, machineGuards, parseMachineInput, simulateMachine, streamMachine } from './machines/index.js';
 import { langStepBudget, stateNames } from './machines/runtime.js';
 import { computeBatchResults, decideBatchRows, summarizeBatch } from './machines/batch.js';
@@ -26,6 +26,8 @@ import { renderTracker, resetTracker } from './tape-view.js';
 import { isPainterSuppressed, setSimStepPainter, withPainterSuppressed } from './machines/paint.js';
 import { makeRun } from './machines/run.js';
 import { nodeIdAtScope, viewEdgeKeyFor, viewGraph, visibleNodeIdFor } from './view-graph.js';
+import { boundaryAt, breakScope, resetRunBounds, runSubject } from './run-scope.js';
+import { getBlock, localStateName } from './blocks.js';
 
 export function runSim() {
   resetSim();
@@ -139,16 +141,113 @@ function currentRun() {
   return App.simRun;
 }
 
-/** Materialize the step at `idx` if the run can still reach it. */
+/**
+ * Materialize the step at `idx`, if the run can still reach it *and* the run
+ * boundary lets it.
+ *
+ * The one gate, and deliberately here rather than in the four callers: this is
+ * already the bounds check — `stepFwd` advances only when it answers, and
+ * `stepToEnd` drains against it — so a boundary written as "this index does not
+ * exist" needs nothing else taught about it. On a streaming run it also means
+ * the steps past the boundary are never computed, because nothing pulls them.
+ *
+ * See js/run-scope.js: a block run is the real machine started at the block's
+ * entry and held at the last step still inside it.
+ */
 function stepAt(idx) {
-  return currentRun().at(idx);
+  if (App.simStopAt != null && idx > App.simStopAt) return null;
+  const step = currentRun().at(idx);
+  if (!step) return null;
+  scanBoundary();
+  return App.simStopAt != null && idx > App.simStopAt ? null : step;
+}
+
+/**
+ * Look for the boundary in whatever has been computed since the last look.
+ *
+ * **It inspects `steps` directly and never pulls**, which is the whole reason
+ * it is a separate pass from `stepAt`. Written as a walk through the cursor it
+ * would drain a streaming run to its budget the first time anything asked how
+ * far the reader may go — which is on every render — and that is precisely the
+ * frozen tab lazy execution exists to prevent.
+ *
+ * A cursor makes it amortized O(1) per step over a run rather than O(n) per
+ * ask. It is needed at all because an *eager* simulator writes the whole trace
+ * before anything pulls a cursor over it, so `stepAt` alone would never see the
+ * step where control left the block.
+ */
+let scannedSteps = null, scannedTo = 0;
+function scanBoundary() {
+  const steps = currentRun().steps;
+  if (scannedSteps !== steps) { scannedSteps = steps; scannedTo = 0; }
+  if (App.simStopAt != null) return;
+  if (!runSubject() && !breakScope()) { scannedTo = steps.length; return; }
+  for (let i = Math.max(1, scannedTo); i < steps.length; i++) {
+    const edge = boundaryAt(steps[i], i, steps[i - 1]);
+    if (edge?.stop) {
+      // Held at the last step *inside*. The step that trips this is the host
+      // machine's, not the block's, and "run this block" means what the block
+      // did — where control went afterwards is the exit's label, not a frame.
+      App.simStopAt = i - 1;
+      App.simExit = edge.exit;
+      scannedTo = i;
+      return;
+    }
+    if (edge?.pause && App.simPauseAt == null) App.simPauseAt = i;
+  }
+  scannedTo = steps.length;
+}
+
+/** Test-only, and for resetSim: the cursor is keyed on the steps array too. */
+export function resetBoundaryScan() { scannedSteps = null; scannedTo = 0; }
+
+/** The last step the reader may reach. */
+function maxReachable() {
+  scanBoundary();
+  const end = currentRun().steps.length - 1;
+  return App.simStopAt != null ? Math.min(App.simStopAt, end) : end;
+}
+
+/**
+ * How many steps the reader may reach — the prefix, not the array.
+ *
+ * On a block run the steps past the boundary have been computed but belong to
+ * the host machine, so counting them would have the Trace header say 6 over a
+ * scrubber reading `4 / 4`. One declaration because three places ask: the log's
+ * header count, the scrubber and the step counter.
+ */
+function reachableCount() {
+  if (!App.simSteps?.length) return 0;
+  return App.simStopAt != null ? App.simStopAt + 1 : App.simSteps.length;
+}
+
+/**
+ * The playhead has been moved by hand.
+ *
+ * Two things follow from that and they are always both true: the trace log
+ * drops back to its tail (an expansion lasts only while the cursor is still),
+ * and a pending break mark is spent. The second is why this is a function
+ * rather than a bare `resetTraceWindow()` — a reader who has stepped or
+ * scrubbed past where control entered the watched block has already seen it, so
+ * pressing play afterwards must carry straight on instead of pausing again on
+ * a mark it can no longer reach.
+ */
+function handMovedPlayhead() {
+  resetTraceWindow();
+  App.simPauseAt = null;
 }
 
 /** Is there more run to come than has been materialized? */
 export function runIsComplete() {
   return currentRun().done;
 }
-export function log(html) { const t = $('trace-log'); t.innerHTML = html; t.scrollTop = t.scrollHeight; }
+export function log(html) {
+  const t = $('trace-log');
+  if (!t) return;
+  t.innerHTML = html;
+  t.scrollTop = t.scrollHeight;
+  setSectionCount($('rp-count-trace'), reachableCount());
+}
 
 
 // ── running a machine with no page to run it on ────────────────────
@@ -183,25 +282,49 @@ setSimStepPainter(renderSimStep);
 // scrolling back through ten thousand is what the scrubber is for.
 export const SIM_LOG_TAIL = 400;
 
-export function renderSimStep() {
-  if (isPainterSuppressed()) return;
-  const step = App.simSteps[App.simIdx]; if (!step) return;
-  const isLast = App.simIdx === App.simSteps.length - 1;
+// ── the trace log ──────────────────────────────────────────────────
+//
+// **Only the tail is written**, and that is not an optimisation. The log used
+// to be rebuilt from step 0 on every tick, which is quadratic in the length of
+// the run and the reason playing back a Turing machine got slower the longer it
+// ran: at maxTmSteps a single tick meant building and parsing ten thousand
+// divs, ten thousand times over.
+//
+// But "the rest is gone" is a different claim from "the rest is not drawn", and
+// the elided line used to make the first one — a count, and no way to reach
+// what it counted. The steps are all still there in `App.simSteps`; the only
+// reason they were not on screen is that drawing them costs. So the floor is
+// **lowered on demand**: the elided line is a button, and scrolling to the top
+// of the log pulls the next page in behind it.
+//
+// The one rule that keeps the quadratic from coming back: **an expansion lasts
+// only while the cursor is still.** Every path that moves the playhead —
+// a tick, a step, a scrub, a reset — drops the floor back to the tail, because
+// a reader watching playback is not reading history, and re-rendering a
+// thousand revealed rows per tick is exactly the cost this all exists to avoid.
+// Reading history happens while paused, and there the render is one click.
+let logFloor = null;
 
-  // Log update.
-  //
-  // Only the tail is written. The log used to be rebuilt from step 0 on every
-  // tick, which is quadratic in the length of the run and the reason playing
-  // back a Turing machine got slower the longer it ran: at maxTmSteps a single
-  // tick meant building and parsing ten thousand divs, ten thousand times over.
-  // The log scrolls itself to the bottom, so everything above the last screenful
-  // was being built to be scrolled past; the count stands in for it instead, and
-  // the scrubber is what actually navigates a long run.
-  const from = Math.max(0, App.simIdx + 1 - SIM_LOG_TAIL);
-  let logLines = streamNote;
-  logLines += from
-    ? `<div class="t-step sim-log-elided">… ${from.toLocaleString()} earlier step${from === 1 ? '' : 's'}</div>`
-    : '';
+/** Back to the tail. Called wherever the playhead moves. */
+export function resetTraceWindow() { logFloor = null; }
+
+/** The first step the log is currently drawing. */
+function traceFloor() {
+  const tail = Math.max(0, App.simIdx + 1 - SIM_LOG_TAIL);
+  return logFloor == null ? tail : Math.max(0, Math.min(logFloor, tail));
+}
+
+export function renderTraceLog() {
+  const from = traceFloor();
+  const parts = [streamNote];
+  if (from) {
+    const more = Math.min(SIM_LOG_TAIL, from);
+    parts.push(
+      `<button type="button" class="t-step sim-log-more" onclick="revealEarlierTrace()"`
+      + ` data-tip="Draw the previous ${more.toLocaleString()} steps. They were always in the run — only the drawing is deferred, because a log rebuilt from step 0 on every tick is quadratic in the length of the run.">`
+      + `↑ ${from.toLocaleString()} earlier step${from === 1 ? '' : 's'} — show ${more.toLocaleString()}</button>`
+    );
+  }
   for (let i = from; i <= App.simIdx; i++) {
     const s = App.simSteps[i];
     const cl = i === App.simIdx
@@ -209,9 +332,55 @@ export function renderSimStep() {
         : (s.final === 'reject' || s.final === 'loop') ? 't-err'
           : s.final === 'timeout' ? 't-warn' : 't-step')
       : '';
-    logLines += `<div class="${cl}">${i}: ${s.note}</div>`;
+    parts.push(`<div class="${cl}">${i}: ${s.note}</div>`);
   }
-  log(logLines);
+  const el = $('trace-log');
+  const before = el ? el.scrollHeight : 0;
+  const wasTop = el ? el.scrollTop : 0;
+  if (el) el.innerHTML = parts.join('');
+  setSectionCount($('rp-count-trace'), reachableCount());
+  if (!el) return;
+  if (logFloor == null) {
+    el.scrollTop = el.scrollHeight;
+  } else {
+    // Hold the reader where they were: the rows arrived *above* what they are
+    // looking at, so the content they had in view moved down by exactly the
+    // height of what was added. Without this, revealing a page throws them to
+    // the top of it, which is the one place they have already read.
+    el.scrollTop = wasTop + (el.scrollHeight - before);
+  }
+}
+
+/** Draw the previous page. Named for the bridge — the button is an `on*`. */
+export function revealEarlierTrace() {
+  const from = traceFloor();
+  if (!from) return;
+  logFloor = Math.max(0, from - SIM_LOG_TAIL);
+  renderTraceLog();
+}
+
+/**
+ * Pull the next page in when the reader reaches the top of the log.
+ *
+ * The button is the affordance and this is the convenience; both exist because
+ * either alone is wrong — a button nobody sees at the top of a scroller is a
+ * dead end, and an auto-load with nothing saying what it is doing reads as the
+ * page jumping. Guarded on the floor so it cannot fire on a log that is already
+ * whole, and on `logFloor` never rising, so it cannot loop.
+ */
+export function handleTraceScroll() {
+  const el = $('trace-log');
+  if (!el || el.scrollTop > 24) return;
+  if (!traceFloor()) return;
+  revealEarlierTrace();
+}
+
+export function renderSimStep() {
+  if (isPainterSuppressed()) return;
+  const step = App.simSteps[App.simIdx]; if (!step) return;
+  const isLast = App.simIdx === maxReachable();
+
+  renderTraceLog();
 
   // Unified Tracker System
   const trackerEl = $('sim-tracker');
@@ -901,12 +1070,17 @@ export function updateSimScrubber() {
   // of the run — which is not knowable until the machine halts. The counter
   // says so with a '+' rather than quietly reporting a total that will grow;
   // the slider addresses the prefix and its max moves with it.
-  const known = App.simSteps.length;
-  const complete = runIsComplete();
+  // On a block run the reachable prefix is shorter than what was computed:
+  // everything past the boundary is the host machine, not the block, so the
+  // slider must not reach it and the counter must not include it. With no
+  // boundary maxReachable() is the end of the array and this is what it was.
+  const bounded = App.simStopAt != null;
+  const known = reachableCount();
+  const complete = bounded || runIsComplete();
   row.style.display = known > 1 ? 'flex' : 'none';
   if (document.activeElement !== scrubber) {
     scrubber.max = String(Math.max(0, known - 1));
-    scrubber.value = String(App.simIdx);
+    scrubber.value = String(Math.min(App.simIdx, Math.max(0, known - 1)));
   }
   counter.textContent = `${known ? App.simIdx + 1 : 0} / ${known}${complete ? '' : '+'}`;
 }
@@ -949,7 +1123,11 @@ export function canResumeSim() {
   // the next press pulls the next step. Only a *finished* run sitting on its
   // last step has nothing left to carry on with.
   if (App.simIdx >= App.simSteps.length - 1 && runIsComplete()) return false;
-  return App.simInput !== null && App.simInput === parseEps($('sim-in').value);
+  // Null-safe on the box: this is read from setRunBtnState, which runs on
+  // every paint of the transport, and a paint must not throw for want of a
+  // field.
+  const box = $('sim-in');
+  return App.simInput !== null && !!box && App.simInput === parseEps(box.value);
 }
 
 // Run doubles as the verdict/transport readout — recoloring/relabeling this
@@ -961,16 +1139,43 @@ export function canResumeSim() {
 export function setRunBtnState(mode) {
   const btn = $('run-btn');
   if (!btn) return;
+  // The icon is the whole of what this button says, and it says four different
+  // things — so the name has to move with it. Written from one place for the
+  // reason the pin button's is: a `data-tip` is a tooltip, not an accessible
+  // name, and the app's most-pressed control was announced as "button" in
+  // every one of its states.
+  const say = (name) => {
+    btn.setAttribute('aria-label', name);
+    btn.dataset.tip = name;
+  };
   btn.classList.remove('accept', 'reject');
-  if (mode === 'accept') { btn.classList.add('accept'); btn.innerHTML = `${SIM_ICON_ACCEPT}${SIM_ICON_SEPARATOR}${SIM_ICON_REPEAT}`; return; }
-  if (mode === 'reject') { btn.classList.add('reject'); btn.innerHTML = `${SIM_ICON_REJECT}${SIM_ICON_SEPARATOR}${SIM_ICON_REPEAT}`; return; }
+  if (mode === 'accept') {
+    btn.classList.add('accept');
+    btn.innerHTML = `${SIM_ICON_ACCEPT}${SIM_ICON_SEPARATOR}${SIM_ICON_REPEAT}`;
+    say('Accepted — run again');
+    return;
+  }
+  if (mode === 'reject') {
+    btn.classList.add('reject');
+    btn.innerHTML = `${SIM_ICON_REJECT}${SIM_ICON_SEPARATOR}${SIM_ICON_REPEAT}`;
+    say('Rejected — run again');
+    return;
+  }
   btn.innerHTML = App.autoTimer ? SIM_ICON_PAUSE : SIM_ICON_PLAY;
+  say(App.autoTimer ? 'Pause' : (canResumeSim() ? 'Resume' : 'Run'));
 }
 
 export function updateSimVerdict(step, isLast) {
   const el = $('sim-verdict');
   if (!el) return;
   if (!isLast) { el.style.display = 'none'; setRunBtnState('idle'); return; }
+  // A block has no F — its accepting marks are dropped when it is inlined,
+  // because a block finishing is not the machine accepting — so the answer to
+  // "run this block on this word" is not accept or reject. It is **which exit
+  // it left by**, which is what the block declares and what everything
+  // downstream of it branches on. A run that never leaves says that instead of
+  // borrowing a verdict that would mean something else.
+  if (runSubject()) { renderBlockVerdict(el, step); return; }
   if (step.final === 'accept' || step.final === 'reject') {
     el.style.display = 'none';
     setRunBtnState(step.final);
@@ -1012,6 +1217,57 @@ export function updateSimVerdict(step, isLast) {
   el.style.display = 'none';
 }
 
+/**
+ * How a block run ended, in the block's own terms.
+ *
+ * Three answers, and the third is the one worth being careful about: an
+ * *undeclared* way out is a real result, not an error — but it is also exactly
+ * what stops the block being reusable, since a copy placed elsewhere would have
+ * that wire hanging off a state its definition never mentioned. So it is
+ * reported as what happened and marked as undeclared, rather than being
+ * rounded to the nearest declared exit or refused.
+ */
+function renderBlockVerdict(el, step) {
+  const b = getBlock(runSubject());
+  const exit = App.simExit;
+  setRunBtnState('idle');
+  // **Nothing has happened yet.** On a streaming run the newest materialized
+  // step is always the last one, so `isLast` is true on every single tick — and
+  // where an ordinary machine falls through to a hidden banner, this branch
+  // used to draw one. The reader watched "No exit — control never left B" flash
+  // past on every frame of a run that was still inside the block and had every
+  // intention of leaving it.
+  //
+  // There is no answer until the boundary has been crossed or the run has
+  // stopped of its own accord, so until then there is nothing to say.
+  if (!exit && App.simStopAt == null && !runIsComplete()) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'flex';
+  if (exit) {
+    const how = exit.declared
+      ? `<span class="sim-verdict-lbl">${escapeHtml(exit.label || 'exit')}</span>`
+      : `<span class="sim-verdict-lbl">left</span>`;
+    const where = exit.declared
+      ? `from ${escapeHtml(exit.fromName || '?')}, into ${escapeHtml(exit.toName || '?')}`
+      : `from ${escapeHtml(exit.fromName || '?')} — not a declared exit of ${escapeHtml(b?.name || 'the block')} — into ${escapeHtml(exit.toName || '?')}`;
+    el.className = 'sim-verdict block-exit' + (exit.declared ? '' : ' is-stray');
+    el.innerHTML = how + `<span class="sim-verdict-out">${where}</span>`;
+    return;
+  }
+  // No exit means the run ended without control ever leaving: it halted inside,
+  // ran out of budget, or looped. Which of those is the step's own business and
+  // it has already said so in the log; what this line adds is that the block
+  // never handed control back, which is the thing the caller would be waiting on.
+  const why = step?.final === 'loop' ? 'it loops'
+    : step?.final === 'timeout' ? 'it ran out of steps'
+      : 'it halted inside';
+  el.className = 'sim-verdict block-exit is-stuck';
+  el.innerHTML = `<span class="sim-verdict-lbl">No exit</span>`
+    + `<span class="sim-verdict-out">control never left ${escapeHtml(b?.name || 'the block')} — ${why}</span>`;
+}
+
 export function stopAutoPlay() {
   stopDraining();
   if (!App.autoTimer) return;
@@ -1019,41 +1275,101 @@ export function stopAutoPlay() {
 }
 
 export function stepFwd(stopAuto = true) {
-  if (stopAuto) stopAutoPlay();
+  if (stopAuto) { stopAutoPlay(); handMovedPlayhead(); }
+  else resetTraceWindow();
   // The pull is the bounds check: on a streaming run the next step may not
   // exist yet, and asking for it is what computes it.
-  if (stepAt(App.simIdx + 1)) { App.simIdx++; renderSimStep(); }
+  const knewBound = App.simStopAt != null;
+  const wasComplete = currentRun().done;
+  if (stepAt(App.simIdx + 1)) { App.simIdx++; renderSimStep(); return; }
+  // **The pull that just failed is the one that learns how the run ended**, and
+  // by then the last frame has already been drawn without knowing. Two things
+  // become true here and neither was true when the previous step was painted:
+  // the boundary has been found (the step where control leaves the block is
+  // materialized inside `stepAt` and then refused), and a streaming run has
+  // reached its end.
+  //
+  // Left unpainted, a block run finished showing the verdict from before
+  // control left — "No exit, control never left" — which is the one answer
+  // certain to be wrong by then. Only ⏭ escaped it, because it re-reads
+  // maxReachable() after every drain slice; play and step-forward, the two
+  // controls anyone actually uses, did not.
+  if ((!knewBound && App.simStopAt != null) || (!wasComplete && currentRun().done)) {
+    App.simIdx = Math.min(App.simIdx, Math.max(0, maxReachable()));
+    renderSimStep();
+  }
+}
+
+/**
+ * One tick of playback.
+ *
+ * Written once because it was written three times — in `toggleAuto`, in
+ * `restartAutoTimerIfPlaying` and in the drain — and a run boundary has to be
+ * checked on every one of them. Three copies of a two-line loop is fine until
+ * something has to be added to it, and then it is three places to forget.
+ *
+ * It advances *through* `stepFwd` rather than pulling first and stepping
+ * second, which is one pull per tick instead of two — and, more to the point,
+ * one place where the boundary is noticed. Pulling here and bailing on `null`
+ * is what made the tick that finds the exit the one tick that draws no frame.
+ */
+function advanceOne() {
+  const at = App.simIdx;
+  stepFwd(false);
+  if (App.simIdx === at) { stopAutoPlay(); return false; }
+  // A break scope pauses playback where control entered the block being
+  // watched; the run is untouched, so step-forward carries straight on and the
+  // scrubber still reaches everything computed. It is a pause, not a stop.
+  //
+  // `>=` rather than `===` because a streaming pull can materialize several
+  // steps at once, so the mark may already be behind the playhead by the time
+  // it is looked at. It is one-shot either way, and hand navigation spends it
+  // (see handMovedPlayhead) so resuming does not pause on it twice.
+  if (App.simPauseAt != null && App.simIdx >= App.simPauseAt) {
+    App.simPauseAt = null;
+    stopAutoPlay();
+    setRunBtnState('idle');
+    showStatus(`Paused — control entered ${getBlock(breakScope())?.name || 'the block'}`);
+    return false;
+  }
+  return true;
 }
 export function stepBack() {
   stopAutoPlay();
+  handMovedPlayhead();
   if (App.simIdx > 0) { App.simIdx--; renderSimStep(); }
 }
 export function stepToStart() {
   if (!App.simSteps.length) return;
   stopAutoPlay();
+  handMovedPlayhead();
   App.simIdx = 0; renderSimStep();
 }
 export function stepToEnd() {
   if (!App.simSteps.length) return;
   stopAutoPlay();
+  handMovedPlayhead();
   // On a streaming run "the end" is a computation rather than an index, so it
   // is drained in slices with the page given back between them — a machine
   // that never halts runs to its budget here, and holding the main thread for
   // all of it would take the Escape key with it.
   const run = currentRun();
-  if (!run.done) {
+  if (!run.done && App.simStopAt == null) {
     const tick = () => {
       run.drain(DRAIN_SLICE);
-      App.simIdx = Math.max(0, App.simSteps.length - 1);
+      App.simIdx = Math.max(0, maxReachable());   // scans the slice it just computed
       renderSimStep();
-      if (!run.done) App.simDrainTimer = setTimeout(tick, 0);
+      // A boundary tripped mid-drain ends the drain: everything past it is the
+      // host machine rather than the block, and computing it would be work for
+      // steps nothing can navigate to.
+      if (!run.done && App.simStopAt == null) App.simDrainTimer = setTimeout(tick, 0);
       else App.simDrainTimer = null;
     };
     stopDraining();
     tick();
     return;
   }
-  App.simIdx = App.simSteps.length - 1; renderSimStep();
+  App.simIdx = Math.max(0, maxReachable()); renderSimStep();
 }
 
 /** Stop a "go to the end" that is still draining a streaming run. */
@@ -1061,8 +1377,13 @@ export function stopDraining() {
   if (App.simDrainTimer) { clearTimeout(App.simDrainTimer); App.simDrainTimer = null; }
 }
 export function scrubSim(value) {
+  handMovedPlayhead();
   const idx = parseInt(value, 10);
   if (isNaN(idx) || idx < 0 || idx >= App.simSteps.length) return;
+  // The prefix, not the array: on a block run the steps past the boundary are
+  // the host machine's, and a scrubber that could reach them would be showing
+  // the reader something the run they asked for did not do.
+  if (App.simStopAt != null && idx > App.simStopAt) return;
   stopAutoPlay();
   App.simIdx = idx;
   renderSimStep();
@@ -1077,17 +1398,18 @@ export function setAutoSpeedPreset(ms) {
 export function restartAutoTimerIfPlaying() {
   if (!App.autoTimer) return;
   clearInterval(App.autoTimer);
-  App.autoTimer = setInterval(() => {
-    // stepFwd pulls, so on a streaming run playback is what drives the
-    // computation: the machine advances one step per tick because the animation
-    // asked for it, rather than the whole run having been built beforehand.
-    if (!stepAt(App.simIdx + 1)) { stopAutoPlay(); return; }
-    stepFwd(false);
-  }, App.config.autoSpeed);
+  App.autoTimer = setInterval(advanceOne, App.config.autoSpeed);
 }
 export function resetSim() {
   stopAutoPlay();
   App.simSteps = []; App.simIdx = 0; App.currentTokens = null; App.simInput = null;
+  // Where the last run stopped goes with the run. What it was *about* does not:
+  // the subject is the reader's choice of what to investigate, and re-picking
+  // the block for every word tried is the one thing you do repeatedly here.
+  App.simPauseAt = null;
+  resetRunBounds();
+  resetBoundaryScan();
+  resetTraceWindow();
   // The cursor goes with the steps it was producing. An abandoned generator is
   // collected on its own; what must not survive is a run whose `steps` array is
   // no longer the one App.simSteps points at.
@@ -1108,13 +1430,10 @@ export function resetSim() {
 }
 export function toggleAuto() {
   if (App.autoTimer) { stopAutoPlay(); setRunBtnState('idle'); return; }
-  App.autoTimer = setInterval(() => {
-    // stepFwd pulls, so on a streaming run playback is what drives the
-    // computation: the machine advances one step per tick because the animation
-    // asked for it, rather than the whole run having been built beforehand.
-    if (!stepAt(App.simIdx + 1)) { stopAutoPlay(); return; }
-    stepFwd(false);
-  }, App.config.autoSpeed);
+  // stepFwd pulls, so on a streaming run playback is what drives the
+  // computation: the machine advances one step per tick because the animation
+  // asked for it, rather than the whole run having been built beforehand.
+  App.autoTimer = setInterval(advanceOne, App.config.autoSpeed);
   setRunBtnState('playing');
 }
 

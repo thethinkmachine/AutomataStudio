@@ -124,7 +124,37 @@ export function machineStreams(m) {
 export function decideMachine(m, input, opts = {}) {
   const def = machineDef(m);
   if (!def) return { verdict: 'unk', output: null };
-  return def.decide(input, opts, m);
+  return withMachineStart(() => def.decide(input, opts, m));
+}
+
+/**
+ * Decide about **the machine**, whatever the player is currently running.
+ *
+ * `runStartId()` answers `App.simStart` so that picking a block in the run box
+ * starts the *player* at that block's entry. Deciding is a different question
+ * and it was quietly getting the same answer: the moment a subject was chosen,
+ * every row of the Test Words table and every cell of the Language panel's
+ * fingerprint was decided from inside the block instead — a word could flip
+ * from reject to accept with nothing anywhere saying why.
+ *
+ * Two reasons it is wrong rather than merely surprising. **A block has no F** —
+ * its accepting marks are dropped when it is inlined, which is the whole reason
+ * a block run reports an exit and not a verdict — so accept/reject measured
+ * from a block's entry against the host machine's F is not an answer to any
+ * question. And the Language panel prints Q, q₀ and F of the *machine* beside
+ * that fingerprint, so a scoped verdict made one panel contradict its own
+ * heading.
+ *
+ * So the override stops here, at the one seam every decider goes through. This
+ * is not "a subject that only takes effect on the play button": the subject
+ * takes effect on every run, every step and every frame of playback. It takes
+ * effect on the *player*, which is the thing it is a property of.
+ */
+function withMachineStart(fn) {
+  const held = App.simStart;
+  if (held == null) return fn();
+  App.simStart = null;
+  try { return fn(); } finally { App.simStart = held; }
 }
 
 /**
@@ -135,7 +165,7 @@ export function decideMachine(m, input, opts = {}) {
 export function decideWord(m, tokens, opts = {}) {
   const def = machineDef(m);
   if (!def || def.parseInput) return null;
-  return def.decide(tokens, opts, m);
+  return withMachineStart(() => def.decide(tokens, opts, m));
 }
 
 // The bare minimum a machine's transitions and states carry: two states
@@ -162,6 +192,46 @@ export function machineSchema(m) {
 }
 
 export function transitionFieldsOf(m) { return machineSchema(m).transitionFields; }
+
+/**
+ * Why a piece of one machine's graph cannot be dropped onto another — or
+ * `null`, which is much the commonest answer.
+ *
+ * Copying is the one gesture in the app that crosses machines. A clipboard
+ * outlives the machine it was filled from — nothing clears it on a switch, and
+ * deliberately so — so copy on an MTM, switch the canvas to a DFA, press
+ * Ctrl+V, and until this was asked the states and their transitions simply
+ * landed. Nothing threw, because a transition is a plain object and every
+ * field on it is optional: the DFA carried rules holding `tapeSyms` it has no
+ * reader for, and the states it was asked to decide with had no `symbol` at
+ * all. A machine reading `undefined` rejects everything, which looks exactly
+ * like a machine that is merely wrong.
+ *
+ * `transitionFields` is the app's one declaration of what a transition carries,
+ * so it is the test rather than the family or the name: DFA, NFA and ε-NFA
+ * share theirs and states move freely among them, as do TM, NDTM, LBA and ITM
+ * — which is the case worth having, since those differ in their tape and their
+ * δ rather than in their rules. MTM does not share the TM's, because its rules
+ * are a read *tuple*.
+ *
+ * Deliberately **not** `stateFields`. A state's extra fields are defaultable —
+ * a Moore state pasted onto a DFA carries an `out` nothing reads, and the app
+ * already tolerates exactly that from every importer — while a transition's
+ * are what the machine runs on. Refusing on them would turn a cosmetic
+ * mismatch into a refusal, which is the wrong trade in a teaching tool.
+ *
+ * A fragment that names no machine is allowed through: everything this app
+ * writes records one, so absence means something hand-made or older with
+ * nothing to compare against — the rule the four `render.*` flags follow, read
+ * from the other side.
+ */
+export function transitionShapeRefusal(src, m = App.machine, subject = 'This') {
+  if (!src || src === m) return null;
+  const want = transitionFieldsOf(m), got = transitionFieldsOf(src);
+  if (want.length === got.length && want.every((f, i) => f === got[i])) return null;
+  return `${subject} came from ${src}, whose transitions are not the shape ${m} reads. `
+    + 'The rules would mean nothing here.';
+}
 export function stateFieldsOf(m) { return machineSchema(m).stateFields; }
 export function alphabetFieldsOf(m) { return machineSchema(m).alphabetFields; }
 

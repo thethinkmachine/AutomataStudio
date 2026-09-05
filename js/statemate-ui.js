@@ -84,7 +84,7 @@ import {
   testConnection
 } from './statemate-provider.js';
 import { editStarterPrompts, starterPrompts } from './statemate-prompt.js';
-import { describeSpecSize, resolveContextRefs } from './statemate-spec.js';
+import { describeSpecSize, resolveContextRefs, scopedSource } from './statemate-spec.js';
 import { Change, emit, subscribe } from './store.js';
 import { activatePanelTab, fitToScreen, openSettingsModal, revealPanel, setStateMatePanel, switchSettingsTab } from './ui.js';
 import { showStatus } from './utils.js';
@@ -568,11 +568,33 @@ function effectiveAttach() {
   return !!getStateMateSettings().attachCanvas;
 }
 
-function canvasSummary() {
-  const s = App.states.length;
-  const t = App.transitions.length;
-  if (!s) return 'empty';
+/**
+ * What the chip says is attached, which has to be what *is* attached.
+ *
+ * It read `App.states.length` — the whole flat machine — so drilling into an
+ * eight-state adder inside a CPU showed "614 states, 19191 transitions" and
+ * offered to send all of them. The count was right about the model and wrong
+ * about the question, and there was no way to tell from the console which one
+ * it meant.
+ */
+function canvasSummary(sc) {
+  const s = sc ? sc.states.length : App.states.length;
+  const t = sc ? sc.transitions.length : App.transitions.length;
+  if (!App.states.length) return 'empty';
   return `${s} state${s === 1 ? '' : 's'}, ${t} transition${t === 1 ? '' : 's'}`;
+}
+
+/**
+ * The cut the chip describes, computed once for the render that needs it.
+ *
+ * Both halves of the chip — the name it leads with and the counts after it —
+ * are facts about the same cut, and each used to build its own. `scopedSource`
+ * walks every state and every transition in the machine, and the status line is
+ * subscribed to Change.CANVAS, so on a large machine that was two full walks per
+ * selection click for one line of text.
+ */
+function canvasScope() {
+  return scopedSource();
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1684,7 +1706,7 @@ function toggleCanvas() {
   const next = !effectiveAttach();
   Session.attachCanvas = next;
   note(next
-    ? `The canvas rides with your next prompt — ${canvasSummary()}.`
+    ? `The canvas rides with your next prompt — ${canvasSummary(canvasScope())}.`
     : 'The canvas stays out of your next prompt, so a machine is built fresh.');
 }
 
@@ -2570,14 +2592,22 @@ function renderStatus() {
 
   if (ready) {
     const attached = effectiveAttach() && App.states.length > 0;
-    const canvas = statChip(`Current canvas: ${canvasSummary()}`, {
-      on: attached,
-      disabled: !App.states.length,
-      onclick: toggleCanvas,
-      tip: App.states.length
-        ? 'Show StateMate your current canvas state.'
-        : 'Nothing on the canvas to send.'
-    });
+    const sc = canvasScope();
+    const subject = sc ? sc.scope.path : null;
+    const canvas = statChip(
+      subject
+        ? `Inside ${subject}: ${canvasSummary(sc)}`
+        : `Current canvas: ${canvasSummary(sc)}`,
+      {
+        on: attached,
+        disabled: !App.states.length,
+        onclick: toggleCanvas,
+        tip: !App.states.length
+          ? 'Nothing on the canvas to send.'
+          : subject
+            ? `Show StateMate the block you are inside — “${subject}” and everything nested in it, with a note on how it is reached. The machine around it is not sent, and an edit cannot change it. Go out a level to send the whole machine.`
+            : 'Show StateMate your current canvas state.'
+      });
     canvas.setAttribute('aria-pressed', String(attached));
     canvas.insertBefore(icon(attached ? ICONS.eyeOpen : ICONS.eyeClose, 'sm-stat-icon'), canvas.firstChild);
     bar.append(canvas);

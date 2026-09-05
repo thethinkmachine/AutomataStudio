@@ -20,7 +20,7 @@ const { App } = context;
 
 function def(name) {
   return {
-    name, machine: 'DFA', sigma: ['a'],
+    name, machine: 'TM', sigma: ['a'],
     states: [{ id: 'd0', x: 0, y: 0, name: 'i' }, { id: 'd1', x: 90, y: 0, name: 'j' }],
     transitions: [{ id: 'e0', from: 'd0', to: 'd1', symbol: 'a' }],
     startId: 'd0', entry: 'd0', accepts: ['d1'], version: 1
@@ -29,7 +29,9 @@ function def(name) {
 
 function fixture() {
   harness.resetApp();
-  App.machine = 'DFA';
+  // A TM rather than a DFA: blocks are a Turing-family capability, and a note's
+  // level is what is under test here rather than anything about δ.
+  App.machine = 'TM';
   App.sigma = new Set(['a']);
   App.config.render.animateLayout = false;
   App.states.push({ id: 'x1', x: 0, y: 0, name: 'A' });

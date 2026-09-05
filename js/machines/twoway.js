@@ -16,7 +16,9 @@
 // can revisit a cell, so termination is a reachability question over
 // (state, position) pairs rather than a walk of length |w|.
 
-import { App, getBoundaryMarkers, getState } from '../state.js';
+import {
+  App, getBoundaryMarkers, getState, runStartId
+} from '../state.js';
 import { renderSimStep } from './paint.js';
 import { buildMarkedInputTape, pickMostSpecificTransition } from './predicates.js';
 import { accepted, firstOverlappingTransition, nameOfState, traceSearchPath, transduced } from './runtime.js';
@@ -117,7 +119,7 @@ export function buildTwoWayPathSteps(path, tokens, finalStatus = null, finalNote
 
 export function explore2DFA(tokens) {
   const tape = buildMarkedInputTape(tokens);
-  const init = { state: App.startId, head: 0, depth: 0, branch: 1, parent: null, via: null };
+  const init = { state: runStartId(), head: 0, depth: 0, branch: 1, parent: null, via: null };
   const path = [init];
 
   for (let step = 0; step < App.config.maxTmSteps; step++) {
@@ -184,7 +186,7 @@ export function sim2DFA(tokens) {
 
 export function explore2NFA(tokens) {
   const tape = buildMarkedInputTape(tokens);
-  const init = { state: App.startId, head: 0, depth: 0, branch: 1, parent: null, via: null };
+  const init = { state: runStartId(), head: 0, depth: 0, branch: 1, parent: null, via: null };
   const queue = [init];
   const visited = new Set([`${init.state}|${init.head}`]);
   let acceptedCfg = null;
@@ -277,7 +279,7 @@ export function test2NFA(tokens) {
 export function explore2DFT(tokens) {
   const tape = buildMarkedInputTape(tokens);
   const lambda = App.config.sym.lambda;
-  const init = { state: App.startId, head: 0, depth: 0, branch: 1, parent: null, via: null, outRaw: '', outNode: OUT_EMPTY };
+  const init = { state: runStartId(), head: 0, depth: 0, branch: 1, parent: null, via: null, outRaw: '', outNode: OUT_EMPTY };
   const path = [init];
 
   for (let step = 0; step < App.config.maxTmSteps; step++) {
