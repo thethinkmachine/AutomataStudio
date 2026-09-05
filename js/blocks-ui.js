@@ -20,7 +20,8 @@
 
 import {
   blockAncestry, blockChildren, blockMembers, getBlock, inlineBlock, liveBlocks,
-  blockRemovalIds, machineSupportsBlocks, outlineBlock, removeBlock, uniqueBlockName,
+  blockPlacementRefusal, blockRemovalIds, machineSupportsBlocks, outlineBlock,
+  removeBlock, uniqueBlockName,
   validateBlockDefinition, blockDefinitionCycle, BLOCK_NAME_SEP
 } from './blocks.js';
 import { clearSelection } from './canvas.js';
@@ -263,10 +264,14 @@ export async function deleteBlockDefinition(key) {
 
 /** Drop a copy of a saved definition onto the canvas at this level. */
 export function placeBlockDefinition(def, at = {}) {
-  if (!machineSupportsBlocks()) {
-    showStatus(`${App.machine} has no stay move, so it cannot have blocks`);
-    return null;
-  }
+  // Asked before the commit, never left to inlineBlock's throw: a throw from
+  // inside commit() leaves the snapshot it took standing with no edit under it
+  // and no emit after it, which is an undo step that undoes nothing. The
+  // library is cross-machine — a definition kept while working on an MTM is
+  // still listed while working on a TM — so this is the ordinary path, not the
+  // odd one.
+  const refusal = blockPlacementRefusal(def);
+  if (refusal) { showStatus(refusal); return null; }
   let result = null;
   commit(() => {
     result = inlineBlock(def, { ...at, parent: scopeId() });

@@ -27,7 +27,9 @@
 // An LBA is decidable outright: its tape is bounded, so the configuration
 // space is finite and the repeat check always fires.
 
-import { App, getState, usesTwoWayTape } from '../state.js';
+import {
+  App, getState, runStartId, usesTwoWayTape
+} from '../state.js';
 import { Tape, makeTapes, tapesKey } from '../tape.js';
 import { makeTapeLog, multiTapeStep, tapeStep } from '../tape-log.js';
 import { buildMarkedInputTape, tapeTuplesOverlap } from './predicates.js';
@@ -45,7 +47,7 @@ export function* streamTM(tokens) {
   // memory. Nothing else about the loop changes: the live tape is still what
   // the machine is driven against and what key() reads.
   const log = makeTapeLog(tape);
-  let state = App.startId;
+  let state = runStartId();
   let via = null;
   const loop = makeLoopTracker();
   let step = null;
@@ -80,8 +82,8 @@ export function simTM(tokens) { playEagerly(streamTM(tokens)); }
 
 export function* streamNDTM(tokens) {
   const startTape = new Tape(tokens, App.config.sym.blank, usesTwoWayTape());
-  const queue = [{ state: App.startId, tape: startTape, depth: 0, branch: 1 }];
-  const visited = new Set([`${App.startId}|${startTape.key()}`]);
+  const queue = [{ state: runStartId(), tape: startTape, depth: 0, branch: 1 }];
+  const visited = new Set([`${runStartId()}|${startTape.key()}`]);
   let accepted = false;
   let branches = 0;
   let maxDepth = 0;
@@ -166,7 +168,7 @@ export function* streamNDTM(tokens) {
       : 'All branches halted without acceptance — REJECT';
     const fallbackTape = last?.tape || startTape.snapshot().tape;
     const fallbackHead = last?.head ?? 0;
-    const fallbackState = last?.state || App.startId;
+    const fallbackState = last?.state || runStartId();
     yield ({
       state: fallbackState,
       tokens,
@@ -247,7 +249,7 @@ export function* streamMTM(input) {
   const twoWay = usesTwoWayTape();
   const tokens = multiTapeTokens(input);
   const tapes = multiTapeSeed(k, input, blank, twoWay);
-  let state = App.startId;
+  let state = runStartId();
   let via = null;
   // One log per tape; they advance in lockstep, so one step index addresses
   // all k of them.
@@ -283,7 +285,7 @@ export function simMTM(input) { playEagerly(streamMTM(input)); }
 export function* streamLBA(tokens) {
   const tape = makeLbaTape(tokens);
   const log = makeTapeLog(tape);
-  let state = App.startId;
+  let state = runStartId();
   let via = null;
   // An LBA's tape is bounded, so its configuration space is finite and this
   // check always fires eventually — membership is genuinely decidable here.
@@ -347,7 +349,7 @@ export function testTM3(tokens, budget) {
   budget = budget || langStepBudget();
   const any = App.config.sym.any;
   const tape = new Tape(tokens, App.config.sym.blank, usesTwoWayTape());
-  let state = App.startId;
+  let state = runStartId();
   const seen = new Set();
   for (let step = 0; step < budget; step++) {
     if (App.accepts.has(state)) return 'acc';
@@ -382,7 +384,7 @@ export function testLBA3(tokens, budget) {
   budget = budget || langStepBudget();
   const any = App.config.sym.any;
   const tape = makeLbaTape(tokens);
-  let state = App.startId;
+  let state = runStartId();
   const seen = new Set();
   for (let step = 0; step < budget; step++) {
     if (App.accepts.has(state)) return 'acc';
@@ -413,7 +415,7 @@ export function testMTM3(input, budget) {
   budget = budget || langStepBudget();
   const k = App.tapeCount || 2;
   const tapes = multiTapeSeed(k, input, App.config.sym.blank, usesTwoWayTape());
-  let state = App.startId;
+  let state = runStartId();
   const seen = new Set();
   for (let step = 0; step < budget; step++) {
     if (App.accepts.has(state)) return 'acc';
@@ -433,12 +435,12 @@ export function testNDTM3(tokens, budget) {
   budget = budget || langStepBudget();
   const any = App.config.sym.any;
   const start = new Tape(tokens, App.config.sym.blank, usesTwoWayTape());
-  const queue = [{ state: App.startId, tape: start }];
+  const queue = [{ state: runStartId(), tape: start }];
   // The key comes off the tape, which normalizes its own window — so two
   // configurations that differ only in how far the tape has grown compare
   // equal. With absolute indices a two-way tape renumbers every cell the
   // moment it grows leftward and the frontier never closes.
-  const visited = new Set([`${App.startId}|${start.key()}`]);
+  const visited = new Set([`${runStartId()}|${start.key()}`]);
   let expanded = 0;
   while (queue.length) {
     if (expanded++ >= budget) return 'unk';

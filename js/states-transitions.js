@@ -8,7 +8,8 @@ import { Change, emit } from './store.js';
 import { counterBottomViolation, hasStateOutput, hasTransitionOutput, isAnyPDA, isCounterMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
 import { isMultiTape, machineDeterminism, machineStoreLabels, transitionHasField } from './machines/index.js';
 import { applyMachineSwitch } from './view.js';
-import { viewStates } from './view-graph.js';
+import { viewEdgeKeyFor, viewStates } from './view-graph.js';
+import { getBlock } from './blocks.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  STATE MANAGEMENT
@@ -828,13 +829,28 @@ export function transTipRows(t) {
  */
 export function edgeTipFor(ts) {
   if (!ts || !ts.length) return '';
-  const from = getState(ts[0].from), to = getState(ts[0].to);
+  // The heading names the *drawn* endpoints, not the transition's own. An edge
+  // that crosses into a block is drawn between a state and a box, and a box is
+  // not something getState can answer for — so `s5|b1` came out with no heading
+  // at all, which is the one thing an unlabelled arrow among a thousand others
+  // needs to say first. viewEdgeKeyFor is how the model's endpoints are
+  // resolved to the pair actually on screen; a transition in no drawn group
+  // (an edge wholly inside a collapsed block) falls back to its own ends.
+  const [dFrom, dTo] = (viewEdgeKeyFor(ts[0].id) || `${ts[0].from}|${ts[0].to}`).split('|');
+  const from = endName(dFrom), to = endName(dTo);
   const head = from && to
-    ? (from.id === to.id ? `${from.name} ↺` : `${from.name} → ${to.name}`)
+    ? (dFrom === dTo ? `${from} ↺` : `${from} → ${to}`)
     : null;
   // '---' is a rule spanning the grid. Between transitions it is what says
   // "this is a second rule on the same arrow" rather than more of the first.
   const rows = head ? [head, '---'] : [];
+  // What the box hides. Several transitions collapse onto one arrow when an
+  // endpoint is a block, and from outside they are indistinguishable — an edge
+  // into the block's declared entry and one that bypasses it into the middle of
+  // the sub-machine draw as the same arrow. The group already holds both, so
+  // saying which is which costs a row rather than a channel.
+  const crossing = boundaryNote(ts, dFrom, dTo);
+  if (crossing) rows.push(crossing, '---');
   let drawn = 0;
   for (const t of ts) {
     const block = transTipRows(t);
@@ -849,6 +865,49 @@ export function edgeTipFor(ts) {
     drawn++;
   }
   if (ts.length > drawn) rows.push(`+${ts.length - drawn} more on this edge`);
+  return rows.join('\n');
+}
+
+/** A drawn endpoint's name: a state's, or the box standing in for one. */
+function endName(id) {
+  const s = getState(id);
+  if (s) return s.name;
+  const b = getBlock(id);
+  return b ? b.name : null;
+}
+
+/**
+ * How the transitions on one arrow meet a block's boundary.
+ *
+ * Only when an endpoint is a box, because that is the only case where the
+ * drawn arrow is fewer things than the machine has. `entry` and `exits` are
+ * what the block *declares*; anything else crossing the same boundary is a
+ * wire into or out of the middle of a sub-machine, which is exactly what stops
+ * a block being reusable — a copy of it placed elsewhere would have that wire
+ * dangling off a state its definition never mentioned.
+ */
+function boundaryNote(ts, drawnFrom, drawnTo) {
+  const rows = [];
+  const say = (id, pick, what) => {
+    const b = getBlock(id);
+    if (!b) return;
+    const declared = new Set(what === 'in' ? [b.entry] : (b.exits || []).map(e => e.id));
+    const stray = ts.filter(t => !declared.has(pick(t)));
+    const n = ts.length;
+    const noun = `${n} transition${n === 1 ? '' : 's'}`;
+    if (!stray.length) {
+      rows.push(what === 'in'
+        ? `${noun}, all through ${b.name}'s entry`
+        : `${noun}, all from ${b.name}'s declared exits`);
+      return;
+    }
+    const names = [...new Set(stray.map(t => getState(pick(t))?.name).filter(Boolean))];
+    rows.push(what === 'in'
+      ? `${noun}, ${stray.length} not through ${b.name}'s entry: ${names.join(', ')}`
+      : `${noun}, ${stray.length} not from a declared exit of ${b.name}: ${names.join(', ')}`);
+  };
+  say(drawnTo, t => t.to, 'in');
+  say(drawnFrom, t => t.from, 'out');
   return rows.join('\n');
 }
 

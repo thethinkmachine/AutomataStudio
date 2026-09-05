@@ -199,6 +199,29 @@ test('a block survives the save format, which is getWorkspaceData / loadData', (
   assert.equal(context.blockPathOf(context.getBlock(block.id).entry), 'seek/scan');
 });
 
+test('a document naming a machine that cannot have blocks loses the grouping, not the machine', () => {
+  const { App } = withBlock();
+  const data = JSON.parse(JSON.stringify(context.getWorkspaceData()));
+
+  // Hand-edited, or written before blockPlacementRefusal existed. The flat
+  // machine underneath is perfectly good, so it is the grouping that goes and
+  // not one state or transition with it — the same call js/import-jflap.js
+  // makes for a JFLAP file whose family has no stay move.
+  data.machine = 'DFA';
+  const states = data.states.length, transitions = data.transitions.length;
+
+  harness.resetApp();
+  context.loadData(data);
+  assert.equal(App.states.length, states);
+  assert.equal(App.transitions.length, transitions);
+  assert.deepEqual(App.blocks, []);
+  assert.deepEqual(App.scope, []);
+  // The sweep inside pruneBlocks is what drops a `blockId` naming a record
+  // that is no longer there, so no state is left claiming a container.
+  context.liveBlocks();
+  assert.ok(App.states.every(s => !s.blockId));
+});
+
 test('a block survives the undo stack', () => {
   const { App, block } = withBlock();
   context.snapshot();

@@ -71,7 +71,8 @@ import {
   App, getState, stateNameKey
 } from './state.js';
 import {
-  isMultiTape, machineDeterminism, machineSupportsBlocks, setTapeArity
+  isMultiTape, machineDeterminism, machineSupportsBlocks, setTapeArity,
+  transitionShapeRefusal
 } from './machines/index.js';
 
 // The separator between an instance's name and the interior state's own. `/`
@@ -172,6 +173,20 @@ export function blockAncestry(id) {
 
 /** How deep a block sits. Top-level blocks are depth 0. */
 export function blockDepth(id) { return Math.max(0, blockAncestry(id).length - 1); }
+
+/**
+ * Where a block lives, as a readable path: `CPU/ALU 2/multiplier`.
+ *
+ * The companion to blockPathOf() for states, and it exists because a block's
+ * `name` is unique among its *siblings* only — "add" under the ALU and "add"
+ * under the FPU are two blocks with one name. Anything that has to address a
+ * block from outside the tree (the spec dialect, a port's label, a crumb) needs
+ * the path, and deriving it here is what stops three surfaces deriving it
+ * differently.
+ */
+export function blockPath(id) {
+  return blockAncestry(id).map(b => b.name).join(BLOCK_NAME_SEP);
+}
 
 /**
  * A state's own name, with the containing blocks' prefix taken off.
@@ -365,6 +380,46 @@ export function validateBlockDefinition(def) {
 }
 
 /**
+ * Why this definition cannot be placed on this machine — or `null`.
+ *
+ * `validateBlockDefinition` above asks whether the definition is well formed,
+ * which is a question about the definition alone and is why saving one to the
+ * library asks it. This is the other half: whether the *host* can take it. The
+ * two are separate because a perfectly good definition is still not placeable
+ * everywhere, and a clipboard is the one thing in the app that outlives the
+ * machine it was filled from — copy a block on an MTM, switch the canvas to a
+ * DFA, press Ctrl+V, and until this existed the records landed. Nothing
+ * refused, because nothing was asked: the DFA then carried block records over
+ * states named `ALU/add/scan` whose transitions held `tapeSyms` the machine has
+ * no reader for, and every one of those survived into the `.json`.
+ *
+ * Two questions, and the first is the one the reader means:
+ *
+ *   - **Can this machine have blocks at all?** Declared on the family
+ *     (`supportsBlocks`, js/machines/turing.js) and asked through
+ *     machineSupportsBlocks — never tested for by name here.
+ *   - **Are the definition's rules the shape this machine reads?** A block is
+ *     inlined, so its transitions become the host's own — which is the same
+ *     question a pasted *state* raises, and so it is asked of the same
+ *     declaration: transitionShapeRefusal in js/machines/index.js. It is the
+ *     half a `supportsBlocks` check alone would miss, and MTM is where: it has
+ *     a stay move, so the first question says yes, and its rules are a read
+ *     *tuple*, so a single-tape block placed on one would arrive with no
+ *     `tapeSyms` at all — setTapeArity only reshapes arrays that already
+ *     exist — and an MTM block on a TM with no `symbol`.
+ *
+ * A definition that names no machine is placed, for the reason given there.
+ * Every definition this app writes records one (outlineBlock stamps
+ * `App.machine`).
+ */
+export function blockPlacementRefusal(def, m = App.machine) {
+  if (!machineSupportsBlocks(m)) {
+    return `${m} has no stay move, so it cannot have blocks.`;
+  }
+  return transitionShapeRefusal(def && def.machine, m, 'This block');
+}
+
+/**
  * The exits a definition offers, defaulting to its accepting states.
  *
  * The default is the whole reason placing a block usually needs no
@@ -433,6 +488,12 @@ function remapDefSymbols(transitions, from) {
 export function inlineBlock(def, opts = {}) {
   const problems = validateBlockDefinition(def);
   if (problems.length) throw new Error(`Cannot place this block: ${problems[0]}`);
+  // Asked here rather than at each caller, for the reason validateBlockDefinition
+  // is: this is the one path onto a canvas — the library, the clipboard and the
+  // wizard all arrive through it — so a caller that forgets to ask cannot be the
+  // way a block reaches a machine that has no concept of one.
+  const refusal = blockPlacementRefusal(def);
+  if (refusal) throw new Error(`Cannot place this block: ${refusal}`);
 
   const parent = opts.parent || null;
   const name = uniqueBlockName(opts.name || def.name || 'block', parent);
@@ -584,8 +645,18 @@ export function outlineBlock(id, opts = {}) {
 
   const idMap = new Map(states.map((s, i) => [s.id, 'd' + (i + 1)]));
   const blockMap = new Map(subtree.map((b, i) => [b, 'k' + (i + 1)]));
-  const prefix = block.name + BLOCK_NAME_SEP;
-  const strip = n => (String(n).startsWith(prefix) ? String(n).slice(prefix.length) : String(n));
+  // The strip is *positional*, for the reason localStateName gives: a name is
+  // written with exactly depth + 1 segments, and matching the prefix as a
+  // string only works while the block is at the top level. A nested block's
+  // states are named `ALU/add/scan`, which does not start with `add/` — so
+  // nothing was stripped and placing the definition again prefixed a second
+  // time, giving `add/ALU/add/scan`: the accumulation this function exists to
+  // prevent, arrived at from the one direction the string match cannot see.
+  const depth = blockAncestry(id).length;
+  const strip = n => {
+    const parts = String(n).split(BLOCK_NAME_SEP);
+    return parts.slice(Math.min(depth, parts.length - 1)).join(BLOCK_NAME_SEP);
+  };
 
   const ox = block.x || 0, oy = block.y || 0;
   const defStates = states.map(s => {

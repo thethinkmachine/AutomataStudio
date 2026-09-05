@@ -1543,12 +1543,29 @@
   cursor: grabbing;
 }
 
+/* ── the boundary tab ──
+   A DASHED OUTLINE MEANS "NOT PART OF THE MACHINE" — see the note at the top
+   of css/views.css. A port is derived from the wiring on every rebuild and
+   reaches no serializer, so it keeps the dash; what changed is everything the
+   dash was being asked to carry on its own.
+
+   It was a transparent 96px pill with one line of 9px mono in it, and it
+   failed two ways at once. The label ran clean out of both ends, because
+   `ADDR_L_leaf_14 -> ADDR_L_count_14` is not 96px wide in any font. And with no
+   fill it was drawn *through* by every edge and edge label behind it.
+
+   So: sized to its text (js/view-graph.js), filled so it occludes, and two rows
+   so the role and the target each get one. Direction is the ROLE — `ENTRY`,
+   `FROM`, or the block's own word for an exit — which says it in language
+   rather than in a glyph, and does not need to be read at any particular size
+   or angle. Colour is left to mean the one thing left: whether the block
+   declared this crossing at all. */
 .pn-body {
-  fill: transparent;
+  fill: var(--bg2);
   stroke: var(--accent);
-  stroke-width: 1.2;
-  stroke-dasharray: 5 3;
-  opacity: 0.75;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  opacity: 0.9;
 }
 
 .pn.is-out .pn-body {
@@ -1559,12 +1576,59 @@
   opacity: 1;
 }
 
+.pn:hover .pn-body {
+  fill: var(--bg3, var(--bg2));
+}
+
 /* A hand-placed tab is drawn solid: the dash says "derived, placed for you",
    so a port the reader has put somewhere deliberately should stop claiming to
    be. It is the same thing `t.curve` does to an auto-routed edge. */
 .pn.is-manual .pn-body {
   stroke-dasharray: none;
   opacity: 1;
+}
+
+/* ── a crossing the block did not declare ──
+   `entry` and `exits` are what a block promises about itself; every other edge
+   across the same boundary is a wire into or out of the middle of a
+   sub-machine. The block still works — this is a finding, not a fault, which is
+   why it is `--orange` and not `--red` — but it is not *reusable*: a copy of it
+   placed elsewhere would have that wire hanging off a state its definition
+   never mentioned. Worth seeing on the canvas rather than in a panel nobody
+   opens, and worth seeing at a glance among forty tabs.
+
+   Written after .is-out so it wins on order rather than on !important. */
+.pn.is-stray .pn-body,
+.pn.is-out.is-stray .pn-body {
+  stroke: var(--orange);
+}
+
+.pn.is-stray .pn-role {
+  fill: var(--orange);
+}
+
+/* A declared way in or out that nothing is wired to yet. Quieter than either,
+   because it is the one tab that describes an intention rather than an edge. */
+.pn.is-empty .pn-body {
+  opacity: 0.5;
+}
+
+.pn.is-empty .pn-label {
+  font-style: italic;
+}
+
+/* The two rows follow the app's own rule: the role is a small-caps label, the
+   target is an identifier. LANGUAGE / MTM, ALPHABET Σ / 2, FINGERPRINT /
+   0 OF 257 — the tab was the one piece of canvas chrome that did not say what
+   kind of thing it was naming. */
+.pn-role {
+  font-family: var(--sans);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  fill: var(--text3);
+  text-anchor: middle;
+  pointer-events: none;
 }
 
 .pn-label {

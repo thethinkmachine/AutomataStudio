@@ -35,6 +35,7 @@ import './minimap.js';
 import './quick-settings.js';
 import './notes.js';
 import './dividers.js';
+import './run-scope.js';
 import './simulation.js';
 import './language.js';
 import './suggest.js';

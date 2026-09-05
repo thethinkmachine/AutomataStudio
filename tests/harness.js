@@ -35,6 +35,7 @@ import * as blocksUi from '../js/blocks-ui.js';
 import * as viewGraph from '../js/view-graph.js';
 import * as graphThumb from '../js/graph-thumb.js';
 import * as scope from '../js/scope.js';
+import * as runScope from '../js/run-scope.js';
 import * as canvas from '../js/canvas.js';
 import * as codegen from '../js/codegen.js';
 import * as dividers from '../js/dividers.js';
@@ -116,7 +117,7 @@ import * as wizardUi from '../js/wizard-ui.js';
 
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, viewport, geometry, statesTransitions,
-  blocks, blocksUi, viewGraph, graphThumb, scope, canvas, render, panelState, panelSections, panelSectionsUi, panelFloat, panelShake, panelList, mobile, notes, dividers,
+  blocks, blocksUi, viewGraph, graphThumb, scope, runScope, canvas, render, panelState, panelSections, panelSectionsUi, panelFloat, panelShake, panelList, mobile, notes, dividers,
   machineRegistry, machineRuntime, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,
@@ -193,6 +194,13 @@ function resetModuleState() {
   // coincides on, so the projection is dropped outright.
   viewGraph.invalidateViewGraph();
   scope.resetScopeCameras();
+  // The subtree a run boundary is judged against is memoised on App.states,
+  // which a test can replace with an array the validator coincides on.
+  runScope.clearRunScope();
+  runScope.invalidateRunScope();
+  // How far back the trace log has been expanded is module state, and a test
+  // that revealed a page would otherwise hand the next one a log already whole.
+  simulation.resetTraceWindow();
   state.setWorkspaces([]);
   state.setActiveWorkspaceId(null);
   state.setR(baseConfig.radius);

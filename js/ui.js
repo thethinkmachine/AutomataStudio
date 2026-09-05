@@ -1,7 +1,7 @@
 import { utmStepBack, utmStepFwd, utmToggleAuto } from './algorithms-fa.js';
 import { renderGamma } from './alphabet.js';
 import { settleAll } from './anim.js';
-import { applyCamera, clampZoom, clearEdgeDirectionHighlight, clearSelection, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, minZoom, nudgeSelected, pasteClipboard, selectAllStates, selectionCount, toggleSnapToGrid, wrap } from './canvas.js';
+import { applyCamera, clampZoom, clearEdgeDirectionHighlight, clearSelection, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, minZoom, nudgeSelected, pasteClipboard, selectAllStates, selectionCount, syncSelectionClasses, toggleSnapToGrid, wrap } from './canvas.js';
 import { blockRemovalIds, getBlock, removeBlock } from './blocks.js';
 import { viewStates } from './view-graph.js';
 import { leaveBlockScope, syncScopeBar } from './scope.js';
@@ -901,6 +901,118 @@ export function initTabs() {
 window.addEventListener('resize', () => updateTabOverflowShadows());
 
 // ══════════════════════════════════════════════════════════════════
+//  DELETING, AND CUTTING
+//
+//  Cut is copy plus delete, and the only thing that makes it more than two
+//  keystrokes the reader could press themselves is that it has to be *one*
+//  edit: one snapshot, one Ctrl+Z. So the removal is a function rather than
+//  the body of the Delete branch, and both callers wrap it the same way.
+// ══════════════════════════════════════════════════════════════════
+
+/** Anything on the canvas selected, of any of the four kinds. */
+function hasSelection() {
+  return !!(App.selectedStates.size || App.selectedTransitions.size
+    || App.selectedNotes.size || App.selectedDividers.size);
+}
+
+/**
+ * Remove the selection. Takes no undo point and announces nothing — the caller
+ * owns both, so a cut costs one history entry rather than two.
+ */
+function deleteSelection() {
+  if (typeof pruneNoteAnchorsExcluding === 'function') {
+    const removedTransIds = new Set(App.selectedTransitions);
+    App.transitions.forEach(t => {
+      if (App.selectedStates.has(t.from) || App.selectedStates.has(t.to)) removedTransIds.add(t.id);
+    });
+    // A selected *block* is one id standing for a whole subtree, so naming
+    // the selection alone named the box and not one state inside it: a note
+    // out here anchored into the block was never seen by the prune and
+    // settled at its stored offset instead of holding where it was drawn.
+    const removedStateIds = new Set(App.selectedStates);
+    App.selectedStates.forEach(id => {
+      if (!getBlock(id)) return;
+      const gone = blockRemovalIds(id);
+      gone.states.forEach(sid => removedStateIds.add(sid));
+      gone.transitions.forEach(tid => removedTransIds.add(tid));
+    });
+    pruneNoteAnchorsExcluding([...removedStateIds], [...removedTransIds]);
+  }
+  App.selectedStates.forEach(id => {
+    // A selected block id deletes the whole subtree behind the box — every
+    // state at every depth, and the records that grouped them. The selection
+    // model is deliberately one set for both kinds (a block is a node you
+    // click, drag and delete), so this is the one branch that has to know.
+    if (getBlock(id)) { removeBlock(id); return; }
+    App.states = App.states.filter(s => s.id !== id);
+    App.transitions = App.transitions.filter(t => t.from !== id && t.to !== id);
+    if (App.startId === id) App.startId = null;
+    App.accepts.delete(id);
+  });
+  App.selectedTransitions.forEach(tid => {
+    App.transitions = App.transitions.filter(t => t.id !== tid);
+  });
+  // Notes and dividers go in the same history step as the states and
+  // edges beside them — one selection, one Delete, one undo.
+  if (typeof removeNotes === 'function') removeNotes([...App.selectedNotes]);
+  if (typeof removeDividers === 'function') removeDividers([...App.selectedDividers]);
+  App.selectedStates.clear();
+  App.selectedTransitions.clear();
+  App.selectedNotes.clear();
+  App.selectedDividers.clear();
+}
+
+/** The Delete key: one undo point, the removal, one announcement. */
+function commitDeleteSelection() {
+  snapshot();
+  deleteSelection();
+  emit(Change.GRAPH);
+}
+
+/**
+ * Ctrl+X. The copy runs first and against the live machine, because
+ * `outlineBlock` reads a selected block's subtree straight off `App.states` —
+ * delete first and there is nothing left to outline.
+ */
+export function cutSelection() {
+  if (!hasSelection()) { showStatus('Nothing to cut'); return; }
+  copySelection();
+  commitDeleteSelection();
+}
+
+/**
+ * The right-clicked node, as a selection.
+ *
+ * A right-click sets `App.ctxId` and deliberately does not disturb the
+ * selection, so the menu has two cases and the conventional answer to both:
+ * a node already in the selection means the whole selection, and one that is
+ * not means that node alone. Cutting five states because the reader
+ * right-clicked a sixth would be the surprising half of that.
+ */
+function ctxTargetSelection() {
+  const id = App.ctxId;
+  if (!id) return App.selectedStates.size > 0;
+  if (!App.selectedStates.has(id)) {
+    clearSelection();
+    App.selectedStates.add(id);
+    if (typeof syncSelectionClasses === 'function') syncSelectionClasses();
+  }
+  return true;
+}
+
+export function ctxCopy() {
+  const ok = ctxTargetSelection();
+  hideContextMenu();
+  if (ok) copySelection();
+}
+
+export function ctxCut() {
+  const ok = ctxTargetSelection();
+  hideContextMenu();
+  if (ok) cutSelection();
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  KEYBOARD SHORTCUTS
 // ══════════════════════════════════════════════════════════════════
 document.addEventListener('keydown', e => {
@@ -935,6 +1047,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'S' && e.shiftKey) { e.preventDefault(); void saveDocumentAs(); }
     if (e.key === 'a' || e.key === 'A') { e.preventDefault(); if (App.view === 'build') selectAllStates(); }
     if (e.key === 'c' || e.key === 'C') { if (App.view === 'build') copySelection(); }
+    if (e.key === 'x' || e.key === 'X') { if (App.view === 'build') { e.preventDefault(); cutSelection(); } }
     if (e.key === 'v' || e.key === 'V') { if (App.view === 'build') { e.preventDefault(); pasteClipboard(App._lastCanvasWorldPt || null); } }
     if (e.key === 'd' || e.key === 'D') { if (App.view === 'build') { e.preventDefault(); duplicateSelection(); } }
     if (e.shiftKey && (e.key === 't' || e.key === 'T')) { e.preventDefault(); reopenClosedTab(); }
@@ -973,51 +1086,7 @@ document.addEventListener('keydown', e => {
   // off the canvas, here as everywhere else.
   if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openMachineWizard(); }
   if (e.key === 'Delete' || e.key === 'Backspace') {
-    if (App.selectedStates.size || App.selectedTransitions.size || App.selectedNotes.size || App.selectedDividers.size) {
-      e.preventDefault();
-      snapshot();
-      if (typeof pruneNoteAnchorsExcluding === 'function') {
-        const removedTransIds = new Set(App.selectedTransitions);
-        App.transitions.forEach(t => {
-          if (App.selectedStates.has(t.from) || App.selectedStates.has(t.to)) removedTransIds.add(t.id);
-        });
-        // A selected *block* is one id standing for a whole subtree, so naming
-        // the selection alone named the box and not one state inside it: a note
-        // out here anchored into the block was never seen by the prune and
-        // settled at its stored offset instead of holding where it was drawn.
-        const removedStateIds = new Set(App.selectedStates);
-        App.selectedStates.forEach(id => {
-          if (!getBlock(id)) return;
-          const gone = blockRemovalIds(id);
-          gone.states.forEach(sid => removedStateIds.add(sid));
-          gone.transitions.forEach(tid => removedTransIds.add(tid));
-        });
-        pruneNoteAnchorsExcluding([...removedStateIds], [...removedTransIds]);
-      }
-      App.selectedStates.forEach(id => {
-        // A selected block id deletes the whole subtree behind the box — every
-        // state at every depth, and the records that grouped them. The selection
-        // model is deliberately one set for both kinds (a block is a node you
-        // click, drag and delete), so this is the one branch that has to know.
-        if (getBlock(id)) { removeBlock(id); return; }
-        App.states = App.states.filter(s => s.id !== id);
-        App.transitions = App.transitions.filter(t => t.from !== id && t.to !== id);
-        if (App.startId === id) App.startId = null;
-        App.accepts.delete(id);
-      });
-      App.selectedTransitions.forEach(tid => {
-        App.transitions = App.transitions.filter(t => t.id !== tid);
-      });
-      // Notes and dividers go in the same history step as the states and
-      // edges beside them — one selection, one Delete, one undo.
-      if (typeof removeNotes === 'function') removeNotes([...App.selectedNotes]);
-      if (typeof removeDividers === 'function') removeDividers([...App.selectedDividers]);
-      App.selectedStates.clear();
-      App.selectedTransitions.clear();
-      App.selectedNotes.clear();
-      App.selectedDividers.clear();
-      emit(Change.GRAPH);
-    }
+    if (hasSelection()) { e.preventDefault(); commitDeleteSelection(); }
   }
   if (e.key === 'Escape') {
     // Open modals are handled in modal.js and never reach this far.
@@ -2763,7 +2832,15 @@ export function setPanelPinned(side, pinned) {
   if (panel.classList.contains('unpinned') === unpinned) return false;
   panel.classList.toggle('unpinned', unpinned);
   const btn = $(`${side}-pin-btn`);
-  if (btn) btn.dataset.tip = `${unpinned ? 'Pin' : 'Unpin'} ${PANEL_LABEL[side]}`;
+  if (btn) {
+    // The tooltip was the only thing this button said, and a tooltip is not an
+    // accessible name: an icon-only <button> with nothing but a `data-tip` is
+    // announced as "button". One string serves both, so they cannot drift.
+    const say = `${unpinned ? 'Pin' : 'Unpin'} ${PANEL_LABEL[side]}`;
+    btn.dataset.tip = say;
+    btn.setAttribute('aria-label', say);
+    btn.setAttribute('aria-pressed', unpinned ? 'false' : 'true');
+  }
   if (typeof applyToolbarDock === 'function') applyToolbarDock(false);
   try { localStorage.setItem(`automata-${side}-pinned`, unpinned ? '0' : '1'); } catch (e) { }
   return true;
@@ -3166,6 +3243,11 @@ export function setRPSectionCollapsed(id, collapsed, persist = true) {
   sec.classList.toggle('collapsed', !!collapsed);
   const body = sec.querySelector('.rp-section-body');
   if (body) body.style.display = collapsed ? 'none' : '';
+  // The header is a `role="button"` with `aria-expanded`, the same as the left
+  // panel's — so the state has to be written here too, or the four right panel
+  // sections report themselves as permanently open however they are drawn.
+  const hdr = sec.querySelector('.rp-section-header');
+  if (hdr) hdr.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   if (persist) {
     try { localStorage.setItem(`automata-rpanel-section-${id}`, collapsed ? '1' : '0'); } catch (e) { }
   }

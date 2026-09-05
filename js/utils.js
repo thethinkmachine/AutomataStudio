@@ -1,4 +1,5 @@
 import { closeModal, showOverlay } from './modal.js';
+import { clearRunScope } from './run-scope.js';
 import { showExampleCard } from './persistence.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim } from './simulation.js';
@@ -113,6 +114,12 @@ function clearTransientPointers() {
   App.selectedStates.clear(); App.selectedTransitions.clear();
   App.selectedNotes.clear(); App.selectedDividers.clear();
   App.transFrom = null; App.ctxId = null; App.ctxEdge = null; App.ctxMode = null; App.editId = null;
+  // What a run is *about* is one of these: it names a block id, and both paths
+  // that reach here replace the machine that block belonged to. resetSim()
+  // deliberately keeps the subject across a run — re-picking the block for
+  // every word tried is the one thing you do repeatedly — so it has to be
+  // dropped where the machine goes rather than where the run does.
+  clearRunScope();
 }
 
 /**

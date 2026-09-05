@@ -32,6 +32,9 @@ import {
   redo, undo,
 } from './history.js';
 import {
+  setBreakScopeFromUI, setRunSubjectFromUI,
+} from './run-scope.js';
+import {
   closeAuxView, hideMoreMenu, setTapeCount, setView, toggleMoreMenu,
   toggleToolsMenu,
 } from './view.js';
@@ -71,8 +74,7 @@ import {
   showShapeToolMenu,
 } from './dividers.js';
 import {
-  handleRunBtnClick, handleSimInputKeydown, resetSim, runBatch, scrubSim,
-  setAutoSpeedPreset, stepBack, stepFwd, stepToEnd, stepToStart,
+  handleRunBtnClick, handleSimInputKeydown, handleTraceScroll, resetSim, revealEarlierTrace, runBatch, scrubSim, setAutoSpeedPreset, stepBack, stepFwd, stepToEnd, stepToStart,
 } from './simulation.js';
 import {
   toggleFormalDef,
@@ -122,7 +124,7 @@ import {
 } from './minimap.js';
 import {
   beginRenameTab, closeMobileAuxNav, closeMobilePanels, closeTab,
-  commitTabRename, confirmSettings, createTab, exportSettings, filterAlgos,
+  commitTabRename, confirmSettings, createTab, ctxCopy, ctxCut, exportSettings, filterAlgos,
   filterStates, filterTransitions, fitToScreen, focusStateFromList,
   focusTransFromList, handleCreateTabKeydown, handleTabAddDragOver,
   handleTabAddDrop, handleTabDragEnd, handleTabDragOver, handleTabDragStart,
@@ -146,6 +148,8 @@ Object.assign(window, {
    $, App,
   // history.js
    redo, undo,
+  // run-scope.js
+   setBreakScopeFromUI, setRunSubjectFromUI,
   // view.js
    closeAuxView, hideMoreMenu, setTapeCount, setView, toggleMoreMenu,
    toggleToolsMenu,
@@ -179,6 +183,7 @@ Object.assign(window, {
   // simulation.js
    handleRunBtnClick, handleSimInputKeydown, resetSim, runBatch, scrubSim,
    setAutoSpeedPreset, stepBack, stepFwd, stepToEnd, stepToStart,
+   handleTraceScroll, revealEarlierTrace,
   // language.js
    toggleFormalDef,
   // suggest.js
@@ -222,7 +227,7 @@ Object.assign(window, {
    toggleMinimap,
   // ui.js
    beginRenameTab, closeMobileAuxNav, closeMobilePanels, closeTab,
-   commitTabRename, confirmSettings, createTab, exportSettings, filterAlgos,
+   commitTabRename, confirmSettings, createTab, ctxCopy, ctxCut, exportSettings, filterAlgos,
    filterStates, filterTransitions, fitToScreen, focusStateFromList,
    focusTransFromList, handleCreateTabKeydown, handleTabAddDragOver,
    handleTabAddDrop, handleTabDragEnd, handleTabDragOver, handleTabDragStart,

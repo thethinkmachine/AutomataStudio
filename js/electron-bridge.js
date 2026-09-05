@@ -3,7 +3,7 @@ import { redo, undo } from './history.js';
 import { closeModal, isModalOpen, registerModal, showOverlay } from './modal.js';
 import { loadJSON, openExternalDocument, saveDocumentAs, saveNow } from './persistence.js';
 import { $, App } from './state.js';
-import { createTab, exportSettings } from './ui.js';
+import { createTab, cutSelection, exportSettings } from './ui.js';
 import { hideMoreMenu } from './view.js';
 import { openAboutModal } from './workspace.js';
 
@@ -35,6 +35,7 @@ if (isElectron) {
         break;
       case 'undo': undo(); break;
       case 'redo': redo(); break;
+      case 'cut': if (App.view === 'build') cutSelection(); break;
       case 'copy': if (App.view === 'build') copySelection(); break;
       case 'paste': pasteClipboard(App._lastCanvasWorldPt || null); break;
       case 'select-all': if (App.view === 'build') selectAllStates(); break;

@@ -26,6 +26,7 @@
 //  lines, and it is the difference between "usually right" and "checked".
 
 import { autoLayout } from './canvas.js';
+import { invalidateViewGraph } from './view-graph.js';
 import { commit, snapshot } from './history.js';
 import { showExampleCard } from './persistence.js';
 import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
@@ -35,6 +36,7 @@ import {
   importWorkspaceState, isOmegaAutomaton, normalizeBoundarySymbolsForMachine
 } from './state.js';
 import { compileSpec, currentMachineSnapshot, summarizeDiff } from './statemate-compile.js';
+import { blockSubtree, invalidateBlockIndex } from './blocks.js';
 import { lintCandidate } from './statemate-lint.js';
 import {
   buildRepairMessage, buildSystemPrompt, buildUserMessage, threadMessages
@@ -46,9 +48,7 @@ import {
   traceCandidateWord
 } from './statemate-agent.js';
 import {
-  MIN_SPEC_TESTS, StateMateError, describeSpecSize, extractSpecJSON,
-  focusIsEmpty, machineToSpec, parseTurn, partialStringField, resolveContextRefs,
-  testKindFor
+  MIN_SPEC_TESTS, StateMateError, describeSpecSize, extractSpecJSON, focusIsEmpty, machineToSpec, parseTurn, partialStringField, resolveContextRefs, scopedSource, testKindFor
 } from './statemate-spec.js';
 import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, createTab, fitToScreen, switchTab } from './ui.js';
@@ -574,6 +574,15 @@ function assignCandidate(candidate) {
   App.accepts = new Set(candidate.accepts || []);
   App.notes = (candidate.notes || []).map(n => ({ ...n }));
   App.dividers = (candidate.dividers || []).map(d => ({ ...d }));
+  // The hierarchy, and the level the reader was standing on. Both are pruned on
+  // read — a record whose entry or members the edit removed fails
+  // blockIsIntact(), and liveScope() drops a scope naming a block that has gone
+  // — so this hands back what the compiler decided and lets the existing
+  // validation say what survived.
+  App.blocks = (candidate.blocks || []).map(b => ({ ...b, exits: (b.exits || []).map(e => ({ ...e })) }));
+  App.scope = [...(candidate.scope || [])];
+  invalidateBlockIndex();
+  invalidateViewGraph();
 
   // Selections and edit targets can outlive the states they point at.
   App.selectedStates.clear();
@@ -818,7 +827,18 @@ export async function runStateMate({
       : `${await buildSystemPrompt(machine, { notes: !!settings.writeNotes })}\n\n${agentToolInstructions()}`;
     guard();
 
-    const canvasSpec = useCanvas && App.states.length ? machineToSpec() : null;
+    // The subject follows the reader. Inside a block, "this machine" is that
+    // block and everything under it — which is what is on screen, and what a
+    // question about it is about. scopedSource() answers null at the top level,
+    // so a machine with no blocks in it sends exactly what it always sent.
+    const scoped = useCanvas ? scopedSource() : null;
+    const canvasSpec = useCanvas && App.states.length
+      ? machineToSpec(scoped || null)
+      : null;
+    // Hoisted to sit beside the cut it belongs to, because two stages need it:
+    // the compile below, and the agent session, which is created earlier in the
+    // loop and would otherwise be the one route past the guard.
+    const compileScope = scoped ? { subtree: blockSubtree(scoped.scope.id) } : null;
 
     // Selected parts of the diagram, resolved to names here rather than in the
     // prompt builder: ids are what the canvas uses and the one thing the
@@ -991,7 +1011,14 @@ export async function runStateMate({
       }
       if (toolCalls) {
         if (!agentSession) {
-          agentSession = createAgentSession(before, { intent: resolvedIntent, focus, prompt: text });
+          agentSession = createAgentSession(before, {
+            intent: resolvedIntent, focus, prompt: text,
+            // The same cut the one-shot path takes. Agentic mode is otherwise
+            // the one route past the guard: the model is prompted with the
+            // block and its tools edit a draft compiled against the whole
+            // machine, so a rewrite reads as "delete everything else".
+            scope: compileScope && scoped ? { ...compileScope, source: scoped } : null
+          });
           onEvent({ type: 'agent', stage: 'started' });
         }
         agentSteps++;
@@ -1126,9 +1153,12 @@ export async function runStateMate({
 
       // ── 4 · compile ─────────────────────────────────────────
       onEvent({ type: 'stage', stage: 'compile', size: describeSpecSize(spec) });
+      // Bounded to the same subtree the model was shown. Unbounded, a spec
+      // naming only the block's states reads as an edit that deleted every
+      // state outside it — see keepOutsideScope().
       ({ candidate, diff } = agentCandidate && agentDiff
         ? { candidate: agentCandidate, diff: agentDiff }
-        : compileSpec(spec, before));
+        : compileSpec(spec, before, { scope: compileScope }));
       // A repair or a later continuation must use a fresh compilation. The
       // override is only for the finished transaction that explicitly carried
       // its private candidate through the tool boundary.

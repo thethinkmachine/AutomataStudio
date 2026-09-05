@@ -88,7 +88,8 @@ test('a duplicated or garbage saved order still yields every section once', () =
   // at, which pushes Batch Test to the end. There is no better answer for a
   // partial list, and it is the same rule a section added in a later version
   // gets.
-  assert.deepEqual(context.sectionOrder('rpanel'), ['rp-language', 'rp-simulate', 'rp-batch']);
+  assert.deepEqual(context.sectionOrder('rpanel'),
+    [...RP.filter(id => id !== 'rp-batch'), 'rp-batch']);
 
   context.localStorage.setItem('automata-rpanel-section-order', 'not json');
   assert.deepEqual(context.sectionOrder('rpanel'), RP);
@@ -100,10 +101,10 @@ test('moveSection clamps rather than refusing', () => {
   clearOrders();
   assert.deepEqual(context.moveSection('rpanel', 'rp-language', -3), RP);
   assert.deepEqual(context.moveSection('rpanel', 'rp-batch', 99), RP);
-  assert.deepEqual(context.moveSection('rpanel', 'rp-batch', 0),
-    ['rp-batch', 'rp-language', 'rp-simulate']);
+  const batchFirst = ['rp-batch', ...RP.filter(id => id !== 'rp-batch')];
+  assert.deepEqual(context.moveSection('rpanel', 'rp-batch', 0), batchFirst);
   assert.deepEqual(context.moveSection('rpanel', 'nonexistent', 0),
-    ['rp-batch', 'rp-language', 'rp-simulate'], 'an unknown id changes nothing');
+    batchFirst, 'an unknown id changes nothing');
 });
 
 test('setSectionOrder cannot write a section that does not exist', () => {
@@ -172,9 +173,10 @@ test('applySectionOrder puts the DOM in the saved order', () => {
   mountPanels();
   assert.deepEqual(domIds('rpanel'), RP);
 
-  context.setSectionOrder('rpanel', ['rp-simulate', 'rp-batch', 'rp-language']);
+  const shuffled = [...RP].reverse();
+  context.setSectionOrder('rpanel', shuffled);
   context.applySectionOrder('rpanel');
-  assert.deepEqual(domIds('rpanel'), ['rp-simulate', 'rp-batch', 'rp-language']);
+  assert.deepEqual(domIds('rpanel'), shuffled);
 });
 
 test('applying an order the DOM already has moves nothing', () => {

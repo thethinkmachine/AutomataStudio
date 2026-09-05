@@ -386,3 +386,57 @@ test('a nondeterministic machine writes a power set into its δ signature', () =
       `${m} declares δ as "${delta}" but hasSingleValuedDelta says ${ctx.hasSingleValuedDelta(m)}`);
   }
 });
+
+// ── moving a piece of one machine onto another ────────────────────
+// Copying is the one gesture that crosses machines: a clipboard outlives the
+// machine it was filled from, so a fragment written for an MTM can be offered
+// to a DFA. What decides it is the registry's own `transitionFields` rather
+// than the family or the name, and these walk MachineTypes for the same reason
+// the rest of this file does — a machine added to js/state.js must not silently
+// become paste-compatible with everything.
+
+test('a fragment is only movable onto a machine that reads the same rules', () => {
+  for (const m of ALL()) {
+    // The identity case is free and must never refuse: pasting onto the
+    // machine you copied from is much the commonest paste there is.
+    assert.equal(ctx.transitionShapeRefusal(m, m), null, m);
+    // Nothing is claimed about the source, so there is nothing to compare
+    // against and the paste goes through — everything the app writes records
+    // its machine, so this is the hand-made or older case.
+    assert.equal(ctx.transitionShapeRefusal(null, m), null, m);
+  }
+});
+
+test('the shape rule is the registry field list, not a family or a name', () => {
+  for (const a of ALL()) {
+    for (const b of ALL()) {
+      const same = JSON.stringify(ctx.transitionFieldsOf(a)) === JSON.stringify(ctx.transitionFieldsOf(b));
+      assert.equal(ctx.transitionShapeRefusal(a, b) === null, same, `${a} -> ${b}`);
+    }
+  }
+});
+
+test('the machines that differ only in their tape or their δ share their rules', () => {
+  // The case worth having: these differ in what the tape is and in whether δ
+  // branches, neither of which is a property of a transition.
+  for (const m of ['NDTM', 'LBA', 'ITM']) {
+    assert.equal(ctx.transitionShapeRefusal('TM', m), null, m);
+  }
+  for (const m of ['NFA', 'ENFA']) {
+    assert.equal(ctx.transitionShapeRefusal('DFA', m), null, m);
+  }
+  // And the ones that genuinely disagree: a tuple read is not a single read,
+  // and a transducer's rule carries an output a plain automaton has no field
+  // for.
+  assert.ok(ctx.transitionShapeRefusal('MTM', 'TM'));
+  assert.ok(ctx.transitionShapeRefusal('TM', 'MTM'));
+  assert.ok(ctx.transitionShapeRefusal('Mealy', 'DFA'));
+  assert.ok(ctx.transitionShapeRefusal('TM', 'DFA'));
+});
+
+test('the refusal names both machines, because the reader switched between them', () => {
+  const say = ctx.transitionShapeRefusal('MTM', 'DFA', 'This selection');
+  assert.match(say, /This selection/);
+  assert.match(say, /MTM/);
+  assert.match(say, /DFA/);
+});

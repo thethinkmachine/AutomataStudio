@@ -14,6 +14,28 @@ subscribe(Change.ALPHABET, renderGramSyms);
 // ══════════════════════════════════════════════════════════════════
 //  ALPHABET
 // ══════════════════════════════════════════════════════════════════
+
+// ── the remove control on a chip ──────────────────────────────────
+//
+// A <button>, and written once rather than three times. It was a
+// `<span class="x" onclick=…>` inline in each of the three renderers below,
+// which cost it two things at once: no keyboard could reach it — the same
+// half of a control rowActions() in js/render.js found missing on the list
+// rows, here on the only destructive control Σ, Γ and Δ have — and a screen
+// reader had nothing to announce it as, because an SVG with no title inside a
+// span with no role is not a control at all.
+//
+// The name says which symbol goes. "Remove" repeated down a row of chips
+// names the button and not the thing it acts on.
+const REMOVE_ICON = '<svg viewBox="0 0 256 256"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>';
+
+function chipRemove(fn, sym) {
+  // jsAttr already runs escapeHtml over the JSON literal — see js/utils.js.
+  return `<button type="button" class="x" onclick="${fn}(${jsAttr(sym)})" `
+    + `aria-label="Remove ${escapeHtml(sym)}" data-tip="Remove ${escapeHtml(sym)}">`
+    + `${REMOVE_ICON}</button>`;
+}
+
 export function addSym() {
   const v = $('sym-in').value.trim(); if (!v) return;
     const blocked = [];
@@ -32,7 +54,7 @@ export function addSym() {
   }
 export function renderSigma() {
   const c = $('sigma-chips');
-  c.innerHTML = [...App.sigma].map(s => `<div class="chip">${escapeHtml(s)}<span class="x" onclick="delSym(${jsAttr(s)})"><svg viewBox="0 0 256 256"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span></div>`).join('')
+  c.innerHTML = [...App.sigma].map(s => `<div class="chip">${escapeHtml(s)}${chipRemove('delSym', s)}</div>`).join('')
     || '<div class="empty-msg">Add symbols</div>';
   if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
@@ -59,7 +81,7 @@ export function renderGamma() {
       const isBoundary = isBoundaryTapeMachine(App.machine) && isBoundarySymbol(s);
       const style = isBottom ? 'style="color:var(--green)"' : (isBoundary ? 'style="color:var(--gold)"' : '');
       const title = isBoundary ? ` data-tip="${s === App.config.sym.leftMarker ? 'Left boundary marker' : 'Right boundary marker'}"` : '';
-      return `<div class="chip" ${style}${title}>${escapeHtml(s)}${(isBottom || isBoundary) ? '' : `<span class="x" onclick="delGSym(${jsAttr(s)})"><svg viewBox="0 0 256 256"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span>`}</div>`;
+      return `<div class="chip" ${style}${title}>${escapeHtml(s)}${(isBottom || isBoundary) ? '' : chipRemove('delGSym', s)}</div>`;
     }).join('') || '<div class="empty-msg">Add symbols</div>';
   if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
@@ -71,7 +93,7 @@ export function addOutSym() {
 export function delOutSym(s) { App.outputAlpha.delete(s); renderOutputAlpha(); }
 export function renderOutputAlpha() {
   const c = $('output-chips');
-  c.innerHTML = [...App.outputAlpha].map(s => `<div class="chip">${escapeHtml(s)}<span class="x" onclick="delOutSym(${jsAttr(s)})"><svg viewBox="0 0 256 256"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></span></div>`).join('')
+  c.innerHTML = [...App.outputAlpha].map(s => `<div class="chip">${escapeHtml(s)}${chipRemove('delOutSym', s)}</div>`).join('')
     || '<div class="empty-msg">Add symbols</div>';
   if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }

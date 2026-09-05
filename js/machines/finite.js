@@ -7,13 +7,15 @@
 // matching edge, the accepting test at the end — lives in runtime.js
 // because the tape machines and the transducers share it too.
 
-import { App, getState } from '../state.js';
+import {
+  App, getState, runStartId
+} from '../state.js';
 import { accepted, epsClosure, firstIdenticalTransition, getSingleTapeDeterministicTransition, nameOfState, playEagerly, stateNames } from './runtime.js';
 import { defineFamily } from './registry.js';
 import { wordStep } from './step-log.js';
 
 export function* streamDFA(tokens) {
-  let cur = App.startId;
+  let cur = runStartId();
   let last = wordStep({ state: cur, tokens, pos: 0, note: `Start: ${getState(cur)?.name || '?'}` });
   yield last;
   for (let i = 0; i < tokens.length; i++) {
@@ -36,7 +38,7 @@ export function* streamDFA(tokens) {
 export function simDFA(tokens) { playEagerly(streamDFA(tokens)); }
 
 export function* streamNFA(tokens) {
-  let cur = epsClosure(new Set([App.startId]));
+  let cur = epsClosure(new Set([runStartId()]));
   let last = wordStep({ states: [...cur], tokens, pos: 0, note: `Start ε-closure: {${stateNames(cur)}}` });
   yield last;
   for (let i = 0; i < tokens.length; i++) {
@@ -57,7 +59,7 @@ export function simNFA(tokens) { playEagerly(streamNFA(tokens)); }
 // ── deciding ──────────────────────────────────────────────────────
 
 export function testDFA(tokens) {
-  let cur = App.startId;
+  let cur = runStartId();
   for (const sym of tokens) {
     const t = getSingleTapeDeterministicTransition(cur, sym);
     if (!t) return false;
@@ -67,7 +69,7 @@ export function testDFA(tokens) {
 }
 
 export function testNFA(tokens) {
-  let cur = epsClosure(new Set([App.startId]));
+  let cur = epsClosure(new Set([runStartId()]));
   const any = App.config.sym.any;
   for (const sym of tokens) {
     let nx = new Set();

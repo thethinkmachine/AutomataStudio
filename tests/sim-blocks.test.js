@@ -20,14 +20,18 @@ const { App } = context;
 
 function canvas() {
   harness.resetApp();
-  App.machine = 'DFA';
+  // A TM rather than a DFA, because a DFA cannot have blocks — it has no stay
+  // move, so an exit edge there would consume a symbol. What is under test is
+  // the *drawing*, which is machine-agnostic; the type only has to be one the
+  // canvas could really be showing a block on.
+  App.machine = 'TM';
   App.sigma = new Set(['a', 'b']);
   App.config.render.animateLayout = false;
 }
 
 function def(name) {
   return {
-    name, machine: 'DFA', sigma: ['a', 'b'],
+    name, machine: 'TM', sigma: ['a', 'b'],
     states: [
       { id: 'd0', x: 0, y: 0, name: 'i' },
       { id: 'd1', x: 90, y: 0, name: 'j' }

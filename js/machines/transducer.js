@@ -21,7 +21,9 @@
 // rather than the flag: PDT with the pushdown machines, 2DFT with the
 // two-way heads.
 
-import { App, getState } from '../state.js';
+import {
+  App, getState, runStartId
+} from '../state.js';
 import { renderSimStep } from './paint.js';
 import { accepted, firstOverlappingTransition, getSingleTapeDeterministicTransition, nameOfState, playEagerly, traceSearchPath, transduced, transducerRunContributes } from './runtime.js';
 import { testDFA } from './finite.js';
@@ -29,7 +31,7 @@ import { defineFamily } from './registry.js';
 import { OUT_EMPTY, outPush, outStep } from './step-log.js';
 
 export function* streamMoore(tokens) {
-  let cur = App.startId;
+  let cur = runStartId();
   const s0 = getState(cur);
   const initOut = s0?.output ?? '';
   let outStr = initOut;
@@ -60,7 +62,7 @@ export function* streamMoore(tokens) {
 export function simMoore(tokens) { playEagerly(streamMoore(tokens)); }
 
 export function* streamMealy(tokens) {
-  let cur = App.startId;
+  let cur = runStartId();
   let outStr = '';
   let outNode = OUT_EMPTY;
   let last = outStep({ state: cur, tokens, outNode, outSoFar: outStr, note: `Start: ${getState(cur)?.name}` });
@@ -162,7 +164,7 @@ export function buildFstPathSteps(path, tokens, finalStatus = null, finalNote = 
 
 export function exploreFST(tokens) {
   const init = {
-    state: App.startId,
+    state: runStartId(),
     index: 0,
     depth: 0,
     branch: 1,
@@ -268,7 +270,7 @@ export function testFST(tokens) {
 // nothing else, so these walk δ directly rather than building steps.
 
 export function getMooreOutput(tokens) {
-  let cur = App.startId;
+  let cur = runStartId();
   const outputs = [getState(cur)?.output ?? ''];
   for (const sym of tokens) {
     const t = getSingleTapeDeterministicTransition(cur, sym);
@@ -280,7 +282,7 @@ export function getMooreOutput(tokens) {
 }
 
 export function getMealyOutput(tokens) {
-  let cur = App.startId;
+  let cur = runStartId();
   const outputs = [];
   for (const sym of tokens) {
     const t = getSingleTapeDeterministicTransition(cur, sym);

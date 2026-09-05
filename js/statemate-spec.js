@@ -28,14 +28,20 @@
 //  to drag a UI module into the other's import graph.
 
 import {
-  App, MachineTypes, getMachineConfig, isOmegaAutomaton,
+  App, MachineTypes, getMachineConfig, getState, isOmegaAutomaton,
   statePriority, usesParityPriorities, MIN_TAPES, TAPE_LIMIT } from './state.js';
 // The dialect still knows nothing about the UI, the provider or the
 // pipeline it feeds — only about what each machine carries, which is the
 // one thing a schema has to know.
 import {
-  alphabetFieldsOf, hasStateOutput, isMultiTape, stateFieldsOf, transitionFieldsOf
+  alphabetFieldsOf, hasStateOutput, isMultiTape, machineSupportsBlocks,
+  stateFieldsOf, transitionFieldsOf
 } from './machines/index.js';
+// blocks.js imports exactly what this module already does — state.js and the
+// machine registry — so reaching for it costs the dialect nothing and keeps
+// the path derivation in the one place that owns the tree.
+import { blockAncestry, blockPath, blockSubtree, getBlock, liveBlocks } from './blocks.js';
+import { liveScope } from './view-graph.js';
 
 // A machine bigger than this is past the collision-avoidance budget in
 // geometry.js — drawing it would be slow and unreadable, so it is refused
@@ -269,6 +275,94 @@ function fail(message, detail) {
  *
  * Throws StateMateError with code 'schema', 'unknown-machine' or 'too-large'.
  */
+/**
+ * The block tree, validated onto `spec`.
+ *
+ * **Absent means unchanged.** A model that says nothing about the hierarchy has
+ * not asked for it to go, and compileSpec carries the existing records forward;
+ * that is the rule the four `App.config.render` flags follow, and it is what
+ * lets every prompt, few-shot and test written before this field existed go on
+ * meaning what it meant. So the shape here is: read it if it is there, refuse
+ * it if it is malformed, and never invent one.
+ *
+ * A block is addressed by **path** (`CPU/ALU 2`), because a name is unique
+ * among siblings only. That is the same shape a state name already has.
+ *
+ * What is refused, rather than quietly corrected:
+ *   - an entry naming no state, which is a block with no way in
+ *   - a parent naming no declared block, which is a tree with a hole
+ *   - a cycle, which is a block containing itself -- see blockDefinitionCycle
+ * What is dropped: a `block` on a state naming nothing, and an exit naming no
+ * state. Both are a container that does not exist, and refusing the machine
+ * over one would cost the reader a whole turn for a field the compiler can
+ * simply not write.
+ */
+function readBlocks(raw, spec, machine, stateNames) {
+  // A container with no list to declare it is not a container, whether the list
+  // is missing, empty, or refused because this machine cannot have one. Stripped
+  // rather than left standing, or a DFA arrives carrying a `block` field that
+  // every later stage has to remember to ignore.
+  const strip = () => spec.states.forEach(s => { delete s.block; });
+  if (!machineSupportsBlocks(machine)) return strip();   // no stay move, so no blocks
+  if (!Array.isArray(raw.blocks)) return strip();        // absent: carried forward
+  // An *empty* list is a declaration, not an absence. `blocks: []` is the only
+  // way for a model to say "this machine has no hierarchy any more", and read
+  // as "unchanged" it was a request the dialect could not express: the records
+  // were carried straight back and the reader watched a dissolve they had asked
+  // for silently not happen. So the empty array is set, and compileSpec's
+  // "absent means unchanged" branch turns on `Array.isArray(spec.blocks)`
+  // rather than on its length.
+  if (!raw.blocks.length) { strip(); spec.blocks = []; return; }
+
+  const seen = new Set();
+  const blocks = raw.blocks.map((b, i) => {
+    if (!b || typeof b !== 'object') fail(`Block #${i + 1} is not an object.`);
+    const name = String(b.name ?? '').trim();
+    if (!name) fail(`Block #${i + 1} has no name.`);
+    if (seen.has(name)) fail(`Two blocks are both called "${name}".`);
+    seen.add(name);
+    const entry = String(b.entry ?? '').trim();
+    if (!stateNames.has(entry)) {
+      fail(`Block "${name}" names "${entry || '(nothing)'}" as its entry, which is not a state.`);
+    }
+    return {
+      name,
+      parent: b.parent ? String(b.parent).trim() : null,
+      entry,
+      exits: (Array.isArray(b.exits) ? b.exits : [])
+        .map(e => ({
+          state: String(e?.state ?? e?.id ?? '').trim(),
+          label: String(e?.label ?? '').trim()
+        }))
+        .filter(e => stateNames.has(e.state))
+    };
+  });
+
+  blocks.forEach(b => {
+    if (b.parent && !seen.has(b.parent)) {
+      fail(`Block "${b.name}" names "${b.parent}" as its parent, which is not a block.`);
+    }
+  });
+
+  // A block that contains itself is not a machine with a subroutine -- it needs
+  // a stack of tape positions, which is a different machine, and inlining would
+  // not terminate. blocks.js refuses the same thing from the library side.
+  const byName = new Map(blocks.map(b => [b.name, b]));
+  blocks.forEach(b => {
+    const trail = new Set();
+    let cur = b;
+    while (cur && cur.parent) {
+      if (trail.has(cur.name)) fail(`The blocks "${b.name}" and "${cur.name}" contain each other.`);
+      trail.add(cur.name);
+      cur = byName.get(cur.parent);
+    }
+  });
+
+  spec.blocks = blocks;
+  // A container the list does not declare is not a container.
+  spec.states.forEach(s => { if (s.block && !seen.has(s.block)) delete s.block; });
+}
+
 export function validateSpec(raw, { fallbackMachine = App.machine } = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     fail('The answer was not a machine object.');
@@ -311,6 +405,10 @@ export function validateSpec(raw, { fallbackMachine = App.machine } = {}) {
     if (hasStateOutput(machine)) {
       out.out = s.out !== undefined ? String(s.out) : (s.output !== undefined ? String(s.output) : '');
     }
+    // Carried through raw and checked against the declared blocks below --
+    // the list has not been read yet, and a container naming nothing is a
+    // dropped field rather than a refusal (see readBlocks).
+    if (s.block !== undefined && s.block !== null) out.block = String(s.block).trim();
     return out;
   });
 
@@ -340,6 +438,9 @@ export function validateSpec(raw, { fallbackMachine = App.machine } = {}) {
     const n = Number(raw.tapeCount);
     spec.tapeCount = Number.isInteger(n) && n >= MIN_TAPES && n <= TAPE_LIMIT ? n : App.tapeCount;
   }
+
+  // ── blocks ───────────────────────────────────────────────────
+  readBlocks(raw, spec, machine, seenNames);
 
   // ── transitions ──────────────────────────────────────────────
   if (!Array.isArray(raw.transitions)) fail("The machine has no 'transitions' array.");
@@ -636,6 +737,167 @@ export function focusIsEmpty(focus) {
   return !focus.states.length && !focus.transitions.length && !focus.notes.length && !focus.words.length;
 }
 
+/**
+ * The block tree, as the dialect states it.
+ *
+ * **A block is addressed by its path**, not by its name, because a name is
+ * unique among siblings only — "add" under the ALU and "add" under the FPU are
+ * two blocks. That is the same shape a state name already has (inlining writes
+ * the path into it), so `CPU/ALU 2` reads beside `CPU/ALU 2/scan` rather than
+ * against it.
+ *
+ * Read from the live records when the source is the canvas and from the
+ * source's own when it is not, so a candidate on the bench describes itself
+ * rather than whatever happens to be on screen.
+ */
+function specBlockRecords(src) {
+  if (Array.isArray(src.blocks)) return src.blocks;
+  return src === null ? [] : liveBlocks();
+}
+
+function pathIndex(blocks, live) {
+  if (live) return new Map(blocks.map(b => [b.id, blockPath(b.id)]));
+  // A snapshot's records carry local names and parent ids, so the path is
+  // walked here rather than asked of the tree — the tree describes the canvas,
+  // and this may not be it.
+  const byId = new Map(blocks.map(b => [b.id, b]));
+  const out = new Map();
+  const walk = (id, seen) => {
+    if (out.has(id)) return out.get(id);
+    const b = byId.get(id);
+    if (!b || seen.has(id)) return '';
+    seen.add(id);
+    const parent = b.parent ? walk(b.parent, seen) : '';
+    const path = parent ? parent + '/' + b.name : String(b.name || id);
+    out.set(id, path);
+    return path;
+  };
+  blocks.forEach(b => walk(b.id, new Set()));
+  return out;
+}
+
+function blockContext(src) {
+  // A *cut* of the live machine carries real records, and their paths have to
+  // stay the machine's own: walked over the filtered list, `ALU/ADD` comes back
+  // as `ADD`, because the parent it names is not in the list. That reads fine
+  // and matches nothing — compileSpec pairs a spec block to an existing record
+  // *by path*, so a scoped edit would mint a second ALU/ADD beside the first
+  // and the reader would end up with two. `blockPaths` is scopedSource() saying
+  // which tree these came from rather than leaving it to be inferred.
+  if (src.blockPaths) return { blocks: src.blocks || [], paths: asPathMap(src.blockPaths) };
+  const live = !Array.isArray(src.blocks);
+  const blocks = live ? liveBlocks() : src.blocks;
+  return { blocks, paths: pathIndex(blocks, live) };
+}
+
+/**
+ * A path index, however it arrived.
+ *
+ * `scopedSource()` builds a `Map`, and a Map does not survive `JSON.stringify`
+ * — it comes back as `{}`. Everything downstream of a source is entitled to
+ * round-trip it: `createAgentSession` clones its input, the tool layer
+ * checkpoints drafts, and a worker structured-clones a machine. Read straight,
+ * the cloned `{}` was still truthy, so `blockContext` handed back an object
+ * with no `.get` and the next line threw — the cut worked in the one-shot path
+ * and crashed the moment an agent session was opened inside a block.
+ *
+ * So the shape is normalised on read rather than defended at each call site.
+ */
+function asPathMap(paths) {
+  if (paths instanceof Map) return paths;
+  return new Map(Object.entries(paths || {}));
+}
+
+function blocksToSpec({ blocks, paths }, src, machine, nameOf) {
+  if (!machineSupportsBlocks(machine)) return [];
+  const live = new Set((src.states || []).map(s => s.id));
+  return blocks
+    .filter(b => live.has(b.entry))
+    .map(b => ({
+      name: paths.get(b.id) || b.name,
+      parent: b.parent ? (paths.get(b.parent) || null) : null,
+      entry: nameOf(b.entry),
+      exits: (b.exits || [])
+        .filter(e => live.has(e.id))
+        .map(e => ({ state: nameOf(e.id), label: String(e.label ?? '') }))
+    }));
+}
+
+/**
+ * The machine, cut down to one block and everything under it.
+ *
+ * **A drill-in changed what the reader could see and nothing about what the
+ * model was shown.** `machineToSpec()` sends `App.states` — every state at every
+ * depth, three thousand of them on a CPU — so asking why the adder rejects
+ * `11+01` handed the model the whole processor and no way to tell which forty
+ * states were the adder. The context chip said so out loud: "614 states, 19191
+ * transitions" while eight were on screen.
+ *
+ * So the subject follows the scope. What comes back is a real machine in its
+ * own right — it starts at the block's entry, which is where control actually
+ * arrives — plus a `boundary` describing how it is reached and where it hands
+ * control back. Without that it is a disconnected fragment, which is the same
+ * thing a drilled-in view without ports would be, and for the same reason.
+ *
+ * Null at the top level, so a machine with no blocks in it sends exactly what
+ * it always sent.
+ */
+export function scopedSource(blockId = null) {
+  const id = blockId || (liveScope()[liveScope().length - 1] ?? null);
+  const b = id ? getBlock(id) : null;
+  if (!b) return null;
+
+  const under = new Set(blockSubtree(id));
+  const inside = (App.states || []).filter(s => s.blockId && under.has(s.blockId));
+  if (!inside.length) return null;
+  const ids = new Set(inside.map(s => s.id));
+  // Indexed, not scanned. `App.states.find` per crossing is the pattern
+  // getState() exists to replace — and this runs on every prompt build and,
+  // through the console's context chip, on every selection change.
+  const nameOf = sid => getState(sid)?.name || sid;
+
+  const within = [];
+  const crossings = { in: [], out: [] };
+  for (const t of App.transitions || []) {
+    const f = ids.has(t.from), o = ids.has(t.to);
+    if (f && o) within.push(t);
+    else if (o) crossings.in.push({ from: nameOf(t.from), to: nameOf(t.to) });
+    else if (f) crossings.out.push({ from: nameOf(t.from), to: nameOf(t.to) });
+  }
+
+  return {
+    machine: App.machine,
+    states: inside,
+    transitions: within,
+    // Control arrives at the entry. Not App.startId, which is the *machine's*
+    // start and is very likely not under this block at all.
+    startId: b.entry,
+    accepts: [...App.accepts].filter(x => ids.has(x)),
+    sigma: [...App.sigma],
+    stackAlpha: [...App.stackAlpha],
+    outputAlpha: [...App.outputAlpha],
+    tapeCount: App.tapeCount,
+    blocks: (App.blocks || []).filter(x => under.has(x.id)),
+    // Absolute, from the tree these records actually belong to — and including
+    // the *ancestors* of the cut, which are not in it. `blocksToSpec` resolves
+    // a record's `parent` through this map, so with only the subtree in it the
+    // block being edited comes back declaring no parent at all, which reads as
+    // "move me to the top level" and is the one thing a scoped edit must not
+    // be able to say by omission.
+    blockPaths: new Map([
+      ...blockAncestry(id).map(x => [x.id, blockPath(x.id)]),
+      ...[...under].map(x => [x, blockPath(x)])
+    ]),
+    scope: {
+      id,
+      path: blockPath(id),
+      entry: nameOf(b.entry),
+      exits: (b.exits || []).filter(e => ids.has(e.id)).map(e => ({ state: nameOf(e.id), label: e.label })),
+      crossings
+    }
+  };
+}
+
 export function machineToSpec(source = null, { includeTests = false } = {}) {
   const src = source || {
     machine: App.machine,
@@ -655,6 +917,7 @@ export function machineToSpec(source = null, { includeTests = false } = {}) {
   const accepts = new Set(src.accepts instanceof Set ? [...src.accepts] : (src.accepts || []));
   const byId = new Map((src.states || []).map(s => [s.id, s]));
   const nameOf = id => byId.get(id)?.name || id;
+  const tree = blockContext(src);
 
   const spec = {
     machine,
@@ -664,10 +927,28 @@ export function machineToSpec(source = null, { includeTests = false } = {}) {
       if (parity) out.priority = statePriority(s);
       else out.accept = accepts.has(s.id);
       if (hasStateOutput(machine)) out.out = s.output ?? '';
+      // Only when there is one. A machine with no blocks in it describes
+      // exactly what it always described, so no prompt, few-shot or test that
+      // predates the field sees a byte of it.
+      //
+      // The index is built once for the whole machine, never per state: this
+      // function runs on every prompt build and twice more on every diff, and a
+      // path walk per state is the machine's size times its depth for a fact
+      // that is the same each time round.
+      const path = s.blockId ? (tree.paths.get(s.blockId) || null) : null;
+      if (path) out.block = path;
       return out;
     }),
     transitions: (src.transitions || []).map(t => transitionToSpec(t, machine, nameOf))
   };
+
+  const blocks = blocksToSpec(tree, src, machine, nameOf);
+  if (blocks.length) spec.blocks = blocks;
+  // Only ever set by scopedSource(). It is not part of the dialect a model may
+  // *send* — validateSpec never reads it — because how a block is reached is a
+  // fact about the machine around it, which a scoped turn is not being shown
+  // and must not be able to rewrite.
+  if (src.scope) spec.scope = src.scope;
 
   if (cfg.hasStack) spec.stackAlpha = [...(src.stackAlpha instanceof Set ? src.stackAlpha : (src.stackAlpha || []))];
   if (cfg.isTransducer) spec.outputAlpha = [...(src.outputAlpha instanceof Set ? src.outputAlpha : (src.outputAlpha || []))];

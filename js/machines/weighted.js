@@ -10,7 +10,9 @@
 // diagram — the NFA asks whether *some* branch accepts, which is this
 // machine with λ = 0 and every weight rounded up to 1.
 
-import { App, getState } from '../state.js';
+import {
+  App, getState, runStartId
+} from '../state.js';
 import { renderSimStep } from './paint.js';
 import { accepted } from './runtime.js';
 import { defineMachine } from './registry.js';
@@ -54,7 +56,7 @@ export function pfaAcceptMass(dist) {
 }
 
 export function runPFA(tokens) {
-  const dists = [new Map([[App.startId, 1]])];
+  const dists = [new Map([[runStartId(), 1]])];
   for (const sym of tokens) dists.push(pfaStepDistribution(dists[dists.length - 1], sym));
   return dists;
 }
@@ -104,7 +106,7 @@ export function simPFA(tokens) {
       dist: cells,
       accMass: pfaAcceptMass(dist),
       note: i === 0
-        ? `Start: all probability on ${getState(App.startId)?.name || App.startId}`
+        ? `Start: all probability on ${getState(runStartId())?.name || runStartId()}`
         : `Read '${tokens[i - 1]}' → ${cells.length ? cells.join('  ') : 'total mass 0 — the run has died'}`
     }));
   });

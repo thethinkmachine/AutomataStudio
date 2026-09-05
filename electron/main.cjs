@@ -553,6 +553,7 @@ function buildMenu() {
         { label: 'Undo', click: () => sendMenuAction('undo') },
         { label: 'Redo', click: () => sendMenuAction('redo') },
         { type: 'separator' },
+        { label: 'Cut', click: () => sendMenuAction('cut') },
         { label: 'Copy', click: () => sendMenuAction('copy') },
         { label: 'Paste', click: () => sendMenuAction('paste') },
         { label: 'Select All', click: () => sendMenuAction('select-all') },

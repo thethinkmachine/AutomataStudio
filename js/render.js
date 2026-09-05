@@ -8,12 +8,13 @@ import { cullNeedsRepaint, cullViewport, cullingActive, edgeLabelLOD, invalidate
 import { scheduleMinimap } from './minimap.js';
 import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
-import { $, App, OmegaAcceptance, R, SVG_NS, edgeLabelsHidden, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, statePriority, usesParityPriorities, wrapStateLabelsOn } from './state.js';
+import { $, App, OmegaAcceptance, R, SVG_NS, edgeLabelsHidden, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, previewNodeBudget, statePriority, usesParityPriorities, wrapStateLabelsOn } from './state.js';
 import { BLOCK_STRIP_H, blockPreviewGraph, blockPreviewKey, getNode, viewEdgeGroup, viewEdgeKeyFor, viewStates, visibleNodeIdFor } from './view-graph.js';
 import { machineSupportsBlocks } from './machines/index.js';
 import { allBlocks } from './blocks-ui.js';
 import { thumbBounds, thumbEdgePairs, thumbEdgePath, thumbEdgeSegments, thumbSubpath, thumbFit, thumbNodeRadius } from './graph-thumb.js';
 import { enterBlockScope } from './scope.js';
+import { blockAncestry } from './blocks.js';
 import { edgeTipFor, getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
 import { Change, changed, emit, subscribe } from './store.js';
 import { createMemo, reactiveRoot } from './reactive.js';
@@ -915,13 +916,40 @@ function slideBlockPreview(grp, x, y) {
   grp.__parts.preview.setAttribute('transform', dx || dy ? `translate(${dx} ${dy})` : '');
 }
 
-function movePortNode(grp, node) {
-  const p = grp.__parts;
+/**
+ * Where every part of a port tab sits.
+ *
+ * **One function with two callers** — the full render and the drag path — which
+ * is the shape `startArrowD()` and `slideBlockPreview()` already carry their own
+ * notes about, and for the same reason: they drifted. `movePortNode` moved the
+ * body and the label and left the role and the arrow behind, so the moment
+ * anything called `updateFastDOM` the tab came apart on screen: the box and one
+ * line of text at the new position, the other line and the arrowhead stranded
+ * wherever the tab had last been fully drawn. It also still wrote the label at
+ * the old single-line offset, so even the part it did move was in the wrong
+ * place once the tab grew a second row.
+ *
+ * Every offset a port has now lives here, and there is nowhere else for the two
+ * paths to disagree.
+ */
+function placePortParts(p, node) {
   const w = node.box.w, h = node.box.h;
   p.body.setAttribute('x', node.x - w / 2);
   p.body.setAttribute('y', node.y - h / 2);
+  p.body.setAttribute('width', w);
+  p.body.setAttribute('height', h);
+  // A tab, not a pill. A 999px radius made a boundary marker look like one of
+  // the alphabet chips, which are things you can edit; this is chrome that
+  // describes the diagram, and it wears the app's own box radius.
+  p.body.setAttribute('rx', 7);
+  p.role.setAttribute('x', node.x);
+  p.role.setAttribute('y', node.y - 3);
   p.label.setAttribute('x', node.x);
-  p.label.setAttribute('y', node.y + 4);
+  p.label.setAttribute('y', node.y + 10);
+}
+
+function movePortNode(grp, node) {
+  placePortParts(grp.__parts, node);
 }
 
 // Break a state name into per-line words at underscore/space/hyphen
@@ -1285,10 +1313,12 @@ const DOUBLE_PRESS_MS = 450;
 // createBlockNode for why there is no second filled shape on top of it.
 const BLOCK_RADIUS = 10;
 
-// How many drawn elements one preview may build. A block with three hundred
+// How many drawn elements one preview may build — a block with three hundred
 // states in it says so on the strip and draws a readable sample rather than
-// three hundred dots nobody can tell apart.
-const PREVIEW_MAX_NODES = 120;
+// three hundred dots nobody can tell apart — now asked of the profile rather
+// than written here, because the previews are what a level made of boxes costs
+// and so are what the profile has to be able to reach. See previewNodeBudget()
+// in js/state.js.
 
 function syncBlockNode(g, node, lod) {
   const p = g.__parts;
@@ -1320,16 +1350,28 @@ function syncBlockNode(g, node, lod) {
   // so calling it before the guard — to count what is inside — made an idle
   // repaint cost the whole machine per block on screen. Measured on twelve boxes
   // over 4800 states: 6.4ms of an 8.3ms repaint, on a canvas drawing twelve
-  // nodes. `largeMachineProfile()` cannot rescue that either, because
-  // drawnSize() correctly reports twelve — the profile stays off while the frame
-  // costs what a 4800-state machine costs. The count is cached beside the key
-  // for the same reason.
-  const key = lod ? '::lod::' : blockPreviewKey(node.id) + '|' + Math.round(w) + '|' + Math.round(h);
+  // nodes. The count is cached beside the key for the same reason.
+  //
+  // That measurement is also what put the profile through the boxes. It used to
+  // read `largeMachineProfile()` as no help here, because drawnSize() reported
+  // twelve and the profile stayed off while the frame cost what a 4800-state
+  // machine costs — which was a true observation about a wrong rule rather than
+  // a fact about previews. A box weighs the subtree it stands for now, so that
+  // canvas is judged large and the budget below comes down with everything
+  // else. See drawnSize() in js/state.js.
+  // The budget is part of the key. It is not derived from the machine — it
+  // moves when the profile flips, which a state moving into or out of some
+  // other block can cause — so a preview drawn at the old budget would keep its
+  // hundred and twenty dots until its own interior happened to change.
+  const budget = previewNodeBudget();
+  const key = lod ? '::lod::'
+    : blockPreviewKey(node.id) + '|' + Math.round(w) + '|' + Math.round(h) + '|' + budget;
   const stale = g.__previewKey !== key;
   let inside = null;
   if (stale) {
     inside = blockPreviewGraph(node.id);
     g.__previewKey = key;
+    g.__previewBudget = budget;
     // The *count* is cached, never the graph: holding the graph would pin every
     // member state and every edge of the block's interior for as long as the
     // node is on screen, which is the memory half of the cost this guard avoids.
@@ -1384,12 +1426,12 @@ function syncBlockNode(g, node, lod) {
     g.__pvEdgeD = null;
     return;
   }
-  drawPreview(g, inside, pv);
+  drawPreview(g, inside, pv, budget);
 }
 
-function drawPreview(g, inside, box) {
+function drawPreview(g, inside, box, budget) {
   const p = g.__parts;
-  const nodes = inside.nodes.slice(0, PREVIEW_MAX_NODES);
+  const nodes = inside.nodes.slice(0, budget);
   const shown = new Set(nodes.map(n => n.id));
   const bounds = thumbBounds(nodes, R, n => (n.box ? Math.hypot(n.box.w, n.box.h) / 2 : R));
   const fit = thumbFit(bounds, { x: box.x, y: box.y, w: box.w, h: box.h });
@@ -1409,7 +1451,7 @@ function drawPreview(g, inside, box) {
   // The *graph* is deliberately still not retained (see the note in
   // syncBlockNode): these hold ids and elements that are alive anyway, plus one
   // short string per drawn edge — the same characters `pvEdges` already carries,
-  // split up. Both are bounded by PREVIEW_MAX_NODES, which is what bounds the
+  // split up. Both are bounded by the preview budget, which is what bounds the
   // preview itself.
   const index = new Map();
   const edgeD = new Map();
@@ -1469,10 +1511,16 @@ function createPortNode(id) {
   const body = makeSVG('rect');
   body.classList.add('pn-body');
   g.appendChild(body);
+  // Two rows, the way the app labels everything else: LANGUAGE / MTM,
+  // ALPHABET Σ / 2. The role is the block's own word for this crossing and the
+  // target is where it goes, and one line could only ever carry one of them.
+  const role = makeSVG('text');
+  role.classList.add('pn-role');
+  g.appendChild(role);
   const label = makeSVG('text');
   label.classList.add('pn-label');
   g.appendChild(label);
-  g.__parts = { body, label };
+  g.__parts = { body, role, label };
   g.addEventListener('pointerdown', e => onPortDown(e, id));
   // Double-click hands a hand-placed tab back to the placement pass — the
   // "Reset Shape" a bent edge gets, in the one gesture a port has spare. It is
@@ -1482,37 +1530,123 @@ function createPortNode(id) {
     e.stopPropagation();
     resetPortPlacement(id);
   });
-  // Click to go back out, which is the other half of double-click to go in.
+  // Click follows the crossing to wherever its other end lives.
+  //
+  // Which generalises "go back out" rather than replacing it: when the other
+  // end is on the level immediately outside — the commonest case by far, and
+  // the only one that used to draw a tab at all — going to its scope *is*
+  // going out one level, so the gesture is unchanged for every port that
+  // existed before. What it adds is the case a fixed "up one" cannot serve: a
+  // tab on a nested block whose edge runs to the grandparent level, or into a
+  // sibling subtree, where up-one lands somewhere the edge does not go.
+  //
   // Suppressed by a drag: `onPortDown` arms the swallow the moment the pointer
   // travels, the way js/panel-float.js does it for a window's title bar — or
   // every reposition would end by leaving the scope it repositioned in.
   g.addEventListener('click', e => {
     if (g.__dragged) { g.__dragged = false; e.stopPropagation(); return; }
-    enterBlockScope(null, { up: 1 });
+    followPort(id);
   });
   return g;
 }
 
+/**
+ * Go to where a port's crossing actually goes, and select the state it lands on.
+ *
+ * A tab with nothing behind it — a declared entry or exit nobody has wired yet —
+ * still means "out", because that is what the boundary it sits on means.
+ */
+function followPort(id) {
+  const node = getNode(id);
+  const first = node?.crossings?.[0];
+  if (!first) { enterBlockScope(null, { up: 1 }); return; }
+  const other = getState(first.other);
+  if (!other) { enterBlockScope(null, { up: 1 }); return; }
+  enterBlockScope(null, { to: blockAncestry(other.blockId || null).map(b => b.id) });
+  clearSelection();
+  const landed = visibleNodeIdFor(other.id);
+  if (landed) {
+    App.selectedStates.add(landed);
+    emit(Change.CANVAS);
+  }
+}
+
 function syncPortNode(g, node) {
   const p = g.__parts;
-  const w = node.box.w, h = node.box.h;
   g.classList.toggle('is-in', node.dir === 'in');
   g.classList.toggle('is-out', node.dir === 'out');
   g.classList.toggle('is-manual', !!node.manual);
-  p.body.setAttribute('x', node.x - w / 2);
-  p.body.setAttribute('y', node.y - h / 2);
-  p.body.setAttribute('width', w);
-  p.body.setAttribute('height', h);
-  p.body.setAttribute('rx', h / 2);
-  p.label.setAttribute('x', node.x);
-  p.label.setAttribute('y', node.y + 4);
-  p.label.textContent = node.name;
+  g.classList.toggle('is-empty', !!node.empty || node.crossings?.length === 0);
+  // A crossing the block did not declare is drawn differently rather than
+  // silently like the others. It is genuinely different: a block whose boundary
+  // is not the one it declares is not a clean subroutine, so placing a copy of
+  // it elsewhere would not compose — and that is worth saying on the diagram
+  // rather than in a panel nobody opens.
+  g.classList.toggle('is-stray', node.declared === false);
+  placePortParts(p, node);
+  p.role.textContent = node.role ?? '';
+  p.label.textContent = node.target ?? node.name;
+  g.setAttribute('data-tip', portTip(node));
+  g.setAttribute('aria-label', portAria(node));
+}
+
+/**
+ * What a tab says on hover: every crossing behind it, with the full path of the
+ * other end.
+ *
+ * Columnar, the way js/states-transitions.js builds an edge's tooltip — the tab
+ * itself is 96px and has to be terse, so the count and the hop marker are all
+ * it can carry, and this is where the reader finds out which four states the
+ * "+3" was. The box is bounded and the content is not; see js/tooltip.js.
+ */
+function portTip(node) {
+  const rows = [];
+  // The heading names the crossing in the block's own terms where it has any:
+  // an exit's declared label, and "the entry" for the one way in a block
+  // declares. The `in` branch used to hold a ternary with two empty arms, so an
+  // undeclared arrival read exactly like the declared one and the row below was
+  // the only thing that distinguished them.
+  rows.push(node.dir === 'in'
+    ? `Control enters here${node.declared ? ' — the entry' : ''}`
+    : `Control leaves here${node.role && node.declared ? ` — “${node.role.toLowerCase()}”` : ''}`);
+  if (node.declared === false) {
+    rows.push('---');
+    rows.push(node.dir === 'in'
+      ? 'Not the block\u2019s declared entry'
+      : 'Not one of the block\u2019s declared exits');
+  }
+  const list = node.crossings || [];
+  if (list.length) {
+    rows.push('---');
+    rows.push(node.dir === 'in' ? 'From\tOn' : 'To\tOn');
+    for (const c of list.slice(0, PORT_TIP_ROWS)) {
+      rows.push(`${c.path || c.other}\t${transLabel(c.t)}`);
+    }
+    if (list.length > PORT_TIP_ROWS) rows.push(`${list.length - PORT_TIP_ROWS} more`);
+  } else {
+    rows.push('---');
+    rows.push('Nothing is wired to it yet');
+  }
+  rows.push('---');
+  rows.push('Click to follow it. Drag to move the tab'
+    + (node.manual ? ', double-click to place it automatically again' : '') + '.');
+  return rows.join('\n');
+}
+
+// Far past anything a reader meets — a boundary state with two hundred crossings
+// is pathological, and this only stops one building an unbounded grid on hover.
+const PORT_TIP_ROWS = 24;
+
+// Prose, not a table: a screen reader should hear a sentence rather than a grid
+// read left to right. The same split transLabelDescriptive makes.
+function portAria(node) {
   const where = node.dir === 'in' ? 'Control enters here' : 'Control leaves here';
-  const tip = where + ' (' + node.name + '). Drag to move it'
-    + (node.manual ? ', double-click to place it automatically again' : '')
-    + '. Click to go back out.';
-  g.setAttribute('data-tip', tip);
-  g.setAttribute('aria-label', tip);
+  const undeclared = node.declared === false ? ', which the block does not declare' : '';
+  const ends = (node.crossings || []).map(c => c.path || c.other);
+  const says = ends.length
+    ? ` ${node.dir === 'in' ? 'From' : 'To'} ${ends.slice(0, 3).join(', ')}${ends.length > 3 ? ` and ${ends.length - 3} more` : ''}.`
+    : ' Nothing is wired to it yet.';
+  return `${where}${undeclared}.${says} Click to follow it.`;
 }
 
 export function renderStates(view = cullViewport()) {
@@ -1572,16 +1706,25 @@ function evictNode(node) {
 // ══════════════════════════════════════════════════════════════════
 //  SIDEBAR
 // ══════════════════════════════════════════════════════════════════
+/**
+ * Write a section's count chip.
+ *
+ * Exported because the right panel has one too — the Trace card's — and it is
+ * written from js/simulation.js as the run grows. Two copies of "set the text
+ * and mute it when it is zero" is how the Trace count came to be a bare number
+ * beside a pill on every other section.
+ */
+export function setSectionCount(el, value) {
+  if (!el) return;
+  el.textContent = String(value);
+  // Empty sections get a muted chip so a populated count reads as the
+  // signal rather than every section shouting equally.
+  if (value) el.removeAttribute('data-empty');
+  else el.setAttribute('data-empty', '1');
+}
+
 export function updateLPanelSectionMeta() {
-  const setCount = (id, value) => {
-    const el = $(id);
-    if (!el) return;
-    el.textContent = String(value);
-    // Empty sections get a muted chip so a populated count reads as the
-    // signal rather than every section shouting equally.
-    if (value) el.removeAttribute('data-empty');
-    else el.setAttribute('data-empty', '1');
-  };
+  const setCount = (id, value) => setSectionCount($(id), value);
 
   setCount('lp-count-sigma', App.sigma?.size || 0);
   setCount('lp-count-stack', App.stackAlpha?.size || 0);
