@@ -980,20 +980,56 @@ export function syncDocumentLabels() {
   if (saveAs) saveAs.textContent = copy.saveAs;
 }
 
+// The caret half of the header's split Save button. Two things follow from it
+// having become a half rather than a button of its own:
+//
+//   * the menu is anchored to the *split*, not to the caret. An 18px caret is
+//     a modifier on the act beside it, and hanging a whole tray off its left
+//     edge would leave the tray pointing at nothing.
+//   * it is right-aligned to that split, because the control sits at the
+//     trailing edge of the header. Left-aligned it clamped against the window
+//     on every screen and so drifted away from the button that opened it.
+//
+// The width is *measured*, never assumed. `.ctx` is `min-width: 240px` over
+// items that are `white-space: nowrap`, so this menu is as wide as its widest
+// row plus its keyboard hint — a hard-coded 248 put its right edge past the
+// window and cut "Ctrl+Shift+S" in half. Measuring means showing it first and
+// placing it second, which is safe because it opens at `opacity: 0` and the
+// pop-in animation has not run a frame yet.
+//
+// The open state is written the way `toggleMoreMenu` writes its own: a class
+// on the wrapper for the pressed look, `aria-expanded` on the button.
+const SAVE_MENU_MIN_W = 248;
+const SAVE_MENU_GAP = 8;
+
 export function toggleSaveMenu(e) {
   e.stopPropagation();
   const m = $('save-menu');
   if (!m) return;
   if (m.style.display === 'block') { hideSaveMenu(); return; }
-  const r = e.currentTarget.getBoundingClientRect();
+  const btn = e.currentTarget;
+  const split = btn.closest ? btn.closest('.hdr-split') : null;
+  const r = (split || btn).getBoundingClientRect();
   m.style.display = 'block';
-  m.style.left = Math.max(8, Math.min(r.left, innerWidth - 248)) + 'px';
+  const w = m.offsetWidth || SAVE_MENU_MIN_W;
+  const right = Math.min(r.right, innerWidth - SAVE_MENU_GAP);
+  m.style.left = Math.max(SAVE_MENU_GAP, right - w) + 'px';
   m.style.top = (r.bottom + 6) + 'px';
+  setSaveMenuOpen(true);
 }
 export function hideSaveMenu() {
   const m = $('save-menu');
   if (m) m.style.display = 'none';
+  setSaveMenuOpen(false);
 }
+
+function setSaveMenuOpen(open) {
+  const split = $('save-split');
+  const btn = $('save-btn');
+  if (split && split.classList) split.classList.toggle('open', open);
+  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
 document.addEventListener('click', () => hideSaveMenu());
 
 // ── Opening ───────────────────────────────────────────────────────

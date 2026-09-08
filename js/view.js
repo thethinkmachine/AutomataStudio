@@ -82,10 +82,13 @@ export function setView(v) {
 
   applyAuxChrome(v);
 
-  // Keep the Tools trigger lit while an aux view is up, and mark the open item.
-  const toolsBtn = $('tools-btn');
-  if (toolsBtn) toolsBtn.classList.toggle('view-active', isAux);
-  document.querySelectorAll('#tools-menu .ctx-i').forEach(item => {
+  // Keep the trigger lit while an aux view is up, and mark the open item. The
+  // trigger is now the More button, because that menu is where the three
+  // destinations live -- so a reader who has an overlay open can see which
+  // control it came out of without opening anything.
+  const moreBtn = $('hdr-more-btn');
+  if (moreBtn) moreBtn.classList.toggle('view-active', isAux);
+  document.querySelectorAll('#hdr-more-menu .ctx-i').forEach(item => {
     item.classList.toggle('active', isAux && item.getAttribute('onclick') === `setView('${v}')`);
   });
 
@@ -152,30 +155,12 @@ export function closeAuxView() {
   if (AUX_VIEWS.includes(App.view)) setView('build');
 }
 
-// ── Tools menu (auxiliary views) ──
-export function toggleToolsMenu(e) {
-  if (e) e.stopPropagation();
-  const picker = $('tools-picker');
-  const menu = $('tools-menu');
-  const btn = $('tools-btn');
-  if (!picker || !menu) return;
-  const open = !menu.classList.contains('open');
-  hideMoreMenu();
-  menu.classList.toggle('open', open);
-  picker.classList.toggle('open', open);
-  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-}
-
-export function hideToolsMenu() {
-  const menu = $('tools-menu');
-  const picker = $('tools-picker');
-  const btn = $('tools-btn');
-  if (menu) menu.classList.remove('open');
-  if (picker) picker.classList.remove('open');
-  if (btn) btn.setAttribute('aria-expanded', 'false');
-}
-
 // ── Header overflow menu ──
+//  The three auxiliary views used to have a menu of their own -- a labelled
+//  "Tools" dropdown in the middle of the header -- and it is gone: they are
+//  rows in this menu now, under an Explore heading. See the note over that
+//  group in index.html for why. What that removes is a second header menu
+//  whose only job was to be mutually exclusive with this one.
 export function toggleMoreMenu(e) {
   if (e) e.stopPropagation();
   const wrap = $('hdr-more');
@@ -183,7 +168,6 @@ export function toggleMoreMenu(e) {
   const btn = $('hdr-more-btn');
   if (!wrap || !menu) return;
   const open = !menu.classList.contains('open');
-  hideToolsMenu();
   menu.classList.toggle('open', open);
   wrap.classList.toggle('open', open);
   if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -198,7 +182,7 @@ export function hideMoreMenu() {
   if (btn) btn.setAttribute('aria-expanded', 'false');
 }
 
-document.addEventListener('click', () => { hideToolsMenu(); hideMoreMenu(); });
+document.addEventListener('click', () => hideMoreMenu());
 
 // ══════════════════════════════════════════════════════════════════
 //  MACHINE TYPE

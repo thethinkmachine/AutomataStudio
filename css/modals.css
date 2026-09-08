@@ -3087,6 +3087,18 @@ button.sm-stat:disabled {
   background: var(--surface3);
 }
 
+/* Menu rows are divs, so focus has to be drawn by the app rather than by the
+   browser's default outline suppression in resets. Inset accent bar — the
+   same cue the app's own list rows and section headers use — plus the hover
+   ground so a keyboard user sees the row they are on.
+.ctx-i[tabindex]:focus-visible is the selector on purpose: rows built without
+   a tabindex (canvas ctx menus driven by pointer) keep their old look. */
+.ctx-i[tabindex]:focus-visible {
+  background: var(--surface3);
+  outline: none;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
 /* display:flex above outranks the user-agent's [hidden] rule, so a hidden menu
    item would otherwise still be laid out. Needed by #updates-btn, which ships
    hidden and is revealed only on desktop builds that can actually update. */

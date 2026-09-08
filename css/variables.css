@@ -36,13 +36,13 @@
      belongs to the canvas, and what each panel shows at its inner corners is
      the concave outside of it. mobile.css zeroes it where the panels stop
      being rails and the well stops having chrome beside it. */
-  --canvas-radius: 8px;
+  --canvas-radius: 14px;
   /* The well had chrome on three sides only — header above, a sidebar either
      side, and nothing under it, which left the bottom corners curving into a
      window edge instead of into a frame. This is the sill that closes it: the
      canvas stops short by this much and the panels carry --bg2 across the gap,
      so the frame runs all the way round. */
-  --canvas-sill: 10px;
+  --canvas-sill: 14px;
   --overlay: rgba(2, 8, 20, .68);
   --overlay-blur: 3px;
   --overlay-ring: rgba(255, 255, 255, .025);
