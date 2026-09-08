@@ -324,12 +324,19 @@
   overflow: hidden;
   background: var(--bg);
   cursor: default;
-  /* The well. overflow:hidden was already here, so the radius clips the grid
-     and glow pseudos and the SVG along with it. The ring is an inset shadow
-     rather than a border so it follows the curve without taking layout width
-     off a flex item that the camera measures. */
+  /* The well. `overflow: hidden` clips the grid, glow pseudos and SVG to the
+     radius. The surrounding panel surface supplies the concave corners, so
+     there is no seam or border to draw between the rails and the canvas.
+
+     All four corners, and the top two were once squared off on the reasoning
+     that the workspace tabs open down into this well, so its top edge is the
+     floor they stand on and a floor should not curve away at its ends. That
+     reasoning was wrong about what the corner is. The uncovered quarter is not
+     a gap in the floor — it is the concave corner each panel appears to have,
+     which is the one thing giving the panels a shape where they meet the
+     canvas, and the tabs are in the middle of the strip, nowhere near it. The
+     artifact under the tabs was the grid, and it is fixed where the grid is. */
   border-radius: var(--canvas-radius);
-  box-shadow: inset 0 0 0 1px var(--border);
   /* Stretch alignment subtracts the margin, so this shortens the canvas rather
      than overflowing #v-build — and the panels either side keep their full
      height, which is what turns the gap into a sill instead of a letterbox. */
@@ -356,6 +363,17 @@
      --cam-z is set by applyCamera() in js/canvas.js; it is unregistered, so it
      substitutes textually into the calc and the fallback covers first paint. */
   opacity: calc(.35 * clamp(0, (var(--cam-z, 1) * 40 - 12) / 12, 1));
+  /* Clean under the tab strip. The grid's vertical lines start at the well's
+     top edge, which is flush with the header, so they used to drop straight
+     out of the gaps between the workspace tabs — two of them
+     hanging off each tab, which reads as something drawn wrong rather than as
+     a background. A browser's content area is clean where the tabs land, for
+     the same reason. The ramp is short and only at the top: the grid is a
+     placement reference and losing sixteen pixels of it costs nothing, while a
+     hard cut-off would just be a horizontal line in place of the vertical
+     ones. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
 }
 
 .canvas-area::after {

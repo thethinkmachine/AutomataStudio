@@ -11,7 +11,7 @@ import { markDirty, redo, snapshot, snapshotSettings, trimStowedHistory, undo } 
 import { renderMinimap, scheduleMinimap } from './minimap.js';
 import { anyModalOpen, askConfirm, closeModal, registerModal, showOverlay } from './modal.js';
 import { includeNoteBounds, pruneNoteAnchorsExcluding, removeNotes } from './notes.js';
-import { CARD_AUTO_HIDE_MS, restartAutosaveTimer, saveBackupChecked, saveDocumentAs, saveNow, saveWorkspace, saveWorkspaceById } from './persistence.js';
+import { CARD_AUTO_HIDE_MS, hideSaveMenu, restartAutosaveTimer, saveBackupChecked, saveDocumentAs, saveNow, saveWorkspace, saveWorkspaceById } from './persistence.js';
 import { renderAll, updateBlockList, updateLPanel, updateRPanel } from './render.js';
 import { filterList } from './panel-list.js';
 import {
@@ -32,7 +32,7 @@ import {
 import { Change, emit, subscribe } from './store.js';
 import { DEFAULT_THEME, Themes } from './themes.js';
 import { clearAll, escapeHtml, showStatus } from './utils.js';
-import { AUX_VIEWS, applyMachineSwitch, closeAuxView, hideMoreMenu, hideToolsMenu, setMachine, setView, syncTapeCountUI } from './view.js';
+import { AUX_VIEWS, applyMachineSwitch, closeAuxView, hideMoreMenu, setMachine, setView, syncTapeCountUI } from './view.js';
 import { hideMobileMore, initMobileShell, setMobileSheetDetent, syncMobileBar, syncMobileTools, syncMobileWorkspaceButton } from './mobile.js';
 
 subscribe(Change.TABS, renderTabs);
@@ -415,7 +415,7 @@ export function renderTabOverflowMenu() {
     const isActive = ws.id === activeWorkspaceId;
     const safeName = escapeTabText(ws.name || 'Workspace');
     return `
-    <div class="tab-overflow-item ${isActive ? 'active' : ''}" role="option" aria-selected="${isActive ? 'true' : 'false'}" tabindex="0" style="--item-accent:${getWorkspaceAccent(ws)}" onclick="switchTabFromOverflow('${ws.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();switchTabFromOverflow('${ws.id}');}">
+    <div class="tab-overflow-item ${isActive ? 'active' : ''}" role="option" aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? '0' : '-1'}" style="--item-accent:${getWorkspaceAccent(ws)}" onclick="switchTabFromOverflow('${ws.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();switchTabFromOverflow('${ws.id}');}">
       <span class="tab-overflow-item-dot" aria-hidden="true"></span>
       <span class="tab-overflow-item-name" data-tip="${safeName}">${safeName}</span>
       ${ws.dirty ? '<span class="tab-overflow-item-dirty" aria-hidden="true" data-tip="Unsaved changes"></span>' : ''}
@@ -423,7 +423,7 @@ export function renderTabOverflowMenu() {
     </div>
   `;
   }).join('') + `
-    <div class="tab-overflow-new" role="option" aria-selected="false" tabindex="0"
+    <div class="tab-overflow-new" role="option" aria-selected="false" tabindex="-1"
          onclick="hideTabOverflowMenu(); createTab();"
          onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();hideTabOverflowMenu();createTab();}">
       <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></svg>
@@ -455,6 +455,8 @@ export function toggleTabOverflowMenu(e) {
   menu.style.display = 'block';
   menu.style.visibility = 'hidden';
   if (btn) btn.setAttribute('aria-expanded', 'true');
+  const wsBtn = $('mobile-ws-btn');
+  if (wsBtn) wsBtn.setAttribute('aria-expanded', 'true');
   renderTabOverflowMenu();
   const m = menu.getBoundingClientRect();
   // Right-align the menu to the button, clamped inside the viewport, and
@@ -472,9 +474,70 @@ export function hideTabOverflowMenu() {
   if (menu) menu.style.display = 'none';
   const btn = $('tab-overflow-btn');
   if (btn) btn.setAttribute('aria-expanded', 'false');
+  // The mobile workspace button opens this same listbox, so its expanded
+  // state moves with the menu's — a static answer is a lie half the time.
+  const wsBtn = $('mobile-ws-btn');
+  if (wsBtn) wsBtn.setAttribute('aria-expanded', 'false');
 }
 
 document.addEventListener('click', () => hideTabOverflowMenu());
+
+// Menu rows are divs with onclick handlers — onclick is not a keyboard
+// interface. Rather than teach every builder to emit its own keydown, one
+// delegated listener answers for any menu row that carries a tabindex:
+// Enter and Space activate the row, and the arrow keys move between the
+// rows of its menu the way a real menu does (which is what role="menu" and
+// role="listbox" promise a keyboard user in the first place). The roving
+// tabindex follows the focus: the row that has it keeps `tabindex="0"`,
+// the rest answer `-1`, so Tab itself leaves the menu rather than walking
+// every row.
+const MENU_ROW_SELECTOR = '.ctx-i, .tab-overflow-item, .model-item, .tab-overflow-new';
+document.addEventListener('keydown', e => {
+  const row = e.target.closest && e.target.closest(MENU_ROW_SELECTOR);
+  if (!row) return;
+  const key = e.key;
+  if (key === 'Enter' || key === ' ') {
+    e.preventDefault();
+    if (row.classList.contains('disabled') || row.getAttribute('aria-disabled') === 'true') return;
+    row.click();
+    return;
+  }
+  if (key !== 'ArrowDown' && key !== 'ArrowUp') return;
+  e.preventDefault();
+  const rows = Array.from(row.parentElement.children).filter(el =>
+    el.matches && el.matches(MENU_ROW_SELECTOR) && el.offsetParent !== null);
+  const idx = rows.indexOf(row);
+  const next = key === 'ArrowDown'
+    ? rows[(idx + 1) % rows.length]
+    : rows[(idx - 1 + rows.length) % rows.length];
+  if (!next || !next.focus) return;
+  row.setAttribute('tabindex', '-1');
+  next.setAttribute('tabindex', '0');
+  next.focus();
+});
+
+// One dismissal path for every popover the header can open, so Escape and a
+// window blur do for all of them what the outside click already does. The
+// More menu, the tab-overflow listbox, the save menu and the model picker
+// each own a close function; this is the single place they are called
+// together, which is what keeps the next header menu from shipping with the
+// same Escape gap the four so far have.
+export function dismissHeaderMenus() {
+  let closed = false;
+  const more = $('hdr-more-menu');
+  if (more && more.classList.contains('open')) { hideMoreMenu(); closed = true; }
+  const tabs = $('tab-overflow-menu');
+  if (tabs && tabs.style.display === 'block') { hideTabOverflowMenu(); closed = true; }
+  const save = $('save-menu');
+  if (save && save.style.display === 'block') { hideSaveMenu(); closed = true; }
+  const model = $('model-picker-container');
+  if (model && model.classList.contains('open')) { closeModelPicker(); closed = true; }
+  return closed;
+}
+
+// Losing the window — alt-tab, a dialog from the OS, another monitor — should
+// not leave a popover parked open under wherever the pointer went.
+window.addEventListener('blur', () => dismissHeaderMenus());
 
 /**
  * Write the live workspace back into its own tab record, on the way to
@@ -1033,6 +1096,10 @@ document.addEventListener('keydown', e => {
   // covered by the tag check above — but its buttons are not, and Delete on a
   // focused "remove this word" button must not delete the selected state.
   if (e.target.closest && e.target.closest('.example-card')) return;
+  // Same reasoning once more for menu rows: they are divs, so the tag check
+  // above does not filter them, and pressing "s" while arrowing through a
+  // header menu must not switch the canvas tool underneath it.
+  if (e.target.closest && e.target.closest('.ctx-i, .model-item, .tab-overflow-item')) return;
   if (e.ctrlKey || e.metaKey) {
     if (e.key === 'z') { e.preventDefault(); undo(); }
     if (e.key === 'y' || e.key === 'Z') { e.preventDefault(); redo(); }
@@ -1090,11 +1157,14 @@ document.addEventListener('keydown', e => {
   }
   if (e.key === 'Escape') {
     // Open modals are handled in modal.js and never reach this far.
-    const menuOpen = document.querySelector('#tools-menu.open, #hdr-more-menu.open');
-    if (menuOpen) {
-      // Dismiss header menus before anything else they sit above.
-      if (typeof hideToolsMenu === 'function') hideToolsMenu();
-      if (typeof hideMoreMenu === 'function') hideMoreMenu();
+    // Every popover the header can open answers to Escape here — the More
+    // menu, the tab-overflow listbox, the save menu and the model picker —
+    // not just the one that happens to sit above the canvas. Escape is the
+    // dismissal reflex everywhere else in the app, and a header menu that
+    // only closes on an outside click is a menu the keyboard cannot leave.
+    if (dismissHeaderMenus()) {
+      // A menu was open; the key closed it and stops here, the way closing
+      // the Tools menu used to before any aux view or selection saw the key.
     } else if (typeof AUX_VIEWS !== 'undefined' && AUX_VIEWS.includes(App.view)) {
       // Escape from an auxiliary view returns to the canvas.
       closeAuxView();
@@ -2576,7 +2646,11 @@ export function renderModelPicker() {
           const showCode = !full.startsWith(mid);
           return `
             <div class="model-item ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}"
-                 onclick="${isDisabled ? '' : `selectModel('${mid}')`}">
+                 role="option" aria-selected="${isActive ? 'true' : 'false'}"
+                 ${isDisabled ? 'aria-disabled="true"' : ''}
+                 tabindex="0"
+                 onclick="${isDisabled ? '' : `selectModel('${mid}')`}"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${isDisabled ? '' : `selectModel('${mid}')`}}">
               <span class="model-item-label">${full}</span>
               ${isDisabled ? '<span class="model-item-status">Coming Soon</span>'
                            : (showCode ? `<span class="model-item-code">${mid}</span>` : '')}
@@ -2605,35 +2679,59 @@ export function renderModelPicker() {
   menu.innerHTML = html;
 }
 
+let guardNextClose = false;
+
+export function closeModelPicker() {
+  const container = $('model-picker-container');
+  if (!container) return;
+  container.classList.remove('open');
+  window.removeEventListener('click', closeModelPickerOnClickOutside);
+  const btn = $('model-picker-btn');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
 export function toggleModelPicker(force) {
   const container = $('model-picker-container');
   if (!container) return;
-  const isOpen = force === undefined ? container.classList.contains('open') : !force;
-  
-  if (!isOpen) { // Opening
-    renderModelPicker();
-    container.classList.add('open');
-    // Global click listener for and close on outside click
-    setTimeout(() => {
-      window.addEventListener('click', closeModelPickerOnClickOutside);
-    }, 0);
-  } else {
-    container.classList.remove('open');
-    window.removeEventListener('click', closeModelPickerOnClickOutside);
+  const wantOpen = force === undefined ? !container.classList.contains('open') : !!force;
+
+  if (!wantOpen) {
+    // Closing, whether by explicit force or by the toggle's own second
+    // press: the listener comes off with the menu.
+    closeModelPicker();
+    return;
   }
+
+  // An opening click: the same click bubbles to window level, where
+  // closeModelPickerOnClickOutside would see it as outside-the-menu and close
+  // what is only just opening. guardNextClose swallows that one click instead
+  // of racing a setTimeout(0) against it, the way the rest of the app
+  // (modal.js, the theme picker) already does.
+  guardNextClose = true;
+  requestAnimationFrame(() => { guardNextClose = false; });
+  const btn = $('model-picker-btn');
+  if (btn) btn.setAttribute('aria-expanded', 'true');
+  renderModelPicker();
+  container.classList.add('open');
+  window.addEventListener('click', closeModelPickerOnClickOutside);
 }
 
 export function closeModelPickerOnClickOutside(e) {
+  if (guardNextClose) return;
   const container = $('model-picker-container');
   if (container && !container.contains(e.target)) {
-    toggleModelPicker(false);
+    closeModelPicker();
+    // Return focus to the trigger so the keyboard is not stranded inside a
+    // menu that just vanished.
+    const btn = $('model-picker-btn');
+    if (btn) btn.focus();
   }
 }
 
 export function selectModel(id) {
   if (MachineTypes[id] && MachineTypes[id].implemented) {
     setMachine(id);
-    toggleModelPicker(false);
+    closeModelPicker();
   }
 }
 

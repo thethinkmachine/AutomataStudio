@@ -733,11 +733,12 @@ body.panel-resizing .rpanel {
   gap: 2px;
   min-width: 0;
   min-height: 36px;
-  /* One pixel taller than the header's content box, so the selected tab's own
-     fill lands *on* the header's bottom rule and breaks it. That break is the
-     whole tab metaphor: the rule separates chrome from content everywhere
-     except under the tab you are reading, where the two are the same thing. */
-  margin-bottom: -1px;
+  /* The strip sits flush against the header's bottom rule, and the selected
+     tab's own border-bottom (see .panel-tab.active) covers that rule's pixel
+     so the two meet with nothing between them — the seam is drawn by the tab
+     rather than by overlapping the header's rule, which keeps the strip's
+     height stable as selection moves between tabs of differing fill. */
+  margin-bottom: 0;
 }
 
 .panel-tab {
@@ -780,10 +781,10 @@ body.panel-resizing .rpanel {
 }
 
 /* The accent rides the tab's top edge rather than sitting under it as a rule.
-   Under the tab is where the header's hairline is, and the selected tab's job
-   is to *break* that line, not to draw a second one over it. It needs no radius
-   of its own: .panel-tab clips to its own rounded corners, so the cap picks up
-   the curve it is sitting inside. */
+   Under the tab is where the tab's own seam border is, and a second rule there
+   would draw back what the shape just removed. It needs no radius of its own:
+   .panel-tab clips to its own rounded corners, so the cap picks up the curve
+   it is sitting inside. */
 .panel-tab::after {
   content: '';
   position: absolute;
@@ -821,12 +822,14 @@ body.panel-resizing .rpanel {
 }
 
 /* Continuous with the panel below it: same fill, an outline that stops at the
-   header rule, and the extra pixel from .panel-tabs' negative margin covering
-   that rule so the two meet with nothing between them. */
+   header rule, and the tab's own bottom border in --bg2 covering that rule so
+   the two meet with nothing between them. */
 .panel-tab.active {
   color: var(--text);
   background: var(--bg2);
   border-color: var(--border);
+  border-bottom: 1px solid var(--bg2);
+  margin-bottom: -1px;
 }
 
 .panel-tab.active:hover {

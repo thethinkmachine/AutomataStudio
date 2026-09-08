@@ -33,6 +33,7 @@
   <link rel="stylesheet" href="css/modals.css">
   <link rel="stylesheet" href="css/dropdowns.css">
   <link rel="stylesheet" href="css/mobile.css">
+  <link rel="stylesheet" href="css/chrome-polish.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body);"></script>
@@ -107,175 +108,231 @@
       <svg class="chevron" viewBox="0 0 256 256" aria-hidden="true" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg>
     </button>
     <div class="ctx tab-overflow-menu" id="tab-overflow-menu" role="listbox" aria-label="Workspace tabs"></div>
-    <div class="model-picker-container" id="model-picker-container">
-      <button class="model-picker-btn" id="model-picker-btn" onclick="toggleModelPicker()" data-tip="Switch machine model">
-        <div class="model-picker-info">
-          <span class="model-picker-cat" id="cur-model-cat">Finite Automata</span>
-          <span class="model-picker-type" id="cur-model-name">DFA</span>
-        </div>
-        <svg class="chevron" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
-      </button>
 
-      <div class="model-picker-menu" id="model-picker-menu">
-        <!-- Categories and machines will be injected here by JS -->
-      </div>
-    </div>
-
-    <!-- Canvas actions: operate on the machine currently on the canvas. -->
-    <div class="hdr-group" id="hdr-canvas-actions">
-      <!-- One button in two modes, and the canvas decides which: a plus on an
-           empty canvas builds a machine by asking questions, a pencil on a
-           canvas with a machine on it edits that machine with the answers
-           already filled in. syncWizardButton() in js/wizard-ui.js swaps the
-           glyph, the label and the tooltip, subscribed to Change.GRAPH.
-           The plus is circled deliberately — the tab bar's "create workspace"
-           control is a bare plus, and two identical glyphs in one header
-           meaning two different things is a trap. -->
-      <button class="hbtn icon-only" id="machine-wizard-btn" type="button"
-              aria-haspopup="dialog" aria-controls="wizard-modal" aria-expanded="false"
-              aria-label="Build a machine step by step" onclick="openMachineWizard()"
-              data-tip="Build a machine" data-tip-kbd="N">
-        <svg viewBox="0 0 256 256" aria-hidden="true" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm48-88a8,8,0,0,1-8,8H136v32a8,8,0,0,1-16,0V136H88a8,8,0,0,1,0-16h32V88a8,8,0,0,1,16,0v32h32A8,8,0,0,1,176,128Z" /></svg>
-      </button>
-      <div class="hdr-sep canvas-danger-sep"></div>
-      <button class="hbtn warn icon-only" onclick="clearAll()" data-tip="Clear canvas" data-tip-kbd="⇧X" aria-label="Clear canvas">
-        <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
-      </button>
-    </div>
-
-    <div class="hdr-sep"></div>
-
-    <!-- Auxiliary views. Not peers of Build: they open over the canvas. -->
-    <div class="tools-picker" id="tools-picker">
-      <button class="hbtn tools-btn" id="tools-btn" type="button" aria-haspopup="menu" aria-expanded="false"
-        onclick="toggleToolsMenu(event)" data-tip="Algorithms, Grammar & Reference">
-        <svg viewBox="0 0 256 256" fill="currentColor"><path d="M226.76,69a8,8,0,0,0-12.84-2.88l-40.3,37.19-17.23-3.7-3.7-17.23,37.19-40.3A8,8,0,0,0,187,29.24,72,72,0,0,0,88,96,72.34,72.34,0,0,0,94,124.94L33.79,177.79l-.36.34a32,32,0,0,0,45.26,45.26l.34-.36L131.06,162A72,72,0,0,0,232,96,71.56,71.56,0,0,0,226.76,69ZM160,152a56.14,56.14,0,0,1-27.07-7,8,8,0,0,0-9.92,1.77L67.11,212.6a16,16,0,0,1-22.62-22.62L111.24,133a8,8,0,0,0,1.77-9.93,56,56,0,0,1,58.36-82.31l-31.2,33.81a8,8,0,0,0-1.94,7.1L143.94,109a8,8,0,0,0,6.14,6.14l26.35,5.66a8,8,0,0,0,7.1-1.94l33.81-31.2A56.06,56.06,0,0,1,160,152Z" /></svg>
-        Tools
-        <svg class="chevron" viewBox="0 0 256 256" aria-hidden="true"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
-      </button>
-      <div class="ctx tools-menu" id="tools-menu" role="menu" aria-label="Auxiliary tools">
-        <div class="ctx-i" role="menuitem" onclick="setView('algo')">
-          <svg viewBox="0 0 256 256" fill="currentColor"><path d="M69.12,94.15,28.5,128l40.62,33.85a8,8,0,1,1-10.24,12.3l-48-40a8,8,0,0,1,0-12.3l48-40a8,8,0,0,1,10.24,12.3Zm176,27.7-48-40a8,8,0,1,0-10.24,12.3L227.5,128l-40.62,33.85a8,8,0,1,0,10.24,12.3l48-40a8,8,0,0,0,0-12.3ZM162.73,32.48a8,8,0,0,0-10.25,4.79l-64,176a8,8,0,0,0,4.79,10.26A8.14,8.14,0,0,0,96,224a8,8,0,0,0,7.52-5.27l64-176A8,8,0,0,0,162.73,32.48Z" /></svg>
-          Algorithms<span class="ctx-kbd-hint">2</span>
-        </div>
-        <div class="ctx-i" role="menuitem" onclick="setView('grammar')">
-          <svg viewBox="0 0 256 256" fill="currentColor"><path d="M208,24H72A32,32,0,0,0,40,56V224a8,8,0,0,0,8,8H192a8,8,0,0,0,0-16H56a16,16,0,0,1,16-16H208a8,8,0,0,0,8-8V32A8,8,0,0,0,208,24Zm-8,160H72a31.82,31.82,0,0,0-16,4.29V56A16,16,0,0,1,72,40H200Z" /></svg>
-          Grammar<span class="ctx-kbd-hint">3</span>
-        </div>
-        <div class="ctx-i" role="menuitem" onclick="setView('reference')">
-          <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h64a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48ZM96,192H32V64H96a24,24,0,0,1,24,24V200A39.81,39.81,0,0,0,96,192Zm128,0H160a39.81,39.81,0,0,0-24,8V88a24,24,0,0,1,24-24h64Z" /></svg>
-          Reference<span class="ctx-kbd-hint">4</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- App-level actions. Frequent ones stay visible; the rest collapse. -->
     <div class="hdr-right">
-      <div class="hdr-group hdr-history-actions">
-        <button class="hbtn icon-only" onclick="undo()" data-tip="Undo" data-tip-kbd="Ctrl+Z" aria-label="Undo">
-          <svg viewBox="0 0 256 256" fill="currentColor"><path d="M232,144a64.07,64.07,0,0,1-64,64H80a8,8,0,0,1,0-16h88a48,48,0,0,0,0-96H51.31l34.35,34.34a8,8,0,0,1-11.32,11.32l-48-48a8,8,0,0,1,0-11.32l48-48A8,8,0,0,1,85.66,45.66L51.31,80H168A64.07,64.07,0,0,1,232,144Z" /></svg>
-        </button>
-        <button class="hbtn icon-only" onclick="redo()" data-tip="Redo" data-tip-kbd="Ctrl+Y" aria-label="Redo">
-          <svg viewBox="0 0 256 256" fill="currentColor"><path d="M170.34,130.34,204.69,96H88a48,48,0,0,0,0,96h88a8,8,0,0,1,0,16H88A64,64,0,0,1,88,80H204.69L170.34,45.66a8,8,0,0,1,11.32-11.32l48,48a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32-11.32Z" /></svg>
-        </button>
-      </div>
+      <!-- ─── THE MACHINE ───
+           Which machine model this is, and the button that builds or edits
+           one, joined into a single control. They belong together: both are
+           about the machine rather than about the canvas it is drawn on or the
+           app around it, and the wizard button is prefilled from whatever the
+           picker currently says.
 
-      <div class="hdr-sep"></div>
+           It leads the right cluster rather than sitting beside the wordmark.
+           Next to the logo it read as branding — a second lockup competing
+           with the one it was pressed against — and it left the app's one
+           piece of standing information as far as possible from the controls
+           that act on it. Here it is the first thing in the run of controls,
+           which is what it is: the subject the toolbar to its right operates
+           on.
 
-      <div class="hdr-group hdr-file-actions">
-        <button class="hbtn icon-only hdr-load-action" onclick="loadJSON()" data-tip="Open machine (.automaton, .json, .png, .jff)" aria-label="Open machine">
-          <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0ZM93.66,77.66,120,51.31V144a8,8,0,0,0,16,0V51.31l26.34,26.35a8,8,0,0,0,11.32-11.32l-40-40a8,8,0,0,0-11.32,0l-40,40A8,8,0,0,0,93.66,77.66Z" /></svg>
-        </button>
-        <button class="hbtn icon-only" id="save-now-btn" onclick="saveNow()" data-tip="Save workspace" data-tip-kbd="Ctrl+S" aria-label="Save workspace">
-          <!-- Floppy: an in-place save, distinct from the export tray's arrow. -->
-          <svg viewBox="0 0 256 256" fill="currentColor"><path d="M219.31,72,184,36.69A16,16,0,0,0,172.69,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V83.31A16,16,0,0,0,219.31,72ZM96,48h64V80H96Zm64,160H96V160h64Zm48,0H176V160a16,16,0,0,0-16-16H96a16,16,0,0,0-16,16v48H48V48H80V80A16,16,0,0,0,96,96h64a16,16,0,0,0,16-16V49.94l32,32Z" /></svg>
-          <span class="save-dot" id="save-dirty-dot" aria-hidden="true"></span>
-          <span class="autosave-countdown" id="autosave-countdown" aria-hidden="true"></span>
-        </button>
-        <button class="hbtn icon-only hdr-export-action" id="save-btn" onclick="toggleSaveMenu(event)" data-tip="Export and share" aria-label="Export and share">
-          <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,124.69V32a8,8,0,0,0-16,0v92.69L93.66,98.34a8,8,0,0,0-11.32,11.32Z" /></svg>
-        </button>
-      </div>
-
-      <div class="hdr-sep"></div>
-
-      <div class="hdr-more" id="hdr-more">
-        <button class="hbtn icon-only" id="hdr-more-btn" type="button" aria-haspopup="menu" aria-expanded="false"
-          onclick="toggleMoreMenu(event)" data-tip="More options" aria-label="More options">
-          <svg viewBox="0 0 256 256" fill="currentColor"><path d="M144,128a16,16,0,1,1-16-16A16,16,0,0,1,144,128ZM60,112a16,16,0,1,0,16,16A16,16,0,0,0,60,112Zm136,0a16,16,0,1,0,16,16A16,16,0,0,0,196,112Z" /></svg>
-        </button>
-        <div class="ctx hdr-more-menu" id="hdr-more-menu" role="menu" aria-label="More options">
-          <div class="hdr-more-compact-actions">
-            <div class="ctx-i" role="menuitem" onclick="openMachineWizard()">
-              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm48-88a8,8,0,0,1-8,8H136v32a8,8,0,0,1-16,0V136H88a8,8,0,0,1,0-16h32V88a8,8,0,0,1,16,0v32h32A8,8,0,0,1,176,128Z" /></svg>
-              New machine<span class="ctx-kbd-hint">N</span>
+           Same idea as `.hdr-split`, with one difference: the ground is here
+           at rest rather than only on hover, because the picker carries a
+           resting fill of its own and taking that away to match would be a
+           worse trade than giving the pair one. -->
+      <div class="hdr-machine" id="hdr-machine">
+        <div class="model-picker-container" id="model-picker-container">
+          <button class="model-picker-btn" id="model-picker-btn" type="button" aria-haspopup="listbox" aria-expanded="false" onclick="toggleModelPicker()" data-tip="Switch machine model">
+            <div class="model-picker-info">
+              <span class="model-picker-cat" id="cur-model-cat">Finite Automata</span>
+              <span class="model-picker-type" id="cur-model-name">DFA</span>
             </div>
-            <div class="ctx-i" role="menuitem" onclick="openStateMate()">
-              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88Z" /></svg>
-              StateMate
-            </div>
-            <div class="ctx-i" role="menuitem" onclick="autoLayout()">
-              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M160,112h48a16,16,0,0,0,16-16V48a16,16,0,0,0-16-16H160a16,16,0,0,0-16,16V64H128a24,24,0,0,0-24,24v32H72v-8A16,16,0,0,0,56,96H24A16,16,0,0,0,8,112v32a16,16,0,0,0,16,16H56a16,16,0,0,0,16-16v-8h32v32a24,24,0,0,0,24,24h16v16a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V160a16,16,0,0,0-16-16H160a16,16,0,0,0-16,16v16H128a8,8,0,0,1-8-8V88a8,8,0,0,1,8-8h16V96A16,16,0,0,0,160,112Z" /></svg>
-              Auto-layout
-            </div>
-            <div class="ctx-i danger" role="menuitem" onclick="clearAll()">
-              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16Z" /></svg>
-              Clear Canvas<span class="ctx-kbd-hint">⇧X</span>
-            </div>
-            <div class="ctx-divider"></div>
-            <div class="ctx-i" role="menuitem" onclick="setView('algo')">Algorithms<span class="ctx-kbd-hint">2</span></div>
-            <div class="ctx-i" role="menuitem" onclick="setView('grammar')">Grammar<span class="ctx-kbd-hint">3</span></div>
-            <div class="ctx-i" role="menuitem" onclick="setView('reference')">Reference<span class="ctx-kbd-hint">4</span></div>
-            <div class="ctx-divider"></div>
-            <div class="ctx-i" role="menuitem" onclick="loadJSON()">Open Machine…</div>
-            <div class="ctx-i" role="menuitem" onclick="toggleSaveMenu(event); hideMoreMenu()">Export and Share…</div>
-            <div class="ctx-divider"></div>
-          </div>
-          <div class="ctx-i" role="menuitem" id="fs-btn" onclick="toggleFullscreen()">
-            <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48V96a8,8,0,0,1-16,0V67.31l-42.34,42.35a8,8,0,0,1-11.32-11.32L188.69,56H160a8,8,0,0,1,0-16h48A8,8,0,0,1,216,48ZM98.34,146.34,56,188.69V160a8,8,0,0,0-16,0v48a8,8,0,0,0,8,8H96a8,8,0,0,0,0-16H67.31l42.35-42.34a8,8,0,0,0-11.32-11.32ZM208,152a8,8,0,0,0-8,8v28.69l-42.34-42.35a8,8,0,0,0-11.32,11.32L188.69,200H160a8,8,0,0,0,0,16h48a8,8,0,0,0,8-8V160A8,8,0,0,0,208,152ZM67.31,56H96a8,8,0,0,0,0-16H48a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31l42.34,42.35a8,8,0,0,0,11.32-11.32Z" /></svg>
-            Fullscreen<span class="ctx-kbd-hint">F</span>
-          </div>
-          <div class="ctx-i" role="menuitem" id="theme-btn" aria-haspopup="dialog" aria-expanded="false" onclick="toggleThemePicker(event)">
-            <svg viewBox="0 0 256 256" fill="currentColor"><path d="M233.54,142.23a8,8,0,0,0-8-2,88.08,88.08,0,0,1-109.8-109.8,8,8,0,0,0-10-10,104.84,104.84,0,0,0-52.91,37A104,104,0,0,0,136,224a103.09,103.09,0,0,0,62.52-20.88,104.84,104.84,0,0,0,37-52.91A8,8,0,0,0,233.54,142.23ZM188.9,190.34A88,88,0,0,1,65.66,67.11a89,89,0,0,1,31.4-26A106,106,0,0,0,96,56,104.11,104.11,0,0,0,200,160a106,106,0,0,0,14.92-1.06A89,89,0,0,1,188.9,190.34Z" /></svg>
-            Theme<span class="ctx-kbd-hint" id="theme-btn-current"></span>
-          </div>
-          <div class="ctx-i" role="menuitem" onclick="openSettingsModal()">
-            <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A112.1,112.1,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.62a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.08,8.08,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8.08,8.08,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z" /></svg>
-            Settings
-          </div>
-          <div class="ctx-divider"></div>
-          <div class="ctx-i" role="menuitem" onclick="showHelpModal()">
-            <svg viewBox="0 0 256 256" fill="currentColor"><path d="M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z" /></svg>
-            Keyboard Shortcuts<span class="ctx-kbd-hint">?</span>
-          </div>
-          <div class="ctx-i" role="menuitem" onclick="openAboutModal()">
-            <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z" /></svg>
-            About
-          </div>
-          <!-- Desktop only, and only where the build has an update channel:
-               electron-bridge.js unhides this once the main process confirms it.
-               No onclick= here on purpose — the listener is attached in
-               electron-bridge.js like the window controls, which keeps the handler
-               off the global bridge.js surface. -->
-          <div class="ctx-i" role="menuitem" id="updates-btn" hidden>
-            <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,152v56a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V152a8,8,0,0,1,16,0v56H208V152a8,8,0,0,1,16,0ZM122.34,157.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,132.69V40a8,8,0,0,0-16,0v92.69L93.66,106.34a8,8,0,0,0-11.32,11.32Z" /></svg>
-            <span id="updates-btn-label">Check for Updates</span>
+            <svg class="chevron" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+          </button>
+          <div class="model-picker-menu" id="model-picker-menu">
+            <!-- Categories and machines will be injected here by JS -->
           </div>
         </div>
-        <!-- Anchored to .hdr-more exactly like the menu above it, and
-             deliberately not an .overlay: the canvas has to stay visible and
-             unblurred, because seeing the diagram re-theme is the preview. -->
-        <div class="theme-panel" id="theme-panel" role="dialog" aria-modal="false" aria-label="Colour theme">
-          <div class="theme-panel-hd">
-            <span class="theme-panel-title">Theme</span>
-            <button class="theme-panel-close" id="theme-panel-close" type="button" aria-label="Close theme picker">
-              <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg>
+        <!-- One button in two modes, and the canvas decides which: a plus on
+             an empty canvas builds a machine by asking questions, a pencil on
+             a canvas with a machine on it edits that machine with the answers
+             already filled in. syncWizardButton() in js/wizard-ui.js swaps the
+             glyph, the label and the tooltip, subscribed to Change.GRAPH.
+             The plus is circled deliberately — the tab bar's "create
+             workspace" control is a bare plus, and two identical glyphs in one
+             header meaning two different things is a trap. -->
+        <button class="hbtn icon-only hdr-machine-act" id="machine-wizard-btn" type="button"
+                aria-haspopup="dialog" aria-controls="wizard-modal" aria-expanded="false"
+                aria-label="Build a machine step by step" onclick="openMachineWizard()"
+                data-tip="Build a machine" data-tip-kbd="N">
+          <svg viewBox="0 0 256 256" aria-hidden="true" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm48-88a8,8,0,0,1-8,8H136v32a8,8,0,0,1-16,0V136H88a8,8,0,0,1,0-16h32V88a8,8,0,0,1,16,0v32h32A8,8,0,0,1,176,128Z" /></svg>
+        </button>
+      </div>
+
+      <!-- ─── THE TOOLBAR ───
+           One ground, with rules inside it. There were three: the canvas
+           actions, the history pair and the file actions each carried their
+           own soft pill, and hairline separators ran between them as well —
+           two devices doing one job, so the right third of the header read as
+           three unrelated widgets rather than as a toolbar. A browser or an
+           editor uses one or the other and mostly neither. One ground says
+           "these are the app's controls", and the rules inside it say where
+           one kind ends and the next begins. -->
+      <div class="hdr-toolbar" id="hdr-toolbar">
+        <!-- Canvas actions: operate on the machine currently on the canvas. -->
+        <div class="hdr-group" id="hdr-canvas-actions">
+            <button class="hbtn warn icon-only" onclick="clearAll()" data-tip="Clear canvas" data-tip-kbd="⇧X" aria-label="Clear canvas">
+            <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
+          </button>
+        </div>
+        <div class="hdr-sep"></div>
+        <div class="hdr-group hdr-history-actions">
+          <button class="hbtn icon-only" onclick="undo()" data-tip="Undo" data-tip-kbd="Ctrl+Z" aria-label="Undo">
+            <svg viewBox="0 0 256 256" fill="currentColor"><path d="M232,144a64.07,64.07,0,0,1-64,64H80a8,8,0,0,1,0-16h88a48,48,0,0,0,0-96H51.31l34.35,34.34a8,8,0,0,1-11.32,11.32l-48-48a8,8,0,0,1,0-11.32l48-48A8,8,0,0,1,85.66,45.66L51.31,80H168A64.07,64.07,0,0,1,232,144Z" /></svg>
+          </button>
+          <button class="hbtn icon-only" onclick="redo()" data-tip="Redo" data-tip-kbd="Ctrl+Y" aria-label="Redo">
+            <svg viewBox="0 0 256 256" fill="currentColor"><path d="M170.34,130.34,204.69,96H88a48,48,0,0,0,0,96h88a8,8,0,0,1,0,16H88A64,64,0,0,1,88,80H204.69L170.34,45.66a8,8,0,0,1,11.32-11.32l48,48a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32-11.32Z" /></svg>
+          </button>
+        </div>
+
+        <div class="hdr-sep"></div>
+
+        <div class="hdr-group hdr-file-actions">
+          <button class="hbtn icon-only hdr-load-action" onclick="loadJSON()" data-tip="Open machine (.automaton, .json, .png, .jff)" aria-label="Open machine">
+            <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0ZM93.66,77.66,120,51.31V144a8,8,0,0,0,16,0V51.31l26.34,26.35a8,8,0,0,0,11.32-11.32l-40-40a8,8,0,0,0-11.32,0l-40,40A8,8,0,0,0,93.66,77.66Z" /></svg>
+          </button>
+          <!-- Save is a split button, the arrangement Word uses: the wide half
+               performs the act, the caret half offers the variants of it. They
+               were two adjacent icon buttons — a floppy and a download arrow —
+               which read as two unrelated file actions rather than as one, and
+               left "Save Machine As…" filed under a tray called Export. Joined,
+               the caret is read as belonging to the verb beside it. -->
+          <div class="hdr-split" id="save-split">
+            <button class="hbtn icon-only hdr-split-main" id="save-now-btn" onclick="saveNow()" data-tip="Save workspace" data-tip-kbd="Ctrl+S" aria-label="Save workspace">
+              <!-- Floppy: an in-place save, distinct from the caret's variants. -->
+              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M219.31,72,184,36.69A16,16,0,0,0,172.69,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V83.31A16,16,0,0,0,219.31,72ZM96,48h64V80H96Zm64,160H96V160h64Zm48,0H176V160a16,16,0,0,0-16-16H96a16,16,0,0,0-16,16v48H48V48H80V80A16,16,0,0,0,96,96h64a16,16,0,0,0,16-16V49.94l32,32Z" /></svg>
+              <span class="save-dot" id="save-dirty-dot" aria-hidden="true"></span>
+              <span class="autosave-countdown" id="autosave-countdown" aria-hidden="true"></span>
+            </button>
+            <button class="hbtn hdr-split-caret hdr-export-action" id="save-btn" type="button" aria-haspopup="menu" aria-expanded="false" onclick="toggleSaveMenu(event)" data-tip="Save as, export and share" aria-label="Save as, export and share">
+              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
             </button>
           </div>
-          <input class="inp theme-search" id="theme-search" type="text" placeholder="Search themes…" aria-label="Search themes" autocomplete="off" spellcheck="false">
-          <div class="theme-grid" id="theme-grid" aria-label="Colour theme"></div>
-          <div class="theme-empty" id="theme-empty" hidden>No themes match that search.</div>
-          <div class="theme-panel-hint"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> browse · <kbd>Enter</kbd> apply · <kbd>Esc</kbd> close</div>
+        </div>
+
+        <div class="hdr-sep"></div>
+
+        <div class="hdr-more" id="hdr-more">
+          <button class="hbtn icon-only" id="hdr-more-btn" type="button" aria-haspopup="menu" aria-expanded="false"
+            onclick="toggleMoreMenu(event)" data-tip="More options" aria-label="More options">
+            <svg viewBox="0 0 256 256" fill="currentColor"><path d="M144,128a16,16,0,1,1-16-16A16,16,0,0,1,144,128ZM60,112a16,16,0,1,0,16,16A16,16,0,0,0,60,112Zm136,0a16,16,0,1,0,16,16A16,16,0,0,0,196,112Z" /></svg>
+          </button>
+          <div class="ctx hdr-more-menu" id="hdr-more-menu" role="menu" aria-label="More options">
+            <div class="hdr-more-compact-actions">
+              <div tabindex="0" class="ctx-i" role="menuitem" onclick="openMachineWizard()">
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm48-88a8,8,0,0,1-8,8H136v32a8,8,0,0,1-16,0V136H88a8,8,0,0,1,0-16h32V88a8,8,0,0,1,16,0v32h32A8,8,0,0,1,176,128Z" /></svg>
+                New machine<span class="ctx-kbd-hint">N</span>
+              </div>
+              <div tabindex="0" class="ctx-i" role="menuitem" onclick="openStateMate()">
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88Z" /></svg>
+                StateMate
+              </div>
+              <div tabindex="0" class="ctx-i" role="menuitem" onclick="autoLayout()">
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M160,112h48a16,16,0,0,0,16-16V48a16,16,0,0,0-16-16H160a16,16,0,0,0-16,16V64H128a24,24,0,0,0-24,24v32H72v-8A16,16,0,0,0,56,96H24A16,16,0,0,0,8,112v32a16,16,0,0,0,16,16H56a16,16,0,0,0,16-16v-8h32v32a24,24,0,0,0,24,24h16v16a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V160a16,16,0,0,0-16-16H160a16,16,0,0,0-16,16v16H128a8,8,0,0,1-8-8V88a8,8,0,0,1,8-8h16V96A16,16,0,0,0,160,112Z" /></svg>
+                Auto-layout
+              </div>
+              <div tabindex="0" class="ctx-i danger" role="menuitem" onclick="clearAll()">
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16Z" /></svg>
+                Clear Canvas<span class="ctx-kbd-hint">⇧X</span>
+              </div>
+              <div class="ctx-divider"></div>
+              <div tabindex="0" class="ctx-i" role="menuitem" onclick="loadJSON()">Open Machine…</div>
+              <div tabindex="0" class="ctx-i" role="menuitem" onclick="toggleSaveMenu(event); hideMoreMenu()">Save As, Export &amp; Share…</div>
+              <div class="ctx-divider"></div>
+            </div>
+            <!-- ─── EXPLORE ───
+                 Algorithms, Grammar and Reference used to be a labelled "Tools"
+                 dropdown parked in the middle of the header, and it was wrong
+                 three ways at once. The name collided with the canvas tools —
+                 `App.tool` is pointer/state/transition/note/divider/region, and
+                 `#shape-tool-menu` is a real tool menu — so the app's one
+                 genuinely ambiguous label sat on a button offering none of them.
+                 It was the only labelled control in a row of icon buttons, which
+                 cut that row in half. And these same three rows were already in
+                 this menu below 1100px, so there were two answers to one
+                 question. They are destinations rather than controls — every one
+                 opens as an `aria-modal` overlay over a canvas that stays mounted
+                 — and this menu is where the app's other destinations already
+                 are, so they live here and only here now.
+
+                 Above the compact block rather than inside it: they are not
+                 header controls that overflowed, they are the menu's own content,
+                 and a menu whose first item changes with the viewport width is
+                 worse than one that does not. -->
+            <!-- A labelled group, which is a shape this menu did not have. The
+                 three are one subject and the rest of the menu is app chrome, so
+                 without the heading they are three unexplained rows above
+                 Fullscreen. `role="group"` is what a `role="menu"` accepts
+                 besides menuitems, and the label is aria-hidden so the heading
+                 is not read as a fourth item -- `aria-labelledby` still resolves
+                 its text. -->
+            <div class="ctx-group" role="group" aria-labelledby="hdr-explore-label">
+              <div class="ctx-group-label" id="hdr-explore-label" aria-hidden="true">Explore</div>
+              <div tabindex="0" class="ctx-i" role="menuitem" onclick="setView('algo')">
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M69.12,94.15,28.5,128l40.62,33.85a8,8,0,1,1-10.24,12.3l-48-40a8,8,0,0,1,0-12.3l48-40a8,8,0,0,1,10.24,12.3Zm176,27.7-48-40a8,8,0,1,0-10.24,12.3L227.5,128l-40.62,33.85a8,8,0,1,0,10.24,12.3l48-40a8,8,0,0,0,0-12.3ZM162.73,32.48a8,8,0,0,0-10.25,4.79l-64,176a8,8,0,0,0,4.79,10.26A8.14,8.14,0,0,0,96,224a8,8,0,0,0,7.52-5.27l64-176A8,8,0,0,0,162.73,32.48Z" /></svg>
+                Algorithms<span class="ctx-kbd-hint">2</span>
+              </div>
+              <div tabindex="0" class="ctx-i" role="menuitem" onclick="setView('grammar')">
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M208,24H72A32,32,0,0,0,40,56V224a8,8,0,0,0,8,8H192a8,8,0,0,0,0-16H56a16,16,0,0,1,16-16H208a8,8,0,0,0,8-8V32A8,8,0,0,0,208,24Zm-8,160H72a31.82,31.82,0,0,0-16,4.29V56A16,16,0,0,1,72,40H200Z" /></svg>
+                Grammar<span class="ctx-kbd-hint">3</span>
+              </div>
+              <div tabindex="0" class="ctx-i" role="menuitem" onclick="setView('reference')">
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h64a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48ZM96,192H32V64H96a24,24,0,0,1,24,24V200A39.81,39.81,0,0,0,96,192Zm128,0H160a39.81,39.81,0,0,0-24,8V88a24,24,0,0,1,24-24h64Z" /></svg>
+                Reference<span class="ctx-kbd-hint">4</span>
+              </div>
+            </div>
+            <div class="ctx-divider"></div>
+            <div class="ctx-group" role="group" aria-labelledby="hdr-app-label">
+              <div class="ctx-group-label" id="hdr-app-label" aria-hidden="true">Application</div>
+              <div tabindex="0" class="ctx-i" role="menuitem" id="fs-btn" onclick="toggleFullscreen()">
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48V96a8,8,0,0,1-16,0V67.31l-42.34,42.35a8,8,0,0,1-11.32-11.32L188.69,56H160a8,8,0,0,1,0-16h48A8,8,0,0,1,216,48ZM98.34,146.34,56,188.69V160a8,8,0,0,0-16,0v48a8,8,0,0,0,8,8H96a8,8,0,0,0,0-16H67.31l42.35-42.34a8,8,0,0,0-11.32-11.32ZM208,152a8,8,0,0,0-8,8v28.69l-42.34-42.35a8,8,0,0,0-11.32,11.32L188.69,200H160a8,8,0,0,0,0,16h48a8,8,0,0,0,8-8V160A8,8,0,0,0,208,152ZM67.31,56H96a8,8,0,0,0,0-16H48a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31l42.34,42.35a8,8,0,0,0,11.32-11.32Z" /></svg>
+                Fullscreen<span class="ctx-kbd-hint">F</span>
+              </div>
+              <div tabindex="0" class="ctx-i" role="menuitem" id="theme-btn" aria-haspopup="dialog" aria-expanded="false" onclick="toggleThemePicker(event)">
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M233.54,142.23a8,8,0,0,0-8-2,88.08,88.08,0,0,1-109.8-109.8,8,8,0,0,0-10-10,104.84,104.84,0,0,0-52.91,37A104,104,0,0,0,136,224a103.09,103.09,0,0,0,62.52-20.88,104.84,104.84,0,0,0,37-52.91A8,8,0,0,0,233.54,142.23ZM188.9,190.34A88,88,0,0,1,65.66,67.11a89,89,0,0,1,31.4-26A106,106,0,0,0,96,56,104.11,104.11,0,0,0,200,160a106,106,0,0,0,14.92-1.06A89,89,0,0,1,188.9,190.34Z" /></svg>
+                Theme<span class="ctx-kbd-hint" id="theme-btn-current"></span>
+              </div>
+              <div tabindex="0" class="ctx-i" role="menuitem" onclick="openSettingsModal()">
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A112.1,112.1,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.62a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.08,8.08,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8.08,8.08,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z" /></svg>
+                Settings
+              </div>
+            </div>
+            <div class="ctx-divider"></div>
+            <div class="ctx-group" role="group" aria-labelledby="hdr-help-label">
+              <div class="ctx-group-label" id="hdr-help-label" aria-hidden="true">Help</div>
+              <div tabindex="0" class="ctx-i" role="menuitem" onclick="showHelpModal()">
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z" /></svg>
+                Keyboard Shortcuts<span class="ctx-kbd-hint">?</span>
+              </div>
+              <div tabindex="0" class="ctx-i" role="menuitem" onclick="openAboutModal()">
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z" /></svg>
+                About
+              </div>
+              <!-- Desktop only, and only where the build has an update channel:
+                   electron-bridge.js unhides this once the main process confirms it.
+                   No onclick= here on purpose — the listener is attached in
+                   electron-bridge.js like the window controls, which keeps the handler
+                   off the global bridge.js surface. -->
+              <div tabindex="0" class="ctx-i" role="menuitem" id="updates-btn" hidden>
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,152v56a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V152a8,8,0,0,1,16,0v56H208V152a8,8,0,0,1,16,0ZM122.34,157.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,132.69V40a8,8,0,0,0-16,0v92.69L93.66,106.34a8,8,0,0,0-11.32,11.32Z" /></svg>
+                <span id="updates-btn-label">Check for Updates</span>
+              </div>
+            </div>
+          </div>
+          <!-- Anchored to .hdr-more exactly like the menu above it, and
+               deliberately not an .overlay: the canvas has to stay visible and
+               unblurred, because seeing the diagram re-theme is the preview. -->
+          <div class="theme-panel" id="theme-panel" role="dialog" aria-modal="false" aria-label="Colour theme">
+            <div class="theme-panel-hd">
+              <span class="theme-panel-title">Theme</span>
+              <button class="theme-panel-close" id="theme-panel-close" type="button" aria-label="Close theme picker">
+                <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg>
+              </button>
+            </div>
+            <input class="inp theme-search" id="theme-search" type="text" placeholder="Search themes…" aria-label="Search themes" autocomplete="off" spellcheck="false">
+            <div class="theme-grid" id="theme-grid" aria-label="Colour theme"></div>
+            <div class="theme-empty" id="theme-empty" hidden>No themes match that search.</div>
+            <div class="theme-panel-hint"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> browse · <kbd>Enter</kbd> apply · <kbd>Esc</kbd> close</div>
+          </div>
         </div>
       </div>
     </div>
@@ -309,27 +366,27 @@
 
   <!-- ══════ TAB CONTEXT MENU ══════ -->
   <div class="ctx" id="tab-ctx-menu" role="menu" aria-label="Workspace tab actions">
-    <div class="ctx-i" role="menuitem" onclick="tabCtxRename()">
+    <div tabindex="0" class="ctx-i" role="menuitem" onclick="tabCtxRename()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" /></svg>
       Rename<span class="ctx-kbd-hint">F2</span>
     </div>
-    <div class="ctx-i" role="menuitem" onclick="tabCtxDuplicate()">
+    <div tabindex="0" class="ctx-i" role="menuitem" onclick="tabCtxDuplicate()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z" /></svg>
       Duplicate Workspace
     </div>
     <div class="ctx-divider"></div>
-    <div class="ctx-i" role="menuitem" id="tab-ctx-close" onclick="tabCtxClose()">
+    <div tabindex="0" class="ctx-i" role="menuitem" id="tab-ctx-close" onclick="tabCtxClose()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg>
       Close<span class="ctx-kbd-hint">⌘W</span>
     </div>
-    <div class="ctx-i" role="menuitem" id="tab-ctx-close-others" onclick="tabCtxCloseOthers()">
+    <div tabindex="0" class="ctx-i" role="menuitem" id="tab-ctx-close-others" onclick="tabCtxCloseOthers()">
       Close Others
     </div>
-    <div class="ctx-i" role="menuitem" id="tab-ctx-close-right" onclick="tabCtxCloseRight()">
+    <div tabindex="0" class="ctx-i" role="menuitem" id="tab-ctx-close-right" onclick="tabCtxCloseRight()">
       Close Tabs to the Right
     </div>
     <div class="ctx-divider"></div>
-    <div class="ctx-i danger" role="menuitem" onclick="tabCtxCloseAll()">
+    <div tabindex="0" class="ctx-i danger" role="menuitem" onclick="tabCtxCloseAll()">
       Close All
     </div>
   </div>
@@ -2049,112 +2106,112 @@
     <!-- `ctx-sm` rather than the three per-mode classes: the mode rules in
          css/modals.css hide by class, so an item carrying all three would be
          hidden in every mode. It is hidden for dividers only. -->
-    <div class="ctx-i ctx-sm" onclick="ctxAskStateMate()">
+    <div tabindex="0" class="ctx-i ctx-sm" onclick="ctxAskStateMate()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88Z" /></svg>
       Ask StateMate About This…
     </div>
-    <div class="ctx-i ctx-sm" onclick="ctxAddToStateMateContext()" data-tip="Keep this as context for your next StateMate prompt, without opening the console">
+    <div tabindex="0" class="ctx-i ctx-sm" onclick="ctxAddToStateMateContext()" data-tip="Keep this as context for your next StateMate prompt, without opening the console">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,120H136V40a8,8,0,0,0-16,0v80H40a8,8,0,0,0,0,16h80v80a8,8,0,0,0,16,0V136h80a8,8,0,0,0,0-16Z" /></svg>
       Add to StateMate Context
     </div>
     <div class="ctx-divider ctx-sm"></div>
-    <div class="ctx-i ctx-state" onclick="ctxStart()">
+    <div tabindex="0" class="ctx-i ctx-state" onclick="ctxStart()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M221.66,133.66l-72,72a8,8,0,0,1-11.32-11.32L196.69,136H40a8,8,0,0,1,0-16H196.69L138.34,61.66a8,8,0,0,1,11.32-11.32l72,72A8,8,0,0,1,221.66,133.66Z" /></svg>
       Set Start
     </div>
-    <div class="ctx-i ctx-state" id="ctx-toggle-acc" onclick="ctxToggleAcc()">
+    <div tabindex="0" class="ctx-i ctx-state" id="ctx-toggle-acc" onclick="ctxToggleAcc()">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5" /><circle cx="8" cy="8" r="2.3" /></svg>
       Toggle Accept
     </div>
-    <div class="ctx-i ctx-state" id="ctx-rename" onclick="ctxRename()">
+    <div tabindex="0" class="ctx-i ctx-state" id="ctx-rename" onclick="ctxRename()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" /></svg>
       <span class="ctx-label">Rename</span>
     </div>
-    <div class="ctx-i ctx-state" onclick="ctxAddNoteState()">
+    <div tabindex="0" class="ctx-i ctx-state" onclick="ctxAddNoteState()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M88,96a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H96A8,8,0,0,1,88,96Zm8,40h64a8,8,0,0,0,0-16H96a8,8,0,0,0,0,16Zm32,16H96a8,8,0,0,0,0,16h32a8,8,0,0,0,0-16ZM224,48V156.69A15.86,15.86,0,0,1,219.31,168L168,219.31A15.86,15.86,0,0,1,156.69,224H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H152V160a8,8,0,0,1,8-8h48V48H48Zm120-40v28.7L196.69,168Z" /></svg>
       Add Note
     </div>
-    <div class="ctx-i ctx-state" onclick="ctxHighlightOutgoing()">
+    <div tabindex="0" class="ctx-i ctx-state" onclick="ctxHighlightOutgoing()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z" /></svg>
       Highlight Outgoing Edges
     </div>
-    <div class="ctx-i ctx-state" onclick="ctxHighlightIncoming()">
+    <div tabindex="0" class="ctx-i ctx-state" onclick="ctxHighlightIncoming()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,136v64a8,8,0,0,1-16,0V155.32L45.66,221.66a8,8,0,0,1-11.32-11.32L100.68,144H56a8,8,0,0,1,0-16h64A8,8,0,0,1,128,136ZM208,32H80A16,16,0,0,0,64,48V96a8,8,0,0,0,16,0V48H208V176H160a8,8,0,0,0,0,16h48a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Z" /></svg>
       Highlight Incoming Edges
     </div>
-    <div class="ctx-i ctx-state" id="ctx-group-block" onclick="ctxGroupIntoBlock()" data-tip="Wrap the selected states into one block you can open, reuse and drop somewhere else">
+    <div tabindex="0" class="ctx-i ctx-state" id="ctx-group-block" onclick="ctxGroupIntoBlock()" data-tip="Wrap the selected states into one block you can open, reuse and drop somewhere else">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM168,88v80a8,8,0,0,1-8,8H96a8,8,0,0,1-8-8V88a8,8,0,0,1,8-8h64A8,8,0,0,1,168,88Zm-16,8H104v64h48Z" /></svg>
       Group into Block
     </div>
-    <div class="ctx-i ctx-state" onclick="ctxCut()" data-tip="Take it away and keep it on the clipboard">
+    <div tabindex="0" class="ctx-i ctx-state" onclick="ctxCut()" data-tip="Take it away and keep it on the clipboard">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M198.36,210.18A8,8,0,0,1,187.64,214L128,166.36,68.36,214a8,8,0,0,1-10.72-11.9l.2-.18,53.7-42.89L86.65,143.2a36,36,0,1,1,8.55-13.53l32.8,20.44,32.8-20.44a36,36,0,1,1,8.55,13.53l-24.89,15.51,53.7,42.89.2.18A8,8,0,0,1,198.36,210.18ZM64,132a20,20,0,1,0-20-20A20,20,0,0,0,64,132Zm128,0a20,20,0,1,0-20-20A20,20,0,0,0,192,132Z" /></svg>
       Cut
     </div>
-    <div class="ctx-i ctx-state" onclick="ctxCopy()">
+    <div tabindex="0" class="ctx-i ctx-state" onclick="ctxCopy()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z" /></svg>
       Copy
     </div>
-    <div class="ctx-i ctx-state danger" onclick="ctxDel()">
+    <div tabindex="0" class="ctx-i ctx-state danger" onclick="ctxDel()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
       Delete
     </div>
-    <div class="ctx-i ctx-block" onclick="ctxOpenBlock()">
+    <div tabindex="0" class="ctx-i ctx-block" onclick="ctxOpenBlock()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72ZM40,56H92.69l16,16H40Zm176,144H40V88H216Z" /></svg>
       Open Block
     </div>
-    <div class="ctx-i ctx-block" onclick="ctxRenameBlock()">
+    <div tabindex="0" class="ctx-i ctx-block" onclick="ctxRenameBlock()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" /></svg>
       Rename Block
     </div>
-    <div class="ctx-i ctx-block" onclick="ctxSaveBlockToLibrary()" data-tip="Keep this block so you can drop copies of it into any machine">
+    <div tabindex="0" class="ctx-i ctx-block" onclick="ctxSaveBlockToLibrary()" data-tip="Keep this block so you can drop copies of it into any machine">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M219.31,80,176,36.69A15.86,15.86,0,0,0,164.69,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V91.31A15.86,15.86,0,0,0,219.31,80ZM168,208H88V152h80Zm40,0H184V152a16,16,0,0,0-16-16H88a16,16,0,0,0-16,16v56H48V48H164.69L208,91.31V208ZM160,72a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h56A8,8,0,0,1,160,72Z" /></svg>
       Save to Library…
     </div>
-    <div class="ctx-i ctx-block" onclick="ctxUngroupBlock()" data-tip="Put the states back on this level and drop the box">
+    <div tabindex="0" class="ctx-i ctx-block" onclick="ctxUngroupBlock()" data-tip="Put the states back on this level and drop the box">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M228.24,155.76a6,6,0,0,1-8.48,8.48L192,136.49V208a16,16,0,0,1-16,16H80a16,16,0,0,1-16-16V136.49L36.24,164.24a6,6,0,0,1-8.48-8.48l38-38a6,6,0,0,1,8.48,0l38,38a6,6,0,1,1-8.48,8.48L76,136.49V208h96V136.49l-27.76,27.75a6,6,0,0,1-8.48-8.48l38-38a6,6,0,0,1,8.48,0ZM80,48h96a8,8,0,0,0,0-16H80a8,8,0,0,0,0,16Z" /></svg>
       Ungroup Block
     </div>
-    <div class="ctx-i ctx-block" onclick="ctxCut()" data-tip="Take it away and keep it on the clipboard">
+    <div tabindex="0" class="ctx-i ctx-block" onclick="ctxCut()" data-tip="Take it away and keep it on the clipboard">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M198.36,210.18A8,8,0,0,1,187.64,214L128,166.36,68.36,214a8,8,0,0,1-10.72-11.9l.2-.18,53.7-42.89L86.65,143.2a36,36,0,1,1,8.55-13.53l32.8,20.44,32.8-20.44a36,36,0,1,1,8.55,13.53l-24.89,15.51,53.7,42.89.2.18A8,8,0,0,1,198.36,210.18ZM64,132a20,20,0,1,0-20-20A20,20,0,0,0,64,132Zm128,0a20,20,0,1,0-20-20A20,20,0,0,0,192,132Z" /></svg>
       Cut
     </div>
-    <div class="ctx-i ctx-block" onclick="ctxCopy()">
+    <div tabindex="0" class="ctx-i ctx-block" onclick="ctxCopy()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z" /></svg>
       Copy
     </div>
-    <div class="ctx-i ctx-block danger" onclick="ctxDeleteBlock()">
+    <div tabindex="0" class="ctx-i ctx-block danger" onclick="ctxDeleteBlock()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
       Delete Block and Contents
     </div>
-    <div class="ctx-i ctx-edge" onclick="ctxEditTrans()">
+    <div tabindex="0" class="ctx-i ctx-edge" onclick="ctxEditTrans()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" /></svg>
       Edit Transition
     </div>
-    <div class="ctx-i ctx-edge" onclick="ctxDuplicateTrans()">
+    <div tabindex="0" class="ctx-i ctx-edge" onclick="ctxDuplicateTrans()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z" /></svg>
       Duplicate/Add Parallel Transition
     </div>
-    <div class="ctx-i ctx-edge" onclick="ctxReverseTrans()">
+    <div tabindex="0" class="ctx-i ctx-edge" onclick="ctxReverseTrans()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,181.66l-32,32a8,8,0,0,1-11.32-11.32L188.69,184H48a8,8,0,0,1,0-16H188.69l-18.35-18.34a8,8,0,0,1,11.32-11.32l32,32A8,8,0,0,1,213.66,181.66Zm-139.32-64a8,8,0,0,0,11.32-11.32L67.31,88H208a8,8,0,0,0,0-16H67.31L85.66,53.66A8,8,0,0,0,74.34,42.34l-32,32a8,8,0,0,0,0,11.32Z" /></svg>
       Reverse Direction
     </div>
-    <div class="ctx-i ctx-edge" onclick="ctxResetEdgeShape()" data-tip="Discard a bend or self-loop direction set by dragging, and let the diagram place this edge again">
+    <div tabindex="0" class="ctx-i ctx-edge" onclick="ctxResetEdgeShape()" data-tip="Discard a bend or self-loop direction set by dragging, and let the diagram place this edge again">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A96,96,0,1,1,195.88,60.19L224,85.53V56a8,8,0,1,1,16,0Z" /></svg>
       Reset Shape
     </div>
-    <div class="ctx-i ctx-edge" onclick="ctxAddNoteEdge()">
+    <div tabindex="0" class="ctx-i ctx-edge" onclick="ctxAddNoteEdge()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M88,96a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H96A8,8,0,0,1,88,96Zm8,40h64a8,8,0,0,0,0-16H96a8,8,0,0,0,0,16Zm32,16H96a8,8,0,0,0,0,16h32a8,8,0,0,0,0-16ZM224,48V156.69A15.86,15.86,0,0,1,219.31,168L168,219.31A15.86,15.86,0,0,1,156.69,224H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H152V160a8,8,0,0,1,8-8h48V48H48Zm120-40v28.7L196.69,168Z" /></svg>
       Add Note
     </div>
-    <div class="ctx-i ctx-edge danger" onclick="ctxDeleteTrans()">
+    <div tabindex="0" class="ctx-i ctx-edge danger" onclick="ctxDeleteTrans()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
       Delete Transition(s)
     </div>
-    <div class="ctx-i ctx-note" onclick="ctxEditNote()">
+    <div tabindex="0" class="ctx-i ctx-note" onclick="ctxEditNote()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" /></svg>
       Edit Note
     </div>
-    <div class="ctx-i ctx-note note-swatch-row">
+    <div tabindex="0" class="ctx-i ctx-note note-swatch-row">
       <button class="note-swatch" data-color="violet" onclick="ctxSetNoteColor('violet')" data-tip="Violet"></button>
       <button class="note-swatch" data-color="indigo" onclick="ctxSetNoteColor('indigo')" data-tip="Indigo"></button>
       <button class="note-swatch" data-color="blue" onclick="ctxSetNoteColor('blue')" data-tip="Blue"></button>
@@ -2163,25 +2220,25 @@
       <button class="note-swatch" data-color="orange" onclick="ctxSetNoteColor('orange')" data-tip="Orange"></button>
       <button class="note-swatch" data-color="red" onclick="ctxSetNoteColor('red')" data-tip="Red"></button>
     </div>
-    <div class="ctx-i ctx-note" id="ctx-note-anchor" onclick="ctxAnchorNoteToSelection()">
+    <div tabindex="0" class="ctx-i ctx-note" id="ctx-note-anchor" onclick="ctxAnchorNoteToSelection()">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="3.3" r="1.3" /><path d="M8 4.6v8" /><path d="M4 8h8" /><path d="M4.5 9.5a3.8 3.8 0 0 0 3.1 3.3M11.5 9.5a3.8 3.8 0 0 1-3.1 3.3" /></svg>
       Anchor to Selection
     </div>
-    <div class="ctx-i ctx-note" id="ctx-note-detach" onclick="ctxDetachNote()">
+    <div tabindex="0" class="ctx-i ctx-note" id="ctx-note-detach" onclick="ctxDetachNote()">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="3.3" r="1.3" /><path d="M8 4.6v8" /><path d="M4 8h8" /><path d="M4.5 9.5a3.8 3.8 0 0 0 3.1 3.3M11.5 9.5a3.8 3.8 0 0 1-3.1 3.3" /><path d="M2.8 2.8l10.4 10.4" /></svg>
       Detach (Make Free)
     </div>
-    <div class="ctx-i ctx-note" id="ctx-note-reset-size" onclick="ctxResetNoteSize()">
+    <div tabindex="0" class="ctx-i ctx-note" id="ctx-note-reset-size" onclick="ctxResetNoteSize()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M136,32V96a8,8,0,0,0,8,8h64a8,8,0,0,0,0-16H163.31l50.35-50.34a8,8,0,0,0-11.32-11.32L152,76.69V32a8,8,0,0,0-16,0Zm-16,88H56a8,8,0,0,0,0,16H92.69L42.34,186.34a8,8,0,0,0,11.32,11.32L104,147.31V184a8,8,0,0,0,16,0V128A8,8,0,0,0,120,120Z" /></svg>
       Reset Note Size
     </div>
-    <div class="ctx-i ctx-note danger" onclick="ctxDeleteNote()">
+    <div tabindex="0" class="ctx-i ctx-note danger" onclick="ctxDeleteNote()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
       Delete Note
     </div>
 
     <!-- ── Divider items ── -->
-    <div class="ctx-i ctx-shape" onclick="ctxEditDivider()">
+    <div tabindex="0" class="ctx-i ctx-shape" onclick="ctxEditDivider()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" /></svg>
       Edit Label &amp; Style
     </div>
@@ -2206,11 +2263,11 @@
       <button class="note-swatch" data-color="orange" onclick="ctxSetDividerColor('orange')" data-tip="Orange"></button>
       <button class="note-swatch" data-color="red" onclick="ctxSetDividerColor('red')" data-tip="Red"></button>
     </div>
-    <div class="ctx-i ctx-shape" id="ctx-divider-straighten" onclick="ctxStraightenDivider()">
+    <div tabindex="0" class="ctx-i ctx-shape" id="ctx-divider-straighten" onclick="ctxStraightenDivider()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16ZM216,184H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z" /></svg>
       Straighten to Axis
     </div>
-    <div class="ctx-i ctx-shape danger" onclick="ctxDeleteDivider()">
+    <div tabindex="0" class="ctx-i ctx-shape danger" onclick="ctxDeleteDivider()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
       Delete
     </div>
@@ -2218,31 +2275,37 @@
 
   <!-- ══════ SHAPE TOOL MENU (right-click the Shape toolbar button) ══════ -->
   <div class="ctx shape-tool-menu" id="shape-tool-menu" role="menu" aria-label="Choose shape tool">
-    <div class="ctx-i" data-shape="divider" onclick="pickShapeTool('divider')">
+    <div tabindex="0" class="ctx-i" data-shape="divider" onclick="pickShapeTool('divider')">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M214.64,41.36a32,32,0,0,0-50.2,38.89L80.25,164.44a32.06,32.06,0,0,0-38.89,4.94h0a32,32,0,1,0,50.2,6.37l84.19-84.19a32,32,0,0,0,38.89-50.2Zm-139.33,162a16,16,0,0,1-22.64-22.64h0a16,16,0,0,1,22.63,0h0A16,16,0,0,1,75.31,203.33Zm128-128a16,16,0,1,1,0-22.63A16,16,0,0,1,203.33,75.3Z"/></svg>
       Divider (Line) <span class="ctx-kbd-hint">L</span>
     </div>
-    <div class="ctx-i" data-shape="rect" onclick="pickShapeTool('rect')">
+    <div tabindex="0" class="ctx-i" data-shape="rect" onclick="pickShapeTool('rect')">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Z"/></svg>
       Region (Rectangle) <span class="ctx-kbd-hint">R</span>
     </div>
   </div>
 
   <!-- ══════ SAVE MENU ══════ -->
+  <!-- The caret half of the header's split Save button. Its first item is the
+       other way of saving, because the control it hangs off is Save; the
+       exports and the link follow, separated so the three groups read as
+       three kinds of leaving rather than as one list of four. -->
   <div class="ctx" id="save-menu">
-    <div class="ctx-i" onclick="hideSaveMenu(); openExportImageModal()">
-      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z" /></svg>
-      Export as Image…
-    </div>
-    <div class="ctx-i" onclick="hideSaveMenu(); openExportCodeModal()">
-      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M69.12,94.15,28.5,128l40.62,33.85a8,8,0,1,1-10.24,12.29l-48-40a8,8,0,0,1,0-12.29l48-40a8,8,0,0,1,10.24,12.3Zm176,27.7-48-40a8,8,0,1,0-10.24,12.3L227.5,128l-40.62,33.85a8,8,0,1,0,10.24,12.29l48-40a8,8,0,0,0,0-12.29ZM162.73,32.48a8,8,0,0,0-10.25,4.79l-64,176a8,8,0,0,0,4.79,10.26A8.14,8.14,0,0,0,96,224a8,8,0,0,0,7.52-5.27l64-176A8,8,0,0,0,162.73,32.48Z" /></svg>
-      Export as Code / Spec…
-    </div>
-    <div class="ctx-i" onclick="hideSaveMenu(); saveDocumentAs()">
+    <div tabindex="0" class="ctx-i" onclick="hideSaveMenu(); saveDocumentAs()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M43.18,128a29.78,29.78,0,0,1,8,10.26c4.8,9.9,4.8,22,4.8,33.74,0,24.31,1,36,24,36a8,8,0,0,1,0,16c-17.48,0-29.32-6.14-35.2-18.26-4.8-9.9-4.8-22-4.8-33.74,0-24.31-1-36-24-36a8,8,0,0,1,0-16c23,0,24-11.69,24-36,0-11.72,0-23.84,4.8-33.74C50.68,38.14,62.52,32,80,32a8,8,0,0,1,0,16C57,48,56,59.69,56,84c0,11.72,0,23.84-4.8,33.74A29.78,29.78,0,0,1,43.18,128ZM240,120c-23,0-24-11.69-24-36,0-11.72,0-23.84-4.8-33.74C205.32,38.14,193.48,32,176,32a8,8,0,0,0,0,16c23,0,24,11.69,24,36,0,11.72,0,23.84,4.8,33.74a29.78,29.78,0,0,0,8,10.26,29.78,29.78,0,0,0-8,10.26c-4.8,9.9-4.8,22-4.8,33.74,0,24.31-1,36-24,36a8,8,0,0,0,0,16c17.48,0,29.32-6.14,35.2-18.26,4.8-9.9,4.8-22,4.8-33.74,0-24.31,1-36,24-36a8,8,0,0,0,0-16Z" /></svg>
       <span id="save-menu-save-as">Save Machine As…</span><span class="ctx-kbd-hint">Ctrl+Shift+S</span>
     </div>
-    <div class="ctx-i" onclick="hideSaveMenu(); copyShareableLink()">
+    <div class="ctx-divider"></div>
+    <div tabindex="0" class="ctx-i" onclick="hideSaveMenu(); openExportImageModal()">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z" /></svg>
+      Export as Image…
+    </div>
+    <div tabindex="0" class="ctx-i" onclick="hideSaveMenu(); openExportCodeModal()">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M69.12,94.15,28.5,128l40.62,33.85a8,8,0,1,1-10.24,12.29l-48-40a8,8,0,0,1,0-12.29l48-40a8,8,0,0,1,10.24,12.3Zm176,27.7-48-40a8,8,0,1,0-10.24,12.3L227.5,128l-40.62,33.85a8,8,0,1,0,10.24,12.29l48-40a8,8,0,0,0,0-12.29ZM162.73,32.48a8,8,0,0,0-10.25,4.79l-64,176a8,8,0,0,0,4.79,10.26A8.14,8.14,0,0,0,96,224a8,8,0,0,0,7.52-5.27l64-176A8,8,0,0,0,162.73,32.48Z" /></svg>
+      Export as Code / Spec…
+    </div>
+    <div class="ctx-divider"></div>
+    <div tabindex="0" class="ctx-i" onclick="hideSaveMenu(); copyShareableLink()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z" /></svg>
       Copy Shareable Link
     </div>

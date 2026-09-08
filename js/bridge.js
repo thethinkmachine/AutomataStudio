@@ -36,7 +36,6 @@ import {
 } from './run-scope.js';
 import {
   closeAuxView, hideMoreMenu, setTapeCount, setView, toggleMoreMenu,
-  toggleToolsMenu,
 } from './view.js';
 import {
   addGSym, addOutSym, addSym, delGSym, delOutSym, delSym,
@@ -152,8 +151,7 @@ Object.assign(window, {
    setBreakScopeFromUI, setRunSubjectFromUI,
   // view.js
    closeAuxView, hideMoreMenu, setTapeCount, setView, toggleMoreMenu,
-   toggleToolsMenu,
-  // alphabet.js
+   // alphabet.js
    addGSym, addOutSym, addSym, delGSym, delOutSym, delSym,
   // states-transitions.js
    confirmState, confirmTrans, ctxDel, ctxDeleteTrans, ctxDuplicateTrans,

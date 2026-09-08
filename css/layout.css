@@ -29,6 +29,25 @@ header {
   flex-shrink: 0;
 }
 
+/* ─── THE HEADER'S THREE COLUMNS ───
+   The left cluster is at least as wide as the left panel and the right cluster
+   at least as wide as the right panel, so what is left between them -- the tab
+   strip -- lines up with the canvas well underneath it.
+
+   That is a geometry fix, not a taste one. The workspace tabs open downward
+   into the well, and the well's top corners are rounded. Left to find its own
+   width, the left cluster could end up narrower than the panel beside it, and
+   then the strip began a few pixels to the *left* of the canvas -- so the
+   first tab's bottom flare, which curves outward and down, landed inside the
+   well's top-left corner, which curves inward and down. Two arcs of opposite
+   curvature meeting at a point: a cusp, reading as a 1/x. No amount of tuning
+   either curve fixes that, because the two are correct separately; what was
+   wrong was that they were ever in the same place. Aligned, the strip only
+   ever meets the flat part of the well's top edge.
+
+   The width is read from --lpanel-width / --rpanel-width, which js/ui.js sets
+   on the root element in setPanelWidth(), so this follows a panel being
+   dragged wider with no measuring and no JS of its own. */
 .hdr-left {
   display: flex;
   align-items: center;
@@ -36,6 +55,15 @@ header {
   align-self: stretch;
   flex-shrink: 0;
   gap: 10px;
+  min-width: var(--lpanel-width, 256px);
+}
+
+/* An unpinned or hidden panel leaves the flow -- the canvas runs out to the
+   window edge behind it -- so there is nothing for the cluster to span, and
+   reserving the width would only push the strip off-centre. */
+body:has(.lpanel.unpinned) .hdr-left,
+body:has(.lpanel.hidden) .hdr-left {
+  min-width: 0;
 }
 
 .hdr-right {
@@ -43,6 +71,17 @@ header {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  /* The same span on the other side, and the same expression panels.css uses
+     for the panel itself -- a bare --rpanel-width would over-reserve on a
+     narrow window, where the panel is capped at 42vw. The toolbar stays at the
+     trailing edge; what the min-width buys is the empty run to its left. */
+  min-width: min(var(--rpanel-width, 288px), 42vw);
+  justify-content: flex-end;
+}
+
+body:has(.rpanel.unpinned) .hdr-right,
+body:has(.rpanel.hidden) .hdr-right {
+  min-width: 0;
 }
 
 /* Related actions sit tight together; `.hdr-sep` separates the clusters. */
@@ -53,18 +92,102 @@ header {
   flex-shrink: 0;
 }
 
-#hdr-canvas-actions,
-.hdr-history-actions,
-.hdr-file-actions {
-  padding: 2px;
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--surface) 54%, transparent);
+/* ─── THE MACHINE (model picker + build/edit, joined) ───
+   The same shape as `.hdr-split`: one control, a wide half that says what the
+   machine is and a narrow half that acts on it, with the ground on the wrapper
+   so the pair reads as one thing rather than as two boxes standing next to
+   each other. The one difference is that the ground is here at rest — the
+   picker carries a resting fill of its own, and stripping that to match the
+   split button's hover-only treatment would make the header's one piece of
+   standing information look like a button that had not been noticed yet.
+
+   So the border, the fill and the hover glow move up to the wrapper, and both
+   halves give up their box and keep their type. The picker's glow was a full
+   ring around itself; on a joined control that ringed half of it. */
+.hdr-machine {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  /* Matches the toolbar beside it: a 30px control, 2px of wrapper padding and
+     a 1px border each side. The pill used to sit at 32px against a 36px
+     toolbar and a 36px tab strip — the same header reading as three sizes. */
+  height: 36px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.canvas-danger-sep {
-  height: 16px;
-  margin: 0 3px;
+.hdr-machine:hover,
+.hdr-machine:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(0, 0, 0, .2), 0 0 0 1px var(--accent-border);
 }
+
+/* Inner radii are one less than the wrapper's, the border sitting between. */
+.hdr-machine .model-picker-btn {
+  height: 34px;
+  border: 0;
+  background: transparent;
+  border-radius: 5px 0 0 5px;
+}
+
+.hdr-machine .model-picker-btn:hover {
+  background: var(--surface2);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* The seam is this half's own inline-start border, so it lands exactly on the
+   boundary rather than a pixel to one side of it, and it is present at rest:
+   these are two targets at all times, and the picker is wide enough that a
+   reader aiming for the button needs to see where it starts. */
+/* More specific than `.hbtn` below: otherwise its general 5px radius wins in
+   the cascade and turns this half of the joined control into its own pill. */
+.hdr-machine .hdr-machine-act {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+  border: 0;
+  border-inline-start: 1px solid var(--border);
+  border-radius: 0 5px 5px 0;
+  color: var(--text2);
+}
+
+.hdr-machine-act:hover {
+  background: var(--surface2);
+  color: var(--accent);
+  border-color: transparent;
+  border-inline-start-color: var(--border);
+}
+
+/* ─── THE TOOLBAR ───
+   One ground with rules inside it, where there used to be three grounds with
+   rules *between* them. Two devices doing one job is what made the right third
+   of the header read as three unrelated widgets: a browser or an editor uses a
+   shared ground or a set of rules, and mostly neither. The ground says "these
+   are the app's controls"; the rules say where one kind ends and the next
+   begins. Nothing here clips, because `.hdr-more` anchors two absolutely
+   positioned popovers inside it. */
+.hdr-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 54%, transparent);
+  flex-shrink: 0;
+}
+
+/* Inside a ground the rule only has to be legible, not structural, so it is
+   shorter than the free-standing separator and sits on tighter margins. */
+.hdr-toolbar > .hdr-sep {
+  height: 18px;
+  margin: 0 4px;
+}
+
 
 /* ─── LOGO ─── */
 /* Centred, not baseline. The mark is taller than the wordmark and so sets this
@@ -130,45 +253,11 @@ header {
   padding-left: 2px;
 }
 
-/* ─── TOOLS PICKER (auxiliary views) ───
-   Algorithms / Grammar / Reference are not peers of Build, so they live behind a
-   single control rather than in a tab row. */
-.tools-picker {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.tools-btn .chevron {
-  width: 11px;
-  height: 11px;
-  fill: currentColor;
-  opacity: .65;
-  transition: transform var(--transition-fast);
-}
-
-.tools-picker.open .tools-btn {
-  background: var(--surface2);
-  color: var(--text);
-  border-color: var(--border2);
-}
-
-.tools-picker.open .chevron {
-  transform: rotate(180deg);
-}
-
-/* Lit while an auxiliary view is open, so there is always a visible cue that
-   the canvas is underneath rather than gone. */
-.tools-btn.view-active {
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-color: var(--accent-border);
-}
-
-/* Anchored to their trigger rather than the viewport, so they override the
+/* ─── HEADER MENU (More, and the Explore group inside it) ───
+   Anchored to its trigger rather than the viewport, so it overrides the
    position:fixed that .ctx uses for cursor-placed context menus. The .ctx-
-   qualified selectors are needed because modals.css loads after this file and
+   qualified selector is needed because modals.css loads after this file and
    its `.ctx { display: none }` would otherwise win at equal specificity. */
-.ctx.tools-menu,
 .ctx.hdr-more-menu {
   position: absolute;
   top: calc(100% + 6px);
@@ -178,14 +267,37 @@ header {
   z-index: 950;
 }
 
-.ctx.tools-menu.open,
 .ctx.hdr-more-menu.open {
   display: block;
 }
 
-.tools-menu .ctx-i.active {
+.hdr-more-menu .ctx-i.active {
   color: var(--accent);
   background: var(--accent-soft);
+}
+
+/* Lit while an auxiliary view is open, so there is always a visible cue that
+   the canvas is underneath rather than gone -- and, now that the views are
+   rows in this menu, a cue pointing at the control they came out of. */
+.hbtn.view-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+
+/* A group heading. `.ctx-i` is a row you can press; this is neither, so it
+   takes the app's small-caps instrumentation face rather than the sentence
+   face the rows use, and it is sized to sit under the menu's own padding
+   without opening a gap above the first row it labels. */
+.ctx-group-label {
+  padding: 6px 12px 3px;
+  font-family: var(--mono);
+  font-size: .58rem;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text3);
+  user-select: none;
 }
 
 /* ─── HEADER OVERFLOW ─── */
@@ -238,6 +350,32 @@ header {
   border-color: var(--border2);
 }
 
+/* Every other pressable surface in the app gets this exact ring —
+   `.lp-row-btn`, `.panel-tab`, `.modal-close`, the canvas tool rail — so a
+   keyboard user tabbing across the header met the one cluster that did not
+   opt in. `.hbtn` sets no `outline-color`, so the browser's default fell
+   through to `outline-color: auto`, which resolves to `currentColor`: the
+   button's own resting `--text3`, a tone chosen to look quiet, not to mark a
+   focus target. Against `--bg2` that measures under 3:1 — a focus ring is
+   exactly the thing contrast guidelines hold to that floor, and this was the
+   one place in the header where a Tab press produced something close to
+   invisible. */
+.hbtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The picker pill and the split button already answer "where is focus" at
+   the wrapper — `:focus-within` lights the whole ground, exactly as `:hover`
+   does two rules up. A second ring on the child inside that glow would be
+   two answers to one question, so the child's own outline stands down here
+   and only here. */
+.hdr-machine .hbtn:focus-visible,
+.hdr-split .hbtn:focus-visible,
+.model-picker-btn:focus-visible {
+  outline: none;
+}
+
 .hbtn.active {
   background: var(--surface2);
   color: var(--accent);
@@ -260,10 +398,128 @@ header {
   gap: 0;
 }
 
-.hbtn.warn:hover {
+/* :focus-visible rides alongside :hover, the pairing `.sm-tool[aria-label^=
+   "Delete"]` already uses for the app's other irreversible action — a reader
+   who tabs to Clear Canvas instead of pointing at it is owed the same red
+   warning the mouse gets, not a neutral button that turns out to erase the
+   workspace. */
+.hbtn.warn:hover,
+.hbtn.warn:focus-visible {
   background: var(--red-soft);
   color: var(--red);
   border-color: var(--red-border);
+}
+
+/* ─── SPLIT BUTTON (an act, and its variants) ───
+   Word's arrangement, and it is here for the reason Word has it: Save and
+   "Save as" are one verb with two endings, so the caret has to read as
+   belonging to the button beside it rather than as a second button that
+   happens to sit next to it.
+
+   The ground belongs to the *split*, not to either half, and that is the whole
+   of what makes it read as one control. Written the other way — two `.hbtn`s
+   keeping their own hover borders with a hairline drawn between them — the
+   halves stay two boxes: every hover paints a full outline around one of them,
+   so the seam reads as that button's own edge with the other button parked
+   against it, which is what it looked like.
+
+   So the halves give up their box and keep everything else `.hbtn` gives them
+   (type, sizing, icon metrics, transitions), and the seam is the caret's own
+   inline-start border, coloured in only while there is a ground for it to
+   divide. At rest there are no boxes for a line to sit between, and a stray
+   hairline between two flat icons is what that was. */
+.hdr-split {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  border-radius: 6px;
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+/* An inset shadow rather than a border: this sits in `.hdr-file-actions`
+   beside 30px icon buttons, and a real border would make the split 2px taller
+   than the one next to it. */
+.hdr-split:hover,
+.hdr-split:focus-within,
+.hdr-split.open {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border2);
+}
+
+.hdr-split > .hbtn,
+.hdr-split > .hbtn:hover {
+  background: transparent;
+  border-color: transparent;
+}
+
+.hdr-split > .hbtn:first-child {
+  border-start-start-radius: 6px;
+  border-end-start-radius: 6px;
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.hdr-split > .hbtn:last-child {
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+  border-start-end-radius: 6px;
+  border-end-end-radius: 6px;
+}
+
+/* Only the half under the pointer lifts, so which of the two a click will land
+   on is never in question. */
+.hdr-split > .hbtn:hover {
+  background: var(--surface2);
+  color: var(--text2);
+}
+
+/* Both halves are drawn in, and the numbers here are about the *glyphs* rather
+   than about the boxes. A 30px icon-only button centres a 14px glyph, so it
+   carries 8px of air on each side; a caret box adds its own. Flush boxes were
+   therefore 13px of empty header between the floppy and the chevron — the two
+   sat correctly adjacent and read as two icons that happened to be near each
+   other, which is the thing this control exists not to look like. Pulled in,
+   the pair sits about as close as the model picker's label and chevron, which
+   is the header's own idiom for "this opens something".
+
+   The caret is narrower than the act as well as narrower than an icon button:
+   it is a modifier on the verb to its left, not a peer of it, and a caret at
+   the same 30px would say otherwise. */
+.hdr-split > .hdr-split-main {
+  width: 26px;
+}
+
+.hdr-split-caret {
+  width: 16px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+
+.hdr-split-caret svg {
+  width: 9px;
+  height: 9px;
+  transition: transform var(--transition-fast);
+}
+
+/* The seam. */
+.hdr-split:hover > .hdr-split-caret,
+.hdr-split:focus-within > .hdr-split-caret,
+.hdr-split.open > .hdr-split-caret {
+  border-inline-start-color: var(--border2);
+}
+
+/* Held down while its tray is up, the way `.hdr-more.open > .hbtn` is. Its
+   chevron turns too, the same 180° the model picker's does a few pixels to
+   the left — the header's other disclosure control, opening the same way, so
+   a reader who has learned one has already learned the other. */
+.hdr-split.open > .hdr-split-caret {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.hdr-split.open > .hdr-split-caret svg {
+  transform: rotate(180deg);
 }
 
 /* ─── CUSTOM TITLEBAR (Electron only) ───
@@ -359,10 +615,6 @@ header {
   align-items: center;
   gap: 1px;
   background: transparent;
-  /* Inset rather than flush: at height:100% the strip filled the header's
-     47px content box, putting its own 1px bottom border immediately above the
-     header's, and the two stacked into one thick-looking line. Centring it
-     leaves clear space so only the header's border reads as the edge. */
   height: 36px;
   align-self: center;
   border: 1px solid var(--border);
@@ -378,9 +630,6 @@ header {
   transition: box-shadow var(--transition-fast);
 }
 
-/* Jump-to-tab dropdown trigger — hidden until updateTabOverflowShadows()
-   detects the strip can't fit every tab; on mobile that kicks in with far
-   fewer tabs than on desktop, so the same mechanism covers both. */
 .tab-overflow-btn {
   display: none;
   align-items: center;
@@ -956,7 +1205,12 @@ header {
 .model-picker-menu {
   position: absolute;
   top: calc(100% + 8px);
-  left: 0;
+  /* Right-anchored, because the control is in the right cluster now. A 360px
+     menu hung off the left edge of a button that close to the window would run
+     out of it. css/mobile.css pins it to both edges below 900px and so wins
+     there regardless. */
+  right: 0;
+  left: auto;
   /* Wide enough for the longest full name ("Two-Way Nondeterministic Finite
      Automaton") plus its short-code chip, on one line. */
   width: 360px;
@@ -1006,6 +1260,12 @@ header {
   cursor: pointer;
   transition: all var(--transition-fast);
   color: var(--text2);
+}
+
+.model-item:focus-visible {
+  outline: none;
+  background: var(--surface3);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .model-item:hover:not(.disabled) {
@@ -1102,12 +1362,6 @@ header {
 }
 
 
-.hdr-tools {
-  display: flex;
-  gap: 3px;
-  margin-left: auto;
-}
-
 @media (max-width: 1100px) {
   /* Keep the header stable: only the document strip scrolls. Secondary canvas,
      view, load, and export actions remain available from the existing More menu. */
@@ -1117,10 +1371,22 @@ header {
     overflow: visible;
   }
 
+  /* No column spans: the panels are overlays at this width, so there is nothing
+     under the header to line up with, and reserving their widths would squeeze
+     the strip out of a header that is already shedding controls. */
+  .hdr-left,
+  .hdr-right {
+    min-width: 0;
+  }
+
+  /* The toolbar's rules go with the group they fenced: the canvas actions are
+     the toolbar's first child, so leaving its rule in place would leave the
+     run starting with one. What is left is four icons, which is a short
+     enough run not to need fencing. */
   #hdr-canvas-actions,
-  .tools-picker,
   .hdr-file-actions .hdr-load-action,
   .hdr-file-actions .hdr-export-action,
+  .hdr-toolbar > .hdr-sep,
   header > .hdr-sep,
   .hdr-right > .hdr-sep {
     display: none;
@@ -1128,6 +1394,15 @@ header {
 
   .hdr-more-compact-actions {
     display: block;
+  }
+
+  /* With the caret gone the split is one button again, so it has to be shaped
+     like one: `:last-child` is structural and still matches the hidden caret,
+     so the main half would otherwise keep two square corners. Same selector as
+     the rule it is undoing, or the four longhands there outrank a shorthand. */
+  .hdr-split > .hbtn:first-child {
+    border-start-end-radius: 6px;
+    border-end-end-radius: 6px;
   }
 
   .tab-bar-wrap {
@@ -1175,9 +1450,7 @@ header {
     gap: 3px;
   }
 
-  #hdr-canvas-actions,
-  .hdr-history-actions,
-  .hdr-file-actions {
+  .hdr-toolbar {
     padding: 0;
     background: transparent;
   }
