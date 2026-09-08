@@ -697,6 +697,30 @@ body.panel-resizing .rpanel {
   transition-delay: 0.15s;
 }
 
+/* An unpinned panel opens by animating its width up from 0 while its children
+   fade in on the same schedule, so mid-animation the box is narrower than the
+   header's contents. A lone tab is sized `auto` by its strip (see
+   `.panel-tabs:has(> .panel-tab:only-child)` below) and so refuses to shrink,
+   and the pin button cannot shrink either — with the panel itself
+   `overflow: visible` (its hover strip and fillets paint outside the box),
+   both spilled past the opening edge and hung over the canvas at half
+   opacity, the tab running under the pin, until the box caught
+   up. Nothing in a header ever legitimately paints outside it, so the header
+   is the clip.
+
+   Not the panel: a panel-level clip would take the hover strip with it, and
+   Safari has no `overflow-clip-margin`, so the `.panel-float` pattern cannot
+   be reused — there the strip would clip at 0 and a collapsed panel could
+   never be opened at all. The one thing that does escape a header is
+   StateMate's ⋯ menu, which drops out below it, so the clip stands down
+   exactly while that menu is open: `hidden` is DOM state the selector can
+   see, it flips the instant the menu opens, and by then the panel is settled
+   — the contents only overflow while the width is still animating. */
+.lpanel.unpinned .panel-header:not(:has(.sm-head-menu:not([hidden]))),
+.rpanel.unpinned .panel-header:not(:has(.sm-head-menu:not([hidden]))) {
+  overflow: hidden;
+}
+
 /* Subordinate to the app header, not a second one: no bottom rule, and the
    title sits at a lighter weight/colour so the eye goes to the app bar first
    and to the section labels below it second. */
