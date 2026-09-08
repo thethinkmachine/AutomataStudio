@@ -1,0 +1,47 @@
+{
+  "machine": "PFA",
+  "sigma": ["a", "b"],
+  "states": [
+    { "id": "s1", "x": 240, "y": 280, "name": "saw b" },
+    { "id": "s2", "x": 640, "y": 280, "name": "saw a" }
+  ],
+  "startId": "s1",
+  "accepts": ["s2"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s2", "symbol": "a", "weight": 0.9 },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "a", "weight": 0.1 },
+    { "id": "t3", "from": "s1", "to": "s1", "symbol": "b", "weight": 0.9 },
+    { "id": "t4", "from": "s1", "to": "s2", "symbol": "b", "weight": 0.1 },
+    { "id": "t5", "from": "s2", "to": "s2", "symbol": "a", "weight": 0.9 },
+    { "id": "t6", "from": "s2", "to": "s1", "symbol": "a", "weight": 0.1 },
+    { "id": "t7", "from": "s2", "to": "s1", "symbol": "b", "weight": 0.9 },
+    { "id": "t8", "from": "s2", "to": "s2", "symbol": "b", "weight": 0.1 }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 150, "y": 70, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "A noisy last-symbol detector. Each read moves to the state matching the symbol 90% of the time and the wrong way 10% of the time — a channel that garbles one bit in ten. The language is still exactly \"ends in a\", because the accepting mass lands on 0.9 or 0.1 and the cut-point λ = 0.5 sits between them."
+    },
+    {
+      "id": "n2", "x": 150, "y": 430, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Watch the Pr row: unlike an NFA's set of states, a PFA carries a probability per state, and every (state, symbol) row sums to 1. The verdict compares the accepting mass against λ — strictly greater accepts. Because 0.9 and 0.1 stay well clear of 0.5, the cut-point is isolated and the language stays regular."
+    }
+  ],
+  "config": {
+    "pfaCutPoint": 0.5
+  },
+  "meta": {
+    "title": "Noisy channel: does it end in a?",
+    "blurb": "A two-state probabilistic automaton over a 10% noisy channel. The accepting mass is 0.9 after an a and 0.1 after a b, so cut-point 0.5 recovers the language \"ends in a\" despite the noise.",
+    "inputs": [
+      { "w": "a", "expect": "accept" },
+      { "w": "b", "expect": "reject" },
+      { "w": "ba", "expect": "accept" },
+      { "w": "ab", "expect": "reject" },
+      { "w": "bbba", "expect": "accept" },
+      { "w": "aaab", "expect": "reject" }
+    ]
+  }
+}

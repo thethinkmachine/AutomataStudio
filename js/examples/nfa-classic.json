@@ -1,0 +1,81 @@
+{
+    "machine": "NFA",
+    "sigma": [
+        "0",
+        "1"
+    ],
+    "states": [
+        {
+            "id": "s1",
+            "x": 100,
+            "y": 200,
+            "name": "start"
+        },
+        {
+            "id": "s2",
+            "x": 250,
+            "y": 200,
+            "name": "guess"
+        },
+        {
+            "id": "s3",
+            "x": 400,
+            "y": 200,
+            "name": "penult"
+        },
+        {
+            "id": "s4",
+            "x": 550,
+            "y": 200,
+            "name": "acc"
+        }
+    ],
+    "startId": "s1",
+    "accepts": [
+        "s4"
+    ],
+    "transitions": [
+        {
+            "id": "t1",
+            "from": "s1",
+            "to": "s1",
+            "symbol": "0"
+        },
+        {
+            "id": "t2",
+            "from": "s1",
+            "to": "s1",
+            "symbol": "1"
+        },
+        {
+            "id": "t3",
+            "from": "s1",
+            "to": "s2",
+            "symbol": "1"
+        },
+        {
+            "id": "t4",
+            "from": "s2",
+            "to": "s3",
+            "symbol": "0"
+        },
+        {
+            "id": "t5",
+            "from": "s2",
+            "to": "s3",
+            "symbol": "1"
+        },
+        {
+            "id": "t6",
+            "from": "s3",
+            "to": "s4",
+            "symbol": "0"
+        },
+        {
+            "id": "t7",
+            "from": "s3",
+            "to": "s4",
+            "symbol": "1"
+        }
+    ]
+}

@@ -1,0 +1,48 @@
+{
+  "machine": "PDT",
+  "sigma": ["a", "b"],
+  "stackAlpha": ["Z", "A", "B"],
+  "outputAlpha": ["a", "b"],
+  "states": [
+    { "id": "s1", "x": 200, "y": 280, "name": "push" },
+    { "id": "s2", "x": 500, "y": 280, "name": "pop" },
+    { "id": "s3", "x": 800, "y": 280, "name": "done" }
+  ],
+  "startId": "s1",
+  "accepts": ["s3"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "a", "pop": "ε", "push": "A", "output": "" },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "b", "pop": "ε", "push": "B", "output": "" },
+    { "id": "t3", "from": "s1", "to": "s2", "symbol": "ε", "pop": "ε", "push": "ε", "output": "" },
+    { "id": "t4", "from": "s2", "to": "s2", "symbol": "ε", "pop": "A", "push": "ε", "output": "a" },
+    { "id": "t5", "from": "s2", "to": "s2", "symbol": "ε", "pop": "B", "push": "ε", "output": "b" },
+    { "id": "t6", "from": "s2", "to": "s3", "symbol": "ε", "pop": "Z", "push": "Z", "output": "" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 150, "y": 70, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Reversal — the canonical pushdown transduction. Phase 1 reads the whole input and pushes a marker per symbol, printing nothing. An ε-move guesses the end of the input; phase 2 pops the stack and prints each symbol as it comes off. LIFO does the reversing."
+    },
+    {
+      "id": "n2", "x": 150, "y": 430, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "No one-way finite transducer can do this: printing the first output symbol requires knowing the last input symbol, which needs unbounded lookahead. A stack supplies exactly that. Note the ε-read pops in phase 2 — they emit output without consuming input, which is why the Out row keeps growing after In is exhausted."
+    }
+  ],
+  "config": {
+    "transducerAccepts": true,
+    "pdaParadigm": "explicit"
+  },
+  "meta": {
+    "title": "Reverse the input",
+    "blurb": "Pushes every input symbol, then pops the stack printing as it goes — so the output is the input reversed. The transduction w ↦ wᴿ needs a stack; no one-way FST can compute it.",
+    "inputs": [
+      { "w": "ab", "expect": "accept", "out": "ba" },
+      { "w": "abb", "expect": "accept", "out": "bba" },
+      { "w": "aab", "expect": "accept", "out": "baa" },
+      { "w": "abab", "expect": "accept", "out": "baba" },
+      { "w": "a", "expect": "accept", "out": "a" }
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "machine": "DPA",
+  "sigma": ["a", "b"],
+  "states": [
+    { "id": "s1", "x": 240, "y": 280, "name": "last was b", "priority": 2 },
+    { "id": "s2", "x": 640, "y": 280, "name": "last was a", "priority": 1 }
+  ],
+  "startId": "s1",
+  "accepts": [],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "b" },
+    { "id": "t2", "from": "s1", "to": "s2", "symbol": "a" },
+    { "id": "t3", "from": "s2", "to": "s2", "symbol": "a" },
+    { "id": "t4", "from": "s2", "to": "s1", "symbol": "b" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 150, "y": 70, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "FG b again, deterministic again — this time by parity. There is no F at all: α is the number under each state's name. A run accepts when the LEAST priority it sees infinitely often is even. Lower numbers dominate, which is why 1 beating 2 is what rejects a word."
+    },
+    {
+      "id": "n2", "x": 150, "y": 430, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Infinitely many a's means \"last was a\" (priority 1, odd) recurs, and 1 is the least priority in play, so the word is rejected. Finitely many a's leaves the run stuck in priority 2, even, so it is accepted. This is the payoff: DBA < NBA, but DPA = NPA = the full ω-regular class. Determinism costs you nothing once α is strong enough — which is why Safra's construction targets parity, and why LTL synthesis runs on parity games."
+    }
+  ],
+  "meta": {
+    "title": "Eventually always b, by priority",
+    "blurb": "The same FG b, deterministic, with α as a per-state priority instead of a set. Parity is where determinism stops costing expressive power.",
+    "inputs": [
+      { "w": "(b)", "expect": "accept" },
+      { "w": "a(b)", "expect": "accept" },
+      { "w": "ab(b)", "expect": "accept" },
+      { "w": "aaaa(b)", "expect": "accept" },
+      { "w": "(a)", "expect": "reject" },
+      { "w": "(ab)", "expect": "reject" },
+      { "w": "bbb(ab)", "expect": "reject" }
+    ]
+  }
+}

@@ -1,0 +1,60 @@
+{
+    "machine": "Mealy",
+    "sigma": [
+        "0",
+        "1"
+    ],
+    "outputAlpha": [
+        "seen0",
+        "seen1"
+    ],
+    "states": [
+        {
+            "id": "s1",
+            "x": 160,
+            "y": 200,
+            "name": "q0"
+        },
+        {
+            "id": "s2",
+            "x": 360,
+            "y": 200,
+            "name": "q1"
+        }
+    ],
+    "startId": "s1",
+    "accepts": [
+        "s1",
+        "s2"
+    ],
+    "transitions": [
+        {
+            "id": "t1",
+            "from": "s1",
+            "to": "s1",
+            "symbol": "0",
+            "output": "seen0"
+        },
+        {
+            "id": "t2",
+            "from": "s1",
+            "to": "s2",
+            "symbol": "1",
+            "output": "seen1"
+        },
+        {
+            "id": "t3",
+            "from": "s2",
+            "to": "s1",
+            "symbol": "0",
+            "output": "seen0"
+        },
+        {
+            "id": "t4",
+            "from": "s2",
+            "to": "s2",
+            "symbol": "1",
+            "output": "seen1"
+        }
+    ]
+}

@@ -1,0 +1,57 @@
+{
+  "machine": "ITM",
+  "sigma": [
+    "a",
+    "b"
+  ],
+  "stackAlpha": [
+    "a",
+    "b",
+    "⊔"
+  ],
+  "tapeCount": 1,
+  "states": [
+    {
+      "id": "s1",
+      "x": 220,
+      "y": 220,
+      "name": "left"
+    },
+    {
+      "id": "s2",
+      "x": 500,
+      "y": 220,
+      "name": "acc"
+    }
+  ],
+  "startId": "s1",
+  "accepts": [
+    "s2"
+  ],
+  "transitions": [
+    {
+      "id": "t1",
+      "from": "s1",
+      "to": "s2",
+      "symbol": "a",
+      "write": "a",
+      "dir": "L"
+    },
+    {
+      "id": "t2",
+      "from": "s1",
+      "to": "s2",
+      "symbol": "b",
+      "write": "b",
+      "dir": "L"
+    },
+    {
+      "id": "t3",
+      "from": "s1",
+      "to": "s2",
+      "symbol": "⊔",
+      "write": "⊔",
+      "dir": "L"
+    }
+  ]
+}

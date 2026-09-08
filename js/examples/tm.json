@@ -1,0 +1,65 @@
+{
+  "machine": "TM",
+  "sigma": ["0", "1", "+"],
+  "stackAlpha": ["0", "1", "+", "⊔"],
+  "states": [
+    { "id": "s1", "x": 150, "y": 150, "name": "seek +" },
+    { "id": "s2", "x": 430, "y": 150, "name": "b > 0?" },
+    { "id": "s3", "x": 710, "y": 150, "name": "b end" },
+    { "id": "s4", "x": 710, "y": 350, "name": "b −1" },
+    { "id": "s5", "x": 430, "y": 350, "name": "return" },
+    { "id": "s6", "x": 150, "y": 350, "name": "a +1" },
+    { "id": "s7", "x": 620, "y": 550, "name": "erase b" },
+    { "id": "s8", "x": 340, "y": 550, "name": "acc" }
+  ],
+  "startId": "s1",
+  "accepts": ["s8"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "0", "write": "0", "dir": "R" },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "1", "write": "1", "dir": "R" },
+    { "id": "t3", "from": "s1", "to": "s2", "symbol": "+", "write": "+", "dir": "R" },
+    { "id": "t4", "from": "s2", "to": "s2", "symbol": "0", "write": "0", "dir": "R" },
+    { "id": "t5", "from": "s2", "to": "s3", "symbol": "1", "write": "1", "dir": "R" },
+    { "id": "t6", "from": "s2", "to": "s7", "symbol": "⊔", "write": "⊔", "dir": "L" },
+    { "id": "t7", "from": "s3", "to": "s3", "symbol": "0", "write": "0", "dir": "R" },
+    { "id": "t8", "from": "s3", "to": "s3", "symbol": "1", "write": "1", "dir": "R" },
+    { "id": "t9", "from": "s3", "to": "s4", "symbol": "⊔", "write": "⊔", "dir": "L" },
+    { "id": "t10", "from": "s4", "to": "s4", "symbol": "0", "write": "1", "dir": "L" },
+    { "id": "t11", "from": "s4", "to": "s5", "symbol": "1", "write": "0", "dir": "L" },
+    { "id": "t12", "from": "s5", "to": "s5", "symbol": "0", "write": "0", "dir": "L" },
+    { "id": "t13", "from": "s5", "to": "s5", "symbol": "1", "write": "1", "dir": "L" },
+    { "id": "t14", "from": "s5", "to": "s6", "symbol": "+", "write": "+", "dir": "L" },
+    { "id": "t15", "from": "s6", "to": "s6", "symbol": "1", "write": "0", "dir": "L" },
+    { "id": "t16", "from": "s6", "to": "s1", "symbol": "0", "write": "1", "dir": "R" },
+    { "id": "t17", "from": "s7", "to": "s7", "symbol": "0", "write": "⊔", "dir": "L" },
+    { "id": "t18", "from": "s7", "to": "s8", "symbol": "+", "write": "⊔", "dir": "L" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 30, "y": 500, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Adds a+b in place by transferring one unit at a time: decrement the right number, increment the left, repeat until the right number is all zeros — then erase it and the +. The sum materializes where a used to be."
+    },
+    {
+      "id": "n2", "x": 880, "y": 150, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Run 1011+11 and let it play: the highlight pulses around the ring once per transferred unit. A calculator built from a tape and eight states."
+    },
+    {
+      "id": "n3", "x": 880, "y": 350, "color": "orange",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "The tape has no room left of cell 0, so give the left number a spare leading 0 if it might overflow: 0111+1, not 111+1."
+    }
+  ],
+  "meta": {
+    "title": "Binary addition a+b",
+    "blurb": "Computes a+b on the tape by transferring one unit per lap: decrement b, increment a, repeat; when b hits zero it is erased and the sum sits where a was.",
+    "inputs": [
+      { "w": "1011+11", "expect": "accept", "tape": "1110", "label": "11+3=14" },
+      { "w": "10+1", "expect": "accept", "tape": "11", "label": "2+1=3" },
+      { "w": "1001+101", "expect": "accept", "tape": "1110", "label": "9+5=14" },
+      { "w": "11", "expect": "reject", "label": "no +" },
+      { "w": "+11", "expect": "reject", "label": "no left number" }
+    ]
+  }
+}

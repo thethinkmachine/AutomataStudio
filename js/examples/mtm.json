@@ -1,0 +1,54 @@
+{
+  "machine": "MTM",
+  "sigma": ["0", "1"],
+  "stackAlpha": ["0", "1", "⊔"],
+  "tapeCount": 3,
+  "states": [
+    { "id": "s1", "x": 240, "y": 220, "name": "carry 0" },
+    { "id": "s2", "x": 620, "y": 220, "name": "carry 1" },
+    { "id": "s3", "x": 430, "y": 440, "name": "acc" }
+  ],
+  "startId": "s1",
+  "accepts": ["s3"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "0", "tapeSyms": ["0", "0", "⊔"], "tapeWrites": ["0", "0", "0"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "0", "tapeSyms": ["0", "1", "⊔"], "tapeWrites": ["0", "1", "1"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t3", "from": "s1", "to": "s1", "symbol": "1", "tapeSyms": ["1", "0", "⊔"], "tapeWrites": ["1", "0", "1"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t4", "from": "s1", "to": "s2", "symbol": "1", "tapeSyms": ["1", "1", "⊔"], "tapeWrites": ["1", "1", "0"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t5", "from": "s1", "to": "s1", "symbol": "0", "tapeSyms": ["0", "⊔", "⊔"], "tapeWrites": ["0", "⊔", "0"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t6", "from": "s1", "to": "s1", "symbol": "1", "tapeSyms": ["1", "⊔", "⊔"], "tapeWrites": ["1", "⊔", "1"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t7", "from": "s1", "to": "s1", "symbol": "⊔", "tapeSyms": ["⊔", "0", "⊔"], "tapeWrites": ["⊔", "0", "0"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t8", "from": "s1", "to": "s1", "symbol": "⊔", "tapeSyms": ["⊔", "1", "⊔"], "tapeWrites": ["⊔", "1", "1"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t9", "from": "s1", "to": "s3", "symbol": "⊔", "tapeSyms": ["⊔", "⊔", "⊔"], "tapeWrites": ["⊔", "⊔", "⊔"], "tapeDirs": ["S", "S", "S"] },
+    { "id": "t10", "from": "s2", "to": "s1", "symbol": "0", "tapeSyms": ["0", "0", "⊔"], "tapeWrites": ["0", "0", "1"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t11", "from": "s2", "to": "s2", "symbol": "0", "tapeSyms": ["0", "1", "⊔"], "tapeWrites": ["0", "1", "0"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t12", "from": "s2", "to": "s2", "symbol": "1", "tapeSyms": ["1", "0", "⊔"], "tapeWrites": ["1", "0", "0"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t13", "from": "s2", "to": "s2", "symbol": "1", "tapeSyms": ["1", "1", "⊔"], "tapeWrites": ["1", "1", "1"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t14", "from": "s2", "to": "s1", "symbol": "0", "tapeSyms": ["0", "⊔", "⊔"], "tapeWrites": ["0", "⊔", "1"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t15", "from": "s2", "to": "s2", "symbol": "1", "tapeSyms": ["1", "⊔", "⊔"], "tapeWrites": ["1", "⊔", "0"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t16", "from": "s2", "to": "s1", "symbol": "⊔", "tapeSyms": ["⊔", "0", "⊔"], "tapeWrites": ["⊔", "0", "1"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t17", "from": "s2", "to": "s2", "symbol": "⊔", "tapeSyms": ["⊔", "1", "⊔"], "tapeWrites": ["⊔", "1", "0"], "tapeDirs": ["R", "R", "R"] },
+    { "id": "t18", "from": "s2", "to": "s3", "symbol": "⊔", "tapeSyms": ["⊔", "⊔", "⊔"], "tapeWrites": ["⊔", "⊔", "1"], "tapeDirs": ["S", "S", "S"] }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 60, "y": 40, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Binary addition in ONE pass: tape 1 holds a, tape 2 holds b (least-significant bit first, like a hardware adder), tape 3 receives the sum. Three heads march right in lockstep; the only memory is the carry — that's the two states."
+    },
+    {
+      "id": "n2", "x": 60, "y": 440, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Input format: a,b,ε — one segment per tape. Compare with the single-tape TM adder, which shuttles back and forth per unit: more tapes are hardware acceleration."
+    }
+  ],
+  "meta": {
+    "title": "3-tape adder — one pass",
+    "blurb": "Adds two binary numbers (written LSB-first) in a single sweep: three synchronized heads, and the carry bit is the only state. The same job costs the 1-tape TM a lap per unit.",
+    "inputs": [
+      { "w": "1101,111,ε", "expect": "accept", "tape": "01001", "label": "11+7=18" },
+      { "w": "11,11,ε", "expect": "accept", "tape": "011", "label": "3+3=6" },
+      { "w": "1,111,ε", "expect": "accept", "tape": "0001", "label": "1+7=8" }
+    ]
+  }
+}
