@@ -1415,7 +1415,7 @@ export function resetSim() {
   // no longer the one App.simSteps points at.
   App.simRun = null;
   streamNote = '';
-  log('<span style="color:var(--text3);font-style:italic">Run a string to simulate…</span>');
+  log('<span style="color:var(--text3);font-style:italic">Input a sequence in Σ*…</span>');
   resetTracker($('sim-tracker')); $('sim-tracker').style.display = 'none';
   const verdict = $('sim-verdict'); if (verdict) verdict.style.display = 'none';
   const scrubRow = $('sim-scrubber-row'); if (scrubRow) scrubRow.style.display = 'none';
