@@ -39,11 +39,6 @@ export {
   machineDef, machineDefs, machineFamily, machineIds, requireMachineDef
 } from './registry.js';
 
-/** Is there an implementation for this type in this build? */
-export function machineImplemented(m = App.machine) {
-  return machineDef(m) !== null;
-}
-
 /**
  * The run box's text → whatever this machine's simulate/decide take.
  *

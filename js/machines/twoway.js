@@ -29,10 +29,6 @@ export function headMoveDelta(dir) {
   return dir === 'R' ? 1 : (dir === 'L' ? -1 : 0);
 }
 
-export function isHeadOutOfInput(tokens, head) {
-  return head < 0 || head >= tokens.length;
-}
-
 export function twoWayDisplayTape(tokens) {
   return buildMarkedInputTape(tokens);
 }

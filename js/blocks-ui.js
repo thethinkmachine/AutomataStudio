@@ -225,17 +225,6 @@ export async function listBlockLibrary() {
   }
 }
 
-export async function readBlockDefinition(key) {
-  try {
-    return await withStore('readonly', (store, resolve) => {
-      const req = store.get(key);
-      req.onsuccess = () => resolve(req.result || null);
-    });
-  } catch (e) {
-    return null;
-  }
-}
-
 /**
  * Keep a definition under `key`, refusing one that would contain itself.
  *

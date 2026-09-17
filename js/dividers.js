@@ -5,7 +5,7 @@ import { hideSaveMenu } from './persistence.js';
 import { makeSVG, renderAll } from './render.js';
 import { $, App } from './state.js';
 import { hideContextMenu, showContextMenu } from './states-transitions.js';
-import { setTool, toggleTool } from './ui.js';
+import { setTool } from './ui.js';
 import { showStatus } from './utils.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -643,12 +643,6 @@ export function updateShapeToolButton(tool) {
   if (kbd) kbd.textContent = SHAPE_TOOL_KBD[kind];
   const btn = $('t-shape');
   if (btn) btn.dataset.tip = `Shape — drag to draw a Divider line or Region box (last used: ${SHAPE_TOOL_LABELS[kind]}); right-click to switch; L = line, R = rectangle; click again to return to Pointer`;
-}
-
-// Click activates the remembered kind; toggleTool's existing "click the
-// active tool again to return to Pointer" rule applies unchanged.
-export function clickShapeTool() {
-  toggleTool(App.lastShapeTool);
 }
 
 export function showShapeToolMenu(e) {

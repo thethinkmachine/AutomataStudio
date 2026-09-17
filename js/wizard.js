@@ -694,17 +694,6 @@ export function stepIssues(draft, stepId) {
   return out;
 }
 
-/** Every issue in the draft, step by step. */
-export function draftIssues(draft) {
-  return wizardSteps(draft.machine).flatMap(s =>
-    stepIssues(draft, s.id).map(i => ({ ...i, step: s.id })));
-}
-
-/** Can this step be left? Warnings never stop anyone. */
-export function stepIsComplete(draft, stepId) {
-  return !stepIssues(draft, stepId).some(i => i.severity === 'error');
-}
-
 // ══════════════════════════════════════════════════════════════════
 //  DRAFT → SPEC
 // ══════════════════════════════════════════════════════════════════

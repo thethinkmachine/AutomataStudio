@@ -8,7 +8,7 @@ import { cullNeedsRepaint, cullViewport, cullingActive, edgeLabelLOD, invalidate
 import { scheduleMinimap } from './minimap.js';
 import { renderLanguagePanel } from './language.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
-import { $, App, OmegaAcceptance, R, SVG_NS, edgeLabelsHidden, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, previewNodeBudget, statePriority, usesParityPriorities, wrapStateLabelsOn } from './state.js';
+import { $, App, R, SVG_NS, edgeLabelsHidden, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, previewNodeBudget, statePriority, usesParityPriorities, wrapStateLabelsOn } from './state.js';
 import { BLOCK_STRIP_H, blockPreviewGraph, blockPreviewKey, getNode, viewEdgeGroup, viewEdgeKeyFor, viewStates, visibleNodeIdFor } from './view-graph.js';
 import { machineSupportsBlocks } from './machines/index.js';
 import { allBlocks } from './blocks-ui.js';
@@ -742,14 +742,6 @@ export function scheduleFastDOM({ statesMoved = true } = {}) {
   };
   if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run);
   else run();
-}
-
-/** Paints now, dropping any frame this scheduler was holding. */
-export function flushFastDOM() {
-  fastDOMPending = false;
-  const moved = fastDOMStatesMoved;
-  fastDOMStatesMoved = false;
-  updateFastDOM({ statesMoved: moved });
 }
 
 export function updateFastDOM({ statesMoved = true } = {}) {
@@ -2079,29 +2071,43 @@ function buildFormalDefLatex() {
   const q0_name = getState(App.startId)?.name;
   const q0_str = q0_name ? formatStateName(q0_name) : '\\text{—}';
   const F_str = formatSet(App.states.filter(s => App.accepts.has(s.id)).map(s => s.name));
-  
-  let txt = `$$ \\begin{aligned} `;
-  
+  const G_str = formatSet([...App.stackAlpha]);
+  const D_str = formatSet([...App.outputAlpha]);
+  const eps = '\\varepsilon';
+
+  // Every definition is the same list of rows in the same order: the tuple,
+  // then one row per component it has, then δ and whatever else it needs to
+  // say. `def()` is that shape — `mid` is the components between Σ and q₀,
+  // `tail` everything from F onward — so a branch writes only what is
+  // particular to it. It was twenty branches each spelling out the four rows
+  // they agree on, which is where `2DFA` picked up a trailing `\\` that none
+  // of its neighbours has.
+  const def = (tuple, mid, tail) => [
+    `M &= (${tuple})`,
+    `Q &= ${Q_str}`,
+    `\\Sigma &= ${S_str}`,
+    ...mid,
+    `q_0 &= ${q0_str}`,
+    ...tail,
+  ];
+  const Frow = `F &= ${F_str}`;
+  let rows;
+
   if (m === 'DFA' || m === 'NFA' || m === 'ε-NFA') {
     const codomain = m === 'DFA' ? 'Q' : '\\mathcal{P}(Q)';
-    const eps = (m === 'ε-NFA') ? '\\cup \\{\\varepsilon\\}' : '';
-    const mapDom = (m === 'ε-NFA') ? `\\Sigma ${eps}` : '\\Sigma';
-    txt += `M &= (Q, \\Sigma, \\delta, q_0, F) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times ${mapDom} \\to ${codomain}`;
+    const mapDom = (m === 'ε-NFA') ? `\\Sigma \\cup \\{\\varepsilon\\}` : '\\Sigma';
+    rows = def('Q, \\Sigma, \\delta, q_0, F', [], [
+      Frow,
+      `\\delta &: Q \\times ${mapDom} \\to ${codomain}`,
+    ]);
   } else if (m === 'PFA') {
-    txt += `M &= (Q, \\Sigma, \\delta, q_0, F, \\lambda) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\lambda &= ${App.config.pfaCutPoint} \\quad \\text{(cut-point)} \\\\`;
-    txt += `\\delta &: Q \\times \\Sigma \\times Q \\to [0, 1] \\\\`;
-    txt += `&\\textstyle\\sum_{q'} \\delta(q, a, q') = 1 \\quad \\forall q \\in Q, a \\in \\Sigma \\\\`;
-    txt += `L(M) &= \\{ w : P_M(w) > \\lambda \\}`;
+    rows = def('Q, \\Sigma, \\delta, q_0, F, \\lambda', [], [
+      Frow,
+      `\\lambda &= ${App.config.pfaCutPoint} \\quad \\text{(cut-point)}`,
+      `\\delta &: Q \\times \\Sigma \\times Q \\to [0, 1]`,
+      `&\\textstyle\\sum_{q'} \\delta(q, a, q') = 1 \\quad \\forall q \\in Q, a \\in \\Sigma`,
+      `L(M) &= \\{ w : P_M(w) > \\lambda \\}`,
+    ]);
   } else if (getMachineConfig(m).isOmega) {
     // Two independent axes meet here. Determinism decides whether δ is a
     // function and whether the language quantifies over runs; the acceptance
@@ -2113,191 +2119,109 @@ function buildFormalDefLatex() {
     const pred = cond === 'cobuchi' ? `${inf} \\cap F = \\emptyset`
       : cond === 'parity' ? `\\min \\Omega(${inf}) \\equiv 0 \\pmod 2`
         : `${inf} \\cap F \\neq \\emptyset`;
-    txt += `M &= (Q, \\Sigma, \\delta, q_0, ${alpha}) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += cond === 'parity'
-      ? `\\Omega &: Q \\to \\mathbb{N} \\\\`
-      : `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times \\Sigma \\to ${det ? 'Q' : '\\mathcal{P}(Q)'} \\\\`;
-    if (cond === 'weak') {
-      txt += `&\\forall\\, C \\in \\mathrm{SCC}(M):\\ C \\subseteq F \\ \\text{or}\\ C \\cap F = \\emptyset \\\\`;
-    }
-    txt += det
-      ? `L(M) &= \\{ w \\in \\Sigma^\\omega : ${pred} \\}`
-      : `L(M) &= \\{ w \\in \\Sigma^\\omega : \\exists \\rho,\\ ${pred} \\}`;
+    rows = def(`Q, \\Sigma, \\delta, q_0, ${alpha}`, [], [
+      cond === 'parity' ? `\\Omega &: Q \\to \\mathbb{N}` : Frow,
+      `\\delta &: Q \\times \\Sigma \\to ${det ? 'Q' : '\\mathcal{P}(Q)'}`,
+      ...(cond === 'weak'
+        ? [`&\\forall\\, C \\in \\mathrm{SCC}(M):\\ C \\subseteq F \\ \\text{or}\\ C \\cap F = \\emptyset`]
+        : []),
+      det
+        ? `L(M) &= \\{ w \\in \\Sigma^\\omega : ${pred} \\}`
+        : `L(M) &= \\{ w \\in \\Sigma^\\omega : \\exists \\rho,\\ ${pred} \\}`,
+    ]);
   } else if (m === 'PDT') {
-    const G_str = formatSet([...App.stackAlpha]);
-    const D_str = formatSet([...App.outputAlpha]);
-    txt += `M &= (Q, \\Sigma, \\Gamma, \\Delta, \\delta, \\lambda, q_0, F) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `\\Gamma &= ${G_str} \\\\`;
-    txt += `\\Delta &= ${D_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times (\\Sigma \\cup \\{\\varepsilon\\}) \\times \\Gamma \\to \\mathcal{P}(Q \\times \\Gamma^* \\times \\Delta^*)`;
+    rows = def('Q, \\Sigma, \\Gamma, \\Delta, \\delta, \\lambda, q_0, F',
+      [`\\Gamma &= ${G_str}`, `\\Delta &= ${D_str}`], [
+      Frow,
+      `\\delta &: Q \\times (\\Sigma \\cup \\{\\varepsilon\\}) \\times \\Gamma \\to \\mathcal{P}(Q \\times \\Gamma^* \\times \\Delta^*)`,
+    ]);
   } else if (m === '2DFT') {
-    const D_str = formatSet([...App.outputAlpha]);
     const left = App.config.sym.leftMarker;
     const right = App.config.sym.rightMarker;
-    txt += `M &= (Q, \\Sigma, \\Delta, \\delta, \\lambda, q_0, F) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `\\Delta &= ${D_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${left}, ${right}\\}) \\to Q \\times \\{L, R, S\\} \\\\`;
-    txt += `\\lambda &: Q \\times (\\Sigma \\cup \\{${left}, ${right}\\}) \\to \\Delta^*`;
+    rows = def('Q, \\Sigma, \\Delta, \\delta, \\lambda, q_0, F',
+      [`\\Delta &= ${D_str}`], [
+      Frow,
+      `\\delta &: Q \\times (\\Sigma \\cup \\{${left}, ${right}\\}) \\to Q \\times \\{L, R, S\\}`,
+      `\\lambda &: Q \\times (\\Sigma \\cup \\{${left}, ${right}\\}) \\to \\Delta^*`,
+    ]);
   } else if (m === '2DFA' || m === '2NFA') {
     const left = App.config.sym.leftMarker;
     const right = App.config.sym.rightMarker;
     const codomain = m === '2DFA' ? 'Q \\times \\{L, R, S\\}' : '\\mathcal{P}(Q \\times \\{L, R, S\\})';
-    txt += `M &= (Q, \\Sigma, \\delta, q_0, F) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${left}, ${right}\\}) \\to ${codomain} \\\\`;
+    rows = def('Q, \\Sigma, \\delta, q_0, F', [], [
+      Frow,
+      `\\delta &: Q \\times (\\Sigma \\cup \\{${left}, ${right}\\}) \\to ${codomain}`,
+    ]);
   } else if (m === 'QA') {
-    const G_str = formatSet([...App.stackAlpha]);
-    const eps = '\\varepsilon';
-    txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, F) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `\\Gamma &= ${G_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times (\\Gamma \\cup \\{${eps}\\}) \\to \\mathcal{P}(Q \\times \\Gamma^*)`;
+    rows = def('Q, \\Sigma, \\Gamma, \\delta, q_0, F', [`\\Gamma &= ${G_str}`], [
+      Frow,
+      `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times (\\Gamma \\cup \\{${eps}\\}) \\to \\mathcal{P}(Q \\times \\Gamma^*)`,
+    ]);
   } else if (m === 'Counter') {
     const bottom = formatStateName(App.config.sym.stackBottom);
     const counterSym = formatStateName([...App.stackAlpha].find(sym => sym !== App.config.sym.stackBottom) || '1');
-    const eps = '\\varepsilon';
-    txt += `M &= (Q, \\Sigma, \\{${counterSym}, ${bottom}\\}, \\delta, q_0, F) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times \\{${counterSym}, ${bottom}, ${eps}\\} \\to \\mathcal{P}(Q \\times \\{${counterSym}, ${bottom}, ${eps}\\}^*)`;
+    rows = def(`Q, \\Sigma, \\{${counterSym}, ${bottom}\\}, \\delta, q_0, F`, [], [
+      Frow,
+      `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times \\{${counterSym}, ${bottom}, ${eps}\\} \\to \\mathcal{P}(Q \\times \\{${counterSym}, ${bottom}, ${eps}\\}^*)`,
+    ]);
   } else if (m === '2PDA') {
-    const G_str = formatSet([...App.stackAlpha]);
-    const eps = '\\varepsilon';
-    txt += `M &= (Q, \\Sigma, \\Gamma_1, \\Gamma_2, \\delta, q_0, F) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `\\Gamma_1 = \\Gamma_2 &= ${G_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times (\\Gamma_1 \\cup \\{${eps}\\}) \\times (\\Gamma_2 \\cup \\{${eps}\\}) \\to \\mathcal{P}(Q \\times \\Gamma_1^* \\times \\Gamma_2^*)`;
+    rows = def('Q, \\Sigma, \\Gamma_1, \\Gamma_2, \\delta, q_0, F',
+      [`\\Gamma_1 = \\Gamma_2 &= ${G_str}`], [
+      Frow,
+      `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times (\\Gamma_1 \\cup \\{${eps}\\}) \\times (\\Gamma_2 \\cup \\{${eps}\\}) \\to \\mathcal{P}(Q \\times \\Gamma_1^* \\times \\Gamma_2^*)`,
+    ]);
   } else if (isAnyPDA(m)) {
-    const G_str = formatSet([...App.stackAlpha]);
     const stackBottomStr = formatStateName(App.config.sym.stackBottom);
-    const eps = '\\varepsilon';
     const codomain = m === 'NPDA' ? '\\mathcal{P}(Q \\times \\Gamma^*)' : 'Q \\times \\Gamma^*';
     const emptyCodomain = m === 'NPDA' ? `\\mathcal{P}(Q \\times (\\Gamma \\cup \\{${eps}\\})^*)` : `Q \\times (\\Gamma \\cup \\{${eps}\\})^*`;
-    
-    if (App.config.pdaParadigm === 'explicit') {
-      txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, Z_0, F) \\\\`;
-      txt += `Q &= ${Q_str} \\\\`;
-      txt += `\\Sigma &= ${S_str} \\\\`;
-      txt += `\\Gamma &= ${G_str} \\\\`;
-      txt += `q_0 &= ${q0_str} \\\\`;
-      txt += `Z_0 &= ${stackBottomStr} \\\\`;
-      txt += `F &= ${F_str} \\\\`;
-      txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times \\Gamma \\to ${codomain}`;
-    } else {
-      txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0) \\\\`;
-      txt += `Q &= ${Q_str} \\\\`;
-      txt += `\\Sigma &= ${S_str} \\\\`;
-      txt += `\\Gamma &= ${G_str} \\\\`;
-      txt += `q_0 &= ${q0_str} \\\\`;
-      txt += `\\text{Acc} &= \\text{empty stack} \\\\`;
-      txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times (\\Gamma \\cup \\{${eps}\\}) \\to ${emptyCodomain}`;
-    }
+    // The two acceptance paradigms are different tuples, not a different δ:
+    // by empty stack there is no F and no Z_0 to name.
+    rows = App.config.pdaParadigm === 'explicit'
+      ? def('Q, \\Sigma, \\Gamma, \\delta, q_0, Z_0, F', [`\\Gamma &= ${G_str}`], [
+        `Z_0 &= ${stackBottomStr}`,
+        Frow,
+        `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times \\Gamma \\to ${codomain}`,
+      ])
+      : def('Q, \\Sigma, \\Gamma, \\delta, q_0', [`\\Gamma &= ${G_str}`], [
+        `\\text{Acc} &= \\text{empty stack}`,
+        `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times (\\Gamma \\cup \\{${eps}\\}) \\to ${emptyCodomain}`,
+      ]);
   } else if (m === 'Moore') {
-    const D_str = formatSet([...App.outputAlpha]);
-    const lambda = '\\lambda';
-    txt += `M &= (Q, \\Sigma, \\Delta, \\delta, ${lambda}, q_0) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `\\Delta &= ${D_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `\\delta &: Q \\times \\Sigma \\to Q \\\\`;
-    txt += `${lambda} &: Q \\to \\Delta`;
+    rows = def('Q, \\Sigma, \\Delta, \\delta, \\lambda, q_0', [`\\Delta &= ${D_str}`], [
+      `\\delta &: Q \\times \\Sigma \\to Q`,
+      `\\lambda &: Q \\to \\Delta`,
+    ]);
   } else if (m === 'Mealy') {
-    const D_str = formatSet([...App.outputAlpha]);
-    const lambda = '\\lambda';
-    txt += `M &= (Q, \\Sigma, \\Delta, \\delta, ${lambda}, q_0) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `\\Delta &= ${D_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `\\delta &: Q \\times \\Sigma \\to Q \\\\`;
-    txt += `${lambda} &: Q \\times \\Sigma \\to \\Delta`;
+    rows = def('Q, \\Sigma, \\Delta, \\delta, \\lambda, q_0', [`\\Delta &= ${D_str}`], [
+      `\\delta &: Q \\times \\Sigma \\to Q`,
+      `\\lambda &: Q \\times \\Sigma \\to \\Delta`,
+    ]);
   } else if (m === 'FST') {
-    const D_str = formatSet([...App.outputAlpha]);
-    const eps = '\\varepsilon';
-    txt += `M &= (Q, \\Sigma, \\Delta, \\delta, \\lambda, q_0, F) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `\\Delta &= ${D_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\to \\mathcal{P}(Q) \\\\`;
-    txt += `\\lambda &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times Q \\to \\Delta^*`;
-  } else if (m === 'NDTM') {
-    const G_str = formatSet([...App.stackAlpha]);
-    txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, F) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `\\Gamma &= ${G_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times \\Gamma \\to \\mathcal{P}(Q \\times \\Gamma \\times \\{L, R, S\\})`;
-  } else if (m === 'MTM') {
-    const G_str = formatSet([...App.stackAlpha]);
-    const k = App.tapeCount || 2;
-    txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, F) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `\\Gamma &= ${G_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times \\Gamma^{${k}} \\to Q \\times \\Gamma^{${k}} \\times \\{L, R, S\\}^{${k}}`;
-  } else if (m === 'LBA') {
-    const G_str = formatSet([...App.stackAlpha]);
-    txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, F) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `\\Gamma &= ${G_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times \\Gamma \\to Q \\times \\Gamma \\times \\{L, R, S\\} \\\\`;
-    txt += `\\text{Tape bound} &: |\\text{tape}| \\le |w|`;
-  } else if (m === 'ITM') {
-    const G_str = formatSet([...App.stackAlpha]);
-    txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, F) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `\\Gamma &= ${G_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times \\Gamma \\to Q \\times \\Gamma \\times \\{L, R, S\\} \\\\`;
-    txt += `\\text{Tape index set} &: \\mathbb{Z}`;
+    rows = def('Q, \\Sigma, \\Delta, \\delta, \\lambda, q_0, F', [`\\Delta &= ${D_str}`], [
+      Frow,
+      `\\delta &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\to \\mathcal{P}(Q)`,
+      `\\lambda &: Q \\times (\\Sigma \\cup \\{${eps}\\}) \\times Q \\to \\Delta^*`,
+    ]);
   } else {
-    const G_str = formatSet([...App.stackAlpha]);
-    txt += `M &= (Q, \\Sigma, \\Gamma, \\delta, q_0, F) \\\\`;
-    txt += `Q &= ${Q_str} \\\\`;
-    txt += `\\Sigma &= ${S_str} \\\\`;
-    txt += `\\Gamma &= ${G_str} \\\\`;
-    txt += `q_0 &= ${q0_str} \\\\`;
-    txt += `F &= ${F_str} \\\\`;
-    txt += `\\delta &: Q \\times \\Gamma \\to Q \\times \\Gamma \\times \\{L, R, S\\}`;
+    // Every tape machine: one Γ, one head, one δ into {L, R, S}. What each
+    // adds is its own last line — the arity it runs at, or the bound its tape
+    // is under — so the shared rows are stated once here rather than four
+    // times over. NDTM branches, so its δ lands in P(...).
+    const k = App.tapeCount || 2;
+    const tapeDelta = m === 'NDTM'
+      ? `\\delta &: Q \\times \\Gamma \\to \\mathcal{P}(Q \\times \\Gamma \\times \\{L, R, S\\})`
+      : m === 'MTM'
+        ? `\\delta &: Q \\times \\Gamma^{${k}} \\to Q \\times \\Gamma^{${k}} \\times \\{L, R, S\\}^{${k}}`
+        : `\\delta &: Q \\times \\Gamma \\to Q \\times \\Gamma \\times \\{L, R, S\\}`;
+    const extra = m === 'LBA' ? [`\\text{Tape bound} &: |\\text{tape}| \\le |w|`]
+      : m === 'ITM' ? [`\\text{Tape index set} &: \\mathbb{Z}`]
+        : [];
+    rows = def('Q, \\Sigma, \\Gamma, \\delta, q_0, F', [`\\Gamma &= ${G_str}`], [
+      Frow, tapeDelta, ...extra,
+    ]);
   }
-  txt += ` \\end{aligned} $$`;
 
-  return txt;
+  return `$$ \\begin{aligned} ${rows.join(' \\\\')} \\end{aligned} $$`;
 }
 
 // The formal definition, memoised on the structural change kinds and on the

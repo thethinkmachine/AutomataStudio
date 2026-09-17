@@ -234,13 +234,6 @@ export function applyOutlines(plan, tables, clone) {
   return result;
 }
 
-// The three composed, which is what a caller with nothing to do in between
-// wants — and what the tests exercise.
-export async function outlineText(live, clone) {
-  const plan = planOutlines(live, clone);
-  return applyOutlines(plan, await loadGlyphTables(plan), clone);
-}
-
 // Reads everything about one <text> that the conversion needs, without touching
 // either tree. Returns null when the element is not convertible at all.
 function planText(liveEl, cloneEl) {

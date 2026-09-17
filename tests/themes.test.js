@@ -151,7 +151,7 @@ test('soft and border tokens derive from their own theme\'s base colour', () => 
     ['--orange', '--orange-soft'], ['--orange', '--orange-border'],
     ['--accent', '--accent-soft'], ['--accent', '--accent-border'],
     ['--accent', '--accent-border-strong'], ['--accent', '--focus-ring'],
-    ['--accent', '--state-active-fill'], ['--accent', '--minimap-viewport'],
+    ['--accent', '--state-active-fill'],
   ];
   for (const id of [DEFAULT_THEME, ...cssThemeIds]) {
     const { vars } = themeBlock(id);
@@ -161,6 +161,20 @@ test('soft and border tokens derive from their own theme\'s base colour', () => 
       assert.deepEqual(channels.slice(1, 4).map(Number), rgbOf(vars[base]),
         `${id}: ${derived} must be derived from ${base} (${vars[base]})`);
     }
+  }
+});
+
+test('the minimap viewport frame is its own theme\'s accent', () => {
+  // The minimap paints from the `Themes` registry rather than from CSS, so
+  // this is the value on screen -- there is no `--minimap-viewport` to read.
+  // Same reasoning as the soft/border pairs above: retune --accent and the
+  // frame drifts off the theme it is framing.
+  for (const id of [DEFAULT_THEME, ...cssThemeIds]) {
+    const stroke = Themes[id].export.viewportStroke;
+    const channels = stroke.match(/rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+    assert.ok(channels, `${id} viewportStroke should be an rgba() of --accent`);
+    assert.deepEqual(channels.slice(1, 4).map(Number), rgbOf(themeBlock(id).vars['--accent']),
+      `${id}: viewportStroke must be derived from --accent`);
   }
 });
 

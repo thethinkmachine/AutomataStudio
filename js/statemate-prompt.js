@@ -734,7 +734,3 @@ export function starterPrompts(machine = App.machine) {
   ];
 }
 
-/** Every machine name, for the "did you mean a different model" hint. */
-export function knownMachines() {
-  return Object.keys(MachineTypes);
-}

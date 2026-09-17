@@ -15,10 +15,7 @@ import {
   isOmegaAutomaton, MIN_TAPES, TAPE_LIMIT } from './state.js';
 import { compileSpec, computeDiff } from './statemate-compile.js';
 import { lintCandidate } from './statemate-lint.js';
-import {
-  MAX_SPEC_STATES, MAX_SPEC_TRANSITIONS, StateMateError, extractSpecJSON,
-  machineToSpec, specTransitionLabel, stateFieldsFor, transitionFieldsFor, validateSpec
-} from './statemate-spec.js';
+import { MAX_SPEC_STATES, MAX_SPEC_TRANSITIONS, StateMateError, extractSpecJSON, machineToSpec, stateFieldsFor, transitionFieldsFor, validateSpec } from './statemate-spec.js';
 import { hasSingleValuedDelta } from './utils.js';
 
 export const MAX_AGENT_STEPS = 16;
@@ -1258,21 +1255,3 @@ export function agentFinishedTurn(session) {
   return { kind: 'reply', text: session.finished.text };
 }
 
-export function agentTrace(session) {
-  return session.calls.map(entry => ({
-    name: entry.call.name,
-    arguments: entry.call.arguments,
-    ok: entry.result.ok,
-    result: entry.result.ok ? entry.result.result : entry.result.error,
-    version: entry.version
-  }));
-}
-
-export function resetAgentSession(session) {
-  if (!session) return;
-  session.checkpoints.clear();
-  session.calls.length = 0;
-  session.finishBlocks = 0;
-  session.unchecked = false;
-  session.finished = null;
-}

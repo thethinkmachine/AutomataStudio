@@ -150,12 +150,6 @@ export function blockSubtree(id) {
   return out;
 }
 
-/** Every state in `id`'s subtree, however deep. */
-export function blockSubtreeStates(id) {
-  const ids = new Set(blockSubtree(id));
-  return (App.states || []).filter(s => s.blockId && ids.has(s.blockId));
-}
-
 /** The chain of containing blocks, outermost first. */
 export function blockAncestry(id) {
   const out = [];

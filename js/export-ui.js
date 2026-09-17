@@ -535,10 +535,6 @@ export function exportCodeDownload() {
   showStatus(`Exported ${spec.label}`);
 }
 
-// ── shortcuts used from the panels ────────────────────────────────
-// The Language and Batch panels each open the dialog already pointed at
-// the format that panel produces, so the common path is one click.
-export function exportOpenSamples() { openExportCodeModal('samples'); }
 export function exportOpenBatch() {
   if (!App.lastBatch) { showStatus('Run a batch test first'); return; }
   openExportCodeModal('batch');

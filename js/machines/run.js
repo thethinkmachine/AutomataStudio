@@ -103,7 +103,3 @@ export function makeRun(source) {
   };
 }
 
-/** The run a player holds before anything has been run. */
-export function emptyRun() {
-  return makeRun([]);
-}

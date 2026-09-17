@@ -737,24 +737,6 @@ export function focusIsEmpty(focus) {
   return !focus.states.length && !focus.transitions.length && !focus.notes.length && !focus.words.length;
 }
 
-/**
- * The block tree, as the dialect states it.
- *
- * **A block is addressed by its path**, not by its name, because a name is
- * unique among siblings only — "add" under the ALU and "add" under the FPU are
- * two blocks. That is the same shape a state name already has (inlining writes
- * the path into it), so `CPU/ALU 2` reads beside `CPU/ALU 2/scan` rather than
- * against it.
- *
- * Read from the live records when the source is the canvas and from the
- * source's own when it is not, so a candidate on the bench describes itself
- * rather than whatever happens to be on screen.
- */
-function specBlockRecords(src) {
-  if (Array.isArray(src.blocks)) return src.blocks;
-  return src === null ? [] : liveBlocks();
-}
-
 function pathIndex(blocks, live) {
   if (live) return new Map(blocks.map(b => [b.id, blockPath(b.id)]));
   // A snapshot's records carry local names and parent ids, so the path is

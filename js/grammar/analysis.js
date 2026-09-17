@@ -1,4 +1,4 @@
-import { eps, isContextFree, rulesFor, terminalsOf } from './model.js';
+import { eps, isContextFree, terminalsOf } from './model.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  ANALYSIS
@@ -362,9 +362,3 @@ export function properties(g) {
   };
 }
 
-/** Rules whose left-hand side has no definition at all — never possible from
- *  the parser (an LHS defines its own variable) but reachable from a `.json`
- *  that names a start symbol nothing derives. */
-export function undefinedVars(g) {
-  return [...g.vars].filter(v => rulesFor(g, v).length === 0);
-}

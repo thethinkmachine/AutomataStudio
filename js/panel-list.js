@@ -84,12 +84,6 @@ export function setListItems(host, items, opts = {}) {
   draw(rec, true);
 }
 
-/** The rows a windowed list is currently holding, filter included. */
-export function listItems(host) {
-  const rec = host && lists.get(host.id);
-  return rec ? visible(rec) : [];
-}
-
 /**
  * Narrows a declared list to the rows whose text contains `query`. Redrawing
  * from the top is deliberate: a filter result is a new list, and holding the

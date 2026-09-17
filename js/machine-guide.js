@@ -1,4 +1,4 @@
-import { math, mathLines, note, p, sec, ul } from './guide-blocks.js';
+import { math, mathLines, p, sec, ul } from './guide-blocks.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  MACHINE GUIDE — CONTENT
@@ -1251,6 +1251,3 @@ export const MachineGuides = {
   ...TRANSDUCER_GUIDES
 };
 
-export function guideFor(machine) {
-  return MachineGuides[machine] || null;
-}

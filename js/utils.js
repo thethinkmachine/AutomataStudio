@@ -1,7 +1,6 @@
 import { closeModal, showOverlay } from './modal.js';
 import { clearRunScope } from './run-scope.js';
 import { showExampleCard } from './persistence.js';
-import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { resetSim } from './simulation.js';
 import { $, App, blankWorkspaceData, importWorkspaceState } from './state.js';
 import { Change, emit } from './store.js';

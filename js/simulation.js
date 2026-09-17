@@ -18,16 +18,16 @@ import { $, App, INPUT_LENGTH_NOTICE, R, detectsLoops, execMode, getMachineConfi
 import { getState, getTransition } from './states-transitions.js';
 import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
 import { escapeHtml, isAnyPDA, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
-import { decideMachine, machineGuards, parseMachineInput, simulateMachine, streamMachine } from './machines/index.js';
-import { langStepBudget, stateNames } from './machines/runtime.js';
+import { machineGuards, parseMachineInput, streamMachine } from './machines/index.js';
+import { stateNames } from './machines/runtime.js';
 import { computeBatchResults, decideBatchRows, summarizeBatch } from './machines/batch.js';
 import { poolSize, runParallel, shouldParallelize } from './parallel/pool.js';
 import { renderTracker, resetTracker } from './tape-view.js';
 import { isPainterSuppressed, setSimStepPainter, withPainterSuppressed } from './machines/paint.js';
 import { makeRun } from './machines/run.js';
-import { nodeIdAtScope, viewEdgeKeyFor, viewGraph, visibleNodeIdFor } from './view-graph.js';
+import { nodeIdAtScope, viewGraph, visibleNodeIdFor } from './view-graph.js';
 import { boundaryAt, breakScope, resetRunBounds, runSubject } from './run-scope.js';
-import { getBlock, localStateName } from './blocks.js';
+import { getBlock } from './blocks.js';
 
 export function runSim() {
   resetSim();
@@ -670,11 +670,6 @@ export function findSimEdgeGroup(key) {
 // rather than guessed at: an edge *wholly inside* a block is not on screen, and
 // the box standing in for it is already lit by the state half below.
 
-/** The drawn edge a real transition is part of, or null when it is not drawn. */
-function drawnEdgeKey(t) {
-  return t ? viewEdgeKeyFor(t.id) : null;
-}
-
 /** The drawn node a real state is shown by — itself, or the box it is inside. */
 function drawnNodeId(stateId) {
   return visibleNodeIdFor(stateId) || null;
@@ -716,16 +711,6 @@ function simStepTransitions(idx) {
   }
   if (step.states) return nfaStepTransitions(idx);
   return [];
-}
-
-export function getNfaSimStepEdgeKeys(idx) {
-  const keyOf = viewGraph().keyOf;
-  const keys = new Set();
-  for (const t of nfaStepTransitions(idx)) {
-    const key = keyOf.get(t.id);
-    if (key) keys.add(key);
-  }
-  return [...keys];
 }
 
 function nfaStepTransitions(idx) {

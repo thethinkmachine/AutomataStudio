@@ -15,7 +15,6 @@
    what keeps a phone-shaped control from appearing on a desktop the moment
    somebody adds a rule that forgets the query. */
 .mobile-bar,
-.mobile-panel-bar,
 .mobile-panel-scrim,
 .mobile-more-menu,
 .mobile-sheet-head,
@@ -388,8 +387,6 @@
      floats over a phone's canvas. */
   .minimap-container,
   #minimap-toggle-btn,
-  .canvas-hint,
-  .zoom-indicator,
   .toolbox-kbd {
     display: none !important;
   }
@@ -404,16 +401,12 @@
   }
 
   .algo-content .card,
-  .pump-section,
-  .hierarchy-section,
   .ref-card,
   .info-box {
     overflow-x: auto;
   }
 
   .card,
-  .pump-section,
-  .hierarchy-section,
   .ref-card {
     padding: 14px;
   }
@@ -434,7 +427,6 @@
   .row,
   .sim-row,
   .regex-input-wrap,
-  .pump-row,
   .modal-row,
   .modal-foot {
     flex-wrap: wrap;
@@ -502,22 +494,13 @@
     font-size: 1rem;
   }
 
-  .ref-section-sub,
-  .tc-sub {
+  .ref-section-sub {
     line-height: 1.5;
   }
-
-  .closure-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .pump-lbl,
   .modal-lbl {
     min-width: 0;
     width: 100%;
   }
-
-  .pump-row .inp,
   .modal-row .inp,
   .modal-row .sel {
     flex: 1 1 140px;
@@ -530,8 +513,6 @@
   .help-table td,
   .result-table th,
   .result-table td,
-  .dec-table th,
-  .dec-table td,
   .gram-table th,
   .gram-table td,
   .gram-cyk th,
@@ -542,7 +523,6 @@
   }
 
   .result-table,
-  .dec-table,
   .help-table,
   .gram-cyk,
   .gram-table,
@@ -584,10 +564,6 @@
   .hbtn {
     font-size: .64rem;
     padding: 5px 8px;
-  }
-
-  .closure-grid {
-    grid-template-columns: 1fr;
   }
 
   /* Retunes the tokens rather than the padding, so the sticky title's and
@@ -1132,11 +1108,6 @@
     visibility: visible;
     pointer-events: auto;
     transition-delay: 0s, 0s;
-  }
-
-  /* The old bar's three buttons are one cell now; the ids are gone with it. */
-  .mobile-panel-bar {
-    display: none !important;
   }
 
   /* The bar is hidden while an auxiliary view is up — the aux bar takes the

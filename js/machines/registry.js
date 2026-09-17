@@ -132,6 +132,3 @@ export function familyMembers(family) {
   return machineDefs().filter(d => d.family === family).map(d => d.id);
 }
 
-// Test-only. Definitions are registered at module scope and modules are
-// singletons, so nothing in the app ever needs to unregister one.
-export function _resetMachineRegistry() { defs.clear(); }

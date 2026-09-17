@@ -1,7 +1,7 @@
 import { utmStepBack, utmStepFwd, utmToggleAuto } from './algorithms-fa.js';
 import { renderGamma } from './alphabet.js';
 import { settleAll } from './anim.js';
-import { applyCamera, clampZoom, clearEdgeDirectionHighlight, clearSelection, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, minZoom, nudgeSelected, pasteClipboard, selectAllStates, selectionCount, syncSelectionClasses, toggleSnapToGrid, wrap } from './canvas.js';
+import { applyCamera, clampZoom, clearEdgeDirectionHighlight, clearSelection, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, nudgeSelected, pasteClipboard, selectAllStates, selectionCount, syncSelectionClasses, toggleSnapToGrid, wrap } from './canvas.js';
 import { blockRemovalIds, getBlock, removeBlock } from './blocks.js';
 import { viewStates } from './view-graph.js';
 import { leaveBlockScope, syncScopeBar } from './scope.js';
@@ -11,7 +11,7 @@ import { markDirty, redo, snapshot, snapshotSettings, trimStowedHistory, undo } 
 import { renderMinimap, scheduleMinimap } from './minimap.js';
 import { anyModalOpen, askConfirm, closeModal, registerModal, showOverlay } from './modal.js';
 import { includeNoteBounds, pruneNoteAnchorsExcluding, removeNotes } from './notes.js';
-import { CARD_AUTO_HIDE_MS, hideSaveMenu, restartAutosaveTimer, saveBackupChecked, saveDocumentAs, saveNow, saveWorkspace, saveWorkspaceById } from './persistence.js';
+import { CARD_AUTO_HIDE_MS, hideSaveMenu, restartAutosaveTimer, saveBackupChecked, saveDocumentAs, saveNow, saveWorkspaceById } from './persistence.js';
 import { renderAll, updateBlockList, updateLPanel, updateRPanel } from './render.js';
 import { filterList } from './panel-list.js';
 import {
@@ -33,7 +33,7 @@ import { Change, emit, subscribe } from './store.js';
 import { DEFAULT_THEME, Themes } from './themes.js';
 import { clearAll, escapeHtml, showStatus } from './utils.js';
 import { AUX_VIEWS, applyMachineSwitch, closeAuxView, hideMoreMenu, setMachine, setView, syncTapeCountUI } from './view.js';
-import { hideMobileMore, initMobileShell, setMobileSheetDetent, syncMobileBar, syncMobileTools, syncMobileWorkspaceButton } from './mobile.js';
+import { initMobileShell, syncMobileBar, syncMobileTools, syncMobileWorkspaceButton } from './mobile.js';
 
 subscribe(Change.TABS, renderTabs);
 subscribe(Change.SAVE, updateSaveIndicator);
@@ -938,10 +938,6 @@ export function tabCtxCloseAll() {
 
 document.addEventListener('click', () => hideTabContextMenu());
 
-export function renameTab(id, e) {
-  beginRenameTab(id, e);
-}
-
 export function initTabs() {
   if (Workspaces.length === 0) {
     Workspaces.push({
@@ -1576,77 +1572,63 @@ export function selectTheme(theme) {
 // ══════════════════════════════════════════════════════════════════
 //  ZOOM / FIT / MINIMAP / SIDEBAR / FILTER FUNCTIONS
 // ══════════════════════════════════════════════════════════════════
-export function zoomIn() {
-  const w = $('canvas-wrap'); if (!w) return;
-  const cfg = App.config.zoom;
-  const r = w.getBoundingClientRect();
-  const mx = r.width / 2, my = r.height / 2;
-  const newZ = Math.min(cfg.max, App.cam.z * 1.25);
-  App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
-  App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
-  App.cam.z = newZ;
+// Matches the 0.25s transition `.cam-smooth` declares in css/canvas.css; the
+// class has to come back off once the transition it enables has finished, or
+// the next pan is animated too.
+const CAM_EASE_MS = 250;
+// One press of + or - . The wheel and the pinch are continuous and scale by
+// their own deltas instead.
+const ZOOM_STEP = 1.25;
+
+// The eased repaint every *stepped* zoom ends in — the ± buttons and the zoom
+// field, as against the wheel and the pinch, which are continuous and must not
+// animate. `cam-smooth` goes on both the camera group and the wrapper because
+// the two carry different halves of the transform.
+function easeCamera(w) {
   if (typeof markDirty === 'function') markDirty();
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
   setTimeout(() => {
-    $('cam-g').classList.remove('cam-smooth')
+    $('cam-g').classList.remove('cam-smooth');
     w.classList.remove('cam-smooth');
-  }, 250);
+  }, CAM_EASE_MS);
 }
 
-export function zoomOut() {
+// Zoom to `z` about the middle of the viewport: the camera moves so the point
+// under the centre stays under it. Written out three times before, and the
+// copies had drifted — two clamped by hand (one of them only at the maximum)
+// where `clampZoom` is the single answer every zoom path is meant to go
+// through, and they disagreed about how to measure the box.
+// `getBoundingClientRect` and `clientWidth` are the same number here, since
+// `.canvas-area` has no border, no padding and `overflow: hidden`.
+function zoomAboutCentre(z) {
   const w = $('canvas-wrap'); if (!w) return;
-  const r = w.getBoundingClientRect();
-  const mx = r.width / 2, my = r.height / 2;
-  const newZ = Math.max(minZoom(), App.cam.z / 1.25);
+  const mx = w.clientWidth / 2, my = w.clientHeight / 2;
+  const newZ = clampZoom(z);
   App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
   App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
   App.cam.z = newZ;
-  if (typeof markDirty === 'function') markDirty();
-  $('cam-g').classList.add('cam-smooth');
-  w.classList.add('cam-smooth');
-  applyCamera();
-  setTimeout(() => {
-    $('cam-g').classList.remove('cam-smooth')
-    w.classList.remove('cam-smooth');
-  }, 250);
+  easeCamera(w);
 }
+
+export function zoomIn() { zoomAboutCentre(App.cam.z * ZOOM_STEP); }
+
+export function zoomOut() { zoomAboutCentre(App.cam.z / ZOOM_STEP); }
 
 export function setZoomFromInput(val) {
   const num = parseFloat(val.replace('%', ''));
-  if (isNaN(num)) {
-    applyCamera(); return;
-  }
+  if (isNaN(num)) { applyCamera(); return; }
+  // Nothing drawn: there is no content to keep under the centre, so this is a
+  // reset to 1:1 rather than a zoom, and it does not go through clampZoom —
+  // an empty canvas has no machine-derived floor to be clamped against.
   if (!App.states.length) {
     const w = $('canvas-wrap'); if (!w) return;
-    const mx = w.clientWidth / 2, my = w.clientHeight / 2;
-    App.cam = { x: mx, y: my, z: 1 };
-    if (typeof markDirty === 'function') markDirty();
-    $('cam-g').classList.add('cam-smooth');
-    w.classList.add('cam-smooth');
-    applyCamera();
-    setTimeout(() => {
-      $('cam-g').classList.remove('cam-smooth')
-      w.classList.remove('cam-smooth');
-    }, 250);
+    App.cam = { x: w.clientWidth / 2, y: w.clientHeight / 2, z: 1 };
+    easeCamera(w);
     return;
   }
-  const w = $('canvas-wrap'); if (!w) return;
-  const newZ = clampZoom(num / 100);
-
-  const mx = w.clientWidth / 2, my = w.clientHeight / 2;
-  App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
-  App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
-  App.cam.z = newZ;
-  if (typeof markDirty === 'function') markDirty();
-  $('cam-g').classList.add('cam-smooth');
-  w.classList.add('cam-smooth');
-  applyCamera();
-  setTimeout(() => {
-    $('cam-g').classList.remove('cam-smooth')
-    w.classList.remove('cam-smooth');
-  }, 250);
+  zoomAboutCentre(num / 100);
 }
 
 // The canvas spans the full width of the workspace, but a pinned panel sits

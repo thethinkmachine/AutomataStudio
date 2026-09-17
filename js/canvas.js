@@ -10,7 +10,7 @@ import { getNode, invalidateViewGraph, isPortNode, scopeId, viewStates, viewTran
 import { markDirty, snapshot } from './history.js';
 import { clearActiveNoteHighlight, dragSelectedNotesTo, endNoteResize, getNote, includeNoteBounds, resizeNoteTo, resolveNotePos, syncNoteSelectionClasses, visibleNotes } from './notes.js';
 import { getWorkspaceData } from './persistence.js';
-import { currentLayoutContext, drawnEdgeEl, drawnStateEl, makeSVG, renderAll, repaintForCamera, scheduleFastDOM, updateFastDOM, updateLPanel, updateRPanel, withFullRender } from './render.js';
+import { currentLayoutContext, drawnEdgeEl, drawnStateEl, makeSVG, renderAll, repaintForCamera, scheduleFastDOM, updateFastDOM, withFullRender } from './render.js';
 import { $, App } from './state.js';
 import { createState, deleteState, getState, hideContextMenu, newId, newTId, openTransModal } from './states-transitions.js';
 import { Change, emit } from './store.js';
