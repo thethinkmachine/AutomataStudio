@@ -1,4 +1,3 @@
-import { renderSigma } from './alphabet.js';
 import { snapshot } from './history.js';
 import { langVerdict } from './language.js';
 import { deriveRegex, renderAll, updateLPanel, updateRPanel } from './render.js';
@@ -236,7 +235,6 @@ export function subsetConstruction() {
   return { states, trans, steps };
 }
 
-export let _subsetData = null;
 export function loadSubsetAsDFA() {
   const r = App._lastSubset; if (!r) return;
   snapshot();
@@ -1672,83 +1670,6 @@ ${result.accepted ? 'ACCEPTED ✓' : 'REJECTED ✗'} — ${result.branches} bran
 </div>`;
 }
 
-export function simNDTMLegacy(tokens) {
-  // BFS over configurations {state, tape, head}
-  const init = { state: App.startId, tape: tokens.length ? [...tokens] : [], head: 0 };
-  const queue = [init];
-  let branches = 0, maxDepth = 0, accepted = false;
-  const log = [];
-  while (queue.length && branches < 2000) {
-    const cfg = queue.shift();
-    const { state, tape, head } = cfg;
-    branches++;
-    const t = [...tape]; while (t.length <= head) t.push(App.config.sym.blank);
-    const sym = t[head];
-    const depth = cfg.depth || 0;
-    maxDepth = Math.max(maxDepth, depth);
-    const stateName = getState(state)?.name || state;
-    const idStr = `${t.slice(0, head).join('')}[${stateName}]${t.slice(head).join('')}`;
-
-    if (App.accepts.has(state)) {
-      accepted = true;
-      let main = `<span class="step-acc">Branch ${branches}: ACCEPT ✓</span>`;
-      const subs = [];
-      subs.push(`State "${stateName}" is an accept state — computation halts`);
-      subs.push(`Reached at depth ${depth} · ID: ${idStr}`);
-      log.push(main + `<span class="step-sub">${subs.join('<br>')}</span>`);
-      break;
-    }
-
-    if (depth >= 150) {
-      let main = `Branch ${branches}: <span class="step-dead">cut off (depth limit)</span>`;
-      const subs = [];
-      subs.push(`Depth ${depth} ≥ 150 — pruning this branch to prevent infinite exploration`);
-      subs.push(`ID: ${idStr}`);
-      log.push(main + `<span class="step-sub">${subs.join('<br>')}</span>`);
-      continue;
-    }
-
-    const matching = App.transitions.filter(tr => tr.from === state && (tr.symbol === sym || tr.symbol === App.config.sym.any));
-
-    if (!matching.length) {
-      let main = `Branch ${branches}: <span class="step-dead">stuck (no transition)</span>`;
-      const subs = [];
-      subs.push(`State "${stateName}", read '${sym}' — no matching δ(${stateName}, '${sym}')`);
-      subs.push(`This branch is a dead end · depth ${depth} · ID: ${idStr}`);
-      log.push(main + `<span class="step-sub">${subs.join('<br>')}</span>`);
-      continue;
-    }
-
-    matching.forEach(tr => {
-      const nt = [...t];
-      nt[head] = (!tr.write || tr.write === App.config.sym.any) ? sym : tr.write;
-      const move = tr.dir === 'R' ? 1 : (tr.dir === 'L' ? -1 : 0);
-      const nh = head + move;
-      queue.push({ state: tr.to, tape: nt, head: Math.max(0, nh), depth: depth + 1 });
-    });
-
-    let main = `Branch ${branches}: exploring state <em>${stateName}</em>`;
-    const subs = [];
-    subs.push(`Read '${sym}' at head position ${head} · depth ${depth}`);
-    if (matching.length > 1) {
-      subs.push(`<em>Nondeterministic choice:</em> ${matching.length} transitions match — spawning ${matching.length} child branches`);
-      matching.forEach((tr, i) => {
-        const toName = getState(tr.to)?.name || tr.to;
-        const writeStr = (!tr.write || tr.write === App.config.sym.any) ? sym : tr.write;
-        subs.push(`  Choice ${i + 1}: write '${writeStr}', move ${tr.dir}, → ${toName}`);
-      });
-    } else {
-      const tr = matching[0], toName = getState(tr.to)?.name || tr.to;
-      const writeStr = (!tr.write || tr.write === App.config.sym.any) ? sym : tr.write;
-      subs.push(`Deterministic: write '${writeStr}', move ${tr.dir}, → ${toName}`);
-    }
-    subs.push(`ID: ${idStr}`);
-    log.push(main + `<span class="step-sub">${subs.join('<br>')}</span>`);
-  }
-  return { accepted, branches, maxDepth, log };
-}
-
-
 
 // ══════════════════════════════════════════════════════════════════
 //  UTM SIMULATOR
@@ -2181,7 +2102,6 @@ export function utmToggleAuto() {
     utmIdx++; renderUTMStep();
   }, 400);
 }
-
 
 
 // ══════════════════════════════════════════════════════════════════

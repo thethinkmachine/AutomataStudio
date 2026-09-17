@@ -245,7 +245,6 @@ export const NOTE_CHARS_PER_LINE = noteCharsPerLine(NOTE_WIDTH);
 // constantly in this domain — `a*b*`, `Σ*`, `(0|1)*` would silently italicize,
 // and `q_start to q_end` would silently underline. Those now render literally;
 // the trade-off is that markers can only wrap whole words, not word interiors.
-export const NOTE_MARKUP_RE = /(^|[\s([{"'])(\*\*|__|\*)(?=\S)(.*?\S)\2(?=$|[\s)\]}"'.,;:!?])/g;
 export function parseNoteRuns(line) {
   const runs = [], active = { bold: 0, italic: 0, underline: 0 };
   const markerStyles = { '**': ['bold'], '***': ['bold', 'italic'], '*': ['italic'], '__': ['underline'] };
@@ -330,12 +329,6 @@ export function layoutNoteText(text, charsPerLine) {
     wrapNoteRuns(parseNoteRuns(para), charsPerLine).forEach(l => out.push(l));
   });
   return out.length ? out : [[]];
-}
-
-// Back-compat helper: plain-text lines only (used by bounds/export math that
-// doesn't need per-run styling).
-export function wrapNoteText(text) {
-  return layoutNoteText(text, NOTE_CHARS_PER_LINE).map(runs => runs.map(r => r.text).join(''));
 }
 
 // How many characters fit per line for a note of the given pixel width.
@@ -933,21 +926,6 @@ export function insertNoteNewline() {
   editor.focus();
   document.execCommand('insertLineBreak', false);
   updateNoteEditor();
-}
-
-// Commits an edit to the note textarea, rejecting it whole if it would exceed
-// the character cap. Returns whether the value was applied.
-export function setNoteTextareaValue(editor, next) {
-  if (next.length > NOTE_MAX_CHARS) {
-    showStatus(`Note is at the ${NOTE_MAX_CHARS}-character limit`);
-    editor.focus();
-    return false;
-  }
-  setNoteEditorMarkdown(editor, next);
-  _noteEditorLastValid = next;
-  editor.focus();
-  updateNoteCharCount();
-  return true;
 }
 
 export function updateNoteCharCount() {

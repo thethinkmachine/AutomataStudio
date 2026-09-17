@@ -3209,29 +3209,6 @@ button.sm-stat:disabled {
   opacity: 1;
 }
 
-/* ── Computation tree ── */
-.ct-node {
-  font-family: var(--mono);
-  font-size: .68rem;
-  padding: 4px 8px;
-  border-radius: 5px;
-  border: 1px solid var(--border2);
-  background: var(--surface);
-  display: inline-block;
-}
-
-.ct-node.accept {
-  border-color: color-mix(in srgb, var(--gold) 50%, transparent);
-  color: var(--gold);
-  background: color-mix(in srgb, var(--gold) 8%, transparent);
-}
-
-.ct-node.reject {
-  border-color: var(--red-border);
-  color: var(--red);
-  background: color-mix(in srgb, var(--red) 5%, transparent);
-}
-
 /* ── Help modal ── */
 
 .help-table {

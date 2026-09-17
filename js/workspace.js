@@ -1,7 +1,6 @@
 import { renderAlgo } from './algorithms-fa.js';
 import { snapshot } from './history.js';
 import { registerModal, showOverlay } from './modal.js';
-import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { $, APP_VERSION, App } from './state.js';
 import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen, switchHelpTab } from './ui.js';

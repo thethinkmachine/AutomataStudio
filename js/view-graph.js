@@ -214,7 +214,6 @@ export function viewTransitions() { return viewGraph().transitions; }
 /** A drawn node by id — a state, a block box or a port. */
 export function getNode(id) { return viewGraph().byId.get(id) || null; }
 
-export function isBlockNode(n) { return !!n && n.kind === 'block'; }
 export function isPortNode(n) { return !!n && n.kind === 'port'; }
 
 /**

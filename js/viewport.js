@@ -43,9 +43,6 @@ const CULL_MARGIN_SCREENS = 1;
 
 let suspended = 0;
 
-/** True while an exporter (or anything else reading the DOM back) needs it whole. */
-export function cullSuspended() { return suspended > 0; }
-
 /**
  * Runs `fn` with culling off. The caller is responsible for repainting first —
  * render.js's withFullRender does that and is what callers actually use.

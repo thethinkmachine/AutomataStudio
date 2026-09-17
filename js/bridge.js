@@ -5,9 +5,9 @@
 // global-scope code and cannot see module bindings. The functions they name
 // are re-exposed on window here.
 //
-// 226 names across 23 modules — 225 functions plus App — reached from 461
+// 217 names across 25 modules — 216 functions plus App — reached from 442
 // attributes:
-//    337  static, in index.html
+//    320  static, in index.html
 //    122  in markup the app builds at runtime (algorithm cards,
 //         export dialogs, alphabet chips, context menus)
 //
@@ -64,7 +64,7 @@ import {
   applyNoteFormat, clearNoteFormatting, confirmNote, ctxAddNoteEdge, ctxAddNoteState,
   ctxAnchorNoteToSelection, ctxCanvasAddNote, ctxDeleteNote, ctxDetachNote,
   ctxEditNote, ctxResetNoteSize, ctxSetNoteColor, deleteNoteFromModal,
-  handleNoteEditorKeydown, insertNoteNewline, setNoteModalColor, updateNoteCharCount, updateNoteEditor,
+  handleNoteEditorKeydown, insertNoteNewline, setNoteModalColor, updateNoteEditor,
 } from './notes.js';
 import {
   confirmDivider, ctxDeleteDivider, ctxEditDivider, ctxSetDividerColor,
@@ -85,7 +85,7 @@ import {
 } from './suggest.js';
 import {
   copyShareableLink, ctxCanvasDescribe, hideSaveMenu, loadJSON, onFileLoad,
-  saveDocument, saveDocumentAs, saveJSON, saveNow, saveWorkspace, toggleSaveMenu,
+  saveDocumentAs, saveNow, toggleSaveMenu,
 } from './persistence.js';
 // The whole StateMate feature adds exactly one name here. Everything else in
 // js/statemate-ui.js wires its listeners at creation, the way reference.js
@@ -172,7 +172,7 @@ Object.assign(window, {
    applyNoteFormat, clearNoteFormatting, confirmNote, ctxAddNoteEdge, ctxAddNoteState,
    ctxAnchorNoteToSelection, ctxCanvasAddNote, ctxDeleteNote, ctxDetachNote,
    ctxEditNote, ctxResetNoteSize, ctxSetNoteColor, deleteNoteFromModal,
-   handleNoteEditorKeydown, insertNoteNewline, setNoteModalColor, updateNoteCharCount, updateNoteEditor,
+   handleNoteEditorKeydown, insertNoteNewline, setNoteModalColor, updateNoteEditor,
   // dividers.js
    confirmDivider, ctxDeleteDivider, ctxEditDivider, ctxSetDividerColor,
    ctxSetDividerStyle, ctxStraightenDivider, deleteDividerFromModal,
@@ -190,7 +190,7 @@ Object.assign(window, {
    trySymSuggestKeydown,
   // persistence.js
    copyShareableLink, hideSaveMenu, loadJSON, onFileLoad,
-   ctxCanvasDescribe, saveDocument, saveDocumentAs, saveJSON, saveNow, saveWorkspace, toggleSaveMenu,
+   ctxCanvasDescribe, saveDocumentAs, saveNow, toggleSaveMenu,
   // wizard-ui.js — the whole wizard, in one name. Everything else inside it
   // is wired at creation, so nothing else needs to be here.
    openMachineWizard,

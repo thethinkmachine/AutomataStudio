@@ -5,14 +5,12 @@ import { snapshot } from './history.js';
 import { importJFLAPData, readJFLAPText } from './import-jflap.js';
 import { closeModal, showOverlay } from './modal.js';
 import { refreshQuickSettings } from './quick-settings.js';
-import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { showExampleCard } from './machine-card.js';
 import { isMultiTape, machineSupportsBlocks } from './machines/index.js';
 import { $, APP_VERSION, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, largeMachineProfile, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { WORKSPACE_EXT, fileStem, hasFileHost, noteOpenDocument, openFileDialog, saveFileAs, suggestedFileName, writeFile } from './file-host.js';
-import { hideContextMenu } from './states-transitions.js';
 import { Change, emit } from './store.js';
-import { autoFitLoadedMachine, createTab, fitToScreen, hideTabContextMenu, hideTabOverflowMenu, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
+import { autoFitLoadedMachine, createTab, fitToScreen, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
 import { hasPdaNondeterminism, hasSingleTapeNondeterminism, isAnyPDA, performClear, resetIds, showStatus } from './utils.js';
 import { applyMachineSwitch } from './view.js';
 

@@ -23,10 +23,6 @@ import { DEFAULT_EPS, deriveVars, formatRules, parseGrammarText, tokenizeSymbols
 /** ε as the reader has it configured. Read live — Settings can change it. */
 export const eps = () => App.config?.sym?.eps || DEFAULT_EPS;
 
-export function emptyGrammar() {
-  return { vars: new Set(), start: '', rules: [] };
-}
-
 export function cloneGrammar(g) {
   return {
     vars: new Set(g.vars),
@@ -107,17 +103,6 @@ export function byLhs(g) {
 /** Every left-hand side is a single variable — the Type 2 shape. */
 export function isContextFree(g) {
   return g.rules.every(r => r.lhsArr.length === 1 && g.vars.has(r.lhsArr[0]));
-}
-
-/**
- * Changes when the grammar changes and at no other time. Used to key the
- * derived panels, the same job `_regexCacheKey()` does for the Language panel
- * — and, for the same reason, it is deliberately not memoised: it exists to
- * notice edits nobody announced.
- */
-export function grammarSignature(g) {
-  return `${g.start}|${[...g.vars].sort().join(',')}|`
-    + g.rules.map(r => `${r.lhsArr.join(' ')}>${r.rhsArr.join(' ')}`).sort().join(';');
 }
 
 export function grammarText(g) {
@@ -221,5 +206,3 @@ export function tokenizeWord(raw, g) {
   return { ok: true, raw: s, tokens };
 }
 
-/** The textarea, when the view is mounted. Kept here so tools never touch it. */
-export const grammarSourceEl = () => $('gram-source');

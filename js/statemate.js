@@ -47,9 +47,7 @@ import {
   executeAgentToolCalls, parseAgentToolTurn, STATEMATE_NATIVE_TOOLS, toolResultsMessage,
   traceCandidateWord
 } from './statemate-agent.js';
-import {
-  MIN_SPEC_TESTS, StateMateError, describeSpecSize, extractSpecJSON, focusIsEmpty, machineToSpec, parseTurn, partialStringField, resolveContextRefs, scopedSource, testKindFor
-} from './statemate-spec.js';
+import { StateMateError, describeSpecSize, extractSpecJSON, focusIsEmpty, machineToSpec, parseTurn, partialStringField, resolveContextRefs, scopedSource, testKindFor } from './statemate-spec.js';
 import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, createTab, fitToScreen, switchTab } from './ui.js';
 import { resetIds, showStatus } from './utils.js';
@@ -352,19 +350,6 @@ export function captureCheckpoint(label = '') {
 
 export function hasCheckpoint(id) {
   return !!id && checkpoints.has(id);
-}
-
-/** What a checkpoint would restore, for the button that offers it. */
-export function checkpointInfo(id) {
-  const cp = checkpoints.get(id);
-  if (!cp) return null;
-  return {
-    id: cp.id,
-    label: cp.label,
-    at: cp.at,
-    otherTab: !!cp.workspaceId && cp.workspaceId !== activeWorkspaceId,
-    states: cp.state.states?.length || 0
-  };
 }
 
 /**
@@ -1555,11 +1540,6 @@ export function testHint(machine = App.machine) {
   if (isOmegaAutomaton(machine)) return 'ω-words are written u(v) — a stem, then a period repeated forever.';
   if (getMachineConfig(machine).isTransducer) return 'Transducer tests compare the emitted output word.';
   return '';
-}
-
-/** Sanity check used by the UI before enabling the ask row. */
-export function minimumTests() {
-  return MIN_SPEC_TESTS;
 }
 
 export { showStatus };

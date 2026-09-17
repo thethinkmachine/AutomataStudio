@@ -495,11 +495,6 @@ export function initPanelSectionReorder() {
  */
 export const _dropTests = { outsideBy, panelIsOpen };
 
-/** Whether a reorder gesture is in flight — the tests' way in. */
-export function isReorderingSections() {
-  return !!(drag && drag.active);
-}
-
 /**
  * Drops a half-finished gesture. Module state survives `resetApp`, and a drag
  * left in flight would have the next test moving a section from the last one.

@@ -179,13 +179,6 @@ function deliver(kinds) {
   }
 }
 
-/** Test seam: drop every subscriber. Not used by the app. */
-export function _resetSubscribersForTests() {
-  for (const list of subscribers.values()) list.length = 0;
-  batchDepth = 0;
-  pending = null;
-}
-
 /** Test seam: how many subscribers a kind has. */
 export function _subscriberCount(kind) {
   return (subscribers.get(kind) || []).length;
