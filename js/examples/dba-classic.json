@@ -1,0 +1,40 @@
+{
+  "machine": "DBA",
+  "sigma": ["a", "b"],
+  "states": [
+    { "id": "s1", "x": 240, "y": 280, "name": "waiting" },
+    { "id": "s2", "x": 640, "y": 280, "name": "saw a" }
+  ],
+  "startId": "s1",
+  "accepts": ["s2"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "b" },
+    { "id": "t2", "from": "s1", "to": "s2", "symbol": "a" },
+    { "id": "t3", "from": "s2", "to": "s2", "symbol": "a" },
+    { "id": "t4", "from": "s2", "to": "s1", "symbol": "b" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 150, "y": 70, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Infinitely often a — GF a. The machine sits in \"saw a\" exactly after each a, so the one deterministic run passes through F infinitely often precisely when the word has infinitely many a's. No guessing is needed anywhere, so this ω-language is deterministic-Büchi recognisable."
+    },
+    {
+      "id": "n2", "x": 150, "y": 430, "color": "orange",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Now compare its mirror image. GF a is a DBA language; FG b (\"eventually always b\") is not — no DBA recognises it, though an NBA does. That gap is real: deterministic Büchi automata capture exactly the limits of regular languages, a proper subset of the ω-regular ones. Load the Büchi model's \"eventually always b\" example to see the machine that needs the guess."
+    }
+  ],
+  "meta": {
+    "title": "Classic: infinitely often a",
+    "blurb": "GF a, the canonical deterministic Büchi automaton. Its mirror FG b is the standard witness that DBAs are strictly weaker than NBAs.",
+    "inputs": [
+      { "w": "(a)", "expect": "accept" },
+      { "w": "(ab)", "expect": "accept" },
+      { "w": "b(a)", "expect": "accept" },
+      { "w": "abab(ab)", "expect": "accept" },
+      { "w": "(b)", "expect": "reject" },
+      { "w": "a(b)", "expect": "reject" }
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "machine": "NDTM",
+  "sigma": [
+    "0",
+    "1"
+  ],
+  "stackAlpha": [
+    "0",
+    "1",
+    "⊔"
+  ],
+  "tapeCount": 1,
+  "states": [
+    {
+      "id": "s1",
+      "x": 120,
+      "y": 200,
+      "name": "scan"
+    },
+    {
+      "id": "s2",
+      "x": 360,
+      "y": 200,
+      "name": "guess-last-1"
+    },
+    {
+      "id": "s3",
+      "x": 600,
+      "y": 200,
+      "name": "acc"
+    }
+  ],
+  "startId": "s1",
+  "accepts": [
+    "s3"
+  ],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "0", "write": "0", "dir": "R" },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "1", "write": "1", "dir": "R" },
+    { "id": "t3", "from": "s1", "to": "s2", "symbol": "1", "write": "1", "dir": "R" },
+    { "id": "t4", "from": "s2", "to": "s3", "symbol": "⊔", "write": "⊔", "dir": "S" }
+  ]
+}

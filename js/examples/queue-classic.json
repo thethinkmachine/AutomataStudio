@@ -1,0 +1,56 @@
+{
+  "machine": "QA",
+  "sigma": [
+    "a",
+    "b"
+  ],
+  "stackAlpha": [
+    "A",
+    "Z"
+  ],
+  "states": [
+    {
+      "id": "s1",
+      "x": 140,
+      "y": 220,
+      "name": "q0"
+    },
+    {
+      "id": "s2",
+      "x": 360,
+      "y": 220,
+      "name": "q1"
+    },
+    {
+      "id": "s3",
+      "x": 580,
+      "y": 220,
+      "name": "acc"
+    }
+  ],
+  "startId": "s1",
+  "accepts": [
+    "s3"
+  ],
+  "transitions": [
+    {
+      "id": "t1",
+      "from": "s1",
+      "to": "s2",
+      "symbol": "a",
+      "pop": "ε",
+      "push": "A"
+    },
+    {
+      "id": "t2",
+      "from": "s2",
+      "to": "s3",
+      "symbol": "b",
+      "pop": "Z",
+      "push": "ε"
+    }
+  ],
+  "config": {
+    "pdaParadigm": "explicit"
+  }
+}

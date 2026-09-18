@@ -1,0 +1,49 @@
+{
+  "machine": "2DFA",
+  "sigma": ["a", "b"],
+  "states": [
+    { "id": "s1", "x": 150, "y": 160, "name": "a_even" },
+    { "id": "s2", "x": 430, "y": 160, "name": "a_odd" },
+    { "id": "s3", "x": 430, "y": 380, "name": "b_even" },
+    { "id": "s4", "x": 150, "y": 380, "name": "b_odd" },
+    { "id": "s5", "x": 660, "y": 270, "name": "acc" }
+  ],
+  "startId": "s1",
+  "accepts": ["s5"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "⊢", "dir": "R" },
+    { "id": "t2", "from": "s1", "to": "s2", "symbol": "a", "dir": "R" },
+    { "id": "t3", "from": "s1", "to": "s1", "symbol": "b", "dir": "R" },
+    { "id": "t4", "from": "s1", "to": "s3", "symbol": "⊣", "dir": "L" },
+    { "id": "t5", "from": "s2", "to": "s1", "symbol": "a", "dir": "R" },
+    { "id": "t6", "from": "s2", "to": "s2", "symbol": "b", "dir": "R" },
+    { "id": "t7", "from": "s3", "to": "s3", "symbol": "a", "dir": "L" },
+    { "id": "t8", "from": "s3", "to": "s4", "symbol": "b", "dir": "L" },
+    { "id": "t9", "from": "s4", "to": "s4", "symbol": "a", "dir": "L" },
+    { "id": "t10", "from": "s4", "to": "s3", "symbol": "b", "dir": "L" },
+    { "id": "t11", "from": "s4", "to": "s5", "symbol": "⊢", "dir": "S" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 620, "y": 60, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "One head, two passes, zero memory cells. Pass 1 (top row) sweeps right counting a-parity; bouncing off ⊣ starts pass 2 (bottom row) sweeping left counting b-parity. Accepts: even number of a's AND odd number of b's."
+    },
+    {
+      "id": "n2", "x": 620, "y": 400, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Watch the tape head in the tracker: it visibly bounces off the right end marker. Multiple passes replace extra states — the 2DFA trick."
+    }
+  ],
+  "meta": {
+    "title": "Two passes, one head",
+    "blurb": "Checks even a's on the way out and odd b's on the way back — the head bounces off the end marker and re-reads the input. Multiple passes replace memory.",
+    "inputs": [
+      { "w": "aab", "expect": "accept" },
+      { "w": "b", "expect": "accept" },
+      { "w": "babab", "expect": "accept" },
+      { "w": "ab", "expect": "reject", "label": "odd a's" },
+      { "w": "aabb", "expect": "reject", "label": "even b's" }
+    ]
+  }
+}

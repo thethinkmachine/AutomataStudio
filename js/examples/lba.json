@@ -1,0 +1,56 @@
+{
+  "machine": "LBA",
+  "sigma": ["a"],
+  "stackAlpha": ["⊢", "a", "X", "⊔", "⊣"],
+  "tapeCount": 1,
+  "states": [
+    { "id": "s1", "x": 140, "y": 160, "name": "pass" },
+    { "id": "s2", "x": 380, "y": 160, "name": "saw one" },
+    { "id": "s3", "x": 620, "y": 160, "name": "even" },
+    { "id": "s4", "x": 860, "y": 160, "name": "odd ≥ 3" },
+    { "id": "s5", "x": 500, "y": 380, "name": "rewind" },
+    { "id": "s6", "x": 180, "y": 380, "name": "acc" }
+  ],
+  "startId": "s1",
+  "accepts": ["s6"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "⊢", "write": "⊢", "dir": "R" },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "X", "write": "X", "dir": "R" },
+    { "id": "t3", "from": "s1", "to": "s2", "symbol": "a", "write": "a", "dir": "R" },
+    { "id": "t4", "from": "s2", "to": "s2", "symbol": "X", "write": "X", "dir": "R" },
+    { "id": "t5", "from": "s2", "to": "s3", "symbol": "a", "write": "X", "dir": "R" },
+    { "id": "t6", "from": "s2", "to": "s6", "symbol": "⊣", "write": "⊣", "dir": "S" },
+    { "id": "t7", "from": "s3", "to": "s3", "symbol": "X", "write": "X", "dir": "R" },
+    { "id": "t8", "from": "s3", "to": "s4", "symbol": "a", "write": "a", "dir": "R" },
+    { "id": "t9", "from": "s3", "to": "s5", "symbol": "⊣", "write": "⊣", "dir": "L" },
+    { "id": "t10", "from": "s4", "to": "s4", "symbol": "X", "write": "X", "dir": "R" },
+    { "id": "t11", "from": "s4", "to": "s3", "symbol": "a", "write": "X", "dir": "R" },
+    { "id": "t12", "from": "s5", "to": "s5", "symbol": "X", "write": "X", "dir": "L" },
+    { "id": "t13", "from": "s5", "to": "s5", "symbol": "a", "write": "a", "dir": "L" },
+    { "id": "t14", "from": "s5", "to": "s1", "symbol": "⊢", "write": "⊢", "dir": "R" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 30, "y": 40, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Accepts aⁿ exactly when n is a power of two. Each left-to-right pass crosses off every SECOND surviving a — halving n. If a pass ever ends on an odd count above 1, n wasn't a power of two. When a pass finds exactly one a, accept."
+    },
+    {
+      "id": "n2", "x": 700, "y": 380, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Run 16 a's and watch the tape get eaten: 16 → 8 → 4 → 2 → 1. All inside the input's own cells — that bounded tape is what makes it an LBA."
+    }
+  ],
+  "meta": {
+    "title": "Powers of two, by halving",
+    "blurb": "Accepts aⁿ iff n = 2ᵏ. Each pass crosses off every second a, halving the count; a clean halving chain down to 1 is only possible for powers of two.",
+    "inputs": [
+      { "w": "a", "expect": "accept", "label": "2⁰" },
+      { "w": "aaaa", "expect": "accept", "label": "2²" },
+      { "w": "aaaaaaaa", "expect": "accept", "label": "2³" },
+      { "w": "aaaaaaaaaaaaaaaa", "expect": "accept", "label": "2⁴ — hypnotic" },
+      { "w": "aaaaaa", "expect": "reject", "label": "6" },
+      { "w": "aaaaa", "expect": "reject", "label": "5" }
+    ]
+  }
+}
