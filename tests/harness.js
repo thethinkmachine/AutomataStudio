@@ -184,6 +184,10 @@ function resetModuleState() {
   // validated rather than invalidated, and a test can replace the model in a way
   // the validators coincide on (an empty array for an empty array).
   geometry.invalidateLayoutGroups();
+  // A test that forced the JS label kernel must not hand the next one a pass
+  // running the fallback — the two agree, so it would be slow rather than
+  // wrong, which is the kind of thing nobody notices.
+  geometry.setLabelKernel('auto');
   viewport.invalidateCull();
   // The block index validates itself the way the state index does, and a test
   // can replace App.blocks with an equal-looking array the validator coincides
