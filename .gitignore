@@ -223,3 +223,6 @@ release/
 # on its own would have no effect.
 !build/
 !build/**
+# Intermediate output of scripts/build-wasm.mjs; js/wasm/*-bytes.js is the
+# committed artifact the app actually loads.
+wasm/*.wasm

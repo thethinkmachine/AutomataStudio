@@ -1,4 +1,5 @@
 import { App, COLLISION_BUDGET_STATES, COLLISION_BUDGET_TRANSITIONS, R } from './state.js';
+import { labelWasm } from './label-wasm.js';
 import { viewGraph } from './view-graph.js';
 import { rectHasSegment } from './viewport.js';
 
@@ -240,32 +241,223 @@ function quadPoint(sx, sy, mx, my, ex, ey, t) {
 // which is exactly what a uniform grid is for. Without one, routing is
 // O(edges × states) and label placement is O(labels²) — fine at ten states,
 // visibly not fine at two hundred.
-function makeGrid(cell) { return { cell: Math.max(1, cell), map: new Map() }; }
+//
+// It is a flat one rather than a Map of arrays, and the reason is that a grid
+// query is the single hottest thing in the app: at 500 states the layout pass
+// spends ~31% of its time in gridQuery alone, ahead of every piece of geometry
+// it exists to serve. Almost none of that was the lookup. Profiled against the
+// Map version on 20k label-sized queries over 500 nodes:
+//
+//   string key `${ix},${iy}` + fresh array + spread   9.12ms   (what this was)
+//   the same, writing into a reused array             7.26ms
+//   an integer key, still a Map of arrays             3.96ms
+//   this: flat hash + linked list, reused array       2.02ms
+//
+// So the cost was building a *string* per cell per query and hashing it (~45%),
+// and allocating a result array per query and spreading buckets into it (~20%).
+// Neither is work the pass needed doing. A callback in place of the result array
+// was tried and is worse (4.6ms): the three call sites pass three different
+// closures, so the call inside the loop goes polymorphic.
+//
+// Cells are open-addressed with linear probing and each holds a singly linked
+// list through `next`. A CSR layout (counting sort into one flat run) is faster
+// still, but it has to be built from a complete list in one pass, and two of the
+// three grids here are filled *during* the pass that queries them — the edge
+// samples as edges are routed, the labels as they are placed. One structure
+// that does both beats a second implementation for the one grid that is static.
+const GRID_MIN_SLOTS = 32;
 
-function gridAdd(grid, x, y, item) {
-  const k = `${Math.floor(x / grid.cell)},${Math.floor(y / grid.cell)}`;
-  const bucket = grid.map.get(k);
-  if (bucket) bucket.push(item); else grid.map.set(k, [item]);
+// Each grid carries its items' numbers in a flat `data` array, `stride` of them
+// per item, and a query answers with *indices* into it rather than with the
+// objects. The inner loops that follow — three of them per label candidate —
+// then read plain f64s out of one contiguous buffer instead of chasing a
+// pointer per item and loading four or five properties off whatever shape the
+// object turned out to have. `items` is kept alongside for the two callers that
+// genuinely need the object back (an identity test, and a group key).
+function makeGrid(cell, stride) {
+  return {
+    cell: Math.max(1, cell),
+    stride,
+    // Open-addressed cell table. `head` doubles as the occupancy flag: every
+    // live cell holds at least one item, so -1 means the slot is free and there
+    // is no sentinel key to collide with a real one.
+    slots: GRID_MIN_SLOTS,
+    mask: GRID_MIN_SLOTS - 1,
+    keys: new Int32Array(GRID_MIN_SLOTS),
+    head: new Int32Array(GRID_MIN_SLOTS).fill(-1),
+    tail: new Int32Array(GRID_MIN_SLOTS),
+    used: 0,
+    // Items, in insertion order, and the chain that threads each cell through
+    // them. Insertion order is preserved *within* a cell — the query used to
+    // walk buckets in push order and the geometry sums float penalties over the
+    // result, where a reordering is visible in the last bits.
+    items: [],
+    next: new Int32Array(64),
+    data: new Float64Array(64 * stride),
+    // The index buffer every query writes into, and `n` is how much of it is
+    // live. Reused rather than allocated, so a result is only valid until the
+    // next query *on the same grid*. That is true at every call site:
+    // labelPenalty asks all three grids in turn and consumes each before the
+    // next, and chooseSelfLoopAngle holds a node result across twelve scoring
+    // calls that query nothing.
+    out: new Int32Array(64),
+    n: 0
+  };
 }
 
-// Everything in the cells covering [x0,x1] × [y0,y1]. A very long edge can span
+// (ix, iy) as one integer. The pack wraps past ±32768 cells, which at any cell
+// size this app builds is some millions of pixels out; and a wrapped key can
+// only ever *add* a far-away item to a result that the caller then tests
+// exactly, which is the same "query wide, test exact" rule nodesNearChord and
+// labelPenalty already follow for node radii.
+function gridKey(ix, iy) { return ((ix & 0xffff) << 16) | (iy & 0xffff); }
+
+// murmur3's finalizer. The keys are lattice points, so the low bits alone would
+// put a whole row of cells in one probe chain — and this mixes across the whole
+// word rather than into the top bits, so masking stays sound at any table size.
+function gridHash(k) {
+  k = Math.imul(k ^ (k >>> 16), 0x45d9f3b);
+  k = Math.imul(k ^ (k >>> 16), 0x45d9f3b);
+  return (k ^ (k >>> 16)) >>> 0;
+}
+
+function gridSlot(grid, k) {
+  let i = gridHash(k) & grid.mask;
+  while (grid.head[i] !== -1 && grid.keys[i] !== k) i = (i + 1) & grid.mask;
+  return i;
+}
+
+function gridGrow(grid) {
+  // The old tables have to be held in locals before the grid is pointed at the
+  // new ones: gridSlot below probes `grid`, so reading the source through the
+  // same object would be reading the empty table it is rehashing into.
+  const oldSlots = grid.slots, oldKeys = grid.keys, oldHead = grid.head, oldTail = grid.tail;
+  const slots = oldSlots * 2;
+  const keys = new Int32Array(slots), head = new Int32Array(slots).fill(-1), tail = new Int32Array(slots);
+  grid.slots = slots; grid.mask = slots - 1;
+  grid.keys = keys; grid.head = head; grid.tail = tail;
+  for (let i = 0; i < oldSlots; i++) {
+    if (oldHead[i] === -1) continue;
+    const s = gridSlot(grid, oldKeys[i]);
+    keys[s] = oldKeys[i]; head[s] = oldHead[i]; tail[s] = oldTail[i];
+  }
+}
+
+// Files `item` under the cell containing (x, y) and answers its index, which is
+// where the caller writes its `stride` numbers into `grid.data`. The cell
+// coordinates are deliberately not the payload: a label is filed by its centre
+// and tested as a rect, and an edge sample carries the id of the edge it is on.
+function gridAdd(grid, x, y, item) {
+  const id = grid.items.length;
+  grid.items.push(item);
+  if (id >= grid.next.length) {
+    const cap = grid.next.length * 2;
+    const next = new Int32Array(cap); next.set(grid.next); grid.next = next;
+    const data = new Float64Array(cap * grid.stride); data.set(grid.data); grid.data = data;
+    const out = new Int32Array(cap); grid.out = out;
+  }
+  grid.next[id] = -1;
+
+  const k = gridKey(Math.floor(x / grid.cell), Math.floor(y / grid.cell));
+  let s = gridSlot(grid, k);
+  if (grid.head[s] === -1) {
+    // Kept under half full: past that, linear probing's chains grow fast.
+    if ((grid.used + 1) * 2 > grid.slots) { gridGrow(grid); s = gridSlot(grid, k); }
+    grid.keys[s] = k; grid.head[s] = id; grid.used++;
+  } else {
+    grid.next[grid.tail[s]] = id;
+  }
+  grid.tail[s] = id;
+  return id;
+}
+
+// The indices of everything in the cells covering [x0,x1] × [y0,y1], written
+// into `grid.out` with the count left in `grid.n`. A very long edge can span
 // more cells than there are items in the whole grid, so past a cell budget the
-// query degrades to "everything" — still correct, just unfiltered.
-function gridQuery(grid, x0, y0, x1, y1, all) {
+// query degrades to "everything" — still correct, just unfiltered. There is no
+// `all` list to hand back any more: the grid holds its own items, so the
+// degenerate answer is simply every index it has.
+function gridQuery(grid, x0, y0, x1, y1) {
   const c = grid.cell;
   const cx0 = Math.floor(x0 / c), cx1 = Math.floor(x1 / c);
   const cy0 = Math.floor(y0 / c), cy1 = Math.floor(y1 / c);
   const cells = (cx1 - cx0 + 1) * (cy1 - cy0 + 1);
-  if (!Number.isFinite(cells) || cells > 512) return all;
-  const out = [];
+  const count = grid.items.length;
+  const out = grid.out;
+  if (!Number.isFinite(cells) || cells > 512) {
+    for (let i = 0; i < count; i++) out[i] = i;
+    grid.n = count;
+    return out;
+  }
+  const { mask, keys, head, next } = grid;
+  let n = 0;
   for (let ix = cx0; ix <= cx1; ix++) {
     for (let iy = cy0; iy <= cy1; iy++) {
-      const bucket = grid.map.get(`${ix},${iy}`);
-      if (bucket) out.push(...bucket);
+      const k = gridKey(ix, iy);
+      let s = gridHash(k) & mask;
+      while (head[s] !== -1 && keys[s] !== k) s = (s + 1) & mask;
+      if (head[s] === -1) continue;
+      for (let id = head[s]; id !== -1; id = next[id]) out[n++] = id;
     }
   }
+  grid.n = n;
   return out;
 }
+
+// A node's radius is asked for once, here, rather than per candidate per label:
+// nodeR branches on the node's kind, and the label stage reads it millions of
+// times across a pass.
+function addNode(ctx, s) {
+  const grid = ctx.nodeGrid;
+  const r = nodeR(s);
+  const b = gridAdd(grid, s.x, s.y, s) * NODE_STRIDE;
+  const data = grid.data;
+  data[b] = s.x; data[b + 1] = s.y; data[b + 2] = r;
+  if (useWasm) WASM.addNode(s.x, s.y, r);
+}
+
+// Whether the compiled kernel is available, decided once at load. See
+// js/label-wasm.js for every way it can be `null` and why the JS below stays.
+//
+// Where it is present it owns the *sample* grid outright — samples are by far
+// the most numerous thing in a pass, and building that grid on both sides would
+// cost more than the kernel saves — and mirrors the nodes and the labels, which
+// are also wanted in JS: nodesNearChord and chooseSelfLoopAngle query the node
+// grid, and relayout's dirty scan asks the label grid which edge each box
+// belongs to. Those two are small enough that a mirror is cheaper than an
+// export to read them back through.
+//
+// One pass's grids at a time. That is safe because labelPenalty is only ever
+// called from inside the pass that filled them — never from a context handed
+// back to a caller — so a second buildLayoutContext cannot pull the memory out
+// from under a first.
+const WASM = labelWasm;
+let useWasm = !!WASM;
+
+/**
+ * Which implementation the label stage runs, and the seam that lets the other
+ * one be tested. `'js'` forces the fallback; anything else restores the kernel
+ * where there is one.
+ *
+ * This is not a debugging leftover. The JS path is what every reader whose
+ * browser refuses the kernel gets, and on a machine where it compiles — which
+ * is every machine the suite runs on — that path would otherwise never execute
+ * again, and would rot silently until the day someone needed it. Switching to
+ * it is how tests/label-penalty-wasm.test.js asserts the two lay out the same
+ * diagram.
+ */
+export function setLabelKernel(mode) {
+  useWasm = mode === 'js' ? false : !!WASM;
+  return useWasm ? 'wasm' : 'js';
+}
+
+/** Which one is in force. */
+export function labelKernel() { return useWasm ? 'wasm' : 'js'; }
+
+// What each grid's `data` holds, per item.
+const NODE_STRIDE = 3;   // x, y, radius
+const LABEL_STRIDE = 5;  // rect x, y, w, h, and the id of the edge it labels
+const SAMPLE_STRIDE = 3; // x, y, and the id of the edge it is on
 
 // ══════════════════════════════════════════════════════════════════
 //  LABEL SIZES
@@ -430,7 +622,7 @@ function loopCandidateAngles() {
 // `near` is every state that could matter for any candidate angle, gathered once
 // by the caller — the loop sweeps a disc around the state, so one query covers
 // all twelve directions and the per-candidate work is pure arithmetic.
-function scoreLoopAngle(s, angle, near, dirs, m, labelSize) {
+function scoreLoopAngle(s, angle, near, nNear, grid, dirs, m, labelSize) {
   const ux = Math.cos(angle), uy = Math.sin(angle);
   const lcx = s.x + m.centreOut * ux, lcy = s.y + m.centreOut * uy;
   const clear = nodeClearance();
@@ -442,16 +634,20 @@ function scoreLoopAngle(s, angle, near, dirs, m, labelSize) {
     s.y + (m.extent + labelGap() + labelSize.h / 2) * uy,
     labelSize.w, labelSize.h) : null;
 
-  for (const o of near) {
-    if (o.id === s.id) continue;
+  const { items, data } = grid;
+  for (let i = 0; i < nNear; i++) {
+    const id = near[i];
+    if (items[id] === s) continue;
+    const b = id * NODE_STRIDE;
+    const ox = data[b], oy = data[b + 1];
     // Both distances are the *other* node's, not this one's — a loop on a small
     // state still has to clear a big block standing beside it.
-    const or = nodeR(o);
-    const overlap = (m.ss + or + clear) - Math.hypot(o.x - lcx, o.y - lcy);
+    const or = data[b + 2];
+    const overlap = (m.ss + or + clear) - Math.hypot(ox - lcx, oy - lcy);
     if (overlap > 0) score += overlap * 4;
     // The label rides outside the arc, so a direction can be clear for the loop
     // and still be wrong for the text.
-    if (box) score += circleRectOverlap(o.x, o.y, or + gap, box) * 2;
+    if (box) score += circleRectOverlap(ox, oy, or + gap, box) * 2;
   }
 
   // An edge arriving where the loop wants to sit is not an overlap the way a
@@ -477,12 +673,13 @@ export function chooseSelfLoopAngle(s, ts, ctx, m, labelSize) {
   // The widest node in play rather than this one's: the query has to reach
   // whatever could be near, and the per-candidate test above is exact.
   const reach = m.extent + (labelSize ? labelSize.w + labelSize.h : 0) + ctxMaxR(ctx) + nodeClearance();
-  const near = gridQuery(ctx.nodeGrid, s.x - reach, s.y - reach, s.x + reach, s.y + reach, ctx.states);
+  const near = gridQuery(ctx.nodeGrid, s.x - reach, s.y - reach, s.x + reach, s.y + reach);
+  const nNear = ctx.nodeGrid.n;
   const dirs = ctx.incidentDirs.get(s.id) || [];
 
   let best = UP, bestScore = Infinity;
   for (const angle of loopCandidateAngles()) {
-    const score = scoreLoopAngle(s, angle, near, dirs, m, labelSize);
+    const score = scoreLoopAngle(s, angle, near, nNear, ctx.nodeGrid, dirs, m, labelSize);
     if (score < bestScore) { bestScore = score; best = angle; }
   }
   return best;
@@ -511,15 +708,21 @@ function nodesNearChord(from, to, ctx, slack) {
   const queryPad = ctxMaxR(ctx) + clear + slack;
   const x0 = Math.min(from.x, to.x) - queryPad, x1 = Math.max(from.x, to.x) + queryPad;
   const y0 = Math.min(from.y, to.y) - queryPad, y1 = Math.max(from.y, to.y) + queryPad;
-  const near = gridQuery(ctx.nodeGrid, x0, y0, x1, y1, ctx.states);
+  const grid = ctx.nodeGrid;
+  const near = gridQuery(grid, x0, y0, x1, y1);
+  const nNear = grid.n;
+  const { items, data } = grid;
   const hits = [];
-  for (const o of near) {
-    if (o.id === from.id || o.id === to.id) continue;
-    const { dist, t } = segmentDistance(o.x, o.y, from.x, from.y, to.x, to.y);
+  for (let i = 0; i < nNear; i++) {
+    const id = near[i];
+    const o = items[id];
+    if (o === from || o === to) continue;
+    const b = id * NODE_STRIDE;
+    const { dist, t } = segmentDistance(data[b], data[b + 1], from.x, from.y, to.x, to.y);
     // Only the interior counts: a state overlapping an endpoint is a node-node
     // overlap, and bending the edge cannot fix it.
     if (t <= 0.02 || t >= 0.98) continue;
-    if (dist < nodeR(o) + clear + slack) hits.push({ node: o, dist, t });
+    if (dist < data[b + 2] + clear + slack) hits.push({ node: o, dist, t });
   }
   return hits;
 }
@@ -628,27 +831,69 @@ const LABEL_PUSHES = [0, 1, 2];
 // are, but the box is small enough to touch four cells while the union of every
 // candidate for one label is not — and the difference is between a handful of
 // obstacles per test and every edge sample within a hundred pixels.
-function labelPenalty(box, ctx, ownKey) {
+function labelPenalty(box, ctx, ownKeyId) {
   const gap = labelGap();
   // Query for the widest node that could reach this box; charge each one its
   // own radius. Same rule as nodesNearChord: query wide, test exact.
   const pad = ctxMaxR(ctx) + gap;
+  if (useWasm) return WASM.labelPenalty(box.x, box.y, box.w, box.h, ownKeyId, gap, pad);
+  return labelPenaltyJS(box, ctx, ownKeyId, gap, pad);
+}
+
+// The same function in JS, and the reference the wasm one is tested against.
+// It is reached whenever the kernel could not be compiled — see js/label-wasm.js
+// — and is also what makes that test possible at all, since a claim that the two
+// agree needs both of them to be callable.
+export function labelPenaltyJS(box, ctx, ownKeyId, gap = labelGap(), pad = ctxMaxR(ctx) + gap) {
+  const bx = box.x, by = box.y, bw = box.w, bh = box.h;
+  const bx1 = bx + bw, by1 = by + bh;
   let penalty = 0;
 
-  for (const o of gridQuery(ctx.nodeGrid, box.x - pad, box.y - pad, box.x + box.w + pad, box.y + box.h + pad, ctx.states)) {
-    penalty += circleRectOverlap(o.x, o.y, nodeR(o) + gap, box) * 3;
+  const nodes = ctx.nodeGrid;
+  const near = gridQuery(nodes, bx - pad, by - pad, bx1 + pad, by1 + pad);
+  const nodeData = nodes.data;
+  for (let i = 0, n = nodes.n; i < n; i++) {
+    const b = near[i] * NODE_STRIDE;
+    const cx = nodeData[b], cy = nodeData[b + 1];
+    const nx = cx < bx ? bx : cx > bx1 ? bx1 : cx;
+    const ny = cy < by ? by : cy > by1 ? by1 : cy;
+    // sqrt rather than Math.hypot, so the wasm port of this loop can answer the
+    // same f64. hypot's extra care is against overflow at magnitudes a canvas
+    // coordinate never reaches, and there is no hypot instruction to match it
+    // with; the two differ by at most a couple of ulp on a value that is then
+    // weighted and summed.
+    const dx = cx - nx, dy = cy - ny;
+    const over = (nodeData[b + 2] + gap) - Math.sqrt(dx * dx + dy * dy);
+    if (over > 0) penalty += over * 3;
   }
 
-  const grown = { x: box.x - gap, y: box.y - gap, w: box.w + gap * 2, h: box.h + gap * 2 };
-  const x1 = grown.x + grown.w, y1 = grown.y + grown.h;
-  for (const other of gridQuery(ctx.labelGrid, grown.x, grown.y, x1, y1, ctx.placedLabels)) {
-    penalty += rectOverlap(grown, other) * 2;
+  const gx = bx - gap, gy = by - gap;
+  const gx1 = bx1 + gap, gy1 = by1 + gap;
+  const boxes = ctx.labelGrid;
+  const labels = gridQuery(boxes, gx, gy, gx1, gy1);
+  const labelData = boxes.data;
+  for (let i = 0, n = boxes.n; i < n; i++) {
+    const b = labels[i] * LABEL_STRIDE;
+    const ox = Math.min(gx1, labelData[b] + labelData[b + 2]) - Math.max(gx, labelData[b]);
+    if (ox <= 0) continue;
+    const oy = Math.min(gy1, labelData[b + 1] + labelData[b + 3]) - Math.max(gy, labelData[b + 1]);
+    if (oy <= 0) continue;
+    penalty += (ox < oy ? ox : oy) * 2;
   }
 
   // Edges are sampled into a point cloud once per pass, so "does this box sit on
   // a path?" is a handful of point-in-rect tests instead of a curve intersection.
-  for (const p of gridQuery(ctx.edgeGrid, grown.x, grown.y, x1, y1, ctx.edgeSamples)) {
-    if (p.key !== ownKey && pointInRect(p.x, p.y, grown)) penalty += 5;
+  // The edge a sample belongs to is an index, not the "from|to" string it used
+  // to be: this is the innermost comparison in the pass and it ran per sample
+  // per candidate per label.
+  const edges = ctx.edgeGrid;
+  const samples = gridQuery(edges, gx, gy, gx1, gy1);
+  const sampleData = edges.data;
+  for (let i = 0, n = edges.n; i < n; i++) {
+    const b = samples[i] * SAMPLE_STRIDE;
+    if (sampleData[b + 2] === ownKeyId) continue;
+    const px = sampleData[b], py = sampleData[b + 1];
+    if (px >= gx && px <= gx1 && py >= gy && py <= gy1) penalty += 5;
   }
 
   return penalty;
@@ -705,7 +950,7 @@ function placeLabel(geo, ctx) {
 
   let best = null;
   for (const c of candidates) {
-    const collision = labelPenalty(rectAt(c.x, c.y, w, h), ctx, geo.key);
+    const collision = labelPenalty(rectAt(c.x, c.y, w, h), ctx, geo.keyId);
     if (collision === 0) return c;
     const total = collision + c.cost;
     if (!best || total < best.total) best = { x: c.x, y: c.y, total };
@@ -817,14 +1062,13 @@ export function buildLayoutContext(opts = {}) {
   }
 
   const cell = 2 * maxR + nodeClearance() * 2;
+  if (useWasm && collide) WASM.resetGrids(cell);
   const ctx = {
     stateById, tsByPair, groups, states, collide, view, maxR,
-    nodeGrid: makeGrid(cell),
+    nodeGrid: makeGrid(cell, NODE_STRIDE),
     incidentDirs: new Map(),
-    edgeGrid: makeGrid(cell),
-    edgeSamples: [],
-    labelGrid: makeGrid(cell),
-    placedLabels: [],
+    edgeGrid: makeGrid(cell, SAMPLE_STRIDE),
+    labelGrid: makeGrid(cell, LABEL_STRIDE),
     geo: new Map()
   };
 
@@ -833,7 +1077,7 @@ export function buildLayoutContext(opts = {}) {
   if (collide) {
     ctx.pos = new Map();
     for (const s of states) {
-      gridAdd(ctx.nodeGrid, s.x, s.y, s);
+      addNode(ctx, s);
       // What the next pass diffs against to learn which states moved. Recorded
       // here rather than asked of the drag, so every mover is caught whoever
       // moved it — a pointer drag, an align snap, auto-pan, an undo.
@@ -878,7 +1122,10 @@ export function buildLayoutContext(opts = {}) {
   if (!wants('smartLabels')) return ctx;
   // Sample every path first: a label needs to know where all the edges are, and
   // the edges are all final by now.
-  for (const geo of ctx.geo.values()) sampleEdge(ctx, geo);
+  for (let i = 0; i < groups.length; i++) {
+    const geo = ctx.geo.get(groups[i].key);
+    if (geo) { geo.keyId = i; sampleEdge(ctx, geo); }
+  }
   for (const g of groups) placeGroupLabel(g, ctx);
   ctx.labelled = true;
 
@@ -1089,8 +1336,11 @@ function relayout(prev, { groups, stateById, states, labelSizeFor }) {
   // Labels a moved state could have pushed, even where its edge did not move.
   for (const { s, was } of moved) {
     for (const [x, y] of [[was.x, was.y], [s.x, s.y]]) {
-      for (const b of gridQuery(prev.labelGrid, x - labelReach, y - labelReach, x + labelReach, y + labelReach, prev.placedLabels)) {
-        if (b.key) dirty.add(b.key);
+      const found = gridQuery(prev.labelGrid, x - labelReach, y - labelReach, x + labelReach, y + labelReach);
+      const boxes = prev.labelGrid.items;
+      for (let i = 0, n = prev.labelGrid.n; i < n; i++) {
+        const b = boxes[found[i]];
+        if (b && b.key) dirty.add(b.key);
       }
     }
   }
@@ -1100,15 +1350,16 @@ function relayout(prev, { groups, stateById, states, labelSizeFor }) {
   // where maintaining them incrementally would mean removal from three grids
   // for a saving smaller than the bookkeeping.
   const cell = 2 * maxR + nodeClearance() * 2;
+  // After the dirty scan above, which reads prev's *JS* label grid — the reset
+  // is what makes the wasm side belong to the pass being built.
+  if (useWasm) WASM.resetGrids(cell);
   const ctx = {
     stateById, tsByPair: prev.tsByPair, groups, states,
     collide: true, view: null, maxR,
-    nodeGrid: makeGrid(cell),
+    nodeGrid: makeGrid(cell, NODE_STRIDE),
     incidentDirs: new Map(),
-    edgeGrid: makeGrid(cell),
-    edgeSamples: [],
-    labelGrid: makeGrid(cell),
-    placedLabels: [],
+    edgeGrid: makeGrid(cell, SAMPLE_STRIDE),
+    labelGrid: makeGrid(cell, LABEL_STRIDE),
     geo: new Map(),
     env: prev.env,
     pos: prev.pos,
@@ -1116,7 +1367,7 @@ function relayout(prev, { groups, stateById, states, labelSizeFor }) {
     labelled: true
   };
   for (const s of states) {
-    gridAdd(ctx.nodeGrid, s.x, s.y, s);
+    addNode(ctx, s);
     const was = ctx.pos.get(s.id);
     was.x = s.x; was.y = s.y;
   }
@@ -1143,15 +1394,14 @@ function relayout(prev, { groups, stateById, states, labelSizeFor }) {
 
   // Seed the avoidance structures with what survived, so a re-placed label is
   // placed clear of the labels and edges that did not move.
-  for (const g of groups) {
+  for (let i = 0; i < groups.length; i++) {
+    const g = groups[i];
     const geo = ctx.geo.get(g.key);
     if (!geo) continue;
+    geo.keyId = i;
     if (dirty.has(g.key)) { geo.samples = null; geo.box = null; }
     sampleEdge(ctx, geo);
-    if (geo.box) {
-      ctx.placedLabels.push(geo.box);
-      gridAdd(ctx.labelGrid, geo.box.x + geo.box.w / 2, geo.box.y + geo.box.h / 2, geo.box);
-    }
+    if (geo.box) { geo.box.keyId = i; addLabelBox(ctx, geo.box); }
   }
   for (const g of groups) {
     if (dirty.has(g.key)) placeGroupLabel(g, ctx);
@@ -1171,9 +1421,20 @@ function placeGroupLabel(g, ctx) {
   // which edges' labels sit near a state that moved.
   const box = rectAt(spot.x, spot.y, geo.labelSize.w, geo.labelSize.h);
   box.key = g.key;
+  box.keyId = geo.keyId;
   geo.box = box;
-  ctx.placedLabels.push(box);
-  gridAdd(ctx.labelGrid, spot.x, spot.y, box);
+  addLabelBox(ctx, box);
+}
+
+// Filed by its centre, tested as a rect — so the cell coordinates and the
+// payload are different numbers, which is why gridAdd does not store them.
+function addLabelBox(ctx, box) {
+  const grid = ctx.labelGrid;
+  const b = gridAdd(grid, box.x + box.w / 2, box.y + box.h / 2, box) * LABEL_STRIDE;
+  const data = grid.data;
+  data[b] = box.x; data[b + 1] = box.y; data[b + 2] = box.w; data[b + 3] = box.h;
+  data[b + 4] = box.keyId;
+  if (useWasm) WASM.addLabel(box.x, box.y, box.w, box.h, box.keyId);
 }
 
 function pushDir(map, id, angle) {
@@ -1192,15 +1453,23 @@ function normalize(x, y, fx, fy) {
 // re-inserted into the grid rather than re-walked along its own path.
 function sampleEdge(ctx, geo) {
   if (!geo.samples) geo.samples = buildSamples(geo);
-  for (const p of geo.samples) {
-    ctx.edgeSamples.push(p);
-    gridAdd(ctx.edgeGrid, p.x, p.y, p);
+  const pts = geo.samples, keyId = geo.keyId;
+  if (useWasm) {
+    for (let i = 0; i < pts.length; i += 2) WASM.addSample(pts[i], pts[i + 1], keyId);
+    return;
+  }
+  const grid = ctx.edgeGrid;
+  for (let i = 0; i < pts.length; i += 2) {
+    const x = pts[i], y = pts[i + 1];
+    const b = gridAdd(grid, x, y, null) * SAMPLE_STRIDE;
+    const data = grid.data;
+    data[b] = x; data[b + 1] = y; data[b + 2] = keyId;
   }
 }
 
 function buildSamples(geo) {
   const out = [];
-  const add = (x, y) => { out.push({ x, y, key: geo.key }); };
+  const add = (x, y) => { out.push(x, y); };
   if (geo.isSelf) {
     const m = geo.loop;
     const cx = geo.from.x + m.centreOut * Math.cos(geo.angle);
@@ -1209,7 +1478,7 @@ function buildSamples(geo) {
       const a = (i / 8) * Math.PI * 2;
       add(cx + m.ss * Math.cos(a), cy + m.ss * Math.sin(a));
     }
-    return out;
+    return Float64Array.from(out);
   }
   // Spaced by roughly a label's height rather than by a fixed count: a long edge
   // sampled six times leaves gaps a whole label fits through, and would be
@@ -1226,7 +1495,7 @@ function buildSamples(geo) {
     const p = pathPoint(geo, i / n);
     add(p.x, p.y);
   }
-  return out;
+  return Float64Array.from(out);
 }
 
 // ══════════════════════════════════════════════════════════════════
