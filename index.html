@@ -187,7 +187,7 @@
         <div class="hdr-sep"></div>
 
         <div class="hdr-group hdr-file-actions">
-          <button class="hbtn icon-only hdr-load-action" onclick="loadJSON()" data-tip="Open machine (.automaton, .json, .png, .jff)" aria-label="Open machine">
+          <button class="hbtn icon-only hdr-load-action" onclick="loadJSON()" data-tip="Open machine (.automaton, .json, .png, .jff, .scxml, XState)" aria-label="Open machine">
             <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0ZM93.66,77.66,120,51.31V144a8,8,0,0,0,16,0V51.31l26.34,26.35a8,8,0,0,0,11.32-11.32l-40-40a8,8,0,0,0-11.32,0l-40,40A8,8,0,0,0,93.66,77.66Z" /></svg>
           </button>
           <!-- Save is a split button, the arrangement Word uses: the wide half
@@ -278,6 +278,16 @@
               <div tabindex="0" class="ctx-i" role="menuitem" onclick="setView('reference')">
                 <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h64a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48ZM96,192H32V64H96a24,24,0,0,1,24,24V200A39.81,39.81,0,0,0,96,192Zm128,0H160a39.81,39.81,0,0,0-24,8V88a24,24,0,0,1,24-24h64Z" /></svg>
                 Reference<span class="ctx-kbd-hint">4</span>
+              </div>
+            </div>
+            <div class="ctx-divider"></div>
+            <!-- Wired in js/exercise-ui.js rather than by onclick=, so it adds
+                 nothing to bridge.js. -->
+            <div class="ctx-group" role="group" aria-labelledby="hdr-teach-label">
+              <div class="ctx-group-label" id="hdr-teach-label" aria-hidden="true">Teach</div>
+              <div tabindex="0" class="ctx-i" role="menuitem" id="menu-exercise-create">
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M251.76,88.94l-120-64a8,8,0,0,0-7.52,0l-120,64a8,8,0,0,0,0,14.12L32,117.87v48.42a15.91,15.91,0,0,0,4.06,10.65C49.16,191.53,78.51,216,128,216a130,130,0,0,0,48-8.76V240a8,8,0,0,0,16,0V199.51a115.63,115.63,0,0,0,27.94-22.57A15.91,15.91,0,0,0,224,166.29V117.87l27.76-14.81a8,8,0,0,0,0-14.12ZM128,200c-43.27,0-68.72-21.14-80-33.71V126.4l76.24,40.66a8,8,0,0,0,7.52,0L176,143.47v46.34C163.4,195.69,147.52,200,128,200Zm80-33.75a97.83,97.83,0,0,1-16,14.25V134.93l16-8.53ZM188,118.94l-.22-.13-56-29.87a8,8,0,0,0-7.52,14.12L171,128l-43,22.93L25,96,128,41.07,231,96Z" /></svg>
+                Create Exercise from This Machine…
               </div>
             </div>
             <div class="ctx-divider"></div>
@@ -800,6 +810,18 @@
                  the only ones in the app that no keyboard could collapse and
                  no screen reader could report the state of — the same half of a
                  control rowActions() found missing on the list rows. -->
+            <!-- The exercise this tab is an answer to. Hidden until there is one;
+                 the body is built and wired in js/exercise-ui.js from
+                 App.exercise, so nothing inside needs a name in bridge.js. -->
+            <div class="rp-collapsible" id="rp-exercise" style="display:none">
+              <div class="rp-section-header" onclick="toggleRPSection('rp-exercise')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-exercise')}">
+                <span class="rp-section-title">Exercise</span>
+                <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+              </div>
+              <div class="rp-section-body">
+                <div class="ex-body" id="exercise-body"></div>
+              </div>
+            </div>
             <div class="rp-collapsible" id="rp-language">
               <div class="rp-section-header" onclick="toggleRPSection('rp-language')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-language')}">
                 <span class="rp-section-title">Language</span>
@@ -1113,6 +1135,8 @@
             <div class="algo-item" onclick="setAlgo('union2')" data-algo="union2">Union with M₂</div>
             <div class="algo-item" onclick="setAlgo('intersect')" data-algo="intersect">Intersection with M₂</div>
             <div class="algo-item" onclick="setAlgo('concat2')" data-algo="concat2">Concat with M₂</div>
+            <div class="algo-grp">Engineering</div>
+            <div class="algo-item" onclick="setAlgo('lexer')" data-algo="lexer">Lexer Generator</div>
           </div>
         </div>
         <div class="algo-content" id="algo-content"></div>
@@ -1445,6 +1469,17 @@
         <button class="btn-g" onclick="closeModal('divider-modal')">Cancel</button>
         <button class="btn-p" onclick="confirmDivider()">Save</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ══════ CREATE EXERCISE ══════
+       Body and footer are built in js/exercise-ui.js, which attaches every
+       listener at creation. -->
+  <div class="overlay" id="exercise-modal" role="dialog" aria-modal="true" aria-labelledby="exercise-modal-title">
+    <div class="modal exercise-modal">
+      <h2 class="modal-title"><span class="modal-title-text" id="exercise-modal-title">Create Exercise</span></h2>
+      <div class="exercise-form" id="exercise-modal-body"></div>
+      <div class="modal-foot" id="exercise-modal-foot"></div>
     </div>
   </div>
 
@@ -1919,7 +1954,7 @@
     </div>
   </div>
 
-  <input type="file" id="file-input" accept=".automaton,.json,.png,.jff,.jflap" style="display:none" onchange="onFileLoad(event)">
+  <input type="file" id="file-input" accept=".automaton,.json,.png,.jff,.jflap,.scxml,.js,.mjs,.ts" style="display:none" onchange="onFileLoad(event)">
   <input type="file" id="settings-file-input" accept=".json" style="display:none" onchange="importSettings(event)">
 
   <!-- Theme Modal -->

@@ -60,6 +60,14 @@ export const Change = {
   // and the formal definition through a re-render because a production was
   // retyped, which is what emitting GRAPH for it would do on every keystroke).
   GRAMMAR: 'grammar',
+  // The exercise attached to this workspace — its prompt, its rules and the
+  // student's progress on it. Persisted, not the machine: the same two
+  // reasons as META. Checking an answer writes progress, and that must not
+  // redraw the diagram it just graded.
+  EXERCISE: 'exercise',
+  // The lexer generator's rule set and sample input. Persisted, not the
+  // machine, for the same reasons again.
+  LEXER: 'lexer',
   // The open workspace tabs, their names or their dirty flags.
   TABS: 'tabs',
   // The save indicator's state.

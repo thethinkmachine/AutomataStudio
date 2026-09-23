@@ -5525,3 +5525,103 @@ button:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+/* ═══ CREATE EXERCISE ═══ (js/exercise-ui.js) */
+.modal.exercise-modal {
+  max-width: 560px;
+}
+
+.exercise-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-family: var(--sans);
+}
+
+.ex-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ex-field-label {
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ex-field-hint,
+.ex-fine-print {
+  font-size: .72rem;
+  line-height: 1.5;
+  color: var(--text3);
+}
+
+.ex-fine-print { margin: 0; }
+
+.ex-textarea {
+  resize: vertical;
+  font-family: var(--sans);
+  line-height: 1.5;
+}
+
+.ex-num { width: 120px; }
+
+.ex-radio-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.ex-radio,
+.ex-check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .8rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ex-radio:has(input:disabled) {
+  color: var(--text3);
+  cursor: not-allowed;
+}
+
+.ex-type-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ex-type-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.ex-type-cat {
+  width: 100%;
+  font-size: .68rem;
+  color: var(--text3);
+}
+
+.ex-chip {
+  padding: 2px 9px;
+  border: 1px solid var(--border2);
+  border-radius: 999px;
+  background: var(--bg2);
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: .72rem;
+  cursor: pointer;
+}
+
+.ex-chip.is-on {
+  border-color: var(--accent-border-strong);
+  background: var(--accent-soft-strong);
+  color: var(--text);
+}
+
+.ex-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }

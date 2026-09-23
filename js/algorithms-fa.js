@@ -13,6 +13,7 @@ import { autoFitLoadedMachine, fitToScreen } from './ui.js';
 import { escapeHtml, findPdaNondeterministicPairs, isAnyTM, isClassicPDA, parseEps, showStatus } from './utils.js';
 import { applyMachineSwitch, setMachine, setView } from './view.js';
 import { getCurrentMachineSnapshot, loadBuiltMachine } from './workspace.js';
+import { algoLexer } from './lexer-ui.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  ALGORITHMS VIEW
@@ -43,6 +44,7 @@ export function renderAlgo(a) {
     minimizeVisual: algoMinimizeVisual, re2nfaVisual: algoRE2NFAVisual, tm2grammar: algoTM2Grammar,
     epsClosure: algoEpsClosure, dfa2rg: algoDFA2RG, rg2nfa: algoRG2NFA,
     deadStates: algoDeadStates,
+    lexer: algoLexer,
   };
   if (renders[a]) renders[a](c);
 }

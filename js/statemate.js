@@ -371,7 +371,9 @@ export function restoreCheckpoint(id) {
   if (stillOpen && cp.workspaceId !== activeWorkspaceId) switchTab(cp.workspaceId);
 
   commit(() => {
-    importWorkspaceState({ ...cp.state, history: App.history, future: App.future });
+    // The exercise is carried across for the reason it is off the undo stack:
+    // taking back a machine must not take back the attempts made on it.
+    importWorkspaceState({ ...cp.state, history: App.history, future: App.future, exercise: App.exercise });
     App.selectedStates.clear();
     App.selectedTransitions.clear();
     resetSim();

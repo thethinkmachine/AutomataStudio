@@ -600,7 +600,7 @@ export function createTab(name) {
   // over the next tab's diagram — and the editor does not go on showing the
   // previous tab's rules, which the next keystroke would then write into this
   // one.
-  emit(Change.META, Change.GRAMMAR);
+  emit(Change.META, Change.GRAMMAR, Change.EXERCISE, Change.LEXER);
   // And its own scope and its own blocks. Both paths here call renderAll()
   // directly and never `emit(Change.GRAPH)`, so every GRAPH subscriber that is
   // not renderAll itself is skipped — which is why the breadcrumb vanished on a
@@ -653,7 +653,7 @@ export function switchTab(id) {
   // over the next tab's diagram — and the editor does not go on showing the
   // previous tab's rules, which the next keystroke would then write into this
   // one.
-  emit(Change.META, Change.GRAMMAR);
+  emit(Change.META, Change.GRAMMAR, Change.EXERCISE, Change.LEXER);
   // And its own scope and its own blocks. Both paths here call renderAll()
   // directly and never `emit(Change.GRAPH)`, so every GRAPH subscriber that is
   // not renderAll itself is skipped — which is why the breadcrumb vanished on a

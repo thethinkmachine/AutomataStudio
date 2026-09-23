@@ -136,3 +136,17 @@ Points worth keeping in mind:
 **JFLAP's tape is two-way infinite, unconditionally, for every Turing machine it writes.** That is a fact about the file rather than a guess about the machine in it, so `jflapToWorkspace` returns `twoWayTape: true` and `loadData` applies it — there is nothing to detect from the transitions and no machine type to pick. See [the tape](#the-tape) for why that is a setting rather than a family of extra machine types.
 
 
+
+### Statechart import (XState, SCXML)
+
+The export side is `codegenXState` / `codegenSCXML` in [js/codegen.js](js/codegen.js); [js/interop/](js/interop/) is the way back, and the way in for a statechart written for a real application. Split like JFLAP: `readStatechart` (import-free, throws `StatechartError`) reads, [js/import-statechart.js](js/import-statechart.js) places. `readDocumentPayload` recognises one by extension (`.scxml`; `.js`/`.mjs`/`.ts` for XState) or, for a `.json`, by shape — `states` as an object, no `format`, no `transitions` array.
+
+- **Real XState files are code, not JSON.** [js/interop/objlit.js](js/interop/objlit.js) reads the literal parts of an object literal exactly and keeps every other value — `assign(…)`, a guard function — as `{ __expr: text }`, skipped by bracket-balancing and **never evaluated**. The config is found inside `createMachine(…)` (which also covers `setup(…).createMachine(…)`) or after a declaration anchored at the start of a line — anchored because `codegenXState`'s banner comment contains an `=`, and an unanchored search parsed the banner.
+- **[js/interop/xml.js](js/interop/xml.js) is a small hand-rolled reader** for the reason the JFLAP one is: machine-written input, and a reader the suite can run without a DOM.
+- **Flattening has one rule per statechart feature**, listed at the top of [js/interop/statechart.js](js/interop/statechart.js): a state per leaf named by its dotted path; inherited `on` with the deepest handler winning; `final` (and the exporters' own `meta.accepting` / `<data id="accepting">`) as accepting; the exporters' output conventions read back as Mealy/Moore so an export round-trips as itself. **A top-level final state inherits nothing** — reaching it ends the whole machine — while a nested one still has its ancestors' edges.
+- **Nothing is dropped silently.** Guards are code, so guarded alternatives all become edges (an NFA, with a warning); eventless transitions become ε (with a warning, since a statechart takes them eagerly); delays, invokes, history and other actions are listed. The notes go to the machine card, as JFLAP's do. **Parallel states are refused** — orthogonal regions are a product of machines, and flattening one silently would multiply the state count behind the reader's back.
+- The loaded document is **stamped with the current schema**: the flattener spells ε and the wildcard with this reader's symbols, and the v0 symbol migration is keyed on a missing schema.
+
+[tests/statechart.test.js](tests/statechart.test.js) round-trips DFA, Mealy and Moore machines through both exporters and checks the language with the exercise grader's exact equivalence.
+
+`shareLinkFor(doc)` and `copyLinkToClipboard(promise, msg)` were split out of `copyShareableLink` so a document that is not the one on screen — an exercise — can be shared the same way, clipboard grant and all.

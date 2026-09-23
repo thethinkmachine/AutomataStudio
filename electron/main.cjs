@@ -85,9 +85,10 @@ const WORKSPACE_EXT = 'automaton';
 
 const OPEN_FILTERS = [
   { name: 'AutomataStudio Machine', extensions: [WORKSPACE_EXT] },
-  { name: 'All supported', extensions: [WORKSPACE_EXT, 'json', 'png', 'jff', 'jflap'] },
+  { name: 'All supported', extensions: [WORKSPACE_EXT, 'json', 'png', 'jff', 'jflap', 'scxml', 'js', 'mjs', 'ts'] },
   { name: 'Workspace JSON', extensions: ['json'] },
   { name: 'JFLAP', extensions: ['jff', 'jflap'] },
+  { name: 'Statechart (SCXML, XState)', extensions: ['scxml', 'js', 'mjs', 'ts', 'json'] },
   { name: 'PNG with embedded workspace', extensions: ['png'] },
   { name: 'All files', extensions: ['*'] },
 ];

@@ -89,9 +89,15 @@ export function resetWorkspace() {
   // document's, so they are carried across the import.
   const history = App.history;
   const future = App.future;
+  // The exercise and the lexer spec survive too, and for the same kind of
+  // reason: they are what the tab is *for*. A student who clears the canvas
+  // to start the answer over has not asked to lose the question.
+  const { exercise, lexer } = App;
   importWorkspaceState(blankWorkspaceData());
   App.history = history;
   App.future = future;
+  App.exercise = exercise;
+  App.lexer = lexer;
   clearTransientPointers();
   if (typeof showExampleCard === 'function') showExampleCard(null);
   resetSim();
@@ -100,7 +106,7 @@ export function resetWorkspace() {
   // but does not re-shape the editor around a different machine.
   if (typeof applyMachineSwitch === 'function') applyMachineSwitch(App.machine);
   if (typeof applyCamera === 'function') applyCamera();
-  emit(Change.ALPHABET, Change.META, Change.GRAMMAR, Change.GRAPH, Change.CANVAS);
+  emit(Change.ALPHABET, Change.META, Change.GRAMMAR, Change.EXERCISE, Change.LEXER, Change.GRAPH, Change.CANVAS);
 }
 
 /**

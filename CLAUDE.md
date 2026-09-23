@@ -33,7 +33,8 @@ only when they are relevant — same text, same headings, nothing was deleted.
 | StateMate, the Inspector console, panel tabs, floating sections | `.claude/skills/statemate/SKILL.md` |
 | Building blocks, scope, ports, the view-graph projection | `.claude/skills/blocks/SKILL.md` |
 | Running a machine: the player, the tape, lazy execution, workers | `.claude/skills/simulation/SKILL.md` |
-| Saving, loading, export, codegen, share links, JFLAP | `.claude/skills/persistence/SKILL.md` |
+| Saving, loading, export, codegen, share links, JFLAP, XState/SCXML import | `.claude/skills/persistence/SKILL.md` |
+| Exercises and grading, the lexer generator | `.claude/skills/exercises/SKILL.md` |
 | Layout geometry, culling, the large-machine profile, the label kernel | `.claude/skills/perf/SKILL.md` |
 | Dialogs and the two sidebars | `.claude/skills/ui-chrome/SKILL.md` |
 | The machine card, the wizard, the mobile shell | `.claude/skills/ui-features/SKILL.md` |
