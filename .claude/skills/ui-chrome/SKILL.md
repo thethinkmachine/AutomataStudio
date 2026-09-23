@@ -22,6 +22,8 @@ Points worth keeping in mind:
 
 Two things there are easy to get wrong. **`hidden` is what hides a panel** — the same rule `css/panels.css` states for the sidebar tabpanels, and the reason `.modal-tab-content.active { display: block }` had to go: at (0,2,0) it outranks `[hidden]` at (0,1,1), so setting the attribute would have done nothing while the class was on. `.active` survives as the state class the strip styles from, and `sizeSettingsPanels()` toggles the *attribute* to measure, or it measures a stack of `display: none` boxes. And **the target is resolved by id, the deselection by `querySelectorAll`** — not one sweep doing both, because the target has to be reachable when `querySelectorAll` returns nothing, which is how the tests observe this.
 
+**Notation keeps its case under an uppercase label.** `text-transform` maps letters, not words: δ became Δ (the output alphabet), ω became Ω (the priority function), ε became Ε. Wrap notation in `.sym`; `keepSymbolCase()` in `reference.js` does it for guide data.
+
 **Dialog buttons are two bases and colour modifiers.** `.btn-p` / `.btn-g` declare the box, the type and every state once — `:hover`, `:active`, `:focus-visible`, `:disabled`, `.is-busy` — so a modifier (`.btn-danger-ghost`, `.btn-danger`) only ever changes colour. Three things that used to be missing and are worth not re-losing:
 
 - **A disabled state exists.** There was none, so a gated primary painted exactly like a live one and no dialog could express "not yet".

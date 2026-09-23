@@ -4,7 +4,7 @@ import { createHarness } from './harness.js';
 import { MachineCategories, MachineTypes } from '../js/state.js';
 import { GuideOverview, MachineGuides } from '../js/machine-guide.js';
 import { ConceptCategories, ConceptGuides } from '../js/concept-guide.js';
-import { referencePages, renderReferenceView } from '../js/reference.js';
+import { keepSymbolCase, referencePages, renderReferenceView } from '../js/reference.js';
 
 // The Reference view.
 //
@@ -146,4 +146,16 @@ test('the page order is overview, then machines, then concepts', () => {
 test('renderReferenceView survives a DOM with nothing in it', () => {
   harness.resetApp();
   assert.doesNotThrow(() => renderReferenceView());
+});
+
+// The class chip is an uppercase eyebrow and `text-transform` maps letters, not
+// words: "ω-regular" was drawn "Ω-REGULAR", and Ω is the parity priority
+// function. The renderer marks the notation rather than each guide doing so.
+test('notation in an uppercase chip keeps its case', () => {
+  assert.equal(keepSymbolCase('co-Büchi ⊊ ω-regular'), 'co-Büchi ⊊ <span class="sym">ω</span>-regular');
+  assert.equal(keepSymbolCase('Regular Languages'), 'Regular Languages', 'Latin text is untouched');
+  const withGreek = [...Object.values(MachineGuides), ...Object.values(ConceptGuides)]
+    .filter(g => /[α-ω]/.test(g.klass || ''));
+  assert.ok(withGreek.length > 0, 'the guides do write notation into their class chips');
+  for (const g of withGreek) assert.match(keepSymbolCase(g.klass), /class="sym"/, g.slug);
 });

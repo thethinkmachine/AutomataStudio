@@ -2629,6 +2629,16 @@ body {
   user-select: none;
 }
 
+/* A symbol keeps its case, wherever it is set. Section labels, card titles
+   and chips across the app are uppercase eyebrows, and `text-transform` maps
+   letters rather than words: under it δ became Δ — which is this app's output
+   alphabet — λ became Λ, ω became Ω (the parity priority function), and ε
+   became Ε, which is indistinguishable from a Latin E. The label is prose; the
+   notation inside it is not, so the notation is wrapped in this. */
+.sym {
+  text-transform: none;
+}
+
 /* Re-enable selection only where it makes sense */
 input,
 textarea,
