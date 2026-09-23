@@ -47,6 +47,16 @@
   transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
+/* Every choice in Settings is a word — "Every 15 seconds", "Acceptance by
+   empty stack" — and a word is set in --sans, which every label beside them
+   already is. The trigger elsewhere keeps --mono, because elsewhere it offers
+   symbols: a transition's read symbol, a grammar's start variable, the export
+   dialog's origin state. The open list follows whichever face its trigger has
+   (openCustomSelect). */
+#settings-modal .custom-select-trigger {
+  font-family: var(--sans);
+}
+
 .custom-select--sim-speed .custom-select-trigger {
   height: 28px;
   padding: 4px 7px;

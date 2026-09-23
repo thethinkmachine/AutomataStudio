@@ -3719,8 +3719,12 @@ button:focus-visible {
   align-items: flex-start;
 }
 
+/* Labels and options are words, so they are set in the face the rest of the
+   dialogs use for words. They inherited `--mono` from the page, which made
+   this the one dialog whose field names read as identifiers. */
 .exp-lbl {
   flex: 0 0 92px;
+  font-family: var(--sans);
   font-size: .78rem;
   color: var(--text2);
   letter-spacing: .01em;
@@ -3786,15 +3790,32 @@ button:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-family: var(--sans);
   font-size: .78rem;
   color: var(--text);
   cursor: pointer;
 }
 
+/* The hint is a second line of the label, not a third column beside it: as a
+   sibling it squeezed "Workspace data" onto two lines and read as a caption
+   floating in the gutter. Inside the label it lines up under the words.
+   Only in a stacked list of checks — the code dialog's options are pills in
+   a row, where the hint belongs beside its label. */
 .exp-check em {
   font-style: normal;
   font-size: .7rem;
   color: var(--text3);
+}
+
+.exp-checks .exp-check em {
+  display: block;
+}
+
+/* A flag in a hint is a flag: `-Kneato` set in the prose face read as a
+   hyphenated word. */
+.exp-check em code {
+  font-family: var(--mono);
+  font-size: .95em;
 }
 
 .exp-note,

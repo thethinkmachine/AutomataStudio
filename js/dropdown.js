@@ -114,6 +114,13 @@ export function openCustomSelect(api) {
   api.wrapper.classList.add('open');
   api.listbox.classList.add('open');
   api.trigger.setAttribute('aria-expanded', 'true');
+  // The list reads in the face of the box it drops from. It is portaled to
+  // <body>, so it cannot inherit that — a Settings menu of words opened in the
+  // identifier face under a trigger set in prose. Before positioning, because
+  // the width it is given is measured off its own text.
+  if (typeof getComputedStyle === 'function') {
+    try { api.listbox.style.fontFamily = getComputedStyle(api.trigger).fontFamily; } catch (e) { }
+  }
   positionCustomSelect(api);
   const options = Array.from(api.listbox.querySelectorAll('.custom-select-option:not([aria-disabled="true"])'));
   const selectedIndex = options.findIndex(option => option.getAttribute('aria-selected') === 'true');

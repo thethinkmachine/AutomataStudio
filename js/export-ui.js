@@ -85,7 +85,7 @@ export function renderExportImageModal() {
 
   const check = (key, label, hint) =>
     `<label class="exp-check"><input type="checkbox" ${ExportImageOpts[key] ? 'checked' : ''}
-      onchange="setExportImageOpt('${key}', this.checked)"><span>${label}</span>${hint ? `<em>${hint}</em>` : ''}</label>`;
+      onchange="setExportImageOpt('${key}', this.checked)"><span>${label}${hint ? `<em>${hint}</em>` : ''}</span></label>`;
 
   host.innerHTML = `
     <div class="exp-row">
@@ -245,7 +245,7 @@ Object.assign(ExportFormats, {
     options: [
       { id: 'mergeParallel', type: 'check', label: 'Merge parallel edges', def: true },
       { id: 'rankdir', type: 'select', label: 'Direction', def: 'LR', choices: [['LR', 'Left → right'], ['TB', 'Top → bottom']] },
-      { id: 'usePositions', type: 'check', label: 'Keep canvas positions', def: false, hint: 'needs -Kneato' }
+      { id: 'usePositions', type: 'check', label: 'Keep canvas positions', def: false, hint: 'needs <code>-Kneato</code>' }
     ],
     build: (ir, o) => exportToDot(ir, o)
   },
