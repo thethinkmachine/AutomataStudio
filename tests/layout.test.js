@@ -249,3 +249,45 @@ test('switching theme repaints the minimap in the new palette', () => {
     );
   }
 });
+
+// ─── Fitting around the floating controls ─────────────────────────────────
+// fitToScreen framed the machine into the whole well and let the toolbox and
+// the minimap sit on it. fitRegion cuts each obstacle out of the padded box on
+// whichever side leaves the larger zoom.
+
+const VIS = { x: 0, y: 0, w: 900, h: 800 };
+
+test('a column down the left edge is cut off the left of the fit', () => {
+  const toolbox = { left: 12, top: 140, width: 88, height: 690 };
+  const r = context.fitRegion(VIS, [toolbox], 400, 400, 90);
+  assert.strictEqual(r.x, 12 + 88 + context.OVERLAY_CLEARANCE, 'the region starts past the toolbox');
+  assert.strictEqual(r.x + r.w, 900 - 90, 'the right edge keeps its padding');
+});
+
+test('an obstacle inside the padding costs nothing', () => {
+  const inPad = { left: 10, top: 10, width: 60, height: 60 };
+  assertBox(context.fitRegion(VIS, [inPad], 400, 400, 90), { x: 90, y: 90, w: 720, h: 620 });
+});
+
+test('a corner obstacle is cut on the side the machine can spare', () => {
+  const minimap = { left: 720, top: 640, width: 160, height: 140 };
+  // A wide machine keeps its width and gives up height; a tall one the reverse.
+  const wide = context.fitRegion(VIS, [minimap], 800, 100, 90);
+  assert.strictEqual(wide.x + wide.w, 810, 'wide: the full padded width survives');
+  assert.ok(wide.y + wide.h <= 640 - context.OVERLAY_CLEARANCE, 'and the bottom is cut above the map');
+  const tall = context.fitRegion(VIS, [minimap], 100, 800, 90);
+  assert.strictEqual(tall.y + tall.h, 710, 'tall: the full padded height survives');
+  assert.ok(tall.x + tall.w <= 720 - context.OVERLAY_CLEARANCE, 'and the right is cut short of the map');
+});
+
+test('a cut that would halve the zoom is refused, and the obstacle overlapped', () => {
+  // Wider than half the region: taking it off either side costs more than it saves.
+  const slab = { left: 200, top: 200, width: 500, height: 400 };
+  assertBox(context.fitRegion(VIS, [slab], 400, 400, 90), { x: 90, y: 90, w: 720, h: 620 });
+});
+
+test('the fit padding shrinks on a phone and keeps its desktop ceiling', () => {
+  assert.strictEqual(context.fitPadding({ w: 894, h: 836 }), 90);
+  assert.strictEqual(context.fitPadding({ w: 724, h: 800 }), 90, 'a canvas beside two panels frames as before');
+  assert.ok(context.fitPadding({ w: 390, h: 700 }) < 90 * 0.7, 'a phone gives most of the width to the machine');
+});

@@ -1661,25 +1661,106 @@ export function visibleCanvasBox() {
   return { x: left - wrapRect.left, y: 0, w: right - left, h: wrapRect.height };
 }
 
+// What floats over the canvas, in wrap-local coordinates: the toolbox, the
+// zoom bar, the minimap, the info pill — and the machine card while it is
+// open, and on a phone the strip the mobile bar covers. A fit that ignored them
+// framed the machine into the whole well and let them sit on it: the DFA
+// example opened with its notes under the toolbox and a state under the
+// minimap, and a run ended there.
+//
+// The card counts only while open. Shut, it is `visibility: hidden` and still
+// laid out, so a rect alone would reserve its corner forever. It does not make
+// the two chase each other: the card picks its corner when it opens, which is
+// before a load's fit, and a fit never asks it to move again.
+//
+// Deliberately absent: the status toast, which is gone in seconds.
+//
+// Measured rather than computed the way layoutCanvasOverlays computes them:
+// this runs once per fit, after that layout has been written, not on the frame
+// the overlays move.
+export function canvasObstacleRects(wrapRect) {
+  const rects = [];
+  if (!wrapRect || !wrapRect.width) return rects;
+  const map = $('minimap-container');
+  const card = $('example-card');
+  const info = $('canvas-info-btn');
+  const members = [$('canvas-toolbox'), $('canvas-nav-controls'),
+    map && !map.classList.contains('minimap-hidden') ? map : null,
+    info && !info.hidden ? info : null,
+    card && card.classList.contains('is-open') ? card : null];
+  for (const el of members) {
+    if (!el || el.offsetParent === null || !el.getBoundingClientRect) continue;
+    const b = el.getBoundingClientRect();
+    if (!b || !b.width || !b.height) continue;
+    rects.push({ left: b.left - wrapRect.left, top: b.top - wrapRect.top, width: b.width, height: b.height });
+  }
+  const inset = compactBottomInset(wrapRect);
+  if (inset > 0) rects.push({ left: 0, top: wrapRect.height - inset, width: wrapRect.width, height: inset });
+  return rects;
+}
+
+// Breathing room around a fitted machine. It was a flat 90px, which is right
+// on a desktop and nearly half the width of a phone: on a 390px screen the
+// machine came out a thumbnail in the middle of empty canvas. It scales with
+// the short side now and reaches the old 90 at a 600px short side, so every
+// desktop-sized canvas frames exactly as it did.
+export const FIT_PAD_MAX = 90;
+export function fitPadding(box) {
+  return Math.min(FIT_PAD_MAX, Math.round(Math.min(box.w, box.h) * 0.15));
+}
+
+/**
+ * The region a machine of `bw × bh` is fitted into: the visible box, padded,
+ * with every obstacle that reaches into it cut away.
+ *
+ * An obstacle is cut on whichever side leaves the larger zoom, so a column
+ * down the left edge takes a strip off the left and a corner stack takes a
+ * strip off whichever of its two edges the machine's shape can best spare.
+ * Only the part past the padding matters — the padding is already empty.
+ *
+ * A cut that would leave the machine at less than half the zoom it had is
+ * refused, and that obstacle is overlapped instead: on a small enough screen
+ * every control is in the way of everything, and a machine drawn at a quarter
+ * size so as to touch none of them is the worse of the two outcomes. The same
+ * degrade-rather-than-fail rule canvasInfoCorner follows.
+ */
+export function fitRegion(box, obstacles, bw, bh, pad) {
+  const w = Math.max(bw, 1), h = Math.max(bh, 1);
+  const zoomOf = r => Math.min((r.r - r.l) / w, (r.b - r.t) / h);
+  let region = { l: box.x + pad, t: box.y + pad, r: box.x + box.w - pad, b: box.y + box.h - pad };
+  if (!(region.r > region.l && region.b > region.t)) return { x: box.x, y: box.y, w: box.w, h: box.h };
+  const c = OVERLAY_CLEARANCE;
+  for (const o of obstacles) {
+    const ol = o.left - c, ot = o.top - c, or = o.left + o.width + c, ob = o.top + o.height + c;
+    if (or <= region.l || ol >= region.r || ob <= region.t || ot >= region.b) continue;
+    const cuts = [
+      { ...region, l: Math.max(region.l, or) }, { ...region, r: Math.min(region.r, ol) },
+      { ...region, t: Math.max(region.t, ob) }, { ...region, b: Math.min(region.b, ot) }
+    ].filter(r => r.r > r.l && r.b > r.t);
+    if (!cuts.length) continue;
+    const best = cuts.reduce((a, r) => (zoomOf(r) > zoomOf(a) ? r : a));
+    if (zoomOf(best) >= zoomOf(region) / 2) region = best;
+  }
+  return { x: region.l, y: region.t, w: region.r - region.l, h: region.b - region.t };
+}
+
 export function fitToScreen(silent = false) {
   if (!App.states.length) return;
   const w = $('canvas-wrap'); if (!w) return;
   // Fit into the region the user can actually see, not the strip an
   // overlaying panel is covering, so the machine lands centred on screen.
   const vis = visibleCanvasBox();
-  const cw = vis.w, ch = vis.h;
   const R = App.config.radius + 4; // state radius + some padding
-  const pad = 90;
   const b = getContentBounds(R);
   if (!b) return;
   const { minX, minY, maxX, maxY } = b;
   const bw = maxX - minX, bh = maxY - minY;
-  const scaleX = (cw - pad * 2) / bw;
-  const scaleY = (ch - pad * 2) / bh;
-  const z = clampZoom(Math.min(scaleX, scaleY));
+  const wrapRect = typeof w.getBoundingClientRect === 'function' ? w.getBoundingClientRect() : null;
+  const region = fitRegion(vis, canvasObstacleRects(wrapRect), bw, bh, fitPadding(vis));
+  const z = clampZoom(Math.min(region.w / bw, region.h / bh));
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-  App.cam.x = vis.x + cw / 2 - cx * z;
-  App.cam.y = vis.y + ch / 2 - cy * z;
+  App.cam.x = region.x + region.w / 2 - cx * z;
+  App.cam.y = region.y + region.h / 2 - cy * z;
   App.cam.z = z;
   // `silent` marks the programmatic fits that run on load/restore. Those must
   // not dirty the tab — the camera they set is the one that was just restored.
