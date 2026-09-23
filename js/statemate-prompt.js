@@ -47,6 +47,8 @@ const FIELD_DOCS = {
   pop: 'symbol removed from the top of the stack',
   push: 'symbols pushed onto the stack (leftmost ends up on top)',
   pop2: 'symbol removed from the second stack',
+  below: 'stacks inserted below the topmost one, "|"-separated, each top-first (ε for none)',
+  above: 'stacks inserted above the topmost one, "|"-separated, each top-first (ε for none)',
   push2: 'symbols pushed onto the second stack',
   out: 'the output symbol or word emitted by this move',
   weight: 'probability of this move, a number in [0, 1]',

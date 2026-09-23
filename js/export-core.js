@@ -104,6 +104,8 @@ export function buildMachineIR() {
       pop: t.pop ?? null,
       push: t.push ?? null,
       pop2: t.pop2 ?? null,
+      below: t.below ?? null,
+      above: t.above ?? null,
       push2: t.push2 ?? null,
       write: t.write ?? null,
       dir: t.dir ?? null,

@@ -110,6 +110,8 @@ export const TRANSITION_KEY_MAP = {
   push: 'push',
   pop2: 'pop2',
   push2: 'push2',
+  below: 'below',
+  above: 'above',
   write: 'write',
   weight: 'weight',
   tapeSyms: 'tapeSyms',
@@ -469,6 +471,11 @@ export function validateSpec(raw, { fallbackMachine = App.machine } = {}) {
     if (legal.has('push')) out.push = normalizeSymbol(t.push) ?? App.config.sym.eps;
     if (legal.has('pop2')) out.pop2 = normalizeSymbol(t.pop2) ?? App.config.sym.eps;
     if (legal.has('push2')) out.push2 = normalizeSymbol(t.push2) ?? App.config.sym.eps;
+    // Not run through normalizeSymbol: these are *stack lists*, not symbols,
+    // so the single-symbol normalizer would reject `A|BC` and leave the field
+    // at ε — a rule that silently does nothing.
+    if (legal.has('below')) out.below = String(t.below ?? App.config.sym.eps);
+    if (legal.has('above')) out.above = String(t.above ?? App.config.sym.eps);
     if (legal.has('out')) out.out = String((t.out ?? t.output) ?? '');
     if (legal.has('weight')) {
       const w = Number(t.weight);
@@ -630,6 +637,7 @@ export function transitionToSpec(t, machine, nameOf = id => id) {
   if (legal.has('push')) out.push = t.push;
   if (legal.has('pop2')) out.pop2 = t.pop2;
   if (legal.has('push2')) out.push2 = t.push2;
+  if (legal.has('below')) { out.below = t.below; out.above = t.above; }
   if (legal.has('out')) out.out = t.output ?? '';
   if (legal.has('weight')) out.weight = t.weight ?? 1;
   if (legal.has('tapeSyms')) {

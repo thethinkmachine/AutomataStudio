@@ -451,6 +451,12 @@
   border: 1px solid var(--red-border);
 }
 
+.bd-epda {
+  background: var(--violet-soft, var(--accent-soft, color-mix(in srgb, var(--accent) 12%, transparent)));
+  color: var(--violet, var(--accent));
+  border: 1px solid var(--violet-border, var(--accent-border));
+}
+
 .bd-tm {
   background: var(--orange-soft);
   color: var(--orange);

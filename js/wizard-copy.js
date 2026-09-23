@@ -155,6 +155,8 @@ export const FIELD_COPY = {
   pop: { label: 'Pops', hint: 'What must be on top of the stack. ε means the rule does not look.' },
   push: { label: 'Pushes', hint: 'What goes on top afterwards. ε means nothing is put back.' },
   pop2: { label: 'Pops (2nd stack)', hint: 'The same, for the second stack.' },
+  below: { label: 'Stacks below', hint: 'New stacks parked under the current one, to be resumed after it is gone. Separate them with |, each written top-first. ε for none.' },
+  above: { label: 'Stacks above', hint: 'New stacks opened over the current one — the machine works in the last of them next. Separate them with |, each written top-first. ε for none.' },
   push2: { label: 'Pushes (2nd stack)', hint: 'The same, for the second stack.' },
   out: { label: 'Writes out', hint: 'The output printed when this rule is taken.' },
   weight: { label: 'Probability', hint: 'How likely this rule is, between 0 and 1.' },

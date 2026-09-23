@@ -58,6 +58,13 @@ export function isAnyPDA(m = App.machine) {
   return inFamily(m, 'pushdown');
 }
 
+// The two machines whose store is a stack of stacks. Their own family rather
+// than a corner of `pushdown`, because a PDA's store is one array and every
+// function that touches one is written against that shape.
+export function isEmbeddedMachine(m = App.machine) {
+  return inFamily(m, 'embedded');
+}
+
 export function isClassicPDA(m = App.machine) {
   return m === 'DPDA' || m === 'NPDA' || m === 'PDA';
 }

@@ -30,6 +30,7 @@ import './finite.js';
 import './weighted.js';
 import './omega.js';
 import './pushdown.js';
+import './embedded.js';
 import './turing.js';
 import './transducer.js';
 import './twoway.js';

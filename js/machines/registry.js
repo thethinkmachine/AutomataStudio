@@ -25,9 +25,9 @@
 // and the two halves of running a machine:
 //
 //   family        — 'finite' | 'twoway' | 'weighted' | 'omega' |
-//                   'pushdown' | 'turing' | 'transducer'. The grouping the
-//                   behaviour is shared along; js/utils.js's family
-//                   predicates read this rather than listing names.
+//                   'pushdown' | 'embedded' | 'turing' | 'transducer'. The
+//                   grouping the behaviour is shared along; js/utils.js's
+//                   family predicates read this rather than listing names.
 //   parseInput(raw, m)
 //                 — the run box's text → whatever simulate/decide take.
 //                   Returns { ok: true, input, tokens } or

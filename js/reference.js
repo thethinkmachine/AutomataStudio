@@ -186,6 +186,19 @@ function buildReferenceView() {
 
   pages.innerHTML = list.map(renderGuide).join('');
   pages.dataset.refBuilt = '1';
+
+  // A guide's prose links to another page as `href="#ref-sec-<slug>"`. Left to
+  // the browser that does nothing useful — every page but the current one is
+  // display:none, so there is nothing to scroll to — and it writes the hash,
+  // which is where share links live. One delegated listener, since the prose
+  // is markup and its anchors are never individually created.
+  pages.addEventListener('click', e => {
+    const link = e.target.closest?.('a[href^="#ref-sec-"]');
+    if (!link) return;
+    e.preventDefault();
+    userPickedSlug = link.getAttribute('href').slice('#ref-sec-'.length);
+    showGuide(userPickedSlug);
+  });
   return true;
 }
 

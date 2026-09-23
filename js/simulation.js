@@ -17,7 +17,7 @@ import { makeSVG, setSectionCount } from './render.js';
 import { $, App, INPUT_LENGTH_NOTICE, R, detectsLoops, execMode, getMachineConfig, isOmegaAutomaton, isWeightedFA, runsLazily } from './state.js';
 import { getState, getTransition } from './states-transitions.js';
 import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
-import { escapeHtml, isAnyPDA, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
+import { escapeHtml, isAnyPDA, isEmbeddedMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
 import { machineGuards, parseMachineInput, streamMachine } from './machines/index.js';
 import { stateNames } from './machines/runtime.js';
 import { computeBatchResults, decideBatchRows, summarizeBatch } from './machines/batch.js';
@@ -459,6 +459,9 @@ function tapeRow(label, view, cells, head) {
   return { label, view: view || wordView(cells || [], head ?? -1) };
 }
 
+/** How many of an embedded store's stacks get a row before they are counted. */
+const EMBEDDED_STACK_ROWS = 6;
+
 function trackerRows(step) {
   const m = App.machine;
   const rows = [];
@@ -503,7 +506,26 @@ function trackerRows(step) {
       })
     });
 
-    if (isAnyPDA(m) && step.stack) {
+    if (isEmbeddedMachine(m)) {
+      // A store that is a sequence of stacks is drawn as a row per stack,
+      // topmost first, because the nesting *is* the information — a single row
+      // with separators would say the machine has one store with marks in it,
+      // which is the thing this model is not. Only the top one is reachable, so
+      // it is the one labelled as a stack; the rest are named by how far down
+      // they are.
+      if (Array.isArray(step.store)) {
+        const shown = step.store.slice().reverse().slice(0, EMBEDDED_STACK_ROWS);
+        shown.forEach((st, i) => rows.push({
+          label: i === 0 ? 'Top' : `−${i}`,
+          cells: [...st].reverse(),
+          head: i === 0 ? 0 : -1,
+          capL: 'top',
+          capR: 'bottom'
+        }));
+        const hidden = step.store.length - shown.length;
+        if (hidden > 0) rows.push({ label: '⋯', cells: [`${hidden} more`], head: -1 });
+      }
+    } else if (isAnyPDA(m) && step.stack) {
       if (isQueueAutomaton(m)) {
         rows.push({ label: 'Que', cells: [...step.stack], head: 0, capL: 'front', capR: 'back' });
       } else {

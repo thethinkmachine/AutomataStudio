@@ -92,6 +92,24 @@ test('each guide carries the fields the renderer reads', () => {
   }
 });
 
+// A link between pages is a slug written into prose, so nothing else checks
+// it: a renamed or removed page leaves a link that silently goes nowhere.
+test('every link between reference pages names a page that exists', () => {
+  const slugs = new Set([
+    GuideOverview.slug,
+    ...Object.values(MachineGuides).map(g => g.slug),
+    ...Object.values(ConceptGuides).map(g => g.slug)
+  ]);
+  const guides = [GuideOverview, ...Object.values(MachineGuides), ...Object.values(ConceptGuides)];
+  const dangling = [];
+  for (const g of guides) {
+    for (const [, target] of JSON.stringify(g.sections).matchAll(/href=\\"#ref-sec-([^"\\]+)\\"/g)) {
+      if (!slugs.has(target)) dangling.push(`${g.slug} → ${target}`);
+    }
+  }
+  assert.deepEqual(dangling, [], `links to missing pages: ${dangling.join(', ')}`);
+});
+
 test('every machine states its formal definition', () => {
   for (const [machine, g] of Object.entries(MachineGuides)) {
     const formal = g.sections.find(s => /formal definition/i.test(s.h));
