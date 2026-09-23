@@ -20,6 +20,20 @@
 
 export const EXERCISE_VERSION = 1;
 
+// How much StateMate may help while this exercise is the tab's task.
+//
+//   off    StateMate refuses in the tab.
+//   tutor  It may answer questions, but it cannot build or edit a machine:
+//          every turn is read-only, the agentic tools are withheld, the
+//          prompt tells it to coach rather than solve, and a machine it
+//          returns anyway is discarded unseen.
+//   on     No restriction — the exercise is practice with an assistant.
+//
+// `off` is the default because it is the one an author cannot be surprised
+// by: an exercise written before this setting existed reads as "work it out
+// yourself", which is what it was written as.
+export const EXERCISE_ASSIST = Object.freeze(['off', 'tutor', 'on']);
+
 export const EXERCISE_LIMITS = {
   titleMax: 120,
   promptMax: 4000,
@@ -109,6 +123,7 @@ export function normalizeExercise(raw) {
       ? raw.hints.filter(h => typeof h === 'string' && h.trim()).map(h => h.slice(0, L.hintMax)).slice(0, L.hintsMax)
       : [],
     reveal: !!raw.reveal,
+    assist: EXERCISE_ASSIST.includes(raw.assist) ? raw.assist : 'off',
     progress: {
       attempts: clampInt(progress.attempts, 0, 1e6, 0),
       hintsShown: clampInt(progress.hintsShown, 0, L.hintsMax, 0),
@@ -117,6 +132,16 @@ export function normalizeExercise(raw) {
       last: progress.last && typeof progress.last === 'object' ? progress.last : null
     }
   };
+}
+
+/**
+ * What StateMate may do in a tab holding `ex` — 'on' when there is no
+ * exercise. One function, read by the pipeline and by the console, so the two
+ * cannot disagree about which tab is restricted.
+ */
+export function assistPolicy(ex) {
+  if (!ex) return 'on';
+  return EXERCISE_ASSIST.includes(ex.assist) ? ex.assist : 'off';
 }
 
 /**

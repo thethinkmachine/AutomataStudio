@@ -62,6 +62,7 @@ import { hlState } from './canvas.js';
 import { topModal } from './modal.js';
 import { defaultPanelTab, getTabSide, isPanelTabActive, PANEL_TABS } from './panel-state.js';
 import { $, App, getMachineConfig } from './state.js';
+import { assistPolicy } from './exercise/model.js';
 import { undo } from './history.js';
 import { renderMarkdown } from './markdown.js';
 import { resolveNoteAnchorsForContext } from './notes.js';
@@ -2613,13 +2614,26 @@ function renderStatus() {
     canvas.insertBefore(icon(attached ? ICONS.eyeOpen : ICONS.eyeClose, 'sm-stat-icon'), canvas.firstChild);
     bar.append(canvas);
 
-    const authority = AUTHORITY_COPY[Session.authority];
-    bar.append(statChip(authority.label, {
-      on: Session.authority !== 'auto',
-      cta: Session.authority === 'ask',
-      onclick: cycleAuthority,
-      tip: authority.tip
-    }));
+    // An exercise overrides the authority, so the chip that would otherwise
+    // offer to change it says what the tab allows instead. Cycling a setting
+    // the run is going to ignore would be a control that lies.
+    const policy = assistPolicy(App.exercise);
+    if (policy !== 'on') {
+      bar.append(statChip(policy === 'off' ? 'Exercise: StateMate off' : 'Exercise: hints only', {
+        on: true,
+        tip: policy === 'off'
+          ? 'The exercise in this tab is meant to be worked out without help, so StateMate will not answer here. Other tabs are unaffected.'
+          : 'The exercise in this tab allows hints only: StateMate can answer questions about your machine, but it will not build, edit or describe a solution.'
+      }));
+    } else {
+      const authority = AUTHORITY_COPY[Session.authority];
+      bar.append(statChip(authority.label, {
+        on: Session.authority !== 'auto',
+        cta: Session.authority === 'ask',
+        onclick: cycleAuthority,
+        tip: authority.tip
+      }));
+    }
 
     // Only when there is one. An empty basket needs no chip — the selection
     // arrives from the canvas, not from here.
@@ -2969,6 +2983,14 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
     renderLog();
     return;
   }
+  // Same shape, same reason: the sentence stays on screen. The pipeline refuses
+  // on its own too; refusing here spares a request that could only fail.
+  if (assistPolicy(App.exercise) === 'off') {
+    push({ kind: 'user', text });
+    push({ kind: 'error', prompt: text, error: { code: 'exercise-off' } });
+    renderLog();
+    return;
+  }
 
   // Replacing a turn rather than following it: drop the branch being left from
   // the transcript first, so the alternatives do not both appear as history.
@@ -3126,7 +3148,10 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
         // In ask mode a reply describing a machine is the plan; building it is
         // the same prompt again with the authority to write. That is the
         // "exit plan mode" step, and it is one button.
-        offerBuild: Session.authority === 'ask',
+        // Not in a hints-only exercise, where "build it" is the one thing the
+        // tab has said no to — the run would refuse, but a button that can
+        // only fail is worse than none.
+        offerBuild: Session.authority === 'ask' && assistPolicy(App.exercise) === 'on',
         result
       });
       keyEntry(replyEntry, replyEntry.turnId);
@@ -3329,6 +3354,13 @@ document.addEventListener('keydown', e => {
 subscribe(Change.CANVAS, () => {
   if (stowed()) return;
   renderContext();
+  renderStatus();
+});
+
+// A tab switch or a loaded file can bring an exercise, or take one away, and
+// the status line says what StateMate may do here.
+subscribe(Change.EXERCISE, () => {
+  if (stowed()) return;
   renderStatus();
 });
 

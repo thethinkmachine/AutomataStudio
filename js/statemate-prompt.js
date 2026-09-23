@@ -534,7 +534,7 @@ function scopeBlock() {
   ].join('\n');
 }
 
-export function buildUserMessage({ prompt, intent, canvasSpec = null, authority = 'auto', focus = null, images = 0 }) {
+export function buildUserMessage({ prompt, intent, canvasSpec = null, authority = 'auto', tutor = false, focus = null, images = 0 }) {
   const parts = [];
 
   // The pictures themselves are content parts on the same turn — see
@@ -606,7 +606,20 @@ export function buildUserMessage({ prompt, intent, canvasSpec = null, authority 
   // Ask mode is read-only, and saying so is the difference between an answer
   // and a machine that gets built and thrown away. The pipeline refuses to
   // write either way — this is what stops the wasted round trip.
-  if (authority === 'ask') {
+  // An exercise that allows hints only. The ask-mode block below would invite
+  // the model to *describe* the machine it would build, which for a student
+  // is the answer in prose — so this one comes first and says the opposite.
+  // The pipeline enforces the part that can be enforced (nothing is drawn, a
+  // machine answer is discarded); this is the part that can only be asked.
+  if (tutor) {
+    parts.push(
+      `THE READER IS A STUDENT WORKING ON AN EXERCISE, and its author allows hints only. You are a tutor, not a solver.`,
+      `Answer with "kind": "reply". Do not give the answer in any form: no machine, no transition list or table, no state-by-state description of a solution, no grammar for the target language, and no regular expression for it.`,
+      `Do help: point to a word their machine gets wrong and explain why, name the idea or construction the exercise is practising, ask a question that leads to the next step, or confirm whether a claim they make is true.`,
+      `If they ask you to solve it or to build it, say that this exercise asks them to work it out, and offer a hint instead.`,
+      ``
+    );
+  } else if (authority === 'ask') {
     parts.push(
       `THIS TURN IS READ-ONLY. Nothing you return will be drawn on the canvas.`,
       `Answer with "kind": "reply". If the request asks for a machine, describe the one you would build — how many states, what each one remembers, the shape of the transitions — instead of returning it. The reader can turn that description into a real build with one click.`,

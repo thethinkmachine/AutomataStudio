@@ -341,6 +341,10 @@ export function resetApp() {
   // App state a test can leak — a described machine in one test would
   // otherwise hand the next one a card it never asked for.
   App.meta = null;
+  // Document fields like meta: a test that sets one must not hand it to the
+  // next — an exercise left behind restricts StateMate in every later test.
+  App.exercise = null;
+  App.lexer = null;
   App.selectedNotes.clear();
   App.selectedDividers.clear();
   App.config = JSON.parse(JSON.stringify(baseConfig));

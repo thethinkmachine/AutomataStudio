@@ -49,6 +49,7 @@ import {
 } from './statemate-agent.js';
 import { StateMateError, describeSpecSize, extractSpecJSON, focusIsEmpty, machineToSpec, parseTurn, partialStringField, resolveContextRefs, scopedSource, testKindFor } from './statemate-spec.js';
 import { Change, emit } from './store.js';
+import { assistPolicy } from './exercise/model.js';
 import { autoFitLoadedMachine, createTab, fitToScreen, switchTab } from './ui.js';
 import { resetIds, showStatus } from './utils.js';
 import { applyMachineSwitch } from './view.js';
@@ -711,6 +712,10 @@ function resultCardMeta(spec) {
 export function applyPending(result) {
   const pending = result?.pending;
   if (!pending) return null;
+  // A proposal held from before the tab became an exercise — or opened in a
+  // tab that is one now — is still StateMate's work, and drawing it is the
+  // write the exercise said no to.
+  if (assistPolicy(App.exercise) !== 'on') return null;
   const checkpoint = applyCandidate(pending.candidate, {
     openNewTab: pending.openNewTab,
     title: pending.spec.title
@@ -762,6 +767,21 @@ export async function runStateMate({
   const text = String(prompt || '').trim();
   if (!text) throw new StateMateError('empty', 'Type what you want built.');
 
+  // An exercise may restrict what StateMate does in its tab, and this is the
+  // one place every route passes — the composer, ⌘K, "ask about this
+  // selection", a retry, a branch, an agentic resume. The console refuses
+  // earlier so the refusal reads well; this is the rule.
+  const policy = assistPolicy(App.exercise);
+  if (policy === 'off') {
+    throw new StateMateError('exercise-off', ERROR_COPY['exercise-off'].text);
+  }
+  // Tutoring is read-only whatever the console's authority says, and it runs
+  // without the agentic tools: several of them *build* (minimize_dfa,
+  // replace_candidate_from_spec), and a finished private candidate is a
+  // solution whether or not it is drawn.
+  const tutor = policy === 'tutor';
+  if (tutor) authority = 'ask';
+
   // One request in flight at a time — a second ask supersedes the first
   // rather than racing it onto the canvas.
   if (activeRun) cancelStateMate();
@@ -772,6 +792,7 @@ export async function runStateMate({
   if (branch) branchFrom(branch);
 
   const settings = getStateMateSettings();
+  const agentic = settings.agentTools !== false && !tutor;
 
   // Dropped rather than refused when the model cannot read them: the prompt is
   // still a legitimate request without its illustration, and failing the whole
@@ -802,14 +823,14 @@ export async function runStateMate({
     // Local and compatible providers keep the JSON envelope, so their varying
     // tool dialects do not change the existing contract. Decided here rather
     // than at the request, because it decides what the system prompt says.
-    const useNativeTools = settings.agentTools !== false &&
+    const useNativeTools = agentic &&
       (settings.provider === 'anthropic' || settings.provider === 'openai');
     // `agentToolInstructions()` teaches the *envelope* — return
     // {"kind":"tool","calls":[…]}. Sending it alongside a native tool
     // declaration was a contradiction as well as a waste: ~1,300 tokens per
     // round telling a model to use a protocol it was not being given, on
     // every round of every agentic run.
-    const system = settings.agentTools === false || useNativeTools
+    const system = !agentic || useNativeTools
       ? await buildSystemPrompt(machine, { notes: !!settings.writeNotes })
       : `${await buildSystemPrompt(machine, { notes: !!settings.writeNotes })}\n\n${agentToolInstructions()}`;
     guard();
@@ -848,6 +869,7 @@ export async function runStateMate({
         intent: resolvedIntent,
         canvasSpec: withCanvas ? canvasSpec : null,
         authority,
+        tutor,
         focus,
         images: pictures.length
       });
@@ -869,7 +891,7 @@ export async function runStateMate({
     let usage = null, model = null, repaired = false, timing = null;
     let lastFailures = [], lastFindings = [];
     const resumeKey = currentThreadKey();
-    let agentSession = settings.agentTools !== false &&
+    let agentSession = agentic &&
       suspendedAgent?.key === resumeKey && suspendedAgent.signature === machineSignature()
       ? suspendedAgent.session
       : null;
@@ -989,11 +1011,11 @@ export async function runStateMate({
       // A capable model can spend several turns investigating a private
       // candidate. The legacy complete-spec response remains valid, so this
       // branch is entered only when the explicit tool envelope is present.
-      const nativeToolCalls = settings.agentTools === false || !nativeTools.length
+      const nativeToolCalls = !agentic || !nativeTools.length
         ? null
         : (Array.isArray(response.toolCalls) && response.toolCalls.length ? response.toolCalls : null);
       let toolCalls = nativeToolCalls;
-      try { if (!toolCalls) toolCalls = settings.agentTools === false ? null : parseAgentToolTurn(response.text); } catch (err) {
+      try { if (!toolCalls) toolCalls = !agentic ? null : parseAgentToolTurn(response.text); } catch (err) {
         if (agentSession) throw err;
       }
       if (toolCalls) {
@@ -1102,6 +1124,13 @@ export async function runStateMate({
           continue;
         }
         throw err;
+      }
+
+      // A tutor that answers with a machine has answered the exercise. It is
+      // discarded before compile, so nothing of it — not a diff, not a state
+      // count, not a title — reaches the card or the thread.
+      if (tutor && turn.kind !== 'reply') {
+        throw new StateMateError('exercise-tutor', ERROR_COPY['exercise-tutor'].text);
       }
 
       // ── 3a · the model had something to say instead ─────────
@@ -1321,6 +1350,8 @@ export async function runStateMate({
 //  strings are testable without a DOM.
 
 const ERROR_COPY = {
+  'exercise-off': { text: 'StateMate is off for this exercise — its author asked for it to be worked out without help. It works as usual in any other tab.', action: 'none', label: '' },
+  'exercise-tutor': { text: 'This exercise allows hints only, and StateMate answered with a machine, so the answer was discarded unseen. Ask about a word your machine gets wrong, or for a hint.', action: 'none', label: '' },
   disabled: { text: 'StateMate is switched off. Enable it and add an API key to chat and build machines.', action: 'settings', label: 'Turn it on' },
   'no-key': { text: 'StateMate needs an API key to chat and build machines.', action: 'settings', label: 'Set up' },
   auth: { text: 'Your API key was rejected.', action: 'settings', label: 'Check key' },
