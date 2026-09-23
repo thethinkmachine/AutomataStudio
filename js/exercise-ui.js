@@ -25,7 +25,7 @@
 // at creation — so this module adds nothing to js/bridge.js.
 
 import { exportDownload } from './export-core.js';
-import { EXERCISE_LIMITS, normalizeExercise, sealTarget, unsealTarget } from './exercise/model.js';
+import { EXERCISE_LIMITS, assistPolicy, normalizeExercise, sealTarget, unsealTarget } from './exercise/model.js';
 import {
   defaultAllowFor, grammarDecider, gradeExercise, grammarTargetFromApp, listTypes, machineIsGradable,
   machineTargetFromApp, recordAttempt, wordText
@@ -137,6 +137,9 @@ function rulesOf(ex, target) {
   const sigma = target?.sigma || [];
   if (sigma.length) out.push(`Σ = {${sigma.join(', ')}}`);
   if (target?.kind === 'machine' && getMachineConfig(target.machine).isTransducer) out.push('The output is checked, not only the verdict');
+  const assist = assistPolicy(ex);
+  if (assist === 'off') out.push('No StateMate');
+  else if (assist === 'tutor') out.push('StateMate: hints only');
   return out;
 }
 
@@ -323,7 +326,8 @@ export function revealExerciseSection() {
 
 const draft = {
   title: '', prompt: '', source: 'machine', answer: 'machine',
-  allow: new Set(), maxStates: '', maxLength: EXERCISE_LIMITS.maxLengthDefault, hints: '', reveal: false
+  allow: new Set(), maxStates: '', maxLength: EXERCISE_LIMITS.maxLengthDefault, hints: '', reveal: false,
+  assist: 'off'
 };
 
 registerModal('exercise-modal', {
@@ -372,6 +376,7 @@ export function openExerciseAuthor() {
   draft.maxLength = EXERCISE_LIMITS.maxLengthDefault;
   draft.hints = '';
   draft.reveal = false;
+  draft.assist = 'off';
   renderAuthor();
   showOverlay('exercise-modal');
 }
@@ -486,6 +491,13 @@ function renderAuthor() {
   hints.addEventListener('input', () => { draft.hints = hints.value; });
   body.append(field('Hints', hints));
 
+  body.append(field('StateMate during this exercise', radioRow('ex-assist', [
+    ['off', 'Off'],
+    ['tutor', 'Hints only'],
+    ['on', 'Full help']
+  ], draft.assist, v => { draft.assist = v; }),
+  'Hints only: StateMate answers questions about the student’s machine but will not build, edit or describe a solution. Applies in the exercise’s tab only.'));
+
   const revealLab = el('label', 'ex-check-row');
   const reveal = el('input');
   reveal.type = 'checkbox';
@@ -541,7 +553,8 @@ function draftExercise() {
       maxStates: draft.answer === 'machine' ? draft.maxStates : null,
       maxLength: draft.maxLength,
       hints: String(draft.hints || '').split('\n').map(h => h.trim()).filter(Boolean),
-      reveal: draft.reveal
+      reveal: draft.reveal,
+      assist: draft.assist
     })
   };
 }

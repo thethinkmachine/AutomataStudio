@@ -35,7 +35,16 @@ js/exercise-ui.js   the #rp-exercise section and the #exercise-modal dialog.
 
 The section and the dialog attach every listener at creation, so neither adds a name to `bridge.js`. The menu item `#menu-exercise-create` is wired from the module. The last grading result is session state keyed on exercise id *and* tab: the persisted `progress.last` records how an attempt went but not the counterexample, which would be a stale accusation on reopening a file the student has since fixed.
 
-[tests/exercise.test.js](../../../tests/exercise.test.js) pins the grader; [tests/exercise-ui.test.js](../../../tests/exercise-ui.test.js) pins the document (no leak, validates), the section's messages, and what survives save / tab / Clear.
+**StateMate follows the exercise, per tab.** `exercise.assist` is `off` (the default), `tutor` or `on`, and `assistPolicy(App.exercise)` in model.js is the one reading of it — `'on'` when the tab has no exercise. It is enforced in the pipeline, not the console, because the console is only one of the routes in:
+
+- **`runStateMate` refuses `off` before anything is sent**, so the composer, ⌘K, "ask about this selection", a retry, a branch and an agentic resume are all covered by one line. The console refuses earlier as well, the way it refuses an unconfigured provider, only so the sentence stays on screen.
+- **`tutor` forces `ask` and withholds the agentic tools.** Several tools build (`minimize_dfa`, `replace_candidate_from_spec`), and a finished private candidate is a solution whether or not it is drawn. `buildUserMessage` puts a tutoring block where the ask-mode block would go — *instead of* it, because ask mode invites the model to describe the machine it would build, which for a student is the answer in prose. A `machine` answer is thrown out as `exercise-tutor` before compile, so no diff, title or state count reaches the card or the thread.
+- **`applyPending` refuses while a restricted exercise is open**, which covers a proposal held from before the tab became an exercise. `applyCandidate` itself is not gated: the wizard uses it, and the wizard is an editor, not an assistant.
+- The console's authority chip is replaced by what the tab allows while an exercise restricts it — cycling a setting the run will ignore would be a control that lies — and `offerBuild` is suppressed.
+
+The prompt half of `tutor` can only be asked for; what is enforced is that nothing is built, drawn or kept. The whole policy is client-side, like the sealed reference: a student can leave the exercise, or copy their machine into a tab that has none. It keeps an honest student honest, which is what a worksheet needs.
+
+[tests/exercise.test.js](../../../tests/exercise.test.js) pins the grader; [tests/exercise-statemate.test.js](../../../tests/exercise-statemate.test.js) pins the StateMate policy through `runStateMate` and `applyPending` themselves; [tests/exercise-ui.test.js](../../../tests/exercise-ui.test.js) pins the document (no leak, validates), the section's messages, and what survives save / tab / Clear.
 
 ### The lexer generator
 
