@@ -20,6 +20,7 @@ import {
   setActivePanelTab, setTabSide
 } from './panel-state.js';
 import { declaredSectionIds, sectionStartsCollapsed } from './panel-sections.js';
+import { syncDockFill } from './panel-sections-ui.js';
 import { setShakeToMinimizeEnabled, shakeToMinimizeEnabled } from './panel-state.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
 import { $, App, MIN_TAPES, MachineCategories, blankWorkspaceData, MachineTypes, R, TAPE_LIMIT, Workspaces, activeWorkspaceId, execMode, exportWorkspaceState, importWorkspaceState, largeMachineOverridePrompt, largeMachineProfile, machineIsLarge, maxTapes, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
@@ -3387,6 +3388,7 @@ export function setLPSectionCollapsed(id, collapsed, persist = true) {
   if (persist) {
     try { localStorage.setItem(`automata-lpanel-section-${id}`, collapsed ? '1' : '0'); } catch (e) { }
   }
+  syncDockFill('lpanel');
 }
 
 export function toggleLPSection(id) {
@@ -3430,6 +3432,7 @@ export function setRPSectionCollapsed(id, collapsed, persist = true) {
   if (persist) {
     try { localStorage.setItem(`automata-rpanel-section-${id}`, collapsed ? '1' : '0'); } catch (e) { }
   }
+  syncDockFill('rpanel');
 }
 
 export function toggleRPSection(id) {

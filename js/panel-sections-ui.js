@@ -35,12 +35,13 @@
 
 import {
   PANEL_SECTIONS, PANEL_SECTION_SIDES, declaredSectionIds, dockedSectionIds,
-  isSectionFloating, sectionOrder, setSectionOrder, moveSection
+  isSectionFloating, sectionFill, sectionOrder, setSectionOrder, moveSection
 } from './panel-sections.js';
 import {
   commitFloatGeom, dockSection, floatLayerRect, floatSection, floatingEnabled,
   moveFloatTo, syncPanelEmpty
 } from './panel-float.js';
+import { redrawAllLists } from './panel-list.js';
 
 /** Pointer travel, in px, before a press becomes a drag. */
 const DRAG_THRESHOLD = 3;
@@ -138,6 +139,55 @@ export function applySectionOrder(side) {
   // the order, so the pass returned before relabelling and every grip in the
   // panel went on claiming a total that was one short.
   syncGripLabels(side);
+  syncDockFill(side);
+}
+
+// ── the docked panel's spare height ───────────────────────────────
+
+/**
+ * Hands a docked panel's spare height to one list.
+ *
+ * Every list in a panel was capped at `--lp-list-max-h`, so a machine with ten
+ * transitions scrolled them inside a 168px box above two hundred pixels of
+ * empty panel. The floating window already answered this — the registry names
+ * each section's one growable region (`sectionFill`), and exactly one child
+ * takes the slack — and this is the same answer for the panel: the *last*
+ * open section that declares a region takes it. The last, because a list that
+ * grows pushes everything below it down; growing the last one moves nothing
+ * but the collapsed headers under it, which settle at the panel's foot.
+ *
+ * It used to be `#lp-transitions { flex: 1 }`, and was lost when sections
+ * became collapsible, reorderable and detachable — an id is the wrong key for
+ * "the one at the bottom" once the reader can move them. Asked of the DOM
+ * each time, so a collapse, a reorder, a window torn off or docked back, and
+ * a machine switch hiding the stack section all land on the same answer.
+ */
+export function syncDockFill(side) {
+  const container = containerOf(side);
+  if (!container || !PANEL_SECTIONS[side]?.dockFill) return null;
+  let fill = null;
+  for (const id of domOrder(side)) {
+    const el = sectionEl(id);
+    if (!el || el.style.display === 'none' || el.classList.contains('collapsed')) continue;
+    const sel = sectionFill(id);
+    if (sel && typeof el.querySelector === 'function' && el.querySelector(sel)) fill = id;
+  }
+  // Every declared section, not just the docked ones: a section torn off into
+  // a window has left `domOrder` and would otherwise keep the mark it had.
+  for (const id of declaredSectionIds(side)) {
+    const el = sectionEl(id);
+    if (!el) continue;
+    const sel = sectionFill(id);
+    const region = sel && typeof el.querySelector === 'function' ? el.querySelector(sel) : null;
+    const on = id === fill;
+    el.classList.toggle('panel-dock-fill', on);
+    if (region && region.classList) region.classList.toggle('panel-dock-fill-region', on);
+  }
+  // A list is windowed against its own height at draw time, and a collapse
+  // elsewhere in the panel changes that height without the list scrolling or
+  // the machine changing — the two things that would otherwise redraw it.
+  redrawAllLists();
+  return fill;
 }
 
 /**

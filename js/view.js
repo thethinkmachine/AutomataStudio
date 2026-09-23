@@ -11,6 +11,7 @@ import { $, App, MIN_TAPES, clampTapeCount, getMachineConfig, maxTapes, normaliz
 import { Change, emit, subscribe } from './store.js';
 import { renderReferenceView } from './reference.js';
 import { renderTabs, updateMobilePanelChrome, updateModelPickerLabels } from './ui.js';
+import { syncDockFill } from './panel-sections-ui.js';
 import { isAnyTM, isCounterMachine, performClear, showStatus } from './utils.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -254,6 +255,8 @@ export function applyMachineSwitch(m) {
   // permanently empty section for a feature that machine cannot have.
   const blocksSec = $('lp-blocks');
   if (blocksSec) blocksSec.style.display = machineSupportsBlocks(m) ? '' : 'none';
+  // Which section is last-and-open can change with what was just hidden.
+  syncDockFill('lpanel');
   $('mtm-ctrl').style.display = isMultiTape(m) ? 'flex' : 'none';
   // Revealing the control is not the same as filling it in. Switching to a
   // multi-tape machine showed a picker still reading whatever it last read.

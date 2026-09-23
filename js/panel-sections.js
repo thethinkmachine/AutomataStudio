@@ -30,6 +30,12 @@ export const PANEL_SECTIONS = Object.freeze({
     headerClass: 'lp-section-header',
     titleClass: 'lp-section-title',
     storeKey: 'automata-lpanel-section',
+    // Docked, the last open section's list takes the panel's spare height
+    // (syncDockFill in js/panel-sections-ui.js). This side only: its regions
+    // are transparent lists, where the extra height is invisible. The right
+    // panel's are drawn boxes — the trace log has a ground and a border — and
+    // stretching one that holds a single line draws a tall empty card.
+    dockFill: true,
     sections: Object.freeze([
       Object.freeze({ id: 'lp-alphabet', collapsed: false, minW: 240, minH: 170, fill: '.chips' }),
       Object.freeze({ id: 'stack-sec', collapsed: false, minW: 240, minH: 170, fill: '.chips' }),
