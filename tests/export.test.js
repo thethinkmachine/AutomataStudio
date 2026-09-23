@@ -1327,3 +1327,14 @@ test('filename extension follows the chosen sub-format', () => {
   ui.opts.format = 'batch';
   assert.match(context.exportCodeFilename(), /\.txt$/);
 });
+
+// The notation's own symbols have no glyph in KaTeX's text mode: a TM's
+// Γ = {0, 1, ⊔} warned and drew ⊔ from a fallback font, and the TM example's
+// state `b −1` did the same with its minus sign. Names leave \text{} for the
+// command the TikZ export already maps each one to, from the same table.
+test('a notation symbol in a name is typeset as math, not as missing text', () => {
+  assert.equal(context.formatStateName('⊔'), '\\text{$\\sqcup$}');
+  assert.equal(context.formatStateName('b −1'), '\\text{b $-$1}');
+  assert.equal(context.formatStateName('q0'), 'q_{0}', 'the common case is untouched');
+  assert.equal(context.texEscape('b −1'), 'b $-$1', 'and the export agrees with the screen');
+});
