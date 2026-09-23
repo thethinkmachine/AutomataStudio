@@ -196,9 +196,13 @@ export function showOverlay(id) {
     return;
   }
 
+  // The injected close button sits in the title bar, so in DOM order it comes
+  // before everything a dialog is actually for. It is the fallback only when
+  // it is the one control there is.
   const focusables = modalFocusables(shell);
-  if (focusables.length) {
-    focusables[0].focus();
+  const first = focusables.find(el => !el.classList?.contains('modal-close')) || focusables[0];
+  if (first) {
+    first.focus();
   } else if (shell.firstElementChild && shell.firstElementChild.focus) {
     shell.firstElementChild.focus();
   }

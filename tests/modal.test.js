@@ -71,6 +71,29 @@ test('an undeclared dialog still falls back to its first focusable', () => {
   }
 });
 
+test('the fallback skips the injected close button when there is anything else', () => {
+  const h = createHarness();
+  const shell = getElement('chrome-modal');
+  const close = getElement('chrome-close');
+  const action = getElement('chrome-action');
+  close.classList.add('modal-close');
+  shell.appendChild(close);
+  shell.appendChild(action);
+  shell.querySelectorAll = () => [close, action];
+
+  let focused = null;
+  close.focus = () => { focused = 'close'; };
+  action.focus = () => { focused = 'action'; };
+
+  h.context.registerModal('chrome-modal', {});
+  h.context.showOverlay('chrome-modal');
+  try {
+    assert.equal(focused, 'action', 'the × is first in DOM order and is still not the target');
+  } finally {
+    h.context.closeModal('chrome-modal');
+  }
+});
+
 test('every dialog is given a close button, and only ever one', () => {
   const h = createHarness();
   const shell = getElement('chrome-modal');
@@ -282,6 +305,18 @@ test('the sticky bars cancel their own bleed margin in the inset', () => {
 // A literal rgba(0, 0, 0, ...) is invisible against a dark ground, which is
 // half the range these dialogs are read in. --tab-overflow-shadow is the
 // app's existing "there is more past this edge" colour and follows the theme.
+// showOverlay adds .show and calls focus() on the same line. If the open
+// direction transitions visibility, the dialog is still `hidden` at t = 0 of
+// that transition and the focus() is a silent no-op — the stub computes no
+// styles, so every focus test in this file passes while a real browser leaves
+// focus on the page behind the scrim.
+test('a dialog becomes visible at once on open, and fades only on close', () => {
+  assert.match(ruleBody(modalsCss, '.overlay.show'), /transition:[^;]*visibility 0s/,
+    'the open direction must not transition visibility');
+  assert.match(ruleBody(modalsCss, '.overlay'), /transition:[^;]*visibility var\(--transition-base\)/,
+    'the close direction still holds the dialog visible through its fade');
+});
+
 test('the scroll cue is drawn in the themed overflow colour', () => {
   for (const selector of ['.modal.is-scrolled > .modal-title', '.modal.has-more > .modal-foot']) {
     const body = ruleBody(modalsCss, selector);

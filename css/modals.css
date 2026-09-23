@@ -12,10 +12,16 @@ body.modal-open {
    more than a hundred invisible controls sit in the page's focus order and Tab
    from the toolbar walks into them.
 
-   It is transitioned rather than switched because visibility interpolates
-   discretely with one special case — when either endpoint is `visible`, the
-   visible value holds for the whole duration — so the dialog stays painted
-   through its own fade-out and disappears only at the end. */
+   On the way out it is transitioned rather than switched: visibility
+   interpolates discretely with one special case — when either endpoint is
+   `visible`, the visible value holds for every point strictly *between* the
+   two — so the dialog stays painted through its own fade-out and disappears
+   only at the end. The way in is the other half of that sentence, and it is
+   why .show below switches instantly: at t = 0 of a hidden → visible
+   transition the value is still the start value, `hidden`, and showOverlay
+   moves focus on the same line that adds the class. focus() on a hidden
+   element is a silent no-op, so every dialog opened with focus left on the
+   page behind the scrim and no `initialFocus` ever landed. */
 .overlay {
   position: fixed;
   inset: 0;
@@ -39,6 +45,7 @@ body.modal-open {
   opacity: 1;
   visibility: visible;
   pointer-events: all;
+  transition: opacity var(--transition-base), visibility 0s;
   backdrop-filter: blur(var(--overlay-blur));
   -webkit-backdrop-filter: blur(var(--overlay-blur));
 }
