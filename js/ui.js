@@ -3309,7 +3309,25 @@ export function closeMobileAuxNav() {
   if (id) setMobilePanelCollapsed(id, true);
 }
 
+// Boot is not the only way into the mobile shell. A window narrowed past the
+// breakpoint, or a tablet rotated across it, arrives carrying the desktop's
+// panels — and on desktop every panel is `mobileCollapsed = '0'`, because both
+// are on screen. Read as sheets, that is two open at once: both strips marked
+// two tabs selected and the bar's cell named the sheet underneath. So the same
+// reconciliation boot runs is run again on every entry, which is what makes an
+// arrival by resize the same arrival as one by load.
+let _mobileLayoutWatched = false;
+
 export function initMobilePanels() {
+  reconcileMobilePanels();
+  if (_mobileLayoutWatched || !window.matchMedia) return;
+  const mq = window.matchMedia('(max-width: 900px)');
+  if (!mq || typeof mq.addEventListener !== 'function') return;
+  _mobileLayoutWatched = true;
+  mq.addEventListener('change', e => { if (e.matches) reconcileMobilePanels(); });
+}
+
+export function reconcileMobilePanels() {
   let openedBuildPanel = false;
   [...MOBILE_BUILD_PANEL_IDS, ...MOBILE_AUX_PANEL_IDS].forEach(id => {
     let stored = null;
