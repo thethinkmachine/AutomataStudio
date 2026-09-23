@@ -2622,6 +2622,12 @@ body {
 
 body {
   font-family: var(--mono);
+  /* JetBrains Mono draws `->`, `=>`, `<=` and `!=` as single glyphs through
+     its contextual alternates. In this app characters are data — the code
+     export previewed DOT's `->` as an arrow that Copy does not produce, and a
+     label or a state name typed with `<=` would read as `≤`. Contextual
+     alternates only: the prose face keeps its standard fi/fl ligatures. */
+  font-variant-ligatures: no-contextual;
   background: var(--bg);
   color: var(--text);
   display: flex;
