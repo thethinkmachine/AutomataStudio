@@ -188,6 +188,21 @@ test('langCanDecide admits Turing machines but gates unopted transducers', () =>
   assert.equal(context.langCanDecide(), true);
 });
 
+// Both refusals used to print the transducer sentence, so a DPA was asked to
+// enable "transducers accept". Each reason says what is actually true.
+test('the panel says why it cannot list L(M), per reason', () => {
+  reset();
+  App.machine = 'DPA';
+  App.config.transducerAccepts = false;
+  const omega = context.langUndecidableReason();
+  assert.match(omega, /infinite words/);
+  assert.doesNotMatch(omega, /transducer/i, 'an ω-automaton is not a transducer');
+  App.machine = 'Mealy';
+  assert.match(context.langUndecidableReason(), /transducers accept/);
+  App.machine = 'DFA';
+  assert.equal(context.langUndecidableReason(), null);
+});
+
 // ══════════════════════════════════════════════════════════════════
 //  ABBREVIATIONS AND ACTOR GROUPING
 // ══════════════════════════════════════════════════════════════════
@@ -1169,4 +1184,22 @@ test('every machine type renders a tuple without throwing', () => {
     App.machine = m;
     assert.doesNotThrow(() => context.renderLangTuple(), m);
   }
+});
+
+// The tuple line carried each count as a <sup>, which in this app is a power:
+// Σ² is the set of words of length two. The count is a baseline pill now, and
+// the accessible name says what it counts rather than reading "Q5".
+test('the tuple line states counts as counts, not exponents', () => {
+  reset();
+  App.machine = 'DFA';
+  App.states = [{ id: 'a', name: 'q0', x: 0, y: 0 }, { id: 'b', name: 'q1', x: 0, y: 0 }];
+  App.sigma = new Set(['0', '1']);
+  App.startId = 'a';
+  context.renderLangTuple();
+  const chips = harness.getElement('lang-tuple').children.filter(el => el.className === 'lang-chip');
+  const sigma = chips.find(el => el.firstChild && el.firstChild.textContent === 'Σ');
+  assert.ok(sigma, 'Σ has a chip');
+  assert.ok(!sigma.children.some(el => el.tagName === 'SUP'), 'no superscript anywhere');
+  assert.equal(sigma.children.find(el => el.className === 'lang-chip-n')?.textContent, '2');
+  assert.match(sigma.getAttribute('aria-label'), /input alphabet, 2$/);
 });

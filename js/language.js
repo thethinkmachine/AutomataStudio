@@ -85,11 +85,26 @@ export function langIsSymbolic() {
 // A Büchi automaton's language is a set of infinite words, so no enumeration of
 // Σ* says anything about it — the panel reports "no verdict" rather than
 // pretending the finite words it can list are members or non-members.
-export function langCanDecide() {
+//
+// The two refusals are different facts and the reader is told which one it
+// is: the panel's note used to be the transducer sentence for both, so every
+// ω-automaton was asked to enable a Settings option that has nothing to do
+// with it. The reason is the source of truth and the predicate reads it, so
+// the sentence and the gate cannot come to disagree.
+export function langUndecidableReason() {
   const m = App.machine;
-  if (isOmegaAutomaton(m)) return false;
-  if (getMachineConfig(m).isTransducer && !App.config.transducerAccepts) return false;
-  return true;
+  if (isOmegaAutomaton(m)) {
+    return 'An ω-automaton reads infinite words, so there is no Σ* to list. '
+      + 'Run one in Simulate, written u(v).';
+  }
+  if (getMachineConfig(m).isTransducer && !App.config.transducerAccepts) {
+    return 'Enable "transducers accept" in Settings to list accepted inputs.';
+  }
+  return null;
+}
+
+export function langCanDecide() {
+  return langUndecidableReason() === null;
 }
 
 // Walking the transition graph only yields meaningful words when edges
@@ -881,9 +896,9 @@ export function renderLangExtension() {
   _langExtCache.node?._cleanup?.();
 
   const box = _le('div');
-  if (!langCanDecide()) {
-    box.appendChild(_le('div', 'lang-note',
-      'Enable "transducers accept" in Settings to list accepted inputs.'));
+  const refused = langUndecidableReason();
+  if (refused) {
+    box.appendChild(_le('div', 'lang-note', refused));
   } else if (langIsSymbolic()) {
     renderLangFingerprint(box);
     renderLangExportBar(box);
@@ -1021,7 +1036,12 @@ export function renderLangFingerprint(host) {
   });
 
   const addRow = (r) => {
-    const row = _le('div', 'lang-fp-row');
+    // A new length starts a new block, and the gap before it is wider than the
+    // gap inside one — otherwise a length that wraps onto four rows and four
+    // lengths of one row each are the same picture, and the gutter number is
+    // the only thing telling them apart.
+    const opens = !r.span && r.off === 0 && r.len > 0;
+    const row = _le('div', 'lang-fp-row' + (opens ? ' opens-length' : ''));
     const last = r.len + (r.span ? r.words.length - 1 : 0);
     // The gutter carries one number even when the row spans lengths;
     // the range is a tooltip, because a gutter wide enough for "20–39"
@@ -1297,8 +1317,15 @@ export function renderLangTuple() {
     b.type = 'button';
     b.setAttribute('aria-expanded', 'false');
     b.appendChild(document.createTextNode(s));
-    if (info.n != null) b.appendChild(_le('sup', null, String(info.n)));
-    b.dataset.tip = `${s} — ${info.say}`;
+    // A count, not an exponent. It was a <sup>, and in this app Σ² already
+    // means something — the words of length two — so "Σ²" beside an alphabet
+    // of two symbols stated a different set than the one meant. It sits on the
+    // baseline in a pill, the shape every other count in the panels has, and
+    // the accessible name says what the number counts: "Q5" was what a screen
+    // reader made of the old one.
+    if (info.n != null) b.appendChild(_le('span', 'lang-chip-n', String(info.n)));
+    b.setAttribute('aria-label', info.n != null ? `${s}: ${info.say}, ${info.n}` : `${s}: ${info.say}`);
+    b.dataset.tip = info.n != null ? `${s} — ${info.say} (${info.n})` : `${s} — ${info.say}`;
     b.addEventListener('click', () => {
       if (active === b) {
         b.setAttribute('aria-expanded', 'false');

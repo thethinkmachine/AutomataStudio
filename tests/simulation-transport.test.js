@@ -121,3 +121,17 @@ test('resetting clears the word along with the steps', () => {
   assert.equal(context.App.simInput, null);
   assert.equal(context.canResumeSim(), false);
 });
+
+// The empty trace log names the set a run's input is drawn from. For an
+// ω-automaton that is Σ^ω, not Σ* — the run box above it already asks for u(v).
+test('the empty trace log names the input set the machine reads', () => {
+  harness.resetApp();
+  const { setMachine, resetSim, $ } = context;
+  setMachine('DFA');
+  resetSim();
+  assert.match($('trace-log').innerHTML, /Σ\*/);
+  setMachine('DBA');
+  resetSim();
+  assert.match($('trace-log').innerHTML, /Σ<sup>ω<\/sup>/);
+  assert.doesNotMatch($('trace-log').innerHTML, /Σ\*/);
+});

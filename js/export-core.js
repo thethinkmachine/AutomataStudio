@@ -244,7 +244,8 @@ export function exportSampleWords(opts = {}) {
   };
 
   if (typeof langCanDecide === 'function' && !langCanDecide()) {
-    // A transducer with no accept notion has no L(M) to sample.
+    // A transducer with no accept notion, or an ω-automaton, has no set of
+    // finite words to sample.
     out.decidable = false;
     return out;
   }
