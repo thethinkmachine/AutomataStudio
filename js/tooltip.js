@@ -13,6 +13,8 @@
 //    pointer  — hover, after a short delay
 //    keyboard — on focus-visible, immediately
 //    touch    — long-press (native tooltips never fire here)
+import { formatKbd } from './kbd.js';
+
 (function () {
   const SHOW_DELAY = 380;
   const TOUCH_HOLD = 450;
@@ -200,7 +202,7 @@
     if (kbd) {
       const k = document.createElement('span');
       k.className = 'tooltip-kbd';
-      k.textContent = kbd;
+      k.textContent = formatKbd(kbd);
       el.appendChild(k);
     }
 

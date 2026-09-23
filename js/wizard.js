@@ -272,6 +272,7 @@ function blankTransition(machine, draft) {
   if (fields.includes('pop')) row.pop = sym.eps;
   if (fields.includes('push')) row.push = sym.eps;
   if (fields.includes('pop2')) row.pop2 = sym.eps;
+  if (fields.includes('below')) { row.below = sym.eps; row.above = sym.eps; }
   if (fields.includes('push2')) row.push2 = sym.eps;
   if (fields.includes('out')) row.out = '';
   if (fields.includes('weight')) row.weight = 1;

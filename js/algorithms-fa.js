@@ -69,7 +69,7 @@ export function algoTable(c) {
     }).join('');
     return `<tr><td class="${App.startId === s.id ? 'start-cell' : ''} ${App.accepts.has(s.id) ? 'acc-cell' : ''}">${prefix} ${s.name}</td>${cells}</tr>`;
   }).join('');
-  c.innerHTML += `<div class="card"><div class="card-title">δ: Q × Σ → ${App.machine === 'DFA' ? 'Q' : '2^Q'}</div>
+  c.innerHTML += `<div class="card"><div class="card-title"><span class="sym">δ: Q × Σ → ${App.machine === 'DFA' ? 'Q' : '2^Q'}</span></div>
 <div class="subset-table-wrap"><table class="result-table"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>
 <div style="font-size:.62rem;color:var(--text3);margin-top:8px">→ = start state &nbsp;&nbsp; * = accept state &nbsp;&nbsp; — = dead state (implicit reject)</div></div>`;
 }
@@ -2765,7 +2765,7 @@ export function algoEpsClosure(c) {
   }).join('');
 
   c.innerHTML += `<div class="card">
-  <div class="card-title">ε-CLOSURE(q) Membership Table</div>
+  <div class="card-title"><span class="sym">ε</span>-closure(<span class="sym">q</span>) membership table</div>
   <div class="subset-table-wrap">
     <table class="result-table">
       <thead><tr><th>State q</th>${headerCells}<th>ε-CLOSURE(q)</th></tr></thead>
@@ -2797,7 +2797,7 @@ export function algoEpsClosure(c) {
 
     const symHeaders = sigma.map(sym => `<th>δ̂(q, '${sym}')</th>`).join('');
     c.innerHTML += `<div class="card">
-  <div class="card-title">Extended Transition Function δ̂ (after applying ε-closure)</div>
+  <div class="card-title">Extended transition function <span class="sym">δ̂</span> (after applying <span class="sym">ε</span>-closure)</div>
   <div class="subset-table-wrap">
     <table class="result-table">
       <thead><tr><th>State q</th>${symHeaders}</tr></thead>

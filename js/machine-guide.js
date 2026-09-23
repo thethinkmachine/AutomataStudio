@@ -1,4 +1,4 @@
-import { math, mathLines, p, sec, ul } from './guide-blocks.js';
+import { math, mathLines, no, p, sec, table, ul, yes } from './guide-blocks.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  MACHINE GUIDE — CONTENT
@@ -52,14 +52,14 @@ export const GuideOverview = {
       ul(
         `<b>Finite automata</b> — no storage at all. The state is the entire memory, so what these machines can recognise is bounded by how many distinct situations a fixed number of states can distinguish. They define the <em>regular</em> languages.`,
         `<b>ω-automata</b> — finite automata whose input never ends. Because there is no last configuration, acceptance has to be a property of what recurs forever rather than of where the machine stopped. They define the <em>ω-regular</em> languages.`,
-        `<b>Memory automata</b> — a finite automaton plus one disciplined store: a stack, a queue, a counter, or two stacks. What the discipline allows decides everything; a single stack gives the <em>context-free</em> languages, while a queue or a second stack is already as strong as a Turing machine.`,
+        `<b>Memory automata</b> — a finite automaton plus one disciplined store: a stack, a queue, a counter, two stacks, or a stack of stacks. What the discipline allows decides everything; a single stack gives the <em>context-free</em> languages, a stack of stacks reaches just past them to the <em>tree-adjoining</em> languages, while a queue or a second independent stack is already as strong as a Turing machine.`,
         `<b>Turing machines</b> — a read/write head on an unbounded tape, free to move in both directions. This is the standard model of general computation; its bounded cousin, the linear bounded automaton, defines the <em>context-sensitive</em> languages.`,
         `<b>Transducers</b> — machines that emit output rather than only deciding membership. They compute functions and relations on words instead of defining languages.`)),
 
     sec('How the models are compared',
       p(`Two machines are <b>equivalent</b> when they accept exactly the same set of words, and a model <b>A</b> is at least as powerful as a model <b>B</b> when every language some B-machine accepts is accepted by some A-machine. Written with ⊆ and ⊊ between classes, the picture the app covers is:`),
-      math(`\\text{Regular} \\subsetneq \\text{Context-Free} \\subsetneq \\text{Context-Sensitive} \\subsetneq \\text{Recursively Enumerable}`),
-      p(`Two facts about this chain are worth holding on to. First, the inclusions are <em>strict</em>: at each step there is a concrete language the smaller class cannot reach, and the standard witnesses are {aⁿbⁿ : n ≥ 0} for the first step and {aⁿbⁿcⁿ : n ≥ 0} for the second. Second, adding nondeterminism moves a model along this chain in only one case in the whole app — the pushdown automaton. Everywhere else it changes how compactly a language can be described, not which languages are describable.`),
+      math(`\\text{Regular} \\subsetneq \\text{Context-Free} \\subsetneq \\text{Tree-Adjoining} \\subsetneq \\text{Context-Sensitive} \\subsetneq \\text{Recursively Enumerable}`),
+      p(`Two facts about this chain are worth holding on to. First, the inclusions are <em>strict</em>: at each step there is a concrete language the smaller class cannot reach, and the standard witnesses are {aⁿbⁿ : n ≥ 0} for the first step, {aⁿbⁿcⁿ : n ≥ 0} for the second and {aⁿbⁿcⁿdⁿeⁿ : n ≥ 0} for the third. The tree-adjoining class is not one of Chomsky's original four; the <a href="#ref-sec-tag">tree-adjoining page</a> explains where it comes from. Second, adding nondeterminism moves a model along this chain in only one case in the whole app — the pushdown automaton. Everywhere else it changes how compactly a language can be described, not which languages are describable.`),
       p(`The ω-automata sit outside this chain because they classify infinite words, not finite ones. They have their own small hierarchy, described on each of their pages.`)),
 
     sec('Reading a machine on the canvas',
@@ -832,7 +832,52 @@ const MEM_GUIDES = {
           `The trace shows both stacks in the instantaneous description, separated by a semicolon.`,
           `Exploration is breadth-first over configurations with the pushdown step budget. Because the model is Turing-equivalent, an exhausted budget genuinely means no verdict — there is no way in general to tell a long computation from a non-terminating one.`))
     ]
+  },
+
+  'EPDA': {
+    slug: 'epda',
+    title: 'Embedded Pushdown Automaton',
+    tagline: 'One stack, whose elements are stacks',
+    accent: 'var(--violet)',
+    klass: 'Tree-adjoining (mildly context-sensitive)',
+    sections: [
+      sec('What it is',
+        p(`An embedded pushdown automaton has the finite control of a pushdown machine and a store that is a <b>stack of stacks</b>. Only the topmost stack is reachable: the machine reads and writes its top symbol exactly as a PDA does, and may also insert whole new stacks above it or below it. When the topmost stack is emptied it is discarded, and the one beneath it becomes current again.`),
+        p(`That discipline is the entire model, and it is worth saying what it buys. One stack gives the context-free languages. Two <i>independent</i> stacks give everything — the app's own <b>2-Stack PDA</b> is Turing-equivalent, and its guide explains the two-line simulation that makes it so. A stack of stacks sits strictly between: a nested computation must run to completion and be thrown away before the one it interrupted resumes, and that single restriction is what stops the second dimension becoming a second tape.`),
+        p(`The shape it describes is adjunction. Splicing an auxiliary tree into another tree is a computation that opens, runs, and hands control back where it interrupted — so an EPDA recognises exactly the languages a <a href="#ref-sec-tag">tree-adjoining grammar</a> generates.`)),
+
+      sec('Formal definition',
+        mathLines(
+          `M = (Q,\\ \\Sigma,\\ \\Gamma,\\ \\delta,\\ q_0,\\ Z_0,\\ F)`,
+          `\\delta : Q \\times (\\Sigma \\cup \\{\\varepsilon\\}) \\times \\Gamma \\to \\mathcal{P}(Q \\times \\Upsilon^* \\times \\Gamma^* \\times \\Upsilon^*)`),
+        p(`Υ is a sequence of stacks, and δ produces two of them: the stacks to insert below the topmost, and the stacks to insert above it. Γ* is what replaces the symbol popped, exactly as in a PDA. A move that names neither sequence <i>is</i> a PDA move, which is why an EPDA drawn without them behaves like the pushdown machine it generalises.`)),
+
+      sec('How a run works',
+        p(`A configuration is (q, w, Υ) — state, unread input, and the store written as a sequence of stacks with the topmost last. A move looks at the top symbol of the topmost stack only; it can neither see nor touch anything below.`),
+        p(`Emptying the topmost stack discards it. This is a convention rather than a derivation, and the app follows it because without it the model is unusable: no move has "the top stack is empty" on its left-hand side, so a stack worked down to nothing would strand the machine for good. If you want a stack that survives being emptied, write a bottom marker onto it — the same idiom Z₀ already is.`)),
+
+      sec('Acceptance',
+        p(`By accepting state with the input consumed, or by empty store with the input consumed, following the same setting the pushdown machines use. Under the empty-store convention the store must reduce to a single empty stack.`)),
+
+      sec('What it can and cannot express',
+        p(`Exactly the tree-adjoining languages. That is strictly more than context-free — {aⁿbⁿcⁿdⁿ} and the copy language {ww} are both here and neither is context-free — and strictly less than context-sensitive. The class is closed under union, concatenation, Kleene star, intersection with a regular language and homomorphism, and membership is decidable in polynomial time.`),
+        table(['Language', 'Context-free', 'Tree-adjoining'],
+          ['{aⁿbⁿ}', yes('yes'), yes('yes')],
+          ['{aⁿbⁿcⁿ}', no('no'), yes('yes')],
+          ['{aⁿbⁿcⁿdⁿ}', no('no'), yes('yes')],
+          ['{ww}', no('no'), yes('yes')],
+          ['{aⁿbⁿcⁿdⁿeⁿ}', no('no'), no('no')]),
+        p(`The last row is the boundary and is worth dwelling on. An auxiliary tree adds material on both sides of its foot, and adjoining again at a node on its spine splits each of those sides once more — so a long word of the class has four places that can be pumped together, and never more. Four counts fit that shape; five do not. The <a href="#ref-sec-tag">tree-adjoining page</a> gives the full argument.`)),
+
+      sec('In this editor',
+        ul(
+          `The transition editor adds two fields to the pushdown pair: <b>below</b> and <b>above</b>, each a <code>|</code>-separated list of stacks. Each stack is written top-first, the way <code>push</code> is. Leave both empty for an ordinary pushdown move.`,
+          `Stack symbols are single characters as elsewhere, unless you write them apart with spaces or in angle brackets — <code>&lt;name&gt;</code> is always exactly one symbol, which is what lets a machine store names rather than letters — useful when a stack symbol stands for a node of a tree.`,
+          `The tracker draws the topmost stack as a stack, with the ones beneath it beneath it, so the store's nesting is the row order.`,
+          `Exploration is breadth-first with a store budget drawn against the length of the word. <b>An EPDA can open stacks without reading anything</b>, so its configuration space can be genuinely infinite; a run stopped by that budget reports no verdict rather than a rejection, because it has not established one.`))
+    ]
   }
+
 };
 
 // ──────────────────────────────────────────────────────────────────

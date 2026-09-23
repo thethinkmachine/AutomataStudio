@@ -4,7 +4,7 @@ import { createHarness } from './harness.js';
 import { MachineCategories, MachineTypes } from '../js/state.js';
 import { GuideOverview, MachineGuides } from '../js/machine-guide.js';
 import { ConceptCategories, ConceptGuides } from '../js/concept-guide.js';
-import { referencePages, renderReferenceView } from '../js/reference.js';
+import { keepSymbolCase, referencePages, renderReferenceView } from '../js/reference.js';
 
 // The Reference view.
 //
@@ -92,6 +92,24 @@ test('each guide carries the fields the renderer reads', () => {
   }
 });
 
+// A link between pages is a slug written into prose, so nothing else checks
+// it: a renamed or removed page leaves a link that silently goes nowhere.
+test('every link between reference pages names a page that exists', () => {
+  const slugs = new Set([
+    GuideOverview.slug,
+    ...Object.values(MachineGuides).map(g => g.slug),
+    ...Object.values(ConceptGuides).map(g => g.slug)
+  ]);
+  const guides = [GuideOverview, ...Object.values(MachineGuides), ...Object.values(ConceptGuides)];
+  const dangling = [];
+  for (const g of guides) {
+    for (const [, target] of JSON.stringify(g.sections).matchAll(/href=\\"#ref-sec-([^"\\]+)\\"/g)) {
+      if (!slugs.has(target)) dangling.push(`${g.slug} → ${target}`);
+    }
+  }
+  assert.deepEqual(dangling, [], `links to missing pages: ${dangling.join(', ')}`);
+});
+
 test('every machine states its formal definition', () => {
   for (const [machine, g] of Object.entries(MachineGuides)) {
     const formal = g.sections.find(s => /formal definition/i.test(s.h));
@@ -128,4 +146,16 @@ test('the page order is overview, then machines, then concepts', () => {
 test('renderReferenceView survives a DOM with nothing in it', () => {
   harness.resetApp();
   assert.doesNotThrow(() => renderReferenceView());
+});
+
+// The class chip is an uppercase eyebrow and `text-transform` maps letters, not
+// words: "ω-regular" was drawn "Ω-REGULAR", and Ω is the parity priority
+// function. The renderer marks the notation rather than each guide doing so.
+test('notation in an uppercase chip keeps its case', () => {
+  assert.equal(keepSymbolCase('co-Büchi ⊊ ω-regular'), 'co-Büchi ⊊ <span class="sym">ω</span>-regular');
+  assert.equal(keepSymbolCase('Regular Languages'), 'Regular Languages', 'Latin text is untouched');
+  const withGreek = [...Object.values(MachineGuides), ...Object.values(ConceptGuides)]
+    .filter(g => /[α-ω]/.test(g.klass || ''));
+  assert.ok(withGreek.length > 0, 'the guides do write notation into their class chips');
+  for (const g of withGreek) assert.match(keepSymbolCase(g.klass), /class="sym"/, g.slug);
 });

@@ -81,6 +81,7 @@ import * as machineFinite from '../js/machines/finite.js';
 import * as machineWeighted from '../js/machines/weighted.js';
 import * as machineOmega from '../js/machines/omega.js';
 import * as machinePushdown from '../js/machines/pushdown.js';
+import * as machineEmbedded from '../js/machines/embedded.js';
 import * as machineTuring from '../js/machines/turing.js';
 import * as machineTransducer from '../js/machines/transducer.js';
 import * as machineTwoWay from '../js/machines/twoway.js';
@@ -119,7 +120,7 @@ const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, viewport, geometry, statesTransitions,
   blocks, blocksUi, viewGraph, graphThumb, scope, runScope, canvas, render, panelState, panelSections, panelSectionsUi, panelFloat, panelShake, panelList, mobile, notes, dividers,
   machineRegistry, machineRuntime, machineFinite, machineWeighted, machineOmega,
-  machinePushdown, machineTuring, machineTransducer, machineTwoWay, machines,
+  machinePushdown, machineEmbedded, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,
   simulation, tape, tapeLog, tapeView, suggest, language, alphabet, markdown,
   view, history, fileHost, persistence, exportCore, exportFormats, exportUi, codegen,

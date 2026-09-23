@@ -89,6 +89,7 @@ import { Change, emit, subscribe } from './store.js';
 import { activatePanelTab, fitToScreen, openSettingsModal, revealPanel, setStateMatePanel, switchSettingsTab } from './ui.js';
 import { showStatus } from './utils.js';
 import { setView } from './view.js';
+import { formatKbd } from './kbd.js';
 
 const PANEL_ID = 'statemate-panel';
 
@@ -502,7 +503,7 @@ export const AUTHORITY_COPY = {
   },
   auto: {
     label: 'Auto',
-    blurb: 'StateMate draws straight onto the canvas. One Ctrl+Z undoes a turn.',
+    blurb: `StateMate draws straight onto the canvas. One ${formatKbd('Mod+Z')} undoes a turn.`,
     tip: 'Machines are drawn as soon as they pass their checks. A replacing edit still stops to ask. Shift+Tab to cycle.'
   }
 };

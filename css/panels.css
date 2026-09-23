@@ -17,8 +17,11 @@
   --sec-label-size: .68rem;
   --sec-label-tracking: .085em;
   --sec-arrow-size: 12px;
-  /* Shared cap for the States and Transitions lists — both scroll internally
-     at the same height instead of one stretching to fill the panel. */
+  /* Shared cap for the lists in this panel — they scroll internally at the
+     same height, so a long alphabet or state list cannot push the rest of the
+     panel away. The one exception is the panel's *spare* height, which goes to
+     the last open list (see .panel-dock-fill below): the cap is that list's
+     floor rather than its ceiling, so it never gets shorter than the others. */
   --lp-list-max-h: 168px;
 }
 
@@ -1002,6 +1005,40 @@ body.panel-resizing .rpanel {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+/* The docked panel's spare height, to exactly one list. syncDockFill marks the
+   last open section that declares a growable region, and the region is what
+   grows — the section and its body only pass the height down. Both are
+   `1 0 auto`: grow into what is spare, never shrink past what they were drawn
+   at, so a panel with no room scrolls exactly as it always has. The region is
+   `1 1 0`, which sizes it to the leftover alone rather than to its content: a
+   windowed list slices its rows from its own height, and a box as tall as a
+   thousand rows would draw a thousand rows.
+
+   Scoped to children of the panel's container, so a section torn off into a
+   window is not addressed here — the window has its own fill, and the
+   selector carries .lp-collapsible to outrank the `:last-child` reset above. */
+.lpanel .lpanel-content > .sec.lp-collapsible.panel-dock-fill {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.lpanel .lpanel-content > .panel-dock-fill > .lp-section-body {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.lpanel .lpanel-content > .panel-dock-fill .panel-dock-fill-region {
+  flex: 1 1 0;
+  min-height: var(--lp-list-max-h);
+  max-height: none;
+  /* A wrapping flex container shares spare height among its lines by
+     default, which turned every alphabet chip into a tall pill. Same
+     reasoning as the note over .panel-float-fill. */
+  align-content: flex-start;
 }
 
 .lpanel-search-inp {

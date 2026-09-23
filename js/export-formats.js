@@ -44,7 +44,11 @@ export function dotEscape(s) {
 export const TIKZ_SYMBOL_MAP = {
   'ε': '\\varepsilon', 'λ': '\\lambda', 'Σ': '\\Sigma', 'Γ': '\\Gamma', 'Δ': '\\Delta',
   '⊔': '\\sqcup', '⊢': '\\vdash', '⊣': '\\dashv', '→': '\\rightarrow', '←': '\\leftarrow',
-  '∅': '\\emptyset', '×': '\\times', '∪': '\\cup', '∩': '\\cap', '·': '\\cdot'
+  '∅': '\\emptyset', '×': '\\times', '∪': '\\cup', '∩': '\\cap', '·': '\\cdot',
+  // Typed into state names (the TM example has a state `b −1`): a true minus
+  // sign, and the comparisons that travel with it. The on-screen tuple reads
+  // this table too, so it covers KaTeX's text mode as well as pdflatex's.
+  '−': '-', '≥': '\\geq', '≤': '\\leq', '≠': '\\neq'
 };
 
 export function texEscape(s) {

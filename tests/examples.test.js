@@ -79,7 +79,7 @@ function runSample(h, data, w) {
 
 const FLAGSHIPS = [
   'dfa', 'nfa', 'enfa', 'twdfa', 'twnfa',
-  'pda', 'npda', 'queue', 'counter', 'twopda',
+  'pda', 'npda', 'queue', 'counter', 'twopda', 'epda',
   'tm', 'ndtm', 'mtm', 'lba', 'ittm',
   'moore', 'mealy', 'fst',
   'pfa', 'dba', 'buchi', 'pdt', 'twodft'

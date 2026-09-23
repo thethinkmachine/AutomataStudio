@@ -430,6 +430,7 @@ const DECIDABILITY = {
           ['ω-Regular (Büchi, parity)', yes('Decidable'), yes('Decidable'), na(), yes('PSPACE'), yes('PSPACE')],
           ['Deterministic CF (DPDA)', yes('Decidable'), yes('Decidable'), yes('Decidable'), yes('Decidable'), yes('Decidable')],
           ['Context-free (CFG, NPDA)', yes('Decidable'), yes('Decidable'), yes('Decidable'), no('Undecidable'), no('Undecidable')],
+          ['Tree-adjoining (TAG, EPDA)', yes('Decidable'), yes('Decidable'), yes('Decidable'), no('Undecidable'), no('Undecidable')],
           ['Context-sensitive (LBA)', yes('Decidable'), no('Undecidable'), no('Undecidable'), no('Undecidable'), no('Undecidable')],
           ['Recursively enumerable (TM)', semi('Semi-decidable'), no('Undecidable'), no('Undecidable'), no('Undecidable'), no('Undecidable')]),
         p(`Three entries carry a footnote. <b>ω-regular finiteness</b> is marked "—" because an ω-language is a set of infinite words and the question does not apply. <b>ω-regular equivalence and universality</b> are decidable but PSPACE-complete, since both require complementing a Büchi automaton. <b>DPDA inclusion</b>, which is not a column here, is undecidable even though equivalence in the same row is decidable — the deterministic context-free languages are closed under complement but not under intersection.`)),
@@ -466,6 +467,183 @@ const DECIDABILITY = {
 };
 
 // ──────────────────────────────────────────────────────────────────
+//  LANGUAGE CLASSES
+// ──────────────────────────────────────────────────────────────────
+// Classes that are not one of Chomsky's four and so have no family of their
+// own in the model picker. The tree-adjoining page is the grammar side of the
+// EPDA: the app builds and runs the machine, and this is where the class it
+// recognises is explained — there is deliberately no TAG editor.
+const LANGUAGE_CLASSES = {
+
+  'tag': {
+    slug: 'tag',
+    abbr: 'Tree-Adjoining',
+    title: 'Tree-Adjoining Grammars',
+    tagline: 'A grammar of trees, and the class of languages just past context-free',
+    accent: 'var(--violet)',
+    klass: 'Mildly context-sensitive',
+    sections: [
+      sec('The gap this class fills',
+        p(`The Chomsky hierarchy takes a large step between its middle two levels. Context-free grammars are cheap to work with — membership in cubic time, emptiness and finiteness decidable — but they cannot keep more than two counts in step and they cannot copy: {aⁿbⁿcⁿ} and {ww} are both beyond them. Context-sensitive grammars take in both, and a great deal more, and pay for it: their membership problem is PSPACE-complete and their emptiness problem is undecidable.`),
+        p(`The <b>tree-adjoining languages</b> sit in that gap. They take in the patterns context-free grammars miss while keeping nearly everything that makes context-free grammars usable. They are the best-known member of a family called the <b>mildly context-sensitive</b> languages, which is described by four properties rather than by one machine:`),
+        ul(
+          `It contains every context-free language.`,
+          `It can express <b>crossing dependencies</b> — links between positions of a word that cross rather than nest — but only a limited number of them: enough for {ww} and {aⁿbⁿcⁿdⁿ}, and no more.`,
+          `Membership is decidable in <b>polynomial time</b>.`,
+          `It has <b>constant growth</b>: past some point, every word of the language is longer than some shorter word of the language by at most a fixed amount. So {a<sup>2ⁿ</sup>}, whose lengths double, is excluded, even though it is context-sensitive.`),
+        p(`“Mild” is a description, not a definition, and several formalisms meet it to different degrees. Tree-adjoining grammar is the reference point the others are measured against. The app builds and runs its automaton, the <a href="#ref-sec-epda">embedded pushdown automaton</a>; this page is about the grammar.`)),
+
+      sec('Why context-free grammars stop at nesting',
+        p(`In a context-free derivation, everything a variable derives ends up as one contiguous stretch of the word. Two symbols that one rule introduces together — the a and the b of S → a S b — therefore enclose everything derived between them. So the dependencies a context-free grammar can state <b>nest like brackets</b>: take two linked pairs of positions i–j and k–l with i &lt; k. Either the second pair lies inside the first (i &lt; k &lt; l &lt; j) or entirely after it. It never crosses it (i &lt; k &lt; j &lt; l).`),
+        p(`The copy language shows the difference most cleanly. In the even palindromes {wwᴿ} the first symbol matches the last, the second the second-to-last, and every dependency nests — a context-free grammar handles it. In {ww} the first symbol matches the (n+1)-th and the second the (n+2)-th, so <em>every</em> pair of dependencies crosses, and no context-free grammar can produce it.`),
+        math(`w\\,w^{R}:\\ \\ x_1 x_2 \\cdots x_n\\ x_n \\cdots x_2 x_1 \\qquad\\text{versus}\\qquad w\\,w:\\ \\ x_1 x_2 \\cdots x_n\\ x_1 x_2 \\cdots x_n`),
+        p(`What a tree-adjoining grammar adds is the smallest change that lets one step of a derivation put material at <em>two</em> separated places in the word. That is exactly what a crossing dependency needs.`)),
+
+      sec('Formal definition',
+        mathLines(
+          `G = (\\Sigma,\\ N,\\ I,\\ A,\\ S)`,
+          `L(G) = \\{\\, \\operatorname{yield}(\\tau) \\ :\\ \\tau \\text{ is a complete tree derived from an initial tree rooted in } S \\,\\}`),
+        p(`Σ is the terminal alphabet, N the nonterminals and S ∈ N the start symbol. The grammar's building blocks are not rules but <b>elementary trees</b>, in two finite sets: <b>I</b>, the initial trees, and <b>A</b>, the auxiliary trees.`),
+        ul(
+          `In every elementary tree, interior nodes are labelled with nonterminals. Leaves are labelled with terminals, with ε, or with a nonterminal marked for <b>substitution</b>, written X↓.`,
+          `An auxiliary tree also has exactly one special leaf, its <b>foot</b>, written X*, labelled with the same nonterminal as the tree's root. The path from the root to the foot is the <b>spine</b>.`,
+          `A tree is <b>complete</b> when no substitution leaf is left open and every obligatory constraint (below) has been met. Its <b>yield</b> is its frontier: the leaf labels read from left to right, with ε dropped.`),
+        p(`Trees are written on this page as terms: a label followed by its children in brackets, so S(a S b) is a node S with three children, a, S and b.`)),
+
+      sec('Substitution',
+        p(`Substitution is the context-free operation. A leaf X↓ is replaced by an initial tree whose root is X. Nothing moves: a hole is filled once, from below.`),
+        p(`A grammar with only initial trees has only substitution, and it generates exactly the context-free languages. Each initial tree works like a context-free rule that has been written out several levels deep, and gluing trees together at their leaves is what a context-free derivation already does.`)),
+
+      sec('Adjunction',
+        p(`Adjunction is the operation that gives the formalism its name and its extra power. Take an auxiliary tree β whose root and foot are labelled X, and an interior node η of some tree that is also labelled X. Adjoining β at η does three things:`),
+        ul(
+          `cuts out the subtree rooted at η;`,
+          `puts β in its place;`,
+          `hangs the cut-out subtree from β's foot.`),
+        p(`Seen through the word, the part η used to cover is now wrapped in β's material, some on the left and some on the right:`),
+        math(`\\operatorname{yield}(\\beta) = u\\ X^{*}\\ v, \\quad \\operatorname{yield}(\\eta) = m \\qquad\\Longrightarrow\\qquad x\\ m\\ y \\;\\longrightarrow\\; x\\ u\\ m\\ v\\ y`),
+        p(`A context-free rule A → u B v also wraps, so the wrapping alone is not the difference. The difference is this. In a context-free grammar, what a subtree contributes to the word is <b>one string</b>. In a tree-adjoining grammar, what an auxiliary tree contributes is <b>a pair of strings</b>, u and v, with a gap between them that something else fills. Nodes on its spine can in turn be adjoined at, which wraps each half of the pair again. A grammar that builds pairs of strings can link positions that end up far apart, on either side of material it has never seen — and that is a crossing dependency.`),
+        p(`Two conventions complete the operation. A node is adjoined at <b>at most once</b>. And adjunction happens only at interior nodes: never at a substitution leaf or at a foot.`)),
+
+      sec('Adjoining constraints',
+        p(`Each interior node of an elementary tree may carry a constraint on what can adjoin there:`),
+        ul(
+          `<b>NA</b>, null adjunction: nothing may adjoin at this node.`,
+          `<b>OA</b>, obligatory adjunction: something must. A derived tree with an unmet OA is not complete and yields nothing.`,
+          `<b>SA(T)</b>, selective adjunction: only the auxiliary trees in the set T may adjoin here.`),
+        p(`Constraints are not decoration. The usual place for NA is the root and the foot of an auxiliary tree, because adjoining there wraps the entire tree again and breaks the pattern it was written to enforce. The next section shows a grammar that goes wrong the moment one NA is removed.`)),
+
+      sec('A worked example: aⁿbⁿcⁿdⁿ',
+        p(`Two elementary trees are enough:`),
+        mathLines(
+          `\\alpha = S(\\varepsilon)`,
+          `\\beta = S_{\\mathrm{NA}}\\big(\\,a\\ \\ S\\big(\\,b\\ \\ S^{*}_{\\mathrm{NA}}\\ \\ c\\,\\big)\\ \\ d\\,\\big)`),
+        p(`α is the only initial tree. Its yield is ε, so with no adjunction at all the grammar derives the empty word. β's frontier reads a b S* c d: it puts an a and a d outside its middle S node, and a b and a c inside that node, around the foot.`),
+        p(`Adjoin β at α's root. The ε subtree moves to the foot and the word becomes abcd. β's root and foot are both NA, so the only node left where something may adjoin is β's middle S. The next β must go there. Adjoining it moves that node's subtree, whose yield is b·ε·c, under the new foot:`),
+        math(`\\varepsilon \\;\\longrightarrow\\; abcd \\;\\longrightarrow\\; aabbccdd \\;\\longrightarrow\\; a^{3}b^{3}c^{3}d^{3} \\;\\longrightarrow\\; \\cdots`),
+        p(`Each adjunction adds one symbol in each of four places — at the end of the a's, the start of the b's, the end of the c's and the start of the d's — and a single tree adds all four, so the four counts can never drift apart.`),
+        p(`Now remove the NA from β's root and adjoin a second β there instead. It wraps the whole structure so far, abcd, between its b and its c, and the word becomes <b>ab·abcd·cd = ababcdcd</b>, which is not in the language. The constraint is doing real work.`),
+        note(`The EPDA's example in this app, “aⁿbⁿcⁿdⁿ — four counts, one stack of stacks”, recognises this same language the machine's way: the a's and b's are matched on the working stack, and each one parks a small stack underneath it for the c's and d's to use up later. Load it from the EPDA's examples and watch the tracker's rows.`)),
+
+      sec('A second example: the copy language',
+        mathLines(
+          `\\alpha = S(\\varepsilon)`,
+          `\\beta_a = S_{\\mathrm{NA}}\\big(\\,a\\ \\ S\\big(\\,S^{*}_{\\mathrm{NA}}\\ \\ a\\,\\big)\\big) \\qquad \\beta_b = S_{\\mathrm{NA}}\\big(\\,b\\ \\ S\\big(\\,S^{*}_{\\mathrm{NA}}\\ \\ b\\,\\big)\\big)`),
+        p(`Each auxiliary tree writes its letter twice: once before its foot, and once after the foot, at the end of its middle node. Adjoining β<sub>a</sub> at α's root gives aa. Adjoining β<sub>b</sub> at the middle node of the tree just added wraps that node's subtree, whose yield is a, into b·a·b, and the word becomes abab. Adjoining β<sub>a</sub> at the newest middle node gives abaaba.`),
+        math(`\\varepsilon \\;\\longrightarrow\\; a\\cdot a \\;\\longrightarrow\\; ab\\cdot ab \\;\\longrightarrow\\; aba\\cdot aba`),
+        p(`The second copy comes out in the same order as the first, not reversed, because each new letter goes just inside the previous one on the left but just outside it on the right. That asymmetry is exactly what a context-free grammar cannot express.`)),
+
+      sec('Derived tree and derivation tree',
+        p(`A context-free derivation produces one tree. A tree-adjoining derivation produces two, and they are different objects:`),
+        ul(
+          `The <b>derived tree</b> is the result: the tree the operations built, whose frontier is the word.`,
+          `The <b>derivation tree</b> is the history: one node per elementary tree used, with an edge from each tree to the tree it was substituted or adjoined into. Each edge is labelled with the address of the node where the operation happened.`),
+        p(`Addresses are <b>Gorn addresses</b>. The root is ε, its children are 1, 2, 3, …, their children are 1.1, 1.2, and so on: a path of child positions. They are always addresses in the <em>elementary</em> tree, never in the derived one, because the derived tree's addresses change every time something adjoins above them.`),
+        p(`For a context-free grammar the two trees tell the same story. For a tree-adjoining grammar they come apart, and the gap between them is where the extra power lives. An auxiliary tree adjoined at the root of an initial tree ends up at the <em>top</em> of the derived tree, but it is a <em>child</em> in the derivation tree. The set of derivation trees of a tree-adjoining grammar is itself as simple as the parse trees of a context-free grammar — a regular set of trees — so everything that is not context-free comes from how the derived tree is assembled from it.`)),
+
+      sec('Where it came from: syntax',
+        p(`Tree-adjoining grammar was designed for the syntax of natural languages, and the grammars written in practice are <b>lexicalized</b>: every elementary tree contains at least one word, its <em>anchor</em>, so the grammar is essentially a dictionary that gives each word the trees it can head.`),
+        mathLines(
+          `\\alpha_{\\text{laughs}} = S\\big(\\,NP{\\downarrow}\\ \\ VP(V(\\text{laughs}))\\,\\big) \\qquad \\alpha_{\\text{Kim}} = NP(\\text{Kim})`,
+          `\\beta_{\\text{often}} = VP\\big(\\,Adv(\\text{often})\\ \\ VP^{*}\\,\\big)`),
+        p(`Substituting α<sub>Kim</sub> at the NP↓ gives <em>Kim laughs</em>. Adjoining β<sub>often</sub> at the VP gives <em>Kim often laughs</em>, and nothing in α<sub>laughs</sub> had to anticipate it. The derivation tree records both steps: α<sub>laughs</sub> at the root, α<sub>Kim</sub> below it at address 1 by substitution, and β<sub>often</sub> below it at address 2 by adjunction.`),
+        p(`That is the design point. A verb's tree states its arguments locally — the subject slot is part of the verb's own tree however far the subject ends up from it in the sentence — while modifiers adjoin in from outside, as many as you like. Advocates of the formalism call this its <b>extended domain of locality</b>.`),
+        p(`Crossing dependencies are not only a theorist's example. In Dutch subordinate clauses a run of noun phrases can be followed by a run of verbs, with the i-th noun belonging to the i-th verb:`),
+        math(`\\ldots\\ \\text{dat}\\ \\ \\underbrace{\\text{Jan}}_{1}\\ \\ \\underbrace{\\text{Piet}}_{2}\\ \\ \\underbrace{\\text{de kinderen}}_{3}\\ \\ \\underbrace{\\text{zag}}_{1}\\ \\ \\underbrace{\\text{helpen}}_{2}\\ \\ \\underbrace{\\text{zwemmen}}_{3}`),
+        p(`“… that Jan saw Piet help the children swim.” That is the {ww} pattern. In Swiss German the verbs also require particular case marking on their nouns, which turns the pattern into a property of the <em>strings</em> and not only of their structure. It is the standard argument that natural languages are not context-free, and one of the main reasons this class was studied.`)),
+
+      sec('Parsing in polynomial time',
+        p(`Membership is decidable in <b>O(n⁶)</b> time for a word of length n, by a chart algorithm in the style of CYK. The extra cost has a concrete cause. A context-free chart item says that a node spans positions i to j: two indices. A tree-adjoining item needs four, because a node that dominates a foot covers two stretches of the word with a gap between them, which the foot will fill:`),
+        math(`[\\,\\eta,\\ i,\\ j,\\ k,\\ l\\,] \\quad\\text{means}\\quad \\eta \\text{ derives } w_{i+1} \\cdots w_{j}\\ \\ \\underbrace{\\quad}_{\\text{foot}}\\ \\ w_{k+1} \\cdots w_{l}`),
+        p(`The adjunction step combines the item for an auxiliary tree with the item for the node it adjoins at, and six word positions vary independently in that combination — hence n⁶. That is polynomial, which is the “mild” in mildly context-sensitive, but it is a large polynomial. Practical parsers rely on lexicalization: only the trees anchored by words actually in the sentence are ever considered.`),
+        p(`What does <em>not</em> work is a naive top-down search. Adjunction can wrap material around a node before any of the word has been read, and a spine that allows further adjunction can keep doing so, so “expand and see” never has to consume anything and need not terminate. The chart works because it is organised around spans of the input, and there are only finitely many of those.`),
+        p(`The same fact shows up in the machine. An EPDA can open new stacks without reading input, so a search through its configurations can go on forever. That is why the app's EPDA reports <b>no verdict</b>, rather than a rejection, when its search budget runs out: a budget that ran out has not established anything.`)),
+
+      sec('The machine: the embedded pushdown automaton',
+        p(`Every class in the hierarchy has an automaton that matches it, and for the tree-adjoining languages it is the <a href="#ref-sec-epda">EPDA</a>. It has a finite control and a <b>stack of stacks</b>. Only the top stack is reachable; a move may insert whole new stacks above it or below it; and a top stack that has been emptied is discarded. The equivalence is the usual one: there are constructions in both directions, so grammars and automata define the same class, just as context-free grammars and pushdown automata do.`),
+        p(`The match between the two is direct. Adjoining an auxiliary tree interrupts the tree it lands in, runs to completion, and hands control back to the point it interrupted. A new stack is that interruption: the machine opens it, works in it, and only once it is empty and discarded does the stack underneath carry on. Nested adjunctions are nested stacks.`),
+        p(`The discipline is what keeps the model in its place. One stack gives the context-free languages. Two <em>independent</em> stacks give everything a Turing machine can do — the app's 2-Stack PDA is exactly that. A stack of stacks, where only the top one can be touched, falls strictly between them.`)),
+
+      sec('Closure properties',
+        p(`The tree-adjoining languages have the same closure properties as the context-free ones: they form what is called a <em>full abstract family of languages</em>.`),
+        table(['Operation', 'Tree-adjoining', 'Context-free'],
+          ['Union', yes('Closed'), yes('Closed')],
+          ['Concatenation', yes('Closed'), yes('Closed')],
+          ['Kleene star', yes('Closed'), yes('Closed')],
+          ['Homomorphism', yes('Closed'), yes('Closed')],
+          ['Inverse homomorphism', yes('Closed'), yes('Closed')],
+          ['Intersection with a regular language', yes('Closed'), yes('Closed')],
+          ['Intersection', no('Not closed'), no('Not closed')],
+          ['Complement', no('Not closed'), no('Not closed')]),
+        p(`The failure under intersection is shown the same way as for context-free languages, one level up. Both {aⁿbⁿcⁿdⁿeᵐ} and {aᵐbⁿcⁿdⁿeⁿ} are tree-adjoining: each is a four-count language concatenated with a regular one. Their intersection is {aⁿbⁿcⁿdⁿeⁿ}, which is not (see the pumping lemma below). Complement then fails as well, because a class closed under union and complement would, by De Morgan's laws, be closed under intersection.`)),
+
+      sec('Decision problems',
+        table(['Question', 'Tree-adjoining'],
+          ['Membership — is w ∈ L(G)?', yes('Decidable, O(n⁶)')],
+          ['Emptiness — is L(G) = ∅?', yes('Decidable')],
+          ['Finiteness — is L(G) finite?', yes('Decidable')],
+          ['Universality — is L(G) = Σ*?', no('Undecidable')],
+          ['Equivalence — is L(G₁) = L(G₂)?', no('Undecidable')],
+          ['Ambiguity — is G ambiguous?', no('Undecidable')]),
+        p(`The undecidable rows are inherited. Every context-free grammar can be written as a tree-adjoining grammar with no auxiliary trees, so an algorithm for tree-adjoining equivalence, universality or ambiguity would settle the same question for context-free grammars — and the <a href="#ref-sec-decide-cfl">context-free page</a> shows those are undecidable. Emptiness and finiteness are decided as they are for context-free grammars: work out which elementary trees can ever be completed, then look for a cycle among the usable ones that makes the language infinite. The <a href="#ref-sec-decidability-map">decidability map</a> puts this row beside the others.`)),
+
+      sec('A pumping lemma, and where the class stops',
+        p(`Context-free languages have a pumping lemma with two pieces pumped in step (uvⁱxyⁱz). Tree-adjoining languages have one with <b>four</b>. For every tree-adjoining language L there is a length beyond which every word z ∈ L can be split as:`),
+        mathLines(
+          `z = w_1\\, v_1\\, w_2\\, v_2\\, w_3\\, v_3\\, w_4\\, v_4\\, w_5, \\qquad |v_1 v_2 v_3 v_4| \\ge 1`,
+          `w_1\\, v_1^{\\,i}\\, w_2\\, v_2^{\\,i}\\, w_3\\, v_3^{\\,i}\\, w_4\\, v_4^{\\,i}\\, w_5 \\in L \\quad \\text{for every } i \\ge 0`),
+        p(`The proof follows the context-free one. In a long enough derivation some auxiliary tree must recur along one path of the derivation tree, and the stretch between the two occurrences can be repeated or cut out. What that stretch contributes to the word is four pieces rather than two, because an auxiliary tree covers a pair of strings with a gap between them rather than a single string.`),
+        p(`Four pumped pieces can keep four counts in step and no more. In aⁿbⁿcⁿdⁿeⁿ each piece must sit inside a single block of letters, or pumping would scramble their order, so at most four of the five blocks can grow together. A similar argument puts {www} outside the class, and {a<sup>2ⁿ</sup>} fails constant growth. All three are context-sensitive, so the class is strictly between the two levels:`),
+        table(['Language', 'Context-free', 'Tree-adjoining', 'Context-sensitive'],
+          ['{aⁿbⁿ}', yes('yes'), yes('yes'), yes('yes')],
+          ['{wwᴿ}', yes('yes'), yes('yes'), yes('yes')],
+          ['{aⁿbⁿcⁿ}', no('no'), yes('yes'), yes('yes')],
+          ['{aⁿbⁿcⁿdⁿ}', no('no'), yes('yes'), yes('yes')],
+          ['{ww}', no('no'), yes('yes'), yes('yes')],
+          ['{aⁿbⁿcⁿdⁿeⁿ}', no('no'), no('no'), yes('yes')],
+          ['{www}', no('no'), no('no'), yes('yes')],
+          ['{a<sup>2ⁿ</sup>}', no('no'), no('no'), yes('yes')]),
+        math(`\\text{Context-Free} \\subsetneq \\text{Tree-Adjoining} \\subsetneq \\text{Context-Sensitive}`)),
+
+      sec('Other formalisms, same class',
+        p(`Several formalisms, designed independently and for different reasons, turn out to generate exactly the same languages as tree-adjoining grammars:`),
+        ul(
+          `<b>Linear indexed grammars</b> — context-free grammars whose nonterminals carry a stack of indices, which each rule passes on to exactly one child.`,
+          `<b>Combinatory categorial grammar</b> — words carry types that say what they combine with, and a small fixed set of combination rules does the rest.`,
+          `<b>Head grammars</b> — rules that can wrap one string around another at a marked position, its head.`),
+        p(`The equivalence is <em>weak</em>: the same sets of strings, assigned different structures. Coincidences like this are much of why the class is regarded as natural rather than as an artefact of one notation — the same kind of evidence that several independent definitions of computability all agree.`),
+        p(`The class is not the end of the road. Multiple context-free grammars generalise the pair-of-strings idea to tuples of any fixed size, which gives an infinite hierarchy of classes that all keep polynomial parsing and constant growth. Tree-adjoining grammars correspond to the well-nested grammars over <em>pairs</em>; five counts and {www} appear further up. All of these count as mildly context-sensitive, which is why the term names a family rather than one class.`)),
+
+      sec('In this app',
+        ul(
+          `The <b>EPDA</b> is the part of this class you can build and run: draw it on the canvas, step through it with the tracker showing one row per stack, and test it with the batch tester. Its example recognises aⁿbⁿcⁿdⁿ.`,
+          `The <b>Grammar view</b> works with rewriting rules. A tree-adjoining grammar is a set of trees, not a set of rules, so it has no editor there; the grammars on this page are for reading and for working through by hand.`,
+          `The Grammar view's classifier places a rule grammar in the Chomsky hierarchy, which has no level for this class. A rule grammar for aⁿbⁿcⁿdⁿ comes out as context-sensitive or unrestricted — never as anything in between, because the hierarchy it reports against has nothing there.`))
+    ]
+  }
+};
+
+// ──────────────────────────────────────────────────────────────────
 //  REGISTRY
 // ──────────────────────────────────────────────────────────────────
 // Order here is nav order. js/reference.js appends these groups after the
@@ -484,7 +662,12 @@ export const ConceptCategories = [
       'rice',
       'decidability-map'
     ]
+  },
+  {
+    id: 'classes',
+    label: 'Language Classes',
+    pages: ['tag']
   }
 ];
 
-export const ConceptGuides = { ...DECIDABILITY };
+export const ConceptGuides = { ...DECIDABILITY, ...LANGUAGE_CLASSES };

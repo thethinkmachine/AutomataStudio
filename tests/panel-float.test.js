@@ -941,3 +941,58 @@ test('the one region that stretches is also the one allowed to shrink', () => {
   blanket.forEach(rule => assert.ok(rule.selector.includes(':not(.panel-float-fill)'),
     `${rule.selector} pins flex-shrink on every child of a window, the elastic one included`));
 });
+
+// ── the docked panel's spare height ───────────────────────────────
+//
+// Every list was capped at --lp-list-max-h, so ten transitions scrolled inside
+// a 168px box above two hundred pixels of empty panel. The last open section
+// that declares a growable region takes the spare height instead — asked of
+// the DOM each time, because the reader can collapse, reorder and tear off.
+
+/** Gives each left-panel section the list its registry entry names. */
+function withRegions() {
+  const regions = {};
+  LP.forEach(id => {
+    const el = context.$(id);
+    const region = context.$(id + '-region');
+    region.classList.remove('panel-dock-fill-region');
+    regions[id] = region;
+    el.querySelector = sel => (sel === context.sectionFill(id) ? region : null);
+  });
+  return regions;
+}
+
+test('the last open list in the docked panel takes the spare height', () => {
+  mount();
+  const regions = withRegions();
+  const last = LP[LP.length - 1];
+  context.$(last).classList.add('collapsed');
+  const fill = context.syncDockFill('lpanel');
+  const expected = LP.filter(id => id !== last).at(-1);
+  assert.equal(fill, expected, 'a collapsed section below does not take it');
+  assert.ok(context.$(expected).classList.contains('panel-dock-fill'));
+  assert.ok(regions[expected].classList.contains('panel-dock-fill-region'));
+  assert.equal(LP.filter(id => context.$(id).classList.contains('panel-dock-fill')).length, 1,
+    'exactly one section, the same rule a window follows');
+});
+
+test('a hidden or torn-off section hands the spare height on', () => {
+  mount();
+  withRegions();
+  LP.forEach(id => context.$(id).classList.remove('collapsed'));
+  const [a, b] = LP.slice(-2);
+  context.$(b).style.display = 'none';          // a machine without that section
+  assert.equal(context.syncDockFill('lpanel'), a);
+  context.$(b).style.display = '';
+  assert.equal(context.syncDockFill('lpanel'), b);
+  context.floatSection(b);                       // torn off into a window
+  assert.equal(context.syncDockFill('lpanel'), a);
+  assert.ok(!context.$(b).classList.contains('panel-dock-fill'), 'the window keeps no stale mark');
+  context.dockSection(b);
+});
+
+test('the right panel keeps its natural heights', () => {
+  mount();
+  assert.equal(context.syncDockFill('rpanel'), null,
+    'its regions are drawn boxes, and a stretched trace log is a tall empty card');
+});

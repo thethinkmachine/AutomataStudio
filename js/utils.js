@@ -26,7 +26,7 @@ export {
   buildMarkedInputTape, counterBottomViolation, findOmegaDeterminismConflict,
   findPdaNondeterministicPairs, getPdaDeterminismConflict, hasPdaNondeterminism,
   hasSingleTapeNondeterminism, hasSingleValuedDelta, isAnyPDA, isAnyTM,
-  isCfgConvertiblePDA, isClassicPDA, isCounterMachine, isInfiniteTapeTM, isLBA,
+  isCfgConvertiblePDA, isClassicPDA, isCounterMachine, isEmbeddedMachine, isInfiniteTapeTM, isLBA,
   isPushdownTransducer, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA,
   isTwoWayNondeterministicFA, isTwoWayTransducer, parseEps,
   pdaPopPatternsOverlap, pdaReadPatternsOverlap, pdaTransitionsOverlap,

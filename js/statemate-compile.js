@@ -79,7 +79,7 @@ const nameKey = stateNameKey;
 const KEY_SEP = '\u0000';
 
 function transitionKey(t) {
-  return [t.from, t.to, t.symbol, t.pop, t.push, t.pop2, t.push2, t.write, t.dir, t.output]
+  return [t.from, t.to, t.symbol, t.pop, t.push, t.pop2, t.push2, t.below, t.above, t.write, t.dir, t.output]
     .map(v => (v === undefined || v === null ? '' : String(v)))
     .join(KEY_SEP);
 }

@@ -104,6 +104,8 @@ export function buildMachineIR() {
       pop: t.pop ?? null,
       push: t.push ?? null,
       pop2: t.pop2 ?? null,
+      below: t.below ?? null,
+      above: t.above ?? null,
       push2: t.push2 ?? null,
       write: t.write ?? null,
       dir: t.dir ?? null,
@@ -242,7 +244,8 @@ export function exportSampleWords(opts = {}) {
   };
 
   if (typeof langCanDecide === 'function' && !langCanDecide()) {
-    // A transducer with no accept notion has no L(M) to sample.
+    // A transducer with no accept notion, or an ω-automaton, has no set of
+    // finite words to sample.
     out.decidable = false;
     return out;
   }

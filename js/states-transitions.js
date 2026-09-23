@@ -5,7 +5,7 @@ import { pruneNoteAnchorsExcluding } from './notes.js';
 import { renderAll } from './render.js';
 import { $, App, getMachineConfig, getState, isBoundarySymbol, isReadOnlyHeadMachine, isWeightedFA, statePriority, usesParityPriorities, wrapStateLabelsOn } from './state.js';
 import { Change, emit } from './store.js';
-import { counterBottomViolation, hasStateOutput, hasTransitionOutput, isAnyPDA, isCounterMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
+import { counterBottomViolation, hasStateOutput, hasTransitionOutput, isAnyPDA, isCounterMachine, isEmbeddedMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
 import { isMultiTape, machineDeterminism, machineStoreLabels, transitionHasField } from './machines/index.js';
 import { applyMachineSwitch } from './view.js';
 import { viewEdgeKeyFor, viewStates } from './view-graph.js';
@@ -170,6 +170,8 @@ export function populateTransitionModal(t) {
   $('m-mtm-extra').style.display = has('tapeSyms') ? '' : 'none';
   const twoStackExtra = $('m-2pda-extra');
   if (twoStackExtra) twoStackExtra.style.display = has('pop2') ? '' : 'none';
+  const epdaExtra = $('m-epda-extra');
+  if (epdaExtra) epdaExtra.style.display = has('below') ? '' : 'none';
   const pfaExtra = $('m-pfa-extra');
   if (pfaExtra) pfaExtra.style.display = has('weight') ? '' : 'none';
   if (has('weight')) {
@@ -240,6 +242,12 @@ export function populateTransitionModal(t) {
       if (pdaPop2) pdaPop2.value = t?.pop2 ?? eps;
       if (pdaPush2) pdaPush2.value = t?.push2 ?? eps;
     }
+    if (has('below')) {
+      const below = $('m-below');
+      const above = $('m-above');
+      if (below) below.value = t?.below ?? eps;
+      if (above) above.value = t?.above ?? eps;
+    }
     const tmWrite = $('m-write');
     if (tmWrite) tmWrite.value = isReadOnlyHeadMachine(App.machine) ? (t?.symbol ?? '') : (t?.write ?? t?.symbol ?? '');
   }
@@ -265,6 +273,10 @@ export function getTransitionFormValues() {
     if (has('pop2')) {
       values.pop2 = parseEps($('m-pop2')?.value) || eps;
       values.push2 = parseEps($('m-push2')?.value) || eps;
+    }
+    if (has('below')) {
+      values.below = parseEps($('m-below')?.value) || eps;
+      values.above = parseEps($('m-above')?.value) || eps;
     }
   }
   if (has('move')) {
@@ -453,21 +465,33 @@ export function confirmTrans() {
     t.from = from;
     t.to = to;
     t.symbol = sym;
-    if (isAnyPDA(App.machine)) {
+    // Which fields a saved transition carries is the same question as which
+    // rows the dialog showed, so it is asked the same way. It used to be asked
+    // with the family predicates instead, which is the one thing that could not
+    // survive a second family with a store: an EPDA is not `isAnyPDA`, so its
+    // pop and push were deleted on every save — the dialog offered them, took
+    // them, and dropped them.
+    const keeps = field => transitionHasField(App.machine, field);
+    if (keeps('pop')) {
       t.pop = values.pop;
       t.push = values.push;
-      if (isTwoStackPDA(App.machine)) {
-        t.pop2 = values.pop2;
-        t.push2 = values.push2;
-      } else {
-        delete t.pop2;
-        delete t.push2;
-      }
     } else {
       delete t.pop;
       delete t.push;
+    }
+    if (keeps('pop2')) {
+      t.pop2 = values.pop2;
+      t.push2 = values.push2;
+    } else {
       delete t.pop2;
       delete t.push2;
+    }
+    if (keeps('below')) {
+      t.below = values.below;
+      t.above = values.above;
+    } else {
+      delete t.below;
+      delete t.above;
     }
     if (isSingleTapeTM(App.machine)) {
       t.write = values.write;
@@ -498,14 +522,10 @@ export function confirmTrans() {
     }
   } else {
     const t = { id: newTId(), from, to, symbol: sym };
-    if (isAnyPDA(App.machine)) {
-      t.pop = values.pop;
-      t.push = values.push;
-      if (isTwoStackPDA(App.machine)) {
-        t.pop2 = values.pop2;
-        t.push2 = values.push2;
-      }
-    }
+    const takes = field => transitionHasField(App.machine, field);
+    if (takes('pop')) { t.pop = values.pop; t.push = values.push; }
+    if (takes('pop2')) { t.pop2 = values.pop2; t.push2 = values.push2; }
+    if (takes('below')) { t.below = values.below; t.above = values.above; }
     if (isSingleTapeTM(App.machine)) { t.write = values.write; t.dir = values.dir; }
     if (hasTransitionOutput(App.machine)) { t.output = values.output; }
     if (isWeightedFA(App.machine)) { t.weight = values.weight; }
@@ -646,8 +666,21 @@ export function transLabelParts(t, beginner = false) {
   return [input];
 }
 
+// The EPDA is tested before the pushdown family. It is not `isAnyPDA` — it is
+// its own family — but it carries `pop`/`push`, so a reader who moved it
+// under that branch would get a plain pushdown label and lose the part that
+// says what the move does to the stacks around the top one.
+function embeddedLabel(t) {
+  const eps = App.config.sym.eps;
+  const extra = [];
+  if (t.below && t.below !== eps) extra.push(`▼${t.below}`);
+  if (t.above && t.above !== eps) extra.push(`▲${t.above}`);
+  return `${t.symbol}, ${t.pop || eps} → ${t.push || eps}${extra.length ? ' · ' + extra.join(' ') : ''}`;
+}
+
 export function transLabel(t) {
   if (isWeightedFA(App.machine)) return `${t.symbol} : ${formatWeight(t.weight ?? 1)}`;
+  if (isEmbeddedMachine(App.machine)) return embeddedLabel(t);
   if (isAnyPDA(App.machine)) {
     if (isTwoStackPDA(App.machine)) {
       return `${t.symbol}, (${t.pop}, ${t.pop2 ?? App.config.sym.eps}) → (${t.push}, ${t.push2 ?? App.config.sym.eps})${outputSuffix(t)}`;
@@ -671,6 +704,13 @@ export function transLabel(t) {
 
 export function transLabelDescriptive(t) {
   const dirMap = { 'R': 'Right', 'L': 'Left', 'S': 'Stay' };
+  if (isEmbeddedMachine(App.machine)) {
+    const eps = App.config.sym.eps;
+    const parts = [`Read '${t.symbol}'`, `Pop '${t.pop || eps}'`, `Push '${t.push || eps}'`];
+    if (t.below && t.below !== eps) parts.push(`Insert '${t.below}' below`);
+    if (t.above && t.above !== eps) parts.push(`Insert '${t.above}' above`);
+    return parts.join(', ');
+  }
   const printPart = hasTransitionOutput(App.machine)
     ? `, Print '${t.output !== undefined && t.output !== '' ? t.output : App.config.sym.lambda}'`
     : '';
@@ -762,6 +802,14 @@ export function transTipRows(t) {
   if (isWeightedFA(App.machine)) {
     add('Read', t.symbol);
     add('Probability', formatWeight(t.weight ?? 1));
+    return rows.join('\n');
+  }
+  if (isEmbeddedMachine(App.machine)) {
+    const eps = App.config.sym.eps;
+    add('Read', t.symbol);
+    add('Top stack', `pop ${t.pop || eps}\tpush ${t.push || eps}`);
+    add('Below', t.below || eps);
+    add('Above', t.above || eps);
     return rows.join('\n');
   }
   if (isAnyPDA(App.machine)) {

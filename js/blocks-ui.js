@@ -35,6 +35,7 @@ import { hideContextMenu } from './states-transitions.js';
 import { Change, emit } from './store.js';
 import { showStatus } from './utils.js';
 import { blockSize, invalidateViewGraph, scopeId, viewStates } from './view-graph.js';
+import { formatKbd } from './kbd.js';
 
 export const BLOCK_STORE_NAME = 'blocks';
 
@@ -326,7 +327,7 @@ export function ctxDeleteBlock() {
   askConfirm({
     title: `Delete ${b.name}?`,
     message: `This removes the block and everything inside it — ${n} item${n === 1 ? '' : 's'} `
-      + 'at this level, and anything nested below them. One Ctrl+Z brings it all back.',
+      + `at this level, and anything nested below them. One ${formatKbd('Mod+Z')} brings it all back.`,
     confirmLabel: 'Delete',
     danger: true,
     onConfirm: () => {

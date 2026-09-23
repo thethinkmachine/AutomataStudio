@@ -7,6 +7,7 @@ import { setListItems } from './panel-list.js';
 import { cullNeedsRepaint, cullViewport, cullingActive, edgeLabelLOD, invalidateCull, rectHasPoint, stateLabelLOD, suspendCulling } from './viewport.js';
 import { scheduleMinimap } from './minimap.js';
 import { renderLanguagePanel } from './language.js';
+import { TIKZ_SYMBOL_MAP } from './export-formats.js';
 import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
 import { $, App, R, SVG_NS, edgeLabelsHidden, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, previewNodeBudget, statePriority, usesParityPriorities, wrapStateLabelsOn } from './state.js';
 import { BLOCK_STRIP_H, blockPreviewGraph, blockPreviewKey, getNode, viewEdgeGroup, viewEdgeKeyFor, viewStates, visibleNodeIdFor } from './view-graph.js';
@@ -2032,12 +2033,20 @@ export function deriveRegex() {
 // slanted math-variable font instead of as a normal word. Escape the LaTeX
 // special characters and typeset anything that isn't the classic q0/s1
 // short-name convention as upright text instead.
+// A symbol the notation settings put into a name — the blank ⊔, the end
+// markers ⊢ ⊣, ε — has no glyph in KaTeX's text mode: it warned for each one
+// and drew it from a fallback font beside the tuple's own. So each one leaves
+// \text{} for the math-mode command the TikZ export already maps it to, the
+// same way texEscape does, from the same table.
 export function escapeLatexText(str) {
-  return String(str ?? '')
+  const escaped = String(str ?? '')
     .replace(/\\/g, '\\textbackslash{}')
     .replace(/([_%$#&{}])/g, '\\$1')
     .replace(/\^/g, '\\textasciicircum{}')
     .replace(/~/g, '\\textasciitilde{}');
+  let out = '';
+  for (const ch of escaped) out += TIKZ_SYMBOL_MAP[ch] ? `$${TIKZ_SYMBOL_MAP[ch]}$` : ch;
+  return out;
 }
 
 export function formatStateName(name) {

@@ -24,7 +24,7 @@ const ctx = h.context;
 
 const ALL = () => Object.keys(ctx.MachineTypes);
 
-const FAMILIES = new Set(['finite', 'twoway', 'weighted', 'omega', 'pushdown', 'turing', 'transducer']);
+const FAMILIES = new Set(['finite', 'twoway', 'weighted', 'omega', 'pushdown', 'embedded', 'turing', 'transducer']);
 
 // A one-state machine of the given type, accepting, with a self-loop on
 // every field the type carries. Enough for every simulator and decider to
@@ -46,6 +46,7 @@ function trivial(type) {
   if (fields.includes('move')) t.dir = 'R';
   if (fields.includes('pop')) { t.pop = App.config.sym.eps; t.push = App.config.sym.eps; }
   if (fields.includes('pop2')) { t.pop2 = App.config.sym.eps; t.push2 = App.config.sym.eps; }
+  if (fields.includes('below')) { t.below = App.config.sym.eps; t.above = App.config.sym.eps; }
   if (fields.includes('out')) t.output = 'x';
   if (fields.includes('weight')) t.weight = 1;
   if (fields.includes('tapeSyms')) {

@@ -118,8 +118,17 @@ function renderCell(cell, tag) {
   return `<${tag}${k}>${v}</${tag}>`;
 }
 
+// The class chip and a table's header row are uppercase eyebrows, and the
+// guides write notation into both: under `text-transform` "ω-regular" read
+// "Ω-REGULAR", and Ω is the parity priority function. A lowercase Greek letter
+// in this app is always a symbol, so the renderer marks every run of them as
+// one (`.sym` keeps its case) rather than each guide remembering to.
+export function keepSymbolCase(html) {
+  return String(html).replace(/[α-ωϵ]+/g, '<span class="sym">$&</span>');
+}
+
 function renderTable(block) {
-  const head = `<tr>${block.head.map(h => `<th>${h}</th>`).join('')}</tr>`;
+  const head = `<tr>${block.head.map(h => `<th>${keepSymbolCase(h)}</th>`).join('')}</tr>`;
   const rows = block.rows
     .map(row => `<tr>${row.map((cell, i) => renderCell(cell, i === 0 ? 'th' : 'td')).join('')}</tr>`)
     .join('');
@@ -131,7 +140,7 @@ function renderGuide(page) {
   const g = page.guide;
   const chips = [
     page.machine ? `<span class="ref-chip mono">${page.machine}</span>` : '',
-    g.klass ? `<span class="ref-chip">${g.klass}</span>` : ''
+    g.klass ? `<span class="ref-chip">${keepSymbolCase(g.klass)}</span>` : ''
   ].join('');
 
   const cards = g.sections.map(section => `
@@ -186,6 +195,19 @@ function buildReferenceView() {
 
   pages.innerHTML = list.map(renderGuide).join('');
   pages.dataset.refBuilt = '1';
+
+  // A guide's prose links to another page as `href="#ref-sec-<slug>"`. Left to
+  // the browser that does nothing useful — every page but the current one is
+  // display:none, so there is nothing to scroll to — and it writes the hash,
+  // which is where share links live. One delegated listener, since the prose
+  // is markup and its anchors are never individually created.
+  pages.addEventListener('click', e => {
+    const link = e.target.closest?.('a[href^="#ref-sec-"]');
+    if (!link) return;
+    e.preventDefault();
+    userPickedSlug = link.getAttribute('href').slice('#ref-sec-'.length);
+    showGuide(userPickedSlug);
+  });
   return true;
 }
 

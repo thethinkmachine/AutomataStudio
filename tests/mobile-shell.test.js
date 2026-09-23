@@ -96,6 +96,30 @@ test('an open sheet outranks the remembered preference', () => {
     'the cell names the sheet that is showing');
 });
 
+// On desktop both panels are on screen, so both are `mobileCollapsed = '0'`.
+// A window narrowed past the breakpoint used to arrive with both of them read
+// as open sheets: two tabs selected on each strip, and the bar naming the
+// sheet underneath. Entering the shell runs the boot reconciliation again.
+test('arriving at the mobile shell by resize opens no more than boot would', () => {
+  harness.resetApp();
+  for (const id of ['lpanel', 'rpanel']) {
+    context.localStorage.removeItem(`automata-mobile-panel-${id}`);
+    getElement(id).dataset.mobileCollapsed = '0';
+  }
+  onMobile(() => context.reconcileMobilePanels());
+  assert.strictEqual(getElement('lpanel').dataset.mobileCollapsed, '1', 'canvas first, as on a fresh load');
+  assert.strictEqual(getElement('rpanel').dataset.mobileCollapsed, '1');
+
+  // An explicit preference still wins — but only ever for one build sheet.
+  context.localStorage.setItem('automata-mobile-panel-lpanel', '0');
+  context.localStorage.setItem('automata-mobile-panel-rpanel', '0');
+  onMobile(() => context.reconcileMobilePanels());
+  const open = ['lpanel', 'rpanel'].filter(id => getElement(id).dataset.mobileCollapsed !== '1');
+  assert.strictEqual(open.length, 1, 'two sheets are never open together');
+  context.localStorage.removeItem('automata-mobile-panel-lpanel');
+  context.localStorage.removeItem('automata-mobile-panel-rpanel');
+});
+
 // ── where the preference lives ────────────────────────────────────
 //
 // Never App.config, which is deep-copied into every workspace tab and written
