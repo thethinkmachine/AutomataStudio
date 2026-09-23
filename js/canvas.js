@@ -547,7 +547,10 @@ export function drawAlignGuides(x, y) {
 export function toggleSnapToGrid(force) {
   App.config.snapToGrid = force !== undefined ? !!force : !App.config.snapToGrid;
   const btn = $('snap-toggle-btn');
-  if (btn) btn.classList.toggle('active', App.config.snapToGrid);
+  if (btn) {
+    btn.classList.toggle('active', App.config.snapToGrid);
+    btn.setAttribute('aria-pressed', App.config.snapToGrid ? 'true' : 'false');
+  }
   try { localStorage.setItem('automata-snap-grid', App.config.snapToGrid ? '1' : '0'); } catch (e) { }
   showStatus(App.config.snapToGrid ? 'Snap to grid: on' : 'Snap to grid: off');
 }
