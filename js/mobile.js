@@ -29,6 +29,7 @@ import { undo, redo } from './history.js';
 import { autoLayout, toggleSnapToGrid } from './canvas.js';
 import { openSettingsFromQuick } from './quick-settings.js';
 import { PANEL_TAB_NAMES, PANEL_TABS, getTabSide, isPanelTabActive } from './panel-state.js';
+import { formatKbd } from './kbd.js';
 
 export const MOBILE_QUERY = '(max-width: 900px)';
 
@@ -143,7 +144,7 @@ const MORE_ITEMS = [
   { id: 'rect', label: 'Region', kbd: 'R', tool: 'rect', icon: 'M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Z' },
   { id: 'del', label: 'Delete', kbd: 'D', tool: 'del', danger: true, icon: 'M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z' },
   { sep: true },
-  { id: 'redo', label: 'Redo', kbd: '⌘Y', run: () => redo(), icon: 'M170.34,130.34,204.69,96H88a48,48,0,0,0,0,96h88a8,8,0,0,1,0,16H88A64,64,0,0,1,88,80H204.69L170.34,45.66a8,8,0,0,1,11.32-11.32l48,48a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32-11.32Z' },
+  { id: 'redo', label: 'Redo', kbd: formatKbd('Mod+Y'), run: () => redo(), icon: 'M170.34,130.34,204.69,96H88a48,48,0,0,0,0,96h88a8,8,0,0,1,0,16H88A64,64,0,0,1,88,80H204.69L170.34,45.66a8,8,0,0,1,11.32-11.32l48,48a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32-11.32Z' },
   { id: 'layout', label: 'Auto-layout', run: () => autoLayout(), icon: 'M160,112h48a16,16,0,0,0,16-16V48a16,16,0,0,0-16-16H160a16,16,0,0,0-16,16V64H128a24,24,0,0,0-24,24v32H72v-8A16,16,0,0,0,56,96H24A16,16,0,0,0,8,112v32a16,16,0,0,0,16,16H56a16,16,0,0,0,16-16v-8h32v32a24,24,0,0,0,24,24h16v16a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V160a16,16,0,0,0-16-16H160a16,16,0,0,0-16,16v16H128a8,8,0,0,1-8-8V88a8,8,0,0,1,8-8h16V96A16,16,0,0,0,160,112ZM56,144H24V112H56v32Zm104,16h48v48H160Zm0-112h48V96H160Z' },
   { id: 'snap', label: 'Snap to grid', toggle: () => !!App.config?.snapToGrid, run: () => toggleSnapToGrid(), icon: 'M216,48H40A16,16,0,0,0,24,64V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V64A16,16,0,0,0,216,48ZM104,144V112h48v32Zm48,16v32H104V160ZM40,112H88v32H40Zm64-16V64h48V96Zm64,16h48v32H168Zm48-16H168V64h48ZM88,64V96H40V64ZM40,160H88v32H40Zm176,32H168V160h48v32Z' },
   { sep: true },

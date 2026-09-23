@@ -48,6 +48,7 @@ import {
   setDraftTapeCount, setStart, stateFieldCopy, stepIssues, symbolChoices,
   wizardSteps
 } from './wizard.js';
+import { formatKbd } from './kbd.js';
 
 const MODAL_ID = 'wizard-modal';
 
@@ -1113,8 +1114,8 @@ function buildReviewStep() {
   host.append(note(ICONS.info, newTab
     ? 'Your canvas already has a machine, so this one opens in a new tab and leaves it alone.'
     : Wizard.mode === 'edit'
-      ? 'This replaces the machine on your canvas. States you did not touch keep their place in the diagram, and one Ctrl+Z puts everything back.'
-      : 'This draws onto your canvas. One Ctrl+Z puts it back.'));
+      ? `This replaces the machine on your canvas. States you did not touch keep their place in the diagram, and one ${formatKbd('Mod+Z')} puts everything back.`
+      : `This draws onto your canvas. One ${formatKbd('Mod+Z')} puts it back.`));
 
   if (preview.findings.length) {
     const list = el('ul', 'wiz-findings');

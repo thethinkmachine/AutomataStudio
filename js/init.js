@@ -11,6 +11,7 @@ import { initPanelSectionReorder } from './panel-sections-ui.js';
 import { initPanelFloat } from './panel-float.js';
 import { applyTheme, initCanvasResizeObserver, initLPanelSections, initMobilePanelBar, initMobilePanels, initPanelResizers, initRPanelSections, initPanelTabs, initTabs, initToolbarCollapse, isMobilePanelLayout, setTool, toggleLPanelPin, toggleRPanelPin } from './ui.js';
 import { showStatus } from './utils.js';
+import { formatKbd, localizeKbdLabels } from './kbd.js';
 import { setMachine, setView } from './view.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -49,6 +50,9 @@ try {
 // build, and the labels have to say which — see SAYING WHICH HOST THIS IS in
 // js/persistence.js. Written once, because the answer cannot change.
 if (typeof syncDocumentLabels === 'function') syncDocumentLabels();
+// And the shortcut labels, for the same reason: `⌘Z` on a Mac, `Ctrl+Z`
+// everywhere else, from the one spec each label carries. See js/kbd.js.
+localizeKbdLabels();
 if (typeof initMobilePanels === 'function') initMobilePanels();
 if (typeof initLPanelSections === 'function') initLPanelSections();
 if (typeof initRPanelSections === 'function') initRPanelSections();
@@ -99,7 +103,7 @@ export async function finishBoot() {
   // own labels, so there is nothing to replace it with.
   const bootHint = isMobilePanelLayout()
     ? 'Pick a tool below · pinch to zoom'
-    : 'Esc=Pointer · V=Pan · Space+Drag=Pan · S=State · T=Transition · H=Fit · Ctrl+Z=Undo';
+    : 'Esc=Pointer · V=Pan · Space+Drag=Pan · S=State · T=Transition · H=Fit · ' + formatKbd('Mod+Z') + '=Undo';
   setTimeout(() => showStatus(bootHint), sharedLinkLoaded ? 3200 : 600);
 }
 

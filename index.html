@@ -170,7 +170,7 @@
       <div class="hdr-toolbar" id="hdr-toolbar">
         <!-- Canvas actions: operate on the machine currently on the canvas. -->
         <div class="hdr-group" id="hdr-canvas-actions">
-            <button class="hbtn warn icon-only" onclick="clearAll()" data-tip="Clear canvas" data-tip-kbd="⇧X" aria-label="Clear canvas">
+            <button class="hbtn warn icon-only" onclick="clearAll()" data-tip="Clear canvas" data-tip-kbd="Shift+X" aria-label="Clear canvas">
             <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" /></svg>
           </button>
         </div>
@@ -361,7 +361,7 @@
   <!-- ══════ CLOSED-TAB UNDO TOAST ══════ -->
   <div class="tab-undo-toast" id="tab-undo-toast" role="status" aria-live="polite">
     <span id="tab-undo-msg"></span>
-    <button type="button" onclick="reopenClosedTab()">Undo<span class="ctx-kbd-hint">⌘⇧T</span></button>
+    <button type="button" onclick="reopenClosedTab()">Undo<span class="ctx-kbd-hint" data-kbd="Mod+Shift+T">Ctrl+Shift+T</span></button>
   </div>
 
   <!-- ══════ TAB CONTEXT MENU ══════ -->
@@ -377,7 +377,7 @@
     <div class="ctx-divider"></div>
     <div tabindex="0" class="ctx-i" role="menuitem" id="tab-ctx-close" onclick="tabCtxClose()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg>
-      Close<span class="ctx-kbd-hint">⌘W</span>
+      Close<span class="ctx-kbd-hint" data-kbd="Mod+W">Ctrl+W</span>
     </div>
     <div tabindex="0" class="ctx-i" role="menuitem" id="tab-ctx-close-others" onclick="tabCtxCloseOthers()">
       Close Others
@@ -635,12 +635,12 @@
             <button class="toolbox-btn" onclick="undo()" data-tip="Undo" data-tip-kbd="Ctrl+Z">
               <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,144a64.07,64.07,0,0,1-64,64H80a8,8,0,0,1,0-16h88a48,48,0,0,0,0-96H51.31l34.35,34.34a8,8,0,0,1-11.32,11.32l-48-48a8,8,0,0,1,0-11.32l48-48A8,8,0,0,1,85.66,45.66L51.31,80H168A64.07,64.07,0,0,1,232,144Z" /></svg>
               <span class="toolbox-lbl">Undo</span>
-              <span class="toolbox-kbd">⌘Z</span>
+              <span class="toolbox-kbd" data-kbd="Mod+Z">Ctrl+Z</span>
             </button>
             <button class="toolbox-btn" onclick="redo()" data-tip="Redo" data-tip-kbd="Ctrl+Y">
               <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M170.34,130.34,204.69,96H88a48,48,0,0,0,0,96h88a8,8,0,0,1,0,16H88A64,64,0,0,1,88,80H204.69L170.34,45.66a8,8,0,0,1,11.32-11.32l48,48a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32-11.32Z" /></svg>
               <span class="toolbox-lbl">Redo</span>
-              <span class="toolbox-kbd">⌘Y</span>
+              <span class="toolbox-kbd" data-kbd="Mod+Y">Ctrl+Y</span>
             </button>
           </div>
           <!-- What the machine on the canvas is — and, since the card is
@@ -1375,12 +1375,12 @@
             <button type="button" class="note-tb-btn note-tb-clear" onclick="clearNoteFormatting()" data-tip="Clear formatting" aria-label="Clear formatting">
               <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216.49,79.51l-40-40a12,12,0,0,0-17,0l-120,120a12,12,0,0,0,0,17l40,40a12,12,0,0,0,17,0l32-32L151,207H128a12,12,0,0,0,0,24h64a12,12,0,0,0,0-24h-7l-39-39,70.49-70.49A12,12,0,0,0,216.49,79.51ZM88,191,65,168,168,65l23,23Z"></path></svg>
             </button>
-            <span class="note-tb-hint"><kbd>Ctrl/Cmd+B</kbd> bold · <kbd>I</kbd> italic · <kbd>U</kbd> underline</span>
+            <span class="note-tb-hint"><kbd data-kbd="Mod+B">Ctrl+B</kbd> bold · <kbd>I</kbd> italic · <kbd>U</kbd> underline</span>
           </div>
           <div class="inp note-textarea" id="note-text" contenteditable="true" role="textbox" aria-multiline="true"
             data-placeholder="Write a note…" oninput="updateNoteEditor()" onkeydown="handleNoteEditorKeydown(event)" aria-describedby="note-editor-help"></div>
           <div class="note-editor-foot">
-            <span class="note-resize-hint" id="note-editor-help">Supports Markdown formatting · Ctrl/Cmd+Enter saves</span>
+            <span class="note-resize-hint" id="note-editor-help">Supports Markdown formatting · <kbd data-kbd="Mod+Enter">Ctrl+Enter</kbd> saves</span>
             <span class="note-char-count" id="note-char-count">0 / 2000</span>
           </div>
         </div>
@@ -1967,17 +1967,17 @@
           <div class="modal-tab-content" id="help-tab-editing" role="tabpanel" aria-labelledby="help-tab-btn-editing" tabindex="0" hidden>
             <div class="modal-section-lbl">Undo and clipboard</div>
             <table class="help-table">
-              <tr><td>Ctrl + Z</td><td>Undo</td></tr>
-              <tr><td>Ctrl + Y</td><td>Redo</td></tr>
-              <tr><td>Ctrl + Shift + Z</td><td>Redo (alternate)</td></tr>
-              <tr><td>Ctrl + C</td><td>Copy selection</td></tr>
-              <tr><td>Ctrl + X</td><td>Cut selection</td></tr>
-              <tr><td>Ctrl + V</td><td>Paste at the pointer</td></tr>
-              <tr><td>Ctrl + D</td><td>Duplicate selection</td></tr>
+              <tr><td data-kbd="Mod+Z">Ctrl+Z</td><td>Undo</td></tr>
+              <tr><td data-kbd="Mod+Y">Ctrl+Y</td><td>Redo</td></tr>
+              <tr><td data-kbd="Mod+Shift+Z">Ctrl+Shift+Z</td><td>Redo (alternate)</td></tr>
+              <tr><td data-kbd="Mod+C">Ctrl+C</td><td>Copy selection</td></tr>
+              <tr><td data-kbd="Mod+X">Ctrl+X</td><td>Cut selection</td></tr>
+              <tr><td data-kbd="Mod+V">Ctrl+V</td><td>Paste at the pointer</td></tr>
+              <tr><td data-kbd="Mod+D">Ctrl+D</td><td>Duplicate selection</td></tr>
             </table>
             <div class="modal-section-lbl">Selection</div>
             <table class="help-table">
-              <tr><td>Ctrl + A</td><td>Select all states</td></tr>
+              <tr><td data-kbd="Mod+A">Ctrl+A</td><td>Select all states</td></tr>
               <tr><td>Del / Backspace</td><td>Delete selection</td></tr>
               <tr><td>&larr; &uarr; &rarr; &darr;</td><td>Nudge by one pixel</td></tr>
               <tr><td>Shift + arrows</td><td>Nudge by the grid step</td></tr>
@@ -1996,9 +1996,9 @@
             </table>
             <div class="modal-section-lbl">Files and tabs</div>
             <table class="help-table">
-              <tr><td>Ctrl + S</td><td>Save workspace</td></tr>
-              <tr><td>Ctrl + Shift + S</td><td>Export as JSON</td></tr>
-              <tr><td>Ctrl + Shift + T</td><td>Reopen last closed tab</td></tr>
+              <tr><td data-kbd="Mod+S">Ctrl+S</td><td>Save workspace</td></tr>
+              <tr><td data-kbd="Mod+Shift+S">Ctrl+Shift+S</td><td>Export as JSON</td></tr>
+              <tr><td data-kbd="Mod+Shift+T">Ctrl+Shift+T</td><td>Reopen last closed tab</td></tr>
             </table>
           </div>
 
@@ -2037,9 +2037,9 @@
             </table>
             <div class="modal-section-lbl">Note editor</div>
             <table class="help-table">
-              <tr><td>Ctrl + B</td><td>Bold</td></tr>
-              <tr><td>Ctrl + I</td><td>Italic</td></tr>
-              <tr><td>Ctrl + U</td><td>Underline</td></tr>
+              <tr><td data-kbd="Mod+B">Ctrl+B</td><td>Bold</td></tr>
+              <tr><td data-kbd="Mod+I">Ctrl+I</td><td>Italic</td></tr>
+              <tr><td data-kbd="Mod+U">Ctrl+U</td><td>Underline</td></tr>
             </table>
           </div>
 
@@ -2300,7 +2300,7 @@
   <div class="ctx" id="save-menu">
     <div tabindex="0" class="ctx-i" onclick="hideSaveMenu(); saveDocumentAs()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M43.18,128a29.78,29.78,0,0,1,8,10.26c4.8,9.9,4.8,22,4.8,33.74,0,24.31,1,36,24,36a8,8,0,0,1,0,16c-17.48,0-29.32-6.14-35.2-18.26-4.8-9.9-4.8-22-4.8-33.74,0-24.31-1-36-24-36a8,8,0,0,1,0-16c23,0,24-11.69,24-36,0-11.72,0-23.84,4.8-33.74C50.68,38.14,62.52,32,80,32a8,8,0,0,1,0,16C57,48,56,59.69,56,84c0,11.72,0,23.84-4.8,33.74A29.78,29.78,0,0,1,43.18,128ZM240,120c-23,0-24-11.69-24-36,0-11.72,0-23.84-4.8-33.74C205.32,38.14,193.48,32,176,32a8,8,0,0,0,0,16c23,0,24,11.69,24,36,0,11.72,0,23.84,4.8,33.74a29.78,29.78,0,0,0,8,10.26,29.78,29.78,0,0,0-8,10.26c-4.8,9.9-4.8,22-4.8,33.74,0,24.31-1,36-24,36a8,8,0,0,0,0,16c17.48,0,29.32-6.14,35.2-18.26,4.8-9.9,4.8-22,4.8-33.74,0-24.31,1-36,24-36a8,8,0,0,0,0-16Z" /></svg>
-      <span id="save-menu-save-as">Save Machine As…</span><span class="ctx-kbd-hint">Ctrl+Shift+S</span>
+      <span id="save-menu-save-as">Save Machine As…</span><span class="ctx-kbd-hint" data-kbd="Mod+Shift+S">Ctrl+Shift+S</span>
     </div>
     <div class="ctx-divider"></div>
     <div tabindex="0" class="ctx-i" onclick="hideSaveMenu(); openExportImageModal()">
