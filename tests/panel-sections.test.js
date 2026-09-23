@@ -99,7 +99,7 @@ test('moveSection clamps rather than refusing', () => {
   // It is what ↑/↓ drive, and pressing ↑ on the top section should do
   // nothing rather than throw.
   clearOrders();
-  assert.deepEqual(context.moveSection('rpanel', 'rp-language', -3), RP);
+  assert.deepEqual(context.moveSection('rpanel', RP[0], -3), RP);
   assert.deepEqual(context.moveSection('rpanel', 'rp-batch', 99), RP);
   const batchFirst = ['rp-batch', ...RP.filter(id => id !== 'rp-batch')];
   assert.deepEqual(context.moveSection('rpanel', 'rp-batch', 0), batchFirst);

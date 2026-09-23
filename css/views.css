@@ -4564,3 +4564,289 @@
     max-height: 32vh;
   }
 }
+
+/* ═══ EXERCISE ═══
+   The right-panel section a student works in (js/exercise-ui.js). Words are
+   set in the prose face and identifiers — Σ, a counterexample — in the mono
+   one, the rule the rest of the app follows. */
+.ex-body {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-family: var(--sans);
+  font-size: .8rem;
+  color: var(--text);
+}
+
+.ex-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ex-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: .9rem;
+  overflow-wrap: anywhere;
+}
+
+.ex-badge {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: .68rem;
+  font-weight: 600;
+}
+
+.ex-badge.is-solved {
+  background: var(--green-soft);
+  border: 1px solid var(--green-border);
+  color: var(--green);
+}
+
+.ex-prompt {
+  line-height: 1.55;
+  color: var(--text2);
+  overflow-wrap: anywhere;
+}
+
+.ex-prompt > :first-child { margin-top: 0; }
+.ex-prompt > :last-child { margin-bottom: 0; }
+.ex-prompt code { font-family: var(--mono); font-size: .92em; }
+
+.ex-rules {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.ex-rules li {
+  padding: 2px 8px;
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  background: var(--bg2);
+  color: var(--text2);
+  font-size: .72rem;
+}
+
+.ex-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ex-check {
+  flex: none;
+}
+
+.ex-check:disabled {
+  opacity: .7;
+  cursor: progress;
+}
+
+.ex-attempts {
+  font-size: .72rem;
+  color: var(--text3);
+}
+
+.ex-result {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--border2);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.ex-result.is-ok { background: var(--green-soft); border-color: var(--green-border); }
+.ex-result.is-fail { background: var(--red-soft); border-color: var(--red-border); }
+.ex-result.is-warn { background: var(--orange-soft); border-color: var(--orange-border); }
+
+.ex-result-head { font-weight: 600; }
+.ex-result.is-ok .ex-result-head { color: var(--green); }
+.ex-result.is-fail .ex-result-head { color: var(--red); }
+.ex-result.is-warn .ex-result-head { color: var(--orange); }
+
+.ex-result-detail,
+.ex-result-note {
+  font-size: .74rem;
+  color: var(--text2);
+}
+
+.ex-result-note::before { content: 'Note: '; font-weight: 600; }
+
+.ex-link {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-family: var(--sans);
+  font-size: .74rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ex-link:hover,
+.ex-link:focus-visible { color: var(--text); outline: none; }
+.ex-link-quiet { color: var(--text3); }
+.ex-link.is-armed { color: var(--red); font-weight: 600; }
+
+.ex-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ex-hint {
+  display: flex;
+  gap: 8px;
+  font-size: .76rem;
+  line-height: 1.5;
+}
+
+.ex-hint-n {
+  flex: none;
+  color: var(--text3);
+  font-weight: 600;
+}
+
+.ex-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+/* ═══ LEXER GENERATOR ═══ (js/lexer-ui.js, in the Algorithms view) */
+.lx-rules,
+.lx-sample {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--mono);
+  font-size: .76rem;
+  line-height: 1.55;
+  resize: vertical;
+  tab-size: 8;
+}
+
+.lx-diags {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.lx-diag {
+  display: flex;
+  gap: 10px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  font-family: var(--sans);
+  font-size: .74rem;
+  line-height: 1.5;
+}
+
+.lx-diag.is-error { background: var(--red-soft); color: var(--red); border: 1px solid var(--red-border); }
+.lx-diag.is-warning { background: var(--orange-soft); color: var(--orange); border: 1px solid var(--orange-border); }
+
+.lx-diag-line {
+  flex: none;
+  font-family: var(--mono);
+  opacity: .8;
+}
+
+.lx-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.lx-tok {
+  display: inline-flex;
+  flex-direction: column;
+  padding: 3px 7px;
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  background: var(--accent-soft);
+  max-width: 100%;
+}
+
+.lx-tok.is-skip {
+  opacity: .45;
+  border-color: var(--border2);
+  background: var(--bg2);
+}
+
+.lx-tok-type {
+  font-family: var(--mono);
+  font-size: .6rem;
+  letter-spacing: .06em;
+  color: var(--text3);
+}
+
+.lx-tok-text {
+  font-family: var(--mono);
+  font-size: .78rem;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lx-more,
+.lx-stats,
+.lx-classes-head {
+  font-family: var(--sans);
+  font-size: .74rem;
+  color: var(--text2);
+}
+
+.lx-classes { margin: 10px 0 12px; }
+
+.lx-class-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.lx-class {
+  padding: 1px 7px;
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: .72rem;
+}
+
+.lx-code-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.lx-lang { width: auto; }
+
+.lx-code {
+  max-height: 420px;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg2);
+  font-family: var(--mono);
+  font-size: .72rem;
+  line-height: 1.5;
+}

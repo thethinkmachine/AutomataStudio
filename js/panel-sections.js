@@ -51,6 +51,9 @@ export const PANEL_SECTIONS = Object.freeze({
     titleClass: 'rp-section-title',
     storeKey: 'automata-rpanel-section',
     sections: Object.freeze([
+      // Shown only while the tab carries an exercise (js/exercise-ui.js), and
+      // first because it is the reason the tab exists.
+      Object.freeze({ id: 'rp-exercise', collapsed: false, minW: 300, minH: 200 }),
       Object.freeze({ id: 'rp-language', collapsed: false, minW: 300, minH: 200 }),
       Object.freeze({ id: 'rp-simulate', collapsed: false, minW: 320, minH: 200, fill: '.sim-tracker' }),
       // The trace log is its own card. It was the tail of Simulate, which meant

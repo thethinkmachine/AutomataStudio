@@ -2635,6 +2635,17 @@ body {
   user-select: none;
 }
 
+/* Form controls do not inherit the rule above: the user-agent sheet sets the
+   `font` shorthand on them, which resets font-variant-ligatures to normal. So
+   a `<=` typed into the run box, a Σ field or the lexer's rules drew as `≤`
+   while the same characters in the panel beside it did not. */
+input,
+textarea,
+select,
+button {
+  font-variant-ligatures: inherit;
+}
+
 /* A symbol keeps its case, wherever it is set. Section labels, card titles
    and chips across the app are uppercase eyebrows, and `text-transform` maps
    letters rather than words: under it δ became Δ — which is this app's output

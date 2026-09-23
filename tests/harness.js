@@ -47,6 +47,17 @@ import * as exportUi from '../js/export-ui.js';
 import * as geometry from '../js/geometry.js';
 import * as history from '../js/history.js';
 import * as importJflap from '../js/import-jflap.js';
+import * as importStatechart from '../js/import-statechart.js';
+import * as interopStatechart from '../js/interop/statechart.js';
+import * as interopObjlit from '../js/interop/objlit.js';
+import * as interopXml from '../js/interop/xml.js';
+import * as exerciseModel from '../js/exercise/model.js';
+import * as exerciseGrade from '../js/exercise/grade.js';
+import * as exerciseUi from '../js/exercise-ui.js';
+import * as lexerRegex from '../js/lexer/regex.js';
+import * as lexerBuild from '../js/lexer/build.js';
+import * as lexerEmit from '../js/lexer/emit.js';
+import * as lexerUi from '../js/lexer-ui.js';
 import * as language from '../js/language.js';
 import * as markdown from '../js/markdown.js';
 import * as minimap from '../js/minimap.js';
@@ -124,7 +135,8 @@ const NAMESPACES = [
   machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,
   simulation, tape, tapeLog, tapeView, suggest, language, alphabet, markdown,
   view, history, fileHost, persistence, exportCore, exportFormats, exportUi, codegen,
-  importJflap, algorithmsFa, grammarUi, grammarModel, grammarParse, grammarAnalysis, grammarTransform,
+  importJflap, importStatechart, interopStatechart, interopObjlit, interopXml,
+  exerciseModel, exerciseGrade, exerciseUi, lexerRegex, lexerBuild, lexerEmit, lexerUi, algorithmsFa, grammarUi, grammarModel, grammarParse, grammarAnalysis, grammarTransform,
   grammarParsing, grammarConvert, grammarTree, grammarRegistry, grammarExamples, reference, workspace, quickSettings, minimap, ui,
   statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt, statemateAgent,
   statemate, statemateUi, wizardCopy, wizard, wizardUi

@@ -227,6 +227,15 @@ export const App = {
   // puts it on the undo stack. A description that survived neither a save nor
   // a tab switch is one nobody would bother writing.
   meta: null,
+  // The exercise this workspace is an answer to, or null. Shape in
+  // js/exercise/model.js. Document content like `meta` — it rides in the file,
+  // the share link and the tab — but deliberately NOT on the undo stack: an
+  // undo takes back an edit to the answer, and taking back "Check" would hand
+  // the student their attempt back.
+  exercise: null,
+  // The lexer generator's input: { rules, sample, lang }, or null when the
+  // workspace has never opened it. Shape in js/lexer/build.js.
+  lexer: null,
   // Canvas notes (comments), anchored to states/transitions or free-floating
   notes: [], noteN: 0,
   activeNoteId: null,
@@ -1014,6 +1023,8 @@ export function exportWorkspaceState() {
     stateN: App.stateN,
     transN: App.transN,
     meta: App.meta ? JSON.parse(JSON.stringify(App.meta)) : null,
+    exercise: App.exercise ? JSON.parse(JSON.stringify(App.exercise)) : null,
+    lexer: App.lexer ? { ...App.lexer } : null,
     notes: JSON.parse(JSON.stringify(App.notes)),
     noteN: App.noteN,
     dividers: JSON.parse(JSON.stringify(App.dividers)),
@@ -1058,6 +1069,7 @@ export function blankWorkspaceData() {
     tapeCount: MIN_TAPES,
     states: [], transitions: [], startId: null, accepts: [], stateN: 0, transN: 0,
     notes: [], noteN: 0, dividers: [], dividerN: 0, meta: null,
+    exercise: null, lexer: null,
     blocks: [], blockN: 0, scope: [],
     cam: { x: 0, y: 0, z: 1 },
     history: [], future: [], grammar: { vars: ['S'], start: 'S', productions: [] }
@@ -1077,6 +1089,8 @@ export function importWorkspaceState(data) {
   App.stateN = data.stateN || 0;
   App.transN = data.transN || 0;
   App.meta = data.meta || null;
+  App.exercise = data.exercise || null;
+  App.lexer = data.lexer || null;
   App.notes = data.notes || [];
   App.noteN = data.noteN || 0;
   App.dividers = data.dividers || [];

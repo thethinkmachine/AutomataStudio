@@ -3,6 +3,10 @@ import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { applyCamera } from './canvas.js';
 import { snapshot } from './history.js';
 import { importJFLAPData, readJFLAPText } from './import-jflap.js';
+import { importStatechartData } from './import-statechart.js';
+import { StatechartError, readStatechart, statechartKindOf } from './interop/statechart.js';
+import { normalizeExercise, validateExercise } from './exercise/model.js';
+import { normalizeLexerDoc } from './lexer/build.js';
 import { closeModal, showOverlay } from './modal.js';
 import { refreshQuickSettings } from './quick-settings.js';
 import { showExampleCard } from './machine-card.js';
@@ -222,7 +226,13 @@ export function getWorkspaceData() {
     // file you loaded rather than of the machine you have — save once and it
     // was gone. Null when there is nothing to say; the load path reads
     // `data.meta` and has always tolerated its absence.
-    meta: App.meta
+    meta: App.meta,
+    // Both optional, and written only when there is one: a workspace that is
+    // not an exercise and has never opened the lexer generator saves exactly
+    // the file it always did. Neither is a schema bump — every reader treats
+    // absence as "none".
+    ...(App.exercise ? { exercise: App.exercise } : {}),
+    ...(App.lexer ? { lexer: App.lexer } : {})
   };
 }
 
@@ -1115,7 +1125,11 @@ function workspaceIsUntouched() {
     && !(App.dividers || []).length
     && !(App.blocks || []).length
     && !(App.grammar?.productions || []).length
-    && !App.meta;
+    && !App.meta
+    // An exercise with nothing drawn yet is the commonest occupied-looking
+    // empty tab there is: reading a file into it would throw the task away.
+    && !App.exercise
+    && !App.lexer;
 }
 
 // Moves to the tab the document should be read into, creating one when the
@@ -1164,6 +1178,12 @@ function readDocumentPayload(payload, name) {
     // they never reach the workspace JSON path below.
     return { kind: 'jflap', data: readJFLAPText(payload) };
   }
+  // A statechart is recognised by its extension, or — for a .json — by its
+  // shape, since an XState config and a workspace are both JSON objects.
+  const chart = typeof payload === 'string' ? statechartKindOf(name, payload) : null;
+  if (chart) {
+    return { kind: 'statechart', label: chart === 'scxml' ? 'SCXML' : 'XState', data: readStatechart(chart, payload, App.config.sym) };
+  }
   if (lower.endsWith('.png')) {
     const text = new TextDecoder().decode(payload);
     const parts = text.split("\n--AutomataData--\n");
@@ -1200,6 +1220,7 @@ export function applyDocument(payload, name, opts = {}) {
     // JFLAP carries no description of its own, so anything the previous
     // machine had to say goes away with it.
     if (read.kind === 'jflap') { importJFLAPData(read.data); showExampleCard(null); return true; }
+    if (read.kind === 'statechart') { importStatechartData(read.data, read.label); return true; }
 
     loadData(read.data);
     // A saved workspace usually has no `meta`; an example or a StateMate
@@ -1211,6 +1232,7 @@ export function applyDocument(payload, name, opts = {}) {
   } catch (err) {
     console.error(err);
     if (isJflap) { showStatus(`Could not import JFLAP file: ${err.message}`); return false; }
+    if (err instanceof StatechartError) { showStatus(err.message); return false; }
     const isCustomErr = err.message && !err.message.includes('JSON');
     showStatus(isCustomErr ? `Validation Error: ${err.message}` : (isPng ? 'Could not extract workspace data' : 'Could not read this file'));
     return false;
@@ -1355,14 +1377,27 @@ export async function decodeSharePayload(payload) {
 export const SHARE_HASH_PREFIX = '#share=';
 
 export async function getShareableLink() {
-  const json = JSON.stringify(getWorkspaceData());
+  return shareLinkFor(getWorkspaceData());
+}
+
+// Any document, not only the one on screen — an exercise is shared as the
+// document a student will open, which is not the author's workspace.
+export async function shareLinkFor(doc) {
+  const json = JSON.stringify(doc);
   const payload = (await compressToB64Url(json)) ?? b64UrlEncodeUnicode(json);
   return `${location.origin}${location.pathname}${SHARE_HASH_PREFIX}${payload}`;
 }
 
 export function copyShareableLink() {
-  const link = getShareableLink();
-  const onCopied = () => showStatus('Shareable link copied to clipboard!');
+  copyLinkToClipboard(getShareableLink(), 'Shareable link copied to clipboard!');
+}
+
+// `link` is a promise of the URL, not the URL: the caller starts building it
+// inside the click, and this is what keeps the clipboard grant open until it
+// is ready. Shared with the exercise dialog, which copies a link to a document
+// that is not the one on screen.
+export function copyLinkToClipboard(link, okMsg) {
+  const onCopied = () => showStatus(okMsg);
   const onFailed = () => link.then(url => window.prompt('Copy this link:', url), () => {});
   const viaText = () => {
     if (!navigator.clipboard || !navigator.clipboard.writeText) return onFailed();
@@ -1499,6 +1534,8 @@ export function validateSchema(data) {
     if (data.grammar.vars && !Array.isArray(data.grammar.vars)) throw new Error("'grammar.vars' must be an array.");
     if (data.grammar.productions && !Array.isArray(data.grammar.productions)) throw new Error("'grammar.productions' must be an array.");
   }
+  if (data.exercise != null) validateExercise(data.exercise);
+  if (data.lexer != null && (typeof data.lexer !== 'object' || Array.isArray(data.lexer))) throw new Error("'lexer' must be an object.");
   
   return true;
 }
@@ -1573,6 +1610,8 @@ export function loadData(d, isExample) {
     App.grammar.start = grammar.start;
     App.grammar.productions = grammar.productions;
   }
+  App.exercise = normalizeExercise(d.exercise);
+  App.lexer = normalizeLexerDoc(d.lexer);
   if (d.config) {
     // Drop any legacy theme or presentation properties that might be in old files
     const { theme, export: exp, exportRes, pdaParadigm, sym, ...loadedConfig } = d.config;
@@ -1607,7 +1646,7 @@ export function loadData(d, isExample) {
   renderSigma(); renderGamma(); renderOutputAlpha();
   // Change.GRAMMAR because a loaded file carries one: without it the Grammar
   // workbench keeps the rules of whatever was open before the load.
-  emit(Change.GRAPH, Change.GRAMMAR);
+  emit(Change.GRAPH, Change.GRAMMAR, Change.EXERCISE, Change.LEXER);
 
   if (d.cam) { applyCamera(); }
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
@@ -1823,7 +1862,14 @@ export function loadExampleFile(file) {
         App.history = history;
         App.future = [];
 
+        // The exercise and the lexer spec are what this tab is *for*, not the
+        // machine on it — the same distinction resetWorkspace draws — so an
+        // example read in as a starting point leaves both standing.
+        const { exercise, lexer } = App;
         loadData(data, true);
+        if (!App.exercise && exercise) App.exercise = exercise;
+        if (!App.lexer && lexer) App.lexer = lexer;
+        emit(Change.EXERCISE, Change.LEXER);
         showExampleCard(data.meta);
         showStatus(`Example: ${App.machine} loaded`);
       })

@@ -45,6 +45,8 @@ subscribe(Change.ALPHABET, markDirty);
 // unsaved change in exactly the way moving the camera is.
 subscribe(Change.META, markDirty);
 subscribe(Change.GRAMMAR, markDirty);
+subscribe(Change.EXERCISE, markDirty);
+subscribe(Change.LEXER, markDirty);
 
 // ══════════════════════════════════════════════════════════════════
 //  UNDOABLE SETTINGS
