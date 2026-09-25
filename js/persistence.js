@@ -1,10 +1,11 @@
 import { tokenizeSymbols } from './grammar/parse.js';
 import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
-import { applyCamera } from './canvas.js';
+import { applyCamera, circularLayout, sugiyamaLayout } from './canvas.js';
 import { snapshot } from './history.js';
 import { importJFLAPData, readJFLAPText } from './import-jflap.js';
 import { importStatechartData } from './import-statechart.js';
 import { StatechartError, readStatechart, statechartKindOf } from './interop/statechart.js';
+import { StandardTMError, readStandardTM, standardTMText } from './interop/standard-tm.js';
 import { normalizeExercise, validateExercise } from './exercise/model.js';
 import { normalizeLexerDoc } from './lexer/build.js';
 import { closeModal, showOverlay } from './modal.js';
@@ -1138,14 +1139,14 @@ function workspaceIsUntouched() {
 // Moves to the tab the document should be read into, creating one when the
 // canvas is occupied. Called only once the payload is known to parse, so a
 // file that will not open costs neither a tab nor the machine on screen.
-function placeOpenedDocument(filePath) {
+function placeOpenedDocument(filePath, tabName) {
   const existing = filePath && Workspaces.find(w => w.filePath === filePath);
   if (existing) {
     if (existing.id !== activeWorkspaceId) switchTab(existing.id);
     return;
   }
   if (workspaceIsUntouched()) return;
-  createTab(filePath ? fileStem(filePath) : undefined);
+  createTab(filePath ? fileStem(filePath) : tabName);
 }
 
 // A document the host handed over: from the Open dialog, from a double-click,
@@ -1240,6 +1241,52 @@ export function applyDocument(payload, name, opts = {}) {
     showStatus(isCustomErr ? `Validation Error: ${err.message}` : (isPng ? 'Could not extract workspace data' : 'Could not read this file'));
     return false;
   }
+}
+
+// ── A machine pasted as text ──────────────────────────────────────
+//  Ctrl+V on the canvas with a machine in the standard TM text format on the
+//  system clipboard (1RB1LC_1RC1RB_…) opens it — copied from bbchallenge, the
+//  Busy Beaver wiki or a paper. It lands by the rule every document follows
+//  (WHERE AN OPENED DOCUMENT LANDS): an untouched tab is read into, an occupied
+//  one gets a tab of its own beside it.
+//
+//  Answers whether the text was a machine at all. A malformed one still
+//  answers true — it was recognisably this notation, and the reader wants
+//  the typo named, not the in-app clipboard pasted instead.
+export function applyPastedText(text) {
+  const src = standardTMText(text);
+  if (!src) return false;
+  let data;
+  try {
+    data = readStandardTM(src, App.config.sym);
+  } catch (err) {
+    if (!(err instanceof StandardTMError)) throw err;
+    showStatus(err.message);
+    return true;
+  }
+  placeOpenedDocument(null, src.length > 20 ? `${src.slice(0, 18)}…` : src);
+  // The notation carries no positions, so the placement is the one Arrange
+  // would give — laid out before the load, so the load is the one undo step.
+  if (App.config.layout.algorithm === 'circular') circularLayout(data.states);
+  else sugiyamaLayout(data.states, data.transitions, data.startId);
+  loadData({
+    format: WORKSPACE_FORMAT,
+    schema: SCHEMA_VERSION,
+    machine: data.machine,
+    sigma: data.sigma,
+    stackAlpha: data.stackAlpha,
+    tapeCount: data.tapeCount,
+    states: data.states,
+    transitions: data.transitions,
+    startId: data.startId,
+    accepts: data.accepts,
+    notes: [],
+    dividers: []
+  });
+  showExampleCard(data.meta);
+  const halts = data.accepts.length ? '' : ' (it never halts)';
+  showStatus(`Pasted a ${data.title}${halts} — run it on the empty word`);
+  return true;
 }
 
 export function handleFiles(files) {

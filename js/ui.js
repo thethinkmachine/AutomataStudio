@@ -11,7 +11,7 @@ import { markDirty, redo, snapshot, snapshotSettings, trimStowedHistory, undo } 
 import { renderMinimap, scheduleMinimap } from './minimap.js';
 import { anyModalOpen, askConfirm, closeModal, registerModal, showOverlay } from './modal.js';
 import { includeNoteBounds, pruneNoteAnchorsExcluding, removeNotes } from './notes.js';
-import { CARD_AUTO_HIDE_MS, hideSaveMenu, restartAutosaveTimer, saveBackupChecked, saveDocumentAs, saveNow, saveWorkspaceById } from './persistence.js';
+import { CARD_AUTO_HIDE_MS, applyPastedText, hideSaveMenu, restartAutosaveTimer, saveBackupChecked, saveDocumentAs, saveNow, saveWorkspaceById } from './persistence.js';
 import { renderAll, updateBlockList, updateLPanel, updateRPanel } from './render.js';
 import { filterList } from './panel-list.js';
 import {
@@ -1073,6 +1073,48 @@ export function ctxCut() {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  THE SYSTEM CLIPBOARD
+// ══════════════════════════════════════════════════════════════════
+// Ctrl+V on the canvas pastes one of two things: a machine written as text on
+// the system clipboard (1RB1LC_1RC1RB_… — applyPastedText decides), or else
+// the states copied inside the app. The text is read from the `paste` event,
+// the one way a page gets it with no permission prompt, so the keydown only
+// arms the paste and leaves the browser's default alone to fire the event.
+//
+// The event goes to the focused element or the body, and every browser fires
+// it there — except where one does not, which is what the timer is for: the
+// event arrives in the same task as the keydown, so a timer that runs first
+// means there is no event coming, and the in-app paste happens anyway.
+let armedPaste = null;
+
+function armCanvasPaste() {
+  clearTimeout(armedPaste);
+  armedPaste = setTimeout(() => {
+    armedPaste = null;
+    pasteClipboard(App._lastCanvasWorldPt || null);
+  }, 0);
+}
+
+document.addEventListener('paste', e => {
+  // Only a paste the canvas shortcut armed: the keydown's own guards (a field
+  // with the caret, a modal, StateMate) already decided whose paste this is.
+  if (armedPaste === null) return;
+  clearTimeout(armedPaste);
+  armedPaste = null;
+  e.preventDefault();
+  const text = e.clipboardData?.getData('text/plain') || '';
+  if (!applyPastedText(text)) pasteClipboard(App._lastCanvasWorldPt || null);
+});
+
+// Edit ▸ Paste in the desktop menu is a click, not a keystroke, so there is no
+// paste event to read — it asks for the text instead, which Electron grants.
+export async function pasteFromSystemClipboard() {
+  let text = '';
+  try { text = await navigator.clipboard.readText(); } catch { /* no access: in-app paste */ }
+  if (!applyPastedText(text)) pasteClipboard(App._lastCanvasWorldPt || null);
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  KEYBOARD SHORTCUTS
 // ══════════════════════════════════════════════════════════════════
 document.addEventListener('keydown', e => {
@@ -1112,7 +1154,9 @@ document.addEventListener('keydown', e => {
     if (e.key === 'a' || e.key === 'A') { e.preventDefault(); if (App.view === 'build') selectAllStates(); }
     if (e.key === 'c' || e.key === 'C') { if (App.view === 'build') copySelection(); }
     if (e.key === 'x' || e.key === 'X') { if (App.view === 'build') { e.preventDefault(); cutSelection(); } }
-    if (e.key === 'v' || e.key === 'V') { if (App.view === 'build') { e.preventDefault(); pasteClipboard(App._lastCanvasWorldPt || null); } }
+    // Not prevented: the browser's own paste is what hands over the system
+    // clipboard, without a permission prompt — see THE SYSTEM CLIPBOARD below.
+    if (e.key === 'v' || e.key === 'V') { if (App.view === 'build') armCanvasPaste(); }
     if (e.key === 'd' || e.key === 'D') { if (App.view === 'build') { e.preventDefault(); duplicateSelection(); } }
     if (e.shiftKey && (e.key === 't' || e.key === 'T')) { e.preventDefault(); reopenClosedTab(); }
     // StateMate has no header button of its own — that slot is the wizard's —

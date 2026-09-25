@@ -51,6 +51,7 @@ import * as importStatechart from '../js/import-statechart.js';
 import * as interopStatechart from '../js/interop/statechart.js';
 import * as interopObjlit from '../js/interop/objlit.js';
 import * as interopXml from '../js/interop/xml.js';
+import * as interopStandardTM from '../js/interop/standard-tm.js';
 import * as exerciseModel from '../js/exercise/model.js';
 import * as exerciseGrade from '../js/exercise/grade.js';
 import * as exerciseUi from '../js/exercise-ui.js';
@@ -144,7 +145,7 @@ const NAMESPACES = [
   machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,
   simulation, tape, tapeLog, tapeView, spacetime, spacetimeUi, complexity, complexityUi, suggest, language, alphabet, markdown,
   view, history, fileHost, persistence, exportCore, exportFormats, exportUi, codegen,
-  importJflap, importStatechart, interopStatechart, interopObjlit, interopXml,
+  importJflap, importStatechart, interopStatechart, interopObjlit, interopXml, interopStandardTM,
   exerciseModel, exerciseGrade, exerciseUi, lexerRegex, lexerBuild, lexerEmit, lexerUi, algorithmsFa, grammarUi, grammarModel, grammarParse, grammarAnalysis, grammarTransform,
   grammarParsing, grammarConvert, grammarTree, grammarRegistry, grammarExamples, reference, workspace, quickSettings, minimap, ui,
   statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt, statemateAgent,
