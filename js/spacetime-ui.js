@@ -59,6 +59,13 @@ export const SPACETIME_SECTION = 'rp-spacetime';
 const CELL_KEY = 'automata-spacetime-cell';
 const PATH_KEY = 'automata-spacetime-path';
 const OVERVIEW_KEY = 'automata-spacetime-overview';
+const OVERVIEW_WIDTH_KEY = 'automata-spacetime-overview-width';
+
+/** How narrow and how wide the overview strip may be dragged. */
+const STRIP_MIN = 36;
+const STRIP_MAX = 480;
+/** The most of the view the strip may take, however wide it was dragged. */
+const STRIP_MAX_SHARE = 0.5;
 
 /** The largest cell "fit" will choose; past this a short run is just big. */
 const FIT_MAX = 20;
@@ -177,6 +184,8 @@ let dragging = false;
 let cellPref = readPref(CELL_KEY, 'fit');
 let headPath = readPref(PATH_KEY, '1') !== '0';
 let overviewPref = readPref(OVERVIEW_KEY, '1') !== '0';
+// Null until the reader drags the strip's edge; then the width they chose.
+let stripWidthPref = Number(readPref(OVERVIEW_WIDTH_KEY, '')) || null;
 
 // The overview strip: its model, the pictures built from it, and what the
 // last paint of it measured — the pointer handlers read the geometry back.
@@ -193,6 +202,7 @@ let stripOn = false;
 let stripGeom = null;
 let stripView = null;
 let stripDrag = null;
+let gripDrag = null;
 
 // A traced cell — "who wrote this?" — and what the NDTM's search has to say
 // when there is no branch to draw.
@@ -213,7 +223,7 @@ export function resetSpaceTime() {
   model = null; layout = null; layoutKey = ''; style = null; hover = null;
   overview = null; ovGrids = []; ovBase = null; ovBaseKey = ''; ovMadeAt = 0; ovBuilt = -1; ovBuiltAt = 0; ovStyleKey = '';
   if (ovTimer) { clearTimeout(ovTimer); ovTimer = 0; }
-  stripOn = false; stripGeom = null; stripView = null; stripDrag = null;
+  stripOn = false; stripGeom = null; stripView = null; stripDrag = null; gripDrag = null;
   wholeCache = null;
   trace = null; branchNote = null;
   lastPlayhead = -1; lastLo = null; dragging = false;
@@ -480,7 +490,16 @@ function ensureBuilt() {
   strip.setAttribute('role', 'scrollbar');
   strip.setAttribute('aria-orientation', 'vertical');
   strip.setAttribute('aria-label', 'Overview of the whole run. Click to go there; double-click to move the playhead there.');
-  view.append(scroll, canvas, strip, tip, empty);
+  // Its left edge is a handle: drag to trade diagram width for overview width.
+  const grip = document.createElement('div');
+  grip.className = 'st-ov-grip';
+  grip.hidden = true;
+  grip.tabIndex = 0;
+  grip.setAttribute('role', 'separator');
+  grip.setAttribute('aria-orientation', 'vertical');
+  grip.setAttribute('aria-label', 'Resize the overview');
+  grip.title = 'Drag to resize the overview · double-click to reset';
+  view.append(scroll, canvas, strip, grip, tip, empty);
 
   const foot = document.createElement('div');
   foot.className = 'st-foot';
@@ -501,7 +520,7 @@ function ensureBuilt() {
   traceBar.addEventListener('click', onTraceClick);
 
   body.append(toolbar, view, traceBar, foot);
-  els = { body, toolbar, zoomOut, zoomVal, zoomIn, fit, path, ovBtn, exp, view, scroll, size, canvas, strip, tip, empty, traceBar, foot, legend, meta, more };
+  els = { body, toolbar, zoomOut, zoomVal, zoomIn, fit, path, ovBtn, exp, view, scroll, size, canvas, strip, grip, tip, empty, traceBar, foot, legend, meta, more };
 
   toolbar.addEventListener('click', onToolbarClick);
   more.addEventListener('click', () => {
@@ -524,6 +543,12 @@ function ensureBuilt() {
   strip.addEventListener('pointerleave', () => { if (!stripDrag) hideTip(); });
   strip.addEventListener('dblclick', onStripDoubleClick);
   strip.addEventListener('wheel', onStripWheel, { passive: false });
+  grip.addEventListener('pointerdown', onGripDown);
+  grip.addEventListener('pointermove', onGripMove);
+  grip.addEventListener('pointerup', onGripUp);
+  grip.addEventListener('pointercancel', onGripUp);
+  grip.addEventListener('dblclick', () => setStripWidthPref(null));
+  grip.addEventListener('keydown', onGripKey);
 
   if (typeof ResizeObserver === 'function') {
     new ResizeObserver(() => { layoutKey = ''; requestPaint(); }).observe(view);
@@ -762,8 +787,21 @@ function fitViewTo(L) {
 //  the playhead as a line. js/spacetime.js builds and draws it; this is when,
 //  where, and what a press on it means.
 
-function stripWidth(m) {
+/** The width the strip takes when the reader has not dragged it: wider per tape. */
+function stripAutoWidth(m) {
   return Math.round(Math.min(124, 60 + 16 * ((m.tapes ? m.tapes.length : 1) - 1)));
+}
+
+/**
+ * The strip's width: the reader's, if they dragged its edge, or the automatic
+ * one — clamped either way to what the view can spare, so a width chosen in a
+ * wide window cannot swallow the diagram when the section is docked.
+ */
+function stripWidth(m) {
+  const want = stripWidthPref || stripAutoWidth(m);
+  const vw = (els && els.view.clientWidth) || 0;
+  const max = vw ? Math.max(STRIP_MIN, Math.floor(vw * STRIP_MAX_SHARE)) : STRIP_MAX;
+  return Math.round(Math.max(STRIP_MIN, Math.min(STRIP_MAX, max, want)));
 }
 
 function stripWorthIt(L, vh) {
@@ -789,6 +827,7 @@ function dropStrip() {
   // Hidden from what is on the page, not from the flag: if the two ever
   // disagree, a strip left showing is the one outcome worth ruling out.
   els.strip.hidden = true;
+  els.grip.hidden = true;
   els.scroll.style.right = '';
   if (stripOn) layoutKey = '';
   stripOn = false;
@@ -798,10 +837,66 @@ function setStrip(on, m) {
   stripOn = on;
   const w = stripWidth(m);
   els.strip.hidden = !on;
+  els.grip.hidden = !on;
   els.strip.style.width = w + 'px';
+  els.grip.style.right = w + 'px';
+  els.grip.setAttribute('aria-valuenow', String(w));
   els.scroll.style.right = on ? w + 'px' : '';
   layoutKey = '';
   if (!on) { stripGeom = null; stripView = null; }
+}
+
+/**
+ * The reader's strip width, or null for the automatic one. Kept in this
+ * browser only: it is how this reader likes the window, not a fact about the
+ * machine. `paint` notices the width no longer matches and re-lays the view.
+ */
+function setStripWidthPref(w, save = true) {
+  stripWidthPref = w === null ? null : Math.round(Math.max(STRIP_MIN, Math.min(STRIP_MAX, w)));
+  if (save) writePref(OVERVIEW_WIDTH_KEY, stripWidthPref === null ? '' : stripWidthPref);
+  requestPaint();
+}
+
+function onGripDown(e) {
+  if (e.button !== 0 || !model) return;
+  e.preventDefault();
+  e.stopPropagation();
+  hideTip();
+  gripDrag = { id: e.pointerId, x: e.clientX, w: stripWidth(model) };
+  els.grip.classList.add('active');
+  try { els.grip.setPointerCapture(e.pointerId); } catch (err) { /* stub */ }
+}
+
+function onGripMove(e) {
+  if (!gripDrag || e.pointerId !== gripDrag.id) return;
+  // The handle is on the strip's left edge, so dragging left widens it.
+  setStripWidthPref(gripDrag.w + (gripDrag.x - e.clientX), false);
+}
+
+function onGripUp(e) {
+  if (!gripDrag || e.pointerId !== gripDrag.id) return;
+  gripDrag = null;
+  els.grip.classList.remove('active');
+  try { els.grip.releasePointerCapture(e.pointerId); } catch (err) { /* stub */ }
+  // Saved as drawn, so a drag past what the view could spare is not
+  // remembered as wider than the reader ever saw it.
+  if (model) setStripWidthPref(stripWidth(model));
+}
+
+function onGripKey(e) {
+  if (e.altKey || e.ctrlKey || e.metaKey || !model) return;
+  const step = e.shiftKey ? 32 : 8;
+  const w = stripWidth(model);
+  switch (e.key) {
+    case 'ArrowLeft': setStripWidthPref(w + step); break;
+    case 'ArrowRight': setStripWidthPref(w - step); break;
+    case 'Home': setStripWidthPref(STRIP_MIN); break;
+    case 'Enter': setStripWidthPref(null); break;
+    // Everything else — up/down stepping, zoom — carries on to the view.
+    default: return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
 }
 
 /**

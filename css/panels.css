@@ -3006,6 +3006,44 @@ button.dt-cell:hover {
   border-radius: 0 7px 7px 0;
 }
 
+/* The strip's left edge, a drag handle. `right` is the strip's width, written
+   by js/spacetime-ui.js; the transform centres the handle on that edge. */
+.st-ov-grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  transform: translateX(50%);
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.st-ov-grip::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 40px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.st-ov-grip:hover::before,
+.st-ov-grip.active::before,
+.st-ov-grip:focus-visible::before {
+  opacity: 1;
+}
+
+.st-ov-grip[hidden] {
+  display: none;
+}
+
 .st-tip-hint {
   margin-top: 2px;
   padding-top: 3px;
