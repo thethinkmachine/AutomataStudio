@@ -252,8 +252,8 @@ test('PDA batch testing works in final-state mode', () => {
   h.getElement('batch-in').value = 'ab\na';
   h.context.runBatch();
   const html = h.getElement('batch-result').innerHTML;
-  assert.match(html, /✓ "ab"/);
-  assert.match(html, /✗ "a"/);
+  assert.match(html, /br-row br-ok"[^>]*><span class="br-mark" aria-hidden="true">✓<\/span><span class="br-word">ab<\/span>/);
+  assert.match(html, /br-row br-err"[^>]*><span class="br-mark" aria-hidden="true">✗<\/span><span class="br-word">a<\/span>/);
 });
 
 test('PDA batch testing works in empty-stack mode', () => {
@@ -273,8 +273,8 @@ test('PDA batch testing works in empty-stack mode', () => {
   h.getElement('batch-in').value = 'ab\naba';
   h.context.runBatch();
   const html = h.getElement('batch-result').innerHTML;
-  assert.match(html, /✓ "ab"/);
-  assert.match(html, /✗ "aba"/);
+  assert.match(html, /br-row br-ok"[^>]*><span class="br-mark" aria-hidden="true">✓<\/span><span class="br-word">ab<\/span>/);
+  assert.match(html, /br-row br-err"[^>]*><span class="br-mark" aria-hidden="true">✗<\/span><span class="br-word">aba<\/span>/);
 });
 
 test('PDA simulation honors epsilon-pop transitions in explicit mode', () => {
@@ -461,8 +461,8 @@ test('NPDA batch testing explores branching paths', () => {
   h.getElement('batch-in').value = 'abba\nabab';
   h.context.runBatch();
   const html = h.getElement('batch-result').innerHTML;
-  assert.match(html, /✓ "abba"|âœ“ "abba"/);
-  assert.match(html, /✗ "abab"|âœ— "abab"/);
+  assert.match(html, /br-row br-ok"[^>]*><span class="br-mark" aria-hidden="true">✓<\/span><span class="br-word">abba<\/span>/);
+  assert.match(html, /br-row br-err"[^>]*><span class="br-mark" aria-hidden="true">✗<\/span><span class="br-word">abab<\/span>/);
 });
 
 test('subset construction handles epsilon cycles and marks accepting subsets', () => {

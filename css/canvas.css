@@ -761,12 +761,12 @@
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   z-index: 50;
   background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 8px;
+  border: 1px solid var(--border2);
+  border-radius: 14px;
+  padding: 6px;
   box-shadow: var(--shadow-md);
   user-select: none;
   width: max-content;
@@ -814,10 +814,9 @@
 .canvas-toolbox[data-dock="bottom"] {
   flex-direction: row;
   align-items: center;
-  min-width: 360px;
   max-width: calc(100% - 24px);
-  padding: 10px 12px;
-  gap: 6px;
+  padding: 6px;
+  gap: 2px;
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -833,66 +832,70 @@
 
 .canvas-toolbox[data-dock="left"],
 .canvas-toolbox[data-dock="right"] {
-  padding: 10px;
+  padding: 6px;
 }
 
 .canvas-toolbox[data-dock="top"] .toolbox-btn,
 .canvas-toolbox[data-dock="bottom"] .toolbox-btn {
-  min-width: 72px;
-  padding: 9px 12px;
-}
-
-.canvas-toolbox[data-dock="top"] .toolbox-kbd,
-.canvas-toolbox[data-dock="bottom"] .toolbox-kbd {
-  letter-spacing: .03em;
+  min-width: 58px;
 }
 
 .canvas-toolbox[data-dock="top"] .toolbox-sep,
 .canvas-toolbox[data-dock="bottom"] .toolbox-sep {
   width: 1px;
-  height: 20px;
-  margin: 0 6px;
+  height: 28px;
+  margin: 0 4px;
 }
 
 .canvas-toolbox[data-dock="left"] .toolbox-sep,
 .canvas-toolbox[data-dock="right"] .toolbox-sep {
-  width: 20px;
+  width: 28px;
   height: 1px;
-  margin: 6px auto;
+  margin: 4px auto;
 }
 
+/* A handle, not a button: a slim strip of dots across the end of the bar
+   that takes a surface only when the pointer is on it. Drawn as a bordered
+   pill it read as a tool that had been switched off. */
 .toolbox-grip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 32px;
+  height: 16px;
   padding: 0;
-  border: 1px solid var(--border2);
-  border-radius: 999px;
-  background: var(--bg3);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   color: var(--text3);
   cursor: grab;
   flex: none;
   touch-action: none;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .toolbox-grip:hover {
   background: var(--surface);
-  color: var(--text);
+  color: var(--text2);
+}
+
+.toolbox-grip:focus-visible {
+  outline: 2px solid var(--accent-border-strong);
+  outline-offset: -2px;
 }
 
 .canvas-toolbox[data-dock="top"] .toolbox-grip,
 .canvas-toolbox[data-dock="bottom"] .toolbox-grip,
 .canvas-toolbox[data-dock="floating"] .toolbox-grip {
-  width: 32px;
-  min-height: 32px;
-  margin-right: 2px;
+  width: 16px;
+  height: auto;
+  align-self: stretch;
 }
 
-.canvas-toolbox[data-dock="left"] .toolbox-grip,
-.canvas-toolbox[data-dock="right"] .toolbox-grip {
-  margin-bottom: 4px;
+.canvas-toolbox[data-dock="top"] .toolbox-grip svg,
+.canvas-toolbox[data-dock="bottom"] .toolbox-grip svg,
+.canvas-toolbox[data-dock="floating"] .toolbox-grip svg {
+  transform: rotate(90deg);
 }
 
 .canvas-toolbox.dragging .toolbox-grip {
@@ -924,35 +927,51 @@
   display: none;
 }
 
-.canvas-toolbox.collapsed .toolbox-btn {
-  min-width: 0;
-  padding: 8px;
-}
-
+.canvas-toolbox.collapsed .toolbox-btn,
 .canvas-toolbox.collapsed[data-dock="top"] .toolbox-btn,
 .canvas-toolbox.collapsed[data-dock="bottom"] .toolbox-btn {
-  padding: 8px;
+  min-width: 0;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  justify-content: center;
+}
+
+.canvas-toolbox.collapsed[data-dock="left"] .toolbox-pair,
+.canvas-toolbox.collapsed[data-dock="right"] .toolbox-pair {
+  flex-direction: column;
+}
+
+.canvas-toolbox.collapsed[data-dock="left"] .toolbox-sep,
+.canvas-toolbox.collapsed[data-dock="right"] .toolbox-sep {
+  width: 20px;
 }
 
 .toolbox-grip svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 9px;
   fill: currentColor;
 }
 
+/* A tool is a tile: icon over name, with its key in the top-right corner the
+   way a keycap legend sits — there for whoever is learning the shortcuts,
+   quiet enough to read past once they have. It used to be a third row, a
+   bordered chip under every label, which made the rail twice as tall as its
+   tools and the chips louder than the names. */
 .toolbox-btn {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  padding: 8px 10px;
+  gap: 4px;
+  min-width: 56px;
+  padding: 9px 6px 7px;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 7px;
+  border: 0;
+  border-radius: 10px;
   cursor: pointer;
   color: var(--text2);
-  transition: all var(--transition-fast);
-  min-width: 52px;
+  transition: background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .toolbox-btn:hover {
@@ -960,10 +979,19 @@
   color: var(--text);
 }
 
-.toolbox-btn.active {
+.toolbox-btn:active {
   background: var(--surface2);
+}
+
+.toolbox-btn:focus-visible {
+  outline: 2px solid var(--accent-border-strong);
+  outline-offset: -2px;
+}
+
+.toolbox-btn.active {
+  background: var(--accent-soft-strong);
   color: var(--accent);
-  border-color: var(--accent-border-strong);
+  box-shadow: inset 0 0 0 1px var(--accent-border);
 }
 
 .toolbox-btn svg {
@@ -973,43 +1001,87 @@
   stroke: none;
 }
 
+/* The transition glyph is drawn with strokes; the rule above would blank it. */
+#t-trans svg {
+  fill: none;
+  stroke: currentColor;
+}
+
 .toolbox-lbl {
-  font-family: var(--mono);
-  font-size: .6rem;
-  letter-spacing: .05em;
+  font-family: var(--sans);
+  font-size: .66rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: .01em;
+  white-space: nowrap;
 }
 
 .toolbox-kbd {
+  position: absolute;
+  top: 4px;
+  right: 5px;
   font-family: var(--mono);
-  font-size: .55rem;
+  font-size: .5rem;
+  line-height: 1;
   color: var(--text3);
-  background: var(--bg3);
-  border: 1px solid var(--border2);
-  border-radius: 3px;
-  padding: 1px 4px;
+  opacity: .8;
+  pointer-events: none;
+}
+
+.toolbox-btn:hover .toolbox-kbd {
+  color: var(--text2);
+  opacity: 1;
+}
+
+.toolbox-btn.active .toolbox-kbd {
+  color: var(--accent);
+  opacity: .7;
 }
 
 .toolbox-sep {
-  width: 20px;
+  flex: none;
+  width: 28px;
   height: 1px;
-  background: var(--border);
-  margin: 6px auto;
+  background: var(--border2);
+  margin: 4px auto;
 }
 
-.toolbox-btn.toolbox-danger {
-  color: var(--text3);
+/* Undo and redo are the two most familiar icons in any editor, and they are
+   one idea, so they share a row as icon-only buttons and hand their names and
+   keys to the tooltip. */
+.toolbox-pair {
+  display: flex;
+  gap: 2px;
 }
 
-.toolbox-btn.toolbox-danger:hover {
-  background: var(--red-soft);
-  color: var(--red);
-  border-color: var(--red-border);
+.toolbox-pair .toolbox-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 0;
 }
 
+.canvas-toolbox[data-dock="top"] .toolbox-pair .toolbox-btn,
+.canvas-toolbox[data-dock="bottom"] .toolbox-pair .toolbox-btn {
+  min-width: 0;
+  width: 36px;
+  align-self: stretch;
+  justify-content: center;
+}
+
+.toolbox-btn-icon .toolbox-lbl,
+.toolbox-btn-icon .toolbox-kbd {
+  display: none;
+}
+
+.toolbox-btn.toolbox-danger:hover,
 .toolbox-btn.toolbox-danger.active {
   background: var(--red-soft);
   color: var(--red);
-  border-color: var(--red-border);
+  box-shadow: inset 0 0 0 1px var(--red-border);
+}
+
+.toolbox-btn.toolbox-danger.active .toolbox-kbd {
+  color: var(--red);
 }
 
 /* ─── CANVAS NAV CONTROLS ─── */
@@ -1335,8 +1407,8 @@
   }
 
   .toolbox-btn {
-    min-width: 46px;
-    padding: 7px 8px;
+    min-width: 48px;
+    padding: 7px 6px 6px;
   }
 
   .toolbox-kbd {

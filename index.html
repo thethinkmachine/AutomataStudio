@@ -510,7 +510,7 @@
               <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
             </div>
             <div class="lp-section-body">
-              <input class="lpanel-search-inp" id="state-search" placeholder="Filter states…" oninput="filterStates()">
+              <label class="search-field"><svg class="search-field-ico" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z" /></svg><input type="search" autocomplete="off" spellcheck="false" aria-label="Filter states" class="lpanel-search-inp" id="state-search" placeholder="Filter states…" oninput="filterStates()"></label>
               <div class="slist" id="states-list">
                 <div class="empty-msg">No states</div>
               </div>
@@ -529,7 +529,7 @@
                    machines whose rules fit a table; its listener is attached
                    at first draw, so it has no name in bridge.js. -->
               <div class="lp-search-row">
-                <input class="lpanel-search-inp" id="trans-search" placeholder="Filter transitions…" oninput="filterTransitions()">
+                <label class="search-field"><svg class="search-field-ico" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z" /></svg><input type="search" autocomplete="off" spellcheck="false" aria-label="Filter transitions" class="lpanel-search-inp" id="trans-search" placeholder="Filter transitions…" oninput="filterTransitions()"></label>
                 <div class="trans-view-toggle" id="trans-view-toggle" role="group" aria-label="Show δ as" hidden>
                   <button type="button" data-view="list" aria-pressed="true" aria-label="Show δ as a list" data-tip="List of rules">
                     <svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M88,64a8,8,0,0,1,8-8H216a8,8,0,0,1,0,16H96A8,8,0,0,1,88,64Zm128,56H96a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Zm0,64H96a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16ZM56,56H40a8,8,0,0,0,0,16H56a8,8,0,0,0,0-16Zm0,64H40a8,8,0,0,0,0,16H56a8,8,0,0,0,0-16Zm0,64H40a8,8,0,0,0,0,16H56a8,8,0,0,0,0-16Z" /></svg>
@@ -633,8 +633,8 @@
           </svg>
           <!-- Floating toolbox -->
           <div class="canvas-toolbox" id="canvas-toolbox">
-            <button class="toolbox-grip" id="toolbox-grip" type="button" data-tip="Drag toolbar" aria-label="Drag toolbar">
-              <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M104,60A12,12,0,1,1,92,48,12,12,0,0,1,104,60Zm60,12a12,12,0,1,0-12-12A12,12,0,0,0,164,72ZM92,116a12,12,0,1,0,12,12A12,12,0,0,0,92,116Zm72,0a12,12,0,1,0,12,12A12,12,0,0,0,164,116ZM92,184a12,12,0,1,0,12,12A12,12,0,0,0,92,184Zm72,0a12,12,0,1,0,12,12A12,12,0,0,0,164,184Z" /></svg>
+            <button class="toolbox-grip" id="toolbox-grip" type="button" data-tip="Drag to move · click to collapse" aria-label="Move or collapse toolbar">
+              <svg viewBox="0 0 24 12" fill="currentColor" aria-hidden="true"><path d="M5 3.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm0 5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM13.5 3.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm0 5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM22 3.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm0 5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg>
             </button>
             <button class="toolbox-btn" id="t-pointer" onclick="toggleTool('pointer')"
               data-tip="Pointer — select &amp; interact" data-tip-kbd="Esc">
@@ -678,16 +678,18 @@
               <span class="toolbox-kbd">D</span>
             </button>
             <div class="toolbox-sep"></div>
-            <button class="toolbox-btn" onclick="undo()" data-tip="Undo" data-tip-kbd="Ctrl+Z">
+            <div class="toolbox-pair">
+            <button class="toolbox-btn toolbox-btn-icon" onclick="undo()" aria-label="Undo" data-tip="Undo" data-tip-kbd="Ctrl+Z">
               <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232,144a64.07,64.07,0,0,1-64,64H80a8,8,0,0,1,0-16h88a48,48,0,0,0,0-96H51.31l34.35,34.34a8,8,0,0,1-11.32,11.32l-48-48a8,8,0,0,1,0-11.32l48-48A8,8,0,0,1,85.66,45.66L51.31,80H168A64.07,64.07,0,0,1,232,144Z" /></svg>
               <span class="toolbox-lbl">Undo</span>
               <span class="toolbox-kbd" data-kbd="Mod+Z">Ctrl+Z</span>
             </button>
-            <button class="toolbox-btn" onclick="redo()" data-tip="Redo" data-tip-kbd="Ctrl+Y">
+            <button class="toolbox-btn toolbox-btn-icon" onclick="redo()" aria-label="Redo" data-tip="Redo" data-tip-kbd="Ctrl+Y">
               <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M170.34,130.34,204.69,96H88a48,48,0,0,0,0,96h88a8,8,0,0,1,0,16H88A64,64,0,0,1,88,80H204.69L170.34,45.66a8,8,0,0,1,11.32-11.32l48,48a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32-11.32Z" /></svg>
               <span class="toolbox-lbl">Redo</span>
               <span class="toolbox-kbd" data-kbd="Mod+Y">Ctrl+Y</span>
             </button>
+            </div>
           </div>
           <!-- What the machine on the canvas is — and, since the card is
                editable, what its author says it is. Opens itself for a few
@@ -1011,15 +1013,39 @@
                 <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
               </div>
               <div class="rp-section-body" style="display:none">
-                <textarea class="batch-in" id="batch-in" autocomplete="off"
-                  placeholder="One string per line&#10;ε for empty string&#10;Optional: aab =&gt; accept"
-                  onkeydown="handleBatchInputKeydown(event)" oninput="handleSymSuggestActive(this)"
-                  onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
-                  onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></textarea>
-                <button class="run-btn" style="width:100%;margin-bottom:6px;display:flex;align-items:center;justify-content:center;gap:6px" onclick="runBatch()">
-                  <svg viewBox="0 0 256 256" fill="currentColor" width="14" height="14"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z" /></svg> Test All
+                <!-- The editor, its tools and the results are wired in
+                     js/simulation.js by delegation on data-batch-action, so
+                     none of the buttons below needs a name in bridge.js. -->
+                <div class="batch-editor">
+                  <textarea class="batch-in" id="batch-in" autocomplete="off" spellcheck="false"
+                    placeholder="One word per line&#10;ε for the empty word&#10;aab =&gt; accept  sets an expectation"
+                    onkeydown="handleBatchInputKeydown(event)" oninput="handleSymSuggestActive(this)"
+                    onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
+                    onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></textarea>
+                  <div class="batch-editor-foot">
+                    <span class="batch-count" id="batch-count">0 words</span>
+                    <span class="batch-tools">
+                      <button type="button" class="batch-tool" data-batch-action="fill" data-tip="Fill with every word over Σ up to a short length">
+                        <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,144a15.78,15.78,0,0,1-10.42,14.94l-51.65,19-19,51.61a15.92,15.92,0,0,1-29.88,0L78,178l-51.62-19a15.92,15.92,0,0,1,0-29.88l51.65-19,19-51.61a15.92,15.92,0,0,1,29.88,0l19,51.65,51.61,19A15.78,15.78,0,0,1,208,144ZM152,48h16V64a8,8,0,0,0,16,0V48h16a8,8,0,0,0,0-16H184V16a8,8,0,0,0-16,0V32H152a8,8,0,0,0,0,16Zm88,32h-8V72a8,8,0,0,0-16,0v8h-8a8,8,0,0,0,0,16h8v8a8,8,0,0,0,16,0V96h8a8,8,0,0,0,0-16Z" /></svg>
+                        <span>Samples</span>
+                      </button>
+                      <button type="button" class="batch-tool" data-batch-action="pin" id="batch-pin" disabled data-tip="Record the current verdicts as expectations, so the next run checks them">
+                        <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z" /></svg>
+                        <span>Expect</span>
+                      </button>
+                      <button type="button" class="batch-tool" data-batch-action="clear" aria-label="Clear" data-tip="Clear words and results">
+                        <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg>
+                      </button>
+                    </span>
+                  </div>
+                </div>
+                <button class="run-btn batch-run" onclick="runBatch()">
+                  <svg viewBox="0 0 256 256" fill="currentColor" width="14" height="14" aria-hidden="true"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z" /></svg>
+                  <span>Test all</span>
+                  <kbd class="batch-run-kbd" data-kbd="Mod+Enter">Ctrl+Enter</kbd>
                 </button>
                 <div class="batch-summary" id="batch-summary" style="display:none"></div>
+                <div class="batch-filter" id="batch-filter" role="group" aria-label="Show results" hidden></div>
                 <div class="batch-result" id="batch-result"></div>
                 <div class="exp-bar" id="batch-export-bar" style="display:none">
                   <button class="exp-bar-btn" onclick="exportCopyBatchQuick()" data-tip="Copy results as a Markdown table">
@@ -1141,7 +1167,7 @@
           </button>
           <div class="mobile-panel-content" id="algo-nav-content">
             <div class="algo-search-wrap">
-              <input class="algo-search-inp" id="algo-search" placeholder="Search algorithms…" oninput="filterAlgos()">
+              <label class="search-field"><svg class="search-field-ico" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z" /></svg><input type="search" autocomplete="off" spellcheck="false" aria-label="Search algorithms" class="algo-search-inp" id="algo-search" placeholder="Search algorithms…" oninput="filterAlgos()"></label>
             </div>
             <div class="algo-grp">Finite Automata</div>
             <div class="algo-item active" onclick="setAlgo('table')" data-algo="table">δ Transition Table</div>

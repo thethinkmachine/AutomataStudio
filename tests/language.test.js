@@ -1029,8 +1029,8 @@ test('batch testing accepts Turing machines and reports three outcomes', () => {
   abcTmWithSpin();
   App.config.langStepBudget = 400;
   const { html } = runBatchWith(['abc', 'ab', 'aba']);
-  assert.match(html, /br-ok[^]*abc/, 'abc should pass');
-  assert.match(html, /br-err[^]*"ab"/, 'ab should fail');
+  assert.match(html, /br-row br-ok"[^>]*><span class="br-mark" aria-hidden="true">✓<\/span><span class="br-word">abc<\/span>/, 'abc should pass');
+  assert.match(html, /br-row br-err"[^>]*><span class="br-mark" aria-hidden="true">✗<\/span><span class="br-word">ab<\/span>/, 'ab should fail');
   assert.match(html, /br-unk/, 'aba has no verdict');
   assert.match(html, /not a rejection/);
   assert.match(html, /br-note/, 'the budget note should render');
@@ -1049,8 +1049,8 @@ test('batch testing for finite automata is unchanged', () => {
   reset();
   endsWithAbb();
   const { html, summary } = runBatchWith(['abb', 'ab', 'abb => accept', 'ab => accept']);
-  assert.match(html, /br-ok[^]*"abb"/);
-  assert.match(html, /br-err[^]*"ab"/);
+  assert.match(html, /br-row br-ok"[^>]*><span class="br-mark" aria-hidden="true">✓<\/span><span class="br-word">abb<\/span>/);
+  assert.match(html, /br-row br-err"[^>]*><span class="br-mark" aria-hidden="true">✗<\/span><span class="br-word">ab<\/span>/);
   assert.equal(summary, '1 / 2 expectations passed');
   assert.doesNotMatch(html, /br-unk/, 'a DFA is never undecided');
   assert.doesNotMatch(html, /br-note/);
@@ -1060,7 +1060,59 @@ test('untokenizable batch input is still reported as an error', () => {
   reset();
   endsWithAbb();
   const { html } = runBatchWith(['zzz']);
-  assert.match(html, /cannot tokenize/);
+  assert.match(html, /data-kind="err"[^>]*>[^]*not a word over Σ/);
+});
+
+test('a batch word is escaped, not written into the page as markup', () => {
+  reset();
+  endsWithAbb();
+  const { html } = runBatchWith(['<img src=x onerror=alert(1)>']);
+  assert.doesNotMatch(html, /<img/);
+  assert.match(html, /&lt;img/);
+});
+
+test('sample words are every word over Σ, shortest first, ε included', () => {
+  reset();
+  endsWithAbb();
+  const words = context.sampleBatchWords(new Set(['a', 'b']), 15);
+  assert.deepEqual(words.slice(0, 7), [App.config.sym.eps, 'a', 'b', 'aa', 'ab', 'ba', 'bb']);
+  assert.equal(words.length, 15, 'ε + 2 + 4 + 8 fits the cap exactly');
+  assert.deepEqual(context.sampleBatchWords(new Set(['go', 'stop']), 7).slice(3),
+    ['go go', 'go stop', 'stop go', 'stop stop'], 'word symbols are joined so the tokenizer can read them back');
+  assert.deepEqual(context.sampleBatchWords(new Set()), []);
+});
+
+test('recording verdicts writes expectations only where none was given, then re-runs', () => {
+  reset();
+  endsWithAbb();
+  runBatchWith(['abb', 'ab', 'b => accept']);
+  const n = context.pinBatchVerdicts();
+  assert.equal(n, 2, 'the line with a written expectation is left alone');
+  assert.equal(harness.getElement('batch-in').value, 'abb => accept\nab => reject\nb => accept');
+  assert.equal(harness.getElement('batch-summary').textContent, '2 / 3 expectations passed',
+    'the re-run checks what was recorded, and still flags the hand-written claim that fails');
+});
+
+test('result rows know their kind, so the filter can hide the rest', () => {
+  reset();
+  endsWithAbb();
+  const { html } = runBatchWith(['abb', 'ab', 'abb => reject', 'zzz']);
+  assert.match(html, /data-idx="0" data-kind="acc"/);
+  assert.match(html, /data-idx="1" data-kind="rej"/);
+  assert.match(html, /data-idx="2" data-kind="acc" data-failed="1"/);
+  assert.match(html, /data-idx="3" data-kind="err" data-failed="1"/);
+  assert.equal(harness.getElement('batch-filter').hidden, false, 'a mixed batch offers the filter');
+});
+
+test('clearing the batch empties the words, the results and the header status', () => {
+  reset();
+  endsWithAbb();
+  runBatchWith(['abb', 'ab']);
+  context.clearBatch();
+  assert.equal(harness.getElement('batch-in').value, '');
+  assert.equal(harness.getElement('batch-result').innerHTML, '');
+  assert.equal(App.lastBatch, null);
+  assert.equal(harness.getElement('batch-count').textContent, '0 words');
 });
 
 // ══════════════════════════════════════════════════════════════════
