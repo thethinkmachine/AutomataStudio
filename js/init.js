@@ -13,6 +13,7 @@ import { applyTheme, initCanvasResizeObserver, initLPanelSections, initMobilePan
 import { showStatus } from './utils.js';
 import { formatKbd, localizeKbdLabels } from './kbd.js';
 import { setMachine, setView } from './view.js';
+import { syncHistoryButtons } from './history.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  INIT
@@ -46,6 +47,8 @@ try {
   if (localStorage.getItem('automata-snap-grid') === '1') toggleSnapToGrid(true);
   if (typeof initToolbarCollapse === 'function') initToolbarCollapse();
 } catch (e) { }
+// Undo/redo start dimmed; edits and loads keep them current from history.js.
+syncHistoryButtons();
 // What Save, Save As and Open mean differs between the website and the desktop
 // build, and the labels have to say which — see SAYING WHICH HOST THIS IS in
 // js/persistence.js. Written once, because the answer cannot change.
@@ -103,7 +106,7 @@ export async function finishBoot() {
   // own labels, so there is nothing to replace it with.
   const bootHint = isMobilePanelLayout()
     ? 'Pick a tool below · pinch to zoom'
-    : 'Esc=Pointer · V=Pan · Space+Drag=Pan · S=State · T=Transition · H=Fit · ' + formatKbd('Mod+Z') + '=Undo';
+    : 'Esc=Select · V=Pan · Space+Drag=Pan · S=State · T=Transition · H=Fit · ' + formatKbd('Mod+Z') + '=Undo';
   setTimeout(() => showStatus(bootHint), sharedLinkLoaded ? 3200 : 600);
 }
 

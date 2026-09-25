@@ -260,6 +260,20 @@ function historyBytes() {
   return n;
 }
 
+// Undo and redo live in the header, on the toolbar and in the phone's bar; all
+// of them dim when there is nothing to step to. aria-disabled rather than
+// disabled, so the tooltip still answers a hover and a click still reports
+// "Nothing to undo" instead of doing nothing silently.
+export function syncHistoryButtons() {
+  if (typeof document === 'undefined' || !document.querySelectorAll) return;
+  const mark = (kind, empty) => document.querySelectorAll(`[data-history="${kind}"]`)
+    .forEach(b => b.setAttribute('aria-disabled', empty ? 'true' : 'false'));
+  mark('undo', !App.history.length);
+  mark('redo', !App.future.length);
+}
+// Loads, tab switches and resets replace both stacks and then announce GRAPH.
+subscribe(Change.GRAPH, syncHistoryButtons);
+
 export function snapshot() {
   App.history.push(serializeState());
   App.future = [];
@@ -274,6 +288,7 @@ export function snapshot() {
   }
 
   markDirty();
+  syncHistoryButtons();
 }
 
 // Flags the active workspace as having unsaved changes without pushing an undo
@@ -302,12 +317,14 @@ export function undo() {
   if (!App.history.length) return showStatus('Nothing to undo');
   App.future.push(serializeState());
   restoreSnapshot(App.history.pop());
+  syncHistoryButtons();
 }
 
 export function redo() {
   if (!App.future.length) return showStatus('Nothing to redo');
   App.history.push(serializeState());
   restoreSnapshot(App.future.pop());
+  syncHistoryButtons();
 }
 export function restoreSnapshot(s) {
   const d = JSON.parse(s);

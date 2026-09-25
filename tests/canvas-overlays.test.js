@@ -19,45 +19,47 @@ function cornerFor(side, ratio) {
   return context.canvasOverlayCorner({ side, ratio }, WRAP, toolbarBox(side));
 }
 
-// ── Corner selection ──────────────────────────────────────────────
+// ── Placement ─────────────────────────────────────────────────────
+// The stack has one home, the bottom-right, and steps aside along the edge a
+// toolbar shares with it rather than crossing the canvas. It used to pick among
+// four corners, so dragging the toolbar past the middle of an edge sent the zoom
+// controls to the other side of the screen.
 
-test('the overlay stack stays bottom-right when the toolbar is far away', () => {
-  assert.deepStrictEqual(
-    { ...cornerFor('left', 0.5) },
-    { x: 'right', y: 'bottom' },
-    'a left-docked toolbar never reaches the default corner'
-  );
-  assert.deepStrictEqual(
-    { ...cornerFor('top', 0.5) },
-    { x: 'right', y: 'bottom' },
-    'a top-docked toolbar never reaches the default corner'
-  );
+const M = 12;
+const at = (right, bottom) => ({ x: 'right', y: 'bottom', right, bottom });
+
+test('the stack stays home when the toolbar is on another edge', () => {
+  assert.deepStrictEqual({ ...cornerFor('left', 0.5) }, at(M, M));
+  assert.deepStrictEqual({ ...cornerFor('top', 0.5) }, at(M, M));
+  assert.deepStrictEqual({ ...cornerFor('left', 1) }, at(M, M), 'even hard against the corner edge');
 });
 
-test('a bottom-docked toolbar pushes the stack aside only when it reaches it', () => {
-  assert.deepStrictEqual(
-    { ...cornerFor('bottom', 0.1) },
-    { x: 'right', y: 'bottom' },
-    'docked far left along the bottom, the right corner is still free'
-  );
-  assert.deepStrictEqual(
-    { ...cornerFor('bottom', 0.9) },
-    { x: 'left', y: 'bottom' },
-    'docked right along the bottom, the stack must move left'
-  );
+test('a bottom toolbar lifts the stack only when it reaches it', () => {
+  assert.deepStrictEqual({ ...cornerFor('bottom', 0.1) }, at(M, M), 'docked far left, the corner is free');
+  const lift = M + toolbarBox('bottom').height + context.OVERLAY_GAP;
+  assert.deepStrictEqual({ ...cornerFor('bottom', 0.9) }, at(M, lift), 'docked right, the stack stands on it');
 });
 
-test('a right-docked toolbar pushes the stack aside only when it hangs low', () => {
-  assert.deepStrictEqual(
-    { ...cornerFor('right', 0) },
-    { x: 'right', y: 'bottom' },
-    'docked high on the right edge, the bottom corner stays clear'
-  );
-  assert.deepStrictEqual(
-    { ...cornerFor('right', 1) },
-    { x: 'left', y: 'bottom' },
-    'docked low on the right edge, the stack must move left'
-  );
+test('a right toolbar moves the stack in beside it only when it hangs low', () => {
+  assert.deepStrictEqual({ ...cornerFor('right', 0) }, at(M, M), 'docked high, the corner is free');
+  const shift = M + toolbarBox('right').width + context.OVERLAY_GAP;
+  assert.deepStrictEqual({ ...cornerFor('right', 1) }, at(shift, M), 'docked low, the stack moves in beside it');
+});
+
+// The widths added up, so the old check said "room beside" — but a centred
+// toolbar leaves that room split across both ends, and the stack landed on
+// top of undo/redo. Measured in the app at 1440×900 with both panels open.
+test('a centred bottom toolbar is checked where it sits, not by its width alone', () => {
+  const wrap = { left: 0, top: 0, width: 896, height: 838 };
+  const box = { width: 488, height: 66 };
+  const place = context.canvasOverlayCorner({ side: 'bottom', ratio: 0.5 }, wrap, box, { width: 292, height: 38 });
+  assert.strictEqual(place.bottom, M + 66 + context.OVERLAY_GAP);
+  assert.strictEqual(place.right, M);
+});
+
+test('an unmeasured toolbar leaves the stack at home', () => {
+  // layoutCanvasOverlays is called before the toolbar has a box on first paint.
+  assert.deepStrictEqual({ ...context.canvasOverlayCorner({ side: 'bottom', ratio: 0.9 }, WRAP, null) }, at(M, M));
 });
 
 // Compact mode has no toolbar over the canvas at all any more — the tools are
@@ -71,7 +73,7 @@ test('compact mode keeps the stack in the bottom corner, above the mobile bar', 
   try {
     assert.deepStrictEqual(
       { ...context.canvasOverlayCorner({ side: 'bottom', ratio: 0.5 }, WRAP, toolbarBox('bottom')) },
-      { x: 'right', y: 'bottom' },
+      { x: 'right', y: 'bottom', right: 12, bottom: 12 },
       'the toolbar is not on the canvas in compact mode, so nothing displaces the stack'
     );
   } finally {
@@ -164,16 +166,17 @@ test('members stack upward from the corner without overlapping', () => {
   assert.strictEqual(map.style.right, '12px', 'both share the same edge');
 });
 
-test('the stack flips to the left edge and keeps its spacing', () => {
+test('a right toolbar moves the whole stack in, and keeps its spacing', () => {
   const { nav, map } = seedOverlays();
-  context.App.toolbarDock = { side: 'bottom', ratio: 0.95 };
+  context.App.toolbarDock = { side: 'right', ratio: 1 };
 
-  context.layoutCanvasOverlays(WRAP, toolbarBox('bottom'));
+  context.layoutCanvasOverlays(WRAP, toolbarBox('right'));
 
-  assert.strictEqual(nav.style.left, '12px');
-  assert.strictEqual(nav.style.right, 'auto', 'the old right offset must be cleared, not just overridden');
-  assert.strictEqual(map.style.left, '12px');
-  assert.strictEqual(map.style.bottom, '56px', 'spacing is unchanged by the flip');
+  const shift = `${M + toolbarBox('right').width + context.OVERLAY_GAP}px`;
+  assert.strictEqual(nav.style.right, shift);
+  assert.strictEqual(nav.style.left, 'auto', 'it never changes sides');
+  assert.strictEqual(map.style.right, shift, 'the minimap moves with it');
+  assert.strictEqual(map.style.bottom, '56px', 'spacing is unchanged by the shift');
 });
 
 // Hiding the minimap leaves nothing in its slot — the toggle that brings it
@@ -199,11 +202,11 @@ test('overlays hidden entirely are skipped', () => {
 });
 
 // ── The info pill ─────────────────────────────────────────────────
-//  "About this machine" describes the diagram rather than driving it, so it
-//  has no claim on a corner — which is how it came to be pinned under a
-//  toolbar that can be dragged to the same one. It now takes whichever corner
-//  is free, and the card is what the corner is measured for, so opening it
-//  never makes the anchor jump.
+//  The pill and its card live in the top-left. A toolbar docked across that
+//  corner pushes them along the edge — beside a left column, below a top row —
+//  and never to another corner: the pill used to search all four, scored
+//  partly by where the drawing was, and turned up somewhere new at each window
+//  size.
 
 function seedInfo({ open = false, card = { width: 310, height: 140 } } = {}) {
   const { nav, map } = seedOverlays();
@@ -211,80 +214,131 @@ function seedInfo({ open = false, card = { width: 310, height: 140 } } = {}) {
   const cardEl = getElement('example-card');
   btn.getBoundingClientRect = () => ({ width: 24, height: 24 });
   cardEl.getBoundingClientRect = () => card;
+  // The layout size is what gets read (it ignores the card's scale-in), and the
+  // stub's default for it is 800×600.
+  btn.offsetWidth = 24; btn.offsetHeight = 24;
+  cardEl.offsetWidth = card.width; cardEl.offsetHeight = card.height;
   cardEl.classList.toggle('is-open', open);
+  cardEl.style.maxHeight = '';
   return { nav, map, btn, card: cardEl };
 }
 
-const anchorOf = el => `${el.style.top !== 'auto' ? 'top' : 'bottom'}-${el.style.left !== 'auto' ? 'left' : 'right'}`;
+const originOf = el => `${el.style.left},${el.style.top}`;
 
 test('the info pill keeps its home corner while nothing is in it', () => {
   const { btn, card } = seedInfo();
   // Docked down the left edge but centred vertically — it never reaches the
-  // top-left, and a corner test that asked only "which side?" would move the
-  // card for nothing.
+  // top-left, so there is nothing to step around.
   context.App.toolbarDock = { side: 'left', ratio: 0.5 };
 
   context.layoutCanvasOverlays(WRAP, toolbarBox('left'));
 
-  assert.strictEqual(anchorOf(card), 'top-left');
-  assert.strictEqual(anchorOf(btn), 'top-left', 'the pill and its card share an anchor');
+  assert.strictEqual(originOf(card), '12px,12px');
+  assert.strictEqual(originOf(btn), '12px,12px', 'the pill and its card share an anchor');
   assert.strictEqual(card.dataset.corner, 'top-left', 'and the CSS is told, so it grows the right way');
 });
 
-test('a toolbar dragged onto the pill moves the pill, not the toolbar', () => {
+test('a top toolbar across the corner moves the pill below it, not elsewhere', () => {
   const { btn, card } = seedInfo();
-  // Along the top edge, hard left: the bar now covers the corner the card
-  // opens into.
   context.App.toolbarDock = { side: 'top', ratio: 0 };
 
   context.layoutCanvasOverlays(WRAP, toolbarBox('top'));
 
-  assert.strictEqual(anchorOf(card), 'top-right');
-  assert.strictEqual(anchorOf(btn), 'top-right');
-  assert.strictEqual(card.dataset.corner, 'top-right');
+  const below = `${M + toolbarBox('top').height + context.OVERLAY_GAP}px`;
+  assert.strictEqual(originOf(card), `12px,${below}`);
+  assert.strictEqual(originOf(btn), `12px,${below}`);
+  assert.strictEqual(card.dataset.corner, 'top-left', 'still the top-left corner');
 });
 
-test('the corner is measured for the card, so opening it does not move it', () => {
+test('a left toolbar reaching the corner moves the pill in beside it', () => {
+  const { btn } = seedInfo();
+  context.App.toolbarDock = { side: 'left', ratio: 0 };
+
+  context.layoutCanvasOverlays(WRAP, toolbarBox('left'));
+
+  assert.strictEqual(originOf(btn), `${M + toolbarBox('left').width + context.OVERLAY_GAP}px,12px`);
+});
+
+test('the origin is sized for the card, so opening it does not move it', () => {
   const shut = seedInfo({ open: false });
+  // Far enough right that the 24px pill alone would clear it; the card does not.
   context.App.toolbarDock = { side: 'top', ratio: 0.18 };
   context.layoutCanvasOverlays(WRAP, toolbarBox('top'));
-  const anchor = anchorOf(shut.card);
-
-  // The button alone would have cleared this toolbar; the card it opens into
-  // does not. Sizing the anchor off the button would move it on open.
-  assert.strictEqual(anchor, 'top-right');
+  const where = originOf(shut.btn);
+  assert.notStrictEqual(where, '12px,12px', 'the card would reach the toolbar, so the pill steps down');
 
   const open = seedInfo({ open: true });
   context.App.toolbarDock = { side: 'top', ratio: 0.18 };
   context.layoutCanvasOverlays(WRAP, toolbarBox('top'));
-  assert.strictEqual(anchorOf(open.card), anchor, 'the open card lands where the pill was');
+  assert.strictEqual(originOf(open.card), where, 'the open card lands where the pill was');
 });
 
-test('the pill also stays off the minimap stack', () => {
-  // Nothing along the top is free — a full-width bar — so the only corners
-  // left are the bottom two, one of which the stack is in.
-  const { btn, card } = seedInfo();
-  context.App.toolbarDock = { side: 'top', ratio: 0.5 };
+// On a narrow canvas the stack spans most of the width, and the card used to
+// open straight over it — every corner was "taken", so the search settled for
+// the least-bad one. It keeps its corner now and scrolls instead.
+test('the card stops short of the stack beneath it', () => {
+  const { card } = seedInfo({ card: { width: 310, height: 700 } });
+  const narrow = { left: 0, top: 0, width: 480, height: 600 };
+  getElement('canvas-wrap').getBoundingClientRect = () => narrow;
+  getElement('canvas-nav-controls').getBoundingClientRect = () => ({ width: 292, height: 38 });
+  context.App.toolbarDock = { side: 'left', ratio: 0.5 };
+  // No toolbar on screen: the stub's default rect would otherwise be measured as one.
+  const toolbox = getElement('canvas-toolbox');
+  const realParent = toolbox.offsetParent;
+  toolbox.offsetParent = null;
+  try {
+    context.layoutCanvasOverlays(narrow, null);
+  } finally {
+    toolbox.offsetParent = realParent;
+  }
 
-  context.layoutCanvasOverlays(WRAP, { width: 1176, height: 56 });
-
-  assert.strictEqual(anchorOf(card), 'bottom-left', 'the stack owns the bottom-right');
-  assert.strictEqual(anchorOf(btn), 'bottom-left');
+  // map: 600 - 12 - 38 - 8 - 122 = 420 from the top; minus a gap, minus the card's top.
+  assert.strictEqual(card.style.maxHeight, `${420 - context.OVERLAY_GAP - 12}px`);
 });
 
-test('with every corner spoken for it takes the one it fights over least', () => {
-  // A canvas barely bigger than the card, and a toolbar across the middle of
-  // it: no corner is clear, and the answer has to be a corner rather than
-  // nothing.
+test('the card is never capped below a readable height', () => {
   const { card } = seedInfo();
   const tiny = { left: 0, top: 0, width: 360, height: 200 };
-  getElement('canvas-wrap').getBoundingClientRect = () => tiny;
   context.App.toolbarDock = { side: 'left', ratio: 0.5 };
 
-  const corner = context.layoutCanvasInfo(tiny, [{ left: 0, top: 0, width: 360, height: 200 }]);
+  context.layoutCanvasInfo(tiny, null, [{ left: 0, top: 40, width: 360, height: 160 }]);
 
-  assert.ok(corner && corner.x && corner.y, 'a corner is always chosen');
+  assert.strictEqual(card.style.maxHeight, `${context.CARD_MIN_HEIGHT}px`);
   assert.strictEqual(card.style.position, 'absolute', 'and it is still placed');
+});
+
+// ── The status toast ──────────────────────────────────────────────
+// Given a lane rather than measured: the message is written after layout runs,
+// so a toast placed for the last message was wrong for the next one.
+
+test('a top-docked toolbar pushes the status toast below it', () => {
+  const status = getElement('status-bar');
+  context.App.toolbarDock = { side: 'top', ratio: 0.5 };
+  context.positionStatusToast(WRAP, { left: 200, top: 12, width: 480, height: 66 });
+  assert.strictEqual(status.style.top, `${12 + 66 + context.OVERLAY_GAP}px`);
+  assert.strictEqual(status.style.left, '600px', 'centred on the canvas');
+  assert.strictEqual(status.style.maxWidth, `${1200 - 24}px`);
+});
+
+test('the toast centres in the lane right of an open card', () => {
+  const status = getElement('status-bar');
+  context.App.toolbarDock = { side: 'left', ratio: 0.5 };
+  const card = { left: 12, top: 12, width: 320, height: 167 };
+  context.positionStatusToast(WRAP, null, [card]);
+  const left = 12 + 320 + context.OVERLAY_GAP, right = 1200 - 12;
+  assert.strictEqual(status.style.top, '10px', 'it keeps the top strip');
+  assert.strictEqual(status.style.left, `${(left + right) / 2}px`);
+  assert.strictEqual(status.style.maxWidth, `${right - left}px`);
+});
+
+test('with no lane worth reading in, the toast drops beneath what crowded it', () => {
+  const status = getElement('status-bar');
+  context.App.toolbarDock = { side: 'left', ratio: 0.5 };
+  const narrow = { left: 0, top: 0, width: 480, height: 600 };
+  const card = { left: 12, top: 12, width: 320, height: 167 };
+  context.positionStatusToast(narrow, null, [card]);
+  assert.strictEqual(status.style.top, `${12 + 167 + context.OVERLAY_GAP}px`);
+  assert.strictEqual(status.style.maxWidth, `${480 - 24}px`);
 });
 
 // ── Language claim overflow ───────────────────────────────────────
@@ -358,54 +412,30 @@ test('the nav-bar toggle tracks whether the minimap is showing', () => {
   assert.match(btn.getAttribute('data-tip'), /Hide/);
 });
 
-// ── crowding on a narrow canvas ───────────────────────────────────
+// ── A toolbar that does not fit ───────────────────────────────────
+// Folds to icons by itself and unfolds when there is room, without touching the
+// reader's own collapse preference.
 
-// A horizontal toolbar and the overlay stack both want the bottom edge. The
-// choice used to come from `ratio` alone, which silently assumed there was an
-// opposite end to retreat to — true on a wide canvas, false once the toolbar
-// spans most of the width. Then both bars sat on the bottom edge fighting for
-// the same pixels.
-const NARROW = { left: 0, top: 0, width: 700, height: 800 };
+test('a row too long for its edge folds itself, and unfolds with room', () => {
+  harness.resetApp();
+  const toolbox = getElement('canvas-toolbox');
+  const wrap = getElement('canvas-wrap');
+  wrap.getBoundingClientRect = () => WRAP;
+  toolbox.getBoundingClientRect = () => ({ width: 520, height: 56 });
+  toolbox.offsetParent = {};
+  context.App.toolbarDock = { side: 'top', ratio: 0.5 };
+  context.App.toolbarCollapsed = false;
 
-test('a bottom toolbar that fits leaves the stack on the bottom edge', () => {
-  assert.strictEqual(
-    context.bottomEdgeHasRoomBeside(WRAP, toolbarBox('bottom')), true,
-    '1200px wrap easily fits a 520px toolbar beside the stack'
-  );
-  assert.deepStrictEqual(
-    { ...context.canvasOverlayCorner({ side: 'bottom', ratio: 0.1 }, WRAP, toolbarBox('bottom')) },
-    { x: 'right', y: 'bottom' }
-  );
-});
+  toolbox.clientWidth = 400; toolbox.scrollWidth = 520;
+  context.applyToolbarDock(false);
+  assert.ok(toolbox.classList.contains('collapsed'), 'overflowing, it folds');
+  assert.ok(toolbox.classList.contains('is-squeezed'));
+  assert.strictEqual(context.App.toolbarCollapsed, false, 'the preference is untouched');
 
-test('a bottom toolbar with no room beside it sends the stack over the top', () => {
-  assert.strictEqual(
-    context.bottomEdgeHasRoomBeside(NARROW, toolbarBox('bottom')), false,
-    '520 + 250 + margins does not fit in 700'
-  );
-
-  // Both halves, because the old code answered from ratio and would still
-  // return a bottom corner for either.
-  for (const ratio of [0.1, 0.95]) {
-    assert.deepStrictEqual(
-      { ...context.canvasOverlayCorner({ side: 'bottom', ratio }, NARROW, toolbarBox('bottom')) },
-      { x: 'right', y: 'top' },
-      `ratio ${ratio} must clear the toolbar rather than share the edge`
-    );
-  }
-});
-
-test('the crowding check scales with the stack it is asked about', () => {
-  // A wider stack needs more room, so the same canvas can fit one and not the other.
-  assert.strictEqual(context.bottomEdgeHasRoomBeside(WRAP, toolbarBox('bottom'), 200), true);
-  assert.strictEqual(context.bottomEdgeHasRoomBeside(WRAP, toolbarBox('bottom'), 900), false);
-});
-
-test('an unmeasured toolbar is treated as leaving room rather than crowding', () => {
-  // layoutCanvasOverlays is called before the toolbar has a box on first paint;
-  // guessing "crowded" there would park the stack at the top and then move it.
-  assert.strictEqual(context.bottomEdgeHasRoomBeside(WRAP, null), true);
-  assert.strictEqual(context.bottomEdgeHasRoomBeside(WRAP, { width: 0, height: 0 }), true);
+  toolbox.clientWidth = 520; toolbox.scrollWidth = 520;
+  context.applyToolbarDock(false);
+  assert.ok(!toolbox.classList.contains('collapsed'), 'with room again, it unfolds');
+  assert.ok(!toolbox.classList.contains('is-squeezed'));
 });
 
 // The JS mode check and the stylesheet rule that actually relocates the toolbar

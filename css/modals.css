@@ -3121,6 +3121,12 @@ button.sm-stat:disabled {
   opacity: .85;
 }
 
+/* Glyphs drawn with strokes — the dashed Divider and Region marks. */
+.ctx-i svg[stroke] {
+  fill: none;
+  stroke: currentColor;
+}
+
 .ctx-i:hover {
   background: var(--surface3);
 }
@@ -3234,6 +3240,11 @@ button.sm-stat:disabled {
   opacity: 0;
   transition: opacity .25s;
   white-space: nowrap;
+  /* Its width is the free lane layoutCanvasOverlays hands it (max-width),
+     not whatever the message asks for. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
   /* Above .scope-bar's 51 (css/canvas.css), not just the rest of the canvas
      chrome at 49-60: the breadcrumb persists and the toast fades in a couple
      of seconds, and enterBlockScope() fires both from the same call — a
