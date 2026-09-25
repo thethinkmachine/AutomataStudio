@@ -815,6 +815,12 @@ body.modal-open {
   min-width: 0;
 }
 
+/* What a call came back with — the half that explains the model's next move. */
+.sm-agent-result {
+  color: var(--text2);
+  min-width: 0;
+}
+
 .sm-agent-event {
   padding: 2px 0 0;
   font-family: var(--sans);
@@ -986,8 +992,14 @@ body.modal-open {
    into blocks, so keeping it would double every gap it just created. */
 /* A reply is the turn's whole content rather than a note attached to one, so
    it reads at full strength; --text2 is for the supporting lines around it. */
-.sm-card.is-reply .sm-prose {
+.sm-card.is-reply .sm-prose,
+.sm-card .sm-card-message {
   color: var(--text);
+}
+
+/* The machine card's own words sit between its title and its chips. */
+.sm-card-message {
+  margin: 4px 0 2px;
 }
 
 .sm-md {

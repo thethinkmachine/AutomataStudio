@@ -1111,6 +1111,30 @@ const CALL_DETAIL = {
   finish: a => (a.reply !== undefined ? 'with a reply' : clipArg(a.title))
 };
 
+// What a call came back with, in a few words. The name and the arguments say
+// what the model asked; this says what it learned — which is the half that
+// explains its next move ("2 reject" is why it then edits a transition).
+const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const VERDICT_WORD = { acc: 'accept', rej: 'reject', unk: 'unknown', noVerdict: 'no verdict', errors: 'unreadable' };
+const RESULT_DETAIL = {
+  simulate_word: r => VERDICT_WORD[r?.verdict] || r?.verdict || '',
+  trace_word: r => [VERDICT_WORD[r?.verdict] || r?.verdict, r?.steps ? count(r.steps, 'step') : ''].filter(Boolean).join(' · '),
+  simulate_words: r => Object.entries(r || {})
+    .filter(([k, v]) => Array.isArray(v) && k !== 'outputs')
+    .map(([k, v]) => `${v.length} ${VERDICT_WORD[k] || k}`)
+    .join(' · '),
+  lint_machine: r => (r?.fatal?.length ? count(r.fatal.length, 'problem') : 'clean'),
+  compare_with_canvas: r => (r?.comparable === false ? 'nothing to compare'
+    : r?.differences ? `${r.differences.length} of ${r.checked} differ` : ''),
+  find_unreachable_states: r => (Array.isArray(r) ? (r.length ? `unreachable: ${clipArg(r.join(', '), 40)}` : 'all reachable') : ''),
+  generate_test_words: r => (Array.isArray(r) ? count(r.length, 'word') : Array.isArray(r?.words) ? count(r.words.length, 'word') : '')
+};
+
+export function summarizeResult(name, value) {
+  const detail = RESULT_DETAIL[name];
+  try { return detail ? detail(value) || '' : ''; } catch (e) { return ''; }
+}
+
 function describeCall(call) {
   const detail = CALL_DETAIL[call.name];
   try { return detail ? detail(call.arguments || {}) || '' : ''; } catch (e) { return ''; }
@@ -1196,6 +1220,7 @@ function renderRun(entry) {
         else {
           const detail = describeCall(call);
           if (detail) row.append(el('span', 'sm-agent-detail', detail));
+          if (call.summary) row.append(el('span', 'sm-agent-result', `→ ${call.summary}`));
         }
         activity.append(row);
       });
@@ -1358,6 +1383,16 @@ function renderMachine(entry) {
           ? `Review requested — ${result.agentHoldDetail}`
         : 'Not drawn yet — this is what would change.';
     card.append(el('div', 'sm-hold', reason));
+  }
+
+  // What the model said about the machine — its approach, its assumptions,
+  // what to try next. Rendered exactly as a reply is (see renderReply), and
+  // above the chips, because it is the answer and the chips are its receipt.
+  if (entry.message) {
+    const prose = el('div', 'sm-prose sm-md sm-card-message');
+    renderMarkdown(entry.message, prose);
+    card.append(prose);
+    triggerMath(prose);
   }
 
   const chips = entry.chips || [];
@@ -3104,6 +3139,7 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
               if (!result) return;
               call.status = result.ok ? 'ok' : 'fail';
               call.error = result.ok ? '' : (result.error?.message || 'refused');
+              call.summary = result.ok ? summarizeResult(call.name, result.result) : '';
             });
           } else if (event.stage === 'resumed') {
             entry.agentNote = 'Resumed the candidate it was working on.';
@@ -3164,6 +3200,7 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
     const machineEntry = replaceEntry(entry, {
       kind: 'machine',
       title: result.spec?.title || 'Machine',
+      message: result.spec?.message || '',
       prompt: text,
       turnId: result.answerId || entry.turnId,
       chips: summarizeDiff(result.diff),

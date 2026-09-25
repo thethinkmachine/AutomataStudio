@@ -52,9 +52,14 @@ export const MIN_SPEC_TESTS = 3;
 export const MAX_CAVEAT_CHARS = 240;
 // Raised when the reply card learned to render markdown: structure costs
 // characters, and a table or a fenced block cut off at 1200 is a card that
-// looks broken rather than a reply that was long. Still a cap — it is the
-// backstop against a model that will not stop talking.
-export const MAX_REPLY_CHARS = 2400;
+// looks broken rather than a reply that was long. Raised again when replies
+// stopped being framed as refusals: an explanation of a construction, with a
+// table and a worked trace, runs past 2400 and was being cut mid-sentence.
+// Still a cap — it is the backstop against a model that will not stop talking.
+export const MAX_REPLY_CHARS = 6000;
+// What a machine answer may say to the reader beside the machine. The same
+// kind of prose as a reply, so the same cap.
+export const MAX_MESSAGE_CHARS = MAX_REPLY_CHARS;
 
 /**
  * Every failure in the StateMate pipeline. `code` is what the UI maps to a
@@ -519,6 +524,12 @@ export function validateSpec(raw, { fallbackMachine = App.machine } = {}) {
   spec.plan = typeof raw.plan === 'string' ? raw.plan.trim() : '';
   spec.title = typeof raw.title === 'string' && raw.title.trim() ? raw.title.trim() : 'StateMate machine';
   spec.blurb = typeof raw.blurb === 'string' ? raw.blurb.trim() : '';
+  // The machine answer's voice. Without it a build was a title and a row of
+  // chips — the model could say nothing about how it approached the request,
+  // what it assumed, or what to try next, which is most of what makes an
+  // answer feel like a conversation rather than a form being filled in.
+  // Markdown, rendered on the console card the way a reply is.
+  spec.message = typeof raw.message === 'string' ? raw.message.trim().slice(0, MAX_MESSAGE_CHARS) : '';
 
   // The one thing a model may say about its own answer beyond the machine
   // itself: that the machine is not quite what was asked for. It exists for

@@ -92,8 +92,8 @@ test('hints only: a question is answered, read-only, as a tutor, and without the
   const result = await h.context.runStateMate({ prompt: 'why does my machine reject aa?', authority: 'auto' });
   assert.equal(result.kind, 'reply');
   const sent = lastTurnText(fetch.calls[0]);
-  assert.match(sent, /STUDENT WORKING ON AN EXERCISE/);
-  assert.match(sent, /Do not give the answer in any form/);
+  assert.match(sent, /a student working on an exercise whose author allows hints only/);
+  assert.match(sent, /don't give the answer away in any form/);
   assert.doesNotMatch(sent, /describe the one you would build/, 'ask mode’s "describe it instead" is the answer in prose');
   assert.equal(fetch.calls[0].body.tools, undefined, 'no tool declarations — several of them build machines');
 });

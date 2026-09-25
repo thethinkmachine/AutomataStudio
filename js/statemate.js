@@ -831,8 +831,8 @@ export async function runStateMate({
     // round telling a model to use a protocol it was not being given, on
     // every round of every agentic run.
     const system = !agentic || useNativeTools
-      ? await buildSystemPrompt(machine, { notes: !!settings.writeNotes })
-      : `${await buildSystemPrompt(machine, { notes: !!settings.writeNotes })}\n\n${agentToolInstructions()}`;
+      ? await buildSystemPrompt(machine, { notes: !!settings.writeNotes, tools: !!agentic })
+      : `${await buildSystemPrompt(machine, { notes: !!settings.writeNotes, tools: !!agentic })}\n\n${agentToolInstructions()}`;
     guard();
 
     // The subject follows the reader. Inside a block, "this machine" is that
@@ -885,6 +885,9 @@ export async function runStateMate({
 
     let attempt = 0;
     let repairRounds = 0;
+    // Set when a parsed machine fails lint or verification and is sent back.
+    // From then on the answer has to be that machine, fixed.
+    let committedToMachine = false;
     const maxAttempts = 1 + Math.max(0, Math.min(2, settings.repairAttempts ?? 1));
     let spec = null, candidate = null, diff = null, lint = null, batch = null;
     let agentCandidate = null, agentDiff = null;
@@ -1102,12 +1105,15 @@ export async function runStateMate({
           agentCandidate = finished.candidate || null;
           agentDiff = finished.diff || null;
         } else {
-        // Prose is only an answer on the first attempt. Past that the model is
-        // being asked to fix a machine it already committed to, and "I would
-        // rather talk about it" is not a correction.
+        // Prose is an answer until the model has committed to a machine — one
+        // that parsed and then failed its own checks. Past that it is being
+        // asked to fix that machine, and "I would rather talk about it" is not
+        // a correction. A reformat is not that: it used to be keyed on the
+        // attempt number, so a reply with one bad escape could only be
+        // "fixed" by building a machine nobody asked for, and was lost.
         turn = parseTurn(extractSpecJSON(response.text), {
           fallbackMachine: machine,
-          allowReply: attempt === 1
+          allowReply: !committedToMachine
         });
         }
       } catch (err) {
@@ -1118,7 +1124,13 @@ export async function runStateMate({
           onEvent({ type: 'stage', stage: 'repair', reason: err.message });
           messages.push(
             { role: 'assistant', content: response.text.slice(0, MAX_ECHO_CHARS) },
-            { role: 'user', content: `That answer could not be used: ${err.message}\nReturn ONLY the JSON object described above.` }
+            {
+              role: 'user',
+              content: `I couldn't read that answer: ${err.message}\n`
+                + (committedToMachine
+                  ? 'Please send the corrected machine again as a single valid JSON object.'
+                  : 'Please send it again as a single valid JSON object — the same answer, as a machine or a reply, whichever you meant.')
+            }
           );
           repaired = true;
           continue;
@@ -1228,6 +1240,7 @@ export async function runStateMate({
       );
       repairRounds++;
       repaired = true;
+      committedToMachine = true;
     }
 
     guard();
