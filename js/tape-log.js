@@ -118,6 +118,23 @@ export function makeTapeLog(tape) {
 
     frameAt,
 
+    /**
+     * The log itself, for a reader that wants every step rather than one.
+     *
+     * A space-time diagram (js/spacetime.js) is the whole run at once, and
+     * asking it of `frameAt` would build a window array per row — the
+     * O(steps × window) this module exists to avoid, paid again on read. So
+     * the arrays are handed over by reference: a reader replays them itself,
+     * one write per row. Read-only by contract; the producer is still
+     * appending to them while a streaming run plays.
+     */
+    journal() {
+      return {
+        initial, heads, wCell, wSym, blank, twoWay, rightBound, markers,
+        leftBound: twoWay ? null : 0
+      };
+    },
+
     viewAt(i) {
       const f = frameAt(i);
       return {
@@ -164,6 +181,24 @@ export function tapeStep(log, i, fields) {
   s._log = log;
   s._i = i;
   return Object.assign(s, fields);
+}
+
+/**
+ * The journals behind a step, or null for a step that stores its tape.
+ *
+ * Here rather than read off `_log`/`_logs` by the caller, because those are
+ * this module's representation and the one place that may know it.
+ */
+export function stepJournals(step) {
+  if (!step) return null;
+  if (Array.isArray(step._logs)) return step._logs.map(l => l.journal());
+  if (step._log) return [step._log.journal()];
+  return null;
+}
+
+/** Which log entry a logged step reads — its row in its journal. */
+export function stepLogIndex(step) {
+  return step && typeof step._i === 'number' ? step._i : -1;
 }
 
 /** The same, for a machine whose k tapes advance in lockstep and so share i. */
