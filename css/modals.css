@@ -815,6 +815,23 @@ body.modal-open {
   min-width: 0;
 }
 
+/* What a call came back with — the half that explains the model's next move. */
+.sm-agent-result {
+  color: var(--text2);
+  min-width: 0;
+}
+
+/* The run's link to the canvas: what the dashed draft over it is. */
+.sm-draft-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0 24px;
+  font-family: var(--mono);
+  font-size: var(--sm-micro);
+  color: var(--accent);
+}
+
 .sm-agent-event {
   padding: 2px 0 0;
   font-family: var(--sans);
@@ -986,8 +1003,14 @@ body.modal-open {
    into blocks, so keeping it would double every gap it just created. */
 /* A reply is the turn's whole content rather than a note attached to one, so
    it reads at full strength; --text2 is for the supporting lines around it. */
-.sm-card.is-reply .sm-prose {
+.sm-card.is-reply .sm-prose,
+.sm-card .sm-card-message {
   color: var(--text);
+}
+
+/* The machine card's own words sit between its title and its chips. */
+.sm-card-message {
+  margin: 4px 0 2px;
 }
 
 .sm-md {
@@ -1248,12 +1271,20 @@ body.modal-open {
   transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
 }
 
-.sm-btn:hover,
+.sm-btn:hover:not([aria-disabled="true"]),
 .sm-btn:focus-visible {
   border-color: var(--border2);
   background: var(--surface3);
   color: var(--text);
   outline: none;
+}
+
+/* A proposal's Preview inside a block, where there is nowhere honest to draw
+   it. aria-disabled rather than disabled so it stays focusable and a press can
+   say why; it must still not look like it will do what it says. */
+.sm-btn[aria-disabled="true"] {
+  cursor: default;
+  opacity: .55;
 }
 
 .sm-btn-primary {

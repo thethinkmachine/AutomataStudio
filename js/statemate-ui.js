@@ -61,10 +61,13 @@
 import { hlState } from './canvas.js';
 import { topModal } from './modal.js';
 import { defaultPanelTab, getTabSide, isPanelTabActive, PANEL_TABS } from './panel-state.js';
-import { $, App, getMachineConfig } from './state.js';
+import { $, App, Workspaces, activeWorkspaceId, getMachineConfig } from './state.js';
 import { assistPolicy } from './exercise/model.js';
 import { undo } from './history.js';
 import { renderMarkdown } from './markdown.js';
+import { canDrawDraft, clearDraft, isDraftHere, isDraftShown, isShowingDraft, refreshDraft, showDraft, shownDraft } from './draft-layer.js';
+import { draftSize } from './statemate-preview.js';
+import { currentMachineSnapshot } from './statemate-compile.js';
 import { resolveNoteAnchorsForContext } from './notes.js';
 import { triggerMath } from './reference.js';
 import {
@@ -73,7 +76,7 @@ import {
 } from './persistence.js';
 import {
   AUTHORITIES, applyPending, cancelStateMate, clearThread, describeError,
-  getThread, hasCheckpoint, hasWarnings, isStateMateRunning, machineSignature,
+  getThread, hasCheckpoint, hasWarnings, isStateMateRunning, pendingHome, pendingIsStale,
   relayoutLastResult, removeTurn, restoreCheckpoint, resultMetaBits, resultNotes,
   runStateMate, selectSibling, siblingsOf, testHint, verdictLabel
 } from './statemate.js';
@@ -87,7 +90,7 @@ import {
 import { editStarterPrompts, starterPrompts } from './statemate-prompt.js';
 import { describeSpecSize, resolveContextRefs, scopedSource } from './statemate-spec.js';
 import { Change, emit, subscribe } from './store.js';
-import { activatePanelTab, fitToScreen, openSettingsModal, revealPanel, setStateMatePanel, switchSettingsTab } from './ui.js';
+import { activatePanelTab, fitToScreen, openSettingsModal, revealPanel, setStateMatePanel, switchSettingsTab, switchTab } from './ui.js';
 import { showStatus } from './utils.js';
 import { setView } from './view.js';
 import { formatKbd } from './kbd.js';
@@ -1111,6 +1114,37 @@ const CALL_DETAIL = {
   finish: a => (a.reply !== undefined ? 'with a reply' : clipArg(a.title))
 };
 
+// What a call came back with, in a few words. The name and the arguments say
+// what the model asked; this says what it learned — which is the half that
+// explains its next move ("2 reject" is why it then edits a transition).
+const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const VERDICT_WORD = { acc: 'accept', rej: 'reject', unk: 'unknown', noVerdict: 'no verdict', errors: 'unreadable' };
+const RESULT_DETAIL = {
+  simulate_word: r => VERDICT_WORD[r?.verdict] || r?.verdict || '',
+  trace_word: r => [VERDICT_WORD[r?.verdict] || r?.verdict, r?.steps ? count(r.steps, 'step') : ''].filter(Boolean).join(' · '),
+  simulate_words: r => Object.entries(r || {})
+    .filter(([k, v]) => Array.isArray(v) && k !== 'outputs')
+    .map(([k, v]) => `${v.length} ${VERDICT_WORD[k] || k}`)
+    .join(' · '),
+  lint_machine: r => (r?.fatal?.length ? count(r.fatal.length, 'problem') : 'clean'),
+  compare_with_canvas: r => (r?.comparable === false ? 'nothing to compare'
+    : r?.differences ? `${r.differences.length} of ${r.checked} differ` : ''),
+  find_unreachable_states: r => (Array.isArray(r) ? (r.length ? `unreachable: ${clipArg(r.join(', '), 40)}` : 'all reachable') : ''),
+  generate_test_words: r => (Array.isArray(r) ? count(r.length, 'word') : Array.isArray(r?.words) ? count(r.words.length, 'word') : '')
+};
+
+export function summarizeResult(name, value) {
+  const detail = RESULT_DETAIL[name];
+  try { return detail ? detail(value) || '' : ''; } catch (e) { return ''; }
+}
+
+// What the canvas preview is showing, in the run entry's own words.
+const DRAFT_SOURCE = {
+  stream: 'Writing the machine',
+  agent: 'Private copy',
+  compiled: 'Checking this machine'
+};
+
 function describeCall(call) {
   const detail = CALL_DETAIL[call.name];
   try { return detail ? detail(call.arguments || {}) || '' : ''; } catch (e) { return ''; }
@@ -1196,6 +1230,7 @@ function renderRun(entry) {
         else {
           const detail = describeCall(call);
           if (detail) row.append(el('span', 'sm-agent-detail', detail));
+          if (call.summary) row.append(el('span', 'sm-agent-result', `→ ${call.summary}`));
         }
         activity.append(row);
       });
@@ -1215,6 +1250,14 @@ function renderRun(entry) {
     wrap.append(line);
   }
 
+  // What is on the canvas right now, drawn dashed over the real diagram.
+  const draft = el('div', 'sm-draft-line');
+  draft.append(icon(ICONS.eyeOpen, 'sm-step-icon'));
+  const draftText = el('span', null, entry.draft || '');
+  draft.append(draftText);
+  if (!entry.draft) draft.hidden = true;
+  wrap.append(draft);
+
   const plan = el('div', 'sm-plan', entry.plan || '');
   if (!entry.plan) plan.hidden = true;
   wrap.append(plan);
@@ -1227,7 +1270,7 @@ function renderRun(entry) {
   if (!entry.reply) reply.hidden = true;
   wrap.append(reply);
 
-  Session.runNodes = { entry, plan, reply, ttft };
+  Session.runNodes = { entry, plan, reply, ttft, draft, draftText };
   return wrap;
 }
 
@@ -1253,14 +1296,54 @@ function updateRunText(entry) {
     nodes.reply.hidden = !entry.reply;
   }
   if (nodes.ttft) nodes.ttft.textContent = entry.ttft || '';
+  if (nodes.draft) {
+    nodes.draftText.textContent = entry.draft || '';
+    nodes.draft.hidden = !entry.draft;
+  }
 
   scrollLogToEnd();
+}
+
+// ── the draft on the canvas ──
+// A held proposal's Preview button says whether *its* machine is the one on
+// the canvas, and several proposals can be held at once. So every show and
+// every clear the console makes goes through these two, which tell the cards:
+// a card cached with "Hide preview" on it after something else took its draft
+// down would offer to hide a thing that is not there, and a button asking
+// only "is a draft shown?" would hide another proposal's draft when pressed.
+
+/** Draw `candidate` over the canvas, compared against the canvas as it is. */
+function drawDraft(candidate, { live, workspace = activeWorkspaceId } = {}) {
+  // A default rather than `??`: a run sent before any tab existed records
+  // `null`, and that is an answer, not a missing one.
+  showDraft(candidate, live || currentMachineSnapshot(), { workspace });
+  syncPreviewCards();
+}
+
+/** Take the draft down, whichever it was. */
+function eraseDraft() {
+  if (!isDraftShown()) return;
+  clearDraft();
+  syncPreviewCards();
+}
+
+/** Rebuild the held cards whose Preview button no longer says what is drawn. */
+function syncPreviewCards() {
+  let stale = false;
+  Session.log.forEach(entry => {
+    if (entry.kind !== 'machine' || !entry.result?.pending) return;
+    if (!!entry.previewing === isShowingDraft(entry.result.pending.candidate)) return;
+    invalidate(entry);
+    stale = true;
+  });
+  if (stale && !stowed()) renderLog();
 }
 
 /** Draw a held proposal, and turn its entry into an ordinary applied machine. */
 function acceptProposal(entry) {
   const applied = applyPending(entry.result);
   if (!applied) return;
+  eraseDraft();
   entry.result = applied;
   entry.chips = summarizeDiff(applied.diff);
   // Mutated in place, so the diff cannot find it by identity — see invalidate.
@@ -1352,12 +1435,24 @@ function renderMachine(entry) {
   if (held) {
     const reason = result.hold === 'scope'
       ? `Held back — ${result.holdDetail}. Check it before it lands.`
+      : result.hold === 'moved'
+        ? `Not drawn — ${result.holdDetail}.`
       : result.hold === 'ask'
         ? 'Ask mode is read-only, so this was not drawn.'
         : result.hold === 'agent' && result.agentHoldDetail
           ? `Review requested — ${result.agentHoldDetail}`
         : 'Not drawn yet — this is what would change.';
     card.append(el('div', 'sm-hold', reason));
+  }
+
+  // What the model said about the machine — its approach, its assumptions,
+  // what to try next. Rendered exactly as a reply is (see renderReply), and
+  // above the chips, because it is the answer and the chips are its receipt.
+  if (entry.message) {
+    const prose = el('div', 'sm-prose sm-md sm-card-message');
+    renderMarkdown(entry.message, prose);
+    card.append(prose);
+    triggerMath(prose);
   }
 
   const chips = entry.chips || [];
@@ -1387,16 +1482,71 @@ function renderMachine(entry) {
 
     const actions = el('div', 'sm-actions');
     if (held) {
-      const stale = result.pending.signature !== machineSignature();
-      actions.append(actionBtn('sm-btn sm-btn-primary', ICONS.check, stale ? 'Apply anyway' : 'Apply',
+      const pending = result.pending;
+      const candidate = pending.candidate;
+      // A proposal belongs to the tab it was made for — its diff is against
+      // that tab's machine — and the transcript is shared across tabs, so the
+      // card says where its buttons will act rather than letting Apply look
+      // like it means the tab on screen.
+      const home = pendingHome(pending);
+      const tabName = home.name ? `“${home.name}”` : 'its tab';
+      const away = home.open && !home.here;
+      const stale = pendingIsStale(pending);
+      const applyLabel = stale ? 'Apply anyway'
+        : pending.openNewTab ? 'Apply'
+          : !home.open ? 'Apply in a new tab'
+            : away ? `Apply in ${tabName}` : 'Apply';
+      actions.append(actionBtn('sm-btn sm-btn-primary', ICONS.check, applyLabel,
         () => acceptProposal(entry),
         {
           tip: stale
-            ? 'The canvas has changed since this was proposed — applying replaces it wholesale'
-            : 'Draw this on the canvas'
+            ? `${away ? tabName[0].toUpperCase() + tabName.slice(1) : 'The canvas'} has changed since this was proposed — applying replaces it wholesale`
+            : pending.openNewTab ? 'Draw this in a tab of its own'
+              : !home.open ? 'The tab this was made for was closed, so it opens in a tab of its own'
+                : away ? `Switch to ${tabName} and draw it there, the machine it was made for` : 'Draw this on the canvas'
         }));
+      // The proposal on the canvas, dashed over what it would replace — the
+      // chips say what changes, this shows where. Asked of *this* proposal:
+      // with two held, "is a draft shown?" made each one's button hide the
+      // other's. Recorded on the entry so syncPreviewCards can tell when the
+      // cached card has stopped being true.
+      const previewing = isShowingDraft(candidate);
+      entry.previewing = previewing;
+      // There is nowhere honest to draw it in two places: inside a block, where
+      // the canvas draws a projection the flat candidate shares no coordinates
+      // with, and when its tab has been closed, where there is no machine left
+      // to compare it with. aria-disabled rather than disabled: a disabled
+      // button cannot be focused, so the reason would reach nobody using a
+      // keyboard. Pressed, it says why instead of doing nothing. Hiding stays
+      // possible either way — a draft already held is still held.
+      const whyNot = !home.open
+        ? 'The tab this was made for was closed, so there is no canvas to preview it over — Apply opens it in a tab of its own'
+        : !away && !canDrawDraft()
+          ? 'Step out to the top level to preview — inside a block the canvas is drawing a different view of the machine'
+          : '';
+      const blocked = !previewing && !!whyNot;
+      const previewLabel = away ? `Preview in ${tabName}` : previewing ? 'Hide preview' : 'Preview';
+      const preview = actionBtn('sm-btn', ICONS.eyeOpen, previewLabel, () => {
+        if (away) {
+          // Taken there, and drawn if it is not already: a draft held for a
+          // tab reappears the moment the tab is back on screen.
+          switchTab(home.id);
+          if (!isShowingDraft(candidate)) drawDraft(candidate);
+        } else if (isShowingDraft(candidate)) eraseDraft();
+        else if (whyNot) showStatus(whyNot);
+        else drawDraft(candidate);
+      }, {
+        tip: blocked ? whyNot
+          : away ? `Switch to ${tabName} and draw the proposal over it, dashed, without applying it`
+            : previewing ? 'Take the draft off the canvas' : 'Draw the proposal over the canvas, dashed, without applying it'
+      });
+      if (blocked) preview.setAttribute('aria-disabled', 'true');
+      actions.append(preview);
       actions.append(actionBtn('sm-btn', ICONS.close, 'Discard', () => {
         replaceEntry(entry, { kind: 'note', text: `Discarded “${entry.title}”. Nothing was drawn.` });
+        // Only its own draft: another proposal being previewed is still being
+        // considered.
+        if (isShowingDraft(candidate)) eraseDraft();
         renderLog();
       }, { tip: 'Throw the proposal away' }));
       actions.append(actionBtn('sm-btn', ICONS.retry, 'Ask again',
@@ -1404,8 +1554,9 @@ function renderMachine(entry) {
         { tip: 'Send the same prompt again, replacing this turn' }));
       card.append(actions);
       if (stale) {
-        card.append(el('div', 'sm-hold is-stale',
-          'The canvas has changed since this was proposed, so the numbers above no longer describe it.'));
+        card.append(el('div', 'sm-hold is-stale', away
+          ? `${tabName[0].toUpperCase()}${tabName.slice(1)} has changed since this was proposed, so the numbers above no longer describe it.`
+          : 'The canvas has changed since this was proposed, so the numbers above no longer describe it.'));
       }
     } else {
       // The console is a sibling panel, so looking at the machine no longer costs the
@@ -1713,6 +1864,7 @@ function toggleCanvas() {
 }
 
 function clearSession() {
+  clearDraft();
   clearThread();
   Session.log = [];
   Session.entries = new Map();
@@ -3041,6 +3193,15 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
   const sentContext = Session.context.slice();
   let firstTokenSeen = false;
   const startedAt = Date.now();
+  // The draft belongs to the tab the run was sent from. The console is a panel
+  // rather than a dialog, so the reader can switch tabs mid-run — and a frame
+  // drawn over whatever tab is showing marks that machine's states as dropped
+  // by an edit that was never about it.
+  const runWorkspace = activeWorkspaceId;
+  // The last frame this run drew, so its end takes down its own draft and not
+  // a proposal the reader has since put up with Preview.
+  let drawnByRun = null;
+  let runLive = null;       // the machine its frames are compared against, away from its tab
 
   try {
     const result = await runStateMate({
@@ -3058,6 +3219,27 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
           entry.plan = event.text;
           if (!firstTokenSeen) { firstTokenSeen = true; entry.ttft = firstTokenLabel(startedAt); }
           updateRunText(entry);
+          return;
+        }
+        if (event.type === 'draft') {
+          const wanted = settings.livePreview !== false;
+          const here = activeWorkspaceId === runWorkspace;
+          if (wanted) {
+            // Held for the run's own tab, and drawn only there. Away from it,
+            // the canvas on screen is another machine, so the comparison is
+            // against the one the run started from.
+            drawDraft(event.candidate, { live: here ? undefined : event.live, workspace: runWorkspace });
+            drawnByRun = event.candidate;
+            runLive = event.live;
+          }
+          const where = !wanted ? ''
+            : !here ? ', drawn when you return to its tab'
+              : !canDrawDraft() ? ', drawn when you step out of the block'
+                : ', drawn on the canvas';
+          const had = !!entry.draft;
+          entry.draft = `${DRAFT_SOURCE[event.source] || 'Drafting'} — ${draftSize(event.candidate)}${where}`;
+          // The first frame needs a node the entry was built without.
+          if (had) updateRunText(entry); else renderLog();
           return;
         }
         if (event.type === 'reply-delta') {
@@ -3104,6 +3286,7 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
               if (!result) return;
               call.status = result.ok ? 'ok' : 'fail';
               call.error = result.ok ? '' : (result.error?.message || 'refused');
+              call.summary = result.ok ? summarizeResult(call.name, result.result) : '';
             });
           } else if (event.stage === 'resumed') {
             entry.agentNote = 'Resumed the candidate it was working on.';
@@ -3133,6 +3316,21 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
 
     Session.run = null;
     Session.runNodes = null;
+    // A held proposal keeps its draft on the canvas — it is the thing being
+    // approved — redrawn as the proposal itself, since the last frame was the
+    // machine before lint's fixes and is not the object its card asks about.
+    // Anything else has either been drawn for real or drew nothing. Either
+    // way only this run's own draft: a reply to a question asked while a
+    // proposal was being previewed must not take that preview down.
+    const ours = isShowingDraft(drawnByRun);
+    if (result?.status === 'proposed') {
+      if (ours && result.pending?.candidate) {
+        drawDraft(result.pending.candidate, {
+          live: activeWorkspaceId === runWorkspace ? undefined : runLive,
+          workspace: runWorkspace
+        });
+      }
+    } else if (ours) eraseDraft();
     // The basket is spent: it described *that* sentence, and leaving it armed
     // would silently qualify every prompt after it.
     if (sentContext.length) clearStateMateContext();
@@ -3164,6 +3362,7 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
     const machineEntry = replaceEntry(entry, {
       kind: 'machine',
       title: result.spec?.title || 'Machine',
+      message: result.spec?.message || '',
       prompt: text,
       turnId: result.answerId || entry.turnId,
       chips: summarizeDiff(result.diff),
@@ -3177,6 +3376,8 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
       announce(`StateMate proposed ${machineEntry.title}: ${machineEntry.chips.join(', ')}. Not drawn yet.`);
       showStatus(result.hold === 'scope'
         ? 'StateMate held a large edit back — review it in the console'
+        : result.hold === 'moved'
+          ? 'StateMate held its result back — the canvas moved while it worked'
         : result.hold === 'agent'
           ? 'StateMate requested approval — review it in the console'
         : 'StateMate proposed a machine — review it in the console');
@@ -3194,6 +3395,7 @@ async function send(prompt, { intent = turnIntent(), branch = '' } = {}) {
     return result;
   } catch (err) {
     Session.run = null;
+    if (isShowingDraft(drawnByRun)) eraseDraft();
     if (err?.code === 'cancelled') {
       replaceEntry(entry, { kind: 'note', text: 'Interrupted.' });
       announce('Interrupted.');
@@ -3357,19 +3559,14 @@ subscribe(Change.CANVAS, () => {
   renderStatus();
 });
 
-// A tab switch or a loaded file can bring an exercise, or take one away, and
-// the status line says what StateMate may do here.
-subscribe(Change.EXERCISE, () => {
-  if (stowed()) return;
-  renderStatus();
-});
-
-subscribe(Change.GRAPH, () => {
-  if (stowed()) return;
-  // A held proposal was computed against a particular machine, and its card
-  // says so by comparing signatures at render time. An edit made behind the
-  // console is exactly the case that comparison exists for, so the card has to
-  // be rebuilt — otherwise "Apply" goes on claiming to be current.
+/**
+ * Rebuild every held proposal's card. What it says is computed at render time
+ * against the canvas and the tab on screen — whether Apply is still current,
+ * and where Apply and Preview will act — so anything that moves either has to
+ * come through here, or a card goes on claiming what stopped being true.
+ * @returns {boolean} whether there was a card to rebuild
+ */
+function rebuildHeldCards() {
   let held = false;
   Session.log.forEach(entry => {
     if (entry.kind !== 'machine' || !entry.result?.pending) return;
@@ -3377,7 +3574,35 @@ subscribe(Change.GRAPH, () => {
     held = true;
   });
   if (held) renderLog();
-  else {
+  return held;
+}
+
+// A tab switch or a loaded file can bring an exercise, or take one away, and
+// the status line says what StateMate may do here. It is also the one
+// announcement every tab activation makes — switching tabs emits no
+// Change.GRAPH — so it is where a held card learns that "Apply" now means
+// another tab.
+subscribe(Change.EXERCISE, () => {
+  // A draft held for a tab that has since been closed can never be drawn
+  // again, and would leave its proposal's card offering to hide it.
+  const held = shownDraft();
+  if (held?.workspace && !Workspaces.some(w => w.id === held.workspace)) eraseDraft();
+  if (stowed()) return;
+  if (!rebuildHeldCards()) renderStatus();
+});
+
+subscribe(Change.GRAPH, () => {
+  // The draft is re-compared with the canvas as it now is: a state dragged,
+  // renamed or deleted since it was drawn would leave its "removed" mark over
+  // empty space and misreport what is kept. Only a draft for this tab — one
+  // held for another is not drawn here, and this canvas is not what it is
+  // about (the layer owns that rule; see showDraft).
+  if (isDraftHere()) refreshDraft(currentMachineSnapshot());
+  if (stowed()) return;
+  // A held proposal was computed against a particular machine, and its card
+  // says so by comparing signatures at render time. An edit made behind the
+  // console is exactly the case that comparison exists for.
+  if (!rebuildHeldCards()) {
     renderContext();
     renderStatus();
   }
@@ -3738,6 +3963,7 @@ export function populateStateMateSettings() {
   setValue('set-sm-model', s.model);
   setValue('set-sm-key', s.apiKey);
   setValue('set-sm-agent-tools', s.agentTools !== false);
+  setValue('set-sm-live-preview', s.livePreview !== false);
   setValue('set-sm-agent-steps', String(s.agentMaxSteps ?? 16));
   setValue('set-sm-attach', s.attachCanvas);
   setValue('set-sm-verify', s.verify);
@@ -3822,6 +4048,7 @@ export function applyStateMateSettings() {
     model: String(getValue('set-sm-model', '')).trim(),
     apiKey: String(getValue('set-sm-key', '')).trim(),
     agentTools: !!getValue('set-sm-agent-tools', true),
+    livePreview: !!getValue('set-sm-live-preview', true),
     agentMaxSteps: Number(getValue('set-sm-agent-steps', '16')) || 16,
     attachCanvas: !!getValue('set-sm-attach', true),
     verify: !!getValue('set-sm-verify', true),
@@ -3878,6 +4105,7 @@ async function runConnectionTest() {
 
 /** Test seam — module-level session state must not cross tests. */
 export function _resetPaletteForTests() {
+  clearDraft();
   Session.log = [];
   Session.authority = 'propose';
   Session.attachCanvas = null;

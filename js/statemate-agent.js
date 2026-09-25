@@ -963,7 +963,7 @@ const DEFINITIONS = {
     }
   },
   finish: {
-    access: 'control', handsOver: true, args: { title: 'string?', blurb: 'string?', caveat: 'string?', tests: 'test[]?', reply: 'string?' }, description: 'Finish with the current candidate, or provide reply for a read-only answer.',
+    access: 'control', handsOver: true, args: { title: 'string?', blurb: 'string?', message: 'string?', caveat: 'string?', tests: 'test[]?', reply: 'string?' }, description: 'Finish with the current candidate (message: what you would say to the person about it, Markdown), or provide reply to answer in prose without a machine.',
     run: (a, s) => {
       if (a.reply !== undefined) {
         s.finished = { kind: 'reply', text: String(a.reply) };
@@ -971,6 +971,7 @@ const DEFINITIONS = {
       }
       if (a.title !== undefined) s.draft.title = String(a.title);
       if (a.blurb !== undefined) s.draft.blurb = String(a.blurb);
+      if (a.message !== undefined) s.draft.message = String(a.message);
       if (a.caveat !== undefined) s.draft.caveat = String(a.caveat);
       if (Array.isArray(a.tests)) s.draft.tests = clone(a.tests);
       // The prose is kept before the gate refuses, so a second finish does not
@@ -1003,7 +1004,7 @@ const DEFINITIONS = {
     }
   },
   request_approval: {
-    access: 'control', handsOver: true, args: { reason: 'string', title: 'string?', blurb: 'string?', caveat: 'string?', tests: 'test[]?' }, description: 'Finish the candidate but require review even in Auto mode.',
+    access: 'control', handsOver: true, args: { reason: 'string', title: 'string?', blurb: 'string?', message: 'string?', caveat: 'string?', tests: 'test[]?' }, description: 'Finish the candidate but require review even in Auto mode.',
     run: (a, s) => {
       s.forceProposal = String(a.reason || 'StateMate requested review.').trim();
       return DEFINITIONS.finish.run(a, s);

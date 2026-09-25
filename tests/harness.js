@@ -116,6 +116,8 @@ import * as statematePrompt from '../js/statemate-prompt.js';
 import * as statemateProvider from '../js/statemate-provider.js';
 import * as statemateSpec from '../js/statemate-spec.js';
 import * as statemateUi from '../js/statemate-ui.js';
+import * as statematePreview from '../js/statemate-preview.js';
+import * as draftLayer from '../js/draft-layer.js';
 import * as store from '../js/store.js';
 import * as suggest from '../js/suggest.js';
 import * as themes from '../js/themes.js';
@@ -142,7 +144,7 @@ const NAMESPACES = [
   exerciseModel, exerciseGrade, exerciseUi, lexerRegex, lexerBuild, lexerEmit, lexerUi, algorithmsFa, grammarUi, grammarModel, grammarParse, grammarAnalysis, grammarTransform,
   grammarParsing, grammarConvert, grammarTree, grammarRegistry, grammarExamples, reference, workspace, quickSettings, minimap, ui,
   statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt, statemateAgent,
-  statemate, statemateUi, wizardCopy, wizard, wizardUi
+  statematePreview, draftLayer, statemate, statemateUi, wizardCopy, wizard, wizardUi
 ];
 
 // Live view over every module export. Names are unique across modules (the

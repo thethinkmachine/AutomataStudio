@@ -22,6 +22,24 @@
 //
 //  Nothing here is machine-specific prose. If you find yourself adding an
 //  `if (machine === …)` with a paragraph in it, it belongs in the guide.
+//
+//  ── Tone ─────────────────────────────────────────────────────────
+//  The prompt is written to a colleague, not to a parser. It used to be a
+//  list of prohibitions in capitals — "Nothing else", "NOT", "will be
+//  discarded" — and a model prompted like that answers like it: terse,
+//  defensive, a form filled in rather than a person helped. The rules a
+//  machine has to obey are still here, stated once each, with the reason
+//  where the reason changes what a model does. Everything the prompt used to
+//  shout is also enforced after the fact — by validateSpec, the linter and
+//  the verifier — so the prompt can afford to explain instead of warn.
+//
+//  ── Size ─────────────────────────────────────────────────────────
+//  Every word here is paid for on every request. The worked example is
+//  rendered one row per state and transition rather than pretty-printed, and
+//  omits the `false` flags validateSpec already defaults; the notation and
+//  the rules are one list rather than two that repeated each other; and the
+//  guide excerpt prefers what is particular to this app over textbook
+//  definitions the model already knows.
 
 import {
   App, MachineCategories, MachineTypes, OmegaAcceptance, getMachineConfig,
@@ -36,31 +54,27 @@ import { isMultiTape, machineSupportsBlocks } from './machines/index.js';
 import { blockMembers } from './blocks.js';
 import { scopeTrail } from './view-graph.js';
 
-// One line per spec field. Kept beside the field list rather than in the
+// Only the fields whose meaning is not obvious from their name. `from`, `to`,
+// `on`, `name`, `start` and `accept` explain themselves, and the schema line
+// already shows they exist. Kept beside the field list rather than in the
 // prompt text so the two cannot disagree about what exists.
 const FIELD_DOCS = {
-  from: 'name of the source state, exactly as spelled in "states"',
-  to: 'name of the target state, exactly as spelled in "states"',
-  on: 'the input symbol read',
-  write: 'the symbol written to the tape cell under the head',
-  move: 'head movement: "L", "R" or "S"',
-  pop: 'symbol removed from the top of the stack',
-  push: 'symbols pushed onto the stack (leftmost ends up on top)',
-  pop2: 'symbol removed from the second stack',
-  below: 'stacks inserted below the topmost one, "|"-separated, each top-first (ε for none)',
-  above: 'stacks inserted above the topmost one, "|"-separated, each top-first (ε for none)',
+  write: 'symbol written under the head',
+  move: '"L", "R" or "S"',
+  pop: 'symbol taken off the top of the stack',
+  push: 'symbols pushed; the leftmost ends up on top',
+  pop2: 'symbol taken off the second stack',
   push2: 'symbols pushed onto the second stack',
-  out: 'the output symbol or word emitted by this move',
-  weight: 'probability of this move, a number in [0, 1]',
-  tapeSyms: 'array of the symbols read, one per tape',
-  tapeWrites: 'array of the symbols written, one per tape',
-  tapeDirs: 'array of head movements, one per tape'
+  below: 'stacks inserted below the top one, "|"-separated, each top-first (ε for none)',
+  above: 'stacks inserted above the top one, "|"-separated, each top-first (ε for none)',
+  out: 'output emitted by this move',
+  weight: 'probability of this move, in [0, 1]',
+  tapeSyms: 'symbols read, one per tape',
+  tapeWrites: 'symbols written, one per tape',
+  tapeDirs: 'head moves, one per tape'
 };
 
 const STATE_FIELD_DOCS = {
-  name: 'a short, meaningful name — this is what appears in the circle',
-  start: 'true on exactly one state',
-  accept: 'true on each accepting state',
   priority: 'a small non-negative integer',
   out: 'the symbol this state emits'
 };
@@ -76,12 +90,22 @@ function stripMarkup(html) {
     .trim();
 }
 
+// A sentence about this app's own conventions — where the tape is bounded,
+// what the input syntax is, which of two textbook conventions is in force.
+const APP_SPECIFIC = /\b(this app|the app|in this app|here the)\b/i;
+
 /**
- * The first prose of a machine's guide, flattened. Math blocks are dropped:
- * they are LaTeX, they are long, and everything they say is said again in the
- * surrounding prose.
+ * What a model needs from the guide, within a budget.
+ *
+ * The guide opens with the definition — which every model already knows — and
+ * the old excerpt spent its whole budget there and was cut mid-sentence at
+ * exactly the line that mattered: "In this app the tape is infinite to the
+ * right and bounded on …". So the sentences about this app's own conventions
+ * are taken first, wherever they sit in the guide, and the opening prose fills
+ * whatever room is left. Whole lines only, in the guide's own order; math
+ * blocks are dropped, because everything they say is said again in prose.
  */
-function guideGrounding(machine, budget = 1400) {
+function guideGrounding(machine, budget = 900) {
   const guide = MachineGuides[machine] || (machine === 'PDA' ? MachineGuides['DPDA'] : null);
   if (!guide) return '';
 
@@ -90,13 +114,22 @@ function guideGrounding(machine, budget = 1400) {
     for (const block of section.blocks || []) {
       if (block.t === 'p') lines.push(stripMarkup(block.x));
       else if (block.t === 'ul') block.x.forEach(item => lines.push('- ' + stripMarkup(item)));
-      if (lines.join(' ').length > budget) break;
     }
-    if (lines.join(' ').length > budget) break;
   }
+  // A line ending in a colon introduces the table or formula after it, which
+  // is not being sent — alone it reads as a sentence cut off.
+  for (let i = lines.length - 1; i >= 0; i--) if (/:\s*$/.test(lines[i])) lines.splice(i, 1);
 
-  const text = lines.join('\n');
-  return text.length > budget ? text.slice(0, budget) + '…' : text;
+  const chosen = new Set();
+  let used = 0;
+  const take = i => {
+    if (chosen.has(i) || used + lines[i].length > budget) return;
+    chosen.add(i);
+    used += lines[i].length + 1;
+  };
+  lines.forEach((line, i) => { if (APP_SPECIFIC.test(line)) take(i); });
+  lines.forEach((_, i) => take(i));
+  return [...chosen].sort((a, b) => a - b).map(i => lines[i]).join('\n');
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -107,6 +140,30 @@ function guideGrounding(machine, budget = 1400) {
 //  a slightly weaker prompt rather than a broken feature.
 
 const fewShotCache = new Map();
+
+/**
+ * Three test words for the example, mixing verdicts where the file allows.
+ *
+ * The prompt asks for at least one word that must be rejected, and the
+ * example used to take the file's first three inputs — which for most
+ * examples were three accepts, so the one complete answer the model was shown
+ * broke the rule stated above it.
+ */
+function exampleTests(inputs) {
+  const all = Array.isArray(inputs) ? inputs : [];
+  const acc = all.filter(t => t.expect === 'accept');
+  const rej = all.filter(t => t.expect === 'reject');
+  const picked = [acc[0], rej[0], acc[1] || rej[1]].filter(Boolean);
+  for (const t of all) {
+    if (picked.length >= 3) break;
+    if (!picked.includes(t)) picked.push(t);
+  }
+  return picked.slice(0, 3).map(t => ({
+    w: t.w || 'ε',
+    ...(t.expect ? { expect: t.expect } : {}),
+    ...(t.out !== undefined ? { out: t.out } : {})
+  }));
+}
 
 export async function loadFewShot(machine) {
   if (fewShotCache.has(machine)) return fewShotCache.get(machine);
@@ -133,16 +190,22 @@ export async function loadFewShot(machine) {
         outputAlpha: data.outputAlpha,
         tapeCount: data.tapeCount
       };
-      spec = machineToSpec(source);
-      spec.title = data.meta?.title || 'Example';
-      spec.blurb = data.meta?.blurb || '';
-      // Only a couple of tests: the few-shot is teaching the shape, not the
-      // coverage, and every extra line here is paid for on every request.
-      spec.tests = (data.meta?.inputs || []).slice(0, 3).map(t => ({
-        w: t.w || 'ε',
-        ...(t.expect ? { expect: t.expect } : {}),
-        ...(t.out !== undefined ? { out: t.out } : {})
-      }));
+      const body = machineToSpec(source);
+      // Key order is the answer's order: kind and title first, the machine,
+      // then the tests. The file's own order put the alphabet after the
+      // transitions and had no "kind" at all, under a line telling the model
+      // to copy the shape exactly.
+      spec = {
+        kind: 'machine',
+        machine: body.machine,
+        title: data.meta?.title || 'Example',
+        blurb: data.meta?.blurb || '',
+        ...Object.fromEntries(['sigma', 'stackAlpha', 'outputAlpha', 'tapeCount']
+          .filter(k => body[k] !== undefined).map(k => [k, body[k]])),
+        states: body.states,
+        transitions: body.transitions,
+        tests: exampleTests(data.meta?.inputs)
+      };
     }
   } catch (e) {
     spec = null;
@@ -157,6 +220,32 @@ export function _clearFewShotCache() {
   fewShotCache.clear();
 }
 
+/**
+ * The example as the model should write one: a row per state and per
+ * transition, and no `false` flags, since an absent flag already means false.
+ * Pretty-printed with one field per line it was ~40% whitespace — 4.5k
+ * characters for the multi-tape example — paid for on every request.
+ */
+export function renderExample(spec) {
+  const row = value => JSON.stringify(value);
+  const lean = s => Object.fromEntries(Object.entries(s).filter(([, v]) => v !== false));
+  const lines = ['{'];
+  const entries = Object.entries(spec);
+  entries.forEach(([key, value], i) => {
+    const comma = i < entries.length - 1 ? ',' : '';
+    if (Array.isArray(value) && value.length && typeof value[0] === 'object') {
+      const rows = key === 'states' ? value.map(lean) : value;
+      lines.push(`  "${key}": [`);
+      rows.forEach((item, j) => lines.push(`    ${row(item)}${j < rows.length - 1 ? ',' : ''}`));
+      lines.push(`  ]${comma}`);
+    } else {
+      lines.push(`  "${key}": ${row(value)}${comma}`);
+    }
+  });
+  lines.push('}');
+  return lines.join('\n');
+}
+
 // ══════════════════════════════════════════════════════════════════
 //  THE SCHEMA BLOCK
 // ══════════════════════════════════════════════════════════════════
@@ -167,43 +256,34 @@ function schemaBlock(machine, { notes = false } = {}) {
   const transFields = transitionFieldsFor(machine);
   const kind = testKindFor(machine);
 
-  const alphabets = [`  "sigma": [ … ],                 the input alphabet Σ`];
+  const alphabets = [`  "sigma": [ … ],                  input alphabet Σ`];
   if (cfg.hasStack) {
-    const label = cfg.hasTape ? 'the tape alphabet Γ (must contain the blank)' : 'the stack alphabet Γ (must contain the bottom marker)';
+    const label = cfg.hasTape ? 'tape alphabet Γ, including the blank' : 'stack alphabet Γ, including the bottom marker';
     alphabets.push(`  "stackAlpha": [ … ],             ${label}`);
   }
-  if (cfg.isTransducer) alphabets.push(`  "outputAlpha": [ … ],            the output alphabet Δ`);
+  if (cfg.isTransducer) alphabets.push(`  "outputAlpha": [ … ],            output alphabet Δ`);
   if (isMultiTape(machine)) alphabets.push(`  "tapeCount": ${App.tapeCount},                   number of tapes (${MIN_TAPES}–${maxTapes()})`);
 
   const testLine = kind === 'omega'
-    ? `  "tests": [ { "w": "a(bc)", "expect": "accept" }, … ]   ω-words as u(v): stem u, then v repeated forever`
+    ? `  "tests": [ { "w": "a(bc)", "expect": "accept" }, … ],  ω-words written u(v): stem u, then v forever`
     : kind === 'output'
-      ? `  "tests": [ { "w": "abb", "out": "011" }, … ]          the exact output word this machine emits`
-      : `  "tests": [ { "w": "abb", "expect": "accept" }, … ]    "accept" or "reject"`;
+      ? `  "tests": [ { "w": "abb", "out": "011" }, … ],         the exact output for that input`
+      : `  "tests": [ { "w": "abb", "expect": "accept" }, … ],   "accept" or "reject"`;
 
-  // Blocks are shown only to a machine that can have them, and the paragraph
-  // under this is what makes "omit it" the safe default: absent means unchanged,
-  // so a model that never mentions the hierarchy cannot destroy it.
   const blocks = machineSupportsBlocks(machine)
-    ? [
-      '  "blocks": [                      OPTIONAL — a subroutine drawn as one box; omit unless changing them',
-      '    { "name": "ALU/add", "parent": "ALU", "entry": "<a state name>",',
-      '      "exits": [ { "state": "<a state name>", "label": "carry" } ] }',
-      '  ],'
-    ]
+    ? [`  "blocks": [ { "name": "ALU/add", "parent": "ALU", "entry": "<state>", "exits": [ { "state": "<state>", "label": "carry" } ] } ],   optional — see Blocks`]
     : [];
   const stateShape = stateFields.map(f => `"${f}": …`)
-    .concat(machineSupportsBlocks(machine) ? ['"block": "ALU/add"   OPTIONAL'] : [])
+    .concat(machineSupportsBlocks(machine) ? ['"block": "ALU/add" (optional)'] : [])
     .join(', ');
 
   return [
     '{',
     '  "kind": "machine",',
-    '  "plan": "one sentence on the idea behind your construction",',
+    '  "plan": "…",                      optional — one line on your approach; it shows while you work',
     `  "machine": "${machine}",`,
-    '  "title": "a short name for this machine",',
-    '  "blurb": "one or two sentences a student would find useful",',
-    '  "caveat": "…",                   OPTIONAL — see below; omit it unless it applies',
+    '  "title": "…",                     a short name',
+    '  "blurb": "…",                     one or two sentences for the card beside the diagram',
     ...alphabets,
     ...blocks,
     '  "states": [',
@@ -213,17 +293,17 @@ function schemaBlock(machine, { notes = false } = {}) {
     `    { ${transFields.map(f => `"${f}": …`).join(', ')} }`,
     '  ],',
     testLine,
-    // Only offered when the user asked for it — an unasked-for sticky note on
-    // someone's diagram is clutter, not an explanation.
+    '  "caveat": "…",                    optional — see Tests and caveats',
     ...(notes
-      ? ['  "notes": [ { "text": "one insight about the construction", "anchor": "<a state name>" } ]   at most two']
+      ? ['  "notes": [ { "text": "…", "anchor": "<state>" } ],   up to two sticky notes on the diagram']
       : []),
+    '  "message": "…"                    optional — what you want to say to them about it',
     '}'
   ].join('\n');
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  YOU ARE NOT LIMITED TO THE CURRENT MACHINE
+//  OTHER MODELS
 // ══════════════════════════════════════════════════════════════════
 //  Switching has always worked — validateSpec accepts any key in
 //  MachineTypes, compileSpec starts clean when the type changes, and
@@ -232,9 +312,11 @@ function schemaBlock(machine, { notes = false } = {}) {
 //  cannot construct Turing machines") instead of changing the canvas.
 //
 //  Only the current machine's rules are spelled out in full — every machine's
-//  would be an enormous prompt. The signature line is what a switch needs to
+//  would be an enormous prompt. The extra fields are what a switch needs to
 //  get the transition shape right, and the linter's repair round covers the
 //  rest, since lintCandidate judges the machine the answer actually names.
+//  One line per category rather than one per machine: the same words, a
+//  third of the lines.
 
 function machineMenu(current) {
   const lines = [];
@@ -244,9 +326,9 @@ function machineMenu(current) {
       .map(m => {
         const extra = transitionFieldsFor(m).filter(f => !['from', 'to', 'on'].includes(f));
         const fields = extra.length ? ` (+ ${extra.join(', ')})` : '';
-        return `    ${m} — ${MachineTypes[m].fullName}${fields}`;
+        return `${m} — ${MachineTypes[m].fullName}${fields}`;
       });
-    if (entries.length) lines.push(`  ${cat.label}:`, ...entries);
+    if (entries.length) lines.push(`- ${cat.label}: ${entries.join('; ')}`);
   }
   return lines.join('\n');
 }
@@ -255,181 +337,150 @@ function machineMenu(current) {
 //  BLOCKS
 // ══════════════════════════════════════════════════════════════════
 //  A block is a subroutine drawn as one node, and it adds no computational
-//  power — the expansion is the proof, and the machine stays flat. So the
-//  states array a model is handed is the whole machine at every depth, and
-//  nothing here changes what it may build; what it changes is whether an edit
-//  *destroys* a grouping the reader spent an hour making.
-//
-//  The rule the whole paragraph exists to state is **absent means unchanged**.
-//  That is what makes "omit it" the safe default and what lets every prompt
-//  written before this field existed go on meaning what it meant.
+//  power — the expansion is the proof, and the machine stays flat. The rule
+//  the paragraph exists to state is **absent means unchanged**: that is what
+//  makes leaving it out safe, and what lets a model that never mentions the
+//  hierarchy leave someone's grouping intact.
 
 function blocksBlock(machine) {
   if (!machineSupportsBlocks(machine)) return '';
   return [
-    `BLOCKS. A block is a sub-machine drawn as one box on the canvas: control enters at its "entry" state and leaves from its "exits". It adds no power — the app inlines it, so the machine you are given is already flat, with every state at every depth in "states" and the block path written into its name (\`ALU/add/scan\`).`,
-    `A block is addressed by its PATH, not its bare name, because a name is unique only among its siblings: "ALU/add" and "FPU/add" are two different blocks.`,
-    `**If you are not changing the hierarchy, omit "blocks" and omit "block" on every state.** They are then left exactly as they are. Sending "blocks" is a declaration that it is now the whole tree — anything you leave out of it stops being a block, and its states come back out onto the level above.`,
-    `Never restate the tree just to echo it back. Send it only to create a block, dissolve one, or move states between them.`
+    `Blocks. A block is a sub-machine drawn as one box: control enters at its "entry" and leaves from its "exits". It adds no power — the machine you are shown is already flat, with the block path in each state's name (\`ALU/add/scan\`) — and a block is named by its path, since "ALU/add" and "FPU/add" are different blocks.`,
+    `Leave "blocks" and "block" out unless you are creating, dissolving or rearranging blocks; left out, they stay exactly as they are. When you do send "blocks", it is the whole tree: a block you leave out of it is dissolved.`
   ].join('\n');
-}
-
-function switchBlock(machine) {
-  return [
-    `YOU CAN CHANGE THE MODEL. The canvas is currently a ${machine}, but "machine" is yours to set: name a different one and the app switches the canvas to it. Every transition then carries that model's fields, listed in brackets below, and its own rules apply.`,
-    machineMenu(machine),
-    `Switch when the request needs it — a language no ${machine} can recognise, or an explicit ask for another model. Say so in "caveat" when you do, because the switch replaces what is on the canvas rather than editing it. Do not switch when the request fits the current model: a needless change throws away the user's diagram.`
-  ].join('\n');
-}
-
-// The other turn. Its whole purpose is the request that is not a request for
-// a machine at all, so the copy spends most of its words fencing that off from
-// the request that is merely hard — which is what "caveat" is for — and from
-// the request that only needs a different model, which is a switch.
-function replyBlock(machine) {
-  return [
-    `THE OTHER SHAPE — only when the request is not a request for a machine:`,
-    '{',
-    '  "kind": "reply",',
-    '  "text": "a short paragraph — what you cannot do, and what you could do instead"',
-    '}',
-    `A reply draws nothing. Use it when there is no machine to build and no change to make: a question about theory, a question about the machine already on the canvas, an instruction this tool cannot carry out, a request that names no language.`,
-    `Answering is not declining. When the canvas holds a machine and the request only asks about it — "why does it reject aab", "is this minimal", "what language does it accept", "explain state q2" — reply with the answer and leave the machine alone. Rebuilding a diagram someone asked a question about is destructive, not helpful.`,
-    `Do NOT use it for a request that is merely hard, vague, or impossible to satisfy exactly — build the closest correct machine and put the gap in "caveat". Do NOT use it because the request needs a model other than ${machine} — switch instead. Never claim you can only build ${machine}s; you can build any model in the list above. If the request names any change to make, however small, build or edit rather than reply; when in doubt about that, build.`,
-    // The reply card renders markdown, so saying so is the difference between
-    // a formatted answer and one with literal asterisks in it. "text" is a
-    // JSON string either way — the newlines in it have to be escaped as \\n.
-    `"text" is rendered as Markdown: **bold**, lists, \`code\`, tables, and $TeX$ or $$display TeX$$ all typeset. Use it for structure, keep it short, and remember it is a JSON string — escape newlines as \\n. Raw HTML is not rendered.`
-  ].join('\n');
-}
-
-function fieldGlossary(machine) {
-  const lines = [];
-  lines.push('State fields:');
-  stateFieldsFor(machine).forEach(f => lines.push(`  ${f} — ${STATE_FIELD_DOCS[f] || ''}`));
-  lines.push('Transition fields (every transition carries all of them):');
-  transitionFieldsFor(machine).forEach(f => lines.push(`  ${f} — ${FIELD_DOCS[f] || ''}`));
-  return lines.join('\n');
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  THE RULES THAT ARE NOT NEGOTIABLE
+//  THE RULES
 // ══════════════════════════════════════════════════════════════════
 //  These duplicate the linter deliberately. The linter is what makes the
 //  feature correct; saying the same thing here is what keeps most requests
-//  from needing a repair round in the first place.
+//  from needing a repair round in the first place. The workspace's notation
+//  is folded in here rather than listed separately — the old prompt stated ε,
+//  the wildcard and the blank once as "notation" and again as rules.
 
 function machineRules(machine) {
   const cfg = getMachineConfig(machine);
   const sym = App.config.sym;
   const rules = [];
 
-  if (hasSingleValuedDelta(machine)) {
-    rules.push(`${machine} is DETERMINISTIC. No state may have two transitions that could both apply to the same situation. Check every state before you answer.`);
-  } else {
-    rules.push(`${machine} is nondeterministic: several transitions may apply at once, and the machine accepts if any run accepts.`);
-  }
+  rules.push(hasSingleValuedDelta(machine)
+    ? `It is deterministic: no state may have two transitions that could apply to the same situation.`
+    : `It is nondeterministic: several transitions may apply at once, and a word is accepted if any run accepts.`);
 
   rules.push(cfg.hasEpsilon
-    ? `ε-transitions are allowed. Write the read symbol as "${sym.eps}" to consume no input.`
-    : `ε-transitions are NOT allowed in a ${machine}. Every transition must read a real symbol.`);
+    ? `"${sym.eps}" as the read symbol is an ε-move: it consumes no input.`
+    : `There are no ε-moves; every transition reads a real symbol.`);
 
-  rules.push(`"${sym.any}" as a read symbol is a wildcard matching any input symbol. A concrete symbol beats it out of the same state.`);
+  rules.push(`"${sym.any}" as the read symbol is a wildcard for any input symbol; a concrete symbol out of the same state takes precedence over it.`);
 
   if (cfg.hasStack && !cfg.hasTape) {
-    rules.push(`The stack starts holding "${sym.stackBottom}". Use "${sym.eps}" for pop to mean "do not pop" and for push to mean "push nothing". A multi-character push string lands with its leftmost character on top.`);
+    rules.push(`The stack starts holding "${sym.stackBottom}". "${sym.eps}" as pop means don't pop, and as push means push nothing.`);
   }
   if (cfg.hasTape) {
-    rules.push(`The blank symbol is "${sym.blank}". Γ must contain it and every symbol of Σ. A tape transition must give both "write" and "move".`);
+    rules.push(`The blank is "${sym.blank}"; Γ contains it and all of Σ. Every transition gives both "write" and "move".`);
   }
   if (cfg.hasEndMarkers) {
-    rules.push(`The input is bracketed by the end markers "${sym.leftMarker}" and "${sym.rightMarker}". They are read from the tape, and they must NOT appear in Σ.`);
+    rules.push(`The input is bracketed by the end markers "${sym.leftMarker}" and "${sym.rightMarker}", which are read from the tape and are not part of Σ.`);
   }
   if (isTwoWayFA(machine)) {
-    rules.push(`The head moves in both directions: every transition must give "move" as "L", "R" or "S".`);
+    rules.push(`The head moves both ways: every transition gives "move" as "L", "R" or "S".`);
   }
   if (cfg.isWeighted) {
-    rules.push(`For every state and every input symbol, the weights of the transitions leaving that state on that symbol must sum to exactly 1. A word is accepted when its acceptance probability exceeds the cut-point ${App.config.pfaCutPoint}.`);
+    rules.push(`For each state and input symbol, the outgoing weights sum to exactly 1. A word is accepted when its probability exceeds the cut-point ${App.config.pfaCutPoint}.`);
   }
   if (isOmegaAutomaton(machine)) {
     const acc = OmegaAcceptance[omegaAcceptanceOf(machine)];
-    rules.push(`Acceptance is ${acc.label}: ${acc.say}. The input is an infinite word written u(v) — the stem u, then v repeated forever.`);
+    rules.push(`Acceptance is ${acc.label}: ${acc.say}. Inputs are infinite words written u(v) — the stem u, then v repeated forever.`);
     if (usesParityPriorities(machine)) {
-      rules.push(`There is NO set of accepting states. Every state carries a "priority" integer instead; do not mark states as accepting.`);
+      rules.push(`There are no accepting states: every state carries a "priority" instead.`);
     }
     if (acc.structural) {
-      rules.push(`Additionally, every cycle in the automaton must lie wholly inside the accepting set or wholly outside it.`);
+      rules.push(`Every cycle must lie wholly inside the accepting set or wholly outside it.`);
     }
   }
   if (cfg.isTransducer) {
     rules.push(machine === 'Moore'
-      ? `A Moore machine emits from the state: give each state an "out". Transitions carry no output.`
-      : `Output is emitted per transition. Use "" for a move that emits nothing.`);
+      ? `Output comes from states: give each state an "out"; transitions carry none.`
+      : `Output comes from transitions; use "" for a move that emits nothing.`);
   }
   if (isAnyTM(machine)) {
-    rules.push(`Halt by moving to an accepting state. A run with no applicable transition halts and rejects.`);
+    rules.push(`It accepts by entering an accepting state; with no applicable transition it halts and rejects.`);
   }
 
-  rules.push(`Use at most ${MAX_SPEC_STATES} states, and prefer the smallest machine that is correct.`);
-  return rules.map((r, i) => `${i + 1}. ${r}`).join('\n');
+  rules.push(`At most ${MAX_SPEC_STATES} states — and the smallest correct machine is the best one.`);
+  return rules.map(r => `- ${r}`).join('\n');
+}
+
+/** Only the fields whose names do not say what they hold. */
+function fieldNotes(machine) {
+  const notes = [
+    ...stateFieldsFor(machine).filter(f => STATE_FIELD_DOCS[f]).map(f => `"${f}" on a state: ${STATE_FIELD_DOCS[f]}`),
+    ...transitionFieldsFor(machine).filter(f => FIELD_DOCS[f]).map(f => `"${f}": ${FIELD_DOCS[f]}`)
+  ];
+  return notes.length ? `Fields: ${notes.join('; ')}.` : '';
 }
 
 // ══════════════════════════════════════════════════════════════════
 //  ASSEMBLY
 // ══════════════════════════════════════════════════════════════════
 
-export async function buildSystemPrompt(machine = App.machine, { notes = false } = {}) {
+/**
+ * The system prompt. Deterministic in its arguments — the provider caches it
+ * as a prefix, and anything that varied between calls would turn every cache
+ * read into a write.
+ *
+ * `tools` says the model has agent tools: its first move may then be a tool
+ * call rather than an answer, which the old opening line ("you answer with
+ * one machine, as JSON. Nothing else.") flatly contradicted.
+ */
+export async function buildSystemPrompt(machine = App.machine, { notes = false, tools = false } = {}) {
   const cfg = getMachineConfig(machine);
   const fewShot = await loadFewShot(machine);
 
   const parts = [
-    `You build automata for AutomataStudio, a teaching/designing tool for automata theory. You are given a request and you answer with one machine, as JSON. Nothing else.`,
+    `You are StateMate, the assistant built into AutomataStudio, an app for designing and learning automata. You work with the person at the canvas: build and edit machines, explain how they work, answer theory questions, and think problems through with them. Talk like a knowledgeable colleague — clear, direct, and happy to explain your reasoning.`,
     ``,
-    `CURRENT MODEL: ${machine} — ${cfg.fullName}. This is what the canvas holds, and what the schema and rules below describe. It is a starting point, not a limit — see YOU CAN CHANGE THE MODEL.`,
+    `The app reads your answer, so each answer is a single JSON object${tools ? ' (tool calls aside)' : ''} — no text around it, no code fence. It comes in two kinds.`,
     ``,
-    `OUTPUT FORMAT — a single JSON object, no prose, no code fences, keys in this order:`,
+    `A machine, when they want something built or changed:`,
     schemaBlock(machine, { notes }),
     ``,
-    switchBlock(machine),
-    blocksBlock(machine),
+    `A reply, for everything else — a question, an explanation, a discussion, or a question of your own when the request could mean very different machines:`,
+    `{ "kind": "reply", "text": "…" }`,
     ``,
-    replyBlock(machine),
+    `"text" and "message" are shown to them as Markdown ($TeX$ and $$display TeX$$ typeset). Write them the way you would say it: your reasoning, the assumptions you made, what they might try next. They are JSON strings, so newlines are written \\n.`,
     ``,
-    fieldGlossary(machine),
+    `Which to send:`,
+    `- A question about the machine on the canvas — why it rejects a word, what it accepts, whether it is minimal — gets a reply. Rebuilding something they only asked about would throw away their work.`,
+    `- Any change they ask for, however small, gets the machine.`,
+    `- A request that is hard to meet exactly still gets the closest honest machine, with the gap named in "caveat" — or a reply explaining why, if nothing close would help.`,
+    `- If it is ambiguous in a way that changes the machine a lot, ask. If it is ambiguous in a small way, build it and say what you assumed.`,
     ``,
-    `NOTATION IN THIS WORKSPACE — use these exact characters:`,
-    `  ε (empty / no move) = "${App.config.sym.eps}"`,
-    `  wildcard            = "${App.config.sym.any}"`,
-    ...(cfg.hasTape ? [`  blank               = "${App.config.sym.blank}"`] : []),
-    ...(cfg.hasStack && !cfg.hasTape ? [`  stack bottom        = "${App.config.sym.stackBottom}"`] : []),
-    ...(cfg.hasEndMarkers ? [`  end markers         = "${App.config.sym.leftMarker}" and "${App.config.sym.rightMarker}"`] : []),
+    `The current model is ${machine} (${cfg.fullName}). That is what the canvas holds and what the rules below describe, but "machine" is yours to set: when the request needs a different model — a language no ${machine} can recognise, or they ask for one — switch to it, and mention it, since switching replaces what is on the canvas. You can build any of these, each with its extra transition fields:`,
+    machineMenu(machine),
     ``,
-    `RULES FOR ${machine}:`,
+    `Rules for a ${machine}:`,
     machineRules(machine),
+    ...(fieldNotes(machine) ? [fieldNotes(machine)] : []),
+    ...(blocksBlock(machine) ? [``, blocksBlock(machine)] : []),
     ``,
-    `TESTS ARE MANDATORY AND THEY WILL BE EXECUTED.`,
-    `Give at least ${MIN_SPEC_TESTS} tests, including the shortest interesting word and at least one that must be rejected. The app runs them against the machine you just described, using its real simulator, before drawing anything. If your predictions do not match what your machine does, you will be asked to fix it — so trace them yourself first.`,
-    ``,
-    `IF YOU CANNOT DO EXACTLY WHAT WAS ASKED, SAY SO IN "caveat".`,
-    `Build the closest correct machine you can, and set "caveat" to one sentence naming the gap — that the language requested is not recognisable by a ${machine}, say, and what the machine you built recognises instead. Then write tests for the machine you actually built, not for the one that was asked for. Omit "caveat" entirely when the answer is exactly what was requested: it is not for describing a machine that is correct, which is what "blurb" is for.`,
-    `"caveat" is about the MACHINE, never about you or about producing the answer. Do not write that something was corrected, repaired, fixed, revised or updated, and do not refer to a previous attempt — the user is looking at one machine and has no idea there was another. "This DFA accepts only n ≤ 3, because aⁿbⁿ is not regular" is a caveat. "The machine was corrected to accurately reflect the language" is not, and will be discarded.`
+    `Tests and caveats. Give at least ${MIN_SPEC_TESTS} test words, including the shortest interesting one and at least one that should be rejected. The app runs them on your machine with its real simulator before drawing anything, and sends back any that disagree — so trace them first. Test the machine you actually built, not the one you wish you could have.`,
+    `"caveat" is one sentence about a gap between the request and the machine — "aⁿbⁿ is not regular, so this accepts it only for n ≤ 3". Leave it out when the machine is what was asked for. It describes the machine, not your process: no "corrected", "fixed" or "previous attempt" — they only ever see the one machine.`
   ];
 
   const grounding = guideGrounding(machine);
   if (grounding) {
-    parts.push(``, `REFERENCE — what a ${machine} is, from this app's own documentation:`, grounding);
+    parts.push(``, `About the ${machine}, from the app's reference:`, grounding);
   }
 
   if (fewShot) {
-    parts.push(
-      ``,
-      `A COMPLETE, VALID ANSWER for a different ${machine} — copy this shape exactly:`,
-      JSON.stringify(fewShot, null, 1)
-    );
+    parts.push(``, `A complete machine answer, for a different ${machine}:`, renderExample(fewShot));
   }
 
-  return parts.join('\n');
+  return parts.filter((line, i, all) => !(line === '' && all[i - 1] === '')).join('\n');
 }
+
 
 /**
  * Past turns, as provider messages.
@@ -574,13 +625,12 @@ export function buildUserMessage({ prompt, intent, canvasSpec = null, authority 
     // destructive. The two cases are spelled out so the request decides.
     if (intent === 'edit') {
       parts.push(
-        `If the request asks for a change, return the modified machine, and keep the names of every state you are not changing so the diagram survives the edit.`,
-        `If the request only asks a question about this machine, answer it with a reply and change nothing.`,
+        `To change it, send back the whole modified machine, keeping the names of the states you are not changing — that is how the diagram keeps its layout. If they are only asking about it, reply and leave it as it is.`,
         ``
       );
     }
   } else if (intent === 'edit') {
-    parts.push(`The canvas is empty, so build the machine from scratch.`, ``);
+    parts.push(`The canvas is empty, so anything you build starts from scratch.`, ``);
   }
 
   // Where the reader is standing, when that is not the top level.
@@ -613,22 +663,21 @@ export function buildUserMessage({ prompt, intent, canvasSpec = null, authority 
   // machine answer is discarded); this is the part that can only be asked.
   if (tutor) {
     parts.push(
-      `THE READER IS A STUDENT WORKING ON AN EXERCISE, and its author allows hints only. You are a tutor, not a solver.`,
-      `Answer with "kind": "reply". Do not give the answer in any form: no machine, no transition list or table, no state-by-state description of a solution, no grammar for the target language, and no regular expression for it.`,
-      `Do help: point to a word their machine gets wrong and explain why, name the idea or construction the exercise is practising, ask a question that leads to the next step, or confirm whether a claim they make is true.`,
-      `If they ask you to solve it or to build it, say that this exercise asks them to work it out, and offer a hint instead.`,
+      `They are a student working on an exercise whose author allows hints only, so be a tutor here rather than a solver.`,
+      `Answer with a reply, and don't give the answer away in any form — no machine, no transition list or table, no state-by-state solution, no grammar or regular expression for the target language.`,
+      `What helps: a word their machine gets wrong and why, the idea the exercise is practising, a question that leads to the next step, or whether a claim they make is true.`,
+      `If they ask you to solve it, tell them the exercise wants them to work it out, and offer a hint instead.`,
       ``
     );
   } else if (authority === 'ask') {
     parts.push(
-      `THIS TURN IS READ-ONLY. Nothing you return will be drawn on the canvas.`,
-      `Answer with "kind": "reply". If the request asks for a machine, describe the one you would build — how many states, what each one remembers, the shape of the transitions — instead of returning it. The reader can turn that description into a real build with one click.`,
+      `StateMate is in ask mode, so this turn is read-only: nothing you return will be drawn.`,
+      `Answer with a reply. If they want a machine, describe the one you would build — how many states, what each remembers, the shape of the transitions. They can turn that into a real build with one click.`,
       ``
     );
   }
 
-  parts.push(`REQUEST: ${prompt}`);
-  parts.push(``, `Answer with the JSON object only.`);
+  parts.push(`Their message: ${prompt}`);
   return parts.join('\n');
 }
 
@@ -653,10 +702,10 @@ function repairTraceLine(step) {
 }
 
 export function buildRepairMessage({ prompt, failures = [], findings = [], traces = [] }) {
-  const parts = [`That answer cannot be used.`, ``];
+  const parts = [`The app checked that machine, and it isn't right yet.`, ``];
 
   if (failures.length) {
-    parts.push(`It failed ${failures.length} of the checks you predicted:`);
+    parts.push(`${failures.length} of your own test predictions didn't hold:`);
     failures.slice(0, 8).forEach(f => parts.push(`  ${f}`));
     parts.push(``);
   }
@@ -666,7 +715,7 @@ export function buildRepairMessage({ prompt, failures = [], findings = [], trace
   // correct move available is to re-read the transition list and guess —
   // which is how a repair round turns into a rewrite.
   if (traces.length) {
-    parts.push(`Here is what those words did, step by step, in your machine:`);
+    parts.push(`Here is what those words actually did in your machine, step by step:`);
     traces.forEach(trace => {
       if (trace.error) {
         parts.push(`  "${trace.word}" — could not be read: ${trace.why}`);
@@ -680,15 +729,15 @@ export function buildRepairMessage({ prompt, failures = [], findings = [], trace
   }
 
   if (findings.length) {
-    parts.push(`Problems found in the machine itself:`);
+    parts.push(`Problems in the machine itself:`);
     findings.slice(0, 6).forEach(f => parts.push(`  · ${f.message}`));
     parts.push(``);
   }
 
   parts.push(
-    `The original request was: ${prompt}`,
+    `Their original message: ${prompt}`,
     ``,
-    `Return the corrected machine — "kind": "machine", same schema, same key order, no prose. A reply is not an acceptable answer here.`
+    `Send the corrected machine as a machine answer. If the tests themselves were wrong, fix the tests; if the request can't be met exactly, say so in "caveat".`
   );
   return parts.join('\n');
 }

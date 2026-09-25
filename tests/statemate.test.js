@@ -994,8 +994,9 @@ test('the prompt is derived from the machine registry, not written per machine',
   assert.match(system, /DPDA/);
   assert.match(system, /Deterministic Pushdown Automaton/);
   assert.match(system, /"pop"/, 'the stack fields are offered');
-  assert.match(system, /DETERMINISTIC/, 'the determinism rule is stated up front');
-  assert.match(system, /TESTS ARE MANDATORY/);
+  assert.match(system, /It is deterministic: no state may have two transitions/, 'the determinism rule is stated');
+  assert.match(system, /Give at least 3 test words/);
+  assert.match(system, /at least one that should be rejected/);
 
   const dfa = await h.context.buildSystemPrompt('DFA');
   assert.ok(!/"pop"/.test(dfa), 'a DFA is never offered a stack');
@@ -1005,14 +1006,16 @@ test('the prompt tells the model it can change the model', async () => {
   const h = createHarness();
   const system = await h.context.buildSystemPrompt('DFA');
 
-  assert.match(system, /YOU CAN CHANGE THE MODEL/);
-  assert.match(system, /TM — .*\(\+ write, move\)/, 'a switch target arrives with the fields it needs');
-  assert.match(system, /DPDA — .*\(\+ pop, push\)/);
-  assert.ok(!/^\s+DFA — /m.test(system), 'the current model is not offered as somewhere to switch to');
+  assert.match(system, /"machine" is yours to set/);
+  assert.match(system, /TM — [^;]*\(\+ write, move\)/, 'a switch target arrives with the fields it needs');
+  assert.match(system, /DPDA — [^;]*\(\+ pop, push\)/);
+  const menu = system.slice(system.indexOf('You can build any of these'), system.indexOf('Rules for a DFA'));
+  assert.ok(!/[:;] DFA — /.test(menu), 'the current model is not offered as somewhere to switch to');
 
   // The refusal this fixes was "I build only DFAs, I cannot construct Turing
   // machines" — a buildable request declined for a limit that does not exist.
-  assert.match(system, /Never claim you can only build DFAs/);
+  assert.match(system, /a language no DFA can recognise/);
+  assert.match(system, /You can build any of these/);
 });
 
 test('the prompt offers a caveat for the request it cannot honour', async () => {
@@ -1020,16 +1023,65 @@ test('the prompt offers a caveat for the request it cannot honour', async () => 
   const system = await h.context.buildSystemPrompt('DFA');
 
   assert.match(system, /"caveat"/, 'the field is in the schema block');
-  assert.match(system, /IF YOU CANNOT DO EXACTLY WHAT WAS ASKED/);
-  assert.match(system, /not recognisable by a DFA/, 'the motivating case is named for this machine');
-  assert.match(system, /Omit "caveat" entirely/, 'a correct answer must not carry one');
+  assert.match(system, /closest honest machine, with the gap named in "caveat"/);
+  assert.match(system, /is not regular, so this accepts it only for/, 'the motivating case is shown');
+  assert.match(system, /Leave it out when the machine is what was asked for/, 'a correct answer must not carry one');
+  assert.match(system, /It describes the machine, not your process/);
+});
+
+test('the worked example follows the rules stated above it', async () => {
+  const h = createHarness();
+  const { readFileSync } = await import('node:fs');
+  h.context._clearFewShotCache();
+  h.context.fetch = async url => ({ ok: true, json: async () => JSON.parse(readFileSync(new URL(`../${url}`, import.meta.url), 'utf8')) });
+  try {
+    const example = await h.context.loadFewShot('TM');
+    assert.deepEqual(Object.keys(example).slice(0, 3), ['kind', 'machine', 'title'],
+      'an answer shape, not a save file: "kind" first');
+    assert.ok(example.tests.some(t => t.expect === 'reject'), 'at least one word that should be rejected');
+
+    const system = await h.context.buildSystemPrompt('TM');
+    const shown = system.slice(system.indexOf('A complete machine answer'));
+    assert.doesNotMatch(shown, /"start":false|"accept":false/, 'an absent flag already means false');
+    assert.match(shown, /^ {4}\{"from":"[^\n]*"move":"[LRS]"\},?$/m, 'one row per transition');
+
+    // The guide's app-specific line used to be where the excerpt was cut off.
+    assert.match(system, /In this app the tape is infinite to the right and bounded on the left at cell 0/);
+    assert.doesNotMatch(system.slice(system.indexOf('from the app\'s reference')), /:\n\n/,
+      'no sentence introducing a table that was not sent');
+  } finally {
+    h.context._clearFewShotCache();
+  }
+});
+
+test('the system prompt stays within its size budget', async () => {
+  // Every character is paid for on every request and every tool round. The
+  // budgets are ~10% above the size this was cut to, so growth is a decision.
+  const h = createHarness();
+  const { readFileSync } = await import('node:fs');
+  h.context._clearFewShotCache();
+  h.context.fetch = async url => ({ ok: true, json: async () => JSON.parse(readFileSync(new URL(`../${url}`, import.meta.url), 'utf8')) });
+  try {
+    for (const [machine, budget] of [['DFA', 7800], ['DPDA', 8100], ['TM', 10000], ['MTM', 11200], ['NBA', 7800]]) {
+      const system = await h.context.buildSystemPrompt(machine);
+      assert.ok(system.length <= budget, `${machine}: ${system.length} > ${budget}`);
+    }
+  } finally {
+    h.context._clearFewShotCache();
+  }
+});
+
+test('with tools attached the prompt does not forbid calling them', async () => {
+  const h = createHarness();
+  assert.match(await h.context.buildSystemPrompt('DFA', { tools: true }), /single JSON object \(tool calls aside\)/);
+  assert.doesNotMatch(await h.context.buildSystemPrompt('DFA'), /tool calls aside/);
 });
 
 test('the prompt states this workspace\'s own notation', async () => {
   const h = createHarness();
   h.context.App.config.sym.eps = '@';
   const system = await h.context.buildSystemPrompt('ε-NFA');
-  assert.match(system, /= "@"/, 'a custom ε must reach the model, or it will emit the default');
+  assert.match(system, /"@" as the read symbol is an ε-move/, 'a custom ε must reach the model, or it will emit the default');
 });
 
 test('the user message attaches the canvas only when asked', () => {
@@ -1038,11 +1090,11 @@ test('the user message attaches the canvas only when asked', () => {
 
   const withCanvas = h.context.buildUserMessage({ prompt: 'add a trap', intent: 'edit', canvasSpec: spec });
   assert.match(withCanvas, /MACHINE CURRENTLY ON THE CANVAS/);
-  assert.match(withCanvas, /keep the names of every state you are not changing/);
+  assert.match(withCanvas, /keeping the names of the states you are not changing/);
 
   const without = h.context.buildUserMessage({ prompt: 'build one', intent: 'build' });
   assert.ok(!/CURRENTLY ON THE CANVAS/.test(without));
-  assert.match(without, /REQUEST: build one/);
+  assert.match(without, /Their message: build one/);
 });
 
 test('edit mode names a subject, not an instruction to modify', () => {
@@ -1052,8 +1104,8 @@ test('edit mode names a subject, not an instruction to modify', () => {
 
   // Both halves have to be present. Told only to modify, the model answers a
   // question by rebuilding the diagram the question was about.
-  assert.match(message, /If the request asks for a change, return the modified machine/);
-  assert.match(message, /only asks a question about this machine, answer it with a reply and change nothing/);
+  assert.match(message, /To change it, send back the whole modified machine/);
+  assert.match(message, /If they are only asking about it, reply and leave it as it is/);
   assert.ok(!/— modify this/.test(message), 'the old unconditional imperative is gone');
 });
 
@@ -1061,11 +1113,11 @@ test('the reply rules make room for a question about the canvas', async () => {
   const h = createHarness();
   const system = await h.context.buildSystemPrompt('DFA');
 
-  assert.match(system, /a question about the machine already on the canvas/);
-  assert.match(system, /Answering is not declining/);
+  assert.match(system, /A question about the machine on the canvas — .* — gets a reply/);
+  assert.match(system, /Rebuilding something they only asked about would throw away their work/);
   // …without opening the escape hatch the reply branch has always been.
-  assert.match(system, /If the request names any change to make, however small, build or edit rather than reply/);
-  assert.match(system, /merely hard, vague, or impossible to satisfy exactly/);
+  assert.match(system, /Any change they ask for, however small, gets the machine/);
+  assert.match(system, /hard to meet exactly still gets the closest honest machine/);
 });
 
 test('a question in edit mode answers and leaves the machine alone', async () => {
@@ -1149,6 +1201,13 @@ test('agent tools can build over multiple turns and apply through the normal gat
   assert.equal(App.transitions.length, 2);
   assert.ok(events.some(event => event.type === 'agent' && event.stage === 'tools'));
   assert.ok(events.some(event => event.type === 'agent' && event.stage === 'tool-results'));
+
+  // The private copy is shown as it is edited — once per round that changed
+  // it, not once per call — and a read-only round draws nothing new.
+  const drafts = events.filter(event => event.type === 'draft' && event.source === 'agent');
+  assert.equal(drafts.length, 1, 'round one edited the copy; round two only read it and finished');
+  assert.deepEqual(drafts[0].candidate.states.map(s => s.name), ['q0', 'q1']);
+  assert.equal(drafts[0].candidate.transitions.length, 2);
 });
 
 test('finish is refused until the candidate has been exercised, and an edit puts it back', () => {
@@ -2000,7 +2059,7 @@ test('unparseable output gets one silent reformat before it becomes the user\'s 
   const result = await h.context.runStateMate({ prompt: 'even number of a' });
   assert.equal(result.status, 'applied');
   assert.equal(fetchStub.calls.length, 2);
-  assert.match(lastTurn(fetchStub.calls[1]), /ONLY the JSON object/);
+  assert.match(lastTurn(fetchStub.calls[1]), /send it again as a single valid JSON object/);
 });
 
 test('a build over existing work opens a new tab instead of replacing it', async () => {
@@ -2211,6 +2270,37 @@ test('a model cannot talk its way out of a repair', async () => {
   assert.equal(h.context.App.states.length, 0, 'and nothing was drawn');
 });
 
+test('a reply with a formatting slip can be resent as a reply', async () => {
+  // The reformat round used to allow a reply only on attempt 1, so a reply
+  // with one bad escape could be "fixed" only by building a machine nobody
+  // asked for — found by answering StateMate by hand through the relay.
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k', repairAttempts: 1 });
+  const broken = '{"kind":"reply","text":"over $\\{a, b\\}$"}';
+  const fetchStub = fakeFetch((url, init, n) => n === 1
+    ? jsonResponse({ content: [{ type: 'text', text: broken }] })
+    : replyTurn('Doing well — it accepts strings over {a, b}.'));
+  h.context.fetch = fetchStub;
+
+  const result = await h.context.runStateMate({ prompt: 'hey, how are you?' });
+  assert.equal(result.status, 'replied');
+  assert.match(result.reply, /Doing well/);
+  assert.match(lastTurn(fetchStub.calls[1]), /as a machine or a reply, whichever you meant/);
+});
+
+test('a machine answer can talk, and what it says reaches the card', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  const said = 'Two states are enough: **even** and **odd**. Try `aab` next.';
+  h.context.fetch = fakeFetch(() => anthropicReply({ kind: 'machine', ...dfaSpec({ message: said }) }));
+
+  const result = await h.context.runStateMate({ prompt: 'even number of a' });
+  assert.equal(result.spec.message, said);
+  const long = h.context.validateSpec({ ...dfaSpec(), message: 'x'.repeat(10000) });
+  assert.equal(long.message.length, h.context.MAX_MESSAGE_CHARS, 'capped like a reply');
+  assert.equal(h.context.validateSpec(dfaSpec()).message, '', 'and optional');
+});
+
 test('a reply is only offered on the first attempt', () => {
   const h = createHarness();
   const raw = { kind: 'reply', text: 'I would rather not.' };
@@ -2398,6 +2488,20 @@ test('a refusal keeps the prompt on screen rather than eating it', async () => {
     + 'does not print the prompt it is handed — so the transcript is the only '
     + 'place the sentence can survive');
   assert.match(logText(h), /switched off/);
+});
+
+test('what a machine answer says is on its console card', async () => {
+  const h = createHarness();
+  h.context.saveStateMateSettings({ enabled: true, provider: 'anthropic', apiKey: 'k' });
+  h.context.openStateMate();
+  h.context.fetch = fakeFetch(() => anthropicReply(dfaSpec({
+    message: 'I tracked parity with two states — try **aab** to see it reject.'
+  })));
+
+  await enter(type(h, 'even number of a'));
+  const text = logText(h);
+  assert.match(text, /I tracked parity with two states/);
+  assert.match(text, /\+2 states/, 'beside the receipt, not instead of it');
 });
 
 test('⏎ sends what was typed — no modifier, no highlighted row', async () => {
@@ -2831,11 +2935,11 @@ test('the prompt tells ask mode it is read-only', () => {
   const h = createHarness();
   const spec = { machine: 'DFA', states: [{ name: 'q', start: true }], transitions: [] };
   const asked = h.context.buildUserMessage({ prompt: 'is this minimal?', intent: 'edit', canvasSpec: spec, authority: 'ask' });
-  assert.match(asked, /THIS TURN IS READ-ONLY/);
+  assert.match(asked, /this turn is read-only: nothing you return will be drawn/);
   assert.match(asked, /describe the one you would build/);
 
   const auto = h.context.buildUserMessage({ prompt: 'add a trap', intent: 'edit', canvasSpec: spec, authority: 'auto' });
-  assert.ok(!/READ-ONLY/.test(auto));
+  assert.ok(!/read-only/.test(auto));
 });
 
 test('auto holds back an edit that removes most of the machine', async () => {
@@ -2913,7 +3017,7 @@ test('the turn subject is inferred, and /new overrides it for one turn', async (
   input = type(h, '/new a DFA for strings ending in b');
   await enter(input);
   assert.match(sent(), /FOR CONTEXT/, 'the canvas is context, not the thing being edited');
-  assert.match(sent(), /REQUEST: a DFA for strings ending in b/,
+  assert.match(sent(), /Their message: a DFA for strings ending in b/,
     'and the text after the command is the prompt, not dropped');
 
   // The next turn is about the canvas again, with nothing to switch back.
