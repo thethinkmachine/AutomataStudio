@@ -686,6 +686,7 @@ function paint() {
   }
   size.style.width = L.width + 'px';
   size.style.height = L.height + 'px';
+  fitViewTo(L);
   // Here rather than in renderChrome, which runs before the first layout
   // exists: the readout would otherwise stay blank until the next repaint.
   els.zoomVal.textContent = `${L.cell}px${cellPref === 'fit' ? ' · fit' : ''}`;
@@ -728,6 +729,29 @@ function paint() {
     clip: true
   });
   if (stripOn) paintStrip(m, L, vw, vh);
+}
+
+/**
+ * Tells a window how tall the diagram is.
+ *
+ * The view is a scroll viewport — everything in it is absolutely placed — so
+ * it has no height of its own, and a window fitting its content had nothing to
+ * fit: a six-step run drew six rows at the top of a view the height of the
+ * window. `--st-fit` is the diagram's height plus the view's own frame and a
+ * horizontal scrollbar when there is one, which the stylesheet reads only for
+ * a floating section. Docked, the view keeps its fixed strip.
+ *
+ * Written only when it changes: the observer on the view repaints on a resize,
+ * and a write per paint would be a layout per frame of playback.
+ */
+function fitViewTo(L) {
+  const { view, scroll } = els;
+  const frame = (view.offsetHeight || 0) - (view.clientHeight || 0);
+  const bar = (scroll.offsetHeight || 0) - (scroll.clientHeight || 0);
+  const h = Math.ceil(L.height + Math.max(0, frame) + Math.max(0, bar));
+  const value = h + 'px';
+  if (view.style.getPropertyValue && view.style.getPropertyValue('--st-fit') === value) return;
+  if (view.style.setProperty) view.style.setProperty('--st-fit', value);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1126,16 +1150,21 @@ function renderChrome(m) {
   els.canvas.hidden = !!message;
   els.exp.disabled = !m;
   els.toolbar.classList.toggle('is-idle', !m);
+  els.view.classList.toggle('is-idle', !!message);
 
   if (!m) {
     legend.innerHTML = '';
     legend.dataset.key = '';
     meta.textContent = '';
     more.hidden = branchNote !== 'searching';
+    // A row with nothing in it is still a row, and under the sentence it was
+    // a strip of blank at the foot of the window.
+    els.foot.hidden = more.hidden;
     zoomVal.textContent = '—';
     renderTraceBar();
     return;
   }
+  els.foot.hidden = false;
 
   // The legend is always there: past the third symbol colour alone does not
   // keep them apart for every reader, and below the glyph size the cells do

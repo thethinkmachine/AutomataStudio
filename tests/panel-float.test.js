@@ -445,7 +445,7 @@ test('the south-east corner resizes and never moves', () => {
   press(grab, 300, 300);
   drag(380, 360);
   assert.equal(el.style.width, '440px');
-  assert.equal(el.style.height, '340px');
+  assert.equal(el.style.maxHeight, '340px');
   assert.equal(el.style.left, '10px', 'the corner does not drag the window');
   dispatchDocumentEvent('pointerup', {});
   assert.deepEqual(context.floatState('rp-batch'), { x: 10, y: 10, w: 440, h: 340 });
@@ -457,7 +457,7 @@ test('a resize cannot shrink a window past its section\'s minimum', () => {
   press(grab, 300, 300);
   drag(0, 0);
   assert.equal(el.style.width, min.w + 'px');
-  assert.equal(el.style.height, min.h + 'px');
+  assert.equal(el.style.maxHeight, min.h + 'px');
   dispatchDocumentEvent('pointerup', {});
 });
 
@@ -594,7 +594,7 @@ test('a move keeps the size the window was resized to', () => {
   press(header, 100, 100);
   drag(150, 130);
   assert.equal(el.style.width, '460px', 'the move did not resize it');
-  assert.equal(el.style.height, '360px');
+  assert.equal(el.style.maxHeight, '360px');
   dispatchDocumentEvent('pointerup', {});
 });
 
@@ -1209,23 +1209,76 @@ test('fitting the machine to the screen steers around the windows', () => {
 
 // ── fitting the content ───────────────────────────────────────────
 
-test('a window with nothing elastic fits its content, up to the height it was given', () => {
-  // Simulate is a transport and a tape card. A window taller than that was
-  // dead space; one shorter squeezed the card until the tape drew over it.
+test('every window fits its content, up to the height it was given', () => {
+  // A window taller than its content is dead space under it: Simulate sized
+  // for a run was a tall empty box before it, and a States Q window with four
+  // states in it was a frame of nothing. A list is no exception — it is the
+  // part that scrolls once the content outgrows the ceiling, not a reason to
+  // hold a height.
   mount();
-  context.floatSection('rp-simulate', { x: 40, y: 40, w: 380, h: 700 });
+  ['rp-simulate', 'rp-batch', 'lp-states'].forEach(id => {
+    context.floatSection(id, { x: 40, y: 40, w: 380, h: 700 });
+    const el = context.$(id);
+    assert.equal(el.style.height, '', `${id}: the content decides`);
+    assert.equal(el.style.maxHeight, '700px', `${id}: and the height it was given is the ceiling`);
+    assert.ok(el.classList.contains('is-float-hug'));
+    assert.equal(context.floatState(id).h, 700, `${id}: the record is unchanged`);
+  });
+
   const el = context.$('rp-simulate');
-  assert.equal(el.style.height, '', 'the content decides');
-  assert.equal(el.style.maxHeight, '700px', 'and the height it was given is the ceiling');
-  assert.ok(el.classList.contains('is-float-hug'));
-  assert.equal(context.floatState('rp-simulate').h, 700, 'the record is unchanged');
-
-  context.floatSection('rp-batch', { x: 40, y: 40, w: 380, h: 300 });
-  assert.equal(context.$('rp-batch').style.height, '300px', 'a window with a list to grow holds its height');
-
   context.dockSection('rp-simulate');
   assert.equal(el.style.maxHeight, '', 'docked, the ceiling goes with the window');
   assert.ok(!el.classList.contains('is-float-hug'));
+});
+
+test('a window taken to its content’s full height goes on following it', () => {
+  // Holding that height as the ceiling would freeze a States Q window at the
+  // states it had when it was sized, and every one added after would scroll.
+  const { el } = mountWindow('lp-states', { x: 100, y: 100, w: 380, h: 240 });
+  const room = context.floatLayerRect().height;
+  assert.ok(room > 400, 'a well tall enough to tell the room from the height');
+  el.offsetHeight = 300;                        // what its content draws at
+  resizeBy('lp-states', 's', 0, 200);
+  assert.equal(context.floatState('lp-states').fit, true, 'the record says so');
+  assert.ok(el.classList.contains('is-float-fit'));
+  assert.equal(el.style.maxHeight, (room - 100 - 12) + 'px', 'the ceiling is the room below it');
+
+  // Moving it keeps the intent and re-measures the room.
+  const header = el.querySelector('.' + context.PANEL_SECTIONS.lpanel.headerClass);
+  press(header, 150, 150);
+  drag(150, 250);
+  dispatchDocumentEvent('pointerup', {});
+  assert.equal(context.floatState('lp-states').fit, true);
+  assert.equal(el.style.maxHeight, (room - 200 - 12) + 'px');
+
+  // Stopping short of the content is a ceiling again.
+  resizeBy('lp-states', 's', 0, -60);
+  assert.equal(context.floatState('lp-states').fit, undefined);
+  assert.equal(context.floatState('lp-states').h, 240);
+  assert.equal(el.style.maxHeight, '240px');
+  assert.ok(!el.classList.contains('is-float-fit'));
+
+  // A side edge says nothing about height, either way.
+  resizeBy('lp-states', 's', 0, 200);
+  resizeBy('lp-states', 'e', 40, 0);
+  assert.equal(context.floatState('lp-states').fit, true);
+});
+
+test('a window pulled out of its panel follows its content', () => {
+  // In the panel it did; freezing it at whatever height it had when it was
+  // pulled would scroll a Batch card's first results in a window sized for none.
+  mount();
+  context.floatSection('rp-batch');
+  assert.equal(context.floatState('rp-batch').fit, true);
+  assert.ok(context.$('rp-batch').classList.contains('is-float-fit'));
+});
+
+test('a window keeps following its content across a reload', () => {
+  mount();
+  context.setFloatState('lp-states', { x: 20, y: 30, w: 360, h: 240, fit: true });
+  assert.equal(context.floatState('lp-states').fit, true);
+  context.setFloatState('lp-states', { x: 20, y: 30, w: 360, h: 240, fit: 'yes' });
+  assert.equal(context.floatState('lp-states').fit, undefined, 'only a real true is read as one');
 });
 
 test('a fitted window cannot be resized past its content', () => {

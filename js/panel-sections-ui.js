@@ -314,7 +314,9 @@ function outsideBy(container, x) {
  * The pointer keeps its grip on the same spot of the same element — `grabDX`
  * and `grabDY` were measured at the press — so nothing jumps under the hand at
  * the moment the section comes away. The section keeps the size it had in the
- * panel: pulling something out should not also resize it.
+ * panel: pulling something out should not also resize it. And it keeps
+ * following its content, as it did in the panel — `fit`, see `applyGeom` in
+ * js/panel-float.js.
  */
 function tearOff(e) {
   const { side, el } = drag;
@@ -324,7 +326,7 @@ function tearOff(e) {
   const g = floatSection(el.id, {
     x: e.clientX - rect.left - drag.grabDX,
     y: e.clientY - rect.top - drag.grabDY,
-    w, h
+    w, h, fit: true
   });
   if (!g) return false;
   drag.floating = true;
