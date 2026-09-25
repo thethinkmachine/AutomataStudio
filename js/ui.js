@@ -1075,9 +1075,9 @@ export function ctxCut() {
 // ══════════════════════════════════════════════════════════════════
 //  THE SYSTEM CLIPBOARD
 // ══════════════════════════════════════════════════════════════════
-// Ctrl+V on the canvas pastes one of two things: a machine written as text on
-// the system clipboard (1RB1LC_1RC1RB_… — applyPastedText decides), or else
-// the states copied inside the app. The text is read from the `paste` event,
+// Ctrl+V on the canvas pastes one of two things: a machine on the system
+// clipboard — a share link, a saved file's JSON, or a 1RB1LC_1RC1RB_… string;
+// applyPastedText decides — or else the states copied inside the app. The text is read from the `paste` event,
 // the one way a page gets it with no permission prompt, so the keydown only
 // arms the paste and leaves the browser's default alone to fire the event.
 //

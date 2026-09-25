@@ -97,9 +97,9 @@ test('text that is not trying to be a machine is not recognised', () => {
 
 // ── the machines it produces run as published ─────────────────────
 
-test('the pasted BB(4) champion runs 107 steps and prints 13 ones', () => {
+test('the pasted BB(4) champion runs 107 steps and prints 13 ones', async () => {
   freshWorkspace();
-  assert.equal(context.applyPastedText(BB4), true);
+  assert.equal(await context.applyPastedText(BB4), true);
   assert.equal(context.App.machine, 'ITM');
   const last = run();
   assert.equal(last.final, 'accept');
@@ -141,11 +141,13 @@ test('an untouched tab is read into; an occupied one keeps its machine', () => {
   assert.equal(first.data.states.length, 5, 'BB(4) is still in its own tab');
 });
 
-test('a malformed paste changes nothing and names the problem', () => {
+test('a malformed paste changes nothing and names the problem', async () => {
   freshWorkspace();
   context.applyPastedText(BB4);
   const before = context.App.states.length;
-  assert.equal(context.applyPastedText('1RB1LC_1RC'), true, 'recognised, so not handed to the in-app paste');
+  const opened = context.applyPastedText('1RB1LC_1RC');
+  assert.notEqual(opened, null, 'recognised, so not handed to the in-app paste');
+  assert.equal(await opened, false);
   assert.equal(context.App.states.length, before);
   assert.equal(context.Workspaces.length, 1, 'no tab opened for it');
   assert.match(status(), /state B has 1 transitions/i);
@@ -153,7 +155,7 @@ test('a malformed paste changes nothing and names the problem', () => {
 
 test('a paste that is not a machine is left for the in-app clipboard', () => {
   freshWorkspace();
-  assert.equal(context.applyPastedText('just some words'), false);
+  assert.equal(context.applyPastedText('just some words'), null);
   assert.equal(context.App.states.length, 0);
 });
 

@@ -1244,25 +1244,104 @@ export function applyDocument(payload, name, opts = {}) {
 }
 
 // ── A machine pasted as text ──────────────────────────────────────
-//  Ctrl+V on the canvas with a machine in the standard TM text format on the
-//  system clipboard (1RB1LC_1RC1RB_…) opens it — copied from bbchallenge, the
-//  Busy Beaver wiki or a paper. It lands by the rule every document follows
-//  (WHERE AN OPENED DOCUMENT LANDS): an untouched tab is read into, an occupied
-//  one gets a tab of its own beside it.
+//  Ctrl+V on the canvas with a machine on the system clipboard opens it. Three
+//  things count as one:
 //
-//  Answers whether the text was a machine at all. A malformed one still
-//  answers true — it was recognisably this notation, and the reader wants
-//  the typo named, not the in-app clipboard pasted instead.
+//    a share link     https://…#share=z.… — anywhere in the text, since a
+//                     link pasted from a chat usually has a sentence round it
+//    a saved file     the .automaton JSON itself, fenced in ``` or not
+//    a Turing machine the standard text format, 1RB1LC_1RC1RB_… — copied from
+//                     bbchallenge, the Busy Beaver wiki or a paper
+//
+//  Each lands by the rule every document follows (WHERE AN OPENED DOCUMENT
+//  LANDS): an untouched tab is read into, an occupied one gets a tab of its own
+//  beside it, so a pasted machine never replaces the one on screen.
+//
+//  Recognising is synchronous and opening is not — a link has to be inflated
+//  first — because the caller must know at once whether to fall back to the
+//  in-app clipboard. So this answers null for text that is not a machine, and
+//  otherwise a promise of whether it opened. Something recognisable but broken
+//  (a typo in the notation, a link cut off in transit) is still recognised: the
+//  reader wants the problem named, not the in-app clipboard pasted instead.
 export function applyPastedText(text) {
+  if (typeof text !== 'string' || !text.trim()) return null;
+  // The file first: a saved workspace can carry a share link in a note, and
+  // that is text inside the machine, not the machine.
+  const json = workspaceJsonIn(text);
+  if (json) return Promise.resolve(openPastedJson(json));
+  const link = sharePayloadIn(text);
+  if (link) return openPastedLink(link);
   const src = standardTMText(text);
-  if (!src) return false;
+  if (src) return Promise.resolve(openPastedTM(src));
+  return null;
+}
+
+// The payload of the first share link in the text. The pattern is the payload's
+// own alphabet — base64url behind an optional `z.` — so a full stop ending the
+// sentence the link was pasted in, or a `>` closing an angle-bracketed link, is
+// not read as part of it.
+function sharePayloadIn(text) {
+  const at = text.indexOf(SHARE_HASH_PREFIX);
+  if (at < 0) return null;
+  const m = /^(?:z\.)?[A-Za-z0-9_-]+/.exec(text.slice(at + SHARE_HASH_PREFIX.length));
+  return m ? m[0] : null;
+}
+
+// A saved workspace, as text. Only this app's own documents count: `format`
+// says so, and a document from before `format` existed is known by its
+// machine and states. Any other JSON is left for the in-app clipboard.
+function workspaceJsonIn(text) {
+  const src = text.trim().replace(/^```[\w-]*\s*/, '').replace(/\s*```$/, '');
+  if (!src.startsWith('{')) return null;
+  try {
+    const d = JSON.parse(src);
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return null;
+    const ours = d.format === WORKSPACE_FORMAT
+      || (d.format === undefined && typeof d.machine === 'string' && Array.isArray(d.states));
+    return ours ? src : null;
+  } catch {
+    // Unreadable, but visibly one of ours: most likely cut short on the way.
+    return src.includes(WORKSPACE_FORMAT) ? src : null;
+  }
+}
+
+function openPastedJson(json) {
+  try {
+    JSON.parse(json);
+  } catch {
+    showStatus('The pasted machine is incomplete — it may have been cut off when it was copied.');
+    return false;
+  }
+  // Everything past this point is the file path's: the same validation, the
+  // same tab placement, the same card.
+  const ok = applyDocument(json, 'pasted.json');
+  if (ok) showStatus('Opened the pasted machine');
+  return ok;
+}
+
+async function openPastedLink(payload) {
+  let json;
+  try {
+    json = await decodeSharePayload(payload);
+    JSON.parse(json);
+  } catch (err) {
+    console.error(err);
+    showStatus('Could not open the pasted link — it may have been cut off when it was copied.');
+    return false;
+  }
+  const ok = applyDocument(json, 'shared-link.json');
+  if (ok) showStatus('Opened the machine from the pasted link');
+  return ok;
+}
+
+function openPastedTM(src) {
   let data;
   try {
     data = readStandardTM(src, App.config.sym);
   } catch (err) {
     if (!(err instanceof StandardTMError)) throw err;
     showStatus(err.message);
-    return true;
+    return false;
   }
   placeOpenedDocument(null, src.length > 20 ? `${src.slice(0, 18)}…` : src);
   // The notation carries no positions, so the placement is the one Arrange
