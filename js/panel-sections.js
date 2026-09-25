@@ -246,20 +246,17 @@ function floatKey(side) {
 }
 
 /**
- * The one part of a section that should absorb a window's spare height, as a
- * selector — or nothing, when none of it should.
+ * The one part of a section that gives when its window is shorter than its
+ * content, as a selector — or nothing, when none of it should.
  *
- * This is the answer to "the content stretches when I resize". A window is
- * taller than its content is *supposed* to be, and what to do with the slack
- * is a property of the section rather than of the window: States Q has a list
- * that should grow and scroll, the Trace card has a log that should, and the
- * Language card is a stack of boxes where stretching anything at all just
- * spreads it out. So the default is that **nothing** stretches — the content
- * keeps its natural height at the top of the window and the body scrolls when
- * there is not enough room — and a section names its one elastic region if it
- * has one.
+ * Every window fits its content (see `applyGeom` in js/panel-float.js), so
+ * there is no spare height to hand out; the question is the other one. A
+ * States Q window shorter than its list should scroll the *list* and keep the
+ * search box above it, a Trace window should scroll the log and keep the
+ * heading — while the Language card is a stack of boxes with nothing to
+ * favour, and without a region named the body scrolls as a whole.
  *
- * One region, deliberately. Two flexible children share the slack between
+ * One region, deliberately. Two flexible children share the shortfall between
  * them, which is how a resize turns into a layout nobody designed.
  */
 export function sectionFill(id) {
@@ -313,6 +310,9 @@ function recordGeom(g, min) {
   };
   if (typeof g.r === 'number' && Number.isFinite(g.r)) out.r = g.r;
   if (typeof g.b === 'number' && Number.isFinite(g.b)) out.b = g.b;
+  // Follows its content rather than holding a ceiling — see `applyGeom`.
+  // Absent means false, so a record written before it existed reads the same.
+  if (g.fit === true) out.fit = true;
   return out;
 }
 

@@ -238,7 +238,7 @@ function clampGeom(g, rect, min) {
     x = Math.min(Math.max(x, EDGE_KEEP - w), Math.max(0, rect.width - EDGE_KEEP));
     y = Math.min(Math.max(y, 0), Math.max(0, rect.height - EDGE_KEEP / 2));
   }
-  return { x, y, w, h };
+  return g.fit ? { x, y, w, h, fit: true } : { x, y, w, h };
 }
 
 function measurable(rect) {
@@ -267,7 +267,7 @@ function placeInWell(rec, rect, min) {
     if (typeof rec.r === 'number') x = rect.width - w - rec.r;
     if (typeof rec.b === 'number') y = rect.height - h - rec.b;
   }
-  return clampGeom({ x, y, w, h }, rect, lo);
+  return clampGeom({ x, y, w, h, fit: rec.fit }, rect, lo);
 }
 
 /**
@@ -280,6 +280,7 @@ function placeInWell(rec, rect, min) {
  */
 function withAnchors(g, rect) {
   const out = { x: g.x, y: g.y, w: g.w, h: g.h };
+  if (g.fit) out.fit = true;
   if (!measurable(rect)) return out;
   if (g.x + g.w / 2 > rect.width / 2) out.r = Math.round(rect.width - g.x - g.w);
   if (g.y + g.h / 2 > rect.height / 2) out.b = Math.round(rect.height - g.y - g.h);
@@ -289,47 +290,55 @@ function withAnchors(g, rect) {
 /** A position the well forced on a window, keeping the anchors it was left with. */
 function keepAnchors(g, rec) {
   const out = { x: g.x, y: g.y, w: g.w, h: g.h };
+  if (g.fit) out.fit = true;
   if (rec && typeof rec.r === 'number') out.r = rec.r;
   if (rec && typeof rec.b === 'number') out.b = rec.b;
   return out;
 }
 
 /**
- * Whether a window fits its content rather than holding a height.
+ * Puts a window where `g` says, at the height its content decides.
  *
- * A section that names no elastic region (`sectionFill`) has nothing that
- * could use spare height — Simulate is a transport and a tape card, Language a
- * stack of boxes — so a window taller than its content was dead space under
- * it, and one the reader had sized for a run drew a tall empty frame before
- * the run and after a reset. Such a window *hugs*: its content decides the
- * height, and the height the reader gave it is the most it may take, past
- * which the body scrolls. The tape card appearing after a run grows it; a
- * reset gives the room back.
+ * **Every window fits its content; the height it holds is a ceiling.** A
+ * window taller than its content is dead space under it, and nothing a
+ * section contains can use that space well: a list with four states in it,
+ * a trace log before a run and a batch result before a test all drew as a
+ * frame of nothing, and Simulate — sized for a run — as a tall empty box
+ * before the run and after a reset. So the content decides the height, the
+ * number the reader gave is the most it may take, and past it the section's
+ * `sectionFill` region scrolls (or the body, for a section that names none).
+ * A run appearing grows the window; a reset gives the room back.
+ *
+ * A window left at its content's full height (`g.fit`) has said something
+ * more: that it should go on showing all of it. Holding that height as the
+ * ceiling would freeze a States Q window at the number of states it had when
+ * it was sized, and every state added after would scroll. So its ceiling is
+ * the room below it in the canvas instead, and `g.h` is kept only as the
+ * height it was left at — for the anchors, and for the gesture to start from.
+ *
+ * `.panel-float.collapsed` beats the ceiling with `!important` in the
+ * stylesheet. Collapsing a window would otherwise have to reach in here to
+ * clear it and put it back on expand — which means hooking `toggleLPSection`,
+ * and the stored size surviving a collapse is exactly the thing that would
+ * then be easy to lose.
  */
-function hugsContent(id) {
-  return !sectionFill(id);
-}
-
 function applyGeom(el, g) {
   el.style.left = g.x + 'px';
   el.style.top = g.y + 'px';
   el.style.width = g.w + 'px';
-  // The height is written unconditionally and `.panel-float.collapsed` beats it
-  // with `!important` in the stylesheet. Collapsing a window would otherwise
-  // have to reach in here to clear the inline height and put it back on expand
-  // — which means hooking `toggleLPSection`, and the stored size surviving a
-  // collapse is exactly the thing that would then be easy to lose.
-  //
-  // A window that hugs its content holds the same number as a ceiling instead.
-  if (hugsContent(el.id)) {
-    el.classList.add('is-float-hug');
-    el.style.height = '';
-    el.style.maxHeight = g.h + 'px';
-  } else {
-    el.classList.remove('is-float-hug');
-    el.style.maxHeight = '';
-    el.style.height = g.h + 'px';
-  }
+  el.style.height = '';
+  el.style.maxHeight = ceilingOf(g) + 'px';
+  el.dataset.floatH = String(g.h);
+  el.classList.add('is-float-hug');
+  el.classList.toggle('is-float-fit', !!g.fit);
+}
+
+/** The most a window may draw at — see `applyGeom`. */
+function ceilingOf(g) {
+  if (!g.fit) return g.h;
+  const rect = floatLayerRect();
+  if (!measurable(rect)) return g.h;
+  return Math.max(g.h, Math.round(rect.height - g.y - EDGE_GUTTER));
 }
 
 /**
@@ -348,9 +357,18 @@ function naturalHeight(el) {
   return h;
 }
 
+/** The ceiling `applyGeom` last drew a window under. */
+function drawnCeiling(el, g) {
+  return parseFloat(el.style.maxHeight) || g.h;
+}
+
 /**
  * A size for a section that has never been floated: the one it has in the
- * panel. Pulling a section out should not also resize it.
+ * panel. Pulling a section out should not also resize it — and in the panel it
+ * followed its content, so out here it goes on doing so (`fit`) rather than
+ * freezing at the height it happened to have when it was pulled: a Batch card
+ * popped out before a test would otherwise scroll its first results in a
+ * window sized for none.
  *
  * And a place beside the panel it came from, in the corner of the canvas
  * nearest to it. It used to open at the top centre of the canvas, which is
@@ -383,7 +401,8 @@ function naturalGeom(el, rect, id) {
     x: fromRight ? rect.width - width - EDGE_GUTTER - step : EDGE_GUTTER + step,
     y: EDGE_GUTTER + step,
     w: width,
-    h: height
+    h: height,
+    fit: true
   }, rect, min);
 }
 
@@ -485,7 +504,8 @@ export function dockSection(id, opts = {}) {
   el.style.width = '';
   el.style.height = '';
   el.style.maxHeight = '';
-  el.classList.remove('is-float-hug');
+  delete el.dataset.floatH;
+  el.classList.remove('is-float-hug', 'is-float-fit');
   el.style.zIndex = '';
   container.appendChild(el);
   // `persist: false` is the suspend path — a narrow viewport docks the DOM
@@ -527,7 +547,7 @@ export function moveFloatTo(id, x, y, opts = {}) {
   const live = liveGeom(el, id);
   const min = sectionMinSize(id);
   const rect = floatLayerRect();
-  let g = { x, y, w: live.w, h: live.h };
+  let g = { x, y, w: live.w, h: live.h, fit: live.fit };
   let lines = null;
   if (opts.snap && snapCtx && snapCtx.id === id) {
     lines = snapMove(g);
@@ -827,15 +847,15 @@ function installChrome(side, id) {
 }
 
 /**
- * Hands a window's spare height to the one part of the section that should
- * take it, and to nothing else.
+ * Marks the one part of a section that gives when its window is shorter than
+ * its content, and nothing else.
  *
- * A window is taller than the content was drawn for, and what happens to the
- * slack is a property of the section: States Q has a list that should grow and
- * scroll, the Trace card has a log that should, and the Language card is a
- * stack of boxes where stretching anything only spreads it out. The registry
- * names the one region — see `sectionFill` — and everything else keeps its
- * natural height, with the body scrolling when the window is too small for it.
+ * States Q has a list that should shrink and scroll under its search box, the
+ * Trace card has a log that should, and the Language card is a stack of boxes
+ * with nothing to favour. The registry names the one region — see
+ * `sectionFill` — and everything else keeps its natural height, with the body
+ * scrolling when the window is too small for it. The region also loses the
+ * height cap it has in the panel, so a window can show all of a long list.
  *
  * A class rather than a rule per section id, so adding a section is still an
  * entry in the registry and its markup.
@@ -881,10 +901,12 @@ function liveGeom(el, id) {
   const x = parseFloat(el.style.left);
   const y = parseFloat(el.style.top);
   const w = parseFloat(el.style.width);
-  // A hugging window keeps its height as a ceiling — see `applyGeom`.
-  const h = parseFloat(el.style.height || el.style.maxHeight);
+  // The height a window holds, which is not always its ceiling: a window that
+  // follows its content draws up to the room below it — see `applyGeom`.
+  const h = parseFloat(el.dataset.floatH || el.style.maxHeight);
+  const fit = !!(el.classList && el.classList.contains('is-float-fit'));
   if (Number.isFinite(x) && Number.isFinite(y) &&
-    Number.isFinite(w) && Number.isFinite(h)) return { x, y, w, h };
+    Number.isFinite(w) && Number.isFinite(h)) return fit ? { x, y, w, h, fit } : { x, y, w, h };
   // Only now, and this is the point of the early return above: `floatState`
   // is a `localStorage.getItem` plus a `JSON.parse` plus a walk of the side's
   // declared sections, and `moveFloatTo` calls this on every frame of every
@@ -892,6 +914,7 @@ function liveGeom(el, id) {
   // is a window that has not been placed yet — never one being dragged.
   const stored = floatState(id);
   return {
+    ...(stored && stored.fit ? { fit: true } : {}),
     x: Number.isFinite(x) ? x : (stored ? stored.x : 24),
     y: Number.isFinite(y) ? y : (stored ? stored.y : 24),
     w: Number.isFinite(w) ? w : (stored ? stored.w : FLOAT_MIN_W),
@@ -935,12 +958,12 @@ function beginResize(id, e, edge) {
   if (!el || !el.classList.contains('panel-float')) return;
   layerRect = null;
   let g = liveGeom(el, id);
-  // A hugging window is drawn at its content's height when that is less than
-  // the ceiling it holds, and the gesture starts from what is drawn — or the
-  // first pixels of a drag would be spent pulling the ceiling back down to the
-  // window before anything visibly moved.
-  const natural = hugsContent(id) ? naturalHeight(el) : 0;
-  if (natural > 0 && g.h > natural) g = { ...g, h: natural };
+  // A window is drawn at its content's height when that is less than the
+  // ceiling it holds, and the gesture starts from what is drawn — or the first
+  // pixels of a drag would be spent pulling the ceiling back down to the window
+  // before anything visibly moved.
+  const natural = naturalHeight(el);
+  if (natural > 0) g = { ...g, h: Math.min(drawnCeiling(el, g), natural) };
   if (typeof e.stopPropagation === 'function') e.stopPropagation();
   if (typeof e.preventDefault === 'function') e.preventDefault();
   gesture = {
@@ -1092,15 +1115,22 @@ function onPointerMove(e) {
     raw.h = Math.max(min.h, raw.h + raw.y);
     raw.y = 0;
   }
-  // No taller than the content of a window that hugs it, with the opposite
-  // edge pinned the way it is at the minimum.
-  if (gesture.natural > 0 && raw.h > gesture.natural) {
-    if (gesture.edge.includes('n')) raw.y += raw.h - gesture.natural;
-    raw.h = gesture.natural;
+  // No taller than the window's content, with the opposite edge pinned the way
+  // it is at the minimum. A drag that reaches the content's full height says
+  // the window should go on showing all of it — `fit`, see `applyGeom` — and
+  // one that stops short sets a ceiling. A side edge says nothing about height
+  // and keeps what the window had.
+  let fit = !!gesture.origin.fit;
+  if (gesture.natural > 0) {
+    if (/[ns]/.test(gesture.edge)) fit = raw.h >= gesture.natural;
+    if (raw.h > gesture.natural) {
+      if (gesture.edge.includes('n')) raw.y += raw.h - gesture.natural;
+      raw.h = gesture.natural;
+    }
   }
   const snapped = snap && snapCtx && snapCtx.id === gesture.id
     ? snapResize(raw, gesture.edge, min) : { g: raw, gx: null, gy: null };
-  const g = clampGeom(snapped.g, floatLayerRect(), min);
+  const g = clampGeom({ ...snapped.g, fit }, floatLayerRect(), min);
   showGuides(snapped.gx, snapped.gy);
   applyGeom(gesture.el, g);
   gesture.geom = g;
@@ -1189,11 +1219,18 @@ function onKeyDown(e) {
   if (e.shiftKey) {
     // A minimized window is a title strip, with no body to size.
     if (win.classList.contains('collapsed')) return;
-    const natural = hugsContent(id) ? naturalHeight(win) : 0;
-    const from = natural > 0 ? Math.min(g.h, natural) : g.h;
+    // The same rule as the pointer: stepping down onto the content's full
+    // height follows the content from then on, stepping up sets a ceiling.
+    const natural = naturalHeight(win);
+    const from = natural > 0 ? Math.min(drawnCeiling(win, g), natural) : g.h;
     let h = Math.max(min.h, from + dy);
-    if (natural > 0) h = Math.min(h, natural);
-    next = clampGeom({ ...g, w: Math.max(min.w, g.w + dx), h }, rect, min);
+    let fit = !!g.fit;
+    if (natural > 0) {
+      if (dy > 0 && h >= natural) fit = true;
+      if (dy < 0) fit = false;
+      h = Math.min(h, natural);
+    }
+    next = clampGeom({ ...g, w: Math.max(min.w, g.w + dx), h, fit }, rect, min);
   } else {
     next = clampGeom({ ...g, x: g.x + dx, y: g.y + dy }, rect, min);
   }
@@ -1260,7 +1297,8 @@ function anyFloating() {
 }
 
 function sameGeom(a, b) {
-  return !!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+  return !!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h &&
+    !!a.fit === !!b.fit;
 }
 
 /**
@@ -1288,7 +1326,12 @@ function reclampAll() {
       // caused it. The gesture is the authority on a window it is holding.
       if (gesture && gesture.id === id) return;
       const g = placeInWell(states[id], rect, sectionMinSize(id));
-      if (sameGeom(g, states[id])) return;
+      // A window following its content is capped by the room below it, which
+      // the well just changed even where the record did not.
+      if (sameGeom(g, states[id])) {
+        if (g.fit) applyGeom(el, g);
+        return;
+      }
       applyGeom(el, g);
       setFloatState(id, keepAnchors(g, states[id]));
     });

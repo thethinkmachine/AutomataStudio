@@ -2290,13 +2290,14 @@ button.dt-cell:hover {
   }
 }
 
-/* Inside a window the lists have the window's height to fill, not the panel's
-   cap — otherwise pulling States Q out to read it would leave it the same
-   short strip it was in the rail, with the rest of the window blank under it.
-   The body becomes the column that hands its leftover height down, and the
-   list is the one child that takes it; the search box above it keeps its own
-   height. `min-height: 0` on both, or a flex child refuses to shrink below its
-   content and the window scrolls instead of the list. */
+/* A window fits its content, up to the ceiling it was given (`applyGeom` in
+   js/panel-float.js) — so the lists shed the panel's cap here, or pulling
+   States Q out to read it would leave it the same short strip it was in the
+   rail. The body is the column that passes the ceiling down, and when the
+   content is taller than that, the list is the one child that gives; the
+   search box above it keeps its own height. `min-height: 0` on both, or a flex
+   child refuses to shrink below its content and the window scrolls instead of
+   the list. */
 .panel-float > .lp-section-body,
 .panel-float > .rp-section-body {
   padding: 8px 14px 12px;
@@ -2312,12 +2313,13 @@ button.dt-cell:hover {
   overflow: hidden auto;
 }
 
-/* Exactly one child of a window takes its spare height, and the registry says
-   which — see `sectionFill` in js/panel-sections.js. Everything else keeps the
-   height it was drawn for, so resizing a window grows the list or the trace log
-   and leaves the fields, rows and transport controls above it alone. Two
-   flexible children would share the slack between them, which is how a resize
-   turns into a layout nobody designed. */
+/* Exactly one child of a window gives when the window is shorter than its
+   content, and the registry says which — see `sectionFill` in
+   js/panel-sections.js. Everything else keeps the height it was drawn for, so
+   shrinking a window scrolls the list or the trace log and leaves the fields,
+   rows and transport controls above it alone. Two flexible children would
+   share the shortfall between them, which is how a resize turns into a layout
+   nobody designed. */
 .panel-float .panel-float-fill {
   flex: 1 1 auto;
   min-height: 0;
@@ -2782,8 +2784,26 @@ button.dt-cell:hover {
 }
 
 .panel-float .st-view.panel-float-fill {
-  height: auto;
+  /* The view is a scroll viewport with nothing in flow, so it has no height
+     of its own for a window to fit. `--st-fit` is the diagram's, written by
+     js/spacetime-ui.js at every layout: a short run draws a short window, a
+     long one grows it to the ceiling and scrolls from there. */
+  height: var(--st-fit, 240px);
   min-height: 120px;
+}
+
+/* Before a run the view holds one sentence, and a window fitted to it is a
+   window fitted to the sentence — absolutely placed, it drew a dashed box the
+   height of whatever the window had been given. */
+.panel-float .st-view.is-idle {
+  height: auto;
+  min-height: 0;
+}
+
+.panel-float .st-view.is-idle .st-empty {
+  position: relative;
+  inset: auto;
+  margin: 10px;
 }
 
 .st-scroll {
@@ -2812,6 +2832,7 @@ button.dt-cell:hover {
 .st-trace[hidden],
 .st-tip[hidden],
 .st-empty[hidden],
+.st-foot[hidden],
 .st-more[hidden],
 .tracker-st-btn[hidden] {
   display: none;
