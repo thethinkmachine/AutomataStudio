@@ -434,72 +434,51 @@
         </div>
         <div class="lpanel-content" id="lpanel-content" role="tabpanel"
              aria-labelledby="panel-tab-workspace">
-          <!-- The machine's own parameters — how many tapes, whether the tape
-               runs left of the input, a PFA's cut-point. They were in three
-               places (the Language card, two Settings tabs) and each is a
-               component of the tuple, so they live beside Σ now. Rows come
-               from the machine's declared `options` (js/machine-options-ui.js),
-               and a machine with none hides the section. -->
-          <div class="sec lp-collapsible" id="lp-machine" style="display:none">
-            <div class="lp-section-header" onclick="toggleLPSection('lp-machine')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('lp-machine')}">
-              <span class="sec-lbl lp-section-title">Machine</span>
-              <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
-            </div>
-            <div class="lp-section-body">
-              <div class="mopts" id="machine-opts"></div>
-            </div>
-          </div>
-
-          <!-- Every alphabet the machine has, one row each. Γ and Δ were
-               sections of their own, so a PDT opened on three near-identical
-               headers before its first state. The row ids are the ones those
-               sections had, because the machine switch still shows and hides
-               them by id — see syncAlphabetSection in js/alphabet.js. -->
           <div class="sec lp-collapsible" id="lp-alphabet">
             <div class="lp-section-header" onclick="toggleLPSection('lp-alphabet')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('lp-alphabet')}">
-              <span class="sec-lbl lp-section-title" id="lp-alphabet-title">Alphabet <span class="sym">Σ</span></span>
+              <span class="sec-lbl lp-section-title">Alphabet <span class="sym">Σ</span></span>
               <span class="lp-section-count" id="lp-count-sigma">0</span>
               <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
             </div>
             <div class="lp-section-body">
-              <div class="alpha-row" id="alpha-sigma">
-                <div class="alpha-row-head">
-                  <span class="alpha-row-lbl">Input <span class="sym">Σ</span></span>
-                  <span class="lp-section-count" id="alpha-count-sigma">0</span>
-                </div>
-                <div class="row">
-                  <input class="inp" id="sym-in" placeholder="a, b, 0…" maxlength="33"
-                    onkeydown="if(event.key==='Enter')addSym()">
-                  <button class="ibtn" onclick="addSym()" aria-label="Add input symbol" data-tip="Add to Σ"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
-                </div>
-                <div class="chips" id="sigma-chips"></div>
+              <div class="row">
+                <input class="inp" id="sym-in" placeholder="a, b, 0…" maxlength="33"
+                  onkeydown="if(event.key==='Enter')addSym()">
+                <button class="ibtn" onclick="addSym()" aria-label="Add input symbol" data-tip="Add to Σ"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
               </div>
+              <div class="chips" id="sigma-chips"></div>
+            </div>
+          </div>
 
-              <div class="alpha-row" id="stack-sec" style="display:none">
-                <div class="alpha-row-head">
-                  <span class="alpha-row-lbl" id="stack-sec-lbl">Stack <span class="sym">Γ</span></span>
-                  <span class="lp-section-count" id="lp-count-stack">0</span>
-                </div>
-                <div class="row">
-                  <input class="inp" id="gsym-in" placeholder="Z, A…" maxlength="5"
-                    onkeydown="if(event.key==='Enter')addGSym()">
-                  <button class="ibtn" onclick="addGSym()" aria-label="Add stack symbol" data-tip="Add to Γ"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
-                </div>
-                <div class="chips" id="gamma-chips"></div>
+          <div class="sec lp-collapsible" id="stack-sec" style="display:none">
+            <div class="lp-section-header" onclick="toggleLPSection('stack-sec')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('stack-sec')}">
+              <span class="sec-lbl lp-section-title">Stack Γ</span>
+              <span class="lp-section-count" id="lp-count-stack">0</span>
+              <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+            </div>
+            <div class="lp-section-body">
+              <div class="row">
+                <input class="inp" id="gsym-in" placeholder="Z, A…" maxlength="5"
+                  onkeydown="if(event.key==='Enter')addGSym()">
+                <button class="ibtn" onclick="addGSym()" aria-label="Add stack symbol" data-tip="Add to Γ"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
               </div>
+              <div class="chips" id="gamma-chips"></div>
+            </div>
+          </div>
 
-              <div class="alpha-row" id="output-sec" style="display:none">
-                <div class="alpha-row-head">
-                  <span class="alpha-row-lbl">Output <span class="sym">Δ</span></span>
-                  <span class="lp-section-count" id="lp-count-output">0</span>
-                </div>
-                <div class="row">
-                  <input class="inp" id="outsym-in" placeholder="0, 1…" maxlength="10"
-                    onkeydown="if(event.key==='Enter')addOutSym()">
-                  <button class="ibtn" onclick="addOutSym()" aria-label="Add output symbol" data-tip="Add to Δ"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
-                </div>
-                <div class="chips" id="output-chips"></div>
+          <div class="sec lp-collapsible" id="output-sec" style="display:none">
+            <div class="lp-section-header" onclick="toggleLPSection('output-sec')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('output-sec')}">
+              <span class="sec-lbl lp-section-title">Output Δ</span>
+              <span class="lp-section-count" id="lp-count-output">0</span>
+              <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+            </div>
+            <div class="lp-section-body">
+              <div class="row">
+                <input class="inp" id="outsym-in" placeholder="0, 1…" maxlength="10"
+                  onkeydown="if(event.key==='Enter')addOutSym()">
+                <button class="ibtn" onclick="addOutSym()" aria-label="Add output symbol" data-tip="Add to Δ"><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" /></svg></button>
               </div>
+              <div class="chips" id="output-chips"></div>
             </div>
           </div>
 
@@ -524,22 +503,7 @@
               <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
             </div>
             <div class="lp-section-body">
-              <!-- δ as a list of rules, or as the textbook's table of states by
-                   symbols (js/delta-table.js). The switch is shown only for
-                   machines whose rules fit a table; its listener is attached
-                   at first draw, so it has no name in bridge.js. -->
-              <div class="lp-search-row">
-                <input class="lpanel-search-inp" id="trans-search" placeholder="Filter transitions…" oninput="filterTransitions()">
-                <div class="trans-view-toggle" id="trans-view-toggle" role="group" aria-label="Show δ as" hidden>
-                  <button type="button" data-view="list" aria-pressed="true" aria-label="Show δ as a list" data-tip="List of rules">
-                    <svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M88,64a8,8,0,0,1,8-8H216a8,8,0,0,1,0,16H96A8,8,0,0,1,88,64Zm128,56H96a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Zm0,64H96a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16ZM56,56H40a8,8,0,0,0,0,16H56a8,8,0,0,0,0-16Zm0,64H40a8,8,0,0,0,0,16H56a8,8,0,0,0,0-16Zm0,64H40a8,8,0,0,0,0,16H56a8,8,0,0,0,0-16Z" /></svg>
-                  </button>
-                  <button type="button" data-view="table" aria-pressed="false" aria-label="Show δ as a table" data-tip="Table — states by symbols">
-                    <svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M224,48H32a8,8,0,0,0-8,8V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A8,8,0,0,0,224,48ZM40,112H80v32H40Zm56,0H216v32H96ZM216,64V96H40V64ZM40,160H80v32H40Zm176,32H96V160H216v32Z" /></svg>
-                  </button>
-                </div>
-              </div>
-              <div class="dt-head" id="trans-table-head" hidden aria-hidden="true"></div>
+              <input class="lpanel-search-inp" id="trans-search" placeholder="Filter transitions…" oninput="filterTransitions()">
               <div class="tlist" id="trans-list">
                 <div class="empty-msg">No transitions</div>
               </div>
@@ -893,6 +857,14 @@
                     <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z" /></svg>
                   </button>
                 </div>
+                <div id="mtm-ctrl" style="display:none;align-items:center;gap:6px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+                  <span style="font-family:var(--sans);font-weight:600;font-size:.7rem;color:var(--text3)">Tapes:</span>
+                  <!-- Options are generated by syncTapeCountUI(): how many
+                       there are is a setting, and three literals here were one
+                       of the seven places the old 2..4 was written down. -->
+                  <select class="sel" id="tape-count-sel" onchange="setTapeCount(this.value)" aria-label="Number of tapes"
+                    style="flex:none;width:55px;padding:3px 6px;height:24px;font-size:.7rem"></select>
+                </div>
               </div>
             </div>
             <!-- Simulate section -->
@@ -928,24 +900,19 @@
                   </button>
                 </div>
                 <div id="sim-verdict" class="sim-verdict" style="display:none"></div>
-                <!-- The run's timeline, alone on its line and only while there is a
-                     run. Its position is read in the transport below, between
-                     the buttons that move it. -->
                 <div class="sim-scrubber-row" id="sim-scrubber-row" style="display:none">
                   <input type="range" class="sim-scrubber" id="sim-scrubber" min="0" max="0" value="0"
-                    oninput="scrubSim(this.value)" aria-label="Step" data-tip="Scrub through simulation steps">
+                    oninput="scrubSim(this.value)" data-tip="Scrub through simulation steps">
+                  <span class="sim-step-counter" id="sim-step-counter">0 / 0</span>
                 </div>
                 <div class="sctrl">
-                  <div class="sctrl-steps" role="group" aria-label="Step through the run">
+                  <div class="sctrl-steps">
                     <button class="sbtn" onclick="stepToStart()" data-tip="Jump to start" aria-label="Jump to start">
                       <svg viewBox="0 0 256 256" fill="currentColor" width="13" height="13"><path d="M199.81,34a16,16,0,0,0-16.24.43L64,109.23V40a8,8,0,0,0-16,0V216a8,8,0,0,0,16,0V146.77l119.57,74.78A15.95,15.95,0,0,0,208,208.12V47.88A15.86,15.86,0,0,0,199.81,34ZM192,208,64.16,128,192,48.07Z" /></svg>
                     </button>
                     <button class="sbtn" onclick="stepBack()" data-tip="Step Back" aria-label="Step Back">
                       <svg viewBox="0 0 256 256" fill="currentColor" width="13" height="13"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z" /></svg>
                     </button>
-                    <!-- Where the playhead is, between the two buttons that move it
-                         one step — the pager's own reading. -->
-                    <span class="sctrl-pos is-idle" id="sim-step-counter" aria-label="Step">0 / 0</span>
                     <button class="sbtn" onclick="stepFwd()" data-tip="Step Forward" aria-label="Step Forward">
                       <svg viewBox="0 0 256 256" fill="currentColor" width="13" height="13"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z" /></svg>
                     </button>
@@ -1942,9 +1909,17 @@
             <option value="empty">Acceptance by empty stack</option>
           </select>
         </div>
+        <div class="modal-row">
+          <span class="modal-lbl" data-tip="A PFA accepts w when the probability of ending in an accepting state is strictly greater than this cut-point">PFA Cut-Point λ</span>
+          <input type="number" class="inp" id="set-pfa-cutpoint" min="0" max="1" step="0.05" label="PFA cut-point">
+        </div>
       </div>
 
       <div class="modal-tab-content" id="tab-tm" role="tabpanel" aria-labelledby="settings-tab-tm" tabindex="0" hidden>
+        <div class="modal-row" data-tip="Let the tape extend left of the input, as textbooks and JFLAP do. Off, the head stops at the first cell. Does not affect the 2-Way Infinite TM, which is always two-way, or the LBA, which is bounded by its end markers.">
+          <span class="modal-lbl">Two-Way Infinite Tape</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-two-way-tape"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
         <div class="modal-row" data-tip="A deterministic machine that returns to a configuration it has already been in will return to it forever, so playback stops there and reports a proven non-halt instead of a timeout. Turn it off to watch a machine that never halts keep running to the step limit — the verdict then degrades from “never halts” to “no verdict”. Affects step-by-step playback only; batch runs and the Language panel keep deciding.">
           <span class="modal-lbl">Stop At A Repeated Configuration</span>
           <label class="toggle-switch"><input type="checkbox" id="set-detect-loops"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>

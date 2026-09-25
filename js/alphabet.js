@@ -1,8 +1,8 @@
 import { renderGramSyms } from './grammar-ui.js';
 import { updateLPanelSectionMeta, updateRPanel } from './render.js';
-import { $, App, getMachineConfig, isBoundarySymbol, isBoundaryTapeMachine } from './state.js';
+import { $, App, isBoundarySymbol, isBoundaryTapeMachine } from './state.js';
 import { Change, subscribe } from './store.js';
-import { escapeHtml, isAnyTM, jsAttr, showStatus } from './utils.js';
+import { escapeHtml, jsAttr, showStatus } from './utils.js';
 
 subscribe(Change.ALPHABET, renderSigma);
 subscribe(Change.ALPHABET, renderGamma);
@@ -14,37 +14,6 @@ subscribe(Change.ALPHABET, renderGramSyms);
 // ══════════════════════════════════════════════════════════════════
 //  ALPHABET
 // ══════════════════════════════════════════════════════════════════
-
-// ── which alphabets the machine has ───────────────────────────────
-//
-// Σ, Γ and Δ are rows of one section rather than three sections: a PDT used to
-// open on three near-identical headers before its first state, each with its
-// own collapse, grip and pop-out for a field of chips nobody pulls out alone.
-// The rows keep the ids the sections had (`stack-sec`, `output-sec`), so a
-// test or a stale layout that asks for them by name still finds them.
-//
-// This is the one place that decides which rows show and what they are
-// called. The machine switch and the undo path each carried a copy, and the
-// copies had already drifted — one relabelled Γ for a Turing machine and the
-// other did not.
-export function syncAlphabetSection(m = App.machine) {
-  const cfg = getMachineConfig(m);
-  const stack = $('stack-sec');
-  const output = $('output-sec');
-  if (stack) stack.style.display = cfg.hasStack ? '' : 'none';
-  if (output) output.style.display = cfg.isTransducer ? '' : 'none';
-  const stackLbl = $('stack-sec-lbl');
-  if (stackLbl) stackLbl.innerHTML = `${isAnyTM(m) ? 'Tape' : 'Stack'} <span class="sym">Γ</span>`;
-
-  // One row reads as it always did — "Alphabet Σ" with its count in the
-  // header — and the row's own label would only repeat the title. Two or more
-  // and the header names the set while each row names itself.
-  const multi = !!(cfg.hasStack || cfg.isTransducer);
-  const sec = $('lp-alphabet');
-  if (sec && sec.classList) sec.classList.toggle('is-multi', multi);
-  const title = $('lp-alphabet-title');
-  if (title) title.innerHTML = multi ? 'Alphabets' : 'Alphabet <span class="sym">Σ</span>';
-}
 
 // ── the remove control on a chip ──────────────────────────────────
 //

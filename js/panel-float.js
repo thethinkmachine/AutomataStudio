@@ -61,28 +61,6 @@ const MOVE_THRESHOLD = 3;
 const CASCADE_STEP = 26;
 
 /**
- * Where a window rests against the edge of the canvas — the inset the toolbox,
- * the minimap and the nav controls already keep, so a window put in a corner
- * lines up with the chrome beside it rather than with the well's curve.
- */
-const EDGE_GUTTER = 12;
-
-/** The gap two windows keep when one is snapped against the other. */
-const WINDOW_GAP = 8;
-
-/**
- * How close an edge has to come to a line before it is pulled onto it.
- *
- * Small on purpose. A snap is a convenience the reader should be able to drag
- * straight through when they meant somewhere else, and at 8px a deliberate
- * placement a few pixels off a line is never overruled.
- */
-const SNAP_DIST = 8;
-
-/** One press of an arrow key on a focused title bar. */
-const KEY_STEP = 10;
-
-/**
  * The eight directions a window resizes in.
  *
  * Each name is the set of edges it moves, so the arithmetic reads the letters
@@ -241,75 +219,6 @@ function clampGeom(g, rect, min) {
   return { x, y, w, h };
 }
 
-function measurable(rect) {
-  return !!rect && rect.width > 0 && rect.height > 0;
-}
-
-/**
- * Where a record puts a window in the well as it is now.
- *
- * A record carries a distance to the right or bottom edge when the window was
- * left nearer that edge (see `withAnchors`), and this is where that distance
- * is turned back into a position. The well changes width all the time — a
- * sidebar pinned, unpinned, dragged wider, the browser resized — and a window
- * stored only as a distance from the left drifted relative to everything on
- * the right of the canvas: a Simulate window parked in the top-right corner
- * slid into the middle of the diagram when the right panel was put away, and
- * off the edge when it came back. Anchored, it stays in its corner.
- */
-function placeInWell(rec, rect, min) {
-  const lo = min || { w: FLOAT_MIN_W, h: FLOAT_MIN_H };
-  const w = Math.max(lo.w, Number(rec.w) || lo.w);
-  const h = Math.max(lo.h, Number(rec.h) || lo.h);
-  let x = rec.x;
-  let y = rec.y;
-  if (measurable(rect)) {
-    if (typeof rec.r === 'number') x = rect.width - w - rec.r;
-    if (typeof rec.b === 'number') y = rect.height - h - rec.b;
-  }
-  return clampGeom({ x, y, w, h }, rect, lo);
-}
-
-/**
- * A geometry with the anchors a window left at it should keep.
- *
- * The nearer edge on each axis, decided by the window's centre — the same rule
- * a desktop uses for a window it has to keep on screen across a resolution
- * change. Left and top are the default and are written as nothing at all, so
- * only a window in the right or bottom half carries anything extra.
- */
-function withAnchors(g, rect) {
-  const out = { x: g.x, y: g.y, w: g.w, h: g.h };
-  if (!measurable(rect)) return out;
-  if (g.x + g.w / 2 > rect.width / 2) out.r = Math.round(rect.width - g.x - g.w);
-  if (g.y + g.h / 2 > rect.height / 2) out.b = Math.round(rect.height - g.y - g.h);
-  return out;
-}
-
-/** A position the well forced on a window, keeping the anchors it was left with. */
-function keepAnchors(g, rec) {
-  const out = { x: g.x, y: g.y, w: g.w, h: g.h };
-  if (rec && typeof rec.r === 'number') out.r = rec.r;
-  if (rec && typeof rec.b === 'number') out.b = rec.b;
-  return out;
-}
-
-/**
- * Whether a window fits its content rather than holding a height.
- *
- * A section that names no elastic region (`sectionFill`) has nothing that
- * could use spare height — Simulate is a transport and a tape card, Language a
- * stack of boxes — so a window taller than its content was dead space under
- * it, and one the reader had sized for a run drew a tall empty frame before
- * the run and after a reset. Such a window *hugs*: its content decides the
- * height, and the height the reader gave it is the most it may take, past
- * which the body scrolls. The tape card appearing after a run grows it; a
- * reset gives the room back.
- */
-function hugsContent(id) {
-  return !sectionFill(id);
-}
-
 function applyGeom(el, g) {
   el.style.left = g.x + 'px';
   el.style.top = g.y + 'px';
@@ -319,44 +228,12 @@ function applyGeom(el, g) {
   // have to reach in here to clear the inline height and put it back on expand
   // — which means hooking `toggleLPSection`, and the stored size surviving a
   // collapse is exactly the thing that would then be easy to lose.
-  //
-  // A window that hugs its content holds the same number as a ceiling instead.
-  if (hugsContent(el.id)) {
-    el.classList.add('is-float-hug');
-    el.style.height = '';
-    el.style.maxHeight = g.h + 'px';
-  } else {
-    el.classList.remove('is-float-hug');
-    el.style.maxHeight = '';
-    el.style.height = g.h + 'px';
-  }
-}
-
-/**
- * The height a hugging window's content wants, with nothing capping it.
- *
- * One forced layout, taken at the start of a resize rather than on its
- * frames. A resize is capped here so its edge cannot be dragged out into
- * space the content will never fill — the edge would part company with the
- * window, and a north edge would simply push the window up.
- */
-function naturalHeight(el) {
-  const cap = el.style.maxHeight;
-  el.style.maxHeight = 'none';
-  const h = el.offsetHeight || 0;
-  el.style.maxHeight = cap;
-  return h;
+  el.style.height = g.h + 'px';
 }
 
 /**
  * A size for a section that has never been floated: the one it has in the
  * panel. Pulling a section out should not also resize it.
- *
- * And a place beside the panel it came from, in the corner of the canvas
- * nearest to it. It used to open at the top centre of the canvas, which is
- * where the diagram is — a right-panel section popped out from its button
- * landed on the machine the reader was looking at, and then had to be carried
- * back across to the edge it had just left.
  */
 function naturalGeom(el, rect, id) {
   let w = 0;
@@ -374,16 +251,11 @@ function naturalGeom(el, rect, id) {
   // that the other two had opened underneath it.
   const step = CASCADE_STEP * openWindowCount();
   const min = sectionMinSize(id);
-  const width = Math.max(min.w, Math.round(w) || 280);
-  const height = Math.max(min.h, Math.round(h) || 260);
-  // Without a measurable well there is no right edge to open against — the
-  // test DOM, a hidden view — so it cascades from the left as it always did.
-  const fromRight = sectionSide(id) === 'rpanel' && measurable(rect);
   return clampGeom({
-    x: fromRight ? rect.width - width - EDGE_GUTTER - step : EDGE_GUTTER + step,
-    y: EDGE_GUTTER + step,
-    w: width,
-    h: height
+    x: Math.max(16, Math.round(((rect && rect.width) || 640) * 0.5 - w / 2)) + step,
+    y: 24 + step,
+    w: Math.max(min.w, Math.round(w) || 280),
+    h: Math.max(min.h, Math.round(h) || 260)
   }, rect, min);
 }
 
@@ -395,23 +267,8 @@ function openWindowCount() {
 
 // ── raising ───────────────────────────────────────────────────────
 
-/** The window on top, which is drawn as the active one. */
-let frontWindow = null;
-
-/**
- * Brings a window to the front, and marks it as the one in use.
- *
- * The mark is what tells two overlapping windows apart at a glance: every
- * window has the same frame, so without it the only sign of which one a key
- * press will reach is which one happens to be painted over the other.
- */
 export function raiseFloat(el) {
   if (!el) return;
-  if (frontWindow !== el) {
-    if (frontWindow && frontWindow.classList) frontWindow.classList.remove('is-float-front');
-    frontWindow = el;
-    if (el.classList) el.classList.add('is-float-front');
-  }
   raiseSeq += 1;
   el.style.zIndex = String(RAISE_BASE + raiseSeq);
 }
@@ -440,13 +297,7 @@ export function floatSection(id, geom) {
   if (!side || !el || !layer || suspended) return null;
 
   const rect = floatLayerRect();
-  const min = sectionMinSize(id);
-  // A position someone chose — handed in, or remembered — keeps whatever
-  // anchors it came with. A position this module chose is anchored the way a
-  // window left there by hand would be, so a section that opened beside the
-  // right panel stays beside it when the canvas changes width.
-  const rec = geom || floatState(id);
-  const g = rec ? placeInWell(rec, rect, min) : naturalGeom(el, rect, id);
+  const g = clampGeom(geom || floatState(id) || naturalGeom(el, rect, id), rect, sectionMinSize(id));
 
   if (el.parentNode !== layer) layer.appendChild(el);
   el.classList.add('panel-float');
@@ -456,7 +307,7 @@ export function floatSection(id, geom) {
   installChrome(side, id);
   syncChrome(id);
   syncFill(id, true);
-  setFloatState(id, rec ? keepAnchors(g, rec) : withAnchors(g, rect));
+  setFloatState(id, g);
   // Not for the order — a section that has left the panel changes nothing
   // about the order of the ones still in it — but for the grip labels, which
   // count the sections in the panel and have just lost one.
@@ -477,15 +328,12 @@ export function dockSection(id, opts = {}) {
   const container = containerOf(side);
   if (!side || !el || !container) return false;
 
-  el.classList.remove('panel-float', 'is-float-moving', 'is-float-sizing', 'is-float-front');
-  if (frontWindow === el) frontWindow = null;
+  el.classList.remove('panel-float', 'is-float-moving', 'is-float-sizing');
   delete el.dataset.floatSide;
   el.style.left = '';
   el.style.top = '';
   el.style.width = '';
   el.style.height = '';
-  el.style.maxHeight = '';
-  el.classList.remove('is-float-hug');
   el.style.zIndex = '';
   container.appendChild(el);
   // `persist: false` is the suspend path — a narrow viewport docks the DOM
@@ -511,212 +359,23 @@ export function dockAllSections(side) {
   });
 }
 
-/**
- * Moves a window that is already floating. Used by the drag gestures.
- *
- * `opts.snap` pulls its edges onto the lines `beginFloatSnap` gathered, and is
- * only honoured for the window that call was made for — a stale context from
- * some other gesture must not decide where this one lands.
- */
-export function moveFloatTo(id, x, y, opts = {}) {
+/** Moves a window that is already floating. Used by the drag gestures. */
+export function moveFloatTo(id, x, y) {
   const el = sectionEl(id);
   if (!el || !el.classList.contains('panel-float')) return null;
   // The size comes off the element for the same reason `liveGeom` does: a
   // failed write must not shrink a window to the minimum the moment it is
   // dragged.
   const live = liveGeom(el, id);
-  const min = sectionMinSize(id);
-  const rect = floatLayerRect();
-  let g = { x, y, w: live.w, h: live.h };
-  let lines = null;
-  if (opts.snap && snapCtx && snapCtx.id === id) {
-    lines = snapMove(g);
-    g = { ...g, x: lines.x, y: lines.y };
-  }
-  g = clampGeom(g, rect, min);
-  // A guide is drawn only where the window actually is. The clamp can hold a
-  // window off a line it snapped to at the very edge of the well, and a guide
-  // there would be pointing at nothing.
-  showGuides(lines && lines.gx !== null && g.x === lines.x ? lines.gx : null,
-    lines && lines.gy !== null && g.y === lines.y ? lines.gy : null);
+  const g = clampGeom({ x, y, w: live.w, h: live.h }, floatLayerRect(), sectionMinSize(id));
   applyGeom(el, g);
   return g;
 }
 
-/**
- * Records where a drag left a window. Separated so a move can paint every
- * frame and write storage once, on release.
- *
- * This is also where a window picks up its anchors: where the reader lets go
- * is the one moment their intent about *which* edge it belongs to is known.
- */
+/** Records where a drag left a window. Separated so a move can paint every
+ *  frame and write storage once, on release. */
 export function commitFloatGeom(id, g) {
-  const rect = floatLayerRect();
-  return setFloatState(id, withAnchors(clampGeom(g, rect, sectionMinSize(id)), rect));
-}
-
-// ── snapping ──────────────────────────────────────────────────────
-//
-// A window's edges are pulled onto a line when they come within `SNAP_DIST` of
-// it. The lines are the canvas's own inset (`EDGE_GUTTER`, the margin the
-// toolbox and minimap keep) and the edges of every other window: aligned with
-// one, or sitting `WINDOW_GAP` beside it. That is the whole of what makes two
-// windows stack into a tidy column without the reader nudging pixels — and a
-// line is drawn while an edge is on one, so a window that sticks is seen to
-// have snapped rather than felt to be lagging.
-//
-// Holding Ctrl (⌘ on a Mac) moves freely, the way it does in every design
-// tool, for the placement a snap would overrule.
-
-/** What the gesture in flight can snap to, gathered once at its start. */
-let snapCtx = null;
-
-/**
- * Gathers the lines a window can snap to, for the gesture that is about to
- * move it.
- *
- * Once, because every other window stands still for the length of a gesture,
- * and a minimized one's height is its title strip — which means asking the
- * layout, and asking the layout on every frame of a drag is the cost
- * `floatLayerRect` was cached to avoid.
- */
-export function beginFloatSnap(id) {
-  const rect = floatLayerRect();
-  const layer = document.getElementById('panel-float-layer');
-  const self = sectionEl(id);
-  const others = [];
-  for (const node of [...((layer && layer.children) || [])]) {
-    if (node === self || !node.classList || !node.classList.contains('panel-float')) continue;
-    if (node.style && node.style.display === 'none') continue;
-    const g = liveGeom(node, node.id);
-    others.push({ l: g.x, t: g.y, r: g.x + g.w, b: g.y + drawnHeight(node, g.h) });
-  }
-  snapCtx = { id, rect, others, selfH: self ? drawnHeight(self, null) : null };
-}
-
-/** Ends a gesture's snapping and takes its guides away. */
-export function endFloatSnap() {
-  snapCtx = null;
-  showGuides(null, null);
-}
-
-/**
- * How tall a window is on screen, which is not always the height it holds: a
- * minimized one keeps its full height for when it is opened again and draws
- * only its title strip. Snapping has to see the strip.
- */
-function drawnHeight(el, fallback) {
-  const shrunk = el.classList && (el.classList.contains('collapsed') || el.classList.contains('is-float-hug'));
-  if (shrunk && el.offsetHeight) return el.offsetHeight;
-  return fallback;
-}
-
-/**
- * The lines one axis offers. `lo` are where a window's near edge (left or top)
- * may rest, `hi` where its far edge may.
- */
-function snapLines(axis) {
-  const size = axis === 'x' ? snapCtx.rect.width : snapCtx.rect.height;
-  const lo = [];
-  const hi = [];
-  if (size > 0) {
-    lo.push(EDGE_GUTTER);
-    hi.push(size - EDGE_GUTTER);
-  }
-  for (const o of snapCtx.others) {
-    const start = axis === 'x' ? o.l : o.t;
-    const end = axis === 'x' ? o.r : o.b;
-    lo.push(start, end + WINDOW_GAP);   // aligned with it, or just past it
-    hi.push(end, start - WINDOW_GAP);   // aligned with it, or just short of it
-  }
-  return { lo, hi };
-}
-
-/** The closest line to `value`, as the distance to it and where it is — or null. */
-function nearestLine(value, lines) {
-  let best = null;
-  for (const v of lines) {
-    const d = v - value;
-    if (Math.abs(d) <= SNAP_DIST && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, v };
-  }
-  return best;
-}
-
-/** One axis of a move: whichever of the two edges is nearer a line wins. */
-function snapAxis(pos, size, axis) {
-  const { lo, hi } = snapLines(axis);
-  const near = nearestLine(pos, lo);
-  const far = nearestLine(pos + size, hi);
-  const pick = near && (!far || Math.abs(near.d) <= Math.abs(far.d)) ? near : far;
-  return pick ? { pos: pos + pick.d, guide: pick.v } : { pos, guide: null };
-}
-
-function snapMove(g) {
-  const h = snapCtx.selfH || g.h;
-  const sx = snapAxis(g.x, g.w, 'x');
-  const sy = snapAxis(g.y, h, 'y');
-  return { x: sx.pos, y: sy.pos, gx: sx.guide, gy: sy.guide };
-}
-
-/**
- * A resize snaps only the edges it is moving — the opposite ones are pinned
- * for the length of the gesture, the rule `resizeGeom` already follows — and
- * gives the snap up rather than break the section's minimum size.
- */
-function snapResize(g, edge, min) {
-  const out = { ...g };
-  let gx = null;
-  let gy = null;
-  const { lo: xlo, hi: xhi } = snapLines('x');
-  const { lo: ylo, hi: yhi } = snapLines('y');
-  if (edge.includes('e')) {
-    const s = nearestLine(g.x + g.w, xhi);
-    if (s && g.w + s.d >= min.w) { out.w = g.w + s.d; gx = s.v; }
-  } else if (edge.includes('w')) {
-    const s = nearestLine(g.x, xlo);
-    if (s && g.w - s.d >= min.w) { out.x = g.x + s.d; out.w = g.w - s.d; gx = s.v; }
-  }
-  if (edge.includes('s')) {
-    const s = nearestLine(g.y + g.h, yhi);
-    if (s && g.h + s.d >= min.h) { out.h = g.h + s.d; gy = s.v; }
-  } else if (edge.includes('n')) {
-    const s = nearestLine(g.y, ylo);
-    if (s && g.h - s.d >= min.h) { out.y = g.y + s.d; out.h = g.h - s.d; gy = s.v; }
-  }
-  return { g: out, gx, gy };
-}
-
-/**
- * The two guide lines, created on first use and hidden rather than removed —
- * they are shown and hidden on every frame of a drag that crosses a line.
- */
-function guide(axis) {
-  const layer = floatLayer();
-  if (!layer) return null;
-  const id = 'panel-float-guide-' + axis;
-  let el = document.getElementById(id);
-  if (!el) {
-    el = document.createElement('div');
-    el.id = id;
-    el.className = 'panel-float-guide is-' + axis;
-    el.setAttribute('aria-hidden', 'true');
-    el.style.display = 'none';
-    layer.appendChild(el);
-  }
-  return el;
-}
-
-function showGuides(x, y) {
-  const v = x === null && !document.getElementById('panel-float-guide-x') ? null : guide('x');
-  const h = y === null && !document.getElementById('panel-float-guide-y') ? null : guide('y');
-  if (v) {
-    v.style.display = x === null ? 'none' : '';
-    if (x !== null) v.style.left = x + 'px';
-  }
-  if (h) {
-    h.style.display = y === null ? 'none' : '';
-    if (y !== null) h.style.top = y + 'px';
-  }
+  return setFloatState(id, clampGeom(g, floatLayerRect(), sectionMinSize(id)));
 }
 
 // ── the empty panel ───────────────────────────────────────────────
@@ -832,7 +491,7 @@ function installChrome(side, id) {
  *
  * A window is taller than the content was drawn for, and what happens to the
  * slack is a property of the section: States Q has a list that should grow and
- * scroll, the Trace card has a log that should, and the Language card is a
+ * scroll, Simulate has a trace log that should, and the Language card is a
  * stack of boxes where stretching anything only spreads it out. The registry
  * names the one region — see `sectionFill` — and everything else keeps its
  * natural height, with the body scrolling when the window is too small for it.
@@ -857,13 +516,6 @@ function syncChrome(id) {
   btn.innerHTML = out ? CLOSE_SVG : POPOUT_SVG;
   btn.setAttribute('aria-label', out ? 'Return to panel' : 'Pull out of panel');
   btn.setAttribute('data-tip', out ? 'Return to panel' : 'Pull out of panel');
-  // The title bar's keys are invisible, so the title bar says what they are —
-  // and only while it is one. Docked, the arrows mean nothing here.
-  const header = btn.parentNode;
-  if (header && typeof header.setAttribute === 'function') {
-    if (out) header.setAttribute('aria-description', 'Floating window. Arrow keys move it; Shift with the arrow keys resizes it.');
-    else if (typeof header.removeAttribute === 'function') header.removeAttribute('aria-description');
-  }
 }
 
 // ── moving and resizing ───────────────────────────────────────────
@@ -881,8 +533,7 @@ function liveGeom(el, id) {
   const x = parseFloat(el.style.left);
   const y = parseFloat(el.style.top);
   const w = parseFloat(el.style.width);
-  // A hugging window keeps its height as a ceiling — see `applyGeom`.
-  const h = parseFloat(el.style.height || el.style.maxHeight);
+  const h = parseFloat(el.style.height);
   if (Number.isFinite(x) && Number.isFinite(y) &&
     Number.isFinite(w) && Number.isFinite(h)) return { x, y, w, h };
   // Only now, and this is the point of the early return above: `floatState`
@@ -911,7 +562,6 @@ function beginMove(id, e) {
   // where the window was taken hold of, so the leg that fires it is a leg of
   // this gesture and not of whatever the pointer did before it.
   beginShakeTrack();
-  beginFloatSnap(id);
   gesture = {
     kind: 'move', id, el,
     pointerId: e.pointerId,
@@ -934,13 +584,7 @@ function beginResize(id, e, edge) {
   const el = sectionEl(id);
   if (!el || !el.classList.contains('panel-float')) return;
   layerRect = null;
-  let g = liveGeom(el, id);
-  // A hugging window is drawn at its content's height when that is less than
-  // the ceiling it holds, and the gesture starts from what is drawn — or the
-  // first pixels of a drag would be spent pulling the ceiling back down to the
-  // window before anything visibly moved.
-  const natural = hugsContent(id) ? naturalHeight(el) : 0;
-  if (natural > 0 && g.h > natural) g = { ...g, h: natural };
+  const g = liveGeom(el, id);
   if (typeof e.stopPropagation === 'function') e.stopPropagation();
   if (typeof e.preventDefault === 'function') e.preventDefault();
   gesture = {
@@ -948,13 +592,12 @@ function beginResize(id, e, edge) {
     edge: edge || 'se',
     pointerId: e.pointerId,
     startX: e.clientX, startY: e.clientY,
-    origin: g, natural,
+    origin: g,
     geom: g, active: true
   };
   el.classList.add('is-float-sizing');
   capture(el, e);
   raiseFloat(el);
-  beginFloatSnap(id);
 }
 
 /**
@@ -1068,14 +711,13 @@ function onPointerMove(e) {
     swallowClickOn = gesture.el;
   }
   e.preventDefault();
-  const snap = !(e.ctrlKey || e.metaKey);
   if (gesture.kind === 'move') {
     // Only a move, and only a window that is already out — see the note at the
     // top of panel-shake.js for why a tear-off is not shakeable.
     if (noteShakeSample(e.clientX, e.clientY)) reanchorAfterShake();
     gesture.geom = moveFloatTo(gesture.id,
       gesture.originX + (e.clientX - gesture.startX),
-      gesture.originY + (e.clientY - gesture.startY), { snap }) || gesture.geom;
+      gesture.originY + (e.clientY - gesture.startY)) || gesture.geom;
     return;
   }
   const min = sectionMinSize(gesture.id);
@@ -1092,16 +734,7 @@ function onPointerMove(e) {
     raw.h = Math.max(min.h, raw.h + raw.y);
     raw.y = 0;
   }
-  // No taller than the content of a window that hugs it, with the opposite
-  // edge pinned the way it is at the minimum.
-  if (gesture.natural > 0 && raw.h > gesture.natural) {
-    if (gesture.edge.includes('n')) raw.y += raw.h - gesture.natural;
-    raw.h = gesture.natural;
-  }
-  const snapped = snap && snapCtx && snapCtx.id === gesture.id
-    ? snapResize(raw, gesture.edge, min) : { g: raw, gx: null, gy: null };
-  const g = clampGeom(snapped.g, floatLayerRect(), min);
-  showGuides(snapped.gx, snapped.gy);
+  const g = clampGeom(raw, floatLayerRect(), min);
   applyGeom(gesture.el, g);
   gesture.geom = g;
 }
@@ -1127,9 +760,6 @@ function reanchorAfterShake() {
   const after = floatLayerRect();
   gesture.originX += before.left - after.left;
   gesture.originY += before.top - after.top;
-  // The well's edges are two of the lines the window snaps to, and they have
-  // just moved.
-  beginFloatSnap(gesture.id);
 }
 
 function onPointerUp(e) {
@@ -1139,7 +769,6 @@ function onPointerUp(e) {
   const { id, el, geom, active, kind, pointerId } = gesture;
   gesture = null;
   endShakeTrack();
-  endFloatSnap();
   el.classList.remove('is-float-moving', 'is-float-sizing');
   try { el.releasePointerCapture(pointerId); } catch (err) { /* already gone */ }
   if (!active) return;
@@ -1147,69 +776,6 @@ function onPointerUp(e) {
   // A window that just changed height holds lists windowed against the height
   // it used to have. See redrawAllLists().
   if (kind === 'resize') redrawAllLists();
-}
-
-// ── the keyboard ──────────────────────────────────────────────────
-//
-// The pop-out button made a window reachable from the keyboard; this makes it
-// usable. With its title bar focused, the arrow keys move a window and
-// Shift+arrows resize it from the bottom-right, `KEY_STEP` at a time. Enter
-// and Space keep the job they have on every section header — collapsing it —
-// and Escape is still nobody's here (see the note at the top of the file).
-
-/** The title bar a key press was aimed at, if it belongs to a window. */
-function floatingHeader(t) {
-  const win = t && t.parentNode;
-  if (!win || !win.classList || !win.classList.contains('panel-float')) return null;
-  const side = sectionSide(win.id);
-  const cfg = side && PANEL_SECTIONS[side];
-  if (!cfg || !t.classList || !t.classList.contains(cfg.headerClass)) return null;
-  return win;
-}
-
-/**
- * Capture phase, and it stops the key: ArrowLeft and ArrowRight also step the
- * simulation from the canvas's shortcuts, and a key pressed on a window's
- * title bar must move the window and nothing else. Claimed only for exactly
- * that target, so no other handler below loses a key it should have had.
- */
-function onKeyDown(e) {
-  if (!e.key || !e.key.startsWith('Arrow') || e.altKey || e.ctrlKey || e.metaKey) return;
-  const win = floatingHeader(e.target);
-  if (!win || gesture) return;
-  e.preventDefault();
-  e.stopPropagation();
-  const dx = e.key === 'ArrowRight' ? KEY_STEP : e.key === 'ArrowLeft' ? -KEY_STEP : 0;
-  const dy = e.key === 'ArrowDown' ? KEY_STEP : e.key === 'ArrowUp' ? -KEY_STEP : 0;
-  const id = win.id;
-  const g = liveGeom(win, id);
-  const min = sectionMinSize(id);
-  const rect = floatLayerRect();
-  let next;
-  if (e.shiftKey) {
-    // A minimized window is a title strip, with no body to size.
-    if (win.classList.contains('collapsed')) return;
-    const natural = hugsContent(id) ? naturalHeight(win) : 0;
-    const from = natural > 0 ? Math.min(g.h, natural) : g.h;
-    let h = Math.max(min.h, from + dy);
-    if (natural > 0) h = Math.min(h, natural);
-    next = clampGeom({ ...g, w: Math.max(min.w, g.w + dx), h }, rect, min);
-  } else {
-    next = clampGeom({ ...g, x: g.x + dx, y: g.y + dy }, rect, min);
-  }
-  applyGeom(win, next);
-  raiseFloat(win);
-  // Written per press rather than per gesture: there is no release to wait
-  // for, and a key held down repeats at a rate storage shrugs off.
-  commitFloatGeom(id, next);
-  if (e.shiftKey) redrawAllLists();
-}
-
-/** Tabbing into a window brings it forward, the way pressing on it does. */
-function onFocusIn(e) {
-  const t = e.target;
-  const win = t && typeof t.closest === 'function' ? t.closest('.panel-float') : null;
-  if (win && win !== frontWindow) raiseFloat(win);
 }
 
 // ── the restore pass ──────────────────────────────────────────────
@@ -1239,11 +805,9 @@ export function applyFloatLayout() {
           // and the memory of it out of step, and the next thing to read the
           // record — a gesture that could not parse the inline styles, a
           // restore into a *wider* well — puts the window back off-screen.
-          // The anchors are kept: they are where the reader left it, and the
-          // position is only what that means in the well as it is now.
-          const g = placeInWell(states[id], floatLayerRect(), sectionMinSize(id));
+          const g = clampGeom(states[id], floatLayerRect(), sectionMinSize(id));
           applyGeom(el, g);
-          if (!sameGeom(g, states[id])) setFloatState(id, keepAnchors(g, states[id]));
+          if (!sameGeom(g, states[id])) setFloatState(id, g);
         }
       } else if (isOut) {
         // Suspending keeps the record; only a reader docking a window clears it.
@@ -1264,9 +828,7 @@ function sameGeom(a, b) {
 }
 
 /**
- * Puts every window where its record says, in a canvas that just changed size:
- * back inside it if it got smaller, and against the edge it is anchored to
- * whichever way it went.
+ * Pulls every window back inside a canvas that just got smaller.
  *
  * Only what actually moved is written. A record is a `JSON.stringify` into
  * `localStorage`, and this runs from a `ResizeObserver` — which fires on every
@@ -1287,10 +849,10 @@ function reclampAll() {
       // which delivers a tick here on the very next frame of the drag that
       // caused it. The gesture is the authority on a window it is holding.
       if (gesture && gesture.id === id) return;
-      const g = placeInWell(states[id], rect, sectionMinSize(id));
+      const g = clampGeom(states[id], rect, sectionMinSize(id));
       if (sameGeom(g, states[id])) return;
       applyGeom(el, g);
-      setFloatState(id, keepAnchors(g, states[id]));
+      setFloatState(id, g);
     });
   });
 }
@@ -1314,8 +876,6 @@ export function initPanelFloat() {
     document.addEventListener('pointermove', onPointerMove, { passive: false });
     document.addEventListener('pointerup', onPointerUp);
     document.addEventListener('pointercancel', onPointerUp);
-    document.addEventListener('keydown', onKeyDown, true);
-    document.addEventListener('focusin', onFocusIn);
     subscribeOnce();
   }
 
@@ -1326,7 +886,7 @@ export function initPanelFloat() {
 }
 
 function subscribeOnce() {
-  // A machine switch hides the Machine and Blocks sections with `style.display`.
+  // A machine switch hides the stack and output sections with `style.display`.
   // A hidden *window* is correct — the record is kept, so switching back puts
   // it where the reader left it rather than in the panel — but a panel whose
   // last visible section just went is one that now needs its empty state.
@@ -1401,8 +961,6 @@ export function isMovingFloat() {
 export function resetPanelFloat() {
   gesture = null;
   endShakeTrack();
-  snapCtx = null;
-  frontWindow = null;
   suspended = false;
   raiseSeq = 0;
   layerRect = null;

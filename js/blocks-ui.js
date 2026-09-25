@@ -36,8 +36,6 @@ import { Change, emit } from './store.js';
 import { showStatus } from './utils.js';
 import { blockSize, invalidateViewGraph, scopeId, viewStates } from './view-graph.js';
 import { formatKbd } from './kbd.js';
-import { syncDockFill } from './panel-sections-ui.js';
-import { syncPanelEmpty } from './panel-float.js';
 
 export const BLOCK_STORE_NAME = 'blocks';
 
@@ -425,7 +423,6 @@ export async function renderBlockLibrary() {
   const show = rows.length > 0;
   host.hidden = !show;
   if (head) head.hidden = !show;
-  syncBlocksSection();
   if (!show) return;
 
   for (const def of rows) {
@@ -483,32 +480,6 @@ export async function renderBlockLibrary() {
     row.appendChild(acts);
     host.appendChild(row);
   }
-}
-
-/**
- * Whether the Blocks section is on the panel at all.
- *
- * Only a machine with a stay move can leave a block without eating a symbol,
- * so a DFA never has one. But a Turing machine with no blocks and nothing in
- * the library had a section too — collapsed, reading "No blocks" under a
- * zero, on every TM anyone opened. A section that can only ever say there is
- * nothing in it is a header's worth of noise between the reader and the lists
- * they are using. It appears with the first block grouped on the canvas or
- * the first definition saved to the library, which are the two things it
- * lists.
- */
-export function syncBlocksSection() {
-  const sec = $('lp-blocks');
-  if (!sec) return;
-  const lib = $('block-library-list');
-  const has = (App.blocks?.length || 0) > 0 || !!(lib && !lib.hidden);
-  const show = machineSupportsBlocks(App.machine) && has;
-  if ((sec.style.display !== 'none') === show) return;
-  sec.style.display = show ? '' : 'none';
-  // The last open section may just have changed, and a panel whose other
-  // sections are all out in windows may have just gained or lost its last one.
-  syncDockFill('lpanel');
-  syncPanelEmpty('lpanel');
 }
 
 /**

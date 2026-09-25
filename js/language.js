@@ -901,8 +901,10 @@ export function renderLangExtension() {
     box.appendChild(_le('div', 'lang-note', refused));
   } else if (langIsSymbolic()) {
     renderLangFingerprint(box);
+    renderLangExportBar(box);
   } else {
     renderLangTraces(box);
+    renderLangExportBar(box);
   }
   _langExtCache = { key, node: box };
   host.appendChild(box);
@@ -911,30 +913,15 @@ export function renderLangExtension() {
 // The panel shows a window onto L(M); this is how that leaves the app.
 // Sampling can be slower than a render (every candidate is verified with
 // the real simulator), so it happens on click rather than eagerly here.
-//
-// An icon at the end of the view's header rather than a full-width bar under
-// it. The bar was a whole row of the card — the height of three rows of the
-// fingerprint — spent on an action taken once in a long while, beneath the
-// thing it acts on, where it read as part of the picture.
-const LANG_EXPORT_ICON = '<svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor" aria-hidden="true" focusable="false">'
-  + '<path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,124.69V32a8,8,0,0,0-16,0v92.69L93.66,98.34a8,8,0,0,0-11.32,11.32Z"/></svg>';
-
-export function langExportButton() {
-  if (typeof openExportCodeModal !== 'function') return null;
-  const btn = _le('button', 'lang-head-btn');
+export function renderLangExportBar(host) {
+  if (typeof openExportCodeModal !== 'function') return;
+  const bar = _le('div', 'exp-bar');
+  const btn = _le('button', 'exp-bar-btn', 'Export words');
   btn.type = 'button';
-  btn.innerHTML = LANG_EXPORT_ICON;
-  btn.setAttribute('aria-label', 'Export words');
-  btn.dataset.tip = 'Export words — accepted and rejected, as CSV, JSON or batch-test input';
+  btn.dataset.tip = 'Accepted and rejected words as CSV, JSON or batch-test input';
   btn.addEventListener('click', () => openExportCodeModal('samples'));
-  return btn;
-}
-
-/** The right-hand end of a view's header: what it counts, then export. */
-function langHeadEnd(head) {
-  const end = _le('span', 'lang-head-end');
-  head.appendChild(end);
-  return end;
+  bar.appendChild(btn);
+  host.appendChild(bar);
 }
 
 // ── symbolic: the fingerprint ─────────────────────────────────────
@@ -966,14 +953,10 @@ export function renderLangFingerprint(host) {
   // to the alphabet rebuilds the grid rather than reusing it.
   const sigma = langSigmaOrdered();
 
-  // One line above the grid and one below it. It used to be five: a caption
-  // with a count, the readout, a legend repeating the count as two numbers, a
-  // footer, and an export bar — more chrome than picture on a panel where the
-  // picture is the point. The legend's swatches now carry the numbers in the
-  // header, and the readout and the footer share the line under the grid.
   const head = _le('div', 'lang-head');
   head.appendChild(_le('span', 'lang-cap', 'fingerprint'));
-  const end = langHeadEnd(head);
+  const count = _le('span', 'lang-cap');
+  head.appendChild(count);
   host.appendChild(head);
 
   const scroll = _le('div', 'lang-fp');
@@ -982,20 +965,16 @@ export function renderLangFingerprint(host) {
   scroll.appendChild(grid);
   scroll.appendChild(sentinel);
 
-  // The line under the grid: where the enumeration has got to, and — while
-  // the pointer or the focus is on a cell — that cell's word and verdict in
-  // its place. Two nodes for the life of the grid, written over on hover,
-  // rather than two built per cell the pointer crosses.
+  // The readout is two nodes for the life of the grid, written over on
+  // hover, rather than two built per cell the pointer crosses.
   const read = _le('div', 'lang-fp-read');
   const readWord = _le('span', 'w');
   const readVerdict = _le('span');
-  const foot = _le('span', 'lang-foot');
-  read.appendChild(foot);
   read.appendChild(readWord);
   read.appendChild(readVerdict);
-  const showFoot = () => read.classList.remove('is-reading');
 
-  const legend = _le('span', 'lang-legend');
+  const legend = _le('div', 'lang-legend');
+  const foot = _le('div', 'lang-foot');
 
   let nAcc = 0, nRej = 0, nUnk = 0, shown = 0, deepest = 0;
   let exhausted = false, selected = null;
@@ -1043,15 +1022,10 @@ export function renderLangFingerprint(host) {
     readWord.textContent = langFpLabel(cell.w);
     readVerdict.className = 'v-' + cell.v;
     readVerdict.textContent = say(cell.v);
-    read.classList.add('is-reading');
   };
 
   grid.addEventListener('pointerover', e => reveal(e.target));
   grid.addEventListener('focusin', e => reveal(e.target));
-  grid.addEventListener('pointerleave', showFoot);
-  grid.addEventListener('focusout', e => {
-    if (!e.relatedTarget || !grid.contains(e.relatedTarget)) showFoot();
-  });
   grid.addEventListener('click', e => {
     const cell = cellAt(e.target);
     if (!cell) return;
@@ -1109,9 +1083,7 @@ export function renderLangFingerprint(host) {
   };
 
   // Built once and written over, so a pull updates three strings rather
-  // than tearing the legend down and rebuilding it. The swatch is the label:
-  // a gold square beside a number in a picture of gold squares says
-  // "accepted" without the word, and the word is on the tooltip.
+  // than tearing the legend down and rebuilding it.
   const kv = (cls) => {
     const el = _le('span');
     el.appendChild(_le('i', cls));
@@ -1122,36 +1094,28 @@ export function renderLangFingerprint(host) {
   const kAcc = kv('k-acc'), kRej = kv('k-rej'), kUnk = kv('k-unk');
   legend.appendChild(kAcc.el);
   legend.appendChild(kRej.el);
-  end.appendChild(legend);
-  const exportBtn = langExportButton();
-  if (exportBtn) end.appendChild(exportBtn);
   let unkShown = false;
 
   const update = () => {
-    kAcc.t.textContent = String(nAcc);
-    kRej.t.textContent = String(nRej);
-    kAcc.el.dataset.tip = `${nAcc} of the ${shown} words shown are accepted`;
-    kRej.el.dataset.tip = `${nRej} rejected`;
+    count.textContent = `${nAcc} of ${shown}`;
+    kAcc.t.textContent = `accept ${nAcc}`;
+    kRej.t.textContent = `reject ${nRej}`;
     if (nUnk) {
-      kUnk.t.textContent = String(nUnk);
-      kUnk.el.dataset.tip = `${nUnk} still running after ${langStepBudget()} steps — not rejections`;
+      kUnk.t.textContent = `no verdict ${nUnk}`;
       if (!unkShown) { legend.appendChild(kUnk.el); unkShown = true; }
     }
 
     const parts = [`to length ${deepest}`];
     if (!exhausted) parts.push('scroll for more');
-    else if (streamState.capped) parts.push(`stopped at ${shown} words`);
-    else parts.push('all of Σ*');
+    else if (streamState.capped) parts.push(`stopped at ${shown} words — Σ* goes on`);
+    else parts.push('that is all of Σ*');
     // The hatched cells are the honest part: raising the budget resolves
-    // the slow ones, and whatever is left never halts at any budget. That
-    // takes a sentence to say, so the line names the count and the tooltip
-    // says the rest.
-    if (nUnk) parts.push(`${nUnk} unresolved`);
+    // the slow ones, and whatever is left never halts at any budget.
+    if (nUnk) {
+      parts.push(`${nUnk} still running after ${langStepBudget()} steps — not rejections. ` +
+        'Raise the budget in Settings › Turing Machine; whatever stays hatched never halts');
+    }
     foot.textContent = parts.join(' · ');
-    read.dataset.tip = nUnk
-      ? `${nUnk} words still running after ${langStepBudget()} steps — not rejections. ` +
-        'Raise the budget in Settings › Turing Machine; whatever stays hatched never halts.'
-      : '';
   };
 
   let io = null;
@@ -1213,6 +1177,8 @@ export function renderLangFingerprint(host) {
 
   host.appendChild(scroll);
   host.appendChild(read);
+  host.appendChild(legend);
+  host.appendChild(foot);
 
   if (!exhausted && typeof IntersectionObserver === 'function') {
     io = new IntersectionObserver(entries => {
@@ -1233,9 +1199,8 @@ export function renderLangTraces(host) {
 
   const head = _le('div', 'lang-head');
   head.appendChild(_le('span', 'lang-cap', 'accepted traces'));
-  const end = langHeadEnd(head);
   const count = _le('span', 'lang-cap');
-  end.appendChild(count);
+  head.appendChild(count);
   host.appendChild(head);
 
   if (!langCanTrace()) {
@@ -1259,7 +1224,7 @@ export function renderLangTraces(host) {
   const sentinel = _le('div', 'lang-tr-sentinel');
   list.appendChild(sentinel);
   const covered = new Set();
-  const foot = _le('span', 'lang-foot');
+  const foot = _le('div', 'lang-foot');
   let shown = 0, exhausted = false;
 
   const addRow = (w) => {
@@ -1272,14 +1237,7 @@ export function renderLangTraces(host) {
     if (!w.length) syms.appendChild(_le('span', 'lang-tr-eps', App.config.sym.eps));
     else w.forEach(s => syms.appendChild(langSymChip(s)));
     row.appendChild(syms);
-    // The length, and in the same slot a play glyph shown while the row is
-    // under the pointer or the focus — a click runs the word, and the row
-    // should say so where the reader is looking rather than only in a tooltip.
     row.appendChild(_le('div', 'lang-tr-len', String(w.length)));
-    const play = _le('span', 'lang-tr-go');
-    play.setAttribute('aria-hidden', 'true');
-    play.innerHTML = '<svg viewBox="0 0 256 256" width="9" height="9" fill="currentColor"><path d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"/></svg>';
-    row.appendChild(play);
     const go = () => langLoadTrace(w);
     row.addEventListener('click', go);
     row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
@@ -1290,12 +1248,11 @@ export function renderLangTraces(host) {
   const updateFoot = () => {
     count.textContent = exhausted ? `${shown} total` : `${shown} shown`;
 
-    const parts = [`${covered.size}/${App.sigma.size} symbols used`];
-    if (infinite) parts.push('infinite');
-    else if (exhausted) parts.push('all of L(M)');
+    const parts = [`${covered.size}/${App.sigma.size} symbols exercised`];
+    if (infinite) parts.push('L(M) is infinite — scroll for more');
+    else if (exhausted) parts.push('that is all of L(M)');
     if (searchState.truncated) parts.push('search truncated');
     foot.textContent = parts.join(' · ');
-    foot.dataset.tip = infinite ? 'L(M) is infinite — scroll the list for more' : '';
   };
 
   const pullMore = (n) => {
@@ -1320,8 +1277,6 @@ export function renderLangTraces(host) {
   }
 
   host.appendChild(list);
-  const exportBtn = langExportButton();
-  if (exportBtn) end.appendChild(exportBtn);
 
   if (!exhausted && typeof IntersectionObserver === 'function') {
     io = new IntersectionObserver(entries => {
@@ -1330,20 +1285,17 @@ export function renderLangTraces(host) {
     io.observe(sentinel);
   }
 
-  // The symbol groups and the footer share the line under the list, the way
-  // the fingerprint's readout and footer do.
-  const line = _le('div', 'lang-fp-read');
   const top = v.ranked.slice(0, 2);
   if (top.length) {
-    const legend = _le('span', 'lang-legend');
+    const legend = _le('div', 'lang-legend');
     const kv = (cls, txt) => { const s = _le('span'); s.appendChild(_le('i', cls)); s.appendChild(document.createTextNode(txt)); return s; };
     top.forEach((g2, i) => legend.appendChild(kv('k-g' + (i + 1), `${g2} · ${v.groups[g2].length}`)));
     const rest = App.sigma.size - top.reduce((n, g2) => n + v.groups[g2].length, 0);
     if (rest > 0) legend.appendChild(kv('k-g0', `other · ${rest}`));
-    line.appendChild(legend);
+    host.appendChild(legend);
   }
-  line.appendChild(foot);
-  host.appendChild(line);
+
+  host.appendChild(foot);
 }
 
 // ── the tuple line ────────────────────────────────────────────────

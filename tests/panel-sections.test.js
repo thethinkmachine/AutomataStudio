@@ -76,7 +76,7 @@ test('a section the saved order predates lands where it was declared', () => {
   assert.deepEqual([...order].sort(), [...LP].sort(), 'nothing is lost');
   assert.ok(order.indexOf('lp-transitions') < order.indexOf('lp-states'),
     'and the saved preference is kept');
-  assert.equal(order[0], LP[0], 'the unmentioned first section is still first');
+  assert.equal(order[0], 'lp-alphabet', 'the unmentioned first section is still first');
 });
 
 test('a duplicated or garbage saved order still yields every section once', () => {

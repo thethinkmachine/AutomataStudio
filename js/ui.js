@@ -1674,12 +1674,6 @@ export function visibleCanvasBox() {
 // the two chase each other: the card picks its corner when it opens, which is
 // before a load's fit, and a fit never asks it to move again.
 //
-// And every floating panel window, minimized ones included — a title strip
-// over a state hides its name as surely as a whole window does. fitRegion
-// already refuses a cut that would cost more than half the zoom, so a window
-// too big to frame around is left out of the answer rather than shrinking the
-// machine to a thumbnail beside it.
-//
 // Deliberately absent: the status toast, which is gone in seconds.
 //
 // Measured rather than computed the way layoutCanvasOverlays computes them:
@@ -1691,15 +1685,10 @@ export function canvasObstacleRects(wrapRect) {
   const map = $('minimap-container');
   const card = $('example-card');
   const info = $('canvas-info-btn');
-  const layer = $('panel-float-layer');
-  const windows = layer
-    ? [...(layer.children || [])].filter(el => el.classList && el.classList.contains('panel-float'))
-    : [];
   const members = [$('canvas-toolbox'), $('canvas-nav-controls'),
     map && !map.classList.contains('minimap-hidden') ? map : null,
     info && !info.hidden ? info : null,
-    card && card.classList.contains('is-open') ? card : null,
-    ...windows];
+    card && card.classList.contains('is-open') ? card : null];
   for (const el of members) {
     if (!el || el.offsetParent === null || !el.getBoundingClientRect) continue;
     const b = el.getBoundingClientRect();

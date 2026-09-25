@@ -1,20 +1,18 @@
 import { renderGrammarView } from './grammar-ui.js';
 import { renderAlgo } from './algorithms-fa.js';
-import { renderGamma, renderOutputAlpha, renderSigma, syncAlphabetSection } from './alphabet.js';
+import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { wrap } from './canvas.js';
 import { snapshot } from './history.js';
 import { anyModalOpen, closeModal, showOverlay } from './modal.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
-import { setTapeArity, tapeArityCollisions } from './machines/index.js';
+import { isMultiTape, machineSupportsBlocks, setTapeArity, tapeArityCollisions } from './machines/index.js';
 import { resetSim } from './simulation.js';
 import { $, App, MIN_TAPES, clampTapeCount, getMachineConfig, maxTapes, normalizeBoundarySymbolsForMachine } from './state.js';
 import { Change, emit, subscribe } from './store.js';
 import { renderReferenceView } from './reference.js';
 import { renderTabs, updateMobilePanelChrome, updateModelPickerLabels } from './ui.js';
 import { syncDockFill } from './panel-sections-ui.js';
-import { isCounterMachine, performClear, showStatus } from './utils.js';
-import { renderMachineOptions } from './machine-options-ui.js';
-import { syncBlocksSection } from './blocks-ui.js';
+import { isAnyTM, isCounterMachine, performClear, showStatus } from './utils.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  VIEW MANAGEMENT
@@ -245,16 +243,24 @@ export function applyMachineSwitch(m) {
   if (typeof renderGamma === 'function') renderGamma();
   if (typeof renderOutputAlpha === 'function') renderOutputAlpha();
 
-  // Toggle UI Sections based on Machine Features. The alphabets and the
-  // machine's own parameters each have one function that decides them, shared
-  // with the undo path so the two cannot disagree about a machine.
-  syncAlphabetSection(m);
-  // Rebuilt rather than revealed: switching to a multi-tape machine used to
-  // show a picker still reading whatever it last read.
-  renderMachineOptions();
-  syncBlocksSection();
+  // Toggle UI Sections based on Machine Features
+  $('stack-sec').style.display = cfg.hasStack ? '' : 'none';
+  const stackLbl = $('stack-sec').querySelector('.sec-lbl');
+  if (stackLbl) stackLbl.textContent = isAnyTM(m) ? 'Tape Alphabet Γ' : 'Stack Alphabet Γ';
+  
+  $('output-sec').style.display = cfg.isTransducer ? '' : 'none';
+  // Only a machine with a stay move can leave a block without eating a symbol,
+  // so the Blocks section follows the machine the way the stack and output
+  // sections do. Left standing it read "No blocks" on every DFA forever — a
+  // permanently empty section for a feature that machine cannot have.
+  const blocksSec = $('lp-blocks');
+  if (blocksSec) blocksSec.style.display = machineSupportsBlocks(m) ? '' : 'none';
   // Which section is last-and-open can change with what was just hidden.
   syncDockFill('lpanel');
+  $('mtm-ctrl').style.display = isMultiTape(m) ? 'flex' : 'none';
+  // Revealing the control is not the same as filling it in. Switching to a
+  // multi-tape machine showed a picker still reading whatever it last read.
+  syncTapeCountUI();
 
   // An ω-automaton reads u·vᵂ. Without saying so the placeholder invites a
   // finite word, which is the one thing the machine cannot take.

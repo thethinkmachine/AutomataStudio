@@ -241,21 +241,20 @@ test('a panel with everything pulled out of it says so', () => {
 });
 
 test('a panel whose only sections are hidden is empty too', () => {
-  // applyMachineSwitch hides the Machine and Blocks sections with
-  // style.display for machines that have no parameters and no blocks. A panel
-  // showing nothing needs its empty state whether the sections left or were
-  // merely hidden.
+  // applyMachineSwitch hides the stack and output sections with style.display
+  // for machines that have neither. A panel showing nothing needs its empty
+  // state whether the sections left or were merely hidden.
   mount();
   // Everything but the two the machine switch hides, so what is left is only
   // the hidden pair — derived, so a section added later is covered too.
-  LP.filter(id => id !== 'lp-machine' && id !== 'lp-blocks')
+  LP.filter(id => id !== 'stack-sec' && id !== 'output-sec')
     .forEach(id => context.floatSection(id));
-  context.$('lp-machine').style.display = 'none';
-  context.$('lp-blocks').style.display = 'none';
+  context.$('stack-sec').style.display = 'none';
+  context.$('output-sec').style.display = 'none';
   context.syncPanelEmpty('lpanel');
   assert.equal(context.$('lpanel-float-empty').style.display, '');
 
-  context.$('lp-machine').style.display = '';
+  context.$('stack-sec').style.display = '';
   context.syncPanelEmpty('lpanel');
   assert.equal(context.$('lpanel-float-empty').style.display, 'none');
 });
@@ -600,18 +599,14 @@ test('a move keeps the size the window was resized to', () => {
 
 // ── resizing from every side ──────────────────────────────────────
 
-/**
- * Drives one resize gesture and reports the box it left — the box only. Which
- * edge the window is anchored to is its own question, pinned further down.
- */
+/** Drives one resize gesture and reports the box it left. */
 function resizeBy(id, edge, dx, dy) {
   const el = context.$(id);
   const grab = el.__floatGrabs[edge];
   press(grab, 500, 500);
   drag(500 + dx, 500 + dy);
   dispatchDocumentEvent('pointerup', {});
-  const { x, y, w, h } = context.floatState(id);
-  return { x, y, w, h };
+  return context.floatState(id);
 }
 
 test('a window resizes from all eight of its edges', () => {
@@ -688,8 +683,7 @@ test('one region of a section absorbs a window\'s spare height', () => {
     });
   });
   assert.equal(context.sectionFill('lp-states'), '.slist');
-  assert.equal(context.sectionFill('rp-simulate'), null,
-    'a transport and a tape card: squeezed, the tape drew over the card; stretched, the card was empty');
+  assert.equal(context.sectionFill('rp-simulate'), '.sim-tracker');
   assert.equal(context.sectionFill('rp-trace'), '.trace-log',
     'the log is its own card now, and it is the thing in it that grows');
   assert.equal(context.sectionFill('rp-language'), null,
@@ -1001,242 +995,4 @@ test('the right panel keeps its natural heights', () => {
   mount();
   assert.equal(context.syncDockFill('rpanel'), null,
     'its regions are drawn boxes, and a stretched trace log is a tall empty card');
-});
-
-// ── anchoring to the nearer edge ──────────────────────────────────
-//
-// The well changes width all the time — a sidebar pinned or unpinned, dragged
-// wider, the browser resized — and a window stored only as a distance from the
-// left drifted relative to everything on the right of the canvas. A window
-// left nearer the right or bottom keeps its distance to that edge instead.
-
-test('a window left in the right half keeps its distance to the right edge', () => {
-  const { header } = mountWindow('rp-batch', { x: 100, y: 100, w: 360, h: 280 });
-  well(1200, 800);
-  press(header, 150, 150);
-  drag(850, 150);                               // x: 100 → 800, right edge at 1160
-  dispatchDocumentEvent('pointerup', {});
-  const rec = context.floatState('rp-batch');
-  assert.equal(rec.r, 1200 - 800 - 360, 'the distance to the right is what is kept');
-  assert.equal(rec.b, undefined, 'and it is still in the top half');
-
-  well(1500, 800);                              // a sidebar was put away
-  context.invalidateFloatRect();                // what the ResizeObserver does first
-  context._floatTests.reclampAll();
-  assert.equal(context.$('rp-batch').style.left, (1500 - 360 - 40) + 'px',
-    'it stays beside the right edge instead of drifting into the canvas');
-  assert.equal(context.floatState('rp-batch').r, 40, 'and the anchor survives the write-back');
-  well(0, 0);
-});
-
-test('a window left in the top-left half is stored as it always was', () => {
-  // Left and top are the default anchor and cost nothing in the record, so a
-  // record written before anchors existed reads exactly as it did.
-  const { header } = mountWindow('rp-batch', { x: 100, y: 100, w: 360, h: 280 });
-  well(1200, 800);
-  press(header, 150, 150);
-  drag(180, 170);
-  dispatchDocumentEvent('pointerup', {});
-  assert.deepEqual(context.floatState('rp-batch'), { x: 130, y: 120, w: 360, h: 280 });
-  well(0, 0);
-});
-
-test('a window anchored right follows a well that got narrower', () => {
-  mount();
-  well(1200, 800);
-  context.initPanelFloat();
-  context.setFloatState('rp-batch', { x: 800, y: 40, w: 360, h: 280, r: 40 });
-  context.applyFloatLayout();
-  assert.equal(context.$('rp-batch').style.left, '800px');
-  well(900, 800);
-  context.invalidateFloatRect();
-  context._floatTests.reclampAll();
-  assert.equal(context.$('rp-batch').style.left, (900 - 360 - 40) + 'px');
-  well(0, 0);
-});
-
-test('an anchor that did not survive the round trip is no anchor', () => {
-  mount();
-  context.localStorage.setItem('automata-rpanel-section-float',
-    JSON.stringify({ 'rp-batch': { x: 10, y: 20, w: 360, h: 280, r: null, b: 'x' } }));
-  assert.deepEqual(context.floatState('rp-batch'), { x: 10, y: 20, w: 360, h: 280 },
-    'null is not "flush against the edge"');
-});
-
-test('a section popped out from its button opens beside its own panel', () => {
-  // It used to open at the top centre of the canvas, which is where the
-  // diagram is.
-  mount();
-  well(1200, 800);
-  context.initPanelFloat();
-  const right = context.floatSection('rp-batch');
-  assert.equal(right.x + right.w, 1200 - 12, 'a right-panel section opens against the right inset');
-  assert.equal(typeof context.floatState('rp-batch').r, 'number', 'and stays there');
-  const left = context.floatSection('lp-states');
-  assert.ok(left.x < 1200 / 2, 'a left-panel section opens on the left');
-  well(0, 0);
-});
-
-// ── snapping ──────────────────────────────────────────────────────
-
-test('an edge dragged near the canvas inset snaps onto it', () => {
-  const { header } = mountWindow('rp-batch', { x: 100, y: 100, w: 360, h: 280 });
-  well(1200, 800);
-  press(header, 150, 150);
-  drag(150 - 85, 150 - 83);                     // x: 15, y: 17 — within reach of 12
-  assert.equal(context.$('rp-batch').style.left, '12px');
-  assert.equal(context.$('rp-batch').style.top, '12px');
-  assert.equal(context.$('panel-float-guide-x').style.display, '', 'and the line it found is drawn');
-  dispatchDocumentEvent('pointerup', {});
-  assert.equal(context.$('panel-float-guide-x').style.display, 'none', 'until the gesture ends');
-  well(0, 0);
-});
-
-test('a window snaps beside another, and stacks under it', () => {
-  const { header } = mountWindow('rp-batch', { x: 400, y: 300, w: 360, h: 280 });
-  well(1200, 800);
-  context.floatSection('rp-language', { x: 40, y: 40, w: 360, h: 200 });
-  // Language fits its content, so what it is snapped against is the height it
-  // is drawn at — which the stub has to be told.
-  context.$('rp-language').offsetHeight = 200;
-  press(header, 450, 350);
-  // Towards the bottom-left corner of the other window: the top edge lands 3px
-  // from where the gap puts it, the left 4px off the other's left edge.
-  drag(450 - 356, 350 - 49);
-  assert.equal(context.$('rp-batch').style.left, '40px', 'left edges aligned');
-  assert.equal(context.$('rp-batch').style.top, (40 + 200 + 8) + 'px', 'one gap below it');
-  dispatchDocumentEvent('pointerup', {});
-  well(0, 0);
-});
-
-test('holding Ctrl places a window exactly where it is dropped', () => {
-  const { header } = mountWindow('rp-batch', { x: 100, y: 100, w: 360, h: 280 });
-  well(1200, 800);
-  press(header, 150, 150);
-  dispatchDocumentEvent('pointermove', { clientX: 65, clientY: 67, ctrlKey: true });
-  assert.equal(context.$('rp-batch').style.left, '15px');
-  assert.equal(context.$('rp-batch').style.top, '17px');
-  dispatchDocumentEvent('pointerup', {});
-  well(0, 0);
-});
-
-test('a resize snaps the edge it moves and leaves the other pinned', () => {
-  mountWindow('rp-batch', { x: 100, y: 100, w: 400, h: 300 });
-  well(1200, 800);
-  const g = resizeBy('rp-batch', 'e', 1200 - 12 - 500 - 5, 0);   // 5px short of the inset
-  assert.equal(g.x, 100, 'the west edge has not moved');
-  assert.equal(g.x + g.w, 1200 - 12, 'the east edge is on the inset');
-  well(0, 0);
-});
-
-test('a snap that would break the minimum size is given up', () => {
-  const min = context.sectionMinSize('rp-batch');
-  mountWindow('rp-batch', { x: 100, y: 100, w: min.w + 20, h: 300 });
-  well(1200, 800);
-  // A line 4px inside the minimum: the other window's left edge, less the gap.
-  context.floatSection('rp-language', { x: 100 + min.w - 4 + 8, y: 500, w: 300, h: 200 });
-  const g = resizeBy('rp-batch', 'e', -19, 0);                    // one px above the minimum
-  assert.equal(g.w, min.w + 1, 'the edge stays where the pointer left it');
-  well(0, 0);
-});
-
-// ── the keyboard ──────────────────────────────────────────────────
-
-function key(target, k, extra = {}) {
-  return dispatchDocumentEvent('keydown', { target, key: k, ...extra });
-}
-
-test('arrow keys on a focused title bar move the window', () => {
-  const { header } = mountWindow('rp-batch', { x: 100, y: 100, w: 360, h: 280 });
-  const ev = key(header, 'ArrowRight');
-  key(header, 'ArrowDown');
-  assert.equal(context.$('rp-batch').style.left, '110px');
-  assert.equal(context.$('rp-batch').style.top, '110px');
-  assert.ok(ev.defaultPrevented && ev.propagationStopped,
-    'claimed, so the canvas does not also step the simulation');
-  assert.deepEqual(context.floatState('rp-batch'), { x: 110, y: 110, w: 360, h: 280 },
-    'and recorded — there is no release to wait for');
-});
-
-test('Shift with the arrow keys resizes the window instead', () => {
-  const { header } = mountWindow('rp-batch', { x: 100, y: 100, w: 360, h: 280 });
-  key(header, 'ArrowRight', { shiftKey: true });
-  key(header, 'ArrowUp', { shiftKey: true });
-  const g = context.floatState('rp-batch');
-  assert.deepEqual([g.x, g.y, g.w, g.h], [100, 100, 370, 270]);
-});
-
-test('arrow keys anywhere else are not the window\'s', () => {
-  const { el } = mountWindow('rp-batch', { x: 100, y: 100, w: 360, h: 280 });
-  const inside = context.document.createElement('button');
-  el.appendChild(inside);
-  const ev = key(inside, 'ArrowRight');
-  assert.equal(context.$('rp-batch').style.left, '100px');
-  assert.ok(!ev.propagationStopped, 'a control inside the window keeps its own keys');
-});
-
-// ── the window in use ─────────────────────────────────────────────
-
-test('exactly one window is marked as the one in front', () => {
-  const { header } = mountWindow('rp-batch', { x: 100, y: 100, w: 360, h: 280 });
-  context.floatSection('rp-language', { x: 500, y: 100, w: 300, h: 200 });
-  const front = () => ['rp-batch', 'rp-language'].filter(id =>
-    context.$(id).classList.contains('is-float-front'));
-  assert.deepEqual(front(), ['rp-language'], 'the one opened last');
-  press(header, 150, 150);
-  dispatchDocumentEvent('pointerup', {});
-  assert.deepEqual(front(), ['rp-batch'], 'and the one pressed on after that');
-  context.dockSection('rp-batch');
-  assert.ok(!context.$('rp-batch').classList.contains('is-float-front'), 'docking takes the mark away');
-});
-
-// ── the fit ───────────────────────────────────────────────────────
-
-test('fitting the machine to the screen steers around the windows', () => {
-  mountWindow('rp-batch', { x: 700, y: 20, w: 300, h: 500 });
-  const wrap = well(1000, 600);
-  const win = context.$('rp-batch');
-  win.getBoundingClientRect = () => ({ left: 700, top: 20, width: 300, height: 500, right: 1000, bottom: 520 });
-  const rects = context.canvasObstacleRects(wrap.getBoundingClientRect());
-  assert.ok(rects.some(r => r.left === 700 && r.width === 300), 'the window is an obstacle');
-  const offsetParent = win.offsetParent;
-  win.offsetParent = null;                      // what a window hidden by a machine switch reports
-  assert.ok(!context.canvasObstacleRects(wrap.getBoundingClientRect()).some(r => r.left === 700),
-    'a hidden window is not');
-  win.offsetParent = offsetParent;
-  well(0, 0);
-});
-
-// ── fitting the content ───────────────────────────────────────────
-
-test('a window with nothing elastic fits its content, up to the height it was given', () => {
-  // Simulate is a transport and a tape card. A window taller than that was
-  // dead space; one shorter squeezed the card until the tape drew over it.
-  mount();
-  context.floatSection('rp-simulate', { x: 40, y: 40, w: 380, h: 700 });
-  const el = context.$('rp-simulate');
-  assert.equal(el.style.height, '', 'the content decides');
-  assert.equal(el.style.maxHeight, '700px', 'and the height it was given is the ceiling');
-  assert.ok(el.classList.contains('is-float-hug'));
-  assert.equal(context.floatState('rp-simulate').h, 700, 'the record is unchanged');
-
-  context.floatSection('rp-batch', { x: 40, y: 40, w: 380, h: 300 });
-  assert.equal(context.$('rp-batch').style.height, '300px', 'a window with a list to grow holds its height');
-
-  context.dockSection('rp-simulate');
-  assert.equal(el.style.maxHeight, '', 'docked, the ceiling goes with the window');
-  assert.ok(!el.classList.contains('is-float-hug'));
-});
-
-test('a fitted window cannot be resized past its content', () => {
-  const { el } = mountWindow('rp-simulate', { x: 100, y: 100, w: 380, h: 700 });
-  el.offsetHeight = 320;                        // what its content draws at
-  const g = resizeBy('rp-simulate', 's', 0, 200);
-  assert.equal(g.h, 320, 'the edge stops where the content does');
-
-  mountWindow('rp-simulate', { x: 100, y: 300, w: 380, h: 700 });
-  context.$('rp-simulate').offsetHeight = 320;
-  const n = resizeBy('rp-simulate', 'n', 0, -150);
-  assert.equal(n.h, 320);
-  assert.equal(n.y, 300, 'a north edge pulled past it moves nothing rather than the window');
 });

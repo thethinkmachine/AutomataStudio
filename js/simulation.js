@@ -28,7 +28,6 @@ import { makeRun } from './machines/run.js';
 import { nodeIdAtScope, viewGraph, visibleNodeIdFor } from './view-graph.js';
 import { boundaryAt, breakScope, resetRunBounds, runSubject } from './run-scope.js';
 import { getBlock } from './blocks.js';
-import { setSectionStatus } from './section-status.js';
 
 export function runSim() {
   resetSim();
@@ -1091,49 +1090,6 @@ export function updateSimScrubber() {
     scrubber.value = String(Math.min(App.simIdx, Math.max(0, known - 1)));
   }
   counter.textContent = `${known ? App.simIdx + 1 : 0} / ${known}${complete ? '' : '+'}`;
-  // The counter sits in the transport, which is always there, rather than on
-  // the timeline's row, which is not — so with nothing to count it is muted
-  // rather than hidden, and the buttons either side of it do not shift.
-  counter.classList.toggle('is-idle', known <= 1);
-  syncSimStatus();
-}
-
-/**
- * What the Simulate header says while it is folded: the word, and where its
- * run has got to — the step the playhead is on, or the verdict once it is on
- * the step that decided.
- *
- * Folding Simulate, or minimizing its window, used to put the answer away with
- * the controls; a reader who runs a word from the input box and folds the
- * transport to see more of the canvas still wants to know what it said. It is
- * read off the run rather than off the banner, so it cannot disagree with the
- * scrubber beside it, and it says "loops" and "no verdict" in their own words
- * for the same reason the banner does — neither is a rejection by timeout.
- *
- * A block run keeps the step count: its answer is which exit it took, and the
- * body says that far better than a chip can.
- */
-export function syncSimStatus() {
-  const known = reachableCount();
-  if (!known || App.simInput === null || App.simInput === undefined) {
-    setSectionStatus('rp-simulate', '');
-    return;
-  }
-  const word = App.simInput === '' ? App.config.sym.eps : String(App.simInput);
-  const step = App.simSteps[App.simIdx];
-  const complete = App.simStopAt != null || runIsComplete();
-  let say = `${Math.min(App.simIdx + 1, known)} / ${known}${complete ? '' : '+'}`;
-  let tone = '';
-  if (step && step.final && !runSubject()) {
-    if (step.final === 'accept') { say = 'accepted'; tone = 'acc'; }
-    else if (step.final === 'reject') { say = 'rejected'; tone = 'rej'; }
-    else if (step.final === 'loop') { say = 'never halts'; tone = 'rej'; }
-    else if (step.final === 'timeout') { say = 'no verdict'; tone = 'warn'; }
-  } else if (step && step.outToks !== undefined && complete && App.simIdx >= known - 1 &&
-    getMachineConfig(App.machine).isTransducer) {
-    say = `→ ${step.outToks.length ? step.outToks.join('') : '—'}`;
-  }
-  setSectionStatus('rp-simulate', `${word} · ${say}`, tone);
 }
 
 export const SIM_ICON_ACCEPT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>';
@@ -1472,8 +1428,6 @@ export function resetSim() {
   resetTracker($('sim-tracker')); $('sim-tracker').style.display = 'none';
   const verdict = $('sim-verdict'); if (verdict) verdict.style.display = 'none';
   const scrubRow = $('sim-scrubber-row'); if (scrubRow) scrubRow.style.display = 'none';
-  const counter = $('sim-step-counter');
-  if (counter) { counter.textContent = '0 / 0'; counter.classList.add('is-idle'); }
   clearSimCanvasHighlights();
   App._simRenderRun = null; App._simRenderIdx = -1;
   // The accumulated trail is keyed on the steps array it was built from, and
@@ -1482,7 +1436,6 @@ export function resetSim() {
   // empty the run.
   App._simTrail = null;
   setRunBtnState('idle');
-  syncSimStatus();
 }
 export function toggleAuto() {
   if (App.autoTimer) { stopAutoPlay(); setRunBtnState('idle'); return; }
@@ -1569,32 +1522,6 @@ export function renderBatchResults(batch) {
   $('batch-result').innerHTML = rows + budgetNote;
   const bar = $('batch-export-bar');
   if (bar) bar.style.display = results.length ? 'flex' : 'none';
-  syncBatchStatus(batch);
-}
-
-/**
- * What the Batch Test header says while folded. With expectations, whether
- * they held; without, how many words the machine took — the two questions a
- * batch is run to answer, and the ones a folded section should not make the
- * reader open it to see. `null` clears it: the results it described are gone.
- */
-export function syncBatchStatus(batch) {
-  if (!batch || !batch.results || !batch.results.length) {
-    setSectionStatus('rp-batch', '');
-    return;
-  }
-  if (batch.expected) {
-    setSectionStatus('rp-batch', `${batch.passCount} / ${batch.expected} passed`,
-      batch.allPassed ? 'acc' : 'rej');
-    return;
-  }
-  const decided = batch.results.filter(r => r.accepted !== undefined && !r.error);
-  if (!decided.length) {
-    setSectionStatus('rp-batch', `${batch.results.length} run`);
-    return;
-  }
-  const took = decided.filter(r => r.accepted).length;
-  setSectionStatus('rp-batch', `${took} / ${decided.length} accepted`);
 }
 
 // Incremented on every run, so a parallel result that lands after the reader
@@ -1614,7 +1541,6 @@ export function runBatch() {
     const bar = $('batch-export-bar');
     if (bar) bar.style.display = 'none';
     App.lastBatch = null;
-    setSectionStatus('rp-batch', 'no start state', 'warn');
     return;
   }
   // Every row is an independent run over one unchanging machine, which is the
@@ -1657,7 +1583,6 @@ function renderBatchPending(n) {
   if (summaryEl) summaryEl.style.display = 'none';
   const bar = $('batch-export-bar');
   if (bar) bar.style.display = 'none';
-  setSectionStatus('rp-batch', `running ${n}…`);
 }
 
 

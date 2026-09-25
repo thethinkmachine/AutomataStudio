@@ -38,8 +38,8 @@ import {
   isSectionFloating, sectionFill, sectionOrder, setSectionOrder, moveSection
 } from './panel-sections.js';
 import {
-  beginFloatSnap, commitFloatGeom, dockSection, endFloatSnap, floatLayerRect,
-  floatSection, floatingEnabled, moveFloatTo, syncPanelEmpty
+  commitFloatGeom, dockSection, floatLayerRect, floatSection, floatingEnabled,
+  moveFloatTo, syncPanelEmpty
 } from './panel-float.js';
 import { redrawAllLists } from './panel-list.js';
 
@@ -83,8 +83,8 @@ function sectionName(side, id) {
 /**
  * The sections a drag can land between.
  *
- * Hidden ones are skipped — `applyMachineSwitch` hides the Machine and Blocks
- * sections for machines without parameters or blocks, and a zero-height box
+ * Hidden ones are skipped — `applyMachineSwitch` hides the stack and output
+ * sections for machines without a stack or an output, and a zero-height box
  * has a midpoint the pointer is always past, which would make the drop target
  * jump straight through it.
  */
@@ -251,7 +251,6 @@ function endDrag(commit) {
   if (container) container.classList.remove('has-reorder');
   try { grip.releasePointerCapture(pointerId); } catch (e) { /* already gone */ }
   drag = null;
-  endFloatSnap();
 
   if (commit && floating) {
     syncGripLabels(side);
@@ -329,9 +328,6 @@ function tearOff(e) {
   if (!g) return false;
   drag.floating = true;
   drag.geom = g;
-  // The rest of the gesture is a window being moved, and it snaps the way
-  // one moved by its title bar does.
-  beginFloatSnap(el.id);
   el.classList.remove('is-reordering');
   const container = containerOf(side);
   if (container) container.classList.remove('has-reorder');
@@ -357,7 +353,6 @@ function panelIsOpen(side) {
 /** And back: dropping a window over its own panel re-docks it. */
 function tearBack() {
   const { side, el } = drag;
-  endFloatSnap();
   dockSection(el.id);
   drag.floating = false;
   drag.geom = null;
@@ -401,7 +396,7 @@ function onPointerMove(e) {
     const rect = floatLayerRect();
     drag.geom = moveFloatTo(drag.el.id,
       e.clientX - rect.left - drag.grabDX,
-      e.clientY - rect.top - drag.grabDY, { snap: !(e.ctrlKey || e.metaKey) }) || drag.geom;
+      e.clientY - rect.top - drag.grabDY) || drag.geom;
     return;
   }
 
