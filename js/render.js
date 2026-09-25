@@ -4,6 +4,7 @@ import { renderDividers } from './dividers.js';
 import { PILL_GAP, PILL_HEIGHT, PILL_ROW_H, buildLayoutContext, edgeGeometryFor, estimatePillLabelSize, estimateTextLabelSize, pillPartWidth, selfLoopLabelPoint, selfLoopPath, startNodeId } from './geometry.js';
 import { commit, snapshot } from './history.js';
 import { setListItems } from './panel-list.js';
+import { leaveTransTable, renderTransTable, syncTransViewToggle, transView } from './delta-table.js';
 import { cullNeedsRepaint, cullViewport, cullingActive, edgeLabelLOD, invalidateCull, rectHasPoint, stateLabelLOD, suspendCulling } from './viewport.js';
 import { scheduleMinimap } from './minimap.js';
 import { renderLanguagePanel } from './language.js';
@@ -978,7 +979,7 @@ export function setStateLabelLines(textEl, lines, cx) {
 // Under parity there is no F — α is the per-state number — so the accepting
 // ring and the double-click that toggles it would both be editing a set the
 // verdict never consults.
-function acceptsAreShown() {
+export function acceptsAreShown() {
   if (usesParityPriorities(App.machine)) return false;
   return !(getMachineConfig(App.machine).isTransducer && !App.config.transducerAccepts);
 }
@@ -1909,6 +1910,9 @@ function lpanelKey() {
     }
   }
   p.push($('state-search')?.value || '', $('trans-search')?.value || '');
+  // The δ table draws a column per symbol of Σ, so Σ is part of what it shows;
+  // and which of the two views is up changes every row of the section.
+  p.push(transView(), [...App.sigma].join(','));
   return p.join('\u0001');
 }
 
@@ -1929,10 +1933,19 @@ export function updateLPanel() {
     html: stateRowHTML, text: stateRowText,
     empty: '<div class="empty-msg">No states</div>'
   });
-  setListItems($('trans-list'), App.transitions.filter(t => shown.has(t.from) && shown.has(t.to)), {
-    html: transRowHTML, text: transRowText,
-    empty: '<div class="empty-msg">No transitions</div>'
-  });
+  const trans = App.transitions.filter(t => shown.has(t.from) && shown.has(t.to));
+  // The same states and rules either way, drawn as a list of rules or as a
+  // table of states by symbols — see js/delta-table.js.
+  if (transView() === 'table') {
+    renderTransTable($('trans-list'), drawn.filter(s => s.kind === undefined), trans);
+  } else {
+    leaveTransTable($('trans-list'));
+    setListItems($('trans-list'), trans, {
+      html: transRowHTML, text: transRowText,
+      empty: '<div class="empty-msg">No transitions</div>'
+    });
+  }
+  syncTransViewToggle();
   if (typeof filterStates === 'function') filterStates();
   if (typeof filterTransitions === 'function') filterTransitions();
   updateLPanelSectionMeta();

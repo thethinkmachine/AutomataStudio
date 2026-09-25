@@ -524,7 +524,22 @@
               <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
             </div>
             <div class="lp-section-body">
-              <input class="lpanel-search-inp" id="trans-search" placeholder="Filter transitions…" oninput="filterTransitions()">
+              <!-- δ as a list of rules, or as the textbook's table of states by
+                   symbols (js/delta-table.js). The switch is shown only for
+                   machines whose rules fit a table; its listener is attached
+                   at first draw, so it has no name in bridge.js. -->
+              <div class="lp-search-row">
+                <input class="lpanel-search-inp" id="trans-search" placeholder="Filter transitions…" oninput="filterTransitions()">
+                <div class="trans-view-toggle" id="trans-view-toggle" role="group" aria-label="Show δ as" hidden>
+                  <button type="button" data-view="list" aria-pressed="true" aria-label="Show δ as a list" data-tip="List of rules">
+                    <svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M88,64a8,8,0,0,1,8-8H216a8,8,0,0,1,0,16H96A8,8,0,0,1,88,64Zm128,56H96a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Zm0,64H96a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16ZM56,56H40a8,8,0,0,0,0,16H56a8,8,0,0,0,0-16Zm0,64H40a8,8,0,0,0,0,16H56a8,8,0,0,0,0-16Zm0,64H40a8,8,0,0,0,0,16H56a8,8,0,0,0,0-16Z" /></svg>
+                  </button>
+                  <button type="button" data-view="table" aria-pressed="false" aria-label="Show δ as a table" data-tip="Table — states by symbols">
+                    <svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M224,48H32a8,8,0,0,0-8,8V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A8,8,0,0,0,224,48ZM40,112H80v32H40Zm56,0H216v32H96ZM216,64V96H40V64ZM40,160H80v32H40Zm176,32H96V160H216v32Z" /></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="dt-head" id="trans-table-head" hidden aria-hidden="true"></div>
               <div class="tlist" id="trans-list">
                 <div class="empty-msg">No transitions</div>
               </div>

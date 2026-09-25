@@ -362,6 +362,11 @@ export function openTransModal(from, to, opts = {}) {
   const toSel = $('m-to');
   if (fromSel && from) ensureSelectValue(fromSel, from);
   if (toSel && to) ensureSelectValue(toSel, to);
+  // A symbol the caller already knows — an empty cell of the δ table is a
+  // (state, symbol) pair asking for a rule, and the reader should not have to
+  // pick the column's symbol again from a list.
+  const symSel = $('m-sym');
+  if (symSel && opts.symbol !== undefined) ensureSelectValue(symSel, opts.symbol);
   showOverlay('trans-modal');
 }
 export function confirmTrans() {
