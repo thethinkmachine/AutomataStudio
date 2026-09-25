@@ -154,6 +154,29 @@ function withMachineStart(fn) {
 }
 
 /**
+ * The whole run of a word, for a caller that measures runs rather than plays
+ * them — the complexity profile.
+ *
+ * Three things it has to leave alone, and each is a way a measurement would
+ * otherwise disturb what the reader is looking at: the machine is run from its
+ * own start (the player's block subject is lifted, as `decideMachine` lifts
+ * it), nothing is painted, and the player's run is put back exactly as it was
+ * — a search-based simulator writes App.simSteps as it goes.
+ */
+export function traceMachine(m, input) {
+  const saved = [App.simSteps, App.simIdx, App.simRun];
+  try {
+    return withMachineStart(() => withPainterSuppressed(() => {
+      const run = streamMachine(m, input);
+      run.drain();
+      return run;
+    }));
+  } finally {
+    [App.simSteps, App.simIdx, App.simRun] = saved;
+  }
+}
+
+/**
  * Decide a finite word, from raw text, in one call — the shape the
  * Language panel and StateMate's verification want. `null` when this
  * machine does not read finite words at all.

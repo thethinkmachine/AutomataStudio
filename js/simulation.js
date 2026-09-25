@@ -28,6 +28,7 @@ import { makeRun } from './machines/run.js';
 import { nodeIdAtScope, viewGraph, visibleNodeIdFor } from './view-graph.js';
 import { boundaryAt, breakScope, resetRunBounds, runSubject } from './run-scope.js';
 import { getBlock } from './blocks.js';
+import { SPACETIME_ICON, openSpaceTime, refreshSpaceTime, spaceTimeKind } from './spacetime-ui.js';
 import { setSectionStatus } from './section-status.js';
 
 export function runSim() {
@@ -217,7 +218,7 @@ function maxReachable() {
  * scrubber reading `4 / 4`. One declaration because three places ask: the log's
  * header count, the scrubber and the step counter.
  */
-function reachableCount() {
+export function reachableCount() {
   if (!App.simSteps?.length) return 0;
   return App.simStopAt != null ? App.simStopAt + 1 : App.simSteps.length;
 }
@@ -399,6 +400,7 @@ export function renderSimStep() {
 
   updateSimScrubber();
   updateSimVerdict(step, isLast);
+  refreshSpaceTime();
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -586,6 +588,8 @@ function renderTrackerHeader(trackerEl, stateName, rows) {
     const text = document.createElement('span');
     text.className = 'tracker-header-text';
     head.appendChild(text);
+    head.__stBtn = makeTrackerSpaceTimeBtn();
+    head.appendChild(head.__stBtn);
     head.appendChild(makeTrackerCopyBtn());
     trackerEl.insertBefore(head, trackerEl.firstChild);
     trackerEl.__tvHeader = head;
@@ -600,6 +604,8 @@ function renderTrackerHeader(trackerEl, stateName, rows) {
       : '';
     return `${r.label}:<span class="tracker-val-sym">${escapeCell(sym)}</span>${at}`;
   });
+  // The whole run, drawn — offered only where a run is one tape history.
+  if (head.__stBtn) head.__stBtn.hidden = !spaceTimeKind();
   head.firstChild.innerHTML = `State: <span class="tracker-val-st">${escapeCell(stateName)}</span>`
     + (parts.length ? ' &nbsp; ' + parts.join(' &nbsp; ') : '');
 }
@@ -637,10 +643,23 @@ function makeTrackerCopyBtn() {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'tracker-copy-btn';
-  btn.setAttribute('data-tip', 'Copy tape contents');
-  btn.setAttribute('aria-label', 'Copy tape contents');
+  btn.setAttribute('data-tip', 'Copy tape dump at current timestep');
+  btn.setAttribute('aria-label', 'Copy tape dump at current timestep');
   btn.innerHTML = COPY_ICON_SVG;
   btn.addEventListener('click', copyTapeContents);
+  return btn;
+}
+
+const SPACETIME_TIP = 'Space-time diagram: the whole run, one row per step';
+
+function makeTrackerSpaceTimeBtn() {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'tracker-copy-btn tracker-st-btn';
+  btn.setAttribute('data-tip', SPACETIME_TIP);
+  btn.setAttribute('aria-label', SPACETIME_TIP);
+  btn.innerHTML = SPACETIME_ICON;
+  btn.addEventListener('click', () => openSpaceTime());
   return btn;
 }
 
@@ -1423,6 +1442,36 @@ export function stepToEnd() {
   App.simIdx = Math.max(0, maxReachable()); renderSimStep();
 }
 
+/**
+ * Compute the rest of a streaming run without moving the playhead.
+ *
+ * ⏭ is the only other way to finish a run, and it takes the reader to the
+ * last step — the wrong answer for someone reading step 40 of a space-time
+ * diagram who wants to see how the run ends underneath it. Same drain, same
+ * slices, same timer (so `stopDraining` and a press of play both cancel it);
+ * what differs is only that the playhead stays where it was.
+ */
+export function computeRestOfRun() {
+  const run = currentRun();
+  if (run.done || App.simStopAt != null) return false;
+  stopDraining();
+  const tick = () => {
+    run.drain(DRAIN_SLICE);
+    maxReachable();   // scans the slice for a block boundary
+    updateSimScrubber();
+    refreshSpaceTime();
+    if (!run.done && App.simStopAt == null) App.simDrainTimer = setTimeout(tick, 0);
+    else {
+      App.simDrainTimer = null;
+      // The step on screen may have just become the last one, and the banner
+      // only knows a run has ended when it is told so on a render.
+      renderSimStep();
+    }
+  };
+  tick();
+  return true;
+}
+
 /** Stop a "go to the end" that is still draining a streaming run. */
 export function stopDraining() {
   if (App.simDrainTimer) { clearTimeout(App.simDrainTimer); App.simDrainTimer = null; }
@@ -1470,6 +1519,7 @@ export function resetSim() {
   // for u(v), and the empty log beside it was naming the other set.
   log(`<span style="color:var(--text3);font-style:italic">Input a sequence in ${isOmegaAutomaton(App.machine) ? 'Σ<sup>ω</sup>' : 'Σ*'}…</span>`);
   resetTracker($('sim-tracker')); $('sim-tracker').style.display = 'none';
+  refreshSpaceTime();
   const verdict = $('sim-verdict'); if (verdict) verdict.style.display = 'none';
   const scrubRow = $('sim-scrubber-row'); if (scrubRow) scrubRow.style.display = 'none';
   const counter = $('sim-step-counter');
