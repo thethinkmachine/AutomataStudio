@@ -110,6 +110,8 @@ const DEFAULTS = {
   apiKey: '',
   // Behaviour
   agentTools: true,
+  // Draw StateMate's work in progress over the canvas while it runs.
+  livePreview: true,
   agentMaxSteps: 16,
   attachCanvas: true,
   verify: true,

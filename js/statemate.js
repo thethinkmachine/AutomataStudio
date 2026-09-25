@@ -42,6 +42,7 @@ import {
   buildRepairMessage, buildSystemPrompt, buildUserMessage, threadMessages
 } from './statemate-prompt.js';
 import { ProviderError, callModel, getStateMateSettings, supportsImages } from './statemate-provider.js';
+import { partialMachine, draftCandidate } from './statemate-preview.js';
 import {
   MAX_AGENT_STEPS, agentFinishedTurn, agentToolInstructions, createAgentSession,
   executeAgentToolCalls, parseAgentToolTurn, STATEMATE_NATIVE_TOOLS, toolResultsMessage,
@@ -141,9 +142,27 @@ function deepest(id) {
   return at;
 }
 
-/** The retained exchange, newest last. Empty after a tab or machine change. */
+/** The tab half of a thread key. Machine keys never contain `::`. */
+const keyWorkspace = key => key.slice(key.indexOf('::') + 2);
+
+/**
+ * The retained exchange, newest last. Empty after a machine change, and empty
+ * on another tab.
+ *
+ * The two are different. A machine change replaces the diagram the exchange
+ * was about, so the conversation goes. Another tab still *has* its machine,
+ * so its conversation is only not this one: it is kept for when that tab is
+ * back, and gives way only when a turn is recorded here (rememberTurn). Read
+ * as a clear, merely looking from another tab erased it — which included the
+ * console reading it the moment a run finished while the reader was elsewhere,
+ * so the turn the run had just recorded for its own tab was gone before the
+ * reader got back there.
+ */
 export function getThread() {
-  if (threadKey !== null && threadKey !== currentThreadKey()) clearThread();
+  if (threadKey !== null && threadKey !== currentThreadKey()) {
+    if (keyWorkspace(threadKey) !== keyWorkspace(currentThreadKey())) return [];
+    clearThread();
+  }
   const path = [];
   let at = head;
   for (let guard = 0; at && guard <= MAX_THREAD_NODES; guard++) {
@@ -210,8 +229,15 @@ function pruneThread() {
   }
 }
 
-function rememberTurn(entry) {
-  const key = currentThreadKey();
+/**
+ * @param {object} entry
+ * @param {string} [key]  the conversation it belongs to. A run passes the key
+ *   it started under: the reader can switch tabs while it works, and the turn
+ *   is about the machine it was sent from, not the one on screen when it ends.
+ *   Only one run is ever in flight, so adopting that key cannot clear a
+ *   conversation that has turns of its own since.
+ */
+function rememberTurn(entry, key = currentThreadKey()) {
   if (threadKey !== key) { clearThread(); threadKey = key; }
 
   const node = { activeChild: null, at: Date.now(), ...entry, id: 't' + (++turnN), parentId: head };
@@ -681,12 +707,43 @@ function scopeGuard(diff, before, { intent, openNewTab }) {
  * against a particular machine; applying it over a different one silently
  * discards whatever they did in between.
  */
-export function machineSignature() {
+export function machineSignature(of = App) {
   return [
-    App.machine,
-    App.states.map(s => s.name).sort().join(','),
-    App.transitions.length
+    of.machine,
+    (of.states || []).map(s => s.name).sort().join(','),
+    (of.transitions || []).length
   ].join('|');
+}
+
+/**
+ * The tab a held proposal was made for, and whether it is still open.
+ *
+ * A proposal with no tab recorded — made before there were tabs, or where the
+ * app runs without any — belongs wherever the reader is, as it always did.
+ */
+export function pendingHome(pending) {
+  const id = pending?.workspaceId ?? null;
+  if (!id) return { id: null, name: '', open: true, here: true };
+  const ws = Workspaces.find(w => w.id === id);
+  return { id, name: ws?.name || '', open: !!ws, here: id === (activeWorkspaceId ?? null) };
+}
+
+/**
+ * Whether the machine a proposal was diffed against has changed since.
+ *
+ * Judged on the proposal's own tab, not the one on screen: on another tab
+ * every proposal would read as stale, and the one question that matters —
+ * will Apply throw away edits I made? — would go unanswered. A tab that is not
+ * showing is compared through its stowed copy, which is current, since it
+ * was stowed when the reader left it. A closed tab has nothing to be stale
+ * against; Apply opens the machine in a tab of its own.
+ */
+export function pendingIsStale(pending) {
+  if (!pending) return false;
+  const home = pendingHome(pending);
+  if (!home.open) return false;
+  const machine = home.here ? App : Workspaces.find(w => w.id === home.id)?.data;
+  return !!machine && machineSignature(machine) !== pending.signature;
 }
 
 /** The info card a result shows over the canvas — the same for either path. */
@@ -712,12 +769,21 @@ function resultCardMeta(spec) {
 export function applyPending(result) {
   const pending = result?.pending;
   if (!pending) return null;
+  // Into the tab it was made for. Its diff is against that tab's machine, and
+  // Apply pressed from another tab is a request for this machine, not for the
+  // tab on screen to be overwritten with it — so the reader is taken there,
+  // the way restoreCheckpoint takes them back. A proposal whose tab has since
+  // been closed has nothing left to be applied over, and gets a tab of its own.
+  const home = pendingHome(pending);
+  const openNewTab = pending.openNewTab || !home.open;
+  if (!openNewTab && !home.here) switchTab(home.id);
   // A proposal held from before the tab became an exercise — or opened in a
   // tab that is one now — is still StateMate's work, and drawing it is the
-  // write the exercise said no to.
+  // write the exercise said no to. Asked after the switch: it is the tab being
+  // written to that says no.
   if (assistPolicy(App.exercise) !== 'on') return null;
   const checkpoint = applyCandidate(pending.candidate, {
-    openNewTab: pending.openNewTab,
+    openNewTab,
     title: pending.spec.title
   });
   showExampleCard(resultCardMeta(pending.spec));
@@ -726,7 +792,7 @@ export function applyPending(result) {
     status: 'applied',
     hold: '',
     holdDetail: '',
-    openedNewTab: pending.openNewTab,
+    openedNewTab: openNewTab,
     checkpoint,
     pending: null
   };
@@ -744,6 +810,9 @@ function inferIntent() {
 // off at the cap used to arrive as unparseable JSON and burn a repair round at
 // the *same* cap, which could only fail the same way.
 const BASE_MAX_TOKENS = 16000;
+// How often a streamed answer is re-read for the canvas preview. A compile per
+// token would cost more than the stream delivers; five a second reads as live.
+const PREVIEW_INTERVAL_MS = 200;
 const MAX_OUTPUT_TOKENS = 64000;
 
 /**
@@ -810,6 +879,14 @@ export async function runStateMate({
   const useCanvas = attachCanvas === undefined ? settings.attachCanvas : attachCanvas;
   const machine = App.machine;
   const before = currentMachineSnapshot();
+  // Where the run was sent from, and what was there. The console is a panel,
+  // so the reader can switch tabs or go on editing while it works — and every
+  // diff below is against `before`, so a result applied over anything else
+  // silently replaces work nobody showed the model. `apply` checks both, and
+  // a pending proposal carries them so its card can.
+  const homeWorkspace = activeWorkspaceId ?? null;
+  const startSignature = machineSignature();
+  const threadHome = currentThreadKey();
 
   const cancelled = () => controller.signal.aborted;
   const guard = () => {
@@ -847,6 +924,26 @@ export async function runStateMate({
     // the compile below, and the agent session, which is created earlier in the
     // loop and would otherwise be the one route past the guard.
     const compileScope = scoped ? { subtree: blockSubtree(scoped.scope.id) } : null;
+
+    // ── the draft, as it happens ──
+    // Every frame is emitted as a 'draft' event for the console to paint over
+    // the canvas (draft-layer.js). Not for a tutor: a machine drawn as it
+    // streams is the answer, shown — the very thing hints-only withholds. Not
+    // inside a block either, where the canvas is drawing a projection whose
+    // coordinates a flat candidate does not share.
+    const previewing = !tutor && !scoped;
+    let lastPreviewAt = 0;
+    let lastPreviewSize = 0;
+    const emitDraft = (candidate, source) => {
+      if (!candidate) return;
+      onEvent({ type: 'draft', candidate, live: before, source });
+    };
+    // Placed against `before`, the machine the finished answer is compiled
+    // against, so the last frame is the machine that will be drawn.
+    const previewFrom = (raw, source) => {
+      if (!previewing || !raw) return;
+      emitDraft(draftCandidate(raw, before, machine), source);
+    };
 
     // Selected parts of the diagram, resolved to names here rather than in the
     // prompt builder: ids are what the canvas uses and the one thing the
@@ -965,6 +1062,22 @@ export async function runStateMate({
               const planned = partialStringField(full, 'plan');
               if (planned) onEvent({ type: 'plan', text: planned.replace(/\s+/g, ' ') });
 
+              // The machine as far as it has been written. The scan is cheap;
+              // the compile is not, so it runs only when an object has finished
+              // arriving since the last frame, and at most five times a second.
+              // The throttle is spent only on a frame that drew something — a
+              // chunk with nothing whole in it must not hold back the next.
+              if (previewing) {
+                const raw = partialMachine(full);
+                const size = raw ? raw.states.length * 10000 + raw.transitions.length : 0;
+                const now = Date.now();
+                if (size && size !== lastPreviewSize && now - lastPreviewAt > PREVIEW_INTERVAL_MS) {
+                  lastPreviewAt = now;
+                  lastPreviewSize = size;
+                  previewFrom(raw, 'stream');
+                }
+              }
+
               // Guarded on the declared kind, or a machine carrying canvas
               // notes — which have a "text" of their own — would stream its
               // first note as if it were a reply.
@@ -1041,11 +1154,20 @@ export async function runStateMate({
         onEvent({ type: 'agent', stage: 'tools', calls: toolCalls.map(c => ({ id: c.id, name: c.name, arguments: c.arguments })) });
         const results = executeAgentToolCalls(toolCalls, agentSession, { authority });
         onEvent({ type: 'agent', stage: 'tool-results', results });
+        // What the private copy looks like now. It may be invalid mid-edit —
+        // no start state yet — which the lenient preview draws anyway; the
+        // compiled candidate is preferred when there is one, since it is
+        // exactly what finish would hand over.
+        if (previewing && agentSession.version !== agentSession.previewedVersion) {
+          agentSession.previewedVersion = agentSession.version;
+          if (agentSession.candidate) emitDraft(agentSession.candidate, 'agent');
+          else previewFrom(agentSession.draft, 'agent');
+        }
         const finished = agentFinishedTurn(agentSession);
         if (finished?.kind === 'reply') {
-          if (finished.waiting) suspendedAgent = { key: resumeKey, signature: machineSignature(), session: agentSession };
-          const userTurn = rememberTurn({ role: 'user', text });
-          const assistantTurn = rememberTurn({ role: 'assistant', kind: 'reply', text: finished.text });
+          if (finished.waiting) suspendedAgent = { key: resumeKey, signature: startSignature, session: agentSession };
+          const userTurn = rememberTurn({ role: 'user', text }, threadHome);
+          const assistantTurn = rememberTurn({ role: 'assistant', kind: 'reply', text: finished.text }, threadHome);
           onEvent({ type: 'turn', userId: userTurn.id, assistantId: assistantTurn.id });
           const replied = {
             status: 'replied', kind: 'reply', reply: finished.text,
@@ -1150,8 +1272,8 @@ export async function runStateMate({
       // apply. No candidate is ever built, so there is nothing that could
       // reach the canvas even by accident.
       if (turn.kind === 'reply') {
-        const userTurn = rememberTurn({ role: 'user', text });
-        const assistantTurn = rememberTurn({ role: 'assistant', kind: 'reply', text: turn.text });
+        const userTurn = rememberTurn({ role: 'user', text }, threadHome);
+        const assistantTurn = rememberTurn({ role: 'assistant', kind: 'reply', text: turn.text }, threadHome);
         // The ids are how the console attaches its retry, branch and delete
         // controls to the thread; without them its entries and the thread are
         // two lists that happen to be the same length.
@@ -1181,12 +1303,15 @@ export async function runStateMate({
 
       // ── 4 · compile ─────────────────────────────────────────
       onEvent({ type: 'stage', stage: 'compile', size: describeSpecSize(spec) });
+      // The finished answer, before it is checked — so the reader is looking
+      // at the machine being verified rather than at the last streamed frame.
       // Bounded to the same subtree the model was shown. Unbounded, a spec
       // naming only the block's states reads as an edit that deleted every
       // state outside it — see keepOutsideScope().
       ({ candidate, diff } = agentCandidate && agentDiff
         ? { candidate: agentCandidate, diff: agentDiff }
         : compileSpec(spec, before, { scope: compileScope }));
+      if (previewing) emitDraft(candidate, 'compiled');
       // A repair or a later continuation must use a fresh compilation. The
       // override is only for the finished transaction that explicitly carried
       // its private candidate through the tool boundary.
@@ -1264,9 +1389,21 @@ export async function runStateMate({
       && settings.newTabForBuild;
 
     const overreach = scopeGuard(diff, before, { intent: resolvedIntent, openNewTab });
+    // The canvas this was built against is not the one on screen any more.
+    // Writing anyway replaced a different tab's machine with this one, or
+    // threw away whatever the reader did while waiting, without a word — so
+    // even `auto` stops and asks. A build into a tab of its own replaces
+    // nothing, and is exempt for the reason scopeGuard exempts it.
+    const moved = openNewTab ? ''
+      : (activeWorkspaceId ?? null) !== homeWorkspace
+        ? 'you switched tabs while it was being written — Apply takes you back to the tab it was made for'
+        : machineSignature() !== startSignature
+          ? 'the canvas changed while it was being written, and applying it would replace those edits'
+          : '';
     const hold = authority === 'ask' ? 'ask'
       : authority === 'propose' ? 'propose'
       : agentSession?.forceProposal ? 'agent'
+      : moved ? 'moved'
       : (overreach ? 'scope' : '');
 
     // One stage either way — the last step of a run is deciding what happens
@@ -1286,19 +1423,19 @@ export async function runStateMate({
     // Intent, not machines: the summary is what travels to the next turn. A
     // held proposal is remembered too — the exchange happened, and a follow-up
     // ("no, smaller") is a correction to it whether or not it was drawn.
-    const userTurn = rememberTurn({ role: 'user', text });
+    const userTurn = rememberTurn({ role: 'user', text }, threadHome);
     const assistantTurn = rememberTurn({
       role: 'assistant',
       kind: 'machine',
       text: `${spec.title} — ${describeSpecSize(spec)}${hold ? ' (proposed, not applied)' : ''}`
-    });
+    }, threadHome);
     onEvent({ type: 'turn', userId: userTurn.id, assistantId: assistantTurn.id });
 
     const result = {
       status: hold ? 'proposed' : 'applied',
       kind: 'machine',
       hold,
-      holdDetail: overreach,
+      holdDetail: hold === 'moved' ? moved : overreach,
       agentHoldDetail: agentSession?.forceProposal || '',
       // The model was asked to trace its own machine before handing it over
       // and finished without doing so. Reported for the same reason the
@@ -1323,8 +1460,13 @@ export async function runStateMate({
       imagesDropped: wanted.length - pictures.length,
       // Everything applyPending() needs, and nothing that has been drawn. The
       // signature is what tells the reader later that the canvas moved under
-      // the diff they are about to accept.
-      pending: hold ? { candidate, spec, openNewTab, signature: machineSignature() } : null,
+      // the diff they are about to accept — taken when the run *started*,
+      // since that is the machine the diff is against. Taken here, an edit
+      // made while the run worked was counted as current and Apply replaced
+      // it without a warning. The workspace is where the diff is true.
+      pending: hold
+        ? { candidate, spec, openNewTab, signature: startSignature, workspaceId: homeWorkspace }
+        : null,
       spec,
       candidate,
       diff,

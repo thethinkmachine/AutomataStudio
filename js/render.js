@@ -19,6 +19,7 @@ import { blockAncestry } from './blocks.js';
 import { edgeTipFor, getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
 import { Change, changed, emit, subscribe } from './store.js';
 import { createMemo, reactiveRoot } from './reactive.js';
+import { followCanvas } from './draft-layer.js';
 import { triggerMath } from './reference.js';
 import { filterStates, filterTransitions } from './ui.js';
 import { escapeHtml, hasStateOutput, isAnyPDA, isAnyTM, showStatus } from './utils.js';
@@ -71,6 +72,7 @@ export function renderAll() {
   document.querySelectorAll('.divider-g').forEach(el => App.domCache.dividers.set(el.getAttribute('data-divider-id'), el));
   if (App.activeNoteId && typeof highlightNoteAnchors === 'function') highlightNoteAnchors(App.activeNoteId, true);
   if (typeof applyEdgeDirectionHighlight === 'function') applyEdgeDirectionHighlight();
+  followCanvas();
 }
 
 /**
@@ -848,6 +850,9 @@ export function updateFastDOM({ statesMoved = true } = {}) {
   // an edge's routed path or label slot — so on a settle frame, where no state
   // has moved, no note can have moved either.
   if (statesMoved && typeof updateNotesDOM === 'function') updateNotesDOM();
+  // StateMate's draft is drawn against where the real states are; a drag moves
+  // them without announcing anything, so the draft is told here.
+  if (statesMoved) followCanvas();
 
   endPass();
   requestSettle();

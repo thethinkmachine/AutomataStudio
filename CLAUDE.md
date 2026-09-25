@@ -268,7 +268,7 @@ Stated once, at the top of [css/views.css](css/views.css), because it was doing 
 
 Three broke the rule and are solid now. **`.tv-cell.is-head.loop`** was the worst of them: a proven loop is a *decision* — the machine never halts, so the input is not accepted, which is strictly more than the step budget can tell you — and drawing the app's firmest verdict as an absence put it in the same visual bracket as an unwritten tape cell. It is `border-style: double` instead, which distinguishes it from an ordinary reject without borrowing the dash. **`.lang-sym.dead`** is a real fact about a real machine: uninteresting, not missing, and quiet is what colour and opacity are for. **`.wiz-chips .chip.is-locked`** is a constraint the machine has, so it takes the disabled idiom the app now owns.
 
-Everything still dashed is genuinely one of the four: `.tv-cell.is-blank`, `.tv-cell.is-ghost`, `.example-chip.is-pending`, `.example-card-add`, `.gram-stub`, `.canvas-info-btn.is-invite`, `.wiz-example`, and `.pn-body` — a port, derived from the wiring on every rebuild.
+Everything still dashed is genuinely one of the four: `.tv-cell.is-blank`, `.tv-cell.is-ghost`, `.example-chip.is-pending`, `.example-card-add`, `.gram-stub`, `.canvas-info-btn.is-invite`, `.wiz-example`, `.pn-body` — a port, derived from the wiring on every rebuild — and StateMate's `.draft-layer`, a machine still being written.
 
 ### Themes
 

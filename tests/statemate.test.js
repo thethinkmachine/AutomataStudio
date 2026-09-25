@@ -1201,6 +1201,13 @@ test('agent tools can build over multiple turns and apply through the normal gat
   assert.equal(App.transitions.length, 2);
   assert.ok(events.some(event => event.type === 'agent' && event.stage === 'tools'));
   assert.ok(events.some(event => event.type === 'agent' && event.stage === 'tool-results'));
+
+  // The private copy is shown as it is edited — once per round that changed
+  // it, not once per call — and a read-only round draws nothing new.
+  const drafts = events.filter(event => event.type === 'draft' && event.source === 'agent');
+  assert.equal(drafts.length, 1, 'round one edited the copy; round two only read it and finished');
+  assert.deepEqual(drafts[0].candidate.states.map(s => s.name), ['q0', 'q1']);
+  assert.equal(drafts[0].candidate.transitions.length, 2);
 });
 
 test('finish is refused until the candidate has been exercised, and an edit puts it back', () => {

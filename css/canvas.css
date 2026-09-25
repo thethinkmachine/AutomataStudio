@@ -1800,3 +1800,91 @@
 .port-edge {
   pointer-events: none;
 }
+
+/* ── StateMate's draft (js/draft-layer.js) ─────────────────────────
+   Work in progress over the canvas: dashed, because dashed means drafted,
+   not yet part of the machine (css/views.css). What the draft adds is in the
+   accent, what it keeps is quiet, and a state it drops is ringed in red where
+   it stands. The real diagram dims underneath — further when the draft has
+   nothing in common with it, since it is then not what is being edited. */
+#canvas-wrap.has-draft #trans-g,
+#canvas-wrap.has-draft #trans-lbl-g,
+#canvas-wrap.has-draft #states-g {
+  /* Unchanged parts are not redrawn by the draft — the real ones stand for
+     them — so they are dimmed only enough to let the changes lead. */
+  opacity: .55;
+  transition: opacity .2s;
+}
+#canvas-wrap.has-draft.draft-replaces #trans-g,
+#canvas-wrap.has-draft.draft-replaces #trans-lbl-g,
+#canvas-wrap.has-draft.draft-replaces #states-g {
+  opacity: .1;
+}
+.draft-layer {
+  pointer-events: none;
+}
+.draft-ring {
+  fill: var(--surface);
+  stroke: var(--text3);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.draft-ring.is-inner {
+  fill: none;
+}
+.draft-st.is-new .draft-ring,
+.draft-st.is-changed .draft-ring {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.draft-st.is-new .draft-ring:not(.is-inner) {
+  fill: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  animation: draft-in .35s ease-out;
+}
+.draft-st.is-removed .draft-ring {
+  fill: none;
+  stroke: var(--red);
+  stroke-width: 2;
+}
+.draft-cross {
+  stroke: var(--red);
+  stroke-width: 2;
+}
+.draft-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  fill: var(--text);
+}
+.draft-edge {
+  fill: none;
+  stroke: var(--text3);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.draft-edge.is-new {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.draft-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  fill: var(--text2);
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+}
+.draft-label.is-new {
+  fill: var(--accent);
+}
+@keyframes draft-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .draft-st.is-new .draft-ring:not(.is-inner) { animation: none; }
+}
+.draft-edge.is-removed {
+  stroke: var(--red);
+  stroke-width: 2;
+  marker-end: none;
+}
