@@ -413,8 +413,48 @@ function onPointerMove(e) {
   moveToPointer(e.clientY);
 }
 
-function onPointerUp() {
-  if (!drag) return;
+// ── the click a drag ends in ──
+// The release of a drag that travelled is followed by a click, and the header
+// the grip sits in collapses its section on click. The grip's pointer capture
+// was meant to keep that click on the grip, whose own handler drops it — but
+// the drag *moves the section*: into the float layer on a tear-off, and to a
+// new slot on a reorder. Moving a node releases pointer capture, so the release
+// lands on whatever is under the pointer, which is the section's own title.
+// Chromium then drops the click; Firefox delivers it to the element the grip
+// and the title share, which is the header, and the window collapsed the
+// moment it was pulled out.
+//
+// So the drag swallows its own click rather than relying on capture, the way a
+// title-bar move in panel-float.js does. Only until the end of the task the
+// release arrived in: a click follows its pointerup within that task or not at
+// all, and a swallow left armed past it would eat the reader's next deliberate
+// click on the header in exactly the browsers that sent none.
+let swallowClick = false;
+// Escape ends the drag before the button comes up, and the release that
+// follows is still the end of a drag.
+let releasePending = null;
+
+function armClickSwallow() {
+  swallowClick = true;
+  setTimeout(() => { swallowClick = false; }, 0);
+}
+
+function onClickCapture(e) {
+  if (!swallowClick) return;
+  swallowClick = false;
+  e.stopPropagation();
+  e.preventDefault();
+}
+
+function onPointerUp(e) {
+  if (!drag) {
+    if (releasePending !== null && (e.pointerId === undefined || e.pointerId === releasePending)) {
+      releasePending = null;
+      armClickSwallow();
+    }
+    return;
+  }
+  if (drag.active) armClickSwallow();
   // A press that never became a drag committed nothing, so there is nothing
   // to write — and writing anyway would replace "no preference" with a copy
   // of the default order on every stray click.
@@ -426,6 +466,7 @@ function onKeyDown(e) {
   if (e.key !== 'Escape') return;
   e.preventDefault();
   e.stopPropagation();
+  if (drag.active) releasePending = drag.pointerId;
   endDrag(false);
 }
 
@@ -537,7 +578,9 @@ export function initPanelSectionReorder() {
   // drag that can never end leaves the panel stuck mid-reorder.
   document.addEventListener('pointermove', onPointerMove, { passive: false });
   document.addEventListener('pointerup', onPointerUp);
-  document.addEventListener('pointercancel', () => endDrag(false));
+  document.addEventListener('pointercancel', () => { releasePending = null; endDrag(false); });
+  // Capture, so it is ahead of the header's inline `onclick`.
+  document.addEventListener('click', onClickCapture, true);
   // Capture, so Escape cancels the drag before anything else claims it —
   // the same reason StateMate's Escape ladder listens in the capture phase.
   document.addEventListener('keydown', onKeyDown, true);
@@ -558,4 +601,6 @@ export const _dropTests = { outsideBy, panelIsOpen };
  */
 export function resetSectionReorder() {
   drag = null;
+  swallowClick = false;
+  releasePending = null;
 }

@@ -440,6 +440,83 @@ test('the click a move ends in does not collapse the window', () => {
   assert.ok(!el.classList.contains('collapsed'));
 });
 
+// A tear-off starts on the reorder grip, and the grip's pointer capture is
+// what used to keep the release's click off the header: pressed and released
+// on the grip, the click lands on the grip and dies there. But pulling the
+// section into the float layer moves the grip to a new parent, which releases
+// the capture — the release then lands on the title, and a browser that picks
+// the click target from the DOM as it stands (Firefox) delivers the click to
+// the header they share. The header's click is collapse.
+function tearOffBy(id, x, y = 110) {
+  mount();
+  context.initPanelFloat();
+  const side = context.sectionSide(id);
+  const cfg = context.PANEL_SECTIONS[side];
+  const el = context.$(id);
+  const header = context.document.createElement('div');
+  header.className = cfg.headerClass;
+  el.appendChild(header);
+  el.querySelector = sel => (sel === '.' + cfg.headerClass ? header : null);
+  // A panel the width of the real one, so 420 is well outside it and 30 in.
+  context.$(cfg.container).getBoundingClientRect = () =>
+    ({ left: 0, top: 0, right: 256, bottom: 800, x: 0, y: 0, width: 256, height: 800 });
+  delete el.__secGrip;
+  context.initPanelSectionReorder();
+  const grip = el.__secGrip;
+  grip._listeners.pointerdown({
+    button: 0, pointerId: 1, clientX: 16, clientY: 100,
+    stopPropagation() {}, preventDefault() {}
+  });
+  dispatchDocumentEvent('pointermove', { pointerId: 1, clientX: x, clientY: y });
+  return { el, header };
+}
+
+test('the click a tear-off ends in does not collapse the window', () => {
+  const { el, header } = tearOffBy('lp-states', 420);
+  assert.ok(el.classList.contains('panel-float'), 'torn off');
+  dispatchDocumentEvent('pointerup', { pointerId: 1 });
+  const ev = dispatchDocumentEvent('click', { target: header });
+  assert.equal(ev.defaultPrevented, true, 'the drag swallows its own click');
+  assert.equal(ev.propagationStopped, true, 'before the header\'s own onclick');
+});
+
+test('a tear-off that ends in no click does not eat the next one', async () => {
+  // Chromium drops that click instead of retargeting it. A swallow armed until
+  // it fires would then eat the reader's next deliberate click on the header,
+  // so it lasts only as long as the task the release was delivered in.
+  const { header } = tearOffBy('lp-states', 420);
+  dispatchDocumentEvent('pointerup', { pointerId: 1 });
+  await new Promise(r => setTimeout(r, 0));
+  const ev = dispatchDocumentEvent('click', { target: header });
+  assert.equal(ev.defaultPrevented, false);
+});
+
+test('a reorder does not collapse the section it moved', () => {
+  // The same capture is lost on a plain reorder, which moves the section
+  // within its panel — a move is a removal from the old position.
+  const { el, header } = tearOffBy('lp-states', 30);
+  assert.ok(!el.classList.contains('panel-float'), 'still in the panel');
+  dispatchDocumentEvent('pointerup', { pointerId: 1 });
+  const ev = dispatchDocumentEvent('click', { target: header });
+  assert.equal(ev.defaultPrevented, true);
+});
+
+test('a drag cancelled with Escape still swallows the click its release makes', () => {
+  const { el, header } = tearOffBy('lp-states', 420);
+  dispatchDocumentEvent('keydown', { key: 'Escape' });
+  assert.ok(!el.classList.contains('panel-float'), 'Escape put it back');
+  dispatchDocumentEvent('pointerup', { pointerId: 1 });
+  const ev = dispatchDocumentEvent('click', { target: header });
+  assert.equal(ev.defaultPrevented, true);
+});
+
+test('a press on the grip that never travels swallows nothing', () => {
+  const { header } = tearOffBy('lp-states', 17, 101);
+  dispatchDocumentEvent('pointerup', { pointerId: 1 });
+  const ev = dispatchDocumentEvent('click', { target: header });
+  assert.equal(ev.defaultPrevented, false);
+});
+
 test('the south-east corner resizes and never moves', () => {
   const { el, grab } = mountWindow('rp-batch', { x: 10, y: 10, w: 360, h: 280 });
   press(grab, 300, 300);
