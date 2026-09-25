@@ -30,6 +30,7 @@ import { autoLayout, toggleSnapToGrid } from './canvas.js';
 import { openSettingsFromQuick } from './quick-settings.js';
 import { PANEL_TAB_NAMES, PANEL_TABS, getTabSide, isPanelTabActive } from './panel-state.js';
 import { formatKbd } from './kbd.js';
+import { SHAPE_TOOL_ICON_LINE, SHAPE_TOOL_ICON_RECT } from './dividers.js';
 
 export const MOBILE_QUERY = '(max-width: 900px)';
 
@@ -140,8 +141,8 @@ export function syncMobileTools() {
 
 const MORE_ITEMS = [
   { id: 'move', label: 'Pan', kbd: 'V', tool: 'move', icon: 'M90.34,61.66a8,8,0,0,1,0-11.32l32-32a8,8,0,0,1,11.32,0l32,32a8,8,0,0,1-11.32,11.32L136,43.31V96a8,8,0,0,1-16,0V43.31L101.66,61.66A8,8,0,0,1,90.34,61.66Zm64,132.68L136,212.69V160a8,8,0,0,0-16,0v52.69l-18.34-18.35a8,8,0,0,0-11.32,11.32l32,32a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm83.32-72-32-32a8,8,0,0,0-11.32,11.32L212.69,120H160a8,8,0,0,0,0,16h52.69l-18.35,18.34a8,8,0,0,0,11.32,11.32l32-32A8,8,0,0,0,237.66,122.34ZM43.31,136H96a8,8,0,0,0,0-16H43.31l18.35-18.34A8,8,0,0,0,50.34,90.34l-32,32a8,8,0,0,0,0,11.32l32,32a8,8,0,0,0,11.32-11.32Z' },
-  { id: 'divider', label: 'Divider', kbd: 'L', tool: 'divider', icon: 'M214.64,41.36a32,32,0,0,0-50.2,38.89L80.25,164.44a32.06,32.06,0,0,0-38.89,4.94h0a32,32,0,1,0,50.2,6.37l84.19-84.19a32,32,0,0,0,38.89-50.2Zm-139.33,162a16,16,0,0,1-22.64-22.64h0a16,16,0,0,1,22.63,0h0A16,16,0,0,1,75.31,203.33Zm128-128a16,16,0,1,1,0-22.63A16,16,0,0,1,203.33,75.3Z' },
-  { id: 'rect', label: 'Region', kbd: 'R', tool: 'rect', icon: 'M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Z' },
+  { id: 'divider', label: 'Divider', kbd: 'L', tool: 'divider', svg: () => SHAPE_TOOL_ICON_LINE },
+  { id: 'rect', label: 'Region', kbd: 'R', tool: 'rect', svg: () => SHAPE_TOOL_ICON_RECT },
   { id: 'del', label: 'Delete', kbd: 'D', tool: 'del', danger: true, icon: 'M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z' },
   { sep: true },
   { id: 'redo', label: 'Redo', kbd: formatKbd('Mod+Y'), run: () => redo(), icon: 'M170.34,130.34,204.69,96H88a48,48,0,0,0,0,96h88a8,8,0,0,1,0,16H88A64,64,0,0,1,88,80H204.69L170.34,45.66a8,8,0,0,1,11.32-11.32l48,48a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32-11.32Z' },
@@ -170,7 +171,7 @@ function renderMobileMore() {
     if (item.sep) return '<div class="ctx-divider"></div>';
     const on = item.tool ? App.tool === item.tool : (item.toggle ? item.toggle() : false);
     return `<div class="ctx-i${item.danger ? ' danger' : ''}${on ? ' active' : ''}" role="menuitem" tabindex="0" data-more="${item.id}">
-      <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="${item.icon}"/></svg>
+      ${item.svg ? item.svg() : `<svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="${item.icon}"/></svg>`}
       ${item.label}${item.kbd ? `<span class="ctx-kbd-hint">${item.kbd}</span>` : ''}
     </div>`;
   }).join('');

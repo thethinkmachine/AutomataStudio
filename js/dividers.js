@@ -621,8 +621,13 @@ export function deleteDividerFromModal() {
 // One toolbar slot covers both shapes rather than two near-identical buttons.
 // Clicking it opens the picker so the two drawing modes are discoverable;
 // keyboard shortcuts remain available for quick switching.
-export const SHAPE_TOOL_ICON_LINE = '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M214.64,41.36a32,32,0,0,0-50.2,38.89L80.25,164.44a32.06,32.06,0,0,0-38.89,4.94h0a32,32,0,1,0,50.2,6.37l84.19-84.19a32,32,0,0,0,38.89-50.2Zm-139.33,162a16,16,0,0,1-22.64-22.64h0a16,16,0,0,1,22.63,0h0A16,16,0,0,1,75.31,203.33Zm128-128a16,16,0,1,1,0-22.63A16,16,0,0,1,203.33,75.3Z"/></svg>';
-export const SHAPE_TOOL_ICON_RECT = '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Z"/></svg>';
+//
+// Both glyphs are dashed: a divider and a region annotate the diagram and are
+// not part of the machine, which is what a dashed outline means in this app
+// (css/views.css). The solid line between two dots they replaced was also the
+// picture of a transition, one button away from the real one.
+export const SHAPE_TOOL_ICON_LINE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 4"><path d="M4.5 19.5 19.5 4.5"/></svg>';
+export const SHAPE_TOOL_ICON_RECT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2 3.5"><rect x="3.75" y="5.25" width="16.5" height="13.5" rx="2"/></svg>';
 export const SHAPE_TOOL_LABELS = { divider: 'Divider', rect: 'Region' };
 export const SHAPE_TOOL_KBD = { divider: 'L', rect: 'R' };
 
@@ -642,7 +647,7 @@ export function updateShapeToolButton(tool) {
   if (lbl) lbl.textContent = SHAPE_TOOL_LABELS[kind];
   if (kbd) kbd.textContent = SHAPE_TOOL_KBD[kind];
   const btn = $('t-shape');
-  if (btn) btn.dataset.tip = `Shape — drag to draw a Divider line or Region box (last used: ${SHAPE_TOOL_LABELS[kind]}); right-click to switch; L = line, R = rectangle; click again to return to Pointer`;
+  if (btn) btn.dataset.tip = `Shape — drag to draw a Divider line or Region box (last used: ${SHAPE_TOOL_LABELS[kind]}); right-click to switch; L = line, R = rectangle; click again to return to Select`;
 }
 
 export function showShapeToolMenu(e) {

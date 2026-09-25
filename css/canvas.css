@@ -835,11 +835,6 @@
   padding: 6px;
 }
 
-.canvas-toolbox[data-dock="top"] .toolbox-btn,
-.canvas-toolbox[data-dock="bottom"] .toolbox-btn {
-  min-width: 58px;
-}
-
 .canvas-toolbox[data-dock="top"] .toolbox-sep,
 .canvas-toolbox[data-dock="bottom"] .toolbox-sep {
   width: 1px;
@@ -964,7 +959,7 @@
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  min-width: 56px;
+  min-width: 62px;
   padding: 9px 6px 7px;
   background: transparent;
   border: 0;
@@ -981,6 +976,19 @@
 
 .toolbox-btn:active {
   background: var(--surface2);
+}
+
+/* Undo/redo with nothing to step to. aria-disabled rather than disabled, so
+   the tooltip still answers a hover and a click still says why nothing moved. */
+.toolbox-btn[aria-disabled="true"] {
+  opacity: .4;
+  cursor: default;
+}
+
+.toolbox-btn[aria-disabled="true"]:hover,
+.toolbox-btn[aria-disabled="true"]:active {
+  background: transparent;
+  color: var(--text2);
 }
 
 .toolbox-btn:focus-visible {
@@ -1001,10 +1009,29 @@
   stroke: none;
 }
 
-/* The transition glyph is drawn with strokes; the rule above would blank it. */
-#t-trans svg {
+/* Glyphs drawn with strokes (Transition, and the dashed Divider and Region);
+   the rule above would blank them. */
+.toolbox-btn svg[stroke] {
   fill: none;
   stroke: currentColor;
+}
+
+/* The shape glyph sits in a swappable span; as an inline box it added a line
+   box's worth of height, which made this one tile 3px taller than the rest. */
+#shape-tool-icon {
+  display: flex;
+}
+
+/* Marks the one tool that opens a menu, where a toolbar's menu caret goes. */
+.toolbox-btn svg.toolbox-caret {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 6px;
+  height: 6px;
+  fill: currentColor;
+  opacity: .55;
+  pointer-events: none;
 }
 
 .toolbox-lbl {
@@ -1021,10 +1048,10 @@
   top: 4px;
   right: 5px;
   font-family: var(--mono);
-  font-size: .5rem;
+  font-size: .56rem;
   line-height: 1;
-  color: var(--text3);
-  opacity: .8;
+  color: var(--text2);
+  opacity: .75;
   pointer-events: none;
 }
 
@@ -1057,7 +1084,15 @@
 .toolbox-pair .toolbox-btn {
   flex: 1;
   min-width: 0;
-  padding: 8px 0;
+  min-height: 36px;
+  padding: 0;
+  justify-content: center;
+}
+
+/* Collapsed, the pair stacks — and flex: 1 in a column is a zero height
+   basis, which halved both buttons to 18px. */
+.canvas-toolbox.collapsed .toolbox-pair .toolbox-btn {
+  flex: none;
 }
 
 .canvas-toolbox[data-dock="top"] .toolbox-pair .toolbox-btn,

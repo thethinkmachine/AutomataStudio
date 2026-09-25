@@ -360,6 +360,14 @@ body:has(.rpanel.hidden) .hdr-right {
    exactly the thing contrast guidelines hold to that floor, and this was the
    one place in the header where a Tab press produced something close to
    invisible. */
+/* Nothing to undo or redo: dimmed, still hoverable for its tooltip. */
+.hbtn[aria-disabled="true"],
+.hbtn[aria-disabled="true"]:hover {
+  opacity: .4;
+  background: transparent;
+  cursor: default;
+}
+
 .hbtn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;

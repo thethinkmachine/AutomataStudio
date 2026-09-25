@@ -1734,7 +1734,7 @@ export function fitPadding(box) {
  * refused, and that obstacle is overlapped instead: on a small enough screen
  * every control is in the way of everything, and a machine drawn at a quarter
  * size so as to touch none of them is the worse of the two outcomes. The same
- * degrade-rather-than-fail rule canvasInfoCorner follows.
+ * degrade-rather-than-fail rule the machine card's height cap follows.
  */
 export function fitRegion(box, obstacles, bw, bh, pad) {
   const w = Math.max(bw, 1), h = Math.max(bh, 1);
@@ -1972,12 +1972,12 @@ export function setTool(t) {
 
   const msgs = {
     pointer: 'Click or drag states to interact',
-    move: 'Drag canvas to pan · drag state to move · click the active tool again to return to Pointer',
-    state: 'Click canvas to place state · click the active tool again to return to Pointer',
-    trans: 'Click source then target state · click the active tool again to return to Pointer',
+    move: 'Drag canvas to pan · drag state to move · click the active tool again to return to Select',
+    state: 'Click canvas to place state · click the active tool again to return to Select',
+    trans: 'Click source then target state · click the active tool again to return to Select',
     divider: 'Drag on the canvas to draw a divider · hold Shift to lock to 0° / 45° / 90°',
     rect: 'Drag on the canvas to draw a region box · hold Shift for a square',
-    del: 'Click state or transition to delete · press Esc or click Pointer to return'
+    del: 'Click state or transition to delete · press Esc or click Select to return'
   };
   showStatus(msgs[t] || '');
 }
@@ -2165,90 +2165,105 @@ export function applyToolbarDock(persist = false) {
   toolbox.classList.toggle('dragging', !!App.toolbarDragging);
 
   const wrapRect = w.getBoundingClientRect();
-  const box = positionToolbarNode(toolbox, dock, wrapRect);
+  toolbox.classList.toggle('collapsed', !!App.toolbarCollapsed);
+  let box = positionToolbarNode(toolbox, dock, wrapRect);
+  // A toolbar too long for its edge folds to icons by itself and unfolds when
+  // the room comes back. Laid out full length, a row along a narrow canvas
+  // scrolled undo and redo out of sight behind a hidden scrollbar, and a column
+  // on a short one ran off the bottom. Not written to the collapse preference:
+  // that is the reader's, and a window resize is not the reader asking.
+  const squeezed = !App.toolbarCollapsed && toolbarOverflows(toolbox, dock, wrapRect, box);
+  if (squeezed) {
+    toolbox.classList.add('collapsed');
+    box = positionToolbarNode(toolbox, dock, wrapRect);
+  }
+  toolbox.classList.toggle('is-squeezed', squeezed);
   layoutCanvasOverlays(wrapRect, box);
 
   if (persist) saveToolbarDock();
 }
 
-// ── Overlay placement ─────────────────────────────────────────────
-// The minimap, its show-button and the zoom controls form one stack in a
-// corner of the canvas. The toolbar is draggable to any edge, so a fixed
-// corner meant it could be sat on — the stack now picks the corner that
-// stays clear of wherever the toolbar currently is.
-//
-// Both are positioned from the same margin and share one vertical rhythm,
-// so whichever corner they land in they line up with each other and sit
-// the same distance from the edges as the toolbar does.
-export const OVERLAY_GAP = 8;
-
-// Width the overlay stack needs before it can share an edge with a horizontal
-// toolbar. The nav controls are the widest member; this is that bar at its
-// current button count plus breathing room, and it is a floor rather than a
-// measurement so the corner can be resolved before anything is laid out.
-export const STACK_MIN_WIDTH = 250;
-
-// A horizontal toolbar and the overlay stack both want the bottom edge. On a
-// wide canvas they take opposite ends and never meet, which is what `ratio`
-// alone assumed. On a narrow one the toolbar spans nearly the full width and
-// there is no opposite end left — so ask whether the two actually fit side by
-// side rather than trusting which half the toolbar was dropped in.
-export function bottomEdgeHasRoomBeside(wrapRect, toolbarBox, stackWidth = STACK_MIN_WIDTH) {
-  if (!toolbarBox || !toolbarBox.width || !wrapRect || !wrapRect.width) return true;
-  // Margin outside each bar, plus one gap between them.
-  return toolbarBox.width + stackWidth + TOOLBAR_MARGIN * 3 <= wrapRect.width;
+// Whether the toolbar, laid out at full length, runs past the edge it is
+// docked to. A row is capped at the canvas width and scrolls, so its overflow
+// is in its scroll size; a column is not capped, so its overflow is its height.
+export function toolbarOverflows(toolbox, dock, wrapRect, box) {
+  if (!toolbox || !wrapRect || isCompactToolbarMode()) return false;
+  const horizontal = dock.side === 'top' || dock.side === 'bottom';
+  if (horizontal) return toolbox.scrollWidth > toolbox.clientWidth + 1;
+  return !!box && box.height > wrapRect.height - TOOLBAR_MARGIN * 2;
 }
 
-export function canvasOverlayCorner(dock, wrapRect, toolbarBox, stackWidth) {
-  // Compact mode has no toolbar over the canvas at all — the tools are cells
-  // in the bottom bar (js/mobile.js) and the stack is one Fit button. It goes
-  // bottom-right, just above the bar, because the top belongs to the status
-  // toast and the info pill: three overlays used to share `top: 12px` there,
-  // with the zoom cluster painting over the right end of every message.
-  if (isCompactToolbarMode()) return { x: 'right', y: 'bottom' };
+// ── Overlay placement ─────────────────────────────────────────────
+// Every overlay has a home it does not leave: the zoom controls and the
+// minimap in the bottom-right, the info pill and its card in the top-left, the
+// status toast along the top. The toolbar is the one the reader moves, so it is
+// the one the others make room for — and they make room by stepping aside
+// along the edge they share with it, never by jumping to another corner.
+//
+// It used to be the other way round. Each overlay searched the four corners
+// for the least crowded one, so the zoom controls crossed the canvas when the
+// toolbar was dragged past the middle of an edge, and the card's search also
+// scored the drawing under it: the same machine opened its description
+// bottom-left at one window size and top-right at the next, and the pill it
+// folds into went with it. A control that is somewhere new each time has to be
+// looked for each time.
+//
+// Both are positioned from the same margin and share one vertical rhythm, so
+// they line up with each other and sit the same distance from the edges as
+// the toolbar does.
+export const OVERLAY_GAP = 8;
 
+// Stand-ins for the stack before it has been laid out, so its placement can be
+// resolved on first paint: the nav bar is the wide member, and it alone is the
+// height of a stack with the minimap hidden.
+export const STACK_MIN_WIDTH = 250;
+export const STACK_MIN_HEIGHT = 38;
+
+/**
+ * Where the zoom-and-minimap stack sits: always the bottom-right, inset from
+ * those two edges by `right` and `bottom`.
+ *
+ * A toolbar in the way is stepped around along its own axis: a column down the
+ * right edge moves the stack in beside it, a row along the bottom lifts the
+ * stack to stand on it. Whether the two merely *could* share the bottom edge —
+ * widths adding up — is not the question; a centred toolbar splits the spare
+ * room across both ends, and that is how the zoom cluster came to sit on
+ * undo/redo. A left or top toolbar cannot reach the corner on any canvas big
+ * enough to hold both, and is left alone rather than answered with a move that
+ * would put the stack off the edge.
+ */
+export function canvasOverlayCorner(dock, wrapRect, toolbarBox, stackSize) {
+  const m = TOOLBAR_MARGIN;
+  const place = { x: 'right', y: 'bottom', right: m, bottom: m };
+  // Compact mode has no toolbar over the canvas — the tools are cells in the
+  // mobile bar (js/mobile.js), whose clearance the caller adds.
+  if (isCompactToolbarMode() || !wrapRect || !wrapRect.width) return place;
+  const bar = toolbarRectIn(dock, wrapRect, toolbarBox);
   const side = dock && dock.side;
-  const ratio = clamp01(dock ? dock.ratio : 0.5);
-
-  // A left/top toolbar never reaches the default corner.
-  if (side === 'left' || side === 'top') return { x: 'right', y: 'bottom' };
-
-  if (side === 'right') {
-    // Vertical bar down the right edge. It only clears the bottom-right
-    // corner when docked high enough that its lower edge stops short of
-    // the stack — otherwise move to the left.
-    const bottom = toolbarBox ? toolbarBox.height : 0;
-    const reach = TOOLBAR_MARGIN + ratio * Math.max(1, wrapRect.height - bottom - TOOLBAR_MARGIN * 2) + bottom;
-    return reach < wrapRect.height * 0.55
-      ? { x: 'right', y: 'bottom' }
-      : { x: 'left', y: 'bottom' };
-  }
-
-  if (side === 'bottom') {
-    // No room to share the edge — go over the top rather than onto the toolbar.
-    if (!bottomEdgeHasRoomBeside(wrapRect, toolbarBox, stackWidth)) return { x: 'right', y: 'top' };
-    // Otherwise sitting left of centre leaves the bottom-right free, and vice
-    // versa.
-    return ratio > 0.5 ? { x: 'left', y: 'bottom' } : { x: 'right', y: 'bottom' };
-  }
-
-  return { x: 'right', y: 'bottom' };
+  if (!bar || (side !== 'right' && side !== 'bottom')) return place;
+  const size = stackSize && stackSize.width
+    ? stackSize
+    : { width: STACK_MIN_WIDTH, height: STACK_MIN_HEIGHT };
+  const home = {
+    left: wrapRect.width - m - size.width, top: wrapRect.height - m - size.height,
+    width: size.width, height: size.height
+  };
+  if (!overlapArea(home, bar, OVERLAY_GAP)) return place;
+  if (side === 'right') place.right = m + bar.width + OVERLAY_GAP;
+  else place.bottom = m + bar.height + OVERLAY_GAP;
+  return place;
 }
 
 // ── the info pill ─────────────────────────────────────────────────
-//  "About this machine" describes the diagram rather than driving it, so it is
-//  the one overlay with no claim on any particular corner — which is exactly
-//  what let it be sat on. It was pinned to the top-left, and the toolbar docks
-//  wherever it is dragged, top-left included.
+//  "About this machine" lives in the top-left, where a description reads
+//  first, and the card opens out of the pill in the same place. A toolbar
+//  docked across that corner pushes them along the edge rather than off to
+//  another corner: a left column moves them in beside it, a top row moves them
+//  below it. The pill is where the reader goes looking for the description, so
+//  the one thing it must not do is turn up somewhere new.
 //
-//  So it takes whichever corner is free, preferring the one it has always had.
-//  The obstacles are *computed* rather than measured back out of the DOM: the
-//  toolbar's rect comes from the same dock arithmetic that positions it and the
-//  stack's from the offsets it was just placed at, so the answer holds on the
-//  frame everything moves rather than one behind it.
-//
-//  The pill and the card share a corner, and it is chosen for the *card* —
-//  the bigger of the two — so opening the thing never makes it jump.
+//  The toolbar's rect comes from the same dock arithmetic that positions it,
+//  so the answer holds on the frame everything moves rather than one behind it.
 
 // The toolbar's box in wrap coordinates, or null when it is not on screen.
 // Mirrors positionToolbarNode rather than reading its style back, for the
@@ -2287,121 +2302,84 @@ function overlapArea(a, b, pad = 0) {
   return x > 0 && y > 0 ? x * y : 0;
 }
 
-function cornerRect(corner, wrapRect, size) {
+/**
+ * The top-left of the pill and its card, in wrap coordinates.
+ *
+ * Sized for the card even while it is shut — `visibility: hidden` still lays
+ * out — so opening it never moves the anchor off a toolbar the pill alone
+ * would have cleared.
+ */
+export function canvasInfoOrigin(dock, toolbarRect, size) {
   const m = TOOLBAR_MARGIN;
-  return {
-    left: corner.x === 'left' ? m : Math.max(m, wrapRect.width - size.width - m),
-    top: corner.y === 'top' ? m : Math.max(m, wrapRect.height - size.height - m),
-    width: size.width, height: size.height
-  };
+  const origin = { left: m, top: m };
+  if (!toolbarRect || !size || isCompactToolbarMode()) return origin;
+  const home = { left: m, top: m, width: size.width, height: size.height };
+  if (!overlapArea(home, toolbarRect, OVERLAY_GAP)) return origin;
+  const side = dock && dock.side;
+  if (side === 'top') origin.top = toolbarRect.top + toolbarRect.height + OVERLAY_GAP;
+  else if (side === 'left') origin.left = toolbarRect.left + toolbarRect.width + OVERLAY_GAP;
+  return origin;
 }
 
-// Preference order, and it is the tie-break rather than the rule: the top-left
-// is where the card has always opened and where its title reads first.
-export const INFO_CORNER_ORDER = [
-  { x: 'left', y: 'top' }, { x: 'right', y: 'top' },
-  { x: 'left', y: 'bottom' }, { x: 'right', y: 'bottom' }
-];
-
-/**
- * The first corner nothing else wants — or, on a canvas where every corner is
- * spoken for, the one it fights over least.
- *
- * Scoring by overlap area rather than stopping at the first clear corner is
- * what makes the small-canvas case degrade instead of falling back to a corner
- * the toolbar is sitting on.
- *
- * `soft` is the second question, asked only of the corners that tied on the
- * first: the diagram itself. Covering the machine is not the same kind of
- * mistake as covering a control — the machine can be panned out from under the
- * card, and a card that moved to the far corner every time a state was drawn
- * near it would be worse than one sitting over a bit of whitespace. So it can
- * only ever break a tie, never outweigh a real collision, and it is measured
- * without clearance because touching the drawing is not overlapping it.
- */
-export function canvasInfoCorner(wrapRect, size, obstacles = [], soft = []) {
-  let best = null;
-  let bestHard = Infinity;
-  let bestSoft = Infinity;
-  for (const corner of INFO_CORNER_ORDER) {
-    const box = cornerRect(corner, wrapRect, size);
-    let hard = 0;
-    for (const o of obstacles) hard += overlapArea(box, o, OVERLAY_CLEARANCE);
-    if (hard > bestHard) continue;
-    let softCost = 0;
-    for (const o of soft) softCost += overlapArea(box, o);
-    // Strictly better on one of the two, or the earlier corner keeps it — which
-    // is what makes INFO_CORNER_ORDER the tie-break it is documented to be.
-    if (hard < bestHard || softCost < bestSoft) {
-      best = corner; bestHard = hard; bestSoft = softCost;
-    }
-  }
-  return best || INFO_CORNER_ORDER[0];
-}
-
-/**
- * The drawing's own box, in wrap coordinates. `getContentBounds` answers in
- * world coordinates, so the camera is what turns it into somewhere on screen.
- */
-export function machineRectIn(wrapRect) {
-  if (!wrapRect) return null;
-  const b = typeof getContentBounds === 'function' ? getContentBounds(App.config.radius) : null;
-  if (!b || !Number.isFinite(b.minX)) return null;
-  const z = App.cam.z || 1;
-  return {
-    left: b.minX * z + App.cam.x, top: b.minY * z + App.cam.y,
-    width: Math.max(0, b.width * z), height: Math.max(0, b.height * z)
-  };
-}
+// Shorter than this a card is a title and a scrollbar, and overlapping
+// whatever is below it is the lesser fault.
+export const CARD_MIN_HEIGHT = 120;
 
 function measureBox(el) {
-  if (!el || !el.getBoundingClientRect) return null;
+  if (!el) return null;
+  // The layout size, not the painted one: the card opens with a scale
+  // transition, and a box read mid-animation comes up a few pixels short.
+  if (el.offsetWidth > 0 && el.offsetHeight > 0) return { width: el.offsetWidth, height: el.offsetHeight };
+  if (!el.getBoundingClientRect) return null;
   const box = el.getBoundingClientRect();
   return box && box.width ? { width: box.width, height: box.height } : null;
 }
 
 /**
- * Anchor the info pill and its card to a free corner.
+ * Anchor the info pill and its card at their origin, and keep the open card
+ * off whatever sits below it.
  *
- * Both are moved together and stamped with the corner, which is what the CSS
- * grows the card from — a card anchored bottom-right that still expands
- * downward off its own origin reads as a mistake.
+ * `below` is the stack and the toolbar. The card is capped to stop short of
+ * any of them it would reach down onto, and scrolls instead — on a narrow
+ * canvas the card used to open straight over the zoom controls and minimap,
+ * because every corner was "taken" and the search settled for the least-bad
+ * one.
  */
-export function layoutCanvasInfo(wrapRect, obstacles = []) {
+export function layoutCanvasInfo(wrapRect, toolbarRect, below = []) {
   const btn = $('canvas-info-btn');
   const card = $('example-card');
   if (!btn && !card) return null;
-
-  // The card, measured even while shut: `visibility: hidden` still lays out,
-  // and sizing the anchor off the button would move it the moment the card
-  // opened over the toolbar the button had cleared.
   const size = measureBox(card) || measureBox(btn);
   if (!size) return null;
 
-  const margin = TOOLBAR_MARGIN;
-  // Same clearance the stack takes: on a phone the bottom edge belongs to the
-  // mobile bar, and a card measured against the canvas's own would open under
-  // it. Applied to the corner search too, or the scoring would keep choosing a
-  // corner that only looks free.
-  const bottomInset = margin + compactBottomInset(wrapRect);
-  // Built field by field rather than spread: a live DOMRect keeps its
-  // properties on the prototype as getters, so `{ ...rect }` is `{}`.
-  const searchRect = { width: wrapRect.width, height: Math.max(1, wrapRect.height - (bottomInset - margin)) };
-  // StateMate used to be asked for here: it was a dock across the bottom of the
-  // canvas and the biggest thing that could appear over the diagram. As the
-  // right panel's second tab it takes layout space instead of covering
-  // anything, so the wrap it is measured against has already shrunk by it.
-  const corner = canvasInfoCorner(searchRect, size, obstacles, [machineRectIn(wrapRect)]);
+  const origin = canvasInfoOrigin(App.toolbarDock, toolbarRect, size);
+  // On a phone the bottom edge belongs to the mobile bar.
+  let room = wrapRect.height - TOOLBAR_MARGIN - compactBottomInset(wrapRect) - origin.top;
+  for (const o of below) {
+    if (!o || !(o.top > origin.top)) continue;
+    const across = o.left < origin.left + size.width && o.left + o.width > origin.left;
+    if (across) room = Math.min(room, o.top - OVERLAY_GAP - origin.top);
+  }
+
   [btn, card].forEach(el => {
     if (!el || !el.style) return;
     el.style.position = 'absolute';
-    el.style.left = corner.x === 'left' ? `${margin}px` : 'auto';
-    el.style.right = corner.x === 'right' ? `${margin}px` : 'auto';
-    el.style.top = corner.y === 'top' ? `${margin}px` : 'auto';
-    el.style.bottom = corner.y === 'bottom' ? `${bottomInset}px` : 'auto';
-    if (el.dataset) el.dataset.corner = `${corner.y}-${corner.x}`;
+    el.style.left = `${origin.left}px`;
+    el.style.top = `${origin.top}px`;
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+    if (el.dataset) el.dataset.corner = 'top-left';
   });
-  return corner;
+  const maxHeight = Math.max(CARD_MIN_HEIGHT, Math.round(room));
+  if (card && card.style) card.style.maxHeight = `${maxHeight}px`;
+  // What now stands in the top-left, from the origin just written rather than
+  // read back off the DOM, for the status toast to make room for.
+  const at = el => {
+    const b = el && !el.hidden ? measureBox(el) : null;
+    return b ? { left: origin.left, top: origin.top, width: b.width, height: Math.min(b.height, maxHeight) } : null;
+  };
+  const open = !!(card && card.classList && card.classList.contains('is-open'));
+  return { x: 'left', y: 'top', ...origin, occupied: [at(btn), open ? at(card) : null] };
 }
 
 /** Re-anchor after the card's own content changes size. */
@@ -2444,76 +2422,88 @@ export function compactBottomInset(wrapRect) {
   return Math.max(0, wrapRect.bottom - box.top);
 }
 
+// Where the status toast sits by default, and its height — the lane it needs.
+const STATUS_TOP = 10;
+const STATUS_H = 24;
+// Narrower than this a message is mostly ellipsis; the toast drops a row
+// instead.
+export const STATUS_MIN_LANE = 220;
+
 /**
- * The status toast's box, so the info pill can dodge it.
+ * The status toast is centred in whatever is left of the top strip: below a
+ * top-docked toolbar, and between whatever leads the strip from either side —
+ * the pill, the open card and the breadcrumb on the left, a side-docked
+ * toolbar that reaches the top.
  *
- * It is the one overlay `layoutCanvasInfo` never knew about, which on a phone
- * — where the toast is a wide centred pill rather than a short one lost in a
- * wide canvas — put the pill under every message the app printed. Measured
- * while hidden: the toast is faded with `opacity`, so it lays out whether or
- * not it is showing, and a corner that only became unavailable once a message
- * arrived would move the pill under the reader's finger.
+ * It is given the lane's width instead of being measured, because the message
+ * is written after layout runs: showStatus sets the text and nothing else, so a
+ * toast placed for its last message was wrong for the next one, and a short
+ * "Example loaded" measured at load time let the card open across the long
+ * tool hint that followed it. When the lane is too narrow to read in, the
+ * toast drops beneath whatever was crowding it.
  */
-export function statusRectIn(wrapRect) {
+export function positionStatusToast(wrapRect, toolbarRect, leaders = []) {
   const el = $('status-bar');
-  if (!el || !el.getBoundingClientRect) return null;
+  if (!el || !el.style) return;
+  // Phones included: css/mobile.css keeps 36px clear either side, which is the
+  // 24px pill and not the wider "Describe" label an undescribed machine shows.
+  if (!wrapRect || !wrapRect.width) {
+    el.style.top = ''; el.style.left = ''; el.style.maxWidth = '';
+    return;
+  }
+  const m = TOOLBAR_MARGIN;
+  const side = App.toolbarDock && App.toolbarDock.side;
+  let top = STATUS_TOP;
+  if (toolbarRect && side === 'top') top = toolbarRect.top + toolbarRect.height + OVERLAY_GAP;
+  const crowd = [...leaders];
+  if (toolbarRect && (side === 'left' || side === 'right')) crowd.push(toolbarRect);
+  const inLane = o => o && o.top < top + STATUS_H && o.top + o.height > top;
+
+  let left = m, right = wrapRect.width - m;
+  for (const o of crowd) {
+    if (!inLane(o)) continue;
+    if (o.left + o.width / 2 < wrapRect.width / 2) left = Math.max(left, o.left + o.width + OVERLAY_GAP);
+    else right = Math.min(right, o.left - OVERLAY_GAP);
+  }
+  if (right - left < STATUS_MIN_LANE) {
+    let floor = top;
+    for (const o of crowd) if (inLane(o)) floor = Math.max(floor, o.top + o.height + OVERLAY_GAP);
+    top = floor; left = m; right = wrapRect.width - m;
+  }
+  el.style.top = `${Math.round(top)}px`;
+  el.style.left = `${Math.round((left + right) / 2)}px`;
+  el.style.maxWidth = `${Math.round(right - left)}px`;
+}
+
+// An overlay's box in wrap coordinates, or null when it is not showing.
+function overlayRectIn(el, wrapRect) {
+  if (!el || el.hidden || !el.getBoundingClientRect) return null;
   const box = el.getBoundingClientRect();
-  if (!box.width || !box.height) return null;
+  if (!box || !box.width || !box.height || !Number.isFinite(box.left)) return null;
   return { left: box.left - wrapRect.left, top: box.top - wrapRect.top, width: box.width, height: box.height };
 }
 
 /**
- * The breadcrumb's box, so the info pill dodges it — and its own top offset, so
- * it dodges a top-docked toolbar.
+ * The breadcrumb's box, so the status toast can make room for it.
  *
- * It arrived with a hard-coded `top: 52px` and a z-index below every other
- * canvas overlay, which put it underneath the toolbar whenever the toolbar was
- * docked top — the two want exactly the same strip. The toolbar is the one with
- * a dock the reader chose, so the bar moves.
+ * The pill leads the top-left strip and the bar follows it, from the pill's
+ * own origin — so a toolbar that moved the pill moves the bar with it, and the
+ * two never contend for the corner. It used to run its own clash test against
+ * the toolbar from a fixed `top: 12px`, which agreed with the pill's corner
+ * search only as long as both happened to reach the same answer.
  */
-export function positionScopeBar(wrapRect, toolbarRect) {
+export function positionScopeBar(wrapRect, origin) {
   const el = $('scope-bar');
   if (!el) return null;
-  // The info pill leads the strip and the bar follows it, rather than the two
-  // contending for the same corner. Handing the pill's corner search a bar to
-  // route around looked like the tidier answer and is the wrong one twice: the
-  // pill's first choice *is* top-left, so every drill-in threw the machine's
-  // description to the far side of the canvas and back on the way out; and the
-  // bar is measured on the frame its own offset is written, so a box that has
-  // not been laid out yet reports zero and is not an obstacle at all — which
-  // is the state the two were actually colliding in. Sharing the strip
-  // left-to-right needs neither to move.
-  const left = SCOPE_BAR_LEFT + infoPillWidth();
-  el.style.setProperty('--scope-bar-left', `${left}px`);
-  const base = SCOPE_BAR_TOP;
-  // The bar leads the top strip from the left, so what stands on it is anything
-  // overlapping that end of the strip — a top dock, and equally a left dock,
-  // which is a tall column in exactly the corner the bar now starts from. The
-  // test was written for a centred bar and measured a band around the midpoint,
-  // which a left-docked toolbar passes through without ever touching it.
-  const box = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-  const width = (box && box.width) || SCOPE_BAR_MIN_W;
-  const clash = toolbarRect && toolbarRect.top < base + SCOPE_BAR_H
-    && toolbarRect.left < left + width
-    && toolbarRect.left + toolbarRect.width > left;
-  const top = clash ? toolbarRect.top + toolbarRect.height + OVERLAY_GAP : base;
-  el.style.setProperty('--scope-bar-top', `${top}px`);
+  const o = origin || { left: TOOLBAR_MARGIN, top: TOOLBAR_MARGIN };
+  el.style.setProperty('--scope-bar-left', `${o.left + infoPillWidth()}px`);
+  el.style.setProperty('--scope-bar-top', `${o.top}px`);
   // An obstacle only while it is actually showing crumbs. `hidden` alone is not
   // the whole test: the bar is emptied and hidden together, and a bar with
   // nothing in it occupies nothing whether or not the attribute is set.
   if (el.hidden || !el.childNodes || !el.childNodes.length) return null;
-  if (!box || !box.width || !box.height) return null;
-  return { left: box.left - wrapRect.left, top: box.top - wrapRect.top, width: box.width, height: box.height };
+  return wrapRect ? overlayRectIn(el, wrapRect) : null;
 }
-
-// Mirrors the `top` and `left` fallbacks in css/canvas.css, and the bar's own
-// height, which is only needed to decide whether a docked toolbar is standing
-// on it. SCOPE_BAR_MIN_W stands in only before the bar has been laid out — the
-// clash test reads its real width whenever there is one.
-const SCOPE_BAR_TOP = 12;
-const SCOPE_BAR_LEFT = 12;
-const SCOPE_BAR_H = 28;
-const SCOPE_BAR_MIN_W = 160;
 
 /**
  * How much of the top-left strip the info pill has taken, gap included — zero
@@ -2529,8 +2519,10 @@ function infoPillWidth() {
   return box && box.width ? box.width + OVERLAY_GAP : 0;
 }
 
-// Places the visible members of the stack in the chosen corner, stacking
-// upward from the bottom edge (or downward from the top).
+// Places every overlay around the toolbar: the stack bottom-right, the pill
+// and card top-left, the breadcrumb after the pill, the toast in what is left
+// of the top strip. In that order, because each reads where the ones before it
+// landed.
 export function layoutCanvasOverlays(wrapRect, toolbarBox) {
   const w = $('canvas-wrap');
   if (!w) return;
@@ -2541,61 +2533,56 @@ export function layoutCanvasOverlays(wrapRect, toolbarBox) {
 
   // Measure the toolbar whenever the caller did not just position it. Only
   // applyToolbarDock has a box to hand; toggleMinimap and the quick-settings
-  // reposition call in with nothing, and an absent box makes canvasOverlayCorner
-  // answer differently — so the stack changed corners on clicks that had no
-  // business moving it. The corner has to depend on the DOM, not on the caller.
+  // reposition call in with nothing, and the placement has to depend on the
+  // DOM, not on who called.
   const toolbox = $('canvas-toolbox');
   const box = toolbarBox || measuredToolbarBox(toolbox);
-
-  // Measure the widest member so that adding a button to the nav bar keeps the
-  // crowding check honest. STACK_MIN_WIDTH stands in only when there is nothing
-  // to measure — on first paint, or with the bar not yet laid out. Taking the
-  // larger of the two instead would demand 250px of clearance for a bar that
-  // genuinely measures less, and push the stack off an edge that had room.
-  const navWidth = nav && nav.getBoundingClientRect ? nav.getBoundingClientRect().width : 0;
-  const corner = canvasOverlayCorner(App.toolbarDock, rect, box, navWidth || STACK_MIN_WIDTH);
-  const margin = TOOLBAR_MARGIN;
 
   // Bottom-up in visual order: zoom controls sit outermost, the minimap rests
   // on top of them. A hidden map leaves nothing behind — its toggle lives in
   // the nav bar — so the stack is just the one member.
   const stack = [nav, (map && !map.classList.contains('minimap-hidden')) ? map : null]
     .filter(el => el && el.offsetParent !== null);
+  const sizes = stack.map(el => el.getBoundingClientRect());
+  const stackSize = sizes.length ? {
+    width: Math.max(...sizes.map(s => s.width || 0)),
+    height: sizes.reduce((h, s) => h + (s.height || 0), 0) + OVERLAY_GAP * (sizes.length - 1)
+  } : null;
+  const place = canvasOverlayCorner(App.toolbarDock, rect, box, stackSize);
 
   // On a phone the bottom edge is the mobile bar's, not the canvas's. It is a
   // fixed element over the viewport, so the clearance is measured rather than
   // read off a token — `env(safe-area-inset-bottom)` is in the bar's height
   // and there is no way to ask CSS for it from here.
-  let offset = margin + (corner.y === 'bottom' ? compactBottomInset(rect) : 0);
-  // Where each member ended up, in wrap coordinates. The info pill picks its
-  // own corner around these, and reading them back off the DOM would be a
-  // frame behind the assignments above.
+  let offset = place.bottom + compactBottomInset(rect);
+  // Where each member ended up, in wrap coordinates. The card is kept off
+  // them, and reading them back off the DOM would be a frame behind the
+  // assignments below.
   const placed = [];
-  for (const el of stack) {
+  stack.forEach((el, i) => {
+    const size = sizes[i];
     el.style.position = 'absolute';
-    el.style.left = corner.x === 'left' ? `${margin}px` : 'auto';
-    el.style.right = corner.x === 'right' ? `${margin}px` : 'auto';
-    el.style.top = corner.y === 'top' ? `${offset}px` : 'auto';
-    el.style.bottom = corner.y === 'bottom' ? `${offset}px` : 'auto';
-    const size = el.getBoundingClientRect();
+    el.style.left = 'auto';
+    el.style.top = 'auto';
+    el.style.right = `${place.right}px`;
+    el.style.bottom = `${offset}px`;
     placed.push({
-      left: corner.x === 'left' ? margin : Math.max(0, rect.width - size.width - margin),
-      top: corner.y === 'top' ? offset : Math.max(0, rect.height - size.height - offset),
+      left: Math.max(0, rect.width - size.width - place.right),
+      top: Math.max(0, rect.height - size.height - offset),
       width: size.width, height: size.height
     });
     offset += size.height + OVERLAY_GAP;
-  }
+  });
 
-  if (map) map.dataset.corner = `${corner.y}-${corner.x}`;
+  if (map) map.dataset.corner = `${place.y}-${place.x}`;
 
   const toolbarRect = toolbarRectIn(App.toolbarDock, rect, box);
-  // The breadcrumb is an overlay like any other: it has to clear the toolbar,
-  // and the info pill has to clear it.
-  const scopeRect = positionScopeBar(rect, toolbarRect);
-  layoutCanvasInfo(rect, [toolbarRect, statusRectIn(rect), scopeRect, ...placed]);
+  const info = layoutCanvasInfo(rect, toolbarRect, [...placed, toolbarRect]);
+  const scopeRect = positionScopeBar(rect, info);
+  positionStatusToast(rect, toolbarRect, [...((info && info.occupied) || []), scopeRect]);
 
-  // The popover anchors off the corner stamped above, so it has to follow the
-  // stack when the toolbar redocks or the panel resizes underneath it.
+  // The popover anchors off the nav bar, so it has to follow the stack when
+  // the toolbar redocks or the panel resizes underneath it.
   if (typeof isQuickSettingsOpen === 'function' && isQuickSettingsOpen()) positionQuickSettings();
 }
 
