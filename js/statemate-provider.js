@@ -99,6 +99,35 @@ export const PROVIDERS = {
     keyLabel: 'API key (optional)',
     keyHint: 'Leave empty for a local/auth-less server',
     browserNote: 'Local servers must allow this page\'s origin.'
+  },
+  // The reader's own Claude Code login, run as `claude -p` by the desktop
+  // shell (electron/claude-code.cjs). There is no URL and no key: the main
+  // process owns the executable and the flags, and the model is an alias the
+  // CLI resolves. `cli` is what routes it; `keyless` is what makes it ready.
+  claude_code: {
+    label: 'Claude Code (desktop app)',
+    baseUrl: '',
+    model: '',
+    modelHint: 'Default from your Claude Code settings — or sonnet, opus, haiku',
+    models: ['sonnet', 'opus', 'haiku'],
+    keyLabel: 'API key (not used)',
+    keyHint: 'Uses your Claude Code sign-in',
+    cli: true,
+    keyless: true,
+    browserNote: 'Runs the claude CLI on this computer with every tool switched off. Desktop app only — in the browser, use the agent bridge instead.'
+  },
+  // A running agent session answering by hand, through
+  // tools/agent-bridge/statemate-bridge.mjs — an OpenAI-compatible endpoint on
+  // one side and an MCP server on the other. Slow by design: for testing
+  // prompts and watching a model's work, not for everyday use.
+  agent_bridge: {
+    label: 'Agent bridge (Claude Code session)',
+    baseUrl: 'http://127.0.0.1:8765/v1',
+    model: 'agent',
+    keyLabel: 'API key (not used)',
+    keyHint: 'The bridge needs no key',
+    keyless: true,
+    browserNote: 'Start it from Claude Code in this repository with /statemate-bridge. Answers take as long as the agent takes to write them.'
   }
 };
 
@@ -207,9 +236,17 @@ export function resolveEndpoint(s = getStateMateSettings()) {
 /** Whether a prompt can be sent at all. */
 export function isStateMateReady(s = getStateMateSettings()) {
   if (!s.enabled) return false;
+  const preset = PROVIDERS[s.provider];
+  // A CLI provider is a process the desktop shell starts; a page cannot.
+  if (preset?.cli) return hasNativeStreaming();
   // A local OpenAI-compatible server legitimately has no key.
-  if (s.provider === 'compatible') return true;
+  if (s.provider === 'compatible' || preset?.keyless) return true;
   return !!s.apiKey;
+}
+
+/** True when the provider is a local program run by the desktop shell. */
+export function isCliProvider(s = getStateMateSettings()) {
+  return !!PROVIDERS[s.provider]?.cli;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -437,6 +474,17 @@ function buildRequest({ system, messages, maxTokens, temperature, tools }, s) {
   // shape `readWholeResponse` returns, so nothing downstream can tell a
   // streamed tool call from a buffered one.
   const streaming = !hasNativeTransport() || hasNativeStreaming();
+
+  // Not an HTTP request at all: the shell recognises the pseudo-URL and runs
+  // the CLI, answering in the OpenAI SSE dialect. The body carries only what
+  // the renderer is allowed to choose — the words and a model alias.
+  if (providerConfig(s.provider).cli) {
+    return {
+      url: 'claude-code:',
+      headers: {},
+      body: { system: String(system ?? ''), messages, model, stream: true }
+    };
+  }
 
   if (s.provider === 'anthropic') {
     const request = {
@@ -757,6 +805,11 @@ function nativeStream(request, provider, onText, signal, keepAlive, host, starte
             return reject(new ProviderError('timeout', `${host} stopped responding mid-answer.`));
           }
           if (!info.ok) {
+            // The CLI's own sentence ("not logged in", "not installed") is the
+            // actionable half, so it is the message rather than the detail.
+            if (info.cliError) {
+              return reject(new ProviderError('cli', String(info.body || 'Claude Code could not answer.')));
+            }
             if (!info.status) {
               return reject(new ProviderError('network', `Could not reach ${host}.`, String(info.body || '')));
             }
@@ -941,7 +994,12 @@ export async function callModel({
 } = {}) {
   const s = getStateMateSettings();
   if (!s.enabled) throw new ProviderError('disabled', 'StateMate is switched off.');
-  if (!isStateMateReady(s)) throw new ProviderError('no-key', 'StateMate needs an API key.');
+  if (!isStateMateReady(s)) {
+    if (providerConfig(s.provider).cli) {
+      throw new ProviderError('cli', 'Claude Code can only be used from the desktop app. In the browser, use the agent bridge.');
+    }
+    throw new ProviderError('no-key', 'StateMate needs an API key.');
+  }
 
   const turns = Array.isArray(messages) && messages.length
     ? messages
@@ -1191,6 +1249,15 @@ export async function listModels({ refresh = false, signal, settings } = {}) {
   const key = modelCacheKey(s);
   if (!refresh && modelCache.has(key)) return modelCache.get(key);
 
+  // A CLI has no listing endpoint; the aliases it resolves itself are the
+  // useful offer, and a full model id still types into the field.
+  const fixed = providerConfig(s.provider).models;
+  if (fixed) {
+    const models = fixed.map(id => ({ id, vision: false }));
+    modelCache.set(key, models);
+    return models;
+  }
+
   const request = modelsRequest(s);
   const host = (() => {
     try { return new URL(request.url).host; } catch (e) { return request.url; }
@@ -1254,6 +1321,9 @@ export function clearModelCache() {
  * request and an error about a field the user cannot see.
  */
 export function supportsImages(model = resolveEndpoint().model, s = getStateMateSettings()) {
+  // Neither the CLI (text on stdin) nor the bridge (text in a tool result)
+  // carries a picture, whatever the model behind them could read.
+  if (providerConfig(s.provider).keyless) return false;
   const name = String(model || '');
   if (!name) return false;
   const known = (modelCache.get(modelCacheKey(s)) || []).find(m => m.id === name);

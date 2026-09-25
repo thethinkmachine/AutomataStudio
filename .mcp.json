@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "statemate-bridge": {
+      "command": "node",
+      "args": ["tools/agent-bridge/statemate-bridge.mjs"]
+    }
+  }
+}

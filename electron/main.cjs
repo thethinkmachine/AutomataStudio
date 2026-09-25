@@ -5,6 +5,7 @@ const { app, BrowserWindow, Menu, protocol, shell, ipcMain, dialog } = require('
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
+const { CLAUDE_CODE_URL, runClaudeCode } = require('./claude-code.cjs');
 
 // The product was renamed "Automata Playground" -> "AutomataStudio". Electron derives
 // userData from productName, so on an existing install the rename would silently point
@@ -368,6 +369,21 @@ ipcMain.on('statemate:stream', async (event, payload) => {
   const send = (channel, message) => {
     if (!event.sender.isDestroyed()) event.sender.send(channel, { id, ...message });
   };
+
+  // The Claude Code provider is a process, not a URL. It answers on the same
+  // channel in the same SSE dialect, so the renderer cannot tell the two apart
+  // and needs no second transport. See electron/claude-code.cjs.
+  if (url === CLAUDE_CODE_URL) {
+    let ended = false;
+    const run = runClaudeCode(body, (channel, message) => {
+      if (channel === 'statemate:end') { ended = true; statemateStreams.delete(id); }
+      send(channel, message);
+    });
+    // A refusal (no CLI, a bad model name) ends before this line is reached.
+    if (!ended) statemateStreams.set(id, run);
+    return;
+  }
+
   const target = statemateTarget(url);
   if (target.error) return send('statemate:end', { ok: false, status: 0, body: target.error });
 

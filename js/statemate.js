@@ -1354,6 +1354,10 @@ const ERROR_COPY = {
   'exercise-tutor': { text: 'This exercise allows hints only, and StateMate answered with a machine, so the answer was discarded unseen. Ask about a word your machine gets wrong, or for a hint.', action: 'none', label: '' },
   disabled: { text: 'StateMate is switched off. Enable it and add an API key to chat and build machines.', action: 'settings', label: 'Turn it on' },
   'no-key': { text: 'StateMate needs an API key to chat and build machines.', action: 'settings', label: 'Set up' },
+  // The CLI's own sentence is always thrown as the message; this is the
+  // fallback, and the action is settings because every cause is fixed there
+  // or in a terminal, never by pressing the same button again.
+  cli: { text: 'Claude Code could not answer.', action: 'settings', label: 'Open settings' },
   auth: { text: 'Your API key was rejected.', action: 'settings', label: 'Check key' },
   'rate-limit': { text: 'The provider is rate-limiting requests.', action: 'retry', label: 'Retry' },
   // Distinct from a rate limit even though it usually arrives as one: waiting
