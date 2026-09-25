@@ -7,6 +7,7 @@ import { anyModalOpen, closeModal, showOverlay } from './modal.js';
 import { renderAll, updateLPanel, updateRPanel } from './render.js';
 import { setTapeArity, tapeArityCollisions } from './machines/index.js';
 import { resetSim } from './simulation.js';
+import { syncSpaceTimeSection } from './spacetime-ui.js';
 import { $, App, MIN_TAPES, clampTapeCount, getMachineConfig, maxTapes, normalizeBoundarySymbolsForMachine } from './state.js';
 import { Change, emit, subscribe } from './store.js';
 import { renderReferenceView } from './reference.js';
@@ -252,6 +253,9 @@ export function applyMachineSwitch(m) {
   // Rebuilt rather than revealed: switching to a multi-tape machine used to
   // show a picker still reading whatever it last read.
   renderMachineOptions();
+  // The run of a tape, drawn whole. Like the two above it hides a window as
+  // readily as a docked section, and keeps the window's place for the way back.
+  syncSpaceTimeSection();
   syncBlocksSection();
   // Which section is last-and-open can change with what was just hidden.
   syncDockFill('lpanel');

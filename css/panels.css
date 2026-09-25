@@ -2658,3 +2658,417 @@ button.dt-cell:hover {
 .blib-row .lp-row-acts {
   padding-right: 6px;
 }
+
+/* ─── SPACE-TIME ───
+   The whole run of a tape, one row per step (js/spacetime-ui.js). Docked it
+   is a short strip under the trace; floating, `.st-view` is the one region
+   that takes the window's spare height (the section registry's `fill`), and
+   the toolbar and legend keep theirs.
+
+   Everything the author toggles with `hidden` is restated as `display: none`
+   below: each of these elements sets its own `display`, and an author rule
+   beats the user agent's `[hidden]` — the trap `.scope-bar[hidden]` and
+   `.sm-panel[hidden]` already document. */
+.st-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.st-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.st-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.st-tbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text2);
+  font-family: var(--sans);
+  font-size: .68rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.st-tbtn:hover:not(:disabled) {
+  background: var(--surface3);
+  color: var(--text);
+}
+
+.st-tbtn:focus-visible,
+.st-more:focus-visible {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 1px;
+}
+
+.st-tbtn:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+/* The two free-standing controls wear the zoom group's ground, so the bar
+   reads as three controls rather than one group and two stray words. */
+.st-toggle,
+.st-tbtn-label {
+  height: 30px;
+  padding: 0 10px;
+  background: var(--surface2);
+  border-color: var(--border);
+  border-radius: 7px;
+}
+
+.st-tbtn.on {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.st-zoom .st-tbtn.on {
+  border-color: transparent;
+}
+
+.st-zoom-val {
+  min-width: 60px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: .62rem;
+  color: var(--text2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.st-grow {
+  flex: 1 1 auto;
+}
+
+.st-toolbar.is-idle .st-zoom,
+.st-toolbar.is-idle .st-toggle {
+  opacity: .5;
+}
+
+.st-view {
+  position: relative;
+  height: 240px;
+  min-height: 120px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+  outline: none;
+}
+
+.st-view:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent-border);
+}
+
+.panel-float .st-view.panel-float-fill {
+  height: auto;
+  min-height: 120px;
+}
+
+.st-scroll {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  cursor: crosshair;
+  /* The canvas above it paints the ground; this is only the scroll range. */
+  background: transparent;
+}
+
+.st-size {
+  pointer-events: none;
+}
+
+.st-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+.st-scroll[hidden],
+.st-canvas[hidden],
+.st-ov[hidden],
+.st-trace[hidden],
+.st-tip[hidden],
+.st-empty[hidden],
+.st-more[hidden],
+.tracker-st-btn[hidden] {
+  display: none;
+}
+
+/* The readout. Positioned with a transform so following the pointer is a
+   compositor move rather than a layout. */
+.st-tip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 9px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 7px;
+  box-shadow: var(--shadow-md);
+  font-family: var(--mono);
+  font-size: .64rem;
+  line-height: 1.45;
+  color: var(--text2);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.st-tip b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.st-tip-st {
+  margin-left: 8px;
+  color: var(--accent);
+}
+
+.st-tip code {
+  font-family: var(--mono);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.st-tip em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--text3);
+}
+
+.st-tip i {
+  font-style: normal;
+  color: var(--accent);
+}
+
+/* Nothing drawn yet — an absence, so it is dashed, as absences are
+   everywhere else in the app (see the top of css/views.css). */
+.st-empty {
+  position: absolute;
+  inset: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 22px;
+  border: 1px dashed var(--border2);
+  border-radius: 7px;
+  color: var(--text3);
+  font-size: .72rem;
+  line-height: 1.55;
+  text-align: center;
+  text-wrap: pretty;
+}
+
+.st-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  min-height: 20px;
+}
+
+.st-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 11px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.st-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: .66rem;
+  color: var(--text2);
+}
+
+.st-chip i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.st-chip.is-none {
+  color: var(--text3);
+  font-style: italic;
+}
+
+.st-meta {
+  font-family: var(--mono);
+  font-size: .6rem;
+  color: var(--text3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* An offer to compute what does not exist yet: dashed, like every other
+   offer of something not (yet) part of the run. */
+.st-more {
+  height: 24px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px dashed var(--accent-border);
+  border-radius: 6px;
+  color: var(--accent);
+  font-family: var(--sans);
+  font-size: .66rem;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.st-more:hover {
+  background: var(--accent-soft);
+}
+
+/* In the sidebar, or a window dragged narrow, the toolbar keeps one line by
+   dropping the words from its two labelled buttons — the icons and their
+   tooltips still say what they are. */
+.st-body {
+  container-type: inline-size;
+}
+
+@container (max-width: 430px) {
+  .st-toggle span,
+  .st-tbtn-label span {
+    display: none;
+  }
+
+  .st-toggle,
+  .st-tbtn-label {
+    padding: 0 8px;
+  }
+
+  .st-zoom-val {
+    min-width: 44px;
+  }
+}
+
+/* The overview strip: the whole run down the right edge of the view, where
+   a scrollbar would be. It paints its own ground and left rule. */
+.st-ov {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  height: 100%;
+  cursor: pointer;
+  touch-action: none;
+  border-radius: 0 7px 7px 0;
+}
+
+.st-tip-hint {
+  margin-top: 2px;
+  padding-top: 3px;
+  border-top: 1px solid var(--border);
+  color: var(--text3);
+  font-family: var(--sans);
+  font-size: .6rem;
+}
+
+/* "Who wrote this?" — one line under the diagram while a cell is traced. It
+   is about the diagram above it, so it takes the diagram's accent and sits
+   between it and the legend rather than in the legend's quiet footer. */
+.st-trace {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 6px 8px 6px 10px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  border-radius: 7px;
+  font-size: .7rem;
+  line-height: 1.45;
+  color: var(--text2);
+}
+
+.st-trace-text {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.st-trace-where {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.st-trace code {
+  font-family: var(--mono);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.st-trace b {
+  font-family: var(--mono);
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.st-trace-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.st-trace-btn,
+.st-trace-x {
+  height: 22px;
+  padding: 0 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text2);
+  font-family: var(--sans);
+  font-size: .64rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.st-trace-x {
+  width: 22px;
+  padding: 0;
+  font-size: .9rem;
+  line-height: 1;
+}
+
+.st-trace-btn:hover,
+.st-trace-x:hover {
+  background: var(--surface3);
+  color: var(--text);
+}
+
+.st-trace-btn:focus-visible,
+.st-trace-x:focus-visible {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 1px;
+}

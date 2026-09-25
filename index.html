@@ -982,6 +982,18 @@
                     Σ*…</span></div>
               </div>
             </div>
+            <!-- Space-time section. The whole run of a tape machine, one row per
+                 step. Hidden on machines without a tape and collapsed by default:
+                 the tracker's header opens it straight into a window, which is
+                 the shape a diagram of a run wants. Everything inside the body
+                 is built by js/spacetime-ui.js. -->
+            <div class="rp-collapsible collapsed" id="rp-spacetime" style="display:none">
+              <div class="rp-section-header" onclick="toggleRPSection('rp-spacetime')" role="button" aria-expanded="false" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-spacetime')}">
+                <span class="rp-section-title">Space-time</span>
+                <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+              </div>
+              <div class="rp-section-body st-body" id="st-body" style="display:none"></div>
+            </div>
             <!-- Batch Test section (collapsed by default) -->
             <div class="rp-collapsible collapsed" id="rp-batch">
               <div class="rp-section-header" onclick="toggleRPSection('rp-batch')" role="button" aria-expanded="false" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-batch')}">
@@ -1556,6 +1568,30 @@
       <div class="modal-foot">
         <button class="btn-g" onclick="closeModal('export-image-modal')">Cancel</button>
         <button class="btn-p" onclick="runImageExport()">Export</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════ EXPORT A SPACE-TIME DIAGRAM ══════
+       Wired by js/spacetime-ui.js at first open; no on*= attributes, so
+       nothing here is in bridge.js. -->
+  <div class="overlay" id="spacetime-export-modal" role="dialog" aria-modal="true" aria-labelledby="st-export-title">
+    <div class="modal st-export-modal">
+      <h2 class="modal-title"><span class="modal-title-text" id="st-export-title">Export Space-time Diagram</span></h2>
+      <div class="st-export-split">
+        <div class="st-export-side">
+          <div class="st-export-preview">
+            <canvas id="st-export-canvas" aria-label="Preview"></canvas>
+            <pre id="st-export-text" class="exp-preview" hidden></pre>
+          </div>
+          <div class="st-export-note" id="st-export-note"></div>
+        </div>
+        <div class="exp-body" id="st-export-body"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn-g" data-st-export="cancel">Cancel</button>
+        <button class="btn-g" data-st-export="copy">Copy</button>
+        <button class="btn-p" data-st-export="download">Download</button>
       </div>
     </div>
   </div>

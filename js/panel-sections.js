@@ -76,6 +76,11 @@ export const PANEL_SECTIONS = Object.freeze({
       // sections most worth pulling out into windows *separately*, which the
       // section registry can only offer per card.
       Object.freeze({ id: 'rp-trace', collapsed: false, minW: 300, minH: 200, fill: '.trace-log' }),
+      // The whole run as one picture — js/spacetime-ui.js. Collapsed by
+      // default because the sidebar is the wrong shape for it: the tracker's
+      // header opens it straight into a window, and the minimum size here is
+      // what a window needs to show a toolbar, some rows and the legend.
+      Object.freeze({ id: 'rp-spacetime', collapsed: true, minW: 380, minH: 280, fill: '.st-view' }),
       Object.freeze({ id: 'rp-batch', collapsed: true, minW: 320, minH: 220, fill: '.batch-result' })
     ])
   })
