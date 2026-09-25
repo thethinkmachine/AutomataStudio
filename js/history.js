@@ -1,10 +1,10 @@
 import { App, Workspaces, activeWorkspaceId, getMachineConfig, largeMachineProfile, setR } from './state.js';
-import { isMultiTape } from './machines/index.js';
 import { Change, emit, subscribe } from './store.js';
 import { toggleSnapToGrid } from './canvas.js';
 import { refreshQuickSettings } from './quick-settings.js';
 import { renderTabs, setSaveState } from './ui.js';
-import { isAnyTM, showStatus } from './utils.js';
+import { showStatus } from './utils.js';
+import { syncAlphabetSection } from './alphabet.js';
 import { syncMachineSelectors } from './view.js';
 
 /**
@@ -70,7 +70,11 @@ export const UNDOABLE_SETTINGS = [
   'layout.algorithm', 'layout.nodeSpacing',
   'render.curveOff', 'render.smartSelfLoops', 'render.autoRouteEdges',
   'render.smartLabels', 'render.avoidNodeOverlap', 'render.animateLayout',
-  'render.nodeClearance'
+  'render.nodeClearance',
+  // The two that are parameters of the machine rather than of its drawing,
+  // edited from the Workspace panel's Machine section like any other edit to
+  // it — so Ctrl+Z has to put them back like any other edit to it.
+  'twoWayTape', 'pfaCutPoint'
 ];
 
 function readPath(obj, path) {
@@ -315,14 +319,10 @@ export function restoreSnapshot(s) {
     if (typeof syncMachineSelectors === 'function') syncMachineSelectors(d.machine);
     const badge = document.getElementById('mach-badge');
     if (badge) { badge.className = `badge ${cfg.badge}`; badge.textContent = cfg.label; }
-    const stSec = document.getElementById('stack-sec');
-    if (stSec) stSec.style.display = cfg.hasStack ? '' : 'none';
-    const stackLbl = stSec?.querySelector('.sec-lbl');
-    if (stackLbl) stackLbl.textContent = isAnyTM(d.machine) ? 'Tape Alphabet Γ' : 'Stack Alphabet Γ';
-    const outSec = document.getElementById('output-sec');
-    if (outSec) outSec.style.display = cfg.isTransducer ? '' : 'none';
-    const mtmSec = document.getElementById('mtm-ctrl');
-    if (mtmSec) mtmSec.style.display = isMultiTape(d.machine) ? 'flex' : 'none';
+    // The same function the machine switch uses. This path used to carry its
+    // own copy, which is how the two came to label Γ differently. The Machine
+    // section follows on the GRAPH this restore ends in.
+    syncAlphabetSection(d.machine);
   }
   
   if (d.tapeCount !== undefined) {

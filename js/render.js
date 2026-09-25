@@ -12,7 +12,7 @@ import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } f
 import { $, App, R, SVG_NS, edgeLabelsHidden, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, previewNodeBudget, statePriority, usesParityPriorities, wrapStateLabelsOn } from './state.js';
 import { BLOCK_STRIP_H, blockPreviewGraph, blockPreviewKey, getNode, viewEdgeGroup, viewEdgeKeyFor, viewStates, visibleNodeIdFor } from './view-graph.js';
 import { machineSupportsBlocks } from './machines/index.js';
-import { allBlocks } from './blocks-ui.js';
+import { allBlocks, syncBlocksSection } from './blocks-ui.js';
 import { thumbBounds, thumbEdgePairs, thumbEdgePath, thumbEdgeSegments, thumbSubpath, thumbFit, thumbNodeRadius } from './graph-thumb.js';
 import { enterBlockScope } from './scope.js';
 import { blockAncestry } from './blocks.js';
@@ -1720,6 +1720,9 @@ export function updateLPanelSectionMeta() {
   const setCount = (id, value) => setSectionCount($(id), value);
 
   setCount('lp-count-sigma', App.sigma?.size || 0);
+  // The Σ row's own count, shown instead of the header's once the section
+  // holds more than one alphabet — see syncAlphabetSection in js/alphabet.js.
+  setCount('alpha-count-sigma', App.sigma?.size || 0);
   setCount('lp-count-stack', App.stackAlpha?.size || 0);
   setCount('lp-count-output', App.outputAlpha?.size || 0);
   // The counts follow the lists under them, which show this level rather than
@@ -1761,6 +1764,11 @@ export function _resetBlockListPainted() { _blockListPainted = null; }
 export function updateBlockList() {
   const host = $('block-list');
   if (!host) return;
+  // Before the guard: whether the section is there at all is cheap to ask and
+  // changes with a group or an ungroup, which are exactly the edits the key
+  // below also sees — but a workspace switch can change the machine type under
+  // an unchanged key.
+  syncBlocksSection();
   // Guarded, because this is subscribed to *every* GRAPH emit and allBlocks()
   // costs one pass over App.states per block — a drag, an accept toggle or a
   // simulation step would otherwise pay blocks × states to redraw rows that had

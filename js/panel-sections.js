@@ -17,10 +17,11 @@
 // the order on screen: the reader may drag a section somewhere else, and that
 // choice is theirs and outlives the session. See `sectionOrder`.
 //
-// A section's title is deliberately *not* here. The stack section is labelled
-// "Stack Γ" for a PDA and "Queue" for a QA — `applyMachineSwitch` rewrites it
-// — so a copy of the name here would be wrong for half the machines. What
-// needs a name reads it off the element.
+// A section's title is deliberately *not* here. The alphabet section reads
+// "Alphabet Σ" for a machine with one alphabet and "Alphabets" for one with
+// several — `syncAlphabetSection` rewrites it — so a copy of the name here
+// would be wrong for half the machines. What needs a name reads it off the
+// element.
 
 export const PANEL_SECTION_SIDES = Object.freeze(['lpanel', 'rpanel']);
 
@@ -37,9 +38,13 @@ export const PANEL_SECTIONS = Object.freeze({
     // stretching one that holds a single line draws a tall empty card.
     dockFill: true,
     sections: Object.freeze([
-      Object.freeze({ id: 'lp-alphabet', collapsed: false, minW: 240, minH: 170, fill: '.chips' }),
-      Object.freeze({ id: 'stack-sec', collapsed: false, minW: 240, minH: 170, fill: '.chips' }),
-      Object.freeze({ id: 'output-sec', collapsed: false, minW: 240, minH: 170, fill: '.chips' }),
+      // The machine's own parameters (js/machine-options-ui.js). Hidden on the
+      // machines that have none, which is most of them.
+      Object.freeze({ id: 'lp-machine', collapsed: false, minW: 240, minH: 120 }),
+      // Σ, Γ and Δ as rows of one section. No fill: with two or three chip
+      // fields in it, stretching the first would push the others to the foot
+      // of the window, and each field already scrolls at the panel's cap.
+      Object.freeze({ id: 'lp-alphabet', collapsed: false, minW: 240, minH: 170 }),
       Object.freeze({ id: 'lp-states', collapsed: false, minW: 240, minH: 200, fill: '.slist' }),
       Object.freeze({ id: 'lp-transitions', collapsed: false, minW: 300, minH: 200, fill: '.tlist' }),
       Object.freeze({ id: 'lp-blocks', collapsed: true, minW: 260, minH: 180, fill: '.blist' })

@@ -241,20 +241,21 @@ test('a panel with everything pulled out of it says so', () => {
 });
 
 test('a panel whose only sections are hidden is empty too', () => {
-  // applyMachineSwitch hides the stack and output sections with style.display
-  // for machines that have neither. A panel showing nothing needs its empty
-  // state whether the sections left or were merely hidden.
+  // applyMachineSwitch hides the Machine and Blocks sections with
+  // style.display for machines that have no parameters and no blocks. A panel
+  // showing nothing needs its empty state whether the sections left or were
+  // merely hidden.
   mount();
   // Everything but the two the machine switch hides, so what is left is only
   // the hidden pair — derived, so a section added later is covered too.
-  LP.filter(id => id !== 'stack-sec' && id !== 'output-sec')
+  LP.filter(id => id !== 'lp-machine' && id !== 'lp-blocks')
     .forEach(id => context.floatSection(id));
-  context.$('stack-sec').style.display = 'none';
-  context.$('output-sec').style.display = 'none';
+  context.$('lp-machine').style.display = 'none';
+  context.$('lp-blocks').style.display = 'none';
   context.syncPanelEmpty('lpanel');
   assert.equal(context.$('lpanel-float-empty').style.display, '');
 
-  context.$('stack-sec').style.display = '';
+  context.$('lp-machine').style.display = '';
   context.syncPanelEmpty('lpanel');
   assert.equal(context.$('lpanel-float-empty').style.display, 'none');
 });

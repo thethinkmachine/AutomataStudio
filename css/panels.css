@@ -209,6 +209,101 @@
   margin-bottom: 8px;
 }
 
+/* ─── the alphabets, one row each ───
+   Σ, Γ and Δ in one section rather than three. A row is the field and the
+   chips it adds to, under a small label; the label is shown only once there
+   is more than one row to tell apart (`.is-multi`, set by
+   syncAlphabetSection), and then the header's count gives way to one per row
+   — a single total over three different alphabets would be a number about
+   nothing. Rows are ruled off from each other the way sections are. */
+.alpha-row + .alpha-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.alpha-row-head {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.is-multi .alpha-row-head {
+  display: flex;
+}
+
+.is-multi > .lp-section-header > .lp-section-count {
+  display: none;
+}
+
+.alpha-row-lbl {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: .62rem;
+  letter-spacing: var(--sec-label-tracking);
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+/* The same fading rule a section title draws out to its count, so a row
+   label reads as a smaller title of the same kind rather than a stray caption. */
+.alpha-row-lbl::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--border), transparent);
+}
+
+/* ─── the Machine section ───
+   A handful of labelled controls — a tape count, a toggle, a threshold — so a
+   row is a label on the left and its control on the right, the shape the
+   Settings dialog gives the same kind of thing, at the panel's scale. The
+   control keeps its own width rather than stretching: a number that is at most
+   two digits does not want the panel's. */
+.mopts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.mopt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 26px;
+}
+
+.mopt-lbl {
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: .76rem;
+  color: var(--text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mopt .mopt-sel,
+.mopt .mopt-num {
+  flex: none;
+  width: 74px;
+  height: 26px;
+  padding: 3px 8px;
+  font-size: .74rem;
+  box-sizing: border-box;
+}
+
+.mopt .mopt-num {
+  text-align: right;
+}
+
 /* Same treatment as the States/Transitions lists: cap the height and scroll
    internally so a large alphabet can't grow the section unbounded. Applies to
    Σ, Γ and Δ, which all use this container. */
