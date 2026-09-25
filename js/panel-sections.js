@@ -17,10 +17,11 @@
 // the order on screen: the reader may drag a section somewhere else, and that
 // choice is theirs and outlives the session. See `sectionOrder`.
 //
-// A section's title is deliberately *not* here. The stack section is labelled
-// "Stack Γ" for a PDA and "Queue" for a QA — `applyMachineSwitch` rewrites it
-// — so a copy of the name here would be wrong for half the machines. What
-// needs a name reads it off the element.
+// A section's title is deliberately *not* here. The alphabet section reads
+// "Alphabet Σ" for a machine with one alphabet and "Alphabets" for one with
+// several — `syncAlphabetSection` rewrites it — so a copy of the name here
+// would be wrong for half the machines. What needs a name reads it off the
+// element.
 
 export const PANEL_SECTION_SIDES = Object.freeze(['lpanel', 'rpanel']);
 
@@ -37,9 +38,13 @@ export const PANEL_SECTIONS = Object.freeze({
     // stretching one that holds a single line draws a tall empty card.
     dockFill: true,
     sections: Object.freeze([
-      Object.freeze({ id: 'lp-alphabet', collapsed: false, minW: 240, minH: 170, fill: '.chips' }),
-      Object.freeze({ id: 'stack-sec', collapsed: false, minW: 240, minH: 170, fill: '.chips' }),
-      Object.freeze({ id: 'output-sec', collapsed: false, minW: 240, minH: 170, fill: '.chips' }),
+      // The machine's own parameters (js/machine-options-ui.js). Hidden on the
+      // machines that have none, which is most of them.
+      Object.freeze({ id: 'lp-machine', collapsed: false, minW: 240, minH: 120 }),
+      // Σ, Γ and Δ as rows of one section. No fill: with two or three chip
+      // fields in it, stretching the first would push the others to the foot
+      // of the window, and each field already scrolls at the panel's cap.
+      Object.freeze({ id: 'lp-alphabet', collapsed: false, minW: 240, minH: 170 }),
       Object.freeze({ id: 'lp-states', collapsed: false, minW: 240, minH: 200, fill: '.slist' }),
       Object.freeze({ id: 'lp-transitions', collapsed: false, minW: 300, minH: 200, fill: '.tlist' }),
       Object.freeze({ id: 'lp-blocks', collapsed: true, minW: 260, minH: 180, fill: '.blist' })
@@ -55,7 +60,14 @@ export const PANEL_SECTIONS = Object.freeze({
       // first because it is the reason the tab exists.
       Object.freeze({ id: 'rp-exercise', collapsed: false, minW: 300, minH: 200 }),
       Object.freeze({ id: 'rp-language', collapsed: false, minW: 300, minH: 200 }),
-      Object.freeze({ id: 'rp-simulate', collapsed: false, minW: 320, minH: 200, fill: '.sim-tracker' }),
+      // No fill. The elastic part of a run used to be the trace log, and the
+      // log is its own card now; what is left is a transport and a tape card,
+      // neither of which has anything to do with spare height. Named as the
+      // fill, the tracker was squeezed below its own content in a short window
+      // — `min-height: 0` — and the tape strip drew straight over its border,
+      // and in a tall one it stretched into a padded card of nothing. Without
+      // one, everything keeps its natural height and the body scrolls.
+      Object.freeze({ id: 'rp-simulate', collapsed: false, minW: 320, minH: 200 }),
       // The trace log is its own card. It was the tail of Simulate, which meant
       // the two things a run produces — a transport you operate and a history
       // you read — shared one box, one scroll and one collapse: reading back
@@ -232,7 +244,7 @@ function floatKey(side) {
  * This is the answer to "the content stretches when I resize". A window is
  * taller than its content is *supposed* to be, and what to do with the slack
  * is a property of the section rather than of the window: States Q has a list
- * that should grow and scroll, Simulate has a trace log that should, and the
+ * that should grow and scroll, the Trace card has a log that should, and the
  * Language card is a stack of boxes where stretching anything at all just
  * spreads it out. So the default is that **nothing** stretches — the content
  * keeps its natural height at the top of the window and the body scrolls when
@@ -273,6 +285,30 @@ function num(v, fallback) {
 }
 
 /**
+ * A record's geometry, with the edges it is anchored to.
+ *
+ * `r` and `b` are optional, and each is a distance: from the well's right edge
+ * and from its bottom edge. A window near the right of the canvas keeps its
+ * distance to the right as the canvas changes width — see `placeInWell` in
+ * js/panel-float.js for why. Absent means the ordinary anchor, left and top,
+ * which is what `x`/`y` already say — so a record written before anchors
+ * existed reads exactly as it always did.
+ *
+ * `typeof` rather than `num`: `Number(null)` is 0, and a JSON `null` must read
+ * as "no anchor", not as "flush against the edge".
+ */
+function recordGeom(g, min) {
+  const out = {
+    x: num(g.x, 24), y: num(g.y, 24),
+    w: Math.max(min.w, num(g.w, 280)),
+    h: Math.max(min.h, num(g.h, 260))
+  };
+  if (typeof g.r === 'number' && Number.isFinite(g.r)) out.r = g.r;
+  if (typeof g.b === 'number' && Number.isFinite(g.b)) out.b = g.b;
+  return out;
+}
+
+/**
  * Every float record of a side, reconciled against the registry.
  *
  * Read rather than trusted for the same two reasons the order is: an id the
@@ -296,12 +332,7 @@ export function floatStates(side) {
   for (const id of declared) {
     const g = parsed[id];
     if (!g || typeof g !== 'object') continue;
-    const min = sectionMinSize(id);
-    out[id] = {
-      x: num(g.x, 24), y: num(g.y, 24),
-      w: Math.max(min.w, num(g.w, 280)),
-      h: Math.max(min.h, num(g.h, 260))
-    };
+    out[id] = recordGeom(g, sectionMinSize(id));
   }
   return out;
 }
@@ -341,12 +372,7 @@ export function setFloatState(id, geom) {
   if (!side) return null;
   const states = floatStates(side);
   if (geom) {
-    const min = sectionMinSize(id);
-    states[id] = {
-      x: num(geom.x, 24), y: num(geom.y, 24),
-      w: Math.max(min.w, num(geom.w, 280)),
-      h: Math.max(min.h, num(geom.h, 260))
-    };
+    states[id] = recordGeom(geom, sectionMinSize(id));
   } else {
     delete states[id];
   }

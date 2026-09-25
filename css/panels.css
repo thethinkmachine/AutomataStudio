@@ -122,6 +122,63 @@
   color: var(--text3);
 }
 
+/* ─── what a folded section says ───
+   A collapsed section and a minimized window are both a title strip, and a
+   strip that only says "SIMULATE" has folded the verdict away with the body.
+   So a section that knows something worth a glance reports it here — see
+   js/section-status.js — and it shows only while folded: open, the body says
+   the same thing at full size.
+
+   The count chip's shape and type, in the verdict colours the run button and
+   the batch summary already use, so a green chip on a folded header means
+   what green means everywhere else in the panel. Truncated rather than
+   wrapped: the header is one line, and the full text rides on the tooltip. */
+.sec-status {
+  display: none;
+  min-width: 0;
+  max-width: 58%;
+  height: 16px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--surface3, var(--bg3));
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: .62rem;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+}
+
+.sec-status[data-tone="acc"] {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.sec-status[data-tone="rej"] {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.sec-status[data-tone="warn"] {
+  background: var(--orange-soft);
+  color: var(--orange);
+}
+
+.collapsed > .lp-section-header > .sec-status:not(:empty),
+.collapsed > .rp-section-header > .sec-status:not(:empty) {
+  display: inline-block;
+}
+
+/* Beside it, the title gives up its trailing rule rather than the status
+   giving up its text: the rule is ornament, and it is what a narrow header
+   has to spare. */
+.collapsed > .rp-section-header:has(> .sec-status:not(:empty)) .rp-section-title::after {
+  display: none;
+}
+
 .lp-toggle-arrow {
   width: var(--sec-arrow-size);
   height: var(--sec-arrow-size);
@@ -150,6 +207,101 @@
 
 .lp-collapsible .row {
   margin-bottom: 8px;
+}
+
+/* ─── the alphabets, one row each ───
+   Σ, Γ and Δ in one section rather than three. A row is the field and the
+   chips it adds to, under a small label; the label is shown only once there
+   is more than one row to tell apart (`.is-multi`, set by
+   syncAlphabetSection), and then the header's count gives way to one per row
+   — a single total over three different alphabets would be a number about
+   nothing. Rows are ruled off from each other the way sections are. */
+.alpha-row + .alpha-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.alpha-row-head {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.is-multi .alpha-row-head {
+  display: flex;
+}
+
+.is-multi > .lp-section-header > .lp-section-count {
+  display: none;
+}
+
+.alpha-row-lbl {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: .62rem;
+  letter-spacing: var(--sec-label-tracking);
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+/* The same fading rule a section title draws out to its count, so a row
+   label reads as a smaller title of the same kind rather than a stray caption. */
+.alpha-row-lbl::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--border), transparent);
+}
+
+/* ─── the Machine section ───
+   A handful of labelled controls — a tape count, a toggle, a threshold — so a
+   row is a label on the left and its control on the right, the shape the
+   Settings dialog gives the same kind of thing, at the panel's scale. The
+   control keeps its own width rather than stretching: a number that is at most
+   two digits does not want the panel's. */
+.mopts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.mopt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 26px;
+}
+
+.mopt-lbl {
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: .76rem;
+  color: var(--text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mopt .mopt-sel,
+.mopt .mopt-num {
+  flex: none;
+  width: 74px;
+  height: 26px;
+  padding: 3px 8px;
+  font-size: .74rem;
+  box-sizing: border-box;
+}
+
+.mopt .mopt-num {
+  text-align: right;
 }
 
 /* Same treatment as the States/Transitions lists: cap the height and scroll
@@ -1063,6 +1215,451 @@ body.panel-resizing .rpanel {
   box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
+/* ─── δ AS A TABLE ───
+   The Transitions section can draw δ as the textbook's table — a row per
+   state, a column per symbol — for the machines whose rules fit one; see
+   js/delta-table.js. The switch sits at the end of the filter row, the one
+   place in the section with room to spare, and is a segmented pair so the
+   view that is on reads as a position rather than a mode to remember. */
+.lp-search-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.lp-search-row .lpanel-search-inp {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+.trans-view-toggle {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  margin-bottom: 5px;
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  background: var(--bg3);
+}
+
+.trans-view-toggle[hidden] {
+  display: none;
+}
+
+.trans-view-toggle button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 23px;
+  height: 19px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.trans-view-toggle button:hover {
+  color: var(--text2);
+}
+
+.trans-view-toggle button.is-on {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px var(--border2);
+}
+
+.trans-view-toggle button:focus-visible {
+  outline: 2px solid var(--accent-border-strong);
+  outline-offset: 1px;
+}
+
+/* The header row and the rows are separate grids — the rows are drawn by the
+   windowed list and rewritten on scroll, the header is not — so both read one
+   template, set as a custom property by the renderer. The header scrolls with
+   the host from js/delta-table.js; both reserve the same scrollbar gutter, or
+   the host's vertical bar would take width the header still has and every
+   column would sit a scrollbar's width out of line. */
+.dt-head {
+  overflow: hidden;
+  scrollbar-gutter: stable;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: var(--bg3);
+}
+
+.dt-head[hidden] {
+  display: none;
+}
+
+.dt-hrow,
+.dt-row {
+  display: grid;
+  grid-template-columns: var(--dt-cols);
+  min-width: var(--dt-minw);
+}
+
+.dt-hq,
+.dt-hs {
+  padding: 4px 6px;
+  font-family: var(--mono);
+  font-size: .66rem;
+  color: var(--text3);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The state column stays put while the symbols scroll under it, in the
+   header and in every row alike — a table wider than the panel is still read
+   by its row labels. */
+.dt-hq {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  text-align: left;
+  color: var(--accent);
+  background: var(--bg3);
+  border-right: 1px solid var(--border);
+}
+
+/* A symbol a rule still reads but Σ no longer has. Named, not dropped. */
+.dt-hs.is-stray {
+  color: var(--orange);
+}
+
+.tlist.is-table {
+  gap: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+/* The frame is drawn by the rows, not by the host. The host is the panel's
+   elastic region — docked last, or in a window, it is as tall as the room it
+   was given — and a bordered host drew a tall empty card under a three-state
+   table. Drawn by the rows, the table ends where δ does. */
+.dt-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: none;
+}
+
+.dt-row:nth-last-child(1 of .dt-row) {
+  border-radius: 0 0 6px 6px;
+}
+
+.dt-row:nth-last-child(1 of .dt-row) > .dt-q {
+  border-bottom-left-radius: 5px;
+}
+
+.dt-q {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 4px 6px;
+  border: none;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .7rem;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+/* The textbook's own marks: an arrow into the start state, a star on an
+   accepting one. The colours are the list's — green for the start arrow,
+   the accent for F. */
+.dt-q.is-start::before {
+  content: '→';
+  color: var(--green);
+  font-size: .62rem;
+  flex: none;
+}
+
+.dt-q.is-acc::after {
+  content: '*';
+  color: var(--accent);
+  font-weight: 700;
+  flex: none;
+}
+
+.dt-sub {
+  margin-left: 2px;
+  color: var(--text3);
+  font-size: .62rem;
+}
+
+.dt-row.lp-selected .dt-q,
+.dt-q:hover {
+  background: var(--accent-soft);
+}
+
+.dt-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 4px 6px;
+  border: none;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: .68rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dt-cell:last-child {
+  border-right: none;
+}
+
+button.dt-cell {
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+button.dt-cell:hover {
+  background: var(--surface2);
+}
+
+.dt-cell:focus-visible,
+.dt-q:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent-border-strong);
+}
+
+.dt-cell.lp-selected {
+  background: var(--accent-soft);
+}
+
+.dt-cell.is-stray {
+  background: var(--orange-soft);
+}
+
+.dt-t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.dt-t.is-acc {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.dt-t.is-btn {
+  padding: 1px 4px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dt-t.is-btn:hover {
+  background: var(--surface3);
+}
+
+.dt-none {
+  color: var(--text3);
+  opacity: .55;
+}
+
+/* An empty cell of a machine whose rules carry a value is an offer to add
+   one — quiet until the pointer or the focus is on it. */
+.dt-add {
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text3);
+  font: inherit;
+  opacity: .35;
+  cursor: pointer;
+}
+
+.dt-cell:hover .dt-add,
+.dt-add:focus-visible {
+  opacity: 1;
+  color: var(--accent);
+  outline: none;
+}
+
+@media (hover: none) {
+  .dt-add {
+    opacity: .7;
+  }
+}
+
+/* ─── the cell picker ───
+   Where δ(q, a) goes, chosen from the states. Fixed to the viewport, above
+   the panels and any window, so neither a scrolling table nor a window's clip
+   can cut it off. Marks are radios for a machine whose δ is a function and
+   checkboxes for one whose δ is a relation — the same distinction the header
+   line spells out. */
+.dt-picker {
+  position: fixed;
+  z-index: 2100;
+  display: flex;
+  flex-direction: column;
+  min-width: 176px;
+  max-width: 260px;
+  max-height: 300px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--overlay-ring);
+}
+
+.dt-picker-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 7px 7px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: .72rem;
+  color: var(--text2);
+  white-space: nowrap;
+}
+
+.dt-picker-head b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.dt-picker-kind {
+  margin-left: auto;
+  font-family: var(--sans);
+  font-size: .62rem;
+  color: var(--text3);
+}
+
+.dt-picker-filter {
+  margin: 0 2px 4px;
+  padding: 4px 7px;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .7rem;
+  outline: none;
+}
+
+.dt-picker-filter:focus {
+  border-color: var(--accent);
+}
+
+.dt-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dt-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .72rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dt-opt:hover,
+.dt-opt:focus-visible {
+  background: var(--surface2);
+  outline: none;
+}
+
+.dt-opt:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--accent-border-strong);
+}
+
+.dt-opt-mark {
+  position: relative;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--border2);
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+
+.dt-opt-mark.is-radio {
+  border-radius: 50%;
+}
+
+.dt-opt.is-on .dt-opt-mark {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* A radio's dot is the ground showing through; a checkbox's tick is drawn. */
+.dt-opt.is-on .dt-opt-mark.is-radio {
+  box-shadow: inset 0 0 0 2px var(--surface);
+}
+
+.dt-opt.is-on .dt-opt-mark:not(.is-radio)::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0;
+  width: 3px;
+  height: 6px;
+  border: solid var(--on-accent);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.dt-opt.is-acc .dt-opt-name::after {
+  content: ' *';
+  color: var(--accent);
+}
+
+.dt-opt-none {
+  color: var(--text3);
+  font-family: var(--sans);
+  font-style: italic;
+}
+
+.dt-picker-empty {
+  padding: 8px;
+  color: var(--text3);
+  font-family: var(--sans);
+  font-size: .7rem;
+  text-align: center;
+}
+
 /* Right Panel */
 .rpanel {
   width: min(var(--rpanel-width, 288px), 42vw);
@@ -1637,6 +2234,60 @@ body.panel-resizing .rpanel {
 .panel-float.is-float-sizing {
   box-shadow: var(--shadow-lg), 0 0 0 1px var(--accent-border);
   user-select: none;
+}
+
+/* ─── the window in use ───
+   Every window has the same frame, so where two overlap the only sign of which
+   one a key press will reach was which happened to be painted on top. The
+   front one keeps the frame every window has always had; the rest sit back a
+   step, with a shallower shadow and a quieter title — so a lone window looks
+   exactly as it did. Quiet on purpose: this is a cue, not a state the reader
+   has to manage, and it does not fight the accent ring a gesture draws. */
+.panel-float {
+  transition: box-shadow var(--transition-base);
+}
+
+.panel-float:not(.is-float-front):not(.is-float-moving):not(.is-float-sizing) {
+  box-shadow: var(--shadow-sm), 0 0 0 1px var(--overlay-ring);
+}
+
+.panel-float:not(.is-float-front) > .lp-section-header .sec-lbl,
+.panel-float:not(.is-float-front) > .rp-section-header .rp-section-title {
+  opacity: .72;
+}
+
+/* ─── snap guides ───
+   Drawn while an edge sits on a line it snapped to, so a window that sticks is
+   seen to have snapped rather than felt to lag behind the pointer. One px, the
+   accent, and across the whole well — the line is a property of the canvas,
+   not of the window that found it. Above every window: the layer is its own
+   stacking context and the windows' z-index only ever counts up. */
+.panel-float-guide {
+  position: absolute;
+  pointer-events: none;
+  background: var(--accent);
+  opacity: .55;
+  z-index: 2147483000;
+}
+
+.panel-float-guide.is-x {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-.5px);
+}
+
+.panel-float-guide.is-y {
+  left: 0;
+  right: 0;
+  height: 1px;
+  transform: translateY(-.5px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-float {
+    transition: none;
+  }
 }
 
 /* Inside a window the lists have the window's height to fill, not the panel's

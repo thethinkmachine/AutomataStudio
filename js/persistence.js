@@ -185,6 +185,9 @@ export function getWorkspaceData() {
   const cleanConfig = {
     transducerAccepts: App.config.transducerAccepts,
     twoWayTape: App.config.twoWayTape,
+    // Part of a PFA's tuple: the same δ with a different λ decides a different
+    // language, so a file that dropped it would open as another machine.
+    pfaCutPoint: App.config.pfaCutPoint,
     detectLoops: App.config.detectLoops,
     maxPdaSteps: App.config.maxPdaSteps,
     maxTapeCount: App.config.maxTapeCount,

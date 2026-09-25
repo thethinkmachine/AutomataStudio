@@ -984,7 +984,7 @@
   color: var(--text3);
 }
 
-.lang-foot { margin-top: 7px; letter-spacing: .06em; text-transform: none; }
+.lang-foot { letter-spacing: .04em; text-transform: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .lang-note {
   margin-top: 8px;
@@ -996,24 +996,62 @@
   padding-left: 8px;
 }
 
+/* One line above a view of L(M): its caption on the left; on the right what
+   it counts and the export control. The legend used to be a row of its own
+   under the picture, ruled off, repeating the caption's count as two
+   numbers — here the swatches carry the numbers, where the count was. */
 .lang-head {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
-  margin-top: 11px;
+  min-height: 20px;
+  margin-top: 10px;
+}
+
+.lang-head-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lang-head-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.lang-head-btn:hover {
+  color: var(--text);
+  background: var(--surface2);
+  border-color: var(--border);
+}
+
+.lang-head-btn:focus-visible {
+  outline: 2px solid var(--accent-border-strong);
+  outline-offset: 1px;
 }
 
 .lang-legend {
-  margin-top: 7px;
-  padding-top: 7px;
-  border-top: 1px solid var(--border);
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
-  gap: 4px 11px;
+  align-items: center;
+  gap: 3px 9px;
+  min-width: 0;
   font-family: var(--mono);
-  font-size: .58rem;
-  color: var(--text3);
+  font-size: .6rem;
+  color: var(--text2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1047,9 +1085,8 @@
      purpose: a box that scrolls on one axis computes `visible` to
      `auto` on the other, and a two-axis scroller here would cut every
      row off at both edges the moment one row was a pixel too wide.
-     The padding is what the hover pop grows into — without it a cell
-     on the first row or at either edge is clipped as it scales. */
-  max-height: 232px;
+     The padding keeps the scrollbar gutter off the last column. */
+  max-height: 150px;
   overflow: hidden auto;
   scrollbar-gutter: stable;
   padding: 3px;
@@ -1109,7 +1146,7 @@
   border-radius: 2px;
   background: var(--surface3);
   cursor: pointer;
-  transition: transform var(--transition-fast);
+  transition: box-shadow var(--transition-fast), filter var(--transition-fast);
 }
 
 .lang-fp-c.acc { background: var(--gold); }
@@ -1119,27 +1156,48 @@
   outline-offset: -1px;
 }
 
-.lang-fp-c:hover {
-  transform: scale(1.5);
-  box-shadow: 0 0 0 1px var(--accent);
-  position: relative;
-  z-index: 2;
+/* The highlight is drawn inside the cell, never past its edge. A row is
+   `content-visibility: auto` — which is what lets a long scroll of Σ* skip
+   laying out the thousands of rows behind the reader — and that brings paint
+   containment with it: nothing a cell draws outside its row is shown. The
+   hover used to scale the cell to 1.5× and ring it from outside, so the part
+   that rose into the gap between rows was cut away and only the two side
+   edges of the ring survived. An inset ring and a lift in brightness say
+   "this one" without leaving the box, and the keyboard gets the same mark. */
+.lang-fp-c:hover,
+.lang-fp-c:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent);
+  filter: brightness(1.15);
 }
 
-.lang-fp-c.lang-fp-selected { box-shadow: 0 0 0 1.5px var(--accent); }
+.lang-fp-c.lang-fp-selected {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
 
+/* The one line under a view: where the enumeration has got to, and — while a
+   cell is under the pointer or the focus — that cell's word and verdict in
+   its place. Fixed height, so reading a cell does not move the card below. */
 .lang-fp-read {
-  margin-top: 7px;
-  min-height: 16px;
+  margin-top: 4px;
+  height: 18px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 9px;
+  min-width: 0;
+  overflow: hidden;
   font-family: var(--mono);
   font-size: .66rem;
   color: var(--text2);
 }
 
-.lang-fp-read .w { color: var(--text); word-break: break-all; }
+.lang-fp-read.is-reading > .lang-foot,
+.lang-fp-read:not(.is-reading) > .w,
+.lang-fp-read:not(.is-reading) > .w + span {
+  display: none;
+}
+
+.lang-fp-read .w { color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lang-fp-read .v-acc { color: var(--gold); }
 .lang-fp-read .v-rej { color: var(--text3); }
 .lang-fp-read .v-unk { color: var(--orange); }
@@ -1151,10 +1209,14 @@
   margin-top: 5px;
   display: flex;
   flex-direction: column;
-  /* ~6 rows before it scrolls — a scroll-triggered sentinel pulls more
-     out of the paused search rather than capping the list at a count. */
-  max-height: 216px;
+  /* ~7 rows before it scrolls — a scroll-triggered sentinel pulls more
+     out of the paused search rather than capping the list at a count. The
+     same height the fingerprint's window has, so the card is one size
+     whichever view of L(M) it shows. */
+  gap: 2px;
+  max-height: 150px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .lang-tr-sentinel {
@@ -1162,21 +1224,57 @@
   flex: none;
 }
 
+/* A quiet list rather than a ruled one. The rows were separated by hairlines
+   and highlighted with a rounded accent box, and the two did not meet: the
+   box floated between rules that ran straight past its corners. Now the gap
+   is the separation and the hover is a surface tint, the way the panel's
+   other lists behave. */
 .lang-tr-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 16px;
-  gap: 6px;
-  align-items: start;
-  padding: 5px 4px;
-  border-top: 1px solid var(--border);
-  border-radius: 4px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 6px;
+  border-radius: 5px;
   cursor: pointer;
   transition: background var(--transition-fast);
 }
 
-.lang-tr-row:first-child { border-top: 0; }
 .lang-tr-row:hover,
-.lang-tr-row:focus-visible { background: var(--accent-soft); }
+.lang-tr-row:focus-visible {
+  background: var(--surface2);
+}
+
+.lang-tr-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent-border-strong);
+}
+
+/* The length and the play glyph share one grid cell and trade places on
+   hover, so nothing in the row moves when it lights up. */
+.lang-tr-len,
+.lang-tr-go {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.lang-tr-go {
+  display: inline-flex;
+  color: var(--accent);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.lang-tr-row:hover .lang-tr-go,
+.lang-tr-row:focus-visible .lang-tr-go {
+  opacity: 1;
+}
+
+.lang-tr-row:hover .lang-tr-len,
+.lang-tr-row:focus-visible .lang-tr-len {
+  opacity: 0;
+}
 
 .lang-tr-syms {
   display: flex;
@@ -1192,12 +1290,13 @@
 }
 
 .lang-tr-len {
+  min-width: 2ch;
   font-family: var(--mono);
   font-size: .6rem;
   color: var(--text3);
   text-align: right;
-  padding-top: 3px;
   font-variant-numeric: tabular-nums;
+  transition: opacity var(--transition-fast);
 }
 
 /* Abbreviation chip. Two categorical hues at most — the two largest
@@ -1534,13 +1633,19 @@
   box-shadow: inset 14px 0 12px -12px var(--tab-overflow-shadow), inset -14px 0 12px -12px var(--tab-overflow-shadow);
 }
 
-/* Simulation */
+/* Simulation.
+   Three pieces, top to bottom: the word and the button that runs it; the
+   run's timeline, alone on its line and only while there is a run; and the
+   transport — one pill of step controls with the playhead's position read in
+   its middle, then reset and speed. The counter used to sit at the end of the
+   timeline, which gave the slider a ragged right edge and a third row of
+   chrome to a section whose job is a few buttons. */
 .sim-row {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: 6px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .run-btn {
@@ -2191,11 +2296,13 @@
   font-weight: 700;
 }
 
-/* Step scrubber */
+/* Step scrubber — the run's timeline. Inset by the thumb's radius so the
+   thumb at either end lines up with the edges of the controls under it
+   instead of overhanging them. */
 .sim-scrubber-row {
   align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
+  height: 14px;
+  margin: -2px 6px 8px;
 }
 
 .sim-scrubber {
@@ -2242,13 +2349,27 @@
   background: var(--border2);
 }
 
-.sim-step-counter {
+.sctrl-pos {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 7ch;
+  padding: 0 8px;
+  border-right: 1px solid var(--border);
   font-family: var(--mono);
-  font-size: .65rem;
-  color: var(--text3);
+  font-size: .66rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text2);
   white-space: nowrap;
-  min-width: 3.6em;
-  text-align: right;
+  user-select: none;
+}
+
+/* Nothing to count: muted, not removed, so the buttons around it hold still
+   between a reset and the next run. */
+.sctrl-pos.is-idle {
+  color: var(--text3);
+  opacity: .6;
 }
 
 /* Step-control toolbar: a single unified pill housing the four step
@@ -2260,7 +2381,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 10px;
 }
 
 .sctrl-steps {
@@ -2274,6 +2394,7 @@
 
 .sctrl-steps .sbtn {
   flex: 1;
+  min-width: 26px;
   border: none;
   border-radius: 0;
 }
