@@ -900,19 +900,24 @@
                   </button>
                 </div>
                 <div id="sim-verdict" class="sim-verdict" style="display:none"></div>
+                <!-- The run's timeline, alone on its line and only while there is a
+                     run. Its position is read in the transport below, between
+                     the buttons that move it. -->
                 <div class="sim-scrubber-row" id="sim-scrubber-row" style="display:none">
                   <input type="range" class="sim-scrubber" id="sim-scrubber" min="0" max="0" value="0"
-                    oninput="scrubSim(this.value)" data-tip="Scrub through simulation steps">
-                  <span class="sim-step-counter" id="sim-step-counter">0 / 0</span>
+                    oninput="scrubSim(this.value)" aria-label="Step" data-tip="Scrub through simulation steps">
                 </div>
                 <div class="sctrl">
-                  <div class="sctrl-steps">
+                  <div class="sctrl-steps" role="group" aria-label="Step through the run">
                     <button class="sbtn" onclick="stepToStart()" data-tip="Jump to start" aria-label="Jump to start">
                       <svg viewBox="0 0 256 256" fill="currentColor" width="13" height="13"><path d="M199.81,34a16,16,0,0,0-16.24.43L64,109.23V40a8,8,0,0,0-16,0V216a8,8,0,0,0,16,0V146.77l119.57,74.78A15.95,15.95,0,0,0,208,208.12V47.88A15.86,15.86,0,0,0,199.81,34ZM192,208,64.16,128,192,48.07Z" /></svg>
                     </button>
                     <button class="sbtn" onclick="stepBack()" data-tip="Step Back" aria-label="Step Back">
                       <svg viewBox="0 0 256 256" fill="currentColor" width="13" height="13"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z" /></svg>
                     </button>
+                    <!-- Where the playhead is, between the two buttons that move it
+                         one step — the pager's own reading. -->
+                    <span class="sctrl-pos is-idle" id="sim-step-counter" aria-label="Step">0 / 0</span>
                     <button class="sbtn" onclick="stepFwd()" data-tip="Step Forward" aria-label="Step Forward">
                       <svg viewBox="0 0 256 256" fill="currentColor" width="13" height="13"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z" /></svg>
                     </button>

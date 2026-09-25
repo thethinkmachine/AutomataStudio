@@ -122,6 +122,63 @@
   color: var(--text3);
 }
 
+/* ─── what a folded section says ───
+   A collapsed section and a minimized window are both a title strip, and a
+   strip that only says "SIMULATE" has folded the verdict away with the body.
+   So a section that knows something worth a glance reports it here — see
+   js/section-status.js — and it shows only while folded: open, the body says
+   the same thing at full size.
+
+   The count chip's shape and type, in the verdict colours the run button and
+   the batch summary already use, so a green chip on a folded header means
+   what green means everywhere else in the panel. Truncated rather than
+   wrapped: the header is one line, and the full text rides on the tooltip. */
+.sec-status {
+  display: none;
+  min-width: 0;
+  max-width: 58%;
+  height: 16px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--surface3, var(--bg3));
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: .62rem;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+}
+
+.sec-status[data-tone="acc"] {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.sec-status[data-tone="rej"] {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.sec-status[data-tone="warn"] {
+  background: var(--orange-soft);
+  color: var(--orange);
+}
+
+.collapsed > .lp-section-header > .sec-status:not(:empty),
+.collapsed > .rp-section-header > .sec-status:not(:empty) {
+  display: inline-block;
+}
+
+/* Beside it, the title gives up its trailing rule rather than the status
+   giving up its text: the rule is ornament, and it is what a narrow header
+   has to spare. */
+.collapsed > .rp-section-header:has(> .sec-status:not(:empty)) .rp-section-title::after {
+  display: none;
+}
+
 .lp-toggle-arrow {
   width: var(--sec-arrow-size);
   height: var(--sec-arrow-size);
@@ -1637,6 +1694,60 @@ body.panel-resizing .rpanel {
 .panel-float.is-float-sizing {
   box-shadow: var(--shadow-lg), 0 0 0 1px var(--accent-border);
   user-select: none;
+}
+
+/* ─── the window in use ───
+   Every window has the same frame, so where two overlap the only sign of which
+   one a key press will reach was which happened to be painted on top. The
+   front one keeps the frame every window has always had; the rest sit back a
+   step, with a shallower shadow and a quieter title — so a lone window looks
+   exactly as it did. Quiet on purpose: this is a cue, not a state the reader
+   has to manage, and it does not fight the accent ring a gesture draws. */
+.panel-float {
+  transition: box-shadow var(--transition-base);
+}
+
+.panel-float:not(.is-float-front):not(.is-float-moving):not(.is-float-sizing) {
+  box-shadow: var(--shadow-sm), 0 0 0 1px var(--overlay-ring);
+}
+
+.panel-float:not(.is-float-front) > .lp-section-header .sec-lbl,
+.panel-float:not(.is-float-front) > .rp-section-header .rp-section-title {
+  opacity: .72;
+}
+
+/* ─── snap guides ───
+   Drawn while an edge sits on a line it snapped to, so a window that sticks is
+   seen to have snapped rather than felt to lag behind the pointer. One px, the
+   accent, and across the whole well — the line is a property of the canvas,
+   not of the window that found it. Above every window: the layer is its own
+   stacking context and the windows' z-index only ever counts up. */
+.panel-float-guide {
+  position: absolute;
+  pointer-events: none;
+  background: var(--accent);
+  opacity: .55;
+  z-index: 2147483000;
+}
+
+.panel-float-guide.is-x {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-.5px);
+}
+
+.panel-float-guide.is-y {
+  left: 0;
+  right: 0;
+  height: 1px;
+  transform: translateY(-.5px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-float {
+    transition: none;
+  }
 }
 
 /* Inside a window the lists have the window's height to fill, not the panel's

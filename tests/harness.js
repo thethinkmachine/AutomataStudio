@@ -74,6 +74,7 @@ import * as panelSections from '../js/panel-sections.js';
 import * as panelList from '../js/panel-list.js';
 import * as panelSectionsUi from '../js/panel-sections-ui.js';
 import * as panelFloat from '../js/panel-float.js';
+import * as sectionStatus from '../js/section-status.js';
 import * as panelShake from '../js/panel-shake.js';
 import * as mobile from '../js/mobile.js';
 import * as simulation from '../js/simulation.js';
@@ -129,7 +130,7 @@ import * as wizardUi from '../js/wizard-ui.js';
 
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, viewport, geometry, statesTransitions,
-  blocks, blocksUi, viewGraph, graphThumb, scope, runScope, canvas, render, panelState, panelSections, panelSectionsUi, panelFloat, panelShake, panelList, mobile, notes, dividers,
+  blocks, blocksUi, viewGraph, graphThumb, scope, runScope, canvas, render, panelState, panelSections, panelSectionsUi, panelFloat, sectionStatus, panelShake, panelList, mobile, notes, dividers,
   machineRegistry, machineRuntime, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineEmbedded, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,

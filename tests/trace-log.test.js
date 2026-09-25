@@ -44,8 +44,8 @@ test('the trace log is a card of its own, with the log as the part that grows', 
   // the panel, and collapsing the transport took the log with it.
   assert.ok(context.declaredSectionIds('rpanel').includes('rp-trace'));
   assert.equal(context.sectionFill('rp-trace'), '.trace-log');
-  assert.equal(context.sectionFill('rp-simulate'), '.sim-tracker',
-    'and Simulate keeps the tracker as its own elastic region');
+  assert.equal(context.sectionFill('rp-simulate'), null,
+    'and Simulate has nothing left to grow: its window fits the transport and the tape');
   assert.ok(getElement('rp-trace'), 'the markup is there for the registry to find');
 });
 

@@ -1633,13 +1633,19 @@
   box-shadow: inset 14px 0 12px -12px var(--tab-overflow-shadow), inset -14px 0 12px -12px var(--tab-overflow-shadow);
 }
 
-/* Simulation */
+/* Simulation.
+   Three pieces, top to bottom: the word and the button that runs it; the
+   run's timeline, alone on its line and only while there is a run; and the
+   transport — one pill of step controls with the playhead's position read in
+   its middle, then reset and speed. The counter used to sit at the end of the
+   timeline, which gave the slider a ragged right edge and a third row of
+   chrome to a section whose job is a few buttons. */
 .sim-row {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: 6px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .run-btn {
@@ -2290,11 +2296,13 @@
   font-weight: 700;
 }
 
-/* Step scrubber */
+/* Step scrubber — the run's timeline. Inset by the thumb's radius so the
+   thumb at either end lines up with the edges of the controls under it
+   instead of overhanging them. */
 .sim-scrubber-row {
   align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
+  height: 14px;
+  margin: -2px 6px 8px;
 }
 
 .sim-scrubber {
@@ -2341,13 +2349,27 @@
   background: var(--border2);
 }
 
-.sim-step-counter {
+.sctrl-pos {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 7ch;
+  padding: 0 8px;
+  border-right: 1px solid var(--border);
   font-family: var(--mono);
-  font-size: .65rem;
-  color: var(--text3);
+  font-size: .66rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text2);
   white-space: nowrap;
-  min-width: 3.6em;
-  text-align: right;
+  user-select: none;
+}
+
+/* Nothing to count: muted, not removed, so the buttons around it hold still
+   between a reset and the next run. */
+.sctrl-pos.is-idle {
+  color: var(--text3);
+  opacity: .6;
 }
 
 /* Step-control toolbar: a single unified pill housing the four step
@@ -2359,7 +2381,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 10px;
 }
 
 .sctrl-steps {
@@ -2373,6 +2394,7 @@
 
 .sctrl-steps .sbtn {
   flex: 1;
+  min-width: 26px;
   border: none;
   border-radius: 0;
 }
