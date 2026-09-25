@@ -3755,12 +3755,16 @@ function syncProviderHints() {
   const model = $('set-sm-model');
   const key = $('set-sm-key');
   const noteEl = $('sm-provider-note');
-  if (base) base.placeholder = preset.baseUrl;
-  if (model) model.placeholder = preset.model;
+  if (base) base.placeholder = preset.cli ? 'Not used — the desktop app runs claude' : preset.baseUrl;
+  if (model) model.placeholder = preset.modelHint || preset.model;
   if (key) key.placeholder = preset.keyHint;
   if (noteEl) noteEl.textContent = preset.browserNote;
   const keyLabel = $('sm-key-label');
   if (keyLabel) keyLabel.textContent = preset.keyLabel;
+  // A field the provider ignores is disabled rather than hidden, so the rows
+  // do not jump about as the select changes.
+  if (base) base.disabled = !!preset.cli;
+  if (key) key.disabled = !!preset.keyless;
 }
 
 // ── the model list ────────────────────────────────────────────────
