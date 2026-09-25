@@ -5625,3 +5625,90 @@ button:focus-visible {
 }
 
 .ex-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+
+/* ─── space-time export ─── */
+.modal.st-export-modal {
+  max-width: 880px;
+  width: min(94vw, 880px);
+}
+
+.st-export-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.st-export-preview {
+  height: 320px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+.st-export-preview canvas {
+  display: block;
+  max-width: 100%;
+}
+
+/* A transparent export is previewed over the conventional checkerboard, so
+   "transparent" is something the reader can see rather than take on trust. */
+.st-export-preview canvas.is-transparent {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #d9dce1 25%, transparent 25%),
+    linear-gradient(-45deg, #d9dce1 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #d9dce1 75%),
+    linear-gradient(-45deg, transparent 75%, #d9dce1 75%);
+  background-size: 14px 14px;
+  background-position: 0 0, 0 7px, 7px -7px, -7px 0;
+}
+
+.st-export-preview .exp-preview {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  font-size: .64rem;
+  line-height: 1.5;
+}
+
+.st-export-preview .exp-preview[hidden],
+.st-export-preview canvas[hidden] {
+  display: none;
+}
+
+.st-export-note {
+  min-height: 1.3em;
+  margin-top: 6px;
+  font-size: .68rem;
+  color: var(--text3);
+}
+
+.st-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .72rem;
+  color: var(--text3);
+}
+
+.exp-dim.is-bad {
+  color: var(--red);
+}
+
+@media (max-width: 720px) {
+  .st-export-split {
+    grid-template-columns: 1fr;
+  }
+
+  .st-export-preview {
+    height: 220px;
+  }
+}

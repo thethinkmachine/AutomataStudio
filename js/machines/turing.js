@@ -82,7 +82,11 @@ export function simTM(tokens) { playEagerly(streamTM(tokens)); }
 
 export function* streamNDTM(tokens) {
   const startTape = new Tape(tokens, App.config.sym.blank, usesTwoWayTape());
-  const queue = [{ state: runStartId(), tape: startTape, depth: 0, branch: 1 }];
+  // `parent` and `via` are what make the accepting branch recoverable: each
+  // configuration names the one it was expanded from and the transition that
+  // did it, so walking parents back from an accept is the computation that
+  // accepted — without keeping anything the search did not already hold.
+  const queue = [{ state: runStartId(), tape: startTape, depth: 0, branch: 1, parent: null, via: null }];
   const visited = new Set([`${runStartId()}|${startTape.key()}`]);
   let accepted = false;
   let branches = 0;
@@ -114,6 +118,9 @@ export function* streamNDTM(tokens) {
       head,
       view: cfg.tape.view(),
       branch,
+      parent: cfg.parent,
+      via: cfg.via,
+      depth,
       note: `Branch ${branch} depth ${depth}: ${stateName} reads '${sym}'`
     };
 
@@ -156,7 +163,7 @@ export function* streamNDTM(tokens) {
       const nextKey = `${tr.to}|${nextTape.key()}`;
       if (visited.has(nextKey)) return;
       visited.add(nextKey);
-      queue.push({ state: tr.to, tape: nextTape, depth: depth + 1, branch: nextBranchId++ });
+      queue.push({ state: tr.to, tape: nextTape, depth: depth + 1, branch: nextBranchId++, parent: branch, via: tr.id });
     });
   }
 

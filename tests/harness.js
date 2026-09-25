@@ -83,6 +83,10 @@ import * as simulation from '../js/simulation.js';
 import * as tape from '../js/tape.js';
 import * as tapeLog from '../js/tape-log.js';
 import * as tapeView from '../js/tape-view.js';
+import * as spacetime from '../js/spacetime.js';
+import * as spacetimeUi from '../js/spacetime-ui.js';
+import * as complexity from '../js/complexity.js';
+import * as complexityUi from '../js/complexity-ui.js';
 // The machine layer: the registry, the shared runtime, and one module per
 // family. Imported here for the same reason as every other namespace — the
 // tests reach the machines' own functions (simTM, testFST, decideMachine)
@@ -136,7 +140,7 @@ const NAMESPACES = [
   machineRegistry, machineRuntime, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineEmbedded, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,
-  simulation, tape, tapeLog, tapeView, suggest, language, alphabet, markdown,
+  simulation, tape, tapeLog, tapeView, spacetime, spacetimeUi, complexity, complexityUi, suggest, language, alphabet, markdown,
   view, history, fileHost, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, importStatechart, interopStatechart, interopObjlit, interopXml,
   exerciseModel, exerciseGrade, exerciseUi, lexerRegex, lexerBuild, lexerEmit, lexerUi, algorithmsFa, grammarUi, grammarModel, grammarParse, grammarAnalysis, grammarTransform,
@@ -221,6 +225,10 @@ function resetModuleState() {
   // How far back the trace log has been expanded is module state, and a test
   // that revealed a page would otherwise hand the next one a log already whole.
   simulation.resetTraceWindow();
+  // The space-time section holds its model, its layout and the elements it
+  // built — and clearElements() has just replaced every element it built into.
+  spacetimeUi.resetSpaceTime();
+  complexityUi.resetComplexity();
   state.setWorkspaces([]);
   state.setActiveWorkspaceId(null);
   state.setR(baseConfig.radius);

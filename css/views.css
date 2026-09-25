@@ -4971,3 +4971,10 @@
   font-size: .72rem;
   line-height: 1.5;
 }
+
+/* Two buttons at the end of the tracker's header now: the space-time diagram
+   and copy. Only the first is pushed to the row's end, so they sit together;
+   when the first is hidden the copy button takes the push back. */
+.tracker-st-btn:not([hidden]) + .tracker-copy-btn {
+  margin-left: 2px;
+}
