@@ -1648,8 +1648,15 @@
   margin-bottom: 10px;
 }
 
+.sim-row .inp {
+  height: var(--field-h);
+  box-sizing: border-box;
+}
+
 .run-btn {
-  padding: 7px 14px;
+  min-height: var(--field-h);
+  box-sizing: border-box;
+  padding: 6px 14px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1659,7 +1666,7 @@
   font-family: var(--sans);
   font-size: .8rem;
   letter-spacing: .02em;
-  border-radius: 6px;
+  border-radius: var(--field-radius);
   cursor: pointer;
   font-weight: 600;
   transition: all .15s;
@@ -1669,6 +1676,11 @@
 .run-btn:hover {
   background: var(--accent);
   box-shadow: var(--accent-glow);
+}
+
+.run-btn:focus-visible {
+  outline: 2px solid var(--accent-border-strong);
+  outline-offset: 2px;
 }
 
 /* Run doubles as the verdict readout once the simulation reaches its
@@ -2259,12 +2271,24 @@
   min-width: 0;
   font-family: var(--mono);
   font-size: .7rem;
-  padding: 3px 6px;
-  height: 24px;
-  background: var(--bg);
+  padding: 3px 8px;
+  height: 26px;
+  background: var(--bg3);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--field-radius);
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.sim-subject-sel:hover {
+  border-color: var(--border2);
+}
+
+.sim-subject-sel:focus {
+  border-color: var(--accent-border-strong);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .sim-break-lbl {
@@ -2572,34 +2596,139 @@
   margin-bottom: 7px;
 }
 
-/* Batch test */
-.batch-in {
-  width: 100%;
+/* ─── Batch test ───
+   An editor (the word list, with a foot carrying its count and its tools), the
+   run button, and a results list whose rows are runs you can step into. The
+   editor is one control in the field language of both panels: the textarea
+   and its foot share one border and one focus ring. */
+.batch-editor {
   background: var(--bg3);
-  border: 1px solid var(--border2);
+  border: 1px solid var(--border);
+  border-radius: var(--field-radius);
+  margin-bottom: 8px;
+  overflow: hidden;
+  transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.batch-editor:hover {
+  border-color: var(--border2);
+}
+
+.batch-editor:focus-within {
+  background: var(--bg2);
+  border-color: var(--accent-border-strong);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.batch-in {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: 0;
   color: var(--text);
   font-family: var(--mono);
   font-size: .72rem;
-  padding: 7px 9px;
-  border-radius: 6px;
+  line-height: 1.6;
+  padding: 8px 10px 4px;
   outline: none;
   resize: vertical;
-  min-height: 56px;
-  max-height: 100px;
-  margin-bottom: 6px;
+  min-height: 84px;
+  max-height: 260px;
+  margin: 0;
 }
 
-.batch-in:focus {
-  border-color: var(--accent);
+.batch-in::placeholder {
+  color: var(--text3);
+  font-family: var(--sans);
 }
 
+.batch-editor-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 4px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.batch-count {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: .64rem;
+  color: var(--text3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-tools {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+
+.batch-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text2);
+  font-family: var(--sans);
+  font-size: .64rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.batch-tool svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.batch-tool:hover:not(:disabled) {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.batch-tool:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+.batch-tool:focus-visible {
+  outline: 2px solid var(--accent-border-strong);
+  outline-offset: -2px;
+}
+
+.batch-run {
+  width: 100%;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.batch-run-kbd {
+  margin-left: 4px;
+  font-family: var(--mono);
+  font-size: .58rem;
+  font-weight: 500;
+  opacity: .6;
+}
+
+/* The verdict on the expectations: one line, coloured by whether they held. */
 .batch-summary {
   font-family: var(--sans);
-  font-weight: 700;
+  font-weight: 600;
   font-size: .72rem;
-  padding: 6px 10px;
-  border-radius: 6px;
-  margin-bottom: 6px;
+  padding: 7px 10px;
+  border-radius: var(--field-radius);
+  margin-bottom: 8px;
   border: 1px solid transparent;
 }
 
@@ -2615,45 +2744,214 @@
   color: var(--red);
 }
 
+/* Filter chips: one per kind of result that actually occurred, with its count. */
+.batch-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.batch-filter[hidden] {
+  display: none;
+}
+
+.bf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text2);
+  font-family: var(--sans);
+  font-size: .64rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.bf-chip:hover {
+  border-color: var(--border2);
+  color: var(--text);
+}
+
+.bf-chip[aria-pressed="true"] {
+  background: var(--accent-soft-strong);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.bf-chip:focus-visible {
+  outline: 2px solid var(--accent-border-strong);
+  outline-offset: 1px;
+}
+
+.bf-n {
+  font-family: var(--mono);
+  font-size: .6rem;
+  opacity: .75;
+  font-variant-numeric: tabular-nums;
+}
+
+.bf-fail .bf-n { color: var(--red); opacity: 1; }
+.bf-acc .bf-n { color: var(--green); opacity: 1; }
+.bf-unk .bf-n { color: var(--orange); opacity: 1; }
+.bf-chip[aria-pressed="true"] .bf-n { color: inherit; }
+
 .batch-result {
   font-family: var(--mono);
   font-size: .7rem;
-  line-height: 1.5;
-  margin-top: 6px;
+  line-height: 1.4;
   background: var(--bg3);
-  padding: 6px 8px;
-  border-radius: 6px;
   border: 1px solid var(--border);
-  max-height: 160px;
+  border-radius: var(--field-radius);
+  max-height: 220px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
+.batch-result:empty {
+  display: none;
+}
+
+.batch-result[data-filter="fail"] .br-row:not([data-failed]),
+.batch-result[data-filter="acc"] .br-row:not([data-kind="acc"]),
+.batch-result[data-filter="rej"] .br-row:not([data-kind="rej"]),
+.batch-result[data-filter="unk"] .br-row:not([data-kind="unk"]) {
+  display: none;
+}
+
+/* A row: mark, word, output, and what happened — the last in the UI face, so
+   the word is the thing that reads as data. The colour is on the mark and a
+   hairline at the left edge, not on the whole row, so a long list of green
+   does not shout and a red one among them does. */
+.br-row {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: 8px;
+  row-gap: 1px;
+  padding: 5px 30px 5px 10px;
+  border-bottom: 1px solid var(--border);
+  box-shadow: inset 2px 0 0 var(--br-tone, transparent);
+}
+
+.br-row:last-child {
+  border-bottom: 0;
+}
+
+.br-row[role="button"] {
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.br-row[role="button"]:hover {
+  background: var(--surface);
+}
+
+.br-row[role="button"]:focus-visible {
+  outline: 2px solid var(--accent-border-strong);
+  outline-offset: -2px;
+}
+
+.br-mark {
+  flex: none;
+  width: 10px;
+  font-weight: 700;
+  color: var(--br-tone, var(--text3));
+}
+
+.br-word {
+  color: var(--text);
+  word-break: break-all;
+}
+
+.br-out {
+  color: var(--purple);
+  word-break: break-all;
+}
+
+.br-meta {
+  margin-left: auto;
+  font-family: var(--sans);
+  font-size: .62rem;
+  color: var(--text3);
+}
+
+.br-play {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  margin-top: -5.5px;
+  color: var(--accent);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.br-play svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.br-row:hover .br-play,
+.br-row:focus-visible .br-play {
+  opacity: 1;
+}
+
 .br-ok {
-  color: var(--green);
+  --br-tone: var(--green);
 }
 
 .br-err {
+  --br-tone: var(--red);
+}
+
+.br-err .br-meta {
   color: var(--red);
+  opacity: .85;
 }
 
 /* Neither pass nor fail: the machine had not decided yet. */
 .br-unk {
+  --br-tone: var(--orange);
+}
+
+.br-unk .br-meta {
   color: var(--orange);
+  opacity: .85;
+}
+
+/* A transducer with no verdict asked of it: only its output is news. */
+.br-plain {
+  --br-tone: var(--text3);
 }
 
 .br-note {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--border);
+  padding: 8px 10px;
   color: var(--text3);
-  font-size: .62rem;
+  font-family: var(--sans);
+  font-size: .64rem;
   line-height: 1.5;
+}
+
+.br-row + .br-note {
+  border-top: 1px solid var(--border);
 }
 
 .br-note em {
   color: var(--text2);
   font-style: normal;
+}
+
+.br-warn {
+  color: var(--orange);
 }
 
 /* Σ symbol-suggest popover (Simulate / Batch Test inputs) */

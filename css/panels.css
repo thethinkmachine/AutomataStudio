@@ -17,6 +17,13 @@
   --sec-label-size: .68rem;
   --sec-label-tracking: .085em;
   --sec-arrow-size: 12px;
+  /* One field language for both panels: every text input, select and
+     single-line entry sits at this height and radius, rests on a quiet
+     border, firms it on hover and takes the accent ring on focus. The left
+     panel's filters and the right panel's run box were four different
+     controls before, which is most of why the two sides read as two apps. */
+  --field-h: 30px;
+  --field-radius: 8px;
   /* Shared cap for the lists in this panel — they scroll internally at the
      same height, so a long alphabet or state list cannot push the rest of the
      panel away. The one exception is the panel's *spare* height, which goes to
@@ -352,24 +359,30 @@
 .inp {
   flex: 1;
   background: var(--bg3);
-  border: 1px solid var(--border2);
+  border: 1px solid var(--border);
   color: var(--text);
   font-family: var(--mono);
   font-size: .78rem;
-  padding: 5px 9px;
-  border-radius: 6px;
+  padding: 5px 10px;
+  border-radius: var(--field-radius);
   outline: none;
-  transition: border-color .15s;
+  transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
   min-width: 0;
 }
 
+.inp:hover {
+  border-color: var(--border2);
+}
+
 .inp:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--focus-ring);
+  background: var(--bg2);
+  border-color: var(--accent-border-strong);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .inp::placeholder {
   color: var(--text3);
+  font-family: var(--sans);
 }
 
 .sel {
@@ -377,32 +390,37 @@
   min-width: 0;
   max-width: 100%;
   background: var(--bg3);
-  border: 1px solid var(--border2);
+  border: 1px solid var(--border);
   color: var(--text);
   font-family: var(--mono);
   font-size: .78rem;
   padding: 5px 9px;
-  border-radius: 6px;
+  border-radius: var(--field-radius);
   outline: none;
   cursor: pointer;
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
-  transition: border-color .15s;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.sel:hover {
+  border-color: var(--border2);
 }
 
 .sel:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--focus-ring);
+  border-color: var(--accent-border-strong);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .ibtn {
-  width: 30px;
-  height: 30px;
+  width: var(--field-h);
+  height: var(--field-h);
+  box-sizing: border-box;
   background: var(--surface);
   border: 1px solid var(--border2);
   color: var(--text2);
-  border-radius: 6px;
+  border-radius: var(--field-radius);
   cursor: pointer;
   font-size: .9rem;
   display: flex;
@@ -421,6 +439,65 @@
 .ibtn svg {
   fill: currentColor;
   flex-shrink: 0;
+}
+
+/* The symbol entry is one control rather than a field and a button that
+   happen to sit side by side: one border, one focus ring, and the add button
+   inside its right end, lit once there is something to add. */
+.alpha-row .row {
+  gap: 0;
+  height: var(--field-h);
+  box-sizing: border-box;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--field-radius);
+  overflow: hidden;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
+}
+
+.alpha-row .row:hover {
+  border-color: var(--border2);
+}
+
+.alpha-row .row:focus-within {
+  background: var(--bg2);
+  border-color: var(--accent-border-strong);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.alpha-row .row .inp,
+.alpha-row .row .inp:focus {
+  height: 100%;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0 10px;
+}
+
+.alpha-row .row .inp::placeholder {
+  font-family: var(--sans);
+  font-size: .76rem;
+}
+
+.alpha-row .row .ibtn {
+  width: 28px;
+  height: 22px;
+  margin: 3px 3px 3px 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text3);
+}
+
+.alpha-row .row:has(.inp:not(:placeholder-shown)) .ibtn {
+  color: var(--accent);
+  background: var(--accent-soft-strong);
+}
+
+.alpha-row .row .ibtn:hover {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .chips {
@@ -1193,26 +1270,96 @@ body.panel-resizing .rpanel {
   align-content: flex-start;
 }
 
-.lpanel-search-inp {
+/* ─── SEARCH FIELDS ───
+   The panel filters and the algorithm search are one control: a magnifier
+   inside the field, the query in mono (it is matched against state names and
+   symbols), the placeholder in the UI face, and a clear button that appears
+   only once there is something to clear. type="search" gives Escape-to-clear
+   for free; the native cancel glyph is redrawn as a mask so it takes the
+   theme's text colour. */
+.search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 6px;
+}
+
+.search-field-ico {
+  position: absolute;
+  left: 9px;
+  width: 13px;
+  height: 13px;
+  color: var(--text3);
+  pointer-events: none;
+  transition: color var(--transition-fast);
+}
+
+.lpanel-search-inp,
+.algo-search-inp {
   width: 100%;
+  height: var(--field-h);
   box-sizing: border-box;
+  margin: 0;
   background: var(--bg3);
-  border: 1px solid var(--border2);
+  border: 1px solid var(--border);
   color: var(--text);
   font-family: var(--mono);
   font-size: .72rem;
-  padding: 5px 8px;
-  border-radius: 6px;
+  padding: 0 6px 0 28px;
+  border-radius: var(--field-radius);
   outline: none;
-  margin-bottom: 5px;
-  transition: border-color var(--transition-fast);
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.lpanel-search-inp:focus {
-  border-color: var(--accent);
-  /* .inp, .sel and .algo-search-inp all draw this ring; these two were the
-     fields in the panel that changed only their border colour on focus. */
-  box-shadow: 0 0 0 2px var(--focus-ring);
+.lpanel-search-inp::placeholder,
+.algo-search-inp::placeholder {
+  color: var(--text3);
+  font-family: var(--sans);
+  font-size: .76rem;
+}
+
+.lpanel-search-inp:hover,
+.algo-search-inp:hover {
+  border-color: var(--border2);
+}
+
+.lpanel-search-inp:focus,
+.algo-search-inp:focus {
+  background: var(--bg2);
+  border-color: var(--accent-border-strong);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.search-field:focus-within .search-field-ico,
+.search-field:has(input:not(:placeholder-shown)) .search-field-ico {
+  color: var(--accent);
+}
+
+.lpanel-search-inp::-webkit-search-decoration,
+.algo-search-inp::-webkit-search-decoration {
+  -webkit-appearance: none;
+}
+
+.lpanel-search-inp::-webkit-search-cancel-button,
+.algo-search-inp::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0 2px 0 4px;
+  background: var(--text3);
+  cursor: pointer;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Cpath d='M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32Z'/%3E%3C/svg%3E") center / 16px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Cpath d='M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32Z'/%3E%3C/svg%3E") center / 16px no-repeat;
+}
+
+.lpanel-search-inp::-webkit-search-cancel-button:hover,
+.algo-search-inp::-webkit-search-cancel-button:hover {
+  background: var(--text);
 }
 
 /* ─── δ AS A TABLE ───
@@ -1224,23 +1371,23 @@ body.panel-resizing .rpanel {
 .lp-search-row {
   display: flex;
   align-items: flex-start;
-  gap: 5px;
+  gap: 6px;
 }
 
-.lp-search-row .lpanel-search-inp {
+.lp-search-row .search-field {
   flex: 1;
-  width: auto;
-  min-width: 0;
 }
 
 .trans-view-toggle {
   display: inline-flex;
   flex: none;
+  box-sizing: border-box;
+  height: var(--field-h);
   gap: 2px;
   padding: 2px;
-  margin-bottom: 5px;
-  border: 1px solid var(--border2);
-  border-radius: 6px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--field-radius);
   background: var(--bg3);
 }
 
@@ -1252,11 +1399,11 @@ body.panel-resizing .rpanel {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 23px;
-  height: 19px;
+  width: 26px;
+  height: 24px;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text3);
   cursor: pointer;
@@ -1268,9 +1415,8 @@ body.panel-resizing .rpanel {
 }
 
 .trans-view-toggle button.is-on {
-  background: var(--surface);
+  background: var(--accent-soft-strong);
   color: var(--accent);
-  box-shadow: 0 0 0 1px var(--border2);
 }
 
 .trans-view-toggle button:focus-visible {
@@ -1854,6 +2000,10 @@ button.dt-cell:hover {
 }
 
 /* ─── ALGO SEARCH ─── */
+.algo-search-wrap .search-field {
+  margin-bottom: 0;
+}
+
 .algo-search-wrap {
   padding: 10px;
   background: var(--bg2);
@@ -1862,29 +2012,6 @@ button.dt-cell:hover {
   top: 0;
   z-index: 5;
   flex-shrink: 0;
-}
-
-.algo-search-inp {
-  width: 100%;
-  box-sizing: border-box;
-  background: var(--bg3);
-  border: 1px solid var(--border2);
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: .72rem;
-  padding: 5px 8px;
-  border-radius: 6px;
-  outline: none;
-  transition: border-color var(--transition-fast);
-}
-
-.algo-search-inp:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--focus-ring);
-}
-
-.algo-search-inp::placeholder {
-  color: var(--text3);
 }
 
 @media (max-width: 900px) {

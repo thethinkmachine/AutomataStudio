@@ -2122,7 +2122,7 @@ export function positionToolbarNode(node, dock, wrapRect) {
   node.style.boxSizing = 'border-box';
   node.style.flexDirection = isHorizontal ? 'row' : 'column';
   node.style.alignItems = isHorizontal ? 'center' : 'stretch';
-  node.style.gap = isHorizontal ? '6px' : '4px';
+  node.style.gap = '2px';
   node.style.width = compact ? 'auto' : 'max-content';
   node.style.maxWidth = compact ? 'none' : (isHorizontal ? `calc(100% - ${margin * 2}px)` : 'none');
   node.style.overflowX = isHorizontal ? 'auto' : 'hidden';

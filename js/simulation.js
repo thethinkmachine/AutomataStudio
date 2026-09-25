@@ -20,7 +20,7 @@ import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
 import { escapeHtml, isAnyPDA, isEmbeddedMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
 import { machineGuards, parseMachineInput, streamMachine } from './machines/index.js';
 import { stateNames } from './machines/runtime.js';
-import { computeBatchResults, decideBatchRows, summarizeBatch } from './machines/batch.js';
+import { computeBatchResults, decideBatchRows, parseBatchLine, summarizeBatch } from './machines/batch.js';
 import { poolSize, runParallel, shouldParallelize } from './parallel/pool.js';
 import { renderTracker, resetTracker } from './tape-view.js';
 import { isPainterSuppressed, setSimStepPainter, withPainterSuppressed } from './machines/paint.js';
@@ -1594,32 +1594,270 @@ export function renderBatchResults(batch) {
     }
   }
 
-  const sub = 'color:var(--text3);font-size:.65rem';
-  const rows = results.map(r => {
-    if (r.error) return `<div class="br-err">✗ "${r.str}" — cannot tokenize</div>`;
-    const outTag = r.output !== null ? ` <span style="${sub}">→ "${r.output}"</span>` : '';
-    if (r.verdict === 'unknown') {
-      const why = r.expect ? `expected ${r.expect}, still running` : 'still running';
-      return `<div class="br-unk">? "${r.str}" <span style="${sub}">(${why} after ${batch.budget} steps — not a rejection)</span></div>`;
-    }
-    if (r.expect) {
-      const got = r.verdict;
-      const pass = got === r.expect;
-      return `<div class="${pass ? 'br-ok' : 'br-err'}">${pass ? '✓' : '✗'} "${r.str}" <span style="${sub}">(expected ${r.expect}, got ${got})</span>${outTag}</div>`;
-    }
-    if (r.accepted === undefined) return `<div class="br-ok" style="border-left-color:var(--text-main)"><span style="color:var(--text-main)">•</span> "${r.str}"${outTag}</div>`;
-    return `<div class="${r.accepted ? 'br-ok' : 'br-err'}">${r.accepted ? '✓' : '✗'} "${r.str}"${outTag}</div>`;
-  }).join('');
+  const rows = results.map((r, i) => batchRowHtml(r, i, batch.budget)).join('');
 
   const unknowns = batch.unknowns;
   const budgetNote = unknowns
     ? `<div class="br-note">${unknowns} input${unknowns > 1 ? 's' : ''} had no verdict inside ${batch.budget} steps. ` +
       `Raise <em>Language Fingerprint Budget</em> in Settings › Turing Machine; whatever stays unresolved never halts.</div>`
     : '';
-  $('batch-result').innerHTML = rows + budgetNote;
+  const host = $('batch-result');
+  host.innerHTML = rows + budgetNote;
+  renderBatchFilter(results);
   const bar = $('batch-export-bar');
   if (bar) bar.style.display = results.length ? 'flex' : 'none';
+  syncBatchPin();
   syncBatchStatus(batch);
+}
+
+/**
+ * What one row is, as the filter sees it. `kind` is what the machine said
+ * (accepted, rejected, undecided, unreadable, or — for a transducer with no
+ * verdict — only an output); `failed` is whether it broke an expectation,
+ * which an unreadable word always does.
+ */
+export function batchRowKind(r) {
+  if (r.error) return { kind: 'err', failed: true };
+  if (r.verdict === 'unknown') return { kind: 'unk', failed: !!r.expect };
+  if (r.accepted === undefined) return { kind: 'out', failed: false };
+  return { kind: r.accepted ? 'acc' : 'rej', failed: !!r.expect && r.verdict !== r.expect };
+}
+
+function batchRowHtml(r, i, budget) {
+  const { kind, failed } = batchRowKind(r);
+  const word = `<span class="br-word">${escapeHtml(r.str)}</span>`;
+  const out = r.output != null && r.output !== ''
+    ? `<span class="br-out">→ ${escapeHtml(String(r.output))}</span>` : '';
+  let cls, mark, meta;
+  if (kind === 'err') {
+    cls = 'br-err'; mark = '✗'; meta = 'not a word over Σ';
+  } else if (kind === 'unk') {
+    cls = 'br-unk'; mark = '?';
+    meta = `${r.expect ? `expected ${r.expect}, ` : ''}still running after ${budget} steps — not a rejection`;
+  } else if (r.expect) {
+    cls = failed ? 'br-err' : 'br-ok'; mark = failed ? '✗' : '✓';
+    meta = failed ? `expected ${r.expect}, got ${r.verdict}` : `${r.verdict}, as expected`;
+  } else if (kind === 'out') {
+    cls = 'br-plain'; mark = '•'; meta = '';
+  } else {
+    cls = r.accepted ? 'br-ok' : 'br-err'; mark = r.accepted ? '✓' : '✗';
+    meta = r.accepted ? 'accepted' : 'rejected';
+  }
+  // An unreadable word has no run to step through.
+  const playable = kind !== 'err';
+  return `<div class="br-row ${cls}" data-idx="${i}" data-kind="${kind}"${failed ? ' data-failed="1"' : ''}` +
+    (playable ? ` role="button" tabindex="0" title="Step through “${escapeHtml(r.str)}” in the player"` : '') + '>' +
+    `<span class="br-mark" aria-hidden="true">${mark}</span>${word}${out}` +
+    (meta ? `<span class="br-meta">${escapeHtml(meta)}</span>` : '') +
+    (playable ? `<span class="br-play" aria-hidden="true">${BATCH_PLAY_ICON}</span>` : '') +
+    '</div>';
+}
+
+const BATCH_PLAY_ICON = '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>';
+
+// ── Filtering the results ─────────────────────────────────────────
+// The rows are drawn once; the filter is a data attribute on the host that CSS
+// reads, so switching between "failed" and "all" on a thousand-word batch
+// touches one attribute rather than a thousand rows. It persists across runs,
+// which is the point of it: fix the machine, run again, and you are still
+// looking at whatever is left failing.
+let batchFilter = 'all';
+
+const BATCH_FILTERS = [
+  { id: 'all', label: 'All', test: () => true },
+  { id: 'fail', label: 'Failed', test: r => batchRowKind(r).failed },
+  { id: 'acc', label: 'Accepted', test: r => batchRowKind(r).kind === 'acc' },
+  { id: 'rej', label: 'Rejected', test: r => batchRowKind(r).kind === 'rej' },
+  { id: 'unk', label: 'Undecided', test: r => batchRowKind(r).kind === 'unk' }
+];
+
+function renderBatchFilter(results) {
+  const bar = $('batch-filter');
+  const host = $('batch-result');
+  if (!bar) return;
+  const counts = BATCH_FILTERS.map(f => ({ ...f, n: results.filter(f.test).length }));
+  // "All" and one other bucket say nothing a glance at the rows does not;
+  // a filter earns its row once the results are long or mixed.
+  const shown = counts.filter(f => f.id === 'all' || f.n > 0);
+  if (results.length < 2 || shown.length < 3) {
+    bar.hidden = true;
+    batchFilter = 'all';
+  } else {
+    if (!shown.some(f => f.id === batchFilter)) batchFilter = 'all';
+    bar.hidden = false;
+    bar.innerHTML = shown.map(f =>
+      `<button type="button" class="bf-chip bf-${f.id}" data-batch-filter="${f.id}" aria-pressed="${f.id === batchFilter}">` +
+      `${f.label}<span class="bf-n">${f.n}</span></button>`).join('');
+  }
+  if (host && host.dataset) host.dataset.filter = batchFilter;
+}
+
+function setBatchFilter(id) {
+  batchFilter = id;
+  const host = $('batch-result');
+  if (host && host.dataset) host.dataset.filter = id;
+  const bar = $('batch-filter');
+  if (bar) bar.querySelectorAll('[data-batch-filter]').forEach(b =>
+    b.setAttribute('aria-pressed', b.dataset.batchFilter === id ? 'true' : 'false'));
+}
+
+// ── The editor's tools ────────────────────────────────────────────
+
+/** Non-empty lines, and how many of them carry an expectation. */
+function batchLines() {
+  const box = $('batch-in');
+  return box ? box.value.split('\n').map(l => l.trim()).filter(Boolean) : [];
+}
+
+export function syncBatchCount() {
+  const el = $('batch-count');
+  if (!el) return;
+  const lines = batchLines();
+  const expected = lines.filter(l => parseBatchLine(l).expect).length;
+  const words = `${lines.length} word${lines.length === 1 ? '' : 's'}`;
+  el.textContent = expected ? `${words} · ${expected} expected` : words;
+}
+
+/** "Expect" is offered only while there is a verdict it could write down. */
+function syncBatchPin() {
+  const btn = $('batch-pin');
+  if (!btn) return;
+  const rows = App.lastBatch?.results || [];
+  btn.disabled = !rows.some(r => !r.expect && !r.error && (r.verdict === 'accept' || r.verdict === 'reject'));
+}
+
+/**
+ * Every word over Σ up to the longest length that keeps the list short,
+ * shortest first — ε, then the letters, then pairs. It is the list a reader
+ * types by hand to see whether a machine does what they meant, and the
+ * shortest counterexample is usually in it. Multi-character symbols are joined
+ * with spaces, which is how the tokenizer reads them back unambiguously.
+ */
+export function sampleBatchWords(sigma = App.sigma, cap = 40) {
+  const eps = App.config.sym.eps;
+  const syms = [...sigma].filter(s => s && s !== eps).sort();
+  if (!syms.length) return [];
+  const sep = syms.some(s => s.length > 1) ? ' ' : '';
+  const words = [eps];
+  let layer = [[]];
+  while (true) {
+    const next = [];
+    for (const w of layer) for (const s of syms) next.push([...w, s]);
+    if (words.length + next.length > cap && words.length > 1) break;
+    next.forEach(w => words.push(w.join(sep)));
+    layer = next;
+    if (words.length >= cap) break;
+  }
+  return words;
+}
+
+function fillBatchSamples() {
+  const box = $('batch-in');
+  if (!box) return;
+  if (isOmegaAutomaton()) {
+    showStatus('An ω-automaton reads u(v) words — type them in; there is no finite list to sample.');
+    return;
+  }
+  const words = sampleBatchWords();
+  if (!words.length) { showStatus('Add symbols to Σ first — the samples are words over it.'); return; }
+  const have = new Set(batchLines().map(l => parseBatchLine(l).input));
+  const fresh = words.filter(w => !have.has(w));
+  if (!fresh.length) { showStatus('Every sample word is already in the list.'); return; }
+  const cur = box.value.replace(/\s+$/, '');
+  box.value = (cur ? cur + '\n' : '') + fresh.join('\n');
+  syncBatchCount();
+}
+
+/**
+ * Turns the last run's verdicts into expectations, so the next run is a
+ * regression test. Only lines without one are touched — an expectation the
+ * reader wrote is a claim about the language, and a verdict that disagrees
+ * with it is the bug being looked for, not a correction.
+ */
+export function pinBatchVerdicts() {
+  const box = $('batch-in');
+  const rows = App.lastBatch?.results;
+  if (!box || !rows) return 0;
+  const verdictOf = new Map();
+  rows.forEach(r => {
+    if (!r.expect && !r.error && (r.verdict === 'accept' || r.verdict === 'reject')) verdictOf.set(r.str, r.verdict);
+  });
+  let n = 0;
+  box.value = box.value.split('\n').map(line => {
+    const t = line.trim();
+    if (!t) return line;
+    const { input, expect } = parseBatchLine(t);
+    if (expect || !verdictOf.has(input)) return line;
+    n++;
+    return `${input} => ${verdictOf.get(input)}`;
+  }).join('\n');
+  syncBatchCount();
+  if (n) runBatch();
+  return n;
+}
+
+export function clearBatch() {
+  batchRunToken++;
+  const box = $('batch-in');
+  if (box) box.value = '';
+  const host = $('batch-result');
+  if (host) host.innerHTML = '';
+  const summaryEl = $('batch-summary');
+  if (summaryEl) summaryEl.style.display = 'none';
+  const bar = $('batch-export-bar');
+  if (bar) bar.style.display = 'none';
+  const filter = $('batch-filter');
+  if (filter) filter.hidden = true;
+  App.lastBatch = null;
+  syncBatchPin();
+  syncBatchCount();
+  setSectionStatus('rp-batch', '');
+}
+
+/** A result row, replayed in the player: the word goes into the run box and runs. */
+function playBatchRow(idx) {
+  const r = App.lastBatch?.results?.[idx];
+  const box = $('sim-in');
+  if (!r || r.error || !box) return;
+  box.value = r.str;
+  runSim();
+}
+
+// One delegated listener per event for the whole section, so the rows — which
+// are rewritten on every run — carry no handlers and nothing needs a name in
+// bridge.js.
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+  const within = (e, sel) => (e.target && typeof e.target.closest === 'function') ? e.target.closest(sel) : null;
+  document.addEventListener('click', e => {
+    const action = within(e, '[data-batch-action]');
+    if (action && !action.disabled) {
+      const what = action.dataset.batchAction;
+      if (what === 'fill') fillBatchSamples();
+      else if (what === 'pin') pinBatchVerdicts();
+      else if (what === 'clear') clearBatch();
+      return;
+    }
+    const chip = within(e, '[data-batch-filter]');
+    if (chip) { setBatchFilter(chip.dataset.batchFilter); return; }
+    const row = within(e, '#batch-result .br-row[role="button"]');
+    if (row) playBatchRow(Number(row.dataset.idx));
+  });
+  document.addEventListener('keydown', e => {
+    const t = e.target;
+    if (t && t.id === 'batch-in' && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      dismissSymSuggest();
+      runBatch();
+      return;
+    }
+    if ((e.key === 'Enter' || e.key === ' ') && within(e, '#batch-result .br-row[role="button"]')) {
+      e.preventDefault();
+      playBatchRow(Number(within(e, '.br-row').dataset.idx));
+    }
+  });
+  document.addEventListener('input', e => {
+    if (e.target && e.target.id === 'batch-in') syncBatchCount();
+  });
 }
 
 /**
@@ -1656,14 +1894,18 @@ let batchRunToken = 0;
 export function runBatch() {
   const token = ++batchRunToken;
   const rawLines = $('batch-in').value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  syncBatchCount();
   if (!rawLines.length) return;
   if (!App.startId) {
-    $('batch-result').innerHTML = `<div class="br-err">Error: No start state defined.</div>`;
+    $('batch-result').innerHTML = `<div class="br-note br-warn">No start state yet — mark one on the canvas, then run the batch again.</div>`;
     const summaryEl = $('batch-summary');
     if (summaryEl) summaryEl.style.display = 'none';
     const bar = $('batch-export-bar');
     if (bar) bar.style.display = 'none';
+    const filter = $('batch-filter');
+    if (filter) filter.hidden = true;
     App.lastBatch = null;
+    syncBatchPin();
     setSectionStatus('rp-batch', 'no start state', 'warn');
     return;
   }
@@ -1707,6 +1949,9 @@ function renderBatchPending(n) {
   if (summaryEl) summaryEl.style.display = 'none';
   const bar = $('batch-export-bar');
   if (bar) bar.style.display = 'none';
+  const filter = $('batch-filter');
+  if (filter) filter.hidden = true;
+  syncBatchPin();
   setSectionStatus('rp-batch', `running ${n}…`);
 }
 
