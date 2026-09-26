@@ -259,18 +259,25 @@ test('a left toolbar reaching the corner moves the pill in beside it', () => {
   assert.strictEqual(originOf(btn), `${M + toolbarBox('left').width + context.OVERLAY_GAP}px,12px`);
 });
 
-test('the origin is sized for the card, so opening it does not move it', () => {
+// The pill takes the corner it fits in; only the card steps aside. Sizing the
+// pill's spot for the card pushed a 24px button out beside a left toolbar,
+// alone in the middle of nowhere.
+test('the pill keeps the corner the card is too big for, and the card opens beside it', () => {
   const shut = seedInfo({ open: false });
-  // Far enough right that the 24px pill alone would clear it; the card does not.
+  // Far enough right that the 24px pill clears the toolbar; the card does not.
   context.App.toolbarDock = { side: 'top', ratio: 0.18 };
   context.layoutCanvasOverlays(WRAP, toolbarBox('top'));
-  const where = originOf(shut.btn);
-  assert.notStrictEqual(where, '12px,12px', 'the card would reach the toolbar, so the pill steps down');
+  assert.strictEqual(originOf(shut.btn), '12px,12px', 'the pill stays in the corner');
+  const cardAt = originOf(shut.card);
+  assert.notStrictEqual(cardAt, '12px,12px', 'the card steps down below the toolbar');
 
   const open = seedInfo({ open: true });
   context.App.toolbarDock = { side: 'top', ratio: 0.18 };
   context.layoutCanvasOverlays(WRAP, toolbarBox('top'));
-  assert.strictEqual(originOf(open.card), where, 'the open card lands where the pill was');
+  assert.strictEqual(originOf(open.card), cardAt, 'opening it does not move it');
+  // It grows out of the pill: the scale starts at the pill's centre.
+  const dy = 12 - parseInt(cardAt.split(',')[1], 10) + 12;
+  assert.strictEqual(open.card.style.transformOrigin, `12px ${dy}px`);
 });
 
 // On a narrow canvas the stack spans most of the width, and the card used to
@@ -612,4 +619,107 @@ test('the StateMate panel lives inside the right panel, not the overlay stack', 
     'and the strip that switches between it and the Inspector is in the panel header');
   assert.ok(!/<div class="overlay[^"]*" id="statemate-panel"/.test(html),
     'it is no longer registered markup-side as an overlay');
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  A FRAMED MACHINE STAYS FRAMED
+// ══════════════════════════════════════════════════════════════════
+//  After a fit, the view is framed for as long as the camera is the one the fit
+//  set. While it is, any change to what floats over the canvas fits again — in
+//  either direction. A camera the reader has moved is never moved for them.
+
+const FRAME_WRAP = { left: 0, top: 0, right: 1200, bottom: 800, width: 1200, height: 800 };
+
+function seedFraming() {
+  harness.resetApp();
+  const wrap = getElement('canvas-wrap');
+  wrap.getBoundingClientRect = () => FRAME_WRAP;
+  // The toolbar is the one overlay in play; everything else is off screen.
+  for (const id of ['canvas-nav-controls', 'minimap-container', 'canvas-info-btn', 'example-card']) {
+    getElement(id).offsetParent = null;
+  }
+  getElement('mobile-bar').getBoundingClientRect = () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 });
+  const toolbox = getElement('canvas-toolbox');
+  toolbox.offsetParent = {};
+  const place = (left, top, width = 60, height = 400) => {
+    toolbox.getBoundingClientRect = () => ({ left, top, right: left + width, bottom: top + height, width, height });
+  };
+  place(12, 200);
+  context.App.states = [{ id: 'q0', name: 'q0', x: 100, y: 100 }, { id: 'q1', name: 'q1', x: 400, y: 300 }];
+  context.App.cam = { x: 0, y: 0, z: 1 };
+  context.fitToScreen(true);
+  context.markFramed({ quiet: false });
+  assert.strictEqual(context.checkFraming(), false, 'the first measurement is only a baseline');
+  return { place, wrap };
+}
+
+test('a framed view fits again when an overlay changes', () => {
+  const { place } = seedFraming();
+  const before = { ...context.App.cam };
+  place(12, 200, 260, 400);   // the toolbar grows, as it does when it unfolds
+  assert.strictEqual(context.checkFraming(), true);
+  assert.notDeepStrictEqual({ ...context.App.cam }, before);
+  assert.ok(context.isFramed(), 'and it is framed again afterwards');
+});
+
+test('it fits back the other way when the overlay goes away', () => {
+  const { place } = seedFraming();
+  place(12, 200, 400, 400);
+  context.markFramed({ quiet: false });
+  context.checkFraming();                         // re-baseline with the big overlay
+  context.markFramed({ quiet: false });
+  const out = context.App.cam.z;
+  place(12, 200, 60, 400);
+  assert.strictEqual(context.checkFraming(), true, 'a card folding away gives the room back');
+  assert.ok(context.App.cam.z >= out);
+});
+
+test('a camera the reader moved is left alone', () => {
+  const { place } = seedFraming();
+  context.App.cam.x += 40;                        // a pan, from any source
+  assert.strictEqual(context.isFramed(), false);
+  const before = { ...context.App.cam };
+  place(12, 200, 260, 400);
+  assert.strictEqual(context.checkFraming(), false);
+  assert.deepStrictEqual({ ...context.App.cam }, before);
+});
+
+test('pressing Fit hands the camera back', () => {
+  seedFraming();
+  context.App.cam.z *= 2;
+  assert.strictEqual(context.isFramed(), false);
+  context.fitToScreen(true);
+  assert.strictEqual(context.isFramed(), true);
+});
+
+test('a change under the tolerance is noise, not a trigger', () => {
+  const { place } = seedFraming();
+  place(12, 200, 62, 400);
+  assert.strictEqual(context.checkFraming(), false);
+});
+
+test('nothing fits while the reader is mid-gesture', () => {
+  const { place } = seedFraming();
+  context.App.dragOffsets = { q0: { dx: 0, dy: 0 } };
+  place(12, 200, 260, 400);
+  try {
+    assert.strictEqual(context.checkFraming(), false, 'it waits for the gesture to end');
+  } finally {
+    context.App.dragOffsets = null;
+  }
+  assert.strictEqual(context.checkFraming(), true, 'and then acts');
+});
+
+test('a canvas that changed size is left to the resize path', () => {
+  const { place, wrap } = seedFraming();
+  wrap.getBoundingClientRect = () => ({ ...FRAME_WRAP, right: 1000, width: 1000 });
+  place(12, 200, 260, 400);
+  assert.strictEqual(context.checkFraming(), false);
+});
+
+test('a check just after a fit adopts what moved instead of fitting again', () => {
+  const { place } = seedFraming();
+  context.fitToScreen(true);                      // quiet window open
+  place(12, 200, 260, 400);
+  assert.strictEqual(context.checkFraming(), false, 'what moved in the settle window moved because of the fit');
 });

@@ -288,6 +288,9 @@ function resetModuleState() {
   // across a reset it would swallow the announcement for the next test's
   // machine, or announce one for a machine that never crossed the line.
   ui.resetLargeMachineProfileWatch();
+  // Whether the view is framed, and the overlay measurement it is compared
+  // against, are module state a test must not inherit.
+  ui.resetFraming();
   // The incremental renderer keys its live SVG nodes off App.domCache. Left
   // populated, a test would start out holding nodes built for the previous
   // test's states — the diff recovers from that on its own, but tests that
