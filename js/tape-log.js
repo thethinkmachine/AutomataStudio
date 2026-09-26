@@ -25,8 +25,11 @@
 // a bounded backward scrub at the cost of a periodic full Map clone, which is
 // most of the memory this exists to avoid.
 //
-// Import-free. A log is a journal of writes against a window rule; it has no
-// business knowing about App, the page, or which machine is driving the tape.
+// A leaf: its one import, js/machines/step-log.js, is import-free. A log is a
+// journal of writes against a window rule; it has no business knowing about
+// App, the page, or which machine is driving the tape.
+
+import { lazyNoteProto } from './machines/step-log.js';
 
 /**
  * @param tape the live Tape the steps will be produced from, read once for its
@@ -176,10 +179,12 @@ const MULTI_TAPE_STEP = {
  * `tape`, `head` or `view`, which are reads of the log and would throw on
  * assignment because the prototype gives them no setter.
  */
-export function tapeStep(log, i, fields) {
-  const s = Object.create(TAPE_STEP);
+export function tapeStep(log, i, fields, noteOf) {
+  // A note given as a function is formatted on first read — see lazyNoteProto.
+  const s = Object.create(noteOf === undefined ? TAPE_STEP : lazyNoteProto(TAPE_STEP));
   s._log = log;
   s._i = i;
+  if (noteOf !== undefined) s._note = noteOf;
   return Object.assign(s, fields);
 }
 
@@ -202,9 +207,10 @@ export function stepLogIndex(step) {
 }
 
 /** The same, for a machine whose k tapes advance in lockstep and so share i. */
-export function multiTapeStep(logs, i, fields) {
-  const s = Object.create(MULTI_TAPE_STEP);
+export function multiTapeStep(logs, i, fields, noteOf) {
+  const s = Object.create(noteOf === undefined ? MULTI_TAPE_STEP : lazyNoteProto(MULTI_TAPE_STEP));
   s._logs = logs;
   s._i = i;
+  if (noteOf !== undefined) s._note = noteOf;
   return Object.assign(s, fields);
 }

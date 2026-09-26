@@ -25,13 +25,14 @@ import {
   App, getState, runStartId
 } from '../state.js';
 import { renderSimStep } from './paint.js';
-import { Fifo, accepted, firstOverlappingTransition, getSingleTapeDeterministicTransition, nameOfState, playEagerly, traceSearchPath, transduced, transducerRunContributes, transitionsFrom } from './runtime.js';
+import { ConfigSet, Fifo, accepted, makeStateNumbering, firstOverlappingTransition, nameOfState, playEagerly, singleTapeLookup, traceSearchPath, transduced, transducerRunContributes, transitionsFrom } from './runtime.js';
 import { testDFA } from './finite.js';
 import { defineFamily } from './registry.js';
-import { OUT_EMPTY, outPush, outStep } from './step-log.js';
+import { OUT_EMPTY, outPush, outStep, outputKeyAfter, stackRoot } from './step-log.js';
 
 export function* streamMoore(tokens) {
   let cur = runStartId();
+  const fires = singleTapeLookup();
   const s0 = getState(cur);
   const initOut = s0?.output ?? '';
   let outStr = initOut;
@@ -40,7 +41,7 @@ export function* streamMoore(tokens) {
   yield last;
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
-    const t = getSingleTapeDeterministicTransition(cur, sym);
+    const t = fires(cur, sym);
     if (!t) {
       last = outStep({ state: cur, tokens, outNode, outSoFar: outStr, note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' });
       yield last;
@@ -51,7 +52,8 @@ export function* streamMoore(tokens) {
     const out = sc?.output ?? '';
     outStr += out;
     outNode = outPush(outNode, out);
-    last = outStep({ state: cur, tokens, outNode, outSoFar: outStr, note: `Read '${sym}' → ${sc?.name} — ${App.config.sym.lambda}: '${out}'`, tid: t.id });
+    // Formatted only if read — see lazyNoteProto.
+    last = outStep({ state: cur, tokens, outNode, outSoFar: outStr, tid: t.id }, () => `Read '${sym}' → ${sc?.name} — ${App.config.sym.lambda}: '${out}'`);
     yield last;
   }
   const showAccepts = App.config.transducerAccepts;
@@ -63,13 +65,14 @@ export function simMoore(tokens) { playEagerly(streamMoore(tokens)); }
 
 export function* streamMealy(tokens) {
   let cur = runStartId();
+  const fires = singleTapeLookup();
   let outStr = '';
   let outNode = OUT_EMPTY;
   let last = outStep({ state: cur, tokens, outNode, outSoFar: outStr, note: `Start: ${getState(cur)?.name}` });
   yield last;
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
-    const t = getSingleTapeDeterministicTransition(cur, sym);
+    const t = fires(cur, sym);
     if (!t) {
       last = outStep({ state: cur, tokens, outNode, outSoFar: outStr, note: `No δ(${getState(cur)?.name},'${sym}') — HALT`, final: 'reject' });
       yield last;
@@ -78,8 +81,8 @@ export function* streamMealy(tokens) {
     const out = t.output ?? '?';
     outStr += out;
     outNode = outPush(outNode, out);
-    cur = t.to;
-    last = outStep({ state: cur, tokens, outNode, outSoFar: outStr, note: `Read '${sym}' → ${getState(cur)?.name} — out: '${out}'`, tid: t.id });
+    const to = cur = t.to;
+    last = outStep({ state: cur, tokens, outNode, outSoFar: outStr, tid: t.id }, () => `Read '${sym}' → ${getState(to)?.name} — out: '${out}'`);
     yield last;
   }
   const showAccepts = App.config.transducerAccepts;
@@ -95,10 +98,12 @@ export function simMealy(tokens) { playEagerly(streamMealy(tokens)); }
 // δ branches and may read ε, so a run is a search rather than a walk and
 // the result is a relation rather than a function. Two branches reaching
 // the same (state, position) with different output are genuinely different
-// configurations, which is why the output joins the visited key.
+// configurations, which is why the output joins the visited key — as the
+// interned node outputKeyAfter reaches, not as the string, which grows with
+// the run and made every configuration cost the whole output.
 
-export function fstConfigKey(state, index, outRaw) {
-  return `${state}|${index}|${outRaw}`;
+export function fstConfigKey(state, index, outKey) {
+  return `${state}|${index}|${outKey.id}`;
 }
 
 export function getMatchingFstTransitions(cfg, tokens) {
@@ -121,6 +126,7 @@ export function applyFstTransition(cfg, transition, branch) {
     depth: cfg.depth + 1,
     branch,
     outRaw: cfg.outRaw + rawOut,
+    outKey: outputKeyAfter(cfg.outKey, rawOut),
     outNode: outPush(cfg.outNode, displayOut),
     parent: cfg,
     via: transition
@@ -168,12 +174,16 @@ export function exploreFST(tokens) {
     depth: 0,
     branch: 1,
     outRaw: '',
+    outKey: stackRoot(),
     outNode: OUT_EMPTY,
     parent: null,
     via: null
   };
   const queue = new Fifo([init]);
-  const visited = new Set([fstConfigKey(init.state, init.index, init.outRaw)]);
+  // fstConfigKey's identity, held as integers — see pdaVisited.
+  const visited = new ConfigSet(), stateNo = makeStateNumbering();
+  const seen = c => visited.add(stateNo(c.state), c.index, c.outKey.id, -1, -1);
+  seen(init);
   const outputs = new Set();
   let acceptedCfg = null;
   let completedCfg = null;
@@ -205,10 +215,7 @@ export function exploreFST(tokens) {
     matching.forEach((transition, idx) => {
       const childBranch = matching.length === 1 || idx === 0 ? cfg.branch : nextBranchId++;
       const nextCfg = applyFstTransition(cfg, transition, childBranch);
-      const key = fstConfigKey(nextCfg.state, nextCfg.index, nextCfg.outRaw);
-      if (visited.has(key)) return;
-      visited.add(key);
-      queue.push(nextCfg);
+      if (seen(nextCfg)) queue.push(nextCfg);
     });
   }
 
@@ -270,9 +277,10 @@ export function testFST(tokens) {
 
 export function getMooreOutput(tokens) {
   let cur = runStartId();
+  const fires = singleTapeLookup();
   const outputs = [getState(cur)?.output ?? ''];
   for (const sym of tokens) {
-    const t = getSingleTapeDeterministicTransition(cur, sym);
+    const t = fires(cur, sym);
     if (!t) break;
     cur = t.to;
     outputs.push(getState(cur)?.output ?? '');
@@ -282,9 +290,10 @@ export function getMooreOutput(tokens) {
 
 export function getMealyOutput(tokens) {
   let cur = runStartId();
+  const fires = singleTapeLookup();
   const outputs = [];
   for (const sym of tokens) {
-    const t = getSingleTapeDeterministicTransition(cur, sym);
+    const t = fires(cur, sym);
     if (!t) break;
     outputs.push(t.output ?? '?');
     cur = t.to;

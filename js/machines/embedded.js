@@ -28,9 +28,10 @@
 
 import { App, getState, runStartId } from '../state.js';
 import { renderSimStep } from './paint.js';
-import { Fifo, accepted, traceSearchPath, transitionsFrom } from './runtime.js';
+import { ConfigSet, Fifo, accepted, makeStateNumbering, traceSearchPath, transitionsFrom } from './runtime.js';
+import { NPDA_LOG_KEEP } from './pushdown.js';
 import { defineMachine } from './registry.js';
-import { wordStep } from './step-log.js';
+import { epdaStep, stackArray, stackPush, stackRoot } from './step-log.js';
 
 /** Stacks within a store, and stacks within a `below`/`above` list. */
 export const STACK_SEP = '|';
@@ -147,13 +148,30 @@ export function storeToString(store) {
     .join(' ' + STACK_SEP + ' ');
 }
 
+// ── the store a search holds ──────────────────────────────────────
+// A search holds the store as a stack node (js/machines/step-log.js) whose
+// symbols are themselves stack nodes: the inner stacks live in one trie and
+// the store in another, both interned, so a move rebuilds only the stacks it
+// touches and a store is named exactly by its node's id. The arrays above are
+// what a step shows and what the tests write by hand; `epdaStoreArrays` is the
+// way from one to the other.
+
+export function epdaStoreArrays(store) {
+  return Array.isArray(store) ? store : stackArray(store).map(stackArray);
+}
+
 export function createInitialEpdaConfig(tokens) {
   const explicit = App.config.pdaParadigm === 'explicit';
+  const inner = stackRoot();
+  const first = explicit ? stackPush(inner, App.config.sym.stackBottom) : inner;
   return {
     state: runStartId(),
     tokens,
     pos: 0,
-    store: [explicit ? [App.config.sym.stackBottom] : []],
+    store: stackPush(stackRoot(), first),
+    // Per search: the inner stacks' trie, and each written stack list and
+    // push parsed once rather than once per configuration.
+    ctx: { inner, lists: new Map(), pushes: new Map() },
     depth: 0,
     branch: 1,
     parent: null,
@@ -162,7 +180,8 @@ export function createInitialEpdaConfig(tokens) {
 }
 
 export function epdaConfigKey(state, pos, store) {
-  return `${state}|${pos}|${store.map(s => s.join('')).join('')}`;
+  const named = Array.isArray(store) ? store.map(s => s.join('\u0001')).join('\u0002') : store.id;
+  return `${state}|${pos}|${named}`;
 }
 
 export function isEpdaAcceptingConfig(cfg) {
@@ -170,7 +189,7 @@ export function isEpdaAcceptingConfig(cfg) {
   if (App.config.pdaParadigm === 'explicit') return App.accepts.has(cfg.state);
   // "Empty store" here means every stack empty, which after normalization is
   // the one surviving stack being empty.
-  return cfg.store.length === 1 && cfg.store[0].length === 0;
+  return cfg.store.length === 1 && cfg.store.sym.length === 0;
 }
 
 function popApplies(top, pop) {
@@ -182,7 +201,7 @@ function popApplies(top, pop) {
 export function getMatchingEpdaTransitions(cfg) {
   const eps = App.config.sym.eps;
   const any = App.config.sym.any;
-  const top = epdaTop(cfg.store);
+  const top = cfg.store.sym.sym;
   return transitionsFrom(cfg.state).filter(t => {
     const readOk = t.symbol === eps
       || (cfg.pos < cfg.tokens.length && (t.symbol === cfg.tokens[cfg.pos] || t.symbol === any));
@@ -201,27 +220,34 @@ export function getMatchingEpdaTransitions(cfg) {
  */
 export function applyEpdaTransition(cfg, t, branch = cfg.branch) {
   const { eps, any } = App.config.sym;
-  const store = cfg.store;
-  const topStack = [...(store[store.length - 1] || [])];
+  const ctx = cfg.ctx;
+  let top = cfg.store.sym;
 
   let popped;
-  if ((t.pop || eps) !== eps) popped = topStack.pop();
+  if ((t.pop || eps) !== eps && top.length) { popped = top.sym; top = top.below; }
   let pushStr = t.push && t.push !== eps ? t.push : '';
   if (pushStr === any) pushStr = popped || '';
-  if (pushStr) epdaSymbols(pushStr).reverse().forEach(s => topStack.push(s));
+  if (pushStr) {
+    const syms = parsedPush(ctx, pushStr);
+    for (let i = syms.length - 1; i >= 0; i--) top = stackPush(top, syms[i]);
+  }
 
-  const next = [
-    ...store.slice(0, -1),
-    ...parseStackList(t.below),
-    topStack,
-    ...parseStackList(t.above)
-  ];
+  // Everything under the top stack is kept as it is; `below`, the rewritten
+  // top and `above` go on in that order.
+  let store = cfg.store.below;
+  for (const st of stackList(ctx, t.below)) store = stackPush(store, st);
+  store = stackPush(store, top);
+  for (const st of stackList(ctx, t.above)) store = stackPush(store, st);
+  // normalizeStore's rule: an emptied stack on top is discarded, and one
+  // stack always survives.
+  while (store.length > 1 && store.sym.length === 0) store = store.below;
 
   return {
     state: t.to,
     tokens: cfg.tokens,
     pos: t.symbol === eps ? cfg.pos : cfg.pos + 1,
-    store: normalizeStore(next),
+    store,
+    ctx,
     depth: cfg.depth + 1,
     branch,
     parent: cfg,
@@ -229,10 +255,27 @@ export function applyEpdaTransition(cfg, t, branch = cfg.branch) {
   };
 }
 
+function parsedPush(ctx, raw) {
+  let syms = ctx.pushes.get(raw);
+  if (!syms) ctx.pushes.set(raw, syms = epdaSymbols(raw));
+  return syms;
+}
+
+// A written `below`/`above` list as inner stack nodes, bottom stack first.
+function stackList(ctx, raw) {
+  const k = raw ?? '';
+  let list = ctx.lists.get(k);
+  if (!list) {
+    list = parseStackList(raw).map(st => st.reduce((n, sym) => stackPush(n, sym), ctx.inner));
+    ctx.lists.set(k, list);
+  }
+  return list;
+}
+
 export function formatEpdaId(cfg) {
   const name = getState(cfg.state)?.name || cfg.state;
   const rest = cfg.pos < cfg.tokens.length ? cfg.tokens.slice(cfg.pos).join('') : App.config.sym.eps;
-  return `(${name}, ${rest}, ${storeToString(cfg.store)})`;
+  return `(${name}, ${rest}, ${storeToString(epdaStoreArrays(cfg.store))})`;
 }
 
 function epdaNote(prev, next) {
@@ -250,15 +293,13 @@ function epdaNote(prev, next) {
 }
 
 export function buildEpdaSteps(path, finalStatus = null, finalNote = '') {
-  const steps = path.map((cfg, i) => wordStep({
+  const steps = path.map((cfg, i) => epdaStep({
     state: cfg.state,
     tokens: cfg.tokens,
     pos: cfg.pos,
-    // The store is rebuilt per configuration and nothing mutates one
-    // afterwards, so it is shared rather than copied — the rule
-    // buildPdaPathSteps already states for a stack.
-    store: cfg.store,
-    stack: cfg.store[cfg.store.length - 1] || [],
+    // The store's node is shared rather than copied — a node never changes
+    // once made — and `step.store` / `step.stack` spell it out when read.
+    storeRef: cfg.store,
     branch: cfg.branch,
     tid: cfg.via?.id,
     note: i === 0 ? 'Start configuration' : epdaNote(path[i - 1], cfg)
@@ -272,12 +313,11 @@ export function buildEpdaSteps(path, finalStatus = null, finalNote = '') {
 }
 
 function appendEpdaSummary(steps, cfg, finalStatus, note) {
-  steps.push(wordStep({
+  steps.push(epdaStep({
     state: cfg.state,
     tokens: cfg.tokens,
     pos: cfg.pos,
-    store: cfg.store,
-    stack: cfg.store[cfg.store.length - 1] || [],
+    storeRef: cfg.store,
     branch: cfg.branch,
     note,
     final: finalStatus
@@ -307,20 +347,26 @@ export function epdaStoreBudget(tokens = []) {
   return { stacks: n + 4, symbols: 16 * (n + 4) };
 }
 
+// A store node's `size` is the symbols in all of its stacks, kept as it is built.
 function withinBudget(store, budget) {
-  if (store.length > budget.stacks) return false;
-  let total = 0;
-  for (const st of store) {
-    total += st.length;
-    if (total > budget.symbols) return false;
-  }
-  return true;
+  return store.length <= budget.stacks && store.size <= budget.symbols;
 }
 
-export function exploreEPDA(tokens) {
+/**
+ * Breadth-first search over the EPDA's configurations. `opts.log` is how many
+ * branches to narrate and `opts.witness` whether to rebuild the path — the
+ * options exploreNPDA takes, for the reason it takes them: the narration is
+ * a whole store spelled out per configuration, and a verdict needs none of it.
+ */
+export function exploreEPDA(tokens, opts = {}) {
+  const logKeep = opts.log ?? NPDA_LOG_KEEP;
+  const wantWitness = opts.witness !== false;
   const init = createInitialEpdaConfig(tokens);
   const queue = new Fifo([init]);
-  const visited = new Set([epdaConfigKey(init.state, init.pos, init.store)]);
+  // epdaConfigKey's identity, held as integers — see pdaVisited.
+  const visited = new ConfigSet(), stateNo = makeStateNumbering();
+  const seen = c => visited.add(stateNo(c.state), c.pos, c.store.id, -1, -1);
+  seen(init);
   const log = [];
   let acceptedCfg = null;
   let branches = 0;
@@ -338,35 +384,35 @@ export function exploreEPDA(tokens) {
     maxDepth = Math.max(maxDepth, cfg.depth);
     maxStacks = Math.max(maxStacks, cfg.store.length);
 
+    const narrate = log.length < logKeep;
     if (isEpdaAcceptingConfig(cfg)) {
       acceptedCfg = cfg;
-      log.push(`<span class="step-acc">Branch ${cfg.branch}: ACCEPT ✓</span><span class="step-sub">Accepted at depth ${cfg.depth}.<br>ID: ${formatEpdaId(cfg)}</span>`);
+      if (narrate) log.push(`<span class="step-acc">Branch ${cfg.branch}: ACCEPT ✓</span><span class="step-sub">Accepted at depth ${cfg.depth}.<br>ID: ${formatEpdaId(cfg)}</span>`);
       break;
     }
 
     const matching = getMatchingEpdaTransitions(cfg);
     if (!matching.length) {
-      log.push(`Branch ${cfg.branch}: <span class="step-dead">stuck</span><span class="step-sub">No transition matches ${formatEpdaId(cfg)}.<br>Depth ${cfg.depth}</span>`);
+      if (narrate) log.push(`Branch ${cfg.branch}: <span class="step-dead">stuck</span><span class="step-sub">No transition matches ${formatEpdaId(cfg)}.<br>Depth ${cfg.depth}</span>`);
       continue;
     }
 
-    const name = getState(cfg.state)?.name || cfg.state;
-    const subs = [
-      `State "${name}" with next input '${cfg.tokens[cfg.pos] || App.config.sym.eps}'`,
-      `Depth ${cfg.depth} · ${cfg.store.length} stack${cfg.store.length === 1 ? '' : 's'} · top ${epdaTop(cfg.store) || App.config.sym.eps}`,
-      `ID: ${formatEpdaId(cfg)}`
-    ];
-    if (matching.length > 1) subs.push(`Nondeterministic choice: ${matching.length} matching transitions.`);
-    log.push(`Branch ${cfg.branch}: exploring <em>${name}</em><span class="step-sub">${subs.join('<br>')}</span>`);
+    if (narrate) {
+      const name = getState(cfg.state)?.name || cfg.state;
+      const subs = [
+        `State "${name}" with next input '${cfg.tokens[cfg.pos] || App.config.sym.eps}'`,
+        `Depth ${cfg.depth} · ${cfg.store.length} stack${cfg.store.length === 1 ? '' : 's'} · top ${cfg.store.sym.sym || App.config.sym.eps}`,
+        `ID: ${formatEpdaId(cfg)}`
+      ];
+      if (matching.length > 1) subs.push(`Nondeterministic choice: ${matching.length} matching transitions.`);
+      log.push(`Branch ${cfg.branch}: exploring <em>${name}</em><span class="step-sub">${subs.join('<br>')}</span>`);
+    }
 
     matching.forEach((t, i) => {
       const childBranch = matching.length === 1 || i === 0 ? cfg.branch : nextBranch++;
       const nextCfg = applyEpdaTransition(cfg, t, childBranch);
       if (!withinBudget(nextCfg.store, budget)) { capped = true; return; }
-      const key = epdaConfigKey(nextCfg.state, nextCfg.pos, nextCfg.store);
-      if (visited.has(key)) return;
-      visited.add(key);
-      queue.push(nextCfg);
+      if (seen(nextCfg)) queue.push(nextCfg);
     });
   }
 
@@ -377,7 +423,7 @@ export function exploreEPDA(tokens) {
     maxStacks,
     log,
     capped,
-    witnessPath: traceSearchPath(acceptedCfg || last),
+    witnessPath: wantWitness ? traceSearchPath(acceptedCfg || last) : null,
     finalCfg: acceptedCfg || last,
     unresolved: !acceptedCfg && (queue.length > 0 || capped)
   };
@@ -408,13 +454,13 @@ export function simEPDA(tokens) {
  * rejection there would be the machine claiming a result it has not got.
  */
 export function decideEPDA(tokens) {
-  const res = exploreEPDA(tokens);
+  const res = exploreEPDA(tokens, { log: 0, witness: false });
   if (res.accepted) return { verdict: 'acc', output: null };
   return { verdict: res.capped ? 'unk' : 'rej', output: null };
 }
 
 export function testEPDA(tokens) {
-  return exploreEPDA(tokens).accepted;
+  return exploreEPDA(tokens, { log: 0, witness: false }).accepted;
 }
 
 // ══════════════════════════════════════════════════════════════════

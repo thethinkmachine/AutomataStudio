@@ -10,24 +10,26 @@
 import {
   App, getState, runStartId
 } from '../state.js';
-import { accepted, epsClosure, firstIdenticalTransition, getSingleTapeDeterministicTransition, nameOfState, playEagerly, stateNames, transitionsFrom } from './runtime.js';
+import { accepted, firstIdenticalTransition, nameOfState, playEagerly, singleTapeLookup, stateNames, transitionsFrom } from './runtime.js';
 import { defineFamily } from './registry.js';
 import { wordStep } from './step-log.js';
 
 export function* streamDFA(tokens) {
   let cur = runStartId();
+  const fires = singleTapeLookup();
   let last = wordStep({ state: cur, tokens, pos: 0, note: `Start: ${getState(cur)?.name || '?'}` });
   yield last;
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
-    const t = getSingleTapeDeterministicTransition(cur, sym);
+    const t = fires(cur, sym);
     if (!t) {
       last = wordStep({ state: cur, tokens, pos: i, note: `No δ(${getState(cur)?.name},'${sym}') — Implicit REJECT`, final: 'reject' });
       yield last;
       return;
     }
-    cur = t.to;
-    last = wordStep({ state: cur, tokens, pos: i + 1, note: `Read '${sym}' → ${getState(cur)?.name}`, tid: t.id });
+    const to = cur = t.to;
+    // Formatted only if read — see lazyNoteProto.
+    last = wordStep({ state: cur, tokens, pos: i + 1, tid: t.id }, () => `Read '${sym}' → ${getState(to)?.name}`);
     yield last;
   }
   // The word ran out rather than the machine stopping, so the verdict belongs
@@ -37,21 +39,124 @@ export function* streamDFA(tokens) {
 
 export function simDFA(tokens) { playEagerly(streamDFA(tokens)); }
 
+// ── the set of states an NFA is in ────────────────────────────────
+// A step used to build a Set of state ids from the current Set, then a third
+// for its ε-closure: three hashed allocations per step, and every out-edge of
+// every current state scanned for the symbol. Here a state is a small integer
+// numbered on first sight, the set is a list plus a stamp array (a state is
+// in the set when its mark equals the step's stamp, so clearing is one
+// increment), and what a state reads on a symbol and where its ε-edges go
+// are worked out once per run rather than once per step.
+//
+// **The set comes out in exactly the order the Set version built it** —
+// direct targets in δ's order over the current states, then the ε-closure
+// depth first off the end, as epsClosure walks it — because the trace prints
+// it: `{q1,q3}` must not become `{q3,q1}`.
+class NfaSets {
+  constructor() {
+    const { eps, any } = App.config.sym;
+    this.eps = eps; this.any = any;
+    this.num = new Map(); this.ids = [];
+    this.direct = []; this.epsOut = [];
+    this.mark = new Int32Array(64); this.stamp = 0;
+    this.cur = []; this.stack = [];
+  }
+
+  no(id) {
+    let n = this.num.get(id);
+    if (n === undefined) {
+      n = this.ids.length;
+      this.num.set(id, n);
+      this.ids.push(id);
+      this.direct.push(null);
+      this.epsOut.push(null);
+      if (n >= this.mark.length) {
+        const grown = new Int32Array(this.mark.length * 2);
+        grown.set(this.mark);
+        this.mark = grown;
+      }
+    }
+    return n;
+  }
+
+  // Where state n goes on `sym` (or on the Σ wildcard), in δ's order.
+  targets(n, sym) {
+    let bySym = this.direct[n];
+    if (bySym === null) bySym = this.direct[n] = new Map();
+    let list = bySym.get(sym);
+    if (list === undefined) {
+      list = [];
+      for (const t of transitionsFrom(this.ids[n])) if (t.symbol === sym || t.symbol === this.any) list.push(this.no(t.to));
+      bySym.set(sym, list);
+    }
+    return list;
+  }
+
+  epsTargets(n) {
+    let list = this.epsOut[n];
+    if (list === null) {
+      list = [];
+      for (const t of transitionsFrom(this.ids[n])) if (t.symbol === this.eps) list.push(this.no(t.to));
+      this.epsOut[n] = list;
+    }
+    return list;
+  }
+
+  // Close `next` (already stamped) under ε, appending in epsClosure's order.
+  close(next) {
+    const stack = this.stack;
+    let sp = 0;
+    for (let k = 0; k < next.length; k++) stack[sp++] = next[k];
+    while (sp > 0) {
+      const s = stack[--sp];
+      for (const j of this.epsTargets(s)) {
+        if (this.mark[j] !== this.stamp) { this.mark[j] = this.stamp; next.push(j); stack[sp++] = j; }
+      }
+    }
+    this.cur = next;
+  }
+
+  start(id) {
+    this.stamp++;
+    const n = this.no(id);
+    this.mark[n] = this.stamp;
+    this.close([n]);
+  }
+
+  step(sym) {
+    const cur = this.cur, next = [];
+    const stamp = ++this.stamp;
+    for (let k = 0; k < cur.length; k++) {
+      for (const j of this.targets(cur[k], sym)) {
+        if (this.mark[j] !== stamp) { this.mark[j] = stamp; next.push(j); }
+      }
+    }
+    this.close(next);
+  }
+
+  stateIds() { return this.cur.map(n => this.ids[n]); }
+
+  accepts() {
+    const accepts = App.accepts;
+    return this.cur.some(n => accepts.has(this.ids[n]));
+  }
+}
+
 export function* streamNFA(tokens) {
-  let cur = epsClosure(new Set([runStartId()]));
-  let last = wordStep({ states: [...cur], tokens, pos: 0, note: `Start ε-closure: {${stateNames(cur)}}` });
+  const sets = new NfaSets();
+  sets.start(runStartId());
+  let cur = sets.stateIds();
+  let last = wordStep({ states: cur, tokens, pos: 0, note: `Start ε-closure: {${stateNames(cur)}}` });
   yield last;
   for (let i = 0; i < tokens.length; i++) {
-    const sym = tokens[i]; let nx = new Set();
-    const any = App.config.sym.any;
-    cur.forEach(sid => { for (const t of transitionsFrom(sid)) if (t.symbol === sym || t.symbol === any) nx.add(t.to); });
-    nx = epsClosure(nx);
-    cur = nx;
-    last = wordStep({ states: [...cur], tokens, pos: i + 1, note: `Read '${sym}' → {${stateNames(cur) || '∅'}}` });
+    const sym = tokens[i];
+    sets.step(sym);
+    const now = cur = sets.stateIds();
+    last = wordStep({ states: cur, tokens, pos: i + 1 }, () => `Read '${sym}' → {${stateNames(now) || '∅'}}`);
     yield last;
-    if (!cur.size) break;
+    if (!cur.length) break;
   }
-  const acc = [...cur].some(id => App.accepts.has(id));
+  const acc = sets.accepts();
   if (!last.final) { last.final = acc ? 'accept' : 'reject'; last.note += ` — ${last.final.toUpperCase()}`; }
 }
 
@@ -61,8 +166,9 @@ export function simNFA(tokens) { playEagerly(streamNFA(tokens)); }
 
 export function testDFA(tokens) {
   let cur = runStartId();
+  const fires = singleTapeLookup();
   for (const sym of tokens) {
-    const t = getSingleTapeDeterministicTransition(cur, sym);
+    const t = fires(cur, sym);
     if (!t) return false;
     cur = t.to;
   }
@@ -70,14 +176,10 @@ export function testDFA(tokens) {
 }
 
 export function testNFA(tokens) {
-  let cur = epsClosure(new Set([runStartId()]));
-  const any = App.config.sym.any;
-  for (const sym of tokens) {
-    let nx = new Set();
-    cur.forEach(s => { for (const t of transitionsFrom(s)) if (t.symbol === sym || t.symbol === any) nx.add(t.to); });
-    cur = epsClosure(nx);
-  }
-  return [...cur].some(id => App.accepts.has(id));
+  const sets = new NfaSets();
+  sets.start(runStartId());
+  for (let i = 0; i < tokens.length && sets.cur.length; i++) sets.step(tokens[i]);
+  return sets.accepts();
 }
 
 // ── the definitions ───────────────────────────────────────────────
