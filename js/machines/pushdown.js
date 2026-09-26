@@ -17,6 +17,7 @@ import {
 import { renderSimStep } from './paint.js';
 import { getPdaDeterminismConflict, isQueueAutomaton, isTwoStackPDA } from './predicates.js';
 import { ConfigSet, Fifo, accepted, makeStateNumbering, nameOfState, traceSearchPath, transduced, transducerRunContributes, transitionsFrom } from './runtime.js';
+import { attachBranchTree, newBranchTree } from './branch-tree.js';
 import { defineFamily } from './registry.js';
 import { OUT_EMPTY, outPush, outputKeyAfter, pdaStep, stackPush, stackRoot, storeArray } from './step-log.js';
 
@@ -377,15 +378,19 @@ export const NPDA_LOG_KEEP = 10;
  * `opts.witness` whether to rebuild the path to the deciding configuration.
  * A decider wants neither — see testNPDA — and a search that skips them
  * visits exactly the same configurations in exactly the same order.
+ * `opts.tree` is a BranchTree to record the search into; only the player
+ * passes one.
  */
 export function exploreNPDA(tokens, opts = {}) {
   const logKeep = opts.log ?? NPDA_LOG_KEEP;
   const wantWitness = opts.witness !== false;
+  const tree = opts.tree || null;
   const init = createInitialPdaConfig(tokens);
   const queue = new Fifo([init]);
   const seen = pdaVisited();
   const isAccepting = pdaAcceptTest(), matchesOf = pdaMatcher();
   seen(init);
+  if (tree) tree.root(init.state, init);
   const log = [];
   let acceptedCfg = null;
   let branches = 0;
@@ -404,25 +409,32 @@ export function exploreNPDA(tokens, opts = {}) {
 
     if (isAccepting(cfg)) {
       acceptedCfg = cfg;
+      if (tree) tree.accept(cfg.tn);
       if (narrate) log.push(`<span class="step-acc">Branch ${cfg.branch}: ACCEPT ✓</span><span class="step-sub">Accepted at depth ${cfg.depth}.<br>ID: ${idStr}</span>`);
       break;
     }
 
     const matching = matchesOf(cfg);
     if (!matching.length) {
+      if (tree) tree.expandCfgs(cfg, []);
       if (narrate) log.push(`Branch ${cfg.branch}: <span class="step-dead">stuck</span><span class="step-sub">No transition matches ${idStr}.<br>Depth ${cfg.depth}</span>`);
       continue;
     }
 
     if (narrate) narrateBranch(log, cfg, stateName, idStr, matching);
 
+    const kids = tree && !tree.full ? [] : null;
     matching.forEach((transition, idx) => {
       const childBranch = matching.length === 1 || idx === 0 ? cfg.branch : nextBranchId++;
       const nextCfg = applyPdaTransitionConfig(cfg, transition, childBranch);
-      if (seen(nextCfg)) queue.push(nextCfg);
+      const fresh = seen(nextCfg);
+      if (fresh) queue.push(nextCfg);
+      if (kids) kids.push({ cfg: nextCfg, fresh });
     });
+    if (kids) tree.expandCfgs(cfg, kids);
   }
 
+  if (tree) tree.finish((acceptedCfg || lastExplored).tn ?? -1);
   return {
     accepted: !!acceptedCfg,
     branches,
@@ -453,7 +465,8 @@ function narrateBranch(log, cfg, stateName, idStr, matching) {
 }
 
 export function simNPDA(tokens) {
-  const result = exploreNPDA(tokens);
+  const tree = newBranchTree('path');
+  const result = exploreNPDA(tokens, { tree });
   if (result.accepted) {
     App.simSteps = buildPdaPathSteps(result.witnessPath, 'accept');
   } else {
@@ -467,6 +480,7 @@ export function simNPDA(tokens) {
         : 'All branches halted without acceptance — REJECT'
     );
   }
+  attachBranchTree(App.simSteps, tree);
   App.simIdx = 0;
   renderSimStep();
   return {
@@ -528,7 +542,7 @@ export function applyPdtTransitionConfig(cfg, transition, branch) {
   return next;
 }
 
-export function explorePDT(tokens) {
+export function explorePDT(tokens, tree = null) {
   const init = createInitialPdaConfig(tokens);
   init.outRaw = '';
   init.outKey = stackRoot();
@@ -537,6 +551,7 @@ export function explorePDT(tokens) {
   const seen = pdaVisited();
   const isAccepting = pdaAcceptTest(), matchesOf = pdaMatcher();
   seen(init);
+  if (tree) tree.root(init.state, init);
   const outputs = new Set();
   let acceptedCfg = null;
   let completedCfg = null;
@@ -559,17 +574,22 @@ export function explorePDT(tokens) {
     // No early break, for the same reason as exploreFST: the relation is the
     // set of outputs over accepting runs, not just the first one found.
     if (accepting && !acceptedCfg) acceptedCfg = cfg;
+    if (accepting && tree) tree.accept(cfg.tn);
 
     const matching = matchesOf(cfg);
-    if (!matching.length) continue;
+    const kids = tree && !tree.full ? [] : null;
     matching.forEach((transition, idx) => {
       const childBranch = matching.length === 1 || idx === 0 ? cfg.branch : nextBranchId++;
       const nextCfg = applyPdtTransitionConfig(cfg, transition, childBranch);
-      if (seen(nextCfg)) queue.push(nextCfg);
+      const fresh = seen(nextCfg);
+      if (fresh) queue.push(nextCfg);
+      if (kids) kids.push({ cfg: nextCfg, fresh });
     });
+    if (kids) tree.expandCfgs(cfg, kids);
   }
 
   const witnessCfg = acceptedCfg || completedCfg || lastCfg;
+  if (tree) tree.finish(witnessCfg.tn ?? -1);
   return {
     accepted: !!acceptedCfg,
     outputs,
@@ -588,7 +608,8 @@ export function testPDT(tokens) {
 }
 
 export function simPDT(tokens) {
-  const result = explorePDT(tokens);
+  const tree = newBranchTree('path');
+  const result = explorePDT(tokens, tree);
   const usesAcceptance = App.config.transducerAccepts;
   const finalStatus = usesAcceptance ? (result.accepted ? 'accept' : 'reject') : null;
   const finalNote = usesAcceptance
@@ -607,6 +628,7 @@ export function simPDT(tokens) {
     else if (outs.length === 1) last.note += ` | Output: "${outs[0]}"`;
     else last.note += ` | Outputs: {${outs.map(o => `"${o}"`).join(', ')}}`;
   }
+  attachBranchTree(App.simSteps, tree);
   App.simIdx = 0;
   renderSimStep();
   return result;
@@ -657,6 +679,7 @@ const deterministic = {
 const branching = {
   ...pushdown,
   simulate: simNPDA,
+  branches: true,
   decide: tokens => accepted(testNPDA(tokens))
 };
 
@@ -693,6 +716,7 @@ defineFamily(pushdown, {
   'PDT': {
     ...pushdown,
     simulate: simPDT,
+    branches: true,
     decide: tokens => { const r = testPDT(tokens); return transduced(r.accepted, r.output); },
     schema: { ...pushdown.schema, transitionFields: ['from', 'to', 'on', 'pop', 'push', 'out'], alphabetFields: ['sigma', 'stackAlpha', 'outputAlpha'] },
     formal: {

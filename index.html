@@ -1000,6 +1000,18 @@
                     Σ*…</span></div>
               </div>
             </div>
+            <!-- Computation tree section. Every branch a nondeterministic run
+                 took, not only the one the trace follows, coloured the way the
+                 canvas colours its tokens. Hidden on machines that do not
+                 branch; built by js/branch-tree-ui.js. -->
+            <div class="rp-collapsible" id="rp-branches" style="display:none">
+              <div class="rp-section-header" onclick="toggleRPSection('rp-branches')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-branches')}">
+                <span class="rp-section-title">Computation Tree</span>
+                <span class="rp-section-count" id="rp-count-branches" data-empty="1">0</span>
+                <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+              </div>
+              <div class="rp-section-body bt-body" id="bt-body"></div>
+            </div>
             <!-- Space-time section. The whole run of a tape machine, one row per
                  step. Hidden on machines without a tape and collapsed by default:
                  the tracker's header opens it straight into a window, which is

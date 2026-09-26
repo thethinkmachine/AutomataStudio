@@ -87,6 +87,8 @@ import * as tapeLog from '../js/tape-log.js';
 import * as tapeView from '../js/tape-view.js';
 import * as spacetime from '../js/spacetime.js';
 import * as spacetimeUi from '../js/spacetime-ui.js';
+import * as branchTreeUi from '../js/branch-tree-ui.js';
+import * as branchTokens from '../js/branch-tokens.js';
 import * as complexity from '../js/complexity.js';
 import * as complexityUi from '../js/complexity-ui.js';
 // The machine layer: the registry, the shared runtime, and one module per
@@ -109,6 +111,7 @@ import * as machinePredicates from '../js/machines/predicates.js';
 import * as machineBatch from '../js/machines/batch.js';
 import * as machinePaint from '../js/machines/paint.js';
 import * as machineRun from '../js/machines/run.js';
+import * as machineBranchTree from '../js/machines/branch-tree.js';
 import * as parallelPool from '../js/parallel/pool.js';
 import * as parallelSnapshot from '../js/parallel/snapshot.js';
 import * as parallelCore from '../js/parallel/decide-core.js';
@@ -141,10 +144,10 @@ import * as wizardUi from '../js/wizard-ui.js';
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, viewport, geometry, statesTransitions,
   blocks, blocksUi, viewGraph, graphThumb, scope, runScope, canvas, render, panelState, panelSections, panelSectionsUi, panelFloat, sectionStatus, machineOptionsUi, deltaTable, panelShake, panelList, mobile, notes, dividers,
-  machineRegistry, machineRuntime, machineFinite, machineWeighted, machineOmega,
+  machineRegistry, machineRuntime, machineBranchTree, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineEmbedded, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,
-  simulation, speedControl, tape, tapeLog, tapeView, spacetime, spacetimeUi, complexity, complexityUi, suggest, language, alphabet, markdown,
+  simulation, speedControl, tape, tapeLog, tapeView, spacetime, spacetimeUi, branchTreeUi, branchTokens, complexity, complexityUi, suggest, language, alphabet, markdown,
   view, history, fileHost, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, importStatechart, interopStatechart, interopObjlit, interopXml, interopStandardTM,
   exerciseModel, exerciseGrade, exerciseUi, lexerRegex, lexerBuild, lexerEmit, lexerUi, algorithmsFa, grammarUi, grammarModel, grammarParse, grammarAnalysis, grammarTransform,
@@ -232,6 +235,9 @@ function resetModuleState() {
   // The space-time section holds its model, its layout and the elements it
   // built — and clearElements() has just replaced every element it built into.
   spacetimeUi.resetSpaceTime();
+  // The same for the Computation Tree card, and the canvas tokens it matches.
+  branchTreeUi.resetBranchTree();
+  branchTokens.clearBranchTokens();
   complexityUi.resetComplexity();
   state.setWorkspaces([]);
   state.setActiveWorkspaceId(null);

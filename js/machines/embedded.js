@@ -29,6 +29,7 @@
 import { App, getState, runStartId } from '../state.js';
 import { renderSimStep } from './paint.js';
 import { ConfigSet, Fifo, accepted, makeStateNumbering, traceSearchPath, transitionsFrom } from './runtime.js';
+import { attachBranchTree, newBranchTree } from './branch-tree.js';
 import { NPDA_LOG_KEEP } from './pushdown.js';
 import { defineMachine } from './registry.js';
 import { epdaStep, stackArray, stackPush, stackRoot } from './step-log.js';
@@ -361,12 +362,14 @@ function withinBudget(store, budget) {
 export function exploreEPDA(tokens, opts = {}) {
   const logKeep = opts.log ?? NPDA_LOG_KEEP;
   const wantWitness = opts.witness !== false;
+  const tree = opts.tree || null;
   const init = createInitialEpdaConfig(tokens);
   const queue = new Fifo([init]);
   // epdaConfigKey's identity, held as integers — see pdaVisited.
   const visited = new ConfigSet(), stateNo = makeStateNumbering();
   const seen = c => visited.add(stateNo(c.state), c.pos, c.store.id, -1, -1);
   seen(init);
+  if (tree) tree.root(init.state, init);
   const log = [];
   let acceptedCfg = null;
   let branches = 0;
@@ -387,12 +390,14 @@ export function exploreEPDA(tokens, opts = {}) {
     const narrate = log.length < logKeep;
     if (isEpdaAcceptingConfig(cfg)) {
       acceptedCfg = cfg;
+      if (tree) tree.accept(cfg.tn);
       if (narrate) log.push(`<span class="step-acc">Branch ${cfg.branch}: ACCEPT ✓</span><span class="step-sub">Accepted at depth ${cfg.depth}.<br>ID: ${formatEpdaId(cfg)}</span>`);
       break;
     }
 
     const matching = getMatchingEpdaTransitions(cfg);
     if (!matching.length) {
+      if (tree) tree.expandCfgs(cfg, []);
       if (narrate) log.push(`Branch ${cfg.branch}: <span class="step-dead">stuck</span><span class="step-sub">No transition matches ${formatEpdaId(cfg)}.<br>Depth ${cfg.depth}</span>`);
       continue;
     }
@@ -408,13 +413,19 @@ export function exploreEPDA(tokens, opts = {}) {
       log.push(`Branch ${cfg.branch}: exploring <em>${name}</em><span class="step-sub">${subs.join('<br>')}</span>`);
     }
 
+    const kids = tree && !tree.full ? [] : null;
     matching.forEach((t, i) => {
       const childBranch = matching.length === 1 || i === 0 ? cfg.branch : nextBranch++;
       const nextCfg = applyEpdaTransition(cfg, t, childBranch);
       if (!withinBudget(nextCfg.store, budget)) { capped = true; return; }
-      if (seen(nextCfg)) queue.push(nextCfg);
+      const fresh = seen(nextCfg);
+      if (fresh) queue.push(nextCfg);
+      if (kids) kids.push({ cfg: nextCfg, fresh });
     });
+    if (kids) tree.expandCfgs(cfg, kids);
   }
+
+  if (tree) tree.finish((acceptedCfg || last).tn ?? -1);
 
   return {
     accepted: !!acceptedCfg,
@@ -430,7 +441,8 @@ export function exploreEPDA(tokens, opts = {}) {
 }
 
 export function simEPDA(tokens) {
-  const res = exploreEPDA(tokens);
+  const tree = newBranchTree('path');
+  const res = exploreEPDA(tokens, { tree });
   if (res.accepted) {
     App.simSteps = buildEpdaSteps(res.witnessPath, 'accept');
   } else {
@@ -440,6 +452,7 @@ export function simEPDA(tokens) {
         ? `Exploration limit ${App.config.maxPdaSteps} reached — unresolved branches remain`
         : 'All branches halted without acceptance — REJECT');
   }
+  attachBranchTree(App.simSteps, tree);
   App.simIdx = 0;
   renderSimStep();
   return res;
@@ -476,6 +489,7 @@ const embedded = {
 };
 
 defineMachine('EPDA', {
+  branches: true,
   ...embedded,
   storeLabels: ['Stack of stacks', 'Pop', 'Push'],
   schema: {

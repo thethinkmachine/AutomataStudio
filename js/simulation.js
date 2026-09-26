@@ -28,6 +28,9 @@ import { makeRun } from './machines/run.js';
 import { nodeIdAtScope, viewGraph, visibleNodeIdFor } from './view-graph.js';
 import { boundaryAt, breakScope, resetRunBounds, runSubject } from './run-scope.js';
 import { getBlock } from './blocks.js';
+import { clearBranchTokens, paintBranchTokens } from './branch-tokens.js';
+import { withBranchTrees } from './machines/branch-tree.js';
+import { refreshBranchTree } from './branch-tree-ui.js';
 import { SPACETIME_ICON, openSpaceTime, refreshSpaceTime, spaceTimeKind } from './spacetime-ui.js';
 import { setSectionStatus } from './section-status.js';
 import { isSyncRAF } from './anim.js';
@@ -77,7 +80,11 @@ export function runSim() {
   // refused run has no steps to resume.
   App.simInput = raw;
 
-  beginRun(streamMachine(m, parsed.input), wordLen, m);
+  // The player's run is the one run that records its branches: the card and the
+  // canvas's tokens read the tree, and nothing that runs a machine quietly does.
+  // Around beginRun rather than streamMachine, because a streaming search (the
+  // NDTM's) only starts, and decides whether to record, on its first pull.
+  withBranchTrees(() => beginRun(streamMachine(m, parsed.input), wordLen, m));
 
   // Unified playback: automatically start the animation if it loaded correctly
   if (App.simSteps && App.simSteps.length > 0) {
@@ -497,6 +504,7 @@ export function renderSimStep() {
     updateSimScrubber();
     updateSimVerdict(step, isLast);
     refreshSpaceTime();
+    refreshBranchTree();
   } finally {
     if (outer) {
       const reads = pendingReads;
@@ -959,6 +967,7 @@ export function clearSimCanvasHighlights() {
   simLit = new Map();
   litNext = null;
   clearTransientMarks();
+  clearBranchTokens();
 }
 
 // `keepPulses` is for a single forward step: the rings already on screen are
@@ -1018,14 +1027,24 @@ export function updateSimCanvasHighlights(step) {
     commitLit();
   }
 
+  // A nondeterministic run puts a token on every live branch instead of one on
+  // the edge just taken (js/branch-tokens.js). The tokens are marks as well as
+  // motion, so they are drawn at every speed; only their flights are subject
+  // to the rules below.
+  const motion = simMotionOk() && !tooFastForMotion();
+  const branched = paintBranchTokens(App.simSteps, App.simIdx, {
+    advancedOne,
+    flightMs: motion ? tokenFlightMs(App.autoTimer ? playbackIntervalMs() : null) : 0,
+    defer: afterWrites
+  });
+
   // Motion: a token slides along each newly-taken edge, then the arrival
   // state pulses (verdict-colored on the final step). Only on a single
   // forward step — scrubbing and jumps update instantly — and not past 10×,
   // where a flight that fits inside a step is too short to be seen moving (see
   // tokenFlightMs), and each one starts by measuring its path, which flushes
   // style.
-  if (!simMotionOk()) return;
-  if (tooFastForMotion()) return;
+  if (!motion) return;
   const hlNodes = drawnHighlightNodes(step);
   const activeKeys = getSimStepEdgeKeys(App.simIdx);
   const tone = step.final === 'reject' ? 'rej' : step.final === 'accept' ? 'acc' : '';
@@ -1033,7 +1052,7 @@ export function updateSimCanvasHighlights(step) {
   // box once rather than pulsing nothing four times.
   const ring = pulseMs(App.autoTimer ? playbackIntervalMs() : null);
   const pulseAll = () => hlNodes.forEach(id => pulseSimNode(id, tone, ring));
-  if (advancedOne && activeKeys.length) {
+  if (advancedOne && activeKeys.length && !branched) {
     const dur = tokenFlightMs(App.autoTimer ? playbackIntervalMs() : null);
     afterWrites(() => activeKeys.slice(0, 8).forEach((k, i) => {
       animateSimToken(k, dur, i === 0 ? pulseAll : null);
@@ -1827,6 +1846,7 @@ export function computeRestOfRun() {
     maxReachable();   // scans the slice for a block boundary
     updateSimScrubber();
     refreshSpaceTime();
+    refreshBranchTree();
     if (!run.done && App.simStopAt == null) App.simDrainTimer = setTimeout(tick, 0);
     else {
       App.simDrainTimer = null;
@@ -1884,6 +1904,7 @@ export function resetSim() {
   log(`<span style="color:var(--text3);font-style:italic">Input a sequence in ${isOmegaAutomaton(App.machine) ? 'Σ<sup>ω</sup>' : 'Σ*'}…</span>`);
   resetTracker($('sim-tracker')); $('sim-tracker').style.display = 'none';
   refreshSpaceTime();
+  refreshBranchTree();
   const verdict = $('sim-verdict'); if (verdict) verdict.style.display = 'none';
   const scrubRow = $('sim-scrubber-row'); if (scrubRow) scrubRow.style.display = 'none';
   const counter = $('sim-step-counter');

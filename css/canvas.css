@@ -2013,3 +2013,72 @@
   stroke-width: 2;
   marker-end: none;
 }
+
+/* ── Branch tokens ─────────────────────────────────────────────────
+   A nondeterministic run puts a token on every live branch —
+   js/branch-tokens.js. The hue is the branch's place in the computation tree,
+   set per token as --h; the colour is mixed toward the theme's text so it
+   reads on every ground (see .bt-node in panels.css, which it matches). */
+.br-tok {
+  fill: color-mix(in oklch, oklch(.7 .17 var(--h, 222)) 82%, var(--text));
+  stroke: var(--bg);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.br-tok.is-focus {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.br-tok.is-acc {
+  stroke: var(--gold);
+  stroke-width: 2.5;
+}
+
+/* A group or dot the run drew once and is not using this step. Hidden rather
+   than removed: taking a node out of the canvas SVG costs a layout pass, and
+   hiding it costs nothing (js/branch-tokens.js). */
+.br-toks.is-spare,
+.br-tok.is-spare,
+.br-more.is-spare {
+  visibility: hidden;
+}
+
+/* Hidden until its flight lands, so a branch is never in two places. */
+.br-tok.is-arriving {
+  opacity: 0;
+}
+
+.br-tok.is-merging {
+  opacity: .6;
+}
+
+.br-tok.is-dying {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: br-die .45s ease-in forwards;
+}
+
+@keyframes br-die {
+  to {
+    opacity: 0;
+    transform: scale(.3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .br-tok.is-dying {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* The count of tokens past the ones a state has room to draw. */
+.br-more {
+  font: 600 10px var(--mono);
+  fill: var(--text2);
+  text-anchor: middle;
+  pointer-events: none;
+}

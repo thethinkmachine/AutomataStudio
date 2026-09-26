@@ -805,6 +805,9 @@ export function updateFastDOM({ statesMoved = true } = {}) {
       setGeoAttr(p.sub, 'x', s.x);
       setGeoAttr(p.sub, 'y', s.y + App.config.render.mooreTextMargin);
     }
+    // A paused nondeterministic run's tokens (js/branch-tokens.js), drawn
+    // relative to the state's centre so they come with it.
+    if (grp.__brToks) grp.__brToks.setAttribute('transform', `translate(${s.x},${s.y})`);
     if (p.priority) {
       const bx = s.x + R * 0.88, by = s.y + R * 0.62;
       setGeoAttr(p.priority.bg, 'x', bx - 10);

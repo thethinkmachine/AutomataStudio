@@ -36,6 +36,7 @@ import { buildMarkedInputTape, tapeTuplesOverlap } from './predicates.js';
 import { ConfigSet, Fifo, firstOverlappingTransition, makeRepeatDetector, makeStateNumbering, formatTapeInstantaneousDescription, langStepBudget, makeLoopTracker, markLoopStep, markTimeoutStep, multiTapeLookup, nameOfState, parseWordInput, playEagerly, singleTapeLookup, tokenize, transitionsFrom } from './runtime.js';
 import { defineFamily, machineDef } from './registry.js';
 import { NPDA_LOG_KEEP } from './pushdown.js';
+import { attachBranchTree, newBranchTree } from './branch-tree.js';
 import { ZipperTape } from './zipper-tape.js';
 
 // A step is built, decided and only then yielded, because whether it is the
@@ -145,8 +146,16 @@ export function* streamNDTM(tokens) {
   // configuration names the one it was expanded from and the transition that
   // did it, so walking parents back from an accept is the computation that
   // accepted — without keeping anything the search did not already hold.
-  const queue = new Fifo([{ state: runStartId(), tape: startTape, depth: 0, branch: 1, parent: null, via: null }]);
+  const init = { state: runStartId(), tape: startTape, depth: 0, branch: 1, parent: null, via: null };
+  const queue = new Fifo([init]);
   seen(runStartId(), startTape);
+  // The tree grows as the search is pulled, and says so until it is done: a
+  // branch not reached yet is not one that was never taken. Null unless the
+  // player asked for it — see withBranchTrees.
+  const tree = newBranchTree('search');
+  if (tree) tree.root(runStartId(), init);
+  let yielded = 0;
+  let acceptedTn = -1;
   let accepted = false;
   let branches = 0;
   let maxDepth = 0;
@@ -181,10 +190,17 @@ export function* streamNDTM(tokens) {
       parent: cfg.parent,
       via: cfg.via,
       depth,
+      tn: cfg.tn ?? -1,
       note: `Branch ${branch} depth ${depth}: ${stateName} reads '${sym}'`
     });
+    if (tree) {
+      if (yielded++ === 0) attachBranchTree([step], tree);
+      if (cfg.tn >= 0) tree.node(cfg.tn).step = yielded - 1;
+    }
 
     if (App.accepts.has(state)) {
+      if (tree) tree.accept(cfg.tn);
+      acceptedTn = cfg.tn ?? -1;
       step.final = 'accept';
       step.note += ' — ACCEPT';
       last = step;
@@ -196,6 +212,7 @@ export function* streamNDTM(tokens) {
 
     const matching = matchesOf(state, sym);
     if (!matching.length) {
+      if (tree) tree.expandCfgs(cfg, []);
       step.note += ' — dead branch';
       last = step;
       yield step;
@@ -218,14 +235,22 @@ export function* streamNDTM(tokens) {
       log.push(`Branch ${branch}: exploring <em>${stateName}</em><span class="step-sub">${subs.join('<br>')}</span>`);
     }
 
+    const kids = tree && !tree.full ? [] : null;
     matching.forEach(tr => {
       const nextTape = cfg.tape.clone();
       nextTape.write((!tr.write || tr.write === App.config.sym.any) ? sym : tr.write);
       nextTape.move(tr.dir);
-      if (!seen(tr.to, nextTape)) return;
-      queue.push({ state: tr.to, tape: nextTape, depth: depth + 1, branch: nextBranchId++, parent: branch, via: tr.id });
+      if (!seen(tr.to, nextTape)) {
+        if (kids) kids.push({ cfg: { state: tr.to, depth: depth + 1, via: tr.id }, fresh: false });
+        return;
+      }
+      const next = { state: tr.to, tape: nextTape, depth: depth + 1, branch: nextBranchId++, parent: branch, via: tr.id };
+      queue.push(next);
+      if (kids) kids.push({ cfg: next, fresh: true });
     });
+    if (kids) tree.expandCfgs(cfg, kids);
   }
+  if (tree) tree.finish(acceptedTn);
 
   if (!accepted) {
     // An exhausted frontier is a real reject; unexplored branches are not.
@@ -689,6 +714,7 @@ defineFamily(turing, {
   'NDTM': {
     simulate: simNDTM,
     stream: streamNDTM,
+    branches: true,
     decide: decideWith(testNDTM3),
     formal: { ...turing.formal, delta: () => 'Q × Γ → P(Q × Γ × {L, R, S})' }
   },

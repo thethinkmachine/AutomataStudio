@@ -22,6 +22,7 @@ import {
 import { renderSimStep } from './paint.js';
 import { buildMarkedInputTape, pickMostSpecificTransition } from './predicates.js';
 import { Fifo, accepted, firstOverlappingTransition, nameOfState, traceSearchPath, transduced, transitionsFrom } from './runtime.js';
+import { attachBranchTree, newBranchTree } from './branch-tree.js';
 import { defineFamily } from './registry.js';
 import { OUT_EMPTY, outPush, outStep } from './step-log.js';
 
@@ -181,11 +182,12 @@ export function sim2DFA(tokens) {
   return result;
 }
 
-export function explore2NFA(tokens) {
+export function explore2NFA(tokens, tree = null) {
   const tape = buildMarkedInputTape(tokens);
   const init = { state: runStartId(), head: 0, depth: 0, branch: 1, parent: null, via: null };
   const queue = new Fifo([init]);
   const visited = new Set([`${init.state}|${init.head}`]);
+  if (tree) tree.root(init.state, init);
   let acceptedCfg = null;
   let lastCfg = init;
   let branches = 0;
@@ -200,17 +202,18 @@ export function explore2NFA(tokens) {
 
     if (App.accepts.has(cfg.state)) {
       acceptedCfg = cfg;
+      if (tree) tree.accept(cfg.tn);
       break;
     }
 
     if (cfg.head < 0 || cfg.head >= tape.length) {
+      if (tree) tree.expandCfgs(cfg, []);
       continue;
     }
 
     const sym = tape[cfg.head];
     const matching = getTwoWayMatchingTransitions(cfg.state, sym);
-    if (!matching.length) continue;
-
+    const kids = tree && !tree.full ? [] : null;
     matching.forEach((t, idx) => {
       const childBranch = matching.length === 1 || idx === 0 ? cfg.branch : nextBranchId++;
       const nextHead = cfg.head + headMoveDelta(t.dir);
@@ -224,13 +227,17 @@ export function explore2NFA(tokens) {
         via: t
       };
       const key = `${nextCfg.state}|${nextCfg.head}`;
-      if (visited.has(key)) return;
+      const fresh = !visited.has(key);
+      if (kids) kids.push({ cfg: nextCfg, fresh });
+      if (!fresh) return;
       visited.add(key);
       queue.push(nextCfg);
     });
+    if (kids) tree.expandCfgs(cfg, kids);
   }
 
   const witnessCfg = acceptedCfg || lastCfg;
+  if (tree) tree.finish(witnessCfg.tn ?? -1);
   return {
     accepted: !!acceptedCfg,
     witnessPath: traceSearchPath(witnessCfg),
@@ -242,7 +249,8 @@ export function explore2NFA(tokens) {
 }
 
 export function sim2NFA(tokens) {
-  const result = explore2NFA(tokens);
+  const tree = newBranchTree('path');
+  const result = explore2NFA(tokens, tree);
   const finalNote = result.accepted
     ? `Accepted in state ${getState(result.finalCfg.state)?.name || result.finalCfg.state}`
     : (result.unresolved
@@ -254,6 +262,7 @@ export function sim2NFA(tokens) {
     result.accepted ? 'accept' : 'reject',
     finalNote
   );
+  attachBranchTree(App.simSteps, tree);
   App.simIdx = 0;
   renderSimStep();
   return result;
@@ -363,6 +372,7 @@ defineFamily(twoWay, {
   },
   '2NFA': {
     simulate: sim2NFA,
+    branches: true,
     decide: tokens => accepted(test2NFA(tokens)),
     formal: { tuple: () => ['Q', 'Σ', 'δ', 'q₀', 'F'], delta: () => 'Q × Σ → P(Q × {L, R, S})' }
   },

@@ -13,6 +13,7 @@ import {
 import { accepted, firstIdenticalTransition, nameOfState, playEagerly, singleTapeLookup, stateNames, transitionsFrom } from './runtime.js';
 import { defineFamily } from './registry.js';
 import { wordStep } from './step-log.js';
+import { BranchTree, attachBranchTree, branchTreesWanted } from './branch-tree.js';
 
 export function* streamDFA(tokens) {
   let cur = runStartId();
@@ -142,11 +143,70 @@ class NfaSets {
   }
 }
 
+// ── the branches inside the set ───────────────────────────────────
+// The set run above is the right way to *decide* — one set per position, never
+// more than |Q| states in it — and it is also why an NFA's trace says nothing
+// about branches: the set is their union, and which branch put a state there
+// is exactly what a union forgets. This rebuilds that, for the Computation
+// Tree card and the canvas's tokens.
+//
+// A node is a state at a position, and the tree merges the way the set does:
+// the first branch to reach a state at a position owns it, and every later one
+// is recorded as a leaf that merged into it. Without that an NFA as small as
+// {q0 →a q0, q0 →a q1, q1 →a q0} has a Fibonacci number of branches after
+// twenty symbols, and the tree would be the one thing on screen that did not
+// fit; with it there are at most |Q| live branches per position, which is the
+// set, drawn with its history. ε-moves stay at their position, so a level of
+// the tree is exactly the ε-closed set the trace prints for that step.
+export function buildNfaTree(tokens) {
+  const tree = new BranchTree('level');
+  const { eps, any } = App.config.sym;
+  const root = tree.root(runStartId());
+  let level = [root];
+  for (let d = 0; d <= tokens.length && level.length && !tree.truncated; d++) {
+    const sym = d < tokens.length ? tokens[d] : null;
+    const here = new Map(level.map(id => [tree.node(id).state, id]));
+    const next = [];
+    const there = new Map();
+    // `level` grows while it is walked: an ε-child joins the position it is at.
+    for (let i = 0; i < level.length && !tree.truncated; i++) {
+      const id = level[i];
+      const from = tree.node(id).state;
+      const kids = [];
+      for (const t of transitionsFrom(from)) {
+        if (t.symbol === eps) {
+          const into = here.get(t.to);
+          kids.push({ state: t.to, tid: t.id, depth: d, fresh: into === undefined, into, eps: true });
+          if (into === undefined) here.set(t.to, -2);
+        } else if (sym !== null && (t.symbol === sym || t.symbol === any)) {
+          const into = there.get(t.to);
+          kids.push({ state: t.to, tid: t.id, depth: d + 1, fresh: into === undefined, into, eps: false });
+          if (into === undefined) there.set(t.to, -2);
+        }
+      }
+      const ids = tree.expand(id, kids);
+      kids.forEach((k, j) => {
+        if (!k.fresh || ids[j] < 0) return;
+        if (k.eps) { here.set(k.state, ids[j]); level.push(ids[j]); } else { there.set(k.state, ids[j]); next.push(ids[j]); }
+      });
+      // A merge into a sibling from this same expansion was recorded before
+      // the sibling had an id; it has one now.
+      kids.forEach((k, j) => {
+        if (k.into === -2 && ids[j] >= 0) tree.node(ids[j]).into = (k.eps ? here : there).get(k.state) ?? -1;
+      });
+      if (d === tokens.length && App.accepts.has(from)) tree.accept(id);
+    }
+    level = next;
+  }
+  return tree.finish();
+}
+
 export function* streamNFA(tokens) {
   const sets = new NfaSets();
   sets.start(runStartId());
   let cur = sets.stateIds();
   let last = wordStep({ states: cur, tokens, pos: 0, note: `Start ε-closure: {${stateNames(cur)}}` });
+  if (branchTreesWanted()) attachBranchTree([last], buildNfaTree(tokens));
   yield last;
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i];
@@ -216,6 +276,7 @@ defineFamily(finite, {
   'NFA': {
     simulate: simNFA,
     stream: streamNFA,
+    branches: true,
     decide: tokens => accepted(testNFA(tokens)),
     formal: { ...finite.formal, delta: () => 'Q × Σ → P(Q)' }
   },
@@ -225,6 +286,7 @@ defineFamily(finite, {
   'ε-NFA': {
     simulate: simNFA,
     stream: streamNFA,
+    branches: true,
     decide: tokens => accepted(testNFA(tokens)),
     formal: { ...finite.formal, delta: () => 'Q × (Σ ∪ {ε}) → P(Q)' }
   }

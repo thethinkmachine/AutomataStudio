@@ -56,6 +56,9 @@
 //                   The editor, the wizard and the StateMate dialect all
 //                   read these instead of deriving them three times.
 //   formal        — { tuple, delta }, the formal definition's components.
+//   branches      — true when a run carries its computation tree on its
+//                   first step (js/machines/branch-tree.js): the Computation
+//                   Tree card and the canvas's branch tokens read it.
 //
 // Definitions are registered per *type*, not per family, so there is no
 // "everything else" branch to fall into: DPDA and NPDA share an
