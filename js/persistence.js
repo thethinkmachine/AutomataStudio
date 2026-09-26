@@ -10,6 +10,7 @@ import { normalizeExercise, validateExercise } from './exercise/model.js';
 import { normalizeLexerDoc } from './lexer/build.js';
 import { closeModal, showOverlay } from './modal.js';
 import { refreshQuickSettings } from './quick-settings.js';
+import { syncSpeedControl } from './speed-control.js';
 import { showExampleCard } from './machine-card.js';
 import { isMultiTape, machineSupportsBlocks } from './machines/index.js';
 import { $, APP_VERSION, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, largeMachineProfile, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
@@ -1758,6 +1759,8 @@ export function loadData(d, isExample) {
     // dropped on the canvas replaces the config without one, leaving an open
     // popover showing the settings of the machine you just replaced.
     refreshQuickSettings();
+    // The speed dial draws App.config.autoSpeed, so it is stale the same way.
+    syncSpeedControl();
   }
   // The `else` that used to call migrateLegacySymbols here is gone: that is a
   // v0 concern and it now runs in MIGRATIONS[0], before any of this reads the

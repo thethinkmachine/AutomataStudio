@@ -596,6 +596,9 @@ export function createTab(name) {
   // Each tab carries its own config, so activating one can bring different
   // canvas settings with it — the same reason R gets republished here.
   if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
+  // The speed dial too: it is drawn once at boot, before loadBackup replaces
+  // the config it reads, and the restore lands here.
+  syncSpeedControl();
   // And its own description, and its own grammar. importWorkspaceState has
   // already written App.meta and App.grammar; this is what redraws the info
   // card and the Grammar workbench from them, so a tab's card does not linger
@@ -649,6 +652,9 @@ export function switchTab(id) {
   // Each tab carries its own config, so activating one can bring different
   // canvas settings with it — the same reason R gets republished here.
   if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
+  // The speed dial too: it is drawn once at boot, before loadBackup replaces
+  // the config it reads, and the restore lands here.
+  syncSpeedControl();
   // And its own description, and its own grammar. importWorkspaceState has
   // already written App.meta and App.grammar; this is what redraws the info
   // card and the Grammar workbench from them, so a tab's card does not linger

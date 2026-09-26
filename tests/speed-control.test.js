@@ -121,3 +121,26 @@ test('changing speed while playing keeps the clock and re-phases it', () => {
   assert.equal(context.App.autoTimer, clock, 'the same clock, not a restarted one');
   context.stopAutoPlay();
 });
+
+test('a config restored after boot redraws the dial, not only the clock', () => {
+  // The reload path: the dial is wired against the default config, then
+  // loadBackup replaces App.config with the saved one and lands in switchTab.
+  // The readout used to stay on 1× while playback ran at the restored speed.
+  const el = freshDial(500);
+  const { App, Workspaces, exportWorkspaceState, setActiveWorkspaceId, switchTab, loadData } = context;
+  App.config.autoSpeed = 1;
+  const data = exportWorkspaceState();
+  App.config.autoSpeed = 500;
+  context.syncSpeedControl();
+  Workspaces.length = 0;
+  Workspaces.push({ id: 'w-restored', name: 'Restored', dirty: false, data });
+  setActiveWorkspaceId(null);
+  switchTab('w-restored');
+  assert.equal(App.config.autoSpeed, 1);
+  assert.match(el.getAttribute('aria-valuetext'), /^500×/);
+
+  // A file carrying a config replaces it the same way.
+  loadData({ ...data, config: { ...data.config, autoSpeed: 0 } });
+  assert.equal(App.config.autoSpeed, 0);
+  assert.ok(el.classList.contains('is-max'));
+});
