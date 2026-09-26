@@ -312,6 +312,27 @@ function freshModel() {
   trace = null;
 }
 
+/**
+ * Let go of a diagram whose run is no longer the one on screen.
+ *
+ * syncModel would replace it, but syncModel only runs for a section someone
+ * can see — so a reset, or a new run, with the section collapsed left the old
+ * model holding every step of the run it was built from, and the export's
+ * cache held it past even a visible reset. On a long run that is the bulk of
+ * the tab's memory, kept for a diagram nothing will show again. This runs
+ * before the visibility test for exactly that reason.
+ */
+function releaseStaleRun() {
+  if (model && model.source !== App.simSteps) {
+    model = null;
+    layout = null;
+    freshModel();
+    hover = null;
+    dropStrip();
+  }
+  if (wholeCache && wholeCache.model !== model) wholeCache = null;
+}
+
 /** The model for the run on screen, grown to the reachable prefix. */
 function syncModel() {
   const steps = App.simSteps;
@@ -678,6 +699,7 @@ function syncLayout(m, vw) {
 
 function paint() {
   if (!els) return;
+  releaseStaleRun();
   // Nothing is indexed for a section nobody can see. Playback calls this every
   // tick whether or not the diagram is open; expanding or floating the section
   // resizes the view, and the observer on it brings the paint back.
@@ -2107,5 +2129,6 @@ export const _spaceTimeTests = {
   get trace() { return trace; },
   get branchNote() { return branchNote; },
   get model() { return model; },
-  get layout() { return layout; }
+  get layout() { return layout; },
+  get wholeCache() { return wholeCache; }
 };

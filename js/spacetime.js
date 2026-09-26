@@ -15,10 +15,22 @@
 //    a head position and the one cell it wrote. Asking every step for
 //    `step.tape` would rebuild a window array per row — the O(steps ×
 //    window) the log exists to avoid — so this replays the journal
-//    itself, one write per row, with a checkpoint every CHECKPOINT rows
-//    so a viewport halfway down a ten-thousand-step run is a short replay
+//    itself, one write per row, with checkpoints along the way so a
+//    viewport halfway down a ten-thousand-step run is a short replay
 //    rather than a long one. Steps that do store their tape (the two-way
 //    heads, whose tape never changes) are read directly.
+//
+//    **A checkpoint is spaced by what it costs, not by a fixed count of
+//    rows.** It is a copy of the whole tape, so on a tape that grows with
+//    the run — the runaway machine walking off down fresh blanks, exactly
+//    the one a teaching tool gets pointed at — a copy every 256 rows is
+//    rows² / 256 cells: measured, 498 MB at 80,000 steps and 7 GB at
+//    300,000. So the next checkpoint waits until the rows since the last
+//    one are at least as many as the cells it would copy. The copies then
+//    sum to no more than the rows, so the diagram is linear in the run
+//    whatever its tape does; and a replay is never longer than the copy a
+//    cursor already walks to load its base, so a read costs the same order
+//    as before. A tape that stays narrow still gets one every 256 rows.
 //
 //  • **It never pulls.** The model indexes the steps that exist and
 //    nothing more. On a streaming run the rest have not been computed,
@@ -42,7 +54,7 @@
 
 import { stepJournals, stepLogIndex } from './tape-log.js';
 
-/** Rows between replay checkpoints. */
+/** The fewest rows between replay checkpoints; a wide tape spaces them further. */
 const CHECKPOINT = 256;
 
 /** Cell size at which a symbol is printed in its cell. */
@@ -133,11 +145,13 @@ function logTrack(j) {
     readOnly: false,
     lo,
     hi,
-    // The tape as it stands at the last indexed row, and a copy of it every
-    // CHECKPOINT rows. The copies are the whole memory cost of the diagram:
-    // (rows / 256) windows, against the rows × window a stored grid would be.
+    // The tape as it stands at the last indexed row, and copies of it as
+    // `{ row, cells }`, ascending by row. The copies are the whole memory cost
+    // of the diagram, and `nextCheckpoint` is what keeps them linear in the
+    // rows — see the header.
     live: new Map(j.initial),
-    checkpoints: []
+    checkpoints: [],
+    nextCheckpoint: 0
   };
 }
 
@@ -284,7 +298,10 @@ export function makeSpaceTime(steps, opts = {}) {
         grow(t, c);
       }
     }
-    if (i % CHECKPOINT === 0) t.checkpoints.push(new Map(t.live));
+    if (i >= t.nextCheckpoint) {
+      t.checkpoints.push({ row: i, cells: new Map(t.live) });
+      t.nextCheckpoint = i + Math.max(CHECKPOINT, t.live.size);
+    }
     grow(t, j.heads[i]);
   }
 
@@ -361,10 +378,17 @@ export function makeSpaceTime(steps, opts = {}) {
 
     const j = tr.j;
     const cells = new Array(width).fill(blank);
-    const k = Math.min(Math.floor(r / CHECKPOINT), tr.checkpoints.length - 1);
-    const base = tr.checkpoints[Math.max(0, k)] || j.initial;
+    // The last checkpoint at or before r. They are unevenly spaced, so it is
+    // searched for rather than computed.
+    const cps = tr.checkpoints;
+    let lo = 0, hi = cps.length - 1, k = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (cps[mid].row <= r) { k = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    const base = k >= 0 ? cps[k].cells : j.initial;
     for (const [x, s] of base) if (x >= c0 && x <= c1) cells[x - c0] = s;
-    let row = Math.max(0, k) * CHECKPOINT;
+    let row = k >= 0 ? cps[k].row : 0;
     const apply = w => {
       const c = j.wCell[w];
       if (c === undefined || c < c0 || c > c1) return;
@@ -1344,12 +1368,30 @@ export function estimateSvgElements(model, L) {
 //  Reading every cell of every row costs rows × cells — twenty million at
 //  the default budget, and again on every step of a streaming run.
 //
-//  **A cell only changes when it is written**, so this counts *durations*:
-//  each non-blank cell remembers since when it has held its symbol, and the
-//  stretch is credited to its bin when a write ends it or a bin boundary
-//  cuts it. That is one unit of work per row, per write and per live cell
-//  per bin — not per cell per row — and it reads the same tape journal the
-//  diagram does.
+//  **A cell only changes when it is written**, so this counts *durations*,
+//  and it reads the same tape journal the diagram does.
+//
+//  **A boundary costs the strip's width, not the tape's.** Each column keeps
+//  a *tally* — how many non-blank cells in it hold each symbol right now —
+//  and closing a time bin credits every column tally × bin length at once.
+//  A tally assumes each of its cells held its symbol for the whole bin, so a
+//  write partway through settles the difference when it happens: a cell that
+//  starts holding a symbol q rows into its bin is charged −q, and one that
+//  stops is credited +q. The open bin therefore holds a correction, and its
+//  true count is that plus tally × the rows it has so far — which is what
+//  `overviewGrid` reads.
+//
+//  It used to visit every live cell at every boundary, crediting each its
+//  stretch. That is exact too, and it costs boundaries × live cells: on a
+//  tape as wide as its 100,000-row run, 6,362 boundaries came to 118 million
+//  credits and 2.6 seconds, to add into four hundred columns. The counts are
+//  the same numbers either way; tests/spacetime.test.js checks them against a
+//  cell-by-cell count through every kind of merge.
+//
+//  The boxes are Uint32Array, and a correction can take one below zero for
+//  a while. Typed-array stores wrap modulo 2³², so the arithmetic is modular
+//  throughout and the count comes out exact once the bin closes — a closed
+//  bin is never negative, and only closed bins are merged in time.
 //
 //  **Growing without redrawing.** A streaming run gets longer; refitting
 //  the grid to every new row would rescale the strip continuously. So time
@@ -1417,11 +1459,54 @@ export function makeOverview(model, opts = {}) {
     if (!a) { a = new Uint32Array(BY * OV_SLOTS); st.cols.set(b, a); }
     return a;
   }
-  function credit(st, x, s, n, bin) {
-    if (n > 0) col(st, xbin(st, x))[bin * OV_SLOTS + s] += n;
+  // A column's tally: how many of its cells hold each slot, and after them
+  // (at OV_SLOTS) a bitmask of the slots that are nonzero — so a boundary
+  // visits the symbols a column actually has, not all ten of every column.
+  // A narrow tape of one symbol (BB(5)) was slower with the ten.
+  const MASK = OV_SLOTS;
+  function tallyOf(st, b) {
+    let t = st.tally.get(b);
+    if (!t) { t = new Int32Array(OV_SLOTS + 1); st.tally.set(b, t); }
+    return t;
   }
-  function flush(st, bin, q) {
-    for (const [x, c] of st.live) { credit(st, x, c.s, q - c.since, bin); c.since = q; }
+
+  // The open bin closes after `len` rows: every column, tally × len at once.
+  function closeBin(st, bin, len) {
+    const k = bin * OV_SLOTS;
+    for (const [b, t] of st.tally) {
+      let m = t[MASK];
+      if (m === 0) continue;
+      const a = col(st, b);
+      do {
+        const s = 31 - Math.clz32(m & -m);
+        a[k + s] += t[s] * len;
+        m &= m - 1;
+      } while (m !== 0);
+    }
+  }
+
+  /**
+   * Cell x becomes slot s (blank if s < 0), `into` rows into the open bin
+   * `bin`. The slot it stops holding is credited the rows it held, and the
+   * one it starts is charged the rows it missed — see the header.
+   */
+  function write(st, x, s, bin, into) {
+    const old = st.live.get(x);
+    // A symbol written over itself, or a blank over a blank, changes nothing.
+    if (old === s || (old === undefined && s < 0)) return;
+    const b = xbin(st, x);
+    const t = tallyOf(st, b);
+    const a = into > 0 ? col(st, b) : null;
+    const k = bin * OV_SLOTS;
+    if (old !== undefined) {
+      if (--t[old] === 0) t[MASK] &= ~(1 << old);
+      if (a) a[k + old] += into;
+    }
+    if (s >= 0) {
+      if (t[s]++ === 0) t[MASK] |= 1 << s;
+      if (a) a[k + s] -= into;
+      st.live.set(x, s);
+    } else st.live.delete(x);
   }
 
   function initTape(t) {
@@ -1434,7 +1519,10 @@ export function makeOverview(model, opts = {}) {
       xOrigin: 0,
       headMin: new Int32Array(BY).fill(I32_MAX),
       headMax: new Int32Array(BY).fill(I32_MIN),
-      live: new Map()
+      // Cell → the slot it holds, for every non-blank cell; and per column,
+      // how many of them hold each slot.
+      live: new Map(),
+      tally: new Map()
     };
     if (fixed) {
       st.xOrigin = tr.lo;
@@ -1446,16 +1534,15 @@ export function makeOverview(model, opts = {}) {
       initial = new Map();
       model.cursor(t, from, tr.lo, tr.hi).cells.forEach((sym, k) => initial.set(tr.lo + k, sym));
     }
-    for (const [x, sym] of initial) {
-      const s = ovSlot(model, sym);
-      if (s >= 0) st.live.set(x, { s, since: 0 });
-    }
+    for (const [x, sym] of initial) write(st, x, ovSlot(model, sym), 0, 0);
     st.prev = new Map(initial);
     return st;
   }
 
   // Pairs of time bins become one. In place, low to high: bin i reads 2i and
-  // 2i+1, which no earlier i has written.
+  // 2i+1, which no earlier i has written. Only ever at a boundary, after the
+  // open bin has closed: its correction is relative to where it started, and
+  // doubling the bin length under it would move that start.
   function mergeY() {
     const half = BY / 2;
     for (const st of ov.tapes) {
@@ -1489,6 +1576,14 @@ export function makeOverview(model, opts = {}) {
       else for (let k = 0; k < a.length; k++) have[k] += a[k];
     }
     st.cols = next;
+    const tally = new Map();
+    for (const [b, t] of st.tally) {
+      const nb = Math.floor(b / 2);
+      const have = tally.get(nb);
+      if (!have) tally.set(nb, t);
+      else { for (let s = 0; s < OV_SLOTS; s++) have[s] += t[s]; have[MASK] |= t[MASK]; }
+    }
+    st.tally = tally;
     st.w *= 2;
   }
 
@@ -1503,23 +1598,30 @@ export function makeOverview(model, opts = {}) {
     }
     const start = from + ov.rows;
     if (start >= n) return false;
+    // Widen the cell bins *before* crediting, not after. The model is already
+    // indexed to n, so its extent is every cell this pass can touch; merging
+    // afterwards meant one pass over a finished run — ⏭, or the section opened
+    // late — first made a column per cell at the old width. On a tape as wide
+    // as the run that was a BY × 10 array for each of 100,000 cells: 6 GB
+    // allocated and 21 s spent, to be merged away on the last line. The widths
+    // come out the same either way, and merging is exact, so the counts do too.
+    if (!fixed) for (const st of ov.tapes) while (!spanFits(st)) mergeX(st);
     for (let r = start; r < n; r++) {
       const q = r - from;
+      // Close the bin that ended, *then* merge: see mergeY.
+      if (q > 0 && q % ov.binRows === 0) {
+        for (const st of ov.tapes) closeBin(st, q / ov.binRows - 1, ov.binRows);
+      }
       if (!fixed) while (q >= BY * ov.binRows) mergeY();
       const bin = Math.floor(q / ov.binRows);
-      const boundary = q > 0 && q % ov.binRows === 0;
+      const into = q - bin * ov.binRows;
       for (const st of ov.tapes) {
-        if (boundary) flush(st, bin - 1, q);
         if (q > 0 && st.tr.kind === 'log') {
           const j = st.tr.j;
           const c = j.wCell[r - 1];
           if (c !== undefined) {
-            const old = st.live.get(c);
-            if (old) credit(st, c, old.s, q - old.since, Math.floor((q - 1) / ov.binRows));
             const sym = j.wSym[r - 1];
-            const s = sym === undefined ? -1 : ovSlot(model, sym);
-            if (s >= 0) st.live.set(c, { s, since: q });
-            else st.live.delete(c);
+            write(st, c, sym === undefined ? -1 : ovSlot(model, sym), bin, into);
           }
         }
         if (q > 0 && st.tr.kind === 'view' && !st.tr.readOnly) {
@@ -1527,14 +1629,7 @@ export function makeOverview(model, opts = {}) {
           // cell whose symbol differs from the row before — the same event a
           // tape's journal records, found by comparing instead of by reading.
           const cur = viewCellsAt(model, st.tr, r);
-          const bin1 = Math.floor((q - 1) / ov.binRows);
-          const change = (x, sym) => {
-            const old = st.live.get(x);
-            if (old) credit(st, x, old.s, q - old.since, bin1);
-            const s = sym === undefined ? -1 : ovSlot(model, sym);
-            if (s >= 0) st.live.set(x, { s, since: q });
-            else st.live.delete(x);
-          };
+          const change = (x, sym) => write(st, x, sym === undefined ? -1 : ovSlot(model, sym), bin, into);
           for (const [x, sym] of cur) if (st.prev.get(x) !== sym) change(x, sym);
           for (const x of st.prev.keys()) if (!cur.has(x)) change(x, undefined);
           st.prev = cur;
@@ -1547,7 +1642,6 @@ export function makeOverview(model, opts = {}) {
       }
     }
     ov.rows = n - from;
-    if (!fixed) for (const st of ov.tapes) while (!spanFits(st)) mergeX(st);
     ov.version++;
     return true;
   }
@@ -1577,11 +1671,14 @@ export function overviewGrid(ov, t) {
       for (let s = 0; s < OV_SLOTS; s++) counts[(i * nx + xi) * OV_SLOTS + s] = a[i * OV_SLOTS + s];
     }
   }
+  // The last bin is still open: what it holds is a correction, and its count
+  // is that plus tally × the rows it has so far. Modular, like the bins.
   const last = ny - 1;
-  for (const [x, c] of st.live) {
-    const b = ov.xbinOf(t, x);
+  const len = n - last * ov.binRows;
+  for (const [b, tl] of st.tally) {
     if (b < bLo || b > bHi) continue;
-    counts[(last * nx + b - bLo) * OV_SLOTS + c.s] += n - c.since;
+    const k = (last * nx + b - bLo) * OV_SLOTS;
+    for (let s = 0; s < OV_SLOTS; s++) if (tl[s] !== 0) counts[k + s] += tl[s] * len;
   }
   return {
     t, nx, ny, bLo, w: st.w, binRows: ov.binRows, rows: n,

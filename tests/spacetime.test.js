@@ -109,6 +109,43 @@ test('rows read the same in any order, including across replay checkpoints', () 
   }
 });
 
+test('checkpoints on a growing tape cost the run, not its square', () => {
+  // Each checkpoint copies the whole tape, and this tape is as wide as the run
+  // is long — a copy every 256 rows would be rows² / 256 cells (7 GB at
+  // 300,000 steps). Spaced by what they copy, they sum to about the rows.
+  harness.resetApp();
+  const { App, setMachine } = context;
+  setMachine('TM');
+  App.states.push({ id: 's0', name: 'q0', x: 0, y: 0 });
+  App.startId = 's0';
+  App.sigma = new Set(['a']);
+  App.stackAlpha = new Set(['a', 'x', App.config.sym.blank]);
+  App.transitions.push({ id: 't0', from: 's0', to: 's0', symbol: App.config.sym.blank, write: 'x', dir: 'R' });
+  App.config.maxTmSteps = 6000;
+  const run = runWord('');
+  const model = modelFor(run);
+  const tr = model.tapes[0];
+  assert.ok(model.rows > 5000);
+
+  const copied = tr.checkpoints.reduce((n, c) => n + c.cells.size, 0);
+  assert.ok(copied <= 2 * model.rows, `${copied} cells copied for ${model.rows} rows`);
+  const rows = tr.checkpoints.map(c => c.row);
+  assert.deepEqual(rows.slice(0, 2), [0, 256], 'a narrow tape still gets one every 256 rows');
+  assert.ok(rows.at(-1) - rows.at(-2) > 1000, 'and a wide one spaces them out');
+
+  // Uneven spacing must not change what a row reads, least of all at the seams.
+  const read = i => model.cursor(0, i, tr.lo, tr.hi).cells.join('');
+  const cur = model.cursor(0, 0, tr.lo, tr.hi);
+  const probes = new Set([0, model.rows - 1, 4321]);
+  for (const r of rows) for (const d of [-1, 0, 1]) if (r + d >= 0 && r + d < model.rows) probes.add(r + d);
+  const want = new Map();
+  for (let i = 0; i < model.rows; i++) {
+    if (probes.has(i)) want.set(i, cur.cells.join(''));
+    if (i < model.rows - 1) cur.next();
+  }
+  for (const i of probes) assert.equal(read(i), want.get(i), `random access to row ${i}`);
+});
+
 test('building the diagram never pulls a step from a streaming run', () => {
   harness.resetApp();
   const { App, setMachine, streamMachine, parseMachineInput, makeSpaceTime } = context;
@@ -400,6 +437,39 @@ test('the overview grows with a streaming run and matches a fresh build', () => 
   assert.deepEqual([...a.counts], [...b.counts], 'grown by merging equals built at once');
 });
 
+test('one pass over a finished run sizes its columns before it fills them', () => {
+  // A finished run reaches the strip in one extend() — ⏭, or the section
+  // opened late. The columns were widened only at the end of that pass, so it
+  // first made one per cell at width 1: on a tape as wide as the run, a
+  // 1600 × 10 array for each of 100,000 cells, 21 seconds to merge away.
+  harness.resetApp();
+  const { App, setMachine, makeOverview } = context;
+  setMachine('TM');
+  App.states.push({ id: 's0', name: 'q0', x: 0, y: 0 });
+  App.startId = 's0';
+  App.sigma = new Set(['a']);
+  App.stackAlpha = new Set(['a', 'x', App.config.sym.blank]);
+  App.transitions.push({ id: 't0', from: 's0', to: 's0', symbol: App.config.sym.blank, write: 'x', dir: 'R' });
+  App.config.maxTmSteps = 3000;
+  const model = modelFor(runWord(''));
+  const BY = 64, BX = 20;
+  const Real = globalThis.Uint32Array;
+  let columns = 0;
+  globalThis.Uint32Array = class extends Real {
+    constructor(...a) { super(...a); if (a[0] === BY * 10) columns++; }
+  };
+  let ov;
+  try {
+    ov = makeOverview(model, { binsY: BY, binsX: BX });
+    ov.extend();
+  } finally {
+    globalThis.Uint32Array = Real;
+  }
+  assert.ok(model.tapes[0].hi - model.tapes[0].lo > 2000, 'a tape far wider than the strip');
+  assert.ok(columns <= BX + 1, `${columns} columns made for a strip ${BX} wide`);
+  assertGridMatches(model, ov, 'sized up front');
+});
+
 test('building an overview pulls nothing from the run', () => {
   widener(10000);
   const { streamMachine, parseMachineInput, makeSpaceTime, makeOverview } = context;
@@ -624,4 +694,55 @@ test('a reset puts the overview strip away with the diagram', () => {
   stepToEnd();
   assert.equal(t.stripOn, true);
   assert.equal(t.els.strip.hidden, false);
+});
+
+test('a reset lets go of the diagram even with the section folded away', () => {
+  // The diagram only indexes for a section someone can see, and it used to
+  // only let go there too: fold it, reset, and the model kept every step of
+  // the run alive — 819 MB for a 100,000-step runaway machine.
+  loadExample('ittm');
+  const { App, runSim, resetSim, stepToEnd, _spaceTimeTests: t } = context;
+  const sec = harness.getElement('rp-spacetime');
+  sec.style.display = '';
+  sec.classList.remove('collapsed');
+  harness.getElement('sim-in').value = '';
+  runSim();
+  stepToEnd();
+  assert.ok(t.model && t.model.source === App.simSteps, 'the open section built a model');
+
+  sec.classList.add('collapsed');
+  resetSim();
+  assert.equal(t.model, null, 'the model goes with the run');
+  assert.equal(t.layout, null);
+  assert.equal(t.overview, null);
+
+  // A new run while folded is the same case: the old model is not the run on screen.
+  sec.classList.remove('collapsed');
+  runSim();
+  stepToEnd();
+  const first = t.model;
+  sec.classList.add('collapsed');
+  runSim();
+  assert.notEqual(t.model, first, 'the previous run is not kept for a folded section');
+});
+
+test('a reset drops the whole-run export built from the old run', () => {
+  loadExample('ittm');
+  const { App, runSim, resetSim, stepToEnd, SpaceTimeExportOpts, _spaceTimeTests: t } = context;
+  const sec = harness.getElement('rp-spacetime');
+  sec.style.display = '';
+  sec.classList.remove('collapsed');
+  harness.getElement('sim-in').value = '';
+  runSim();
+  stepToEnd();
+  const saved = { ...SpaceTimeExportOpts };
+  try {
+    Object.assign(SpaceTimeExportOpts, { format: 'png', size: 'whole', range: 'all' });
+    t.exportPlan(t.syncModel());
+    assert.ok(t.wholeCache && t.wholeCache.model.source === App.simSteps, 'the export cached the run');
+    resetSim();
+    assert.equal(t.wholeCache, null, 'and the cache goes with it');
+  } finally {
+    Object.assign(SpaceTimeExportOpts, saved);
+  }
 });
