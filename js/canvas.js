@@ -1426,8 +1426,13 @@ export function nudgeSelected(dx, dy) {
   scheduleMinimap();
 }
 
-export function copySelection() {
+export function copySelection({ claim = true } = {}) {
   if (!App.selectedStates.size) { showStatus('No states selected to copy'); return; }
+  // A copy takes the system clipboard too, because Ctrl+V reads it first: a
+  // machine pasted as text (see applyPastedText) wins over App.clipboard, so a
+  // `1RB…` string left there from earlier would otherwise be opened again in
+  // place of the states just copied. Duplicate is not a copy and leaves it be.
+  if (claim) navigator.clipboard?.writeText?.('')?.catch?.(() => {});
   const ids = new Set(App.selectedStates);
   const states = App.states.filter(s => ids.has(s.id)).map(s => ({ ...s, isDummyStart: false }));
   const transitions = App.transitions.filter(t => ids.has(t.from) && ids.has(t.to)).map(t => ({ ...t }));
@@ -1454,7 +1459,7 @@ export function copySelection() {
 
 export function duplicateSelection() {
   if (!App.selectedStates.size) { showStatus('No states selected to duplicate'); return; }
-  copySelection();
+  copySelection({ claim: false });
   pasteClipboard(null, 28);
 }
 

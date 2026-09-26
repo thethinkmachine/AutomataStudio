@@ -14,6 +14,7 @@ import { showStatus } from './utils.js';
 import { formatKbd, localizeKbdLabels } from './kbd.js';
 import { setMachine, setView } from './view.js';
 import { syncHistoryButtons } from './history.js';
+import { initFraming } from './ui.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  INIT
@@ -49,6 +50,8 @@ try {
 } catch (e) { }
 // Undo/redo start dimmed; edits and loads keep them current from history.js.
 syncHistoryButtons();
+// A fitted machine stays fitted as the overlays over it change.
+initFraming();
 // What Save, Save As and Open mean differs between the website and the desktop
 // build, and the labels have to say which — see SAYING WHICH HOST THIS IS in
 // js/persistence.js. Written once, because the answer cannot change.

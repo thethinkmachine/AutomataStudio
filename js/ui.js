@@ -1,7 +1,8 @@
 import { utmStepBack, utmStepFwd, utmToggleAuto } from './algorithms-fa.js';
 import { renderGamma } from './alphabet.js';
 import { settleAll } from './anim.js';
-import { applyCamera, clampZoom, clearEdgeDirectionHighlight, clearSelection, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, hlState, nudgeSelected, pasteClipboard, selectAllStates, selectionCount, syncSelectionClasses, toggleSnapToGrid, wrap } from './canvas.js';
+import { applyCamera, clampZoom, clearEdgeDirectionHighlight, clearSelection, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, isPanning,hlState, nudgeSelected, pasteClipboard, selectAllStates, selectionCount, syncSelectionClasses, toggleSnapToGrid, wrap } from './canvas.js';
+import { floatLayer, isMovingFloat } from './panel-float.js';
 import { blockRemovalIds, getBlock, removeBlock } from './blocks.js';
 import { viewStates } from './view-graph.js';
 import { leaveBlockScope, syncScopeBar } from './scope.js';
@@ -11,7 +12,7 @@ import { markDirty, redo, snapshot, snapshotSettings, trimStowedHistory, undo } 
 import { renderMinimap, scheduleMinimap } from './minimap.js';
 import { anyModalOpen, askConfirm, closeModal, registerModal, showOverlay } from './modal.js';
 import { includeNoteBounds, pruneNoteAnchorsExcluding, removeNotes } from './notes.js';
-import { CARD_AUTO_HIDE_MS, hideSaveMenu, restartAutosaveTimer, saveBackupChecked, saveDocumentAs, saveNow, saveWorkspaceById } from './persistence.js';
+import { CARD_AUTO_HIDE_MS, applyPastedText, hideSaveMenu, restartAutosaveTimer, saveBackupChecked, saveDocumentAs, saveNow, saveWorkspaceById } from './persistence.js';
 import { renderAll, updateBlockList, updateLPanel, updateRPanel } from './render.js';
 import { filterList } from './panel-list.js';
 import {
@@ -1073,6 +1074,48 @@ export function ctxCut() {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  THE SYSTEM CLIPBOARD
+// ══════════════════════════════════════════════════════════════════
+// Ctrl+V on the canvas pastes one of two things: a machine on the system
+// clipboard — a share link, a saved file's JSON, or a 1RB1LC_1RC1RB_… string;
+// applyPastedText decides — or else the states copied inside the app. The text is read from the `paste` event,
+// the one way a page gets it with no permission prompt, so the keydown only
+// arms the paste and leaves the browser's default alone to fire the event.
+//
+// The event goes to the focused element or the body, and every browser fires
+// it there — except where one does not, which is what the timer is for: the
+// event arrives in the same task as the keydown, so a timer that runs first
+// means there is no event coming, and the in-app paste happens anyway.
+let armedPaste = null;
+
+function armCanvasPaste() {
+  clearTimeout(armedPaste);
+  armedPaste = setTimeout(() => {
+    armedPaste = null;
+    pasteClipboard(App._lastCanvasWorldPt || null);
+  }, 0);
+}
+
+document.addEventListener('paste', e => {
+  // Only a paste the canvas shortcut armed: the keydown's own guards (a field
+  // with the caret, a modal, StateMate) already decided whose paste this is.
+  if (armedPaste === null) return;
+  clearTimeout(armedPaste);
+  armedPaste = null;
+  e.preventDefault();
+  const text = e.clipboardData?.getData('text/plain') || '';
+  if (!applyPastedText(text)) pasteClipboard(App._lastCanvasWorldPt || null);
+});
+
+// Edit ▸ Paste in the desktop menu is a click, not a keystroke, so there is no
+// paste event to read — it asks for the text instead, which Electron grants.
+export async function pasteFromSystemClipboard() {
+  let text = '';
+  try { text = await navigator.clipboard.readText(); } catch { /* no access: in-app paste */ }
+  if (!applyPastedText(text)) pasteClipboard(App._lastCanvasWorldPt || null);
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  KEYBOARD SHORTCUTS
 // ══════════════════════════════════════════════════════════════════
 document.addEventListener('keydown', e => {
@@ -1112,7 +1155,9 @@ document.addEventListener('keydown', e => {
     if (e.key === 'a' || e.key === 'A') { e.preventDefault(); if (App.view === 'build') selectAllStates(); }
     if (e.key === 'c' || e.key === 'C') { if (App.view === 'build') copySelection(); }
     if (e.key === 'x' || e.key === 'X') { if (App.view === 'build') { e.preventDefault(); cutSelection(); } }
-    if (e.key === 'v' || e.key === 'V') { if (App.view === 'build') { e.preventDefault(); pasteClipboard(App._lastCanvasWorldPt || null); } }
+    // Not prevented: the browser's own paste is what hands over the system
+    // clipboard, without a permission prompt — see THE SYSTEM CLIPBOARD below.
+    if (e.key === 'v' || e.key === 'V') { if (App.view === 'build') armCanvasPaste(); }
     if (e.key === 'd' || e.key === 'D') { if (App.view === 'build') { e.preventDefault(); duplicateSelection(); } }
     if (e.shiftKey && (e.key === 't' || e.key === 'T')) { e.preventDefault(); reopenClosedTab(); }
     // StateMate has no header button of its own — that slot is the wizard's —
@@ -1704,7 +1749,14 @@ export function canvasObstacleRects(wrapRect) {
     if (!el || el.offsetParent === null || !el.getBoundingClientRect) continue;
     const b = el.getBoundingClientRect();
     if (!b || !b.width || !b.height) continue;
-    rects.push({ left: b.left - wrapRect.left, top: b.top - wrapRect.top, width: b.width, height: b.height });
+    // The card scales in from its top-left; read mid-animation its painted box
+    // is smaller than the one it is about to have, and a fit would frame
+    // around the smaller one.
+    const full = el === card && el.offsetWidth > 0 && el.offsetHeight > 0;
+    rects.push({
+      left: b.left - wrapRect.left, top: b.top - wrapRect.top,
+      width: full ? el.offsetWidth : b.width, height: full ? el.offsetHeight : b.height
+    });
   }
   const inset = compactBottomInset(wrapRect);
   if (inset > 0) rects.push({ left: 0, top: wrapRect.height - inset, width: wrapRect.width, height: inset });
@@ -1780,6 +1832,7 @@ export function fitToScreen(silent = false) {
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
+  markFramed();
   setTimeout(() => {
     $('cam-g').classList.remove('cam-smooth');
     w.classList.remove('cam-smooth');
@@ -1790,6 +1843,151 @@ export function fitToScreen(silent = false) {
 export function autoFitLoadedMachine() {
   // Wait a tick so view switches and panel layout changes settle before fitting.
   setTimeout(() => fitToScreen(true), 50);
+}
+
+// ── Keeping a framed machine framed ────────────────────────────────
+// After a fit the view is *framed*: the machine sits in the free part of the
+// canvas. While it stays framed, anything that changes what floats over the
+// canvas — the card opening or folding, the toolbar redocked, collapsed or
+// folding itself, the minimap shown or hidden, a window torn off, moved,
+// minimized or docked, the breadcrumb appearing — fits again, in either
+// direction: a card opening pulls the view out, and folding away gives the
+// room back.
+//
+// Framed means the camera is still exactly the one the last fit set. That is
+// the whole test, and it is why no pan or zoom path has to report in: a wheel
+// tick, a drag, a pinch, a minimap click, the zoom buttons, a tab switch or a
+// restored workspace all leave a different camera, and a camera the reader
+// has taken is never moved out from under them. Pressing Fit (or H) hands it
+// back.
+//
+// What changed is found by measuring, not by listening for each trigger: the
+// overlays' boxes are compared with the last settled measurement, so a trigger
+// nobody thought to wire up still counts. Observers only say *when* to
+// measure. Both sides wait for movement to settle, because the card scales in
+// and a box read mid-animation is a box that is about to change.
+export const FRAMING_SETTLE_MS = 260;
+// Changes smaller than this are noise — the zoom readout in the nav bar
+// changing width as a fit changes the zoom must not set off another fit.
+export const FRAMING_TOLERANCE = 3;
+
+let framedCam = null;
+let framingBaseline = null;
+let framingTimer = null;
+// A check inside this window after a fit adopts what it measures as the new
+// baseline instead of acting on it: whatever moved did so because of the fit.
+let framingQuietUntil = 0;
+
+const nowMs = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
+
+// `quiet: false` is for a test that has to act before the settle window ends.
+export function markFramed({ quiet = true } = {}) {
+  framedCam = { x: App.cam.x, y: App.cam.y, z: App.cam.z };
+  framingQuietUntil = quiet ? nowMs() + FRAMING_SETTLE_MS + 150 : 0;
+  scheduleFramingCheck();
+}
+
+export function isFramed() {
+  const c = framedCam;
+  return !!c && Math.abs(App.cam.x - c.x) < 0.5 && Math.abs(App.cam.y - c.y) < 0.5
+    && Math.abs(App.cam.z - c.z) < 1e-6;
+}
+
+export function resetFraming() {
+  framedCam = null;
+  framingBaseline = null;
+  framingQuietUntil = 0;
+  clearTimeout(framingTimer);
+  framingTimer = null;
+}
+
+// The canvas size and every obstacle, as numbers. canvasObstacleRects is the
+// same list a fit frames around, so what is compared is exactly what a fit
+// would respond to.
+function framingSignature(wrapRect) {
+  const out = [Math.round(wrapRect.width), Math.round(wrapRect.height)];
+  for (const r of canvasObstacleRects(wrapRect)) {
+    out.push(Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height));
+  }
+  return out;
+}
+
+function sameSignature(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > FRAMING_TOLERANCE) return false;
+  return true;
+}
+
+// Mid-gesture the reader is working in the diagram; fitting then would move
+// the thing under their pointer. The check waits for the gesture to end.
+function canvasGestureInProgress() {
+  return !!(isPanning || App.dragOffsets || App.marquee || App.dividerDraft || App.dragDividerEndpoint
+    || App.toolbarDragging || (typeof isMovingFloat === 'function' && isMovingFloat()));
+}
+
+export function scheduleFramingCheck() {
+  clearTimeout(framingTimer);
+  framingTimer = setTimeout(() => {
+    framingTimer = null;
+    try { checkFraming(); } catch (e) { /* a failed measurement leaves the view alone */ }
+  }, FRAMING_SETTLE_MS);
+}
+
+/**
+ * Measure the overlays, and fit if they changed while the view was framed.
+ * Returns whether it fitted. Synchronous, so a test can drive it directly.
+ */
+export function checkFraming() {
+  const w = $('canvas-wrap');
+  if (!w || !w.getBoundingClientRect) return false;
+  if (canvasGestureInProgress()) { scheduleFramingCheck(); return false; }
+  // The canvas mid-resize is the resize path's (notifyCanvasResize).
+  if (_resizeSettleTimer) { scheduleFramingCheck(); return false; }
+  const rect = w.getBoundingClientRect();
+  if (!rect.width || !rect.height) return false;
+  const sig = framingSignature(rect);
+  const before = framingBaseline;
+  framingBaseline = sig;
+  if (nowMs() < framingQuietUntil) return false;
+  if (!before || sameSignature(before, sig)) return false;
+  // A different canvas size is a resize, which frames on its own terms.
+  if (Math.abs(before[0] - sig[0]) > FRAMING_TOLERANCE || Math.abs(before[1] - sig[1]) > FRAMING_TOLERANCE) return false;
+  if (!isFramed() || !App.states.length) return false;
+  fitToScreen(true);
+  return true;
+}
+
+/**
+ * Watch every overlay for anything that could change its box. Attributes cover
+ * the class and style writes that open, fold, move and hide them; childList
+ * covers the card's content and the windows arriving and leaving; the
+ * ResizeObserver covers a box that grew from its content alone.
+ */
+export function initFraming() {
+  if (initFraming.done) return;
+  initFraming.done = true;
+  const watched = ['canvas-toolbox', 'canvas-nav-controls', 'minimap-container', 'canvas-info-btn',
+    'example-card', 'scope-bar', 'mobile-bar'].map(id => $(id)).filter(Boolean);
+  // The windows' layer is made on first use, which can be after this runs —
+  // and an observer on a node that did not exist yet watches nothing, which is
+  // how torn-off windows went unnoticed. Asking for it makes it now.
+  const layer = typeof floatLayer === 'function' ? floatLayer() : null;
+  if (layer) watched.push(layer);
+  if (typeof MutationObserver === 'function') {
+    const mo = new MutationObserver(() => scheduleFramingCheck());
+    for (const el of watched) {
+      const deep = el === layer || el.id === 'example-card' || el.id === 'scope-bar';
+      mo.observe(el, {
+        attributes: true, attributeFilter: ['style', 'class', 'hidden'],
+        childList: deep, subtree: deep
+      });
+    }
+  }
+  if (typeof ResizeObserver === 'function') {
+    const ro = new ResizeObserver(() => scheduleFramingCheck());
+    for (const el of watched) ro.observe(el);
+  }
+  scheduleFramingCheck();
 }
 
 // ── Keep the diagram framed as the canvas area changes shape ──
@@ -1844,7 +2042,9 @@ export function notifyCanvasResize() {
   if (!_resizeSettleTimer) {
     // Start of a resize gesture — remember whether the whole diagram was in
     // view, so the same framing can be restored once the resize settles.
-    _resizeWasFullyVisible = isMachineFullyVisible(prev.w, prev.h);
+    // A framed view stays framed through a resize too, whether or not every
+    // edge of the machine happened to be on screen.
+    _resizeWasFullyVisible = isFramed() || isMachineFullyVisible(prev.w, prev.h);
   }
   // Keep the world point at the viewport center fixed frame-to-frame instead
   // of letting the camera silently drift while the canvas area is resizing.
@@ -2345,41 +2545,56 @@ function measureBox(el) {
  * because every corner was "taken" and the search settled for the least-bad
  * one.
  */
+// The pill is hidden while the card is open, so it cannot be measured then;
+// the last size it had stands in, and a circle's is the first guess.
+let lastPillSize = { width: 24, height: 24 };
+
 export function layoutCanvasInfo(wrapRect, toolbarRect, below = []) {
   const btn = $('canvas-info-btn');
   const card = $('example-card');
   if (!btn && !card) return null;
-  const size = measureBox(card) || measureBox(btn);
-  if (!size) return null;
+  const measuredPill = btn && !btn.hidden ? measureBox(btn) : null;
+  if (measuredPill) lastPillSize = measuredPill;
+  const pillSize = lastPillSize;
+  const cardSize = measureBox(card) || pillSize;
 
-  const origin = canvasInfoOrigin(App.toolbarDock, toolbarRect, size);
+  // Each takes its own spot. The pill is small enough for the corner above a
+  // left toolbar that the card is too tall for, and sizing the pill's spot for
+  // the card pushed a 24px button out beside the toolbar with nothing around
+  // it. The card still opens where it will fit, and grows out of the pill
+  // (the transform-origin below), so opening it reads as the pill unfolding.
+  const pill = canvasInfoOrigin(App.toolbarDock, toolbarRect, pillSize);
+  const origin = canvasInfoOrigin(App.toolbarDock, toolbarRect, cardSize);
   // On a phone the bottom edge belongs to the mobile bar.
   let room = wrapRect.height - TOOLBAR_MARGIN - compactBottomInset(wrapRect) - origin.top;
   for (const o of below) {
     if (!o || !(o.top > origin.top)) continue;
-    const across = o.left < origin.left + size.width && o.left + o.width > origin.left;
+    const across = o.left < origin.left + cardSize.width && o.left + o.width > origin.left;
     if (across) room = Math.min(room, o.top - OVERLAY_GAP - origin.top);
   }
 
-  [btn, card].forEach(el => {
+  const place = (el, at) => {
     if (!el || !el.style) return;
     el.style.position = 'absolute';
-    el.style.left = `${origin.left}px`;
-    el.style.top = `${origin.top}px`;
+    el.style.left = `${at.left}px`;
+    el.style.top = `${at.top}px`;
     el.style.right = 'auto';
     el.style.bottom = 'auto';
     if (el.dataset) el.dataset.corner = 'top-left';
-  });
-  const maxHeight = Math.max(CARD_MIN_HEIGHT, Math.round(room));
-  if (card && card.style) card.style.maxHeight = `${maxHeight}px`;
-  // What now stands in the top-left, from the origin just written rather than
-  // read back off the DOM, for the status toast to make room for.
-  const at = el => {
-    const b = el && !el.hidden ? measureBox(el) : null;
-    return b ? { left: origin.left, top: origin.top, width: b.width, height: Math.min(b.height, maxHeight) } : null;
   };
+  place(btn, pill);
+  place(card, origin);
+  const maxHeight = Math.max(CARD_MIN_HEIGHT, Math.round(room));
+  if (card && card.style) {
+    card.style.maxHeight = `${maxHeight}px`;
+    card.style.transformOrigin = `${Math.round(pill.left - origin.left + pillSize.width / 2)}px ${Math.round(pill.top - origin.top + pillSize.height / 2)}px`;
+  }
+  // What now stands in the top-left, from the positions just written rather
+  // than read back off the DOM, for the status toast to make room for.
   const open = !!(card && card.classList && card.classList.contains('is-open'));
-  return { x: 'left', y: 'top', ...origin, occupied: [at(btn), open ? at(card) : null] };
+  const pillRect = btn && !btn.hidden ? { ...pill, ...pillSize } : null;
+  const cardRect = open ? { ...origin, width: cardSize.width, height: Math.min(cardSize.height, maxHeight) } : null;
+  return { x: 'left', y: 'top', ...pill, card: origin, occupied: [pillRect, cardRect] };
 }
 
 /** Re-anchor after the card's own content changes size. */

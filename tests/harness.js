@@ -51,6 +51,7 @@ import * as importStatechart from '../js/import-statechart.js';
 import * as interopStatechart from '../js/interop/statechart.js';
 import * as interopObjlit from '../js/interop/objlit.js';
 import * as interopXml from '../js/interop/xml.js';
+import * as interopStandardTM from '../js/interop/standard-tm.js';
 import * as exerciseModel from '../js/exercise/model.js';
 import * as exerciseGrade from '../js/exercise/grade.js';
 import * as exerciseUi from '../js/exercise-ui.js';
@@ -144,7 +145,7 @@ const NAMESPACES = [
   machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,
   simulation, tape, tapeLog, tapeView, spacetime, spacetimeUi, complexity, complexityUi, suggest, language, alphabet, markdown,
   view, history, fileHost, persistence, exportCore, exportFormats, exportUi, codegen,
-  importJflap, importStatechart, interopStatechart, interopObjlit, interopXml,
+  importJflap, importStatechart, interopStatechart, interopObjlit, interopXml, interopStandardTM,
   exerciseModel, exerciseGrade, exerciseUi, lexerRegex, lexerBuild, lexerEmit, lexerUi, algorithmsFa, grammarUi, grammarModel, grammarParse, grammarAnalysis, grammarTransform,
   grammarParsing, grammarConvert, grammarTree, grammarRegistry, grammarExamples, reference, workspace, quickSettings, minimap, ui,
   statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt, statemateAgent,
@@ -287,6 +288,9 @@ function resetModuleState() {
   // across a reset it would swallow the announcement for the next test's
   // machine, or announce one for a machine that never crossed the line.
   ui.resetLargeMachineProfileWatch();
+  // Whether the view is framed, and the overlay measurement it is compared
+  // against, are module state a test must not inherit.
+  ui.resetFraming();
   // The incremental renderer keys its live SVG nodes off App.domCache. Left
   // populated, a test would start out holding nodes built for the previous
   // test's states — the diff recovers from that on its own, but tests that

@@ -137,6 +137,16 @@ Points worth keeping in mind:
 
 
 
+### A machine pasted on the canvas
+
+**Ctrl+V reads the system clipboard before the in-app one.** `applyPastedText` in [js/persistence.js](js/persistence.js) recognises three things: a saved file's JSON (fenced in ``` or not), a share link anywhere in the text, and a Turing machine in the standard text format (`1RB1LC_1RC1RB_…`, read by [js/interop/standard-tm.js](js/interop/standard-tm.js)). Anything else falls through to `pasteClipboard`. The first two go through `applyDocument`, so validation, tab placement and the card are the file path's; all three land by `placeOpenedDocument`, so a paste never replaces the machine on screen.
+
+- **It answers `null` or a promise, not a boolean.** Recognising is synchronous because the caller has to decide on the spot whether to fall back to the in-app paste; opening is not, because a link has to be inflated first. Recognisable-but-broken input (a typo in the notation, a link or file cut short) is still recognised, so the reader sees the problem named rather than an unrelated paste.
+- **The keydown does not `preventDefault` Ctrl+V.** The `paste` event is the one way a page reads the clipboard without a permission prompt, and preventing the keydown suppresses it. The keydown arms a zero-delay timer that does the in-app paste if no event arrives; the event arrives in the same task, so it always wins where it exists. The desktop menu's Paste is a click, has no event, and uses `navigator.clipboard.readText()`.
+- **An in-app copy writes an empty string to the system clipboard.** Otherwise a machine string left there from earlier would open again in place of the states just copied. Duplicate (Ctrl+D) passes `claim: false` and leaves it alone.
+
+[tests/paste-machine.test.js](tests/paste-machine.test.js) and [tests/standard-tm.test.js](tests/standard-tm.test.js) pin all three sources, the fallbacks, and the published BB(4) and BB(2,3) step counts.
+
 ### Statechart import (XState, SCXML)
 
 The export side is `codegenXState` / `codegenSCXML` in [js/codegen.js](js/codegen.js); [js/interop/](js/interop/) is the way back, and the way in for a statechart written for a real application. Split like JFLAP: `readStatechart` (import-free, throws `StatechartError`) reads, [js/import-statechart.js](js/import-statechart.js) places. `readDocumentPayload` recognises one by extension (`.scxml`; `.js`/`.mjs`/`.ts` for XState) or, for a `.json`, by shape — `states` as an object, no `format`, no `transitions` array.
