@@ -132,6 +132,80 @@ export class Fifo {
   }
 }
 
+// ── a set of configurations ───────────────────────────────────────
+// A search's visited set used to be a Set of strings, one built per
+// configuration — the state, the position and the store run together with
+// separators — and hashed on insert. Once the store is an interned node
+// (js/machines/step-log.js) every part of a configuration is a small integer,
+// so the set holds the integers: five int32s a slot in one typed array, open
+// addressing with linear probing. Exact — a slot is compared field by field —
+// and it allocates nothing per configuration. The first field is stored plus
+// one, so 0 marks an empty slot and a probe touches one array, not two. Each
+// slot has room for one integer beside the tuple, which the tape machines'
+// repeat check uses for the step it first saw a configuration at.
+export class ConfigSet {
+  constructor(capacity = 1024) {
+    let cap = 16;
+    while (cap < capacity * 2) cap *= 2;
+    this.cap = cap;
+    this.size = 0;
+    this.slots = new Int32Array(cap * 6);
+  }
+
+  /** Add the tuple; true if it was not already present. `a` ≥ 0, every field an int32. */
+  add(a, b, c, d, e) {
+    return this.addOrGet(a, b, c, d, e, 0) === -1;
+  }
+
+  /**
+   * Add the tuple with `value` beside it and answer -1, or — if it is already
+   * present — answer the value it was added with. `value` ≥ 0.
+   */
+  addOrGet(a, b, c, d, e, value) {
+    const slots = this.slots, mask = this.cap - 1, a1 = a + 1;
+    let o = (configHash(a, b, c, d, e) & mask) * 6;
+    while (slots[o] !== 0) {
+      if (slots[o] === a1 && slots[o + 1] === b && slots[o + 2] === c && slots[o + 3] === d && slots[o + 4] === e) return slots[o + 5];
+      o += 6;
+      if (o === slots.length) o = 0;
+    }
+    slots[o] = a1; slots[o + 1] = b; slots[o + 2] = c; slots[o + 3] = d; slots[o + 4] = e; slots[o + 5] = value;
+    if (++this.size * 2 > this.cap) this.grow();
+    return -1;
+  }
+
+  grow() {
+    const old = this.slots;
+    this.cap *= 2;
+    this.slots = new Int32Array(this.cap * 6);
+    this.size = 0;
+    for (let o = 0; o < old.length; o += 6) {
+      if (old[o] !== 0) this.addOrGet(old[o] - 1, old[o + 1], old[o + 2], old[o + 3], old[o + 4], old[o + 5]);
+    }
+  }
+}
+
+function configHash(a, b, c, d, e) {
+  let h = Math.imul(a, 0x9E3779B1) ^ Math.imul(b + 0x7F4A7C15, 0x85EBCA77);
+  h = Math.imul(h ^ (h >>> 15), 0x2C1B3C6D) ^ Math.imul(c, 0xC2B2AE3D);
+  h = Math.imul(h ^ (h >>> 13), 0x297A2D39) ^ Math.imul(d, 0x27D4EB2F) ^ Math.imul(e, 0x165667B1);
+  h = Math.imul(h ^ (h >>> 16), 0x85EBCA6B);
+  return (h ^ (h >>> 13)) >>> 0;
+}
+
+/**
+ * State ids → 0, 1, 2 … in the order a search first meets them, so a state
+ * can sit in a ConfigSet. One per search.
+ */
+export function makeStateNumbering() {
+  const ids = new Map();
+  return state => {
+    let n = ids.get(state);
+    if (n === undefined) ids.set(state, n = ids.size);
+    return n;
+  };
+}
+
 // ── δ, indexed by source state ────────────────────────────────────
 // **A step asks which transitions leave one state, so that is what is
 // indexed.** Every simulator used to find its next move with
@@ -202,6 +276,96 @@ export function getMultiTapeDeterministicTransition(state, syms) {
   return pickMostSpecificTransition(matching, tr => tr.tapeSyms.reduce((score, s, i) => score + (s === syms[i] ? 1 : 0), 0));
 }
 
+// ── the same, remembered for one run ──────────────────────────────
+// Which transition fires depends on the state and what is read, and a run
+// asks about the same few pairs over and over: a Turing machine sweeping its
+// tape asks the same (state, symbol) thousands of times. Resolving each pair
+// once — the filter over the state's edges, the specificity tie-break — and
+// remembering it for the rest of the run makes a step two Map lookups however
+// many edges leave the state. Per run and never kept, because δ can be edited
+// in place between runs and nothing announces it (see transitionIndex).
+
+/**
+ * getSingleTapeDeterministicTransition, remembered per state.
+ *
+ * The first time a run is in a state, the state's edges are read once into a
+ * row: for each symbol the edge that would win on it, and the Σ-wildcard edge
+ * that wins on anything else. After that a step is two Map lookups however
+ * many edges leave the state and however many of its symbols the run has not
+ * met yet — resolving per (state, symbol) instead would still scan a state
+ * with two hundred edges once per symbol it reads.
+ *
+ * The row is the same answer getSingleTapeDeterministicTransition gives: an
+ * explicit symbol beats the wildcard, and among equals the lower id wins, by
+ * the comparison pickMostSpecificTransition makes.
+ */
+export function singleTapeLookup() {
+  const any = App.config.sym.any;
+  const rows = new Map();
+  return (state, sym) => {
+    let row = rows.get(state);
+    if (row === undefined) rows.set(state, row = singleTapeRow(state, any));
+    const t = row.bySymbol.get(sym);
+    return t !== undefined ? t : row.wildcard;
+  };
+}
+
+// Rows outlive a run, but only on proof. A row is filed under the out-edge
+// list it was read from — the index's own array, which is never mutated and is
+// replaced whenever δ is — and it remembers each edge's symbol and id. Reusing
+// it checks those against the edges as they are now, which catches an edge
+// edited in place with nothing announcing it: a comparison per edge, where
+// building the row is a Map write per edge. A replaced index takes its rows
+// with it (a WeakMap).
+const rowCache = new WeakMap();
+
+function singleTapeRow(state, any) {
+  const edges = transitionsFrom(state);
+  const kept = rowCache.get(edges);
+  if (kept !== undefined && rowStillHolds(kept, edges, any)) return kept;
+  const bySymbol = new Map();
+  let wildcard = null;
+  const syms = new Array(edges.length), ids = new Array(edges.length);
+  for (let i = 0; i < edges.length; i++) {
+    const t = edges[i];
+    syms[i] = t.symbol; ids[i] = t.id;
+    if (t.symbol === any) wildcard = lowerIdOf(wildcard, t);
+    else bySymbol.set(t.symbol, lowerIdOf(bySymbol.get(t.symbol) ?? null, t));
+  }
+  const row = { bySymbol, wildcard, any, syms, ids };
+  rowCache.set(edges, row);
+  return row;
+}
+
+function rowStillHolds(row, edges, any) {
+  if (row.any !== any) return false;
+  const { syms, ids } = row;
+  for (let i = 0; i < edges.length; i++) {
+    if (edges[i].symbol !== syms[i] || edges[i].id !== ids[i]) return false;
+  }
+  return true;
+}
+
+// pickMostSpecificTransition's tie-break between two equally specific edges,
+// `best` having come first in δ.
+function lowerIdOf(best, t) {
+  if (best === null) return t;
+  return String(t.id || '').localeCompare(String(best.id || ''), undefined, { numeric: true }) < 0 ? t : best;
+}
+
+/** getMultiTapeDeterministicTransition, remembered per (state, symbols read). */
+export function multiTapeLookup() {
+  const rows = new Map();
+  return (state, syms) => {
+    let row = rows.get(state);
+    if (row === undefined) rows.set(state, row = new Map());
+    const k = syms.length === 1 ? syms[0] : syms.join('\u0001');
+    let t = row.get(k);
+    if (t === undefined) row.set(k, t = getMultiTapeDeterministicTransition(state, syms));
+    return t;
+  };
+}
+
 // ── tape bookkeeping ──────────────────────────────────────────────
 
 export function normalizeTapeConfig(tape, head) {
@@ -230,6 +394,7 @@ export function makeLoopTracker() {
   if (!detectsLoops()) return { seenAt: () => -1, seenAtVerified: () => -1 };
 
   let seen = new Map();
+  let fps = makeFingerprintTable();
   return {
     // Step index where this configuration was first seen, or -1 if new.
     seenAt(key, idx) {
@@ -239,20 +404,47 @@ export function makeLoopTracker() {
       if (seen.size > LOOP_TRACK_MAX) seen = null; // bail out rather than grow
       return -1;
     },
-    // The same, keyed by a fingerprint (Tape#fingerprint) rather than the
-    // configuration itself, which costs O(1) a step where a key costs the
+    // The same, keyed by a fingerprint (Tape#fingerprintParts) rather than
+    // the configuration itself, which costs O(1) a step where a key costs the
     // tape. A fingerprint match is a candidate: `same(j)` confirms that step
     // j really held this configuration before it is reported as a loop.
-    seenAtVerified(fp, idx, same) {
-      if (!seen) return -1;
-      const list = seen.get(fp);
-      if (list) {
-        for (const j of list) if (same(j)) return j;
-        list.push(idx);
-      } else {
-        seen.set(fp, [idx]);
-        if (seen.size > LOOP_TRACK_MAX) seen = null;
-      }
+    seenAtVerified(state, off, h1, h2, idx, same) {
+      if (!fps) return -1;
+      const at = fps.check(state, off, h1, h2, idx, same);
+      if (fps.size > LOOP_TRACK_MAX) fps = null;
+      return at;
+    }
+  };
+}
+
+/**
+ * A table of fingerprinted configurations, confirming every match.
+ *
+ * `check(state, off, h1, h2, step, same)` records the configuration at
+ * `step` and answers -1, or — if an earlier step had the same fingerprint and
+ * `same(j)` confirms it held the same configuration — that step. The state is
+ * numbered and the fingerprint is three integers, so a step costs one probe
+ * of a typed table and no string. Two configurations with one fingerprint
+ * (which the double hash makes vanishingly rare) are kept apart in a Map
+ * beside the table rather than trusted.
+ */
+export function makeFingerprintTable() {
+  const table = new ConfigSet();
+  const stateNo = makeStateNumbering();
+  let clashes = null;
+  return {
+    get size() { return table.size; },
+    check(state, off, h1, h2, step, same) {
+      const s = stateNo(state);
+      const first = table.addOrGet(s, off, h1, h2, 0, step);
+      if (first < 0) return -1;
+      if (same(first)) return first;
+      const k = `${s},${off},${h1},${h2}`;
+      clashes ??= new Map();
+      const list = clashes.get(k);
+      if (!list) { clashes.set(k, [step]); return -1; }
+      for (const j of list) if (same(j)) return j;
+      list.push(step);
       return -1;
     }
   };
@@ -267,15 +459,13 @@ export function makeLoopTracker() {
  * one that does not is, in practice, never. So a verdict of "repeats" is the
  * one the key-per-step check reached, and the price per step is a hash.
  */
-export function makeRepeatDetector(keyAt) {
-  const seen = new Map();
-  return (fp, step, keyNow) => {
-    const list = seen.get(fp);
-    if (!list) { seen.set(fp, [step]); return false; }
-    const now = keyNow();
-    for (const j of list) if (keyAt(j) === now) return true;
-    list.push(step);
-    return false;
+export function makeRepeatDetector(keyAt, keyNow) {
+  const table = makeFingerprintTable();
+  let now = null;
+  const same = j => keyAt(j) === (now ??= keyNow());
+  return (state, off, h1, h2, step) => {
+    now = null;
+    return table.check(state, off, h1, h2, step, same) >= 0;
   };
 }
 

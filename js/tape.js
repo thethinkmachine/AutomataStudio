@@ -53,10 +53,23 @@ function powmod(b, e, m) {
   return r;
 }
 
-// B^pos for both moduli, pos any integer (a two-way tape has negative cells):
-// by Fermat, B^(m-1) = 1, so the exponent is taken mod m-1.
+// B^pos for both moduli, pos any integer: by Fermat, B^(m-1) = 1, so the
+// exponent is taken mod m-1. A write's exponent is its cell's offset from the
+// window's left edge, so it is almost always small and non-negative, and those
+// come from two arrays extended a multiply at a time; anything else is cached.
 const powCache = new Map();
+const POW = [[1], [1]];
+const POW_DIRECT = 1 << 20;
 function posPow(pos) {
+  if (pos >= 0 && pos < POW_DIRECT) {
+    const p1 = POW[0], p2 = POW[1];
+    while (p1.length <= pos) {
+      p1.push(mulmod(p1[p1.length - 1], FP_B1, FP_M1));
+      p2.push(mulmod(p2[p2.length - 1], FP_B2, FP_M2));
+    }
+    POW_PAIR[0] = p1[pos]; POW_PAIR[1] = p2[pos];
+    return POW_PAIR;
+  }
   let hit = powCache.get(pos);
   if (hit) return hit;
   if (powCache.size > 65536) powCache.clear();
@@ -66,6 +79,8 @@ function posPow(pos) {
   powCache.set(pos, hit);
   return hit;
 }
+// posPow's answer for a direct exponent, reused: read it before the next call.
+const POW_PAIR = [1, 1];
 
 const symCache = new Map();
 function symHash(sym) {
@@ -79,16 +94,27 @@ function symHash(sym) {
   return hit;
 }
 
-// Add (sign 1) or remove (sign -1) one cell's term. A cell holding the blank
-// contributes nothing, exactly as it reads in key().
-function fpCell(fp, pos, sym, blank, sign) {
-  if (sym === blank) return;
-  const s = symHash(String(sym));
-  const p = posPow(pos);
-  const t1 = mulmod(s[0], p[0], FP_M1);
-  const t2 = mulmod(s[1], p[1], FP_M2);
-  fp.h1 = sign > 0 ? (fp.h1 + t1) % FP_M1 : (fp.h1 - t1 + FP_M1) % FP_M1;
-  fp.h2 = sign > 0 ? (fp.h2 + t2) % FP_M2 : (fp.h2 - t2 + FP_M2) % FP_M2;
+const FP_PARTS = { off: 0, h1: 0, h2: 0 };
+
+// A cell's symbol hash, or null for one that contributes nothing: the blank
+// reads in key() exactly as an unwritten cell does.
+function cellHash(sym, blank) {
+  return sym === undefined || sym === blank ? null : symHash(String(sym));
+}
+
+// Cell `pos` went from `was` to `now` (hashes from cellHash): add the
+// difference of their terms. The hashes are kept relative to `fp.lo`, so the
+// term's power is the cell's offset from there. One multiply per modulus, and
+// none at all when a write puts back the symbol that was there.
+function fpChange(fp, pos, was, now) {
+  if (was === now) return;
+  let d1 = (now ? now[0] : 0) - (was ? was[0] : 0);
+  let d2 = (now ? now[1] : 0) - (was ? was[1] : 0);
+  if (d1 < 0) d1 += FP_M1;
+  if (d2 < 0) d2 += FP_M2;
+  const p = posPow(pos - fp.lo);
+  fp.h1 = (fp.h1 + mulmod(d1, p[0], FP_M1)) % FP_M1;
+  fp.h2 = (fp.h2 + mulmod(d2, p[1], FP_M2)) % FP_M2;
 }
 
 // The leftmost stored cell, stored blanks included — snapshot() counts them.
@@ -130,18 +156,15 @@ export class Tape {
   write(sym) {
     if (this.immutable && this.immutable.has(this.read())) return false;
     const fp = this._fp;
-    if (fp) {
-      const had = this.cells.get(this.head);
-      if (had !== undefined) fpCell(fp, this.head, had, this.blank, -1);
-    }
+    const was = fp ? cellHash(this.cells.get(this.head), this.blank) : null;
     // A blank is the absence of a cell, not a cell holding a blank, or a
     // tape scrubbed back to empty would keep every cell it ever touched
     // and no two such configurations would ever compare equal.
     if (sym === this.blank) this.cells.delete(this.head);
     else this.cells.set(this.head, sym);
     if (fp) {
+      fpChange(fp, this.head, was, cellHash(sym, this.blank));
       if (sym !== this.blank) {
-        fpCell(fp, this.head, sym, this.blank, 1);
         if (this.head < fp.min) fp.min = this.head;
       } else if (this.head === fp.min) {
         fp.min = leastKey(this.cells);
@@ -164,27 +187,45 @@ export class Tape {
    * Equal keys give equal fingerprints. The converse is overwhelmingly likely
    * rather than certain, so a caller that finds a repeat confirms it against
    * key() before believing it — see `makeRepeatDetector` in the TM family.
+   *
+   * The hashes are kept relative to `fp.lo`, the left edge they were last
+   * normalised to, rather than to cell 0: then reading the fingerprint costs
+   * nothing unless the edge has moved since, which on most steps it has not.
    */
   trackFingerprint() {
-    const fp = { h1: 0, h2: 0, min: leastKey(this.cells) };
-    for (const [pos, sym] of this.cells) fpCell(fp, pos, sym, this.blank, 1);
+    const fp = { h1: 0, h2: 0, min: leastKey(this.cells), lo: 0 };
+    for (const [pos, sym] of this.cells) fpChange(fp, pos, null, cellHash(sym, this.blank));
     this._fp = fp;
     return this;
   }
 
   /** key()'s fingerprint; trackFingerprint() must have been called. */
   fingerprint() {
+    const p = this.fingerprintParts();
+    return `${p.off}|${p.h1}|${p.h2}`;
+  }
+
+  /**
+   * The same fingerprint as three integers — the head's offset into key()'s
+   * window and the two hashes — for a caller that keeps them in a typed table
+   * rather than a Map of strings. The object is reused: read it before the
+   * next call.
+   */
+  fingerprintParts() {
     const fp = this._fp;
     // The same left edge snapshot() takes: the head or the leftmost stored
     // cell on a two-way tape, cell 0 on a bounded one.
     const lo = this.twoWay ? Math.min(this.head, fp.min) : 0;
-    let n1 = fp.h1, n2 = fp.h2;
-    if (lo !== 0) {
-      const inv = posPow(-lo);
-      n1 = mulmod(n1, inv[0], FP_M1);
-      n2 = mulmod(n2, inv[1], FP_M2);
+    if (lo !== fp.lo) {
+      // Σ s·B^(i − fp.lo) becomes Σ s·B^(i − lo): one multiply by B^(fp.lo − lo).
+      const shift = posPow(fp.lo - lo);
+      fp.h1 = mulmod(fp.h1, shift[0], FP_M1);
+      fp.h2 = mulmod(fp.h2, shift[1], FP_M2);
+      fp.lo = lo;
     }
-    return `${this.head - lo}|${n1}|${n2}`;
+    const out = FP_PARTS;
+    out.off = this.head - lo; out.h1 = fp.h1; out.h2 = fp.h2;
+    return out;
   }
 
   /**
@@ -214,18 +255,24 @@ export class Tape {
    * the position the reader put it in.
    */
   snapshot() {
-    const keys = [...this.cells.keys()];
+    // Walked rather than spread into Math.min/max: a spread passes every
+    // cell as an argument, and past ~100k cells that throws.
+    let least = this.head, most = this.head;
+    for (const k of this.cells.keys()) {
+      if (k < least) least = k;
+      if (k > most) most = k;
+    }
     // A bounded tape's window always starts at cell 0, so the input keeps
     // the position the reader put it in. A two-way tape's starts at
     // whichever is furthest left of the head and the written cells — and
     // pointedly *not* at cell 0, which would anchor the window to an
     // origin the machine cannot see and make key() origin-dependent.
-    const lo = this.twoWay ? Math.min(this.head, ...keys) : 0;
+    const lo = this.twoWay ? least : 0;
     // A right-bounded tape is exactly as long as its bound says, however
     // much of it is currently blank — its length is part of the machine.
     const hi = this.rightBound !== null
       ? this.rightBound
-      : Math.max(this.head, ...keys, lo);
+      : Math.max(most, lo);
     const tape = [];
     for (let i = lo; i <= hi; i++) tape.push(this.cells.has(i) ? this.cells.get(i) : this.blank);
     return { tape, head: this.head - lo, origin: lo };

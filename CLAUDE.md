@@ -225,7 +225,10 @@ js/machines/
   predicates.js  import-free. The machine-shape predicates the layer reads.
   paint.js       import-free. The late-bound renderSimStep hook.
   step-log.js    import-free. What a step holds instead of a copy — the
-                 non-tape half of tape-log.js.
+                 non-tape half of tape-log.js — and the interned stacks
+                 a search's configurations are named by.
+  zipper-tape.js the NDTM search's tape: two interned stacks and the
+                 cell under the head, so a fork is O(1).
   batch.js       the batch tester's deciding half, with no page attached.
 ```
 
