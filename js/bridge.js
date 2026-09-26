@@ -5,9 +5,9 @@
 // global-scope code and cannot see module bindings. The functions they name
 // are re-exposed on window here.
 //
-// 217 names across 25 modules — 216 functions plus App — reached from 442
+// 216 names across 25 modules — 215 functions plus App — reached from 441
 // attributes:
-//    320  static, in index.html
+//    319  static, in index.html
 //    122  in markup the app builds at runtime (algorithm cards,
 //         export dialogs, alphabet chips, context menus)
 //
@@ -73,7 +73,7 @@ import {
   showShapeToolMenu,
 } from './dividers.js';
 import {
-  handleRunBtnClick, handleSimInputKeydown, handleTraceScroll, resetSim, revealEarlierTrace, runBatch, scrubSim, setAutoSpeedPreset, stepBack, stepFwd, stepToEnd, stepToStart,
+  handleRunBtnClick, handleSimInputKeydown, handleTraceScroll, resetSim, revealEarlierTrace, runBatch, scrubSim, stepBack, stepFwd, stepToEnd, stepToStart,
 } from './simulation.js';
 import {
   toggleFormalDef,
@@ -180,7 +180,7 @@ Object.assign(window, {
    showShapeToolMenu,
   // simulation.js
    handleRunBtnClick, handleSimInputKeydown, resetSim, runBatch, scrubSim,
-   setAutoSpeedPreset, stepBack, stepFwd, stepToEnd, stepToStart,
+   stepBack, stepFwd, stepToEnd, stepToStart,
    handleTraceScroll, revealEarlierTrace,
   // language.js
    toggleFormalDef,

@@ -19,7 +19,7 @@ import { getState, getTransition } from './states-transitions.js';
 import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
 import { escapeHtml, isAnyPDA, isEmbeddedMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
 import { machineGuards, parseMachineInput, streamMachine } from './machines/index.js';
-import { stateNames } from './machines/runtime.js';
+import { stateNames, transitionsFrom } from './machines/runtime.js';
 import { computeBatchResults, decideBatchRows, parseBatchLine, summarizeBatch } from './machines/batch.js';
 import { poolSize, runParallel, shouldParallelize } from './parallel/pool.js';
 import { renderTracker, resetTracker } from './tape-view.js';
@@ -30,6 +30,7 @@ import { boundaryAt, breakScope, resetRunBounds, runSubject } from './run-scope.
 import { getBlock } from './blocks.js';
 import { SPACETIME_ICON, openSpaceTime, refreshSpaceTime, spaceTimeKind } from './spacetime-ui.js';
 import { setSectionStatus } from './section-status.js';
+import { isSyncRAF } from './anim.js';
 
 export function runSim() {
   resetSim();
@@ -127,8 +128,7 @@ function noteForRun(run, lazy, m) {
   if (!lazy || run.done || execMode() !== 'auto') return '';
   const cfg = getMachineConfig(m);
   const limit = cfg.hasTape ? App.config.maxTmSteps : App.config.maxPdaSteps;
-  return '<div class="t-warn sim-log-stream">Streaming: this machine can run to '
-    + `${limit.toLocaleString()} steps, so each is computed as it plays.</div>`;
+  return `Streaming: this machine can run to ${limit.toLocaleString()} steps, so each is computed as it plays.`;
 }
 
 /** The run on screen, or an empty one before anything has been run. */
@@ -247,6 +247,7 @@ export function log(html) {
   const t = $('trace-log');
   if (!t) return;
   t.innerHTML = html;
+  t.__traceWin = null;   // the rows renderTraceLog drew are gone — see there
   t.scrollTop = t.scrollHeight;
   setSectionCount($('rp-count-trace'), reachableCount());
 }
@@ -316,34 +317,103 @@ function traceFloor() {
   return logFloor == null ? tail : Math.max(0, Math.min(logFloor, tail));
 }
 
+// ── the log as a window that slides ──
+//
+// Playing forward, the tail moves by a step or two per frame: a row or two
+// arrive at the bottom and as many leave the top. Rebuilding four hundred rows
+// with innerHTML to show that was most of the cost of a frame of playback —
+// measured in Chromium at 17–49% of a step, before the document-wide
+// MutationObserver in dropdown.js walked every one of the ~800 nodes the swap
+// added and removed. So the window the log is drawing is remembered on the
+// element (`__traceWin`), and a forward move appends what is new, drops what
+// fell off the top, and redraws the one row whose class changes.
+//
+// Anything else rebuilds — a step back, a scrub, a reveal, a new run, a jump of
+// a whole tail or more — and so does a log someone else wrote to: `log()` and
+// StateMate both assign innerHTML, which detaches every row, and a window
+// whose rows are no longer in the element is not one to extend.
+
+function traceRowClass(s, current) {
+  if (!current) return '';
+  return s.final === 'accept' ? 't-ok'
+    : (s.final === 'reject' || s.final === 'loop') ? 't-err'
+      : s.final === 'timeout' ? 't-warn' : 't-step';
+}
+
+function fillTraceRow(row, i) {
+  const s = App.simSteps[i];
+  row.className = traceRowClass(s, i === App.simIdx);
+  row.innerHTML = `${i}: ${s.note}`;
+  return row;
+}
+
+function traceMoreButton(from) {
+  const more = Math.min(SIM_LOG_TAIL, from);
+  const btn = document.createElement('button');
+  btn.setAttribute('type', 'button');
+  btn.className = 't-step sim-log-more';
+  btn.setAttribute('onclick', 'revealEarlierTrace()');
+  btn.setAttribute('data-tip', `Draw the previous ${more.toLocaleString()} steps. They were always in the run — only the drawing is deferred, because a log rebuilt from step 0 on every tick is quadratic in the length of the run.`);
+  btn.textContent = `↑ ${from.toLocaleString()} earlier step${from === 1 ? '' : 's'} — show ${more.toLocaleString()}`;
+  return btn;
+}
+
+/** Can the window drawn last time be slid forward to [from, simIdx]? */
+function traceWindowExtends(el, w, from) {
+  if (!w || logFloor != null || w.run !== App.simSteps || w.note !== streamNote) return false;
+  if (from < w.from || App.simIdx < w.to || App.simIdx - w.to >= SIM_LOG_TAIL) return false;
+  // The "earlier steps" button appears once, when the run first outgrows the
+  // tail; that is a rebuild rather than a special case.
+  if (!!w.btn !== (from > 0)) return false;
+  const last = w.rows[w.rows.length - 1];
+  return !!last && last.parentNode === el;
+}
+
 export function renderTraceLog() {
   const from = traceFloor();
-  const parts = [streamNote];
-  if (from) {
-    const more = Math.min(SIM_LOG_TAIL, from);
-    parts.push(
-      `<button type="button" class="t-step sim-log-more" onclick="revealEarlierTrace()"`
-      + ` data-tip="Draw the previous ${more.toLocaleString()} steps. They were always in the run — only the drawing is deferred, because a log rebuilt from step 0 on every tick is quadratic in the length of the run.">`
-      + `↑ ${from.toLocaleString()} earlier step${from === 1 ? '' : 's'} — show ${more.toLocaleString()}</button>`
-    );
-  }
-  for (let i = from; i <= App.simIdx; i++) {
-    const s = App.simSteps[i];
-    const cl = i === App.simIdx
-      ? (s.final === 'accept' ? 't-ok'
-        : (s.final === 'reject' || s.final === 'loop') ? 't-err'
-          : s.final === 'timeout' ? 't-warn' : 't-step')
-      : '';
-    parts.push(`<div class="${cl}">${i}: ${s.note}</div>`);
-  }
   const el = $('trace-log');
-  const before = el ? el.scrollHeight : 0;
-  const wasTop = el ? el.scrollTop : 0;
-  if (el) el.innerHTML = parts.join('');
   setSectionCount($('rp-count-trace'), reachableCount());
   if (!el) return;
+  const w = el.__traceWin;
+
+  if (traceWindowExtends(el, w, from)) {
+    // The newest row drawn last time is redrawn whatever else happens: it
+    // loses the current-step class, and a step the budget ran out on is
+    // stamped (note and final) after it was handed over — see markTimeoutStep.
+    fillTraceRow(w.rows[w.rows.length - 1], w.to);
+    for (let i = w.to + 1; i <= App.simIdx; i++) {
+      w.rows.push(el.appendChild(fillTraceRow(document.createElement('div'), i)));
+    }
+    let drop = from - w.from;
+    while (drop-- > 0) el.removeChild(w.rows.shift());
+    if (w.btn && from !== w.from) {
+      const btn = traceMoreButton(from);
+      el.replaceChild(btn, w.btn);
+      w.btn = btn;
+    }
+    w.from = from; w.to = App.simIdx;
+    pinTraceToBottom(el);
+    return;
+  }
+
+  const before = logFloor != null ? el.scrollHeight : 0;
+  const wasTop = el.scrollTop;
+  el.innerHTML = '';
+  if (streamNote) {
+    const note = document.createElement('div');
+    note.className = 't-warn sim-log-stream';
+    note.textContent = streamNote;
+    el.appendChild(note);
+  }
+  const btn = from ? el.appendChild(traceMoreButton(from)) : null;
+  const rows = [];
+  for (let i = from; i <= App.simIdx; i++) {
+    if (!App.simSteps[i]) break;
+    rows.push(el.appendChild(fillTraceRow(document.createElement('div'), i)));
+  }
+  el.__traceWin = { run: App.simSteps, note: streamNote, from, to: from + rows.length - 1, rows, btn };
   if (logFloor == null) {
-    el.scrollTop = el.scrollHeight;
+    pinTraceToBottom(el);
   } else {
     // Hold the reader where they were: the rows arrived *above* what they are
     // looking at, so the content they had in view moved down by exactly the
@@ -351,6 +421,13 @@ export function renderTraceLog() {
     // the top of it, which is the one place they have already read.
     el.scrollTop = wasTop + (el.scrollHeight - before);
   }
+}
+
+// Pinning to the bottom reads scrollHeight, which forces a layout. Inside a
+// paint that is deferred to the end (see afterWrites), so the frame pays for
+// one layout rather than one per reader of geometry.
+function pinTraceToBottom(el) {
+  afterWrites(() => { el.scrollTop = el.scrollHeight; });
 }
 
 /** Draw the previous page. Named for the bridge — the button is an `on*`. */
@@ -377,30 +454,56 @@ export function handleTraceScroll() {
   revealEarlierTrace();
 }
 
+// ── reads after writes ──
+//
+// A frame of playback writes to the log, the tracker, the canvas, the scrubber
+// and the verdict, and three things in it *read* geometry: pinning the log to
+// its bottom (scrollHeight), keeping the head in view (offsetLeft), and the
+// travelling token (getTotalLength, which in Chromium flushes style). Each read
+// that lands between two writes forces a synchronous layout of the whole page,
+// and on a large machine that page is fifteen thousand SVG nodes — profiled,
+// those three were 25–45% of a step. So inside a paint the reads are queued
+// and run once the writes are done: the first forces the one layout the frame
+// needed anyway, and the rest find it clean.
+let pendingReads = null;
+function afterWrites(fn) {
+  if (pendingReads) pendingReads.push(fn);
+  else fn();
+}
+
 export function renderSimStep() {
   if (isPainterSuppressed()) return;
   const step = App.simSteps[App.simIdx]; if (!step) return;
   const isLast = App.simIdx === maxReachable();
+  const outer = !pendingReads;
+  if (outer) pendingReads = [];
+  try {
+    renderTraceLog();
 
-  renderTraceLog();
+    // Unified Tracker System
+    const trackerEl = $('sim-tracker');
+    trackerEl.style.display = 'block';
 
-  // Unified Tracker System
-  const trackerEl = $('sim-tracker');
-  trackerEl.style.display = 'block';
+    const rows = trackerRows(step);
+    const finalClass = (isLast && step.final) ? step.final : '';
+    rows.forEach(r => { r.finalClass = finalClass; });
 
-  const rows = trackerRows(step);
-  const finalClass = (isLast && step.final) ? step.final : '';
-  rows.forEach(r => { r.finalClass = finalClass; });
+    const stateName = getState(step.state)?.name || (step.states ? stateNames(step.states) : '?');
+    renderTrackerHeader(trackerEl, stateName, rows);
+    renderTracker(trackerBody(trackerEl), rows, { defer: afterWrites });
 
-  const stateName = getState(step.state)?.name || (step.states ? stateNames(step.states) : '?');
-  renderTrackerHeader(trackerEl, stateName, rows);
-  renderTracker(trackerBody(trackerEl), rows);
+    updateSimCanvasHighlights(step);
 
-  updateSimCanvasHighlights(step);
-
-  updateSimScrubber();
-  updateSimVerdict(step, isLast);
-  refreshSpaceTime();
+    updateSimScrubber();
+    updateSimVerdict(step, isLast);
+    refreshSpaceTime();
+  } finally {
+    if (outer) {
+      const reads = pendingReads;
+      pendingReads = null;
+      for (const read of reads) read();
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -774,8 +877,8 @@ function nfaStepTransitions(idx) {
       : null;
     seed = new Set();
     if (sym !== null) {
-      prevStates.forEach(sid => App.transitions.forEach(t => {
-        if (t.from === sid && (t.symbol === sym || t.symbol === any) && cur.has(t.to)) {
+      prevStates.forEach(sid => transitionsFrom(sid).forEach(t => {
+        if ((t.symbol === sym || t.symbol === any) && cur.has(t.to)) {
           out.push(t);
           seed.add(t.to);
         }
@@ -786,8 +889,8 @@ function nfaStepTransitions(idx) {
   const stk = [...seed], seen = new Set(seed);
   while (stk.length) {
     const s = stk.pop();
-    App.transitions.forEach(t => {
-      if (t.from === s && t.symbol === eps && cur.has(t.to)) {
+    transitionsFrom(s).forEach(t => {
+      if (t.symbol === eps && cur.has(t.to)) {
         out.push(t);
         if (!seen.has(t.to)) { seen.add(t.to); stk.push(t.to); }
       }
@@ -798,7 +901,7 @@ function nfaStepTransitions(idx) {
 
 // What the last paint lit, so undoing it is a walk over a few dozen elements
 // rather than four document-wide selector matches per step of playback.
-let simLit = [];
+let simLit = new Map();
 
 // The preview paths whose `d` the last paint wrote. Kept apart from simLit
 // because what has to be undone there is an attribute rather than a class —
@@ -806,22 +909,63 @@ let simLit = [];
 // screen per step, on boxes with no run anywhere near them.
 let simLitPaths = [];
 
+// **A frame of highlights is a diff, not a clear-and-redraw.** The trail and
+// the visited states only grow as the run plays forward, so a step changes the
+// classes on the two or three things the active mark moved between — but the
+// frame used to strip every mark and put every one back, which on a machine a
+// run had wandered across was thousands of class writes per step, each one a
+// style invalidation on the biggest SVG in the app. `litNext` collects what the
+// frame wants; `commitLit` writes only the differences against what this
+// module last wrote (`simLit`, element → classes). Nothing else writes these
+// classes, and a node the renderer evicted and rebuilt is a new element, so it
+// is simply one the diff has not lit yet.
+let litNext = null;
+
 function litAdd(el, ...classes) {
   if (!el) return;
-  el.classList.add(...classes);
-  simLit.push([el, classes]);
+  if (!litNext) {
+    // Outside a frame: apply and remember, so the next clear undoes it.
+    el.classList.add(...classes);
+    const have = simLit.get(el);
+    if (have) classes.forEach(c => have.add(c)); else simLit.set(el, new Set(classes));
+    return;
+  }
+  const want = litNext.get(el);
+  if (want) classes.forEach(c => want.add(c)); else litNext.set(el, new Set(classes));
 }
+
+function commitLit() {
+  const next = litNext;
+  litNext = null;
+  for (const [el, have] of simLit) {
+    const want = next.get(el);
+    for (const c of have) if (!want || !want.has(c)) el.classList.remove(c);
+  }
+  for (const [el, want] of next) {
+    const have = simLit.get(el);
+    for (const c of want) if (!have || !have.has(c)) el.classList.add(c);
+  }
+  simLit = next;
+}
+
+// Pulses are transient rings the animation appends and removes itself; this is
+// the safety net for the ones whose animationend never fired. Tracked rather
+// than swept with querySelectorAll, which walked the whole states layer on
+// every step to find, almost always, nothing.
+const simPulses = new Set();
 
 export function clearSimCanvasHighlights() {
   for (const [el, classes] of simLit) el.classList.remove(...classes);
-  simLit = [];
+  simLit = new Map();
+  litNext = null;
+  clearTransientMarks();
+}
+
+function clearTransientMarks() {
   for (const el of simLitPaths) el.setAttribute('d', '');
   simLitPaths = [];
-  // Pulses are transient rings the animation appends and removes itself; the
-  // sweep is a safety net for the ones whose animationend never fired, and it is
-  // scoped to the states layer rather than the document.
-  const layer = $('states-g');
-  if (layer) layer.querySelectorAll('.sim-pulse').forEach(el => el.remove());
+  for (const ring of simPulses) ring.remove();
+  simPulses.clear();
   removeSimTokens();
 }
 
@@ -861,8 +1005,52 @@ export function updateSimCanvasHighlights(step) {
   App._simRenderRun = App.simSteps;
   App._simRenderIdx = App.simIdx;
 
-  clearSimCanvasHighlights();
+  clearTransientMarks();
+  litNext = new Map();
+  try {
+    litFrame(step);
+  } finally {
+    commitLit();
+  }
 
+  // Motion: a token slides along each newly-taken edge, then the arrival
+  // state pulses (verdict-colored on the final step). Only on a single
+  // forward step — scrubbing and jumps update instantly — and not when
+  // playback is fast enough that the next step lands before a token could
+  // arrive: at ten steps a second a flight is shorter than it is visible, and
+  // each one starts by measuring its path, which flushes style.
+  if (!simMotionOk()) return;
+  if (App.autoTimer && playbackIntervalMs() < MOTION_MIN_INTERVAL_MS) return;
+  const hlNodes = drawnHighlightNodes(step);
+  const activeKeys = getSimStepEdgeKeys(App.simIdx);
+  const tone = step.final === 'reject' ? 'rej' : step.final === 'accept' ? 'acc' : '';
+  // Over the drawn nodes, so a run that has stepped inside a block pulses the
+  // box once rather than pulsing nothing four times.
+  const pulseAll = () => hlNodes.forEach(id => pulseSimNode(id, tone));
+  if (advancedOne && activeKeys.length) {
+    const dur = App.autoTimer
+      ? Math.max(160, Math.min(playbackIntervalMs() * 0.6, 500))
+      : 280;
+    afterWrites(() => activeKeys.slice(0, 8).forEach((k, i) => {
+      animateSimToken(k, dur, i === 0 ? pulseAll : null);
+    }));
+  } else if ((advancedOne && step.final) || (isNewRun && App.simIdx === 0)) {
+    pulseAll();
+  }
+}
+
+// Below this many milliseconds per step, playback draws marks but no motion.
+const MOTION_MIN_INTERVAL_MS = 100;
+
+/** The drawn node ids a step lights, deduped (several states in one block are one box). */
+function drawnHighlightNodes(step) {
+  const hl = step.state ? [step.state] : (step.states || []);
+  const nodes = new Set();
+  hl.forEach(id => { const n = drawnNodeId(id); if (n) nodes.add(n); });
+  return nodes;
+}
+
+function litFrame(step) {
   const trail = trailUpTo(App.simIdx);
   const visited = trail.visited;
   const trailKeys = trail.keys;
@@ -875,20 +1063,22 @@ export function updateSimCanvasHighlights(step) {
   // several states inside one block are one box on screen, so a set of real ids
   // would light it once per member and — worse — the "is this one already
   // active?" test below would answer about ids the canvas does not have.
-  const hlNodes = new Set();
-  hl.forEach(id => { const n = drawnNodeId(id); if (n) hlNodes.add(n); });
+  const hlNodes = drawnHighlightNodes(step);
   const visitedNodes = new Set();
   visited.forEach(id => { const n = drawnNodeId(id); if (n && !hlNodes.has(n)) visitedNodes.add(n); });
 
   // The registries rather than the document: after culling only the drawn
   // window has nodes, and a state the trail passed through that is currently
-  // off screen has nothing to mark.
+  // off screen has nothing to mark. That holds for the trail's edges too, which
+  // used to fall back to a document-wide querySelector per edge the registry
+  // did not hold — on a culled machine, every off-screen edge the run had
+  // taken, every step, to find nothing.
   visitedNodes.forEach(id => {
     litAdd(App.domCache.states.get(id), 'sim-visited-st');
   });
   trailKeys.forEach(k => {
     if (activeSet.has(k)) return;
-    litAdd(findSimEdgeGroup(k), 'sim-trail-t');
+    litAdd(App.domCache.transitions.get(k), 'sim-trail-t');
   });
 
   hlNodes.forEach(id => {
@@ -908,25 +1098,6 @@ export function updateSimCanvasHighlights(step) {
   // twenty around it. These write onto elements the preview already built, so
   // the cost is a class per mark and nothing is rebuilt — see markPreviewRun.
   markPreviewRun(hl, visited, simStepTransitions(App.simIdx), step);
-
-  // Motion: a token slides along each newly-taken edge, then the arrival
-  // state pulses (verdict-colored on the final step). Only on a single
-  // forward step — scrubbing and jumps update instantly.
-  if (!simMotionOk()) return;
-  const tone = step.final === 'reject' ? 'rej' : step.final === 'accept' ? 'acc' : '';
-  // Over the drawn nodes, so a run that has stepped inside a block pulses the
-  // box once rather than pulsing nothing four times.
-  const pulseAll = () => hlNodes.forEach(id => pulseSimNode(id, tone));
-  if (advancedOne && activeKeys.length) {
-    const dur = App.autoTimer
-      ? Math.max(160, Math.min(App.config.autoSpeed * 0.6, 500))
-      : 280;
-    activeKeys.slice(0, 8).forEach((k, i) => {
-      animateSimToken(k, dur, i === 0 ? pulseAll : null);
-    });
-  } else if ((advancedOne && step.final) || (isNewRun && App.simIdx === 0)) {
-    pulseAll();
-  }
 }
 
 /**
@@ -1023,16 +1194,20 @@ export function animateSimToken(edgeKey, dur, onDone) {
     App._simTokens = (App._simTokens || []).filter(t => t !== token);
     if (onDone) onDone();
   };
+  let measuredD = pathEl.getAttribute('d');
   const tick = now => {
     if (!pathEl.isConnected) { finish(); return; }
     const p = Math.min(1, (now - t0) / dur);
     const e = p < 0.5 ? 2 * p * p : -1 + (4 - 2 * p) * p; // easeInOutQuad
-    // Re-read the length rather than reusing the one measured above: the edge
-    // under the token may still be easing toward a new route (js/anim.js), and a
-    // stale length against a path that has since changed leaves the token short
-    // of the arrowhead or past it. getTotalLength is path-data arithmetic, not a
-    // style or layout read, so this costs nothing per frame.
-    const pt = pathEl.getPointAtLength(pathEl.getTotalLength() * e);
+    // Re-measured when the path has changed, not on every frame: the edge under
+    // the token may still be easing toward a new route (js/anim.js), and a stale
+    // length against a path that has since changed leaves the token short of
+    // the arrowhead or past it. But getTotalLength is not free — in Chromium it
+    // flushes style first, which profiled at 7–22% of a playback step — while
+    // reading the `d` attribute back is a string compare.
+    const d = pathEl.getAttribute('d');
+    if (d !== measuredD) { measuredD = d; len = pathEl.getTotalLength(); }
+    const pt = pathEl.getPointAtLength(len * e);
     dot.setAttribute('cx', pt.x); dot.setAttribute('cy', pt.y);
     if (p < 1) token.raf = requestAnimationFrame(tick);
     else finish();
@@ -1079,8 +1254,10 @@ export function pulseSimNode(nodeId, tone = '') {
   ring.classList.add('sim-pulse');
   if (tone) ring.classList.add(tone);
   grp.appendChild(ring);
-  ring.addEventListener('animationend', () => ring.remove());
-  setTimeout(() => ring.remove(), 900); // safety net if animations are disabled
+  simPulses.add(ring);
+  const drop = () => { ring.remove(); simPulses.delete(ring); };
+  ring.addEventListener('animationend', drop);
+  setTimeout(drop, 900); // safety net if animations are disabled
 }
 
 /** The same, addressed by a *machine* state id. */
@@ -1218,6 +1395,16 @@ export function setRunBtnState(mode) {
     btn.setAttribute('aria-label', name);
     btn.dataset.tip = name;
   };
+  // Every paint of the transport lands here, and each rewrite of the icon is an
+  // innerHTML parse plus a trip through the document-wide MutationObserver in
+  // dropdown.js. This function is the only writer of the button, so what it
+  // last wrote is what the button shows.
+  const playing = !!App.autoTimer;
+  const key = mode === 'accept' || mode === 'reject'
+    ? mode
+    : `${playing}|${playing ? '' : canResumeSim()}`;
+  if (btn.__runKey === key) return;
+  btn.__runKey = key;
   btn.classList.remove('accept', 'reject');
   if (mode === 'accept') {
     btn.classList.add('accept');
@@ -1340,8 +1527,11 @@ function renderBlockVerdict(el, step) {
 
 export function stopAutoPlay() {
   stopDraining();
-  if (!App.autoTimer) return;
-  clearInterval(App.autoTimer); App.autoTimer = null;
+  const clock = App.autoTimer;
+  if (!clock) return;
+  App.autoTimer = null;
+  if (typeof clock === 'object' && typeof clock.cancel === 'function') clock.cancel();
+  else clearInterval(clock);
 }
 
 export function stepFwd(stopAuto = true) {
@@ -1370,40 +1560,135 @@ export function stepFwd(stopAuto = true) {
   }
 }
 
+// ── the playback clock ─────────────────────────────────────────────
+//
+// **Playback is paced by frames, not by a timer per step.** It used to be a
+// setInterval that advanced one step and painted it, so the speed menu was a
+// promise about the timer that painting could not keep: a step's paint cost
+// 8–54ms in Chromium, the fastest preset asked for one every 50ms, and asking
+// for more bought nothing — a hundred steps a frame, each painted in full, ran
+// at 26–116 steps a second.
+//
+// A screen shows sixty frames a second whatever the machine does, so the clock
+// runs once per frame, performs the steps that have come due — or, at Max, as
+// many as fit in FRAME_WORK_MS — and paints once, the newest. Nothing is
+// skipped: every step is still computed, stored and reachable by the scrubber,
+// the log and the space-time diagram; only the paints nobody could have seen
+// are not made. At a slow speed that is one step every few frames, exactly the
+// rhythm the interval had.
+//
+// `App.autoTimer` is the clock while playing and null otherwise, the same
+// truthiness everything that asks "is it playing?" already reads.
+
+// How long a frame of fast playback may spend computing before it paints.
+const FRAME_WORK_MS = 8;
+// Behind by more than this, the clock drops the backlog rather than bursting
+// to catch up — a tab that was hidden resumes where it was, not ten seconds on.
+const CATCH_UP_MS = 250;
+
+function clockNow() {
+  return typeof performance === 'object' && performance && typeof performance.now === 'function'
+    ? performance.now() : Date.now();
+}
+
+/** Milliseconds per step at the current speed; 0 means as fast as the page can go. */
+export function playbackIntervalMs() {
+  const ms = Number(App.config.autoSpeed);
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
+}
+
+function startPlaybackClock() {
+  const clock = {
+    handle: 0,
+    // The test DOM runs requestAnimationFrame callbacks inline, where a loop
+    // that re-arms itself would recurse; a frame-rate timer stands in there.
+    sync: isSyncRAF(),
+    due: clockNow() + playbackIntervalMs(),
+    cancel() {
+      if (this.sync) clearTimeout(this.handle);
+      else if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.handle);
+    }
+  };
+  App.autoTimer = clock;
+  armClock(clock);
+  return clock;
+}
+
+function armClock(clock) {
+  if (clock.sync) clock.handle = setTimeout(() => playFrame(clock), 16);
+  else clock.handle = requestAnimationFrame(() => playFrame(clock));
+}
+
 /**
- * One tick of playback.
+ * One frame of playback: the steps that are due, then one paint.
  *
- * Written once because it was written three times — in `toggleAuto`, in
- * `restartAutoTimerIfPlaying` and in the drain — and a run boundary has to be
- * checked on every one of them. Three copies of a two-line loop is fine until
- * something has to be added to it, and then it is three places to forget.
- *
- * It advances *through* `stepFwd` rather than pulling first and stepping
- * second, which is one pull per tick instead of two — and, more to the point,
- * one place where the boundary is noticed. Pulling here and bailing on `null`
- * is what made the tick that finds the exit the one tick that draws no frame.
+ * The run boundary, the break mark and the end of the run are all noticed here
+ * and only here, one step at a time, which is why the steps go through
+ * `advanceQuiet` rather than `stepFwd` — the same checks, without a paint per
+ * step.
  */
-function advanceOne() {
-  const at = App.simIdx;
-  stepFwd(false);
-  if (App.simIdx === at) { stopAutoPlay(); return false; }
-  // A break scope pauses playback where control entered the block being
-  // watched; the run is untouched, so step-forward carries straight on and the
-  // scrubber still reaches everything computed. It is a pause, not a stop.
-  //
-  // `>=` rather than `===` because a streaming pull can materialize several
-  // steps at once, so the mark may already be behind the playhead by the time
-  // it is looked at. It is one-shot either way, and hand navigation spends it
-  // (see handMovedPlayhead) so resuming does not pause on it twice.
-  if (App.simPauseAt != null && App.simIdx >= App.simPauseAt) {
+function playFrame(clock) {
+  if (App.autoTimer !== clock) return;
+  const start = clockNow();
+  const interval = playbackIntervalMs();
+  if (interval > 0 && start - clock.due > CATCH_UP_MS) clock.due = start;
+
+  let moved = false, repaint = false, outcome = 'play';
+  for (let n = 1; ; n++) {
+    if (interval > 0) {
+      if (start < clock.due) break;
+      clock.due += interval;
+    }
+    const r = advanceQuiet();
+    if (r === 'step' || r === 'pause') moved = true;
+    if (r === 'learned') repaint = true;
+    if (r === 'pause' || r === 'end' || r === 'learned') { outcome = r === 'pause' ? 'pause' : 'end'; break; }
+    if ((n & 31) === 0 && clockNow() - start > FRAME_WORK_MS) break;
+  }
+
+  if (outcome !== 'play') stopAutoPlay();
+  if (moved || repaint) {
+    resetTraceWindow();
+    renderSimStep();
+  }
+  if (outcome === 'pause') {
+    // A break scope pauses playback where control entered the block being
+    // watched; the run is untouched, so step-forward carries straight on and
+    // the scrubber still reaches everything computed. A pause, not a stop.
     App.simPauseAt = null;
-    stopAutoPlay();
     setRunBtnState('idle');
     showStatus(`Paused — control entered ${getBlock(breakScope())?.name || 'the block'}`);
-    return false;
   }
-  return true;
+  if (App.autoTimer === clock) armClock(clock);
 }
+
+/**
+ * One step of playback, with no paint.
+ *
+ * `stepFwd` without the render, and with its end-of-run bookkeeping kept:
+ * **the pull that fails is the one that learns how the run ended** — a block
+ * boundary found, or a streaming run discovered to be done — and that has to
+ * be painted, since the last frame was drawn before either was known.
+ *
+ * The break mark is tested with `>=` rather than `===` because a streaming pull
+ * can materialize several steps at once, so the mark may already be behind the
+ * playhead by the time it is looked at. It is one-shot, and hand navigation
+ * spends it (see handMovedPlayhead) so resuming does not pause on it twice.
+ */
+function advanceQuiet() {
+  const knewBound = App.simStopAt != null;
+  const wasComplete = currentRun().done;
+  if (stepAt(App.simIdx + 1)) {
+    App.simIdx++;
+    return App.simPauseAt != null && App.simIdx >= App.simPauseAt ? 'pause' : 'step';
+  }
+  if ((!knewBound && App.simStopAt != null) || (!wasComplete && currentRun().done)) {
+    App.simIdx = Math.min(App.simIdx, Math.max(0, maxReachable()));
+    return 'learned';
+  }
+  return 'end';
+}
+
 export function stepBack() {
   stopAutoPlay();
   handMovedPlayhead();
@@ -1488,17 +1773,13 @@ export function scrubSim(value) {
   App.simIdx = idx;
   renderSimStep();
 }
-export function setAutoSpeedPreset(ms) {
-  App.config.autoSpeed = parseInt(ms, 10) || 500;
-  restartAutoTimerIfPlaying();
-}
 // Re-arms the auto-play interval at the current autoSpeed, but only if
 // playback is already running — called whenever autoSpeed changes so an
 // in-progress run picks up the new pace instead of finishing out the old one.
 export function restartAutoTimerIfPlaying() {
   if (!App.autoTimer) return;
-  clearInterval(App.autoTimer);
-  App.autoTimer = setInterval(advanceOne, App.config.autoSpeed);
+  // Same clock, new rhythm: the next step is one interval from now.
+  App.autoTimer.due = clockNow() + playbackIntervalMs();
 }
 export function resetSim() {
   stopAutoPlay();
@@ -1539,7 +1820,7 @@ export function toggleAuto() {
   // stepFwd pulls, so on a streaming run playback is what drives the
   // computation: the machine advances one step per tick because the animation
   // asked for it, rather than the whole run having been built beforehand.
-  App.autoTimer = setInterval(advanceOne, App.config.autoSpeed);
+  startPlaybackClock();
   setRunBtnState('playing');
 }
 

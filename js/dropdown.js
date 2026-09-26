@@ -135,7 +135,6 @@ export function enhanceCustomSelect(select) {
   wrapper.className = 'custom-select';
   if (select.classList.contains('inp')) wrapper.classList.add('custom-select--inp');
   if (select.classList.contains('sel')) wrapper.classList.add('custom-select--sel');
-  if (select.classList.contains('sim-speed-sel')) wrapper.classList.add('custom-select--sim-speed');
   ['flex', 'width', 'minWidth', 'maxWidth', 'height'].forEach(property => {
     if (select.style[property]) wrapper.style[property] = select.style[property];
   });

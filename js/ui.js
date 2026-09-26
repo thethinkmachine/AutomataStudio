@@ -24,6 +24,7 @@ import { declaredSectionIds, sectionStartsCollapsed } from './panel-sections.js'
 import { syncDockFill } from './panel-sections-ui.js';
 import { setShakeToMinimizeEnabled, shakeToMinimizeEnabled } from './panel-state.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
+import { syncSpeedControl } from './speed-control.js';
 import { $, App, MIN_TAPES, MachineCategories, blankWorkspaceData, MachineTypes, R, TAPE_LIMIT, Workspaces, activeWorkspaceId, execMode, exportWorkspaceState, importWorkspaceState, largeMachineOverridePrompt, largeMachineProfile, machineIsLarge, maxTapes, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { getState, getTransition, hideContextMenu } from './states-transitions.js';
 import { openMachineWizard } from './wizard-ui.js';
@@ -3973,7 +3974,11 @@ export function applySettings() {
   if ($('set-lang-budget')) {
     c.langStepBudget = Math.max(10, parseInt($('set-lang-budget').value) || 400);
   }
-  c.autoSpeed = parseInt($('set-auto-speed').value) || 500;
+  {
+    // 0 is a speed (as fast as the page can go), so it cannot be the fallback.
+    const v = parseFloat($('set-auto-speed').value);
+    c.autoSpeed = Number.isFinite(v) && v >= 0 ? v : 500;
+  }
   if ($('set-exec-mode')) {
     const mode = $('set-exec-mode').value;
     c.execMode = (mode === 'eager' || mode === 'lazy') ? mode : 'auto';
@@ -3989,7 +3994,7 @@ export function applySettings() {
     const hide = parseInt($('set-card-autohide').value);
     c.cardAutoHideMs = Number.isFinite(hide) && hide >= 0 ? hide : CARD_AUTO_HIDE_MS;
   }
-  if ($('sim-speed-sel')) $('sim-speed-sel').value = String(c.autoSpeed);
+  syncSpeedControl();
   if (typeof restartAutoTimerIfPlaying === 'function') restartAutoTimerIfPlaying();
   c.radius = parseInt($('set-radius').value) || 30;
   if ($('set-wrap-labels')) c.wrapStateLabels = $('set-wrap-labels').checked;

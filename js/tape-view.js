@@ -194,6 +194,8 @@ function syncCells(cellWrap, view, finalClass) {
   const reorder = cellWrap.__tvOrder !== wantOrder;
 
   const live = new Set();
+  // Everything a cell's tooltip reads that is not the cell itself.
+  const tipKey = `${(view.markers || []).join('\u0001')}|${view.readOnly ? 1 : 0}`;
   for (let i = 0; i < view.cells.length; i++) {
     const abs = view.origin + i;
     live.add(abs);
@@ -207,20 +209,29 @@ function syncCells(cellWrap, view, finalClass) {
       node.appendChild(el('span', 'tv-idx'));
       cache.set(abs, node);
     }
-    // Written unconditionally, the way render.js writes its sync* classes:
-    // a "what did we draw last time" cache here drifts the moment a step is
-    // scrubbed to rather than stepped to.
     const marker = !!(view.markers && view.markers.includes(sym));
-    node.className = 'tv-cell'
+    const cls = 'tv-cell'
       + (isHead ? ' is-head' : '')
       + (marker ? ' is-marker' : '')
       + (sym === view.blank ? ' is-blank' : '')
       + (view.periodLen && i >= view.periodFrom
         && (i - view.periodFrom) % view.periodLen === 0 ? ' is-period-start' : '')
       + (isHead && finalClass ? ` ${finalClass}` : '');
-    node.firstChild.textContent = sym;
-    node.lastChild.textContent = String(abs);
-    node.setAttribute('data-tip', cellTip(view, abs, sym, isHead));
+    // Written only when what this cell should show differs from what this
+    // function last wrote *to this node*. That memo lives on the node, so it
+    // cannot drift the way a "what did the last step look like" cache would on
+    // a scrub: a scrub computes each cell's key afresh and compares it with the
+    // node's own. Nothing else writes a tv-cell. Before this, every step
+    // rewrote every cell's class, text and tooltip — for a 2,000-symbol word
+    // that was 37% of a step, to change the two cells the head moved between.
+    const key = `${cls}\u0000${sym}\u0000${tipKey}`;
+    if (node.__tvKey !== key) {
+      node.className = cls;
+      node.firstChild.textContent = sym;
+      node.lastChild.textContent = String(abs);
+      node.setAttribute('data-tip', cellTip(view, abs, sym, isHead));
+      node.__tvKey = key;
+    }
     if (reorder) cellWrap.appendChild(node);
   }
 
@@ -269,8 +280,13 @@ function followHead(strip, headCell) {
  * @param {HTMLElement} host
  * @param {Array<{label: string, view?: object, cells?: string[], head?: number,
  *                capL?: string, capR?: string, finalClass?: string}>} rows
+ * @param {{defer?: (read: () => void) => void}} [opts] `defer` receives the
+ *   head-following scroll, which reads layout. The player queues it behind the
+ *   rest of a frame's writes so the frame lays out once; without it the read
+ *   runs inline, which is right for a caller that draws only the tracker.
  */
-export function renderTracker(host, rows) {
+export function renderTracker(host, rows, opts = {}) {
+  const defer = opts.defer || (read => read());
   let cache = host.__tvRows;
   if (!cache) cache = host.__tvRows = new Map();
   const live = new Set();
@@ -348,7 +364,7 @@ export function renderTracker(host, rows) {
     }
 
     const headCell = syncCells(cellWrap, view, row.finalClass);
-    if (isTape) followHead(strip, headCell);
+    if (isTape) defer(() => followHead(strip, headCell));
   });
 
   for (const [key, node] of cache) {

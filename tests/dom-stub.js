@@ -12,6 +12,17 @@ function detach(node) {
   }
 }
 
+function serializeNode(node) {
+  if (node === null || typeof node !== 'object') return String(node ?? '');
+  if (node.nodeType === 3) return String(node.textContent ?? '');
+  const tag = String(node.tagName || 'div').toLowerCase();
+  const attrs = [];
+  if (node.className) attrs.push(`class="${node.className}"`);
+  for (const [name, value] of node._attrs || []) if (name !== 'class') attrs.push(`${name}="${value}"`);
+  const inner = node.innerHTML || String(node.textContent ?? '');
+  return `<${tag}${attrs.length ? ' ' + attrs.join(' ') : ''}>${inner}</${tag}>`;
+}
+
 export function createElement(id = '') {
   const classSet = new Set();
   const el = {
@@ -194,9 +205,16 @@ export function createElement(id = '') {
 
   // Assigning innerHTML has to detach the children, or code that clears a group
   // with `g.innerHTML = ''` would leave the stub reporting them as still there.
+  //
+  // Reading it back is the markup last assigned *followed by the children
+  // appended since*, serialized — the two views of one tree a real DOM keeps,
+  // for the reason className and classList are one set below. The stub does not
+  // parse markup into nodes, so the assigned string stays a string; but a
+  // container built with appendChild (the trace log's rows are) reads back as
+  // what it holds, rather than as the empty string it was cleared to.
   let html = '';
   Object.defineProperty(el, 'innerHTML', {
-    get: () => html,
+    get: () => html + el.children.map(serializeNode).join(''),
     set: value => {
       html = String(value);
       for (const child of el.children.slice()) {
