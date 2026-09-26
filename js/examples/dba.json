@@ -1,0 +1,44 @@
+{
+  "machine": "DBA",
+  "sigma": ["a", "b"],
+  "states": [
+    { "id": "s1", "x": 220, "y": 250, "name": "ok" },
+    { "id": "s2", "x": 620, "y": 250, "name": "just saw a" },
+    { "id": "s3", "x": 420, "y": 490, "name": "dead" }
+  ],
+  "startId": "s1",
+  "accepts": ["s1", "s2"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "b" },
+    { "id": "t2", "from": "s1", "to": "s2", "symbol": "a" },
+    { "id": "t3", "from": "s2", "to": "s1", "symbol": "b" },
+    { "id": "t4", "from": "s2", "to": "s3", "symbol": "a" },
+    { "id": "t5", "from": "s3", "to": "s3", "symbol": "a" },
+    { "id": "t6", "from": "s3", "to": "s3", "symbol": "b" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 140, "y": 60, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Never two a's in a row — G¬(a ∧ Xa). Every (state, symbol) has exactly one outgoing edge, so there is one run per word and nothing to guess. That is what makes this a DBA rather than a Büchi automaton: δ is a function Q × Σ → Q, not a set."
+    },
+    {
+      "id": "n2", "x": 140, "y": 430, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "This is a safety property, and safety properties are the easy case for DBAs. F = {ok, just saw a} is everything except the trap, so the single run visits F infinitely often exactly when it never falls into \"dead\" — i.e. when no aa ever appears. Try (ab), then (aab). It is also a weak automaton: {ok, just saw a} is one strongly connected component lying wholly inside F, and {dead} one lying wholly outside, so switching ω-Acceptance to Weak in Settings changes no verdict and reports no violation."
+    }
+  ],
+  "meta": {
+    "title": "Never two a's in a row",
+    "blurb": "A deterministic Büchi automaton for G¬(a ∧ Xa). One run per word, and acceptance reduces to never reaching the trap state — the shape most safety properties take.",
+    "inputs": [
+      { "w": "(b)", "expect": "accept" },
+      { "w": "(ab)", "expect": "accept" },
+      { "w": "b(ab)", "expect": "accept" },
+      { "w": "ba(b)", "expect": "accept" },
+      { "w": "(a)", "expect": "reject" },
+      { "w": "aa(b)", "expect": "reject" },
+      { "w": "(aab)", "expect": "reject" }
+    ]
+  }
+}

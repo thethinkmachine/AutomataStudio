@@ -1,0 +1,41 @@
+{
+  "machine": "DcoBA",
+  "sigma": ["a", "b"],
+  "states": [
+    { "id": "s1", "x": 240, "y": 280, "name": "last was b" },
+    { "id": "s2", "x": 640, "y": 280, "name": "last was a" }
+  ],
+  "startId": "s1",
+  "accepts": ["s2"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "b" },
+    { "id": "t2", "from": "s1", "to": "s2", "symbol": "a" },
+    { "id": "t3", "from": "s2", "to": "s2", "symbol": "a" },
+    { "id": "t4", "from": "s2", "to": "s1", "symbol": "b" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 150, "y": 70, "color": "purple",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Eventually always b — FG b, the language with no deterministic Büchi automaton. Here it is, deterministic. The machine is shaped exactly like the DBA for \"infinitely often a\"; the acceptance condition is what differs. Under co-Büchi the ringed states are the ones that must STOP happening: a run is accepting when inf(r) ∩ F = ∅."
+    },
+    {
+      "id": "n2", "x": 150, "y": 430, "color": "orange",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "\"last was a\" is entered on exactly the a's, so visiting it finitely often means the word has finitely many a's. Compare the Büchi model's \"eventually always b\", which needs a nondeterministic guess to say the same thing. co-Büchi does not need the guess — nondeterminism buys it nothing at all, because NcoBA = DcoBA."
+    }
+  ],
+  "meta": {
+    "title": "Eventually always b",
+    "blurb": "FG b as a deterministic co-Büchi automaton — the same language a Büchi automaton can only recognise by guessing. Swapping α from Büchi to co-Büchi is the entire difference.",
+    "inputs": [
+      { "w": "(b)", "expect": "accept" },
+      { "w": "a(b)", "expect": "accept" },
+      { "w": "ab(b)", "expect": "accept" },
+      { "w": "aaaa(b)", "expect": "accept" },
+      { "w": "(a)", "expect": "reject" },
+      { "w": "(ab)", "expect": "reject" },
+      { "w": "bbb(ab)", "expect": "reject" }
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "machine": "DFA",
+  "sigma": ["0", "1"],
+  "states": [
+    { "id": "s1", "x": 420, "y": 110, "name": "r0" },
+    { "id": "s2", "x": 601, "y": 241, "name": "r1" },
+    { "id": "s3", "x": 532, "y": 454, "name": "r2" },
+    { "id": "s4", "x": 308, "y": 454, "name": "r3" },
+    { "id": "s5", "x": 239, "y": 241, "name": "r4" }
+  ],
+  "startId": "s1",
+  "accepts": ["s1"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "0" },
+    { "id": "t2", "from": "s1", "to": "s2", "symbol": "1" },
+    { "id": "t3", "from": "s2", "to": "s3", "symbol": "0" },
+    { "id": "t4", "from": "s2", "to": "s4", "symbol": "1" },
+    { "id": "t5", "from": "s3", "to": "s5", "symbol": "0" },
+    { "id": "t6", "from": "s3", "to": "s1", "symbol": "1" },
+    { "id": "t7", "from": "s4", "to": "s2", "symbol": "0" },
+    { "id": "t8", "from": "s4", "to": "s3", "symbol": "1" },
+    { "id": "t9", "from": "s5", "to": "s4", "symbol": "0" },
+    { "id": "t10", "from": "s5", "to": "s5", "symbol": "1" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 30, "y": 60, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Divisibility by 5, in five states. Each state is the remainder of the number read so far; bit b sends remainder r to (2r+b) mod 5. A fixed pentagon does long division on numbers of ANY length."
+    },
+    {
+      "id": "n2", "x": 30, "y": 210, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Try 1100100 (=100 ✓) and watch the run orbit the pentagon — the lit trail IS the arithmetic. 111 (=7) strands you at r2."
+    }
+  ],
+  "meta": {
+    "title": "Binary divisibility by 5",
+    "blurb": "Reads a binary number one bit at a time and accepts exactly the multiples of 5. Each state remembers the remainder so far — five states doing long division.",
+    "inputs": [
+      { "w": "101", "expect": "accept", "label": "5" },
+      { "w": "1010", "expect": "accept", "label": "10" },
+      { "w": "1100100", "expect": "accept", "label": "100" },
+      { "w": "111", "expect": "reject", "label": "7" },
+      { "w": "10011", "expect": "reject", "label": "19" }
+    ]
+  }
+}

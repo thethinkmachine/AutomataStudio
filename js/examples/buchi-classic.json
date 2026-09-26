@@ -1,0 +1,40 @@
+{
+  "machine": "NBA",
+  "sigma": ["a", "b"],
+  "states": [
+    { "id": "s1", "x": 240, "y": 280, "name": "anything" },
+    { "id": "s2", "x": 640, "y": 280, "name": "only b" }
+  ],
+  "startId": "s1",
+  "accepts": ["s2"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "a" },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "b" },
+    { "id": "t3", "from": "s1", "to": "s2", "symbol": "b" },
+    { "id": "t4", "from": "s2", "to": "s2", "symbol": "b" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 150, "y": 70, "color": "purple",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Eventually always b — FG b in LTL. The machine guesses when the last a has gone by: \"anything\" loops on both symbols, and one nondeterministic b-edge commits to \"only b\", which has no a-transition at all. A wrong guess simply dies, which is exactly what nondeterminism is for."
+    },
+    {
+      "id": "n2", "x": 150, "y": 430, "color": "orange",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "This one cannot be made deterministic. Deterministic Büchi automata are strictly weaker than nondeterministic ones, and FG b is the standard witness — no DBA recognises it, because a deterministic run has to commit to \"no more a's\" without being able to see the rest of the infinite word."
+    }
+  ],
+  "meta": {
+    "title": "Classic: eventually always b",
+    "blurb": "FG b — from some point on, only b's. The textbook example of a language recognised by a nondeterministic Büchi automaton but by no deterministic one.",
+    "inputs": [
+      { "w": "(b)", "expect": "accept" },
+      { "w": "a(b)", "expect": "accept" },
+      { "w": "ab(b)", "expect": "accept" },
+      { "w": "(ab)", "expect": "reject" },
+      { "w": "(a)", "expect": "reject" },
+      { "w": "bbb(ab)", "expect": "reject" }
+    ]
+  }
+}

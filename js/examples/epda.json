@@ -1,0 +1,70 @@
+{
+  "machine": "EPDA",
+  "sigma": ["a", "b", "c", "d"],
+  "stackAlpha": ["A", "C", "D", "E", "Z"],
+  "states": [
+    { "id": "s1", "x": 120, "y": 200, "name": "start" },
+    { "id": "s2", "x": 320, "y": 200, "name": "count a" },
+    { "id": "s3", "x": 520, "y": 200, "name": "match b" },
+    { "id": "s4", "x": 720, "y": 200, "name": "match c" },
+    { "id": "s5", "x": 920, "y": 200, "name": "match d" },
+    { "id": "s6", "x": 1120, "y": 200, "name": "done" }
+  ],
+  "startId": "s1",
+  "accepts": ["s6"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s2", "symbol": "a", "pop": "ε", "push": "A", "below": "E|D", "above": "ε" },
+    { "id": "t2", "from": "s2", "to": "s2", "symbol": "a", "pop": "ε", "push": "A", "below": "D", "above": "ε" },
+    { "id": "t3", "from": "s2", "to": "s3", "symbol": "b", "pop": "A", "push": "ε", "below": "C", "above": "ε" },
+    { "id": "t4", "from": "s3", "to": "s3", "symbol": "b", "pop": "A", "push": "ε", "below": "C", "above": "ε" },
+    { "id": "t5", "from": "s3", "to": "s4", "symbol": "ε", "pop": "Z", "push": "ε", "below": "ε", "above": "ε" },
+    { "id": "t6", "from": "s4", "to": "s4", "symbol": "c", "pop": "C", "push": "ε", "below": "ε", "above": "ε" },
+    { "id": "t7", "from": "s4", "to": "s5", "symbol": "d", "pop": "D", "push": "ε", "below": "ε", "above": "ε" },
+    { "id": "t8", "from": "s5", "to": "s5", "symbol": "d", "pop": "D", "push": "ε", "below": "ε", "above": "ε" },
+    { "id": "t9", "from": "s5", "to": "s6", "symbol": "ε", "pop": "E", "push": "ε", "below": "ε", "above": "ε" }
+  ],
+  "notes": [
+    {
+      "id": "n1",
+      "x": 160,
+      "y": 40,
+      "color": "violet",
+      "anchorStates": [],
+      "anchorTransitions": [],
+      "text": "aⁿbⁿcⁿdⁿ — not context-free, and not needing Turing power either. Every 'a' pushes A on the working stack and parks a one-symbol stack [D] underneath it; every 'b' pops an A and parks a [C]. The parked stacks are the machine's to-do list, and they come back newest first."
+    },
+    {
+      "id": "n2",
+      "x": 160,
+      "y": 380,
+      "color": "green",
+      "anchorStates": [],
+      "anchorTransitions": [],
+      "text": "Popping Z empties the working stack, so it is discarded and the machine falls through to the parked ones. The n C's sit above the n D's — which is exactly cⁿ then dⁿ. Watch the Top row in the tracker drain and the rows beneath it surface."
+    },
+    {
+      "id": "n3",
+      "x": 700,
+      "y": 380,
+      "color": "orange",
+      "anchorStates": [],
+      "anchorTransitions": [],
+      "text": "The [E] parked on the very first move is doing real work. Acceptance by final state says nothing about the store, so without a marker at the bottom the machine would also accept aⁿbⁿcⁿdᵐ for any m ≤ n — reaching 'match d' at all would be enough. Popping E is how it checks that every parked stack was used."
+    }
+  ],
+  "config": { "pdaParadigm": "explicit" },
+  "meta": {
+    "title": "aⁿbⁿcⁿdⁿ — four counts, one stack of stacks",
+    "blurb": "Two independent stacks would be Turing power; one stack whose elements are stacks is exactly enough. The a's and b's are matched on the working stack while the c's and d's are parked beneath it, to be picked up in order once it is gone.",
+    "inputs": [
+      { "w": "abcd", "expect": "accept" },
+      { "w": "aabbccdd", "expect": "accept" },
+      { "w": "aaabbbcccddd", "expect": "accept" },
+      { "w": "aabbcd", "expect": "reject" },
+      { "w": "abccdd", "expect": "reject" },
+      { "w": "abcdd", "expect": "reject" },
+      { "w": "aabbccd", "expect": "reject" },
+      { "w": "abdc", "expect": "reject" }
+    ]
+  }
+}
