@@ -15,6 +15,7 @@ import { formatKbd, localizeKbdLabels } from './kbd.js';
 import { setMachine, setView } from './view.js';
 import { syncHistoryButtons } from './history.js';
 import { initFraming } from './ui.js';
+import { initSpeedControl } from './speed-control.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  INIT
@@ -27,7 +28,7 @@ try {
 renderSigma(); renderGamma(); renderOutputAlpha();
 updateLPanel();
 App.stackAlpha = new Set([App.config.sym.stackBottom]);
-if ($('sim-speed-sel')) $('sim-speed-sel').value = String(App.config.autoSpeed);
+initSpeedControl();
 try {
   const st = localStorage.getItem('automata-shape-tool');
   if (st === 'rect' || st === 'divider') App.lastShapeTool = st;

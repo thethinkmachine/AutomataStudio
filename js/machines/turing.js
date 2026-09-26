@@ -33,7 +33,7 @@ import {
 import { Tape, makeTapes, tapesKey } from '../tape.js';
 import { makeTapeLog, multiTapeStep, tapeStep } from '../tape-log.js';
 import { buildMarkedInputTape, tapeTuplesOverlap } from './predicates.js';
-import { firstOverlappingTransition, formatTapeInstantaneousDescription, getMultiTapeDeterministicTransition, getSingleTapeDeterministicTransition, langStepBudget, makeLoopTracker, nameOfState, markLoopStep, markTimeoutStep, parseWordInput, playEagerly, tokenize } from './runtime.js';
+import { Fifo, firstOverlappingTransition, makeRepeatDetector, formatTapeInstantaneousDescription, getMultiTapeDeterministicTransition, getSingleTapeDeterministicTransition, langStepBudget, makeLoopTracker, markLoopStep, markTimeoutStep, nameOfState, parseWordInput, playEagerly, tokenize, transitionsFrom } from './runtime.js';
 import { defineFamily, machineDef } from './registry.js';
 
 // A step is built, decided and only then yielded, because whether it is the
@@ -41,7 +41,8 @@ import { defineFamily, machineDef } from './registry.js';
 // whole of what changed in porting these loops: they used to push the step and
 // reach back into App.simSteps[length - 1] to stamp the verdict on it.
 export function* streamTM(tokens) {
-  const tape = new Tape(tokens, App.config.sym.blank, usesTwoWayTape());
+  const blank = App.config.sym.blank, twoWay = usesTwoWayTape();
+  const tape = new Tape(tokens, blank, twoWay).trackFingerprint();
   // The step's tape, head and view are reads of this rather than copies held
   // on the step — see js/tape-log.js for why that is most of a long run's
   // memory. Nothing else about the loop changes: the live tape is still what
@@ -61,7 +62,9 @@ export function* streamTM(tokens) {
     const i = log.begin(tape.head);
     step = tapeStep(log, i, { state, tokens, tid: via, note: `State:${getState(state)?.name} Read:'${sym}'${cellNote}` });
     if (App.accepts.has(state)) { step.final = 'accept'; step.note += ' — ACCEPT'; yield step; return; }
-    const at = loop.seenAt(`${state}|${tape.key()}`, n);
+    let now = null;
+    const at = loop.seenAtVerified(`${state}|${tape.fingerprint()}`, n,
+      j => replaySingleTapeKey(() => new Tape(tokens, blank, twoWay), j) === (now ??= `${state}|${tape.key()}`));
     if (at >= 0) { markLoopStep(step, at); yield step; return; }
     const t = getSingleTapeDeterministicTransition(state, sym);
     if (!t) { step.final = 'reject'; step.note += ' — REJECT'; yield step; return; }
@@ -86,7 +89,7 @@ export function* streamNDTM(tokens) {
   // configuration names the one it was expanded from and the transition that
   // did it, so walking parents back from an accept is the computation that
   // accepted — without keeping anything the search did not already hold.
-  const queue = [{ state: runStartId(), tape: startTape, depth: 0, branch: 1, parent: null, via: null }];
+  const queue = new Fifo([{ state: runStartId(), tape: startTape, depth: 0, branch: 1, parent: null, via: null }]);
   const visited = new Set([`${runStartId()}|${startTape.key()}`]);
   let accepted = false;
   let branches = 0;
@@ -134,7 +137,7 @@ export function* streamNDTM(tokens) {
       break;
     }
 
-    const matching = App.transitions.filter(tr => tr.from === state && (tr.symbol === sym || tr.symbol === App.config.sym.any));
+    const matching = transitionsFrom(state).filter(tr => tr.symbol === sym || tr.symbol === App.config.sym.any);
     if (!matching.length) {
       step.note += ' — dead branch';
       last = step;
@@ -246,6 +249,44 @@ function applyMultiTapeStep(tapes, t, syms) {
   for (let i = 0; i < tapes.length; i++) tapes[i].move(t.tapeDirs?.[i]);
 }
 
+// ── confirming a repeat ───────────────────────────────────────────
+// The deterministic tape machines detect a loop by a fingerprint of the
+// configuration (Tape#fingerprint) rather than by stringifying the tape every
+// step. A fingerprint match is confirmed before it is believed, by rebuilding
+// the earlier configuration's key the only way a run without stored steps can:
+// replaying it. A deterministic machine reaches step j the same way twice, and
+// this runs once per loop found — never per step.
+
+function replaySingleTapeKey(makeTape, n) {
+  const any = App.config.sym.any;
+  const tape = makeTape();
+  let state = runStartId();
+  for (let i = 0; i < n; i++) {
+    const sym = tape.read();
+    const t = getSingleTapeDeterministicTransition(state, sym);
+    if (!t) break;
+    tape.write((!t.write || t.write === any) ? sym : t.write);
+    tape.move(t.dir);
+    state = t.to;
+  }
+  return `${state}|${tape.key()}`;
+}
+
+function replayMultiTapeKey(k, input, n) {
+  const tapes = multiTapeSeed(k, input, App.config.sym.blank, usesTwoWayTape());
+  let state = runStartId();
+  for (let i = 0; i < n; i++) {
+    const syms = tapes.map(tape => tape.read());
+    const t = getMultiTapeDeterministicTransition(state, syms);
+    if (!t) break;
+    applyMultiTapeStep(tapes, t, syms);
+    state = t.to;
+  }
+  return tapesKey(state, tapes);
+}
+
+const multiTapeFingerprint = (state, tapes) => `${state}|${tapes.map(tape => tape.fingerprint()).join('/')}`;
+
 // One parameter, deliberately. simulateMachine calls simulate(input, m),
 // so a second positional here silently receives the machine *name* — which
 // is what a legacy per-tape argument in this slot did, seeding every tape
@@ -256,6 +297,7 @@ export function* streamMTM(input) {
   const twoWay = usesTwoWayTape();
   const tokens = multiTapeTokens(input);
   const tapes = multiTapeSeed(k, input, blank, twoWay);
+  tapes.forEach(tape => tape.trackFingerprint());
   let state = runStartId();
   let via = null;
   // One log per tape; they advance in lockstep, so one step index addresses
@@ -274,7 +316,9 @@ export function* streamMTM(input) {
     for (let k = 1; k < logs.length; k++) logs[k].begin(tapes[k].head);
     step = multiTapeStep(logs, i, { state, tokens, tid: via, note: `State:${getState(state)?.name} Read:[${syms.join(',')}]${cellNote}` });
     if (App.accepts.has(state)) { step.final = 'accept'; step.note += ' — ACCEPT'; yield step; return; }
-    const at = loop.seenAt(tapesKey(state, tapes), n);
+    let now = null;
+    const at = loop.seenAtVerified(multiTapeFingerprint(state, tapes), n,
+      j => replayMultiTapeKey(k, input, j) === (now ??= tapesKey(state, tapes)));
     if (at >= 0) { markLoopStep(step, at); yield step; return; }
     const t = getMultiTapeDeterministicTransition(state, syms);
     if (!t) { step.final = 'reject'; step.note += ' — REJECT'; yield step; return; }
@@ -290,7 +334,7 @@ export function* streamMTM(input) {
 export function simMTM(input) { playEagerly(streamMTM(input)); }
 
 export function* streamLBA(tokens) {
-  const tape = makeLbaTape(tokens);
+  const tape = makeLbaTape(tokens).trackFingerprint();
   const log = makeTapeLog(tape);
   let state = runStartId();
   let via = null;
@@ -309,7 +353,9 @@ export function* streamLBA(tokens) {
       yield step;
       return;
     }
-    const at = loop.seenAt(`${state}|${tape.key()}`, n);
+    let now = null;
+    const at = loop.seenAtVerified(`${state}|${tape.fingerprint()}`, n,
+      j => replaySingleTapeKey(() => makeLbaTape(tokens), j) === (now ??= `${state}|${tape.key()}`));
     if (at >= 0) { markLoopStep(step, at); yield step; return; }
     const t = getSingleTapeDeterministicTransition(state, sym);
     if (!t) {
@@ -355,14 +401,15 @@ export function simITM(tokens) { return simTM(tokens); }
 export function testTM3(tokens, budget) {
   budget = budget || langStepBudget();
   const any = App.config.sym.any;
-  const tape = new Tape(tokens, App.config.sym.blank, usesTwoWayTape());
+  const blank = App.config.sym.blank, twoWay = usesTwoWayTape();
+  const tape = new Tape(tokens, blank, twoWay).trackFingerprint();
   let state = runStartId();
-  const seen = new Set();
+  // A repeated configuration of a deterministic machine is a loop, so the
+  // word is rejected. Detected by fingerprint, confirmed by key — see above.
+  const repeated = makeRepeatDetector(j => replaySingleTapeKey(() => new Tape(tokens, blank, twoWay), j));
   for (let step = 0; step < budget; step++) {
     if (App.accepts.has(state)) return 'acc';
-    const key = `${state}|${tape.key()}`;
-    if (seen.has(key)) return 'rej';
-    seen.add(key);
+    if (repeated(`${state}|${tape.fingerprint()}`, step, () => `${state}|${tape.key()}`)) return 'rej';
     const sym = tape.read();
     const t = getSingleTapeDeterministicTransition(state, sym);
     if (!t) return 'rej';
@@ -390,14 +437,12 @@ export function makeLbaTape(tokens) {
 export function testLBA3(tokens, budget) {
   budget = budget || langStepBudget();
   const any = App.config.sym.any;
-  const tape = makeLbaTape(tokens);
+  const tape = makeLbaTape(tokens).trackFingerprint();
   let state = runStartId();
-  const seen = new Set();
+  const repeated = makeRepeatDetector(j => replaySingleTapeKey(() => makeLbaTape(tokens), j));
   for (let step = 0; step < budget; step++) {
     if (App.accepts.has(state)) return 'acc';
-    const key = `${state}|${tape.key()}`;
-    if (seen.has(key)) return 'rej';
-    seen.add(key);
+    if (repeated(`${state}|${tape.fingerprint()}`, step, () => `${state}|${tape.key()}`)) return 'rej';
     const sym = tape.read();
     const t = getSingleTapeDeterministicTransition(state, sym);
     if (!t) return 'rej';
@@ -422,13 +467,12 @@ export function testMTM3(input, budget) {
   budget = budget || langStepBudget();
   const k = App.tapeCount || 2;
   const tapes = multiTapeSeed(k, input, App.config.sym.blank, usesTwoWayTape());
+  tapes.forEach(tape => tape.trackFingerprint());
   let state = runStartId();
-  const seen = new Set();
+  const repeated = makeRepeatDetector(j => replayMultiTapeKey(k, input, j));
   for (let step = 0; step < budget; step++) {
     if (App.accepts.has(state)) return 'acc';
-    const key = tapesKey(state, tapes);
-    if (seen.has(key)) return 'rej';
-    seen.add(key);
+    if (repeated(multiTapeFingerprint(state, tapes), step, () => tapesKey(state, tapes))) return 'rej';
     const syms = tapes.map(tape => tape.read());
     const t = getMultiTapeDeterministicTransition(state, syms);
     if (!t) return 'rej';
@@ -442,7 +486,7 @@ export function testNDTM3(tokens, budget) {
   budget = budget || langStepBudget();
   const any = App.config.sym.any;
   const start = new Tape(tokens, App.config.sym.blank, usesTwoWayTape());
-  const queue = [{ state: runStartId(), tape: start }];
+  const queue = new Fifo([{ state: runStartId(), tape: start }]);
   // The key comes off the tape, which normalizes its own window — so two
   // configurations that differ only in how far the tape has grown compare
   // equal. With absolute indices a two-way tape renumbers every cell the
@@ -454,8 +498,7 @@ export function testNDTM3(tokens, budget) {
     const cfg = queue.shift();
     if (App.accepts.has(cfg.state)) return 'acc';
     const sym = cfg.tape.read();
-    const matching = App.transitions.filter(tr =>
-      tr.from === cfg.state && (tr.symbol === sym || tr.symbol === any));
+    const matching = transitionsFrom(cfg.state).filter(tr => tr.symbol === sym || tr.symbol === any);
     for (const tr of matching) {
       const next = cfg.tape.clone();
       next.write((!tr.write || tr.write === any) ? sym : tr.write);

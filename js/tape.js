@@ -32,6 +32,72 @@
 //  testing without a machine around it.
 // ══════════════════════════════════════════════════════════════════
 
+// ── the fingerprint's arithmetic ───────────────────────────────────
+// Two primes below 2^31, and a multiply that stays exact in a double: split
+// the second factor into 16-bit halves so no partial product passes 2^47.
+const FP_M1 = 2147483647, FP_M2 = 2147483629;
+const FP_B1 = 911382323, FP_B2 = 972663749;
+
+function mulmod(a, b, m) {
+  return (((a * Math.floor(b / 65536)) % m) * 65536 + a * (b % 65536)) % m;
+}
+
+function powmod(b, e, m) {
+  let r = 1;
+  b %= m;
+  while (e > 0) {
+    if (e % 2 === 1) r = mulmod(r, b, m);
+    b = mulmod(b, b, m);
+    e = Math.floor(e / 2);
+  }
+  return r;
+}
+
+// B^pos for both moduli, pos any integer (a two-way tape has negative cells):
+// by Fermat, B^(m-1) = 1, so the exponent is taken mod m-1.
+const powCache = new Map();
+function posPow(pos) {
+  let hit = powCache.get(pos);
+  if (hit) return hit;
+  if (powCache.size > 65536) powCache.clear();
+  const e1 = ((pos % (FP_M1 - 1)) + (FP_M1 - 1)) % (FP_M1 - 1);
+  const e2 = ((pos % (FP_M2 - 1)) + (FP_M2 - 1)) % (FP_M2 - 1);
+  hit = [powmod(FP_B1, e1, FP_M1), powmod(FP_B2, e2, FP_M2)];
+  powCache.set(pos, hit);
+  return hit;
+}
+
+const symCache = new Map();
+function symHash(sym) {
+  let hit = symCache.get(sym);
+  if (hit) return hit;
+  let h = 2166136261;
+  for (let i = 0; i < sym.length; i++) h = Math.imul(h ^ sym.charCodeAt(i), 16777619) >>> 0;
+  const g = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0;
+  hit = [1 + (h % (FP_M1 - 1)), 1 + (g % (FP_M2 - 1))];
+  symCache.set(sym, hit);
+  return hit;
+}
+
+// Add (sign 1) or remove (sign -1) one cell's term. A cell holding the blank
+// contributes nothing, exactly as it reads in key().
+function fpCell(fp, pos, sym, blank, sign) {
+  if (sym === blank) return;
+  const s = symHash(String(sym));
+  const p = posPow(pos);
+  const t1 = mulmod(s[0], p[0], FP_M1);
+  const t2 = mulmod(s[1], p[1], FP_M2);
+  fp.h1 = sign > 0 ? (fp.h1 + t1) % FP_M1 : (fp.h1 - t1 + FP_M1) % FP_M1;
+  fp.h2 = sign > 0 ? (fp.h2 + t2) % FP_M2 : (fp.h2 - t2 + FP_M2) % FP_M2;
+}
+
+// The leftmost stored cell, stored blanks included — snapshot() counts them.
+function leastKey(cells) {
+  let min = Infinity;
+  for (const k of cells.keys()) if (k < min) min = k;
+  return min;
+}
+
 export class Tape {
   /**
    * @param {string[]} tokens  initial cells, laid down from index 0
@@ -63,12 +129,62 @@ export class Tape {
    */
   write(sym) {
     if (this.immutable && this.immutable.has(this.read())) return false;
+    const fp = this._fp;
+    if (fp) {
+      const had = this.cells.get(this.head);
+      if (had !== undefined) fpCell(fp, this.head, had, this.blank, -1);
+    }
     // A blank is the absence of a cell, not a cell holding a blank, or a
     // tape scrubbed back to empty would keep every cell it ever touched
     // and no two such configurations would ever compare equal.
     if (sym === this.blank) this.cells.delete(this.head);
     else this.cells.set(this.head, sym);
+    if (fp) {
+      if (sym !== this.blank) {
+        fpCell(fp, this.head, sym, this.blank, 1);
+        if (this.head < fp.min) fp.min = this.head;
+      } else if (this.head === fp.min) {
+        fp.min = leastKey(this.cells);
+      }
+    }
     return true;
+  }
+
+  /**
+   * Keep a fingerprint of `key()` up to date from here on, and return this.
+   *
+   * `key()` is what the deterministic deciders detect a loop with, and it
+   * costs the whole tape: a snapshot of the window, joined into a string, on
+   * every step — so deciding a word was quadratic in how far the head
+   * travelled. The fingerprint is the same fact kept current in O(1) per
+   * write: a polynomial hash of the non-blank cells under two prime moduli,
+   * normalised to the left edge of key()'s window so that it is exactly as
+   * origin-independent as key() is, plus the head's offset into that window.
+   *
+   * Equal keys give equal fingerprints. The converse is overwhelmingly likely
+   * rather than certain, so a caller that finds a repeat confirms it against
+   * key() before believing it — see `makeRepeatDetector` in the TM family.
+   */
+  trackFingerprint() {
+    const fp = { h1: 0, h2: 0, min: leastKey(this.cells) };
+    for (const [pos, sym] of this.cells) fpCell(fp, pos, sym, this.blank, 1);
+    this._fp = fp;
+    return this;
+  }
+
+  /** key()'s fingerprint; trackFingerprint() must have been called. */
+  fingerprint() {
+    const fp = this._fp;
+    // The same left edge snapshot() takes: the head or the leftmost stored
+    // cell on a two-way tape, cell 0 on a bounded one.
+    const lo = this.twoWay ? Math.min(this.head, fp.min) : 0;
+    let n1 = fp.h1, n2 = fp.h2;
+    if (lo !== 0) {
+      const inv = posPow(-lo);
+      n1 = mulmod(n1, inv[0], FP_M1);
+      n2 = mulmod(n2, inv[1], FP_M2);
+    }
+    return `${this.head - lo}|${n1}|${n2}`;
   }
 
   /**
@@ -181,6 +297,7 @@ export class Tape {
     });
     copy.cells = new Map(this.cells);
     copy.head = this.head;
+    if (this._fp) copy._fp = { ...this._fp };
     return copy;
   }
 }

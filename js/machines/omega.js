@@ -22,7 +22,7 @@ import {
 } from '../state.js';
 import { renderSimStep } from './paint.js';
 import { findOmegaDeterminismConflict } from './predicates.js';
-import { accepted, firstOverlappingTransition, nameOfState, tokenize } from './runtime.js';
+import { Fifo, accepted, firstOverlappingTransition, nameOfState, tokenize, transitionsFrom } from './runtime.js';
 import { defineFamily } from './registry.js';
 
 // Only ultimately periodic ω-words are decidable by inspection, and they are
@@ -51,8 +51,7 @@ export function buchiSuccessors(u, v, state, pos) {
   const sym = buchiSymbolAt(u, v, pos);
   const nextPos = buchiNextPos(u, v, pos);
   const out = [];
-  for (const t of App.transitions) {
-    if (t.from !== state) continue;
+  for (const t of transitionsFrom(state)) {
     if (t.symbol !== sym && t.symbol !== any) continue;
     out.push({ state: t.to, pos: nextPos, via: t });
   }
@@ -71,7 +70,7 @@ const buchiKey = (state, pos) => `${state}|${pos}`;
 export function buchiFindCycle(u, v, node, allow = null) {
   const target = buchiKey(node.state, node.pos);
   const parent = new Map();
-  const queue = [];
+  const queue = new Fifo();
   const relax = (from, nx) => {
     const k = buchiKey(nx.state, nx.pos);
     if (k === target) return true;
@@ -144,7 +143,7 @@ export function exploreOmega(u, v) {
   const start = { state: runStartId(), pos: 0, via: null };
   const parent = new Map([[buchiKey(start.state, start.pos), null]]);
   const order = [start];
-  const queue = [start];
+  const queue = new Fifo([start]);
   while (queue.length) {
     const cur = queue.shift();
     for (const nx of buchiSuccessors(u, v, cur.state, cur.pos)) {

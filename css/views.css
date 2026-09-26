@@ -2454,26 +2454,117 @@
   color: var(--text3);
 }
 
-.sim-speed-sel {
+/* The varispeed — playback speed as a knob, the last segment of the
+   transport pill (js/speed-control.js). A 270° arc like a rate knob on a tape
+   deck or an audio editor: the track, the accent fill up to the setting, a
+   pointer, and a notch at 1× for unity, the way a pitch fader marks its centre
+   detent. The readout beside it is the setting in words. It keeps the pill's
+   hairline divider and hover like its neighbours; it is the one segment that
+   does not stretch, because its width is its readout's. */
+.sctrl-steps .sbtn-speed {
   flex: none;
-  width: 44px;
-  height: 28px;
-  background: var(--surface);
-  border: 1px solid var(--border2);
-  color: var(--text2);
-  font-family: var(--sans);
-  font-weight: 600;
-  font-size: .64rem;
-  border-radius: 6px;
-  cursor: pointer;
-  text-align: center;
-  transition: all var(--transition-fast);
+  gap: 4px;
+  padding: 0 8px 0 5px;
+  min-width: 0;
+  user-select: none;
+  touch-action: none;
 }
 
-.sim-speed-sel:hover {
+.sbtn-speed:focus-visible {
+  outline: 2px solid var(--accent-border-strong);
+  outline-offset: -2px;
+}
+
+.sbtn-speed.is-turning {
+  cursor: ns-resize;
   background: var(--surface3);
+}
+
+.speed-dial {
+  flex: none;
+  overflow: visible;
+}
+
+.speed-dial .sd-track,
+.speed-dial .sd-value {
+  fill: none;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+.speed-dial .sd-track {
+  stroke: var(--border2);
+}
+
+.speed-dial .sd-value {
+  stroke: var(--accent);
+  transition: stroke-dasharray .18s ease;
+}
+
+.speed-dial .sd-unity {
+  fill: var(--text3);
+}
+
+/* The knob itself: a cap the pointer is marked on, so it reads as something
+   to turn rather than as a circular arrow — Reset, one button over, is one. */
+.speed-dial .sd-cap {
+  fill: var(--surface3);
+  stroke: var(--border2);
+  stroke-width: 1;
+}
+
+.speed-dial .sd-pointer {
+  stroke: var(--text2);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  transform-box: view-box;
+  transform-origin: 10px 10px;
+  transition: transform .18s ease, stroke var(--transition-fast);
+}
+
+.sbtn-speed:hover .sd-pointer,
+.sbtn-speed.is-turning .sd-pointer {
+  stroke: var(--text);
+}
+
+.sbtn-speed .speed-readout {
+  min-width: 4ch;
+  font-family: var(--mono);
+  font-size: .66rem;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  color: var(--text2);
+  white-space: nowrap;
+}
+
+.sbtn-speed:hover .speed-readout {
   color: var(--text);
-  border-color: var(--accent-border);
+}
+
+/* Max is the end stop: the whole arc lit and the readout in the accent. */
+.sbtn-speed.is-max .speed-readout {
+  color: var(--accent);
+}
+
+/* A turn registers: the readout flashes the accent and settles. */
+@keyframes speed-nudge {
+  from { color: var(--accent); }
+  to { color: var(--text2); }
+}
+
+.sbtn-speed.is-nudged:not(.is-max) .speed-readout {
+  animation: speed-nudge .45s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .speed-dial .sd-value,
+  .speed-dial .sd-pointer {
+    transition: none;
+  }
+
+  .sbtn-speed.is-nudged .speed-readout {
+    animation: none;
+  }
 }
 
 /* Generic "highlighted step button" modifier, layered on top of .sbtn

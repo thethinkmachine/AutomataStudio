@@ -130,3 +130,72 @@ test('the card counts the run', () => {
   context.renderTraceLog();
   assert.equal(getElement('rp-count-trace').textContent, '37');
 });
+
+// ── the window slides ─────────────────────────────────────────────
+// Playing forward, a frame moves the tail by a step or two. Rebuilding four
+// hundred rows to show that was most of the cost of a frame of playback, so a
+// forward move appends what is new and drops what fell off the top — and the
+// rows that stay are the same nodes.
+
+const logRows = () => getElement('trace-log').children.filter(n => n.tagName === 'DIV' && !/sim-log-stream/.test(n.className));
+
+test('a step forward appends one row and keeps the rest', () => {
+  const App = longRun(50);
+  App.simIdx = 10;
+  context.renderTraceLog();
+  const before = logRows();
+  assert.equal(before.length, 11);
+
+  App.simIdx = 11;
+  context.renderTraceLog();
+  const after = logRows();
+  assert.equal(after.length, 12);
+  assert.equal(after[0], before[0], 'the first row is the node it was');
+  assert.equal(after[10], before[10], 'and so is the row that was current');
+  assert.equal(after[10].className, '', 'which is no longer marked current');
+  assert.equal(after[11].className, 't-step', 'the new row is');
+  assert.match(after[11].innerHTML, /^11: step 11$/);
+});
+
+test('past the tail, the window slides: one in at the bottom, one out at the top', () => {
+  const tail = context.SIM_LOG_TAIL;
+  const App = longRun(tail * 2);
+  App.simIdx = tail + 10;
+  context.renderTraceLog();
+  const before = logRows();
+  assert.equal(before.length, tail);
+
+  App.simIdx = tail + 11;
+  context.renderTraceLog();
+  const after = logRows();
+  assert.equal(after.length, tail, 'still the tail');
+  assert.equal(after[0], before[1], 'the oldest row left and the rest stayed');
+  assert.match(after[after.length - 1].innerHTML, new RegExp(`^${tail + 11}: `));
+  // Step tail + 11 is current, so the tail starts at 12 and twelve are above it.
+  assert.ok(/↑ 12 earlier steps/.test(getElement('trace-log').innerHTML),
+    'and the count of what is above it moved with it');
+});
+
+test('a log someone else wrote to is rebuilt, not extended', () => {
+  // log() and StateMate both assign innerHTML, which detaches every row the
+  // window was holding; extending it would append to a log that is gone.
+  const App = longRun(20);
+  App.simIdx = 5;
+  context.renderTraceLog();
+  context.log('<span>an error</span>');
+  App.simIdx = 6;
+  context.renderTraceLog();
+  assert.equal(logRows().length, 7);
+  assert.doesNotMatch(getElement('trace-log').innerHTML, /an error/);
+});
+
+test('a step back rebuilds rather than extending backwards', () => {
+  const App = longRun(20);
+  App.simIdx = 9;
+  context.renderTraceLog();
+  App.simIdx = 4;
+  context.renderTraceLog();
+  const rows = logRows();
+  assert.equal(rows.length, 5);
+  assert.equal(rows[4].className, 't-step');
+});

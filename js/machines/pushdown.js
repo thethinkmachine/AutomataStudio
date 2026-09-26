@@ -16,7 +16,7 @@ import {
 } from '../state.js';
 import { renderSimStep } from './paint.js';
 import { getPdaDeterminismConflict, isQueueAutomaton, isTwoStackPDA } from './predicates.js';
-import { accepted, nameOfState, traceSearchPath, transduced, transducerRunContributes } from './runtime.js';
+import { Fifo, accepted, nameOfState, traceSearchPath, transduced, transducerRunContributes, transitionsFrom } from './runtime.js';
 import { defineFamily } from './registry.js';
 import { OUT_EMPTY, outPush, wordOutStep, wordStep } from './step-log.js';
 
@@ -115,13 +115,13 @@ export function getMatchingPdaTransitions(cfg) {
   const eps = App.config.sym.eps;
   const queueMode = pdaUsesQueueStorage();
   const top = pdaPeek(cfg.stack, queueMode);
-  const top2 = pdaUsesSecondStack() ? pdaPeek(cfg.stack2 || []) : undefined;
-  return App.transitions.filter(t => {
-    if (t.from !== cfg.state) return false;
+  const twoStacks = pdaUsesSecondStack();
+  const top2 = twoStacks ? pdaPeek(cfg.stack2 || []) : undefined;
+  return transitionsFrom(cfg.state).filter(t => {
     const readOk = t.symbol === eps || (cfg.pos < cfg.tokens.length && (t.symbol === cfg.tokens[cfg.pos] || t.symbol === App.config.sym.any));
     const popOk = canApplyPdaPop(top, t.pop);
     const pop2Sym = t.pop2 || eps;
-    const pop2Ok = !pdaUsesSecondStack() || canApplyPdaPop(top2, pop2Sym);
+    const pop2Ok = !twoStacks || canApplyPdaPop(top2, pop2Sym);
     return readOk && popOk && pop2Ok;
   });
 }
@@ -258,9 +258,26 @@ export function simPDA(tokens) {
   return { accepted: false };
 }
 
-export function exploreNPDA(tokens) {
+// How many explored branches the search narrates. The narration is an HTML
+// line per configuration, each carrying the configuration's instantaneous
+// description — a join of the whole stack — and its one reader, the NPDA
+// card in the algorithms view, shows the first ten. Formatting all of them
+// was the most expensive thing a search did, for lines nobody could reach.
+export const NPDA_LOG_KEEP = 10;
+
+/**
+ * Breadth-first search over the NPDA's configurations.
+ *
+ * `opts.log` is how many branches to narrate (NPDA_LOG_KEEP by default) and
+ * `opts.witness` whether to rebuild the path to the deciding configuration.
+ * A decider wants neither — see testNPDA — and a search that skips them
+ * visits exactly the same configurations in exactly the same order.
+ */
+export function exploreNPDA(tokens, opts = {}) {
+  const logKeep = opts.log ?? NPDA_LOG_KEEP;
+  const wantWitness = opts.witness !== false;
   const init = createInitialPdaConfig(tokens);
-  const queue = [init];
+  const queue = new Fifo([init]);
   const visited = new Set([pdaConfigKey(init.state, init.pos, init.stack, init.stack2)]);
   const log = [];
   let acceptedCfg = null;
@@ -274,36 +291,23 @@ export function exploreNPDA(tokens) {
     lastExplored = cfg;
     branches++;
     maxDepth = Math.max(maxDepth, cfg.depth);
-    const stateName = getState(cfg.state)?.name || cfg.state;
-    const idStr = formatPdaInstantaneousDescription(cfg);
+    const narrate = log.length < logKeep;
+    const stateName = narrate ? (getState(cfg.state)?.name || cfg.state) : '';
+    const idStr = narrate ? formatPdaInstantaneousDescription(cfg) : '';
 
     if (isPdaAcceptingConfig(cfg)) {
       acceptedCfg = cfg;
-      log.push(`<span class="step-acc">Branch ${cfg.branch}: ACCEPT ✓</span><span class="step-sub">Accepted at depth ${cfg.depth}.<br>ID: ${idStr}</span>`);
+      if (narrate) log.push(`<span class="step-acc">Branch ${cfg.branch}: ACCEPT ✓</span><span class="step-sub">Accepted at depth ${cfg.depth}.<br>ID: ${idStr}</span>`);
       break;
     }
 
     const matching = getMatchingPdaTransitions(cfg);
     if (!matching.length) {
-      log.push(`Branch ${cfg.branch}: <span class="step-dead">stuck</span><span class="step-sub">No transition matches ${idStr}.<br>Depth ${cfg.depth}</span>`);
+      if (narrate) log.push(`Branch ${cfg.branch}: <span class="step-dead">stuck</span><span class="step-sub">No transition matches ${idStr}.<br>Depth ${cfg.depth}</span>`);
       continue;
     }
 
-    const nextRead = cfg.tokens[cfg.pos] || App.config.sym.eps;
-    const primaryTop = pdaPeek(cfg.stack, pdaUsesQueueStorage());
-    const primaryTopLabel = isQueueAutomaton() ? 'Queue front' : 'Stack top';
-    const subs = [
-      `State "${stateName}" with next input '${nextRead}'`,
-      `Depth ${cfg.depth} · ${primaryTopLabel} ${primaryTop || App.config.sym.eps}`,
-      `ID: ${idStr}`
-    ];
-    if (isTwoStackPDA()) {
-      subs.push(`Second stack top ${pdaPeek(cfg.stack2 || []) || App.config.sym.eps}`);
-    }
-    if (matching.length > 1) {
-      subs.push(`Nondeterministic choice: ${matching.length} matching transitions.`);
-    }
-    log.push(`Branch ${cfg.branch}: exploring <em>${stateName}</em><span class="step-sub">${subs.join('<br>')}</span>`);
+    if (narrate) narrateBranch(log, cfg, stateName, idStr, matching);
 
     matching.forEach((transition, idx) => {
       const childBranch = matching.length === 1 || idx === 0 ? cfg.branch : nextBranchId++;
@@ -320,10 +324,28 @@ export function exploreNPDA(tokens) {
     branches,
     maxDepth,
     log,
-    witnessPath: traceSearchPath(acceptedCfg || lastExplored),
+    witnessPath: wantWitness ? traceSearchPath(acceptedCfg || lastExplored) : null,
     finalCfg: acceptedCfg || lastExplored,
     unresolved: !acceptedCfg && queue.length > 0
   };
+}
+
+function narrateBranch(log, cfg, stateName, idStr, matching) {
+  const nextRead = cfg.tokens[cfg.pos] || App.config.sym.eps;
+  const primaryTop = pdaPeek(cfg.stack, pdaUsesQueueStorage());
+  const primaryTopLabel = isQueueAutomaton() ? 'Queue front' : 'Stack top';
+  const subs = [
+    `State "${stateName}" with next input '${nextRead}'`,
+    `Depth ${cfg.depth} · ${primaryTopLabel} ${primaryTop || App.config.sym.eps}`,
+    `ID: ${idStr}`
+  ];
+  if (isTwoStackPDA()) {
+    subs.push(`Second stack top ${pdaPeek(cfg.stack2 || []) || App.config.sym.eps}`);
+  }
+  if (matching.length > 1) {
+    subs.push(`Nondeterministic choice: ${matching.length} matching transitions.`);
+  }
+  log.push(`Branch ${cfg.branch}: exploring <em>${stateName}</em><span class="step-sub">${subs.join('<br>')}</span>`);
 }
 
 export function simNPDA(tokens) {
@@ -372,7 +394,8 @@ export function testPDA(tokens) {
 }
 
 export function testNPDA(tokens) {
-  return exploreNPDA(tokens).accepted;
+  // A verdict needs the search and nothing it narrates.
+  return exploreNPDA(tokens, { log: 0, witness: false }).accepted;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -399,7 +422,7 @@ export function explorePDT(tokens) {
   const init = createInitialPdaConfig(tokens);
   init.outRaw = '';
   init.outNode = OUT_EMPTY;
-  const queue = [init];
+  const queue = new Fifo([init]);
   const visited = new Set([pdtConfigKey(init)]);
   const outputs = new Set();
   let acceptedCfg = null;

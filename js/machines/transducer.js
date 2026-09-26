@@ -25,7 +25,7 @@ import {
   App, getState, runStartId
 } from '../state.js';
 import { renderSimStep } from './paint.js';
-import { accepted, firstOverlappingTransition, getSingleTapeDeterministicTransition, nameOfState, playEagerly, traceSearchPath, transduced, transducerRunContributes } from './runtime.js';
+import { Fifo, accepted, firstOverlappingTransition, getSingleTapeDeterministicTransition, nameOfState, playEagerly, traceSearchPath, transduced, transducerRunContributes, transitionsFrom } from './runtime.js';
 import { testDFA } from './finite.js';
 import { defineFamily } from './registry.js';
 import { OUT_EMPTY, outPush, outStep } from './step-log.js';
@@ -103,8 +103,7 @@ export function fstConfigKey(state, index, outRaw) {
 
 export function getMatchingFstTransitions(cfg, tokens) {
   const eps = App.config.sym.eps;
-  return App.transitions.filter(t => {
-    if (t.from !== cfg.state) return false;
+  return transitionsFrom(cfg.state).filter(t => {
     if (t.symbol === eps) return true;
     if (cfg.index >= tokens.length) return false;
     return t.symbol === tokens[cfg.index] || t.symbol === App.config.sym.any;
@@ -173,7 +172,7 @@ export function exploreFST(tokens) {
     parent: null,
     via: null
   };
-  const queue = [init];
+  const queue = new Fifo([init]);
   const visited = new Set([fstConfigKey(init.state, init.index, init.outRaw)]);
   const outputs = new Set();
   let acceptedCfg = null;

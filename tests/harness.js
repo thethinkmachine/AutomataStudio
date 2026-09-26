@@ -81,6 +81,7 @@ import * as deltaTable from '../js/delta-table.js';
 import * as panelShake from '../js/panel-shake.js';
 import * as mobile from '../js/mobile.js';
 import * as simulation from '../js/simulation.js';
+import * as speedControl from '../js/speed-control.js';
 import * as tape from '../js/tape.js';
 import * as tapeLog from '../js/tape-log.js';
 import * as tapeView from '../js/tape-view.js';
@@ -143,7 +144,7 @@ const NAMESPACES = [
   machineRegistry, machineRuntime, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineEmbedded, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,
-  simulation, tape, tapeLog, tapeView, spacetime, spacetimeUi, complexity, complexityUi, suggest, language, alphabet, markdown,
+  simulation, speedControl, tape, tapeLog, tapeView, spacetime, spacetimeUi, complexity, complexityUi, suggest, language, alphabet, markdown,
   view, history, fileHost, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, importStatechart, interopStatechart, interopObjlit, interopXml, interopStandardTM,
   exerciseModel, exerciseGrade, exerciseUi, lexerRegex, lexerBuild, lexerEmit, lexerUi, algorithmsFa, grammarUi, grammarModel, grammarParse, grammarAnalysis, grammarTransform,
@@ -381,15 +382,16 @@ export function resetApp() {
   App.editId = null;
   App.simSteps = [];
   App.simIdx = 0;
-  // Stopped, not just forgotten. Playback is a real setInterval, and runSim()
-  // starts one on every run — so any test that runs a word (a card chip is the
-  // one gesture that does it through the UI) leaves one ticking. Nulling the
-  // handle here orphans it: the next tick finds a reset App, reads
-  // `simIdx >= simSteps.length - 1`, calls stopAutoPlay, and that returns early
-  // because `App.autoTimer` is already null. The interval then fires every
-  // 500ms for the life of the process, doing nothing but holding the event loop
-  // open — the whole file passes and node never exits.
-  if (App.autoTimer) clearInterval(App.autoTimer);
+  // Stopped, not just forgotten. Playback is a real clock — under this DOM, a
+  // frame-rate setTimeout that re-arms itself (see startPlaybackClock) — and
+  // runSim() starts one on every run, so any test that runs a word (a card
+  // chip is the one gesture that does it through the UI) leaves one ticking.
+  // Cancelled here rather than orphaned, so a pending frame never holds the
+  // event loop open after the file is done.
+  if (App.autoTimer) {
+    if (typeof App.autoTimer.cancel === 'function') App.autoTimer.cancel();
+    else clearInterval(App.autoTimer);
+  }
   App.autoTimer = null;
   if (App.grammar) {
     App.grammar.vars = new Set(['S']);
