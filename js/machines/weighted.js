@@ -14,7 +14,7 @@ import {
   App, getState, runStartId
 } from '../state.js';
 import { renderSimStep } from './paint.js';
-import { accepted } from './runtime.js';
+import { accepted, transitionsFrom } from './runtime.js';
 import { defineMachine } from './registry.js';
 import { wordStep } from './step-log.js';
 
@@ -38,8 +38,7 @@ export function pfaStepDistribution(dist, sym) {
   const next = new Map();
   for (const [q, p] of dist) {
     if (!p) continue;
-    for (const t of App.transitions) {
-      if (t.from !== q) continue;
+    for (const t of transitionsFrom(q)) {
       if (t.symbol !== sym && t.symbol !== any) continue;
       const w = pfaWeight(t);
       if (!w) continue;

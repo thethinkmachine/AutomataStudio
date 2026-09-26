@@ -10,7 +10,7 @@
 import {
   App, getState, runStartId
 } from '../state.js';
-import { accepted, epsClosure, firstIdenticalTransition, getSingleTapeDeterministicTransition, nameOfState, playEagerly, stateNames } from './runtime.js';
+import { accepted, epsClosure, firstIdenticalTransition, getSingleTapeDeterministicTransition, nameOfState, playEagerly, stateNames, transitionsFrom } from './runtime.js';
 import { defineFamily } from './registry.js';
 import { wordStep } from './step-log.js';
 
@@ -43,7 +43,8 @@ export function* streamNFA(tokens) {
   yield last;
   for (let i = 0; i < tokens.length; i++) {
     const sym = tokens[i]; let nx = new Set();
-    cur.forEach(sid => App.transitions.filter(t => t.from === sid && (t.symbol === sym || t.symbol === App.config.sym.any)).forEach(t => nx.add(t.to)));
+    const any = App.config.sym.any;
+    cur.forEach(sid => { for (const t of transitionsFrom(sid)) if (t.symbol === sym || t.symbol === any) nx.add(t.to); });
     nx = epsClosure(nx);
     cur = nx;
     last = wordStep({ states: [...cur], tokens, pos: i + 1, note: `Read '${sym}' → {${stateNames(cur) || '∅'}}` });
@@ -73,7 +74,7 @@ export function testNFA(tokens) {
   const any = App.config.sym.any;
   for (const sym of tokens) {
     let nx = new Set();
-    cur.forEach(s => App.transitions.filter(t => t.from === s && (t.symbol === sym || t.symbol === any)).forEach(t => nx.add(t.to)));
+    cur.forEach(s => { for (const t of transitionsFrom(s)) if (t.symbol === sym || t.symbol === any) nx.add(t.to); });
     cur = epsClosure(nx);
   }
   return [...cur].some(id => App.accepts.has(id));

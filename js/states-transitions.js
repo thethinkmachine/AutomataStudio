@@ -1,4 +1,5 @@
 import { clearTempLine, hideCanvasContextMenu } from './canvas.js';
+import { invalidateTransitionIndex } from './machines/runtime.js';
 import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
 import { pruneNoteAnchorsExcluding } from './notes.js';
@@ -470,6 +471,8 @@ export function confirmTrans() {
     t.from = from;
     t.to = to;
     t.symbol = sym;
+    // `from` changed in place, which the δ index cannot see for itself.
+    invalidateTransitionIndex();
     // Which fields a saved transition carries is the same question as which
     // rows the dialog showed, so it is asked the same way. It used to be asked
     // with the family predicates instead, which is the one thing that could not
@@ -1219,6 +1222,7 @@ export function ctxReverseTrans() {
     t.to = oldFrom;
     if (typeof t.curve === 'number' && oldFrom !== oldTo) t.curve = -t.curve;
   });
+  invalidateTransitionIndex();   // every `from` above changed in place
   emit(Change.GRAPH);
 }
 

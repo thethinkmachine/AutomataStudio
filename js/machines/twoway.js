@@ -21,7 +21,7 @@ import {
 } from '../state.js';
 import { renderSimStep } from './paint.js';
 import { buildMarkedInputTape, pickMostSpecificTransition } from './predicates.js';
-import { accepted, firstOverlappingTransition, nameOfState, traceSearchPath, transduced } from './runtime.js';
+import { Fifo, accepted, firstOverlappingTransition, nameOfState, traceSearchPath, transduced, transitionsFrom } from './runtime.js';
 import { defineFamily } from './registry.js';
 import { OUT_EMPTY, outPush, outStep } from './step-log.js';
 
@@ -69,7 +69,8 @@ export function twoWayReadSymbol(tokens, head) {
 }
 
 export function getTwoWayMatchingTransitions(state, sym) {
-  return App.transitions.filter(t => t.from === state && (t.symbol === sym || t.symbol === App.config.sym.any));
+  const any = App.config.sym.any;
+  return transitionsFrom(state).filter(t => t.symbol === sym || t.symbol === any);
 }
 
 export function buildTwoWayPathSteps(path, tokens, finalStatus = null, finalNote = '') {
@@ -183,7 +184,7 @@ export function sim2DFA(tokens) {
 export function explore2NFA(tokens) {
   const tape = buildMarkedInputTape(tokens);
   const init = { state: runStartId(), head: 0, depth: 0, branch: 1, parent: null, via: null };
-  const queue = [init];
+  const queue = new Fifo([init]);
   const visited = new Set([`${init.state}|${init.head}`]);
   let acceptedCfg = null;
   let lastCfg = init;

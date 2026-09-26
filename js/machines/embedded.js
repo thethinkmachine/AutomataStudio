@@ -28,7 +28,7 @@
 
 import { App, getState, runStartId } from '../state.js';
 import { renderSimStep } from './paint.js';
-import { accepted, traceSearchPath } from './runtime.js';
+import { Fifo, accepted, traceSearchPath, transitionsFrom } from './runtime.js';
 import { defineMachine } from './registry.js';
 import { wordStep } from './step-log.js';
 
@@ -183,8 +183,7 @@ export function getMatchingEpdaTransitions(cfg) {
   const eps = App.config.sym.eps;
   const any = App.config.sym.any;
   const top = epdaTop(cfg.store);
-  return App.transitions.filter(t => {
-    if (t.from !== cfg.state) return false;
+  return transitionsFrom(cfg.state).filter(t => {
     const readOk = t.symbol === eps
       || (cfg.pos < cfg.tokens.length && (t.symbol === cfg.tokens[cfg.pos] || t.symbol === any));
     return readOk && popApplies(top, t.pop || eps);
@@ -320,7 +319,7 @@ function withinBudget(store, budget) {
 
 export function exploreEPDA(tokens) {
   const init = createInitialEpdaConfig(tokens);
-  const queue = [init];
+  const queue = new Fifo([init]);
   const visited = new Set([epdaConfigKey(init.state, init.pos, init.store)]);
   const log = [];
   let acceptedCfg = null;
