@@ -15,7 +15,7 @@
 
 import {
   balancedBrackets, binary, busyBeaver5, gridMachine, loadExample, parsed,
-  randomDFA, randomNFA, randomString, randomTokens, sweeperTM
+  randomDFA, randomNFA, randomString, randomTokens, runawayTM, sweeperTM
 } from './machines.mjs';
 import { rng } from './measure.mjs';
 
@@ -463,4 +463,106 @@ const layout = [200, 1000].flatMap(n => [
   }
 ]);
 
-export const suites = { decide: [...finiteWords, ...turing], search, tokenize, player, memory, layout };
+// ── the space-time diagram ──────────────────────────────────────────
+// js/spacetime.js, the half with no page attached: indexing a finished run,
+// painting a viewport of it, and the overview strip beside it. Two shapes of
+// tape, because they fail differently — BB(5) stays a few thousand cells wide
+// over a million rows, and the runaway machine's tape is as wide as the run
+// is long, which is where a checkpoint every 256 rows went quadratic (498 MB
+// at 80,000 steps).
+
+// Built once per process and shared: the run is the input here, not the work.
+const runs = new Map();
+function finishedRun(env, which) {
+  if (!runs.has(which)) {
+    if (which === 'runaway') runawayTM(env); else busyBeaver5(env);
+    env.c.App.config.maxTmSteps = which === 'runaway' ? 1e5 : 1e6;
+    runs.set(which, env.c.traceMachine('TM', []).steps);
+  }
+  return runs.get(which);
+}
+
+const RUNS = [['runaway', 'runaway TM, 100k rows'], ['bb5', 'BB(5), 1M rows']];
+
+function indexed(env, which) {
+  const steps = finishedRun(env, which);
+  const m = env.c.makeSpaceTime(steps, { alphabet: ['a', 'x', '1'] });
+  m.extend(steps.length);
+  return m;
+}
+
+// Only the methods paintSpaceTime calls, as plain functions: a Proxy would
+// charge every call for its trap and time the stand-in instead of the painter.
+function countingContext() {
+  const ctx = { calls: 0 };
+  const count = () => { ctx.calls++; };
+  const noop = () => {};
+  for (const k of ['fillRect', 'fillText', 'strokeRect', 'strokeText', 'fill', 'stroke']) ctx[k] = count;
+  for (const k of ['beginPath', 'moveTo', 'lineTo', 'rect', 'clip', 'save', 'restore', 'setLineDash']) ctx[k] = noop;
+  return ctx;
+}
+
+const spacetime = [
+  ...RUNS.map(([which, label]) => ({
+    name: `index, ${label}`,
+    per: 'row',
+    setup(env) {
+      const steps = finishedRun(env, which);
+      return { run: () => indexed(env, which).rows, count: steps.length };
+    }
+  })),
+  ...RUNS.map(([which, label]) => ({
+    // Twenty 600×400 viewports at 8px cells, at fixed places down the run —
+    // the painter's cost per frame, which is dominated by reaching the first
+    // row from a checkpoint.
+    name: `viewport frame, ${label}`,
+    per: 'frame',
+    setup(env) {
+      const m = indexed(env, which);
+      const L = env.c.spaceTimeLayout(m, { cell: 8, stateName: id => String(id), complete: true });
+      const r = rng(21);
+      const views = Array.from({ length: 20 }, () => ({
+        sx: Math.floor(r() * Math.max(1, L.width - 600)),
+        sy: Math.floor(r() * Math.max(1, L.height - 400)),
+        vw: 600, vh: 400, clip: true
+      }));
+      return {
+        run: () => {
+          const ctx = countingContext();
+          for (const V of views) env.c.paintSpaceTime(ctx, m, L, env.c.PRINT_STYLE, { ...V, playhead: Math.floor(V.sy / 8) });
+          return ctx.calls;
+        },
+        count: views.length
+      };
+    }
+  })),
+  ...RUNS.map(([which, label]) => ({
+    // The strip beside a long diagram, sized as a 200×800 strip at 2× asks.
+    name: `overview strip, ${label}`,
+    per: 'run',
+    setup(env) {
+      const m = indexed(env, which);
+      return {
+        run: () => {
+          const ov = env.c.makeOverview(m, { binsY: 1600, binsX: 400 });
+          ov.extend();
+          const g = env.c.overviewGrid(ov, 0);
+          return `${ov.rows}:${g ? g.counts.length : 0}`;
+        },
+        count: 1
+      };
+    }
+  })),
+  ...RUNS.map(([which, label]) => ({
+    // What the indexed diagram keeps alive beyond the run it was built from.
+    name: `model memory, ${label}`,
+    kind: 'memory',
+    per: 'row',
+    setup(env) {
+      const steps = finishedRun(env, which);
+      return { make: () => indexed(env, which), count: steps.length };
+    }
+  }))
+];
+
+export const suites = { decide: [...finiteWords, ...turing], search, tokenize, player, memory, layout, spacetime };
