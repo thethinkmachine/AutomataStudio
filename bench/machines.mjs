@@ -85,6 +85,19 @@ export function sweeperTM(env, n) {
 }
 
 /**
+ * One state that writes and moves right forever: the tape is as wide as the
+ * run is long, and no configuration repeats, so the loop detector never stops
+ * it. The case the space-time diagram's memory has to survive.
+ */
+export function runawayTM(env) {
+  const App = fresh(env, 'TM', 1);
+  const B = App.config.sym.blank;
+  App.sigma = new Set(['a']);
+  App.tapeAlphabet = new Set(['a', 'x', B]);
+  App.transitions.push({ id: 't0', from: 's0', to: 's0', symbol: B, write: 'x', dir: 'R' });
+}
+
+/**
  * The five-state busy beaver champion (Marxen & Buntrock, 1989): on a blank
  * two-way tape it halts after 47,176,870 steps leaving 4,098 ones. The blank
  * is its 0, and halting is entering the accepting state H.

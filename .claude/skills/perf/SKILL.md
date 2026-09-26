@@ -135,7 +135,7 @@ Points worth keeping in mind:
 
 ### The benchmark
 
-`npm run bench` ([bench/run.mjs](bench/run.mjs)) measures the app's own code — `js/machines/**` and the renderer, loaded through `tests/harness.js` exactly as the tests load them — and compares the run with [bench/baseline.json](bench/baseline.json). 63 cases in six suites ([bench/cases.mjs](bench/cases.mjs)):
+`npm run bench` ([bench/run.mjs](bench/run.mjs)) measures the app's own code — `js/machines/**` and the renderer, loaded through `tests/harness.js` exactly as the tests load them — and compares the run with [bench/baseline.json](bench/baseline.json). 71 cases in seven suites ([bench/cases.mjs](bench/cases.mjs)):
 
 | suite | what it answers |
 | --- | --- |
@@ -144,6 +144,7 @@ Points worth keeping in mind:
 | `tokenize` | reading 100k symbols typed with and without separators |
 | `player` | `traceMachine` per step — the stream ⏭ drains, without the paint — and scrubbing across half of a 1M-step run |
 | `memory` | the bytes a finished run keeps alive per step: the number the checkpointed player is meant to cut |
+| `spacetime` | [js/spacetime.js](js/spacetime.js) over two finished runs that fail differently — BB(5), a million rows a few thousand cells wide, and a runaway TM whose tape is as wide as its 100k-row run: indexing per row, a 600×400 viewport frame painted into a counting stand-in context, the overview strip, and the bytes the indexed model keeps alive per row. The runaway run is the one that found the checkpoints going quadratic and the strip allocating a column per cell. |
 | `layout` | the JavaScript half of a canvas frame against the test DOM: first render, idle re-render, drag frame, full layout pass, at 200 and 1000 states. None of the browser's style, layout or paint is in it, and 1000 states is past the collision budget, so it runs under the large-machine profile. |
 
 What it is built to get right, each learned from it getting it wrong first:
