@@ -15,9 +15,12 @@ npm run electron:dev       # vite + electron pointed at the dev server
 npm run electron:preview   # production build, run in electron
 npm run electron:build     # electron-builder -> release/
 npm run wasm               # asc wasm/label-penalty.ts -> js/wasm/ (output committed)
+npm run bench              # engine, player and canvas timings vs bench/baseline.json
 ```
 
 `npm run wasm` is run by hand after editing [wasm/label-penalty.ts](wasm/label-penalty.ts) and its output is committed, the way `npm run glyphs` and `npm run icons` already are — the build does not shell out to a compiler. See [The label kernel](.claude/skills/perf/SKILL.md).
+
+`npm run bench` is also run by hand and never gates CI: timings move with the machine, so a build that failed on them would fail at random. Run it before and after a change to the engine, the player or the canvas; it marks a case only when it moved by more than its own noise, and marks a changed verdict whatever the timing did. See [The benchmark](.claude/skills/perf/SKILL.md).
 
 CI: `.github/workflows/deploy.yml` publishes `dist/` to GitHub Pages on push to `main`. `.github/workflows/electron-build.yml` packages win/mac/linux installers on every push and publishes a GitHub Release for `v*` tags.
 
