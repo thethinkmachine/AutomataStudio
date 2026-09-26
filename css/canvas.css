@@ -408,6 +408,24 @@
   }
 }
 
+/* ─── Fast playback ───
+   `.sim-fast` is on the root while playback runs at 50× (10ms a step) or
+   faster (isFastPlayback in js/simulation.js). A step then lands every frame
+   or two, long before a 150ms fade has finished, so the active state never
+   reaches its colour and the ones it just left are still fading out — a smear of half-lit states where there
+   should be one. The marks snap instead. The active edge drops its marching
+   dashes for the same reason: each step restarts the animation on a new edge,
+   so the dashes flicker rather than flow. */
+.sim-fast .sn circle.bd,
+.sim-fast .tarr {
+  transition: none;
+}
+
+.sim-fast .edge-g.sim-active-t .tarr {
+  animation: none;
+  stroke-dasharray: none;
+}
+
 .tlbl {
   font-family: var(--mono);
   font-size: 11px;

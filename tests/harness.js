@@ -393,6 +393,8 @@ export function resetApp() {
     else clearInterval(App.autoTimer);
   }
   App.autoTimer = null;
+  // What stopAutoPlay() would have taken down with the clock.
+  document.documentElement.classList.remove('sim-fast');
   if (App.grammar) {
     App.grammar.vars = new Set(['S']);
     App.grammar.start = 'S';
