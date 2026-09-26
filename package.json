@@ -22,6 +22,7 @@
     "dev": "vite",
     "build": "vite build",
     "test": "node --conditions=browser --conditions=development --test",
+    "bench": "node bench/run.mjs",
     "icons": "node scripts/build-icons.mjs",
     "glyphs": "node scripts/build-glyphs.mjs",
     "wasm": "node scripts/build-wasm.mjs",

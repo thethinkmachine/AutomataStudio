@@ -133,6 +133,29 @@ Points worth keeping in mind:
 
 
 
+### The benchmark
+
+`npm run bench` ([bench/run.mjs](bench/run.mjs)) measures the app's own code — `js/machines/**` and the renderer, loaded through `tests/harness.js` exactly as the tests load them — and compares the run with [bench/baseline.json](bench/baseline.json). 63 cases in six suites ([bench/cases.mjs](bench/cases.mjs)):
+
+| suite | what it answers |
+| --- | --- |
+| `decide` | the cost per symbol or step of `decideMachine` on every finite, weighted, ω and tape machine: synthetic machines at chosen sizes (a DFA of 10 states against 100,000, 2 symbols against 200) and the bundled examples on input they are meant for. Includes the first 2M steps of the five-state busy beaver champion. |
+| `search` | the configuration searches and two-way heads: DPDA, NPDA, Counter, PDT, FST, 2PDA, QA, EPDA, 2DFA, 2NFA, 2DFT |
+| `tokenize` | reading 100k symbols typed with and without separators |
+| `player` | `traceMachine` per step — the stream ⏭ drains, without the paint — and scrubbing across half of a 1M-step run |
+| `memory` | the bytes a finished run keeps alive per step: the number the checkpointed player is meant to cut |
+| `layout` | the JavaScript half of a canvas frame against the test DOM: first render, idle re-render, drag frame, full layout pass, at 200 and 1000 states. None of the browser's style, layout or paint is in it, and 1000 states is past the collision budget, so it runs under the large-machine profile. |
+
+What it is built to get right, each learned from it getting it wrong first:
+
+- **Every case records a check** — a verdict, a step count — beside its time, and the comparison marks a changed check whatever the timing did. A faster engine giving a different answer is caught, not celebrated. Flipping the DFA's verdict was marked `CHECK CHANGED` on a case whose time had not moved past its noise.
+- **Most of the noise is between processes.** Two processes running the same code disagree by more than the repetitions inside one process do — each makes its own compilation and heap decisions — so an unchanged tree was once marked 82% slower on one case. Each suite therefore runs in `--rounds` separate processes (three by default, alternating the order), a case keeps its fastest median, and its spread is the larger of the within-run spread and the rounds' disagreement. A case is marked only when it moved by more than 1.5× that spread, and never by less than 10%. Two reruns of an unchanged tree mark nothing; reverting the DFA to the uncached per-step lookup marked four of the five DFA cases slower (+86% to +286%).
+- **The heap is collected once before a case is timed, not before every run.** Collecting before every run looked steadier and was wrong: after a full collection V8 shrinks its young generation, the next run pays to grow it back, and allocating cases — the NPDA search, a drag frame — measured up to 1.7× slower than any real run is.
+- **Memory is measured between two forced collections** and needs `--expose-gc`, which the suite processes are given.
+- **Everything is seeded**, so a run builds the machines and words the last one did. A case that needs the whole run lifts the budgets (`maxPdaSteps`, `maxTmSteps`) out of the way, since the question is how long the work takes, not where the budget cuts it.
+
+It is run by hand. A baseline is comparable only on the machine that recorded it, so it carries that machine's CPU and the report says when the two differ; record your own with `npm run bench -- --save`. `--quick` is one round of fewer repetitions, a filter word narrows the run (`npm run bench -- npda player`), `--out` writes a run to a file and `--baseline` compares against one.
+
 ### The engine's hot paths
 
 **A step costs the same on a machine of any size**, and it took the changes below for that to be true. Measured before (in Node, the real `js/machines/**` through the harness): a DFA step cost 135ns on 20 transitions and 39µs on 10,000; the NPDA search and the tape deciders were quadratic in their own work on top of that. Each fix was pinned against a reference copy of the code it replaced in [tests/engine-speed.test.js](tests/engine-speed.test.js) — same answers, not merely plausible ones.
