@@ -110,3 +110,107 @@ test('a canvas mark that stays is not rewritten from one step to the next', () =
   context.resetSim();
   for (const n of [q1, q2]) assert.ok(!n.classList.contains('sim-visited-st') && !n.classList.contains('act-st'));
 });
+
+test('fast playback is a property of the running clock, and the root says so', () => {
+  // At 50× (10ms a step) or faster a step lands before a fade or a smooth
+  // scroll could get anywhere, so those snap instead — read by the CSS from
+  // `.sim-fast` on the root. It must come off the moment playback stops or
+  // slows, or a paused run would be drawn without its transitions.
+  const App = loopDFA(1000);
+  const root = context.document.documentElement;
+  App.config.autoSpeed = 1000;
+  context.runSim();
+  assert.ok(App.autoTimer, 'playing');
+  assert.equal(context.isFastPlayback(), false, '1 step a second is not fast');
+  assert.ok(!root.classList.contains('sim-fast'));
+
+  App.config.autoSpeed = 50;
+  context.restartAutoTimerIfPlaying();
+  assert.equal(context.isFastPlayback(), false, '10× is not fast — its fades still read as motion');
+
+  App.config.autoSpeed = 10;
+  context.restartAutoTimerIfPlaying();
+  assert.equal(context.isFastPlayback(), true, '50× is — the boundary is inclusive');
+  assert.ok(root.classList.contains('sim-fast'), 'a speed change mid-run reaches the root');
+
+  App.config.autoSpeed = 250;
+  context.restartAutoTimerIfPlaying();
+  assert.ok(!root.classList.contains('sim-fast'), 'and slowing down takes it off');
+
+  App.config.autoSpeed = 0;
+  context.restartAutoTimerIfPlaying();
+  assert.ok(root.classList.contains('sim-fast'), 'Max is fast');
+  context.stopAutoPlay();
+  assert.equal(context.isFastPlayback(), false, 'a paused run is not fast, whatever the dial says');
+  assert.ok(!root.classList.contains('sim-fast'), 'so stopping takes the class with it');
+});
+
+test('under fast playback the tape follows its head with a jump, not a glide', () => {
+  // A smooth scroll takes longer than a step at speed, and each new one
+  // restarts from mid-air, so the head ran off the end of the strip.
+  const host = context.document.createElement('div');
+  const cells = Array.from({ length: 40 }, (_, i) => String.fromCharCode(97 + (i % 26)));
+  const view = head => ({ kind: 'tape', cells, head, origin: 0, leftBound: 0, rightBound: null, markers: [], blank: '_', readOnly: false });
+  context.renderTracker(host, [{ label: 'T', view: view(0) }]);
+  const row = [...host.__tvRows.values()][0];
+  const strip = row.lastChild;
+  const wrap = strip.firstChild.childNodes[1];
+  for (const [abs, node] of wrap.__tvCells) { node.offsetLeft = abs * 27; node.offsetWidth = 26; }
+  strip.clientWidth = 200;
+  strip.scrollLeft = 0;
+  const calls = [];
+  strip.scrollTo = o => { calls.push(o.behavior); strip.scrollLeft = o.left; };
+
+  context.renderTracker(host, [{ label: 'T', view: view(30) }]);
+  assert.deepEqual(calls, ['smooth'], 'at a readable speed the strip glides to the head');
+
+  calls.length = 0;
+  strip.scrollLeft = 0;
+  context.renderTracker(host, [{ label: 'T', view: view(20) }], { instant: true });
+  assert.deepEqual(calls, [], 'no smooth scroll to be overtaken');
+  assert.ok(strip.scrollLeft > 0, 'the strip still moved — straight to the head');
+});
+
+test('a token lands inside its step, however fast the playback', () => {
+  // Each step removes the last step's token, so a flight longer than the step
+  // is cut off mid-edge and the pulse it hands on to never fires. The flight
+  // used to have a 160ms floor, which is what every speed from 5× up hit.
+  const { tokenFlightMs } = context;
+  assert.equal(tokenFlightMs(null), 280, 'by hand it is the fixed flight');
+  assert.equal(tokenFlightMs(1000), 500, 'slow playback caps it');
+  assert.equal(tokenFlightMs(500), 300, '1× is 60% of the step');
+  assert.equal(tokenFlightMs(250), 160, '2× is the floor, which still lands');
+  for (const ms of [100, 50]) {
+    const dur = tokenFlightMs(ms);
+    assert.ok(dur < ms, `${ms}ms a step: the flight (${dur}ms) lands before the next step`);
+  }
+  assert.equal(tokenFlightMs(100), 80);
+  assert.equal(tokenFlightMs(50), 40);
+});
+
+test('an arrival ring outlives its step, and shortens with the speed', () => {
+  // It used to be cut off by the next step at every playback speed — 200ms of
+  // its 500 at 1×, nothing from 5× — so it is left to finish, and made short
+  // enough that only two or three are ever on screen at once.
+  const { pulseMs } = context;
+  assert.equal(pulseMs(null), null, 'by hand, the stylesheet decides');
+  assert.equal(pulseMs(500), 500);
+  assert.equal(pulseMs(100), 200, '5×: two steps long');
+  assert.equal(pulseMs(50), 150, '10×: the floor');
+
+  const App = loopDFA(8, 3);
+  context.renderAll();
+  context.runSim();
+  context.stopAutoPlay();
+  App.simIdx = 2; context.renderSimStep();
+  const q1 = App.domCache.states.get('s1');
+  const rings = () => [...q1.childNodes].filter(n => n.classList && n.classList.contains('sim-pulse'));
+  context.pulseSimNode('s1', '', 200);
+  assert.equal(rings().length, 1);
+  assert.equal(rings()[0].style.animationDuration, '0.2s');
+
+  App.simIdx = 3; context.renderSimStep();
+  assert.equal(rings().length, 1, 'a forward step leaves it to finish');
+  App.simIdx = 1; context.renderSimStep();
+  assert.equal(rings().length, 0, 'a jump back takes it');
+});

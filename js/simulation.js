@@ -28,6 +28,9 @@ import { makeRun } from './machines/run.js';
 import { nodeIdAtScope, viewGraph, visibleNodeIdFor } from './view-graph.js';
 import { boundaryAt, breakScope, resetRunBounds, runSubject } from './run-scope.js';
 import { getBlock } from './blocks.js';
+import { clearBranchTokens, paintBranchTokens } from './branch-tokens.js';
+import { withBranchTrees } from './machines/branch-tree.js';
+import { refreshBranchTree } from './branch-tree-ui.js';
 import { SPACETIME_ICON, openSpaceTime, refreshSpaceTime, spaceTimeKind } from './spacetime-ui.js';
 import { setSectionStatus } from './section-status.js';
 import { isSyncRAF } from './anim.js';
@@ -77,7 +80,11 @@ export function runSim() {
   // refused run has no steps to resume.
   App.simInput = raw;
 
-  beginRun(streamMachine(m, parsed.input), wordLen, m);
+  // The player's run is the one run that records its branches: the card and the
+  // canvas's tokens read the tree, and nothing that runs a machine quietly does.
+  // Around beginRun rather than streamMachine, because a streaming search (the
+  // NDTM's) only starts, and decides whether to record, on its first pull.
+  withBranchTrees(() => beginRun(streamMachine(m, parsed.input), wordLen, m));
 
   // Unified playback: automatically start the animation if it loaded correctly
   if (App.simSteps && App.simSteps.length > 0) {
@@ -490,13 +497,14 @@ export function renderSimStep() {
 
     const stateName = getState(step.state)?.name || (step.states ? stateNames(step.states) : '?');
     renderTrackerHeader(trackerEl, stateName, rows);
-    renderTracker(trackerBody(trackerEl), rows, { defer: afterWrites });
+    renderTracker(trackerBody(trackerEl), rows, { defer: afterWrites, instant: isFastPlayback() });
 
     updateSimCanvasHighlights(step);
 
     updateSimScrubber();
     updateSimVerdict(step, isLast);
     refreshSpaceTime();
+    refreshBranchTree();
   } finally {
     if (outer) {
       const reads = pendingReads;
@@ -959,13 +967,19 @@ export function clearSimCanvasHighlights() {
   simLit = new Map();
   litNext = null;
   clearTransientMarks();
+  clearBranchTokens();
 }
 
-function clearTransientMarks() {
+// `keepPulses` is for a single forward step: the rings already on screen are
+// arrivals the run really made, so they are left to finish rather than cut off
+// by the step after them (see pulseMs).
+function clearTransientMarks(keepPulses = false) {
   for (const el of simLitPaths) el.setAttribute('d', '');
   simLitPaths = [];
-  for (const ring of simPulses) ring.remove();
-  simPulses.clear();
+  if (!keepPulses) {
+    for (const ring of simPulses) ring.remove();
+    simPulses.clear();
+  }
   removeSimTokens();
 }
 
@@ -1005,7 +1019,7 @@ export function updateSimCanvasHighlights(step) {
   App._simRenderRun = App.simSteps;
   App._simRenderIdx = App.simIdx;
 
-  clearTransientMarks();
+  clearTransientMarks(advancedOne);
   litNext = new Map();
   try {
     litFrame(step);
@@ -1013,24 +1027,33 @@ export function updateSimCanvasHighlights(step) {
     commitLit();
   }
 
+  // A nondeterministic run puts a token on every live branch instead of one on
+  // the edge just taken (js/branch-tokens.js). The tokens are marks as well as
+  // motion, so they are drawn at every speed; only their flights are subject
+  // to the rules below.
+  const motion = simMotionOk() && !tooFastForMotion();
+  const branched = paintBranchTokens(App.simSteps, App.simIdx, {
+    advancedOne,
+    flightMs: motion ? tokenFlightMs(App.autoTimer ? playbackIntervalMs() : null) : 0,
+    defer: afterWrites
+  });
+
   // Motion: a token slides along each newly-taken edge, then the arrival
   // state pulses (verdict-colored on the final step). Only on a single
-  // forward step — scrubbing and jumps update instantly — and not when
-  // playback is fast enough that the next step lands before a token could
-  // arrive: at ten steps a second a flight is shorter than it is visible, and
-  // each one starts by measuring its path, which flushes style.
-  if (!simMotionOk()) return;
-  if (App.autoTimer && playbackIntervalMs() < MOTION_MIN_INTERVAL_MS) return;
+  // forward step — scrubbing and jumps update instantly — and not past 10×,
+  // where a flight that fits inside a step is too short to be seen moving (see
+  // tokenFlightMs), and each one starts by measuring its path, which flushes
+  // style.
+  if (!motion) return;
   const hlNodes = drawnHighlightNodes(step);
   const activeKeys = getSimStepEdgeKeys(App.simIdx);
   const tone = step.final === 'reject' ? 'rej' : step.final === 'accept' ? 'acc' : '';
   // Over the drawn nodes, so a run that has stepped inside a block pulses the
   // box once rather than pulsing nothing four times.
-  const pulseAll = () => hlNodes.forEach(id => pulseSimNode(id, tone));
-  if (advancedOne && activeKeys.length) {
-    const dur = App.autoTimer
-      ? Math.max(160, Math.min(playbackIntervalMs() * 0.6, 500))
-      : 280;
+  const ring = pulseMs(App.autoTimer ? playbackIntervalMs() : null);
+  const pulseAll = () => hlNodes.forEach(id => pulseSimNode(id, tone, ring));
+  if (advancedOne && activeKeys.length && !branched) {
+    const dur = tokenFlightMs(App.autoTimer ? playbackIntervalMs() : null);
     afterWrites(() => activeKeys.slice(0, 8).forEach((k, i) => {
       animateSimToken(k, dur, i === 0 ? pulseAll : null);
     }));
@@ -1039,8 +1062,81 @@ export function updateSimCanvasHighlights(step) {
   }
 }
 
-// Below this many milliseconds per step, playback draws marks but no motion.
-const MOTION_MIN_INTERVAL_MS = 100;
+// ── fast playback ──
+// Two thresholds, because two different things stop keeping up.
+//
+// **The token goes first.** Each step removes the last step's token, so a
+// flight has to land inside the step or it is cut off mid-edge and the arrival
+// pulse it hands on to never fires — which, at a fixed 160ms floor, is what
+// every speed from 5× up used to do. tokenFlightMs shrinks the flight with the
+// step instead. Below MOTION_MIN_INTERVAL_MS (10×) that is two or three frames,
+// which reads as a flicker rather than as movement, so there is no flight.
+//
+// **Everything else holds on until 50×.** The 150–180ms fades on a state, an
+// edge and a tape cell, and the smooth scrolls that follow the head, lag behind
+// at 5× but still read as motion. At FAST_PLAYBACK_MS a step lands every frame
+// or two: the fades never reach their colour — the head is a smear of half-lit
+// cells and the canvas a trail of half-lit states — and each smooth scroll is
+// restarted from mid-air by the next, so the thing it follows runs off the
+// edge. So fast playback draws marks, not motion: every effect snaps to where
+// it is going.
+const MOTION_MIN_INTERVAL_MS = 50;   // 10×
+const FAST_PLAYBACK_MS = 10;         // 50×
+
+// The share of a step a flight may take. The rest is the arrival pulse's.
+const TOKEN_STEP_SHARE = 0.8;
+
+/**
+ * How long a token takes to cross its edge, in ms.
+ *
+ * By hand (`intervalMs` null) it is a fixed 280. Playing, it is 60% of the step
+ * within 160–500ms — long enough to follow at 1×, never so long it drags — and
+ * then capped at TOKEN_STEP_SHARE of the step, so it lands before the next one
+ * removes it: 160ms at 2×, 80 at 5×, 40 at 10×.
+ */
+export function tokenFlightMs(intervalMs) {
+  if (intervalMs == null) return 280;
+  const eased = Math.max(160, Math.min(intervalMs * 0.6, 500));
+  return Math.min(eased, intervalMs * TOKEN_STEP_SHARE);
+}
+
+/**
+ * How long an arrival ring takes to fade, in ms, or null for the stylesheet's.
+ *
+ * A ring outlives its step (clearTransientMarks keeps it on a forward step), so
+ * it never needs to fit inside one — it used to be cut off by the next step at
+ * every playback speed, to 200ms of its 500 at 1× and nothing at all from 5×.
+ * What it needs is not to pile up: at twice the step there are at most two or
+ * three on screen, a short fading wake along the path, rather than one per
+ * state the run has crossed in the last half second. 150ms is the shortest a
+ * ring still reads as growing rather than blinking.
+ */
+export function pulseMs(intervalMs) {
+  if (intervalMs == null) return null;
+  return Math.max(150, Math.min(intervalMs * 2, 500));
+}
+
+/** Playing, and too fast for a token to be seen moving. */
+function tooFastForMotion() {
+  return !!App.autoTimer && playbackIntervalMs() < MOTION_MIN_INTERVAL_MS;
+}
+
+/** Playing at 50× or faster, where timed effects cannot keep up. Hand stepping never is. */
+export function isFastPlayback() {
+  return !!App.autoTimer && playbackIntervalMs() <= FAST_PLAYBACK_MS;
+}
+
+/**
+ * Put `.sim-fast` on the root while `isFastPlayback()` holds — what the CSS
+ * reads to drop its transitions. A class rather than a per-element write,
+ * because the fades live on every state, edge and cell, and toggling one
+ * class when playback starts, stops or changes speed is one style
+ * invalidation, not one per frame.
+ */
+function syncFastPlayback() {
+  const root = typeof document === 'object' && document ? document.documentElement : null;
+  if (root && root.classList) root.classList.toggle('sim-fast', isFastPlayback());
+}
 
 /** The drawn node ids a step lights, deduped (several states in one block are one box). */
 function drawnHighlightNodes(step) {
@@ -1228,7 +1324,7 @@ export function animateSimToken(edgeKey, dur, onDone) {
  * which is right for a 22px circle and far too much for a block's box — it
  * would sweep out over half the diagram. `.is-box` is the gentler ramp.
  */
-export function pulseSimNode(nodeId, tone = '') {
+export function pulseSimNode(nodeId, tone = '', durMs = null) {
   const grp = App.domCache.states.get(nodeId) || document.querySelector(`[data-id="${nodeId}"]`);
   if (!grp) return;
   const parts = grp.__parts || {};
@@ -1253,11 +1349,14 @@ export function pulseSimNode(nodeId, tone = '') {
   }
   ring.classList.add('sim-pulse');
   if (tone) ring.classList.add(tone);
+  // Scaled against the keyframes' own .5s, so the box's longer .55s ramp keeps
+  // its proportion to the circle's.
+  if (durMs != null && ring.style) ring.style.animationDuration = `${(durMs / 500) * (box ? 0.55 : 0.5)}s`;
   grp.appendChild(ring);
   simPulses.add(ring);
   const drop = () => { ring.remove(); simPulses.delete(ring); };
   ring.addEventListener('animationend', drop);
-  setTimeout(drop, 900); // safety net if animations are disabled
+  setTimeout(drop, Math.max(900, (durMs || 0) + 400)); // safety net if animations are disabled
 }
 
 /** The same, addressed by a *machine* state id. */
@@ -1532,6 +1631,7 @@ export function stopAutoPlay() {
   App.autoTimer = null;
   if (typeof clock === 'object' && typeof clock.cancel === 'function') clock.cancel();
   else clearInterval(clock);
+  syncFastPlayback();
 }
 
 export function stepFwd(stopAuto = true) {
@@ -1610,6 +1710,7 @@ function startPlaybackClock() {
     }
   };
   App.autoTimer = clock;
+  syncFastPlayback();
   armClock(clock);
   return clock;
 }
@@ -1745,6 +1846,7 @@ export function computeRestOfRun() {
     maxReachable();   // scans the slice for a block boundary
     updateSimScrubber();
     refreshSpaceTime();
+    refreshBranchTree();
     if (!run.done && App.simStopAt == null) App.simDrainTimer = setTimeout(tick, 0);
     else {
       App.simDrainTimer = null;
@@ -1780,6 +1882,7 @@ export function restartAutoTimerIfPlaying() {
   if (!App.autoTimer) return;
   // Same clock, new rhythm: the next step is one interval from now.
   App.autoTimer.due = clockNow() + playbackIntervalMs();
+  syncFastPlayback();
 }
 export function resetSim() {
   stopAutoPlay();
@@ -1801,6 +1904,7 @@ export function resetSim() {
   log(`<span style="color:var(--text3);font-style:italic">Input a sequence in ${isOmegaAutomaton(App.machine) ? 'Σ<sup>ω</sup>' : 'Σ*'}…</span>`);
   resetTracker($('sim-tracker')); $('sim-tracker').style.display = 'none';
   refreshSpaceTime();
+  refreshBranchTree();
   const verdict = $('sim-verdict'); if (verdict) verdict.style.display = 'none';
   const scrubRow = $('sim-scrubber-row'); if (scrubRow) scrubRow.style.display = 'none';
   const counter = $('sim-step-counter');

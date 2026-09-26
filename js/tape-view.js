@@ -252,7 +252,7 @@ function syncCells(cellWrap, view, finalClass) {
  * under them, which is the same decision `Session.pinned` makes for the
  * StateMate transcript.
  */
-function followHead(strip, headCell) {
+function followHead(strip, headCell, instant) {
   if (!headCell || typeof headCell.offsetLeft !== 'number') return;
   const view = strip.clientWidth;
   if (!view) return;
@@ -262,7 +262,7 @@ function followHead(strip, headCell) {
   const right = left + cell;
   if (left - pad >= strip.scrollLeft && right + pad <= strip.scrollLeft + view) return;
   const target = Math.max(0, left - view / 2 + cell / 2);
-  if (typeof strip.scrollTo === 'function') strip.scrollTo({ left: target, behavior: 'smooth' });
+  if (!instant && typeof strip.scrollTo === 'function') strip.scrollTo({ left: target, behavior: 'smooth' });
   else strip.scrollLeft = target;
 }
 
@@ -280,10 +280,13 @@ function followHead(strip, headCell) {
  * @param {HTMLElement} host
  * @param {Array<{label: string, view?: object, cells?: string[], head?: number,
  *                capL?: string, capR?: string, finalClass?: string}>} rows
- * @param {{defer?: (read: () => void) => void}} [opts] `defer` receives the
- *   head-following scroll, which reads layout. The player queues it behind the
- *   rest of a frame's writes so the frame lays out once; without it the read
- *   runs inline, which is right for a caller that draws only the tracker.
+ * @param {{defer?: (read: () => void) => void, instant?: boolean}} [opts]
+ *   `defer` receives the head-following scroll, which reads layout. The player
+ *   queues it behind the rest of a frame's writes so the frame lays out once;
+ *   without it the read runs inline, which is right for a caller that draws
+ *   only the tracker. `instant` makes that scroll a jump rather than a glide —
+ *   under fast playback the head moves again before a smooth scroll lands, and
+ *   each new one restarts from mid-air, so the head outruns the strip.
  */
 export function renderTracker(host, rows, opts = {}) {
   const defer = opts.defer || (read => read());
@@ -364,7 +367,7 @@ export function renderTracker(host, rows, opts = {}) {
     }
 
     const headCell = syncCells(cellWrap, view, row.finalClass);
-    if (isTape) defer(() => followHead(strip, headCell));
+    if (isTape) defer(() => followHead(strip, headCell, !!opts.instant));
   });
 
   for (const [key, node] of cache) {

@@ -246,7 +246,7 @@ A definition is a plain object, registered per *type* — never per family with 
 | `schema` | `transitionFields` / `stateFields` / `alphabetFields`. |
 | `formal` | `tuple()`, `delta()`, plus the labels (`storeSay`, `outputSay`). |
 | `determinism` | `{conflict, say}` — how this machine refuses a second edge, and what it tells the reader. Absent means a second edge is a branch. |
-| flags | `deterministicDelta`, `multiTape`, `options`, `storeLabels`. |
+| flags | `deterministicDelta`, `multiTape`, `options`, `storeLabels`, `branches` (the run carries a computation tree — see the simulation notes). |
 
 Points worth keeping in mind:
 

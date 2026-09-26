@@ -892,6 +892,13 @@
   }
 }
 
+/* Under fast playback (see `.sim-fast` in css/canvas.css) the head moves
+   before an .18s fade lands, and the row reads as a comet of half-lit
+   cells rather than one head. */
+.sim-fast .tv-cell {
+  transition: none;
+}
+
 .lang-claim-wrap,
 .def-box-wrap {
   position: relative;
@@ -2608,6 +2615,13 @@
   line-height: 1.5;
   max-height: 250px;
   scroll-behavior: smooth;
+}
+
+/* Pinned to the bottom every frame, a smooth scroll is always mid-flight and
+   the newest line sits below the fold, easing toward a target that has moved
+   again. Under fast playback the pin is a jump. */
+.sim-fast .trace-log {
+  scroll-behavior: auto;
 }
 
 .t-ok {

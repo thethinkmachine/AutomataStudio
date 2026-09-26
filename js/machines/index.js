@@ -103,6 +103,17 @@ export function streamMachine(m, input) {
   return makeRun(steps);
 }
 
+/**
+ * Whether this machine's runs carry a computation tree — every branch the run
+ * took, not only the one its trace follows (js/machines/branch-tree.js). The
+ * nondeterministic machines whose runs are a search or a set. The ω-automata
+ * are not among them: their trace runs round a lasso, so the steps past its
+ * stem are not a depth of any tree.
+ */
+export function machineBranches(m = App.machine) {
+  return !!machineDef(m)?.branches;
+}
+
 /** Whether this machine's trace can be produced a step at a time. */
 export function machineStreams(m) {
   return typeof machineDef(m)?.stream === 'function';

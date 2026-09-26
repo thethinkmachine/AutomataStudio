@@ -26,6 +26,7 @@ import {
 } from '../state.js';
 import { renderSimStep } from './paint.js';
 import { ConfigSet, Fifo, accepted, makeStateNumbering, firstOverlappingTransition, nameOfState, playEagerly, singleTapeLookup, traceSearchPath, transduced, transducerRunContributes, transitionsFrom } from './runtime.js';
+import { attachBranchTree, newBranchTree } from './branch-tree.js';
 import { testDFA } from './finite.js';
 import { defineFamily } from './registry.js';
 import { OUT_EMPTY, outPush, outStep, outputKeyAfter, stackRoot } from './step-log.js';
@@ -167,7 +168,7 @@ export function buildFstPathSteps(path, tokens, finalStatus = null, finalNote = 
   return steps;
 }
 
-export function exploreFST(tokens) {
+export function exploreFST(tokens, tree = null) {
   const init = {
     state: runStartId(),
     index: 0,
@@ -184,6 +185,7 @@ export function exploreFST(tokens) {
   const visited = new ConfigSet(), stateNo = makeStateNumbering();
   const seen = c => visited.add(stateNo(c.state), c.index, c.outKey.id, -1, -1);
   seen(init);
+  if (tree) tree.root(init.state, init);
   const outputs = new Set();
   let acceptedCfg = null;
   let completedCfg = null;
@@ -207,19 +209,23 @@ export function exploreFST(tokens) {
       // one would report a truncated relation. The branch budget still bounds
       // the search; the first accepting config is kept as the witness path.
       if (App.config.transducerAccepts && accepting && !acceptedCfg) acceptedCfg = cfg;
+      if (tree && transducerRunContributes(true, accepting)) tree.accept(cfg.tn);
     }
 
     const matching = getMatchingFstTransitions(cfg, tokens);
-    if (!matching.length) continue;
-
+    const kids = tree && !tree.full ? [] : null;
     matching.forEach((transition, idx) => {
       const childBranch = matching.length === 1 || idx === 0 ? cfg.branch : nextBranchId++;
       const nextCfg = applyFstTransition(cfg, transition, childBranch);
-      if (seen(nextCfg)) queue.push(nextCfg);
+      const fresh = seen(nextCfg);
+      if (fresh) queue.push(nextCfg);
+      if (kids) kids.push({ cfg: nextCfg, fresh });
     });
+    if (kids) tree.expandCfgs(cfg, kids);
   }
 
   const witnessCfg = acceptedCfg || completedCfg || lastCfg;
+  if (tree) tree.finish(witnessCfg.tn ?? -1);
   return {
     accepted: !!acceptedCfg,
     witnessPath: traceSearchPath(witnessCfg),
@@ -232,7 +238,8 @@ export function exploreFST(tokens) {
 }
 
 export function simFST(tokens) {
-  const result = exploreFST(tokens);
+  const tree = newBranchTree('path');
+  const result = exploreFST(tokens, tree);
   const usesAcceptance = App.config.transducerAccepts;
   const finalStatus = usesAcceptance ? (result.accepted ? 'accept' : 'reject') : null;
   const finalNote = usesAcceptance
@@ -255,6 +262,7 @@ export function simFST(tokens) {
       last.note += ` | Outputs: {${outs.map(o => `"${o}"`).join(', ')}}`;
     }
   }
+  attachBranchTree(App.simSteps, tree);
 
   App.simIdx = 0;
   renderSimStep();
@@ -358,6 +366,7 @@ defineFamily(transducer, {
   },
   'FST': {
     simulate: simFST,
+    branches: true,
     decide: tokens => { const r = testFST(tokens); return transduced(r.accepted, r.output); },
     formal: {
       tuple: () => ['Q', 'Σ', 'Δ', 'δ', 'λ', 'q₀', 'F'],

@@ -408,6 +408,24 @@
   }
 }
 
+/* ─── Fast playback ───
+   `.sim-fast` is on the root while playback runs at 50× (10ms a step) or
+   faster (isFastPlayback in js/simulation.js). A step then lands every frame
+   or two, long before a 150ms fade has finished, so the active state never
+   reaches its colour and the ones it just left are still fading out — a smear of half-lit states where there
+   should be one. The marks snap instead. The active edge drops its marching
+   dashes for the same reason: each step restarts the animation on a new edge,
+   so the dashes flicker rather than flow. */
+.sim-fast .sn circle.bd,
+.sim-fast .tarr {
+  transition: none;
+}
+
+.sim-fast .edge-g.sim-active-t .tarr {
+  animation: none;
+  stroke-dasharray: none;
+}
+
 .tlbl {
   font-family: var(--mono);
   font-size: 11px;
@@ -1994,4 +2012,73 @@
   stroke: var(--red);
   stroke-width: 2;
   marker-end: none;
+}
+
+/* ── Branch tokens ─────────────────────────────────────────────────
+   A nondeterministic run puts a token on every live branch —
+   js/branch-tokens.js. The hue is the branch's place in the computation tree,
+   set per token as --h; the colour is mixed toward the theme's text so it
+   reads on every ground (see .bt-node in panels.css, which it matches). */
+.br-tok {
+  fill: color-mix(in oklch, oklch(.7 .17 var(--h, 222)) 82%, var(--text));
+  stroke: var(--bg);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.br-tok.is-focus {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.br-tok.is-acc {
+  stroke: var(--gold);
+  stroke-width: 2.5;
+}
+
+/* A group or dot the run drew once and is not using this step. Hidden rather
+   than removed: taking a node out of the canvas SVG costs a layout pass, and
+   hiding it costs nothing (js/branch-tokens.js). */
+.br-toks.is-spare,
+.br-tok.is-spare,
+.br-more.is-spare {
+  visibility: hidden;
+}
+
+/* Hidden until its flight lands, so a branch is never in two places. */
+.br-tok.is-arriving {
+  opacity: 0;
+}
+
+.br-tok.is-merging {
+  opacity: .6;
+}
+
+.br-tok.is-dying {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: br-die .45s ease-in forwards;
+}
+
+@keyframes br-die {
+  to {
+    opacity: 0;
+    transform: scale(.3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .br-tok.is-dying {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* The count of tokens past the ones a state has room to draw. */
+.br-more {
+  font: 600 10px var(--mono);
+  fill: var(--text2);
+  text-anchor: middle;
+  pointer-events: none;
 }

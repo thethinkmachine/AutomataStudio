@@ -3679,3 +3679,161 @@ button.dt-cell:hover {
 .cx-tip[hidden] {
   display: none;
 }
+
+/* ── Computation tree ──────────────────────────────────────────────
+   Every branch of a nondeterministic run — js/branch-tree-ui.js. A branch's
+   colour is its slice of the hue range, the same one its token wears on the
+   canvas, so the two can be matched by eye. Mixed toward the theme's own text
+   colour rather than given a lightness per theme: that lifts it on a dark
+   ground and deepens it on a light one, and a theme added later needs nothing
+   here. */
+.bt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bt-view {
+  position: relative;
+  height: 260px;
+  min-height: 120px;
+  overflow: auto;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overscroll-behavior: contain;
+  /* The tree is up to fifteen hundred nodes of SVG, and it sits in the same
+     panel as the trace log and the tracker, which change on every step. Its
+     box never takes its size from what is inside it, so it is walled off:
+     a step that reflows the panel does not lay the tree out again, and while
+     it is scrolled out of the panel's view it is not rendered at all. */
+  contain: strict;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 260px;
+}
+
+.panel-float .bt-view.panel-float-fill {
+  height: auto;
+}
+
+.bt-view[hidden],
+.bt-empty[hidden] {
+  display: none;
+}
+
+.bt-empty {
+  padding: 18px 12px;
+  color: var(--text3);
+  font-style: italic;
+  font-size: 12px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+}
+
+.bt-svg {
+  display: block;
+}
+
+.bt-now {
+  fill: color-mix(in srgb, var(--accent) 11%, transparent);
+}
+
+.bt-edge {
+  fill: none;
+  stroke: color-mix(in oklch, oklch(.7 .17 var(--h, 222)) 70%, var(--text));
+  stroke-width: 1.4;
+  opacity: .75;
+}
+
+.bt-edge.on-path {
+  stroke-width: 2.6;
+  opacity: 1;
+}
+
+.bt-n {
+  cursor: pointer;
+}
+
+.bt-node {
+  fill: color-mix(in oklch, oklch(.7 .17 var(--h, 222)) 82%, var(--text));
+  stroke: var(--bg3);
+  stroke-width: 1.5;
+}
+
+.bt-node.is-acc {
+  stroke: var(--gold);
+  stroke-width: 2.5;
+}
+
+/* Merged and unexplored are ends that are not the branch's own: one ran into
+   a configuration another branch holds, the other was never looked at. Both
+   are drawn hollow; the unexplored one dashed, because it is exactly what a
+   dash means here — absent, not (yet) part of the run. */
+.bt-node.is-merged,
+.bt-node.is-open {
+  fill: var(--bg3);
+  stroke: color-mix(in oklch, oklch(.7 .17 var(--h, 222)) 82%, var(--text));
+  stroke-width: 1.6;
+}
+
+.bt-node.is-open {
+  stroke-dasharray: 2 2;
+}
+
+.bt-x {
+  stroke: var(--text);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.bt-label {
+  font: 9.5px var(--mono, 'JetBrains Mono', monospace);
+  fill: var(--text2);
+  pointer-events: none;
+}
+
+.is-future {
+  opacity: .28;
+}
+
+.bt-n.is-now .bt-node {
+  stroke: var(--bg);
+}
+
+.bt-n.is-focus .bt-node {
+  stroke: var(--text);
+  stroke-width: 2.4;
+}
+
+.bt-n:hover .bt-node {
+  stroke: var(--accent);
+  stroke-width: 2.4;
+}
+
+.bt-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.bt-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.bt-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bt-key svg {
+  overflow: visible;
+}

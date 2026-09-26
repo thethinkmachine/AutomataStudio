@@ -44,7 +44,7 @@ import {
 } from './spacetime.js';
 import { tapeModelSay } from './tape-view.js';
 import {
-  computeRestOfRun, reachableCount, runIsComplete, scrubSim,
+  computeRestOfRun, isFastPlayback, reachableCount, runIsComplete, scrubSim,
   stepBack, stepFwd, stepToEnd, stepToStart
 } from './simulation.js';
 import { floatLayerRect, floatSection, floatingEnabled, raiseFloat, syncPanelEmpty } from './panel-float.js';
@@ -1148,9 +1148,18 @@ function follow(m, L, vw, vh) {
   // to, or every tick of fast playback would restart it from mid-air.
   const cur = glideTarget();
   const margin = Math.min(L.cell * 2, bodyH / 4);
+  // Under fast playback the playhead can cross the band in a few frames, so
+  // paging — let it reach the edge, then throw it back to 40% — turns into the
+  // whole diagram jumping several times a second. There it is held still
+  // instead, at 60%, and the rows stream up past it; and it is a jump, not a
+  // glide, since a 200ms glide is retargeted every frame and never lands.
+  const fast = isFastPlayback();
+  const PIN = 0.6;
   let ty = cur.y;
   let tx = cur.x;
-  if (rowY < cur.y + margin || rowY + L.cell > cur.y + bodyH - margin) {
+  if (fast && rowY > cur.y + bodyH * PIN) {
+    ty = Math.max(0, rowY - bodyH * PIN);
+  } else if (rowY < cur.y + margin || rowY + L.cell > cur.y + bodyH - margin) {
     ty = Math.max(0, rowY - bodyH * 0.4);
   }
   const e = L.tapes[0];
@@ -1162,15 +1171,22 @@ function follow(m, L, vw, vh) {
       tx = Math.max(0, hx - L.gutterW - (vw - L.gutterW) / 2);
     }
   }
-  if (tx !== cur.x || ty !== cur.y) glideTo(tx, ty);
+  if (tx === cur.x && ty === cur.y) return;
+  if (fast) {
+    cancelGlide();
+    scroll.scrollLeft = tx;
+    scroll.scrollTop = ty;
+  } else glideTo(tx, ty);
 }
 
 // ── the glide ─────────────────────────────────────────────────────
 //  Following the playhead eases rather than jumps: at 1× a row leaving the
 //  band every few seconds and the whole diagram snapping under the reader
-//  is exactly the kind of motion that loses their place. Short, so it keeps
-//  up with 5× playback; skipped outright under reduced motion, and for a
-//  jump of several screens, where a glide is only a blur on the way.
+//  is exactly the kind of motion that loses their place. Short, so it lands
+//  between steps at 2×; from 5× it is retargeted before it lands, which still
+//  reads as following, and from 50× follow() does not glide at all.
+//  Skipped outright under reduced motion, and for a jump of several screens,
+//  where a glide is only a blur on the way.
 
 const GLIDE_MS = 200;
 let glide = null;

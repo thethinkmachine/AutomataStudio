@@ -76,6 +76,10 @@ export const PANEL_SECTIONS = Object.freeze({
       // sections most worth pulling out into windows *separately*, which the
       // section registry can only offer per card.
       Object.freeze({ id: 'rp-trace', collapsed: false, minW: 300, minH: 200, fill: '.trace-log' }),
+      // Every branch of a nondeterministic run — js/branch-tree-ui.js. Open by
+      // default, since the machines that show it are the ones where the trace
+      // alone hides most of what happened; the tree is what takes the height.
+      Object.freeze({ id: 'rp-branches', collapsed: false, minW: 320, minH: 240, fill: '.bt-view' }),
       // The whole run as one picture — js/spacetime-ui.js. Collapsed by
       // default because the sidebar is the wrong shape for it: the tracker's
       // header opens it straight into a window, and the minimum size here is
