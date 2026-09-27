@@ -13,6 +13,7 @@
 // `else simTM(tokens)` — which is what a machine type nobody had wired up
 // silently became.
 
+import { formatTraceNote } from './trace-format.js';
 import { makeSVG, setSectionCount } from './render.js';
 import { $, App, INPUT_LENGTH_NOTICE, R, detectsLoops, execMode, getMachineConfig, isOmegaAutomaton, isWeightedFA, runsLazily } from './state.js';
 import { getState, getTransition } from './states-transitions.js';
@@ -251,6 +252,17 @@ function handMovedPlayhead() {
 export function runIsComplete() {
   return currentRun().done;
 }
+/**
+ * The card before anything has run: what it is for and how to fill it. The
+ * same markup index.html starts with, so the first paint and a reset agree.
+ */
+export function traceEmptyHtml(alphabet = 'Σ*') {
+  return '<div class="trace-empty">'
+    + '<svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H104a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM104,72H216a8,8,0,0,0,0-16H104a8,8,0,0,0,0,16ZM216,184H104a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16ZM56,112H40a8,8,0,0,0,0,16H56a8,8,0,0,0,0-16Zm0-56H40a8,8,0,0,0,0,16H56a8,8,0,0,0,0-16Zm0,112H40a8,8,0,0,0,0,16H56a8,8,0,0,0,0-16Z"/></svg>'
+    + `<span>No run yet. Type a word in ${alphabet} and press Run to trace it here, one step per row.</span>`
+    + '</div>';
+}
+
 export function log(html) {
   const t = $('trace-log');
   if (!t) return;
@@ -348,12 +360,40 @@ function traceRowClass(s, current) {
       : s.final === 'timeout' ? 't-warn' : 't-step';
 }
 
+// A row is a step number in a gutter of its own and the note beside it, so a
+// note that wraps wraps under itself rather than back under the number — see
+// js/trace-format.js for how the note is lifted into parts. The current row is
+// marked `is-current` beside the verdict colour it always carried, and every
+// row records its step so a click can take the player there.
 function fillTraceRow(row, i) {
   const s = App.simSteps[i];
-  row.className = traceRowClass(s, i === App.simIdx);
-  row.innerHTML = `${i}: ${s.note}`;
+  const current = i === App.simIdx;
+  const tone = traceRowClass(s, current);
+  row.className = 'tr-row' + (current ? ' is-current' : '') + (tone ? ' ' + tone : '');
+  row.dataset.step = String(i);
+  row.innerHTML = `<span class="tr-n">${i}</span><span class="tr-body">${formatTraceNote(s.note, current ? s.final : null)}</span>`;
   return row;
 }
+
+/** The gutter is as wide as the largest step number the log shows. */
+function sizeTraceGutter(el) {
+  const digits = String(Math.max(0, App.simIdx)).length;
+  if (el.__traceDigits !== digits) {
+    el.__traceDigits = digits;
+    el.style?.setProperty?.('--tr-num', `${digits}ch`);
+  }
+}
+
+// A row is a way back to its step. One delegated listener rather than one per
+// row: rows are appended and dropped every tick of playback, and a listener
+// each would be that many more things to create and collect. A click that
+// ended a text selection is someone copying a line, not asking to jump.
+document.addEventListener('click', e => {
+  const row = e.target?.closest?.('#trace-log .tr-row');
+  if (!row || row.classList.contains('is-current')) return;
+  if (typeof getSelection === 'function' && String(getSelection() || '').length) return;
+  scrubSim(row.dataset.step);
+});
 
 function traceMoreButton(from) {
   const more = Math.min(SIM_LOG_TAIL, from);
@@ -382,6 +422,7 @@ export function renderTraceLog() {
   const el = $('trace-log');
   setSectionCount($('rp-count-trace'), reachableCount());
   if (!el) return;
+  sizeTraceGutter(el);
   const w = el.__traceWin;
 
   if (traceWindowExtends(el, w, from)) {
@@ -1902,7 +1943,7 @@ export function resetSim() {
   streamNote = '';
   // An ω-automaton's inputs are Σ^ω, not Σ*: the run box above already asks
   // for u(v), and the empty log beside it was naming the other set.
-  log(`<span style="color:var(--text3);font-style:italic">Input a sequence in ${isOmegaAutomaton(App.machine) ? 'Σ<sup>ω</sup>' : 'Σ*'}…</span>`);
+  log(traceEmptyHtml(isOmegaAutomaton(App.machine) ? 'Σ<sup>ω</sup>' : 'Σ*'));
   resetTracker($('sim-tracker')); $('sim-tracker').style.display = 'none';
   refreshSpaceTime();
   refreshBranchTree();

@@ -18,7 +18,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHarness, context, getElement } from './harness.js';
+import { createHarness, context, dispatchDocumentEvent, getElement } from './harness.js';
 
 const harness = createHarness();
 
@@ -152,9 +152,11 @@ test('a step forward appends one row and keeps the rest', () => {
   assert.equal(after.length, 12);
   assert.equal(after[0], before[0], 'the first row is the node it was');
   assert.equal(after[10], before[10], 'and so is the row that was current');
-  assert.equal(after[10].className, '', 'which is no longer marked current');
-  assert.equal(after[11].className, 't-step', 'the new row is');
-  assert.match(after[11].innerHTML, /^11: step 11$/);
+  assert.equal(after[10].classList.contains('is-current'), false, 'which is no longer marked current');
+  assert.equal(after[11].classList.contains('is-current'), true, 'the new row is');
+  assert.equal(after[11].classList.contains('t-step'), true);
+  assert.equal(after[11].dataset.step, '11');
+  assert.match(after[11].innerHTML, /<span class="tr-n">11<\/span><span class="tr-body">step 11<\/span>/);
 });
 
 test('past the tail, the window slides: one in at the bottom, one out at the top', () => {
@@ -170,7 +172,7 @@ test('past the tail, the window slides: one in at the bottom, one out at the top
   const after = logRows();
   assert.equal(after.length, tail, 'still the tail');
   assert.equal(after[0], before[1], 'the oldest row left and the rest stayed');
-  assert.match(after[after.length - 1].innerHTML, new RegExp(`^${tail + 11}: `));
+  assert.equal(after[after.length - 1].dataset.step, String(tail + 11));
   // Step tail + 11 is current, so the tail starts at 12 and twelve are above it.
   assert.ok(/↑ 12 earlier steps/.test(getElement('trace-log').innerHTML),
     'and the count of what is above it moved with it');
@@ -197,5 +199,43 @@ test('a step back rebuilds rather than extending backwards', () => {
   context.renderTraceLog();
   const rows = logRows();
   assert.equal(rows.length, 5);
-  assert.equal(rows[4].className, 't-step');
+  assert.equal(rows[4].classList.contains('is-current'), true);
+});
+
+// ── how a row looks ──
+
+test('a note is lifted into parts, and what is not recognised is left alone', () => {
+  const f = context.formatTraceNote;
+  assert.match(f("Read '1' → r1"), /<span class="tr-sym">1<\/span> <span class="tr-arrow">→<\/span> <span class="tr-state">r1<\/span>/);
+  assert.match(f("Read '0' → r0 — ACCEPT"), /tr-badge is-accept">accept</,
+    'the verdict is a badge, not text that wraps onto a line of its own');
+  assert.doesNotMatch(f("Read '0' → r0 — ACCEPT"), /ACCEPT/);
+  assert.match(f("Start: carry 0"), /tr-state">carry 0</, 'a state name with a space is kept whole');
+  assert.match(f("State:seek + Read:'1'"), /tr-state">seek \+</, 'on a Turing machine too');
+  assert.match(f("State:q1 Read:'a' — LOOP: repeats step 3, so it never halts"),
+    /tr-badge is-loop">loop<\/span><span class="tr-detail">repeats step 3, so it never halts</);
+  assert.match(f(`Read '00' → carry 0 — out: '1' | Output: "1001"`), /tr-out"><span class="tr-tag">output<\/span><span class="tr-sym">1001</);
+  assert.match(f('No valid transition from this configuration', 'reject'), /tr-badge is-reject/,
+    'a verdict worded some other way still gets its badge from the step');
+  assert.equal(f('a note in words nobody planned for'), 'a note in words nobody planned for');
+  assert.equal(f('x <b>marked up</b>'), 'x <b>marked up</b>', 'a note with its own markup is drawn as written');
+  assert.match(f("Read '' → q1"), /tr-sym">ε</, 'the empty symbol is drawn as ε, not as an empty chip');
+});
+
+test('the gutter is as wide as the largest step number shown', () => {
+  const App = longRun(200);
+  App.simIdx = 150;
+  context.renderTraceLog();
+  assert.equal(getElement('trace-log').__traceDigits, 3);
+});
+
+test('clicking a step takes the player there', () => {
+  const App = longRun(20);
+  App.simIdx = 12;
+  context.renderTraceLog();
+  const row = logRows()[4];
+  assert.equal(row.dataset.step, '4');
+  row.closest = sel => (sel === '#trace-log .tr-row' ? row : null);
+  dispatchDocumentEvent('click', { target: row });
+  assert.equal(App.simIdx, 4);
 });

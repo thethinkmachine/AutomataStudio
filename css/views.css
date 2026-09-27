@@ -2592,8 +2592,10 @@
 .trace-log {
   background: var(--bg3);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px 12px;
+  border-radius: 8px;
+  /* Rows carry their own padding, so a highlighted row's band runs the width
+     of the log; the log keeps only the gap around them. */
+  padding: 4px;
   /* No top margin. It had one from when it was the tail of the Simulate
      section and needed separating from the transport above it; as its own
      card it is the first thing in its body, and the margin was 14px of dead
@@ -2609,11 +2611,12 @@
   /* And the end of the log is the end of the scroll, not the start of the
      panel's. */
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   font-family: var(--mono);
-  font-size: .75rem;
+  font-size: .72rem;
   color: var(--text2);
-  line-height: 1.5;
-  max-height: 250px;
+  line-height: 1.55;
+  max-height: 280px;
   scroll-behavior: smooth;
 }
 
@@ -2624,6 +2627,225 @@
   scroll-behavior: auto;
 }
 
+/* ── a step ──
+   The number in a gutter of its own, so a note that wraps wraps under itself
+   rather than back under the number; the gutter is as wide as the largest
+   number shown (`--tr-num`, set by sizeTraceGutter). A row is also the way
+   back to its step, so it answers the pointer. */
+.tr-row {
+  display: grid;
+  grid-template-columns: var(--tr-num, 1ch) minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: baseline;
+  padding: 3px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.tr-row:hover {
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.tr-n {
+  color: var(--text3);
+  opacity: .75;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: .66rem;
+  user-select: none;
+}
+
+.tr-body {
+  min-width: 0;
+}
+
+/* The step the player is on: a band with a bar at its edge, in the accent
+   while the run is going and in the verdict's colour once it has one. */
+.tr-row.is-current {
+  color: var(--text);
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+  cursor: default;
+}
+
+.tr-row.is-current .tr-n {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.tr-row.is-current.t-ok {
+  background: var(--green-soft);
+  box-shadow: inset 2px 0 0 var(--green);
+}
+
+.tr-row.is-current.t-ok .tr-n {
+  color: var(--green);
+}
+
+.tr-row.is-current.t-err {
+  background: var(--red-soft);
+  box-shadow: inset 2px 0 0 var(--red);
+}
+
+.tr-row.is-current.t-err .tr-n {
+  color: var(--red);
+}
+
+.tr-row.is-current.t-warn {
+  background: color-mix(in srgb, var(--orange) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--orange);
+}
+
+.tr-row.is-current.t-warn .tr-n {
+  color: var(--orange);
+}
+
+/* ── the parts of a note ── (js/trace-format.js) */
+.tr-sym {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 0 4px;
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  color: var(--text);
+  line-height: 1.35;
+  text-align: center;
+}
+
+.tr-state {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.tr-arrow {
+  color: var(--text3);
+}
+
+/* Words the notes use as labels — start, read, out — in the UI face and
+   quiet, so the identifiers are what the eye lands on. */
+.tr-tag {
+  margin-right: 5px;
+  font-family: var(--sans);
+  font-size: .6rem;
+  font-weight: 500;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.tr-sym + .tr-tag,
+.tr-state + .tr-tag {
+  margin-left: 6px;
+}
+
+.tr-meta {
+  font-family: var(--sans);
+  font-size: .62rem;
+  color: var(--text3);
+}
+
+.tr-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-family: var(--sans);
+  font-size: .58rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+
+.tr-badge.is-accept {
+  background: var(--green-soft);
+  border-color: color-mix(in srgb, var(--green) 35%, transparent);
+  color: var(--green);
+}
+
+.tr-badge.is-reject {
+  background: var(--red-soft);
+  border-color: var(--red-border);
+  color: var(--red);
+}
+
+.tr-badge.is-loop,
+.tr-badge.is-timeout {
+  background: color-mix(in srgb, var(--orange) 12%, transparent);
+  border-color: color-mix(in srgb, var(--orange) 35%, transparent);
+  color: var(--orange);
+}
+
+/* Why a run ended, and what a transducer wrote — each on a line of its own
+   under the step, since both are longer than the step they explain. */
+.tr-detail,
+.tr-out {
+  display: block;
+  margin-top: 2px;
+  color: var(--text2);
+}
+
+.tr-detail {
+  font-family: var(--sans);
+  font-size: .68rem;
+  line-height: 1.45;
+}
+
+/* ── messages ──
+   What log() writes when there is no run to show — a parse error, a refused
+   run, a warning — and the note a streamed run starts with. Sentences, so the
+   UI face, and set apart as a block rather than posing as a step. */
+.trace-log > .t-err:not(.tr-row),
+.trace-log > .t-warn:not(.tr-row),
+.sim-log-stream {
+  display: block;
+  margin: 2px 2px 4px;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-family: var(--sans);
+  font-size: .7rem;
+  line-height: 1.5;
+}
+
+.trace-log > .t-err:not(.tr-row) {
+  background: var(--red-soft);
+  border-color: var(--red-border);
+}
+
+.trace-log > .t-warn:not(.tr-row),
+.sim-log-stream {
+  background: color-mix(in srgb, var(--orange) 10%, transparent);
+  border-color: color-mix(in srgb, var(--orange) 30%, transparent);
+}
+
+/* Nothing has run. */
+.trace-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+  font-family: var(--sans);
+  font-size: .7rem;
+  line-height: 1.5;
+  color: var(--text3);
+}
+
+.trace-empty svg {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  opacity: .7;
+}
+
+/* A row carries t-ok / t-err as its verdict tone too, and a message is the
+   same classes on a direct child — so the message rules above name
+   :not(.tr-row), or a rejected step drew as a boxed error banner. */
 .t-ok {
   color: var(--green);
 }
@@ -2661,7 +2883,7 @@
   display: block;
   width: 100%;
   margin: 0 0 4px;
-  padding: 4px 6px;
+  padding: 4px 8px;
   border: 1px solid transparent;
   border-radius: 5px;
   background: var(--bg2);
