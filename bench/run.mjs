@@ -12,9 +12,10 @@
 //
 // It measures the app's own code — js/machines/** and the renderer, loaded
 // through tests/harness.js exactly as the tests load them — not a copy of it.
-// Seven suites (bench/cases.mjs): deciding a word on every machine type, the
+// Eight suites (bench/cases.mjs): deciding a word on every machine type, the
 // searches, reading input, the player's cost per step, the player's memory per
-// step, the JavaScript half of drawing the canvas, and the space-time diagram.
+// step, the JavaScript half of drawing the canvas, the space-time diagram, and
+// the memory of a whole long run (BB(5) to its halt).
 //
 // **It is run by hand and never gates CI.** Timings move with the machine, the
 // power plan and whatever else is running; a build that failed on them would
@@ -116,6 +117,7 @@ const started = performance.now();
 const order = Object.keys(suites).filter(suite => suites[suite].some(c => matches(suite, c.name)));
 for (let round = 0; round < rounds; round++) {
   for (const suite of round % 2 ? [...order].reverse() : order) {
+    if (round >= (suites[suite].rounds || rounds)) continue;
     const wanted = suites[suite].filter(c => matches(suite, c.name));
     process.stderr.write(`${rounds > 1 ? `round ${round + 1}/${rounds} · ` : ''}${suite} (${wanted.length}) `);
     for (const r of runSuite(suite, wanted)) {
@@ -140,28 +142,51 @@ function fmtTime(ns) {
   return `${(ns / 1e9).toFixed(2)} s`;
 }
 function fmtBytes(b) {
+  // A reading under half a byte is the heap's noise, and printed as it came
+  // out it read "-0 B".
+  if (Math.abs(b) < 0.5) return '0 B';
   if (Math.abs(b) < 1024) return `${b.toFixed(0)} B`;
   if (Math.abs(b) < 1024 ** 2) return `${(b / 1024).toFixed(1)} KB`;
-  return `${(b / 1024 ** 2).toFixed(1)} MB`;
+  if (Math.abs(b) < 1024 ** 3) return `${(b / 1024 ** 2).toFixed(1)} MB`;
+  return `${(b / 1024 ** 3).toFixed(2)} GB`;
 }
 const fmt = r => (r.kind === 'memory' ? fmtBytes(r.value) : fmtTime(r.value));
 const fmtCheck = v => (v === null || v === undefined ? '' : typeof v === 'number' ? v.toLocaleString('en') : String(v));
+
+// Below this, a difference in retained bytes is the heap's own noise — two
+// forced collections do not land on exactly the same heap. It matters once a
+// case keeps next to nothing: the space-time model holds no tape of its own
+// now, and a percentage of a baseline of about zero is noise divided by
+// noise — it came out as "−100%", and would flap by thousands of percent.
+const MEMORY_NOISE_BYTES = 256 * 1024;
 
 function compare(r) {
   const b = before.get(`${r.suite}/${r.name}`);
   if (!b || r.value === undefined || b.value === undefined) return { text: b ? '' : 'new' };
   const notes = [];
   if (fmtCheck(b.check) !== fmtCheck(r.check)) notes.push(`CHECK CHANGED (was ${fmtCheck(b.check)})`);
+  const memory = r.kind === 'memory';
+  const count = r.count ?? b.count;
+  // For memory, a move is judged in bytes first: whatever the percentage, a
+  // difference smaller than the heap's noise is no difference.
+  const inNoise = memory && count !== undefined && Math.abs(r.value - b.value) * count < MEMORY_NOISE_BYTES;
+  const tiny = memory && count !== undefined && Math.abs(b.value) * count < MEMORY_NOISE_BYTES;
   const delta = (r.value - b.value) / b.value;
   // A move counts only when it is bigger than the noise either run showed.
   const noise = Math.max(0.1, 1.5 * Math.max(r.spread || 0, b.spread || 0));
-  const pct = `${delta >= 0 ? '+' : '−'}${Math.abs(delta * 100).toFixed(0)}%`;
-  const mark = delta > noise ? '▲ slower' : delta < -noise ? '▼ faster' : '';
-  return { text: [pct, mark, ...notes].filter(Boolean).join('  '), slower: delta > noise, changed: notes.length > 0, faster: delta < -noise };
+  const worse = !inNoise && delta > noise;
+  const better = !inNoise && delta < -noise;
+  // Against a baseline of about nothing a percentage means nothing; say the
+  // difference itself.
+  const move = tiny
+    ? (Math.abs(r.value - b.value) < 0.5 ? '0 B' : `${r.value > b.value ? '+' : '−'}${fmtBytes(Math.abs(r.value - b.value))}`)
+    : `${delta >= 0 ? '+' : '−'}${Math.abs(delta * 100).toFixed(0)}%`;
+  const mark = worse ? (memory ? '▲ larger' : '▲ slower') : better ? (memory ? '▼ smaller' : '▼ faster') : '';
+  return { text: [move, mark, ...notes].filter(Boolean).join('  '), worse, changed: notes.length > 0, better };
 }
 
 const W = 50;
-const tally = { slower: 0, faster: 0, changed: 0, errors: 0 };
+const tally = { worse: 0, better: 0, changed: 0, errors: 0 };
 console.log(`\ncommit ${meta.commit} · node ${meta.node} · ${meta.cpu} (${meta.cores} threads) · ${meta.platform} · ${mode}`);
 if (baseline) {
   const m = baseline.meta || {};
@@ -175,15 +200,18 @@ for (const suite of Object.keys(suites)) {
     if (r.error) { tally.errors++; console.log(`  ${r.name.padEnd(W)}  ERROR  ${r.error}`); continue; }
     if (r.skipped) { console.log(`  ${r.name.padEnd(W)}  skipped (${r.skipped})`); continue; }
     const c = compare(r);
-    if (c.slower) tally.slower++;
-    if (c.faster) tally.faster++;
+    if (c.worse) tally.worse++;
+    if (c.better) tally.better++;
     if (c.changed) tally.changed++;
-    const spread = r.spread !== undefined ? `±${(r.spread * 100).toFixed(0)}%` : '';
+    // A spread is relative to the value; for a memory case at about nothing it
+    // is noise over noise, and printing it (±1671%) says nothing.
+    const noiseLevel = r.kind === 'memory' && r.count !== undefined && Math.abs(r.value) * r.count < MEMORY_NOISE_BYTES;
+    const spread = r.spread !== undefined && !noiseLevel ? `±${(r.spread * 100).toFixed(0)}%` : '';
     console.log(`  ${r.name.padEnd(W)} ${(fmt(r) + ' /' + r.per).padStart(18)} ${spread.padStart(5)}  ${fmtCheck(r.check).padEnd(9)} ${c.text}`);
   }
 }
 const secs = ((performance.now() - started) / 1000).toFixed(0);
-console.log(`\n${results.length} cases in ${secs}s` + (baseline ? ` · ${tally.slower} slower · ${tally.faster} faster · ${tally.changed} changed checks` : ' · no baseline to compare with') + (tally.errors ? ` · ${tally.errors} errors` : ''));
+console.log(`\n${results.length} cases in ${secs}s` + (baseline ? ` · ${tally.worse} worse · ${tally.better} better · ${tally.changed} changed checks` : ' · no baseline to compare with') + (tally.errors ? ` · ${tally.errors} errors` : ''));
 
 const record = { meta, results };
 if (option('--out')) writeFileSync(option('--out'), JSON.stringify(record, null, 1) + '\n');

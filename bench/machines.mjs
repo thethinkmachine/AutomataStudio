@@ -98,6 +98,23 @@ export function runawayTM(env) {
 }
 
 /**
+ * The runaway machine on k tapes: every head writes and moves right, forever.
+ * Each tape is as wide as the run is long, and the k logs advance in
+ * lockstep — the multi-tape half of what a long run keeps.
+ */
+export function runawayMTM(env, k) {
+  const App = fresh(env, 'MTM', 1);
+  const B = App.config.sym.blank;
+  App.tapeCount = k;
+  App.sigma = new Set(['a']);
+  App.tapeAlphabet = new Set(['a', 'x', B]);
+  App.transitions.push({
+    id: 't0', from: 's0', to: 's0', symbol: B,
+    tapeSyms: Array(k).fill(B), tapeWrites: Array(k).fill('x'), tapeDirs: Array(k).fill('R')
+  });
+}
+
+/**
  * The five-state busy beaver champion (Marxen & Buntrock, 1989): on a blank
  * two-way tape it halts after 47,176,870 steps leaving 4,098 ones. The blank
  * is its 0, and halting is entering the accepting state H.
@@ -105,6 +122,8 @@ export function runawayTM(env) {
  *   A0 1RB  A1 1LC   B0 1RC  B1 1RB   C0 1RD  C1 0LE
  *   D0 1LA  D1 1LD   E0 1RH  E1 0LA
  */
+export const BB5_HALT = 47176870;
+
 export function busyBeaver5(env) {
   const App = fresh(env, 'TM', 0);
   const B = App.config.sym.blank;

@@ -12,25 +12,25 @@
 //
 //  • **The tape log is the source, and it is read in place.** A tape
 //    machine's step does not store its tape (see js/tape-log.js): it holds
-//    a head position and the one cell it wrote. Asking every step for
+//    a head position and the one cell it wrote, as columns read through
+//    `journal()` — `into(i)` once per row. Asking every step for
 //    `step.tape` would rebuild a window array per row — the O(steps ×
 //    window) the log exists to avoid — so this replays the journal
-//    itself, one write per row, with checkpoints along the way so a
-//    viewport halfway down a ten-thousand-step run is a short replay
-//    rather than a long one. Steps that do store their tape (the two-way
-//    heads, whose tape never changes) are read directly.
+//    itself, one write per row, from the log's checkpoints so a viewport
+//    halfway down a long run is a short replay rather than a long one.
+//    Steps that do store their tape (the two-way heads, whose tape never
+//    changes) are read directly.
 //
-//    **A checkpoint is spaced by what it costs, not by a fixed count of
-//    rows.** It is a copy of the whole tape, so on a tape that grows with
-//    the run — the runaway machine walking off down fresh blanks, exactly
-//    the one a teaching tool gets pointed at — a copy every 256 rows is
-//    rows² / 256 cells: measured, 498 MB at 80,000 steps and 7 GB at
-//    300,000. So the next checkpoint waits until the rows since the last
-//    one are at least as many as the cells it would copy. The copies then
-//    sum to no more than the rows, so the diagram is linear in the run
-//    whatever its tape does; and a replay is never longer than the copy a
-//    cursor already walks to load its base, so a read costs the same order
-//    as before. A tape that stays narrow still gets one every 256 rows.
+//    **The checkpoints are the tape log's, not this model's.** It used to
+//    keep its own, Map copies of the tape at forty bytes a cell, which put
+//    BB(5)'s diagram at 1.8 GB. The log now keeps checkpoints anyway, a
+//    byte a cell, for the player's jumps — spaced by what they cost, the
+//    rule worked out here first: a copy every 256 rows of a tape that grows
+//    with the run is rows² / 256 cells (measured, 498 MB at 80,000 steps of
+//    a runaway machine, 7 GB at 300,000), so the next waits until the rows
+//    since the last are at least the cells it would copy, and the copies
+//    sum to about the rows whatever the tape does. So the diagram reads
+//    those (`journal().checkpoints`) and copies nothing of its own.
 //
 //  • **It never pulls.** The model indexes the steps that exist and
 //    nothing more. On a streaming run the rest have not been computed,
@@ -52,10 +52,8 @@
 //  the alphabet and a way to name a state.
 // ══════════════════════════════════════════════════════════════════
 
+import { DenseTape } from './machines/columns.js';
 import { stepJournals, stepLogIndex } from './tape-log.js';
-
-/** The fewest rows between replay checkpoints; a wide tape spaces them further. */
-const CHECKPOINT = 256;
 
 /** Cell size at which a symbol is printed in its cell. */
 export const GLYPH_MIN = 13;
@@ -145,13 +143,10 @@ function logTrack(j) {
     readOnly: false,
     lo,
     hi,
-    // The tape as it stands at the last indexed row, and copies of it as
-    // `{ row, cells }`, ascending by row. The copies are the whole memory cost
-    // of the diagram, and `nextCheckpoint` is what keeps them linear in the
-    // rows — see the header.
-    live: new Map(j.initial),
-    checkpoints: [],
-    nextCheckpoint: 0
+    // Which of the journal's symbol codes this diagram has seen, so a
+    // symbol's first write is noticed (it takes a colour slot) without the
+    // string being hashed on every row.
+    seen: []
   };
 }
 
@@ -273,7 +268,8 @@ export function makeSpaceTime(steps, opts = {}) {
       if (sym !== blankSym && !markerSet.has(sym) && !slots.has(sym)) slots.set(sym, slots.size);
     });
     model.tapes.forEach(t => {
-      if (t.kind === 'log') for (const v of t.j.initial.values()) noteSymbol(v);
+      if (t.kind !== 'log') return;
+      for (const v of t.j.initial.values()) noteSymbol(v);
     });
     return true;
   }
@@ -288,21 +284,14 @@ export function makeSpaceTime(steps, opts = {}) {
   }
 
   function indexLogRow(t, i) {
-    const j = t.j;
-    if (i > 0) {
-      const c = j.wCell[i - 1];
-      if (c !== undefined) {
-        const s = j.wSym[i - 1];
-        if (s === undefined) t.live.delete(c);
-        else { t.live.set(c, s); noteSymbol(s); }
-        grow(t, c);
-      }
+    const row = t.j.into(i);
+    const c = row.cell;
+    if (c !== undefined) {
+      // A symbol's first write gives it a colour slot.
+      if (row.code !== 0 && !t.seen[row.code]) { t.seen[row.code] = true; noteSymbol(row.sym); }
+      grow(t, c);
     }
-    if (i >= t.nextCheckpoint) {
-      t.checkpoints.push({ row: i, cells: new Map(t.live) });
-      t.nextCheckpoint = i + Math.max(CHECKPOINT, t.live.size);
-    }
-    grow(t, j.heads[i]);
+    grow(t, row.head);
   }
 
   function indexViewRow(t, i) {
@@ -341,7 +330,7 @@ export function makeSpaceTime(steps, opts = {}) {
     const tr = model.tapes && model.tapes[t];
     if (!tr || i < 0 || i >= model.rows) return null;
     if (tr.kind === 'log') {
-      const h = tr.j.heads[i];
+      const h = tr.j.head(i);
       return h === undefined ? null : h;
     }
     const v = tr.viewOf(steps[i]);
@@ -380,20 +369,29 @@ export function makeSpaceTime(steps, opts = {}) {
     const cells = new Array(width).fill(blank);
     // The last checkpoint at or before r. They are unevenly spaced, so it is
     // searched for rather than computed.
-    const cps = tr.checkpoints;
+    const cps = j.checkpoints;
     let lo = 0, hi = cps.length - 1, k = -1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
       if (cps[mid].row <= r) { k = mid; lo = mid + 1; } else hi = mid - 1;
     }
-    const base = k >= 0 ? cps[k].cells : j.initial;
-    for (const [x, s] of base) if (x >= c0 && x <= c1) cells[x - c0] = s;
+    // Only the columns asked for are read out of the copy, however wide the
+    // tape it was taken of.
+    if (k >= 0) {
+      const { lo: cl, codes: cc } = cps[k];
+      const a = Math.max(c0, cl), b = Math.min(c1, cl + cc.length - 1);
+      for (let x = a; x <= b; x++) {
+        const code = cc[x - cl];
+        if (code !== 0) cells[x - c0] = j.symbol(code);
+      }
+    } else for (const [x, s] of j.initial) if (x >= c0 && x <= c1) cells[x - c0] = s;
     let row = k >= 0 ? cps[k].row : 0;
+    // Step w's write is the one into row w + 1.
     const apply = w => {
-      const c = j.wCell[w];
+      const o = j.into(w + 1);
+      const c = o.cell;
       if (c === undefined || c < c0 || c > c1) return;
-      const s = j.wSym[w];
-      cells[c - c0] = s === undefined ? blank : s;
+      cells[c - c0] = o.sym === undefined ? blank : o.sym;
     };
     while (row < r) { apply(row); row++; }
     return { cells, c0, next() { apply(row); row++; } };
@@ -424,8 +422,8 @@ export function makeSpaceTime(steps, opts = {}) {
     if (!tr || r <= 0) return null;
     const top = Math.min(r, model.rows - 1);
     if (tr.kind === 'log') {
-      const wc = tr.j.wCell;
-      for (let w = top - 1; w >= 0; w--) if (wc[w] === x) return { row: w + 1, by: w };
+      const j = tr.j;
+      for (let w = top - 1; w >= 0; w--) if (j.cell(w) === x) return { row: w + 1, by: w };
       return null;
     }
     if (tr.readOnly) return null;
@@ -446,8 +444,8 @@ export function makeSpaceTime(steps, opts = {}) {
     const a = Math.max(1, r0);
     const b = Math.min(r1, model.rows - 1);
     if (tr.kind === 'log') {
-      const wc = tr.j.wCell;
-      for (let i = a; i <= b; i++) if (wc[i - 1] === x) out.push(i);
+      const j = tr.j;
+      for (let i = a; i <= b; i++) if (j.cell(i - 1) === x) out.push(i);
       return out;
     }
     let prev = viewCell(tr, a - 1, x);
@@ -1491,22 +1489,22 @@ export function makeOverview(model, opts = {}) {
    * one it starts is charged the rows it missed — see the header.
    */
   function write(st, x, s, bin, into) {
-    const old = st.live.get(x);
+    const old = st.slots.get(x) - 1;
     // A symbol written over itself, or a blank over a blank, changes nothing.
-    if (old === s || (old === undefined && s < 0)) return;
+    if (old === s) return;
     const b = xbin(st, x);
     const t = tallyOf(st, b);
     const a = into > 0 ? col(st, b) : null;
     const k = bin * OV_SLOTS;
-    if (old !== undefined) {
+    if (old >= 0) {
       if (--t[old] === 0) t[MASK] &= ~(1 << old);
       if (a) a[k + old] += into;
     }
     if (s >= 0) {
       if (t[s]++ === 0) t[MASK] |= 1 << s;
       if (a) a[k + s] -= into;
-      st.live.set(x, s);
-    } else st.live.delete(x);
+    }
+    st.slots.set(x, s + 1);
   }
 
   function initTape(t) {
@@ -1519,10 +1517,12 @@ export function makeOverview(model, opts = {}) {
       xOrigin: 0,
       headMin: new Int32Array(BY).fill(I32_MAX),
       headMax: new Int32Array(BY).fill(I32_MIN),
-      // Cell → the slot it holds, for every non-blank cell; and per column,
-      // how many of them hold each slot.
-      live: new Map(),
-      tally: new Map()
+      // The slot each cell holds, plus one (0: blank), as a dense array of
+      // codes; and per column, how many cells hold each slot.
+      slots: new DenseTape(),
+      tally: new Map(),
+      // A journal's symbol code → its slot, so a row's write hashes nothing.
+      jslot: []
     };
     if (fixed) {
       st.xOrigin = tr.lo;
@@ -1616,14 +1616,22 @@ export function makeOverview(model, opts = {}) {
       const bin = Math.floor(q / ov.binRows);
       const into = q - bin * ov.binRows;
       for (const st of ov.tapes) {
-        if (q > 0 && st.tr.kind === 'log') {
-          const j = st.tr.j;
-          const c = j.wCell[r - 1];
-          if (c !== undefined) {
-            const sym = j.wSym[r - 1];
-            write(st, c, sym === undefined ? -1 : ovSlot(model, sym), bin, into);
+        let h;
+        if (st.tr.kind === 'log') {
+          // The write into row r and the head at r, in one read of the journal.
+          const row = st.tr.j.into(r);
+          if (q > 0 && row.cell !== undefined) {
+            let slot = -1;
+            if (row.code !== 0) {
+              slot = st.jslot[row.code];
+              // Stable once looked up: a symbol's slot is assigned when the
+              // model indexes it, which is before any row the strip reads.
+              if (slot === undefined) slot = st.jslot[row.code] = ovSlot(model, row.sym);
+            }
+            write(st, row.cell, slot, bin, into);
           }
-        }
+          h = row.head ?? null;
+        } else h = model.headAt(st.t, r);
         if (q > 0 && st.tr.kind === 'view' && !st.tr.readOnly) {
           // A stack has no journal; its row is its contents. So a write is a
           // cell whose symbol differs from the row before — the same event a
@@ -1634,7 +1642,6 @@ export function makeOverview(model, opts = {}) {
           for (const x of st.prev.keys()) if (!cur.has(x)) change(x, undefined);
           st.prev = cur;
         }
-        const h = model.headAt(st.t, r);
         if (h !== null) {
           if (h < st.headMin[bin]) st.headMin[bin] = h;
           if (h > st.headMax[bin]) st.headMax[bin] = h;

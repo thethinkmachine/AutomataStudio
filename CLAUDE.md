@@ -230,6 +230,10 @@ js/machines/
   step-log.js    import-free. What a step holds instead of a copy — the
                  non-tape half of tape-log.js — and the interned stacks
                  a search's configurations are named by.
+  columns.js     import-free. Typed, chunked per-step columns: what a
+                 deterministic tape run keeps instead of step objects —
+                 and DenseTape, a tape as a byte array of codes, which is
+                 what a checkpoint copies.
   zipper-tape.js the NDTM search's tape: two interned stacks and the
                  cell under the head, so a fork is O(1).
   batch.js       the batch tester's deciding half, with no page attached.
@@ -249,7 +253,7 @@ A definition is a plain object, registered per *type* — never per family with 
 | `schema` | `transitionFields` / `stateFields` / `alphabetFields`. |
 | `formal` | `tuple()`, `delta()`, plus the labels (`storeSay`, `outputSay`). |
 | `determinism` | `{conflict, say}` — how this machine refuses a second edge, and what it tells the reader. Absent means a second edge is a branch. |
-| flags | `deterministicDelta`, `multiTape`, `options`, `storeLabels`, `branches` (the run carries a computation tree — see the simulation notes). |
+| flags | `deterministicDelta`, `multiTape`, `options`, `storeLabels`, `branches` (the run carries a computation tree — see the simulation notes), `columnar` (the run keeps step columns rather than step objects — see *What a run remembers* in the simulation notes). |
 
 Points worth keeping in mind:
 

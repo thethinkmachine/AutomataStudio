@@ -59,6 +59,10 @@
 //   branches      — true when a run carries its computation tree on its
 //                   first step (js/machines/branch-tree.js): the Computation
 //                   Tree card and the canvas's branch tokens read it.
+//   columnar      — true when `stream` yields steps built from step columns
+//                   (makeStepColumns in js/tape-log.js), so the run keeps the
+//                   columns and rebuilds a step when it is read rather than
+//                   holding an object per step. The deterministic tape machines.
 //
 // Definitions are registered per *type*, not per family, so there is no
 // "everything else" branch to fall into: DPDA and NPDA share an

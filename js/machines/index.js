@@ -21,6 +21,7 @@ import { App } from '../state.js';
 import { withPainterSuppressed } from './paint.js';
 import { machineDef, requireMachineDef } from './registry.js';
 import { makeRun } from './run.js';
+import { stepColumnsOf } from '../tape-log.js';
 import { parseWordInput } from './runtime.js';
 import { tapeTuplesOverlap } from './predicates.js';
 
@@ -95,7 +96,10 @@ export function simulateMachine(m, input) {
  */
 export function streamMachine(m, input) {
   const def = requireMachineDef(m);
-  if (def.stream) return makeRun(def.stream(input, m));
+  // A machine whose steps are rebuilt from columns (see js/tape-log.js) has
+  // its run keep the columns rather than the step objects — the whole of what
+  // lets a run of tens of millions of steps fit.
+  if (def.stream) return makeRun(def.stream(input, m), def.columnar ? { columnsOf: stepColumnsOf } : undefined);
   const steps = withPainterSuppressed(() => {
     def.simulate(input, m);
     return App.simSteps || [];

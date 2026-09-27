@@ -31,13 +31,34 @@ import {
   App, getState, runStartId, usesTwoWayTape
 } from '../state.js';
 import { Tape, makeTapes, tapesKey } from '../tape.js';
-import { makeTapeLog, multiTapeStep, tapeStep } from '../tape-log.js';
+import { makeStepColumns, makeTapeLog } from '../tape-log.js';
 import { buildMarkedInputTape, tapeTuplesOverlap } from './predicates.js';
 import { ConfigSet, Fifo, firstOverlappingTransition, makeRepeatDetector, makeStateNumbering, formatTapeInstantaneousDescription, langStepBudget, makeLoopTracker, markLoopStep, markTimeoutStep, multiTapeLookup, nameOfState, parseWordInput, playEagerly, singleTapeLookup, tokenize, transitionsFrom } from './runtime.js';
 import { defineFamily, machineDef } from './registry.js';
 import { NPDA_LOG_KEEP } from './pushdown.js';
 import { attachBranchTree, newBranchTree } from './branch-tree.js';
 import { ZipperTape } from './zipper-tape.js';
+
+// ── a step's note ─────────────────────────────────────────────────
+// Formatted when a step is read, from the columns (see makeStepColumns), and
+// built out here rather than inside the stream on purpose: a closure made in a
+// generator keeps the generator's whole scope alive, and that scope holds the
+// live tape — as long as the run, on a machine that walks off down it. The
+// note is kept for as long as the run is, so it must capture the logs and
+// nothing else.
+//
+// On a two-way tape the drawn index is not the cell number, so the note
+// carries the cell — otherwise "head 0" means two different places before and
+// after the tape grows leftward. With k heads there are k of them, and "head
+// 0" naming a different place on each tape is exactly the confusion worth
+// spending the characters on.
+function tapeNote(log, twoWay) {
+  return (i, cols) => `State:${getState(cols.stateAt(i))?.name} Read:'${log.readAt(i)}'${twoWay ? ` @${log.headAt(i)}` : ''}`;
+}
+
+function multiTapeNote(logs, twoWay) {
+  return (i, cols) => `State:${getState(cols.stateAt(i))?.name} Read:[${logs.map(l => l.readAt(i)).join(',')}]${twoWay ? ` @[${logs.map(l => l.headAt(i)).join(',')}]` : ''}`;
+}
 
 // A step is built, decided and only then yielded, because whether it is the
 // last one is not known until the transition has been looked for. That is the
@@ -51,6 +72,7 @@ export function* streamTM(tokens) {
   // memory. Nothing else about the loop changes: the live tape is still what
   // the machine is driven against and what key() reads.
   const log = makeTapeLog(tape);
+  const cols = makeStepColumns([log], tokens, tapeNote(log, twoWay));
   let state = runStartId();
   let via = null;
   const loop = makeLoopTracker();
@@ -63,14 +85,8 @@ export function* streamTM(tokens) {
   let n = 0;
   for (; n < App.config.maxTmSteps; n++) {
     const sym = tape.read();
-    // On a two-way tape the drawn index is not the cell number, so the note
-    // carries the cell — otherwise "head 0" means two different places
-    // before and after the tape grows leftward.
-    // The note is formatted only if read (see lazyNoteProto), from this
-    // step's values rather than the loop's.
-    const st = state, headAt = tape.head;
-    const i = log.begin(tape.head);
-    step = tapeStep(log, i, { state, tokens, tid: via }, () => `State:${getState(st)?.name} Read:'${sym}'${twoWay ? ` @${headAt}` : ''}`);
+    const i = log.begin(tape.head, sym);
+    step = cols.step(i, state, via);
     if (App.accepts.has(state)) { step.final = 'accept'; step.note += ' — ACCEPT'; yield step; return; }
     now = null;
     const fp = tape.fingerprintParts();
@@ -401,6 +417,7 @@ export function* streamMTM(input) {
   // One log per tape; they advance in lockstep, so one step index addresses
   // all k of them.
   const logs = tapes.map(tape => makeTapeLog(tape));
+  const cols = makeStepColumns(logs, tokens, multiTapeNote(logs, twoWay), true);
   const loop = makeLoopTracker();
   const fires = multiTapeLookup();
   let now = null;
@@ -408,14 +425,9 @@ export function* streamMTM(input) {
   let step = null;
   for (let n = 0; n < App.config.maxTmSteps; n++) {
     const syms = tapes.map(tape => tape.read());
-    // On a two-way tape the drawn head index is not the cell number, so
-    // the note carries the cells — the same reason simTM does. With k
-    // heads there are k of them, and "head 0" naming a different place on
-    // each tape is exactly the confusion worth spending the characters on.
-    const st = state, heads = twoWay ? tapes.map(tape => tape.head) : null;
-    const i = logs[0].begin(tapes[0].head);
-    for (let k = 1; k < logs.length; k++) logs[k].begin(tapes[k].head);
-    step = multiTapeStep(logs, i, { state, tokens, tid: via }, () => `State:${getState(st)?.name} Read:[${syms.join(',')}]${heads ? ` @[${heads.join(',')}]` : ''}`);
+    const i = logs[0].begin(tapes[0].head, syms[0]);
+    for (let k = 1; k < logs.length; k++) logs[k].begin(tapes[k].head, syms[k]);
+    step = cols.step(i, state, via);
     if (App.accepts.has(state)) { step.final = 'accept'; step.note += ' — ACCEPT'; yield step; return; }
     now = null;
     const fp = multiTapeFingerprint(tapes);
@@ -437,6 +449,7 @@ export function simMTM(input) { playEagerly(streamMTM(input)); }
 export function* streamLBA(tokens) {
   const tape = makeLbaTape(tokens).trackFingerprint();
   const log = makeTapeLog(tape);
+  const cols = makeStepColumns([log], tokens, tapeNote(log, false));
   let state = runStartId();
   let via = null;
   // An LBA's tape is bounded, so its configuration space is finite and this
@@ -449,9 +462,8 @@ export function* streamLBA(tokens) {
   let step = null;
   for (let n = 0; n < App.config.maxTmSteps; n++) {
     const sym = tape.read();
-    const i = log.begin(tape.head);
-    const st = state;
-    step = tapeStep(log, i, { state, tokens, tid: via }, () => `State:${getState(st)?.name} Read:'${sym}'`);
+    const i = log.begin(tape.head, sym);
+    step = cols.step(i, state, via);
     if (App.accepts.has(state)) {
       step.final = 'accept';
       step.note += ' — ACCEPT';
@@ -480,13 +492,9 @@ export function* streamLBA(tokens) {
     // Which end it ran off is worth naming, so ask before moving.
     const heading = t.dir === 'L' ? App.config.sym.leftMarker : App.config.sym.rightMarker;
     if (!tape.move(t.dir)) {
-      step = tapeStep(log, log.begin(tape.head), {
-        state,
-        tokens,
-        tid: via,
-        note: `Attempted to move outside the ${heading} boundary. — REJECT`,
-        final: 'reject'
-      });
+      step = cols.step(log.begin(tape.head, tape.read()), state, via);
+      step.note = `Attempted to move outside the ${heading} boundary. — REJECT`;
+      step.final = 'reject';
       yield step;
       return;
     }
@@ -710,7 +718,7 @@ const turing = {
 const decideWith = test => (tokens, opts = {}) => ({ verdict: test(tokens, opts.budget), output: null });
 
 defineFamily(turing, {
-  'TM': { simulate: simTM, stream: streamTM, decide: decideWith(testTM3), deterministicDelta: true, determinism: singleTapeDeterminism },
+  'TM': { simulate: simTM, stream: streamTM, columnar: true, decide: decideWith(testTM3), deterministicDelta: true, determinism: singleTapeDeterminism },
   'NDTM': {
     simulate: simNDTM,
     stream: streamNDTM,
@@ -734,6 +742,7 @@ defineFamily(turing, {
     // decider taking an object where it expected an array.
     simulate: simMTM,
     stream: streamMTM,
+    columnar: true,
     decide: decideWith(testMTM3),
     parseInput: parseMultiTapeInput,
     schema: {
@@ -746,6 +755,6 @@ defineFamily(turing, {
       delta: () => { const k = App.tapeCount || 2; return `Q × Γ^${k} → Q × Γ^${k} × {L, R, S}^${k}`; }
     }
   },
-  'LBA': { simulate: simLBA, stream: streamLBA, decide: decideWith(testLBA3), deterministicDelta: true, determinism: singleTapeDeterminism, options: [] },
-  'ITM': { simulate: simITM, stream: streamITM, decide: decideWith(testITM3), deterministicDelta: true, determinism: singleTapeDeterminism, options: [] }
+  'LBA': { simulate: simLBA, stream: streamLBA, columnar: true, decide: decideWith(testLBA3), deterministicDelta: true, determinism: singleTapeDeterminism, options: [] },
+  'ITM': { simulate: simITM, stream: streamITM, columnar: true, decide: decideWith(testITM3), deterministicDelta: true, determinism: singleTapeDeterminism, options: [] }
 });
