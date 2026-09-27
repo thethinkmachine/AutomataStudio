@@ -393,12 +393,15 @@ export function renderOneNote(g, note) {
   grp.setAttribute('data-note-id', note.id);
   grp.setAttribute('data-color', normalizeNoteColor(note.color));
 
-  noteAnchorPoints(note).forEach(pt => {
+  const anchorPts = noteAnchorPoints(note);
+  grp.__geoKey = noteGeoKey(x, y, w, h, anchorPts);
+  const leaders = anchorPts.map(pt => {
     const line = makeSVG('line');
     line.classList.add('note-leader');
     line.setAttribute('x1', pos.x); line.setAttribute('y1', pos.y);
     line.setAttribute('x2', pt.x); line.setAttribute('y2', pt.y);
     grp.appendChild(line);
+    return line;
   });
 
   const rect = makeSVG('rect');
@@ -442,12 +445,22 @@ export function renderOneNote(g, note) {
   handle.setAttribute('d', noteResizeHandlePath(x + w, y + h));
   grp.appendChild(handle);
 
+  // What updateOneNoteDOM writes to on a drag frame — held rather than
+  // queried, the same as a state's or an edge's __parts in render.js.
+  grp.__parts = { leaders, rect, clipRect, textEl, handleHit, handle };
+
   const noteTip = 'Double-click to edit · Right-click for options · Drag corner to resize';
   grp.setAttribute('data-tip', noteTip);
   grp.setAttribute('aria-label', noteTip);
 
   attachNoteHandlers(grp, note);
   g.appendChild(grp);
+}
+
+// Everything a move can change about a drawn note: its box and where its
+// leader lines end.
+function noteGeoKey(x, y, w, h, anchorPts) {
+  return `${x},${y},${w},${h}|${anchorPts.map(pt => `${pt.x},${pt.y}`).join(';')}`;
 }
 
 export function noteResizeHandlePath(cx, cy) {
@@ -461,44 +474,51 @@ export function noteResizeHandlePath(cx, cy) {
 // teardown runs on each pointermove and is pure waste while only x/y shift.
 export function updateOneNoteDOM(note, { refillText = true } = {}) {
   const grp = App.domCache.notes.get(note.id) || document.querySelector(`.note-g[data-note-id="${note.id}"]`);
-  if (!grp) return;
+  if (!grp || !grp.__parts) return;
   if (!App.domCache.notes.has(note.id)) App.domCache.notes.set(note.id, grp);
 
   const pos = resolveNotePos(note);
   const { w, h, lines } = noteBoxLayout(note);
   const x = pos.x - w / 2, y = pos.y - h / 2;
-
-  const rect = grp.querySelector('.note-body');
-  if (rect) { rect.setAttribute('x', x); rect.setAttribute('y', y); rect.setAttribute('width', w); rect.setAttribute('height', h); }
-  const clipRect = grp.querySelector('clipPath rect');
-  if (clipRect) {
-    clipRect.setAttribute('x', x + 1); clipRect.setAttribute('y', y + 1);
-    clipRect.setAttribute('width', Math.max(0, w - 2)); clipRect.setAttribute('height', Math.max(0, h - 2));
-  }
-  const textEl = grp.querySelector('.note-text');
-  if (textEl) {
-    if (refillText) {
-      fillNoteTextEl(textEl, lines, x + NOTE_PAD);
-    } else {
-      // Only line-leading tspans carry an x; setting it on continuation runs
-      // would break them out of inline flow onto their own column.
-      textEl.querySelectorAll('tspan[x]').forEach(ts => ts.setAttribute('x', x + NOTE_PAD));
-    }
-    textEl.setAttribute('x', x + NOTE_PAD);
-    textEl.setAttribute('y', y + NOTE_PAD + NOTE_LINE_H * 0.72);
-  }
-  grp.querySelectorAll('.note-resize-handle, .note-resize-hit')
-    .forEach(p => p.setAttribute('d', noteResizeHandlePath(x + w, y + h)));
   const anchorPts = noteAnchorPoints(note);
-  grp.querySelectorAll('.note-leader').forEach((line, i) => {
+
+  // A move that left this note's box and leaders where they were writes
+  // nothing. updateNotesDOM runs for every visible note on every drag frame,
+  // and a note pinned nowhere near the dragged state is most of them. A refill
+  // always writes: the text is what it came to change, and the key says
+  // nothing about the text.
+  const geoKey = noteGeoKey(x, y, w, h, anchorPts);
+  if (!refillText && grp.__geoKey === geoKey) return;
+  grp.__geoKey = geoKey;
+
+  const { leaders, rect, clipRect, textEl, handleHit, handle } = grp.__parts;
+  rect.setAttribute('x', x); rect.setAttribute('y', y); rect.setAttribute('width', w); rect.setAttribute('height', h);
+  clipRect.setAttribute('x', x + 1); clipRect.setAttribute('y', y + 1);
+  clipRect.setAttribute('width', Math.max(0, w - 2)); clipRect.setAttribute('height', Math.max(0, h - 2));
+  if (refillText) {
+    fillNoteTextEl(textEl, lines, x + NOTE_PAD);
+  } else {
+    // Only line-leading tspans carry an x; setting it on continuation runs
+    // would break them out of inline flow onto their own column.
+    for (const ts of textEl.childNodes) if (ts.getAttribute('x') != null) ts.setAttribute('x', x + NOTE_PAD);
+  }
+  textEl.setAttribute('x', x + NOTE_PAD);
+  textEl.setAttribute('y', y + NOTE_PAD + NOTE_LINE_H * 0.72);
+  for (const p of [handleHit, handle]) p.setAttribute('d', noteResizeHandlePath(x + w, y + h));
+  leaders.forEach((line, i) => {
     const pt = anchorPts[i];
     if (!pt) return;
     line.setAttribute('x1', pos.x); line.setAttribute('y1', pos.y);
     line.setAttribute('x2', pt.x); line.setAttribute('y2', pt.y);
   });
 }
+// The drag path's note pass (updateFastDOM). A state moving can carry a note
+// with it but cannot change what the note says, so the text is repositioned
+// and never rebuilt. This was `forEach(updateOneNoteDOM)`, which passed the
+// array index as the options — so `refillText` kept its default and every
+// tspan of every note was torn down and rebuilt on every drag frame.
 export function updateNotesDOM() {
-  visibleNotes().forEach(updateOneNoteDOM);
+  for (const note of visibleNotes()) updateOneNoteDOM(note, { refillText: false });
 }
 
 // ══════════════════════════════════════════════════════════════════

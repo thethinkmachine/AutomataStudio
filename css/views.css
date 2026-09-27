@@ -343,8 +343,15 @@
   margin-bottom: var(--canvas-sill);
 }
 
-.canvas-area::before {
-  content: '';
+/* A real element, not .canvas-area::before, and that is the point of it. The
+   camera variables below change on every frame of a pan or zoom, and custom
+   properties inherit: set on #canvas-wrap they changed an inherited value on
+   every node of the diagram and every overlay above it, so each zoom frame
+   restyled ~1300 elements — ~9ms of a 7ms frame on a 144Hz panel, for a
+   grid. A pseudo-element can only read what
+   its parent carries, so the grid had to become something the variables could
+   be written onto without a subtree underneath. */
+.canvas-grid {
   position: absolute;
   inset: 0;
   pointer-events: none;

@@ -292,12 +292,17 @@ export function applyCamera() {
   requestAnimationFrame(() => {
     $('cam-g').setAttribute('transform', `translate(${App.cam.x},${App.cam.y}) scale(${App.cam.z})`);
 
-    // Update CSS variables for infinite grid
+    // The infinite grid. Written onto the grid's own childless element rather
+    // than the canvas: custom properties inherit, so on #canvas-wrap every
+    // frame restyled the whole diagram. See .canvas-grid in css/views.css.
+    const grid = $('canvas-grid');
+    if (grid) {
+      grid.style.setProperty('--cam-x', `${App.cam.x}px`);
+      grid.style.setProperty('--cam-y', `${App.cam.y}px`);
+      grid.style.setProperty('--cam-z', App.cam.z);
+    }
     const wrap = $('canvas-wrap');
     if (wrap) {
-      wrap.style.setProperty('--cam-x', `${App.cam.x}px`);
-      wrap.style.setProperty('--cam-y', `${App.cam.y}px`);
-      wrap.style.setProperty('--cam-z', App.cam.z);
       // Zoomed far enough out that the diagram is a map rather than a drawing.
       // The simulation highlights read that flag and get bolder, because at 8%
       // the thing worth seeing is which way the run went, not what any one edge
