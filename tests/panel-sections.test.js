@@ -117,7 +117,7 @@ test('setSectionOrder cannot write a section that does not exist', () => {
 
 test('every section belongs to exactly one side', () => {
   const seen = new Set();
-  ['lpanel', 'rpanel'].forEach(side => {
+  context.PANEL_SECTION_SIDES.forEach(side => {
     context.declaredSectionIds(side).forEach(id => {
       assert.equal(context.sectionSide(id), side);
       assert.ok(!seen.has(id), `${id} is declared twice`);
@@ -130,11 +130,14 @@ test('every section belongs to exactly one side', () => {
 // ── the one list is the one list ──────────────────────────────────
 
 test('the right panel\'s collapse defaults are derived from the registry', () => {
-  assert.deepEqual(Object.keys(context.RP_SECTION_DEFAULTS), RP);
+  // Every group the right panel hosts — the Inspector's and the Run tab's.
+  const hosted = context.groupsInPanel('rpanel').flatMap(g => context.declaredSectionIds(g));
+  assert.ok(hosted.includes('rp-simulate') && hosted.includes('rp-language'));
+  assert.deepEqual(Object.keys(context.RP_SECTION_DEFAULTS), hosted);
   assert.equal(context.RP_SECTION_DEFAULTS['rp-batch'], true,
     'Batch Test starts collapsed, and says so in one place');
   assert.equal(context.RP_SECTION_DEFAULTS['rp-language'], false);
-  RP.forEach(id => assert.equal(
+  hosted.forEach(id => assert.equal(
     context.RP_SECTION_DEFAULTS[id], context.sectionStartsCollapsed(id)));
 });
 

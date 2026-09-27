@@ -29,6 +29,7 @@ import { machineGuards, parseMachineInput } from './machines/index.js';
 import { openSpaceTime, spaceTimeKind } from './spacetime-ui.js';
 import { runSim } from './simulation.js';
 import { syncPanelEmpty } from './panel-float.js';
+import { sectionSide } from './panel-sections.js';
 import { exportBaseName, exportCopyText, exportDownload } from './export-core.js';
 import { Change, subscribe } from './store.js';
 import { setSectionStatus } from './section-status.js';
@@ -219,7 +220,7 @@ export function syncComplexitySection() {
   const want = profileKind() ? '' : 'none';
   if (sec.style.display !== want) {
     sec.style.display = want;
-    syncPanelEmpty('rpanel');
+    syncPanelEmpty(sectionSide(COMPLEXITY_SECTION));
   }
   // An edit makes the profile on screen a profile of a machine that is gone.
   // It stays — the shape is often still worth looking at — but says so.
@@ -668,6 +669,7 @@ function runWorst(metric, n) {
   const box = $('sim-in');
   if (!box) return;
   box.value = word;
+  revealPlayer();
   runSim();
   openSpaceTime();
   showStatus(`Running the worst case for n = ${n}`);

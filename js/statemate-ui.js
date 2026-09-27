@@ -2579,6 +2579,14 @@ function syncTabBadge() {
  */
 export function stowStateMate() {
   if (stowed()) return;
+  // Whatever the host panel's other tab is — Inspector on the right, Workspace
+  // on the left. Naming 'inspector' here made stowing a no-op once StateMate
+  // could sit on the left edge. Every tab can move now, so there may be none:
+  // StateMate alone on its panel has nothing to be stowed behind, and stays —
+  // decided first, so none of the bookkeeping below records a leave that did
+  // not happen.
+  const back = defaultPanelTab(homeSide(), 'statemate');
+  if (!back) return;
   // A hidden element does not keep its scroll offset, so it is read here
   // rather than in onClose, which runs once the panel is already down. A
   // reader who scrolled up to re-read a turn should find it there on the way
@@ -2589,10 +2597,6 @@ export function stowStateMate() {
   Session.exampleRequest++;
   const live = Session.run ? Session.log.indexOf(Session.run) : -1;
   Session.minSince = live === -1 ? Session.log.length : live;
-  // Whatever the host panel's other tab is — Inspector on the right, Workspace
-  // on the left. Naming 'inspector' here made stowing a no-op once StateMate
-  // could sit on the left edge.
-  const back = defaultPanelTab(homeSide());
   activatePanelTab(back);
   syncTabBadge();
   $(PANEL_TABS[back]?.tab)?.focus();
@@ -3620,7 +3624,7 @@ subscribe(Change.GRAPH, () => {
  *   `Session` so the caller's intent is at the call site instead of in a flag
  *   one function sets for another to find.
  */
-export function openStateMate({ resume = false } = {}) {
+export function openStateMate({ resume = false, quiet = false } = {}) {
   // Close lightweight popovers before moving focus into the panel.
   ['hideTabOverflowMenu', 'hideTabContextMenu', 'hideContextMenu', 'hideCanvasContextMenu']
     .forEach(fn => {
@@ -3654,7 +3658,12 @@ export function openStateMate({ resume = false } = {}) {
   // :focus-within exception, and this ends in focusInput — so the alternative
   // is a caret in a field that vanishes when the pointer leaves. Selecting the
   // The other tab reveals nothing, which is the asymmetry: see revealPanel.
-  revealPanel(homeSide());
+  //
+  // `quiet` is the panel controller's own call, made when a layout change
+  // leaves StateMate the tab its panel falls back to (the other tabs dragged
+  // away, or a saved layout restored at boot). Nobody asked to open it, so it
+  // must neither pin a panel the reader left unpinned nor take the focus.
+  if (!quiet) revealPanel(homeSide());
   activatePanelTab('statemate');
 
   const request = ++Session.exampleRequest;
@@ -3705,7 +3714,7 @@ export function openStateMate({ resume = false } = {}) {
     syncJump();
   }
   scrollLogToEnd();
-  focusInput();
+  if (!quiet) focusInput();
 
   // Rich descriptions arrive from the same JSON files the loader uses. The
   // list is already usable; this only fills in the blurbs, and a malformed

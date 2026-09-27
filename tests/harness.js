@@ -247,6 +247,10 @@ function resetModuleState() {
   state.setR(baseConfig.radius);
   panelState.resetPanelTabs();
   panelSectionsUi.resetSectionReorder();
+  // Where the reader dragged each card is a preference in localStorage, which
+  // the stub keeps across resets; one test moving Trace to the Workspace tab
+  // would otherwise hand every later test a Workspace with a trace in it.
+  panelSections.resetSectionPlacement();
   // A window left mid-drag would have the next test moving the last one's
   // section, and the float records are localStorage — which the stub keeps
   // across a resetApp, so a section torn out here would still be out there.

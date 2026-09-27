@@ -62,7 +62,8 @@ header {
    window edge behind it -- so there is nothing for the cluster to span, and
    reserving the width would only push the strip off-centre. */
 body:has(.lpanel.unpinned) .hdr-left,
-body:has(.lpanel.hidden) .hdr-left {
+body:has(.lpanel.hidden) .hdr-left,
+body:has(.lpanel.is-empty) .hdr-left {
   min-width: 0;
 }
 
@@ -80,7 +81,8 @@ body:has(.lpanel.hidden) .hdr-left {
 }
 
 body:has(.rpanel.unpinned) .hdr-right,
-body:has(.rpanel.hidden) .hdr-right {
+body:has(.rpanel.hidden) .hdr-right,
+body:has(.rpanel.is-empty) .hdr-right {
   min-width: 0;
 }
 

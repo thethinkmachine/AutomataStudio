@@ -32,6 +32,7 @@ import { clearBranchTokens, paintBranchTokens } from './branch-tokens.js';
 import { withBranchTrees } from './machines/branch-tree.js';
 import { refreshBranchTree } from './branch-tree-ui.js';
 import { SPACETIME_ICON, openSpaceTime, refreshSpaceTime, spaceTimeKind } from './spacetime-ui.js';
+import { revealPlayer } from './ui.js';
 import { setSectionStatus } from './section-status.js';
 import { isSyncRAF } from './anim.js';
 
@@ -2205,6 +2206,7 @@ function playBatchRow(idx) {
   const box = $('sim-in');
   if (!r || r.error || !box) return;
   box.value = r.str;
+  revealPlayer();
   runSim();
 }
 

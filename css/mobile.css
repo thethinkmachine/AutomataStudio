@@ -1063,6 +1063,14 @@
     white-space: nowrap;
   }
 
+  /* Four tabs across a phone: the glyphs go before the names do, the same
+     trade the desktop strip makes at its narrow end. */
+  @media (max-width: 430px) {
+    .mobile-sheet-tab-icon {
+      display: none;
+    }
+  }
+
   .lpanel .pin-btn,
   .rpanel .pin-btn,
   .mobile-panel-close {
