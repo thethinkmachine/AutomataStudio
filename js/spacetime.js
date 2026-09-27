@@ -53,7 +53,7 @@
 // ══════════════════════════════════════════════════════════════════
 
 import { DenseTape } from './machines/columns.js';
-import { stepJournals, stepLogIndex } from './tape-log.js';
+import { stepColumnsOf, stepJournals, stepLogIndex } from './tape-log.js';
 
 /** Cell size at which a symbol is printed in its cell. */
 export const GLYPH_MIN = 13;
@@ -215,6 +215,19 @@ export function makeSpaceTime(steps, opts = {}) {
   const markerSet = new Set();
   let blankSym = null;
 
+  // The states the run is in, for the width of the layout's state gutter. The
+  // layout used to find that width by reading every row's state — through the
+  // columnar steps array, on every paint, once per cell size "fit" tried — so
+  // a paint cost the length of the run: 1.7s a frame at 3M steps of the
+  // five-state busy beaver, which is what made a long run with the diagram
+  // open unusable. Asking now costs |Q|. A run kept as columns already has
+  // the list — its state interner — which may run a step or two ahead of the
+  // rows indexed, and a gutter a character wider than it had to be is the
+  // most that can cost. Any other run is noted as its rows are indexed.
+  let stateCols;
+  const statesNoted = new Set();
+  model.statesSeen = () => (stateCols ? stateCols.statesSeen() : statesNoted);
+
   function noteSymbol(sym) {
     if (sym === undefined || sym === null || sym === blankSym || markerSet.has(sym)) return;
     if (!slots.has(sym)) slots.set(sym, slots.size);
@@ -310,7 +323,9 @@ export function makeSpaceTime(steps, opts = {}) {
     const n = Math.min(count ?? steps.length, steps.length);
     if (n <= model.rows) return false;
     if (!model.tapes && !detect()) return false;
+    if (stateCols === undefined) stateCols = stepColumnsOf(steps[0]);
     for (let i = model.rows; i < n; i++) {
+      if (!stateCols) statesNoted.add(steps[i]?.state);
       for (const t of model.tapes) {
         if (t.kind === 'log') indexLogRow(t, i);
         else indexViewRow(t, i);
@@ -546,10 +561,19 @@ export function spaceTimeLayout(model, o = {}) {
   let stateChars = 0;
   if (showStates) {
     // Names are measured over the rows drawn, capped so one long name does
-    // not take the gutter from the diagram.
-    for (let i = rowFrom; i <= rowTo; i++) {
-      const n = String(o.stateName(model.stateAt(i)) ?? '').length;
-      if (n > stateChars) { stateChars = n; if (n >= 14) break; }
+    // not take the gutter from the diagram. All of them is the states the
+    // model has seen, which costs |Q| rather than the run (see statesSeen);
+    // a range — an export of some of the steps — reads its rows.
+    const whole = typeof model.statesSeen === 'function' && rowFrom === 0 && rowTo === model.rows - 1;
+    const measure = id => {
+      const n = String(o.stateName(id) ?? '').length;
+      if (n > stateChars) stateChars = n;
+      return stateChars >= 14;
+    };
+    if (whole) {
+      for (const id of model.statesSeen()) if (measure(id)) break;
+    } else {
+      for (let i = rowFrom; i <= rowTo; i++) if (measure(model.stateAt(i))) break;
     }
     stateChars = Math.min(14, Math.max(5, stateChars));
   }
