@@ -342,7 +342,8 @@ test('the trace log holds a tail, not the whole run', () => {
   const lines = (html.match(/<div/g) || []).length;
   assert.ok(lines <= context.SIM_LOG_TAIL + 1, `${lines} lines for a 5000-step run`);
   assert.match(html, /earlier steps/);
-  assert.ok(html.includes('4999: step 4999'), 'the current step is the last line');
+  assert.ok(html.includes('<span class="tr-n">4999</span><span class="tr-body">step 4999</span>'),
+    'the current step is the last line');
 });
 
 test('the trail is carried forward rather than rebuilt from step 0', () => {
