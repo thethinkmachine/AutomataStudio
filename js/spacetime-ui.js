@@ -17,7 +17,9 @@
 //    ten-thousand-step run at 8px a row is 80,000px tall — past every
 //    browser's canvas limit, and a bitmap the size of a poster to scroll
 //    through. A spacer gives the scroller the diagram's size and the canvas
-//    repaints the window onto it, so a paint costs what is on screen.
+//    repaints the window onto it, so a paint costs what is on screen. Past
+//    SCROLL_CAP the spacer stops growing and positions are mapped onto it —
+//    see "the scroll position" below.
 //
 //  • **It reads the reachable prefix and never pulls.** `reachableCount()`
 //    is the scrubber's own answer, so a block run's diagram stops where the
@@ -227,6 +229,8 @@ export function resetSpaceTime() {
   wholeCache = null;
   trace = null; branchNote = null;
   lastPlayhead = -1; lastLo = null; dragging = false;
+  resetScrollMap();
+  setScrollCap(null);
   if (raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf);
   raf = 0;
 }
@@ -542,6 +546,7 @@ function ensureBuilt() {
 
   body.append(toolbar, view, traceBar, foot);
   els = { body, toolbar, zoomOut, zoomVal, zoomIn, fit, path, ovBtn, exp, view, scroll, size, canvas, strip, grip, tip, empty, traceBar, foot, legend, meta, more };
+  resetScrollMap();
 
   toolbar.addEventListener('click', onToolbarClick);
   more.addEventListener('click', () => {
@@ -701,6 +706,122 @@ function resolveCell(m, width) {
   return CELL_SIZES[0];
 }
 
+// ── the scroll position ───────────────────────────────────────────
+//  The spacer cannot be as large as a long run. Browsers cap an element's
+//  size and do not agree on what happens past the cap: Firefox 156 drops a
+//  height over 17,895,697px outright — the spacer is laid out 0px tall and
+//  the view cannot scroll at all — and Chromium 150 clamps at 26,843,542px,
+//  leaving the rest of the run out of reach. At a pixel a row that is BB(5)
+//  at 17.9M of its 47M steps.
+//
+//  So the spacer is never larger than SCROLL_CAP, and the position in the
+//  diagram is kept here, mapped to the scroller's by a ratio that makes both
+//  ends meet. Under the cap the ratio is 1 and every read and write is the
+//  scroller's own, exactly as before. Over it, the position is held in full
+//  precision here rather than read back from the scroller — a pixel of the
+//  scroller is several of the diagram's — and taken from the scroller only
+//  when something else moved it: its scrollbar, a key, a touch.
+//
+//  Every read and write of the position goes through scrollX/scrollY and
+//  setScrollXY; the scroller's own scrollTop and scrollLeft mean the diagram's
+//  only while the ratio is 1.
+
+const DEFAULT_SCROLL_CAP = 1 << 23;
+let SCROLL_CAP = DEFAULT_SCROLL_CAP;
+const vscroll = { x: 0, y: 0, px: NaN, py: NaN, kx: 1, ky: 1, W: 0, H: 0 };
+
+/**
+ * A seam, for setJumpRoute's reason: the mapping only engages past the cap,
+ * and a run tall enough to reach the real one is millions of steps. The
+ * tests lower it; resetSpaceTime puts it back.
+ */
+function setScrollCap(px) { SCROLL_CAP = px || DEFAULT_SCROLL_CAP; }
+
+/** A new scroller starts at a ratio of 1, whatever the last one was at. */
+function resetScrollMap() {
+  Object.assign(vscroll, { x: 0, y: 0, px: NaN, py: NaN, kx: 1, ky: 1, W: 0, H: 0 });
+}
+
+function scrollRatio(full, drawn, client) {
+  return full <= drawn ? 1 : Math.max(1, (full - client) / Math.max(1, drawn - client));
+}
+
+function scrollX() {
+  const p = els.scroll.scrollLeft;
+  if (vscroll.kx === 1) return p;
+  if (p !== vscroll.px) { vscroll.x = p * vscroll.kx; vscroll.px = p; }
+  return vscroll.x;
+}
+
+function scrollY() {
+  const p = els.scroll.scrollTop;
+  if (vscroll.ky === 1) return p;
+  if (p !== vscroll.py) { vscroll.y = p * vscroll.ky; vscroll.py = p; }
+  return vscroll.y;
+}
+
+/** The furthest the view can scroll, in the diagram's pixels. */
+function scrollMax() {
+  const { scroll } = els;
+  return {
+    x: vscroll.kx === 1 ? Math.max(0, scroll.scrollWidth - scroll.clientWidth) : Math.max(0, vscroll.W - scroll.clientWidth),
+    y: vscroll.ky === 1 ? Math.max(0, scroll.scrollHeight - scroll.clientHeight) : Math.max(0, vscroll.H - scroll.clientHeight)
+  };
+}
+
+/** Move the view to a position in the diagram. Null leaves that axis where it is. */
+function setScrollXY(x, y) {
+  const { scroll } = els;
+  if (x !== null && x !== undefined) {
+    if (vscroll.kx === 1) scroll.scrollLeft = x;
+    else {
+      vscroll.x = Math.max(0, Math.min(scrollMax().x, x));
+      scroll.scrollLeft = vscroll.x / vscroll.kx;
+      vscroll.px = scroll.scrollLeft;
+    }
+  }
+  if (y !== null && y !== undefined) {
+    if (vscroll.ky === 1) scroll.scrollTop = y;
+    else {
+      vscroll.y = Math.max(0, Math.min(scrollMax().y, y));
+      scroll.scrollTop = vscroll.y / vscroll.ky;
+      vscroll.py = scroll.scrollTop;
+    }
+  }
+}
+
+/**
+ * Give the scroller the diagram's size — or as much of it as a browser will
+ * lay out — and keep the view where it was in the diagram when the ratio
+ * moves, which it does on every paint of a run growing past the cap.
+ */
+function setDiagramSize(W, H) {
+  const { scroll, size } = els;
+  const x = scrollX();
+  const y = scrollY();
+  const dw = Math.min(W, SCROLL_CAP);
+  const dh = Math.min(H, SCROLL_CAP);
+  size.style.width = dw + 'px';
+  size.style.height = dh + 'px';
+  const kx = scrollRatio(W, dw, scroll.clientWidth);
+  const ky = scrollRatio(H, dh, scroll.clientHeight);
+  vscroll.W = W;
+  vscroll.H = H;
+  if (kx === vscroll.kx && ky === vscroll.ky) return;
+  // Leaving the ratio of 1 starts from where the scroller is; going back to
+  // it hands the position back to the scroller.
+  vscroll.kx = kx; vscroll.ky = ky;
+  vscroll.px = NaN; vscroll.py = NaN;
+  vscroll.x = x; vscroll.y = y;
+  setScrollXY(x, y);
+}
+
+/** The wheel in the diagram's pixels. DOM_DELTA_LINE is what Firefox sends a mouse wheel as. */
+function wheelDelta(e) {
+  const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? (els.scroll.clientHeight || 400) : 1;
+  return { dx: (e.deltaX || 0) * unit, dy: (e.deltaY || 0) * unit };
+}
+
 function syncLayout(m, vw) {
   const complete = runComplete();
   const cell = resolveCell(m, vw);
@@ -729,7 +850,7 @@ function paint() {
   if (!m) { dropStrip(); return; }
   if (!sectionShowing()) return;
 
-  const { scroll, canvas, size } = els;
+  const { scroll, canvas } = els;
   let vw = scroll.clientWidth;
   const vh = scroll.clientHeight;
   if (!vw || !vh) return;
@@ -746,8 +867,7 @@ function paint() {
     vw = scroll.clientWidth;
     L = syncLayout(m, vw);
   }
-  size.style.width = L.width + 'px';
-  size.style.height = L.height + 'px';
+  setDiagramSize(L.width, L.height);
   fitViewTo(L);
   // Here rather than in renderChrome, which runs before the first layout
   // exists: the readout would otherwise stay blank until the next repaint.
@@ -757,9 +877,9 @@ function paint() {
   // grew. Scroll by the same amount, or the diagram slides under the reader.
   const lo = m.tapes[0].lo;
   if (lastLo !== null && lo < lastLo && prevCell === L.cell) {
-    scroll.scrollLeft += (lastLo - lo) * L.cell;
+    setScrollXY(scrollX() + (lastLo - lo) * L.cell, null);
   } else if (prevX !== null && prevCell === L.cell && L.tapes[0] && L.tapes[0].x !== prevX && lastLo === lo) {
-    scroll.scrollLeft += L.tapes[0].x - prevX;
+    setScrollXY(scrollX() + L.tapes[0].x - prevX, null);
   }
   lastLo = lo;
 
@@ -780,8 +900,8 @@ function paint() {
   // snapped, every cell edge lands on a device pixel instead of between two.
   const snap = v => Math.round(v * dpr) / dpr;
   paintSpaceTime(ctx, m, L, currentStyle(), {
-    sx: snap(scroll.scrollLeft),
-    sy: snap(scroll.scrollTop),
+    sx: snap(scrollX()),
+    sy: snap(scrollY()),
     vw,
     vh,
     playhead: playheadRow(),
@@ -810,7 +930,9 @@ function fitViewTo(L) {
   const { view, scroll } = els;
   const frame = (view.offsetHeight || 0) - (view.clientHeight || 0);
   const bar = (scroll.offsetHeight || 0) - (scroll.clientHeight || 0);
-  const h = Math.ceil(L.height + Math.max(0, frame) + Math.max(0, bar));
+  // Capped like the spacer: a window is never that tall, and asked for more
+  // than it can lay out Firefox makes the view 0px rather than the ceiling.
+  const h = Math.min(SCROLL_CAP, Math.ceil(L.height + Math.max(0, frame) + Math.max(0, bar)));
   const value = h + 'px';
   if (view.style.getPropertyValue && view.style.getPropertyValue('--st-fit') === value) return;
   if (view.style.setProperty) view.style.setProperty('--st-fit', value);
@@ -1011,9 +1133,8 @@ function stripBase(S, G, dpr, complete) {
 
 /** The rows and, per tape, the cells the diagram is showing. */
 function visibleRange(m, L, vw, vh) {
-  const { scroll } = els;
-  const sx = scroll.scrollLeft;
-  const sy = scroll.scrollTop;
+  const sx = scrollX();
+  const sy = scrollY();
   const last = Math.max(0, m.rows - 1);
   const row0 = Math.max(0, Math.min(last, L.rowFrom + Math.floor(sy / L.cell)));
   const row1 = Math.max(row0, Math.min(last, L.rowFrom + Math.floor((sy + vh - L.top) / L.cell)));
@@ -1081,7 +1202,7 @@ function centerOn(row, tape, cell, smooth) {
   const vh = sc.clientHeight;
   const vw = sc.clientWidth;
   const ty = (row - L.rowFrom) * L.cell - (vh - L.top) / 2 + L.cell / 2;
-  let tx = sc.scrollLeft;
+  let tx = scrollX();
   const e = tape !== null && tape !== undefined ? L.tapes[tape] : null;
   if (e && cell !== null && cell !== undefined) {
     tx = e.x + (cell - e.lo) * L.cell - L.gutterW - (vw - L.gutterW) / 2 + L.cell / 2;
@@ -1089,8 +1210,7 @@ function centerOn(row, tape, cell, smooth) {
   if (smooth) glideTo(tx, ty);
   else {
     cancelGlide();
-    sc.scrollLeft = Math.max(0, tx);
-    sc.scrollTop = Math.max(0, ty);
+    setScrollXY(Math.max(0, tx), Math.max(0, ty));
   }
 }
 
@@ -1160,8 +1280,8 @@ function onStripWheel(e) {
   // diagram, a screen at a time the way it would over the diagram itself.
   e.preventDefault();
   cancelGlide();
-  els.scroll.scrollTop += e.deltaY;
-  els.scroll.scrollLeft += e.deltaX;
+  const { dx, dy } = wheelDelta(e);
+  setScrollXY(scrollX() + dx, scrollY() + dy);
 }
 
 /**
@@ -1177,10 +1297,8 @@ function follow(m, L, vw, vh) {
   if (idx === lastPlayhead || dragging) { lastPlayhead = idx; return; }
   lastPlayhead = idx;
   if (idx === null || idx < L.rowFrom || idx > L.rowTo) return;
-  const { scroll } = els;
   const bodyH = vh - L.top;
   const rowY = (idx - L.rowFrom) * L.cell;
-  const sy = scroll.scrollTop;
   // Judged against where a glide in flight is *going*, not where it has got
   // to, or every tick of fast playback would restart it from mid-air.
   const cur = glideTarget();
@@ -1211,8 +1329,7 @@ function follow(m, L, vw, vh) {
   if (tx === cur.x && ty === cur.y) return;
   if (fast) {
     cancelGlide();
-    scroll.scrollLeft = tx;
-    scroll.scrollTop = ty;
+    setScrollXY(tx, ty);
   } else glideTo(tx, ty);
 }
 
@@ -1233,8 +1350,7 @@ function motionOk() {
 }
 
 function glideTarget() {
-  const { scroll } = els;
-  return glide ? { x: glide.tx, y: glide.ty } : { x: scroll.scrollLeft, y: scroll.scrollTop };
+  return glide ? { x: glide.tx, y: glide.ty } : { x: scrollX(), y: scrollY() };
 }
 
 export function cancelGlide() {
@@ -1245,26 +1361,25 @@ export function cancelGlide() {
 
 function glideTo(x, y) {
   const { scroll } = els;
-  const maxX = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
-  const maxY = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
-  const tx = Math.max(0, Math.min(maxX, x));
-  const ty = Math.max(0, Math.min(maxY, y));
+  const max = scrollMax();
+  const tx = Math.max(0, Math.min(max.x, x));
+  const ty = Math.max(0, Math.min(max.y, y));
   cancelGlide();
-  const far = Math.abs(ty - scroll.scrollTop) > scroll.clientHeight * 3
-    || Math.abs(tx - scroll.scrollLeft) > scroll.clientWidth * 3;
+  const fx = scrollX();
+  const fy = scrollY();
+  const far = Math.abs(ty - fy) > scroll.clientHeight * 3
+    || Math.abs(tx - fx) > scroll.clientWidth * 3;
   if (far || !motionOk() || typeof requestAnimationFrame !== 'function' || typeof performance === 'undefined') {
-    scroll.scrollLeft = tx;
-    scroll.scrollTop = ty;
+    setScrollXY(tx, ty);
     return;
   }
-  const g = { fx: scroll.scrollLeft, fy: scroll.scrollTop, tx, ty, t0: performance.now(), raf: 0 };
+  const g = { fx, fy, tx, ty, t0: performance.now(), raf: 0 };
   glide = g;
   const tick = now => {
     if (glide !== g) return;
     const p = Math.min(1, (now - g.t0) / GLIDE_MS);
     const k = 1 - Math.pow(1 - p, 3);
-    scroll.scrollLeft = g.fx + (g.tx - g.fx) * k;
-    scroll.scrollTop = g.fy + (g.ty - g.fy) * k;
+    setScrollXY(g.fx + (g.tx - g.fx) * k, g.fy + (g.ty - g.fy) * k);
     if (p < 1) g.raf = requestAnimationFrame(tick);
     else glide = null;
   };
@@ -1412,8 +1527,8 @@ function setCell(next, anchor) {
   const ax = anchor ? anchor.x : scroll.clientWidth / 2;
   const ay = anchor ? anchor.y : Math.max(L0.top, scroll.clientHeight / 2);
   const e0 = L0.tapes[0];
-  const fx = e0 ? (scroll.scrollLeft + ax - e0.x) / L0.cell : 0;
-  const fy = (scroll.scrollTop + ay - L0.top) / L0.cell;
+  const fx = e0 ? (scrollX() + ax - e0.x) / L0.cell : 0;
+  const fy = (scrollY() + ay - L0.top) / L0.cell;
 
   cellPref = String(next);
   writePref(CELL_KEY, cellPref);
@@ -1422,11 +1537,9 @@ function setCell(next, anchor) {
   const m = syncModel();
   if (!m) { requestPaint(); return; }
   const L = syncLayout(m, scroll.clientWidth);
-  els.size.style.width = L.width + 'px';
-  els.size.style.height = L.height + 'px';
+  setDiagramSize(L.width, L.height);
   const e = L.tapes[0];
-  if (e) scroll.scrollLeft = Math.max(0, fx * L.cell + e.x - ax);
-  scroll.scrollTop = Math.max(0, fy * L.cell + L.top - ay);
+  setScrollXY(e ? Math.max(0, fx * L.cell + e.x - ax) : null, Math.max(0, fy * L.cell + L.top - ay));
   lastPlayhead = playheadRow();
   requestPaint();
 }
@@ -1448,10 +1561,9 @@ function localPoint(e) {
 /** Where a pointer is, in diagram coordinates, allowing for the pinned bands. */
 function hitAt(p) {
   if (!layout) return null;
-  const { scroll } = els;
   if (p.y < layout.top) return null;
-  const x = p.x < layout.gutterW ? p.x : p.x + scroll.scrollLeft;
-  const hit = hitSpaceTime(layout, x, p.y + scroll.scrollTop);
+  const x = p.x < layout.gutterW ? p.x : p.x + scrollX();
+  const hit = hitSpaceTime(layout, x, p.y + scrollY());
   if (!hit) return null;
   if (p.x < layout.gutterW) hit.tape = -1, hit.col = null;
   return hit;
@@ -1489,7 +1601,7 @@ function onPointerMove(e) {
     if (hit) scrubToRow(hit.row);
     else if (p.y >= layout.top) {
       scrubToRow(Math.max(layout.rowFrom, Math.min(layout.rowTo,
-        layout.rowFrom + Math.floor((p.y + els.scroll.scrollTop - layout.top) / layout.cell))));
+        layout.rowFrom + Math.floor((p.y + scrollY() - layout.top) / layout.cell))));
     }
   }
   const prev = hover;
@@ -1508,8 +1620,16 @@ function onWheel(e) {
   cancelGlide();
   // Ctrl/⌘ + wheel zooms, around the pointer — the same gesture as a pinch on
   // a trackpad, which the browser reports as a ctrl-wheel. A plain wheel is
-  // the scroller's, and scrolls.
-  if (!(e.ctrlKey || e.metaKey)) return;
+  // the scroller's, and scrolls — unless the diagram is past the spacer's
+  // cap, where a pixel of the scroller is several of the diagram's and the
+  // wheel is taken here so a notch still moves the rows it always did.
+  if (!(e.ctrlKey || e.metaKey)) {
+    if (vscroll.kx === 1 && vscroll.ky === 1) return;
+    e.preventDefault();
+    const { dx, dy } = wheelDelta(e);
+    setScrollXY(scrollX() + (e.shiftKey && !dx ? dy : dx), scrollY() + (e.shiftKey && !dx ? 0 : dy));
+    return;
+  }
   e.preventDefault();
   zoomBy(e.deltaY < 0 ? 1 : -1, localPoint(e));
 }
@@ -1639,8 +1759,8 @@ function scrollRowIntoView(row) {
   if (!layout || !els) return;
   const vh = els.scroll.clientHeight;
   const y = (row - layout.rowFrom) * layout.cell;
-  const sy = els.scroll.scrollTop;
-  if (y < sy || y + layout.cell > sy + vh - layout.top) glideTo(els.scroll.scrollLeft, Math.max(0, y - (vh - layout.top) * 0.4));
+  const sy = scrollY();
+  if (y < sy || y + layout.cell > sy + vh - layout.top) glideTo(scrollX(), Math.max(0, y - (vh - layout.top) * 0.4));
 }
 
 // ── the hover readout ─────────────────────────────────────────────
@@ -2145,5 +2265,8 @@ export const _spaceTimeTests = {
   get branchNote() { return branchNote; },
   get model() { return model; },
   get layout() { return layout; },
-  get wholeCache() { return wholeCache; }
+  get wholeCache() { return wholeCache; },
+  get vscroll() { return { ...vscroll }; },
+  get SCROLL_CAP() { return SCROLL_CAP; },
+  setScrollCap, scrollX, scrollY, setScrollXY, visibleRange, centerOn
 };
