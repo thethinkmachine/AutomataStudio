@@ -175,38 +175,114 @@ function cellTip(view, abs, sym, isHead) {
   return bits.join(' ');
 }
 
+// ── a long tape is drawn as a band ────────────────────────────────
+// The tracker used to hold a node for every cell of the window, and the
+// window is as wide as the machine has travelled: three thousand cells at
+// 2.5M steps of the five-state busy beaver, twelve thousand by its halt, and
+// on a machine that walks off down its tape as many as it has taken steps.
+// Those were most of the page's nodes, and every frame of playback laid all
+// of them out to change the two cells the head moved between.
+//
+// A strip shows a few dozen cells at a time, so past `2 × TRACK_BAND + 1`
+// cells only a band of that many is drawn — around the head while the run
+// plays, around what the reader has scrolled to otherwise — and the cells
+// either side of it are padding the width they would have taken. The
+// scrollbar is the whole tape's, the cell numbers are the real ones, and a
+// scroll that nears the band's edge moves the band (see followScroll). A tape
+// narrower than that is drawn whole, exactly as before.
+const TRACK_BAND = 120;
+// The distance from one cell to the next before one has been measured: a
+// 26px cell and the track's 1px gap. followHead measures the real one.
+const DEFAULT_PITCH = 27;
+
+/**
+ * The cells to draw, [lo, hi], of a window [first, last].
+ *
+ * `center` is a cell to centre on — a scroll asking for what it has reached.
+ * Without one the band follows the head, and keeps the band drawn last while
+ * the head is still well inside it, so a head pacing back and forth costs no
+ * DOM at all.
+ */
+function bandOf(cellWrap, first, last, headAbs, center) {
+  if (last - first < 2 * TRACK_BAND + 1) return [first, last];
+  if (center == null) {
+    const was = cellWrap.__tvRange;
+    if (was && was[1] - was[0] === 2 * TRACK_BAND && was[0] >= first && was[1] <= last
+      && headAbs >= was[0] + TRACK_BAND / 2 && headAbs <= was[1] - TRACK_BAND / 2) return was;
+    center = headAbs;
+  }
+  const lo = Math.max(first, Math.min(Math.round(center) - TRACK_BAND, last - 2 * TRACK_BAND));
+  return [lo, lo + 2 * TRACK_BAND];
+}
+
 /**
  * Builds or updates one row's cells, keyed by absolute cell number.
  *
- * The order pass runs only when the window actually moved, because a
- * two-way tape's window grows leftward and everything shifts — but on an
- * ordinary step nothing moves and re-appending every cell would undo the
- * one thing this reuse buys, which is that the head's highlight animates
- * from where it was.
+ * **When the band moves, only the cells new to it are inserted.** The band
+ * is a contiguous run of cell numbers and the nodes already in the row are
+ * in that order, so a band that grew or slid by a cell needs one insertion
+ * at that end — not every cell re-appended. It used to be every cell: on a
+ * two-way tape the window moves on most frames of fast playback, so the
+ * tracker re-appended the whole tape once a frame (27% of a frame at 2.5M
+ * steps of the five-state busy beaver, and each move was two records for the
+ * document-wide MutationObserver in dropdown.js). It also kept moving the
+ * head's node, which resets the transition on it.
  */
-function syncCells(cellWrap, view, finalClass) {
+function syncCells(cellWrap, view, finalClass, center = null) {
   let cache = cellWrap.__tvCells;
   if (!cache) cache = cellWrap.__tvCells = new Map();
+  cellWrap.__tvLast = { view, finalClass };
 
   const first = view.origin;
   const last = view.origin + view.cells.length - 1;
-  const wantOrder = `${first}:${last}`;
-  const reorder = cellWrap.__tvOrder !== wantOrder;
+  const [lo, hi] = bandOf(cellWrap, first, last, view.origin + view.head, center);
+  const was = cellWrap.__tvRange;
+  const moved = !was || was[0] !== lo || was[1] !== hi;
+  // The part of the old band the new one keeps is already in the row, in
+  // order — trusted only if its ends are still where they were left, since a
+  // caller that emptied the row would otherwise have us insert beside nodes
+  // that are no longer in it.
+  const keepLo = was ? Math.max(lo, was[0]) : 0;
+  const keepHi = was ? Math.min(hi, was[1]) : -1;
+  const kept = moved && keepLo <= keepHi
+    && cache.get(keepLo)?.parentNode === cellWrap && cache.get(keepHi)?.parentNode === cellWrap;
+  const before = [], after = [];
 
-  const live = new Set();
+  // The cells that left the band, in order, to be reused for the ones that
+  // arrive. At Max a head sweeping a long tape lands the band somewhere new
+  // on most frames, and a band that does not overlap the last one is then
+  // the same nodes in the same order with new contents: nothing is created,
+  // moved or removed. A band that slid moves only its ends.
+  const spare = [];
+  if (moved && was) {
+    for (let abs = was[0]; abs <= was[1]; abs++) {
+      if (abs >= lo && abs <= hi) { abs = hi; continue; }
+      const node = cache.get(abs);
+      if (!node) continue;
+      cache.delete(abs);
+      node.__tvKey = null;   // its index and tooltip are about another cell now
+      spare.push(node);
+    }
+  }
+  const inPlace = moved && !kept && spare.length === hi - lo + 1
+    && spare.every(node => node.parentNode === cellWrap);
+  let reused = 0;
+
   // Everything a cell's tooltip reads that is not the cell itself.
   const tipKey = `${(view.markers || []).join('\u0001')}|${view.readOnly ? 1 : 0}`;
-  for (let i = 0; i < view.cells.length; i++) {
+  for (let i = lo - first; i <= hi - first; i++) {
     const abs = view.origin + i;
-    live.add(abs);
     const sym = view.cells[i];
     const isHead = i === view.head;
 
     let node = cache.get(abs);
     if (!node) {
-      node = el('div', 'tv-cell');
-      node.appendChild(el('span', 'tv-sym'));
-      node.appendChild(el('span', 'tv-idx'));
+      node = reused < spare.length ? spare[reused++] : null;
+      if (!node) {
+        node = el('div', 'tv-cell');
+        node.appendChild(el('span', 'tv-sym'));
+        node.appendChild(el('span', 'tv-idx'));
+      }
       cache.set(abs, node);
     }
     const marker = !!(view.markers && view.markers.includes(sym));
@@ -232,16 +308,59 @@ function syncCells(cellWrap, view, finalClass) {
       node.setAttribute('data-tip', cellTip(view, abs, sym, isHead));
       node.__tvKey = key;
     }
-    if (reorder) cellWrap.appendChild(node);
+    if (moved && !inPlace && !(kept && abs >= keepLo && abs <= keepHi)) (abs < keepLo ? before : after).push(node);
   }
 
-  for (const [abs, node] of cache) {
-    if (live.has(abs)) continue;
-    if (node.parentNode) node.parentNode.removeChild(node);
-    cache.delete(abs);
+  if (moved && !inPlace) {
+    // What left the band and was not reused goes. Only the old band's two
+    // ends were visited to find it, since the cache is keyed by cell.
+    for (let k = reused; k < spare.length; k++) {
+      if (spare[k].parentNode) spare[k].parentNode.removeChild(spare[k]);
+    }
+    if (kept) {
+      const anchor = cache.get(keepLo);
+      for (const node of before) cellWrap.insertBefore(node, anchor);
+      for (const node of after) cellWrap.appendChild(node);
+    } else {
+      // Nothing to keep: a jump to a band that does not overlap, a first
+      // draw, or a row someone emptied. Everything goes in, in order.
+      while (cellWrap.firstChild) cellWrap.removeChild(cellWrap.firstChild);
+      for (const node of before) cellWrap.appendChild(node);
+      for (const node of after) cellWrap.appendChild(node);
+    }
   }
-  cellWrap.__tvOrder = wantOrder;
+  cellWrap.__tvRange = [lo, hi];
+
+  // The cells not drawn, as the width they would take.
+  const pitch = cellWrap.__tvPitch || DEFAULT_PITCH;
+  const padL = lo > first ? `${(lo - first) * pitch}px` : '';
+  const padR = hi < last ? `${(last - hi) * pitch}px` : '';
+  if (cellWrap.__tvPad !== `${padL}|${padR}` && cellWrap.style) {
+    cellWrap.style.paddingLeft = padL;
+    cellWrap.style.paddingRight = padR;
+    cellWrap.__tvPad = `${padL}|${padR}`;
+  }
   return cache.get(view.origin + view.head) || null;
+}
+
+/**
+ * The reader scrolled a long tape: once they near the band's edge, move the
+ * band to where they are looking. Reads layout, which a scroll handler may —
+ * the browser has just laid out to scroll.
+ */
+function followScroll(strip, cellWrap) {
+  const drawn = cellWrap.__tvLast, band = cellWrap.__tvRange;
+  if (!drawn || !band) return;
+  const { view, finalClass } = drawn;
+  const first = view.origin, last = view.origin + view.cells.length - 1;
+  if (band[0] === first && band[1] === last) return;
+  const pitch = cellWrap.__tvPitch || DEFAULT_PITCH;
+  const x = strip.scrollLeft - (cellWrap.offsetLeft || 0);
+  const c0 = first + Math.floor(x / pitch);
+  const c1 = first + Math.ceil((x + strip.clientWidth) / pitch);
+  const slack = TRACK_BAND / 2;
+  if ((band[0] === first || c0 - slack >= band[0]) && (band[1] === last || c1 + slack <= band[1])) return;
+  syncCells(cellWrap, view, finalClass, (c0 + c1) / 2);
 }
 
 /**
@@ -260,6 +379,11 @@ function followHead(strip, headCell, instant) {
   const pad = Math.min(FOLLOW_PAD * cell, view / 4);
   const left = headCell.offsetLeft;
   const right = left + cell;
+  // The band's padding stands in for cells at this pitch (see bandOf), so it
+  // is measured here, where layout is being read anyway.
+  const next = headCell.nextSibling || null, prev = next ? null : headCell.previousSibling;
+  const pitch = next ? next.offsetLeft - left : prev ? left - prev.offsetLeft : 0;
+  if (pitch > 0 && Number.isFinite(pitch) && headCell.parentNode) headCell.parentNode.__tvPitch = pitch;
   if (left - pad >= strip.scrollLeft && right + pad <= strip.scrollLeft + view) return;
   const target = Math.max(0, left - view / 2 + cell / 2);
   if (!instant && typeof strip.scrollTo === 'function') strip.scrollTo({ left: target, behavior: 'smooth' });
@@ -312,6 +436,8 @@ export function renderTracker(host, rows, opts = {}) {
       track.appendChild(el('div', 'tv-cap tv-cap-r'));
       strip.appendChild(track);
       rowEl.appendChild(strip);
+      const cells = track.childNodes[1];
+      strip.addEventListener('scroll', () => followScroll(strip, cells), { passive: true });
       cache.set(key, rowEl);
       host.appendChild(rowEl);
     }

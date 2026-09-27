@@ -572,7 +572,12 @@ function ensureBuilt() {
   grip.addEventListener('keydown', onGripKey);
 
   if (typeof ResizeObserver === 'function') {
-    new ResizeObserver(() => { layoutKey = ''; requestPaint(); }).observe(view);
+    new ResizeObserver(entries => {
+      const r = entries[entries.length - 1]?.contentRect;
+      viewEmpty = r ? !(r.width > 0 && r.height > 0) : null;
+      layoutKey = '';
+      requestPaint();
+    }).observe(view);
   }
   // A theme change repaints the page from CSS; the canvas has to be told.
   if (typeof MutationObserver === 'function' && document.documentElement) {
@@ -605,11 +610,19 @@ export function syncSpaceTimeSection() {
 
 subscribe(Change.GRAPH, syncSpaceTimeSection);
 
+// Whether the view has no size, as the ResizeObserver last reported it; null
+// until it has. The section is often expanded but out of sight — in a panel
+// tab that is not the one showing — and asking `clientHeight` there forced a
+// layout of the whole page on every frame of playback, only to learn it was 0
+// (12% of a frame at Max). The observer is told when that changes.
+let viewEmpty = null;
+
 function sectionShowing() {
   const el = $(SPACETIME_SECTION);
   if (!el || !els) return false;
   if (el.style && el.style.display === 'none') return false;
   if (el.classList && el.classList.contains('collapsed')) return false;
+  if (viewEmpty === true) return false;
   return (els.scroll.clientHeight || 0) > 0;
 }
 

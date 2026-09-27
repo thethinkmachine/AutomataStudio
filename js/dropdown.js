@@ -315,15 +315,22 @@ document.addEventListener('click', event => {
 window.addEventListener('resize', () => OpenCustomSelect && positionCustomSelect(OpenCustomSelect));
 window.addEventListener('scroll', () => OpenCustomSelect && positionCustomSelect(OpenCustomSelect), true);
 
+// Whether a node added to or removed from the page could hold a <select>.
+// The observer watches the whole document, and most of what moves through it
+// is a tape cell or a trace row arriving every frame of playback — so the
+// cheap answers come first, and a node with no element children is never
+// handed to a selector query at all. Two queries per node (`matches` and
+// `querySelectorAll`) was 16% of a frame of fast playback.
+function mayHoldSelect(node) {
+  return node.nodeType === Node.ELEMENT_NODE
+    && (node.nodeName === 'SELECT' || node.firstElementChild != null);
+}
+
 export const customSelectObserver = new MutationObserver(mutations => {
-  mutations.forEach(mutation => {
-    mutation.addedNodes.forEach(node => {
-      if (node.nodeType === Node.ELEMENT_NODE) initCustomSelects(node);
-    });
-    mutation.removedNodes.forEach(node => {
-      if (node.nodeType === Node.ELEMENT_NODE) destroyCustomSelects(node);
-    });
-  });
+  for (const mutation of mutations) {
+    for (const node of mutation.addedNodes) if (mayHoldSelect(node)) initCustomSelects(node);
+    for (const node of mutation.removedNodes) if (mayHoldSelect(node)) destroyCustomSelects(node);
+  }
 });
 
 document.addEventListener('DOMContentLoaded', () => {

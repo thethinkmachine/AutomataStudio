@@ -459,6 +459,10 @@ export function makeStepColumns(logs, tokens, noteAt, multi = false) {
     noteAt,
     stateAt: i => states.value(stateCol.get(i)),
     tidAt: i => { const c = tidCol.get(i); return c === 0 ? null : tids.value(c); },
+    // Every state the run has been in, in the order it first was — the
+    // interner's own list, so asking costs |Q| and recording cost nothing.
+    // Live; index 0 is the empty code.
+    statesSeen: () => states.values,
 
     /** Record step i — the producer's next — and hand back its step. */
     step(i, state, tid) {

@@ -24,6 +24,7 @@ import { stateNames, transitionsFrom } from './machines/runtime.js';
 import { computeBatchResults, decideBatchRows, parseBatchLine, summarizeBatch } from './machines/batch.js';
 import { poolSize, runParallel, shouldParallelize } from './parallel/pool.js';
 import { renderTracker, resetTracker } from './tape-view.js';
+import { stepColumnsOf } from './tape-log.js';
 import { isPainterSuppressed, setSimStepPainter, withPainterSuppressed } from './machines/paint.js';
 import { makeRun } from './machines/run.js';
 import { nodeIdAtScope, viewGraph, visibleNodeIdFor } from './view-graph.js';
@@ -100,6 +101,29 @@ export function runSim() {
 // ten thousand tape snapshots is long enough to lose the frame and the Escape
 // key with it.
 const DRAIN_SLICE = 500;
+
+// **A drain is paced by time, and painted far less often than it computes.**
+// It used to pull DRAIN_SLICE steps, paint the whole player — the trace log's
+// four hundred rows, the tracker, the canvas — and yield on a zero timer, so
+// ninety-nine per cent of "go to the end" was painting frames of a run moving
+// too fast to read: 28k steps a second, twenty times slower than pressing
+// play at Max, and half an hour to reach the halt of the five-state busy
+// beaver. Now a slice computes for DRAIN_WORK_MS (steps pulled DRAIN_SLICE at a
+// time, each batch scanned for a block boundary before the next is pulled),
+// and the player is painted at most every DRAIN_PAINT_MS, plus once at the end.
+// The page still gets the thread back between slices, so Escape and the
+// transport stay live.
+const DRAIN_WORK_MS = 24;
+const DRAIN_PAINT_MS = 100;
+
+/** Pull until the run ends, a boundary trips, or the slice's time is up. */
+function drainFor(run, ms) {
+  const start = clockNow();
+  do {
+    run.drain(DRAIN_SLICE);
+    maxReachable();   // scans what was just computed for a block boundary
+  } while (!run.done && App.simStopAt == null && clockNow() - start < ms);
+}
 
 /**
  * Take a run from the machine layer and make it the one on screen.
@@ -331,9 +355,24 @@ let logFloor = null;
 /** Back to the tail. Called wherever the playhead moves. */
 export function resetTraceWindow() { logFloor = null; }
 
+// The tail while playback is fast. At Max a frame advances thousands of steps,
+// so every frame's tail is a new one and nothing can slide — 400 rows were
+// formatted, parsed and laid out per frame to be replaced before anyone could
+// read them (15% of a frame at 2.5M steps of the five-state busy beaver). A
+// reader cannot read a log moving that fast either; what they see is its last
+// screenful, which this still more than covers. A ⏭ drain is the same case and
+// takes the same tail. Stopping brings the whole tail back — toggleAuto,
+// playFrame and the drain's last slice each repaint once it has ended.
+export const SIM_LOG_FAST_TAIL = 80;
+
+/** How many steps the log's tail holds right now. */
+function traceTail() {
+  return isFastPlayback() || App.simDrainTimer ? SIM_LOG_FAST_TAIL : SIM_LOG_TAIL;
+}
+
 /** The first step the log is currently drawing. */
 function traceFloor() {
-  const tail = Math.max(0, App.simIdx + 1 - SIM_LOG_TAIL);
+  const tail = Math.max(0, App.simIdx + 1 - traceTail());
   return logFloor == null ? tail : Math.max(0, Math.min(logFloor, tail));
 }
 
@@ -409,7 +448,7 @@ function traceMoreButton(from) {
 /** Can the window drawn last time be slid forward to [from, simIdx]? */
 function traceWindowExtends(el, w, from) {
   if (!w || logFloor != null || w.run !== App.simSteps || w.note !== streamNote) return false;
-  if (from < w.from || App.simIdx < w.to || App.simIdx - w.to >= SIM_LOG_TAIL) return false;
+  if (from < w.from || App.simIdx < w.to || App.simIdx - w.to >= traceTail()) return false;
   // The "earlier steps" button appears once, when the run first outgrows the
   // tail; that is a rebuild rather than a special case.
   if (!!w.btn !== (from > 0)) return false;
@@ -1043,11 +1082,32 @@ function trailUpTo(idx) {
   const scopeKey = (App.scope || []).join('/');
   let c = App._simTrail;
   if (!c || c.run !== App.simSteps || c.upTo > idx || c.scope !== scopeKey) {
-    c = { run: App.simSteps, scope: scopeKey, upTo: 0, visited: new Set(), keys: new Set() };
+    c = { run: App.simSteps, scope: scopeKey, upTo: 0, visited: new Set(), keys: new Set(), tids: new Set() };
   }
+  // **A step that names its transition is looked up once per transition, not
+  // once per step.** Its drawn edge depends on the transition and nothing else,
+  // and a long run takes the same handful of transitions millions of times —
+  // so resolving each step's edge (a step built through the columnar Proxy, a
+  // validated view-graph lookup, an array of keys) was 11% of a frame of fast
+  // playback, all of it re-finding edges the trail already had. A columnar run
+  // is read straight from its columns, so no step is built at all. Only a
+  // set-valued step (an NFA's), whose edges depend on the step before it,
+  // still resolves every time.
+  const cols = c.upTo < idx ? stepColumnsOf(App.simSteps[c.upTo]) : null;
   for (let i = c.upTo; i < idx; i++) {
-    const s = App.simSteps[i];
-    (s.states || (s.state ? [s.state] : [])).forEach(id => c.visited.add(id));
+    let tid;
+    if (cols) {
+      const st = cols.stateAt(i);
+      if (st) c.visited.add(st);
+      tid = cols.tidAt(i);
+    } else {
+      const s = App.simSteps[i];
+      (s.states || (s.state ? [s.state] : [])).forEach(id => c.visited.add(id));
+      tid = s.tid;
+      if (!tid) { getSimStepEdgeKeys(i).forEach(k => c.keys.add(k)); continue; }
+    }
+    if (!tid || c.tids.has(tid)) continue;
+    c.tids.add(tid);
     getSimStepEdgeKeys(i).forEach(k => c.keys.add(k));
   }
   c.upTo = Math.max(c.upTo, idx);
@@ -1853,15 +1913,22 @@ export function stepToEnd() {
   // all of it would take the Escape key with it.
   const run = currentRun();
   if (!run.done && App.simStopAt == null) {
+    let painted = -Infinity;
     const tick = () => {
-      run.drain(DRAIN_SLICE);
-      App.simIdx = Math.max(0, maxReachable());   // scans the slice it just computed
-      renderSimStep();
+      drainFor(run, DRAIN_WORK_MS);
+      App.simIdx = Math.max(0, maxReachable());
       // A boundary tripped mid-drain ends the drain: everything past it is the
       // host machine rather than the block, and computing it would be work for
       // steps nothing can navigate to.
-      if (!run.done && App.simStopAt == null) App.simDrainTimer = setTimeout(tick, 0);
-      else App.simDrainTimer = null;
+      const finished = run.done || App.simStopAt != null;
+      // Cleared before the last paint, which is the one a reader stops on: the
+      // trace log draws its short tail while a drain is running (traceTail).
+      if (finished) App.simDrainTimer = null;
+      if (finished || clockNow() - painted >= DRAIN_PAINT_MS) {
+        renderSimStep();
+        painted = clockNow();
+      }
+      if (!finished) App.simDrainTimer = setTimeout(tick, 0);
     };
     stopDraining();
     tick();
@@ -1884,8 +1951,7 @@ export function computeRestOfRun() {
   if (run.done || App.simStopAt != null) return false;
   stopDraining();
   const tick = () => {
-    run.drain(DRAIN_SLICE);
-    maxReachable();   // scans the slice for a block boundary
+    drainFor(run, DRAIN_WORK_MS);
     updateSimScrubber();
     refreshSpaceTime();
     refreshBranchTree();
@@ -1962,7 +2028,15 @@ export function resetSim() {
   syncSimStatus();
 }
 export function toggleAuto() {
-  if (App.autoTimer) { stopAutoPlay(); setRunBtnState('idle'); return; }
+  if (App.autoTimer) {
+    const wasFast = isFastPlayback();
+    stopAutoPlay();
+    setRunBtnState('idle');
+    // Fast playback drew a short tail (SIM_LOG_FAST_TAIL); a paused reader is
+    // the one who reads history, so they get the whole of it back.
+    if (wasFast && App.simSteps?.length) renderTraceLog();
+    return;
+  }
   // stepFwd pulls, so on a streaming run playback is what drives the
   // computation: the machine advances one step per tick because the animation
   // asked for it, rather than the whole run having been built beforehand.
