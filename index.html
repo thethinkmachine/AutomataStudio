@@ -408,7 +408,7 @@
     <aside class="lpanel" id="lpanel">
       <button class="mobile-panel-toggle" id="lpanel-mobile-toggle" data-mobile-panel-toggle="lpanel" onclick="toggleMobilePanel('lpanel')"
         aria-controls="lpanel-mobile-content" aria-expanded="true">
-        <span class="mobile-panel-title">Workspace</span>
+        <span class="mobile-panel-title">Machine</span>
         <span class="mobile-panel-icon">▾</span>
       </button>
       <div class="mobile-panel-content" id="lpanel-mobile-content">
@@ -420,8 +420,8 @@
           <div class="panel-tabs" id="lpanel-tabs" role="tablist" aria-label="Left panel">
             <button class="panel-tab active" id="panel-tab-workspace" type="button" role="tab"
                     aria-selected="true" aria-controls="lpanel-content">
-              <svg class="panel-tab-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72ZM40,56H92.69l16,16H40ZM216,200H40V88H216Z" /></svg>
-              <span class="panel-tab-label">Workspace</span>
+              <svg class="panel-tab-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M200,152a31.84,31.84,0,0,0-19.53,6.68l-23.11-18A31.65,31.65,0,0,0,160,128c0-.74,0-1.48-.08-2.21l13.23-4.41A32,32,0,1,0,168,104c0,.74,0,1.48.08,2.21l-13.23,4.41A32,32,0,0,0,128,96a32.59,32.59,0,0,0-5.27.44L115.89,81A32,32,0,1,0,96,88a32.59,32.59,0,0,0,5.27-.44l6.84,15.4a31.92,31.92,0,0,0-8.57,39.64L73.83,165.44a32.06,32.06,0,1,0,10.63,12l25.71-22.84a31.91,31.91,0,0,0,37.36-1.24l23.11,18A31.65,31.65,0,0,0,168,184a32,32,0,1,0,32-32Zm0-64a16,16,0,1,1-16,16A16,16,0,0,1,200,88ZM80,56A16,16,0,1,1,96,72,16,16,0,0,1,80,56ZM56,208a16,16,0,1,1,16-16A16,16,0,0,1,56,208Zm56-80a16,16,0,1,1,16,16A16,16,0,0,1,112,128Zm88,72a16,16,0,1,1,16-16A16,16,0,0,1,200,200Z" /></svg>
+              <span class="panel-tab-label">Machine</span>
             </button>
           </div>
           <button class="pin-btn" id="lpanel-pin-btn" onclick="toggleLPanelPin()" aria-label="Unpin left panel" aria-pressed="true" data-tip="Unpin left panel">
@@ -434,6 +434,21 @@
         </div>
         <div class="lpanel-content" id="lpanel-content" role="tabpanel"
              aria-labelledby="panel-tab-workspace">
+          <!-- The exercise this tab is an answer to — first in Machine, because
+               its brief is what is being built. See the note over the
+               registry in js/panel-sections.js. Hidden until there is one;
+               the body is built and wired in js/exercise-ui.js from
+               App.exercise, so nothing inside needs a name in bridge.js. -->
+          <div class="rp-collapsible" id="rp-exercise" style="display:none">
+            <div class="rp-section-header" onclick="toggleRPSection('rp-exercise')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-exercise')}">
+              <span class="rp-section-title">Exercise</span>
+              <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+            </div>
+            <div class="rp-section-body">
+              <div class="ex-body" id="exercise-body"></div>
+            </div>
+          </div>
+
           <!-- The machine's own parameters — how many tapes, whether the tape
                runs left of the input, a PFA's cut-point. They were in three
                places (the Language card, two Settings tabs) and each is a
@@ -442,7 +457,7 @@
                and a machine with none hides the section. -->
           <div class="sec lp-collapsible" id="lp-machine" style="display:none">
             <div class="lp-section-header" onclick="toggleLPSection('lp-machine')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLPSection('lp-machine')}">
-              <span class="sec-lbl lp-section-title">Machine</span>
+              <span class="sec-lbl lp-section-title">Parameters</span>
               <svg class="lp-toggle-arrow" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
             </div>
             <div class="lp-section-body">
@@ -799,7 +814,7 @@
                 <button class="panel-tab active" id="panel-tab-inspector" type="button" role="tab"
                         aria-selected="true" aria-controls="rpanel-content">
                   <svg class="panel-tab-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z" /></svg>
-                  <span class="panel-tab-label">Inspector</span>
+                  <span class="panel-tab-label">Analyze</span>
                 </button>
                 <button class="panel-tab" id="panel-tab-run" type="button" role="tab"
                         aria-selected="false" aria-controls="rpanel-run-content" tabindex="-1">
@@ -861,18 +876,6 @@
                  the only ones in the app that no keyboard could collapse and
                  no screen reader could report the state of — the same half of a
                  control rowActions() found missing on the list rows. -->
-            <!-- The exercise this tab is an answer to. Hidden until there is one;
-                 the body is built and wired in js/exercise-ui.js from
-                 App.exercise, so nothing inside needs a name in bridge.js. -->
-            <div class="rp-collapsible" id="rp-exercise" style="display:none">
-              <div class="rp-section-header" onclick="toggleRPSection('rp-exercise')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-exercise')}">
-                <span class="rp-section-title">Exercise</span>
-                <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
-              </div>
-              <div class="rp-section-body">
-                <div class="ex-body" id="exercise-body"></div>
-              </div>
-            </div>
             <div class="rp-collapsible" id="rp-language">
               <div class="rp-section-header" onclick="toggleRPSection('rp-language')" role="button" aria-expanded="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-language')}">
                 <span class="rp-section-title">Language</span>
@@ -976,7 +979,7 @@
             <!-- ─── RUN ───
                  The player and everything drawn from the run it holds: the
                  transport and tape, the trace, the computation tree and the
-                 space-time diagram. The Inspector keeps what is about the
+                 space-time diagram. Analyze keeps what is about the
                  machine over all its inputs; see the `run` group in
                  js/panel-sections.js for where that line is drawn. -->
             <div class="rpanel-content" id="rpanel-run-content" role="tabpanel"
@@ -1398,7 +1401,7 @@
       <button class="mobile-bar-btn mobile-bar-panel" type="button" id="mobile-panel-btn"
         aria-expanded="false">
         <span class="mobile-bar-icon" id="mobile-panel-btn-icon" aria-hidden="true"></span>
-        <span class="mobile-bar-label" id="mobile-panel-btn-label">Inspector</span>
+        <span class="mobile-bar-label" id="mobile-panel-btn-label">Analyze</span>
         <span class="mobile-bar-dot" id="mobile-statemate-dot" hidden></span>
       </button>
     </nav>

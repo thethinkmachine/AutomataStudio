@@ -20,7 +20,7 @@ import {
   isPanelTabActive, movePanelTabTo, PANEL_SIDES, PANEL_TAB_NAMES, PANEL_TABS, panelTabNames,
   setActivePanelTab, setPanelTabOrder, setTabSides
 } from './panel-state.js';
-import { PANEL_SECTIONS, PANEL_SECTION_SIDES, declaredSectionIds, isSectionFloating, sectionConfig, sectionHost, sectionSide, sectionStartsCollapsed } from './panel-sections.js';
+import { PANEL_SECTIONS, isSectionFloating, sectionConfig, sectionHost, sectionSide, sectionStartsCollapsed, sectionsWithHeader } from './panel-sections.js';
 import { syncDockFill } from './panel-sections-ui.js';
 import { setShakeToMinimizeEnabled, shakeToMinimizeEnabled } from './panel-state.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
@@ -4079,7 +4079,7 @@ export function toggleLPSection(id) {
 // were written down, and a section in one and not the other is a section that
 // silently never restores its collapsed state.
 export function initLPanelSections() {
-  declaredSectionIds('lpanel').forEach(id => {
+  sectionsWithHeader('lp-section-header').forEach(id => {
     let collapsed = sectionStartsCollapsed(id);
     try {
       const raw = localStorage.getItem(`automata-lpanel-section-${id}`);
@@ -4090,14 +4090,12 @@ export function initLPanelSections() {
 }
 
 /**
- * Every section built on the right panel's markup — the Inspector's and the
- * Run tab's. By declaration, not by where their tabs are now: the collapse
- * helpers and storage keys follow the markup wherever a card is dragged.
+ * Every section built on the right panel's markup — Analyze's, Run's, and the
+ * exercise wherever it is declared. By markup, not by where a card is: the
+ * collapse helpers and storage keys follow the markup wherever it is dragged.
  */
 function rpanelSectionIds() {
-  return PANEL_SECTION_SIDES
-    .filter(group => PANEL_SECTIONS[group].headerClass === 'rp-section-header')
-    .flatMap(group => declaredSectionIds(group));
+  return sectionsWithHeader('rp-section-header');
 }
 
 export const RP_SECTION_DEFAULTS = Object.fromEntries(

@@ -248,12 +248,19 @@ test('the menu offers StateMate the other panel, and a reset once anything moved
 //  jumps into a run from outside the tab has to bring the tab up with it, or
 //  the word runs and the transport, tape and trace stay out of sight.
 
-test('the Run tab hosts the player and what it draws; the Inspector keeps the rest', () => {
+test('every card has a tab: Machine builds, Analyze reads, Run steps', () => {
   mount();
-  assert.deepEqual(context.declaredSectionIds('run'),
-    ['rp-simulate', 'rp-trace', 'rp-branches', 'rp-spacetime']);
+  assert.deepEqual(context.declaredSectionIds('lpanel'),
+    ['rp-exercise', 'lp-machine', 'lp-alphabet', 'lp-states', 'lp-transitions', 'lp-blocks'],
+    'the brief first, then what you edit');
   assert.deepEqual(context.declaredSectionIds('rpanel'),
-    ['rp-exercise', 'rp-language', 'rp-complexity', 'rp-batch']);
+    ['rp-language', 'rp-batch', 'rp-complexity'],
+    'the machine over all its inputs');
+  assert.deepEqual(context.declaredSectionIds('run'),
+    ['rp-simulate', 'rp-trace', 'rp-branches', 'rp-spacetime'],
+    'one input, step by step');
+  assert.equal(context.sectionConfig('rp-exercise').headerClass, 'rp-section-header',
+    'the exercise keeps its own markup in a stack of Workspace-style cards');
   assert.equal(context.sectionHost('run'), 'rpanel', 'both are stacks in the right panel');
   assert.equal(context.PANEL_TABS.run.panel, context.PANEL_SECTIONS.run.container,
     'and the tab controls exactly the container the group draws into');

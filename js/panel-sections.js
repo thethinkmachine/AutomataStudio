@@ -38,6 +38,30 @@ import { getTabSide } from './panel-state.js';
 // another tab. The registry below is where each one is declared — its home,
 // and what its markup is shaped like (`headerClass`, the collapse storage
 // key) wherever it goes. `sectionSide` answers where it is now.
+// ── how the cards are organised ──────────────────────────────────
+//
+// Three stacks, one per job, and the tab names say the job:
+//
+//   Machine  (tab key `workspace`, left)  — what you are building. The task
+//            if there is one, the parameters, Σ/Γ/Δ, Q, δ, blocks: every card
+//            here is edited, and nothing is derived.
+//   Analyze  (tab key `inspector`, right) — the machine over *all* its
+//            inputs: the language it recognises, many words at once, how its
+//            runs grow. Read-only, recomputed as you edit.
+//   Run      (tab key `run`, right) — *one* input, step by step: the player
+//            and everything drawn from the run it holds.
+//
+// The keys predate the names and are kept, because they are what saved
+// layouts (tab sides, tab order, card placement) are written in. "Workspace"
+// was retired as a label because it already names the document tabs across
+// the top, the mobile workspace switcher and a Settings tab; "Inspector"
+// because it named no job at all.
+//
+// The exercise sits at the top of Machine rather than beside Analyze: its
+// brief is what you are building towards, and the left panel is the one that
+// stays up while you build — on the right it competed with the player for the
+// same panel. It keeps the right panel's markup, so its entry says so
+// (`headerClass`/`titleClass` override the group's; see `sectionConfig`).
 export const PANEL_SECTION_SIDES = Object.freeze(['lpanel', 'rpanel', 'run']);
 
 export const PANEL_SECTIONS = Object.freeze({
@@ -54,8 +78,15 @@ export const PANEL_SECTIONS = Object.freeze({
     // stretching one that holds a single line draws a tall empty card.
     dockFill: true,
     sections: Object.freeze([
-      // The machine's own parameters (js/machine-options-ui.js). Hidden on the
-      // machines that have none, which is most of them.
+      // Shown only while the tab carries an exercise (js/exercise-ui.js), and
+      // first because it is the reason the tab exists.
+      Object.freeze({
+        id: 'rp-exercise', collapsed: false, minW: 300, minH: 200,
+        headerClass: 'rp-section-header', titleClass: 'rp-section-title'
+      }),
+      // The machine's own parameters (js/machine-options-ui.js), titled
+      // "Parameters" so the card is not a second "Machine" inside the Machine
+      // tab. Hidden on the machines that have none, which is most of them.
       Object.freeze({ id: 'lp-machine', collapsed: false, minW: 240, minH: 120 }),
       // Σ, Γ and Δ as rows of one section. No fill: with two or three chip
       // fields in it, stretching the first would push the others to the foot
@@ -73,17 +104,17 @@ export const PANEL_SECTIONS = Object.freeze({
     titleClass: 'rp-section-title',
     storeKey: 'automata-rpanel-section',
     sections: Object.freeze([
-      // Shown only while the tab carries an exercise (js/exercise-ui.js), and
-      // first because it is the reason the tab exists.
-      Object.freeze({ id: 'rp-exercise', collapsed: false, minW: 300, minH: 200 }),
+      // What it accepts, then checking that against many words, then what
+      // accepting them costs — the order a reader asks the three questions in,
+      // and the frequency they ask them at.
       Object.freeze({ id: 'rp-language', collapsed: false, minW: 300, minH: 200 }),
+      Object.freeze({ id: 'rp-batch', collapsed: true, minW: 320, minH: 220, fill: '.batch-result' }),
       // How a machine's runs grow with its input — js/complexity-ui.js. The
       // charts are what take a window's spare height.
-      Object.freeze({ id: 'rp-complexity', collapsed: true, minW: 360, minH: 320, fill: '.cx-charts' }),
-      Object.freeze({ id: 'rp-batch', collapsed: true, minW: 320, minH: 220, fill: '.batch-result' })
+      Object.freeze({ id: 'rp-complexity', collapsed: true, minW: 360, minH: 320, fill: '.cx-charts' })
     ])
   }),
-  // The Run tab: everything that follows the player's cursor. The Inspector
+  // The Run tab: everything that follows the player's cursor. Analyze
   // keeps what is about the machine over *all* its inputs — its language,
   // many words at once, how its runs grow — and these are about *one* run,
   // step by step: every section here is drawn from the run the player holds
@@ -161,10 +192,29 @@ function sectionEntry(id) {
   return group ? PANEL_SECTIONS[group].sections.find(s => s.id === id) : null;
 }
 
-/** The declared group's config: header and title classes follow the markup. */
+/**
+ * The declared group's config, with the card's own markup classes over it:
+ * header and title classes follow the markup, and a card may be declared in a
+ * stack whose other cards are built differently (the exercise, in Machine).
+ */
 export function sectionConfig(id) {
   const group = declaredGroupOf(id);
-  return group ? PANEL_SECTIONS[group] : null;
+  if (!group) return null;
+  const entry = sectionEntry(id);
+  const cfg = PANEL_SECTIONS[group];
+  if (!entry.headerClass && !entry.titleClass) return cfg;
+  return {
+    ...cfg,
+    headerClass: entry.headerClass || cfg.headerClass,
+    titleClass: entry.titleClass || cfg.titleClass
+  };
+}
+
+/** Every declared card built on one header class, wherever it is declared. */
+export function sectionsWithHeader(headerClass) {
+  return PANEL_SECTION_SIDES
+    .flatMap(group => PANEL_SECTIONS[group].sections.map(s => s.id))
+    .filter(id => sectionConfig(id).headerClass === headerClass);
 }
 
 const PLACEMENT_KEY = 'automata-section-groups';
