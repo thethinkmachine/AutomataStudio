@@ -803,3 +803,108 @@ test('a reset drops the whole-run export built from the old run', () => {
     Object.assign(SpaceTimeExportOpts, saved);
   }
 });
+
+// A scroller that lays out the way Firefox 156 does (measured): a spacer
+// larger than `limit` is not clamped to it but dropped — laid out 0px — and
+// the scroll offsets are clamped to whatever the spacer does give. Chromium
+// clamps instead of dropping, at 26,843,542px; either way the end of a long
+// enough run is out of reach of a scroller asked to be the diagram's size.
+function browserScroller(els, limit) {
+  const { scroll, size } = els;
+  const laid = v => { const n = parseFloat(v) || 0; return n > limit ? 0 : n; };
+  let top = 0, left = 0;
+  Object.defineProperties(scroll, {
+    scrollHeight: { configurable: true, get: () => Math.max(scroll.clientHeight, laid(size.style.height)) },
+    scrollWidth: { configurable: true, get: () => Math.max(scroll.clientWidth, laid(size.style.width)) },
+    scrollTop: { configurable: true, get: () => top, set: v => { top = Math.max(0, Math.min(scroll.scrollHeight - scroll.clientHeight, Math.round(v))); } },
+    scrollLeft: { configurable: true, get: () => left, set: v => { left = Math.max(0, Math.min(scroll.scrollWidth - scroll.clientWidth, Math.round(v))); } }
+  });
+}
+
+/** One state that writes and moves right until the budget: a row per step, a cell per row. */
+function runawayRun(steps) {
+  harness.resetApp();
+  const { App, setMachine } = context;
+  setMachine('TM');
+  const B = App.config.sym.blank;
+  App.states.push({ id: 's0', name: 'q0', x: 100, y: 100 });
+  App.startId = 's0';
+  App.sigma = new Set(['a']);
+  App.tapeAlphabet = new Set(['a', 'x', B]);
+  App.transitions.push({ id: 't0', from: 's0', to: 's0', symbol: B, write: 'x', dir: 'R' });
+  App.config.maxTmSteps = steps;
+}
+
+test('a diagram taller and wider than the browser will lay out still scrolls end to end', () => {
+  // BB(5) at a pixel a row passes Firefox's limit at 17.9M steps, and the
+  // view locked to its top-left corner: the spacer had been dropped, so there
+  // was nothing to scroll. The cap is lowered here so a 2,000-step run is
+  // past it; the mapping is the same one the real cap engages.
+  runawayRun(2000);
+  const { runSim, resetSim, stepToEnd, _spaceTimeTests: t } = context;
+  const sec = harness.getElement('rp-spacetime');
+  sec.style.display = '';
+  sec.classList.remove('collapsed');
+  harness.getElement('sim-in').value = '';
+  runSim();
+  assert.ok(t.els, 'the section is built');
+  const LIMIT = 1500;
+  t.setScrollCap(1000);
+  browserScroller(t.els, LIMIT);
+  resetSim();
+  runSim();
+  stepToEnd();
+
+  const m = t.model, L = t.layout;
+  const { scroll, size } = t.els;
+  const vw = scroll.clientWidth, vh = scroll.clientHeight;
+  assert.ok(L.height > LIMIT && L.width > LIMIT, `the diagram (${L.width}×${L.height}) is past what this browser lays out`);
+  assert.ok(parseFloat(size.style.height) <= t.SCROLL_CAP && parseFloat(size.style.width) <= t.SCROLL_CAP, 'the spacer never is');
+  assert.ok(t.vscroll.ky > 1 && t.vscroll.kx > 1, 'so both axes are mapped');
+
+  const last = m.rows - 1;
+  for (const row of [0, 1, Math.floor(last / 3), Math.floor(last / 2), last - 1, last]) {
+    const head = m.headAt(0, row);
+    t.centerOn(row, 0, head, false);
+    const r = t.visibleRange(m, L, vw, vh);
+    assert.ok(r.row0 <= row && row <= r.row1, `row ${row} is on screen (showing ${r.row0}–${r.row1})`);
+    assert.ok(r.cols[0] && r.cols[0][0] <= head && head <= r.cols[0][1], `and so is the head at cell ${head} (showing ${r.cols[0]})`);
+  }
+
+  // The reader's own scrollbar reaches both ends of the run.
+  scroll.scrollTop = 1e9;
+  scroll.scrollLeft = 1e9;
+  let r = t.visibleRange(m, L, vw, vh);
+  assert.equal(r.row1, last, 'the scrollbar at the bottom is the last step');
+  assert.equal(r.cols[0][1], m.tapes[0].hi, 'and at the right, the last cell');
+  scroll.scrollTop = 0;
+  scroll.scrollLeft = 0;
+  r = t.visibleRange(m, L, vw, vh);
+  assert.equal(r.row0, 0);
+  assert.equal(r.cols[0][0], m.tapes[0].lo);
+
+  // A position set by the diagram is kept exactly, not rounded to the
+  // scroller's coarser pixels: a row at a time is still a row at a time.
+  t.centerOn(700, null, null, false);
+  const y0 = t.scrollY();
+  t.setScrollXY(null, y0 + L.cell);
+  assert.equal(t.scrollY(), y0 + L.cell);
+});
+
+test('under the cap the scroller is the diagram, as it always was', () => {
+  runawayRun(200);
+  const { runSim, stepToEnd, _spaceTimeTests: t } = context;
+  const sec = harness.getElement('rp-spacetime');
+  sec.style.display = '';
+  sec.classList.remove('collapsed');
+  harness.getElement('sim-in').value = '';
+  runSim();
+  stepToEnd();
+  const { size, scroll } = t.els;
+  assert.equal(parseFloat(size.style.height), t.layout.height);
+  assert.equal(parseFloat(size.style.width), t.layout.width);
+  assert.equal(t.vscroll.ky, 1);
+  assert.equal(t.vscroll.kx, 1);
+  scroll.scrollTop = 123;
+  assert.equal(t.scrollY(), 123, 'a read is the scroller\'s own');
+});
