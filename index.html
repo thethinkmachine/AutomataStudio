@@ -594,6 +594,10 @@
       <!-- ─── BUILD VIEW ─── -->
       <div id="v-build" style="display:flex">
         <div class="canvas-area" id="canvas-wrap">
+          <!-- The grid. An element of its own, and childless, because the camera
+               is written onto it every frame of a pan or zoom — see applyCamera()
+               in js/canvas.js. -->
+          <div class="canvas-grid" id="canvas-grid" aria-hidden="true"></div>
           <!-- Where you are inside the block hierarchy. Empty and hidden at the
                top level; js/scope.js fills it and attaches its own listeners. -->
           <nav class="scope-bar" id="scope-bar" aria-label="Block location" hidden></nav>

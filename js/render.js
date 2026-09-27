@@ -69,7 +69,7 @@ export function renderAll() {
   // caches are still refreshed from the DOM.
   App.domCache.notes.clear();
   App.domCache.dividers.clear();
-  document.querySelectorAll('.note-g').forEach(el => App.domCache.notes.set(el.getAttribute('data-note-id'), el));
+  for (const el of $('notes-g')?.childNodes || []) App.domCache.notes.set(el.getAttribute('data-note-id'), el);
   document.querySelectorAll('.divider-g').forEach(el => App.domCache.dividers.set(el.getAttribute('data-divider-id'), el));
   if (App.activeNoteId && typeof highlightNoteAnchors === 'function') highlightNoteAnchors(App.activeNoteId, true);
   if (typeof applyEdgeDirectionHighlight === 'function') applyEdgeDirectionHighlight();
