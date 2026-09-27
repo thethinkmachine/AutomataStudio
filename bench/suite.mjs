@@ -26,15 +26,21 @@ for (const kase of suites[suiteName] || []) {
   try {
     if (row.kind === 'memory') {
       if (!hasGC) { row.skipped = 'needs node --expose-gc'; results.push(row); continue; }
-      const { make, count } = kase.setup(env);
-      make();   // warm-up, so the first run's compiled code is not counted as retained
+      const s = kase.setup(env);
+      if (s.skip) { row.skipped = s.skip; results.push(row); process.stderr.write('-'); continue; }
+      const { make, count } = s;
+      if (s.warm !== false) make();   // warm-up, so the first run's compiled code is not counted as retained
       const { bytes, kept } = retainedBytes(make);
       row.value = bytes / count;
+      row.count = count;
       row.check = kept?.steps?.length ?? null;
     } else {
-      const { run, count } = kase.setup(env);
+      const s = kase.setup(env);
+      if (s.skip) { row.skipped = s.skip; results.push(row); process.stderr.write('-'); continue; }
+      const { run, count } = s;
       const t = timeIt(run, mode);
       row.value = (t.ms * 1e6) / count;   // nanoseconds per unit
+      row.count = count;
       row.spread = t.spread;
       row.reps = t.reps;
       row.check = t.check;

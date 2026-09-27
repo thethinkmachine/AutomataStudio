@@ -8,16 +8,21 @@
 // reads as a cost per symbol, per step or per word.
 //
 // A memory case (`kind: 'memory'`) returns `{ make, count }` instead, and is
-// reported as the bytes `make()`'s result keeps alive, per `per`.
+// reported as the bytes `make()`'s result keeps alive, per `per`. It may add
+// `warm: false` to skip the warm-up run (a run of tens of seconds has nothing
+// to warm), and any case may return `{ skip: reason }` instead.
+//
+// A suite array may carry `rounds`, capping how many processes it runs in.
 //
 // Names are the keys a baseline is compared by: rename one and it becomes a
 // new case.
 
+import v8 from 'node:v8';
 import {
-  balancedBrackets, binary, busyBeaver5, gridMachine, loadExample, parsed,
-  randomDFA, randomNFA, randomString, randomTokens, runawayTM, sweeperTM
+  BB5_HALT, balancedBrackets, binary, busyBeaver5, gridMachine, loadExample, parsed,
+  randomDFA, randomNFA, randomString, randomTokens, runawayMTM, runawayTM, sweeperTM
 } from './machines.mjs';
-import { rng } from './measure.mjs';
+import { retainedBytes, rng } from './measure.mjs';
 
 // Searches and two-way heads stop at a configured budget; the benchmark asks
 // how long the work takes, so it lifts the budget out of the way.
@@ -359,8 +364,10 @@ const player = [
     }
   },
   {
-    // The tape a step shows is rebuilt from the run's journal of writes, so
-    // scrubbing costs in proportion to the distance travelled.
+    // The tape a step shows is rebuilt from the tape log (js/tape-log.js):
+    // from a checkpoint either side, or from where the reader already is. A
+    // jump costs about a tape-width of writes however far it goes — it used
+    // to cost the distance from step 0, 4.4ms for this one.
     name: 'scrub across half of a 1M-step run',
     per: 'jump',
     setup(env) {
@@ -368,10 +375,57 @@ const player = [
       env.c.App.config.maxTmSteps = 1e6;
       const steps = env.c.traceMachine('TM', []).steps;
       const n = steps.length;
-      let k = 0;
-      return { run: () => steps[k++ % 2 ? n - 1 : n >> 1].tape.length, count: 1 };
+      // Eight round trips a run: one is two jumps of ~20µs, too short a sample
+      // to time steadily. Each trip costs the same — the reader is left at the
+      // middle, and the next jump starts from there.
+      return {
+        run: () => {
+          let cells = 0;
+          for (let k = 0; k < 8; k++) cells += steps[n - 1].tape.length + steps[n >> 1].tape.length;
+          return cells;
+        },
+        count: 16
+      };
     }
-  }
+  },
+  {
+    // The same jump where the tape is as wide as the run — the case whose
+    // bound is the width: a checkpoint load and the window both cost it.
+    name: 'scrub across half of a runaway TM run, 200k steps',
+    per: 'jump',
+    setup(env) {
+      runawayTM(env);
+      env.c.App.config.maxTmSteps = 2e5;
+      const steps = env.c.traceMachine('TM', []).steps;
+      const n = steps.length;
+      // There and back in one run: the two jumps cost differently, and a run
+      // of one would make the timings bimodal.
+      return { run: () => steps[n - 1].tape.length + steps[n >> 1].tape.length, count: 2 };
+    }
+  },
+  // What the tracker does every frame of playback: read the step's tape. The
+  // trace cases above only produce steps; these read them back, in each
+  // direction, from the middle of a long run. A step either way is one write
+  // to the log's copy of the tape plus the window drawn, which on BB(5) at a
+  // million steps is a couple of thousand cells.
+  ...[['forward', 1], ['back', -1]].map(([dir, d]) => ({
+    name: `step ${dir} through a 1M-step run, reading each tape`,
+    per: 'step',
+    setup(env) {
+      busyBeaver5(env);
+      env.c.App.config.maxTmSteps = 1e6;
+      const steps = env.c.traceMachine('TM', []).steps;
+      const K = 2000, from = steps.length >> 1;
+      return {
+        run: () => {
+          let cells = 0;
+          for (let k = 0; k < K; k++) cells += steps[from + d * k].tape.length;
+          return cells;
+        },
+        count: K
+      };
+    }
+  }))
 ];
 
 // ── memory ──────────────────────────────────────────────────────────
@@ -379,14 +433,40 @@ const player = [
 // player, and the number the checkpointed player is meant to cut.
 
 const memory = [
-  {
-    name: 'player: BB(5) champion, 1M steps',
+  // The same run at two horizons. A cost per step that holds from 1M to 4M is
+  // a run that is linear in its length; one that falls is not — which is what
+  // a long-horizon player has to be, and what one number could not show.
+  ...[1e6, 4e6].map(n => ({
+    name: `player: BB(5) champion, ${n / 1e6}M steps`,
     kind: 'memory',
     per: 'step',
     setup(env) {
       busyBeaver5(env);
-      env.c.App.config.maxTmSteps = 1e6;
-      return { make: () => env.c.traceMachine('TM', []), count: 1e6 };
+      env.c.App.config.maxTmSteps = n;
+      return { make: () => env.c.traceMachine('TM', []), count: n };
+    }
+  })),
+  // A tape as wide as the run is long. Whatever a step costs on BB(5), whose
+  // tape stays a few thousand cells, this is where anything kept per window
+  // rather than per step — a checkpoint of the cells — goes quadratic.
+  {
+    name: 'player: runaway TM, 200k steps',
+    kind: 'memory',
+    per: 'step',
+    setup(env) {
+      runawayTM(env);
+      env.c.App.config.maxTmSteps = 2e5;
+      return { make: () => env.c.traceMachine('TM', []), count: 2e5 };
+    }
+  },
+  {
+    name: 'player: runaway MTM, 3 tapes, 200k steps',
+    kind: 'memory',
+    per: 'step',
+    setup(env) {
+      runawayMTM(env, 3);
+      env.c.App.config.maxTmSteps = 2e5;
+      return { make: () => env.c.traceMachine('MTM', []), count: 2e5 };
     }
   },
   {
@@ -565,4 +645,86 @@ const spacetime = [
   }))
 ];
 
-export const suites = { decide: [...finiteWords, ...turing], search, tokenize, player, memory, layout, spacetime };
+// ── the whole horizon ───────────────────────────────────────────────
+// A per-step rate at a million steps is a slope; this is the run a reader
+// actually asks for. BB(5) halts after 47,176,870 steps, and the question is
+// whether the player can hold that run at all — and with the space-time
+// diagram open beside it, since the two are what a reader watching a busy
+// beaver has on screen.
+//
+// A case here that ran out of heap would kill its process and every row with
+// it, so each first measures a million steps, projects the whole run, and
+// skips — naming the projection — when it would not fit the heap this process
+// was given. The projection is only a guard: a player whose cost per step
+// falls with the length of the run is over-estimated by it, never under.
+// One round, since a byte count does not vary between processes the way a
+// timing does, and the run is tens of seconds. The one timing here, a jump,
+// is compared on its within-run spread alone for the same reason.
+
+function projectOrSkip(env, make) {
+  if (typeof globalThis.gc !== 'function') return null;
+  const limit = v8.getHeapStatistics().heap_size_limit;
+  env.c.App.config.maxTmSteps = 1e6;
+  const { bytes } = retainedBytes(make);
+  const projected = (bytes / 1e6) * BB5_HALT;
+  env.c.App.config.maxTmSteps = BB5_HALT + 1;
+  const gb = b => `${(b / 2 ** 30).toFixed(1)} GB`;
+  return projected > 0.75 * limit ? `would keep ≈${gb(projected)}; this process may use ${gb(limit)}` : null;
+}
+
+const horizon = Object.assign([
+  {
+    // A jump anywhere in the whole run, to seeded places: what a reader pays
+    // to scrub BB(5) once it has halted. It is bounded by the tape's width —
+    // about twelve thousand cells at the halt — and not by the 47 million
+    // steps, which is the claim this measures; replayed from step 0, the
+    // middle of this run was 23 million writes.
+    name: 'jump anywhere in BB(5) run to halt',
+    per: 'jump',
+    setup(env) {
+      busyBeaver5(env);
+      const skip = projectOrSkip(env, () => env.c.traceMachine('TM', []));
+      if (skip) return { skip };
+      const steps = env.c.traceMachine('TM', []).steps;
+      const r = rng(47);
+      const at = Array.from({ length: 32 }, () => Math.floor(r() * steps.length));
+      return {
+        run: () => {
+          let cells = 0;
+          for (const i of at) cells += steps[i].tape.length;
+          return cells;
+        },
+        count: at.length
+      };
+    }
+  },
+  {
+    name: 'player: BB(5) champion, run to halt',
+    kind: 'memory',
+    per: 'run',
+    setup(env) {
+      busyBeaver5(env);
+      const make = () => env.c.traceMachine('TM', []);
+      const skip = projectOrSkip(env, make);
+      return skip ? { skip } : { make, count: 1, warm: false };
+    }
+  },
+  {
+    name: 'player + space-time diagram: BB(5), run to halt',
+    kind: 'memory',
+    per: 'run',
+    setup(env) {
+      busyBeaver5(env);
+      const make = () => {
+        const run = env.c.traceMachine('TM', []);
+        const model = env.c.makeSpaceTime(run.steps, { alphabet: ['1'] });
+        model.extend(run.steps.length);
+        return { steps: run.steps, run, model };
+      };
+      const skip = projectOrSkip(env, make);
+      return skip ? { skip } : { make, count: 1, warm: false };
+    }
+  }
+], { rounds: 1 });
+
+export const suites = { decide: [...finiteWords, ...turing], search, tokenize, player, memory, layout, spacetime, horizon };
