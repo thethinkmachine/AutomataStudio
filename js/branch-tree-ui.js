@@ -26,6 +26,7 @@ import { getTransition, transLabel } from './states-transitions.js';
 import { makeSVG, setSectionCount } from './render.js';
 import { setSectionStatus } from './section-status.js';
 import { syncPanelEmpty } from './panel-float.js';
+import { sectionSide } from './panel-sections.js';
 import { machineBranches } from './machines/index.js';
 import { branchTreeOf } from './machines/branch-tree.js';
 import { Change, subscribe } from './store.js';
@@ -69,7 +70,7 @@ export function syncBranchTreeSection() {
   const want = machineBranches() ? '' : 'none';
   if (el.style.display === want) return;
   el.style.display = want;
-  syncPanelEmpty('rpanel');
+  syncPanelEmpty(sectionSide(BRANCHES_SECTION));
   if (want === '') refreshBranchTree();
 }
 

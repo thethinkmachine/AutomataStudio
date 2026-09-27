@@ -42,7 +42,7 @@ test('the trace log is a card of its own, with the log as the part that grows', 
   // A transport you operate and a history you read are two things. Sharing one
   // box meant reading back through a run pushed the play button off the top of
   // the panel, and collapsing the transport took the log with it.
-  assert.ok(context.declaredSectionIds('rpanel').includes('rp-trace'));
+  assert.ok(context.declaredSectionIds('run').includes('rp-trace'), 'in the Run tab, beside the player');
   assert.equal(context.sectionFill('rp-trace'), '.trace-log');
   assert.equal(context.sectionFill('rp-simulate'), null,
     'and Simulate has nothing left to grow: its window fits the transport and the tape');

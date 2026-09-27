@@ -42,8 +42,8 @@
 // does it, so the whole feature adds nothing to `bridge.js`.
 
 import {
-  FLOAT_MIN_H, FLOAT_MIN_W, PANEL_SECTIONS, PANEL_SECTION_SIDES,
-  declaredSectionIds, floatState, floatStates, isSectionFloating,
+  FLOAT_MIN_H, FLOAT_MIN_W, PANEL_SECTIONS, PANEL_SECTION_SIDES, sectionHost,
+  declaredSectionIds, floatState, floatStates, groupSectionIds, isSectionFloating, sectionConfig,
   resetFloatStates, sectionFill, sectionMinSize, sectionSide, setFloatState
 } from './panel-sections.js';
 import { applySectionOrder } from './panel-sections-ui.js';
@@ -396,7 +396,7 @@ function naturalGeom(el, rect, id) {
   const height = Math.max(min.h, Math.round(h) || 260);
   // Without a measurable well there is no right edge to open against — the
   // test DOM, a hidden view — so it cascades from the left as it always did.
-  const fromRight = sectionSide(id) === 'rpanel' && measurable(rect);
+  const fromRight = sectionHost(sectionSide(id)) === 'rpanel' && measurable(rect);
   return clampGeom({
     x: fromRight ? rect.width - width - EDGE_GUTTER - step : EDGE_GUTTER + step,
     y: EDGE_GUTTER + step,
@@ -526,7 +526,7 @@ export function toggleSectionFloat(id) {
 
 /** Every window of a side back into its panel. */
 export function dockAllSections(side) {
-  declaredSectionIds(side).forEach(id => {
+  groupSectionIds(side).forEach(id => {
     if (isSectionFloating(id)) dockSection(id);
   });
 }
@@ -754,7 +754,7 @@ export function syncPanelEmpty(side) {
   const container = containerOf(side);
   if (!cfg || !container) return;
 
-  const known = declaredSectionIds(side);
+  const known = groupSectionIds(side);
   // Spread, because `children` is an `HTMLCollection` and has no array methods
   // on it — `.some()` is `undefined` in a browser and throws, which is not
   // something a test DOM backed by a real array can tell you. `domOrder` in
@@ -770,9 +770,10 @@ export function syncPanelEmpty(side) {
   if (!note) {
     note = document.createElement('div');
     note.id = side + '-float-empty';
+  }
+  if (!note.__text) {
     note.className = 'panel-float-empty';
     const p = document.createElement('p');
-    p.textContent = 'Every section is floating over the canvas.';
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn-g panel-float-return';
@@ -780,7 +781,21 @@ export function syncPanelEmpty(side) {
     btn.addEventListener('click', () => dockAllSections(side));
     note.appendChild(p);
     note.appendChild(btn);
+    note.__text = p;
+    note.__btn = btn;
   }
+  // Three different emptinesses, and only one of them has a way back to
+  // offer. Cards can be dragged to other tabs now, so "every section is
+  // floating" is no longer the only way a tab ends up with nothing in it.
+  const floating = known.some(id => isSectionFloating(id));
+  if (note.__text) {
+    note.__text.textContent = floating
+      ? 'Every section is floating over the canvas.'
+      : known.length
+        ? 'Nothing on this tab applies to this machine.'
+        : 'No cards on this tab. Drag a card onto it, or right-click a card to move it here.';
+  }
+  if (note.__btn) note.__btn.hidden = !floating;
   note.style.display = '';
   container.appendChild(note);
 }
@@ -800,7 +815,7 @@ export function syncPanelEmpty(side) {
  */
 function installChrome(side, id) {
   const el = sectionEl(id);
-  const cfg = PANEL_SECTIONS[side];
+  const cfg = sectionConfig(id);
   if (!el || !cfg || el.__floatBtn) return;
   const header = typeof el.querySelector === 'function'
     ? el.querySelector('.' + cfg.headerClass) : null;
@@ -1046,7 +1061,7 @@ function onPointerDown(e) {
   // not travel is still a collapse. The grip inside the header is deliberately
   // included — it is what the reader took hold of to pull the section out, and
   // it goes on being the thing you take hold of to move it.
-  const cfg = PANEL_SECTIONS[sectionSide(win.id)];
+  const cfg = sectionConfig(win.id);
   if (!cfg || !t.closest('.' + cfg.headerClass)) return;
   beginMove(win.id, e);
 }
@@ -1191,8 +1206,7 @@ function onPointerUp(e) {
 function floatingHeader(t) {
   const win = t && t.parentNode;
   if (!win || !win.classList || !win.classList.contains('panel-float')) return null;
-  const side = sectionSide(win.id);
-  const cfg = side && PANEL_SECTIONS[side];
+  const cfg = sectionConfig(win.id);
   if (!cfg || !t.classList || !t.classList.contains(cfg.headerClass)) return null;
   return win;
 }
@@ -1263,7 +1277,7 @@ export function applyFloatLayout() {
   suspended = !isDesktop();
   PANEL_SECTION_SIDES.forEach(side => {
     const states = floatStates(side);
-    declaredSectionIds(side).forEach(id => {
+    groupSectionIds(side).forEach(id => {
       const el = sectionEl(id);
       if (!el) return;
       const wants = !!states[id];

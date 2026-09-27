@@ -30,13 +30,24 @@
 //   only state the gesture keeps is what it needs to *undo* itself, because
 //   Escape cancels a drag and puts the order back.
 //
+// • **A card is not tied to its tab.** The same drag carries it to another
+//   one: drop it on a tab button and it moves to that tab; pull it across to
+//   the other panel and it docks into whatever stack that panel is showing.
+//   Right-click (or Shift+F10 on the grip) is the keyboard's route to the
+//   same moves. The gesture remembers the group it *started* in, so Escape
+//   can put a card back even after it has been docked somewhere else.
+//
 // Listeners are attached at creation the way [js/reference.js](reference.js)
 // does it, so the whole feature adds nothing to `bridge.js`.
 
 import {
-  PANEL_SECTIONS, PANEL_SECTION_SIDES, declaredSectionIds, dockedSectionIds,
-  isSectionFloating, sectionFill, sectionOrder, setSectionOrder, moveSection
+  PANEL_SECTIONS, PANEL_SECTION_SIDES, anySectionMoved, declaredGroupOf, declaredSectionIds,
+  dockedSectionIds, groupForTab, groupSectionIds, isSectionFloating, moveSection,
+  moveSectionToGroup, resetSectionPlacement, sectionConfig, sectionFill, sectionHost,
+  sectionOrder, sectionSide, setSectionOrder
 } from './panel-sections.js';
+import { PANEL_SIDES, PANEL_TABS, PANEL_TAB_NAMES, getActivePanelTab } from './panel-state.js';
+import { openActionMenu, revealSection } from './ui.js';
 import {
   beginFloatSnap, commitFloatGeom, dockSection, endFloatSnap, floatLayerRect,
   floatSection, floatingEnabled, moveFloatTo, syncPanelEmpty
@@ -75,9 +86,17 @@ function sectionEl(id) {
 /** The title as it currently reads — "Stack Γ" or "Queue", per machine. */
 function sectionName(side, id) {
   const el = sectionEl(id);
-  const cfg = PANEL_SECTIONS[side];
+  const cfg = sectionConfig(id);
   const title = el && cfg ? el.querySelector('.' + cfg.titleClass) : null;
   return (title ? title.textContent : '').trim() || id;
+}
+
+/** A group's name as its tab says it — "Workspace", "Run". */
+function groupLabel(group) {
+  const tab = PANEL_SECTIONS[group]?.tab;
+  const btn = tab ? document.getElementById(PANEL_TABS[tab].tab) : null;
+  const label = btn?.querySelector?.('.panel-tab-label')?.textContent?.trim();
+  return label || (tab ? tab[0].toUpperCase() + tab.slice(1) : group);
 }
 
 /**
@@ -101,7 +120,10 @@ function visibleSections(side) {
 function domOrder(side) {
   const container = containerOf(side);
   if (!container) return [];
-  const known = declaredSectionIds(side);
+  const known = groupSectionIds(side);
+  // A card dragged in from another tab is not a member until it is dropped,
+  // but it is in this stack and the midpoint walk has to be able to place it.
+  if (drag && drag.side === side && !known.includes(drag.el.id)) known.push(drag.el.id);
   return [...container.children]
     .map(el => el.id)
     .filter(id => known.includes(id));
@@ -164,17 +186,27 @@ export function applySectionOrder(side) {
  */
 export function syncDockFill(side) {
   const container = containerOf(side);
-  if (!container || !PANEL_SECTIONS[side]?.dockFill) return null;
+  if (!container) return null;
+  // Eligibility belongs to the *section*, not to the stack it is in: the
+  // Workspace's lists are transparent, so extra height is invisible, while the
+  // right panel's regions are drawn boxes and stretching one that holds a
+  // single line draws a tall empty card. A States Q dragged into the
+  // Inspector still takes that stack's spare height; a Trace dragged into the
+  // Workspace does not.
+  const eligible = id => !!sectionConfig(id)?.dockFill;
+  const members = groupSectionIds(side);
+  if (!members.some(eligible)) return null;
   let fill = null;
   for (const id of domOrder(side)) {
     const el = sectionEl(id);
+    if (!eligible(id)) continue;
     if (!el || el.style.display === 'none' || el.classList.contains('collapsed')) continue;
     const sel = sectionFill(id);
     if (sel && typeof el.querySelector === 'function' && el.querySelector(sel)) fill = id;
   }
-  // Every declared section, not just the docked ones: a section torn off into
-  // a window has left `domOrder` and would otherwise keep the mark it had.
-  for (const id of declaredSectionIds(side)) {
+  // Every member, not just the docked ones: a section torn off into a window
+  // has left `domOrder` and would otherwise keep the mark it had.
+  for (const id of members) {
     const el = sectionEl(id);
     if (!el) continue;
     const sel = sectionFill(id);
@@ -227,21 +259,41 @@ function announce(message) {
 
 // ── the gesture ───────────────────────────────────────────────────
 
+/** Puts a card back where the gesture found it: its own stack, its own slot. */
+function restoreOrigin() {
+  const { origin, side, el, floating } = drag;
+  if (floating) dockSection(el.id);
+  const home = containerOf(origin);
+  if (!home) return;
+  if (drag.before && drag.before.parentNode === home) home.insertBefore(el, drag.before);
+  else if (drag.before !== undefined) home.appendChild(el);
+  if (side !== origin) {
+    containerOf(side)?.classList.remove('has-reorder');
+    syncPanelEmpty(side);
+    syncGripLabels(side);
+  }
+  syncPanelEmpty(origin);
+}
+
 function endDrag(commit) {
   if (!drag) return;
-  const { side, el, grip, pointerId, floating } = drag;
+  const { side, origin, el, grip, pointerId, floating } = drag;
+  const target = drag.tabTarget;
   const container = containerOf(side);
+  markTabTarget(null);
 
-  if (!commit) {
+  // Dropped on a tab: the card moves to that tab's stack. On its *own* tab it
+  // goes back where it was — hovering the strip held it wherever the pointer
+  // left the stack, which is not a position anyone chose.
+  const toTab = commit && target ? target.group : null;
+  if (!commit || (toTab && toTab === origin)) {
     // Escape puts it back exactly where it was, which is the whole reason the
     // gesture remembers anything at all — and once the drag can also change
     // which *parent* the section has, "where it was" is a parent as well as a
     // neighbour.
+    restoreOrigin();
+  } else if (toTab) {
     if (floating) dockSection(el.id);
-    if (drag.before !== undefined) {
-      if (drag.before) container.insertBefore(el, drag.before);
-      else container.appendChild(el);
-    }
   } else if (floating) {
     // The move painted every frame and wrote nothing; this is the one write.
     commitFloatGeom(el.id, drag.geom);
@@ -249,24 +301,41 @@ function endDrag(commit) {
 
   el.classList.remove('is-reordering');
   if (container) container.classList.remove('has-reorder');
+  containerOf(origin)?.classList.remove('has-reorder');
   try { grip.releasePointerCapture(pointerId); } catch (e) { /* already gone */ }
   drag = null;
   endFloatSnap();
 
-  if (commit && floating) {
-    syncGripLabels(side);
-    announce(`${sectionName(side, el.id)} floating over the canvas`);
+  if (!commit || (toTab && toTab === origin)) {
+    syncGripLabels(origin);
     return;
   }
 
-  const order = domOrder(side);
-  if (commit) {
-    setSectionOrder(side, order);
-    syncGripLabels(side);
-    announce(`${sectionName(side, el.id)} moved to position ${visibleSections(side).map(n => n.id).indexOf(el.id) + 1}`);
-  } else {
-    syncGripLabels(side);
+  if (toTab) {
+    moveCardTo(el.id, toTab);
+    revealSection(el.id);
+    return;
   }
+
+  if (floating) {
+    syncGripLabels(origin);
+    announce(`${sectionName(origin, el.id)} floating over the canvas`);
+    return;
+  }
+
+  if (side !== origin) {
+    // Docked into another tab's stack mid-gesture: the registry learns it now,
+    // at the slot the midpoint walk left it in.
+    const index = domOrder(side).indexOf(el.id);
+    moveSectionToGroup(el.id, side, index);
+    settleAfterMove(el.id, origin, side);
+    announce(`${sectionName(side, el.id)} moved to ${groupLabel(side)}`);
+    return;
+  }
+
+  setSectionOrder(side, domOrder(side));
+  syncGripLabels(side);
+  announce(`${sectionName(side, el.id)} moved to position ${visibleSections(side).map(n => n.id).indexOf(el.id) + 1}`);
 }
 
 function moveToPointer(y) {
@@ -320,6 +389,16 @@ function outsideBy(container, x) {
  */
 function tearOff(e) {
   const { side, el } = drag;
+  // A card that had been docked into another tab's stack mid-gesture is taken
+  // back to its own group's bookkeeping first: a window belongs to the group
+  // the registry says it is in, and nothing has told the registry otherwise.
+  if (side !== drag.origin) {
+    const home = containerOf(drag.origin);
+    if (home) home.appendChild(el);
+    containerOf(side)?.classList.remove('has-reorder');
+    drag.side = drag.origin;
+    syncPanelEmpty(side);
+  }
   const rect = floatLayerRect();
   const w = Math.round(drag.grabW || 280);
   const h = Math.round(drag.grabH || 260);
@@ -335,9 +414,9 @@ function tearOff(e) {
   // one moved by its title bar does.
   beginFloatSnap(el.id);
   el.classList.remove('is-reordering');
-  const container = containerOf(side);
+  const container = containerOf(drag.side);
   if (container) container.classList.remove('has-reorder');
-  syncPanelEmpty(side);
+  syncPanelEmpty(drag.side);
   return true;
 }
 
@@ -350,22 +429,69 @@ function tearOff(e) {
  * pointer, this about the panel.
  */
 function panelIsOpen(side) {
-  const panel = document.getElementById(side);
+  const panel = document.getElementById(sectionHost(side));
   if (!panel || typeof panel.getBoundingClientRect !== 'function') return true;
   const r = panel.getBoundingClientRect();
   return !r || !('width' in r) || r.width > 8;
 }
 
-/** And back: dropping a window over its own panel re-docks it. */
-function tearBack() {
-  const { side, el } = drag;
+/**
+ * And back: dropping a window over a stack docks it there — its own, or the
+ * one another tab is showing. Only the DOM moves; the registry learns about a
+ * change of tab when the gesture commits, so Escape has nothing to undo there.
+ */
+function tearBack(group = drag.origin) {
+  const { el } = drag;
   endFloatSnap();
-  dockSection(el.id);
+  if (drag.floating) dockSection(el.id);
   drag.floating = false;
   drag.geom = null;
+  if (group !== drag.side) {
+    const left = drag.side;
+    const into = containerOf(group);
+    if (into) into.appendChild(el);
+    drag.side = group;
+    syncPanelEmpty(left);
+    syncPanelEmpty(group);
+  }
   el.classList.add('is-reordering');
-  const container = containerOf(side);
+  const container = containerOf(drag.side);
   if (container) container.classList.add('has-reorder');
+}
+
+// ── where a card can be dropped ───────────────────────────────────
+//  Measured once, when the press becomes a drag: the tab buttons a card can be
+//  dropped on, and the stacks the two panels are showing. Neither moves during
+//  the gesture — except that an unpinned panel closes as the pointer leaves it,
+//  which `panelIsOpen` asks about live before anything is docked there.
+
+function measureDropTargets() {
+  const box = el => (el && typeof el.getBoundingClientRect === 'function')
+    ? el.getBoundingClientRect() : null;
+  const inside = (r, x, y) => !!r && r.width > 0 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  const tabs = PANEL_TAB_NAMES
+    .map(tab => ({ tab, group: groupForTab(tab), btn: document.getElementById(PANEL_TABS[tab].tab) }))
+    .filter(t => t.group && t.btn)
+    .map(t => ({ ...t, rect: box(t.btn) }))
+    .filter(t => t.rect && t.rect.width > 0);
+  const stacks = PANEL_SIDES
+    .map(side => groupForTab(getActivePanelTab(side)))
+    .filter(Boolean)
+    .map(group => ({ group, rect: box(containerOf(group)) }))
+    .filter(z => z.rect && z.rect.width > 0);
+  return {
+    tabAt: (x, y) => tabs.find(t => inside(t.rect, x, y)) || null,
+    stackAt: (x, y) => stacks.find(z => inside(z.rect, x, y)) || null
+  };
+}
+
+function markTabTarget(target) {
+  if (!drag) return;
+  if (drag.tabTarget?.btn && drag.tabTarget !== target) {
+    drag.tabTarget.btn.classList.remove('is-card-drop-target');
+  }
+  drag.tabTarget = target;
+  if (target?.btn) target.btn.classList.add('is-card-drop-target');
 }
 
 /** Keeps a long panel usable: dragging near an edge scrolls it. */
@@ -384,18 +510,33 @@ function onPointerMove(e) {
     if (Math.abs(e.clientY - drag.startY) < DRAG_THRESHOLD &&
       Math.abs(e.clientX - drag.startX) < DRAG_THRESHOLD) return;
     drag.active = true;
+    drag.targets = measureDropTargets();
     drag.el.classList.add('is-reordering');
     const container = containerOf(drag.side);
     if (container) container.classList.add('has-reorder');
   }
   e.preventDefault();
+
+  // Over a tab button, the card is being moved to that tab: say so, and hold
+  // it where it is rather than walking it through a stack it is leaving.
+  const overTab = drag.targets?.tabAt(e.clientX, e.clientY) || null;
+  markTabTarget(overTab);
+  if (overTab && !drag.floating) return;
+
   const container = containerOf(drag.side);
 
   if (drag.floating) {
-    // Back over the panel it came from is the way to put it back, and the
-    // midpoint walk below then shows where it will land — the same affordance
-    // read in the other direction, for free.
-    if (container && outsideBy(container, e.clientX) === 0 && panelIsOpen(drag.side)) {
+    // Back over a stack is the way to put it in one — the one it came from,
+    // or whichever the other panel is showing — and the midpoint walk below
+    // then shows where it will land: the same affordance read in the other
+    // direction, for free.
+    const stack = overTab ? null : drag.targets?.stackAt(e.clientX, e.clientY);
+    if (stack && panelIsOpen(stack.group)) {
+      tearBack(stack.group);
+      moveToPointer(e.clientY);
+      return;
+    }
+    if (!drag.targets && container && outsideBy(container, e.clientX) === 0 && panelIsOpen(drag.side)) {
       tearBack();
       moveToPointer(e.clientY);
       return;
@@ -488,7 +629,9 @@ function beginDrag(side, el, grip, e) {
     }
   }
   drag = {
-    side, el, grip,
+    side, origin: side, el, grip,
+    targets: null,
+    tabTarget: null,
     pointerId: e.pointerId,
     startX: e.clientX,
     startY: e.clientY,
@@ -505,7 +648,7 @@ function beginDrag(side, el, grip, e) {
 
 function installGrip(side, id) {
   const el = sectionEl(id);
-  const cfg = PANEL_SECTIONS[side];
+  const cfg = sectionConfig(id);
   if (!el || !cfg || el.__secGrip) return;
   const header = el.querySelector('.' + cfg.headerClass);
   if (!header) return;
@@ -515,7 +658,16 @@ function installGrip(side, id) {
   grip.className = 'panel-sec-grip';
   grip.tabIndex = 0;
   grip.innerHTML = GRIP_SVG;
-  grip.setAttribute('data-tip', 'Drag to reorder · ↑ ↓ to move');
+  grip.setAttribute('data-tip', 'Drag to reorder or onto a tab · ↑ ↓ to move');
+
+  // Right-click anywhere on the header: the way to reach a tab the drag
+  // cannot see (one hidden behind the selected tab of a collapsed panel), and
+  // with the grip's Shift+F10 the only way from a keyboard.
+  header.addEventListener('contextmenu', ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    openCardMenu(id, { x: ev.clientX, y: ev.clientY });
+  });
 
   // The header collapses the section on click, and the grip is inside it —
   // so every way a press on the grip can reach the header has to be stopped,
@@ -530,13 +682,21 @@ function installGrip(side, id) {
     if (isSectionFloating(id)) return;
     ev.stopPropagation();
     ev.preventDefault();
-    beginDrag(side, el, grip, ev);
+    // Asked now, not at install: the card may have been moved to another tab.
+    beginDrag(sectionSide(id), el, grip, ev);
   });
   grip.addEventListener('keydown', ev => {
+    if (ev.key === 'ContextMenu' || (ev.shiftKey && ev.key === 'F10')) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openCardMenu(id, null, grip);
+      return;
+    }
     const delta = ev.key === 'ArrowUp' ? -1 : ev.key === 'ArrowDown' ? 1 : 0;
     if (!delta || isSectionFloating(id)) return;
     ev.preventDefault();
     ev.stopPropagation();
+    const side = sectionSide(id);
     // Moved past the *visible* neighbours, not the declared ones: stepping
     // onto a hidden section would look like the key did nothing.
     const shown = visibleSections(side).map(n => n.id);
@@ -567,8 +727,12 @@ let listening = false;
 export function initPanelSectionReorder() {
   PANEL_SECTION_SIDES.forEach(side => {
     declaredSectionIds(side).forEach(id => installGrip(side, id));
+  });
+  // A second pass, because a card moved to another tab is appended by its
+  // *new* group's order — every grip has to exist before any stack is laid out.
+  PANEL_SECTION_SIDES.forEach(side => {
     applySectionOrder(side);
-    syncGripLabels(side);
+    syncPanelEmpty(side);
   });
 
   if (listening) return;
@@ -603,4 +767,67 @@ export function resetSectionReorder() {
   drag = null;
   swallowClick = false;
   releasePending = null;
+}
+
+// ── moving a card to another tab ──────────────────────────────────
+
+/** The stacks on both sides of a move, re-laid out and relabelled. */
+function settleAfterMove(id, from, to) {
+  const el = sectionEl(id);
+  // The dock-fill mark is a property of the stack it was set in.
+  if (el) {
+    el.classList.remove('panel-dock-fill');
+    const sel = sectionFill(id);
+    const region = sel && typeof el.querySelector === 'function' ? el.querySelector(sel) : null;
+    if (region?.classList) region.classList.remove('panel-dock-fill-region');
+  }
+  applySectionOrder(from);
+  applySectionOrder(to);
+  syncPanelEmpty(from);
+  syncPanelEmpty(to);
+}
+
+/**
+ * Moves a card to another tab's stack, at `index` (the end by default).
+ *
+ * A floating card is docked first: a window belongs to the group that holds
+ * its record, and a card changing groups would otherwise leave its record in
+ * a store its new group never reads.
+ */
+export function moveCardTo(id, group, index = Infinity) {
+  const from = sectionSide(id);
+  if (!from || !PANEL_SECTIONS[group]) return false;
+  if (from === group) return false;
+  if (isSectionFloating(id)) dockSection(id);
+  moveSectionToGroup(id, group, index);
+  settleAfterMove(id, from, group);
+  announce(`${sectionName(group, id)} moved to ${groupLabel(group)}`);
+  return true;
+}
+
+/** Every card back on the tab it was declared on, in that tab's default order. */
+export function resetCardLayout() {
+  const moved = PANEL_SECTION_SIDES.flatMap(g => PANEL_SECTIONS[g].sections.map(s => s.id))
+    .filter(id => sectionSide(id) !== declaredGroupOf(id));
+  moved.forEach(id => { if (isSectionFloating(id)) dockSection(id); });
+  resetSectionPlacement();
+  PANEL_SECTION_SIDES.forEach(group => {
+    applySectionOrder(group);
+    syncPanelEmpty(group);
+  });
+  announce('Cards back on their own tabs');
+}
+
+/** Right-click on a card, or Shift+F10 on its grip: where else it can go. */
+export function openCardMenu(id, at, anchor = null) {
+  const from = sectionSide(id);
+  if (!from) return false;
+  const items = PANEL_SECTION_SIDES.filter(g => g !== from).map(group => ({
+    label: `Move to ${groupLabel(group)}`,
+    run: () => { moveCardTo(id, group); revealSection(id); }
+  }));
+  if (anySectionMoved()) {
+    items.push({ divider: true }, { label: 'Reset Card Layout', run: resetCardLayout });
+  }
+  return openActionMenu(items, { at, anchor, label: `${sectionName(from, id)} card actions` });
 }

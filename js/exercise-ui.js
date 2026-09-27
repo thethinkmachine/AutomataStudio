@@ -6,11 +6,12 @@
 //
 // Two surfaces:
 //
-//   #rp-exercise    A right-panel section, first in the stack and shown only
-//                   when the tab carries an exercise. It is a section rather
-//                   than a card over the canvas because it belongs beside the
-//                   run box: the counterexample it reports is a word you are
-//                   meant to run. Being a section also gives it collapse,
+//   #rp-exercise    A section at the top of the Machine tab, shown only
+//                   when the document carries an exercise. It is a section
+//                   rather than a card over the canvas because it belongs
+//                   beside the run box: the counterexample it reports is a
+//                   word you are meant to run — and on the left it is beside
+//                   the Run tab rather than competing with it for one panel. Being a section also gives it collapse,
 //                   reorder and tear-off from the registry for nothing.
 //
 //   #exercise-modal The author's dialog, opened from the More menu. The
@@ -37,7 +38,8 @@ import { SCHEMA_VERSION, WORKSPACE_FORMAT, copyLinkToClipboard, getWorkspaceData
 import { runSim } from './simulation.js';
 import { $, App, MachineCategories, activeWorkspaceId, getMachineConfig } from './state.js';
 import { Change, emit, subscribe } from './store.js';
-import { createTab, revealPanel, setRPSectionCollapsed } from './ui.js';
+import { createTab, revealPanel, revealPlayer, revealSection } from './ui.js';
+import { sectionHost, sectionSide } from './panel-sections.js';
 import { showStatus } from './utils.js';
 import { hideMoreMenu, setView } from './view.js';
 
@@ -258,6 +260,7 @@ function runWord(tokens) {
   setView('build');
   const input = $('sim-in');
   if (input) input.value = wordText(tokens);
+  revealPlayer();
   runSim();
 }
 
@@ -316,8 +319,10 @@ subscribe(Change.EXERCISE, () => {
 
 /** Bring the section into view: panel shown, section expanded. */
 export function revealExerciseSection() {
-  revealPanel('rpanel');
-  setRPSectionCollapsed('rp-exercise', false, false);
+  // Whichever panel the card is on now: its tab, and the card itself, can
+  // both have been moved.
+  revealPanel(sectionHost(sectionSide('rp-exercise')) || 'lpanel');
+  revealSection('rp-exercise');
 }
 
 // ══════════════════════════════════════════════════════════════════

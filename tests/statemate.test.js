@@ -4567,7 +4567,8 @@ test('the right-panel tabs expose one selected, keyboard-focusable panel', () =>
   });
   assert.equal(prevented, true);
   assert.equal(stowed(h), true);
-  assert.equal(h.getElement('rpanel').dataset.activePanel, 'inspector');
+  // Its left-hand neighbour is the Run tab, which sits between the two.
+  assert.equal(h.getElement('rpanel').dataset.activePanel, 'run');
 });
 
 // ── Escape, and who owns it ──

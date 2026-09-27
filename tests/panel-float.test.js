@@ -51,6 +51,19 @@ function mount() {
       container.appendChild(el);
     });
   });
+  // A card drag measures the tab buttons it could be dropped on and the stacks
+  // the right panel shows. The stub draws every element as 800×600 at the
+  // origin, which would put every tab under every pointer; these are where a
+  // real layout puts them — the tabs up in the header, the right panel's
+  // stacks across the canvas on the far side.
+  context.PANEL_TAB_NAMES.forEach(name => {
+    context.$(context.PANEL_TABS[name].tab).getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 0, bottom: 0, x: 0, y: 0, width: 0, height: 0 });
+  });
+  ['rpanel-content', 'rpanel-run-content'].forEach(id => {
+    context.$(id).getBoundingClientRect = () =>
+      ({ left: 1000, top: 40, right: 1280, bottom: 800, x: 1000, y: 40, width: 280, height: 760 });
+  });
   const wrap = context.$('canvas-wrap');
   wrap.innerHTML = '';
   return wrap;
@@ -76,9 +89,9 @@ test('docked is stored as the absence of a preference', () => {
   // so a later change to the defaults still reaches a reader who never
   // expressed one.
   mount();
-  context.setFloatState('rp-simulate', { x: 40, y: 60, w: 300, h: 240 });
+  context.setFloatState('rp-language', { x: 40, y: 60, w: 300, h: 240 });
   assert.notEqual(context.localStorage.getItem('automata-rpanel-section-float'), null);
-  context.setFloatState('rp-simulate', null);
+  context.setFloatState('rp-language', null);
   assert.equal(context.localStorage.getItem('automata-rpanel-section-float'), null);
 });
 

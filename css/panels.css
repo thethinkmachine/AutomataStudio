@@ -57,21 +57,35 @@
   overflow: hidden;
 }
 
+/* A panel every tab has been dragged off. Not drawn at all — resizer, pin and
+   hover rail included — the way VS Code hides an empty sidebar; a tab dragged
+   to that edge of the canvas brings it back. */
+.lpanel.is-empty,
+.rpanel.is-empty {
+  display: none;
+}
+
 .sec {
   border-bottom: 1px solid var(--border);
   padding: 12px 14px;
 }
 
-.lpanel .sec.lp-collapsible {
+/* The Workspace's cards, wherever they are docked. They were scoped to
+   `.lpanel`, which stopped being true of them the day a card could be dragged
+   to another tab and the Workspace tab to the other panel: a States Q in the
+   Inspector came out with the unscoped `.sec` padding and an unpadded header.
+   Scoped to the stacks instead — a window restates them against .panel-float,
+   since a window's section is in neither. */
+:is(.lpanel-content, .rpanel-content) .sec.lp-collapsible {
   padding: 0;
   border-bottom: 1px solid var(--border);
 }
 
-.lpanel .sec.lp-collapsible:last-child {
+:is(.lpanel-content, .rpanel-content) .sec.lp-collapsible:last-child {
   flex: initial;
 }
 
-.lpanel .lp-section-header {
+:is(.lpanel-content, .rpanel-content) .lp-section-header {
   display: flex;
   align-items: center;
   gap: var(--sec-head-gap);
@@ -81,16 +95,16 @@
   transition: background var(--transition-fast);
 }
 
-.lpanel .lp-section-header:hover {
+:is(.lpanel-content, .rpanel-content) .lp-section-header:hover {
   background: var(--surface);
 }
 
-.lpanel .lp-section-header:focus-visible {
+:is(.lpanel-content, .rpanel-content) .lp-section-header:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 2px var(--focus-ring);
 }
 
-.lpanel .lp-section-header .sec-lbl {
+:is(.lpanel-content, .rpanel-content) .lp-section-header .sec-lbl {
   margin-bottom: 0;
   flex: 1;
   font-size: var(--sec-label-size);
@@ -204,7 +218,7 @@
   transform: rotate(-90deg);
 }
 
-.lpanel .lp-section-body {
+:is(.lpanel-content, .rpanel-content) .lp-section-body {
   padding: 3px 14px 12px;
 }
 
@@ -931,9 +945,8 @@ body.panel-resizing .rpanel {
 
 /* An unpinned panel opens by animating its width up from 0 while its children
    fade in on the same schedule, so mid-animation the box is narrower than the
-   header's contents. A lone tab is sized `auto` by its strip (see
-   `.panel-tabs:has(> .panel-tab:only-child)` below) and so refuses to shrink,
-   and the pin button cannot shrink either — with the panel itself
+   header's contents. A tab is sized to its own label and the pin button
+   cannot shrink either — with the panel itself
    `overflow: visible` (its hover strip and fillets paint outside the box),
    both spilled past the opening edge and hung over the canvas at half
    opacity, the tab running under the pin, until the box caught
@@ -953,19 +966,18 @@ body.panel-resizing .rpanel {
   overflow: hidden;
 }
 
-/* Subordinate to the app header, not a second one: no bottom rule, and the
-   title sits at a lighter weight/colour so the eye goes to the app bar first
-   and to the section labels below it second. */
+/* Subordinate to the app header, not a second one: a title bar the height of
+   VS Code's panel title (35px), with the rule under it the only boundary. */
 .panel-header {
-  padding: 8px 10px 0;
+  padding: 0 6px 0 5px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   background: var(--bg2);
   flex-shrink: 0;
   transition: opacity var(--transition-base), visibility var(--transition-base);
-  min-height: 44px;
+  min-height: 35px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -974,61 +986,54 @@ body.panel-resizing .rpanel {
 }
 
 /* ── the tab strip ──
-   This is sidebar navigation, not a compact form control. The active panel is
-   carried by type and a quiet underline instead of a bordered control inside
-   another bordered control. */
-/* Auto columns rather than a fixed two: the left panel has one tab, the right
-   has two, and StateMate moving between them changes both counts at once. */
+   VS Code's panel title, deliberately: compact uppercase labels sized to
+   their own text, no fills and no outlines, and the selected tab carried by
+   its colour and a short accent underline. A strip of cut-out tabs was a
+   bordered control inside a bordered header — the chrome of the thing was
+   louder than the name of what it switched to.
+
+   Flex rather than equal grid columns: the left panel has one tab, the right
+   has two, StateMate moving changes both counts at once, and tabs of unequal
+   names stretched to equal widths put their labels in unrelated places. */
 .panel-tabs {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  justify-content: start;
+  display: flex;
+  align-items: stretch;
   flex: 1 1 auto;
   align-self: stretch;
-  gap: 2px;
+  gap: 0;
   min-width: 0;
-  min-height: 36px;
-  /* The strip sits flush against the header's bottom rule, and the selected
-     tab's own border-bottom (see .panel-tab.active) covers that rule's pixel
-     so the two meet with nothing between them — the seam is drawn by the tab
-     rather than by overlapping the header's rule, which keeps the strip's
-     height stable as selection moves between tabs of differing fill. */
-  margin-bottom: 0;
 }
 
 .panel-tab {
   position: relative;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  flex: 0 1 auto;
+  gap: 5px;
   min-width: 0;
-  /* The track is `minmax(0, 1fr)`, so a tab is *allowed* to be narrower than its
-     own text — but only the tab is clipped, not the label inside it, and a
-     label that overflows its button is drawn straight over the next tab.
-     `overflow: hidden` is the backstop; .panel-tab-label below is what makes
-     the name shorten legibly instead of just disappearing at the cut. */
+  /* A label that overflows its button would be drawn over the next tab;
+     `overflow: hidden` is the backstop and .panel-tab-label is what makes the
+     name shorten legibly instead of just disappearing at the cut. */
   overflow: hidden;
   padding: 0 8px;
-  /* Transparent on every tab rather than present on the selected one, or the
-     label shifts a pixel each way as selection moves. */
-  border: 1px solid transparent;
-  border-bottom: 0;
-  border-radius: 8px 8px 0 0;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   font-family: var(--sans);
-  font-size: .72rem;
+  font-size: .66rem;
   font-weight: 500;
+  line-height: 1;
+  letter-spacing: .05em;
+  text-transform: uppercase;
   color: var(--text3);
   cursor: pointer;
-  transition: color var(--transition-fast), background var(--transition-fast),
-    border-color var(--transition-fast);
+  user-select: none;
+  -webkit-user-select: none;
+  transition: color var(--transition-fast);
 }
 
 /* An element, not the bare text node it replaced: `text-overflow` has nothing
-   to apply to on the anonymous flex item a loose string becomes, so the name
-   has to be something the ellipsis can be put on. */
+   to apply to on the anonymous flex item a loose string becomes. */
 .panel-tab-label {
   min-width: 0;
   overflow: hidden;
@@ -1036,60 +1041,25 @@ body.panel-resizing .rpanel {
   white-space: nowrap;
 }
 
-/* The accent rides the tab's top edge rather than sitting under it as a rule.
-   Under the tab is where the tab's own seam border is, and a second rule there
-   would draw back what the shape just removed. It needs no radius of its own:
-   .panel-tab clips to its own rounded corners, so the cap picks up the curve
-   it is sitting inside. */
+/* The underline spans the label, not the hit area — the padding is target,
+   not tab. It sits on the tab's bottom edge, just above the header rule. */
 .panel-tab::after {
   content: '';
   position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
+  bottom: 0;
+  right: 8px;
+  left: 8px;
   height: 2px;
+  border-radius: 1px 1px 0 0;
   background: transparent;
-}
-
-/* The unselected tabs are what make the selected one a tab.
-   The header and the panel body are the same fill (see the note over `header`
-   in css/layout.css — they are meant to read as one surface), so an outline
-   alone would be a curve drawn on flat paint. Recessing the tabs you are *not*
-   reading is what lifts the one you are up to the level of the content below
-   it. --bg is the ground under everything and is darker than --bg2 in every
-   theme, so this deepens whichever way a palette runs. */
-.panel-tab:not(.active) {
-  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  transition: background var(--transition-fast);
 }
 
 .panel-tab:hover {
-  background: var(--surface);
-  color: var(--text2);
-}
-
-/* A ring rather than the hover fill. The selected tab already carries a fill,
-   so a focus style made of background alone is invisible on exactly the tab the
-   roving tabindex lands on first. Inset, because the tab clips to its own
-   rounded corners and an outset ring would be cut off at them — and with no
-   radius of its own, since an outline follows the element's. */
-.panel-tab:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -3px;
-}
-
-/* Continuous with the panel below it: same fill, an outline that stops at the
-   header rule, and the tab's own bottom border in --bg2 covering that rule so
-   the two meet with nothing between them. */
-.panel-tab.active {
   color: var(--text);
-  background: var(--bg2);
-  border-color: var(--border);
-  border-bottom: 1px solid var(--bg2);
-  margin-bottom: -1px;
 }
 
-.panel-tab.active:hover {
-  background: var(--bg2);
+.panel-tab.active {
   color: var(--text);
 }
 
@@ -1097,24 +1067,22 @@ body.panel-resizing .rpanel {
   background: var(--accent);
 }
 
-/* A lone tab is a label, not a tab. It takes the width of its own text instead
-   of stretching the full header the way a pair does, and it drops the shape
-   entirely — outline, fill and accent cap. With nothing to be selected
-   *instead of*, a tab cut out of the header rule says nothing, and the left
-   panel would carry a mark the right one only earns by having a choice on it.
-   Move StateMate onto this edge and the whole shape comes back, because then
-   there is a choice here too. */
-.panel-tabs:has(> .panel-tab:only-child) {
-  grid-auto-columns: auto;
+/* Inset: the tab clips its own overflow, so an outset ring would be cut.
+   Two pixels: at one, on a tab with no fill, the ring read as a hairline
+   nobody would notice the roving tabindex had landed on. */
+.panel-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 5px;
 }
 
+/* A lone tab is a title, not a tab — VS Code's "EXPLORER". With nothing to be
+   selected *instead of* it, an underline says nothing, and the left panel would
+   carry a mark the right one only earns by having a choice on it. Move
+   StateMate onto this edge and the underline comes back. */
 .panel-tabs > .panel-tab:only-child,
 .panel-tabs > .panel-tab:only-child:hover {
-  justify-content: flex-start;
-  padding-left: 4px;
-  background: transparent;
-  border-color: transparent;
-  color: var(--text);
+  color: var(--text2);
   cursor: default;
 }
 
@@ -1122,46 +1090,58 @@ body.panel-resizing .rpanel {
   display: none;
 }
 
+/* Icons are the narrow fallback, not decoration: labels alone are cleaner, and
+   a glyph beside every name only repeats it. */
 .panel-tab-icon {
-  width: 13px;
-  height: 13px;
+  display: none;
+  width: 14px;
+  height: 14px;
   flex: 0 0 auto;
-  color: var(--accent);
 }
 
-/* Two tabs in a 256px panel that is also carrying a ⋯ and a pin do not fit as
-   drawn, and an ellipsis is the worse of the two ways to lose that argument —
-   "Workspac…" and "StateMa…" costs the reader the ends of both names to keep
-   two glyphs that repeat what the names already say. So the icon is what goes
-   first, and the width it frees goes to the words.
+/* When the labels do not fit, the tabs you are *not* reading give their label
+   up for their icon (the tooltip names them) and the one you are reading keeps
+   its name — an ellipsis is the worse way to lose that argument, "WORKSP…"
+   and "STATEM…" costing the ends of every name at once. Measured rather than
+   keyed to a width: with every tab movable a strip can hold one tab or four,
+   so no single breakpoint is right. `fitPanelTabs` in js/ui.js sets
+   `.is-compact` from the tabs' natural widths against the strip's. */
+.panel-tabs.is-measuring > .panel-tab {
+  flex-shrink: 0;
+}
 
-   Keyed to the panel, not the viewport: these panels are resized and pinned
-   independently of the window, so the width that decides this is one only the
-   container knows. A lone tab is exempt — it has the whole strip. */
-@container (max-width: 300px) {
-  .panel-tab:not(:only-child) {
-    /* Still 5px: with the icon gone the gap is the one between the name and the
-       unread badge, which is the last thing that should close up. */
-    gap: 5px;
-    padding: 0 5px;
-  }
+.panel-tabs.is-compact > .panel-tab:not(.active) {
+  padding: 0 7px;
+}
 
-  .panel-tab:not(:only-child) .panel-tab-icon {
-    display: none;
-  }
+.panel-tabs.is-compact > .panel-tab:not(.active) .panel-tab-icon {
+  display: block;
+}
 
-  .panel-tab:not(:only-child)::after {
-    right: 5px;
-    left: 5px;
-  }
+.panel-tabs.is-compact > .panel-tab:not(.active) .panel-tab-label {
+  /* Visually hidden rather than `display: none`, which would take the tab's
+     accessible name with it — the icon is aria-hidden, so a screen reader
+     would announce an unnamed tab. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.panel-tabs.is-compact > .panel-tab:not(.active)::after {
+  right: 7px;
+  left: 7px;
 }
 
 /* What the tab can still say for a panel that is not showing: a run in flight,
-   or the turns that landed while the Inspector was up. Both are counts of
-   things the reader would otherwise have to switch tabs to find out about. */
+   or the turns that landed while the Inspector was up. */
 .panel-tab-badge {
   font-family: var(--mono);
   font-size: .58rem;
+  font-weight: 500;
+  letter-spacing: 0;
   line-height: 1;
   min-width: 16px;
   padding: 2px 4px;
@@ -1169,11 +1149,120 @@ body.panel-resizing .rpanel {
   background: var(--accent-soft);
   border: 1px solid var(--accent-border);
   color: var(--accent);
+  text-align: center;
   white-space: nowrap;
 }
 
 .panel-tab-badge[hidden] {
   display: none;
+}
+
+/* ── dragging a tab ──
+   See js/ui.js. The tab stays in its slot, dimmed, while a small label follows
+   the pointer, and a bar between two tabs says where it will land — the shape
+   VS Code draws for the same gesture. */
+.panel-tab.is-dragging {
+  opacity: .45;
+  cursor: grabbing;
+}
+
+.panel-tab.drop-before::before,
+.panel-tab.drop-after::before {
+  content: '';
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.panel-tab.drop-before::before { left: 0; }
+.panel-tab.drop-after::before { right: 0; }
+
+/* The other panel, when a movable tab is dragged over its body. */
+.is-tab-drop-target .panel-header {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg2));
+}
+
+.panel-tab-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  pointer-events: none;
+  padding: 5px 9px;
+  font-family: var(--sans);
+  font-size: .66rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--text);
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+}
+
+body.is-dragging-panel-tab,
+body.is-dragging-panel-tab * {
+  cursor: grabbing !important;
+}
+
+/* A tooltip mid-drag names whatever the pointer is crossing, which is noise
+   while the reader is aiming at a drop — and it sat over the drop targets. */
+body.is-dragging-panel-tab .tooltip,
+body:has(.is-reordering) .tooltip {
+  visibility: hidden;
+}
+
+.ctx.panel-tab-menu {
+  min-width: 190px;
+}
+
+/* A card dragged over a tab it can be dropped on. */
+.panel-tab.is-card-drop-target {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 4px 4px 0 0;
+}
+
+.panel-tab.is-card-drop-target::after {
+  background: var(--accent);
+}
+
+/* Where a panel with no tabs would be, shown for the length of a tab drag. */
+.panel-edge-drop {
+  position: fixed;
+  z-index: 950;
+  display: grid;
+  /* The label sits at the top: centred, it lands on the canvas toolbox,
+     which runs down the same edge. */
+  place-items: start center;
+  padding-top: 18px;
+  pointer-events: none;
+  border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--border2));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  color: var(--text3);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.panel-edge-drop > span {
+  writing-mode: vertical-rl;
+  font-family: var(--sans);
+  font-size: .66rem;
+  font-weight: 500;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.panel-edge-drop.is-target {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
 }
 
 .pin-btn {
@@ -1248,19 +1337,19 @@ body.panel-resizing .rpanel {
    Scoped to children of the panel's container, so a section torn off into a
    window is not addressed here — the window has its own fill, and the
    selector carries .lp-collapsible to outrank the `:last-child` reset above. */
-.lpanel .lpanel-content > .sec.lp-collapsible.panel-dock-fill {
+:is(.lpanel-content, .rpanel-content) > .sec.lp-collapsible.panel-dock-fill {
   flex: 1 0 auto;
   display: flex;
   flex-direction: column;
 }
 
-.lpanel .lpanel-content > .panel-dock-fill > .lp-section-body {
+:is(.lpanel-content, .rpanel-content) > .panel-dock-fill > .lp-section-body {
   flex: 1 0 auto;
   display: flex;
   flex-direction: column;
 }
 
-.lpanel .lpanel-content > .panel-dock-fill .panel-dock-fill-region {
+:is(.lpanel-content, .rpanel-content) > .panel-dock-fill .panel-dock-fill-region {
   flex: 1 1 0;
   min-height: var(--lp-list-max-h);
   max-height: none;
@@ -2082,7 +2171,7 @@ button.dt-cell:hover {
   }
 
   .panel-header {
-    padding: 8px 10px 0;
+    padding: 0 6px 0 5px;
   }
 }
 
@@ -2628,6 +2717,11 @@ button.dt-cell:hover {
 .panel-float-return {
   font-size: .72rem;
   padding: 5px 12px;
+}
+
+/* `.btn-g` sets a display of its own, which beats the UA's [hidden]. */
+.panel-float-return[hidden] {
+  display: none;
 }
 
 /* ─── desktop and Electron only ───

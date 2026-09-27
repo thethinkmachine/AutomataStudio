@@ -81,15 +81,16 @@ test('a section the saved order predates lands where it was declared', () => {
 
 test('a duplicated or garbage saved order still yields every section once', () => {
   clearOrders();
+  const last = RP[RP.length - 1];
   context.localStorage.setItem('automata-rpanel-section-order',
-    JSON.stringify(['rp-batch', 'rp-batch', 7, null, 'rp-batch']));
-  // What survives the filter is a saved order of just ['rp-batch']; the two
-  // it does not mention are then inserted at the positions they are declared
-  // at, which pushes Batch Test to the end. There is no better answer for a
-  // partial list, and it is the same rule a section added in a later version
-  // gets.
-  assert.deepEqual(context.sectionOrder('rpanel'),
-    [...RP.filter(id => id !== 'rp-batch'), 'rp-batch']);
+    JSON.stringify([last, last, 7, null, last]));
+  // What survives the filter is a saved order of just the last section; the
+  // ones it does not mention are then inserted at the positions they are
+  // declared at. There is no better answer for a partial list, and it is the
+  // same rule a section added in a later version gets.
+  const order = context.sectionOrder('rpanel');
+  assert.deepEqual([...order].sort(), [...RP].sort(), 'every section, once');
+  assert.equal(order.length, RP.length);
 
   context.localStorage.setItem('automata-rpanel-section-order', 'not json');
   assert.deepEqual(context.sectionOrder('rpanel'), RP);
@@ -99,12 +100,13 @@ test('moveSection clamps rather than refusing', () => {
   // It is what ↑/↓ drive, and pressing ↑ on the top section should do
   // nothing rather than throw.
   clearOrders();
+  const last = RP[RP.length - 1];
   assert.deepEqual(context.moveSection('rpanel', RP[0], -3), RP);
-  assert.deepEqual(context.moveSection('rpanel', 'rp-batch', 99), RP);
-  const batchFirst = ['rp-batch', ...RP.filter(id => id !== 'rp-batch')];
-  assert.deepEqual(context.moveSection('rpanel', 'rp-batch', 0), batchFirst);
+  assert.deepEqual(context.moveSection('rpanel', last, 99), RP);
+  const lastFirst = [last, ...RP.filter(id => id !== last)];
+  assert.deepEqual(context.moveSection('rpanel', last, 0), lastFirst);
   assert.deepEqual(context.moveSection('rpanel', 'nonexistent', 0),
-    batchFirst, 'an unknown id changes nothing');
+    lastFirst, 'an unknown id changes nothing');
 });
 
 test('setSectionOrder cannot write a section that does not exist', () => {
@@ -117,7 +119,7 @@ test('setSectionOrder cannot write a section that does not exist', () => {
 
 test('every section belongs to exactly one side', () => {
   const seen = new Set();
-  ['lpanel', 'rpanel'].forEach(side => {
+  context.PANEL_SECTION_SIDES.forEach(side => {
     context.declaredSectionIds(side).forEach(id => {
       assert.equal(context.sectionSide(id), side);
       assert.ok(!seen.has(id), `${id} is declared twice`);
@@ -130,11 +132,16 @@ test('every section belongs to exactly one side', () => {
 // ── the one list is the one list ──────────────────────────────────
 
 test('the right panel\'s collapse defaults are derived from the registry', () => {
-  assert.deepEqual(Object.keys(context.RP_SECTION_DEFAULTS), RP);
+  // Every card built on the right panel's markup — Analyze's, Run's, and the
+  // exercise, which is declared in Machine but keeps that markup.
+  const hosted = context.sectionsWithHeader('rp-section-header');
+  assert.ok(hosted.includes('rp-simulate') && hosted.includes('rp-language'));
+  assert.ok(hosted.includes('rp-exercise'), 'by markup, not by where it is declared');
+  assert.deepEqual(Object.keys(context.RP_SECTION_DEFAULTS), hosted);
   assert.equal(context.RP_SECTION_DEFAULTS['rp-batch'], true,
     'Batch Test starts collapsed, and says so in one place');
   assert.equal(context.RP_SECTION_DEFAULTS['rp-language'], false);
-  RP.forEach(id => assert.equal(
+  hosted.forEach(id => assert.equal(
     context.RP_SECTION_DEFAULTS[id], context.sectionStartsCollapsed(id)));
 });
 

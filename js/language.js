@@ -10,7 +10,7 @@ import { langStepBudget } from './machines/runtime.js';
 import { runParallel, shouldParallelize } from './parallel/pool.js';
 import { $, App, getMachineConfig, hasExpensiveRuns, isOmegaAutomaton, omegaAcceptanceOf, statePriority } from './state.js';
 import { getState } from './states-transitions.js';
-import { toggleRPSection } from './ui.js';
+import { revealPlayer } from './ui.js';
 import { isAnyPDA, isAnyTM } from './utils.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -858,10 +858,7 @@ export function langLoadTrace(word) {
   input.value = word.length
     ? (langIsSymbolic() ? word.join('') : word.join(','))
     : App.config.sym.eps;
-  const sec = $('rp-simulate');
-  if (sec && sec.classList.contains('collapsed') && typeof toggleRPSection === 'function') {
-    toggleRPSection('rp-simulate');
-  }
+  revealPlayer();
   if (typeof runSim === 'function') runSim();
 }
 

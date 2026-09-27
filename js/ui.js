@@ -16,11 +16,11 @@ import { CARD_AUTO_HIDE_MS, applyPastedText, hideSaveMenu, restartAutosaveTimer,
 import { renderAll, updateBlockList, updateLPanel, updateRPanel } from './render.js';
 import { filterList } from './panel-list.js';
 import {
-  getActivePanelTab, getTabSide, isPanelTabActive,
-  PANEL_SIDES, PANEL_TAB_NAMES, PANEL_TABS, panelTabNames,
-  setActivePanelTab, setTabSide
+  canTabGoTo, getActivePanelTab, getPanelTabOrder, getTabSide, getTabSides, isPanelEmpty,
+  isPanelTabActive, movePanelTabTo, PANEL_SIDES, PANEL_TAB_NAMES, PANEL_TABS, panelTabNames,
+  setActivePanelTab, setPanelTabOrder, setTabSides
 } from './panel-state.js';
-import { declaredSectionIds, sectionStartsCollapsed } from './panel-sections.js';
+import { PANEL_SECTIONS, isSectionFloating, sectionConfig, sectionHost, sectionSide, sectionStartsCollapsed, sectionsWithHeader } from './panel-sections.js';
 import { syncDockFill } from './panel-sections-ui.js';
 import { setShakeToMinimizeEnabled, shakeToMinimizeEnabled } from './panel-state.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
@@ -2098,7 +2098,7 @@ export function focusStateFromList(id) {
   if (el) el.classList.add('sel-st');
   centerCameraOn(s.x, s.y, true);
   updateLPanel();
-  if (isMobilePanelLayout()) setMobilePanelCollapsed('lpanel', true);
+  if (isMobilePanelLayout()) setMobilePanelCollapsed(sectionHost(sectionSide('lp-states')) || 'lpanel', true);
 }
 
 export function hlListHover(id, on) {
@@ -2116,7 +2116,7 @@ export function focusTransFromList(id) {
   renderAll();
   centerCameraOn((from.x + to.x) / 2, (from.y + to.y) / 2, true);
   updateLPanel();
-  if (isMobilePanelLayout()) setMobilePanelCollapsed('lpanel', true);
+  if (isMobilePanelLayout()) setMobilePanelCollapsed(sectionHost(sectionSide('lp-transitions')) || 'lpanel', true);
 }
 
 export function hlTransListHover(fromId, toId, on) {
@@ -3260,6 +3260,9 @@ export function syncPanelTabs() {
     const on = getActivePanelTab(side);
     const panel = $(side);
     if (panel) panel.dataset.activePanel = on || '';
+    // A panel every tab has been dragged off is not drawn at all, the way VS
+    // Code hides an empty sidebar; dragging a tab to that edge brings it back.
+    if (panel?.classList) panel.classList.toggle('is-empty', isPanelEmpty(side));
     panelTabNames(side).forEach(name => {
       const ids = PANEL_TABS[name];
       const tab = $(ids.tab);
@@ -3280,6 +3283,38 @@ export function syncPanelTabs() {
   // the panel between edges and is only offered while that panel is showing.
   const actions = $('sm-head-actions');
   if (actions) actions.hidden = !isPanelTabActive('statemate');
+  PANEL_SIDES.forEach(fitPanelTabs);
+}
+
+/**
+ * Compact a strip whose labels do not fit: the unselected tabs drop to their
+ * icons. Measured, because with every tab movable a strip can hold one tab or
+ * four and no container breakpoint is right for both — and measured with the
+ * tabs' shrinking switched off (`.is-measuring`), since a tab's own
+ * `scrollWidth` is taken after its label has already been ellipsised down to
+ * whatever room there was, which always "fits".
+ */
+export function fitPanelTabs(side) {
+  const strip = $(`${side}-tabs`);
+  if (!strip?.classList) return;
+  strip.classList.remove('is-compact');
+  const tabs = [...(strip.children || [])];
+  let compact = false;
+  if (tabs.length >= 2 && strip.clientWidth) {
+    strip.classList.add('is-measuring');
+    const need = strip.scrollWidth || 0;
+    strip.classList.remove('is-measuring');
+    compact = need > strip.clientWidth + 1;
+  }
+  strip.classList.toggle('is-compact', compact);
+  // A tooltip only where the name is not already on screen. On every tab it
+  // repeated the label it was hovering over, and it followed the pointer
+  // through drags and over the tab menu.
+  tabs.forEach(tab => {
+    const label = tab.querySelector?.('.panel-tab-label')?.textContent?.trim();
+    if (compact && !tab.classList.contains('active') && label) tab.setAttribute('data-tip', label);
+    else tab.removeAttribute?.('data-tip');
+  });
 }
 
 /** Select a tab without invoking a panel's enter/leave lifecycle. */
@@ -3304,11 +3339,18 @@ export function applyPanelLayout() {
   PANEL_SIDES.forEach(side => {
     const strip = $(`${side}-tabs`);
     const body = panelBody(side);
-    panelTabNames(side).forEach(name => {
-      const ids = PANEL_TABS[name];
-      const tab = $(ids.tab);
-      const tabpanel = $(ids.panel);
-      if (strip && tab && tab.parentNode !== strip) strip.appendChild(tab);
+    const names = panelTabNames(side);
+    const tabs = names.map(name => $(PANEL_TABS[name].tab)).filter(Boolean);
+    if (strip) {
+      // Touch the strip only when its order is wrong: re-appending a tab that
+      // is already in place would still move focus-bearing DOM for nothing.
+      const drawn = [...strip.children].filter(el => tabs.includes(el));
+      if (drawn.length !== tabs.length || drawn.some((el, i) => el !== tabs[i])) {
+        tabs.forEach(tab => strip.appendChild(tab));
+      }
+    }
+    names.forEach(name => {
+      const tabpanel = $(PANEL_TABS[name].panel);
       if (body && tabpanel && tabpanel.parentNode !== body) body.appendChild(tabpanel);
     });
   });
@@ -3330,11 +3372,398 @@ export function applyPanelLayout() {
  */
 export function setStateMatePanel(side) {
   if (!PANEL_SIDES.includes(side) || getTabSide('statemate') === side) return;
-  setTabSide('statemate', side);
-  try { localStorage.setItem('automata-statemate-panel', side); } catch (e) { }
-  applyPanelLayout();
-  showPanelTab('statemate');
+  movePanelTab('statemate', side, null);
 }
+
+const TAB_ORDER_KEY = 'automata-panel-tab-order';
+const TAB_SIDES_KEY = 'automata-panel-tab-sides';
+// Written before every tab could move, when StateMate was the only one that
+// did. Read once as a migration and never written again.
+const LEGACY_STATEMATE_SIDE_KEY = 'automata-statemate-panel';
+
+/** Write the tab layout — the order and every moved tab's side. */
+function persistPanelTabLayout() {
+  try {
+    const order = getPanelTabOrder();
+    if (order) localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(order));
+    else localStorage.removeItem(TAB_ORDER_KEY);
+    const sides = getTabSides();
+    if (Object.keys(sides).length) localStorage.setItem(TAB_SIDES_KEY, JSON.stringify(sides));
+    else localStorage.removeItem(TAB_SIDES_KEY);
+    localStorage.removeItem(LEGACY_STATEMATE_SIDE_KEY);
+  } catch (e) { }
+}
+
+/** The saved sides, with the StateMate-only key of earlier versions folded in. */
+function readStoredTabSides() {
+  try {
+    const raw = localStorage.getItem(TAB_SIDES_KEY);
+    if (raw) return JSON.parse(raw);
+    const legacy = localStorage.getItem(LEGACY_STATEMATE_SIDE_KEY);
+    return legacy ? { statemate: legacy } : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * StateMate has to be *opened*, not merely selected — `openStateMate` wires its
+ * composer. When a layout change rather than the reader leaves it the tab its
+ * panel falls back to (every other tab dragged off that panel, a saved layout
+ * at boot), open it quietly: no pin, no focus, since nobody asked for it.
+ */
+function settleStateMate(wasShowing) {
+  if (!wasShowing && isPanelTabActive('statemate')) openStateMate({ resume: true, quiet: true });
+}
+
+/**
+ * Put a tab on `side` before `before` (null: last), the way dragging a tab in
+ * VS Code does — the one entry point for the drag, the tab menu and
+ * `setStateMatePanel`.
+ *
+ * A tab that crosses to the other panel is opened there, which is what a
+ * reader who dragged it across is asking to see. A reorder within one strip
+ * changes nothing about which tab is showing.
+ */
+export function movePanelTab(name, side, before = null) {
+  const from = getTabSide(name);
+  const smWas = isPanelTabActive('statemate');
+  if (!movePanelTabTo(name, side, before)) return false;
+  persistPanelTabLayout();
+  applyPanelLayout();
+  if (from !== side) showPanelTab(name);
+  settleStateMate(smWas || (from !== side && name === 'statemate'));
+  return true;
+}
+
+/** Back to declared order, with every tab on its home side. */
+export function resetPanelTabLayout() {
+  const smWas = isPanelTabActive('statemate');
+  PANEL_TAB_NAMES.forEach(name => {
+    const home = PANEL_TABS[name].home;
+    if (getTabSide(name) !== home) movePanelTabTo(name, home, null);
+  });
+  setPanelTabOrder(null);
+  persistPanelTabLayout();
+  applyPanelLayout();
+  settleStateMate(smWas);
+}
+
+// ── dragging a tab ────────────────────────────────────────────────
+//  A press is a click until it travels, the rule panel-float.js follows: no
+//  pointer capture and no listeners of consequence until the threshold, so an
+//  ordinary click reaches the tab's own handler untouched. Past it, the tab can
+//  be dropped anywhere on its own strip to reorder, or anywhere over the other
+//  panel to move it there — and, when that panel has no tabs left and so is
+//  not drawn at all, on a band at that edge of the canvas. The drop targets
+//  are measured once, at the start of the gesture, not per frame.
+
+const TAB_DRAG_THRESHOLD = 5;
+// A collapsed hover rail, or a panel with no tabs, is zero wide, so it is
+// given a band at its edge.
+const TAB_RAIL_BAND = 48;
+const TAB_EMPTY_BAND = 72;
+// How far above or below a strip a pointer may stray and still reorder it.
+const TAB_STRIP_SLACK = 16;
+
+let tabDrag = null;
+let tabDragEndedAt = 0;
+
+function tabLabel(name) {
+  return $(PANEL_TABS[name].tab)?.querySelector?.('.panel-tab-label')?.textContent?.trim() || name;
+}
+
+function panelIsDrawn(side) {
+  const panel = $(side);
+  return !!panel && panel.offsetParent !== null && !panel.classList.contains('hidden')
+    && !panel.classList.contains('is-empty');
+}
+
+/** A panel with no tabs, which is not drawn — but could take one. */
+function panelIsVacant(side) {
+  const panel = $(side);
+  return !!panel && isPanelEmpty(side) && !panel.classList.contains('hidden');
+}
+
+/** Where a drag could land, measured once. */
+function measureTabDropTargets(name) {
+  const wrapRect = $('canvas-wrap')?.getBoundingClientRect?.();
+  return PANEL_SIDES.filter(side => canTabGoTo(name, side) && (panelIsDrawn(side) || panelIsVacant(side))).map(side => {
+    if (!panelIsDrawn(side)) {
+      if (!wrapRect || !wrapRect.width) return null;
+      const rect = side === 'lpanel'
+        ? { left: wrapRect.left - 8, right: wrapRect.left + TAB_EMPTY_BAND, top: wrapRect.top, bottom: wrapRect.bottom }
+        : { left: wrapRect.right - TAB_EMPTY_BAND, right: wrapRect.right + 8, top: wrapRect.top, bottom: wrapRect.bottom };
+      return { side, rect, strip: null, tabs: [], home: false, vacant: true };
+    }
+    const panel = $(side);
+    const r = panel.getBoundingClientRect();
+    let rect = { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+    if (r.width < 8) {
+      rect = side === 'lpanel'
+        ? { left: r.left - 4, right: r.left + TAB_RAIL_BAND, top: r.top, bottom: r.bottom }
+        : { left: r.right - TAB_RAIL_BAND, right: r.right + 4, top: r.top, bottom: r.bottom };
+    }
+    const strip = $(`${side}-tabs`)?.getBoundingClientRect?.();
+    const tabs = panelTabNames(side).filter(n => n !== name).map(n => {
+      const b = $(PANEL_TABS[n].tab)?.getBoundingClientRect?.();
+      return b ? { name: n, mid: b.left + b.width / 2 } : null;
+    }).filter(Boolean);
+    return { side, rect, strip, tabs, home: side === getTabSide(name) };
+  }).filter(Boolean);
+}
+
+function findTabDrop(x, y) {
+  const target = tabDrag.targets.find(t =>
+    x >= t.rect.left && x <= t.rect.right && y >= t.rect.top && y <= t.rect.bottom);
+  if (!target) return null;
+  const onStrip = target.strip && target.strip.height > 0
+    && y >= target.strip.top - TAB_STRIP_SLACK && y <= target.strip.bottom + TAB_STRIP_SLACK;
+  // Within its own panel a tab reorders only over the strip; the body of the
+  // panel is not a place a tab can go. Over the other panel, anywhere will do.
+  if (target.home && !onStrip) return null;
+  const before = onStrip ? (target.tabs.find(t => x < t.mid)?.name || null) : null;
+  return { side: target.side, before };
+}
+
+/** True when dropping here would leave the tab exactly where it is. */
+function tabDropIsNoop(name, drop) {
+  if (!drop || drop.side !== getTabSide(name)) return false;
+  const names = panelTabNames(drop.side);
+  const next = names[names.indexOf(name) + 1] || null;
+  return drop.before === next;
+}
+
+function clearTabDropMarks() {
+  document.querySelectorAll('.panel-tab.drop-before, .panel-tab.drop-after')
+    .forEach(el => el.classList.remove('drop-before', 'drop-after'));
+  PANEL_SIDES.forEach(side => $(side)?.classList.remove('is-tab-drop-target'));
+  (tabDrag?.zones || []).forEach(z => z.el.classList.remove('is-target'));
+}
+
+function showTabDrop(drop) {
+  clearTabDropMarks();
+  if (!drop || tabDropIsNoop(tabDrag.name, drop)) return;
+  const zone = (tabDrag.zones || []).find(z => z.side === drop.side);
+  if (zone) { zone.el.classList.add('is-target'); return; }
+  if (drop.side !== getTabSide(tabDrag.name)) $(drop.side)?.classList.add('is-tab-drop-target');
+  const names = panelTabNames(drop.side).filter(n => n !== tabDrag.name);
+  if (drop.before) $(PANEL_TABS[drop.before].tab)?.classList.add('drop-before');
+  else if (names.length) $(PANEL_TABS[names[names.length - 1]].tab)?.classList.add('drop-after');
+}
+
+/** A visible band where a panel with no tabs would be, for the drag's length. */
+function showVacantZones(targets) {
+  return targets.filter(t => t.vacant).map(t => {
+    const el = document.createElement('div');
+    el.className = `panel-edge-drop is-${t.side}`;
+    el.setAttribute('aria-hidden', 'true');
+    el.style.left = t.rect.left + 8 * (t.side === 'lpanel' ? 1 : 0) + 'px';
+    el.style.top = t.rect.top + 'px';
+    el.style.width = (t.rect.right - t.rect.left - 8) + 'px';
+    el.style.height = (t.rect.bottom - t.rect.top) + 'px';
+    const label = document.createElement('span');
+    label.textContent = t.side === 'lpanel' ? 'Left panel' : 'Right panel';
+    el.appendChild(label);
+    document.body.appendChild(el);
+    return { side: t.side, el };
+  });
+}
+
+function startTabDrag() {
+  const d = tabDrag;
+  d.active = true;
+  d.targets = measureTabDropTargets(d.name);
+  d.zones = showVacantZones(d.targets);
+  try { d.tab.setPointerCapture?.(d.pointerId); } catch (e) { }
+  d.tab.classList.add('is-dragging');
+  document.body.classList.add('is-dragging-panel-tab');
+  const ghost = document.createElement('div');
+  ghost.className = 'panel-tab-ghost';
+  ghost.setAttribute('aria-hidden', 'true');
+  ghost.textContent = tabLabel(d.name);
+  document.body.appendChild(ghost);
+  d.ghost = ghost;
+}
+
+function endTabDrag() {
+  const d = tabDrag;
+  if (d?.active) clearTabDropMarks();
+  tabDrag = null;
+  document.removeEventListener('pointermove', onTabDragMove, true);
+  document.removeEventListener('pointerup', onTabDragUp, true);
+  document.removeEventListener('pointercancel', onTabDragCancel, true);
+  document.removeEventListener('keydown', onTabDragKey, true);
+  if (!d?.active) return d;
+  try { d.tab.releasePointerCapture?.(d.pointerId); } catch (e) { }
+  d.tab.classList.remove('is-dragging');
+  document.body.classList.remove('is-dragging-panel-tab');
+  d.ghost?.remove?.();
+  (d.zones || []).forEach(z => z.el.remove?.());
+  // The pointerup of a drag still produces a click on the tab; it is not one.
+  tabDragEndedAt = Date.now();
+  return d;
+}
+
+function onTabDragMove(e) {
+  if (!tabDrag || e.pointerId !== tabDrag.pointerId) return;
+  if (!tabDrag.active) {
+    if (Math.hypot(e.clientX - tabDrag.x0, e.clientY - tabDrag.y0) < TAB_DRAG_THRESHOLD) return;
+    startTabDrag();
+  }
+  e.preventDefault();
+  if (tabDrag.ghost) tabDrag.ghost.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 10}px)`;
+  tabDrag.drop = findTabDrop(e.clientX, e.clientY);
+  showTabDrop(tabDrag.drop);
+}
+
+function onTabDragUp(e) {
+  if (!tabDrag || e.pointerId !== tabDrag.pointerId) return;
+  const d = endTabDrag();
+  if (!d.active || !d.drop || tabDropIsNoop(d.name, d.drop)) return;
+  movePanelTab(d.name, d.drop.side, d.drop.before);
+}
+
+function onTabDragCancel(e) {
+  if (tabDrag && e.pointerId === tabDrag.pointerId) endTabDrag();
+}
+
+function onTabDragKey(e) {
+  if (!tabDrag?.active || e.key !== 'Escape') return;
+  // Claimed only while a drag is in flight, so it pre-empts nothing otherwise.
+  e.preventDefault();
+  e.stopPropagation();
+  endTabDrag();
+}
+
+function onPanelTabPointerDown(name, e) {
+  if (e.button !== 0 || e.isPrimary === false || tabDrag || isMobilePanelLayout()) return;
+  hideActionMenu();
+  tabDrag = {
+    name, tab: $(PANEL_TABS[name].tab), pointerId: e.pointerId,
+    x0: e.clientX, y0: e.clientY, active: false, drop: null, ghost: null, targets: [], zones: []
+  };
+  document.addEventListener('pointermove', onTabDragMove, true);
+  document.addEventListener('pointerup', onTabDragUp, true);
+  document.addEventListener('pointercancel', onTabDragCancel, true);
+  document.addEventListener('keydown', onTabDragKey, true);
+}
+
+// ── the action menu ───────────────────────────────────────────────
+//  One context menu for the panel chrome: a tab's (Move Left/Right, to the
+//  other panel) and a card's (to another tab). Right-click, Shift+F10 or the
+//  context-menu key — the keyboard's route to everything the drags do. Built
+//  on first use and rebuilt on each open, since which rows apply depends on
+//  where the thing is now.
+
+let actionMenu = null;
+let actionMenuAnchor = null;
+
+export function hideActionMenu(refocus = false) {
+  if (!actionMenu || actionMenu.style.display !== 'block') return;
+  actionMenu.style.display = 'none';
+  const anchor = actionMenuAnchor;
+  actionMenuAnchor = null;
+  if (refocus) anchor?.focus?.();
+}
+
+/** The name the tab menu has always been hidden by. */
+export function hidePanelTabMenu(refocus = false) {
+  hideActionMenu(refocus);
+}
+
+/**
+ * Open the menu with `items` (`{label, run, disabled}` or `{divider: true}`),
+ * at the pointer (`at`) or under `anchor` when opened from the keyboard.
+ * Answers false, opening nothing, when no row could do anything.
+ */
+export function openActionMenu(items, { at = null, anchor = null, label = 'Actions' } = {}) {
+  if (!items.some(it => !it.divider && !it.disabled)) return false;
+  if (!actionMenu) {
+    actionMenu = document.createElement('div');
+    actionMenu.className = 'ctx panel-tab-menu';
+    actionMenu.id = 'panel-tab-menu';
+    actionMenu.setAttribute('role', 'menu');
+    actionMenu.addEventListener('keydown', e => {
+      if (e.key !== 'Escape' && e.key !== 'Tab') return;
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); }
+      hideActionMenu(e.key === 'Escape');
+    });
+    document.body.appendChild(actionMenu);
+  }
+  hideTabContextMenu();
+  hideContextMenu?.();
+  hideCanvasContextMenu?.();
+  actionMenu.setAttribute('aria-label', label);
+  actionMenu.innerHTML = '';
+  items.forEach(it => {
+    const row = document.createElement('div');
+    if (it.divider) { row.className = 'ctx-divider'; actionMenu.appendChild(row); return; }
+    row.className = 'ctx-i' + (it.disabled ? ' disabled' : '');
+    row.setAttribute('role', 'menuitem');
+    row.setAttribute('tabindex', '-1');
+    if (it.disabled) row.setAttribute('aria-disabled', 'true');
+    row.textContent = it.label;
+    row.addEventListener('click', e => {
+      e.stopPropagation();
+      if (it.disabled) return;
+      hideActionMenu();
+      it.run();
+    });
+    actionMenu.appendChild(row);
+  });
+  actionMenuAnchor = anchor;
+  actionMenu.style.visibility = 'hidden';
+  actionMenu.style.display = 'block';
+  const m = actionMenu.getBoundingClientRect();
+  let x = at?.x, y = at?.y;
+  if (x == null) {
+    const r = anchor?.getBoundingClientRect?.() || { left: 8, bottom: 8 };
+    x = r.left;
+    y = r.bottom + 4;
+  }
+  actionMenu.style.left = Math.max(8, Math.min(x, innerWidth - m.width - 8)) + 'px';
+  actionMenu.style.top = Math.max(8, Math.min(y, innerHeight - m.height - 8)) + 'px';
+  actionMenu.style.visibility = '';
+  if (!at) {
+    const first = actionMenu.querySelector('.ctx-i:not(.disabled)');
+    if (first) { first.setAttribute('tabindex', '0'); first.focus?.(); }
+  }
+  return true;
+}
+
+function panelTabMenuItems(name) {
+  const side = getTabSide(name);
+  const names = panelTabNames(side);
+  const i = names.indexOf(name);
+  const other = PANEL_SIDES.find(s => s !== side);
+  const items = [
+    { label: 'Move Left', disabled: i <= 0, run: () => movePanelTab(name, side, names[i - 1]) },
+    { label: 'Move Right', disabled: i >= names.length - 1, run: () => movePanelTab(name, side, names[i + 2] || null) }
+  ];
+  if (canTabGoTo(name, other)) {
+    items.push({
+      label: other === 'lpanel' ? 'Move to Left Panel' : 'Move to Right Panel',
+      run: () => movePanelTab(name, other, null)
+    });
+  }
+  const customised = !!getPanelTabOrder()
+    || PANEL_TAB_NAMES.some(n => getTabSide(n) !== PANEL_TABS[n].home);
+  if (customised) items.push({ divider: true }, { label: 'Reset Tab Layout', run: resetPanelTabLayout });
+  return items;
+}
+
+function openPanelTabMenu(name, at) {
+  return openActionMenu(panelTabMenuItems(name), {
+    at, anchor: $(PANEL_TABS[name].tab), label: 'Panel tab actions'
+  });
+}
+
+document.addEventListener('click', () => hideActionMenu());
+// Any right-click closes it; one on a tab or a card header reopens it for
+// that thing, from the target's own listener, which runs after this one.
+document.addEventListener('contextmenu', () => hideActionMenu(), true);
+window.addEventListener?.('resize', () => hideActionMenu());
 
 /**
  * Make a sidebar visible enough to read.
@@ -3382,8 +3811,10 @@ export function showPanelTab(name) {
 
 export function initPanelTabs() {
   try {
-    const side = localStorage.getItem('automata-statemate-panel');
-    if (side) setTabSide('statemate', side);
+    const sides = readStoredTabSides();
+    if (sides) setTabSides(sides);
+    const order = localStorage.getItem(TAB_ORDER_KEY);
+    if (order) setPanelTabOrder(JSON.parse(order));
   } catch (e) { }
   // Wired at creation the way reference.js does it, so the tabs add no names
   // to bridge.js.
@@ -3391,8 +3822,23 @@ export function initPanelTabs() {
     const tab = $(PANEL_TABS[name].tab);
     if (!tab || tab._panelTabInit) return;
     tab._panelTabInit = true;
-    tab.addEventListener('click', () => showPanelTab(name));
+    tab.addEventListener('click', () => {
+      if (Date.now() - tabDragEndedAt < 400) return;
+      showPanelTab(name);
+    });
+    tab.addEventListener('pointerdown', e => onPanelTabPointerDown(name, e));
+    tab.addEventListener('contextmenu', e => {
+      if (isMobilePanelLayout()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openPanelTabMenu(name, { x: e.clientX, y: e.clientY });
+    });
     tab.addEventListener('keydown', e => {
+      if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+        e.preventDefault();
+        openPanelTabMenu(name, null);
+        return;
+      }
       // The walk is over the tabs on *this* strip, read at event time: a
       // movable tab changes both strips' contents when it moves.
       const names = panelTabNames(getTabSide(name));
@@ -3409,6 +3855,15 @@ export function initPanelTabs() {
     });
   });
   applyPanelLayout();
+  // A saved layout can leave StateMate alone on a panel, and so showing.
+  settleStateMate(false);
+  // A strip's room changes with its panel — resized, pinned, opened from a
+  // hover rail — and the labels arrive late when the web font does.
+  if (typeof ResizeObserver === 'function' && !initPanelTabs._observer) {
+    initPanelTabs._observer = new ResizeObserver(() => PANEL_SIDES.forEach(fitPanelTabs));
+    PANEL_SIDES.forEach(side => { const strip = $(`${side}-tabs`); if (strip) initPanelTabs._observer.observe(strip); });
+  }
+  document.fonts?.ready?.then?.(() => PANEL_SIDES.forEach(fitPanelTabs));
 }
 
 export const MOBILE_BUILD_PANEL_IDS = ['lpanel', 'rpanel'];
@@ -3608,7 +4063,7 @@ export function setLPSectionCollapsed(id, collapsed, persist = true) {
   if (persist) {
     try { localStorage.setItem(`automata-lpanel-section-${id}`, collapsed ? '1' : '0'); } catch (e) { }
   }
-  syncDockFill('lpanel');
+  syncDockFill(sectionSide(id) || 'lpanel');
 }
 
 export function toggleLPSection(id) {
@@ -3624,7 +4079,7 @@ export function toggleLPSection(id) {
 // were written down, and a section in one and not the other is a section that
 // silently never restores its collapsed state.
 export function initLPanelSections() {
-  declaredSectionIds('lpanel').forEach(id => {
+  sectionsWithHeader('lp-section-header').forEach(id => {
     let collapsed = sectionStartsCollapsed(id);
     try {
       const raw = localStorage.getItem(`automata-lpanel-section-${id}`);
@@ -3634,8 +4089,17 @@ export function initLPanelSections() {
   });
 }
 
+/**
+ * Every section built on the right panel's markup — Analyze's, Run's, and the
+ * exercise wherever it is declared. By markup, not by where a card is: the
+ * collapse helpers and storage keys follow the markup wherever it is dragged.
+ */
+function rpanelSectionIds() {
+  return sectionsWithHeader('rp-section-header');
+}
+
 export const RP_SECTION_DEFAULTS = Object.fromEntries(
-  declaredSectionIds('rpanel').map(id => [id, sectionStartsCollapsed(id)])
+  rpanelSectionIds().map(id => [id, sectionStartsCollapsed(id)])
 );
 
 export function setRPSectionCollapsed(id, collapsed, persist = true) {
@@ -3652,7 +4116,7 @@ export function setRPSectionCollapsed(id, collapsed, persist = true) {
   if (persist) {
     try { localStorage.setItem(`automata-rpanel-section-${id}`, collapsed ? '1' : '0'); } catch (e) { }
   }
-  syncDockFill('rpanel');
+  syncDockFill(sectionSide(id) || 'rpanel');
 }
 
 export function toggleRPSection(id) {
@@ -3660,8 +4124,37 @@ export function toggleRPSection(id) {
   setRPSectionCollapsed(id, !sec.classList.contains('collapsed'), true);
 }
 
+/**
+ * Bring a section into view: the tab that holds it selected, and the section
+ * expanded — VS Code's "reveal", for the places that jump into a section from
+ * somewhere else (trace this word, replay this row, run the worst case).
+ *
+ * A floating section is already in view wherever its tab is, so it switches
+ * nothing. It does not pin an unpinned panel: that is a preference, and the
+ * callers that mean to override it (an exercise arriving) say so themselves.
+ */
+export function revealSection(id) {
+  const sec = $(id);
+  const group = sectionSide(id);
+  if (!sec || !group) return;
+  if (!isSectionFloating(id)) {
+    const container = PANEL_SECTIONS[group].container;
+    const tab = PANEL_TAB_NAMES.find(name => PANEL_TABS[name].panel === container);
+    if (tab && !isPanelTabActive(tab)) showPanelTab(tab);
+  }
+  if (sec.classList.contains('collapsed')) {
+    if (sectionConfig(id)?.headerClass === 'lp-section-header') setLPSectionCollapsed(id, false, true);
+    else setRPSectionCollapsed(id, false, true);
+  }
+}
+
+/** Show the player — what every "run this word" from outside the Run tab does. */
+export function revealPlayer() {
+  revealSection('rp-simulate');
+}
+
 export function initRPanelSections() {
-  declaredSectionIds('rpanel').forEach(id => {
+  rpanelSectionIds().forEach(id => {
     let collapsed = sectionStartsCollapsed(id);
     try {
       const raw = localStorage.getItem(`automata-rpanel-section-${id}`);

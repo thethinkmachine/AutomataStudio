@@ -48,8 +48,8 @@ import {
   stepBack, stepFwd, stepToEnd, stepToStart
 } from './simulation.js';
 import { floatLayerRect, floatSection, floatingEnabled, raiseFloat, syncPanelEmpty } from './panel-float.js';
-import { isSectionFloating } from './panel-sections.js';
-import { setRPSectionCollapsed } from './ui.js';
+import { isSectionFloating, sectionSide } from './panel-sections.js';
+import { revealSection, setRPSectionCollapsed } from './ui.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
 import { exportBaseName, exportCopyText, exportDownload } from './export-core.js';
 import { Change, subscribe } from './store.js';
@@ -599,7 +599,7 @@ export function syncSpaceTimeSection() {
   const want = spaceTimeKind() ? '' : 'none';
   if (el.style.display === want) return;
   el.style.display = want;
-  syncPanelEmpty('rpanel');
+  syncPanelEmpty(sectionSide(SPACETIME_SECTION));
   if (want === '') refreshSpaceTime();
 }
 
@@ -636,8 +636,10 @@ export function openSpaceTime() {
       geom = { x: Math.max(16, Math.round(r.width - w - 24)), y: 20, w, h };
     }
     floatSection(SPACETIME_SECTION, geom);
-  } else if (!isSectionFloating(SPACETIME_SECTION) && typeof el.scrollIntoView === 'function') {
-    el.scrollIntoView({ block: 'nearest' });
+  } else if (!isSectionFloating(SPACETIME_SECTION)) {
+    // No windows here (a phone, a tablet): the diagram is in the Run tab.
+    revealSection(SPACETIME_SECTION);
+    if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' });
   }
   raiseFloat(el);
   layoutKey = '';

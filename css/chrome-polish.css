@@ -23,12 +23,8 @@
     0 0 0 2px color-mix(in srgb, var(--accent) 34%, transparent);
 }
 
-/* The tab seam (flush strip, active tab covering the header rule with its own
-   border-bottom) lives in css/panels.css — one declaration for both panels,
-   so this finishing pass does not carry a second copy of the metaphor. */
-
-.panel-tab:not(.active) { background: color-mix(in srgb, var(--bg) 46%, transparent); }
-.panel-tab:hover:not(.active) { background: color-mix(in srgb, var(--surface) 86%, transparent); }
+/* The panel tab strip lives in css/panels.css — one declaration for both
+   panels, so this finishing pass does not carry a second copy of it. */
 
 /* Compact, reliably targetable section controls with a restrained focus cue. */
 .lp-section-header,

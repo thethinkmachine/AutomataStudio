@@ -3,7 +3,7 @@ import { commit } from './history.js';
 import { runSim } from './simulation.js';
 import { $, App } from './state.js';
 import { Change, subscribe } from './store.js';
-import { repositionCanvasInfo } from './ui.js';
+import { repositionCanvasInfo, revealPlayer } from './ui.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  THE MACHINE CARD
@@ -477,6 +477,7 @@ function buildBlurb(meta) {
 function runWord(word) {
   const box = $('sim-in');
   if (box) box.value = word;
+  revealPlayer();
   runSim();
 }
 

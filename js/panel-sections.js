@@ -1,10 +1,11 @@
 // The sections inside a sidebar: which there are, what they start out as,
 // and what order the reader has put them in.
 //
-// An import-free leaf for the same reason [js/panel-state.js](panel-state.js)
-// is one — the panel controller, the boot sequence and the drag handler all
-// have to ask the same question, and a shared mutable container written from
-// several modules cannot sit anywhere that imports.
+// A leaf for the same reason [js/panel-state.js](panel-state.js) is one — the
+// panel controller, the boot sequence and the drag handler all have to ask the
+// same question, and a shared mutable container written from several modules
+// cannot sit anywhere that imports an app module. Its one import is
+// panel-state.js, which imports nothing, so the pair stays a closed leaf.
 //
 // **This is the one list.** The section ids used to be written out three
 // times: an array inside `initLPanelSections`, the keys of
@@ -23,11 +24,50 @@
 // would be wrong for half the machines. What needs a name reads it off the
 // element.
 
-export const PANEL_SECTION_SIDES = Object.freeze(['lpanel', 'rpanel']);
+import { getTabSide } from './panel-state.js';
+
+// A *group* of sections is one tabpanel's stack, and the key is historical:
+// there were two, one per sidebar, so the group was named for its panel. It is
+// a tab's stack now — `tab` names the panel tab whose tabpanel is `container`
+// — and since every tab can move between the sidebars, which panel hosts a
+// group is a question with a live answer. Anything asking about the *panel*
+// (is it open, which edge of the canvas does a window pop out beside) asks
+// `sectionHost`, never the group key.
+//
+// Which group a section is *in* is live too: the reader can drag a card to
+// another tab. The registry below is where each one is declared — its home,
+// and what its markup is shaped like (`headerClass`, the collapse storage
+// key) wherever it goes. `sectionSide` answers where it is now.
+// ── how the cards are organised ──────────────────────────────────
+//
+// Three stacks, one per job, and the tab names say the job:
+//
+//   Machine  (tab key `workspace`, left)  — what you are building. The task
+//            if there is one, the parameters, Σ/Γ/Δ, Q, δ, blocks: every card
+//            here is edited, and nothing is derived.
+//   Analyze  (tab key `inspector`, right) — the machine over *all* its
+//            inputs: the language it recognises, many words at once, how its
+//            runs grow. Read-only, recomputed as you edit.
+//   Run      (tab key `run`, right) — *one* input, step by step: the player
+//            and everything drawn from the run it holds.
+//
+// The keys predate the names and are kept, because they are what saved
+// layouts (tab sides, tab order, card placement) are written in. "Workspace"
+// was retired as a label because it already names the document tabs across
+// the top, the mobile workspace switcher and a Settings tab; "Inspector"
+// because it named no job at all.
+//
+// The exercise sits at the top of Machine rather than beside Analyze: its
+// brief is what you are building towards, and the left panel is the one that
+// stays up while you build — on the right it competed with the player for the
+// same panel. It keeps the right panel's markup, so its entry says so
+// (`headerClass`/`titleClass` override the group's; see `sectionConfig`).
+export const PANEL_SECTION_SIDES = Object.freeze(['lpanel', 'rpanel', 'run']);
 
 export const PANEL_SECTIONS = Object.freeze({
   lpanel: Object.freeze({
     container: 'lpanel-content',
+    tab: 'workspace',
     headerClass: 'lp-section-header',
     titleClass: 'lp-section-title',
     storeKey: 'automata-lpanel-section',
@@ -38,8 +78,15 @@ export const PANEL_SECTIONS = Object.freeze({
     // stretching one that holds a single line draws a tall empty card.
     dockFill: true,
     sections: Object.freeze([
-      // The machine's own parameters (js/machine-options-ui.js). Hidden on the
-      // machines that have none, which is most of them.
+      // Shown only while the tab carries an exercise (js/exercise-ui.js), and
+      // first because it is the reason the tab exists.
+      Object.freeze({
+        id: 'rp-exercise', collapsed: false, minW: 300, minH: 200,
+        headerClass: 'rp-section-header', titleClass: 'rp-section-title'
+      }),
+      // The machine's own parameters (js/machine-options-ui.js), titled
+      // "Parameters" so the card is not a second "Machine" inside the Machine
+      // tab. Hidden on the machines that have none, which is most of them.
       Object.freeze({ id: 'lp-machine', collapsed: false, minW: 240, minH: 120 }),
       // Σ, Γ and Δ as rows of one section. No fill: with two or three chip
       // fields in it, stretching the first would push the others to the foot
@@ -52,14 +99,41 @@ export const PANEL_SECTIONS = Object.freeze({
   }),
   rpanel: Object.freeze({
     container: 'rpanel-content',
+    tab: 'inspector',
     headerClass: 'rp-section-header',
     titleClass: 'rp-section-title',
     storeKey: 'automata-rpanel-section',
     sections: Object.freeze([
-      // Shown only while the tab carries an exercise (js/exercise-ui.js), and
-      // first because it is the reason the tab exists.
-      Object.freeze({ id: 'rp-exercise', collapsed: false, minW: 300, minH: 200 }),
+      // What it accepts, then checking that against many words, then what
+      // accepting them costs — the order a reader asks the three questions in,
+      // and the frequency they ask them at.
       Object.freeze({ id: 'rp-language', collapsed: false, minW: 300, minH: 200 }),
+      Object.freeze({ id: 'rp-batch', collapsed: true, minW: 320, minH: 220, fill: '.batch-result' }),
+      // How a machine's runs grow with its input — js/complexity-ui.js. The
+      // charts are what take a window's spare height.
+      Object.freeze({ id: 'rp-complexity', collapsed: true, minW: 360, minH: 320, fill: '.cx-charts' })
+    ])
+  }),
+  // The Run tab: everything that follows the player's cursor. Analyze
+  // keeps what is about the machine over *all* its inputs — its language,
+  // many words at once, how its runs grow — and these are about *one* run,
+  // step by step: every section here is drawn from the run the player holds
+  // (`App.simSteps` and the cursor into it). Language, Batch Test, Complexity
+  // and the exercise each jump *into* that run — trace this word, replay this
+  // row, run the worst case — and that jump reveals this tab.
+  //
+  // Its own `storeKey` for order and float records, because those are written
+  // a group at a time and two groups sharing a key would each overwrite the
+  // other's. The *collapse* flags keep their `automata-rpanel-section-<id>`
+  // keys (setRPSectionCollapsed), so a reader's open/closed choices survive
+  // the move.
+  run: Object.freeze({
+    container: 'rpanel-run-content',
+    tab: 'run',
+    headerClass: 'rp-section-header',
+    titleClass: 'rp-section-title',
+    storeKey: 'automata-run-section',
+    sections: Object.freeze([
       // No fill. The elastic part of a run used to be the trace log, and the
       // log is its own card now; what is left is a transport and a tape card,
       // neither of which has anything to do with spare height. Named as the
@@ -84,19 +158,153 @@ export const PANEL_SECTIONS = Object.freeze({
       // default because the sidebar is the wrong shape for it: the tracker's
       // header opens it straight into a window, and the minimum size here is
       // what a window needs to show a toolbar, some rows and the legend.
-      Object.freeze({ id: 'rp-spacetime', collapsed: true, minW: 380, minH: 280, fill: '.st-view' }),
-      // How a machine's runs grow with its input — js/complexity-ui.js. The
-      // charts are what take a window's spare height.
-      Object.freeze({ id: 'rp-complexity', collapsed: true, minW: 360, minH: 320, fill: '.cx-charts' }),
-      Object.freeze({ id: 'rp-batch', collapsed: true, minW: 320, minH: 220, fill: '.batch-result' })
+      Object.freeze({ id: 'rp-spacetime', collapsed: true, minW: 380, minH: 280, fill: '.st-view' })
     ])
   })
 });
 
-/** The side a section id belongs to, or null. */
-export function sectionSide(id) {
+/** The sidebar element a group's sections are drawn in — wherever its tab is. */
+export function sectionHost(group) {
+  const cfg = PANEL_SECTIONS[group];
+  return cfg ? getTabSide(cfg.tab) : null;
+}
+
+/** Every group hosted by one sidebar. */
+export function groupsInPanel(panel) {
+  return PANEL_SECTION_SIDES.filter(group => sectionHost(group) === panel);
+}
+
+/** The group whose stack a panel tab shows, or null (StateMate has none). */
+export function groupForTab(tab) {
+  return PANEL_SECTION_SIDES.find(group => PANEL_SECTIONS[group].tab === tab) || null;
+}
+
+// ── where a section is ───────────────────────────────────────────
+
+/** The group a section is declared in: its home, and the shape of its markup. */
+export function declaredGroupOf(id) {
   return PANEL_SECTION_SIDES.find(side =>
     PANEL_SECTIONS[side].sections.some(s => s.id === id)) || null;
+}
+
+function sectionEntry(id) {
+  const group = declaredGroupOf(id);
+  return group ? PANEL_SECTIONS[group].sections.find(s => s.id === id) : null;
+}
+
+/**
+ * The declared group's config, with the card's own markup classes over it:
+ * header and title classes follow the markup, and a card may be declared in a
+ * stack whose other cards are built differently (the exercise, in Machine).
+ */
+export function sectionConfig(id) {
+  const group = declaredGroupOf(id);
+  if (!group) return null;
+  const entry = sectionEntry(id);
+  const cfg = PANEL_SECTIONS[group];
+  if (!entry.headerClass && !entry.titleClass) return cfg;
+  return {
+    ...cfg,
+    headerClass: entry.headerClass || cfg.headerClass,
+    titleClass: entry.titleClass || cfg.titleClass
+  };
+}
+
+/** Every declared card built on one header class, wherever it is declared. */
+export function sectionsWithHeader(headerClass) {
+  return PANEL_SECTION_SIDES
+    .flatMap(group => PANEL_SECTIONS[group].sections.map(s => s.id))
+    .filter(id => sectionConfig(id).headerClass === headerClass);
+}
+
+const PLACEMENT_KEY = 'automata-section-groups';
+
+// Held in memory, because `sectionSide` is on per-frame paths — a window move
+// asks it which group a section is in — and a storage read there is the cost
+// panel-float.js has already had to take off that path twice. Read once,
+// written through.
+let placementCache = null;
+
+function placement() {
+  if (placementCache) return placementCache;
+  placementCache = {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PLACEMENT_KEY) || 'null');
+    if (parsed && typeof parsed === 'object') {
+      Object.entries(parsed).forEach(([id, group]) => {
+        const home = declaredGroupOf(id);
+        if (PANEL_SECTIONS[group] && home && home !== group) placementCache[id] = group;
+      });
+    }
+  } catch (e) { /* unreadable reads as "nothing moved" */ }
+  return placementCache;
+}
+
+function writePlacement() {
+  try {
+    // Home is stored as the absence of a record, like every other layout
+    // preference here, so a card dragged back leaves nothing behind.
+    if (Object.keys(placementCache || {}).length) {
+      localStorage.setItem(PLACEMENT_KEY, JSON.stringify(placementCache));
+    } else {
+      localStorage.removeItem(PLACEMENT_KEY);
+    }
+  } catch (e) { /* private mode; correct for this session */ }
+}
+
+/** The group a section is in now: its home unless the reader moved it. */
+export function sectionSide(id) {
+  const home = declaredGroupOf(id);
+  if (!home) return null;
+  return placement()[id] || home;
+}
+
+/** True when any section is not in the group it was declared in. */
+export function anySectionMoved() {
+  return Object.keys(placement()).length > 0;
+}
+
+/**
+ * The sections a group holds now: its own that have not left, in declared
+ * order, then those moved in from elsewhere, in the order they are declared.
+ */
+export function groupSectionIds(group) {
+  if (!PANEL_SECTIONS[group]) return [];
+  const all = PANEL_SECTION_SIDES.flatMap(g => PANEL_SECTIONS[g].sections.map(s => s.id));
+  const own = PANEL_SECTIONS[group].sections.map(s => s.id).filter(id => sectionSide(id) === group);
+  const guests = all.filter(id => !own.includes(id) && sectionSide(id) === group);
+  return [...own, ...guests];
+}
+
+/**
+ * Moves a section to another group, at `index` in that group's order (the end
+ * when omitted). Answers the group's new order, or null when there is no such
+ * section or group.
+ *
+ * Registry state only. The element is reparented by `applySectionOrder`, and a
+ * floating section is docked first (panel-sections-ui does both), because
+ * float records are kept per group and a record left in the old group's store
+ * would describe a window its new group cannot see.
+ */
+export function moveSectionToGroup(id, group, index = Infinity) {
+  const from = sectionSide(id);
+  if (!from || !PANEL_SECTIONS[group]) return null;
+  if (from === group) return moveSection(group, id, Math.min(index, sectionOrder(group).length - 1));
+  const map = placement();
+  if (declaredGroupOf(id) === group) delete map[id];
+  else map[id] = group;
+  writePlacement();
+  // The group it left forgets it; the one it joins places it.
+  setSectionOrder(from, sectionOrder(from));
+  const order = sectionOrder(group).filter(x => x !== id);
+  order.splice(Math.max(0, Math.min(index, order.length)), 0, id);
+  return setSectionOrder(group, order);
+}
+
+/** Every section back in the group it was declared in. */
+export function resetSectionPlacement() {
+  placementCache = {};
+  writePlacement();
 }
 
 /** Every section of a side, in *declared* order. */
@@ -107,9 +315,7 @@ export function declaredSectionIds(side) {
 
 /** Whether a section starts out collapsed, absent anything saved. */
 export function sectionStartsCollapsed(id) {
-  const side = sectionSide(id);
-  if (!side) return false;
-  const entry = PANEL_SECTIONS[side].sections.find(s => s.id === id);
+  const entry = sectionEntry(id);
   return !!(entry && entry.collapsed);
 }
 
@@ -149,7 +355,7 @@ function readStored(side) {
  *     was ever reordered.
  */
 export function sectionOrder(side) {
-  const declared = declaredSectionIds(side);
+  const declared = groupSectionIds(side);
   if (!declared.length) return [];
 
   const seen = new Set();
@@ -168,7 +374,7 @@ export function sectionOrder(side) {
 
 /** True when the reader has moved something — the default order is not saved. */
 export function sectionOrderIsCustom(side) {
-  const declared = declaredSectionIds(side);
+  const declared = groupSectionIds(side);
   const current = sectionOrder(side);
   return declared.some((id, i) => current[i] !== id);
 }
@@ -179,7 +385,7 @@ export function sectionOrderIsCustom(side) {
  * idea of the order cannot write a section that does not exist.
  */
 export function setSectionOrder(side, ids) {
-  const declared = declaredSectionIds(side);
+  const declared = groupSectionIds(side);
   if (!declared.length) return [];
   const seen = new Set();
   const clean = [];
@@ -222,7 +428,7 @@ export function moveSection(side, id, index) {
 /** Puts a side back the way it was declared. */
 export function resetSectionOrder(side) {
   try { localStorage.removeItem(orderKey(side)); } catch (e) { /* ignore */ }
-  return declaredSectionIds(side);
+  return groupSectionIds(side);
 }
 
 // ── floating a section out of its panel ───────────────────────────
@@ -264,8 +470,7 @@ function floatKey(side) {
  * them, which is how a resize turns into a layout nobody designed.
  */
 export function sectionFill(id) {
-  const side = sectionSide(id);
-  const entry = side && PANEL_SECTIONS[side].sections.find(s => s.id === id);
+  const entry = sectionEntry(id);
   return (entry && entry.fill) || null;
 }
 
@@ -280,8 +485,7 @@ export function sectionFill(id) {
  * nothing gets, so adding a section costs no edit here.
  */
 export function sectionMinSize(id) {
-  const side = sectionSide(id);
-  const entry = side && PANEL_SECTIONS[side].sections.find(s => s.id === id);
+  const entry = sectionEntry(id);
   return {
     w: Math.max(FLOAT_MIN_W, (entry && entry.minW) || 0),
     h: Math.max(FLOAT_MIN_H, (entry && entry.minH) || 0)
@@ -331,7 +535,7 @@ function recordGeom(g, min) {
 export function floatStates(side) {
   const key = floatKey(side);
   if (!key) return {};
-  const declared = declaredSectionIds(side);
+  const members = groupSectionIds(side);
   let parsed = null;
   try {
     const raw = localStorage.getItem(key);
@@ -341,7 +545,7 @@ export function floatStates(side) {
   }
   if (!parsed || typeof parsed !== 'object') return {};
   const out = {};
-  for (const id of declared) {
+  for (const id of members) {
     const g = parsed[id];
     if (!g || typeof g !== 'object') continue;
     out[id] = recordGeom(g, sectionMinSize(id));
@@ -362,7 +566,7 @@ export function isSectionFloating(id) {
 /** The floating sections of a side, in declared order. */
 export function floatingSectionIds(side) {
   const states = floatStates(side);
-  return declaredSectionIds(side).filter(id => states[id]);
+  return groupSectionIds(side).filter(id => states[id]);
 }
 
 /** The docked ones — what `applySectionOrder` may put back in the panel. */

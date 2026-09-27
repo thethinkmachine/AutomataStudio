@@ -327,7 +327,7 @@ test('the section follows the machine, and is a window-ready panel section', () 
   harness.resetApp();
   const { App, setMachine, syncSpaceTimeSection, PANEL_SECTIONS } = context;
   const { getElement } = harness;
-  const entry = PANEL_SECTIONS.rpanel.sections.find(s => s.id === 'rp-spacetime');
+  const entry = PANEL_SECTIONS.run.sections.find(s => s.id === 'rp-spacetime');
   assert.ok(entry, 'registered');
   assert.equal(entry.fill, '.st-view', 'the diagram is what takes a window’s spare height');
   assert.equal(entry.collapsed, true, 'collapsed in the sidebar until asked for');
