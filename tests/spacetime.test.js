@@ -89,10 +89,10 @@ test('rows read the same in any order, including across replay checkpoints', () 
     { id: 't0', from: 's0', to: 's0', symbol: 'a', write: 'x', dir: 'R' },
     { id: 't1', from: 's0', to: 's0', symbol: App.config.sym.blank, write: 'x', dir: 'R' }
   );
-  App.config.maxTmSteps = 900;
+  App.config.maxTmSteps = 3000;
   const run = runWord('aaa');
   const model = modelFor(run);
-  assert.ok(model.rows > 600, 'long enough to cross checkpoints');
+  assert.ok(model.tapes[0].j.checkpoints.length > 2, 'long enough to cross checkpoints');
 
   const tr = model.tapes[0];
   const read = i => model.cursor(0, i, tr.lo, tr.hi).cells.join('');
@@ -102,7 +102,7 @@ test('rows read the same in any order, including across replay checkpoints', () 
     forward.push(cur.cells.join(''));
     if (i < model.rows - 1) cur.next();
   }
-  for (const i of [model.rows - 1, 0, 255, 256, 257, 511, 513, 700, 3]) {
+  for (const i of [model.rows - 1, 0, 1023, 1024, 1025, 2047, 2048, 2049, 2500, 3]) {
     assert.equal(read(i), forward[i], `random access to row ${i}`);
     assert.equal(read(i), run.steps[i].view.cells.join('') + App.config.sym.blank.repeat(tr.hi - tr.lo + 1 - run.steps[i].view.cells.length),
       `row ${i} against the step's own view`);
@@ -112,7 +112,9 @@ test('rows read the same in any order, including across replay checkpoints', () 
 test('checkpoints on a growing tape cost the run, not its square', () => {
   // Each checkpoint copies the whole tape, and this tape is as wide as the run
   // is long — a copy every 256 rows would be rows² / 256 cells (7 GB at
-  // 300,000 steps). Spaced by what they copy, they sum to about the rows.
+  // 300,000 steps). Spaced by what they copy, they sum to about the rows. They
+  // are the tape log's (js/tape-log.js), which the diagram reads rather than
+  // copying the tape again.
   harness.resetApp();
   const { App, setMachine } = context;
   setMachine('TM');
@@ -126,11 +128,16 @@ test('checkpoints on a growing tape cost the run, not its square', () => {
   const model = modelFor(run);
   const tr = model.tapes[0];
   assert.ok(model.rows > 5000);
+  const { CHECKPOINT_MIN } = context;
+  const cps = tr.j.checkpoints;
 
-  const copied = tr.checkpoints.reduce((n, c) => n + c.cells.size, 0);
+  const copied = cps.reduce((n, c) => n + c.codes.length, 0);
   assert.ok(copied <= 2 * model.rows, `${copied} cells copied for ${model.rows} rows`);
-  const rows = tr.checkpoints.map(c => c.row);
-  assert.deepEqual(rows.slice(0, 2), [0, 256], 'a narrow tape still gets one every 256 rows');
+  // And a cell costs a byte. A checkpoint was a Map of symbols, ~40 bytes a
+  // cell, which put the diagram of BB(5) at 1.8 GB.
+  assert.ok(cps.every(c => c.codes.BYTES_PER_ELEMENT === 1), 'a checkpoint is a byte a cell');
+  const rows = cps.map(c => c.row);
+  assert.deepEqual(rows.slice(0, 2), [0, CHECKPOINT_MIN], 'a narrow tape still gets one at the floor');
   assert.ok(rows.at(-1) - rows.at(-2) > 1000, 'and a wide one spaces them out');
 
   // Uneven spacing must not change what a row reads, least of all at the seams.
@@ -144,6 +151,53 @@ test('checkpoints on a growing tape cost the run, not its square', () => {
     if (i < model.rows - 1) cur.next();
   }
   for (const i of probes) assert.equal(read(i), want.get(i), `random access to row ${i}`);
+});
+
+test('a tape growing leftward reads the same as the tracker, far past where it started', () => {
+  // Two-way, walking left forever: the live tape has to grow at its left end
+  // many times over, keeping every cell where it was.
+  harness.resetApp();
+  const { App, setMachine } = context;
+  setMachine('TM');
+  App.config.twoWayTape = true;
+  App.states.push({ id: 's0', name: 'q0', x: 0, y: 0 }, { id: 's1', name: 'q1', x: 0, y: 0 });
+  App.startId = 's0';
+  App.sigma = new Set(['a']);
+  App.stackAlpha = new Set(['a', 'x', 'y', App.config.sym.blank]);
+  App.transitions.push(
+    { id: 't0', from: 's0', to: 's1', symbol: 'a', write: 'y', dir: 'L' },
+    { id: 't1', from: 's0', to: 's1', symbol: App.config.sym.blank, write: 'x', dir: 'L' },
+    { id: 't2', from: 's1', to: 's0', symbol: App.config.sym.blank, write: 'y', dir: 'L' }
+  );
+  App.config.maxTmSteps = 3000;
+  const run = runWord('aaaa');
+  const model = modelFor(run);
+  assert.ok(model.tapes[0].lo < -2000, 'the tape really went left');
+  assertRowsMatchTracker(model, run.steps, 'leftward');
+});
+
+test('more symbols than a byte holds widen the codes, and read back as themselves', () => {
+  // 300 states, each writing a symbol of its own: past 255 the live tape's
+  // codes no longer fit a byte.
+  harness.resetApp();
+  const { App, setMachine } = context;
+  setMachine('TM');
+  const B = App.config.sym.blank;
+  const n = 300;
+  const syms = Array.from({ length: n }, (_, i) => 'z' + i);
+  for (let i = 0; i <= n; i++) App.states.push({ id: 's' + i, name: 'q' + i, x: 0, y: 0 });
+  App.startId = 's0';
+  App.accepts.add('s' + n);
+  App.sigma = new Set(['a']);
+  App.stackAlpha = new Set([...syms, B]);
+  syms.forEach((z, i) => App.transitions.push({ id: 't' + i, from: 's' + i, to: 's' + (i + 1), symbol: B, write: z, dir: 'R' }));
+  App.config.maxTmSteps = 1000;
+  const run = runWord('');
+  const model = modelFor(run);
+  assert.equal(run.steps.at(-1).final, 'accept');
+  const tr = model.tapes[0];
+  assert.equal(model.cursor(0, model.rows - 1, tr.lo, tr.hi).cells.slice(0, n).join(','), syms.join(','));
+  assertRowsMatchTracker(model, run.steps, 'wide alphabet');
 });
 
 test('building the diagram never pulls a step from a streaming run', () => {
@@ -579,6 +633,9 @@ test('the overview follows a store as exactly as it follows a tape', () => {
   }
 });
 
+/** The cells a journal's steps a..b-1 wrote. */
+const writtenIn = (j, a, b) => Array.from({ length: Math.max(0, b - a) }, (_, k) => j.cell(a + k));
+
 test('who wrote a cell: the last write, and nothing since', () => {
   for (const [name, word] of [['tm', '1011+11'], ['ittm', ''], ['mtm', '1101,111,ε']]) {
     loadExample(name);
@@ -592,13 +649,13 @@ test('who wrote a cell: the last write, and nothing since', () => {
           if (!info) {
             // Never written: it holds what it held at the start.
             assert.equal(model.cursor(t, 0, x, x).cells[0], now, `${name} T${t} @${x} row ${row}: unwritten means unchanged`);
-            assert.ok(!tr.j.wCell.slice(0, row).includes(x), `${name} T${t} @${x} row ${row}: and no journal entry says otherwise`);
+            assert.ok(!writtenIn(tr.j, 0, row).includes(x), `${name} T${t} @${x} row ${row}: and no journal entry says otherwise`);
             continue;
           }
-          assert.equal(tr.j.wCell[info.by], x, `${name}: step ${info.by} wrote cell ${x}`);
+          assert.equal(tr.j.cell(info.by), x, `${name}: step ${info.by} wrote cell ${x}`);
           assert.equal(info.row, info.by + 1);
           assert.ok(info.row <= row);
-          assert.ok(!tr.j.wCell.slice(info.row, row).includes(x), `${name} T${t} @${x}: no later write before row ${row}`);
+          assert.ok(!writtenIn(tr.j, info.row, row).includes(x), `${name} T${t} @${x}: no later write before row ${row}`);
           assert.equal(model.cursor(t, info.row, x, x).cells[0], now, `${name}: what it wrote is what is there`);
         }
       }

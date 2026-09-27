@@ -181,9 +181,9 @@ function cellsVisited(steps) {
     for (const j of journals) {
       let lo = Infinity;
       let hi = -Infinity;
-      const n = Math.min(steps.length, j.heads.length);
+      const n = Math.min(steps.length, j.length);
       for (let i = 0; i < n; i++) {
-        const h = j.heads[i];
+        const h = j.head(i);
         if (h < lo) lo = h;
         if (h > hi) hi = h;
       }

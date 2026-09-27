@@ -111,6 +111,7 @@ import * as machinePredicates from '../js/machines/predicates.js';
 import * as machineBatch from '../js/machines/batch.js';
 import * as machinePaint from '../js/machines/paint.js';
 import * as machineRun from '../js/machines/run.js';
+import * as machineColumns from '../js/machines/columns.js';
 import * as machineBranchTree from '../js/machines/branch-tree.js';
 import * as parallelPool from '../js/parallel/pool.js';
 import * as parallelSnapshot from '../js/parallel/snapshot.js';
@@ -146,7 +147,7 @@ const NAMESPACES = [
   blocks, blocksUi, viewGraph, graphThumb, scope, runScope, canvas, render, panelState, panelSections, panelSectionsUi, panelFloat, sectionStatus, machineOptionsUi, deltaTable, panelShake, panelList, mobile, notes, dividers,
   machineRegistry, machineRuntime, machineBranchTree, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineEmbedded, machineTuring, machineTransducer, machineTwoWay, machines,
-  machinePredicates, machineBatch, machinePaint, machineRun, parallelPool, parallelSnapshot, parallelCore,
+  machinePredicates, machineBatch, machinePaint, machineRun, machineColumns, parallelPool, parallelSnapshot, parallelCore,
   simulation, speedControl, tape, tapeLog, tapeView, spacetime, spacetimeUi, branchTreeUi, branchTokens, complexity, complexityUi, suggest, language, alphabet, markdown,
   view, history, fileHost, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, importStatechart, interopStatechart, interopObjlit, interopXml, interopStandardTM,
@@ -215,6 +216,8 @@ function resetModuleState() {
   // running the fallback — the two agree, so it would be slow rather than
   // wrong, which is the kind of thing nobody notices.
   geometry.setLabelKernel('auto');
+  // Likewise a test that forced one way of reaching a step in a tape log.
+  tapeLog.setJumpRoute('auto');
   viewport.invalidateCull();
   // The block index validates itself the way the state index does, and a test
   // can replace App.blocks with an equal-looking array the validator coincides
