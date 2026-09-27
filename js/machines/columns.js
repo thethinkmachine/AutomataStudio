@@ -69,6 +69,26 @@ export class CodeColumn {
     this.max = Type === Uint16Array ? 0xffff : 0xffffffff;
   }
 
+  /**
+   * Append `src[0..count)` — what `count` pushes would leave, a block copy at
+   * a time, for a producer that fills a buffer of its own first
+   * (js/machines/fast-tm.js).
+   */
+  pushMany(src, count) {
+    let top = 0;
+    for (let k = 0; k < count; k++) if (src[k] > top) top = src[k];
+    if (top > this.max) this.widen(top);
+    let k = 0;
+    while (k < count) {
+      const i = this.length;
+      const c = this.chunks[i >>> BITS] || newChunk(this.Type, this.chunks);
+      const n = Math.min(count - k, SIZE - (i & MASK));
+      c.set(src.subarray(k, k + n), i & MASK);
+      this.length += n;
+      k += n;
+    }
+  }
+
   /** What the column holds, in bytes — for the tests and the benchmark. */
   bytes() { return this.chunks.length * SIZE * this.Type.BYTES_PER_ELEMENT; }
 }
@@ -118,6 +138,34 @@ export class HeadColumn {
       (this.jumps ??= new Map()).set(i, v);
     }
     this.last = v;
+  }
+
+  /** Append `src[0..count)`, as `count` pushes would — the same anchors, the
+   *  same jumps — with the fields kept in locals rather than read per row. */
+  pushMany(src, count) {
+    let k = 0;
+    let last = this.last;
+    while (k < count) {
+      let i = this.length;
+      const dc = this.deltas[i >>> BITS] || newChunk(Int8Array, this.deltas);
+      const end = k + Math.min(count - k, SIZE - (i & MASK));
+      for (; k < end; k++, i++) {
+        const v = src[k];
+        if (i % SPAN === 0) {
+          const a = this.nAnchors++;
+          (this.anchors[a >>> BITS] || newChunk(Int32Array, this.anchors))[a & MASK] = v;
+        }
+        const d = i === 0 ? 0 : v - last;
+        if (d > JUMP && d <= 127) dc[i & MASK] = d;
+        else {
+          dc[i & MASK] = JUMP;
+          (this.jumps ??= new Map()).set(i, v);
+        }
+        last = v;
+      }
+      this.length = i;
+    }
+    this.last = last;
   }
 
   anchor(k) {

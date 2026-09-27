@@ -32,6 +32,7 @@ import {
 } from '../state.js';
 import { Tape, makeTapes, tapesKey } from '../tape.js';
 import { makeStepColumns, makeTapeLog } from '../tape-log.js';
+import { fastLaneEnabled, fastTM } from './fast-tm.js';
 import { buildMarkedInputTape, tapeTuplesOverlap } from './predicates.js';
 import { ConfigSet, Fifo, firstOverlappingTransition, makeRepeatDetector, makeStateNumbering, formatTapeInstantaneousDescription, langStepBudget, makeLoopTracker, markLoopStep, markTimeoutStep, multiTapeLookup, nameOfState, parseWordInput, playEagerly, singleTapeLookup, tokenize, transitionsFrom } from './runtime.js';
 import { defineFamily, machineDef } from './registry.js';
@@ -83,7 +84,15 @@ export function* streamTM(tokens) {
   const sameAs = j => replaySingleTapeKey(() => new Tape(tokens, blank, twoWay), j) === (now ??= `${state}|${tape.key()}`);
   let step = null;
   let n = 0;
+  // How many steps the cursor last asked for (see `batch` in run.js).
+  let want = 1;
   for (; n < App.config.maxTmSteps; n++) {
+    // Once no loop can be reported any more, the rest of the run is a table
+    // and a loop — see js/machines/fast-tm.js. From here the log's copy of the
+    // tape is the tape; `tape` is left where it stands and read no further.
+    if (!loop.verifying && fastLaneEnabled()) {
+      return yield* fastTM({ log, cols, fires, blank, twoWay, n, state, via, head: tape.head, last: step, want });
+    }
     const sym = tape.read();
     const i = log.begin(tape.head, sym);
     step = cols.step(i, state, via);
@@ -94,7 +103,7 @@ export function* streamTM(tokens) {
     if (at >= 0) { markLoopStep(step, at); yield step; return; }
     const t = fires(state, sym);
     if (!t) { step.final = 'reject'; step.note += ' — REJECT'; yield step; return; }
-    yield step;
+    want = yield step;
     const cell = tape.head;
     tape.write((!t.write || t.write === App.config.sym.any) ? sym : t.write);
     log.noteWrite(i, cell, tape.cells);

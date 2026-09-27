@@ -32,6 +32,28 @@
 // business knowing about App, the page, or which machine produced it — which
 // is why the one thing it needs from a machine, how to rebuild a step, is
 // handed in (`opts.columnsOf`) rather than imported.
+//
+// **A producer may answer with many steps at once.** The cursor says how many
+// it wants — `iter.next(n)`, which a generator reads as the value of its
+// `yield` — and a producer that can compute a stretch of steps faster than it
+// can hand them over one by one (js/machines/fast-tm.js, which records into
+// columns directly) yields `batch(count, last, at)`: `count` steps now exist,
+// the newest is `last`, and `at(i)` builds any of the others. It never yields
+// more than it was asked for, so a caller that pulls in slices — the drain,
+// which scans each slice for a block boundary — sees exactly the granularity
+// it asked for. A consumer that calls `next()` with no count, `playEagerly` and
+// a plain `for…of`, gets one step per iteration as before.
+//
+// A batch is told apart by its class. A Symbol-keyed field was the first
+// version, and asking every step object for a key it does not have — step
+// objects come in a dozen shapes — cost Moore's one-step pulls a fifth of
+// their time.
+class Batch {
+  constructor(count, last, at) { this.count = count; this.last = last; this.at = at; }
+}
+
+/** Several steps at once, for a producer the cursor asked for `count` or more. */
+export const batch = (count, last, at) => new Batch(count, last, at);
 
 /**
  * @param source a generator/iterator/iterable of steps, or a finished array.
@@ -41,6 +63,11 @@
 export function makeRun(source, opts = {}) {
   let steps;
   let append;
+  let appendMany = (count, last, at) => {
+    const from = steps.length;
+    for (let i = from; i < from + count - 1; i++) append(at(i));
+    append(last);
+  };
   let iter = null;
   let done = false;
   let result;
@@ -54,20 +81,34 @@ export function makeRun(source, opts = {}) {
     if (source && typeof source.next === 'function') iter = source;
     else if (source && typeof source[Symbol.iterator] === 'function') iter = source[Symbol.iterator]();
     else done = true;
-    if (iter && opts.columnsOf) ({ steps, push: append } = columnarSteps(opts.columnsOf));
+    if (iter && opts.columnsOf) ({ steps, push: append, pushMany: appendMany } = columnarSteps(opts.columnsOf));
     else { steps = []; append = s => steps.push(s); }
+  }
+
+  // The newest step `take` added — read back from here rather than from
+  // `steps`, which for a columnar run is a Proxy: two traps a pull, and on
+  // playback's one-step pulls that was a third of the time.
+  let newest;
+
+  /** Ask for up to `want` more steps. Returns how many arrived: 0 at the end. */
+  function take(want) {
+    if (done) return 0;
+    const r = iter.next(want);
+    // A finished generator still holds its frame — the live tape it was
+    // driving, which on a machine that walks off down its tape is as long as
+    // the run — so the cursor lets go of it once there is nothing left to pull.
+    if (r.done) { done = true; result = r.value; iter = null; newest = undefined; return 0; }
+    const v = r.value;
+    if (!(v instanceof Batch)) { append(v); newest = v; return 1; }
+    appendMany(v.count, v.last, v.at);
+    newest = v.last;
+    return v.count;
   }
 
   /** Materialize one more step. Returns it, or undefined at the end. */
   function pull() {
-    if (done) return undefined;
-    const r = iter.next();
-    // A finished generator still holds its frame — the live tape it was
-    // driving, which on a machine that walks off down its tape is as long as
-    // the run — so the cursor lets go of it once there is nothing left to pull.
-    if (r.done) { done = true; result = r.value; iter = null; return undefined; }
-    append(r.value);
-    return r.value;
+    take(1);
+    return newest;
   }
 
   return {
@@ -92,7 +133,7 @@ export function makeRun(source, opts = {}) {
 
     /** Materialize up to index i. Returns steps[i], or undefined past the end. */
     at(i) {
-      while (!done && steps.length <= i) pull();
+      while (!done && steps.length <= i) take(i + 1 - steps.length);
       return steps[i];
     },
 
@@ -105,7 +146,7 @@ export function makeRun(source, opts = {}) {
      */
     drain(cap = Infinity) {
       let n = 0;
-      while (!done && n < cap) { pull(); n++; }
+      while (!done && n < cap) n += take(cap - n);
       return done;
     }
   };
@@ -178,6 +219,24 @@ function columnarSteps(columnsOf) {
     n++;
   }
 
+  // `count` steps, the newest `last`. The ones between were recorded straight
+  // into the columns and never handed over as objects, so each is plain — a
+  // rebuild is exactly it — and nothing needs holding but the old tail.
+  function pushMany(count, last, at) {
+    if (count === 1) { push(last); return; }
+    const first = n;
+    push(at(first));
+    if (!cols) {
+      // Not rebuildable after all: hold every one of them whole.
+      for (let i = first + 1; i < first + count - 1; i++) push(at(i));
+      push(last);
+      return;
+    }
+    // Steps first..first+count-2 are plain; only the tail is special.
+    n = first + count;
+    tail = last;
+  }
+
   function put(i, v) {
     if (i === n) { push(v); return true; }
     if (!(i >= 0 && i < n) || !Number.isInteger(i)) return false;
@@ -225,6 +284,6 @@ function columnarSteps(columnsOf) {
       return keys.concat(Reflect.ownKeys(t));
     }
   });
-  return { steps, push };
+  return { steps, push, pushMany };
 }
 

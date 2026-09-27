@@ -114,6 +114,7 @@ import * as machinePaint from '../js/machines/paint.js';
 import * as machineRun from '../js/machines/run.js';
 import * as machineColumns from '../js/machines/columns.js';
 import * as machineBranchTree from '../js/machines/branch-tree.js';
+import * as machineFastTm from '../js/machines/fast-tm.js';
 import * as parallelPool from '../js/parallel/pool.js';
 import * as parallelSnapshot from '../js/parallel/snapshot.js';
 import * as parallelCore from '../js/parallel/decide-core.js';
@@ -146,7 +147,7 @@ import * as wizardUi from '../js/wizard-ui.js';
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, viewport, geometry, statesTransitions,
   blocks, blocksUi, viewGraph, graphThumb, scope, runScope, canvas, render, panelState, panelSections, traceFormat, panelSectionsUi, panelFloat, sectionStatus, machineOptionsUi, deltaTable, panelShake, panelList, mobile, notes, dividers,
-  machineRegistry, machineRuntime, machineBranchTree, machineFinite, machineWeighted, machineOmega,
+  machineRegistry, machineRuntime, machineBranchTree, machineFastTm, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineEmbedded, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, machineColumns, parallelPool, parallelSnapshot, parallelCore,
   simulation, speedControl, tape, tapeLog, tapeView, spacetime, spacetimeUi, branchTreeUi, branchTokens, complexity, complexityUi, suggest, language, alphabet, markdown,
@@ -219,6 +220,8 @@ function resetModuleState() {
   geometry.setLabelKernel('auto');
   // Likewise a test that forced one way of reaching a step in a tape log.
   tapeLog.setJumpRoute('auto');
+  // And one that ran a TM on the slow loop alone.
+  machineFastTm.setFastLane(true);
   viewport.invalidateCull();
   // The block index validates itself the way the state index does, and a test
   // can replace App.blocks with an equal-looking array the validator coincides
