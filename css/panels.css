@@ -3774,6 +3774,360 @@ button.dt-cell:hover {
   display: none;
 }
 
+/* ─── BEHAVIOUR ───
+   Whether a Turing machine halts (js/behaviour-ui.js). The controls borrow the
+   complexity section's pieces; the answer is a card whose colour is the
+   player's for the same outcome: green for a halt, red for a proven non-halt
+   (the loop verdict's colour — it is a decision), and orange for unknown,
+   which is the colour of a run with no verdict and deliberately not red. */
+.bh-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bh-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.bh-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
+.bh-word {
+  flex: 1 1 120px;
+  min-width: 0;
+  height: 28px;
+  font-family: var(--mono);
+  font-size: .72rem;
+}
+
+.bh-budget {
+  height: 26px;
+  padding: 0 6px;
+  font-family: var(--mono);
+  font-size: .7rem;
+}
+
+.bh-word[hidden] {
+  display: none;
+}
+
+.bh-out {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden auto;
+}
+
+/* Nothing classified yet — an absence, so it is dashed. */
+.bh-empty {
+  padding: 18px 16px;
+  border: 1px dashed var(--border2);
+  border-radius: 8px;
+  font-family: var(--sans);
+  color: var(--text3);
+  font-size: .7rem;
+  line-height: 1.55;
+  text-align: center;
+  text-wrap: pretty;
+}
+
+.bh-empty b {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text2);
+  font-weight: 600;
+}
+
+.bh-card {
+  --bh: var(--text2);
+  --bh-soft: var(--surface2);
+  --bh-border: var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.bh-card.is-halts { --bh: var(--green); --bh-soft: var(--green-soft); --bh-border: var(--green-border); }
+.bh-card.is-never { --bh: var(--red); --bh-soft: var(--red-soft); --bh-border: var(--red-border); }
+.bh-card.is-unknown { --bh: var(--orange); --bh-soft: var(--orange-soft); --bh-border: var(--orange-border); }
+
+/* A stale answer is about a machine that is gone: still readable, clearly
+   not current. */
+.bh-card.is-stale {
+  opacity: .62;
+}
+
+.bh-verdict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bh-soft);
+  border-bottom: 1px solid var(--bh-border);
+}
+
+.bh-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  color: var(--bh);
+}
+
+.bh-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.bh-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.bh-kind {
+  font-family: var(--sans);
+  font-size: .86rem;
+  font-weight: 700;
+  letter-spacing: .01em;
+  color: var(--bh);
+}
+
+.bh-sub {
+  font-family: var(--sans);
+  font-size: .66rem;
+  color: var(--text2);
+}
+
+.bh-why {
+  margin: 0;
+  padding: 10px 12px 2px;
+  font-family: var(--sans);
+  font-size: .72rem;
+  line-height: 1.55;
+  color: var(--text2);
+  text-wrap: pretty;
+}
+
+.bh-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 9px 12px;
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.bh-facts dt {
+  font-family: var(--sans);
+  font-size: .6rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.bh-facts dd {
+  margin: 1px 0 0;
+  font-family: var(--mono);
+  font-size: .76rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* A label and its value, one tile of the grid. */
+.bh-fact {
+  min-width: 0;
+}
+
+.bh-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 12px 10px;
+  padding: 9px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.bh-ev-cap {
+  font-family: var(--sans);
+  font-size: .62rem;
+  color: var(--text3);
+}
+
+.bh-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.bh-strip-lbl {
+  font-family: var(--mono);
+  font-size: .6rem;
+  color: var(--text2);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bh-cells {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Drawn like the tape tracker's cells, smaller. */
+.bh-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 18px;
+  height: 20px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: .66rem;
+  color: var(--text);
+}
+
+/* Blank tape: nothing written there — dashed, as the tracker draws it. */
+.bh-cell.is-blank {
+  border-style: dashed;
+  color: var(--text3);
+}
+
+/* The stretch the proof compared. */
+.bh-cell.is-win {
+  background: var(--bh-soft);
+  border-color: var(--bh-border);
+}
+
+.bh-cell.is-head {
+  border-color: var(--accent);
+  border-style: solid;
+  box-shadow: 0 0 0 1px var(--accent);
+  color: var(--accent);
+}
+
+/* Backward reasoning's witness: a cell the path never read, where any symbol
+   will do. Dashed, as something no machine run put there. */
+.bh-cell.is-any {
+  border-style: dashed;
+  background: none;
+  color: var(--text3);
+}
+
+.bh-cell.is-more {
+  min-width: 14px;
+  background: none;
+  border-color: transparent;
+  color: var(--text3);
+}
+
+/* Each way to halt, and how far back its paths reached. */
+.bh-halts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 6px 0 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+  font-family: var(--sans);
+  font-size: .64rem;
+  color: var(--text2);
+}
+
+.bh-halts li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bh-halt-d {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: .6rem;
+  color: var(--text3);
+  font-variant-numeric: tabular-nums;
+}
+
+.bh-halt-more {
+  color: var(--text3);
+}
+
+.bh-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 12px;
+}
+
+.bh-act {
+  height: 26px;
+  padding: 0 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text2);
+  font-family: var(--sans);
+  font-size: .66rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.bh-act:hover {
+  background: var(--surface3);
+  border-color: var(--border2);
+  color: var(--text);
+}
+
+.bh-act:focus-visible,
+.bh-budget:focus-visible {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 1px;
+}
+
+.bh-foot {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: .64rem;
+  line-height: 1.5;
+  color: var(--text3);
+  text-wrap: pretty;
+}
+
+.bh-foot b {
+  color: var(--text2);
+  font-weight: 600;
+}
+
 /* ── Computation tree ──────────────────────────────────────────────
    Every branch of a nondeterministic run — js/branch-tree-ui.js. A branch's
    colour is its slice of the hue range, the same one its token wears on the

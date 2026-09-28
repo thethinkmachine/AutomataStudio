@@ -92,6 +92,7 @@ import * as branchTreeUi from '../js/branch-tree-ui.js';
 import * as branchTokens from '../js/branch-tokens.js';
 import * as complexity from '../js/complexity.js';
 import * as complexityUi from '../js/complexity-ui.js';
+import * as behaviourUi from '../js/behaviour-ui.js';
 // The machine layer: the registry, the shared runtime, and one module per
 // family. Imported here for the same reason as every other namespace — the
 // tests reach the machines' own functions (simTM, testFST, decideMachine)
@@ -114,6 +115,7 @@ import * as machinePaint from '../js/machines/paint.js';
 import * as machineRun from '../js/machines/run.js';
 import * as machineColumns from '../js/machines/columns.js';
 import * as machineBranchTree from '../js/machines/branch-tree.js';
+import * as machineTmBehaviour from '../js/machines/tm-behaviour.js';
 import * as parallelPool from '../js/parallel/pool.js';
 import * as parallelSnapshot from '../js/parallel/snapshot.js';
 import * as parallelCore from '../js/parallel/decide-core.js';
@@ -146,10 +148,10 @@ import * as wizardUi from '../js/wizard-ui.js';
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, viewport, geometry, statesTransitions,
   blocks, blocksUi, viewGraph, graphThumb, scope, runScope, canvas, render, panelState, panelSections, traceFormat, panelSectionsUi, panelFloat, sectionStatus, machineOptionsUi, deltaTable, panelShake, panelList, mobile, notes, dividers,
-  machineRegistry, machineRuntime, machineBranchTree, machineFinite, machineWeighted, machineOmega,
+  machineRegistry, machineRuntime, machineBranchTree, machineTmBehaviour, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineEmbedded, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, machineColumns, parallelPool, parallelSnapshot, parallelCore,
-  simulation, speedControl, tape, tapeLog, tapeView, spacetime, spacetimeUi, branchTreeUi, branchTokens, complexity, complexityUi, suggest, language, alphabet, markdown,
+  simulation, speedControl, tape, tapeLog, tapeView, spacetime, spacetimeUi, branchTreeUi, branchTokens, complexity, complexityUi, behaviourUi, suggest, language, alphabet, markdown,
   view, history, fileHost, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, importStatechart, interopStatechart, interopObjlit, interopXml, interopStandardTM,
   exerciseModel, exerciseGrade, exerciseUi, lexerRegex, lexerBuild, lexerEmit, lexerUi, algorithmsFa, grammarUi, grammarModel, grammarParse, grammarAnalysis, grammarTransform,
@@ -243,6 +245,7 @@ function resetModuleState() {
   branchTreeUi.resetBranchTree();
   branchTokens.clearBranchTokens();
   complexityUi.resetComplexity();
+  behaviourUi.resetBehaviour();
   state.setWorkspaces([]);
   state.setActiveWorkspaceId(null);
   state.setR(baseConfig.radius);

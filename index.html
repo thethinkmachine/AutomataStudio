@@ -927,6 +927,16 @@
               </div>
               <div class="rp-section-body cx-body" id="cx-body" style="display:none"></div>
             </div>
+            <!-- Behaviour section. Proves whether a Turing machine halts, cycles,
+                 or cycles while travelling — or says it does not know. Only
+                 for deterministic one-tape machines; built by js/behaviour-ui.js. -->
+            <div class="rp-collapsible collapsed" id="rp-behaviour" style="display:none">
+              <div class="rp-section-header" onclick="toggleRPSection('rp-behaviour')" role="button" aria-expanded="false" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-behaviour')}">
+                <span class="rp-section-title">Behaviour</span>
+                <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+              </div>
+              <div class="rp-section-body bh-body" id="bh-body" style="display:none"></div>
+            </div>
             <!-- Batch Test section (collapsed by default) -->
             <div class="rp-collapsible collapsed" id="rp-batch">
               <div class="rp-section-header" onclick="toggleRPSection('rp-batch')" role="button" aria-expanded="false" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-batch')}">
