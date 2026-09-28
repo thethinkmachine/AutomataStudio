@@ -252,6 +252,9 @@
   background: transparent; border: none; border-bottom: 1px solid var(--border2); padding: 2px 2px 3px; cursor: pointer;
 }
 #v-library .lib-sort option { background: var(--surface); color: var(--text); }
+.lib-showmore { display: flex; align-items: center; gap: 16px; padding-top: 6px; }
+.lib-showmore[hidden] { display: none; }
+.lib-showmore-note { font-family: var(--mono); font-size: .64rem; color: var(--text3); }
 .lib-callout { margin: 0; padding: 2px 0 2px 14px; border-left: 2px solid var(--accent); color: var(--text2); font-size: .86rem; line-height: 1.5; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
 
 /* ── an entry ── */

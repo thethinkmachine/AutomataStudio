@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { buildLibrary, writeLibrary } from './build.mjs';
 import { seedLibrary } from './seed.mjs';
 import { FORM_FIELDS, processIssue } from './issue-to-entry.mjs';
-import { esc } from './site.mjs';
+import { THEME_HEAD, THEME_SCRIPT, THEME_TOGGLE, brandHtml, esc } from './site.mjs';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const APP_ROOT = resolve(HERE, '../..');
@@ -103,15 +103,18 @@ export function createLibraryServer(opts) {
   // ── pages of the emulator itself ──
 
   const page = (title, body) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)}</title><link rel="stylesheet" href="/assets/site.css">
+<title>${esc(title)}</title><link rel="icon" type="image/svg+xml" href="/assets/favicon.svg"><link rel="stylesheet" href="/assets/site.css">${THEME_HEAD}
 <style>.emu{border:1px dashed var(--accent);border-radius:10px;padding:10px 14px;background:var(--accent-soft);margin:0 0 18px}
 form label{display:block;margin:14px 0 4px;font-weight:600}form .hint{font-weight:400;color:var(--text2);font-size:.85rem}
 form input[type=text],form textarea{width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit}
 form textarea{min-height:90px;font-family:'JetBrains Mono',monospace;font-size:.82rem}.report{white-space:pre-wrap;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
-.ok{color:var(--green)}.bad{color:var(--red)}</style></head>
-<body><header class="top"><a class="brand" href="/"><span class="brand-mark"></span>AutomataStudio <span class="brand-sub">Library · local emulator</span></a>
-<nav class="top-nav"><a href="/">Website</a><a href="/_emulator/">Emulator</a><a class="top-app" href="${esc(appLink())}">Open the app on this library</a></nav></header>
-<main class="wrap">${body}</main></body></html>`;
+.ok{color:var(--green)}.bad{color:var(--red)}
+.emu-page h1{font:400 2.3rem/1.1 var(--serif);margin:.3em 0 .6em;letter-spacing:-.01em}
+.emu-page h2{font:400 1.4rem var(--serif);margin:34px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.emu-page p .btn{margin:0 6px 6px 0}</style></head>
+<body><header class="top"><div class="top-in">${brandHtml('/', 'Library · local emulator')}
+<nav class="top-nav"><a href="/">Website</a><a href="/_emulator/">Emulator</a><a class="top-app" href="${esc(appLink())}">Open the app on this library ↗</a>${THEME_TOGGLE}</nav></div></header>
+<main class="wrap emu-page">${body}</main>${THEME_SCRIPT}</body></html>`;
 
   const appLink = (hash = '') => `${opts.app}#library-source=${encodeURIComponent(base)}${hash}`;
 

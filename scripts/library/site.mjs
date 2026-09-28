@@ -7,18 +7,34 @@
 // by a search engine and shareable with someone who has never opened the app —
 // and every page's main action is "Open in AutomataStudio".
 //
-// The pages are complete without JavaScript. The one script is the search on
-// the home page, which imports js/library/index-model.js — copied beside it —
-// so the website's search and the app's are one implementation.
+// It is set the way the app's Library view is (css/library.css), so the two
+// read as one catalogue: Crimson Pro for the names of things and for prose,
+// JetBrains Mono for data, DM Sans for controls; hairline rules, and boxes for
+// figures only. Every figure is drawn here, at build time, by the app's own
+// js/library/sketch.js, and inked by the stylesheet from the reader's light or
+// dark scheme — the plates are the app's plates (card-html.js plateHtml).
+//
+// The pages are complete without JavaScript. The one script is the home page's
+// search and refine, which imports js/library/index-model.js — copied beside
+// it — so the website's search and the app's are one implementation. It does
+// not draw: every plate is already on the page, and a search reorders them.
+//
+// `listings` (from build.mjs) carries what only the machine's file can say —
+// its diagram with names and labels, its formal definition, its examples
+// decided, the author's notes. Without it a page draws from the index alone.
 
-import { copyFile, mkdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { APP_WEB_URL, protocolLink, repoUrl, sourceUrl, webAppLink } from '../../js/library/config.js';
-import { BADGES, LIBRARY_FAMILIES } from '../../js/library/index-model.js';
+import { BADGES, DIFFICULTIES, LIBRARY_FAMILIES, SORTS, libraryFacets, remixAncestry, sameLanguageAs } from '../../js/library/index-model.js';
 import { LIBRARY_LICENSES } from '../../js/library/analyze.js';
 import { bbchallengeUrl } from '../../js/interop/standard-tm.js';
-import { cardHtml, cardPicture, rankBadges, standardSize } from '../../js/library/card-html.js';
+import { cardPicture, figureHtml, plateHtml, rankBadges, standardSize } from '../../js/library/card-html.js';
+import { drawLanguage, drawRun, drawSketch, framesFromStandard, languageRows, sketchAspect, unpackSketch } from '../../js/library/sketch.js';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 // ── Markup ────────────────────────────────────────────────────────
 
@@ -31,9 +47,45 @@ const enc = id => id.split('/').map(encodeURIComponent).join('/');
 /** Relative path from a page at `depth` directories deep back to the site root. */
 const up = depth => (depth ? '../'.repeat(depth) : './');
 
-function layout({ title, description, depth, body, canonical, image, config }) {
-  const root = up(depth);
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const familyLabel = id => LIBRARY_FAMILIES.find(f => f.id === id)?.label || 'Other';
+const count = n => Number(n).toLocaleString('en-US');
+
+function dateSay(iso) {
+  const t = Date.parse(iso || '');
+  return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
+}
+
+// The app's brand mark (#logo-mark in index.html), inline: four states in a
+// diamond, one edge and its target in the accent. The strokes take
+// currentColor and the accent pair var(--accent) in a style declaration, as in
+// the app, so the mark follows the page's light or dark scheme. The tab icon is
+// the app's own file, svgs/favicon.svg, copied into assets/.
+const MARK = '<svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true"><g stroke-width="6" stroke-linecap="round"><line x1="50" y1="16" x2="16" y2="50" stroke="currentColor"/><line x1="50" y1="16" x2="84" y2="50" stroke="currentColor"/><line x1="16" y1="50" x2="50" y2="84" stroke="currentColor"/><line x1="84" y1="50" x2="50" y2="84" style="stroke: var(--accent)"/></g><circle cx="50" cy="16" r="11" fill="currentColor"/><circle cx="16" cy="50" r="11" fill="currentColor"/><circle cx="50" cy="84" r="11" fill="currentColor"/><circle cx="84" cy="50" r="11" style="fill: var(--accent)"/></svg>';
+
+// ── The light/dark switch ──
+// The reader's choice is kept in localStorage; until they make one the page
+// follows the system, live. THEME_HEAD runs in <head> so the right scheme is
+// on the first paint (no flash of the other one); it always writes data-theme,
+// which is what the stylesheet and the switch's icon read. Storage can be
+// refused (a private window, blocked site data), so every access is guarded
+// and the page still follows the system without it.
+const THEME_KEY = 'automata-library-theme';
+export const THEME_HEAD = `<script>(function(){var d=document.documentElement,t=null;d.classList.add('js');try{t=localStorage.getItem('${THEME_KEY}')}catch(e){}if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.dataset.theme=t})()</script>`;
+export const THEME_TOGGLE = '<button type="button" class="theme-toggle" aria-label="Switch theme"><svg class="to-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg><svg class="to-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>';
+export const THEME_SCRIPT = `<script>(function(){var d=document.documentElement,b=document.querySelector('.theme-toggle'),K='${THEME_KEY}';if(!b)return;var mq=matchMedia('(prefers-color-scheme: dark)');function chosen(){try{return localStorage.getItem(K)}catch(e){return null}}function say(){var to=d.dataset.theme==='dark'?'light':'dark';b.setAttribute('aria-label','Switch to the '+to+' theme');b.title='Switch to the '+to+' theme'}say();b.addEventListener('click',function(){var t=d.dataset.theme==='dark'?'light':'dark';d.dataset.theme=t;try{localStorage.setItem(K,t)}catch(e){}say()});mq.addEventListener('change',function(e){if(chosen())return;d.dataset.theme=e.matches?'dark':'light';say()})})()</script>`;
+
+/** The app's lockup — mark and wordmark — with the library's name beside it. */
+export function brandHtml(href, sub = 'Library') {
+  return `<a class="brand" href="${esc(href)}">${MARK}<span class="logo">Automata<em>Studio</em></span><span class="brand-sub">${esc(sub)}</span></a>`;
+}
+const GLASS = '<svg class="searchbar-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 L21 21"/></svg>';
+const EMPTY_ART = '<svg class="empty-art" viewBox="0 0 120 64" aria-hidden="true"><circle cx="24" cy="32" r="14"/><circle cx="24" cy="32" r="9.5"/><circle cx="96" cy="32" r="14" class="d"/><path d="M40 32 H74" class="d"/><path d="M69 26 l7 6 -7 6" class="d"/></svg>';
+const KATEX = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist';
+
+function layout({ title, description, depth, body, canonical, image, config, nav = '', math = false, script = '', root = up(depth) }) {
   const site = config.site;
+  const here = k => (nav === k ? ' aria-current="page"' : '');
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -44,266 +96,421 @@ function layout({ title, description, depth, body, canonical, image, config }) {
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(description)}">
 <meta property="og:type" content="website">
-${canonical ? `<link rel="canonical" href="${esc(site + canonical)}"><meta property="og:url" content="${esc(site + canonical)}">` : ''}
+${canonical !== undefined ? `<link rel="canonical" href="${esc(site + canonical)}"><meta property="og:url" content="${esc(site + canonical)}">` : ''}
 ${image ? `<meta property="og:image" content="${esc(site + image)}"><meta name="twitter:card" content="summary">` : ''}
-<link rel="icon" href="data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="11" cy="16" r="7" fill="none" stroke="#4f7cff" stroke-width="2.5"/><circle cx="23" cy="16" r="5" fill="#4f7cff"/></svg>')}">
+<link rel="icon" type="image/svg+xml" href="${root}assets/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+${math ? `<link rel="stylesheet" href="${KATEX}/katex.min.css">
+<script defer src="${KATEX}/katex.min.js"></script>
+<script defer src="${KATEX}/contrib/auto-render.min.js" onload="renderMathInElement(document.body,{throwOnError:false})"></script>` : ''}
 <link rel="stylesheet" href="${root}assets/site.css">
+${THEME_HEAD}
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="${root}"><span class="brand-mark"></span>AutomataStudio <span class="brand-sub">Library</span></a>
-  <nav class="top-nav">
-    <a href="${root}">Browse</a>
-    <a href="${root}collections/">Collections</a>
-    <a href="${root}submit/">Submit</a>
-    <a class="top-app" href="${esc(webAppLink({ action: 'browse' }))}">Open the app</a>
-  </nav>
+  <div class="top-in">
+    ${brandHtml(root)}
+    <nav class="top-nav" aria-label="Site">
+      <a href="${root}#all"${here('browse')}>Browse</a>
+      <a href="${root}collections/"${here('collections')}>Collections</a>
+      <a href="${root}submit/"${here('submit')}>Submit</a>
+      <a class="top-app" href="${esc(webAppLink({ action: 'browse' }))}">Open the app <span aria-hidden="true">↗</span></a>
+      ${THEME_TOGGLE}
+    </nav>
+  </div>
 </header>
 <main class="wrap">
 ${body}
 </main>
 <footer class="foot">
-  <p>Every badge on this site was earned by running the machine with the AutomataStudio engine. Machines are © their authors, under the licence on each page.</p>
-  <p><a href="${esc(repoUrl(config.repo))}">Source on GitHub</a> · <a href="${root}index.json">index.json</a> · <a href="${esc(APP_WEB_URL)}">AutomataStudio</a></p>
+  <div class="foot-in">
+    <p>Every mark on this site was earned by running the machine with the AutomataStudio engine. Machines are © their authors, under the licence on each page.</p>
+    <p class="foot-links"><a href="${esc(repoUrl(config.repo))}">Source on GitHub</a><span aria-hidden="true">·</span><a href="${root}index.json">index.json</a><span aria-hidden="true">·</span><a href="${esc(APP_WEB_URL)}">AutomataStudio</a></p>
+  </div>
 </footer>
+${THEME_SCRIPT}
+${script}
 </body>
 </html>
 `;
 }
 
-function card(e, depth) {
-  return cardHtml(e, { root: up(depth) });
+// ── Pieces every page uses ────────────────────────────────────────
+
+const plates = (entries, depth) => entries.length
+  ? `<div class="plates">${entries.map(e => plateHtml(e, { root: up(depth) })).join('\n')}</div>`
+  : emptyState('Nothing here yet', 'When machines are added, they appear here.');
+
+/** A section's heading: a title on a hairline, and what else there is to say or do. */
+const sectionHead = (title, aside = '', id = '') =>
+  `<div class="sechead"><h2 class="sechead-title"${id ? ` id="${id}"` : ''}>${esc(title)}</h2>${aside}</div>`;
+
+/** A titled handful of plates, with the way to the rest. */
+function shelf(title, entries, depth, more = null) {
+  if (!entries.length) return '';
+  return `<section class="shelf">${sectionHead(title, more ? `<a class="textlink" href="${more.href}">${esc(more.say)} →</a>` : '')}${plates(entries, depth)}</section>`;
 }
 
-const grid = (entries, depth) => entries.length
-  ? `<div class="grid">${entries.map(e => card(e, depth)).join('\n')}</div>`
-  : '<p class="empty">Nothing here yet.</p>';
-
-function openButtons(req) {
-  return `<a class="btn primary" href="${esc(webAppLink(req))}">Open in AutomataStudio</a>
-<a class="btn" href="${esc(protocolLink(req))}" title="Needs the desktop app installed">Open in the desktop app</a>`;
+function emptyState(title, body, actions = '') {
+  return `<div class="empty-state">${EMPTY_ART}<strong>${esc(title)}</strong>${body ? `<span class="muted">${esc(body)}</span>` : ''}${actions ? `<div class="actions">${actions}</div>` : ''}</div>`;
 }
 
-// ── Pages ─────────────────────────────────────────────────────────
-
-function homePage(index, config) {
-  const byTitle = [...index.entries].sort((a, b) => a.title.localeCompare(b.title));
-  const families = LIBRARY_FAMILIES.map(f => {
-    const n = index.entries.filter(e => e.category === f.id).length;
-    return `<button type="button" class="family" data-family="${f.id}"><i></i>${esc(f.label)} <span>${n}</span></button>`;
-  }).join('');
-  const body = `
-<section class="hero">
-  <h1>The machine library</h1>
-  <p>${index.entries.length} automata, Turing machines and transducers — busy beavers, textbook constructions and everything between. Every badge was earned by running the machine.</p>
-  <input id="q" class="search" type="search" placeholder="Search — busy beaver, type:DFA, accepts:0110, or paste 1RB1LB_1LA1RZ" autocomplete="off" aria-label="Search the library">
-  <div class="families">${families}</div>
-</section>
-${(index.featured || []).map(id => index.collections.find(c => c.id === id)).filter(Boolean).map(c => `<section class="sec shelf"><h2><a href="c/${enc(c.id)}/">${esc(c.title)} →</a></h2>${grid(c.entries.map(x => index.entries.find(e => e.id === x)).filter(Boolean).slice(0, 4), 0)}</section>`).join('\n')}
-<p id="count" class="muted">${index.entries.length} machines</p>
-<div id="results">${grid(byTitle, 0)}</div>
-<script type="module" src="assets/site.js"></script>`;
-  return layout({ title: 'AutomataStudio Library', description: 'A browsable, verified library of automata, Turing machines and transducers for AutomataStudio.', depth: 0, body, canonical: '', config });
-}
-
-const METHOD_LABEL = {
-  cycler: 'a configuration repeats exactly (cycler)',
-  translated: 'the run repeats, shifted along fresh tape (translated cycler)',
-  backward: 'backward reasoning — no halting configuration is reachable'
-};
-
-function entryPage(e, index, config) {
-  const depth = 1 + e.id.split('/').length;
+/** A collection as one row of a list: three of its figures, its name, what it holds. */
+function collectionRow(c, byId, depth) {
   const root = up(depth);
-  const req = { action: 'open', id: e.id };
-  const facts = [
-    ['Type', e.machine + (e.languageClass ? ` — ${e.languageClass}` : '')],
-    ['Size', `${e.stats.states} states · ${e.stats.transitions} transitions${e.stats.tapes > 1 ? ` · ${e.stats.tapes} tapes` : ''}`],
-    e.stats.sigma.length ? ['Σ', `{ ${e.stats.sigma.join(', ')} }`] : null,
-    e.difficulty ? ['Level', e.difficulty] : null,
-    e.chapter ? ['Chapter', e.chapter] : null,
-    ['Licence', LIBRARY_LICENSES[e.license] || e.license],
-    ['Version', `${e.version}${e.updated ? ` · updated ${e.updated.slice(0, 10)}` : ''}`]
-  ].filter(Boolean);
-  const byId = new Map(index.entries.map(x => [x.id, x]));
-  const parent = e.forkOf && byId.get(e.forkOf);
-  const kids = e.remixes.map(x => byId.get(x)).filter(Boolean);
-  const same = e.fingerprint ? index.entries.filter(x => x.fingerprint === e.fingerprint && x.id !== e.id) : [];
-  const standard = e.standard ? `<p class="standard"><span class="kicker">Standard format</span> <code>${esc(e.standard)}</code> <a class="btn" href="${esc(bbchallengeUrl(e.standard, { halts: e.behaviour?.verdict === 'halts' }))}">View on bbchallenge.org</a></p>` : '';
-  let behaviour = '';
-  if (e.behaviour) {
-    const b = e.behaviour;
-    const run = e.art.find(a => a.kind === 'spacetime');
-    const say = b.verdict === 'halts'
-      ? `Halts from a blank tape after <strong>${Number(b.steps).toLocaleString('en-US')}</strong> steps${b.ones !== undefined ? `, leaving ${Number(b.ones).toLocaleString('en-US')} non-blank cells` : ''}.`
-      : b.verdict === 'never'
-        ? `Never halts from a blank tape — proven by ${esc(METHOD_LABEL[b.method] || b.method)}.`
-        : 'Whether it halts from a blank tape was not settled within the step budget.';
-    behaviour = `<section class="sec"><h2>Behaviour</h2><p>${say}</p>${standard}${run ? `<figure class="st"><img src="${root}${enc(run.path)}" alt="Space-time diagram"><figcaption class="muted">The first steps from a blank tape — one row per step, time running down.</figcaption></figure>` : ''}</section>`;
-  }
-  const pic = e.art.find(a => a.kind === 'diagram') || cardPicture(e);
-  const ranked = rankBadges(e.badges);
-  const cert = ranked.length ? `<div class="cert"><p class="cert-head">Verified by the library</p><ul>${ranked.map(b => `<li title="${esc(BADGES[b.id].say)}"><span class="cert-mark">${esc(BADGES[b.id].icon)}</span><span><strong>${esc(BADGES[b.id].label)}</strong>${b.detail ? ` — ${esc(b.detail)}` : ''}</span></li>`).join('')}</ul></div>` : '';
+  const strip = c.entries.slice(0, 3).map(id => byId.get(id)).filter(Boolean).map(e => figureHtml(e, { root, w: 160, h: 100 })).join('');
+  return `<a class="coll" href="${root}c/${enc(c.id)}/">
+  <span class="coll-strip" aria-hidden="true">${strip}</span>
+  <span class="coll-text">
+    <span class="coll-title">${esc(c.title)}</span>
+    ${c.blurb ? `<span class="coll-blurb">${esc(c.blurb)}</span>` : ''}
+    <span class="coll-meta">${plural(c.entries.length, 'machine')}${c.curator ? ` · curated by @${esc(c.curator)}` : ''}</span>
+  </span>
+</a>`;
+}
+
+// ── The home page: a masthead, the catalogue's index, and every machine ──
+
+/**
+ * The machine the home page opens on, drawn large with its names and labels:
+ * `frontispiece` in library.config.json when it names an entry, else a small
+ * labelled machine from the featured collections: three or four states, a
+ * finite automaton if there is one — the textbook's own figure — and of those
+ * the one with the most edges (first listed on a tie). A figure a reader can
+ * take in at a glance that still has something going on, which neither a busy
+ * beaver's run nor a two-edge NFA is.
+ */
+export function frontispieceOf(index, config, listings) {
+  const byId = new Map(index.entries.map(e => [e.id, e]));
+  const chosen = byId.get(config.frontispiece);
+  if (chosen) return chosen;
+  const featured = (index.featured || []).flatMap(id => index.collections.find(c => c.id === id)?.entries || []).map(id => byId.get(id)).filter(Boolean);
+  const readable = e => listings.get(e.id)?.diagram && /class="sk-l"/.test(listings.get(e.id).diagram.svg) && e.stats.states >= 3 && e.stats.states <= 4;
+  const pool = featured.some(readable) ? featured : index.entries;
+  const small = pool.filter(readable).sort((a, b) => (a.category !== 'fa') - (b.category !== 'fa') || b.stats.transitions - a.stats.transitions)[0];
+  return small || pool.find(e => listings.get(e.id)?.diagram) || null;
+}
+
+function frontispieceHtml(e, listing) {
+  if (!e || !listing?.diagram) return '';
+  const what = [e.machine, ...rankBadges(e.badges).filter(b => b.id === 'minimal').map(b => BADGES[b.id].label.toLowerCase())].join(', ');
+  return `<figure class="frontis" data-family="${esc(e.category || 'special')}">
+  <a class="frontis-link" href="m/${enc(e.id)}/" aria-label="${esc(e.title)}"><span class="fig is-frontis" style="--fig-aspect: ${listing.diagram.w} / ${listing.diagram.h}">${listing.diagram.svg}</span></a>
+  <figcaption class="figcaption-text"><a class="frontis-title" href="m/${enc(e.id)}/">${esc(e.title)}</a>, ${esc(what)}. Every figure in the library is drawn from the machine’s own file.</figcaption>
+</figure>`;
+}
+
+function homePage(index, config, listings = new Map()) {
+  const byId = new Map(index.entries.map(e => [e.id, e]));
+  const frontis = frontispieceHtml(frontispieceOf(index, config, listings), listings.get(frontispieceOf(index, config, listings)?.id));
+
+  const families = LIBRARY_FAMILIES.map(f => {
+    const members = index.entries.filter(e => e.category === f.id);
+    const types = [...new Set(members.map(e => e.machine))].sort((a, b) => a.localeCompare(b));
+    return `<a class="family" data-family="${f.id}" href="?family=${f.id}#all">
+  <span class="family-head"><i class="dot" aria-hidden="true"></i><span class="family-name">${esc(f.label)}</span><span class="family-count">${members.length}</span></span>
+  <span class="family-types">${esc(types.join(' · ') || '—')}</span>
+</a>`;
+  }).join('');
+
+  const featured = (index.featured || []).map(id => index.collections.find(c => c.id === id)).filter(Boolean).map(c => {
+    const list = c.entries.map(x => byId.get(x)).filter(Boolean);
+    return shelf(c.title, list.slice(0, 4), 0, { href: `c/${enc(c.id)}/`, say: `All ${list.length}` });
+  }).join('\n');
+
+  const dated = index.entries.filter(e => e.updated).sort((a, b) => b.updated.localeCompare(a.updated));
+  const recent = shelf('Recently updated', dated.slice(0, 4), 0, { href: '?sort=newest#all', say: 'All' });
+  const colls = index.collections.length
+    ? `<section class="shelf">${sectionHead('Collections', `<a class="textlink" href="collections/">All ${index.collections.length} →</a>`)}<div class="colls">${index.collections.slice(0, 6).map(c => collectionRow(c, byId, 0)).join('')}</div></section>`
+    : '';
+
+  // The refine column: every facet with its count. The script composes these
+  // with the typed query exactly as the app's Browse does (queryLibrary).
+  const facets = libraryFacets(index.entries);
+  const item = (key, value, label) => `<button type="button" class="refine-item" data-key="${key}" data-value="${esc(value)}"${key === 'family' ? ` data-family="${esc(value)}"` : ''} aria-pressed="false">${key === 'family' ? '<i class="dot" aria-hidden="true"></i>' : ''}<span class="refine-name">${esc(label)}</span><span class="refine-n">${facets[key === 'machine' ? 'machine' : key].find(([v]) => v === value)?.[1] ?? 0}</span></button>`;
+  const group = (title, items) => items.length ? `<section class="refine-group"><h3 class="refine-title">${esc(title)}</h3>${items.join('')}</section>` : '';
+  const refine = `<aside class="refine" aria-label="Refine">
+${group('Family', facets.family.map(([id]) => item('family', id, familyLabel(id))))}
+${group('Verified', facets.badge.map(([b]) => item('badge', b, BADGES[b]?.label || b)))}
+${group('Type', facets.machine.map(([m]) => item('machine', m, m)))}
+${group('Level', DIFFICULTIES.filter(d => facets.level.some(([x]) => x === d)).map(d => item('level', d, d[0].toUpperCase() + d.slice(1))))}
+${group('Tags', facets.tag.slice(0, 14).map(([t]) => item('tag', t, t)))}
+<button type="button" class="textlink refine-clear" hidden>Clear all</button>
+</aside>`;
+
+  const byTitle = [...index.entries].sort((a, b) => a.title.localeCompare(b.title));
   const body = `
-<nav class="crumbs"><a href="${root}">Library</a> / ${esc(e.id)}</nav>
-<article class="entry">
-  <div class="entry-head">
-    <div class="stage" data-family="${esc(e.category)}"><span class="art">${pic ? `<img class="art-img" data-kind="${esc(pic.kind)}" src="${root}${enc(pic.path)}" alt="${esc(pic.kind)} of ${esc(e.title)}">` : ''}</span></div>
-    <div class="entry-info" data-family="${esc(e.category)}">
-      <p class="kicker"><span class="chip">${esc(e.machine)}</span> ${esc(e.languageClass)} · ${e.stats.states} state${e.stats.states === 1 ? '' : 's'}</p>
-      <h1>${esc(e.title)}</h1>
-      ${e.author.login ? `<a class="author" href="${root}?q=${encodeURIComponent('by:' + e.author.login)}">${esc(e.author.name ? `${e.author.name} (@${e.author.login})` : '@' + e.author.login)}</a>` : ''}
-      ${e.blurb ? `<p class="blurb">${esc(e.blurb)}</p>` : ''}
-      <div class="actions"><a class="btn primary" href="${esc(webAppLink(req))}">Open in AutomataStudio</a><details class="more"><summary class="btn" aria-label="More ways to get it">⋯</summary><div class="more-menu"><a href="${esc(protocolLink(req))}">Open in the desktop app</a><a href="${root}${enc(e.path)}" download>Download the .automaton file</a><a href="${esc(sourceUrl(e.path, config.repo))}">Source on GitHub</a></div></details></div>
-      ${cert}
+<section class="mast${frontis ? ' has-frontis' : ''}">
+  <div class="mast-text">
+    <h1 class="display">A catalogue of automata,<br><em>tested before they’re listed.</em></h1>
+    <p class="lede">Finite and ω-automata, pushdown and Turing machines, transducers — each with its diagram, its language and its formal definition, and each one click from your canvas.</p>
+    <label class="searchbar">${GLASS}<input id="q" class="search" type="search" placeholder="Search by name, or type:DFA · accepts:0110 · a TM code" aria-label="Search the library" autocomplete="off" spellcheck="false"></label>
+    <p class="mast-meta">${plural(index.entries.length, 'machine')} · ${plural(index.collections.length, 'collection')} · <a class="textlink" href="submit/#badges">How they are checked</a></p>
+  </div>
+  ${frontis}
+</section>
+<div class="discover">
+<nav class="families" aria-label="Families">${families}</nav>
+${featured}
+${recent}
+${colls}
+</div>
+<section class="shelf browse" id="all">
+  ${sectionHead('Every machine', `<label class="sortlabel">Sort <select id="sort" class="sort" aria-label="Sort by">${Object.entries(SORTS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></label>`)}
+  <div class="browse-body">
+    ${refine}
+    <div class="results">
+      <p class="count" id="count" aria-live="polite">${plural(index.entries.length, 'machine')}</p>
+      ${byTitle.length ? `<div class="plates" id="results">${byTitle.map(e => plateHtml(e, { root: './' })).join('\n')}</div>` : emptyState('Nothing here yet', 'When machines are added, they appear here.')}
+      <div class="showmore" id="showmore" hidden><button type="button" class="btn" id="more">Show more</button><span class="showmore-note" id="shown"></span></div>
+      <div id="empty" hidden>${emptyState('No machine matches', 'Try fewer words or clear a filter — or build it and submit it, and it will be the first.', '<a class="btn" href="submit/">Submit a machine</a>')}</div>
     </div>
   </div>
-  ${behaviour}
-  <section class="sec"><h2>About</h2><dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}${e.tags.length ? `<dt>Tags</dt><dd>${e.tags.map(t => `<a class="tag" href="${root}?q=${encodeURIComponent('tag:' + t)}">#${esc(t)}</a>`).join(' ')}</dd>` : ''}</dl></section>
-  ${e.duplicateOf && byId.get(e.duplicateOf) ? `<p class="callout">Recognises the same language as <a href="${root}m/${enc(e.duplicateOf)}/">${esc(byId.get(e.duplicateOf).title)}</a>, which was listed first.</p>` : ''}
-  ${parent || kids.length ? `<section class="sec"><h2>Remix tree</h2>${parent ? `<p>Remixed from <a href="${root}m/${enc(parent.id)}/">${esc(parent.title)}</a>.</p>` : ''}${kids.length ? grid(kids, depth) : ''}</section>` : ''}
-  ${same.length ? `<section class="sec"><h2>Same language, different machine</h2>${grid(same, depth)}</section>` : ''}
-</article>`;
+</section>`;
   return layout({
-    title: `${e.title} — ${e.machine} · AutomataStudio Library`,
-    description: e.blurb || `A ${e.machine} with ${e.stats.states} states, verified by the AutomataStudio engine.`,
-    depth, body, canonical: `m/${enc(e.id)}/`, image: pic ? enc(pic.path) : null, config
+    title: 'AutomataStudio Library', description: 'A catalogue of automata, Turing machines and transducers for AutomataStudio, each one tested before it is listed.',
+    depth: 0, body, canonical: '', config, script: '<script type="module" src="assets/site.js"></script>'
   });
 }
 
+// ── A listing ─────────────────────────────────────────────────────
+
+const METHOD_LABEL = {
+  simulation: 'run to its halt',
+  cycler: 'a configuration repeats exactly (a cycler)',
+  translated: 'the run repeats, shifted along fresh tape (a translated cycler)',
+  backward: 'backward reasoning — no halting configuration is reachable'
+};
+
+/**
+ * The figure: the diagram, and the language beside it when there is one. The
+ * switch between them is two radio buttons and a stylesheet, so it works with
+ * scripts off.
+ */
+function entryStage(e, listing, root) {
+  const sk = unpackSketch(e.sketch);
+  const named = listing?.diagram;
+  const H = named?.h || (sk ? Math.round(640 / sketchAspect(sk)) : 400);
+  const pictures = [];
+  const diagram = named?.svg || (sk ? drawSketch(sk, { w: 640, h: H, label: `Diagram of ${e.title}` }) : null);
+  if (diagram) pictures.push({ kind: 'diagram', label: 'Diagram', svg: diagram, say: `The machine as drawn — ${plural(e.stats.states, 'state')}, ${plural(e.stats.transitions, 'transition')}.` });
+  else {
+    const pic = cardPicture(e);
+    if (pic) pictures.push({ kind: 'diagram', label: 'Diagram', svg: `<img src="${root}${enc(pic.path)}" alt="Diagram of ${esc(e.title)}">`, say: `The machine as drawn — ${plural(e.stats.states, 'state')}, ${plural(e.stats.transitions, 'transition')}.` });
+  }
+  const rows = languageRows(e.dfa);
+  if (rows) pictures.push({ kind: 'language', label: 'Language', svg: drawLanguage(rows, { w: 640, h: H }), say: `Every word up to length ${rows.length - 1}, one row per length in shortlex order, inked where it is accepted.` });
+  if (!pictures.length) return '';
+  const switched = pictures.length > 1;
+  return `<figure class="stage${switched ? ' has-switch' : ''}">
+  ${switched ? pictures.map((p, i) => `<input class="pic-radio" type="radio" name="pic" id="pic-${p.kind}" aria-label="${p.label}"${i ? '' : ' checked'}>`).join('') : ''}
+  <div class="stage-frame" style="--fig-aspect: 640 / ${H}">
+    ${pictures.map(p => `<div class="fig is-stage pic-${p.kind}${p.kind === 'language' ? ' is-lang' : ''}">${p.svg}</div>`).join('\n    ')}
+  </div>
+  <figcaption class="figcaption">
+    <span class="figcaption-texts">${pictures.map(p => `<span class="figcaption-text pic-${p.kind}">${esc(p.say)}</span>`).join('')}</span>
+    ${switched ? `<span class="figswitch">${pictures.map(p => `<label for="pic-${p.kind}" class="figswitch-btn">${p.label}</label>`).join('')}</span>` : ''}
+  </figcaption>
+</figure>`;
+}
+
+/** The author's examples, decided by the machine when the site was built. */
+function examplesHtml(listing) {
+  const rows = listing?.examples || [];
+  if (!rows.length) return '';
+  const chip = r => {
+    const w = r.w === '' ? 'ε' : r.w;
+    const cls = r.verdict === 'acc' ? 'is-acc' : r.verdict === 'rej' ? 'is-rej' : 'is-unk';
+    const v = r.verdict === 'acc' ? 'accept' : r.verdict === 'rej' ? 'reject' : 'no verdict';
+    return `<span class="verdict ${cls}"${r.label ? ` title="${esc(r.label)}"` : ''}>${esc(w)} → ${v}${r.output ? ` · ${esc(r.output)}` : ''}</span>`;
+  };
+  return `<section class="examples"><h3 class="aside-title">The author’s examples, run</h3><div class="chips">${rows.map(chip).join('')}</div></section>`;
+}
+
+function behaviourHtml(e, listing) {
+  const b = e.behaviour;
+  let say;
+  if (!b) say = '';
+  else if (b.verdict === 'halts') say = `Halts from a blank tape after <strong>${count(b.steps)}</strong> steps${b.ones !== undefined ? `, leaving ${count(b.ones)} non-blank cells` : ''}.`;
+  else if (b.verdict === 'never') say = `Never halts from a blank tape. Proven: ${esc(METHOD_LABEL[b.method] || b.method)}${b.period ? `, period ${esc(b.period)}` : ''}.`;
+  else say = 'Whether it halts from a blank tape was not settled within the library’s step budget.';
+  const frames = e.standard ? framesFromStandard(e.standard, 90) : listing?.runFrames;
+  const fig = frames?.length
+    ? `<figure class="behaviour-fig"><div class="fig is-run">${drawRun(frames, { w: 360, h: 240 })}</div><figcaption class="figcaption-text">The first steps from a blank tape: one row per step, time running down; the outlined cell is the head.</figcaption></figure>`
+    : '';
+  const standard = e.standard
+    ? `<div class="standard"><span class="aside-title">Standard format</span><code class="code-text">${esc(e.standard)}</code><a class="textlink" href="${esc(bbchallengeUrl(e.standard, { halts: b?.verdict === 'halts' }))}">View on bbchallenge.org ↗</a></div>`
+    : '';
+  return `<section class="shelf">${sectionHead('Behaviour')}<div class="behaviour-body${fig ? '' : ' is-text'}">${fig}<div class="behaviour-text">${say ? `<p class="behaviour-say">${say}</p>` : ''}${standard}</div></div></section>`;
+}
+
+function relatedHtml(e, index, depth) {
+  const root = up(depth);
+  const byId = new Map(index.entries.map(x => [x.id, x]));
+  const ancestry = remixAncestry(index, e.id);
+  const kids = e.remixes.map(r => byId.get(r)).filter(Boolean);
+  const same = sameLanguageAs(index, e.fingerprint, e.id);
+  if (!ancestry.length && !kids.length && !same.length) return '';
+  return `<section class="shelf related">${sectionHead('Related')}
+${ancestry.length ? `<p class="tree-line">Remixed from ${[...ancestry].reverse().map(a => `<a class="textlink" href="${root}m/${enc(a.id)}/">${esc(a.title)}</a>`).join(' → ')} → <strong>${esc(e.title)}</strong></p>` : ''}
+${kids.length ? `<h3 class="aside-title">Remixes of this machine</h3>${plates(kids, depth)}` : ''}
+${same.length ? `<h3 class="aside-title">The same language, drawn differently</h3>${plates(same, depth)}` : ''}
+</section>`;
+}
+
+function entryPage(e, index, config, listing) {
+  const depth = 1 + e.id.split('/').length;
+  const root = up(depth);
+  const req = { action: 'open', id: e.id };
+  const byId = new Map(index.entries.map(x => [x.id, x]));
+
+  const byline = [];
+  if (e.author.login) byline.push(`<a class="author" href="${root}?q=${encodeURIComponent('by:' + e.author.login)}#all" title="Everything by @${esc(e.author.login)}">${esc(e.author.name ? `${e.author.name} (@${e.author.login})` : '@' + e.author.login)}</a>`);
+  byline.push(`version ${e.version}`);
+  if (LIBRARY_LICENSES[e.license]) byline.push(esc(e.license.replace(/-/g, ' ')));
+  if (e.updated) byline.push(`updated ${dateSay(e.updated)}`);
+
+  const facts = [
+    ['Size', `${plural(e.stats.states, 'state')} · ${plural(e.stats.transitions, 'transition')}${e.stats.tapes > 1 ? ` · ${e.stats.tapes} tapes` : ''}${e.stats.blocks ? ` · ${plural(e.stats.blocks, 'block')}` : ''}`],
+    e.difficulty ? ['Level', e.difficulty[0].toUpperCase() + e.difficulty.slice(1)] : null,
+    e.chapter ? ['Source', e.chapter] : null,
+    ['Licence', LIBRARY_LICENSES[e.license] || e.license || '—']
+  ].filter(Boolean);
+  const factsHtml = `<dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}${e.tags.length ? `<dt>Tags</dt><dd>${e.tags.map(t => `<a class="tag" href="${root}?tag=${encodeURIComponent(t)}#all">${esc(t)}</a>`).join('')}</dd>` : ''}</dl>`;
+
+  const ranked = rankBadges(e.badges);
+  const verified = ranked.length
+    ? `<section class="aside-sec"><h2 class="aside-title">Verified by the library</h2><ul class="verified">${ranked.map(b => `<li class="is-${esc(b.id)}" title="${esc(BADGES[b.id].say)}"><span class="verified-mark" aria-hidden="true">${b.id === 'never-halts' ? '∞' : '✓'}</span><span><strong>${esc(BADGES[b.id].label)}</strong>${b.detail ? `<span class="verified-detail"> — ${esc(b.detail)}</span>` : ''}</span></li>`).join('')}</ul></section>`
+    : '';
+  const definition = listing?.latex ? `<section class="aside-sec"><h2 class="aside-title">Definition</h2><div class="math">${esc(listing.latex)}</div></section>` : '';
+  const notes = String(listing?.readme || '').split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+  const dup = e.duplicateOf && byId.get(e.duplicateOf);
+  const pic = e.art.find(a => a.kind === 'diagram') || cardPicture(e);
+
+  const body = `
+<article class="page entry" data-family="${esc(e.category || 'special')}">
+  <nav class="crumbs" aria-label="Where this is"><a href="${root}">Library</a><span>/</span><a href="${root}?family=${esc(e.category)}#all">${esc(familyLabel(e.category))}</a><span>/</span><span>${esc(e.machine)}</span></nav>
+  <div class="entry-head">
+    <p class="kicker"><i class="dot" aria-hidden="true"></i>${esc([e.machine, e.languageClass].filter(Boolean).join(' · '))}</p>
+    <h1 class="display entry-title">${esc(e.title)}</h1>
+    <p class="byline">${byline.join('<span class="sep">·</span>')}</p>
+    ${e.blurb ? `<p class="lede">${esc(e.blurb)}</p>` : ''}
+    <div class="actions">
+      <a class="btn primary" href="${esc(webAppLink(req))}">Open in AutomataStudio</a>
+      <details class="more"><summary class="btn">More <span aria-hidden="true">▾</span></summary><div class="more-menu">
+        <a href="${esc(protocolLink(req))}">Open in the desktop app</a>
+        <a href="${root}${enc(e.path)}" download>Download the .automaton file</a>
+        <a href="${esc(sourceUrl(e.path, config.repo))}">Source on GitHub</a>
+      </div></details>
+    </div>
+  </div>
+  ${dup ? `<p class="callout">Recognises the same language as <a class="textlink" href="${root}m/${enc(dup.id)}/">${esc(dup.title)}</a>, which was listed first.</p>` : ''}
+  <div class="entry-body">
+    <div class="entry-main">
+      ${entryStage(e, listing, root)}
+      ${examplesHtml(listing)}
+    </div>
+    <aside class="entry-aside">
+      ${definition}
+      ${verified}
+      ${factsHtml}
+    </aside>
+  </div>
+  ${e.behaviour || e.standard ? behaviourHtml(e, listing) : ''}
+  ${notes.length ? `<section class="shelf">${sectionHead('Notes')}<div class="prose">${notes.map(p => `<p>${esc(p)}</p>`).join('')}</div></section>` : ''}
+  ${relatedHtml(e, index, depth)}
+</article>`;
+  return layout({
+    title: `${e.title} — ${e.machine} · AutomataStudio Library`,
+    description: e.blurb || `A ${e.machine} with ${plural(e.stats.states, 'state')}, verified by the AutomataStudio engine.`,
+    depth, body, canonical: `m/${enc(e.id)}/`, image: pic ? enc(pic.path) : null, config, math: !!listing?.latex
+  });
+}
+
+// ── Collections ───────────────────────────────────────────────────
+
 function collectionsPage(index, config) {
-  const body = `<h1>Collections</h1><p class="muted">Machines grouped the way a course or a question groups them.</p>
-<div class="list">${index.collections.map(c => `<a class="row" href="../c/${enc(c.id)}/"><strong>${esc(c.title)}</strong><span class="muted">${c.entries.length} machine${c.entries.length === 1 ? '' : 's'}${c.curator ? ` · curated by @${esc(c.curator)}` : ''}</span></a>`).join('') || '<p class="empty">No collections yet.</p>'}</div>`;
-  return layout({ title: 'Collections · AutomataStudio Library', description: 'Curated sets of machines.', depth: 1, body, canonical: 'collections/', config });
+  const byId = new Map(index.entries.map(e => [e.id, e]));
+  const body = `<div class="page">
+<div class="pagehead">
+  <p class="kicker">Collections</p>
+  <h1 class="display">Machines gathered the way a course or a question gathers them.</h1>
+</div>
+${index.collections.length ? `<div class="colls is-wide">${index.collections.map(c => collectionRow(c, byId, 1)).join('')}</div>` : emptyState('No collections yet', '')}
+</div>`;
+  return layout({ title: 'Collections · AutomataStudio Library', description: 'Curated sets of machines.', depth: 1, body, canonical: 'collections/', config, nav: 'collections' });
+}
+
+/**
+ * The table a collection of Turing machines is read by: size, steps, ones and
+ * the code, one row each. Drawn only when most of the collection has a halting
+ * answer or a code — a table of dashes on a collection of DFAs would be noise.
+ */
+function behaviourTable(list, depth) {
+  const tm = list.filter(e => e.behaviour || e.standard);
+  if (tm.length < 2 || tm.length < list.length / 2) return '';
+  const rows = tm.map(e => {
+    const b = e.behaviour || {};
+    const steps = b.verdict === 'halts' ? count(b.steps) : b.verdict === 'never' ? '∞' : '?';
+    const size = standardSize(e.standard);
+    return `<tr><td><a class="board-name" href="${up(depth)}m/${enc(e.id)}/">${esc(e.title)}</a></td><td class="mono" title="states × symbols">${size ? `${size.states} × ${size.symbols}` : ''}</td><td class="num">${steps}</td><td class="num">${b.ones !== undefined ? count(b.ones) : ''}</td><td>${e.standard ? `<code class="code-text">${esc(e.standard)}</code>` : ''}</td><td class="row-actions">${e.standard ? `<a class="textlink" href="${esc(bbchallengeUrl(e.standard, { halts: b.verdict === 'halts' }))}">bbchallenge ↗</a>` : ''}</td></tr>`;
+  }).join('');
+  return `<section class="shelf">${sectionHead('At a glance')}<div class="table-wrap"><table class="board"><thead><tr><th>Machine</th><th>Size</th><th class="num">Steps</th><th class="num">Non-blank</th><th>Standard format</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
 function collectionPage(c, index, config) {
   const depth = 1 + c.id.split('/').length;
   const byId = new Map(index.entries.map(e => [e.id, e]));
   const list = c.entries.map(id => byId.get(id)).filter(Boolean);
-  const tm = list.filter(e => e.behaviour || e.standard);
-  const table = tm.length >= 2 && tm.length >= list.length / 2
-    ? `<section class="sec"><h2>At a glance</h2><div class="table-wrap"><table class="board"><thead><tr><th>Machine</th><th>Size</th><th>Steps</th><th>Non-blank</th><th>Standard format</th><th></th></tr></thead><tbody>${tm.map(e => {
-        const b = e.behaviour || {};
-        const steps = b.verdict === 'halts' ? Number(b.steps).toLocaleString('en-US') : b.verdict === 'never' ? '∞' : '?';
-        const size = standardSize(e.standard);
-        return `<tr><td><a href="${up(depth)}m/${enc(e.id)}/">${esc(e.title)}</a></td><td>${size ? `${size.states} × ${size.symbols}` : ''}</td><td class="num">${steps}</td><td class="num">${b.ones !== undefined ? Number(b.ones).toLocaleString('en-US') : ''}</td><td>${e.standard ? `<code>${esc(e.standard)}</code>` : ''}</td><td>${e.standard ? `<a href="${esc(bbchallengeUrl(e.standard, { halts: b.verdict === 'halts' }))}">bbchallenge</a>` : ''}</td></tr>`;
-      }).join('')}</tbody></table></div></section>`
-    : '';
-  const body = `<nav class="crumbs"><a href="${up(depth)}collections/">Collections</a></nav>
-<h1>${esc(c.title)}</h1>${c.blurb ? `<p class="blurb">${esc(c.blurb)}</p>` : ''}
-<div class="actions">${openButtons({ action: 'collection', id: c.id })}</div>
-${table}
-${grid(c.entries.map(id => byId.get(id)).filter(Boolean), depth)}`;
-  return layout({ title: `${c.title} · AutomataStudio Library`, description: c.blurb || c.title, depth, body, canonical: `c/${enc(c.id)}/`, config });
+  const req = { action: 'collection', id: c.id };
+  const body = `<div class="page">
+<nav class="crumbs"><a href="${up(depth)}collections/">Collections</a><span>/</span></nav>
+<div class="pagehead">
+  <p class="kicker">Collection · ${plural(list.length, 'machine')}${c.curator ? ` · curated by @${esc(c.curator)}` : ''}</p>
+  <h1 class="display">${esc(c.title)}</h1>
+  ${c.blurb ? `<p class="lede">${esc(c.blurb)}</p>` : ''}
+  <div class="actions"><a class="btn primary" href="${esc(webAppLink(req))}">Open in AutomataStudio</a><a class="btn" href="${esc(protocolLink(req))}" title="Needs the desktop app installed">Open in the desktop app</a></div>
+</div>
+${behaviourTable(list, depth)}
+<section class="shelf">${sectionHead('The machines')}${plates(list, depth)}</section>
+</div>`;
+  return layout({ title: `${c.title} · AutomataStudio Library`, description: c.blurb || c.title, depth, body, canonical: `c/${enc(c.id)}/`, config, nav: 'collections' });
 }
+
+// ── Submitting, and what the marks mean ───────────────────────────
 
 function submitPage(config) {
   const issue = `${repoUrl(config.repo)}/issues/new?template=submit-machine.yml`;
-  const body = `<h1>Submit a machine</h1>
+  const body = `<div class="page">
+<div class="pagehead">
+  <p class="kicker">Contributing</p>
+  <h1 class="display">Submit a machine</h1>
+  <p class="lede">Anything you can build in AutomataStudio can be listed here. The library runs it before it is published, and the marks it earns are the ones it proved.</p>
+</div>
+<section class="shelf">${sectionHead('How')}
 <ol class="steps">
-  <li>Build it in <a href="${esc(APP_WEB_URL)}">AutomataStudio</a>, and give it a title, a description and a few example words on its card — the examples are what earn the <em>Tests pass</em> badge.</li>
-  <li>Open <strong>More ▸ Library ▸ Submit a machine</strong>. The app runs the library's checks on it first, tells you which badges it will earn, and whether the language is already listed.</li>
-  <li>Press <strong>Submit on GitHub</strong>. It opens the submission form with everything filled in; you only have to press <em>Submit new issue</em>.</li>
-  <li>The library's CI checks it again, opens a pull request and posts its report on your issue. A maintainer merges it, and it appears here and in the app.</li>
+  <li><strong>Build it</strong> in <a class="textlink" href="${esc(APP_WEB_URL)}">AutomataStudio</a>, and give it a title, a description and a few example words on its card — the examples are what earn <em>Tests pass</em>.</li>
+  <li><strong>Open More ▸ Library ▸ Submit a machine.</strong> The app runs the library’s checks first, and tells you what the machine will earn and whether its language is already listed.</li>
+  <li><strong>Press Submit on GitHub.</strong> It opens the submission form with everything filled in; you only have to press <em>Submit new issue</em>.</li>
+  <li><strong>The library checks it again,</strong> opens a pull request and posts its report on your issue. A maintainer merges it, and it appears here and in the app.</li>
 </ol>
-<p>No app to hand? <a class="btn" href="${esc(issue)}">Fill in the form yourself</a> and paste a share link or attach the <code>.automaton</code> file.</p>
-<p class="muted">Machines are published under CC-BY-4.0 or CC0 — you choose — and credited to the GitHub account that submits them.</p>`;
-  return layout({ title: 'Submit · AutomataStudio Library', description: 'Add your machine to the library.', depth: 1, body, canonical: 'submit/', config });
+<p class="muted">No app to hand? <a class="textlink" href="${esc(issue)}">Fill in the form yourself</a> and paste a share link or attach the <code>.automaton</code> file. Machines are published under CC BY 4.0 or CC0 — you choose — and credited to the GitHub account that submits them.</p>
+</section>
+<section class="shelf">${sectionHead('What the marks mean', '', 'badges')}
+<dl class="facts badge-list">${Object.values(BADGES).map(b => `<dt>${esc(b.label)}</dt><dd>${esc(b.say)}</dd>`).join('')}</dl>
+</section>
+</div>`;
+  return layout({ title: 'Submit · AutomataStudio Library', description: 'Add your machine to the library.', depth: 1, body, canonical: 'submit/', config, nav: 'submit' });
 }
 
-// ── Assets ────────────────────────────────────────────────────────
-
-const SITE_CSS = `
-:root{--bg:#f7f8fb;--surface:#fff;--surface2:#eef1f6;--border:#dfe3ec;--text:#1a2233;--text2:#5b6475;--text3:#8a93a5;--accent:#3b6cf6;--accent-soft:#e8eefe;--green:#16a34a;--red:#dc2626;--gold:#b7791f;--gold-soft:#fdf6e3;--violet:#7c3aed;color-scheme:light dark}
-@media (prefers-color-scheme:dark){:root{--bg:#0b1020;--surface:#141b2d;--surface2:#1b2438;--border:#26314a;--text:#dbe3f5;--text2:#94a3c2;--text3:#64728f;--accent:#6ea0ff;--accent-soft:#18264a;--green:#4ade80;--red:#f87171;--gold:#fbbf24;--gold-soft:#2a2410;--violet:#a78bfa}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 'DM Sans',system-ui,sans-serif}
-a{color:var(--accent)}code,.chip,.kicker,.pop,.bi{font-family:'JetBrains Mono',ui-monospace,monospace}
-.top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:5}
-.brand{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text);text-decoration:none}.brand-sub{color:var(--text2);font-weight:500}
-.brand-mark{width:16px;height:16px;border-radius:50%;border:3px solid var(--accent)}
-.top-nav{display:flex;gap:14px;flex-wrap:wrap;align-items:center}.top-nav a{color:var(--text2);text-decoration:none;font-size:.9rem}.top-nav a:hover{color:var(--text)}
-.top-app{padding:6px 12px;border-radius:8px;background:var(--accent);color:#fff!important}
-.wrap{max-width:1120px;margin:0 auto;padding:24px 16px 48px}
-h1{font-size:1.8rem;line-height:1.2;margin:.2em 0 .4em}h2{font:500 .72rem 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin:0 0 10px}
-.muted{color:var(--text2);font-size:.9rem}.empty{color:var(--text2);padding:24px;border:1px dashed var(--border);border-radius:10px;text-align:center}
-.hero{padding:24px;border:1px solid var(--border);border-radius:14px;background:linear-gradient(135deg,var(--accent-soft),var(--surface));margin-bottom:18px}
-.search{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;margin:8px 0 12px}
-.families{display:flex;flex-wrap:wrap;gap:8px}.family{padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;cursor:pointer}.family span{color:var(--text3);font-size:.8rem}.family.on{border-color:var(--accent);color:var(--accent)}
-.kicker{font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);margin:0}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
-:root{--coral:#d3631f}@media (prefers-color-scheme:dark){:root{--coral:#ff9e6b}}
-[data-family]{--h:var(--accent)}[data-family=omega]{--h:var(--violet)}[data-family=mem]{--h:var(--gold)}[data-family=tm]{--h:var(--coral)}[data-family=special]{--h:var(--green)}
-.art{position:relative;display:block;aspect-ratio:16/9;background:#0d1322;overflow:hidden}.art-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.art-img[data-kind=spacetime]{image-rendering:pixelated}
-.card-kick{display:flex;justify-content:space-between;gap:8px;font:500 .66rem 'JetBrains Mono',monospace;letter-spacing:.04em}.card-type{color:var(--h);text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.card-stat{color:var(--text3);white-space:nowrap}
-.pills{display:flex;flex-wrap:wrap;gap:5px}.pill{--c:var(--text2);font-size:.7rem;font-weight:500;padding:2px 8px;border-radius:999px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;color:var(--c);border:1px solid color-mix(in srgb,var(--c) 38%,transparent);background:color-mix(in srgb,var(--c) 9%,transparent)}
-.pill.is-tested{--c:var(--green)}.pill.is-minimal{--c:var(--violet)}.pill.is-halts{--c:var(--accent)}.pill.is-never-halts{--c:var(--red)}
-.card-by{display:flex;gap:10px;font-size:.78rem;color:var(--text2)}
-.family i{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--h);margin-right:7px;vertical-align:-1px}
-.card{position:relative;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden;text-decoration:none;color:var(--text);transition:border-color .18s,transform .18s,box-shadow .18s}.card::before{content:'';position:absolute;inset:0 0 auto;height:3px;background:var(--h);z-index:1}.card:hover{border-color:color-mix(in srgb,var(--h) 55%,transparent);transform:translateY(-3px);box-shadow:0 12px 28px -14px color-mix(in srgb,var(--h) 60%,transparent)}
-.card-body{display:flex;flex-direction:column;gap:7px;padding:11px 14px 13px}.card-title{font-weight:600;font-size:1rem;line-height:1.25}.card-meta{font-size:.82rem;color:var(--text2)}.card-foot{display:flex;justify-content:space-between;align-items:center;min-height:20px}.pop{font-size:.72rem;color:var(--text3)}
-.chip{font-size:.7rem;padding:1px 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent)}
-.badges{display:inline-flex;gap:3px}.bi{display:inline-flex;width:20px;height:20px;align-items:center;justify-content:center;border-radius:5px;border:1px solid var(--border);font-size:.7rem;color:var(--text2)}
-.is-tested .mark,.bi.is-tested{color:var(--green)}.is-minimal .mark,.bi.is-minimal{color:var(--violet)}.is-halts .mark,.bi.is-halts{color:var(--accent)}.is-never-halts .mark,.bi.is-never-halts{color:var(--red)}
-.crumbs{font-size:.85rem;color:var(--text2);margin-bottom:10px}
-.entry-head{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,1fr);gap:24px;align-items:start}
-.author{display:inline-flex;align-items:center;gap:8px;color:var(--text2);text-decoration:none}.author img{border-radius:50%}
-.blurb{font-size:1rem;max-width:70ch}
-.actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.btn{display:inline-block;padding:8px 14px;border-radius:9px;border:1px solid var(--border);background:var(--surface);color:var(--text);text-decoration:none;font-size:.9rem}.btn:hover{border-color:var(--accent)}.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-.stage{position:relative;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#0d1322;min-width:0}.stage::before{content:'';position:absolute;inset:0 0 auto;height:3px;background:var(--h);z-index:2}.stage .art{aspect-ratio:16/9}
-.entry-info .kicker{color:var(--h)}
-.more{position:relative;display:inline-block}.more summary{list-style:none;cursor:pointer}.more summary::-webkit-details-marker{display:none}.more-menu{position:absolute;z-index:5;top:calc(100% + 6px);left:0;min-width:240px;display:flex;flex-direction:column;padding:6px;border:1px solid var(--border);border-radius:10px;background:var(--surface);box-shadow:0 16px 40px -12px rgba(0,0,0,.45)}.more-menu a{padding:7px 10px;border-radius:6px;color:var(--text);text-decoration:none;font-size:.88rem}.more-menu a:hover{background:var(--surface2)}
-.cert{border:1px solid color-mix(in srgb,var(--green) 40%,transparent);border-radius:10px;padding:12px 14px;background:linear-gradient(180deg,color-mix(in srgb,var(--green) 10%,transparent),transparent)}.cert-head{margin:0 0 8px;font:500 .66rem 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--green)}.cert ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:.88rem;color:var(--text2)}.cert li{display:grid;grid-template-columns:18px 1fr;gap:6px}.cert strong{color:var(--text)}.cert-mark{color:var(--green);text-align:center}
-.sec{margin:26px 0}.badge-list{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
-.badge{display:flex;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.badge small{display:block;color:var(--text2)}.mark{flex:0 0 28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:7px;border:1px solid var(--border)}
-.facts{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px;margin:0}.facts dt{color:var(--text3);font:.78rem 'JetBrains Mono',monospace;padding-top:2px}.facts dd{margin:0}
-.tag{margin-right:6px}.callout{padding:10px 14px;border-radius:10px;background:var(--accent-soft)}
-.st img{max-width:100%;image-rendering:pixelated;border:1px solid var(--border);border-radius:6px}
-.list{display:flex;flex-direction:column;gap:8px}.row{display:flex;flex-direction:column;gap:2px;padding:12px 16px;border:1px solid var(--border);border-radius:10px;background:var(--surface);text-decoration:none;color:var(--text)}
-.board{width:100%;border-collapse:collapse}.board td,.board th{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)}
-.steps li{margin-bottom:10px}.table-wrap{overflow-x:auto}.num{text-align:right;font-family:'JetBrains Mono',monospace;white-space:nowrap}.standard{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.standard code,.board code{padding:2px 6px;border-radius:5px;background:var(--surface2);font-size:.82rem;overflow-wrap:anywhere}
-.foot{border-top:1px solid var(--border);padding:18px;text-align:center;color:var(--text3);font-size:.82rem}
-@media (max-width:760px){.entry-head{grid-template-columns:1fr}.top{position:static}}
-`;
-
-const SITE_JS = `// The home page's search, using the app's own query engine (index-model.js)
-// and the same cards the pages were generated with (card-html.js).
-import { normalizeIndex, queryLibrary } from './index-model.js';
-import { cardHtml } from './card-html.js';
-
-const q = document.getElementById('q'), out = document.getElementById('results'), count = document.getElementById('count');
-let index = null, family = null;
-
-function draw() {
-  if (!index) return;
-  const list = queryLibrary(index, q.value, { sort: q.value.trim() ? 'relevance' : 'title', filters: family ? { family } : {} });
-  count.textContent = list.length + ' of ' + index.entries.length + ' machines';
-  out.innerHTML = list.length
-    ? '<div class="grid">' + list.map(e => cardHtml(e, { root: './' })).join('') + '</div>'
-    : '<p class="empty">No machine matches that. Try fewer words.</p>';
-  const url = new URL(location.href);
-  if (q.value.trim()) url.searchParams.set('q', q.value.trim()); else url.searchParams.delete('q');
-  history.replaceState(null, '', url);
+function notFoundPage(config) {
+  const body = `<div class="page">${emptyState('There is nothing at this address', 'The machine may have moved, or the link may be mistyped.', `<a class="btn primary" href="${esc(config.site)}">Back to the library</a>`)}</div>`;
+  // Pages serves this at whatever address was asked for, at any depth, so its
+  // links are absolute.
+  return layout({ title: 'Not found · AutomataStudio Library', description: 'Not found', depth: 0, root: config.site, body, config });
 }
-
-fetch('index.json').then(r => r.json()).then(raw => {
-  index = normalizeIndex(raw);
-  const initial = new URL(location.href).searchParams.get('q');
-  if (initial) { q.value = initial; draw(); }
-});
-let t = null;
-q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(draw, 120); });
-document.addEventListener('keydown', e => {
-  if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) { e.preventDefault(); q.focus(); }
-});
-document.querySelectorAll('.family').forEach(b => b.addEventListener('click', () => {
-  family = family === b.dataset.family ? null : b.dataset.family;
-  document.querySelectorAll('.family').forEach(x => x.classList.toggle('on', x.dataset.family === family));
-  draw();
-}));
-`;
 
 // ── Writing ───────────────────────────────────────────────────────
 
@@ -313,15 +520,20 @@ async function put(out, path, text) {
   await writeFile(file, text);
 }
 
-export async function writeSite(out, index, config, { assets = {} } = {}) {
-  await put(out, 'index.html', homePage(index, config));
-  for (const e of index.entries) await put(out, `m/${e.id}/index.html`, entryPage(e, index, config));
+/**
+ * `assets` are files copied into assets/ (the modules the search imports);
+ * `listings` maps an entry id to what build.mjs read off its file.
+ */
+export async function writeSite(out, index, config, { assets = {}, listings = new Map() } = {}) {
+  await put(out, 'index.html', homePage(index, config, listings));
+  for (const e of index.entries) await put(out, `m/${e.id}/index.html`, entryPage(e, index, config, listings.get(e.id)));
   await put(out, 'collections/index.html', collectionsPage(index, config));
   for (const c of index.collections) await put(out, `c/${c.id}/index.html`, collectionPage(c, index, config));
   await put(out, 'submit/index.html', submitPage(config));
-  await put(out, '404.html', layout({ title: 'Not found · AutomataStudio Library', description: 'Not found', depth: 0, body: `<h1>Not here</h1><p><a href="${esc(config.site)}">Back to the library</a></p>`, config }));
-  await put(out, 'assets/site.css', SITE_CSS.trim() + '\n');
-  await put(out, 'assets/site.js', SITE_JS);
+  await put(out, '404.html', notFoundPage(config));
+  await put(out, 'assets/site.css', await readFile(join(HERE, 'site', 'site.css'), 'utf8'));
+  await put(out, 'assets/site.js', await readFile(join(HERE, 'site', 'site.js'), 'utf8'));
+  await put(out, 'assets/favicon.svg', await readFile(join(HERE, '../../svgs/favicon.svg'), 'utf8'));
   for (const [name, from] of Object.entries(assets)) {
     await mkdir(join(out, 'assets'), { recursive: true });
     await copyFile(from, join(out, 'assets', name));
