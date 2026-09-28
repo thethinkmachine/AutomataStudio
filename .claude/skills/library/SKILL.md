@@ -5,7 +5,7 @@ description: AutomataStudio: the machine library — the index format, what earn
 
 ### What it is
 
-A public GitHub repository of `.automaton` files (`thethinkmachine/automata-library`), an index its CI builds **with this app's engine**, a website generated beside the index on GitHub Pages, and the Library view (More ▸ Library, key <kbd>5</kbd>) that browses it. The repository's scaffolding lives here in [library-template/](library-template/); `npm run library:init -- <dir>` copies it and seeds the first entries (every bundled example, the busy beaver champions, three non-halters, a few collections).
+A public GitHub repository of `.automaton` files (`thethinkmachine/automata-library`), an index its CI builds **with this app's engine**, a website generated beside the index on GitHub Pages, and the Library view (More ▸ Library, key <kbd>5</kbd>) that browses it. The repository's scaffolding lives here in [library-template/](library-template/); `npm run library:init -- <dir>` copies it and seeds the first entries (every bundled example, the busy beaver champions, three non-halters, the machines the bbchallenge wiki documents, a few collections).
 
 **It is a library, not a store.** Its job is to let someone find a machine, run it without opening it, learn from it, open or remix it, and send their own back. What was cut on 2026-09-28 because it made it a store, and should stay cut unless there is a reason that is about *this* app: challenges and leaderboards (the app has exercises), stars, downloads and popularity sorting, giscus discussions, author pages and avatars, a rotating spotlight, cards whose pictures take turns, link-preview PNGs, a Code tab, a Hall of Fame gallery, and two badges — *Code export* and *Round-trips* — that described the app's exporters rather than the machine.
 
@@ -84,6 +84,15 @@ StateMate reaches the library two ways: `/library [words]`, and the `search_libr
 ### Busy beavers and the standard format
 
 `writeStandardTM` in [js/interop/standard-tm.js](js/interop/standard-tm.js) is the inverse of `readStandardTM`, exact on its output: start state is A, the halt is a state that accepts and has no moves, and anything the notation cannot say (an S move, a wildcard, a non-digit symbol, an accepting working state) answers `null` rather than an approximation. `analyzeDocument` stores it as `facts.standard`, so every one-tape TM listing carries its code — Copy, "View on bbchallenge.org" (`bbchallengeUrl`, `&status=halt` when it halts) — and pasting a code into search finds the machine. **A TM's size (states × symbols) is read off that code** (`standardSize` in card-html.js), never from the drawn state count, which includes the halt state — guessing whether to subtract it was wrong whenever the halting analysis ran out of budget. A collection that is mostly TMs draws an "At a glance" table (size, steps, non-blank, code). `library.config.json`'s `featured` list puts collections first on the home page.
+
+### The bbchallenge wiki's machines
+
+`npm run library:bbchallenge` ([scripts/library/bbchallenge.mjs](scripts/library/bbchallenge.mjs)) reads wiki.bbchallenge.org through its MediaWiki API — or a Special:Export dump with `--export` — and writes `scripts/library/data/bbchallenge.json`, which `seed.mjs` turns into entries under `machines/turing/bbchallenge/<size>/` plus a collection per size and per wiki category. **Generated once and committed**: seeding needs no network, and a change to the list is a reviewable diff. Run it by hand, like `npm run wasm`.
+
+- **"Documented" is what the wiki names or singles out, never what it enumerates**: a page about one machine (an infobox holding a code, or a page titled by its code), a table row with a Name/Nickname column, or an unnamed code on a page with at most `--example-cap` (12) of them. A page past the cap is a list of holdouts and is skipped; the report names every skipped page and every code the reader refused, so check it before committing the data.
+- **Only facts are copied** — the code, the name, the pages. Entries are CC-BY-4.0 and the wiki's prose is not, so the blurb is the importer's own sentence and the write-up links back.
+- A machine already seeded by hand (the champions, the three non-halters) keeps its hand-written entry. Codes are compared with every halt letter written Z (`canonicalCode`).
+- **An undecided machine costs ~12 s of CI** at `behaviourBudget` (2×10⁸ steps) before it answers "unknown"; a few hundred of them is a long publishing build.
 
 ### The local emulator
 

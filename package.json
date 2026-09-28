@@ -26,6 +26,7 @@
     "icons": "node scripts/build-icons.mjs",
     "glyphs": "node scripts/build-glyphs.mjs",
     "wasm": "node scripts/build-wasm.mjs",
+    "library:bbchallenge": "node scripts/library/bbchallenge.mjs",
     "library:init": "node --conditions=browser --conditions=development scripts/library/seed.mjs",
     "library:build": "node --conditions=browser --conditions=development scripts/library/build.mjs",
     "library:check": "node --conditions=browser --conditions=development scripts/library/build.mjs --check",

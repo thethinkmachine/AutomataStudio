@@ -16,6 +16,7 @@ npm run electron:preview   # production build, run in electron
 npm run electron:build     # electron-builder -> release/
 npm run wasm               # asc wasm/label-penalty.ts -> js/wasm/ (output committed)
 npm run bench              # engine, player, canvas and space-time timings vs bench/baseline.json
+npm run library:bbchallenge                     # machines the bbchallenge wiki documents -> scripts/library/data/ (committed)
 npm run library:init -- ../automata-library   # scaffold + seed a checkout of the machine library
 npm run library:build -- --library ../automata-library   # its index, pictures and website -> _site/
 ```
