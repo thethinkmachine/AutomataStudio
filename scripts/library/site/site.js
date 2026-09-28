@@ -8,10 +8,10 @@
 // out is kept in the history entry, so coming back from a listing returns to
 // the same place rather than to the first batch.
 
-import { normalizeIndex, queryLibrary, SORTS } from './index-model.js';
+import { normalizeIndex, queryLibrary, resolveSort, SORTS } from './index-model.js';
 
 const $ = s => document.querySelector(s);
-const q = $('#q'), grid = $('#results'), count = $('#count'), empty = $('#empty'), sort = $('#sort');
+const q = $('#q'), grid = $('#results'), count = $('#count'), empty = $('#empty'), sort = $('#sort'), dir = $('#dir');
 const refine = [...document.querySelectorAll('.refine-item')];
 const clear = $('.refine-clear');
 const KEYS = ['family', 'machine', 'badge', 'tag', 'level'];
@@ -27,8 +27,18 @@ function readUrl() {
   q.value = u.searchParams.get('q') || '';
   filters = {};
   for (const k of KEYS) { const v = u.searchParams.get(k); if (v) filters[k] = v; }
-  const s = u.searchParams.get('sort');
-  sort.value = SORTS[s] ? s : 'relevance';
+  const s = resolveSort(u.searchParams.get('sort'), u.searchParams.get('dir'));
+  sort.value = s.key;
+  showDir(s.dir);
+}
+
+/** The second control: the chosen field's two directions in its own words, or none for Best match. */
+function showDir(value) {
+  const say = SORTS[sort.value]?.say;
+  dir.hidden = !say;
+  if (!say) return;
+  dir.replaceChildren(...Object.entries(say).map(([d, label]) => new Option(label, d)));
+  dir.value = value && say[value] ? value : SORTS[sort.value].dir;
 }
 
 function writeUrl() {
@@ -37,6 +47,8 @@ function writeUrl() {
   if (text) u.searchParams.set('q', text); else u.searchParams.delete('q');
   for (const k of KEYS) { if (filters[k]) u.searchParams.set(k, filters[k]); else u.searchParams.delete(k); }
   if (sort.value !== 'relevance') u.searchParams.set('sort', sort.value); else u.searchParams.delete('sort');
+  // The direction is in the address only when it is not the field's own.
+  if (!dir.hidden && dir.value !== SORTS[sort.value].dir) u.searchParams.set('dir', dir.value); else u.searchParams.delete('dir');
   history.replaceState({ limit }, '', u);
 }
 
@@ -44,7 +56,10 @@ function draw({ keep = false } = {}) {
   if (!index || !grid) return;
   if (!keep) limit = BATCH;
   const text = q.value.trim();
-  const list = queryLibrary(index, text, { sort: sort.value, filters });
+  const s = resolveSort(sort.value, dir.hidden ? null : dir.value);
+  const list = queryLibrary(index, text, { sort: s.key, dir: s.dir, filters });
+  // Ordered by a date, each plate shows it (site.css .plate-when).
+  if (s.key === 'added' || s.key === 'updated') grid.dataset.when = s.key; else delete grid.dataset.when;
   const out = list.slice(0, limit).map(e => plates.get(e.id)).filter(Boolean);
   grid.replaceChildren(...out);
   const left = list.length - out.length;
@@ -78,7 +93,8 @@ function reveal() {
 let timer = null;
 q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(draw, 120); });
 q.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); draw(); reveal(); } });
-sort.addEventListener('change', () => draw());
+sort.addEventListener('change', () => { showDir(null); draw(); });
+dir.addEventListener('change', () => draw());
 more?.addEventListener('click', () => {
   const from = grid.children.length;
   limit += BATCH;

@@ -28,10 +28,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { APP_WEB_URL, protocolLink, repoUrl, sourceUrl, webAppLink } from '../../js/library/config.js';
-import { BADGES, DIFFICULTIES, LIBRARY_FAMILIES, SORTS, libraryFacets, remixAncestry, sameLanguageAs } from '../../js/library/index-model.js';
+import { BADGES, DIFFICULTIES, LIBRARY_FAMILIES, SORTS, libraryFacets, pickFrontispiece, recentEntries, remixAncestry, sameLanguageAs, wasUpdated } from '../../js/library/index-model.js';
 import { LIBRARY_LICENSES } from '../../js/library/analyze.js';
 import { bbchallengeUrl } from '../../js/interop/standard-tm.js';
-import { cardPicture, figureHtml, plateHtml, rankBadges, standardSize } from '../../js/library/card-html.js';
+import { FRONTIS_NOTE, MAST_LEDE, cardPicture, figureHtml, frontispieceWhat, plateHtml, rankBadges, standardSize } from '../../js/library/card-html.js';
 import { drawLanguage, drawRun, drawSketch, framesFromStandard, languageRows, sketchAspect, unpackSketch } from '../../js/library/sketch.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -147,10 +147,14 @@ const plates = (entries, depth) => entries.length
 const sectionHead = (title, aside = '', id = '') =>
   `<div class="sechead"><h2 class="sechead-title"${id ? ` id="${id}"` : ''}>${esc(title)}</h2>${aside}</div>`;
 
-/** A titled handful of plates, with the way to the rest. */
-function shelf(title, entries, depth, more = null) {
+/**
+ * A titled handful of plates, with the way to the rest. `when` ('added' or
+ * 'updated') shows that date on each plate, for a shelf ordered by it.
+ */
+function shelf(title, entries, depth, more = null, { when = '' } = {}) {
   if (!entries.length) return '';
-  return `<section class="shelf">${sectionHead(title, more ? `<a class="textlink" href="${more.href}">${esc(more.say)} →</a>` : '')}${plates(entries, depth)}</section>`;
+  const list = plates(entries, depth);
+  return `<section class="shelf">${sectionHead(title, more ? `<a class="textlink" href="${more.href}">${esc(more.say)} →</a>` : '')}${when ? list.replace('<div class="plates">', `<div class="plates" data-when="${when}">`) : list}</section>`;
 }
 
 function emptyState(title, body, actions = '') {
@@ -174,31 +178,25 @@ function collectionRow(c, byId, depth) {
 // ── The home page: a masthead, the catalogue's index, and every machine ──
 
 /**
- * The machine the home page opens on, drawn large with its names and labels:
- * `frontispiece` in library.config.json when it names an entry, else a small
- * labelled machine from the featured collections: three or four states, a
- * finite automaton if there is one — the textbook's own figure — and of those
- * the one with the most edges (first listed on a tie). A figure a reader can
- * take in at a glance that still has something going on, which neither a busy
- * beaver's run nor a two-edge NFA is.
+ * The machine the home page opens on, drawn large with its names and labels —
+ * `pickFrontispiece` (index-model.js), judged on the drawings the build made:
+ * a machine is readable when its drawing carries edge labels. The build runs
+ * this once and writes the answer into the index, which is how the app's
+ * Discover opens on the same machine.
  */
 export function frontispieceOf(index, config, listings) {
-  const byId = new Map(index.entries.map(e => [e.id, e]));
-  const chosen = byId.get(config.frontispiece);
-  if (chosen) return chosen;
-  const featured = (index.featured || []).flatMap(id => index.collections.find(c => c.id === id)?.entries || []).map(id => byId.get(id)).filter(Boolean);
-  const readable = e => listings.get(e.id)?.diagram && /class="sk-l"/.test(listings.get(e.id).diagram.svg) && e.stats.states >= 3 && e.stats.states <= 4;
-  const pool = featured.some(readable) ? featured : index.entries;
-  const small = pool.filter(readable).sort((a, b) => (a.category !== 'fa') - (b.category !== 'fa') || b.stats.transitions - a.stats.transitions)[0];
-  return small || pool.find(e => listings.get(e.id)?.diagram) || null;
+  return pickFrontispiece(index, {
+    chosen: config.frontispiece,
+    readable: e => /class="sk-l"/.test(listings.get(e.id)?.diagram?.svg || ''),
+    drawable: e => !!listings.get(e.id)?.diagram
+  });
 }
 
 function frontispieceHtml(e, listing) {
   if (!e || !listing?.diagram) return '';
-  const what = [e.machine, ...rankBadges(e.badges).filter(b => b.id === 'minimal').map(b => BADGES[b.id].label.toLowerCase())].join(', ');
   return `<figure class="frontis" data-family="${esc(e.category || 'special')}">
   <a class="frontis-link" href="m/${enc(e.id)}/" aria-label="${esc(e.title)}"><span class="fig is-frontis" style="--fig-aspect: ${listing.diagram.w} / ${listing.diagram.h}">${listing.diagram.svg}</span></a>
-  <figcaption class="figcaption-text"><a class="frontis-title" href="m/${enc(e.id)}/">${esc(e.title)}</a>, ${esc(what)}. Every figure in the library is drawn from the machine’s own file.</figcaption>
+  <figcaption class="figcaption-text"><a class="frontis-title" href="m/${enc(e.id)}/">${esc(e.title)}</a>, ${esc(frontispieceWhat(e))}. ${FRONTIS_NOTE}</figcaption>
 </figure>`;
 }
 
@@ -220,8 +218,10 @@ function homePage(index, config, listings = new Map()) {
     return shelf(c.title, list.slice(0, 4), 0, { href: `c/${enc(c.id)}/`, say: `All ${list.length}` });
   }).join('\n');
 
-  const dated = index.entries.filter(e => e.updated).sort((a, b) => b.updated.localeCompare(a.updated));
-  const recent = shelf('Recently updated', dated.slice(0, 4), 0, { href: '?sort=newest#all', say: 'All' });
+  const recent = [
+    shelf('Recently added', recentEntries(index, 'added', 4), 0, { href: '?sort=added#all', say: 'All' }, { when: 'added' }),
+    shelf('Recently updated', recentEntries(index, 'updated', 4), 0, { href: '?sort=updated#all', say: 'All' }, { when: 'updated' })
+  ].join('\n');
   const colls = index.collections.length
     ? `<section class="shelf">${sectionHead('Collections', `<a class="textlink" href="collections/">All ${index.collections.length} →</a>`)}<div class="colls">${index.collections.slice(0, 6).map(c => collectionRow(c, byId, 0)).join('')}</div></section>`
     : '';
@@ -245,7 +245,7 @@ ${group('Tags', facets.tag.slice(0, 14).map(([t]) => item('tag', t, t)))}
 <section class="mast${frontis ? ' has-frontis' : ''}">
   <div class="mast-text">
     <h1 class="display">A catalogue of automata,<br><em>tested before they’re listed.</em></h1>
-    <p class="lede">Finite and ω-automata, pushdown and Turing machines, transducers — each with its diagram, its language and its formal definition, and each one click from your canvas.</p>
+    <p class="lede">${esc(MAST_LEDE)}</p>
     <label class="searchbar">${GLASS}<input id="q" class="search" type="search" placeholder="Search by name, or type:DFA · accepts:0110 · a TM code" aria-label="Search the library" autocomplete="off" spellcheck="false"></label>
     <p class="mast-meta">${plural(index.entries.length, 'machine')} · ${plural(index.collections.length, 'collection')} · <a class="textlink" href="submit/#badges">How they are checked</a></p>
   </div>
@@ -253,12 +253,12 @@ ${group('Tags', facets.tag.slice(0, 14).map(([t]) => item('tag', t, t)))}
 </section>
 <div class="discover">
 <nav class="families" aria-label="Families">${families}</nav>
-${featured}
 ${recent}
+${featured}
 ${colls}
 </div>
 <section class="shelf browse" id="all">
-  ${sectionHead('Every machine', `<label class="sortlabel">Sort <select id="sort" class="sort" aria-label="Sort by">${Object.entries(SORTS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></label>`)}
+  ${sectionHead('Every machine', `<label class="sortlabel">Sort <select id="sort" class="sort" aria-label="Sort by">${Object.entries(SORTS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('')}</select><select id="dir" class="sort" aria-label="Order" hidden></select></label>`)}
   <div class="browse-body">
     ${refine}
     <div class="results">
@@ -370,7 +370,8 @@ function entryPage(e, index, config, listing) {
   if (e.author.login) byline.push(`<a class="author" href="${root}?q=${encodeURIComponent('by:' + e.author.login)}#all" title="Everything by @${esc(e.author.login)}">${esc(e.author.name ? `${e.author.name} (@${e.author.login})` : '@' + e.author.login)}</a>`);
   byline.push(`version ${e.version}`);
   if (LIBRARY_LICENSES[e.license]) byline.push(esc(e.license.replace(/-/g, ' ')));
-  if (e.updated) byline.push(`updated ${dateSay(e.updated)}`);
+  if (e.added) byline.push(`added ${dateSay(e.added)}`);
+  if (wasUpdated(e)) byline.push(`updated ${dateSay(e.updated)}`);
 
   const facts = [
     ['Size', `${plural(e.stats.states, 'state')} · ${plural(e.stats.transitions, 'transition')}${e.stats.tapes > 1 ? ` · ${e.stats.tapes} tapes` : ''}${e.stats.blocks ? ` · ${plural(e.stats.blocks, 'block')}` : ''}`],

@@ -28,7 +28,9 @@ import { bbchallengeUrl } from './interop/standard-tm.js';
 import { renderExampleCard } from './machine-card.js';
 import { setCardSourcePainter } from './card-source.js';
 import { setLibraryRequestHandler } from './library/requests.js';
-import { cardPicture, figureSvg, plateCaption, plateMarks, rankBadges, standardSize } from './library/card-html.js';
+import {
+  FRONTIS_NOTE, MAST_LEDE, cardPicture, figureSvg, frontispieceWhat, plateCaption, plateDate, plateMarks, rankBadges, standardSize
+} from './library/card-html.js';
 import { drawLanguage, drawRun, drawSketch, framesFromStandard, languageRows, sketchAspect, unpackSketch } from './library/sketch.js';
 import { freeSpotForBlock, placeBlockDefinition } from './blocks-ui.js';
 import { machineSupportsBlocks } from './machines/index.js';
@@ -41,14 +43,14 @@ import {
 } from './library/config.js';
 import {
   BADGES, DIFFICULTIES, LIBRARY_FAMILIES, SORTS, dfaAccepts, entryById, libraryFacets, queryLibrary,
-  remixAncestry, sameLanguageAs
+  pickFrontispiece, recentEntries, remixAncestry, resolveSort, sameLanguageAs, wasUpdated
 } from './library/index-model.js';
 import {
   cachedLibrary, fetchEntryText, listMyLibrary, loadLibrary, noteRecentlyOpened, recentLibraryIds, removeFromMyLibrary,
   saveToMyLibrary, sourceIsOutdated, stampSource, updatesFor
 } from './library/client.js';
 import {
-  LIBRARY_LICENSES, decideRaw, languageFingerprint, liveDiagram, minimalDfaOf, runFramesOf, targetFromDoc, traceWord
+  LIBRARY_LICENSES, decideRaw, languageFingerprint, liveDiagram, minimalDfaOf, namedDiagram, runFramesOf, targetFromDoc, traceWord
 } from './library/analyze.js';
 import { precheckSubmission, rememberLogin, submissionDefaults, submissionLink } from './library/submit.js';
 
@@ -61,6 +63,7 @@ const L = {
   loading: null,
   query: '',
   sort: 'relevance',
+  dir: null,          // 'asc' | 'desc'; null is the sort's own (index-model resolveSort)
   filters: {},
   canvasMatch: null,  // { fingerprint, dfa } of the machine on the canvas, while matching
   saved: [],
@@ -101,6 +104,7 @@ export function _resetLibraryUiForTests() {
   L.loading = null;
   L.query = '';
   L.sort = 'relevance';
+  L.dir = null;
   L.filters = {};
   L.canvasMatch = null;
   L.shown = null;
@@ -349,7 +353,8 @@ function figureOf(e, { w = 320, h = 200 } = {}) {
 // so a machine reads the same here and on the library's website.
 
 /** One machine in a catalogue: its figure, its name, one line of facts, what was checked. */
-function plate(e) {
+/** `when`: 'added' or 'updated', on a list ordered by that date — the plate says it. */
+function plate(e, { when = null } = {}) {
   const node = h('article', {
     class: 'lib-plate', data: { family: e.category || 'special' },
     on: { click: () => go('entry', e.id) }
@@ -362,7 +367,8 @@ function plate(e) {
     // target for the same click, not a second control.
     h('button', { type: 'button', class: 'lib-plate-title', on: { click: ev => { ev.stopPropagation(); go('entry', e.id); } } }, e.title),
     h('div', { class: 'lib-plate-cap' }, h('i', { class: 'lib-dot', 'aria-hidden': 'true' }), plateCaption(e)),
-    marks.length ? h('div', { class: 'lib-plate-marks', title: marks.map(m => m.say).join('\n') }, marks.map(m => m.label).join(' · ')) : null));
+    marks.length ? h('div', { class: 'lib-plate-marks', title: marks.map(m => m.say).join('\n') }, marks.map(m => m.label).join(' · ')) : null,
+    when && plateDate(e, when) ? h('div', { class: 'lib-plate-when', text: plateDate(e, when) }) : null));
   return node;
 }
 
@@ -377,11 +383,11 @@ function sectionHead(title, aside = null) {
 }
 
 /** A titled handful of plates, with the way to the rest. */
-function shelf(title, entries, more = null, total = null) {
+function shelf(title, entries, more = null, total = null, { when = null } = {}) {
   if (!entries.length) return null;
   return h('section', { class: 'lib-shelf' },
     sectionHead(title, more ? button(total ? `All ${total} →` : 'All →', more, 'lib-textbtn') : null),
-    h('div', { class: 'lib-plates' }, entries.map(plate)));
+    h('div', { class: 'lib-plates' }, entries.map(e => plate(e, { when }))));
 }
 
 // ── Loading and empty ─────────────────────────────────────────────
@@ -428,13 +434,18 @@ function pageDiscover() {
   const idx = index();
   const page = h('div', { class: 'lib-page lib-discover' });
   const verified = idx.entries.filter(x => x.badges.some(b => b.id === 'tested' || b.id === 'halts' || b.id === 'never-halts')).length;
-  page.append(h('div', { class: 'lib-mast' },
-    h('p', { class: 'lib-kicker', text: 'The Library' }),
-    h('h2', { class: 'lib-display' }, 'A catalogue of automata,', h('br'), h('em', { text: 'tested before they’re listed.' })),
-    searchBox({ autofocus: false, onSubmit: q => { L.query = q; go('browse'); } }),
-    h('p', { class: 'lib-mast-meta' },
-      `${idx.entries.length} machines · ${idx.collections.length} collections · ${verified} verified by running · `,
-      button('How it works', () => go('about'), 'lib-textbtn'))));
+  // The website's masthead: the statement beside one machine drawn large.
+  const front = pickFrontispiece(idx, { drawable: e => !!e.sketch });
+  page.append(h('div', { class: `lib-mast${front ? ' has-frontis' : ''}` },
+    h('div', { class: 'lib-mast-text' },
+      h('p', { class: 'lib-kicker', text: 'The Library' }),
+      h('h2', { class: 'lib-display' }, 'A catalogue of automata,', h('br'), h('em', { text: 'tested before they’re listed.' })),
+      h('p', { class: 'lib-lede lib-mast-lede', text: MAST_LEDE }),
+      searchBox({ autofocus: false, onSubmit: q => { L.query = q; go('browse'); } }),
+      h('p', { class: 'lib-mast-meta' },
+        `${idx.entries.length} machines · ${idx.collections.length} collections · ${verified} verified by running · `,
+        button('How it works', () => go('about'), 'lib-textbtn'))),
+    front ? frontispiece(front) : null));
 
   // The families as a catalogue's index: a name, a count, and the types in it.
   const families = h('nav', { class: 'lib-families', 'aria-label': 'Families' });
@@ -450,23 +461,57 @@ function pageDiscover() {
   }
   page.append(families);
 
+  // What is new comes before what is chosen: a returning reader looks here first.
+  const byDate = which => () => { L.sort = which; L.dir = 'desc'; L.query = ''; L.filters = {}; go('browse'); };
+  // append(), not page.append(): an empty shelf is null, which the DOM would print.
+  append(page, [
+    shelf('Recently added', recentEntries(idx, 'added', 4), byDate('added'), idx.entries.length, { when: 'added' }),
+    shelf('Recently updated', recentEntries(idx, 'updated', 4), byDate('updated'), null, { when: 'updated' })
+  ]);
   // The collections the library chose to feature (library.config.json).
   for (const cid of idx.featured || []) {
     const c = idx.collections.find(x => x.id === cid);
     if (!c) continue;
     const list = c.entries.map(x => entryById(idx, x)).filter(Boolean);
-    page.append(shelf(c.title, list.slice(0, 4), () => go('collection', c.id), list.length));
+    append(page, [shelf(c.title, list.slice(0, 4), () => go('collection', c.id), list.length)]);
   }
-  const byNew = [...idx.entries].sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
-  page.append(shelf('Recently updated', byNew.slice(0, 8), () => { L.sort = 'newest'; L.query = ''; L.filters = {}; go('browse'); }, idx.entries.length));
   if (idx.collections.length) {
     page.append(h('section', { class: 'lib-shelf' },
       sectionHead('Collections', button(`All ${idx.collections.length} →`, () => go('collections'), 'lib-textbtn')),
       h('div', { class: 'lib-colls' }, idx.collections.slice(0, 6).map(collectionRow))));
   }
   const recent = recentLibraryIds().map(id => entryById(idx, id)).filter(Boolean);
-  page.append(shelf('Opened recently', recent.slice(0, 4)));
+  append(page, [shelf('Opened recently', recent.slice(0, 4))]);
   return page;
+}
+
+/**
+ * The machine Discover opens on, drawn large, as the website's home page draws
+ * it: the index's sketch at once, then — once the file arrives — the drawing
+ * with its names and labels (analyze.js namedDiagram), in the same proportions.
+ * The index names it (`frontispiece`, chosen by the build), so both faces open
+ * on the same machine.
+ */
+function frontispiece(e) {
+  const sk = unpackSketch(e.sketch);
+  const H = sk ? Math.round(640 / sketchAspect(sk)) : 400;
+  const well = svg => {
+    const f = svgFigure(svg, 'is-frontis');
+    f.style.setProperty('--fig-aspect', `640 / ${H}`);
+    return f;
+  };
+  const open = () => go('entry', e.id);
+  let fig = sk ? well(drawSketch(sk, { w: 640, h: H })) : figureOf(e, { w: 640, h: H });
+  const link = h('button', { type: 'button', class: 'lib-frontis-link', 'aria-label': e.title, on: { click: open } }, fig);
+  entryDoc(e).then(d => {
+    let named;
+    try { named = namedDiagram(d.target, { w: 640, h: H }); } catch { return; }
+    const next = well(named.svg);
+    if (fig.parentNode === link) { link.replaceChild(next, fig); fig = next; }
+  }, () => { /* the index's sketch stands */ });
+  return h('figure', { class: 'lib-frontis', data: { family: e.category || 'special' } }, link,
+    h('figcaption', { class: 'lib-figcaption-text' },
+      button(e.title, open, 'lib-textbtn lib-frontis-title'), `, ${frontispieceWhat(e)}. ${FRONTIS_NOTE}`));
 }
 
 function searchBox({ onSubmit, onInput, autofocus = true } = {}) {
@@ -507,16 +552,25 @@ function pageBrowse() {
 
   const draw = () => {
     results.innerHTML = '';
-    let list = queryLibrary(idx, L.query, { sort: L.sort, filters: L.filters });
+    const s = resolveSort(L.sort, L.dir);
+    let list = queryLibrary(idx, L.query, { sort: s.key, dir: s.dir, filters: L.filters });
     if (L.canvasMatch) list = list.filter(e => sameLanguage(e, L.canvasMatch));
     const sort = h('select', { class: 'lib-sort', 'aria-label': 'Sort by' });
-    for (const [k, label] of Object.entries(SORTS)) sort.append(h('option', { value: k }, label));
-    sort.value = SORTS[L.sort] ? L.sort : 'relevance';
-    sort.addEventListener('change', () => { L.sort = sort.value; draw(); });
+    for (const [k, def] of Object.entries(SORTS)) sort.append(h('option', { value: k }, def.label));
+    sort.value = s.key;
+    // A new field starts in its own direction: "Date added" means newest first.
+    sort.addEventListener('change', () => { L.sort = sort.value; L.dir = null; draw(); });
+    let dir = null;
+    if (s.dir) {
+      dir = h('select', { class: 'lib-sort', 'aria-label': 'Order' });
+      for (const [d, label] of Object.entries(SORTS[s.key].say)) dir.append(h('option', { value: d }, label));
+      dir.value = s.dir;
+      dir.addEventListener('change', () => { L.dir = dir.value; draw(); });
+    }
     const note = /\b(accepts|rejects):/.test(L.query) ? ' — word search covers the finite automata, whose minimal DFA the library publishes' : '';
     results.append(h('div', { class: 'lib-resulthead' },
       h('span', { class: 'lib-count', text: `${list.length} of ${idx.entries.length} machines${note}` }),
-      h('label', { class: 'lib-sortlabel' }, 'Sort ', sort)));
+      h('label', { class: 'lib-sortlabel' }, 'Sort ', sort, dir)));
     if (L.canvasMatch) {
       results.append(h('div', { class: 'lib-callout' },
         list.length
@@ -535,7 +589,8 @@ function pageBrowse() {
     }
     // A batch at a time. A new search starts again at one batch; the same
     // search — back from a listing, say — picks up where it was.
-    const key = JSON.stringify([L.query, L.sort, L.filters, L.canvasMatch?.fingerprint || null]);
+    const key = JSON.stringify([L.query, s.key, s.dir, L.filters, L.canvasMatch?.fingerprint || null]);
+    const when = s.key === 'added' || s.key === 'updated' ? s.key : null;
     const want = L.shown?.key === key ? L.shown.n : BROWSE_BATCH;
     const plates = h('div', { class: 'lib-plates' });
     const shownNote = h('span', { class: 'lib-showmore-note' });
@@ -546,7 +601,7 @@ function pageBrowse() {
     const row = h('div', { class: 'lib-showmore' }, more, shownNote);
     let shown = 0;
     function fill(n) {
-      const next = list.slice(shown, shown + n).map(plate);
+      const next = list.slice(shown, shown + n).map(e => plate(e, { when }));
       plates.append(...next);
       shown += next.length;
       L.shown = { key, n: shown };
@@ -658,7 +713,8 @@ function pageEntry(id) {
   }
   byline.push(`version ${e.version}`);
   if (LIBRARY_LICENSES[e.license]) byline.push(e.license.replace(/-/g, ' ').replace(' 4.0', ' 4.0').replace('CC BY', 'CC BY'));
-  if (e.updated) byline.push(`updated ${relTime(e.updated)}`);
+  if (e.added) byline.push(`added ${relTime(e.added)}`);
+  if (wasUpdated(e)) byline.push(`updated ${relTime(e.updated)}`);
 
   page.append(h('div', { class: 'lib-entry-head' },
     h('p', { class: 'lib-kicker' }, h('i', { class: 'lib-dot', 'aria-hidden': 'true' }), [machineLabel(e.machine), e.languageClass].filter(Boolean).join(' · ')),

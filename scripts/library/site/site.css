@@ -238,6 +238,10 @@ code { font-family: var(--mono); font-size: .86em; }
 .plate-cap .dot { width: 6px; height: 6px; }
 .plate-marks { font-size: .74rem; color: var(--text3); }
 .plate-marks::before { content: '✓ '; color: var(--green); }
+/* Both dates ride on every plate; a list ordered by one (data-when) shows that one. */
+.plate-when { display: none; font-family: var(--mono); font-size: .64rem; letter-spacing: .02em; color: var(--text3); }
+.plates[data-when="added"] .plate-when[data-when="added"],
+.plates[data-when="updated"] .plate-when[data-when="updated"] { display: block; }
 
 /* ── the home page ── */
 /* The masthead: what the library is, in words, beside one of its machines
@@ -286,7 +290,7 @@ body.is-searching .discover { display: none; }
 .coll-blurb { font-size: .84rem; line-height: 1.45; color: var(--text2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .coll-meta { font-family: var(--mono); font-size: .64rem; color: var(--text3); }
 
-.sortlabel { display: none; align-items: baseline; gap: 6px; font-family: var(--mono); font-size: .62rem; letter-spacing: .12em; text-transform: uppercase; color: var(--text3); }
+.sortlabel { display: none; align-items: baseline; gap: 6px 10px; flex-wrap: wrap; justify-content: flex-end; font-family: var(--mono); font-size: .62rem; letter-spacing: .12em; text-transform: uppercase; color: var(--text3); }
 .js .sortlabel { display: flex; }
 .sort { font: .82rem var(--sans); color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--border2); padding: 2px 2px 3px; cursor: pointer; }
 .sort option { background: var(--surface); color: var(--text); }

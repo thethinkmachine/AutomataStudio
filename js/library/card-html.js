@@ -10,7 +10,7 @@
 // Imports index-model.js and sketch.js only — no DOM, so the website's build
 // runs it in Node.
 
-import { BADGES, shortCount } from './index-model.js';
+import { BADGES, dateOf, shortCount } from './index-model.js';
 import { drawRun, drawSketch, framesFromStandard, unpackSketch } from './sketch.js';
 
 /** The order the library's checks are listed in. Rarest and most specific leads. */
@@ -48,6 +48,29 @@ export function plateCaption(e) {
   return parts.join(' · ');
 }
 
+/**
+ * "Added 3 Sep 2026" / "Updated …" — shown on a plate when its list is ordered
+ * by that date, so the order can be read off the page. A calendar date rather
+ * than "3 days ago", because the website's plates are written once, at build
+ * time, and a relative date would be wrong a day later.
+ */
+export function plateDate(e, which) {
+  const t = dateOf(e?.[which]);
+  if (t === null || (which !== 'added' && which !== 'updated')) return '';
+  const day = new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  return `${which === 'added' ? 'Added' : 'Updated'} ${day}`;
+}
+
+/** The frontispiece's caption, after its title: "DFA, minimal". */
+export function frontispieceWhat(e) {
+  return [e.machine, ...rankBadges(e.badges).filter(b => b.id === 'minimal').map(b => BADGES[b.id].label.toLowerCase())].join(', ');
+}
+
+export const FRONTIS_NOTE = 'Every figure in the library is drawn from the machine’s own file.';
+
+/** The masthead's lede, under the statement, on both home pages. */
+export const MAST_LEDE = 'Finite and ω-automata, pushdown and Turing machines, transducers — each with its diagram, its language and its formal definition, and each one click from your canvas.';
+
 const MARK_LABEL = { tested: 'Tested', minimal: 'Minimal', deterministic: 'Deterministic' };
 
 /** What the library checked, as words — the halting answer is already in the caption. */
@@ -83,15 +106,22 @@ export function figureHtml(e, { root = './', w = 320, h = 200, cls = '' } = {}) 
   return `<span class="${pic?.kind === 'spacetime' ? `${c} is-run` : c}">${pic ? `<img src="${root}${encPath(pic.path)}" alt="Diagram of ${escHtml(e.title)}" loading="lazy">` : ''}</span>`;
 }
 
-/** One machine on the website: its figure, its name, one line of facts, what was checked. */
+/**
+ * One machine on the website: its figure, its name, one line of facts, what was
+ * checked. Both of its dates are written and hidden; a list ordered by one says
+ * so in `data-when` and the stylesheet shows that one — the home page reorders
+ * its plates without redrawing them, so the plate cannot be told which.
+ */
 export function plateHtml(e, { root = './' } = {}) {
   const marks = plateMarks(e);
+  const when = ['added', 'updated'].map(k => plateDate(e, k) ? `<span class="plate-when" data-when="${k}">${escHtml(plateDate(e, k))}</span>` : '').join('');
   return `<a class="plate" data-family="${escHtml(e.category || 'special')}" data-id="${escHtml(e.id)}" href="${root}m/${encPath(e.id)}/">
   ${figureHtml(e, { root })}
   <span class="plate-body">
     <span class="plate-title">${escHtml(e.title)}</span>
     <span class="plate-cap"><i class="dot" aria-hidden="true"></i>${escHtml(plateCaption(e))}</span>
     ${marks.length ? `<span class="plate-marks" title="${escHtml(marks.map(m => m.say).join('\n'))}">${marks.map(m => escHtml(m.label)).join(' · ')}</span>` : ''}
+    ${when}
   </span>
 </a>`;
 }

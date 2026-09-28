@@ -995,6 +995,79 @@ test('Browse shows a batch at a time, starts again for a new search, and keeps i
   assert.equal(count(), context.BROWSE_BATCH, 'a new search starts again');
 });
 
+test('a list sorts by date added, last updated, title or size, either way, with undated entries last', () => {
+  const entry = (id, title, added, updated, states) => ({ id, title, added, updated, machine: 'DFA', category: 'fa', stats: { states } });
+  const idx = context.normalizeIndex({
+    format: context.INDEX_FORMAT,
+    entries: [
+      entry('a', 'Alpha', '2026-01-01T00:00:00Z', '2026-03-01T00:00:00Z', 3),
+      // 03:30Z: earlier than c, though "09" sorts after "05" as text.
+      entry('b', 'Bravo', '2026-02-01T09:00:00+05:30', '', 5),
+      entry('c', 'Charlie', '2026-02-01T05:00:00Z', '', 2),
+      entry('d', 'Delta', '', '', 4)
+    ]
+  });
+  const ids = (sort, dir) => context.queryLibrary(idx, '', { sort, dir }).map(e => e.id).join('');
+  assert.equal(ids('added', 'desc'), 'cbad', 'newest first, by time rather than by text');
+  assert.equal(ids('added', 'asc'), 'abcd', 'oldest first — and undated is still last');
+  assert.equal(ids('added'), 'cbad', 'a date starts newest first');
+  assert.equal(ids('updated', 'desc'), 'acbd');
+  assert.equal(ids('newest'), 'acbd', 'the old name still means last updated');
+  assert.equal(ids('title', 'desc'), 'dcba');
+  assert.equal(ids('states'), 'cadb', 'fewest first');
+  assert.equal(ids('states', 'desc'), 'bdac');
+  assert.deepEqual(context.resolveSort('bogus', 'desc'), { key: 'relevance', dir: null });
+  assert.deepEqual(context.resolveSort('smallest'), { key: 'states', dir: 'asc' });
+  assert.deepEqual(context.recentEntries(idx, 'added', 2).map(e => e.id), ['c', 'b']);
+  assert.deepEqual(context.recentEntries(idx, 'updated', 4).map(e => e.id), ['a'], 'recently updated holds only what changed after it was listed');
+  assert.equal(context.plateDate(idx.entries[0], 'added'), 'Added 1 Jan 2026');
+});
+
+test('an entry git cannot date is dated by its file, and the build names the machine both home pages open on', async () => {
+  const b = await builtLibrary();
+  // The test library is not a repository of its own, like the emulator's.
+  for (const e of b.raw.entries) assert.ok(context.dateOf(e.added) !== null, `${e.id} has a date added`);
+  assert.ok(b.index.entries.some(e => e.id === b.index.frontispiece), 'the index names its frontispiece');
+  assert.equal(b.index.entries.find(e => e.id === b.index.frontispiece).category, 'fa', 'a small finite automaton');
+});
+
+test('Discover opens on the frontispiece and the recently added, and Browse sorts either way', async () => {
+  const b = await builtLibrary();
+  resetApp();
+  context.fetch = fakeFetch({ 'index.json': JSON.stringify({ ...b.raw, commit: '' }) });
+  context.renderLibraryView();
+  await context.loadLibrary({ force: true });
+  context.go('discover', null, { reset: true });
+  const host = context.document.getElementById('lib-content');
+  const front = findAll(host, n => n.classList?.contains('lib-frontis'));
+  assert.equal(front.length, 1, 'the masthead has its machine');
+  assert.match(textOf(front[0]), new RegExp(b.index.entries.find(e => e.id === b.index.frontispiece).title));
+  assert.ok(findAll(host, n => n.classList?.contains('lib-mast') && n.classList.contains('has-frontis')).length);
+  assert.match(textOf(host), /Recently added/);
+  assert.ok(findAll(host, n => n.classList?.contains('lib-plate-when')).some(n => /^Added /.test(n.textContent)), 'a date shelf dates its plates');
+  const heads = findAll(host, n => n.classList?.contains('lib-sechead-title')).map(n => n.textContent);
+  assert.ok(heads.indexOf('Recently added') < heads.indexOf('Collections'), 'what is new comes before the collections');
+  // Nothing was updated after it was listed, so that shelf is absent — and an
+  // absent shelf must not print, as a browser's append(null) would.
+  assert.ok(!heads.includes('Recently updated'));
+  assert.doesNotMatch(textOf(host), /\bnull\b/);
+
+  context.go('browse');
+  const selects = () => findAll(host, n => n.classList?.contains('lib-sort'));
+  assert.equal(selects().length, 1, 'best match has one direction, so no second control');
+  const sort = selects()[0];
+  sort.value = 'title';
+  sort._listeners.change();
+  const titles = () => findAll(host, n => n.classList?.contains('lib-plate-title')).map(n => n.textContent);
+  const az = titles();
+  assert.deepEqual(az, [...az].sort((x, y) => x.localeCompare(y)));
+  const dir = selects()[1];
+  assert.equal(dir.value, 'asc');
+  dir.value = 'desc';
+  dir._listeners.change();
+  assert.deepEqual(titles(), [...az].reverse(), 'Z → A');
+});
+
 test('Discover leads with the search, and an empty search offers a way forward', async () => {
   const b = await builtLibrary();
   resetApp();
@@ -1032,6 +1105,8 @@ test('the website: an entry credits its author with a search, and a collection o
   assert.match(home, /<figure class="frontis"[^>]*>[\s\S]*?class="sk-name"/, 'the masthead opens on a machine, drawn with its names');
   assert.match(home, /<head>[\s\S]*d\.dataset\.theme=t[\s\S]*<\/head>/, 'the scheme is set before the first paint');
   assert.match(home, /class="theme-toggle"/, 'and the reader can switch it');
+  assert.match(home, /Recently added[\s\S]*?<div class="plates" data-when="added">[\s\S]*Collections/, 'the recently added, dated, before the collections');
+  assert.match(home, /<select id="dir" class="sort" aria-label="Order" hidden>/, 'and the sort has a direction');
   const { frontispieceOf } = await import('../scripts/library/site.mjs');
   assert.equal(frontispieceOf(index, { frontispiece: 'turing/busy-beaver/bb2' }, listings).id, 'turing/busy-beaver/bb2', 'the library can choose its own');
   assert.equal(frontispieceOf(index, {}, listings).category, 'fa', 'otherwise a small finite automaton');
