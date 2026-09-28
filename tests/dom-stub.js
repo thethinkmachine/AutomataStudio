@@ -76,8 +76,7 @@ export function createElement(id = '') {
     // code paths that work perfectly in a browser.
     append(...nodes) {
       nodes.forEach(node => {
-        if (node === null || node === undefined) return;
-        if (typeof node === 'object') this.appendChild(node);
+        if (node && typeof node === 'object') this.appendChild(node);
         else this.textContent += String(node);
       });
     },

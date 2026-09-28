@@ -40,12 +40,46 @@ export const DIFFICULTIES = ['intro', 'intermediate', 'advanced'];
 export const ART_LABELS = { spacetime: 'Run', diagram: 'Diagram', language: 'Language' };
 const ART_KIND_SET = new Set(Object.keys(ART_LABELS));
 
+/**
+ * What a list can be sorted by, and the two directions each reads in. `dir` is
+ * the direction a field starts in — the one a reader means by picking it — and
+ * `say` names both in the field's own terms, so the second control reads
+ * "Newest first" rather than "Descending". Best match has one direction.
+ */
 export const SORTS = {
-  relevance: 'Best match',
-  newest: 'Recently updated',
-  smallest: 'Fewest states',
-  title: 'Title A–Z'
+  relevance: { label: 'Best match' },
+  added: { label: 'Date added', dir: 'desc', say: { desc: 'Newest first', asc: 'Oldest first' } },
+  updated: { label: 'Last updated', dir: 'desc', say: { desc: 'Newest first', asc: 'Oldest first' } },
+  title: { label: 'Title', dir: 'asc', say: { asc: 'A → Z', desc: 'Z → A' } },
+  states: { label: 'States', dir: 'asc', say: { asc: 'Fewest first', desc: 'Most first' } }
 };
+
+// The names the sorts had before they took a direction; links still carry them.
+const SORT_ALIASES = { newest: ['updated', 'desc'], smallest: ['states', 'asc'] };
+
+/** A sort as a link or a control names it → `{ key, dir }`, always one SORTS knows. */
+export function resolveSort(sort, dir) {
+  const [key, implied] = SORT_ALIASES[sort] || [SORTS[sort] ? sort : 'relevance'];
+  const s = SORTS[key];
+  if (!s.say) return { key, dir: null };
+  return { key, dir: s.say[dir] ? dir : (implied || s.dir) };
+}
+
+/**
+ * An index date as a time, or null. Compared as times, never as strings: git
+ * writes each date in its committer's own offset, and "…T09:00+05:30" sorts
+ * after "…T05:00Z" as text while being earlier.
+ */
+export function dateOf(iso) {
+  const t = Date.parse(iso || '');
+  return Number.isFinite(t) ? t : null;
+}
+
+/** Whether an entry was changed after it was listed, rather than only listed. */
+export function wasUpdated(e) {
+  const a = dateOf(e?.added), u = dateOf(e?.updated);
+  return a !== null && u !== null && u > a;
+}
 
 // ── Reading one ───────────────────────────────────────────────────
 
@@ -87,7 +121,9 @@ export function normalizeIndex(raw) {
     emulator: raw.emulator === true,
     entries,
     collections,
-    featured: arr(raw.featured).filter(id => collections.some(c => c.id === id))
+    featured: arr(raw.featured).filter(id => collections.some(c => c.id === id)),
+    // The machine the home pages open on, as the build chose it (pickFrontispiece).
+    frontispiece: ids.has(raw.frontispiece) ? raw.frontispiece : null
   };
 }
 
@@ -281,9 +317,10 @@ function relevance(e, words) {
  * Entries matching the query and the filters, sorted. `filters` carries the
  * sidebar's selections (`family`, `machine`, `badge`, `tag`, `level`) on top
  * of whatever the typed query says, so the two compose rather than one
- * overriding the other.
+ * overriding the other. `dir` reverses the field; an entry with no value for
+ * it (an undated one) goes last either way, and ties fall to the title A–Z.
  */
-export function queryLibrary(index, text = '', { sort = 'relevance', filters = {} } = {}) {
+export function queryLibrary(index, text = '', { sort = 'relevance', dir = null, filters = {} } = {}) {
   if (!index) return [];
   const q = typeof text === 'string' ? parseLibraryQuery(text) : text;
   const f = filters || {};
@@ -300,16 +337,66 @@ export function queryLibrary(index, text = '', { sort = 'relevance', filters = {
     if (r < 0) continue;
     scored.push({ e, r });
   }
-  const by = {
-    relevance: (a, b) => b.r - a.r || a.e.title.localeCompare(b.e.title),
-    newest: (a, b) => (b.e.updated || '').localeCompare(a.e.updated || '') || a.e.title.localeCompare(b.e.title),
-    smallest: (a, b) => a.e.stats.states - b.e.stats.states || a.e.title.localeCompare(b.e.title),
-    title: (a, b) => a.e.title.localeCompare(b.e.title)
-  };
-  const sorter = by[sort] || by.relevance;
-  // With no words, relevance is a tie everywhere, so it falls to the title.
-  scored.sort(sorter);
+  const s = resolveSort(sort, dir);
+  const title = (a, b) => a.e.title.localeCompare(b.e.title) || a.e.id.localeCompare(b.e.id);
+  // Each field ascending, and '' / null where an entry has no value for it.
+  const field = {
+    added: x => dateOf(x.e.added),
+    updated: x => dateOf(x.e.updated),
+    states: x => x.e.stats.states,
+    title: x => x.e.title
+  }[s.key];
+  if (!field) {
+    // With no words, relevance is a tie everywhere, so it falls to the title.
+    scored.sort((a, b) => b.r - a.r || title(a, b));
+  } else {
+    const sign = s.dir === 'desc' ? -1 : 1;
+    scored.sort((a, b) => {
+      const x = field(a), y = field(b);
+      if (x === null || y === null) return (x === null) - (y === null) || title(a, b);
+      const c = typeof x === 'number' ? x - y : x.localeCompare(y);
+      return sign * c || (s.key === 'title' ? sign * a.e.id.localeCompare(b.e.id) : title(a, b));
+    });
+  }
   return scored.map(x => x.e);
+}
+
+/**
+ * The newest `n` entries by `which` ('added' or 'updated'), for the home
+ * pages' shelves. Recently updated holds only entries changed since they were
+ * listed: every entry's last update is at least its listing, and a shelf that
+ * repeated Recently added under another name would say nothing.
+ */
+export function recentEntries(index, which, n) {
+  return queryLibrary(index, '', { sort: which, dir: 'desc' })
+    .filter(e => dateOf(e[which]) !== null && (which !== 'updated' || wasUpdated(e)))
+    .slice(0, n);
+}
+
+/**
+ * The machine a home page opens on, drawn large with its names and labels:
+ * `chosen` (library.config.json's `frontispiece`) when it names an entry, else
+ * the index's own `frontispiece` (what the build chose), else a small labelled
+ * machine from the featured collections: three or four states, a finite
+ * automaton if there is one — the textbook's own figure — and of those the one
+ * with the most edges (first listed on a tie). A figure a reader can take in
+ * at a glance that still has something going on, which neither a busy
+ * beaver's run nor a two-edge NFA is.
+ *
+ * `readable(e)` says the drawing will carry its labels, `drawable(e)` that
+ * there is a drawing at all; the build answers from the drawings it made, the
+ * app from the index's sketch.
+ */
+export function pickFrontispiece(index, { chosen = null, readable = () => true, drawable = () => true } = {}) {
+  if (!index) return null;
+  const byId = new Map(index.entries.map(e => [e.id, e]));
+  const fixed = byId.get(chosen) || byId.get(index.frontispiece);
+  if (fixed) return fixed;
+  const featured = (index.featured || []).flatMap(id => index.collections.find(c => c.id === id)?.entries || []).map(id => byId.get(id)).filter(Boolean);
+  const fits = e => e.stats.states >= 3 && e.stats.states <= 4 && drawable(e) && readable(e);
+  const pool = featured.some(fits) ? featured : index.entries;
+  const small = pool.filter(fits).sort((a, b) => (a.category !== 'fa') - (b.category !== 'fa') || b.stats.transitions - a.stats.transitions)[0];
+  return small || pool.find(drawable) || null;
 }
 
 /** How many entries carry each facet value, for the filter chips. */

@@ -547,7 +547,14 @@
     max-width: 100%;
   }
 
-  #v-library .algo-content,
+  /* No top padding for the Library: its status line is sticky at top: 0 and
+     carries its own padding. Padding above it was a band the page scrolled
+     through, visible between the header and the line — as on desktop, where
+     the pane has none. */
+  #v-library .algo-content {
+    padding: 0 14px 16px !important;
+  }
+
   #v-reference .algo-content[style] {
     padding: 16px 14px !important;
   }
@@ -1232,7 +1239,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .aux-overlay #v-library .algo-content,
+  .aux-overlay #v-library .algo-content {
+    padding: 0 14px calc(var(--mobile-bar-inset) + 18px) !important;
+  }
+
   .aux-overlay #v-reference .algo-content[style] {
     padding: 16px 14px calc(var(--mobile-bar-inset) + 18px) !important;
   }

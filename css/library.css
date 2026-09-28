@@ -156,6 +156,7 @@
 .lib-plate-cap .lib-dot { width: 6px; height: 6px; }
 .lib-plate-marks { font-size: .72rem; color: var(--text3); }
 .lib-plate-marks::before { content: '✓ '; color: var(--green); }
+.lib-plate-when { font-family: var(--mono); font-size: .62rem; letter-spacing: .02em; color: var(--text3); }
 /* A bookmark in the corner: this one is in My Library. */
 .lib-plate-saved {
   position: absolute; top: 0; right: 12px; width: 9px; height: 14px;
@@ -163,8 +164,21 @@
 }
 
 /* ── discover ── */
-.lib-mast { display: flex; flex-direction: column; gap: 16px; padding: 20px 0 4px; }
+/* The masthead: what the library is, in words, beside one of its machines
+   drawn large — the website's frontispiece, captioned as a book captions a figure. */
+.lib-mast { display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px 48px; align-items: center; padding: 20px 0 4px; }
+.lib-mast.has-frontis { grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); }
+.lib-mast-text { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .lib-mast .lib-display { font-size: clamp(2.2rem, 3.4vw, 3.1rem); max-width: 20ch; }
+.lib-mast.has-frontis .lib-display { font-size: clamp(1.9rem, 2.9vw, 2.55rem); line-height: 1.12; }
+.lib-mast-lede { font-size: 1.12rem; max-width: 46ch; }
+.lib-frontis { margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+#v-library .lib-frontis-link { all: unset; box-sizing: border-box; display: block; cursor: pointer; border-radius: 8px; }
+#v-library .lib-frontis-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.lib-fig.is-frontis { aspect-ratio: var(--fig-aspect, 16 / 10); border-radius: 8px; }
+.lib-frontis-link:hover .lib-fig { border-color: color-mix(in srgb, var(--h) 45%, var(--border2)); }
+#v-library .lib-frontis-title { font: inherit; color: var(--text); border-bottom-color: var(--border2); }
+#v-library .lib-frontis-title:hover { color: var(--accent); border-bottom-color: var(--accent); }
 .lib-mast-meta { margin: 0; font-family: var(--mono); font-size: .68rem; color: var(--text3); display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
 #v-library .lib-mast-meta .lib-textbtn { font-size: .72rem; }
 
@@ -246,12 +260,15 @@
 .lib-results { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
 .lib-resulthead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 9px; border-bottom: 1px solid var(--border); }
 .lib-count { font-family: var(--mono); font-size: .66rem; color: var(--text3); }
-.lib-sortlabel { display: flex; align-items: baseline; gap: 6px; font-family: var(--mono); font-size: .62rem; letter-spacing: .12em; text-transform: uppercase; color: var(--text3); }
+.lib-sortlabel { display: flex; align-items: baseline; gap: 6px 10px; flex-wrap: wrap; justify-content: flex-end; font-family: var(--mono); font-size: .62rem; letter-spacing: .12em; text-transform: uppercase; color: var(--text3); }
 #v-library .lib-sort {
   font: .8rem var(--sans); letter-spacing: 0; text-transform: none; color: var(--text);
   background: transparent; border: none; border-bottom: 1px solid var(--border2); padding: 2px 2px 3px; cursor: pointer;
 }
 #v-library .lib-sort option { background: var(--surface); color: var(--text); }
+/* The app's dropdown (dropdown.js) wraps each select in a flex: 1 box; here
+   each takes its own width, or the label squeezes "Newest first" to "Newest fir…". */
+.lib-sortlabel .custom-select { flex: none; }
 .lib-showmore { display: flex; align-items: center; gap: 16px; padding-top: 6px; }
 .lib-showmore[hidden] { display: none; }
 .lib-showmore-note { font-family: var(--mono); font-size: .64rem; color: var(--text3); }
@@ -459,6 +476,8 @@
 .lib-inline-link.is-update { color: var(--gold); }
 
 @media (max-width: 1100px) {
+  .lib-mast.has-frontis { grid-template-columns: minmax(0, 1fr); }
+  .lib-frontis { max-width: 620px; }
   .lib-families { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .lib-entry-body { grid-template-columns: minmax(0, 1fr); }
 }

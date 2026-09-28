@@ -35,7 +35,7 @@ import './env.mjs';
 import { APP_VERSION } from './env.mjs';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -45,7 +45,7 @@ import { withMachine } from '../../js/exercise/grade.js';
 import { contentHash } from '../../js/library/hash.js';
 import { INDEX_FORMAT, INDEX_VERSION, LIBRARY_REPO, LIBRARY_SITE_URL, isLibraryId } from '../../js/library/config.js';
 import { normalizeIndex } from '../../js/library/index-model.js';
-import { writeSite } from './site.mjs';
+import { frontispieceOf, writeSite } from './site.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -115,6 +115,28 @@ function gitHistory(root, rel, ownRepo = true) {
   }
 }
 
+/**
+ * Dates from the file itself, for a file git cannot date: the emulator's
+ * library, which is not a repository of its own, and a file not yet committed.
+ * Without them every such entry was undated, so "Date added" and "Last
+ * updated" sorted nothing and the home pages' recent shelves stood empty.
+ *
+ * Added is the file's creation where the filesystem records one (a birthtime
+ * of 0 is Linux saying it does not), else its modification. A modification
+ * within a minute of the creation is the write that created it, not an update
+ * — the emulator's seed writes every file once — so it is not called one.
+ */
+async function fileHistory(file) {
+  try {
+    const s = await stat(file);
+    const born = s.birthtimeMs > 0 && s.birthtimeMs <= s.mtimeMs ? s.birthtimeMs : s.mtimeMs;
+    const changed = s.mtimeMs - born > 60_000 ? s.mtimeMs : born;
+    return { added: new Date(born).toISOString(), updated: new Date(changed).toISOString(), version: 1 };
+  } catch {
+    return null;
+  }
+}
+
 async function readJson(file, fallback) {
   try { return JSON.parse(await readFile(file, 'utf8')); } catch { return fallback; }
 }
@@ -158,7 +180,7 @@ export async function buildLibrary(opts) {
     r.warnings.push(...a.warnings);
     if (!a.facts) continue;
     r.badges = a.facts.badges.map(b => b.id);
-    const hist = gitHistory(root, rel, ownRepo);
+    const hist = gitHistory(root, rel, ownRepo) || await fileHistory(file);
     const f = a.facts;
     const entry = {
       id, path: rel,
@@ -238,6 +260,25 @@ export async function buildLibrary(opts) {
     return !m || pubIds.has(m[1]);
   };
 
+  // ── the frontispiece ──
+  // Chosen once, here, on the drawings the website will show, and written into
+  // the index — so the app's Discover opens on the machine the website's home
+  // page does. A diagram is drawn only for an entry the choice asks about.
+  const featured = (Array.isArray(config.featured) ? config.featured : []).filter(id => collections.some(c => c.id === id));
+  const drawn = new Map();
+  const listings = {
+    get(id) {
+      if (!drawn.has(id)) {
+        let diagram = null;
+        try { if (sources.has(id)) diagram = namedDiagram(sources.get(id).target); } catch { /* none */ }
+        drawn.set(id, diagram ? { diagram } : undefined);
+      }
+      return drawn.get(id);
+    }
+  };
+  // In the index's order, since a tie goes to the first listed.
+  const front = frontispieceOf({ entries: [...published].sort((a, b) => a.id.localeCompare(b.id)), collections, featured }, config, listings);
+
   const raw = {
     format: INDEX_FORMAT,
     version: INDEX_VERSION,
@@ -249,7 +290,8 @@ export async function buildLibrary(opts) {
     entries: published.sort((a, b) => a.id.localeCompare(b.id)),
     collections,
     // Collections the home page shows first, in this order.
-    featured: (Array.isArray(config.featured) ? config.featured : []).filter(id => collections.some(c => c.id === id)),
+    featured,
+    ...(front ? { frontispiece: front.id } : {}),
     // Set only by the local emulator (dev-server.mjs): where its stand-in for
     // GitHub's issue form lives, so the app's Submit goes there instead.
     ...(opts.submit ? { submit: opts.submit } : {}),
