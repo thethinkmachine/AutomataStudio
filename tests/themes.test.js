@@ -32,7 +32,7 @@ const THEMED_SHEETS = readdirSync(fileURLToPath(new URL('css/', root)))
   .filter(f => f.endsWith('.css') && f !== 'variables.css')
   .sort();
 
-// The base `:root` block IS the dark theme; the other 20 are overrides.
+// The base `:root` block IS the dark theme; every other theme is an override.
 const cssThemeIds = [...VARIABLES.matchAll(/:root\[data-theme="([^"]+)"\]/g)].map(m => m[1]);
 
 function themeBlock(id) {
@@ -117,14 +117,14 @@ test('no stylesheet hardcodes the dark theme\'s palette', () => {
   // half-themed-rule bug described at the top of this file. Neutral
   // black/white literals (shadows, scrims) are theme-agnostic and allowed.
   const darkPalette = {
-    '79,195,247': '--accent / --blue',
-    '105,240,174': '--green',
-    '255,213,79': '--gold',
-    '255,107,107': '--red',
-    '206,147,216': '--purple',
-    '124,77,255': '--indigo / --accent2',
-    '255,183,77': '--orange',
-    '179,136,255': '--violet',
+    '94,161,255': '--accent / --blue',
+    '77,202,139': '--green',
+    '240,193,75': '--gold',
+    '242,109,109': '--red',
+    '214,140,242': '--purple',
+    '139,147,255': '--indigo',
+    '245,154,69': '--orange',
+    '167,139,250': '--violet',
   };
   const offenders = [];
   for (const file of THEMED_SHEETS) {
@@ -192,6 +192,112 @@ test('the start and accepting rings stay visible against the state fill', () => 
       const ratio = contrast(flatten(rgbOf(t.export[key]), node), node);
       assert.ok(ratio >= 2.5,
         `${id}.export.${key} (${t.export[key]}) is ${ratio.toFixed(2)}:1 on nodeFill -- too faint to read`);
+    }
+  }
+});
+
+// ── The design rules in js/themes.js, enforced ───────────────────────
+// Four colours are semantic on the canvas (accent = the state the run is in,
+// green = start, gold = accepting, red = rejection), and the ink colours are
+// legibility floors. These held only as prose until every theme was rebuilt
+// against them; a borrowed palette dropped in without checking breaks one of
+// them almost every time, so they are tests now.
+
+const allThemes = () => [DEFAULT_THEME, ...cssThemeIds].map(id => ({ id, ...themeBlock(id) }));
+
+// OKLCH hue, which is what "far apart in hue" means to an eye. HSL hue is
+// badly non-uniform: it puts Solarized's cyan and blue 30deg apart when they
+// read as clearly different, and olive and mustard 23deg apart when they
+// read as nearly the same.
+const oklchHue = hex => {
+  const [r, g, b] = rgbOf(hex).map(v => v / 255)
+    .map(v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  const a = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+  const bb = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+  return (Math.atan2(bb, a) * 180 / Math.PI + 360) % 360;
+};
+const hueGap = (x, y) => { const d = Math.abs(oklchHue(x) - oklchHue(y)) % 360; return d > 180 ? 360 - d : d; };
+
+test('the four semantic colours are at least 30deg apart in hue', () => {
+  // Closer than this and a machine misreads: an accepting state looks
+  // active, or a start state looks accepting. Several borrowed palettes
+  // fail it as shipped -- Ayu's accent *is* its gold, Everforest's accent
+  // *is* its green -- which is why a port maps its colours onto these
+  // four roles rather than copying the upstream accent.
+  const roles = ['--accent', '--green', '--gold', '--red'];
+  for (const { id, vars } of allThemes()) {
+    for (let i = 0; i < roles.length; i++) for (let j = i + 1; j < roles.length; j++) {
+      const gap = hueGap(vars[roles[i]], vars[roles[j]]);
+      assert.ok(gap >= 30, `${id}: ${roles[i]} and ${roles[j]} are ${gap.toFixed(0)}deg apart`);
+    }
+  }
+});
+
+test('rings and highlight strokes reach 3:1 on the canvas and on both node fills', () => {
+  // A node is --surface at rest and --surface2 under the pointer, and sits
+  // on --bg. Accent is easy to forget here because it is mostly thought of
+  // as chrome, and it is the one that stops a pastel theme from having an
+  // invisible active state. Purple is selection, indigo the incoming-edge
+  // highlight.
+  for (const { id, vars } of allThemes()) {
+    for (const k of ['--accent', '--green', '--gold', '--red', '--purple', '--indigo']) {
+      for (const on of ['--bg', '--surface', '--surface2']) {
+        const ratio = contrast(rgbOf(vars[k]), rgbOf(vars[on]));
+        assert.ok(ratio >= 3, `${id}: ${k} is ${ratio.toFixed(2)}:1 on ${on}`);
+      }
+    }
+  }
+});
+
+test('ink meets its floors: text 7:1, text2 4.5:1, text3 3:1', () => {
+  // text3 is also the edge stroke, so it is a legibility floor rather than a
+  // hint colour. text2 is set on cards as well as on the chrome.
+  const floors = [['--text', 7, ['--bg', '--bg2']], ['--text2', 4.5, ['--bg', '--bg2', '--surface']],
+    ['--text3', 3, ['--bg', '--bg2']]];
+  for (const { id, vars } of allThemes()) {
+    for (const [k, min, planes] of floors) for (const on of planes) {
+      const ratio = contrast(rgbOf(vars[k]), rgbOf(vars[on]));
+      assert.ok(ratio >= min, `${id}: ${k} is ${ratio.toFixed(2)}:1 on ${on} (needs ${min})`);
+    }
+  }
+});
+
+test('button labels on the accent reach 4.5:1', () => {
+  for (const { id, vars } of allThemes()) {
+    const ratio = contrast(rgbOf(vars['--on-accent']), rgbOf(vars['--accent']));
+    assert.ok(ratio >= 4.5, `${id}: --on-accent is ${ratio.toFixed(2)}:1 on --accent`);
+  }
+});
+
+test('a rejected state is visibly washed', () => {
+  // --state-reject-fill is red over the node fill. In a theme whose surfaces
+  // lean red the wash can vanish into the fill it tints.
+  for (const { id, vars } of allThemes()) {
+    const [, r, g, b, a] = vars['--state-reject-fill'].match(/rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)/).map(Number);
+    const fill = rgbOf(vars['--surface']);
+    const washed = flatten([r, g, b, a], fill);
+    const dist = Math.hypot(...washed.map((v, i) => v - fill[i]));
+    assert.ok(dist >= 18, `${id}: the reject wash moves the fill by only ${dist.toFixed(1)}`);
+  }
+});
+
+test('the export palette is the stylesheet\'s own colours', () => {
+  // The minimap, the PNG export and the picker's preview paint from
+  // Themes[id].export, the live canvas from CSS. When the two were written
+  // by hand they drifted -- half the registry exported --surface2 as the
+  // node fill while the canvas drew --surface -- so each field is pinned to
+  // the variable the canvas actually paints that part with.
+  const map = { bg: '--bg', nodeFill: '--surface', nodeStroke: '--border2', startStroke: '--green',
+    accStroke: '--gold', actFill: '--state-active-fill', actStroke: '--accent', edgeStroke: '--text3',
+    textFill: '--text2', nodeTextFill: '--text' };
+  const norm = v => v.toLowerCase().replace(/\s+/g, '');
+  for (const { id, vars } of allThemes()) {
+    for (const [field, cssVar] of Object.entries(map)) {
+      assert.equal(norm(Themes[id].export[field]), norm(vars[cssVar]),
+        `${id}.export.${field} should be its ${cssVar}`);
     }
   }
 });

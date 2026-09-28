@@ -752,7 +752,9 @@
 .note-g[data-color="orange"] .note-body { fill: var(--orange-soft); stroke: var(--orange-border); }
 .note-g[data-color="red"] .note-body { fill: var(--red-soft); stroke: var(--red-border); }
 .note-g[data-color="white"] .note-body { fill: var(--white-note-soft); stroke: var(--white-note-border); }
-.note-g[data-color="white"] .note-text { fill: var(--bg2); }
+/* Its own token rather than --bg2: that is dark ink on a dark theme and
+   near-white on a light one, where the note is white too. */
+.note-g[data-color="white"] .note-text { fill: var(--white-note-text); }
 .note-g.note-link-active .note-body {
   stroke: var(--accent);
   stroke-width: 2.25;

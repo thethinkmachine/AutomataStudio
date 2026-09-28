@@ -367,16 +367,16 @@ export const App = {
     },
     exportRes: 2,
     export: {
-      bg: '#080c18',
-      nodeFill: '#161d2e',
-      nodeStroke: 'rgba(100,130,200,0.22)',
-      startStroke: '#69f0ae',
-      accStroke: '#ffd54f',
-      actFill: 'rgba(79,195,247,.18)',
-      actStroke: '#4fc3f7',
-      edgeStroke: '#4a5878',
-      textFill: '#7a8ab0',
-      nodeTextFill: '#c8d4f0'
+      bg: '#12151b',
+      nodeFill: '#1c212b',
+      nodeStroke: 'rgba(230, 233, 240, 0.13)',
+      startStroke: '#4dca8b',
+      accStroke: '#f0c14b',
+      actFill: 'rgba(94, 161, 255, 0.2)',
+      actStroke: '#5ea1ff',
+      edgeStroke: '#737d90',
+      textFill: '#a7afbe',
+      nodeTextFill: '#e6e9f0'
     }
   },
   // Camera
