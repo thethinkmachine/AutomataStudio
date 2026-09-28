@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Browse the library
+    url: https://thethinkmachine.github.io/automata-library/
+    about: Every machine, searchable, with the badges the CI earned for it.
+  - name: Open AutomataStudio
+    url: https://thethinkmachine.github.io/AutomataStudio/#library
+    about: Build a machine and submit it from the app.

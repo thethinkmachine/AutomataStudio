@@ -226,3 +226,6 @@ release/
 # Intermediate output of scripts/build-wasm.mjs; js/wasm/*-bytes.js is the
 # committed artifact the app actually loads.
 wasm/*.wasm
+
+# The local library emulator's checkout (npm run library:dev)
+.library-dev/

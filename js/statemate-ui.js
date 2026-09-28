@@ -88,6 +88,9 @@ import {
   testConnection
 } from './statemate-provider.js';
 import { editStarterPrompts, starterPrompts } from './statemate-prompt.js';
+import { browseLibrary, openEntry } from './library-ui.js';
+import { cachedLibrary, loadLibrary } from './library/client.js';
+import { queryLibrary } from './library/index-model.js';
 import { describeSpecSize, resolveContextRefs, scopedSource } from './statemate-spec.js';
 import { Change, emit, subscribe } from './store.js';
 import { activatePanelTab, fitToScreen, openSettingsModal, revealPanel, setStateMatePanel, switchSettingsTab, switchTab } from './ui.js';
@@ -1935,6 +1938,21 @@ const Commands = [
       });
       renderLog();
     }
+  },
+  {
+    name: 'library',
+    args: '[search]',
+    hint: 'Search the shared machine library',
+    suggest: query => {
+      const idx = cachedLibrary()?.index;
+      if (!idx) { loadLibrary().catch(() => {}); return []; }
+      return queryLibrary(idx, query).slice(0, 8).map(e => ({
+        label: e.title,
+        hint: `${e.machine} · ${e.stats.states} states${e.author.login ? ` · @${e.author.login}` : ''}`,
+        run: () => { stowStateMate(); openEntry(e); }
+      }));
+    },
+    run: query => { stowStateMate(); browseLibrary(query); }
   },
   {
     name: 'algorithms',

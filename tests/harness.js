@@ -136,6 +136,17 @@ import * as suggest from '../js/suggest.js';
 import * as themes from '../js/themes.js';
 import * as viewport from '../js/viewport.js';
 import * as reference from '../js/reference.js';
+import * as libraryConfig from '../js/library/config.js';
+import * as libraryHash from '../js/library/hash.js';
+import * as libraryIndex from '../js/library/index-model.js';
+import * as libraryAnalyze from '../js/library/analyze.js';
+import * as libraryClient from '../js/library/client.js';
+import * as librarySubmit from '../js/library/submit.js';
+import * as libraryUi from '../js/library-ui.js';
+import * as cardSource from '../js/card-source.js';
+import * as libraryRequests from '../js/library/requests.js';
+import * as libraryCardHtml from '../js/library/card-html.js';
+import * as librarySketch from '../js/library/sketch.js';
 import * as ui from '../js/ui.js';
 import * as utils from '../js/utils.js';
 import * as view from '../js/view.js';
@@ -157,7 +168,8 @@ const NAMESPACES = [
   exerciseModel, exerciseGrade, exerciseUi, lexerRegex, lexerBuild, lexerEmit, lexerUi, algorithmsFa, grammarUi, grammarModel, grammarParse, grammarAnalysis, grammarTransform,
   grammarParsing, grammarConvert, grammarTree, grammarRegistry, grammarExamples, reference, workspace, quickSettings, minimap, ui,
   statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt, statemateAgent,
-  statematePreview, draftLayer, statemate, statemateUi, wizardCopy, wizard, wizardUi
+  statematePreview, draftLayer, statemate, statemateUi, wizardCopy, wizard, wizardUi,
+  libraryConfig, libraryHash, libraryIndex, libraryAnalyze, libraryClient, librarySubmit, libraryUi, cardSource, libraryRequests, libraryCardHtml, librarySketch
 ];
 
 // Live view over every module export. Names are unique across modules (the
@@ -246,6 +258,9 @@ function resetModuleState() {
   branchTokens.clearBranchTokens();
   complexityUi.resetComplexity();
   behaviourUi.resetBehaviour();
+  // The library's route, its index in memory and its offline shelf.
+  libraryUi._resetLibraryUiForTests();
+  libraryClient._resetLibraryClientForTests();
   state.setWorkspaces([]);
   state.setActiveWorkspaceId(null);
   state.setR(baseConfig.radius);

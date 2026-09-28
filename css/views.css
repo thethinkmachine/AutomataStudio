@@ -260,6 +260,7 @@
 
 /* The Reference pane sets its own padding inline; keep the bottom generous
    so the last section can scroll clear of the modal edge. */
+.aux-overlay #v-library .algo-content,
 .aux-overlay #v-reference .algo-content {
   padding: 24px 28px 40px;
 }
@@ -4920,6 +4921,7 @@
 }
 
 /* ─── REFERENCE VIEW ─── */
+#v-library,
 #v-reference {
   flex: 1;
   overflow: hidden;
@@ -5231,6 +5233,7 @@
   #v-build,
   #v-algo,
   #v-grammar,
+  #v-library,
   #v-reference,
   .algo-content,
   .gram-main {
@@ -5242,6 +5245,7 @@
   #v-build,
   #v-algo,
   #v-grammar,
+  #v-library,
   #v-reference {
     flex-direction: column;
   }

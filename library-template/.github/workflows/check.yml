@@ -1,0 +1,63 @@
+# Every pull request that touches a machine is analysed with the AutomataStudio
+# engine — the same checks the app runs before it lets you submit. A second
+# step checks that each change is made by the account the entry credits. The
+# report goes in the run's summary, which every pull request can read, and is
+# also posted as a comment where the token allows it: a pull request from a
+# fork gets a read-only token, so for those the summary is the report.
+name: Check
+
+on:
+  pull_request:
+    paths: ['machines/**', 'collections/**', 'library.config.json']
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check out the engine
+        uses: actions/checkout@v4
+        with:
+          repository: thethinkmachine/AutomataStudio
+          ref: main
+          path: .engine
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install the engine
+        working-directory: .engine
+        run: npm ci --omit=dev --ignore-scripts
+      - name: Analyse
+        id: analyse
+        continue-on-error: true
+        run: >
+          node --conditions=browser --conditions=development .engine/scripts/library/build.mjs
+          --library . --check --report report.md
+          --changed-since "origin/${{ github.base_ref }}"
+      - name: Authorship
+        id: guard
+        continue-on-error: true
+        env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: node .engine/scripts/library/guard.mjs --library . --base "origin/${{ github.base_ref }}" > guard.md
+      - name: Post the report
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          { cat report.md 2>/dev/null; echo; echo '### Authorship'; cat guard.md 2>/dev/null; } > comment.md
+          cat comment.md >> "$GITHUB_STEP_SUMMARY"
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file comment.md --edit-last \
+            || gh pr comment "${{ github.event.pull_request.number }}" --body-file comment.md
+      - name: Verdict
+        if: steps.analyse.outcome == 'failure' || steps.guard.outcome == 'failure'
+        run: |
+          cat report.md guard.md 2>/dev/null
+          exit 1

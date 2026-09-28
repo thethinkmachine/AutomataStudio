@@ -1,0 +1,54 @@
+# Builds the index, the pictures and the website, and publishes them to
+# GitHub Pages — which is where the app reads the library from. Runs on every
+# merge.
+name: Publish
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the entries' added/updated dates and versions come from git history
+      - name: Check out the engine
+        uses: actions/checkout@v4
+        with:
+          repository: thethinkmachine/AutomataStudio
+          ref: main
+          path: .engine
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install the engine
+        working-directory: .engine
+        run: npm ci --omit=dev --ignore-scripts
+      - name: Build
+        run: >
+          node --conditions=browser --conditions=development .engine/scripts/library/build.mjs
+          --library . --out _site --commit "${{ github.sha }}"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

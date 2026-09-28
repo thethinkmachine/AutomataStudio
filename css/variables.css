@@ -22,6 +22,10 @@
   --green: #69f0ae;
   --red: #ff6b6b;
   --orange: #ffb74d;
+  /* Turing machines in the Library: an orange of its own, because --orange
+     already means "no verdict" and a machine family must not read as a warning.
+     Each theme derives it from its own orange and red. */
+  --coral: #ff9e6b;
   --purple: #ce93d8;
   --on-accent: #08111f;
   --mono: 'JetBrains Mono', monospace;
@@ -117,6 +121,7 @@
   --green: #198b63;
   --red: #cb4545;
   --orange: #d97706;
+  --coral: #d3631f;
   --purple: #8458cf;
   --on-accent: #f8fbff;
   --overlay: rgba(24, 45, 70, 0.28);
@@ -191,6 +196,7 @@
   --green: #a3be8c;
   --red: #bf616a;
   --orange: #d08770;
+  --coral: #c9786e;
   --purple: #b48ead;
   --on-accent: #20242c;
   --overlay: rgba(46, 52, 64, 0.72);
@@ -265,6 +271,7 @@
   --green: #859900;
   --red: #dc322f;
   --orange: #cb4b16;
+  --coral: #d24120;
   --purple: #d33682;
   --on-accent: #fdf6e3;
   --overlay: rgba(101, 123, 131, 0.26);
@@ -339,6 +346,7 @@
   --green: #859900;
   --red: #dc322f;
   --orange: #cb4b16;
+  --coral: #d24120;
   --purple: #d33682;
   --on-accent: #002b36;
   --overlay: rgba(0, 43, 54, 0.72);
@@ -413,6 +421,7 @@
   --green: #50fa7b;
   --red: #ff5555;
   --orange: #ffb86c;
+  --coral: #ff9063;
   --purple: #ff79c6;
   --on-accent: #1e1f29;
   --overlay: rgba(40, 42, 54, 0.72);
@@ -487,6 +496,7 @@
   --green: #b8bb26;
   --red: #fb4934;
   --orange: #fe8019;
+  --coral: #fd6a24;
   --purple: #d3869b;
   --on-accent: #1d2021;
   --overlay: rgba(40, 40, 40, 0.72);
@@ -561,6 +571,7 @@
   --green: #79740e;
   --red: #9d0006;
   --orange: #af3a03;
+  --coral: #a82304;
   --purple: #8f3f71;
   --on-accent: #f9f5d7;
   --overlay: rgba(80, 73, 69, 0.28);
@@ -635,6 +646,7 @@
   --green: #98c379;
   --red: #e06c75;
   --orange: #d19a66;
+  --coral: #d7886c;
   --purple: #c678dd;
   --on-accent: #1a1c20;
   --overlay: rgba(40, 44, 52, 0.72);
@@ -709,6 +721,7 @@
   --green: #9ece6a;
   --red: #f7768e;
   --orange: #ff9e64;
+  --coral: #fc8e75;
   --purple: #bb9af7;
   --on-accent: #161620;
   --overlay: rgba(26, 27, 38, 0.72);
@@ -783,6 +796,7 @@
   --green: #a6e3a1;
   --red: #f38ba8;
   --orange: #fab387;
+  --coral: #f7a394;
   --purple: #cba6f7;
   --on-accent: #181825;
   --overlay: rgba(30, 30, 46, 0.72);
@@ -857,6 +871,7 @@
   --green: #31748f;
   --red: #eb6f92;
   --orange: #ebbcba;
+  --coral: #eb9daa;
   --purple: #c4a7e7;
   --on-accent: #161320;
   --overlay: rgba(25, 23, 36, 0.72);
@@ -931,6 +946,7 @@
   --green: #1a7f37;
   --red: #d1242f;
   --orange: #bc4c00;
+  --coral: #c43c13;
   --purple: #8250df;
   --on-accent: #ffffff;
   --overlay: rgba(89, 99, 110, 0.26);
@@ -1005,6 +1021,7 @@
   --green: #3fb950;
   --red: #f85149;
   --orange: #db6d28;
+  --coral: #e76235;
   --purple: #bc8cff;
   --on-accent: #0d1117;
   --overlay: rgba(13, 17, 23, 0.72);
@@ -1078,6 +1095,7 @@
   --green: #6b8e4e;
   --red: #b5453f;
   --orange: #c1732f;
+  --coral: #bc6135;
   --purple: #8a6d9b;
   --on-accent: #fbf5e6;
   --overlay: rgba(122, 105, 82, 0.26);
@@ -1152,6 +1170,7 @@
   --green: #00ff9c;
   --red: #ff4d4d;
   --orange: #ff9f1c;
+  --coral: #ff7e30;
   --purple: #d896ff;
   --on-accent: #000000;
   --overlay: rgba(0, 0, 0, 0.72);
@@ -1226,6 +1245,7 @@
   --green: #6a8f00;
   --red: #f51818;
   --orange: #fa8d3e;
+  --coral: #f85e2f;
   --purple: #a37acc;
   --on-accent: #fafafa;
   --overlay: rgba(120, 123, 128, 0.26);
@@ -1300,6 +1320,7 @@
   --green: #c2d94c;
   --red: #ff3333;
   --orange: #ff8f40;
+  --coral: #ff6a3b;
   --purple: #d2a6ff;
   --on-accent: #0a0e14;
   --overlay: rgba(10, 14, 20, 0.72);
@@ -1374,6 +1395,7 @@
   --green: #bae67e;
   --red: #f28779;
   --orange: #ffa759;
+  --coral: #fa9a66;
   --purple: #dfbfff;
   --on-accent: #1f2430;
   --overlay: rgba(31, 36, 48, 0.72);
@@ -1448,6 +1470,7 @@
   --green: #a7c080;
   --red: #e67e80;
   --orange: #e69875;
+  --coral: #e68e79;
   --purple: #d699b6;
   --on-accent: #2d353b;
   --overlay: rgba(45, 53, 59, 0.72);
@@ -1521,6 +1544,7 @@
   --green: #98bb6c;
   --red: #e46876;
   --orange: #ffa066;
+  --coral: #f48a6c;
   --purple: #957fb8;
   --on-accent: #16161d;
   --overlay: rgba(31, 31, 40, 0.72);
@@ -1595,6 +1619,7 @@
   --green: #85b695;
   --red: #d47766;
   --orange: #e49b5d;
+  --coral: #de8d61;
   --purple: #cf9bc2;
   --on-accent: #171413;
   --overlay: rgba(41, 37, 34, 0.72);
@@ -1669,6 +1694,7 @@
   --green: #3a684a;
   --red: #bf0021;
   --orange: #bc5c00;
+  --coral: #bd370d;
   --purple: #904180;
   --on-accent: #fafafa;
   --overlay: rgba(125, 102, 88, 0.28);
@@ -1743,6 +1769,7 @@
   --green: #81b29a;
   --red: #c94f6d;
   --orange: #f4a261;
+  --coral: #e38166;
   --purple: #9d79d6;
   --on-accent: #131a24;
   --overlay: rgba(25, 35, 48, 0.72);
@@ -1817,6 +1844,7 @@
   --green: #396847;
   --red: #a5222f;
   --orange: #955f61;
+  --coral: #9b474d;
   --purple: #6e33ce;
   --on-accent: #fffdfb;
   --overlay: rgba(100, 63, 97, 0.28);
@@ -1890,6 +1918,7 @@
   --green: #39ff6a;
   --red: #ff007a;
   --orange: #ff5c00;
+  --coral: #ff3731;
   --purple: #b14aff;
   --on-accent: #0d0407;
   --overlay: rgba(26, 10, 16, 0.72);
@@ -1964,6 +1993,7 @@
   --green: #00e5ff;
   --red: #ff2d9b;
   --orange: #ff5c1f;
+  --coral: #ff4951;
   --purple: #9d4dff;
   --on-accent: #08080a;
   --overlay: rgba(8, 8, 10, 0.72);
@@ -2038,6 +2068,7 @@
   --green: #4f7a42;
   --red: #c74375;
   --orange: #d34b1f;
+  --coral: #ce4841;
   --purple: #7d5aa0;
   --on-accent: #fffafa;
   --overlay: rgba(107, 90, 96, 0.28);
@@ -2112,6 +2143,7 @@
   --green: #3fffa8;
   --red: #ff3d7a;
   --orange: #ff7a3d;
+  --coral: #ff6255;
   --purple: #c77dff;
   --on-accent: #080a16;
   --overlay: rgba(13, 16, 32, 0.72);
@@ -2186,6 +2218,7 @@
   --green: #1f8a6d;
   --red: #e0335f;
   --orange: #d96a2a;
+  --coral: #dc543f;
   --purple: #c77ae0;
   --on-accent: #fffbfe;
   --overlay: rgba(122, 92, 128, 0.28);
@@ -2260,6 +2293,7 @@
   --green: #7cb342;
   --red: #e0374a;
   --orange: #f2711c;
+  --coral: #eb5a2e;
   --purple: #b565d8;
   --on-accent: #0c0d1e;
   --overlay: rgba(18, 19, 42, 0.72);
@@ -2334,6 +2368,7 @@
   --green: #8fbc4a;
   --red: #d4605c;
   --orange: #cf7043;
+  --coral: #d16a4d;
   --purple: #a98bc9;
   --on-accent: #08100b;
   --overlay: rgba(16, 26, 20, 0.72);
@@ -2408,6 +2443,7 @@
   --green: #3d7a4f;
   --red: #a83a3a;
   --orange: #b56a2a;
+  --coral: #b05730;
   --purple: #6a5a9c;
   --on-accent: #f9fcfc;
   --overlay: rgba(77, 102, 111, 0.28);
@@ -2482,6 +2518,7 @@
   --green: #4fd6a8;
   --red: #ff5d73;
   --orange: #ff9a52;
+  --coral: #ff825f;
   --purple: #b088ff;
   --on-accent: #03040c;
   --overlay: rgba(6, 8, 20, 0.72);
@@ -2556,6 +2593,7 @@
   --green: #3f7a3a;
   --red: #b03a48;
   --orange: #c2601f;
+  --coral: #bb512f;
   --purple: #6b5b9e;
   --on-accent: #fbfdff;
   --overlay: rgba(74, 98, 116, 0.28);

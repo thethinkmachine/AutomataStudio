@@ -1205,7 +1205,8 @@ function readDocumentPayload(payload, name) {
 // The one parser, shared by the drop handler, the file input and the host.
 // `opts.filePath` is the file this came from where there is one — a drop and
 // the hidden input have a name and no path — and is what decides whether the
-// document is already open in a tab.
+// document is already open in a tab. `opts.tabName` names the tab it opens in
+// when the canvas is occupied — the library passes the entry's title.
 //
 // Returns whether the document was applied, because the caller has to know
 // before it binds a path to the workspace.
@@ -1220,7 +1221,7 @@ export function applyDocument(payload, name, opts = {}) {
       return false;
     }
 
-    placeOpenedDocument(opts.filePath || null);
+    placeOpenedDocument(opts.filePath || null, opts.tabName);
 
     // JFLAP carries no description of its own, so anything the previous
     // machine had to say goes away with it.
@@ -1228,6 +1229,13 @@ export function applyDocument(payload, name, opts = {}) {
     if (read.kind === 'statechart') { importStatechartData(read.data, read.label); return true; }
 
     loadData(read.data);
+    // A tab read into rather than opened keeps the name it was created with,
+    // which for an untouched tab is "Workspace 1" — so a caller that knows what
+    // the document is called says so, and an untitled tab takes it.
+    if (opts.tabName) {
+      const ws = activeWorkspace();
+      if (ws && /^Workspace \d+$/.test(ws.name || '')) { ws.name = opts.tabName; if (typeof renderTabs === 'function') renderTabs(); }
+    }
     // A saved workspace usually has no `meta`; an example or a StateMate
     // result saved to disk does. Either way the card is retargeted rather
     // than left describing the machine that was just replaced.

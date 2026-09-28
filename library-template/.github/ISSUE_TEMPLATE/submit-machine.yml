@@ -1,0 +1,88 @@
+# The form AutomataStudio's "Submit a machine" opens, pre-filled. Every `id`
+# below is a query parameter the app sets (js/library/submit.js), and every
+# label is a heading scripts/library/issue-to-entry.mjs reads back — change one
+# and change the other.
+name: Submit a machine
+description: Add a machine, a busy beaver or an exercise to the library — or update one of yours.
+title: "[Machine] "
+labels: ["submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The easiest way to fill this in is from the app: **More ▸ Library ▸ Submit a machine**. It checks the machine first and fills in every field.
+
+        Once you submit, the library's CI checks the machine, opens a pull request and posts its report here. You are credited by the GitHub account that opens this issue.
+  - type: input
+    id: name
+    attributes:
+      label: Name
+      description: A title of up to 70 characters.
+      placeholder: Binary divisibility by 7
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: One or two sentences — shown on the card and in search. Up to 400 characters.
+    validations:
+      required: true
+  - type: textarea
+    id: machine
+    attributes:
+      label: Machine
+      description: A share link from the app (Share ▸ Copy link), the .automaton file attached or pasted, or a Turing machine in the standard text format (1RB1LB_1LA1RZ).
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: readme
+    attributes:
+      label: Write-up
+      description: Optional. How it works, where it comes from, what to try. Up to 4000 characters.
+  - type: input
+    id: tags
+    attributes:
+      label: Tags
+      description: Comma-separated, e.g. busy-beaver, parity, textbook.
+  - type: input
+    id: level
+    attributes:
+      label: Level
+      description: intro, intermediate or advanced — or leave blank.
+  - type: input
+    id: chapter
+    attributes:
+      label: Chapter or source
+      description: e.g. Sipser §1.2, or the paper it is from.
+  - type: input
+    id: remix-of
+    attributes:
+      label: Remix of
+      description: The library id of the machine this is built from, if any (e.g. finite/dfa/binary-divisibility-by-5).
+  - type: input
+    id: updates
+    attributes:
+      label: Updates
+      description: The library id of your own entry this replaces, if it is an update. Only an entry's author can update it.
+  - type: input
+    id: display-name
+    attributes:
+      label: Display name
+      description: Optional — how to credit you, beside your GitHub username.
+  - type: input
+    id: license
+    attributes:
+      label: Licence
+      description: CC-BY-4.0 (credit required) or CC0-1.0 (public domain).
+      value: CC-BY-4.0
+    validations:
+      required: true
+  - type: checkboxes
+    id: agreement
+    attributes:
+      label: Agreement
+      options:
+        - label: I made this machine (or have the right to share it) and release it under the licence above.
+          required: true

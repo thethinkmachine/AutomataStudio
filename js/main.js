@@ -52,6 +52,7 @@ import './lexer-ui.js';
 import './exercise-ui.js';
 import './grammar-ui.js';
 import './reference.js';
+import './library-ui.js';
 import './statemate-spec.js';
 import './statemate-provider.js';
 import './statemate-prompt.js';

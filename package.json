@@ -26,6 +26,10 @@
     "icons": "node scripts/build-icons.mjs",
     "glyphs": "node scripts/build-glyphs.mjs",
     "wasm": "node scripts/build-wasm.mjs",
+    "library:init": "node --conditions=browser --conditions=development scripts/library/seed.mjs",
+    "library:build": "node --conditions=browser --conditions=development scripts/library/build.mjs",
+    "library:check": "node --conditions=browser --conditions=development scripts/library/build.mjs --check",
+    "library:dev": "node --conditions=browser --conditions=development scripts/library/dev-server.mjs",
     "electron:dev": "concurrently -k -s first \"npm:dev\" \"wait-on http://localhost:5173 && cross-env ELECTRON_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "electron:preview": "npm run build && electron .",
     "electron:build": "npm run build && electron-builder"
@@ -74,6 +78,14 @@
       ],
       "category": "Education"
     },
+    "protocols": [
+      {
+        "name": "AutomataStudio library link",
+        "schemes": [
+          "automata-studio"
+        ]
+      }
+    ],
     "fileAssociations": [
       {
         "ext": "automaton",
