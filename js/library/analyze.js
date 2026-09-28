@@ -461,13 +461,23 @@ export function sketchOf(target) {
  * machine is small enough for labels to be read.
  */
 export function liveDiagram(target, { w = 640, h = null } = {}) {
+  const d = namedDiagram(target, { w, h, live: true });
+  const edgeOf = new Map(target.transitions.map(t => [t.id, `${d.rootOf.get(t.from) || t.from}|${d.rootOf.get(t.to) || t.to}`]));
+  const names = new Map(target.states.map(s => [s.id, String(s.name ?? s.id)]));
+  return { svg: d.svg, w: d.w, h: d.h, rootOf: d.rootOf, edgeOf, names };
+}
+
+/**
+ * The machine drawn to be read: names in its states, and labels on its edges
+ * where the machine is small enough for them to be read. The listing's figure,
+ * in the app (live, via liveDiagram) and on the website (drawn by the build).
+ */
+export function namedDiagram(target, { w = 640, h = null, live = false } = {}) {
   const labelOf = edgeLabelOf(target.machine);
   const sk = sketchFromTarget(target, labelOf);
   h = h || Math.round(w / sketchAspect(sk));
   const labels = !!labelOf && sk.nodes.length <= 14 && sk.edges.length <= 36;
-  const edgeOf = new Map(target.transitions.map(t => [t.id, `${sk.rootOf.get(t.from) || t.from}|${sk.rootOf.get(t.to) || t.to}`]));
-  const names = new Map(target.states.map(s => [s.id, String(s.name ?? s.id)]));
-  return { svg: drawSketch(sk, { w, h, names: true, labels, live: true, label: 'The machine’s diagram' }), w, h, rootOf: sk.rootOf, edgeOf, names };
+  return { svg: drawSketch(sk, { w, h, names: true, labels, live, label: 'The machine’s diagram' }), w, h, rootOf: sk.rootOf };
 }
 
 /**

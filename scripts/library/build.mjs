@@ -39,7 +39,9 @@ import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { analyzeDocument } from '../../js/library/analyze.js';
+import { analyzeDocument, decideRaw, libraryMetaOf, namedDiagram, outputText, runFramesOf } from '../../js/library/analyze.js';
+import { buildFormalDefLatex } from '../../js/render.js';
+import { withMachine } from '../../js/exercise/grade.js';
 import { contentHash } from '../../js/library/hash.js';
 import { INDEX_FORMAT, INDEX_VERSION, LIBRARY_REPO, LIBRARY_SITE_URL, isLibraryId } from '../../js/library/config.js';
 import { normalizeIndex } from '../../js/library/index-model.js';
@@ -134,6 +136,7 @@ export async function buildLibrary(opts) {
   const results = [];
   const entries = [];
   const artifacts = [];   // { path, text } to write under out/
+  const sources = new Map();   // id → { target, doc }: what the website's listing reads (listingOf)
 
   // ── machines ──
   for (const file of await walk(join(root, 'machines'), '.automaton')) {
@@ -174,6 +177,7 @@ export async function buildLibrary(opts) {
       artifacts.push({ path, text: v.svg });
     }
     entries.push(entry);
+    sources.set(id, { target: a.target, doc });
   }
 
   const byId = new Map(entries.map(e => [e.id, e]));
@@ -254,7 +258,32 @@ export async function buildLibrary(opts) {
   // Round-trip through the reader the app uses, so an index the app would
   // refuse cannot be published.
   normalizeIndex(JSON.parse(JSON.stringify(raw)));
-  return { raw, results, artifacts: artifacts.filter(keepArtifact), config: { ...config, repo, site } };
+  return { raw, results, artifacts: artifacts.filter(keepArtifact), sources, config: { ...config, repo, site } };
+}
+
+// ── What a website listing reads off the file ─────────────────────
+
+/**
+ * What only the machine's file can say, for its page on the website
+ * (site.mjs): the diagram with its names and labels, its formal definition —
+ * the same LaTeX the app's formal-definition box and the Library's listing
+ * typeset — its examples decided, and the author's notes. Each part is
+ * optional; a page without one draws from the index.
+ */
+export function listingOf({ target, doc }, entry) {
+  const out = {};
+  try { out.diagram = namedDiagram(target); } catch { /* the index's sketch */ }
+  try { out.latex = withMachine(target, () => buildFormalDefLatex()); } catch { /* no definition */ }
+  const rows = (Array.isArray(doc?.meta?.inputs) ? doc.meta.inputs : []).filter(r => r && typeof r.w === 'string').slice(0, 16);
+  out.examples = rows.map(r => {
+    const got = decideRaw(target, r.w);
+    return { w: r.w, verdict: got.verdict, output: outputText(got.output), label: typeof r.label === 'string' ? r.label : '' };
+  }).filter(r => r.verdict !== 'err');
+  if (entry.behaviour && !entry.standard) {
+    try { out.runFrames = runFramesOf(target, 90); } catch { /* none */ }
+  }
+  out.readme = libraryMetaOf(doc).readme;
+  return out;
 }
 
 // ── The report ────────────────────────────────────────────────────
@@ -319,8 +348,14 @@ export async function writeLibrary(opts, built) {
   await put(out, '.nojekyll', '');
   if (!opts.noSite) {
     const index = normalizeIndex(JSON.parse(JSON.stringify(built.raw)));
+    const listings = new Map();
+    for (const e of built.raw.entries) {
+      const src = built.sources?.get(e.id);
+      if (src) listings.set(e.id, listingOf(src, e));
+    }
     await writeSite(out, index, built.config, {
-      assets: { 'config.js': join(HERE, '../../js/library/config.js'), 'index-model.js': join(HERE, '../../js/library/index-model.js'), 'card-html.js': join(HERE, '../../js/library/card-html.js') }
+      assets: { 'config.js': join(HERE, '../../js/library/config.js'), 'index-model.js': join(HERE, '../../js/library/index-model.js') },
+      listings
     });
   }
 }

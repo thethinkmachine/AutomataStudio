@@ -1,23 +1,20 @@
 // ══════════════════════════════════════════════════════════════════
-//  A LIBRARY CARD, AS HTML
+//  A MACHINE IN THE CATALOGUE
 // ══════════════════════════════════════════════════════════════════
-// The website's card, written once for both the pages the build generates
-// (scripts/library/site.mjs) and the search results the site's own script
-// draws in the browser (copied beside it as assets/card-html.js). The app
-// builds its cards as DOM nodes in js/library-ui.js from the same rules — the
-// same picture, the same two badges in the same order, the same stat — and
-// takes those rules from here.
+// The rules both faces of the library share, so a machine reads the same in
+// the app's Library view (js/library-ui.js, as DOM) and on the website
+// (scripts/library/site.mjs, as HTML): which figure it is known by, the one
+// line of facts under its name, what the library checked in words, and the
+// plate those make.
 //
-// Imports only index-model.js, which is copied beside it on the website.
+// Imports index-model.js and sketch.js only — no DOM, so the website's build
+// runs it in Node.
 
-import { shortCount } from './index-model.js';
+import { BADGES, shortCount } from './index-model.js';
+import { drawRun, drawSketch, framesFromStandard, unpackSketch } from './sketch.js';
 
-/** The badges a card shows first. Rarest and most specific leads. */
+/** The order the library's checks are listed in. Rarest and most specific leads. */
 export const BADGE_RANK = ['halts', 'never-halts', 'tested', 'minimal', 'deterministic'];
-
-const ICON = { tested: '✓', deterministic: '◆', minimal: '✂', halts: '■', 'never-halts': '∞' };
-const LABEL = { tested: 'Tests pass', deterministic: 'Deterministic', minimal: 'Minimal', halts: 'Halts', 'never-halts': 'Never halts' };
-const ART_LABEL = { spacetime: 'Run', diagram: 'Diagram', language: 'Language' };
 
 export function escHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -27,19 +24,6 @@ const encPath = p => String(p || '').split('/').map(encodeURIComponent).join('/'
 
 export function rankBadges(badges) {
   return [...(badges || [])].sort((a, b) => BADGE_RANK.indexOf(a.id) - BADGE_RANK.indexOf(b.id));
-}
-
-export function badgeLabel(e, b) {
-  if (b.id === 'halts' && Number.isFinite(e.behaviour?.steps)) return `${ICON.halts} Halts · ${shortCount(e.behaviour.steps)} steps`;
-  if (b.id === 'never-halts') return `${ICON['never-halts']} Never halts${b.detail ? ` · ${b.detail}` : ''}`;
-  return `${ICON[b.id] || ''} ${LABEL[b.id] || b.id}`;
-}
-
-export function cardStat(e) {
-  const b = e.behaviour;
-  if (b?.verdict === 'halts') return `${shortCount(b.steps)} steps`;
-  if (b?.verdict === 'never') return '∞ steps';
-  return `${e.stats.states} state${e.stats.states === 1 ? '' : 's'}`;
 }
 
 /**
@@ -54,32 +38,60 @@ export function standardSize(code) {
   return { states: groups.length, symbols: groups[0].length / 3 };
 }
 
-export function cardKicker(e) {
+/** A machine in one line: its type, its size, and what it does from a blank tape. */
+export function plateCaption(e) {
   const size = standardSize(e.standard);
-  if (size) return `${e.machine} · ${size.states}×${size.symbols}`;
-  return [e.machine, e.languageClass].filter(Boolean).join(' · ');
+  const b = e.behaviour;
+  const parts = [e.machine, size ? `${size.states}×${size.symbols}` : `${e.stats.states} state${e.stats.states === 1 ? '' : 's'}`];
+  if (b?.verdict === 'halts') parts.push(`halts in ${shortCount(b.steps)}`);
+  else if (b?.verdict === 'never') parts.push('never halts');
+  return parts.join(' · ');
 }
 
-/** The one picture a card shows: a Turing machine's run, else its diagram. */
+const MARK_LABEL = { tested: 'Tested', minimal: 'Minimal', deterministic: 'Deterministic' };
+
+/** What the library checked, as words — the halting answer is already in the caption. */
+export function plateMarks(e) {
+  return rankBadges(e.badges).filter(b => MARK_LABEL[b.id]).map(b => ({ id: b.id, label: MARK_LABEL[b.id], say: BADGES[b.id]?.say || '' }));
+}
+
+/** The build's picture a machine too large to carry a sketch falls back on: its run, else its diagram. */
 export function cardPicture(e) {
   const art = Array.isArray(e.art) ? e.art : [];
   return art.find(a => a.kind === 'spacetime') || art.find(a => a.kind === 'diagram') || art[0] || null;
 }
 
-/** One card. `root` is the relative path back to the site root. */
-export function cardHtml(e, { root = './' } = {}) {
+/**
+ * The one figure a machine is known by, as SVG drawn from the index: a Turing
+ * machine's run when its code can be run, else its diagram. `{svg, run}`, or
+ * null when the index carries nothing to draw from (then cardPicture).
+ */
+export function figureSvg(e, { w = 320, h = 200 } = {}) {
+  const frames = e.standard && e.behaviour ? framesFromStandard(e.standard, 60) : null;
+  if (frames && frames.length > 2) return { svg: drawRun(frames, { w, h }), run: true };
+  const sk = unpackSketch(e.sketch);
+  if (sk) return { svg: drawSketch(sk, { w, h, label: `Diagram of ${e.title}` }), run: false };
+  return null;
+}
+
+/** A figure's well, as HTML. `root` is the relative path back to the site root. */
+export function figureHtml(e, { root = './', w = 320, h = 200, cls = '' } = {}) {
+  const f = figureSvg(e, { w, h });
+  const c = ['fig', f?.run ? 'is-run' : '', cls].filter(Boolean).join(' ');
+  if (f) return `<span class="${c}">${f.svg}</span>`;
   const pic = cardPicture(e);
-  const ranked = rankBadges(e.badges);
-  const pills = ranked.slice(0, 2).map(b => `<span class="pill is-${escHtml(b.id)}">${escHtml(badgeLabel(e, b))}</span>`).join('')
-    + (ranked.length > 2 ? `<span class="pill is-more" title="${escHtml(ranked.slice(2).map(b => LABEL[b.id]).join(' · '))}">+${ranked.length - 2}</span>` : '');
-  const img = pic ? `<img class="art-img" data-kind="${escHtml(pic.kind)}" src="${root}${encPath(pic.path)}" alt="${escHtml(`${ART_LABEL[pic.kind] || pic.kind} of ${e.title}`)}" loading="lazy">` : '';
-  return `<a class="card" data-family="${escHtml(e.category || 'special')}" href="${root}m/${encPath(e.id)}/">
-  <span class="art">${img}</span>
-  <span class="card-body">
-    <span class="card-kick"><span class="card-type">${escHtml(cardKicker(e))}</span><span class="card-stat">${escHtml(cardStat(e))}</span></span>
-    <span class="card-title">${escHtml(e.title)}</span>
-    <span class="pills">${pills}</span>
-    <span class="card-by">${e.author?.login ? `@${escHtml(e.author.login)}` : ''}</span>
+  return `<span class="${pic?.kind === 'spacetime' ? `${c} is-run` : c}">${pic ? `<img src="${root}${encPath(pic.path)}" alt="Diagram of ${escHtml(e.title)}" loading="lazy">` : ''}</span>`;
+}
+
+/** One machine on the website: its figure, its name, one line of facts, what was checked. */
+export function plateHtml(e, { root = './' } = {}) {
+  const marks = plateMarks(e);
+  return `<a class="plate" data-family="${escHtml(e.category || 'special')}" data-id="${escHtml(e.id)}" href="${root}m/${encPath(e.id)}/">
+  ${figureHtml(e, { root })}
+  <span class="plate-body">
+    <span class="plate-title">${escHtml(e.title)}</span>
+    <span class="plate-cap"><i class="dot" aria-hidden="true"></i>${escHtml(plateCaption(e))}</span>
+    ${marks.length ? `<span class="plate-marks" title="${escHtml(marks.map(m => m.say).join('\n'))}">${marks.map(m => escHtml(m.label)).join(' · ')}</span>` : ''}
   </span>
 </a>`;
 }

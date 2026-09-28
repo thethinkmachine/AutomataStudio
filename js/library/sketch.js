@@ -195,7 +195,13 @@ export function drawSketch(sk, { w = 320, h = 200, names = false, labels = false
     } else {
       parts.push(`<circle class="sk-n" cx="${x}" cy="${y}" r="${r1(r)}"/>`);
       if (n.accept) parts.push(`<circle class="sk-a" cx="${x}" cy="${y}" r="${r1(Math.max(r - Math.max(2.2, r * 0.2), r * 0.62))}"/>`);
-      if (names && r >= 9 && n.name) parts.push(`<text class="sk-name" x="${x}" y="${r1(n.py + r * 0.26)}" text-anchor="middle" font-size="${r1(Math.max(8, r * (n.name.length > 3 ? 0.62 : 0.78)))}">${esc(n.name.slice(0, live ? 6 : 4))}</text>`);
+      if (names && r >= 9 && n.name) {
+        // Set to fit the circle rather than cut to a fixed length: a long
+        // name gets smaller type, and only a very long one loses its end.
+        const nm = n.name.length > 9 ? `${n.name.slice(0, 8)}…` : n.name;
+        const fs = Math.max(6.5, Math.min(r * 0.78, (r * 1.7) / (nm.length * 0.5)));
+        parts.push(`<text class="sk-name" x="${x}" y="${r1(n.py + fs * 0.34)}" text-anchor="middle" font-size="${r1(fs)}">${esc(nm)}</text>`);
+      }
     }
     if (n.start) {
       const x0 = n.px - r - Math.max(10, r * 1.1), x1 = n.px - r - 0.6;

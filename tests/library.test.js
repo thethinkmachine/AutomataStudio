@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { context, resetApp } from './harness.js';
-import { buildLibrary, reportMarkdown, writeLibrary } from '../scripts/library/build.mjs';
+import { buildLibrary, listingOf, reportMarkdown, writeLibrary } from '../scripts/library/build.mjs';
 import { docFromStandardTM } from '../scripts/library/seed.mjs';
 import { parseIssueForm, processIssue } from '../scripts/library/issue-to-entry.mjs';
 import { guardChanges, maintainersAt } from '../scripts/library/guard.mjs';
@@ -458,7 +458,7 @@ test('the Library view draws the discover page and an entry\'s listing', async (
   await context.loadLibrary();
   context.go('discover', null, { reset: true });
   const host = context.document.getElementById('lib-content');
-  assert.match(textOf(host), /Machines other people built/);
+  assert.match(textOf(host), /A catalogue of automata/);
   assert.match(textOf(host), /Busy|BB\(2\)/);
   context.go('entry', 'turing/busy-beaver/bb2');
   const page = textOf(host);
@@ -895,25 +895,30 @@ test('the build writes every picture and lists them on the entry', async () => {
 
 // ── Cards on screen ───────────────────────────────────────────────
 
-test('a card shows two badges, ranked and labelled, and counts the rest', () => {
+test('a plate on the website is the app\'s plate: one figure drawn from the index, a caption, the checks in words', () => {
   const e = { badges: ['tested', 'minimal', 'deterministic', 'halts'].map(id => ({ id, detail: '' })), behaviour: { verdict: 'halts', steps: 47176870 } };
   assert.deepEqual(context.rankBadges(e.badges).map(b => b.id).slice(0, 3), ['halts', 'tested', 'minimal']);
-  const html = context.cardHtml({ id: 'turing/x', title: 'X <b>', machine: 'ITM', category: 'tm', stats: { states: 6, sigma: ['1'] }, author: { login: 'a' }, art: [{ kind: 'diagram', path: 'art/x/diagram.svg' }, { kind: 'spacetime', path: 'art/x/spacetime.svg' }], ...e });
-  assert.match(html, /■ Halts · 47\.2M steps/);
-  assert.match(html, /✓ Tests pass/);
-  assert.match(html, />\+2</);
+  const tm = { id: 'turing/x', title: 'X <b>', machine: 'ITM', category: 'tm', standard: '1RB1LB_1LA1RZ', stats: { states: 3, sigma: ['1'] }, author: { login: 'a' }, art: [{ kind: 'diagram', path: 'art/x/diagram.svg' }], ...e };
+  const html = context.plateHtml(tm);
+  assert.match(html, /ITM · 2×2 · halts in 47\.2M/, 'the halting answer is in the caption');
+  assert.match(html, />Tested · Minimal · Deterministic</, 'the rest in words, the halt not repeated');
   assert.match(html, /X &lt;b&gt;/, 'the title is escaped');
-  assert.equal((html.match(/<img /g) || []).length, 1, 'one picture');
-  assert.match(html, /data-kind="spacetime"/, 'a Turing machine is known by its run');
+  assert.equal((html.match(/<svg /g) || []).length, 1, 'one figure');
+  assert.match(html, /class="fig is-run"/, 'a Turing machine is known by its run');
+  assert.doesNotMatch(html, /<img /, 'drawn, not fetched');
+  assert.doesNotMatch(html, /(fill|stroke)="#/, 'inked by the stylesheet');
   assert.match(html, /data-family="tm"/);
+  assert.match(html, /data-id="turing\/x"/, 'the search reorders plates by id');
+  const big = context.plateHtml({ ...tm, standard: '', behaviour: null, sketch: null });
+  assert.match(big, /<img src="\.\/art\/x\/diagram\.svg"/, 'too large for a sketch: the build\'s picture');
 });
 
 test('a Turing machine\'s size is read off its code, so a halt state is never counted', () => {
   assert.deepEqual(context.standardSize('1RB1LB_1LA1RZ'), { states: 2, symbols: 2 });
   assert.deepEqual(context.standardSize('1RB2LA1RA1RA_1LB1LA3RB1RZ'), { states: 2, symbols: 4 });
   const e = { machine: 'ITM', standard: '1RB1LB_1LA1RZ', stats: { states: 3, sigma: ['1'] } };
-  assert.equal(context.cardKicker({ ...e, behaviour: { verdict: 'halts', steps: 6 } }), 'ITM · 2×2');
-  assert.equal(context.cardKicker({ ...e, behaviour: { verdict: 'unknown' } }), 'ITM · 2×2', 'the same when the budget ran out');
+  assert.equal(context.plateCaption({ ...e, behaviour: { verdict: 'halts', steps: 6 } }), 'ITM · 2×2 · halts in 6');
+  assert.equal(context.plateCaption({ ...e, behaviour: { verdict: 'unknown' } }), 'ITM · 2×2', 'the same size when the budget ran out');
   assert.equal(context.standardSize(null), null);
 });
 
@@ -961,6 +966,35 @@ test('the listing\'s pictures switch over a browser\'s children, which is not an
   assert.equal(stage.caption.textContent, 'l');
 });
 
+test('Browse shows a batch at a time, starts again for a new search, and keeps its place for the same one', async () => {
+  const b = await builtLibrary();
+  resetApp();
+  const base = b.raw.entries.find(e => e.id === 'finite/dfa/even-ones');
+  const entries = Array.from({ length: 100 }, (_, i) => ({ ...base, id: `finite/dfa/copy-${String(i).padStart(3, '0')}`, title: `Copy ${String(i).padStart(3, '0')}`, remixes: [], forkOf: null, duplicateOf: null }));
+  context.fetch = fakeFetch({ 'index.json': JSON.stringify({ ...b.raw, commit: '', entries, collections: [], featured: [] }) });
+  context.renderLibraryView();
+  await context.loadLibrary({ force: true });
+  context.go('browse', null, { reset: true });
+  const host = context.document.getElementById('lib-content');
+  const count = () => findAll(host, n => n.classList?.contains('lib-plate')).length;
+  const more = () => findAll(host, n => n.classList?.contains('lib-showmore-btn'))[0];
+  assert.equal(count(), context.BROWSE_BATCH, 'one batch');
+  assert.equal(textOf(more()), 'Show 48 more');
+  more()._listeners.click({});
+  assert.equal(count(), 96);
+  assert.equal(textOf(more()), 'Show 4 more', 'the last batch says how many are left');
+  more()._listeners.click({});
+  assert.equal(count(), 100);
+  assert.equal(findAll(host, n => n.classList?.contains('lib-showmore'))[0].hidden, true, 'nothing left to show');
+  context.go('entry', 'finite/dfa/copy-000');
+  context.go('browse');
+  assert.equal(count(), 100, 'back to the same search: the same place');
+  const input = findAll(host, n => n.classList?.contains('lib-search'))[0];
+  input.value = 'copy';
+  input._listeners.keydown({ key: 'Enter', preventDefault() {} });
+  assert.equal(count(), context.BROWSE_BATCH, 'a new search starts again');
+});
+
 test('Discover leads with the search, and an empty search offers a way forward', async () => {
   const b = await builtLibrary();
   resetApp();
@@ -970,7 +1004,7 @@ test('Discover leads with the search, and an empty search offers a way forward',
   context.go('discover', null, { reset: true });
   const host = context.document.getElementById('lib-content');
   const page = textOf(host);
-  assert.match(page, /Machines other people built/);
+  assert.match(page, /A catalogue of automata/);
   assert.match(page, /verified by running/);
   assert.match(page, /Parity/, 'a featured collection is shown');
   assert.match(page, /DFA · NFA/, 'each family lists the types in it');
@@ -989,16 +1023,34 @@ test('the website: an entry credits its author with a search, and a collection o
   const { writeSite } = await import('../scripts/library/site.mjs');
   const index = context.normalizeIndex(JSON.parse(JSON.stringify(b.raw)));
   index.collections.push({ id: 'beavers', title: 'Beavers', blurb: '', curator: '', entries: ['turing/busy-beaver/bb2', 'turing/non-halting/cycler'] });
-  await writeSite(out, index, { site: 'https://x.test/', repo: 'o/r' });
+  const listings = new Map(index.entries.map(e => [e.id, listingOf(b.sources.get(e.id), e)]));
+  await writeSite(out, index, { site: 'https://x.test/', repo: 'o/r' }, { listings });
   const home = await readFile(join(out, 'index.html'), 'utf8');
-  assert.match(home, /class="hero"/);
+  assert.match(home, /class="mast[ "]/);
   assert.match(home, /BB\(2\) champion/);
+  assert.match(home, /<span class="logo">Automata<em>Studio<\/em><\/span>/, 'the app\'s lockup');
+  assert.match(home, /<figure class="frontis"[^>]*>[\s\S]*?class="sk-name"/, 'the masthead opens on a machine, drawn with its names');
+  assert.match(home, /<head>[\s\S]*d\.dataset\.theme=t[\s\S]*<\/head>/, 'the scheme is set before the first paint');
+  assert.match(home, /class="theme-toggle"/, 'and the reader can switch it');
+  const { frontispieceOf } = await import('../scripts/library/site.mjs');
+  assert.equal(frontispieceOf(index, { frontispiece: 'turing/busy-beaver/bb2' }, listings).id, 'turing/busy-beaver/bb2', 'the library can choose its own');
+  assert.equal(frontispieceOf(index, {}, listings).category, 'fa', 'otherwise a small finite automaton');
+  assert.equal(await readFile(join(out, 'assets/favicon.svg'), 'utf8'), await readFile(new URL('../svgs/favicon.svg', import.meta.url), 'utf8'), 'and the app\'s own tab icon');
+  assert.equal((home.match(/class="plate"/g) || []).length >= index.entries.length, true, 'every machine is on the page for the search to reorder');
   const page = await readFile(join(out, 'm/turing/busy-beaver/bb2/index.html'), 'utf8');
-  assert.match(page, /href="\.\.\/\.\.\/\.\.\/\.\.\/\?q=by%3Aalice"/);
+  assert.match(page, /href="\.\.\/\.\.\/\.\.\/\.\.\/\?q=by%3Aalice#all"/);
   assert.match(page, /og:image" content="https:\/\/x\.test\/art\/turing\/busy-beaver\/bb2\/diagram\.svg"/);
+  assert.match(page, /Halts from a blank tape after <strong>6<\/strong> steps/);
+  assert.match(page, /class="math">\$\$ \\begin\{aligned\} M &amp;= \(Q, \\Sigma, \\Gamma/, 'the definition, typeset from the file');
+  const dfa = await readFile(join(out, 'm/finite/dfa/even-ones/index.html'), 'utf8');
+  assert.match(dfa, /class="sk-name"/, 'the listing\'s diagram names its states');
+  assert.match(dfa, /id="pic-language"/, 'and switches to the language without a script');
+  assert.match(dfa, /class="verdict is-acc"/, 'the author\'s examples, run');
   const coll = await readFile(join(out, 'c/beavers/index.html'), 'utf8');
   assert.match(coll, /At a glance/);
-  assert.match(coll, /<td>2 × 2<\/td>/);
+  assert.match(coll, /<td class="mono" title="states × symbols">2 × 2<\/td>/);
+  const lost = await readFile(join(out, '404.html'), 'utf8');
+  assert.match(lost, /href="https:\/\/x\.test\/assets\/site\.css"/, 'served at any depth, so its links are absolute');
 });
 
 test('a second emulator on a busy port gives up before it watches anything', async () => {

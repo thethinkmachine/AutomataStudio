@@ -28,7 +28,7 @@ import { bbchallengeUrl } from './interop/standard-tm.js';
 import { renderExampleCard } from './machine-card.js';
 import { setCardSourcePainter } from './card-source.js';
 import { setLibraryRequestHandler } from './library/requests.js';
-import { cardPicture, rankBadges, standardSize } from './library/card-html.js';
+import { cardPicture, figureSvg, plateCaption, plateMarks, rankBadges, standardSize } from './library/card-html.js';
 import { drawLanguage, drawRun, drawSketch, framesFromStandard, languageRows, sketchAspect, unpackSketch } from './library/sketch.js';
 import { freeSpotForBlock, placeBlockDefinition } from './blocks-ui.js';
 import { machineSupportsBlocks } from './machines/index.js';
@@ -41,7 +41,7 @@ import {
 } from './library/config.js';
 import {
   BADGES, DIFFICULTIES, LIBRARY_FAMILIES, SORTS, dfaAccepts, entryById, libraryFacets, queryLibrary,
-  remixAncestry, sameLanguageAs, shortCount
+  remixAncestry, sameLanguageAs
 } from './library/index-model.js';
 import {
   cachedLibrary, fetchEntryText, listMyLibrary, loadLibrary, noteRecentlyOpened, recentLibraryIds, removeFromMyLibrary,
@@ -69,8 +69,16 @@ const L = {
   submitFor: null,    // which machine those fields were read from
   submitCheck: null,
   docs: new Map(),    // hash → { text, target, doc }
-  runTimer: null      // Try it's playback on the diagram
+  runTimer: null,     // Try it's playback on the diagram
+  shown: null         // Browse's { key, n }: how many plates are out, for the search they were shown for
 };
+
+/**
+ * Browse draws this many plates, then this many more per "Show more". Every
+ * plate is an SVG, and a search redraws on each keystroke, so drawing every
+ * match stops being affordable long before the library stops growing.
+ */
+export const BROWSE_BATCH = 48;
 
 const NAV = [
   { page: 'discover', label: 'Discover' },
@@ -95,6 +103,7 @@ export function _resetLibraryUiForTests() {
   L.sort = 'relevance';
   L.filters = {};
   L.canvasMatch = null;
+  L.shown = null;
   L.saved = [];
   L.savedIds = new Set();
   L.submit = null;
@@ -328,32 +337,16 @@ function svgFigure(svg, cls = '') {
 
 /** The one picture a machine is known by: a Turing machine's run, else its diagram. */
 function figureOf(e, { w = 320, h = 200 } = {}) {
-  const frames = e.standard && e.behaviour ? framesFromStandard(e.standard, 60) : null;
-  if (frames && frames.length > 2) return svgFigure(drawRun(frames, { w, h }), 'is-run');
-  const sk = unpackSketch(e.sketch);
-  if (sk) return svgFigure(drawSketch(sk, { w, h, label: `Diagram of ${e.title}` }));
+  const f = figureSvg(e, { w, h });
+  if (f) return svgFigure(f.svg, f.run ? 'is-run' : '');
   const box = h('div', { class: 'lib-fig is-img' });
   const pic = cardPicture(e);
   if (pic) box.append(img(libraryUrl(pic.path), 'lib-fig-img', `Diagram of ${e.title}`));
   return box;
 }
 
-const MARK_LABEL = { tested: 'Tested', minimal: 'Minimal', deterministic: 'Deterministic' };
-
-/** A machine in one line: its type, its size, and what it does from a blank tape. */
-function captionOf(e) {
-  const size = standardSize(e.standard);
-  const b = e.behaviour;
-  const parts = [e.machine, size ? `${size.states}×${size.symbols}` : `${e.stats.states} state${e.stats.states === 1 ? '' : 's'}`];
-  if (b?.verdict === 'halts') parts.push(`halts in ${shortCount(b.steps)}`);
-  else if (b?.verdict === 'never') parts.push('never halts');
-  return parts.join(' · ');
-}
-
-/** What the library checked, as words — the halting answer is already in the caption. */
-function marksOf(e) {
-  return rankBadges(e.badges).filter(b => MARK_LABEL[b.id]).map(b => MARK_LABEL[b.id]);
-}
+// The plate's caption and marks are card-html.js's (plateCaption, plateMarks),
+// so a machine reads the same here and on the library's website.
 
 /** One machine in a catalogue: its figure, its name, one line of facts, what was checked. */
 function plate(e) {
@@ -363,13 +356,13 @@ function plate(e) {
   });
   const fig = figureOf(e);
   if (L.savedIds.has(e.id)) fig.append(h('span', { class: 'lib-plate-saved', title: 'In My Library', 'aria-label': 'In My Library' }));
-  const marks = marksOf(e);
+  const marks = plateMarks(e);
   node.append(fig, h('div', { class: 'lib-plate-body' },
     // The title is the plate's keyboard stop: the rest of it is a larger
     // target for the same click, not a second control.
     h('button', { type: 'button', class: 'lib-plate-title', on: { click: ev => { ev.stopPropagation(); go('entry', e.id); } } }, e.title),
-    h('div', { class: 'lib-plate-cap' }, h('i', { class: 'lib-dot', 'aria-hidden': 'true' }), captionOf(e)),
-    marks.length ? h('div', { class: 'lib-plate-marks', title: marks.map(m => BADGES[Object.keys(MARK_LABEL).find(k => MARK_LABEL[k] === m)].say).join('\n') }, marks.join(' · ')) : null));
+    h('div', { class: 'lib-plate-cap' }, h('i', { class: 'lib-dot', 'aria-hidden': 'true' }), plateCaption(e)),
+    marks.length ? h('div', { class: 'lib-plate-marks', title: marks.map(m => m.say).join('\n') }, marks.map(m => m.label).join(' · ')) : null));
   return node;
 }
 
@@ -437,7 +430,7 @@ function pageDiscover() {
   const verified = idx.entries.filter(x => x.badges.some(b => b.id === 'tested' || b.id === 'halts' || b.id === 'never-halts')).length;
   page.append(h('div', { class: 'lib-mast' },
     h('p', { class: 'lib-kicker', text: 'The Library' }),
-    h('h2', { class: 'lib-display' }, 'Machines other people built,', h('br'), h('em', { text: 'each one checked by running it.' })),
+    h('h2', { class: 'lib-display' }, 'A catalogue of automata,', h('br'), h('em', { text: 'tested before they’re listed.' })),
     searchBox({ autofocus: false, onSubmit: q => { L.query = q; go('browse'); } }),
     h('p', { class: 'lib-mast-meta' },
       `${idx.entries.length} machines · ${idx.collections.length} collections · ${verified} verified by running · `,
@@ -532,11 +525,39 @@ function pageBrowse() {
         ' ', button('Clear', () => { L.canvasMatch = null; renderPage(); }, 'lib-textbtn'),
         list.length ? null : button('Submit it', () => go('submit'), 'lib-textbtn')));
     }
-    results.append(grid(list, emptyState(
-      L.query ? `No machine matches “${L.query}”` : 'No machine matches these filters',
-      'Try fewer words or clear a filter — or build it and submit it, and it will be the first.',
-      Object.keys(L.filters).length ? button('Clear filters', () => { L.filters = {}; renderPage(); }, 'btn-g') : null,
-      button('Submit a machine', () => go('submit'), 'btn-g'))));
+    if (!list.length) {
+      results.append(emptyState(
+        L.query ? `No machine matches “${L.query}”` : 'No machine matches these filters',
+        'Try fewer words or clear a filter — or build it and submit it, and it will be the first.',
+        Object.keys(L.filters).length ? button('Clear filters', () => { L.filters = {}; renderPage(); }, 'btn-g') : null,
+        button('Submit a machine', () => go('submit'), 'btn-g')));
+      return;
+    }
+    // A batch at a time. A new search starts again at one batch; the same
+    // search — back from a listing, say — picks up where it was.
+    const key = JSON.stringify([L.query, L.sort, L.filters, L.canvasMatch?.fingerprint || null]);
+    const want = L.shown?.key === key ? L.shown.n : BROWSE_BATCH;
+    const plates = h('div', { class: 'lib-plates' });
+    const shownNote = h('span', { class: 'lib-showmore-note' });
+    const more = h('button', {
+      type: 'button', class: 'btn-g lib-showmore-btn',
+      on: { click: () => { fill(BROWSE_BATCH)?.querySelector?.('.lib-plate-title')?.focus?.(); } }
+    });
+    const row = h('div', { class: 'lib-showmore' }, more, shownNote);
+    let shown = 0;
+    function fill(n) {
+      const next = list.slice(shown, shown + n).map(plate);
+      plates.append(...next);
+      shown += next.length;
+      L.shown = { key, n: shown };
+      const left = list.length - shown;
+      row.hidden = left <= 0;
+      more.textContent = `Show ${Math.min(BROWSE_BATCH, left)} more`;
+      shownNote.textContent = `${shown} of ${list.length} shown`;
+      return next[0] || null;
+    }
+    fill(want);
+    results.append(plates, row);
   };
 
   page.append(h('div', { class: 'lib-pagehead' },
