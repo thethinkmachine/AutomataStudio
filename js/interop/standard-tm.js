@@ -145,3 +145,70 @@ export function readStandardTM(text, sym) {
     }
   };
 }
+
+// ── The other way ─────────────────────────────────────────────────
+
+/**
+ * A one-tape Turing machine → the notation, or null when it cannot be written
+ * in it. The reverse of readStandardTM, and exact on what that reader produces:
+ * a machine read from the notation writes back the same string.
+ *
+ * What the notation can say is narrow, and anything outside it answers null
+ * rather than an approximation: the blank and the digits 1 … k-1 as the only
+ * symbols (k ≤ 10), L and R as the only moves, a concrete symbol written, at
+ * most 26 working states. The start state is A and the rest follow in the
+ * machine's own order; a state that accepts and has no moves out is the halt,
+ * and every edge into one is written with Z.
+ *
+ * `m` is the loadData shape — machine, states, transitions, startId, accepts —
+ * and `sym` the symbols it was drawn with.
+ */
+export function writeStandardTM(m, sym) {
+  if (!m || (m.machine !== 'TM' && m.machine !== 'ITM')) return null;
+  const blank = sym?.blank ?? '⊔';
+  const any = sym?.any;
+  const states = m.states || [], transitions = m.transitions || [];
+  const out = new Map();
+  for (const t of transitions) {
+    if (!out.has(t.from)) out.set(t.from, []);
+    out.get(t.from).push(t);
+  }
+  const accepts = new Set(m.accepts || []);
+  const halts = new Set(states.filter(s => accepts.has(s.id) && !out.has(s.id)).map(s => s.id));
+  const start = states.find(s => s.id === m.startId);
+  if (!start || halts.has(start.id)) return null;
+  const working = [start, ...states.filter(s => s !== start && !halts.has(s.id))];
+  if (working.length > 26) return null;
+  const letterOf = new Map(working.map((s, i) => [s.id, letter(i)]));
+  // Every non-halting state that accepts would change the verdict of a run
+  // the notation cannot describe, so it is refused rather than dropped.
+  if (working.some(s => accepts.has(s.id))) return null;
+
+  const digit = s => (s === blank ? 0 : /^[1-9]$/.test(String(s)) ? Number(s) : -1);
+  let k = 2;
+  for (const t of transitions) {
+    const r = digit(t.symbol), w = digit(t.write);
+    if (r < 0 || w < 0 || (any && (t.symbol === any || t.write === any))) return null;
+    if (t.dir !== 'L' && t.dir !== 'R') return null;
+    k = Math.max(k, r + 1, w + 1);
+  }
+  const segments = working.map(s => {
+    let seg = '';
+    for (let c = 0; c < k; c++) {
+      const hits = (out.get(s.id) || []).filter(t => digit(t.symbol) === c);
+      if (hits.length > 1) return null;
+      const t = hits[0];
+      if (!t) { seg += '---'; continue; }
+      const to = halts.has(t.to) ? 'Z' : letterOf.get(t.to);
+      if (!to) return null;
+      seg += `${digit(t.write)}${t.dir}${to}`;
+    }
+    return seg;
+  });
+  return segments.includes(null) ? null : segments.join('_');
+}
+
+/** bbchallenge.org's page for a machine in the notation. */
+export function bbchallengeUrl(code, { halts = false } = {}) {
+  return `https://bbchallenge.org/${code}${halts ? '&status=halt' : ''}`;
+}

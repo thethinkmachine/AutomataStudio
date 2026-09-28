@@ -2102,7 +2102,8 @@ export function formatSet(items) {
   return `\\{ ${items.map(formatStateName).join(', ')} \\}`;
 }
 
-function buildFormalDefLatex() {
+/** The formal definition of the machine App holds — the def box's, and a library listing's under withMachine. */
+export function buildFormalDefLatex() {
   const m = App.machine;
   const Q_str = formatSet(App.states.map(s => s.name));
   const S_str = formatSet([...App.sigma]);

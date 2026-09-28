@@ -16,6 +16,8 @@ npm run electron:preview   # production build, run in electron
 npm run electron:build     # electron-builder -> release/
 npm run wasm               # asc wasm/label-penalty.ts -> js/wasm/ (output committed)
 npm run bench              # engine, player, canvas and space-time timings vs bench/baseline.json
+npm run library:init -- ../automata-library   # scaffold + seed a checkout of the machine library
+npm run library:build -- --library ../automata-library   # its index, pictures and website -> _site/
 ```
 
 `npm run wasm` is run by hand after editing [wasm/label-penalty.ts](wasm/label-penalty.ts) and its output is committed, the way `npm run glyphs` and `npm run icons` already are — the build does not shell out to a compiler. See [The label kernel](.claude/skills/perf/SKILL.md).
@@ -39,6 +41,7 @@ only when they are relevant — same text, same headings, nothing was deleted.
 | Saving, loading, export, codegen, share links, JFLAP, XState/SCXML import | `.claude/skills/persistence/SKILL.md` |
 | Exercises and grading, the lexer generator | `.claude/skills/exercises/SKILL.md` |
 | Layout geometry, culling, the large-machine profile, the label kernel | `.claude/skills/perf/SKILL.md` |
+| The machine library: its index, badges, the Library view, submissions and the library repo's CI | `.claude/skills/library/SKILL.md` |
 | Dialogs and the two sidebars | `.claude/skills/ui-chrome/SKILL.md` |
 | The machine card, the wizard, the mobile shell | `.claude/skills/ui-features/SKILL.md` |
 | Grammars | `js/grammar/CLAUDE.md` (loads automatically) |
@@ -183,7 +186,7 @@ Node internals are reached through `node.__parts` (`circle`, `label`, `ring`, `s
 
 ### Views
 
-`setView()` in [js/view.js](js/view.js) is the single entry point. The build view (canvas) is always mounted; `algo`, `grammar` and `reference` render as overlays on top of it, so canvas geometry stays measurable. Algorithms call `setView('build')` to reveal a result.
+`setView()` in [js/view.js](js/view.js) is the single entry point. The build view (canvas) is always mounted; `algo`, `grammar`, `reference` and `library` render as overlays on top of it, so canvas geometry stays measurable. Algorithms call `setView('build')` to reveal a result.
 
 ### Reference
 

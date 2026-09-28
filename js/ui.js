@@ -1245,11 +1245,12 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     utmToggleAuto();
   }
-  // 1 returns to the canvas (closing any auxiliary view); 2-4 open one.
+  // 1 returns to the canvas (closing any auxiliary view); 2-5 open one.
   if (e.key === '1') setView('build');
   if (e.key === '2') setView('algo');
   if (e.key === '3') setView('grammar');
   if (e.key === '4') setView('reference');
+  if (e.key === '5') setView('library');
 });
 
 export function syncThemeExportPalette(theme) {
@@ -3867,11 +3868,12 @@ export function initPanelTabs() {
 }
 
 export const MOBILE_BUILD_PANEL_IDS = ['lpanel', 'rpanel'];
-export const MOBILE_AUX_PANEL_IDS = ['algo-nav', 'gram-nav', 'ref-nav'];
+export const MOBILE_AUX_PANEL_IDS = ['algo-nav', 'gram-nav', 'ref-nav', 'lib-nav'];
 export const MOBILE_AUX_PANEL_BY_VIEW = {
   algo: 'algo-nav',
   grammar: 'gram-nav',
-  reference: 'ref-nav'
+  reference: 'ref-nav',
+  library: 'lib-nav'
 };
 
 export function updateMobilePanelChrome() {
@@ -4036,6 +4038,11 @@ document.addEventListener('click', e => {
   }
   if (referenceLink) {
     requestAnimationFrame(() => setMobilePanelCollapsed('ref-nav', true));
+    return;
+  }
+  const libraryLink = target && target('#lib-nav .lib-nav-link');
+  if (libraryLink) {
+    requestAnimationFrame(() => setMobilePanelCollapsed('lib-nav', true));
     return;
   }
   // The grammar rail is a list of tool links now, the same shape the other two

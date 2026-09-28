@@ -75,6 +75,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('file:opened', listener);
   },
 
+  // An automata-studio:// link — launched with one, or handed one by a second
+  // launch. Collected the same way a file is, for the same reason: a link that
+  // launched the app arrived before anything was listening.
+  onLibraryUrl: (callback) => {
+    const listener = (_event, url) => callback(url);
+    ipcRenderer.on('library:open-url', listener);
+    ipcRenderer.invoke('library:take-pending').then((url) => { if (url) callback(url); });
+    return () => ipcRenderer.removeListener('library:open-url', listener);
+  },
+
   // StateMate's model request, proxied through the main process. The browser
   // build has to satisfy each provider's CORS policy — Anthropic needs an
   // explicit opt-in header, and a local Ollama needs OLLAMA_ORIGINS set. None

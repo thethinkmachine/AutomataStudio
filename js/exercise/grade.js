@@ -217,7 +217,7 @@ export function enumerateWords(sigma, maxLength, maxWords) {
 // symbol over the Σ wildcard the way getSingleTapeDeterministicTransition
 // does; an NFA takes every matching edge and closes under ε, as testNFA does.
 // tests/exercise.test.js checks both against the simulators word for word.
-function subsetSide(target, sym) {
+export function subsetSide(target, sym) {
   const det = target.machine === 'DFA';
   const out = new Map();
   (target.transitions || []).forEach(t => {
@@ -286,6 +286,32 @@ export function exactFiniteEquivalence(a, b, sigma, sym = App.config.sym) {
     }
   }
   return { equal: true };
+}
+
+/**
+ * Whether two machines behave the same, by the strongest method available —
+ * the question the library asks of an export that was read back in, and of a
+ * submission that looks like a duplicate. Exact for two finite automata;
+ * otherwise every word of Σ* up to `maxLength`, comparing output as well as
+ * verdict for a transducer. Same result shape as gradeExercise's core:
+ * `{ equal, method, tokens? }`, where `equal` is `null` when a bounded run
+ * could not decide a word on one side.
+ */
+export function compareMachines(a, b, { maxLength = 6, maxWords = 4000, sym = App.config.sym } = {}) {
+  const sigma = [...new Set([...(a.sigma || []), ...(b.sigma || [])])].filter(s => s !== sym.eps);
+  const transducer = !!getMachineConfig(a.machine)?.isTransducer || !!getMachineConfig(b.machine)?.isTransducer;
+  if (!transducer && EXACT_TYPES.has(a.machine) && EXACT_TYPES.has(b.machine)) {
+    const r = exactFiniteEquivalence(a, b, sigma, sym);
+    if (r) return r.equal ? { equal: true, method: 'exact' } : { equal: false, method: 'exact', tokens: r.tokens };
+  }
+  const { words } = enumerateWords(sigma, maxLength, maxWords);
+  const va = machineVerdicts(a, words), vb = machineVerdicts(b, words);
+  let undecided = false;
+  for (let i = 0; i < words.length; i++) {
+    if (va[i].verdict === 'unk' || vb[i].verdict === 'unk') { undecided = true; continue; }
+    if (!agrees(va[i], vb[i], transducer)) return { equal: false, method: 'bounded', tokens: words[i] };
+  }
+  return { equal: undecided ? null : true, method: 'bounded', words: words.length };
 }
 
 // ── The answer's own obligations ──────────────────────────────────

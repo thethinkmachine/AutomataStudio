@@ -1,3 +1,4 @@
+import { cardSourcePainter } from './card-source.js';
 import { hideCanvasContextMenu } from './canvas.js';
 import { commit } from './history.js';
 import { runSim } from './simulation.js';
@@ -148,8 +149,26 @@ export function normalizeCardMeta(meta) {
   if (title) out.title = title;
   if (blurb) out.blurb = blurb;
   if (inputs.length) out.inputs = inputs;
+  const library = cardLibraryField(meta.library);
+  if (library) out.library = library;
   return out;
 }
+
+// What the library knows about this machine — who wrote it, under what licence,
+// what it was remixed from, and which published version was opened. Not the
+// card's to edit, but the card is where it rides: `meta` is the one part of a
+// document that is about the machine rather than the machine, so this is what
+// keeps an entry's credit attached through a save, an undo and a resubmission.
+// Kept as a plain JSON copy, and only while it is small enough to be metadata.
+const CARD_LIBRARY_MAX = 8192;
+function cardLibraryField(lib) {
+  if (!lib || typeof lib !== 'object' || Array.isArray(lib)) return null;
+  let text;
+  try { text = JSON.stringify(lib); } catch { return null; }
+  if (!text || text === '{}' || text.length > CARD_LIBRARY_MAX) return null;
+  return JSON.parse(text);
+}
+
 
 /**
  * A mutable copy of what the card says. Rows keep whatever else they arrived
@@ -161,7 +180,10 @@ function draft() {
   return {
     title: m?.title || '',
     blurb: m?.blurb || '',
-    inputs: (m?.inputs || []).map(row => ({ ...row }))
+    inputs: (m?.inputs || []).map(row => ({ ...row })),
+    // Carried, never edited here: rewording the title must not cost the entry
+    // its author and licence.
+    ...(m?.library ? { library: m.library } : {})
   };
 }
 
@@ -726,7 +748,18 @@ export function renderExampleCard() {
   }
 
   const meta = App.meta || {};
-  card.append(buildHead(meta), buildBlurb(meta));
+  card.append(buildHead(meta));
+  // The line saying where a library machine came from. The Library draws it
+  // (js/card-source.js holds the painter), because only it knows whether a
+  // newer version is published; the card only offers the slot.
+  const paintCardSource = cardSourcePainter();
+  if (meta.library && paintCardSource) {
+    try {
+      const line = paintCardSource(meta.library);
+      if (line) card.append(line);
+    } catch (e) { console.error(e); }
+  }
+  card.append(buildBlurb(meta));
   parts.words = elem('div', 'example-card-words');
   card.append(parts.words);
   // Once, and only now that the textarea is in the document to be measured.

@@ -1,0 +1,76 @@
+# An issue opened from the "Submit a machine" form becomes a pull request.
+# The entry is credited to the issue's author — never to anything the form or
+# the file says. Editing the issue runs this again and updates the same
+# pull request.
+name: Submission
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: submission-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  submit:
+    if: contains(github.event.issue.labels.*.name, 'submission') && github.event.issue.state == 'open'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the engine
+        uses: actions/checkout@v4
+        with:
+          repository: thethinkmachine/AutomataStudio
+          ref: main
+          path: .engine
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install the engine
+        working-directory: .engine
+        run: npm ci --omit=dev --ignore-scripts
+      - name: Read the submission
+        id: entry
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: >
+          node --conditions=browser --conditions=development .engine/scripts/library/issue-to-entry.mjs
+          --library . --report report.md
+      - name: Open the pull request
+        id: pr
+        if: steps.entry.outputs.ok == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          # A pull request opened with the default token does not trigger the
+          # Check workflow. Set LIBRARY_BOT_TOKEN (a fine-grained token or a
+          # GitHub App's) for the check to run on submissions automatically.
+          token: ${{ secrets.LIBRARY_BOT_TOKEN || github.token }}
+          branch: ${{ steps.entry.outputs.branch }}
+          add-paths: machines/**
+          commit-message: "${{ steps.entry.outputs.update == 'true' && 'Update' || 'Add' }} ${{ steps.entry.outputs.id }}"
+          author: "${{ github.event.issue.user.login }} <${{ github.event.issue.user.id }}+${{ github.event.issue.user.login }}@users.noreply.github.com>"
+          title: "${{ steps.entry.outputs.update == 'true' && 'Update' || 'Add' }}: ${{ steps.entry.outputs.title }}"
+          body: |
+            Submitted by @${{ github.event.issue.user.login }} in #${{ github.event.issue.number }}.
+
+            Closes #${{ github.event.issue.number }}
+          labels: submission
+      - name: Report back
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ steps.pr.outputs.pull-request-url }}
+        run: |
+          [ -f report.md ] || echo "### ❌ The submission could not be read — see the workflow log." > report.md
+          [ -n "$PR_URL" ] && printf '\n\nPull request: %s\n' "$PR_URL" >> report.md
+          gh issue comment "${{ github.event.issue.number }}" --body-file report.md --edit-last \
+            || gh issue comment "${{ github.event.issue.number }}" --body-file report.md

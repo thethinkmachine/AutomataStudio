@@ -275,6 +275,7 @@
   #v-build,
   #v-algo,
   #v-grammar,
+  #v-library,
   #v-reference {
     display: flex;
     flex-direction: column;
@@ -309,6 +310,7 @@
   #rpanel[data-mobile-collapsed="1"] > .mobile-panel-content,
   #algo-nav[data-mobile-collapsed="1"] > .mobile-panel-content,
   #gram-nav[data-mobile-collapsed="1"] > .mobile-panel-content,
+  #lib-nav[data-mobile-collapsed="1"] > .mobile-panel-content,
   #ref-nav[data-mobile-collapsed="1"] > .mobile-panel-content {
     display: none;
   }
@@ -317,6 +319,7 @@
   #rpanel[data-mobile-collapsed="1"] .mobile-panel-icon,
   #algo-nav[data-mobile-collapsed="1"] .mobile-panel-icon,
   #gram-nav[data-mobile-collapsed="1"] .mobile-panel-icon,
+  #lib-nav[data-mobile-collapsed="1"] .mobile-panel-icon,
   #ref-nav[data-mobile-collapsed="1"] .mobile-panel-icon {
     transform: rotate(-90deg);
     color: var(--text2);
@@ -372,6 +375,7 @@
   #rpanel[data-mobile-collapsed="1"],
   #algo-nav[data-mobile-collapsed="1"],
   #gram-nav[data-mobile-collapsed="1"],
+  #lib-nav[data-mobile-collapsed="1"],
   #ref-nav[data-mobile-collapsed="1"] {
     flex: 0 0 auto;
     height: auto;
@@ -412,6 +416,7 @@
   }
 
   .algo-content [style*="display:flex"],
+  #v-library .algo-content [style*="display:flex"],
   #v-reference .algo-content [style*="display:flex"] {
     flex-wrap: wrap;
   }
@@ -542,6 +547,7 @@
     max-width: 100%;
   }
 
+  #v-library .algo-content,
   #v-reference .algo-content[style] {
     padding: 16px 14px !important;
   }
@@ -1153,6 +1159,7 @@
 
   body.aux-open[data-aux-view="algo"] #v-algo,
   body.aux-open[data-aux-view="grammar"] #v-grammar,
+  body.aux-open[data-aux-view="library"] #v-library,
   body.aux-open[data-aux-view="reference"] #v-reference {
     position: relative;
     display: flex !important;
@@ -1225,6 +1232,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .aux-overlay #v-library .algo-content,
   .aux-overlay #v-reference .algo-content[style] {
     padding: 16px 14px calc(var(--mobile-bar-inset) + 18px) !important;
   }
@@ -1260,6 +1268,7 @@
 
   .aux-overlay #algo-nav[data-mobile-collapsed="1"],
   .aux-overlay #gram-nav[data-mobile-collapsed="1"],
+  .aux-overlay #lib-nav[data-mobile-collapsed="1"],
   .aux-overlay #ref-nav[data-mobile-collapsed="1"] {
     transform: translateY(calc(100% + 20px));
     opacity: 0;
@@ -1356,6 +1365,7 @@
 
   body.aux-open[data-aux-view="algo"] .mobile-aux-nav-btn[data-aux-for="algo"],
   body.aux-open[data-aux-view="grammar"] .mobile-aux-nav-btn[data-aux-for="grammar"],
+  body.aux-open[data-aux-view="library"] .mobile-aux-nav-btn[data-aux-for="library"],
   body.aux-open[data-aux-view="reference"] .mobile-aux-nav-btn[data-aux-for="reference"] {
     display: flex;
   }

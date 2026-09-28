@@ -247,6 +247,46 @@ app.on('open-file', (event, filePath) => {
   void deliverOpenPath(filePath);
 });
 
+// ── A library link ────────────────────────────────────────────────
+//  The library's website offers "Open in the desktop app" as an
+//  automata-studio://lib/<id> link. The scheme is registered with the OS, and
+//  the link arrives the way a file does: `open-url` on macOS, argv on Windows
+//  and Linux, `second-instance` when the app is already running. The renderer
+//  parses it (js/library/config.js) — this only carries the string.
+const LIBRARY_SCHEME = 'automata-studio';
+let pendingLibraryUrl = null;
+
+function libraryUrlFromArgv(argv) {
+  return (argv || []).find(a => typeof a === 'string' && a.startsWith(`${LIBRARY_SCHEME}://`)) || null;
+}
+
+function deliverLibraryUrl(url) {
+  if (!url) return;
+  if (!mainWindow || mainWindow.webContents.isLoading()) { pendingLibraryUrl = url; return; }
+  mainWindow.webContents.send('library:open-url', url);
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+}
+
+ipcMain.handle('library:take-pending', () => {
+  const url = pendingLibraryUrl;
+  pendingLibraryUrl = null;
+  return url;
+});
+
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  deliverLibraryUrl(url);
+});
+
+// In development the app is `electron .`, and the OS has to be told to launch
+// it with the script path — otherwise a link starts a bare Electron.
+if (process.defaultApp && process.argv.length >= 2) {
+  app.setAsDefaultProtocolClient(LIBRARY_SCHEME, process.execPath, [path.resolve(process.argv[1])]);
+} else {
+  app.setAsDefaultProtocolClient(LIBRARY_SCHEME);
+}
+
 // Backs the header's more-menu entry. The renderer asks whether this build can
 // update at all before revealing the item, so the answer has to come from the same
 // canAutoUpdate() the startup check uses -- two copies of that rule would drift,
@@ -846,8 +886,10 @@ if (!gotInstanceLock) {
   app.quit();
 } else {
   app.on('second-instance', (_event, argv) => {
+    const libraryUrl = libraryUrlFromArgv(argv);
     const filePath = documentFromArgv(argv);
-    if (filePath) void deliverOpenPath(filePath);
+    if (libraryUrl) deliverLibraryUrl(libraryUrl);
+    else if (filePath) void deliverOpenPath(filePath);
     else if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
@@ -865,6 +907,8 @@ if (!gotInstanceLock) {
     // `file:take-pending` is how it collects this once it is.
     const launchedWith = documentFromArgv(process.argv);
     if (launchedWith) pendingOpenPath = launchedWith;
+    const launchedLink = libraryUrlFromArgv(process.argv);
+    if (launchedLink) pendingLibraryUrl = launchedLink;
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
