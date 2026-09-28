@@ -111,7 +111,10 @@ export const PANEL_SECTIONS = Object.freeze({
       Object.freeze({ id: 'rp-batch', collapsed: true, minW: 320, minH: 220, fill: '.batch-result' }),
       // How a machine's runs grow with its input — js/complexity-ui.js. The
       // charts are what take a window's spare height.
-      Object.freeze({ id: 'rp-complexity', collapsed: true, minW: 360, minH: 320, fill: '.cx-charts' })
+      Object.freeze({ id: 'rp-complexity', collapsed: true, minW: 360, minH: 320, fill: '.cx-charts' }),
+      // Whether a Turing machine halts, cycles, or cycles while moving —
+      // js/behaviour-ui.js. Only shown for TM and ITM.
+      Object.freeze({ id: 'rp-behaviour', collapsed: true, minW: 340, minH: 280, fill: '.bh-out' })
     ])
   }),
   // The Run tab: everything that follows the player's cursor. Analyze
