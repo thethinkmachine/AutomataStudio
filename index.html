@@ -599,6 +599,11 @@
       <!-- ─── BUILD VIEW ─── -->
       <div id="v-build" style="display:flex">
         <div class="canvas-area" id="canvas-wrap">
+          <!-- The breathing background: two glows tracing a figure-eight. First
+               in the well so it paints under the grid and the diagram, and
+               animated on transform and opacity only — see .canvas-aurora in
+               css/views.css, and js/canvas-motion.js for when it rests. -->
+          <div class="canvas-aurora" id="canvas-aurora" aria-hidden="true"><i></i><i></i></div>
           <!-- The grid. An element of its own, and childless, because the camera
                is written onto it every frame of a pan or zoom — see applyCamera()
                in js/canvas.js. -->
@@ -1815,6 +1820,10 @@
         <div class="modal-row">
           <span class="modal-lbl">Theme</span>
           <select class="inp" id="set-theme" label="Color theme"></select>
+        </div>
+        <div class="modal-row" data-tip="Two faint glows drift through the canvas on a slow figure-eight while the light gently swells and settles. It pauses when you step away or switch windows. Off holds it still. It is always still if your system asks for reduced motion.">
+          <span class="modal-lbl">Breathing Canvas Background</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-canvas-motion"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
         </div>
         <div class="modal-row" data-tip="When on, plain scroll zooms the canvas (Shift+scroll pans horizontally). When off, plain scroll pans and Ctrl+scroll zooms.">
           <span class="modal-lbl">Scroll Wheel Zooms Canvas</span>

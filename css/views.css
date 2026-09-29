@@ -384,13 +384,148 @@
   mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
 }
 
-.canvas-area::after {
+/* ─── The breathing background ───
+   Two large, faint pools of light in the theme's two glow colours, each
+   tracing a figure-eight (a lemniscate of Gerono: x = sin t, y = sin 2t / 2)
+   a quarter-turn apart, so they drift past each other and never merge. Each
+   breathes on a period of its own, and the two periods are chosen not to
+   divide each other, so the pairing keeps changing and the motion does not
+   read as a loop.
+
+   What separates this from a lava lamp is restraint, and three things carry
+   it:
+     - The falloff is Gaussian, not linear. A linear radial has a visible
+       peak and a hard-looking rim, which is what makes a glow look pasted on.
+       The stops below sample e^(-x²/2σ²) at σ ≈ 0.4.
+     - The movement is small against the size of the light. A pool about
+       as wide as the canvas moves less than a fifth of it, so you notice
+       the light has shifted rather than seeing a shape go by.
+     - A grain dithers it. A glow this faint spans a handful of 8-bit levels
+       across hundreds of pixels, and on a dark theme that shows as contour
+       bands, the tell of a cheap gradient. A static noise tile at 3.5% breaks
+       the steps up. It sits under the glows, in the container's own paint,
+       so it costs no layer of its own.
+
+   Cost. Only `translate`, `scale` and `opacity` are animated. Those run on the
+   compositor against a gradient rasterised once, so no frame of it touches
+   the main thread, layout or paint, and nothing here is a custom property
+   the diagram inherits (see .canvas-grid above for why that matters). It
+   rests whenever nobody is watching: js/canvas-motion.js pauses it after a
+   minute and a half without input or when the window loses focus, and the
+   rule below pauses it under an aux view.
+
+   It replaces a static `.canvas-area::after`, which painted over the diagram
+   rather than under it. This is the first child of the well, so the grid and
+   the SVG paint on top.
+
+   Themes tune it through two knobs. Neither is required. */
+.canvas-aurora {
+  --aurora-strength: 2.2;
+  --aurora-grain: .035;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  contain: strict;
+  pointer-events: none;
+}
+
+.canvas-aurora::before {
   content: '';
   position: absolute;
   inset: 0;
-  pointer-events: none;
-  background: radial-gradient(ellipse at 30% 25%, var(--canvas-glow-a) 0, transparent 60%),
-    radial-gradient(ellipse at 70% 75%, var(--canvas-glow-b) 0, transparent 60%);
+  opacity: var(--aurora-grain);
+  background-size: 180px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.canvas-aurora > i {
+  position: absolute;
+  left: 8%;
+  top: -12%;
+  width: 84%;
+  height: 124%;
+  background: radial-gradient(closest-side,
+      var(--aurora-c) 0%,
+      color-mix(in srgb, var(--aurora-c) 82%, transparent) 25%,
+      color-mix(in srgb, var(--aurora-c) 46%, transparent) 50%,
+      color-mix(in srgb, var(--aurora-c) 17%, transparent) 75%,
+      transparent 100%);
+  will-change: translate, scale, opacity;
+}
+
+.canvas-aurora > i:first-child {
+  --aurora-c: var(--canvas-glow-a);
+  translate: -16% -9%;
+  animation:
+    canvas-lemniscate 90s linear infinite,
+    canvas-breathe 19s ease-in-out infinite alternate;
+}
+
+.canvas-aurora > i:last-child {
+  --aurora-c: var(--canvas-glow-b);
+  translate: 16% 9%;
+  /* A quarter of the path behind the first, and part-way through a breath,
+     so the two never inhale together at the start. */
+  animation:
+    canvas-lemniscate 90s linear -22.5s infinite,
+    canvas-breathe 26s ease-in-out -9s infinite alternate;
+}
+
+/* The theme tokens are tuned for a still background and vanish once they
+   move, so they are lifted where the browser can do the arithmetic, and used
+   as they are where it cannot. */
+@supports (color: rgb(from red r g b / alpha)) {
+  .canvas-aurora > i:first-child { --aurora-c: rgb(from var(--canvas-glow-a) r g b / calc(alpha * var(--aurora-strength))); }
+  .canvas-aurora > i:last-child { --aurora-c: rgb(from var(--canvas-glow-b) r g b / calc(alpha * var(--aurora-strength))); }
+}
+
+/* Sixteen samples of the curve, joined linearly. At 5.6s a segment, each
+   turn is a few degrees on a shape with no edge, which the eye cannot find.
+   Percentages are of the pool's own box: ±24% across and ±15% down. */
+@keyframes canvas-lemniscate {
+  0%     { translate: 0 0; }
+  6.25%  { translate: 9.2% 10.6%; }
+  12.5%  { translate: 17% 15%; }
+  18.75% { translate: 22.2% 10.6%; }
+  25%    { translate: 24% 0; }
+  31.25% { translate: 22.2% -10.6%; }
+  37.5%  { translate: 17% -15%; }
+  43.75% { translate: 9.2% -10.6%; }
+  50%    { translate: 0 0; }
+  56.25% { translate: -9.2% 10.6%; }
+  62.5%  { translate: -17% 15%; }
+  68.75% { translate: -22.2% 10.6%; }
+  75%    { translate: -24% 0; }
+  81.25% { translate: -22.2% -10.6%; }
+  87.5%  { translate: -17% -15%; }
+  93.75% { translate: -9.2% -10.6%; }
+  100%   { translate: 0 0; }
+}
+
+@keyframes canvas-breathe {
+  from { scale: .96;  opacity: .62; }
+  to   { scale: 1.04; opacity: 1; }
+}
+
+/* Nobody watching. Paused rather than stopped, so it resumes where it was. */
+.canvas-aurora.is-resting > i,
+body.aux-open .canvas-aurora > i {
+  animation-play-state: paused;
+}
+
+/* Off, or asked not to move: the pools rest where the old static glows sat,
+   and give up their layers. */
+.canvas-aurora.is-still > i:is(:first-child, :last-child) {
+  animation: none;
+  will-change: auto;
+}
+
+/* `:is()` to match the specificity of the per-pool rules it has to override. */
+@media (prefers-reduced-motion: reduce), (update: slow) {
+  .canvas-aurora > i:is(:first-child, :last-child) {
+    animation: none;
+    will-change: auto;
+  }
 }
 
 #svgCanvas {

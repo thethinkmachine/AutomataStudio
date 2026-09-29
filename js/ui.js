@@ -23,6 +23,7 @@ import {
 import { PANEL_SECTIONS, isSectionFloating, sectionConfig, sectionHost, sectionSide, sectionStartsCollapsed, sectionsWithHeader } from './panel-sections.js';
 import { syncDockFill } from './panel-sections-ui.js';
 import { setShakeToMinimizeEnabled, shakeToMinimizeEnabled } from './panel-state.js';
+import { canvasMotionEnabled, setCanvasMotionEnabled } from './canvas-motion.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
 import { syncSpeedControl } from './speed-control.js';
 import { $, App, MIN_TAPES, MachineCategories, blankWorkspaceData, MachineTypes, R, TAPE_LIMIT, Workspaces, activeWorkspaceId, execMode, exportWorkspaceState, importWorkspaceState, largeMachineOverridePrompt, largeMachineProfile, machineIsLarge, maxTapes, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
@@ -4233,6 +4234,8 @@ export function openSettingsModal() {
   // screen is not a property of the machine, and `App.config` is deep-copied
   // into every workspace tab and written into the `.json`. See panel-state.js.
   if ($('set-shake-minimize')) $('set-shake-minimize').checked = shakeToMinimizeEnabled();
+  // A device preference for the same reason. See js/canvas-motion.js.
+  if ($('set-canvas-motion')) $('set-canvas-motion').checked = canvasMotionEnabled();
   if ($('set-cull-offscreen')) $('set-cull-offscreen').checked = c.render.cullOffscreen !== false;
   if ($('set-zoom-lod')) $('set-zoom-lod').checked = c.render.zoomLOD !== false;
   if ($('set-large-machine-auto')) $('set-large-machine-auto').checked = c.render.largeMachineAuto !== false;
@@ -4523,6 +4526,7 @@ export function applySettings() {
   if ($('set-avoid-overlap')) c.render.avoidNodeOverlap = $('set-avoid-overlap').checked;
   if ($('set-animate-layout')) c.render.animateLayout = $('set-animate-layout').checked;
   if ($('set-shake-minimize')) setShakeToMinimizeEnabled($('set-shake-minimize').checked);
+  if ($('set-canvas-motion')) setCanvasMotionEnabled($('set-canvas-motion').checked);
   if ($('set-cull-offscreen')) c.render.cullOffscreen = $('set-cull-offscreen').checked;
   if ($('set-zoom-lod')) c.render.zoomLOD = $('set-zoom-lod').checked;
   if ($('set-large-machine-auto')) c.render.largeMachineAuto = $('set-large-machine-auto').checked;
