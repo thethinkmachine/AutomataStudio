@@ -33,7 +33,7 @@ one -o's extension implies, or as an .automaton document on standard output.
     if (opts.determinize) { t = determinize(t); d = null; }
     if (opts.minimize) { t = minimize(t); d = null; }
     const format = formatFor(opts.to, opts.output);
-    emit(serialize(t, format, { doc: d, opts: opts.opt || [], name: doc?.meta?.title || null }), opts.output);
+    emit(serialize(t, format, { doc: d, opts: opts.opt || [], name: doc?.meta?.title || null, warn: opts.quiet ? () => {} : warn }), opts.output);
     return 0;
   }
 };

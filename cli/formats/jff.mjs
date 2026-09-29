@@ -26,9 +26,14 @@ const TYPE = {
 
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-export function jffText(target) {
+export function jffText(target, { warn = () => {} } = {}) {
   const type = TYPE[target.machine];
   if (!type) throw new CliError(`JFLAP has no ${target.machine}. It holds finite automata, single-stack PDAs, Turing machines, Mealy and Moore machines.`);
+  // JFLAP chooses a PDA's acceptance when it runs one, not in the file, so a
+  // machine that accepts by empty stack reads back as accepting by final state.
+  if (type === 'pda' && target.config?.pdaParadigm === 'empty') {
+    warn('This PDA accepts by empty stack, which a .jff file cannot record: choose "empty stack" in JFLAP when you run it, and it reads back into the app as accepting by final state.');
+  }
   const sym = target.config?.sym || {};
   const letters = [...new Set(target.sigma)].filter(s => s !== sym.eps && s !== sym.any);
   const gamma = [...new Set([...(target.stackAlpha || []), ...letters])].filter(s => s !== sym.any);

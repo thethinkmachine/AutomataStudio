@@ -83,14 +83,14 @@ export function exportOptions(key, overrides = []) {
 }
 
 /** A target (and, when it came from a file, its document) → text in `format`. */
-export function serialize(target, format, { doc = null, opts = [], name = null, theme = null } = {}) {
+export function serialize(target, format, { doc = null, opts = [], name = null, theme = null, warn = () => {} } = {}) {
   const sym = { ...App.config.sym, ...(target.config?.sym || {}) };
   switch (format) {
     case 'automaton': return docText(doc || docFromTarget(target));
     case 'hoa': return hoaText(target, { name });
     case 'ba': return baText(target);
     case 'timbuk': return timbukText(target);
-    case 'jff': return jffText(target);
+    case 'jff': return jffText(target, { warn });
     case 'code': {
       const { code } = writeMachineCode(doc || docFromTarget(target), { sym });
       return code + '\n';
