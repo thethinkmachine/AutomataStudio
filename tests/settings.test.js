@@ -256,7 +256,8 @@ test('switching settings tabs activates exactly one panel', () => {
   // Every tab in the strip, so that reordering it cannot leave a tab pointing at
   // a panel that is not there. Only the activation is asserted: deactivating the
   // others goes through querySelectorAll, which the DOM stub does not implement.
-  for (const tab of ['general', 'rendering', 'symbols', 'pda', 'tm', 'transducer']) {
+  for (const tab of ['general', 'editing', 'rendering', 'layout', 'performance',
+    'simulation', 'machines', 'symbols', 'ai']) {
     h.context.switchSettingsTab(tab);
     const content = h.getElement(`tab-${tab}`);
     assert.ok(content, `${tab} has no panel`);

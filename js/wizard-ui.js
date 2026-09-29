@@ -568,7 +568,7 @@ function buildOptionsStep() {
     if (name === 'tapeCount') {
       const select = el('select', 'sel');
       select.id = 'wiz-tape-count';
-      // Not [2, 3, 4]: how many tapes are offerable is Settings → Turing,
+      // Not [2, 3, 4]: how many tapes are offerable is Settings → Machine Types,
       // and maxTapes() also rises to cover a draft that already has more.
       tapeCountChoices().forEach(n => {
         const opt = el('option', null, `${n} tapes`);

@@ -298,7 +298,7 @@ export function applyMachineSwitch(m) {
 export function syncTapeCountUI() {
   const sel = $('tape-count-sel');
   if (!sel) return;
-  // The list itself follows the setting, so raising Settings → Turing →
+  // The list itself follows the setting, so raising Settings → Machine Types →
   // Maximum Tapes is the whole of what makes a fifth tape offerable. It is
   // rebuilt rather than filtered because maxTapes() also rises to cover a
   // machine that already has more tapes than the reader's preference.

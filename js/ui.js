@@ -4286,12 +4286,12 @@ export function openSettingsModal() {
   showOverlay('settings-modal');
 }
 
-// Both tabbed dialogs — Engine Settings and Keyboard Shortcuts — are the same
+// Both tabbed dialogs — Settings and Keyboard Shortcuts — are the same
 // shell (.export-code-modal + .settings-modal-wide), so they switch tabs the
 // same way. The rail is scoped by id because the two are in the DOM at once.
 //
 // The tabs are <button role="tab">s. They were <div onclick>s, which meant the
-// seven settings panels and the five shortcut panels could not be reached from
+// settings panels and the five shortcut panels could not be reached from
 // the keyboard at all — the one strip in the app that had not had the treatment
 // js/panel-state.js gives the sidebars. Three things follow, and they are the
 // same three the sidebar strip maintains:
@@ -4328,6 +4328,11 @@ function switchModalTab(railSel, modalSel, panelPrefix, tabPrefix, tabId) {
     targetTab.classList.add('active');
     targetTab.setAttribute('aria-selected', 'true');
     targetTab.tabIndex = 0;
+    // On a phone the rail is one sideways-scrolling row, so a tab opened by
+    // name — StateMate's /model, the quick-settings More… — can be selected
+    // while scrolled out of sight, and the reader sees a panel with no tab lit
+    // above it. `nearest` makes this a no-op wherever the tab already shows.
+    targetTab.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }
 
   const targetContent = document.getElementById(panelPrefix + tabId);
@@ -4443,7 +4448,7 @@ export function syncLargeMachineProfile() {
   if (now && typeof settleAll === 'function') settleAll();
   if (first && !now) return;
   showStatus(now
-    ? 'Large machine — canvas simplified for performance. Settings → Canvas to override.'
+    ? 'Large machine — canvas simplified for performance. Settings → Performance to override.'
     : 'Full canvas detail restored.');
 }
 
