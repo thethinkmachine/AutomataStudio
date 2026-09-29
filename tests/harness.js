@@ -80,6 +80,7 @@ import * as sectionStatus from '../js/section-status.js';
 import * as machineOptionsUi from '../js/machine-options-ui.js';
 import * as deltaTable from '../js/delta-table.js';
 import * as panelShake from '../js/panel-shake.js';
+import * as canvasMotion from '../js/canvas-motion.js';
 import * as mobile from '../js/mobile.js';
 import * as simulation from '../js/simulation.js';
 import * as speedControl from '../js/speed-control.js';
@@ -158,7 +159,7 @@ import * as wizardUi from '../js/wizard-ui.js';
 
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, viewport, geometry, statesTransitions,
-  blocks, blocksUi, viewGraph, graphThumb, scope, runScope, canvas, render, panelState, panelSections, traceFormat, panelSectionsUi, panelFloat, sectionStatus, machineOptionsUi, deltaTable, panelShake, panelList, mobile, notes, dividers,
+  blocks, blocksUi, viewGraph, graphThumb, scope, runScope, canvas, render, panelState, panelSections, traceFormat, panelSectionsUi, panelFloat, sectionStatus, machineOptionsUi, deltaTable, panelShake, canvasMotion, panelList, mobile, notes, dividers,
   machineRegistry, machineRuntime, machineBranchTree, machineTmBehaviour, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineEmbedded, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, machineColumns, parallelPool, parallelSnapshot, parallelCore,
@@ -277,6 +278,10 @@ function resetModuleState() {
   // The shake's cooldown latches, and what it stashed is what a later shake
   // would put back — both would leak a gesture into the next test.
   panelShake.resetPanelShake();
+  // The background's idle timer, and its on/off preference, which lives in
+  // localStorage and so would otherwise outlive the test that turned it off.
+  try { localStorage.removeItem('automata-canvas-motion'); } catch (e) { /* ignore */ }
+  canvasMotion.resetCanvasMotion();
   // An open δ picker, and the reader's choice of view for δ — a preference in
   // localStorage, which the stub keeps across resets, so one test choosing the
   // table would hand every later updateLPanel a table instead of a list.

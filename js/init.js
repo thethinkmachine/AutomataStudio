@@ -17,6 +17,7 @@ import { setMachine, setView } from './view.js';
 import { syncHistoryButtons } from './history.js';
 import { initFraming } from './ui.js';
 import { initSpeedControl } from './speed-control.js';
+import { initCanvasMotion } from './canvas-motion.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  INIT
@@ -54,6 +55,8 @@ try {
 syncHistoryButtons();
 // A fitted machine stays fitted as the overlays over it change.
 initFraming();
+// The breathing background: apply the preference, and rest when unattended.
+initCanvasMotion();
 // What Save, Save As and Open mean differs between the website and the desktop
 // build, and the labels have to say which — see SAYING WHICH HOST THIS IS in
 // js/persistence.js. Written once, because the answer cannot change.
