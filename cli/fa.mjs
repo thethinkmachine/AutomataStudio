@@ -14,6 +14,7 @@
 // here is the plumbing around them: tables back into machines, the product,
 // and the Thompson-style operations that only need fresh names.
 
+import { aMachine } from './grammar.mjs';
 import { App } from '../js/state.js';
 import { subsetSide, withMachine } from '../js/exercise/grade.js';
 import { minimalDfaOf } from '../js/library/analyze.js';
@@ -33,7 +34,7 @@ export function lettersOf(target) {
 
 export function requireFA(target, what) {
   if (!FA_TYPES.has(target.machine)) {
-    throw new CliError(`${what} works on finite automata (DFA, NFA, ε-NFA); this is a ${target.machine}.`);
+    throw new CliError(`${what} works on finite automata (DFA, NFA, ε-NFA); this is ${aMachine(target.machine)}.`);
   }
 }
 
@@ -280,7 +281,18 @@ export function epsilonFree(target) {
  * classes range over printable ASCII unless `sigma` names the alphabet.
  */
 export function fromRegex(re, { sigma = null } = {}) {
-  let src = String(re);
+  const sym0 = App.config.sym;
+  // The notation the app writes (the Language panel, to-regex) reads back:
+  // · is concatenation, the spaces around | are layout, the wildcard is "any
+  // letter", and ∅ is the empty language. A symbol is one character here, so
+  // none of these can be a letter.
+  let src = String(re).replace(/·/g, '').replace(/\s+/g, '').split(sym0.any).join('.');
+  if (src === '∅') {
+    const empty = blankTarget('ε-NFA', sigma || [], {});
+    empty.states = [{ id: 's0', name: 's0' }];
+    empty.startId = 's0';
+    return empty;
+  }
   if (sigma && sigma.length) {
     // '.' outside a class is "any letter of Σ".
     let out = '', inClass = false;

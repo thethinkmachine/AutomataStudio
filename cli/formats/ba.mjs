@@ -27,6 +27,7 @@
 // A symbol of arity two or more is a real tree automaton, and there is no
 // machine in the app for one; it is refused by name.
 
+import { aMachine } from '../grammar.mjs';
 import { CliError } from '../errors.mjs';
 
 const clean = s => String(s).replace(/^\[|\]$/g, '');
@@ -91,10 +92,13 @@ export function readBA(text, sym) {
 }
 
 /** A Büchi-condition ω-automaton or a finite automaton → BA text. */
-export function baText(target) {
+export function baText(target, { warn = () => {} } = {}) {
+  if (target.machine === 'DFA' || target.machine === 'NFA') {
+    warn('BA files are read as Büchi automata by RABIT and GOAL: this finite automaton will read back as one, accepting infinite words that visit F infinitely often. Tools that take BA for finite automata (Ultimate) read it as written.');
+  }
   const ok = ['DBA', 'NBA', 'DWA', 'NWA', 'DFA', 'NFA'];
   if (!ok.includes(target.machine)) {
-    throw new CliError(`BA holds Büchi and finite automata; a ${target.machine} is neither.${target.machine === 'ε-NFA' ? ' Remove the ε-moves first (automata eps-elim).' : ''}`);
+    throw new CliError(`BA holds Büchi and finite automata; ${aMachine(target.machine)} is neither.${target.machine === 'ε-NFA' ? ' Remove the ε-moves first (automata eps-elim).' : ''}`);
   }
   if (!(target.accepts || []).length) {
     throw new CliError('The machine has no accepting states, and a BA file with none is read as "every state accepts". There is no faithful BA file for it.');
@@ -156,7 +160,7 @@ export function readTimbuk(text, sym) {
 /** A finite automaton without ε-moves → Timbuk, with `x` as the leaf. */
 export function timbukText(target, { name = 'A' } = {}) {
   if (!['DFA', 'NFA'].includes(target.machine)) {
-    throw new CliError(`Timbuk (as a word automaton) holds DFAs and NFAs; a ${target.machine} is neither.${target.machine === 'ε-NFA' ? ' Remove the ε-moves first (automata eps-elim).' : ''}`);
+    throw new CliError(`Timbuk (as a word automaton) holds DFAs and NFAs; ${aMachine(target.machine)} is neither.${target.machine === 'ε-NFA' ? ' Remove the ε-moves first (automata eps-elim).' : ''}`);
   }
   const sym = target.config?.sym || {};
   const letters = [...new Set(target.sigma)].filter(s => s !== sym.eps && s !== sym.any);

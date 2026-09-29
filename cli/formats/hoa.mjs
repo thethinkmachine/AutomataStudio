@@ -27,6 +27,7 @@
 // Büchi is degeneralised with the usual counter. Rabin, Streett and arbitrary
 // Emerson-Lei conditions are refused by name rather than approximated.
 
+import { aMachine } from '../grammar.mjs';
 import { CliError } from '../errors.mjs';
 
 // ── Reading ───────────────────────────────────────────────────────
@@ -463,7 +464,7 @@ const OMEGA = new Set(['DBA', 'DcoBA', 'DPA', 'DWA', 'NBA', 'NcoBA', 'NPA', 'NWA
 /** An ω-automaton target → HOA text. */
 export function hoaText(target, { name = null } = {}) {
   if (!OMEGA.has(target.machine)) {
-    throw new CliError(`HOA describes ω-automata; a ${target.machine} is not one. Use --to automaton, jff or dot instead.`);
+    throw new CliError(`HOA describes ω-automata; ${aMachine(target.machine)} is not one. Use --to automaton, jff or dot instead.`);
   }
   const sym = target.config?.sym || {};
   const any = sym.any ?? 'Σ';

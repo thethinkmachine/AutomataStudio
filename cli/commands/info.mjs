@@ -64,6 +64,10 @@ export function infoOf(target, doc, { latex = false, regex = true } = {}) {
     sigma: st.sigma,
     start: target.startId ? name.get(target.startId) ?? null : null,
     accepting: (target.accepts || []).map(id => name.get(id) ?? id),
+    // What acceptance means for this machine, where F is not the whole story.
+    ...(cfg.hasStack && !cfg.hasTape && target.config?.pdaParadigm === 'empty' ? { acceptance: 'empty store' } : {}),
+    ...(cfg.omegaCondition ? { acceptance: cfg.omegaCondition } : {}),
+    ...(cfg.omegaCondition === 'parity' ? { priorities: Object.fromEntries(target.states.map(s => [name.get(s.id), Number(s.priority) || 0])) } : {}),
     deterministic: isDeterministicTarget(target)
   };
   if (cfg.hasStack && !cfg.hasTape) out.stackAlphabet = target.stackAlpha;
@@ -123,7 +127,9 @@ machine its standard notation; and the machine code that names it.
     if (i.tapes) rows.push(['tapes', String(i.tapes)]);
     if (i.blocks) rows.push(['blocks', String(i.blocks)]);
     rows.push(['start', i.start ?? c.red('none')]);
-    rows.push(['accepting', set(i.accepting)]);
+    if (i.acceptance === 'empty store') rows.push(['accepts by', 'empty store (F is not used)']);
+    else if (i.priorities) rows.push(['priorities', Object.entries(i.priorities).map(([s, p]) => `${s}: ${p}`).join(', ') + c.dim('  (accept: the least priority seen forever is even)')]);
+    else rows.push(['accepting', set(i.accepting) + (i.acceptance === 'cobuchi' ? c.dim('  (co-Büchi: visited only finitely often)') : i.acceptance ? c.dim(`  (${i.acceptance === 'weak' ? 'weak' : 'Büchi'}: visited infinitely often)`) : '')]);
     rows.push(['deterministic', i.deterministic ? 'yes' : 'no']);
     if (i.minimalDfaStates !== undefined) rows.push(['minimal DFA', `${i.minimalDfaStates} states (${i.minimalDfaStatesComplete} with the sink)${i.minimal !== undefined ? (i.minimal ? ' — this DFA is minimal' : ' — this DFA is not minimal') : ''}`]);
     if (i.empty !== undefined) rows.push(['language', i.empty ? 'empty' : [i.finite ? 'finite' : 'infinite', i.universal ? 'universal (Σ*)' : null].filter(Boolean).join(', ')]);
@@ -176,7 +182,10 @@ export function lintTarget(target) {
 
   const usesPriority = cfg.omegaCondition === 'parity';
   const hasVerdict = !cfg.isTransducer || !!target.config?.transducerAccepts;
-  if (!usesPriority && hasVerdict && cfg.omegaCondition !== 'cobuchi') {
+  // A store machine may accept by empty store instead of by F, and then F
+  // being empty — and states that cannot reach it — say nothing.
+  const acceptsByStore = cfg.hasStack && !cfg.hasTape && target.config?.pdaParadigm === 'empty';
+  if (!usesPriority && hasVerdict && !acceptsByStore && cfg.omegaCondition !== 'cobuchi') {
     if (!(target.accepts || []).length) add('warning', 'no-accepting', 'No state accepts, so the language is empty.');
     else {
       const coreach = walk(target.accepts, inn);

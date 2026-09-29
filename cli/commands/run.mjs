@@ -173,6 +173,7 @@ export function traceSteps(target, raw, cap) {
       if (refusal) throw new CliError(strip(refusal.message || refusal.say || 'This machine cannot be run as drawn.'));
       const r = withPainterSuppressed(() => { const run = streamMachine(target.machine, parsed.input); run.drain(cap + 1); return run; });
       const name = new Map(target.states.map(s => [s.id, String(s.name ?? s.id)]));
+      const sym = App.config.sym;
       const steps = [];
       for (let i = 0; i < Math.min(r.known, cap + 1); i++) {
         const st = r.at(i);
@@ -191,12 +192,21 @@ export function traceSteps(target, raw, cap) {
           tapes: Array.isArray(st.tapes) ? st.tapes.map(t => [...t]) : null,
           heads: Array.isArray(st.heads) ? [...st.heads] : null,
           stack: Array.isArray(st.stack) ? [...st.stack] : null,
+          // A two-stack PDA's second stack, and an EPDA's whole store (a
+          // stack of stacks; `stack` alone is only its top one).
+          stack2: Array.isArray(st.stack2) ? [...st.stack2] : null,
+          store: target.machine === 'EPDA' && Array.isArray(st.store) ? st.store.map(s => [...s]) : null,
           remaining: Array.isArray(st.remaining) ? [...st.remaining] : null,
-          output: Array.isArray(st.outToks) ? st.outToks.join('') : null,
+          // λ and ε in the output are "nothing emitted on this step", not symbols.
+          output: Array.isArray(st.outToks) ? st.outToks.filter(x => x !== sym.lambda && x !== sym.eps).join('') : null,
           final: st.final || null
         });
       }
-      return { steps, cut: !r.done || r.known > cap + 1 };
+      // Cut short only when the last step shown has no verdict and there is
+      // more run behind it: a machine that halts exactly at the limit was not
+      // cut, whatever the cursor says about pulling one step further.
+      const last = steps[steps.length - 1];
+      return { steps, cut: !last?.final && (!r.done || r.known > steps.length) };
     } finally {
       [App.simSteps, App.simIdx, App.simRun, App.simStart] = saved;
     }
@@ -223,7 +233,9 @@ and the tape, stack, unread input or output where the machine has them.
       const where = [];
       if (s.tape) where.push(tapeText(s.tape, s.head, blank));
       if (s.tapes) s.tapes.forEach((t, k) => where.push(`${k + 1}:${tapeText(t, s.heads?.[k], blank)}`));
-      if (s.stack) where.push(`stack ${s.stack.join('')}`);
+      if (s.store) where.push(`stacks ${s.store.map(x => `[${x.join('')}]`).join('')}`);
+      else if (s.stack) where.push(`stack ${s.stack.join('')}`);
+      if (s.stack2) where.push(`stack₂ ${s.stack2.join('')}`);
       if (s.remaining && !s.tape) where.push(`rest ${s.remaining.join('') || App.config.sym.eps}`);
       if (s.output != null) where.push(`out ${s.output || App.config.sym.eps}`);
       return [c.dim(String(s.step)), `{${s.states.join(',')}}`, s.note, where.join('  ')];
@@ -231,10 +243,28 @@ and the tape, stack, unread input or output where the machine has them.
     print(table(rows));
     const last = steps.at(-1);
     if (cut) print(c.yellow(`\n… stopped after ${cap} steps (--limit to see more)`));
-    else if (last?.final) print(`\n${verdictWord(last.final === 'accept' ? 'acc' : last.final === 'reject' ? 'rej' : 'unk')}${last.final !== 'accept' && last.final !== 'reject' ? ` (${last.final})` : ''}`);
-    if (cut) return 2;
-    return last?.final === 'accept' ? 0 : last?.final === 'reject' || last?.final === 'loop' ? 1 : 2;
+    else print(`\n${endingWord(last?.final)}`);
+    return cut ? 2 : endingCode(last?.final);
   }
 };
+
+// How a run that was not cut short ended. A proven loop is a decision — the
+// word is not accepted — so it reads and exits as a reject; a step budget
+// running out is the one "unknown"; and a run with no verdict at all is a
+// transducer that simply finished.
+export function endingCode(final) {
+  if (final === 'accept') return 0;
+  if (final === 'reject' || final === 'loop') return 1;
+  if (!final) return 0;
+  return 2;
+}
+
+export function endingWord(final) {
+  if (final === 'accept') return verdictWord('acc');
+  if (final === 'reject') return verdictWord('rej');
+  if (final === 'loop') return `${verdictWord('rej')} ${c.dim('(it loops: a configuration repeated)')}`;
+  if (!final) return c.dim('done');
+  return `${verdictWord('unk')} ${c.dim(`(${final})`)}`;
+}
 
 export const commands = { run, test, trace };

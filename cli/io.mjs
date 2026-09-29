@@ -75,8 +75,12 @@ export function readMachine(spec, { allowEmpty = false } = {}) {
     // Not a file: an inline code, or a typo in a path.
     const doc = readInline(spec);
     if (doc) return finish(doc, spec, allowEmpty);
+    let dir = false;
+    try { dir = statSync(spec).isDirectory(); } catch { /* not there at all */ }
+    if (dir) throw new CliError(`${spec} is a directory; give a machine file inside it.`);
     throw new CliError(`${spec}: no such file, and not a machine code or a Turing machine in the standard notation.`);
   }
+  if (!file.text.trim()) throw new CliError(`${file.name} is empty${spec === '-' ? ' — nothing came in on standard input' : ''}.`);
   return finish(parseText(file.text, file.name), file.name, allowEmpty);
 }
 

@@ -1,4 +1,5 @@
 // halts, check-proof, bb-search, tm-normalize, sheet — Turing machines.
+import { aMachine } from '../grammar.mjs';
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -27,7 +28,7 @@ const num = x => Number(x).toLocaleString('en-US');
 export function loadTuringMachines(specs, { input = null } = {}) {
   const items = [];
   const fromTarget = (target, label) => {
-    if (!BEHAVIOUR_MACHINES.has(target.machine)) return { label, error: `a ${target.machine} — only a deterministic one-tape Turing machine (TM, ITM) can be classified` };
+    if (!BEHAVIOUR_MACHINES.has(target.machine)) return { label, error: `${aMachine(target.machine)} — only a deterministic one-tape Turing machine (TM, ITM) can be classified` };
     return withMachine(target, () => {
       let tokens = [];
       if (input !== null) {
@@ -451,7 +452,7 @@ its halting verdict. Counters and bouncers are told apart at a glance.
       print(`${pics.length} PNGs in ${dir}`);
       return 0;
     }
-    const pad = 14, capH = 44;
+    const pad = 14, capH = 58;
     const cellW = size + pad * 2, cellH = size + capH + pad * 2;
     const rowsN = Math.ceil(pics.length / cols);
     const W = cellW * Math.min(cols, pics.length), H = cellH * rowsN;
@@ -466,7 +467,7 @@ its halting verdict. Counters and bouncers are told apart at a glance.
       parts.push(`<text x="${x}" y="${y + size + 16}" font-size="10.5" fill="#dfe8ff">${esc(label)}</text>`);
       const say = verdict ? `${verdict.verdict}${verdict.method ? ` · ${METHOD_NAMES[verdict.method]}` : verdict.growth ? ` · ${verdict.growth.shape}` : ''}` : '';
       parts.push(`<text x="${x}" y="${y + size + 31}" font-size="10" fill="${verdict ? tone[verdict.verdict] : '#8894b0'}">${esc(say)}</text>`);
-      parts.push(`<text x="${x + size}" y="${y + size + 31}" font-size="10" fill="#8894b0" text-anchor="end">${num(pic.steps)} steps · ${num(pic.hi - pic.lo + 1)} cells</text>`);
+      parts.push(`<text x="${x}" y="${y + size + 45}" font-size="10" fill="#8894b0">${num(pic.steps)} steps · ${num(pic.hi - pic.lo + 1)} cells</text>`);
     });
     parts.push('</svg>');
     emit(parts.join('\n'), opts.output);

@@ -159,3 +159,90 @@ test('library reads a local checkout', { skip: !existsSync(join(ROOT, '..', 'aut
   assert.equal(r.code, 0);
   assert.ok(JSON.parse(r.out).length > 0);
 });
+
+// ── Regressions from running every command by hand ────────────────
+
+test('a run that halts exactly at the limit was not cut short', () => {
+  const t = cli(['trace', '1RB1LB_1LA1RZ', '', '--limit', '6']);
+  assert.equal(t.code, 0);
+  assert.doesNotMatch(t.out, /stopped after/);
+  const cut = cli(['trace', '1RB1LB_1LA1RZ', '', '--limit', '3']);
+  assert.equal(cut.code, 2);
+  assert.match(cut.out, /stopped after 3 steps/);
+});
+
+test('a transducer that finishes is done, and a proven loop is a reject', () => {
+  const m = cli(['trace', 'js/examples/mealy.json', '01 11']);
+  assert.equal(m.code, 0);
+  assert.match(m.out, /\ndone\n?$/);
+  const loop = cli(['trace', '1RB1RB_1LA1LA', '']);
+  assert.equal(loop.code, 1);
+  assert.match(loop.out, /reject \(it loops/);
+});
+
+test('trace shows a PDT\'s real output, both stacks of a 2PDA, and an EPDA\'s whole store', () => {
+  assert.match(cli(['trace', 'js/examples/pdt.json', 'ab']).out, /out ba\n/);
+  assert.doesNotMatch(cli(['trace', 'js/examples/pdt.json', 'ab']).out, /λ/);
+  assert.match(cli(['trace', 'js/examples/twopda.json', 'aabb', '--limit', '3']).out, /stack₂ ZB/);
+  assert.match(cli(['trace', 'js/examples/epda.json', 'abc', '--limit', '1']).out, /stacks \[E\]\[D\]\[ZA\]/);
+});
+
+test('info and lint know a PDA that accepts by empty stack', () => {
+  assert.equal(cli(['lint', 'js/examples/pda.json']).code, 0);
+  assert.equal(cli(['lint', 'js/examples/queue.json']).code, 0);
+  assert.equal(JSON.parse(cli(['info', 'js/examples/pda.json', '--json']).out).acceptance, 'empty store');
+  assert.deepEqual(Object.values(JSON.parse(cli(['info', 'js/examples/dpa.json', '--json']).out).priorities).sort(), [1, 2]);
+});
+
+test('words and profile refuse what they cannot answer, and say why', () => {
+  const w = cli(['words', 'js/examples/mealy.json']);
+  assert.equal(w.code, 3);
+  assert.match(w.err, /a Mealy has no accept\/reject verdict/i);
+  const p = cli(['profile', 'js/examples/tm.json', '--family', 'a^n b^n', '--to', '3']);
+  assert.equal(p.code, 3);
+  assert.match(p.err, /No input could be measured/);
+});
+
+test('two transducers are compared on their outputs, and the witness agrees', () => {
+  const r = cli(['equiv', 'js/examples/mealy.json', 'js/examples/mealy-classic.json']);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /mealy\.json outputs 0, .*mealy-classic\.json cannot read the whole word/);
+});
+
+test('a refused code target fails instead of writing a comment file', () => {
+  const r = cli(['codegen', 'js/examples/nfa.json', '--lang', 'c']);
+  assert.equal(r.code, 3);
+  assert.equal(r.out, '');
+  assert.match(r.err, /deterministic finite automata only/);
+  assert.match(cli(['codegen', 'js/examples/nfa.json', '--lang', 'xstate']).err, /automata determinize/);
+  assert.equal(cli(['export', 'js/examples/dfa.json', '-f', 'batch']).code, 3);
+  assert.match(cli(['export', 'js/examples/dfa.json', '-f', 'json']).out, /"format": "automata-studio\/workspace"/);
+  assert.doesNotMatch(cli(['export', '--list']).out, /^batch\b/m);
+});
+
+test('from-regex reads what to-regex writes', () => {
+  const re = cli(['to-regex', 'js/examples/dfa.json']).out.trim();
+  const back = cli(['from-regex', re, '--sigma', '01']);
+  assert.equal(cli(['equiv', '-', 'js/examples/dfa.json'], { input: back.out }).code, 0);
+  assert.match(cli(['to-regex', 'js/examples/enfa.json']).err, /also uses as an operator/);
+});
+
+test('svg labels a Turing machine\'s edges; the contact sheet\'s captions do not collide', () => {
+  const svg = cli(['svg', 'js/examples/tm.json']).out;
+  assert.match(svg, /<tspan[^>]*>0 → 0, R<\/tspan>/);
+  const sheet = cli(['sheet', '1RB1LB_1LA1RZ', '1RB---_0RA---', '--steps', '200']).out;
+  assert.match(sheet, /steps · \d+ cells<\/text>/);
+  assert.doesNotMatch(sheet, /text-anchor="end">[\d,]+ steps/);
+});
+
+test('generate takes a regex\'s own alphabet, and refuses Σ*', () => {
+  assert.equal(cli(['generate', '--from-regex', 'a*|b*|(a|b)*', '-o', join(tmp, 'g1')]).code, 3);
+  assert.equal(cli(['generate', '--from-regex', '(ab)*', '-o', join(tmp, 'g2')]).code, 0);
+  assert.match(readFileSync(join(tmp, 'g2', 'exercise-1.automaton'), 'utf8'), /over \{a, b\}/);
+});
+
+test('empty input and a directory are named for what they are', () => {
+  assert.match(cli(['run', '-', '0']).err, /is empty/);
+  assert.match(cli(['info', 'js/examples']).err, /is a directory/);
+  assert.match(cli(['halts', 'js/examples/mtm.json']).out, /an MTM/);
+});

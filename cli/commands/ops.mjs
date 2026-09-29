@@ -231,7 +231,11 @@ const toRegexCmd = {
   async run({ args, opts }) {
     const { target } = readMachine(args[0] ?? '-');
     const re = toRegex(target);
-    if (opts.json) printJson({ regex: re }); else print(re);
+    // The regex syntax has no escapes, so a letter that is also an operator
+    // makes the expression readable but not re-readable by from-regex.
+    const clash = lettersOf(target).filter(a => [...a].some(ch => '|*+?()[]{}.'.includes(ch)));
+    if (clash.length && !opts.quiet) process.stderr.write(c.yellow(`warning: Σ contains ${clash.join(' ')}, which the regex syntax also uses as an operator — read this expression, but do not feed it back to from-regex.\n`));
+    if (opts.json) printJson({ regex: re, ...(clash.length ? { ambiguousLetters: clash } : {}) }); else print(re);
     return 0;
   }
 };

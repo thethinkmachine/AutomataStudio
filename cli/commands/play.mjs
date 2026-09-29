@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs';
 
 import { App } from '../../js/state.js';
 import { readMachine, emit, CliError } from '../io.mjs';
-import { traceSteps } from './run.mjs';
+import { endingCode, endingWord, traceSteps } from './run.mjs';
 import { animatedRun } from '../figure.mjs';
 import { Indexed, encodeGIF, TAPE_PALETTE, HEAD } from '../raster.mjs';
 import { c, isTTY, print } from '../out.mjs';
@@ -64,7 +64,9 @@ the unread input, the output), and what each step did. For a tape machine,
       out.push('');
       if (s.tape) out.push(tapeLine(s.tape, s.head, blank, cols));
       if (s.tapes) s.tapes.forEach((t, k) => out.push(`${k + 1} ${tapeLine(t, s.heads?.[k] ?? 0, blank, cols - 1)}`));
-      if (s.stack) out.push(`${c.dim('stack')}  ${s.stack.join(' ')}`);
+      if (s.store) out.push(`${c.dim('stacks')} ${s.store.map(x => `[${x.join(' ')}]`).join(' ')}`);
+      else if (s.stack) out.push(`${c.dim('stack')}  ${s.stack.join(' ')}`);
+      if (s.stack2) out.push(`${c.dim('stack₂')} ${s.stack2.join(' ')}`);
       if (s.remaining && !s.tape) out.push(`${c.dim('input')}  ${s.remaining.join('') || App.config.sym.eps}`);
       if (s.output != null) out.push(`${c.dim('output')} ${s.output || App.config.sym.eps}`);
       out.push('', c.dim(s.note));
@@ -78,14 +80,13 @@ the unread input, the output), and what each step did. For a tape machine,
         if (history.length > rowsForHistory) history.shift();
         out.push('', ...history);
       }
-      if (s.final) out.push('', s.final === 'accept' ? c.green('ACCEPT') : s.final === 'reject' ? c.red('REJECT') : c.yellow(s.final.toUpperCase()));
+      if (s === steps[steps.length - 1] && !cut) out.push('', endingWord(s.final));
       if (isTTY) process.stdout.write('\x1b[2J\x1b[H' + out.join('\n') + '\n');
       else print(out.join('\n') + '\n');
       if (isTTY) await sleep(delay);
     }
     if (cut) print(c.yellow(`… stopped after ${steps.length - 1} steps (--limit)`));
-    const last = steps.at(-1)?.final;
-    return last === 'accept' ? 0 : last === 'reject' || last === 'loop' ? 1 : 2;
+    return cut ? 2 : endingCode(steps.at(-1)?.final);
   }
 };
 
