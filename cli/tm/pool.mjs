@@ -21,7 +21,12 @@ export async function runPool(jobs, n, local, onDone = () => {}) {
     return results;
   }
   let nextJob = 0, finished = 0;
-  const url = new URL('./worker.mjs', import.meta.url);
+  // Beside this module in the source (cli/tm/) and beside the entry in the
+  // bundle (dist-cli/). Held in a variable because the bundler rewrites a
+  // literal `new URL('…', import.meta.url)` into a copied asset — which would
+  // ship the worker's source unbundled.
+  const file = './worker.mjs';
+  const url = new URL(file, import.meta.url);
   return new Promise((resolve, reject) => {
     const workers = [];
     const feed = w => {

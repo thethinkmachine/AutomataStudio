@@ -1,0 +1,5 @@
+
+# The desktop app's CLI launchers: the sh one must stay LF on every checkout,
+# the cmd one CRLF, or they fail to run where they are packaged.
+build/cli/automata text eol=lf
+build/cli/automata.cmd text eol=crlf

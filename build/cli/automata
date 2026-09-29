@@ -1,0 +1,18 @@
+#!/bin/sh
+# The automata command line, run by the desktop app's own executable as Node
+# (the way VS Code ships `code`). Symlink this onto PATH to use `automata`.
+#
+#   macOS   AutomataStudio.app/Contents/Resources/cli/automata
+#           → Contents/MacOS/AutomataStudio
+#   Linux   <install>/resources/cli/automata → <install>/<executable>
+set -e
+here="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+resources="$(dirname "$here")"
+cli="$resources/app.asar.unpacked/dist-cli/automata.mjs"
+for exe in "$resources/../MacOS/AutomataStudio" "$resources/../AutomataStudio" "$resources/../automatastudio" "$resources/../automata-studio"; do
+  if [ -x "$exe" ]; then
+    ELECTRON_RUN_AS_NODE=1 exec "$exe" "$cli" "$@"
+  fi
+done
+echo "automata: could not find the AutomataStudio executable next to $resources" >&2
+exit 3

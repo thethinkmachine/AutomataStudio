@@ -7,6 +7,27 @@ const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
 const { CLAUDE_CODE_URL, runClaudeCode } = require('./claude-code.cjs');
 
+// `AutomataStudio --cli <command> …` runs the command line instead of the app:
+// this executable re-run as Node (ELECTRON_RUN_AS_NODE) on the bundled CLI,
+// with the terminal's stdio, exiting with its code. No window, no single-
+// instance lock, no userData — so it is handled before any of that. On
+// Windows a GUI executable's output does not reach the console, which is why
+// the installer also ships resources/cli/automata.cmd, the launcher to put on
+// PATH there; this flag is the same thing for macOS and Linux terminals.
+{
+  const at = process.argv.indexOf('--cli');
+  if (at > 0) {
+    const cli = app.isPackaged
+      ? path.join(process.resourcesPath, 'app.asar.unpacked', 'dist-cli', 'automata.mjs')
+      : path.join(__dirname, '..', 'dist-cli', 'automata.mjs');
+    const r = require('node:child_process').spawnSync(process.execPath, [cli, ...process.argv.slice(at + 1)], {
+      stdio: 'inherit',
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+    });
+    process.exit(r.status ?? 3);
+  }
+}
+
 // The product was renamed "Automata Playground" -> "AutomataStudio". Electron derives
 // userData from productName, so on an existing install the rename would silently point
 // the app at an empty new directory and strand every saved workspace and autosave --

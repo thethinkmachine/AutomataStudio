@@ -3,6 +3,10 @@
 // nothing else of the app — but the classifier imports state.js, which wants
 // Solid's browser build, and workers inherit the parent's --conditions.
 import { parentPort } from 'node:worker_threads';
+// Static, and first, for the reason cli/bundle.mjs gives: in the bundle this
+// file is an entry of its own, and the stub has to run before the app does.
+import '../node-globals.mjs';
+import '../../js/headless/dom-stub.js';
 
 await import('../env.mjs');
 const { decide } = await import('./core.mjs');
