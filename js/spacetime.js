@@ -539,6 +539,42 @@ function fit(text, maxChars) {
   return maxChars <= 1 ? s.slice(0, 1) : s.slice(0, maxChars - 1) + '…';
 }
 
+const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
+
+/**
+ * The line under the last row, as `{ lead, rest }`: the verdict in bold, and
+ * the rest after it. One function for the layout that measures it and the
+ * painter that draws it, so an export is sized to exactly the words it prints.
+ *
+ * A step is a move, and row 0 is the start, so the last row drawn is the
+ * number of steps taken — `rowCount` is one more than that, which is how
+ * "6 steps so far" once sat over a verdict saying "after 5 steps".
+ */
+function statusParts(model, L) {
+  const last = L.rowFrom + L.rowCount - 1;
+  const fin = L.complete !== false ? FINAL_SAY[model.finalAt(last)] : null;
+  if (fin) {
+    const name = L.stateName ? L.stateName(model.stateAt(last)) : '';
+    return { lead: fin.text, rest: `after ${plural(last, 'step')}${name !== '' ? `, in ${name}` : ''}` };
+  }
+  // A range cut from a longer run goes on past its last row, but it is not
+  // "so far": the steps after it have been computed.
+  if (last < model.rows - 1) return { lead: '', rest: `the run goes on past step ${last.toLocaleString()}` };
+  return { lead: '', rest: `${plural(last, 'step')} so far — the run goes on` };
+}
+
+function statusText(model, L) {
+  const p = statusParts(model, L);
+  return p.lead ? `${p.lead} ${p.rest}` : p.rest;
+}
+
+/** The legend's width at 10px: a swatch, the symbol, a gap — and the head's mark. */
+function legendWidth(symbols) {
+  let w = 0;
+  for (const sym of symbols) w += 14 + charW(10) * String(sym).length + 14;
+  return w + 17 + charW(10) * 4;
+}
+
 /**
  * Where everything goes, in diagram coordinates.
  *
@@ -601,11 +637,30 @@ export function spaceTimeLayout(model, o = {}) {
     x = e.x + cols * cell + capW + GAP;
     return e;
   });
-  const width = Math.max(gutterW + 120, x - GAP + 12);
+  // Where the cells end: the last tape's right cap. The row bands stop here,
+  // not at `width`, which has a floor for the caption and would run a band on
+  // into empty space past a narrow tape.
+  const contentRight = placed.length ? x - GAP : gutterW;
+  let width = Math.max(gutterW + 120, x - GAP + 12);
 
   // Below the last row: the run's ending, and in an export the legend.
   const statusH = rowCount ? 30 : 0;
   const legendH = o.legend && model.symbols.length ? 26 : 0;
+
+  // A file has no scroller to reveal what runs off its right edge, so an
+  // export is as wide as its own text — the caption, the ending and the
+  // legend. On screen the ending is fitted to the view instead (see the
+  // painter), or a long state name would shrink "fit"'s cells to make room.
+  if (o.caption || o.legend) {
+    const text0 = gutterW + 10;
+    if (o.caption) {
+      width = Math.max(width,
+        24 + charW(13) * 1.05 * String(o.caption.title || '').length,
+        24 + charW(11) * String(o.caption.sub || '').length);
+    }
+    if (rowCount) width = Math.max(width, text0 + 12 + charW(11) * statusText(model, { ...o, rowFrom, rowTo, rowCount }).length);
+    if (legendH) width = Math.max(width, text0 + 12 + legendWidth(model.symbols));
+  }
   const height = top + rowCount * cell + statusH + legendH + 6;
 
   return {
@@ -613,7 +668,7 @@ export function spaceTimeLayout(model, o = {}) {
     rowFrom, rowTo, rowCount,
     gutterW, numW, showStates, stateChars,
     captionH, rulerH, top, capW,
-    tapes: placed, width, height,
+    tapes: placed, width, height, contentRight,
     statusH, legendH,
     caption: o.caption || null,
     stateName: o.stateName || (id => String(id ?? '')),
@@ -927,7 +982,10 @@ export function paintSpaceTime(ctx, model, L, S, V = {}) {
 
   // The step on screen, and the cell under the pointer.
   const content0 = gutterW;
-  const contentW = Math.max(0, Math.min(vw, L.width - sx) - gutterW);
+  // To the end of the cells (and their cap), not of the layout: `width` has a
+  // floor for the ending's text, and a band carried on to it ended in the
+  // middle of empty space.
+  const contentW = Math.max(0, Math.min(vw, (L.contentRight ?? L.width) + 4 - sx) - gutterW);
   if (V.playhead !== undefined && V.playhead !== null && V.playhead >= rA && V.playhead <= rB) {
     const y = yOf(V.playhead);
     ctx.fillStyle = S.accent;
@@ -977,27 +1035,30 @@ export function paintSpaceTime(ctx, model, L, S, V = {}) {
       const x = gutterW + 10;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
+      // Pinned, so it is fitted to the view it is pinned in: a line longer
+      // than the view ran on under the overview strip and was cut mid-word.
+      const room = Math.max(0, Math.floor((vw - x - 6) / charW(11)));
+      const said = statusParts(model, L);
       if (L.complete && fin) {
         ctx.font = font(11, 700, S.mono);
         ctx.fillStyle = S[fin.tone] || S.ink2;
-        ctx.fillText(fin.text, x, y);
+        ctx.fillText(fit(said.lead, room), x, y);
         ctx.font = font(11, 400, S.mono);
         ctx.fillStyle = S.ink2;
-        const steps = lastRow;
-        ctx.fillText(`after ${steps.toLocaleString()} step${steps === 1 ? '' : 's'}, in ${L.stateName(model.stateAt(lastRow))}`,
-          x + charW(11) * (fin.text.length + 1), y);
+        const after = room - said.lead.length - 1;
+        if (after > 0) ctx.fillText(fit(said.rest, after), x + charW(11) * (said.lead.length + 1), y);
       } else if (!L.complete) {
         ctx.strokeStyle = S.ink3;
         ctx.lineWidth = 1;
         if (ctx.setLineDash) ctx.setLineDash([3, 3]);
         ctx.beginPath();
         ctx.moveTo(x, y - 9);
-        ctx.lineTo(x + Math.min(contentW - 20, 260), y - 9);
+        ctx.lineTo(x + Math.max(0, Math.min(vw - x - 10, 260)), y - 9);
         ctx.stroke();
         if (ctx.setLineDash) ctx.setLineDash([]);
         ctx.font = font(11, 400, S.mono);
         ctx.fillStyle = S.ink3;
-        ctx.fillText(`${L.rowCount.toLocaleString()} steps so far — the run goes on`, x, y + 2);
+        ctx.fillText(fit(said.rest, room), x, y + 2);
       }
     }
   }
@@ -1015,13 +1076,23 @@ export function paintSpaceTime(ctx, model, L, S, V = {}) {
       ctx.textBaseline = 'middle';
       const every = L.glyphs ? 1 : niceStep(Math.ceil(15 / cell));
       const finalAt = L.complete ? model.finalAt(lastRow) : null;
+      const p = V.playhead;
+      const hasP = p !== undefined && p !== null && p >= rA && p <= rB;
+      // Below glyph size a row is thinner than its label, so the playhead's
+      // label is centred on its row but never allowed under the ruler: at step
+      // 0 the row is the first pixel under it, and the rule for ticks below
+      // dropped the one label the reader was looking for.
+      const pY = hasP ? (L.glyphs ? yOf(p) + cell / 2 : Math.max(top + px / 2 + 1, yOf(p) + cell / 2)) : null;
       for (let r = rA - (rA % every); r <= rB; r += every) {
         if (r < rA) continue;
-        const y = yOf(r) + cell / 2;
+        const isPlay = r === p;
+        const y = isPlay ? pY : yOf(r) + cell / 2;
         // A label half under the ruler is a clipped label; the next tick says
         // where the reader is just as well.
         if (y - px / 2 < top) continue;
-        const isPlay = r === V.playhead;
+        // Nor may a tick sit on the playhead's label: at 8px, "40" was drawn
+        // half under a "41" that is only one row below it.
+        if (!L.glyphs && hasP && !isPlay && Math.abs(y - pY) < px + 3) continue;
         const isFinal = r === lastRow && FINAL_SAY[finalAt];
         ctx.font = font(px, isPlay || isFinal ? 700 : 400, S.mono);
         ctx.fillStyle = isPlay ? S.accent : isFinal ? S[FINAL_SAY[finalAt].tone] : S.ink3;
@@ -1039,9 +1110,8 @@ export function paintSpaceTime(ctx, model, L, S, V = {}) {
         }
       }
       // The playhead is always labelled, whatever the tick interval skipped.
-      const p = V.playhead;
-      if (!L.glyphs && p !== undefined && p !== null && p >= rA && p <= rB && p % every !== 0) {
-        const y = yOf(p) + cell / 2;
+      if (!L.glyphs && hasP && p % every !== 0) {
+        const y = pY;
         const label = String(p);
         const w = charW(px) * label.length + 8;
         ctx.fillStyle = S.gutterBg || S.bg;
@@ -1836,7 +1906,7 @@ function strokeHeadPath(ctx, pts, S, heavy) {
  * strip rescales only when the run doubles, and the part not yet computed is
  * visible as such rather than the computed part stretching to fill it.
  */
-export function overviewGeometry(ov, W, H, complete) {
+export function overviewGeometry(ov, W, H, complete, grids) {
   const pad = 6;
   const top = pad;
   const innerH = Math.max(10, H - 2 * pad);
@@ -1848,9 +1918,20 @@ export function overviewGeometry(ov, W, H, complete) {
   const side = 6;
   // Whole pixels, so every tape's edges land on the pixel grid.
   const tw = Math.max(6, Math.floor((W - 2 * side - gap * (k - 1)) / k));
-  const tapes = tracks.map((tr, t) => ({ t, lo: tr.lo, hi: tr.hi, x: side + t * (tw + gap), w: tw }));
+  // While a run streams, the picture is rebuilt a few times a second and the
+  // marks over it every frame. Laid out from the live tape, the two described
+  // different tapes between rebuilds — the view box slid across a picture
+  // still drawn at the old width, then both snapped back together. So the
+  // columns are the ones the picture was built with (`grids`), and `drawn` is
+  // how far down its rows go; the playhead and view box still read the live
+  // run, since they are about where the reader is, not about the picture.
+  const tapes = tracks.map((tr, t) => {
+    const g = grids && grids[t];
+    return { t, lo: g ? g.lo : tr.lo, hi: g ? g.hi : tr.hi, x: side + t * (tw + gap), w: tw };
+  });
+  const drawn = grids && grids[0] ? Math.min(n, grids[0].rows) : n;
   return {
-    W, H, top, innerH, scaleRows, rows: n, tapes, gap,
+    W, H, top, innerH, scaleRows, rows: n, drawn, tapes, gap,
     yOf: r => top + (r / scaleRows) * innerH,
     rowAt: y => clamp(Math.floor(((y - top) / innerH) * scaleRows), 0, Math.max(0, n - 1)),
     xOf: (e, c) => e.x + ((c - e.lo) / (e.hi - e.lo + 1)) * e.w,
@@ -1884,7 +1965,7 @@ export function renderOverviewBase(ctx, grids, colors, S, G, dpr, opts = {}) {
   ctx.fillStyle = S.rule;
   ctx.fillRect(0, 0, 1, G.H);
   if (!G.rows) return;
-  const yEnd = G.yOf(G.rows);
+  const yEnd = G.yOf(G.drawn ?? G.rows);
   for (const e of G.tapes) {
     ctx.fillStyle = S.bg;
     ctx.fillRect(e.x, G.top, e.w, yEnd - G.top);
@@ -1969,7 +2050,7 @@ export function paintOverviewStrip(ctx, ov, base, S, G, V = {}) {
     ctx.fillRect(0, 0, W, H);
   }
   if (!G.rows) return;
-  const yEnd = G.yOf(G.rows);
+  const yEnd = G.yOf(G.drawn ?? G.rows);
   const yFull = G.top + G.innerH;
 
   for (const e of G.tapes) {
@@ -2045,6 +2126,17 @@ export function wholeRunBins(model, from, to) {
  * whole pixels — square when nothing had to be compressed, so a short run
  * exported this way still looks like its diagram.
  */
+/** The whole-run picture's ending, after its verdict: one string for the layout and the painter. */
+function wholeRunTail(grids, last, finished, rowFrom = 0) {
+  const g0 = grids[0];
+  const tail = [finished
+    ? `after ${plural(last, 'step')}`
+    : `steps ${rowFrom.toLocaleString()}–${last.toLocaleString()}`];
+  if (g0 && g0.binRows > 1) tail.push(`each pixel row is ${g0.binRows} steps`);
+  if (grids.some(g => g && g.w > 1)) tail.push(`each pixel column is ${Math.max(...grids.map(g => (g ? g.w : 1)))} cells`);
+  return tail.join(' · ');
+}
+
 export function wholeRunLayout(grids, o = {}) {
   const ny = Math.max(1, ...grids.map(g => g.ny));
   const plain = grids.every(g => g.w === 1 && g.binRows === 1);
@@ -2072,9 +2164,22 @@ export function wholeRunLayout(grids, o = {}) {
   const plotH = ny * scaleY;
   const statusH = 30;
   const legendH = o.legend ? 26 : 0;
+  // As wide as its own text, for spaceTimeLayout's reason: a picture of a
+  // narrow tape cut its caption, its ending and its legend off at the right.
+  // The verdict is not known here, so the ending is sized for the longest.
+  const lead = Math.max(...Object.values(FINAL_SAY).map(f => f.text.length)) + 1;
+  const tail = wholeRunTail(grids, lastRow, true);
+  let width = Math.max(gutterW + 220, x - GAP + 12,
+    gutterW + 22 + charW(11) * (lead + Math.max(tail.length, wholeRunTail(grids, lastRow, false, o.rowFrom || 0).length)));
+  if (o.caption) {
+    width = Math.max(width,
+      24 + charW(13) * 1.05 * String(o.caption.title || '').length,
+      24 + charW(11) * String(o.caption.sub || '').length);
+  }
+  if (o.legend && o.symbols) width = Math.max(width, gutterW + 22 + legendWidth(o.symbols));
   return {
     gutterW, captionH, rulerH, top, capW, tapes, scaleY, plotH, ny,
-    width: Math.max(gutterW + 220, x - GAP + 12),
+    width,
     height: top + plotH + statusH + legendH + 6,
     caption: o.caption || null,
     rowFrom: o.rowFrom || 0
@@ -2138,7 +2243,11 @@ export function paintWholeRun(ctx, model, grids, imgs, S, EL, o = {}) {
     ctx.textAlign = 'left';
     ctx.font = font(10, 600, S.sans);
     ctx.fillStyle = S.ink2;
-    ctx.fillText(e.label, e.x - EL.capW, EL.captionH + 11);
+    // The tape's own width and the gap after it, as the diagram's ruler has
+    // it: three narrow tapes printed "T1 · bounded left" over "T2 · …".
+    const room = e.w + 2 * EL.capW + 20;
+    const label = charW(10) * String(e.label).length <= room ? e.label : String(e.label).split(' · ')[0];
+    ctx.fillText(label, e.x - EL.capW, EL.captionH + 11);
     const widest = Math.max(String(g.lo).length, String(g.hi).length);
     const every = niceStep(Math.ceil((charW(9) * widest + 12) / cellPx));
     ctx.font = font(9, 400, S.mono);
@@ -2191,14 +2300,9 @@ export function paintWholeRun(ctx, model, grids, imgs, S, EL, o = {}) {
     ctx.fillText(fin.text, tx, ys);
     tx += charW(11) * (fin.text.length + 1);
   }
-  const tail = [fin
-    ? `after ${last.toLocaleString()} step${last === 1 ? '' : 's'}`
-    : `steps ${EL.rowFrom.toLocaleString()}–${last.toLocaleString()}`];
-  if (binRows > 1) tail.push(`each pixel row is ${binRows} steps`);
-  if (grids.some(g => g.w > 1)) tail.push(`each pixel column is ${Math.max(...grids.map(g => g.w))} cells`);
   ctx.font = font(11, 400, S.mono);
   ctx.fillStyle = S.ink2;
-  ctx.fillText(tail.join(' · '), tx, ys);
+  ctx.fillText(wholeRunTail(grids, last, !!fin, EL.rowFrom), tx, ys);
 
   if (EL.caption) {
     ctx.font = font(13, 700, S.sans);

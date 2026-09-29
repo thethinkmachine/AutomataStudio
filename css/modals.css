@@ -3250,8 +3250,15 @@ button.sm-stat:disabled {
      of seconds, and enterBlockScope() fires both from the same call — a
      status message is what the reader is meant to be reading right then, so
      it should win the stack rather than have its text spliced by the bar
-     sitting on top of it. */
-  z-index: 52;
+     sitting on top of it.
+
+     And above the floating windows' layer (60, css/panels.css) for the same
+     reason: a window opened near the top of the canvas — the space-time
+     diagram's first placement is — sat over the toast, so a message sent
+     from inside that window ("Computing the rest of the run…") was drawn
+     underneath the very window it was about. The toast takes no pointer, so
+     it can sit over a window without taking anything from it. */
+  z-index: 61;
 }
 
 .status.show {
@@ -5770,6 +5777,10 @@ button:focus-visible {
   border-radius: 0;
   font-size: .64rem;
   line-height: 1.5;
+  /* A row of the text export is one line per step, as wide as the tape, and
+     the preview box clipped it with no way to see the rest. */
+  overflow: auto;
+  white-space: pre;
 }
 
 .st-export-preview .exp-preview[hidden],

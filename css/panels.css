@@ -3034,6 +3034,16 @@ button.dt-cell:hover {
   cursor: crosshair;
   /* The canvas above it paints the ground; this is only the scroll range. */
   background: transparent;
+  /* The vertical bar's track is reserved whether or not the diagram overflows.
+     Without it, a diagram crossing the view's height grew or lost a bar,
+     which changed the width "fit" sizes its cells to, which changed the
+     height — and a diagram near that line flickered between two cell sizes.
+     With the overview strip showing, the strip stands over this track (see
+     setStrip): it is the better scrollbar, and two of them side by side ran
+     against each other down the seam. */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sb-thumb) transparent;
 }
 
 .st-size {
@@ -3211,6 +3221,29 @@ button.dt-cell:hover {
 
   .st-zoom-val {
     min-width: 44px;
+  }
+}
+
+/* Docked, the sidebar is narrower still, and dropping the words was not
+   enough: Export wrapped onto a line of its own under the rest. The readout
+   drops its "· fit" — the fit button beside it is lit whenever that is true —
+   and the icon buttons square up. */
+@container (max-width: 320px) {
+  .st-toolbar {
+    gap: 4px;
+  }
+
+  .st-zoom-fit {
+    display: none;
+  }
+
+  .st-zoom-val {
+    min-width: 34px;
+  }
+
+  .st-toggle,
+  .st-tbtn-label {
+    padding: 0 7px;
   }
 }
 

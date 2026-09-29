@@ -55,6 +55,7 @@ import { revealSection, setRPSectionCollapsed } from './ui.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
 import { exportBaseName, exportCopyText, exportDownload } from './export-core.js';
 import { Change, subscribe } from './store.js';
+import { isSyncRAF } from './anim.js';
 
 export const SPACETIME_SECTION = 'rp-spacetime';
 
@@ -228,7 +229,7 @@ export function resetSpaceTime() {
   stripOn = false; stripGeom = null; stripView = null; stripDrag = null; gripDrag = null;
   wholeCache = null;
   trace = null; branchNote = null;
-  lastPlayhead = -1; lastLo = null; dragging = false;
+  lastPlayhead = -1; lastLo = null; dragging = false; heldCoarse = false;
   resetScrollMap();
   setScrollCap(null);
   if (raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf);
@@ -313,6 +314,7 @@ function freshModel() {
   layoutKey = '';
   lastLo = null;
   lastPlayhead = -1;
+  heldCoarse = false;
   trace = null;
 }
 
@@ -852,12 +854,26 @@ function paint() {
 
   const { scroll, canvas } = els;
   let vw = scroll.clientWidth;
-  const vh = scroll.clientHeight;
+  let vh = scroll.clientHeight;
   if (!vw || !vh) return;
 
   const prevCell = layout ? layout.cell : null;
   const prevX = layout && layout.tapes[0] ? layout.tapes[0].x : null;
+  const anchor = layout ? playheadAnchor(m, layout) : null;
   let L = syncLayout(m, vw);
+  // A floating window grows with its diagram, so the height this paint was
+  // handed is last frame's. Asked whether the diagram is two screens tall
+  // against it, a run just starting in a window — growing a row a step — said
+  // yes, put the strip up, and took it down again a few steps later when the
+  // window caught up: the two panes swapping widths at the start of every
+  // run. So the window is told the new height first, and the question is put
+  // to the height it then has.
+  if (fitViewTo(L)) {
+    vw = scroll.clientWidth;
+    vh = scroll.clientHeight;
+    if (!vw || !vh) return;
+    L = syncLayout(m, vw);
+  }
   // The strip takes width from the diagram, which under "fit" can change the
   // cell size, which changes how tall the diagram is — so the test has two
   // thresholds, or a diagram near the line would flicker the strip on and off.
@@ -871,19 +887,37 @@ function paint() {
   fitViewTo(L);
   // Here rather than in renderChrome, which runs before the first layout
   // exists: the readout would otherwise stay blank until the next repaint.
-  els.zoomVal.textContent = `${L.cell}px${cellPref === 'fit' ? ' · fit' : ''}`;
+  // "fit" is its own span so a narrow toolbar can drop it — the fit button
+  // beside it says the same thing.
+  const zoomSay = `${L.cell}px${cellPref === 'fit' ? '<span class="st-zoom-fit"> · fit</span>' : ''}`;
+  if (els.zoomVal.innerHTML !== zoomSay) els.zoomVal.innerHTML = zoomSay;
 
   // A two-way tape that grew leftward moved every column right by what it
   // grew. Scroll by the same amount, or the diagram slides under the reader.
   const lo = m.tapes[0].lo;
-  if (lastLo !== null && lo < lastLo && prevCell === L.cell) {
-    setScrollXY(scrollX() + (lastLo - lo) * L.cell, null);
+  if (anchor && prevCell !== L.cell) {
+    // "fit" chose a smaller cell as the tape grew: everything rescaled about
+    // the origin, and the view — held in pixels — was left pointing at a
+    // part of the diagram the reader had never been looking at. Held on the
+    // playhead instead, which is what they were watching.
+    const now = playheadAnchor(m, L);
+    if (now) {
+      cancelGlide();
+      setScrollXY(anchor.x === null ? null : Math.max(0, now.cx - anchor.x), Math.max(0, now.cy - anchor.y));
+    }
+  } else if (lastLo !== null && lo < lastLo && prevCell === L.cell) {
+    const dx = (lastLo - lo) * L.cell;
+    setScrollXY(scrollX() + dx, null);
+    shiftFollow(dx);
   } else if (prevX !== null && prevCell === L.cell && L.tapes[0] && L.tapes[0].x !== prevX && lastLo === lo) {
-    setScrollXY(scrollX() + L.tapes[0].x - prevX, null);
+    const dx = L.tapes[0].x - prevX;
+    setScrollXY(scrollX() + dx, null);
+    shiftFollow(dx);
   }
   lastLo = lo;
 
   follow(m, L, vw, vh);
+  stepChase();
 
   const dpr = (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1;
   const pw = Math.round(vw * dpr);
@@ -910,7 +944,73 @@ function paint() {
     trace: traceMark(),
     clip: true
   });
+  markOffscreenHead(ctx, m, L, vw, vh);
   if (stripOn) paintStrip(m, L, vw, vh);
+}
+
+/**
+ * Where the playhead's row and head cell are on screen, in view pixels,
+ * alongside where they are in the diagram. `x` is null when the head is not
+ * on screen: holding a head that was off to one side on screen is not what
+ * a reader of the diagram would call keeping their place.
+ */
+function playheadAnchor(m, L) {
+  const idx = playheadRow();
+  if (!els || idx === null || idx < L.rowFrom || idx > L.rowTo) return null;
+  const cy = (idx - L.rowFrom) * L.cell;
+  const e = L.tapes[0];
+  const h = e ? m.headAt(0, idx) : null;
+  const cx = h === null || !e ? null : e.x + (h - e.lo) * L.cell;
+  const sx = scrollX();
+  const onScreen = cx !== null && cx >= sx + L.gutterW && cx + L.cell <= sx + els.scroll.clientWidth;
+  return { cx: cx ?? 0, cy, x: onScreen ? cx - sx : null, y: cy - scrollY() };
+}
+
+/**
+ * A head scrolled out of sight — the reader panned away, or a coarse follow
+ * at Max is between catching up — is still owed a place: an arrow at the
+ * edge of the playhead's row, pointing the way, with the cell it is on.
+ */
+function markOffscreenHead(ctx, m, L, vw, vh) {
+  const idx = playheadRow();
+  if (idx === null || idx < L.rowFrom || idx > L.rowTo) return;
+  const y = L.top + (idx - L.rowFrom) * L.cell - scrollY() + L.cell / 2;
+  if (y < L.top || y > vh) return;
+  const S = currentStyle();
+  const sx = scrollX();
+  // Tapes sit side by side, so two can be cut off on the same side: each
+  // later arrow on a side is set in from the one before it.
+  const inset = { left: 0, right: 0 };
+  for (const e of L.tapes) {
+    const h = m.headAt(e.index, idx);
+    if (h === null) continue;
+    const x = e.x + (h - e.lo) * L.cell - sx;
+    const left = x + L.cell <= L.gutterW;
+    const right = x >= vw;
+    if (!left && !right) continue;
+    const label = (L.tapes.length > 1 ? `T${e.index + 1} ` : '') + h.toLocaleString();
+    ctx.font = `600 10px ${S.mono}`;
+    const w = label.length * 6 + 16;
+    const side = left ? 'left' : 'right';
+    const bx = left ? L.gutterW + 3 + inset.left : vw - 3 - w - inset.right;
+    inset[side] += w + 4;
+    const by = Math.max(L.top + 2, Math.min(vh - 16, y - 7));
+    ctx.fillStyle = S.accent;
+    ctx.globalAlpha = 0.92;
+    ctx.fillRect(bx, by, w, 14);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = S.bg;
+    ctx.beginPath();
+    const ax = left ? bx + 3 : bx + w - 3;
+    const dir = left ? 1 : -1;
+    ctx.moveTo(ax, by + 7);
+    ctx.lineTo(ax + 5 * dir, by + 3);
+    ctx.lineTo(ax + 5 * dir, by + 11);
+    if (typeof ctx.fill === 'function') ctx.fill();
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = left ? 'left' : 'right';
+    ctx.fillText(label, left ? bx + 11 : bx + w - 11, by + 7.5);
+  }
 }
 
 /**
@@ -934,8 +1034,10 @@ function fitViewTo(L) {
   // than it can lay out Firefox makes the view 0px rather than the ceiling.
   const h = Math.min(SCROLL_CAP, Math.ceil(L.height + Math.max(0, frame) + Math.max(0, bar)));
   const value = h + 'px';
-  if (view.style.getPropertyValue && view.style.getPropertyValue('--st-fit') === value) return;
+  if (view.style.getPropertyValue && view.style.getPropertyValue('--st-fit') === value) return false;
   if (view.style.setProperty) view.style.setProperty('--st-fit', value);
+  // Only a window reads it; docked, the view keeps its strip and nothing moved.
+  return isSectionFloating(SPACETIME_SECTION);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1000,7 +1102,15 @@ function setStrip(on, m) {
   els.strip.style.width = w + 'px';
   els.grip.style.right = w + 'px';
   els.grip.setAttribute('aria-valuenow', String(w));
-  els.scroll.style.right = on ? w + 'px' : '';
+  // The strip *is* this view's vertical scrollbar, so it stands over the
+  // scroller's own rather than beside it. Beside it, a native bar ran down the
+  // seam between the diagram and the strip — two thumbs for one position,
+  // moving against each other through a run, the bar's edge over the strip's.
+  // The gutter is reserved in the stylesheet, so its width is a constant and
+  // measuring it here cannot feed back into the layout.
+  els.scroll.style.right = '';
+  const bar = on ? Math.max(0, (els.scroll.offsetWidth || 0) - (els.scroll.clientWidth || 0)) : 0;
+  els.scroll.style.right = on ? Math.max(0, w - bar) + 'px' : '';
   layoutKey = '';
   if (!on) { stripGeom = null; stripView = null; }
 }
@@ -1119,7 +1229,7 @@ function syncStripImages(m, S, complete, W, H, dpr) {
 
 /** The strip's still picture, rebuilt only when what it shows has changed. */
 function stripBase(S, G, dpr, complete) {
-  const key = `${ovBuilt}|${ovStyleKey}|${G.W}|${G.H}|${dpr}|${complete}|${headPath}|${G.scaleRows}`;
+  const key = `${ovBuilt}|${ovStyleKey}|${G.W}|${G.H}|${dpr}|${complete}|${headPath}|${G.scaleRows}|${G.drawn}|${G.tapes.map(e => `${e.lo}:${e.hi}`).join()}`;
   if (ovBase && key === ovBaseKey) return ovBase;
   if (!ovBase) ovBase = document.createElement('canvas');
   ovBase.width = Math.round(G.W * dpr);
@@ -1166,7 +1276,10 @@ function paintStrip(m, L, vw, vh) {
   const complete = runComplete();
   const { strip } = els;
   const W = stripWidth(m);
-  const H = vh;
+  // The view's whole height, not the scroller's: the strip stands over the
+  // scroller's vertical bar (see setStrip), and stopping it at the client
+  // height left the bar's bottom end showing in the corner under it.
+  const H = Math.max(vh, els.view.clientHeight || 0);
   const dpr = (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1;
   syncStripImages(m, S, complete, W, H, dpr);
   if (strip.width !== Math.round(W * dpr)) strip.width = Math.round(W * dpr);
@@ -1175,7 +1288,9 @@ function paintStrip(m, L, vw, vh) {
   const ctx = typeof strip.getContext === 'function' ? strip.getContext('2d') : null;
   if (!ctx) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const G = overviewGeometry(overview, W, H, complete);
+  // Laid out on the tape the picture was built from, so the marks drawn over
+  // it every frame agree with it between rebuilds — see overviewGeometry.
+  const G = overviewGeometry(overview, W, H, complete, ovGrids);
   stripGeom = G;
   stripView = visibleRange(m, L, vw, vh);
   paintOverviewStrip(ctx, overview, stripBase(S, G, dpr, complete), S, G, {
@@ -1294,20 +1409,24 @@ function onStripWheel(e) {
  */
 function follow(m, L, vw, vh) {
   const idx = playheadRow();
-  if (idx === lastPlayhead || dragging) { lastPlayhead = idx; return; }
+  const moved = idx === null || lastPlayhead === null || lastPlayhead < 0 ? 0 : Math.abs(idx - lastPlayhead);
+  // A coarse follow let the head go (see below); the first paint after
+  // playback stops or slows fetches it back, even with the playhead still.
+  const fetch = heldCoarse && !App.autoTimer;
+  if ((idx === lastPlayhead && !fetch) || dragging) { lastPlayhead = idx; return; }
   lastPlayhead = idx;
   if (idx === null || idx < L.rowFrom || idx > L.rowTo) return;
   const bodyH = vh - L.top;
   const rowY = (idx - L.rowFrom) * L.cell;
-  // Judged against where a glide in flight is *going*, not where it has got
-  // to, or every tick of fast playback would restart it from mid-air.
-  const cur = glideTarget();
+  const colsInView = Math.max(1, (vw - L.gutterW) / L.cell);
+  // Judged against where the view is *going*, not where it has got to, or
+  // every tick of fast playback would re-aim it from mid-air.
+  const cur = followTarget();
   const margin = Math.min(L.cell * 2, bodyH / 4);
   // Under fast playback the playhead can cross the band in a few frames, so
   // paging — let it reach the edge, then throw it back to 40% — turns into the
   // whole diagram jumping several times a second. There it is held still
-  // instead, at 60%, and the rows stream up past it; and it is a jump, not a
-  // glide, since a 200ms glide is retargeted every frame and never lands.
+  // instead, at 60%, and the rows stream up past it.
   const fast = isFastPlayback();
   const PIN = 0.6;
   let ty = cur.y;
@@ -1317,73 +1436,190 @@ function follow(m, L, vw, vh) {
   } else if (rowY < cur.y + margin || rowY + L.cell > cur.y + bodyH - margin) {
     ty = Math.max(0, rowY - bodyH * 0.4);
   }
+  // A head that can have crossed the whole view since the last paint is not
+  // one this view can follow: at Max a frame is ten thousand steps, and each
+  // paint lands on an unrelated slice of the tape. Re-aiming at each one
+  // threw the view from side to side every frame; drifting after them only
+  // made the throw slower. So the columns hold still — a steady window onto
+  // the tape, with the rows streaming through it and the head's path
+  // crossing it — and an arrow at the edge says where the head is.
+  // Only while playing: a scrub by hand to a distant step is a jump, and
+  // lands where it was asked to.
+  const coarse = !!App.autoTimer && moved > colsInView / 2;
+  heldCoarse = coarse;
   const e = L.tapes[0];
   const h = m.headAt(0, idx);
   if (e && h !== null) {
     const hx = e.x + (h - e.lo) * L.cell;
-    const pad = Math.min(L.cell * 3, (vw - L.gutterW) / 4);
-    if (hx < cur.x + L.gutterW + pad || hx + L.cell > cur.x + vw - pad) {
-      tx = Math.max(0, hx - L.gutterW - (vw - L.gutterW) / 2);
+    if (coarse) {
+      // Held, but never over nothing: a view that the tape has not reached,
+      // or has scrolled wholly past, is brought back over its nearest edge.
+      const tapeL = e.x - L.gutterW;
+      const tapeR = e.x + e.cols * L.cell - vw;
+      if (cur.x < Math.min(tapeL, tapeR)) tx = Math.max(0, Math.min(tapeL, tapeR));
+      else if (cur.x > Math.max(tapeL, tapeR)) tx = Math.max(0, Math.max(tapeL, tapeR));
+    } else {
+      // Only as far as the head pushes past the band, not a re-centre: a
+      // head walking off the edge is carried along at its own speed rather
+      // than thrown back to the middle half a view at a time.
+      const pad = Math.min(Math.max(L.cell * 3, 24), (vw - L.gutterW) / 4);
+      if (hx < cur.x + L.gutterW + pad) tx = Math.max(0, hx - L.gutterW - pad);
+      else if (hx + L.cell > cur.x + vw - pad) tx = hx + L.cell + pad - vw;
     }
   }
-  if (tx === cur.x && ty === cur.y) return;
-  if (fast) {
-    cancelGlide();
-    setScrollXY(tx, ty);
-  } else glideTo(tx, ty);
+  if (tx === cur.x && ty === cur.y && !chase) return;
+  followTo(tx, ty, { keep: true, coarse, pinY: fast });
 }
 
-// ── the glide ─────────────────────────────────────────────────────
-//  Following the playhead eases rather than jumps: at 1× a row leaving the
-//  band every few seconds and the whole diagram snapping under the reader
-//  is exactly the kind of motion that loses their place. Short, so it lands
-//  between steps at 2×; from 5× it is retargeted before it lands, which still
-//  reads as following, and from 50× follow() does not glide at all.
+// ── following ─────────────────────────────────────────────────────
+//  One chase, eased per frame toward a target that playback may move every
+//  frame. It replaced a 200ms glide restarted from where the view was on each
+//  step, which never landed while the run was moving: each step re-aimed it
+//  a quarter of the way into its curve, so the view settled into trailing the
+//  playhead — at 25× the current row sat below the bottom edge in two frames
+//  of every three. An exponential chase has no curve to restart; re-aiming it
+//  only moves where it is going.
+//
+//  And the playhead cannot be chased out of sight: every frame of a chase that
+//  follows it is clamped so its cell stays in view, whatever the easing says.
+//  Only a coarse follow (see follow) lets go of that, because there the head
+//  is somewhere new every frame and holding it would be the jitter again.
+//
 //  Skipped outright under reduced motion, and for a jump of several screens,
-//  where a glide is only a blur on the way.
+//  where an ease is only a blur on the way.
 
-const GLIDE_MS = 200;
-let glide = null;
+const FOLLOW_TAU_MS = 90;
+const COARSE_TAU_MS = 280;
+let chase = null;
+// The last follow was coarse, and let the head leave the view.
+let heldCoarse = false;
 
 function motionOk() {
   try { return !matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return true; }
 }
 
-function glideTarget() {
-  return glide ? { x: glide.tx, y: glide.ty } : { x: scrollX(), y: scrollY() };
+function followTarget() {
+  return chase ? { x: chase.tx, y: chase.ty } : { x: scrollX(), y: scrollY() };
 }
 
 export function cancelGlide() {
-  if (!glide) return;
-  if (glide.raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(glide.raf);
-  glide = null;
+  chase = null;
 }
 
+/** A glide that is not about the playhead — a click on the overview, "Earlier". */
 function glideTo(x, y) {
+  followTo(x, y, { keep: false });
+}
+
+/**
+ * The scroll positions that keep the playhead's cell on screen, or null.
+ * With a margin, so "in view" is not a cell flush against an edge.
+ */
+function keepRange(coarse) {
+  const L = layout;
+  const m = model;
+  const idx = playheadRow();
+  if (!L || !m || !els || idx === null || idx < L.rowFrom || idx > L.rowTo) return null;
+  const vw = els.scroll.clientWidth;
+  const bodyH = els.scroll.clientHeight - L.top;
+  const rowY = (idx - L.rowFrom) * L.cell;
+  const my = Math.min(L.cell, Math.max(0, (bodyH - L.cell) / 2));
+  const out = { y0: rowY + L.cell + my - bodyH, y1: rowY - my, x0: -Infinity, x1: Infinity };
+  const e = L.tapes[0];
+  const h = e ? m.headAt(0, idx) : null;
+  if (!coarse && e && h !== null) {
+    const hx = e.x + (h - e.lo) * L.cell;
+    const mx = Math.min(L.cell, Math.max(0, (vw - L.gutterW - L.cell) / 2));
+    out.x0 = hx + L.cell + mx - vw;
+    out.x1 = hx - L.gutterW - mx;
+  }
+  return out;
+}
+
+function clampTo(v, a, b) {
+  return a > b ? (a + b) / 2 : Math.max(a, Math.min(b, v));
+}
+
+function followTo(x, y, opts = {}) {
+  if (!els) return;
   const { scroll } = els;
   const max = scrollMax();
   const tx = Math.max(0, Math.min(max.x, x));
   const ty = Math.max(0, Math.min(max.y, y));
-  cancelGlide();
-  const fx = scrollX();
-  const fy = scrollY();
-  const far = Math.abs(ty - fy) > scroll.clientHeight * 3
-    || Math.abs(tx - fx) > scroll.clientWidth * 3;
-  if (far || !motionOk() || typeof requestAnimationFrame !== 'function' || typeof performance === 'undefined') {
-    setScrollXY(tx, ty);
+  const fx = chase ? chase.x : scrollX();
+  const fy = chase ? chase.y : scrollY();
+  // Far is judged per axis, and only the far one jumps. At Max the rows move
+  // thousands of pixels a frame, and a jump taken on both axes because one
+  // was far threw the view sideways with it every frame.
+  const farY = Math.abs(ty - fy) > scroll.clientHeight * 3;
+  const farX = !opts.coarse && Math.abs(tx - fx) > scroll.clientWidth * 3;
+  // A requestAnimationFrame that runs inline (the test DOM) gives an ease no
+  // time to pass in; there the view lands at once, clamped like any frame.
+  if ((farX && farY) || !motionOk() || typeof performance === 'undefined' || isSyncRAF()) {
+    cancelGlide();
+    const r = opts.keep ? keepRange(opts.coarse) : null;
+    setScrollXY(r ? clampTo(tx, r.x0, r.x1) : tx, r ? clampTo(ty, r.y0, r.y1) : ty);
     return;
   }
-  const g = { fx, fy, tx, ty, t0: performance.now(), raf: 0 };
-  glide = g;
-  const tick = now => {
-    if (glide !== g) return;
-    const p = Math.min(1, (now - g.t0) / GLIDE_MS);
-    const k = 1 - Math.pow(1 - p, 3);
-    setScrollXY(g.fx + (g.tx - g.fx) * k, g.fy + (g.ty - g.fy) * k);
-    if (p < 1) g.raf = requestAnimationFrame(tick);
-    else glide = null;
-  };
-  g.raf = requestAnimationFrame(tick);
+  const c = chase || { x: fx, y: fy, sx: scrollX(), sy: scrollY(), t: performance.now() };
+  c.tx = tx;
+  c.ty = ty;
+  c.keep = !!opts.keep;
+  c.coarse = !!opts.coarse;
+  c.tau = opts.coarse ? COARSE_TAU_MS : FOLLOW_TAU_MS;
+  // Rows streaming past a pinned playhead are already moving at the run's
+  // speed; easing them as well would be the lag this replaced.
+  if (opts.pinY || farY) c.y = ty;
+  if (farX) c.x = tx;
+  if (!chase) {
+    chase = c;
+    requestPaint();
+  }
+}
+
+/**
+ * One frame of the chase, taken inside `paint` — after the target has been
+ * moved and before anything is drawn. It used to run in a frame of its own,
+ * which put the scroll a frame behind the picture drawn over it: at 2ms a
+ * step that frame is eight rows, and the playhead was drawn eighty pixels
+ * below the bottom edge. Here the frame that moves the view is the frame that
+ * draws it, and the clamp holds for what is on screen.
+ */
+function stepChase() {
+  const c = chase;
+  if (!c || !els) return;
+  // The scroller moved under the chase — its scrollbar, a key, a touch: the
+  // reader has it, and the chase lets go.
+  if (Math.abs(scrollX() - c.sx) > 2 || Math.abs(scrollY() - c.sy) > 2) { chase = null; return; }
+  const now = performance.now();
+  const dt = Math.max(0, Math.min(64, now - c.t));
+  c.t = now;
+  const k = 1 - Math.exp(-dt / c.tau);
+  let x = c.x + (c.tx - c.x) * k;
+  let y = c.y + (c.ty - c.y) * k;
+  const done = Math.abs(c.tx - x) < 0.5 && Math.abs(c.ty - y) < 0.5;
+  if (done) { x = c.tx; y = c.ty; }
+  if (c.keep) {
+    const r = keepRange(c.coarse);
+    if (r) { x = clampTo(x, r.x0, r.x1); y = clampTo(y, r.y0, r.y1); }
+  }
+  const max = scrollMax();
+  c.x = Math.max(0, Math.min(max.x, x));
+  c.y = Math.max(0, Math.min(max.y, y));
+  setScrollXY(c.x, c.y);
+  c.sx = scrollX();
+  c.sy = scrollY();
+  if (done) chase = null;
+  // Not settled: the next frame is another step, and so another paint.
+  else requestPaint();
+}
+
+/** The diagram moved under the view by `dx` — a two-way tape grew left. */
+function shiftFollow(dx) {
+  if (!chase) return;
+  chase.x += dx;
+  chase.tx += dx;
+  chase.sx += dx;
 }
 
 // ── the chrome around the canvas ──────────────────────────────────
@@ -1423,7 +1659,9 @@ function renderChrome(m) {
     // A row with nothing in it is still a row, and under the sentence it was
     // a strip of blank at the foot of the window.
     els.foot.hidden = more.hidden;
-    zoomVal.textContent = '—';
+    // What the next diagram will be drawn at. An em dash between − and + read
+    // as a third minus sign, and the buttons around it do change this.
+    zoomVal.textContent = cellPref === 'fit' ? 'fit' : `${cellPref}px`;
     renderTraceBar();
     return;
   }
@@ -1783,9 +2021,17 @@ function showTip(hit, p) {
   tip.innerHTML = parts.join('');
   tip.hidden = false;
   const vw = view.clientWidth || 0;
+  const vh = view.clientHeight || 0;
   const w = tip.offsetWidth || 160;
+  const th = tip.offsetHeight || 48;
   const x = Math.min(Math.max(4, p.x + 14), Math.max(4, vw - w - 6));
-  tip.style.transform = `translate(${Math.round(x)}px, ${Math.round(p.y + 16)}px)`;
+  // Below the pointer, unless that runs off the bottom — the view clips, so
+  // on the last rows the readout was cut in half, and near the edge it was
+  // not there at all. Then above, and never past the top.
+  let y = p.y + 16;
+  if (vh && y + th > vh - 4) y = p.y - th - 10;
+  y = Math.max(4, Math.min(y, Math.max(4, vh - th - 4)));
+  tip.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
 }
 
 function hideTip() {
@@ -1950,6 +2196,7 @@ function wholeRun(m) {
       caption: o.caption ? { title: captionTitle(), sub: runSummary(m) } : null,
       tapeLabels: tapeLabels(m),
       legend: true,
+      symbols: m.symbols,
       rowFrom: from
     });
     wholeCache = { key, model: m, grids, EL, complete, imgs: {} };
@@ -2262,6 +2509,7 @@ export const _spaceTimeTests = {
   get els() { return els; },
   syncModel, exportPlan, exportText, themeStyle, storeTracks, setTrace, clearTrace, playheadRow,
   get trace() { return trace; },
+  get lastPlayhead() { return lastPlayhead; },
   get branchNote() { return branchNote; },
   get model() { return model; },
   get layout() { return layout; },
