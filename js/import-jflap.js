@@ -743,6 +743,10 @@ export function jflapMachineType(type, info) {
 // its drawn size needs. Pushing nodes apart pairwise would turn a tidy row of
 // eleven blocks into a scatter. The collision pass still runs afterwards, for
 // the pair a scale cannot separate.
+//
+// Exported because a machine code (js/import-machine-code.js) arrives with the
+// same problem from the other direction: its layout is computed for circles,
+// since the layered pass knows nothing of box sizes.
 
 /** Room between two boxes for an edge and the label riding on it. */
 const BLOCK_IMPORT_GAP = 76;
@@ -753,7 +757,7 @@ const MAX_IMPORT_SPREAD = 5;
 /** Beyond this a pairwise scan is not worth it; the collision pass has a grid. */
 const SPREAD_MAX_NODES = 400;
 
-function spreadForBlocks() {
+export function spreadForBlocks() {
   // Every drawn thing with its drawn extent, filed under what it is drawn
   // *beside*: a state sits with its container's other members, a block box with
   // its parent's. Two nodes in different scopes are never on screen together,
