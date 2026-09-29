@@ -620,7 +620,7 @@ function showInPlayer(diagram) {
   if (target === null) return;
   if (stale) { showStatus('The machine has changed since this was classified — classify it again first.'); return; }
   if (target >= App.config.maxTmSteps) {
-    showStatus(`Step ${fmt(target)} is past the player's step limit of ${fmt(App.config.maxTmSteps)} — raise TM Max Steps in Settings to go there.`);
+    showStatus(`Step ${fmt(target)} is past the player's step limit of ${fmt(App.config.maxTmSteps)} — raise it in Settings → Simulation → Step Limits to go there.`);
     return;
   }
   const box = $('sim-in');

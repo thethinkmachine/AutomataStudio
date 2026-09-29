@@ -1316,7 +1316,7 @@ export function endSelectionDrag() {
 
 // ══════════════════════════════════════════════════════════════════
 //  DIRECTIONAL EDGE HIGHLIGHT — optionally triggered by clicking a state
-//  (Settings → Rendering picks Outgoing / Incoming / Off), or always
+//  (Settings → Editing picks Outgoing / Incoming / Off), or always
 //  available via the state's right-click menu regardless of that setting.
 // ══════════════════════════════════════════════════════════════════
 // Repaints App.edgeHighlight onto the DOM from scratch. renderAll() calls this
@@ -1736,7 +1736,7 @@ export function sugiyamaLayout(states, transitions, startId) {
 }
 
 // Original one-shot circular placement — kept as a selectable alternative
-// (Settings → Rendering → Auto-Layout Algorithm) for users who prefer an
+// (Settings → Layout → Auto-Layout) for users who prefer an
 // evenly-spaced ring over the layered layout.
 export function circularLayout(states) {
   const n = states.length;

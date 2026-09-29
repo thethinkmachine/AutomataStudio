@@ -2790,7 +2790,7 @@ button.sm-stat:disabled {
 }
 
 /* A <button role="tab">, not a <div onclick>. These were divs, which meant the
-   seven Engine Settings panels and the five Keyboard Shortcuts panels could not
+   Settings panels and the five Keyboard Shortcuts panels could not
    be reached from the keyboard at all. Being a button also brings the reset
    below: appearance, the inherited font, and the UA's own border and alignment
    all have to be undone for the strip to look as it did. */
@@ -4256,7 +4256,7 @@ button:focus-visible {
 }
 
 /* The vertical tab rail. Keyed to the classes rather than #settings-tabs so
-   every dialog built on .settings-modal-wide gets the same rail — Engine
+   every dialog built on .settings-modal-wide gets the same rail —
    Settings and Keyboard Shortcuts both use it. */
 .settings-modal-wide .modal-tabs {
   display: flex;
@@ -4303,6 +4303,37 @@ button:focus-visible {
   width: 2px;
   border-radius: 2px;
   background: var(--accent);
+}
+
+/* A heading over a run of tabs in the rail — App, Canvas, Machines. Not a tab:
+   it carries no .modal-tab, so the arrow-key walk and StateMate's /settings
+   completion, which both read that class, pass over it. */
+.settings-modal-wide .modal-tabs .modal-tab-group {
+  padding: 12px 13px 4px;
+  font-family: var(--sans);
+  font-size: .62rem;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.settings-modal-wide .modal-tabs .modal-tab-group:first-child {
+  padding-top: 2px;
+}
+
+/* One sentence at the top of a settings panel saying what the tab covers, so
+   the reader knows they are in the right place before reading the rows. */
+.settings-panel-intro {
+  margin: 0 0 2px;
+  font-family: var(--sans);
+  font-size: .74rem;
+  line-height: 1.5;
+  color: var(--text3);
+}
+
+.settings-panel-intro + .modal-section-lbl {
+  margin-top: 4px;
 }
 
 .settings-modal-wide .modal-tab-panels {
@@ -4370,13 +4401,26 @@ button:focus-visible {
   }
 
   .settings-modal-wide .modal-tabs .modal-tab.active::before { display: none; }
+  /* The rail is a single scrolling row here, where a heading between two tabs
+     reads as a tab that does nothing. */
+  .settings-modal-wide .modal-tabs .modal-tab-group { display: none; }
   .settings-modal-wide .modal-tab-panels { padding: 16px; }
   .settings-modal-wide .modal-row { flex-wrap: nowrap; }
+  /* Three buttons and two status lines, which no phone fits on one line. The
+     nowrap above outranks the row's own `flex-wrap: wrap`, and clipped the
+     last button at the panel's edge. */
+  .settings-modal-wide .modal-row.sm-settings-actions { flex-wrap: wrap; }
   .settings-modal-wide .modal-row > .inp,
   .settings-modal-wide .modal-row > .sel,
   .settings-modal-wide .modal-row > .custom-select { flex: 0 1 180px; max-width: 180px; }
-  .settings-modal-wide .modal-foot { overflow-x: auto; }
-  .settings-modal-wide .modal-foot-group { flex-shrink: 0; }
+  /* Each cluster gets a row of its own, primary last so it lands nearest the
+     thumb. The footer used to scroll sideways instead, and four buttons do
+     not fit a phone: Apply Settings, the one button that matters, sat past
+     the right edge with nothing to say it was there. */
+  .settings-modal-wide .modal-foot { flex-wrap: wrap; gap: 8px; padding: 12px 16px; }
+  .settings-modal-wide .modal-foot-group { flex: 1 1 100%; }
+  .settings-modal-wide .modal-foot-group > .btn-g,
+  .settings-modal-wide .modal-foot-group > .btn-p { flex: 1 1 0; min-width: 0; margin-right: 0; }
 }
 
 /* Theme picker: a popover anchored under the header's More button, not a
@@ -4677,6 +4721,13 @@ button:focus-visible {
 .settings-modal-wide .modal-row > .sm-model-field {
   flex: 0 0 210px;
   max-width: 210px;
+}
+
+/* The phone width every other control in the dialog shrinks to. Declared here
+   rather than in the dialog's own 700px block, which comes earlier in the file
+   and would lose to the rule above. */
+@media (max-width: 700px) {
+  .settings-modal-wide .modal-row > .sm-model-field { flex: 0 1 180px; max-width: 180px; }
 }
 
 /* The menu is anchored to the *row*, not to the field inside it.

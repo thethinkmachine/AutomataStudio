@@ -339,7 +339,7 @@ test('the picker offers as many tapes as the setting allows', () => {
   App.config.maxTapeCount = 9;
   syncTapeCountUI();
   assert.deepEqual(offered(), ['2', '3', '4', '5', '6', '7', '8', '9'],
-    'raising Settings → Turing → Maximum Tapes is the whole of what makes a fifth tape offerable');
+    'raising Settings → Machine Types → Maximum Tapes is the whole of what makes a fifth tape offerable');
 });
 
 test('a machine with more tapes than the setting still opens, and the picker shows its arity', () => {

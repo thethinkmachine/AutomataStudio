@@ -978,7 +978,7 @@ export function openStateModal(id) {
   if (hint) {
     hint.innerHTML = wrapStateLabelsOn()
       ? 'Use <code>_</code>, space or <code>-</code> to break long names onto multiple lines inside the node.'
-      : 'Long names will overflow the node — enable "Wrap Long State Labels" in Settings → Rendering to break them at <code>_</code>, space or <code>-</code>.';
+      : 'Long names will overflow the node — enable "Wrap Long State Labels" in Settings → Diagram to break them at <code>_</code>, space or <code>-</code>.';
   }
   $('s-start').checked = isConceptualStart(id);
   const cfg = getMachineConfig(App.machine);

@@ -294,7 +294,7 @@ export const App = {
     // How many tapes a multi-tape machine may be given. The arity itself is
     // not capped by the app — see clampTapeCount — this is the reader's own
     // ceiling, so the picker offers a list worth reading rather than every
-    // number up to the hard limit. Settings → Turing.
+    // number up to the hard limit. Settings → Machine Types.
     maxTapeCount: 8,
     maxPdaSteps: 2000,
     maxTmSteps: 10000,
@@ -593,7 +593,7 @@ export function wrapStateLabelsOn() {
 //     absent means on, so a workspace written before this existed does not
 //     load with the profile disabled.
 //
-// Settings → Canvas and the quick-settings popover both offer the override, and
+// Settings → Performance and the quick-settings popover both offer the override, and
 // both ask before letting you turn it off — on the machines this fires for, the
 // result is a canvas you cannot read.
 
@@ -707,7 +707,7 @@ export function previewNodeBudget() {
  * What the reader is asked before the profile is switched off, in the numbers
  * of the machine in front of them.
  *
- * Both surfaces that offer the override — Settings → Canvas and the
+ * Both surfaces that offer the override — Settings → Performance and the
  * quick-settings popover — spread this into askConfirm() and supply only the
  * handlers, so the same decision cannot be described two ways. It lives here
  * rather than in either of them because this module is the one both can reach:
