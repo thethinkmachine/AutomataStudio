@@ -382,13 +382,15 @@ export function sampleAccepted(target, len, count, rnd = Math.random) {
   return { total, words };
 }
 
-// A uniform BigInt in [0, n), from 52-bit chunks.
+// A uniform BigInt in [0, n), by rejection. Built from 32-bit chunks because a
+// seeded generator has 32 bits of precision: scaled to 52 bits, its low 20
+// are always zero — and the mask below keeps the low bits.
 function randomBig(n, rnd) {
   if (n <= 0n) return 0n;
   const bits = n.toString(2).length;
   for (;;) {
     let x = 0n;
-    for (let b = 0; b < bits + 8; b += 52) x = (x << 52n) | BigInt(Math.floor(rnd() * 2 ** 52));
+    for (let b = 0; b < bits; b += 32) x = (x << 32n) | BigInt(Math.floor(rnd() * 2 ** 32));
     x &= (1n << BigInt(bits)) - 1n;
     if (x < n) return x;
   }

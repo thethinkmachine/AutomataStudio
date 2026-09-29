@@ -68,16 +68,16 @@ const sym = () => App.config.sym;
  * A spec → `{ doc, target, name, warnings }`. Throws CliError with a sentence
  * the terminal can show.
  */
-export function readMachine(spec) {
+export function readMachine(spec, { allowEmpty = false } = {}) {
   if (spec == null || spec === '') throw new CliError('No machine given.');
   const file = readSpecText(spec);
   if (!file) {
     // Not a file: an inline code, or a typo in a path.
     const doc = readInline(spec);
-    if (doc) return finish(doc, spec);
+    if (doc) return finish(doc, spec, allowEmpty);
     throw new CliError(`${spec}: no such file, and not a machine code or a Turing machine in the standard notation.`);
   }
-  return finish(parseText(file.text, file.name), file.name);
+  return finish(parseText(file.text, file.name), file.name, allowEmpty);
 }
 
 /** Text recognised by its name first and its content second. */
@@ -117,7 +117,7 @@ export function readInline(text) {
   return null;
 }
 
-function finish(raw, name) {
+function finish(raw, name, allowEmpty = false) {
   let doc = raw;
   const warnings = [...(raw.warnings || [])];
   try {
@@ -128,7 +128,8 @@ function finish(raw, name) {
     throw new CliError(`${name}: ${e.message}`);
   }
   const target = targetFromDoc(doc);
-  if (!target.states.length) throw new CliError(`${name}: the machine has no states.`);
+  // An exercise is a blank canvas on purpose; everything else needs a machine.
+  if (!target.states.length && !allowEmpty) throw new CliError(`${name}: the machine has no states.`);
   return { doc, target, name, warnings };
 }
 
