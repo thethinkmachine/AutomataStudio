@@ -89,6 +89,11 @@ jobs:
       - name: Build web bundle
         run: npm run build
 
+      # The command line ships inside the app (dist-cli/, unpacked from the
+      # asar), run by the app's own executable through resources/cli/automata.
+      - name: Build command-line bundle
+        run: npm run cli:build
+
       - name: Package with electron-builder
         run: npx electron-builder --${{ matrix.platform }} --publish never
         env:

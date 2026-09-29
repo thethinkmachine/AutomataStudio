@@ -7,6 +7,9 @@
     "email": "shreyan.chaubey@gmail.com"
   },
   "main": "electron/main.cjs",
+  "bin": {
+    "automata": "cli/automata.mjs"
+  },
   "type": "module",
   "devDependencies": {
     "assemblyscript": "^0.28.20",
@@ -22,6 +25,8 @@
     "dev": "vite",
     "build": "vite build",
     "test": "node --conditions=browser --conditions=development --test",
+    "cli": "node cli/automata.mjs",
+    "cli:build": "vite build --config vite.cli.config.js",
     "bench": "node bench/run.mjs",
     "icons": "node scripts/build-icons.mjs",
     "glyphs": "node scripts/build-glyphs.mjs",
@@ -31,8 +36,8 @@
     "library:check": "node --conditions=browser --conditions=development scripts/library/build.mjs --check",
     "library:dev": "node --conditions=browser --conditions=development scripts/library/dev-server.mjs",
     "electron:dev": "concurrently -k -s first \"npm:dev\" \"wait-on http://localhost:5173 && cross-env ELECTRON_DEV_SERVER_URL=http://localhost:5173 electron .\"",
-    "electron:preview": "npm run build && electron .",
-    "electron:build": "npm run build && electron-builder"
+    "electron:preview": "npm run build && npm run cli:build && electron .",
+    "electron:build": "npm run build && npm run cli:build && electron-builder"
   },
   "build": {
     "appId": "com.automataplayground.app",
@@ -47,7 +52,8 @@
     "files": [
       "electron/**/*",
       "dist/**/*",
-      "package.json"
+      "package.json",
+      "dist-cli/**/*"
     ],
     "directories": {
       "output": "release",
@@ -95,6 +101,15 @@
         "rank": "Owner",
         "mimeType": "application/x-automatastudio+json",
         "icon": "build/icon.png"
+      }
+    ],
+    "asarUnpack": [
+      "dist-cli/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "build/cli",
+        "to": "cli"
       }
     ]
   },

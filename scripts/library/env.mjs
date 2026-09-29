@@ -17,7 +17,7 @@
 // run as `node --conditions=browser --conditions=development …`; the npm
 // scripts in package.json say so.
 
-import '../../tests/dom-stub.js';
+import '../../js/headless/dom-stub.js';
 import '../../js/simulation.js';
 import '../../js/machines/index.js';
 
