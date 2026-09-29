@@ -1835,6 +1835,7 @@ export function fitToScreen(silent = false) {
   App.cam.x = region.x + region.w / 2 - cx * z;
   App.cam.y = region.y + region.h / 2 - cy * z;
   App.cam.z = z;
+  framedVis = wrapRect ? { cw: wrapRect.width, ch: wrapRect.height, x: vis.x, w: vis.w } : null;
   // `silent` marks the programmatic fits that run on load/restore. Those must
   // not dirty the tab — the camera they set is the one that was just restored.
   if (!silent && typeof markDirty === 'function') markDirty();
@@ -1875,12 +1876,24 @@ export function autoFitLoadedMachine() {
 // nobody thought to wire up still counts. Observers only say *when* to
 // measure. Both sides wait for movement to settle, because the card scales in
 // and a box read mid-animation is a box that is about to change.
+//
+// An unpinned sidebar is followed too, and deliberately: peeking one open over
+// the canvas re-fits the machine into what is left, and letting it fold away
+// gives the room back. It is measured differently, because it is not an
+// obstacle a fit cuts around but the edge of the visible box itself, so the
+// test is visibleCanvasBox() against the one the last fit framed into. That
+// half ignores the settle window: a fit cannot move a panel, so a panel that
+// moved just after one is a real change. Unpinning is the case that needs it —
+// the canvas widens at once, the resize path fits while the panel is still
+// open under the pointer, and the panel folds a moment later, inside the window.
 export const FRAMING_SETTLE_MS = 260;
 // Changes smaller than this are noise — the zoom readout in the nav bar
 // changing width as a fit changes the zoom must not set off another fit.
 export const FRAMING_TOLERANCE = 3;
 
 let framedCam = null;
+// The canvas size and visible box (x, w) the last fit framed into.
+let framedVis = null;
 let framingBaseline = null;
 let framingTimer = null;
 // A check inside this window after a fit adopts what it measures as the new
@@ -1904,6 +1917,7 @@ export function isFramed() {
 
 export function resetFraming() {
   framedCam = null;
+  framedVis = null;
   framingBaseline = null;
   framingQuietUntil = 0;
   clearTimeout(framingTimer);
@@ -1919,6 +1933,16 @@ function framingSignature(wrapRect) {
     out.push(Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height));
   }
   return out;
+}
+
+// Whether an unpinned sidebar opened or folded since the last fit, at the canvas
+// size that fit saw — a different size is a resize, and the resize path's.
+function visibleBoxMoved(wrapRect) {
+  const f = framedVis;
+  if (!f) return false;
+  if (Math.abs(wrapRect.width - f.cw) > FRAMING_TOLERANCE || Math.abs(wrapRect.height - f.ch) > FRAMING_TOLERANCE) return false;
+  const v = visibleCanvasBox();
+  return Math.abs(v.x - f.x) > FRAMING_TOLERANCE || Math.abs(v.w - f.w) > FRAMING_TOLERANCE;
 }
 
 function sameSignature(a, b) {
@@ -1957,6 +1981,10 @@ export function checkFraming() {
   const sig = framingSignature(rect);
   const before = framingBaseline;
   framingBaseline = sig;
+  if (visibleBoxMoved(rect) && isFramed() && App.states.length) {
+    fitToScreen(true);
+    return true;
+  }
   if (nowMs() < framingQuietUntil) return false;
   if (!before || sameSignature(before, sig)) return false;
   // A different canvas size is a resize, which frames on its own terms.
@@ -1976,7 +2004,7 @@ export function initFraming() {
   if (initFraming.done) return;
   initFraming.done = true;
   const watched = ['canvas-toolbox', 'canvas-nav-controls', 'minimap-container', 'canvas-info-btn',
-    'example-card', 'scope-bar', 'mobile-bar'].map(id => $(id)).filter(Boolean);
+    'example-card', 'scope-bar', 'mobile-bar', 'lpanel', 'rpanel'].map(id => $(id)).filter(Boolean);
   // The windows' layer is made on first use, which can be after this runs —
   // and an observer on a node that did not exist yet watches nothing, which is
   // how torn-off windows went unnoticed. Asking for it makes it now.
