@@ -10,6 +10,7 @@ import { METHOD_NAMES, decide, growthOf, run, standardFromTable, tableFromStanda
 import { PROOF_FORMAT, checkProof } from '../tm/check.mjs';
 import { runPool, workerCount } from '../tm/pool.mjs';
 import { bbStep, rootNode } from '../tm/search.mjs';
+import { proveByInduction } from '../tm/induction.mjs';
 import { Indexed, encodePNG, TAPE_PALETTE, HEAD } from '../raster.mjs';
 import { c, isTTY, print, printJson, table, warn } from '../out.mjs';
 
@@ -76,6 +77,9 @@ function detailOf(v) {
     case 'backward': return `no halting configuration is reachable more than ${v.longest} steps back`;
     case 'cps': return `closed set of ${num(v.contexts)} windows, ${v.n} cells either side`;
     case 'bound': return `ran ${num(v.steps)} steps, past S(${v.n}, ${v.k}) = ${num(v.S)}`;
+    case 'induction': return `an inductive rule over blocks of ${v.B} applies forever${v.rules > 1 ? ` (${v.rules} rules, nested)` : ''}`;
+    case 'cycler-macro': return `the tape repeats exactly, over blocks of ${v.B}`;
+    case 'block-loop': return `the head never leaves a block of ${v.B} cells`;
     default: return v.growth ? v.growth.say : `no proof within ${num(v.steps ?? 0)} steps`;
   }
 }
@@ -83,7 +87,7 @@ function detailOf(v) {
 function proofOf(item, v) {
   const { p } = item;
   const evidence = {};
-  for (const k of ['steps', 'ones', 'period', 'from', 'at', 'shift', 'window', 'direction', 'longest', 'n', 'k', 'S', 'left', 'right', 'contexts', 'how']) {
+  for (const k of ['steps', 'ones', 'period', 'from', 'at', 'shift', 'window', 'direction', 'longest', 'n', 'k', 'S', 'left', 'right', 'contexts', 'how', 'B', 'rules', 'ruleSteps', 'grows', 'start']) {
     if (v[k] !== undefined) evidence[k] = v[k];
   }
   return {
@@ -116,6 +120,7 @@ machine code; # starts a comment.
 
   --budget N        steps for the simulation-based methods (default 1000000)
   --cps N           largest closed-position-set window (default 10; 0 = off)
+  --induction-ms N  time for the inductive-rule prover per machine (default 2000; 0 = off)
   --no-bound        skip the busy beaver bound
   --no-growth       skip the growth reading for unknowns
   --input w         run on w instead of a blank tape (.automaton machines)
@@ -125,7 +130,7 @@ machine code; # starts a comment.
 
 Exit: 0 every machine decided, 2 some unknown, 3 some could not be read.`,
   options: {
-    budget: { type: 'string' }, cps: { type: 'string' }, 'no-bound': { type: 'boolean' }, 'no-growth': { type: 'boolean' },
+    budget: { type: 'string' }, cps: { type: 'string' }, 'induction-ms': { type: 'string' }, 'no-bound': { type: 'boolean' }, 'no-growth': { type: 'boolean' },
     input: { type: 'string' }, workers: { type: 'string' }, proof: { type: 'string' }
   },
   async run({ args, opts }) {
@@ -134,6 +139,7 @@ Exit: 0 every machine decided, 2 some unknown, 3 some could not be read.`,
     const settings = {
       budget: Number(opts.budget ?? 1e6),
       cpsMax: Number(opts.cps ?? 10),
+      inductionMs: Number(opts['induction-ms'] ?? 2000),
       bound: !opts['no-bound'],
       growth: !opts['no-growth']
     };
@@ -204,10 +210,15 @@ Exit: 0 every proof holds, 1 one does not.`,
       ok: true, Q: m.Q, K: m.K, start: m.start, twoWay: m.twoWay, input: [],
       next: Int32Array.from(m.next), write: Int32Array.from(m.write), move: Int8Array.from(m.move), accept: Uint8Array.from(m.accept)
     }, { budget: 1e7 });
+    const tableOf = m => ({
+      ok: true, Q: m.Q, K: m.K, start: m.start, twoWay: m.twoWay, input: [],
+      next: Int32Array.from(m.next), write: Int32Array.from(m.write), move: Int8Array.from(m.move), accept: Uint8Array.from(m.accept)
+    });
+    const reprove = (m, ev) => proveByInduction(tableOf(m), ev.B, { maxMacroSteps: 200000 });
     const out = files.map(f => {
       let proof;
       try { proof = JSON.parse(readFileSync(f, 'utf8')); } catch (e) { return { file: f, ok: false, why: `not JSON: ${e.message}` }; }
-      return { file: f, machine: proof.machine, method: proof.method, verdict: proof.verdict, ...checkProof(proof, { classify }) };
+      return { file: f, machine: proof.machine, method: proof.method, verdict: proof.verdict, ...checkProof(proof, { classify, reprove }) };
     });
     if (opts.json) printJson(out);
     else {
@@ -231,17 +242,18 @@ bound, which would assume the answer. 2×2 and 3×2 take moments; 4×2 minutes.
 
   --budget N        steps per machine (default 100000)
   --cps N           largest closed-position-set window (default 4)
+  --induction-ms N  inductive-rule prover time per machine (default 300)
   --workers N
   --holdouts FILE   write the unknown machines here, one per line
   --json`,
   options: {
     states: { type: 'string', short: 'n' }, symbols: { type: 'string', short: 'k' },
-    budget: { type: 'string' }, cps: { type: 'string' }, workers: { type: 'string' }, holdouts: { type: 'string' }
+    budget: { type: 'string' }, cps: { type: 'string' }, 'induction-ms': { type: 'string' }, workers: { type: 'string' }, holdouts: { type: 'string' }
   },
   async run({ opts }) {
     const n = Number(opts.states), k = Number(opts.symbols ?? 2);
     if (!(n >= 1 && n <= 6 && k >= 2 && k <= 6)) throw new CliError('--states is 1–6 and --symbols 2–6.');
-    const settings = { budget: Number(opts.budget ?? 1e5), cpsMax: Number(opts.cps ?? 4) };
+    const settings = { budget: Number(opts.budget ?? 1e5), cpsMax: Number(opts.cps ?? 4), inductionMs: Number(opts['induction-ms'] ?? 300) };
     let frontier = [rootNode(n, k)];
     const stats = { nodes: 0, halting: 0, never: {}, holdouts: [] };
     let champion = null, onesChampion = null;

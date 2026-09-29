@@ -93,7 +93,7 @@ class Plain {
 const fail = why => ({ ok: false, why });
 const pass = (why, independent = true) => ({ ok: true, why, independent });
 
-export function checkProof(proof, { classify = null } = {}) {
+export function checkProof(proof, { classify = null, reprove = null } = {}) {
   if (!proof || proof.format !== PROOF_FORMAT) return fail('not a proof file this checker reads');
   const m = proof.table;
   if (!m || !Number.isInteger(m.Q) || !Number.isInteger(m.K)) return fail('the proof carries no machine table');
@@ -186,6 +186,16 @@ export function checkProof(proof, { classify = null } = {}) {
         return pass(`backward reasoning again finds no halting configuration more than ${ev.longest} steps back`, false);
       }
       return fail('re-running backward reasoning did not reproduce the proof');
+    }
+    case 'induction':
+    case 'cycler-macro':
+    case 'block-loop': {
+      // Re-derived, like backward reasoning: the symbolic replay is the proof,
+      // and re-running it is the check.
+      if (!reprove) return fail('an inductive proof is re-checked by re-running the prover, which needs the app loaded');
+      const again = reprove(m, ev);
+      if (again && again.method === proof.method && again.B === ev.B) return pass(`the prover again finds the ${proof.method === 'induction' ? 'inductive rule' : proof.method} over blocks of ${ev.B}`, false);
+      return fail('re-running the prover did not reproduce the proof');
     }
     default:
       return fail(`no checker for the method "${proof.method}"`);

@@ -27,6 +27,7 @@
 // (cli/tm/check.mjs), so a verdict need not be taken on trust.
 
 import { classifyBehaviourNow } from '../../js/machines/tm-behaviour.js';
+import { induction } from './induction.mjs';
 
 // ── The table ─────────────────────────────────────────────────────
 
@@ -295,10 +296,11 @@ export function growthOf(p, { from = 5, to = 7 } = {}) {
 
 /**
  * Everything, cheapest first: the app's classifier (simulation, cycler,
- * translated cycler, backward reasoning), then CPS for n = 1…cpsMax, then the
+ * translated cycler, backward reasoning), then CPS for n = 1…cpsMax, then
+ * inductive rules over a run-length tape (for at most `inductionMs`), then the
  * busy beaver bound. `{ verdict, method, …evidence }`.
  */
-export function decide(p, { budget = 1e6, cpsMax = 10, bound = true, growth = false } = {}) {
+export function decide(p, { budget = 1e6, cpsMax = 10, inductionMs = 2000, bound = true, growth = false } = {}) {
   const v = classifyBehaviourNow(p, { budget });
   let out = { verdict: v.verdict, method: v.method || null };
   for (const k of ['steps', 'ones', 'cells', 'period', 'from', 'at', 'shift', 'window', 'direction', 'longest', 'how', 'state', 'read', 'before', 'after']) {
@@ -309,6 +311,10 @@ export function decide(p, { budget = 1e6, cpsMax = 10, bound = true, growth = fa
       const cert = cpsProve(p, n, { maxContexts: 1e6 });
       if (cert) { out = { verdict: 'never', method: 'cps', n, left: cert.left, right: cert.right, contexts: cert.contexts }; break; }
     }
+  }
+  if (out.verdict === 'unknown' && inductionMs > 0) {
+    const r = induction(p, { ms: inductionMs });
+    if (r) out = { verdict: 'never', method: r.method, B: r.B, rules: r.rules, ruleSteps: r.steps, grows: r.grows, start: r.start, from: r.from, period: r.period };
   }
   if (out.verdict === 'unknown' && bound) {
     const b = boundFor(p);
@@ -324,5 +330,6 @@ export function decide(p, { budget = 1e6, cpsMax = 10, bound = true, growth = fa
 
 export const METHOD_NAMES = {
   simulation: 'simulation', cycler: 'cycler', translated: 'translated cycler',
-  backward: 'backward reasoning', cps: 'closed position set', bound: 'busy beaver bound'
+  backward: 'backward reasoning', cps: 'closed position set', bound: 'busy beaver bound',
+  induction: 'inductive rule', 'cycler-macro': 'cycler (macro)', 'block-loop': 'loops inside a block'
 };

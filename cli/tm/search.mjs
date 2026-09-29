@@ -47,9 +47,9 @@ export function codeOf(node) {
  * unknown machine, and for one that reached an undefined transition also
  * `halt` (the halting machine made by defining it as a halt) and `children`.
  */
-export function bbStep(node, { budget = 1e5, cpsMax = 4 } = {}) {
+export function bbStep(node, { budget = 1e5, cpsMax = 4, inductionMs = 300 } = {}) {
   const p = tableOf(node);
-  const v = decide(p, { budget, cpsMax, bound: false });
+  const v = decide(p, { budget, cpsMax, inductionMs, bound: false });
   const code = codeOf(node);
   if (v.verdict !== 'halts') return { verdict: v.verdict, method: v.method, code };
   const { n, k } = node;
