@@ -149,6 +149,25 @@ export function evaluate(src, env, { sigma = null } = {}) {
   return result;
 }
 
+/**
+ * A top-level comparison from `evaluate` → `{ ok, word }`, where `word` is a
+ * word in one language and not the other when there is one. Inclusion is
+ * emptiness of the difference: A ⊆ B ⟺ A \ B = ∅, and == is both ways.
+ */
+export function answerComparison(r) {
+  const included = (a, b) => {
+    const d = product(a, b, 'diff');
+    const e = compareMachines(d, { ...d, accepts: [] });
+    return e.equal ? { ok: true, word: null } : { ok: false, word: e.tokens };
+  };
+  if (r.cmp === '==' || r.cmp === '!=') {
+    const e = compareMachines(r.l, r.r);
+    const same = e.equal === true;
+    return { ok: r.cmp === '==' ? same : !same, word: e.tokens || null };
+  }
+  return r.cmp === '<=' ? included(r.l, r.r) : included(r.r, r.l);
+}
+
 const evalCmd = {
   usage: `automata eval '<expression>' [NAME=machine ...]
 
@@ -179,19 +198,7 @@ Exit (comparisons): 0 true, 1 false.`,
     const sigma = opts.sigma ? [...opts.sigma.split(/[,\s]+/).filter(Boolean).flatMap(s => (s.length > 1 && !opts.sigma.includes(',') ? [...s] : [s]))] : null;
     const r = evaluate(src, env, { sigma });
     if (!r.cmp) return write(r, opts);
-    // A ⊆ B  ⟺  A \ B = ∅;  == is both ways.
-    const holds = (a, b) => {
-      const d = product(a, b, 'diff');
-      const e = compareMachines(d, { ...d, accepts: [] });
-      return e.equal ? { ok: true } : { ok: false, word: e.tokens };
-    };
-    let answer;
-    if (r.cmp === '==' || r.cmp === '!=') {
-      const e = compareMachines(r.l, r.r);
-      answer = { ok: e.equal === true, word: e.tokens || null };
-      if (r.cmp === '!=') answer.ok = !answer.ok;
-    } else if (r.cmp === '<=') answer = holds(r.l, r.r);
-    else answer = holds(r.r, r.l);
+    const answer = answerComparison(r);
     const eps = App.config.sym.eps;
     if (opts.json) printJson({ holds: answer.ok, counterexample: answer.word ? wordOf(answer.word, eps) : null });
     else {

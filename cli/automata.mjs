@@ -24,9 +24,11 @@ if (hasConditions() || process.env.AUTOMATA_CLI_BUNDLED) {
   const code = await main(process.argv.slice(2));
   // Long-lived commands (mcp, test --watch) resolve only when they are done.
   process.exitCode = code;
-  // App modules may leave timers behind (autosave, warm workers); a command
-  // that has finished has finished.
-  if (!process.env.AUTOMATA_KEEP_ALIVE) setImmediate(() => process.exit(code));
+  // Let the event loop drain on its own: forcing process.exit() while fetch's
+  // sockets are still closing aborts Node on Windows (a libuv assertion). The
+  // unref'd timer is the backstop for anything an app module leaves running —
+  // it cannot keep the process alive itself, and fires only if something else does.
+  if (!process.env.AUTOMATA_KEEP_ALIVE) setTimeout(() => process.exit(code), 300).unref();
 } else {
   const child = spawn(process.execPath, [...process.execArgv, ...CONDITIONS, fileURLToPath(import.meta.url), ...process.argv.slice(2)], {
     stdio: 'inherit'

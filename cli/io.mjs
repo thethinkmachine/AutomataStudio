@@ -80,6 +80,14 @@ export function readMachine(spec, { allowEmpty = false } = {}) {
   return finish(parseText(file.text, file.name), file.name, allowEmpty);
 }
 
+/**
+ * Machine text that is not in a file — a document pasted into an MCP tool call,
+ * say — read the way a file with that content would be.
+ */
+export function readMachineText(text, name = '<text>') {
+  return finish(parseText(text, name), name);
+}
+
 /** Text recognised by its name first and its content second. */
 export function parseText(text, name = '') {
   const ext = extname(name).toLowerCase();

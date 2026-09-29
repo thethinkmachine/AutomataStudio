@@ -12,8 +12,15 @@
 // something a module can ask for. cli/automata.mjs re-executes itself with it;
 // the bundle (npm run cli:build) has the choice made at build time.
 
+import { nodeGlobals } from './node-globals.mjs';
 import '../js/headless/dom-stub.js';
 import '../js/simulation.js';
 import '../js/machines/index.js';
+
+// The stub's fetch throws, which is right for a test and wrong for a command
+// that reads the machine library; the real one comes back.
+for (const [key, value] of Object.entries(nodeGlobals)) {
+  if (value) Object.defineProperty(globalThis, key, { value, writable: true, configurable: true, enumerable: true });
+}
 
 export { App, APP_VERSION } from '../js/state.js';

@@ -98,10 +98,10 @@ The code the export dialog generates. --class-name sets Java's class.`,
 
 const svg = {
   usage: 'automata svg <machine> [-o file.svg]\n\nThe machine drawn with state names, and edge labels where it is small enough to read them.',
-  options: { output: { type: 'string', short: 'o' } },
+  options: { output: { type: 'string', short: 'o' }, theme: { type: 'string' } },
   async run({ args, opts }) {
     const { target, doc } = readMachine(args[0] ?? '-');
-    emit(serialize(target, 'svg', { doc }), opts.output);
+    emit(serialize(target, 'svg', { doc, theme: opts.theme }), opts.output);
     return 0;
   }
 };

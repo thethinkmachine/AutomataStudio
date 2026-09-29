@@ -23,6 +23,7 @@ import { docFromTarget, docText } from './io.mjs';
 import { hoaText } from './formats/hoa.mjs';
 import { baText, timbukText } from './formats/ba.mjs';
 import { jffText } from './formats/jff.mjs';
+import { standalone } from './figure.mjs';
 
 const BY_EXT = {
   '.automaton': 'automaton', '.json': 'automaton',
@@ -82,7 +83,7 @@ export function exportOptions(key, overrides = []) {
 }
 
 /** A target (and, when it came from a file, its document) → text in `format`. */
-export function serialize(target, format, { doc = null, opts = [], name = null } = {}) {
+export function serialize(target, format, { doc = null, opts = [], name = null, theme = null } = {}) {
   const sym = { ...App.config.sym, ...(target.config?.sym || {}) };
   switch (format) {
     case 'automaton': return docText(doc || docFromTarget(target));
@@ -99,7 +100,12 @@ export function serialize(target, format, { doc = null, opts = [], name = null }
       if (!s) throw new CliError('Only a one-tape Turing machine over the digits, with L/R moves and one halt, has a standard-notation string.');
       return s + '\n';
     }
-    case 'svg': return namedDiagram(doc ? { ...target, states: doc.states } : { ...target, states: docFromTarget(target).states }, { w: 720 }).svg + '\n';
+    case 'svg': {
+      // The sketch is drawn with classes; a file has no page to style it, so
+      // the rules come with it.
+      const placed = doc ? { ...target, states: doc.states } : { ...target, states: docFromTarget(target).states };
+      return standalone(namedDiagram(placed, { w: 720 }).svg, { theme: theme || 'light' }) + '\n';
+    }
     default: {
       const spec = ExportFormats[format];
       if (!spec) throw new CliError(`"${format}" is not a format.`);

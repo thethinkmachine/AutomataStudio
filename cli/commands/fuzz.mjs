@@ -11,7 +11,7 @@ import { c, print, printJson } from '../out.mjs';
 const YES = /^(1|true|yes|y|accept|acc|a|✓)$/i;
 const NO = /^(0|false|no|n|reject|rej|r|✗)$/i;
 
-function wordText(w) {
+export function wordText(w) {
   return w.every(s => [...s].length === 1) ? w.join('') : w.join(' ');
 }
 
@@ -21,7 +21,7 @@ function wordText(w) {
  * answers: `exit` (0 accept, anything else reject), `stdout` (a yes/no word on
  * the first line) or `output` (the first line is a transducer's output).
  */
-function oneShotOracle(cmd, mode, timeout) {
+export function oneShotOracle(cmd, mode, timeout) {
   return w => {
     const text = wordText(w);
     const line = cmd.includes('{}') ? cmd.split('{}').join(JSON.stringify(text)) : `${cmd} ${JSON.stringify(text)}`;
@@ -41,7 +41,7 @@ function interpret(mode, status, stdout) {
 }
 
 /** Batch: one process, every word on its own line of stdin, one answer per line of stdout. */
-function batchOracle(cmd, mode, timeout) {
+export function batchOracle(cmd, mode, timeout) {
   return list => {
     const input = list.map(wordText).join('\n') + '\n';
     const r = spawnSync(cmd, { shell: true, input, encoding: 'utf8', timeout, maxBuffer: 1 << 28 });

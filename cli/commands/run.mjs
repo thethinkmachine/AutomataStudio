@@ -184,6 +184,10 @@ export function traceSteps(target, raw, cap) {
           note: strip(st.note),
           tape: Array.isArray(st.tape) ? [...st.tape] : null,
           head: Number.isInteger(st.head) ? st.head : null,
+          // The window's first cell as an absolute cell number: a two-way tape
+          // renumbers its window when it grows left, and a picture of the run
+          // has to hold still under that.
+          origin: Number.isInteger(st.view?.origin) ? st.view.origin : 0,
           tapes: Array.isArray(st.tapes) ? st.tapes.map(t => [...t]) : null,
           heads: Array.isArray(st.heads) ? [...st.heads] : null,
           stack: Array.isArray(st.stack) ? [...st.stack] : null,
