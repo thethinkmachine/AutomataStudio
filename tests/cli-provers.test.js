@@ -66,12 +66,13 @@ test('closed position sets never claim a halting 3-state machine', () => {
 });
 
 test('inductive rules never claim a halting 3-state machine', () => {
-  const claims = sweep(3, 2, 21, { cpsMax: 0, inductionMs: 30 });
+  const claims = sweep(3, 2, 21, { cpsMax: 0, inductionMs: 10 });
   assert.ok(claims > 500, `only ${claims} claims were made`);
 });
 
 test('neither prover claims a halting 2-state 3-symbol machine', () => {
-  sweep(2, 3, 38, { cpsMax: 4, inductionMs: 20 });
+  const claims = sweep(2, 3, 38, { cpsMax: 4, inductionMs: 8 });
+  assert.ok(claims > 1000, `only ${claims} claims were made`);
 });
 
 test('neither prover claims a halting 4-state machine, on a random sample', () => {

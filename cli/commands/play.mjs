@@ -127,7 +127,8 @@ machine is in and the edge it took, and the last frame holds in the verdict's
 colour. Opens in any browser and drops into slides that take SVG.
 
   --gif             a tape machine's run as an animated GIF instead: the
-                    space-time diagram growing one row per step
+                    space-time diagram growing one row per step. For video,
+                    ffmpeg -i run.gif -pix_fmt yuv420p run.mp4
   --step-ms N       milliseconds per step (default 600)
   --theme dark      dark colours (default light)
   --limit N         at most N steps (default 200)`,

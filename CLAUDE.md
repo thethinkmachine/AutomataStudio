@@ -18,7 +18,11 @@ npm run wasm               # asc wasm/label-penalty.ts -> js/wasm/ (output commi
 npm run bench              # engine, player, canvas and space-time timings vs bench/baseline.json
 npm run library:init -- ../automata-library   # scaffold + seed a checkout of the machine library
 npm run library:build -- --library ../automata-library   # its index, pictures and website -> _site/
+npm run cli -- --help      # the `automata` command line, from source (bin: cli/automata.mjs)
+npm run cli:build          # vite build --config vite.cli.config.js -> dist-cli/ (runs under plain node)
 ```
+
+`automata` is the app's engine from a terminal — run, test, trace, lint, compare, convert and grade machines; HOA/BA/Timbuk/JFLAP formats; learning; an MCP server; and Turing-machine halting proofs. `electron:build` builds `dist-cli/` too, and the installed app ships it with launchers in `resources/cli/`. See [The command line](.claude/skills/cli/SKILL.md).
 
 `npm run wasm` is run by hand after editing [wasm/label-penalty.ts](wasm/label-penalty.ts) and its output is committed, the way `npm run glyphs` and `npm run icons` already are — the build does not shell out to a compiler. See [The label kernel](.claude/skills/perf/SKILL.md).
 
@@ -44,6 +48,7 @@ only when they are relevant — same text, same headings, nothing was deleted.
 | The machine library: its index, badges, the Library view, submissions and the library repo's CI | `.claude/skills/library/SKILL.md` |
 | Dialogs and the two sidebars | `.claude/skills/ui-chrome/SKILL.md` |
 | The machine card, the wizard, the mobile shell | `.claude/skills/ui-features/SKILL.md` |
+| The `automata` command line: formats, provers, grading, learning, MCP, the bundle | `.claude/skills/cli/SKILL.md` |
 | Grammars | `js/grammar/CLAUDE.md` (loads automatically) |
 
 ## Architecture
@@ -297,7 +302,7 @@ Adding a theme touches two places, documented at the top of [js/themes.js](js/th
 
 ## Tests
 
-`node:test` + `node:assert`, ESM. [tests/harness.js](tests/harness.js) imports the real modules — including each of the machine modules, since the machines' own functions (`simTM`, `testFST`, `decideMachine`) are reached through `context` the way every other export is; [tests/dom-stub.js](tests/dom-stub.js) installs a fake DOM, `localStorage`, `location` and friends on `globalThis` — it must be imported first, which is why it is a separate module (imports are evaluated before any module body).
+`node:test` + `node:assert`, ESM. [tests/harness.js](tests/harness.js) imports the real modules — including each of the machine modules, since the machines' own functions (`simTM`, `testFST`, `decideMachine`) are reached through `context` the way every other export is; [tests/dom-stub.js](tests/dom-stub.js) installs a fake DOM, `localStorage`, `location` and friends on `globalThis` — it must be imported first, which is why it is a separate module (imports are evaluated before any module body). The stub itself lives in [js/headless/dom-stub.js](js/headless/dom-stub.js), because the command line ships it and shipped code does not import from `tests/`; the file in `tests/` re-exports it.
 
 `context` is a flat live view over every module export, plus browser globals proxied in both directions so tests can install fakes (`context.indexedDB = fake`, `context.matchMedia = () => …`). It uses getters rather than copying, because several exports are `let` bindings the app reassigns (`saveState`, `Workspaces`, `R`).
 
