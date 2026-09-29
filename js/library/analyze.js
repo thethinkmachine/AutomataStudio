@@ -32,7 +32,8 @@ import { subsetSide, withMachine } from '../exercise/grade.js';
 import { writeStandardTM } from '../interop/standard-tm.js';
 import { migrateWorkspaceDoc, normalizeMachineType, validateSchema } from '../persistence.js';
 import { thumbBounds, thumbEdgePairs, thumbEdgePath, thumbEdgeSegments, thumbFit, thumbNodeRadius } from '../graph-thumb.js';
-import { hash64 } from './hash.js';
+import { canonicalCodeOf, hash64, machineIdOf } from './hash.js';
+import { unsealTarget } from '../exercise/model.js';
 import { drawSketch, packSketch, sketchAspect, sketchFromTarget } from './sketch.js';
 import { isLibraryId } from './config.js';
 
@@ -277,6 +278,53 @@ export function minimalDfaOf(target) {
 export function languageFingerprint(dfa) {
   if (!dfa) return null;
   return hash64(JSON.stringify([dfa.sigma, dfa.acc, dfa.delta]));
+}
+
+/**
+ * An exercise's identity: its task, which is the reference it is graded
+ * against and the rules an answer has to follow — never its title, prompt,
+ * hints or grading budget, which say how the task is put, and never its
+ * canvas, which is only where a student starts. Two exercises that grade every
+ * answer the same way are one exercise, however differently they are worded.
+ *
+ * The reference is named at the strength the grader can tell it apart:
+ *
+ *   a finite automaton   by its language (the minimal DFA's fingerprint), since
+ *                        grading one is an exact language comparison — two
+ *                        drawings of "an even number of 1s" set one task;
+ *   any other machine    by the machine (hash.js canonicalCodeOf, flat), since
+ *                        their languages cannot be compared exactly;
+ *   a grammar            by its start symbol and productions in a fixed order.
+ *                        Renaming a variable makes it another grammar here —
+ *                        grammar isomorphism is a harder question than this
+ *                        needs to answer.
+ *
+ * Hashed under its own tag, so an exercise's id can never equal a machine's.
+ * Null when the reference cannot be read.
+ */
+export function exerciseIdOf(doc) {
+  const ex = doc?.exercise;
+  if (!ex || typeof ex !== 'object') return null;
+  let target;
+  try { target = unsealTarget(ex.target); } catch { return null; }
+  if (!target || typeof target !== 'object') return null;
+  let ref = null;
+  if (target.kind === 'grammar') {
+    const g = target.grammar || {};
+    const prods = (g.productions || []).map(p => [String(p.lhs ?? ''), String(p.rhs ?? '')]).sort((a, b) => (JSON.stringify(a) < JSON.stringify(b) ? -1 : 1));
+    ref = ['grammar', JSON.stringify([String(g.start ?? ''), prods])];
+  } else {
+    const sym = { ...App.config.sym, ...(doc.config?.sym || {}) };
+    const machine = { ...target, config: { ...(target.config || {}), sym } };
+    let dfa = null;
+    try { dfa = minimalDfaOf(machine); } catch { dfa = null; }
+    const print = languageFingerprint(dfa);
+    ref = print ? ['language', print] : ['machine', canonicalCodeOf(machine, { flat: true })];
+  }
+  if (!ref[1]) return null;
+  const allow = [...new Set(Array.isArray(ex.allow) ? ex.allow.filter(m => typeof m === 'string') : [])].sort();
+  const answer = ex.answer === 'grammar' ? 'grammar' : 'machine';
+  return hash64(JSON.stringify(['exercise', answer, allow, ex.maxStates ?? null, ...ref]));
 }
 
 /**
@@ -843,6 +891,15 @@ export function analyzeDocument(doc, opts = {}) {
     badges,
     behaviour,
     fingerprint,
+    // What this entry is, so the library can list it once. A machine is known
+    // by the machine (hash.js machineIdOf) — for every kind of machine, where
+    // the fingerprint above says only that two agree on a language. An
+    // exercise is known by its task (exerciseIdOf): its canvas is only where a
+    // student starts, so two exercises starting from the same near-empty
+    // machine are not one exercise, and two with different starting points
+    // that grade every answer alike are.
+    machineId: doc.exercise ? null : machineIdOf(doc),
+    taskId: doc.exercise ? exerciseIdOf(doc) : null,
     // The table is what lets the library search by word without downloading a
     // machine. Past 64 states it is more index than it is worth.
     dfa: dfa && dfa.n <= 64 ? { sigma: dfa.sigma, n: dfa.n, start: dfa.start, acc: dfa.acc, delta: dfa.delta } : null,

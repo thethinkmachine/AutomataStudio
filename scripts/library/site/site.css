@@ -418,6 +418,10 @@ body.is-searching .discover { display: none; }
 .board-name { font-family: var(--serif); font-size: 1.06rem; color: var(--text); text-decoration: none; }
 .board-name:hover { color: var(--accent); }
 .board .code-text { font-size: .72rem; padding: 2px 7px; }
+/* A machine's code in the listing's aside: most are a line, a multi-tape
+   machine's can be hundreds of characters, so it scrolls in its well. */
+.machine-code { display: flex; flex-direction: column; gap: 8px; }
+.machine-code .code-text { font-size: .76rem; max-height: 9.5em; overflow-y: auto; }
 .row-actions { text-align: right !important; white-space: nowrap; }
 
 /* ── submitting ── */

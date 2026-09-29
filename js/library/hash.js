@@ -17,7 +17,10 @@
 // This one is the same function in the app, in the test suite and in the
 // library's CI, which is the property that matters.
 //
-// Import-free, so CI can use it without evaluating the app.
+// It imports only the machine-code codec, which imports nothing, so CI can
+// still use it without evaluating the app.
+
+import { DEFAULT_SYM, SMTFError, writeMachineCode } from '../interop/smtf.js';
 
 export function hash64(input) {
   const str = String(input ?? '');
@@ -53,6 +56,42 @@ export function machineStructureHash(doc) {
     [...(d.states || [])].map(strip).sort(byId), [...(d.transitions || [])].map(strip).sort(byId),
     d.startId || null, [...(d.accepts || [])].sort()
   ]));
+}
+
+/**
+ * The machine a document describes, as its canonical code (js/interop/smtf.js)
+ * with no labels — or null when it has none (no start state, say).
+ *
+ * `flat` writes it without its blocks. The blocks are how a machine is
+ * *organised*, the way its layout is how it is drawn: inlining is their
+ * semantics, so a machine built from blocks and the same machine drawn flat are
+ * one machine, and identity has to say so.
+ */
+export function canonicalCodeOf(doc, { flat = false } = {}) {
+  if (!doc || typeof doc !== 'object') return null;
+  try {
+    const d = flat ? { ...doc, blocks: [] } : doc;
+    return writeMachineCode(d, { sym: { ...DEFAULT_SYM, ...(doc.config?.sym || {}) }, labels: false }).code;
+  } catch (e) {
+    if (e instanceof SMTFError) return null;
+    throw e;
+  }
+}
+
+/**
+ * The library's name for a *machine*, as distinct from an entry: the hash of
+ * its flat canonical code. Two documents share it exactly when they are the
+ * same machine up to state names, state order, layout, symbol order and block
+ * grouping — so it is what a duplicate is, for every kind of machine, where the
+ * language fingerprint only reaches finite automata and asks a weaker question.
+ *
+ * An entry's id is a path and outlives changes to its machine (an update keeps
+ * its link); this changes exactly when the machine does. The two are never
+ * interchangeable, which is why neither is called just "id" in the index.
+ */
+export function machineIdOf(doc) {
+  const code = canonicalCodeOf(doc, { flat: true });
+  return code ? hash64(code) : null;
 }
 
 /**

@@ -388,6 +388,11 @@
   padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--lib-well); overflow-wrap: anywhere;
 }
 .lib-standard-actions { display: flex; gap: 16px; }
+/* A machine's code in the listing's aside. Most are a line; a multi-tape
+   machine's can run to hundreds of characters, so it scrolls in its well
+   rather than pushing the facts below it off the page. */
+.lib-machine-code { display: flex; flex-direction: column; gap: 8px; }
+.lib-machine-code .lib-code-text { align-self: stretch; font-size: .76rem; max-height: 9.5em; overflow-y: auto; }
 
 .lib-prose { font-family: var(--serif); font-size: 1.14rem; line-height: 1.6; color: var(--text); max-width: 66ch; }
 .lib-prose p { margin: 0 0 .8em; }

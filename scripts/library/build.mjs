@@ -21,6 +21,8 @@
 //   --no-site          write the data only
 //   (programmatic only) cache: a Map kept between builds, so an unchanged
 //                      file is not analysed again
+//   (programmatic only) only: the Set of files a pull request changed — what
+//                      loses when two entries are the same machine
 //   --changed-since REF  judge only the files changed since REF (a pull request's
 //                      base); every entry is still analysed, since a new one can
 //                      make an old one a duplicate or a remix target
@@ -42,7 +44,7 @@ import { fileURLToPath } from 'node:url';
 import { analyzeDocument, decideRaw, libraryMetaOf, namedDiagram, outputText, runFramesOf } from '../../js/library/analyze.js';
 import { buildFormalDefLatex } from '../../js/render.js';
 import { withMachine } from '../../js/exercise/grade.js';
-import { contentHash } from '../../js/library/hash.js';
+import { canonicalCodeOf, contentHash } from '../../js/library/hash.js';
 import { INDEX_FORMAT, INDEX_VERSION, LIBRARY_REPO, LIBRARY_SITE_URL, isLibraryId } from '../../js/library/config.js';
 import { normalizeIndex } from '../../js/library/index-model.js';
 import { frontispieceOf, writeSite } from './site.mjs';
@@ -137,6 +139,12 @@ async function fileHistory(file) {
   }
 }
 
+/** A date as a time, for ordering: git writes each in its committer's offset, so text order is wrong. Undated sorts last. */
+function dateOf(s) {
+  const t = Date.parse(s || '');
+  return Number.isFinite(t) ? t : Infinity;
+}
+
 async function readJson(file, fallback) {
   try { return JSON.parse(await readFile(file, 'utf8')); } catch { return fallback; }
 }
@@ -190,7 +198,7 @@ export async function buildLibrary(opts) {
       hash: contentHash(text), bytes: Buffer.byteLength(text),
       // Copied: with the emulator's cache, `a` outlives this build, and what
       // this build writes onto an entry must not land in the next one's.
-      stats: f.stats, badges: [...f.badges], behaviour: f.behaviour, fingerprint: f.fingerprint, dfa: f.dfa, sketch: f.sketch, tests: f.tests,
+      stats: f.stats, badges: [...f.badges], behaviour: f.behaviour, fingerprint: f.fingerprint, machineId: f.machineId, taskId: f.taskId, dfa: f.dfa, sketch: f.sketch, tests: f.tests,
       forkOf: f.forkOf, remixes: [], collections: [], art: []
     };
     for (const v of a.art || []) {
@@ -213,6 +221,32 @@ export async function buildLibrary(opts) {
     // Harmless, and not worth dropping an entry over: the link is ignored.
     if (parent.id === e.id) { resultOf(e.id).warnings.push('It names itself as what it was remixed from; that is ignored.'); e.forkOf = null; continue; }
     parent.remixes.push(e.id);
+  }
+
+  // ── the same machine, or the same exercise, twice ──
+  // A library lists a machine once: the same machine under a second title adds
+  // a card, not a machine, and the card is what an update is for. Identity is
+  // the machine id (hash.js machineIdOf) — the same machine up to state names,
+  // layout and blocks, for every kind of machine — and for an exercise its
+  // task id (analyze.js exerciseIdOf): the same reference and the same rules
+  // for an answer, however the task is worded. The two are hashed under
+  // different tags, so an exercise never collides with a machine.
+  //
+  // The newcomer is the one refused, and "newcomer" is decided so that a change
+  // can only ever fail itself: under a PR check the files the PR changes come
+  // last, and otherwise the file changed most recently does. Ordered by the
+  // date *added* instead, an author updating an old entry into a copy of a
+  // newer one would unpublish the newer one — someone else's, untouched.
+  const changedLast = e => (opts.only?.has(e.path) ? 1 : 0);
+  const byMachine = new Map();
+  for (const e of [...entries].sort((x, y) => changedLast(x) - changedLast(y) || dateOf(x.updated) - dateOf(y.updated) || x.id.localeCompare(y.id))) {
+    const key = e.machineId || e.taskId;
+    if (!key) continue;
+    const first = byMachine.get(key);
+    if (!first) { byMachine.set(key, e); continue; }
+    resultOf(e.id).errors.push(e.taskId
+      ? `It is the same exercise as “${first.title}” (${first.id}) — the same reference and the same rules for an answer, however it is worded. Improve that exercise instead, or set a different task.`
+      : `It is the same machine as “${first.title}” (${first.id}) — identical up to state names, layout and blocks. Improve that entry instead, or change the machine.`);
   }
 
   // ── the same language, twice ──
@@ -325,6 +359,9 @@ export function listingOf({ target, doc }, entry) {
     try { out.runFrames = runFramesOf(target, 90); } catch { /* none */ }
   }
   out.readme = libraryMetaOf(doc).readme;
+  // The machine's code, as the app's listing shows it — blocks and all, names
+  // left off, since the code is what names the machine.
+  if (!doc?.exercise) out.code = canonicalCodeOf(doc);
   return out;
 }
 
@@ -396,7 +433,16 @@ export async function writeLibrary(opts, built) {
       if (src) listings.set(e.id, listingOf(src, e));
     }
     await writeSite(out, index, built.config, {
-      assets: { 'config.js': join(HERE, '../../js/library/config.js'), 'index-model.js': join(HERE, '../../js/library/index-model.js') },
+      // The modules the site's search imports, in the repo's own layout: the
+      // library's beside site.js in assets/, and the codec code-search.js
+      // reads a pasted machine code with at ../interop/, as it is in js/.
+      assets: {
+        'config.js': join(HERE, '../../js/library/config.js'),
+        'index-model.js': join(HERE, '../../js/library/index-model.js'),
+        'code-search.js': join(HERE, '../../js/library/code-search.js'),
+        'hash.js': join(HERE, '../../js/library/hash.js'),
+        '../interop/smtf.js': join(HERE, '../../js/interop/smtf.js')
+      },
       listings
     });
   }
@@ -407,8 +453,10 @@ export async function writeLibrary(opts, built) {
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const t0 = Date.now();
-  const built = await buildLibrary(opts);
+  // Known before the build, since which of two identical machines is refused
+  // depends on which one the pull request changed.
   const only = opts.changedSince ? changedFiles(opts.library, opts.changedSince) : null;
+  const built = await buildLibrary({ ...opts, only });
   const md = reportMarkdown(built.results, { only });
   if (opts.report) await writeFile(resolve(opts.report), md);
   const failed = built.results.filter(r => r.errors.length && (!only || only.has(r.file)));
