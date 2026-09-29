@@ -7,6 +7,9 @@
     "email": "shreyan.chaubey@gmail.com"
   },
   "main": "electron/main.cjs",
+  "bin": {
+    "automata": "cli/automata.mjs"
+  },
   "type": "module",
   "devDependencies": {
     "assemblyscript": "^0.28.20",
@@ -22,6 +25,7 @@
     "dev": "vite",
     "build": "vite build",
     "test": "node --conditions=browser --conditions=development --test",
+    "cli": "node cli/automata.mjs",
     "bench": "node bench/run.mjs",
     "icons": "node scripts/build-icons.mjs",
     "glyphs": "node scripts/build-glyphs.mjs",

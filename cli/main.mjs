@@ -1,0 +1,204 @@
+// ══════════════════════════════════════════════════════════════════
+//  THE COMMAND LINE
+// ══════════════════════════════════════════════════════════════════
+// One table of commands, one argument parser, one place that turns a thrown
+// CliError into a sentence and an exit code. Each command lives in a module
+// under commands/ that is imported only when that command runs, after
+// env.mjs — the DOM stand-in has to be installed before any app module is
+// evaluated, which a static import from here could not guarantee.
+//
+// Exit codes are the three-valued verdict wherever a command decides
+// something, and never fold "unknown" into "reject":
+//
+//   0  accept / equal / pass / halts proved / nothing found
+//   1  reject / different / fail / a lint finding
+//   2  unknown — a budget ran out before an answer
+//   3  the command could not run (bad input, bad flag, missing file)
+
+import { parseArgs } from 'node:util';
+
+const COMMANDS = {
+  // Running
+  run: ['run', 'Decide words: accept, reject or unknown (and a transducer\'s output)'],
+  test: ['run', 'Batch-test words from a file; "w => accept" lines are expectations. --watch reruns on save'],
+  trace: ['run', 'Print a word\'s run step by step'],
+  play: ['play', 'Animate a run in the terminal'],
+  // Looking
+  info: ['info', 'Type, tuple, size, determinism, language class, regex, minimal DFA size'],
+  lint: ['info', 'Find unreachable and dead states, unused symbols, branching D-types, …'],
+  words: ['words', 'List, count or uniformly sample the accepted words of a finite automaton'],
+  profile: ['words', 'Steps and space per input length, with a growth estimate (CSV)'],
+  // Comparing
+  equiv: ['compare', 'Do two machines accept the same language? Prints a counterexample if not'],
+  diff: ['compare', 'Structural and language differences between two versions of a machine'],
+  similar: ['compare', 'Group machines that recognise the same language (or are the same machine)'],
+  fuzz: ['fuzz', 'Compare a machine with an external program on random words, and shrink a disagreement'],
+  // Transforming (machine in, machine out — pipe-friendly)
+  'from-regex': ['ops', 'Regular expression → ε-NFA (Thompson)'],
+  'to-regex': ['ops', 'Finite automaton → regular expression (state elimination)'],
+  determinize: ['ops', 'Subset construction → DFA'],
+  minimize: ['ops', 'Minimal DFA'],
+  complement: ['ops', 'Complement DFA over Σ'],
+  reverse: ['ops', 'Reverse the language'],
+  star: ['ops', 'Kleene star'],
+  union: ['ops', 'Union of two finite automata'],
+  concat: ['ops', 'Concatenation of two finite automata'],
+  intersect: ['ops', 'Product DFA for the intersection'],
+  difference: ['ops', 'Product DFA for A \\ B'],
+  'eps-elim': ['ops', 'Remove ε-moves'],
+  eval: ['ops', 'Evaluate an expression over machines: min(det(A) & ~B)'],
+  // Formats
+  convert: ['convert', 'Convert between .automaton, .jff, HOA, BA, Timbuk, machine codes, …'],
+  export: ['convert', 'Any of the app\'s export formats: DOT, TikZ, tables, samples, code, tests'],
+  codegen: ['convert', 'Generate code: --lang js|py|java|c|xstate|scxml'],
+  svg: ['convert', 'Draw the machine as an SVG'],
+  animate: ['play', 'A run as an animated SVG, or a Turing machine\'s space-time diagram as a GIF'],
+  // Teaching
+  grade: ['grade', 'Grade submissions against an exercise; CSV or Gradescope results.json'],
+  generate: ['grade', 'Random exercises with answer keys'],
+  // Turing machines
+  halts: ['tm', 'Does it halt? Proof methods, growth class, workers, proof files'],
+  'check-proof': ['tm', 'Independently re-check a proof file written by halts --proof'],
+  'bb-search': ['tm', 'Enumerate n-state Turing machines and classify them all'],
+  'tm-normalize': ['tm', 'Put Turing machines in normal form and drop duplicates'],
+  sheet: ['tm', 'A contact sheet of space-time diagrams, one per machine'],
+  // Learning
+  learn: ['learn', 'Learn a DFA: RPNI from labelled words, or L* from a membership oracle'],
+  // Elsewhere
+  library: ['library', 'Search and fetch machines from the machine library'],
+  mcp: ['mcp', 'Serve the engine to AI agents over the Model Context Protocol (stdio)']
+};
+
+const GROUPS = [
+  ['Running', ['run', 'test', 'trace', 'play']],
+  ['Looking', ['info', 'lint', 'words', 'profile']],
+  ['Comparing', ['equiv', 'diff', 'similar', 'fuzz']],
+  ['Transforming', ['from-regex', 'to-regex', 'determinize', 'minimize', 'complement', 'reverse', 'star', 'union', 'concat', 'intersect', 'difference', 'eps-elim', 'eval']],
+  ['Formats', ['convert', 'export', 'codegen', 'svg', 'animate']],
+  ['Teaching', ['grade', 'generate']],
+  ['Turing machines', ['halts', 'check-proof', 'bb-search', 'tm-normalize', 'sheet']],
+  ['Learning', ['learn']],
+  ['Elsewhere', ['library', 'mcp']]
+];
+
+const GLOBAL_OPTIONS = {
+  json: { type: 'boolean' },
+  help: { type: 'boolean', short: 'h' },
+  'max-steps': { type: 'string' },
+  quiet: { type: 'boolean', short: 'q' }
+};
+
+function mainHelp(version) {
+  const lines = [
+    `automata ${version} — AutomataStudio from the command line`,
+    '',
+    'Usage: automata <command> [options]',
+    '       automata <command> --help',
+    ''
+  ];
+  for (const [title, names] of GROUPS) {
+    lines.push(`${title}:`);
+    for (const n of names) lines.push(`  ${n.padEnd(14)}${COMMANDS[n][1]}`);
+    lines.push('');
+  }
+  lines.push(
+    'A machine is a file (.automaton .json .jff .scxml .hoa .ba .timbuk …), - for',
+    'standard input, or inline: a machine code (fa.01:+AB_BA) or a Turing machine',
+    'in the standard notation (1RB1LB_1LA1RZ).',
+    '',
+    'Every command takes --json, and --max-steps N (default 100000) for the step',
+    'budget a word is decided within.',
+    '',
+    'Exit codes: 0 accept/equal/pass, 1 reject/different/fail, 2 unknown (a budget',
+    'ran out), 3 could not run.'
+  );
+  return lines.join('\n');
+}
+
+function closest(name) {
+  const names = Object.keys(COMMANDS);
+  const dist = (a, b) => {
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    return d[a.length][b.length];
+  };
+  let best = null, bd = Infinity;
+  for (const n of names) { const x = dist(name, n); if (x < bd) { bd = x; best = n; } }
+  return bd <= 3 ? best : null;
+}
+
+export async function main(argv) {
+  // The app reads its version from a build-time define; the CLI has the
+  // package's own, and must set it before the app's modules evaluate.
+  if (typeof globalThis.__APP_VERSION__ !== 'string') {
+    try {
+      const { readFileSync } = await import('node:fs');
+      globalThis.__APP_VERSION__ = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+    } catch { /* stays dev */ }
+  }
+  const { App, APP_VERSION } = await import('./env.mjs');
+  const { CliError } = await import('./errors.mjs');
+  const [cmd, ...rest] = argv;
+  if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') {
+    const topic = cmd === 'help' ? rest[0] : null;
+    if (!topic) { process.stdout.write(mainHelp(APP_VERSION) + '\n'); return 0; }
+    return main([topic, '--help']);
+  }
+  if (cmd === '--version' || cmd === '-v' || cmd === 'version') { process.stdout.write(`${APP_VERSION}\n`); return 0; }
+  const entry = COMMANDS[cmd];
+  if (!entry) {
+    const near = closest(cmd);
+    process.stderr.write(`automata: "${cmd}" is not a command.${near ? ` Did you mean "${near}"?` : ''} See automata --help.\n`);
+    return 3;
+  }
+  const mod = await import(`./commands/${entry[0]}.mjs`);
+  const spec = mod.commands[cmd];
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args: rest,
+      options: { ...GLOBAL_OPTIONS, ...(spec.options || {}) },
+      allowPositionals: true,
+      strict: true
+    });
+  } catch (e) {
+    process.stderr.write(`automata ${cmd}: ${e.message.replace(/^Unknown option/, 'unknown option')}\nUsage: ${spec.usage.split('\n')[0]}\n`);
+    return 3;
+  }
+  const { values: opts, positionals: args } = parsed;
+  if (opts.help) {
+    process.stdout.write(`${COMMANDS[cmd][1]}\n\nUsage: ${spec.usage}\n`);
+    return 0;
+  }
+
+  // The CLI decides one word at a time, so it can afford a real budget; the
+  // app's 400 is sized for the Language panel's grid of hundreds of cells.
+  const budget = opts['max-steps'] !== undefined ? Number(opts['max-steps']) : 100000;
+  if (!Number.isFinite(budget) || budget < 1) {
+    process.stderr.write(`automata ${cmd}: --max-steps takes a positive number.\n`);
+    return 3;
+  }
+  App.config.langStepBudget = budget;
+  if (opts['max-steps'] !== undefined) {
+    App.config.maxTmSteps = budget;
+    App.config.maxPdaSteps = budget;
+  }
+
+  try {
+    const code = await spec.run({ args, opts, cmd });
+    return typeof code === 'number' ? code : 0;
+  } catch (e) {
+    if (e instanceof CliError || e?.exitCode !== undefined) {
+      process.stderr.write(`automata ${cmd}: ${e.message}\n`);
+      return e.exitCode ?? 3;
+    }
+    process.stderr.write(`automata ${cmd}: ${e?.message || e}\n`);
+    if (process.env.AUTOMATA_DEBUG) process.stderr.write(`${e?.stack || ''}\n`);
+    return 3;
+  }
+}
+
+export { COMMANDS };
