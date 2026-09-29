@@ -247,17 +247,30 @@ export function blockPathOf(stateId) {
  * Is this record still describing something that exists?
  *
  * Nothing tells a block that its states were replaced, so it checks: the
- * parent it names is present, its entry is a live state that belongs to it,
- * and at least one member survives. An exit that has gone is *trimmed* rather
- * than fatal — deleting one halting state of three should cost the block one
- * port, not the block.
+ * parent it names is present, and its entry is a live state inside it. An exit
+ * that has gone is *trimmed* rather than fatal — deleting one halting state of
+ * three should cost the block one port, not the block.
+ *
+ * **Inside it, not a member of it.** A definition whose first step is itself a
+ * block — "go right to the blank, then back one" built from a `right` block —
+ * is entered at that nested block's entry, and inlineBlock places it exactly so.
+ * Asking for a direct member here pruned every such block, and its child with
+ * it, on the first read after it was placed; and with the entry inside, the
+ * block has something in it by definition, so no separate member check is
+ * needed.
  */
 export function blockIsIntact(b) {
   if (!b || !b.id) return false;
-  if (b.parent && !(App.blocks || []).some(o => o.id === b.parent)) return false;
+  const blocks = App.blocks || [];
+  if (b.parent && !blocks.some(o => o.id === b.parent)) return false;
   const entry = getState(b.entry);
-  if (!entry || (entry.blockId || null) !== b.id) return false;
-  return (App.states || []).some(s => (s.blockId || null) === b.id);
+  if (!entry) return false;
+  const seen = new Set();
+  for (let c = entry.blockId || null; c && !seen.has(c); c = blocks.find(o => o.id === c)?.parent || null) {
+    if (c === b.id) return true;
+    seen.add(c);
+  }
+  return false;
 }
 
 /**

@@ -22,9 +22,9 @@
 import { App } from '../state.js';
 import { getWorkspaceData, shareLinkFor } from '../persistence.js';
 import { APP_WEB_URL, ISSUE_URL_MAX, LIBRARY_REPO, SUBMIT_TEMPLATE, isLibraryId, repoUrl } from './config.js';
-import { LIBRARY_LICENSES, analyzeDocument } from './analyze.js';
-import { entryById, sameLanguageAs } from './index-model.js';
-import { machineStructureHash } from './hash.js';
+import { LIBRARY_LICENSES, analyzeDocument, exerciseIdOf } from './analyze.js';
+import { entryById, sameLanguageAs, sameMachineAs, sameTaskAs } from './index-model.js';
+import { machineIdOf, machineStructureHash } from './hash.js';
 
 /**
  * The form's starting values, read off the machine on the canvas: its card,
@@ -134,12 +134,28 @@ export function precheckSubmission(fields, index = null) {
       if (!e.dfa || !analysis.facts.dfa || JSON.stringify(e.dfa) === JSON.stringify(analysis.facts.dfa)) duplicates.push(e);
     }
   }
-  // A library machine opened and sent straight back is a copy of an entry, not
-  // a remix of it. The structure hash ignores layout, so dragging states about
-  // does not count as a change; editing the card alone does not either. Its
-  // author may send it back, though: rewording its card is an update.
+  // The same machine is listed once. Its author may send it back — rewording
+  // its card is an update — but anyone else's copy, or a remix that changed
+  // nothing, adds a title and not a machine. Identity is the machine id
+  // (hash.js), so renaming states, dragging them about or regrouping them into
+  // blocks does not count as a change. The build refuses the same thing, so
+  // this is the dialog saying now what the PR check would say later.
   const source = App.meta?.library?.source;
-  if (!update && source?.structure && source.id === fields.forkOf && machineStructureHash(doc) === source.structure) {
+  const id = doc.exercise ? null : machineIdOf(doc);
+  const same = sameMachineAs(index, id, update?.id || null);
+  // An exercise is known by its task, not its starting canvas (exerciseIdOf).
+  const sameTask = doc.exercise ? sameTaskAs(index, exerciseIdOf(doc), update?.id || null) : [];
+  if (sameTask.length) {
+    const t0 = sameTask[0];
+    problems.push(`This exercise is already in the library as “${t0.title}” (${t0.id}) — the same reference and the same rules for an answer, however it is worded. ${t0.author?.login && sameLogin(t0.author.login, String(fields.login || '').trim().replace(/^@/, '')) ? 'It is yours: open it and send an update instead.' : 'Set a different task, or ask for a stricter one (fewer states, other machine types).'}`);
+  } else if (same.length) {
+    const s0 = same[0];
+    problems.push(s0.id === fields.forkOf
+      ? `This is “${s0.title}” exactly as the library has it — the same machine up to state names, layout and blocks. Change the machine before submitting it as a remix.`
+      : `This machine is already in the library as “${s0.title}” (${s0.id}) — the same up to state names, layout and blocks. ${s0.author?.login && sameLogin(s0.author.login, String(fields.login || '').trim().replace(/^@/, '')) ? 'It is yours: open it and send an update instead.' : 'Open it, and remix it into something new.'}`);
+  } else if (!update && source?.structure && source.id === fields.forkOf && machineStructureHash(doc) === source.structure) {
+    // An index built before machine ids existed: the file's own structure hash
+    // still catches a library machine sent straight back.
     problems.push(`This is “${source.title || source.id}” exactly as the library has it. Change the machine before submitting it as a remix.`);
   }
   if (index && doc.meta.library.forkOf && !entryById(index, doc.meta.library.forkOf)) problems.push(`There is no library entry "${doc.meta.library.forkOf}" to be a remix of.`);

@@ -54,11 +54,17 @@ const evenOnesBloated = (opts = {}) => doc('DFA', {
   ...opts
 });
 
-/** The same language as an NFA with a partial δ-free guess nobody needs. */
+/**
+ * The same language as an NFA with a guess nobody needs: on a 0 it may also
+ * wander into a dead end. That makes it a different machine from evenOnes — it
+ * branches — for the same language, which is the pair the language fingerprint
+ * exists to relate. (Drawn without the guess it would be evenOnes itself under
+ * another type name, which the library now refuses as the same machine.)
+ */
 const evenOnesNfa = (opts = {}) => doc('NFA', {
   title: 'Even number of 1s, as an NFA',
-  states: [S('s1', 'even'), S('s2', 'odd', 200)],
-  transitions: [T('t1', 's1', 's1', '0'), T('t2', 's1', 's2', '1'), T('t3', 's2', 's2', '0'), T('t4', 's2', 's1', '1')],
+  states: [S('s1', 'even'), S('s2', 'odd', 200), S('s3', 'nowhere', 400)],
+  transitions: [T('t1', 's1', 's1', '0'), T('t2', 's1', 's2', '1'), T('t3', 's2', 's2', '0'), T('t4', 's2', 's1', '1'), T('t5', 's1', 's3', '0')],
   accepts: ['s1'],
   ...opts
 });
@@ -518,7 +524,11 @@ test('a library Turing machine drops into a Turing machine as a building block',
 test('the submission is checked before it is filed: agreement, badges and duplicates', async () => {
   const { index } = await builtLibrary();
   resetApp();
+  // A drawing of a listed language that is not a listed machine: the long way
+  // round, with a fourth state nothing reaches.
   const d = evenOnesBloated();
+  d.states.push(S('s4', 'spare', 600));
+  d.transitions.push(T('t7', 's4', 's1', '0'));
   context.loadData(d, true);
   context.App.meta = { title: 'Mine', blurb: 'x', inputs: [{ w: '11', expect: 'accept' }] };
   const fields = { ...context.submissionDefaults(), title: 'Parity again', blurb: 'Counts 1s.', login: 'carol', license: 'CC0-1.0', agreed: false };
@@ -1253,4 +1263,187 @@ test('the index carries each machine\'s sketch, and refuses one that is not', as
   assert.equal(e.sketch.n.length, 2);
   const bad = context.normalizeIndex({ format: context.INDEX_FORMAT, entries: [{ id: 'a/b', title: 'x', sketch: { n: [[0, 0, 0]], e: [[0, 3]] } }] });
   assert.equal(bad.entries[0].sketch, null);
+});
+
+// ── The same machine, twice ───────────────────────────────────────
+// A machine id (hash.js machineIdOf) is the hash of a machine's flat canonical
+// code: it names the machine, not the drawing, the names or the type label the
+// author chose — and so it is what a duplicate is, for every kind of machine,
+// where the language fingerprint reaches only finite automata.
+
+/** evenOnes, redrawn by someone else: other ids, other names, other places, other order. */
+function evenOnesRedrawn(opts = {}) {
+  const d = evenOnes(opts);
+  const id = x => ({ s1: 'q9', s2: 'q4' })[x];
+  d.states = d.states.map((s, i) => ({ ...s, id: id(s.id), name: ['start', 'flip'][i], x: 500 - 90 * i, y: 40 * i })).reverse();
+  d.transitions = d.transitions.map(t => ({ ...t, id: `x${t.id}`, from: id(t.from), to: id(t.to) })).reverse();
+  d.startId = id(d.startId);
+  d.accepts = d.accepts.map(id);
+  d.sigma = [...d.sigma].reverse();
+  return d;
+}
+
+test('a machine id names the machine, not the drawing', () => {
+  const base = context.machineIdOf(evenOnes());
+  assert.match(base, /^[0-9a-f]{16}$/);
+  assert.equal(context.machineIdOf(evenOnesRedrawn()), base, 'ids, names, positions and order do not matter');
+  assert.equal(context.machineIdOf({ ...evenOnes(), machine: 'NFA' }), base, 'nor the type label, where δ says the same');
+  assert.notEqual(context.machineIdOf(oddOnes()), base, 'a different F is a different machine');
+  assert.notEqual(context.machineIdOf(evenOnesNfa()), base, 'a branching δ is a different machine, whatever its language');
+  assert.equal(context.machineIdOf({ ...evenOnes(), startId: null }), null, 'no start state, no machine');
+  const exercise = context.analyzeDocument({ ...evenOnes(), exercise: { kind: 'dfa', prompt: 'x' } }, { behaviour: false });
+  assert.equal(exercise.facts?.machineId ?? null, null, 'an exercise is known by its task');
+});
+
+test('the build lists a machine once, and the newcomer is the one refused', async () => {
+  resetApp();
+  const root = await mkdtemp(join(tmpdir(), 'as-same-'));
+  const put = async (path, value) => {
+    await mkdir(join(root, path, '..'), { recursive: true });
+    await writeFile(join(root, path), JSON.stringify(value, null, 2));
+  };
+  await put('machines/a/first.automaton', evenOnes());
+  await put('machines/b/copy.automaton', evenOnesRedrawn({ title: 'Parity, mine' }));
+  // The first was listed long ago; the copy has just arrived.
+  const { utimes } = await import('node:fs/promises');
+  await utimes(join(root, 'machines/a/first.automaton'), new Date('2020-01-01'), new Date('2020-01-01'));
+
+  const refused = r => r.errors.some(x => /same machine as/.test(x));
+  let out = await buildLibrary({ library: root, site: 'https://x.test/' });
+  assert.deepEqual(out.results.filter(refused).map(r => r.id), ['b/copy']);
+  assert.match(out.results.find(refused).errors.find(x => /same machine/.test(x)), /“Even number of 1s” \(a\/first\)/);
+  assert.deepEqual(out.raw.entries.map(e => e.id), ['a/first'], 'the copy is not published');
+
+  // Under a pull request the file it changes is the newcomer, however old: an
+  // update that turned an old entry into a copy of another fails itself and
+  // never unpublishes the entry it copied.
+  out = await buildLibrary({ library: root, site: 'https://x.test/', only: new Set(['machines/a/first.automaton']) });
+  assert.deepEqual(out.results.filter(refused).map(r => r.id), ['a/first']);
+});
+
+test('search finds a machine by its id, and the index carries one per entry', async () => {
+  const { index } = await builtLibrary();
+  const id = context.machineIdOf(evenOnes());
+  assert.equal(index.entries.find(e => e.id === 'finite/dfa/even-ones').machineId, id);
+  assert.deepEqual(context.queryLibrary(index, `code:${id}`).map(e => e.id), ['finite/dfa/even-ones']);
+  assert.deepEqual(context.sameMachineAs(index, context.machineIdOf(evenOnesRedrawn()), null).map(e => e.id), ['finite/dfa/even-ones']);
+  assert.deepEqual(context.sameMachineAs(index, id, 'finite/dfa/even-ones'), []);
+  // Not a 16-digit id: read as a word, not as a filter that silently matches nothing.
+  const q = context.parseLibraryQuery('code:banana');
+  assert.equal(q.code.length, 0);
+  assert.deepEqual(q.words, ['code:banana']);
+});
+
+test('a machine already listed is refused at submission — the author is sent to update it', async () => {
+  const { index } = await builtLibrary();
+  resetApp();
+  context.loadData(evenOnesRedrawn(), true);
+  context.App.meta = { title: 'Parity, redrawn', blurb: 'x', inputs: [{ w: '11', expect: 'accept' }] };
+  const fields = { ...context.submissionDefaults(), title: 'Parity, redrawn', blurb: 'Counts 1s.', login: 'carol', license: 'CC0-1.0', agreed: true };
+  const c = context.precheckSubmission(fields, index);
+  assert.equal(c.ok, false);
+  assert.ok(c.errors.some(x => /already in the library as “Even number of 1s”/.test(x) && /remix it/.test(x)), c.errors.join('\n'));
+  const mine = context.precheckSubmission({ ...fields, login: 'alice' }, index);
+  assert.ok(mine.errors.some(x => /It is yours: open it and send an update/.test(x)), mine.errors.join('\n'));
+});
+
+test('the canvas and a listing name a machine the same way', async () => {
+  const b = await builtLibrary();
+  resetApp();
+  const bb2 = JSON.parse(await readFile(join(b.root, 'machines/turing/busy-beaver/bb2.automaton'), 'utf8'));
+  context.loadData(bb2, true);
+  // What Match my canvas asks — for a Turing machine, which has no language fingerprint.
+  const entry = b.index.entries.find(e => e.id === 'turing/busy-beaver/bb2');
+  assert.equal(entry.fingerprint, null);
+  assert.equal(context.machineIdOf(context.getWorkspaceData()), entry.machineId);
+  // And the code the listing shows is the one that opens it.
+  const listing = listingOf({ target: context.targetFromDoc(bb2), doc: bb2 }, entry);
+  assert.equal(listing.code, 'tm.1:1RB1LB_1LA1RZ');
+});
+
+// ── An exercise is its task ───────────────────────────────────────
+// An exercise's id (analyze.js exerciseIdOf) is the reference it grades
+// against and the rules for an answer — not its wording, not its hints, and
+// not the canvas a student starts from.
+
+async function exerciseDoc(reference, { title = 'Build it', prompt = 'Build a machine for this.', allow = ['DFA', 'NFA'], maxStates = null, canvas = evenOnes() } = {}) {
+  const { sealTarget } = await import('../js/exercise/model.js');
+  const d = JSON.parse(JSON.stringify(canvas));
+  d.meta.title = title;
+  d.exercise = { id: `ex-${title}`, title, prompt, target: sealTarget({ kind: 'machine', ...reference }), answer: 'machine', allow, maxStates, hints: [] };
+  return d;
+}
+const refOf = d => ({ machine: d.machine, states: d.states, transitions: d.transitions, startId: d.startId, accepts: d.accepts, sigma: d.sigma, stackAlpha: [], outputAlpha: [], tapeCount: 1, blocks: [], config: {} });
+
+test('an exercise is named by its task, not its wording or its starting canvas', async () => {
+  const a = await exerciseDoc(refOf(evenOnes()), { title: 'Parity', prompt: 'Even number of 1s.' });
+  const same = [
+    await exerciseDoc(refOf(evenOnes()), { title: 'Count the ones', prompt: 'Accept exactly the words with an even number of 1s.', canvas: oddOnes() }),
+    await exerciseDoc(refOf(evenOnesBloated()), { title: 'Parity, again' }),   // the same language, drawn the long way
+    await exerciseDoc(refOf(evenOnes()), { allow: ['NFA', 'DFA', 'DFA'] })       // the same rules, listed otherwise
+  ];
+  const id = context.exerciseIdOf(a);
+  assert.match(id, /^[0-9a-f]{16}$/);
+  for (const d of same) assert.equal(context.exerciseIdOf(d), id);
+  assert.notEqual(context.exerciseIdOf(await exerciseDoc(refOf(oddOnes()))), id, 'another language is another task');
+  assert.notEqual(context.exerciseIdOf(await exerciseDoc(refOf(evenOnes()), { allow: ['DFA'] })), id, 'so are other rules for an answer');
+  assert.notEqual(context.exerciseIdOf(await exerciseDoc(refOf(evenOnes()), { maxStates: 2 })), id, 'and a state cap');
+  assert.notEqual(id, context.machineIdOf(evenOnes()), 'and it never equals a machine\'s id');
+  const facts = context.analyzeDocument(a, { behaviour: false }).facts;
+  assert.equal(facts.taskId, id);
+  assert.equal(facts.machineId, null);
+});
+
+test('the build lists an exercise once, and an exercise beside its own machine is fine', async () => {
+  resetApp();
+  const root = await mkdtemp(join(tmpdir(), 'as-task-'));
+  const put = async (path, value) => {
+    await mkdir(join(root, path, '..'), { recursive: true });
+    await writeFile(join(root, path), JSON.stringify(value, null, 2));
+  };
+  await put('machines/ex/parity.automaton', await exerciseDoc(refOf(evenOnes()), { title: 'Parity' }));
+  await put('machines/ex/parity-reworded.automaton', await exerciseDoc(refOf(evenOnesBloated()), { title: 'Count the ones', prompt: 'Worded differently.' }));
+  await put('machines/finite/dfa/even-ones.automaton', evenOnes());
+  const { utimes } = await import('node:fs/promises');
+  await utimes(join(root, 'machines/ex/parity.automaton'), new Date('2020-01-01'), new Date('2020-01-01'));
+  const out = await buildLibrary({ library: root, site: 'https://x.test/' });
+  const refused = out.results.filter(r => r.errors.length);
+  assert.deepEqual(refused.map(r => r.id), ['ex/parity-reworded']);
+  assert.match(refused[0].errors[0], /same exercise as “Parity” \(ex\/parity\)/);
+  assert.deepEqual(out.raw.entries.map(e => e.id).sort(), ['ex/parity', 'finite/dfa/even-ones']);
+});
+
+test('an exercise already set is refused at submission', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'as-task-sub-'));
+  await mkdir(join(root, 'machines/ex'), { recursive: true });
+  await writeFile(join(root, 'machines/ex/parity.automaton'), JSON.stringify(await exerciseDoc(refOf(evenOnes()), { title: 'Parity' })));
+  const built2 = await buildLibrary({ library: root, site: 'https://x.test/' });
+  const index = context.normalizeIndex(JSON.parse(JSON.stringify(built2.raw)));
+  resetApp();
+  const d = await exerciseDoc(refOf(evenOnesBloated()), { title: 'Mine' });
+  context.loadData(d, true);
+  context.App.meta = { title: 'Mine', blurb: 'x' };
+  const fields = { ...context.submissionDefaults(), kind: 'exercise', title: 'Mine', blurb: 'A task.', login: 'carol', license: 'CC0-1.0', agreed: true };
+  const c = context.precheckSubmission(fields, index);
+  assert.ok(c.errors.some(x => /This exercise is already in the library as “Parity”/.test(x)), c.errors.join('\n'));
+});
+
+// ── The website's search reads a pasted code ──────────────────────
+
+test('the website\'s search turns a pasted machine code into its machine, with the modules it ships', async () => {
+  const b = await builtLibrary();
+  const out = await mkdtemp(join(tmpdir(), 'as-site-code-'));
+  await writeLibrary({ library: b.root, out, site: 'https://x.test/' }, b);
+  // The page imports these as they sit in the site — so import them from there.
+  const { pathToFileURL } = await import('node:url');
+  const { codeSearchText } = await import(pathToFileURL(join(out, 'assets/code-search.js')).href);
+  const { queryLibrary, normalizeIndex } = await import(pathToFileURL(join(out, 'assets/index-model.js')).href);
+  const index = normalizeIndex(JSON.parse(await readFile(join(out, 'index.json'), 'utf8')));
+  const text = codeSearchText('fa.01:+AB_BA');
+  assert.equal(text, `code:${context.machineIdOf(evenOnes())}`);
+  assert.deepEqual(queryLibrary(index, text).map(e => e.id), ['finite/dfa/even-ones']);
+  assert.equal(codeSearchText('parity'), 'parity', 'anything else is left as words');
+  assert.equal(codeSearchText('1RB1LB_1LA1RZ'), '1RB1LB_1LA1RZ', 'a bare STF string too');
+  const site = await readFile(join(out, 'assets/site.js'), 'utf8');
+  assert.match(site, /queryLibrary\(index, codeSearchText\(text\)/);
 });

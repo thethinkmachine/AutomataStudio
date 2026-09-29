@@ -20,7 +20,9 @@
 //         mine · submit · about
 
 import { $, App, activeWorkspaceId, getMachineConfig } from './state.js';
-import { applyDocument } from './persistence.js';
+import { applyDocument, getWorkspaceData } from './persistence.js';
+import { canonicalCodeOf, machineIdOf } from './library/hash.js';
+import { codeSearchText } from './library/code-search.js';
 import { exportCopyText, exportDownload } from './export-core.js';
 import { setView } from './view.js';
 import { showStatus } from './utils.js';
@@ -65,7 +67,7 @@ const L = {
   sort: 'relevance',
   dir: null,          // 'asc' | 'desc'; null is the sort's own (index-model resolveSort)
   filters: {},
-  canvasMatch: null,  // { fingerprint, dfa } of the machine on the canvas, while matching
+  canvasMatch: null,  // { machineId, fingerprint, dfa } of the machine on the canvas, while matching
   saved: [],
   savedIds: new Set(),
   submit: null,       // the submit form's fields while it is open
@@ -539,6 +541,12 @@ function searchBox({ onSubmit, onInput, autofocus = true } = {}) {
   return h('label', { class: 'lib-searchbar' }, glass, input);
 }
 
+/** Whether an entry is the canvas's machine, or recognises its language. */
+function matchesCanvas(e, m) {
+  if (m.machineId && e.machineId === m.machineId) return true;
+  return !!m.dfa && sameLanguage(e, m);
+}
+
 /** Whether an entry recognises the language `m` names: by the table itself where the index has it. */
 function sameLanguage(e, m) {
   if (!e.fingerprint || e.fingerprint !== m.fingerprint) return false;
@@ -553,8 +561,8 @@ function pageBrowse() {
   const draw = () => {
     results.innerHTML = '';
     const s = resolveSort(L.sort, L.dir);
-    let list = queryLibrary(idx, L.query, { sort: s.key, dir: s.dir, filters: L.filters });
-    if (L.canvasMatch) list = list.filter(e => sameLanguage(e, L.canvasMatch));
+    let list = queryLibrary(idx, codeSearchText(L.query, App.config.sym), { sort: s.key, dir: s.dir, filters: L.filters });
+    if (L.canvasMatch) list = list.filter(e => matchesCanvas(e, L.canvasMatch));
     const sort = h('select', { class: 'lib-sort', 'aria-label': 'Sort by' });
     for (const [k, def] of Object.entries(SORTS)) sort.append(h('option', { value: k }, def.label));
     sort.value = s.key;
@@ -572,10 +580,23 @@ function pageBrowse() {
       h('span', { class: 'lib-count', text: `${list.length} of ${idx.entries.length} machines${note}` }),
       h('label', { class: 'lib-sortlabel' }, 'Sort ', sort, dir)));
     if (L.canvasMatch) {
+      const m = L.canvasMatch;
+      const exact = list.filter(e => m.machineId && e.machineId === m.machineId);
+      // Two claims of different strength, said separately: "is" this entry,
+      // and "recognises the same language as" — which only finite automata
+      // can be asked, since only they have a canonical minimal form.
+      const say = [];
+      if (exact.length) say.push(`The machine on your canvas is ${exact.length === 1 ? `“${exact[0].title}”` : `in ${exact.length} entries`}.`);
+      const lang = list.length - exact.length;
+      if (lang) say.push(exact.length
+        ? `It recognises the same language as ${lang === 1 ? 'one more' : `${lang} more`}.`
+        : `The machine on your canvas recognises the same language as ${lang === 1 ? 'this entry' : `these ${lang} entries`}.`);
       results.append(h('div', { class: 'lib-callout' },
-        list.length
-          ? `The machine on your canvas recognises the same language as ${list.length === 1 ? 'this entry' : `these ${list.length} entries`}.`
-          : 'No entry recognises the same language as the machine on your canvas — it may be a new one.',
+        say.length
+          ? say.join(' ')
+          : m.dfa
+            ? 'No entry is this machine or recognises its language — it may be a new one.'
+            : 'No entry is this machine — it may be a new one. (Matching by language works for finite automata.)',
         ' ', button('Clear', () => { L.canvasMatch = null; renderPage(); }, 'lib-textbtn'),
         list.length ? null : button('Submit it', () => go('submit'), 'lib-textbtn')));
     }
@@ -589,7 +610,7 @@ function pageBrowse() {
     }
     // A batch at a time. A new search starts again at one batch; the same
     // search — back from a listing, say — picks up where it was.
-    const key = JSON.stringify([L.query, s.key, s.dir, L.filters, L.canvasMatch?.fingerprint || null]);
+    const key = JSON.stringify([L.query, s.key, s.dir, L.filters, L.canvasMatch?.machineId || null, L.canvasMatch?.fingerprint || null]);
     const when = s.key === 'added' || s.key === 'updated' ? s.key : null;
     const want = L.shown?.key === key ? L.shown.n : BROWSE_BATCH;
     const plates = h('div', { class: 'lib-plates' });
@@ -619,7 +640,7 @@ function pageBrowse() {
     h('p', { class: 'lib-kicker', text: 'Browse' }),
     h('div', { class: 'lib-searchrow' },
       searchBox({ onInput: q => { L.query = q; draw(); } }),
-      button('Match my canvas', matchCanvas, 'btn-g lib-match', { 'data-tip': 'Find entries for the language the machine on your canvas recognises' }))));
+      button('Match my canvas', matchCanvas, 'btn-g lib-match', { 'data-tip': 'Find the machine on your canvas in the library — the same machine, or for a finite automaton the same language' }))));
   page.append(h('div', { class: 'lib-browse-body' }, refinePanel(idx, () => { renderPage(); }), results));
   draw();
   return page;
@@ -650,16 +671,22 @@ function refinePanel(idx, redraw) {
   return panel;
 }
 
-/** Look for the canvas machine's language in the index, by its minimal DFA. */
+/**
+ * Look for the canvas machine in the index: the same machine, by its machine
+ * id, for any kind of machine — and for a finite automaton the same language
+ * too, by its minimal DFA.
+ */
 export function matchCanvas() {
   const target = machineTargetFromApp();
   target.config = { ...(target.config || {}), sym: App.config.sym };
-  const dfa = minimalDfaOf(target);
-  if (!dfa) {
-    showStatus('Language matching works for DFAs, NFAs and ε-NFAs — draw one to search by what it accepts.');
+  let dfa = null;
+  try { dfa = minimalDfaOf(target); } catch { dfa = null; }
+  const machineId = (App.states || []).length ? machineIdOf(getWorkspaceData()) : null;
+  if (!dfa && !machineId) {
+    showStatus('Draw a machine, with a start state, to look for it in the library.');
     return;
   }
-  L.canvasMatch = { fingerprint: languageFingerprint(dfa), dfa };
+  L.canvasMatch = { machineId, fingerprint: dfa ? languageFingerprint(dfa) : null, dfa };
   L.query = '';
   L.filters = {};
   if (L.route.page !== 'browse') go('browse');
@@ -736,6 +763,15 @@ function pageEntry(id) {
   const verified = verifiedList(e);
   if (verified) aside.append(h('section', { class: 'lib-aside-sec' }, h('h4', { class: 'lib-aside-title', text: 'Verified by the library' }), verified));
   aside.append(factsTable(e));
+  // The machine's canonical code, filled in when the file arrives: the text
+  // that names this machine anywhere — pasted on a canvas it opens it, pasted
+  // into the search box it finds it again.
+  const codeText = h('code', { class: 'lib-code-text' });
+  const codeSec = h('section', { class: 'lib-aside-sec lib-machine-code', hidden: true },
+    h('h4', { class: 'lib-aside-title', text: 'Machine code' }), codeText,
+    h('div', { class: 'lib-standard-actions' },
+      button('Copy', () => exportCopyText(codeText.textContent, 'Machine code copied — paste it on any canvas to open it'), 'lib-textbtn')));
+  aside.append(codeSec);
   page.append(h('div', { class: 'lib-entry-body' }, h('div', { class: 'lib-entry-main' }, stage.node, tryIt(e, stage)), aside));
 
   // A Turing machine is known by what it does from a blank tape.
@@ -748,6 +784,8 @@ function pageEntry(id) {
   // What needs the file: the definition, the author's notes, a run for a TM
   // the standard notation cannot write.
   entryDoc(e).then(d => {
+    const code = d.doc?.exercise ? null : canonicalCodeOf(d.doc);
+    if (code) { codeText.textContent = code; codeSec.removeAttribute('hidden'); }
     try {
       const latex = withMachine(d.target, () => buildFormalDefLatex());
       math.textContent = latex;

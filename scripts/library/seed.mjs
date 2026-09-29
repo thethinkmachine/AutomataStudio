@@ -25,6 +25,7 @@ import { sugiyamaLayout } from '../../js/canvas.js';
 import { SCHEMA_VERSION, WORKSPACE_FORMAT } from '../../js/persistence.js';
 import { APP_VERSION } from '../../js/state.js';
 import { categoryOf } from '../../js/library/analyze.js';
+import { machineIdOf } from '../../js/library/hash.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = resolve(HERE, '../..');
@@ -101,7 +102,29 @@ function exampleTitle(file, machine, meta) {
 export async function seedLibrary(dir, { author = 'thethinkmachine', force = false } = {}) {
   const root = resolve(dir);
   const written = [];
+  const skipped = [];
   await cp(join(APP_ROOT, 'library-template'), root, { recursive: true, force, errorOnExist: false });
+
+  // A library lists a machine once, and the build refuses a second copy
+  // (build.mjs, "the same machine, twice") — so the seed must not write one.
+  // The bundled examples repeat themselves: BB(4) is also the two-way TM
+  // example, the Büchi example is the classic DBA, the weak example is the DBA
+  // retyped. The champions are claimed first, so BB(4) is listed where a
+  // reader of the Hall of Fame looks for it; after that, first come first kept.
+  const claimed = new Map();   // machine id → the entry id that has it
+  const bbDocs = [...BUSY_BEAVERS, ...NON_HALTERS].map(bb => {
+    const busy = BUSY_BEAVERS.includes(bb);
+    const doc = docFromStandardTM(bb.src, {
+      title: bb.title, blurb: bb.blurb, author,
+      tags: busy ? ['busy-beaver', 'champion'] : ['non-halting', 'proof'],
+      chapter: busy ? 'Radó 1962, “On non-computable functions”' : undefined
+    });
+    const path = `machines/turing/${busy ? 'busy-beaver' : 'non-halting'}/${bb.slug}.automaton`;
+    const id = path.replace(/^machines\//, '').replace(/\.automaton$/, '');
+    const mid = machineIdOf(doc);
+    if (mid && !claimed.has(mid)) claimed.set(mid, id);
+    return { doc, path, id };
+  });
 
   // ── the bundled examples ──
   const ids = { byFile: new Map() };
@@ -126,21 +149,19 @@ export async function seedLibrary(dir, { author = 'thethinkmachine', force = fal
       }
     };
     const path = `${folderFor(machine)}/${slugify(title)}.automaton`;
-    ids.byFile.set(file, path.replace(/^machines\//, '').replace(/\.automaton$/, ''));
+    const id = path.replace(/^machines\//, '').replace(/\.automaton$/, '');
+    // A copy is not written; a collection naming it gets the one that was.
+    const mid = machineIdOf(doc);
+    if (mid && claimed.has(mid)) { ids.byFile.set(file, claimed.get(mid)); skipped.push({ path, sameAs: claimed.get(mid) }); continue; }
+    if (mid) claimed.set(mid, id);
+    ids.byFile.set(file, id);
     if (await writeIfAbsent(join(root, path), pretty(doc), force)) written.push(path);
   }
 
   // ── Turing machines in the standard format ──
   const bbIds = [];
-  for (const bb of [...BUSY_BEAVERS, ...NON_HALTERS]) {
-    const busy = BUSY_BEAVERS.includes(bb);
-    const doc = docFromStandardTM(bb.src, {
-      title: bb.title, blurb: bb.blurb, author,
-      tags: busy ? ['busy-beaver', 'champion'] : ['non-halting', 'proof'],
-      chapter: busy ? 'Radó 1962, “On non-computable functions”' : undefined
-    });
-    const path = `machines/turing/${busy ? 'busy-beaver' : 'non-halting'}/${bb.slug}.automaton`;
-    bbIds.push(path.replace(/^machines\//, '').replace(/\.automaton$/, ''));
+  for (const { doc, path, id } of bbDocs) {
+    bbIds.push(id);
     if (await writeIfAbsent(join(root, path), pretty(doc), force)) written.push(path);
   }
 
@@ -168,7 +189,8 @@ export async function seedLibrary(dir, { author = 'thethinkmachine', force = fal
   if (await writeIfAbsent(join(root, 'machines/finite/dfa/binary-divisibility-by-3.automaton'), pretty(solution), force)) written.push('machines/finite/dfa/binary-divisibility-by-3.automaton');
 
   // ── collections ──
-  const pick = files => files.map(f => ids.byFile.get(f)).filter(Boolean);
+  // Deduplicated: two examples that are one machine map to one entry.
+  const pick = files => [...new Set(files.map(f => ids.byFile.get(f)).filter(Boolean))];
   const collections = {
     'busy-beavers': { title: 'Busy Beaver Hall of Fame', blurb: 'The champions: for each size, the halting machine that runs longest from a blank tape. Every step count here was checked by running the machine to its halt.', curator: author, entries: bbIds.filter(id => id.includes('busy-beaver')) },
     'halting-proofs': { title: 'Three ways to never halt', blurb: 'One machine per non-halting proof the library can make: an exact cycle, a cycle that drifts along the tape, and a halt that can never be reached.', curator: author, entries: bbIds.filter(id => id.includes('non-halting')) },
@@ -180,7 +202,7 @@ export async function seedLibrary(dir, { author = 'thethinkmachine', force = fal
   for (const [id, c] of Object.entries(collections)) {
     if (await writeIfAbsent(join(root, `collections/${id}.json`), pretty(c), force)) written.push(`collections/${id}.json`);
   }
-  return { root, written };
+  return { root, written, skipped };
 }
 
 async function main() {
@@ -188,7 +210,8 @@ async function main() {
   const dir = args.find(a => !a.startsWith('--'));
   if (!dir) { console.error('Usage: seed.mjs <library-dir> [--author login] [--force]'); process.exitCode = 1; return; }
   const ai = args.indexOf('--author');
-  const { root, written } = await seedLibrary(dir, { author: ai >= 0 ? args[ai + 1] : undefined, force: args.includes('--force') });
+  const { root, written, skipped } = await seedLibrary(dir, { author: ai >= 0 ? args[ai + 1] : undefined, force: args.includes('--force') });
+  for (const s of skipped) console.log(`  skipped ${s.path} — the same machine as ${s.sameAs}`);
   console.log(`${written.length} files written into ${root}`);
 }
 

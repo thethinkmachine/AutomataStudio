@@ -15,9 +15,12 @@ A public GitHub repository of `.automaton` files (`thethinkmachine/automata-libr
 js/library/
   config.js       import-free. Every URL: the site (index, pictures, pages),
                   jsDelivr pinned to the index's commit (the files), deep links.
-  hash.js         import-free. A synchronous 64-bit content hash, CRLF-normalised.
+  hash.js         imports only the (import-free) machine-code codec. A synchronous
+                  64-bit content hash, CRLF-normalised; the machine id.
   index-model.js  import-free. normalizeIndex, the query language, facets. Also
                   shipped to the website, so its search and the app's are one.
+  code-search.js  a pasted machine code → `code:<id>`, for both search boxes.
+                  Shipped to the website with hash.js and the codec.
   card-html.js    imports index-model and sketch. The plate both faces share:
                   its figure, caption and marks (the app as DOM, the website
                   as HTML), badge order, a TM's size from its code.
@@ -47,6 +50,22 @@ scripts/library/  build.mjs (index + site), site.mjs, seed.mjs,
 A badge that describes what *the app* can do with a machine — export it, generate code for it — is not a badge; it would be on every entry of that type.
 
 `minimalDfaOf` returns a **canonical** table, so its hash (`languageFingerprint`) names the language, not the drawing: that is duplicate detection and the "Match my canvas" search. Where the index has the table (≤ 64 states), a fingerprint match is confirmed against it before anything is said. The table is also what lets `accepts:`/`rejects:` search run without downloading a machine.
+
+### The same machine, twice
+
+**A machine has an id, and it is not the entry's.** `machineIdOf` in [js/library/hash.js](js/library/hash.js) is the hash of the machine's **flat canonical code** ([js/interop/smtf.js](js/interop/smtf.js), no labels): two documents share it exactly when they are the same machine up to state names, state order, layout, symbol order, block grouping and the type label δ already decides (a deterministic "NFA" is its DFA). An entry's id is a path and outlives changes to its machine — an update keeps its link — so the two are never interchangeable, and the index calls this one `machineId`.
+
+It answers a different question from the fingerprint, and both stay. The **fingerprint** says two machines accept the same language — finite automata only, informational, "a different construction is welcome". The **machine id** says two entries *are* one machine — every kind of machine, and **a refusal**: a library lists a machine once, since a second copy adds a card and not a machine, and the card is what an update is for.
+
+- **The newcomer loses, and "newcomer" is chosen so a change can only fail itself.** `build.mjs` orders by: files the PR changed last (`opts.only`, computed before the build), then last-change date, then id. Ordered by date *added*, an author updating an old entry into a copy of a newer one would unpublish the newer — someone else's, untouched.
+- **The submit dialog refuses it first** (`precheckSubmission`, via `sameMachineAs`), telling an author to send an update and anyone else to remix. The old structure-hash check survives only as the fallback for an index built before machine ids.
+- **Blocks are grouping, so the id is of the flat machine** (`canonicalCodeOf(doc, { flat: true })`). The code the listing shows keeps its blocks.
+- **An exercise is known by its task, not its canvas** — `taskId`, from `exerciseIdOf` in analyze.js: the sealed reference plus the rules for an answer (answer kind, allowed types, state cap), never the title, prompt, hints, grading budget or the canvas a student starts from. The reference is named at the strength the grader can tell it apart: a finite automaton by its *language* (the minimal DFA's fingerprint — grading one is an exact comparison, so two drawings of one language set one task), any other machine by its flat canonical code, a grammar by its productions in a fixed order (renaming a variable makes another grammar; grammar isomorphism is not attempted). It is hashed under its own tag, so it can never equal a machine id, and an exercise listed beside its own reference machine is fine. The build and the dialog refuse a second copy of a task exactly as they refuse a second copy of a machine, each in its own words.
+- **Match my canvas asks both questions**: the same machine (any type — a Turing machine drawn from scratch finds its listing) and, for a finite automaton, the same language. The callout says which, since "is this entry" and "recognises the same language as" are claims of different strength.
+- **Pasting a code into either search box finds its machine.** [js/library/code-search.js](js/library/code-search.js) turns it into `code:<id>`, and both the app's Browse and the website's `site.js` call it, so the two cannot disagree. index-model.js keeps `code:` without the codec, so it stays import-free. **The site gets the codec by layout, not by rewriting imports**: `build.mjs` copies `code-search.js` and `hash.js` into `assets/` and `smtf.js` to `interop/` beside it — the repo's own shape — so `hash.js`'s `../interop/smtf.js` resolves unchanged; `writeSite` takes an asset name as a path relative to `assets/` for exactly that. A test imports the built site's modules from disk, which is the one way to know they resolve there. A bare STF string stays words — the `standard` field already finds those, and a one-way and a two-way tape running the same rows are different machines.
+- **The seed writes each machine once.** Three bundled examples repeat another — BB(4) is also the two-way-TM example, the Büchi example is the classic DBA, and the weak example is the DBA retyped — so `seedLibrary` claims the champions first, skips the copies, points collections at what was kept, and prints what it skipped. That is also why the ω zoo has no DWA listing: give `js/examples/dwa.json` a weak automaton of its own and it will have one.
+
+[tests/library.test.js](tests/library.test.js) pins that the id ignores the drawing and the type label but not F or a branch, that the build refuses the newcomer both ways round, the `code:` search, the dialog's messages, that a TM on the canvas and its listing agree on the id and the code, that an exercise's id ignores its wording and canvas but not its language or its rules, and that the website's search reads a pasted code with the modules the build actually ships.
 
 Everything is asked of a *target* through `withMachine`, never by loading onto the canvas. [tests/library.test.js](tests/library.test.js) asserts the reader's machine is untouched after an analysis.
 
@@ -79,7 +98,7 @@ There is no server and the app holds no token. `submissionLink` pre-fills the re
 
 ### Running CI's code here
 
-`scripts/library/env.mjs` loads the DOM stub, the simulation module (for its painter hook) and the machine layer — not `main.js`, whose boot a CI job does not want. Scripts run with `--conditions=browser --conditions=development`; the `library:*` npm scripts say so. The library repo's workflows check out this repo at `main` as `.engine` and `npm ci --omit=dev --ignore-scripts`, so a change here changes what CI awards on the next library build.
+`scripts/library/env.mjs` loads the DOM stub, the simulation module (for its painter hook) and the machine layer — not `main.js`, whose boot a CI job does not want. Scripts run with `--conditions=browser --conditions=development`; the `library:*` npm scripts say so. The library repo's workflows check out this repo at `main` as `.engine` and `npm ci --omit=dev --ignore-scripts`, so a change here changes what CI awards on the next library build. **That next build is started from here**: the library's workflows run only on its own events, so [.github/workflows/library-rebuild.yml](.github/workflows/library-rebuild.yml) runs this repo's tests when `main` changes something the build reads (`js/**`, `scripts/library/**`, the favicon, the package files) and, if they pass, dispatches the library's `publish.yml`. The tests gate it because the library republishes with `main` as it is — a broken engine would publish wrong badges or drop entries it now misjudges. Bursts collapse into one rebuild (`concurrency`). It needs the `LIBRARY_DISPATCH_TOKEN` secret here: a fine-grained token scoped to `automata-library` alone with *Actions: read and write*, the least that can start a workflow in another repository; without it the job logs a notice and succeeds. **A rebuild can change what is listed, not only how**: when the engine starts refusing something (the same-machine rule did), entries that passed before are dropped at the next publish, with only the build log saying so — clean the library up in its own PR first.
 
 StateMate reaches the library two ways: `/library [words]`, and the `search_library` agent tool (synchronous, like every tool — the first call starts the download and says to ask again).
 

@@ -9,6 +9,8 @@
 // the same place rather than to the first batch.
 
 import { normalizeIndex, queryLibrary, resolveSort, SORTS } from './index-model.js';
+// A machine code pasted into the box finds its machine, as it does in the app.
+import { codeSearchText } from './code-search.js';
 
 const $ = s => document.querySelector(s);
 const q = $('#q'), grid = $('#results'), count = $('#count'), empty = $('#empty'), sort = $('#sort'), dir = $('#dir');
@@ -57,7 +59,7 @@ function draw({ keep = false } = {}) {
   if (!keep) limit = BATCH;
   const text = q.value.trim();
   const s = resolveSort(sort.value, dir.hidden ? null : dir.value);
-  const list = queryLibrary(index, text, { sort: s.key, dir: s.dir, filters });
+  const list = queryLibrary(index, codeSearchText(text), { sort: s.key, dir: s.dir, filters });
   // Ordered by a date, each plate shows it (site.css .plate-when).
   if (s.key === 'added' || s.key === 'updated') grid.dataset.when = s.key; else delete grid.dataset.when;
   const out = list.slice(0, limit).map(e => plates.get(e.id)).filter(Boolean);

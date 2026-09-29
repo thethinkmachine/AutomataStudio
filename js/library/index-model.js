@@ -157,6 +157,8 @@ function normalizeEntry(e) {
     badges: arr(e.badges).filter(b => b && BADGES[b.id]).map(b => ({ id: b.id, detail: str(b.detail, 200) })),
     behaviour: e.behaviour && typeof e.behaviour === 'object' ? e.behaviour : null,
     fingerprint: str(e.fingerprint, 32) || null,
+    machineId: /^[0-9a-f]{16}$/.test(e.machineId || '') ? e.machineId : null,
+    taskId: /^[0-9a-f]{16}$/.test(e.taskId || '') ? e.taskId : null,
     dfa: validDfaTable(e.dfa) ? e.dfa : null,
     sketch: validSketch(e.sketch) ? e.sketch : null,
     tests: { accepts: num(e.tests?.accepts), rejects: num(e.tests?.rejects), outputs: num(e.tests?.outputs) },
@@ -194,12 +196,17 @@ export function entryById(index, id) {
  *
  *   type:DFA  family:tm  tag:parity  by:login  badge:minimal
  *   states:<10  states:>=3  accepts:abba  rejects:ab  level:intro
+ *   code:<machine id>
+ *
+ * `code:` takes a machine id (hash.js machineIdOf), not a code: turning a
+ * pasted code into its id needs the codec, which the app has and this module —
+ * shipped to the website as it is — deliberately does not import.
  *
  * `accepts:`/`rejects:` run the word through every entry whose minimal DFA the
  * CI published — the one question here answered by running machines.
  */
 export function parseLibraryQuery(text) {
-  const q = { words: [], type: [], family: [], tag: [], author: [], badge: [], level: [], states: [], accepts: [], rejects: [] };
+  const q = { words: [], type: [], family: [], tag: [], author: [], badge: [], level: [], states: [], accepts: [], rejects: [], code: [] };
   const re = /(\w+):("([^"]*)"|\S+)|"([^"]*)"|(\S+)/g;
   let m;
   while ((m = re.exec(String(text || '')))) {
@@ -215,6 +222,7 @@ export function parseLibraryQuery(text) {
       else if (key === 'states') { const c = parseComparison(val); if (c) q.states.push(c); }
       else if (key === 'accepts') q.accepts.push(val);
       else if (key === 'rejects') q.rejects.push(val);
+      else if (key === 'code' && /^[0-9a-f]{16}$/i.test(val)) q.code.push(val.toLowerCase());
       else q.words.push(fold(m[0]));
     } else {
       q.words.push(fold(m[4] !== undefined ? m[4] : m[5]));
@@ -289,6 +297,7 @@ function matchesQuery(e, q) {
   if (q.badge.length && !q.badge.every(b => e.badges.some(x => x.id === b))) return false;
   if (q.level.length && !q.level.includes(e.difficulty)) return false;
   if (q.states.length && !q.states.every(c => compare(e.stats.states, c))) return false;
+  if (q.code.length && !q.code.includes(e.machineId)) return false;
   if (q.accepts.length || q.rejects.length) {
     if (!e.dfa) return false;
     if (!q.accepts.every(w => dfaAccepts(e.dfa, w) === true)) return false;
@@ -412,6 +421,23 @@ export function libraryFacets(entries) {
   }
   const sorted = m => [...m.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
   return { family: sorted(family), machine: sorted(machine), badge: sorted(badge), tag: sorted(tag), level: sorted(level) };
+}
+
+/**
+ * Other entries for the same machine (hash.js machineIdOf). Unlike a language
+ * match this needs no confirming: the id is the hash of the machine's whole
+ * canonical code, so agreeing on it is agreeing on the machine, short of a
+ * 64-bit collision.
+ */
+export function sameMachineAs(index, machineId, exceptId = null) {
+  if (!index || !machineId) return [];
+  return index.entries.filter(e => e.machineId === machineId && e.id !== exceptId);
+}
+
+/** Other exercises setting the same task (analyze.js exerciseIdOf). */
+export function sameTaskAs(index, taskId, exceptId = null) {
+  if (!index || !taskId) return [];
+  return index.entries.filter(e => e.taskId === taskId && e.id !== exceptId);
 }
 
 /** Other entries for the same language, found by fingerprint. The caller confirms exactly. */

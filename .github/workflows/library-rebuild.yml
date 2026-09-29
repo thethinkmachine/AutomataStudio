@@ -1,0 +1,72 @@
+name: Rebuild the library
+
+# The machine library (thethinkmachine/automata-library) is built by this repo's
+# engine: its workflows check out AutomataStudio at main as `.engine` and run
+# scripts/library/build.mjs with it, so every badge, fingerprint and machine id
+# it publishes is whatever this repo's main computes. But its own workflows run
+# only on its own events — a push there, a pull request, an issue — so a change
+# here reached the published library only when something happened to change
+# there too, or someone remembered to press Run.
+#
+# This closes that gap: when main changes in a way the library build can see,
+# run the tests, and if they pass, start the library's Publish workflow. The
+# tests come first because the library republishes with main as it is — a
+# broken engine would otherwise publish broken badges, or drop entries whose
+# checks it now gets wrong.
+#
+# Repo setup this expects: a secret LIBRARY_DISPATCH_TOKEN holding a
+# fine-grained personal access token with access to
+# thethinkmachine/automata-library only, permission "Actions: Read and write".
+# That is the least a token needs to start a workflow there; the default
+# GITHUB_TOKEN is scoped to this repository and cannot. Without the secret —
+# before it is set up, or on a fork — the job says so and succeeds, rather than
+# failing every push.
+
+on:
+  push:
+    branches: [main]
+    # What the library build reads: the engine and the analysis (js/), the
+    # build and the website (scripts/library/), the tab icon it copies, and the
+    # dependencies it installs. A change to the docs, the app's CSS or the tests
+    # alone cannot change what the library publishes.
+    paths:
+      - 'js/**'
+      - 'scripts/library/**'
+      - 'svgs/favicon.svg'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Several merges in a row need one rebuild, on the latest main, not one each.
+concurrency:
+  group: library-rebuild
+  cancel-in-progress: true
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+
+      - name: Start the library's Publish workflow
+        env:
+          GH_TOKEN: ${{ secrets.LIBRARY_DISPATCH_TOKEN }}
+          LIBRARY_REPO: thethinkmachine/automata-library
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::LIBRARY_DISPATCH_TOKEN is not set, so the library was not rebuilt. See the comment at the top of this workflow."
+            exit 0
+          fi
+          gh workflow run publish.yml --repo "$LIBRARY_REPO" --ref main
+          echo "Started Publish in $LIBRARY_REPO for engine ${GITHUB_SHA}: https://github.com/${LIBRARY_REPO}/actions/workflows/publish.yml"

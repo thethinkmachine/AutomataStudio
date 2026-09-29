@@ -416,6 +416,7 @@ function entryPage(e, index, config, listing) {
     <aside class="entry-aside">
       ${definition}
       ${verified}
+      ${listing?.code ? `<section class="aside-sec machine-code"><h2 class="aside-title">Machine code</h2><code class="code-text">${esc(listing.code)}</code></section>` : ''}
       ${factsHtml}
     </aside>
   </div>
@@ -522,7 +523,8 @@ async function put(out, path, text) {
 }
 
 /**
- * `assets` are files copied into assets/ (the modules the search imports);
+ * `assets` are files copied under assets/ (the modules the search imports) —
+ * a name is a path relative to it, so '../interop/smtf.js' lands beside it;
  * `listings` maps an entry id to what build.mjs read off its file.
  */
 export async function writeSite(out, index, config, { assets = {}, listings = new Map() } = {}) {
@@ -535,9 +537,12 @@ export async function writeSite(out, index, config, { assets = {}, listings = ne
   await put(out, 'assets/site.css', await readFile(join(HERE, 'site', 'site.css'), 'utf8'));
   await put(out, 'assets/site.js', await readFile(join(HERE, 'site', 'site.js'), 'utf8'));
   await put(out, 'assets/favicon.svg', await readFile(join(HERE, '../../svgs/favicon.svg'), 'utf8'));
+  // A name is a path relative to assets/, so a module may sit where its
+  // imports expect it: '../interop/smtf.js' is the codec, beside assets/.
   for (const [name, from] of Object.entries(assets)) {
-    await mkdir(join(out, 'assets'), { recursive: true });
-    await copyFile(from, join(out, 'assets', name));
+    const to = join(out, 'assets', ...name.split('/'));
+    await mkdir(dirname(to), { recursive: true });
+    await copyFile(from, to);
   }
   const urls = ['', 'collections/', 'submit/',
     ...index.entries.map(e => `m/${enc(e.id)}/`), ...index.collections.map(c => `c/${enc(c.id)}/`)];

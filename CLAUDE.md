@@ -24,7 +24,7 @@ npm run library:build -- --library ../automata-library   # its index, pictures a
 
 `npm run bench` is also run by hand and never gates CI: timings move with the machine, so a build that failed on them would fail at random. Run it before and after a change to the engine, the player, the canvas or the space-time diagram; it marks a case only when it moved by more than its own noise, and marks a changed verdict whatever the timing did. See [The benchmark](.claude/skills/perf/SKILL.md).
 
-CI: `.github/workflows/deploy.yml` publishes `dist/` to GitHub Pages on push to `main`. `.github/workflows/electron-build.yml` packages win/mac/linux installers on every push and publishes a GitHub Release for `v*` tags.
+CI: `.github/workflows/deploy.yml` publishes `dist/` to GitHub Pages on push to `main`. `.github/workflows/electron-build.yml` packages win/mac/linux installers on every push and publishes a GitHub Release for `v*` tags. `.github/workflows/library-rebuild.yml` runs the tests and then starts the machine library's Publish workflow when `main` changes anything the library build reads (`js/`, `scripts/library/`) — the library is built by this repo's `main`, but its own workflows only run on its own events. It needs a `LIBRARY_DISPATCH_TOKEN` secret, and says so rather than failing when there is none.
 
 The package is `"type": "module"`. The two Electron entry points are CommonJS and carry a `.cjs` extension for that reason ([electron/main.cjs](electron/main.cjs), [electron/preload.cjs](electron/preload.cjs)).
 
@@ -38,7 +38,7 @@ only when they are relevant — same text, same headings, nothing was deleted.
 | StateMate, the Inspector console, panel tabs, floating sections | `.claude/skills/statemate/SKILL.md` |
 | Building blocks, scope, ports, the view-graph projection | `.claude/skills/blocks/SKILL.md` |
 | Running a machine: the player, the tape, space-time diagrams, the complexity profile, lazy execution, workers | `.claude/skills/simulation/SKILL.md` |
-| Saving, loading, export, codegen, share links, JFLAP, XState/SCXML import | `.claude/skills/persistence/SKILL.md` |
+| Saving, loading, export, codegen, share links, machine codes (SMTF), JFLAP, XState/SCXML import | `.claude/skills/persistence/SKILL.md` |
 | Exercises and grading, the lexer generator | `.claude/skills/exercises/SKILL.md` |
 | Layout geometry, culling, the large-machine profile, the label kernel | `.claude/skills/perf/SKILL.md` |
 | The machine library: its index, badges, the Library view, submissions and the library repo's CI | `.claude/skills/library/SKILL.md` |
