@@ -10,7 +10,7 @@ import { writeStandardTM } from '../../js/interop/standard-tm.js';
 import { writeMachineCode } from '../../js/interop/smtf.js';
 import { readMachine } from '../io.mjs';
 import { FA_TYPES, lettersOf, subsetTable, symOf, toRegex } from '../fa.mjs';
-import { c, print, printJson, table, warn } from '../out.mjs';
+import { c, print, printJson, rule, table, warn } from '../out.mjs';
 
 const strip = s => String(s ?? '').replace(/<[^>]+>/g, '');
 
@@ -64,6 +64,10 @@ export function infoOf(target, doc, { latex = false, regex = true } = {}) {
     sigma: st.sigma,
     start: target.startId ? name.get(target.startId) ?? null : null,
     accepting: (target.accepts || []).map(id => name.get(id) ?? id),
+    // What acceptance means for this machine, where F is not the whole story.
+    ...(cfg.hasStack && !cfg.hasTape && target.config?.pdaParadigm === 'empty' ? { acceptance: 'empty store' } : {}),
+    ...(cfg.omegaCondition ? { acceptance: cfg.omegaCondition } : {}),
+    ...(cfg.omegaCondition === 'parity' ? { priorities: Object.fromEntries(target.states.map(s => [name.get(s.id), Number(s.priority) || 0])) } : {}),
     deterministic: isDeterministicTarget(target)
   };
   if (cfg.hasStack && !cfg.hasTape) out.stackAlphabet = target.stackAlpha;
@@ -77,7 +81,7 @@ export function infoOf(target, doc, { latex = false, regex = true } = {}) {
       out.minimalDfaStates = dfa.n - (dfa.dead >= 0 ? 1 : 0);
       out.minimalDfaStatesComplete = dfa.n;
       if (target.machine === 'DFA') out.minimal = isMinimalDfa(target, dfa);
-    }
+    } else out.minimalDfaSkipped = 'the subset construction passed 4096 states, so it was not built';
     Object.assign(out, languageFacts(target));
     if (regex) {
       try { out.regex = toRegex(target); } catch { /* too large: leave it out */ }
@@ -109,29 +113,43 @@ machine its standard notation; and the machine code that names it.
     if (!opts.quiet) warnings.forEach(warn);
     const i = infoOf(target, doc, { latex: !!opts.latex, regex: !opts['no-regex'] });
     if (opts.json) { printJson(i); return 0; }
-    const set = xs => `{${xs.join(', ')}}`;
-    const rows = [
-      ['type', `${i.type} — ${i.name}`],
-      ['class', i.class || '—'],
-      ['states', String(i.states)],
-      ['transitions', String(i.transitions)],
-      ['Σ', set(i.sigma)]
+    const set = xs => `{${xs.map(x => c.cyan(x)).join(', ')}}`;
+    const states = xs => (xs.length ? xs.map(x => c.violet(x)).join(', ') : c.faint('none'));
+    const section = (title, rows) => {
+      print(rule(title));
+      print(table(rows.filter(Boolean).map(([k, v]) => [`  ${c.muted(k)}`, v])));
+      print('');
+    };
+    section('Machine', [
+      ['type', `${c.bold(c.accent(i.type))} ${c.muted('—')} ${i.name}`],
+      ['size', `${c.bold(i.states)} states, ${c.bold(i.transitions)} transitions${i.tapes ? `, ${i.tapes} tapes` : ''}${i.blocks ? `, ${i.blocks} blocks` : ''}`],
+      ['Σ', set(i.sigma)],
+      i.stackAlphabet && ['Γ', set(i.stackAlphabet)],
+      i.tapeAlphabet && ['Γ', set(i.tapeAlphabet)],
+      i.outputAlphabet && ['output', set(i.outputAlphabet)],
+      ['start', i.start ? c.violet(i.start) : c.red('none')],
+      i.acceptance === 'empty store'
+        ? ['accepts by', `empty store ${c.faint('(F is not used)')}`]
+        : i.priorities
+          ? ['priorities', `${Object.entries(i.priorities).map(([s, p]) => `${c.violet(s)} ${c.bold(p)}`).join(c.faint(', '))}  ${c.faint('accept: the least priority seen forever is even')}`]
+          : ['accepting', `${states(i.accepting)}${i.acceptance === 'cobuchi' ? `  ${c.faint('co-Büchi: visited only finitely often')}` : i.acceptance ? `  ${c.faint(`${i.acceptance === 'weak' ? 'weak' : 'Büchi'}: visited infinitely often`)}` : ''}`],
+      ['deterministic', i.deterministic ? c.green('yes') : c.yellow('no')]
+    ]);
+    const language = [
+      ['class', i.class || c.faint('—')],
+      i.empty !== undefined && ['language', i.empty ? c.red('empty') : [i.finite ? 'finite' : 'infinite', i.universal ? c.green('universal (Σ*)') : null].filter(Boolean).join(', ')],
+      i.minimalDfaSkipped && ['minimal DFA', c.faint(i.minimalDfaSkipped)],
+      i.minimalDfaStates !== undefined && ['minimal DFA', `${c.bold(i.minimalDfaStates)} states ${c.faint(`(${i.minimalDfaStatesComplete} with the sink)`)}${i.minimal !== undefined ? (i.minimal ? `  ${c.green('✔ this DFA is minimal')}` : `  ${c.yellow('this DFA is not minimal — automata minimize')}`) : ''}`],
+      i.regex && ['regex', c.teal(i.regex)]
     ];
-    if (i.stackAlphabet) rows.push(['Γ', set(i.stackAlphabet)]);
-    if (i.tapeAlphabet) rows.push(['Γ', set(i.tapeAlphabet)]);
-    if (i.outputAlphabet) rows.push(['output', set(i.outputAlphabet)]);
-    if (i.tapes) rows.push(['tapes', String(i.tapes)]);
-    if (i.blocks) rows.push(['blocks', String(i.blocks)]);
-    rows.push(['start', i.start ?? c.red('none')]);
-    rows.push(['accepting', set(i.accepting)]);
-    rows.push(['deterministic', i.deterministic ? 'yes' : 'no']);
-    if (i.minimalDfaStates !== undefined) rows.push(['minimal DFA', `${i.minimalDfaStates} states (${i.minimalDfaStatesComplete} with the sink)${i.minimal !== undefined ? (i.minimal ? ' — this DFA is minimal' : ' — this DFA is not minimal') : ''}`]);
-    if (i.empty !== undefined) rows.push(['language', i.empty ? 'empty' : [i.finite ? 'finite' : 'infinite', i.universal ? 'universal (Σ*)' : null].filter(Boolean).join(', ')]);
-    if (i.regex) rows.push(['regex', i.regex]);
-    if (i.standard) rows.push(['standard', i.standard]);
-    if (i.code) rows.push(['code', i.code]);
-    if (i.latex) rows.push(['LaTeX', i.latex]);
-    print(table(rows.map(([k, v]) => [c.dim(k), v])));
+    section('Language', language);
+    if (i.standard || i.code || i.latex) {
+      section('Names', [
+        i.standard && ['standard', c.orange(i.standard)],
+        i.code && ['code', c.muted(i.code)],
+        i.latex && ['LaTeX', i.latex]
+      ]);
+    }
     return 0;
   }
 };
@@ -176,7 +194,10 @@ export function lintTarget(target) {
 
   const usesPriority = cfg.omegaCondition === 'parity';
   const hasVerdict = !cfg.isTransducer || !!target.config?.transducerAccepts;
-  if (!usesPriority && hasVerdict && cfg.omegaCondition !== 'cobuchi') {
+  // A store machine may accept by empty store instead of by F, and then F
+  // being empty — and states that cannot reach it — say nothing.
+  const acceptsByStore = cfg.hasStack && !cfg.hasTape && target.config?.pdaParadigm === 'empty';
+  if (!usesPriority && hasVerdict && !acceptsByStore && cfg.omegaCondition !== 'cobuchi') {
     if (!(target.accepts || []).length) add('warning', 'no-accepting', 'No state accepts, so the language is empty.');
     else {
       const coreach = walk(target.accepts, inn);

@@ -403,3 +403,23 @@ test('GIF frames decode back to the pixels, across dictionary resets', () => {
   assert.equal(back.frames.length, 3);
   back.frames.forEach((px, i) => assert.deepEqual(px, [...frames[i].px], `frame ${i}`));
 });
+
+test('articles follow how a machine type is said', async () => {
+  const { aMachine } = await import('../cli/grammar.mjs');
+  assert.deepEqual(['DFA', 'NFA', 'MTM', 'Mealy', 'FST', '2PDA', 'ε-NFA'].map(t => aMachine(t)), ['a DFA', 'an NFA', 'an MTM', 'a Mealy', 'an FST', 'a 2PDA', 'an ε-NFA']);
+});
+
+test('BA export of a finite automaton warns that BA tools read Büchi', () => {
+  const said = [];
+  baText(ex('dfa'), { warn: m => said.push(m) });
+  assert.match(said[0] || '', /Büchi/);
+});
+
+test('each symbol keeps one colour, and the blank is the faint one', async () => {
+  const { symbolColour, PALETTE } = await import('../cli/out.mjs');
+  const alphabet = ['0', '1', '+'];
+  assert.equal(symbolColour('1', alphabet), symbolColour('1', alphabet));
+  assert.notEqual(symbolColour('0', alphabet), symbolColour('1', alphabet));
+  assert.equal(symbolColour('⊔', alphabet), PALETTE.faint);
+  assert.equal(symbolColour('', alphabet), PALETTE.faint);
+});

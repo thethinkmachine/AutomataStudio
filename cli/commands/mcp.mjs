@@ -34,6 +34,43 @@ function machineOf(spec) {
 
 const docOf = t => JSON.parse(serialize(t, 'automaton'));
 
+// A tool's arguments against its own inputSchema, before it runs: an agent
+// that sends a number where a list belongs should hear which argument and
+// what it should be, not "words.map is not a function". Unknown names are
+// refused too — a misspelt max_length would otherwise be ignored in silence.
+const TYPE_SAY = { string: 'a string', integer: 'a whole number', boolean: 'true or false' };
+function typeOk(v, schema) {
+  switch (schema.type) {
+    case 'string': return typeof v === 'string';
+    case 'integer': return Number.isInteger(v);
+    case 'boolean': return typeof v === 'boolean';
+    case 'array': return Array.isArray(v) && v.every(x => typeOk(x, schema.items));
+    case 'object': return !!v && typeof v === 'object' && !Array.isArray(v) && Object.values(v).every(x => typeOk(x, schema.additionalProperties));
+    default: return true;
+  }
+}
+
+export function checkArguments(name, schema, args) {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return `${name} takes its arguments as an object.`;
+  const props = schema.properties || {};
+  const missing = (schema.required || []).filter(k => args[k] === undefined || args[k] === null);
+  if (missing.length) return `${name} needs ${missing.map(k => `"${k}"`).join(' and ')}.`;
+  const unknown = Object.keys(args).filter(k => !(k in props));
+  if (unknown.length) return `${name} has no argument ${unknown.map(k => `"${k}"`).join(', ')}; it takes ${Object.keys(props).map(k => `"${k}"`).join(', ')}.`;
+  for (const [k, v] of Object.entries(args)) {
+    const p = props[k];
+    if (v === undefined || v === null) continue;
+    if (!typeOk(v, p)) {
+      const what = p.type === 'array' ? `a list of ${p.items.type}s` : p.type === 'object' ? 'an object of names to machines' : TYPE_SAY[p.type];
+      return `"${k}" should be ${what}.`;
+    }
+    if (p.enum && !p.enum.includes(v)) return `"${k}" is one of ${p.enum.join(', ')}.`;
+    if (p.minimum !== undefined && v < p.minimum) return `"${k}" is at least ${p.minimum}.`;
+    if (p.maximum !== undefined && v > p.maximum) return `"${k}" is at most ${p.maximum}.`;
+  }
+  return null;
+}
+
 const TOOLS = {
   decide: {
     description: 'Decide words on a machine: accept, reject or unknown (no verdict within the step budget), plus a transducer\'s output. An ω-automaton reads u(v).',
@@ -58,7 +95,7 @@ const TOOLS = {
   },
   equiv: {
     description: 'Whether two machines accept the same language. Exact for finite automata (with the shortest word they disagree on); bounded for everything else, and says so.',
-    inputSchema: { type: 'object', properties: { a: MACHINE, b: MACHINE, max_length: { type: 'integer' } }, required: ['a', 'b'] },
+    inputSchema: { type: 'object', properties: { a: MACHINE, b: MACHINE, max_length: { type: 'integer', minimum: 0, maximum: 64 } }, required: ['a', 'b'] },
     run: ({ a, b, max_length }) => {
       const r = compare(machineOf(a).target, machineOf(b).target, { maxLength: max_length ?? 8 });
       const word = r.tokens ? wordOf(r.tokens, App.config.sym.eps) : r.u ? `${wordOf(r.u, '')}(${wordOf(r.v, '')})` : null;
@@ -102,17 +139,17 @@ const TOOLS = {
   },
   trace: {
     description: 'The run the player would show on a word, step by step: states, what each step did, and the tape, stack, unread input or output.',
-    inputSchema: { type: 'object', properties: { machine: MACHINE, word: { type: 'string' }, limit: { type: 'integer' } }, required: ['machine', 'word'] },
+    inputSchema: { type: 'object', properties: { machine: MACHINE, word: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100000 } }, required: ['machine', 'word'] },
     run: ({ machine, word, limit }) => traceSteps(machineOf(machine).target, word, limit ?? 100)
   },
   words: {
     description: 'The shortest accepted words of a finite automaton, in shortlex order.',
-    inputSchema: { type: 'object', properties: { machine: MACHINE, max_length: { type: 'integer' }, limit: { type: 'integer' } }, required: ['machine'] },
+    inputSchema: { type: 'object', properties: { machine: MACHINE, max_length: { type: 'integer', minimum: 0, maximum: 64 }, limit: { type: 'integer', minimum: 1, maximum: 100000 } }, required: ['machine'] },
     run: ({ machine, max_length, limit }) => listAccepted(machineOf(machine).target, max_length ?? 8, limit ?? 30).map(w => wordOf(w, App.config.sym.eps))
   },
   halts: {
     description: 'Whether a deterministic one-tape Turing machine halts from a blank tape, with the method that proved it (simulation, cycler, translated cycler, backward reasoning, closed position set, busy beaver bound) — or unknown, with how fast its tape grows.',
-    inputSchema: { type: 'object', properties: { machine: MACHINE, budget: { type: 'integer' } }, required: ['machine'] },
+    inputSchema: { type: 'object', properties: { machine: MACHINE, budget: { type: 'integer', minimum: 1, maximum: 1000000000 } }, required: ['machine'] },
     run: ({ machine, budget }) => {
       const [it] = loadTuringMachines([String(machine)]);
       if (!it?.p) throw new CliError(it?.error || 'Not a Turing machine.');
@@ -126,7 +163,8 @@ function reply(id, result) { process.stdout.write(JSON.stringify({ jsonrpc: '2.0
 function fail(id, code, message) { process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } }) + '\n'); }
 
 export async function handle(msg) {
-  const { id, method, params = {} } = msg;
+  const { id, method } = msg;
+  const params = msg.params && typeof msg.params === 'object' ? msg.params : {};
   const isNotification = id === undefined || id === null;
   switch (method) {
     case 'initialize':
@@ -141,9 +179,12 @@ export async function handle(msg) {
       return { tools: Object.entries(TOOLS).map(([name, t]) => ({ name, description: t.description, inputSchema: t.inputSchema })) };
     case 'tools/call': {
       const tool = TOOLS[params.name];
-      if (!tool) throw Object.assign(new Error(`Unknown tool ${params.name}`), { rpc: -32602 });
+      if (typeof params.name !== 'string' || !Object.hasOwn(TOOLS, params.name)) throw Object.assign(new Error(`Unknown tool ${params.name}; the tools are ${Object.keys(TOOLS).join(', ')}.`), { rpc: -32602 });
+      const args = params.arguments ?? {};
+      const bad = checkArguments(params.name, tool.inputSchema, args);
+      if (bad) return { content: [{ type: 'text', text: bad }], isError: true };
       try {
-        const out = tool.run(params.arguments || {});
+        const out = tool.run(args);
         const text = typeof out === 'string' ? out : JSON.stringify(out, (k, v) => (typeof v === 'bigint' ? v.toString() : v), 2);
         return { content: [{ type: 'text', text }], isError: false };
       } catch (e) {
@@ -171,6 +212,11 @@ agent to call. Tools: ${Object.keys(TOOLS).join(', ')}.
       if (!line.trim()) continue;
       let msg;
       try { msg = JSON.parse(line); } catch { fail(null, -32700, 'Parse error'); continue; }
+      // A request is one object; a batch (an array) was dropped from MCP in 2025.
+      if (!msg || typeof msg !== 'object' || Array.isArray(msg) || typeof msg.method !== 'string') {
+        fail(msg && typeof msg === 'object' && !Array.isArray(msg) ? msg.id ?? null : null, -32600, 'Invalid Request: one JSON-RPC object with a method, per line.');
+        continue;
+      }
       try {
         const result = await handle(msg);
         if (msg.id !== undefined && msg.id !== null && result !== undefined) reply(msg.id, result);

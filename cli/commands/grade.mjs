@@ -180,7 +180,12 @@ on a blank canvas; the key (key-1.automaton) is the reference DFA, drawn.
   },
   async run({ opts }) {
     const n = Number(opts.states ?? 4);
-    const sigma = (opts.sigma ?? '01').includes(',') ? opts.sigma.split(',').map(s => s.trim()) : [...(opts.sigma ?? '01')];
+    // From a regex with no --sigma, the alphabet is the regex's own letters:
+    // a default of {0, 1} merged into a regex over {a, b} would make every
+    // language look neither empty nor universal.
+    const sigma = opts.sigma
+      ? (opts.sigma.includes(',') ? opts.sigma.split(',').map(s => s.trim()) : [...opts.sigma])
+      : opts['from-regex'] ? lettersOf(fromRegex(opts['from-regex'])) : ['0', '1'];
     const count = Number(opts.count ?? 1);
     const rnd = opts.seed !== undefined ? seeded(opts.seed) : Math.random;
     const allow = opts.allow ? opts.allow.split(',').map(s => s.trim()) : ['DFA', 'NFA', 'ε-NFA'];

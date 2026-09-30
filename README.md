@@ -178,6 +178,24 @@ them in the same groups the model picker uses. The pages are generated from the 
 registry the picker reads, and a test fails if a machine the picker offers has no
 guide — so a machine added to the app cannot quietly go undocumented.</sup>
 
+## Command line
+`automata` is the same engine in a terminal: run, test, trace and animate machines,
+compare and convert them, grade a class, learn a DFA from examples, and prove
+whether Turing machines halt.
+
+```sh
+automata run machine.automaton 0110 101          # ✔ accept / ✘ reject / ? unknown
+automata play machine.automaton 0110 --history   # an animated run: space pauses, arrows step
+automata from-regex "(a|b)*abb" | automata minimize - | automata codegen - --lang py
+automata grade exercise.automaton submissions/ --csv grades.csv
+automata halts machines.txt --proof proofs/      # halting proofs, checkable with check-proof
+```
+
+It ships inside the desktop app (put `resources/cli` on your `PATH`), or from a
+checkout with `npm install && npm link`. Start with `automata --help` and
+`automata help machines`; the [guide](docs/cli.md) walks through it by task, and
+the [command reference](docs/cli-reference.md) lists every option.
+
 ## Desktop app
 The Windows and Linux AppImage builds update themselves: they check on startup and
 on demand from **⋯ → Check for Updates**. If a check fails it shows a code —

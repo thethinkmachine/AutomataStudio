@@ -1,7 +1,7 @@
 // convert, export, codegen, svg — every way a machine leaves.
 import { ExportFormats } from '../../js/export-registry.js';
 import { readMachine, emit, CliError } from '../io.mjs';
-import { exportOptions, formatFor, formatNames, serialize } from '../writers.mjs';
+import { cliExportFormats, exportOptions, formatFor, formatNames, serialize } from '../writers.mjs';
 import { determinize, epsilonFree, minimize } from '../fa.mjs';
 import { print, printJson, table, warn, c } from '../out.mjs';
 
@@ -52,18 +52,19 @@ options, the same output.`,
   },
   async run({ args, opts }) {
     if (opts.list) {
-      const rows = Object.entries(ExportFormats).map(([k, f]) => [k, f.label, c.dim((f.options || []).map(o => {
+      const listed = Object.entries(ExportFormats).filter(([k]) => cliExportFormats().includes(k));
+      const rows = listed.map(([k, f]) => [k, f.label, c.dim((f.options || []).map(o => {
         const choices = typeof o.choices === 'function' ? null : o.choices;
         return choices ? `${o.id}=${choices.map(x => x[0]).join('|')}` : `${o.id}=${o.type === 'check' ? 'true|false' : o.type}`;
       }).join('  '))]);
-      if (opts.json) printJson(Object.fromEntries(Object.entries(ExportFormats).map(([k, f]) => [k, { label: f.label, group: f.group, ext: f.ext, options: (f.options || []).map(o => o.id) }])));
+      if (opts.json) printJson(Object.fromEntries(listed.map(([k, f]) => [k, { label: f.label, group: f.group, ext: f.ext, options: (f.options || []).map(o => o.id) }])));
       else print(table(rows, { head: ['format', 'what', 'options'] }));
       return 0;
     }
     const { target, doc } = readMachine(args[0] ?? '-');
     const format = opts.format || formatFor(null, opts.output, null);
     if (!format) throw new CliError('Say which format with -f (automata export --list), or give -o a file with a known extension.');
-    if (!formatNames().includes(format)) throw new CliError(`"${format}" is not a format. See automata export --list.`);
+    if (!formatNames().includes(format) && format !== 'json' && format !== 'batch') throw new CliError(`"${format}" is not a format. See automata export --list.`);
     emit(serialize(target, format, { doc, opts: opts.opt || [] }), opts.output);
     return 0;
   }

@@ -17,6 +17,10 @@
 
 import { parseArgs } from 'node:util';
 
+// Neither imports the app, so both are safe to load before env.mjs.
+import { c, pad, styled } from './out.mjs';
+import { TOPICS, commandHelp, topicHelp } from './help.mjs';
+
 const COMMANDS = {
   // Running
   run: ['run', 'Decide words: accept, reject or unknown (and a transducer\'s output)'],
@@ -81,6 +85,35 @@ const GROUPS = [
   ['Elsewhere', ['library', 'mcp']]
 ];
 
+// Every numeric flag, checked once here rather than at forty call sites: a
+// value that is not a number, not whole where it must be, or below its floor
+// is refused by name instead of becoming NaN inside a loop bound.
+const NUMERIC = {
+  'max-steps': { int: true, min: 1 }, budget: { int: true, min: 1 }, cps: { int: true, min: 0, max: 32 },
+  'induction-ms': { min: 0 }, limit: { int: true, min: 1 }, fps: { min: 0.1, max: 1000 }, steps: { int: true, min: 1 },
+  size: { int: true, min: 1, max: 4000 }, cols: { int: true, min: 1, max: 50 }, 'max-len': { int: true, min: 0, max: 10000 },
+  'max-length': { int: true, min: 0, max: 64 }, count: { int: true, min: 1 }, len: { int: true, min: 0, max: 100000 },
+  sample: { int: true, min: 1, max: 1000000 }, from: { int: true, min: 0, only: 'profile' }, to: { int: true, min: 0, max: 100000, only: 'profile' },
+  cap: { int: true, min: 1 }, states: { int: true, min: 1 }, symbols: { int: true, min: 2 }, points: { min: 0 },
+  exhaustive: { int: true, min: 0, max: 24 }, tests: { int: true, min: 0 }, timeout: { int: true, min: 1 },
+  bounded: { int: true, min: 0, max: 24 }, cell: { int: true, min: 1, max: 64 }, 'step-ms': { int: true, min: 10 },
+  workers: { int: true, min: 1, max: 256 }, 'max-states': { int: true, min: 1 }
+};
+
+function checkNumbers(opts, cmd) {
+  for (const [key, rule] of Object.entries(NUMERIC)) {
+    if (typeof opts[key] !== 'string' || (rule.only && rule.only !== cmd)) continue;
+    const raw = opts[key];
+    const n = Number(raw);
+    const say = `--${key}`;
+    if (raw === '' || !Number.isFinite(n)) return `${say} takes a number, not "${raw}".`;
+    if (rule.int && !Number.isInteger(n)) return `${say} takes a whole number, not ${raw}.`;
+    if (rule.min !== undefined && n < rule.min) return `${say} is at least ${rule.min}.`;
+    if (rule.max !== undefined && n > rule.max) return `${say} is at most ${rule.max}.`;
+  }
+  return null;
+}
+
 const GLOBAL_OPTIONS = {
   json: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
@@ -88,35 +121,40 @@ const GLOBAL_OPTIONS = {
   quiet: { type: 'boolean', short: 'q' }
 };
 
+const START_HERE = [
+  ['automata run machine.automaton 0110 101', 'decide words'],
+  ['automata info machine.automaton', 'what is this machine?'],
+  ['automata play machine.automaton 0110', 'watch a run, step by step'],
+  ['automata from-regex "(a|b)*abb" | automata minimize - | automata svg -', 'machines travel down pipes'],
+  ['automata halts 1RB1LB_1LA1RZ', 'does a Turing machine halt?']
+];
+
 function mainHelp(version) {
-  const lines = [
-    `automata ${version} — AutomataStudio from the command line`,
-    '',
-    'Usage: automata <command> [options]',
-    '       automata <command> --help',
-    ''
-  ];
+  const L = [];
+  L.push(styled
+    ? `${c.bold(c.accent('◆ automata'))} ${c.muted(version)}  ${c.faint('—')}  AutomataStudio from the command line`
+    : `automata ${version} — AutomataStudio from the command line`);
+  L.push('', `${c.bold('Usage:')} automata ${c.cyan('<command>')} [options]`,
+    `       automata ${c.cyan('<command>')} --help      ${c.muted('options and examples for one command')}`,
+    `       automata help ${c.cyan('<topic>')}          ${c.muted('a guide: machines, words, formats, …')}`, '');
   for (const [title, names] of GROUPS) {
-    lines.push(`${title}:`);
-    for (const n of names) lines.push(`  ${n.padEnd(14)}${COMMANDS[n][1]}`);
-    lines.push('');
+    L.push(c.bold(c.accent(title)));
+    for (const n of names) L.push(`  ${c.bold(pad(n, 14))}${COMMANDS[n][1]}`);
+    L.push('');
   }
-  lines.push(
-    'A machine is a file (.automaton .json .jff .scxml .hoa .ba .timbuk …), - for',
-    'standard input, or inline: a machine code (fa.01:+AB_BA) or a Turing machine',
-    'in the standard notation (1RB1LB_1LA1RZ).',
-    '',
-    'Every command takes --json, and --max-steps N (default 100000) for the step',
-    'budget a word is decided within.',
-    '',
-    'Exit codes: 0 accept/equal/pass, 1 reject/different/fail, 2 unknown (a budget',
-    'ran out), 3 could not run.'
-  );
-  return lines.join('\n');
+  L.push(c.bold(c.accent('Start here')));
+  const w = Math.max(...START_HERE.map(([cmd]) => cmd.length));
+  for (const [cmd, what] of START_HERE) L.push(`  ${c.faint('$')} ${c.teal(pad(cmd, w))}  ${c.muted(what)}`);
+  L.push('', `${c.bold(c.accent('Help topics'))}  ${c.muted('automata help <topic>')}`);
+  for (const [name, t] of Object.entries(TOPICS)) L.push(`  ${c.bold(pad(name, 14))}${c.muted(t.summary)}`);
+  L.push('',
+    `Every command takes ${c.cyan('--json')}, ${c.cyan('--quiet')} and ${c.cyan('--max-steps N')} (the step budget per word, default 100000).`,
+    `Exit codes: ${c.green('0')} accept/equal/pass  ${c.red('1')} reject/different/fail  ${c.yellow('2')} unknown  ${c.magenta('3')} could not run.`,
+    `The full guide is ${c.underline('docs/cli.md')}.`);
+  return L.join('\n');
 }
 
-function closest(name) {
-  const names = Object.keys(COMMANDS);
+function closest(name, names = Object.keys(COMMANDS)) {
   const dist = (a, b) => {
     const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
     for (let j = 1; j <= b.length; j++) d[0][j] = j;
@@ -145,7 +183,15 @@ export async function main(argv) {
   if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') {
     const topic = cmd === 'help' ? rest[0] : null;
     if (!topic) { process.stdout.write(mainHelp(APP_VERSION) + '\n'); return 0; }
-    return main([topic, '--help']);
+    if (topic === 'topics') {
+      for (const [name, t] of Object.entries(TOPICS)) process.stdout.write(`${c.bold(pad(name, 14))}${c.muted(t.summary)}\n`);
+      return 0;
+    }
+    if (TOPICS[topic]) { process.stdout.write(topicHelp(topic)); return 0; }
+    if (COMMANDS[topic]) return main([topic, '--help']);
+    const near = closest(topic, [...Object.keys(COMMANDS), ...Object.keys(TOPICS)]);
+    process.stderr.write(`automata help: "${topic}" is neither a command nor a topic.${near ? ` Did you mean "${near}"?` : ''} See automata help topics.\n`);
+    return 3;
   }
   if (cmd === '--version' || cmd === '-v' || cmd === 'version') { process.stdout.write(`${APP_VERSION}\n`); return 0; }
   const entry = COMMANDS[cmd];
@@ -170,17 +216,18 @@ export async function main(argv) {
   }
   const { values: opts, positionals: args } = parsed;
   if (opts.help) {
-    process.stdout.write(`${COMMANDS[cmd][1]}\n\nUsage: ${spec.usage}\n`);
+    process.stdout.write(commandHelp(cmd, COMMANDS[cmd][1], spec.usage) + '\n');
     return 0;
   }
 
   // The CLI decides one word at a time, so it can afford a real budget; the
   // app's 400 is sized for the Language panel's grid of hundreds of cells.
-  const budget = opts['max-steps'] !== undefined ? Number(opts['max-steps']) : 100000;
-  if (!Number.isFinite(budget) || budget < 1) {
-    process.stderr.write(`automata ${cmd}: --max-steps takes a positive number.\n`);
+  const bad = checkNumbers(opts, cmd);
+  if (bad) {
+    process.stderr.write(`automata ${cmd}: ${bad}\n`);
     return 3;
   }
+  const budget = opts['max-steps'] !== undefined ? Number(opts['max-steps']) : 100000;
   App.config.langStepBudget = budget;
   if (opts['max-steps'] !== undefined) {
     App.config.maxTmSteps = budget;
@@ -201,4 +248,4 @@ export async function main(argv) {
   }
 }
 
-export { COMMANDS };
+export { COMMANDS, GROUPS };

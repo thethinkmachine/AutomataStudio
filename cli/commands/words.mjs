@@ -1,4 +1,5 @@
 // words, profile — the language as a list, and the cost of deciding it.
+import { aMachine } from '../grammar.mjs';
 import { App, getMachineConfig } from '../../js/state.js';
 import { withMachine } from '../../js/exercise/grade.js';
 import { decideRaw } from '../../js/library/analyze.js';
@@ -46,6 +47,9 @@ so it is exact and fast; anything else is run word by word up to --max-len.
     const fa = FA_TYPES.has(target.machine);
     const cfg = getMachineConfig(target.machine) || {};
     if (cfg.isOmega) throw new CliError('An ω-automaton accepts infinite words, which cannot be listed one by one. Use run with u(v) words, or equiv.');
+    if (cfg.isTransducer && !target.config?.transducerAccepts) {
+      throw new CliError(`${aMachine(target.machine, true)} has no accept/reject verdict here — it maps words to outputs. Use run to see them, or turn on acceptance in the machine's settings.`);
+    }
 
     if (opts.count) {
       let counts;
@@ -84,6 +88,7 @@ so it is exact and fast; anything else is run word by word up to --max-len.
       }
     }
     if (opts.json) printJson(list.map(w => wordOf(w, eps)));
+    else if (!list.length) process.stderr.write(c.yellow(`No ${opts.rejected ? 'rejected' : 'accepted'} word up to length ${maxLen}.\n`));
     else list.forEach(w => print(wordOf(w, eps)));
     return 0;
   }
@@ -105,7 +110,7 @@ a growth estimate for each. An estimate from a few lengths, not a proof.
   async run({ args, opts }) {
     const { target } = readMachine(args[0] ?? '-');
     const kind = withMachine(target, () => spaceTimeKind(target.machine));
-    if (kind !== 'tape' && kind !== 'store') throw new CliError(`A ${target.machine} has no tape or store whose run length is worth profiling; its run is as long as its input.`);
+    if (kind !== 'tape' && kind !== 'store') throw new CliError(`${aMachine(target.machine, true)} has no tape or store whose run length is worth profiling; its run is as long as its input.`);
     const plan = {
       mode: opts.family ? 'family' : 'all', pattern: opts.family || '',
       from: Number(opts.from ?? 1), to: Number(opts.to ?? 12), cap: Number(opts.cap ?? 64),
@@ -118,6 +123,12 @@ a growth estimate for each. An estimate from a few lengths, not a proof.
       catch (e) { throw new CliError(e.message); }
       for (const step of gen) if (step.done) rows.push({ ...step.row, verdicts: { ...step.row.verdicts } });
     });
+    // Words the machine cannot read are counted, not measured; when that is
+    // every word, the profile is empty for a reason the reader has to hear.
+    if (rows.length && rows.every(r => !r.count)) {
+      const why = rows.find(r => r.error)?.error?.replace(/<[^>]+>/g, '') || 'no word could be run';
+      throw new CliError(`No input could be measured: ${why}`);
+    }
     const spaceName = kind === 'store' ? 'store' : 'cells';
     const growth = metric => growthEstimate(rows.filter(r => r.count).map(r => ({
       n: r.n, v: metric === 'steps' ? r.worst : r.spaceWorst, limited: r.limited > 0

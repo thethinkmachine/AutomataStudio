@@ -63,7 +63,7 @@ export function sketchFromTarget(target, labelOf = null) {
     const l = labelOf ? labelOf(t) : null;
     if (l !== null && l !== undefined && l !== '' && !e.labels.includes(l)) e.labels.push(l);
   }
-  const edges = [...byKey.values()].map(e => ({ key: e.key, from: e.from, to: e.to, curve: e.curve, loopAngle: e.loopAngle, label: e.labels.join(', ') }));
+  const edges = [...byKey.values()].map(e => ({ key: e.key, from: e.from, to: e.to, curve: e.curve, loopAngle: e.loopAngle, label: e.labels.join(', '), labels: e.labels }));
   return { nodes, edges, rootOf };
 }
 
@@ -131,7 +131,51 @@ function arrowHead(x, y, dx, dy, len) {
  *   live       every node a `data-s` group and every edge a `data-e` group,
  *              so a run can be painted on it (the Library's Try it)
  */
-export function drawSketch(sk, { w = 320, h = 200, names = false, labels = false, live = false, label = 'The machine’s diagram' } = {}) {
+/**
+ * Stacked labels, placed one at a time so none lands on a state or on a label
+ * already placed: each tries where its edge put it, then positions stepped
+ * away from the edge and along it, and keeps the first that is clear (or the
+ * original, if nothing within reach is). Boxes are estimated from the text —
+ * the figure is a file, with no layout engine to measure against.
+ */
+function placeStackedLabels(labels, nodes, r) {
+  const CHAR = 7.4, LINE = 15;
+  const placed = [];
+  const circles = nodes.map(n => ({ x: n.px, y: n.py, r: (n.block ? r * 1.7 : r) + 2 }));
+  const boxOf = (l, dx, dy) => {
+    const w = Math.max(...l.lines.map(s => [...s].length)) * CHAR + 4;
+    const h = l.lines.length * LINE;
+    const x = l.lx + dx, top = l.top + dy;
+    const x0 = l.anchor === 'middle' ? x - w / 2 : l.anchor === 'start' ? x : x - w;
+    return { x0, y0: top - 12, x1: x0 + w, y1: top - 12 + h };
+  };
+  const hitsBox = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+  const hitsCircle = (a, c) => {
+    const nx = Math.max(a.x0, Math.min(c.x, a.x1)), ny = Math.max(a.y0, Math.min(c.y, a.y1));
+    return Math.hypot(nx - c.x, ny - c.y) < c.r;
+  };
+  const clear = b => !placed.some(p => hitsBox(b, p)) && !circles.some(c => hitsCircle(b, c));
+  const offsets = [[0, 0]];
+  for (let k = 1; k <= 8; k++) {
+    for (const [s, dir] of [[1, 'away'], [1, 'along'], [-1, 'along'], [-1, 'away']]) offsets.push([s * k * (dir === 'away' ? 6 : 9), dir]);
+  }
+  return labels.map(l => {
+    let chosen = [0, 0];
+    for (const [amt, dir] of offsets) {
+      const v = dir === 'along' ? l.along : l.away;
+      const dx = dir === 0 ? 0 : v[0] * amt, dy = dir === 0 ? 0 : v[1] * amt;
+      if (clear(boxOf(l, dx, dy))) { chosen = [dx, dy]; break; }
+    }
+    placed.push(boxOf(l, ...chosen));
+    const x = l.lx + chosen[0], top = l.top + chosen[1];
+    return `<text class="sk-l" x="${r1(x)}" y="${r1(top)}" text-anchor="${l.anchor}">${l.lines.map((s, k) => `<tspan x="${r1(x)}" dy="${k ? LINE : 0}">${esc(s)}</tspan>`).join('')}</text>`;
+  });
+}
+
+// `stacked` draws every label an edge carries on a line of its own, uncut —
+// for a standalone figure (the command line's svg), where a Turing machine's
+// "0 → 1, R" is the content rather than a caption. Cards keep one short line.
+export function drawSketch(sk, { w = 320, h = 200, names = false, labels = false, live = false, stacked = false, label = 'The machine’s diagram' } = {}) {
   const nodes = sk?.nodes || [];
   const pad = labels ? 30 : 12;
   const fit = thumbFit(thumbBounds(nodes, 30, n => (n.block ? 60 : 30)), { x: pad + 10, y: pad, w: w - pad * 2 - 10, h: h - pad * 2 });
@@ -143,13 +187,17 @@ export function drawSketch(sk, { w = 320, h = 200, names = false, labels = false
   const head = Math.max(3.2, Math.min(7, r * 0.5));
   const stroke = r < 6 ? 'thin' : '';
   const out = [`<svg class="sk${stroke ? ' is-thin' : ''}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}">`];
-  const edgeParts = [], labelParts = [];
+  const edgeParts = [], labelParts = [], stackedLabels = [];
 
   for (const e of sk.edges) {
     const a = byId.get(e.from), b = byId.get(e.to);
     if (!a || !b) continue;
     const ra = a.block ? r * 1.5 : r, rb = b.block ? r * 1.5 : r;
     let d, arrow, lx, ly;
+    // Stacked labels only: which way the lines grow, where they anchor, and
+    // the two directions a label may be nudged along (away from its edge, and
+    // along it) when it lands on something.
+    let grow = 0, anchor = 'middle', away = [0, -1], along = [1, 0];
     if (a === b) {
       const ang = Number.isFinite(e.loopAngle) ? e.loopAngle : -Math.PI / 2;
       const spread = 0.5, reach = ra * 2.6;
@@ -160,6 +208,10 @@ export function drawSketch(sk, { w = 320, h = 200, names = false, labels = false
       arrow = arrowHead(x2, y2, x2 - c2x, y2 - c2y, head);
       lx = a.px + Math.cos(ang) * (ra + reach * 0.82 + 7);
       ly = a.py + Math.sin(ang) * (ra + reach * 0.82 + 7);
+      // A loop's lines grow away from its state, so the last is not drawn over it.
+      grow = Math.sin(ang) < -0.5 ? -1 : Math.sin(ang) > 0.5 ? 1 : 0;
+      away = [Math.cos(ang), Math.sin(ang)];
+      along = [-Math.sin(ang), Math.cos(ang)];
     } else {
       const dx = b.px - a.px, dy = b.py - a.py, dist = Math.hypot(dx, dy) || 1;
       const pair = pairs.get(e.key);
@@ -177,12 +229,22 @@ export function drawSketch(sk, { w = 320, h = 200, names = false, labels = false
       const side = bend >= 0 ? 1 : -1;
       lx = mx + nx * 9 * side;
       ly = my + ny * 9 * side;
+      // Beside a steep edge a centred label straddles the line; set it off to
+      // the side instead.
+      if (stacked && Math.abs(nx) > 0.6) { anchor = nx * side > 0 ? 'start' : 'end'; lx = mx + nx * 6 * side; }
+      away = [nx * side, ny * side];
+      along = [dx / dist, dy / dist];
     }
     const inner = `<path class="sk-e" d="${d}"/><path class="sk-ah" d="${arrow}"/>`;
     edgeParts.push(live ? `<g class="e" data-e="${esc(e.key)}">${inner}</g>` : inner);
-    if (labels && e.label) labelParts.push(`<text class="sk-l" x="${r1(lx)}" y="${r1(ly + 3.5)}" text-anchor="middle">${esc(e.label.length > 14 ? `${e.label.slice(0, 13)}…` : e.label)}</text>`);
+    if (labels && stacked && e.labels?.length) {
+      const lines = e.labels;
+      const span = (lines.length - 1) * 15;
+      stackedLabels.push({ lines, lx, top: ly + 3.5 - (grow < 0 ? span : grow > 0 ? 0 : span / 2), anchor, away, along });
+    } else if (labels && e.label) labelParts.push(`<text class="sk-l" x="${r1(lx)}" y="${r1(ly + 3.5)}" text-anchor="middle">${esc(e.label.length > 14 ? `${e.label.slice(0, 13)}…` : e.label)}</text>`);
   }
   out.push(`<g class="sk-edges">${edgeParts.join('')}</g>`);
+  if (stackedLabels.length) labelParts.push(...placeStackedLabels(stackedLabels, [...byId.values()], r));
 
   const nodeParts = [];
   for (const n of byId.values()) {

@@ -69,7 +69,18 @@ export function compare(a, b, { maxLength = 8, maxWords = 20000, size = 6 } = {}
     if (!(ca.isOmega && cb.isOmega)) throw new CliError('One machine reads infinite words and the other finite ones; they have no language in common to compare.');
     return compareOmega(a, b, { size, maxWords });
   }
-  return compareMachines(a, b, { maxLength, maxWords, sym: symOf(a) });
+  // Two transducers with no acceptance switched on are functions from words to
+  // outputs: their accept marks are not part of what they do, so they must not
+  // decide the comparison. With every state accepting, a run that reads the
+  // whole word "accepts" on both sides and only the outputs can differ.
+  const outputsOnly = ca.isTransducer && cb.isTransducer && !a.config?.transducerAccepts && !b.config?.transducerAccepts;
+  if (outputsOnly) {
+    a = { ...a, accepts: a.states.map(s => s.id) };
+    b = { ...b, accepts: b.states.map(s => s.id) };
+  }
+  // The machines actually compared ride along, so a witness is decided on the
+  // same footing as the comparison that found it.
+  return { ...compareMachines(a, b, { maxLength, maxWords, sym: symOf(a) }), outputsOnly, compared: [a, b] };
 }
 
 // ── equiv ─────────────────────────────────────────────────────────
@@ -99,7 +110,8 @@ or the check was bounded (use --json to see which).`,
       if (r.method === 'lassos') witness = { word: `${wordOf(r.u, '')}(${wordOf(r.v, '')})`, acceptedBy: r.aAccepts ? A.name : B.name };
       else {
         const w = wordOf(r.tokens, eps);
-        const va = verdictOnTokens(A.target, r.tokens), vb = verdictOnTokens(B.target, r.tokens);
+        const [ta, tb] = r.compared || [A.target, B.target];
+        const va = verdictOnTokens(ta, r.tokens), vb = verdictOnTokens(tb, r.tokens);
         witness = { word: w, a: va.verdict, b: vb.verdict, aOutput: va.output ?? null, bOutput: vb.output ?? null };
       }
     }
@@ -110,7 +122,15 @@ or the check was bounded (use --json to see which).`,
     else {
       print(c.red('different'));
       if (witness.acceptedBy) print(`${witness.word} is accepted by ${witness.acceptedBy} only`);
-      else print(`${witness.word}: ${A.name} ${witness.a === 'acc' ? 'accepts' : witness.a === 'rej' ? 'rejects' : 'gives no verdict'}${witness.aOutput != null ? ` (→ ${[].concat(witness.aOutput).join('')})` : ''}, ${B.name} ${witness.b === 'acc' ? 'accepts' : witness.b === 'rej' ? 'rejects' : 'gives no verdict'}${witness.bOutput != null ? ` (→ ${[].concat(witness.bOutput).join('')})` : ''}`);
+      else {
+        const out = o => [].concat(o).join('') || eps;
+        const say = (v, o) => (r.outputsOnly
+          // Every state accepts here, so a reject is a run that could not read
+          // the whole word — not an output of ε.
+          ? (v === 'unk' ? 'gives no output within the budget' : v === 'rej' ? 'cannot read the whole word' : `outputs ${out(o)}`)
+          : `${v === 'acc' ? 'accepts' : v === 'rej' ? 'rejects' : 'gives no verdict'}${o != null ? ` (→ ${out(o)})` : ''}`);
+        print(`${witness.word}: ${A.name} ${say(witness.a, witness.aOutput)}, ${B.name} ${say(witness.b, witness.bOutput)}`);
+      }
     }
     if (r.equal === false) return 1;
     if (r.equal === null) return 2;
@@ -215,8 +235,9 @@ Exit: 0 no change to the language, 1 the language changed, 2 undecided.`,
           if (r.method === 'lassos') lang.word = `${wordOf(r.u, '')}(${wordOf(r.v, '')})`;
           else {
             lang.word = wordOf(r.tokens, App.config.sym.eps);
-            lang.old = verdictOnTokens(A.target, r.tokens).verdict;
-            lang.new = verdictOnTokens(B.target, r.tokens).verdict;
+            const [ta, tb] = r.compared || [A.target, B.target];
+            lang.old = verdictOnTokens(ta, r.tokens).verdict;
+            lang.new = verdictOnTokens(tb, r.tokens).verdict;
           }
         }
       } catch (e) { lang = { equal: null, error: e.message }; }
@@ -326,6 +347,7 @@ Exit: 0 no two alike, 1 at least one group.`,
         const key = sig.key ?? `unique:${f}`;
         if (!groups.has(key)) groups.set(key, { kind: sig.kind, members: [] });
         groups.get(key).members.push(f);
+        (groups.get(key).types ||= []).push(target.machine);
       } catch (e) { errors.push({ file: f, error: e.message }); }
     }
     const shared = [...groups.values()].filter(g => g.members.length > 1);
@@ -335,7 +357,8 @@ Exit: 0 no two alike, 1 at least one group.`,
       const say = { language: 'same language', machine: 'same machine up to renaming', behaviour: 'same behaviour on every short word' };
       shared.forEach((g, i) => {
         print(c.bold(`group ${i + 1}`) + c.dim(` — ${say[g.kind] || g.kind}`));
-        g.members.forEach(m => print(`  ${m}`));
+        const mixed = new Set(g.types).size > 1;
+        g.members.forEach((m, k) => print(`  ${m}${mixed ? c.dim(`  (${g.types[k]})`) : ''}`));
       });
       if (!shared.length) print(c.green(`no two of ${files.length - errors.length} machines are alike`));
       if (opts.all && alone.length) { print(c.bold('alone')); alone.forEach(m => print(`  ${m}`)); }
