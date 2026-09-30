@@ -86,3 +86,8 @@ body:
       options:
         - label: I made this machine (or have the right to share it) and release it under the licence above.
           required: true
+  - type: textarea
+    id: essay
+    attributes:
+      label: Essay
+      description: Optional. A long-form article about the machine, in Markdown — headings, tables, footnotes, $…$ math, {{steps}} and other facts the library computes, and ::: figures drawn from the machine. Shown on the machine's page. The app sends it inside the machine's link, so this box is for typing one in by hand.

@@ -18,6 +18,12 @@
 // `machine` field. A pre-filled URL past ISSUE_URL_MAX is not sent; the link is
 // put on the clipboard and the form opened without it, with the instruction to
 // paste. Very large machines go as a downloaded file dragged into the issue.
+//
+// An essay rides the same way: inside the document, as meta.library.essay, so
+// it is compressed with the machine and needs no room of its own in the form's
+// address — which a few paragraphs of Markdown would fill. The library's CI
+// takes it out again and writes it beside the machine as a .md file
+// (issue-to-entry.mjs), so the published machine file never carries it.
 
 import { App } from '../state.js';
 import { getWorkspaceData, shareLinkFor } from '../persistence.js';
@@ -49,8 +55,27 @@ export function submissionDefaults(meta = App.meta) {
     name: lib.author?.name || '',
     license: LIBRARY_LICENSES[lib.license] ? lib.license : 'CC-BY-4.0',
     agreed: false,
-    kind: App.exercise ? 'exercise' : 'machine'
+    kind: App.exercise ? 'exercise' : 'machine',
+    essay: ''
   };
+}
+
+// ── The essay's draft ──
+// An essay is long, and losing one to a reload would be losing an evening, so
+// it is kept per machine (the key library-ui.js keys the form by) in
+// localStorage as it is typed. Storage can be refused — a private window,
+// blocked site data — and then the draft lives for the session only.
+const DRAFT_KEY = 'as.library.essay-draft:';
+
+export function essayDraft(key) {
+  try { return globalThis.localStorage?.getItem(DRAFT_KEY + key) || ''; } catch { return ''; }
+}
+
+export function saveEssayDraft(key, text) {
+  try {
+    if (text) globalThis.localStorage?.setItem(DRAFT_KEY + key, text);
+    else globalThis.localStorage?.removeItem(DRAFT_KEY + key);
+  } catch { /* the session keeps it */ }
 }
 
 const LOGIN_KEY = 'as.library.login';
@@ -101,6 +126,7 @@ export function buildSubmissionDoc(fields, update = null) {
   if (fields.difficulty) lib.difficulty = fields.difficulty;
   if (fields.chapter) lib.chapter = String(fields.chapter).trim();
   if (fields.readme) lib.readme = String(fields.readme).trim();
+  if (String(fields.essay || '').trim()) lib.essay = String(fields.essay).replace(/\r\n?/g, '\n').trim();
   // An update keeps what the entry was remixed from; it is not a remix of itself.
   const forkOf = update && fields.forkOf === update.id ? update.forkOf : fields.forkOf;
   if (isLibraryId(forkOf)) lib.forkOf = forkOf;

@@ -51,7 +51,7 @@ import { canonicalCodeOf, contentHash } from '../../js/library/hash.js';
 import { INDEX_FORMAT, INDEX_VERSION, LIBRARY_REPO, LIBRARY_SITE_URL, isLibraryId } from '../../js/library/config.js';
 import { normalizeIndex } from '../../js/library/index-model.js';
 import { readingMinutes } from '../../js/library/article.js';
-import { essayWarnings } from '../../js/library/essay.js';
+import { essayWarnings } from '../../js/library/essay-check.js';
 import { frontispieceOf, writeSite } from './site.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));

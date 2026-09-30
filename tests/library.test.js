@@ -338,11 +338,11 @@ test('the build reports what is wrong with an essay on its entry, and still publ
   const b = await builtLibrary();
   const r = b.results.find(x => x.id === 'finite/dfa/odd-ones');
   assert.deepEqual(r.errors, []);
-  assert.deepEqual(r.warnings.filter(w => w.startsWith('Essay:')), [
+  assert.deepEqual(r.warnings.filter(w => w.startsWith('Essay:')).sort(), [
     'Essay: {{steps}} is not a fact the library knows.',
     'Essay: Link "lib:no/such/entry" names nothing in the library.',
     'Essay: ::: spacetime is not a figure this machine can draw.'
-  ]);
+  ].sort());
   assert.ok(b.index.entries.some(e => e.id === 'finite/dfa/odd-ones' && e.essay), 'a sentence to fix is not a reason to unpublish');
   assert.match(reportMarkdown(b.results), /⚠️ Essay: \{\{steps\}\} is not a fact/);
   const clean = b.results.find(x => x.id === 'turing/busy-beaver/bb2');
@@ -1365,6 +1365,145 @@ test('the Library view typesets a description, and the submit form previews it',
   } finally {
     globalThis.renderMathInElement = stub;
   }
+});
+
+// ── Writing an essay in the app, and sending it ───────────────────
+
+/** An issue body as GitHub writes it: every field's heading, the essay last. */
+function fullIssue({ name, machine, updates = '', essay = '' }) {
+  return [
+    '### Name', '', name, '', '### Description', '', 'A machine.', '',
+    '### Machine', '', '```text', machine, '```', '', '### Write-up', '', '_No response_', '',
+    '### Tags', '', '_No response_', '', '### Level', '', '_No response_', '', '### Chapter or source', '', '_No response_', '',
+    '### Remix of', '', '_No response_', '', '### Updates', '', updates || '_No response_', '', '### Display name', '', '_No response_', '',
+    '### Licence', '', 'CC-BY-4.0', '', '### Agreement', '', '- [X] I made this machine', '',
+    '### Essay', '', essay || '_No response_'
+  ].join('\n');
+}
+
+test('an essay rides inside the submitted machine, and the CI writes it beside it', async () => {
+  resetApp();
+  const root = await mkdtemp(join(tmpdir(), 'as-issue-'));
+  const withEssay = evenOnes();
+  withEssay.meta.library.essay = '## Why parity\n\nIt has {{states}} states.';
+  const r = await processIssue({ body: fullIssue({ name: 'Parity with an essay', machine: await context.shareLinkFor(withEssay) }), author: 'dana', number: 1, root });
+  assert.equal(r.ok, true, r.problems.join('\n'));
+  assert.equal(r.essayPath, r.path.replace(/\.automaton$/, '.md'));
+  assert.equal(await readFile(join(root, r.essayPath), 'utf8'), '## Why parity\n\nIt has {{states}} states.\n');
+  const machine = JSON.parse(await readFile(join(root, r.path), 'utf8'));
+  assert.equal(machine.meta.library.essay, undefined, 'the published machine file carries the machine, not the prose');
+  assert.match(r.report, /With its essay/);
+
+  // An update without an essay leaves the published one where it is.
+  const update = await processIssue({ body: fullIssue({ name: 'Parity, reworded', machine: await context.shareLinkFor(evenOnes()), updates: r.id }), author: 'dana', number: 2, root });
+  assert.equal(update.ok, true, update.problems.join('\n'));
+  assert.equal(update.essayPath, '');
+  assert.match(await readFile(join(root, r.essayPath), 'utf8'), /Why parity/);
+
+  // Typed into the form's own Essay box, it wins — and a heading inside it that
+  // names one of the form's fields is part of the essay, not the end of it.
+  const typed = await processIssue({ body: fullIssue({ name: 'Parity, by hand', machine: await context.shareLinkFor(withEssay), updates: r.id, essay: '# From the form\n\n### Licence\n\nMine is CC0 in spirit.' }), author: 'dana', number: 3, root });
+  assert.equal(typed.ok, true, typed.problems.join('\n'));
+  assert.equal(await readFile(join(root, r.essayPath), 'utf8'), '# From the form\n\n### Licence\n\nMine is CC0 in spirit.\n');
+  assert.equal(JSON.parse(await readFile(join(root, r.path), 'utf8')).meta.library.license, 'CC-BY-4.0');
+
+  const long = evenOnes();
+  long.meta.library.essay = 'word '.repeat(13000);
+  const tooLong = await processIssue({ body: fullIssue({ name: 'Parity, at length', machine: await context.shareLinkFor(long) }), author: 'erin', number: 4, root });
+  assert.equal(tooLong.ok, false);
+  assert.ok(tooLong.problems.some(p => /the library takes essays up to 60,000/.test(p)));
+});
+
+test('the app puts the essay in the submitted document, and keeps its draft per machine', () => {
+  seedTab();
+  const fields = { ...context.submissionDefaults(), login: 'dana', essay: '# An essay\r\n\r\nWith Windows line ends.  ' };
+  assert.equal(context.buildSubmissionDoc(fields).meta.library.essay, '# An essay\n\nWith Windows line ends.');
+  assert.equal(context.buildSubmissionDoc({ ...fields, essay: '   \n ' }).meta.library.essay, undefined, 'a blank essay is no essay');
+  context.saveEssayDraft('w0|', 'draft text');
+  assert.equal(context.essayDraft('w0|'), 'draft text');
+  assert.equal(context.essayDraft('w1|'), '', 'another machine\'s form starts empty');
+  context.saveEssayDraft('w0|', '');
+  assert.equal(context.essayDraft('w0|'), '');
+});
+
+test('the editor reads Markdown and text files, and refuses anything else', async () => {
+  const file = (name, type, text, size = text.length) => ({ name, type, size, text: async () => text });
+  assert.equal(context.isEssayFile(file('notes.md', '', '')), true);
+  assert.equal(context.isEssayFile(file('Notes.MARKDOWN', '', '')), true);
+  assert.equal(context.isEssayFile(file('noext', 'text/markdown', '')), true);
+  assert.equal(context.isEssayFile(file('picture.png', 'image/png', '')), false);
+  assert.deepEqual(await context.readEssayFile(file('e.md', '', '﻿# Hi\r\nthere')), { text: '# Hi\nthere', name: 'e.md' }, 'a byte-order mark and Windows line ends are dropped');
+  assert.match((await context.readEssayFile(file('big.md', '', 'x', 2_000_000))).error, /too large to be an essay/);
+  assert.match((await context.readEssayFile(file('picture.png', 'image/png', ''))).error, /not a Markdown or text file/);
+});
+
+test('the submit page writes an essay beside its preview, from a file or by hand', async () => {
+  await serveLibrary();
+  seedTab();
+  context.renderLibraryView();
+  await context.loadLibrary({ force: true });
+  context.go('submit', null, { reset: true });
+  const host = context.document.getElementById('lib-content');
+  const editor = findAll(host, n => n.classList?.contains('lib-md-editor'))[0];
+  assert.ok(editor, 'the essay editor is on the form');
+  const input = findAll(editor, n => n.classList?.contains('lib-md-input'))[0];
+  const preview = findAll(editor, n => n.classList?.contains('lib-md-preview'))[0];
+  const picker = findAll(editor, n => n.tagName === 'INPUT' && n.getAttribute('type') === 'file')[0];
+  assert.match(picker.getAttribute('accept'), /\.md/);
+  const until = async pred => { for (let i = 0; i < 200 && !pred(); i++) await new Promise(r => setTimeout(r, 10)); };
+
+  // Opened from a file: front matter off, the machine's own facts in, links checked.
+  const md = '---\ntitle: from Obsidian\n---\n# Hello\n\nIt has {{states}} state. See [[finite/dfa/even-ones|the parity DFA]] and [[no/such]].\n\n> [!note] Worth knowing\n> A callout.';
+  picker.files = [{ name: 'hello.md', type: 'text/markdown', size: md.length, text: async () => md }];
+  picker._listeners.change();
+  await until(() => /Hello/.test(preview.innerHTML));
+  assert.equal(input.value, md);
+  assert.match(preview.innerHTML, /<h2 id="lib-md-hello" class="essay-h2">Hello<\/h2>/);
+  assert.doesNotMatch(preview.innerHTML, /from Obsidian/, 'front matter is the file\'s bookkeeping, not prose');
+  assert.match(preview.innerHTML, /It has <span class="fact"[^>]*>1<\/span> state/, 'facts from the machine on the canvas');
+  assert.match(preview.innerHTML, /<a class="textlink-inline" href="#library=finite\/dfa\/even-ones">the parity DFA<\/a>/);
+  assert.match(preview.innerHTML, /<div class="callout callout-note">/);
+  const warnings = findAll(editor, n => n.classList?.contains('lib-md-warnings'))[0];
+  assert.match(textOf(warnings), /lib:no\/such" names nothing in the library/, 'what the preview cannot answer is listed under it');
+
+  // Replacing a draft with another file can be undone.
+  const other = '# Another essay';
+  picker.files = [{ name: 'other.md', type: '', size: other.length, text: async () => other }];
+  picker._listeners.change();
+  await until(() => input.value === other);
+  const undo = findAll(editor, n => n.tagName === 'BUTTON' && textOf(n) === 'Undo')[0];
+  assert.equal(undo.getAttribute('hidden'), null, 'Undo appears once a draft was replaced');
+  undo._listeners.click();
+  assert.equal(input.value, md);
+
+  // Typed by hand: the draft is kept, and the submission carries it.
+  input.value = '## Typed\n\nBy hand.';
+  input._listeners.input();
+  assert.equal(context.essayDraft('w0|'), '## Typed\n\nBy hand.');
+  const check = context.precheckSubmission({ ...context.submissionDefaults(), login: 'dana', agreed: true, essay: input.value });
+  assert.equal(check.doc.meta.library.essay, '## Typed\n\nBy hand.');
+
+  // Leaving and coming back finds the draft again.
+  context._resetLibraryUiForTests();
+  context.renderLibraryView();
+  await context.loadLibrary();
+  context.go('submit', null, { reset: true });
+  const again = findAll(context.document.getElementById('lib-content'), n => n.classList?.contains('lib-md-input'))[0];
+  assert.equal(again.value, '## Typed\n\nBy hand.');
+  context.saveEssayDraft('w0|', '');
+});
+
+test('an author updating their entry starts from the essay it already has', async () => {
+  await serveLibrary();
+  seedTab();
+  context.App.meta = { title: 'BB(2) champion', blurb: 'x', library: { author: { login: 'alice' }, license: 'CC-BY-4.0', source: { id: 'turing/busy-beaver/bb2', title: 'BB(2) champion' } } };
+  context.renderLibraryView();
+  await context.loadLibrary({ force: true });
+  context.go('submit', null, { reset: true });
+  const input = findAll(context.document.getElementById('lib-content'), n => n.classList?.contains('lib-md-input'))[0];
+  for (let i = 0; i < 200 && !input.value; i++) await new Promise(r => setTimeout(r, 10));
+  assert.equal(input.value, ESSAY_BB2, 'the published essay, fetched and checked against the index');
+  context.saveEssayDraft('w0|turing/busy-beaver/bb2', '');
 });
 
 test('a second emulator on a busy port gives up before it watches anything', async () => {

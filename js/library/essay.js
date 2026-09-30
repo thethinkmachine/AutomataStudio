@@ -8,11 +8,12 @@
 // (library-ui.js) both ask through this module, so an essay says the same
 // numbers on both faces and a figure is drawn from the same run.
 //
-// Imports card-html.js (for a TM's size read off its code) and article.js,
-// neither of which touches the DOM.
+// Imports only card-html.js (for a TM's size read off its code), which touches
+// no DOM. The renderer (article.js, with markdown-it) is not imported here, so
+// the app loads it only when an essay is read or written; the build's check of
+// an essay is essay-check.js.
 
 import { standardSize } from './card-html.js';
-import { ARTICLE_MAX_CHARS, renderArticle } from './article.js';
 
 const count = n => Number(n).toLocaleString('en-US');
 
@@ -82,23 +83,3 @@ function clampInt(v, fallback, lo, hi) {
   return Number.isFinite(n) && v !== undefined ? Math.min(hi, Math.max(lo, n)) : fallback;
 }
 
-/**
- * What is wrong with an essay, as the build reports it on the entry: a fact
- * the library does not know, a figure the machine cannot draw, a link to
- * nothing, a note never written, a file past the length the renderer reads.
- * Nothing is drawn — the check asks only whether it could be — so this is
- * cheap enough to run on every build, and an author sees it on their pull
- * request instead of on the published page.
- */
-export function essayWarnings(md, index, self = null) {
-  const byId = new Map((index?.entries || []).map(e => [e.id, e]));
-  const could = { html: '' };
-  const figure = (name, args) => {
-    if (name === 'machines') return args._.length && args._.every(id => byId.has(id)) ? could : null;
-    return essayFigureSpec(name, args, args.id ? byId.get(args.id) : self) ? could : null;
-  };
-  const { warnings } = renderArticle(md, { fact: essayFacts(index, self), figure, link: id => (essayLinkTarget(index, id) ? '#' : null) });
-  const out = warnings.map(w => `Essay: ${w}`);
-  if (String(md).length > ARTICLE_MAX_CHARS) out.push(`Essay: longer than ${ARTICLE_MAX_CHARS.toLocaleString('en-US')} characters; the rest is not shown.`);
-  return out;
-}

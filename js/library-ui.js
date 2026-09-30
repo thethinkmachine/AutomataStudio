@@ -48,7 +48,6 @@ import {
   BADGES, DIFFICULTIES, LIBRARY_FAMILIES, SORTS, dfaAccepts, entryById, libraryFacets, queryLibrary,
   pickFrontispiece, recentEntries, remixAncestry, resolveSort, sameLanguageAs, wasUpdated
 } from './library/index-model.js';
-import { renderArticle } from './library/article.js';
 import { essayFacts, essayFigureSpec, essayLinkTarget } from './library/essay.js';
 import { drawEssayFigure } from './library/essay-draw.js';
 import {
@@ -58,7 +57,7 @@ import {
 import {
   LIBRARY_LICENSES, decideRaw, languageFingerprint, liveDiagram, minimalDfaOf, namedDiagram, runFramesOf, targetFromDoc, traceWord
 } from './library/analyze.js';
-import { precheckSubmission, rememberLogin, submissionDefaults, submissionLink } from './library/submit.js';
+import { essayDraft, precheckSubmission, rememberLogin, saveEssayDraft, submissionDefaults, submissionLink, updateOf } from './library/submit.js';
 
 // ── State ─────────────────────────────────────────────────────────
 
@@ -79,6 +78,9 @@ const L = {
   submitCheck: null,
   docs: new Map(),    // hash → { text, target, doc }
   runTimer: null,     // Try it's playback on the diagram
+  essaySelf: null,    // the essay editor's view of the machine on the canvas (essaySelf)
+  essayMode: null,    // 'write' | 'split' | 'preview', remembered while the app is open
+  openEssayFile: null, // the editor's file loader (picker and drop), for tests
   shown: null         // Browse's { key, n }: how many plates are out, for the search they were shown for
 };
 
@@ -119,6 +121,9 @@ export function _resetLibraryUiForTests() {
   L.submit = null;
   L.submitFor = null;
   L.submitCheck = null;
+  L.essaySelf = null;
+  L.essayMode = null;
+  L.openEssayFile = null;
   L.docs.clear();
   clearInterval(L.runTimer);
   L.runTimer = null;
@@ -839,6 +844,12 @@ function pageEntry(id) {
 // a footnote must not overwrite either.
 
 const ESSAY_ID = 'lib-essay-';
+const PREVIEW_ID = 'lib-md-';
+
+// The renderer carries markdown-it, which nothing else in the app needs, so it
+// is loaded the first time an essay is read or written rather than at boot.
+let articleModule = null;
+const loadArticle = () => (articleModule ||= import('./library/article.js'));
 
 function essaySection(essay, self) {
   const body = h('div', { class: 'lib-essay-body lib-prose' }, h('p', { class: 'lib-muted', text: 'Fetching the essay…' }));
@@ -848,7 +859,7 @@ function essaySection(essay, self) {
     sectionHead('Essay', h('span', { class: 'lib-essay-meta', text: `${essay.minutes} min read` })), columns);
   body.addEventListener('click', essayClick);
   const idx = index();
-  fetchEssayText(essay, idx).then(md => {
+  Promise.all([fetchEssayText(essay, idx), loadArticle()]).then(([md, { renderArticle }]) => {
     const slots = [];
     const art = renderArticle(md, { ...essayContext(idx, self, slots), idPrefix: ESSAY_ID, newTab: true });
     body.innerHTML = art.html;
@@ -943,7 +954,7 @@ function essayClick(ev) {
 }
 
 function scrollToEssayId(id) {
-  if (!id.startsWith(ESSAY_ID)) return;
+  if (!id.startsWith(ESSAY_ID) && !id.startsWith(PREVIEW_ID)) return;
   document.getElementById?.(id)?.scrollIntoView?.({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
 }
 
@@ -1518,6 +1529,230 @@ function texPreview(cls) {
   return box;
 }
 
+// ── The essay editor ──────────────────────────────────────────────
+//
+// Write, Split or Preview — the split is Obsidian's: the Markdown on the left,
+// the page it will make on the right, redrawn a moment after typing stops,
+// scrolled along with the text. The preview is the real renderer with the
+// real answers: {{facts}} from this machine's own analysis, figures drawn
+// from it in the worker, [[links]] checked against the index — so what it
+// shows is what the listing will show, and what it cannot answer is listed
+// under it, as the pull request's check will list it.
+//
+// A written essay can be opened instead of typed (the button, or a file
+// dropped on the editor), saved back out as a .md, and is kept as a draft per
+// machine as it is typed. Replacing a draft with a file can be undone.
+
+const ESSAY_FILE_MAX = 1_000_000;
+const ESSAY_ACCEPT = '.md,.markdown,.mdown,.mkd,.mdx,.txt,text/markdown,text/x-markdown,text/plain';
+const ESSAY_MODES = [['write', 'Write'], ['split', 'Split'], ['preview', 'Preview']];
+
+/** Whether a file is one the editor reads: Markdown or plain text, by name or type. */
+export function isEssayFile(file) {
+  if (!file) return false;
+  if (/\.(md|markdown|mdown|mkd|mdx|txt)$/i.test(file.name || '')) return true;
+  return /^text\/(markdown|x-markdown|plain)$/.test(file.type || '');
+}
+
+/**
+ * A file's text for the editor, or a sentence saying why not. Too large to
+ * be an essay, not text, or unreadable: the draft is left as it was.
+ */
+export async function readEssayFile(file) {
+  if (!isEssayFile(file)) return { error: `${file?.name || 'That file'} is not a Markdown or text file.` };
+  if (file.size > ESSAY_FILE_MAX) return { error: `${file.name} is ${Math.round(file.size / 1024)} KB — too large to be an essay.` };
+  try {
+    const text = String(await file.text()).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+    return { text, name: file.name };
+  } catch {
+    return { error: `${file.name} could not be read.` };
+  }
+}
+
+/**
+ * This machine as an essay's `{{facts}}` see it — an entry built from the
+ * pre-check's analysis — and the entry of the author's own it would update.
+ * Run once per machine: the analysis is the expensive part of the pre-check.
+ */
+function essaySelf(f) {
+  const key = `${activeWorkspaceId}|${App.meta?.library?.source?.id || ''}|${App.states.length}|${App.transitions.length}`;
+  if (L.essaySelf?.key === key) return L.essaySelf;
+  // Placeholders for what the form may not have yet: the analysis gives no
+  // facts for a card without a title or an account, and an essay's preview
+  // should not wait on either.
+  let pre = null;
+  try {
+    pre = precheckSubmission({ ...f, title: f.title || 'Untitled', login: f.login || 'preview', license: LIBRARY_LICENSES[f.license] ? f.license : 'CC-BY-4.0', essay: '', agreed: true }, index());
+  } catch { pre = null; }
+  const facts = pre?.analysis?.facts;
+  const entry = facts ? {
+    id: App.meta?.library?.source?.id || '(this machine)',
+    title: f.title || facts.title || 'This machine', category: facts.category, stats: facts.stats,
+    behaviour: facts.behaviour, standard: facts.standard, sketch: facts.sketch
+  } : null;
+  let update = null;
+  try { update = index() ? updateOf(f, index()) : null; } catch { update = null; }
+  L.essaySelf = { key, entry, update };
+  return L.essaySelf;
+}
+
+const PENDING_FACTS = new Set(['steps', 'ones', 'cells']);
+
+function essayEditor(f, draftKey) {
+  const idx = index();
+  let mode = L.essayMode || 'split';
+  let undo = null;
+  const input = h('textarea', {
+    class: 'inp lib-md-input', spellcheck: 'true', 'aria-label': 'Essay, in Markdown',
+    placeholder: '## How it works\n\nWrite in Markdown — or open a .md file, or drop one here.\n\nIt halts after {{steps}} steps.\n\n::: spacetime steps=2000\nThe first steps from a blank tape.\n:::'
+  });
+  input.value = f.essay || '';
+  const preview = h('div', { class: 'lib-md-preview lib-essay-body lib-prose', 'aria-label': 'Preview' });
+  const panes = h('div', { class: `lib-md-panes is-${mode}` }, input, preview);
+  const warnings = h('ul', { class: 'lib-md-warnings', hidden: true });
+  const status = h('span', { class: 'lib-md-status' });
+  const picker = h('input', { type: 'file', accept: ESSAY_ACCEPT, hidden: true, 'aria-hidden': 'true', tabindex: '-1' });
+  const undoBtn = button('Undo', () => { if (undo !== null) { setText(undo, 'Restored your draft'); undo = null; undoBtn.setAttribute('hidden', ''); } }, 'lib-textbtn', { hidden: true });
+  const modeBtns = ESSAY_MODES.map(([m, label]) => button(label, () => setMode(m), `lib-md-mode${m === mode ? ' is-on' : ''}`, { 'aria-pressed': String(m === mode), data: { mode: m } }));
+
+  const words = () => (input.value.match(/\S+/g) || []).length;
+  const say = (text) => { status.textContent = text || (input.value.trim() ? `${words().toLocaleString('en-US')} words` : 'Optional'); };
+
+  let timer = null;
+  let drawn = null;
+  const draw = async () => {
+    const md = input.value;
+    if (md === drawn) return;
+    drawn = md;
+    if (!md.trim()) {
+      preview.innerHTML = '';
+      preview.append(h('p', { class: 'lib-muted', text: 'The preview of your essay appears here, as it will read on the machine’s page.' }));
+      warnings.setAttribute('hidden', '');
+      return;
+    }
+    const { renderArticle } = await loadArticle();
+    if (input.value !== md) return;   // typed on while the renderer loaded
+    const self = essaySelf(f).entry;
+    const slots = [];
+    const ctx = essayContext(idx || { entries: [], collections: [] }, self, slots);
+    const fact = (name, ref) => {
+      const got = ctx.fact(name, ref);
+      if (got || ref || !self?.standard || !PENDING_FACTS.has(name) || self.behaviour?.verdict === 'halts' || self.behaviour?.verdict === 'never') return got;
+      // A run too long for this dialog's budget is counted by the library's CI.
+      return { value: '…', say: 'Counted when the library builds; the preview runs a shorter budget.', pending: true };
+    };
+    const art = renderArticle(md, { ...ctx, fact, idPrefix: PREVIEW_ID, newTab: true });
+    const top = preview.scrollTop;
+    preview.innerHTML = art.html;
+    fillEssaySlots(preview, slots);
+    typeset(preview);
+    preview.scrollTop = top;
+    warnings.innerHTML = '';
+    if (art.warnings.length) {
+      warnings.append(...art.warnings.map(w => h('li', { text: w })));
+      warnings.removeAttribute('hidden');
+    } else warnings.setAttribute('hidden', '');
+  };
+  const redraw = (now = false) => {
+    clearTimeout(timer);
+    if (now) draw();
+    else timer = setTimeout(draw, 200);
+  };
+  const changed = () => {
+    f.essay = input.value;
+    L.submitCheck = null;
+    saveEssayDraft(draftKey, input.value);
+    say();
+    redraw();
+  };
+  const setText = (text, message) => {
+    input.value = text;
+    changed();
+    redraw(true);
+    say(message);
+  };
+  const setMode = m => {
+    mode = m;
+    L.essayMode = m;
+    panes.className = `lib-md-panes is-${m}`;
+    for (const b of modeBtns) {
+      const on = b.dataset.mode === m;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
+    if (m !== 'write') redraw(true);
+    (m === 'preview' ? preview : input).focus?.();
+  };
+  const open = async file => {
+    const got = await readEssayFile(file);
+    if (got.error) { say(got.error); showStatus(got.error); return; }
+    if (input.value.trim() && input.value !== got.text) {
+      undo = input.value;
+      undoBtn.removeAttribute('hidden');
+    }
+    setText(got.text, `Opened ${got.name}`);
+  };
+  L.openEssayFile = open;   // test seam: what the picker and a drop both call
+
+  input.addEventListener('input', changed);
+  // Obsidian's toggle between editing and reading.
+  input.addEventListener('keydown', ev => {
+    if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && String(ev.key).toLowerCase() === 'e') {
+      ev.preventDefault();
+      setMode(mode === 'preview' ? 'write' : 'preview');
+    }
+  });
+  preview.addEventListener('keydown', ev => {
+    if ((ev.ctrlKey || ev.metaKey) && String(ev.key).toLowerCase() === 'e') { ev.preventDefault(); setMode('write'); }
+  });
+  // Scrolled together, by proportion: a line of Markdown is not a line of page.
+  input.addEventListener('scroll', () => {
+    if (mode !== 'split') return;
+    const range = input.scrollHeight - input.clientHeight;
+    const r = range > 0 ? input.scrollTop / range : 0;
+    preview.scrollTop = r * Math.max(0, preview.scrollHeight - preview.clientHeight);
+  });
+  preview.addEventListener('click', essayClick);
+  picker.addEventListener('change', () => { const file = picker.files?.[0]; picker.value = ''; if (file) open(file); });
+  for (const target of [panes]) {
+    target.addEventListener('dragover', ev => {
+      if (!Array.from(ev.dataTransfer?.types || []).includes('Files')) return;
+      ev.preventDefault();
+      panes.classList.add('is-drop');
+    });
+    target.addEventListener('dragleave', () => panes.classList.remove('is-drop'));
+    target.addEventListener('drop', ev => {
+      const file = ev.dataTransfer?.files?.[0];
+      panes.classList.remove('is-drop');
+      if (!file) return;
+      ev.preventDefault();
+      open(file);
+    });
+  }
+
+  const slug = () => (f.title || 'essay').replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-|-$/g, '').toLowerCase() || 'essay';
+  const toolbar = h('div', { class: 'lib-md-toolbar' },
+    h('div', { class: 'lib-md-modes', role: 'group', 'aria-label': 'Editor layout' }, modeBtns),
+    h('div', { class: 'lib-md-files' },
+      button('Open .md file…', () => picker.click(), 'lib-textbtn', { title: 'Use an essay you have already written — Markdown or plain text' }),
+      button('Save as .md', () => { if (input.value.trim()) exportDownload(`${slug()}.md`, input.value, 'text/markdown'); else showStatus('There is no essay to save yet'); }, 'lib-textbtn'),
+      undoBtn, status, picker));
+
+  // The author's own entry, sent back as an update, starts from the essay it has.
+  const update = idx ? essaySelf(f).update : null;
+  if (!input.value.trim() && update?.essay) {
+    say('Loading the essay published with your entry…');
+    fetchEssayText(update.essay, idx).then(text => {
+      if (input.value.trim()) return;
+      setText(text, 'Started from the essay published with your entry');
+    }, () => say());
+  } else say();
+  redraw(true);
+
+  return h('div', { class: 'lib-md-editor' }, toolbar, panes, warnings,
+    h('p', { class: 'lib-field-hint', text: 'Markdown, all of it: headings, tables, footnotes, task lists, $…$ math, > [!note] callouts and [[library/id]] links. {{steps}}, {{ones}} and {{size}} are filled in by the library; ::: spacetime, ::: growth, ::: diagram and ::: machines draw figures from the machine. Ctrl/⌘ E switches between writing and reading.' }));
+}
+
 /**
  * The form's fields, read from the machine on the canvas — again whenever that
  * is a different machine than the one they were read from, so a tab switch
@@ -1527,6 +1762,7 @@ function submitFields() {
   const key = `${activeWorkspaceId}|${App.meta?.library?.source?.id || ''}`;
   if (!L.submit || L.submitFor !== key) {
     L.submit = submissionDefaults();
+    L.submit.essay = essayDraft(key);
     L.submitFor = key;
     L.submitCheck = null;
   }
@@ -1579,8 +1815,9 @@ function pageSubmit() {
   page.append(h('div', { class: 'lib-form' },
     field('Title', title), field('Description', blurb, 'Shown on the card and in search results. LaTeX between $…$ is typeset.'),
     blurbPreview,
-    field('Write-up', readme, 'Blank lines separate paragraphs. LaTeX is typeset: $…$ inline, $$…$$ displayed.'),
+    field('Write-up', readme, 'A few short paragraphs, shown as Notes on the listing when there is no essay. LaTeX is typeset: $…$ inline, $$…$$ displayed.'),
     readmePreview,
+    h('div', { class: 'lib-field lib-essay-field' }, h('span', { class: 'lib-field-label', text: 'Essay' }), essayEditor(f, L.submitFor)),
     h('div', { class: 'lib-form-row' }, field('Tags', tags), field('Level', level), field('Chapter', chapter)),
     field('Remix of', forkOf, forkHint),
     h('div', { class: 'lib-form-row' }, field('GitHub username', login), field('Display name', name), field('Submitting', kind)),
@@ -1623,7 +1860,9 @@ function pageSubmit() {
     // the remix it really is (an update is not a remix of itself).
     const filed = { ...f, updates: c.update?.id || '', forkOf: c.doc.meta.library.forkOf || '' };
     const res = await submissionLink(filed, c.doc, index()?.repo || undefined, index()?.submit || null);
-    if (!res.included) exportCopyText(res.link, 'The machine is too large for the form’s address — its link is on your clipboard: paste it into “Machine”');
+    if (!res.included) exportCopyText(res.link, f.essay?.trim()
+      ? 'The machine and its essay are too long for the form’s address — their link is on your clipboard: paste it into “Machine”'
+      : 'The machine is too large for the form’s address — its link is on your clipboard: paste it into “Machine”');
     window.open(res.url, '_blank', 'noopener');
   };
   page.append(h('div', { class: 'lib-actions' },

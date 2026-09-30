@@ -14,13 +14,17 @@
 - **An exercise:** build it in an exercise tab and submit with "An exercise"
   chosen; it keeps its checker.
 - **A collection:** open a pull request; maintainers review those by hand.
-- **An essay about your machine:** open a pull request adding a Markdown file
-  beside it — `machines/…/bb5.md` beside `bb5.automaton`. It is shown on the
+- **An essay about your machine:** write it in the app — Submit a machine has
+  an essay editor with a live preview, and can open a `.md` you already wrote
+  (from Obsidian or anywhere) — or open a pull request adding a Markdown file
+  beside it: `machines/…/bb5.md` beside `bb5.automaton`. It is shown on the
   machine's page in the app and on the website. Write `{{steps}}`, `{{ones}}`,
   `{{states}}` or `{{steps <other entry's id>}}` rather than typing a number:
   the library fills in what it computed. `::: spacetime`, `::: growth`,
   `::: diagram` and `::: machines <id> …` draw figures from the machine, and
-  `[text](lib:<id>)` links to another entry or collection. The pull request's
+  `[text](lib:<id>)` or `[[id]]` links to another entry or collection. All of
+  Markdown works — tables, footnotes, task lists, `$…$` math, `> [!note]`
+  callouts; raw HTML is limited to a few bare tags such as `<kbd>`. The pull request's
   report lists anything the library could not answer. Only a machine's author
   (or a maintainer) can add or change its essay.
 

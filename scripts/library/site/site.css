@@ -473,6 +473,31 @@ body.is-searching .discover { display: none; }
 .essay-notes li::marker { font-family: var(--mono); font-size: .8em; color: var(--text3); }
 .fn-back { color: var(--text3); text-decoration: none; font-size: .9em; }
 .essay-body .plates { margin: 0; }
+.essay-body hr { border: 0; border-top: 1px solid var(--border2); margin: 2em 0; }
+.essay-body mark { background: color-mix(in srgb, var(--gold) 28%, transparent); color: inherit; padding: 0 2px; border-radius: 2px; }
+.essay-body kbd { font-family: var(--mono); font-size: .72em; padding: 1px 6px; border: 1px solid var(--border2); border-bottom-width: 2px; border-radius: 4px; background: var(--well); }
+.essay-body del, .essay-body s { color: var(--text2); }
+.essay-body dl { margin: 0 0 1em; }
+.essay-body dt { font-weight: 600; }
+.essay-body dd { margin: 0 0 .6em 1.3em; color: var(--text2); }
+.essay-body img.essay-img { display: block; max-width: 100%; height: auto; margin: 1.2em auto; border-radius: 6px; border: 1px solid var(--border); }
+.essay-body li.task-item { list-style: none; margin-left: -1.3em; }
+.essay-body .task-box { margin: 0 .45em 0 0; vertical-align: middle; accent-color: var(--h, var(--accent)); }
+.essay-body details:not(.callout) { margin: 1em 0; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; }
+.essay-body details:not(.callout) > summary { cursor: pointer; color: var(--text2); }
+/* Obsidian's callouts: a tinted panel, a titled head, the kind's colour on its edge. */
+.essay-body .callout { --c: var(--accent); margin: 1.3em 0; border: 1px solid color-mix(in srgb, var(--c) 30%, var(--border)); border-left: 3px solid var(--c); border-radius: 6px; background: color-mix(in srgb, var(--c) 6%, transparent); }
+.essay-body .callout-title { padding: 8px 14px; font-family: var(--sans); font-size: .82rem; font-weight: 600; letter-spacing: .01em; color: var(--c); }
+.essay-body summary.callout-title { cursor: pointer; }
+.essay-body .callout-body { padding: 0 14px 4px; font-size: .96em; }
+.essay-body .callout-body > :last-child { margin-bottom: .7em; }
+.essay-body .callout-tip, .essay-body .callout-success { --c: var(--green); }
+.essay-body .callout-warning, .essay-body .callout-question { --c: var(--gold); }
+.essay-body .callout-danger, .essay-body .callout-failure, .essay-body .callout-bug { --c: var(--red); }
+.essay-body .callout-example, .essay-body .callout-abstract { --c: var(--violet); }
+.essay-body .callout-quote { --c: var(--text3); }
+.essay-body .fact.is-pending { font-size: 1em; color: var(--text3); border-bottom-style: dashed; }
+.essay-body .board td.center, .essay-body .board th.center { text-align: center; }
 
 /* ── tables ── */
 .table-wrap { overflow-x: auto; }
