@@ -3,3 +3,5 @@
 # the cmd one CRLF, or they fail to run where they are packaged.
 build/cli/automata text eol=lf
 build/cli/automata.cmd text eol=crlf
+# The .deb package scripts run under bash on the target machine.
+build/linux/*.sh text eol=lf

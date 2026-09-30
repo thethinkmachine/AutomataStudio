@@ -588,6 +588,99 @@ function sendMenuAction(action) {
   if (mainWindow) mainWindow.webContents.send('menu-action', action);
 }
 
+// The `automata` command line on a Mac's PATH. A .dmg is drag and drop and runs
+// no install script, so the app offers it from its own menu, the way VS Code
+// offers "Install 'code' command in PATH": a link in /usr/local/bin, which is on
+// every shell's PATH, to the launcher inside the bundle. Windows and the .deb do
+// this in their installers (build/installer.nsh, build/linux/after-install.sh).
+const CLI_LINK = '/usr/local/bin/automata';
+const cliLauncher = () => path.join(process.resourcesPath, 'cli', 'automata');
+
+// Whether the link is ours, someone else's, or not there at all.
+function cliLinkState() {
+  let target;
+  try { target = fsSync.readlinkSync(CLI_LINK); } catch (e) {
+    return e.code === 'ENOENT' && !fsSync.existsSync(CLI_LINK) ? 'absent' : 'other';
+  }
+  return target === cliLauncher() ? 'ours' : 'other';
+}
+
+// Run a shell command as an administrator, behind the system's password prompt.
+// The command is passed to AppleScript as one string literal, escaped for it.
+function runAsAdmin(command) {
+  const literal = '"' + command.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  const r = require('node:child_process').spawnSync('osascript', ['-e', `do shell script ${literal} with administrator privileges`], { encoding: 'utf8' });
+  if (r.status !== 0) {
+    // -128 is the user pressing Cancel on the password prompt: not an error.
+    if (/-128/.test(r.stderr)) return false;
+    throw new Error((r.stderr || '').trim() || `osascript exited ${r.status}`);
+  }
+  return true;
+}
+
+const shellQuote = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
+
+async function installCliCommand() {
+  const launcher = cliLauncher();
+  // A copy run straight from the disk image or from Downloads is moved to a
+  // random read-only path by Gatekeeper (App Translocation); a link to it
+  // would break as soon as the app quit.
+  if (!app.isPackaged || /\/AppTranslocation\/|^\/Volumes\//.test(launcher)) {
+    await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      message: 'Move AutomataStudio to Applications first',
+      detail: 'The command line has to point at the app where it will stay. Drag AutomataStudio into Applications, open it from there, and choose this again.'
+    });
+    return;
+  }
+  const state = cliLinkState();
+  if (state === 'ours') {
+    await dialog.showMessageBox(mainWindow, { type: 'info', message: "'automata' is already installed", detail: `${CLI_LINK} points at this app. Open a terminal and run: automata --help` });
+    return;
+  }
+  if (state === 'other') {
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      buttons: ['Replace', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      message: `${CLI_LINK} already exists`,
+      detail: 'Something else is installed under that name — perhaps automata from npm. Replace it with a link to this app?'
+    });
+    if (response !== 0) return;
+  }
+  try {
+    // Try as the user first: on many Macs /usr/local/bin is theirs (Homebrew).
+    try {
+      fsSync.mkdirSync(path.dirname(CLI_LINK), { recursive: true });
+      fsSync.rmSync(CLI_LINK, { force: true });
+      fsSync.symlinkSync(launcher, CLI_LINK);
+    } catch (e) {
+      if (e.code !== 'EACCES' && e.code !== 'EPERM') throw e;
+      if (!runAsAdmin(`mkdir -p /usr/local/bin && ln -sfn ${shellQuote(launcher)} ${shellQuote(CLI_LINK)}`)) return;
+    }
+    await dialog.showMessageBox(mainWindow, { type: 'info', message: "'automata' is installed", detail: 'Open a new terminal and run: automata --help' });
+  } catch (e) {
+    dialog.showErrorBox("Could not install 'automata'", `${e.message}\n\nYou can make the link yourself:\nsudo ln -sf "${launcher}" ${CLI_LINK}`);
+  }
+}
+
+async function uninstallCliCommand() {
+  if (cliLinkState() !== 'ours') {
+    await dialog.showMessageBox(mainWindow, { type: 'info', message: "'automata' is not installed by this app", detail: `${CLI_LINK} is missing or points somewhere else, so it was left alone.` });
+    return;
+  }
+  try {
+    try { fsSync.unlinkSync(CLI_LINK); } catch (e) {
+      if (e.code !== 'EACCES' && e.code !== 'EPERM') throw e;
+      if (!runAsAdmin(`rm -f ${shellQuote(CLI_LINK)}`)) return;
+    }
+    await dialog.showMessageBox(mainWindow, { type: 'info', message: "'automata' was removed from PATH" });
+  } catch (e) {
+    dialog.showErrorBox("Could not remove 'automata'", e.message);
+  }
+}
+
 function buildMenu() {
   const isMac = process.platform === 'darwin';
 
@@ -596,6 +689,9 @@ function buildMenu() {
       label: app.name,
       submenu: [
         { role: 'about' },
+        { type: 'separator' },
+        { label: "Install 'automata' Command in PATH", click: () => installCliCommand() },
+        { label: "Uninstall 'automata' Command from PATH", click: () => uninstallCliCommand() },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },

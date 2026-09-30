@@ -101,6 +101,60 @@ jobs:
           # hunting for a macOS identity and failing the build over it.
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      # The installers put the `automata` command line on PATH: the Windows one
+      # adds resources\cli to the user's PATH (build/installer.nsh), the .deb
+      # links /usr/local/bin/automata (build/linux/after-install.sh). Each is
+      # checked on the real package — installed, run from PATH, uninstalled, and
+      # checked gone — because a mistake in either only shows on a real install.
+      - name: "Installed, automata is on PATH (Windows)"
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem release\*.exe | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList '/S' -Wait
+          $install = Join-Path $env:LOCALAPPDATA 'Programs\AutomataStudio'
+          $dir = Join-Path $install 'resources\cli'
+          $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+          if (-not (($userPath -split ';') -contains $dir)) { throw "The user PATH does not hold $dir`n$userPath" }
+          $env:Path = "$userPath;$env:Path"
+          automata --version
+          if ($LASTEXITCODE -ne 0) { throw "automata --version exited $LASTEXITCODE" }
+          automata run js/examples/dfa.json 101 0
+          if ($LASTEXITCODE -ne 0) { throw "automata run exited $LASTEXITCODE" }
+          # The uninstaller copies itself away and relaunches, so -Wait returns
+          # early; wait for the folder to go instead.
+          $uninstaller = Get-ChildItem $install -Filter 'Uninstall*.exe' | Select-Object -First 1
+          Start-Process $uninstaller.FullName -ArgumentList '/S' -Wait
+          for ($i = 0; $i -lt 90 -and (Test-Path $dir); $i++) { Start-Sleep 1 }
+          $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+          if (($userPath -split ';') -contains $dir) { throw "Uninstalling left $dir on the user PATH" }
+
+      - name: "Installed, automata is on PATH (Linux .deb)"
+        if: matrix.platform == 'linux'
+        run: |
+          deb=$(ls release/*.deb | head -1)
+          sudo apt-get install -y "./$deb"
+          command -v automata
+          automata --version
+          automata run js/examples/dfa.json 101 0
+          sudo apt-get remove -y "$(dpkg-deb -f "$deb" Package)"
+          if [ -e /usr/local/bin/automata ] || [ -L /usr/local/bin/automata ]; then
+            echo "::error::removing the package left /usr/local/bin/automata"; exit 1
+          fi
+
+      # macOS has no install step to hook (a .dmg is drag and drop); the app
+      # menu's "Install 'automata' Command in PATH" makes the link. What can be
+      # checked here is that the launcher finds the app through a chain of links.
+      - name: "The launcher works through a symlink (macOS)"
+        if: matrix.platform == 'mac'
+        run: |
+          app=$(find release -maxdepth 2 -name 'AutomataStudio.app' -type d | head -1)
+          mkdir -p "$RUNNER_TEMP/bin" "$RUNNER_TEMP/bin2"
+          ln -s "$PWD/$app/Contents/Resources/cli/automata" "$RUNNER_TEMP/bin/automata"
+          ln -s ../bin/automata "$RUNNER_TEMP/bin2/automata"
+          "$RUNNER_TEMP/bin2/automata" --version
+          "$RUNNER_TEMP/bin2/automata" run js/examples/dfa.json 101 0
+
       # Straight onto the draft release. The empty-glob check replaces the
       # if-no-files-found: error this step used to get from upload-artifact, and
       # --clobber lets a re-run of one failed platform replace its own assets
