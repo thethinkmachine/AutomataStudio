@@ -557,6 +557,71 @@
 .lib-essay-body .essay-notes { margin-top: 2.2em; padding-top: 14px; border-top: 1px solid var(--border); font-size: .96rem; line-height: 1.5; color: var(--text2); }
 .lib-essay-body .essay-notes ol { margin: 0; padding-left: 1.3em; }
 .lib-essay-body .lib-plates { margin: 0; }
+/* The writing guide's examples: the Markdown, and what it becomes, side by side. */
+.lib-essay-body .essay-example { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; margin: 1.1em 0 1.6em; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.lib-essay-body .essay-example > .essay-example-src { margin: 0; border: 0; border-right: 1px solid var(--border); border-radius: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.lib-essay-body .essay-example-out { padding: 12px 16px; min-width: 0; font-size: .96em; }
+.lib-essay-body .essay-example-out > :first-child { margin-top: 0; }
+.lib-essay-body .essay-example-out > :last-child { margin-bottom: 0; }
+.lib-essay-body .essay-example-out > p:first-child::first-letter { float: none; font-size: inherit; padding: 0; }
+.lib-essay-body .essay-example-out .essay-fig { margin: .4em 0; }
+.lib-essay-body hr { border: 0; border-top: 1px solid var(--border2); margin: 2em 0; }
+.lib-essay-body mark { background: color-mix(in srgb, var(--gold) 28%, transparent); color: inherit; padding: 0 2px; border-radius: 2px; }
+.lib-essay-body kbd { font-family: var(--mono); font-size: .72em; padding: 1px 6px; border: 1px solid var(--border2); border-bottom-width: 2px; border-radius: 4px; background: var(--lib-well); }
+.lib-essay-body del, .lib-essay-body s { color: var(--text2); }
+.lib-essay-body dl { margin: 0 0 1em; }
+.lib-essay-body dt { font-weight: 600; }
+.lib-essay-body dd { margin: 0 0 .6em 1.3em; color: var(--text2); }
+.lib-essay-body img.essay-img { display: block; max-width: 100%; height: auto; margin: 1.2em auto; border-radius: 6px; border: 1px solid var(--border); }
+.lib-essay-body li.task-item { list-style: none; margin-left: -1.3em; }
+.lib-essay-body .task-box { margin: 0 .45em 0 0; vertical-align: middle; accent-color: var(--h, var(--accent)); }
+.lib-essay-body details:not(.callout) { margin: 1em 0; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; }
+.lib-essay-body details:not(.callout) > summary { cursor: pointer; color: var(--text2); }
+/* Obsidian's callouts: a tinted panel, a titled head, the kind's colour on its edge. */
+.lib-essay-body .callout { --c: var(--accent); margin: 1.3em 0; border: 1px solid color-mix(in srgb, var(--c) 30%, var(--border)); border-left: 3px solid var(--c); border-radius: 6px; background: color-mix(in srgb, var(--c) 6%, transparent); }
+.lib-essay-body .callout-title { padding: 8px 14px; font-family: var(--sans); font-size: .82rem; font-weight: 600; letter-spacing: .01em; color: var(--c); }
+.lib-essay-body summary.callout-title { cursor: pointer; }
+.lib-essay-body .callout-body { padding: 0 14px 4px; font-size: .96em; }
+.lib-essay-body .callout-body > :last-child { margin-bottom: .7em; }
+.lib-essay-body .callout-tip, .lib-essay-body .callout-success { --c: var(--green); }
+.lib-essay-body .callout-warning, .lib-essay-body .callout-question { --c: var(--gold); }
+.lib-essay-body .callout-danger, .lib-essay-body .callout-failure, .lib-essay-body .callout-bug { --c: var(--red); }
+.lib-essay-body .callout-example, .lib-essay-body .callout-abstract { --c: var(--violet); }
+.lib-essay-body .callout-quote { --c: var(--text3); }
+.lib-essay-body .fact.is-pending { font-size: 1em; color: var(--text3); border-bottom-style: dashed; }
+.lib-essay-body .board td.center, .lib-essay-body .board th.center { text-align: center; }
+
+/* ── the essay editor ──
+   Write, Split or Preview: Obsidian's split, the Markdown beside the page it
+   makes. The preview is the listing's own essay styles, so what it shows is
+   what will be published. A file dragged over the panes lights their edge. */
+.lib-essay-field { gap: 8px; }
+.lib-md-editor { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.lib-md-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.lib-md-modes { display: inline-flex; border: 1px solid var(--border2); border-radius: 6px; overflow: hidden; }
+#v-library .lib-md-mode { all: unset; cursor: pointer; padding: 4px 12px; font-family: var(--mono); font-size: .64rem; letter-spacing: .1em; text-transform: uppercase; color: var(--text2); }
+#v-library .lib-md-mode + .lib-md-mode { border-left: 1px solid var(--border2); }
+#v-library .lib-md-mode.is-on { background: var(--accent-soft, color-mix(in srgb, var(--accent) 12%, transparent)); color: var(--accent); }
+#v-library .lib-md-mode:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lib-md-files { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+.lib-md-status { font-family: var(--mono); font-size: .64rem; color: var(--text3); }
+.lib-md-panes { display: grid; gap: 0; height: min(64vh, 620px); min-height: 280px; border: 1px solid var(--border2); border-radius: 8px; overflow: hidden; resize: vertical; transition: border-color var(--transition-base); }
+.lib-md-panes.is-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.lib-md-panes.is-write, .lib-md-panes.is-preview { grid-template-columns: minmax(0, 1fr); }
+.lib-md-panes.is-write .lib-md-preview, .lib-md-panes.is-preview .lib-md-input { display: none; }
+.lib-md-guide { display: none; overflow: auto; padding: 16px 22px 28px; max-width: none; font-size: 1rem; }
+.lib-md-panes.has-guide .lib-md-preview { display: none; }
+.lib-md-panes.has-guide .lib-md-guide { display: block; }
+.lib-md-guide .essay-example { grid-template-columns: minmax(0, 1fr); }
+.lib-md-guide .essay-example > .essay-example-src { border-right: 0; border-bottom: 1px solid var(--border); }
+#v-library .lib-md-modes .lib-md-guide-btn { border-left: 1px solid var(--border2); }
+.lib-md-panes.is-drop { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+#v-library .lib-md-input { box-sizing: border-box; width: 100%; height: 100%; min-height: 0; margin: 0; padding: 14px 16px; border: 0; border-radius: 0; resize: none; font-family: var(--mono) !important; font-size: .82rem; line-height: 1.65; tab-size: 2; background: var(--lib-well); color: var(--text); }
+.lib-md-panes.is-split .lib-md-input { border-right: 1px solid var(--border2); }
+.lib-md-preview { overflow: auto; padding: 16px 22px 28px; max-width: none; font-size: 1.06rem; background: var(--bg2, transparent); }
+.lib-md-preview > p:first-child::first-letter { float: none; font-size: inherit; padding: 0; }
+.lib-md-warnings { margin: 0; padding: 8px 12px 8px 28px; border: 1px solid color-mix(in srgb, var(--gold) 35%, var(--border)); border-radius: 6px; font-size: .78rem; line-height: 1.5; color: var(--text2); }
+.lib-md-warnings[hidden] { display: none; }
 
 @media (max-width: 1100px) {
   .lib-mast.has-frontis { grid-template-columns: minmax(0, 1fr); }
@@ -566,6 +631,10 @@
   .lib-essay-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; }
   .lib-essay-toc { position: static; }
   .lib-essay-toc ol { flex-direction: row; flex-wrap: wrap; gap: 6px 18px; }
+  .lib-md-panes.is-split { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+  .lib-md-panes.is-split .lib-md-input { border-right: 0; border-bottom: 1px solid var(--border2); }
+  .lib-essay-body .essay-example { grid-template-columns: minmax(0, 1fr); }
+  .lib-essay-body .essay-example > .essay-example-src { border-right: 0; border-bottom: 1px solid var(--border); }
 }
 
 @media (max-width: 900px) {

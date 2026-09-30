@@ -31,6 +31,7 @@ import { decodeSharePayload, SHARE_HASH_PREFIX } from '../../js/persistence.js';
 import { standardTMText } from '../../js/interop/standard-tm.js';
 import { LIBRARY_LICENSES, analyzeDocument } from '../../js/library/analyze.js';
 import { isLibraryId } from '../../js/library/config.js';
+import { ARTICLE_MAX_CHARS, readingMinutes } from '../../js/library/article.js';
 import { docFromStandardTM, folderFor, slugify } from './seed.mjs';
 
 // ── The form's answers ────────────────────────────────────────────
@@ -52,7 +53,11 @@ export const FORM_FIELDS = [
   { id: 'updates', label: 'Updates', kind: 'input' },
   { id: 'display-name', label: 'Display name', kind: 'input' },
   { id: 'license', label: 'Licence', kind: 'input', required: true, value: 'CC-BY-4.0' },
-  { id: 'agreement', label: 'Agreement', kind: 'checkbox', required: true, text: 'I made this machine (or have the right to share it) and release it under the licence above.' }
+  { id: 'agreement', label: 'Agreement', kind: 'checkbox', required: true, text: 'I made this machine (or have the right to share it) and release it under the licence above.' },
+  // Last, on purpose: an essay is Markdown and may hold "### Tags" of its own.
+  // parseIssueForm starts each of the form's sections once, so a heading in the
+  // essay that names a section already read is part of the essay.
+  { id: 'essay', label: 'Essay', kind: 'textarea', hint: 'Optional. A long-form article in Markdown, shown on the machine\'s page. The app puts it inside the machine\'s link for you.' }
 ];
 
 const LABELS = new Set(FORM_FIELDS.map(f => f.label.toLowerCase()));
@@ -91,7 +96,7 @@ export function parseIssueForm(body) {
 const FIELD = {
   name: 'name', description: 'description', readme: 'write-up', tags: 'tags', level: 'level',
   chapter: 'chapter or source', forkOf: 'remix of', updates: 'updates', displayName: 'display name',
-  license: 'licence', machine: 'machine', agreement: 'agreement'
+  license: 'licence', machine: 'machine', agreement: 'agreement', essay: 'essay'
 };
 
 // ── Finding the machine ───────────────────────────────────────────
@@ -252,6 +257,14 @@ export async function processIssue({ body, author, number, root, title = '', kin
     form[FIELD.forkOf] = prior?.meta?.library?.forkOf || '';
     if (found.doc.meta?.library) delete found.doc.meta.library.forkOf;
   }
+  // The essay: typed into the form's own field, or — as the app sends it —
+  // inside the submitted document, where it rides the machine's link and
+  // needs no room of its own in the form's address. Either way it is written
+  // beside the machine as Markdown and taken out of the machine's file, so the
+  // file's bytes and hash are the machine's alone. An update that brings no
+  // essay leaves the one already published where it is.
+  const essay = String((form[FIELD.essay] || '').trim() ? form[FIELD.essay] : (found.doc.meta?.library?.essay || '')).replace(/\r\n?/g, '\n').trim();
+  if (essay.length > ARTICLE_MAX_CHARS) problems.push(`The essay is ${essay.length.toLocaleString('en-US')} characters; the library takes essays up to ${ARTICLE_MAX_CHARS.toLocaleString('en-US')}.`);
   const doc = applyForm(found.doc, form, author);
   // The one thing about an entry that depends on another file: what it says
   // it was remixed from has to exist, or the publish build would drop it.
@@ -266,9 +279,11 @@ export async function processIssue({ body, author, number, root, title = '', kin
   const a = analyzeDocument(JSON.parse(text), { text, behaviourBudget: 5e7 });
   problems.push(...a.errors);
   const ok = !problems.length && !!place;
+  const essayPath = place && essay ? place.path.replace(/\.automaton$/, '.md') : '';
   if (ok) {
     await mkdir(dirname(join(root, place.path)), { recursive: true });
     await writeFile(join(root, place.path), text);
+    if (essayPath) await writeFile(join(root, essayPath), essay + '\n');
   }
   const id = place ? idOf(place.path) : '';
   const lines = [];
@@ -277,13 +292,14 @@ export async function processIssue({ body, author, number, root, title = '', kin
       `Read from the ${found.via}, and ${place.update ? 'updates your existing entry' : 'will be added as'} \`${id}\`.`, '');
     const badges = a.facts?.badges || [];
     if (badges.length) lines.push(`**Verified:** ${badges.map(b => `\`${b.id}\`${b.detail ? ` (${b.detail})` : ''}`).join(' · ')}`, '');
+    if (essayPath) lines.push(`With its essay (\`${essayPath}\`, about ${readingMinutes(essay)} min to read). The pull request's check lists anything in it the library could not answer.`, '');
     for (const w of a.warnings) lines.push(`- ⚠️ ${w}`);
     lines.push('', 'A pull request has been opened with the entry; a maintainer will merge it.');
   } else {
     lines.push('### ❌ This submission needs changes', '', ...problems.map(p => `- ${p}`), '',
       'Edit the issue to fix them — the check runs again on every edit.');
   }
-  return { ok, problems, id, path: place?.path || '', title: doc.meta.title, update: !!place?.update, report: lines.join('\n'), number };
+  return { ok, problems, id, path: place?.path || '', essayPath, title: doc.meta.title, update: !!place?.update, report: lines.join('\n'), number };
 }
 
 async function main() {
