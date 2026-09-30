@@ -1786,6 +1786,9 @@ function essayEditor(f, draftKey) {
       undoBtn, status, picker));
 
   // The author's own entry, sent back as an update, starts from the essay it has.
+  // A machine that carries the older short notes (meta.library.readme) starts
+  // from them instead: the essay is where they go now, and one sent without
+  // them would drop them from the listing.
   const update = idx ? essaySelf(f).update : null;
   if (!input.value.trim() && update?.essay) {
     say('Loading the essay published with your entry…');
@@ -1793,11 +1796,13 @@ function essayEditor(f, draftKey) {
       if (input.value.trim()) return;
       setText(text, 'Started from the essay published with your entry');
     }, () => say());
+  } else if (!input.value.trim() && f.readme?.trim()) {
+    setText(f.readme.trim(), 'Started from this machine’s notes');
   } else say();
   redraw(true);
 
   return h('div', { class: 'lib-md-editor' }, toolbar, panes, warnings,
-    h('p', { class: 'lib-field-hint', text: 'Markdown, all of it: headings, tables, footnotes, task lists, $…$ math, > [!note] callouts and [[library/id]] links. {{steps}}, {{ones}} and {{size}} are filled in by the library; ::: spacetime, ::: growth, ::: diagram and ::: machines draw figures from the machine. Ctrl/⌘ E switches between writing and reading. Guide shows all of it, with examples.' }));
+    h('p', { class: 'lib-field-hint', text: 'Optional: a paragraph or a whole article — how it works, where it comes from, what to try. Markdown, all of it: headings, tables, footnotes, task lists, $…$ math, > [!note] callouts and [[library/id]] links. {{steps}}, {{ones}} and {{size}} are filled in by the library; ::: spacetime, ::: growth, ::: diagram and ::: machines draw figures from the machine. Ctrl/⌘ E switches between writing and reading. Guide shows all of it, with examples.' }));
 }
 
 /**
@@ -1834,12 +1839,9 @@ function pageSubmit() {
     return node;
   };
   const blurbPreview = texPreview('lib-lede');
-  const readmePreview = texPreview('lib-prose');
   const title = bind('title', h('input', { class: 'inp', type: 'text', maxlength: '70', placeholder: 'e.g. Binary divisibility by 7' }));
   const blurb = bind('blurb', h('textarea', { class: 'inp', rows: '3', maxlength: '400', placeholder: 'One or two sentences: what it does and why it is interesting.' }), 'input', blurbPreview.update);
-  const readme = bind('readme', h('textarea', { class: 'inp', rows: '5', maxlength: '4000', placeholder: 'Optional. How it works, where it comes from, what to try.' }), 'input', readmePreview.update);
   blurbPreview.update(f.blurb, true);
-  readmePreview.update(f.readme, true);
   const tags = bind('tags', h('input', { class: 'inp', type: 'text', placeholder: 'busy-beaver, textbook, parity' }));
   const level = h('select', { class: 'inp' }, h('option', { value: '' }, '—'), DIFFICULTIES.map(d => h('option', { value: d }, d)));
   bind('difficulty', level, 'change');
@@ -1862,8 +1864,6 @@ function pageSubmit() {
   page.append(h('div', { class: 'lib-form' },
     field('Title', title), field('Description', blurb, 'Shown on the card and in search results. LaTeX between $…$ is typeset.'),
     blurbPreview,
-    field('Write-up', readme, 'A few short paragraphs, shown as Notes on the listing when there is no essay. LaTeX is typeset: $…$ inline, $$…$$ displayed.'),
-    readmePreview,
     h('div', { class: 'lib-field lib-essay-field' }, h('span', { class: 'lib-field-label', text: 'Essay' }), essayEditor(f, L.submitFor)),
     h('div', { class: 'lib-form-row' }, field('Tags', tags), field('Level', level), field('Chapter', chapter)),
     field('Remix of', forkOf, forkHint),
@@ -1882,7 +1882,7 @@ function pageSubmit() {
       results.append(h('div', { class: 'lib-check-warn' },
         h('strong', { text: 'Already in the library: ' }),
         c.duplicates.map((d, i) => [i ? ', ' : '', button(d.title, () => go('entry', d.id), 'btn-g lib-inline')]),
-        ' recognise the same language. A different construction is still welcome — say what it adds in the write-up.'));
+        ' recognise the same language. A different construction is still welcome — say what it adds in the essay.'));
     }
     if (c.warnings.length) results.append(h('div', { class: 'lib-check-warn' }, h('ul', {}, c.warnings.map(x => h('li', { text: x })))));
     const badges = c.analysis.facts?.badges || [];

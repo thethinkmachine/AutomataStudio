@@ -46,7 +46,8 @@ export const LIBRARY_LIMITS = {
   states: 2000,
   transitions: 20000,
   // The card's own limits (js/machine-card.js), so an entry reads the same in
-  // the library and on the canvas. A longer write-up goes in meta.library.readme.
+  // the library and on the canvas. A longer write-up is the entry's essay; meta.library.readme is the
+  // short notes older entries carry instead, still read and shown.
   inputs: 12,
   tags: 12,
   titleMax: 70,

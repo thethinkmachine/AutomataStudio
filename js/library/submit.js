@@ -43,6 +43,8 @@ export function submissionDefaults(meta = App.meta) {
   return {
     title: meta?.title || '',
     blurb: meta?.blurb || '',
+    // The older short notes. The form has no field for them any more: the
+    // essay editor starts from them, and the essay replaces them.
     readme: typeof lib.readme === 'string' ? lib.readme : '',
     tags: Array.isArray(lib.tags) ? lib.tags.join(', ') : '',
     difficulty: lib.difficulty || '',
@@ -125,7 +127,6 @@ export function buildSubmissionDoc(fields, update = null) {
   };
   if (fields.difficulty) lib.difficulty = fields.difficulty;
   if (fields.chapter) lib.chapter = String(fields.chapter).trim();
-  if (fields.readme) lib.readme = String(fields.readme).trim();
   if (String(fields.essay || '').trim()) lib.essay = String(fields.essay).replace(/\r\n?/g, '\n').trim();
   // An update keeps what the entry was remixed from; it is not a remix of itself.
   const forkOf = update && fields.forkOf === update.id ? update.forkOf : fields.forkOf;
@@ -213,7 +214,6 @@ export function issueUrlFor(fields, machineText, repo = LIBRARY_REPO, base = nul
   add('remix-of', fields.forkOf);
   add('updates', fields.updates);
   add('display-name', fields.name);
-  add('readme', fields.readme);
   add('license', fields.license);
   add('level', fields.difficulty);
   if (machineText) params.set('machine', machineText);

@@ -58,7 +58,7 @@ export function docFromStandardTM(src, { title, blurb, tags = [], author, licens
     meta: {
       title: title || d.title,
       blurb: blurb || `${src} — the standard text format. Run it on the empty word.`,
-      library: { author: { login: author }, license, tags: ['standard-format', ...tags], ...(chapter ? { chapter } : {}), readme: `Standard format: ${src}` }
+      library: { author: { login: author }, license, tags: ['standard-format', ...tags], ...(chapter ? { chapter } : {}) }
     }
   };
 }

@@ -755,6 +755,7 @@ test('an issue becomes an entry credited to the issue\'s author, whatever the fo
   assert.ok(r4.problems.some(p => /agreement/.test(p)));
 });
 
+/** An issue opened from an older copy of the form, which still asked for a Write-up. */
 function issue({ name, machine, remixOf = '', updates = '', readme = '' }) {
   return [
     '### Name', '', name, '',
@@ -1350,7 +1351,7 @@ test('the Library view typesets a description, and the submit form previews it',
     context.go('submit');
     const areas = findAll(host, n => n.tagName === 'TEXTAREA');
     const previews = findAll(host, n => n.classList?.contains('lib-tex-preview'));
-    assert.equal(previews.length, 2, 'one for the description, one for the write-up');
+    assert.equal(previews.length, 1, 'one for the description; the essay has its own');
     assert.ok(previews.every(p => p.hidden !== undefined), 'hidden while there is no LaTeX');
     const blurb = areas[0];
     blurb.value = 'Accepts $a^n b^n$.';
@@ -1373,7 +1374,7 @@ test('the Library view typesets a description, and the submit form previews it',
 function fullIssue({ name, machine, updates = '', essay = '' }) {
   return [
     '### Name', '', name, '', '### Description', '', 'A machine.', '',
-    '### Machine', '', '```text', machine, '```', '', '### Write-up', '', '_No response_', '',
+    '### Machine', '', '```text', machine, '```', '',
     '### Tags', '', '_No response_', '', '### Level', '', '_No response_', '', '### Chapter or source', '', '_No response_', '',
     '### Remix of', '', '_No response_', '', '### Updates', '', updates || '_No response_', '', '### Display name', '', '_No response_', '',
     '### Licence', '', 'CC-BY-4.0', '', '### Agreement', '', '- [X] I made this machine', '',
@@ -1424,6 +1425,37 @@ test('the app puts the essay in the submitted document, and keeps its draft per 
   assert.equal(context.essayDraft('w1|'), '', 'another machine\'s form starts empty');
   context.saveEssayDraft('w0|', '');
   assert.equal(context.essayDraft('w0|'), '');
+});
+
+test('there is one place for a machine\'s prose: the essay', async () => {
+  // The app: no Write-up is sent, and a machine carrying the older notes
+  // starts its essay from them.
+  seedTab();
+  context.App.meta = { title: 'Mine', blurb: 'A machine.', library: { readme: 'Old notes, $x$.' } };
+  const fields = { ...context.submissionDefaults(), login: 'dana' };
+  assert.equal(context.buildSubmissionDoc(fields).meta.library.readme, undefined);
+  assert.equal(new URL(context.issueUrlFor({ ...fields, readme: 'x' }, '')).searchParams.has('readme'), false);
+  await serveLibrary();
+  context.renderLibraryView();
+  await context.loadLibrary({ force: true });
+  context.go('submit', null, { reset: true });
+  const host = context.document.getElementById('lib-content');
+  const input = findAll(host, n => n.classList?.contains('lib-md-input'))[0];
+  assert.equal(input.value, 'Old notes, $x$.');
+  assert.equal(findAll(host, n => n.classList?.contains('lib-field-label')).some(n => /Write-up/.test(textOf(n))), false);
+
+  // The CI: an older form's Write-up, or a file's readme, is written as the essay.
+  resetApp();
+  const root = await mkdtemp(join(tmpdir(), 'as-issue-'));
+  const r = await processIssue({ body: issue({ name: 'Parity, noted', machine: await context.shareLinkFor(evenOnes()), readme: 'How it works.' }), author: 'dana', number: 1, root });
+  assert.equal(r.ok, true, r.problems.join('\n'));
+  assert.equal(await readFile(join(root, r.essayPath), 'utf8'), 'How it works.\n');
+  assert.equal(JSON.parse(await readFile(join(root, r.path), 'utf8')).meta.library.readme, undefined);
+  const withReadme = evenOnes();
+  withReadme.meta.library.readme = 'From the file.';
+  const r2 = await processIssue({ body: fullIssue({ name: 'Parity, filed', machine: await context.shareLinkFor(withReadme) }), author: 'erin', number: 2, root });
+  assert.equal(r2.ok, true, r2.problems.join('\n'));
+  assert.equal(await readFile(join(root, r2.essayPath), 'utf8'), 'From the file.\n');
 });
 
 test('the editor reads Markdown and text files, and refuses anything else', async () => {
