@@ -152,6 +152,26 @@ A prover wrong once fails there.
 branch where it first reads an undefined transition — with state, symbol and mirror
 symmetry. It never uses the bound, which would assume its own answer.
 
+### How it looks, and how it is documented
+
+- **`out.mjs` is the only place colour is decided.** The palette is the app's dark
+  theme; depth is detected (truecolor, 256, 16, none) and `FORCE_COLOR`/`NO_COLOR`
+  override. **Plain output is a contract**: tests and scripts read it, so a
+  colour-only flourish (pills, boxes, coloured stack cells) must fall back to the
+  text it replaced — `trace`'s `stack ZA`, `halts`' "1 halt, 0 never halt". Each
+  tape symbol keeps one colour everywhere (`symbolColour`), the same order the
+  space-time pictures use; the blank is always faint.
+- **`play` is one pure `renderFrame`**, drawn two ways: interactively (alternate
+  screen, raw keys, the last frame left on the normal screen on quit) when both
+  stdin and stdout are terminals, and as a sequence of frames otherwise. Keep it
+  pure — the tests read the piped frames.
+- **A command's help is its module's `usage` plus `help.mjs`'s examples and
+  see-also**, coloured by `renderUsage` (headings end in `:`, flags start with
+  `-`, examples with `$ `). Topics (`automata help <topic>`) live there too.
+- **`docs/cli-reference.md` is generated** (`npm run cli:docs`) from exactly that,
+  and a test fails when it is stale — change the usage text or the examples, then
+  regenerate. `docs/cli.md` is the hand-written guide; the README points at both.
+
 ### Running it elsewhere
 
 - **The bundle** (`npm run cli:build` → `dist-cli/`, config `vite.cli.config.js`) is

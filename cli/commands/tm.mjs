@@ -13,7 +13,7 @@ import { runPool, workerCount } from '../tm/pool.mjs';
 import { bbStep, rootNode } from '../tm/search.mjs';
 import { proveByInduction } from '../tm/induction.mjs';
 import { Indexed, encodePNG, TAPE_PALETTE, HEAD } from '../raster.mjs';
-import { c, isTTY, print, printJson, table, warn } from '../out.mjs';
+import { PALETTE, box, c, isTTY, pill, print, printJson, styled, table, warn } from '../out.mjs';
 
 const num = x => Number(x).toLocaleString('en-US');
 
@@ -172,18 +172,22 @@ Exit: 0 every machine decided, 2 some unknown, 3 some could not be read.`,
         })
       })));
     } else {
-      const colour = { halts: c.green, never: c.red, unknown: c.yellow };
+      // halts ends; never halts forever; unknown is the honest third answer.
+      const say = { halts: c.green('■ halts'), never: c.violet('∞ never'), unknown: c.yellow('? unknown') };
       print(table(items.map((it, i) => {
-        if (it.error) return [c.dim(String(i + 1)), it.label, c.magenta('error'), '', it.error];
+        const n = c.faint(String(i + 1));
+        const label = c.orange(it.label);
+        if (it.error) return [n, label, c.magenta('! error'), '', c.magenta(it.error)];
         const v = it.result;
-        if (v.error) return [c.dim(String(i + 1)), it.label, c.magenta('error'), '', v.error];
-        return [c.dim(String(i + 1)), it.label, colour[v.verdict](v.verdict), c.dim(METHOD_NAMES[v.method] || (v.growth ? v.growth.shape : '')), detailOf(v)];
-      })));
+        if (v.error) return [n, label, c.magenta('! error'), '', c.magenta(v.error)];
+        return [n, label, say[v.verdict], c.cyan(METHOD_NAMES[v.method] || (v.growth ? v.growth.shape : '')), c.muted(detailOf(v))];
+      }), { head: ['#', 'machine', 'verdict', 'method', 'why'] }));
       const count = x => items.filter(it => it.result?.verdict === x).length;
       const errs = items.filter(it => it.error || it.result?.error).length;
-      const parts = [`${count('halts')} halt`, `${count('never')} never halt`, `${count('unknown')} unknown`];
-      if (errs) parts.push(`${errs} could not be read`);
-      print(`\n${parts.join(', ')}${opts.proof ? c.dim(` — proofs in ${opts.proof}`) : ''}`);
+      const parts = [pill(`${count('halts')} halt`, PALETTE.green), pill(`${count('never')} never halt`, PALETTE.violet), pill(`${count('unknown')} unknown`, PALETTE.amber)];
+      if (errs) parts.push(pill(`${errs} could not be read`, PALETTE.pink));
+      const plain = [`${count('halts')} halt`, `${count('never')} never halt`, `${count('unknown')} unknown`, ...(errs ? [`${errs} could not be read`] : [])].join(', ');
+      print(`\n${styled ? parts.join(' ') : plain}${opts.proof ? c.muted(`  proofs in ${opts.proof}`) : ''}`);
     }
     if (items.some(it => it.error || it.result?.error)) return 3;
     return items.some(it => it.result?.verdict === 'unknown') ? 2 : 0;
@@ -283,13 +287,17 @@ bound, which would assume the answer. 2×2 and 3×2 take moments; 4×2 minutes.
     const neverTotal = Object.values(stats.never).reduce((a, b) => a + b, 0);
     if (opts.json) printJson({ states: n, symbols: k, machines: stats.nodes, halting: stats.halting, never: stats.never, holdouts: stats.holdouts, champion, onesChampion, seconds: Number(secs) });
     else {
-      print(`${c.bold(`${n}-state, ${k}-symbol`)} — ${num(stats.nodes)} machines in tree normal form, ${secs}s`);
-      print(`  halting        ${num(stats.halting)}`);
-      print(`  never halt     ${num(neverTotal)}${neverTotal ? c.dim(`  (${Object.entries(stats.never).map(([m, x]) => `${METHOD_NAMES[m] || m} ${num(x)}`).join(', ')})`) : ''}`);
-      print(`  holdouts       ${stats.holdouts.length ? c.yellow(num(stats.holdouts.length)) : '0'}${opts.holdouts && stats.holdouts.length ? c.dim(`  → ${opts.holdouts}`) : ''}`);
-      if (champion) print(`\n  most steps     ${c.bold(num(champion.steps))}  ${champion.code}`);
-      if (onesChampion) print(`  most ones      ${c.bold(num(onesChampion.ones))}  ${onesChampion.code}`);
-      if (stats.holdouts.length) print(c.yellow(`\n  The values above are lower bounds until the holdouts are settled.`));
+      const lines = [
+        `${c.muted('machines')}     ${c.bold(num(stats.nodes))} ${c.faint(`in tree normal form, ${secs}s`)}`,
+        `${c.muted('halting')}      ${c.green(num(stats.halting))}`,
+        `${c.muted('never halt')}   ${c.violet(num(neverTotal))}${neverTotal ? c.faint(`  ${Object.entries(stats.never).map(([m, x]) => `${METHOD_NAMES[m] || m} ${num(x)}`).join(' · ')}`) : ''}`,
+        `${c.muted('holdouts')}     ${stats.holdouts.length ? c.yellow(num(stats.holdouts.length)) : c.green('0')}${opts.holdouts && stats.holdouts.length ? c.faint(`  → ${opts.holdouts}`) : ''}`,
+        '',
+        champion ? `${c.muted('most steps')}   ${c.bold(c.accent(num(champion.steps)))}  ${c.orange(champion.code)}` : '',
+        onesChampion ? `${c.muted('most ones')}    ${c.bold(c.accent(num(onesChampion.ones)))}  ${c.orange(onesChampion.code)}` : ''
+      ].filter((l, idx, all) => l !== '' || (idx > 0 && all[idx - 1] !== ''));
+      print(box(lines, { title: `${c.accent('◆')} ${n}-state, ${k}-symbol busy beaver search` }));
+      if (stats.holdouts.length) print(c.yellow(`▲ The champions are lower bounds until the ${stats.holdouts.length} holdouts are settled.`));
     }
     return stats.holdouts.length ? 2 : 0;
   }

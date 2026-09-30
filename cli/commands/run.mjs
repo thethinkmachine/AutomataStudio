@@ -8,7 +8,7 @@ import { withMachine } from '../../js/exercise/grade.js';
 import { machineGuards, parseMachineInput, streamMachine } from '../../js/machines/index.js';
 import { withPainterSuppressed } from '../../js/machines/paint.js';
 import { CliError, readMachine, readSpecText, readStdin } from '../io.mjs';
-import { c, print, printJson, table, verdictWord, warn } from '../out.mjs';
+import { c, print, printJson, styled, table, tapeCells, verdictWord, warn } from '../out.mjs';
 
 // ── verdicts → exit codes ─────────────────────────────────────────
 // Worst wins: an error over an unknown over a reject over an accept.
@@ -56,10 +56,10 @@ Exit: 0 all accepted, 1 some rejected, 2 some had no verdict within the budget,
     if (opts.json) printJson(results.length === 1 ? results[0] : results);
     else {
       print(table(results.map(r => {
-        const shown = r.word === '' ? App.config.sym.eps : r.word;
-        const v = r.verdict === 'err' ? `${verdictWord('err')}  ${r.error.replace(/<[^>]+>/g, '')}`
-          : matters ? verdictWord(r.verdict) : (r.verdict === 'unk' ? verdictWord('unk') : c.dim('done'));
-        return transducer && r.verdict !== 'err' ? [shown, v, `→ ${r.output || c.dim('(nothing)')}`] : [shown, v];
+        const shown = r.word === '' ? c.faint(App.config.sym.eps) : c.bold(r.word);
+        const v = r.verdict === 'err' ? `${verdictWord('err')}  ${c.magenta(r.error.replace(/<[^>]+>/g, ''))}`
+          : matters ? verdictWord(r.verdict) : (r.verdict === 'unk' ? verdictWord('unk') : c.muted('● done'));
+        return transducer && r.verdict !== 'err' ? [shown, v, `${c.faint('→')} ${r.output ? c.teal(r.output) : c.faint('(nothing)')}`] : [shown, v];
       })));
     }
     return worst(results.map(r => {
@@ -153,12 +153,15 @@ could not be read.`,
 
 const strip = s => String(s ?? '').replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
-function tapeText(tape, head, blank) {
+function tapeText(tape, head, blank, alphabet = []) {
   if (!Array.isArray(tape)) return '';
-  return tape.map((s, i) => {
-    const cell = s === '' || s == null ? blank : s;
-    return i === head ? c.bold(`[${cell}]`) : ` ${cell} `;
-  }).join('');
+  return tapeCells(tape, head, { alphabet, blank });
+}
+
+// A store as text: plain, it is its symbols run together (what scripts read);
+// in colour, each symbol on its own colour.
+function storeText(stack, alphabet, blank) {
+  return styled ? tapeCells(stack, -1, { alphabet, blank }) : stack.join('');
 }
 
 /** The steps of a word's run, as plain objects. Pulls at most `cap` + 1. */
@@ -229,16 +232,19 @@ and the tape, stack, unread input or output where the machine has them.
     const { steps, cut } = traceSteps(target, word, cap);
     if (opts.json) { printJson({ steps, cut }); return steps.at(-1)?.final === 'accept' ? 0 : 0; }
     const blank = App.config.sym.blank;
+    const alphabet = [];
+    for (const st of steps) for (const t of [st.tape, ...(st.tapes || []), st.stack, st.stack2, ...(st.store || [])]) for (const x of t || []) if (x && x !== blank && !alphabet.includes(x)) alphabet.push(x);
     const rows = steps.map(s => {
       const where = [];
-      if (s.tape) where.push(tapeText(s.tape, s.head, blank));
-      if (s.tapes) s.tapes.forEach((t, k) => where.push(`${k + 1}:${tapeText(t, s.heads?.[k], blank)}`));
-      if (s.store) where.push(`stacks ${s.store.map(x => `[${x.join('')}]`).join('')}`);
-      else if (s.stack) where.push(`stack ${s.stack.join('')}`);
-      if (s.stack2) where.push(`stack₂ ${s.stack2.join('')}`);
-      if (s.remaining && !s.tape) where.push(`rest ${s.remaining.join('') || App.config.sym.eps}`);
-      if (s.output != null) where.push(`out ${s.output || App.config.sym.eps}`);
-      return [c.dim(String(s.step)), `{${s.states.join(',')}}`, s.note, where.join('  ')];
+      if (s.tape) where.push(tapeText(s.tape, s.head, blank, alphabet));
+      if (s.tapes) s.tapes.forEach((t, k) => where.push(`${c.muted(`${k + 1}:`)}${tapeText(t, s.heads?.[k], blank, alphabet)}`));
+      if (s.store) where.push(`${c.muted('stacks')} ${s.store.map(x => (styled ? storeText(x, alphabet, blank) : `[${x.join('')}]`)).join(styled ? c.faint(' │ ') : '')}`);
+      else if (s.stack) where.push(`${c.muted('stack')} ${storeText(s.stack, alphabet, blank)}`);
+      if (s.stack2) where.push(`${c.muted('stack₂')} ${storeText(s.stack2, alphabet, blank)}`);
+      if (s.remaining && !s.tape) where.push(`${c.muted('rest')} ${s.remaining.join('') || c.faint(App.config.sym.eps)}`);
+      if (s.output != null) where.push(`${c.muted('out')} ${s.output ? c.teal(s.output) : c.faint(App.config.sym.eps)}`);
+      const note = s.final === 'accept' ? c.green(s.note) : s.final === 'reject' || s.final === 'loop' ? c.red(s.note) : s.note;
+      return [c.faint(String(s.step)), c.violet(`{${s.states.join(',')}}`), note, where.join('  ')];
     });
     print(table(rows));
     const last = steps.at(-1);

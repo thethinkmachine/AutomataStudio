@@ -27,6 +27,7 @@
     "test": "node --conditions=browser --conditions=development --test",
     "cli": "node cli/automata.mjs",
     "cli:build": "vite build --config vite.cli.config.js",
+    "cli:docs": "node --conditions=browser --conditions=development cli/gen-docs.mjs",
     "bench": "node bench/run.mjs",
     "icons": "node scripts/build-icons.mjs",
     "glyphs": "node scripts/build-glyphs.mjs",

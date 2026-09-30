@@ -246,3 +246,53 @@ test('empty input and a directory are named for what they are', () => {
   assert.match(cli(['info', 'js/examples']).err, /is a directory/);
   assert.match(cli(['halts', 'js/examples/mtm.json']).out, /an MTM/);
 });
+
+// ── Help, documentation and the look ──────────────────────────────
+
+test('every command\'s help has usage, examples and see-also; topics resolve', () => {
+  // The command groups come before "Start here"; the topics after it.
+  const main = cli(['--help']).out.split('Start here')[0];
+  const commands = [...main.matchAll(/^ {2}([a-z][\w-]+) {2,}/gm)].map(m => m[1]);
+  assert.ok(commands.length >= 38, `only ${commands.length} commands in --help`);
+  for (const name of new Set(commands)) {
+    const h = cli([name, '--help']);
+    assert.equal(h.code, 0, name);
+    assert.match(h.out, /Usage: automata /, name);
+    assert.match(h.out, /\nExamples:\n/, `${name} --help has no examples`);
+  }
+  assert.match(cli(['help', 'proofs']).out, /check-proof\s+re-checks them/);
+  assert.match(cli(['help', 'topics']).out, /exit-codes/);
+  const near = cli(['help', 'exit-code']);
+  assert.equal(near.code, 3);
+  assert.match(near.err, /Did you mean "exit-codes"/);
+  assert.match(cli(['halts', '--help']).out, /See also: .*automata help proofs/);
+});
+
+test('the command reference is generated from the help, and up to date', async () => {
+  const { referenceMarkdown } = await import('../cli/gen-docs.mjs');
+  const fresh = await referenceMarkdown();
+  const committed = readFileSync(join(ROOT, 'docs', 'cli-reference.md'), 'utf8').replace(/\r\n/g, '\n');
+  assert.equal(committed, fresh, 'docs/cli-reference.md is stale: run npm run cli:docs');
+});
+
+test('colour follows FORCE_COLOR and NO_COLOR, and plain output has none', () => {
+  const plain = cli(['run', 'js/examples/dfa.json', '0']).out;
+  assert.doesNotMatch(plain, /\x1b\[/);
+  const forced = cli(['run', 'js/examples/dfa.json', '0'], { env: { NO_COLOR: '', FORCE_COLOR: '3' } }).out;
+  assert.match(forced, /\x1b\[38;2;/, 'truecolor escapes');
+  const basic = cli(['run', 'js/examples/dfa.json', '0'], { env: { NO_COLOR: '', FORCE_COLOR: '1' } }).out;
+  assert.match(basic, /\x1b\[9\dm|\x1b\[3\dm/);
+  assert.doesNotMatch(basic, /38;2;/);
+});
+
+test('play, piped, prints every frame: header, states, tape, verdict', () => {
+  const r = cli(['play', '1RB1LB_1LA1RZ', '']);
+  assert.equal(r.code, 0);
+  const frames = r.out.split('╭─').length - 1;
+  assert.equal(frames, 7, 'one frame per step, 0 through 6');
+  assert.match(r.out, /step 6 \/ 6/);
+  assert.match(r.out, /states +A +B +\(halt\)/);
+  assert.match(r.out, /\[1\]/, 'the head cell, marked in plain text');
+  assert.match(r.out, /✔ accept\n*$/);
+  assert.match(cli(['play', 'js/examples/npda.json', 'abba']).out, /input +ab│ba/);
+});
