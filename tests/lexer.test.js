@@ -131,14 +131,19 @@ test('the generated Python produces the same token stream', { skip: !have('pytho
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('the generated C produces the same token stream', { skip: !have('cc', ['--version']) && 'no C compiler' }, () => {
+// Whichever C compiler is on the path: cc on Linux and macOS, and on Windows
+// gcc (MinGW) or clang, which is where there is no cc at all.
+const CC = ['cc', 'gcc', 'clang'].find(cmd => have(cmd, ['--version']));
+
+test('the generated C produces the same token stream', { skip: !CC && 'no C compiler (cc, gcc or clang)' }, () => {
   const lx = buildLexer(DEFAULT_LEXER_RULES);
   const dir = mkdtempSync(join(tmpdir(), 'lexer-c-'));
   try {
     writeFileSync(join(dir, 'lexer.c'), emitLexerC(lx));
-    execFileSync('cc', ['-std=c99', '-Wall', '-Werror', '-DLEXER_MAIN', '-o', join(dir, 'lexer'), join(dir, 'lexer.c')]);
+    const exe = join(dir, process.platform === 'win32' ? 'lexer.exe' : 'lexer');
+    execFileSync(CC, ['-std=c99', '-Wall', '-Werror', '-DLEXER_MAIN', '-o', exe, join(dir, 'lexer.c')]);
     for (const input of INPUTS.filter(i => !runLexer(lx, i).error)) {
-      const out = execFileSync(join(dir, 'lexer'), [], { input, encoding: 'utf8' });
+      const out = execFileSync(exe, [], { input, encoding: 'utf8' }).replace(/\r\n/g, '\n');
       const expected = visible(runLexer(lx, input)).map(t => `${t.line}:${t.col} ${t.type} ${t.text}`);
       assert.deepEqual(out.trim() ? out.trim().split('\n') : [], expected, input);
     }
