@@ -39,6 +39,7 @@ import { machineSupportsBlocks } from './machines/index.js';
 import { machineTargetFromApp, withMachine } from './exercise/grade.js';
 import { buildFormalDefLatex } from './render.js';
 import { triggerMath } from './reference.js';
+import { hasTex } from './tex.js';
 import {
   LIBRARY_REPO, entryPageUrl, libraryBase, libraryIsOverridden, libraryUrl, parseLibraryHash, parseLibraryProtocolUrl,
   parseLibrarySourceHash, repoUrl, setLibraryOverride, sourceUrl, webAppLink
@@ -47,8 +48,11 @@ import {
   BADGES, DIFFICULTIES, LIBRARY_FAMILIES, SORTS, dfaAccepts, entryById, libraryFacets, queryLibrary,
   pickFrontispiece, recentEntries, remixAncestry, resolveSort, sameLanguageAs, wasUpdated
 } from './library/index-model.js';
+import { renderArticle } from './library/article.js';
+import { essayFacts, essayFigureSpec, essayLinkTarget } from './library/essay.js';
+import { drawEssayFigure } from './library/essay-draw.js';
 import {
-  cachedLibrary, fetchEntryText, listMyLibrary, loadLibrary, noteRecentlyOpened, recentLibraryIds, removeFromMyLibrary,
+  cachedLibrary, fetchEntryText, fetchEssayText, listMyLibrary, loadLibrary, noteRecentlyOpened, recentLibraryIds, removeFromMyLibrary,
   saveToMyLibrary, sourceIsOutdated, stampSource, updatesFor
 } from './library/client.js';
 import {
@@ -174,7 +178,23 @@ function section(title, ...kids) {
 
 function paragraphs(text, cls = 'lib-prose') {
   const parts = String(text || '').split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
-  return parts.length ? h('div', { class: cls }, parts.map(p => h('p', { text: p }))) : null;
+  return parts.length ? typeset(h('div', { class: cls }, parts.map(p => h('p', { text: p })))) : null;
+}
+
+/**
+ * An author's words may carry LaTeX — `$a^n b^n$`, `$$…$$`, `\(…\)`, `\[…\]` —
+ * typeset in place by KaTeX. The text goes in as a text node first, so nothing
+ * an author writes is ever parsed as markup; KaTeX's own `trust: false` default
+ * refuses \href and friends.
+ */
+function typeset(node) {
+  if (node && hasTex(node.textContent || Array.from(node.children || [], c => c.textContent).join(' '))) triggerMath(node);
+  return node;
+}
+
+/** A line of an author's text, typeset. */
+function texLine(tag, cls, text) {
+  return typeset(h(tag, { class: cls, text }));
 }
 
 function relTime(iso) {
@@ -742,12 +762,13 @@ function pageEntry(id) {
   if (LIBRARY_LICENSES[e.license]) byline.push(e.license.replace(/-/g, ' ').replace(' 4.0', ' 4.0').replace('CC BY', 'CC BY'));
   if (e.added) byline.push(`added ${relTime(e.added)}`);
   if (wasUpdated(e)) byline.push(`updated ${relTime(e.updated)}`);
+  if (e.essay) byline.push(button(`${e.essay.minutes} min essay ↓`, () => page.querySelector?.('.lib-essay')?.scrollIntoView?.({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' }), 'lib-textbtn', { title: 'Read the essay about this machine' }));
 
   page.append(h('div', { class: 'lib-entry-head' },
     h('p', { class: 'lib-kicker' }, h('i', { class: 'lib-dot', 'aria-hidden': 'true' }), [machineLabel(e.machine), e.languageClass].filter(Boolean).join(' · ')),
     h('h2', { class: 'lib-display lib-entry-title', text: e.title }),
     h('p', { class: 'lib-byline' }, byline.map((b, i) => [i ? h('span', { class: 'lib-sep', text: '·' }) : null, b])),
-    e.blurb ? h('p', { class: 'lib-lede', text: e.blurb }) : null,
+    e.blurb ? texLine('p', 'lib-lede', e.blurb) : null,
     entryActions(e)));
 
   if (e.duplicateOf) {
@@ -774,6 +795,8 @@ function pageEntry(id) {
   aside.append(codeSec);
   page.append(h('div', { class: 'lib-entry-body' }, h('div', { class: 'lib-entry-main' }, stage.node, tryIt(e, stage)), aside));
 
+  // An essay reads straight after the showcase it is about.
+  if (e.essay) page.append(essaySection(e.essay, e));
   // A Turing machine is known by what it does from a blank tape.
   if (e.behaviour || e.standard) page.append(behaviourSection(e));
   const notes = h('div', { class: 'lib-prose' });
@@ -791,12 +814,137 @@ function pageEntry(id) {
       math.textContent = latex;
       triggerMath(math);
     } catch { math.textContent = ''; }
-    const text = paragraphs(d.doc?.meta?.library?.readme);
-    if (text) { notes.append(...text.children); notes.closest('section')?.removeAttribute('hidden'); }
+    // An essay is the long form of the notes, and says more than they do.
+    const text = e.essay ? null : paragraphs(d.doc?.meta?.library?.readme);
+    // Typeset where the paragraphs end up: KaTeX may still be loading, and a
+    // retry aimed at the emptied wrapper would typeset nothing.
+    if (text) { notes.append(...Array.from(text.children)); typeset(notes); notes.closest('section')?.removeAttribute('hidden'); }
   }, () => {
     math.append(h('span', { class: 'lib-muted', text: 'The definition is drawn from the machine’s file, which could not be fetched.' }));
   });
   return page;
+}
+
+// ── Essays ────────────────────────────────────────────────────────
+//
+// An entry's or a collection's long form (js/library/article.js): fetched and
+// checked against the index like the machine's own file, rendered by the same
+// code the website is built with, and asked the same questions — a {{fact}}
+// is read off the index (essay.js), so the numbers in the prose are the
+// numbers the badges were earned by. What the app does differently is only
+// what a page inside an app has to: figures drawn when read, in a worker
+// (essay-draw.js), rather than when built; ids prefixed, since the essay
+// shares a document with the whole app; and in-page links handled here,
+// because the address bar's hash carries share links and library routes, and
+// a footnote must not overwrite either.
+
+const ESSAY_ID = 'lib-essay-';
+
+function essaySection(essay, self) {
+  const body = h('div', { class: 'lib-essay-body lib-prose' }, h('p', { class: 'lib-muted', text: 'Fetching the essay…' }));
+  const toc = h('nav', { class: 'lib-essay-toc', 'aria-label': 'Contents', hidden: true });
+  const columns = h('div', { class: 'lib-essay-grid is-no-toc' }, toc, body);
+  const sec = h('section', { class: 'lib-shelf lib-essay' },
+    sectionHead('Essay', h('span', { class: 'lib-essay-meta', text: `${essay.minutes} min read` })), columns);
+  body.addEventListener('click', essayClick);
+  const idx = index();
+  fetchEssayText(essay, idx).then(md => {
+    const slots = [];
+    const art = renderArticle(md, { ...essayContext(idx, self, slots), idPrefix: ESSAY_ID, newTab: true });
+    body.innerHTML = art.html;
+    fillEssaySlots(body, slots);
+    typeset(body);
+    const heads = art.toc.filter(t => t.level === 2);
+    if (heads.length > 2) {
+      toc.append(h('p', { class: 'lib-aside-title', text: 'Contents' }),
+        h('ol', {}, heads.map(t => {
+          const item = h('button', { type: 'button', class: 'lib-essay-toc-link', on: { click: () => scrollToEssayId(t.id) } });
+          item.innerHTML = t.html;
+          return h('li', {}, item);
+        })));
+      toc.removeAttribute('hidden');
+      columns.classList.remove('is-no-toc');
+    }
+  }, () => {
+    body.textContent = '';
+    body.append(h('p', { class: 'lib-muted', text: 'The essay could not be fetched. It is read from the library, like the machine’s file; try again when you are online.' }));
+  });
+  return sec;
+}
+
+/**
+ * What an essay may ask for, answered for the app. A figure the app draws
+ * with nodes rather than markup — a row of plates, or a run still being
+ * drawn in the worker — goes in as an empty slot and is filled after the
+ * essay's markup is in place.
+ */
+function essayContext(idx, self, slots) {
+  const byId = new Map(idx.entries.map(e => [e.id, e]));
+  const slot = (fill, attrs = '') => {
+    slots.push(fill);
+    return `<div class="lib-essay-slot" data-essay-slot="${slots.length - 1}"${attrs}></div>`;
+  };
+  const figure = (name, args) => {
+    if (name === 'machines') {
+      const list = args._.map(id => byId.get(id)).filter(Boolean);
+      return list.length ? { html: slot(() => grid(list)), wide: true } : null;
+    }
+    const e = args.id ? byId.get(args.id) : self;
+    const spec = essayFigureSpec(name, args, e);
+    if (!spec) return null;
+    const fam = e.category || 'special';
+    if (spec.kind === 'diagram') {
+      const sk = unpackSketch(e.sketch);
+      if (!sk) return null;
+      const H = Math.round(640 / sketchAspect(sk));
+      return { html: `<div class="lib-fig lib-essay-fig" data-family="${fam}" style="--fig-aspect: 640 / ${H}">${drawSketch(sk, { w: 640, h: H, label: `Diagram of ${e.title}` })}</div>` };
+    }
+    const aspect = spec.kind === 'growth' ? '680 / 300' : spec.aspect;
+    const cls = spec.kind === 'growth' ? 'is-chart' : 'is-run';
+    return {
+      html: `<div class="lib-fig lib-essay-fig ${cls} is-drawing" data-family="${fam}" style="--fig-aspect: ${aspect}">${slot(node => {
+        drawEssayFigure(spec.kind, spec.code, spec.opts).then(svg => {
+          node.parentNode?.classList?.remove('is-drawing');
+          if (svg) node.outerHTML = svg;
+          else node.replaceWith(h('span', { class: 'lib-muted', text: 'This figure could not be drawn.' }));
+        });
+        return null;
+      }, ' aria-label="Drawing the figure from the machine…"')}</div>`
+    };
+  };
+  return {
+    fact: essayFacts(idx, self),
+    figure,
+    link: id => {
+      const to = essayLinkTarget(idx, id);
+      return to ? `#${to.kind === 'entry' ? 'library' : 'collection'}=${id}` : null;
+    }
+  };
+}
+
+/** Put the nodes the markup left room for into their slots. */
+function fillEssaySlots(body, slots) {
+  for (const node of Array.from(body.querySelectorAll?.('[data-essay-slot]') || [])) {
+    const made = slots[Number(node.dataset.essaySlot)]?.(node);
+    if (made) node.replaceWith(made);
+  }
+}
+
+/** A link inside an essay: to another listing, to a heading or a note, or out. */
+function essayClick(ev) {
+  const a = ev.target?.closest?.('a');
+  const href = a?.getAttribute?.('href') || '';
+  if (!href.startsWith('#')) return;   // out of the app: the link opens its own tab
+  ev.preventDefault();
+  const route = parseLibraryHash(href);
+  if (route?.action === 'show') go('entry', route.id);
+  else if (route?.action === 'collection') go('collection', route.id);
+  else scrollToEssayId(href.slice(1));
+}
+
+function scrollToEssayId(id) {
+  if (!id.startsWith(ESSAY_ID)) return;
+  document.getElementById?.(id)?.scrollIntoView?.({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
 }
 
 /** What the library checked, in sentences, each with its detail. */
@@ -1225,7 +1373,7 @@ function collectionRow(c) {
   c.entries.slice(0, 3).map(id => entryById(idx, id)).filter(Boolean).forEach(e => strip.append(figureOf(e, { w: 160, h: 100 })));
   row.append(strip, h('div', { class: 'lib-coll-text' },
     h('span', { class: 'lib-coll-title', text: c.title }),
-    c.blurb ? h('span', { class: 'lib-coll-blurb', text: c.blurb }) : null,
+    c.blurb ? texLine('span', 'lib-coll-blurb', c.blurb) : null,
     h('span', { class: 'lib-coll-meta', text: `${c.entries.length} machine${c.entries.length === 1 ? '' : 's'}${c.curator ? ` · curated by @${c.curator}` : ''}` })));
   return row;
 }
@@ -1249,7 +1397,8 @@ function pageCollection(id) {
     h('div', { class: 'lib-pagehead' },
       h('p', { class: 'lib-kicker', text: `Collection · ${entries.length} machine${entries.length === 1 ? '' : 's'}${c.curator ? ` · curated by @${c.curator}` : ''}` }),
       h('h2', { class: 'lib-display', text: c.title }),
-      c.blurb ? h('p', { class: 'lib-lede', text: c.blurb }) : null,
+      c.blurb ? texLine('p', 'lib-lede', c.blurb) : null,
+      c.essay ? h('p', { class: 'lib-byline', text: `${c.essay.minutes} min essay` }) : null,
       h('div', { class: 'lib-actions' },
         button('Save all offline', async () => {
           let n = 0;
@@ -1261,6 +1410,7 @@ function pageCollection(id) {
           renderPage();
         }, 'btn-g'),
         button('Copy link', () => exportCopyText(webAppLink({ action: 'collection', id: c.id }), 'Link to this collection copied'), 'btn-g'))),
+    c.essay ? essaySection(c.essay, null) : null,
     behaviourTable(entries),
     h('section', { class: 'lib-shelf' }, sectionHead('The machines'), grid(entries)));
 }
@@ -1344,6 +1494,31 @@ function field(label, control, hint) {
 }
 
 /**
+ * How a field's text will read on its listing, typeset — shown only while the
+ * text holds some LaTeX, since plain words look the same either way. `update`
+ * is handed the text on every keystroke and redraws a moment after typing
+ * stops: KaTeX re-typesets the whole preview each time.
+ */
+function texPreview(cls) {
+  const box = h('div', { class: `lib-tex-preview ${cls}`, 'aria-live': 'polite', hidden: true });
+  let timer = null;
+  const draw = text => {
+    box.innerHTML = '';
+    if (!hasTex(text)) { box.setAttribute('hidden', ''); return; }
+    box.removeAttribute('hidden');
+    box.append(h('span', { class: 'lib-tex-preview-label', text: 'Preview' }));
+    const body = paragraphs(text, 'lib-tex-preview-body');
+    if (body) { box.append(body); typeset(body); }
+  };
+  box.update = (text, now = false) => {
+    clearTimeout(timer);
+    if (now) draw(text || '');
+    else timer = setTimeout(() => draw(text || ''), 250);
+  };
+  return box;
+}
+
+/**
  * The form's fields, read from the machine on the canvas — again whenever that
  * is a different machine than the one they were read from, so a tab switch
  * never files one machine under another's title.
@@ -1370,14 +1545,18 @@ function pageSubmit() {
     page.append(h('div', { class: 'lib-empty', text: 'There is no machine on the canvas to submit. Build one, or open one from the library to remix it.' }));
     return page;
   }
-  const bind = (key, node, ev = 'input') => {
+  const bind = (key, node, ev = 'input', then = null) => {
     node.value = f[key] ?? '';
-    node.addEventListener(ev, () => { f[key] = node.type === 'checkbox' ? node.checked : node.value; L.submitCheck = null; });
+    node.addEventListener(ev, () => { f[key] = node.type === 'checkbox' ? node.checked : node.value; L.submitCheck = null; then?.(node.value); });
     return node;
   };
+  const blurbPreview = texPreview('lib-lede');
+  const readmePreview = texPreview('lib-prose');
   const title = bind('title', h('input', { class: 'inp', type: 'text', maxlength: '70', placeholder: 'e.g. Binary divisibility by 7' }));
-  const blurb = bind('blurb', h('textarea', { class: 'inp', rows: '3', maxlength: '400', placeholder: 'One or two sentences: what it does and why it is interesting.' }));
-  const readme = bind('readme', h('textarea', { class: 'inp', rows: '5', maxlength: '4000', placeholder: 'Optional. How it works, where it comes from, what to try.' }));
+  const blurb = bind('blurb', h('textarea', { class: 'inp', rows: '3', maxlength: '400', placeholder: 'One or two sentences: what it does and why it is interesting.' }), 'input', blurbPreview.update);
+  const readme = bind('readme', h('textarea', { class: 'inp', rows: '5', maxlength: '4000', placeholder: 'Optional. How it works, where it comes from, what to try.' }), 'input', readmePreview.update);
+  blurbPreview.update(f.blurb, true);
+  readmePreview.update(f.readme, true);
   const tags = bind('tags', h('input', { class: 'inp', type: 'text', placeholder: 'busy-beaver, textbook, parity' }));
   const level = h('select', { class: 'inp' }, h('option', { value: '' }, '—'), DIFFICULTIES.map(d => h('option', { value: d }, d)));
   bind('difficulty', level, 'change');
@@ -1398,8 +1577,10 @@ function pageSubmit() {
     : '';
 
   page.append(h('div', { class: 'lib-form' },
-    field('Title', title), field('Description', blurb, 'Shown on the card and in search results.'),
-    field('Write-up', readme),
+    field('Title', title), field('Description', blurb, 'Shown on the card and in search results. LaTeX between $…$ is typeset.'),
+    blurbPreview,
+    field('Write-up', readme, 'Blank lines separate paragraphs. LaTeX is typeset: $…$ inline, $$…$$ displayed.'),
+    readmePreview,
     h('div', { class: 'lib-form-row' }, field('Tags', tags), field('Level', level), field('Chapter', chapter)),
     field('Remix of', forkOf, forkHint),
     h('div', { class: 'lib-form-row' }, field('GitHub username', login), field('Display name', name), field('Submitting', kind)),

@@ -14,6 +14,15 @@
 - **An exercise:** build it in an exercise tab and submit with "An exercise"
   chosen; it keeps its checker.
 - **A collection:** open a pull request; maintainers review those by hand.
+- **An essay about your machine:** open a pull request adding a Markdown file
+  beside it — `machines/…/bb5.md` beside `bb5.automaton`. It is shown on the
+  machine's page in the app and on the website. Write `{{steps}}`, `{{ones}}`,
+  `{{states}}` or `{{steps <other entry's id>}}` rather than typing a number:
+  the library fills in what it computed. `::: spacetime`, `::: growth`,
+  `::: diagram` and `::: machines <id> …` draw figures from the machine, and
+  `[text](lib:<id>)` links to another entry or collection. The pull request's
+  report lists anything the library could not answer. Only a machine's author
+  (or a maintainer) can add or change its essay.
 
 Keep machines to what they need to be — the library takes files up to 1.5 MB
 and 2,000 states.

@@ -25,7 +25,7 @@ body:
     id: description
     attributes:
       label: Description
-      description: One or two sentences — shown on the card and in search. Up to 400 characters.
+      description: One or two sentences — shown on the card and in search. Up to 400 characters. LaTeX between $…$ is typeset.
     validations:
       required: true
   - type: textarea
@@ -40,7 +40,7 @@ body:
     id: readme
     attributes:
       label: Write-up
-      description: Optional. How it works, where it comes from, what to try. Up to 4000 characters.
+      description: Optional. How it works, where it comes from, what to try. Up to 4000 characters. LaTeX is typeset — $…$ inline, $$…$$ displayed.
   - type: input
     id: tags
     attributes:

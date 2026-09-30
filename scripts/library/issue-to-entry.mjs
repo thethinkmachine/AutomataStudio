@@ -42,9 +42,9 @@ import { docFromStandardTM, folderFor, slugify } from './seed.mjs';
 // stand-in form from it.
 export const FORM_FIELDS = [
   { id: 'name', label: 'Name', kind: 'input', required: true },
-  { id: 'description', label: 'Description', kind: 'textarea', required: true },
+  { id: 'description', label: 'Description', kind: 'textarea', required: true, hint: 'Shown on the card and in search. LaTeX between $…$ is typeset.' },
   { id: 'machine', label: 'Machine', kind: 'textarea', required: true, render: 'text', hint: 'A share link, the .automaton file’s JSON, or a Turing machine in the standard format.' },
-  { id: 'readme', label: 'Write-up', kind: 'textarea' },
+  { id: 'readme', label: 'Write-up', kind: 'textarea', hint: 'LaTeX is typeset — $…$ inline, $$…$$ displayed.' },
   { id: 'tags', label: 'Tags', kind: 'input' },
   { id: 'level', label: 'Level', kind: 'input' },
   { id: 'chapter', label: 'Chapter or source', kind: 'input' },

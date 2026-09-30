@@ -372,6 +372,8 @@ body.is-searching .discover { display: none; }
 .math .katex-display { margin: 0; text-align: left; }
 .math .katex-display > .katex { text-align: left; }
 .math .katex { font-size: 1.05em; }
+/* An author's display formula scrolls on its own rather than widening the page. */
+.prose .katex-display, .lede .katex-display { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
 
 .verified { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
 .verified li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 6px; font-size: .86rem; line-height: 1.45; color: var(--text2); }
@@ -408,6 +410,69 @@ body.is-searching .discover { display: none; }
 .more-menu { position: absolute; z-index: 6; top: calc(100% + 6px); left: 0; min-width: 250px; display: flex; flex-direction: column; padding: 6px; border: 1px solid var(--border2); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); }
 .more-menu a { padding: 7px 10px; border-radius: 5px; font-size: .84rem; color: var(--text); text-decoration: none; }
 .more-menu a:hover, .more-menu a:focus-visible { background: var(--surface2); }
+
+/* ── essays ──
+   An entry's long-form write-up (js/library/article.js), set like a chapter
+   of the book the rest of the page already looks like: a reading column in
+   the serif, the contents in the margin, figures boxed and numbered with
+   italic captions, notes at the foot. A number the library computed — a
+   {{fact}} — is set in the mono with a hairline under it, so a reader can
+   tell the machine's answers from the author's words. */
+.essay-meta { font-family: var(--mono); font-size: .7rem; color: var(--text3); }
+.essay-grid { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 56px; align-items: start; }
+.essay-grid.no-toc { grid-template-columns: minmax(0, 1fr); }
+.essay-toc { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
+.essay-toc ol { margin: 0; padding: 0; list-style: none; counter-reset: toc; display: flex; flex-direction: column; gap: 7px; }
+.essay-toc li { counter-increment: toc; display: grid; grid-template-columns: 22px 1fr; font-family: var(--serif); font-size: 1rem; line-height: 1.3; }
+.essay-toc li::before { content: counter(toc) "."; font-family: var(--mono); font-size: .68rem; color: var(--text3); padding-top: 3px; }
+.essay-toc a { color: var(--text2); text-decoration: none; }
+.essay-toc a:hover { color: var(--accent); }
+.essay-body { max-width: 680px; font-size: 1.2rem; line-height: 1.66; }
+.essay-body > p:first-child::first-letter { float: left; font-size: 3.4em; line-height: .86; padding: 6px 8px 0 0; color: var(--text); }
+.essay-body h2, .essay-body h3 { font-family: var(--serif); font-weight: 400; color: var(--text); scroll-margin-top: 80px; }
+.essay-body h2 { font-size: 1.6rem; margin: 1.6em 0 .5em; letter-spacing: -.005em; }
+.essay-body h2:first-child { margin-top: 0; }
+.essay-body h3 { font-size: 1.25rem; font-style: italic; margin: 1.3em 0 .4em; }
+.essay-body p { margin: 0 0 .9em; }
+.essay-body ul, .essay-body ol { margin: 0 0 1em; padding-left: 1.3em; }
+.essay-body li { margin: .25em 0; }
+.essay-body blockquote { margin: 1.2em 0; padding: 2px 0 2px 20px; border-left: 2px solid var(--h, var(--accent)); color: var(--text2); font-style: italic; }
+.essay-body code { font-size: .78em; padding: 1px 5px; border-radius: 3px; background: var(--well); border: 1px solid var(--border); overflow-wrap: anywhere; }
+.essay-body a.textlink-inline { color: var(--text); text-decoration: none; border-bottom: 1px solid var(--accent-border); }
+.essay-body a.textlink-inline:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.essay-math { margin: 1em 0; overflow-x: auto; }
+.essay-code { margin: 1em 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--well); overflow-x: auto; font-size: .92rem; line-height: 1.5; }
+.essay-code code { border: 0; padding: 0; background: none; font-size: .78rem; }
+.fact { font-family: var(--mono); font-size: .8em; color: var(--text); border-bottom: 1px dotted var(--h, var(--accent)); cursor: help; white-space: nowrap; }
+.fact.is-missing { color: var(--red); border-bottom-color: var(--red); }
+/* In a table the cell already sets the face and size; a fact only adds its rule.
+   A header's small caps must not reach into its math: S(n) is not S(N). */
+.board .fact { font-size: inherit; }
+.board th .katex { text-transform: none; letter-spacing: normal; font-size: 1.5em; }
+.essay-fig { margin: 1.8em 0; display: flex; flex-direction: column; gap: 10px; }
+.essay-fig.is-wide { max-width: none; }
+.essay-fig .figcaption-text { font-size: 1.02rem; }
+.fig-n { font-style: normal; font-family: var(--mono); font-size: .72rem; letter-spacing: .06em; color: var(--text3); text-transform: uppercase; margin-right: 4px; }
+.fig.is-essay { aspect-ratio: var(--fig-aspect, 16 / 10); border-radius: 8px; }
+.fig.is-essay.is-chart { aspect-ratio: 680 / 300; background-image: none; }
+.essay-st .rn-1 { fill: color-mix(in srgb, var(--text) 70%, transparent); }
+.st-head { fill: none; stroke: var(--h, var(--accent)); stroke-width: 1.2; stroke-linejoin: round; opacity: .9; vector-effect: non-scaling-stroke; }
+.gr-grid { stroke: var(--border); stroke-width: 1; }
+.gr-axis { stroke: var(--text3); stroke-width: 1; }
+.gr-tick { fill: var(--text3); font-family: var(--mono); font-size: 11px; }
+.gr-line { fill: none; stroke: var(--h, var(--accent)); stroke-width: 1.8; stroke-linejoin: round; }
+.gr-end { fill: var(--h, var(--accent)); stroke: var(--well); stroke-width: 2; }
+.essay-table { margin: 1.2em 0; font-size: .92rem; }
+.essay-table td { font-family: var(--sans); }
+.essay-table td.num { font-family: var(--mono); font-size: .84rem; }
+.fn-ref { font-family: var(--mono); font-size: .62em; line-height: 0; margin-left: 1px; }
+.fn-ref a { color: var(--accent); text-decoration: none; }
+.essay-notes { margin-top: 2.2em; padding-top: 14px; border-top: 1px solid var(--border); font-size: .98rem; line-height: 1.5; color: var(--text2); }
+.essay-notes ol { margin: 0; padding-left: 1.3em; }
+.essay-notes li { margin: .4em 0; }
+.essay-notes li::marker { font-family: var(--mono); font-size: .8em; color: var(--text3); }
+.fn-back { color: var(--text3); text-decoration: none; font-size: .9em; }
+.essay-body .plates { margin: 0; }
 
 /* ── tables ── */
 .table-wrap { overflow-x: auto; }
@@ -450,6 +515,9 @@ body.is-searching .discover { display: none; }
 @media (max-width: 1100px) {
   .families { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .entry-body { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  .essay-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .essay-toc { position: static; }
+  .essay-toc ol { flex-direction: row; flex-wrap: wrap; gap: 6px 18px; }
 }
 
 @media (max-width: 760px) {

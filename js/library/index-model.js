@@ -107,7 +107,8 @@ export function normalizeIndex(raw) {
     title: str(c?.title, 120) || 'Collection',
     blurb: str(c?.blurb, 1000),
     curator: str(c?.curator, 60),
-    entries: arr(c?.entries).filter(id => ids.has(id))
+    entries: arr(c?.entries).filter(id => ids.has(id)),
+    essay: essayRef(c?.essay)
   })).filter(c => isLibraryId(c.id));
   return {
     format: INDEX_FORMAT,
@@ -166,8 +167,22 @@ function normalizeEntry(e) {
     forkOf: isLibraryId(e.forkOf) ? e.forkOf : null,
     remixes: arr(e.remixes).filter(isLibraryId),
     collections: arr(e.collections).filter(isLibraryId),
-    duplicateOf: isLibraryId(e.duplicateOf) ? e.duplicateOf : null
+    duplicateOf: isLibraryId(e.duplicateOf) ? e.duplicateOf : null,
+    essay: essayRef(e.essay)
   };
+}
+
+/**
+ * An entry's or a collection's essay, as the build lists it: a Markdown file
+ * in the library (`machines/…/bb5.md`), the hash its download is checked
+ * against, and minutes to read. Null when there is none, or when what is
+ * listed could not be one — the path ends up in a fetch URL.
+ */
+function essayRef(x) {
+  if (!x || typeof x !== 'object') return null;
+  const path = str(x.path, 300);
+  if (!/^[A-Za-z0-9._/-]+\.md$/.test(path) || path.includes('..') || path.includes('//')) return null;
+  return { path, hash: str(x.hash, 32), minutes: Math.max(1, Math.min(240, num(x.minutes) || 1)) };
 }
 
 /** A machine's packed shape (js/library/sketch.js packSketch): points and index pairs, nothing else. */
