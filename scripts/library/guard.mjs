@@ -12,6 +12,12 @@
 // credit the account that opens the pull request; collections and the config
 // are the maintainers' to change.
 //
+// An essay beside a machine (bb5.md beside bb5.automaton) carries no credit of
+// its own — it is Markdown — so it is credited as its machine is: the
+// machine's author, or a maintainer, may write it, and nobody else may attach
+// one to their machine. A collection's essay is the collection's, and so the
+// maintainers'.
+//
 // Pull requests opened by the submission workflow are exempt: that workflow
 // sets the credit from the issue's author itself (issue-to-entry.mjs), which
 // is the check this one would otherwise be repeating.
@@ -45,6 +51,24 @@ export function maintainersAt(root, base) {
   }
 }
 
+const isEssay = path => /^machines\/.+\.md$/.test(path || '');
+
+/**
+ * Whether `who` may write the essay at `path`: whoever the machine beside it
+ * credits — as the base branch has it, or, for a machine this change adds, as
+ * the change has it (the check below it already holds that to `who`).
+ */
+async function essayProblems(root, base, path, who) {
+  const machine = path.replace(/\.md$/, '.automaton');
+  let atBase = '';
+  try { atBase = git(['show', `${base}:${machine}`], root); } catch { atBase = ''; }
+  const now = await readFile(resolve(root, machine), 'utf8').catch(() => '');
+  const owner = creditOf(atBase) || creditOf(now);
+  if (!owner) return [`\`${path}\`: an essay sits beside the machine it is about, and there is no \`${machine}\`.`];
+  if (owner !== who) return [`\`${path}\` is the essay of \`${machine}\`, credited to @${owner}; only they or a maintainer can write it.`];
+  return [];
+}
+
 /** Problems with the change, as sentences. Empty when it may go in. */
 export async function guardChanges({ root, base, author, maintainers = [] }) {
   const who = String(author || '').toLowerCase();
@@ -59,6 +83,10 @@ export async function guardChanges({ root, base, author, maintainers = [] }) {
     const after = status.startsWith('R') ? b : a;
     if (!before.startsWith('machines/') && !after.startsWith('machines/')) {
       problems.push(`\`${after || before}\`: collections and the library's config are changed by maintainers.`);
+      continue;
+    }
+    if (isEssay(before) || isEssay(after)) {
+      for (const path of new Set([before, after].filter(isEssay))) problems.push(...await essayProblems(root, base, path, who));
       continue;
     }
     let old = '';

@@ -6,7 +6,8 @@
 // with the app's own engine, and writes what the app and the website read:
 //
 //   <out>/index.json              the catalogue (js/library/index-model.js)
-//   <out>/machines/**             the published entry files, verbatim
+//   <out>/machines/**             the published entry files, verbatim, and their essays
+//   <out>/collections/<id>.md     a collection's essay, verbatim
 //   <out>/art/<id>/<kind>.svg     each entry's pictures (analyze.js cardArt)
 //   <out>/**.html + assets/       the website (scripts/library/site.mjs)
 //
@@ -31,6 +32,8 @@
 //   machines/<anything>/<name>.automaton   entries; the id is the path under
 //                                          machines/ without the extension
 //   collections/<id>.json                  { title, blurb, curator, entries: [id] }
+//   <path>.md beside either                optional: its essay (js/library/article.js),
+//                                          listed in the index as `essay`
 //   library.config.json                    optional: { site, repo, maintainers, featured }
 
 import './env.mjs';
@@ -47,6 +50,8 @@ import { withMachine } from '../../js/exercise/grade.js';
 import { canonicalCodeOf, contentHash } from '../../js/library/hash.js';
 import { INDEX_FORMAT, INDEX_VERSION, LIBRARY_REPO, LIBRARY_SITE_URL, isLibraryId } from '../../js/library/config.js';
 import { normalizeIndex } from '../../js/library/index-model.js';
+import { readingMinutes } from '../../js/library/article.js';
+import { essayWarnings } from '../../js/library/essay.js';
 import { frontispieceOf, writeSite } from './site.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -206,8 +211,10 @@ export async function buildLibrary(opts) {
       entry.art.push({ kind: v.kind, path });
       artifacts.push({ path, text: v.svg });
     }
+    const article = await articleBeside(file.replace(/\.automaton$/, '.md'));
+    if (article) entry.essay = essayRef(rel.replace(/\.automaton$/, '.md'), article);
     entries.push(entry);
-    sources.set(id, { target: a.target, doc });
+    sources.set(id, { target: a.target, doc, article });
   }
 
   const byId = new Map(entries.map(e => [e.id, e]));
@@ -264,6 +271,7 @@ export async function buildLibrary(opts) {
 
   // ── collections ──
   const collections = [];
+  const collectionArticles = new Map();   // id → its essay's Markdown, for the website
   for (const file of await walk(join(root, 'collections'), '.json')) {
     const id = posix(relative(join(root, 'collections'), file)).replace(/\.json$/, '');
     const c = await readJson(file, null);
@@ -276,7 +284,12 @@ export async function buildLibrary(opts) {
     if (missing.length) r.errors.push(`Lists entries that do not exist: ${missing.join(', ')}.`);
     const kept = listed.filter(x => byId.has(x));
     kept.forEach(x => byId.get(x).collections.push(id));
-    collections.push({ id, title: String(c.title || id), blurb: String(c.blurb || ''), curator: String(c.curator || ''), entries: kept });
+    const essay = await articleBeside(file.replace(/\.json$/, '.md'));
+    collections.push({
+      id, title: String(c.title || id), blurb: String(c.blurb || ''), curator: String(c.curator || ''), entries: kept,
+      ...(essay ? { essay: essayRef(posix(relative(root, file)).replace(/\.json$/, '.md'), essay) } : {})
+    });
+    if (essay) collectionArticles.set(id, essay);
   }
 
   // ── what is published ──
@@ -293,6 +306,21 @@ export async function buildLibrary(opts) {
     const m = /^art\/(.+)\/[a-z]+\.svg$/.exec(a.path);
     return !m || pubIds.has(m[1]);
   };
+
+  // ── essays ──
+  // Checked against what is published, since an essay may name any entry: a
+  // fact the library does not know, a figure the machine cannot draw, a link
+  // to nothing. Warnings, not errors — the essay is prose around a machine
+  // that passed, and it is still worth reading with a sentence to fix.
+  const essayIndex = { entries: published, collections };
+  for (const e of published) {
+    const md = sources.get(e.id)?.article;
+    if (md) resultOf(e.id).warnings.push(...essayWarnings(md, essayIndex, e));
+  }
+  for (const c of collections) {
+    const md = collectionArticles.get(c.id);
+    if (md) resultOf(`collection:${c.id}`)?.warnings.push(...essayWarnings(md, essayIndex, null));
+  }
 
   // ── the frontispiece ──
   // Chosen once, here, on the drawings the website will show, and written into
@@ -334,10 +362,28 @@ export async function buildLibrary(opts) {
   // Round-trip through the reader the app uses, so an index the app would
   // refuse cannot be published.
   normalizeIndex(JSON.parse(JSON.stringify(raw)));
-  return { raw, results, artifacts: artifacts.filter(keepArtifact), sources, config: { ...config, repo, site } };
+  return { raw, results, artifacts: artifacts.filter(keepArtifact), sources, collectionArticles, config: { ...config, repo, site } };
 }
 
 // ── What a website listing reads off the file ─────────────────────
+
+/**
+ * The essay beside a machine or a collection (bb5.md beside bb5.automaton),
+ * or '' when there is none. Its own file, so the prose is diffed and reviewed
+ * as prose and editing it never changes the machine's bytes or its hash.
+ */
+async function articleBeside(file) {
+  try { return await readFile(file, 'utf8'); } catch { return ''; }
+}
+
+/**
+ * What the index says about an essay: where its file is, the hash the app
+ * checks a download against (as it does a machine's file), and how long it
+ * takes to read — enough for the app to say there is one before fetching it.
+ */
+function essayRef(path, text) {
+  return { path, hash: contentHash(text), minutes: readingMinutes(text) };
+}
 
 /**
  * What only the machine's file can say, for its page on the website
@@ -346,7 +392,7 @@ export async function buildLibrary(opts) {
  * typeset — its examples decided, and the author's notes. Each part is
  * optional; a page without one draws from the index.
  */
-export function listingOf({ target, doc }, entry) {
+export function listingOf({ target, doc, article }, entry) {
   const out = {};
   try { out.diagram = namedDiagram(target); } catch { /* the index's sketch */ }
   try { out.latex = withMachine(target, () => buildFormalDefLatex()); } catch { /* no definition */ }
@@ -359,6 +405,7 @@ export function listingOf({ target, doc }, entry) {
     try { out.runFrames = runFramesOf(target, 90); } catch { /* none */ }
   }
   out.readme = libraryMetaOf(doc).readme;
+  if (article) out.article = article;
   // The machine's code, as the app's listing shows it — blocks and all, names
   // left off, since the code is what names the machine.
   if (!doc?.exercise) out.code = canonicalCodeOf(doc);
@@ -417,10 +464,13 @@ export async function writeLibrary(opts, built) {
   for (const a of built.artifacts) await put(out, a.path, a.text);
   // Only what was published: a file that failed its check is not listed, and
   // is not served either.
-  for (const e of built.raw.entries) {
-    const dest = join(out, ...e.path.split('/'));
+  // An essay is served beside its machine or collection, from the same place,
+  // so the app fetches it the way it fetches the machine's file.
+  const served = [...built.raw.entries.map(e => e.path), ...[...built.raw.entries, ...built.raw.collections].map(x => x.essay?.path).filter(Boolean)];
+  for (const path of served) {
+    const dest = join(out, ...path.split('/'));
     await mkdir(dirname(dest), { recursive: true });
-    await copyFile(join(library, ...e.path.split('/')), dest);
+    await copyFile(join(library, ...path.split('/')), dest);
   }
   // Pages serves Jekyll by default, which drops paths starting with an
   // underscore and rewrites nothing we want rewritten.
@@ -443,7 +493,8 @@ export async function writeLibrary(opts, built) {
         'hash.js': join(HERE, '../../js/library/hash.js'),
         '../interop/smtf.js': join(HERE, '../../js/interop/smtf.js')
       },
-      listings
+      listings,
+      collectionArticles: built.collectionArticles
     });
   }
 }

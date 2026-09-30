@@ -48,8 +48,11 @@ import {
   BADGES, DIFFICULTIES, LIBRARY_FAMILIES, SORTS, dfaAccepts, entryById, libraryFacets, queryLibrary,
   pickFrontispiece, recentEntries, remixAncestry, resolveSort, sameLanguageAs, wasUpdated
 } from './library/index-model.js';
+import { renderArticle } from './library/article.js';
+import { essayFacts, essayFigureSpec, essayLinkTarget } from './library/essay.js';
+import { drawEssayFigure } from './library/essay-draw.js';
 import {
-  cachedLibrary, fetchEntryText, listMyLibrary, loadLibrary, noteRecentlyOpened, recentLibraryIds, removeFromMyLibrary,
+  cachedLibrary, fetchEntryText, fetchEssayText, listMyLibrary, loadLibrary, noteRecentlyOpened, recentLibraryIds, removeFromMyLibrary,
   saveToMyLibrary, sourceIsOutdated, stampSource, updatesFor
 } from './library/client.js';
 import {
@@ -759,6 +762,7 @@ function pageEntry(id) {
   if (LIBRARY_LICENSES[e.license]) byline.push(e.license.replace(/-/g, ' ').replace(' 4.0', ' 4.0').replace('CC BY', 'CC BY'));
   if (e.added) byline.push(`added ${relTime(e.added)}`);
   if (wasUpdated(e)) byline.push(`updated ${relTime(e.updated)}`);
+  if (e.essay) byline.push(button(`${e.essay.minutes} min essay ↓`, () => page.querySelector?.('.lib-essay')?.scrollIntoView?.({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' }), 'lib-textbtn', { title: 'Read the essay about this machine' }));
 
   page.append(h('div', { class: 'lib-entry-head' },
     h('p', { class: 'lib-kicker' }, h('i', { class: 'lib-dot', 'aria-hidden': 'true' }), [machineLabel(e.machine), e.languageClass].filter(Boolean).join(' · ')),
@@ -791,6 +795,8 @@ function pageEntry(id) {
   aside.append(codeSec);
   page.append(h('div', { class: 'lib-entry-body' }, h('div', { class: 'lib-entry-main' }, stage.node, tryIt(e, stage)), aside));
 
+  // An essay reads straight after the showcase it is about.
+  if (e.essay) page.append(essaySection(e.essay, e));
   // A Turing machine is known by what it does from a blank tape.
   if (e.behaviour || e.standard) page.append(behaviourSection(e));
   const notes = h('div', { class: 'lib-prose' });
@@ -808,7 +814,8 @@ function pageEntry(id) {
       math.textContent = latex;
       triggerMath(math);
     } catch { math.textContent = ''; }
-    const text = paragraphs(d.doc?.meta?.library?.readme);
+    // An essay is the long form of the notes, and says more than they do.
+    const text = e.essay ? null : paragraphs(d.doc?.meta?.library?.readme);
     // Typeset where the paragraphs end up: KaTeX may still be loading, and a
     // retry aimed at the emptied wrapper would typeset nothing.
     if (text) { notes.append(...Array.from(text.children)); typeset(notes); notes.closest('section')?.removeAttribute('hidden'); }
@@ -816,6 +823,128 @@ function pageEntry(id) {
     math.append(h('span', { class: 'lib-muted', text: 'The definition is drawn from the machine’s file, which could not be fetched.' }));
   });
   return page;
+}
+
+// ── Essays ────────────────────────────────────────────────────────
+//
+// An entry's or a collection's long form (js/library/article.js): fetched and
+// checked against the index like the machine's own file, rendered by the same
+// code the website is built with, and asked the same questions — a {{fact}}
+// is read off the index (essay.js), so the numbers in the prose are the
+// numbers the badges were earned by. What the app does differently is only
+// what a page inside an app has to: figures drawn when read, in a worker
+// (essay-draw.js), rather than when built; ids prefixed, since the essay
+// shares a document with the whole app; and in-page links handled here,
+// because the address bar's hash carries share links and library routes, and
+// a footnote must not overwrite either.
+
+const ESSAY_ID = 'lib-essay-';
+
+function essaySection(essay, self) {
+  const body = h('div', { class: 'lib-essay-body lib-prose' }, h('p', { class: 'lib-muted', text: 'Fetching the essay…' }));
+  const toc = h('nav', { class: 'lib-essay-toc', 'aria-label': 'Contents', hidden: true });
+  const columns = h('div', { class: 'lib-essay-grid is-no-toc' }, toc, body);
+  const sec = h('section', { class: 'lib-shelf lib-essay' },
+    sectionHead('Essay', h('span', { class: 'lib-essay-meta', text: `${essay.minutes} min read` })), columns);
+  body.addEventListener('click', essayClick);
+  const idx = index();
+  fetchEssayText(essay, idx).then(md => {
+    const slots = [];
+    const art = renderArticle(md, { ...essayContext(idx, self, slots), idPrefix: ESSAY_ID, newTab: true });
+    body.innerHTML = art.html;
+    fillEssaySlots(body, slots);
+    typeset(body);
+    const heads = art.toc.filter(t => t.level === 2);
+    if (heads.length > 2) {
+      toc.append(h('p', { class: 'lib-aside-title', text: 'Contents' }),
+        h('ol', {}, heads.map(t => {
+          const item = h('button', { type: 'button', class: 'lib-essay-toc-link', on: { click: () => scrollToEssayId(t.id) } });
+          item.innerHTML = t.html;
+          return h('li', {}, item);
+        })));
+      toc.removeAttribute('hidden');
+      columns.classList.remove('is-no-toc');
+    }
+  }, () => {
+    body.textContent = '';
+    body.append(h('p', { class: 'lib-muted', text: 'The essay could not be fetched. It is read from the library, like the machine’s file; try again when you are online.' }));
+  });
+  return sec;
+}
+
+/**
+ * What an essay may ask for, answered for the app. A figure the app draws
+ * with nodes rather than markup — a row of plates, or a run still being
+ * drawn in the worker — goes in as an empty slot and is filled after the
+ * essay's markup is in place.
+ */
+function essayContext(idx, self, slots) {
+  const byId = new Map(idx.entries.map(e => [e.id, e]));
+  const slot = (fill, attrs = '') => {
+    slots.push(fill);
+    return `<div class="lib-essay-slot" data-essay-slot="${slots.length - 1}"${attrs}></div>`;
+  };
+  const figure = (name, args) => {
+    if (name === 'machines') {
+      const list = args._.map(id => byId.get(id)).filter(Boolean);
+      return list.length ? { html: slot(() => grid(list)), wide: true } : null;
+    }
+    const e = args.id ? byId.get(args.id) : self;
+    const spec = essayFigureSpec(name, args, e);
+    if (!spec) return null;
+    const fam = e.category || 'special';
+    if (spec.kind === 'diagram') {
+      const sk = unpackSketch(e.sketch);
+      if (!sk) return null;
+      const H = Math.round(640 / sketchAspect(sk));
+      return { html: `<div class="lib-fig lib-essay-fig" data-family="${fam}" style="--fig-aspect: 640 / ${H}">${drawSketch(sk, { w: 640, h: H, label: `Diagram of ${e.title}` })}</div>` };
+    }
+    const aspect = spec.kind === 'growth' ? '680 / 300' : spec.aspect;
+    const cls = spec.kind === 'growth' ? 'is-chart' : 'is-run';
+    return {
+      html: `<div class="lib-fig lib-essay-fig ${cls} is-drawing" data-family="${fam}" style="--fig-aspect: ${aspect}">${slot(node => {
+        drawEssayFigure(spec.kind, spec.code, spec.opts).then(svg => {
+          node.parentNode?.classList?.remove('is-drawing');
+          if (svg) node.outerHTML = svg;
+          else node.replaceWith(h('span', { class: 'lib-muted', text: 'This figure could not be drawn.' }));
+        });
+        return null;
+      }, ' aria-label="Drawing the figure from the machine…"')}</div>`
+    };
+  };
+  return {
+    fact: essayFacts(idx, self),
+    figure,
+    link: id => {
+      const to = essayLinkTarget(idx, id);
+      return to ? `#${to.kind === 'entry' ? 'library' : 'collection'}=${id}` : null;
+    }
+  };
+}
+
+/** Put the nodes the markup left room for into their slots. */
+function fillEssaySlots(body, slots) {
+  for (const node of Array.from(body.querySelectorAll?.('[data-essay-slot]') || [])) {
+    const made = slots[Number(node.dataset.essaySlot)]?.(node);
+    if (made) node.replaceWith(made);
+  }
+}
+
+/** A link inside an essay: to another listing, to a heading or a note, or out. */
+function essayClick(ev) {
+  const a = ev.target?.closest?.('a');
+  const href = a?.getAttribute?.('href') || '';
+  if (!href.startsWith('#')) return;   // out of the app: the link opens its own tab
+  ev.preventDefault();
+  const route = parseLibraryHash(href);
+  if (route?.action === 'show') go('entry', route.id);
+  else if (route?.action === 'collection') go('collection', route.id);
+  else scrollToEssayId(href.slice(1));
+}
+
+function scrollToEssayId(id) {
+  if (!id.startsWith(ESSAY_ID)) return;
+  document.getElementById?.(id)?.scrollIntoView?.({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
 }
 
 /** What the library checked, in sentences, each with its detail. */
@@ -1269,6 +1398,7 @@ function pageCollection(id) {
       h('p', { class: 'lib-kicker', text: `Collection · ${entries.length} machine${entries.length === 1 ? '' : 's'}${c.curator ? ` · curated by @${c.curator}` : ''}` }),
       h('h2', { class: 'lib-display', text: c.title }),
       c.blurb ? texLine('p', 'lib-lede', c.blurb) : null,
+      c.essay ? h('p', { class: 'lib-byline', text: `${c.essay.minutes} min essay` }) : null,
       h('div', { class: 'lib-actions' },
         button('Save all offline', async () => {
           let n = 0;
@@ -1280,6 +1410,7 @@ function pageCollection(id) {
           renderPage();
         }, 'btn-g'),
         button('Copy link', () => exportCopyText(webAppLink({ action: 'collection', id: c.id }), 'Link to this collection copied'), 'btn-g'))),
+    c.essay ? essaySection(c.essay, null) : null,
     behaviourTable(entries),
     h('section', { class: 'lib-shelf' }, sectionHead('The machines'), grid(entries)));
 }

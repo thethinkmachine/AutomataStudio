@@ -102,6 +102,14 @@ function findAll(node, pred, out = []) {
   return out;
 }
 
+const ESSAY_BB2 = [
+  'The smallest champion.', '', '## How it runs', '',
+  'It halts after {{steps}} steps with {{ones}} ones.[^1] It is listed in [a collection](lib:parity).', '',
+  '::: spacetime steps=6', 'Its whole run.', ':::', '', '## Its size', '', 'It is {{size}}.', '', '## Its code', '', 'Read {{standard}}.', '',
+  '[^1]: Counted by the library.'
+].join('\n');
+const ESSAY_PARITY = 'Two machines, {{states finite/dfa/even-ones}} states each, one language apart.';
+
 // ── A small library on disk, built once ───────────────────────────
 
 let built = null;
@@ -125,6 +133,11 @@ async function builtLibrary() {
   await put('machines/turing/busy-beaver/bb2.automaton', docFromStandardTM('1RB1LB_1LA1RZ', { title: 'BB(2) champion', author: 'alice', tags: ['busy-beaver'] }));
   await put('machines/turing/non-halting/cycler.automaton', docFromStandardTM('0LB1RZ_1RA1RA_1RC1RB', { title: 'Two cells, forever', author: 'alice' }));
   await put('collections/parity.json', { title: 'Parity', blurb: 'Counting mod 2.', curator: 'alice', entries: ['finite/dfa/even-ones', 'finite/dfa/liar', 'finite/dfa/odd-ones'] });
+  // Essays: beside a machine, beside a collection, and beside a machine that fails.
+  await put('machines/turing/busy-beaver/bb2.md', ESSAY_BB2);
+  await put('collections/parity.md', ESSAY_PARITY);
+  await put('machines/finite/dfa/liar.md', 'Never published: its machine failed.');
+  await put('machines/finite/dfa/odd-ones.md', 'It runs {{steps}} steps; see [elsewhere](lib:no/such/entry).\n\n::: spacetime\nA run it does not have.\n:::');
   const out = await buildLibrary({ library: root, commit: '', site: 'https://example.test/lib/' });
   built = { root, ...out, index: context.normalizeIndex(JSON.parse(JSON.stringify(out.raw))) };
   return built;
@@ -307,6 +320,51 @@ test('the published site serves only the files the index lists', async () => {
   await assert.rejects(readFile(join(out, 'machines/finite/dfa/liar.automaton'), 'utf8'), 'a file that failed is not served');
 });
 
+test('an essay is listed beside its machine or collection, hashed, and published only with what passed', async () => {
+  const b = await builtLibrary();
+  const bb2 = b.index.entries.find(e => e.id === 'turing/busy-beaver/bb2');
+  assert.deepEqual(bb2.essay, { path: 'machines/turing/busy-beaver/bb2.md', hash: context.contentHash(ESSAY_BB2), minutes: 1 });
+  assert.equal(b.index.collections.find(c => c.id === 'parity').essay.path, 'collections/parity.md');
+  assert.equal(b.index.entries.find(e => e.id === 'finite/dfa/even-ones').essay, null, 'no file, no essay');
+  assert.equal(bb2.hash, context.contentHash(await readFile(join(b.root, bb2.path), 'utf8')), 'the machine\'s own hash is the machine\'s alone');
+  const out = await mkdtemp(join(tmpdir(), 'as-out-'));
+  await writeLibrary({ library: b.root, out, noSite: true }, b);
+  assert.equal(await readFile(join(out, 'machines/turing/busy-beaver/bb2.md'), 'utf8'), ESSAY_BB2);
+  assert.equal(await readFile(join(out, 'collections/parity.md'), 'utf8'), ESSAY_PARITY);
+  await assert.rejects(readFile(join(out, 'machines/finite/dfa/liar.md'), 'utf8'), 'an essay beside a failing machine is not served');
+});
+
+test('the build reports what is wrong with an essay on its entry, and still publishes it', async () => {
+  const b = await builtLibrary();
+  const r = b.results.find(x => x.id === 'finite/dfa/odd-ones');
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.warnings.filter(w => w.startsWith('Essay:')), [
+    'Essay: {{steps}} is not a fact the library knows.',
+    'Essay: Link "lib:no/such/entry" names nothing in the library.',
+    'Essay: ::: spacetime is not a figure this machine can draw.'
+  ]);
+  assert.ok(b.index.entries.some(e => e.id === 'finite/dfa/odd-ones' && e.essay), 'a sentence to fix is not a reason to unpublish');
+  assert.match(reportMarkdown(b.results), /⚠️ Essay: \{\{steps\}\} is not a fact/);
+  const clean = b.results.find(x => x.id === 'turing/busy-beaver/bb2');
+  assert.deepEqual(clean.warnings.filter(w => w.startsWith('Essay:')), [], 'every fact, figure and link in BB(2)\'s essay resolves');
+});
+
+test('the website sets an essay on its listing, with the library\'s numbers in it', async () => {
+  const b = await builtLibrary();
+  const out = await mkdtemp(join(tmpdir(), 'as-site-'));
+  await writeLibrary({ library: b.root, out }, b);
+  const page = await readFile(join(out, 'm/turing/busy-beaver/bb2/index.html'), 'utf8');
+  assert.match(page, /<section class="shelf essay">/);
+  assert.match(page, /It halts after <span class="fact"[^>]*>6<\/span> steps with <span class="fact"[^>]*>4<\/span> ones\./);
+  assert.match(page, /It is <span class="fact"[^>]*>2 × 2<\/span>/);
+  assert.match(page, /href="\.\.\/\.\.\/\.\.\/\.\.\/c\/parity\/"/, 'a lib: link is a link to the collection\'s page, four levels up from m/turing/busy-beaver/bb2/');
+  assert.match(page, /Figure 1\.<\/span> Its whole run\./);
+  assert.match(page, /<nav class="essay-toc"/, 'three sections earn a contents list');
+  assert.doesNotMatch(page, /class="fact is-missing"/);
+  const coll = await readFile(join(out, 'c/parity/index.html'), 'utf8');
+  assert.match(coll, /Two machines, <span class="fact"[^>]*>2<\/span> states each/);
+});
+
 test('the build records remixes, the same language listed twice, and each entry\'s pictures', async () => {
   const b = await builtLibrary();
   const byId = new Map(b.index.entries.map(e => [e.id, e]));
@@ -426,6 +484,7 @@ async function serveLibrary() {
   const b = await builtLibrary();
   const files = {};
   for (const e of b.raw.entries) files[e.path] = await readFile(join(b.root, e.path), 'utf8');
+  for (const x of [...b.raw.entries, ...b.raw.collections]) if (x.essay) files[x.essay.path] = await readFile(join(b.root, x.essay.path), 'utf8');
   context.fetch = fakeFetch({ 'index.json': JSON.stringify({ ...b.raw, commit: '' }), ...files });
   return b;
 }
@@ -473,6 +532,66 @@ test('the Library view draws the discover page and an entry\'s listing', async (
   assert.match(page, /Verified by the library/);
   assert.match(page, /Definition/);
   assert.equal(context.libraryRoute().page, 'entry');
+});
+
+/** Wait for an essay's body to be filled from its file. */
+async function essayBody(host) {
+  let body = null;
+  for (let i = 0; i < 100; i++) {
+    body = findAll(host, n => n.classList?.contains('lib-essay-body'))[0];
+    if (body && !/Fetching the essay/.test(textOf(body))) break;
+    await new Promise(r => setTimeout(r, 10));
+  }
+  return body;
+}
+
+test('a listing with an essay reads it after the showcase, with the index\'s numbers', async () => {
+  await serveLibrary();
+  seedTab();
+  context.renderLibraryView();
+  await context.loadLibrary();
+  context.go('entry', 'turing/busy-beaver/bb2', { reset: true });
+  const host = context.document.getElementById('lib-content');
+  const body = await essayBody(host);
+  assert.ok(body, 'the essay section is drawn');
+  const html = body.innerHTML;
+  assert.match(html, /It halts after <span class="fact"[^>]*>6<\/span> steps/);
+  assert.match(html, /id="lib-essay-how-it-runs"/, 'ids are prefixed: the essay shares a document with the app');
+  assert.doesNotMatch(html, / id="(?!lib-essay-)/);
+  assert.match(html, /href="#collection=parity"/, 'a lib: link is a Library route, handled in the view');
+  assert.match(html, /data-essay-slot="0"/, 'the run is drawn into its slot, off the main thread');
+  assert.match(textOf(host), /1 min essay/);
+  const shelves = findAll(host, n => n.classList?.contains('lib-shelf'));
+  const at = cls => shelves.findIndex(n => n.classList.contains(cls));
+  assert.ok(at('lib-essay') >= 0 && at('lib-essay') < at('lib-behaviour'), 'the essay comes before Behaviour');
+  const notes = shelves.find(n => n.classList.contains('lib-notes'));
+  assert.ok(!notes || notes.hasAttribute('hidden'), 'an essay replaces the short notes');
+});
+
+test('an essay that is not the listed text is refused, and the listing says so', async () => {
+  const b = await builtLibrary();
+  const routes = { 'index.json': JSON.stringify({ ...b.raw, commit: '' }), 'bb2.md': 'Tampered with.' };
+  for (const e of b.raw.entries) routes[e.path] = await readFile(join(b.root, e.path), 'utf8');
+  context.fetch = fakeFetch(routes);
+  seedTab();
+  context.renderLibraryView();
+  await context.loadLibrary();
+  context.go('entry', 'turing/busy-beaver/bb2', { reset: true });
+  const body = await essayBody(context.document.getElementById('lib-content'));
+  assert.match(textOf(body), /could not be fetched/);
+  assert.doesNotMatch(body.innerHTML || '', /Tampered/);
+});
+
+test('a collection\'s essay reads above its machines', async () => {
+  await serveLibrary();
+  seedTab();
+  context.renderLibraryView();
+  await context.loadLibrary();
+  context.go('collection', 'parity', { reset: true });
+  const host = context.document.getElementById('lib-content');
+  const body = await essayBody(host);
+  assert.match(body.innerHTML, /Two machines, <span class="fact"[^>]*>2<\/span> states each/);
+  assert.match(textOf(host), /1 min essay/);
 });
 
 test('a listing typesets the machine\'s own formal definition from its file', async () => {
@@ -732,6 +851,32 @@ test('only an entry\'s author or a maintainer may change it', async () => {
   assert.ok(asAlice.some(p => /b\.automaton.*credits @bob/.test(p)));
   assert.deepEqual(await guardChanges({ root, base: 'main', author: 'carol', maintainers: ['Carol'] }), []);
   assert.deepEqual(await guardChanges({ root, base: 'main', author: 'github-actions[bot]' }), []);
+});
+
+test('a machine\'s essay is credited as its machine is', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'as-guard-'));
+  const git = (...args) => execFileSync('git', ['-C', root, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { stdio: ['ignore', 'pipe', 'ignore'] });
+  git('init', '-q', '-b', 'main');
+  await mkdir(join(root, 'machines/finite/dfa'), { recursive: true });
+  await mkdir(join(root, 'collections'), { recursive: true });
+  await writeFile(join(root, 'machines/finite/dfa/a.automaton'), JSON.stringify(evenOnes()));   // alice's
+  git('add', '-A'); git('commit', '-qm', 'base');
+  git('checkout', '-qb', 'essays');
+  await writeFile(join(root, 'machines/finite/dfa/a.md'), 'Why parity is the first language anyone draws.');
+  git('add', '-A'); git('commit', '-qm', 'essay');
+  assert.deepEqual(await guardChanges({ root, base: 'main', author: 'alice' }), [], 'the machine\'s author may write its essay');
+  const asBob = await guardChanges({ root, base: 'main', author: 'bob' });
+  assert.equal(asBob.length, 1);
+  assert.match(asBob[0], /a\.md` is the essay of `machines\/finite\/dfa\/a\.automaton`, credited to @alice/);
+  assert.deepEqual(await guardChanges({ root, base: 'main', author: 'carol', maintainers: ['carol'] }), [], 'a maintainer may');
+  // An essay with no machine beside it, and a collection's essay.
+  await writeFile(join(root, 'machines/finite/dfa/orphan.md'), 'About nothing.');
+  await writeFile(join(root, 'collections/parity.md'), 'A collection\'s essay.');
+  git('add', '-A'); git('commit', '-qm', 'more');
+  const again = await guardChanges({ root, base: 'main', author: 'alice' });
+  assert.ok(again.some(p => /orphan\.md`: an essay sits beside the machine it is about/.test(p)));
+  assert.ok(again.some(p => /collections\/parity\.md`: collections and the library's config are changed by maintainers/.test(p)));
+  assert.ok(!again.some(p => /dfa\/a\.md/.test(p)));
 });
 
 test('a pull request cannot make its own author a maintainer', async () => {
@@ -1290,7 +1435,7 @@ test('the listing leads with one action, keeps the rest in a menu, and reads as 
   assert.match(textOf(menu), /Copy link/);
   const heads = () => findAll(host, n => n.classList?.contains('lib-sechead-title')).map(t => textOf(t));
   assert.ok(findAll(host, n => n.classList?.contains('lib-try-input')).length, 'Try it sits under the figure');
-  assert.deepEqual(heads().filter(t => t !== 'Notes'), ['Behaviour'], 'nothing related to show, so no section for it');
+  assert.deepEqual(heads().filter(t => t !== 'Notes'), ['Essay', 'Behaviour'], 'its essay, its run, and nothing related to show, so no section for it');
   context.go('entry', 'finite/dfa/even-ones');
   assert.ok(heads().includes('Related'), 'this one was remixed');
   assert.ok(!heads().includes('Behaviour'));
