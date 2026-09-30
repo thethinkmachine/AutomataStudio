@@ -26,13 +26,14 @@ This guide walks through it by task. Every option of every command is in the [co
 
 ## Install
 
-**With the desktop app.** The CLI ships inside it and runs on the app's own executable, so nothing else is needed. The installer does not change your `PATH`; do it once:
+**With the desktop app.** The CLI ships inside it and runs on the app's own executable, so nothing else is needed. The installers put `automata` on your `PATH`:
 
-| Platform | Put this on your `PATH` |
+| Platform | How `automata` gets on your `PATH` |
 | --- | --- |
-| Windows | the folder `%LOCALAPPDATA%\Programs\AutomataStudio\resources\cli` (it holds `automata.cmd`) |
-| macOS | `ln -s "/Applications/AutomataStudio.app/Contents/Resources/cli/automata" /usr/local/bin/automata` |
-| Linux (.deb) | `ln -s /opt/AutomataStudio/resources/cli/automata /usr/local/bin/automata` |
+| Windows | The installer adds `%LOCALAPPDATA%\Programs\AutomataStudio\resources\cli` to your user `PATH`, and the uninstaller removes it. Open a new terminal after installing. |
+| macOS | In the app, choose **AutomataStudio → Install 'automata' Command in PATH**. It links `/usr/local/bin/automata`, asking for your password if that folder needs it. Move the app to Applications first. |
+| Linux (.deb) | The package links `/usr/local/bin/automata`, and removing it takes the link away. An `automata` already there (from npm, say) is left alone. |
+| Linux (AppImage) | Nothing to install: run `./AutomataStudio-*.AppImage --cli <command>`. |
 | Linux (AppImage) | run `./AutomataStudio-*.AppImage --cli <command> …` |
 
 On macOS and Linux, `AutomataStudio --cli <command> …` works without the launcher too.
@@ -207,13 +208,14 @@ This guide walks through it by task. Every option of every command is in the [co
 
 ## Install
 
-**With the desktop app.** The CLI ships inside it and runs on the app's own executable, so nothing else is needed. The installer does not change your `PATH`; do it once:
+**With the desktop app.** The CLI ships inside it and runs on the app's own executable, so nothing else is needed. The installers put `automata` on your `PATH`:
 
-| Platform | Put this on your `PATH` |
+| Platform | How `automata` gets on your `PATH` |
 | --- | --- |
-| Windows | the folder `%LOCALAPPDATA%\Programs\AutomataStudio\resources\cli` (it holds `automata.cmd`) |
-| macOS | `ln -s "/Applications/AutomataStudio.app/Contents/Resources/cli/automata" /usr/local/bin/automata` |
-| Linux (.deb) | `ln -s /opt/AutomataStudio/resources/cli/automata /usr/local/bin/automata` |
+| Windows | The installer adds `%LOCALAPPDATA%\Programs\AutomataStudio\resources\cli` to your user `PATH`, and the uninstaller removes it. Open a new terminal after installing. |
+| macOS | In the app, choose **AutomataStudio → Install 'automata' Command in PATH**. It links `/usr/local/bin/automata`, asking for your password if that folder needs it. Move the app to Applications first. |
+| Linux (.deb) | The package links `/usr/local/bin/automata`, and removing it takes the link away. An `automata` already there (from npm, say) is left alone. |
+| Linux (AppImage) | Nothing to install: run `./AutomataStudio-*.AppImage --cli <command>`. |
 | Linux (AppImage) | run `./AutomataStudio-*.AppImage --cli <command> …` |
 
 On macOS and Linux, `AutomataStudio --cli <command> …` works without the launcher too.
@@ -594,6 +596,6 @@ Each tape symbol keeps one colour in every command — `play`, `trace`, and the 
 
 **No colour** — output is piped, or `NO_COLOR` is set. `FORCE_COLOR=3` forces it.
 
-**`automata` not found after installing the app** — the installer does not change `PATH`; see [Install](#install).
+**`automata` not found after installing the app** — open a new terminal (one opened before the install keeps the old `PATH`); on macOS, use the app menu's Install command. See [Install](#install).
 
 **Solid / "SSR build" error when running the source directly** — run through `cli/automata.mjs` (it adds `--conditions=browser` for you) or use the bundle.
