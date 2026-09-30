@@ -39,6 +39,7 @@ import { machineSupportsBlocks } from './machines/index.js';
 import { machineTargetFromApp, withMachine } from './exercise/grade.js';
 import { buildFormalDefLatex } from './render.js';
 import { triggerMath } from './reference.js';
+import { hasTex } from './tex.js';
 import {
   LIBRARY_REPO, entryPageUrl, libraryBase, libraryIsOverridden, libraryUrl, parseLibraryHash, parseLibraryProtocolUrl,
   parseLibrarySourceHash, repoUrl, setLibraryOverride, sourceUrl, webAppLink
@@ -174,7 +175,23 @@ function section(title, ...kids) {
 
 function paragraphs(text, cls = 'lib-prose') {
   const parts = String(text || '').split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
-  return parts.length ? h('div', { class: cls }, parts.map(p => h('p', { text: p }))) : null;
+  return parts.length ? typeset(h('div', { class: cls }, parts.map(p => h('p', { text: p })))) : null;
+}
+
+/**
+ * An author's words may carry LaTeX — `$a^n b^n$`, `$$…$$`, `\(…\)`, `\[…\]` —
+ * typeset in place by KaTeX. The text goes in as a text node first, so nothing
+ * an author writes is ever parsed as markup; KaTeX's own `trust: false` default
+ * refuses \href and friends.
+ */
+function typeset(node) {
+  if (node && hasTex(node.textContent || Array.from(node.children || [], c => c.textContent).join(' '))) triggerMath(node);
+  return node;
+}
+
+/** A line of an author's text, typeset. */
+function texLine(tag, cls, text) {
+  return typeset(h(tag, { class: cls, text }));
 }
 
 function relTime(iso) {
@@ -747,7 +764,7 @@ function pageEntry(id) {
     h('p', { class: 'lib-kicker' }, h('i', { class: 'lib-dot', 'aria-hidden': 'true' }), [machineLabel(e.machine), e.languageClass].filter(Boolean).join(' · ')),
     h('h2', { class: 'lib-display lib-entry-title', text: e.title }),
     h('p', { class: 'lib-byline' }, byline.map((b, i) => [i ? h('span', { class: 'lib-sep', text: '·' }) : null, b])),
-    e.blurb ? h('p', { class: 'lib-lede', text: e.blurb }) : null,
+    e.blurb ? texLine('p', 'lib-lede', e.blurb) : null,
     entryActions(e)));
 
   if (e.duplicateOf) {
@@ -792,7 +809,9 @@ function pageEntry(id) {
       triggerMath(math);
     } catch { math.textContent = ''; }
     const text = paragraphs(d.doc?.meta?.library?.readme);
-    if (text) { notes.append(...text.children); notes.closest('section')?.removeAttribute('hidden'); }
+    // Typeset where the paragraphs end up: KaTeX may still be loading, and a
+    // retry aimed at the emptied wrapper would typeset nothing.
+    if (text) { notes.append(...Array.from(text.children)); typeset(notes); notes.closest('section')?.removeAttribute('hidden'); }
   }, () => {
     math.append(h('span', { class: 'lib-muted', text: 'The definition is drawn from the machine’s file, which could not be fetched.' }));
   });
@@ -1225,7 +1244,7 @@ function collectionRow(c) {
   c.entries.slice(0, 3).map(id => entryById(idx, id)).filter(Boolean).forEach(e => strip.append(figureOf(e, { w: 160, h: 100 })));
   row.append(strip, h('div', { class: 'lib-coll-text' },
     h('span', { class: 'lib-coll-title', text: c.title }),
-    c.blurb ? h('span', { class: 'lib-coll-blurb', text: c.blurb }) : null,
+    c.blurb ? texLine('span', 'lib-coll-blurb', c.blurb) : null,
     h('span', { class: 'lib-coll-meta', text: `${c.entries.length} machine${c.entries.length === 1 ? '' : 's'}${c.curator ? ` · curated by @${c.curator}` : ''}` })));
   return row;
 }
@@ -1249,7 +1268,7 @@ function pageCollection(id) {
     h('div', { class: 'lib-pagehead' },
       h('p', { class: 'lib-kicker', text: `Collection · ${entries.length} machine${entries.length === 1 ? '' : 's'}${c.curator ? ` · curated by @${c.curator}` : ''}` }),
       h('h2', { class: 'lib-display', text: c.title }),
-      c.blurb ? h('p', { class: 'lib-lede', text: c.blurb }) : null,
+      c.blurb ? texLine('p', 'lib-lede', c.blurb) : null,
       h('div', { class: 'lib-actions' },
         button('Save all offline', async () => {
           let n = 0;
@@ -1344,6 +1363,31 @@ function field(label, control, hint) {
 }
 
 /**
+ * How a field's text will read on its listing, typeset — shown only while the
+ * text holds some LaTeX, since plain words look the same either way. `update`
+ * is handed the text on every keystroke and redraws a moment after typing
+ * stops: KaTeX re-typesets the whole preview each time.
+ */
+function texPreview(cls) {
+  const box = h('div', { class: `lib-tex-preview ${cls}`, 'aria-live': 'polite', hidden: true });
+  let timer = null;
+  const draw = text => {
+    box.innerHTML = '';
+    if (!hasTex(text)) { box.setAttribute('hidden', ''); return; }
+    box.removeAttribute('hidden');
+    box.append(h('span', { class: 'lib-tex-preview-label', text: 'Preview' }));
+    const body = paragraphs(text, 'lib-tex-preview-body');
+    if (body) { box.append(body); typeset(body); }
+  };
+  box.update = (text, now = false) => {
+    clearTimeout(timer);
+    if (now) draw(text || '');
+    else timer = setTimeout(() => draw(text || ''), 250);
+  };
+  return box;
+}
+
+/**
  * The form's fields, read from the machine on the canvas — again whenever that
  * is a different machine than the one they were read from, so a tab switch
  * never files one machine under another's title.
@@ -1370,14 +1414,18 @@ function pageSubmit() {
     page.append(h('div', { class: 'lib-empty', text: 'There is no machine on the canvas to submit. Build one, or open one from the library to remix it.' }));
     return page;
   }
-  const bind = (key, node, ev = 'input') => {
+  const bind = (key, node, ev = 'input', then = null) => {
     node.value = f[key] ?? '';
-    node.addEventListener(ev, () => { f[key] = node.type === 'checkbox' ? node.checked : node.value; L.submitCheck = null; });
+    node.addEventListener(ev, () => { f[key] = node.type === 'checkbox' ? node.checked : node.value; L.submitCheck = null; then?.(node.value); });
     return node;
   };
+  const blurbPreview = texPreview('lib-lede');
+  const readmePreview = texPreview('lib-prose');
   const title = bind('title', h('input', { class: 'inp', type: 'text', maxlength: '70', placeholder: 'e.g. Binary divisibility by 7' }));
-  const blurb = bind('blurb', h('textarea', { class: 'inp', rows: '3', maxlength: '400', placeholder: 'One or two sentences: what it does and why it is interesting.' }));
-  const readme = bind('readme', h('textarea', { class: 'inp', rows: '5', maxlength: '4000', placeholder: 'Optional. How it works, where it comes from, what to try.' }));
+  const blurb = bind('blurb', h('textarea', { class: 'inp', rows: '3', maxlength: '400', placeholder: 'One or two sentences: what it does and why it is interesting.' }), 'input', blurbPreview.update);
+  const readme = bind('readme', h('textarea', { class: 'inp', rows: '5', maxlength: '4000', placeholder: 'Optional. How it works, where it comes from, what to try.' }), 'input', readmePreview.update);
+  blurbPreview.update(f.blurb, true);
+  readmePreview.update(f.readme, true);
   const tags = bind('tags', h('input', { class: 'inp', type: 'text', placeholder: 'busy-beaver, textbook, parity' }));
   const level = h('select', { class: 'inp' }, h('option', { value: '' }, '—'), DIFFICULTIES.map(d => h('option', { value: d }, d)));
   bind('difficulty', level, 'change');
@@ -1398,8 +1446,10 @@ function pageSubmit() {
     : '';
 
   page.append(h('div', { class: 'lib-form' },
-    field('Title', title), field('Description', blurb, 'Shown on the card and in search results.'),
-    field('Write-up', readme),
+    field('Title', title), field('Description', blurb, 'Shown on the card and in search results. LaTeX between $…$ is typeset.'),
+    blurbPreview,
+    field('Write-up', readme, 'Blank lines separate paragraphs. LaTeX is typeset: $…$ inline, $$…$$ displayed.'),
+    readmePreview,
     h('div', { class: 'lib-form-row' }, field('Tags', tags), field('Level', level), field('Chapter', chapter)),
     field('Remix of', forkOf, forkHint),
     h('div', { class: 'lib-form-row' }, field('GitHub username', login), field('Display name', name), field('Submitting', kind)),

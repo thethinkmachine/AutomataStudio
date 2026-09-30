@@ -33,6 +33,7 @@ import { LIBRARY_LICENSES } from '../../js/library/analyze.js';
 import { bbchallengeUrl } from '../../js/interop/standard-tm.js';
 import { FRONTIS_NOTE, MAST_LEDE, cardPicture, figureHtml, frontispieceWhat, plateHtml, rankBadges, standardSize } from '../../js/library/card-html.js';
 import { drawLanguage, drawRun, drawSketch, framesFromStandard, languageRows, sketchAspect, unpackSketch } from '../../js/library/sketch.js';
+import { TEX_DELIMITERS, hasTex } from '../../js/tex.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -82,6 +83,11 @@ export function brandHtml(href, sub = 'Library') {
 const GLASS = '<svg class="searchbar-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 L21 21"/></svg>';
 const EMPTY_ART = '<svg class="empty-art" viewBox="0 0 120 64" aria-hidden="true"><circle cx="24" cy="32" r="14"/><circle cx="24" cy="32" r="9.5"/><circle cx="96" cy="32" r="14" class="d"/><path d="M40 32 H74" class="d"/><path d="M69 26 l7 6 -7 6" class="d"/></svg>';
 const KATEX = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist';
+// KaTeX typesets only what is marked `tex` — the formal definition and the
+// author's own words — with the app's delimiters (js/tex.js), so `$…$` reads
+// the same here as in the Library view. Anywhere else a `$` is a character: a
+// machine code, an example word, a tape symbol.
+const TYPESET = `document.querySelectorAll('.tex').forEach(function(el){renderMathInElement(el,{delimiters:${JSON.stringify(TEX_DELIMITERS)},throwOnError:false})})`;
 
 function layout({ title, description, depth, body, canonical, image, config, nav = '', math = false, script = '', root = up(depth) }) {
   const site = config.site;
@@ -104,7 +110,7 @@ ${image ? `<meta property="og:image" content="${esc(site + image)}"><meta name="
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 ${math ? `<link rel="stylesheet" href="${KATEX}/katex.min.css">
 <script defer src="${KATEX}/katex.min.js"></script>
-<script defer src="${KATEX}/contrib/auto-render.min.js" onload="renderMathInElement(document.body,{throwOnError:false})"></script>` : ''}
+<script defer src="${KATEX}/contrib/auto-render.min.js" onload="${esc(TYPESET)}"></script>` : ''}
 <link rel="stylesheet" href="${root}assets/site.css">
 ${THEME_HEAD}
 </head>
@@ -169,7 +175,7 @@ function collectionRow(c, byId, depth) {
   <span class="coll-strip" aria-hidden="true">${strip}</span>
   <span class="coll-text">
     <span class="coll-title">${esc(c.title)}</span>
-    ${c.blurb ? `<span class="coll-blurb">${esc(c.blurb)}</span>` : ''}
+    ${c.blurb ? `<span class="coll-blurb tex">${esc(c.blurb)}</span>` : ''}
     <span class="coll-meta">${plural(c.entries.length, 'machine')}${c.curator ? ` · curated by @${esc(c.curator)}` : ''}</span>
   </span>
 </a>`;
@@ -271,7 +277,7 @@ ${colls}
 </section>`;
   return layout({
     title: 'AutomataStudio Library', description: 'A catalogue of automata, Turing machines and transducers for AutomataStudio, each one tested before it is listed.',
-    depth: 0, body, canonical: '', config, script: '<script type="module" src="assets/site.js"></script>'
+    depth: 0, body, canonical: '', config, math: index.collections.slice(0, 6).some(c => hasTex(c.blurb)), script: '<script type="module" src="assets/site.js"></script>'
   });
 }
 
@@ -385,7 +391,7 @@ function entryPage(e, index, config, listing) {
   const verified = ranked.length
     ? `<section class="aside-sec"><h2 class="aside-title">Verified by the library</h2><ul class="verified">${ranked.map(b => `<li class="is-${esc(b.id)}" title="${esc(BADGES[b.id].say)}"><span class="verified-mark" aria-hidden="true">${b.id === 'never-halts' ? '∞' : '✓'}</span><span><strong>${esc(BADGES[b.id].label)}</strong>${b.detail ? `<span class="verified-detail"> — ${esc(b.detail)}</span>` : ''}</span></li>`).join('')}</ul></section>`
     : '';
-  const definition = listing?.latex ? `<section class="aside-sec"><h2 class="aside-title">Definition</h2><div class="math">${esc(listing.latex)}</div></section>` : '';
+  const definition = listing?.latex ? `<section class="aside-sec"><h2 class="aside-title">Definition</h2><div class="math tex">${esc(listing.latex)}</div></section>` : '';
   const notes = String(listing?.readme || '').split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
   const dup = e.duplicateOf && byId.get(e.duplicateOf);
   const pic = e.art.find(a => a.kind === 'diagram') || cardPicture(e);
@@ -397,7 +403,7 @@ function entryPage(e, index, config, listing) {
     <p class="kicker"><i class="dot" aria-hidden="true"></i>${esc([e.machine, e.languageClass].filter(Boolean).join(' · '))}</p>
     <h1 class="display entry-title">${esc(e.title)}</h1>
     <p class="byline">${byline.join('<span class="sep">·</span>')}</p>
-    ${e.blurb ? `<p class="lede">${esc(e.blurb)}</p>` : ''}
+    ${e.blurb ? `<p class="lede tex">${esc(e.blurb)}</p>` : ''}
     <div class="actions">
       <a class="btn primary" href="${esc(webAppLink(req))}">Open in AutomataStudio</a>
       <details class="more"><summary class="btn">More <span aria-hidden="true">▾</span></summary><div class="more-menu">
@@ -421,13 +427,14 @@ function entryPage(e, index, config, listing) {
     </aside>
   </div>
   ${e.behaviour || e.standard ? behaviourHtml(e, listing) : ''}
-  ${notes.length ? `<section class="shelf">${sectionHead('Notes')}<div class="prose">${notes.map(p => `<p>${esc(p)}</p>`).join('')}</div></section>` : ''}
+  ${notes.length ? `<section class="shelf">${sectionHead('Notes')}<div class="prose tex">${notes.map(p => `<p>${esc(p)}</p>`).join('')}</div></section>` : ''}
   ${relatedHtml(e, index, depth)}
 </article>`;
   return layout({
     title: `${e.title} — ${e.machine} · AutomataStudio Library`,
     description: e.blurb || `A ${e.machine} with ${plural(e.stats.states, 'state')}, verified by the AutomataStudio engine.`,
-    depth, body, canonical: `m/${enc(e.id)}/`, image: pic ? enc(pic.path) : null, config, math: !!listing?.latex
+    depth, body, canonical: `m/${enc(e.id)}/`, image: pic ? enc(pic.path) : null, config,
+    math: !!listing?.latex || hasTex(e.blurb) || hasTex(listing?.readme)
   });
 }
 
@@ -442,7 +449,7 @@ function collectionsPage(index, config) {
 </div>
 ${index.collections.length ? `<div class="colls is-wide">${index.collections.map(c => collectionRow(c, byId, 1)).join('')}</div>` : emptyState('No collections yet', '')}
 </div>`;
-  return layout({ title: 'Collections · AutomataStudio Library', description: 'Curated sets of machines.', depth: 1, body, canonical: 'collections/', config, nav: 'collections' });
+  return layout({ title: 'Collections · AutomataStudio Library', description: 'Curated sets of machines.', depth: 1, body, canonical: 'collections/', config, nav: 'collections', math: index.collections.some(c => hasTex(c.blurb)) });
 }
 
 /**
@@ -472,13 +479,13 @@ function collectionPage(c, index, config) {
 <div class="pagehead">
   <p class="kicker">Collection · ${plural(list.length, 'machine')}${c.curator ? ` · curated by @${esc(c.curator)}` : ''}</p>
   <h1 class="display">${esc(c.title)}</h1>
-  ${c.blurb ? `<p class="lede">${esc(c.blurb)}</p>` : ''}
+  ${c.blurb ? `<p class="lede tex">${esc(c.blurb)}</p>` : ''}
   <div class="actions"><a class="btn primary" href="${esc(webAppLink(req))}">Open in AutomataStudio</a><a class="btn" href="${esc(protocolLink(req))}" title="Needs the desktop app installed">Open in the desktop app</a></div>
 </div>
 ${behaviourTable(list, depth)}
 <section class="shelf">${sectionHead('The machines')}${plates(list, depth)}</section>
 </div>`;
-  return layout({ title: `${c.title} · AutomataStudio Library`, description: c.blurb || c.title, depth, body, canonical: `c/${enc(c.id)}/`, config, nav: 'collections' });
+  return layout({ title: `${c.title} · AutomataStudio Library`, description: c.blurb || c.title, depth, body, canonical: `c/${enc(c.id)}/`, config, nav: 'collections', math: hasTex(c.blurb) });
 }
 
 // ── Submitting, and what the marks mean ───────────────────────────

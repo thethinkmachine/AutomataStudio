@@ -1126,7 +1126,7 @@ test('the website: an entry credits its author with a search, and a collection o
   assert.match(page, /href="\.\.\/\.\.\/\.\.\/\.\.\/\?q=by%3Aalice#all"/);
   assert.match(page, /og:image" content="https:\/\/x\.test\/art\/turing\/busy-beaver\/bb2\/diagram\.svg"/);
   assert.match(page, /Halts from a blank tape after <strong>6<\/strong> steps/);
-  assert.match(page, /class="math">\$\$ \\begin\{aligned\} M &amp;= \(Q, \\Sigma, \\Gamma/, 'the definition, typeset from the file');
+  assert.match(page, /class="math tex">\$\$ \\begin\{aligned\} M &amp;= \(Q, \\Sigma, \\Gamma/, 'the definition, typeset from the file');
   const dfa = await readFile(join(out, 'm/finite/dfa/even-ones/index.html'), 'utf8');
   assert.match(dfa, /class="sk-name"/, 'the listing\'s diagram names its states');
   assert.match(dfa, /id="pic-language"/, 'and switches to the language without a script');
@@ -1136,6 +1136,90 @@ test('the website: an entry credits its author with a search, and a collection o
   assert.match(coll, /<td class="mono" title="states × symbols">2 × 2<\/td>/);
   const lost = await readFile(join(out, '404.html'), 'utf8');
   assert.match(lost, /href="https:\/\/x\.test\/assets\/site\.css"/, 'served at any depth, so its links are absolute');
+});
+
+// ── LaTeX in an author's words ────────────────────────────────────
+
+test('hasTex finds a closed formula, and a price is not one', async () => {
+  const { hasTex, TEX_DELIMITERS } = await import('../js/tex.js');
+  assert.equal(hasTex('Accepts $a^n b^n$ for $n \\ge 0$.'), true);
+  assert.equal(hasTex('$$\n\\sum_i x_i\n$$'), true);
+  assert.equal(hasTex('inline \\(q_0\\) and displayed \\[L\\]'), true);
+  assert.equal(hasTex('It costs $5.'), false, 'a lone dollar is a dollar sign');
+  assert.equal(hasTex('$5 and\n$6'), false, 'inline math does not run across a line');
+  assert.equal(hasTex(''), false);
+  assert.deepEqual(TEX_DELIMITERS.map(d => d.left), ['$$', '$', '\\(', '\\['], '$$ before $, or $$x$$ reads as two empty formulas');
+});
+
+test('the website typesets an author\'s LaTeX, and loads KaTeX only where there is some', async () => {
+  const b = await builtLibrary();
+  const out = await mkdtemp(join(tmpdir(), 'as-site-tex-'));
+  const { writeSite } = await import('../scripts/library/site.mjs');
+  const index = context.normalizeIndex(JSON.parse(JSON.stringify(b.raw)));
+  const even = index.entries.find(e => e.id === 'finite/dfa/even-ones');
+  even.blurb = 'Accepts $w \\in \\{0,1\\}^*$ with <b>$|w|_1$</b> even.';
+  index.collections.push({ id: 'tex', title: 'Formal', blurb: 'Languages like $a^n b^n$.', curator: '', entries: ['finite/dfa/even-ones'] });
+  index.collections.push({ id: 'plain', title: 'Plain', blurb: 'No formulas, and a $5 note.', curator: '', entries: ['finite/dfa/odd-ones'] });
+  const listings = new Map(index.entries.map(e => [e.id, listingOf(b.sources.get(e.id), e)]));
+  listings.get('finite/dfa/even-ones').readme = 'The idea.\n\n$$L = \\{ w : |w|_1 \\equiv 0 \\pmod 2 \\}$$';
+  await writeSite(out, index, { site: 'https://x.test/', repo: 'o/r' }, { listings });
+
+  const page = await readFile(join(out, 'm/finite/dfa/even-ones/index.html'), 'utf8');
+  assert.match(page, /<p class="lede tex">Accepts \$w \\in \\\{0,1\\\}\^\*\$ with &lt;b&gt;/, 'the description, marked for KaTeX and escaped as text');
+  assert.match(page, /<div class="prose tex"><p>The idea\.<\/p><p>\$\$L = /, 'the write-up too');
+  assert.match(page, /auto-render\.min\.js" onload="document\.querySelectorAll\(&#39;\.tex&#39;\)/, 'only what is marked is typeset');
+  assert.match(page, /&quot;left&quot;:&quot;\$&quot;/, 'with the app\'s delimiters, $ included');
+  assert.doesNotMatch(page, /renderMathInElement\(document\.body/, 'never the whole page: a machine code or an example word may hold a $');
+
+  const tex = await readFile(join(out, 'c/tex/index.html'), 'utf8');
+  assert.match(tex, /<p class="lede tex">Languages like \$a\^n b\^n\$\.<\/p>/);
+  assert.match(tex, /katex\.min\.js/);
+  const plain = await readFile(join(out, 'c/plain/index.html'), 'utf8');
+  assert.doesNotMatch(plain, /katex/, 'a page with nothing to typeset does not load KaTeX');
+  assert.match(await readFile(join(out, 'collections/index.html'), 'utf8'), /<span class="coll-blurb tex">Languages like/);
+});
+
+test('the Library view typesets a description, and the submit form previews it', async () => {
+  const b = await serveLibrary();
+  const raw = JSON.parse(JSON.stringify({ ...b.raw, commit: '' }));
+  raw.entries.find(e => e.id === 'finite/dfa/even-ones').blurb = 'Accepts $w$ with $|w|_1$ even.';
+  const files = {};
+  for (const e of b.raw.entries) files[e.path] = await readFile(join(b.root, e.path), 'utf8');
+  context.fetch = fakeFetch({ 'index.json': JSON.stringify(raw), ...files });
+  seedTab();
+  const typeset = [];
+  // Not one of the harness's proxied globals: triggerMath looks it up on the global object.
+  const stub = globalThis.renderMathInElement;
+  globalThis.renderMathInElement = (el, opts) => typeset.push({ text: textOf(el), opts });
+  try {
+    context.renderLibraryView();
+    await context.loadLibrary({ force: true });
+    context.go('entry', 'finite/dfa/even-ones', { reset: true });
+    const host = context.document.getElementById('lib-content');
+    const lede = findAll(host, n => n.classList?.contains('lib-lede'))[0];
+    assert.equal(lede.textContent, 'Accepts $w$ with $|w|_1$ even.', 'the words go in as text');
+    const said = typeset.find(t => t.text.includes('$|w|_1$'));
+    assert.ok(said, 'and KaTeX is asked to typeset them');
+    assert.deepEqual(said.opts.delimiters.map(d => d.left), ['$$', '$', '\\(', '\\[']);
+
+    context.go('submit');
+    const areas = findAll(host, n => n.tagName === 'TEXTAREA');
+    const previews = findAll(host, n => n.classList?.contains('lib-tex-preview'));
+    assert.equal(previews.length, 2, 'one for the description, one for the write-up');
+    assert.ok(previews.every(p => p.hidden !== undefined), 'hidden while there is no LaTeX');
+    const blurb = areas[0];
+    blurb.value = 'Accepts $a^n b^n$.';
+    blurb._listeners.input();
+    await new Promise(r => setTimeout(r, 300));
+    assert.equal(previews[0].hidden, undefined, 'shown once there is');
+    assert.ok(typeset.some(t => t.text.includes('$a^n b^n$')), 'and typeset');
+    blurb.value = 'No formulas.';
+    blurb._listeners.input();
+    await new Promise(r => setTimeout(r, 300));
+    assert.notEqual(previews[0].hidden, undefined, 'and hidden again when the LaTeX is gone');
+  } finally {
+    globalThis.renderMathInElement = stub;
+  }
 });
 
 test('a second emulator on a busy port gives up before it watches anything', async () => {

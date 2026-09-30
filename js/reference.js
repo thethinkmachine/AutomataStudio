@@ -1,6 +1,7 @@
 import { $, App, MachineCategories, MachineTypes } from './state.js';
 import { GuideOverview, MachineGuides } from './machine-guide.js';
 import { ConceptCategories, ConceptGuides } from './concept-guide.js';
+import { TEX_DELIMITERS } from './tex.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  REFERENCE VIEW
@@ -29,12 +30,7 @@ const MATH_MAX_RETRIES = 50;
 export function triggerMath(el, attempt = 0) {
   if (typeof renderMathInElement === 'function') {
     renderMathInElement(el || document.body, {
-      delimiters: [
-        {left: '$$', right: '$$', display: true},
-        {left: '$', right: '$', display: false},
-        {left: '\\(', right: '\\)', display: false},
-        {left: '\\[', right: '\\]', display: true}
-      ],
+      delimiters: TEX_DELIMITERS,
       throwOnError: false
     });
     return;

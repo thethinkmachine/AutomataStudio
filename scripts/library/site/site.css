@@ -372,6 +372,8 @@ body.is-searching .discover { display: none; }
 .math .katex-display { margin: 0; text-align: left; }
 .math .katex-display > .katex { text-align: left; }
 .math .katex { font-size: 1.05em; }
+/* An author's display formula scrolls on its own rather than widening the page. */
+.prose .katex-display, .lede .katex-display { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
 
 .verified { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
 .verified li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 6px; font-size: .86rem; line-height: 1.45; color: var(--text2); }
