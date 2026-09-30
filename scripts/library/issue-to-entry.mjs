@@ -45,7 +45,6 @@ export const FORM_FIELDS = [
   { id: 'name', label: 'Name', kind: 'input', required: true },
   { id: 'description', label: 'Description', kind: 'textarea', required: true, hint: 'Shown on the card and in search. LaTeX between $…$ is typeset.' },
   { id: 'machine', label: 'Machine', kind: 'textarea', required: true, render: 'text', hint: 'A share link, the .automaton file’s JSON, or a Turing machine in the standard format.' },
-  { id: 'readme', label: 'Write-up', kind: 'textarea', hint: 'LaTeX is typeset — $…$ inline, $$…$$ displayed.' },
   { id: 'tags', label: 'Tags', kind: 'input' },
   { id: 'level', label: 'Level', kind: 'input' },
   { id: 'chapter', label: 'Chapter or source', kind: 'input' },
@@ -57,10 +56,16 @@ export const FORM_FIELDS = [
   // Last, on purpose: an essay is Markdown and may hold "### Tags" of its own.
   // parseIssueForm starts each of the form's sections once, so a heading in the
   // essay that names a section already read is part of the essay.
-  { id: 'essay', label: 'Essay', kind: 'textarea', hint: 'Optional. A long-form article in Markdown, shown on the machine\'s page. The app puts it inside the machine\'s link for you.' }
+  { id: 'essay', label: 'Essay', kind: 'textarea', hint: 'Optional. A paragraph or a whole article in Markdown, shown on the machine\'s page. The app puts it inside the machine\'s link for you.' }
 ];
 
-const LABELS = new Set(FORM_FIELDS.map(f => f.label.toLowerCase()));
+// Sections the form used to have. An issue opened from an older copy of the
+// form still carries them, and read as no section at all the text would run
+// on into the one before — which is the Machine. "Write-up" was the short
+// notes the essay replaced, and is read as an essay (processIssue).
+const LEGACY_LABELS = ['Write-up'];
+
+const LABELS = new Set([...FORM_FIELDS.map(f => f.label), ...LEGACY_LABELS].map(l => l.toLowerCase()));
 
 /**
  * GitHub renders an issue form as `### Label` sections. → { label: value }
@@ -159,7 +164,6 @@ export function applyForm(doc, form, author) {
     tags: tagsOf(pick('tags') || (prior.tags || []).join(',')),
     ...(['intro', 'intermediate', 'advanced'].includes(pick('level', prior.difficulty)) ? { difficulty: pick('level', prior.difficulty) } : {}),
     ...(pick('chapter', prior.chapter) ? { chapter: pick('chapter', prior.chapter).slice(0, 80) } : {}),
-    ...(pick('readme', prior.readme) ? { readme: pick('readme', prior.readme).slice(0, 4000) } : {}),
     ...(isLibraryId(pick('forkOf', prior.forkOf)) ? { forkOf: pick('forkOf', prior.forkOf) } : {})
   };
   doc.meta = {
@@ -263,7 +267,12 @@ export async function processIssue({ body, author, number, root, title = '', kin
   // beside the machine as Markdown and taken out of the machine's file, so the
   // file's bytes and hash are the machine's alone. An update that brings no
   // essay leaves the one already published where it is.
-  const essay = String((form[FIELD.essay] || '').trim() ? form[FIELD.essay] : (found.doc.meta?.library?.essay || '')).replace(/\r\n?/g, '\n').trim();
+  //
+  // The short notes essays replaced — an older form's Write-up, or a file's
+  // meta.library.readme — are an essay too, and become one: there is one
+  // place for a machine's prose, and applyForm drops the readme.
+  const lib = found.doc.meta?.library || {};
+  const essay = String([form[FIELD.essay], lib.essay, form[FIELD.readme], lib.readme].find(t => String(t || '').trim()) || '').replace(/\r\n?/g, '\n').trim();
   if (essay.length > ARTICLE_MAX_CHARS) problems.push(`The essay is ${essay.length.toLocaleString('en-US')} characters; the library takes essays up to ${ARTICLE_MAX_CHARS.toLocaleString('en-US')}.`);
   const doc = applyForm(found.doc, form, author);
   // The one thing about an entry that depends on another file: what it says

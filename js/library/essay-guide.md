@@ -4,7 +4,7 @@ An essay is the long form of a machine's page: what it does, why it is interesti
 
 An essay is a Markdown file beside its machine — `machines/turing/busy-beaver/bb5.md` beside `bb5.automaton` — or beside a collection, as `collections/busy-beavers.md` beside `busy-beavers.json`. It is its own file, so editing the prose never changes the machine, its hash or its badges.
 
-On the machine's page it reads after the showcase — the figure, the definition, *Try it* — with a contents list in the margin once it has three or more sections. It replaces the short *Write-up*, which is shown only when there is no essay.
+On the machine's page it reads after the showcase — the figure, the definition, *Try it* — with a contents list in the margin once it has three or more sections. An essay can be as short as one paragraph: it is the only place a machine's notes go. (Entries from before essays carry a short *Write-up* instead, shown as Notes; sending an update of one starts the essay from it.)
 
 There are two ways to send one.
 

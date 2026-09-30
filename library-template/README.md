@@ -38,7 +38,8 @@ You can also open a pull request directly: add a `.automaton` file under
 `machines/<family>/<type>/`, with `meta.title`, `meta.blurb`, some
 `meta.inputs` examples, and `meta.library` — `author.login` (your GitHub
 username, which must match the pull request), `license` (`CC-BY-4.0` or
-`CC0-1.0`), and optionally `tags`, `difficulty`, `chapter`, `readme`, `forkOf`.
+`CC0-1.0`), and optionally `tags`, `difficulty`, `chapter`, `forkOf`. Notes
+on the machine go in an essay: a `.md` file of the same name beside it.
 Only an entry's author or a maintainer can change it; to build on
 someone else's machine, add a new file with `forkOf` set to its id.
 
