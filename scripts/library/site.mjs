@@ -34,6 +34,9 @@ import { bbchallengeUrl } from '../../js/interop/standard-tm.js';
 import { FRONTIS_NOTE, MAST_LEDE, cardPicture, figureHtml, frontispieceWhat, plateHtml, rankBadges, standardSize } from '../../js/library/card-html.js';
 import { drawLanguage, drawRun, drawSketch, framesFromStandard, languageRows, sketchAspect, unpackSketch } from '../../js/library/sketch.js';
 import { TEX_DELIMITERS, hasTex } from '../../js/tex.js';
+import { readingMinutes, renderArticle } from '../../js/library/article.js';
+import { drawStandardFigure } from '../../js/library/article-figures.js';
+import { essayFacts, essayFigureSpec, essayLinkTarget } from '../../js/library/essay.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -322,6 +325,69 @@ function entryStage(e, listing, root) {
 </figure>`;
 }
 
+// ── Essays ────────────────────────────────────────────────────────
+
+/**
+ * What an essay (article.js) may ask of the library: facts from the analysis
+ * that earned the badges, figures drawn from the machine, links to other
+ * entries. `self` is the entry the essay belongs to, or null for a
+ * collection's; `{{steps turing/busy-beaver/bb4}}` asks another entry.
+ */
+function essayContext(self, index, depth, listings) {
+  const byId = new Map(index.entries.map(x => [x.id, x]));
+  const root = up(depth);
+  const pick = ref => (ref ? byId.get(ref) : self);
+  const well = (inner, aspect, fam, run = false) => `<div class="fig is-essay${run ? ' is-run' : ''}" data-family="${esc(fam || 'special')}" style="--fig-aspect: ${aspect}">${inner}</div>`;
+  const figure = (name, args) => {
+    if (name === 'machines') {
+      const list = args._.map(id => byId.get(id)).filter(Boolean);
+      return list.length ? { html: plates(list, depth), wide: true } : null;
+    }
+    const e = pick(args.id);
+    const spec = essayFigureSpec(name, args, e);
+    if (!spec) return null;
+    if (spec.kind === 'diagram') {
+      const named = listings.get(e.id)?.diagram;
+      const sk = unpackSketch(e.sketch);
+      const H = named?.h || (sk ? Math.round(640 / sketchAspect(sk)) : 0);
+      const svg = named?.svg || (sk && drawSketch(sk, { w: 640, h: H, label: `Diagram of ${e.title}` }));
+      return svg ? { html: well(svg, `640 / ${H}`, e.category) } : null;
+    }
+    const svg = drawStandardFigure(spec.kind, spec.code, spec.opts);
+    if (!svg) return null;
+    return spec.kind === 'growth'
+      ? { html: `<div class="fig is-essay is-chart" data-family="${esc(e.category || 'special')}">${svg}</div>` }
+      : { html: well(svg, spec.aspect, e.category, true) };
+  };
+  return {
+    fact: essayFacts(index, self),
+    figure,
+    link: id => {
+      const to = essayLinkTarget(index, id);
+      return to ? `${root}${to.kind === 'entry' ? 'm' : 'c'}/${enc(id)}/` : null;
+    }
+  };
+}
+
+/**
+ * An essay as a section of its page: the contents in the margin, the text in
+ * a reading column. Warnings (a fact the library does not know, a figure the
+ * machine cannot draw) are printed by the build and never hide the text.
+ */
+function essayHtml(md, ctx, where) {
+  const art = renderArticle(md, ctx);
+  for (const w of art.warnings) console.log(`  essay ${where}: ${w}`);
+  const mins = readingMinutes(md);
+  const aside = `<span class="essay-meta">${mins} min read${art.figures ? ` · ${plural(art.figures, 'figure')}` : ''}</span>`;
+  const toc = art.toc.filter(t => t.level === 2);
+  return `<section class="shelf essay">${sectionHead('Essay', aside, 'essay')}
+<div class="essay-grid${toc.length > 2 ? '' : ' no-toc'}">
+  ${toc.length > 2 ? `<nav class="essay-toc" aria-label="Contents"><p class="aside-title">Contents</p><ol>${toc.map(t => `<li><a href="#${t.id}">${t.html}</a></li>`).join('')}</ol></nav>` : ''}
+  <div class="essay-body prose tex">${art.html}</div>
+</div>
+</section>`;
+}
+
 /** The author's examples, decided by the machine when the site was built. */
 function examplesHtml(listing) {
   const rows = listing?.examples || [];
@@ -366,7 +432,7 @@ ${same.length ? `<h3 class="aside-title">The same language, drawn differently</h
 </section>`;
 }
 
-function entryPage(e, index, config, listing) {
+function entryPage(e, index, config, listing, listings = new Map()) {
   const depth = 1 + e.id.split('/').length;
   const root = up(depth);
   const req = { action: 'open', id: e.id };
@@ -426,15 +492,16 @@ function entryPage(e, index, config, listing) {
       ${factsHtml}
     </aside>
   </div>
+  ${listing?.article ? essayHtml(listing.article, essayContext(e, index, depth, listings), e.id) : ''}
   ${e.behaviour || e.standard ? behaviourHtml(e, listing) : ''}
-  ${notes.length ? `<section class="shelf">${sectionHead('Notes')}<div class="prose tex">${notes.map(p => `<p>${esc(p)}</p>`).join('')}</div></section>` : ''}
+  ${notes.length && !listing?.article ? `<section class="shelf">${sectionHead('Notes')}<div class="prose tex">${notes.map(p => `<p>${esc(p)}</p>`).join('')}</div></section>` : ''}
   ${relatedHtml(e, index, depth)}
 </article>`;
   return layout({
     title: `${e.title} — ${e.machine} · AutomataStudio Library`,
     description: e.blurb || `A ${e.machine} with ${plural(e.stats.states, 'state')}, verified by the AutomataStudio engine.`,
     depth, body, canonical: `m/${enc(e.id)}/`, image: pic ? enc(pic.path) : null, config,
-    math: !!listing?.latex || hasTex(e.blurb) || hasTex(listing?.readme)
+    math: !!listing?.latex || hasTex(e.blurb) || hasTex(listing?.readme) || hasTex(listing?.article)
   });
 }
 
@@ -469,7 +536,7 @@ function behaviourTable(list, depth) {
   return `<section class="shelf">${sectionHead('At a glance')}<div class="table-wrap"><table class="board"><thead><tr><th>Machine</th><th>Size</th><th class="num">Steps</th><th class="num">Non-blank</th><th>Standard format</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
-function collectionPage(c, index, config) {
+function collectionPage(c, index, config, article = '', listings = new Map()) {
   const depth = 1 + c.id.split('/').length;
   const byId = new Map(index.entries.map(e => [e.id, e]));
   const list = c.entries.map(id => byId.get(id)).filter(Boolean);
@@ -482,10 +549,11 @@ function collectionPage(c, index, config) {
   ${c.blurb ? `<p class="lede tex">${esc(c.blurb)}</p>` : ''}
   <div class="actions"><a class="btn primary" href="${esc(webAppLink(req))}">Open in AutomataStudio</a><a class="btn" href="${esc(protocolLink(req))}" title="Needs the desktop app installed">Open in the desktop app</a></div>
 </div>
+${article ? essayHtml(article, essayContext(null, index, depth, listings), `collection ${c.id}`) : ''}
 ${behaviourTable(list, depth)}
 <section class="shelf">${sectionHead('The machines')}${plates(list, depth)}</section>
 </div>`;
-  return layout({ title: `${c.title} · AutomataStudio Library`, description: c.blurb || c.title, depth, body, canonical: `c/${enc(c.id)}/`, config, nav: 'collections', math: hasTex(c.blurb) });
+  return layout({ title: `${c.title} · AutomataStudio Library`, description: c.blurb || c.title, depth, body, canonical: `c/${enc(c.id)}/`, config, nav: 'collections', math: hasTex(c.blurb) || hasTex(article) });
 }
 
 // ── Submitting, and what the marks mean ───────────────────────────
@@ -534,11 +602,11 @@ async function put(out, path, text) {
  * a name is a path relative to it, so '../interop/smtf.js' lands beside it;
  * `listings` maps an entry id to what build.mjs read off its file.
  */
-export async function writeSite(out, index, config, { assets = {}, listings = new Map() } = {}) {
+export async function writeSite(out, index, config, { assets = {}, listings = new Map(), collectionArticles = new Map() } = {}) {
   await put(out, 'index.html', homePage(index, config, listings));
-  for (const e of index.entries) await put(out, `m/${e.id}/index.html`, entryPage(e, index, config, listings.get(e.id)));
+  for (const e of index.entries) await put(out, `m/${e.id}/index.html`, entryPage(e, index, config, listings.get(e.id), listings));
   await put(out, 'collections/index.html', collectionsPage(index, config));
-  for (const c of index.collections) await put(out, `c/${c.id}/index.html`, collectionPage(c, index, config));
+  for (const c of index.collections) await put(out, `c/${c.id}/index.html`, collectionPage(c, index, config, collectionArticles.get(c.id), listings));
   await put(out, 'submit/index.html', submitPage(config));
   await put(out, '404.html', notFoundPage(config));
   await put(out, 'assets/site.css', await readFile(join(HERE, 'site', 'site.css'), 'utf8'));

@@ -225,6 +225,17 @@ export async function fetchEntryText(entry, index, { fetchImpl = globalThis.fetc
   throw lastError || new Error('The machine could not be downloaded.');
 }
 
+/**
+ * The text of an essay the index lists (`entry.essay` or `collection.essay`):
+ * fetched, verified and cached exactly as a machine's file is — from the file
+ * cache by hash, else jsDelivr at the index's commit, else the site. So an
+ * essay read once reads again offline, and a download that is not the listed
+ * text is refused. Never from My Library, which keeps machines, not prose.
+ */
+export function fetchEssayText(essay, index, opts = {}) {
+  return fetchEntryText({ id: `essay:${essay.path}`, path: essay.path, hash: essay.hash }, index, opts);
+}
+
 /** A fetched entry's text → a document stamped with where it came from. */
 export function stampSource(text, entry) {
   const doc = JSON.parse(text);
