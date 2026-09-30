@@ -66,7 +66,7 @@ function parseArgs(s) {
 
 // ── Raw HTML: a short list of bare tags ───────────────────────────
 
-const HTML_OK = new Set(['sub', 'sup', 'kbd', 'mark', 'br', 'hr', 'details', 'summary', 'ins', 'del', 's', 'u', 'b', 'i', 'em', 'strong', 'small', 'cite', 'q', 'dfn', 'var', 'samp', 'code', 'abbr', 'p', 'div', 'span', 'center']);
+export const HTML_OK = new Set(['sub', 'sup', 'kbd', 'mark', 'br', 'hr', 'details', 'summary', 'ins', 'del', 's', 'u', 'b', 'i', 'em', 'strong', 'small', 'cite', 'q', 'dfn', 'var', 'samp', 'code', 'abbr', 'p', 'div', 'span', 'center']);
 const TAG_RE = /<!--[\s\S]*?-->|<\/?[A-Za-z][^>]*>/g;
 const bareTag = t => {
   const m = /^<\/?([A-Za-z][A-Za-z0-9]*)\s*\/?>$/.exec(t);
@@ -221,12 +221,13 @@ function figurePlugin(md) {
     const { name, args, caption } = t[i].meta;
     const f = env.ctx.figure(name, args);
     if (!f) { env.warnings.push(`::: ${name} is not a figure this machine can draw.`); return ''; }
+    if (f.plain) return f.html;   // not a figure of the essay's: unnumbered, uncaptioned
     const n = ++env.figures;
     return `<figure class="essay-fig${f.wide ? ' is-wide' : ''}" id="${env.pid(`figure-${n}`)}">${f.html}${caption ? `<figcaption class="figcaption-text"><span class="fig-n">Figure ${n}.</span> ${inlineIn(md, caption, env)}</figcaption>` : ''}</figure>\n`;
   };
 }
 
-const CALLOUT_ALIAS = { summary: 'abstract', tldr: 'abstract', hint: 'tip', important: 'tip', check: 'success', done: 'success', help: 'question', faq: 'question', caution: 'warning', attention: 'warning', fail: 'failure', missing: 'failure', error: 'danger', cite: 'quote' };
+export const CALLOUT_ALIAS = { summary: 'abstract', tldr: 'abstract', hint: 'tip', important: 'tip', check: 'success', done: 'success', help: 'question', faq: 'question', caution: 'warning', attention: 'warning', fail: 'failure', missing: 'failure', error: 'danger', cite: 'quote' };
 
 /** `> [!type] Title`, Obsidian's callouts; `-` folds one closed, `+` open. */
 function calloutPlugin(md) {
@@ -358,6 +359,11 @@ function linkPolicyPlugin(md) {
 /** How the rest is drawn: the website's classes, and raw HTML through the list above. */
 function rendererPlugin(md) {
   const rules = md.renderer.rules;
+  // A dollar sign that is not math — "$5 and $10", or a written \$ — gets an
+  // element of its own. KaTeX's auto-render, which typesets the page after it
+  // is drawn, matches delimiters only within one run of text, so a price
+  // stays a price instead of becoming "5 and " in italics.
+  rules.text = (t, i) => esc(t[i].content).replace(/\$/g, '<span class="md-dollar">$</span>');
   const warnHtml = (html, env) => {
     const ok = safeHtml(html);
     if (ok !== null) return ok;
@@ -423,12 +429,14 @@ function markdown() {
  *                       figures, notes) — in the app the essay shares a
  *                       document with everything else, and "contents" is
  *                       not a safe id to hand out.
+ *   anchorPrefix        what a `#heading` link is given, so it reaches the
+ *                       heading it names (the idPrefix unless told otherwise).
  *   newTab              open http(s) links in a new tab, as the app does.
  *
  * What cannot be answered is kept visible and reported in `warnings`, which
  * the build prints: a missing fact reads as [[steps?]], never as a blank.
  */
-export function renderArticle(md, { fact = () => null, figure = () => null, link = () => null, idPrefix = '', newTab = false } = {}) {
+export function renderArticle(md, { fact = () => null, figure = () => null, link = () => null, idPrefix = '', anchorPrefix = idPrefix, newTab = false } = {}) {
   const src = stripFrontMatter(md).slice(0, ARTICLE_MAX_CHARS);
   const warnings = [];
   const ctx = {
@@ -443,7 +451,9 @@ export function renderArticle(md, { fact = () => null, figure = () => null, link
         if (!url) warnings.push(`Link "${h}" names nothing in the library.`);
         return url;
       }
-      if (/^(https?:\/\/|mailto:|#)/i.test(h)) return h;
+      // A #heading means this essay's heading, which carries the prefix.
+      if (h.startsWith('#')) return `#${anchorPrefix}${h.slice(1)}`;
+      if (/^(https?:\/\/|mailto:)/i.test(h)) return h;
       warnings.push(`Link "${h}" is neither http(s), mailto, # nor lib:.`);
       return null;
     },
@@ -453,8 +463,10 @@ export function renderArticle(md, { fact = () => null, figure = () => null, link
   const p = markdown();
   const html = balanceHtml(p.render(src, env));
   // A footnote cited and never written is left as the text [^x]; say so.
-  const defined = new Set([...src.matchAll(/^\[\^([^\]\s]+)\]:/gm)].map(m => m[1]));
-  for (const id of new Set([...src.matchAll(/\[\^([^\]\s]+)\](?!:)/g)].map(m => m[1]))) {
+  // Code is left out of the search: an essay may show the syntax in `[^x]`.
+  const prose = src.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, '').replace(/(`+)[^`]*?\1/g, '');
+  const defined = new Set([...prose.matchAll(/^\[\^([^\]\s]+)\]:/gm)].map(m => m[1]));
+  for (const id of new Set([...prose.matchAll(/\[\^([^\]\s]+)\](?!:)/g)].map(m => m[1]))) {
     if (!defined.has(id)) warnings.push(`Footnote [^${id}] has no text.`);
   }
   // A heading's own html carries its footnote markers; the contents list does not want them.

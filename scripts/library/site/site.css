@@ -473,6 +473,14 @@ body.is-searching .discover { display: none; }
 .essay-notes li::marker { font-family: var(--mono); font-size: .8em; color: var(--text3); }
 .fn-back { color: var(--text3); text-decoration: none; font-size: .9em; }
 .essay-body .plates { margin: 0; }
+/* The writing guide's examples: the Markdown, and what it becomes, side by side. */
+.essay-body .essay-example { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; margin: 1.1em 0 1.6em; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.essay-body .essay-example > .essay-example-src { margin: 0; border: 0; border-right: 1px solid var(--border); border-radius: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.essay-body .essay-example-out { padding: 12px 16px; min-width: 0; font-size: .96em; }
+.essay-body .essay-example-out > :first-child { margin-top: 0; }
+.essay-body .essay-example-out > :last-child { margin-bottom: 0; }
+.essay-body .essay-example-out > p:first-child::first-letter { float: none; font-size: inherit; padding: 0; }
+.essay-body .essay-example-out .essay-fig { margin: .4em 0; }
 .essay-body hr { border: 0; border-top: 1px solid var(--border2); margin: 2em 0; }
 .essay-body mark { background: color-mix(in srgb, var(--gold) 28%, transparent); color: inherit; padding: 0 2px; border-radius: 2px; }
 .essay-body kbd { font-family: var(--mono); font-size: .72em; padding: 1px 6px; border: 1px solid var(--border2); border-bottom-width: 2px; border-radius: 4px; background: var(--well); }
@@ -543,6 +551,8 @@ body.is-searching .discover { display: none; }
   .essay-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; }
   .essay-toc { position: static; }
   .essay-toc ol { flex-direction: row; flex-wrap: wrap; gap: 6px 18px; }
+  .essay-body .essay-example { grid-template-columns: minmax(0, 1fr); }
+  .essay-body .essay-example > .essay-example-src { border-right: 0; border-bottom: 1px solid var(--border); }
 }
 
 @media (max-width: 760px) {

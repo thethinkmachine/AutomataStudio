@@ -845,11 +845,19 @@ function pageEntry(id) {
 
 const ESSAY_ID = 'lib-essay-';
 const PREVIEW_ID = 'lib-md-';
+const GUIDE_ID = 'lib-guide-';
 
 // The renderer carries markdown-it, which nothing else in the app needs, so it
 // is loaded the first time an essay is read or written rather than at boot.
 let articleModule = null;
 const loadArticle = () => (articleModule ||= import('./library/article.js'));
+
+// The writing guide: js/library/essay-guide.md, the same text the website's
+// /writing/ page is built from, with its renderer. Loaded the first time the
+// editor's Guide is opened. A test swaps the loader (Node has no ?raw import).
+let guideLoader = () => Promise.all([import('./library/essay-guide.md?raw'), import('./library/essay-guide.js')])
+  .then(([text, mod]) => ({ md: text.default, renderGuide: mod.renderGuide, guideSample: mod.guideSample }));
+export function _setEssayGuideLoaderForTests(fn) { guideLoader = fn; }
 
 function essaySection(essay, self) {
   const body = h('div', { class: 'lib-essay-body lib-prose' }, h('p', { class: 'lib-muted', text: 'Fetching the essay…' }));
@@ -954,7 +962,7 @@ function essayClick(ev) {
 }
 
 function scrollToEssayId(id) {
-  if (!id.startsWith(ESSAY_ID) && !id.startsWith(PREVIEW_ID)) return;
+  if (![ESSAY_ID, PREVIEW_ID, GUIDE_ID].some(p => id.startsWith(p))) return;
   document.getElementById?.(id)?.scrollIntoView?.({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
 }
 
@@ -1608,7 +1616,10 @@ function essayEditor(f, draftKey) {
   });
   input.value = f.essay || '';
   const preview = h('div', { class: 'lib-md-preview lib-essay-body lib-prose', 'aria-label': 'Preview' });
-  const panes = h('div', { class: `lib-md-panes is-${mode}` }, input, preview);
+  const guide = h('div', { class: 'lib-md-guide lib-essay-body lib-prose', 'aria-label': 'Writing an essay' });
+  const panes = h('div', { class: `lib-md-panes is-${mode}` }, input, preview, guide);
+  let guideOpen = false;
+  let guideDrawn = false;
   const warnings = h('ul', { class: 'lib-md-warnings', hidden: true });
   const status = h('span', { class: 'lib-md-status' });
   const picker = h('input', { type: 'file', accept: ESSAY_ACCEPT, hidden: true, 'aria-hidden': 'true', tabindex: '-1' });
@@ -1674,6 +1685,9 @@ function essayEditor(f, draftKey) {
   const setMode = m => {
     mode = m;
     L.essayMode = m;
+    guideOpen = false;
+    guideBtn.classList.remove('is-on');
+    guideBtn.setAttribute('aria-pressed', 'false');
     panes.className = `lib-md-panes is-${m}`;
     for (const b of modeBtns) {
       const on = b.dataset.mode === m;
@@ -1730,9 +1744,42 @@ function essayEditor(f, draftKey) {
     });
   }
 
+  // The guide takes the preview's place beside the Markdown, so the reference
+  // sits next to what is being written; any layout button puts the preview back.
+  const drawGuide = async () => {
+    if (guideDrawn) return;
+    guideDrawn = true;
+    guide.append(h('p', { class: 'lib-muted', text: 'Loading the guide…' }));
+    try {
+      const { md, renderGuide, guideSample } = await guideLoader();
+      const gidx = idx || { entries: [], collections: [] };
+      const slots = [];
+      const ctx = essayContext(gidx, guideSample(gidx), slots);
+      const art = renderGuide(md, { index: gidx, figure: ctx.figure, link: ctx.link, idPrefix: GUIDE_ID, newTab: true });
+      guide.innerHTML = art.html;
+      fillEssaySlots(guide, slots);
+      typeset(guide);
+    } catch {
+      guideDrawn = false;
+      guide.innerHTML = '';
+      guide.append(h('p', { class: 'lib-muted', text: 'The guide could not be loaded.' }));
+    }
+  };
+  const toggleGuide = () => {
+    if (guideOpen) { setMode(mode); return; }
+    guideOpen = true;
+    panes.className = 'lib-md-panes is-split has-guide';
+    for (const b of modeBtns) { b.classList.remove('is-on'); b.setAttribute('aria-pressed', 'false'); }
+    guideBtn.classList.add('is-on');
+    guideBtn.setAttribute('aria-pressed', 'true');
+    drawGuide();
+  };
+  const guideBtn = button('Guide', () => toggleGuide(), 'lib-md-mode lib-md-guide-btn', { 'aria-pressed': 'false', title: 'How to write an essay: everything it can hold, with examples' });
+  guide.addEventListener('click', essayClick);
+
   const slug = () => (f.title || 'essay').replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-|-$/g, '').toLowerCase() || 'essay';
   const toolbar = h('div', { class: 'lib-md-toolbar' },
-    h('div', { class: 'lib-md-modes', role: 'group', 'aria-label': 'Editor layout' }, modeBtns),
+    h('div', { class: 'lib-md-modes', role: 'group', 'aria-label': 'Editor layout' }, modeBtns, guideBtn),
     h('div', { class: 'lib-md-files' },
       button('Open .md file…', () => picker.click(), 'lib-textbtn', { title: 'Use an essay you have already written — Markdown or plain text' }),
       button('Save as .md', () => { if (input.value.trim()) exportDownload(`${slug()}.md`, input.value, 'text/markdown'); else showStatus('There is no essay to save yet'); }, 'lib-textbtn'),
@@ -1750,7 +1797,7 @@ function essayEditor(f, draftKey) {
   redraw(true);
 
   return h('div', { class: 'lib-md-editor' }, toolbar, panes, warnings,
-    h('p', { class: 'lib-field-hint', text: 'Markdown, all of it: headings, tables, footnotes, task lists, $…$ math, > [!note] callouts and [[library/id]] links. {{steps}}, {{ones}} and {{size}} are filled in by the library; ::: spacetime, ::: growth, ::: diagram and ::: machines draw figures from the machine. Ctrl/⌘ E switches between writing and reading.' }));
+    h('p', { class: 'lib-field-hint', text: 'Markdown, all of it: headings, tables, footnotes, task lists, $…$ math, > [!note] callouts and [[library/id]] links. {{steps}}, {{ones}} and {{size}} are filled in by the library; ::: spacetime, ::: growth, ::: diagram and ::: machines draw figures from the machine. Ctrl/⌘ E switches between writing and reading. Guide shows all of it, with examples.' }));
 }
 
 /**

@@ -15,18 +15,15 @@
   chosen; it keeps its checker.
 - **A collection:** open a pull request; maintainers review those by hand.
 - **An essay about your machine:** write it in the app — Submit a machine has
-  an essay editor with a live preview, and can open a `.md` you already wrote
-  (from Obsidian or anywhere) — or open a pull request adding a Markdown file
-  beside it: `machines/…/bb5.md` beside `bb5.automaton`. It is shown on the
-  machine's page in the app and on the website. Write `{{steps}}`, `{{ones}}`,
-  `{{states}}` or `{{steps <other entry's id>}}` rather than typing a number:
-  the library fills in what it computed. `::: spacetime`, `::: growth`,
-  `::: diagram` and `::: machines <id> …` draw figures from the machine, and
-  `[text](lib:<id>)` or `[[id]]` links to another entry or collection. All of
-  Markdown works — tables, footnotes, task lists, `$…$` math, `> [!note]`
-  callouts; raw HTML is limited to a few bare tags such as `<kbd>`. The pull request's
-  report lists anything the library could not answer. Only a machine's author
-  (or a maintainer) can add or change its essay.
+  an essay editor with a live preview and a guide beside it, and can open a
+  `.md` you already wrote (from Obsidian or anywhere) — or open a pull request
+  adding a Markdown file beside it: `machines/…/bb5.md` beside
+  `bb5.automaton`. All of Markdown works, and the library fills in facts
+  (`{{steps}}`), draws figures (`::: spacetime`) and checks links
+  (`[[id]]`). **Everything an essay can hold is on the library website's
+  *Writing an essay* page (`/writing/`), each example shown with what it
+  becomes.** Only a machine's author (or a maintainer) can add or change its
+  essay.
 
 Keep machines to what they need to be — the library takes files up to 1.5 MB
 and 2,000 states.

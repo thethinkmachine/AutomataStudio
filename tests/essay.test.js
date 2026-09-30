@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { balanceHtml, readingMinutes, renderArticle } from '../js/library/article.js';
+import { readFileSync } from 'node:fs';
+import { ARTICLE_MAX_CHARS, CALLOUT_ALIAS, HTML_OK, balanceHtml, readingMinutes, renderArticle } from '../js/library/article.js';
+import { GUIDE_SAMPLE, renderGuide } from '../js/library/essay-guide.js';
 import { drawStandardFigure, growthSvg, runStandard, spacetimeSvg } from '../js/library/article-figures.js';
-import { SPACETIME_MAX_STEPS, essayFacts, essayFigureSpec, essayLinkTarget } from '../js/library/essay.js';
+import { ESSAY_FACTS, GROWTH_MAX_STEPS, SPACETIME_MAX_STEPS, essayFacts, essayFigureSpec, essayLinkTarget } from '../js/library/essay.js';
 import { normalizeIndex } from '../js/library/index-model.js';
 import { INDEX_FORMAT } from '../js/library/config.js';
 
@@ -96,7 +98,9 @@ test('code and math are set aside before emphasis, so neither is rewritten', () 
   assert.match(html, /\$a_1 \* b_2\$/, 'math reaches KaTeX untouched');
   assert.match(html, /\\\(x_i\\\)/);
   assert.match(html, /<em>this<\/em>/);
-  assert.match(html, /\$5 and \$10 are prices/, 'a price is not math');
+  assert.match(html, /<span class="md-dollar">\$<\/span>5 and <span class="md-dollar">\$<\/span>10 are prices/,
+    'a price is not math — and each of its dollars is in an element of its own, so KaTeX\'s auto-render, which reads one run of text at a time, cannot pair them either');
+  assert.match(render('A written \\$3.').html, /A written <span class="md-dollar">\$<\/span>3\./, '\\$ is a dollar sign');
   assert.match(html, /<div class="essay-math">\$\$\n\\sum_\{i=1\}\^n i\n\$\$<\/div>/);
 });
 
@@ -126,12 +130,12 @@ test('footnotes are numbered in the order they are cited, written once, and a mi
 });
 
 test('every id carries the prefix, and only web links open a new tab', () => {
-  const { html, toc } = render('## Start here\n\nSee[^1] [out](https://x.org) and [in](#lib-essay-start-here).\n\n::: f\n:::\n\n[^1]: n', { idPrefix: 'lib-essay-', newTab: true });
+  const { html, toc } = render('## Start here\n\nSee[^1] [out](https://x.org) and [in](#start-here).\n\n::: f\n:::\n\n[^1]: n', { idPrefix: 'lib-essay-', newTab: true });
   const ids = [...html.matchAll(/ id="([^"]+)"/g)].map(m => m[1]);
   assert.deepEqual(ids.sort(), ['lib-essay-figure-1', 'lib-essay-fn-1', 'lib-essay-fnref-1', 'lib-essay-start-here']);
   assert.equal(toc[0].id, 'lib-essay-start-here');
   assert.match(html, /href="https:\/\/x\.org" class="textlink-inline" target="_blank" rel="noopener noreferrer"/);
-  assert.doesNotMatch(html, /href="#lib-essay-start-here"[^>]*target/);
+  assert.match(html, /href="#lib-essay-start-here" class="textlink-inline">in<\/a>/, 'an in-page link keeps its tab, and reaches the prefixed heading');
 });
 
 test('figures are numbered by the ones drawn; one that cannot be drawn is skipped and reported', () => {
@@ -208,4 +212,48 @@ test('the index keeps an essay only where one could be', () => {
   }
   assert.equal(raw(undefined).entries[0].essay, null);
   assert.equal(raw({ path: 'm/x.md', minutes: 1e9 }).entries[0].essay.minutes, 240);
+});
+
+// ── The writing guide ─────────────────────────────────────────────
+// essay-guide.md is the documentation for all of the above, and these hold it
+// to the code: every example in it renders cleanly, and every fact, figure,
+// callout kind, HTML tag and limit the code has is in it.
+
+const GUIDE = readFileSync(new URL('../js/library/essay-guide.md', import.meta.url), 'utf8');
+const guideFigure = (name, args) => {
+  const spec = essayFigureSpec(name, args, GUIDE_SAMPLE);
+  if (!spec || spec.kind === 'diagram') return null;
+  const svg = drawStandardFigure(spec.kind, spec.code, spec.opts);
+  return svg && { html: svg };
+};
+
+test('the writing guide renders, examples and all, with nothing the library cannot answer', () => {
+  const g = renderGuide(GUIDE, { figure: guideFigure });
+  assert.deepEqual(g.warnings, []);
+  assert.ok(g.examples >= 12, 'every kind of thing is shown, not only described');
+  assert.match(g.html, /<div class="essay-example"><pre class="essay-code essay-example-src"[^>]*><code>/);
+  assert.match(g.html, /It halts after <span class="fact"[^>]*>6<\/span> steps/, 'an example\'s facts are the sample machine\'s');
+  assert.ok(g.toc.length >= 15);
+});
+
+test('the writing guide documents everything the renderer accepts, and its real limits', () => {
+  for (const name of Object.keys(ESSAY_FACTS)) assert.ok(GUIDE.includes(`{{${name}}}`), `the fact {{${name}}}`);
+  for (const kind of ['spacetime', 'growth', 'diagram', 'machines']) assert.ok(GUIDE.includes(`::: ${kind}`), `the figure ::: ${kind}`);
+  for (const kind of new Set([...Object.keys(CALLOUT_ALIAS), ...Object.values(CALLOUT_ALIAS), 'note', 'info', 'todo', 'bug', 'example'])) {
+    assert.ok(GUIDE.includes(`\`${kind}\``), `the callout kind ${kind}`);
+  }
+  for (const tag of HTML_OK) assert.ok(GUIDE.includes(`<${tag}>`), `the HTML tag <${tag}>`);
+  assert.ok(GUIDE.includes(ARTICLE_MAX_CHARS.toLocaleString('en-US')), 'the length limit');
+  assert.ok(GUIDE.includes(SPACETIME_MAX_STEPS.toLocaleString('en-US')), 'the space-time limit');
+  assert.ok(GUIDE.includes(`${GROWTH_MAX_STEPS / 1e6} million`), 'the growth chart\'s budget');
+  assert.equal(essayFigureSpec('spacetime', { _: [] }, GUIDE_SAMPLE).opts.steps, 2000);
+  assert.ok(/2,000 unless you say/.test(GUIDE) && /\(420; 160 to 900\)/.test(GUIDE), 'the defaults it states are the defaults');
+});
+
+test('a #heading link reaches the heading, whatever the ids are prefixed with', () => {
+  const { html } = renderArticle('## Far below\n\nSee [it](#far-below).', { idPrefix: 'lib-essay-' });
+  assert.match(html, /id="lib-essay-far-below"/);
+  assert.match(html, /href="#lib-essay-far-below"/);
+  const g = renderGuide('## Target\n\n```example\n[back up](#target)\n```', { idPrefix: 'g-' });
+  assert.match(g.html, /href="#g-target"/, 'a guide example\'s link reaches the guide\'s heading');
 });

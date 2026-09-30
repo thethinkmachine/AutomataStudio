@@ -37,6 +37,7 @@ import { TEX_DELIMITERS, hasTex } from '../../js/tex.js';
 import { readingMinutes, renderArticle } from '../../js/library/article.js';
 import { drawStandardFigure } from '../../js/library/article-figures.js';
 import { essayFacts, essayFigureSpec, essayLinkTarget } from '../../js/library/essay.js';
+import { guideSample, renderGuide } from '../../js/library/essay-guide.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -136,7 +137,7 @@ ${body}
 <footer class="foot">
   <div class="foot-in">
     <p>Every mark on this site was earned by running the machine with the AutomataStudio engine. Machines are © their authors, under the licence on each page.</p>
-    <p class="foot-links"><a href="${esc(repoUrl(config.repo))}">Source on GitHub</a><span aria-hidden="true">·</span><a href="${root}index.json">index.json</a><span aria-hidden="true">·</span><a href="${esc(APP_WEB_URL)}">AutomataStudio</a></p>
+    <p class="foot-links"><a href="${esc(repoUrl(config.repo))}">Source on GitHub</a><span aria-hidden="true">·</span><a href="${root}index.json">index.json</a><span aria-hidden="true">·</span><a href="${root}writing/">Writing an essay</a><span aria-hidden="true">·</span><a href="${esc(APP_WEB_URL)}">AutomataStudio</a></p>
   </div>
 </footer>
 ${THEME_SCRIPT}
@@ -388,6 +389,36 @@ function essayHtml(md, ctx, where) {
 </section>`;
 }
 
+/**
+ * How to write an essay: js/library/essay-guide.md, with each example shown
+ * beside what it becomes — drawn by this build's own renderer, facts and
+ * figures of a real entry included — so the page cannot promise what the
+ * renderer does not do.
+ */
+function writingPage(index, config, listings, guide) {
+  const depth = 1;
+  const self = guideSample(index);
+  const ctx = essayContext(self, index, depth, listings);
+  const art = renderGuide(guide, { index, figure: ctx.figure, link: ctx.link });
+  for (const w of art.warnings) console.log(`  writing guide: ${w}`);
+  const toc = art.toc.filter(t => t.level === 2);
+  const body = `<div class="page writing" data-family="tm">
+<div class="pagehead">
+  <p class="kicker">Contributing</p>
+  <h1 class="display">Writing an essay</h1>
+  <p class="lede">A machine's page can carry an essay — Markdown beside the machine, with the numbers and the figures filled in by the library. Everything an essay can hold, each example shown with what it becomes.</p>
+  <div class="actions"><a class="btn primary" href="${esc(webAppLink({ action: 'browse' }))}">Write one in AutomataStudio</a><a class="btn" href="${up(depth)}submit/">How submitting works</a></div>
+</div>
+<section class="shelf essay">
+<div class="essay-grid">
+  <nav class="essay-toc" aria-label="Contents"><p class="aside-title">Contents</p><ol>${toc.map(t => `<li><a href="#${t.id}">${t.html}</a></li>`).join('')}</ol></nav>
+  <div class="essay-body prose tex">${art.html}</div>
+</div>
+</section>
+</div>`;
+  return layout({ title: 'Writing an essay · AutomataStudio Library', description: 'How to write an essay for a machine in the AutomataStudio library: Markdown, facts the library fills in, figures drawn from the machine.', depth, body, canonical: 'writing/', config, nav: 'submit', math: true });
+}
+
 /** The author's examples, decided by the machine when the site was built. */
 function examplesHtml(listing) {
   const rows = listing?.examples || [];
@@ -575,6 +606,9 @@ function submitPage(config) {
 </ol>
 <p class="muted">No app to hand? <a class="textlink" href="${esc(issue)}">Fill in the form yourself</a> and paste a share link or attach the <code>.automaton</code> file. Machines are published under CC BY 4.0 or CC0 — you choose — and credited to the GitHub account that submits them.</p>
 </section>
+<section class="shelf">${sectionHead('An essay', '', 'essay')}
+<p class="muted">A machine's page can carry an essay: Markdown written in the app's submit form — or opened from a <code>.md</code> file you already have — with facts and figures filled in by the library. <a class="textlink" href="../writing/">Writing an essay</a> shows everything one can hold.</p>
+</section>
 <section class="shelf">${sectionHead('What the marks mean', '', 'badges')}
 <dl class="facts badge-list">${Object.values(BADGES).map(b => `<dt>${esc(b.label)}</dt><dd>${esc(b.say)}</dd>`).join('')}</dl>
 </section>
@@ -603,6 +637,8 @@ async function put(out, path, text) {
  * `listings` maps an entry id to what build.mjs read off its file.
  */
 export async function writeSite(out, index, config, { assets = {}, listings = new Map(), collectionArticles = new Map() } = {}) {
+  const guide = await readFile(join(HERE, '../../js/library/essay-guide.md'), 'utf8');
+  await put(out, 'writing/index.html', writingPage(index, config, listings, guide));
   await put(out, 'index.html', homePage(index, config, listings));
   for (const e of index.entries) await put(out, `m/${e.id}/index.html`, entryPage(e, index, config, listings.get(e.id), listings));
   await put(out, 'collections/index.html', collectionsPage(index, config));
@@ -619,7 +655,7 @@ export async function writeSite(out, index, config, { assets = {}, listings = ne
     await mkdir(dirname(to), { recursive: true });
     await copyFile(from, to);
   }
-  const urls = ['', 'collections/', 'submit/',
+  const urls = ['', 'collections/', 'submit/', 'writing/',
     ...index.entries.map(e => `m/${enc(e.id)}/`), ...index.collections.map(c => `c/${enc(c.id)}/`)];
   await put(out, 'sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(u => `  <url><loc>${esc(config.site + u)}</loc></url>`).join('\n')}\n</urlset>\n`);
 }

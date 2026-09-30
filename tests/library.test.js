@@ -1506,6 +1506,42 @@ test('an author updating their entry starts from the essay it already has', asyn
   context.saveEssayDraft('w0|turing/busy-beaver/bb2', '');
 });
 
+test('the website has a page on writing an essay, built from the guide', async () => {
+  const b = await builtLibrary();
+  const out = await mkdtemp(join(tmpdir(), 'as-site-'));
+  await writeLibrary({ library: b.root, out }, b);
+  const page = await readFile(join(out, 'writing/index.html'), 'utf8');
+  assert.match(page, /<h1 class="display">Writing an essay<\/h1>/);
+  assert.match(page, /<div class="essay-example">/);
+  assert.match(page, /It halts after <span class="fact"[^>]*>6<\/span> steps/, 'the examples are BB(2)\'s, from the index');
+  assert.match(page, /<nav class="essay-toc"/);
+  assert.match(await readFile(join(out, 'submit/index.html'), 'utf8'), /href="\.\.\/writing\/">Writing an essay<\/a>/);
+  assert.match(await readFile(join(out, 'sitemap.xml'), 'utf8'), /writing\//);
+});
+
+test('the essay editor opens the guide beside the Markdown', async () => {
+  await serveLibrary();
+  seedTab();
+  const { renderGuide, guideSample } = await import('../js/library/essay-guide.js');
+  const md = await readFile(new URL('../js/library/essay-guide.md', import.meta.url), 'utf8');
+  context._setEssayGuideLoaderForTests(async () => ({ md, renderGuide, guideSample }));
+  context.renderLibraryView();
+  await context.loadLibrary({ force: true });
+  context.go('submit', null, { reset: true });
+  const editor = findAll(context.document.getElementById('lib-content'), n => n.classList?.contains('lib-md-editor'))[0];
+  const btn = findAll(editor, n => n.tagName === 'BUTTON' && textOf(n) === 'Guide')[0];
+  const panes = findAll(editor, n => n.classList?.contains('lib-md-panes'))[0];
+  const guide = findAll(editor, n => n.classList?.contains('lib-md-guide'))[0];
+  btn._listeners.click();
+  assert.ok(panes.classList.contains('has-guide'), 'the guide takes the preview\'s place beside the Markdown');
+  for (let i = 0; i < 200 && !/essay-example/.test(guide.innerHTML); i++) await new Promise(r => setTimeout(r, 10));
+  assert.match(guide.innerHTML, /id="lib-guide-where-an-essay-lives"/);
+  assert.match(guide.innerHTML, /<div class="essay-example">/);
+  const split = findAll(editor, n => n.tagName === 'BUTTON' && textOf(n) === 'Split')[0];
+  split._listeners.click();
+  assert.ok(!panes.classList.contains('has-guide'), 'a layout button puts the preview back');
+});
+
 test('a second emulator on a busy port gives up before it watches anything', async () => {
   resetApp();
   const { createLibraryServer } = await import('../scripts/library/dev-server.mjs');
