@@ -48,7 +48,11 @@ function oracleFailure(r, text, timeout) {
   if (r.error?.code === 'ETIMEDOUT') {
     return new CliError(`The oracle took longer than ${timeout} ms${on} and was stopped. Raise --timeout, or check that it is not waiting for more input.`);
   }
-  if (r.error) return new CliError(`The oracle could not be run: ${r.error.message}`);
+  // EPIPE means the oracle exited before reading the word from stdin. That is
+  // not a failure: an oracle that reads its argument never touches stdin, and
+  // a shell that cannot find the program exits 127 without starting it. Either
+  // way the process ran and has a status, and the caller decides what it meant.
+  if (r.error && !(r.error.code === 'EPIPE' && r.status !== null)) return new CliError(`The oracle could not be run: ${r.error.message}`);
   if (r.status === null) return new CliError(`The oracle was killed by ${r.signal}${on}.`);
   return null;
 }
