@@ -218,3 +218,14 @@ export function statePill(name, { current = false, accepting = false } = {}) {
   if (current) return pill(name, accepting ? PALETTE.green : PALETTE.amber);
   return accepting ? c.green(`((${name}))`) : c.violet(` ${name} `);
 }
+
+/**
+ * A word as a table shows it: whole when it fits, otherwise its two ends and
+ * its length — a 200,000-symbol word would otherwise bury the verdict. The
+ * --json output always carries the whole word.
+ */
+export function shortWord(w, max = 60) {
+  const chars = [...String(w)];
+  if (chars.length <= max) return String(w);
+  return `${chars.slice(0, 32).join('')}…${chars.slice(-12).join('')} (${chars.length.toLocaleString('en-US')} symbols)`;
+}

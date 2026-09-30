@@ -8,7 +8,7 @@ import { withMachine } from '../../js/exercise/grade.js';
 import { machineGuards, parseMachineInput, streamMachine } from '../../js/machines/index.js';
 import { withPainterSuppressed } from '../../js/machines/paint.js';
 import { CliError, readMachine, readSpecText, readStdin } from '../io.mjs';
-import { c, print, printJson, styled, table, tapeCells, verdictWord, warn } from '../out.mjs';
+import { c, print, printJson, shortWord, styled, table, tapeCells, verdictWord, warn } from '../out.mjs';
 
 // ── verdicts → exit codes ─────────────────────────────────────────
 // Worst wins: an error over an unknown over a reject over an accept.
@@ -56,7 +56,7 @@ Exit: 0 all accepted, 1 some rejected, 2 some had no verdict within the budget,
     if (opts.json) printJson(results.length === 1 ? results[0] : results);
     else {
       print(table(results.map(r => {
-        const shown = r.word === '' ? c.faint(App.config.sym.eps) : c.bold(r.word);
+        const shown = r.word === '' ? c.faint(App.config.sym.eps) : c.bold(shortWord(r.word));
         const v = r.verdict === 'err' ? `${verdictWord('err')}  ${c.magenta(r.error.replace(/<[^>]+>/g, ''))}`
           : matters ? verdictWord(r.verdict) : (r.verdict === 'unk' ? verdictWord('unk') : c.muted('● done'));
         return transducer && r.verdict !== 'err' ? [shown, v, `${c.faint('→')} ${r.output ? c.teal(r.output) : c.faint('(nothing)')}`] : [shown, v];
@@ -101,7 +101,7 @@ function showBatch({ rows, summary }, opts) {
   const show = opts.failures ? rows.filter(r => r.status !== 'pass' && r.status !== 'probe') : rows;
   print(table(show.map(r => [
     mark[r.status],
-    r.word === '' ? App.config.sym.eps : r.word,
+    r.word === '' ? App.config.sym.eps : shortWord(r.word),
     r.status === 'error' ? c.magenta(r.error.replace(/<[^>]+>/g, '')) : verdictWord(r.got) + (r.output != null ? ` → ${r.output || '(nothing)'}` : ''),
     r.expect ? c.dim(`expected ${r.expect}`) : ''
   ])));
@@ -228,9 +228,9 @@ and the tape, stack, unread input or output where the machine has them.
   async run({ args, opts }) {
     const [spec, word = ''] = args;
     const { target } = readMachine(spec);
-    const cap = Math.max(1, Number(opts.limit ?? 200));
+    const cap = Number(opts.limit ?? 200);
     const { steps, cut } = traceSteps(target, word, cap);
-    if (opts.json) { printJson({ steps, cut }); return steps.at(-1)?.final === 'accept' ? 0 : 0; }
+    if (opts.json) { printJson({ steps, cut }); return cut ? 2 : endingCode(steps.at(-1)?.final); }
     const blank = App.config.sym.blank;
     const alphabet = [];
     for (const st of steps) for (const t of [st.tape, ...(st.tapes || []), st.stack, st.stack2, ...(st.store || [])]) for (const x of t || []) if (x && x !== blank && !alphabet.includes(x)) alphabet.push(x);

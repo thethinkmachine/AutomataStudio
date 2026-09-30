@@ -406,8 +406,12 @@ Runs the machine and the oracle on the same words — every word up to length 3,
 then random ones — and stops at the first disagreement, which it shrinks to a
 minimal counterexample.
 
-The oracle gets the word as {} in the command (or appended), on stdin, and in
-$AUTOMATA_WORD, and answers by
+The oracle gets the word three ways: as {} in the command (or appended), on
+stdin, and in $AUTOMATA_WORD. {} becomes a quoted reference to that variable
+("$AUTOMATA_WORD", or "%AUTOMATA_WORD%" under cmd.exe), so a word's symbols
+reach the program as themselves and are never run by the shell. Every {} is
+replaced, so a script with braces of its own should read $AUTOMATA_WORD
+instead. It answers by
   --mode exit       exit code 0 = accept (default)
   --mode stdout     yes/no, true/false, 1/0, accept/reject on its first line
   --mode output     its first line is the expected output (transducers)

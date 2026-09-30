@@ -282,7 +282,9 @@ export function readHOA(text, sym) {
   const used = new Set();
   for (const st of states.values()) for (const e of st.edges) for (let v = 0; v < nVals; v++) if (e.label(v)) used.add(v);
   const oneHot = [...used].every(v => v && !(v & (v - 1)));
-  const clean = s => String(s).replace(/[\s,()]/g, '_') || '_';
+  // A proposition name becomes a symbol as it is, except for what the app's
+  // words cannot contain: a space or a comma separates symbols.
+  const clean = s => String(s).replace(/[\s,]/g, '_') || '_';
   const letter = v => {
     if (oneHot) return clean(header.aps[Math.log2(v)]);
     const on = header.aps.filter((_, k) => v & (1 << k)).map(clean);
@@ -462,7 +464,7 @@ function mergeStarts(out) {
 const OMEGA = new Set(['DBA', 'DcoBA', 'DPA', 'DWA', 'NBA', 'NcoBA', 'NPA', 'NWA']);
 
 /** An ω-automaton target → HOA text. */
-export function hoaText(target, { name = null } = {}) {
+export function hoaText(target, { name = null, warn = () => {} } = {}) {
   if (!OMEGA.has(target.machine)) {
     throw new CliError(`HOA describes ω-automata; ${aMachine(target.machine)} is not one. Use --to automaton, jff or dot instead.`);
   }
@@ -471,6 +473,8 @@ export function hoaText(target, { name = null } = {}) {
   const sigma = [...new Set(target.sigma)].filter(s => s !== sym.eps);
   const index = new Map(target.states.map((s, k) => [s.id, k]));
   const apIndex = new Map(sigma.map((s, k) => [s, k]));
+  const spaced = sigma.filter(a => /[\s,]/.test(a));
+  if (spaced.length) warn(`${spaced.map(a => JSON.stringify(a)).join(', ')} contain a space or comma, which the app's words cannot: reading this file back names them with _ instead.`);
   const cond = target.machine.replace(/^[DN]/, '');
   const accepts = new Set(target.accepts || []);
   const lines = ['HOA: v1', `tool: "AutomataStudio"`];

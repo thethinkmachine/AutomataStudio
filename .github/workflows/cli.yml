@@ -1,0 +1,68 @@
+name: Command line
+
+# The CLI is the one part of this repo that talks to an operating system
+# directly: it spawns shells for fuzz and learn oracles (sh on Linux and macOS,
+# cmd.exe on Windows, and they quote differently), re-executes itself with the
+# browser condition, starts worker threads for halts and bb-search, reads
+# stdin, and decides when the process may exit. The app's tests run on one
+# Ubuntu image; these run the CLI's tests where each of those behaves
+# differently, on the oldest Node it supports and the current one — and then
+# the self-contained bundle, which is what the desktop app ships.
+
+on:
+  push:
+    paths:
+      - 'cli/**'
+      - 'js/**'
+      - 'tests/cli*.test.js'
+      - 'vite.cli.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/cli.yml'
+  pull_request:
+    paths:
+      - 'cli/**'
+      - 'js/**'
+      - 'tests/cli*.test.js'
+      - 'vite.cli.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/cli.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [20, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: The CLI's tests
+        run: node --conditions=browser --conditions=development --test tests/cli.test.js tests/cli-edge.test.js tests/cli-engine.test.js tests/cli-provers.test.js
+
+      - name: The bundle runs on its own
+        shell: bash
+        run: |
+          npm run cli:build
+          node dist-cli/automata.mjs --version
+          node dist-cli/automata.mjs run js/examples/dfa.json 101 0
+          echo '1RB1LB_1LA---' | node dist-cli/automata.mjs halts -

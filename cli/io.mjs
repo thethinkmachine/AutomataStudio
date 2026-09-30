@@ -65,6 +65,44 @@ export function isFile(p) {
 const sym = () => App.config.sym;
 
 /**
+ * A machine with its own special symbols (a document may spell ε as `e`, the
+ * blank as `_`, the wildcard as `*`) rewritten to the standard ones.
+ *
+ * Every command that puts two machines side by side — equiv, diff, union,
+ * intersect, grade — judges both with one set of symbols, so two drawings of
+ * one language with different settings compared as different: the second
+ * machine's ε-moves were not ε-moves under the first's ε. Translating on the
+ * way in makes every target speak one dialect. The document is left as it was,
+ * so writing it back out keeps the author's symbols.
+ */
+export function withDefaultSymbols(target) {
+  const from = { ...App.config.sym, ...(target.config?.sym || {}) };
+  const to = App.config.sym;
+  const keys = ['eps', 'any', 'blank', 'leftMarker', 'rightMarker', 'stackBottom', 'lambda'];
+  const map = new Map(keys.filter(k => from[k] !== undefined && from[k] !== to[k]).map(k => [from[k], to[k]]));
+  if (!map.size) return target;
+  const one = s => (typeof s === 'string' && map.has(s) ? map.get(s) : s);
+  // A push or pop string is read a character at a time, so a one-character
+  // special symbol is translated inside it too.
+  const chars = s => (typeof s !== 'string' || map.has(s) ? one(s) : [...s].map(ch => (map.has(ch) && [...map.get(ch)].length === 1 ? map.get(ch) : ch)).join(''));
+  const t = {
+    ...target,
+    sigma: (target.sigma || []).map(one),
+    stackAlpha: (target.stackAlpha || []).map(one),
+    outputAlpha: (target.outputAlpha || []).map(one),
+    transitions: target.transitions.map(x => {
+      const y = { ...x };
+      for (const k of ['symbol', 'write', 'output']) if (k in y) y[k] = one(y[k]);
+      for (const k of ['pop', 'push', 'pop2', 'push2', 'below', 'above']) if (k in y) y[k] = chars(y[k]);
+      for (const k of ['tapeSyms', 'tapeWrites']) if (Array.isArray(y[k])) y[k] = y[k].map(one);
+      return y;
+    }),
+    config: { ...(target.config || {}), sym: { ...to } }
+  };
+  return t;
+}
+
+/**
  * A spec → `{ doc, target, name, warnings }`. Throws CliError with a sentence
  * the terminal can show.
  */
@@ -132,6 +170,9 @@ export function readInline(text) {
 function finish(raw, name, allowEmpty = false) {
   let doc = raw;
   const warnings = [...(raw.warnings || [])];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.machine === undefined || raw.machine === null) {
+    throw new CliError(`${name}: no machine type — is this an AutomataStudio document?`);
+  }
   try {
     if (!doc.format) doc = { format: WORKSPACE_FORMAT, schema: SCHEMA_VERSION, app: APP_VERSION, config: {}, ...doc };
     validateSchema(doc);
@@ -139,7 +180,7 @@ function finish(raw, name, allowEmpty = false) {
   } catch (e) {
     throw new CliError(`${name}: ${e.message}`);
   }
-  const target = targetFromDoc(doc);
+  const target = withDefaultSymbols(targetFromDoc(doc));
   // An exercise is a blank canvas on purpose; everything else needs a machine.
   if (!target.states.length && !allowEmpty) throw new CliError(`${name}: the machine has no states.`);
   return { doc, target, name, warnings };

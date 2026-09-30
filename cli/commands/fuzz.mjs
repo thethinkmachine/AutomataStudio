@@ -15,29 +15,79 @@ export function wordText(w) {
   return w.every(s => [...s].length === 1) ? w.join('') : w.join(' ');
 }
 
+// The word goes to the shell as a reference to $AUTOMATA_WORD, never as text
+// pasted into the command line: the shell expands the variable after it has
+// parsed the line, so a $, a backquote, a backslash or an & in a word reaches
+// the program as itself instead of being run. cmd.exe expands %VAR% before it
+// parses, so there a word holding a double quote still cannot be passed as an
+// argument — stdin and the variable itself carry it either way.
+//
+// Windows has two more wrinkles. It cannot hold an empty environment variable,
+// and cmd.exe leaves an unset %VAR% as literal text, so the empty word is
+// written as "" directly. And the C runtime reads \" as an escaped quote, so
+// a word ending in backslashes has them doubled in the copy the command line
+// refers to (%AUTOMATA_WORD_ARG%); %AUTOMATA_WORD% itself is left as it is.
+const WIN = process.platform === 'win32';
+
+/** The shell line an oracle command runs as for one word, and the variables it needs. */
+export function oracleLine(cmd, text) {
+  let ref = WIN ? '"%AUTOMATA_WORD_ARG%"' : '"$AUTOMATA_WORD"';
+  const env = { AUTOMATA_WORD: text };
+  if (WIN) {
+    if (text === '') ref = '""';
+    else if (text.includes('"')) {
+      throw new CliError(`The word "${text}" holds a double quote, which cmd.exe cannot pass as an argument. Have the oracle read the word from standard input (use --batch) or from %AUTOMATA_WORD%.`);
+    } else env.AUTOMATA_WORD_ARG = text.replace(/(\\+)$/, '$1$1');
+  }
+  return { line: cmd.includes('{}') ? cmd.split('{}').join(ref) : `${cmd} ${ref}`, env };
+}
+
+// A failed oracle call as the reader should see it: which word, and why.
+function oracleFailure(r, text, timeout) {
+  const on = text === undefined ? '' : text === '' ? ' on the empty word' : ` on the word "${text}"`;
+  if (r.error?.code === 'ETIMEDOUT') {
+    return new CliError(`The oracle took longer than ${timeout} ms${on} and was stopped. Raise --timeout, or check that it is not waiting for more input.`);
+  }
+  if (r.error) return new CliError(`The oracle could not be run: ${r.error.message}`);
+  if (r.status === null) return new CliError(`The oracle was killed by ${r.signal}${on}.`);
+  return null;
+}
+
+// The last lines the oracle wrote to stderr, for a message.
+function tail(err) {
+  const lines = String(err || '').trim().split(/\r?\n/).filter(Boolean).slice(-3);
+  return lines.length ? '\n  ' + lines.join('\n  ') : '';
+}
+
 /**
- * The oracle, one word at a time: `{}` in the command is the word (quoted),
- * and the word is also on stdin and in $AUTOMATA_WORD. `mode` is how it
- * answers: `exit` (0 accept, anything else reject), `stdout` (a yes/no word on
- * the first line) or `output` (the first line is a transducer's output).
+ * The oracle, one word at a time: {} in the command is the word, and the word
+ * is also on stdin and in $AUTOMATA_WORD. `mode` is how it answers: `exit`
+ * (0 accept, anything else reject), `stdout` (a yes/no word on the first line)
+ * or `output` (the first line is a transducer's output).
  */
 export function oneShotOracle(cmd, mode, timeout) {
   return w => {
     const text = wordText(w);
-    const line = cmd.includes('{}') ? cmd.split('{}').join(JSON.stringify(text)) : `${cmd} ${JSON.stringify(text)}`;
-    const r = spawnSync(line, { shell: true, input: text + '\n', encoding: 'utf8', timeout, env: { ...process.env, AUTOMATA_WORD: text } });
-    if (r.error) throw new CliError(`The oracle could not be run: ${r.error.message}`);
-    return interpret(mode, r.status, r.stdout ?? '');
+    const { line, env } = oracleLine(cmd, text);
+    const r = spawnSync(line, { shell: true, input: text + '\n', encoding: 'utf8', timeout, maxBuffer: 1 << 26, env: { ...process.env, ...env } });
+    const failed = oracleFailure(r, text, timeout);
+    if (failed) throw failed;
+    // A shell that cannot find the program exits 127 (cmd.exe: 9009). That is
+    // not a "reject", and reading it as one would fault the machine on every word.
+    if (r.status === 127 || r.status === 9009 || (r.status === 1 && /is not recognized as an internal or external command/.test(r.stderr))) throw new CliError(`The oracle command was not found (exit ${r.status}).${tail(r.stderr)}`);
+    return interpret(mode, r.status, r.stdout ?? '', text, r.stderr);
   };
 }
 
-function interpret(mode, status, stdout) {
+function interpret(mode, status, stdout, text, stderr) {
   const first = String(stdout).split(/\r?\n/)[0].trim();
   if (mode === 'exit') return { verdict: status === 0 ? 'acc' : 'rej' };
   if (mode === 'output') return { output: first };
   if (YES.test(first)) return { verdict: 'acc' };
   if (NO.test(first)) return { verdict: 'rej' };
-  throw new CliError(`The oracle answered "${first}", which is neither yes nor no.`);
+  const on = text === undefined ? '' : text === '' ? ' on the empty word' : ` on the word "${text}"`;
+  const said = first ? `answered "${first}"` : `printed nothing${status ? ` and exited ${status}` : ''}`;
+  throw new CliError(`The oracle ${said}${on}, which is neither yes nor no.${tail(stderr)}`);
 }
 
 /** Batch: one process, every word on its own line of stdin, one answer per line of stdout. */
@@ -45,10 +95,14 @@ export function batchOracle(cmd, mode, timeout) {
   return list => {
     const input = list.map(wordText).join('\n') + '\n';
     const r = spawnSync(cmd, { shell: true, input, encoding: 'utf8', timeout, maxBuffer: 1 << 28 });
-    if (r.error) throw new CliError(`The oracle could not be run: ${r.error.message}`);
+    const failed = oracleFailure(r, undefined, timeout);
+    if (failed) throw failed;
     const lines = String(r.stdout).split(/\r?\n/);
-    if (lines.length < list.length) throw new CliError(`The oracle answered ${lines.length} lines for ${list.length} words.`);
-    return list.map((_, i) => interpret(mode === 'exit' ? 'stdout' : mode, 0, lines[i]));
+    if (lines[lines.length - 1] === '') lines.pop();
+    if (lines.length < list.length) {
+      throw new CliError(`The oracle answered ${lines.length} line${lines.length === 1 ? '' : 's'} for ${list.length} words${r.status ? ` and exited ${r.status}` : ''}.${tail(r.stderr)}`);
+    }
+    return list.map((w, i) => interpret(mode === 'exit' ? 'stdout' : mode, 0, lines[i], wordText(w)));
   };
 }
 
@@ -101,8 +155,12 @@ Runs the machine and the oracle on the same words — every word up to length 3,
 then random ones — and stops at the first disagreement, which it shrinks to a
 minimal counterexample.
 
-The oracle gets the word as {} in the command (or appended), on stdin, and in
-$AUTOMATA_WORD, and answers by
+The oracle gets the word three ways: as {} in the command (or appended), on
+stdin, and in $AUTOMATA_WORD. {} becomes a quoted reference to that variable
+("$AUTOMATA_WORD", or "%AUTOMATA_WORD%" under cmd.exe), so a word's symbols
+reach the program as themselves and are never run by the shell. Every {} is
+replaced, so a script with braces of its own should read $AUTOMATA_WORD
+instead. It answers by
   --mode exit       exit code 0 = accept (default)
   --mode stdout     yes/no, true/false, 1/0, accept/reject on its first line
   --mode output     its first line is the expected output (transducers)

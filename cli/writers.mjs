@@ -97,12 +97,15 @@ export function serialize(target, format, { doc = null, opts = [], name = null, 
   if (format === 'batch') throw new CliError('The batch format is the Batch Test panel\'s last run; from the command line that is automata test <machine> <words-file>.');
   switch (format) {
     case 'automaton': return docText(doc || docFromTarget(target));
-    case 'hoa': return hoaText(target, { name });
+    case 'hoa': return hoaText(target, { name, warn });
     case 'ba': return baText(target, { warn });
     case 'timbuk': return timbukText(target);
     case 'jff': return jffText(target, { warn });
     case 'code': {
-      const { code } = writeMachineCode(doc || docFromTarget(target), { sym });
+      // The document is written in its own symbols; a target from elsewhere
+      // is already in the standard ones (io.mjs withDefaultSymbols).
+      const codeSym = doc ? { ...App.config.sym, ...(doc.config?.sym || {}) } : sym;
+      const { code } = writeMachineCode(doc || docFromTarget(target), { sym: codeSym });
       return code + '\n';
     }
     case 'standard': {

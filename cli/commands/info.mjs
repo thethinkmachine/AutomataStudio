@@ -81,7 +81,7 @@ export function infoOf(target, doc, { latex = false, regex = true } = {}) {
       out.minimalDfaStates = dfa.n - (dfa.dead >= 0 ? 1 : 0);
       out.minimalDfaStatesComplete = dfa.n;
       if (target.machine === 'DFA') out.minimal = isMinimalDfa(target, dfa);
-    }
+    } else out.minimalDfaSkipped = 'the subset construction passed 4096 states, so it was not built';
     Object.assign(out, languageFacts(target));
     if (regex) {
       try { out.regex = toRegex(target); } catch { /* too large: leave it out */ }
@@ -138,6 +138,7 @@ machine its standard notation; and the machine code that names it.
     const language = [
       ['class', i.class || c.faint('—')],
       i.empty !== undefined && ['language', i.empty ? c.red('empty') : [i.finite ? 'finite' : 'infinite', i.universal ? c.green('universal (Σ*)') : null].filter(Boolean).join(', ')],
+      i.minimalDfaSkipped && ['minimal DFA', c.faint(i.minimalDfaSkipped)],
       i.minimalDfaStates !== undefined && ['minimal DFA', `${c.bold(i.minimalDfaStates)} states ${c.faint(`(${i.minimalDfaStatesComplete} with the sink)`)}${i.minimal !== undefined ? (i.minimal ? `  ${c.green('✔ this DFA is minimal')}` : `  ${c.yellow('this DFA is not minimal — automata minimize')}`) : ''}`],
       i.regex && ['regex', c.teal(i.regex)]
     ];

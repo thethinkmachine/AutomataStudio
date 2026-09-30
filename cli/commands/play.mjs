@@ -227,6 +227,7 @@ Exit: 0 accept (or a transducer finished), 1 reject, 2 cut short or no verdict.`
         if (done) return;
         done = true;
         clearTimeout(timer);
+        for (const sig of ['SIGINT', 'SIGTERM']) process.off(sig, finish);
         stdin.setRawMode(false);
         stdin.pause();
         stdin.removeAllListeners('data');
@@ -236,7 +237,9 @@ Exit: 0 accept (or a transducer finished), 1 reject, 2 cut short or no verdict.`
         process.stdout.write(renderFrame(run, i, { ...view, interactive: false }).join('\n') + '\n');
         resolve(code());
       };
-      process.once('SIGINT', finish);
+      // Raw mode turns Ctrl+C into a key, handled below; a signal from outside
+      // (kill, a closing session) still has to put the terminal back.
+      for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, finish);
       process.stdout.on('resize', draw);
       stdin.on('data', buf => {
         const k = buf.toString();

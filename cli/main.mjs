@@ -85,6 +85,35 @@ const GROUPS = [
   ['Elsewhere', ['library', 'mcp']]
 ];
 
+// Every numeric flag, checked once here rather than at forty call sites: a
+// value that is not a number, not whole where it must be, or below its floor
+// is refused by name instead of becoming NaN inside a loop bound.
+const NUMERIC = {
+  'max-steps': { int: true, min: 1 }, budget: { int: true, min: 1 }, cps: { int: true, min: 0, max: 32 },
+  'induction-ms': { min: 0 }, limit: { int: true, min: 1 }, fps: { min: 0.1, max: 1000 }, steps: { int: true, min: 1 },
+  size: { int: true, min: 1, max: 4000 }, cols: { int: true, min: 1, max: 50 }, 'max-len': { int: true, min: 0, max: 10000 },
+  'max-length': { int: true, min: 0, max: 64 }, count: { int: true, min: 1 }, len: { int: true, min: 0, max: 100000 },
+  sample: { int: true, min: 1, max: 1000000 }, from: { int: true, min: 0, only: 'profile' }, to: { int: true, min: 0, max: 100000, only: 'profile' },
+  cap: { int: true, min: 1 }, states: { int: true, min: 1 }, symbols: { int: true, min: 2 }, points: { min: 0 },
+  exhaustive: { int: true, min: 0, max: 24 }, tests: { int: true, min: 0 }, timeout: { int: true, min: 1 },
+  bounded: { int: true, min: 0, max: 24 }, cell: { int: true, min: 1, max: 64 }, 'step-ms': { int: true, min: 10 },
+  workers: { int: true, min: 1, max: 256 }, 'max-states': { int: true, min: 1 }
+};
+
+function checkNumbers(opts, cmd) {
+  for (const [key, rule] of Object.entries(NUMERIC)) {
+    if (typeof opts[key] !== 'string' || (rule.only && rule.only !== cmd)) continue;
+    const raw = opts[key];
+    const n = Number(raw);
+    const say = `--${key}`;
+    if (raw === '' || !Number.isFinite(n)) return `${say} takes a number, not "${raw}".`;
+    if (rule.int && !Number.isInteger(n)) return `${say} takes a whole number, not ${raw}.`;
+    if (rule.min !== undefined && n < rule.min) return `${say} is at least ${rule.min}.`;
+    if (rule.max !== undefined && n > rule.max) return `${say} is at most ${rule.max}.`;
+  }
+  return null;
+}
+
 const GLOBAL_OPTIONS = {
   json: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
@@ -193,11 +222,12 @@ export async function main(argv) {
 
   // The CLI decides one word at a time, so it can afford a real budget; the
   // app's 400 is sized for the Language panel's grid of hundreds of cells.
-  const budget = opts['max-steps'] !== undefined ? Number(opts['max-steps']) : 100000;
-  if (!Number.isFinite(budget) || budget < 1) {
-    process.stderr.write(`automata ${cmd}: --max-steps takes a positive number.\n`);
+  const bad = checkNumbers(opts, cmd);
+  if (bad) {
+    process.stderr.write(`automata ${cmd}: ${bad}\n`);
     return 3;
   }
+  const budget = opts['max-steps'] !== undefined ? Number(opts['max-steps']) : 100000;
   App.config.langStepBudget = budget;
   if (opts['max-steps'] !== undefined) {
     App.config.maxTmSteps = budget;
