@@ -106,6 +106,20 @@ word `u(v)`. A multi-tape Turing machine can have any number of tapes.
 - **Workspaces and themes.** Edit in multiple tabs, choose from 19 light and dark themes, and use the
   mobile layout on small screens.
 
+![The Machine Wizard building a DFA for an even number of 1s, then running a test word](docs/media/wizard.webp)
+
+<sup>**Machine Wizard.** Pick a model, name the alphabet, list the states, fill in the
+transitions from dropdowns, and add a test word. The machine is drawn in one step (one
+Ctrl+Z undoes it), and the test word becomes a chip on the info card that runs with one
+click — here `1001`, accepted.</sup>
+
+![Grouping states of a binary-addition Turing machine into two blocks, drilling into one, and running the machine](docs/media/blocks.webp)
+
+<sup>**Building blocks.** Two pairs of states in a binary-addition Turing machine are
+grouped into *decrement b* and *increment a*. Double-clicking a block opens it, with
+tabs showing where edges enter and leave; the breadcrumb leads back out. During the run
+on `101+11` the block that is executing lights up, down to the state inside it.</sup>
+
 ### Running
 - **Step-by-step simulation** with a scrubber, a trace log in plain sentences, and a
   tape view that shows each model's tape boundaries.
@@ -114,13 +128,23 @@ word `u(v)`. A multi-tape Turing machine can have any number of tapes.
   halt, or proved never to halt, beyond what a step budget can tell you.
 - **Language panel** shows the derived regular expression, the language class and an
   acceptance fingerprint.
+- **Space-time diagrams** draw a whole tape run, one row per step, with an overview of
+  the run beside them. Runs of millions of steps stay responsive.
 
 ![Stepping the word 1100100 through the DFA](docs/media/simulate.gif)
 
 <img src="docs/media/multitape.gif" alt="A four-tape Turing machine's tape tracker during a run" width="300">
 
-<sup>Left: the divisibility DFA accepting `1100100` (100 in binary). Right: a four-tape ALU
-computing 11 + 6 = 17, with each tape drawn as its model defines it.</sup>
+<sup>Top: the divisibility DFA accepting `1100100` (100 in binary). Bottom: a four-tape
+ALU computing 11 + 6 = 17, with each tape drawn as its model defines it.</sup>
+
+![The space-time diagram of the BB(2,4) champion, computed to its halt after 3,932,964 steps](docs/media/spacetime.webp)
+
+<sup>**Space-time diagram** of the BB(2,4) busy beaver champion
+(`1RB2LA1RA1RA_1LB1LA3RB1RZ`), the two-state, four-symbol machine that runs longest
+before halting. It plays a few dozen steps cell by cell, then *Compute the rest* runs
+all 3,932,964 steps in about five seconds. The widened overview shows the whole run,
+and *Jump to end* lands on the halt: 2,050 non-blank cells.</sup>
 
 ### Grammars
 The grammar workbench has 25 tools for inspecting, normalising, parsing, deciding and
@@ -128,7 +152,12 @@ converting grammars. They include FIRST/FOLLOW, Chomsky classification, CNF and 
 removal of ε, unit, useless and left-recursive rules, left factoring, CYK, parse trees,
 derivations, ambiguity witnesses, LL(1) tables, and conversion to and from the canvas.
 
-![The CYK table filled span by span](docs/media/grammar.png)
+![Typing a grammar, filling a CYK table step by step, and finding an ambiguity witness](docs/media/grammar.webp)
+
+<sup>The grammar is checked as you type it. CYK fills its table one span at a time on
+`aabb` (using the Chomsky normal form it converted to, which is shown below the table).
+*Check ambiguity* then finds two different parse trees for `ababab`, which proves the
+grammar is ambiguous.</sup>
 
 ### Import, export and sharing
 - **Import:** JFLAP `.jff` (including 6.1 blocks), XState, SCXML, and machine codes.
@@ -149,6 +178,14 @@ OpenRouter, or any OpenAI-compatible local server. You supply your own key, and 
 never written to a saved file. Every candidate machine is run on the real simulator
 before you see it, and you choose whether StateMate asks, proposes or applies changes
 automatically.
+
+![StateMate building a pushdown automaton for balanced brackets from a one-line prompt](docs/media/statemate.webp)
+
+<sup>One prompt, *a pushdown automaton that accepts balanced strings of ( ) and [ ]*. The
+proposal arrives as a diff with its test words already run (5/5 checks). Apply draws
+it, and `([])` is accepted. Recorded through the repository's agent bridge
+([tools/agent-bridge](tools/agent-bridge/statemate-bridge.mjs)), so the answer goes
+through the same parse, lint and verify steps as one from any provider.</sup>
 
 ## Algorithms and theory
 
@@ -184,6 +221,14 @@ automata from-regex "(a|b)*abb" | automata minimize - | automata codegen - --lan
 automata grade exercise.automaton submissions/ --csv grades.csv
 automata halts machines.txt --proof proofs/      # halting proofs, checkable with check-proof
 ```
+
+![automata halts classifying nine Turing machines with seven different methods, then check-proof verifying the proofs](docs/media/cli.webp)
+
+<sup>`automata halts` on nine machines: the BB(2), BB(2,4) and BB(5) champions halt
+(BB(5) after 47,176,870 steps), five machines are proved never to halt by five different
+methods, and the last, Antihydra, is reported as unknown: whether it halts is an open
+problem. `check-proof` then
+re-checks every proof file with code that shares nothing with the provers.</sup>
 
 It also reads and writes HOA, BA, Timbuk and JFLAP. To install it, add the desktop
 app's `resources/cli` directory to your `PATH`, or run `npm install && npm link` from a
