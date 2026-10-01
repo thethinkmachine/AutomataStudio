@@ -391,11 +391,15 @@ export function makeLoopTracker() {
   // batch deciders (testTM3 and friends) keep their own repeat check, because
   // there the repeat *is* the answer — a word nobody is watching run gains
   // nothing from "no verdict" in place of a correct reject.
-  if (!detectsLoops()) return { seenAt: () => -1, seenAtVerified: () => -1 };
+  if (!detectsLoops()) return { seenAt: () => -1, seenAtVerified: () => -1, verifying: false };
 
   let seen = new Map();
   let fps = makeFingerprintTable();
   return {
+    // Whether seenAtVerified can still report a loop. Once it has given up
+    // it answers -1 for the rest of the run, which is what lets streamTM hand
+    // the rest to a loop that does not fingerprint (js/machines/fast-tm.js).
+    get verifying() { return fps !== null; },
     // Step index where this configuration was first seen, or -1 if new.
     seenAt(key, idx) {
       if (!seen) return -1;

@@ -46,8 +46,8 @@
 import { BITS, CodeColumn, DenseTape, HeadColumn, JUMP, MASK, makeInterner } from './machines/columns.js';
 
 // A write column's codes: none, a deleted cell, or a symbol's code + 1.
-const NO_WRITE = 0;
-const DELETED = 1;
+export const NO_WRITE = 0;
+export const DELETED = 1;
 
 // The fewest steps between checkpoints; a wide tape spaces them further — see
 // `begin`. Each costs an object as well as its cells, so a floor this high
@@ -114,6 +114,13 @@ export function makeTapeLog(tape) {
   for (const [x, v] of initial) live.set(x, syms.code(v));
   const checkpoints = [];
   let nextCheckpoint = 0;
+
+  function checkpoint(i) {
+    const cp = live.snapshot(i);
+    checkpoints.push(cp);
+    nextCheckpoint = i + Math.max(CHECKPOINT_MIN, cp.codes.length);
+    return nextCheckpoint;
+  }
 
   // ── the reader's copy ───────────────────────────────────────────
   // `cur` is the tape as it stands before step `curI`: what step curI shows.
@@ -249,11 +256,7 @@ export function makeTapeLog(tape) {
      */
     begin(head, read) {
       const i = heads.length;
-      if (i >= nextCheckpoint) {
-        const cp = live.snapshot(i);
-        checkpoints.push(cp);
-        nextCheckpoint = i + Math.max(CHECKPOINT_MIN, cp.codes.length);
-      }
+      if (i >= nextCheckpoint) checkpoint(i);
       heads.push(head);
       reads.push(read === undefined ? 0 : syms.code(read));
       writes.push(NO_WRITE);
@@ -277,6 +280,27 @@ export function makeTapeLog(tape) {
       const r = reads.get(i);
       if (stray || prior !== (r === blankCode ? 0 : r)) (undoExceptions ??= new Map()).set(i, prior);
       live.set(cell, now);
+    },
+
+    /**
+     * The columns themselves, for a producer that records thousands of steps
+     * in one loop (js/machines/fast-tm.js) and cannot afford two calls and a
+     * Map lookup per step. It must leave exactly what `begin` and `noteWrite`
+     * would have: the same entries in the same order, a checkpoint wherever
+     * `nextCheckpoint` falls due, and an undo exception wherever the read does
+     * not say what the cell held. tests/fast-tm.test.js holds it to that,
+     * column for column, against the loop that goes through them.
+     *
+     * `live` is the tape as codes — 0 for a cell holding nothing — and is
+     * the producer's to drive from here on.
+     */
+    appender() {
+      return {
+        live, heads, reads, writes, syms, blankCode,
+        get nextCheckpoint() { return nextCheckpoint; },
+        checkpoint,
+        undoException(i, prior) { (undoExceptions ??= new Map()).set(i, prior); }
+      };
     },
 
     frameAt,
@@ -473,6 +497,10 @@ export function makeStepColumns(logs, tokens, noteAt, multi = false) {
 
     /** Step i, built again from the columns. */
     at: build,
+
+    /** The state and transition columns and their interners, for the same
+     *  bulk producer as the log's `appender()` and on the same terms. */
+    appender: () => ({ states, tids, stateCol, tidCol }),
 
     /**
      * Whether `step` holds nothing `at(i)` would not rebuild: its own fields

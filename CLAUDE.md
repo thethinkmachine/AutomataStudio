@@ -246,6 +246,9 @@ js/machines/
                  what a checkpoint copies.
   zipper-tape.js the NDTM search's tape: two interned stacks and the
                  cell under the head, so a fork is O(1).
+  fast-tm.js     the rest of a TM run as a table and a loop, once the
+                 loop detector has stopped looking — see the simulation
+                 notes, *The fast lane*.
   tm-behaviour.js whether a TM halts or never halts, and which method
                  proved it (simulation, cycler, translated cycler,
                  backward reasoning) — or "unknown". See the simulation notes.
