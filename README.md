@@ -1,226 +1,280 @@
+<div align="center">
+
 # AutomataStudio
 
-An IDE for designing, testing and debugging automata. It includes an interactive grammar
-workbench, visual algorithm stepping, a built-in theory reference, and StateMate, an AI assistant that can build and edit machines from a prompt. It is also Turing Complete!
+**An IDE for designing, simulating and analysing automata.**
+
+Draw a machine, run it step by step, derive its language, put it through the textbook
+constructions, and take it out as a diagram, LaTeX or working code. It covers 30
+machine types, from DFAs to multi-tape Turing machines and ω-automata.
+
+[![Version](https://img.shields.io/github/package-json/v/thethinkmachine/AutomataStudio?label=version)](https://github.com/thethinkmachine/AutomataStudio/releases)
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
+[![Deploy](https://github.com/thethinkmachine/AutomataStudio/actions/workflows/deploy.yml/badge.svg)](https://github.com/thethinkmachine/AutomataStudio/actions/workflows/deploy.yml)
+[![Desktop build](https://github.com/thethinkmachine/AutomataStudio/actions/workflows/electron-build.yml/badge.svg)](https://github.com/thethinkmachine/AutomataStudio/actions/workflows/electron-build.yml)
+
+[**Open in the browser**](https://thethinkmachine.github.io/AutomataStudio/) ·
+[Download the desktop app](https://github.com/thethinkmachine/AutomataStudio/releases/latest) ·
+[Machine library](https://thethinkmachine.github.io/automata-library/) ·
+[Cite](#citation)
 
 ![An 8-tape Turing machine executing a stored program, one step per frame](docs/media/cpu.gif)
 
-<sup>A 5-bit accumulator CPU with a custom 19-opcode ISA, built entirely as an 8-tape
-Turing machine — 614 states and 19,191 transitions, organised into 40 nested building
-blocks, the 17 outermost of which are the boxes above: Instruction Frontend, ALU,
-Memory, X Register, CALL, RET, the jumps. It runs
-`ADD 4 / CMP 12 / BCS / JMP` — multiplication by repeated addition — fetching,
-decoding and executing from the program on tape 1 until it halts with 12 in the
-accumulator, in 331 machine steps.</sup>
+<sup>A 5-bit accumulator CPU with a 19-opcode instruction set, built entirely as an 8-tape
+Turing machine: 614 states and 19,191 transitions in 40 nested building blocks. It
+runs a multiply-by-repeated-addition program from tape 1 and halts with 12 in the
+accumulator after 331 steps.</sup>
 
-![A DFA for binary divisibility by five, open on the canvas](docs/media/hero.png)
-
-<sup>The build view. A five-state DFA that reads a binary number most-significant bit
-first and accepts the multiples of 5 — each state is the remainder so far, so bit `b`
-sends remainder `r` to `(2r + b) mod 5`. The inspector on the right derives the
-language rather than being told it: a regular expression by state elimination, the
-formal tuple `M = (Q⁵, Σ², δ¹⁰, q₀, F¹)`, and an acceptance fingerprint — 187 words
-decided so far, 41 accepted and 146 rejected, the ribbon deciding more as it is
-scrolled. The panels on the left list Q and δ as editable rows; the notes on the
-canvas are part of the saved document.</sup>
+</div>
 
 ---
 
-## Quick Start
-Run the app locally. Requires Node.js.
+## Contents
+
+- [Getting started](#getting-started)
+- [Features](#features)
+- [Algorithms and theory](#algorithms-and-theory)
+- [Command line](#command-line)
+- [Development](#development)
+- [Known issues](#known-issues)
+- [Contributing](#contributing)
+- [Citation](#citation)
+- [License](#license)
+
+## Getting started
+
+You can use AutomataStudio in three ways.
+
+| | How | Notes |
+| --- | --- | --- |
+| **Web** | [thethinkmachine.github.io/AutomataStudio](https://thethinkmachine.github.io/AutomataStudio/) | Nothing to install, and your machines stay in your browser. |
+| **Desktop** | [Latest release](https://github.com/thethinkmachine/AutomataStudio/releases/latest) for Windows, macOS and Linux | Windows and Linux AppImage builds update themselves. The `automata` CLI ships inside. |
+| **From source** | See below | Requires Node.js 20.19+ or 22.12+ (24 LTS recommended). |
 
 ```bash
 git clone https://github.com/thethinkmachine/AutomataStudio.git
 cd AutomataStudio
 npm install
-npm run dev
+npm run dev            # http://localhost:5173
 ```
 
-Open `http://localhost:5173/` (or whichever port Vite uses) in your browser.
+### Your first machine
 
-```bash
-npm test               # the test suite
-npm run build          # production build -> dist/
-npm run electron:dev   # run inside the desktop shell
-```
+1. Choose a model from the picker, for example **DFA**.
+2. Use the **State** tool to place states and the **Transition** tool to connect
+   them, then double-click a state to mark it accepting.
+3. Type a word into the run box and step through it, or paste a list of words into
+   the batch tester.
+4. The inspector on the right derives the language for you: a regular expression, the
+   formal tuple, and an acceptance fingerprint.
+
+You can also skip drawing. The **Machine Wizard** builds a machine from your answers
+to a few questions, **StateMate** builds one from a prompt, and the
+[machine library](https://thethinkmachine.github.io/automata-library/) has ready-made
+machines to open and remix.
+
+![A DFA for binary divisibility by five, open on the canvas](docs/media/hero.png)
+
+<sup>A five-state DFA that accepts binary multiples of 5. The inspector derives a regular
+expression by state elimination, the tuple `M = (Q⁵, Σ², δ¹⁰, q₀, F¹)`, and an
+acceptance fingerprint of the words decided so far.</sup>
 
 ## Features
 
 ### Machines
-29 machine types, grouped as the model picker groups them:
 
 | Group | Machines |
 | --- | --- |
-| Finite Automata | DFA, NFA, ε-NFA, 2DFA, 2NFA, PFA |
-| Omega Automata | DBA, DcoBA, DPA, DWA, NBA, NcoBA, NPA, NWA |
-| Memory Automata | DPDA, NPDA, Queue Automaton, Counter Automaton, 2-Stack PDA |
-| Turing Machines | TM, NDTM, MTM, LBA, 2-Way Infinite TM |
-| Transducers | Moore, Mealy, FST, Pushdown Transducer, 2-Way Transducer |
+| Finite automata | DFA, NFA, ε-NFA, 2DFA, 2NFA, PFA |
+| ω-automata | DBA, DcoBA, DPA, DWA, NBA, NcoBA, NPA, NWA |
+| Memory automata | DPDA, NPDA, Queue Automaton, Counter Automaton, 2-Stack PDA, Embedded PDA |
+| Turing machines | TM, NDTM, Multi-tape TM, LBA, Two-way infinite TM |
+| Transducers | Moore, Mealy, FST, Pushdown Transducer, Two-way Transducer |
 
-The eight ω-automata are determinism crossed with the acceptance condition
-(Büchi, co-Büchi, parity, weak), so the label on screen is always the machine you
-have. Multi-tape Turing machines take any tape count — the ceiling is a setting,
-not a constant. Turing machines can be run on a one-way or two-way infinite tape.
+The ω-automata are deterministic and nondeterministic variants of four acceptance
+conditions (Büchi, co-Büchi, parity and weak), and their input is an ultimately periodic
+word `u(v)`. A multi-tape Turing machine can have any number of tapes.
 
-### Building the machine
-* **Interactive Canvas:** Draw states and transitions directly. Drag to reposition,
-  bend edges by hand, and arrange automatically. Notes, regions and separators are
-  first-class objects you can select and move like anything else.
-* **Machine Wizard:** Build or edit a machine by answering questions — the alphabet,
-  the states, the transitions — instead of drawing one. Covers every machine type.
-* **Building Blocks:** A block is a sub-machine drawn as one node, with one entry and
-  named exits. Blocks nest, can be reused from a library, and are inlined at
-  placement time, so the machine stays flat and every simulator, exporter and
-  decider works on it unchanged. See [docs/building-blocks.md](docs/building-blocks.md).
-* **Multiple Workspaces:** Tabbed editing, each tab an independent document.
-* **Themes:** 19 built-in themes, light and dark.
+### Building
+- **Canvas.** Draw states and transitions, bend edges, and arrange the diagram
+  automatically. Notes, regions and separators are part of the saved document.
+- **Building blocks.** A block is a sub-machine shown as one node, with one entry and
+  named exits. Blocks nest and can be reused, and they are inlined when placed, so
+  every simulator and exporter sees an ordinary machine.
+  See [docs/building-blocks.md](docs/building-blocks.md).
+- **Machine Wizard.** Builds or edits any machine type from a series of questions.
+- **Workspaces and themes.** Edit in multiple tabs, choose from 19 light and dark themes, and use the
+  mobile layout on small screens.
 
-### Running it
-* **Step-by-Step Simulation:** Watch tape execution and state transitions in real
-  time, with a scrubber, a trace log, and a tape tracker that draws each model's
-  ends honestly — a wall where the tape stops, a fade where it does not.
-* **Batch Testing:** Decide a list of words at once, spread across every core.
-* **Language Panel:** Derived regular expressions, language class, and a scrollable
+### Running
+- **Step-by-step simulation** with a scrubber, a trace log in plain sentences, and a
+  tape view that shows each model's tape boundaries.
+- **Batch testing** runs a word list across every CPU core.
+- **Nondeterminism** is shown as a computation tree. Turing machines can be proved to
+  halt, or proved never to halt, beyond what a step budget can tell you.
+- **Language panel** shows the derived regular expression, the language class and an
   acceptance fingerprint.
 
-![Stepping the word 1100100 through the DFA, the run's trail lit on the diagram](docs/media/simulate.gif)
-
-<sup>The same DFA running `1100100` — 100 in binary, so it should accept. Stepping is a
-scrubber over the whole run, not a play button: the trail lights the path the
-computation actually took, the input row marks the symbol under the head, and the
-trace log spells out each transition as a sentence. The counter reads `n / 8` because
-a DFA's run is exactly one step per symbol plus the start.</sup>
+![Stepping the word 1100100 through the DFA](docs/media/simulate.gif)
 
 <img src="docs/media/multitape.gif" alt="A four-tape Turing machine's tape tracker during a run" width="300">
 
-<sup>A four-tape ALU computing 11 + 6 = 17: tapes 1 and 2 hold the operands `1101`
-and `0110` — least-significant bit first, so 11 and 6 — tape 3 the opcode `+`, and
-tape 4 the result `10001`. Every row is drawn as the model actually defines it — the
-hatched cap and the `bounded left` label say this machine's tape stops at cell 0
-rather than running on, which is a fact a plain row of cells cannot show. The rows
-turn green when the run reaches its accepting state.</sup>
+<sup>Left: the divisibility DFA accepting `1100100` (100 in binary). Right: a four-tape ALU
+computing 11 + 6 = 17, with each tape drawn as its model defines it.</sup>
 
 ### Grammars
-A grammar workbench with 25 tools in six groups — inspect, normalize, parse,
-decide, convert, and a library to start from. Among them: FIRST/FOLLOW, Chomsky
-classification, ε-removal, unit and useless-rule elimination, CNF, GNF, left
-recursion removal, left factoring, CYK, parse trees, leftmost and rightmost
-derivations, ambiguity witnesses, LL(1) tables, word generation, and conversion
-to and from the canvas.
+The grammar workbench has 25 tools for inspecting, normalising, parsing, deciding and
+converting grammars. They include FIRST/FOLLOW, Chomsky classification, CNF and GNF,
+removal of ε, unit, useless and left-recursive rules, left factoring, CYK, parse trees,
+derivations, ambiguity witnesses, LL(1) tables, and conversion to and from the canvas.
 
-![The CYK table filled span by span, with the step that placed each entry](docs/media/grammar.png)
+![The CYK table filled span by span](docs/media/grammar.png)
 
-<sup>The grammar workbench. The grammar is written once in the sticky card at the top and
-then taken apart by the tools in the rail; here CYK has decided `aabb ∈ L(G)` and the
-table is scrubbed to its last step, with `S` in `T[0][3]` — the cell spanning the
-whole word — and the line underneath naming the split that put it there. CYK is
-defined on Chomsky normal form, so the conversion it ran on is shown below the table
-rather than assumed.</sup>
-
-### Getting it out
-* **Import:** JFLAP `.jff` files, including the 6.1 variable and block notation.
-* **Diagrams:** PNG and SVG, with text converted to outlines so a diagram carries
-  its own type and does not depend on the reader having the fonts.
-* **Interchange:** Graphviz DOT, TikZ/LaTeX, transition tables as CSV or Markdown,
-  language samples, transition coverage, batch results, workspace JSON.
-* **Code:** JavaScript, Python, Java, C, XState and SCXML, in table, switch or class
-  styles — plus Jest and pytest suites.
-* **Share links:** The whole workspace compressed into a URL. Nothing reaches a
+### Import, export and sharing
+- **Import:** JFLAP `.jff` (including 6.1 blocks), XState, SCXML, and machine codes.
+- **Diagrams:** PNG and SVG, with text converted to outlines. A PNG can embed the
+  workspace, so dropping it back on the canvas resumes editing.
+- **Interchange:** Graphviz DOT, TikZ/LaTeX, CSV and Markdown transition tables, and
+  workspace JSON.
+- **Code generation:** JavaScript, Python, Java, C, XState and SCXML, with Jest and
+  pytest suites.
+- **Share links:** the whole workspace is compressed into a URL and never sent to a
   server.
+- **Exercises:** sealed reference solutions with exact or bounded grading, for teaching.
 
-### Saving
-A workspace is a `.automaton` file. `.json` is accepted on import forever. PNG
-export can additionally embed the workspace in the image: drop that image back onto
-the canvas to resume editing.
+### StateMate (optional AI assistant)
+StateMate builds and edits machines from a prompt and answers questions about the one
+on screen. It works with Anthropic, OpenAI, Mistral AI, Google AI Studio, Cohere,
+OpenRouter, or any OpenAI-compatible local server. You supply your own key, and it is
+never written to a saved file. Every candidate machine is run on the real simulator
+before you see it, and you choose whether StateMate asks, proposes or applies changes
+automatically.
 
-### StateMate
-An optional AI assistant that builds and edits machines from a prompt, or answers
-questions about the one on screen. It runs against Anthropic, OpenAI, Mistral AI,
-Google AI Studio, Cohere, OpenRouter, or any OpenAI-compatible local server; you
-supply your own key, which is kept out of every save format. Write authority is
-yours to set — ask, propose, or auto — and every candidate is executed against the
-real simulator before it is offered. The canvas is written exactly once, at the end,
-or not at all.
+## Algorithms and theory
 
-## Algorithms & Theory
+The app has 34 interactive constructions from the standard textbooks (Hopcroft &
+Ullman, Sipser), and each one can be stepped through:
 
-34 interactive constructions from the standard textbooks (Hopcroft–Ullman, Sipser),
-each one steppable:
+- **Conversions:** subset construction, ε-NFA → NFA, regex ↔ NFA, DFA ↔ regular
+  grammar, TM → grammar, Moore ↔ Mealy
+- **Analysis:** minimisation (table-filling and visual), equivalence with a
+  distinguishing word, ε-closure, dead states, computation trees
+- **Closure:** union, intersection, concatenation, star, complement, reversal, product
+- **Decision procedures:** emptiness, finiteness, universality
+- **A universal Turing machine** visualiser
 
-* **Conversions:** NFA → DFA subset construction, ε-NFA → NFA, regex → NFA, NFA →
-  regex, DFA ↔ regular grammar, TM → grammar, Moore ↔ Mealy.
-* **Analysis:** DFA minimization (table-filling and visual), equivalence with a
-  distinguishing string, ε-closure, dead states, computation trees.
-* **Closure constructions:** union, intersection, concatenation, star, complement,
-  reversal, product.
-* **Decision procedures:** emptiness, finiteness, universality.
-* **Tables:** transition, Moore, Mealy, multi-tape.
-* **A universal Turing machine** visualizer.
+![NFA to DFA subset construction](docs/media/algorithms.png)
 
-![NFA to DFA subset construction, with the result table and numbered steps](docs/media/algorithms.png)
+A built-in **reference** has a page for every machine type, covering its formal
+definition and what it can and cannot recognise. It also has sections on decidability
+(Rice's theorem, reductions, diagonalisation) and on language classes.
 
-<sup>Subset construction on an NFA that searches for the keywords *cat*, *car* and *cab*.
-Each DFA state is a set of NFA states, and the algorithm is shown as a table plus the
-numbered steps that built it — including the reads that go nowhere and collapse to the
-dead state. `Load Result into Canvas` puts the constructed DFA on the canvas as an
-ordinary machine you can then edit, run or export.</sup>
-
-A built-in reference explains every machine in the picker and carries a Decidability
-section — decidable vs. recognizable, the decidable questions for finite automata
-and CFLs, diagonalization, reductions, Rice's theorem, and a map of what is decidable
-where.
-
-![The reference page for a DFA, with its formal definition](docs/media/reference.png)
-
-<sup>The built-in reference. One page per machine the app can build, each with what the
-model is, its formal definition, and what it can and cannot recognise; the rail lists
-them in the same groups the model picker uses. The pages are generated from the same
-registry the picker reads, and a test fails if a machine the picker offers has no
-guide — so a machine added to the app cannot quietly go undocumented.</sup>
+![The reference page for a DFA](docs/media/reference.png)
 
 ## Command line
-`automata` is the same engine in a terminal: run, test, trace and animate machines,
-compare and convert them, grade a class, learn a DFA from examples, and prove
-whether Turing machines halt.
+
+`automata` runs the same engine from a terminal. You can use it to run, test, trace and
+animate machines, compare and convert them, grade a class, learn a DFA from examples,
+serve machines over MCP, and prove whether Turing machines halt.
 
 ```sh
 automata run machine.automaton 0110 101          # ✔ accept / ✘ reject / ? unknown
-automata play machine.automaton 0110 --history   # an animated run: space pauses, arrows step
+automata play machine.automaton 0110 --history   # animated run in the terminal
 automata from-regex "(a|b)*abb" | automata minimize - | automata codegen - --lang py
 automata grade exercise.automaton submissions/ --csv grades.csv
 automata halts machines.txt --proof proofs/      # halting proofs, checkable with check-proof
 ```
 
-It ships inside the desktop app (put `resources/cli` on your `PATH`), or from a
-checkout with `npm install && npm link`. Start with `automata --help` and
-`automata help machines`; the [guide](docs/cli.md) walks through it by task, and
-the [command reference](docs/cli-reference.md) lists every option.
+It also reads and writes HOA, BA, Timbuk and JFLAP. To install it, add the desktop
+app's `resources/cli` directory to your `PATH`, or run `npm install && npm link` from a
+checkout. Read the [CLI guide](docs/cli.md) for task-by-task instructions, or the
+[command reference](docs/cli-reference.md) for every option.
 
-## Desktop app
-The Windows and Linux AppImage builds update themselves: they check on startup and
-on demand from **⋯ → Check for Updates**. If a check fails it shows a code —
-[what the update error codes mean](docs/update-error-codes.md). macOS builds are not
-self-updating.
+## Development
 
-## Known Issues / Roadmap
-- Regular expression derivation is refused past 120 states: state
-  elimination is cubic in |Q|, so the Language panel asserts the class rather than
-  deriving an expression on large machines.
-- An exported SVG inlines the whole application stylesheet, which dominates the file
-  size. Narrowing that scrape to the canvas rules is the largest size win available.
-- Pushdown automata accept by final state only. A JFLAP file that accepts by
-  empty stack is imported as final-state acceptance and flagged, since it may
-  decide a different language.
+```bash
+npm run dev               # Vite dev server
+npm test                  # node:test suite (tests/*.test.js)
+npm run build             # production web build -> dist/
+npm run electron:dev      # the desktop shell against the dev server
+npm run electron:build    # installers -> release/
+npm run cli -- --help     # the CLI, from source
+npm run bench             # engine and renderer timings vs. bench/baseline.json
+```
+
+The code is organised as follows:
+
+```
+js/            the app: plain ES modules, SVG rendering, Solid signals for derived panels
+js/machines/   one module per machine family, behind a registry (DOM-free)
+js/grammar/    the grammar workbench
+cli/           the `automata` command line
+electron/      the desktop shell
+wasm/          the label-placement kernel (AssemblyScript)
+tests/         node:test, with a DOM stub
+docs/          user documentation and media
+```
+
+[CLAUDE.md](CLAUDE.md) holds the architecture notes: the module layout, the change
+notification store, the renderer, and how to add a machine type (one row in
+`MachineTypes` and one `defineMachine` call).
+
+## Known issues
+
+- Regular-expression derivation stops at 120 states. State elimination is cubic, so
+  larger machines show the language class instead of an expression.
+- An exported SVG inlines the whole application stylesheet, which makes the file larger
+  than it needs to be.
+- Pushdown automata accept by final state only. A JFLAP file that accepts by empty
+  stack is imported as final-state acceptance and flagged.
+
+Bug reports and feature requests go to the
+[issue tracker](https://github.com/thethinkmachine/AutomataStudio/issues). If the
+desktop updater reports an error, the code is explained in
+[docs/update-error-codes.md](docs/update-error-codes.md).
 
 ## Contributing
-Pull requests are welcome. Commits must be signed off (`git commit -s`) — see
-[CONTRIBUTING.md](CONTRIBUTING.md), which explains the one legal formality and why
-the project's licensing commitments depend on it.
+
+Pull requests are welcome. Commits must be signed off (`git commit -s`).
+[CONTRIBUTING.md](CONTRIBUTING.md) explains why the licence requires it. To contribute
+machines, submit them to the
+[machine library](https://github.com/thethinkmachine/automata-library), either from
+the app's Library view or through the library's issue form.
+
+## Citation
+
+If you use AutomataStudio in your research, teaching materials or a publication,
+please cite it. GitHub's **"Cite this repository"** button (from
+[CITATION.cff](CITATION.cff)) produces APA and BibTeX, or you can copy these:
+
+```bibtex
+@software{chaubey_automatastudio_2026,
+  author  = {Chaubey, Shreyan},
+  title   = {{AutomataStudio}: An {IDE} for Designing, Simulating and Analysing Automata},
+  year    = {2026},
+  version = {2.9.0},
+  url     = {https://github.com/thethinkmachine/AutomataStudio},
+  note    = {Software}
+}
+```
+
+> Chaubey, S. (2026). *AutomataStudio: An IDE for designing, simulating and analysing
+> automata* (Version 2.9.0) [Computer software].
+> https://github.com/thethinkmachine/AutomataStudio
+
+Cite the version you actually used, so that others can reproduce your results. If you
+have a paper, course or project that uses AutomataStudio, please open an issue to let
+me know.
 
 ## License
-**[PolyForm Noncommercial License 1.0.0](LICENSE)**, with a supplemental grant that
-converts each release to **AGPL-3.0-or-later** four years after it is published.
 
-Releases published before the license change remain available under CC BY-NC-SA 4.0
-([LICENSE-PRIOR-VERSIONS.txt](LICENSE-PRIOR-VERSIONS.txt)); that grant is irrevocable
-and is not withdrawn by the change.
+AutomataStudio is released under the
+**[PolyForm Noncommercial License 1.0.0](LICENSE)**. Under a supplemental grant, each
+release converts to **AGPL-3.0-or-later** four years after it is published. Academic
+research, teaching and personal use are noncommercial uses under the licence. See
+[NOTICE](NOTICE) for the required notice.
+
+Releases published before the licence change remain available under CC BY-NC-SA 4.0
+([LICENSE-PRIOR-VERSIONS.txt](LICENSE-PRIOR-VERSIONS.txt)). That grant is irrevocable.
+
+© 2026 Shreyan Chaubey

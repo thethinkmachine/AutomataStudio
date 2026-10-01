@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use AutomataStudio in your research or teaching, please cite it as below."
+type: software
+title: "AutomataStudio: An IDE for Designing, Simulating and Analysing Automata"
+abstract: >-
+  An interactive environment for building, running and analysing automata —
+  finite, ω-, pushdown, Turing and transducer machines — with a grammar
+  workbench, steppable textbook constructions, a built-in theory reference,
+  and a command-line engine with Turing-machine halting proofs.
+authors:
+  - family-names: Chaubey
+    given-names: Shreyan
+    alias: thethinkmachine
+version: 2.9.0
+license: LicenseRef-PolyForm-Noncommercial-1.0.0
+repository-code: "https://github.com/thethinkmachine/AutomataStudio"
+url: "https://thethinkmachine.github.io/AutomataStudio/"
+keywords:
+  - automata theory
+  - formal languages
+  - Turing machines
+  - pushdown automata
+  - omega-automata
+  - context-free grammars
+  - simulation
+  - education
