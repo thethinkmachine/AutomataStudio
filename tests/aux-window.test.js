@@ -132,3 +132,70 @@ test('Library comes first, and the More menu, the strip and the digits agree on 
   assert.deepEqual(tabs(h).map(t => t.getAttribute('data-tip-kbd')), ['2', '3', '4', '5']);
   h.context.setView('build');
 });
+
+// ── The last view, reopened from the header ──
+
+function lastView(h, id = 'hdr-last-view') {
+  return h.getElement(id);
+}
+
+test('the header button names the view the window showed last, Library before any', () => {
+  const h = createHarness();
+  // The remembered view is module state an earlier test may have set, so the
+  // Library default is pinned on the source rather than observed here.
+  assert.match(readFileSync(join(ROOT, 'js/view.js'), 'utf8'),
+    /AUX_VIEWS\.includes\(v\) \? v : AUX_VIEWS\[0\]/);
+  h.context.setView('build');
+  const btn = lastView(h);
+  h.context.setView('grammar');
+  h.context.setView('build');
+  assert.equal(btn.dataset.view, 'grammar');
+  assert.match(btn.innerHTML, /Grammar/);
+  assert.equal(btn.getAttribute('aria-label'), 'Open Grammar');
+  assert.equal(btn.getAttribute('data-tip-kbd'), h.context.auxViewKey('grammar'));
+  assert.equal(h.context.localStorage.getItem('automata-aux-last'), 'grammar');
+});
+
+test('pressing it opens that view, and on a phone a second press puts it away', () => {
+  const h = createHarness();
+  h.context.setView('reference');
+  h.context.setView('build');
+  lastView(h)._listeners.click();
+  assert.equal(h.context.App.view, 'reference');
+  assert.equal(lastView(h).classList.contains('is-open'), true);
+  lastView(h, 'mobile-last-view')._listeners.click();
+  assert.equal(h.context.App.view, 'build');
+  assert.equal(lastView(h, 'mobile-last-view').classList.contains('is-open'), false);
+});
+
+test('the desktop and phone buttons always name the same view', () => {
+  const h = createHarness();
+  for (const v of h.context.AUX_VIEWS) {
+    h.context.setView(v);
+    h.context.setView('build');
+    assert.equal(lastView(h).dataset.view, v);
+    assert.equal(lastView(h, 'mobile-last-view').dataset.view, v);
+  }
+});
+
+test('the button and the tab chevron sit inside the strip frame, outside the scroller', () => {
+  const strip = html.slice(html.indexOf('<div class="tab-strip"'), html.indexOf('<!-- The workspace strip, for a screen'));
+  const scroller = strip.indexOf('<div id="tab-bar"');
+  assert.ok(scroller > 0, 'the scroller is inside the frame');
+  const scrollerEnd = strip.indexOf('</div>', scroller);
+  for (const id of ['tab-overflow-btn', 'hdr-last-view']) {
+    const at = strip.indexOf(`id="${id}"`);
+    assert.ok(at > scrollerEnd, `${id} is in the frame, after the scroller`);
+  }
+  // The frame holds the border, so nothing in it scrolls away with the tabs.
+  const layout = readFileSync(join(ROOT, 'css/layout.css'), 'utf8');
+  const rule = name => (layout.match(new RegExp(`\\n${name.replace('.', '\\.')} \\{[^}]*\\}`)) || [''])[0];
+  assert.match(rule('.tab-strip'), /border: 1px solid/);
+  assert.doesNotMatch(rule('.tab-bar'), /border:/);
+});
+
+test('on a phone the button shares the workspace pill', () => {
+  const pill = html.slice(html.indexOf('<div class="mobile-ws-pill"'));
+  const end = pill.indexOf('id="mobile-last-view"');
+  assert.ok(pill.indexOf('id="mobile-ws-btn"') > 0 && pill.indexOf('id="mobile-ws-btn"') < end);
+});

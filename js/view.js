@@ -185,6 +185,63 @@ function syncAuxContext() {
 }
 subscribe(Change.GRAPH, syncAuxContext);
 
+// ── The last view, reopened from the header ──
+//  One button in the workspace strip (and one in the phone's workspace pill)
+//  opens whichever view the tool window showed last. It names that view, since
+//  what a click does changes with use and an icon alone would have to be
+//  decoded every time. Library until something else has been opened, as the
+//  first of the four. Remembered per reader, like maximize.
+const AUX_LAST_KEY = 'automata-aux-last';
+const LAST_VIEW_BUTTONS = ['hdr-last-view', 'mobile-last-view'];
+let lastAuxView = (() => {
+  try {
+    const v = localStorage.getItem(AUX_LAST_KEY);
+    return AUX_VIEWS.includes(v) ? v : AUX_VIEWS[0];
+  } catch (e) { return AUX_VIEWS[0]; }
+})();
+
+export function lastAuxViewId() { return lastAuxView; }
+
+function rememberAuxView(v) {
+  if (v === lastAuxView) return;
+  lastAuxView = v;
+  try { localStorage.setItem(AUX_LAST_KEY, v); } catch (e) { }
+}
+
+// On a phone the window opens below the header, so the button is still there
+// while its view is showing: it is lit then, and a second press puts the view
+// away — the same press that opened it.
+export function openLastAuxView() {
+  if (App.view === lastAuxView) closeAuxView();
+  else setView(lastAuxView);
+}
+
+function syncLastViewButtons() {
+  const meta = AUX_META[lastAuxView];
+  const open = App.view === lastAuxView;
+  for (const id of LAST_VIEW_BUTTONS) {
+    const btn = $(id);
+    if (!btn) continue;
+    // Wired on first sync rather than at module scope: init's setView('build')
+    // is the first sync, and by then the element is the page's own.
+    if (!btn.dataset.wired) {
+      btn.dataset.wired = '1';
+      btn.addEventListener('click', openLastAuxView);
+    }
+    // Rebuilt only when the view changes, so a repaint never swaps the
+    // glyph out from under a hover.
+    if (btn.dataset.view !== lastAuxView) {
+      btn.dataset.view = lastAuxView;
+      btn.innerHTML = `<span class="last-view-ico" aria-hidden="true">${meta.icon}</span>`
+        + `<span class="last-view-label">${meta.title}</span>`;
+      btn.setAttribute('aria-label', `Open ${meta.title}`);
+      btn.setAttribute('data-tip', `Open ${meta.title}`);
+      btn.setAttribute('data-tip-kbd', auxViewKey(lastAuxView));
+    }
+    btn.classList.toggle('is-open', open);
+  }
+}
+
 // Populates the shared modal chrome for the given aux view.
 export function applyAuxChrome(v) {
   ensureAuxChrome();
@@ -224,6 +281,8 @@ export function setView(v) {
   else delete document.body.dataset.auxView;
 
   applyAuxChrome(v);
+  if (isAux) rememberAuxView(v);
+  syncLastViewButtons();
 
   // Keep the trigger lit while an aux view is up, and mark the open item. The
   // trigger is now the More button, because that menu is where the three
