@@ -34,7 +34,7 @@ function* tree(n, k) {
   while (queue.length) {
     const node = queue.pop();
     yield node;
-    const r = bbStep(node, { budget: 200, cpsMax: 0, inductionMs: 0 });
+    const r = bbStep(node, { budget: 200, segment: 0, far: 0, cpsMax: 0, inductionMs: 0 });
     if (r.verdict === 'branch') queue.push(...r.children);
   }
 }
@@ -126,7 +126,7 @@ test('the fast run agrees with the classifier on where machines stop', () => {
     const p = tableFromStandard(code);
     const a = run(p, 500);
     const b = classifyBehaviourNow(p, { budget: 500, backward: false });
-    if (b.verdict === 'halts') assert.equal(a.steps, b.steps, code);
+    if (b.verdict === 'halts') assert.equal(a.steps, b.transitions, code);
     else assert.equal(a.halted, null, code);
   }
 });

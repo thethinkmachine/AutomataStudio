@@ -932,18 +932,35 @@ automata halts <machine | list.txt | code ...>
 
 Does each machine halt from a blank tape (or --input)? Methods, cheapest first:
 simulation, cycler, translated cycler and backward reasoning (the app's own),
-then n-gram closed position sets, then the busy beaver bound for machines in
-the model whose S(n, k) is proved. What is still unknown gets a growth reading:
-how fast its tape grows — logarithmic (counter-like), √t (bouncer-like), …
+then bbchallenge's halting segment and finite automata reduction (ports of
+the reference deciders), then n-gram closed position sets, inductive rules,
+and the busy beaver bound for machines in the model whose S(n, k) is proved.
+What is still unknown gets a growth reading: how fast its tape grows —
+logarithmic (counter-like), √t (bouncer-like), …
+
+Steps are counted as bbchallenge counts them: reading an undefined transition
+(---) is the halting step, and it counts.
 
 A text file is a list: one machine per line, in the standard notation or as a
 machine code; # starts a comment.
 
+With --db, the arguments are machine IDs in bbchallenge's seed database (the
+binary all_5_states_undecided_machines_with_global_header): 108115, #108115,
+or a range 0-999; --index adds every ID in an index file (big-endian uint32s,
+such as bb5_undecided_index). Each machine is labelled #id, as bbchallenge.org
+names it, and the JSON carries its standard notation.
+
   --budget N        steps for the simulation-based methods (default 1000000)
+  --segment D       halting segment: segments up to 2D + 1 cells (default 5, the
+                    reference's; 0 = off)
+  --far D           finite automata reduction: DFAs up to D states (default 6;
+                    7 is the reference's BB(5) search and takes minutes a machine)
   --cps N           largest closed-position-set window (default 10; 0 = off)
   --induction-ms N  time for the inductive-rule prover per machine (default 2000; 0 = off)
   --no-bound        skip the busy beaver bound
   --no-growth       skip the growth reading for unknowns
+  --db FILE         read the machines from bbchallenge's seed database, by ID
+  --index FILE      with --db: also every ID in this index file
   --input w         run on w instead of a blank tape (.automaton machines)
   --workers N       worker threads (default: one per core, for 3+ machines)
   --proof DIR       write one proof file per decided machine (check-proof reads them)
@@ -975,8 +992,10 @@ Independently re-check a proof file written by halts --proof.
 automata check-proof <proof.json | dir ...>
 
 Re-checks each proof with code that shares nothing with the prover: its own
-tape, its own stepper, its own reading of the notation. Backward reasoning is
-the exception — it is re-run with the app's search, and marked as such.
+tape, its own stepper, its own reading of the notation. A finite automata
+reduction proof is checked against bbchallenge's verifier conditions. Backward
+reasoning, halting segment and inductive rules are the exception — they are
+re-run with the app's search, and marked as such.
 
 Exit: 0 every proof holds, 1 one does not.
 ```
@@ -1003,6 +1022,8 @@ provably never halts (by method), or is a holdout. Does not use the busy beaver
 bound, which would assume the answer. 2×2 and 3×2 take moments; 4×2 minutes.
 
   --budget N        steps per machine (default 100000)
+  --segment D       halting segment up to 2D + 1 cells (default 5)
+  --far D           finite automata reduction up to D DFA states (default 5)
   --cps N           largest closed-position-set window (default 4)
   --induction-ms N  inductive-rule prover time per machine (default 300)
   --workers N
@@ -1303,11 +1324,17 @@ halts        does it halt? tries, cheapest first:
                cycler                a configuration repeats exactly
                translated cycler     it repeats, shifted along fresh tape
                backward reasoning    no halting configuration is reachable
+               halting segment       bbchallenge's: no halt is reachable
+                                     through a fixed segment (--segment)
+               finite automata       bbchallenge's FAR: an automaton
+                 reduction           recognises every way to halt (--far)
                closed position set   an n-gram abstraction closed under δ
                inductive rule        a run-length pattern that grows forever
                busy beaver bound     it ran past S(n,k), for n ≤ 5 (2 symbols)
              and otherwise reports "unknown" with how its tape grows:
              logarithmic (counter-like) or √t (bouncer-like)
+             Steps are counted as bbchallenge counts them: reading --- is
+             the halting step. --db reads bbchallenge's seed database by ID.
 bb-search    every n-state machine, the champion, and the holdouts
 sheet        a contact sheet of space-time diagrams
 play, trace  one run, step by step; play --history draws the diagram live
@@ -1330,10 +1357,13 @@ re-checks them:
 
   simulation, cycler,       independently: its own tape, its own stepper,
   translated cycler, CPS    sharing no code with the prover
+  finite automata           independently, against bbchallenge's verifier
+    reduction               conditions on the DFA and NFA the proof carries
   busy beaver bound         independently simulated; the value of S(n,k) is
                             cited (BB(5) was proved in 2024), not re-proved
   backward reasoning,       re-derived by running the prover again — said so
-  inductive rule            in the output
+  halting segment,          in the output
+  inductive rule
 
 The provers are tested against ground truth: every machine in the 3-state and
 2-state 3-symbol enumerations halts within S(n,k) steps if it halts at all,

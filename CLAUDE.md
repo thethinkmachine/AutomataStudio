@@ -251,7 +251,10 @@ js/machines/
                  notes, *The fast lane*.
   tm-behaviour.js whether a TM halts or never halts, and which method
                  proved it (simulation, cycler, translated cycler,
-                 backward reasoning) — or "unknown". See the simulation notes.
+                 backward reasoning, halting segment, finite automata
+                 reduction) — or "unknown". See the simulation notes.
+  halting-segment.js  bbchallenge's halting segment decider, ported.
+  far.js         bbchallenge's finite automata reduction (direct), ported.
   batch.js       the batch tester's deciding half, with no page attached.
 ```
 

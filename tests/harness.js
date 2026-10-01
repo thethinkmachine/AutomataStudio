@@ -118,6 +118,8 @@ import * as machineColumns from '../js/machines/columns.js';
 import * as machineBranchTree from '../js/machines/branch-tree.js';
 import * as machineFastTm from '../js/machines/fast-tm.js';
 import * as machineTmBehaviour from '../js/machines/tm-behaviour.js';
+import * as machineHaltingSegment from '../js/machines/halting-segment.js';
+import * as machineFar from '../js/machines/far.js';
 import * as parallelPool from '../js/parallel/pool.js';
 import * as parallelSnapshot from '../js/parallel/snapshot.js';
 import * as parallelCore from '../js/parallel/decide-core.js';
@@ -161,7 +163,7 @@ import * as wizardUi from '../js/wizard-ui.js';
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, viewport, geometry, statesTransitions,
   blocks, blocksUi, viewGraph, graphThumb, scope, runScope, canvas, render, panelState, panelSections, traceFormat, panelSectionsUi, panelFloat, sectionStatus, machineOptionsUi, deltaTable, panelShake, canvasMotion, panelList, mobile, notes, dividers,
-  machineRegistry, machineRuntime, machineBranchTree, machineFastTm, machineTmBehaviour, machineFinite, machineWeighted, machineOmega,
+  machineRegistry, machineRuntime, machineBranchTree, machineFastTm, machineTmBehaviour, machineHaltingSegment, machineFar, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineEmbedded, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, machineColumns, parallelPool, parallelSnapshot, parallelCore,
   simulation, speedControl, tape, tapeLog, tapeView, spacetime, spacetimeUi, branchTreeUi, branchTokens, complexity, complexityUi, behaviourUi, suggest, language, alphabet, markdown,

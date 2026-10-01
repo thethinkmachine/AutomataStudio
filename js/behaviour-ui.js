@@ -158,9 +158,11 @@ function ensureBuilt() {
 
   const out = el('div', 'bh-out');
   const foot = el('p', 'bh-foot');
-  foot.innerHTML = 'Proves that the run from this tape <b>halts</b>, or that it never halts, by one of three methods: '
+  foot.innerHTML = 'Proves that the run from this tape <b>halts</b>, or that it never halts, by one of five methods: '
     + '<b>cycler</b> (a configuration recurs exactly), <b>translated cycler</b> (the same state and tape segment recur, shifted, at the edge of the visited tape), '
-    + 'or <b>backward reasoning</b> (every halting configuration is at most L steps from any configuration that reaches it, and the run has passed step L). '
+    + '<b>backward reasoning</b> (every halting configuration is at most L steps from any configuration that reaches it, and the run has passed step L), '
+    + 'and, from a blank tape once the budget is spent, bbchallenge\'s <b>halting segment</b> and <b>finite automata reduction</b> (no configuration that leads to a halt can be reached from the start). '
+    + 'Steps are counted as bbchallenge counts them: reading a missing transition is the halting step. '
     + '<b>Unknown</b> means no method produced a proof within the budget. It is not a claim that the machine runs forever.';
 
   body.append(controls, progress, status, out, foot);
@@ -311,6 +313,7 @@ const now = () => (typeof performance !== 'undefined' && performance.now ? perfo
 const fmt = n => Number(n).toLocaleString('en');
 
 function stepsOf(v) {
+  if (v.method === 'simulation') return v.transitions ?? v.steps;
   if (v.method === 'cycler') return v.from + 2 * v.period;
   if (v.method === 'translated') return v.at;
   return v.steps;
@@ -394,6 +397,10 @@ const ICONS = {
   translated: '<svg viewBox="0 0 24 24" aria-hidden="true"><g transform="translate(-1.2 3.4) scale(.72)" stroke-width="2.5"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.8 4.2v4.3h-4.3"/></g><path d="M15 12h7M19 9l3 3-3 3"/></svg>',
   // An arrow turning back on itself: the search runs from the halt backwards.
   backward: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5l-5 5 5 5"/><path d="M4.5 10.5H14a5.5 5.5 0 0 1 0 11h-3"/></svg>',
+  // A bracketed stretch of tape, searched backwards inside it.
+  segment: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5H4.5v14H7"/><path d="M17 5h2.5v14H17"/><path d="M13.5 8.5L10 12l3.5 3.5"/></svg>',
+  // Two automaton states and the move between them.
+  far: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6.5" cy="12" r="3.5"/><circle cx="17.5" cy="12" r="3.5"/><path d="M10 12h4"/><path d="M12.5 10l2 2-2 2"/></svg>',
   unknown: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.6 2.3c-.8.4-1.2 1-1.2 1.8v.6"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>'
 };
 
@@ -467,7 +474,8 @@ function explain(v, p) {
       return v.how === 'accept'
         ? `At step ${fmt(v.steps)} it enters the accepting state ${state(v.state)} and halts. `
           + `The tape then holds ${plural(v.ones, 'non-blank cell')}.`
-        : `At step ${fmt(v.steps)} it is in ${state(v.state)} reading ${symName(p, v.read)}, and δ has no transition for that pair, so it halts. `
+        : `After ${plural(v.transitions, 'transition')} it is in ${state(v.state)} reading ${symName(p, v.read)}, and δ has no transition for that pair, so it halts. `
+          + `Reading the missing transition is the halting step, and the busy beaver convention counts it, so this is a halt at step ${fmt(v.steps)}. `
           + `The tape then holds ${plural(v.ones, 'non-blank cell')}.`;
     case 'cycler':
       return `The configuration at step ${fmt(v.from + v.period)} (state, head position and every tape cell) is identical to the one at step ${fmt(v.from)}. `
@@ -488,21 +496,46 @@ function explain(v, p) {
       return `Searching backwards from each of its ${plural(v.halts.length, 'halting configuration')}, every path of predecessors ends within ${plural(v.longest, 'step')}. `
         + `So any configuration that halts at all, over the symbols this run can contain, halts within ${plural(v.longest, 'step')}. `
         + `The run has taken ${plural(v.steps, 'step')} without halting, so it never halts.`;
+    case 'segment':
+      return `Looking at the tape only through a segment of ${plural(v.size, 'cell')}, with a halt in its middle, and working backwards from every way it could halt, `
+        + `the configurations that can lead to a halt form a closed set of ${plural(v.nodes, 'partial configuration')} — and none of them could be the blank starting tape. `
+        + 'So no configuration the run reaches ever leads to a halt, and it never halts. This is bbchallenge\'s halting segment decider.';
+    case 'far':
+      return `A finite automaton recognises every configuration from which the machine can go on to halt: a ${plural(v.depth, 'state')} DFA reads the tape ${v.side === 'R' ? 'from the left' : 'from the right'} up to the head, `
+        + `then an NFA of ${plural(v.states, 'state')} reads the rest. It recognises every halting configuration, it recognises a configuration whenever it recognises the one a step later, `
+        + 'and it does not recognise the blank starting tape — so the run never reaches a halt. This is bbchallenge\'s finite automata reduction.';
     default: {
       const gaveUp = !v.backward ? ''
         : v.backward.reason === 'depth' ? ` Backward reasoning gave no bound: a path of predecessors from a halting configuration was still consistent after ${plural(v.backward.depth, 'step')}.`
         : ` Backward reasoning gave no bound: it reached its search limit of ${fmt(v.backward.explored)} partial configurations.`;
-      return `No proof within ${plural(v.steps, 'step')}: the run did not halt, no configuration recurred, and no translated repetition was found.${gaveUp} `
+      return `No proof within ${plural(v.steps, 'step')}: the run did not halt, no configuration recurred, and no translated repetition was found.${gaveUp}${staticGaveUp(v)} `
         + 'This is not a claim that the machine runs forever. It may halt later, or never halt for a reason these methods cannot detect.';
     }
   }
+}
+
+/** What halting segment and finite automata reduction found, for an unknown. */
+function staticGaveUp(v) {
+  const say = [];
+  const hs = v.segment, fa = v.far;
+  if (hs) {
+    if (hs.reason === 'model') say.push(`Halting segment does not apply: ${hs.why}.`);
+    else if (hs.reason === 'start') say.push(`Halting segment found no segment up to ${plural(2 * hs.distance + 1, 'cell')} that excludes the start.`);
+    else say.push('Halting segment reached its search limit.');
+  }
+  if (fa) {
+    if (fa.reason === 'model') say.push(`Finite automata reduction does not apply: ${fa.why}.`);
+    else if (fa.reason === 'none') say.push(`Finite automata reduction found no DFA up to ${plural(fa.depth, 'state')}.`);
+    else say.push(`Finite automata reduction reached its search limit at ${plural(fa.depth, 'DFA state')}.`);
+  }
+  return say.length ? ` ${say.join(' ')}` : '';
 }
 
 function factsOf(v, p) {
   const tapeLbl = ranFor.tape.label;
   switch (v.method) {
     case 'simulation':
-      return [['Steps', fmt(v.steps), v.how === 'none' ? 'Transitions taken. The busy beaver convention also counts the missing transition as a step, which would make this one more.' : 'Transitions taken, the last one into the accepting state'],
+      return [['Steps', fmt(v.steps), v.how === 'none' ? `Counted as bbchallenge counts them: ${plural(v.transitions, 'transition')} taken, and the step that reads the missing transition` : 'Transitions taken, the last one into the accepting state'],
         ['Non-blank cells', fmt(v.ones), 'Σ — the ones left, in busy beaver terms'], ['Cells used', fmt(v.cells), 'Cells between the leftmost and rightmost the head visited, inclusive'], ['Started on', tapeLbl]];
     case 'cycler':
       return [['Period', `${fmt(v.period)} step${v.period === 1 ? '' : 's'}`, 'The smallest λ with the configuration at μ + λ equal to the one at μ'],
@@ -517,6 +550,14 @@ function factsOf(v, p) {
       return [['Halting configs', fmt(v.halts.length), 'Pairs (state, symbol) with no transition, over the symbols this run can contain, plus accepting states'],
         ['Bound L', plural(v.longest, 'step'), 'Any configuration that halts does so within L steps. The bound is attained: the witness below halts in exactly L.'],
         ['Searched', fmt(v.explored), 'Partial configurations examined, working back from the halting configurations'], ['Started on', tapeLbl]];
+    case 'segment':
+      return [['Segment', plural(v.size, 'cell'), 'Odd sizes 3, 5, 7, … are tried in turn, the halt in the middle; this is the first that closed'],
+        ['Closed set', fmt(v.nodes), 'Partial configurations: what the segment holds, with the state and head, or the head outside it'],
+        ['Run first', plural(v.steps, 'step'), 'Halting segment is tried once the run\'s own methods have used the budget'], ['Started on', tapeLbl]];
+    case 'far':
+      return [['DFA', plural(v.depth, 'state'), 'Reads the tape up to the head, ignoring leading blanks; the smallest that works, searched in bbchallenge\'s order'],
+        ['NFA', plural(v.states, 'state'), 'One for each DFA state and machine state, plus a steady accepting state'],
+        ['Scan', v.side === 'R' ? 'left to right' : 'right to left'], ['Started on', tapeLbl]];
     default:
       return [['Steps run', fmt(v.steps)], ['Cells used', fmt(v.cells)], ['Started on', tapeLbl]];
   }
@@ -525,7 +566,8 @@ function factsOf(v, p) {
 // Backward reasoning has none: its witness is some configuration, not a step
 // of this run.
 function jumpTarget(v) {
-  if (v.method === 'simulation') return v.steps;
+  // The player counts transitions; a halt on a missing one is not a step there.
+  if (v.method === 'simulation') return v.transitions ?? v.steps;
   if (v.method === 'cycler' || v.method === 'translated') return v.from;
   return null;
 }
@@ -600,6 +642,33 @@ function evidence(v, p) {
       strip(p, r1.lo, r1.cells, b.head, w1, `step ${fmt(b.t)} · head at cell ${fmt(b.head)}`),
       strip(p, r2.lo, r2.cells, a.head, w2, `step ${fmt(a.t)} · head at cell ${fmt(a.head)}`)
     );
+    return box;
+  }
+  if (v.method === 'segment') {
+    const box = el('div', 'bh-evidence');
+    box.appendChild(el('div', 'bh-ev-cap', 'Each segment size, until one closed'));
+    const list = el('ul', 'bh-halts');
+    for (const t of v.tried) {
+      const li = el('li');
+      li.append(el('span', null, plural(t.size, 'cell')), el('span', 'bh-halt-d', `the start was possible after ${plural(t.nodes, 'node')}`));
+      list.appendChild(li);
+    }
+    const li = el('li');
+    li.append(el('span', null, plural(v.size, 'cell')), el('span', 'bh-halt-d', `closed with ${plural(v.nodes, 'node')}`));
+    list.appendChild(li);
+    box.appendChild(list);
+    return box;
+  }
+  if (v.method === 'far') {
+    const box = el('div', 'bh-evidence');
+    box.appendChild(el('div', 'bh-ev-cap', `The DFA, state 0 first: where each state goes on each symbol, reading ${v.side === 'R' ? 'left to right' : 'right to left'}`));
+    const list = el('ul', 'bh-halts');
+    v.dfa.forEach((row, q) => {
+      const li = el('li');
+      li.append(el('span', null, `q${q}`), el('span', 'bh-halt-d', row.map((to, b) => `${symName(p, b)} → q${to}`).join(' · ')));
+      list.appendChild(li);
+    });
+    box.appendChild(list);
     return box;
   }
   if (v.method === 'cycler') {

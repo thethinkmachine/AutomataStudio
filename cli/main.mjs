@@ -97,7 +97,8 @@ const NUMERIC = {
   cap: { int: true, min: 1 }, states: { int: true, min: 1 }, symbols: { int: true, min: 2 }, points: { min: 0 },
   exhaustive: { int: true, min: 0, max: 24 }, tests: { int: true, min: 0 }, timeout: { int: true, min: 1 },
   bounded: { int: true, min: 0, max: 24 }, cell: { int: true, min: 1, max: 64 }, 'step-ms': { int: true, min: 10 },
-  workers: { int: true, min: 1, max: 256 }, 'max-states': { int: true, min: 1 }
+  workers: { int: true, min: 1, max: 256 }, 'max-states': { int: true, min: 1 },
+  segment: { int: true, min: 0, max: 12 }, far: { int: true, min: 0, max: 12 }
 };
 
 function checkNumbers(opts, cmd) {

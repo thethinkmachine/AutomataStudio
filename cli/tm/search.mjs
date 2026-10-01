@@ -47,9 +47,9 @@ export function codeOf(node) {
  * unknown machine, and for one that reached an undefined transition also
  * `halt` (the halting machine made by defining it as a halt) and `children`.
  */
-export function bbStep(node, { budget = 1e5, cpsMax = 4, inductionMs = 300 } = {}) {
+export function bbStep(node, { budget = 1e5, segment = 5, far = 5, cpsMax = 4, inductionMs = 300 } = {}) {
   const p = tableOf(node);
-  const v = decide(p, { budget, cpsMax, inductionMs, bound: false });
+  const v = decide(p, { budget, segment, far, cpsMax, inductionMs, bound: false });
   const code = codeOf(node);
   if (v.verdict !== 'halts') return { verdict: v.verdict, method: v.method, code };
   const { n, k } = node;
@@ -59,7 +59,9 @@ export function bbStep(node, { budget = 1e5, cpsMax = 4, inductionMs = 300 } = {
   const haltNext = [...node.next], haltWrite = [...node.write], haltMove = [...node.move];
   haltNext[e] = n; haltWrite[e] = 1; haltMove[e] = 1;
   const halt = {
-    steps: v.steps + 1,
+    // The classifier already counts the step that read the missing
+    // transition, which is the step the halt defined here takes.
+    steps: v.steps,
     ones: (v.ones ?? 0) + (s === 0 ? 1 : 0),
     code: standardFromTable({ ...p, next: Int32Array.from(haltNext), write: Int32Array.from(haltWrite), move: Int8Array.from(haltMove) })
   };

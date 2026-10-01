@@ -317,13 +317,17 @@ automata sheet machines.txt -o sheet.svg
 | cycler | never | a whole configuration repeats |
 | translated cycler | never | the configuration repeats, shifted along fresh tape |
 | backward reasoning | never | no halting configuration is reachable backwards |
+| halting segment | never | bbchallenge's decider: searching backwards through a fixed segment of tape from every halt closes without reaching the blank start (`--segment`, segments up to 2·5 + 1 cells as the reference) |
+| finite automata reduction | never | bbchallenge's decider: a DFA and NFA recognise every configuration that leads to a halt, and not the start (`--far`, DFAs up to 6 states; `--far 7` is the reference's BB(5) search) |
 | closed position set | never | an n-gram over-approximation of every reachable configuration is closed and contains no halt |
 | inductive rule | never | a run-length pattern of the tape provably grows forever (bouncers) |
 | busy beaver bound | never | it ran past S(n, k) steps, for machines whose busy beaver value is proved (n ≤ 5 on 2 symbols) |
 
+Halting segment and finite automata reduction are ports of bbchallenge's reference deciders (the `decider-halting-segment-reproduction` and the `direct` FAR prover): the same search in the same order, so they decide the machines the reference decides and find the proof it finds. Steps are counted as bbchallenge counts them: reading an undefined transition (`---`) is the halting step, so BB(5) is 47,176,870 steps written either way. `--db FILE` reads machines from bbchallenge's seed database by ID (`automata halts --db all_5_states_undecided_machines_with_global_header 108115 0-99`), and `--index FILE` adds every ID in an index file such as `bb5_undecided_index`.
+
 What none of them settles is reported as **unknown**, with how its tape grows: logarithmically (a counter) or as √t (a bouncer). Lists run on all your cores. A typo in a list is reported with its likely fix: `RB---_0RA---` → "did you mean `1RB---_0RA---`?".
 
-**Proofs.** `--proof DIR` writes one JSON file per decided machine. `check-proof` re-checks them with code that shares nothing with the provers — its own tape and stepper — for simulation, cyclers, translated cyclers and closed position sets; the busy beaver bound is re-simulated, with the value of S(n, k) cited rather than re-proved; backward reasoning and inductive rules are re-derived by running the prover again, and the output says which is which. The provers are tested against ground truth: no "never halts" claim over the complete 3-state and 2-state 3-symbol enumerations is wrong.
+**Proofs.** `--proof DIR` writes one JSON file per decided machine. `check-proof` re-checks them with code that shares nothing with the provers — its own tape and stepper — for simulation, cyclers, translated cyclers and closed position sets, and finite automata reduction against bbchallenge's verifier conditions; the busy beaver bound is re-simulated, with the value of S(n, k) cited rather than re-proved; backward reasoning, halting segment and inductive rules are re-derived by running the prover again, and the output says which is which. The provers are tested against ground truth: no "never halts" claim over the complete 3-state and 2-state 3-symbol enumerations is wrong.
 
 **`bb-search`** enumerates every n-state machine in tree normal form and classifies each: the champion (the busy beaver candidate), how many provably never halt and by which method, and the holdouts. It reproduces BB(2) = 6, BB(3) = 21 and BB(2,3) = 38 in seconds. `tm-normalize` removes renamings and mirror images from a list.
 

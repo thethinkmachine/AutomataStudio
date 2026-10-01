@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
+import { checkProof, PROOF_FORMAT } from '../cli/tm/check.mjs';
 
 // js/machines/tm-behaviour.js proves what a Turing machine does: it halts, it
 // never halts, or it does not know — and names the method that proved it.
@@ -17,6 +18,10 @@ import { createHarness } from './harness.js';
 //   backward    its witness, placed on a real tape, halts in exactly L steps;
 //               no random configuration halts later than L; and the run does
 //               not halt within the budget.
+//   segment     the oracle does not halt within ten times the budget, or
+//               5,000 steps if that is more.
+//   far         the same, and the proof passes check-proof's checker, which
+//               tests bbchallenge's verifier conditions with code of its own.
 //   unknown     the oracle does not halt within the budget either.
 //
 // The halting champions are checked against their published step counts, and
@@ -83,10 +88,12 @@ function checkVerdict(p, v, budget, label) {
   const o = oracle(p);
   assert.equal(v.verdict, v.method ? context.METHODS[v.method].verdict : 'unknown', `${label}: the method's verdict`);
   if (v.method === 'simulation') {
-    o.to(v.steps);
-    assert.equal(o.t, v.steps, `${label}: steps`);
-    assert.equal(o.step(), false, `${label}: halts at ${v.steps}`);
+    o.to(v.transitions);
+    assert.equal(o.t, v.transitions, `${label}: transitions`);
+    assert.equal(o.step(), false, `${label}: halts after ${v.transitions}`);
     assert.equal(o.halted, v.how, `${label}: how it halted`);
+    // bbchallenge's count: the read of a missing transition is a step.
+    assert.equal(v.steps, o.t + (o.halted === 'none' ? 1 : 0), `${label}: steps, as bbchallenge counts them`);
     assert.equal(o.tape.size, v.ones, `${label}: ones`);
   } else if (v.method === 'cycler') {
     const { from: mu, period: lam } = v;
@@ -132,6 +139,14 @@ function checkVerdict(p, v, budget, label) {
       assert.equal(w.state, v.witness.halt.state, `${label}: in the halt it names`);
       assert.equal(w.halted, v.witness.halt.read < 0 ? 'accept' : 'none', `${label}: how the witness halts`);
     }
+  } else if (v.method === 'segment' || v.method === 'far') {
+    assert.ok(o.to(Math.max(10 * budget, 5000)), `${label}: halted, but ${v.method} said never`);
+    if (v.method === 'far') {
+      const table = { Q: p.Q, K: p.K, start: p.start, twoWay: p.twoWay, next: [...p.next], write: [...p.write], move: [...p.move], accept: [...p.accept] };
+      const ev = { side: v.side, depth: v.depth, dfa: v.dfa, nfa: v.nfa, accepted: v.accepted, states: v.states };
+      const c = checkProof({ format: PROOF_FORMAT, table, input: [], verdict: 'never', method: 'far', evidence: ev });
+      assert.ok(c.ok, `${label}: the FAR proof does not check: ${c.why}`);
+    }
   } else {
     assert.equal(v.verdict, 'unknown');
     assert.equal(v.method, null);
@@ -161,7 +176,26 @@ for (const [name, src, steps, ones] of CHAMPIONS) {
     assert.equal(v.method, 'simulation');
     assert.equal(v.how, 'accept');
     assert.equal(v.steps, steps);
+    assert.equal(v.transitions, steps);
     assert.equal(v.ones, ones);
+  });
+}
+
+// bbchallenge writes the same champions with the halt left undefined, `---`,
+// and counts the step that reads it: BB(5) is 47,176,870 steps either way
+// (bbchallenge-go's TmSimulate executes that step). The tape is the one the
+// machine leaves — the halting write never happens — so it is one 1 short of
+// the `1RZ` form's where that write would have landed on a blank (BB(4),
+// BB(5)), and the same where it would have rewritten a non-blank (BB(2)).
+for (const [name, src, steps, ones] of CHAMPIONS) {
+  const undefinedHalt = src.replace(/\dRZ|\dLZ/, '---');
+  test(`the ${name} champion written with --- still halts after ${steps.toLocaleString('en')} steps`, () => {
+    const v = context.classifyBehaviourNow(load(undefinedHalt), { budget: 5e7 });
+    assert.equal(v.verdict, 'halts');
+    assert.equal(v.how, 'none');
+    assert.equal(v.steps, steps, 'the halting step counts');
+    assert.equal(v.transitions, steps - 1, 'the player shows the transitions taken');
+    assert.equal(v.ones, ones - (v.read === 0 ? 1 : 0), 'the 1RZ form\'s halting write is missing');
   });
 }
 
@@ -212,24 +246,49 @@ const COUNTER = '1RB1LA---_0LA0RB0RB_2RC2RC2RC';
 
 test('a binary counter is neither, and is reported unknown rather than guessed', () => {
   // Counts up in binary forever (Ligocki's 2x2-Counter): it never repeats
-  // and never settles into a translation — the textbook case for "unknown".
+  // and never settles into a translation — the textbook case for "unknown"
+  // as far as the run's own methods go, so bbchallenge's two static deciders
+  // are left out here (the next test is about them).
   // A state it never enters writes a third symbol, and A has no move on it:
   // a way to halt that some other tape reaches from arbitrarily far back, so
   // backward reasoning cannot settle it. (A symbol nothing writes would not
   // do — the machine can never meet it, so it is no way to halt.)
   const p = load(COUNTER);
   const budget = 20000;
-  const v = context.classifyBehaviourNow(p, { budget });
+  const v = context.classifyBehaviourNow(p, { budget, segment: 0, far: 0 });
   assert.equal(v.verdict, 'unknown');
   assert.equal(v.method, null);
   assert.equal(v.steps, budget);
   assert.equal(v.backward.reason, 'depth', 'backward reasoning found a path back that did not die');
+  assert.equal(v.segment, null);
+  assert.equal(v.far, null);
   checkVerdict(p, v, budget, 'counter');
+});
+
+test('the counter is what bbchallenge\'s static deciders are for', () => {
+  // The run's own methods cannot settle a counter; bbchallenge's pipeline
+  // hands what they leave to halting segment, then finite automata
+  // reduction. Both are tried once the budget is spent, in that order.
+  const p = load(COUNTER);
+  const v = context.classifyBehaviourNow(p, { budget: 2000 });
+  assert.equal(v.verdict, 'never');
+  assert.equal(v.method, 'segment');
+  assert.equal(v.steps, 2000, 'tried once the budget is spent');
+  checkVerdict(p, v, 2000, 'counter, segment');
+  const f = context.classifyBehaviourNow(p, { budget: 2000, segment: 0 });
+  assert.equal(f.method, 'far');
+  checkVerdict(p, f, 2000, 'counter, far');
+  // A machine that halts after the budget: both must fail on it, and the
+  // unknown says what each found.
+  const bb4 = load('1RB1LB_1LA0LC_1RZ1LD_1RD0RA');
+  const u = context.classifyBehaviourNow(bb4, { budget: 50, backward: false });
+  assert.equal(u.verdict, 'unknown');
+  assert.deepEqual([u.segment.reason, u.far.reason], ['start', 'none']);
 });
 
 test('a classification runs a slice at a time and stops at its budget', () => {
   const p = load(COUNTER);
-  const c = context.classifyBehaviour(p, { budget: 5000 });
+  const c = context.classifyBehaviour(p, { budget: 5000, segment: 0, far: 0 });
   assert.equal(c.advance(100), null);
   assert.equal(c.steps, 100);
   let v;
@@ -295,15 +354,16 @@ test('a machine that halts is never called "never" by backward reasoning', () =>
 test('on a one-way tape, a left move stopped by the wall is a way back of its own', () => {
   // A at cell 0 writes 1 and tries to move left; the wall holds it there, so
   // B reads the 1 it just wrote and goes right, and the machine comes back to
-  // halt on it at step 4. A search that only moved the head found every path
-  // back dead within three steps and called this machine "never" — found by
-  // taking the wall's branch out and sweeping random one-way machines.
+  // halt on it after 4 transitions. A search that only moved the head found
+  // every path back dead within three steps and called this machine "never" —
+  // found by taking the wall's branch out and sweeping random one-way machines.
   const p = load('1LB---_---1RA', 'TM');
   const b = context.backwardReasoning(p);
-  assert.ok(!b.ok || b.longest >= 4, `L = ${b.longest}, but it halts at step 4`);
+  assert.ok(!b.ok || b.longest >= 4, `L = ${b.longest}, but it halts after 4 transitions`);
   const v = context.classifyBehaviourNow(p, { budget: 1000 });
   assert.equal(v.verdict, 'halts');
-  assert.equal(v.steps, 4);
+  assert.equal(v.transitions, 4);
+  assert.equal(v.steps, 5, 'the read of the missing transition is the fifth step');
   checkVerdict(p, v, 1000, 'bump');
 });
 
@@ -383,7 +443,7 @@ for (const tape of ['ITM', 'TM']) {
     // it settles most of these first, and would leave too few cyclers to
     // test. The two runs' proofs are independent, so where both found one
     // they must agree on the answer.
-    const seen = { simulation: 0, cycler: 0, translated: 0, backward: 0, unknown: 0 };
+    const seen = { simulation: 0, cycler: 0, translated: 0, backward: 0, segment: 0, far: 0, unknown: 0 };
     const budget = 3000;
     for (let seed = 1; seed <= 1500; seed++) {
       const src = randomMachine(seed * 7919 + (tape === 'TM' ? 1 : 0));
@@ -397,10 +457,31 @@ for (const tape of ['ITM', 'TM']) {
       if (a !== 'unknown' && b !== 'unknown') assert.equal(a, b, `${tape} ${src}: ${both[0].method} and ${both[1].method} disagree`);
     }
     // Only worth something if every method was actually exercised. Unknown is
-    // rare among machines this small, so it is asked for a handful.
-    for (const kind of Object.keys(seen)) assert.ok(seen[kind] >= (kind === 'unknown' ? 3 : 15), `${kind}: only ${seen[kind]} (${JSON.stringify(seen)})`);
+    // rare among machines this small, so it is asked for a handful on a
+    // one-way tape; on a two-way tape halting segment takes what the run's
+    // methods leave, and the sweep below is where it and FAR are exercised.
+    const want = { unknown: tape === 'TM' ? 3 : 0, segment: tape === 'ITM' ? 3 : 0, far: 0 };
+    for (const kind of Object.keys(seen)) assert.ok(seen[kind] >= (want[kind] ?? 15), `${kind}: only ${seen[kind]} (${JSON.stringify(seen)})`);
+    if (tape === 'TM') assert.equal(seen.segment + seen.far, 0, 'the static deciders are about a two-way tape');
   });
 }
+
+test('halting segment and FAR hold up against the oracle on their own', () => {
+  // A small budget and backward reasoning left out, so that the two static
+  // deciders see many machines, each with the other switched off.
+  const seen = { segment: 0, far: 0 };
+  for (let seed = 1; seed <= 600; seed++) {
+    const src = randomMachine(seed * 104729);
+    const p = load(src);
+    for (const opts of [{ far: 0 }, { segment: 0 }]) {
+      // So small a budget that machines halting later reach them too.
+      const v = context.classifyBehaviourNow(p, { budget: 8, backward: false, ...opts });
+      if (v.method === 'segment' || v.method === 'far') seen[v.method]++;
+      checkVerdict(p, v, 8, `ITM ${src}`);
+    }
+  }
+  assert.ok(seen.segment >= 15 && seen.far >= 15, JSON.stringify(seen));
+});
 
 // ── the app's machine, not just the notation ──────────────────────
 
@@ -486,6 +567,55 @@ test('Classify runs a slice at a time and shows the verdict with its evidence', 
   assert.match(body.innerHTML, /Halts/);
   assert.match(body.innerHTML, /107/);
   assert.deepEqual(context.sectionStatus('rp-behaviour'), { text: 'halts', tone: 'acc' });
+});
+
+test('a halt on an undefined transition is reported at the busy beaver step, and shown in the player at the last transition', async () => {
+  load('1RB1LB_1LA---');   // BB(2), halting on ---
+  withHeader();
+  context.syncBehaviourSection();
+  context.startClassify();
+  await until(() => !context._behaviourTests.running);
+  const v = context._behaviourTests.result;
+  assert.deepEqual([v.steps, v.transitions, v.how], [6, 5, 'none']);
+  const body = harness.getElement('bh-body');
+  assert.match(body.innerHTML, /After 5 transitions/);
+  assert.match(body.innerHTML, /halt at step 6/);
+  assert.match(body.innerHTML, /stop at the halt, step 5/, 'the player counts transitions');
+});
+
+test('the card shows a halting segment and a finite automata reduction with what each proved', async () => {
+  const { plan } = context._behaviourTests;
+  const was = plan.budget;
+  plan.budget = 1e5;
+  try {
+    load(COUNTER);
+    withHeader();
+    context.syncBehaviourSection();
+    context.startClassify();
+    await until(() => !context._behaviourTests.running);
+    assert.equal(context._behaviourTests.result.method, 'segment');
+    let body = harness.getElement('bh-body');
+    assert.match(body.innerHTML, /Never halts/);
+    assert.match(body.innerHTML, /halting segment/);
+    assert.match(body.innerHTML, /closed with/);
+    assert.doesNotMatch(body.innerHTML, /Show in player/, 'the proof is about every step, not one');
+    assert.deepEqual(context.sectionStatus('rp-behaviour'), { text: 'never halts', tone: context.sectionStatus('rp-behaviour').tone });
+
+    // Halting segment cannot settle this one; finite automata reduction can.
+    load('1RB0LC_1LB1RA_---1LA');
+    const p = context.compileBehaviourMachine([]);
+    assert.equal(context.haltingSegment(p).ok, false);
+    withHeader();
+    context.syncBehaviourSection();
+    context.startClassify();
+    await until(() => !context._behaviourTests.running);
+    const v = context._behaviourTests.result;
+    assert.equal(v.method, 'far');
+    body = harness.getElement('bh-body');
+    assert.match(body.innerHTML, /finite automata reduction/);
+    assert.match(body.innerHTML, new RegExp(`${v.depth} state`));
+    assert.match(body.innerHTML, /q0/, 'the DFA is drawn');
+  } finally { plan.budget = was; }
 });
 
 test('a translated cycler shows both windows, and an edit marks the answer stale', async () => {

@@ -27,6 +27,7 @@
 // (cli/tm/check.mjs), so a verdict need not be taken on trust.
 
 import { classifyBehaviourNow } from '../../js/machines/tm-behaviour.js';
+import { HALTING_SEGMENT_DISTANCE } from '../../js/machines/halting-segment.js';
 import { induction } from './induction.mjs';
 
 // ── The table ─────────────────────────────────────────────────────
@@ -296,14 +297,25 @@ export function growthOf(p, { from = 5, to = 7 } = {}) {
 
 /**
  * Everything, cheapest first: the app's classifier (simulation, cycler,
- * translated cycler, backward reasoning), then CPS for n = 1…cpsMax, then
- * inductive rules over a run-length tape (for at most `inductionMs`), then the
- * busy beaver bound. `{ verdict, method, …evidence }`.
+ * translated cycler, backward reasoning, and — once its budget is spent —
+ * bbchallenge's halting segment and finite automata reduction), then CPS for
+ * n = 1…cpsMax, then inductive rules over a run-length tape (for at most
+ * `inductionMs`), then the busy beaver bound. `{ verdict, method, …evidence }`.
+ *
+ * `segment` defaults to the reference's own setting, segments up to
+ * 2·5 + 1 cells with no node limit. `far` is the largest DFA the direct search
+ * tries, with no work limit: the reference searched up to FAR_DEPTH (7) for
+ * BB(5), but exhaustively that costs minutes per machine, and each size costs
+ * about thirty times the one below, so the default stops at 6 (about a second
+ * at worst) and `far: FAR_DEPTH` is the reference's full search.
  */
-export function decide(p, { budget = 1e6, cpsMax = 10, inductionMs = 2000, bound = true, growth = false } = {}) {
-  const v = classifyBehaviourNow(p, { budget });
+export const FAR_DEFAULT = 6;
+
+export function decide(p, { budget = 1e6, segment = HALTING_SEGMENT_DISTANCE, far = FAR_DEFAULT, cpsMax = 10, inductionMs = 2000, bound = true, growth = false } = {}) {
+  const v = classifyBehaviourNow(p, { budget, segment, segmentNodes: Infinity, far, farWork: Infinity });
   let out = { verdict: v.verdict, method: v.method || null };
-  for (const k of ['steps', 'ones', 'cells', 'period', 'from', 'at', 'shift', 'window', 'direction', 'longest', 'how', 'state', 'read', 'before', 'after']) {
+  for (const k of ['steps', 'transitions', 'ones', 'cells', 'period', 'from', 'at', 'shift', 'window', 'direction', 'longest', 'how', 'state', 'read', 'before', 'after',
+    'size', 'distance', 'nodes', 'side', 'depth', 'dfa', 'nfa', 'accepted', 'states', 'start', 'n']) {
     if (v[k] !== undefined && v[k] !== null) out[k] = v[k];
   }
   if (out.verdict === 'unknown' && cpsMax > 0) {
@@ -320,7 +332,8 @@ export function decide(p, { budget = 1e6, cpsMax = 10, inductionMs = 2000, bound
     const b = boundFor(p);
     if (b) {
       const r = run(p, b.S + 1);
-      if (r.halted) out = { verdict: 'halts', method: 'simulation', steps: r.steps, ones: r.ones, cells: r.cells, how: r.halted };
+      // The classifier's step convention: a missing transition's read counts.
+      if (r.halted) out = { verdict: 'halts', method: 'simulation', steps: r.steps + (r.halted === 'none' ? 1 : 0), transitions: r.steps, ones: r.ones, cells: r.cells, how: r.halted };
       else out = { verdict: 'never', method: 'bound', n: b.n, k: b.k, S: b.S, steps: r.steps };
     }
   }
@@ -330,6 +343,7 @@ export function decide(p, { budget = 1e6, cpsMax = 10, inductionMs = 2000, bound
 
 export const METHOD_NAMES = {
   simulation: 'simulation', cycler: 'cycler', translated: 'translated cycler',
-  backward: 'backward reasoning', cps: 'closed position set', bound: 'busy beaver bound',
+  backward: 'backward reasoning', segment: 'halting segment', far: 'finite automata reduction',
+  cps: 'closed position set', bound: 'busy beaver bound',
   induction: 'inductive rule', 'cycler-macro': 'cycler (macro)', 'block-loop': 'loops inside a block'
 };
