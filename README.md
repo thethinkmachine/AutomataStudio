@@ -16,6 +16,7 @@ machine types, from DFAs to multi-tape Turing machines and ω-automata.
 [**Open in the browser**](https://thethinkmachine.github.io/AutomataStudio/) ·
 [Download the desktop app](https://github.com/thethinkmachine/AutomataStudio/releases/latest) ·
 [Machine library](https://thethinkmachine.github.io/automata-library/) ·
+[Guides](#guides) ·
 [Cite](#citation)
 
 ![An 8-tape Turing machine executing a stored program, one step per frame](docs/media/cpu.gif)
@@ -32,6 +33,7 @@ accumulator after 331 steps.</sup>
 ## Contents
 
 - [Getting started](#getting-started)
+- [Guides](#guides)
 - [Features](#features)
 - [Algorithms and theory](#algorithms-and-theory)
 - [Command line](#command-line)
@@ -78,6 +80,21 @@ machines to open and remix.
 <sup>A five-state DFA that accepts binary multiples of 5. The inspector derives a regular
 expression by state elimination, the tuple `M = (Q⁵, Σ², δ¹⁰, q₀, F¹)`, and an
 acceptance fingerprint of the words decided so far.</sup>
+
+## Guides
+
+Each part of the app has a guide of its own in [`docs/`](docs), with clips and
+screenshots:
+
+| Guide | Covers |
+| --- | --- |
+| [The machine library](docs/library.md) | searching and running shared machines, badges, saving offline, submitting, updates and remixes |
+| [Algorithms](docs/algorithms.md) | all 35 constructions, two-machine operations, the lexer generator |
+| [The grammar workbench](docs/grammar.md) | writing grammars, the 25 tools, CYK and derivations, conversions to and from the canvas |
+| [StateMate](docs/statemate.md) | setting up a provider, the build-and-verify pipeline, write modes, agentic mode, commands, privacy |
+| [The reference](docs/reference.md) | the machine pages, decidability and language classes |
+| [Building blocks](docs/building-blocks.md) | sub-machines, nesting and reuse, worked through on a small CPU |
+| [The command line](docs/cli.md) | `automata` by task, with the full [command reference](docs/cli-reference.md) |
 
 ## Features
 
@@ -159,6 +176,8 @@ derivations, ambiguity witnesses, LL(1) tables, and conversion to and from the c
 *Check ambiguity* then finds two different parse trees for `ababab`, which proves the
 grammar is ambiguous.</sup>
 
+More in [the grammar workbench guide](docs/grammar.md).
+
 ### Import, export and sharing
 - **Import:** JFLAP `.jff` (including 6.1 blocks), XState, SCXML, and machine codes.
 - **Diagrams:** PNG and SVG, with text converted to outlines. A PNG can embed the
@@ -187,10 +206,22 @@ it, and `([])` is accepted. Recorded through the repository's agent bridge
 ([tools/agent-bridge](tools/agent-bridge/statemate-bridge.mjs)), so the answer goes
 through the same parse, lint and verify steps as one from any provider.</sup>
 
+More in [the StateMate guide](docs/statemate.md).
+
+### The machine library
+A public catalogue of machines you can search (by name, type, size, or by a word they
+accept), run in place, open on your canvas, save for offline use, remix, and add to.
+Every badge on a listing (tests pass, deterministic, minimal, halts, never halts) comes
+from the library's CI running the machine, not from its author.
+
+![Searching the library, trying a word on an entry and opening it on the canvas](docs/media/library.webp)
+
+More in [the library guide](docs/library.md).
+
 ## Algorithms and theory
 
-The app has 34 interactive constructions from the standard textbooks (Hopcroft &
-Ullman, Sipser), and each one can be stepped through:
+The app has 35 interactive constructions from the standard textbooks (Hopcroft &
+Ullman, Sipser). Each one shows its working, and can put its result on the canvas:
 
 - **Conversions:** subset construction, ε-NFA → NFA, regex ↔ NFA, DFA ↔ regular
   grammar, TM → grammar, Moore ↔ Mealy
@@ -198,15 +229,22 @@ Ullman, Sipser), and each one can be stepped through:
   distinguishing word, ε-closure, dead states, computation trees
 - **Closure:** union, intersection, concatenation, star, complement, reversal, product
 - **Decision procedures:** emptiness, finiteness, universality
-- **A universal Turing machine** visualiser
+- **A universal Turing machine** visualiser, and a **lexer generator** that compiles
+  token rules into one minimal DFA and emits it as JavaScript, Python or C
 
-![NFA to DFA subset construction](docs/media/algorithms.png)
+![Regex to NFA to DFA to minimal DFA, each result loaded onto the canvas](docs/media/algorithms.webp)
+
+<sup>`(a|b)*abb` through the whole pipeline: Thompson's construction gives a 14-state
+ε-NFA, the subset construction a 5-state DFA, and minimisation the 4-state DFA from the
+textbook. More in [the Algorithms guide](docs/algorithms.md).</sup>
 
 A built-in **reference** has a page for every machine type, covering its formal
 definition and what it can and cannot recognise. It also has sections on decidability
 (Rice's theorem, reductions, diagonalisation) and on language classes.
 
 ![The reference page for a DFA](docs/media/reference.png)
+
+More in [the reference guide](docs/reference.md).
 
 ## Command line
 
@@ -222,7 +260,7 @@ automata grade exercise.automaton submissions/ --csv grades.csv
 automata halts machines.txt --proof proofs/      # halting proofs, checkable with check-proof
 ```
 
-![automata halts classifying nine Turing machines with seven different methods, then check-proof verifying the proofs](docs/media/cli.webp)
+![automata halts classifying nine Turing machines, one per proof method, then check-proof verifying the proofs](docs/media/cli.webp)
 
 <sup>`automata halts` on nine machines: the BB(2), BB(2,4) and BB(5) champions halt
 (BB(5) after 47,176,870 steps), five machines are proved never to halt by five different

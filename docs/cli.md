@@ -4,23 +4,24 @@
 
 This guide walks through it by task. Every option of every command is in the [command reference](cli-reference.md), and `automata <command> --help` prints the same thing in the terminal.
 
-- [Install](#install)
-- [Five minutes with it](#five-minutes-with-it)
-- [Machines and words](#machines-and-words)
-- [Running machines](#running-machines)
-- [Looking at a machine](#looking-at-a-machine)
-- [Comparing machines](#comparing-machines)
-- [Building machines: pipes and expressions](#building-machines-pipes-and-expressions)
-- [Formats: getting machines in and out](#formats-getting-machines-in-and-out)
-- [Pictures and animations](#pictures-and-animations)
-- [Teaching: exercises and grading](#teaching-exercises-and-grading)
-- [Turing machines: does it halt?](#turing-machines-does-it-halt)
-- [Learning a machine](#learning-a-machine)
-- [Scripts, CI and git](#scripts-ci-and-git)
-- [AI agents (MCP)](#ai-agents-mcp)
-- [Exit codes](#exit-codes)
-- [Colour and the terminal](#colour-and-the-terminal)
-- [Troubleshooting](#troubleshooting)
+![automata play animating a binary-addition Turing machine, with its space-time history](media/cli-play.webp)
+
+<sup>`automata play` on the binary-addition Turing machine from `js/examples/tm.json`, adding 5 and 3. The states line lights the current state, the tape is drawn in colour with the head marked, and `--history` grows the space-time diagram a row per step. It accepts after 43 steps with `1000` (8) on the tape.</sup>
+
+| If you want to… | Read |
+| --- | --- |
+| get it running | [Install](#install), then [Five minutes with it](#five-minutes-with-it) |
+| run, test, trace or watch a machine | [Machines and words](#machines-and-words), [Running machines](#running-machines) |
+| inspect, lint or profile one | [Looking at a machine](#looking-at-a-machine) |
+| compare two machines, or a machine against a script | [Comparing machines](#comparing-machines) |
+| build machines from regexes and operations | [Building machines: pipes and expressions](#building-machines-pipes-and-expressions) |
+| convert to and from JFLAP, HOA, BA, Timbuk, SCXML, code | [Formats](#formats-getting-machines-in-and-out) |
+| make diagrams and animations | [Pictures and animations](#pictures-and-animations) |
+| set and grade exercises, or use Gradescope | [Teaching: exercises and grading](#teaching-exercises-and-grading) |
+| prove whether Turing machines halt | [Turing machines: does it halt?](#turing-machines-does-it-halt) |
+| learn a DFA from examples | [Learning a machine](#learning-a-machine) |
+| use it in scripts, CI, git or an AI agent | [Scripts, CI and git](#scripts-ci-and-git), [AI agents (MCP)](#ai-agents-mcp), [Exit codes](#exit-codes) |
+| fix a problem | [Colour and the terminal](#colour-and-the-terminal), [Troubleshooting](#troubleshooting) |
 
 ---
 
@@ -33,8 +34,7 @@ This guide walks through it by task. Every option of every command is in the [co
 | Windows | The installer adds `%LOCALAPPDATA%\Programs\AutomataStudio\resources\cli` to your user `PATH`, and the uninstaller removes it. Open a new terminal after installing. |
 | macOS | In the app, choose **AutomataStudio → Install 'automata' Command in PATH**. It links `/usr/local/bin/automata`, asking for your password if that folder needs it. Move the app to Applications first. |
 | Linux (.deb) | The package links `/usr/local/bin/automata`, and removing it takes the link away. An `automata` already there (from npm, say) is left alone. |
-| Linux (AppImage) | Nothing to install: run `./AutomataStudio-*.AppImage --cli <command>`. |
-| Linux (AppImage) | run `./AutomataStudio-*.AppImage --cli <command> …` |
+| Linux (AppImage) | Nothing to install: run `./AutomataStudio-*.AppImage --cli <command> …`. |
 
 On macOS and Linux, `AutomataStudio --cli <command> …` works without the launcher too.
 
@@ -180,189 +180,7 @@ automata fuzz machine.automaton --oracle "python check.py {}" --mode stdout
 
 **`similar`** groups a folder of machines that are the same: finite automata by language (whatever they look like), anything else by structure. It is built for a folder of submissions.
 
-**`fuzz`** tests a machine against a program that says what the language is meant to be: every word up to length 3, then random ones, until the two disagree — and then it shrinks the disagreement to a minimal word. The program gets the word as `{}` in the command (or appended), on stdin, and in `$AUTOMATA_WORD`. `{}` becomes a quoted reference to that variable rather than the word pasted in, so a word holding `# The `automata` command line
-
-`automata` is AutomataStudio's engine in a terminal: the same simulators, the same grader, the same exporters and the same Turing-machine analysis as the app, driven by commands instead of clicks. Use it to check machines in CI, grade a class at once, convert between tools, script experiments, or just watch a Turing machine run.
-
-This guide walks through it by task. Every option of every command is in the [command reference](cli-reference.md), and `automata <command> --help` prints the same thing in the terminal.
-
-- [Install](#install)
-- [Five minutes with it](#five-minutes-with-it)
-- [Machines and words](#machines-and-words)
-- [Running machines](#running-machines)
-- [Looking at a machine](#looking-at-a-machine)
-- [Comparing machines](#comparing-machines)
-- [Building machines: pipes and expressions](#building-machines-pipes-and-expressions)
-- [Formats: getting machines in and out](#formats-getting-machines-in-and-out)
-- [Pictures and animations](#pictures-and-animations)
-- [Teaching: exercises and grading](#teaching-exercises-and-grading)
-- [Turing machines: does it halt?](#turing-machines-does-it-halt)
-- [Learning a machine](#learning-a-machine)
-- [Scripts, CI and git](#scripts-ci-and-git)
-- [AI agents (MCP)](#ai-agents-mcp)
-- [Exit codes](#exit-codes)
-- [Colour and the terminal](#colour-and-the-terminal)
-- [Troubleshooting](#troubleshooting)
-
----
-
-## Install
-
-**With the desktop app.** The CLI ships inside it and runs on the app's own executable, so nothing else is needed. The installers put `automata` on your `PATH`:
-
-| Platform | How `automata` gets on your `PATH` |
-| --- | --- |
-| Windows | The installer adds `%LOCALAPPDATA%\Programs\AutomataStudio\resources\cli` to your user `PATH`, and the uninstaller removes it. Open a new terminal after installing. |
-| macOS | In the app, choose **AutomataStudio → Install 'automata' Command in PATH**. It links `/usr/local/bin/automata`, asking for your password if that folder needs it. Move the app to Applications first. |
-| Linux (.deb) | The package links `/usr/local/bin/automata`, and removing it takes the link away. An `automata` already there (from npm, say) is left alone. |
-| Linux (AppImage) | Nothing to install: run `./AutomataStudio-*.AppImage --cli <command>`. |
-| Linux (AppImage) | run `./AutomataStudio-*.AppImage --cli <command> …` |
-
-On macOS and Linux, `AutomataStudio --cli <command> …` works without the launcher too.
-
-**From a checkout of the repository** (Node 20 or newer):
-
-```sh
-npm install
-npm link            # puts `automata` on your PATH, running the source
-automata --version
-```
-
-**As a single bundle**, for a machine with Node but without the repository:
-
-```sh
-npm run cli:build   # writes dist-cli/
-node dist-cli/automata.mjs --help
-```
-
-`dist-cli/` is self-contained; copy the folder anywhere.
-
----
-
-## Five minutes with it
-
-```sh
-# What is this machine?
-automata info js/examples/dfa.json
-
-# Does it accept these words? (exit code 0 = all accepted, 1 = some rejected)
-automata run js/examples/dfa.json 0 101 11 ""
-
-# Watch it run, one step at a time (space to pause, arrows to step, q to quit)
-automata play js/examples/tm.json 0101+11 --history
-
-# Build a machine from a regular expression, minimize it, draw it
-automata from-regex "(a|b)*abb" | automata minimize - | automata svg - -o abb.svg
-
-# Does this Turing machine halt?
-automata halts 1RB1LC_1RC1RB_1RD0LE_1LA1LD_1RZ0LA
-```
-
-The last one is the five-state busy beaver: it halts after 47,176,870 steps, which `halts` finds by running it, in a few seconds.
-
----
-
-## Machines and words
-
-### A machine can be a file, a pipe, or a line of text
-
-| You give | What it is |
-| --- | --- |
-| `machine.automaton`, `machine.json` | the app's own document — what Save writes |
-| `machine.jff` | JFLAP (finite automata, PDAs, Turing machines, Mealy, Moore) |
-| `chart.scxml`, `machine.js` | a statechart (SCXML, or an XState config), flattened into a machine |
-| `nba.hoa` | Hanoi Omega-Automata, as Spot, Owl and other LTL tools write |
-| `nba.ba`, `nfa.timbuk` | RABIT/GOAL Büchi automata; Timbuk word automata |
-| `-` | standard input — so machines can be piped between commands |
-| `1RB1LB_1LA1RZ` | a Turing machine in the standard (bbchallenge) notation |
-| `fa.01:+AB_BA` | a *machine code*: any machine as one line (the app's **Copy Machine Code** writes these) |
-
-The standard Turing-machine notation lists one segment per state, `A`, `B`, `C`, …; within a segment, one triple per symbol read (0 first): the symbol written, `L` or `R`, and the next state. `Z` halts, and `---` is an undefined transition, which halts too.
-
-### Typing words
-
-- Single-character symbols run together: `0110`.
-- Multi-character symbols are separated by spaces or commas: `"01 11 00"`.
-- The empty word is `""`, `ε` or `eps`.
-- An ω-automaton reads an infinite word written **u(v)**: a prefix `u`, then `v` forever. `"(ab)"` is ababab…, `"a(b)"` is abbbb….
-
-A **words file** (for `test` and `learn`) has one word per line. `w => accept` or `w => reject` makes the line an expectation, and `#` starts a comment:
-
-```text
-# multiples of five, in binary
-0     => accept
-101   => accept
-11    => reject
-```
-
----
-
-## Running machines
-
-```sh
-automata run machine.automaton 0110 101 ""     # decide words
-automata test machine.automaton words.txt      # check expectations
-automata trace machine.automaton 0110          # every step, in a table
-automata play machine.automaton 0110           # every step, animated
-```
-
-**`run`** prints each word's verdict: `✔ accept`, `✘ reject`, or `? unknown` when the step budget ran out first. That third answer matters: a Turing machine still running after 100,000 steps has not been shown to reject, and `run` says so (exit code 2) instead of guessing. Raise the budget with `--max-steps`. A transducer (Mealy, Moore, FST, PDT) prints its output: `01 11  ● done  → 10`.
-
-**`test`** reads a words file and reports each expectation as passed (`✓`), failed (`✗`) or undecided (`?`). With `--watch` it reruns whenever the machine or the file is saved — draw in the app, save, and see the results change in the terminal.
-
-**`trace`** prints the run the app's player would show: the state (or set of states, for a nondeterministic machine), what the step did, and the machine's memory — the tape with its head marked, the stack or stacks, the unread input, the output. `--limit` caps the steps.
-
-**`play`** animates the same run. In a terminal it takes over the screen:
-
-| Key | Does |
-| --- | --- |
-| `space` | play / pause |
-| `←` `→` | step back / forward |
-| `+` `−` | faster / slower |
-| `Home` `End` | first / last step |
-| `h` | show or hide the space-time history |
-| `r` | replay from the start |
-| `q` `Esc` | quit — the last frame stays on the screen |
-
-The screen shows every state with the current one lit, the tape in colour with its head marked by `▼` and its cells numbered, and, with `--history`, the space-time diagram growing a row per step. Each symbol keeps one colour throughout.
-
----
-
-## Looking at a machine
-
-```sh
-automata info machine.automaton
-automata lint machine.automaton
-automata words machine.automaton --limit 20
-automata profile tm.automaton --to 12
-```
-
-**`info`** answers "what is this?": the type, size and alphabets; the start and accepting states, or for other acceptance conditions (accepting by empty stack, parity, co-Büchi) what acceptance means; whether δ is deterministic. For a finite automaton it adds the language's class, whether it is empty, finite or universal, the minimal DFA's size (and whether this DFA already is minimal), and a regular expression. It ends with the machine's names: its standard notation, if it is a Turing machine, and its machine code.
-
-**`lint`** looks for mistakes: states the start cannot reach, states from which nothing can be accepted, symbols outside Σ, duplicate edges, a deterministic type whose δ branches, a weak automaton whose strongly connected components straddle F. Each finding names the rule that found it. It exits 1 on any error or warning — ready for CI.
-
-**`words`** lists the accepted words, shortest first. For a finite automaton it works from the DFA, so it is exact and fast, and it can also **count** the accepted words of each length (`--count`, exactly, at any length) and draw **uniformly random** accepted words of a given length (`--sample 5 --len 40`). For other machines it runs every word up to `--max-len`.
-
-**`profile`** measures how expensive a machine is: steps and space (cells visited on a tape, the tallest the stack got) for every input up to a length, worst and average, as CSV, with an estimate of the growth — linear, quadratic, exponential. `--family "0^n 1^n"` profiles one structured input per length instead of all of them.
-
----
-
-## Comparing machines
-
-```sh
-automata equiv mine.automaton reference.automaton
-automata diff old.automaton new.automaton
-automata similar submissions/
-automata fuzz machine.automaton --oracle "python check.py {}" --mode stdout
-```
-
-**`equiv`** decides whether two machines accept the same language. For two finite automata it is exact and gives the shortest word they disagree on. For anything else it runs every word up to `--max-length` and says the check was bounded. Transducers are compared on their outputs. ω-automata are compared on every ultimately periodic word `u(v)` up to `--size` symbols.
-
-**`diff`** is for versions of one machine: what changed (states, accepting states and transitions, matched by name, so moving a state on the canvas is not a change), whether the two are the same machine up to renaming states, and whether the language changed — with the shortest word that shows it.
-
-**`similar`** groups a folder of machines that are the same: finite automata by language (whatever they look like), anything else by structure. It is built for a folder of submissions.
-
-**`fuzz`** tests a machine against a program that says what the language is meant to be: every word up to length 3, then random ones, until the two disagree — and then it shrinks the disagreement to a minimal word. , `&` or a backquote reaches the program as itself and is never run by the shell; every `{}` is replaced, so a script with braces of its own should read the variable instead. Under Windows' `cmd.exe`, a word containing `"` cannot be passed as an argument at all, and the CLI says so rather than guessing — read it from stdin. The program answers with its exit code (`--mode exit`), a yes/no line (`--mode stdout`), or, for transducers, the expected output (`--mode output`). With `--batch`, one process answers every word, a line each — much faster.
+**`fuzz`** tests a machine against a program that says what the language is meant to be: every word up to length 3, then random ones, until the two disagree — and then it shrinks the disagreement to a minimal word. The program gets the word as `{}` in the command (or appended), on stdin, and in `$AUTOMATA_WORD`. `{}` becomes a quoted reference to that variable rather than the word pasted in, so a word holding `$`, `\`, `&` or a backquote reaches the program as itself and is never run by the shell; every `{}` is replaced, so a script with braces of its own should read the variable instead. Under Windows' `cmd.exe`, a word containing `"` cannot be passed as an argument at all, and the CLI says so rather than guessing — read it from stdin. The program answers with its exit code (`--mode exit`), a yes/no line (`--mode stdout`), or, for transducers, the expected output (`--mode output`). With `--batch`, one process answers every word, a line each — much faster.
 
 ```sh
 # check.py:  import sys; print(int(sys.argv[1] or "0", 2) % 5 == 0)
@@ -486,6 +304,10 @@ automata check-proof proofs/
 automata bb-search -n 3
 automata sheet machines.txt -o sheet.svg
 ```
+
+![automata halts classifying nine Turing machines, then check-proof verifying the proofs](media/cli.webp)
+
+<sup>Nine machines, one for each method. The BB(2), BB(2,4) and BB(5) champions halt, five machines are proved never to halt by five different methods, and the last, Antihydra, is reported as unknown, since whether it halts is an open problem. `check-proof` then re-checks every proof file.</sup>
 
 **`halts`** takes one machine, a file, or a text file with one machine per line, and tries, cheapest first:
 
