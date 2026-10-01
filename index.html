@@ -89,25 +89,43 @@
     </div>
 
     <div class="tab-bar-wrap" id="tab-bar-wrap">
-      <div id="tab-bar" class="tab-bar"></div>
-      <button class="tab-overflow-btn" id="tab-overflow-btn" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Show all workspace tabs" data-tip="All workspace tabs" onclick="toggleTabOverflowMenu(event)">
-        <svg viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
-      </button>
+      <!-- One frame for everything the strip offers: the tabs (which scroll),
+           the chevron listing the ones scrolled out of sight, and the way back
+           to the tool window. The border is the frame's, not the scroller's,
+           so the last two stay put while the tabs move under them. -->
+      <div class="tab-strip" id="tab-strip">
+        <div id="tab-bar" class="tab-bar"></div>
+        <button class="tab-overflow-btn" id="tab-overflow-btn" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Show all workspace tabs" data-tip="All workspace tabs" onclick="toggleTabOverflowMenu(event)">
+          <svg viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+        </button>
+        <!-- The view the tool window last showed, reopened in one click.
+             Inside the strip's frame but outside its scroller, so however
+             many workspaces there are it never scrolls away with them.
+             Labelled and wired by js/view.js; none of it is in bridge.js. -->
+        <span class="tab-strip-sep" aria-hidden="true"></span>
+        <button class="last-view-btn" id="hdr-last-view" type="button"></button>
+      </div>
     </div>
     <!-- The workspace strip, for a screen too narrow to hold one. The tab bar
          is the wrong thing to give the narrowest row on the device: on a phone
          there are one to three workspaces and switching is rare. This names the
          active one and opens the same overflow listbox the strip's own button
          opens, so there is one list of workspaces rather than two. Hidden above
-         900px, where the strip itself is back. -->
-    <button class="mobile-ws-btn" id="mobile-ws-btn" type="button"
-            aria-haspopup="listbox" aria-expanded="false" aria-label="Switch workspace"
-            data-tip="Switch workspace" onclick="toggleTabOverflowMenu(event)">
-      <span class="mobile-ws-dot" aria-hidden="true"></span>
-      <span class="mobile-ws-name" id="mobile-ws-name">Workspace</span>
-      <span class="mobile-ws-dirty" id="mobile-ws-dirty" hidden aria-hidden="true"></span>
-      <svg class="chevron" viewBox="0 0 256 256" aria-hidden="true" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg>
-    </button>
+         900px, where the strip itself is back. It shares a pill with the last
+         tool view, so the phone's header has the strip's shape: the
+         workspace, a divider, the way back to the tool window. -->
+    <div class="mobile-ws-pill" id="mobile-ws-pill">
+      <button class="mobile-ws-btn" id="mobile-ws-btn" type="button"
+              aria-haspopup="listbox" aria-expanded="false" aria-label="Switch workspace"
+              data-tip="Switch workspace" onclick="toggleTabOverflowMenu(event)">
+        <span class="mobile-ws-dot" aria-hidden="true"></span>
+        <span class="mobile-ws-name" id="mobile-ws-name">Workspace</span>
+        <span class="mobile-ws-dirty" id="mobile-ws-dirty" hidden aria-hidden="true"></span>
+        <svg class="chevron" viewBox="0 0 256 256" aria-hidden="true" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg>
+      </button>
+      <span class="mobile-ws-sep" aria-hidden="true"></span>
+      <button class="last-view-btn mobile-last-view" id="mobile-last-view" type="button"></button>
+    </div>
     <div class="ctx tab-overflow-menu" id="tab-overflow-menu" role="listbox" aria-label="Workspace tabs"></div>
 
     <div class="hdr-right">

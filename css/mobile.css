@@ -18,7 +18,7 @@
 .mobile-panel-scrim,
 .mobile-more-menu,
 .mobile-sheet-head,
-.mobile-ws-btn,
+.mobile-ws-pill,
 .mobile-aux-bar,
 .mobile-aux-sheet-scrim {
   display: none;
@@ -85,21 +85,72 @@
      and a bare class is (0,1,0), so `flex: 1 1 auto` on its own loses to it
      silently and the button collapses to its text. Capped, or on a tablet it
      stretches a two-word name across a third of the header. */
-  header > .mobile-ws-btn {
+  header > .mobile-ws-pill {
     flex: 1 1 auto;
-    max-width: 200px;
+    max-width: 260px;
+  }
+
+  /* The pill holds the box, so the workspace button and the last tool view
+     are two halves of one control — the shape the machine picker beside it
+     already has, a name and then an action. Each half is its own 32px target. */
+  .mobile-ws-pill {
+    display: flex;
+    align-items: stretch;
+    min-width: 0;
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  .mobile-ws-sep {
+    flex: 0 0 auto;
+    width: 1px;
+    margin: 7px 0;
+    background: var(--border);
+  }
+
+  .mobile-last-view {
+    height: auto;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 0;
+    color: var(--text2);
+    font-size: .74rem;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-last-view .last-view-ico {
+    width: 15px;
+    height: 15px;
+  }
+
+  .mobile-last-view:hover {
+    background: transparent;
+  }
+
+  .mobile-last-view:active {
+    background: var(--surface2);
+    color: var(--text);
+  }
+
+  .mobile-last-view.is-open {
+    color: var(--accent);
   }
 
   .mobile-ws-btn {
     display: flex;
+    flex: 1 1 auto;
     align-items: center;
     gap: 6px;
     min-width: 0;
-    height: 32px;
+    height: 100%;
     padding: 0 8px;
-    border: 1px solid var(--border);
-    border-radius: 7px;
-    background: var(--surface);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
     color: var(--text2);
     font-family: var(--sans);
     font-size: .74rem;
@@ -110,8 +161,15 @@
 
   .mobile-ws-btn:active {
     background: var(--surface2);
-    border-color: var(--border2);
     color: var(--text);
+  }
+
+  /* A phone has room for the icon, not the name; the tooltip and the
+     accessible name still carry it. */
+  @media (max-width: 560px) {
+    .mobile-last-view .last-view-label {
+      display: none;
+    }
   }
 
   /* The tab strip's accent dot, kept: it is how a workspace is told apart at a
