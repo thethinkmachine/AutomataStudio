@@ -365,7 +365,7 @@ export function behaviourOf(target, budget = LIBRARY_LIMITS.behaviourBudget) {
     if (!p.ok) return null;
     const v = classifyBehaviourNow(p, { budget });
     const out = { verdict: v.verdict, method: v.method || null };
-    for (const k of ['steps', 'ones', 'cells', 'period', 'from', 'shift', 'direction', 'longest', 'how']) {
+    for (const k of ['steps', 'ones', 'cells', 'period', 'from', 'shift', 'direction', 'longest', 'how', 'size', 'depth']) {
       if (v[k] !== undefined && v[k] !== null && typeof v[k] !== 'object') out[k] = v[k];
     }
     return out;
@@ -918,5 +918,7 @@ export function analyzeDocument(doc, opts = {}) {
 const METHOD_SAY = {
   cycler: 'cycler',
   translated: 'translated cycler',
-  backward: 'backward reasoning'
+  backward: 'backward reasoning',
+  segment: 'halting segment',
+  far: 'finite automata reduction'
 };

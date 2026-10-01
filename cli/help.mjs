@@ -274,11 +274,17 @@ halts        does it halt? tries, cheapest first:
                cycler                a configuration repeats exactly
                translated cycler     it repeats, shifted along fresh tape
                backward reasoning    no halting configuration is reachable
+               halting segment       bbchallenge's: no halt is reachable
+                                     through a fixed segment (--segment)
+               finite automata       bbchallenge's FAR: an automaton
+                 reduction           recognises every way to halt (--far)
                closed position set   an n-gram abstraction closed under δ
                inductive rule        a run-length pattern that grows forever
                busy beaver bound     it ran past S(n,k), for n ≤ 5 (2 symbols)
              and otherwise reports "unknown" with how its tape grows:
              logarithmic (counter-like) or √t (bouncer-like)
+             Steps are counted as bbchallenge counts them: reading --- is
+             the halting step. --db reads bbchallenge's seed database by ID.
 bb-search    every n-state machine, the champion, and the holdouts
 sheet        a contact sheet of space-time diagrams
 play, trace  one run, step by step; play --history draws the diagram live
@@ -297,10 +303,13 @@ re-checks them:
 
   simulation, cycler,       independently: its own tape, its own stepper,
   translated cycler, CPS    sharing no code with the prover
+  finite automata           independently, against bbchallenge's verifier
+    reduction               conditions on the DFA and NFA the proof carries
   busy beaver bound         independently simulated; the value of S(n,k) is
                             cited (BB(5) was proved in 2024), not re-proved
   backward reasoning,       re-derived by running the prover again — said so
-  inductive rule            in the output
+  halting segment,          in the output
+  inductive rule
 
 The provers are tested against ground truth: every machine in the 3-state and
 2-state 3-symbol enumerations halts within S(n,k) steps if it halts at all,

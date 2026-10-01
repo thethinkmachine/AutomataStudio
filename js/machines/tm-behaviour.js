@@ -17,6 +17,13 @@
 //   backward           never: working back from every way it could stop, no
 //                      configuration is more than L steps from a halt, and it
 //                      has run past L steps.
+//   segment            never: bbchallenge's halting segment decider
+//                      (halting-segment.js) — tried once the budget is spent.
+//   far                never: bbchallenge's finite automata reduction
+//                      (far.js) — tried after that.
+//
+// A halt's step count is bbchallenge's: reading a missing transition is the
+// halting step, and it counts.
 //
 // Anything else after the step budget is **unknown**, and is reported as that:
 // not "runs forever". Whether a machine halts is undecidable in general, and
@@ -95,6 +102,8 @@
 
 import { App, usesTwoWayTape } from '../state.js';
 import { singleTapeLookup } from './runtime.js';
+import { haltingSegment } from './halting-segment.js';
+import { finiteAutomataReduction } from './far.js';
 
 /** The machine types this module can classify: one deterministic tape. */
 export const BEHAVIOUR_MACHINES = new Set(['TM', 'ITM']);
@@ -124,7 +133,24 @@ export const METHODS = {
   simulation: { verdict: 'halts', name: 'Simulation' },
   cycler: { verdict: 'never', name: 'Cycler' },
   translated: { verdict: 'never', name: 'Translated cycler' },
-  backward: { verdict: 'never', name: 'Backward reasoning' }
+  backward: { verdict: 'never', name: 'Backward reasoning' },
+  segment: { verdict: 'never', name: 'Halting segment' },
+  far: { verdict: 'never', name: 'Finite automata reduction' }
+};
+
+/**
+ * How far the app takes the two bbchallenge deciders that never run the
+ * machine. Halting segment is taken to the reference's own distance; its
+ * node cap only stops a pathological machine from stalling the page, and
+ * none of the 4-state holdouts comes near it. Finite automata reduction is
+ * taken to a smaller DFA than the reference's 7, because its cost grows
+ * steeply with the size: the command line's `--far 7` is the reference.
+ */
+export const BEHAVIOUR_LIMITS = {
+  segment: 5,
+  segmentNodes: 2e5,
+  far: 4,
+  farWork: 2e5
 };
 
 // ══════════════════════════════════════════════════════════════════
@@ -512,18 +538,37 @@ export function backwardReasoning(p, { depth = BACK_DEPTH, nodes = BACK_NODES } 
  * so a caller on the main thread can run it a slice at a time.
  *
  * A verdict is { verdict, method, ...its proof }, one of
- *   halts    simulation  { steps, how: 'accept' | 'none', state, read, ones, cells }
+ *   halts    simulation  { steps, transitions, how: 'accept' | 'none', state, read, ones, cells }
  *   never    cycler      { period, from, cells, state, at }
  *   never    translated  { direction, period, shift, from, at, window, state, before, after }
  *   never    backward    { steps, longest, halts, explored, witness }
- *   unknown  null        { steps, cells, records, backward }
- * with `steps` counted as transitions made. An unknown's `backward` says why
- * backward reasoning gave up, or is null when it was not asked for.
+ *   never    segment     { steps, size, distance, nodes, tried }
+ *   never    far         { steps, side, depth, dfa, nfa, accepted, states, start, n }
+ *   unknown  null        { steps, cells, records, backward, segment, far }
+ * with `steps` counted as transitions made — except a halt's, which follows
+ * the busy beaver convention and also counts the step that reads a missing
+ * transition; its `transitions` is the count the player shows. An unknown's
+ * `backward` says why backward reasoning gave up, or is null when it was not
+ * asked for; its `segment` and `far` say the same of the two deciders below.
  *
  * `backward: false` leaves backward reasoning out, so a test can reach the
  * run's own methods on a machine it would settle first.
+ *
+ * Halting segment and finite automata reduction come last, once the budget
+ * is spent with no answer: bbchallenge's pipeline, which runs them on what
+ * the cyclers, translated cyclers and backward reasoning leave. Their proofs
+ * are about every step, so `steps` is how far the run had got. `segment` is
+ * the largest distance d (segments of 2d + 1 cells; 0 leaves it out) and
+ * `far` the largest DFA size (0 leaves it out); `segmentNodes` and `farWork`
+ * bound each so a page cannot stall on them. The reference has neither
+ * bound, and a verdict that hit one says so rather than being taken for the
+ * reference's answer.
  */
-export function classifyBehaviour(p, { budget = 1e7, backward = true } = {}) {
+export function classifyBehaviour(p, {
+  budget = 1e7, backward = true,
+  segment = BEHAVIOUR_LIMITS.segment, segmentNodes = BEHAVIOUR_LIMITS.segmentNodes,
+  far = BEHAVIOUR_LIMITS.far, farWork = BEHAVIOUR_LIMITS.farWork
+} = {}) {
   // Static, and bounded by BACK_NODES, so it is done before the first slice.
   const back = backward ? backwardReasoning(p) : null;
   const safeAfter = back && back.ok ? back.longest : Infinity;
@@ -562,16 +607,34 @@ export function classifyBehaviour(p, { budget = 1e7, backward = true } = {}) {
         return verdict;
       }
       if (r.t >= budget) {
+        const hs = segment > 0 ? haltingSegment(p, { distance: segment, nodeLimit: segmentNodes }) : null;
+        if (hs && hs.ok) {
+          verdict = { verdict: 'never', method: 'segment', steps: r.t, size: hs.size, distance: hs.distance, nodes: hs.nodes, tried: hs.tried };
+          return verdict;
+        }
+        const fa = far > 0 ? finiteAutomataReduction(p, { depth: far, work: farWork }) : null;
+        if (fa && fa.ok) {
+          const { side, depth, dfa, nfa, accepted, states, start, n } = fa;
+          verdict = { verdict: 'never', method: 'far', steps: r.t, side, depth, dfa, nfa, accepted, states, start, n };
+          return verdict;
+        }
         verdict = {
           verdict: 'unknown', method: null, steps: r.t, cells: cellsUsed(), records: right.n + (left ? left.n : 0),
-          backward: back && !back.ok ? { reason: back.reason, explored: back.explored, depth: back.depth } : null
+          backward: back && !back.ok ? { reason: back.reason, explored: back.explored, depth: back.depth } : null,
+          segment: hs ? { reason: hs.reason, why: hs.why, distance: segment, tried: hs.tried } : null,
+          far: fa ? { reason: fa.reason, why: fa.why, depth: fa.reason === 'budget' ? fa.depth : far } : null
         };
         return verdict;
       }
       const hi0 = r.hi, lo0 = r.lo;
       if (!r.step()) {
+        // Steps are counted as bbchallenge counts them: reading a missing
+        // transition is the halting step, and it counts, so the BB(5)
+        // champion takes 47,176,870 steps whether its halt is written `1RZ`
+        // or `---`. A transition into an accepting state is already a step,
+        // and arriving there is not another.
         verdict = {
-          verdict: 'halts', method: 'simulation', steps: r.t, how: r.halted, state: r.state,
+          verdict: 'halts', method: 'simulation', steps: r.t + (r.halted === 'none' ? 1 : 0), transitions: r.t, how: r.halted, state: r.state,
           read: r.halted === 'none' ? r.haltRead : null, ones: r.ones(), cells: cellsUsed()
         };
         return verdict;

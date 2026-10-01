@@ -11,6 +11,8 @@ import { METHOD_NAMES, decide, growthOf, run, standardFromTable, tableFromStanda
 import { PROOF_FORMAT, checkProof } from '../tm/check.mjs';
 import { runPool, workerCount } from '../tm/pool.mjs';
 import { bbStep, rootNode } from '../tm/search.mjs';
+import { openSeedDb, parseSeedIds, readSeedIndex } from '../tm/seed-db.mjs';
+import { haltingSegmentRun } from '../../js/machines/halting-segment.js';
 import { proveByInduction } from '../tm/induction.mjs';
 import { Indexed, encodePNG, TAPE_PALETTE, HEAD } from '../raster.mjs';
 import { PALETTE, box, c, isTTY, pill, print, printJson, styled, table, warn } from '../out.mjs';
@@ -70,12 +72,36 @@ export function loadTuringMachines(specs, { input = null } = {}) {
   return items;
 }
 
+/**
+ * Machines from bbchallenge's seed database, by ID: `ids` are arguments
+ * (numbers, #numbers, ranges) and `index` an index file of IDs. Each is
+ * labelled #id, as bbchallenge.org names them.
+ */
+export function loadSeedMachines(dbPath, ids, index = null) {
+  let db;
+  try { db = openSeedDb(dbPath); } catch (e) { throw new CliError(e.message); }
+  try {
+    let list;
+    try { list = [...parseSeedIds(ids), ...(index ? readSeedIndex(index) : [])]; } catch (e) { throw new CliError(e.message); }
+    if (!list.length) throw new CliError('--db needs machine IDs (e.g. 108115, or a range 0-99) or --index FILE.');
+    return list.map(id => {
+      const label = `#${id}`;
+      try {
+        const code = db.code(id);
+        return { label, code, id, p: tableFromStandard(code) };
+      } catch (e) { return { label, id, error: e.message }; }
+    });
+  } finally { db.close(); }
+}
+
 function detailOf(v) {
   switch (v.method) {
     case 'simulation': return `after ${num(v.steps)} steps, ${num(v.ones ?? 0)} non-blank cells${v.how === 'none' ? ' (an undefined transition)' : ''}`;
     case 'cycler': return `repeats every ${num(v.period)} steps from step ${num(v.from)}`;
     case 'translated': return `repeats ${Math.abs(v.shift)} cells further ${v.direction} every ${num(v.period)} steps`;
     case 'backward': return `no halting configuration is reachable more than ${v.longest} steps back`;
+    case 'segment': return `no halt is reachable through a segment of ${v.size} cells (${num(v.nodes)} configurations, closed)`;
+    case 'far': return `a ${v.depth}-state DFA and ${v.states}-state NFA recognise every halting configuration, not the start (scanning ${v.side === 'R' ? 'left to right' : 'right to left'})`;
     case 'cps': return `closed set of ${num(v.contexts)} windows, ${v.n} cells either side`;
     case 'bound': return `ran ${num(v.steps)} steps, past S(${v.n}, ${v.k}) = ${num(v.S)}`;
     case 'induction': return `an inductive rule over blocks of ${v.B} applies forever${v.rules > 1 ? ` (${v.rules} rules, nested)` : ''}`;
@@ -88,7 +114,8 @@ function detailOf(v) {
 function proofOf(item, v) {
   const { p } = item;
   const evidence = {};
-  for (const k of ['steps', 'ones', 'period', 'from', 'at', 'shift', 'window', 'direction', 'longest', 'n', 'k', 'S', 'left', 'right', 'contexts', 'how', 'B', 'rules', 'ruleSteps', 'grows', 'start']) {
+  for (const k of ['steps', 'transitions', 'ones', 'period', 'from', 'at', 'shift', 'window', 'direction', 'longest', 'n', 'k', 'S', 'left', 'right', 'contexts', 'how', 'B', 'rules', 'ruleSteps', 'grows', 'start',
+    'size', 'distance', 'nodes', 'side', 'depth', 'dfa', 'nfa', 'accepted', 'states']) {
     if (v[k] !== undefined) evidence[k] = v[k];
   }
   return {
@@ -112,18 +139,35 @@ const halts = {
 
 Does each machine halt from a blank tape (or --input)? Methods, cheapest first:
 simulation, cycler, translated cycler and backward reasoning (the app's own),
-then n-gram closed position sets, then the busy beaver bound for machines in
-the model whose S(n, k) is proved. What is still unknown gets a growth reading:
-how fast its tape grows — logarithmic (counter-like), √t (bouncer-like), …
+then bbchallenge's halting segment and finite automata reduction (ports of
+the reference deciders), then n-gram closed position sets, inductive rules,
+and the busy beaver bound for machines in the model whose S(n, k) is proved.
+What is still unknown gets a growth reading: how fast its tape grows —
+logarithmic (counter-like), √t (bouncer-like), …
+
+Steps are counted as bbchallenge counts them: reading an undefined transition
+(---) is the halting step, and it counts.
 
 A text file is a list: one machine per line, in the standard notation or as a
 machine code; # starts a comment.
 
+With --db, the arguments are machine IDs in bbchallenge's seed database (the
+binary all_5_states_undecided_machines_with_global_header): 108115, #108115,
+or a range 0-999; --index adds every ID in an index file (big-endian uint32s,
+such as bb5_undecided_index). Each machine is labelled #id, as bbchallenge.org
+names it, and the JSON carries its standard notation.
+
   --budget N        steps for the simulation-based methods (default 1000000)
+  --segment D       halting segment: segments up to 2D + 1 cells (default 5, the
+                    reference's; 0 = off)
+  --far D           finite automata reduction: DFAs up to D states (default 6;
+                    7 is the reference's BB(5) search and takes minutes a machine)
   --cps N           largest closed-position-set window (default 10; 0 = off)
   --induction-ms N  time for the inductive-rule prover per machine (default 2000; 0 = off)
   --no-bound        skip the busy beaver bound
   --no-growth       skip the growth reading for unknowns
+  --db FILE         read the machines from bbchallenge's seed database, by ID
+  --index FILE      with --db: also every ID in this index file
   --input w         run on w instead of a blank tape (.automaton machines)
   --workers N       worker threads (default: one per core, for 3+ machines)
   --proof DIR       write one proof file per decided machine (check-proof reads them)
@@ -131,14 +175,21 @@ machine code; # starts a comment.
 
 Exit: 0 every machine decided, 2 some unknown, 3 some could not be read.`,
   options: {
-    budget: { type: 'string' }, cps: { type: 'string' }, 'induction-ms': { type: 'string' }, 'no-bound': { type: 'boolean' }, 'no-growth': { type: 'boolean' },
-    input: { type: 'string' }, workers: { type: 'string' }, proof: { type: 'string' }
+    budget: { type: 'string' }, segment: { type: 'string' }, far: { type: 'string' }, cps: { type: 'string' }, 'induction-ms': { type: 'string' }, 'no-bound': { type: 'boolean' }, 'no-growth': { type: 'boolean' },
+    input: { type: 'string' }, workers: { type: 'string' }, proof: { type: 'string' }, db: { type: 'string' }, index: { type: 'string' }
   },
   async run({ args, opts }) {
-    if (!args.length) args = ['-'];
-    const items = loadTuringMachines(args, { input: opts.input ?? null });
+    if (opts.index && !opts.db) throw new CliError('--index names machines in a seed database: give the database with --db.');
+    let items;
+    if (opts.db) items = loadSeedMachines(opts.db, args, opts.index ?? null);
+    else {
+      if (!args.length) args = ['-'];
+      items = loadTuringMachines(args, { input: opts.input ?? null });
+    }
     const settings = {
       budget: Number(opts.budget ?? 1e6),
+      segment: Number(opts.segment ?? 5),
+      far: Number(opts.far ?? 6),
       cpsMax: Number(opts.cps ?? 10),
       inductionMs: Number(opts['induction-ms'] ?? 2000),
       bound: !opts['no-bound'],
@@ -164,7 +215,7 @@ Exit: 0 every machine decided, 2 some unknown, 3 some could not be read.`,
 
     if (opts.json) {
       printJson(items.map(it => ({
-        machine: it.label, ...(it.line ? { line: it.line } : {}),
+        machine: it.label, ...(it.line ? { line: it.line } : {}), ...(it.id !== undefined ? { id: it.id, standard: it.code } : {}),
         ...(it.error ? { error: it.error } : it.result.error ? { error: it.result.error } : {
           verdict: it.result.verdict, method: it.result.method, detail: detailOf(it.result),
           ...(it.result.growth ? { growth: { shape: it.result.growth.shape, slope: it.result.growth.slope, samples: it.result.growth.samples } } : {}),
@@ -200,8 +251,10 @@ const checkProofCmd = {
   usage: `automata check-proof <proof.json | dir ...>
 
 Re-checks each proof with code that shares nothing with the prover: its own
-tape, its own stepper, its own reading of the notation. Backward reasoning is
-the exception — it is re-run with the app's search, and marked as such.
+tape, its own stepper, its own reading of the notation. A finite automata
+reduction proof is checked against bbchallenge's verifier conditions. Backward
+reasoning, halting segment and inductive rules are the exception — they are
+re-run with the app's search, and marked as such.
 
 Exit: 0 every proof holds, 1 one does not.`,
   options: {},
@@ -220,10 +273,11 @@ Exit: 0 every proof holds, 1 one does not.`,
       next: Int32Array.from(m.next), write: Int32Array.from(m.write), move: Int8Array.from(m.move), accept: Uint8Array.from(m.accept)
     });
     const reprove = (m, ev) => proveByInduction(tableOf(m), ev.B, { maxMacroSteps: 200000 });
+    const segment = (m, size) => haltingSegmentRun(tableOf(m), size, (size - 1) / 2);
     const out = files.map(f => {
       let proof;
       try { proof = JSON.parse(readFileSync(f, 'utf8')); } catch (e) { return { file: f, ok: false, why: `not JSON: ${e.message}` }; }
-      return { file: f, machine: proof.machine, method: proof.method, verdict: proof.verdict, ...checkProof(proof, { classify, reprove }) };
+      return { file: f, machine: proof.machine, method: proof.method, verdict: proof.verdict, ...checkProof(proof, { classify, reprove, segment }) };
     });
     if (opts.json) printJson(out);
     else {
@@ -246,6 +300,8 @@ provably never halts (by method), or is a holdout. Does not use the busy beaver
 bound, which would assume the answer. 2×2 and 3×2 take moments; 4×2 minutes.
 
   --budget N        steps per machine (default 100000)
+  --segment D       halting segment up to 2D + 1 cells (default 5)
+  --far D           finite automata reduction up to D DFA states (default 5)
   --cps N           largest closed-position-set window (default 4)
   --induction-ms N  inductive-rule prover time per machine (default 300)
   --workers N
@@ -253,12 +309,12 @@ bound, which would assume the answer. 2×2 and 3×2 take moments; 4×2 minutes.
   --json`,
   options: {
     states: { type: 'string', short: 'n' }, symbols: { type: 'string', short: 'k' },
-    budget: { type: 'string' }, cps: { type: 'string' }, 'induction-ms': { type: 'string' }, workers: { type: 'string' }, holdouts: { type: 'string' }
+    budget: { type: 'string' }, segment: { type: 'string' }, far: { type: 'string' }, cps: { type: 'string' }, 'induction-ms': { type: 'string' }, workers: { type: 'string' }, holdouts: { type: 'string' }
   },
   async run({ opts }) {
     const n = Number(opts.states), k = Number(opts.symbols ?? 2);
     if (!(n >= 1 && n <= 6 && k >= 2 && k <= 6)) throw new CliError('--states is 1–6 and --symbols 2–6.');
-    const settings = { budget: Number(opts.budget ?? 1e5), cpsMax: Number(opts.cps ?? 4), inductionMs: Number(opts['induction-ms'] ?? 300) };
+    const settings = { budget: Number(opts.budget ?? 1e5), segment: Number(opts.segment ?? 5), far: Number(opts.far ?? 5), cpsMax: Number(opts.cps ?? 4), inductionMs: Number(opts['induction-ms'] ?? 300) };
     let frontier = [rootNode(n, k)];
     const stats = { nodes: 0, halting: 0, never: {}, holdouts: [] };
     let champion = null, onesChampion = null;

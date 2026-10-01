@@ -291,7 +291,9 @@ const METHOD_LABEL = {
   simulation: 'run to its halt',
   cycler: 'a configuration repeats exactly (a cycler)',
   translated: 'the run repeats, shifted along fresh tape (a translated cycler)',
-  backward: 'backward reasoning — no halting configuration is reachable'
+  backward: 'backward reasoning — no halting configuration is reachable',
+  segment: 'a halting segment — no configuration that leads to a halt is reachable',
+  far: 'finite automata reduction — an automaton recognises every way to halt, and not the start'
 };
 
 /**
