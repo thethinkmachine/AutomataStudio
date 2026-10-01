@@ -23,6 +23,7 @@ import {
 import { PANEL_SECTIONS, isSectionFloating, sectionConfig, sectionHost, sectionSide, sectionStartsCollapsed, sectionsWithHeader } from './panel-sections.js';
 import { syncDockFill } from './panel-sections-ui.js';
 import { setShakeToMinimizeEnabled, shakeToMinimizeEnabled } from './panel-state.js';
+import { canvasMotionEnabled, setCanvasMotionEnabled } from './canvas-motion.js';
 import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from './simulation.js';
 import { syncSpeedControl } from './speed-control.js';
 import { $, App, MIN_TAPES, MachineCategories, blankWorkspaceData, MachineTypes, R, TAPE_LIMIT, Workspaces, activeWorkspaceId, execMode, exportWorkspaceState, importWorkspaceState, largeMachineOverridePrompt, largeMachineProfile, machineIsLarge, maxTapes, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
@@ -35,7 +36,7 @@ import {
 import { Change, emit, subscribe } from './store.js';
 import { DEFAULT_THEME, Themes } from './themes.js';
 import { clearAll, escapeHtml, showStatus } from './utils.js';
-import { AUX_VIEWS, applyMachineSwitch, closeAuxView, hideMoreMenu, setMachine, setView, syncTapeCountUI } from './view.js';
+import { AUX_VIEWS, applyMachineSwitch, auxViewKey, closeAuxView, hideMoreMenu, setMachine, setView, syncTapeCountUI } from './view.js';
 import { initMobileShell, syncMobileBar, syncMobileTools, syncMobileWorkspaceButton } from './mobile.js';
 
 subscribe(Change.TABS, renderTabs);
@@ -1245,11 +1246,13 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     utmToggleAuto();
   }
-  // 1 returns to the canvas (closing any auxiliary view); 2-4 open one.
+  // 1 returns to the canvas (closing any auxiliary view); 2 onward open one,
+  // in the order the tab strip draws them (see auxViewKey in view.js).
   if (e.key === '1') setView('build');
-  if (e.key === '2') setView('algo');
-  if (e.key === '3') setView('grammar');
-  if (e.key === '4') setView('reference');
+  else {
+    const aux = AUX_VIEWS.find(v => auxViewKey(v) === e.key);
+    if (aux) setView(aux);
+  }
 });
 
 export function syncThemeExportPalette(theme) {
@@ -1833,6 +1836,7 @@ export function fitToScreen(silent = false) {
   App.cam.x = region.x + region.w / 2 - cx * z;
   App.cam.y = region.y + region.h / 2 - cy * z;
   App.cam.z = z;
+  framedVis = wrapRect ? { cw: wrapRect.width, ch: wrapRect.height, x: vis.x, w: vis.w } : null;
   // `silent` marks the programmatic fits that run on load/restore. Those must
   // not dirty the tab — the camera they set is the one that was just restored.
   if (!silent && typeof markDirty === 'function') markDirty();
@@ -1873,12 +1877,24 @@ export function autoFitLoadedMachine() {
 // nobody thought to wire up still counts. Observers only say *when* to
 // measure. Both sides wait for movement to settle, because the card scales in
 // and a box read mid-animation is a box that is about to change.
+//
+// An unpinned sidebar is followed too, and deliberately: peeking one open over
+// the canvas re-fits the machine into what is left, and letting it fold away
+// gives the room back. It is measured differently, because it is not an
+// obstacle a fit cuts around but the edge of the visible box itself, so the
+// test is visibleCanvasBox() against the one the last fit framed into. That
+// half ignores the settle window: a fit cannot move a panel, so a panel that
+// moved just after one is a real change. Unpinning is the case that needs it —
+// the canvas widens at once, the resize path fits while the panel is still
+// open under the pointer, and the panel folds a moment later, inside the window.
 export const FRAMING_SETTLE_MS = 260;
 // Changes smaller than this are noise — the zoom readout in the nav bar
 // changing width as a fit changes the zoom must not set off another fit.
 export const FRAMING_TOLERANCE = 3;
 
 let framedCam = null;
+// The canvas size and visible box (x, w) the last fit framed into.
+let framedVis = null;
 let framingBaseline = null;
 let framingTimer = null;
 // A check inside this window after a fit adopts what it measures as the new
@@ -1902,6 +1918,7 @@ export function isFramed() {
 
 export function resetFraming() {
   framedCam = null;
+  framedVis = null;
   framingBaseline = null;
   framingQuietUntil = 0;
   clearTimeout(framingTimer);
@@ -1917,6 +1934,16 @@ function framingSignature(wrapRect) {
     out.push(Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height));
   }
   return out;
+}
+
+// Whether an unpinned sidebar opened or folded since the last fit, at the canvas
+// size that fit saw — a different size is a resize, and the resize path's.
+function visibleBoxMoved(wrapRect) {
+  const f = framedVis;
+  if (!f) return false;
+  if (Math.abs(wrapRect.width - f.cw) > FRAMING_TOLERANCE || Math.abs(wrapRect.height - f.ch) > FRAMING_TOLERANCE) return false;
+  const v = visibleCanvasBox();
+  return Math.abs(v.x - f.x) > FRAMING_TOLERANCE || Math.abs(v.w - f.w) > FRAMING_TOLERANCE;
 }
 
 function sameSignature(a, b) {
@@ -1955,6 +1982,10 @@ export function checkFraming() {
   const sig = framingSignature(rect);
   const before = framingBaseline;
   framingBaseline = sig;
+  if (visibleBoxMoved(rect) && isFramed() && App.states.length) {
+    fitToScreen(true);
+    return true;
+  }
   if (nowMs() < framingQuietUntil) return false;
   if (!before || sameSignature(before, sig)) return false;
   // A different canvas size is a resize, which frames on its own terms.
@@ -1974,7 +2005,7 @@ export function initFraming() {
   if (initFraming.done) return;
   initFraming.done = true;
   const watched = ['canvas-toolbox', 'canvas-nav-controls', 'minimap-container', 'canvas-info-btn',
-    'example-card', 'scope-bar', 'mobile-bar'].map(id => $(id)).filter(Boolean);
+    'example-card', 'scope-bar', 'mobile-bar', 'lpanel', 'rpanel'].map(id => $(id)).filter(Boolean);
   // The windows' layer is made on first use, which can be after this runs —
   // and an observer on a node that did not exist yet watches nothing, which is
   // how torn-off windows went unnoticed. Asking for it makes it now.
@@ -3867,11 +3898,12 @@ export function initPanelTabs() {
 }
 
 export const MOBILE_BUILD_PANEL_IDS = ['lpanel', 'rpanel'];
-export const MOBILE_AUX_PANEL_IDS = ['algo-nav', 'gram-nav', 'ref-nav'];
+export const MOBILE_AUX_PANEL_IDS = ['algo-nav', 'gram-nav', 'ref-nav', 'lib-nav'];
 export const MOBILE_AUX_PANEL_BY_VIEW = {
   algo: 'algo-nav',
   grammar: 'gram-nav',
-  reference: 'ref-nav'
+  reference: 'ref-nav',
+  library: 'lib-nav'
 };
 
 export function updateMobilePanelChrome() {
@@ -4036,6 +4068,11 @@ document.addEventListener('click', e => {
   }
   if (referenceLink) {
     requestAnimationFrame(() => setMobilePanelCollapsed('ref-nav', true));
+    return;
+  }
+  const libraryLink = target && target('#lib-nav .lib-nav-link');
+  if (libraryLink) {
+    requestAnimationFrame(() => setMobilePanelCollapsed('lib-nav', true));
     return;
   }
   // The grammar rail is a list of tool links now, the same shape the other two
@@ -4226,6 +4263,8 @@ export function openSettingsModal() {
   // screen is not a property of the machine, and `App.config` is deep-copied
   // into every workspace tab and written into the `.json`. See panel-state.js.
   if ($('set-shake-minimize')) $('set-shake-minimize').checked = shakeToMinimizeEnabled();
+  // A device preference for the same reason. See js/canvas-motion.js.
+  if ($('set-canvas-motion')) $('set-canvas-motion').checked = canvasMotionEnabled();
   if ($('set-cull-offscreen')) $('set-cull-offscreen').checked = c.render.cullOffscreen !== false;
   if ($('set-zoom-lod')) $('set-zoom-lod').checked = c.render.zoomLOD !== false;
   if ($('set-large-machine-auto')) $('set-large-machine-auto').checked = c.render.largeMachineAuto !== false;
@@ -4248,12 +4287,12 @@ export function openSettingsModal() {
   showOverlay('settings-modal');
 }
 
-// Both tabbed dialogs — Engine Settings and Keyboard Shortcuts — are the same
+// Both tabbed dialogs — Settings and Keyboard Shortcuts — are the same
 // shell (.export-code-modal + .settings-modal-wide), so they switch tabs the
 // same way. The rail is scoped by id because the two are in the DOM at once.
 //
 // The tabs are <button role="tab">s. They were <div onclick>s, which meant the
-// seven settings panels and the five shortcut panels could not be reached from
+// settings panels and the five shortcut panels could not be reached from
 // the keyboard at all — the one strip in the app that had not had the treatment
 // js/panel-state.js gives the sidebars. Three things follow, and they are the
 // same three the sidebar strip maintains:
@@ -4290,6 +4329,11 @@ function switchModalTab(railSel, modalSel, panelPrefix, tabPrefix, tabId) {
     targetTab.classList.add('active');
     targetTab.setAttribute('aria-selected', 'true');
     targetTab.tabIndex = 0;
+    // On a phone the rail is one sideways-scrolling row, so a tab opened by
+    // name — StateMate's /model, the quick-settings More… — can be selected
+    // while scrolled out of sight, and the reader sees a panel with no tab lit
+    // above it. `nearest` makes this a no-op wherever the tab already shows.
+    targetTab.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }
 
   const targetContent = document.getElementById(panelPrefix + tabId);
@@ -4405,7 +4449,7 @@ export function syncLargeMachineProfile() {
   if (now && typeof settleAll === 'function') settleAll();
   if (first && !now) return;
   showStatus(now
-    ? 'Large machine — canvas simplified for performance. Settings → Canvas to override.'
+    ? 'Large machine — canvas simplified for performance. Settings → Performance to override.'
     : 'Full canvas detail restored.');
 }
 
@@ -4516,6 +4560,7 @@ export function applySettings() {
   if ($('set-avoid-overlap')) c.render.avoidNodeOverlap = $('set-avoid-overlap').checked;
   if ($('set-animate-layout')) c.render.animateLayout = $('set-animate-layout').checked;
   if ($('set-shake-minimize')) setShakeToMinimizeEnabled($('set-shake-minimize').checked);
+  if ($('set-canvas-motion')) setCanvasMotionEnabled($('set-canvas-motion').checked);
   if ($('set-cull-offscreen')) c.render.cullOffscreen = $('set-cull-offscreen').checked;
   if ($('set-zoom-lod')) c.render.zoomLOD = $('set-zoom-lod').checked;
   if ($('set-large-machine-auto')) c.render.largeMachineAuto = $('set-large-machine-auto').checked;

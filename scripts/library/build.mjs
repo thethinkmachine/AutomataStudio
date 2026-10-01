@@ -1,0 +1,532 @@
+#!/usr/bin/env node
+// ══════════════════════════════════════════════════════════════════
+//  BUILD THE LIBRARY
+// ══════════════════════════════════════════════════════════════════
+// Reads a checkout of the library repository, analyses every machine in it
+// with the app's own engine, and writes what the app and the website read:
+//
+//   <out>/index.json              the catalogue (js/library/index-model.js)
+//   <out>/machines/**             the published entry files, verbatim, and their essays
+//   <out>/collections/<id>.md     a collection's essay, verbatim
+//   <out>/art/<id>/<kind>.svg     each entry's pictures (analyze.js cardArt)
+//   <out>/**.html + assets/       the website (scripts/library/site.mjs)
+//
+//   node --conditions=browser --conditions=development scripts/library/build.mjs \
+//     --library ../automata-library --out ../automata-library/_site
+//
+// Flags:
+//   --check            analyse and report only; exit 1 if any entry fails
+//   --report FILE      write the report as Markdown (for a PR comment)
+//   --commit SHA       the library commit the index describes (pins downloads)
+//   --site URL         the site's own address, for absolute links
+//   --no-site          write the data only
+//   (programmatic only) cache: a Map kept between builds, so an unchanged
+//                      file is not analysed again
+//   (programmatic only) only: the Set of files a pull request changed — what
+//                      loses when two entries are the same machine
+//   --changed-since REF  judge only the files changed since REF (a pull request's
+//                      base); every entry is still analysed, since a new one can
+//                      make an old one a duplicate or a remix target
+//
+// Library layout:
+//   machines/<anything>/<name>.automaton   entries; the id is the path under
+//                                          machines/ without the extension
+//   collections/<id>.json                  { title, blurb, curator, entries: [id] }
+//   <path>.md beside either                optional: its essay (js/library/article.js),
+//                                          listed in the index as `essay`
+//   library.config.json                    optional: { site, repo, maintainers, featured }
+
+import './env.mjs';
+import { APP_VERSION } from './env.mjs';
+import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { dirname, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { analyzeDocument, decideRaw, libraryMetaOf, namedDiagram, outputText, runFramesOf } from '../../js/library/analyze.js';
+import { buildFormalDefLatex } from '../../js/render.js';
+import { withMachine } from '../../js/exercise/grade.js';
+import { canonicalCodeOf, contentHash } from '../../js/library/hash.js';
+import { INDEX_FORMAT, INDEX_VERSION, LIBRARY_REPO, LIBRARY_SITE_URL, isLibraryId } from '../../js/library/config.js';
+import { normalizeIndex } from '../../js/library/index-model.js';
+import { readingMinutes } from '../../js/library/article.js';
+import { essayWarnings } from '../../js/library/essay-check.js';
+import { frontispieceOf, writeSite } from './site.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+// ── Arguments ─────────────────────────────────────────────────────
+
+export function parseArgs(argv) {
+  const a = { library: process.cwd(), out: null, check: false, report: null, commit: '', site: null, noSite: false, changedSince: null };
+  for (let i = 0; i < argv.length; i++) {
+    const k = argv[i];
+    const next = () => argv[++i];
+    if (k === '--library') a.library = next();
+    else if (k === '--out') a.out = next();
+    else if (k === '--check') a.check = true;
+    else if (k === '--report') a.report = next();
+    else if (k === '--commit') a.commit = next();
+    else if (k === '--site') a.site = next();
+    else if (k === '--no-site') a.noSite = true;
+    else if (k === '--changed-since') a.changedSince = next();
+    else throw new Error(`Unknown flag ${k}`);
+  }
+  a.library = resolve(a.library);
+  a.out = resolve(a.out || join(a.library, '_site'));
+  return a;
+}
+
+// ── Reading the checkout ──────────────────────────────────────────
+
+async function walk(dir, ext) {
+  if (!existsSync(dir)) return [];
+  const out = [];
+  for (const d of await readdir(dir, { withFileTypes: true })) {
+    if (d.name.startsWith('.')) continue;
+    const p = join(dir, d.name);
+    if (d.isDirectory()) out.push(...await walk(p, ext));
+    else if (d.name.endsWith(ext)) out.push(p);
+  }
+  return out.sort();
+}
+
+const posix = p => p.split(sep).join('/');
+
+/**
+ * Whether `root` is the top of a git repository of its own. A library directory
+ * that merely sits *inside* one — the emulator's .library-dev/, inside the app's
+ * checkout — would otherwise read its dates out of the wrong repository, one
+ * slow `git log` per file.
+ */
+function isOwnRepo(root) {
+  try {
+    const top = execFileSync('git', ['-C', root, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return resolve(top).toLowerCase() === resolve(root).toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+/** First and last commit dates, and how many commits touched the file. Null outside a git checkout. */
+function gitHistory(root, rel, ownRepo = true) {
+  if (!ownRepo) return null;
+  try {
+    const log = execFileSync('git', ['-C', root, 'log', '--follow', '--format=%aI', '--', rel], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+      .trim().split('\n').filter(Boolean);
+    if (!log.length) return null;
+    return { added: log[log.length - 1], updated: log[0], version: log.length };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Dates from the file itself, for a file git cannot date: the emulator's
+ * library, which is not a repository of its own, and a file not yet committed.
+ * Without them every such entry was undated, so "Date added" and "Last
+ * updated" sorted nothing and the home pages' recent shelves stood empty.
+ *
+ * Added is the file's creation where the filesystem records one (a birthtime
+ * of 0 is Linux saying it does not), else its modification. A modification
+ * within a minute of the creation is the write that created it, not an update
+ * — the emulator's seed writes every file once — so it is not called one.
+ */
+async function fileHistory(file) {
+  try {
+    const s = await stat(file);
+    const born = s.birthtimeMs > 0 && s.birthtimeMs <= s.mtimeMs ? s.birthtimeMs : s.mtimeMs;
+    const changed = s.mtimeMs - born > 60_000 ? s.mtimeMs : born;
+    return { added: new Date(born).toISOString(), updated: new Date(changed).toISOString(), version: 1 };
+  } catch {
+    return null;
+  }
+}
+
+/** A date as a time, for ordering: git writes each in its committer's offset, so text order is wrong. Undated sorts last. */
+function dateOf(s) {
+  const t = Date.parse(s || '');
+  return Number.isFinite(t) ? t : Infinity;
+}
+
+async function readJson(file, fallback) {
+  try { return JSON.parse(await readFile(file, 'utf8')); } catch { return fallback; }
+}
+
+// ── Analysis ──────────────────────────────────────────────────────
+
+/**
+ * Every entry in the checkout, analysed. Returns the index (not yet
+ * normalised), the per-file results for the report, and the pictures and code
+ * to write.
+ */
+export async function buildLibrary(opts) {
+  const root = opts.library;
+  const config = await readJson(join(root, 'library.config.json'), {});
+  const repo = config.repo || LIBRARY_REPO;
+  const site = (opts.site || config.site || LIBRARY_SITE_URL).replace(/\/?$/, '/');
+
+  const ownRepo = isOwnRepo(root);
+  const results = [];
+  const entries = [];
+  const artifacts = [];   // { path, text } to write under out/
+  const sources = new Map();   // id → { target, doc }: what the website's listing reads (listingOf)
+
+  // ── machines ──
+  for (const file of await walk(join(root, 'machines'), '.automaton')) {
+    const rel = posix(relative(root, file));
+    const id = rel.replace(/^machines\//, '').replace(/\.automaton$/, '');
+    const r = { file: rel, id, errors: [], warnings: [], badges: [] };
+    results.push(r);
+    if (!isLibraryId(id)) { r.errors.push(`"${id}" is not a usable id — use letters, digits, dots, dashes and slashes.`); continue; }
+    const text = await readFile(file, 'utf8');
+    let doc;
+    try { doc = JSON.parse(text); } catch (e) { r.errors.push(`Not JSON: ${e.message}`); continue; }
+    // A long-running caller (the local emulator) keeps analyses by content
+    // hash, so a rebuild re-runs only the files that changed — BB(5) alone is
+    // 47 million steps. The cached result is read, never written to.
+    const key = `${contentHash(text)}:${opts.behaviourBudget ?? ''}`;
+    const a = opts.cache?.get(key) || analyzeDocument(doc, { text, pictures: true, behaviourBudget: opts.behaviourBudget });
+    opts.cache?.set(key, a);
+    r.errors.push(...a.errors);
+    r.warnings.push(...a.warnings);
+    if (!a.facts) continue;
+    r.badges = a.facts.badges.map(b => b.id);
+    const hist = gitHistory(root, rel, ownRepo) || await fileHistory(file);
+    const f = a.facts;
+    const entry = {
+      id, path: rel,
+      title: f.title, blurb: f.blurb, machine: f.machine, category: f.category, languageClass: f.languageClass,
+      tags: f.tags, author: f.author, license: f.license, difficulty: f.difficulty, chapter: f.chapter, standard: f.standard,
+      added: hist?.added || '', updated: hist?.updated || '', version: hist?.version || 1,
+      hash: contentHash(text), bytes: Buffer.byteLength(text),
+      // Copied: with the emulator's cache, `a` outlives this build, and what
+      // this build writes onto an entry must not land in the next one's.
+      stats: f.stats, badges: [...f.badges], behaviour: f.behaviour, fingerprint: f.fingerprint, machineId: f.machineId, taskId: f.taskId, dfa: f.dfa, sketch: f.sketch, tests: f.tests,
+      forkOf: f.forkOf, remixes: [], collections: [], art: []
+    };
+    for (const v of a.art || []) {
+      const path = `art/${id}/${v.kind}.svg`;
+      entry.art.push({ kind: v.kind, path });
+      artifacts.push({ path, text: v.svg });
+    }
+    const article = await articleBeside(file.replace(/\.automaton$/, '.md'));
+    if (article) entry.essay = essayRef(rel.replace(/\.automaton$/, '.md'), article);
+    entries.push(entry);
+    sources.set(id, { target: a.target, doc, article });
+  }
+
+  const byId = new Map(entries.map(e => [e.id, e]));
+  const resultOf = id => results.find(r => r.id === id);
+
+  // ── remixes ──
+  for (const e of entries) {
+    if (!e.forkOf) continue;
+    const parent = byId.get(e.forkOf);
+    if (!parent) { resultOf(e.id).errors.push(`It says it is a remix of "${e.forkOf}", which is not in the library.`); continue; }
+    // Harmless, and not worth dropping an entry over: the link is ignored.
+    if (parent.id === e.id) { resultOf(e.id).warnings.push('It names itself as what it was remixed from; that is ignored.'); e.forkOf = null; continue; }
+    parent.remixes.push(e.id);
+  }
+
+  // ── the same machine, or the same exercise, twice ──
+  // A library lists a machine once: the same machine under a second title adds
+  // a card, not a machine, and the card is what an update is for. Identity is
+  // the machine id (hash.js machineIdOf) — the same machine up to state names,
+  // layout and blocks, for every kind of machine — and for an exercise its
+  // task id (analyze.js exerciseIdOf): the same reference and the same rules
+  // for an answer, however the task is worded. The two are hashed under
+  // different tags, so an exercise never collides with a machine.
+  //
+  // The newcomer is the one refused, and "newcomer" is decided so that a change
+  // can only ever fail itself: under a PR check the files the PR changes come
+  // last, and otherwise the file changed most recently does. Ordered by the
+  // date *added* instead, an author updating an old entry into a copy of a
+  // newer one would unpublish the newer one — someone else's, untouched.
+  const changedLast = e => (opts.only?.has(e.path) ? 1 : 0);
+  const byMachine = new Map();
+  for (const e of [...entries].sort((x, y) => changedLast(x) - changedLast(y) || dateOf(x.updated) - dateOf(y.updated) || x.id.localeCompare(y.id))) {
+    const key = e.machineId || e.taskId;
+    if (!key) continue;
+    const first = byMachine.get(key);
+    if (!first) { byMachine.set(key, e); continue; }
+    resultOf(e.id).errors.push(e.taskId
+      ? `It is the same exercise as “${first.title}” (${first.id}) — the same reference and the same rules for an answer, however it is worded. Improve that exercise instead, or set a different task.`
+      : `It is the same machine as “${first.title}” (${first.id}) — identical up to state names, layout and blocks. Improve that entry instead, or change the machine.`);
+  }
+
+  // ── the same language, twice ──
+  // The first to arrive keeps the language; later ones point at it. Not an
+  // error: a different construction for a known language is often the point.
+  const byPrint = new Map();
+  for (const e of [...entries].sort((x, y) => (x.added || '~').localeCompare(y.added || '~') || x.id.localeCompare(y.id))) {
+    if (!e.fingerprint) continue;
+    const first = byPrint.get(e.fingerprint);
+    if (!first) { byPrint.set(e.fingerprint, e); continue; }
+    if (JSON.stringify(first.dfa) !== JSON.stringify(e.dfa)) continue;
+    e.duplicateOf = first.id;
+    resultOf(e.id).warnings.push(`Recognises the same language as ${first.id}.`);
+  }
+
+  // ── collections ──
+  const collections = [];
+  const collectionArticles = new Map();   // id → its essay's Markdown, for the website
+  for (const file of await walk(join(root, 'collections'), '.json')) {
+    const id = posix(relative(join(root, 'collections'), file)).replace(/\.json$/, '');
+    const c = await readJson(file, null);
+    const r = { file: posix(relative(root, file)), id: `collection:${id}`, errors: [], warnings: [], badges: [] };
+    results.push(r);
+    if (!c || typeof c !== 'object') { r.errors.push('Not a JSON object.'); continue; }
+    if (!isLibraryId(id)) { r.errors.push(`"${id}" is not a usable id.`); continue; }
+    const listed = Array.isArray(c.entries) ? c.entries : [];
+    const missing = listed.filter(x => !byId.has(x));
+    if (missing.length) r.errors.push(`Lists entries that do not exist: ${missing.join(', ')}.`);
+    const kept = listed.filter(x => byId.has(x));
+    kept.forEach(x => byId.get(x).collections.push(id));
+    const essay = await articleBeside(file.replace(/\.json$/, '.md'));
+    collections.push({
+      id, title: String(c.title || id), blurb: String(c.blurb || ''), curator: String(c.curator || ''), entries: kept,
+      ...(essay ? { essay: essayRef(posix(relative(root, file)).replace(/\.json$/, '.md'), essay) } : {})
+    });
+    if (essay) collectionArticles.set(id, essay);
+  }
+
+  // ── what is published ──
+  // An entry that failed a check is reported and left out, and so is every
+  // reference to it — a collection, a remix list. On main
+  // this never happens, because the PR check stops it; it is the build's own
+  // guarantee that the index only ever lists what passed.
+  const failed = new Set(results.filter(r => r.errors.length).map(r => r.id));
+  const published = entries.filter(e => !failed.has(e.id));
+  for (const e of published) e.remixes = e.remixes.filter(x => !failed.has(x));
+  for (const c of collections) c.entries = c.entries.filter(x => !failed.has(x));
+  const pubIds = new Set(published.map(e => e.id));
+  const keepArtifact = a => {
+    const m = /^art\/(.+)\/[a-z]+\.svg$/.exec(a.path);
+    return !m || pubIds.has(m[1]);
+  };
+
+  // ── essays ──
+  // Checked against what is published, since an essay may name any entry: a
+  // fact the library does not know, a figure the machine cannot draw, a link
+  // to nothing. Warnings, not errors — the essay is prose around a machine
+  // that passed, and it is still worth reading with a sentence to fix.
+  const essayIndex = { entries: published, collections };
+  for (const e of published) {
+    const md = sources.get(e.id)?.article;
+    if (md) resultOf(e.id).warnings.push(...essayWarnings(md, essayIndex, e));
+  }
+  for (const c of collections) {
+    const md = collectionArticles.get(c.id);
+    if (md) resultOf(`collection:${c.id}`)?.warnings.push(...essayWarnings(md, essayIndex, null));
+  }
+
+  // ── the frontispiece ──
+  // Chosen once, here, on the drawings the website will show, and written into
+  // the index — so the app's Discover opens on the machine the website's home
+  // page does. A diagram is drawn only for an entry the choice asks about.
+  const featured = (Array.isArray(config.featured) ? config.featured : []).filter(id => collections.some(c => c.id === id));
+  const drawn = new Map();
+  const listings = {
+    get(id) {
+      if (!drawn.has(id)) {
+        let diagram = null;
+        try { if (sources.has(id)) diagram = namedDiagram(sources.get(id).target); } catch { /* none */ }
+        drawn.set(id, diagram ? { diagram } : undefined);
+      }
+      return drawn.get(id);
+    }
+  };
+  // In the index's order, since a tie goes to the first listed.
+  const front = frontispieceOf({ entries: [...published].sort((a, b) => a.id.localeCompare(b.id)), collections, featured }, config, listings);
+
+  const raw = {
+    format: INDEX_FORMAT,
+    version: INDEX_VERSION,
+    generated: new Date().toISOString(),
+    engine: APP_VERSION,
+    repo,
+    commit: opts.commit || '',
+    site,
+    entries: published.sort((a, b) => a.id.localeCompare(b.id)),
+    collections,
+    // Collections the home page shows first, in this order.
+    featured,
+    ...(front ? { frontispiece: front.id } : {}),
+    // Set only by the local emulator (dev-server.mjs): where its stand-in for
+    // GitHub's issue form lives, so the app's Submit goes there instead.
+    ...(opts.submit ? { submit: opts.submit } : {}),
+    ...(opts.emulator ? { emulator: true } : {})
+  };
+  // Round-trip through the reader the app uses, so an index the app would
+  // refuse cannot be published.
+  normalizeIndex(JSON.parse(JSON.stringify(raw)));
+  return { raw, results, artifacts: artifacts.filter(keepArtifact), sources, collectionArticles, config: { ...config, repo, site } };
+}
+
+// ── What a website listing reads off the file ─────────────────────
+
+/**
+ * The essay beside a machine or a collection (bb5.md beside bb5.automaton),
+ * or '' when there is none. Its own file, so the prose is diffed and reviewed
+ * as prose and editing it never changes the machine's bytes or its hash.
+ */
+async function articleBeside(file) {
+  try { return await readFile(file, 'utf8'); } catch { return ''; }
+}
+
+/**
+ * What the index says about an essay: where its file is, the hash the app
+ * checks a download against (as it does a machine's file), and how long it
+ * takes to read — enough for the app to say there is one before fetching it.
+ */
+function essayRef(path, text) {
+  return { path, hash: contentHash(text), minutes: readingMinutes(text) };
+}
+
+/**
+ * What only the machine's file can say, for its page on the website
+ * (site.mjs): the diagram with its names and labels, its formal definition —
+ * the same LaTeX the app's formal-definition box and the Library's listing
+ * typeset — its examples decided, and the author's notes. Each part is
+ * optional; a page without one draws from the index.
+ */
+export function listingOf({ target, doc, article }, entry) {
+  const out = {};
+  try { out.diagram = namedDiagram(target); } catch { /* the index's sketch */ }
+  try { out.latex = withMachine(target, () => buildFormalDefLatex()); } catch { /* no definition */ }
+  const rows = (Array.isArray(doc?.meta?.inputs) ? doc.meta.inputs : []).filter(r => r && typeof r.w === 'string').slice(0, 16);
+  out.examples = rows.map(r => {
+    const got = decideRaw(target, r.w);
+    return { w: r.w, verdict: got.verdict, output: outputText(got.output), label: typeof r.label === 'string' ? r.label : '' };
+  }).filter(r => r.verdict !== 'err');
+  if (entry.behaviour && !entry.standard) {
+    try { out.runFrames = runFramesOf(target, 90); } catch { /* none */ }
+  }
+  out.readme = libraryMetaOf(doc).readme;
+  if (article) out.article = article;
+  // The machine's code, as the app's listing shows it — blocks and all, names
+  // left off, since the code is what names the machine.
+  if (!doc?.exercise) out.code = canonicalCodeOf(doc);
+  return out;
+}
+
+// ── The report ────────────────────────────────────────────────────
+
+export function reportMarkdown(results, { only = null } = {}) {
+  const shown = only ? results.filter(r => only.has(r.file)) : results;
+  const elsewhere = only ? results.filter(r => !only.has(r.file) && r.errors.length) : [];
+  const failed = shown.filter(r => r.errors.length);
+  const lines = [];
+  lines.push(failed.length
+    ? `### ❌ ${failed.length} of ${shown.length} file${shown.length === 1 ? '' : 's'} need changes`
+    : `### ✅ ${shown.length} file${shown.length === 1 ? '' : 's'} checked`);
+  lines.push('');
+  for (const r of shown) {
+    const mark = r.errors.length ? '❌' : r.warnings.length ? '⚠️' : '✅';
+    lines.push(`**${mark} \`${r.file}\`**${r.badges.length ? ` — ${r.badges.map(b => `\`${b}\``).join(' ')}` : ''}`);
+    for (const e of r.errors) lines.push(`- ❌ ${e}`);
+    for (const w of r.warnings) lines.push(`- ⚠️ ${w}`);
+    lines.push('');
+  }
+  if (elsewhere.length) {
+    lines.push(`<details><summary>${elsewhere.length} file${elsewhere.length === 1 ? '' : 's'} this change does not touch also fail</summary>`, '');
+    for (const r of elsewhere) lines.push(`- \`${r.file}\`: ${r.errors[0]}`);
+    lines.push('', '</details>', '');
+  }
+  lines.push('<sub>Checked by the AutomataStudio engine — the same analysis the app runs before you submit.</sub>');
+  return lines.join('\n');
+}
+
+/** Files under the library's content folders changed since `ref`. */
+function changedFiles(root, ref) {
+  try {
+    return new Set(execFileSync('git', ['-C', root, 'diff', '--name-only', `${ref}...HEAD`, '--', 'machines', 'collections'], { encoding: 'utf8' })
+      .trim().split('\n').filter(Boolean));
+  } catch {
+    return null;
+  }
+}
+
+// ── Writing it out ────────────────────────────────────────────────
+
+async function put(out, path, text) {
+  const file = join(out, ...path.split('/'));
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, text);
+}
+
+export async function writeLibrary(opts, built) {
+  const { out, library } = opts;
+  await mkdir(out, { recursive: true });
+  await put(out, 'index.json', JSON.stringify(built.raw));
+  for (const a of built.artifacts) await put(out, a.path, a.text);
+  // Only what was published: a file that failed its check is not listed, and
+  // is not served either.
+  // An essay is served beside its machine or collection, from the same place,
+  // so the app fetches it the way it fetches the machine's file.
+  const served = [...built.raw.entries.map(e => e.path), ...[...built.raw.entries, ...built.raw.collections].map(x => x.essay?.path).filter(Boolean)];
+  for (const path of served) {
+    const dest = join(out, ...path.split('/'));
+    await mkdir(dirname(dest), { recursive: true });
+    await copyFile(join(library, ...path.split('/')), dest);
+  }
+  // Pages serves Jekyll by default, which drops paths starting with an
+  // underscore and rewrites nothing we want rewritten.
+  await put(out, '.nojekyll', '');
+  if (!opts.noSite) {
+    const index = normalizeIndex(JSON.parse(JSON.stringify(built.raw)));
+    const listings = new Map();
+    for (const e of built.raw.entries) {
+      const src = built.sources?.get(e.id);
+      if (src) listings.set(e.id, listingOf(src, e));
+    }
+    await writeSite(out, index, built.config, {
+      // The modules the site's search imports, in the repo's own layout: the
+      // library's beside site.js in assets/, and the codec code-search.js
+      // reads a pasted machine code with at ../interop/, as it is in js/.
+      assets: {
+        'config.js': join(HERE, '../../js/library/config.js'),
+        'index-model.js': join(HERE, '../../js/library/index-model.js'),
+        'code-search.js': join(HERE, '../../js/library/code-search.js'),
+        'hash.js': join(HERE, '../../js/library/hash.js'),
+        '../interop/smtf.js': join(HERE, '../../js/interop/smtf.js')
+      },
+      listings,
+      collectionArticles: built.collectionArticles
+    });
+  }
+}
+
+// ── Main ──────────────────────────────────────────────────────────
+
+async function main() {
+  const opts = parseArgs(process.argv.slice(2));
+  const t0 = Date.now();
+  // Known before the build, since which of two identical machines is refused
+  // depends on which one the pull request changed.
+  const only = opts.changedSince ? changedFiles(opts.library, opts.changedSince) : null;
+  const built = await buildLibrary({ ...opts, only });
+  const md = reportMarkdown(built.results, { only });
+  if (opts.report) await writeFile(resolve(opts.report), md);
+  const failed = built.results.filter(r => r.errors.length && (!only || only.has(r.file)));
+  for (const r of built.results) {
+    const mark = r.errors.length ? 'FAIL' : r.warnings.length ? 'warn' : ' ok ';
+    console.log(`${mark}  ${r.file}${r.badges.length ? `  [${r.badges.join(', ')}]` : ''}`);
+    for (const e of r.errors) console.log(`        ✗ ${e}`);
+    for (const w of r.warnings) console.log(`        ! ${w}`);
+  }
+  console.log(`\n${built.raw.entries.length} entries, ${built.raw.collections.length} collections — ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  if (!opts.check) {
+    await writeLibrary(opts, built);
+    console.log(`Wrote ${opts.out}`);
+  }
+  // The published build lists only what passed; a failing entry never reaches
+  // main through the PR check, so a failure here is a check-mode answer.
+  process.exitCode = failed.length && opts.check ? 1 : 0;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch(e => { console.error(e); process.exitCode = 1; });
+}

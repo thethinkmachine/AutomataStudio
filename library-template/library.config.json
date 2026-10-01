@@ -1,0 +1,16 @@
+{
+  "repo": "thethinkmachine/automata-library",
+  "site": "https://thethinkmachine.github.io/automata-library/",
+  "engine": {
+    "repo": "thethinkmachine/AutomataStudio",
+    "ref": "main"
+  },
+  "maintainers": [
+    "thethinkmachine"
+  ],
+  "featured": [
+    "busy-beavers",
+    "regular-languages",
+    "omega-zoo"
+  ]
+}

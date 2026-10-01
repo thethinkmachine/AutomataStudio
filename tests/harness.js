@@ -80,6 +80,7 @@ import * as sectionStatus from '../js/section-status.js';
 import * as machineOptionsUi from '../js/machine-options-ui.js';
 import * as deltaTable from '../js/delta-table.js';
 import * as panelShake from '../js/panel-shake.js';
+import * as canvasMotion from '../js/canvas-motion.js';
 import * as mobile from '../js/mobile.js';
 import * as simulation from '../js/simulation.js';
 import * as speedControl from '../js/speed-control.js';
@@ -92,6 +93,7 @@ import * as branchTreeUi from '../js/branch-tree-ui.js';
 import * as branchTokens from '../js/branch-tokens.js';
 import * as complexity from '../js/complexity.js';
 import * as complexityUi from '../js/complexity-ui.js';
+import * as behaviourUi from '../js/behaviour-ui.js';
 // The machine layer: the registry, the shared runtime, and one module per
 // family. Imported here for the same reason as every other namespace — the
 // tests reach the machines' own functions (simTM, testFST, decideMachine)
@@ -115,6 +117,7 @@ import * as machineRun from '../js/machines/run.js';
 import * as machineColumns from '../js/machines/columns.js';
 import * as machineBranchTree from '../js/machines/branch-tree.js';
 import * as machineFastTm from '../js/machines/fast-tm.js';
+import * as machineTmBehaviour from '../js/machines/tm-behaviour.js';
 import * as parallelPool from '../js/parallel/pool.js';
 import * as parallelSnapshot from '../js/parallel/snapshot.js';
 import * as parallelCore from '../js/parallel/decide-core.js';
@@ -135,6 +138,17 @@ import * as suggest from '../js/suggest.js';
 import * as themes from '../js/themes.js';
 import * as viewport from '../js/viewport.js';
 import * as reference from '../js/reference.js';
+import * as libraryConfig from '../js/library/config.js';
+import * as libraryHash from '../js/library/hash.js';
+import * as libraryIndex from '../js/library/index-model.js';
+import * as libraryAnalyze from '../js/library/analyze.js';
+import * as libraryClient from '../js/library/client.js';
+import * as librarySubmit from '../js/library/submit.js';
+import * as libraryUi from '../js/library-ui.js';
+import * as cardSource from '../js/card-source.js';
+import * as libraryRequests from '../js/library/requests.js';
+import * as libraryCardHtml from '../js/library/card-html.js';
+import * as librarySketch from '../js/library/sketch.js';
 import * as ui from '../js/ui.js';
 import * as utils from '../js/utils.js';
 import * as view from '../js/view.js';
@@ -146,17 +160,18 @@ import * as wizardUi from '../js/wizard-ui.js';
 
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, viewport, geometry, statesTransitions,
-  blocks, blocksUi, viewGraph, graphThumb, scope, runScope, canvas, render, panelState, panelSections, traceFormat, panelSectionsUi, panelFloat, sectionStatus, machineOptionsUi, deltaTable, panelShake, panelList, mobile, notes, dividers,
-  machineRegistry, machineRuntime, machineBranchTree, machineFastTm, machineFinite, machineWeighted, machineOmega,
+  blocks, blocksUi, viewGraph, graphThumb, scope, runScope, canvas, render, panelState, panelSections, traceFormat, panelSectionsUi, panelFloat, sectionStatus, machineOptionsUi, deltaTable, panelShake, canvasMotion, panelList, mobile, notes, dividers,
+  machineRegistry, machineRuntime, machineBranchTree, machineFastTm, machineTmBehaviour, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineEmbedded, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, machineColumns, parallelPool, parallelSnapshot, parallelCore,
-  simulation, speedControl, tape, tapeLog, tapeView, spacetime, spacetimeUi, branchTreeUi, branchTokens, complexity, complexityUi, suggest, language, alphabet, markdown,
+  simulation, speedControl, tape, tapeLog, tapeView, spacetime, spacetimeUi, branchTreeUi, branchTokens, complexity, complexityUi, behaviourUi, suggest, language, alphabet, markdown,
   view, history, fileHost, persistence, exportCore, exportFormats, exportUi, codegen,
   importJflap, importStatechart, interopStatechart, interopObjlit, interopXml, interopStandardTM,
   exerciseModel, exerciseGrade, exerciseUi, lexerRegex, lexerBuild, lexerEmit, lexerUi, algorithmsFa, grammarUi, grammarModel, grammarParse, grammarAnalysis, grammarTransform,
   grammarParsing, grammarConvert, grammarTree, grammarRegistry, grammarExamples, reference, workspace, quickSettings, minimap, ui,
   statemateSpec, statemateProvider, statemateCompile, statemateLint, statematePrompt, statemateAgent,
-  statematePreview, draftLayer, statemate, statemateUi, wizardCopy, wizard, wizardUi
+  statematePreview, draftLayer, statemate, statemateUi, wizardCopy, wizard, wizardUi,
+  libraryConfig, libraryHash, libraryIndex, libraryAnalyze, libraryClient, librarySubmit, libraryUi, cardSource, libraryRequests, libraryCardHtml, librarySketch
 ];
 
 // Live view over every module export. Names are unique across modules (the
@@ -246,6 +261,10 @@ function resetModuleState() {
   branchTreeUi.resetBranchTree();
   branchTokens.clearBranchTokens();
   complexityUi.resetComplexity();
+  behaviourUi.resetBehaviour();
+  // The library's route, its index in memory and its offline shelf.
+  libraryUi._resetLibraryUiForTests();
+  libraryClient._resetLibraryClientForTests();
   state.setWorkspaces([]);
   state.setActiveWorkspaceId(null);
   state.setR(baseConfig.radius);
@@ -262,6 +281,10 @@ function resetModuleState() {
   // The shake's cooldown latches, and what it stashed is what a later shake
   // would put back — both would leak a gesture into the next test.
   panelShake.resetPanelShake();
+  // The background's idle timer, and its on/off preference, which lives in
+  // localStorage and so would otherwise outlive the test that turned it off.
+  try { localStorage.removeItem('automata-canvas-motion'); } catch (e) { /* ignore */ }
+  canvasMotion.resetCanvasMotion();
   // An open δ picker, and the reader's choice of view for δ — a preference in
   // localStorage, which the stub keeps across resets, so one test choosing the
   // table would hand every later updateLPanel a table instead of a list.

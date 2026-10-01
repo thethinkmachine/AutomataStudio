@@ -254,7 +254,7 @@ test('every card has a tab: Machine builds, Analyze reads, Run steps', () => {
     ['rp-exercise', 'lp-machine', 'lp-alphabet', 'lp-states', 'lp-transitions', 'lp-blocks'],
     'the brief first, then what you edit');
   assert.deepEqual(context.declaredSectionIds('rpanel'),
-    ['rp-language', 'rp-batch', 'rp-complexity'],
+    ['rp-language', 'rp-batch', 'rp-complexity', 'rp-behaviour'],
     'the machine over all its inputs');
   assert.deepEqual(context.declaredSectionIds('run'),
     ['rp-simulate', 'rp-trace', 'rp-branches', 'rp-spacetime'],

@@ -178,7 +178,7 @@ completion is not, yet.**
 is 10⁵–10⁶ steps, and the app keeps every step of a run so you can scrub back
 through it — at roughly 190 bytes a step, a million-step run is ~190 MB. So:
 
-- **Raise** Settings → Turing → max TM steps for anything non-trivial.
+- **Raise** Settings → Simulation → Step Limits → Turing Machines for anything non-trivial.
 - Expect a long run to get heavy. Test the parts individually — that is what the
   parts are for — and run the whole CPU on small inputs.
 

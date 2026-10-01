@@ -717,6 +717,68 @@ test('a canvas that changed size is left to the resize path', () => {
   assert.strictEqual(context.checkFraming(), false);
 });
 
+// An unpinned sidebar floats over the canvas without changing its size. Its
+// width is 0 folded and the panel's own width peeked open.
+function unpinnedPanel(id) {
+  const panel = getElement(id);
+  panel.classList.add('unpinned');
+  const open = width => {
+    panel.getBoundingClientRect = () => (id === 'lpanel'
+      ? { left: 0, top: 0, right: width, bottom: 800, width, height: 800 }
+      : { left: 1200 - width, top: 0, right: 1200, bottom: 800, width, height: 800 });
+  };
+  open(0);
+  return open;
+}
+
+test('peeking an unpinned panel open fits into what is left, and folding it gives the room back', () => {
+  seedFraming();
+  const open = unpinnedPanel('lpanel');
+  try {
+    const whole = { ...context.App.cam };
+    open(260);
+    assert.strictEqual(context.checkFraming(), true, 'the panel opening over the machine re-fits it');
+    assert.ok(context.App.cam.x > whole.x, 'into the part the panel leaves');
+    assert.ok(context.isFramed());
+    open(0);
+    assert.strictEqual(context.checkFraming(), true, 'and folding away re-fits');
+    assert.deepStrictEqual({ ...context.App.cam }, whole, 'back to exactly the whole-canvas fit');
+  } finally {
+    getElement('lpanel').classList.remove('unpinned');
+  }
+});
+
+test('a panel folding just after a fit still re-fits: a fit cannot move a panel', () => {
+  // Unpinning: the resize path fits while the panel is still open under the
+  // pointer, and the panel folds inside that fit's settle window.
+  seedFraming();
+  const open = unpinnedPanel('rpanel');
+  try {
+    open(300);
+    context.fitToScreen(true);                    // quiet window open
+    const aside = { ...context.App.cam };
+    open(0);
+    assert.strictEqual(context.checkFraming(), true);
+    assert.notDeepStrictEqual({ ...context.App.cam }, aside);
+  } finally {
+    getElement('rpanel').classList.remove('unpinned');
+  }
+});
+
+test('a panel peeked open over a camera the reader moved is left alone', () => {
+  seedFraming();
+  const open = unpinnedPanel('lpanel');
+  try {
+    context.App.cam.x += 40;
+    const before = { ...context.App.cam };
+    open(260);
+    assert.strictEqual(context.checkFraming(), false);
+    assert.deepStrictEqual({ ...context.App.cam }, before);
+  } finally {
+    getElement('lpanel').classList.remove('unpinned');
+  }
+});
+
 test('a check just after a fit adopts what moved instead of fitting again', () => {
   const { place } = seedFraming();
   context.fitToScreen(true);                      // quiet window open

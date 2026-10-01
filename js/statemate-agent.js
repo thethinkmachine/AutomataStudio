@@ -17,6 +17,9 @@ import { compileSpec, computeDiff } from './statemate-compile.js';
 import { lintCandidate } from './statemate-lint.js';
 import { MAX_SPEC_STATES, MAX_SPEC_TRANSITIONS, StateMateError, extractSpecJSON, machineToSpec, stateFieldsFor, transitionFieldsFor, validateSpec } from './statemate-spec.js';
 import { hasSingleValuedDelta } from './utils.js';
+import { cachedLibrary, loadLibrary } from './library/client.js';
+import { queryLibrary } from './library/index-model.js';
+import { webAppLink } from './library/config.js';
 
 export const MAX_AGENT_STEPS = 16;
 // Six was too tight to describe a machine in: a five-state DFA over two
@@ -703,6 +706,26 @@ const DEFINITIONS = {
   generate_test_words: {
     access: 'read', args: { max_length: 'integer 0..6?', alphabet: 'string[]?' }, description: 'Generate bounded short words for systematic probing, in this machine\'s own input syntax.',
     run: (a, s) => testWordsFor(s.draft.machine, a.alphabet || s.draft.sigma, integer(a.max_length, 4, 0, 6))
+  },
+  search_library: {
+    access: 'read', args: { query: 'string', limit: 'integer 1..10?' }, description: 'Search the shared machine library for existing machines (title, type, tags; also "type:DFA", "accepts:0110", "badge:minimal"). Use it to point the user at a verified machine instead of building one, or to find one to build on.',
+    run: a => {
+      const held = cachedLibrary();
+      if (!held?.index) {
+        // Tools answer synchronously, so the first call starts the download
+        // and says so; the next call has it.
+        loadLibrary().catch(() => {});
+        return { available: false, note: 'The library index is loading — call search_library again in a moment.' };
+      }
+      return {
+        available: true,
+        results: queryLibrary(held.index, String(a.query || '')).slice(0, integer(a.limit, 5, 1, 10)).map(e => ({
+          id: e.id, title: e.title, machine: e.machine, states: e.stats.states, blurb: e.blurb,
+          verified: e.badges.map(b => b.id), author: e.author.login,
+          link: webAppLink({ action: 'show', id: e.id })
+        }))
+      };
+    }
   },
   lint_machine: {
     access: 'read', args: {}, description: 'Run StateMate structural lint on the private candidate.',

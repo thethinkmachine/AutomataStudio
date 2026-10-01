@@ -49,11 +49,19 @@ export function renderAlgo(a) {
   if (renders[a]) renders[a](c);
 }
 
+// What an algorithm says when the canvas has nothing for it to read. There is
+// no Build tab any more — the canvas is under this window — so the way to it
+// is a button rather than directions.
+function emptyCanvasCard(what) {
+  return `<div class="card algo-empty"><span>Draw ${what} on the canvas first.</span>`
+    + `<button class="btn-g algo-empty-btn" type="button" onclick="closeAuxView()">Back to canvas</button></div>`;
+}
+
 // --- Transition Table ---
 export function algoTable(c) {
   c.innerHTML = `<div class="algo-title">Transition Table δ</div>
 <div class="algo-sub">FORMAL REPRESENTATION OF THE TRANSITION FUNCTION</div>`;
-  if (!App.states.length) { c.innerHTML += '<div class="card"><div style="color:var(--text3);font-size:.72rem">Build an automaton first in the Build tab.</div></div>'; return; }
+  if (!App.states.length) { c.innerHTML += emptyCanvasCard('an automaton'); return; }
   const syms = [...App.sigma];
   const thead = `<tr><th>State</th>${syms.map(s => `<th>${s}</th>`).join('')}</tr>`;
   const rows = App.states.map(s => {
@@ -1245,7 +1253,7 @@ export function algoClopUnion(c) {
 <div class="card"><div class="card-title">M₂ Status: ${m2status}</div>
 <button class="ws-save-btn" onclick="saveWorkspaceB()">Save Current as M₂</button></div>`;
   if (!m2RequiredCard(c, 'Union')) return;
-  if (!App.startId) { c.innerHTML += '<div class="card">Build M₁ in Build view first.</div>'; return; }
+  if (!App.startId) { c.innerHTML += emptyCanvasCard('M₁'); return; }
   const m1 = getCurrentMachineSnapshot(), m2 = App.workspaceB;
   const result = buildNFAUnion(m1, m2);
   c.innerHTML += renderBuiltNFAResult(result, 'Union NFA');
@@ -1262,7 +1270,7 @@ export function algoClopIntersect(c) {
 <button class="ws-save-btn" onclick="saveWorkspaceB()">Save Current as M₂</button></div>`;
   if (App.machine !== 'DFA') { c.innerHTML += '<div class="card" style="color:var(--red)">Intersection via product construction currently requires M₁ to be a DFA.</div>'; return; }
   if (!m2RequiredCard(c, 'Intersection')) return;
-  if (!App.startId) { c.innerHTML += '<div class="card">Build M₁ in Build view first.</div>'; return; }
+  if (!App.startId) { c.innerHTML += emptyCanvasCard('M₁'); return; }
   const m1 = getCurrentMachineSnapshot(), m2 = App.workspaceB;
   if ((m2.machine && m2.machine !== 'DFA') || !isDeterministicMachine(m2)) {
     c.innerHTML += '<div class="card" style="color:var(--red)">M₂ must be a DFA for product construction.</div>';
@@ -1291,7 +1299,7 @@ export function algoClopConcat(c) {
 <div class="card"><div class="card-title">M₂ Status: ${m2status}</div>
 <button class="ws-save-btn" onclick="saveWorkspaceB()">Save Current as M₂</button></div>`;
   if (!m2RequiredCard(c, 'Concatenation')) return;
-  if (!App.startId) { c.innerHTML += '<div class="card">Build M₁ in Build view first.</div>'; return; }
+  if (!App.startId) { c.innerHTML += emptyCanvasCard('M₁'); return; }
   const m1 = getCurrentMachineSnapshot(), m2 = App.workspaceB;
   const result = buildNFAConcat(m1, m2);
   c.innerHTML += renderBuiltNFAResult(result, 'Concatenation NFA');
@@ -2114,7 +2122,7 @@ export function algoMooreTable(c) {
 <div class="algo-sub">TRANSITION TABLE WITH STATE OUTPUTS &#955;: Q &#8594; &#916;</div>
 <div class="info-box">Each state has an associated output symbol &#955;(q). The output produced on input string w = a&#8321;...a&#8345; is &#955;(q&#8320;)&#955;(q&#8321;)...&#955;(q&#8345;), where q&#7522; = &#948;(q&#7522;&#8331;&#8321;, a&#7522;). Output length is always |w|+1.</div>`;
   if (App.machine !== 'Moore') { c.innerHTML += '<div class="card">Switch to Moore machine mode to use this table.</div>'; return; }
-  if (!App.states.length) { c.innerHTML += '<div class="card">Build a Moore machine first in the Build tab.</div>'; return; }
+  if (!App.states.length) { c.innerHTML += emptyCanvasCard('a Moore machine'); return; }
   const syms = [...App.sigma];
   const thead = `<tr><th>State</th><th style="color:var(--green)">&#955;(q)</th>${syms.map(s => `<th>${s}</th>`).join('')}</tr>`;
   const rows = App.states.map(s => {
@@ -2179,7 +2187,7 @@ export function algoMealyTable(c) {
 <div class="algo-sub">TRANSITION TABLE WITH TRANSITION OUTPUTS &#955;: Q &times; &#931; &#8594; &#916;</div>
 <div class="info-box">Each transition (q, a) &#8594; p carries an output symbol &#955;(q, a). The output produced on w = a&#8321;...a&#8345; is &#955;(q&#8320;,a&#8321;)&#955;(q&#8321;,a&#8322;)...&#955;(q&#8345;&#8331;&#8321;,a&#8345;), exactly n symbols. No output before the first input.</div>`;
   if (App.machine !== 'Mealy') { c.innerHTML += '<div class="card">Switch to Mealy machine mode to use this table.</div>'; return; }
-  if (!App.states.length) { c.innerHTML += '<div class="card">Build a Mealy machine first in the Build tab.</div>'; return; }
+  if (!App.states.length) { c.innerHTML += emptyCanvasCard('a Mealy machine'); return; }
   const syms = [...App.sigma];
   const thead = `<tr><th>State</th>${syms.map(s => `<th>${s}<br><span style="font-size:.58rem;color:var(--text3)">to / out</span></th>`).join('')}</tr>`;
   const rows = App.states.map(s => {
@@ -2292,7 +2300,7 @@ export function algoMTMTable(c) {
 <div class="algo-sub">&#948;: Q &times; &#915;&#7503; &#8594; Q &times; &#915;&#7503; &times; {L,R}&#7503;</div>
 <div class="info-box">Each transition reads one symbol from each of the k tapes, writes one symbol to each tape, and moves each head independently. The table shows one row per transition: symbols read from all tapes, the destination state, and writes/directions for all tapes.</div>`;
   if (App.machine !== 'MTM') { c.innerHTML += '<div class="card">Switch to MTM mode to use this table.</div>'; return; }
-  if (!App.states.length) { c.innerHTML += '<div class="card">Build an MTM first in the Build tab.</div>'; return; }
+  if (!App.states.length) { c.innerHTML += emptyCanvasCard('a multi-tape TM'); return; }
   const k = App.tapeCount;
   const readHdrs = Array.from({ length: k }, (_, i) => `<th>T${i + 1} read</th>`).join('');
   const writeHdrs = Array.from({ length: k }, (_, i) => `<th>T${i + 1} write/dir</th>`).join('');

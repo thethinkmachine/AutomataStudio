@@ -11,6 +11,7 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+dist-cli/
 downloads/
 eggs/
 .eggs/
@@ -209,6 +210,7 @@ __marimo__/
 # Node
 node_modules/
 dist/
+dist-cli/
 .vite/
 .DS_Store
 
@@ -226,3 +228,6 @@ release/
 # Intermediate output of scripts/build-wasm.mjs; js/wasm/*-bytes.js is the
 # committed artifact the app actually loads.
 wasm/*.wasm
+
+# The local library emulator's checkout (npm run library:dev)
+.library-dev/

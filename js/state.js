@@ -294,7 +294,7 @@ export const App = {
     // How many tapes a multi-tape machine may be given. The arity itself is
     // not capped by the app — see clampTapeCount — this is the reader's own
     // ceiling, so the picker offers a list worth reading rather than every
-    // number up to the hard limit. Settings → Turing.
+    // number up to the hard limit. Settings → Machine Types.
     maxTapeCount: 8,
     maxPdaSteps: 2000,
     maxTmSteps: 10000,
@@ -367,16 +367,16 @@ export const App = {
     },
     exportRes: 2,
     export: {
-      bg: '#080c18',
-      nodeFill: '#161d2e',
-      nodeStroke: 'rgba(100,130,200,0.22)',
-      startStroke: '#69f0ae',
-      accStroke: '#ffd54f',
-      actFill: 'rgba(79,195,247,.18)',
-      actStroke: '#4fc3f7',
-      edgeStroke: '#4a5878',
-      textFill: '#7a8ab0',
-      nodeTextFill: '#c8d4f0'
+      bg: '#12151b',
+      nodeFill: '#1c212b',
+      nodeStroke: 'rgba(230, 233, 240, 0.13)',
+      startStroke: '#4dca8b',
+      accStroke: '#f0c14b',
+      actFill: 'rgba(94, 161, 255, 0.2)',
+      actStroke: '#5ea1ff',
+      edgeStroke: '#737d90',
+      textFill: '#a7afbe',
+      nodeTextFill: '#e6e9f0'
     }
   },
   // Camera
@@ -593,7 +593,7 @@ export function wrapStateLabelsOn() {
 //     absent means on, so a workspace written before this existed does not
 //     load with the profile disabled.
 //
-// Settings → Canvas and the quick-settings popover both offer the override, and
+// Settings → Performance and the quick-settings popover both offer the override, and
 // both ask before letting you turn it off — on the machines this fires for, the
 // result is a canvas you cannot read.
 
@@ -707,7 +707,7 @@ export function previewNodeBudget() {
  * What the reader is asked before the profile is switched off, in the numbers
  * of the machine in front of them.
  *
- * Both surfaces that offer the override — Settings → Canvas and the
+ * Both surfaces that offer the override — Settings → Performance and the
  * quick-settings popover — spread this into askConfirm() and supply only the
  * handlers, so the same decision cannot be described two ways. It lives here
  * rather than in either of them because this module is the one both can reach:

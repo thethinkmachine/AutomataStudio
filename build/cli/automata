@@ -1,0 +1,28 @@
+#!/bin/sh
+# The automata command line, run by the desktop app's own executable as Node
+# (the way VS Code ships `code`). Symlink this onto PATH to use `automata`.
+#
+#   macOS   AutomataStudio.app/Contents/Resources/cli/automata
+#           → Contents/MacOS/AutomataStudio
+#   Linux   <install>/resources/cli/automata → <install>/<executable>
+set -e
+# Follow the link from /usr/local/bin (or wherever it was put) back to this
+# file, one step at a time: readlink -f is missing before macOS 12.3.
+self="$0"
+while [ -L "$self" ]; do
+  link="$(readlink "$self")"
+  case "$link" in
+    /*) self="$link" ;;
+    *) self="$(dirname "$self")/$link" ;;
+  esac
+done
+here="$(cd "$(dirname "$self")" && pwd)"
+resources="$(dirname "$here")"
+cli="$resources/app.asar.unpacked/dist-cli/automata.mjs"
+for exe in "$resources/../MacOS/AutomataStudio" "$resources/../AutomataStudio" "$resources/../automatastudio" "$resources/../automata-studio"; do
+  if [ -x "$exe" ]; then
+    ELECTRON_RUN_AS_NODE=1 exec "$exe" "$cli" "$@"
+  fi
+done
+echo "automata: could not find the AutomataStudio executable next to $resources" >&2
+exit 3

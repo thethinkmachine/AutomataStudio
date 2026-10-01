@@ -177,14 +177,23 @@ test('laying out a whole diagram costs the states, not the rows', () => {
 
 // ── the trail is found per transition, and is the same trail ─────────
 
-test('the trail of a columnar run is the trail a step-by-step walk finds', () => {
+// ⏭ drains in slices paced by wall-clock time (DRAIN_WORK_MS), so how many
+// slices a run takes depends on how loaded the machine is — under the full
+// suite a 5,000-step run can spill past the first one. Wait the drain out
+// rather than assume it fits.
+async function drainToEnd(App) {
+  for (let i = 0; i < 400 && App.simDrainTimer; i++) await new Promise(r => setTimeout(r, 5));
+  assert.equal(App.simDrainTimer, null, 'the drain finished');
+}
+
+test('the trail of a columnar run is the trail a step-by-step walk finds', async () => {
   busyBeaver(5000);
   const { App, runSim, stepToEnd, getSimStepEdgeKeys } = context;
   context.$('sim-in').value = '';
   runSim();
   context.stopAutoPlay();
   stepToEnd();
-  assert.equal(App.simDrainTimer, null, 'a 5,000-step run finishes in the first slice');
+  await drainToEnd(App);
   const want = { visited: new Set(), keys: new Set() };
   for (let i = 0; i < App.simIdx; i++) {
     want.visited.add(App.simSteps[i].state);
@@ -198,13 +207,14 @@ test('the trail of a columnar run is the trail a step-by-step walk finds', () =>
 
 const traceRows = () => context.$('trace-log').children.filter(c => String(c.className).includes('tr-row')).length;
 
-test('fast playback draws a short tail, and pausing brings the whole one back', () => {
+test('fast playback draws a short tail, and pausing brings the whole one back', async () => {
   busyBeaver(5000);
   const { App, runSim, stepToEnd, renderTraceLog, toggleAuto, SIM_LOG_TAIL, SIM_LOG_FAST_TAIL } = context;
   context.$('sim-in').value = '';
   runSim();
   context.stopAutoPlay();
   stepToEnd();
+  await drainToEnd(App);
   App.simIdx = 3000;
   App.config.autoSpeed = 0;
   App.autoTimer = { cancel() {} };    // playing, at Max
@@ -223,8 +233,7 @@ test('⏭ ends on a painted frame with the whole tail, however many slices it to
   runSim();
   context.stopAutoPlay();
   stepToEnd();
-  for (let i = 0; i < 400 && App.simDrainTimer; i++) await new Promise(r => setTimeout(r, 5));
-  assert.equal(App.simDrainTimer, null, 'the drain finished');
+  await drainToEnd(App);
   assert.equal(App.simIdx, App.simSteps.length - 1);
   assert.equal(App.simSteps.length, 400000);
   assert.equal(App.simSteps[App.simIdx].final, 'timeout');

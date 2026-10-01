@@ -908,3 +908,113 @@ test('under the cap the scroller is the diagram, as it always was', () => {
   scroll.scrollTop = 123;
   assert.equal(t.scrollY(), 123, 'a read is the scroller\'s own');
 });
+
+// ── what the audit found drawn wrong ──────────────────────────────
+//  Each of these was on screen or in a file before it was fixed, and each is
+//  the kind of wrong that no count or shape test notices: text cut at the
+//  edge of a picture, a label drawn over another, a number off by one.
+
+/** The text of every `<text>` in an SVG, with its fill and weight. */
+function svgTexts(svg) {
+  return [...svg.matchAll(/<text [^>]*font-weight="(\d+)" fill="([^"]*)"[^>]*>([^<]*)<\/text>/g)]
+    .map(([, weight, fill, text]) => ({ weight: Number(weight), fill, text }));
+}
+
+test('an export is as wide as its caption, its ending and its legend', () => {
+  loadExample('tm');
+  const run = runWord('10+1');
+  const model = modelFor(run);
+  const { spaceTimeLayout, getState } = context;
+  const sub = 'TM · input "10+1" · a subtitle far longer than a four-cell tape is wide';
+  const onScreen = spaceTimeLayout(model, { cell: 4, stateName: id => getState(id)?.name });
+  const file = spaceTimeLayout(model, {
+    cell: 4, stateName: id => getState(id)?.name, caption: { title: 'Binary addition a+b', sub }, legend: true
+  });
+  // The painter prints the subtitle at x = 12 in an 11px face, 0.6em a glyph.
+  assert.ok(file.width >= 12 + sub.length * 11 * 0.6, `the caption fits: ${file.width}px`);
+  assert.ok(file.width > onScreen.width, 'the file widened for its text');
+  // On screen nothing widens for text: "fit" would shrink the cells to make
+  // room for a sentence, and the ending is fitted to the view instead.
+  assert.ok(onScreen.width < 12 + sub.length * 11 * 0.6);
+  // The row bands end with the cells, not at the layout's width.
+  assert.ok(onScreen.contentRight < onScreen.width, 'bands stop at the tape');
+});
+
+test('the ending counts steps, not rows — and says one step, not one steps', () => {
+  loadExample('tm');
+  const run = runWord('1011+11');
+  const model = modelFor(run);
+  const { spaceTimeLayout, spaceTimeSVG, PRINT_STYLE } = context;
+  const ending = L => svgTexts(spaceTimeSVG(model, L, PRINT_STYLE, {}))
+    .map(t => t.text).find(t => /^\d[\d,]* steps? so|goes on past|^after /.test(t));
+  const last = model.rows - 1;
+  // As an export lays it out — with its legend, so wide enough for its text.
+  const file = o => spaceTimeLayout(model, { cell: 8, legend: true, ...o });
+  assert.equal(ending(file({ complete: false })), `${last.toLocaleString()} steps so far — the run goes on`);
+  assert.equal(ending(file({ rowTo: 1, complete: false })),
+    'the run goes on past step 1', 'a range of a longer run is not "so far"');
+  assert.equal(ending(file({ rowTo: 1, complete: false, rowFrom: 1 })), 'the run goes on past step 1');
+  assert.match(ending(file({})), new RegExp(`^after ${last} steps`));
+  // On screen the line is fitted to the view it is pinned in, not cut mid-word.
+  const narrow = spaceTimeLayout(model, { cell: 8, complete: false });
+  assert.match(ending(narrow), /…$/, 'too long for the view, it ends in an ellipsis');
+});
+
+test('the playhead is labelled at step 0 at 1px, and no tick is drawn over its label', () => {
+  loadExample('tm');
+  const run = runWord('1011+11');
+  const model = modelFor(run);
+  const { spaceTimeLayout, spaceTimeSVG, PRINT_STYLE } = context;
+  const accentLabels = (L, playhead) => svgTexts(spaceTimeSVG(model, L, PRINT_STYLE, { playhead }))
+    .filter(t => t.fill === PRINT_STYLE.accent && t.weight === 700).map(t => t.text);
+  // Row 0 is the first pixel under the ruler at 1px, and the label rule for
+  // ticks — skip one half under the ruler — dropped the one that mattered.
+  assert.ok(accentLabels(spaceTimeLayout(model, { cell: 1 }), 0).includes('0'), 'step 0 is labelled');
+  // At 8px the ticks run every other row, so step 41 is labelled on its own,
+  // and "40" one row above it used to be drawn half under it.
+  const L = spaceTimeLayout(model, { cell: 8 });
+  const texts = svgTexts(spaceTimeSVG(model, L, PRINT_STYLE, { playhead: 41 })).map(t => t.text);
+  assert.ok(texts.includes('41'));
+  assert.ok(!texts.includes('40'), 'the tick beside the playhead is left out');
+  assert.ok(texts.includes('38'), 'ticks further away stay');
+});
+
+test('the strip is laid out on the tape its picture was built from', () => {
+  widener(400);
+  const { makeOverview, overviewGrid, overviewGeometry } = context;
+  const run = runWord('a');
+  const model = modelFor(run);
+  const ov = makeOverview(model, { binsX: 16, binsY: 64 });
+  ov.extend();
+  const grids = model.tapes.map((_, t) => overviewGrid(ov, t));
+  // Pretend the picture was built earlier, on a narrower tape and fewer rows:
+  // the marks drawn over it every frame must describe that tape, or the view
+  // box slides across a picture drawn at another width until it is rebuilt.
+  const stale = grids.map(g => ({ ...g, hi: g.hi - 5, rows: g.rows - 50 }));
+  const G = overviewGeometry(ov, 60, 400, false, stale);
+  assert.equal(G.tapes[0].hi, stale[0].hi);
+  assert.equal(G.drawn, stale[0].rows, 'the wells end where the picture does');
+  assert.equal(G.rows, ov.rows, 'the playhead still reads the live run');
+  assert.equal(overviewGeometry(ov, 60, 400, false).tapes[0].hi, model.tapes[0].hi, 'without grids, the live tape');
+});
+
+test('a whole-run picture of narrow tapes keeps each tape\'s label to itself', () => {
+  loadExample('mtm');
+  const data = JSON.parse(readFileSync(new URL('../js/examples/mtm.json', import.meta.url), 'utf8'));
+  const run = runWord(data.meta.inputs[0].w);
+  const model = modelFor(run);
+  const { makeOverview, overviewGrid, wholeRunBins, wholeRunLayout, paintWholeRun, svgContext, PRINT_STYLE } = context;
+  const ov = makeOverview(model, { fixed: true, ...wholeRunBins(model, 0, model.rows - 1) });
+  ov.extend();
+  const grids = model.tapes.map((_, t) => overviewGrid(ov, t));
+  const labels = model.tapes.map((_, i) => `T${i + 1} · bounded left`);
+  const sub = 'MTM · input "1101,111,ε" · ACCEPT after 5 steps';
+  const EL = wholeRunLayout(grids, { caption: { title: '3-tape adder — one pass', sub }, tapeLabels: labels, legend: true, symbols: model.symbols });
+  assert.ok(EL.width >= 12 + sub.length * 11 * 0.6, 'the caption fits the picture');
+  const fakeImg = { toDataURL: () => 'data:image/png;base64,AAAA' };
+  const ctx = svgContext(EL.width, EL.height);
+  paintWholeRun(ctx, model, grids, grids.map(() => fakeImg), PRINT_STYLE, EL, { legend: true, complete: true });
+  const texts = svgTexts(ctx.toString()).map(t => t.text);
+  for (let i = 1; i <= model.tapes.length; i++) assert.ok(texts.includes(`T${i}`), `T${i} keeps its name`);
+  assert.ok(!texts.some(t => t.includes('bounded left')), 'the description is dropped where it would run into the next tape');
+});

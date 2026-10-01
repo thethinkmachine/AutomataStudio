@@ -3,6 +3,7 @@ import { toggleSnapToGrid } from './canvas.js';
 import { renderBlockLibrary } from './blocks-ui.js';
 import { initLangClaimOverflowObserver } from './language.js';
 import { loadBackup, loadSharedLinkFromURL, markBootRestored, restartAutosaveTimer, syncDocumentLabels } from './persistence.js';
+import { checkLibraryUpdatesSoon, startLibraryLinks } from './library-ui.js';
 import { initDefBoxOverflowObserver, updateLPanel, updateRPanel } from './render.js';
 import { $, App, Workspaces } from './state.js';
 import { DEFAULT_THEME } from './themes.js';
@@ -16,6 +17,7 @@ import { setMachine, setView } from './view.js';
 import { syncHistoryButtons } from './history.js';
 import { initFraming } from './ui.js';
 import { initSpeedControl } from './speed-control.js';
+import { initCanvasMotion } from './canvas-motion.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  INIT
@@ -53,6 +55,8 @@ try {
 syncHistoryButtons();
 // A fitted machine stays fitted as the overlays over it change.
 initFraming();
+// The breathing background: apply the preference, and rest when unattended.
+initCanvasMotion();
 // What Save, Save As and Open mean differs between the website and the desktop
 // build, and the labels have to say which — see SAYING WHICH HOST THIS IS in
 // js/persistence.js. Written once, because the answer cannot change.
@@ -104,6 +108,13 @@ export async function finishBoot() {
   // long before any of the above, and the restore would land on top of it. See
   // THE BOOT GATE in js/persistence.js.
   if (typeof markBootRestored === 'function') markBootRestored();
+  // A library link — #lib=<id> from the website's "Open" button, #library=<id>
+  // from a shared listing — is read after the restore for the reason the file
+  // gate above exists: opening it places a tab, and the restore would otherwise
+  // land on top of it. And a machine opened from the library last session is
+  // checked against the published version, once, a few seconds in.
+  const libraryLinkLoaded = await startLibraryLinks();
+  if (!libraryLinkLoaded) checkLibraryUpdatesSoon();
   // Seven keyboard shortcuts, on a device with no keyboard, in a toast that
   // covers the top of the canvas for four seconds — every one of them names a
   // key a phone does not have. The touch shell says the same things with its

@@ -19,6 +19,7 @@ import { $, App, INPUT_LENGTH_NOTICE, R, detectsLoops, execMode, getMachineConfi
 import { getState, getTransition } from './states-transitions.js';
 import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
 import { escapeHtml, isAnyPDA, isEmbeddedMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
+import { setCanvasMotionTempo } from './canvas-motion.js';
 import { machineGuards, parseMachineInput, streamMachine } from './machines/index.js';
 import { stateNames, transitionsFrom } from './machines/runtime.js';
 import { computeBatchResults, decideBatchRows, parseBatchLine, summarizeBatch } from './machines/batch.js';
@@ -1238,6 +1239,9 @@ export function isFastPlayback() {
 function syncFastPlayback() {
   const root = typeof document === 'object' && document ? document.documentElement : null;
   if (root && root.classList) root.classList.toggle('sim-fast', isFastPlayback());
+  // Every start, stop and change of speed passes through here, which makes it
+  // the one place the canvas background can learn the run's pace.
+  setCanvasMotionTempo(App.autoTimer ? playbackIntervalMs() : null);
 }
 
 /** The drawn node ids a step lights, deduped (several states in one block are one box). */

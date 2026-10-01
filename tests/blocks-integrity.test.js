@@ -287,3 +287,36 @@ test('blocks are a Turing-family capability, declared rather than named', () => 
     assert.equal(context.machineSupportsBlocks(id), true, id);
   }
 });
+
+// A definition whose first step is itself a block is entered at the nested
+// block's entry, and inlineBlock places it exactly so. The validator used to ask
+// for a *direct* member as the entry, so the first read after placing such a
+// block dropped it — and its child with it, orphaned — with nothing on screen
+// to say why the boxes had gone.
+test('a block whose first step is a nested block survives the prune', () => {
+  const App = tmCanvas();
+  const inner = context.inlineBlock(simpleDef('seek'), {});
+  App.states.push({ id: 's900', name: 'back', x: 0, y: 0 });
+  App.transitions.push(
+    { id: 'w1', from: inner.block.exits[0].id, to: 's900', symbol: ANY, write: ANY, dir: 'S' });
+  App.startId = inner.block.entry;
+  App.accepts = new Set(['s900']);
+  const outer = context.machineAsBlockDefinition({ name: 'seek then stop' });
+
+  tmCanvas();
+  const placed = context.inlineBlock(outer, { name: 'outer' }).block;
+  const entry = context.getState(placed.entry);
+  assert.notEqual(entry.blockId, placed.id, 'the entry is inside the nested block, not a direct member');
+
+  context.pruneBlocks();
+  assert.deepEqual(context.App.blocks.map(b => b.name).sort(), ['outer', 'seek']);
+  assert.ok(context.blockIsIntact(placed));
+});
+
+test('a block whose entry has left it is still dropped', () => {
+  const { App, block } = withBlock();
+  const entry = context.getState(block.entry);
+  entry.blockId = null;
+  context.pruneBlocks();
+  assert.ok(!App.blocks.some(b => b.id === block.id));
+});

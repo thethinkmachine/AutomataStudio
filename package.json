@@ -1,12 +1,15 @@
 {
   "name": "automatastudio",
-  "version": "2.8.3",
+  "version": "2.9.0",
   "description": "A web-based visualizer and simulator for finite state machines, pushdown automata, and Turing machines.",
   "author": {
     "name": "Shreyan C",
     "email": "shreyan.chaubey@gmail.com"
   },
   "main": "electron/main.cjs",
+  "bin": {
+    "automata": "cli/automata.mjs"
+  },
   "type": "module",
   "devDependencies": {
     "assemblyscript": "^0.28.20",
@@ -22,13 +25,20 @@
     "dev": "vite",
     "build": "vite build",
     "test": "node --conditions=browser --conditions=development --test",
+    "cli": "node cli/automata.mjs",
+    "cli:build": "vite build --config vite.cli.config.js",
+    "cli:docs": "node --conditions=browser --conditions=development cli/gen-docs.mjs",
     "bench": "node bench/run.mjs",
     "icons": "node scripts/build-icons.mjs",
     "glyphs": "node scripts/build-glyphs.mjs",
     "wasm": "node scripts/build-wasm.mjs",
+    "library:init": "node --conditions=browser --conditions=development scripts/library/seed.mjs",
+    "library:build": "node --conditions=browser --conditions=development scripts/library/build.mjs",
+    "library:check": "node --conditions=browser --conditions=development scripts/library/build.mjs --check",
+    "library:dev": "node --conditions=browser --conditions=development scripts/library/dev-server.mjs",
     "electron:dev": "concurrently -k -s first \"npm:dev\" \"wait-on http://localhost:5173 && cross-env ELECTRON_DEV_SERVER_URL=http://localhost:5173 electron .\"",
-    "electron:preview": "npm run build && electron .",
-    "electron:build": "npm run build && electron-builder"
+    "electron:preview": "npm run build && npm run cli:build && electron .",
+    "electron:build": "npm run build && npm run cli:build && electron-builder"
   },
   "build": {
     "appId": "com.automataplayground.app",
@@ -43,7 +53,8 @@
     "files": [
       "electron/**/*",
       "dist/**/*",
-      "package.json"
+      "package.json",
+      "dist-cli/**/*"
     ],
     "directories": {
       "output": "release",
@@ -52,10 +63,21 @@
     "win": {
       "target": [
         "nsis"
+      ],
+      "extraResources": [
+        {
+          "from": "build/win/cli-path.ps1",
+          "to": "cli-path.ps1"
+        }
       ]
     },
     "nsis": {
-      "artifactName": "AutomataStudio-Setup-${version}.${ext}"
+      "artifactName": "AutomataStudio-Setup-${version}.${ext}",
+      "include": "build/installer.nsh"
+    },
+    "deb": {
+      "afterInstall": "build/linux/after-install.sh",
+      "afterRemove": "build/linux/after-remove.sh"
     },
     "appImage": {
       "artifactName": "AutomataStudio-${version}.${ext}"
@@ -74,6 +96,14 @@
       ],
       "category": "Education"
     },
+    "protocols": [
+      {
+        "name": "AutomataStudio library link",
+        "schemes": [
+          "automata-studio"
+        ]
+      }
+    ],
     "fileAssociations": [
       {
         "ext": "automaton",
@@ -84,11 +114,26 @@
         "mimeType": "application/x-automatastudio+json",
         "icon": "build/icon.png"
       }
+    ],
+    "asarUnpack": [
+      "dist-cli/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "build/cli",
+        "to": "cli"
+      }
     ]
   },
   "dependencies": {
     "@solid-primitives/set": "^0.7.4",
     "electron-updater": "^6.8.9",
+    "markdown-it": "^15.0.2",
+    "markdown-it-deflist": "^4.0.0",
+    "markdown-it-footnote": "^4.0.0",
+    "markdown-it-mark": "^4.0.0",
+    "markdown-it-sub": "^2.0.0",
+    "markdown-it-sup": "^2.0.0",
     "solid-js": "^1.9.15"
   }
 }

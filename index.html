@@ -29,6 +29,7 @@
   <link rel="stylesheet" href="css/layout.css">
   <link rel="stylesheet" href="css/panels.css">
   <link rel="stylesheet" href="css/views.css">
+  <link rel="stylesheet" href="css/library.css">
   <link rel="stylesheet" href="css/canvas.css">
   <link rel="stylesheet" href="css/modals.css">
   <link rel="stylesheet" href="css/dropdowns.css">
@@ -88,25 +89,43 @@
     </div>
 
     <div class="tab-bar-wrap" id="tab-bar-wrap">
-      <div id="tab-bar" class="tab-bar"></div>
-      <button class="tab-overflow-btn" id="tab-overflow-btn" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Show all workspace tabs" data-tip="All workspace tabs" onclick="toggleTabOverflowMenu(event)">
-        <svg viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
-      </button>
+      <!-- One frame for everything the strip offers: the tabs (which scroll),
+           the chevron listing the ones scrolled out of sight, and the way back
+           to the tool window. The border is the frame's, not the scroller's,
+           so the last two stay put while the tabs move under them. -->
+      <div class="tab-strip" id="tab-strip">
+        <div id="tab-bar" class="tab-bar"></div>
+        <button class="tab-overflow-btn" id="tab-overflow-btn" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Show all workspace tabs" data-tip="All workspace tabs" onclick="toggleTabOverflowMenu(event)">
+          <svg viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+        </button>
+        <!-- The view the tool window last showed, reopened in one click.
+             Inside the strip's frame but outside its scroller, so however
+             many workspaces there are it never scrolls away with them.
+             Labelled and wired by js/view.js; none of it is in bridge.js. -->
+        <span class="tab-strip-sep" aria-hidden="true"></span>
+        <button class="last-view-btn" id="hdr-last-view" type="button"></button>
+      </div>
     </div>
     <!-- The workspace strip, for a screen too narrow to hold one. The tab bar
          is the wrong thing to give the narrowest row on the device: on a phone
          there are one to three workspaces and switching is rare. This names the
          active one and opens the same overflow listbox the strip's own button
          opens, so there is one list of workspaces rather than two. Hidden above
-         900px, where the strip itself is back. -->
-    <button class="mobile-ws-btn" id="mobile-ws-btn" type="button"
-            aria-haspopup="listbox" aria-expanded="false" aria-label="Switch workspace"
-            data-tip="Switch workspace" onclick="toggleTabOverflowMenu(event)">
-      <span class="mobile-ws-dot" aria-hidden="true"></span>
-      <span class="mobile-ws-name" id="mobile-ws-name">Workspace</span>
-      <span class="mobile-ws-dirty" id="mobile-ws-dirty" hidden aria-hidden="true"></span>
-      <svg class="chevron" viewBox="0 0 256 256" aria-hidden="true" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg>
-    </button>
+         900px, where the strip itself is back. It shares a pill with the last
+         tool view, so the phone's header has the strip's shape: the
+         workspace, a divider, the way back to the tool window. -->
+    <div class="mobile-ws-pill" id="mobile-ws-pill">
+      <button class="mobile-ws-btn" id="mobile-ws-btn" type="button"
+              aria-haspopup="listbox" aria-expanded="false" aria-label="Switch workspace"
+              data-tip="Switch workspace" onclick="toggleTabOverflowMenu(event)">
+        <span class="mobile-ws-dot" aria-hidden="true"></span>
+        <span class="mobile-ws-name" id="mobile-ws-name">Workspace</span>
+        <span class="mobile-ws-dirty" id="mobile-ws-dirty" hidden aria-hidden="true"></span>
+        <svg class="chevron" viewBox="0 0 256 256" aria-hidden="true" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg>
+      </button>
+      <span class="mobile-ws-sep" aria-hidden="true"></span>
+      <button class="last-view-btn mobile-last-view" id="mobile-last-view" type="button"></button>
+    </div>
     <div class="ctx tab-overflow-menu" id="tab-overflow-menu" role="listbox" aria-label="Workspace tabs"></div>
 
     <div class="hdr-right">
@@ -267,17 +286,21 @@
                  its text. -->
             <div class="ctx-group" role="group" aria-labelledby="hdr-explore-label">
               <div class="ctx-group-label" id="hdr-explore-label" aria-hidden="true">Explore</div>
+              <div tabindex="0" class="ctx-i" role="menuitem" onclick="setView('library')">
+                <svg viewBox="0 0 256 256" fill="currentColor"><path d="M231.65,194.55,198.46,36.75a16,16,0,0,0-19-12.39L132.65,34.42a16.08,16.08,0,0,0-12.3,19l33.19,157.8A16,16,0,0,0,169.16,224a16.25,16.25,0,0,0,3.38-.36l46.81-10.06A16.09,16.09,0,0,0,231.65,194.55ZM136,50.15c0-.06,0-.09,0-.09l46.8-10,3.33,15.87L139.33,66Zm6.62,31.47,46.82-10.05,3.34,15.9L146,97.53Zm6.64,31.57,46.82-10.06,13.3,63.24-46.82,10.06ZM216,197.94l-46.8,10-3.33-15.87L212.67,182,216,197.85C216,197.91,216,197.94,216,197.94ZM104,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V48A16,16,0,0,0,104,32ZM56,48h48V64H56Zm0,32h48v96H56Zm48,128H56V192h48v16Z" /></svg>
+                Library<span class="ctx-kbd-hint">2</span>
+              </div>
               <div tabindex="0" class="ctx-i" role="menuitem" onclick="setView('algo')">
                 <svg viewBox="0 0 256 256" fill="currentColor"><path d="M69.12,94.15,28.5,128l40.62,33.85a8,8,0,1,1-10.24,12.3l-48-40a8,8,0,0,1,0-12.3l48-40a8,8,0,0,1,10.24,12.3Zm176,27.7-48-40a8,8,0,1,0-10.24,12.3L227.5,128l-40.62,33.85a8,8,0,1,0,10.24,12.3l48-40a8,8,0,0,0,0-12.3ZM162.73,32.48a8,8,0,0,0-10.25,4.79l-64,176a8,8,0,0,0,4.79,10.26A8.14,8.14,0,0,0,96,224a8,8,0,0,0,7.52-5.27l64-176A8,8,0,0,0,162.73,32.48Z" /></svg>
-                Algorithms<span class="ctx-kbd-hint">2</span>
+                Algorithms<span class="ctx-kbd-hint">3</span>
               </div>
               <div tabindex="0" class="ctx-i" role="menuitem" onclick="setView('grammar')">
                 <svg viewBox="0 0 256 256" fill="currentColor"><path d="M208,24H72A32,32,0,0,0,40,56V224a8,8,0,0,0,8,8H192a8,8,0,0,0,0-16H56a16,16,0,0,1,16-16H208a8,8,0,0,0,8-8V32A8,8,0,0,0,208,24Zm-8,160H72a31.82,31.82,0,0,0-16,4.29V56A16,16,0,0,1,72,40H200Z" /></svg>
-                Grammar<span class="ctx-kbd-hint">3</span>
+                Grammar<span class="ctx-kbd-hint">4</span>
               </div>
               <div tabindex="0" class="ctx-i" role="menuitem" onclick="setView('reference')">
                 <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h64a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48ZM96,192H32V64H96a24,24,0,0,1,24,24V200A39.81,39.81,0,0,0,96,192Zm128,0H160a39.81,39.81,0,0,0-24,8V88a24,24,0,0,1,24-24h64Z" /></svg>
-                Reference<span class="ctx-kbd-hint">4</span>
+                Reference<span class="ctx-kbd-hint">5</span>
               </div>
             </div>
             <div class="ctx-divider"></div>
@@ -594,6 +617,11 @@
       <!-- ─── BUILD VIEW ─── -->
       <div id="v-build" style="display:flex">
         <div class="canvas-area" id="canvas-wrap">
+          <!-- The breathing background: two glows tracing a figure-eight. First
+               in the well so it paints under the grid and the diagram, and
+               animated on transform and opacity only — see .canvas-aurora in
+               css/views.css, and js/canvas-motion.js for when it rests. -->
+          <div class="canvas-aurora" id="canvas-aurora" aria-hidden="true"><i></i><i></i></div>
           <!-- The grid. An element of its own, and childless, because the camera
                is written onto it every frame of a pan or zoom — see applyCamera()
                in js/canvas.js. -->
@@ -927,6 +955,16 @@
               </div>
               <div class="rp-section-body cx-body" id="cx-body" style="display:none"></div>
             </div>
+            <!-- Behaviour section. Proves whether a Turing machine halts, cycles,
+                 or cycles while travelling — or says it does not know. Only
+                 for deterministic one-tape machines; built by js/behaviour-ui.js. -->
+            <div class="rp-collapsible collapsed" id="rp-behaviour" style="display:none">
+              <div class="rp-section-header" onclick="toggleRPSection('rp-behaviour')" role="button" aria-expanded="false" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-behaviour')}">
+                <span class="rp-section-title">Behaviour</span>
+                <svg class="rp-toggle-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
+              </div>
+              <div class="rp-section-body bh-body" id="bh-body" style="display:none"></div>
+            </div>
             <!-- Batch Test section (collapsed by default) -->
             <div class="rp-collapsible collapsed" id="rp-batch">
               <div class="rp-section-header" onclick="toggleRPSection('rp-batch')" role="button" aria-expanded="false" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRPSection('rp-batch')}">
@@ -1185,22 +1223,32 @@
       </div>
 
       <!-- ─── AUXILIARY VIEWS ───
-           Algorithms, Grammar and Reference are not peers of Build: they present as
-           modal dialogs over the canvas, which stays mounted underneath, and are
-           dismissed with Esc, the close button, or a click on the backdrop. -->
+           Algorithms, Grammar, Reference and Library are not peers of Build:
+           they share one window over the canvas, which stays mounted
+           underneath, and are dismissed with Esc, the close button, or a click
+           on the backdrop. The bar is a tab strip across the four, built by
+           js/view.js from AUX_META, so moving between them never means
+           closing the window first. -->
       <div class="aux-scrim" id="aux-scrim" onclick="closeAuxView()" aria-hidden="true"></div>
       <div class="aux-overlay" id="aux-overlay" role="dialog" aria-modal="true"
         aria-labelledby="aux-overlay-title" tabindex="-1">
-        <header class="aux-overlay-bar">
-          <span class="aux-overlay-icon" id="aux-overlay-icon" aria-hidden="true"></span>
-          <div class="aux-overlay-heading">
-            <h2 class="aux-overlay-title" id="aux-overlay-title"></h2>
-            <p class="aux-overlay-sub" id="aux-overlay-sub"></p>
+        <header class="aux-overlay-bar" id="aux-overlay-bar">
+          <!-- The tabs say which view this is; the heading survives for the
+               dialog's accessible name, and nothing else. -->
+          <h2 class="sr-only" id="aux-overlay-title"></h2>
+          <nav class="aux-tabs" id="aux-tabs" role="tablist" aria-label="Tools"></nav>
+          <div class="aux-bar-end">
+            <span class="aux-ctx" id="aux-ctx" hidden></span>
+            <button class="aux-bar-btn aux-max-btn" id="aux-max-btn" type="button" aria-pressed="false"
+              aria-label="Maximize" data-tip="Maximize">
+              <svg class="aux-max-ico-grow" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48V96a8,8,0,0,1-16,0V67.31l-42.34,42.35a8,8,0,0,1-11.32-11.32L188.69,56H160a8,8,0,0,1,0-16h48A8,8,0,0,1,216,48ZM98.34,146.34,56,188.69V160a8,8,0,0,0-16,0v48a8,8,0,0,0,8,8H96a8,8,0,0,0,0-16H67.31l42.35-42.34a8,8,0,0,0-11.32-11.32Z"/></svg>
+              <svg class="aux-max-ico-shrink" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,53.66,171.31,96H200a8,8,0,0,1,0,16H152a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V84.69l42.34-42.35a8,8,0,0,1,11.32,11.32ZM104,144H56a8,8,0,0,0,0,16H84.69L42.34,202.34a8,8,0,0,0,11.32,11.32L96,171.31V200a8,8,0,0,0,16,0V152A8,8,0,0,0,104,144Z"/></svg>
+            </button>
+            <button class="aux-bar-btn aux-overlay-close" type="button" onclick="closeAuxView()"
+              data-tip="Back to canvas — this view keeps its place" data-tip-kbd="Esc" aria-label="Close and return to canvas">
+              <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg>
+            </button>
           </div>
-          <button class="aux-overlay-close" type="button" onclick="closeAuxView()"
-            data-tip="Back to canvas" data-tip-kbd="Esc" aria-label="Close and return to canvas">
-            <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg>
-          </button>
         </header>
         <div class="aux-overlay-body">
           <button class="mobile-aux-sheet-scrim" id="mobile-aux-sheet-scrim" type="button"
@@ -1302,7 +1350,7 @@
            js/machine-guide.js, so the navigation cannot drift from the list of
            machines the model picker offers. -->
       <div id="v-reference" style="display:none">
-        <div class="algo-nav ref-nav" id="ref-nav" style="width:190px;min-width:190px;">
+        <div class="algo-nav ref-nav" id="ref-nav">
           <button class="mobile-panel-toggle" id="ref-nav-toggle" onclick="toggleMobilePanel('ref-nav')"
             data-mobile-panel-toggle="ref-nav" aria-controls="ref-nav-content" aria-expanded="true">
             <span class="mobile-panel-title">Automata</span>
@@ -1317,6 +1365,25 @@
         <div class="algo-content" style="padding: 24px 28px;">
           <div id="ref-pages"></div>
         </div>
+      </div>
+
+      <!-- ─── LIBRARY VIEW ─── -->
+      <!-- Both panes are generated by js/library-ui.js from the library index
+           (js/library/index-model.js). Nothing here carries an on* attribute
+           beyond the shared mobile toggle — every listener is attached at
+           creation, the way the Reference view does it. -->
+      <div id="v-library" style="display:none">
+        <div class="algo-nav ref-nav lib-nav" id="lib-nav">
+          <button class="mobile-panel-toggle" id="lib-nav-toggle" onclick="toggleMobilePanel('lib-nav')"
+            data-mobile-panel-toggle="lib-nav" aria-controls="lib-nav-content" aria-expanded="true">
+            <span class="mobile-panel-title">Library</span>
+            <span class="mobile-panel-icon">▾</span>
+          </button>
+          <div class="mobile-panel-content" id="lib-nav-content">
+            <div id="lib-nav-list"></div>
+          </div>
+        </div>
+        <div class="algo-content lib-content" id="lib-content"></div>
       </div>
 
         </div><!-- end aux-overlay-body -->
@@ -1348,6 +1415,12 @@
             aria-controls="ref-nav-content" aria-expanded="false" onclick="toggleMobilePanel('ref-nav')">
             <svg class="mobile-bar-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h64a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48ZM96,192H32V64H96a24,24,0,0,1,24,24V200A39.81,39.81,0,0,0,96,192Zm128,0H160a39.81,39.81,0,0,0-24,8V88a24,24,0,0,1,24-24h64Z"/></svg>
             <span class="mobile-bar-label">Machines</span>
+          </button>
+          <button class="mobile-bar-btn mobile-aux-nav-btn" type="button" data-aux-for="library"
+            data-mobile-panel-toggle="lib-nav"
+            aria-controls="lib-nav-content" aria-expanded="false" onclick="toggleMobilePanel('lib-nav')">
+            <svg class="mobile-bar-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16ZM216,184H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg>
+            <span class="mobile-bar-label">Library</span>
           </button>
         </nav>
       </div><!-- end aux-overlay -->
@@ -1722,64 +1795,69 @@
 
   <div class="overlay" id="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
     <div class="modal export-code-modal settings-modal-wide">
-      <h2 class="modal-title"><span class="modal-title-text" id="settings-modal-title">Engine Settings</span></h2>
-      <div class="export-code-intro">Customize simulation behavior, rendering, machine defaults, and notation across the workspace.</div>
+      <h2 class="modal-title"><span class="modal-title-text" id="settings-modal-title">Settings</span></h2>
+      <div class="export-code-intro">Preferences for the app, the canvas, how machines run, and StateMate.</div>
       <div class="exp-split settings-split">
 
       <div class="exp-side modal-tabs" id="settings-tabs" role="tablist" aria-orientation="vertical" aria-label="Settings sections">
-        <!-- Ordered by reach: the tabs that apply to every machine first, then
-             the machine-family panels, which only matter once you are building
-             that kind of machine. switchSettingsTab resolves tabs by id, so this
-             strip can be reordered freely — but the first tab has to be the one
-             carrying `active` here and on its panel below.
+        <!-- Grouped by the part of the app a setting belongs to, so a reader
+             looking for one knows which tab to open: the app itself, the
+             canvas (how you draw, what is drawn, where it is placed, and what
+             gives way on a huge machine), the machines (how a run goes, what a
+             family of machines means, how its symbols are written), and the
+             assistant. Paired controls sit together — the snap toggle beside
+             the grid size, the wheel toggle beside the zoom step, every step
+             limit in one place.
+
+             The group labels are not tabs: they carry no .modal-tab, so the
+             Arrow/Home/End walk in js/ui.js and StateMate's /settings command
+             (which both read `.modal-tab`) pass straight over them.
+
+             switchSettingsTab resolves tabs by id, so this strip can be
+             reordered freely — but the first tab has to be the one carrying
+             `active` here and on its panel below.
 
              data-tab repeats the id in the onclick so StateMate's /settings
              command can complete over this strip by reading it, the way its
              /algorithms command reads the .algo-item list. A tab added here is
              completable the same day; one without the attribute simply is not
-             offered. -->
-        <button type="button" class="modal-tab active" role="tab" id="settings-tab-general" aria-controls="tab-general" aria-selected="true" tabindex="0" data-tab="general" onclick="switchSettingsTab('general')">Workspace</button>
-        <button type="button" class="modal-tab" role="tab" id="settings-tab-ai" aria-controls="tab-ai" aria-selected="false" tabindex="-1" data-tab="ai" onclick="switchSettingsTab('ai')">StateMate</button>
-        <button type="button" class="modal-tab" role="tab" id="settings-tab-rendering" aria-controls="tab-rendering" aria-selected="false" tabindex="-1" data-tab="rendering" onclick="switchSettingsTab('rendering')">Canvas &amp; Layout</button>
+             offered.
+
+             Four ids predate this layout and are kept because other surfaces
+             open them by name: `general`, `ai` (StateMate's /model and its
+             menu), `rendering` (the quick-settings popover's More… and the
+             mobile shell) and `symbols`. -->
+        <div class="modal-tab-group" aria-hidden="true">App</div>
+        <button type="button" class="modal-tab active" role="tab" id="settings-tab-general" aria-controls="tab-general" aria-selected="true" tabindex="0" data-tab="general" onclick="switchSettingsTab('general')">General</button>
+        <div class="modal-tab-group" aria-hidden="true">Canvas</div>
+        <button type="button" class="modal-tab" role="tab" id="settings-tab-editing" aria-controls="tab-editing" aria-selected="false" tabindex="-1" data-tab="editing" onclick="switchSettingsTab('editing')">Editing</button>
+        <button type="button" class="modal-tab" role="tab" id="settings-tab-rendering" aria-controls="tab-rendering" aria-selected="false" tabindex="-1" data-tab="rendering" onclick="switchSettingsTab('rendering')">Diagram</button>
+        <button type="button" class="modal-tab" role="tab" id="settings-tab-layout" aria-controls="tab-layout" aria-selected="false" tabindex="-1" data-tab="layout" onclick="switchSettingsTab('layout')">Layout</button>
+        <button type="button" class="modal-tab" role="tab" id="settings-tab-performance" aria-controls="tab-performance" aria-selected="false" tabindex="-1" data-tab="performance" onclick="switchSettingsTab('performance')">Performance</button>
+        <div class="modal-tab-group" aria-hidden="true">Machines</div>
+        <button type="button" class="modal-tab" role="tab" id="settings-tab-simulation" aria-controls="tab-simulation" aria-selected="false" tabindex="-1" data-tab="simulation" onclick="switchSettingsTab('simulation')">Simulation</button>
+        <button type="button" class="modal-tab" role="tab" id="settings-tab-machines" aria-controls="tab-machines" aria-selected="false" tabindex="-1" data-tab="machines" onclick="switchSettingsTab('machines')">Machine Types</button>
         <button type="button" class="modal-tab" role="tab" id="settings-tab-symbols" aria-controls="tab-symbols" aria-selected="false" tabindex="-1" data-tab="symbols" onclick="switchSettingsTab('symbols')">Notation</button>
-        <button type="button" class="modal-tab" role="tab" id="settings-tab-pda" aria-controls="tab-pda" aria-selected="false" tabindex="-1" data-tab="pda" onclick="switchSettingsTab('pda')">Pushdown</button>
-        <button type="button" class="modal-tab" role="tab" id="settings-tab-tm" aria-controls="tab-tm" aria-selected="false" tabindex="-1" data-tab="tm" onclick="switchSettingsTab('tm')">Turing Machine</button>
-        <button type="button" class="modal-tab" role="tab" id="settings-tab-transducer" aria-controls="tab-transducer" aria-selected="false" tabindex="-1" data-tab="transducer" onclick="switchSettingsTab('transducer')">Transducers</button>
+        <div class="modal-tab-group" aria-hidden="true">Assistant</div>
+        <button type="button" class="modal-tab" role="tab" id="settings-tab-ai" aria-controls="tab-ai" aria-selected="false" tabindex="-1" data-tab="ai" onclick="switchSettingsTab('ai')">StateMate</button>
       </div>
 
       <div class="modal-tab-panels" id="settings-tab-panels">
+
+      <!-- ─── APP ─── -->
       <div class="modal-tab-content active" id="tab-general" role="tabpanel" aria-labelledby="settings-tab-general" tabindex="0">
-        <div class="modal-section-lbl">Playback &amp; Saving</div>
-        <div class="modal-row">
-          <span class="modal-lbl">Playback Speed (ms)</span>
-          <input type="number" class="inp" id="set-auto-speed" label="Auto-run interval" min="0" step="any" data-tip="Milliseconds per step. 0 plays as fast as the page can go: every step is still computed, and the screen shows the newest one each frame.">
-        </div>
-        <div class="modal-row" data-tip="How a run is produced. Precompute builds every step before the first frame — instant scrubbing over the whole run, and a long pause on a machine that runs to its step limit. Stream computes each step as playback reaches it, so a Turing machine starts immediately and its accept/reject banner arrives when the run gets there. Automatic streams only the machines whose runs can be long. Verdicts are identical either way; the batch tester and the Language panel are not affected.">
-          <span class="modal-lbl">Execution</span>
-          <select class="inp" id="set-exec-mode" label="Execution mode">
-            <option value="auto">Automatic</option>
-            <option value="eager">Always precompute</option>
-            <option value="lazy">Always stream</option>
-          </select>
-        </div>
-        <div class="modal-row" data-tip="Automatically saves dirty workspaces after the selected interval. Choose Off to save manually only.">
-          <span class="modal-lbl">Autosave</span>
-          <select class="inp" id="set-autosave-interval" label="Autosave interval">
-            <option value="0">Off</option>
-            <option value="5000">Every 5 seconds</option>
-            <option value="15000">Every 15 seconds</option>
-            <option value="30000">Every 30 seconds</option>
-            <option value="60000">Every minute</option>
-          </select>
-        </div>
-        <div class="modal-row">
+        <p class="settings-panel-intro">How the app looks, how it behaves around the canvas, and how your work is saved.</p>
+        <div class="modal-section-lbl">Appearance</div>
+        <div class="modal-row" data-tip="The colour scheme for the whole app, the canvas and the minimap included. Image exports are drawn in it too.">
           <span class="modal-lbl">Theme</span>
           <select class="inp" id="set-theme" label="Color theme"></select>
         </div>
-        <div class="modal-row" data-tip="When on, plain scroll zooms the canvas (Shift+scroll pans horizontally). When off, plain scroll pans and Ctrl+scroll zooms.">
-          <span class="modal-lbl">Scroll Wheel Zooms Canvas</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-wheel-zoom"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        <div class="modal-row" data-tip="Two faint glows drift through the canvas on a slow figure-eight while the light gently swells and settles. It pauses when you step away or switch windows. Off holds it still. It is always still if your system asks for reduced motion.">
+          <span class="modal-lbl">Breathing Canvas Background</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-canvas-motion"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
         </div>
+
+        <div class="modal-section-lbl">Panels &amp; Cards</div>
         <div class="modal-row" data-tip="Shake a floating panel section by its title bar to collapse both sidebars to hover rails, and shake it again to bring back exactly the ones that were there. Everything it does is also on the two pin buttons, which do not move.">
           <span class="modal-lbl">Shake a Window to Hide the Panels</span>
           <label class="toggle-switch"><input type="checkbox" id="set-shake-minimize"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
@@ -1793,17 +1871,260 @@
             <option value="30000">30 seconds</option>
           </select>
         </div>
-        <div class="modal-section-lbl">Workspace Defaults</div>
-        <div class="modal-row"><span class="modal-lbl">New State Prefix</span><input type="text" class="inp" id="set-state-prefix" maxlength="12" label="New state name prefix"></div>
-        <div class="modal-row"><span class="modal-lbl">Snap to Grid by Default</span><label class="toggle-switch"><input type="checkbox" id="set-snap-grid"><span class="toggle-track"><span class="toggle-thumb"></span></span></label></div>
+
+        <div class="modal-section-lbl">Saving &amp; Export</div>
+        <div class="modal-row" data-tip="Automatically saves dirty workspaces after the selected interval. Choose Off to save manually only.">
+          <span class="modal-lbl">Autosave</span>
+          <select class="inp" id="set-autosave-interval" label="Autosave interval">
+            <option value="0">Off</option>
+            <option value="5000">Every 5 seconds</option>
+            <option value="15000">Every 15 seconds</option>
+            <option value="30000">Every 30 seconds</option>
+            <option value="60000">Every minute</option>
+          </select>
+        </div>
+        <div class="modal-row" data-tip="Pixel density of an exported PNG, as a multiple of the size on screen. 2× is sharp on most displays; higher values make larger files.">
+          <span class="modal-lbl">Image Export Resolution (×)</span>
+          <input type="number" step="0.5" min="1" max="10" class="inp" id="set-export-res" label="Density of the exported PNG image">
+        </div>
       </div>
 
-      <!-- StateMate. These controls do NOT write App.config: exportWorkspaceState
+      <!-- ─── CANVAS ─── -->
+      <div class="modal-tab-content" id="tab-editing" role="tabpanel" aria-labelledby="settings-tab-editing" tabindex="0" hidden>
+        <p class="settings-panel-intro">How the canvas responds while you build: new states, the grid, zooming and selection.</p>
+        <div class="modal-section-lbl">New States</div>
+        <div class="modal-row" data-tip="The name a new state starts with, followed by a number — q0, q1, q2 with the default.">
+          <span class="modal-lbl">State Name Prefix</span>
+          <input type="text" class="inp" id="set-state-prefix" maxlength="12" label="New state name prefix">
+        </div>
+
+        <div class="modal-section-lbl">Grid</div>
+        <div class="modal-row" data-tip="Snap states to the grid while dragging. Hold Shift to invert it for one drag.">
+          <span class="modal-lbl">Snap to Grid by Default</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-snap-grid"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="Spacing of the snap grid, in canvas pixels.">
+          <span class="modal-lbl">Grid Size (px)</span>
+          <input type="number" class="inp" id="set-grid-snap" label="Shift-drag snap grid size">
+        </div>
+
+        <div class="modal-section-lbl">Zoom &amp; Scroll</div>
+        <div class="modal-row" data-tip="When on, plain scroll zooms the canvas (Shift+scroll pans horizontally). When off, plain scroll pans and Ctrl+scroll zooms.">
+          <span class="modal-lbl">Scroll Wheel Zooms Canvas</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-wheel-zoom"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="How quickly the scroll wheel zooms the canvas and the minimap. Larger is faster.">
+          <span class="modal-lbl">Zoom Step</span>
+          <input type="number" step="0.05" class="inp" id="set-zoom-step" label="Scroll zoom sensitivity">
+        </div>
+
+        <div class="modal-section-lbl">Selection</div>
+        <div class="modal-row" data-tip="When set, clicking a state on the canvas also highlights its outgoing (green) or incoming (indigo) transitions. Both directions are always available from a state's right-click menu regardless of this setting.">
+          <span class="modal-lbl">Click State Highlights Edges</span>
+          <select class="sel" id="set-click-highlight-mode" label="Direction to highlight when a state is clicked">
+            <option value="off">Off</option>
+            <option value="outgoing">Outgoing</option>
+            <option value="incoming">Incoming</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="tab-rendering" role="tabpanel" aria-labelledby="settings-tab-rendering" tabindex="0" hidden>
+        <p class="settings-panel-intro">How states and transitions are drawn on the canvas.</p>
+        <div class="modal-section-lbl">States</div>
+        <div class="modal-row" data-tip="Radius of a state circle, in canvas pixels.">
+          <span class="modal-lbl">State Size (radius)</span>
+          <input type="number" class="inp" id="set-radius" label="State node size">
+        </div>
+        <div class="modal-row" data-tip="Break long, underscore/space/hyphen-separated state names onto multiple lines so they fit inside the node instead of overflowing it.">
+          <span class="modal-lbl">Wrap Long State Labels</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-wrap-labels"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+
+        <div class="modal-section-lbl">Transitions</div>
+        <div class="modal-row" data-tip="Show transitions as compact mathematical notation or as color-coded semantic pills on the canvas, or hide them entirely for an uncluttered diagram. Exports and tables keep compact notation.">
+          <span class="modal-lbl">Edge Labels</span>
+          <select class="sel" id="set-edge-label-style" label="Canvas edge label style">
+            <option value="compact">Compact notation</option>
+            <option value="pills">Clear actions</option>
+            <option value="beginner">Beginner-friendly</option>
+            <option value="none">Hidden</option>
+          </select>
+        </div>
+        <div class="modal-row" data-tip="How far apart the two edges of a back-and-forth pair bow, so a transition and its reverse do not draw over each other. Edges you have curved by hand keep their own shape.">
+          <span class="modal-lbl">Default Edge Curve</span>
+          <input type="number" class="inp" id="set-curve-off" label="Base curve magnitude for bidirectional edges">
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="tab-layout" role="tabpanel" aria-labelledby="settings-tab-layout" tabindex="0" hidden>
+        <p class="settings-panel-intro">Where things are placed: the auto-layout command, and how edges and labels keep out of each other's way.</p>
+        <div class="modal-section-lbl">Auto-Layout</div>
+        <div class="modal-row" data-tip="Layered (Sugiyama) ranks states by transition flow and minimizes edge crossings — best for most automata. Circular arranges states evenly around a ring.">
+          <span class="modal-lbl">Algorithm</span>
+          <select class="inp" id="set-layout-algo" label="Auto-layout algorithm">
+            <option value="sugiyama">Layered (Sugiyama)</option>
+            <option value="circular">Circular</option>
+          </select>
+        </div>
+        <div class="modal-row" data-tip="Gap left between the edges of neighbouring states during auto-layout. Node size is accounted for separately, so this is clear space — not centre-to-centre distance.">
+          <span class="modal-lbl">Spacing Between States</span>
+          <input type="number" class="inp" id="set-node-spacing" min="8" label="Gap between node edges during auto-layout">
+        </div>
+
+        <div class="modal-section-lbl">Collision Avoidance</div>
+        <div class="modal-row" data-tip="Place each self-loop on whichever side of its state is free, instead of always above it. Drag a selected loop's grip to override the choice by hand.">
+          <span class="modal-lbl">Smart Self-Loops</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-smart-loops"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="Bend an edge around any state that would otherwise sit on top of it. Edges you have curved by hand are left exactly as you set them.">
+          <span class="modal-lbl">Route Edges Around States</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-auto-route"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="Offset each transition label from its own edge, then move it clear of any state, edge or other label it would overlap.">
+          <span class="modal-lbl">Keep Labels Clear</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-smart-labels"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="On releasing a drag, nudge apart any state circles left overlapping. Off, states can be stacked exactly on top of one another.">
+          <span class="modal-lbl">Separate Overlapping States</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-avoid-overlap"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="Clear space demanded around a state circle by any edge or label routed past it.">
+          <span class="modal-lbl">Clearance Around States (px)</span>
+          <input type="number" class="inp" id="set-node-clearance" min="0" max="80" label="Space edges and labels leave around a state">
+        </div>
+
+        <div class="modal-section-lbl">Motion</div>
+        <div class="modal-row" data-tip="Glide loops, curves and labels to their new positions instead of having them jump when the layout picks a different one. Off, or with your system set to reduce motion, positions change instantly.">
+          <span class="modal-lbl">Animate Layout Changes</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-animate-layout"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="tab-performance" role="tabpanel" aria-labelledby="settings-tab-performance" tabindex="0" hidden>
+        <p class="settings-panel-intro">What the canvas gives up to stay responsive on machines with hundreds of states. The machine itself is never changed.</p>
+        <div class="modal-section-lbl">Large Machines</div>
+        <div class="modal-row" data-tip="Past a few hundred states, simplify the canvas on its own: hide edge labels, stop easing layout changes, draw the minimap less often and save less frequently. Your settings are remembered exactly as they are and come back the moment the machine is small enough again. Off, everything is drawn at any size — on a machine this large that is a canvas you cannot read.">
+          <span class="modal-lbl">Simplify Very Large Machines</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-large-machine-auto"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="Past a few hundred states, build only the part of the diagram near the screen and drop the rest as you pan away from it. The machine is unchanged — every state is still simulated, exported and measured. Off, the whole diagram exists at once, which is what makes a thousand-state machine slow to pan.">
+          <span class="modal-lbl">Draw Only What Is On Screen</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-cull-offscreen"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="Zoomed far enough out that a label is a two-pixel smear, stop drawing labels and draw the graph alone. Only ever applies to machines large enough to be culled.">
+          <span class="modal-lbl">Drop Labels When Zoomed Out</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-zoom-lod"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+      </div>
+
+      <!-- ─── MACHINES ─── -->
+      <div class="modal-tab-content" id="tab-simulation" role="tabpanel" aria-labelledby="settings-tab-simulation" tabindex="0" hidden>
+        <p class="settings-panel-intro">How a run is played back, how long one may go on, and what happens when it never halts.</p>
+        <div class="modal-section-lbl">Playback</div>
+        <div class="modal-row" data-tip="Milliseconds per step. 0 plays as fast as the page can go: every step is still computed, and the screen shows the newest one each frame.">
+          <span class="modal-lbl">Playback Speed (ms per step)</span>
+          <input type="number" class="inp" id="set-auto-speed" label="Auto-run interval" min="0" step="any">
+        </div>
+        <div class="modal-row" data-tip="How a run is produced. Precompute builds every step before the first frame — instant scrubbing over the whole run, and a long pause on a machine that runs to its step limit. Stream computes each step as playback reaches it, so a Turing machine starts immediately and its accept/reject banner arrives when the run gets there. Automatic streams only the machines whose runs can be long. Verdicts are identical either way; the batch tester and the Language panel are not affected.">
+          <span class="modal-lbl">Execution</span>
+          <select class="inp" id="set-exec-mode" label="Execution mode">
+            <option value="auto">Automatic</option>
+            <option value="eager">Always precompute</option>
+            <option value="lazy">Always stream</option>
+          </select>
+        </div>
+
+        <div class="modal-section-lbl">Step Limits</div>
+        <div class="modal-row" data-tip="Longest run a Turing machine is given — or how many branches a nondeterministic one explores — before it stops with no verdict. A very long run also costs memory.">
+          <span class="modal-lbl">Turing Machines</span>
+          <input type="number" class="inp" id="set-tm-steps" label="TM step limit">
+        </div>
+        <div class="modal-row" data-tip="Longest run a pushdown automaton is given — or how many branches a nondeterministic one explores — before it stops with no verdict.">
+          <span class="modal-lbl">Pushdown Automata</span>
+          <input type="number" class="inp" id="set-pda-steps" label="PDA step limit">
+        </div>
+        <div class="modal-row" data-tip="Per-word step budget for the Language panel's fingerprint. One simulation runs per cell, so this is multiplied by roughly 127. Words that exhaust it are drawn as 'no verdict' rather than as rejects.">
+          <span class="modal-lbl">Language Panel (per word)</span>
+          <input type="number" class="inp" id="set-lang-budget" min="10" max="20000" step="10" label="Language fingerprint step budget">
+        </div>
+
+        <div class="modal-section-lbl">Non-Halting Runs</div>
+        <div class="modal-row" data-tip="A deterministic machine that returns to a configuration it has already been in will return to it forever, so playback stops there and reports a proven non-halt instead of a timeout. Turn it off to watch a machine that never halts keep running to the step limit — the verdict then degrades from “never halts” to “no verdict”. Affects step-by-step playback only; batch runs and the Language panel keep deciding.">
+          <span class="modal-lbl">Stop At A Repeated Configuration</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-detect-loops"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="tab-machines" role="tabpanel" aria-labelledby="settings-tab-machines" tabindex="0" hidden>
+        <p class="settings-panel-intro">Choices that change what a family of machines means. Options that belong to one machine, like a two-way tape or a PFA's cut-point, are in the Workspace panel's Machine section.</p>
+        <div class="modal-section-lbl">Pushdown Automata</div>
+        <div class="modal-row" data-tip="Accept when the input is consumed in a final state, or when it is consumed with the stack empty. The two are equally expressive, but a given machine can decide differently under each.">
+          <span class="modal-lbl">Acceptance</span>
+          <select class="inp" id="set-pda-paradigm" label="PDA Formalism Paradigm">
+            <option value="explicit">Acceptance by final state</option>
+            <option value="empty">Acceptance by empty stack</option>
+          </select>
+        </div>
+
+        <div class="modal-section-lbl">Multi-Tape Turing Machines</div>
+        <div class="modal-row" data-tip="How many tapes a multi-tape machine may be given.">
+          <span class="modal-lbl">Maximum Tapes</span>
+          <input type="number" class="inp" id="set-max-tapes" min="2" max="64" step="1" aria-label="Maximum number of tapes">
+        </div>
+
+        <div class="modal-section-lbl">Transducers</div>
+        <div class="modal-row" id="set-row-transducer" data-tip="Allow Moore and Mealy machines to have accept states, so a run reports a verdict alongside its output.">
+          <span class="modal-lbl">Moore &amp; Mealy Accept States</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-transducer-accepts"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+      </div>
+
+      <div class="modal-tab-content" id="tab-symbols" role="tabpanel" aria-labelledby="settings-tab-symbols" tabindex="0" hidden>
+        <p class="settings-panel-intro">The reserved symbols machines are written with. Changing one renames it everywhere it already appears.</p>
+        <div class="modal-section-lbl">Strings</div>
+        <div class="modal-row" data-tip="The empty string — a transition that reads no input.">
+          <span class="modal-lbl">Epsilon (ε)</span>
+          <input type="text" class="inp" id="set-sym-eps" label="Empty string symbol" maxlength="1">
+        </div>
+        <div class="modal-row" data-tip="The empty output of a transducer transition that emits nothing.">
+          <span class="modal-lbl">Empty Output (λ)</span>
+          <input type="text" class="inp" id="set-sym-lambda" label="Empty output symbol" maxlength="1">
+        </div>
+        <div class="modal-row" data-tip="Matches any one input symbol on a transition.">
+          <span class="modal-lbl">Any / Wildcard</span>
+          <input type="text" class="inp" id="set-sym-any" label="Match any character symbol" maxlength="1">
+        </div>
+
+        <div class="modal-section-lbl">Tapes</div>
+        <div class="modal-row" data-tip="What an unwritten Turing machine tape cell holds.">
+          <span class="modal-lbl">Blank</span>
+          <input type="text" class="inp" id="set-sym-blank" label="Tape blank symbol" maxlength="1">
+        </div>
+        <div class="modal-row" data-tip="The end marker left of the input, for two-way machines and linear bounded automata.">
+          <span class="modal-lbl">Left End Marker</span>
+          <input type="text" class="inp" id="set-sym-left" label="Left boundary symbol" maxlength="1">
+        </div>
+        <div class="modal-row" data-tip="The end marker right of the input, for two-way machines and linear bounded automata.">
+          <span class="modal-lbl">Right End Marker</span>
+          <input type="text" class="inp" id="set-sym-right" label="Right boundary symbol" maxlength="1">
+        </div>
+
+        <div class="modal-section-lbl">Stacks</div>
+        <div class="modal-row" data-tip="The symbol a pushdown automaton's stack starts with.">
+          <span class="modal-lbl">Stack Bottom (Z₀)</span>
+          <input type="text" class="inp" id="set-sym-z0" label="PDA initial stack symbol" maxlength="1">
+        </div>
+      </div>
+
+      <!-- ─── ASSISTANT ───
+           StateMate. These controls do NOT write App.config: exportWorkspaceState
            and getBackupPayload both serialize the whole config, so an API key
            living there would be written into every workspace tab and the
            autosave blob. js/statemate-provider.js keeps its own store under its
            own localStorage key; js/statemate-ui.js reads and writes this panel. -->
       <div class="modal-tab-content" id="tab-ai" role="tabpanel" aria-labelledby="settings-tab-ai" tabindex="0" hidden>
+        <p class="settings-panel-intro">The AI assistant: which model it talks to, how it works, and what it hands back.</p>
         <div class="modal-section-lbl">Connection</div>
         <div class="modal-row" data-tip="When off, the StateMate dialog is the example picker and nothing is ever sent anywhere.">
           <span class="modal-lbl">Enable StateMate</span>
@@ -1871,14 +2192,10 @@
           There is no server in between and nothing is logged. <span id="sm-provider-note"></span>
         </div>
 
-        <div class="modal-section-lbl">Behaviour</div>
+        <div class="modal-section-lbl">Agent</div>
         <div class="modal-row" data-tip="Allow StateMate to inspect, simulate and edit a private candidate over several tool steps before it answers or proposes a change.">
           <span class="modal-lbl">Use Agent Tools</span>
           <label class="toggle-switch"><input type="checkbox" id="set-sm-agent-tools"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
-        </div>
-        <div class="modal-row" data-tip="Draw the machine over the canvas, dashed, while StateMate writes it or works on its private copy. Nothing is applied until it finishes.">
-          <span class="modal-lbl">Show Work on Canvas</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-sm-live-preview"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
         </div>
         <div class="modal-row" data-tip="Maximum number of model turns in one agent run. A lower limit reduces cost; a higher limit helps with complex edits.">
           <span class="modal-lbl">Agent Step Limit</span>
@@ -1889,25 +2206,15 @@
             <option value="16">16 steps</option>
           </select>
         </div>
+        <div class="modal-row" data-tip="Draw the machine over the canvas, dashed, while StateMate writes it or works on its private copy. Nothing is applied until it finishes.">
+          <span class="modal-lbl">Show Work on Canvas</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-sm-live-preview"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+
+        <div class="modal-section-lbl">Prompts</div>
         <div class="modal-row" data-tip="Send the machine currently on the canvas with your prompt, so StateMate can edit it. You can override this per prompt in the dialog.">
           <span class="modal-lbl">Attach Canvas by Default</span>
           <label class="toggle-switch"><input type="checkbox" id="set-sm-attach"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
-        </div>
-        <div class="modal-row" data-tip="StateMate predicts what its machine does on a few words. With this on, those predictions are run through the real simulator before anything is drawn.">
-          <span class="modal-lbl">Verify with Generated Tests</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-sm-verify"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
-        </div>
-        <div class="modal-row" data-tip="How many times StateMate may be sent its own failures and asked to correct them. Each attempt is another request.">
-          <span class="modal-lbl">Repair Attempts</span>
-          <select class="inp" id="set-sm-repairs" label="Repair attempts">
-            <option value="0">None</option>
-            <option value="1">One</option>
-            <option value="2">Two</option>
-          </select>
-        </div>
-        <div class="modal-row" data-tip="Build results open in a new workspace tab when the canvas already has a machine on it, so nothing is replaced.">
-          <span class="modal-lbl">New Machines Open a New Tab</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-sm-newtab"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
         </div>
         <div class="modal-row" data-tip="How much of the exchange travels with each prompt, so a follow-up like “now make it reject the empty string” knows what it refers to. Only what you asked and a one-line summary of what was built is sent — never the machines themselves. Nothing is written to disk.">
           <span class="modal-lbl">Conversation Memory</span>
@@ -1921,173 +2228,29 @@
             <option value="200">100 exchanges</option>
           </select>
         </div>
+
+        <div class="modal-section-lbl">Checking</div>
+        <div class="modal-row" data-tip="StateMate predicts what its machine does on a few words. With this on, those predictions are run through the real simulator before anything is drawn.">
+          <span class="modal-lbl">Verify with Generated Tests</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-sm-verify"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
+        <div class="modal-row" data-tip="How many times StateMate may be sent its own failures and asked to correct them. Each attempt is another request.">
+          <span class="modal-lbl">Repair Attempts</span>
+          <select class="inp" id="set-sm-repairs" label="Repair attempts">
+            <option value="0">None</option>
+            <option value="1">One</option>
+            <option value="2">Two</option>
+          </select>
+        </div>
+
+        <div class="modal-section-lbl">Results</div>
+        <div class="modal-row" data-tip="Build results open in a new workspace tab when the canvas already has a machine on it, so nothing is replaced.">
+          <span class="modal-lbl">New Machines Open a New Tab</span>
+          <label class="toggle-switch"><input type="checkbox" id="set-sm-newtab"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+        </div>
         <div class="modal-row" data-tip="Let StateMate leave one or two sticky notes on the canvas explaining the construction.">
           <span class="modal-lbl">Explain with Canvas Notes</span>
           <label class="toggle-switch"><input type="checkbox" id="set-sm-notes"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
-        </div>
-      </div>
-
-      <div class="modal-tab-content" id="tab-rendering" role="tabpanel" aria-labelledby="settings-tab-rendering" tabindex="0" hidden>
-
-        <div class="modal-row">
-          <span class="modal-lbl">Node Radius</span>
-          <input type="number" class="inp" id="set-radius" label="State node size">
-        </div>
-        <div class="modal-row" data-tip="Break long, underscore/space/hyphen-separated state names onto multiple lines so they fit inside the node instead of overflowing it.">
-          <span class="modal-lbl">Wrap Long State Labels</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-wrap-labels"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
-        </div>
-        <div class="modal-row" data-tip="Show transitions as compact mathematical notation or as color-coded semantic pills on the canvas, or hide them entirely for an uncluttered diagram. Exports and tables keep compact notation.">
-          <span class="modal-lbl">Edge Labels</span>
-          <select class="sel" id="set-edge-label-style" label="Canvas edge label style">
-            <option value="compact">Compact notation</option>
-            <option value="pills">Clear actions</option>
-            <option value="beginner">Beginner-friendly</option>
-            <option value="none">Hidden</option>
-          </select>
-        </div>
-        <div class="modal-row" data-tip="When set, clicking a state on the canvas also highlights its outgoing (green) or incoming (indigo) transitions. Both directions are always available from a state's right-click menu regardless of this setting.">
-          <span class="modal-lbl">Click State Highlights Edges</span>
-          <select class="sel" id="set-click-highlight-mode" label="Direction to highlight when a state is clicked">
-            <option value="off">Off</option>
-            <option value="outgoing">Outgoing</option>
-            <option value="incoming">Incoming</option>
-          </select>
-        </div>
-        <div class="modal-row">
-          <span class="modal-lbl">Zoom Step</span>
-          <input type="number" step="0.05" class="inp" id="set-zoom-step" label="Scroll zoom sensitivity">
-        </div>
-        <div class="modal-row">
-          <span class="modal-lbl">Grid Snap (px)</span>
-          <input type="number" class="inp" id="set-grid-snap" label="Shift-drag snap grid size">
-        </div>
-        <div class="modal-row" data-tip="Layered (Sugiyama) ranks states by transition flow and minimizes edge crossings — best for most automata. Circular arranges states evenly around a ring.">
-          <span class="modal-lbl">Auto-Layout Algorithm</span>
-          <select class="inp" id="set-layout-algo" label="Auto-layout algorithm">
-            <option value="sugiyama">Layered (Sugiyama)</option>
-            <option value="circular">Circular</option>
-          </select>
-        </div>
-        <div class="modal-row" data-tip="Gap left between the edges of neighbouring states during auto-layout. Node size is accounted for separately, so this is clear space — not centre-to-centre distance.">
-          <span class="modal-lbl">Auto-Layout Spacing</span>
-          <input type="number" class="inp" id="set-node-spacing" min="8" label="Gap between node edges during auto-layout">
-        </div>
-        <div class="modal-row">
-          <span class="modal-lbl">Default Edge Curve</span>
-          <input type="number" class="inp" id="set-curve-off" label="Base curve magnitude for bidirectional edges">
-        </div>
-        <div class="modal-section-lbl">Collision Avoidance</div>
-        <div class="modal-row" data-tip="Place each self-loop on whichever side of its state is free, instead of always above it. Drag a selected loop's grip to override the choice by hand.">
-          <span class="modal-lbl">Smart Self-Loops</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-smart-loops"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
-        </div>
-        <div class="modal-row" data-tip="Bend an edge around any state that would otherwise sit on top of it. Edges you have curved by hand are left exactly as you set them.">
-          <span class="modal-lbl">Route Edges Around States</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-auto-route"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
-        </div>
-        <div class="modal-row" data-tip="Offset each transition label from its own edge, then move it clear of any state, edge or other label it would overlap.">
-          <span class="modal-lbl">Keep Labels Clear</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-smart-labels"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
-        </div>
-        <div class="modal-row" data-tip="On releasing a drag, nudge apart any state circles left overlapping. Off, states can be stacked exactly on top of one another.">
-          <span class="modal-lbl">Separate Overlapping States</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-avoid-overlap"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
-        </div>
-        <div class="modal-row" data-tip="Glide loops, curves and labels to their new positions instead of having them jump when the layout picks a different one. Off, or with your system set to reduce motion, positions change instantly.">
-          <span class="modal-lbl">Animate Layout Changes</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-animate-layout"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
-        </div>
-        <div class="modal-row" data-tip="Clear space demanded around a state circle by any edge or label routed past it.">
-          <span class="modal-lbl">Node Clearance (px)</span>
-          <input type="number" class="inp" id="set-node-clearance" min="0" max="80" label="Space edges and labels leave around a state">
-        </div>
-        <div class="modal-section-lbl">Large Machines</div>
-        <div class="modal-row" data-tip="Past a few hundred states, simplify the canvas on its own: hide edge labels, stop easing layout changes, draw the minimap less often and save less frequently. Your settings are remembered exactly as they are and come back the moment the machine is small enough again. Off, everything is drawn at any size — on a machine this large that is a canvas you cannot read.">
-          <span class="modal-lbl">Simplify Very Large Machines</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-large-machine-auto"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
-        </div>
-        <div class="modal-row" data-tip="Past a few hundred states, build only the part of the diagram near the screen and drop the rest as you pan away from it. The machine is unchanged — every state is still simulated, exported and measured. Off, the whole diagram exists at once, which is what makes a thousand-state machine slow to pan.">
-          <span class="modal-lbl">Draw Only What Is On Screen</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-cull-offscreen"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
-        </div>
-        <div class="modal-row" data-tip="Zoomed far enough out that a label is a two-pixel smear, stop drawing labels and draw the graph alone. Only ever applies to machines large enough to be culled.">
-          <span class="modal-lbl">Drop Labels When Zoomed Out</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-zoom-lod"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
-        </div>
-
-        <div class="modal-row">
-          <span class="modal-lbl">Export Resolution (×)</span>
-          <input type="number" step="0.5" min="1" max="10" class="inp" id="set-export-res" label="Density of the exported PNG image">
-        </div>
-      </div>
-
-      <div class="modal-tab-content" id="tab-symbols" role="tabpanel" aria-labelledby="settings-tab-symbols" tabindex="0" hidden>
-        <div class="modal-section-lbl">Machine Notation</div>
-        <div class="modal-row">
-          <span class="modal-lbl">Epsilon</span>
-          <input type="text" class="inp" id="set-sym-eps" label="Empty string symbol" maxlength="1">
-        </div>
-        <div class="modal-row"><span class="modal-lbl">Empty Output (λ)</span><input type="text" class="inp" id="set-sym-lambda" label="Empty output symbol" maxlength="1"></div>
-        <div class="modal-row">
-          <span class="modal-lbl">Any / Wildcard</span>
-          <input type="text" class="inp" id="set-sym-any" label="Match any character symbol" maxlength="1">
-        </div>
-        <div class="modal-row">
-          <span class="modal-lbl">TM Blank</span>
-          <input type="text" class="inp" id="set-sym-blank" label="Tape blank symbol" maxlength="1">
-        </div>
-        <div class="modal-row">
-          <span class="modal-lbl">Left Marker</span>
-          <input type="text" class="inp" id="set-sym-left" label="Left boundary symbol" maxlength="1">
-        </div>
-        <div class="modal-row">
-          <span class="modal-lbl">Right Marker</span>
-          <input type="text" class="inp" id="set-sym-right" label="Right boundary symbol" maxlength="1">
-        </div>
-        <div class="modal-row">
-          <span class="modal-lbl">Stack Bottom</span>
-          <input type="text" class="inp" id="set-sym-z0" label="PDA initial stack symbol" maxlength="1">
-        </div>
-      </div>
-
-      <div class="modal-tab-content" id="tab-pda" role="tabpanel" aria-labelledby="settings-tab-pda" tabindex="0" hidden>
-        <div class="modal-row">
-          <span class="modal-lbl">PDA Max Steps</span>
-          <input type="number" class="inp" id="set-pda-steps" label="PDA step limit">
-        </div>
-        <div class="modal-row">
-          <span class="modal-lbl" data-tip="Toggles between HUM formal definition and Sipser formalism">PDA Formalism</span>
-          <select class="inp" id="set-pda-paradigm" label="PDA Formalism Paradigm">
-            <option value="explicit">Acceptance by final state</option>
-            <option value="empty">Acceptance by empty stack</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="modal-tab-content" id="tab-tm" role="tabpanel" aria-labelledby="settings-tab-tm" tabindex="0" hidden>
-        <div class="modal-row" data-tip="A deterministic machine that returns to a configuration it has already been in will return to it forever, so playback stops there and reports a proven non-halt instead of a timeout. Turn it off to watch a machine that never halts keep running to the step limit — the verdict then degrades from “never halts” to “no verdict”. Affects step-by-step playback only; batch runs and the Language panel keep deciding.">
-          <span class="modal-lbl">Stop At A Repeated Configuration</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-detect-loops"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
-        </div>
-        <div class="modal-row" data-tip="How many tapes a multi-tape machine may be given.">
-          <span class="modal-lbl">Maximum Tapes</span>
-          <input type="number" class="inp" id="set-max-tapes" min="2" max="64" step="1" aria-label="Maximum number of tapes">
-        </div>
-        <div class="modal-row">
-          <span class="modal-lbl">TM Max Steps</span>
-          <input type="number" class="inp" id="set-tm-steps" label="TM step limit">
-        </div>
-        <div class="modal-row" data-tip="Per-word step budget for the Language panel's fingerprint. One simulation runs per cell, so this is multiplied by roughly 127. Words that exhaust it are drawn as 'no verdict' rather than as rejects.">
-          <span class="modal-lbl">Language Fingerprint Budget</span>
-          <input type="number" class="inp" id="set-lang-budget" min="10" max="20000" step="10" label="Language fingerprint step budget">
-        </div>
-      </div>
-
-      <div class="modal-tab-content" id="tab-transducer" role="tabpanel" aria-labelledby="settings-tab-transducer" tabindex="0" hidden>
-        <div class="modal-row" id="set-row-transducer" data-tip="Allow Moore and Mealy machines to have accept states">
-          <span class="modal-lbl">Transducer Accepts</span>
-          <label class="toggle-switch"><input type="checkbox" id="set-transducer-accepts"><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
         </div>
       </div>
 
@@ -2111,7 +2274,7 @@
 
   <!-- Theme Modal -->
 
-  <!-- Keyboard Shortcuts. Same shell as Engine Settings — .export-code-modal
+  <!-- Keyboard Shortcuts. Same shell as Settings — .export-code-modal
        for the padding-less frame, .settings-modal-wide for the vertical tab
        rail — because it has the same shape of content: many grouped rows that
        do not fit one scroll. The bindings mirror the keydown handlers in
@@ -2502,6 +2665,17 @@
     <div tabindex="0" class="ctx-i" onclick="hideSaveMenu(); copyShareableLink()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z" /></svg>
       Copy Shareable Link
+    </div>
+    <!-- The machine alone, as one line of text: no layout, no notes, the same
+         code whoever drew it. The link above is the whole workspace; these are
+         its complement, not a replacement. See js/interop/smtf.js. -->
+    <div tabindex="0" class="ctx-i" onclick="hideSaveMenu(); copyMachineCode()" title="The machine as one line of text, e.g. fa.01:+AB_BA — paste it anywhere, and back onto the canvas">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200ZM80,84a8,8,0,0,1,8-8h80a8,8,0,0,1,0,16H88A8,8,0,0,1,80,84Zm0,32a8,8,0,0,1,8-8h80a8,8,0,0,1,0,16H88A8,8,0,0,1,80,116Zm0,32a8,8,0,0,1,8-8h48a8,8,0,0,1,0,16H88A8,8,0,0,1,80,148Z" /></svg>
+      Copy Machine Code
+    </div>
+    <div tabindex="0" class="ctx-i" onclick="hideSaveMenu(); copyMachineLink()" title="A short link to the machine alone — it opens laid out automatically, without your layout or notes">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M165.66,90.34a8,8,0,0,1,0,11.32l-64,64a8,8,0,0,1-11.32-11.32l64-64A8,8,0,0,1,165.66,90.34ZM215.6,40.4a56,56,0,0,0-79.2,0L106.34,70.45a8,8,0,0,0,11.32,11.32l30.06-30a40,40,0,0,1,56.57,56.56l-30.07,30.06a8,8,0,0,0,11.31,11.32L215.6,119.6a56,56,0,0,0,0-79.2ZM138.34,174.22l-30.06,30.06a40,40,0,1,1-56.56-56.57l30.05-30.05a8,8,0,0,0-11.32-11.32L40.4,136.4a56,56,0,0,0,79.2,79.2l30.06-30.07a8,8,0,0,0-11.32-11.31Z" /></svg>
+      Copy Machine Link
     </div>
   </div>
 

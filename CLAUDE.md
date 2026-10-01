@@ -16,13 +16,19 @@ npm run electron:preview   # production build, run in electron
 npm run electron:build     # electron-builder -> release/
 npm run wasm               # asc wasm/label-penalty.ts -> js/wasm/ (output committed)
 npm run bench              # engine, player, canvas and space-time timings vs bench/baseline.json
+npm run library:init -- ../automata-library   # scaffold + seed a checkout of the machine library
+npm run library:build -- --library ../automata-library   # its index, pictures and website -> _site/
+npm run cli -- --help      # the `automata` command line, from source (bin: cli/automata.mjs)
+npm run cli:build          # vite build --config vite.cli.config.js -> dist-cli/ (runs under plain node)
 ```
+
+`automata` is the app's engine from a terminal — run, test, trace, lint, compare, convert and grade machines; HOA/BA/Timbuk/JFLAP formats; learning; an MCP server; and Turing-machine halting proofs. `electron:build` builds `dist-cli/` too, and the installed app ships it with launchers in `resources/cli/`. See [The command line](.claude/skills/cli/SKILL.md).
 
 `npm run wasm` is run by hand after editing [wasm/label-penalty.ts](wasm/label-penalty.ts) and its output is committed, the way `npm run glyphs` and `npm run icons` already are — the build does not shell out to a compiler. See [The label kernel](.claude/skills/perf/SKILL.md).
 
 `npm run bench` is also run by hand and never gates CI: timings move with the machine, so a build that failed on them would fail at random. Run it before and after a change to the engine, the player, the canvas or the space-time diagram; it marks a case only when it moved by more than its own noise, and marks a changed verdict whatever the timing did. See [The benchmark](.claude/skills/perf/SKILL.md).
 
-CI: `.github/workflows/deploy.yml` publishes `dist/` to GitHub Pages on push to `main`. `.github/workflows/electron-build.yml` packages win/mac/linux installers on every push and publishes a GitHub Release for `v*` tags.
+CI: `.github/workflows/deploy.yml` publishes `dist/` to GitHub Pages on push to `main`. `.github/workflows/electron-build.yml` packages win/mac/linux installers on every push and publishes a GitHub Release for `v*` tags. `.github/workflows/library-rebuild.yml` runs the tests and then starts the machine library's Publish workflow when `main` changes anything the library build reads (`js/`, `scripts/library/`) — the library is built by this repo's `main`, but its own workflows only run on its own events. It needs a `LIBRARY_DISPATCH_TOKEN` secret, and says so rather than failing when there is none.
 
 The package is `"type": "module"`. The two Electron entry points are CommonJS and carry a `.cjs` extension for that reason ([electron/main.cjs](electron/main.cjs), [electron/preload.cjs](electron/preload.cjs)).
 
@@ -36,11 +42,13 @@ only when they are relevant — same text, same headings, nothing was deleted.
 | StateMate, the Inspector console, panel tabs, floating sections | `.claude/skills/statemate/SKILL.md` |
 | Building blocks, scope, ports, the view-graph projection | `.claude/skills/blocks/SKILL.md` |
 | Running a machine: the player, the tape, space-time diagrams, the complexity profile, lazy execution, workers | `.claude/skills/simulation/SKILL.md` |
-| Saving, loading, export, codegen, share links, JFLAP, XState/SCXML import | `.claude/skills/persistence/SKILL.md` |
+| Saving, loading, export, codegen, share links, machine codes (SMTF), JFLAP, XState/SCXML import | `.claude/skills/persistence/SKILL.md` |
 | Exercises and grading, the lexer generator | `.claude/skills/exercises/SKILL.md` |
 | Layout geometry, culling, the large-machine profile, the label kernel | `.claude/skills/perf/SKILL.md` |
+| The machine library: its index, badges, the Library view, submissions and the library repo's CI | `.claude/skills/library/SKILL.md` |
 | Dialogs and the two sidebars | `.claude/skills/ui-chrome/SKILL.md` |
 | The machine card, the wizard, the mobile shell | `.claude/skills/ui-features/SKILL.md` |
+| The `automata` command line: formats, provers, grading, learning, MCP, the bundle | `.claude/skills/cli/SKILL.md` |
 | Grammars | `js/grammar/CLAUDE.md` (loads automatically) |
 
 ## Architecture
@@ -183,7 +191,9 @@ Node internals are reached through `node.__parts` (`circle`, `label`, `ring`, `s
 
 ### Views
 
-`setView()` in [js/view.js](js/view.js) is the single entry point. The build view (canvas) is always mounted; `algo`, `grammar` and `reference` render as overlays on top of it, so canvas geometry stays measurable. Algorithms call `setView('build')` to reveal a result.
+`setView()` in [js/view.js](js/view.js) is the single entry point. The build view (canvas) is always mounted; `algo`, `grammar`, `reference` and `library` render as overlays on top of it, so canvas geometry stays measurable. Algorithms call `setView('build')` to reveal a result.
+
+The four share one window (`#aux-overlay`), and its bar is a **tab strip across them**, built by `ensureAuxChrome()` from `AUX_META` on first open — so a view is renamed or re-iconed in one place, and none of the bar's controls are in `bridge.js`. Library comes first. `AUX_VIEWS` is the order of the strip, the More menu and the shortcut digits alike — `auxViewKey()` derives the digit from the position (Build is 1), so reordering is one edit. Each view keeps its place when closed, which is why the bar has a close button and no minimize. Maximize is a per-reader preference (`automata-aux-max`), desktop only. The rails share one width, `--aux-rail-w`, set by the window rather than per view: once the views sit a click apart, a rail edge that moves between them is visible. `#aux-ctx` names the canvas machine while Algorithms is open, because that is the view that reads it. The header reopens the last view from `#hdr-last-view`, inside the workspace strip's frame (`.tab-strip`) but outside its scroller so it never scrolls away with the tabs — the frame, not `.tab-bar`, holds the border, and the overflow chevron sits in it for the same reason. On a phone the same button shares a pill with the workspace switcher (`#mobile-last-view`); the window opens below the header there, so a second press closes it. The view is remembered per reader (`automata-aux-last`). [tests/aux-window.test.js](tests/aux-window.test.js) pins the strip, the arrow keys, maximize and the chip.
 
 ### Reference
 
@@ -239,6 +249,9 @@ js/machines/
   fast-tm.js     the rest of a TM run as a table and a loop, once the
                  loop detector has stopped looking — see the simulation
                  notes, *The fast lane*.
+  tm-behaviour.js whether a TM halts or never halts, and which method
+                 proved it (simulation, cycler, translated cycler,
+                 backward reasoning) — or "unknown". See the simulation notes.
   batch.js       the batch tester's deciding half, with no page attached.
 ```
 
@@ -282,7 +295,7 @@ Stated once, at the top of [css/views.css](css/views.css), because it was doing 
 
 Three broke the rule and are solid now. **`.tv-cell.is-head.loop`** was the worst of them: a proven loop is a *decision* — the machine never halts, so the input is not accepted, which is strictly more than the step budget can tell you — and drawing the app's firmest verdict as an absence put it in the same visual bracket as an unwritten tape cell. It is `border-style: double` instead, which distinguishes it from an ordinary reject without borrowing the dash. **`.lang-sym.dead`** is a real fact about a real machine: uninteresting, not missing, and quiet is what colour and opacity are for. **`.wiz-chips .chip.is-locked`** is a constraint the machine has, so it takes the disabled idiom the app now owns.
 
-Everything still dashed is genuinely one of the four: `.tv-cell.is-blank`, `.tv-cell.is-ghost`, `.example-chip.is-pending`, `.example-card-add`, `.gram-stub`, `.canvas-info-btn.is-invite`, `.wiz-example`, `.pn-body` — a port, derived from the wiring on every rebuild — and StateMate's `.draft-layer`, a machine still being written.
+Everything still dashed is genuinely one of the four: `.tv-cell.is-blank`, `.tv-cell.is-ghost`, `.example-chip.is-pending`, `.example-card-add`, `.gram-stub`, `.canvas-info-btn.is-invite`, `.wiz-example`, `.pn-body` — a port, derived from the wiring on every rebuild — StateMate's `.draft-layer`, a machine still being written, and the Behaviour card's `.bh-cell.is-blank` and `.bh-cell.is-any` — a cell backward reasoning's witness never read, where any symbol will do.
 
 ### Themes
 
@@ -294,7 +307,7 @@ Adding a theme touches two places, documented at the top of [js/themes.js](js/th
 
 ## Tests
 
-`node:test` + `node:assert`, ESM. [tests/harness.js](tests/harness.js) imports the real modules — including each of the machine modules, since the machines' own functions (`simTM`, `testFST`, `decideMachine`) are reached through `context` the way every other export is; [tests/dom-stub.js](tests/dom-stub.js) installs a fake DOM, `localStorage`, `location` and friends on `globalThis` — it must be imported first, which is why it is a separate module (imports are evaluated before any module body).
+`node:test` + `node:assert`, ESM. [tests/harness.js](tests/harness.js) imports the real modules — including each of the machine modules, since the machines' own functions (`simTM`, `testFST`, `decideMachine`) are reached through `context` the way every other export is; [tests/dom-stub.js](tests/dom-stub.js) installs a fake DOM, `localStorage`, `location` and friends on `globalThis` — it must be imported first, which is why it is a separate module (imports are evaluated before any module body). The stub itself lives in [js/headless/dom-stub.js](js/headless/dom-stub.js), because the command line ships it and shipped code does not import from `tests/`; the file in `tests/` re-exports it.
 
 `context` is a flat live view over every module export, plus browser globals proxied in both directions so tests can install fakes (`context.indexedDB = fake`, `context.matchMedia = () => …`). It uses getters rather than copying, because several exports are `let` bindings the app reassigns (`saveState`, `Workspaces`, `R`).
 

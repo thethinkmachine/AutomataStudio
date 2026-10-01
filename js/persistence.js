@@ -6,6 +6,9 @@ import { importJFLAPData, readJFLAPText } from './import-jflap.js';
 import { importStatechartData } from './import-statechart.js';
 import { StatechartError, readStatechart, statechartKindOf } from './interop/statechart.js';
 import { StandardTMError, readStandardTM, standardTMText } from './interop/standard-tm.js';
+import { writeMachineCode } from './interop/smtf.js';
+import { SMTFError, machineCodeText, readMachineCodeText, settleMachineCodeBlocks } from './import-machine-code.js';
+import { liveBlocks } from './blocks.js';
 import { normalizeExercise, validateExercise } from './exercise/model.js';
 import { normalizeLexerDoc } from './lexer/build.js';
 import { closeModal, showOverlay } from './modal.js';
@@ -1205,7 +1208,8 @@ function readDocumentPayload(payload, name) {
 // The one parser, shared by the drop handler, the file input and the host.
 // `opts.filePath` is the file this came from where there is one — a drop and
 // the hidden input have a name and no path — and is what decides whether the
-// document is already open in a tab.
+// document is already open in a tab. `opts.tabName` names the tab it opens in
+// when the canvas is occupied — the library passes the entry's title.
 //
 // Returns whether the document was applied, because the caller has to know
 // before it binds a path to the workspace.
@@ -1220,7 +1224,7 @@ export function applyDocument(payload, name, opts = {}) {
       return false;
     }
 
-    placeOpenedDocument(opts.filePath || null);
+    placeOpenedDocument(opts.filePath || null, opts.tabName);
 
     // JFLAP carries no description of its own, so anything the previous
     // machine had to say goes away with it.
@@ -1228,6 +1232,13 @@ export function applyDocument(payload, name, opts = {}) {
     if (read.kind === 'statechart') { importStatechartData(read.data, read.label); return true; }
 
     loadData(read.data);
+    // A tab read into rather than opened keeps the name it was created with,
+    // which for an untouched tab is "Workspace 1" — so a caller that knows what
+    // the document is called says so, and an untitled tab takes it.
+    if (opts.tabName) {
+      const ws = activeWorkspace();
+      if (ws && /^Workspace \d+$/.test(ws.name || '')) { ws.name = opts.tabName; if (typeof renderTabs === 'function') renderTabs(); }
+    }
     // A saved workspace usually has no `meta`; an example or a StateMate
     // result saved to disk does. Either way the card is retargeted rather
     // than left describing the machine that was just replaced.
@@ -1251,6 +1262,9 @@ export function applyDocument(payload, name, opts = {}) {
 //    a share link     https://…#share=z.… — anywhere in the text, since a
 //                     link pasted from a chat usually has a sentence round it
 //    a saved file     the .automaton JSON itself, fenced in ``` or not
+//    a machine code   fa.01:+AB_BA, or a #m=… link carrying one — the
+//                     standard text format for every machine, see
+//                     js/interop/smtf.js
 //    a Turing machine the standard text format, 1RB1LC_1RC1RB_… — copied from
 //                     bbchallenge, the Busy Beaver wiki or a paper
 //
@@ -1272,6 +1286,10 @@ export function applyPastedText(text) {
   if (json) return Promise.resolve(openPastedJson(json));
   const link = sharePayloadIn(text);
   if (link) return openPastedLink(link);
+  // Before the bare STF string, which is a machine code with no head: a code
+  // with one says more than STF can, so it must not be read as STF.
+  const code = machineCodeText(text);
+  if (code) return Promise.resolve(openMachineCode(code, 'pasted'));
   const src = standardTMText(text);
   if (src) return Promise.resolve(openPastedTM(src));
   return null;
@@ -1366,6 +1384,27 @@ function openPastedTM(src) {
   showExampleCard(data.meta);
   const halts = data.accepts.length ? '' : ' (it never halts)';
   showStatus(`Pasted a ${data.title}${halts} — run it on the empty word`);
+  return true;
+}
+
+// A machine code, pasted or arriving as a #m=… link. Read first, placed
+// second: a code with a typo in it names the typo and costs the reader nothing,
+// not even an empty tab.
+function openMachineCode(code, how) {
+  let data;
+  try {
+    data = readMachineCodeText(code);
+  } catch (err) {
+    if (!(err instanceof SMTFError)) throw err;
+    showStatus(`Could not read the machine code: ${err.message}`);
+    return false;
+  }
+  const title = data.meta?.title || '';
+  placeOpenedDocument(null, title || (code.length > 20 ? `${code.slice(0, 18)}…` : code));
+  loadData({ format: WORKSPACE_FORMAT, schema: SCHEMA_VERSION, ...data, notes: [], dividers: [] });
+  settleMachineCodeBlocks();
+  showExampleCard(data.meta || null);
+  showStatus(`Opened ${title ? `“${title}”` : 'the machine'} from ${how === 'link' ? 'its link' : 'the pasted code'}`);
   return true;
 }
 
@@ -1522,13 +1561,60 @@ export function copyShareableLink() {
   copyLinkToClipboard(getShareableLink(), 'Shareable link copied to clipboard!');
 }
 
+// ── The machine, as a line of text ────────────────────────────────
+// The share link above carries the whole *workspace* — layout, notes, the
+// card, an exercise — and is the right thing to send when the drawing matters.
+// A machine code carries the machine and nothing else, so it is short, it is
+// the same whoever drew it and however, and it can be pasted into a paper or a
+// chat as text. The two are complements rather than rivals: neither can say
+// what the other says. See js/interop/smtf.js.
+export const MACHINE_HASH_PREFIX = '#m=';
+
+/** The canvas's machine as `{ code, warnings }`, or null (with the reason shown). */
+export function machineCodeOfCanvas({ labels = true } = {}) {
+  if (!(App.states || []).length) { showStatus('Nothing to copy — the canvas is empty'); return null; }
+  try {
+    return writeMachineCode({
+      machine: App.machine,
+      sigma: [...App.sigma], stackAlpha: [...App.stackAlpha], outputAlpha: [...App.outputAlpha],
+      tapeCount: App.tapeCount,
+      states: App.states, transitions: App.transitions,
+      startId: App.startId, accepts: [...App.accepts],
+      blocks: liveBlocks(),
+      config: App.config, meta: App.meta
+    }, { sym: App.config.sym, labels });
+  } catch (err) {
+    if (!(err instanceof SMTFError)) throw err;
+    showStatus(`Could not write a machine code: ${err.message}`);
+    return null;
+  }
+}
+
+function copiedMessage(what, { warnings }) {
+  if (!warnings.length) return `${what} copied to clipboard`;
+  const n = warnings.length;
+  return `${what} copied — ${n} block${n > 1 ? 's' : ''} written flat. ${warnings[0]}`;
+}
+
+export function copyMachineCode() {
+  const r = machineCodeOfCanvas();
+  if (r) copyLinkToClipboard(Promise.resolve(r.code), copiedMessage('Machine code', r), 'Copy this machine code:');
+}
+
+export function copyMachineLink() {
+  const r = machineCodeOfCanvas();
+  if (!r) return;
+  const url = `${location.origin}${location.pathname}${MACHINE_HASH_PREFIX}${r.code}`;
+  copyLinkToClipboard(Promise.resolve(url), copiedMessage('Machine link', r));
+}
+
 // `link` is a promise of the URL, not the URL: the caller starts building it
 // inside the click, and this is what keeps the clipboard grant open until it
 // is ready. Shared with the exercise dialog, which copies a link to a document
 // that is not the one on screen.
-export function copyLinkToClipboard(link, okMsg) {
+export function copyLinkToClipboard(link, okMsg, promptLabel = 'Copy this link:') {
   const onCopied = () => showStatus(okMsg);
-  const onFailed = () => link.then(url => window.prompt('Copy this link:', url), () => {});
+  const onFailed = () => link.then(url => window.prompt(promptLabel, url), () => {});
   const viaText = () => {
     if (!navigator.clipboard || !navigator.clipboard.writeText) return onFailed();
     link.then(url => navigator.clipboard.writeText(url)).then(onCopied, onFailed);
@@ -1553,6 +1639,15 @@ export function copyLinkToClipboard(link, okMsg) {
 // Reads a #share=… link on page load and swaps it into the current workspace,
 // the same way dropping a JSON/PNG file does.
 export async function loadSharedLinkFromURL() {
+  // A machine link opens like a pasted code: in a tab of its own when the one
+  // restored at boot is occupied, rather than over it.
+  if (location.hash.startsWith(MACHINE_HASH_PREFIX)) {
+    const code = location.hash.slice(MACHINE_HASH_PREFIX.length);
+    history.replaceState(null, '', location.pathname + location.search);
+    const ok = openMachineCode(code, 'link');
+    if (ok) saveBackup();
+    return ok;
+  }
   if (!location.hash.startsWith(SHARE_HASH_PREFIX)) return false;
   const encoded = location.hash.slice(SHARE_HASH_PREFIX.length);
   // Strip the hash immediately so refreshing later doesn't re-import stale data

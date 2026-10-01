@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-// The two tabbed dialogs -- Engine Settings and Keyboard Shortcuts -- share one
+// The two tabbed dialogs -- Settings and Keyboard Shortcuts -- share one
 // switcher (switchModalTab in js/ui.js), which pairs a tab with its panel by
 // string: the tab id inside the onclick becomes `<prefix><id>` and that is
 // looked up with getElementById. Nothing checks that the pair exists. Rename a
@@ -19,7 +19,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
 
 const DIALOGS = [
-  { name: 'Engine Settings', rail: 'settings-tabs', handler: 'switchSettingsTab', prefix: 'tab-' },
+  { name: 'Settings', rail: 'settings-tabs', handler: 'switchSettingsTab', prefix: 'tab-' },
   { name: 'Keyboard Shortcuts', rail: 'help-tabs', handler: 'switchHelpTab', prefix: 'help-tab-' },
 ];
 

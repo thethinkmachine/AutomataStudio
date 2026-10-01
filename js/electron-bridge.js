@@ -1,3 +1,4 @@
+import { requestLibrary } from './library/requests.js';
 import { copySelection, exportPNG, selectAllStates } from './canvas.js';
 import { redo, undo } from './history.js';
 import { closeModal, isModalOpen, registerModal, showOverlay } from './modal.js';
@@ -57,6 +58,10 @@ if (isElectron) {
   // workspaces — and the restore then overwrote it. See THE BOOT GATE in
   // js/persistence.js.
   window.electronAPI.onOpenFile(doc => { openExternalDocument(doc); });
+
+  // An automata-studio:// link — a website's "Open in the desktop app". Queued
+  // until the boot has restored the workspaces, for the reason files are.
+  window.electronAPI.onLibraryUrl?.(url => { requestLibrary(url); });
 
   // Custom titlebar: the window is frameless (electron/main.js), so these
   // buttons in the header are the only way to minimize/maximize/close.
