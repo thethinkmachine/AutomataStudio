@@ -193,6 +193,8 @@ Node internals are reached through `node.__parts` (`circle`, `label`, `ring`, `s
 
 `setView()` in [js/view.js](js/view.js) is the single entry point. The build view (canvas) is always mounted; `algo`, `grammar`, `reference` and `library` render as overlays on top of it, so canvas geometry stays measurable. Algorithms call `setView('build')` to reveal a result.
 
+The four share one window (`#aux-overlay`), and its bar is a **tab strip across them**, built by `ensureAuxChrome()` from `AUX_META` on first open — so a view is renamed or re-iconed in one place, and none of the bar's controls are in `bridge.js`. Library comes first. `AUX_VIEWS` is the order of the strip, the More menu and the shortcut digits alike — `auxViewKey()` derives the digit from the position (Build is 1), so reordering is one edit. Each view keeps its place when closed, which is why the bar has a close button and no minimize. Maximize is a per-reader preference (`automata-aux-max`), desktop only. The rails share one width, `--aux-rail-w`, set by the window rather than per view: once the views sit a click apart, a rail edge that moves between them is visible. `#aux-ctx` names the canvas machine while Algorithms is open, because that is the view that reads it. [tests/aux-window.test.js](tests/aux-window.test.js) pins the strip, the arrow keys, maximize and the chip.
+
 ### Reference
 
 The third aux view is the reference. Rendering is [js/reference.js](js/reference.js); content is data, split across two registries that share one page shape and one renderer:

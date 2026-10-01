@@ -118,65 +118,147 @@
   }
 }
 
-/* ── Shared modal chrome ── */
+/* ── Shared window chrome ──
+   One row: the four views as tabs, then what belongs to the window rather
+   than to a view — the machine an algorithm will read, maximize, close. The
+   title and subtitle that used to sit here repeated the tab a reader had just
+   picked; the title survives as the dialog's accessible name and the subtitle
+   as each tab's tooltip.
+
+   A tab is cut out of the bar the way the sidebar tabs are cut out of the
+   panel header (see css/panels.css): the selected one takes the body's own
+   --bg2 and covers the bar's rule beneath it, so the tab and the view it
+   names meet with nothing between them. */
 .aux-overlay-bar {
   display: flex;
-  align-items: center;
-  gap: 13px;
-  padding: 15px 14px 15px 20px;
+  align-items: flex-end;
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 8px 0 10px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  user-select: none;
 }
 
-.aux-overlay-icon {
+.aux-tabs {
   display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.aux-tabs::-webkit-scrollbar { display: none; }
+
+.aux-tab {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
-  border-radius: 9px;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-border);
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  margin-bottom: -1px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 9px 9px 0 0;
+  background: transparent;
+  color: var(--text3);
+  font-family: var(--sans);
+  font-size: .8rem;
+  font-weight: 500;
+  letter-spacing: -.005em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast),
+              border-color var(--transition-fast);
+}
+
+.aux-tab-ico {
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  opacity: .75;
+  transition: opacity var(--transition-fast);
+}
+
+.aux-tab-ico svg { width: 100%; height: 100%; }
+
+.aux-tab:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg2) 55%, transparent);
+}
+
+.aux-tab:hover .aux-tab-ico { opacity: 1; }
+
+/* The accent rides the top edge, because the bottom edge is the seam. */
+.aux-tab.active {
+  color: var(--text);
+  background: var(--bg2);
+  border-color: var(--border);
+  height: 37px;
+}
+
+.aux-tab.active::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 10px;
+  right: 10px;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: var(--accent);
+}
+
+.aux-tab.active .aux-tab-ico {
+  opacity: 1;
   color: var(--accent);
 }
 
-.aux-overlay-icon svg {
-  width: 17px;
-  height: 17px;
+.aux-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
 }
 
-.aux-overlay-heading {
-  flex: 1;
-  min-width: 0;
+/* Sits on the tabs' centre line, not the bar's: the tabs hang from the
+   bottom edge, so centring on the bar would float these above the labels. */
+.aux-bar-end {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  margin-bottom: 4px;
+  flex-shrink: 0;
 }
 
-.aux-overlay-title {
-  font-family: var(--sans);
-  font-size: 1.02rem;
-  font-weight: 600;
-  letter-spacing: -.01em;
-  color: var(--text);
-  line-height: 1.25;
-}
-
-.aux-overlay-sub {
+/* The machine the Algorithms view reads off the canvas. */
+.aux-ctx {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 8px;
+  padding: 3px 10px 3px 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg2);
   font-family: var(--mono);
-  font-size: .67rem;
-  color: var(--text3);
-  margin-top: 2px;
+  font-size: .66rem;
+  color: var(--text2);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.aux-overlay-close {
+.aux-ctx[hidden] { display: none; }
+
+.aux-ctx .badge { margin: 0; }
+
+.aux-bar-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
   padding: 0;
   border: 1px solid transparent;
@@ -188,20 +270,43 @@
               border-color var(--transition-fast);
 }
 
-.aux-overlay-close svg {
+.aux-bar-btn svg {
   width: 15px;
   height: 15px;
 }
 
-.aux-overlay-close:hover {
-  background: var(--red-soft);
-  border-color: var(--red-border);
-  color: var(--red);
+/* Neutral, not red: closing is "back to the canvas", and every view keeps its
+   place. Red is what the app says before it throws something away. */
+.aux-bar-btn:hover {
+  background: var(--bg2);
+  border-color: var(--border);
+  color: var(--text);
 }
 
-.aux-overlay-close:focus-visible {
+.aux-bar-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+.aux-max-ico-shrink,
+.aux-overlay.is-max .aux-max-ico-grow { display: none; }
+.aux-overlay.is-max .aux-max-ico-shrink { display: block; }
+
+/* Maximized: the window fills the app with a narrow margin, so the canvas
+   still frames it and it still reads as a window on top of something. */
+@media (min-width: 901px) {
+  .aux-overlay.is-max {
+    width: calc(100vw - 24px);
+    height: calc(100vh - 24px);
+    height: calc(100dvh - 24px);
+  }
+}
+
+@media (min-width: 901px) and (prefers-reduced-motion: no-preference) {
+  .aux-overlay {
+    transition: width .24s cubic-bezier(0.22, 1, 0.36, 1),
+                height .24s cubic-bezier(0.22, 1, 0.36, 1);
+  }
 }
 
 .aux-overlay-body {
@@ -239,10 +344,22 @@
 }
 
 /* The nav rails are the modal's inner edge, not the window's — a full-weight
-   border reads as a seam here, so lighten it. */
+   border reads as a seam here, so lighten it.
+
+   One width for all four. They were 200, 208, 190 and 190 — two of them set
+   inline — which was invisible while the only way between views was to close
+   the window, and is a rail edge jumping under the pointer now that the tabs
+   sit one click apart. Below 900px the rails become sheets and size
+   themselves (css/mobile.css). */
+.aux-overlay {
+  --aux-rail-w: 212px;
+}
+
 .aux-overlay .algo-nav,
 .aux-overlay .gram-nav,
 .aux-overlay .ref-nav {
+  width: var(--aux-rail-w);
+  min-width: var(--aux-rail-w);
   border-right: 1px solid var(--border);
 }
 
@@ -286,17 +403,27 @@
   }
 
   .aux-overlay-bar {
-    padding: 11px 10px 11px 14px;
-    gap: 10px;
+    padding: 0 6px 0 6px;
+    gap: 6px;
   }
 
-  .aux-overlay-icon {
-    width: 30px;
-    height: 30px;
+  /* A phone has room for four icons, not four names. The tooltip and the
+     accessible name still carry the name. */
+  .aux-tab {
+    padding: 0 12px;
   }
 
-  .aux-overlay-title {
-    font-size: .92rem;
+  .aux-tab-label {
+    display: none;
+  }
+
+  .aux-tab.active .aux-tab-label {
+    display: inline;
+  }
+
+  .aux-ctx,
+  .aux-max-btn {
+    display: none !important;
   }
 
   /* The modal is a fixed-height box, so its contents scroll inside it rather
@@ -3548,13 +3675,15 @@ body.aux-open .canvas-aurora > i {
   color: var(--accent);
 }
 
+/* One group heading for all four rails — this, .gram-nav-group and
+   .ref-nav-group draw the same thing and must keep agreeing. */
 .algo-grp {
   font-family: var(--mono);
   font-size: .58rem;
-  letter-spacing: .12em;
+  letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--text3);
-  padding: 10px 16px 4px;
+  padding: 14px 16px 4px;
 }
 
 .algo-content {
@@ -5018,7 +5147,7 @@ body.aux-open .canvas-aurora > i {
   letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--text3);
-  padding: 14px 14px 4px;
+  padding: 14px 16px 4px;
 }
 
 .gram-nav-link {
@@ -5295,19 +5424,24 @@ body.aux-open .canvas-aurora > i {
   letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--text3);
-  padding: 14px 14px 4px;
+  padding: 14px 16px 4px;
 }
 
+/* The same row as .algo-item and .gram-nav-link. It was the last rail set in
+   mono, so the Reference and Library rails read as a different component from
+   the two beside them in the tab strip. "Queue Automaton" and "Browse &
+   search" are words, which is what --sans is for. */
 .ref-nav-link {
   display: block;
-  font-family: var(--mono);
-  font-size: .72rem;
+  font-family: var(--sans);
+  font-size: .76rem;
   color: var(--text2);
   padding: 6px 14px 6px 16px;
   cursor: pointer;
   text-decoration: none;
   border-left: 2px solid transparent;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast),
+              border-color var(--transition-fast);
 }
 
 .ref-nav-link:hover {
@@ -5748,4 +5882,19 @@ body.aux-open .canvas-aurora > i {
    when the first is hidden the copy button takes the push back. */
 .tracker-st-btn:not([hidden]) + .tracker-copy-btn {
   margin-left: 2px;
+}
+
+/* An algorithm with nothing on the canvas to read. */
+.algo-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-family: var(--sans);
+  font-size: .8rem;
+  color: var(--text2);
+}
+
+.algo-empty-btn {
+  flex-shrink: 0;
 }

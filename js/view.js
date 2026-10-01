@@ -32,7 +32,15 @@ import { syncBlocksSection } from './blocks-ui.js';
 //  `setView('build')` calls that algorithms make to reveal their result on the
 //  canvas keep working — they now dismiss the overlay instead of swapping a
 //  pane.
-export const AUX_VIEWS = ['algo', 'grammar', 'reference', 'library'];
+// Their order is the tab strip's, the More menu's and the digits': Library
+// first, then the tools. The digits follow from the order (Build is 1, so the
+// first view is 2) rather than being a second list to keep in step with it.
+export const AUX_VIEWS = ['library', 'algo', 'grammar', 'reference'];
+
+export function auxViewKey(v) {
+  const i = AUX_VIEWS.indexOf(v);
+  return i < 0 ? null : String(i + 2);
+}
 
 // Identity for the shared modal chrome. The subtitle names what the view
 // actually operates on, which is otherwise only discoverable by reading it.
@@ -53,21 +61,143 @@ export const AUX_META = {
     icon: '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M231.65,194.55,198.46,36.75a16,16,0,0,0-19-12.39L132.65,34.42a16.08,16.08,0,0,0-12.3,19l33.19,157.8A16,16,0,0,0,169.16,224a16.25,16.25,0,0,0,3.38-.36l46.81-10.06A16.09,16.09,0,0,0,231.65,194.55ZM136,50.15c0-.06,0-.09,0-.09l46.8-10,3.33,15.87L139.33,66Zm6.62,31.47,46.82-10.05,3.34,15.9L146,97.53Zm6.64,31.57,46.82-10.06,13.3,63.24-46.82,10.06ZM216,197.94l-46.8,10-3.33-15.87L212.67,182,216,197.85C216,197.91,216,197.94,216,197.94ZM104,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V48A16,16,0,0,0,104,32ZM56,48h48V64H56Zm0,32h48v96H56Zm48,128H56V192h48v16Z"/></svg>'
   },
   reference: {
-    title: 'Automata Reference',
+    title: 'Reference',
     sub: 'Every machine this app can build, defined and explained',
     icon: '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M251.76,88.94l-120-64a8,8,0,0,0-7.52,0l-120,64a8,8,0,0,0,0,14.12L32,117.87v48.42a15.91,15.91,0,0,0,4.06,10.65C49.16,191.53,78.51,216,128,216a130,130,0,0,0,48-8.76V240a8,8,0,0,0,16,0V199.51a115.63,115.63,0,0,0,27.94-22.57A15.91,15.91,0,0,0,224,166.29V117.87l27.76-14.81a8,8,0,0,0,0-14.12ZM128,168a8,8,0,1,1,8-8A8,8,0,0,1,128,168Zm80-1.71c-12.36,13.65-38.65,33.71-80,33.71s-67.64-20.06-80-33.71V126.4l76.24,40.66a8,8,0,0,0,7.52,0L208,126.4Zm-80-15.16L25,96l103-54.94L231,96Z"/></svg>'
   }
 };
 
+// The tabs, found through the strip rather than by id: the strip is what the
+// bar owns, and its children are exactly the tabs it built.
+function auxTabs() {
+  const strip = $('aux-tabs');
+  return strip ? Array.from(strip.children || []).filter(el => el.dataset && el.dataset.auxView) : [];
+}
+
+// The bar is built once, on first open, from AUX_META — so a view's name, its
+// icon and its tooltip are written in one place. Nothing in it carries an on*
+// attribute, which is why none of it is in bridge.js.
+function ensureAuxChrome() {
+  const strip = $('aux-tabs');
+  if (!strip || strip.dataset.built === '1') return;
+  strip.dataset.built = '1';
+  strip.innerHTML = '';
+  for (const id of AUX_VIEWS) {
+    const meta = AUX_META[id];
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'aux-tab';
+    tab.id = 'aux-tab-' + id;
+    tab.dataset.auxView = id;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', 'v-' + id);
+    tab.setAttribute('aria-selected', 'false');
+    tab.tabIndex = -1;
+    // The subtitle used to sit under the title on every open. It describes the
+    // view rather than anything in it, so it moved to where a reader asks.
+    tab.setAttribute('data-tip', meta.sub);
+    tab.setAttribute('data-tip-kbd', auxViewKey(id));
+    tab.innerHTML = `<span class="aux-tab-ico" aria-hidden="true">${meta.icon}</span><span class="aux-tab-label">${meta.title}</span>`;
+    tab.addEventListener('click', () => { if (App.view !== id) setView(id); });
+    strip.appendChild(tab);
+    const panel = $('v-' + id);
+    if (panel) {
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', tab.id);
+    }
+  }
+  // Arrow keys move along the strip and open what they land on: each view
+  // keeps its place, so arriving at one costs nothing to leave again.
+  strip.addEventListener('keydown', e => {
+    const i = AUX_VIEWS.indexOf(App.view);
+    if (i < 0) return;
+    let next = null;
+    if (e.key === 'ArrowRight') next = AUX_VIEWS[(i + 1) % AUX_VIEWS.length];
+    else if (e.key === 'ArrowLeft') next = AUX_VIEWS[(i + AUX_VIEWS.length - 1) % AUX_VIEWS.length];
+    else if (e.key === 'Home') next = AUX_VIEWS[0];
+    else if (e.key === 'End') next = AUX_VIEWS[AUX_VIEWS.length - 1];
+    if (!next) return;
+    e.preventDefault();
+    setView(next);
+    const tab = auxTabs().find(t => t.dataset.auxView === next);
+    if (tab && tab.focus) tab.focus();
+  });
+
+  const max = $('aux-max-btn');
+  if (max) max.addEventListener('click', () => setAuxMaximized(!auxMaximized));
+  // Double-clicking a window's title bar maximizes it everywhere else on the
+  // desktop; the empty part of this bar is the same gesture.
+  const bar = $('aux-overlay-bar');
+  if (bar) bar.addEventListener('dblclick', e => {
+    if (e.target.closest && e.target.closest('button, a, input, .aux-ctx')) return;
+    setAuxMaximized(!auxMaximized);
+  });
+  syncAuxMaximized();
+}
+
+// ── Maximize ──
+//  A per-reader preference, like the theme: the size someone reads the
+//  Reference at is about their screen, not about the machine.
+const AUX_MAX_KEY = 'automata-aux-max';
+let auxMaximized = (() => {
+  try { return localStorage.getItem(AUX_MAX_KEY) === '1'; } catch (e) { return false; }
+})();
+
+export function setAuxMaximized(on) {
+  auxMaximized = !!on;
+  try { localStorage.setItem(AUX_MAX_KEY, auxMaximized ? '1' : '0'); } catch (e) { }
+  syncAuxMaximized();
+}
+
+function syncAuxMaximized() {
+  const shell = $('aux-overlay');
+  if (shell) shell.classList.toggle('is-max', auxMaximized);
+  const btn = $('aux-max-btn');
+  if (!btn) return;
+  // One name, state in aria-pressed; only the tooltip says what a click does.
+  btn.setAttribute('aria-pressed', auxMaximized ? 'true' : 'false');
+  btn.setAttribute('data-tip', auxMaximized ? 'Restore size' : 'Maximize');
+}
+
+// ── The machine an algorithm will run on ──
+//  Algorithms read the canvas, which the window covers. The chip names that
+//  input, so the reader does not have to close the window to find out what a
+//  construction is about to be applied to.
+function syncAuxContext() {
+  const ctx = $('aux-ctx');
+  if (!ctx) return;
+  if (App.view !== 'algo') { ctx.hidden = true; return; }
+  const cfg = getMachineConfig(App.machine) || {};
+  const n = App.states.length;
+  const m = App.transitions.length;
+  ctx.hidden = false;
+  ctx.innerHTML = '';
+  const badge = document.createElement('span');
+  badge.className = `badge ${cfg.badge || ''}`;
+  badge.textContent = cfg.label || App.machine;
+  const count = document.createElement('span');
+  count.className = 'aux-ctx-count';
+  count.textContent = n
+    ? `${n} state${n === 1 ? '' : 's'} · ${m} transition${m === 1 ? '' : 's'}`
+    : 'empty canvas';
+  ctx.append(badge, count);
+  ctx.setAttribute('data-tip', 'The machine on the canvas — what these algorithms run on');
+}
+subscribe(Change.GRAPH, syncAuxContext);
+
 // Populates the shared modal chrome for the given aux view.
 export function applyAuxChrome(v) {
+  ensureAuxChrome();
   const meta = AUX_META[v];
   const title = $('aux-overlay-title');
-  const sub = $('aux-overlay-sub');
-  const icon = $('aux-overlay-icon');
   if (title) title.textContent = meta ? meta.title : '';
-  if (sub) sub.textContent = meta ? meta.sub : '';
-  if (icon) icon.innerHTML = meta ? meta.icon : '';
+  auxTabs().forEach(tab => {
+    const on = tab.dataset.auxView === v;
+    tab.classList.toggle('active', on);
+    tab.setAttribute('aria-selected', on ? 'true' : 'false');
+    tab.tabIndex = on ? 0 : -1;
+  });
+  syncAuxContext();
 }
 
 export function setView(v) {

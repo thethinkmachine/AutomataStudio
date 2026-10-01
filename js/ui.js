@@ -36,7 +36,7 @@ import {
 import { Change, emit, subscribe } from './store.js';
 import { DEFAULT_THEME, Themes } from './themes.js';
 import { clearAll, escapeHtml, showStatus } from './utils.js';
-import { AUX_VIEWS, applyMachineSwitch, closeAuxView, hideMoreMenu, setMachine, setView, syncTapeCountUI } from './view.js';
+import { AUX_VIEWS, applyMachineSwitch, auxViewKey, closeAuxView, hideMoreMenu, setMachine, setView, syncTapeCountUI } from './view.js';
 import { initMobileShell, syncMobileBar, syncMobileTools, syncMobileWorkspaceButton } from './mobile.js';
 
 subscribe(Change.TABS, renderTabs);
@@ -1246,12 +1246,13 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     utmToggleAuto();
   }
-  // 1 returns to the canvas (closing any auxiliary view); 2-5 open one.
+  // 1 returns to the canvas (closing any auxiliary view); 2 onward open one,
+  // in the order the tab strip draws them (see auxViewKey in view.js).
   if (e.key === '1') setView('build');
-  if (e.key === '2') setView('algo');
-  if (e.key === '3') setView('grammar');
-  if (e.key === '4') setView('reference');
-  if (e.key === '5') setView('library');
+  else {
+    const aux = AUX_VIEWS.find(v => auxViewKey(v) === e.key);
+    if (aux) setView(aux);
+  }
 });
 
 export function syncThemeExportPalette(theme) {
