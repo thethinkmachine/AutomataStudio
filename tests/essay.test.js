@@ -250,6 +250,17 @@ test('the writing guide documents everything the renderer accepts, and its real 
   assert.ok(/2,000 unless you say/.test(GUIDE) && /\(420; 160 to 900\)/.test(GUIDE), 'the defaults it states are the defaults');
 });
 
+test('the writing guide renders the same with Windows line endings', () => {
+  // A Windows checkout gives the guide CRLF, and the example fences have to be
+  // found anyway — the desktop app's Windows build is made from one.
+  const crlf = GUIDE.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
+  const lf = GUIDE.replace(/\r\n/g, '\n');
+  const a = renderGuide(crlf, { figure: guideFigure }), b = renderGuide(lf, { figure: guideFigure });
+  assert.ok(b.examples >= 12);
+  assert.equal(a.examples, b.examples);
+  assert.equal(a.html, b.html);
+});
+
 test('a #heading link reaches the heading, whatever the ids are prefixed with', () => {
   const { html } = renderArticle('## Far below\n\nSee [it](#far-below).', { idPrefix: 'lib-essay-' });
   assert.match(html, /id="lib-essay-far-below"/);

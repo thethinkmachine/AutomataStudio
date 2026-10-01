@@ -54,7 +54,11 @@ export function renderGuide(md, { index = null, figure = () => null, link = null
   const fact = essayFacts(idx, sample);
   const linkTo = link || (id => (essayLinkTarget(idx, id) ? `#${id}` : null));
   const sources = [];
-  const withSlots = String(md || '').replace(EXAMPLE_RE, (_, _fence, body) => {
+  // Line endings first: a Windows checkout (core.autocrlf, and the Windows
+  // runner that builds the desktop app) gives the guide CRLF, and EXAMPLE_RE's
+  // `\n` after the fence then matches nothing — the guide renders with no
+  // examples at all.
+  const withSlots = String(md || '').replace(/\r\n?/g, '\n').replace(EXAMPLE_RE, (_, _fence, body) => {
     sources.push(body);
     return `::: example ${sources.length - 1}\n:::`;
   });
