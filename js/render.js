@@ -17,7 +17,8 @@ import { allBlocks, syncBlocksSection } from './blocks-ui.js';
 import { thumbBounds, thumbEdgePairs, thumbEdgePath, thumbEdgeSegments, thumbSubpath, thumbFit, thumbNodeRadius } from './graph-thumb.js';
 import { enterBlockScope } from './scope.js';
 import { blockAncestry } from './blocks.js';
-import { edgeTipFor, getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
+import { openEdgeLabelEditor } from './edge-label-editor.js';
+import { edgeTipFor, getState, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
 import { Change, changed, emit, subscribe } from './store.js';
 import { createMemo, reactiveRoot } from './reactive.js';
 import { followCanvas } from './draft-layer.js';
@@ -374,79 +375,164 @@ function createEdgeNode(key) {
   edgeGrp.__labelKey = null;
 
   edgeGrp.addEventListener('pointerdown', e => {
-    if (e.button !== 0) return;
-    if (App.spacePan) return;
-    e.stopPropagation();
-    edgeGrp.dataset.lastPointerType = e.pointerType || 'mouse';
-    const info = edgeGroupFor(key);
-    if (!info) return;
-    const { from, to, ts, grp } = info;
-    if (App.tool === 'del') {
-      snapshot();
-      const ids = new Set(ts.map(t => t.id));
-      App.transitions = App.transitions.filter(t => !ids.has(t.id));
-      emit(Change.GRAPH);
-      return;
-    }
-    if (App.tool === 'pointer') {
-      const isSel = isEdgeSelected(ts);
-      const multi = e.shiftKey || e.ctrlKey || e.metaKey;
-      // Focus moved to an edge — the highlighted state is no longer the thing
-      // being read, so its lit edges would just be stale clutter.
-      if (typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
-      if (!multi && !isSel) {
-        // An edge is an object like any other: taking it drops whatever else
-        // was selected, notes and dividers included.
-        clearSelection();
-        ts.forEach(t => App.selectedTransitions.add(t.id));
-        edgeGrp.classList.add('sel-t');
-      } else if (multi) {
-        if (isSel) {
-          ts.forEach(t => App.selectedTransitions.delete(t.id));
-          edgeGrp.classList.remove('sel-t');
-          return;
-        }
-        ts.forEach(t => App.selectedTransitions.add(t.id));
-        edgeGrp.classList.add('sel-t');
-      }
-      // A touch tap selects an edge. Only the explicit curve handle starts a
-      // bend gesture; this avoids turning an ordinary tap into a drag.
-      if (from.id !== to.id && e.pointerType !== 'touch') {
-        App.dragCurve = { grp, from, to };
-        try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
-      }
-    }
+    if (edgeDoublePress(e, edgeGrp)) { openEdgeLabelEditor(key); return; }
+    onEdgeDown(e, key, edgeGrp);
   });
+  edgeGrp.addEventListener('contextmenu', e => onEdgeContextMenu(e, key, edgeGrp));
 
-  edgeGrp.addEventListener('dblclick', e => {
-    if (App.tool !== 'pointer') return;
-    if (edgeGrp.dataset.lastPointerType === 'touch') return;
-    e.stopPropagation();
-    const info = edgeGroupFor(key);
-    if (info) openTransModal(info.from.id, info.to.id);
-  });
+  // The label is the edge's too. It sits in its own layer, so it is given the
+  // edge's listeners rather than inheriting them, and a press on it selects the
+  // edge — the second of two edits the row under the pointer. It is
+  // hit-testable only with the Select tool (css/canvas.css), so with every
+  // other tool a press still reaches whatever lies beneath it.
+  //
+  // It never starts a bend. The bend sets the curve to wherever the pointer
+  // is, and the label sits off the line: a press on it would snap the edge
+  // over to the label on the first pixel of jitter, re-place the label, and
+  // move it out from under the second click of the double-click.
+  for (const lbl of [textEl, pillEl]) {
+    lbl.addEventListener('pointerdown', e => {
+      if (edgeDoublePress(e, edgeGrp)) { openEdgeLabelEditor(key, labelHitAt(lbl, e)); return; }
+      onEdgeDown(e, key, edgeGrp, { bend: false });
+    });
+    lbl.addEventListener('contextmenu', e => onEdgeContextMenu(e, key, edgeGrp));
+  }
 
-  edgeGrp.addEventListener('contextmenu', e => {
-    e.preventDefault();
-    e.stopPropagation();
-    const info = edgeGroupFor(key);
-    if (!info) return;
-    const { from, to, ts } = info;
-    App.ctxId = null;
-    App.ctxMode = 'edge';
-    App.ctxEdge = { from: from.id, to: to.id, transitionIds: ts.map(t => t.id), primaryId: ts[0]?.id || null };
-    // If this edge is already part of a larger selection (e.g. built with
-    // ctrl+click across states and edges), keep it intact — right-clicking
-    // shouldn't collapse a combo selection down to just this one edge.
-    if (!isEdgeSelected(ts)) {
+  return edgeGrp;
+}
+
+// A press on an edge or its label. Resolved by key at event time, like every
+// listener here — see edgeGroupFor.
+function onEdgeDown(e, key, edgeGrp, { bend = true } = {}) {
+  if (e.button !== 0) return;
+  if (App.spacePan) return;
+  e.stopPropagation();
+  edgeGrp.dataset.lastPointerType = e.pointerType || 'mouse';
+  const info = edgeGroupFor(key);
+  if (!info) return;
+  const { from, to, ts, grp } = info;
+  if (App.tool === 'del') {
+    snapshot();
+    const ids = new Set(ts.map(t => t.id));
+    App.transitions = App.transitions.filter(t => !ids.has(t.id));
+    emit(Change.GRAPH);
+    return;
+  }
+  if (App.tool === 'pointer') {
+    const isSel = isEdgeSelected(ts);
+    const multi = e.shiftKey || e.ctrlKey || e.metaKey;
+    // Focus moved to an edge — the highlighted state is no longer the thing
+    // being read, so its lit edges would just be stale clutter.
+    if (typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
+    if (!multi && !isSel) {
+      // An edge is an object like any other: taking it drops whatever else
+      // was selected, notes and dividers included.
       clearSelection();
       ts.forEach(t => App.selectedTransitions.add(t.id));
       edgeGrp.classList.add('sel-t');
+    } else if (multi) {
+      if (isSel) {
+        ts.forEach(t => App.selectedTransitions.delete(t.id));
+        edgeGrp.classList.remove('sel-t');
+        return;
+      }
+      ts.forEach(t => App.selectedTransitions.add(t.id));
+      edgeGrp.classList.add('sel-t');
     }
-    showContextMenu('edge', e.clientX, e.clientY);
-  });
+    // A touch tap selects an edge. Only the explicit curve handle starts a
+    // bend gesture; this avoids turning an ordinary tap into a drag.
+    if (bend && from.id !== to.id && e.pointerType !== 'touch') {
+      App.dragCurve = { grp, from, to };
+      try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
+    }
+  }
+}
 
-  return edgeGrp;
+function onEdgeContextMenu(e, key, edgeGrp) {
+  e.preventDefault();
+  e.stopPropagation();
+  const info = edgeGroupFor(key);
+  if (!info) return;
+  const { from, to, ts } = info;
+  App.ctxId = null;
+  App.ctxMode = 'edge';
+  App.ctxEdge = { from: from.id, to: to.id, transitionIds: ts.map(t => t.id), primaryId: ts[0]?.id || null };
+  // If this edge is already part of a larger selection (e.g. built with
+  // ctrl+click across states and edges), keep it intact — right-clicking
+  // shouldn't collapse a combo selection down to just this one edge.
+  if (!isEdgeSelected(ts)) {
+    clearSelection();
+    ts.forEach(t => App.selectedTransitions.add(t.id));
+    edgeGrp.classList.add('sel-t');
+  }
+  showContextMenu('edge', e.clientX, e.clientY);
+}
+
+// Whether this press is the second of a double-click on the edge, counted
+// here for the reason createStateNode counts its own: the first press bends
+// the edge, which ends in `wrap.setPointerCapture`, and a captured pointer
+// retargets the native `dblclick` to #canvas-wrap. The edge's `dblclick`
+// listener only ever ran on a self-loop — the one edge a press does not
+// capture for. The edge and its label share one count, so a press on the line
+// and a press on the label make a double-click on the same edge.
+//
+// Select tool only and unmodified: a modified press is multi-select, and the
+// other tools give a press on an edge meanings of their own.
+function edgeDoublePress(e, edgeGrp) {
+  const now = Date.now();
+  const second = edgeGrp.__lastDownAt && now - edgeGrp.__lastDownAt < DOUBLE_PRESS_MS;
+  edgeGrp.__lastDownAt = second ? 0 : now;
+  const plain = e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey;
+  if (!second || !plain || App.spacePan || App.tool !== 'pointer' || (e.pointerType || 'mouse') === 'touch') return false;
+  // Before the browser moves focus or starts a text selection: the editor is
+  // about to take the focus itself, and the canvas must not clear the
+  // selection underneath it.
+  e.preventDefault();
+  e.stopPropagation();
+  return true;
+}
+
+// Which row of a label the pointer is on, and for a pill, which part. A row is
+// one transition of the edge, in the order the label draws them.
+function labelHitAt(lbl, e) {
+  const target = e.target && typeof e.target.closest === 'function' ? e.target : null;
+  const rowEl = target ? target.closest('[data-row]') : null;
+  if (rowEl) {
+    const pill = target.closest('[data-role]');
+    return {
+      row: Number(rowEl.getAttribute('data-row')) || 0,
+      role: pill ? pill.getAttribute('data-role') : null,
+      // Which pill of the row — on a multi-tape label, which tape.
+      part: pill ? Number(pill.getAttribute('data-part')) || 0 : 0
+    };
+  }
+  // The compact label is hit as one box (pointer-events: bounding-box), so the
+  // row comes from how far down it the press landed.
+  const n = lbl.childNodes.length;
+  if (n > 1 && typeof lbl.getBoundingClientRect === 'function') {
+    const r = lbl.getBoundingClientRect();
+    if (r.height > 0) return { row: Math.max(0, Math.min(n - 1, Math.floor((e.clientY - r.top) / r.height * n))), role: null };
+  }
+  return { row: 0, role: null };
+}
+
+// One row of the compact label: the tspans step by 1.2em at the 11px .tlbl
+// sets in css/canvas.css.
+const TLBL_ROW_PITCH = 13.2;
+
+/**
+ * Where an edge's label is, in diagram coordinates, for something that has to
+ * sit on top of it — the label editor. `drawn` is false when the label is not
+ * painted (zoomed out, or labels off for the machine's size or by choice); the
+ * point is still where it would be. Null when the edge is not on screen.
+ */
+export function edgeLabelAnchor(key) {
+  const geo = lastCtx && lastCtx.geo ? lastCtx.geo.get(key) : null;
+  if (!geo) return null;
+  const node = App.domCache.transitions.get(key);
+  const pills = App.config.edgeLabelStyle === 'pills' || App.config.edgeLabelStyle === 'beginner';
+  const drawn = !!node && (pills ? node.__pillKey : node.__labelKey) != null;
+  return { x: geo.lx, y: geo.ly, pitch: pills ? PILL_ROW_H : TLBL_ROW_PITCH, drawn };
 }
 
 // The curve handle only exists while the edge is selected: a visible grip at the
@@ -551,6 +637,7 @@ function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
     lbls.forEach((lbl, i) => {
       const tspan = makeSVG('tspan');
       tspan.textContent = lbl;
+      tspan.setAttribute('data-row', i);
       tspan.setAttribute('x', geo.lx);
       tspan.setAttribute('dy', i === 0 ? `-${(lbls.length - 1) * 0.6}em` : '1.2em');
       parts.textEl.appendChild(tspan);
@@ -578,10 +665,13 @@ function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
       let x = -total / 2;
       const rowEl = makeSVG('g');
       rowEl.classList.add('edge-pill-row');
+      rowEl.setAttribute('data-row', rowIndex);
       rowEl.setAttribute('transform', `translate(0 ${rowIndex * PILL_ROW_H - (pillRows.length - 1) * PILL_ROW_H / 2})`);
       row.forEach((part, i) => {
         const item = makeSVG('g');
         item.classList.add('edge-pill', `edge-pill-${part.role}`);
+        item.setAttribute('data-role', part.role);
+        item.setAttribute('data-part', i);
         item.setAttribute('transform', `translate(${x} ${-PILL_HEIGHT / 2})`);
         const rect = makeSVG('rect');
         rect.setAttribute('width', widths[i]);

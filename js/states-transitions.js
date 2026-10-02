@@ -107,7 +107,11 @@ export function buildTransitionPicker(transitions, selectedId) {
   return sel;
 }
 
-export function populateTransitionModal(t) {
+/**
+ * The symbols a transition of this machine may read: the dialog's Read menu,
+ * and what the label editor on the canvas accepts typed into the same slot.
+ */
+export function transitionSymbolChoices() {
   const cfg = getMachineConfig(App.machine);
   const { eps, any, blank } = App.config.sym;
   const markers = cfg.hasEndMarkers ? [App.config.sym.leftMarker, App.config.sym.rightMarker] : [];
@@ -118,7 +122,12 @@ export function populateTransitionModal(t) {
   // in the list because the input is written on the tape and reading it back
   // is the commonest rule there is.
   const tapeSyms = cfg.hasTape ? [...App.stackAlpha, blank] : [];
-  const syms = [...new Set([...(cfg.hasEpsilon ? [eps] : []), any, ...App.sigma, ...tapeSyms, ...markers])];
+  return [...new Set([...(cfg.hasEpsilon ? [eps] : []), any, ...App.sigma, ...tapeSyms, ...markers])];
+}
+
+export function populateTransitionModal(t) {
+  const { eps, blank } = App.config.sym;
+  const syms = transitionSymbolChoices();
 
   const fromSel = $('m-from');
   const toSel = $('m-to');
@@ -371,25 +380,46 @@ export function openTransModal(from, to, opts = {}) {
   showOverlay('trans-modal');
 }
 export function confirmTrans() {
+  const result = saveTransition(getTransitionFormValues(), App.transEditId);
+  if (!result.ok && !result.gone) { showStatus(result.error); return; }
+  closeModal('trans-modal');
+  App.transFrom = null; clearTempLine();
+}
+
+/**
+ * Checks a transition against the machine and, if it passes, saves it as one
+ * undoable edit — a new one, or `editId` rewritten in place.
+ *
+ * The dialog and the label editor on the canvas both come through here, so a
+ * rule one of them enforces cannot be missing from the other. Nothing here
+ * reads the DOM: `values` has the shape getTransitionFormValues() returns,
+ * wherever it was read from.
+ *
+ * Returns `{ ok: true, id }`, or `{ ok: false, error }` with a sentence for the
+ * reader. `gone` marks the one failure that is not the reader's: the
+ * transition being edited was deleted while its editor was open.
+ */
+export function saveTransition(values, editId = null) {
   const cfg = getMachineConfig(App.machine);
   const { eps } = App.config.sym;
-  const values = getTransitionFormValues();
   const from = values.from, to = values.to, sym = values.symbol;
-  const editId = App.transEditId;
+  const fail = error => ({ ok: false, error });
+  // First, so a deleted transition is not reported as clashing with itself.
+  if (editId && !getTransition(editId)) return { ok: false, gone: true, error: 'That transition no longer exists.' };
 
   if (!cfg.hasEpsilon && sym === eps) {
-    showStatus(`${App.machine} cannot have epsilon-transitions.`); return;
+    return fail(`${App.machine} cannot have epsilon-transitions.`);
   }
   if (cfg.hasEndMarkers && isBoundarySymbol(sym)) {
     const { leftMarker, rightMarker } = App.config.sym;
     if (sym === leftMarker && values.dir === 'L') {
-      showStatus(`${App.machine} cannot move left of the left boundary marker.`); return;
+      return fail(`${App.machine} cannot move left of the left boundary marker.`);
     }
     if (sym === rightMarker && values.dir === 'R') {
-      showStatus(`${App.machine} cannot move right of the right boundary marker.`); return;
+      return fail(`${App.machine} cannot move right of the right boundary marker.`);
     }
     if (App.machine === 'LBA' && values.write !== sym) {
-      showStatus('LBA boundary markers are fixed and must be preserved on write.'); return;
+      return fail('LBA boundary markers are fixed and must be preserved on write.');
     }
   }
   // Determinism, enforced by the machine's own rule. What counts as a
@@ -401,12 +431,12 @@ export function confirmTrans() {
   const rule = machineDeterminism(App.machine);
   if (rule) {
     const conflict = rule.conflict({ ...values, from, symbol: sym }, editId);
-    if (conflict) { showStatus(rule.say({ ...values, from, symbol: sym }, conflict)); return; }
+    if (conflict) { return fail(rule.say({ ...values, from, symbol: sym }, conflict)); }
   }
   if (isWeightedFA(App.machine)) {
     const w = values.weight;
     if (!Number.isFinite(w) || w < 0 || w > 1) {
-      showStatus('PFA transition probability must be a number between 0 and 1.'); return;
+      return fail('PFA transition probability must be a number between 0 and 1.');
     }
   }
   if (isAnyPDA(App.machine)) {
@@ -416,31 +446,31 @@ export function confirmTrans() {
       // Allow epsilon pops for 7-tuple PDAs although formal definition requires exactly one symbol
     }
     if (values.pop.length > 1 && values.pop !== App.config.sym.any) {
-      showStatus(`${App.machine} pop must be exactly one symbol.`); return;
+      return fail(`${App.machine} pop must be exactly one symbol.`);
     }
     const stackAllowed = new Set([...App.stackAlpha, App.config.sym.stackBottom, App.config.sym.any]);
     if (values.pop !== eps && !stackAllowed.has(values.pop)) {
-      showStatus(`Symbol '${values.pop}' is not in your Stack Alphabet (Γ). Add it in the left panel first.`); return;
+      return fail(`Symbol '${values.pop}' is not in your Stack Alphabet (Γ). Add it in the left panel first.`);
     }
     if (values.push && values.push !== eps && values.push !== App.config.sym.any) {
       const invalidChars = values.push.split('').filter(c => !stackAllowed.has(c));
       if (invalidChars.length > 0) {
-        showStatus(`Push string contains symbols not in Stack Alphabet (Γ): ${invalidChars.join(', ')}. Add them first.`); return;
+        return fail(`Push string contains symbols not in Stack Alphabet (Γ): ${invalidChars.join(', ')}. Add them first.`);
       }
     }
 
     if (isTwoStackPDA(App.machine)) {
       if (!values.pop2 || values.pop2.trim() === '') values.pop2 = eps;
       if (values.pop2.length > 1 && values.pop2 !== App.config.sym.any) {
-        showStatus(`${App.machine} pop₂ must be exactly one symbol.`); return;
+        return fail(`${App.machine} pop₂ must be exactly one symbol.`);
       }
       if (values.pop2 !== eps && !stackAllowed.has(values.pop2)) {
-        showStatus(`Symbol '${values.pop2}' is not in your Stack Alphabet (Γ). Add it in the left panel first.`); return;
+        return fail(`Symbol '${values.pop2}' is not in your Stack Alphabet (Γ). Add it in the left panel first.`);
       }
       if (values.push2 && values.push2 !== eps && values.push2 !== App.config.sym.any) {
         const invalidChars2 = values.push2.split('').filter(c => !stackAllowed.has(c));
         if (invalidChars2.length > 0) {
-          showStatus(`Push₂ string contains symbols not in Stack Alphabet (Γ): ${invalidChars2.join(', ')}. Add them first.`); return;
+          return fail(`Push₂ string contains symbols not in Stack Alphabet (Γ): ${invalidChars2.join(', ')}. Add them first.`);
         }
       }
     }
@@ -450,24 +480,24 @@ export function confirmTrans() {
       const counterSym = [...App.stackAlpha].find(symEl => symEl !== bottom) || '1';
       const counterAllowed = new Set([eps, bottom, counterSym, App.config.sym.any]);
       if (!counterAllowed.has(values.pop)) {
-        showStatus(`Counter Automaton pop must use only '${counterSym}', '${bottom}', '${App.config.sym.any}', or ε.`); return;
+        return fail(`Counter Automaton pop must use only '${counterSym}', '${bottom}', '${App.config.sym.any}', or ε.`);
       }
       if (values.push && values.push !== eps && values.push !== App.config.sym.any) {
         const invalidCounterPush = values.push.split('').filter(c => c !== counterSym && c !== bottom);
         if (invalidCounterPush.length > 0) {
-          showStatus(`Counter Automaton push may only use '${counterSym}' (and optional '${bottom}'). Invalid: ${invalidCounterPush.join(', ')}.`); return;
+          return fail(`Counter Automaton push may only use '${counterSym}' (and optional '${bottom}'). Invalid: ${invalidCounterPush.join(', ')}.`);
         }
       }
       const bottomIssue = counterBottomViolation(values.pop, values.push);
       if (bottomIssue) {
-        showStatus(`Counter Automaton push ${bottomIssue} — '${bottom}' marks zero, so it stays at the bottom.`); return;
+        return fail(`Counter Automaton push ${bottomIssue} — '${bottom}' marks zero, so it stays at the bottom.`);
       }
     }
   }
   snapshot();
+  let savedId = editId;
   if (editId) {
     const t = getTransition(editId);
-    if (!t) { closeModal('trans-modal'); return; }
     t.from = from;
     t.to = to;
     t.symbol = sym;
@@ -544,10 +574,10 @@ export function confirmTrans() {
       t.symbol = values.symbol;
     }
     App.transitions.push(t);
+    savedId = t.id;
   }
-  closeModal('trans-modal');
-  App.transFrom = null; clearTempLine();
   emit(Change.GRAPH);
+  return { ok: true, id: savedId };
 }
 // The Transitions δ list's pencil, and its double-click. It resolves the edge
 // the transition sits on and opens the editor with that transition selected —

@@ -18,6 +18,7 @@ import { scheduleMinimap } from './minimap.js';
 import { fitToScreen, markActiveWorkspaceSaved, visibleCanvasBox } from './ui.js';
 import { showStatus } from './utils.js';
 import { LOD_LABEL_ZOOM } from './viewport.js';
+import { followLabelEditor } from './edge-label-editor.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  CANVAS / CAMERA (ZOOM & PAN)
@@ -291,6 +292,8 @@ export function applyCamera() {
   _pendingFrame = true;
   requestAnimationFrame(() => {
     $('cam-g').setAttribute('transform', `translate(${App.cam.x},${App.cam.y}) scale(${App.cam.z})`);
+    // The label editor is HTML over the canvas, not inside the transform.
+    followLabelEditor();
 
     // The infinite grid. Written onto the grid's own childless element rather
     // than the canvas: custom properties inherit, so on #canvas-wrap every
