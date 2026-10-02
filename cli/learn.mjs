@@ -130,8 +130,10 @@ export function rpni(samples) {
  * order); `equivalent(hyp)` returns null when the hypothesis is right or a
  * counterexample word otherwise. Returns `{ dfa, rounds, queries }` with the
  * DFA as `{ sigma, states, start, delta: number[][], accept: Set }`.
+ * `onRound({ round, states, queries, counterexample })` hears each
+ * hypothesis and the teacher's answer to it (null when it was right).
  */
-export async function lstar(sigma, member, equivalent, { maxStates = 500 } = {}) {
+export async function lstar(sigma, member, equivalent, { maxStates = 500, onRound = null } = {}) {
   const key = w => w.join('\u0001');
   const cache = new Map();
   let queries = 0;
@@ -178,6 +180,7 @@ export async function lstar(sigma, member, equivalent, { maxStates = 500 } = {})
     const hyp = { sigma, states: rowsList.length, start: stateOfRow.get(rowOf([])), delta, accept };
     rounds++;
     const cex = await equivalent(hyp);
+    onRound?.({ round: rounds, states: hyp.states, queries, counterexample: cex });
     if (!cex) return { dfa: hyp, rounds, queries };
     // Maler–Pnueli: every suffix of the counterexample becomes a column.
     for (let i = 0; i <= cex.length; i++) {

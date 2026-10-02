@@ -238,11 +238,19 @@ export function withLayout(doc) {
     columns.get(d).push(s);
   }
   const tallest = Math.max(...[...columns.values()].map(c => c.length));
+  // The columns sit on a shallow arch rather than a straight row. In a row, an
+  // edge between two columns that are not neighbours — every back edge of a
+  // DFA built from a regular expression — runs straight through the states
+  // between them, and reads as an edge of theirs. On a convex curve, the
+  // chord between two states passes clear of every state between them.
+  const span = Math.max(1, maxDepth + (columns.has(maxDepth + 1) ? 1 : 0));
+  const rise = span >= 2 ? Math.min(150, 45 * span) : 0;
+  const arch = d => rise * (1 - ((2 * d) / span - 1) ** 2);
   for (const [d, col] of columns) {
     col.forEach((s, i) => {
       if (Number.isFinite(s.x) && Number.isFinite(s.y)) return;
       s.x = 120 + d * 180;
-      s.y = 120 + (i - (col.length - 1) / 2) * 130 + ((tallest - 1) / 2) * 130;
+      s.y = 120 + rise - arch(d) + (i - (col.length - 1) / 2) * 130 + ((tallest - 1) / 2) * 130;
     });
   }
   return doc;

@@ -253,7 +253,7 @@ export function lintTarget(target) {
     withMachine(target, () => {
       for (const t of target.transitions) {
         const clash = rule.conflict(t, t.id);
-        if (clash) { add('error', 'branches', `${target.machine} branches at ${nm(t.from)} on ${t.symbol ?? '?'}${rule.say ? ` — ${strip(typeof rule.say === 'function' ? rule.say(clash) : rule.say)}` : ''}.`); break; }
+        if (clash) { add('error', 'branches', `${target.machine} branches at ${nm(t.from)} on ${t.symbol ?? '?'}${rule.say ? ` — ${strip(typeof rule.say === 'function' ? rule.say(clash) : rule.say).replace(/.$/, '')}` : ''}.`); break; }
       }
     });
   } else if ((target.machine === 'NFA' || target.machine === 'ε-NFA') && isDeterministicTarget(target)) {

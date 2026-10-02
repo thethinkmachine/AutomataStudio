@@ -443,3 +443,22 @@ test('each symbol keeps one colour, and the blank is the faint one', async () =>
   assert.equal(symbolColour('⊔', alphabet), PALETTE.faint);
   assert.equal(symbolColour('', alphabet), PALETTE.faint);
 });
+
+test('a play frame fits the terminal it is drawn on, so its first line never scrolls away', async () => {
+  // The header is one entry of three lines; counted as one, the history got
+  // two rows more than the screen had and the box's top border scrolled off.
+  const { renderFrame } = await import('../cli/commands/play.mjs');
+  const { traceSteps } = await import('../cli/commands/run.mjs');
+  const { target } = readMachine('examples/cli/add.automaton');
+  const { steps } = traceSteps(target, '0101+11', 500);
+  const run = { steps, cut: false, target, title: 'add', alphabet: ['0', '1', '+'], blank: App.config.sym.blank, eps: App.config.sym.eps, word: [...'0101+11'], joiner: '' };
+  const saved = Object.getOwnPropertyDescriptor(process.stdout, 'rows');
+  for (const rows of [24, 30, 40]) {
+    Object.defineProperty(process.stdout, 'rows', { value: rows, configurable: true });
+    for (const i of [0, 20, steps.length - 1]) {
+      const lines = renderFrame(run, i, { playing: true, fps: 6, history: true, interactive: true }).join('\n').split('\n');
+      assert.ok(lines.length <= rows, `step ${i} on ${rows} rows is ${lines.length} lines`);
+    }
+  }
+  if (saved) Object.defineProperty(process.stdout, 'rows', saved); else delete process.stdout.rows;
+});

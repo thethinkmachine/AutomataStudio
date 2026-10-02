@@ -117,7 +117,10 @@ export function renderFrame(run, i, view) {
 
   // The space-time diagram so far, on absolute cell numbers so it holds still.
   if (view.history && s.tape) {
-    const rows = Math.max(3, (process.stdout.rows || 30) - out.length - 8);
+    // Lines, not entries: the header box is one entry of three lines, and
+    // counting it as one scrolled the box's top border off the screen.
+    const used = out.join('\n').split('\n').length;
+    const rows = Math.max(3, (process.stdout.rows || 30) - used - 8);
     const abs = (s.origin || 0) + (s.head ?? 0);
     const width2 = Math.floor((W - 12) / 2);
     const from = abs - Math.floor(width2 / 2);
@@ -209,7 +212,9 @@ Exit: 0 accept (or a transducer finished), 1 reject, 2 cut short or no verdict.`
     // The screen: the alternate buffer, no cursor, raw keys.
     const view = { playing: !opts.paused, fps, history: !!opts.history, interactive: true };
     let i = 0, timer = null, done = false;
-    const draw = () => process.stdout.write('\x1b[H\x1b[2J' + renderFrame(run, i, view).join('\n') + '\n');
+    // No newline after the last line: a frame that fills the screen exactly
+    // would scroll by one and lose its first line.
+    const draw = () => process.stdout.write('\x1b[H\x1b[2J' + renderFrame(run, i, view).join('\n'));
     const schedule = () => {
       clearTimeout(timer);
       if (!view.playing || done) return;

@@ -1,0 +1,11 @@
+# Turing machines in the standard notation, one per line; # starts a comment.
+# One for each way `automata halts` settles a machine, and one it cannot.
+1RB1LB_1LA1RZ                                # BB(2) champion
+1RB2LA1RA1RA_1LB1LA3RB1RZ                    # BB(2,4) champion
+1RB1LC_1RC1RB_1RD0LE_1LA1LD_1RZ0LA           # BB(5) champion
+0RB0LA_1RC---_0LA1RB                         # repeats a configuration
+0LA1RB_0LA---_1RA0LB                         # repeats one, shifted along the tape
+1RB0RB_0LD---_1RA1LD_1LD0RD                  # no halt is reachable backwards
+0RD1LD_1RA---_1LB0RA_1LC1RD                  # bbchallenge's halting segment
+1RB1LC_0LA0RB_1LA---_------                  # bbchallenge's finite automata reduction
+1RB1RA_0LC1LE_1LD1LC_1LA0LB_1LF1RE_---0RA    # Antihydra: whether it halts is open

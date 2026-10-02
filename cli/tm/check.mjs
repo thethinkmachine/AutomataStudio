@@ -126,7 +126,7 @@ export function checkProof(proof, { classify = null, reprove = null, segment = n
       if (!r.halted && r.step()) return fail(`the machine did not halt within ${ev.steps} steps`);
       const steps = r.t + (m.accept[r.state] ? 0 : 1);
       if (steps !== ev.steps) return fail(`the machine halts after ${steps} steps, not ${ev.steps}`);
-      return pass(`halts after exactly ${ev.steps} steps${m.accept[r.state] ? '' : ', the last reading a missing transition'}`);
+      return pass(`halts after exactly ${Number(ev.steps).toLocaleString('en-US')} steps${m.accept[r.state] ? '' : ', the last reading a missing transition'}`);
     }
     case 'cycler': {
       if (v !== 'never') return fail('a cycler proves non-halting only');
@@ -174,7 +174,8 @@ export function checkProof(proof, { classify = null, reprove = null, segment = n
       const now = windowAt();
       if (now.some((c, i) => c !== first.cells[i])) return fail('the windows behind the head differ');
       if (bumped) return fail('the head was stopped by the wall between the records');
-      return pass(`the ${w + 1} cells behind the head recur ${Math.abs(r.head - first.head)} cells further ${d > 0 ? 'right' : 'left'}, every ${t2 - t1} steps`);
+      const n = (k, noun) => `${k} ${noun}${k === 1 ? '' : 's'}`;
+      return pass(`the ${n(w + 1, 'cell')} behind the head ${w === 0 ? 'recurs' : 'recur'} ${n(Math.abs(r.head - first.head), 'cell')} further ${d > 0 ? 'right' : 'left'}, every ${t2 - t1 === 1 ? 'step' : n(t2 - t1, 'step')}`);
     }
     case 'cps': {
       if (v !== 'never') return fail('a closed position set proves non-halting only');

@@ -182,13 +182,41 @@ export function verdictWord(v) {
   return c.yellow('? unknown');
 }
 
-/** Rows of cells → aligned columns. The last column is not padded. */
-export function table(rows, { head = null, gap = 2 } = {}) {
+/**
+ * Words of `s` in lines of at most `room` visible columns. Colour codes ride
+ * along inside the words they colour; a word longer than a line keeps a line
+ * of its own rather than being cut.
+ */
+function wrapWords(s, room) {
+  const lines = [];
+  let line = '';
+  for (const word of String(s).split(' ')) {
+    if (line && width(line) + 1 + width(word) > room) { lines.push(line); line = word; }
+    else line = line ? `${line} ${word}` : word;
+  }
+  lines.push(line);
+  return lines;
+}
+
+/**
+ * Rows of cells → aligned columns. The last column is not padded. On a
+ * terminal, a last cell too long for the line wraps under itself rather than
+ * letting the terminal wrap it back to the left edge, through the columns
+ * before it; piped, each row stays one line, for scripts.
+ */
+export function table(rows, { head = null, gap = 2, wrap = isTTY } = {}) {
   const all = head ? [head.map(h => c.bold(c.muted(h))), ...rows] : rows;
   if (!all.length) return '';
   const w = [];
   for (const r of all) r.forEach((cell, i) => { w[i] = Math.max(w[i] || 0, width(cell)); });
-  return all.map(r => r.map((cell, i) => (i === r.length - 1 ? String(cell) : pad(String(cell), w[i] + gap))).join('')).join('\n');
+  const total = columns();
+  return all.map(r => {
+    const lead = r.slice(0, -1).map((cell, i) => pad(String(cell), w[i] + gap)).join('');
+    const last = String(r.at(-1) ?? '');
+    const indent = width(lead);
+    if (!wrap || r.length < 2 || total - indent < 24 || indent + width(last) <= total) return lead + last;
+    return wrapWords(last, total - indent).map((l, k) => (k ? ' '.repeat(indent) : lead) + l).join('\n');
+  }).join('\n');
 }
 
 /** A word's tokens as a reader would type them, with ε for the empty word. */

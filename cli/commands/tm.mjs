@@ -19,7 +19,7 @@ import { repwl } from '../../js/machines/repwl.js';
 import { bouncers } from '../../js/machines/bouncers.js';
 import { proveByInduction } from '../tm/induction.mjs';
 import { Indexed, encodePNG, TAPE_PALETTE, HEAD } from '../raster.mjs';
-import { PALETTE, box, c, isTTY, pill, print, printJson, styled, table, warn } from '../out.mjs';
+import { PALETTE, box, c, isTTY, pad, pill, print, printJson, styled, table, warn } from '../out.mjs';
 
 const num = x => Number(x).toLocaleString('en-US');
 
@@ -118,15 +118,18 @@ function lateDeciders(opts) {
 
 const ngramSay = p => (p.variant === 'impl2' ? `windows ${p.lenL}+${p.lenR}` : p.variant === 'lru' ? `windows ${p.lenL}+${p.lenR}, LRU history` : `windows ${p.lenL}+${p.lenR}, history ${p.lenH}`);
 
+// "1 cells further left every 1 steps" read as a typo; a count names its noun.
+const many = (n, noun) => `${num(n)} ${noun}${Number(n) === 1 ? '' : 's'}`;
+
 function detailOf(v) {
   switch (v.method) {
-    case 'simulation': return `after ${num(v.steps)} steps, ${num(v.ones ?? 0)} non-blank cells${v.how === 'none' ? ' (an undefined transition)' : ''}`;
-    case 'cycler': return `repeats every ${num(v.period)} steps from step ${num(v.from)}`;
-    case 'translated': return `repeats ${Math.abs(v.shift)} cells further ${v.direction} every ${num(v.period)} steps`;
-    case 'backward': return `no halting configuration is reachable more than ${v.longest} steps back`;
+    case 'simulation': return `after ${many(v.steps, 'step')}, ${many(v.ones ?? 0, 'non-blank cell')}${v.how === 'none' ? ' (an undefined transition)' : ''}`;
+    case 'cycler': return `repeats every ${many(v.period, 'step')} from step ${num(v.from)}`;
+    case 'translated': return `repeats ${many(Math.abs(v.shift), 'cell')} further ${v.direction} every ${v.period === 1 ? 'step' : `${num(v.period)} steps`}`;
+    case 'backward': return `no halting configuration is reachable more than ${many(v.longest, 'step')} back`;
     case 'segment': return `no halt is reachable through a segment of ${v.size} cells (${num(v.nodes)} configurations, closed)`;
-    case 'far': return `a ${v.depth}-state DFA and ${v.states}-state NFA recognise every halting configuration, not the start (scanning ${v.side === 'R' ? 'left to right' : 'right to left'})`;
-    case 'loops': return `its (state, symbol) history repeats ${v.shift ? `${Math.abs(v.shift)} cells further ${v.shift > 0 ? 'right' : 'left'}` : 'in place'} every ${num(v.period)} steps`;
+    case 'far': return `a ${v.depth}-state DFA and ${v.states}-state NFA recognise every halting configuration, not the start (${v.side === 'R' ? 'left to right' : 'right to left'})`;
+    case 'loops': return `its (state, symbol) history repeats ${v.shift ? `${many(Math.abs(v.shift), 'cell')} further ${v.shift > 0 ? 'right' : 'left'}` : 'in place'} every ${many(v.period, 'step')}`;
     case 'ngram': return `a closed set of ${num(v.contexts)} local contexts (${ngramSay(v.params)})`;
     case 'repwl': return `a closed set of ${num(v.configurations)} tapes of repeated ${v.len}-cell words`;
     case 'bouncers': return `the formula tape ${v.formula} recurs, every repeater longer, after ${num(v.macroSteps)} macro steps`;
@@ -370,8 +373,29 @@ bound, which would assume the answer. 2×2 and 3×2 take moments; 4×2 minutes.
     let champion = null, onesChampion = null;
     const workers = workerCount(opts.workers, 1000);
     const t0 = performance.now();
+    // The running tally on a terminal, counted as each machine comes back
+    // rather than once a level: the last level of a 4-state search is most of
+    // the tree, and a line that holds still for a minute reads as a hang. The
+    // stats proper are still added up in job order once a level is done, so a
+    // tie for the champion goes the same way however the workers finish.
+    const live = isTTY && !opts.json;
+    const tally = { nodes: 0, halt: 0, never: 0, holdouts: 0, best: 0, toGo: 1 };
+    let drawn = 0;
+    const drawTally = (force = false) => {
+      if (!live || (!force && performance.now() - drawn < 100)) return;
+      drawn = performance.now();
+      process.stderr.write(`\r${c.dim(`${num(tally.nodes)} machines`)} ${c.faint('·')} ${c.green(`${num(tally.halt)} halt`)} ${c.faint('·')} ${c.violet(`${num(tally.never)} never`)} ${c.faint('·')} ${(tally.holdouts ? c.yellow : c.dim)(`${num(tally.holdouts)} holdouts`)} ${c.faint('·')} ${c.dim(`${num(tally.toGo)} to go`)}${tally.best ? `  ${c.dim('most steps')} ${c.accent(num(tally.best))}` : ''}\x1b[K`);
+    };
+    const count = (_, r) => {
+      tally.nodes++;
+      tally.toGo--;
+      if (r?.verdict === 'branch') { tally.halt++; tally.toGo += r.children.length; tally.best = Math.max(tally.best, r.halt.steps); }
+      else if (r?.verdict === 'never') tally.never++;
+      else if (r && !r.error) tally.holdouts++;
+      drawTally();
+    };
     while (frontier.length) {
-      const results = await runPool(frontier.map(node => ({ kind: 'search', node, opts: settings })), frontier.length >= 64 ? workers : 1, job => bbStep(job.node, job.opts));
+      const results = await runPool(frontier.map(node => ({ kind: 'search', node, opts: settings })), frontier.length >= 64 ? workers : 1, job => bbStep(job.node, job.opts), count);
       const next = [];
       for (const r of results) {
         stats.nodes++;
@@ -385,9 +409,9 @@ bound, which would assume the answer. 2×2 and 3×2 take moments; 4×2 minutes.
         else stats.holdouts.push(r.code);
       }
       frontier = next;
-      if (isTTY && !opts.json) process.stderr.write(`\r${c.dim(`${num(stats.nodes)} machines, ${num(frontier.length)} to go`)}\x1b[K`);
+      drawTally(true);
     }
-    if (isTTY && !opts.json) process.stderr.write('\r\x1b[K');
+    if (live) process.stderr.write('\r\x1b[K');
     if (opts.holdouts) writeFileSync(opts.holdouts, stats.holdouts.join('\n') + (stats.holdouts.length ? '\n' : ''));
     const secs = ((performance.now() - t0) / 1000).toFixed(1);
     const neverTotal = Object.values(stats.never).reduce((a, b) => a + b, 0);
@@ -396,7 +420,14 @@ bound, which would assume the answer. 2×2 and 3×2 take moments; 4×2 minutes.
       const lines = [
         `${c.muted('machines')}     ${c.bold(num(stats.nodes))} ${c.faint(`in tree normal form, ${secs}s`)}`,
         `${c.muted('halting')}      ${c.green(num(stats.halting))}`,
-        `${c.muted('never halt')}   ${c.violet(num(neverTotal))}${neverTotal ? c.faint(`  ${Object.entries(stats.never).map(([m, x]) => `${METHOD_NAMES[m] || m} ${num(x)}`).join(' · ')}`) : ''}`,
+        `${c.muted('never halt')}   ${c.violet(num(neverTotal))}`,
+        // One method a row, most first: on one line they made the box wider
+        // than a terminal once there were more than three.
+        ...(() => {
+          const rows = Object.entries(stats.never).sort((a, b) => b[1] - a[1]);
+          const w = Math.max(0, ...rows.map(([, x]) => num(x).length));
+          return rows.map(([m, x]) => `${' '.repeat(15)}${c.faint(pad(num(x), w, 'right'))}  ${c.faint(METHOD_NAMES[m] || m)}`);
+        })(),
         `${c.muted('holdouts')}     ${stats.holdouts.length ? c.yellow(num(stats.holdouts.length)) : c.green('0')}${opts.holdouts && stats.holdouts.length ? c.faint(`  → ${opts.holdouts}`) : ''}`,
         '',
         champion ? `${c.muted('most steps')}   ${c.bold(c.accent(num(champion.steps)))}  ${c.orange(champion.code)}` : '',
@@ -537,10 +568,16 @@ its halting verdict. Counters and bouncers are told apart at a glance.
   --steps N         steps drawn per machine (default 20000)
   --cols N          diagrams per row (default 3)
   --size N          diagram width and height in pixels (default 240)
-  --png             write one PNG per machine instead, into the -o directory`,
+  --png             write one PNG per machine instead, into the -o directory
+  --budget N        steps the caption's verdict may simulate (default 100000);
+                    a champion that halts later is captioned unknown below it
+  --far D           finite automata reduction for the caption, DFAs up to D
+                    states (default 4: halts defaults to 6, which can take
+                    minutes on a machine nothing settles)
+  --no-classify     no verdict in the captions`,
   options: {
     output: { type: 'string', short: 'o' }, steps: { type: 'string' }, cols: { type: 'string' }, size: { type: 'string' },
-    'no-classify': { type: 'boolean' }, png: { type: 'boolean' }
+    'no-classify': { type: 'boolean' }, png: { type: 'boolean' }, budget: { type: 'string' }, far: { type: 'string' }
   },
   async run({ args, opts }) {
     const items = loadTuringMachines(args.length ? args : ['-']).filter(it => {
@@ -551,7 +588,7 @@ its halting verdict. Counters and bouncers are told apart at a glance.
     const steps = Number(opts.steps ?? 20000), size = Number(opts.size ?? 240), cols = Math.max(1, Number(opts.cols ?? 3));
     const pics = items.map(it => {
       const pic = spaceTimeImage(it.p, { steps, rows: size, maxW: size });
-      const verdict = opts['no-classify'] ? null : decide(it.p, { budget: 1e5, cpsMax: 8, bound: true, growth: true });
+      const verdict = opts['no-classify'] ? null : decide(it.p, { budget: Number(opts.budget ?? 1e5), far: Number(opts.far ?? 4), cpsMax: 8, bound: true, growth: true });
       return { it, pic, verdict };
     });
     if (opts.png) {

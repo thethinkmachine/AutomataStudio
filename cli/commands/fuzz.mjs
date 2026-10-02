@@ -6,7 +6,7 @@ import { App, getMachineConfig } from '../../js/state.js';
 import { decideRaw, outputText } from '../../js/library/analyze.js';
 import { readMachine, CliError } from '../io.mjs';
 import { lettersOf, seeded } from '../fa.mjs';
-import { c, print, printJson } from '../out.mjs';
+import { c, pad, print, printJson } from '../out.mjs';
 
 const YES = /^(1|true|yes|y|accept|acc|a|✓)$/i;
 const NO = /^(0|false|no|n|reject|rej|r|✗)$/i;
@@ -130,15 +130,16 @@ function* randomWords(sigma, maxLen, count, rnd) {
  * Delta debugging over one disagreement: remove chunks (halves, quarters, …,
  * single symbols) while the machine and the oracle still disagree, then try
  * replacing each symbol with the first one of Σ. Returns a word no single
- * removal or replacement can shrink further.
+ * removal or replacement can shrink further. `onStep(w)` hears each smaller
+ * word that still disagrees, in order.
  */
-export function shrink(word, disagrees, sigma) {
+export function shrink(word, disagrees, sigma, onStep = () => {}) {
   let w = word;
   for (let chunk = Math.max(1, Math.floor(w.length / 2)); chunk >= 1; chunk = Math.floor(chunk / 2)) {
     let i = 0;
     while (i < w.length) {
       const cand = [...w.slice(0, i), ...w.slice(i + chunk)];
-      if (disagrees(cand)) w = cand; else i += chunk;
+      if (disagrees(cand)) { w = cand; onStep(w); } else i += chunk;
     }
     if (chunk === 1) break;
   }
@@ -146,7 +147,7 @@ export function shrink(word, disagrees, sigma) {
     for (const a of sigma) {
       if (a >= w[i]) break;
       const cand = [...w]; cand[i] = a;
-      if (disagrees(cand)) { w = cand; break; }
+      if (disagrees(cand)) { w = cand; onStep(w); break; }
     }
   }
   return w;
@@ -175,6 +176,8 @@ instead. It answers by
   --seed S          repeatable words
   --timeout MS      per oracle call (default 5000)
   --no-shrink
+  -v, --verbose     on stderr: the word they first disagree on, and each
+                    smaller word the shrinking keeps
   --json
 
   automata fuzz even-ones.automaton --oracle 'python -c "import sys; print(sys.argv[1].count(\\"1\\") % 2 == 0)" {}' --mode stdout
@@ -182,7 +185,8 @@ instead. It answers by
 Exit: 0 no disagreement, 1 a disagreement, 2 the machine had no verdict on some word.`,
   options: {
     oracle: { type: 'string' }, mode: { type: 'string' }, batch: { type: 'boolean' }, count: { type: 'string' },
-    'max-len': { type: 'string' }, seed: { type: 'string' }, timeout: { type: 'string' }, 'no-shrink': { type: 'boolean' }
+    'max-len': { type: 'string' }, seed: { type: 'string' }, timeout: { type: 'string' }, 'no-shrink': { type: 'boolean' },
+    verbose: { type: 'boolean', short: 'v' }
   },
   async run({ args, opts }) {
     const { target } = readMachine(args[0] ?? '-');
@@ -211,25 +215,32 @@ Exit: 0 no disagreement, 1 a disagreement, 2 the machine had no verdict on some 
     const batch = opts.batch ? batchOracle(opts.oracle, mode, timeout * 10) : null;
     const one = batch ? w => batch([w])[0] : oneShotOracle(opts.oracle, mode, timeout);
     if (batch) answers = batch(list);
+    const say = r => (mode === 'output' ? `→ ${r.output || eps}` : r.verdict === 'acc' ? 'accept' : 'reject');
+    // A word at a time, an oracle is a process per word: worth a running count
+    // on a terminal. In --batch every answer is already in hand.
+    const live = !!process.stderr.isTTY && !opts.json && !batch;
+    const note = opts.verbose && !opts.json ? s => process.stderr.write(s + '\n') : () => {};
     let undecided = 0, bad = null;
     for (let i = 0; i < list.length; i++) {
+      if (live) process.stderr.write(`\r${c.dim(`checked ${i} of ${list.length} words`)}\x1b[K`);
       const m = machineSays(list[i]);
       if (m.verdict === 'unk' || m.verdict === 'err') { undecided++; continue; }
       const o = answers ? answers[i] : one(list[i]);
       if (differ(m, o)) { bad = { word: list[i], machine: m, oracle: o, tried: i + 1 }; break; }
     }
+    if (live) process.stderr.write('\r\x1b[K');
+    if (bad) note(`${c.accent('fuzz')}    word ${bad.tried} of ${list.length}: ${c.bold(wordText(bad.word) || eps)}  ${c.red('✘')} ${c.muted(`the machine says ${say(bad.machine)}, the oracle ${say(bad.oracle)}`)}`);
     if (bad && !opts['no-shrink']) {
       const disagrees = w => {
         const m = machineSays(w);
         if (m.verdict === 'unk' || m.verdict === 'err') return false;
         return differ(m, one(w));
       };
-      const small = shrink(bad.word, disagrees, sigma);
+      const small = shrink(bad.word, disagrees, sigma, w => note(`${c.accent('shrink')}  ${pad(wordText(w) || eps, Math.max(8, bad.word.length))}  ${c.muted(`${w.length} symbols, still disagree`)}`));
       bad.shrunk = small;
       bad.machineShrunk = machineSays(small);
       bad.oracleShrunk = one(small);
     }
-    const say = r => (mode === 'output' ? `→ ${r.output || eps}` : r.verdict === 'acc' ? 'accept' : 'reject');
     if (opts.json) {
       printJson(bad ? {
         agree: false, tried: bad.tried, word: wordText(bad.word) || eps, counterexample: bad.shrunk ? wordText(bad.shrunk) || eps : null,
