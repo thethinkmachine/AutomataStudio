@@ -1,6 +1,6 @@
 import { grammarSuggestTerminals } from './grammar-ui.js';
 import { epsClosure, tokenize } from './machines/runtime.js';
-import { $, App } from './state.js';
+import { $, App, getMachineConfig } from './state.js';
 import { escapeHtml, isCounterMachine } from './utils.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -290,7 +290,9 @@ export function getStackSymbolSuggestState(el, multiToken) {
 
 // Σ candidates for Write/per-tape-Write: Σ plus the tape blank (⊔) — both are
 // meaningful things to write — and Σ-the-wildcard (write back whatever was
-// read). No ε: an epsilon *character* written onto the tape isn't a
+// read). On a tape machine Γ too: its work symbols — the X of a crossing-off
+// pass — are exactly what a write puts down and a later read picks up, and
+// offering Σ alone flagged every one of them as a mistake. No ε: an epsilon *character* written onto the tape isn't a
 // supported concept the way an epsilon *pop* is, so it's never offered here.
 export function getWriteSymbolSuggestState(el) {
   const any = App.config.sym.any;
@@ -301,17 +303,19 @@ export function getWriteSymbolSuggestState(el) {
 
   const reserved = new Set(Object.values(App.config.sym));
   reserved.delete(blank); // blank is a meaningful write target despite being a reserved marker
-  const syms = [...new Set([...App.sigma, blank])].filter(s => !reserved.has(s)).sort((a, b) => b.length - a.length);
+  const tape = getMachineConfig(App.machine).hasTape;
+  const alphabetLabel = tape ? 'Γ' : 'Σ';
+  const syms = [...new Set([...App.sigma, ...(tape ? App.stackAlpha : []), blank])].filter(s => !reserved.has(s)).sort((a, b) => b.length - a.length);
   if (!syms.length) return { mode: 'none' };
   const wholeFieldSymbols = new Set([any]);
 
   if (trimmed === '') {
-    return { mode: 'palette', candidates: [...syms, any], allSyms: syms, prefixEnd: 0, replaceEnd: value.length, alphabetLabel: 'Σ', wholeFieldSymbols };
+    return { mode: 'palette', candidates: [...syms, any], allSyms: syms, prefixEnd: 0, replaceEnd: value.length, alphabetLabel, wholeFieldSymbols };
   }
   if (syms.includes(trimmed)) return { mode: 'none' };
   const candidates = syms.filter(s => ciStartsWith(s, trimmed));
-  if (candidates.length) return { mode: 'filter', residue: trimmed, candidates, allSyms: syms, prefixEnd: 0, replaceEnd: value.length, alphabetLabel: 'Σ', wholeFieldSymbols };
-  return { mode: 'error', residue: trimmed, candidates: [], alphabetLabel: 'Σ' };
+  if (candidates.length) return { mode: 'filter', residue: trimmed, candidates, allSyms: syms, prefixEnd: 0, replaceEnd: value.length, alphabetLabel, wholeFieldSymbols };
+  return { mode: 'error', residue: trimmed, candidates: [], alphabetLabel };
 }
 
 export const GRAMMAR_STRING_FIELD_IDS = new Set(['gram-in-word']);
@@ -327,6 +331,12 @@ export const STACK_PUSH_FIELD_IDS = new Set(['m-push', 'm-push2']);
 // exactly the same way Simulate's sim-in does.
 export function getSuggestStateForField(el) {
   const id = el.id;
+  // The label editor's fields (js/edge-label-editor.js) are built per edit and
+  // carry no id, so they say which list they want instead.
+  const kind = typeof el.getAttribute === 'function' ? el.getAttribute('data-suggest') : null;
+  if (kind === 'pop') return getStackSymbolSuggestState(el, false);
+  if (kind === 'push') return getStackSymbolSuggestState(el, true);
+  if (kind === 'write') return getWriteSymbolSuggestState(el);
   if (id === 'batch-in') return getBatchSuggestState(el);
   if (GRAMMAR_STRING_FIELD_IDS.has(id)) return getGrammarSuggestState(el);
   if (STACK_POP_FIELD_IDS.has(id)) return getStackSymbolSuggestState(el, false);

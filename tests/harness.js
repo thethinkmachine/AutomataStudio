@@ -79,6 +79,7 @@ import * as panelFloat from '../js/panel-float.js';
 import * as sectionStatus from '../js/section-status.js';
 import * as machineOptionsUi from '../js/machine-options-ui.js';
 import * as deltaTable from '../js/delta-table.js';
+import * as edgeLabelEditor from '../js/edge-label-editor.js';
 import * as panelShake from '../js/panel-shake.js';
 import * as canvasMotion from '../js/canvas-motion.js';
 import * as mobile from '../js/mobile.js';
@@ -162,7 +163,7 @@ import * as wizardUi from '../js/wizard-ui.js';
 
 const NAMESPACES = [
   state, store, themes, exportRegistry, dropdown, modal, utils, anim, viewport, geometry, statesTransitions,
-  blocks, blocksUi, viewGraph, graphThumb, scope, runScope, canvas, render, panelState, panelSections, traceFormat, panelSectionsUi, panelFloat, sectionStatus, machineOptionsUi, deltaTable, panelShake, canvasMotion, panelList, mobile, notes, dividers,
+  blocks, blocksUi, viewGraph, graphThumb, scope, runScope, canvas, render, panelState, panelSections, traceFormat, panelSectionsUi, panelFloat, sectionStatus, machineOptionsUi, deltaTable, edgeLabelEditor, panelShake, canvasMotion, panelList, mobile, notes, dividers,
   machineRegistry, machineRuntime, machineBranchTree, machineFastTm, machineTmBehaviour, machineHaltingSegment, machineFar, machineFinite, machineWeighted, machineOmega,
   machinePushdown, machineEmbedded, machineTuring, machineTransducer, machineTwoWay, machines,
   machinePredicates, machineBatch, machinePaint, machineRun, machineColumns, parallelPool, parallelSnapshot, parallelCore,
@@ -292,6 +293,8 @@ function resetModuleState() {
   // table would hand every later updateLPanel a table instead of a list.
   deltaTable.resetDeltaTable();
   try { localStorage.removeItem('automata-trans-view'); } catch (e) { /* stub */ }
+  // An open label editor holds a transition and a document listener.
+  edgeLabelEditor.resetEdgeLabelEditor();
   machineOptionsUi.resetMachineOptions();
   // The mobile sheet's detent, which is module state and outlives the elements.
   mobile.resetMobileShell();
