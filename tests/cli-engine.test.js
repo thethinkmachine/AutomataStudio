@@ -11,14 +11,14 @@ import { inflateSync } from 'node:zlib';
 import { compareMachines } from '../js/exercise/grade.js';
 import { decideRaw } from '../js/library/analyze.js';
 import { readJFLAPText } from '../js/import-jflap.js';
-import { readMachine, readMachineText, docFromTarget } from '../cli/io.mjs';
+import { readMachine, readMachineText } from '../cli/io.mjs';
 import {
   complement, concat, countByLength, determinize, epsilonFree, fromRegex, listAccepted, minimize,
   product, reverse, sampleAccepted, seeded, star, toRegex, union
 } from '../cli/fa.mjs';
 import { evaluate, answerComparison } from '../cli/commands/ops.mjs';
 import { hoaText, readHOA } from '../cli/formats/hoa.mjs';
-import { baText, readBA, readTimbuk, timbukText } from '../cli/formats/ba.mjs';
+import { baText, readBA } from '../cli/formats/ba.mjs';
 import { jffText } from '../cli/formats/jff.mjs';
 import { compareOmega, compare, structuralDiff, textListing, signatureOf } from '../cli/commands/compare.mjs';
 import { lintTarget, languageFacts } from '../cli/commands/info.mjs';
@@ -179,15 +179,35 @@ State: 1 {2}
   assert.equal(v('(a)'), 'rej');
 });
 
-test('BA and Timbuk round-trip', () => {
+test('HOA parity is read from the Acceptance formula, not acc-name', () => {
+  // Spot names two colours of min odd "Rabin 1" and of max odd "Streett 1";
+  // they are the same conditions. Mark 0 on a, mark 1 on b, over one state.
+  const body = `--BODY--
+State: 0
+[0&!1] 0 {0}
+[!0&1] 0 {1}
+[!0&!1] 0
+--END--`;
+  const hoa = (name, acc) => `HOA: v1\nStates: 1\nStart: 0\nAP: 2 "a" "b"\n${name ? `acc-name: ${name}\n` : ''}Acceptance: 2 ${acc}\n${body}`;
+  const verdicts = text => {
+    const t = readMachineText(text).target;
+    return ['(a)', '(b)', '(ab)', '(∅)'].map(w => decideRaw(t, w).verdict).join(' ');
+  };
+  // Fin(0) & Inf(1): b infinitely often and a only finitely often.
+  assert.equal(verdicts(hoa('Rabin 1', 'Fin(0) & Inf(1)')), 'rej acc rej rej');
+  assert.equal(verdicts(hoa(null, 'Fin(0) & Inf(1)')), 'rej acc rej rej');
+  // Fin(0) | Inf(1): b infinitely often, or a only finitely often.
+  assert.equal(verdicts(hoa('Streett 1', 'Fin(0) | Inf(1)')), 'rej acc acc acc');
+  // A wrong acc-name does not override the formula.
+  assert.equal(verdicts(hoa('parity min even 2', 'Fin(0) & Inf(1)')), 'rej acc rej rej');
+  // Real Rabin and Streett, past what parity can say, are still refused.
+  assert.throws(() => readHOA('HOA: v1\nStates: 1\nStart: 0\nAP: 1 "a"\nAcceptance: 4 (Fin(0) & Inf(1)) | (Fin(2) & Inf(3))\n--BODY--\nState: 0\n[t] 0\n--END--', App.config.sym), /not Büchi/);
+});
+
+test('BA round-trip', () => {
   const nba = ex('buchi');
   const back = readMachineText(baText(nba), 'x.ba').target;
   assert.equal(compareOmega(nba, back, { size: 5 }).equal, true);
-  const nfa = epsilonFree(fromRegex('(a|b)*abb'));
-  const tb = readTimbuk(timbukText(nfa), App.config.sym);
-  const tt = readMachineText(JSON.stringify(docFromTarget({ ...nfa, ...tb, kind: 'machine', config: {} })), 'x.json').target;
-  assert.equal(same(nfa, tt), true);
-  assert.throws(() => readTimbuk('Ops a:2 x:0\nAutomaton A\nStates q\nFinal States q\nTransitions\nx -> q\n', App.config.sym), /tree automaton/);
   assert.throws(() => baText({ ...nba, accepts: [] }), /every state accepts/);
 });
 

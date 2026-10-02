@@ -170,9 +170,50 @@ function classifyAcceptance(tree, count, accName) {
   if (tree.op === 'fin' && !tree.neg) return { kind: 'cobuchi', sets: [tree.set] };
   const conj = flattenOp(tree, 'and');
   if (conj.length > 1 && conj.every(c => c.op === 'inf' && !c.neg)) return { kind: 'genbuchi', sets: conj.map(c => c.set) };
-  const parity = accName && /^parity\s+(min|max)\s+(even|odd)\s+(\d+)/.exec(accName);
-  if (parity) return { kind: 'parity', dir: parity[1], par: parity[2], sets: Number(parity[3]) };
+  const parity = parityOf(tree, count, accName);
+  if (parity) return parity;
   throw new CliError(`HOA: the acceptance condition${accName ? ` (${accName})` : ''} is not Büchi, generalized Büchi, co-Büchi or parity, so no machine in the app can hold it.`);
+}
+
+// The Acceptance line is what a parity condition is, not acc-name: the name is
+// optional, and two colours of min odd are exactly Rabin 1 (Fin(0) & Inf(1)),
+// two of max odd exactly Streett 1 (Fin(0) | Inf(1)) — which is what Spot names
+// them. So the formula is compared with each flavour on every set of colours
+// that could be seen infinitely often, the named flavour first. An unseen
+// colour is past the end, k under min and −1 under max, as priorityOf maps it.
+const PARITY_FLAVOURS = [['min', 'even'], ['min', 'odd'], ['max', 'even'], ['max', 'odd']];
+const MAX_PARITY_SETS = 16;
+
+function parityOf(tree, count, accName) {
+  if (count < 1 || count > MAX_PARITY_SETS) return null;
+  const named = accName && /^parity\s+(min|max)\s+(even|odd)\b/.exec(accName);
+  const flavours = named ? [[named[1], named[2]], ...PARITY_FLAVOURS] : PARITY_FLAVOURS;
+  const holds = (t, inf) => {
+    switch (t.op) {
+      case 't': return true;
+      case 'f': return false;
+      case 'inf': return t.neg || t.set >= count ? null : inf.has(t.set);
+      case 'fin': return t.neg || t.set >= count ? null : !inf.has(t.set);
+      default: {
+        const l = holds(t.l, inf), r = holds(t.r, inf);
+        if (l === null || r === null) return null;
+        return t.op === 'and' ? l && r : l || r;
+      }
+    }
+  };
+  for (const [dir, par] of flavours) {
+    let same = true;
+    for (let bits = 0; same && bits < 1 << count; bits++) {
+      const seen = [];
+      for (let s = 0; s < count; s++) if (bits & (1 << s)) seen.push(s);
+      const got = holds(tree, new Set(seen));
+      if (got === null) return null;
+      const m = seen.length ? (dir === 'min' ? seen[0] : seen[seen.length - 1]) : (dir === 'min' ? count : -1);
+      same = got === ((Math.abs(m) % 2 === 0) === (par === 'even'));
+    }
+    if (same) return { kind: 'parity', dir, par, sets: count };
+  }
+  return null;
 }
 
 /**

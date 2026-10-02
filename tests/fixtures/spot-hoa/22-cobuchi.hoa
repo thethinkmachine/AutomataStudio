@@ -1,0 +1,18 @@
+HOA: v1
+name: "X(a R b)"
+States: 3
+Start: 1
+AP: 2 "b" "a"
+acc-name: co-Buchi
+Acceptance: 1 Fin(0)
+properties: trans-labels explicit-labels state-acc deterministic
+properties: very-weak
+--BODY--
+State: 0
+[0&!1] 0
+[0&1] 2
+State: 1 {0}
+[t] 0
+State: 2
+[t] 2
+--END--

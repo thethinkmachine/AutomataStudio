@@ -268,7 +268,7 @@ methods, and the last, Antihydra, is reported as unknown: whether it halts is an
 problem. `check-proof` then
 re-checks every proof file with code that shares nothing with the provers.</sup>
 
-It also reads and writes HOA, BA, Timbuk and JFLAP. To install it, add the desktop
+It also reads and writes HOA, BA and JFLAP. To install it, add the desktop
 app's `resources/cli` directory to your `PATH`, or run `npm install && npm link` from a
 checkout. Read the [CLI guide](docs/cli.md) for task-by-task instructions, or the
 [command reference](docs/cli-reference.md) for every option.

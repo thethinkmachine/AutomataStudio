@@ -1,0 +1,5428 @@
+{
+ "spot": "ltl2tgba (spot) 2.16",
+ "generator": "scripts/hoa-fixtures.mjs",
+ "cases": [
+  {
+   "file": "01-tgba.hoa",
+   "formula": "GF a & GF b",
+   "command": "ltl2tgba -f GF a & GF b",
+   "acceptance": "2 Inf(0)&Inf(1)",
+   "words": [
+    [
+     "∅ b (a&b a b)",
+     "acc"
+    ],
+    [
+     "a a&b (a ∅)",
+     "rej"
+    ],
+    [
+     "∅ (a)",
+     "rej"
+    ],
+    [
+     "(a&b a)",
+     "acc"
+    ],
+    [
+     "(a)",
+     "rej"
+    ],
+    [
+     "a&b a (b)",
+     "rej"
+    ],
+    [
+     "a&b ∅ (a a&b a&b)",
+     "acc"
+    ],
+    [
+     "(∅ a a)",
+     "rej"
+    ],
+    [
+     "(b)",
+     "rej"
+    ],
+    [
+     "∅ a (b)",
+     "rej"
+    ],
+    [
+     "∅ a&b b (a b)",
+     "acc"
+    ],
+    [
+     "a&b b a&b (a&b ∅ ∅)",
+     "acc"
+    ],
+    [
+     "a a&b b (b ∅ b)",
+     "rej"
+    ],
+    [
+     "∅ a&b ∅ (∅ a)",
+     "rej"
+    ],
+    [
+     "b (b ∅)",
+     "rej"
+    ],
+    [
+     "a&b a ∅ (a&b)",
+     "acc"
+    ],
+    [
+     "∅ (b a)",
+     "acc"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "b (∅ b)",
+     "rej"
+    ],
+    [
+     "∅ a&b (a&b)",
+     "acc"
+    ],
+    [
+     "a&b ∅ ∅ (a&b)",
+     "acc"
+    ],
+    [
+     "b (∅ a a&b)",
+     "acc"
+    ],
+    [
+     "a&b ∅ ∅ (a)",
+     "rej"
+    ],
+    [
+     "a a&b (a&b)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "02-tgba.hoa",
+   "formula": "FG a",
+   "command": "ltl2tgba -f FG a",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "∅ ∅ (a a)",
+     "acc"
+    ],
+    [
+     "∅ (∅ a ∅)",
+     "rej"
+    ],
+    [
+     "a (∅ a)",
+     "rej"
+    ],
+    [
+     "a (a)",
+     "acc"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "(∅ a a)",
+     "rej"
+    ],
+    [
+     "(∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (a ∅ a)",
+     "rej"
+    ],
+    [
+     "(a ∅ a)",
+     "rej"
+    ],
+    [
+     "(a a ∅)",
+     "rej"
+    ],
+    [
+     "∅ a a (a a ∅)",
+     "rej"
+    ],
+    [
+     "a a ∅ (a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "(∅ ∅ a)",
+     "rej"
+    ],
+    [
+     "a ∅ ∅ (a a)",
+     "acc"
+    ],
+    [
+     "∅ ∅ ∅ (∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ a ∅ (∅ a)",
+     "rej"
+    ],
+    [
+     "a (∅)",
+     "rej"
+    ],
+    [
+     "∅ a (a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (a a ∅)",
+     "rej"
+    ],
+    [
+     "a ∅ (a a)",
+     "acc"
+    ],
+    [
+     "∅ a ∅ (∅ ∅ a)",
+     "rej"
+    ],
+    [
+     "a (∅ ∅)",
+     "rej"
+    ],
+    [
+     "a a ∅ (∅)",
+     "rej"
+    ],
+    [
+     "∅ a ∅ (∅ ∅ a)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "03-tgba.hoa",
+   "formula": "G(a -> F b)",
+   "command": "ltl2tgba -f G(a -> F b)",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "∅ a (a&b)",
+     "acc"
+    ],
+    [
+     "a (a)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (a a&b a&b)",
+     "acc"
+    ],
+    [
+     "b (b)",
+     "acc"
+    ],
+    [
+     "a&b b (a&b)",
+     "acc"
+    ],
+    [
+     "a&b (a b ∅)",
+     "acc"
+    ],
+    [
+     "b (∅)",
+     "acc"
+    ],
+    [
+     "a&b (b a&b)",
+     "acc"
+    ],
+    [
+     "b ∅ (b a&b)",
+     "acc"
+    ],
+    [
+     "a (b a&b)",
+     "acc"
+    ],
+    [
+     "b a b (a a&b a&b)",
+     "acc"
+    ],
+    [
+     "b a&b (∅ ∅ b)",
+     "acc"
+    ],
+    [
+     "a b a (b b)",
+     "acc"
+    ],
+    [
+     "a&b (a&b)",
+     "acc"
+    ],
+    [
+     "a&b a&b (a)",
+     "rej"
+    ],
+    [
+     "(a&b b a&b)",
+     "acc"
+    ],
+    [
+     "a&b b a&b (a&b a b)",
+     "acc"
+    ],
+    [
+     "a b ∅ (b a)",
+     "acc"
+    ],
+    [
+     "∅ a&b ∅ (a&b ∅)",
+     "acc"
+    ],
+    [
+     "∅ a (b ∅ ∅)",
+     "acc"
+    ],
+    [
+     "(b a&b)",
+     "acc"
+    ],
+    [
+     "a&b ∅ (∅)",
+     "acc"
+    ],
+    [
+     "b b (a a&b ∅)",
+     "acc"
+    ],
+    [
+     "∅ a a (b a)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "04-buchi.hoa",
+   "formula": "a U b",
+   "command": "ltl2tgba -B -f a U b",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "a ∅ ∅ (b)",
+     "rej"
+    ],
+    [
+     "(b b a&b)",
+     "acc"
+    ],
+    [
+     "b (b b a)",
+     "acc"
+    ],
+    [
+     "b (a&b a a)",
+     "acc"
+    ],
+    [
+     "a a&b b (a ∅)",
+     "acc"
+    ],
+    [
+     "b (∅ a&b a)",
+     "acc"
+    ],
+    [
+     "b (b)",
+     "acc"
+    ],
+    [
+     "b (a&b)",
+     "acc"
+    ],
+    [
+     "a&b a ∅ (a ∅)",
+     "acc"
+    ],
+    [
+     "a&b ∅ a (b b a&b)",
+     "acc"
+    ],
+    [
+     "a&b (a b)",
+     "acc"
+    ],
+    [
+     "(b)",
+     "acc"
+    ],
+    [
+     "a&b ∅ a (a&b b)",
+     "acc"
+    ],
+    [
+     "b (a a&b a&b)",
+     "acc"
+    ],
+    [
+     "(a a&b a&b)",
+     "acc"
+    ],
+    [
+     "∅ (∅)",
+     "rej"
+    ],
+    [
+     "(∅ a&b a&b)",
+     "rej"
+    ],
+    [
+     "a a (a&b ∅ b)",
+     "acc"
+    ],
+    [
+     "b a&b (b ∅ b)",
+     "acc"
+    ],
+    [
+     "∅ a b (a&b a&b)",
+     "rej"
+    ],
+    [
+     "(a a&b b)",
+     "acc"
+    ],
+    [
+     "(∅ a&b b)",
+     "rej"
+    ],
+    [
+     "a a&b (a a&b)",
+     "acc"
+    ],
+    [
+     "a ∅ a&b (a&b)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "05-buchi.hoa",
+   "formula": "GF a -> GF b",
+   "command": "ltl2tgba -B -f GF a -> GF b",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "b&a ∅ (∅ a)",
+     "rej"
+    ],
+    [
+     "b b&a (b&a)",
+     "acc"
+    ],
+    [
+     "a ∅ (b b&a)",
+     "acc"
+    ],
+    [
+     "b&a (b ∅ b&a)",
+     "acc"
+    ],
+    [
+     "(∅)",
+     "acc"
+    ],
+    [
+     "b&a (∅)",
+     "acc"
+    ],
+    [
+     "b b b&a (b)",
+     "acc"
+    ],
+    [
+     "(a b&a a)",
+     "acc"
+    ],
+    [
+     "a ∅ a (b b&a)",
+     "acc"
+    ],
+    [
+     "∅ b&a (b b&a)",
+     "acc"
+    ],
+    [
+     "(b&a)",
+     "acc"
+    ],
+    [
+     "b&a (b)",
+     "acc"
+    ],
+    [
+     "b a ∅ (a)",
+     "rej"
+    ],
+    [
+     "b b&a (a)",
+     "rej"
+    ],
+    [
+     "b a b&a (a b&a a)",
+     "acc"
+    ],
+    [
+     "∅ b (∅ b)",
+     "acc"
+    ],
+    [
+     "∅ ∅ b (a b ∅)",
+     "acc"
+    ],
+    [
+     "b&a (a)",
+     "rej"
+    ],
+    [
+     "∅ b&a (a ∅ b)",
+     "acc"
+    ],
+    [
+     "∅ (b&a b)",
+     "acc"
+    ],
+    [
+     "∅ b&a ∅ (b&a ∅)",
+     "acc"
+    ],
+    [
+     "∅ b (b a)",
+     "acc"
+    ],
+    [
+     "(b&a)",
+     "acc"
+    ],
+    [
+     "b a (a)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "06-buchi.hoa",
+   "formula": "FG a | GF b",
+   "command": "ltl2tgba -B -f FG a | GF b",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "∅ b (b)",
+     "acc"
+    ],
+    [
+     "(a&b)",
+     "acc"
+    ],
+    [
+     "∅ a&b a (∅)",
+     "rej"
+    ],
+    [
+     "a&b (a a)",
+     "acc"
+    ],
+    [
+     "(a&b a a&b)",
+     "acc"
+    ],
+    [
+     "a&b b a&b (a&b ∅ b)",
+     "acc"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "a b b (b a&b b)",
+     "acc"
+    ],
+    [
+     "a a&b (∅ a a)",
+     "rej"
+    ],
+    [
+     "∅ a (a)",
+     "acc"
+    ],
+    [
+     "a (∅ a)",
+     "rej"
+    ],
+    [
+     "(b ∅ a)",
+     "acc"
+    ],
+    [
+     "∅ (b a)",
+     "acc"
+    ],
+    [
+     "a&b (∅)",
+     "rej"
+    ],
+    [
+     "b b (∅ b a)",
+     "acc"
+    ],
+    [
+     "∅ ∅ (∅ ∅ b)",
+     "acc"
+    ],
+    [
+     "b (a&b a&b)",
+     "acc"
+    ],
+    [
+     "(b)",
+     "acc"
+    ],
+    [
+     "b (∅)",
+     "rej"
+    ],
+    [
+     "(∅ b)",
+     "acc"
+    ],
+    [
+     "∅ b (a&b)",
+     "acc"
+    ],
+    [
+     "a&b (a&b a b)",
+     "acc"
+    ],
+    [
+     "(a&b ∅)",
+     "acc"
+    ],
+    [
+     "∅ a (∅)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "07-gen-state.hoa",
+   "formula": "G(a -> X(b U c))",
+   "command": "ltl2tgba -S -f G(a -> X(b U c))",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "(a&b&c)",
+     "acc"
+    ],
+    [
+     "c a&b (a c)",
+     "rej"
+    ],
+    [
+     "b a (c a b)",
+     "acc"
+    ],
+    [
+     "c (a&b&c)",
+     "acc"
+    ],
+    [
+     "(a a a)",
+     "rej"
+    ],
+    [
+     "c (∅ a&b&c c)",
+     "acc"
+    ],
+    [
+     "a&c a&b&c (a&b&c b&c)",
+     "acc"
+    ],
+    [
+     "(b)",
+     "acc"
+    ],
+    [
+     "∅ (b&c)",
+     "acc"
+    ],
+    [
+     "a&b (a&b&c a&c)",
+     "acc"
+    ],
+    [
+     "b b (a)",
+     "rej"
+    ],
+    [
+     "b a a&c (∅ a&c)",
+     "rej"
+    ],
+    [
+     "c b&c a&c (∅ c a&c)",
+     "rej"
+    ],
+    [
+     "a&b&c b&c c (a&b&c c b&c)",
+     "acc"
+    ],
+    [
+     "(b a&c)",
+     "acc"
+    ],
+    [
+     "b&c a&b&c (b&c a&b)",
+     "acc"
+    ],
+    [
+     "a&c c (a)",
+     "rej"
+    ],
+    [
+     "(a&b&c)",
+     "acc"
+    ],
+    [
+     "a&c ∅ c (a&c a&b&c)",
+     "rej"
+    ],
+    [
+     "a&b&c (b&c c)",
+     "acc"
+    ],
+    [
+     "a a&b&c c (a a&b)",
+     "rej"
+    ],
+    [
+     "(b&c a&c a&c)",
+     "acc"
+    ],
+    [
+     "c a&c a&b&c (a c)",
+     "rej"
+    ],
+    [
+     "b&c a c (c a)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "08-gen-state.hoa",
+   "formula": "GF(a & X b)",
+   "command": "ltl2tgba -S -f GF(a & X b)",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "(a b)",
+     "acc"
+    ],
+    [
+     "a a&b (b)",
+     "rej"
+    ],
+    [
+     "(∅ b)",
+     "rej"
+    ],
+    [
+     "(a&b)",
+     "acc"
+    ],
+    [
+     "∅ ∅ (b)",
+     "rej"
+    ],
+    [
+     "a&b (∅ a a)",
+     "rej"
+    ],
+    [
+     "a b (a&b)",
+     "acc"
+    ],
+    [
+     "b (b b a&b)",
+     "acc"
+    ],
+    [
+     "a a (a)",
+     "rej"
+    ],
+    [
+     "b a ∅ (a&b a&b)",
+     "acc"
+    ],
+    [
+     "(∅ b b)",
+     "rej"
+    ],
+    [
+     "(∅ ∅)",
+     "rej"
+    ],
+    [
+     "a&b ∅ ∅ (b a&b a)",
+     "acc"
+    ],
+    [
+     "∅ (a b)",
+     "acc"
+    ],
+    [
+     "(a a a&b)",
+     "acc"
+    ],
+    [
+     "a&b b b (a ∅ b)",
+     "rej"
+    ],
+    [
+     "a (a b a)",
+     "acc"
+    ],
+    [
+     "b a (b b a&b)",
+     "acc"
+    ],
+    [
+     "a (∅ ∅ b)",
+     "rej"
+    ],
+    [
+     "a&b (b)",
+     "rej"
+    ],
+    [
+     "b (∅)",
+     "rej"
+    ],
+    [
+     "a&b (∅ b a)",
+     "rej"
+    ],
+    [
+     "a a (a ∅)",
+     "rej"
+    ],
+    [
+     "∅ (∅ ∅)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "09-gen-state.hoa",
+   "formula": "(FG a) xor (GF b)",
+   "command": "ltl2tgba -S -f (FG a) xor (GF b)",
+   "acceptance": "2 Inf(0)&Inf(1)",
+   "words": [
+    [
+     "(∅ a&b b)",
+     "acc"
+    ],
+    [
+     "a a&b (b)",
+     "acc"
+    ],
+    [
+     "b a (a b b)",
+     "acc"
+    ],
+    [
+     "b (a&b a a&b)",
+     "rej"
+    ],
+    [
+     "(a ∅ a&b)",
+     "acc"
+    ],
+    [
+     "(a ∅)",
+     "rej"
+    ],
+    [
+     "b ∅ ∅ (a b)",
+     "acc"
+    ],
+    [
+     "b (b ∅ b)",
+     "acc"
+    ],
+    [
+     "b (b b b)",
+     "acc"
+    ],
+    [
+     "a ∅ (b b b)",
+     "acc"
+    ],
+    [
+     "a&b a&b (b)",
+     "acc"
+    ],
+    [
+     "(b a&b)",
+     "acc"
+    ],
+    [
+     "a&b a&b (b)",
+     "acc"
+    ],
+    [
+     "∅ a&b b (a a&b a)",
+     "rej"
+    ],
+    [
+     "a&b ∅ (b a)",
+     "acc"
+    ],
+    [
+     "a a (a&b)",
+     "rej"
+    ],
+    [
+     "b a&b (∅ ∅ b)",
+     "acc"
+    ],
+    [
+     "∅ a (b ∅ a)",
+     "acc"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "(a)",
+     "acc"
+    ],
+    [
+     "∅ a&b b (a a&b b)",
+     "acc"
+    ],
+    [
+     "a&b a a (a&b ∅ a)",
+     "acc"
+    ],
+    [
+     "a&b (a a&b)",
+     "rej"
+    ],
+    [
+     "b a&b (∅)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "10-parity-min-even.hoa",
+   "formula": "X(a R b)",
+   "command": "ltl2tgba -D --parity=min even -f X(a R b)",
+   "acceptance": "0 t",
+   "words": [
+    [
+     "a&b b (a a ∅)",
+     "rej"
+    ],
+    [
+     "(a&b)",
+     "acc"
+    ],
+    [
+     "∅ a a (a&b a)",
+     "rej"
+    ],
+    [
+     "a&b ∅ a (b a a)",
+     "rej"
+    ],
+    [
+     "a (∅ b)",
+     "rej"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "a a b (∅ a a&b)",
+     "rej"
+    ],
+    [
+     "(b ∅ b)",
+     "rej"
+    ],
+    [
+     "b ∅ b (b a&b b)",
+     "rej"
+    ],
+    [
+     "a (∅ a ∅)",
+     "rej"
+    ],
+    [
+     "(a a ∅)",
+     "rej"
+    ],
+    [
+     "a a&b a&b (∅)",
+     "acc"
+    ],
+    [
+     "a&b (b ∅ ∅)",
+     "rej"
+    ],
+    [
+     "b (a&b a&b a)",
+     "acc"
+    ],
+    [
+     "(a&b)",
+     "acc"
+    ],
+    [
+     "b a&b b (∅ a)",
+     "acc"
+    ],
+    [
+     "a a&b (b)",
+     "acc"
+    ],
+    [
+     "a&b b a (a&b a ∅)",
+     "rej"
+    ],
+    [
+     "∅ (a b b)",
+     "rej"
+    ],
+    [
+     "a a (b)",
+     "rej"
+    ],
+    [
+     "b (b)",
+     "acc"
+    ],
+    [
+     "b ∅ ∅ (a&b)",
+     "rej"
+    ],
+    [
+     "b (a&b ∅ b)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "11-parity-min-even.hoa",
+   "formula": "F(a & G !b) | G F c",
+   "command": "ltl2tgba -D --parity=min even -f F(a & G !b) | G F c",
+   "acceptance": "2 Inf(0) | Fin(1)",
+   "words": [
+    [
+     "b b (c&b b)",
+     "acc"
+    ],
+    [
+     "(b a&c)",
+     "acc"
+    ],
+    [
+     "c&b (a&b a&b)",
+     "rej"
+    ],
+    [
+     "(c)",
+     "acc"
+    ],
+    [
+     "a&c (a b)",
+     "rej"
+    ],
+    [
+     "a&c c&b (c&b c b)",
+     "acc"
+    ],
+    [
+     "∅ (a&c&b c a)",
+     "acc"
+    ],
+    [
+     "c b (c&b a)",
+     "acc"
+    ],
+    [
+     "c&b a&c ∅ (c&b)",
+     "acc"
+    ],
+    [
+     "b (b)",
+     "rej"
+    ],
+    [
+     "∅ a&b (a&c)",
+     "acc"
+    ],
+    [
+     "a&c&b a&c (c ∅)",
+     "acc"
+    ],
+    [
+     "a&c c&b (b)",
+     "rej"
+    ],
+    [
+     "c&b (∅)",
+     "rej"
+    ],
+    [
+     "b a (a&c a&c&b)",
+     "acc"
+    ],
+    [
+     "a&b a&c a&c&b (a&c c)",
+     "acc"
+    ],
+    [
+     "∅ a&c&b (a&c)",
+     "acc"
+    ],
+    [
+     "(a&b)",
+     "rej"
+    ],
+    [
+     "b ∅ (b a&c&b)",
+     "acc"
+    ],
+    [
+     "b b b (∅ a&b)",
+     "rej"
+    ],
+    [
+     "a&c&b a&b (a)",
+     "acc"
+    ],
+    [
+     "a&c&b c (a&c c&b a&b)",
+     "acc"
+    ],
+    [
+     "(a&b)",
+     "rej"
+    ],
+    [
+     "a&b (a&b)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "12-parity-min-even.hoa",
+   "formula": "G a",
+   "command": "ltl2tgba -D --parity=min even -f G a",
+   "acceptance": "0 t",
+   "words": [
+    [
+     "∅ (a ∅)",
+     "rej"
+    ],
+    [
+     "(a a a)",
+     "acc"
+    ],
+    [
+     "(∅ a a)",
+     "rej"
+    ],
+    [
+     "a a (∅ ∅ a)",
+     "rej"
+    ],
+    [
+     "∅ (∅)",
+     "rej"
+    ],
+    [
+     "∅ (∅)",
+     "rej"
+    ],
+    [
+     "∅ (a ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (a ∅)",
+     "rej"
+    ],
+    [
+     "(a ∅)",
+     "rej"
+    ],
+    [
+     "(∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "a (a)",
+     "acc"
+    ],
+    [
+     "∅ (∅ a)",
+     "rej"
+    ],
+    [
+     "(a)",
+     "acc"
+    ],
+    [
+     "∅ ∅ (∅)",
+     "rej"
+    ],
+    [
+     "a a (∅ a a)",
+     "rej"
+    ],
+    [
+     "a (a)",
+     "acc"
+    ],
+    [
+     "(∅ ∅ a)",
+     "rej"
+    ],
+    [
+     "(∅ a)",
+     "rej"
+    ],
+    [
+     "a (a)",
+     "acc"
+    ],
+    [
+     "a a (∅)",
+     "rej"
+    ],
+    [
+     "∅ a (∅)",
+     "rej"
+    ],
+    [
+     "a (a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "(∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "(∅ ∅ a)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "13-parity-min-odd.hoa",
+   "formula": "GF a & GF b",
+   "command": "ltl2tgba -D --parity=min odd -f GF a & GF b",
+   "acceptance": "2 Fin(0) & Inf(1)",
+   "words": [
+    [
+     "a ∅ (∅)",
+     "rej"
+    ],
+    [
+     "(a)",
+     "rej"
+    ],
+    [
+     "a&b b (a ∅ b)",
+     "acc"
+    ],
+    [
+     "b (∅ b)",
+     "rej"
+    ],
+    [
+     "b (∅ b)",
+     "rej"
+    ],
+    [
+     "∅ (∅)",
+     "rej"
+    ],
+    [
+     "(a&b)",
+     "acc"
+    ],
+    [
+     "b (a)",
+     "rej"
+    ],
+    [
+     "b (b)",
+     "rej"
+    ],
+    [
+     "(a)",
+     "rej"
+    ],
+    [
+     "(a)",
+     "rej"
+    ],
+    [
+     "∅ ∅ a&b (∅)",
+     "rej"
+    ],
+    [
+     "a&b (a&b ∅ a)",
+     "acc"
+    ],
+    [
+     "(∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "a&b a&b (a b)",
+     "acc"
+    ],
+    [
+     "b b b (b a&b b)",
+     "acc"
+    ],
+    [
+     "a b ∅ (b)",
+     "rej"
+    ],
+    [
+     "∅ (a&b)",
+     "acc"
+    ],
+    [
+     "(a&b a a&b)",
+     "acc"
+    ],
+    [
+     "∅ a ∅ (a a)",
+     "rej"
+    ],
+    [
+     "(a&b a)",
+     "acc"
+    ],
+    [
+     "a&b b ∅ (b)",
+     "rej"
+    ],
+    [
+     "(b a&b a&b)",
+     "acc"
+    ],
+    [
+     "a&b ∅ a&b (∅ ∅ ∅)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "14-parity-min-odd.hoa",
+   "formula": "FG a",
+   "command": "ltl2tgba -D --parity=min odd -f FG a",
+   "acceptance": "1 Fin(0)",
+   "words": [
+    [
+     "∅ (∅ ∅)",
+     "rej"
+    ],
+    [
+     "a (a)",
+     "acc"
+    ],
+    [
+     "∅ ∅ a (∅)",
+     "rej"
+    ],
+    [
+     "∅ (∅ a ∅)",
+     "rej"
+    ],
+    [
+     "∅ a a (∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (∅ ∅)",
+     "rej"
+    ],
+    [
+     "a a a (∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "(∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ (∅ ∅)",
+     "rej"
+    ],
+    [
+     "a ∅ a (a a)",
+     "acc"
+    ],
+    [
+     "∅ (a)",
+     "acc"
+    ],
+    [
+     "a ∅ ∅ (a a)",
+     "acc"
+    ],
+    [
+     "∅ a (∅ a)",
+     "rej"
+    ],
+    [
+     "∅ (a a ∅)",
+     "rej"
+    ],
+    [
+     "a (a ∅ a)",
+     "rej"
+    ],
+    [
+     "∅ (∅)",
+     "rej"
+    ],
+    [
+     "a ∅ ∅ (a a)",
+     "acc"
+    ],
+    [
+     "a (a a)",
+     "acc"
+    ],
+    [
+     "(a)",
+     "acc"
+    ],
+    [
+     "a (∅ ∅ a)",
+     "rej"
+    ],
+    [
+     "a a ∅ (∅ a)",
+     "rej"
+    ],
+    [
+     "(∅ a a)",
+     "rej"
+    ],
+    [
+     "∅ ∅ ∅ (a a)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "15-parity-min-odd.hoa",
+   "formula": "G(a -> F b)",
+   "command": "ltl2tgba -D --parity=min odd -f G(a -> F b)",
+   "acceptance": "2 Fin(0) & Inf(1)",
+   "words": [
+    [
+     "(a a)",
+     "rej"
+    ],
+    [
+     "(a&b a)",
+     "acc"
+    ],
+    [
+     "(a a)",
+     "rej"
+    ],
+    [
+     "(∅ a ∅)",
+     "rej"
+    ],
+    [
+     "a&b a&b a (a)",
+     "rej"
+    ],
+    [
+     "(∅ a&b)",
+     "acc"
+    ],
+    [
+     "(a b)",
+     "acc"
+    ],
+    [
+     "∅ b (∅ ∅ ∅)",
+     "acc"
+    ],
+    [
+     "b b b (∅ a&b ∅)",
+     "acc"
+    ],
+    [
+     "(b ∅ a&b)",
+     "acc"
+    ],
+    [
+     "a a b (a ∅ a&b)",
+     "acc"
+    ],
+    [
+     "∅ (a&b)",
+     "acc"
+    ],
+    [
+     "b ∅ b (a&b)",
+     "acc"
+    ],
+    [
+     "b b a (a b a&b)",
+     "acc"
+    ],
+    [
+     "a a&b (a ∅ b)",
+     "acc"
+    ],
+    [
+     "(a&b ∅ a)",
+     "acc"
+    ],
+    [
+     "a&b ∅ (∅)",
+     "acc"
+    ],
+    [
+     "(∅)",
+     "acc"
+    ],
+    [
+     "a&b (a ∅)",
+     "rej"
+    ],
+    [
+     "∅ a&b (∅ a)",
+     "rej"
+    ],
+    [
+     "a&b a (a a&b a)",
+     "acc"
+    ],
+    [
+     "a&b a&b (∅ b b)",
+     "acc"
+    ],
+    [
+     "∅ a (a)",
+     "rej"
+    ],
+    [
+     "∅ (b)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "16-parity-max-even.hoa",
+   "formula": "a U b",
+   "command": "ltl2tgba -D --parity=max even -f a U b",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "∅ a&b (a ∅)",
+     "rej"
+    ],
+    [
+     "b ∅ a&b (∅ a)",
+     "acc"
+    ],
+    [
+     "b (a a a&b)",
+     "acc"
+    ],
+    [
+     "(a b a&b)",
+     "acc"
+    ],
+    [
+     "b (a&b ∅ ∅)",
+     "acc"
+    ],
+    [
+     "∅ a&b b (a b b)",
+     "rej"
+    ],
+    [
+     "a a&b a&b (b ∅ ∅)",
+     "acc"
+    ],
+    [
+     "a&b ∅ a (a)",
+     "acc"
+    ],
+    [
+     "∅ b (a)",
+     "rej"
+    ],
+    [
+     "a (a&b ∅)",
+     "acc"
+    ],
+    [
+     "(∅ b)",
+     "rej"
+    ],
+    [
+     "a (b ∅ b)",
+     "acc"
+    ],
+    [
+     "a b a&b (a)",
+     "acc"
+    ],
+    [
+     "b (a&b)",
+     "acc"
+    ],
+    [
+     "a&b a (b)",
+     "acc"
+    ],
+    [
+     "a&b ∅ (a&b a ∅)",
+     "acc"
+    ],
+    [
+     "(∅ a a&b)",
+     "rej"
+    ],
+    [
+     "∅ (∅ a&b ∅)",
+     "rej"
+    ],
+    [
+     "b (a&b a b)",
+     "acc"
+    ],
+    [
+     "a b (∅)",
+     "acc"
+    ],
+    [
+     "∅ (∅ b)",
+     "rej"
+    ],
+    [
+     "b (a&b ∅ a)",
+     "acc"
+    ],
+    [
+     "(a&b)",
+     "acc"
+    ],
+    [
+     "a (∅ a&b)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "17-parity-max-even.hoa",
+   "formula": "GF a -> GF b",
+   "command": "ltl2tgba -D --parity=max even -f GF a -> GF b",
+   "acceptance": "3 Inf(2) | (Fin(1) & Inf(0))",
+   "words": [
+    [
+     "∅ a (∅)",
+     "acc"
+    ],
+    [
+     "b a b (b&a b ∅)",
+     "acc"
+    ],
+    [
+     "(a b)",
+     "acc"
+    ],
+    [
+     "a (a a a)",
+     "rej"
+    ],
+    [
+     "∅ (b&a)",
+     "acc"
+    ],
+    [
+     "b (a ∅)",
+     "rej"
+    ],
+    [
+     "(∅ b&a b)",
+     "acc"
+    ],
+    [
+     "(∅ b a)",
+     "acc"
+    ],
+    [
+     "(∅ b&a b&a)",
+     "acc"
+    ],
+    [
+     "∅ (b&a)",
+     "acc"
+    ],
+    [
+     "a ∅ (b&a a)",
+     "acc"
+    ],
+    [
+     "∅ b&a b&a (∅)",
+     "acc"
+    ],
+    [
+     "∅ b (a a a)",
+     "rej"
+    ],
+    [
+     "a b ∅ (a a)",
+     "rej"
+    ],
+    [
+     "(∅ a ∅)",
+     "rej"
+    ],
+    [
+     "b (∅ b)",
+     "acc"
+    ],
+    [
+     "∅ b&a b&a (b&a b)",
+     "acc"
+    ],
+    [
+     "a (∅)",
+     "acc"
+    ],
+    [
+     "b&a b (a a)",
+     "rej"
+    ],
+    [
+     "b&a (b&a a)",
+     "acc"
+    ],
+    [
+     "a b (b b b)",
+     "acc"
+    ],
+    [
+     "(b)",
+     "acc"
+    ],
+    [
+     "∅ a (∅)",
+     "acc"
+    ],
+    [
+     "(a a)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "18-parity-max-even.hoa",
+   "formula": "FG a | GF b",
+   "command": "ltl2tgba -D --parity=max even -f FG a | GF b",
+   "acceptance": "3 Inf(2) | (Fin(1) & Inf(0))",
+   "words": [
+    [
+     "b (∅ a&b)",
+     "acc"
+    ],
+    [
+     "b ∅ (b)",
+     "acc"
+    ],
+    [
+     "b (a)",
+     "acc"
+    ],
+    [
+     "∅ a&b (a&b a ∅)",
+     "acc"
+    ],
+    [
+     "∅ a&b ∅ (∅ ∅)",
+     "rej"
+    ],
+    [
+     "a a a (∅ a&b a&b)",
+     "acc"
+    ],
+    [
+     "a&b a (b ∅ a)",
+     "acc"
+    ],
+    [
+     "b a a (a&b ∅ a&b)",
+     "acc"
+    ],
+    [
+     "a ∅ (∅)",
+     "rej"
+    ],
+    [
+     "a ∅ (a ∅ a&b)",
+     "acc"
+    ],
+    [
+     "b (b a a&b)",
+     "acc"
+    ],
+    [
+     "b b a&b (a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "b a&b (a&b a a&b)",
+     "acc"
+    ],
+    [
+     "a ∅ (a)",
+     "acc"
+    ],
+    [
+     "∅ a b (b)",
+     "acc"
+    ],
+    [
+     "a&b a (a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ (∅)",
+     "rej"
+    ],
+    [
+     "b a (a)",
+     "acc"
+    ],
+    [
+     "(b a&b a&b)",
+     "acc"
+    ],
+    [
+     "b b (a&b ∅)",
+     "acc"
+    ],
+    [
+     "(∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "a a a (a&b)",
+     "acc"
+    ],
+    [
+     "(a&b a)",
+     "acc"
+    ],
+    [
+     "(b ∅)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "19-parity-max-odd.hoa",
+   "formula": "G(a -> X(b U c))",
+   "command": "ltl2tgba -D --parity=max odd -f G(a -> X(b U c))",
+   "acceptance": "2 Fin(0) | Inf(1)",
+   "words": [
+    [
+     "(a&b)",
+     "rej"
+    ],
+    [
+     "a&b&c b a&c (c b&c)",
+     "acc"
+    ],
+    [
+     "(c a&b)",
+     "acc"
+    ],
+    [
+     "∅ ∅ (a&c b&c)",
+     "acc"
+    ],
+    [
+     "a (a)",
+     "rej"
+    ],
+    [
+     "b a (b a&b&c a&b&c)",
+     "acc"
+    ],
+    [
+     "a (a&b&c)",
+     "acc"
+    ],
+    [
+     "∅ b a&b&c (a&b a&b a)",
+     "rej"
+    ],
+    [
+     "b&c (a&b)",
+     "rej"
+    ],
+    [
+     "c a&b&c (a ∅)",
+     "rej"
+    ],
+    [
+     "c b&c (∅ b a&b)",
+     "rej"
+    ],
+    [
+     "(b&c a)",
+     "acc"
+    ],
+    [
+     "∅ ∅ (a&c)",
+     "acc"
+    ],
+    [
+     "∅ c a&c (c b)",
+     "acc"
+    ],
+    [
+     "(b&c)",
+     "acc"
+    ],
+    [
+     "a&b a&b&c a (c a&b)",
+     "rej"
+    ],
+    [
+     "(a&b&c)",
+     "acc"
+    ],
+    [
+     "a&b c a&c (b&c)",
+     "acc"
+    ],
+    [
+     "(a&b c)",
+     "acc"
+    ],
+    [
+     "b&c a&c (a b&c b&c)",
+     "rej"
+    ],
+    [
+     "c ∅ b&c (b&c c)",
+     "acc"
+    ],
+    [
+     "a (a&b&c b a&b&c)",
+     "acc"
+    ],
+    [
+     "(a&b&c)",
+     "acc"
+    ],
+    [
+     "a&b a&c (c c c)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "20-parity-max-odd.hoa",
+   "formula": "GF(a & X b)",
+   "command": "ltl2tgba -D --parity=max odd -f GF(a & X b)",
+   "acceptance": "2 Fin(0) | Inf(1)",
+   "words": [
+    [
+     "a b a (∅ b)",
+     "rej"
+    ],
+    [
+     "a a&b ∅ (a)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (a ∅ a)",
+     "rej"
+    ],
+    [
+     "(a)",
+     "rej"
+    ],
+    [
+     "a&b a&b a&b (∅)",
+     "rej"
+    ],
+    [
+     "∅ (b)",
+     "rej"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "a a&b a&b (b b a&b)",
+     "acc"
+    ],
+    [
+     "(a)",
+     "rej"
+    ],
+    [
+     "b (∅)",
+     "rej"
+    ],
+    [
+     "a b (a&b a b)",
+     "acc"
+    ],
+    [
+     "a b ∅ (b)",
+     "rej"
+    ],
+    [
+     "b b (b b a&b)",
+     "acc"
+    ],
+    [
+     "a&b b (b)",
+     "rej"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "a&b (a&b a a)",
+     "acc"
+    ],
+    [
+     "∅ a&b ∅ (b)",
+     "rej"
+    ],
+    [
+     "a a&b a (∅)",
+     "rej"
+    ],
+    [
+     "b a a (a b ∅)",
+     "acc"
+    ],
+    [
+     "a b (a&b)",
+     "acc"
+    ],
+    [
+     "(a ∅)",
+     "rej"
+    ],
+    [
+     "b (a&b)",
+     "acc"
+    ],
+    [
+     "(a ∅)",
+     "rej"
+    ],
+    [
+     "∅ a&b (a a a)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "21-parity-max-odd.hoa",
+   "formula": "(FG a) xor (GF b)",
+   "command": "ltl2tgba -D --parity=max odd -f (FG a) xor (GF b)",
+   "acceptance": "2 Fin(0) | Inf(1)",
+   "words": [
+    [
+     "a (a)",
+     "acc"
+    ],
+    [
+     "a&b (a a a&b)",
+     "rej"
+    ],
+    [
+     "(b a)",
+     "acc"
+    ],
+    [
+     "(∅ b a&b)",
+     "acc"
+    ],
+    [
+     "(∅ b)",
+     "acc"
+    ],
+    [
+     "∅ (a&b a&b b)",
+     "acc"
+    ],
+    [
+     "∅ a (a b)",
+     "acc"
+    ],
+    [
+     "a (b a&b a)",
+     "acc"
+    ],
+    [
+     "a&b a&b b (a)",
+     "acc"
+    ],
+    [
+     "(b)",
+     "acc"
+    ],
+    [
+     "a&b (∅)",
+     "rej"
+    ],
+    [
+     "a&b ∅ (∅)",
+     "rej"
+    ],
+    [
+     "(a&b a)",
+     "rej"
+    ],
+    [
+     "∅ a&b a&b (∅)",
+     "rej"
+    ],
+    [
+     "(a&b)",
+     "rej"
+    ],
+    [
+     "b a a (a)",
+     "acc"
+    ],
+    [
+     "∅ a ∅ (a ∅)",
+     "rej"
+    ],
+    [
+     "a&b a (b a)",
+     "acc"
+    ],
+    [
+     "(a&b b a&b)",
+     "acc"
+    ],
+    [
+     "∅ (∅ b ∅)",
+     "acc"
+    ],
+    [
+     "b a (a&b ∅)",
+     "acc"
+    ],
+    [
+     "a a (a&b ∅)",
+     "acc"
+    ],
+    [
+     "a b (a&b b)",
+     "acc"
+    ],
+    [
+     "a&b a (a ∅ ∅)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "22-cobuchi.hoa",
+   "formula": "X(a R b)",
+   "command": "ltl2tgba --cobuchi -f X(a R b)",
+   "acceptance": "1 Fin(0)",
+   "words": [
+    [
+     "∅ ∅ (b)",
+     "rej"
+    ],
+    [
+     "b a a (∅)",
+     "rej"
+    ],
+    [
+     "(b)",
+     "acc"
+    ],
+    [
+     "(∅ a)",
+     "rej"
+    ],
+    [
+     "a b&a ∅ (b ∅)",
+     "acc"
+    ],
+    [
+     "(b ∅)",
+     "rej"
+    ],
+    [
+     "b&a (b)",
+     "acc"
+    ],
+    [
+     "(b)",
+     "acc"
+    ],
+    [
+     "(b)",
+     "acc"
+    ],
+    [
+     "(b)",
+     "acc"
+    ],
+    [
+     "(a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "b b&a (b)",
+     "acc"
+    ],
+    [
+     "b b&a (∅ b)",
+     "acc"
+    ],
+    [
+     "a (a b&a)",
+     "rej"
+    ],
+    [
+     "(b&a ∅)",
+     "rej"
+    ],
+    [
+     "(b&a b)",
+     "acc"
+    ],
+    [
+     "b ∅ ∅ (a b)",
+     "rej"
+    ],
+    [
+     "b (b&a)",
+     "acc"
+    ],
+    [
+     "(∅ b&a)",
+     "acc"
+    ],
+    [
+     "a (b a b)",
+     "rej"
+    ],
+    [
+     "∅ b&a (b&a a)",
+     "acc"
+    ],
+    [
+     "a (a)",
+     "rej"
+    ],
+    [
+     "(∅ b)",
+     "rej"
+    ],
+    [
+     "b&a b (∅ ∅)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "23-cobuchi.hoa",
+   "formula": "F(a & G !b) | G F c",
+   "command": "ltl2tgba --cobuchi -f F(a & G !b) | G F c",
+   "acceptance": "1 Fin(0)",
+   "words": [
+    [
+     "(a&c)",
+     "acc"
+    ],
+    [
+     "b (c)",
+     "acc"
+    ],
+    [
+     "b&c ∅ a&c (∅)",
+     "acc"
+    ],
+    [
+     "b&c a&b a&c (a&b)",
+     "acc"
+    ],
+    [
+     "a&b&c a (a a b&c)",
+     "acc"
+    ],
+    [
+     "(b c a&b&c)",
+     "acc"
+    ],
+    [
+     "a&b&c a&b&c a&c (a&c a b)",
+     "acc"
+    ],
+    [
+     "a&b&c a&b&c (a&c b a&b&c)",
+     "acc"
+    ],
+    [
+     "(b&c a)",
+     "acc"
+    ],
+    [
+     "a&b&c b&c (c)",
+     "acc"
+    ],
+    [
+     "b&c b (∅)",
+     "acc"
+    ],
+    [
+     "(a&c)",
+     "acc"
+    ],
+    [
+     "(a&b&c a&c)",
+     "acc"
+    ],
+    [
+     "(a&c)",
+     "acc"
+    ],
+    [
+     "b ∅ (a&c b&c a&c)",
+     "acc"
+    ],
+    [
+     "(a&c)",
+     "acc"
+    ],
+    [
+     "a a&b (a)",
+     "acc"
+    ],
+    [
+     "a&b&c ∅ (a&b ∅ a&b&c)",
+     "acc"
+    ],
+    [
+     "a&c a&b&c (b&c a ∅)",
+     "acc"
+    ],
+    [
+     "c c a&c (c c a)",
+     "acc"
+    ],
+    [
+     "a a&b&c (∅ a a&b&c)",
+     "acc"
+    ],
+    [
+     "(∅ b)",
+     "rej"
+    ],
+    [
+     "(c b c)",
+     "acc"
+    ],
+    [
+     "a a c (a&b)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "24-cobuchi.hoa",
+   "formula": "G a",
+   "command": "ltl2tgba --cobuchi -f G a",
+   "acceptance": "1 Fin(0)",
+   "words": [
+    [
+     "a (∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (a a)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (a ∅)",
+     "rej"
+    ],
+    [
+     "a a ∅ (∅ a a)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (a a ∅)",
+     "rej"
+    ],
+    [
+     "(a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "(a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "a (a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ a (∅ a)",
+     "rej"
+    ],
+    [
+     "a ∅ a (a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "(a a ∅)",
+     "rej"
+    ],
+    [
+     "a ∅ a (a)",
+     "rej"
+    ],
+    [
+     "a (∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ a (∅ ∅)",
+     "rej"
+    ],
+    [
+     "(∅ a)",
+     "rej"
+    ],
+    [
+     "(∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ a (∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ a (a a)",
+     "rej"
+    ],
+    [
+     "(a)",
+     "acc"
+    ],
+    [
+     "(∅ a)",
+     "rej"
+    ],
+    [
+     "(∅ ∅)",
+     "rej"
+    ],
+    [
+     "(a a)",
+     "acc"
+    ],
+    [
+     "∅ a (a a)",
+     "rej"
+    ],
+    [
+     "∅ a (a ∅)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "25-generic-det.hoa",
+   "formula": "GF a & GF b",
+   "command": "ltl2tgba -D -G -f GF a & GF b",
+   "acceptance": "2 Inf(0)&Inf(1)",
+   "words": [
+    [
+     "a&b b (a ∅ a)",
+     "rej"
+    ],
+    [
+     "a (∅)",
+     "rej"
+    ],
+    [
+     "(∅ b)",
+     "rej"
+    ],
+    [
+     "∅ (a a&b)",
+     "acc"
+    ],
+    [
+     "a&b a&b a&b (∅)",
+     "rej"
+    ],
+    [
+     "b (∅)",
+     "rej"
+    ],
+    [
+     "∅ a&b (a&b a)",
+     "acc"
+    ],
+    [
+     "(a&b ∅)",
+     "acc"
+    ],
+    [
+     "b (a&b a a&b)",
+     "acc"
+    ],
+    [
+     "b a&b (a a&b ∅)",
+     "acc"
+    ],
+    [
+     "(∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "b a&b (a)",
+     "rej"
+    ],
+    [
+     "b (a)",
+     "rej"
+    ],
+    [
+     "(b)",
+     "rej"
+    ],
+    [
+     "(a a&b b)",
+     "acc"
+    ],
+    [
+     "∅ a (∅ a&b)",
+     "acc"
+    ],
+    [
+     "a (∅ ∅)",
+     "rej"
+    ],
+    [
+     "(b a b)",
+     "acc"
+    ],
+    [
+     "∅ (b a a)",
+     "acc"
+    ],
+    [
+     "b (a&b)",
+     "acc"
+    ],
+    [
+     "(a)",
+     "rej"
+    ],
+    [
+     "a&b (a&b)",
+     "acc"
+    ],
+    [
+     "(b)",
+     "rej"
+    ],
+    [
+     "a&b b (∅ a ∅)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "26-generic-det.hoa",
+   "formula": "FG a",
+   "command": "ltl2tgba -D -G -f FG a",
+   "acceptance": "1 Fin(0)",
+   "words": [
+    [
+     "a a (a)",
+     "acc"
+    ],
+    [
+     "a a (a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "a a ∅ (a a)",
+     "acc"
+    ],
+    [
+     "(∅ a)",
+     "rej"
+    ],
+    [
+     "a ∅ a (a a ∅)",
+     "rej"
+    ],
+    [
+     "∅ (∅)",
+     "rej"
+    ],
+    [
+     "(a ∅)",
+     "rej"
+    ],
+    [
+     "∅ (a ∅)",
+     "rej"
+    ],
+    [
+     "a (a a ∅)",
+     "rej"
+    ],
+    [
+     "(a a ∅)",
+     "rej"
+    ],
+    [
+     "∅ a a (∅)",
+     "rej"
+    ],
+    [
+     "∅ a (a)",
+     "acc"
+    ],
+    [
+     "a (∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ (a a a)",
+     "acc"
+    ],
+    [
+     "a ∅ a (a a)",
+     "acc"
+    ],
+    [
+     "(a ∅)",
+     "rej"
+    ],
+    [
+     "∅ a (∅ a ∅)",
+     "rej"
+    ],
+    [
+     "a (∅ a)",
+     "rej"
+    ],
+    [
+     "a ∅ a (∅ a ∅)",
+     "rej"
+    ],
+    [
+     "(∅ a a)",
+     "rej"
+    ],
+    [
+     "∅ ∅ a (∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ a a (a)",
+     "acc"
+    ],
+    [
+     "∅ ∅ ∅ (a)",
+     "acc"
+    ],
+    [
+     "∅ (a ∅)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "27-generic-det.hoa",
+   "formula": "G(a -> F b)",
+   "command": "ltl2tgba -D -G -f G(a -> F b)",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "∅ (∅)",
+     "acc"
+    ],
+    [
+     "∅ a ∅ (b a)",
+     "acc"
+    ],
+    [
+     "a a (∅)",
+     "rej"
+    ],
+    [
+     "a b (b a a&b)",
+     "acc"
+    ],
+    [
+     "a&b (a)",
+     "rej"
+    ],
+    [
+     "(∅)",
+     "acc"
+    ],
+    [
+     "b a (∅ a&b b)",
+     "acc"
+    ],
+    [
+     "a (a ∅)",
+     "rej"
+    ],
+    [
+     "(b a a)",
+     "acc"
+    ],
+    [
+     "∅ b (∅)",
+     "acc"
+    ],
+    [
+     "∅ a&b (a)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (∅)",
+     "acc"
+    ],
+    [
+     "a&b a a (∅)",
+     "rej"
+    ],
+    [
+     "∅ (b a a)",
+     "acc"
+    ],
+    [
+     "a a (b)",
+     "acc"
+    ],
+    [
+     "a&b ∅ (∅ a)",
+     "rej"
+    ],
+    [
+     "(∅)",
+     "acc"
+    ],
+    [
+     "a&b (b a ∅)",
+     "acc"
+    ],
+    [
+     "b (a&b)",
+     "acc"
+    ],
+    [
+     "a (b ∅)",
+     "acc"
+    ],
+    [
+     "∅ a (a&b b ∅)",
+     "acc"
+    ],
+    [
+     "a&b a b (b)",
+     "acc"
+    ],
+    [
+     "∅ (a a ∅)",
+     "rej"
+    ],
+    [
+     "(b)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "28-aliases.hoa",
+   "formula": "a U b",
+   "command": "ltl2tgba -Hb -f a U b",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "b (b a a)",
+     "acc"
+    ],
+    [
+     "∅ (a a&b a&b)",
+     "rej"
+    ],
+    [
+     "∅ a a&b (∅ ∅ a&b)",
+     "rej"
+    ],
+    [
+     "(a a)",
+     "rej"
+    ],
+    [
+     "∅ a&b a (b ∅ a)",
+     "rej"
+    ],
+    [
+     "b ∅ (a&b a&b b)",
+     "acc"
+    ],
+    [
+     "(a&b b)",
+     "acc"
+    ],
+    [
+     "b b (a)",
+     "acc"
+    ],
+    [
+     "(b)",
+     "acc"
+    ],
+    [
+     "b (b a&b)",
+     "acc"
+    ],
+    [
+     "b (a a&b ∅)",
+     "acc"
+    ],
+    [
+     "∅ a&b (∅ b)",
+     "rej"
+    ],
+    [
+     "a a a&b (a&b a&b)",
+     "acc"
+    ],
+    [
+     "(b ∅)",
+     "acc"
+    ],
+    [
+     "a&b ∅ (a&b)",
+     "acc"
+    ],
+    [
+     "(a&b)",
+     "acc"
+    ],
+    [
+     "a&b a (a&b)",
+     "acc"
+    ],
+    [
+     "a&b b b (a)",
+     "acc"
+    ],
+    [
+     "(a b a)",
+     "acc"
+    ],
+    [
+     "b a a&b (a b ∅)",
+     "acc"
+    ],
+    [
+     "b b ∅ (∅ a&b)",
+     "acc"
+    ],
+    [
+     "∅ (b)",
+     "rej"
+    ],
+    [
+     "b a (∅ a b)",
+     "acc"
+    ],
+    [
+     "∅ ∅ a&b (a&b a b)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "29-aliases.hoa",
+   "formula": "GF a -> GF b",
+   "command": "ltl2tgba -Hb -f GF a -> GF b",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "(b)",
+     "acc"
+    ],
+    [
+     "(b b)",
+     "acc"
+    ],
+    [
+     "∅ (a)",
+     "rej"
+    ],
+    [
+     "(a b&a)",
+     "acc"
+    ],
+    [
+     "a (b&a)",
+     "acc"
+    ],
+    [
+     "b&a b a (b)",
+     "acc"
+    ],
+    [
+     "(a)",
+     "rej"
+    ],
+    [
+     "b (b)",
+     "acc"
+    ],
+    [
+     "b b&a (a b b&a)",
+     "acc"
+    ],
+    [
+     "b&a ∅ (b&a)",
+     "acc"
+    ],
+    [
+     "∅ (b ∅ ∅)",
+     "acc"
+    ],
+    [
+     "∅ b (a ∅)",
+     "rej"
+    ],
+    [
+     "a b (∅ b&a)",
+     "acc"
+    ],
+    [
+     "(b b&a b)",
+     "acc"
+    ],
+    [
+     "b&a b b (b&a b)",
+     "acc"
+    ],
+    [
+     "∅ (b&a b&a)",
+     "acc"
+    ],
+    [
+     "b ∅ (b)",
+     "acc"
+    ],
+    [
+     "b a (∅)",
+     "acc"
+    ],
+    [
+     "a ∅ a (b a)",
+     "acc"
+    ],
+    [
+     "a b&a b (b&a b ∅)",
+     "acc"
+    ],
+    [
+     "a b (b&a b&a b)",
+     "acc"
+    ],
+    [
+     "(a ∅)",
+     "rej"
+    ],
+    [
+     "∅ b (∅ a b)",
+     "acc"
+    ],
+    [
+     "b&a ∅ a (a)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "30-aliases.hoa",
+   "formula": "FG a | GF b",
+   "command": "ltl2tgba -Hb -f FG a | GF b",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "a&b a ∅ (a)",
+     "acc"
+    ],
+    [
+     "a a&b a (a a&b b)",
+     "acc"
+    ],
+    [
+     "a&b b a (∅ a)",
+     "rej"
+    ],
+    [
+     "∅ a&b a (b)",
+     "acc"
+    ],
+    [
+     "a ∅ a&b (a&b a&b)",
+     "acc"
+    ],
+    [
+     "∅ a (b ∅ a&b)",
+     "acc"
+    ],
+    [
+     "(a)",
+     "acc"
+    ],
+    [
+     "∅ b (a)",
+     "acc"
+    ],
+    [
+     "(b a&b a&b)",
+     "acc"
+    ],
+    [
+     "a a (a&b)",
+     "acc"
+    ],
+    [
+     "(a ∅ a)",
+     "rej"
+    ],
+    [
+     "a (a a&b b)",
+     "acc"
+    ],
+    [
+     "a&b ∅ b (a)",
+     "acc"
+    ],
+    [
+     "a&b (a)",
+     "acc"
+    ],
+    [
+     "a (a b a)",
+     "acc"
+    ],
+    [
+     "(a)",
+     "acc"
+    ],
+    [
+     "b a ∅ (b a)",
+     "acc"
+    ],
+    [
+     "b b ∅ (b b a&b)",
+     "acc"
+    ],
+    [
+     "∅ a (b a b)",
+     "acc"
+    ],
+    [
+     "∅ a&b ∅ (a&b ∅)",
+     "acc"
+    ],
+    [
+     "(a&b b b)",
+     "acc"
+    ],
+    [
+     "(a&b)",
+     "acc"
+    ],
+    [
+     "(a a)",
+     "acc"
+    ],
+    [
+     "a&b a&b (b b ∅)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "31-implicit-labels.hoa",
+   "formula": "G(a -> X(b U c))",
+   "command": "ltl2tgba -D -Hi -f G(a -> X(b U c))",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "b&c a&c (a&b)",
+     "rej"
+    ],
+    [
+     "∅ (b&c a&c b)",
+     "acc"
+    ],
+    [
+     "c a&b (∅ a&c b&c)",
+     "rej"
+    ],
+    [
+     "b a&b&c b&c (b&c a&b&c a&c)",
+     "acc"
+    ],
+    [
+     "∅ a (a&c)",
+     "acc"
+    ],
+    [
+     "b (a&c a&b&c b&c)",
+     "acc"
+    ],
+    [
+     "a&b&c b a&b (∅ b&c)",
+     "rej"
+    ],
+    [
+     "(∅ a&b)",
+     "rej"
+    ],
+    [
+     "a&b&c a&c b&c (a&b a)",
+     "rej"
+    ],
+    [
+     "a&c a&b&c b&c (b&c)",
+     "acc"
+    ],
+    [
+     "b&c (a&b&c a&b b)",
+     "acc"
+    ],
+    [
+     "a b&c a&b (∅ a&b&c a)",
+     "rej"
+    ],
+    [
+     "c a&b&c a&b (a&b b)",
+     "rej"
+    ],
+    [
+     "(a&b c)",
+     "acc"
+    ],
+    [
+     "c a (a&b&c a&b)",
+     "acc"
+    ],
+    [
+     "b&c (∅ b)",
+     "acc"
+    ],
+    [
+     "(b ∅ b)",
+     "acc"
+    ],
+    [
+     "a&b a&b (∅)",
+     "rej"
+    ],
+    [
+     "a&b c (a&b a&b&c)",
+     "acc"
+    ],
+    [
+     "a&b b (a&c ∅ a&c)",
+     "rej"
+    ],
+    [
+     "(a&b a&c a&b)",
+     "acc"
+    ],
+    [
+     "a (∅ ∅)",
+     "rej"
+    ],
+    [
+     "c a (b&c a&b ∅)",
+     "rej"
+    ],
+    [
+     "(b)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "32-implicit-labels.hoa",
+   "formula": "GF(a & X b)",
+   "command": "ltl2tgba -D -Hi -f GF(a & X b)",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "a&b (a&b)",
+     "acc"
+    ],
+    [
+     "a ∅ (a&b a&b)",
+     "acc"
+    ],
+    [
+     "∅ (b)",
+     "rej"
+    ],
+    [
+     "a a (b)",
+     "rej"
+    ],
+    [
+     "a b (a&b)",
+     "acc"
+    ],
+    [
+     "∅ a a (a&b a&b ∅)",
+     "acc"
+    ],
+    [
+     "a&b (b a&b a&b)",
+     "acc"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "b (∅ b b)",
+     "rej"
+    ],
+    [
+     "b b b (b)",
+     "rej"
+    ],
+    [
+     "a&b a (a)",
+     "rej"
+    ],
+    [
+     "(a&b ∅ a)",
+     "acc"
+    ],
+    [
+     "b a ∅ (∅ b)",
+     "rej"
+    ],
+    [
+     "b b (∅ ∅ a&b)",
+     "rej"
+    ],
+    [
+     "∅ (a&b)",
+     "acc"
+    ],
+    [
+     "b b (a b ∅)",
+     "acc"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "(a&b ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (a)",
+     "rej"
+    ],
+    [
+     "(a&b b)",
+     "acc"
+    ],
+    [
+     "b a&b (a ∅)",
+     "rej"
+    ],
+    [
+     "b (a b)",
+     "acc"
+    ],
+    [
+     "(∅ ∅)",
+     "rej"
+    ],
+    [
+     "a&b (b b a&b)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "33-implicit-labels.hoa",
+   "formula": "(FG a) xor (GF b)",
+   "command": "ltl2tgba -D -Hi -f (FG a) xor (GF b)",
+   "acceptance": "2 Inf(0)&Inf(1)",
+   "words": [
+    [
+     "b b (a)",
+     "acc"
+    ],
+    [
+     "a b a&b (a a&b ∅)",
+     "acc"
+    ],
+    [
+     "a&b b b (∅)",
+     "rej"
+    ],
+    [
+     "a&b (b)",
+     "acc"
+    ],
+    [
+     "b b (b a b)",
+     "acc"
+    ],
+    [
+     "b a a&b (b b ∅)",
+     "acc"
+    ],
+    [
+     "∅ (a&b ∅)",
+     "acc"
+    ],
+    [
+     "a&b a&b b (a a ∅)",
+     "rej"
+    ],
+    [
+     "∅ (a a)",
+     "acc"
+    ],
+    [
+     "a&b (a&b a&b a&b)",
+     "rej"
+    ],
+    [
+     "a&b ∅ b (a&b a&b ∅)",
+     "acc"
+    ],
+    [
+     "(a&b)",
+     "rej"
+    ],
+    [
+     "b b a (a&b a&b ∅)",
+     "acc"
+    ],
+    [
+     "∅ (a a&b)",
+     "rej"
+    ],
+    [
+     "b (∅ a a)",
+     "rej"
+    ],
+    [
+     "(a&b a&b)",
+     "rej"
+    ],
+    [
+     "a a a&b (∅ a&b b)",
+     "acc"
+    ],
+    [
+     "a&b ∅ (b)",
+     "acc"
+    ],
+    [
+     "(a&b)",
+     "rej"
+    ],
+    [
+     "∅ ∅ a (a ∅ a)",
+     "rej"
+    ],
+    [
+     "a&b a (a b b)",
+     "acc"
+    ],
+    [
+     "a (a ∅)",
+     "rej"
+    ],
+    [
+     "b ∅ ∅ (a a&b)",
+     "rej"
+    ],
+    [
+     "∅ (a b)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "34-state-labels.hoa",
+   "formula": "X(a R b)",
+   "command": "ltl2tgba -Hk -f X(a R b)",
+   "acceptance": "0 t",
+   "words": [
+    [
+     "b&a ∅ (∅ b&a)",
+     "rej"
+    ],
+    [
+     "b&a (b)",
+     "acc"
+    ],
+    [
+     "b ∅ ∅ (a)",
+     "rej"
+    ],
+    [
+     "b ∅ ∅ (∅)",
+     "rej"
+    ],
+    [
+     "∅ b a (b)",
+     "rej"
+    ],
+    [
+     "a (b&a b b&a)",
+     "acc"
+    ],
+    [
+     "b a (b b&a b&a)",
+     "rej"
+    ],
+    [
+     "b&a (a)",
+     "rej"
+    ],
+    [
+     "b&a (b ∅ b)",
+     "rej"
+    ],
+    [
+     "∅ (∅ b&a b)",
+     "rej"
+    ],
+    [
+     "(b)",
+     "acc"
+    ],
+    [
+     "∅ (b&a b&a b&a)",
+     "acc"
+    ],
+    [
+     "a ∅ (a b)",
+     "rej"
+    ],
+    [
+     "(b a b)",
+     "rej"
+    ],
+    [
+     "b (b&a)",
+     "acc"
+    ],
+    [
+     "(b b&a a)",
+     "acc"
+    ],
+    [
+     "a b b&a (a b a)",
+     "acc"
+    ],
+    [
+     "b&a b&a (b&a)",
+     "acc"
+    ],
+    [
+     "∅ b&a (a b&a ∅)",
+     "acc"
+    ],
+    [
+     "b&a b&a ∅ (b)",
+     "acc"
+    ],
+    [
+     "b b&a ∅ (b b&a b&a)",
+     "acc"
+    ],
+    [
+     "(∅ a a)",
+     "rej"
+    ],
+    [
+     "(b&a b&a b&a)",
+     "acc"
+    ],
+    [
+     "b ∅ b&a (∅)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "35-state-labels.hoa",
+   "formula": "F(a & G !b) | G F c",
+   "command": "ltl2tgba -Hk -f F(a & G !b) | G F c",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "(a&c a&b&c)",
+     "acc"
+    ],
+    [
+     "b (a&c b&c)",
+     "acc"
+    ],
+    [
+     "(b&c c)",
+     "acc"
+    ],
+    [
+     "(a b&c)",
+     "acc"
+    ],
+    [
+     "(c ∅ b)",
+     "acc"
+    ],
+    [
+     "a&b a&b&c a (a a&b&c a)",
+     "acc"
+    ],
+    [
+     "(a&b&c)",
+     "acc"
+    ],
+    [
+     "(c)",
+     "acc"
+    ],
+    [
+     "c a&c (b)",
+     "rej"
+    ],
+    [
+     "a c ∅ (c a)",
+     "acc"
+    ],
+    [
+     "∅ a a&b&c (a)",
+     "acc"
+    ],
+    [
+     "(a&c a)",
+     "acc"
+    ],
+    [
+     "(a&c)",
+     "acc"
+    ],
+    [
+     "∅ a&b&c b&c (b&c a)",
+     "acc"
+    ],
+    [
+     "∅ a&c (a&b&c)",
+     "acc"
+    ],
+    [
+     "b a&b b (c c a&b&c)",
+     "acc"
+    ],
+    [
+     "b ∅ c (a&b a)",
+     "rej"
+    ],
+    [
+     "a&b a&b&c (a&b&c a&b a&b&c)",
+     "acc"
+    ],
+    [
+     "(b a&c)",
+     "acc"
+    ],
+    [
+     "(c c)",
+     "acc"
+    ],
+    [
+     "b a&b&c (a&b&c b a&b&c)",
+     "acc"
+    ],
+    [
+     "a&b&c a&c (∅)",
+     "acc"
+    ],
+    [
+     "a (b)",
+     "rej"
+    ],
+    [
+     "∅ b&c (a a)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "36-state-labels.hoa",
+   "formula": "G a",
+   "command": "ltl2tgba -Hk -f G a",
+   "acceptance": "0 t",
+   "words": [
+    [
+     "a ∅ ∅ (a a a)",
+     "rej"
+    ],
+    [
+     "∅ a ∅ (a)",
+     "rej"
+    ],
+    [
+     "(a a ∅)",
+     "rej"
+    ],
+    [
+     "a ∅ ∅ (∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ a (∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (∅ a)",
+     "rej"
+    ],
+    [
+     "(a)",
+     "acc"
+    ],
+    [
+     "a (∅ a a)",
+     "rej"
+    ],
+    [
+     "a ∅ (∅ a)",
+     "rej"
+    ],
+    [
+     "a (∅ a a)",
+     "rej"
+    ],
+    [
+     "∅ a (a ∅)",
+     "rej"
+    ],
+    [
+     "a ∅ ∅ (a)",
+     "rej"
+    ],
+    [
+     "a a a (a ∅)",
+     "rej"
+    ],
+    [
+     "a a (∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "(a a ∅)",
+     "rej"
+    ],
+    [
+     "∅ a (∅ ∅)",
+     "rej"
+    ],
+    [
+     "(a a)",
+     "acc"
+    ],
+    [
+     "∅ (a a)",
+     "rej"
+    ],
+    [
+     "a a (∅)",
+     "rej"
+    ],
+    [
+     "∅ a ∅ (∅ a)",
+     "rej"
+    ],
+    [
+     "a a (∅ a)",
+     "rej"
+    ],
+    [
+     "(a)",
+     "acc"
+    ],
+    [
+     "∅ (∅ ∅ a)",
+     "rej"
+    ],
+    [
+     "∅ a a (a ∅)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "37-one-line.hoa",
+   "formula": "GF a & GF b",
+   "command": "ltl2tgba -Hl -f GF a & GF b",
+   "acceptance": "2 Inf(0)&Inf(1)",
+   "words": [
+    [
+     "a&b ∅ (∅ b ∅)",
+     "rej"
+    ],
+    [
+     "b a b (∅ b a&b)",
+     "acc"
+    ],
+    [
+     "a&b ∅ b (∅ a ∅)",
+     "rej"
+    ],
+    [
+     "a a&b (b)",
+     "rej"
+    ],
+    [
+     "b (a a b)",
+     "acc"
+    ],
+    [
+     "(a&b ∅ ∅)",
+     "acc"
+    ],
+    [
+     "b a (∅ ∅ b)",
+     "rej"
+    ],
+    [
+     "(a&b a&b)",
+     "acc"
+    ],
+    [
+     "(a)",
+     "rej"
+    ],
+    [
+     "b a a&b (a a a)",
+     "rej"
+    ],
+    [
+     "b a ∅ (b)",
+     "rej"
+    ],
+    [
+     "a (a&b a&b a)",
+     "acc"
+    ],
+    [
+     "∅ (a)",
+     "rej"
+    ],
+    [
+     "a a a (a&b)",
+     "acc"
+    ],
+    [
+     "∅ ∅ (a)",
+     "rej"
+    ],
+    [
+     "(∅ a)",
+     "rej"
+    ],
+    [
+     "a&b a a&b (∅)",
+     "rej"
+    ],
+    [
+     "(b)",
+     "rej"
+    ],
+    [
+     "∅ a b (b a a)",
+     "acc"
+    ],
+    [
+     "a b (∅ a)",
+     "rej"
+    ],
+    [
+     "∅ a ∅ (∅)",
+     "rej"
+    ],
+    [
+     "a ∅ (a)",
+     "rej"
+    ],
+    [
+     "b (a)",
+     "rej"
+    ],
+    [
+     "a ∅ (∅ b)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "38-one-line.hoa",
+   "formula": "FG a",
+   "command": "ltl2tgba -Hl -f FG a",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "a ∅ (a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "(∅ a ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (∅ a a)",
+     "rej"
+    ],
+    [
+     "a ∅ (a)",
+     "acc"
+    ],
+    [
+     "∅ ∅ (a a a)",
+     "acc"
+    ],
+    [
+     "a a (∅ a a)",
+     "rej"
+    ],
+    [
+     "(a)",
+     "acc"
+    ],
+    [
+     "∅ ∅ (a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "a a (a a)",
+     "acc"
+    ],
+    [
+     "∅ (∅ ∅ a)",
+     "rej"
+    ],
+    [
+     "(∅ a)",
+     "rej"
+    ],
+    [
+     "a ∅ (∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ a a (∅ a)",
+     "rej"
+    ],
+    [
+     "a ∅ a (∅ a ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (a)",
+     "acc"
+    ],
+    [
+     "∅ ∅ a (∅)",
+     "rej"
+    ],
+    [
+     "(a ∅)",
+     "rej"
+    ],
+    [
+     "(∅ a ∅)",
+     "rej"
+    ],
+    [
+     "(a a)",
+     "acc"
+    ],
+    [
+     "a a (∅ a a)",
+     "rej"
+    ],
+    [
+     "∅ a (∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (a ∅ a)",
+     "rej"
+    ],
+    [
+     "∅ a (a a)",
+     "acc"
+    ],
+    [
+     "(a a)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "39-one-line.hoa",
+   "formula": "G(a -> F b)",
+   "command": "ltl2tgba -Hl -f G(a -> F b)",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "(b ∅ a&b)",
+     "acc"
+    ],
+    [
+     "∅ a (a&b a&b a&b)",
+     "acc"
+    ],
+    [
+     "b a a (b ∅)",
+     "acc"
+    ],
+    [
+     "(a&b a&b a)",
+     "acc"
+    ],
+    [
+     "a&b b ∅ (a ∅ a)",
+     "rej"
+    ],
+    [
+     "(b a a&b)",
+     "acc"
+    ],
+    [
+     "∅ (∅)",
+     "acc"
+    ],
+    [
+     "b (∅ ∅)",
+     "acc"
+    ],
+    [
+     "a (a&b b)",
+     "acc"
+    ],
+    [
+     "a&b (b a&b)",
+     "acc"
+    ],
+    [
+     "b a (b)",
+     "acc"
+    ],
+    [
+     "b a (a b b)",
+     "acc"
+    ],
+    [
+     "b a (b)",
+     "acc"
+    ],
+    [
+     "∅ (∅ ∅ a)",
+     "rej"
+    ],
+    [
+     "(∅ b)",
+     "acc"
+    ],
+    [
+     "a (a a)",
+     "rej"
+    ],
+    [
+     "a&b b (a&b a a)",
+     "acc"
+    ],
+    [
+     "a a&b a&b (∅)",
+     "acc"
+    ],
+    [
+     "(∅)",
+     "acc"
+    ],
+    [
+     "∅ b b (∅ b)",
+     "acc"
+    ],
+    [
+     "a a&b a (b)",
+     "acc"
+    ],
+    [
+     "(b a&b)",
+     "acc"
+    ],
+    [
+     "b b (∅ a&b a&b)",
+     "acc"
+    ],
+    [
+     "∅ (a a ∅)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "40-mixed-marks.hoa",
+   "formula": "a U b",
+   "command": "ltl2tgba -D --parity=max odd -Hm -f a U b",
+   "acceptance": "2 Fin(0) | Inf(1)",
+   "words": [
+    [
+     "a&b ∅ (a a&b b)",
+     "acc"
+    ],
+    [
+     "(a&b)",
+     "acc"
+    ],
+    [
+     "(∅ ∅)",
+     "rej"
+    ],
+    [
+     "(a a a&b)",
+     "acc"
+    ],
+    [
+     "b b (a b)",
+     "acc"
+    ],
+    [
+     "(∅ a&b a)",
+     "rej"
+    ],
+    [
+     "b a&b (a&b)",
+     "acc"
+    ],
+    [
+     "a&b a&b (a&b)",
+     "acc"
+    ],
+    [
+     "a&b a (∅ ∅)",
+     "acc"
+    ],
+    [
+     "(a b)",
+     "acc"
+    ],
+    [
+     "(∅ ∅)",
+     "rej"
+    ],
+    [
+     "(b)",
+     "acc"
+    ],
+    [
+     "(a a)",
+     "rej"
+    ],
+    [
+     "a&b b a (a&b a)",
+     "acc"
+    ],
+    [
+     "a&b b (a ∅ ∅)",
+     "acc"
+    ],
+    [
+     "b a&b a (∅ ∅)",
+     "acc"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "a&b b a (b b b)",
+     "acc"
+    ],
+    [
+     "a ∅ ∅ (a&b a)",
+     "rej"
+    ],
+    [
+     "∅ b ∅ (a&b a&b a)",
+     "rej"
+    ],
+    [
+     "(a&b ∅)",
+     "acc"
+    ],
+    [
+     "(a ∅ a&b)",
+     "rej"
+    ],
+    [
+     "a b ∅ (b ∅ b)",
+     "acc"
+    ],
+    [
+     "(a b)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "41-mixed-marks.hoa",
+   "formula": "GF a -> GF b",
+   "command": "ltl2tgba -D --parity=max odd -Hm -f GF a -> GF b",
+   "acceptance": "2 Fin(0) | Inf(1)",
+   "words": [
+    [
+     "a a a (b b&a b)",
+     "acc"
+    ],
+    [
+     "(b&a b b)",
+     "acc"
+    ],
+    [
+     "b ∅ b (b&a b b)",
+     "acc"
+    ],
+    [
+     "∅ b (b)",
+     "acc"
+    ],
+    [
+     "∅ (∅ ∅ a)",
+     "rej"
+    ],
+    [
+     "b (∅ a b)",
+     "acc"
+    ],
+    [
+     "∅ ∅ (a b b&a)",
+     "acc"
+    ],
+    [
+     "∅ ∅ (∅)",
+     "acc"
+    ],
+    [
+     "∅ (∅ b)",
+     "acc"
+    ],
+    [
+     "b&a b b&a (∅)",
+     "acc"
+    ],
+    [
+     "b&a b&a (b&a b)",
+     "acc"
+    ],
+    [
+     "b a (b)",
+     "acc"
+    ],
+    [
+     "a b ∅ (b a ∅)",
+     "acc"
+    ],
+    [
+     "a (b&a)",
+     "acc"
+    ],
+    [
+     "a b&a (b&a)",
+     "acc"
+    ],
+    [
+     "a (b&a)",
+     "acc"
+    ],
+    [
+     "b a (a)",
+     "rej"
+    ],
+    [
+     "∅ b (b ∅ b&a)",
+     "acc"
+    ],
+    [
+     "b&a (b a ∅)",
+     "acc"
+    ],
+    [
+     "(b&a)",
+     "acc"
+    ],
+    [
+     "∅ ∅ a (b&a ∅)",
+     "acc"
+    ],
+    [
+     "b&a (∅ ∅)",
+     "acc"
+    ],
+    [
+     "a (b b&a a)",
+     "acc"
+    ],
+    [
+     "b&a a (∅)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "42-mixed-marks.hoa",
+   "formula": "FG a | GF b",
+   "command": "ltl2tgba -D --parity=max odd -Hm -f FG a | GF b",
+   "acceptance": "2 Fin(0) | Inf(1)",
+   "words": [
+    [
+     "a a&b (∅ b a)",
+     "acc"
+    ],
+    [
+     "a&b a (a&b)",
+     "acc"
+    ],
+    [
+     "a ∅ (b b)",
+     "acc"
+    ],
+    [
+     "(a&b ∅)",
+     "acc"
+    ],
+    [
+     "∅ a (∅)",
+     "rej"
+    ],
+    [
+     "b ∅ ∅ (a a&b a)",
+     "acc"
+    ],
+    [
+     "∅ (b)",
+     "acc"
+    ],
+    [
+     "∅ b (a)",
+     "acc"
+    ],
+    [
+     "a&b b (a)",
+     "acc"
+    ],
+    [
+     "∅ (b b)",
+     "acc"
+    ],
+    [
+     "∅ a&b a (∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "a (a&b ∅)",
+     "acc"
+    ],
+    [
+     "a&b a (∅ b a&b)",
+     "acc"
+    ],
+    [
+     "(b a&b a)",
+     "acc"
+    ],
+    [
+     "a b (b)",
+     "acc"
+    ],
+    [
+     "a (b a&b a&b)",
+     "acc"
+    ],
+    [
+     "b (∅)",
+     "rej"
+    ],
+    [
+     "a a&b (∅ a a&b)",
+     "acc"
+    ],
+    [
+     "(∅ b b)",
+     "acc"
+    ],
+    [
+     "(∅ b)",
+     "acc"
+    ],
+    [
+     "∅ (a&b a)",
+     "acc"
+    ],
+    [
+     "a ∅ a&b (∅ b)",
+     "acc"
+    ],
+    [
+     "a&b a&b (b)",
+     "acc"
+    ],
+    [
+     "∅ (b)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "43-transition-marks.hoa",
+   "formula": "G(a -> X(b U c))",
+   "command": "ltl2tgba -B -Ht -f G(a -> X(b U c))",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "b c ∅ (a&c)",
+     "acc"
+    ],
+    [
+     "(a&b&c)",
+     "acc"
+    ],
+    [
+     "(b&c)",
+     "acc"
+    ],
+    [
+     "∅ a&b b (a&c a&c)",
+     "acc"
+    ],
+    [
+     "a ∅ a&b&c (a&c a&b)",
+     "rej"
+    ],
+    [
+     "a&c c a&b&c (c)",
+     "acc"
+    ],
+    [
+     "(b&c)",
+     "acc"
+    ],
+    [
+     "c a&b&c b&c (a&b&c c a&c)",
+     "acc"
+    ],
+    [
+     "b (∅ b c)",
+     "acc"
+    ],
+    [
+     "b&c a (∅ a&b&c a&b&c)",
+     "rej"
+    ],
+    [
+     "(b a&b ∅)",
+     "rej"
+    ],
+    [
+     "a&b&c (a&b&c a&b&c a&c)",
+     "acc"
+    ],
+    [
+     "(b&c)",
+     "acc"
+    ],
+    [
+     "b a&c b&c (a&b&c a&b&c b)",
+     "acc"
+    ],
+    [
+     "b (∅ a&b)",
+     "rej"
+    ],
+    [
+     "a&b a&c a (c)",
+     "rej"
+    ],
+    [
+     "(b&c a b)",
+     "acc"
+    ],
+    [
+     "b b (b&c a&b&c)",
+     "acc"
+    ],
+    [
+     "∅ a&b (b a&b b)",
+     "rej"
+    ],
+    [
+     "(a&b a&b)",
+     "rej"
+    ],
+    [
+     "b ∅ (∅)",
+     "acc"
+    ],
+    [
+     "a&b (∅ b&c b&c)",
+     "rej"
+    ],
+    [
+     "a&c a&c a (a a c)",
+     "rej"
+    ],
+    [
+     "∅ (a&c)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "44-transition-marks.hoa",
+   "formula": "GF(a & X b)",
+   "command": "ltl2tgba -B -Ht -f GF(a & X b)",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "∅ ∅ a&b (a b)",
+     "acc"
+    ],
+    [
+     "b (a ∅ a&b)",
+     "rej"
+    ],
+    [
+     "a&b ∅ a (b b)",
+     "rej"
+    ],
+    [
+     "a (∅ a a&b)",
+     "acc"
+    ],
+    [
+     "a&b (b a)",
+     "acc"
+    ],
+    [
+     "(a a)",
+     "rej"
+    ],
+    [
+     "(a b a)",
+     "acc"
+    ],
+    [
+     "(a b)",
+     "acc"
+    ],
+    [
+     "a&b a a (a b a)",
+     "acc"
+    ],
+    [
+     "a&b a (a&b)",
+     "acc"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "a ∅ ∅ (a&b ∅ a&b)",
+     "acc"
+    ],
+    [
+     "∅ b (a&b ∅ a&b)",
+     "acc"
+    ],
+    [
+     "b ∅ (b)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (∅ a b)",
+     "acc"
+    ],
+    [
+     "a&b ∅ a&b (∅)",
+     "rej"
+    ],
+    [
+     "a&b ∅ (a&b b)",
+     "acc"
+    ],
+    [
+     "(∅ b a&b)",
+     "rej"
+    ],
+    [
+     "(a)",
+     "rej"
+    ],
+    [
+     "a (a)",
+     "rej"
+    ],
+    [
+     "a&b (a&b a a)",
+     "acc"
+    ],
+    [
+     "b a&b (b)",
+     "rej"
+    ],
+    [
+     "a&b a&b a (∅ a&b)",
+     "rej"
+    ],
+    [
+     "(b a)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "45-transition-marks.hoa",
+   "formula": "(FG a) xor (GF b)",
+   "command": "ltl2tgba -B -Ht -f (FG a) xor (GF b)",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "(a&b a a)",
+     "rej"
+    ],
+    [
+     "∅ (b a&b b)",
+     "acc"
+    ],
+    [
+     "a ∅ b (b a&b a)",
+     "acc"
+    ],
+    [
+     "a a&b a&b (a a a&b)",
+     "rej"
+    ],
+    [
+     "(∅ ∅)",
+     "rej"
+    ],
+    [
+     "a ∅ ∅ (∅ a&b)",
+     "acc"
+    ],
+    [
+     "a&b b (∅)",
+     "rej"
+    ],
+    [
+     "a&b a (∅ a&b a)",
+     "acc"
+    ],
+    [
+     "(b)",
+     "acc"
+    ],
+    [
+     "∅ a a (b ∅)",
+     "acc"
+    ],
+    [
+     "∅ ∅ (b a)",
+     "acc"
+    ],
+    [
+     "a a b (a a a)",
+     "acc"
+    ],
+    [
+     "(b a ∅)",
+     "acc"
+    ],
+    [
+     "a&b b (a)",
+     "acc"
+    ],
+    [
+     "(a a&b a)",
+     "rej"
+    ],
+    [
+     "∅ (a)",
+     "acc"
+    ],
+    [
+     "a&b a (a&b ∅)",
+     "acc"
+    ],
+    [
+     "(a ∅)",
+     "rej"
+    ],
+    [
+     "∅ (a)",
+     "acc"
+    ],
+    [
+     "a&b b (a)",
+     "acc"
+    ],
+    [
+     "∅ a ∅ (a&b a&b ∅)",
+     "acc"
+    ],
+    [
+     "b ∅ a (a ∅)",
+     "rej"
+    ],
+    [
+     "b a b (b ∅)",
+     "acc"
+    ],
+    [
+     "∅ (b)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "46-hoa-1.1.hoa",
+   "formula": "X(a R b)",
+   "command": "ltl2tgba -D --parity=min odd -H1.1 -f X(a R b)",
+   "acceptance": "1 Fin(0)",
+   "words": [
+    [
+     "(a a&b ∅)",
+     "acc"
+    ],
+    [
+     "b (a&b)",
+     "acc"
+    ],
+    [
+     "a ∅ (a&b ∅ b)",
+     "rej"
+    ],
+    [
+     "a ∅ a (a&b)",
+     "rej"
+    ],
+    [
+     "a a (a ∅)",
+     "rej"
+    ],
+    [
+     "b (∅ b a&b)",
+     "rej"
+    ],
+    [
+     "∅ a&b (∅ b b)",
+     "acc"
+    ],
+    [
+     "a a (a&b a a&b)",
+     "rej"
+    ],
+    [
+     "(b b)",
+     "acc"
+    ],
+    [
+     "a&b b a (b)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (a a&b)",
+     "rej"
+    ],
+    [
+     "b (a a&b a)",
+     "rej"
+    ],
+    [
+     "b (a a b)",
+     "rej"
+    ],
+    [
+     "a&b (a a&b)",
+     "rej"
+    ],
+    [
+     "a&b ∅ (∅ a)",
+     "rej"
+    ],
+    [
+     "(a&b)",
+     "acc"
+    ],
+    [
+     "∅ b a (∅ a&b ∅)",
+     "rej"
+    ],
+    [
+     "b a (a&b a&b)",
+     "rej"
+    ],
+    [
+     "(b)",
+     "acc"
+    ],
+    [
+     "b b (b ∅ b)",
+     "rej"
+    ],
+    [
+     "(∅ a)",
+     "rej"
+    ],
+    [
+     "a a b (∅ a&b)",
+     "rej"
+    ],
+    [
+     "a&b (a&b a a)",
+     "acc"
+    ],
+    [
+     "(b ∅)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "47-hoa-1.1.hoa",
+   "formula": "F(a & G !b) | G F c",
+   "command": "ltl2tgba -D --parity=min odd -H1.1 -f F(a & G !b) | G F c",
+   "acceptance": "3 Fin(0) & (Inf(1) | Fin(2))",
+   "words": [
+    [
+     "∅ a&c (b a&b)",
+     "rej"
+    ],
+    [
+     "b ∅ (∅ ∅)",
+     "rej"
+    ],
+    [
+     "a (a&c c&b)",
+     "acc"
+    ],
+    [
+     "a&b (c&b ∅)",
+     "acc"
+    ],
+    [
+     "a&c&b c&b (a&b ∅)",
+     "rej"
+    ],
+    [
+     "a&c&b a ∅ (a ∅)",
+     "acc"
+    ],
+    [
+     "b (c)",
+     "acc"
+    ],
+    [
+     "a&b b (c)",
+     "acc"
+    ],
+    [
+     "(c c&b c)",
+     "acc"
+    ],
+    [
+     "c&b (a&b)",
+     "rej"
+    ],
+    [
+     "c (a&c&b a&c&b)",
+     "acc"
+    ],
+    [
+     "c&b (∅)",
+     "rej"
+    ],
+    [
+     "(a&b)",
+     "rej"
+    ],
+    [
+     "a a&c&b (a)",
+     "acc"
+    ],
+    [
+     "c a&b b (b ∅)",
+     "rej"
+    ],
+    [
+     "c c (a a&c&b c)",
+     "acc"
+    ],
+    [
+     "(a&c&b)",
+     "acc"
+    ],
+    [
+     "(a&c a&b)",
+     "acc"
+    ],
+    [
+     "a&b (a c&b a&b)",
+     "acc"
+    ],
+    [
+     "∅ a ∅ (a c&b)",
+     "acc"
+    ],
+    [
+     "∅ (a&b a)",
+     "rej"
+    ],
+    [
+     "∅ a a&b (c ∅ a)",
+     "acc"
+    ],
+    [
+     "a&c&b (a&c&b a ∅)",
+     "acc"
+    ],
+    [
+     "c a&b a&c&b (c)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "48-hoa-1.1.hoa",
+   "formula": "G a",
+   "command": "ltl2tgba -D --parity=min odd -H1.1 -f G a",
+   "acceptance": "1 Fin(0)",
+   "words": [
+    [
+     "a ∅ ∅ (a ∅)",
+     "rej"
+    ],
+    [
+     "a (∅ ∅ a)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (a ∅ a)",
+     "rej"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "a ∅ (a a)",
+     "rej"
+    ],
+    [
+     "a (a)",
+     "acc"
+    ],
+    [
+     "(a a)",
+     "acc"
+    ],
+    [
+     "∅ ∅ (a a ∅)",
+     "rej"
+    ],
+    [
+     "a ∅ (∅)",
+     "rej"
+    ],
+    [
+     "(∅ ∅ a)",
+     "rej"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "a a (a)",
+     "acc"
+    ],
+    [
+     "∅ (∅)",
+     "rej"
+    ],
+    [
+     "∅ (a a)",
+     "rej"
+    ],
+    [
+     "a ∅ (a)",
+     "rej"
+    ],
+    [
+     "(a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "(a)",
+     "acc"
+    ],
+    [
+     "a (a a)",
+     "acc"
+    ],
+    [
+     "∅ (∅)",
+     "rej"
+    ],
+    [
+     "∅ a a (a)",
+     "rej"
+    ],
+    [
+     "(a a)",
+     "acc"
+    ],
+    [
+     "∅ (a a a)",
+     "rej"
+    ],
+    [
+     "(a a a)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "49-verbose.hoa",
+   "formula": "GF a & GF b",
+   "command": "ltl2tgba -Hv -f GF a & GF b",
+   "acceptance": "2 Inf(0)&Inf(1)",
+   "words": [
+    [
+     "b (∅ b ∅)",
+     "rej"
+    ],
+    [
+     "a&b (∅)",
+     "rej"
+    ],
+    [
+     "b b (a)",
+     "rej"
+    ],
+    [
+     "a a a (b a&b a)",
+     "acc"
+    ],
+    [
+     "b (b a a)",
+     "acc"
+    ],
+    [
+     "a a (∅ b a)",
+     "acc"
+    ],
+    [
+     "a&b (a&b)",
+     "acc"
+    ],
+    [
+     "b (∅)",
+     "rej"
+    ],
+    [
+     "b ∅ a&b (a&b a a&b)",
+     "acc"
+    ],
+    [
+     "∅ (b b ∅)",
+     "rej"
+    ],
+    [
+     "a (a&b a a&b)",
+     "acc"
+    ],
+    [
+     "(a ∅)",
+     "rej"
+    ],
+    [
+     "∅ (a a&b a&b)",
+     "acc"
+    ],
+    [
+     "b a&b (a ∅)",
+     "rej"
+    ],
+    [
+     "∅ a (b a&b a&b)",
+     "acc"
+    ],
+    [
+     "∅ a&b (a b a&b)",
+     "acc"
+    ],
+    [
+     "a (a a&b a)",
+     "acc"
+    ],
+    [
+     "a (a a)",
+     "rej"
+    ],
+    [
+     "a ∅ a (a a&b)",
+     "acc"
+    ],
+    [
+     "a a&b (a&b b b)",
+     "acc"
+    ],
+    [
+     "(∅ ∅)",
+     "rej"
+    ],
+    [
+     "a&b b a (∅ b)",
+     "rej"
+    ],
+    [
+     "a&b a (a&b)",
+     "acc"
+    ],
+    [
+     "b a&b b (∅ ∅ a&b)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "50-verbose.hoa",
+   "formula": "FG a",
+   "command": "ltl2tgba -Hv -f FG a",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "∅ ∅ (∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ a (∅)",
+     "rej"
+    ],
+    [
+     "(a)",
+     "acc"
+    ],
+    [
+     "(∅ ∅ a)",
+     "rej"
+    ],
+    [
+     "∅ (a a)",
+     "acc"
+    ],
+    [
+     "∅ a (∅)",
+     "rej"
+    ],
+    [
+     "∅ (a ∅ ∅)",
+     "rej"
+    ],
+    [
+     "a ∅ (a)",
+     "acc"
+    ],
+    [
+     "a a (a)",
+     "acc"
+    ],
+    [
+     "∅ ∅ ∅ (a)",
+     "acc"
+    ],
+    [
+     "a (a)",
+     "acc"
+    ],
+    [
+     "∅ ∅ ∅ (∅)",
+     "rej"
+    ],
+    [
+     "∅ a (a a a)",
+     "acc"
+    ],
+    [
+     "∅ a ∅ (a a ∅)",
+     "rej"
+    ],
+    [
+     "a a (∅)",
+     "rej"
+    ],
+    [
+     "a (∅)",
+     "rej"
+    ],
+    [
+     "a a ∅ (∅ ∅ a)",
+     "rej"
+    ],
+    [
+     "∅ (a)",
+     "acc"
+    ],
+    [
+     "∅ (a ∅)",
+     "rej"
+    ],
+    [
+     "a ∅ (a a a)",
+     "acc"
+    ],
+    [
+     "∅ ∅ ∅ (a)",
+     "acc"
+    ],
+    [
+     "∅ a a (∅ a ∅)",
+     "rej"
+    ],
+    [
+     "a ∅ a (∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "(a ∅ a)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "51-verbose.hoa",
+   "formula": "G(a -> F b)",
+   "command": "ltl2tgba -Hv -f G(a -> F b)",
+   "acceptance": "1 Inf(0)",
+   "words": [
+    [
+     "(a)",
+     "rej"
+    ],
+    [
+     "(a)",
+     "rej"
+    ],
+    [
+     "a (a&b a a&b)",
+     "acc"
+    ],
+    [
+     "∅ ∅ (a&b)",
+     "acc"
+    ],
+    [
+     "∅ (b a&b a)",
+     "acc"
+    ],
+    [
+     "(b a)",
+     "acc"
+    ],
+    [
+     "∅ a a&b (∅ b b)",
+     "acc"
+    ],
+    [
+     "a&b (b)",
+     "acc"
+    ],
+    [
+     "a ∅ (a a&b)",
+     "acc"
+    ],
+    [
+     "b a&b (a&b)",
+     "acc"
+    ],
+    [
+     "a&b (b)",
+     "acc"
+    ],
+    [
+     "(b a&b a&b)",
+     "acc"
+    ],
+    [
+     "(b b)",
+     "acc"
+    ],
+    [
+     "a ∅ (∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "a ∅ (a a)",
+     "rej"
+    ],
+    [
+     "(∅)",
+     "acc"
+    ],
+    [
+     "b (a a&b a)",
+     "acc"
+    ],
+    [
+     "a&b ∅ a (b ∅ a)",
+     "acc"
+    ],
+    [
+     "b ∅ a (b)",
+     "acc"
+    ],
+    [
+     "a a ∅ (a b b)",
+     "acc"
+    ],
+    [
+     "(a&b b)",
+     "acc"
+    ],
+    [
+     "a (a ∅)",
+     "rej"
+    ],
+    [
+     "a a&b a&b (a&b)",
+     "acc"
+    ],
+    [
+     "b ∅ (∅ b b)",
+     "acc"
+    ]
+   ]
+  },
+  {
+   "file": "52-tgba.hoa",
+   "formula": "false",
+   "command": "ltl2tgba -f false",
+   "acceptance": "0 t",
+   "words": [
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ ∅ (∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "(∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ ∅ (∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ (∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ (∅)",
+     "rej"
+    ],
+    [
+     "∅ (∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ (∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (∅ ∅)",
+     "rej"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "∅ (∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (∅ ∅)",
+     "rej"
+    ],
+    [
+     "(∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (∅ ∅)",
+     "rej"
+    ],
+    [
+     "(∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "(∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ (∅)",
+     "rej"
+    ],
+    [
+     "(∅)",
+     "rej"
+    ],
+    [
+     "∅ (∅ ∅ ∅)",
+     "rej"
+    ],
+    [
+     "∅ ∅ (∅ ∅)",
+     "rej"
+    ]
+   ]
+  },
+  {
+   "file": "53-generic-det.hoa",
+   "formula": "(GF a -> GF b) & (GF c -> FG a)",
+   "command": "ltl2tgba -D -G -f (GF a -> GF b) & (GF c -> FG a)",
+   "acceptance": "4 (Inf(0) | Fin(1)) & (Fin(2)|Fin(3))",
+   "refuse": true
+  },
+  {
+   "file": "54-generic-det.hoa",
+   "formula": "(FG a & GF b) | (FG c & GF !a)",
+   "command": "ltl2tgba -D -G -f (FG a & GF b) | (FG c & GF !a)",
+   "acceptance": "3 (Fin(0) & Inf(1)) | (Fin(2) & Inf(0))",
+   "refuse": true
+  }
+ ]
+}

@@ -1,0 +1,19 @@
+HOA: v1
+name: "a U b"
+States: 2
+Start: 1
+AP: 2 "a" "b"
+acc-name: Buchi
+Acceptance: 1 Inf(0)
+properties: trans-labels explicit-labels state-acc deterministic
+properties: stutter-invariant terminal very-weak
+Alias: @0 !0&!1
+Alias: @1 1
+Alias: @2 !@1&0
+--BODY--
+State: 0 {0}
+[t] 0
+State: 1
+[@1] 0
+[@2] 1
+--END--

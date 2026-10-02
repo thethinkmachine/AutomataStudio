@@ -15,7 +15,7 @@ This guide walks through it by task. Every option of every command is in the [co
 | inspect, lint or profile one | [Looking at a machine](#looking-at-a-machine) |
 | compare two machines, or a machine against a script | [Comparing machines](#comparing-machines) |
 | build machines from regexes and operations | [Building machines: pipes and expressions](#building-machines-pipes-and-expressions) |
-| convert to and from JFLAP, HOA, BA, Timbuk, SCXML, code | [Formats](#formats-getting-machines-in-and-out) |
+| convert to and from JFLAP, HOA, BA, SCXML, code | [Formats](#formats-getting-machines-in-and-out) |
 | make diagrams and animations | [Pictures and animations](#pictures-and-animations) |
 | set and grade exercises, or use Gradescope | [Teaching: exercises and grading](#teaching-exercises-and-grading) |
 | prove whether Turing machines halt | [Turing machines: does it halt?](#turing-machines-does-it-halt) |
@@ -90,7 +90,7 @@ The last one is the five-state busy beaver: it halts after 47,176,870 steps, whi
 | `machine.jff` | JFLAP (finite automata, PDAs, Turing machines, Mealy, Moore) |
 | `chart.scxml`, `machine.js` | a statechart (SCXML, or an XState config), flattened into a machine |
 | `nba.hoa` | Hanoi Omega-Automata, as Spot, Owl and other LTL tools write |
-| `nba.ba`, `nfa.timbuk` | RABIT/GOAL Büchi automata; Timbuk word automata |
+| `nba.ba` | RABIT/GOAL Büchi automata |
 | `-` | standard input — so machines can be piped between commands |
 | `1RB1LB_1LA1RZ` | a Turing machine in the standard (bbchallenge) notation |
 | `fa.01:+AB_BA` | a *machine code*: any machine as one line (the app's **Copy Machine Code** writes these) |
@@ -233,7 +233,6 @@ automata codegen dfa.automaton --lang c --style switch -o dfa.c
 | `jff` (JFLAP) | ✔ | ✔ | acceptance by empty stack is chosen in JFLAP, not the file — the writer warns |
 | `hoa` | ✔ | ✔ | ω-automata; transition-based and generalized Büchi acceptance are moved onto states |
 | `ba` | ✔ | ✔ | Büchi automata; RABIT and GOAL read a finite automaton written as BA as Büchi too — the writer warns |
-| `timbuk` | ✔ | ✔ | word automata only |
 | `scxml` / XState | ✔ | ✔ | statecharts; parallel states are refused |
 | `code` | ✔ | ✔ | the one-line machine code |
 | `standard` | ✔ | ✔ | one-tape Turing machines over digits |

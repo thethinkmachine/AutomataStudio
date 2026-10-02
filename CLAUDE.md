@@ -22,7 +22,7 @@ npm run cli -- --help      # the `automata` command line, from source (bin: cli/
 npm run cli:build          # vite build --config vite.cli.config.js -> dist-cli/ (runs under plain node)
 ```
 
-`automata` is the app's engine from a terminal — run, test, trace, lint, compare, convert and grade machines; HOA/BA/Timbuk/JFLAP formats; learning; an MCP server; and Turing-machine halting proofs. `electron:build` builds `dist-cli/` too, and the installed app ships it with launchers in `resources/cli/`. See [The command line](.claude/skills/cli/SKILL.md).
+`automata` is the app's engine from a terminal — run, test, trace, lint, compare, convert and grade machines; HOA/BA/JFLAP formats; learning; an MCP server; and Turing-machine halting proofs. `electron:build` builds `dist-cli/` too, and the installed app ships it with launchers in `resources/cli/`. See [The command line](.claude/skills/cli/SKILL.md).
 
 `npm run wasm` is run by hand after editing [wasm/label-penalty.ts](wasm/label-penalty.ts) and its output is committed, the way `npm run glyphs` and `npm run icons` already are — the build does not shell out to a compiler. See [The label kernel](.claude/skills/perf/SKILL.md).
 

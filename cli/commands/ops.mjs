@@ -23,7 +23,7 @@ function write(target, opts) {
 
 const outHelp = `
   -o, --output FILE   write here (the extension picks the format); default stdout
-  -t, --to FORMAT     automaton (default), jff, hoa, ba, timbuk, code, dot, …`;
+  -t, --to FORMAT     automaton (default), jff, hoa, ba, code, dot, …`;
 
 function unary(fn, what, extra = '') {
   return {

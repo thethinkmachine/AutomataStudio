@@ -455,7 +455,7 @@ Thompson's construction, with the app's regex syntax: | concatenation * + ?
 {n,m} [a-z] [^…] . and ε. --sigma sets what . and [^…] range over.
 
   -o, --output FILE   write here (the extension picks the format); default stdout
-  -t, --to FORMAT     automaton (default), jff, hoa, ba, timbuk, code, dot, …
+  -t, --to FORMAT     automaton (default), jff, hoa, ba, code, dot, …
 ```
 
 **Examples**
@@ -497,7 +497,7 @@ automata determinize <machine>
 
 The reachable subset construction. --complete keeps the empty-set sink.
   -o, --output FILE   write here (the extension picks the format); default stdout
-  -t, --to FORMAT     automaton (default), jff, hoa, ba, timbuk, code, dot, …
+  -t, --to FORMAT     automaton (default), jff, hoa, ba, code, dot, …
 ```
 
 **Examples**
@@ -518,7 +518,7 @@ automata minimize <machine>
 
 The minimal DFA, states in breadth-first order. --complete keeps the sink.
   -o, --output FILE   write here (the extension picks the format); default stdout
-  -t, --to FORMAT     automaton (default), jff, hoa, ba, timbuk, code, dot, …
+  -t, --to FORMAT     automaton (default), jff, hoa, ba, code, dot, …
 ```
 
 **Examples**
@@ -539,7 +539,7 @@ automata complement <machine>
 
 A complete DFA for Σ* minus the language.
   -o, --output FILE   write here (the extension picks the format); default stdout
-  -t, --to FORMAT     automaton (default), jff, hoa, ba, timbuk, code, dot, …
+  -t, --to FORMAT     automaton (default), jff, hoa, ba, code, dot, …
 ```
 
 **Examples**
@@ -556,7 +556,7 @@ Reverse the language.
 ```text
 automata reverse <machine>
   -o, --output FILE   write here (the extension picks the format); default stdout
-  -t, --to FORMAT     automaton (default), jff, hoa, ba, timbuk, code, dot, …
+  -t, --to FORMAT     automaton (default), jff, hoa, ba, code, dot, …
 ```
 
 **Examples**
@@ -573,7 +573,7 @@ Kleene star.
 ```text
 automata star <machine>
   -o, --output FILE   write here (the extension picks the format); default stdout
-  -t, --to FORMAT     automaton (default), jff, hoa, ba, timbuk, code, dot, …
+  -t, --to FORMAT     automaton (default), jff, hoa, ba, code, dot, …
 ```
 
 **Examples**
@@ -590,7 +590,7 @@ Union of two finite automata.
 ```text
 automata union <machine-a> <machine-b>
   -o, --output FILE   write here (the extension picks the format); default stdout
-  -t, --to FORMAT     automaton (default), jff, hoa, ba, timbuk, code, dot, …
+  -t, --to FORMAT     automaton (default), jff, hoa, ba, code, dot, …
 ```
 
 **Examples**
@@ -607,7 +607,7 @@ Concatenation of two finite automata.
 ```text
 automata concat <machine-a> <machine-b>
   -o, --output FILE   write here (the extension picks the format); default stdout
-  -t, --to FORMAT     automaton (default), jff, hoa, ba, timbuk, code, dot, …
+  -t, --to FORMAT     automaton (default), jff, hoa, ba, code, dot, …
 ```
 
 **Examples**
@@ -624,7 +624,7 @@ Product DFA for the intersection.
 ```text
 automata intersect <machine-a> <machine-b>
   -o, --output FILE   write here (the extension picks the format); default stdout
-  -t, --to FORMAT     automaton (default), jff, hoa, ba, timbuk, code, dot, …
+  -t, --to FORMAT     automaton (default), jff, hoa, ba, code, dot, …
 ```
 
 **Examples**
@@ -641,7 +641,7 @@ Product DFA for A \ B.
 ```text
 automata difference <machine-a> <machine-b>
   -o, --output FILE   write here (the extension picks the format); default stdout
-  -t, --to FORMAT     automaton (default), jff, hoa, ba, timbuk, code, dot, …
+  -t, --to FORMAT     automaton (default), jff, hoa, ba, code, dot, …
 ```
 
 **Examples**
@@ -658,7 +658,7 @@ Remove ε-moves.
 ```text
 automata eps-elim <machine>
   -o, --output FILE   write here (the extension picks the format); default stdout
-  -t, --to FORMAT     automaton (default), jff, hoa, ba, timbuk, code, dot, …
+  -t, --to FORMAT     automaton (default), jff, hoa, ba, code, dot, …
 ```
 
 **Examples**
@@ -688,7 +688,7 @@ a verdict, not a machine.
   --sigma abc         the alphabet for ~ and for . in a regex
 
   -o, --output FILE   write here (the extension picks the format); default stdout
-  -t, --to FORMAT     automaton (default), jff, hoa, ba, timbuk, code, dot, …
+  -t, --to FORMAT     automaton (default), jff, hoa, ba, code, dot, …
 
 Exit (comparisons): 0 true, 1 false.
 ```
@@ -710,7 +710,7 @@ See also: [help machines](#topic-machines).
 
 ### convert
 
-Convert between .automaton, .jff, HOA, BA, Timbuk, machine codes, ….
+Convert between .automaton, .jff, HOA, BA, machine codes, ….
 
 ```text
 automata convert <machine> [-o out.ext] [--to format]
@@ -718,7 +718,7 @@ automata convert <machine> [-o out.ext] [--to format]
 Reads any machine the CLI reads and writes it in the format --to names, or the
 one -o's extension implies, or as an .automaton document on standard output.
 
-  Formats: automaton, jff, hoa, ba, timbuk, code (machine code), standard (TM
+  Formats: automaton, jff, hoa, ba, code (machine code), standard (TM
   notation), svg, and every export format (automata export --list).
 
   --determinize, --minimize, --eps-elim   transform on the way (finite automata)
@@ -1225,7 +1225,6 @@ A file:
   .scxml  .js .ts       a statechart (SCXML, or an XState config), flattened
   .hoa                  Hanoi Omega-Automata, from Spot, Owl, ltl2tgba, …
   .ba                   RABIT / GOAL Büchi automata
-  .timbuk .tmb          Timbuk word automata
 
 Standard input:
   -                     read the machine from stdin, recognised by its content,
@@ -1305,7 +1304,6 @@ _every format the CLI reads and writes, and what each loses_ — `automata help 
                                    Büchi acceptance are moved onto states
   ba                 ✔      ✔      Büchi (RABIT/GOAL read finite automata as
                                    Büchi too — the writer warns)
-  timbuk             ✔      ✔      word automata only (arities 0 and 1)
   scxml / xstate     ✔      ✔      statecharts; parallel states are refused
   code (SMTF)        ✔      ✔      one line, the machine and nothing else
   standard           ✔      ✔      one-tape TMs over digits, L/R moves
@@ -1316,7 +1314,7 @@ _every format the CLI reads and writes, and what each loses_ — `automata help 
   code-*, test-*            ✔      JS, Python, Java, C, XState, SCXML; Jest, pytest
 
 --to FORMAT picks one; otherwise the output file's extension does:
-.automaton .json .jff .hoa .ba .timbuk .txt .svg .dot .gv .tex .csv .md .js .py
+.automaton .json .jff .hoa .ba .txt .svg .dot .gv .tex .csv .md .js .py
 .java .c .scxml .test.js
 ```
 
