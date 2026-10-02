@@ -54,8 +54,82 @@ export async function referenceMarkdown() {
   return out.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
+// ── The guide's output blocks ─────────────────────────────────────
+// docs/cli.md shows what commands print, not just the commands. Each such
+// block is marked
+//
+//   <!-- automata-output: info div5.automaton -->
+//   ```text
+//   …
+//   ```
+//
+// and filled with what `automata info div5.automaton` prints, run in a scratch
+// copy of examples/cli/ — the files the guide tells a reader to cd into, so a
+// block that writes a file cannot touch them — with colour off. The arguments
+// are split the way a shell would split them, quotes and all, and no shell is
+// involved, so a block reads the same on every platform. Only commands whose
+// output does not change from run to run belong in a block: no timings, no
+// randomness without --seed, no paths joined by the platform's separator.
+
+const GUIDE = new URL('../docs/cli.md', import.meta.url);
+const MARK = /(<!-- automata-output: (.+?) -->\r?\n```text\r?\n)[\s\S]*?(```)/g;
+
+/** A command line split into words: quotes group, and "" is an empty word. */
+export function shellWords(line) {
+  const words = [];
+  let word = null, quote = null;
+  for (const ch of line) {
+    if (quote) {
+      if (ch === quote) quote = null; else word += ch;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+      word ??= '';
+    } else if (/\s/.test(ch)) {
+      if (word !== null) words.push(word);
+      word = null;
+    } else word = (word ?? '') + ch;
+  }
+  if (word !== null) words.push(word);
+  return words;
+}
+
+/** The guide with every output block run afresh. */
+export async function guideMarkdown(text) {
+  const { cpSync, mkdtempSync, rmSync } = await import('node:fs');
+  const { spawnSync } = await import('node:child_process');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'automata-guide-'));
+  cpSync(fileURLToPath(new URL('../examples/cli/', import.meta.url)), dir, { recursive: true });
+  const cli = fileURLToPath(new URL('./automata.mjs', import.meta.url));
+  const env = { ...process.env, NO_COLOR: '1' };
+  delete env.FORCE_COLOR;
+  try {
+    const blocks = [...text.matchAll(MARK)];
+    let out = '', at = 0;
+    for (const m of blocks) {
+      const r = spawnSync(process.execPath, [cli, ...shellWords(m[2])], { cwd: dir, env, encoding: 'utf8', timeout: 120000 });
+      const said = [r.stdout, r.stderr].filter(Boolean).join('').replace(/\r\n/g, '\n').split('\n').map(l => l.trimEnd()).join('\n').trimEnd();
+      out += text.slice(at, m.index) + m[1] + `$ automata ${m[2]}\n${said}\n` + m[3];
+      at = m.index + m[0].length;
+    }
+    return out + text.slice(at);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+export async function guideFresh() {
+  const { readFileSync } = await import('node:fs');
+  const committed = readFileSync(GUIDE, 'utf8').replace(/\r\n/g, '\n');
+  return { committed, fresh: await guideMarkdown(committed) };
+}
+
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const md = await referenceMarkdown();
   writeFileSync(new URL('../docs/cli-reference.md', import.meta.url), md);
   process.stdout.write(`docs/cli-reference.md: ${md.split('\n').length} lines\n`);
+  const { fresh } = await guideFresh();
+  writeFileSync(GUIDE, fresh);
+  process.stdout.write(`docs/cli.md: ${[...fresh.matchAll(MARK)].length} output blocks run\n`);
 }

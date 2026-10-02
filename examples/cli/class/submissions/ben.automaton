@@ -1,0 +1,189 @@
+{
+  "format": "automata-studio/workspace",
+  "schema": 1,
+  "app": "2.9.0",
+  "machine": "ε-NFA",
+  "config": {
+    "sym": {
+      "eps": "ε",
+      "any": "Σ",
+      "blank": "⊔",
+      "leftMarker": "⊢",
+      "rightMarker": "⊣",
+      "stackBottom": "Z",
+      "lambda": "λ"
+    }
+  },
+  "sigma": [
+    "a",
+    "b"
+  ],
+  "stackAlpha": [],
+  "outputAlpha": [],
+  "tapeCount": 1,
+  "states": [
+    {
+      "id": "s0",
+      "name": "s0",
+      "x": 120,
+      "y": 185
+    },
+    {
+      "id": "s1",
+      "name": "s1",
+      "x": 300,
+      "y": 120
+    },
+    {
+      "id": "s2",
+      "name": "s2",
+      "x": 480,
+      "y": 120
+    },
+    {
+      "id": "s3",
+      "name": "s3",
+      "x": 660,
+      "y": 120
+    },
+    {
+      "id": "s4",
+      "name": "s4",
+      "x": 840,
+      "y": 120
+    },
+    {
+      "id": "s5",
+      "name": "s5",
+      "x": 1020,
+      "y": 120
+    },
+    {
+      "id": "s6",
+      "name": "s6",
+      "x": 480,
+      "y": 250
+    },
+    {
+      "id": "s7",
+      "name": "s7",
+      "x": 660,
+      "y": 250
+    },
+    {
+      "id": "s8",
+      "name": "s8",
+      "x": 840,
+      "y": 250
+    },
+    {
+      "id": "s9",
+      "name": "s9",
+      "x": 1020,
+      "y": 250
+    },
+    {
+      "id": "s10",
+      "name": "s10",
+      "x": 1200,
+      "y": 185
+    },
+    {
+      "id": "s11",
+      "name": "s11",
+      "x": 300,
+      "y": 250
+    }
+  ],
+  "transitions": [
+    {
+      "id": "t1",
+      "from": "s0",
+      "to": "s1",
+      "symbol": "ε"
+    },
+    {
+      "id": "t2",
+      "from": "s0",
+      "to": "s11",
+      "symbol": "ε"
+    },
+    {
+      "id": "t3",
+      "from": "s10",
+      "to": "s1",
+      "symbol": "ε"
+    },
+    {
+      "id": "t4",
+      "from": "s10",
+      "to": "s11",
+      "symbol": "ε"
+    },
+    {
+      "id": "t5",
+      "from": "s1",
+      "to": "s2",
+      "symbol": "ε"
+    },
+    {
+      "id": "t6",
+      "from": "s1",
+      "to": "s6",
+      "symbol": "ε"
+    },
+    {
+      "id": "t7",
+      "from": "s2",
+      "to": "s3",
+      "symbol": "a"
+    },
+    {
+      "id": "t8",
+      "from": "s3",
+      "to": "s4",
+      "symbol": "ε"
+    },
+    {
+      "id": "t9",
+      "from": "s4",
+      "to": "s5",
+      "symbol": "b"
+    },
+    {
+      "id": "t10",
+      "from": "s6",
+      "to": "s7",
+      "symbol": "b"
+    },
+    {
+      "id": "t11",
+      "from": "s7",
+      "to": "s8",
+      "symbol": "ε"
+    },
+    {
+      "id": "t12",
+      "from": "s8",
+      "to": "s9",
+      "symbol": "a"
+    },
+    {
+      "id": "t13",
+      "from": "s5",
+      "to": "s10",
+      "symbol": "ε"
+    },
+    {
+      "id": "t14",
+      "from": "s9",
+      "to": "s10",
+      "symbol": "ε"
+    }
+  ],
+  "startId": "s0",
+  "accepts": [
+    "s11"
+  ],
+  "blocks": []
+}

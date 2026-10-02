@@ -422,6 +422,8 @@ instead. It answers by
   --seed S          repeatable words
   --timeout MS      per oracle call (default 5000)
   --no-shrink
+  -v, --verbose     on stderr: the word they first disagree on, and each
+                    smaller word the shrinking keeps
   --json
 
   automata fuzz even-ones.automaton --oracle 'python -c "import sys; print(sys.argv[1].count(\"1\") % 2 == 0)" {}' --mode stdout
@@ -1092,6 +1094,12 @@ its halting verdict. Counters and bouncers are told apart at a glance.
   --cols N          diagrams per row (default 3)
   --size N          diagram width and height in pixels (default 240)
   --png             write one PNG per machine instead, into the -o directory
+  --budget N        steps the caption's verdict may simulate (default 100000);
+                    a champion that halts later is captioned unknown below it
+  --far D           finite automata reduction for the caption, DFAs up to D
+                    states (default 4: halts defaults to 6, which can take
+                    minutes on a machine nothing settles)
+  --no-classify     no verdict in the captions
 ```
 
 **Examples**
@@ -1132,6 +1140,8 @@ automata learn --from samples.txt
   --tests N           random words per equivalence test (default 1000)
   --max-len N         longest random test word (default 14)
   --seed S
+  -v, --verbose       each L* round on stderr: the hypothesis's size and the
+                      word the teacher found it wrong on
   -o, --output FILE   write the DFA here (default: a document on stdout)
   -t, --to FORMAT
 ```

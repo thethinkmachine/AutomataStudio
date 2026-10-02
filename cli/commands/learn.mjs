@@ -8,7 +8,7 @@ import { lettersOf, seeded } from '../fa.mjs';
 import { compare } from './compare.mjs';
 import { batchOracle, oneShotOracle } from './fuzz.mjs';
 import { accepts, lstar, rpni } from '../learn.mjs';
-import { c, print } from '../out.mjs';
+import { c, pad, wordOf } from '../out.mjs';
 
 function splitWord(text, eps) {
   const t = text.trim();
@@ -34,6 +34,22 @@ function hypTarget(h) {
   let n = 0;
   h.delta.forEach((row, q) => row.forEach((to, i) => t.transitions.push({ id: `t${++n}`, from: `q${q}`, to: `q${to}`, symbol: h.sigma[i] })));
   return t;
+}
+
+// One line per L* round, for --verbose: the hypothesis's size, how many
+// membership questions it has taken so far, and whether the teacher found a
+// word it gets wrong. On stderr, so the learned machine on stdout can still
+// be piped.
+function roundReporter(on, eps, tail = () => '') {
+  if (!on) return null;
+  return ({ round, states, queries, counterexample }) => {
+    const size = `${pad(String(states), 3, 'right')} ${states === 1 ? 'state ' : 'states'}`;
+    const asked = c.muted(`${pad(queries.toLocaleString('en-US'), 6, 'right')} queries`);
+    const answer = counterexample
+      ? `${c.red('✘')} wrong on ${c.bold(wordOf(counterexample, eps))}`
+      : `${c.green('✔')} no counterexample${tail()}`;
+    process.stderr.write(`${c.accent('L*')} ${c.muted(pad(`round ${round}`, 9))}${size}  ${asked}   ${answer}\n`);
+  };
 }
 
 function* testWords(sigma, exhaustive, count, maxLen, rnd) {
@@ -69,13 +85,15 @@ const learn = {
   --tests N           random words per equivalence test (default 1000)
   --max-len N         longest random test word (default 14)
   --seed S
+  -v, --verbose       each L* round on stderr: the hypothesis's size and the
+                      word the teacher found it wrong on
   -o, --output FILE   write the DFA here (default: a document on stdout)
   -t, --to FORMAT`,
   options: {
     from: { type: 'string' }, oracle: { type: 'string' }, target: { type: 'string' }, sigma: { type: 'string' },
     mode: { type: 'string' }, batch: { type: 'boolean' }, timeout: { type: 'string' },
     exhaustive: { type: 'string' }, tests: { type: 'string' }, 'max-len': { type: 'string' }, seed: { type: 'string' },
-    output: { type: 'string', short: 'o' }, to: { type: 'string', short: 't' }
+    output: { type: 'string', short: 'o' }, to: { type: 'string', short: 't' }, verbose: { type: 'boolean', short: 'v' }
   },
   async run({ opts }) {
     const eps = App.config.sym.eps;
@@ -116,8 +134,8 @@ const learn = {
         if (r.method !== 'exact') exact = false;
         return r.equal === false ? r.tokens : null;
       };
-      const { dfa, rounds, queries } = await lstar(sigma, member, equivalent);
-      process.stderr.write(c.dim(`L*: ${dfa.states} states after ${rounds} equivalence ${rounds === 1 ? 'query' : 'queries'} and ${queries} membership queries${exact ? ' — equivalent to the target, exactly' : ' — checked on every word up to the bound, not exactly'}\n`));
+      const { dfa, rounds, queries } = await lstar(sigma, member, equivalent, { onRound: roundReporter(opts.verbose, eps, () => (exact ? ', exactly' : ' up to the bound')) });
+      process.stderr.write(c.dim(`L*: ${dfa.states} states in ${rounds} ${rounds === 1 ? 'round' : 'rounds'} (${queries.toLocaleString('en-US')} membership queries)${exact ? ' — equivalent to the target, exactly' : ' — checked up to the bound, not exactly'}\n`));
       write(hypTarget(dfa));
       return 0;
     }
@@ -139,8 +157,10 @@ const learn = {
         const i = words.findIndex((w, k) => accepts(h, w) !== truth[k]);
         return i < 0 ? null : words[i];
       };
-      const { dfa, rounds, queries } = await lstar(sigma, member, equivalent);
-      process.stderr.write(c.dim(`L*: ${dfa.states} states after ${rounds} rounds, ${queries} membership queries and ${tested} test words — exact only as far as the testing reached\n`));
+      const { dfa, rounds, queries } = await lstar(sigma, member, equivalent, {
+        onRound: roundReporter(opts.verbose, eps, () => c.muted(` in ${tested.toLocaleString('en-US')} test words`))
+      });
+      process.stderr.write(c.dim(`L*: ${dfa.states} states in ${rounds} ${rounds === 1 ? 'round' : 'rounds'} (${queries.toLocaleString('en-US')} membership queries) — exact as far as ${tested.toLocaleString('en-US')} test words reach\n`));
       write(hypTarget(dfa));
       return 0;
     }

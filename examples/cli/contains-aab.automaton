@@ -1,0 +1,95 @@
+{
+  "format": "automata-studio/workspace",
+  "schema": 1,
+  "app": "2.9.0",
+  "config": {},
+  "machine": "DFA",
+  "sigma": [
+    "a",
+    "b"
+  ],
+  "states": [
+    {
+      "id": "s1",
+      "x": 120,
+      "y": 200,
+      "name": "start"
+    },
+    {
+      "id": "s2",
+      "x": 300,
+      "y": 200,
+      "name": "a"
+    },
+    {
+      "id": "s3",
+      "x": 480,
+      "y": 200,
+      "name": "aa"
+    },
+    {
+      "id": "s4",
+      "x": 660,
+      "y": 200,
+      "name": "aab"
+    }
+  ],
+  "startId": "s1",
+  "accepts": [
+    "s4"
+  ],
+  "transitions": [
+    {
+      "id": "t1",
+      "from": "s1",
+      "to": "s2",
+      "symbol": "a"
+    },
+    {
+      "id": "t2",
+      "from": "s1",
+      "to": "s1",
+      "symbol": "b"
+    },
+    {
+      "id": "t3",
+      "from": "s2",
+      "to": "s3",
+      "symbol": "a"
+    },
+    {
+      "id": "t4",
+      "from": "s2",
+      "to": "s1",
+      "symbol": "b"
+    },
+    {
+      "id": "t5",
+      "from": "s3",
+      "to": "s4",
+      "symbol": "b"
+    },
+    {
+      "id": "t6",
+      "from": "s3",
+      "to": "s1",
+      "symbol": "a"
+    },
+    {
+      "id": "t7",
+      "from": "s4",
+      "to": "s4",
+      "symbol": "a"
+    },
+    {
+      "id": "t8",
+      "from": "s4",
+      "to": "s4",
+      "symbol": "b"
+    }
+  ],
+  "meta": {
+    "title": "Contains aab (a draft)",
+    "blurb": "Meant to accept the words over {a, b} that contain aab. It has the classic mistake: on a mismatch it starts over instead of keeping the overlap, so after aa another a sends it back to the start."
+  }
+}

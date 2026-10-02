@@ -1019,8 +1019,31 @@ function createStateNode(id) {
   // one of them actually changes.
   g.__labelKey = null;
 
+  // Double-clicking toggles accepting, and the double-click is two presses
+  // counted here — NOT the native `dblclick`, which never arrives. The first
+  // press ends in onStateDown's `wrap.setPointerCapture`, and a captured
+  // pointer retargets the second click and the `dblclick` to #canvas-wrap, so a
+  // `dblclick` listener on this group never ran in a browser. It only ever ran
+  // in the DOM stub, which calls listeners directly — the block node below
+  // records the same trap and counts its presses the same way.
+  //
+  // Only with the Select and Pan tools, unmodified: two quick presses on one
+  // state with the Transition tool are a self-loop, and a modified press is
+  // multi-select.
   g.addEventListener('pointerdown', e => {
     g.dataset.lastPointerType = e.pointerType || 'mouse';
+    const now = Date.now();
+    const second = g.__lastDownAt && now - g.__lastDownAt < DOUBLE_PRESS_MS;
+    g.__lastDownAt = second ? 0 : now;
+    const plain = e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey;
+    if (second && plain && (e.pointerType || 'mouse') !== 'touch' && (App.tool === 'pointer' || App.tool === 'move') && acceptsAreShown()) {
+      e.preventDefault();
+      e.stopPropagation();
+      commit(() => {
+        App.accepts.has(id) ? App.accepts.delete(id) : App.accepts.add(id);
+      });
+      return;
+    }
     onStateDown(e, id);
   });
 
@@ -1041,14 +1064,6 @@ function createStateNode(id) {
     if (groupOpt) groupOpt.style.display = machineSupportsBlocks() ? '' : 'none';
     if (renameLbl) renameLbl.textContent = (App.machine === 'Moore' || App.machine === 'Mealy') ? 'Configure' : 'Rename';
     showContextMenu('state', e.clientX, e.clientY);
-  });
-
-  g.addEventListener('dblclick', () => {
-    if (g.dataset.lastPointerType === 'touch') return;
-    if (!acceptsAreShown()) return;
-    commit(() => {
-      App.accepts.has(id) ? App.accepts.delete(id) : App.accepts.add(id);
-    });
   });
 
   return g;

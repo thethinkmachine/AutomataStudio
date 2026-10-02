@@ -260,7 +260,7 @@ automata grade exercise.automaton submissions/ --csv grades.csv
 automata halts machines.txt --proof proofs/      # halting proofs, checkable with check-proof
 ```
 
-![automata halts classifying nine Turing machines, one per proof method, then check-proof verifying the proofs](docs/media/cli.webp)
+![automata halts classifying nine Turing machines, one per proof method, then check-proof verifying the proofs](docs/media/cli-halts.webp)
 
 <sup>`automata halts` on nine machines: the BB(2), BB(2,4) and BB(5) champions halt
 (BB(5) after 47,176,870 steps), five machines are proved never to halt by five different

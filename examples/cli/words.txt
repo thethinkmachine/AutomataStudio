@@ -1,0 +1,12 @@
+# Binary multiples of five, for div5.automaton.
+# "w => accept" and "w => reject" are expectations; # starts a comment.
+0        => accept
+101      => accept
+1010     => accept
+1111     => accept
+1100100  => accept
+1        => reject
+110      => reject
+111      => reject
+1011     => reject
+10011    => reject

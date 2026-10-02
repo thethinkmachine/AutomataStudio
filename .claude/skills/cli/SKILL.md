@@ -193,6 +193,59 @@ symmetry. It never uses the bound, which would assume its own answer.
 - **`docs/cli-reference.md` is generated** (`npm run cli:docs`) from exactly that,
   and a test fails when it is stale — change the usage text or the examples, then
   regenerate. `docs/cli.md` is the hand-written guide; the README points at both.
+- **The guide's output blocks are generated too.** A fence under
+  `<!-- automata-output: <arguments> -->` holds what that command prints, run by
+  `npm run cli:docs` in a scratch copy of [examples/cli/](../../../examples/cli/) with
+  colour off and no shell (`shellWords` splits the line). `tests/cli.test.js` fails when
+  one is stale — so changing what a command prints means regenerating, and the guide
+  cannot drift from the CLI. A block must be deterministic on every platform: no
+  timings, no unseeded randomness, no paths joined by the platform's separator.
+- **`examples/cli/` is the guide's working directory**: every example on the page runs
+  from it, and every clip is filmed in a fresh copy of it. Change a fixture and the
+  blocks and clips that use it change with it — regenerate both.
+
+### The clips
+
+`docs/media/cli-*.webp` are filmed, not screen-recorded: each is a tape in
+[docs/media/tapes/](../../../docs/media/tapes/) — the commands it types and the keys it
+presses — and `npm run media:cli` (scripts/media/) films them all again, or
+`npm run media:cli -- <tape>` one. Run by hand after a change to what a command prints,
+the way `npm run glyphs` is; output committed. `--list` names the tapes.
+
+- **A tape types into a real bash on a pseudo-terminal** (node-pty; Git Bash on Windows),
+  so stdout is a terminal: colour, `play`'s full screen, pipes, Ctrl+C. `automata` on the
+  PATH is a shim running this checkout. Each prompt appends its exit status to a file
+  (`PROMPT_COMMAND`), which is how `enter()` knows a command finished.
+- **The stage is xterm.js in headless Chromium**, WebGL renderer, so every glyph sits on
+  the cell grid whatever font it fell back to. Filmed at 2× and written at 1.5×: the
+  WebGL renderer spaces cells wider than its canvas at a fractional density.
+- **The encoder (`webp.mjs`) writes animated WebP by hand**, one changed rectangle per
+  frame, lossy at quality 78 — lossless was three to four times the size. Keep each clip
+  near a megabyte; `t.speed(n)` plays a long computation faster (`bb-search`).
+- **The `watch` tape films the desktop app**: Electron on a fresh `dist/` (the runner
+  builds it), opened on the tape's file, with a profile of its own set *inside* the app
+  by a boot script — on Windows Electron ignores `%APPDATA%`, so an environment variable
+  isolates nothing, and the recording would open and write the recorder's own
+  workspaces. `openApp` refuses to film if the profile did not take. The app is filmed
+  on its own loop and laid into the pane at encode time; a drawn cursor shows clicks.
+- **The `mcp` tape is a real Claude Code session**, so it reads differently each time,
+  costs a little usage, and is skipped (with the reason) where `claude` is missing or
+  has never been set up in a terminal. It runs Sonnet 5.5 with `--tools ""`, so the
+  answer comes through automata's tools rather than from reading the file, and its
+  shell drops every inherited `CLAUDE*` variable (recording from inside a Claude Code
+  session would otherwise hand down its session id and messaging token).
+- **The welcome panel is redacted, never filmed.** It shows the recorder's name and
+  plan, and a full repaint brings it back mid-session, so `stage.redact(/^[╭│╰]/)`
+  blanks those rows before xterm paints them, and the tape refuses to finish if account
+  text is still on screen. Scrolling it away or `/clear` did not hold — check a new
+  take's frames before committing it.
+- **A failing tape saves the screen it was looking at** to the temp folder and says
+  where; most failures are a `waitFor` whose text the command no longer prints.
+- **Several CLI fixes came from filming**, and are worth knowing were bugs: `play`'s
+  frame overran the screen by two lines (the header box counted as one), a double-click
+  on a state never toggled accepting in a browser (pointer capture swallows `dblclick`;
+  it is two presses now, js/render.js), an opened file came up marked unsaved, and the
+  CLI's own layout put a chain DFA's states in a row that its back edges ran through.
 
 ### Running it elsewhere
 

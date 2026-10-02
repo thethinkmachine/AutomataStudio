@@ -1,0 +1,73 @@
+{
+  "format": "automata-studio/workspace",
+  "schema": 1,
+  "app": "2.9.0",
+  "machine": "DFA",
+  "config": {
+    "sym": {
+      "eps": "ε",
+      "any": "Σ",
+      "blank": "⊔",
+      "leftMarker": "⊢",
+      "rightMarker": "⊣",
+      "stackBottom": "Z",
+      "lambda": "λ"
+    }
+  },
+  "sigma": [
+    "a",
+    "b"
+  ],
+  "stackAlpha": [],
+  "outputAlpha": [],
+  "tapeCount": 1,
+  "states": [],
+  "transitions": [],
+  "startId": null,
+  "accepts": [],
+  "blocks": [],
+  "notes": [],
+  "dividers": [],
+  "scope": [],
+  "grammar": {
+    "vars": [
+      "S"
+    ],
+    "start": "S",
+    "productions": []
+  },
+  "cam": {
+    "x": 0,
+    "y": 0,
+    "z": 1
+  },
+  "meta": null,
+  "exercise": {
+    "version": 1,
+    "id": "ex-muqj810s-1",
+    "title": "Regular language (ab|ba)*",
+    "prompt": "Build a machine over {a, b} that accepts exactly the words matching (a·b | b·a)*.",
+    "target": "x1.GlcfBgMFVlsPHhUWDAABSkdURx8CChsMDxBWVU8lMiAPX1YGEAgbShZaXykYSxoBQ09WHl1DWENDEhkQRlNNXlVaGF4YSxoBQ09WHlxDWENDEhkQRlNNXlRaGF4YSxoBQ09WHl9DWENDEhkQRlNNXldaGC9PSwcXABsHBhkIGw9eUU4uH0sGS0dCRwZSS19HBwcbAk9bVhAdUVhXEAZNFUcJVFBPSwAcDBcbA09bVgAPDlgORgALDV9aEUBBRVEDExoZTVdDBVEPX1YBC0tVDRRKR15BGgoIAxoYTVdDFkNQXw9XDQ1NFUcMVlBPSxUXDhhWVU8QRUMBUQAaRlNNXlVaSVAQEB4HDhlWVU8DVhwBCFYcAEtVDRFMR15BDwEKDFdOTRxTVk0PBxtXXkseH0dURwEaBBEKDVdOTQxDCTwBUQcBBRsbZgFaX1ASWVFJQxQXDAgRABIPSS9XFVlNcklaFhsEBBJHWy5WDk9NVgMPLlhXFx0OTA45CQILCFFfOihYTQIUABFYBzUZFAEODV8jOF5BHRIVBDYbGgMVVlscX1YXCAYMRBZaXyk+RVEGDhsSBgpDThpQDg==",
+    "answer": "machine",
+    "allow": [
+      "DFA",
+      "NFA",
+      "ε-NFA"
+    ],
+    "maxStates": 6,
+    "maxLength": 10,
+    "maxWords": 5000,
+    "hints": [
+      "The smallest DFA for this language has 3 states (4 if every state needs a move on every symbol)."
+    ],
+    "reveal": false,
+    "assist": "off",
+    "progress": {
+      "attempts": 0,
+      "hintsShown": 0,
+      "solved": false,
+      "solvedAt": null,
+      "last": null
+    }
+  }
+}

@@ -275,6 +275,14 @@ test('the command reference is generated from the help, and up to date', async (
   assert.equal(committed, fresh, 'docs/cli-reference.md is stale: run npm run cli:docs');
 });
 
+test('the guide shows what its commands really print', async () => {
+  const { guideFresh, shellWords } = await import('../cli/gen-docs.mjs');
+  assert.deepEqual(shellWords(`run div5.automaton 0 "" '1 0' "a b"c`), ['run', 'div5.automaton', '0', '', '1 0', 'a bc']);
+  const { committed, fresh } = await guideFresh();
+  assert.ok((fresh.match(/<!-- automata-output:/g) || []).length >= 8, 'the guide has its output blocks');
+  assert.equal(committed, fresh, 'an output block in docs/cli.md is stale: run npm run cli:docs');
+});
+
 test('colour follows FORCE_COLOR and NO_COLOR, and plain output has none', () => {
   const plain = cli(['run', 'js/examples/dfa.json', '0']).out;
   assert.doesNotMatch(plain, /\x1b\[/);
@@ -295,4 +303,82 @@ test('play, piped, prints every frame: header, states, tape, verdict', () => {
   assert.match(r.out, /\[1\]/, 'the head cell, marked in plain text');
   assert.match(r.out, /✔ accept\n*$/);
   assert.match(cli(['play', 'js/examples/npda.json', 'abba']).out, /input +ab│ba/);
+});
+
+// ── What the guide's clips show ───────────────────────────────────
+
+const FIX = join(ROOT, 'examples', 'cli');
+
+test('fuzz -v shows the word they disagree on and each smaller word shrinking kept, on stderr', () => {
+  const r = cli(['fuzz', join(FIX, 'contains-aab.automaton'), '--oracle', `node "${join(FIX, 'contains-aab.mjs')}"`, '--batch', '--mode', 'stdout', '--seed', '4', '-v']);
+  assert.equal(r.code, 1);
+  assert.match(r.err, /^fuzz {4}word \d+ of 500: \S+ {2}✘ the machine says reject, the oracle accept$/m);
+  const steps = [...r.err.matchAll(/^shrink {2}(\S+)/gm)].map(m => m[1]);
+  assert.equal(steps.at(-1), 'aaab', 'the trail ends where the verdict does');
+  for (let i = 1; i < steps.length; i++) assert.ok(steps[i].length <= steps[i - 1].length, 'each kept word is no longer than the last');
+  assert.match(r.out, /aaab: the machine says reject, the oracle accept/);
+  assert.doesNotMatch(r.out, /^shrink/m, 'stdout carries only the result');
+});
+
+test('learn -v prints each L* round on stderr and leaves the machine on stdout', () => {
+  const r = cli(['learn', '--target', join(FIX, 'div5.automaton'), '-v']);
+  assert.equal(r.code, 0);
+  assert.deepEqual([...r.err.matchAll(/^L\* round (\d+) +(\d+) states?/gm)].map(m => [m[1], m[2]]), [['1', '2'], ['2', '4'], ['3', '5']]);
+  assert.match(r.err, /wrong on 101[\s\S]*wrong on 10011[\s\S]*no counterexample, exactly/);
+  assert.equal(JSON.parse(r.out).states.length, 5);
+});
+
+test('a machine laid out by the CLI has no edge running through a state it does not touch', () => {
+  // from-regex places states by distance from the start. In a straight row,
+  // every back edge of this DFA crossed the states between its ends.
+  const doc = JSON.parse(cli(['minimize', '-'], { input: cli(['from-regex', '(a|b)*abb']).out }).out);
+  const at = new Map(doc.states.map(s => [s.id, s]));
+  const R = 30;
+  for (const t of doc.transitions) {
+    if (t.from === t.to) continue;
+    const a = at.get(t.from), b = at.get(t.to);
+    for (const s of doc.states) {
+      if (s === a || s === b) continue;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const u = Math.max(0, Math.min(1, ((s.x - a.x) * dx + (s.y - a.y) * dy) / (dx * dx + dy * dy)));
+      const d = Math.hypot(a.x + u * dx - s.x, a.y + u * dy - s.y);
+      assert.ok(d > R, `${t.from}→${t.to} passes ${Math.round(d)} from ${s.id}`);
+    }
+  }
+});
+
+test('halts says "1 cell" and "every step", and check-proof formats its counts', () => {
+  const dir = join(tmp, 'plural-proofs');
+  const r = cli(['halts', '0LA1RB_0LA---_1RA0LB', '1RB1LB_1LA1RZ', '--proof', dir]);
+  assert.match(r.out, /repeats 1 cell further left every step/);
+  const c = cli(['check-proof', dir]);
+  assert.match(c.out, /the 1 cell behind the head recurs 1 cell further left, every step/);
+  const big = cli(['halts', '1RB2LA1RA1RA_1LB1LA3RB1RZ', '--budget', '10000000', '--proof', join(tmp, 'big-proof')]);
+  assert.match(big.out, /after 3,932,964 steps/);
+  assert.match(cli(['check-proof', join(tmp, 'big-proof')]).out, /halts after exactly 3,932,964 steps/);
+});
+
+test('a table on a terminal wraps its last column under itself; piped, a row is one line', async () => {
+  const { table } = await import('../cli/out.mjs');
+  const rows = [['1', 'short', 'a reason long enough that it cannot fit on one line of a sixty-column terminal at all']];
+  const saved = Object.getOwnPropertyDescriptor(process.stdout, 'columns');
+  Object.defineProperty(process.stdout, 'columns', { value: 60, configurable: true });
+  try {
+    const lines = table(rows, { wrap: true }).split('\n');
+    assert.ok(lines.length > 1);
+    const indent = lines[0].indexOf('a reason');
+    for (const l of lines) assert.ok(l.length <= 60, `"${l}" fits`);
+    for (const l of lines.slice(1)) assert.equal(l.search(/\S/), indent, 'continuations line up under the column');
+    assert.equal(table(rows, { wrap: false }).split('\n').length, 1);
+  } finally {
+    if (saved) Object.defineProperty(process.stdout, 'columns', saved); else delete process.stdout.columns;
+  }
+});
+
+test('bb-search lists the never-halting methods one a row, most first', () => {
+  const r = cli(['bb-search', '-n', '2']);
+  const rows = [...r.out.matchAll(/^│ {16}([\d,]+) {2}(\S[^│]*?)\s*│$/gm)].map(m => Number(m[1].replace(/,/g, '')));
+  assert.ok(rows.length >= 1, r.out);
+  assert.deepEqual(rows, [...rows].sort((a, b) => b - a));
+  for (const line of r.out.split('\n')) assert.ok([...line].length <= 80, 'the box fits a terminal');
 });

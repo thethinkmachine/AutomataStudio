@@ -1165,7 +1165,13 @@ export function applyOpenedDocument(doc) {
   const ok = applyDocument(payload, doc.path, { filePath: doc.path });
   // A file that would not parse is not the file this workspace is; binding the
   // path anyway would point Ctrl+S at it and overwrite it with something else.
-  if (ok) bindActiveFile(doc.path, { rename: true });
+  if (ok) {
+    bindActiveFile(doc.path, { rename: true });
+    // What is on screen is what is on disk: reading it in raised the unsaved
+    // dot through the same announcements an edit makes, so a file came up
+    // marked as changed before anyone had touched it.
+    if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
+  }
   return ok;
 }
 
