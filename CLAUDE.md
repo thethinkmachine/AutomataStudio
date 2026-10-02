@@ -255,6 +255,11 @@ js/machines/
                  reduction) — or "unknown". See the simulation notes.
   halting-segment.js  bbchallenge's halting segment decider, ported.
   far.js         bbchallenge's finite automata reduction (direct), ported.
+  loop1.js, ngram-cps.js, repwl.js
+                 Coq-BB5's loop, n-gram CPS and repeated word list deciders,
+                 ported from the BB(5) proof's Coq.
+  bouncers.js    bbchallenge's bouncers decider, ported.
+  bb-table.js    import-free. The classifier's table as those ports read it.
   batch.js       the batch tester's deciding half, with no page attached.
 ```
 

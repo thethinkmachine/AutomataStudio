@@ -13,6 +13,10 @@ import { runPool, workerCount } from '../tm/pool.mjs';
 import { bbStep, rootNode } from '../tm/search.mjs';
 import { openSeedDb, parseSeedIds, readSeedIndex } from '../tm/seed-db.mjs';
 import { haltingSegmentRun } from '../../js/machines/halting-segment.js';
+import { loop1 } from '../../js/machines/loop1.js';
+import { ngramCps } from '../../js/machines/ngram-cps.js';
+import { repwl } from '../../js/machines/repwl.js';
+import { bouncers } from '../../js/machines/bouncers.js';
 import { proveByInduction } from '../tm/induction.mjs';
 import { Indexed, encodePNG, TAPE_PALETTE, HEAD } from '../raster.mjs';
 import { PALETTE, box, c, isTTY, pill, print, printJson, styled, table, warn } from '../out.mjs';
@@ -94,6 +98,26 @@ export function loadSeedMachines(dbPath, ids, index = null) {
   } finally { db.close(); }
 }
 
+/** --loops, --no-ngram, --repwl and --no-bouncers → decide()'s options; absent ones keep its defaults. */
+function lateDeciders(opts) {
+  const out = {};
+  if (opts.loops !== undefined) out.loops = Number(opts.loops);
+  if (opts['no-ngram']) out.ngram = null;
+  if (opts.repwl !== undefined) {
+    if (opts.repwl === 'none') out.repwl = [];
+    else {
+      out.repwl = opts.repwl.split(';').map(pair => pair.split(',').map(Number));
+      if (out.repwl.some(p => p.length !== 2 || !p.every(x => Number.isInteger(x) && x >= 1))) {
+        throw new CliError(`--repwl takes word-length,repeat pairs separated by ";" (e.g. 4,3;2,2), not "${opts.repwl}".`);
+      }
+    }
+  }
+  if (opts['no-bouncers']) out.bouncers = false;
+  return out;
+}
+
+const ngramSay = p => (p.variant === 'impl2' ? `windows ${p.lenL}+${p.lenR}` : p.variant === 'lru' ? `windows ${p.lenL}+${p.lenR}, LRU history` : `windows ${p.lenL}+${p.lenR}, history ${p.lenH}`);
+
 function detailOf(v) {
   switch (v.method) {
     case 'simulation': return `after ${num(v.steps)} steps, ${num(v.ones ?? 0)} non-blank cells${v.how === 'none' ? ' (an undefined transition)' : ''}`;
@@ -102,6 +126,10 @@ function detailOf(v) {
     case 'backward': return `no halting configuration is reachable more than ${v.longest} steps back`;
     case 'segment': return `no halt is reachable through a segment of ${v.size} cells (${num(v.nodes)} configurations, closed)`;
     case 'far': return `a ${v.depth}-state DFA and ${v.states}-state NFA recognise every halting configuration, not the start (scanning ${v.side === 'R' ? 'left to right' : 'right to left'})`;
+    case 'loops': return `its (state, symbol) history repeats ${v.shift ? `${Math.abs(v.shift)} cells further ${v.shift > 0 ? 'right' : 'left'}` : 'in place'} every ${num(v.period)} steps`;
+    case 'ngram': return `a closed set of ${num(v.contexts)} local contexts (${ngramSay(v.params)})`;
+    case 'repwl': return `a closed set of ${num(v.configurations)} tapes of repeated ${v.len}-cell words`;
+    case 'bouncers': return `the formula tape ${v.formula} recurs, every repeater longer, after ${num(v.macroSteps)} macro steps`;
     case 'cps': return `closed set of ${num(v.contexts)} windows, ${v.n} cells either side`;
     case 'bound': return `ran ${num(v.steps)} steps, past S(${v.n}, ${v.k}) = ${num(v.S)}`;
     case 'induction': return `an inductive rule over blocks of ${v.B} applies forever${v.rules > 1 ? ` (${v.rules} rules, nested)` : ''}`;
@@ -115,7 +143,8 @@ function proofOf(item, v) {
   const { p } = item;
   const evidence = {};
   for (const k of ['steps', 'transitions', 'ones', 'period', 'from', 'at', 'shift', 'window', 'direction', 'longest', 'n', 'k', 'S', 'left', 'right', 'contexts', 'how', 'B', 'rules', 'ruleSteps', 'grows', 'start',
-    'size', 'distance', 'nodes', 'side', 'depth', 'dfa', 'nfa', 'accepted', 'states']) {
+    'size', 'distance', 'nodes', 'side', 'depth', 'dfa', 'nfa', 'accepted', 'states',
+    'gas', 'params', 'contexts', 'len', 'minRep', 'configurations', 'formula', 'formulaAt', 'macroSteps']) {
     if (v[k] !== undefined) evidence[k] = v[k];
   }
   return {
@@ -162,6 +191,11 @@ names it, and the JSON carries its standard notation.
                     reference's; 0 = off)
   --far D           finite automata reduction: DFAs up to D states (default 6;
                     7 is the reference's BB(5) search and takes minutes a machine)
+  --loops N         Coq-BB5's loop decider with gas N (default 4100; 0 = off)
+  --no-ngram        skip Coq-BB5's n-gram CPS (its BB(5) pipeline's parameters)
+  --repwl L,M[;…]   Coq-BB5's repeated word list with word length L and repeat
+                    threshold M, each pair in turn (default 4,3; none = off)
+  --no-bouncers     skip bbchallenge's bouncers decider
   --cps N           largest closed-position-set window (default 10; 0 = off)
   --induction-ms N  time for the inductive-rule prover per machine (default 2000; 0 = off)
   --no-bound        skip the busy beaver bound
@@ -176,6 +210,7 @@ names it, and the JSON carries its standard notation.
 Exit: 0 every machine decided, 2 some unknown, 3 some could not be read.`,
   options: {
     budget: { type: 'string' }, segment: { type: 'string' }, far: { type: 'string' }, cps: { type: 'string' }, 'induction-ms': { type: 'string' }, 'no-bound': { type: 'boolean' }, 'no-growth': { type: 'boolean' },
+    loops: { type: 'string' }, 'no-ngram': { type: 'boolean' }, repwl: { type: 'string' }, 'no-bouncers': { type: 'boolean' },
     input: { type: 'string' }, workers: { type: 'string' }, proof: { type: 'string' }, db: { type: 'string' }, index: { type: 'string' }
   },
   async run({ args, opts }) {
@@ -190,6 +225,7 @@ Exit: 0 every machine decided, 2 some unknown, 3 some could not be read.`,
       budget: Number(opts.budget ?? 1e6),
       segment: Number(opts.segment ?? 5),
       far: Number(opts.far ?? 6),
+      ...lateDeciders(opts),
       cpsMax: Number(opts.cps ?? 10),
       inductionMs: Number(opts['induction-ms'] ?? 2000),
       bound: !opts['no-bound'],
@@ -253,8 +289,9 @@ const checkProofCmd = {
 Re-checks each proof with code that shares nothing with the prover: its own
 tape, its own stepper, its own reading of the notation. A finite automata
 reduction proof is checked against bbchallenge's verifier conditions. Backward
-reasoning, halting segment and inductive rules are the exception — they are
-re-run with the app's search, and marked as such.
+reasoning, halting segment, loops, n-gram CPS, repeated word lists, bouncers
+and inductive rules are the exception — they are re-run with the app's
+search, and marked as such.
 
 Exit: 0 every proof holds, 1 one does not.`,
   options: {},
@@ -274,10 +311,21 @@ Exit: 0 every proof holds, 1 one does not.`,
     });
     const reprove = (m, ev) => proveByInduction(tableOf(m), ev.B, { maxMacroSteps: 200000 });
     const segment = (m, size) => haltingSegmentRun(tableOf(m), size, (size - 1) / 2);
+    const rederive = (m, method, ev) => {
+      const p = tableOf(m);
+      if (method === 'loops') return loop1(p, ev.gas).result === 'never';
+      if (method === 'ngram') return ngramCps(p, ev.params).result === 'never';
+      if (method === 'repwl') return repwl(p, { len: ev.len, minRep: ev.minRep, maxT: 320, gas: 10000 }).result === 'never';
+      if (method === 'bouncers') {
+        const r = bouncers(p);
+        return r.result === 'never' && r.formula === ev.formula && r.macroSteps === ev.macroSteps;
+      }
+      return false;
+    };
     const out = files.map(f => {
       let proof;
       try { proof = JSON.parse(readFileSync(f, 'utf8')); } catch (e) { return { file: f, ok: false, why: `not JSON: ${e.message}` }; }
-      return { file: f, machine: proof.machine, method: proof.method, verdict: proof.verdict, ...checkProof(proof, { classify, reprove, segment }) };
+      return { file: f, machine: proof.machine, method: proof.method, verdict: proof.verdict, ...checkProof(proof, { classify, reprove, segment, rederive }) };
     });
     if (opts.json) printJson(out);
     else {
@@ -302,6 +350,7 @@ bound, which would assume the answer. 2×2 and 3×2 take moments; 4×2 minutes.
   --budget N        steps per machine (default 100000)
   --segment D       halting segment up to 2D + 1 cells (default 5)
   --far D           finite automata reduction up to D DFA states (default 5)
+  --loops N, --no-ngram, --repwl L,M, --no-bouncers   as for halts
   --cps N           largest closed-position-set window (default 4)
   --induction-ms N  inductive-rule prover time per machine (default 300)
   --workers N
@@ -309,12 +358,13 @@ bound, which would assume the answer. 2×2 and 3×2 take moments; 4×2 minutes.
   --json`,
   options: {
     states: { type: 'string', short: 'n' }, symbols: { type: 'string', short: 'k' },
-    budget: { type: 'string' }, segment: { type: 'string' }, far: { type: 'string' }, cps: { type: 'string' }, 'induction-ms': { type: 'string' }, workers: { type: 'string' }, holdouts: { type: 'string' }
+    budget: { type: 'string' }, segment: { type: 'string' }, far: { type: 'string' }, cps: { type: 'string' }, 'induction-ms': { type: 'string' }, workers: { type: 'string' }, holdouts: { type: 'string' },
+    loops: { type: 'string' }, 'no-ngram': { type: 'boolean' }, repwl: { type: 'string' }, 'no-bouncers': { type: 'boolean' }
   },
   async run({ opts }) {
     const n = Number(opts.states), k = Number(opts.symbols ?? 2);
     if (!(n >= 1 && n <= 6 && k >= 2 && k <= 6)) throw new CliError('--states is 1–6 and --symbols 2–6.');
-    const settings = { budget: Number(opts.budget ?? 1e5), segment: Number(opts.segment ?? 5), far: Number(opts.far ?? 5), cpsMax: Number(opts.cps ?? 4), inductionMs: Number(opts['induction-ms'] ?? 300) };
+    const settings = { budget: Number(opts.budget ?? 1e5), segment: Number(opts.segment ?? 5), far: Number(opts.far ?? 5), ...lateDeciders(opts), cpsMax: Number(opts.cps ?? 4), inductionMs: Number(opts['induction-ms'] ?? 300) };
     let frontier = [rootNode(n, k)];
     const stats = { nodes: 0, halting: 0, never: {}, holdouts: [] };
     let champion = null, onesChampion = null;

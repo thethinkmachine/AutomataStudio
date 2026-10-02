@@ -1,6 +1,8 @@
-// bbchallenge's reference deciders, ported: halting segment
-// (js/machines/halting-segment.js) and finite automata reduction
-// (js/machines/far.js), the seed database's format (cli/tm/seed-db.mjs), and
+// The busy beaver references' deciders, ported: bbchallenge's halting segment
+// (js/machines/halting-segment.js), finite automata reduction
+// (js/machines/far.js) and bouncers (js/machines/bouncers.js); Coq-BB5's
+// loops, n-gram CPS and repeated word list (loop1.js, ngram-cps.js,
+// repwl.js); the seed database's format (cli/tm/seed-db.mjs); and
 // bbchallenge's step count.
 //
 // "Matches the reference" is pinned against the reference's own output, not
@@ -30,6 +32,10 @@ import { finiteAutomataReduction } from '../js/machines/far.js';
 import { decide, run, standardFromTable, tableFromStandard } from '../cli/tm/core.mjs';
 import { checkProof, PROOF_FORMAT } from '../cli/tm/check.mjs';
 import { bbStep, rootNode } from '../cli/tm/search.mjs';
+import { loop1 } from '../js/machines/loop1.js';
+import { ngramCps, COQ_BB4_NGRAM } from '../js/machines/ngram-cps.js';
+import { repwl } from '../js/machines/repwl.js';
+import { bouncers } from '../js/machines/bouncers.js';
 import { openSeedDb, parseSeedIds, readSeedIndex, seedDbBytes, seedIndexBytes, seedRecordToStandard, standardToSeedRecord } from '../cli/tm/seed-db.mjs';
 
 const tmp = mkdtempSync(join(tmpdir(), 'automata-bbc-'));
@@ -191,7 +197,7 @@ function* tree(n, k) {
   while (queue.length) {
     const node = queue.pop();
     yield node;
-    const r = bbStep(node, { budget: 200, segment: 0, far: 0, cpsMax: 0, inductionMs: 0 });
+    const r = bbStep(node, { budget: 200, segment: 0, far: 0, loops: 0, ngram: null, repwl: [], bouncers: false, cpsMax: 0, inductionMs: 0 });
     if (r.verdict === 'branch') queue.push(...r.children);
   }
 }
@@ -278,4 +284,166 @@ test('a seed database is read by ID, with its header checked, and an index file 
   assert.deepEqual(readSeedIndex(idx), [3, 108115, 88664063]);
   assert.deepEqual(parseSeedIds(['#7', '2-4', '10']), [7, 2, 3, 4, 10]);
   assert.throws(() => parseSeedIds(['4-2']), /backwards/);
+});
+
+// ── Coq-BB5's deciders: loops, n-gram CPS, repeated word list ─────
+// Ports of the BB(5) proof's own Coq (Deciders/Decider_Loop.v,
+// Decider_NGramCPS.v, Decider_RepWL.v). Each is pinned to the proof's output:
+// machines from its published BB(4) enumeration (BB4_verified_enumeration.csv)
+// with the status and the pipeline stage that decided them, replayed here
+// through the same pipeline; and entries of its BB(5) hardcoded tables, each
+// decided with its own parameters and the proof's gas.
+
+
+const BB4_PIPELINE = [
+  ['LOOP1_params_107', p => loop1(p, 107)],
+  ...COQ_BB4_NGRAM.map(q => [
+    q.variant === 'impl2' ? `NGRAM_CPS_IMPL2_params_${q.lenL}_${q.lenR}_${q.gas}`
+      : q.variant === 'lru' ? `NGRAM_CPS_LRU_params_${q.lenL}_${q.lenR}_${q.gas}`
+      : `NGRAM_CPS_IMPL1_params_${q.lenH}_${q.lenL}_${q.lenR}_${q.gas}`,
+    p => ngramCps(p, q)
+  ]),
+  ['REPWL_params_4_3_320_10000', p => repwl(p, { len: 4, minRep: 3, maxT: 320, gas: 10000 })]
+];
+
+// [machine, status, decider], as the BB(4) proof's enumeration lists them.
+const BB4_ENUMERATION = [
+  ['------_------_------_------', 'halt', 'LOOP1_params_107'],
+  ['0RA---_------_------_------', 'nonhalt', 'LOOP1_params_107'],
+  ['1RA---_------_------_------', 'nonhalt', 'LOOP1_params_107'],
+  ['0RB---_------_------_------', 'halt', 'LOOP1_params_107'],
+  ['0RB0LA_1LA1RB_------_------', 'nonhalt', 'NGRAM_CPS_IMPL2_params_1_1_100'],
+  ['0RB1LA_1LA1RB_------_------', 'nonhalt', 'NGRAM_CPS_IMPL2_params_1_1_100'],
+  ['0RB0LC_1LA1RB_0LD0LA_0RA---', 'nonhalt', 'NGRAM_CPS_IMPL2_params_2_2_200'],
+  ['0RB0LC_1LA1RB_0LD1LA_0RA---', 'nonhalt', 'NGRAM_CPS_IMPL2_params_2_2_200'],
+  ['0RB1LC_1LA1RB_0LA0LD_---1RB', 'nonhalt', 'NGRAM_CPS_IMPL1_params_2_2_2_1600'],
+  ['0RB1LC_1LA1RB_0LA1LD_---1LA', 'nonhalt', 'NGRAM_CPS_IMPL1_params_2_2_2_1600'],
+  ['0RB1LC_1LA1RB_0LA1LD_---0LB', 'nonhalt', 'NGRAM_CPS_IMPL1_params_2_3_3_1600'],
+  ['0RB1LC_1LA1RB_1LA1LD_---0RA', 'nonhalt', 'NGRAM_CPS_IMPL1_params_4_2_2_600'],
+  ['0RB1LC_1LA1RB_1RC1LD_---1LA', 'nonhalt', 'NGRAM_CPS_IMPL1_params_4_2_2_600'],
+  ['0RB0RD_1LA0LC_1LD---_1RA0LC', 'nonhalt', 'NGRAM_CPS_IMPL2_params_3_3_400'],
+  ['0RB---_1LA0LC_1LD0RD_1RC0LA', 'nonhalt', 'NGRAM_CPS_IMPL2_params_3_3_400'],
+  ['0RB0LA_1LA1RC_1LD---_1RB1RD', 'nonhalt', 'NGRAM_CPS_IMPL1_params_2_3_3_1600'],
+  ['0RB1LA_1LC1RB_1LA1LD_---0LA', 'nonhalt', 'NGRAM_CPS_LRU_params_2_2_10000'],
+  ['0RB1LA_1LC1RB_1RA1LD_---0LA', 'nonhalt', 'NGRAM_CPS_LRU_params_2_2_10000'],
+  ['0RB1RB_1LC1RD_1RA0LA_---1RA', 'nonhalt', 'NGRAM_CPS_IMPL1_params_4_3_3_1600'],
+  ['0RB1LA_1LC1RB_1RB1LD_---0LA', 'nonhalt', 'NGRAM_CPS_LRU_params_2_2_10000'],
+  ['0RB---_1LC0RC_0LD0LA_1RA1LB', 'nonhalt', 'NGRAM_CPS_IMPL1_params_6_3_3_3200'],
+  ['0RB0RC_1LC1RD_0LD---_1RA0LA', 'nonhalt', 'NGRAM_CPS_IMPL1_params_6_3_3_3200'],
+  ['0RB1LB_1RC0RD_1LA0LC_1RA---', 'nonhalt', 'NGRAM_CPS_IMPL1_params_4_3_3_1600'],
+  ['0RB---_1RC1RB_1LD1LC_1RA0LD', 'nonhalt', 'NGRAM_CPS_IMPL1_params_10_4_4_10000'],
+  ['1RB1LA_1LA0RC_1LD1RC_---0LA', 'nonhalt', 'REPWL_params_4_3_320_10000'],
+  ['1RB1LA_1LA1RC_---0RD_0LA1RD', 'nonhalt', 'NGRAM_CPS_LRU_params_2_2_10000'],
+  ['1RB0LC_1LB1LA_1RC0LD_---0RA', 'nonhalt', 'NGRAM_CPS_IMPL1_params_8_2_2_1600'],
+  ['1RB0RB_1LB0LC_0LD---_1RD0RA', 'nonhalt', 'NGRAM_CPS_IMPL1_params_8_2_2_1600'],
+  ['1RB0RB_0LC1RB_1RD1LC_---1RA', 'nonhalt', 'NGRAM_CPS_LRU_params_2_2_10000'],
+  ['1RB0LD_1LC1RB_---1LA_0RB1LD', 'nonhalt', 'NGRAM_CPS_LRU_params_2_2_10000'],
+  ['1RB0RA_1LC0LD_1RA1LA_---1LB', 'nonhalt', 'NGRAM_CPS_IMPL1_params_10_4_4_10000'],
+  ['1RB1LB_1LC0LD_---1LA_1RA0RD', 'nonhalt', 'NGRAM_CPS_IMPL1_params_8_3_3_1600'],
+  ['1RB0RB_1LC0LA_1LD1RA_---0LA', 'nonhalt', 'NGRAM_CPS_IMPL1_params_6_2_2_3200'],
+  ['1RB0RA_1LC0RD_1RA0LB_0RC---', 'nonhalt', 'NGRAM_CPS_IMPL1_params_6_2_2_3200'],
+  ['1RB1RA_1LC1LB_1RD0LC_0RA---', 'nonhalt', 'NGRAM_CPS_IMPL1_params_10_4_4_10000'],
+  ['1RB1LA_1LC1RD_0LA1RC_---0RC', 'nonhalt', 'NGRAM_CPS_LRU_params_2_2_10000'],
+  ['1RB0RB_1LC1RB_---0LD_1RA1LD', 'nonhalt', 'REPWL_params_4_3_320_10000'],
+  ['1RB0LA_0RC---_1RD1RC_1LA1LD', 'nonhalt', 'NGRAM_CPS_IMPL1_params_8_3_3_1600'],
+  ['1RB1LA_1RC1RD_0LA1RC_---0RC', 'nonhalt', 'NGRAM_CPS_LRU_params_2_2_10000'],
+  ['1RB1LB_1RC0RB_1LA0LD_---1LC', 'nonhalt', 'NGRAM_CPS_IMPL1_params_10_4_4_10000'],
+];
+
+test('Coq-BB5\'s BB(4) pipeline, replayed with the ports, decides each machine as the proof did', () => {
+  // The whole 858,908-machine enumeration was replayed the same way with no
+  // difference; these are rows for every stage of the pipeline.
+  for (const [code, status, decider] of BB4_ENUMERATION) {
+    const p = tableFromStandard(code);
+    let got = ['unknown', 'none'];
+    for (const [id, run] of BB4_PIPELINE) {
+      const r = run(p);
+      if (r.result === 'halt' || r.result === 'never') { got = [r.result === 'halt' ? 'halt' : 'nonhalt', id]; break; }
+    }
+    assert.deepEqual(got, [status, decider], code);
+  }
+  assert.ok(new Set(BB4_ENUMERATION.map(r => r[2])).size === BB4_PIPELINE.length, 'every stage is exercised');
+});
+
+// [machine, the BB(5) proof's DeciderType] from its hardcoded tables.
+const BB5_HARDCODED = [
+  ['0RB---_1LA1LC_1RD0LD_1LB1RE_1LC0RE', 'NG 0 11'],
+  ['0RB---_0LC1RB_1RD0LE_1LB1RA_0RA1LC', 'NG 0 2'],
+  ['0RB---_1LC1RA_1LD0RA_1RE0LC_0LD0RE', 'NG 2 2'],
+  ['0RB0LA_1RC---_1RD0LC_1LE0RE_1RA1LC', 'NG 2 9'],
+  ['0RB0LE_1LA1RC_1RD---_0LD1RB_0RC0LA', 'NG 2 4'],
+  ['0RB---_0LC1RB_1LD1LC_1RE1LA_0LA0RE', 'NG_LRU 2'],
+  ['0RB0LA_1LA0LC_0RD1LC_1RE1RD_1RB---', 'NG_LRU 2'],
+  ['0RB0LA_1RC0RD_1LA1LC_---1RE_1RB1RE', 'NG_LRU 2'],
+  ['0RB---_1LA0LC_1RD1LC_1LC0RE_1LB1RE', 'RWL 2 3'],
+  ['1RB1RA_1LC1LB_1RA1RD_1RA0LE_---1LD', 'RWL 2 2'],
+  ['0RB---_1LA0RC_1RD1RC_1LE0LB_1RC0LD', 'RWL 9 2'],
+  ['0RB---_1LA1RC_1LD1RE_1RD0LE_0LD1RA', 'RWL 4 3'],
+  ['0RB---_0LC0RA_1RD1LC_1RB0LE_1LD0LE', 'RWL 28 3'],
+  ['0RB---_0LC1RA_1RD1LD_1RB0LE_0LD0RC', 'RWL 7 3'],
+  ['0RB---_0LC0RB_1RD0LE_1RE0RA_1LC1LB', 'RWL 3 3'],
+  ['0RB---_0LC0LD_1RD1LB_1RE0RC_1LD0RA', 'RWL 6 2'],
+  ['0RB---_0LC0RD_1LA1LE_1RE0LE_1RB1LB', 'RWL 5 2']
+];
+
+test('the BB(5) proof\'s hardcoded n-gram CPS and RepWL entries are decided with their own parameters', () => {
+  // BB5_Deciders_Hardcoded.v `getDecider`: NG h n → NGramCPS (impl2 when
+  // h = 0, else impl1 with history h) on windows of n, gas 5,000,001;
+  // NG_LRU n → the LRU variant; RWL n m → RepWL_ES_decider n m 320 150001.
+  // All 7,992 entries were checked this way; none failed.
+  for (const [code, d] of BB5_HARDCODED) {
+    const p = tableFromStandard(code);
+    const [kind, a, b] = d.split(' ').map((x, i) => (i ? Number(x) : x));
+    const r = kind === 'NG' ? ngramCps(p, a === 0 ? { variant: 'impl2', lenL: b, lenR: b, gas: 5000001 } : { variant: 'impl1', lenH: a, lenL: b, lenR: b, gas: 5000001 })
+      : kind === 'NG_LRU' ? ngramCps(p, { variant: 'lru', lenL: a, lenR: a, gas: 5000001 })
+      : repwl(p, { len: a, minRep: b, maxT: 320, gas: 150001 });
+    assert.equal(r.result, 'never', `${code} ${d}`);
+  }
+});
+
+test('loops: a halt within the gas is a halt, counted as bbchallenge counts it, and a machine outside the model is refused', () => {
+  assert.deepEqual(loop1(tableFromStandard('1RB1LB_1LA---'), 107), { result: 'halt', steps: 6, state: 1, read: 1 });
+  assert.equal(loop1(tableFromStandard('1RB1LB_1LA0LC_1RZ1LD_1RD0RA'), 107).result, 'halt');
+  assert.equal(loop1(tableFromStandard('1RB1LB_1LA0LC_1RZ1LD_1RD0RA'), 106).result, 'unknown');
+  assert.equal(loop1({ ...tableFromStandard('1RB1LB_1LA---'), twoWay: false }, 107).result, 'model');
+});
+
+// ── bbchallenge's bouncers ────────────────────────────────────────
+// [machine, formula tape, step it was read off at, macro steps until it
+// recurred], from the reference's own output
+// (bouncers_certs_250k_steps_50k_macro_steps_20_formula_limit.csv). The port
+// reproduces every one of its 29,799 certificates exactly, and decides none
+// of the 2,833 machines it left.
+const BOUNCER_CERTS = [
+  ['1RB---_0RC---_0RD0LD_1LE0RE_0LA1LC', '.<A010110(0110).', 109, 42],
+  ['1RB---_0RC---_0RD1LD_0LE0LA_1LE1LC', '.<A0110110(110).', 189, 62],
+  ['1RB---_0RC---_0LD1RD_1LE0RB_1RD0LC', '.<C011001(1001).', 104, 35],
+  ['1RB---_0RC---_1RD0LA_0LE0RE_1LB1LD', '.<B101010(1010).', 79, 29],
+  ['1RB---_0LC0RB_1LD1LB_0LE1LC_1RE0RA', '.<B111110(111110).', 167, 61],
+  ['1RB---_1RC0LE_1LD0RB_---1LB_1RA1LD', '.<B1101(011011).', 102, 34],
+  ['1RB0RD_0RC0RA_1LD1LA_1LD0LE_1LA---', '.<A1000110(00110)11.', 306, 102],
+  ['1RB0LD_1RC0RC_1RD---_1LA1LE_0RA1RE', '.<A10(1001010010)010.', 236, 74],
+  ['1RB1LC_0LA0RE_0LD1LB_1RD1RA_---0RC', '.<A011010(11010).', 114, 40],
+  ['1RB1LB_0RC1LE_1LD1RC_0LA1LA_---1LD', '.<A01111(1111).', 63, 23],
+];
+
+test('bouncers gives the reference\'s certificate, formula tape and all', () => {
+  for (const [code, formula, steps, macroSteps] of BOUNCER_CERTS) {
+    assert.deepEqual(bouncers(tableFromStandard(code)), { result: 'never', formula, steps, macroSteps }, code);
+  }
+});
+
+test('bouncers leaves undecided what the reference left undecided', () => {
+  for (const code of ['1RB---_0RC0RD_1RD1RA_1LD0LE_1LB0LA', '1RB---_0LC1RC_0RC1LD_1LE1RE_1LA0LE', '1RB0LA_0RC1RE_1LD0RC_1LA1RA_---1RD', '1RB1LA_0LA0RC_0RD0RE_1LD0LA_---1RD']) {
+    assert.equal(bouncers(tableFromStandard(code)).result, 'unknown', code);
+  }
+  assert.equal(bouncers(tableFromStandard('1RB1LB_1LA---')).result, 'halt');
+});
+
+test('bouncers gives up, said so, on a machine whose records would not fit, rather than running out of memory', () => {
+  // Walking right forever, every step is a record: kept whole, as the
+  // reference keeps them, 250,000 growing tapes would be ~31 billion cells.
+  const t0 = Date.now();
+  assert.deepEqual(bouncers(tableFromStandard('1RA---')), { result: 'unknown', reason: 'records' });
+  assert.ok(Date.now() - t0 < 5000);
 });

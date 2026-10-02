@@ -21,6 +21,9 @@
 //                      (halting-segment.js) — tried once the budget is spent.
 //   far                never: bbchallenge's finite automata reduction
 //                      (far.js) — tried after that.
+//   loops, ngram,      never: Coq-BB5's loop, n-gram CPS and repeated word
+//   repwl              list deciders (loop1.js, ngram-cps.js, repwl.js), then
+//   bouncers           bbchallenge's bouncers (bouncers.js) — tried last.
 //
 // A halt's step count is bbchallenge's: reading a missing transition is the
 // halting step, and it counts.
@@ -104,14 +107,21 @@ import { App, usesTwoWayTape } from '../state.js';
 import { singleTapeLookup } from './runtime.js';
 import { haltingSegment } from './halting-segment.js';
 import { finiteAutomataReduction } from './far.js';
+import { loop1 } from './loop1.js';
+import { ngramCpsPipeline, COQ_BB5_NGRAM } from './ngram-cps.js';
+import { repwl } from './repwl.js';
+import { bouncers } from './bouncers.js';
 
 /** The machine types this module can classify: one deterministic tape. */
 export const BEHAVIOUR_MACHINES = new Set(['TM', 'ITM']);
 
-// How many past records per state a new one is compared with, and how much
-// tape behind a record is kept to compare. A translated cycler whose period
-// holds more than RECORDS records in one state, or that wanders back further
-// than WINDOW cells, is left unknown rather than missed wrongly.
+// How many recent records per state a new one is compared with, and how much
+// tape behind a record is kept to compare. Past the RECORDS most recent, each
+// state also keeps one saved record, moved forward at 1, 2, 4, 8, … records
+// (Brent's algorithm, as the cycler uses for configurations), so a period
+// holding any number of records in one state is still found, in memory that
+// does not grow with it. One that wanders back further than WINDOW cells is
+// left unknown rather than missed wrongly.
 const RECORDS = 16;
 const WINDOW = 1024;
 
@@ -135,7 +145,11 @@ export const METHODS = {
   translated: { verdict: 'never', name: 'Translated cycler' },
   backward: { verdict: 'never', name: 'Backward reasoning' },
   segment: { verdict: 'never', name: 'Halting segment' },
-  far: { verdict: 'never', name: 'Finite automata reduction' }
+  far: { verdict: 'never', name: 'Finite automata reduction' },
+  loops: { verdict: 'never', name: 'Loops' },
+  ngram: { verdict: 'never', name: 'n-gram CPS' },
+  repwl: { verdict: 'never', name: 'Repeated word list' },
+  bouncers: { verdict: 'never', name: 'Bouncer' }
 };
 
 /**
@@ -150,7 +164,14 @@ export const BEHAVIOUR_LIMITS = {
   segment: 5,
   segmentNodes: 2e5,
   far: 4,
-  farWork: 2e5
+  farWork: 2e5,
+  // Coq-BB5's deciders at its generic parameters: the loop decider's larger
+  // gas, the BB(5) pipeline's NGramCPS list, and RepWL as the BB(4) pipeline
+  // runs it. And bbchallenge's bouncers at its BB(5) limits.
+  loops: 4100,
+  ngram: COQ_BB5_NGRAM,
+  repwl: [[4, 3]],
+  bouncers: true
 };
 
 // ══════════════════════════════════════════════════════════════════
@@ -350,6 +371,9 @@ class Records {
     this.gBack = [];                      // groups: the furthest-back cell since
     this.gFirst = [];                     // any record from gFirst on
     this.ring = Array.from({ length: Q }, () => []);
+    this.saved = Array(Q).fill(null);     // Brent: the saved record per state,
+    this.power = new Array(Q).fill(1);    // the gap it is kept for,
+    this.since = new Array(Q).fill(0);    // and the records since it was saved
     this.checks = 0;
   }
 
@@ -376,6 +400,29 @@ class Records {
    * A record at the runner's current step. Returns the proof when this one and
    * an earlier record in the same state show a translated cycle, else null.
    */
+  // The proof that record `a` and the current record `r` show a translated
+  // cycle, or null.
+  compare(a, r, q) {
+    const d = this.dir, h = r.head;
+    if (r.wallAt >= a.t) return null;            // the wall stopped the head since
+    const w = d * (a.head - this.backSince(a.i));
+    if (w + 1 > a.cells.length) return null;     // wandered back past what was kept
+    this.checks++;
+    for (let j = 0; j <= w; j++) {
+      // j cells back from the record's cell, which is the last kept.
+      if (a.cells[a.cells.length - 1 - j] !== r.get(h - d * j)) return null;
+    }
+    // The two windows, left to right on the tape, for the proof's picture.
+    const kept = [...a.cells.slice(a.cells.length - 1 - w)];
+    const lo1 = d > 0 ? a.head - w : a.head, lo2 = d > 0 ? h - w : h;
+    return {
+      verdict: 'never', method: 'translated', direction: d > 0 ? 'right' : 'left',
+      from: a.t, at: r.t, period: r.t - a.t, shift: h - a.head, window: w + 1, state: q,
+      before: { t: a.t, head: a.head, lo: lo1, cells: d > 0 ? kept : kept.reverse() },
+      after: { t: r.t, head: h, lo: lo2, cells: r.cells(lo2, lo2 + w) }
+    };
+  }
+
   record(r) {
     const d = this.dir, h = r.head, q = r.state;
     const i = this.n++;
@@ -383,35 +430,30 @@ class Records {
     this.gFirst.push(i);
     const ring = this.ring[q];
     for (let k = ring.length - 1; k >= 0; k--) {
-      const a = ring[k];
-      if (r.wallAt >= a.t) continue;            // the wall stopped the head since
-      const w = d * (a.head - this.backSince(a.i));
-      if (w + 1 > a.cells.length) continue;      // wandered back past what was kept
-      this.checks++;
-      let same = true;
-      for (let j = 0; j <= w && same; j++) {
-        // j cells back from the record's cell, which is the last kept.
-        same = a.cells[a.cells.length - 1 - j] === r.get(h - d * j);
-      }
-      if (same) {
-        // The two windows, left to right on the tape, for the proof's picture.
-        const kept = [...a.cells.slice(a.cells.length - 1 - w)];
-        const lo1 = d > 0 ? a.head - w : a.head, lo2 = d > 0 ? h - w : h;
-        return {
-          verdict: 'never', method: 'translated', direction: d > 0 ? 'right' : 'left',
-          from: a.t, at: r.t, period: r.t - a.t, shift: h - a.head, window: w + 1, state: q,
-          before: { t: a.t, head: a.head, lo: lo1, cells: d > 0 ? kept : kept.reverse() },
-          after: { t: r.t, head: h, lo: lo2, cells: r.cells(lo2, lo2 + w) }
-        };
-      }
+      const proof = this.compare(ring[k], r, q);
+      if (proof) return proof;
+    }
+    // The saved record, when it has dropped out of the ring.
+    const sv = this.saved[q];
+    if (sv && (!ring.length || sv.i < ring[0].i)) {
+      const proof = this.compare(sv, r, q);
+      if (proof) return proof;
     }
     // Keep this one: the tape behind the head, up to WINDOW cells, nearest last.
     const far = d > 0 ? r.lo : r.hi;
     const keep = Math.min(WINDOW, d * (h - far)) + 1;
     const cells = new r.buf.constructor(keep);
     for (let j = 0; j < keep; j++) cells[keep - 1 - j] = r.get(h - d * j);
-    ring.push({ i, t: r.t, head: h, cells });
+    const entry = { i, t: r.t, head: h, cells };
+    ring.push(entry);
     if (ring.length > RECORDS) ring.shift();
+    // Brent: move the saved record up once it has been kept for `power`
+    // records, and double the gap, so it ends up inside any period.
+    if (!sv || ++this.since[q] >= this.power[q]) {
+      if (sv) this.power[q] *= 2;
+      this.saved[q] = entry;
+      this.since[q] = 0;
+    }
     return null;
   }
 }
@@ -544,7 +586,11 @@ export function backwardReasoning(p, { depth = BACK_DEPTH, nodes = BACK_NODES } 
  *   never    backward    { steps, longest, halts, explored, witness }
  *   never    segment     { steps, size, distance, nodes, tried }
  *   never    far         { steps, side, depth, dfa, nfa, accepted, states, start, n }
- *   unknown  null        { steps, cells, records, backward, segment, far }
+ *   never    loops       { steps, gas, period, shift, at }
+ *   never    ngram       { steps, params, contexts, left, right }
+ *   never    repwl       { steps, len, minRep, configurations }
+ *   never    bouncers    { steps, formula, formulaAt, macroSteps }
+ *   unknown  null        { steps, cells, records, backward, segment, far, tried }
  * with `steps` counted as transitions made — except a halt's, which follows
  * the busy beaver convention and also counts the step that reads a missing
  * transition; its `transitions` is the count the player shows. An unknown's
@@ -567,7 +613,9 @@ export function backwardReasoning(p, { depth = BACK_DEPTH, nodes = BACK_NODES } 
 export function classifyBehaviour(p, {
   budget = 1e7, backward = true,
   segment = BEHAVIOUR_LIMITS.segment, segmentNodes = BEHAVIOUR_LIMITS.segmentNodes,
-  far = BEHAVIOUR_LIMITS.far, farWork = BEHAVIOUR_LIMITS.farWork
+  far = BEHAVIOUR_LIMITS.far, farWork = BEHAVIOUR_LIMITS.farWork,
+  loops = BEHAVIOUR_LIMITS.loops, ngram = BEHAVIOUR_LIMITS.ngram,
+  repwl: repwlParams = BEHAVIOUR_LIMITS.repwl, bouncers: useBouncers = BEHAVIOUR_LIMITS.bouncers
 } = {}) {
   // Static, and bounded by BACK_NODES, so it is done before the first slice.
   const back = backward ? backwardReasoning(p) : null;
@@ -618,11 +666,38 @@ export function classifyBehaviour(p, {
           verdict = { verdict: 'never', method: 'far', steps: r.t, side, depth, dfa, nfa, accepted, states, start, n };
           return verdict;
         }
+        // Coq-BB5's deciders, then bbchallenge's bouncers. A halt any of
+        // them meets is left to the run, which counts the steps.
+        const lp = loops > 0 ? loop1(p, loops) : null;
+        if (lp && lp.result === 'never') {
+          verdict = { verdict: 'never', method: 'loops', steps: r.t, gas: loops, period: lp.period, shift: lp.shift, at: lp.at };
+          return verdict;
+        }
+        const ng = ngram && ngram.length ? ngramCpsPipeline(p, ngram) : null;
+        if (ng && ng.result === 'never') {
+          verdict = { verdict: 'never', method: 'ngram', steps: r.t, params: ng.params, contexts: ng.contexts, left: ng.left, right: ng.right };
+          return verdict;
+        }
+        for (const [len, minRep] of repwlParams || []) {
+          const rw = repwl(p, { len, minRep, maxT: 320, gas: 10000 });
+          if (rw.result === 'never') {
+            verdict = { verdict: 'never', method: 'repwl', steps: r.t, len, minRep, configurations: rw.configurations };
+            return verdict;
+          }
+        }
+        // `bouncers` is true for the reference's limits, or the limits themselves.
+        const bc = useBouncers ? bouncers(p, typeof useBouncers === 'object' ? useBouncers : undefined) : null;
+        if (bc && bc.result === 'never') {
+          verdict = { verdict: 'never', method: 'bouncers', steps: r.t, formula: bc.formula, formulaAt: bc.steps, macroSteps: bc.macroSteps };
+          return verdict;
+        }
         verdict = {
           verdict: 'unknown', method: null, steps: r.t, cells: cellsUsed(), records: right.n + (left ? left.n : 0),
           backward: back && !back.ok ? { reason: back.reason, explored: back.explored, depth: back.depth } : null,
           segment: hs ? { reason: hs.reason, why: hs.why, distance: segment, tried: hs.tried } : null,
-          far: fa ? { reason: fa.reason, why: fa.why, depth: fa.reason === 'budget' ? fa.depth : far } : null
+          far: fa ? { reason: fa.reason, why: fa.why, depth: fa.reason === 'budget' ? fa.depth : far } : null,
+          // Which of the rest were tried (and found nothing).
+          tried: [lp && 'loops', ng && 'ngram', repwlParams?.length && 'repwl', bc && 'bouncers'].filter(Boolean)
         };
         return verdict;
       }

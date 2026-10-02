@@ -27,6 +27,8 @@
 //                is re-run with the same limits. Said so.
 //   segment      likewise: the halting segment search is re-run at the size
 //                the proof names, and must close with the same node count.
+//   loops, ngram, repwl, bouncers
+//                likewise: re-run with the parameters the proof names.
 
 export const PROOF_FORMAT = 'automata-studio/tm-proof';
 
@@ -101,7 +103,7 @@ class Plain {
 const fail = why => ({ ok: false, why });
 const pass = (why, independent = true) => ({ ok: true, why, independent });
 
-export function checkProof(proof, { classify = null, reprove = null, segment = null } = {}) {
+export function checkProof(proof, { classify = null, reprove = null, segment = null, rederive = null } = {}) {
   if (!proof || proof.format !== PROOF_FORMAT) return fail('not a proof file this checker reads');
   const m = proof.table;
   if (!m || !Number.isInteger(m.Q) || !Number.isInteger(m.K)) return fail('the proof carries no machine table');
@@ -205,6 +207,18 @@ export function checkProof(proof, { classify = null, reprove = null, segment = n
         return pass(`the halting segment search over ${ev.size} cells again closes, with ${ev.nodes} configurations and none the start could be`, false);
       }
       return fail('re-running the halting segment search did not reproduce the proof');
+    }
+    case 'loops':
+    case 'ngram':
+    case 'repwl':
+    case 'bouncers': {
+      // Coq-BB5's and bbchallenge's deciders, re-run with the parameters
+      // the proof names: the closed set (or the certificate) is the proof.
+      if (v !== 'never') return fail(`${proof.method} proves non-halting only`);
+      if (!rederive) return fail(`${proof.method} is re-checked by re-running the decider, which needs the app loaded`);
+      return rederive(m, proof.method, ev)
+        ? pass(`re-running ${proof.method} with the proof's parameters decides it again`, false)
+        : fail(`re-running ${proof.method} with the proof's parameters did not reproduce the proof`);
     }
     case 'backward': {
       if (!classify) return fail('backward reasoning is re-checked by re-running the search, which needs the app loaded');

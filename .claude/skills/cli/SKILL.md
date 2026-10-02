@@ -107,8 +107,10 @@ enough" depends on the automata — and says it was bounded.
 `App`, so a search can make millions) and runs a pipeline, cheapest first: the app's
 four methods, then bbchallenge's halting segment and finite automata reduction (inside
 the classifier, after its budget — `--segment`, `--far`), then closed position sets,
-then inductive rules, then the busy beaver bound. The command line runs both without
-the app's caps: halting segment at the reference's 11 cells, FAR to 6 DFA states
+then Coq-BB5's loops, n-gram CPS and repeated word list and bbchallenge's bouncers
+(`--loops`, `--no-ngram`, `--repwl`, `--no-bouncers`), then inductive rules, then the
+busy beaver bound. The command line runs halting segment and FAR without the app's
+caps: halting segment at the reference's 11 cells, FAR to 6 DFA states
 (`--far 7` is the reference's BB(5) search, minutes a machine). `--db` reads
 bbchallenge's seed database a record at a time (`tm/seed-db.mjs`), so the 2.3 GB file
 is never loaded. What is still unknown gets a growth reading — log (counter-like), √t
@@ -147,7 +149,9 @@ evidence. `check-proof` shares no code with the provers for simulation, cyclers,
 translated cyclers and CPS — its own Map tape and stepper — and checks a FAR proof
 against bbchallenge's verifier conditions (`verifier_FAR_NFA_DFA.py`); every single-edge
 deletion from a proof's NFA is caught. Halting segment is re-derived, like backward
-reasoning. A simulation proof's steps follow bbchallenge's count. Backward reasoning and the
+reasoning, and so are loops, n-gram CPS, repeated word lists and bouncers — re-run with
+the parameters the proof records (a bouncer must reproduce its certificate). A
+simulation proof's steps follow bbchallenge's count. Backward reasoning and the
 inductive rules are re-derived by re-running the prover, and the output says so.
 
 [tests/cli-provers.test.js](tests/cli-provers.test.js) judges the provers against

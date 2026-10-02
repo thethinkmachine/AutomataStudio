@@ -158,10 +158,11 @@ function ensureBuilt() {
 
   const out = el('div', 'bh-out');
   const foot = el('p', 'bh-foot');
-  foot.innerHTML = 'Proves that the run from this tape <b>halts</b>, or that it never halts, by one of five methods: '
+  foot.innerHTML = 'Proves that the run from this tape <b>halts</b>, or that it never halts, by one of these methods: '
     + '<b>cycler</b> (a configuration recurs exactly), <b>translated cycler</b> (the same state and tape segment recur, shifted, at the edge of the visited tape), '
     + '<b>backward reasoning</b> (every halting configuration is at most L steps from any configuration that reaches it, and the run has passed step L), '
-    + 'and, from a blank tape once the budget is spent, bbchallenge\'s <b>halting segment</b> and <b>finite automata reduction</b> (no configuration that leads to a halt can be reached from the start). '
+    + 'and, from a blank tape once the budget is spent, bbchallenge\'s <b>halting segment</b> and <b>finite automata reduction</b> (no configuration that leads to a halt can be reached from the start), '
+    + 'Coq-BB5\'s <b>loops</b>, <b>n-gram CPS</b> and <b>repeated word list</b>, and bbchallenge\'s <b>bouncers</b>. '
     + 'Steps are counted as bbchallenge counts them: reading a missing transition is the halting step. '
     + '<b>Unknown</b> means no method produced a proof within the budget. It is not a claim that the machine runs forever.';
 
@@ -401,6 +402,14 @@ const ICONS = {
   segment: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5H4.5v14H7"/><path d="M17 5h2.5v14H17"/><path d="M13.5 8.5L10 12l3.5 3.5"/></svg>',
   // Two automaton states and the move between them.
   far: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6.5" cy="12" r="3.5"/><circle cx="17.5" cy="12" r="3.5"/><path d="M10 12h4"/><path d="M12.5 10l2 2-2 2"/></svg>',
+  // The cycler's loop, as Coq-BB5's loop decider finds it.
+  loops: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.8 4.2v4.3h-4.3"/><circle cx="12" cy="12" r="1.6"/></svg>',
+  // A window either side of the head.
+  ngram: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="8" width="6" height="8" rx="1"/><rect x="15" y="8" width="6" height="8" rx="1"/><path d="M12 6v12"/></svg>',
+  // A word repeated.
+  repwl: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="9" width="5" height="6" rx="1"/><rect x="9.5" y="9" width="5" height="6" rx="1"/><rect x="16" y="9" width="5" height="6" rx="1"/></svg>',
+  // A head bouncing between walls that move out.
+  bouncers: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5v14"/><path d="M21 5v14"/><path d="M6 15l4-6 4 6 4-6"/></svg>',
   unknown: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.6 2.3c-.8.4-1.2 1-1.2 1.8v.6"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>'
 };
 
@@ -500,6 +509,25 @@ function explain(v, p) {
       return `Looking at the tape only through a segment of ${plural(v.size, 'cell')}, with a halt in its middle, and working backwards from every way it could halt, `
         + `the configurations that can lead to a halt form a closed set of ${plural(v.nodes, 'partial configuration')} — and none of them could be the blank starting tape. `
         + 'So no configuration the run reaches ever leads to a halt, and it never halts. This is bbchallenge\'s halting segment decider.';
+    case 'loops':
+      return `Running it ${plural(v.gas, 'step')} and looking back, the sequence of states and symbols read repeats with period ${fmt(v.period)}`
+        + (v.shift ? `, ${plural(Math.abs(v.shift), 'cell')} further ${v.shift > 0 ? 'right' : 'left'} each time, onto tape it has never visited` : ', in place')
+        + ', for long enough that the repetition can only go on. So it never halts. This is Coq-BB5\'s loop decider, from the BB(5) proof.';
+    case 'ngram': {
+      const pr = v.params;
+      const aug = pr.variant === 'impl2' ? '' : pr.variant === 'lru' ? ', each cell remembering every (state, symbol) that wrote it' : `, each cell remembering the last ${plural(pr.lenH, 'state and symbol')} that wrote it`;
+      return `Looking at the tape only through ${plural(pr.lenL, 'cell')} left of the head and ${plural(pr.lenR, 'cell')} right of it${aug}, `
+        + `the ${plural(v.contexts, 'local context')} reachable from the blank start form a closed set, and none of them halts. `
+        + 'Every configuration of the real run is in it, so the run never halts. This is n-gram CPS as Coq-BB5\'s BB(5) proof runs it.';
+    }
+    case 'repwl':
+      return `Cutting the tape into ${v.len}-cell words and writing a word repeated ${v.minRep} or more times as "${v.minRep} or more", `
+        + `the ${plural(v.configurations, 'tape')} reachable from the blank start form a closed set with no halt in it. So the run never halts. `
+        + 'This is the repeated word list decider from Coq-BB5\'s BB(5) proof.';
+    case 'bouncers':
+      return `From step ${fmt(v.formulaAt)} the tape fits the formula ${v.formula}, fixed words with repeated words in brackets. `
+        + `After ${plural(v.macroSteps, 'macro step')} — crossing a whole repeated word in one — it is that formula again, with every repeated word at least as many times, `
+        + 'so it goes on bouncing between ever-wider walls. It never halts. This is bbchallenge\'s bouncers decider.';
     case 'far':
       return `A finite automaton recognises every configuration from which the machine can go on to halt: a ${plural(v.depth, 'state')} DFA reads the tape ${v.side === 'R' ? 'from the left' : 'from the right'} up to the head, `
         + `then an NFA of ${plural(v.states, 'state')} reads the rest. It recognises every halting configuration, it recognises a configuration whenever it recognises the one a step later, `
@@ -554,6 +582,16 @@ function factsOf(v, p) {
       return [['Segment', plural(v.size, 'cell'), 'Odd sizes 3, 5, 7, … are tried in turn, the halt in the middle; this is the first that closed'],
         ['Closed set', fmt(v.nodes), 'Partial configurations: what the segment holds, with the state and head, or the head outside it'],
         ['Run first', plural(v.steps, 'step'), 'Halting segment is tried once the run\'s own methods have used the budget'], ['Started on', tapeLbl]];
+    case 'loops':
+      return [['Period', plural(v.period, 'step')], ['Shift', `${v.shift > 0 ? '+' : ''}${fmt(v.shift)} cell${Math.abs(v.shift) === 1 ? '' : 's'}`],
+        ['Run', plural(v.gas, 'step'), 'The loop decider runs this many steps and then looks back'], ['Started on', tapeLbl]];
+    case 'ngram':
+      return [['Windows', `${v.params.lenL} + ${v.params.lenR} cells`], ['History', v.params.variant === 'impl2' ? 'none' : v.params.variant === 'lru' ? 'LRU' : plural(v.params.lenH, 'pair')],
+        ['Closed set', fmt(v.contexts), 'Local contexts: the state, the symbol under the head and the windows'], ['Started on', tapeLbl]];
+    case 'repwl':
+      return [['Word length', plural(v.len, 'cell')], ['Repeat threshold', fmt(v.minRep)], ['Closed set', fmt(v.configurations), 'Tapes of repeated words'], ['Started on', tapeLbl]];
+    case 'bouncers':
+      return [['Formula', v.formula], ['Read off at', `step ${fmt(v.formulaAt)}`], ['Recurs after', plural(v.macroSteps, 'macro step')], ['Started on', tapeLbl]];
     case 'far':
       return [['DFA', plural(v.depth, 'state'), 'Reads the tape up to the head, ignoring leading blanks; the smallest that works, searched in bbchallenge\'s order'],
         ['NFA', plural(v.states, 'state'), 'One for each DFA state and machine state, plus a steady accepting state'],

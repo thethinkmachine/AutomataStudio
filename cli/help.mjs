@@ -278,6 +278,10 @@ halts        does it halt? tries, cheapest first:
                                      through a fixed segment (--segment)
                finite automata       bbchallenge's FAR: an automaton
                  reduction           recognises every way to halt (--far)
+               loops, n-gram CPS,    Coq-BB5's deciders from the BB(5) proof
+               repeated word list    (--loops, --no-ngram, --repwl)
+               bouncer               bbchallenge's: a formula tape recurs with
+                                     every repeated word longer (--no-bouncers)
                closed position set   an n-gram abstraction closed under δ
                inductive rule        a run-length pattern that grows forever
                busy beaver bound     it ran past S(n,k), for n ≤ 5 (2 symbols)
@@ -308,7 +312,9 @@ re-checks them:
   busy beaver bound         independently simulated; the value of S(n,k) is
                             cited (BB(5) was proved in 2024), not re-proved
   backward reasoning,       re-derived by running the prover again — said so
-  halting segment,          in the output
+  halting segment, loops,   in the output
+  n-gram CPS, repeated
+  word list, bouncer,
   inductive rule
 
 The provers are tested against ground truth: every machine in the 3-state and
