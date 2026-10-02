@@ -291,13 +291,26 @@ export function snapshot() {
   syncHistoryButtons();
 }
 
+// Runs `fn` with markDirty silenced. Activating a tab rehydrates App from the
+// tab's own saved blob and then announces META, GRAMMAR, EXERCISE and LEXER so
+// the card, the workbench and the rest redraw from it — and all four are
+// subscribed to markDirty below. So every activation flagged the tab it landed
+// on as unsaved: a new blank tab came up with the orange dot, and so did every
+// tab clicked on, though nothing about what is saved had changed. It holds,
+// not clears: a tab that was dirty when it was stowed is still dirty.
+let dirtyHeld = 0;
+export function withoutDirtying(fn) {
+  dirtyHeld++;
+  try { return fn(); } finally { dirtyHeld--; }
+}
+
 // Flags the active workspace as having unsaved changes without pushing an undo
 // entry. Some persisted state — the camera above all — is part of what gets
 // saved and restored but is not something the user undoes. Without this, panning
 // or zooming left the tab clean, so autosave skipped it entirely and the
 // viewport survived a reload only when an unrelated edit happened to be pending.
 export function markDirty() {
-  if (!activeWorkspaceId || typeof Workspaces === 'undefined') return;
+  if (dirtyHeld || !activeWorkspaceId || typeof Workspaces === 'undefined') return;
   const ws = Workspaces.find(w => w.id === activeWorkspaceId);
   if (ws && !ws.dirty) {
     ws.dirty = true;

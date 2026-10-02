@@ -623,11 +623,13 @@ body:has(.rpanel.is-empty) .hdr-right {
 /* The strip's frame. It holds the border so that what sits beside the
    scroller — the chevron, the last tool view — is inside the strip without
    scrolling with it. */
+/* It is as wide as what it holds, not as wide as the header: stretched, one
+   workspace sat at the left of a long empty box that read as a search field. */
 .tab-strip {
   display: flex;
   align-items: center;
   gap: 2px;
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   height: 36px;
   align-self: center;
@@ -644,15 +646,14 @@ body:has(.rpanel.is-empty) .hdr-right {
   height: 100%;
   align-self: stretch;
   border-radius: 6px 0 0 6px;
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   user-select: none;
   scrollbar-width: none;
-  padding: 0 4px;
+  padding: 0 1px 0 4px;
   position: relative;
-  transition: box-shadow var(--transition-fast);
 }
 
 /* Drawn flat, like the tabs it lists: it is part of the strip now, and a
@@ -765,6 +766,62 @@ body:has(.rpanel.is-empty) .hdr-right {
   width: 250px;
   /* Escape the header's stacking context and overflow clipping. */
   z-index: 950;
+}
+
+/* Offered once there are enough workspaces that typing beats scanning; see
+   TAB_FILTER_AT in js/ui.js. Sticky, so it stays put while the list scrolls. */
+.tab-overflow-search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  margin: 0 0 4px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text3);
+}
+
+.tab-overflow-search:focus-within {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.tab-overflow-search svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+}
+
+.tab-overflow-filter {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: .74rem;
+}
+
+.tab-overflow-filter::placeholder {
+  color: var(--text3);
+}
+
+.tab-overflow-empty {
+  padding: 8px 10px;
+  color: var(--text3);
+  font-size: .72rem;
+}
+
+/* The rows are flex boxes, which outranks the browser's own [hidden]. */
+.tab-overflow-item[hidden],
+.tab-overflow-empty[hidden] {
+  display: none;
 }
 
 .tab-overflow-item {
@@ -889,16 +946,22 @@ body:has(.rpanel.is-empty) .hdr-right {
   }
 }
 
+/* The tabs fade out at an edge with more past it. An inset shadow drawn over
+   them was too faint to read, and a tab cut off mid-glyph beside the chevron
+   looked broken rather than scrolled. */
 .tab-bar.has-overflow-left {
-  box-shadow: inset 14px 0 12px -12px var(--tab-overflow-shadow);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 28px);
+  mask-image: linear-gradient(to right, transparent, #000 28px);
 }
 
 .tab-bar.has-overflow-right {
-  box-shadow: inset -14px 0 12px -12px var(--tab-overflow-shadow);
+  -webkit-mask-image: linear-gradient(to left, transparent, #000 28px);
+  mask-image: linear-gradient(to left, transparent, #000 28px);
 }
 
 .tab-bar.has-overflow-left.has-overflow-right {
-  box-shadow: inset 14px 0 12px -12px var(--tab-overflow-shadow), inset -14px 0 12px -12px var(--tab-overflow-shadow);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
 }
 
 .tab-bar::-webkit-scrollbar {
@@ -923,7 +986,14 @@ body:has(.rpanel.is-empty) .hdr-right {
   position: relative;
   transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
   flex: 0 0 auto;
-  max-width: 200px;
+  /* Room for a full 16ch name, the type code and the end slot. The old 200px
+     came out of the name the moment the type label went in. A length, not
+     none, because tab-in unfolds from 0 to it. */
+  max-width: 280px;
+}
+
+.tab.has-end {
+  padding-right: 5px;
 }
 
 .tab[draggable="true"] {
@@ -935,27 +1005,34 @@ body:has(.rpanel.is-empty) .hdr-right {
   cursor: grabbing;
 }
 
-.tab.drop-before::before,
-.tab.drop-after::before,
-.tab.drop-end::before {
-  content: '';
-  position: absolute;
-  top: 5px;
-  bottom: 2px;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--tab-active-line);
-  box-shadow: 0 0 0 1px var(--bg2);
+/* A tab opens by unfolding to its width and closes by folding to nothing,
+   so its neighbours slide rather than jump. A drag slides them the same way,
+   from js/ui.js (flipTabs) — the dragged tab is moved for real, which is why
+   there is no insertion marker. */
+@keyframes tab-in {
+  from { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; }
+}
+
+@keyframes tab-out {
+  to { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; border-width: 0; }
+}
+
+.tab.is-entering {
+  overflow: hidden;
+  animation: tab-in .18s ease-out;
+}
+
+.tab.is-leaving {
+  overflow: hidden;
   pointer-events: none;
+  animation: tab-out .16s ease-in forwards;
 }
 
-.tab.drop-before::before {
-  left: -2px;
-}
-
-.tab.drop-after::before,
-.tab.drop-end::before {
-  right: -2px;
+@media (prefers-reduced-motion: reduce) {
+  .tab.is-entering,
+  .tab.is-leaving {
+    animation: none;
+  }
 }
 
 .tab:hover {
@@ -968,7 +1045,6 @@ body:has(.rpanel.is-empty) .hdr-right {
   background: var(--tab-active-bg);
   color: var(--text);
   border-color: var(--tab-active-border);
-  font-weight: 500;
 }
 
 .tab:focus-visible {
@@ -992,24 +1068,65 @@ body:has(.rpanel.is-empty) .hdr-right {
   opacity: .85;
 }
 
+/* One cap for every tab, active or not, and one weight: either changing on
+   selection widened the tab and shoved every tab after it sideways. */
 .tab-name {
   min-width: 0;
-  max-width: 12ch;
+  max-width: 16ch;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.tab.active .tab-name {
-  max-width: 14ch;
+/* The machine, as the picker names it. It was only in the tooltip, and it is
+   most of how two workspaces are told apart. Quiet, because the name is what
+   the tab is; shared with the overflow list. */
+.tab-type {
+  flex: 0 0 auto;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--surface2);
+  color: var(--text3);
+  font-family: var(--mono);
+  font-size: .6rem;
+  font-weight: 500;
+  letter-spacing: .02em;
+  line-height: 1.3;
+  opacity: .85;
+}
+
+.tab.active .tab-type,
+.tab:hover .tab-type {
+  color: var(--text2);
+  opacity: 1;
+}
+
+/* The dot and the close button take turns in one slot: the dot says the
+   workspace is unsaved until the pointer arrives, then the button takes its
+   place. The active tab shows the button at rest unless there is a dot. */
+.tab-end {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.tab-end > * {
+  grid-area: 1 / 1;
 }
 
 .tab-dirty {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   background: var(--orange);
-  box-shadow: 0 0 0 1px var(--tab-active-bg);
-  flex: 0 0 auto;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.tab:hover .tab-dirty,
+.tab:focus-within .tab-dirty {
+  opacity: 0;
+  transform: scale(.6);
 }
 
 /* Unsaved marker on the Save button, mirroring the tab's dirty dot so the
@@ -1067,9 +1184,10 @@ body:has(.rpanel.is-empty) .hdr-right {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
-  border-radius: 3px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 4px;
   font-size: 12px;
   line-height: 1;
   color: var(--text3);
@@ -1082,7 +1200,7 @@ body:has(.rpanel.is-empty) .hdr-right {
 }
 
 .tab:hover .tab-close,
-.tab.active .tab-close,
+.tab.active:not(.is-dirty) .tab-close,
 .tab:focus-within .tab-close {
   opacity: 1;
   transform: scale(1);
@@ -1101,10 +1219,18 @@ body:has(.rpanel.is-empty) .hdr-right {
 }
 
 .tab-add {
-  min-width: 28px;
+  width: 28px;
+  height: 28px;
   justify-content: center;
-  padding: 0 7px;
+  padding: 0;
   color: var(--text3);
+}
+
+.tab-add:focus-visible {
+  outline: none;
+  color: var(--accent);
+  border-color: var(--tab-active-border);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .tab-add:hover {

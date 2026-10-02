@@ -3,8 +3,8 @@ import { copySelection, exportPNG, selectAllStates } from './canvas.js';
 import { redo, undo } from './history.js';
 import { closeModal, isModalOpen, registerModal, showOverlay } from './modal.js';
 import { loadJSON, openExternalDocument, saveDocumentAs, saveNow } from './persistence.js';
-import { $, App } from './state.js';
-import { createTab, cutSelection, exportSettings, pasteFromSystemClipboard } from './ui.js';
+import { $, App, activeWorkspaceId } from './state.js';
+import { closeTab, createTab, cutSelection, exportSettings, pasteFromSystemClipboard, reopenClosedTab } from './ui.js';
 import { hideMoreMenu } from './view.js';
 import { openAboutModal } from './workspace.js';
 
@@ -25,6 +25,8 @@ if (isElectron) {
   window.electronAPI.onMenuAction(action => {
     switch (action) {
       case 'new-tab': createTab(); break;
+      case 'close-tab': if (activeWorkspaceId) closeTab(activeWorkspaceId); break;
+      case 'reopen-tab': reopenClosedTab(); break;
       case 'open': loadJSON(); break;
       case 'save': void saveNow(); break;
       case 'save-as': void saveDocumentAs(); break;

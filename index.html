@@ -95,6 +95,11 @@
            so the last two stay put while the tabs move under them. -->
       <div class="tab-strip" id="tab-strip">
         <div id="tab-bar" class="tab-bar"></div>
+        <!-- Outside the scroller, so a new workspace is one click away however
+             many there are; the scroller used to carry it off with the tabs. -->
+        <button class="tab tab-add" id="tab-add" type="button" aria-label="New workspace" data-tip="New workspace" onclick="createTab()" ondragover="handleTabAddDragOver(event)" ondrop="handleTabAddDrop(event)">
+          <svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></svg>
+        </button>
         <button class="tab-overflow-btn" id="tab-overflow-btn" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Show all workspace tabs" data-tip="All workspace tabs" onclick="toggleTabOverflowMenu(event)">
           <svg viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" /></svg>
         </button>
@@ -2348,8 +2353,16 @@
             <table class="help-table">
               <tr><td data-kbd="Mod+S">Ctrl+S</td><td>Save workspace</td></tr>
               <tr><td data-kbd="Mod+Shift+S">Ctrl+Shift+S</td><td>Export as JSON</td></tr>
-              <tr><td data-kbd="Mod+Shift+T">Ctrl+Shift+T</td><td>Reopen last closed tab</td></tr>
+              <tr><td><span data-kbd="Mod+T">Ctrl+T</span> · <span data-kbd="Alt+T">Alt+T</span></td><td>New workspace</td></tr>
+              <tr><td><span data-kbd="Mod+W">Ctrl+W</span> · <span data-kbd="Alt+W">Alt+W</span></td><td>Close workspace</td></tr>
+              <tr><td><span data-kbd="Mod+Shift+T">Ctrl+Shift+T</span> · <span data-kbd="Alt+Shift+T">Alt+Shift+T</span></td><td>Reopen last closed tab</td></tr>
+              <tr><td>Ctrl+Tab · <span data-kbd="Alt+]">Alt+]</span></td><td>Next workspace</td></tr>
+              <tr><td>Ctrl+Shift+Tab · <span data-kbd="Alt+[">Alt+[</span></td><td>Previous workspace</td></tr>
+              <tr><td><span data-kbd="Mod+1…9">Ctrl+1…9</span> · <span data-kbd="Alt+1…9">Alt+1…9</span></td><td>Go to workspace (9 is the last)</td></tr>
+              <tr><td>Middle-click</td><td>Close a tab</td></tr>
+              <tr><td>Double-click strip</td><td>New workspace</td></tr>
             </table>
+            <p class="modal-hint">The first of each pair is the desktop app's. A browser keeps those for its own tabs, so on the website use the Alt one.</p>
           </div>
 
           <div class="modal-tab-content" id="help-tab-canvas" role="tabpanel" aria-labelledby="help-tab-btn-canvas" tabindex="0" hidden>

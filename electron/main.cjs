@@ -705,7 +705,12 @@ function buildMenu() {
     {
       label: 'File',
       submenu: [
-        { label: 'New Workspace Tab', click: () => sendMenuAction('new-tab') },
+        // The page binds these keys itself (js/ui.js, handleWorkspaceShortcut),
+        // so the accelerators are shown but not registered: a registered one
+        // would be a second, competing handler for the same keystroke.
+        { label: 'New Workspace Tab', accelerator: 'CmdOrCtrl+T', registerAccelerator: false, click: () => sendMenuAction('new-tab') },
+        { label: 'Close Workspace Tab', accelerator: 'CmdOrCtrl+W', registerAccelerator: false, click: () => sendMenuAction('close-tab') },
+        { label: 'Reopen Closed Tab', accelerator: 'CmdOrCtrl+Shift+T', registerAccelerator: false, click: () => sendMenuAction('reopen-tab') },
         { type: 'separator' },
         { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => sendMenuAction('open') },
         { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => sendMenuAction('save') },
@@ -715,7 +720,9 @@ function buildMenu() {
         { label: 'Export Settings…', click: () => sendMenuAction('export-settings') },
         { label: 'Import Settings…', click: () => sendMenuAction('import-settings') },
         { type: 'separator' },
-        isMac ? { role: 'close' } : { role: 'quit' },
+        // Cmd+W closes a workspace tab, as in every tabbed Mac app; the window
+        // takes Shift+Cmd+W.
+        isMac ? { role: 'close', accelerator: 'Shift+Cmd+W' } : { role: 'quit' },
       ],
     },
     {
