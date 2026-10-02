@@ -1269,7 +1269,11 @@ const METHOD_LABEL = {
   translated: 'the run repeats, shifted along fresh tape (a translated cycler)',
   backward: 'backward reasoning — no halting configuration is reachable',
   segment: 'a halting segment — no configuration that leads to a halt is reachable',
-  far: 'finite automata reduction — an automaton recognises every way to halt, and not the start'
+  far: 'finite automata reduction — an automaton recognises every way to halt, and not the start',
+  loops: 'its history repeats, in place or shifted (loops)',
+  ngram: 'n-gram CPS — the windows around the head form a closed set with no halt',
+  repwl: 'a repeated word list — tapes of repeated words form a closed set with no halt',
+  bouncers: 'a bouncer — a formula tape recurs with every repeater longer'
 };
 
 function behaviourSection(e) {

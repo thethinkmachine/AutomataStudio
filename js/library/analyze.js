@@ -920,5 +920,9 @@ const METHOD_SAY = {
   translated: 'translated cycler',
   backward: 'backward reasoning',
   segment: 'halting segment',
-  far: 'finite automata reduction'
+  far: 'finite automata reduction',
+  loops: 'loops',
+  ngram: 'n-gram CPS',
+  repwl: 'repeated word list',
+  bouncers: 'bouncer'
 };

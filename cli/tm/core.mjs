@@ -26,7 +26,7 @@
 // Each proof comes with the evidence an independent checker needs
 // (cli/tm/check.mjs), so a verdict need not be taken on trust.
 
-import { classifyBehaviourNow } from '../../js/machines/tm-behaviour.js';
+import { BEHAVIOUR_LIMITS, classifyBehaviourNow } from '../../js/machines/tm-behaviour.js';
 import { HALTING_SEGMENT_DISTANCE } from '../../js/machines/halting-segment.js';
 import { induction } from './induction.mjs';
 
@@ -311,11 +311,16 @@ export function growthOf(p, { from = 5, to = 7 } = {}) {
  */
 export const FAR_DEFAULT = 6;
 
-export function decide(p, { budget = 1e6, segment = HALTING_SEGMENT_DISTANCE, far = FAR_DEFAULT, cpsMax = 10, inductionMs = 2000, bound = true, growth = false } = {}) {
-  const v = classifyBehaviourNow(p, { budget, segment, segmentNodes: Infinity, far, farWork: Infinity });
+export function decide(p, {
+  budget = 1e6, segment = HALTING_SEGMENT_DISTANCE, far = FAR_DEFAULT,
+  loops = BEHAVIOUR_LIMITS.loops, ngram = BEHAVIOUR_LIMITS.ngram, repwl = BEHAVIOUR_LIMITS.repwl, bouncers = BEHAVIOUR_LIMITS.bouncers,
+  cpsMax = 10, inductionMs = 2000, bound = true, growth = false
+} = {}) {
+  const v = classifyBehaviourNow(p, { budget, segment, segmentNodes: Infinity, far, farWork: Infinity, loops, ngram, repwl, bouncers });
   let out = { verdict: v.verdict, method: v.method || null };
   for (const k of ['steps', 'transitions', 'ones', 'cells', 'period', 'from', 'at', 'shift', 'window', 'direction', 'longest', 'how', 'state', 'read', 'before', 'after',
-    'size', 'distance', 'nodes', 'side', 'depth', 'dfa', 'nfa', 'accepted', 'states', 'start', 'n']) {
+    'size', 'distance', 'nodes', 'side', 'depth', 'dfa', 'nfa', 'accepted', 'states', 'start', 'n',
+    'gas', 'params', 'contexts', 'len', 'minRep', 'configurations', 'formula', 'formulaAt', 'macroSteps']) {
     if (v[k] !== undefined && v[k] !== null) out[k] = v[k];
   }
   if (out.verdict === 'unknown' && cpsMax > 0) {
@@ -344,6 +349,7 @@ export function decide(p, { budget = 1e6, segment = HALTING_SEGMENT_DISTANCE, fa
 export const METHOD_NAMES = {
   simulation: 'simulation', cycler: 'cycler', translated: 'translated cycler',
   backward: 'backward reasoning', segment: 'halting segment', far: 'finite automata reduction',
+  loops: 'loops', ngram: 'n-gram CPS', repwl: 'repeated word list', bouncers: 'bouncer',
   cps: 'closed position set', bound: 'busy beaver bound',
   induction: 'inductive rule', 'cycler-macro': 'cycler (macro)', 'block-loop': 'loops inside a block'
 };

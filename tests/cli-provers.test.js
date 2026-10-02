@@ -34,7 +34,7 @@ function* tree(n, k) {
   while (queue.length) {
     const node = queue.pop();
     yield node;
-    const r = bbStep(node, { budget: 200, segment: 0, far: 0, cpsMax: 0, inductionMs: 0 });
+    const r = bbStep(node, { budget: 200, segment: 0, far: 0, loops: 0, ngram: null, repwl: [], bouncers: false, cpsMax: 0, inductionMs: 0 });
     if (r.verdict === 'branch') queue.push(...r.children);
   }
 }

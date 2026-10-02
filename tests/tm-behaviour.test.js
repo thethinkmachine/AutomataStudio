@@ -22,6 +22,8 @@ import { checkProof, PROOF_FORMAT } from '../cli/tm/check.mjs';
 //               5,000 steps if that is more.
 //   far         the same, and the proof passes check-proof's checker, which
 //               tests bbchallenge's verifier conditions with code of its own.
+//   loops, ngram, repwl, bouncers
+//               the same as segment.
 //   unknown     the oracle does not halt within the budget either.
 //
 // The halting champions are checked against their published step counts, and
@@ -139,7 +141,7 @@ function checkVerdict(p, v, budget, label) {
       assert.equal(w.state, v.witness.halt.state, `${label}: in the halt it names`);
       assert.equal(w.halted, v.witness.halt.read < 0 ? 'accept' : 'none', `${label}: how the witness halts`);
     }
-  } else if (v.method === 'segment' || v.method === 'far') {
+  } else if (['segment', 'far', 'loops', 'ngram', 'repwl', 'bouncers'].includes(v.method)) {
     assert.ok(o.to(Math.max(10 * budget, 5000)), `${label}: halted, but ${v.method} said never`);
     if (v.method === 'far') {
       const table = { Q: p.Q, K: p.K, start: p.start, twoWay: p.twoWay, next: [...p.next], write: [...p.write], move: [...p.move], accept: [...p.accept] };
@@ -244,6 +246,22 @@ test('going left on a one-way tape is stopped by the wall: a cycler, not a trave
 
 const COUNTER = '1RB1LA---_0LA0RB0RB_2RC2RC2RC';
 
+// The deciders tried once the budget is spent, all off: what the run's own
+// methods and backward reasoning settle, and nothing else.
+const STATIC_OFF = { segment: 0, far: 0, loops: 0, ngram: null, repwl: [], bouncers: false };
+
+test('a translated cycler with many records a period in one state is still found', () => {
+  // bbchallenge's machine #15108997: its period breaks dozens of records in
+  // the same state, more than the 16 most recent a record is compared with.
+  // A saved record per state, moved up at doubling gaps, finds the partner
+  // one period back however many records lie between; bbchallenge's own
+  // translated-cycler decider found it by comparing with every record.
+  const p = load('1RB---_0RC0LA_0LD0RB_1RC1LE_1LD0LE');
+  const v = context.classifyBehaviourNow(p, { budget: 20000, backward: false, ...STATIC_OFF });
+  assert.equal(v.method, 'translated');
+  checkVerdict(p, v, 20000, '#15108997');
+});
+
 test('a binary counter is neither, and is reported unknown rather than guessed', () => {
   // Counts up in binary forever (Ligocki's 2x2-Counter): it never repeats
   // and never settles into a translation — the textbook case for "unknown"
@@ -255,7 +273,7 @@ test('a binary counter is neither, and is reported unknown rather than guessed',
   // do — the machine can never meet it, so it is no way to halt.)
   const p = load(COUNTER);
   const budget = 20000;
-  const v = context.classifyBehaviourNow(p, { budget, segment: 0, far: 0 });
+  const v = context.classifyBehaviourNow(p, { budget, ...STATIC_OFF });
   assert.equal(v.verdict, 'unknown');
   assert.equal(v.method, null);
   assert.equal(v.steps, budget);
@@ -275,7 +293,7 @@ test('the counter is what bbchallenge\'s static deciders are for', () => {
   assert.equal(v.method, 'segment');
   assert.equal(v.steps, 2000, 'tried once the budget is spent');
   checkVerdict(p, v, 2000, 'counter, segment');
-  const f = context.classifyBehaviourNow(p, { budget: 2000, segment: 0 });
+  const f = context.classifyBehaviourNow(p, { budget: 2000, segment: 0, loops: 0, ngram: null, repwl: [], bouncers: false });
   assert.equal(f.method, 'far');
   checkVerdict(p, f, 2000, 'counter, far');
   // A machine that halts after the budget: both must fail on it, and the
@@ -284,11 +302,12 @@ test('the counter is what bbchallenge\'s static deciders are for', () => {
   const u = context.classifyBehaviourNow(bb4, { budget: 50, backward: false });
   assert.equal(u.verdict, 'unknown');
   assert.deepEqual([u.segment.reason, u.far.reason], ['start', 'none']);
+  assert.deepEqual(u.tried, ['loops', 'ngram', 'repwl', 'bouncers'], 'and the later deciders found nothing either');
 });
 
 test('a classification runs a slice at a time and stops at its budget', () => {
   const p = load(COUNTER);
-  const c = context.classifyBehaviour(p, { budget: 5000, segment: 0, far: 0 });
+  const c = context.classifyBehaviour(p, { budget: 5000, ...STATIC_OFF });
   assert.equal(c.advance(100), null);
   assert.equal(c.steps, 100);
   let v;
@@ -448,7 +467,7 @@ for (const tape of ['ITM', 'TM']) {
     for (let seed = 1; seed <= 1500; seed++) {
       const src = randomMachine(seed * 7919 + (tape === 'TM' ? 1 : 0));
       const p = load(src, tape);
-      const both = [true, false].map(backward => context.classifyBehaviourNow(p, { budget, backward }));
+      const both = [true, false].map(backward => context.classifyBehaviourNow(p, { budget, backward, loops: 0, ngram: null, repwl: [], bouncers: false }));
       for (const v of both) {
         seen[v.method ?? 'unknown']++;
         checkVerdict(p, v, budget, `${tape} ${src}`);
@@ -473,7 +492,7 @@ test('halting segment and FAR hold up against the oracle on their own', () => {
   for (let seed = 1; seed <= 600; seed++) {
     const src = randomMachine(seed * 104729);
     const p = load(src);
-    for (const opts of [{ far: 0 }, { segment: 0 }]) {
+    for (const opts of [{ far: 0, loops: 0, ngram: null, repwl: [], bouncers: false }, { segment: 0, loops: 0, ngram: null, repwl: [], bouncers: false }]) {
       // So small a budget that machines halting later reach them too.
       const v = context.classifyBehaviourNow(p, { budget: 8, backward: false, ...opts });
       if (v.method === 'segment' || v.method === 'far') seen[v.method]++;
@@ -481,6 +500,28 @@ test('halting segment and FAR hold up against the oracle on their own', () => {
     }
   }
   assert.ok(seen.segment >= 15 && seen.far >= 15, JSON.stringify(seen));
+});
+
+test('Coq-BB5\'s deciders and bbchallenge\'s bouncers hold up against the oracle on their own', () => {
+  // Each alone, after a budget so small that machines which halt later reach
+  // it: none may call such a machine non-halting.
+  const only = {
+    loops: { segment: 0, far: 0, ngram: null, repwl: [], bouncers: false },
+    ngram: { segment: 0, far: 0, loops: 0, repwl: [], bouncers: false },
+    repwl: { segment: 0, far: 0, loops: 0, ngram: null, repwl: [[1, 2], [2, 2], [4, 3]], bouncers: false },
+    bouncers: { segment: 0, far: 0, loops: 0, ngram: null, repwl: [], bouncers: { steps: 20000 } }
+  };
+  const seen = { loops: 0, ngram: 0, repwl: 0, bouncers: 0 };
+  for (let seed = 1; seed <= 800; seed++) {
+    const src = randomMachine(seed * 7907);
+    const p = load(src);
+    for (const [method, opts] of Object.entries(only)) {
+      const v = context.classifyBehaviourNow(p, { budget: 8, backward: false, ...opts });
+      if (v.method === method) seen[method]++;
+      checkVerdict(p, v, 8, `ITM ${src} (${method})`);
+    }
+  }
+  assert.ok(seen.loops >= 10 && seen.ngram >= 10 && seen.repwl >= 10 && seen.bouncers >= 1, JSON.stringify(seen));
 });
 
 // ── the app's machine, not just the notation ──────────────────────

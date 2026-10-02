@@ -955,6 +955,11 @@ names it, and the JSON carries its standard notation.
                     reference's; 0 = off)
   --far D           finite automata reduction: DFAs up to D states (default 6;
                     7 is the reference's BB(5) search and takes minutes a machine)
+  --loops N         Coq-BB5's loop decider with gas N (default 4100; 0 = off)
+  --no-ngram        skip Coq-BB5's n-gram CPS (its BB(5) pipeline's parameters)
+  --repwl L,M[;…]   Coq-BB5's repeated word list with word length L and repeat
+                    threshold M, each pair in turn (default 4,3; none = off)
+  --no-bouncers     skip bbchallenge's bouncers decider
   --cps N           largest closed-position-set window (default 10; 0 = off)
   --induction-ms N  time for the inductive-rule prover per machine (default 2000; 0 = off)
   --no-bound        skip the busy beaver bound
@@ -994,8 +999,9 @@ automata check-proof <proof.json | dir ...>
 Re-checks each proof with code that shares nothing with the prover: its own
 tape, its own stepper, its own reading of the notation. A finite automata
 reduction proof is checked against bbchallenge's verifier conditions. Backward
-reasoning, halting segment and inductive rules are the exception — they are
-re-run with the app's search, and marked as such.
+reasoning, halting segment, loops, n-gram CPS, repeated word lists, bouncers
+and inductive rules are the exception — they are re-run with the app's
+search, and marked as such.
 
 Exit: 0 every proof holds, 1 one does not.
 ```
@@ -1024,6 +1030,7 @@ bound, which would assume the answer. 2×2 and 3×2 take moments; 4×2 minutes.
   --budget N        steps per machine (default 100000)
   --segment D       halting segment up to 2D + 1 cells (default 5)
   --far D           finite automata reduction up to D DFA states (default 5)
+  --loops N, --no-ngram, --repwl L,M, --no-bouncers   as for halts
   --cps N           largest closed-position-set window (default 4)
   --induction-ms N  inductive-rule prover time per machine (default 300)
   --workers N
@@ -1328,6 +1335,10 @@ halts        does it halt? tries, cheapest first:
                                      through a fixed segment (--segment)
                finite automata       bbchallenge's FAR: an automaton
                  reduction           recognises every way to halt (--far)
+               loops, n-gram CPS,    Coq-BB5's deciders from the BB(5) proof
+               repeated word list    (--loops, --no-ngram, --repwl)
+               bouncer               bbchallenge's: a formula tape recurs with
+                                     every repeated word longer (--no-bouncers)
                closed position set   an n-gram abstraction closed under δ
                inductive rule        a run-length pattern that grows forever
                busy beaver bound     it ran past S(n,k), for n ≤ 5 (2 symbols)
@@ -1362,7 +1373,9 @@ re-checks them:
   busy beaver bound         independently simulated; the value of S(n,k) is
                             cited (BB(5) was proved in 2024), not re-proved
   backward reasoning,       re-derived by running the prover again — said so
-  halting segment,          in the output
+  halting segment, loops,   in the output
+  n-gram CPS, repeated
+  word list, bouncer,
   inductive rule
 
 The provers are tested against ground truth: every machine in the 3-state and
