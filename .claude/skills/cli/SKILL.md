@@ -79,8 +79,18 @@ entries are built from `buildMachineIR()` exactly as the export dialog builds th
   Transition-based marks are moved onto states by splitting each state by the marks of
   the edges entering it; generalized Büchi is degeneralised with the usual counter;
   every parity flavour is mapped to the app's min-even by a map that keeps the order of
-  importance (an unmarked visit is colour k under min, −1 under max). Rabin and
-  Streett are refused by name.
+  importance (an unmarked visit is colour k under min, −1 under max). **Parity is
+  recognised from the `Acceptance:` formula, not from `acc-name`**: two colours of min odd
+  are exactly `Fin(0) & Inf(1)` and Spot names them "Rabin 1"; two of max odd are
+  `Fin(0) | Inf(1)`, "Streett 1". The formula is compared with each flavour on every set
+  of colours that could recur. Rabin and Streett past that are refused.
+- **The reader is tested against Spot's own output**, not only against our writer:
+  [tests/cli-hoa-spot.test.js](tests/cli-hoa-spot.test.js) reads the automata in
+  `tests/fixtures/spot-hoa/` — every acceptance `ltl2tgba` builds and every `-H` output
+  shape (aliases, implicit and state labels, one line, mixed marks, v1.1) — and checks
+  Spot's recorded verdict on each word, before and after a trip through `hoaText`. Our
+  own round trips passed while Spot's odd parity was refused. Regenerate with
+  `node scripts/hoa-fixtures.mjs` where Spot's `ltl2tgba` and `autfilt` are on PATH.
 - **A `.jff` cannot say a PDA accepts by empty stack** — JFLAP asks when it runs one —
   so exporting such a PDA warns rather than writing a file that reads back differently.
 - **BA's "no accepting lines" means every state accepts**, so a machine with F = ∅ has

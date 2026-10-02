@@ -1,0 +1,16 @@
+HOA: v1
+name: "a U b"
+States: 2
+Start: 0
+AP: 2 "a" "b"
+acc-name: Streett 1
+Acceptance: 2 Fin(0) | Inf(1)
+properties: trans-labels explicit-labels colored deterministic
+properties: stutter-invariant weak
+--BODY--
+State: 0 {0}
+[1] 1
+[0&!1] 0
+State: 1 {1}
+[t] 1
+--END--

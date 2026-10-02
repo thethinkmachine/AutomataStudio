@@ -1,0 +1,23 @@
+HOA: v1
+name: "F(GFb | G!a)"
+States: 3
+Start: 0
+AP: 2 "b" "a"
+acc-name: Buchi
+Acceptance: 1 Inf(0)
+properties: trans-labels explicit-labels trans-acc stutter-invariant
+Alias: @0 !0&1
+Alias: @1 0&1
+Alias: @2 !0&!1
+Alias: @3 !@2&!@1&!@0
+--BODY--
+State: 0
+[t] 0
+[@3 | @1] 1
+[@3 | @2] 2
+State: 1
+[@2 | @0] 1
+[@3 | @1] 1 {0}
+State: 2
+[@3 | @2] 2 {0}
+--END--
