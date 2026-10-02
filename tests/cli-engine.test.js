@@ -179,6 +179,31 @@ State: 1 {2}
   assert.equal(v('(a)'), 'rej');
 });
 
+test('HOA parity is read from the Acceptance formula, not acc-name', () => {
+  // Spot names two colours of min odd "Rabin 1" and of max odd "Streett 1";
+  // they are the same conditions. Mark 0 on a, mark 1 on b, over one state.
+  const body = `--BODY--
+State: 0
+[0&!1] 0 {0}
+[!0&1] 0 {1}
+[!0&!1] 0
+--END--`;
+  const hoa = (name, acc) => `HOA: v1\nStates: 1\nStart: 0\nAP: 2 "a" "b"\n${name ? `acc-name: ${name}\n` : ''}Acceptance: 2 ${acc}\n${body}`;
+  const verdicts = text => {
+    const t = readMachineText(text).target;
+    return ['(a)', '(b)', '(ab)', '(∅)'].map(w => decideRaw(t, w).verdict).join(' ');
+  };
+  // Fin(0) & Inf(1): b infinitely often and a only finitely often.
+  assert.equal(verdicts(hoa('Rabin 1', 'Fin(0) & Inf(1)')), 'rej acc rej rej');
+  assert.equal(verdicts(hoa(null, 'Fin(0) & Inf(1)')), 'rej acc rej rej');
+  // Fin(0) | Inf(1): b infinitely often, or a only finitely often.
+  assert.equal(verdicts(hoa('Streett 1', 'Fin(0) | Inf(1)')), 'rej acc acc acc');
+  // A wrong acc-name does not override the formula.
+  assert.equal(verdicts(hoa('parity min even 2', 'Fin(0) & Inf(1)')), 'rej acc rej rej');
+  // Real Rabin and Streett, past what parity can say, are still refused.
+  assert.throws(() => readHOA('HOA: v1\nStates: 1\nStart: 0\nAP: 1 "a"\nAcceptance: 4 (Fin(0) & Inf(1)) | (Fin(2) & Inf(3))\n--BODY--\nState: 0\n[t] 0\n--END--', App.config.sym), /not Büchi/);
+});
+
 test('BA and Timbuk round-trip', () => {
   const nba = ex('buchi');
   const back = readMachineText(baText(nba), 'x.ba').target;
