@@ -133,7 +133,7 @@ const TOOLS = {
     }
   },
   convert: {
-    description: 'Write a machine in another format: automaton, jff, hoa, ba, timbuk, code, standard, svg, dot, tikz, table-csv, table-md, code-js, code-py, code-java, code-c, code-xstate, code-scxml, test-jest, test-pytest, samples, coverage.',
+    description: 'Write a machine in another format: automaton, jff, hoa, ba, code, standard, svg, dot, tikz, table-csv, table-md, code-js, code-py, code-java, code-c, code-xstate, code-scxml, test-jest, test-pytest, samples, coverage.',
     inputSchema: { type: 'object', properties: { machine: MACHINE, to: { type: 'string' } }, required: ['machine', 'to'] },
     run: ({ machine, to }) => { const { target, doc } = machineOf(machine); return serialize(target, formatFor(to), { doc }); }
   },

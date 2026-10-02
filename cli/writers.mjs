@@ -22,19 +22,19 @@ import { writeMachineCode } from '../js/interop/smtf.js';
 import { CliError } from './errors.mjs';
 import { docFromTarget, docText } from './io.mjs';
 import { hoaText } from './formats/hoa.mjs';
-import { baText, timbukText } from './formats/ba.mjs';
+import { baText } from './formats/ba.mjs';
 import { jffText } from './formats/jff.mjs';
 import { standalone } from './figure.mjs';
 
 const BY_EXT = {
   '.automaton': 'automaton', '.json': 'automaton',
-  '.hoa': 'hoa', '.ba': 'ba', '.timbuk': 'timbuk', '.tmb': 'timbuk',
+  '.hoa': 'hoa', '.ba': 'ba',
   '.jff': 'jff', '.txt': 'code', '.svg': 'svg',
   '.dot': 'dot', '.gv': 'dot', '.tex': 'tikz', '.csv': 'table-csv', '.md': 'table-md',
   '.js': 'code-js', '.py': 'code-py', '.java': 'code-java', '.c': 'code-c', '.scxml': 'code-scxml'
 };
 
-const OWN = ['automaton', 'hoa', 'ba', 'timbuk', 'jff', 'code', 'standard', 'svg'];
+const OWN = ['automaton', 'hoa', 'ba', 'jff', 'code', 'standard', 'svg'];
 
 // The registry entries the command line offers. `batch` is the Batch Test
 // panel's last run, which a terminal does not have (automata test is the
@@ -99,7 +99,6 @@ export function serialize(target, format, { doc = null, opts = [], name = null, 
     case 'automaton': return docText(doc || docFromTarget(target));
     case 'hoa': return hoaText(target, { name, warn });
     case 'ba': return baText(target, { warn });
-    case 'timbuk': return timbukText(target);
     case 'jff': return jffText(target, { warn });
     case 'code': {
       // The document is written in its own symbols; a target from elsewhere

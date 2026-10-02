@@ -68,12 +68,12 @@ test('BA carries labels with #, commas and brackets, and renames state names tha
   assert.equal(cli(['equiv', m, back]).code, 0);
 });
 
-test('Timbuk refuses a symbol it cannot hold; HOA renames one and says so', () => {
+test('HOA renames a symbol it cannot hold and says so; Timbuk is no longer a format', () => {
   const m = join(tmp, 'syntax.automaton');
   writeFileSync(m, doc('NFA', ['a,b', 'c'], TWO, [{ id: 't1', from: 'a', to: 'b', symbol: 'a,b' }], 'a', ['b']));
   const tb = cli(['convert', m, '--to', 'timbuk']);
   assert.equal(tb.code, 3);
-  assert.match(tb.err, /"a,b" cannot be written/);
+  assert.match(tb.err, /"timbuk" is not a format/);
   writeFileSync(m, doc('NBA', ['c d', 'e'], TWO, [{ id: 't1', from: 'a', to: 'b', symbol: 'c d' }, { id: 't2', from: 'b', to: 'b', symbol: 'e' }], 'a', ['b']));
   const hoa = cli(['convert', m, '--to', 'hoa']);
   assert.equal(hoa.code, 0);

@@ -11,7 +11,7 @@ const convert = {
 Reads any machine the CLI reads and writes it in the format --to names, or the
 one -o's extension implies, or as an .automaton document on standard output.
 
-  Formats: automaton, jff, hoa, ba, timbuk, code (machine code), standard (TM
+  Formats: automaton, jff, hoa, ba, code (machine code), standard (TM
   notation), svg, and every export format (automata export --list).
 
   --determinize, --minimize, --eps-elim   transform on the way (finite automata)

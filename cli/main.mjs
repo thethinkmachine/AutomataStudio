@@ -52,7 +52,7 @@ const COMMANDS = {
   'eps-elim': ['ops', 'Remove ε-moves'],
   eval: ['ops', 'Evaluate an expression over machines: min(det(A) & ~B)'],
   // Formats
-  convert: ['convert', 'Convert between .automaton, .jff, HOA, BA, Timbuk, machine codes, …'],
+  convert: ['convert', 'Convert between .automaton, .jff, HOA, BA, machine codes, …'],
   export: ['convert', 'Any of the app\'s export formats: DOT, TikZ, tables, samples, code, tests'],
   codegen: ['convert', 'Generate code: --lang js|py|java|c|xstate|scxml'],
   svg: ['convert', 'Draw the machine as an SVG'],

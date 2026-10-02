@@ -1,6 +1,6 @@
 ---
 name: cli
-description: AutomataStudio: the `automata` command line - the headless engine, machine formats in and out (HOA, BA, Timbuk, JFLAP export), the finite-automaton operations, grading, learning, the MCP server, and the Turing-machine provers (closed position sets, inductive rules, the busy beaver bound, proof files). Read before touching cli/, vite.cli.config.js, build/cli/, or the --cli path in electron/main.cjs.
+description: AutomataStudio: the `automata` command line - the headless engine, machine formats in and out (HOA, BA, JFLAP export), the finite-automaton operations, grading, learning, the MCP server, and the Turing-machine provers (closed position sets, inductive rules, the busy beaver bound, proof files). Read before touching cli/, vite.cli.config.js, build/cli/, or the --cli path in electron/main.cjs.
 ---
 
 ### The command line
@@ -27,7 +27,7 @@ cli/
   learn.mjs        RPNI and L*
   figure.mjs       a standalone SVG, and a run as an animated one
   raster.mjs       PNG and GIF, no dependency
-  formats/         hoa, ba (+ Timbuk), jff (export)
+  formats/         hoa, ba, jff (export)
   tm/              core (tables, CPS, bound, pipeline), induction, check,
                    search (tree normal form), pool + worker
   commands/        one module per family of commands

@@ -273,7 +273,7 @@ Exit: 0 no change to the language, 1 the language changed, 2 undecided.`,
 
 // ── similar ───────────────────────────────────────────────────────
 
-const READABLE = new Set(['.automaton', '.json', '.jff', '.hoa', '.ba', '.timbuk', '.scxml', '.txt']);
+const READABLE = new Set(['.automaton', '.json', '.jff', '.hoa', '.ba', '.scxml', '.txt']);
 
 export function expandSpecs(specs) {
   const out = [];

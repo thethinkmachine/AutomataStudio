@@ -12,7 +12,7 @@
 //   path.jff                       JFLAP
 //   path.scxml | path.js | …       a statechart (XState or SCXML)
 //   path.hoa                       Hanoi Omega-Automata
-//   path.ba | path.timbuk          RABIT/GOAL Büchi, Timbuk tree/word automata
+//   path.ba                        RABIT/GOAL Büchi automata
 //   -                              standard input, recognised by its content
 //   1RB1LB_1LA1RZ                  a Turing machine in the standard notation
 //   fa.01:+AB_BA                   a machine code (js/interop/smtf.js)
@@ -35,7 +35,7 @@ import { machineCodeText, readMachineCode } from '../js/interop/smtf.js';
 import { readStatechart, statechartKindOf } from '../js/interop/statechart.js';
 import { CliError } from './errors.mjs';
 import { hoaText, readHOA } from './formats/hoa.mjs';
-import { readBA, readTimbuk } from './formats/ba.mjs';
+import { readBA } from './formats/ba.mjs';
 
 let stdinCache = null;
 
@@ -138,7 +138,6 @@ export function parseText(text, name = '') {
     if (ext === '.jff') return readJFLAPText(text);
     if (ext === '.hoa' || /^HOA:/.test(trimmed)) return readHOA(text, sym());
     if (ext === '.ba') return readBA(text, sym());
-    if (ext === '.timbuk' || /^Ops\b/.test(trimmed)) return readTimbuk(text, sym());
     const chart = statechartKindOf(name, text);
     if (chart) return readStatechart(chart, text, sym());
     if (trimmed.startsWith('{')) {
@@ -155,7 +154,7 @@ export function parseText(text, name = '') {
   } catch (e) {
     throw new CliError(`${name || 'input'}: ${e.message}`);
   }
-  throw new CliError(`${name || 'input'}: not a machine this reads — a .automaton/.json document, .jff, .scxml, XState, HOA, BA, Timbuk, a machine code or a standard-notation Turing machine.`);
+  throw new CliError(`${name || 'input'}: not a machine this reads — a .automaton/.json document, .jff, .scxml, XState, HOA, BA, a machine code or a standard-notation Turing machine.`);
 }
 
 /** A one-line machine: the standard TM notation, or a machine code. */

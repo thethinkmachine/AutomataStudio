@@ -184,7 +184,6 @@ A file:
   .scxml  .js .ts       a statechart (SCXML, or an XState config), flattened
   .hoa                  Hanoi Omega-Automata, from Spot, Owl, ltl2tgba, …
   .ba                   RABIT / GOAL Büchi automata
-  .timbuk .tmb          Timbuk word automata
 
 Standard input:
   -                     read the machine from stdin, recognised by its content,
@@ -252,7 +251,6 @@ In a shell:
                                    Büchi acceptance are moved onto states
   ba                 ✔      ✔      Büchi (RABIT/GOAL read finite automata as
                                    Büchi too — the writer warns)
-  timbuk             ✔      ✔      word automata only (arities 0 and 1)
   scxml / xstate     ✔      ✔      statecharts; parallel states are refused
   code (SMTF)        ✔      ✔      one line, the machine and nothing else
   standard           ✔      ✔      one-tape TMs over digits, L/R moves
@@ -263,7 +261,7 @@ In a shell:
   code-*, test-*            ✔      JS, Python, Java, C, XState, SCXML; Jest, pytest
 
 --to FORMAT picks one; otherwise the output file's extension does:
-.automaton .json .jff .hoa .ba .timbuk .txt .svg .dot .gv .tex .csv .md .js .py
+.automaton .json .jff .hoa .ba .txt .svg .dot .gv .tex .csv .md .js .py
 .java .c .scxml .test.js`
   },
   turing: {
