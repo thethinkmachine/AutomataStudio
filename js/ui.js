@@ -8,7 +8,7 @@ import { viewStates } from './view-graph.js';
 import { leaveBlockScope, syncScopeBar } from './scope.js';
 import { isQuickSettingsOpen, positionQuickSettings, refreshQuickSettings } from './quick-settings.js';
 import { includeDividerBounds, removeDividers, updateShapeToolButton } from './dividers.js';
-import { markDirty, redo, snapshot, snapshotSettings, trimStowedHistory, undo } from './history.js';
+import { markDirty, redo, snapshot, snapshotSettings, trimStowedHistory, undo, withoutDirtying } from './history.js';
 import { renderMinimap, scheduleMinimap } from './minimap.js';
 import { anyModalOpen, askConfirm, closeModal, registerModal, showOverlay } from './modal.js';
 import { includeNoteBounds, pruneNoteAnchorsExcluding, removeNotes } from './notes.js';
@@ -51,8 +51,6 @@ subscribe(Change.SAVE, updateSaveIndicator);
 export const CATEGORY_ACCENT_VAR = { fa: '--accent', mem: '--green', tm: '--orange', special: '--purple' };
 export let editingTabId = null;
 export let draggingTabId = null;
-export let tabDropTargetId = null;
-export let tabDropPosition = null;
 export let closedWorkspaces = [];
 export let saveState = 'saved';
 
@@ -128,47 +126,211 @@ export function updateTabOverflowShadows(tb = $('tab-bar')) {
   }
 }
 
+// Scrolls the strip, and only the strip, until the active tab is wholly in
+// view. scrollIntoView would also scroll the header's overflow-hidden
+// ancestors, which nothing ever scrolls back.
+export function revealActiveTab(tb = $('tab-bar')) {
+  const tab = tabEls.get(activeWorkspaceId);
+  if (!tb || !tab || tab.parentNode !== tb) return;
+  const edge = 24;   // clear of the fade drawn over a scrolled edge
+  const left = tab.offsetLeft - edge;
+  const right = tab.offsetLeft + tab.offsetWidth + edge;
+  if (left < tb.scrollLeft) tb.scrollLeft = Math.max(0, left);
+  else if (right > tb.scrollLeft + tb.clientWidth) tb.scrollLeft = right - tb.clientWidth;
+}
+
 export function focusTabElement(id) {
+  const tab = tabEls.get(id);
+  if (tab && tab.parentNode) tab.focus();
+}
+
+function reducedMotion() {
+  return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+}
+
+// The live tab elements, in no particular order: the strip's children are the
+// order. A tab is kept for as long as its workspace is, so its hover, its
+// focus and a transition it is part-way through all survive a redraw. The
+// strip used to be rebuilt from a string on every call — there are ~18 — which
+// restarted every hover fade, dropped the keyboard focus, threw away a rename
+// half typed, and left nothing that could animate.
+const tabEls = new Map();
+let tabsDrawn = false;     // no entrance animation for the tabs present at boot
+let tabDragDropped = false;
+
+// Plays a reflow as motion: whatever `mutate` moves, each tab is drawn back at
+// its old offset and then let go, so it glides to the new one. FLIP, measured
+// on offsetLeft so a transform already in flight does not skew the reading.
+function flipTabs(tb, mutate) {
+  if (reducedMotion()) { mutate(); return; }
+  const els = [...tabEls.values()].filter(el => el.parentNode === tb);
+  const before = new Map(els.map(el => [el, el.offsetLeft]));
+  mutate();
+  for (const el of els) {
+    if (el.parentNode !== tb) continue;
+    const dx = before.get(el) - el.offsetLeft;
+    if (!dx) continue;
+    el.style.transition = 'none';
+    el.style.transform = `translateX(${dx}px)`;
+    void el.offsetWidth;
+    el.style.transition = '';
+    el.style.transform = '';
+  }
+}
+
+const TAB_CLOSE_SVG = '<svg width="10" height="10" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>';
+
+function createTabElement(id) {
+  const el = document.createElement('div');
+  el.className = 'tab';
+  el.setAttribute('role', 'tab');
+  el.setAttribute('data-tab-id', id);
+  el.dataset.tabId = id;
+  // Per element and fixed for its life, so they close over nothing that a
+  // later render could change — the id is the workspace's for good.
+  const on = {
+    onclick: `switchTab('${id}')`,
+    ondblclick: `beginRenameTab('${id}', event)`,
+    onmousedown: 'if(event.button===1)event.preventDefault()',
+    onauxclick: `if(event.button===1)closeTab('${id}', event)`,
+    onkeydown: `handleTabKeydown('${id}', event)`,
+    oncontextmenu: `showTabContextMenu('${id}', event); return false;`,
+    ondragstart: `handleTabDragStart('${id}', event)`,
+    ondragover: `handleTabDragOver('${id}', event)`,
+    ondrop: `handleTabDrop('${id}', event)`,
+    ondragend: 'handleTabDragEnd(event)',
+  };
+  for (const [k, v] of Object.entries(on)) el.setAttribute(k, v);
+  return el;
+}
+
+function workspaceCounts(ws) {
+  if (ws.id === activeWorkspaceId) return { states: App.states.length, transitions: App.transitions.length };
+  return { states: ws.data?.states?.length || 0, transitions: ws.data?.transitions?.length || 0 };
+}
+
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+function syncTabElement(el, ws, closable) {
+  const isActive = ws.id === activeWorkspaceId;
+  const isEditing = ws.id === editingTabId;
+  const machine = getWorkspaceMachine(ws);
+  const type = machine && MachineTypes[machine] ? MachineTypes[machine] : null;
+  const hasEnd = !!ws.dirty || closable;
+
+  el.classList.toggle('active', isActive);
+  el.classList.toggle('is-dirty', !!ws.dirty);
+  el.classList.toggle('has-end', hasEnd);
+  el.classList.toggle('dragging', draggingTabId === ws.id);
+  el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  el.setAttribute('tabindex', isActive ? '0' : '-1');
+  el.setAttribute('draggable', isEditing ? 'false' : 'true');
+  el.style.setProperty('--tab-accent', getWorkspaceAccent(ws));
+
+  // The inside is rebuilt only when what it draws has changed. That is also
+  // what keeps a rename alive: the input is not replaced under the caret by
+  // some unrelated redraw while the name is being typed.
+  // The type key, not its label: the key is always a short code (ITM, PDT,
+  // Counter) where the label can be a phrase ("2-Way Infinite TM"), and a
+  // phrase beside the name took its room and cut the name to three letters.
+  const key = [ws.name, machine, !!ws.dirty, closable, isEditing].join('\u0001');
+  if (el._tabKey !== key) {
+    el._tabKey = key;
+    const safeName = escapeTabText(ws.name || 'Workspace');
+    // The unsaved dot and the close button share one slot at the tab's end,
+    // the dot giving way to the button on hover. Kept apart, every tab carried
+    // an invisible button's worth of space on its right, and the gaps between
+    // tabs read as random.
+    const end = hasEnd ? `<span class="tab-end">${
+      ws.dirty ? '<span class="tab-dirty" aria-hidden="true"></span>' : ''}${
+      closable ? `<button class="tab-close" type="button" tabindex="-1" aria-label="Close ${safeName}" onclick="closeTab('${ws.id}', event)">${TAB_CLOSE_SVG}</button>` : ''}</span>` : '';
+    el.innerHTML = `
+      <span class="tab-dot" aria-hidden="true"></span>
+      ${type ? `<span class="sr-only">${escapeTabText(type.fullName || type.label)} — </span>` : ''}
+      ${isEditing
+        ? `<input class="tab-rename-input" value="${safeName}" maxlength="40" aria-label="Rename workspace" onclick="event.stopPropagation()" onkeydown="handleTabRenameKeydown('${ws.id}', event)" onblur="commitTabRename('${ws.id}', this)">`
+        : `<span class="tab-name">${safeName}</span>`}
+      ${type ? `<span class="tab-type" aria-hidden="true">${escapeTabText(machine)}</span>` : ''}
+      ${end}`;
+  }
+
+  // The tooltip is the one part that moves with every edit — the counts — so
+  // it is written on its own rather than being allowed to rebuild the tab.
+  const { states, transitions } = workspaceCounts(ws);
+  const tip = [
+    `${ws.name || 'Workspace'}${type ? ' — ' + (type.fullName || type.label) : ''}`,
+    `${plural(states, 'state')} · ${plural(transitions, 'transition')}`,
+    ws.dirty ? 'Unsaved changes' : 'Saved',
+  ].join(' · ');
+  el.querySelector?.('.tab-name')?.setAttribute('data-tip', tip);
+}
+
+// A closed tab folds away rather than vanishing, so the ones after it slide
+// into the gap instead of jumping. It stops being a tab at once — no id, no
+// focus, no pointer — and every lookup skips it.
+function retireTabElement(el) {
+  el.removeAttribute('data-tab-id');
+  delete el.dataset.tabId;
+  el.setAttribute('aria-hidden', 'true');
+  el.setAttribute('tabindex', '-1');
+  if (reducedMotion() || !el.parentNode) { el.remove(); return; }
+  el.classList.remove('is-entering');
+  el.classList.add('is-leaving');
+  const tb = el.parentNode;
+  const done = () => {
+    if (!el.parentNode) return;
+    el.remove();
+    updateTabOverflowShadows(tb);
+  };
+  el.addEventListener?.('animationend', done, { once: true });
+  setTimeout(done, 260);
+}
+
+function liveTabIds(tb) {
+  const ids = [];
+  for (let n = tb.firstChild; n; n = n.nextSibling) {
+    const id = n.dataset?.tabId;
+    if (id && !n.classList?.contains('is-leaving')) ids.push(id);
+  }
+  return ids;
+}
+
+function precedes(a, b) {
+  for (let n = a.nextSibling; n; n = n.nextSibling) if (n === b) return true;
+  return false;
+}
+
+// Dragging reorders the elements themselves, with the neighbours sliding out
+// of the way, so where the tab will land is where it already is. Workspaces is
+// left alone until the drop; a drag that ends anywhere else is put back by a
+// redraw, which orders the strip from Workspaces.
+function commitTabOrderFromStrip() {
   const tb = $('tab-bar');
-  if (!tb) return;
-  const tab = tb.querySelector(`.tab[data-tab-id="${id}"]`);
-  if (tab) tab.focus();
-}
-
-export function clearTabDropMarkers(tb = $('tab-bar')) {
-  if (!tb) return;
-  tb.querySelectorAll('.tab.drop-before, .tab.drop-after, .tab.drop-end').forEach(el => {
-    el.classList.remove('drop-before', 'drop-after', 'drop-end');
-  });
-}
-
-export function moveWorkspaceTab(sourceId, targetId, position = 'after') {
-  const fromIdx = Workspaces.findIndex(w => w.id === sourceId);
-  const targetIdx = Workspaces.findIndex(w => w.id === targetId);
-  if (fromIdx === -1 || targetIdx === -1 || sourceId === targetId) return false;
-
-  const [moved] = Workspaces.splice(fromIdx, 1);
-  const baseIdx = Workspaces.findIndex(w => w.id === targetId);
-  const insertIdx = position === 'before' ? baseIdx : baseIdx + 1;
-  Workspaces.splice(Math.max(0, insertIdx), 0, moved);
+  if (!tb) return false;
+  const ids = liveTabIds(tb);
+  const byId = new Map(Workspaces.map(w => [w.id, w]));
+  if (ids.length !== Workspaces.length || ids.some(id => !byId.has(id))) return false;
+  if (ids.every((id, i) => Workspaces[i].id === id)) return false;
+  Workspaces.splice(0, Workspaces.length, ...ids.map(id => byId.get(id)));
   return true;
 }
 
-export function moveWorkspaceTabToEnd(sourceId) {
-  const fromIdx = Workspaces.findIndex(w => w.id === sourceId);
-  if (fromIdx === -1 || fromIdx === Workspaces.length - 1) return false;
-  const [moved] = Workspaces.splice(fromIdx, 1);
-  Workspaces.push(moved);
-  return true;
+function finishTabDropCommit() {
+  const movedId = draggingTabId;
+  tabDragDropped = true;
+  const moved = commitTabOrderFromStrip();
+  finishTabDrag();
+  renderTabs();
+  if (moved) saveBackupChecked();
+  requestAnimationFrame(() => focusTabElement(movedId));
 }
 
 export function finishTabDrag() {
-  clearTabDropMarkers();
-  const tb = $('tab-bar');
-  if (tb) tb.querySelectorAll('.tab.dragging').forEach(el => el.classList.remove('dragging'));
+  const el = tabEls.get(draggingTabId);
+  if (el) el.classList.remove('dragging');
   draggingTabId = null;
-  tabDropTargetId = null;
-  tabDropPosition = null;
 }
 
 export function handleTabDragStart(id, e) {
@@ -177,8 +339,7 @@ export function handleTabDragStart(id, e) {
     return;
   }
   draggingTabId = id;
-  tabDropTargetId = null;
-  tabDropPosition = null;
+  tabDragDropped = false;
   if (e.currentTarget) e.currentTarget.classList.add('dragging');
   if (e.dataTransfer) {
     e.dataTransfer.effectAllowed = 'move';
@@ -187,74 +348,59 @@ export function handleTabDragStart(id, e) {
 }
 
 export function handleTabDragOver(id, e) {
-  if (!draggingTabId || id === draggingTabId) return;
+  if (!draggingTabId) return;
+  // Over the dragged tab itself too: it is under the pointer more often than
+  // not once it has moved, and a drop it refused would undo the drag.
   e.preventDefault();
   e.stopPropagation();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  if (id === draggingTabId) return;
 
-  const tabEl = e.currentTarget;
-  if (!tabEl) return;
+  const tb = $('tab-bar');
+  const dragged = tabEls.get(draggingTabId);
+  const target = e.currentTarget;
+  if (!tb || !dragged || !target || dragged.parentNode !== tb) return;
 
-  const rect = tabEl.getBoundingClientRect();
-  const position = (e.clientX - rect.left) < rect.width / 2 ? 'before' : 'after';
-
-  if (tabDropTargetId === id && tabDropPosition === position) return;
-  tabDropTargetId = id;
-  tabDropPosition = position;
-
-  clearTabDropMarkers();
-  tabEl.classList.add(position === 'before' ? 'drop-before' : 'drop-after');
+  // Past the target's middle in the direction of travel, not just past it:
+  // the gap the pointer is in has to belong to the tab being dragged, or the
+  // two swap back and forth under a pointer that is standing still.
+  const x = e.clientX - tb.getBoundingClientRect().left + tb.scrollLeft;
+  const mid = target.offsetLeft + target.offsetWidth / 2;
+  const forward = precedes(dragged, target);
+  if (forward && x > mid) flipTabs(tb, () => tb.insertBefore(dragged, target.nextSibling));
+  else if (!forward && x < mid) flipTabs(tb, () => tb.insertBefore(dragged, target));
 }
 
 export function handleTabDrop(id, e) {
   if (!draggingTabId) return;
   e.preventDefault();
   e.stopPropagation();
-
-  const tabEl = e.currentTarget;
-  const rect = tabEl?.getBoundingClientRect?.();
-  const position = rect && (e.clientX - rect.left) < rect.width / 2 ? 'before' : 'after';
-
-  const moved = moveWorkspaceTab(draggingTabId, id, position);
-  const movedId = draggingTabId;
-  finishTabDrag();
-  if (!moved) return;
-
-  renderTabs();
-  saveBackupChecked();
-  requestAnimationFrame(() => focusTabElement(movedId));
+  finishTabDropCommit();
 }
 
 export function handleTabDragEnd() {
+  if (tabDragDropped || !draggingTabId) { finishTabDrag(); return; }
   finishTabDrag();
+  const tb = $('tab-bar');
+  if (tb) flipTabs(tb, renderTabs); else renderTabs();
 }
 
 export function handleTabAddDragOver(e) {
   if (!draggingTabId) return;
   e.preventDefault();
   e.stopPropagation();
-  clearTabDropMarkers();
-  if (e.currentTarget) e.currentTarget.classList.add('drop-end');
+  const tb = $('tab-bar');
+  const dragged = tabEls.get(draggingTabId);
+  if (!tb || !dragged || dragged.parentNode !== tb) return;
+  const ids = liveTabIds(tb);
+  if (ids[ids.length - 1] !== draggingTabId) flipTabs(tb, () => tb.insertBefore(dragged, null));
 }
 
 export function handleTabAddDrop(e) {
   if (!draggingTabId) return;
   e.preventDefault();
   e.stopPropagation();
-  const movedId = draggingTabId;
-  const moved = moveWorkspaceTabToEnd(draggingTabId);
-  finishTabDrag();
-  if (!moved) return;
-
-  renderTabs();
-  saveBackupChecked();
-  requestAnimationFrame(() => focusTabElement(movedId));
-}
-
-export function handleCreateTabKeydown(e) {
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault();
-    createTab();
-  }
+  finishTabDropCommit();
 }
 
 export function handleTabKeydown(id, e) {
@@ -281,19 +427,63 @@ export function handleTabKeydown(id, e) {
     return;
   }
 
+  const ids = Workspaces.map(w => w.id);
+  const idx = ids.indexOf(id);
+  if (!ids.length || idx === -1) return;
+  let nextId = null;
   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-    e.preventDefault();
-    e.stopPropagation();
-    const ids = Workspaces.map(w => w.id);
-    if (!ids.length) return;
-    const idx = ids.indexOf(id);
-    if (idx === -1) return;
     const delta = e.key === 'ArrowRight' ? 1 : -1;
-    const nextId = ids[(idx + delta + ids.length) % ids.length];
-    if (!nextId) return;
-    switchTab(nextId);
-    requestAnimationFrame(() => focusTabElement(nextId));
+    nextId = ids[(idx + delta + ids.length) % ids.length];
+  } else if (e.key === 'Home') {
+    nextId = ids[0];
+  } else if (e.key === 'End') {
+    nextId = ids[ids.length - 1];
   }
+  if (!nextId) return;
+  e.preventDefault();
+  e.stopPropagation();
+  switchTab(nextId);
+  requestAnimationFrame(() => focusTabElement(nextId));
+}
+
+// Workspace tabs from anywhere, not only from a focused tab. Each act has two
+// spellings. The desktop one — Ctrl+Tab, Ctrl+PageUp/PageDown, Mod+T, Mod+W,
+// Mod+1…9 — is what every tabbed app uses, and a browser keeps all of it for
+// its own tabs, so on the website the page never sees it. The Alt one is what
+// the website does receive. Matched on `code`, so a layout or an Alt that
+// changes the character typed does not change the key.
+export function handleWorkspaceShortcut(e) {
+  const mod = (e.ctrlKey || e.metaKey) && !e.altKey;
+  const alt = e.altKey && !e.ctrlKey && !e.metaKey;
+  const code = e.code || '';
+  let act = null;
+  let n = 0;
+  if (e.ctrlKey && !e.altKey && e.key === 'Tab') act = e.shiftKey ? 'prev' : 'next';
+  else if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === 'PageDown' || e.key === 'PageUp')) act = e.key === 'PageDown' ? 'next' : 'prev';
+  else if (alt && !e.shiftKey && (code === 'BracketRight' || code === 'BracketLeft')) act = code === 'BracketRight' ? 'next' : 'prev';
+  else if ((mod || alt) && !e.shiftKey && /^Digit[1-9]$/.test(code)) { act = 'nth'; n = +code.slice(5); }
+  else if ((mod || alt) && !e.shiftKey && code === 'KeyT') act = 'new';
+  else if ((mod || alt) && !e.shiftKey && code === 'KeyW') act = 'close';
+  else if (alt && e.shiftKey && code === 'KeyT') act = 'reopen';
+  if (!act) return false;
+
+  e.preventDefault();
+  const ids = Workspaces.map(w => w.id);
+  const idx = ids.indexOf(activeWorkspaceId);
+  if (act === 'next' || act === 'prev') {
+    if (ids.length > 1) switchTab(ids[(idx + (act === 'next' ? 1 : -1) + ids.length) % ids.length]);
+  } else if (act === 'nth') {
+    // 9 is the last tab however many there are, as it is in a browser.
+    const id = n === 9 ? ids[ids.length - 1] : ids[n - 1];
+    if (id && id !== activeWorkspaceId) switchTab(id);
+  } else if (act === 'new') {
+    createTab();
+  } else if (act === 'close') {
+    if (activeWorkspaceId) closeTab(activeWorkspaceId);
+  } else if (act === 'reopen') {
+    reopenClosedTab();
+  }
+  return true;
 }
 
 export function beginRenameTab(id, e) {
@@ -343,31 +533,55 @@ export function renderTabs() {
   tb.setAttribute('role', 'tablist');
   tb.setAttribute('aria-label', 'Workspace tabs');
 
-  tb.innerHTML = Workspaces.map(ws => {
-    const isActive = ws.id === activeWorkspaceId;
-    const isEditing = ws.id === editingTabId;
-    const dragClass = draggingTabId === ws.id ? 'dragging' : '';
-    const safeName = escapeTabText(ws.name || 'Workspace');
-    const machine = getWorkspaceMachine(ws);
-    const machineLabel = machine && MachineTypes[machine] ? MachineTypes[machine].label : '';
-    const nameMarkup = isEditing
-      ? `<input class="tab-rename-input" value="${safeName}" maxlength="40" aria-label="Rename workspace" onclick="event.stopPropagation()" onkeydown="handleTabRenameKeydown('${ws.id}', event)" onblur="commitTabRename('${ws.id}', this)">`
-      : `<span class="tab-name" data-tip="${safeName}${machineLabel ? ' — ' + escapeTabText(machineLabel) : ''}">${safeName}</span>`;
+  // Keyed on the workspace id, the way renderAll keys the diagram: reuse the
+  // element a workspace already has, create only what is new, retire only what
+  // is gone, and touch the order only where it differs.
+  const closable = Workspaces.length > 1;
+  const live = new Set();
+  let prev = null;
+  for (const ws of Workspaces) {
+    live.add(ws.id);
+    let el = tabEls.get(ws.id);
+    if (!el || (el.parentNode && el.parentNode !== tb) || el.classList.contains('is-leaving')) {
+      el = createTabElement(ws.id);
+      tabEls.set(ws.id, el);
+      if (tabsDrawn && !reducedMotion()) {
+        el.classList.add('is-entering');
+        // Measured again once it has its full width: the pass a frame after
+        // this render sees it part-way unfolded, so the strip read as fitting
+        // when it no longer did — no chevron, no fade, and the new tab cut off.
+        el.addEventListener?.('animationend', () => {
+          el.classList.remove('is-entering');
+          revealActiveTab(tb);
+          updateTabOverflowShadows(tb);
+        }, { once: true });
+      }
+    }
+    syncTabElement(el, ws, closable);
+    let at = prev ? prev.nextSibling : tb.firstChild;
+    while (at && at !== el && at.classList?.contains('is-leaving')) at = at.nextSibling;
+    if (at !== el) tb.insertBefore(el, at || null);
+    prev = el;
+  }
+  for (const [id, el] of tabEls) {
+    if (live.has(id)) continue;
+    tabEls.delete(id);
+    retireTabElement(el);
+  }
+  tabsDrawn = true;
 
-    return `
-    <div class="tab ${isActive ? 'active' : ''} ${dragClass}" role="tab" aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? '0' : '-1'}" data-tab-id="${ws.id}" style="--tab-accent:${getWorkspaceAccent(ws)}" draggable="${isEditing ? 'false' : 'true'}" onclick="switchTab('${ws.id}')" ondblclick="beginRenameTab('${ws.id}', event)" onkeydown="handleTabKeydown('${ws.id}', event)" oncontextmenu="showTabContextMenu('${ws.id}', event); return false;" ondragstart="handleTabDragStart('${ws.id}', event)" ondragover="handleTabDragOver('${ws.id}', event)" ondrop="handleTabDrop('${ws.id}', event)" ondragend="handleTabDragEnd(event)">
-      <span class="tab-dot" aria-hidden="true"></span>
-      ${machineLabel ? `<span class="sr-only">${escapeTabText(machineLabel)} — </span>` : ''}
-      ${nameMarkup}
-      ${ws.dirty ? '<span class="tab-dirty" aria-hidden="true" data-tip="Unsaved changes"></span>' : ''}
-      ${Workspaces.length > 1 ? `<button class="tab-close" type="button" aria-label="Close ${safeName}" onclick="closeTab('${ws.id}', event)"><svg width="10" height="10" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button>` : ''}
-    </div>
-  `;
-  }).join('') + `
-    <div class="tab tab-add" role="button" tabindex="0" aria-label="Create workspace" draggable="false" onclick="createTab()" onkeydown="handleCreateTabKeydown(event)" ondragover="handleTabAddDragOver(event)" ondrop="handleTabAddDrop(event)">
-      <svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></svg>
-    </div>
-  `;
+  // Double-clicking the strip's empty stretch opens a workspace, as it does in
+  // a browser. A tab's own double-click renames it and never reaches here.
+  tb.ondblclick = (e) => {
+    if (e.target === tb) createTab();
+  };
+  // A drop past the last tab is a drop, not a cancel.
+  tb.ondragover = (e) => { if (draggingTabId) e.preventDefault(); };
+  tb.ondrop = (e) => {
+    if (!draggingTabId) return;
+    e.preventDefault();
+    finishTabDropCommit();
+  };
 
   // Enable horizontal scrolling with standard mouse wheel
   tb.onwheel = (e) => {
@@ -383,10 +597,11 @@ export function renderTabs() {
 
   tb.onscroll = () => updateTabOverflowShadows(tb);
   requestAnimationFrame(() => {
+    revealActiveTab(tb);
     updateTabOverflowShadows(tb);
     if (editingTabId) {
-      const input = tb.querySelector('.tab-rename-input');
-      if (input) {
+      const input = tabEls.get(editingTabId)?.querySelector?.('.tab-rename-input');
+      if (input && document.activeElement !== input) {
         input.focus();
         input.select();
       }
@@ -412,21 +627,96 @@ export function updateSaveIndicator() {
   setSaveState(Workspaces.some(w => w.dirty) ? 'unsaved' : 'saved');
 }
 
+// Past this many workspaces the list gets a filter at its head: hunting by
+// eye down a scrolling list is where a list stops being faster than typing.
+export const TAB_FILTER_AT = 8;
+let tabOverflowQuery = '';
+
+function tabMatchesQuery(ws, q) {
+  if (!q) return true;
+  const machine = getWorkspaceMachine(ws);
+  const hay = `${ws.name || ''} ${machine || ''} ${MachineTypes[machine]?.fullName || ''}`.toLowerCase();
+  return hay.includes(q);
+}
+
+// Shows and hides rows in place rather than redrawing, so the filter keeps
+// its focus and caret as it is typed into.
+export function filterTabOverflowMenu(query = tabOverflowQuery) {
+  const menu = $('tab-overflow-menu');
+  tabOverflowQuery = String(query || '');
+  if (!menu?.querySelectorAll) return;
+  const q = tabOverflowQuery.trim().toLowerCase();
+  let shown = 0;
+  menu.querySelectorAll('.tab-overflow-item').forEach(row => {
+    const ws = Workspaces.find(w => w.id === row.dataset.tabId);
+    const hit = !!ws && tabMatchesQuery(ws, q);
+    row.hidden = !hit;
+    if (hit) shown++;
+  });
+  const empty = menu.querySelector('.tab-overflow-empty');
+  if (empty) empty.hidden = shown > 0;
+}
+
+function wireTabOverflowFilter(menu, refocus) {
+  const input = menu.querySelector?.('.tab-overflow-filter');
+  if (!input) return;
+  input.value = tabOverflowQuery;
+  // The document's click listener closes this menu; a click into its own
+  // filter is not an outside click.
+  input.onclick = e => e.stopPropagation();
+  input.oninput = () => filterTabOverflowMenu(input.value);
+  input.onkeydown = e => {
+    const visible = () => [...menu.querySelectorAll('.tab-overflow-item')].filter(r => !r.hidden);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const first = visible()[0];
+      if (first) { first.setAttribute('tabindex', '0'); first.focus(); }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const first = visible()[0];
+      if (first) switchTabFromOverflow(first.dataset.tabId);
+    } else if (e.key === 'Escape') {
+      // The page's shortcut handler ignores keys typed into a field, so the
+      // filter answers Escape itself: first it clears, then it closes.
+      e.preventDefault();
+      e.stopPropagation();
+      if (input.value) { input.value = ''; filterTabOverflowMenu(''); }
+      else { hideTabOverflowMenu(); $('tab-overflow-btn')?.focus(); }
+    }
+  };
+  filterTabOverflowMenu(tabOverflowQuery);
+  if (refocus) {
+    input.focus();
+    const end = input.value.length;
+    input.setSelectionRange?.(end, end);
+  }
+}
+
 export function renderTabOverflowMenu() {
   const menu = $('tab-overflow-menu');
   if (!menu || menu.style.display !== 'block') return;
-  menu.innerHTML = Workspaces.map(ws => {
+  const filtering = Workspaces.length >= TAB_FILTER_AT;
+  const refocus = filtering && document.activeElement?.classList?.contains('tab-overflow-filter');
+  if (!filtering) tabOverflowQuery = '';
+  menu.innerHTML = (filtering ? `
+    <div class="tab-overflow-search">
+      <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg>
+      <input class="tab-overflow-filter" type="text" placeholder="Find a workspace" aria-label="Find a workspace" autocomplete="off" spellcheck="false">
+    </div>` : '') + Workspaces.map(ws => {
     const isActive = ws.id === activeWorkspaceId;
     const safeName = escapeTabText(ws.name || 'Workspace');
+    const machine = getWorkspaceMachine(ws);
+    const type = machine && MachineTypes[machine] ? machine : '';
     return `
-    <div class="tab-overflow-item ${isActive ? 'active' : ''}" role="option" aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? '0' : '-1'}" style="--item-accent:${getWorkspaceAccent(ws)}" onclick="switchTabFromOverflow('${ws.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();switchTabFromOverflow('${ws.id}');}">
+    <div class="tab-overflow-item ${isActive ? 'active' : ''}" data-tab-id="${ws.id}" role="option" aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? '0' : '-1'}" style="--item-accent:${getWorkspaceAccent(ws)}" onclick="switchTabFromOverflow('${ws.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();switchTabFromOverflow('${ws.id}');}">
       <span class="tab-overflow-item-dot" aria-hidden="true"></span>
       <span class="tab-overflow-item-name" data-tip="${safeName}">${safeName}</span>
+      ${type ? `<span class="tab-type" aria-hidden="true">${escapeTabText(type)}</span>` : ''}
       ${ws.dirty ? '<span class="tab-overflow-item-dirty" aria-hidden="true" data-tip="Unsaved changes"></span>' : ''}
       ${Workspaces.length > 1 ? `<button class="tab-overflow-item-close" type="button" aria-label="Close ${safeName}" onclick="event.stopPropagation(); closeTab('${ws.id}', event); renderTabOverflowMenu();"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button>` : ''}
     </div>
   `;
-  }).join('') + `
+  }).join('') + (filtering ? '<div class="tab-overflow-empty" hidden>No workspace matches</div>' : '') + `
     <div class="tab-overflow-new" role="option" aria-selected="false" tabindex="-1"
          onclick="hideTabOverflowMenu(); createTab();"
          onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();hideTabOverflowMenu();createTab();}">
@@ -434,14 +724,14 @@ export function renderTabOverflowMenu() {
       New workspace
     </div>
   `;
+  wireTabOverflowFilter(menu, refocus);
 }
 
 export function switchTabFromOverflow(id) {
   hideTabOverflowMenu();
   switchTab(id);
   requestAnimationFrame(() => {
-    const tabEl = $('tab-bar')?.querySelector(`.tab[data-tab-id="${id}"]`);
-    if (tabEl) tabEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    revealActiveTab();
   });
 }
 
@@ -461,6 +751,7 @@ export function toggleTabOverflowMenu(e) {
   if (btn) btn.setAttribute('aria-expanded', 'true');
   const wsBtn = $('mobile-ws-btn');
   if (wsBtn) wsBtn.setAttribute('aria-expanded', 'true');
+  tabOverflowQuery = '';
   renderTabOverflowMenu();
   const m = menu.getBoundingClientRect();
   // Right-align the menu to the button, clamped inside the viewport, and
@@ -471,6 +762,7 @@ export function toggleTabOverflowMenu(e) {
     ? Math.max(8, r.top - 6 - m.height)
     : below) + 'px';
   menu.style.visibility = '';
+  menu.querySelector?.('.tab-overflow-filter')?.focus();
 }
 
 export function hideTabOverflowMenu() {
@@ -581,40 +873,43 @@ export function createTab(name) {
   Workspaces.push(newWs);
   editingTabId = null;
   
-  importWorkspaceState(newWs.data);
-  setActiveWorkspaceId(newWs.id);
+  // A blank workspace has nothing unsaved; see withoutDirtying in js/history.js.
+  withoutDirtying(() => {
+    importWorkspaceState(newWs.data);
+    setActiveWorkspaceId(newWs.id);
 
-  App.selectedStates.clear();
-  App.selectedTransitions.clear();
-  if (typeof resetSim === 'function') resetSim();
-  if (typeof applyMachineSwitch === 'function') applyMachineSwitch(App.machine);
+    App.selectedStates.clear();
+    App.selectedTransitions.clear();
+    if (typeof resetSim === 'function') resetSim();
+    if (typeof applyMachineSwitch === 'function') applyMachineSwitch(App.machine);
   
-  renderTabs();
-  renderAll();
-  if (typeof applyCamera === 'function') applyCamera();
-  if (typeof updateLPanel === 'function') updateLPanel();
-  if (typeof updateRPanel === 'function') updateRPanel();
-  // Each tab carries its own config, so activating one can bring different
-  // canvas settings with it — the same reason R gets republished here.
-  if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
-  // The speed dial too: it is drawn once at boot, before loadBackup replaces
-  // the config it reads, and the restore lands here.
-  syncSpeedControl();
-  // And its own description, and its own grammar. importWorkspaceState has
-  // already written App.meta and App.grammar; this is what redraws the info
-  // card and the Grammar workbench from them, so a tab's card does not linger
-  // over the next tab's diagram — and the editor does not go on showing the
-  // previous tab's rules, which the next keystroke would then write into this
-  // one.
-  emit(Change.META, Change.GRAMMAR, Change.EXERCISE, Change.LEXER);
-  // And its own scope and its own blocks. Both paths here call renderAll()
-  // directly and never `emit(Change.GRAPH)`, so every GRAPH subscriber that is
-  // not renderAll itself is skipped — which is why the breadcrumb vanished on a
-  // reload: the boot restore comes through here, App.scope was restored
-  // correctly, and nothing ever told the bar to draw it. Exactly the rule the
-  // comment above states for Change.META.
-  if (typeof syncScopeBar === 'function') syncScopeBar();
-  if (typeof updateBlockList === 'function') updateBlockList();
+    renderTabs();
+    renderAll();
+    if (typeof applyCamera === 'function') applyCamera();
+    if (typeof updateLPanel === 'function') updateLPanel();
+    if (typeof updateRPanel === 'function') updateRPanel();
+    // Each tab carries its own config, so activating one can bring different
+    // canvas settings with it — the same reason R gets republished here.
+    if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
+    // The speed dial too: it is drawn once at boot, before loadBackup replaces
+    // the config it reads, and the restore lands here.
+    syncSpeedControl();
+    // And its own description, and its own grammar. importWorkspaceState has
+    // already written App.meta and App.grammar; this is what redraws the info
+    // card and the Grammar workbench from them, so a tab's card does not linger
+    // over the next tab's diagram — and the editor does not go on showing the
+    // previous tab's rules, which the next keystroke would then write into this
+    // one.
+    emit(Change.META, Change.GRAMMAR, Change.EXERCISE, Change.LEXER);
+    // And its own scope and its own blocks. Both paths here call renderAll()
+    // directly and never `emit(Change.GRAPH)`, so every GRAPH subscriber that is
+    // not renderAll itself is skipped — which is why the breadcrumb vanished on a
+    // reload: the boot restore comes through here, App.scope was restored
+    // correctly, and nothing ever told the bar to draw it. Exactly the rule the
+    // comment above states for Change.META.
+    if (typeof syncScopeBar === 'function') syncScopeBar();
+    if (typeof updateBlockList === 'function') updateBlockList();
+  });
   saveBackupChecked();
 }
 
@@ -630,47 +925,50 @@ export function switchTab(id) {
 
   stowActiveWorkspace();
 
-  setActiveWorkspaceId(id);
-  editingTabId = null;
-  const curr = Workspaces.find(w => w.id === id);
-  if (curr && curr.data) {
-    importWorkspaceState(curr.data);
-  }
+  // Rehydrating is not editing; see withoutDirtying in js/history.js.
+  withoutDirtying(() => {
+    setActiveWorkspaceId(id);
+    editingTabId = null;
+    const curr = Workspaces.find(w => w.id === id);
+    if (curr && curr.data) {
+      importWorkspaceState(curr.data);
+    }
   
-  App.selectedStates.clear();
-  App.selectedTransitions.clear();
-  if (typeof resetSim === 'function') resetSim();
-  if (typeof applyMachineSwitch === 'function') {
-    // Re-bind toolbar UI to match machine switch
-    applyMachineSwitch(App.machine);
-  }
+    App.selectedStates.clear();
+    App.selectedTransitions.clear();
+    if (typeof resetSim === 'function') resetSim();
+    if (typeof applyMachineSwitch === 'function') {
+      // Re-bind toolbar UI to match machine switch
+      applyMachineSwitch(App.machine);
+    }
 
-  renderTabs();
-  renderAll();
-  if (typeof applyCamera === 'function') applyCamera();
-  if (typeof updateLPanel === 'function') updateLPanel();
-  if (typeof updateRPanel === 'function') updateRPanel();
-  // Each tab carries its own config, so activating one can bring different
-  // canvas settings with it — the same reason R gets republished here.
-  if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
-  // The speed dial too: it is drawn once at boot, before loadBackup replaces
-  // the config it reads, and the restore lands here.
-  syncSpeedControl();
-  // And its own description, and its own grammar. importWorkspaceState has
-  // already written App.meta and App.grammar; this is what redraws the info
-  // card and the Grammar workbench from them, so a tab's card does not linger
-  // over the next tab's diagram — and the editor does not go on showing the
-  // previous tab's rules, which the next keystroke would then write into this
-  // one.
-  emit(Change.META, Change.GRAMMAR, Change.EXERCISE, Change.LEXER);
-  // And its own scope and its own blocks. Both paths here call renderAll()
-  // directly and never `emit(Change.GRAPH)`, so every GRAPH subscriber that is
-  // not renderAll itself is skipped — which is why the breadcrumb vanished on a
-  // reload: the boot restore comes through here, App.scope was restored
-  // correctly, and nothing ever told the bar to draw it. Exactly the rule the
-  // comment above states for Change.META.
-  if (typeof syncScopeBar === 'function') syncScopeBar();
-  if (typeof updateBlockList === 'function') updateBlockList();
+    renderTabs();
+    renderAll();
+    if (typeof applyCamera === 'function') applyCamera();
+    if (typeof updateLPanel === 'function') updateLPanel();
+    if (typeof updateRPanel === 'function') updateRPanel();
+    // Each tab carries its own config, so activating one can bring different
+    // canvas settings with it — the same reason R gets republished here.
+    if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
+    // The speed dial too: it is drawn once at boot, before loadBackup replaces
+    // the config it reads, and the restore lands here.
+    syncSpeedControl();
+    // And its own description, and its own grammar. importWorkspaceState has
+    // already written App.meta and App.grammar; this is what redraws the info
+    // card and the Grammar workbench from them, so a tab's card does not linger
+    // over the next tab's diagram — and the editor does not go on showing the
+    // previous tab's rules, which the next keystroke would then write into this
+    // one.
+    emit(Change.META, Change.GRAMMAR, Change.EXERCISE, Change.LEXER);
+    // And its own scope and its own blocks. Both paths here call renderAll()
+    // directly and never `emit(Change.GRAPH)`, so every GRAPH subscriber that is
+    // not renderAll itself is skipped — which is why the breadcrumb vanished on a
+    // reload: the boot restore comes through here, App.scope was restored
+    // correctly, and nothing ever told the bar to draw it. Exactly the rule the
+    // comment above states for Change.META.
+    if (typeof syncScopeBar === 'function') syncScopeBar();
+    if (typeof updateBlockList === 'function') updateBlockList();
+  });
   saveBackupChecked();
 }
 
@@ -1148,6 +1446,7 @@ document.addEventListener('keydown', e => {
   // above does not filter them, and pressing "s" while arrowing through a
   // header menu must not switch the canvas tool underneath it.
   if (e.target.closest && e.target.closest('.ctx-i, .model-item, .tab-overflow-item')) return;
+  if (handleWorkspaceShortcut(e)) return;
   if (e.ctrlKey || e.metaKey) {
     if (e.key === 'z') { e.preventDefault(); undo(); }
     if (e.key === 'y' || e.key === 'Z') { e.preventDefault(); redo(); }

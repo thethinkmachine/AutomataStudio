@@ -5,10 +5,10 @@
 // global-scope code and cannot see module bindings. The functions they name
 // are re-exposed on window here.
 //
-// 216 names across 25 modules — 215 functions plus App — reached from 441
+// 215 names across 25 modules — 214 functions plus App — reached from 442
 // attributes:
-//    319  static, in index.html
-//    122  in markup the app builds at runtime (algorithm cards,
+//    322  static, in index.html
+//    120  in markup the app builds at runtime (algorithm cards,
 //         export dialogs, alphabet chips, context menus)
 //
 // That second group is the reason this list is longer than a scan of
@@ -125,7 +125,7 @@ import {
   beginRenameTab, closeMobileAuxNav, closeMobilePanels, closeTab,
   commitTabRename, confirmSettings, createTab, ctxCopy, ctxCut, exportSettings, filterAlgos,
   filterStates, filterTransitions, fitToScreen, focusStateFromList,
-  focusTransFromList, handleCreateTabKeydown, handleTabAddDragOver,
+  focusTransFromList, handleTabAddDragOver,
   handleTabAddDrop, handleTabDragEnd, handleTabDragOver, handleTabDragStart,
   handleTabDrop, handleTabKeydown, handleTabRenameKeydown, hlListHover,
   hlTransListHover, importSettings, openSettingsModal,
@@ -228,7 +228,7 @@ Object.assign(window, {
    beginRenameTab, closeMobileAuxNav, closeMobilePanels, closeTab,
    commitTabRename, confirmSettings, createTab, ctxCopy, ctxCut, exportSettings, filterAlgos,
    filterStates, filterTransitions, fitToScreen, focusStateFromList,
-   focusTransFromList, handleCreateTabKeydown, handleTabAddDragOver,
+   focusTransFromList, handleTabAddDragOver,
    handleTabAddDrop, handleTabDragEnd, handleTabDragOver, handleTabDragStart,
    handleTabDrop, handleTabKeydown, handleTabRenameKeydown, hlListHover,
    hlTransListHover, importSettings, openSettingsModal,
