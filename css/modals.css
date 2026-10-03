@@ -2537,6 +2537,15 @@ button.sm-stat:disabled {
     transform var(--transition-fast);
 }
 
+/* The display above outranks the user agent's [hidden] rule, so without this a
+   button hidden from script stays on screen. #update-install was the one that
+   showed: "Restart & Install" sat under "Up to Date", and clicking it asked the
+   updater to install a download that did not exist. */
+.btn-p[hidden],
+.btn-g[hidden] {
+  display: none;
+}
+
 .btn-icon {
   width: 13px;
   height: 13px;
@@ -3187,11 +3196,48 @@ button.sm-stat:disabled {
   transition: width var(--transition-fast);
 }
 
+/* "What's new" in #update-modal: the release body as plain text, one line per
+   paragraph or bullet. It scrolls on its own so a long changelog cannot push the
+   buttons off the dialog. No display rule here on purpose, so [hidden] still hides. */
+.update-notes {
+  margin-top: 16px;
+}
+
+.update-notes-head {
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 6px;
+}
+
+.update-notes-body {
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-family: var(--sans);
+  font-size: .78rem;
+  line-height: 1.5;
+  color: var(--text2);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
 .ctx-i.active {
   color: var(--accent);
 }
 
-.ctx-i.active svg {
+/* The header's update item after a download failed with nobody watching. */
+.ctx-i.is-failed {
+  color: var(--red);
+}
+
+.ctx-i.active svg,
+.ctx-i.is-failed svg {
   opacity: 1;
 }
 
