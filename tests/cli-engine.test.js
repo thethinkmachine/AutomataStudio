@@ -462,3 +462,27 @@ test('a play frame fits the terminal it is drawn on, so its first line never scr
   }
   if (saved) Object.defineProperty(process.stdout, 'rows', saved); else delete process.stdout.rows;
 });
+
+test('play takes its keys from the console when the desktop app on Windows leaves stdin unattached', async () => {
+  // The app's executable run as Node is a GUI program on Windows: Electron
+  // reattaches stdout to the console but not stdin, so play printed every
+  // frame. There it opens the console's input; anywhere else a stdin that is
+  // not a terminal is a pipe, and nothing is opened.
+  const { keyboard } = await import('../cli/commands/play.mjs');
+  const tty = { isTTY: true }, pipe = {}, conin = { isTTY: true, destroyed: false, destroy() { this.destroyed = true; } };
+  let opened = 0;
+  const open = () => { opened++; return conin; };
+
+  assert.equal(keyboard({ stdin: tty, platform: 'win32', electron: '43.4.0', open }).stream, tty);
+  assert.equal(keyboard({ stdin: pipe, platform: 'win32', electron: undefined, open }), null);
+  assert.equal(keyboard({ stdin: pipe, platform: 'linux', electron: '43.4.0', open }), null);
+  assert.equal(opened, 0);
+
+  const keys = keyboard({ stdin: pipe, platform: 'win32', electron: '43.4.0', open });
+  assert.equal(keys.stream, conin);
+  keys.close();
+  assert.ok(conin.destroyed, 'the console input is closed on quit, or the process never exits');
+
+  // No console to open (a service, a detached run): frames, not a crash.
+  assert.equal(keyboard({ stdin: pipe, platform: 'win32', electron: '43.4.0', open: () => { throw new Error('ENOENT'); } }), null);
+});

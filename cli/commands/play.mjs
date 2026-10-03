@@ -1,5 +1,6 @@
 // play, animate — a run you can watch.
-import { writeFileSync } from 'node:fs';
+import { openSync, writeFileSync } from 'node:fs';
+import { ReadStream } from 'node:tty';
 
 import { App } from '../../js/state.js';
 import { readMachine, emit, CliError } from '../io.mjs';
@@ -154,6 +155,32 @@ export function renderFrame(run, i, view) {
   return out;
 }
 
+/**
+ * Where play's keys come from: `{ stream, close }`, or null when there is no
+ * keyboard and the run should print its frames instead.
+ *
+ * Normally that is stdin, when stdin is a terminal. The desktop app's CLI is
+ * the app's own executable run as Node (resources/cli/automata.cmd), and on
+ * Windows that executable is a GUI program: Electron reattaches stdout and
+ * stderr to the console it was started from, but not stdin. So stdin is no
+ * terminal there although the user is typing at one, and play printed every
+ * frame. There, and only there, the console's input is opened by name.
+ * Anywhere else a stdin that is not a terminal is a real pipe.
+ */
+export function keyboard({
+  stdin = process.stdin, platform = process.platform, electron = process.versions.electron,
+  open = () => new ReadStream(openSync('\\\\.\\CONIN$', 'r+'))
+} = {}) {
+  if (stdin.isTTY) return { stream: stdin, close() {} };
+  if (platform !== 'win32' || !electron) return null;
+  try {
+    const stream = open();
+    return { stream, close: () => stream.destroy() };
+  } catch {
+    return null;
+  }
+}
+
 const play = {
   usage: `automata play <machine> <word> [options]
 
@@ -200,10 +227,10 @@ Exit: 0 accept (or a transducer finished), 1 reject, 2 cut short or no verdict.`
       joiner: tokens.every(t => [...t].length === 1) ? '' : ' '
     };
     const code = () => (cut ? 2 : endingCode(steps.at(-1)?.final));
-    const interactive = isTTY && process.stdin.isTTY && styled;
+    const keys = isTTY && styled ? keyboard() : null;
     const fps = Math.max(0.5, Number(opts.fps ?? 6));
 
-    if (!interactive) {
+    if (!keys) {
       // Piped: every frame, in order, as text.
       for (let i = 0; i < steps.length; i++) print(renderFrame(run, i, { playing: true, fps, history: !!opts.history }).join('\n') + '\n');
       return code();
@@ -224,7 +251,7 @@ Exit: 0 accept (or a transducer finished), 1 reject, 2 cut short or no verdict.`
       }, 1000 / view.fps);
     };
     process.stdout.write('\x1b[?1049h\x1b[?25l');
-    const stdin = process.stdin;
+    const stdin = keys.stream;
     stdin.setRawMode(true);
     stdin.resume();
     return await new Promise(resolve => {
@@ -236,6 +263,7 @@ Exit: 0 accept (or a transducer finished), 1 reject, 2 cut short or no verdict.`
         stdin.setRawMode(false);
         stdin.pause();
         stdin.removeAllListeners('data');
+        keys.close();
         process.stdout.off('resize', draw);
         process.stdout.write('\x1b[?25h\x1b[?1049l');
         // The last frame seen stays on the ordinary screen.
