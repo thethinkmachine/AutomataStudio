@@ -530,7 +530,10 @@ function createWindow() {
     height: 900,
     minWidth: 960,
     minHeight: 600,
-    backgroundColor: '#0f0f14',
+    // The default theme's --bg2, so the window does not open on a dark frame
+    // before the page paints. A reader who chose a dark theme sees one light
+    // frame instead, which is the cheaper of the two to get wrong.
+    backgroundColor: '#eef0f4',
     show: false,
     frame: false,
     webPreferences: {
