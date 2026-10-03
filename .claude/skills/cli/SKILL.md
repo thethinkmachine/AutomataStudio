@@ -187,6 +187,13 @@ symmetry. It never uses the bound, which would assume its own answer.
   screen, raw keys, the last frame left on the normal screen on quit) when both
   stdin and stdout are terminals, and as a sequence of frames otherwise. Keep it
   pure — the tests read the piped frames.
+- **On Windows the desktop app's `automata` has no stdin.** It is the app's
+  executable run as Node, a GUI program: Electron reattaches stdout and stderr to
+  the console but not stdin, so `play` saw a pipe and printed every frame. Its keys
+  come from `keyboard()`, which opens `\\.\CONIN$` there — Electron on win32 only,
+  so a real pipe into plain Node still gets frames. The clips run this checkout
+  under plain Node and cannot show this; test it with the repo's `electron.exe`
+  and `ELECTRON_RUN_AS_NODE=1` from a `.cmd`, under a console.
 - **A command's help is its module's `usage` plus `help.mjs`'s examples and
   see-also**, coloured by `renderUsage` (headings end in `:`, flags start with
   `-`, examples with `$ `). Topics (`automata help <topic>`) live there too.
