@@ -32,7 +32,8 @@ const THEMED_SHEETS = readdirSync(fileURLToPath(new URL('css/', root)))
   .filter(f => f.endsWith('.css') && f !== 'variables.css')
   .sort();
 
-// The base `:root` block IS the dark theme; every other theme is an override.
+// The base `:root` block IS the default theme (light); every other theme,
+// dark included, is an override.
 const cssThemeIds = [...VARIABLES.matchAll(/:root\[data-theme="([^"]+)"\]/g)].map(m => m[1]);
 
 function themeBlock(id) {
@@ -79,14 +80,18 @@ test('every registry theme has a stylesheet block, and vice versa', () => {
 });
 
 test('every theme block overrides the same variables', () => {
-  // The `light` block is the reference: it lists exactly what varies per
-  // theme. A theme missing one inherits dark's value and renders wrong in
-  // that one spot only.
-  const reference = Object.keys(themeBlock('light').vars).sort();
+  // The `dark` block is the reference: an override lists exactly what varies
+  // per theme. A theme missing one inherits the default's (light) value and
+  // renders wrong in that one spot only — a light panel fill on a dark theme.
+  // The base block holds the same set plus what no theme varies (type,
+  // geometry, timing), so it is checked for coverage rather than equality.
+  const reference = Object.keys(themeBlock('dark').vars).sort();
   for (const id of cssThemeIds) {
     assert.deepEqual(Object.keys(themeBlock(id).vars).sort(), reference,
-      `theme "${id}" must override exactly the same variables as "light"`);
+      `theme "${id}" must override exactly the same variables as "dark"`);
   }
+  const base = themeBlock(DEFAULT_THEME).vars;
+  for (const k of reference) assert.ok(k in base, `the default theme's base block has no ${k}`);
 });
 
 test('color-scheme matches each theme\'s background', () => {

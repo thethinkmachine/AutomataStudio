@@ -282,7 +282,7 @@ export const App = {
   edgeHighlight: null,
   // Configuration constants
   config: {
-    theme: 'dark',
+    theme: 'light',
     transducerAccepts: false,
     // Whether a Turing machine's tape extends left of its input. This is a
     // property of the tape, not of the machine, so it is a setting rather

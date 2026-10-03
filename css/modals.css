@@ -3235,6 +3235,9 @@ button.sm-stat:disabled {
   background: var(--surface);
   border: 1px solid var(--border2);
   border-radius: 20px;
+  /* The one piece of floating canvas chrome without a shadow: the toolbox,
+     the minimap, the zoom bar and the scope bar all lift off the well. */
+  box-shadow: var(--shadow-sm);
   color: var(--text2);
   pointer-events: none;
   opacity: 0;

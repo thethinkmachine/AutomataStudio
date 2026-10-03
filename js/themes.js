@@ -778,4 +778,4 @@ export const Themes = {
   }
 };
 
-export const DEFAULT_THEME = 'dark';
+export const DEFAULT_THEME = 'light';

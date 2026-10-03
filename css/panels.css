@@ -13,6 +13,17 @@
    .lp-/.rp- rules below. */
 :root {
   --sec-head-pad: 9px 13px 7px;
+  /* A docked header's left padding is wider than the token's, because the
+     reorder grip lives in it (see .panel-sec-grip): at 13px the grip's dots
+     ended ~3px from the title and read as part of the label. 20px leaves a
+     clear gap and puts the title in line with the text of the rows under it.
+     A window's title bar has no grip and keeps the token. */
+  --sec-head-pad-start: 20px;
+  /* And the body under the header, in both panels. The left's was
+     3px 14px 12px and the right's 4px 14px 14px, so a card's content sat a
+     pixel higher and ended two pixels sooner depending on which side it was
+     docked to. */
+  --sec-body-pad: 4px 14px 14px;
   --sec-head-gap: 8px;
   --sec-label-size: .68rem;
   --sec-label-tracking: .085em;
@@ -104,9 +115,32 @@
   box-shadow: inset 0 0 0 2px var(--focus-ring);
 }
 
+/* Every docked header carries the grip in its left padding. */
+:is(.lpanel-content, .rpanel-content) :is(.lp-section-header, .rp-section-header) {
+  padding-left: var(--sec-head-pad-start);
+}
+
+/* The title is the last thing in the row to give way, but it can give: with
+   `flex: 1` it had a basis of zero and a minimum of its own text, so a row
+   that did not fit overflowed instead — at the 220px minimum, with a
+   three-digit count, the collapse arrow went out past the panel edge.
+
+   Shrink is shared in proportion to factor × basis, so the status chip and
+   the machine badge shrink at 100 against the title's 1: a narrow row
+   truncates those first (the chip carries its full text on the tooltip), and
+   clips the title only once they are gone. The title's factor stays at 1 and
+   not below it on purpose — when the factors in a row sum to less than one,
+   only that fraction of the overflow is taken up at all, and the rest still
+   spills past the edge. */
+:is(.lpanel-content, .rpanel-content) .lp-section-header .sec-lbl,
+.rp-section-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
 :is(.lpanel-content, .rpanel-content) .lp-section-header .sec-lbl {
   margin-bottom: 0;
-  flex: 1;
   font-size: var(--sec-label-size);
   letter-spacing: var(--sec-label-tracking);
 }
@@ -170,7 +204,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 0 1 auto;
+  /* 100, against the title's 1 — see the note over the title's flex. */
+  flex: 0 100 auto;
 }
 
 .sec-status[data-tone="acc"] {
@@ -196,7 +231,8 @@
 /* Beside it, the title gives up its trailing rule rather than the status
    giving up its text: the rule is ornament, and it is what a narrow header
    has to spare. */
-.collapsed > .rp-section-header:has(> .sec-status:not(:empty)) .rp-section-title::after {
+.collapsed > .rp-section-header:has(> .sec-status:not(:empty)) .rp-section-title::after,
+.collapsed > .lp-section-header:has(> .sec-status:not(:empty)) .sec-lbl::after {
   display: none;
 }
 
@@ -219,7 +255,7 @@
 }
 
 :is(.lpanel-content, .rpanel-content) .lp-section-body {
-  padding: 3px 14px 12px;
+  padding: var(--sec-body-pad);
 }
 
 .lp-collapsible.collapsed .lp-section-body {
@@ -755,14 +791,23 @@
 }
 
 /* Long symbol names (whole-word alphabet entries) must never wrap the row
-   or clip off-panel — each segment truncates on its own, full text on hover. */
+   or clip off-panel — each segment truncates on its own, full text on hover.
+
+   The names do not shrink until they pass 40% of the row each; the label
+   gives way first. All three shrinking together shared the shortfall by
+   width, so a multi-tape label three times a name's length still took a cut
+   out of the names — and any cut at all is an ellipsis, which is how a row
+   read `ca… –0 → 0, R | 0 →… ca…` with "carry 0" and "carry 1" both lost,
+   while the label was the part the row could spare. The cap is what keeps a
+   long subset-construction name from doing the same to the label. */
 .ti-from,
 .ti-to {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 3ch;
-  flex: 0 1 auto;
+  max-width: 40%;
+  flex: 0 0 auto;
 }
 
 /* Shrinks but does not grow: growing is what used to strand the destination
@@ -1326,32 +1371,56 @@ body:has(.is-reordering) .tooltip {
 }
 
 /* The docked panel's spare height, to exactly one list. syncDockFill marks the
-   last open section that declares a growable region, and the region is what
-   grows — the section and its body only pass the height down. Both are
-   `1 0 auto`: grow into what is spare, never shrink past what they were drawn
-   at, so a panel with no room scrolls exactly as it always has. The region is
-   `1 1 0`, which sizes it to the leftover alone rather than to its content: a
-   windowed list slices its rows from its own height, and a box as tall as a
-   thousand rows would draw a thousand rows.
+   last open section that declares a growable region, and that region may grow
+   past --lp-list-max-h into the height the panel has left — **as far as its
+   own rows reach, and no further**.
+
+   It used to grow to the bottom of the panel whatever it held: section and
+   body `1 0 auto`, region `1 1 0`. With Transitions open and last, that was
+   invisible, since nothing sits under the region. But folding Transitions
+   hands the fill to States Q, and five states then stood over five hundred
+   pixels of empty panel with the folded TRANSITIONS δ header pinned to the
+   bottom edge — the one card in the panel that did not size to what it held.
+
+   So the section is content-sized (`0 1 auto`) and shrinks only when its
+   content is taller than the room, and the list's row takes whatever height
+   the section is left with, between its floor and its rows. Section and body
+   are grids with `align-content: start`, so a grid with room to spare does
+   not stretch its search row to use it.
+
+   The floors are set by js/panel-list.js (publishListHeight), because the
+   browser's would be wrong in both places. The list's floor is the cap, or
+   its own height when that is less, so a short panel cannot crush it — "as
+   tall as the content but no more than 168px" is not a size CSS can take from
+   a scroll container. And the section's automatic minimum is its content's
+   height — in a grid as much as a flex column — so a 200-state list held the
+   section at twelve thousand pixels and the whole panel scrolled instead of
+   the list. The section's floor is published beside the list's (its header
+   and search row plus the list's floor), the body takes `min-height: 0`, and
+   a panel with no room still scrolls rather than squeezing the list.
+
+   A windowed list is still bounded by the room rather than drawing every row:
+   its spacers make its content tall, the shrink takes it back to the
+   leftover, and it slices its window from that.
 
    Scoped to children of the panel's container, so a section torn off into a
    window is not addressed here — the window has its own fill, and the
    selector carries .lp-collapsible to outrank the `:last-child` reset above. */
 :is(.lpanel-content, .rpanel-content) > .sec.lp-collapsible.panel-dock-fill {
-  flex: 1 0 auto;
-  display: flex;
-  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: var(--dock-fill-min, auto);
+  display: grid;
+  align-content: start;
 }
 
 :is(.lpanel-content, .rpanel-content) > .panel-dock-fill > .lp-section-body {
-  flex: 1 0 auto;
-  display: flex;
-  flex-direction: column;
+  min-height: 0;
+  display: grid;
+  align-content: start;
 }
 
 :is(.lpanel-content, .rpanel-content) > .panel-dock-fill .panel-dock-fill-region {
-  flex: 1 1 0;
-  min-height: var(--lp-list-max-h);
+  min-height: var(--lw-floor, var(--lp-list-max-h));
   max-height: none;
   /* A wrapping flex container shares spare height among its lines by
      default, which turned every alphabet chip into a tall pill. Same
@@ -1365,12 +1434,20 @@ body:has(.is-reordering) .tooltip {
    symbols), the placeholder in the UI face, and a clear button that appears
    only once there is something to clear. type="search" gives Escape-to-clear
    for free; the native cancel glyph is redrawn as a mask so it takes the
-   theme's text colour. */
+   theme's text colour.
+
+   `flex: none` here, and the stretch only where it is meant — beside the δ
+   view switch, in `.lp-search-row`. A bare `flex: 1` is a grow on whichever
+   axis the parent runs, and States Q's filter sits straight in its section
+   body: whenever that body becomes a column — States taking the spare height
+   with Transitions folded, or torn off into a tall window — the field split
+   the slack with the list, and the input floated in a band of empty panel
+   with the rows stranded far below it. */
 .search-field {
   position: relative;
   display: flex;
   align-items: center;
-  flex: 1;
+  flex: none;
   min-width: 0;
   margin-bottom: 6px;
 }
@@ -1395,12 +1472,19 @@ body:has(.is-reordering) .tooltip {
   border: 1px solid var(--border);
   color: var(--text);
   font-family: var(--mono);
-  font-size: .72rem;
+  /* The entry fields' size (.inp): a filter typed into the States list read a
+     size smaller than a symbol typed into Σ two cards above it. */
+  font-size: .78rem;
   padding: 0 6px 0 28px;
   border-radius: var(--field-radius);
   outline: none;
   -webkit-appearance: none;
   appearance: none;
+  /* Beside the δ view switch in a narrow panel "Filter transitions…" does not
+     fit, and without this it was cut through a glyph ("Filter transitions.")
+     rather than ending in an ellipsis. Set on the input, not on ::placeholder,
+     which does not take it; the input's applies to its placeholder. */
+  text-overflow: ellipsis;
   transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
 }
 
@@ -1516,16 +1600,29 @@ body:has(.is-reordering) .tooltip {
 /* The header row and the rows are separate grids — the rows are drawn by the
    windowed list and rewritten on scroll, the header is not — so both read one
    template, set as a custom property by the renderer. The header scrolls with
-   the host from js/delta-table.js; both reserve the same scrollbar gutter, or
-   the host's vertical bar would take width the header still has and every
-   column would sit a scrollbar's width out of line. */
+   the host from js/delta-table.js, which also pads it by the width of the
+   host's vertical bar when there is one, or that bar would take width the
+   header still has and every column would sit a scrollbar's width out of line.
+
+   That used to be a `scrollbar-gutter: stable` on both, and it went wrong two
+   ways. The header's border was drawn outside its gutter while each row's was
+   drawn inside the host's, so the header's frame ran ~10px past the rows under
+   it; and the reserved strip was there with nothing to scroll, leaving the
+   whole table that much narrower than the fields above it. The frame is the
+   header *row's* now, so it ends wherever the rows do. */
 .dt-head {
   overflow: hidden;
-  scrollbar-gutter: stable;
+}
+
+.dt-hrow {
   border: 1px solid var(--border);
   border-bottom: none;
   border-radius: 6px 6px 0 0;
   background: var(--bg3);
+}
+
+.dt-hq {
+  border-top-left-radius: 5px;
 }
 
 .dt-head[hidden] {
@@ -1572,7 +1669,6 @@ body:has(.is-reordering) .tooltip {
 .tlist.is-table {
   gap: 0;
   overflow: auto;
-  scrollbar-gutter: stable;
 }
 
 /* The frame is drawn by the rows, not by the host. The host is the panel's
@@ -2035,7 +2131,7 @@ button.dt-cell:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1;
+  /* flex: set with the left panel's title, near the top of this file. */
 }
 
 .rp-section-title::after {
@@ -2061,13 +2157,25 @@ button.dt-cell:hover {
 }
 
 /* Match the left panel's count chip: fill only, no ring. Scoped to the
-   header so the .badge/.bd-* pills used elsewhere keep their own look. */
+   header so the .badge/.bd-* pills used elsewhere keep their own look.
+
+   It gives way before the title does (100 against the title's 1 — see the
+   note over the title's flex): the Language card names the machine here, and
+   some names are phrases — "Pushdown Transducer" pushed the PDT's collapse
+   arrow 17px past the right panel's edge at its default width. */
 .rp-section-header .badge {
   border-color: transparent;
   font-size: .62rem;
   padding: 1px 7px;
   letter-spacing: .03em;
-  flex-shrink: 0;
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* 12 + 1px padding + 1px border each side: the count chip's 16px. On its
+     own line height the badge's sans face drew it a pixel taller. */
+  line-height: 12px;
 }
 
 .rp-collapsible.collapsed .rp-toggle-arrow {
@@ -2085,7 +2193,7 @@ button.dt-cell:hover {
 }
 
 .rp-section-body {
-  padding: 4px 14px 14px;
+  padding: var(--sec-body-pad);
 }
 
 /* ─── ALGO SEARCH ─── */
@@ -2183,15 +2291,29 @@ button.dt-cell:hover {
    be guessed at from pointer travel and the keyboard would be left with no
    way to reorder at all. See js/panel-sections-ui.js.
 
-   It follows .lp-row-btn's rule — revealed on :hover and :focus-within,
-   and always shown where there is no hover to reveal it with. */
+   It follows .lp-row-btn's rule — revealed on :hover and on keyboard focus,
+   and always shown where there is no hover to reveal it with. Keyboard focus
+   is `:focus-visible`, not `:focus-within`: the header is `tabindex="0"`, so
+   a click that collapses it also focuses it, and nothing on the canvas takes
+   focus back — the grip and the pop-out stayed lit on whichever header was
+   clicked last.
+
+   It sits in the header's left padding rather than in the row. In the row it
+   held 18px — its width and a gap — through every moment it was invisible,
+   which pushed each title in from the body below it and, at the panel's
+   220px minimum, pushed TRANSITIONS δ's collapse arrow out past the edge.
+   Out of the flow it costs the row nothing and still appears without moving
+   anything. The header is `position: relative` (css/chrome-polish.css). */
 .panel-sec-grip {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  translate: 0 -50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
+  width: 12px;
   height: 18px;
-  margin-left: -4px;
   padding: 0;
   border: none;
   border-radius: 3px;
@@ -2206,9 +2328,9 @@ button.dt-cell:hover {
 }
 
 .lp-section-header:hover .panel-sec-grip,
-.lp-section-header:focus-within .panel-sec-grip,
+.lp-section-header:is(:focus-visible, :has(:focus-visible)) .panel-sec-grip,
 .rp-section-header:hover .panel-sec-grip,
-.rp-section-header:focus-within .panel-sec-grip {
+.rp-section-header:is(:focus-visible, :has(:focus-visible)) .panel-sec-grip {
   opacity: 1;
 }
 
@@ -2597,9 +2719,9 @@ button.dt-cell:hover {
 }
 
 .lp-section-header:hover .panel-float-btn,
-.lp-section-header:focus-within .panel-float-btn,
+.lp-section-header:is(:focus-visible, :has(:focus-visible)) .panel-float-btn,
 .rp-section-header:hover .panel-float-btn,
-.rp-section-header:focus-within .panel-float-btn {
+.rp-section-header:is(:focus-visible, :has(:focus-visible)) .panel-float-btn {
   opacity: 1;
 }
 
