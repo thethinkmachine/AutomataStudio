@@ -2841,11 +2841,6 @@ button.dt-cell:hover {
   padding: 5px 12px;
 }
 
-/* `.btn-g` sets a display of its own, which beats the UA's [hidden]. */
-.panel-float-return[hidden] {
-  display: none;
-}
-
 /* ─── desktop and Electron only ───
    Not a breakpoint but a device test, and the same one js/panel-float.js asks:
    a window wants a pointer that can hover a 6px resize band and hold a title

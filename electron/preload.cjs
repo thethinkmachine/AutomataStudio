@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   installUpdate: () => ipcRenderer.send('install-update'),
   // The state the page may have missed. update-status is broadcast into a window
   // that is still loading, and the startup check can resolve before this script's
-  // consumer exists — see lastUpdateStatus in electron/main.cjs. Resolves null when
+  // consumer exists — see lastStatus in electron/updates.cjs. Resolves null when
   // nothing has been reported yet.
   updateState: () => ipcRenderer.invoke('update-state'),
   // callback({ state, version?, percent?, message?, silent? }); returns an
