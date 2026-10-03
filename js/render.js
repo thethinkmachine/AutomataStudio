@@ -3,7 +3,7 @@ import { applyEdgeDirectionHighlight, clearEdgeDirectionHighlight, clearSelectio
 import { renderDividers } from './dividers.js';
 import { PILL_GAP, PILL_HEIGHT, PILL_ROW_H, buildLayoutContext, edgeGeometryFor, estimatePillLabelSize, estimateTextLabelSize, pillPartWidth, selfLoopLabelPoint, selfLoopPath, startNodeId } from './geometry.js';
 import { commit, snapshot } from './history.js';
-import { setListItems } from './panel-list.js';
+import { publishListHeight, setListItems } from './panel-list.js';
 import { leaveTransTable, renderTransTable, syncTransViewToggle, transView } from './delta-table.js';
 import { cullNeedsRepaint, cullViewport, cullingActive, edgeLabelLOD, invalidateCull, rectHasPoint, stateLabelLOD, suspendCulling } from './viewport.js';
 import { scheduleMinimap } from './minimap.js';
@@ -21,6 +21,7 @@ import { openEdgeLabelEditor } from './edge-label-editor.js';
 import { edgeTipFor, getState, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
 import { Change, changed, emit, subscribe } from './store.js';
 import { createMemo, reactiveRoot } from './reactive.js';
+import { setSectionStatus } from './section-status.js';
 import { followCanvas } from './draft-layer.js';
 import { triggerMath } from './reference.js';
 import { filterStates, filterTransitions } from './ui.js';
@@ -1839,6 +1840,18 @@ export function updateLPanelSectionMeta() {
   setCount('alpha-count-sigma', App.sigma?.size || 0);
   setCount('lp-count-stack', App.stackAlpha?.size || 0);
   setCount('lp-count-output', App.outputAlpha?.size || 0);
+  // Folded, a section of two or three alphabets said only "ALPHABETS": the
+  // header's count is hidden once each row carries its own (a total over Σ, Γ
+  // and Δ would be a number about nothing), and the rows fold away with the
+  // body. So the folded header names each one — the same test for "more than
+  // one" that syncAlphabetSection draws the rows by.
+  const cfg = getMachineConfig(App.machine);
+  const alphabets = [['Σ', App.sigma]];
+  if (cfg.hasStack) alphabets.push(['Γ', App.stackAlpha]);
+  if (cfg.isTransducer) alphabets.push(['Δ', App.outputAlpha]);
+  setSectionStatus('lp-alphabet', alphabets.length > 1
+    ? alphabets.map(([name, set]) => `${name}${set?.size || 0}`).join(' · ')
+    : '');
   // The counts follow the lists under them, which show this level rather than
   // the whole machine. The formal definition beside them still reports |Q| for
   // the machine, which is the honest number there: a block is a drawing, and
@@ -1897,6 +1910,7 @@ export function updateBlockList() {
   const rows = allBlocks();
   if (!rows.length) {
     host.innerHTML = '<div class="empty-msg">No blocks</div>';
+    publishListHeight(host);
     return;
   }
   const here = (App.scope || [])[(App.scope || []).length - 1] || null;
@@ -1911,6 +1925,8 @@ export function updateBlockList() {
         <div class="bi-sub">${b.path ? escapeHtml(b.path) + ' · ' : ''}${b.members} state${b.members === 1 ? '' : 's'}${b.children ? ` · ${b.children} block${b.children === 1 ? '' : 's'}` : ''}</div>
       </div>
     </button>`).join('');
+  // Its height, for the dock fill's floor — see publishListHeight.
+  publishListHeight(host);
 }
 
 // Every row in the States Q and Transitions δ lists ends in the same pair of

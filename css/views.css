@@ -471,6 +471,39 @@
   margin-bottom: var(--canvas-sill);
 }
 
+/* The chrome's shadow on the well. The header, both panels and the sill sit
+   around the canvas as one raised surface, and the well had no edge but its
+   radius — so on a dark theme, where --bg2 and --bg are a few levels apart,
+   nothing said which was above which. A soft inset shade along each edge says
+   it: strongest under the header, a little lighter off the panels, faintest
+   up from the sill, the way light from above would fall.
+
+   An overlay rather than a shadow on .canvas-area itself, because an inset
+   shadow paints in the box's own background — under the grid, the diagram
+   and everything else in the well — and a shadow cast by the chrome has to
+   fall across what is under it. z-index 40 is above the diagram and below
+   all of the floating chrome (49 and up), so the toolbox, the minimap and the
+   label editor are never shaded. It takes no pointer, and it is static: a
+   pan or zoom never touches it.
+
+   The ink is --tab-overflow-shadow, the app's "there is more past this edge"
+   colour, which every theme already tunes for its own ground — a literal
+   black is invisible on the dark palettes and a smudge on the light ones. */
+.canvas-area::after {
+  --well-ink: color-mix(in srgb, var(--tab-overflow-shadow) 72%, transparent);
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    inset 0 9px 10px -9px var(--well-ink),
+    inset 8px 0 10px -8px var(--well-ink),
+    inset -8px 0 10px -8px var(--well-ink),
+    inset 0 -6px 8px -7px var(--well-ink);
+}
+
 /* A real element, not .canvas-area::before, and that is the point of it. The
    camera variables below change on every frame of a pan or zoom, and custom
    properties inherit: set on #canvas-wrap they changed an inherited value on

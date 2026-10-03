@@ -46,9 +46,16 @@
 .lp-section-header:hover,
 .rp-section-header:hover { background: color-mix(in srgb, var(--surface) 78%, transparent); }
 
+/* No `scrollbar-gutter: stable`. A reserved gutter is outside the scrollport,
+   where nothing inside can paint, so every section rule and every header's
+   hover fill stopped ~10px short of the panel edge while the panel header's
+   rule above them ran the full width. And the strip was nearly always empty:
+   the docked panel hands its spare height to one list (syncDockFill) rather
+   than overflowing, so the bar only appears once the open sections really are
+   taller than the panel — and then it takes its width beside them the
+   ordinary way. */
 .lpanel-content,
 .rpanel-content {
-  scrollbar-gutter: stable;
   scrollbar-color: var(--sb-thumb) transparent;
 }
 

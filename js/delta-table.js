@@ -306,7 +306,15 @@ function setVars(el, tpl) {
 
 function syncHeadScroll(host) {
   const head = $('trans-table-head');
-  if (head && host) head.scrollLeft = host.scrollLeft || 0;
+  if (!head || !host) return;
+  head.scrollLeft = host.scrollLeft || 0;
+  // The header stops where the rows do: short of the host's vertical bar when
+  // there is one, at the panel's edge when there is not. Both used to reserve
+  // a gutter instead, which kept the columns in line but left the whole table
+  // a scrollbar's width narrower than the fields above it whether or not
+  // anything scrolled.
+  const bar = Math.max(0, (host.offsetWidth || 0) - (host.clientWidth || 0));
+  if (head.style) head.style.paddingRight = bar ? `${bar}px` : '';
 }
 
 // ── the host's events ─────────────────────────────────────────────
@@ -365,6 +373,14 @@ function wireHost(host) {
     // A picker is anchored to a cell, and the cell has just moved.
     closeDeltaPicker();
   }, { passive: true });
+  // The vertical bar comes and goes without a redraw — a section folding
+  // elsewhere hands this host more or less height, a filter shortens it — and
+  // its arrival narrows the host's content box, which is what this observes.
+  if (typeof ResizeObserver === 'function') {
+    new ResizeObserver(() => {
+      if (host.classList.contains('is-table')) syncHeadScroll(host);
+    }).observe(host);
+  }
 }
 
 // ── editing a cell ────────────────────────────────────────────────

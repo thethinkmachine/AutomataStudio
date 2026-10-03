@@ -113,6 +113,29 @@ test('one alphabet reads as it always did; several become labelled rows', () => 
   assert.equal(context.$('stack-sec').style.display, 'none');
 });
 
+test('a folded section of several alphabets names each one, since its count is hidden', () => {
+  // `.is-multi` hides the header's count in favour of one per row, and the
+  // rows fold away with the body — so folded, the header said only
+  // "ALPHABETS". One alphabet keeps its count and says nothing extra.
+  harness.resetApp();
+  withHeader('lp-alphabet');
+  context.applyMachineSwitch('DFA');
+  context.App.sigma = new Set(['a', 'b']);
+  context.updateLPanelSectionMeta();
+  assert.equal(context.sectionStatus('lp-alphabet').text, '', 'one alphabet: the count already says it');
+
+  context.applyMachineSwitch('PDT');
+  context.App.sigma = new Set(['a', 'b']);
+  context.App.stackAlpha = new Set(['Z', 'A', 'B']);
+  context.App.outputAlpha = new Set(['0', '1']);
+  context.updateLPanelSectionMeta();
+  assert.equal(context.sectionStatus('lp-alphabet').text, 'Σ2 · Γ3 · Δ2');
+
+  context.applyMachineSwitch('DPDA');
+  context.updateLPanelSectionMeta();
+  assert.match(context.sectionStatus('lp-alphabet').text, /^Σ\d+ · Γ\d+$/, 'only the alphabets this machine has');
+});
+
 test('undoing across a machine switch puts the rows back the way the switch does', () => {
   harness.resetApp();
   context.applyMachineSwitch('DFA');

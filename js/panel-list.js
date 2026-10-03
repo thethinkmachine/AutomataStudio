@@ -117,6 +117,7 @@ function draw(rec, force) {
       host.innerHTML = rec.empty;
       host.dataset.lwState = 'empty';
       rec.start = rec.end = -1;
+      publishListHeight(rec.host);
     }
     return;
   }
@@ -131,6 +132,7 @@ function draw(rec, force) {
     rec.start = 0; rec.end = n;
     host.scrollTop = keep;
     measure(rec);
+    publishListHeight(rec.host);
     return;
   }
 
@@ -155,6 +157,60 @@ function draw(rec, force) {
   rec.start = first; rec.end = last;
   host.scrollTop = keep;
   measure(rec);
+  // A scroll moves the window, not the spacers' total, so only a draw that
+  // changed what the list holds has a new height to report.
+  if (force) publishListHeight(rec.host);
+}
+
+// The list's floor, for the dock fill in css/panels.css: the fill grows into
+// the panel's spare height only as far as it has rows, and is never squeezed
+// below this — the cap, or the list's own height when that is less. A short
+// list keeps every row; a long one keeps the cap and scrolls.
+//
+// CSS cannot take "as tall as the content but no more than 168px" from a
+// scroll container, so it is measured: from the first child's top to the last
+// child's bottom rather than from scrollHeight, which never reports less than
+// the box — a floor read from that could only ratchet up, and a list filtered
+// down to three rows would keep the height it had at three hundred.
+//
+// When the list is the fill, its *section's* floor is set too — this list's
+// floor plus everything else in the section (header, search row, padding),
+// which is content-sized, so it is the section's height less the list's. That
+// cannot be left to the browser: a flex item's automatic minimum is its
+// content's height, which for a 200-state list is twelve thousand pixels, so
+// the section takes `min-height: 0` and this number in its place.
+//
+// Exported for a list drawn some other way: the Blocks list is one innerHTML
+// string with no windowing, and it takes the dock fill as readily as these do.
+export function publishListHeight(host) {
+  if (!host || !host.style || typeof host.style.setProperty !== 'function') return;
+  const kids = host.children || [];
+  const first = kids[0];
+  const last = kids[kids.length - 1];
+  if (!first || typeof first.getBoundingClientRect !== 'function') return;
+  let h = last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
+  if (!(h > 0)) return;
+  const view = host.ownerDocument && host.ownerDocument.defaultView;
+  let cap = Infinity;
+  if (view && typeof view.getComputedStyle === 'function') {
+    const cs = view.getComputedStyle(host);
+    h += (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    const c = parseFloat(cs.getPropertyValue('--lp-list-max-h'));
+    if (c > 0) cap = c;
+  }
+  const floor = Math.ceil(Math.min(h, cap));
+  host.style.setProperty('--lw-floor', floor + 'px');
+
+  const fill = host.classList && host.classList.contains('panel-dock-fill-region') && typeof host.closest === 'function'
+    ? host.closest('.panel-dock-fill') : null;
+  if (fill && fill.style && typeof fill.getBoundingClientRect === 'function') {
+    // Measured with the old floor lifted: the section's height includes it, so
+    // a stale floor (a longer list a moment ago, another machine) would be read
+    // back as header and padding and keep itself alive.
+    if (typeof fill.style.removeProperty === 'function') fill.style.removeProperty('--dock-fill-min');
+    const rest = fill.getBoundingClientRect().height - host.getBoundingClientRect().height;
+    if (rest >= 0) fill.style.setProperty('--dock-fill-min', Math.ceil(rest + floor) + 'px');
+  }
 }
 
 // Pitch is row height plus the flex gap, taken from two consecutive drawn rows

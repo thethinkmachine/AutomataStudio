@@ -52,7 +52,7 @@ import {
   beginFloatSnap, commitFloatGeom, dockSection, endFloatSnap, floatLayerRect,
   floatSection, floatingEnabled, moveFloatTo, syncPanelEmpty
 } from './panel-float.js';
-import { redrawAllLists } from './panel-list.js';
+import { publishListHeight, redrawAllLists } from './panel-list.js';
 
 /** Pointer travel, in px, before a press becomes a drag. */
 const DRAG_THRESHOLD = 3;
@@ -214,6 +214,10 @@ export function syncDockFill(side) {
     const on = id === fill;
     el.classList.toggle('panel-dock-fill', on);
     if (region && region.classList) region.classList.toggle('panel-dock-fill-region', on);
+    // The fill grows only as far as its rows, and its floor is their height
+    // (css/panels.css). A list drawn while its section was folded measured
+    // nothing then, so it is measured again now that it is open.
+    if (on && region) publishListHeight(region);
   }
   // A list is windowed against its own height at draw time, and a collapse
   // elsewhere in the panel changes that height without the list scrolling or
