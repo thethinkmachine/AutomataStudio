@@ -1,0 +1,53 @@
+{
+  "machine": "NPDA",
+  "sigma": [
+    "a",
+    "b"
+  ],
+  "stackAlpha": [
+    "A",
+    "B",
+    "Z"
+  ],
+  "states": [
+    {
+      "id": "s1",
+      "x": 100,
+      "y": 200,
+      "name": "push"
+    },
+    {
+      "id": "s2",
+      "x": 300,
+      "y": 200,
+      "name": "pop"
+    },
+    {
+      "id": "s3",
+      "x": 500,
+      "y": 200,
+      "name": "acc"
+    }
+  ],
+  "startId": "s1",
+  "accepts": [
+    "s3"
+  ],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "a", "pop": "Z", "push": "AZ" },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "a", "pop": "A", "push": "AA" },
+    { "id": "t3", "from": "s1", "to": "s1", "symbol": "a", "pop": "B", "push": "AB" },
+    { "id": "t4", "from": "s1", "to": "s1", "symbol": "b", "pop": "Z", "push": "BZ" },
+    { "id": "t5", "from": "s1", "to": "s1", "symbol": "b", "pop": "A", "push": "BA" },
+    { "id": "t6", "from": "s1", "to": "s1", "symbol": "b", "pop": "B", "push": "BB" },
+    { "id": "t7", "from": "s1", "to": "s2", "symbol": "ε", "pop": "Z", "push": "Z" },
+    { "id": "t8", "from": "s1", "to": "s2", "symbol": "ε", "pop": "A", "push": "A" },
+    { "id": "t9", "from": "s1", "to": "s2", "symbol": "ε", "pop": "B", "push": "B" },
+    { "id": "t10", "from": "s2", "to": "s2", "symbol": "a", "pop": "A", "push": "ε" },
+    { "id": "t11", "from": "s2", "to": "s2", "symbol": "b", "pop": "B", "push": "ε" },
+    { "id": "t12", "from": "s2", "to": "s3", "symbol": "ε", "pop": "Z", "push": "Z" }
+  ],
+  "config": {
+    "pdaParadigm": "explicit"
+  }
+}

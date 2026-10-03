@@ -1,0 +1,49 @@
+{
+  "machine": "2PDA",
+  "sigma": ["a", "b", "c"],
+  "stackAlpha": ["A", "B", "Z"],
+  "states": [
+    { "id": "s1", "x": 140, "y": 200, "name": "count a" },
+    { "id": "s2", "x": 400, "y": 200, "name": "a vs b" },
+    { "id": "s3", "x": 660, "y": 200, "name": "b vs c" },
+    { "id": "s4", "x": 400, "y": 420, "name": "acc" }
+  ],
+  "startId": "s1",
+  "accepts": ["s4"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "a", "pop": "ε", "push": "A", "pop2": "ε", "push2": "ε" },
+    { "id": "t2", "from": "s1", "to": "s2", "symbol": "b", "pop": "A", "push": "ε", "pop2": "ε", "push2": "B" },
+    { "id": "t3", "from": "s2", "to": "s2", "symbol": "b", "pop": "A", "push": "ε", "pop2": "ε", "push2": "B" },
+    { "id": "t4", "from": "s2", "to": "s3", "symbol": "c", "pop": "ε", "push": "ε", "pop2": "B", "push2": "ε" },
+    { "id": "t5", "from": "s3", "to": "s3", "symbol": "c", "pop": "ε", "push": "ε", "pop2": "B", "push2": "ε" },
+    { "id": "t6", "from": "s3", "to": "s4", "symbol": "ε", "pop": "Z", "push": "Z", "pop2": "Z", "push2": "Z" },
+    { "id": "t7", "from": "s1", "to": "s4", "symbol": "ε", "pop": "Z", "push": "Z", "pop2": "Z", "push2": "Z" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 620, "y": 60, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "aⁿbⁿcⁿ — the canonical language ONE stack can never recognize. Stack 1 checks a's = b's (push A per a, pop per b); stack 2 checks b's = c's (push B per b, pop per c). Two stacks equal a Turing machine."
+    },
+    {
+      "id": "n2", "x": 620, "y": 340, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Acceptance needs BOTH stacks down to bottom Z with input consumed. Watch both stores in the tracker: one drains while the other fills, then the second drains."
+    }
+  ],
+  "config": {
+    "pdaParadigm": "explicit"
+  },
+  "meta": {
+    "title": "aⁿbⁿcⁿ — beyond one stack",
+    "blurb": "The language that defines the limit of context-free: equal runs of a, b, and c. Stack 1 matches a's to b's while stack 2 matches b's to c's — two stacks reach Turing power.",
+    "inputs": [
+      { "w": "abc", "expect": "accept" },
+      { "w": "aabbcc", "expect": "accept" },
+      { "w": "aaabbbccc", "expect": "accept" },
+      { "w": "aabbc", "expect": "reject" },
+      { "w": "abcc", "expect": "reject" },
+      { "w": "acb", "expect": "reject" }
+    ]
+  }
+}
