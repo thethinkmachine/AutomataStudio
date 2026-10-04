@@ -22,3 +22,22 @@ test('every icon-only button with a tooltip also has an accessible name', () => 
   }
   assert.deepEqual(unnamed, [], `icon buttons announced as just "button": ${unnamed.join(', ')}`);
 });
+
+// The header lockup is the way to About, and its hover byline is a miniature
+// of that dialog's header. Two copies of one credit drift apart unless
+// something holds them together: the name is typed in both places.
+test('the header logo opens About and credits the same author', () => {
+  const header = html.match(/<header>[\s\S]*?<\/header>/)[0];
+  const logo = header.match(/<button\b([^>]*class="logo-wrapper"[^>]*)>([\s\S]*?)<\/button>/);
+  assert.ok(logo, 'the header lockup is a button');
+  const [, attrs, inner] = logo;
+  assert.match(attrs, /onclick="openAboutModal\(\)"/, 'clicking the logo opens About');
+  assert.match(attrs, /aria-label="[^"]+"/, 'the button names itself, since its visible text is aria-hidden');
+
+  const byline = inner.match(/<span class="logo-author logo-byline">by ([^<]+)<\/span>/);
+  assert.ok(byline, 'the lockup carries a byline');
+  const about = html.match(/<div class="logo-author">([^<]+)<\/div>/);
+  assert.ok(about, 'the About dialog credits its author');
+  assert.equal(byline[1], about[1], 'the hover byline names the author About does');
+  assert.ok(attrs.includes(about[1]), 'and so does the label a screen reader hears');
+});

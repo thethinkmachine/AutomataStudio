@@ -670,7 +670,9 @@ function buildMenu() {
     ...(isMac ? [{
       label: app.name,
       submenu: [
-        { role: 'about' },
+        // The app's own About, not Electron's stock panel: the Help menu opens
+        // this one too, and the stock panel has no author, licence or blurb.
+        { label: 'About AutomataStudio', click: () => sendMenuAction('about') },
         { type: 'separator' },
         { label: "Install 'automata' Command in PATH", click: () => installCliCommand() },
         { label: "Uninstall 'automata' Command from PATH", click: () => uninstallCliCommand() },

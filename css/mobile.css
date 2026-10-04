@@ -1475,9 +1475,11 @@
 
 /* Below this the wordmark is 100px of a 390px header spent saying something
    the mark already says. The mark stays — it is the logo, and an app with no
-   mark anywhere reads as a page that failed to finish loading. */
+   mark anywhere reads as a page that failed to finish loading. The byline
+   goes with it, since it hangs off the wordmark; the mark alone still opens
+   About, where the credit is. */
 @media (max-width: 520px) {
-  .hdr-left .logo {
+  .hdr-left .logo-stack {
     display: none;
   }
 

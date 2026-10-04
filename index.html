@@ -20,6 +20,7 @@
     gtag('config', 'G-R1LKJ6JFEF');
   </script>
   <title>AutomataStudio</title>
+  <meta name="description" content="An IDE for designing, simulating and analysing automata and formal languages.">
   <link rel="icon" type="image/svg+xml" href="svgs/favicon.svg">
   <meta name="theme-color" content="#eef0f4">
   <link
@@ -82,10 +83,19 @@
        are auxiliary and open as overlays via the Tools menu. -->
   <header>
     <div class="hdr-left">
-      <div class="logo-wrapper">
+      <!-- The lockup is the way to About. Hovering or focusing it shows the
+           About dialog's own header in miniature — wordmark over byline — so
+           what the reveal previews is what the click opens. The byline is
+           absolutely placed under the wordmark: it adds no width, so the tab
+           strip beside the logo never moves. Its text is pinned to the About
+           dialog's by tests/markup.test.js. -->
+      <button type="button" class="logo-wrapper" onclick="openAboutModal()" aria-label="About AutomataStudio, by Shreyan Chaubey">
         <svg class="logo-mark" aria-hidden="true"><use href="#logo-mark" /></svg>
-        <div class="logo">Automata<em>Studio</em></div>
-      </div>
+        <span class="logo-stack" aria-hidden="true">
+          <span class="logo">Automata<em>Studio</em></span>
+          <span class="logo-author logo-byline">by Shreyan Chaubey</span>
+        </span>
+      </button>
     </div>
 
     <div class="tab-bar-wrap" id="tab-bar-wrap">
@@ -2427,8 +2437,7 @@
           <div class="logo-author">Shreyan Chaubey</div>
         </div>
       </div>
-      <p class="modal-hint about-blurb">A visual editor and simulator for finite automata, pushdown
-        automata, Turing machines and their grammars.</p>
+      <p class="modal-hint about-blurb">An IDE for designing, simulating and analysing automata and formal languages.</p>
       <div class="modal-row">
         <span class="modal-lbl">Version</span>
         <span class="about-val" id="about-version">&mdash;</span>
