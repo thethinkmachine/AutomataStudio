@@ -1,6 +1,6 @@
 {
   "name": "automatastudio",
-  "version": "2.9.0",
+  "version": "3.1.3",
   "description": "An IDE for designing, simulating and analysing automata and formal languages.",
   "author": {
     "name": "Shreyan Chaubey",
@@ -31,6 +31,7 @@
     "dev": "vite",
     "build": "vite build",
     "test": "node --conditions=browser --conditions=development --test",
+    "version": "node scripts/sync-version.mjs && git add CITATION.cff README.md",
     "cli": "node cli/automata.mjs",
     "cli:build": "vite build --config vite.cli.config.js",
     "cli:docs": "node --conditions=browser --conditions=development cli/gen-docs.mjs",

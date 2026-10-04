@@ -22,6 +22,8 @@ npm run cli -- --help      # the `automata` command line, from source (bin: cli/
 npm run cli:build          # vite build --config vite.cli.config.js -> dist-cli/ (runs under plain node)
 npm run cli:docs           # docs/cli-reference.md and the guide's output blocks, from the real commands
 npm run media:cli          # re-film the guide's terminal clips from docs/media/tapes/ (-- <tape> for one)
+npm version 3.2.0          # release: bump, sync the citations, commit and tag v3.2.0 in one step
+git push --follow-tags     # ... and push the commit with its tag, which builds the release
 ```
 
 `automata` is the app's engine from a terminal — run, test, trace, lint, compare, convert and grade machines; HOA/BA/JFLAP formats; learning; an MCP server; and Turing-machine halting proofs. `electron:build` builds `dist-cli/` too, and the installed app ships it with launchers in `resources/cli/`. See [The command line](.claude/skills/cli/SKILL.md).
@@ -31,6 +33,8 @@ npm run media:cli          # re-film the guide's terminal clips from docs/media/
 `npm run media:cli` is run by hand too, and its output committed: each clip in [docs/cli.md](docs/cli.md) is a tape — a script of commands typed into a real shell — filmed in headless Chromium, and the app tape opens the desktop app in a profile of its own. See [The clips](.claude/skills/cli/SKILL.md).
 
 `npm run bench` is also run by hand and never gates CI: timings move with the machine, so a build that failed on them would fail at random. Run it before and after a change to the engine, the player, the canvas or the space-time diagram; it marks a case only when it moved by more than its own noise, and marks a changed verdict whatever the timing did. See [The benchmark](.claude/skills/perf/SKILL.md).
+
+**A release is `npm version`, never a hand-made tag.** package.json is the version's one source: the website's About and `automata --version` read it at build time, and CITATION.cff and the README's two citations repeat it as text. `npm version` runs [scripts/sync-version.mjs](scripts/sync-version.mjs) as its `version` hook, so the bump, those copies and the tag land in one commit; [tests/version.test.js](tests/version.test.js) fails when they disagree, and the release workflow refuses a tag that does not match package.json before it builds anything. Tags used to be the only place the version lived — the workflow rewrote package.json on the runner and never committed it — and they reached v3.1.3 while the website and the citation still said 2.9.0.
 
 CI: `.github/workflows/deploy.yml` publishes `dist/` to GitHub Pages on push to `main`. `.github/workflows/electron-build.yml` packages win/mac/linux installers on every push and publishes a GitHub Release for `v*` tags. `.github/workflows/library-rebuild.yml` runs the tests and then starts the machine library's Publish workflow when `main` changes anything the library build reads (`js/`, `scripts/library/`) — the library is built by this repo's `main`, but its own workflows only run on its own events. It needs a `LIBRARY_DISPATCH_TOKEN` secret, and says so rather than failing when there is none.
 
@@ -343,4 +347,3 @@ It also **records `document` listeners with their phase**, and `dispatchDocument
 
 - `js/examples/*.json` are fetched at runtime by name, so they are copied verbatim into `dist/` by a small plugin in [vite.config.js](vite.config.js) rather than hashed as bundler assets.
 - The build no longer runs `javascript-obfuscator`. It roughly doubled the bundle and cost ~26% time-to-interactive on a project whose source is public; the desktop build already skipped it. Re-add it as a Vite plugin if that trade is wanted back.
-- `exportOpenSamples` in `export-ui.js` has no callers.
