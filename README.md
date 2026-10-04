@@ -2,7 +2,7 @@
 
 # AutomataStudio
 
-**An IDE for designing, simulating and analysing automata.**
+**An IDE for designing, simulating and analysing automata and formal languages.**
 
 Draw a machine, run it step by step, derive its language, put it through the textbook
 constructions, and take it out as a diagram, LaTeX or working code. It covers 30

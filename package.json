@@ -1,9 +1,9 @@
 {
   "name": "automatastudio",
   "version": "2.9.0",
-  "description": "A web-based visualizer and simulator for finite state machines, pushdown automata, and Turing machines.",
+  "description": "An IDE for designing, simulating and analysing automata and formal languages.",
   "author": {
-    "name": "Shreyan C",
+    "name": "Shreyan Chaubey",
     "email": "shreyan.chaubey@gmail.com"
   },
   "main": "electron/main.cjs",
@@ -50,6 +50,7 @@
   "build": {
     "appId": "com.automataplayground.app",
     "productName": "AutomataStudio",
+    "copyright": "Copyright (c) 2026 Shreyan Chaubey",
     "publish": [
       {
         "provider": "github",

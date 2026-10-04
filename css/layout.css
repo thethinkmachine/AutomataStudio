@@ -199,12 +199,29 @@ body:has(.rpanel.is-empty) .hdr-right {
    centre. Centring both puts the mark's middle within 0.5px of the wordmark's
    cap-height middle, which is the alignment the eye actually reads. */
 .logo-wrapper {
+  /* A button only so it is focusable and opens About; it must not look like
+     one. `font` comes first because the shorthand resets line-height, and
+     the stack below is measured at line-height 1. The padding gives the
+     focus ring room around the revealed byline, and the negative margin hands
+     the width back so the lockup sits exactly where the bare div used to. */
+  font: inherit;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   line-height: 1;
-  cursor: default;
   user-select: none;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.logo-wrapper:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
 }
 
 /* The <use> in index.html pulls in #logo-mark, whose strokes are `currentColor`
@@ -229,7 +246,7 @@ body:has(.rpanel.is-empty) .hdr-right {
 /* margin: 0 because the About dialog's copy of this lockup is the <h2> that
    names the dialog — it has no .modal-title to carry that job — and a UA
    heading margin there would push the byline off the wordmark. The header's
-   copy is a div and never had one to reset. */
+   copy is a span and never had one to reset. */
 .logo {
   font-family: var(--sans);
   font-size: 1.15rem;
@@ -247,12 +264,79 @@ body:has(.rpanel.is-empty) .hdr-right {
 }
 
 .logo-author {
-  font-family: var(--mono);
-  font-size: 0.6rem;
+  font-family: var(--sans);
+  font-size: 0.68rem;
+  font-weight: 500;
   color: var(--text3);
   white-space: nowrap;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.01em;
   padding-left: 2px;
+}
+
+/* ─── The byline reveal ───
+   Hover or focus turns the lockup into the About dialog's header: wordmark
+   over byline. Only transforms and opacity move, so nothing reflows — the
+   byline hangs below the wordmark out of flow, adding no width or height, and
+   the whole stack lifts 6px so the pair centres on the mark the way the
+   single wordmark did. 6px is half of the byline's 2px gap plus its 0.68rem
+   line, rounded.
+
+   The enter waits 60ms and the leave does not: a pointer sweeping across the
+   header (or towards the window controls in the desktop app) should not
+   flicker the name on its way past. Hover is gated on `(hover: hover)`
+   because a touch browser keeps :hover stuck on after a tap, which would
+   leave the byline showing behind the About dialog it just opened. */
+.logo-stack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  transition: transform .18s cubic-bezier(.2, .7, .2, 1);
+}
+
+.logo-byline {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 2px);
+  padding-left: 0;
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity .14s ease-out, transform .18s cubic-bezier(.2, .7, .2, 1);
+  pointer-events: none;
+}
+
+.logo-wrapper:focus-visible .logo-stack {
+  transform: translateY(-6px);
+}
+
+.logo-wrapper:focus-visible .logo-byline {
+  opacity: 1;
+  transform: none;
+}
+
+@media (hover: hover) {
+  .logo-wrapper:hover .logo-stack {
+    transform: translateY(-6px);
+    transition-delay: 60ms;
+  }
+
+  .logo-wrapper:hover .logo-byline {
+    opacity: 1;
+    transform: none;
+    transition-delay: 60ms;
+  }
+}
+
+/* Reduced motion keeps the fade and drops the movement: the stack still has
+   to make room, so it jumps there instead of travelling. */
+@media (prefers-reduced-motion: reduce) {
+  .logo-stack {
+    transition: none;
+  }
+
+  .logo-byline {
+    transform: none;
+    transition: opacity .14s ease-out;
+  }
 }
 
 /* ─── HEADER MENU (More, and the Explore group inside it) ───
