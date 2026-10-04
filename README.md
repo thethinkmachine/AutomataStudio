@@ -335,14 +335,14 @@ please cite it. GitHub's **"Cite this repository"** button (from
   author  = {Chaubey, Shreyan},
   title   = {{AutomataStudio}: An {IDE} for Designing, Simulating and Analysing Automata},
   year    = {2026},
-  version = {3.1.3},
+  version = {3.1.4},
   url     = {https://github.com/thethinkmachine/AutomataStudio},
   note    = {Software}
 }
 ```
 
 > Chaubey, S. (2026). *AutomataStudio: An IDE for designing, simulating and analysing
-> automata* (Version 3.1.3) [Computer software].
+> automata* (Version 3.1.4) [Computer software].
 > https://github.com/thethinkmachine/AutomataStudio
 
 Cite the version you actually used, so that others can reproduce your results. If you
