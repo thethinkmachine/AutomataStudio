@@ -152,8 +152,13 @@ export function performClear() {
   resetSim(); emit(Change.GRAPH);
 }
 
+// The canvas's toast sits on the canvas, under the tool window while one is
+// open — so "Grammar copied", "Could not download" and every other message
+// sent from inside the window went unread. The window has its own.
 export function showStatus(msg) {
-  const b = $('status-bar'); b.textContent = msg; b.classList.add('show');
+  const inWindow = document.body && document.body.classList.contains('aux-open');
+  const b = (inWindow && $('aux-status')) || $('status-bar');
+  b.textContent = msg; b.classList.add('show');
   clearTimeout(b._t); b._t = setTimeout(() => b.classList.remove('show'), 2500);
 }
 

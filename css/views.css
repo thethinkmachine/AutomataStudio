@@ -316,6 +316,18 @@
   overflow: hidden;
 }
 
+/* The window's own toast (showStatus routes here while it is open). The
+   canvas's sits at the top of the canvas; this one sits at the foot of the
+   window, clear of the bar and the headings under it, above the views. */
+.aux-overlay .status.aux-status {
+  top: auto;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 48px);
+  z-index: 6;
+}
+
 /* Each view is a nav + content pair that must fill the modal. */
 .aux-overlay-body > div {
   flex: 1;
@@ -394,6 +406,13 @@
     border: 0;
     border-radius: 0;
     box-shadow: none;
+    /* Under the header's layer (200), not over it. The header is a stacking
+       context, so every menu it drops — More, the model picker, the
+       workspace list — is drawn at 200 whatever its own z-index says, and at
+       890 the window covered them: More opened, and nothing appeared. The
+       window starts below the header, so it gives up nothing by sitting
+       under it; it still covers the phone's sheets (160) and bar (180). */
+    z-index: 195;
   }
 
   /* The centered animation translates by -50%; a full-screen modal must not,
@@ -3590,10 +3609,15 @@ body.aux-open .canvas-aurora > i {
   box-shadow: 0 0 0 2px var(--red-border);
 }
 
+/* Above the dialog layers (the tool window's 890, a modal's 900), because the
+   fields it completes live in both — the Algorithms view's test words, the
+   grammar workbench's, the transition dialog's. At 800 it opened, took the
+   Tab key, and was drawn underneath the window it belonged to. Below the
+   tooltip (1200), which can name one of its chips. */
 .sym-suggest {
   position: fixed;
   display: none;
-  z-index: 800;
+  z-index: 1100;
   background: var(--surface2);
   border: 1px solid var(--border2);
   border-radius: 8px;

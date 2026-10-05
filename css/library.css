@@ -36,6 +36,10 @@
 
 .aux-overlay #v-library .algo-content { padding: 0 40px 56px; }
 
+/* The other three rails open on a group heading or a search box; this one
+   opens on a link, which sat flush against the window's bar. */
+#lib-nav-list { padding-top: 10px; }
+
 /* The aux overlay sets the monospace face for its tool views; the Library
    reads as prose, so it takes the sans for controls and says where else.
    Inside :where(), so this sets a default and never outranks a rule below

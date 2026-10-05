@@ -1254,12 +1254,18 @@
      screen where scrolling it out of sight costs the most. It stops being
      *resizable* — a drag handle over a bottom sheet is a gesture collision —
      and gives up most of its height, but it stays put. */
+  /* No padding, as on the desktop (see .aux-overlay .gram-main in
+     css/views.css): each child pads itself to 14px. The phone's generic
+     `.algo-content, .gram-main { padding: 16px }` stacked a second inset on
+     top, so the workbench sat at 30px from the edge with 16px of dead space
+     over its bar, where the other three views sit at 14px. */
   .aux-overlay .gram-main {
     flex: 1 1 auto;
     width: 100%;
     height: 100%;
     min-height: 0;
     min-width: 0;
+    padding: 0;
     overflow: hidden;
   }
 
@@ -1276,8 +1282,17 @@
     gap: 8px;
   }
 
+  /* When the actions wrap under the title they take the row and start at its
+     left edge, with only the fold button pushed to the end. Pushed right as a
+     group, they hung off the far side of an otherwise empty line. */
   .gram-ed-acts {
     gap: 4px;
+    flex: 1 1 auto;
+    margin-left: 0;
+  }
+
+  .gram-ed-fold {
+    margin-left: auto;
   }
 
   .gram-source,
