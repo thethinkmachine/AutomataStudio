@@ -328,6 +328,29 @@ export function setView(v) {
 
 export let auxReturnFocus = null;
 
+const AUX_TAB_STOPS = ['a[href]', 'button:not([disabled])', 'input:not([disabled])', 'select:not([disabled])',
+  'textarea:not([disabled])', '[tabindex]'].map(s => `${s}:not([tabindex="-1"])`).join(', ');
+
+// Escape from a field inside the window closes it, the way it closes every
+// other dialog. The canvas shortcuts ignore keys typed into fields, which is
+// where the window's own Escape lives — so with the caret in the Algorithms
+// search, the grammar editor or a word to parse, Escape did nothing at all.
+// Bubble phase, after the field's own handlers: a completion list or an open
+// select that took the key has already said so with preventDefault.
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || e.defaultPrevented) return;
+  if (!AUX_VIEWS.includes(App.view)) return;
+  if (typeof anyModalOpen === 'function' && anyModalOpen()) return;
+  const t = e.target;
+  if (!t || !t.closest || !t.closest('#aux-overlay')) return;
+  if (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA' && t.tagName !== 'SELECT') return;
+  // A search box with text in it: the browser's Escape empties it, and that
+  // is the one the reader meant.
+  if (t.type === 'search' && t.value) return;
+  e.preventDefault();
+  closeAuxView();
+});
+
 // Keeps Tab from escaping the dialog while it is open.
 document.addEventListener('keydown', e => {
   if (e.key !== 'Tab') return;
@@ -337,10 +360,14 @@ document.addEventListener('keydown', e => {
   if (typeof anyModalOpen === 'function' && anyModalOpen()) return;
   const shell = $('aux-overlay');
   if (!shell) return;
-  const focusable = shell.querySelectorAll(
-    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-  );
-  const visible = Array.prototype.filter.call(focusable, el => el.offsetParent !== null);
+  // Tab stops only. The strip's inactive tabs are tabindex -1 — a roving
+  // tabindex — and counting them made the first Library tab "first" while
+  // the browser's first stop was the active tab, so Shift+Tab walked straight
+  // out of the window into the panels behind it. A collapsed phone sheet is
+  // visibility: hidden, which offsetParent does not see.
+  const focusable = shell.querySelectorAll(AUX_TAB_STOPS);
+  const visible = Array.prototype.filter.call(focusable, el => el.offsetParent !== null
+    && (!el.checkVisibility || el.checkVisibility({ visibilityProperty: true })));
   if (!visible.length) return;
   const first = visible[0];
   const last = visible[visible.length - 1];

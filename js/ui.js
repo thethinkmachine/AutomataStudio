@@ -1424,6 +1424,28 @@ export async function pasteFromSystemClipboard() {
 // ══════════════════════════════════════════════════════════════════
 //  KEYBOARD SHORTCUTS
 // ══════════════════════════════════════════════════════════════════
+
+// The tool window is a dialog, and the canvas is out of sight under it — so a
+// key that edits the diagram, switches its tool or steps its run must not
+// reach it. Delete used to remove the selected states from behind the
+// Library. What is left live is the window's own (Escape, the view digits,
+// the UTM simulator's keys in Algorithms) and the document's (save, reopen a
+// closed tab).
+function auxWindowKey(e) {
+  if (e.ctrlKey || e.metaKey) {
+    return e.key === 's' || (e.key === 'S' && e.shiftKey) || (e.shiftKey && (e.key === 't' || e.key === 'T'));
+  }
+  if (e.key === 'Escape' || e.key === '1') return true;
+  if (AUX_VIEWS.some(v => auxViewKey(v) === e.key)) return true;
+  // Not on a focused control: Space and Enter press a button, and the arrows
+  // walk the tab strip.
+  if (App.view === 'algo' && App.currentAlgo === 'utm'
+    && (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    return !(e.target.closest && e.target.closest('button, a, [role="tab"]'));
+  }
+  return false;
+}
+
 document.addEventListener('keydown', e => {
   const tag = e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
@@ -1447,6 +1469,7 @@ document.addEventListener('keydown', e => {
   // header menu must not switch the canvas tool underneath it.
   if (e.target.closest && e.target.closest('.ctx-i, .model-item, .tab-overflow-item')) return;
   if (handleWorkspaceShortcut(e)) return;
+  if (AUX_VIEWS.includes(App.view) && !auxWindowKey(e)) return;
   if (e.ctrlKey || e.metaKey) {
     if (e.key === 'z') { e.preventDefault(); undo(); }
     if (e.key === 'y' || e.key === 'Z') { e.preventDefault(); redo(); }

@@ -199,3 +199,73 @@ test('on a phone the button shares the workspace pill', () => {
   const end = pill.indexOf('id="mobile-last-view"');
   assert.ok(pill.indexOf('id="mobile-ws-btn"') > 0 && pill.indexOf('id="mobile-ws-btn"') < end);
 });
+
+// ── The window is modal ──
+
+test('canvas shortcuts do not reach the canvas under the window', () => {
+  const h = createHarness();
+  const { App } = h.context;
+  App.states.push({ id: 'q0', name: 'q0', x: 0, y: 0 }, { id: 'q1', name: 'q1', x: 100, y: 0 });
+  App.selectedStates.add('q0');
+  h.context.setView('library');
+  // Delete used to remove the selected state from behind the Library.
+  h.dispatchDocumentEvent('keydown', { key: 'Delete' });
+  assert.equal(App.states.length, 2);
+  const tool = App.tool;
+  h.dispatchDocumentEvent('keydown', { key: 's' });
+  assert.equal(App.tool, tool);
+  // The window's own keys still work: a digit moves along the strip.
+  h.dispatchDocumentEvent('keydown', { key: h.context.auxViewKey('reference') });
+  assert.equal(App.view, 'reference');
+  // And on the canvas, the same key does what it always did.
+  h.context.setView('build');
+  App.selectedStates.add('q0');
+  h.dispatchDocumentEvent('keydown', { key: 'Delete' });
+  assert.equal(App.states.length, 1);
+});
+
+test('Escape from a field inside the window closes it, unless the field took it', () => {
+  const h = createHarness();
+  const field = (extra = {}) => ({
+    tagName: 'INPUT', type: 'text', value: '',
+    closest: sel => (sel === '#aux-overlay' ? h.getElement('aux-overlay') : null),
+    ...extra
+  });
+  h.context.setView('algo');
+  // A completion list that consumed the key has said so.
+  h.dispatchDocumentEvent('keydown', { key: 'Escape', target: field(), defaultPrevented: true });
+  assert.equal(h.context.App.view, 'algo');
+  // A search box with text in it: Escape empties it first.
+  h.dispatchDocumentEvent('keydown', { key: 'Escape', target: field({ type: 'search', value: 'nfa' }) });
+  assert.equal(h.context.App.view, 'algo');
+  h.dispatchDocumentEvent('keydown', { key: 'Escape', target: field() });
+  assert.equal(h.context.App.view, 'build');
+});
+
+test('a message sent from inside the window is shown in the window', () => {
+  const h = createHarness();
+  h.context.setView('grammar');
+  h.context.showStatus('Grammar copied');
+  assert.equal(h.getElement('aux-status').textContent, 'Grammar copied');
+  assert.equal(h.getElement('aux-status').classList.contains('show'), true);
+  h.context.setView('build');
+  h.context.showStatus('Machine: DFA');
+  assert.equal(h.getElement('status-bar').textContent, 'Machine: DFA');
+});
+
+test('popovers the window opens are drawn above it, and the phone header menus too', () => {
+  const views = css.replace(/\r\n/g, '\n');
+  const layout = readFileSync(join(ROOT, 'css/layout.css'), 'utf8').replace(/\r\n/g, '\n');
+  const z = (src, selector) => {
+    const at = src.indexOf(`\n${selector} {`);
+    assert.ok(at >= 0, selector);
+    return Number(src.slice(at, src.indexOf('}', at)).match(/z-index: (\d+)/)[1]);
+  };
+  assert.ok(z(views, '.sym-suggest') > z(views, '.aux-overlay'), 'the symbol popover completes fields inside the window');
+  // On a phone the window sits under the header's stacking context, which
+  // caps every menu the header drops at the header's own z-index.
+  const header = z(layout, 'header');
+  const phone = views.slice(views.indexOf('@media (max-width: 900px) {\n  /* Full-screen below the header'));
+  const phoneZ = Number(phone.slice(0, phone.indexOf('\n  }')).match(/z-index: (\d+)/)[1]);
+  assert.ok(phoneZ < header, `phone window z ${phoneZ} must be under the header's ${header}`);
+});
