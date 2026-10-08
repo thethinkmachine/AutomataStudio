@@ -36,6 +36,17 @@ Two things there are easy to get wrong. **`hidden` is what hides a panel** — t
 
 The face is `--sans`. These are language — "Cancel", "Export", "Download" — and `--mono` is for identifiers and instrumentation, which is the rule the StateMate console already followed and the reason a button there and a button in a dialog did not read as the same control.
 
+**The state and transition editors are one vocabulary**, declared once in `css/modals.css` under "The state and transition editors", because they edit the two halves of one diagram. They are named alike everywhere a reader meets them — **Edit State** and **Edit Transition**, as dialog titles, as the first item of each context menu, and as the δ/Q list buttons. Points worth keeping:
+
+- **`.edit-body` spaces by `gap`, not by row margins.** `.modal-row:last-of-type` zeroes the margin of the last row in *each* wrapper, and here every machine-specific section is a wrapper: Move used to sit flush against To. Rows inside `.edit-body` have no margin at all.
+- **The edge is one row**, From → To in `.trans-route`, at the top. They used to sit at opposite ends of the dialog with every field between them.
+- **A choice you can see is a `.seg`**, not a menu: a direction strip (`role="radio"`, roving tabindex, arrow keys) or the state's roles (real checkboxes inside their labels, `.seg-check`). The native `select`/`checkbox` stays the field `getTransitionFormValues`/`confirmState` read — the strip only sets it — so tests that write `m-dir.value` still mean what they did.
+- **A rule with one row per part is an `.edit-grid`**: a multi-tape rule is a row per tape (read, write, move — the canvas label's order), a Mealy state's outgoing outputs a row per edge. Three stacked rows per tape made a four-tape rule twelve rows tall. Symbol menus there are bare; `.edit-legend` says what the reserved symbols mean once, beneath.
+- **A reserved symbol says what it means in a menu** (`Σ — any symbol`, `⊔ — blank cell`; `symbolMeaning()`). The value stays the bare symbol.
+- **A section heading names what follows it**, so a row that is not part of the store above gets one of its own: Output after a Stack or Head section, and a two-way head's Move sits under **Head**, not Tape.
+- **A select is given its value with `ensureSelectValue`**, never a bare `.value =` after building options, and the current value is always among the options. A value missing from the menu made the select fall back to its first option, and an untouched Save rewrote the rule (Moore and Mealy outputs did exactly that).
+- **The preview is drawn by the canvas** — see [js/edit-preview.js](../../../js/edit-preview.js) and *A label line is not a rule* in CLAUDE.md.
+
 ### The sidebars
 
 **The two panels are one component twice**, and everything that says so is in one place each. [js/panel-state.js](js/panel-state.js) is the import-free registry of tabs, sides and selection; `syncPanelTabs` / `activatePanelTab` / `showPanelTab` / `revealPanel` / `togglePanelPin` in [js/ui.js](js/ui.js) each take a side or read one, rather than existing twice; and [css/panels.css](css/panels.css) holds both panels plus the chrome they share (`.panel-header`, `.panel-tabs`, `.panel-tab`, `.pin-btn`, `.panel-resizer`, `.mobile-panel-close`).

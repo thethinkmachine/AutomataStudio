@@ -908,12 +908,37 @@ export function pathPoint(geo, t) {
   return { x: geo.sx + (geo.ex - geo.sx) * t, y: geo.sy + (geo.ey - geo.sy) * t };
 }
 
+// Half the path's stroke width on top of the gap, so the box clears the line
+// it belongs to rather than resting on it.
+function labelStandoff(h) { return h / 2 + labelGap() + 2; }
+
+// Put the label on the outside of the edge's own bend: clearer, and where a
+// reader looks for it. A straight edge has no bend, so the side is the one
+// that reads as "above" on screen.
+function labelOutward(geo) {
+  return geo.crvVal !== 0 ? Math.sign(geo.crvVal) : (-geo.py + geo.px * 0.05 >= 0 ? 1 : -1);
+}
+
+/**
+ * Where a label goes with nothing in its way: placeLabel's first candidate.
+ * The dialogs' previews draw an edge on its own, so this is the whole of the
+ * placement they need — and it is the same arithmetic, not a copy of it.
+ */
+export function labelRestPoint(geo) {
+  const { h } = geo.labelSize;
+  if (geo.isSelf) {
+    const d = geo.loop.extent + labelGap() + h / 2;
+    return { x: geo.from.x + d * Math.cos(geo.angle), y: geo.from.y + d * Math.sin(geo.angle) };
+  }
+  const p = pathPoint(geo, LABEL_SLIDES[0].t);
+  const d = labelStandoff(h) * labelOutward(geo);
+  return { x: p.x + geo.px * d, y: p.y + geo.py * d };
+}
+
 function placeLabel(geo, ctx) {
   const { w, h } = geo.labelSize;
   const gap = labelGap();
-  // Half the path's stroke width on top of the gap, so the box clears the line
-  // it belongs to rather than resting on it.
-  const standoff = h / 2 + gap + 2;
+  const standoff = labelStandoff(h);
   const push = Math.max(12, h * 0.8);
 
   // Candidates are generated ideal-first and taken in that order, so a label
@@ -926,12 +951,10 @@ function placeLabel(geo, ctx) {
       candidates.push({ x: geo.from.x + d * ux, y: geo.from.y + d * uy, cost: k * 3 });
     }
   } else {
-    // Put the label on the outside of the edge's own bend: clearer, and where a
-    // reader looks for it. A straight edge has no bend, so the side is the one
-    // that reads as "above" on screen — and the search below moves it if that
-    // side is taken.
+    // The outside of the bend first (labelOutward), and the search below moves
+    // it if that side is taken.
     const nx = geo.px, ny = geo.py;
-    const outward = geo.crvVal !== 0 ? Math.sign(geo.crvVal) : (-ny + nx * 0.05 >= 0 ? 1 : -1);
+    const outward = labelOutward(geo);
     for (const k of LABEL_PUSHES) {
       for (const slide of LABEL_SLIDES) {
         for (const side of [outward, -outward]) {

@@ -2364,29 +2364,11 @@ button.sm-stat:disabled {
   margin-top: -8px;
 }
 
+/* The Mealy table in the state dialog (see .edit-grid). A state with many
+   outgoing edges scrolls here rather than pushing the preview off the card. */
 .mealy-outputs-list {
-  max-height: 160px;
+  max-height: 200px;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.mealy-output-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.mealy-output-lbl {
-  font-family: var(--sans);
-  font-size: .72rem;
-  color: var(--text2);
-  flex-shrink: 0;
-}
-
-.mealy-output-row .sel {
-  flex: 1;
 }
 
 .modal-lbl {
@@ -2786,7 +2768,280 @@ button.sm-stat:disabled {
 }
 
 .modal.trans-modal-wide {
-  max-width: 440px;
+  max-width: 460px;
+}
+
+/* ─── The state and transition editors ───
+   One vocabulary for both dialogs, because they edit the two halves of one
+   diagram: a gap-spaced body, a narrow label column, segmented controls for
+   choices you can see, a table where a rule has one row per part, and a live
+   preview of what will be drawn.
+
+   Spaced by gaps, not by row margins. `.modal-row:last-of-type` zeroes the
+   margin of the last row in each section wrapper, which in these dialogs is
+   every section: Move used to sit flush against To with nothing between. */
+.edit-body,
+.edit-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.edit-body {
+  gap: 14px;
+}
+
+.edit-body .modal-row {
+  margin: 0;
+}
+
+.edit-body .modal-row-tight {
+  margin-top: -6px;
+}
+
+.edit-body .modal-lbl {
+  min-width: 84px;
+}
+
+.edit-body .modal-section-lbl {
+  margin: 6px 0 0;
+}
+
+/* From → To, the edge itself. Labels over the fields so the arrow can sit on
+   the line between the two states, where it reads as the diagram does. */
+.trans-route {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 6px;
+  align-items: center;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.trans-route > * {
+  min-width: 0;
+}
+
+.trans-route-lbl {
+  font-family: var(--sans);
+  font-size: .72rem;
+  color: var(--text2);
+}
+
+.trans-route-arrow {
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--accent);
+}
+
+/* A segmented control: the options laid out where they can be seen and
+   pressed. A direction strip is radios (one of them); the state's roles are
+   checkboxes (any of them), each a real <input> inside its label. */
+.seg {
+  flex: 1;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  min-width: 0;
+  padding: 2px;
+  gap: 2px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--field-radius);
+}
+
+.seg-btn {
+  appearance: none;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--field-radius) - 2px);
+  background: transparent;
+  color: var(--text2);
+  font-family: var(--sans);
+  font-size: .75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.seg-btn:hover {
+  color: var(--text);
+  background: var(--surface3);
+}
+
+.seg-btn:focus-visible,
+.seg-btn:has(> .seg-check:focus-visible) {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.seg-btn.active,
+.seg-btn:has(> .seg-check:checked) {
+  background: var(--bg2);
+  color: var(--accent);
+  border-color: var(--accent-border);
+  font-weight: 600;
+}
+
+/* Present for the keyboard and the accessibility tree, drawn by its label. */
+.seg-check {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+
+.seg-glyph {
+  font-family: var(--mono);
+  font-size: .95rem;
+  line-height: 1;
+}
+
+.seg-compact .seg-btn {
+  padding: 4px 9px;
+}
+
+/* A rule with one row per part — a tape, an outgoing edge — as a table rather
+   than a stack of sections. The columns are set per use. */
+.edit-grid {
+  display: grid;
+  column-gap: 8px;
+  row-gap: 8px;
+  align-items: center;
+}
+
+.edit-grid > * {
+  min-width: 0;
+}
+
+.mtm-grid {
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.mealy-grid {
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.4fr);
+}
+
+.edit-grid-head {
+  font-family: var(--sans);
+  font-size: .65rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.edit-grid .inp {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.edit-grid-sym {
+  font-family: var(--mono);
+  font-size: .78rem;
+  color: var(--text);
+}
+
+.edit-grid-to {
+  font-family: var(--mono);
+  font-size: .75rem;
+  color: var(--text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mtm-tape {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  justify-self: center;
+  border-radius: 50%;
+  background: var(--surface3);
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: .72rem;
+}
+
+.mtm-move {
+  display: flex;
+}
+
+/* What the reserved symbols mean, said once under a table too narrow to
+   say it in every menu. */
+.edit-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-family: var(--sans);
+  font-size: .68rem;
+  color: var(--text3);
+}
+
+.edit-legend b {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--text2);
+  margin-right: 2px;
+}
+
+/* What will be drawn, drawn by the canvas (js/edit-preview.js): the node and
+   edge classes in css/canvas.css paint it, on the canvas's own ground, so it
+   follows the theme and the label style the way the diagram does. Dashed:
+   derived from the fields, and saved nowhere until the dialog is confirmed
+   (see the top of css/views.css). */
+.edit-preview {
+  display: flex;
+  justify-content: center;
+  border: 1px dashed var(--border2);
+  border-radius: 10px;
+  background: var(--bg);
+  padding: 6px 10px;
+  overflow: hidden;
+}
+
+/* At the canvas's 100% (its width and height attributes are the drawing's
+   own), scaled down only when the dialog is narrower than the drawing. */
+.edit-preview-svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Nothing in a preview is a target; the canvas's hover rules are for a
+   diagram you can press. */
+.edit-preview-svg * {
+  pointer-events: none;
+}
+
+/* An edge drawn only because it shapes the one being edited — the reverse
+   edge, which is what bends this one. */
+.edit-preview-svg .edit-preview-context {
+  opacity: .4;
+}
+
+/* The row being edited, in a label that stacks several. */
+.edit-preview-svg .tlbl tspan.edit-preview-focus {
+  fill: var(--accent);
+  font-weight: 700;
+}
+
+.edit-preview-svg .edge-pill-row.edit-preview-focus .edge-pill rect {
+  stroke: var(--accent);
+  stroke-width: 1.5px;
 }
 
 /* ─── TABS ─── */

@@ -3,14 +3,16 @@ import { invalidateTransitionIndex } from './machines/runtime.js';
 import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
 import { pruneNoteAnchorsExcluding } from './notes.js';
-import { renderAll } from './render.js';
+import { acceptsAreShown, renderAll } from './render.js';
+import { drawEditPreview, previewSpan } from './edit-preview.js';
 import { $, App, getMachineConfig, getState, isBoundarySymbol, isReadOnlyHeadMachine, isWeightedFA, statePriority, usesParityPriorities, wrapStateLabelsOn } from './state.js';
 import { Change, emit } from './store.js';
-import { counterBottomViolation, hasStateOutput, hasTransitionOutput, isAnyPDA, isCounterMachine, isEmbeddedMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
+import { counterBottomViolation, escapeHtml, hasStateOutput, hasTransitionOutput, isAnyPDA, isCounterMachine, isEmbeddedMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
 import { isMultiTape, machineDeterminism, machineStoreLabels, transitionHasField } from './machines/index.js';
 import { applyMachineSwitch } from './view.js';
 import { viewEdgeKeyFor, viewStates } from './view-graph.js';
 import { getBlock } from './blocks.js';
+import { enhanceCustomSelect } from './dropdown.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  STATE MANAGEMENT
@@ -89,6 +91,12 @@ export function setTransitionModalMode(mode) {
   const isEdit = mode === 'edit';
   if (title) title.textContent = isEdit ? 'Edit Transition' : 'Add Transition';
   if (confirmBtn) confirmBtn.textContent = isEdit ? 'Save' : 'Add';
+  // The picker over an edge's rules chooses the rule being edited, or — when
+  // adding — the rule whose fields the new one starts from.
+  const say = isEdit ? 'Editing' : 'Copy from';
+  const lbl = $('m-trans-lbl');
+  if (lbl) lbl.textContent = say;
+  $('m-trans')?.closest?.('.custom-select')?.querySelector('.custom-select-trigger')?.setAttribute('aria-label', say);
 }
 
 export function buildTransitionPicker(transitions, selectedId) {
@@ -125,6 +133,143 @@ export function transitionSymbolChoices() {
   return [...new Set([...(cfg.hasEpsilon ? [eps] : []), any, ...App.sigma, ...tapeSyms, ...markers])];
 }
 
+/**
+ * What a reserved symbol means, for the menu that offers it. `Σ` alone in a
+ * Read menu reads as "the alphabet", which is not something a head can read;
+ * it is the wildcard. The value stays the bare symbol — only the words differ.
+ */
+function symbolMeaning(s) {
+  const { eps, any, blank, leftMarker, rightMarker } = App.config.sym;
+  if (s === eps) return 'nothing (ε-move)';
+  if (s === any) return 'any symbol';
+  if (s === blank) return 'blank cell';
+  if (s === leftMarker) return 'left end';
+  if (s === rightMarker) return 'right end';
+  return '';
+}
+
+// `bare` drops the words: the multi-tape table's columns are too narrow to
+// carry them, and says what the reserved symbols mean once, under the table.
+function symbolOptions(syms, bare = false) {
+  return syms.map(s => {
+    const say = bare ? '' : symbolMeaning(s);
+    return `<option value="${escapeHtml(s)}">${escapeHtml(s)}${say ? `  —  ${say}` : ''}</option>`;
+  }).join('');
+}
+
+const DIR_GLYPH = { L: '←', R: '→', S: '•' };
+
+/**
+ * The strip of arrows standing in for a hidden direction select. `compact`
+ * is arrows only, named by aria-label and tooltip — a table row per tape has
+ * room for three glyphs, not three words.
+ */
+function dirSegmentHTML(selectId, compact = false) {
+  // Laid out the way the arrows point — left, stay, right — whatever order
+  // App.directions lists them in. A direction with no glyph goes last.
+  const at = d => ({ L: 0, S: 1, R: 2 })[d.value] ?? 3;
+  return [...App.directions].sort((a, b) => at(a) - at(b)).map(d => {
+    const glyph = `<span class="seg-glyph" aria-hidden="true">${escapeHtml(DIR_GLYPH[d.value] ?? d.value)}</span>`;
+    const name = escapeHtml(d.label);
+    return `<button type="button" class="seg-btn dir-seg-btn" role="radio" aria-checked="false" tabindex="-1"
+      data-for="${selectId}" data-dir="${escapeHtml(d.value)}"${compact ? ` aria-label="${name}" data-tip="${name}"` : ''}>${glyph}${compact ? '' : name}</button>`;
+  }).join('');
+}
+
+/** Mirror a direction select's value onto its strip: checked state and roving tabindex. */
+function syncDirSegment(selectId) {
+  const sel = $(selectId);
+  const seg = sel?.parentElement?.querySelector?.('.dir-seg');
+  if (!sel || !seg) return;
+  for (const btn of seg.querySelectorAll('.dir-seg-btn')) {
+    const on = btn.dataset.dir === sel.value;
+    btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    btn.tabIndex = on ? 0 : -1;
+    btn.classList.toggle('active', on);
+  }
+}
+
+function setDirFromSegment(btn, focus = false) {
+  const sel = $(btn.dataset.for);
+  if (!sel) return;
+  sel.value = btn.dataset.dir;
+  syncDirSegment(btn.dataset.for);
+  if (focus) btn.focus();
+  updateTransPreview();
+}
+
+// One set of listeners on the dialog, for every strip it will ever hold —
+// the multi-tape block is rebuilt per open, and its buttons with it.
+function bindTransModal() {
+  const modal = $('trans-modal');
+  if (!modal || modal.__transBound) return;
+  modal.__transBound = true;
+  modal.addEventListener('input', updateTransPreview);
+  modal.addEventListener('change', updateTransPreview);
+  modal.addEventListener('click', e => {
+    const btn = e.target?.closest?.('.dir-seg-btn');
+    if (btn) setDirFromSegment(btn);
+  });
+  modal.addEventListener('keydown', e => {
+    const btn = e.target?.closest?.('.dir-seg-btn');
+    if (!btn) return;
+    const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    const all = [...btn.parentElement.querySelectorAll('.dir-seg-btn')];
+    const next = all[(all.indexOf(btn) + step + all.length) % all.length];
+    setDirFromSegment(next, true);
+  });
+}
+
+/** A dialog's node for state `id`, carrying the marks the canvas would draw on it. */
+function previewNodeFor(id, x, y) {
+  const s = getState(id);
+  const n = { id, name: s?.name ?? '?', x, y, start: App.startId === id, accept: acceptsAreShown() && App.accepts.has(id) };
+  if (hasStateOutput(App.machine)) n.output = s?.output ?? '';
+  if (usesParityPriorities(App.machine) && s) n.priority = statePriority(s);
+  return n;
+}
+
+/**
+ * Draw the edge the dialog is editing as the canvas will draw it: every rule
+ * already on it, with this one in its place (or added at the end), and the
+ * reverse edge when there is one, since it is what bends this one.
+ */
+export function updateTransPreview() {
+  const svg = $('m-preview');
+  if (!svg) return;
+  let v;
+  try { v = getTransitionFormValues(); } catch { return; }
+  if (!v.from || !v.to) { svg.innerHTML = ''; return; }
+  const editId = App.transEditId;
+  const original = editId ? getTransition(editId) : null;
+  // The rule as it will be saved: the form's fields over the stored ones, so a
+  // hand-set bend or loop angle rides along while the pair is unchanged.
+  const samePair = original && original.from === v.from && original.to === v.to;
+  const draft = { ...(samePair ? original : {}), ...v, id: editId || '__draft' };
+  const ts = [];
+  let placed = false;
+  for (const t of App.transitions) {
+    if (t.from !== v.from || t.to !== v.to) continue;
+    if (t.id === editId) { placed = true; ts.push(draft); } else ts.push(t);
+  }
+  if (!placed) ts.push(draft);
+  const edges = [{ from: v.from, to: v.to, ts, focus: draft.id }];
+  if (v.from !== v.to) {
+    const back = App.transitions.filter(t => t.from === v.to && t.to === v.from && t.id !== editId);
+    if (back.length) edges.push({ from: v.to, to: v.from, ts: back, context: true });
+  }
+  const span = v.from === v.to ? 0 : previewSpan(edges);
+  const nodes = v.from === v.to
+    ? [previewNodeFor(v.from, 0, 0)]
+    : [previewNodeFor(v.from, 0, 0), previewNodeFor(v.to, span, 0)];
+  drawEditPreview(svg, { nodes, edges });
+  const fromName = getState(v.from)?.name ?? '?';
+  const toName = getState(v.to)?.name ?? '?';
+  svg.setAttribute('aria-label', `Preview: ${fromName} to ${toName} on ${transLabel(draft)}`);
+}
+
 export function populateTransitionModal(t) {
   const { eps, blank } = App.config.sym;
   const syms = transitionSymbolChoices();
@@ -157,7 +302,7 @@ export function populateTransitionModal(t) {
   const symSel = $('m-sym');
   if (symSel) {
     if (App.machine !== 'MTM') {
-      symSel.innerHTML = syms.map(s => `<option value="${s}">${s}</option>`).join('');
+      symSel.innerHTML = symbolOptions(syms);
       if (t?.symbol !== undefined) ensureSelectValue(symSel, t.symbol);
     } else {
       symSel.innerHTML = '';
@@ -193,6 +338,14 @@ export function populateTransitionModal(t) {
   // (The wizard says the same thing at greater length in wizard-copy.js;
   // three-word labels for a form and a sentence with a hint are different
   // registers, not a duplicated fact.)
+  // A two-way automaton's head reads and moves but never writes, so its one
+  // row sits under "Head" — "Tape" over a lone Move promised a write row.
+  const tapeTitle = $('m-tape-title');
+  if (tapeTitle) tapeTitle.textContent = isReadOnlyHeadMachine(App.machine) ? 'Head' : 'Tape';
+  // Output takes a heading of its own only when a section sits above it;
+  // without one it read as the last row of the stack or the head (PDT, 2DFT).
+  const outTitle = $('m-output-title');
+  if (outTitle) outTitle.hidden = !(has('out') && (has('pop') || has('move')));
   const [storeTitle, popLabel, pushLabel] = machineStoreLabels(App.machine);
   if ($('m-memory-title')) $('m-memory-title').textContent = storeTitle;
   if ($('m-pop-label')) $('m-pop-label').textContent = popLabel;
@@ -213,6 +366,9 @@ export function populateTransitionModal(t) {
     if (dirSel) {
       dirSel.innerHTML = App.directions.map(d => `<option value="${d.value}">${d.label} (${d.value})</option>`).join('');
       ensureSelectValue(dirSel, t?.dir || App.directions[0].value);
+      const seg = dirSel.parentElement?.querySelector?.('.dir-seg');
+      if (seg) seg.innerHTML = dirSegmentHTML('m-dir');
+      syncDirSegment('m-dir');
     }
     const writeInput = $('m-write');
     const writeRow = writeInput && typeof writeInput.closest === 'function' ? writeInput.closest('.modal-row') : null;
@@ -221,25 +377,38 @@ export function populateTransitionModal(t) {
 
   if (has('tapeSyms')) {
     const k = App.tapeCount;
-    const dirOpts = App.directions.map(d => `<option value="${d.value}">${d.label} (${d.value})</option>`).join('');
-    const symOpts = syms.map(s => `<option value="${s}">${s}</option>`).join('');
+    const dirOpts = App.directions.map(d => `<option value="${escapeHtml(d.value)}">${escapeHtml(d.label)}</option>`).join('');
+    const symOpts = symbolOptions(syms, true);
     const mtmExtra = $('m-mtm-extra');
     if (mtmExtra) {
-      mtmExtra.innerHTML = Array.from({ length: k }, (_, i) => `
-        <div class="modal-section-lbl">Tape ${i + 1}</div>
-        <div class="modal-row"><span class="modal-lbl">Read</span><select class="sel" id="m-mtm-read-${i}">${symOpts}</select></div>
-        <div class="modal-row"><span class="modal-lbl">Write</span><input class="inp" id="m-mtm-write-${i}" placeholder="symbol"
+      // One row per tape, read → write → move across it: the same order as
+      // the label on the canvas. Three stacked rows per tape made a four-tape
+      // rule twelve rows tall, with the edge's preview a scroll away.
+      const rows = Array.from({ length: k }, (_, i) => `
+        <span class="mtm-tape" aria-hidden="true">${i + 1}</span>
+        <select class="sel" id="m-mtm-read-${i}" aria-label="Tape ${i + 1} read">${symOpts}</select>
+        <input class="inp" id="m-mtm-write-${i}" placeholder="same" aria-label="Tape ${i + 1} write"
           autocomplete="off" onkeydown="trySymSuggestKeydown(event)" oninput="handleSymSuggestActive(this)"
           onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
-          onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></div>
-        <div class="modal-row"><span class="modal-lbl">Move</span><select class="sel" id="m-mtm-dir-${i}">${dirOpts}</select></div>
+          onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
+        <div class="mtm-move"><select class="sel" id="m-mtm-dir-${i}" data-native-select hidden>${dirOpts}</select>
+          <div class="seg seg-compact dir-seg" role="radiogroup" aria-label="Tape ${i + 1} move">${dirSegmentHTML(`m-mtm-dir-${i}`, true)}</div></div>
       `).join('');
+      const legend = syms.map(s => [s, symbolMeaning(s)]).filter(([, say]) => say)
+        .map(([s, say]) => `<span><b>${escapeHtml(s)}</b> ${escapeHtml(say)}</span>`).join('');
+      mtmExtra.innerHTML = `
+        <div class="edit-grid mtm-grid">
+          <span class="edit-grid-head">Tape</span><span class="edit-grid-head">Read</span><span class="edit-grid-head">Write</span><span class="edit-grid-head">Move</span>
+          ${rows}
+        </div>
+        ${legend ? `<div class="edit-legend">${legend}</div>` : ''}`;
     }
     for (let i = 0; i < k; i++) {
       ensureSelectValue($(`m-mtm-read-${i}`), t?.tapeSyms?.[i] ?? t?.symbol ?? blank);
       const writeEl = $(`m-mtm-write-${i}`);
       if (writeEl) writeEl.value = t?.tapeWrites?.[i] ?? t?.write ?? t?.symbol ?? blank;
       ensureSelectValue($(`m-mtm-dir-${i}`), t?.tapeDirs?.[i] ?? t?.dir ?? App.directions[0].value);
+      syncDirSegment(`m-mtm-dir-${i}`);
     }
   } else {
     const pdaPop = $('m-pop');
@@ -264,6 +433,7 @@ export function populateTransitionModal(t) {
 
   const picker = $('m-trans');
   if (picker && t) picker.value = t.id;
+  updateTransPreview();
 }
 
 // Reading the dialog back. Which fields to read is the same question as
@@ -377,6 +547,8 @@ export function openTransModal(from, to, opts = {}) {
   // pick the column's symbol again from a list.
   const symSel = $('m-sym');
   if (symSel && opts.symbol !== undefined) ensureSelectValue(symSel, opts.symbol);
+  bindTransModal();
+  updateTransPreview();
   showOverlay('trans-modal');
 }
 export function confirmTrans() {
@@ -532,7 +704,11 @@ export function saveTransition(values, editId = null) {
       delete t.above;
     }
     if (isSingleTapeTM(App.machine)) {
-      t.write = values.write;
+      // A two-way automaton's head moves but never writes, so `write` is
+      // asked of the machine rather than implied by the head: saving a 2DFA
+      // rule unchanged used to add a `write` it does not have to the file.
+      if (keeps('write')) t.write = values.write;
+      else delete t.write;
       t.dir = values.dir;
     } else {
       delete t.write;
@@ -564,7 +740,10 @@ export function saveTransition(values, editId = null) {
     if (takes('pop')) { t.pop = values.pop; t.push = values.push; }
     if (takes('pop2')) { t.pop2 = values.pop2; t.push2 = values.push2; }
     if (takes('below')) { t.below = values.below; t.above = values.above; }
-    if (isSingleTapeTM(App.machine)) { t.write = values.write; t.dir = values.dir; }
+    if (isSingleTapeTM(App.machine)) {
+      if (takes('write')) t.write = values.write;
+      t.dir = values.dir;
+    }
     if (hasTransitionOutput(App.machine)) { t.output = values.output; }
     if (isWeightedFA(App.machine)) { t.weight = values.weight; }
     if (isMultiTape(App.machine)) {
@@ -1011,52 +1190,106 @@ export function openStateModal(id) {
       : 'Long names will overflow the node — enable "Wrap Long State Labels" in Settings → Diagram to break them at <code>_</code>, space or <code>-</code>.';
   }
   $('s-start').checked = isConceptualStart(id);
-  const cfg = getMachineConfig(App.machine);
-  if (cfg.isTransducer && !App.config.transducerAccepts) {
-    $('s-acc').parentElement.style.display = 'none';
-  } else {
-    $('s-acc').parentElement.style.display = '';
-  }
-  $('s-acc').checked = App.accepts.has(id);
+  // The option, not the checkbox's parent: that used to be the switch's own
+  // <label>, so hiding it left the word "Accept" standing beside nothing.
   // Under parity, α is the number rather than the ring — F carries no meaning,
-  // so offering the Accept toggle would invite a mode that does nothing.
-  const parityExtra = $('s-parity-extra');
+  // so offering Accepting would invite a mode that does nothing.
+  const cfg = getMachineConfig(App.machine);
   const parity = usesParityPriorities(App.machine);
+  const accOpt = $('s-acc-opt');
+  if (accOpt) accOpt.style.display = parity || (cfg.isTransducer && !App.config.transducerAccepts) ? 'none' : '';
+  $('s-acc').checked = App.accepts.has(id);
+  const parityExtra = $('s-parity-extra');
   if (parityExtra) parityExtra.style.display = parity ? '' : 'none';
-  if (parity) {
-    $('s-acc').parentElement.style.display = 'none';
-    $('s-priority').value = String(statePriority(s));
-  }
+  if (parity) $('s-priority').value = String(statePriority(s));
   const mooreExtra = $('s-moore-extra');
   mooreExtra.style.display = hasStateOutput(App.machine) ? '' : 'none';
   if (hasStateOutput(App.machine)) {
     const { lambda } = App.config.sym;
-    const outs = [...new Set([...App.outputAlpha, lambda])];
-    $('s-output').innerHTML = outs.map(o => `<option value="${o}">${o}</option>`).join('');
-    $('s-output').value = (s.output === undefined || s.output === '') ? lambda : s.output;
+    // The state's own output is offered even if Δ no longer holds it, or the
+    // select had no matching option and an untouched Save emptied it.
+    const outs = [...new Set([...App.outputAlpha, lambda, ...(s.output ? [s.output] : [])])];
+    $('s-output').innerHTML = outs.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+    ensureSelectValue($('s-output'), (s.output === undefined || s.output === '') ? lambda : s.output);
   }
   const mealyExtra = $('s-mealy-extra');
   if (mealyExtra) mealyExtra.style.display = App.machine === 'Mealy' ? '' : 'none';
   if (App.machine === 'Mealy') {
     const { lambda } = App.config.sym;
-    const outs = [...new Set([...App.outputAlpha, lambda])];
+    // An output the alphabet no longer holds is still offered, as the
+    // transition dialog offers it: missing from the menu, the select fell back
+    // to its first option and an untouched Save rewrote the rule.
     const outgoing = App.transitions.filter(t => t.from === id);
+    const outs = [...new Set([...App.outputAlpha, lambda, ...outgoing.map(t => t.output).filter(o => o)])];
     const list = $('s-mealy-transitions-list');
     if (outgoing.length === 0) {
       list.innerHTML = '<div class="modal-hint">No outgoing transitions</div>';
     } else {
-      list.innerHTML = outgoing.map(t => {
+      // A row per outgoing edge, read → destination → output, the way the
+      // transition dialog's multi-tape table lays out a row per tape.
+      const rows = outgoing.map(t => {
         const toState = getState(t.to)?.name || '?';
         const outVal = (t.output === undefined || t.output === '') ? lambda : t.output;
-        const options = outs.map(o => `<option value="${o}" ${outVal === o ? 'selected' : ''}>${o}</option>`).join('');
-        return `<div class="mealy-output-row">
-          <span class="mealy-output-lbl">→ ${toState} ('${t.symbol}')</span>
-          <select class="sel" id="mealy-out-${t.id}">${options}</select>
-        </div>`;
+        const options = outs.map(o => `<option value="${escapeHtml(o)}" ${outVal === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('');
+        return `<span class="edit-grid-sym">${escapeHtml(t.symbol)}</span>
+          <span class="edit-grid-to" title="${escapeHtml(toState)}">→ ${escapeHtml(toState)}</span>
+          <select class="sel" id="mealy-out-${t.id}" aria-label="Output reading ${escapeHtml(t.symbol)} to ${escapeHtml(toState)}">${options}</select>`;
       }).join('');
+      list.innerHTML = `<div class="edit-grid mealy-grid">
+        <span class="edit-grid-head">Read</span><span class="edit-grid-head">To</span><span class="edit-grid-head">Output</span>
+        ${rows}</div>`;
+      // Set, not only marked `selected`: the value is what confirmState reads.
+      for (const t of outgoing) {
+        ensureSelectValue($(`mealy-out-${t.id}`), (t.output === undefined || t.output === '') ? lambda : t.output);
+      }
     }
   }
+  bindStateModal();
+  updateStatePreview();
   showOverlay('state-modal');
+}
+
+function bindStateModal() {
+  const modal = $('state-modal');
+  if (!modal || modal.__stateBound) return;
+  modal.__stateBound = true;
+  modal.addEventListener('input', updateStatePreview);
+  modal.addEventListener('change', updateStatePreview);
+}
+
+/**
+ * Draw the state as the canvas will, from the fields: its name (wrapped as the
+ * canvas wraps it), the start arrow, the accepting ring, a Moore output or a
+ * parity badge, and its self-loops — the edges drawn on the node itself, whose
+ * outputs a Mealy state's table edits.
+ */
+export function updateStatePreview() {
+  const svg = $('s-preview');
+  const s = getState(App.editId);
+  if (!svg || !s) return;
+  const name = $('s-name')?.value.trim() || s.name;
+  const parity = usesParityPriorities(App.machine);
+  const start = !!$('s-start')?.checked;
+  const accept = $('s-acc-opt')?.style.display !== 'none' && !!$('s-acc')?.checked;
+  const node = { id: s.id, name, x: 0, y: 0, start, accept };
+  if (parity) {
+    const p = parseInt($('s-priority')?.value, 10);
+    node.priority = Number.isInteger(p) && p >= 0 ? p : 0;
+  } else if (hasStateOutput(App.machine)) {
+    const out = $('s-output')?.value ?? '';
+    node.output = out === App.config.sym.lambda ? '' : out;
+  }
+  const loops = App.transitions.filter(t => t.from === s.id && t.to === s.id).map(t => {
+    const el = $(`mealy-out-${t.id}`);
+    if (!el) return t;
+    const out = el.value.trim();
+    return { ...t, output: out === App.config.sym.lambda ? '' : out };
+  });
+  drawEditPreview(svg, { nodes: [node], edges: loops.length ? [{ from: s.id, to: s.id, ts: loops }] : [] });
+  const marks = [start && 'start', accept && 'accepting',
+    node.priority !== undefined && `priority ${node.priority}`,
+    node.output !== undefined && `output ${node.output || App.config.sym.lambda}`].filter(Boolean);
+  svg.setAttribute('aria-label', `Preview: ${name}${marks.length ? ', ' + marks.join(', ') : ''}`);
 }
 export function confirmState() {
   const s = getState(App.editId); if (!s) return closeModal('state-modal');
@@ -1284,6 +1517,16 @@ export function ctxDeleteTrans() {
 // teardown there instead of being special-cased inside a shared close.
 registerModal('trans-modal', {
   submit: () => confirmTrans(),
+  // The edge's ends are already chosen — by the drag that opened the dialog,
+  // or by the rule being edited — so the caret starts on what it reads.
+  initialFocus: () => {
+    const row = $('m-sym-row');
+    const sym = row && row.style.display !== 'none' ? $('m-sym') : $('m-mtm-read-0');
+    // The multi-tape table was written a moment ago, and the observer that
+    // dresses its selects has not run yet — so dress this one now.
+    if (sym?.parentNode) enhanceCustomSelect(sym);
+    return sym?.closest?.('.custom-select')?.querySelector('.custom-select-trigger') || null;
+  },
   onClose: () => {
     App.transEditId = null;
     App.transModalMode = 'add';

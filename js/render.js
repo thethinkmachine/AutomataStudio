@@ -18,7 +18,7 @@ import { thumbBounds, thumbEdgePairs, thumbEdgePath, thumbEdgeSegments, thumbSub
 import { enterBlockScope } from './scope.js';
 import { blockAncestry } from './blocks.js';
 import { openEdgeLabelEditor } from './edge-label-editor.js';
-import { edgeTipFor, getState, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
+import { edgeTipFor, getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
 import { Change, changed, emit, subscribe } from './store.js';
 import { createMemo, reactiveRoot } from './reactive.js';
 import { setSectionStatus } from './section-status.js';
@@ -198,10 +198,12 @@ function edgeLabelSizeFor(ts) {
   // Same reasoning for a scope's boundary edges: they carry no rule, so they
   // draw no label, so nothing should be laid out around one.
   if (ts.every(t => t.port)) return { w: 0, h: 0 };
+  // The lines the edge will draw — merged and capped — not one per rule, or
+  // a dense edge is placed clear of a box several times taller than its label.
   if (style === 'pills' || style === 'beginner') {
-    return estimatePillLabelSize(ts.map(t => transLabelParts(t, style === 'beginner')));
+    return estimatePillLabelSize(edgeLabelLines(ts, { pills: true, beginner: style === 'beginner' }).map(l => l.parts));
   }
-  return estimateTextLabelSize(ts.map(transLabel));
+  return estimateTextLabelSize(edgeLabelLines(ts).map(l => l.text));
 }
 
 // One layout pass over the whole diagram: every edge path, self-loop direction
@@ -304,7 +306,7 @@ function displayGeo(geo, dt) {
  * the next full render. The half-width is asked of the node, since a block is a
  * box and a state is a circle.
  */
-function startArrowD(node) {
+export function startArrowD(node) {
   const al = App.config.render.startArrowLen, ah = App.config.render.arrowHeadSize;
   const half = node.box ? node.box.w / 2 : R;
   return `M ${node.x - half - al} ${node.y} L ${node.x - half - ah} ${node.y}`;
@@ -393,7 +395,7 @@ function createEdgeNode(key) {
   // move it out from under the second click of the double-click.
   for (const lbl of [textEl, pillEl]) {
     lbl.addEventListener('pointerdown', e => {
-      if (edgeDoublePress(e, edgeGrp)) { openEdgeLabelEditor(key, labelHitAt(lbl, e)); return; }
+      if (edgeDoublePress(e, edgeGrp)) { editLabelLine(key, edgeGrp, labelHitAt(lbl, e)); return; }
       onEdgeDown(e, key, edgeGrp, { bend: false });
     });
     lbl.addEventListener('contextmenu', e => onEdgeContextMenu(e, key, edgeGrp));
@@ -517,6 +519,37 @@ function labelHitAt(lbl, e) {
   return { row: 0, role: null };
 }
 
+// A drawn line is one rule, several merged into one row, or `+k more`. One
+// rule is edited in place, as every row was before rows could merge; several
+// open the dialog with exactly those rules in its picker, since the strip
+// edits one rule and guessing which would edit the wrong one.
+function editLabelLine(key, edgeGrp, hit) {
+  const info = edgeGroupFor(key);
+  if (!info) return;
+  const line = edgeGrp.__lines && edgeGrp.__lines[hit.row];
+  if (!line) { openEdgeLabelEditor(key, hit); return; }
+  if (line.ids.length === 1) {
+    const row = info.ts.findIndex(t => t.id === line.ids[0]);
+    openEdgeLabelEditor(key, { ...hit, row: Math.max(0, row) });
+    return;
+  }
+  const picked = info.ts.filter(t => line.ids.includes(t.id));
+  openTransModal(picked[0].from, picked[0].to, { mode: 'edit', transId: picked[0].id, transitions: picked });
+}
+
+/**
+ * Which drawn line of an edge's label holds rule `tid`, and how many lines the
+ * label has — for the label editor, which sits over the line it is editing.
+ * A rule hidden behind `+k more` is on that line. Null when nothing is drawn.
+ */
+export function edgeLabelLineOf(key, tid) {
+  const node = App.domCache.transitions.get(key);
+  const lines = node && node.__lines;
+  if (!lines || !lines.length) return null;
+  const line = lines.findIndex(l => l.ids.includes(tid));
+  return line === -1 ? null : { line, lines: lines.length };
+}
+
 // One row of the compact label: the tspans step by 1.2em at the 11px .tlbl
 // sets in css/canvas.css.
 const TLBL_ROW_PITCH = 13.2;
@@ -588,6 +621,8 @@ function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
   // asking transLabel() for the label of a thing that is not a transition
   // produces.
   const hidden = lod || edgeLabelsHidden() || isPortEdge(ts);
+  // Two comparisons rather than edgeLabelMode(): this runs per edge per frame,
+  // and that returns a fresh object.
   const pillMode = App.config.edgeLabelStyle === 'pills' || App.config.edgeLabelStyle === 'beginner';
   const beginnerMode = App.config.edgeLabelStyle === 'beginner';
 
@@ -607,6 +642,7 @@ function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
     }
     parts.textEl.style.display = 'none';
     parts.pillEl.style.display = 'none';
+    edgeGrp.__lines = null;
 
     // The tooltip is a grid and the accessible name is prose — see
     // edgeTipFor(). Two renderings of one description, and this is the branch
@@ -628,21 +664,16 @@ function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
   }
 
   edgeGrp.classList.remove('port-edge');
-  const lbls = ts.map(transLabel);
+  // One build serves both drawings; the press handler and the label editor
+  // read the rules a drawn line stands for back off `__lines`.
+  const lines = edgeLabelLines(ts, { pills: true, beginner: beginnerMode });
+  edgeGrp.__lines = lines;
   // Rebuild the tspans only when the label text changes. Geometry changes —
   // a state moving, an edge bending — just reposition them, so dragging
   // allocates nothing.
-  const labelKey = lbls.join('\u0001');
+  const labelKey = lines.map(l => l.text).join('\u0001');
   if (edgeGrp.__labelKey !== labelKey) {
-    parts.textEl.innerHTML = '';
-    lbls.forEach((lbl, i) => {
-      const tspan = makeSVG('tspan');
-      tspan.textContent = lbl;
-      tspan.setAttribute('data-row', i);
-      tspan.setAttribute('x', geo.lx);
-      tspan.setAttribute('dy', i === 0 ? `-${(lbls.length - 1) * 0.6}em` : '1.2em');
-      parts.textEl.appendChild(tspan);
-    });
+    writeTextLabelRows(parts.textEl, lines, geo.lx);
     edgeGrp.__labelKey = labelKey;
     edgeGrp.__labelX = geo.lx;
   } else if (edgeGrp.__labelX !== geo.lx) {
@@ -652,45 +683,10 @@ function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
   setGeoAttr(parts.textEl, 'x', geo.lx);
   setGeoAttr(parts.textEl, 'y', geo.ly);
 
-  const pillRows = ts.map(t => transLabelParts(t, beginnerMode));
+  const pillRows = lines.map(l => l.parts);
   const pillKey = pillRows.map(row => row.map(p => `${p.role}:${p.text}`).join('\u0002')).join('\u0001');
   if (edgeGrp.__pillKey !== pillKey) {
-    parts.pillEl.innerHTML = '';
-    // Pill widths come from geometry.js because the layout pass sized the label
-    // box from the same numbers before choosing where to put it. Two independent
-    // copies of this arithmetic would drift, and the label would then be placed
-    // clear of a box that is not the one being drawn.
-    pillRows.forEach((row, rowIndex) => {
-      const widths = row.map(p => pillPartWidth(p.text));
-      const total = widths.reduce((sum, width) => sum + width, 0) + Math.max(0, row.length - 1) * PILL_GAP;
-      let x = -total / 2;
-      const rowEl = makeSVG('g');
-      rowEl.classList.add('edge-pill-row');
-      rowEl.setAttribute('data-row', rowIndex);
-      rowEl.setAttribute('transform', `translate(0 ${rowIndex * PILL_ROW_H - (pillRows.length - 1) * PILL_ROW_H / 2})`);
-      row.forEach((part, i) => {
-        const item = makeSVG('g');
-        item.classList.add('edge-pill', `edge-pill-${part.role}`);
-        item.setAttribute('data-role', part.role);
-        item.setAttribute('data-part', i);
-        item.setAttribute('transform', `translate(${x} ${-PILL_HEIGHT / 2})`);
-        const rect = makeSVG('rect');
-        rect.setAttribute('width', widths[i]);
-        rect.setAttribute('height', PILL_HEIGHT);
-        rect.setAttribute('rx', 5);
-        const label = makeSVG('text');
-        label.setAttribute('x', widths[i] / 2);
-        label.setAttribute('y', PILL_HEIGHT / 2);
-        label.setAttribute('dominant-baseline', 'central');
-        label.setAttribute('text-anchor', 'middle');
-        label.textContent = part.text;
-        item.appendChild(rect);
-        item.appendChild(label);
-        rowEl.appendChild(item);
-        x += widths[i] + PILL_GAP;
-      });
-      parts.pillEl.appendChild(rowEl);
-    });
+    writePillLabelRows(parts.pillEl, pillRows);
     edgeGrp.__pillKey = pillKey;
   }
   setGeoAttr(parts.pillEl, 'transform', `translate(${geo.lx} ${geo.ly})`);
@@ -703,6 +699,190 @@ function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
 
   syncCurveHandle(edgeGrp, edgeGrp.getAttribute('data-edge'), geo, selected);
   return true;
+}
+
+// ── edge label writers ──
+//
+// An edge label's two drawings, one row per transition. Shared by the canvas
+// and the state and transition dialogs' previews (js/edit-preview.js), which
+// draw the edge being edited with exactly this code so it cannot read
+// differently from the edge it will become.
+
+// ── dense edges ──
+//
+// An edge's label used to be one row per rule, which is right for an edge with
+// two rules and wrong for one with nine: a DFA over a 36-symbol alphabet drew
+// every edge as a tower of single characters, at four states and 144 rules —
+// a machine the large-machine profile, which counts the whole machine against
+// a performance line, rightly calls small. Crowding is a property of the edge,
+// not of the machine, so it is decided here, per edge, at any size.
+//
+// Two steps. Rules whose labels differ only in what they read share a row, the
+// way a textbook writes them — `b, f, j → q3` rather than three arrows' worth of
+// text — and a long list of symbols wraps. Then an edge with more lines than
+// LABEL_MAX_LINES shows the rows that fit and `+k more`, k counted in rules.
+// The tooltip, the δ list and the transition dialog still say every rule.
+//
+// A line remembers the rules it stands for (`ids`), because a row is no longer
+// one rule: the label editor resolves a press through it, and the dialog's
+// preview marks the rule being edited by it.
+export const LABEL_MAX_LINES = 4;
+const LABEL_WRAP_CHARS = 28;
+
+/**
+ * The lines an edge's label draws, from its rules in drawing order.
+ * Each line is `{ text, parts, ids, more? }`: `text` for the compact label,
+ * `parts` (only when `pills`) for the pill label, `ids` the rules it stands for.
+ * `keep` names a rule whose row must be drawn rather than counted in `+k more`
+ * — the dialog's preview passes the rule being edited.
+ */
+export function edgeLabelLines(ts, { pills = false, beginner = false, keep = null } = {}) {
+  const rows = [];
+  const byRest = new Map();
+  for (const t of ts) {
+    const text = String(transLabel(t));
+    const parts = pills ? transLabelParts(t, beginner) : null;
+    const sym = String(t.symbol);
+    // Mergeable when the label leads with the read symbol and nothing else in
+    // it mentions which symbol was read. A multi-tape rule reads a tuple, so
+    // its first tape's symbol is not the whole of what it reads.
+    const inputAt = parts ? parts.findIndex(p => p.role === 'input') : -1;
+    const mergeable = !t.tapeSyms && text.startsWith(sym) && (!parts || inputAt !== -1);
+    const rest = text.slice(sym.length);
+    // Keyed on the text alone, so the compact and pill labels merge the same
+    // rules and one line map serves both: the pills are drawn from the same
+    // fields the text is, so two rules with one rest have one set of pills.
+    const key = mergeable ? rest : null;
+    let row = key !== null ? byRest.get(key) : null;
+    if (!row) {
+      row = { ids: [], syms: [], text, rest: mergeable ? rest : null, parts, inputAt };
+      rows.push(row);
+      if (key !== null) byRest.set(key, row);
+    }
+    row.ids.push(t.id);
+    row.syms.push(sym);
+  }
+
+  const linesOf = row => {
+    if (row.ids.length === 1) return [{ text: row.text, parts: row.parts, ids: row.ids }];
+    // A rest that opens with a comma (a PDA's `, A → AA`) would run into a
+    // comma-separated list and read as one more symbol, so the list is braced.
+    const brace = row.rest.startsWith(',');
+    // Balanced rather than greedy: greedy filled the first line and left the
+    // last symbol alone on the second — `a, e, i, m, q, u, y, 2,` over `6`.
+    // So the number of lines comes from the width, and the symbols are dealt
+    // out evenly across them.
+    const width = row.syms.join(', ').length;
+    const count = Math.max(1, Math.ceil(width / LABEL_WRAP_CHARS));
+    const per = Math.ceil(row.syms.length / count);
+    const chunks = [];
+    for (let i = 0; i < row.syms.length; i += per) chunks.push(row.syms.slice(i, i + per));
+    return chunks.map((c, i) => {
+      const first = i === 0, last = i === chunks.length - 1;
+      const list = (brace && first ? '{' : '') + c.join(', ') + (brace && last ? '}' : last ? '' : ',');
+      const text = last ? list + row.rest : list;
+      let parts = null;
+      if (row.parts) {
+        const input = { ...row.parts[row.inputAt], text: (beginner && first ? 'Read ' : '') + c.join(', ') + (last ? '' : ',') };
+        parts = last ? row.parts.map((p, k) => (k === row.inputAt ? input : p)) : [input];
+      }
+      return { text, parts, ids: row.ids };
+    });
+  };
+
+  // The kept rule's row goes first only if it would otherwise be hidden, so a
+  // label that fits reads in the canvas's order.
+  const all = rows.map(linesOf);
+  const total = all.reduce((n, ls) => n + ls.length, 0);
+  if (total <= LABEL_MAX_LINES) return all.flat();
+  if (keep) {
+    const at = rows.findIndex(r => r.ids.includes(keep));
+    let shown = 0;
+    for (let i = 0; i < at; i++) shown += all[i].length;
+    if (at > 0 && shown + all[at].length > LABEL_MAX_LINES - 1) all.unshift(...all.splice(at, 1));
+  }
+  const out = [];
+  const shownIds = new Set();
+  for (const ls of all) {
+    if (out.length + ls.length > LABEL_MAX_LINES - 1) break;
+    out.push(...ls);
+    for (const id of ls[0].ids) shownIds.add(id);
+  }
+  if (!out.length) {
+    // One row too long for the label on its own: as much of it as fits.
+    const ls = all[0].slice(0, LABEL_MAX_LINES - 1);
+    const tail = ls[ls.length - 1];
+    ls[ls.length - 1] = { ...tail, text: tail.text.replace(/,?$/, ' …') };
+    out.push(...ls);
+    for (const id of ls[0].ids) shownIds.add(id);
+  }
+  const hidden = ts.filter(t => !shownIds.has(t.id)).map(t => t.id);
+  if (hidden.length) {
+    const say = `+${hidden.length} more`;
+    out.push({ text: say, parts: pills ? [{ role: 'more', text: say }] : null, ids: hidden, more: true });
+  }
+  return out;
+}
+
+/** The compact label: one centred tspan per line, stacked about the text's y. */
+export function writeTextLabelRows(textEl, lines, x) {
+  textEl.innerHTML = '';
+  lines.forEach((line, i) => {
+    const lbl = typeof line === 'string' ? line : line.text;
+    const tspan = makeSVG('tspan');
+    tspan.textContent = lbl;
+    if (line && line.more) tspan.classList.add('tlbl-more');
+    tspan.setAttribute('data-row', i);
+    tspan.setAttribute('x', x);
+    tspan.setAttribute('dy', i === 0 ? `-${(lines.length - 1) * 0.6}em` : '1.2em');
+    textEl.appendChild(tspan);
+  });
+}
+
+/** The pill label: a row of role-coloured pills per transition, centred on the group's origin. */
+export function writePillLabelRows(pillEl, pillRows) {
+  pillEl.innerHTML = '';
+  // Pill widths come from geometry.js because the layout pass sized the label
+  // box from the same numbers before choosing where to put it. Two independent
+  // copies of this arithmetic would drift, and the label would then be placed
+  // clear of a box that is not the one being drawn.
+  pillRows.forEach((row, rowIndex) => {
+    const widths = row.map(p => pillPartWidth(p.text));
+    const total = widths.reduce((sum, width) => sum + width, 0) + Math.max(0, row.length - 1) * PILL_GAP;
+    let x = -total / 2;
+    const rowEl = makeSVG('g');
+    rowEl.classList.add('edge-pill-row');
+    rowEl.setAttribute('data-row', rowIndex);
+    rowEl.setAttribute('transform', `translate(0 ${rowIndex * PILL_ROW_H - (pillRows.length - 1) * PILL_ROW_H / 2})`);
+    row.forEach((part, i) => {
+      const item = makeSVG('g');
+      item.classList.add('edge-pill', `edge-pill-${part.role}`);
+      item.setAttribute('data-role', part.role);
+      item.setAttribute('data-part', i);
+      item.setAttribute('transform', `translate(${x} ${-PILL_HEIGHT / 2})`);
+      const rect = makeSVG('rect');
+      rect.setAttribute('width', widths[i]);
+      rect.setAttribute('height', PILL_HEIGHT);
+      rect.setAttribute('rx', 5);
+      const label = makeSVG('text');
+      label.setAttribute('x', widths[i] / 2);
+      label.setAttribute('y', PILL_HEIGHT / 2);
+      label.setAttribute('dominant-baseline', 'central');
+      label.setAttribute('text-anchor', 'middle');
+      label.textContent = part.text;
+      item.appendChild(rect);
+      item.appendChild(label);
+      rowEl.appendChild(item);
+      x += widths[i] + PILL_GAP;
+    });
+    pillEl.appendChild(rowEl);
+  });
+}
+
+/** Which of the two label drawings the reader has chosen, and whether pills speak in sentences. */
+export function edgeLabelMode() {
+  const style = App.config.edgeLabelStyle;
+  return { pills: style === 'pills' || style === 'beginner', beginner: style === 'beginner' };
 }
 
 // The start-state arrow is a single node, kept in the same registry style as
@@ -1144,7 +1324,6 @@ function createStateNode(id) {
     App.ctxEdge = null;
     App.ctxMode = 'state';
     const toggleOpt = $('ctx-toggle-acc');
-    const renameLbl = document.querySelector('#ctx-rename .ctx-label');
     if (toggleOpt) toggleOpt.style.display = acceptsAreShown() ? '' : 'none';
     // Only a machine with a stay move can leave a block without consuming a
     // symbol, so only those can have one at all (see machineSupportsBlocks).
@@ -1153,7 +1332,6 @@ function createStateNode(id) {
     // should have been the answer.
     const groupOpt = $('ctx-group-block');
     if (groupOpt) groupOpt.style.display = machineSupportsBlocks() ? '' : 'none';
-    if (renameLbl) renameLbl.textContent = (App.machine === 'Moore' || App.machine === 'Mealy') ? 'Configure' : 'Rename';
     showContextMenu('state', e.clientX, e.clientY);
   });
 
