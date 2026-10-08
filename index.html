@@ -1507,10 +1507,21 @@
   <div class="overlay" id="trans-modal" role="dialog" aria-modal="true" aria-labelledby="trans-modal-title">
     <div class="modal trans-modal-wide">
       <h2 class="modal-title"><span class="modal-title-text" id="trans-modal-title">Add Transition</span></h2>
-      <div class="modal-row" id="m-trans-row" style="display:none"><span class="modal-lbl">Transition</span><select class="sel" id="m-trans"></select></div>
-      <div class="modal-row"><span class="modal-lbl">From</span><select class="sel" id="m-from"></select></div>
-      <div class="modal-row" id="m-sym-row"><span class="modal-lbl">Read</span><select class="sel" id="m-sym"></select></div>
-      <div id="m-pda-extra" style="display:none">
+      <div class="edit-body">
+      <div class="modal-row" id="m-trans-row" style="display:none"><span class="modal-lbl" id="m-trans-lbl">Editing</span><select class="sel" id="m-trans" aria-labelledby="m-trans-lbl"></select></div>
+      <!-- The edge first, as one row, because that is what a transition is drawn
+           as: From and To used to sit at opposite ends of the dialog with every
+           field between them, so the destination read as an afterthought. -->
+      <div class="trans-route">
+        <span class="trans-route-lbl" id="m-from-lbl">From</span>
+        <span aria-hidden="true"></span>
+        <span class="trans-route-lbl" id="m-to-lbl">To</span>
+        <select class="sel" id="m-from" aria-label="From state"></select>
+        <span class="trans-route-arrow" aria-hidden="true">→</span>
+        <select class="sel" id="m-to" aria-label="To state"></select>
+      </div>
+      <div class="modal-row" id="m-sym-row"><span class="modal-lbl">Read</span><select class="sel" id="m-sym" aria-label="Read symbol"></select></div>
+      <div class="edit-sec" id="m-pda-extra" style="display:none">
         <div class="modal-section-lbl" id="m-memory-title">Stack</div>
         <div class="modal-row"><span class="modal-lbl" id="m-pop-label">Pop</span><input class="inp" id="m-pop"
             placeholder="ε or symbol" autocomplete="off" onkeydown="trySymSuggestKeydown(event)"
@@ -1520,7 +1531,7 @@
             placeholder="ε or string" autocomplete="off" onkeydown="trySymSuggestKeydown(event)"
             oninput="handleSymSuggestActive(this)" onfocus="handleSymSuggestActive(this)"
             onclick="refreshSymSuggest(this)" onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></div>
-        <div id="m-2pda-extra" style="display:none">
+        <div class="edit-sec" id="m-2pda-extra" style="display:none">
           <div class="modal-section-lbl">Stack 2</div>
           <div class="modal-row"><span class="modal-lbl">Pop₂</span><input class="inp" id="m-pop2"
               placeholder="ε or symbol" autocomplete="off" onkeydown="trySymSuggestKeydown(event)"
@@ -1531,7 +1542,7 @@
               oninput="handleSymSuggestActive(this)" onfocus="handleSymSuggestActive(this)"
               onclick="refreshSymSuggest(this)" onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()"></div>
         </div>
-        <div id="m-epda-extra" style="display:none">
+        <div class="edit-sec" id="m-epda-extra" style="display:none">
           <div class="modal-section-lbl">Embedded stacks</div>
           <div class="modal-row"><span class="modal-lbl">Below</span><input class="inp" id="m-below"
               placeholder="ε, or A|BC — stacks inserted under the top one" autocomplete="off"></div>
@@ -1539,28 +1550,36 @@
               placeholder="ε, or A|BC — stacks inserted over the top one" autocomplete="off"></div>
         </div>
       </div>
-      <div id="m-tm-extra" style="display:none">
-        <div class="modal-section-lbl">Tape</div>
-        <div class="modal-row"><span class="modal-lbl">Write</span><input class="inp" id="m-write" placeholder="symbol"
+      <div class="edit-sec" id="m-tm-extra" style="display:none">
+        <div class="modal-section-lbl" id="m-tape-title">Tape</div>
+        <div class="modal-row"><span class="modal-lbl">Write</span><input class="inp" id="m-write" placeholder="same as read"
             autocomplete="off" onkeydown="trySymSuggestKeydown(event)" oninput="handleSymSuggestActive(this)"
             onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
             onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
         </div>
-        <div class="modal-row"><span class="modal-lbl">Move</span>
-          <select class="sel" id="m-dir"></select>
+        <!-- The select stays the field getTransitionFormValues reads; the
+             strip of arrows beside it is how the reader sets it. -->
+        <div class="modal-row"><span class="modal-lbl" id="m-dir-lbl">Move</span>
+          <select class="sel" id="m-dir" data-native-select hidden></select>
+          <div class="seg dir-seg" role="radiogroup" aria-labelledby="m-dir-lbl" data-for="m-dir"></div>
         </div>
       </div>
-      <div id="m-mealy-extra" style="display:none">
-        <div class="modal-section-lbl">Output</div>
+      <div class="edit-sec" id="m-mealy-extra" style="display:none">
+        <div class="modal-section-lbl" id="m-output-title" hidden>Output</div>
         <div class="modal-row"><span class="modal-lbl">Output</span><select class="sel" id="m-output"></select></div>
       </div>
-      <div id="m-pfa-extra" style="display:none">
-        <div class="modal-section-lbl">Probability</div>
-        <div class="modal-row"><span class="modal-lbl">P</span><input class="inp" id="m-weight" type="number"
+      <div class="edit-sec" id="m-pfa-extra" style="display:none">
+        <div class="modal-row"><span class="modal-lbl">Probability</span><input class="inp" id="m-weight" type="number"
             min="0" max="1" step="0.05" placeholder="0 – 1" autocomplete="off"></div>
       </div>
-      <div id="m-mtm-extra" style="display:none"></div>
-      <div class="modal-row"><span class="modal-lbl">To</span><select class="sel" id="m-to"></select></div>
+      <div class="edit-sec" id="m-mtm-extra" style="display:none"></div>
+      <!-- Derived from the fields above and saved nowhere, so dashed (see the
+           note at the top of css/views.css). It is the label the canvas will
+           draw, which is the one place the reader can check the fields add up. -->
+      <div class="edit-preview">
+        <svg class="edit-preview-svg" id="m-preview" viewBox="0 0 320 100" role="img" aria-label="Preview"></svg>
+      </div>
+      </div>
       <div class="modal-foot"><button class="btn-g" onclick="closeModal('trans-modal')">Cancel</button><button
           class="btn-p" id="trans-confirm-btn" onclick="confirmTrans()">Add</button></div>
     </div>
@@ -1568,27 +1587,41 @@
 
   <div class="overlay" id="state-modal" role="dialog" aria-modal="true" aria-labelledby="state-modal-title">
     <div class="modal">
-      <h2 class="modal-title"><span class="modal-title-text" id="state-modal-title">Configure State</span></h2>
+      <h2 class="modal-title"><span class="modal-title-text" id="state-modal-title">Edit State</span></h2>
+      <!-- Drawn in the transition dialog's vocabulary (css/modals.css, "The
+           state and transition editors"): the two edit halves of one diagram. -->
+      <div class="edit-body">
       <div class="modal-row"><span class="modal-lbl">Name</span><input class="inp" id="s-name" maxlength="24" placeholder="q0" aria-describedby="s-name-hint"></div>
       <div class="modal-row modal-row-tight" id="s-name-hint-row">
         <span class="modal-lbl"></span>
         <span class="modal-hint" id="s-name-hint">Use <code>_</code>, space or <code>-</code> to break long names onto multiple lines inside the node.</span>
       </div>
-      <div class="modal-row"><span class="modal-lbl">Start</span><label class="toggle-switch"><input type="checkbox" id="s-start"><span class="toggle-track"><span class="toggle-thumb"></span></span></label></div>
-      <div class="modal-row"><span class="modal-lbl">Accept</span><label class="toggle-switch"><input type="checkbox" id="s-acc"><span class="toggle-track"><span class="toggle-thumb"></span></span></label></div>
-      <div id="s-moore-extra" style="display:none">
-        <div class="modal-row"><span class="modal-lbl">Output λ</span><select class="sel" id="s-output"></select></div>
+      <!-- Start and Accepting are marks drawn on the state — the arrow in, the
+           second ring — so they are offered as those marks, pressed on or off.
+           Each is still the checkbox confirmState reads. -->
+      <div class="modal-row"><span class="modal-lbl" id="s-role-lbl">Role</span>
+        <div class="seg" role="group" aria-labelledby="s-role-lbl">
+          <label class="seg-btn" id="s-start-opt"><input type="checkbox" class="seg-check" id="s-start"><span class="seg-glyph" aria-hidden="true">→</span>Start</label>
+          <label class="seg-btn" id="s-acc-opt"><input type="checkbox" class="seg-check" id="s-acc"><span class="seg-glyph" aria-hidden="true">◎</span>Accepting</label>
+        </div>
       </div>
-      <div id="s-parity-extra" style="display:none">
-        <div class="modal-row"><span class="modal-lbl" data-tip="A run is accepting when the least priority it visits infinitely often is even">Priority Ω</span><input type="number" class="inp" id="s-priority" min="0" max="99" step="1" label="Parity priority"></div>
+      <div class="edit-sec" id="s-moore-extra" style="display:none">
+        <div class="modal-row"><span class="modal-lbl">Output</span><select class="sel" id="s-output" aria-label="Output"></select></div>
+      </div>
+      <div class="edit-sec" id="s-parity-extra" style="display:none">
+        <div class="modal-row"><span class="modal-lbl" data-tip="A run is accepting when the least priority it visits infinitely often is even">Priority <span class="sym">Ω</span></span><input type="number" class="inp" id="s-priority" min="0" max="99" step="1" aria-label="Parity priority"></div>
         <div class="modal-row modal-row-tight">
           <span class="modal-lbl"></span>
           <span class="modal-hint">Lower priorities dominate. Even accepts, odd rejects.</span>
         </div>
       </div>
-      <div id="s-mealy-extra" style="display:none">
-        <div class="modal-section-lbl">Outgoing Transition Outputs (<span class="sym">λ</span>)</div>
+      <div class="edit-sec" id="s-mealy-extra" style="display:none">
+        <div class="modal-section-lbl">Outputs on outgoing transitions</div>
         <div id="s-mealy-transitions-list" class="mealy-outputs-list"></div>
+      </div>
+      <div class="edit-preview">
+        <svg class="edit-preview-svg" id="s-preview" viewBox="0 0 320 100" role="img" aria-label="Preview"></svg>
+      </div>
       </div>
       <div class="modal-foot"><button class="btn-g" onclick="closeModal('state-modal')">Cancel</button><button
           class="btn-p" onclick="confirmState()">Save</button></div>
@@ -2500,6 +2533,13 @@
       Add to StateMate Context
     </div>
     <div class="ctx-divider ctx-sm"></div>
+    <!-- First, as Edit Transition is first among an edge's items: the dialog
+         edits the whole state (name, role, output or priority), so it is named
+         for that rather than for renaming, which was one field of it. -->
+    <div tabindex="0" class="ctx-i ctx-state" id="ctx-rename" onclick="ctxRename()">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" /></svg>
+      Edit State
+    </div>
     <div tabindex="0" class="ctx-i ctx-state" onclick="ctxStart()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M221.66,133.66l-72,72a8,8,0,0,1-11.32-11.32L196.69,136H40a8,8,0,0,1,0-16H196.69L138.34,61.66a8,8,0,0,1,11.32-11.32l72,72A8,8,0,0,1,221.66,133.66Z" /></svg>
       Set Start
@@ -2507,10 +2547,6 @@
     <div tabindex="0" class="ctx-i ctx-state" id="ctx-toggle-acc" onclick="ctxToggleAcc()">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5" /><circle cx="8" cy="8" r="2.3" /></svg>
       Toggle Accept
-    </div>
-    <div tabindex="0" class="ctx-i ctx-state" id="ctx-rename" onclick="ctxRename()">
-      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" /></svg>
-      <span class="ctx-label">Rename</span>
     </div>
     <div tabindex="0" class="ctx-i ctx-state" onclick="ctxAddNoteState()">
       <svg viewBox="0 0 256 256" fill="currentColor"><path d="M88,96a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H96A8,8,0,0,1,88,96Zm8,40h64a8,8,0,0,0,0-16H96a8,8,0,0,0,0,16Zm32,16H96a8,8,0,0,0,0,16h32a8,8,0,0,0,0-16ZM224,48V156.69A15.86,15.86,0,0,1,219.31,168L168,219.31A15.86,15.86,0,0,1,156.69,224H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H152V160a8,8,0,0,1,8-8h48V48H48Zm120-40v28.7L196.69,168Z" /></svg>

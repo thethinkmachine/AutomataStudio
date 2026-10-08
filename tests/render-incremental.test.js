@@ -244,7 +244,10 @@ test('adding a second symbol to an edge updates the label in place', () => {
 
   assert.equal(edgeNode(0, 1), node, 'same edge, same node');
   assert.equal(node.__parts.textEl, label, 'same label element');
-  assert.equal(label.children.length, 2, 'one tspan per transition in the group');
+  // Two rules that differ only in what they read share a row (render.js,
+  // edgeLabelLines), the way a textbook writes them.
+  assert.equal(label.children.length, 1, 'rules differing only in the read share one row');
+  assert.equal(label.children[0].textContent, 'a, b');
 });
 
 test('semantic pill labels are toggleable without replacing the edge node', () => {

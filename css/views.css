@@ -34,7 +34,10 @@
    (tape the machine has not written), .tv-cell.is-ghost (a projected repeat),
    .example-chip.is-pending (a word not committed yet), .example-card-add,
    .gram-stub, .canvas-info-btn.is-invite, .wiz-example (all "add one here"),
-   and .pn-body (a port, derived on every rebuild). ══════════════════════════ */
+   .pn-body (a port, derived on every rebuild), .edit-preview (the state and
+   transition dialogs' drawing of what they will make, saved nowhere until
+   confirmed) and .edge-pill-more (a count of rules a dense edge's label does
+   not draw, not a rule). ═══════════════════════════════════════════════════ */
 
 .view-container {
   flex: 1;

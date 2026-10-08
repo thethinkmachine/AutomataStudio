@@ -440,6 +440,24 @@
   stroke-linejoin: round;
 }
 
+/* The `+k more` that ends a dense edge's label (render.js, edgeLabelLines):
+   a count of rules not drawn, so it is set apart from the rules that are. */
+.tlbl tspan.tlbl-more {
+  fill: var(--text3);
+  font-style: italic;
+}
+
+.edge-pill-more rect {
+  fill: transparent;
+  stroke: color-mix(in srgb, var(--text3) 45%, transparent);
+  stroke-dasharray: 3 2;
+}
+
+.edge-pill-more text {
+  fill: var(--text3);
+  font-style: italic;
+}
+
 .edge-pill-label {
   overflow: visible;
   paint-order: normal;

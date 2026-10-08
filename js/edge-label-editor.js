@@ -37,7 +37,7 @@ import { $, App, getMachineConfig, isReadOnlyHeadMachine } from './state.js';
 import { isMultiTape, transitionFieldsOf } from './machines/index.js';
 import { parseEps } from './machines/predicates.js';
 import { formatWeight, getTransition, openTransModal, saveTransition, transitionSymbolChoices } from './states-transitions.js';
-import { edgeLabelAnchor } from './render.js';
+import { edgeLabelAnchor, edgeLabelLineOf } from './render.js';
 import { viewEdgeGroup } from './view-graph.js';
 import { hideSymSuggest, handleSymSuggestActive, handleSymSuggestKeyup, refreshSymSuggest, trySymSuggestKeydown } from './suggest.js';
 import { isCounterMachine, isQueueAutomaton, showStatus } from './utils.js';
@@ -586,8 +586,11 @@ function place() {
     if (ed.pos !== 'hidden') { style.visibility = 'hidden'; ed.pos = 'hidden'; }
     return;
   }
-  const n = ed.ids.length;
-  const y = a.drawn ? a.y + (ed.row - (n - 1) / 2) * a.pitch : a.y;
+  // Over the line the rule is drawn on, which is not its index among the
+  // edge's rules once rows merge and a dense label is capped (render.js,
+  // edgeLabelLines).
+  const at = a.drawn ? edgeLabelLineOf(ed.key, ed.t.id) : null;
+  const y = at ? a.y + (at.line - (at.lines - 1) / 2) * a.pitch : a.y;
   const z = App.cam.z || 1;
   const x = App.cam.x + a.x * z;
   const top = App.cam.y + y * z;
