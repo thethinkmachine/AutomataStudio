@@ -1,0 +1,43 @@
+{
+  "machine": "NcoBA",
+  "sigma": ["a", "b"],
+  "states": [
+    { "id": "s1", "x": 220, "y": 260, "name": "last was b" },
+    { "id": "s2", "x": 620, "y": 260, "name": "last was a" },
+    { "id": "s3", "x": 420, "y": 500, "name": "guessed: only b" }
+  ],
+  "startId": "s1",
+  "accepts": ["s2"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "b" },
+    { "id": "t2", "from": "s1", "to": "s2", "symbol": "a" },
+    { "id": "t3", "from": "s2", "to": "s2", "symbol": "a" },
+    { "id": "t4", "from": "s2", "to": "s1", "symbol": "b" },
+    { "id": "t5", "from": "s1", "to": "s3", "symbol": "b" },
+    { "id": "t6", "from": "s3", "to": "s3", "symbol": "b" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 140, "y": 60, "color": "purple",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Eventually always b — FG b, again. The second b-edge out of \"last was b\" is a guess, exactly like the one the Büchi automaton for this language cannot do without: it commits to \"no more a's ever\" and dies if an a arrives. Here it is pure decoration. Delete it and the machine still recognises FG b, because the two-state part already does."
+    },
+    {
+      "id": "n2", "x": 140, "y": 440, "color": "orange",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "That is the point: NcoBA = DcoBA. Nondeterminism adds nothing to what a co-Büchi automaton can recognise — every one of them can be determinised. Büchi is the odd condition out, where the guess is the difference between recognising FG b and not being able to. Compare the DcoBA example, which is this machine minus the guess."
+    }
+  ],
+  "meta": {
+    "title": "Eventually always b, with a needless guess",
+    "blurb": "FG b as a nondeterministic co-Büchi automaton, carrying a guess it does not need — a demonstration that NcoBA = DcoBA.",
+    "inputs": [
+      { "w": "(b)", "expect": "accept" },
+      { "w": "a(b)", "expect": "accept" },
+      { "w": "aaaa(b)", "expect": "accept" },
+      { "w": "(a)", "expect": "reject" },
+      { "w": "(ab)", "expect": "reject" },
+      { "w": "bbb(ab)", "expect": "reject" }
+    ]
+  }
+}

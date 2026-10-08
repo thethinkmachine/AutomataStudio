@@ -1,0 +1,50 @@
+{
+  "machine": "FST",
+  "sigma": [
+    "a",
+    "b"
+  ],
+  "outputAlpha": [
+    "0",
+    "1",
+    "X"
+  ],
+  "states": [
+    {
+      "id": "s1",
+      "x": 300,
+      "y": 220,
+      "name": "q0"
+    }
+  ],
+  "startId": "s1",
+  "accepts": [
+    "s1"
+  ],
+  "transitions": [
+    {
+      "id": "t1",
+      "from": "s1",
+      "to": "s1",
+      "symbol": "a",
+      "output": "0"
+    },
+    {
+      "id": "t2",
+      "from": "s1",
+      "to": "s1",
+      "symbol": "a",
+      "output": "1"
+    },
+    {
+      "id": "t3",
+      "from": "s1",
+      "to": "s1",
+      "symbol": "b",
+      "output": "X"
+    }
+  ],
+  "config": {
+    "transducerAccepts": false
+  }
+}

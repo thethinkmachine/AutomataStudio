@@ -1,0 +1,43 @@
+{
+  "machine": "FST",
+  "sigma": ["0", "1"],
+  "outputAlpha": ["0", "1"],
+  "states": [
+    { "id": "s1", "x": 260, "y": 260, "name": "prev 0" },
+    { "id": "s2", "x": 640, "y": 260, "name": "prev 1" }
+  ],
+  "startId": "s1",
+  "accepts": [],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "0", "output": "0" },
+    { "id": "t2", "from": "s1", "to": "s2", "symbol": "1", "output": "1" },
+    { "id": "t3", "from": "s2", "to": "s2", "symbol": "1", "output": "0" },
+    { "id": "t4", "from": "s2", "to": "s1", "symbol": "0", "output": "1" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 160, "y": 80, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Binary → Gray code, streamed: each output bit is the current input bit XOR the previous one. Gray code is the encoding where consecutive numbers differ in exactly ONE bit — used in rotary encoders and error-resistant hardware."
+    },
+    {
+      "id": "n2", "x": 160, "y": 400, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Two states carry all the memory needed: which bit came before. Try 0111 (7) and 1000 (8) — their Gray codes 0100 and 1100 differ in a single bit, even though the binary inputs differ in all four."
+    }
+  ],
+  "config": {
+    "transducerAccepts": false
+  },
+  "meta": {
+    "title": "Binary → Gray code",
+    "blurb": "Streams a binary number into its Gray code (output = bit XOR previous bit). Adjacent values end up differing in exactly one bit — the trick rotary encoders rely on.",
+    "inputs": [
+      { "w": "1011", "out": "1110" },
+      { "w": "1111", "out": "1000" },
+      { "w": "0110", "out": "0101" },
+      { "w": "0111", "out": "0100", "label": "7" },
+      { "w": "1000", "out": "1100", "label": "8" }
+    ]
+  }
+}

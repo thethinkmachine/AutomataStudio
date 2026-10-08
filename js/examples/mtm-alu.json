@@ -1,0 +1,1425 @@
+{
+  "machine": "MTM",
+  "sigma": [
+    "0",
+    "1",
+    "+",
+    "&",
+    "|",
+    "^",
+    "~"
+  ],
+  "stackAlpha": [
+    "0",
+    "1",
+    "+",
+    "&",
+    "|",
+    "^",
+    "~",
+    "⊔"
+  ],
+  "tapeCount": 4,
+  "states": [
+    {
+      "id": "decode",
+      "x": 200,
+      "y": 430,
+      "name": "decode"
+    },
+    {
+      "id": "add0",
+      "x": 640,
+      "y": 110,
+      "name": "carry 0"
+    },
+    {
+      "id": "add1",
+      "x": 990,
+      "y": 110,
+      "name": "carry 1"
+    },
+    {
+      "id": "and",
+      "x": 640,
+      "y": 300,
+      "name": "and"
+    },
+    {
+      "id": "or",
+      "x": 640,
+      "y": 440,
+      "name": "or"
+    },
+    {
+      "id": "xor",
+      "x": 640,
+      "y": 580,
+      "name": "xor"
+    },
+    {
+      "id": "not",
+      "x": 640,
+      "y": 730,
+      "name": "not"
+    },
+    {
+      "id": "done",
+      "x": 1230,
+      "y": 430,
+      "name": "done"
+    }
+  ],
+  "startId": "decode",
+  "accepts": [
+    "done"
+  ],
+  "transitions": [
+    {
+      "id": "t1",
+      "from": "decode",
+      "to": "add0",
+      "symbol": "Σ",
+      "tapeSyms": [
+        "Σ",
+        "Σ",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "Σ",
+        "Σ",
+        "+",
+        "⊔"
+      ],
+      "tapeDirs": [
+        "S",
+        "S",
+        "S",
+        "S"
+      ]
+    },
+    {
+      "id": "t2",
+      "from": "decode",
+      "to": "and",
+      "symbol": "Σ",
+      "tapeSyms": [
+        "Σ",
+        "Σ",
+        "&",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "Σ",
+        "Σ",
+        "&",
+        "⊔"
+      ],
+      "tapeDirs": [
+        "S",
+        "S",
+        "S",
+        "S"
+      ]
+    },
+    {
+      "id": "t3",
+      "from": "decode",
+      "to": "or",
+      "symbol": "Σ",
+      "tapeSyms": [
+        "Σ",
+        "Σ",
+        "|",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "Σ",
+        "Σ",
+        "|",
+        "⊔"
+      ],
+      "tapeDirs": [
+        "S",
+        "S",
+        "S",
+        "S"
+      ]
+    },
+    {
+      "id": "t4",
+      "from": "decode",
+      "to": "xor",
+      "symbol": "Σ",
+      "tapeSyms": [
+        "Σ",
+        "Σ",
+        "^",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "Σ",
+        "Σ",
+        "^",
+        "⊔"
+      ],
+      "tapeDirs": [
+        "S",
+        "S",
+        "S",
+        "S"
+      ]
+    },
+    {
+      "id": "t5",
+      "from": "decode",
+      "to": "not",
+      "symbol": "Σ",
+      "tapeSyms": [
+        "Σ",
+        "Σ",
+        "~",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "Σ",
+        "Σ",
+        "~",
+        "⊔"
+      ],
+      "tapeDirs": [
+        "S",
+        "S",
+        "S",
+        "S"
+      ]
+    },
+    {
+      "id": "t6",
+      "from": "add0",
+      "to": "add0",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "0",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "0",
+        "+",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t7",
+      "from": "add0",
+      "to": "add0",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "1",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "1",
+        "+",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t8",
+      "from": "add0",
+      "to": "add0",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "⊔",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "⊔",
+        "+",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t9",
+      "from": "add0",
+      "to": "add0",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "0",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "0",
+        "+",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t10",
+      "from": "add0",
+      "to": "add1",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "1",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "1",
+        "+",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t11",
+      "from": "add0",
+      "to": "add0",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "⊔",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "⊔",
+        "+",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t12",
+      "from": "add0",
+      "to": "add0",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "0",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "0",
+        "+",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t13",
+      "from": "add0",
+      "to": "add0",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "1",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "1",
+        "+",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t14",
+      "from": "add0",
+      "to": "done",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "⊔",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "⊔",
+        "+",
+        "⊔"
+      ],
+      "tapeDirs": [
+        "S",
+        "S",
+        "S",
+        "S"
+      ]
+    },
+    {
+      "id": "t15",
+      "from": "add1",
+      "to": "add0",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "0",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "0",
+        "+",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t16",
+      "from": "add1",
+      "to": "add1",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "1",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "1",
+        "+",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t17",
+      "from": "add1",
+      "to": "add0",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "⊔",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "⊔",
+        "+",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t18",
+      "from": "add1",
+      "to": "add1",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "0",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "0",
+        "+",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t19",
+      "from": "add1",
+      "to": "add1",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "1",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "1",
+        "+",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t20",
+      "from": "add1",
+      "to": "add1",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "⊔",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "⊔",
+        "+",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t21",
+      "from": "add1",
+      "to": "add0",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "0",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "0",
+        "+",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t22",
+      "from": "add1",
+      "to": "add1",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "1",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "1",
+        "+",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t23",
+      "from": "add1",
+      "to": "done",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "⊔",
+        "+",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "⊔",
+        "+",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t24",
+      "from": "and",
+      "to": "and",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "0",
+        "&",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "0",
+        "&",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t25",
+      "from": "and",
+      "to": "and",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "1",
+        "&",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "1",
+        "&",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t26",
+      "from": "and",
+      "to": "and",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "⊔",
+        "&",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "⊔",
+        "&",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t27",
+      "from": "and",
+      "to": "and",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "0",
+        "&",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "0",
+        "&",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t28",
+      "from": "and",
+      "to": "and",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "1",
+        "&",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "1",
+        "&",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t29",
+      "from": "and",
+      "to": "and",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "⊔",
+        "&",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "⊔",
+        "&",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t30",
+      "from": "and",
+      "to": "and",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "0",
+        "&",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "0",
+        "&",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t31",
+      "from": "and",
+      "to": "and",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "1",
+        "&",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "1",
+        "&",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t32",
+      "from": "and",
+      "to": "done",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "⊔",
+        "&",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "⊔",
+        "&",
+        "⊔"
+      ],
+      "tapeDirs": [
+        "S",
+        "S",
+        "S",
+        "S"
+      ]
+    },
+    {
+      "id": "t33",
+      "from": "or",
+      "to": "or",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "0",
+        "|",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "0",
+        "|",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t34",
+      "from": "or",
+      "to": "or",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "1",
+        "|",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "1",
+        "|",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t35",
+      "from": "or",
+      "to": "or",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "⊔",
+        "|",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "⊔",
+        "|",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t36",
+      "from": "or",
+      "to": "or",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "0",
+        "|",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "0",
+        "|",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t37",
+      "from": "or",
+      "to": "or",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "1",
+        "|",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "1",
+        "|",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t38",
+      "from": "or",
+      "to": "or",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "⊔",
+        "|",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "⊔",
+        "|",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t39",
+      "from": "or",
+      "to": "or",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "0",
+        "|",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "0",
+        "|",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t40",
+      "from": "or",
+      "to": "or",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "1",
+        "|",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "1",
+        "|",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t41",
+      "from": "or",
+      "to": "done",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "⊔",
+        "|",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "⊔",
+        "|",
+        "⊔"
+      ],
+      "tapeDirs": [
+        "S",
+        "S",
+        "S",
+        "S"
+      ]
+    },
+    {
+      "id": "t42",
+      "from": "xor",
+      "to": "xor",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "0",
+        "^",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "0",
+        "^",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t43",
+      "from": "xor",
+      "to": "xor",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "1",
+        "^",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "1",
+        "^",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t44",
+      "from": "xor",
+      "to": "xor",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "⊔",
+        "^",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "⊔",
+        "^",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t45",
+      "from": "xor",
+      "to": "xor",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "0",
+        "^",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "0",
+        "^",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t46",
+      "from": "xor",
+      "to": "xor",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "1",
+        "^",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "1",
+        "^",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t47",
+      "from": "xor",
+      "to": "xor",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "⊔",
+        "^",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "⊔",
+        "^",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t48",
+      "from": "xor",
+      "to": "xor",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "0",
+        "^",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "0",
+        "^",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t49",
+      "from": "xor",
+      "to": "xor",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "1",
+        "^",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "1",
+        "^",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t50",
+      "from": "xor",
+      "to": "done",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "⊔",
+        "^",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "⊔",
+        "^",
+        "⊔"
+      ],
+      "tapeDirs": [
+        "S",
+        "S",
+        "S",
+        "S"
+      ]
+    },
+    {
+      "id": "t51",
+      "from": "not",
+      "to": "not",
+      "symbol": "0",
+      "tapeSyms": [
+        "0",
+        "⊔",
+        "~",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "0",
+        "⊔",
+        "~",
+        "1"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t52",
+      "from": "not",
+      "to": "not",
+      "symbol": "1",
+      "tapeSyms": [
+        "1",
+        "⊔",
+        "~",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "1",
+        "⊔",
+        "~",
+        "0"
+      ],
+      "tapeDirs": [
+        "R",
+        "R",
+        "S",
+        "R"
+      ]
+    },
+    {
+      "id": "t53",
+      "from": "not",
+      "to": "done",
+      "symbol": "⊔",
+      "tapeSyms": [
+        "⊔",
+        "⊔",
+        "~",
+        "⊔"
+      ],
+      "tapeWrites": [
+        "⊔",
+        "⊔",
+        "~",
+        "⊔"
+      ],
+      "tapeDirs": [
+        "S",
+        "S",
+        "S",
+        "S"
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "id": "n1",
+      "x": 40,
+      "y": 30,
+      "color": "blue",
+      "anchorStates": [],
+      "anchorTransitions": [],
+      "text": "A 4-tape ALU. Tape 1 holds operand A, tape 2 operand B (both least-significant bit first), tape 3 holds the opcode, tape 4 receives the result. One decode step reads the opcode and jumps to the circuit for it; from there every operation is a single lockstep sweep of four heads."
+    },
+    {
+      "id": "n2",
+      "x": 40,
+      "y": 250,
+      "color": "green",
+      "anchorStates": [],
+      "anchorTransitions": [],
+      "text": "Input format: A,B,op,ε — one segment per tape. Opcodes: + add, & and, | or, ^ xor, ~ not. Try 1101,0110,+,ε (11+6=17)."
+    },
+    {
+      "id": "n3",
+      "x": 40,
+      "y": 470,
+      "color": "amber",
+      "anchorStates": [],
+      "anchorTransitions": [],
+      "text": "The opcode head never moves, so tape 3 stays readable for the whole run and every rule names the operation it belongs to. That is why there is no separate wiring per instruction: the opcode IS the selector, exactly as it is in hardware."
+    },
+    {
+      "id": "n4",
+      "x": 40,
+      "y": 700,
+      "color": "purple",
+      "anchorStates": [],
+      "anchorTransitions": [],
+      "text": "~ is unary: it reads tape 2 as blank, so supplying a second operand leaves no matching rule and the word is refused. Add is the only path that needs memory — one bit of it, the carry, which is the whole difference between the two add states."
+    }
+  ],
+  "meta": {
+    "title": "4-tape ALU — add, and, or, xor, not",
+    "blurb": "An arithmetic logic unit as a Turing machine: operands on tapes 1 and 2, the opcode on tape 3, the result on tape 4. Decode once, then one synchronized sweep per operation — the carry bit is the only state the machine ever needs.",
+    "inputs": [
+      {
+        "w": "1101,0110,+,ε",
+        "expect": "accept",
+        "tape": "10001",
+        "label": "11+6=17"
+      },
+      {
+        "w": "1101,0110,&,ε",
+        "expect": "accept",
+        "tape": "0100",
+        "label": "11&6=2"
+      },
+      {
+        "w": "1101,0110,|,ε",
+        "expect": "accept",
+        "tape": "1111",
+        "label": "11|6=15"
+      },
+      {
+        "w": "1101,0110,^,ε",
+        "expect": "accept",
+        "tape": "1011",
+        "label": "11^6=13"
+      },
+      {
+        "w": "1101,ε,~,ε",
+        "expect": "accept",
+        "tape": "0010",
+        "label": "~11 = 4 (4-bit)"
+      }
+    ]
+  }
+}
