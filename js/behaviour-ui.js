@@ -17,7 +17,7 @@
 //  machines: everything this section says, it proved.
 //
 //  Built the first time the body has a size, like the complexity section, and
-//  wired with listeners at creation — nothing here is in bridge.js.
+//  wired with listeners at creation.
 // ══════════════════════════════════════════════════════════════════
 
 import { $, App, activeWorkspaceId } from './state.js';

@@ -16,6 +16,7 @@
 // Rows are deliberately few. The bar is "changes what the canvas looks like,
 // and you want it while drawing"; anything you set once belongs in the dialog,
 // which the More… link opens on the matching tab.
+import { defineActions } from './action-registry.js';
 import { $, App, EdgeLabelStyles, largeMachineOverridePrompt, machineIsLarge, normalizeEdgeLabelStyle } from './state.js';
 import { settleAll } from './anim.js';
 import { clearEdgeDirectionHighlight, toggleSnapToGrid } from './canvas.js';
@@ -394,4 +395,10 @@ document.addEventListener('keydown', event => {
     const btn = $('quick-settings-btn');
     if (btn && btn.focus) btn.focus();
   }
+});
+
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'quickSettings.openSettingsFromQuick': ({ el }) => openSettingsFromQuick(el.dataset.tab),
+  'quickSettings.toggleQuickSettings': ({ event }) => toggleQuickSettings(event)
 });

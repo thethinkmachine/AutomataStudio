@@ -18,8 +18,8 @@
 // **The element is never cloned.** Nothing outside the panel modules scopes a
 // query to `#lpanel-content`/`#rpanel-content` — every renderer (`updateLPanel`,
 // `updateRPanel`, `renderLanguagePanel`, the tape tracker, `setLPSectionCollapsed`)
-// reaches its target by id through `$()`, and the `on*` attributes the markup is
-// wired with are global. So floating a section is one `appendChild` of the live
+// reaches its target by id through `$()`, and the data-action listener the
+// markup is wired through is on <html>, wherever the element is. So floating a section is one `appendChild` of the live
 // element into a layer over the canvas: no re-render, no re-wiring, no second
 // copy to keep in step. Cloning is the obvious implementation and it is the
 // wrong one — it would strand the `__secGrip` back-reference, `panel-list.js`'s
@@ -39,7 +39,7 @@
 // existing job here: cancelling a drag in flight.
 //
 // Listeners are attached at creation the way [js/reference.js](reference.js)
-// does it, so the whole feature adds nothing to `bridge.js`.
+// does it.
 
 import {
   FLOAT_MIN_H, FLOAT_MIN_W, PANEL_SECTIONS, PANEL_SECTION_SIDES, sectionHost,

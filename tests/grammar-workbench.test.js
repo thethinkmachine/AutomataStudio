@@ -127,23 +127,16 @@ test('every block kind a tool emits has a renderer case', () => {
 
 // ── The seam ──────────────────────────────────────────────────────
 
-test('the workbench adds no name to the on* bridge', () => {
-  const bridge = readFileSync(join(ROOT, 'js/bridge.js'), 'utf8');
-  assert.ok(!/algorithms-cfg/.test(bridge), 'the old module is gone');
-  for (const gone of ['runCNF', 'runCYK', 'parseRawGrammar', 'runGNF', 'runChomskyClassify',
-    'runFirstFollow', 'runLL1Table', 'runParseTree', 'runAmbiguityCheck', 'loadCFGPDA']) {
-    assert.ok(!bridge.includes(gone), `${gone} should no longer be on window`);
-  }
-  assert.ok(!/from '\.\/grammar-ui\.js'/.test(bridge),
-    'every listener in the workbench is attached at creation, so it needs no bridge entry at all');
-});
-
-test('the grammar view carries no on* attribute except the shared mobile sheet toggle', () => {
+test('the grammar view names one action, the shared mobile sheet toggle', () => {
+  // Every listener in the workbench is attached at creation (grammar-ui.js
+  // registers no actions at all); the toggle is chrome every view shares.
   const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
   const view = html.slice(html.indexOf('<div id="v-grammar"'), html.indexOf('<!-- ─── REFERENCE VIEW ─── -->'));
-  const handlers = [...view.matchAll(/\son[a-z]+\s*=\s*"([^"]*)"/g)].map(m => m[1]);
-  assert.deepEqual(handlers, ["toggleMobilePanel('gram-nav')"],
-    'the mobile sheet toggle is shared chrome; everything else is wired in JS');
+  const actions = [...view.matchAll(/data-action="([^"]*)"/g)].map(m => m[1]);
+  assert.deepEqual(actions, ['ui.toggleMobilePanel']);
+  assert.ok(view.includes('data-panel="gram-nav"'));
+  const ui = readFileSync(join(ROOT, 'js/grammar-ui.js'), 'utf8');
+  assert.ok(!ui.includes('defineActions'), 'the workbench wires its own listeners');
 });
 
 // The rail's id was renamed when the view was rebuilt, and js/ui.js names it

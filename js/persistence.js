@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { tokenizeSymbols } from './grammar/parse.js';
 import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
 import { applyCamera, circularLayout, sugiyamaLayout } from './canvas.js';
@@ -1018,12 +1019,14 @@ export function syncDocumentLabels() {
 const SAVE_MENU_MIN_W = 248;
 const SAVE_MENU_GAP = 8;
 
-export function toggleSaveMenu(e) {
+// `anchor` is the control that opened the menu; a delegated action passes it,
+// since its event's currentTarget is the page, not the control.
+export function toggleSaveMenu(e, anchor = e.currentTarget) {
   e.stopPropagation();
   const m = $('save-menu');
   if (!m) return;
   if (m.style.display === 'block') { hideSaveMenu(); return; }
-  const btn = e.currentTarget;
+  const btn = anchor;
   const split = btn.closest ? btn.closest('.hdr-split') : null;
   const r = (split || btn).getBoundingClientRect();
   m.style.display = 'block';
@@ -2140,3 +2143,16 @@ export {
   hideExampleCard, isEditingExampleCard, normalizeCardMeta, openExampleCard,
   renderExampleCard, showExampleCard, syncCanvasInfoButton, toggleExampleCard
 } from './machine-card.js';
+
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'file.copyMachineCode': () => copyMachineCode(),
+  'file.copyMachineLink': () => copyMachineLink(),
+  'file.copyShareableLink': () => copyShareableLink(),
+  'file.hideSaveMenu': () => hideSaveMenu(),
+  'file.loadJSON': () => loadJSON(),
+  'file.onFileLoad': ({ event }) => onFileLoad(event),
+  'file.saveDocumentAs': () => saveDocumentAs(),
+  'file.saveNow': () => saveNow(),
+  'file.toggleSaveMenu': ({ el, event }) => toggleSaveMenu(event, el)
+});

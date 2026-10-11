@@ -118,7 +118,9 @@ async function ripple(page) {
 
 /** Double-click a state, found by its name, the way a person would. */
 export async function doubleClickState(page, name) {
-  const id = await page.evaluate(n => window.App.states.find(s => String(s.name) === n)?.id, name);
+  // By the name drawn on it: the app keeps nothing on window to ask.
+  const id = await page.evaluate(n => [...document.querySelectorAll('#canvas-wrap .sn[data-id]')]
+    .find(g => g.__parts?.label?.textContent.trim() === n)?.dataset.id, name);
   if (!id) throw new Error(`no state called ${name}`);
   const box = await page.locator(`[data-id="${id}"]`).first().boundingBox();
   const x = box.x + box.width / 2, y = box.y + box.height / 2;

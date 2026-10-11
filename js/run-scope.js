@@ -48,6 +48,7 @@
 // keeping the per-scope cameras out of the save format. A file that recorded a
 // start state that is not the machine's start would be a file that lies.
 
+import { defineActions } from './action-registry.js';
 import { blockAncestry, blockSubtree, getBlock, localStateName } from './blocks.js';
 import { $, App, getState } from './state.js';
 import { liveScope } from './view-graph.js';
@@ -302,7 +303,7 @@ export function syncRunSubjectUI() {
 }
 
 /**
- * The picker. Named for the bridge, which is how an on* attribute reaches it.
+ * The picker's change handler (the runScope.setRunSubjectFromUI action).
  *
  * **The trace on screen goes with the subject**, because it was produced from a
  * different start state and judged against a different boundary. Left standing,
@@ -348,3 +349,9 @@ export function setBreakScopeFromUI(on) {
 
 subscribe(Change.GRAPH, syncRunSubjectUI);
 subscribe(Change.CANVAS, syncRunSubjectUI);
+
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'runScope.setBreakScopeFromUI': ({ el }) => setBreakScopeFromUI(el.checked),
+  'runScope.setRunSubjectFromUI': ({ el }) => setRunSubjectFromUI(el.value)
+});

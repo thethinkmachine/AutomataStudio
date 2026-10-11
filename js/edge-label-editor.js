@@ -30,8 +30,7 @@
 // gesture survives exactly where reading the label does not. Saving is one
 // commit, which repaints through the same path as any other edit.
 //
-// Nothing here is reached from an `on*` attribute, so it adds nothing to
-// bridge.js.
+// Its listeners are attached at creation.
 
 import { $, App, getMachineConfig, isReadOnlyHeadMachine } from './state.js';
 import { isMultiTape, transitionFieldsOf } from './machines/index.js';

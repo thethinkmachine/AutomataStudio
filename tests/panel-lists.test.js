@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createElement } from './dom-stub.js';
 import { createHarness, context, getElement } from './harness.js';
+import { dispatchActions } from '../js/actions.js';
 
 // The two left-panel lists.
 //
@@ -47,17 +49,47 @@ test('both lists offer the same pair of row actions', () => {
   }
 });
 
+// The rows are template markup wired by data-action (js/actions.js). The stub
+// does not parse HTML, so a control is rebuilt from the attributes the markup
+// gave it and pressed through the dispatcher — what a click in a browser does.
+function controls(html, tag) {
+  return [...html.matchAll(new RegExp(`<${tag}\\b[^>]*data-action="[^"]*"[^>]*>`, 'g'))].map(([open]) => {
+    const el = createElement(tag);
+    for (const [, name, value] of open.matchAll(/\s(data-[\w-]+)="([^"]*)"/g)) el.setAttribute(name, value);
+    return el;
+  });
+}
+const rowButtons = html => controls(html, 'button');
+const find = (els, attrs) => els.find(el => Object.entries(attrs).every(([k, v]) => el.dataset[k] === v));
+function press(el, type = 'click') {
+  const event = {
+    type, target: el, defaultPrevented: false, cancelBubble: false,
+    preventDefault() { event.defaultPrevented = true; },
+    stopPropagation() { event.cancelBubble = true; }
+  };
+  dispatchActions(event, el);
+  return event;
+}
+
 test('a transition row edits the transition it names', () => {
   seed();
-  assert.match(transHtml(), /editTransFromList\('t1'\)/);
-  assert.match(transHtml(), /editTransFromList\('t2'\)/);
-  assert.match(transHtml(), /deleteTrans\('t1'\)/);
+  const { App } = context;
+  const buttons = rowButtons(transHtml());
+  press(find(buttons, { kind: 'trans', rowId: 't2', action: 'lists.editRow:stop' }));
+  assert.equal(App.transEditId, 't2');
+  press(find(buttons, { kind: 'trans', rowId: 't1', action: 'lists.deleteRow:stop' }));
+  assert.ok(!App.transitions.some(t => t.id === 't1'), 't1 is deleted');
+  assert.ok(App.transitions.some(t => t.id === 't2'), 'and only t1');
 });
 
 test('a state row deletes the state it names', () => {
   seed();
-  assert.match(statesHtml(), /openStateModal\('s1'\)/);
-  assert.match(statesHtml(), /deleteState\('s1'\)/);
+  const { App } = context;
+  const buttons = rowButtons(statesHtml());
+  press(find(buttons, { kind: 'state', rowId: 's1', action: 'lists.editRow:stop' }));
+  assert.equal(App.editId, 's1');
+  press(find(buttons, { kind: 'state', rowId: 's2', action: 'lists.deleteRow:stop' }));
+  assert.deepEqual(App.states.map(s => s.id), ['s1']);
 });
 
 // A <span onclick> is not a control: no tab stop, no Enter, nothing for a
@@ -71,7 +103,8 @@ test('every row action is a labelled button', () => {
     for (const b of btns) {
       assert.match(b, /type="button"/, `${name}: ${b}`);
       assert.match(b, /aria-label="[^"]+"/, `${name}: ${b}`);
-      assert.match(b, /event\.stopPropagation\(\)/, `${name}: ${b}`);
+      // :stop — the press must not also reach the row's focus-the-canvas action.
+      assert.match(b, /data-action="lists\.(edit|delete)Row:stop"/, `${name}: ${b}`);
     }
   }
   assert.doesNotMatch(transHtml(), /class="dx"/);
@@ -82,8 +115,19 @@ test('every row action is a labelled button', () => {
 // opened its editor on a double one.
 test('both rows open their editor on double-click', () => {
   seed();
-  assert.match(statesHtml(), /ondblclick="openStateModal\('s1'\)"/);
-  assert.match(transHtml(), /ondblclick="editTransFromList\('t1'\)"/);
+  const { App } = context;
+  press(find(controls(statesHtml(), 'div'), { stateId: 's1' }), 'dblclick');
+  assert.equal(App.editId, 's1');
+  press(find(controls(transHtml(), 'div'), { transId: 't1' }), 'dblclick');
+  assert.equal(App.transEditId, 't1');
+});
+
+// [data-id] is how canvas.js, ui.js and simulation.js find a node on the
+// canvas with document.querySelector, and the panel comes first in the page —
+// a row carrying data-id would be found in the node's place.
+test('a row never carries data-id', () => {
+  seed();
+  assert.doesNotMatch(statesHtml() + transHtml(), /\sdata-id=/);
 });
 
 // The names reach the row through innerHTML, and a Σ symbol can arrive from an

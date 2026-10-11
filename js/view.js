@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { renderGrammarView } from './grammar-ui.js';
 import { renderAlgo } from './algorithms-fa.js';
 import { renderGamma, renderOutputAlpha, renderSigma, syncAlphabetSection } from './alphabet.js';
@@ -75,8 +76,8 @@ function auxTabs() {
 }
 
 // The bar is built once, on first open, from AUX_META — so a view's name, its
-// icon and its tooltip are written in one place. Nothing in it carries an on*
-// attribute, which is why none of it is in bridge.js.
+// icon and its tooltip are written in one place, with listeners attached as
+// it is built.
 function ensureAuxChrome() {
   const strip = $('aux-tabs');
   if (!strip || strip.dataset.built === '1') return;
@@ -384,6 +385,13 @@ document.addEventListener('keydown', e => {
 export function closeAuxView() {
   if (AUX_VIEWS.includes(App.view)) setView('build');
 }
+
+defineActions({
+  'view.closeAuxView': () => closeAuxView(),
+  'view.hideMoreMenu': () => hideMoreMenu(),
+  'view.setView': ({ el }) => setView(el.dataset.view),
+  'view.toggleMoreMenu': ({ event }) => toggleMoreMenu(event)
+});
 
 // ── Header overflow menu ──
 //  The three auxiliary views used to have a menu of their own -- a labelled

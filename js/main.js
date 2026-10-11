@@ -7,10 +7,11 @@
 // index.html loads this one module; everything else is reached through the
 // import graph. The order below mirrors the old <script> order. ES modules
 // derive their own evaluation order from imports, so this mostly just breaks
-// ties — but the last two entries are load-bearing:
+// ties — but the last entry is load-bearing:
 //
-//   bridge.js  must run before init.js, so window handlers exist at boot
-//   init.js    is the boot sequence and expects every module initialised
+//   init.js    is the boot sequence and expects every module initialised —
+//              and so every defineActions() call made, which is what the
+//              controls in index.html name (js/actions.js)
 //
 // Modules that nothing imports (tooltip.js, electron-bridge.js) are listed
 // so their top-level listeners still get installed.
@@ -70,5 +71,4 @@ import './scope.js';
 import './blocks-ui.js';
 import './tooltip.js';
 
-import './bridge.js';
 import './init.js';

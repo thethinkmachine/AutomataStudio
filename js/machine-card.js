@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { cardSourcePainter } from './card-source.js';
 import { hideCanvasContextMenu } from './canvas.js';
 import { commit } from './history.js';
@@ -423,8 +424,7 @@ function wireField(node, name, { read, write: writeBack, onEnter }) {
  * page, so a button wired by the renderer was a Describe button that did
  * nothing at all for the first machine anybody drew.
  *
- * Done here rather than through an on* attribute, so the card adds no names to
- * bridge.js — the same way reference.js and statemate-ui.js do it.
+ * Wired here, at creation, the same way reference.js and statemate-ui.js do it.
  */
 function wireChrome() {
   const btn = $('canvas-info-btn');
@@ -830,3 +830,8 @@ subscribe(Change.META, () => {
   renderExampleCard();
 });
 export function _resetMetaPainted() { _metaPainted = null; }
+
+// What index.html names, beside the function it runs (js/actions.js).
+defineActions({
+  'card.ctxCanvasDescribe': () => ctxCanvasDescribe()
+});

@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { clearTempLine, hideCanvasContextMenu } from './canvas.js';
 import { invalidateTransitionIndex } from './machines/runtime.js';
 import { snapshot } from './history.js';
@@ -388,9 +389,7 @@ export function populateTransitionModal(t) {
         <span class="mtm-tape" aria-hidden="true">${i + 1}</span>
         <select class="sel" id="m-mtm-read-${i}" aria-label="Tape ${i + 1} read">${symOpts}</select>
         <input class="inp" id="m-mtm-write-${i}" placeholder="same" aria-label="Tape ${i + 1} write"
-          autocomplete="off" onkeydown="trySymSuggestKeydown(event)" oninput="handleSymSuggestActive(this)"
-          onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
-          onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
+          autocomplete="off" data-action="suggest.symbols">
         <div class="mtm-move"><select class="sel" id="m-mtm-dir-${i}" data-native-select hidden>${dirOpts}</select>
           <div class="seg seg-compact dir-seg" role="radiogroup" aria-label="Tape ${i + 1} move">${dirSegmentHTML(`m-mtm-dir-${i}`, true)}</div></div>
       `).join('');
@@ -1544,3 +1543,17 @@ registerModal('trans-modal', {
 
 registerModal('state-modal', { submit: () => confirmState() });
 
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'graph.confirmState': () => confirmState(),
+  'graph.confirmTrans': () => confirmTrans(),
+  'graph.ctxDel': () => ctxDel(),
+  'graph.ctxDeleteTrans': () => ctxDeleteTrans(),
+  'graph.ctxDuplicateTrans': () => ctxDuplicateTrans(),
+  'graph.ctxEditTrans': () => ctxEditTrans(),
+  'graph.ctxRename': () => ctxRename(),
+  'graph.ctxResetEdgeShape': () => ctxResetEdgeShape(),
+  'graph.ctxReverseTrans': () => ctxReverseTrans(),
+  'graph.ctxStart': () => ctxStart(),
+  'graph.ctxToggleAcc': () => ctxToggleAcc()
+});

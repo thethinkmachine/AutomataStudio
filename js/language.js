@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { wrap } from './canvas.js';
 import { createMemo, reactiveRoot } from './reactive.js';
 import { Change, changed } from './store.js';
@@ -1567,3 +1568,8 @@ export function renderLanguagePanel() {
   renderLangExtension();
   renderLangTuple();
 }
+
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'language.toggleFormalDef': () => toggleFormalDef()
+});

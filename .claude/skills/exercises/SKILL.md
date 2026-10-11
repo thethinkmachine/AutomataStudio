@@ -33,7 +33,7 @@ js/exercise-ui.js   the #rp-exercise section and the #exercise-modal dialog.
 
 **The student document leaks nothing that could be the answer**: no states, no grammar, no notes, no card, Γ reset to the stack bottom. Δ is kept for a transducer, since the output alphabet is part of the task. The dialog does not pre-fill the task from `App.meta.blurb` for the same reason — a machine's description says how it works.
 
-The section and the dialog attach every listener at creation, so neither adds a name to `bridge.js`. The menu item `#menu-exercise-create` is wired from the module. The last grading result is session state keyed on exercise id *and* tab: the persisted `progress.last` records how an attempt went but not the counterexample, which would be a stale accusation on reopening a file the student has since fixed.
+The section and the dialog attach every listener at creation, so neither registers an action. The menu item `#menu-exercise-create` is wired from the module. The last grading result is session state keyed on exercise id *and* tab: the persisted `progress.last` records how an attempt went but not the counterexample, which would be a stale accusation on reopening a file the student has since fixed.
 
 **StateMate follows the exercise, per tab.** `exercise.assist` is `off` (the default), `tutor` or `on`, and `assistPolicy(App.exercise)` in model.js is the one reading of it — `'on'` when the tab has no exercise. It is enforced in the pipeline, not the console, because the console is only one of the routes in:
 

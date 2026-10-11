@@ -16,8 +16,8 @@ import { TEX_DELIMITERS } from './tex.js';
 //  therefore appears here automatically — with an empty page until a guide is
 //  written for it, which is the intended nudge.
 //
-//  Nothing here is reached from an on* attribute, so none of it is in
-//  js/bridge.js: the nav links get their listeners at creation time.
+//  The nav links get their listeners at creation time; the view registers
+//  no actions.
 
 // KaTeX is a deferred CDN script, so it may not be parsed yet the first time a
 // panel asks to typeset. Poll for it, but give up rather than retrying

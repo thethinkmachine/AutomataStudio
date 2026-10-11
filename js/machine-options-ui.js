@@ -15,8 +15,7 @@
 // option gets a row, and one with none — a DFA, most of them — has no section
 // at all, rather than an empty one.
 //
-// Listeners are attached at creation, the way js/reference.js does it, so the
-// section adds nothing to `bridge.js`.
+// Listeners are attached at creation, the way js/reference.js does it.
 
 import { $, App } from './state.js';
 import { machineOptions } from './machines/index.js';

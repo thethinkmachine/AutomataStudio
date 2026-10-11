@@ -2,8 +2,8 @@
 //  WINDOWED PANEL LISTS
 // ══════════════════════════════════════════════════════════════════
 // States Q and Transitions δ draw one row per state and one per transition. On
-// a 1000-state machine that is three thousand rows, each with two buttons and
-// five inline handlers, rebuilt from an innerHTML string on every structural
+// a 1000-state machine that is three thousand rows, each with two buttons, all
+// rebuilt from an innerHTML string on every structural
 // edit — and then walked a second time by the search filter, which set
 // `style.display` on every one of them.
 //

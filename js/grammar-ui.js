@@ -27,11 +27,10 @@ import './grammar/tools.js';
 //  reach for `$`, `App` or a renderer. Everything under js/grammar/ answers
 //  with a model or with blocks; this turns blocks into nodes.
 //
-//  **Nothing here is reached from an `on*` attribute.** Listeners are attached
-//  at creation, the way js/reference.js and js/machine-card.js do it, so the
-//  whole view adds exactly one name to js/bridge.js — where the old grammar
-//  view had twenty, one per button in its rail. That rail is what this
-//  replaces: eighteen buttons in four loose groups, each blowing away one
+//  **Listeners are attached at creation**, the way js/reference.js and
+//  js/machine-card.js do it; the view registers no actions. The old grammar
+//  view put twenty names on window, one per button in its rail. That rail is
+//  what this replaces: eighteen buttons in four loose groups, each blowing away one
 //  output div with a string of HTML.
 //
 //  The shape is nav + content, which is what the Algorithms and Reference

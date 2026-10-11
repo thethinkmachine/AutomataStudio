@@ -28,7 +28,8 @@ test('every quick row mirrors a control that exists in the Settings dialog', () 
 test('the popover markup and its trigger exist', () => {
   assert.ok(html.includes('id="quick-settings"'));
   assert.ok(html.includes('id="quick-settings-btn"'));
-  assert.ok(html.includes('toggleQuickSettings'), 'the button must be wired through the bridge');
+  assert.match(html, /id="quick-settings-btn"[^>]*data-action="quickSettings\.toggleQuickSettings"/,
+    'the button must name its action');
 });
 
 test('changing a quick setting writes App.config', () => {

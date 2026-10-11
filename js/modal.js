@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { clearTempLine } from './canvas.js';
 import { OpenCustomSelect, closeCustomSelect } from './dropdown.js';
 import { ModalRegistry, ModalReturnFocus, ModalStack } from './modal-registry.js';
@@ -401,3 +402,8 @@ document.addEventListener('keydown', e => {
     entry.submit();
   }
 }, true);
+
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'modal.closeModal': ({ el }) => closeModal(el.dataset.modal)
+});

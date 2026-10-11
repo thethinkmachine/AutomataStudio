@@ -22,8 +22,7 @@
 //                   as a share link. Opening an exercise is opening a file;
 //                   there is no second format and no server.
 //
-// Nothing here is reached from an on* attribute — every listener is attached
-// at creation — so this module adds nothing to js/bridge.js.
+// Every listener here is attached at creation.
 
 import { exportDownload } from './export-core.js';
 import { EXERCISE_LIMITS, assistPolicy, normalizeExercise, sealTarget, unsealTarget } from './exercise/model.js';

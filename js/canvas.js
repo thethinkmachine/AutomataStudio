@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { settleAll } from './anim.js';
 import { beginDividerDraw, dividerMid, dividerToolKind, dragDividerEndpointTo, dragSelectedDividersTo, endDividerEndpointDrag, finishDividerDraw, getDivider, includeDividerBounds, syncDividerSelectionClasses, updateDividerDraw, updateOneDividerDOM } from './dividers.js';
 import { exportDownload, exportFilename } from './export-core.js';
@@ -2039,3 +2040,16 @@ export async function exportPNG(opts = {}) {
   };
   img.src = url;
 }
+
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'canvas.autoLayout': () => autoLayout(),
+  'canvas.ctxCanvasAddState': () => ctxCanvasAddState(),
+  'canvas.ctxCanvasAutoLayout': () => ctxCanvasAutoLayout(),
+  'canvas.ctxCanvasFit': () => ctxCanvasFit(),
+  'canvas.ctxCanvasPaste': () => ctxCanvasPaste(),
+  'canvas.ctxCanvasSelectAll': () => ctxCanvasSelectAll(),
+  'canvas.ctxHighlightIncoming': () => ctxHighlightIncoming(),
+  'canvas.ctxHighlightOutgoing': () => ctxHighlightOutgoing(),
+  'canvas.toggleSnapToGrid': () => toggleSnapToGrid()
+});

@@ -19,7 +19,7 @@ Points worth keeping in mind:
 - **A word being typed is a chip with a field in it**, not a form somewhere else. `pending` is the draft row — not in `App.meta` until it is committed, which is why the `+` costs nothing and why the *empty* word can be added at all; a chip that was dropped unless it had been typed into made ε the one input the card could not be given with a pointer.
 - **The button is offered for an *undescribed* machine too** — that is the entry point, and without it the editor is unreachable for anything you drew yourself. With a description it opens the card; with none it opens the editor; with neither a description nor a machine it stays away, because a button that opens an empty card is worse than no button.
 - Every path that hydrates `App` from a blob has to announce `Change.META` or the card is left describing the machine it replaced: both tab-activation paths in `ui.js`, `restoreSnapshot`, and StateMate's `restoreCheckpoint`.
-- Nothing here is reached from an `on*` attribute — chrome is wired at creation the way `reference.js` does it, so the whole feature adds no names to `bridge.js`.
+- The card's chrome is wired at creation the way `reference.js` does it; it registers one action, `card.ctxCanvasDescribe`, for the canvas context menu.
 
 **Three things about how it is drawn.** The card scrolls on **one** axis (`overflow: hidden auto`): `overflow-y: auto` alone computes the other axis from `visible` to `auto`, so one long title or unbreakable test word turned the whole card into a sideways scroller and cut every row in it off at both edges — the same bug `.sm-log` had. A field's hover ground and focus ring are drawn **outside** the box with a spread `box-shadow` rather than with padding and a compensating negative margin, so the text never moves between rest, hover and focus and a five-pixel inset can never be the reason the card gains a scrollbar. And a chip's × is **faded, never removed from the flow** — a control that appears on hover and takes up room shifts every chip after it, so the row reflowed under the pointer. The card is a flex stack with one gap, so nothing dropped into it carries a vertical margin of its own; StateMate's result strip, notes and footer are styled that way in `css/modals.css`.
 
@@ -44,7 +44,7 @@ Three modules, split so the two that decide things are testable without a dialog
 
 - **[js/wizard-copy.js](js/wizard-copy.js)** — data only, imports nothing. Every question, description and field label. **Variants are keyed by flavour, never by machine name**: `states.parity` is what every machine with priorities says, and there is no `states.DPA`. The three genuinely per-machine sentences live in `FIELD_COPY_BY_MACHINE`, which is small on purpose — a queue's ends are not a stack's, and calling them push and pop would be technically true and useless.
 - **[js/wizard.js](js/wizard.js)** — the draft, the step list, validation, and `applyDraft()`. No DOM.
-- **[js/wizard-ui.js](js/wizard-ui.js)** — the dialog. Listeners are attached at creation the way [js/reference.js](js/reference.js) does it, so the whole feature adds exactly **one** name to `bridge.js`.
+- **[js/wizard-ui.js](js/wizard-ui.js)** — the dialog. Listeners are attached at creation the way [js/reference.js](js/reference.js) does it; the one action it registers is the header button's, `wizard.openMachineWizard`.
 
 Points worth keeping in mind:
 

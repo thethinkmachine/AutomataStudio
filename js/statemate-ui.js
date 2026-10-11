@@ -54,10 +54,11 @@
 //  reader is at it**: scrolling up is a decision, and a streaming reply must
 //  not undo it token by token.
 //
-//  Nothing here is reached from an on* attribute. Listeners are attached at
-//  creation, the way reference.js does it, so the feature adds exactly one
-//  name to bridge.js — the entry point the header button calls.
+//  Listeners are attached at creation, the way reference.js does it. The
+//  feature registers four actions: the entry point the ⋯ menu calls, and the
+//  three context-menu items.
 
+import { defineActions } from './action-registry.js';
 import { hlState } from './canvas.js';
 import { topModal } from './modal.js';
 import { defaultPanelTab, getTabSide, isPanelTabActive, PANEL_TABS } from './panel-state.js';
@@ -3631,7 +3632,7 @@ subscribe(Change.GRAPH, () => {
 });
 
 /**
- * The header button's entry point — the one name this feature adds to bridge.js.
+ * The ⋯ menu's entry point (the statemate.openStateMate action).
  *
  * @param {Object}  [opts]
  * @param {boolean} [opts.resume]  true when the reader is stepping back onto
@@ -4162,3 +4163,11 @@ export function _resetPaletteForTests() {
 }
 
 export { describeSpecSize };
+
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'statemate.ctxAddToStateMateContext': () => ctxAddToStateMateContext(),
+  'statemate.ctxAskStateMate': () => ctxAskStateMate(),
+  'statemate.ctxCanvasAskStateMate': () => ctxCanvasAskStateMate(),
+  'statemate.openStateMate': () => openStateMate()
+});

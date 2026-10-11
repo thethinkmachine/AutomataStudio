@@ -19,8 +19,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
 
 const DIALOGS = [
-  { name: 'Settings', rail: 'settings-tabs', handler: 'switchSettingsTab', prefix: 'tab-' },
-  { name: 'Keyboard Shortcuts', rail: 'help-tabs', handler: 'switchHelpTab', prefix: 'help-tab-' },
+  { name: 'Settings', rail: 'settings-tabs', action: 'ui.switchSettingsTab', prefix: 'tab-' },
+  { name: 'Keyboard Shortcuts', rail: 'help-tabs', action: 'ui.switchHelpTab', prefix: 'help-tab-' },
 ];
 
 // The rail element's inner markup, from its id to the next closing div at the
@@ -40,11 +40,15 @@ function railMarkup(railId) {
   return html.slice(open, i);
 }
 
-for (const { name, rail, handler, prefix } of DIALOGS) {
+for (const { name, rail, action, prefix } of DIALOGS) {
   test(`${name}: every tab has a panel and exactly one of each starts active`, () => {
     const markup = railMarkup(rail);
 
-    const tabs = [...markup.matchAll(new RegExp(`${handler}\\('([^']+)'\\)`, 'g'))].map(m => m[1]);
+    // Each tab names its action and carries the panel it opens as data-tab.
+    const tabs = [...markup.matchAll(/<button\b[^>]*>/g)]
+      .map(([open]) => open)
+      .filter(open => open.includes(`data-action="${action}"`))
+      .map(open => open.match(/data-tab="([^"]+)"/)?.[1]);
     assert.ok(tabs.length > 1, `${rail} has ${tabs.length} tabs`);
     assert.equal(new Set(tabs).size, tabs.length, `${rail} lists a tab id twice`);
 

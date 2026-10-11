@@ -34,8 +34,8 @@
 // above the host rather than a row inside it, since the list writes its host's
 // `innerHTML` on every scroll, and it follows the host's horizontal scroll.
 //
-// Listeners are delegated from the host and attached once, so the feature adds
-// nothing to `bridge.js` and nothing survives a redraw that should not.
+// Listeners are delegated from the host and attached once, so nothing survives
+// a redraw that should not.
 
 import { $, App, getMachineConfig, getState } from './state.js';
 import { hasSingleValuedDelta } from './machines/predicates.js';

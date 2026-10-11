@@ -5,3 +5,8 @@ build/cli/automata text eol=lf
 build/cli/automata.cmd text eol=crlf
 # The .deb package scripts run under bash on the target machine.
 build/linux/*.sh text eol=lf
+# index.html's Content-Security-Policy allows its two inline scripts by the
+# SHA-256 of their exact bytes. A CRLF checkout (core.autocrlf, as on GitHub's
+# Windows runners, which build the installer) changes those bytes, and the
+# browser would then refuse the theme bootstrap without a word.
+index.html text eol=lf

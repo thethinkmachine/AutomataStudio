@@ -18,6 +18,7 @@
 // getBackupPayload writes it to disk, so a library kept there would be copied
 // into every file the reader ever saved.
 
+import { defineActions } from './action-registry.js';
 import {
   blockAncestry, blockChildren, blockMembers, getBlock, inlineBlock, liveBlocks,
   blockPlacementRefusal, blockRemovalIds, machineSupportsBlocks, outlineBlock,
@@ -402,8 +403,7 @@ function promptForName(title, initial, onName) {
 // surface to go and find rather than a list already in front of you.
 //
 // Rows are built rather than written as HTML, with their listeners attached at
-// creation the way js/reference.js does it — so the whole feature still adds no
-// name to js/bridge.js.
+// creation the way js/reference.js does it.
 
 /** A definition's one-line description: the machine it is, and how big. */
 function libraryRowSub(def) {
@@ -534,3 +534,14 @@ export function allBlocks() {
 export function openBlockFromList(id) {
   enterBlockScope(id);
 }
+
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'blocks.openBlockFromList': ({ el }) => openBlockFromList(el.dataset.blockId),
+  'blocks.ctxDeleteBlock': () => ctxDeleteBlock(),
+  'blocks.ctxGroupIntoBlock': () => ctxGroupIntoBlock(),
+  'blocks.ctxOpenBlock': () => ctxOpenBlock(),
+  'blocks.ctxRenameBlock': () => ctxRenameBlock(),
+  'blocks.ctxSaveBlockToLibrary': () => ctxSaveBlockToLibrary(),
+  'blocks.ctxUngroupBlock': () => ctxUngroupBlock()
+});

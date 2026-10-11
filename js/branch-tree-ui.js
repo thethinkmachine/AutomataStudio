@@ -18,7 +18,7 @@
 //  depth is a band across the tree, the branches below it are dimmed until
 //  the run gets there, and clicking a node scrubs to it.
 //
-//  Listeners are attached at creation, so nothing here is in bridge.js.
+//  Listeners are attached at creation.
 // ══════════════════════════════════════════════════════════════════
 
 import { $, App, getState } from './state.js';

@@ -125,7 +125,7 @@ test('the four rails share one width, set by the window rather than inline', () 
 test('Library comes first, and the More menu, the strip and the digits agree on the order', () => {
   const h = createHarness();
   assert.equal(h.context.AUX_VIEWS[0], 'library');
-  const menu = [...html.matchAll(/onclick="setView\('(\w+)'\)">[\s\S]*?<span class="ctx-kbd-hint">(\d)<\/span>/g)]
+  const menu = [...html.matchAll(/data-action="view\.setView" data-view="(\w+)">[\s\S]*?<span class="ctx-kbd-hint">(\d)<\/span>/g)]
     .map(m => [m[1], m[2]]);
   assert.deepEqual(menu, h.context.AUX_VIEWS.map(v => [v, h.context.auxViewKey(v)]));
   h.context.setView('library');

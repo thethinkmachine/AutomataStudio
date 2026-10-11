@@ -27,6 +27,9 @@ function serializeNode(node) {
   return `<${tag}${attrs.length ? ' ' + attrs.join(' ') : ''}>${inner}</${tag}>`;
 }
 
+// data-tab-id → tabId, the browser's own mapping.
+const datasetKey = name => name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+
 export function createElement(id = '') {
   const classSet = new Set();
   const el = {
@@ -145,14 +148,25 @@ export function createElement(id = '') {
     // that copies a node's attributes rather than naming them needs the second,
     // which js/glyphs.js does when it swaps a <text> for the group of outlines
     // that replaces it.
-    setAttribute(name, value) { this[name] = value; this._attrs.set(name, String(value)); },
+    // A data-* attribute shows through dataset, as it does in a browser:
+    // js/actions.js finds an action by its attribute, and the action reads its
+    // arguments back from dataset.
+    setAttribute(name, value) {
+      this[name] = value;
+      this._attrs.set(name, String(value));
+      if (name.startsWith('data-')) this.dataset[datasetKey(name)] = String(value);
+    },
     // The namespace is recorded but not modelled: the stub has one attribute
     // space, and nothing here distinguishes `xlink:href` from `href` beyond the
     // name it is written under -- which is exactly what the serializer sees.
     setAttributeNS(ns, name, value) { this.setAttribute(name, value); },
     getAttribute(name) { return this[name] === undefined ? null : this[name]; },
     getAttributeNS(ns, name) { return this.getAttribute(name); },
-    removeAttribute(name) { delete this[name]; this._attrs.delete(name); },
+    removeAttribute(name) {
+      delete this[name];
+      this._attrs.delete(name);
+      if (name.startsWith('data-')) delete this.dataset[datasetKey(name)];
+    },
     hasAttribute(name) { return this[name] !== undefined; },
     get attributes() {
       return [...this._attrs].map(([name, value]) => ({ name, value }));
@@ -326,25 +340,43 @@ export function clearElements() {
 // shortcuts, StateMate's Escape ladder — and which of them may claim it is a
 // question about *phase*, not about registration order, so the delivery below
 // models capture-before-bubble and honours stopPropagation.
+//
+// <html> is on the same path, one step inside document, and js/actions.js
+// listens there precisely so its actions run before every document listener —
+// so its listeners are recorded here too, tagged with the node they are on.
 const documentListeners = [];
 
+function recordListener(node) {
+  return {
+    addEventListener(type, handler, options) {
+      if (typeof handler !== 'function') return;
+      documentListeners.push({
+        node,
+        type,
+        handler,
+        capture: options === true || !!(options && options.capture)
+      });
+    },
+    removeEventListener(type, handler, options) {
+      const capture = options === true || !!(options && options.capture);
+      const at = documentListeners.findIndex(l =>
+        l.node === node && l.type === type && l.handler === handler && l.capture === capture);
+      if (at !== -1) documentListeners.splice(at, 1);
+    }
+  };
+}
+
 const documentStub = {
-  documentElement: { dataset: {}, style: { setProperty() {}, removeProperty() {} }, classList: createElement().classList },
+  documentElement: {
+    dataset: {},
+    style: { setProperty() {}, removeProperty() {} },
+    classList: createElement().classList,
+    ...recordListener('html')
+  },
   body: createElement('body'),
   head: createElement('head'),
   activeElement: null,
-  addEventListener(type, handler, options) {
-    if (typeof handler !== 'function') return;
-    documentListeners.push({
-      type,
-      handler,
-      capture: options === true || !!(options && options.capture)
-    });
-  },
-  removeEventListener(type, handler) {
-    const at = documentListeners.findIndex(l => l.type === type && l.handler === handler);
-    if (at !== -1) documentListeners.splice(at, 1);
-  },
+  ...recordListener('document'),
   querySelector() { return null; },
   querySelectorAll() { return []; },
   getElementById(id) { return getElement(id); },
@@ -359,10 +391,11 @@ const documentStub = {
 };
 
 /**
- * Deliver an event to the document listeners the app registered at module scope.
+ * Deliver an event to the document and <html> listeners the app registered.
  *
- * Capture listeners run first and `stopPropagation` ends the delivery, the way a
- * real DOM behaves — a capture-phase listener on document that stops the event
+ * The order is the real path's: document capture, <html> capture, <html>
+ * bubble, document bubble. `stopPropagation` ends the delivery, the way a real
+ * DOM behaves — a capture-phase listener on document that stops the event
  * pre-empts every bubble-phase one, which is exactly the failure mode worth
  * testing. Returns the event so the caller can read `defaultPrevented`.
  *
@@ -380,8 +413,10 @@ export function dispatchDocumentEvent(type, init = {}) {
     stopImmediatePropagation() { event.propagationStopped = true; },
     ...init
   };
-  const phase = capture => documentListeners.filter(l => l.type === type && l.capture === capture);
-  for (const listener of [...phase(true), ...phase(false)]) {
+  const at = (node, capture) => documentListeners.filter(l =>
+    l.node === node && l.type === type && l.capture === capture);
+  const path = [...at('document', true), ...at('html', true), ...at('html', false), ...at('document', false)];
+  for (const listener of path) {
     if (event.propagationStopped) break;
     listener.handler(event);
   }

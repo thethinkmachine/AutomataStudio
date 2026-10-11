@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { snapshot } from './history.js';
 import { langVerdict } from './language.js';
 import { deriveRegex, renderAll, updateLPanel, updateRPanel } from './render.js';
@@ -14,6 +15,58 @@ import { escapeHtml, findPdaNondeterministicPairs, isAnyTM, isClassicPDA, parseE
 import { applyMachineSwitch, setMachine, setView } from './view.js';
 import { getCurrentMachineSnapshot, loadBuiltMachine } from './workspace.js';
 import { algoLexer } from './lexer-ui.js';
+
+// ══════════════════════════════════════════════════════════════════
+//  ACTIONS — what the cards' buttons and fields name
+// ══════════════════════════════════════════════════════════════════
+// The cards below are built as markup strings, and their controls say what
+// they do with data-action (js/actions.js) rather than with on*="..." code.
+// Each name is the function it runs, so a search for the function finds its
+// buttons. Arguments are attributes on the control: data-op, data-step and
+// data-algo, read here — never JavaScript inside the markup.
+defineActions({
+  // Subset construction, minimisation, complement, ε-removal
+  'algo.loadSubsetAsDFA': () => loadSubsetAsDFA(),
+  'algo.loadMinimizedDFA': () => loadMinimizedDFA(),
+  'algo.loadComplement': () => loadComplement(),
+  'algo.loadEpsEliminatedNFA': () => loadEpsEliminatedNFA(),
+  // Regex → NFA (Thompson), in one go and step by step
+  'algo.doThompson': () => doThompson(),
+  'algo.loadThompsonNFA': () => loadThompsonNFA(),
+  'algo.startThompsonViz': () => startThompsonViz(),
+  'algo.thVizStep': ({ el }) => thVizStep(Number(el.dataset.step)),
+  'algo.loadThompsonNFA_Viz': () => loadThompsonNFA_Viz(),
+  // Equivalence
+  'algo.testEquivStr': () => testEquivStr(),
+  'algo.runProductEquiv': () => runProductEquiv(),
+  'algo.runFullEquivCheck': () => runFullEquivCheck(),
+  // Closure properties: star, reversal, union, intersection, concatenation
+  'algo.loadBuiltNFAResult': ({ el }) => loadBuiltNFAResult(el.dataset.op),
+  // Nondeterministic runs
+  'algo.buildNFATree': () => buildNFATree(),
+  'algo.runNPDASim': () => runNPDASim(),
+  'algo.runNDTMSim': () => runNDTMSim(),
+  // Universal Turing machine
+  'algo.loadUTMExample': () => loadUTMExample(),
+  'algo.runUTMSim': () => runUTMSim(),
+  'algo.utmStepBack': () => utmStepBack(),
+  'algo.utmStepFwd': () => utmStepFwd(),
+  'algo.utmToggleAuto': () => utmToggleAuto(),
+  'algo.utmResetView': () => utmResetView(),
+  // Moore ↔ Mealy
+  'algo.loadMooreAsMealy': () => loadMooreAsMealy(),
+  'algo.loadMealyAsMoore': () => loadMealyAsMoore(),
+  // Myhill–Nerode, visualised
+  'algo.minVisStep': ({ el }) => minVisStep(Number(el.dataset.step)),
+  'algo.renderAlgo': ({ el }) => renderAlgo(el.dataset.algo),
+  // Regular grammar → NFA
+  'algo.buildRG2NFA': () => buildRG2NFA(),
+  'algo.loadRG2NFAToCanvas': () => loadRG2NFAToCanvas(),
+  // Dead and unreachable states
+  'algo.highlightDeadStates': () => highlightDeadStates(),
+  'algo.clearStateHighlights': () => clearStateHighlights(),
+  'algo.setAlgo': ({ el }) => setAlgo(el.dataset.algo)
+});
 
 // ══════════════════════════════════════════════════════════════════
 //  ALGORITHMS VIEW
@@ -54,7 +107,7 @@ export function renderAlgo(a) {
 // is a button rather than directions.
 function emptyCanvasCard(what) {
   return `<div class="card algo-empty"><span>Draw ${what} on the canvas first.</span>`
-    + `<button class="btn-g algo-empty-btn" type="button" onclick="closeAuxView()">Back to canvas</button></div>`;
+    + `<button class="btn-g algo-empty-btn" type="button" data-action="view.closeAuxView">Back to canvas</button></div>`;
 }
 
 // --- Transition Table ---
@@ -115,7 +168,7 @@ export function algoNFA2DFA(c) {
   }).join('');
   c.innerHTML += `<div class="card"><div class="card-title">Result: ${result.states.length} DFA states from ${App.states.length} NFA states</div>
 <div class="subset-table-wrap"><table class="result-table"><thead>${thead}</thead><tbody>${rows}</tbody></table></div></div>`;
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadSubsetAsDFA()">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" data-action="algo.loadSubsetAsDFA">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
   // Steps
   c.innerHTML += `<div class="card"><div class="card-title">Construction Steps</div><div class="step-list">${result.steps.map((s, i) => `<div class="step-item"><div class="step-num">${i + 1}</div><div class="step-text">${s}</div></div>`).join('')
     }</div></div>`;
@@ -297,7 +350,7 @@ export function algoMinimize(c) {
   // Steps
   c.innerHTML += `<div class="card"><div class="card-title">Algorithm Steps</div><div class="step-list">${result.steps.map((s, i) => `<div class="step-item"><div class="step-num">${i + 1}</div><div class="step-text">${s.html}</div></div>`).join('')
     }</div></div>`;
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadMinimizedDFA()">Load Minimized DFA</button></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" data-action="algo.loadMinimizedDFA">Load Minimized DFA</button></div>`;
   App._lastMin = result;
 }
 
@@ -466,8 +519,8 @@ export function algoRE2NFA(c) {
 <div class="card">
   <div class="card-title">Input Regular Expression</div>
   <div class="regex-input-wrap">
-    <input class="inp regex-inp" id="re-input" placeholder="e.g. (a|b)*abb or [a-z]{2,5}" onkeydown="if(event.key==='Enter')doThompson()">
-    <button class="algo-btn" onclick="doThompson()">Build NFA</button>
+    <input class="inp regex-inp" id="re-input" placeholder="e.g. (a|b)*abb or [a-z]{2,5}" data-action="keydown.enter->algo.doThompson">
+    <button class="algo-btn" data-action="algo.doThompson">Build NFA</button>
   </div>
   <div style="font-size:.67rem;color:var(--text3)">
     <b>Supported</b>: <b>|</b> union &nbsp; <b>*</b> Kleene star &nbsp; <b>+</b> one-or-more &nbsp; <b>?</b> optional &nbsp; <b>()</b> grouping &nbsp; <b>[abc]</b> char class &nbsp; <b>[a-z]</b> ranges &nbsp; <b>{n,m}</b> bounds &nbsp; ε = epsilon<br>
@@ -493,7 +546,7 @@ export function doThompson() {
   <table class="result-table"><thead><tr><th>From</th><th>Symbol</th><th>To</th></tr></thead><tbody>`;
     nfaData.trans.forEach(t => { html += `<tr><td ${t.from === nfaData.start ? 'class="start-cell"' : ''}>${t.from}</td><td>${t.sym}</td><td ${t.to === nfaData.accept ? 'class="acc-cell"' : ''}>${t.to}</td></tr>`; });
     html += '</tbody></table></div>';
-    html += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadThompsonNFA()">${ALGO_ICON_LOAD_CANVAS}Load into Canvas</button></div>`;
+    html += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" data-action="algo.loadThompsonNFA">${ALGO_ICON_LOAD_CANVAS}Load into Canvas</button></div>`;
     $('re-result').innerHTML = html;
     App._lastThompson = nfaData;
   } catch (err) { $('re-result').innerHTML = `<div class="card" style="color:var(--red);font-size:.75rem">Parse error: ${err.message}</div>`; }
@@ -743,7 +796,7 @@ export function algoEpsNFA2NFA(c) {
 
   c.innerHTML += `<div class="card"><div class="card-title">Algorithm Steps</div>
 <div class="step-list">${result.steps.map((s, i) => `<div class="step-item"><div class="step-num">${i + 1}</div><div class="step-text">${s}</div></div>`).join('')}</div></div>
-<div style="margin-top:8px"><button class="algo-btn" onclick="loadEpsEliminatedNFA()">Load NFA without ε-transitions</button></div>`;
+<div style="margin-top:8px"><button class="algo-btn" data-action="algo.loadEpsEliminatedNFA">Load NFA without ε-transitions</button></div>`;
 }
 
 export function loadEpsEliminatedNFA() {
@@ -774,7 +827,7 @@ export function algoComplement(c) {
   const html = comp.map(s => `<div class="state-pill ${s.accept ? 'acc' : ''}">${s.name} → ${s.accept ? 'ACCEPT' : 'REJECT'}</div>`).join('');
   c.innerHTML += `<div class="card"><div class="card-title">Complemented States</div><div class="nfa-result-states">${html}</div>
 <div style="font-size:.7rem;color:var(--text2);margin-top:10px">Note: Original accept states become non-accepting and vice versa. All transitions remain the same.</div></div>
-<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadComplement()">${ALGO_ICON_LOAD_CANVAS}Load Complement into Canvas</button></div>`;
+<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" data-action="algo.loadComplement">${ALGO_ICON_LOAD_CANVAS}Load Complement into Canvas</button></div>`;
 }
 export function loadComplement() {
   snapshot();
@@ -826,10 +879,8 @@ export function algoEquiv(c) {
   </div>
   <div class="row" style="margin-top:10px">
     <input class="inp" id="eq-str" placeholder="Enter a test string" autocomplete="off"
-      onkeydown="trySymSuggestKeydown(event)" oninput="handleSymSuggestActive(this)"
-      onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
-      onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
-    <button class="algo-btn" onclick="testEquivStr()">Test</button>
+      data-action="suggest.symbols">
+    <button class="algo-btn" data-action="algo.testEquivStr">Test</button>
   </div>
   <div id="eq-result" style="margin-top:8px"></div>
 </div>
@@ -840,8 +891,8 @@ export function algoEquiv(c) {
     Load a second automaton as M₂, then run the check.<br>
     M₂ status: ${m2status}
   </div>
-  <button class="ws-save-btn" onclick="saveWorkspaceB()">Save Current as M₂</button>
-  <button class="algo-btn sec" onclick="runProductEquiv()">Check Equivalence via Product</button>
+  <button class="ws-save-btn" data-action="workspace.saveWorkspaceB">Save Current as M₂</button>
+  <button class="algo-btn sec" data-action="algo.runProductEquiv">Check Equivalence via Product</button>
   <div id="eq-product-result" style="margin-top:8px"></div>
 </div>`;
 }
@@ -1087,8 +1138,8 @@ export function algoFullEquiv(c) {
 Build the product DFA with accept condition: (p,q) accepts iff exactly one of p, q is accepting. Then check emptiness.</div>
 <div class="card">
 <div class="card-title">M₂ Status: ${m2status}</div>
-<button class="ws-save-btn" onclick="saveWorkspaceB()">Save Current as M₂</button>
-<button class="ws-save-btn" onclick="loadWorkspaceB()">Restore M₂ to Canvas</button>
+<button class="ws-save-btn" data-action="workspace.saveWorkspaceB">Save Current as M₂</button>
+<button class="ws-save-btn" data-action="workspace.loadWorkspaceB">Restore M₂ to Canvas</button>
 </div>`;
   if (!App.workspaceB) {
     c.innerHTML += `<div class="card dec-card-empty">
@@ -1102,7 +1153,7 @@ Build the product DFA with accept condition: (p,q) accepts iff exactly one of p,
 </div>`;
     return;
   }
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" onclick="runFullEquivCheck()">Run Equivalence Check</button></div>
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" data-action="algo.runFullEquivCheck">Run Equivalence Check</button></div>
 <div id="full-equiv-result" style="margin-top:12px"></div>`;
 }
 
@@ -1205,7 +1256,7 @@ export function m2RequiredCard(c, opName) {
     2. Come back to Algorithms and click the button below<br>
     3. Then load the first machine and come back here
   </div>
-  <button class="ws-save-btn" onclick="saveWorkspaceB()">Save Current as M₂</button>
+  <button class="ws-save-btn" data-action="workspace.saveWorkspaceB">Save Current as M₂</button>
 </div>`;
     return false;
   }
@@ -1225,7 +1276,7 @@ export function algoClopStar(c) {
   const result = buildNFAStar(m);
   const html = renderBuiltNFAResult(result, 'Kleene Star NFA');
   c.innerHTML += html;
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadBuiltNFAResult('star')">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" data-action="algo.loadBuiltNFAResult" data-op="star">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
   App._lastBuiltNFA = { key: 'star', machine: result };
 }
 
@@ -1241,7 +1292,7 @@ export function algoClopReversal(c) {
   const result = buildNFAReversal(m);
   const html = renderBuiltNFAResult(result, 'Reversal NFA');
   c.innerHTML += html;
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadBuiltNFAResult('reversal')">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" data-action="algo.loadBuiltNFAResult" data-op="reversal">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
   App._lastBuiltNFA = { key: 'reversal', machine: result };
 }
 
@@ -1251,13 +1302,13 @@ export function algoClopUnion(c) {
 <div class="algo-sub">L(M₁) ∪ L(M₂)</div>
 <div class="info-box">Add a new start state with ε-transitions to both original start states. Both original accept states remain accepting.</div>
 <div class="card"><div class="card-title">M₂ Status: ${m2status}</div>
-<button class="ws-save-btn" onclick="saveWorkspaceB()">Save Current as M₂</button></div>`;
+<button class="ws-save-btn" data-action="workspace.saveWorkspaceB">Save Current as M₂</button></div>`;
   if (!m2RequiredCard(c, 'Union')) return;
   if (!App.startId) { c.innerHTML += emptyCanvasCard('M₁'); return; }
   const m1 = getCurrentMachineSnapshot(), m2 = App.workspaceB;
   const result = buildNFAUnion(m1, m2);
   c.innerHTML += renderBuiltNFAResult(result, 'Union NFA');
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadBuiltNFAResult('union')">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" data-action="algo.loadBuiltNFAResult" data-op="union">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
   App._lastBuiltNFA = { key: 'union', machine: result };
 }
 
@@ -1267,7 +1318,7 @@ export function algoClopIntersect(c) {
 <div class="algo-sub">L(M₁) ∩ L(M₂)</div>
 <div class="info-box">Build the product DFA: states are pairs (q₁, q₂). Accept iff BOTH component states are accepting.</div>
   <div class="card"><div class="card-title">M₂ Status: ${m2status}</div>
-<button class="ws-save-btn" onclick="saveWorkspaceB()">Save Current as M₂</button></div>`;
+<button class="ws-save-btn" data-action="workspace.saveWorkspaceB">Save Current as M₂</button></div>`;
   if (App.machine !== 'DFA') { c.innerHTML += '<div class="card" style="color:var(--red)">Intersection via product construction currently requires M₁ to be a DFA.</div>'; return; }
   if (!m2RequiredCard(c, 'Intersection')) return;
   if (!App.startId) { c.innerHTML += emptyCanvasCard('M₁'); return; }
@@ -1287,7 +1338,7 @@ export function algoClopIntersect(c) {
 <div class="subset-table-wrap"><table class="result-table"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>
 <div style="font-size:.68rem;color:var(--text3);margin-top:8px">${product.states.length} total product states, ${reachableStates.length} reachable</div>
 </div>`;
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadBuiltNFAResult('intersect')">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" data-action="algo.loadBuiltNFAResult" data-op="intersect">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
   App._lastBuiltNFA = { key: 'intersect', machine: product };
 }
 
@@ -1297,13 +1348,13 @@ export function algoClopConcat(c) {
 <div class="algo-sub">L(M₁) · L(M₂)</div>
 <div class="info-box">Add ε-transitions from each M₁ accept state to M₂'s start state. M₁'s accept states become non-accepting; M₂'s accept states are the result's accept states.</div>
 <div class="card"><div class="card-title">M₂ Status: ${m2status}</div>
-<button class="ws-save-btn" onclick="saveWorkspaceB()">Save Current as M₂</button></div>`;
+<button class="ws-save-btn" data-action="workspace.saveWorkspaceB">Save Current as M₂</button></div>`;
   if (!m2RequiredCard(c, 'Concatenation')) return;
   if (!App.startId) { c.innerHTML += emptyCanvasCard('M₁'); return; }
   const m1 = getCurrentMachineSnapshot(), m2 = App.workspaceB;
   const result = buildNFAConcat(m1, m2);
   c.innerHTML += renderBuiltNFAResult(result, 'Concatenation NFA');
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadBuiltNFAResult('concat')">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" data-action="algo.loadBuiltNFAResult" data-op="concat">${ALGO_ICON_LOAD_CANVAS}Load Result into Canvas</button></div>`;
   App._lastBuiltNFA = { key: 'concat', machine: result };
 }
 
@@ -1425,10 +1476,8 @@ export function algoNFATree(c) {
   <div class="card-title">Input String</div>
   <div class="regex-input-wrap">
     <input class="inp" id="nfa-tree-input" placeholder="e.g. ab or 010" autocomplete="off"
-      onkeydown="if(trySymSuggestKeydown(event))return;if(event.key==='Enter')buildNFATree()"
-      oninput="handleSymSuggestActive(this)" onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
-      onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
-    <button class="algo-btn" onclick="buildNFATree()">Build Tree</button>
+      data-action="suggest.symbols keydown.enter->algo.buildNFATree">
+    <button class="algo-btn" data-action="algo.buildNFATree">Build Tree</button>
   </div>
 </div>
 <div id="nfa-tree-result"></div>`;
@@ -1601,10 +1650,8 @@ export function algoNPDA(c) {
 <div class="card-title">Simulate NPDA (BFS over all branches)</div>
 <div class="regex-input-wrap">
   <input class="inp" id="npda-input" placeholder="Input string (e.g. aabb or ε)" autocomplete="off"
-    onkeydown="trySymSuggestKeydown(event)" oninput="handleSymSuggestActive(this)"
-    onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
-    onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
-  <button class="algo-btn" onclick="runNPDASim()">Simulate</button>
+    data-action="suggest.symbols">
+  <button class="algo-btn" data-action="algo.runNPDASim">Simulate</button>
 </div>
 <div id="npda-result" style="margin-top:8px"></div>
 </div>`;
@@ -1652,10 +1699,8 @@ export function algoNDTM(c) {
 <div class="card-title">Simulate NDTM (BFS over all branches)</div>
 <div class="regex-input-wrap">
   <input class="inp" id="ndtm-input" placeholder="Input string (e.g. 001)" autocomplete="off"
-    onkeydown="trySymSuggestKeydown(event)" oninput="handleSymSuggestActive(this)"
-    onfocus="handleSymSuggestActive(this)" onclick="refreshSymSuggest(this)"
-    onkeyup="handleSymSuggestKeyup(this)" onblur="hideSymSuggest()">
-  <button class="algo-btn" onclick="runNDTMSim()">Simulate</button>
+    data-action="suggest.symbols">
+  <button class="algo-btn" data-action="algo.runNDTMSim">Simulate</button>
 </div>
 <div id="ndtm-result" style="margin-top:8px"></div>
 </div>`;
@@ -1907,7 +1952,7 @@ export function algoUTM(c) {
 <select id="utm-example-select" class="inp" style="flex:1;font-size:.72rem;padding:4px 6px">
   ${UTM_EXAMPLES.map((e, i) => `<option value="${i}">${e.label}</option>`).join('')}
 </select>
-<button class="algo-btn" onclick="loadUTMExample()">Load</button>
+<button class="algo-btn" data-action="algo.loadUTMExample">Load</button>
   </div>
 </div>
 <div class="card">
@@ -1924,13 +1969,13 @@ placeholder="Paste TM JSON here…">${UTM_DEFAULT_TM}</textarea>
   <div class="card-title">Input Tape ⟨w⟩</div>
   <div class="regex-input-wrap" style="margin-bottom:8px">
 <input class="inp" id="utm-input" placeholder="Input string (ε for empty)" style="flex:1">
-<button class="algo-btn" onclick="runUTMSim()" style="display:flex;align-items:center;justify-content:center;gap:6px"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg> Run UTM</button>
+<button class="algo-btn" data-action="algo.runUTMSim" style="display:flex;align-items:center;justify-content:center;gap:6px"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg> Run UTM</button>
   </div>
   <div style="display:flex;gap:6px;margin-bottom:8px">
-<button class="sbtn" onclick="utmStepBack()" data-tip="Step back"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg></button>
-<button class="sbtn" onclick="utmStepFwd()" data-tip="Step forward"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></button>
-<button class="sbtn" id="utm-auto-btn" onclick="utmToggleAuto()" data-tip="Auto-play" style="display:flex;align-items:center;justify-content:center;gap:4px"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg> Auto</button>
-<button class="sbtn" onclick="utmResetView()" data-tip="Reset"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg></button>
+<button class="sbtn" data-action="algo.utmStepBack" data-tip="Step back"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg></button>
+<button class="sbtn" data-action="algo.utmStepFwd" data-tip="Step forward"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></button>
+<button class="sbtn" id="utm-auto-btn" data-action="algo.utmToggleAuto" data-tip="Auto-play" style="display:flex;align-items:center;justify-content:center;gap:4px"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg> Auto</button>
+<button class="sbtn" data-action="algo.utmResetView" data-tip="Reset"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg></button>
   </div>
   <div id="utm-tape-wrap" class="tv-body" style="margin-bottom:8px"></div>
   <div id="utm-result"></div>
@@ -2163,7 +2208,7 @@ export function algoMoore2Mealy(c) {
   Mealy output = &#955;<sub>Moore</sub>(destination state). State structure unchanged.<br>
   Note: The initial Moore output &#955;(q&#8320;) has no Mealy equivalent &mdash; Mealy output sequence is one symbol shorter.
 </div></div>`;
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadMooreAsMealy()">Load as Mealy Machine</button></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" data-action="algo.loadMooreAsMealy">Load as Mealy Machine</button></div>`;
 }
 
 export function loadMooreAsMealy() {
@@ -2230,7 +2275,7 @@ export function algoMealy2Moore(c) {
   <thead><tr><th>From</th><th>Input</th><th>To</th><th style="color:var(--green)">&#955;(to)</th></tr></thead>
   <tbody>${rows || '<tr><td colspan="4" class="dead-cell">No transitions</td></tr>'}</tbody>
 </table></div></div>`;
-  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" onclick="loadMealyAsMoore()">Load as Moore Machine</button></div>`;
+  c.innerHTML += `<div style="margin-top:8px"><button class="algo-btn" data-action="algo.loadMealyAsMoore">Load as Moore Machine</button></div>`;
   App._lastMealy2Moore = result;
 }
 
@@ -2419,9 +2464,9 @@ export function algoMinimizeVisual(c) {
 
   c.innerHTML += `<div class="card">
     <div class="sctrl">
-      <button class="sbtn" onclick="minVisStep(-1)" style="display:flex;align-items:center;justify-content:center;gap:4px"><svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg> Back</button>
-      <button class="sbtn" id="min-vis-play" onclick="minVisStep(1)" style="display:flex;align-items:center;justify-content:center;gap:4px">Start Step-by-Step <svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></button>
-      <button class="sbtn sec" onclick="renderAlgo('minimizeVisual')">Reset</button>
+      <button class="sbtn" data-action="algo.minVisStep" data-step="-1" style="display:flex;align-items:center;justify-content:center;gap:4px"><svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg> Back</button>
+      <button class="sbtn" id="min-vis-play" data-action="algo.minVisStep" data-step="1" style="display:flex;align-items:center;justify-content:center;gap:4px">Start Step-by-Step <svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></button>
+      <button class="sbtn sec" data-action="algo.renderAlgo" data-algo="minimizeVisual">Reset</button>
     </div>
     <div id="min-vis-status" style="font-size:.7rem;color:var(--text2);margin-bottom:12px;min-height:2em">Click Start to begin the Myhill-Nerode process.</div>
   </div>
@@ -2501,8 +2546,8 @@ export function algoRE2NFAVisual(c) {
 <div class="card">
   <div class="card-title">Input Regular Expression</div>
   <div class="regex-input-wrap">
-    <input class="inp regex-inp" id="rev-input" placeholder="e.g. (a|b)*abb" onkeydown="if(event.key==='Enter')startThompsonViz()">
-    <button class="algo-btn" onclick="startThompsonViz()">Build Steps</button>
+    <input class="inp regex-inp" id="rev-input" placeholder="e.g. (a|b)*abb" data-action="keydown.enter->algo.startThompsonViz">
+    <button class="algo-btn" data-action="algo.startThompsonViz">Build Steps</button>
   </div>
   <div style="font-size:.67rem;color:var(--text3);margin-top:8px">
     Supports <b>|</b> union &nbsp; <b>*</b> Kleene star &nbsp; <b>+</b> one-or-more &nbsp; <b>?</b> optional &nbsp; <b>()</b> grouping &nbsp; <b>[a-z]</b> char class
@@ -2691,9 +2736,9 @@ export function renderThViz() {
         </div>
       </div>
       <div class="sctrl">
-        <button class="sbtn" onclick="thVizStep(-1)" ${idx === 0 ? 'disabled' : ''} style="display:flex;align-items:center;justify-content:center;gap:4px"><svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg> Back</button>
-        <button class="sbtn ${isLast ? '' : 'auto-btn'}" onclick="thVizStep(1)" ${isLast ? 'disabled' : ''} style="display:flex;align-items:center;justify-content:center;gap:4px">Next <svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></button>
-        <button class="sbtn sec" onclick="startThompsonViz()">Restart</button>
+        <button class="sbtn" data-action="algo.thVizStep" data-step="-1" ${idx === 0 ? 'disabled' : ''} style="display:flex;align-items:center;justify-content:center;gap:4px"><svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg> Back</button>
+        <button class="sbtn ${isLast ? '' : 'auto-btn'}" data-action="algo.thVizStep" data-step="1" ${isLast ? 'disabled' : ''} style="display:flex;align-items:center;justify-content:center;gap:4px">Next <svg viewBox="0 0 256 256" width="12" height="12" fill="currentColor"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></button>
+        <button class="sbtn sec" data-action="algo.startThompsonViz">Restart</button>
       </div>
     </div>
     <div class="card">
@@ -2707,7 +2752,7 @@ export function renderThViz() {
         <tbody>${transRows || '<tr><td colspan="3" class="dead-cell">No transitions</td></tr>'}</tbody>
       </table>
     </div>
-    ${isLast ? `<button class="algo-btn" style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px" onclick="loadThompsonNFA_Viz()"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/></svg> Load Final NFA into Canvas</button>` : ''}
+    ${isLast ? `<button class="algo-btn" style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px" data-action="algo.loadThompsonNFA_Viz"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/></svg> Load Final NFA into Canvas</button>` : ''}
   `;
 }
 
@@ -2888,7 +2933,7 @@ export function algoRG2NFA(c) {
   <textarea id="rg-input" class="batch-in" style="min-height:110px;resize:vertical" placeholder="S → aA | bB | ε&#10;A → aA | a&#10;B → bB | b"></textarea>
   <div style="display:flex;gap:6px;margin-top:6px">
     <input class="inp" id="rg-start" placeholder="Start symbol (e.g. S)" style="width:140px">
-    <button class="algo-btn" onclick="buildRG2NFA()">Build NFA</button>
+    <button class="algo-btn" data-action="algo.buildRG2NFA">Build NFA</button>
   </div>
 </div>
 <div id="rg-result"></div>`;
@@ -3018,7 +3063,7 @@ export function buildRG2NFA() {
     <tbody>${transRows}</tbody>
   </table>
   <div style="margin-top:10px">
-    <button class="algo-btn" style="display:flex;align-items:center;justify-content:center" onclick="loadRG2NFAToCanvas()">${ALGO_ICON_LOAD_CANVAS}Load into Canvas</button>
+    <button class="algo-btn" style="display:flex;align-items:center;justify-content:center" data-action="algo.loadRG2NFAToCanvas">${ALGO_ICON_LOAD_CANVAS}Load into Canvas</button>
   </div>
 </div>`;
   } catch (e) {
@@ -3132,10 +3177,10 @@ export function algoDeadStates(c) {
     ${pill('Unreachable', unreachable.length, 'var(--orange, #ff9800)')}
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
-    <button class="algo-btn" onclick="highlightDeadStates()" id="dsa-highlight-btn" style="display:flex;align-items:center;justify-content:center;gap:6px">
+    <button class="algo-btn" data-action="algo.highlightDeadStates" id="dsa-highlight-btn" style="display:flex;align-items:center;justify-content:center;gap:6px">
       <svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M247.31,124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57,61.26,162.88,48,128,48S61.43,61.26,36.34,86.35C17.51,105.18,9,124,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208s66.57-13.26,91.66-38.34c18.83-18.83,27.3-37.61,27.65-38.4A8,8,0,0,0,247.31,124.76ZM128,192c-30.78,0-57.67-11.19-79.93-33.25A133.47,133.47,0,0,1,25,128,133.33,133.33,0,0,1,48.07,97.25C70.33,75.19,97.22,64,128,64s57.67,11.19,79.93,33.25A133.46,133.46,0,0,1,231.05,128C223.84,141.46,192.43,192,128,192Zm0-112a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Z"/></svg> Highlight on Canvas
     </button>
-    <button class="algo-btn sec" onclick="clearStateHighlights()" style="display:flex;align-items:center;justify-content:center;gap:6px">
+    <button class="algo-btn sec" data-action="algo.clearStateHighlights" style="display:flex;align-items:center;justify-content:center;gap:6px">
       <svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg> Clear Highlights
     </button>
   </div>

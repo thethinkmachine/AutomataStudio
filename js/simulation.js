@@ -13,11 +13,12 @@
 // `else simTM(tokens)` — which is what a machine type nobody had wired up
 // silently became.
 
+import { defineActions } from './action-registry.js';
 import { formatTraceNote } from './trace-format.js';
 import { makeSVG, setSectionCount } from './render.js';
 import { $, App, INPUT_LENGTH_NOTICE, R, detectsLoops, execMode, getMachineConfig, isOmegaAutomaton, isWeightedFA, runsLazily } from './state.js';
 import { getState, getTransition } from './states-transitions.js';
-import { dismissSymSuggest, trySymSuggestKeydown } from './suggest.js';
+import { dismissSymSuggest } from './suggest.js';
 import { escapeHtml, isAnyPDA, isEmbeddedMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from './utils.js';
 import { setCanvasMotionTempo } from './canvas-motion.js';
 import { machineGuards, parseMachineInput, streamMachine } from './machines/index.js';
@@ -440,7 +441,8 @@ function traceMoreButton(from) {
   const btn = document.createElement('button');
   btn.setAttribute('type', 'button');
   btn.className = 't-step sim-log-more';
-  btn.setAttribute('onclick', 'revealEarlierTrace()');
+  // Built with createElement, so wired here rather than through an action.
+  btn.addEventListener('click', () => revealEarlierTrace());
   btn.setAttribute('data-tip', `Draw the previous ${more.toLocaleString()} steps. They were always in the run — only the drawing is deferred, because a log rebuilt from step 0 on every tick is quadratic in the length of the run.`);
   btn.textContent = `↑ ${from.toLocaleString()} earlier step${from === 1 ? '' : 's'} — show ${more.toLocaleString()}`;
   return btn;
@@ -519,7 +521,7 @@ function pinTraceToBottom(el) {
   afterWrites(() => { el.scrollTop = el.scrollHeight; });
 }
 
-/** Draw the previous page. Named for the bridge — the button is an `on*`. */
+/** Draw the previous page — the trace's "earlier steps" button. */
 export function revealEarlierTrace() {
   const from = traceFloor();
   if (!from) return;
@@ -831,7 +833,7 @@ const COPY_ICON_SVG = '<svg viewBox="0 0 256 256" fill="currentColor" width="12"
 // Built once per tracker header rather than written into index.html: unlike
 // the def-box/regex-box copies, this one lives inside a node the tracker
 // itself creates, so it is wired the way reference.js and the wizard button
-// are — a listener attached at creation — and adds nothing to bridge.js.
+// are — a listener attached at creation.
 function makeTrackerCopyBtn() {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -2049,8 +2051,10 @@ export function toggleAuto() {
 }
 
 // ── Input history (↑ / ↓ recall previously-run strings) ──
+// The symbol popover has already had the key by the time this runs (the field
+// is `suggest.symbols keydown->sim.handleSimInputKeydown`), and a key it took
+// never arrives here.
 export function handleSimInputKeydown(e) {
-  if (typeof trySymSuggestKeydown === 'function' && trySymSuggestKeydown(e)) return;
   if (e.key === 'Enter') {
     e.preventDefault();
     // dismissSymSuggest (not hideSymSuggest) — Enter's keyup still fires
@@ -2330,8 +2334,7 @@ function playBatchRow(idx) {
 }
 
 // One delegated listener per event for the whole section, so the rows — which
-// are rewritten on every run — carry no handlers and nothing needs a name in
-// bridge.js.
+// are rewritten on every run — carry no handlers.
 if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
   const within = (e, sel) => (e.target && typeof e.target.closest === 'function') ? e.target.closest(sel) : null;
   document.addEventListener('click', e => {
@@ -2461,4 +2464,16 @@ function renderBatchPending(n) {
   setSectionStatus('rp-batch', `running ${n}…`);
 }
 
-
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'sim.handleRunBtnClick': () => handleRunBtnClick(),
+  'sim.handleSimInputKeydown': ({ event }) => handleSimInputKeydown(event),
+  'sim.handleTraceScroll': () => handleTraceScroll(),
+  'sim.resetSim': () => resetSim(),
+  'sim.runBatch': () => runBatch(),
+  'sim.scrubSim': ({ el }) => scrubSim(el.value),
+  'sim.stepBack': () => stepBack(),
+  'sim.stepFwd': () => stepFwd(),
+  'sim.stepToEnd': () => stepToEnd(),
+  'sim.stepToStart': () => stepToStart()
+});

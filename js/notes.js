@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { beginSelectionDrag, clearSelection, hideCanvasContextMenu, pickObject, svgPt } from './canvas.js';
 import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
@@ -1008,3 +1009,24 @@ export function deleteNoteFromModal() {
   if (!id) return;
   deleteNote(id);
 }
+
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'notes.applyNoteFormat': ({ el }) => applyNoteFormat(el.dataset.format),
+  'notes.clearNoteFormatting': () => clearNoteFormatting(),
+  'notes.confirmNote': () => confirmNote(),
+  'notes.ctxAddNoteEdge': () => ctxAddNoteEdge(),
+  'notes.ctxAddNoteState': () => ctxAddNoteState(),
+  'notes.ctxAnchorNoteToSelection': () => ctxAnchorNoteToSelection(),
+  'notes.ctxCanvasAddNote': () => ctxCanvasAddNote(),
+  'notes.ctxDeleteNote': () => ctxDeleteNote(),
+  'notes.ctxDetachNote': () => ctxDetachNote(),
+  'notes.ctxEditNote': () => ctxEditNote(),
+  'notes.ctxResetNoteSize': () => ctxResetNoteSize(),
+  'notes.ctxSetNoteColor': ({ el }) => ctxSetNoteColor(el.dataset.color),
+  'notes.deleteNoteFromModal': () => deleteNoteFromModal(),
+  'notes.handleNoteEditorKeydown': ({ event }) => handleNoteEditorKeydown(event),
+  'notes.insertNoteNewline': () => insertNoteNewline(),
+  'notes.setNoteModalColor': ({ el }) => setNoteModalColor(el.dataset.color),
+  'notes.updateNoteEditor': () => updateNoteEditor()
+});

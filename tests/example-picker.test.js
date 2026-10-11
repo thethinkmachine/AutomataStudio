@@ -21,7 +21,7 @@ test('StateMate is a searchable panel, reachable without a header button', () =>
   assert.ok(html.includes('id="sm-input"'));
   assert.ok(html.includes('id="panel-tab-statemate"'), 'the panel tab is the primary route');
   assert.ok(html.includes('aria-controls="statemate-panel"'));
-  assert.ok(html.includes('onclick="openStateMate()"'), 'and the ⋯ menu is the second');
+  assert.ok(html.includes('data-action="statemate.openStateMate"'), 'and the ⋯ menu is the second');
   assert.ok(!html.includes('id="example-picker-btn"'), 'the header sparkle is gone');
   assert.ok(!html.includes('id="example-menu"'), 'the old anchored dropdown should be gone');
   assert.ok(!html.includes('id="example-modal"'), 'the standalone example dialog is superseded');
@@ -33,7 +33,7 @@ test('StateMate is a searchable panel, reachable without a header button', () =>
 test('the header button opens the machine wizard', () => {
   const button = html.match(/<button[^>]+id="machine-wizard-btn"[^>]*>/s)?.[0] || '';
   assert.ok(button, 'the wizard button is in the header');
-  assert.ok(button.includes('onclick="openMachineWizard()"'));
+  assert.ok(button.includes('data-action="wizard.openMachineWizard"'));
   assert.ok(button.includes('aria-haspopup="dialog"'));
   assert.ok(button.includes('aria-controls="wizard-modal"'));
   assert.ok(html.includes('id="wizard-modal"'), 'and the dialog it names exists');
