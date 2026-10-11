@@ -3819,7 +3819,10 @@ button:focus-visible {
   display: flex;
   align-items: center;
   gap: 7px;
-  max-width: 260px;
+  /* A one-line label cannot wrap, so a measure here only made it spill out: a
+     260px cap pushed the keycap of "Close"
+     out of the box. Labels long enough to need a measure get .wrap's below. */
+  max-width: calc(100vw - 24px);
   padding: 6px 9px;
   background: var(--surface2);
   border: 1px solid var(--border2);

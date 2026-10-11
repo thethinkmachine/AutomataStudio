@@ -137,7 +137,9 @@
   align-items: flex-end;
   gap: 12px;
   min-height: 46px;
-  padding: 0 8px 0 10px;
+  /* 12px on the right is the gap above the close button (46 − 30 − 4), so it
+     sits square in the corner rather than pressed into the 14px radius. */
+  padding: 0 12px 0 10px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;

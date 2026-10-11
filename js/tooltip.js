@@ -130,7 +130,20 @@ import { formatKbd } from './kbd.js';
     // own top left the screen instead.
     top = Math.max(6, Math.min(top, innerHeight - th - 6));
 
+    // Horizontally the box stays inside the window its target lives in — a
+    // dialog's close button sat in the dialog's corner, and a tip centred on it
+    // ran past the frame onto the scrim. When centring would cross that edge,
+    // the tip lines up with the target's own edge instead, so it hangs from the
+    // control rather than being shoved against the frame.
+    const frame = target.closest && target.closest('[role="dialog"]');
+    const fr = frame ? frame.getBoundingClientRect() : null;
+    const fits = fr && tw <= fr.width - 12;
+    const lo = fits ? fr.left + 6 : 6;
+    const hi = (fits ? fr.right : innerWidth) - tw - 6;
     let left = anchorX - tw / 2;
+    if (useRect && left > hi) left = Math.min(left, r.right - tw);
+    else if (useRect && left < lo) left = Math.max(left, r.left);
+    left = Math.max(lo, Math.min(left, hi));
     left = Math.max(6, Math.min(left, innerWidth - tw - 6));
 
     el.style.left = Math.round(left) + 'px';
