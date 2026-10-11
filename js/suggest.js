@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { grammarSuggestTerminals } from './grammar-ui.js';
 import { epsClosure, tokenize } from './machines/runtime.js';
 import { $, App, getMachineConfig } from './state.js';
@@ -559,6 +560,20 @@ export function trySymSuggestKeydown(e) {
 export function handleBatchInputKeydown(e) {
   trySymSuggestKeydown(e);
 }
+
+// What a field opts into with data-action="suggest.symbols": the six listeners
+// an alphabet-aware field needs, under one name, instead of six on*= attributes
+// copied onto every such input. Listed in the order a keystroke meets them.
+defineActions({
+  'suggest.symbols': {
+    keydown: ({ event }) => trySymSuggestKeydown(event),
+    input: ({ el }) => handleSymSuggestActive(el),
+    keyup: ({ el }) => handleSymSuggestKeyup(el),
+    focus: ({ el }) => handleSymSuggestActive(el),
+    click: ({ el }) => refreshSymSuggest(el),
+    blur: () => hideSymSuggest()
+  }
+});
 
 window.addEventListener('resize', () => { if (SymSuggest.target) hideSymSuggest(); });
 // Capture-phase so any ancestor scrolling (which would strand the popover's

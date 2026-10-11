@@ -63,15 +63,39 @@ only when they are relevant — same text, same headings, nothing was deleted.
 
 ### Modules, and the one global seam
 
-`js/` is ES modules with explicit imports and exports; `index.html` loads exactly one script, [js/main.js](js/main.js). There is no shared global scope and no load-order dependency — with one deliberate exception.
+`js/` is ES modules with explicit imports and exports; `index.html` loads exactly one script, [js/main.js](js/main.js). There is no shared global scope and no load-order dependency — with one exception, which is being retired.
 
-**[js/bridge.js](js/bridge.js)** re-exposes 225 names on `window` (224 functions plus `App`). The UI is driven by `on*="..."` attributes, which are evaluated as global-scope code and cannot see module bindings. 337 of those attributes are static in `index.html`; a further 122 are in markup the app builds at runtime (algorithm cards in `algorithms-fa.js`, the export dialogs, alphabet chips, context menus) — so grepping `index.html` alone will understate what the HTML depends on.
+**[js/bridge.js](js/bridge.js)** re-exposes 185 names on `window`, for the `on*="..."` attributes that still drive much of the UI: those are evaluated as global-scope code and cannot see module bindings. They are static in `index.html` and also in markup built at runtime (export dialogs, alphabet chips, list rows, context menus, the tab strip) — so grepping `index.html` alone understates what the HTML depends on.
+
+**Its replacement is `data-action`.** A control names what it wants and the module owning the function says what that means, beside the function:
+
+```js
+// markup                                         // the module that owns the function
+<button data-action="algo.loadSubsetAsDFA">       defineActions({
+<button data-action="algo.loadBuiltNFAResult"       'algo.loadSubsetAsDFA': () => loadSubsetAsDFA(),
+        data-op="star">                             'algo.loadBuiltNFAResult': ({ el }) => loadBuiltNFAResult(el.dataset.op),
+<input  data-action="suggest.symbols              });
+                     keydown.enter->algo.buildNFATree">
+```
+
+[js/action-registry.js](js/action-registry.js) holds the names — import-free, because modules call `defineActions` at module scope (the `modal-registry.js` rule below). [js/actions.js](js/actions.js) is the dispatcher, installed first thing in `init.js`: one listener per event type on `<html>`, walking from the event's target outwards. A token is `[event[.key]->]name`; with no event a function action is a click. An action may instead be a **behaviour**, an object of handlers under one name: `suggest.symbols` is the six listeners every alphabet-aware field needs, which used to be six attributes copied onto each one. Arguments are the control's own `data-*` attributes, read by the action — never JavaScript in the markup, so nothing in it needs escaping as code.
+
+Things worth knowing about it:
+
+- **It listens on `<html>`, bubbling, so every action runs before every `document` listener** — the order an inline handler always had. That is load-bearing: `view.js` closes the aux window on Escape unless the key was already claimed, and the symbol popover claims it from its field; `ui.js` and `view.js` close their menus from document click listeners. Listening on `document` instead would have made both depend on module order.
+- **`focus`/`blur` are delivered from `focusin`/`focusout` and run only for the element whose focus changed**, as `onfocus`/`onblur` did; `focusin`/`focusout` are there too, and bubble.
+- **A keyboard action does not run for a key already claimed** (`defaultPrevented`). That is `if (trySymSuggestKeydown(event)) return;`, which every field with both a popover and an Enter action spelled out by hand.
+- **Handlers take `({ el, event })` and are always wrapped**, never registered bare: a function with optional parameters would take the context for its first argument.
+- **A name is defined once** (a second claim throws), **a failing action is reported and the next still runs**, and an unknown name is reported once.
+
+[tests/actions.test.js](tests/actions.test.js) checks every `data-action` in `index.html` and `js/` — literal, readable, naming an action that exists — and that every registered action is used. It is also the **ratchet**: `bridge.js` may not exceed `BRIDGE_CEILING`, and files that have moved (`FREE_OF_INLINE_HANDLERS`) may not grow an inline handler again. The generated algorithm cards in `algorithms-fa.js` were the first batch; issue #141 has the order for the rest.
 
 Practical consequences:
 
-- **Adding a function called from an `on*` attribute means adding it to `bridge.js`.** Nothing else will fail loudly; the button just won't work.
-- Everything *not* in `bridge.js` is free to rename. The build mangles top-level names, and only `bridge.js`'s object keys survive.
-- `bridge.js` is the worklist for removing this seam: move a handler to a delegated `data-action` listener, delete the name, and the surface shrinks by one.
+- **A new control uses `data-action`.** Adding a name to `bridge.js` fails the ratchet.
+- **Moving one:** give the control a `data-action`, register the action beside its function, delete the name from `bridge.js`, lower `BRIDGE_CEILING`, and add the file to `FREE_OF_INLINE_HANDLERS` once it has none left.
+- **Do not delete a bridge name because a scan says it is unused.** Handlers are built in four shapes — a template-string attribute, an attribute assembled from a function name (`chipRemove` in `alphabet.js`, the list rows in `render.js`), `setAttribute('onclick', …)`, and an attribute map (`{ onclick: … }` in `ui.js`'s tab strip) — and [tests/inline-handlers.test.js](tests/inline-handlers.test.js) reads only the first.
+- Everything *not* in `bridge.js` is free to rename. The build mangles top-level names, and only `bridge.js`'s object keys survive; action names are strings and survive by being strings.
 
 ### Evaluation-order rules
 

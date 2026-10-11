@@ -1,23 +1,29 @@
 // ══════════════════════════════════════════════════════════════════
-//  INLINE-HANDLER BRIDGE
+//  INLINE-HANDLER BRIDGE — being retired
 // ══════════════════════════════════════════════════════════════════
-// The UI is driven through on*="..." attributes, which are compiled as
+// The UI was driven through on*="..." attributes, which are compiled as
 // global-scope code and cannot see module bindings. The functions they name
 // are re-exposed on window here.
 //
-// 215 names across 25 modules — 214 functions plus App — reached from 442
-// attributes:
-//    322  static, in index.html
-//    120  in markup the app builds at runtime (algorithm cards,
-//         export dialogs, alphabet chips, context menus)
+// Its replacement is data-action (js/actions.js, js/action-registry.js): the
+// markup names an action, and the module that owns the function registers it
+// beside the function. New controls use that; nothing new comes here. The
+// generated algorithm cards (algorithms-fa.js) have moved, and are where to
+// look for the pattern.
 //
-// That second group is the reason this list is longer than a scan of
-// index.html suggests. Previously the same coupling existed against every
-// top-level name in js/ at once, undeclared; the point of writing it down is
-// that it is now bounded and greppable.
+// So this file is a worklist that only shrinks. tests/actions.test.js holds
+// its size to a ceiling, lowered as each batch moves, and lists the files that
+// may not grow an inline handler again; issue #141 has the plan. To move a
+// handler: give its control a data-action, register the action beside the
+// function, delete the name below — and lower the ceiling.
 //
-// It is also the worklist for removing it: move a handler to a delegated
-// data-action listener, delete the name here, and the surface shrinks by one.
+// Handlers still reach this file from index.html and from markup built in JS,
+// in four shapes: an attribute in a template string, an attribute assembled
+// from a function name (chipRemove in alphabet.js, the list rows in
+// render.js), setAttribute('onclick', …), and an attribute map ({ onclick: … }
+// in ui.js's tab strip). tests/inline-handlers.test.js reads only the first,
+// so a name here that looks unused may not be: check all four before deleting
+// one that was not just migrated.
 //
 // Imported by js/main.js before js/init.js so the bridge is in place before
 // the boot sequence runs.
@@ -102,18 +108,13 @@ import {
   openExportCodeModal, openExportImageModal, runImageExport,
   selectExportFormat, setExportCodeOpt, setExportImageOpt,
 } from './export-ui.js';
+// algorithms-fa.js names one: setAlgo, from the static list of algorithms in
+// index.html. Every control on its generated cards is a data-action now.
 import {
-  buildNFATree, buildRG2NFA, clearStateHighlights, doThompson,
-  highlightDeadStates, loadBuiltNFAResult, loadComplement,
-  loadEpsEliminatedNFA, loadMealyAsMoore, loadMinimizedDFA, loadMooreAsMealy,
-  loadRG2NFAToCanvas, loadSubsetAsDFA, loadThompsonNFA, loadThompsonNFA_Viz,
-  loadUTMExample, minVisStep, renderAlgo, runFullEquivCheck, runNDTMSim,
-  runNPDASim, runProductEquiv, runUTMSim, setAlgo, startThompsonViz,
-  testEquivStr, thVizStep, utmResetView, utmStepBack, utmStepFwd,
-  utmToggleAuto,
+  setAlgo,
 } from './algorithms-fa.js';
 import {
-  loadWorkspaceB, openAboutModal, saveWorkspaceB, showHelpModal,
+  openAboutModal, showHelpModal,
 } from './workspace.js';
 import {
   clearAll,
@@ -206,20 +207,13 @@ Object.assign(window, {
    openExportCodeModal, openExportImageModal, runImageExport,
    selectExportFormat, setExportCodeOpt, setExportImageOpt,
   // algorithms-fa.js
-   buildNFATree, buildRG2NFA, clearStateHighlights, doThompson,
-   highlightDeadStates, loadBuiltNFAResult, loadComplement,
-   loadEpsEliminatedNFA, loadMealyAsMoore, loadMinimizedDFA,
-   loadMooreAsMealy, loadRG2NFAToCanvas, loadSubsetAsDFA, loadThompsonNFA,
-   loadThompsonNFA_Viz, loadUTMExample, minVisStep, renderAlgo,
-   runFullEquivCheck, runNDTMSim, runNPDASim, runProductEquiv, runUTMSim,
-   setAlgo, startThompsonViz, testEquivStr, thVizStep, utmResetView,
-   utmStepBack, utmStepFwd, utmToggleAuto,
+   setAlgo,
   // js/grammar-ui.js has no entries either: every listener in the grammar
   // workbench is attached at creation, the way reference.js does it.
   // reference.js has no entries: its navigation is generated in JS and its
   // links get their listeners at creation time.
   // workspace.js
-   loadWorkspaceB, openAboutModal, saveWorkspaceB, showHelpModal,
+   openAboutModal, showHelpModal,
   // utils.js
    clearAll,
   // minimap.js

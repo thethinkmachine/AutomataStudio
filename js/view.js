@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { renderGrammarView } from './grammar-ui.js';
 import { renderAlgo } from './algorithms-fa.js';
 import { renderGamma, renderOutputAlpha, renderSigma, syncAlphabetSection } from './alphabet.js';
@@ -384,6 +385,10 @@ document.addEventListener('keydown', e => {
 export function closeAuxView() {
   if (AUX_VIEWS.includes(App.view)) setView('build');
 }
+
+defineActions({
+  'view.closeAuxView': () => closeAuxView()
+});
 
 // ── Header overflow menu ──
 //  The three auxiliary views used to have a menu of their own -- a labelled

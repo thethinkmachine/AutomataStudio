@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { renderAlgo } from './algorithms-fa.js';
 import { snapshot } from './history.js';
 import { registerModal, showOverlay } from './modal.js';
@@ -47,6 +48,11 @@ export function loadWorkspaceB() {
   loadBuiltMachine(App.workspaceB, App.workspaceB.machine || App.machine);
   showStatus('M₂ loaded into canvas');
 }
+
+defineActions({
+  'workspace.saveWorkspaceB': () => saveWorkspaceB(),
+  'workspace.loadWorkspaceB': () => loadWorkspaceB()
+});
 export function getCurrentMachineSnapshot() {
   return {
     machine: App.machine,

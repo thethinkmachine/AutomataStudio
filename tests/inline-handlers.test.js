@@ -101,8 +101,12 @@ test('every function called from an inline handler is on window', () => {
 test('the scan reaches handlers in runtime-generated markup, not just index.html', () => {
   // A guard on the guard: if the attribute reader regressed to only matching
   // plain HTML, the test above would pass by checking almost nothing.
+  // Not a count: the seam is meant to shrink as handlers move to data-action
+  // (tests/actions.test.js holds that ratchet), so a floor here would fail for
+  // the right change. What has to hold is that both kinds of source are read.
   const calls = calledNames();
-  assert.ok(calls.size > 150, `expected the full seam, saw ${calls.size} names`);
+  assert.match(calls.get('setAlgo') || '', /^index\.html:/, 'static handlers in index.html must be scanned');
+  assert.match(calls.get('selectModel') || '', /^js\/ui\.js:/, 'handlers built in JS must be scanned');
   // selectModel is reachable only from a fully-interpolated attribute value,
   // which is exactly the shape the first version of this scan missed.
   assert.ok(calls.has('selectModel'), 'interpolated handler values must be scanned');
