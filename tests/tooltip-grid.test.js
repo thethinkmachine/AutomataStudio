@@ -243,7 +243,7 @@ test('the box is measured from a neutral offset, not from the last hover', () =>
 test('a table is bounded by the window, never by a prose measure', () => {
   const css = readFileSync(new URL('../css/modals.css', import.meta.url), 'utf8');
   const grid = css.match(/\.tooltip\.is-grid \{[^}]*\}/)[0];
-  // The prose caps (260/300px) are a line length chosen so a sentence reads
+  // The prose cap (300px) is a line length chosen so a sentence reads
   // well; a column of "Write" narrowed to a measure does not read better.
   assert.match(grid, /max-width:\s*calc\(100vw - 24px\)/);
   assert.ok(!/max-width:[^;]*\d+px\s*,/.test(grid), 'a fixed pixel cap is back');
