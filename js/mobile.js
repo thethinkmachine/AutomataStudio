@@ -20,8 +20,7 @@
 //     `toggleTool`, the undo cell calls `undo()`, the panel cell calls
 //     `toggleMobilePanelTab` — the same entry points the desktop chrome uses,
 //     so the two surfaces cannot come to disagree about what a control does.
-//   - **Listeners are attached at creation**, the way js/reference.js does it,
-//     so the whole feature adds no names to bridge.js.
+//   - **Listeners are attached at creation**, the way js/reference.js does it.
 
 import { App, $, Workspaces, activeWorkspaceId } from './state.js';
 import { toggleTool, toggleMobilePanelTab, closeMobilePanels, getWorkspaceAccent } from './ui.js';

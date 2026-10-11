@@ -76,14 +76,17 @@ test('an action is a function or an object of event handlers, and nothing else',
 
 // ── Reading a spec ────────────────────────────────────────────────
 
-test('a spec is tokens of [event[.key]->]name, run in the order written', () => {
+test('a spec is tokens of [event[.key]->]name[:modifier], run in the order written', () => {
+  const plain = { event: null, key: null, prevent: false, stop: false };
   assert.deepEqual(parseActionSpec('algo.loadSubsetAsDFA'),
-    [{ event: null, key: null, name: 'algo.loadSubsetAsDFA' }]);
+    [{ ...plain, name: 'algo.loadSubsetAsDFA' }]);
   assert.deepEqual(parseActionSpec('  suggest.symbols   keydown.Enter->algo.buildNFATree '), [
-    { event: null, key: null, name: 'suggest.symbols' },
-    { event: 'keydown', key: 'enter', name: 'algo.buildNFATree' }
+    { ...plain, name: 'suggest.symbols' },
+    { ...plain, event: 'keydown', key: 'enter', name: 'algo.buildNFATree' }
   ]);
-  assert.deepEqual(parseActionSpec('blur->x.y_z'), [{ event: 'blur', key: null, name: 'x.y_z' }]);
+  assert.deepEqual(parseActionSpec('blur->x.y_z'), [{ ...plain, event: 'blur', name: 'x.y_z' }]);
+  assert.deepEqual(parseActionSpec('mousedown->suggest.accept:prevent:stop'),
+    [{ ...plain, event: 'mousedown', name: 'suggest.accept', prevent: true, stop: true }]);
 });
 
 test('a spec that cannot mean anything is refused, naming the token', () => {
@@ -91,6 +94,7 @@ test('a spec that cannot mean anything is refused, naming the token', () => {
   assert.throws(() => parseActionSpec('click.enter->algo.x'), /key filter needs keydown or keyup/);
   assert.throws(() => parseActionSpec('loadSubsetAsDFA()'), /Unreadable action token/);
   assert.throws(() => parseActionSpec('algo.'), /Unreadable/);
+  assert.throws(() => parseActionSpec('algo.x:once'), /Unknown modifier ":once"/);
 });
 
 // ── Delivering an event ───────────────────────────────────────────
@@ -193,6 +197,62 @@ test('a failing action is reported and the rest still run; an unknown name is re
     'a missing name is a bug in the markup, worth saying once rather than on every keystroke');
 });
 
+test(':prevent and :stop act before the action, and only when it runs', () => {
+  calls.length = 0;
+  const root = node('root', 'test.outer');
+  const btn = node('btn', 'test.record:prevent:stop', root);
+  const click = event('click', btn);
+  dispatchActions(click, root);
+  assert.equal(click.defaultPrevented, true);
+  assert.deepEqual(calls, [['record', 'btn', 'click']], ':stop keeps the row behind it from running');
+
+  const key = event('keydown', btn, { key: 'a' });
+  dispatchActions(key, root);
+  assert.equal(key.defaultPrevented, false, 'a token that did not run prevents nothing');
+});
+
+test('activate is a click, or Enter or Space on something that is not natively a button', () => {
+  calls.length = 0;
+  const item = node('item', 'activate->test.record');
+  const space = event('keydown', item, { key: ' ' });
+  dispatchActions(space, item);
+  dispatchActions(event('keydown', item, { key: 'Enter' }), item);
+  dispatchActions(event('keydown', item, { key: 'a' }), item);
+  dispatchActions(event('click', item), item);
+  assert.deepEqual(calls.map(c => c[2]), ['keydown', 'keydown', 'click']);
+  assert.equal(space.defaultPrevented, true, 'Space must not also scroll the page');
+
+  // A <button> turns Enter into a click by itself; answering the key too
+  // would run the action twice.
+  calls.length = 0;
+  const button = document.createElement('button');
+  button.setAttribute('data-action', 'activate->test.record');
+  dispatchActions(event('keydown', button, { key: 'Enter' }), button);
+  dispatchActions(event('click', button), button);
+  assert.equal(calls.length, 1);
+});
+
+test('mouseenter and mouseleave run for an element the pointer crossed, not one it moved within', () => {
+  calls.length = 0;
+  const row = node('row', 'mouseenter->test.record mouseleave->test.outer');
+  const label = node('label', null, row);
+  row.contains = other => other === row || other === label;
+  dispatchActions(event('mouseover', label, { relatedTarget: null }), row);
+  dispatchActions(event('mouseover', label, { relatedTarget: row }), row);
+  dispatchActions(event('mouseout', row, { relatedTarget: label }), row);
+  dispatchActions(event('mouseout', label, { relatedTarget: null }), row);
+  assert.deepEqual(calls, [['record', 'row', 'mouseover'], ['outer', 'row']],
+    'one enter from outside, one leave to outside; moving between the row and its label is neither');
+});
+
+test('scroll runs for the element scrolled only', () => {
+  calls.length = 0;
+  const outer = node('outer', 'scroll->test.outer');
+  const log = node('log', 'scroll->test.record', outer);
+  dispatchActions(event('scroll', log), outer);
+  assert.deepEqual(calls, [['record', 'log', 'scroll']]);
+});
+
 // ── Installed on the page ─────────────────────────────────────────
 
 test('installed on <html>, actions run before any document listener sees the event', () => {
@@ -290,47 +350,36 @@ test('the scan sees generated markup, not only index.html', () => {
   assert.ok(specs.some(s => s.spec.startsWith('suggest.symbols ')), 'a behaviour followed by a key action');
 });
 
-// ── The seam only shrinks ─────────────────────────────────────────
-// Each batch moved to data-action lowers the ceiling and adds its files to
-// the list below; nothing may raise the one or leave the other. CLAUDE.md,
-// "Modules, and the one global seam", and issue #141 hold the plan.
+// ── The seam is gone ──────────────────────────────────────────────
+// There is no on*="..." left in the app and no bridge.js to put names on
+// window for one. These keep it that way: a handler written in any of the
+// shapes the app ever used fails here, wherever it is.
 
-const BRIDGE_CEILING = 185;
-
-const FREE_OF_INLINE_HANDLERS = [
-  'js/algorithms-fa.js',
-  'js/action-registry.js',
-  'js/actions.js'
-];
-
-function bridgedNames() {
-  const src = readFileSync(join(ROOT, 'js', 'bridge.js'), 'utf8');
-  const open = src.indexOf('Object.assign(window, {');
-  const body = src.slice(open + 'Object.assign(window, {'.length, src.lastIndexOf('});'));
-  return body.replace(/\/\/[^\n]*/g, '').split(',').map(s => s.trim()).filter(Boolean);
-}
-
-test(`bridge.js puts at most ${BRIDGE_CEILING} names on window`, () => {
-  const names = bridgedNames();
-  assert.ok(names.length <= BRIDGE_CEILING,
-    `bridge.js exposes ${names.length} names; the ceiling is ${BRIDGE_CEILING}. `
-    + 'Wire the new control with data-action (js/actions.js) instead of adding to the bridge.');
-  if (names.length < BRIDGE_CEILING) {
-    console.log(`# bridge.js is down to ${names.length}: lower BRIDGE_CEILING in tests/actions.test.js`);
-  }
+test('bridge.js is gone, and nothing puts the app\'s functions on window', () => {
+  assert.throws(() => statSync(join(ROOT, 'js', 'bridge.js')), /ENOENT/);
+  const offenders = sourceFiles()
+    .filter(([file, src]) => /Object\.assign\(\s*window/.test(src))
+    .map(([file]) => file);
+  assert.deepEqual(offenders, []);
 });
 
-test('files moved to data-action stay free of inline handlers', () => {
-  // The three shapes a handler is written in across the app: an attribute in
-  // markup, setAttribute('onclick', …), and an attribute map ({ onclick: … }).
-  const on = 'on(?:click|dblclick|contextmenu|input|change|submit|key(?:down|up|press)|focus|blur|'
+test('no inline handler anywhere in index.html or js/', () => {
+  // The four shapes handlers were written in: an attribute in markup, an
+  // attribute assembled from a name, setAttribute('onclick', …), and an
+  // attribute map ({ onclick: … }).
+  const on = 'on(?:click|dblclick|auxclick|contextmenu|input|change|submit|key(?:down|up|press)|focus|blur|'
     + 'mouse[a-z]+|pointer[a-z]+|drag[a-z]*|drop|scroll|load|wheel|touch[a-z]+)';
   const inline = new RegExp(`\\s${on}\\s*=\\s*\\\\?["'\`]|setAttribute\\(\\s*['"\`]${on}['"\`]|\\b${on}:\\s*['"\`]`, 'g');
   const found = [];
-  for (const file of FREE_OF_INLINE_HANDLERS) {
-    const src = readFileSync(join(ROOT, file), 'utf8');
-    for (const m of src.matchAll(inline)) {
-      found.push(`${file}:${src.slice(0, m.index).split('\n').length}  ${m[0].trim()}`);
+  for (const [file, src] of sourceFiles()) {
+    // Comments may say what used to be here; code may not do it. Blanked
+    // rather than removed, so line numbers still point at the source.
+    const blank = text => text.replace(/[^\n]/g, ' ');
+    const code = file.endsWith('.js')
+      ? src.replace(/\/\/[^\n]*/g, blank)
+      : src.replace(/<!--[\s\S]*?-->/g, blank);
+    for (const m of code.matchAll(inline)) {
+      found.push(`${file}:${code.slice(0, m.index).split('\n').length}  ${m[0].trim()}`);
     }
   }
   assert.deepEqual(found, []);

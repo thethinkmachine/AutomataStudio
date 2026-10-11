@@ -31,7 +31,7 @@ test('the header logo opens About and credits the same author', () => {
   const logo = header.match(/<button\b([^>]*class="logo-wrapper"[^>]*)>([\s\S]*?)<\/button>/);
   assert.ok(logo, 'the header lockup is a button');
   const [, attrs, inner] = logo;
-  assert.match(attrs, /onclick="openAboutModal\(\)"/, 'clicking the logo opens About');
+  assert.match(attrs, /data-action="workspace\.openAboutModal"/, 'clicking the logo opens About');
   assert.match(attrs, /aria-label="[^"]+"/, 'the button names itself, since its visible text is aria-hidden');
 
   const byline = inner.match(/<span class="logo-author logo-byline">by ([^<]+)<\/span>/);

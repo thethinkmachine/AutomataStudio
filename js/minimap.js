@@ -33,6 +33,7 @@
 // pre-scaled to match, so every coordinate below is in CSS pixels and 1px
 // strokes are 1px on any display.
 
+import { defineActions } from './action-registry.js';
 import { animMotionOk, isSyncRAF } from './anim.js';
 import { applyCamera, clampZoom, normalizeWheelDeltas } from './canvas.js';
 import { includeDividerBounds, isRectDivider } from './dividers.js';
@@ -790,3 +791,8 @@ export function toggleMinimap() {
     scheduleMinimap();
   }
 }
+
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'minimap.toggleMinimap': () => toggleMinimap()
+});

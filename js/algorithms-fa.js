@@ -64,7 +64,8 @@ defineActions({
   'algo.loadRG2NFAToCanvas': () => loadRG2NFAToCanvas(),
   // Dead and unreachable states
   'algo.highlightDeadStates': () => highlightDeadStates(),
-  'algo.clearStateHighlights': () => clearStateHighlights()
+  'algo.clearStateHighlights': () => clearStateHighlights(),
+  'algo.setAlgo': ({ el }) => setAlgo(el.dataset.algo)
 });
 
 // ══════════════════════════════════════════════════════════════════

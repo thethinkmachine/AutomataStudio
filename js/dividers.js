@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { beginSelectionDrag, clearSelection, hideCanvasContextMenu, pickObject, svgPt } from './canvas.js';
 import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
@@ -684,3 +685,18 @@ export function pickShapeTool(tool) {
   hideShapeToolMenu();
   setTool(normalizeShapeTool(tool));
 }
+
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'dividers.confirmDivider': () => confirmDivider(),
+  'dividers.ctxDeleteDivider': () => ctxDeleteDivider(),
+  'dividers.ctxEditDivider': () => ctxEditDivider(),
+  'dividers.ctxSetDividerColor': ({ el }) => ctxSetDividerColor(el.dataset.color),
+  'dividers.ctxSetDividerStyle': ({ el }) => ctxSetDividerStyle(el.dataset.style),
+  'dividers.ctxStraightenDivider': () => ctxStraightenDivider(),
+  'dividers.deleteDividerFromModal': () => deleteDividerFromModal(),
+  'dividers.pickShapeTool': ({ el }) => pickShapeTool(el.dataset.shape),
+  'dividers.setDividerModalColor': ({ el }) => setDividerModalColor(el.dataset.color),
+  'dividers.setDividerModalStyle': ({ el }) => setDividerModalStyle(el.dataset.style),
+  'dividers.showShapeToolMenu': ({ event }) => showShapeToolMenu(event)
+});

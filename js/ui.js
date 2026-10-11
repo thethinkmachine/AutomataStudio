@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { utmStepBack, utmStepFwd, utmToggleAuto } from './algorithms-fa.js';
 import { renderGamma } from './alphabet.js';
 import { settleAll } from './anim.js';
@@ -186,23 +187,31 @@ function createTabElement(id) {
   el.setAttribute('role', 'tab');
   el.setAttribute('data-tab-id', id);
   el.dataset.tabId = id;
-  // Per element and fixed for its life, so they close over nothing that a
-  // later render could change — the id is the workspace's for good.
-  const on = {
-    onclick: `switchTab('${id}')`,
-    ondblclick: `beginRenameTab('${id}', event)`,
-    onmousedown: 'if(event.button===1)event.preventDefault()',
-    onauxclick: `if(event.button===1)closeTab('${id}', event)`,
-    onkeydown: `handleTabKeydown('${id}', event)`,
-    oncontextmenu: `showTabContextMenu('${id}', event); return false;`,
-    ondragstart: `handleTabDragStart('${id}', event)`,
-    ondragover: `handleTabDragOver('${id}', event)`,
-    ondrop: `handleTabDrop('${id}', event)`,
-    ondragend: 'handleTabDragEnd(event)',
-  };
-  for (const [k, v] of Object.entries(on)) el.setAttribute(k, v);
+  // A behaviour (TAB_BEHAVIOUR, below) rather than listeners attached here,
+  // though this node is built with createElement: the close button and the
+  // rename field inside it are template markup with actions of their own, and
+  // an element's own listener runs before any delegated action — so a direct
+  // click listener here would switch to the tab before its close button had
+  // the chance to stop the click. In one walk the button goes first.
+  el.setAttribute('data-action', 'ui.tab');
   return el;
 }
+
+// Everything a tab answers to, keyed by the event; the workspace is the tab's
+// data-tab-id, fixed for the node's life.
+const TAB_BEHAVIOUR = {
+  click: ({ el }) => switchTab(el.dataset.tabId),
+  dblclick: ({ el, event }) => beginRenameTab(el.dataset.tabId, event),
+  // A middle press would start an autoscroll; the release closes the tab.
+  mousedown: ({ event }) => { if (event.button === 1) event.preventDefault(); },
+  auxclick: ({ el, event }) => { if (event.button === 1) closeTab(el.dataset.tabId, event); },
+  keydown: ({ el, event }) => handleTabKeydown(el.dataset.tabId, event),
+  contextmenu: ({ el, event }) => showTabContextMenu(el.dataset.tabId, event),
+  dragstart: ({ el, event }) => handleTabDragStart(el.dataset.tabId, event, el),
+  dragover: ({ el, event }) => handleTabDragOver(el.dataset.tabId, event, el),
+  drop: ({ el, event }) => handleTabDrop(el.dataset.tabId, event),
+  dragend: () => handleTabDragEnd()
+};
 
 function workspaceCounts(ws) {
   if (ws.id === activeWorkspaceId) return { states: App.states.length, transitions: App.transitions.length };
@@ -245,12 +254,12 @@ function syncTabElement(el, ws, closable) {
     // tabs read as random.
     const end = hasEnd ? `<span class="tab-end">${
       ws.dirty ? '<span class="tab-dirty" aria-hidden="true"></span>' : ''}${
-      closable ? `<button class="tab-close" type="button" tabindex="-1" aria-label="Close ${safeName}" onclick="closeTab('${ws.id}', event)">${TAB_CLOSE_SVG}</button>` : ''}</span>` : '';
+      closable ? `<button class="tab-close" type="button" tabindex="-1" aria-label="Close ${safeName}" data-action="ui.closeTab" data-tab-id="${ws.id}">${TAB_CLOSE_SVG}</button>` : ''}</span>` : '';
     el.innerHTML = `
       <span class="tab-dot" aria-hidden="true"></span>
       ${type ? `<span class="sr-only">${escapeTabText(type.fullName || type.label)} — </span>` : ''}
       ${isEditing
-        ? `<input class="tab-rename-input" value="${safeName}" maxlength="40" aria-label="Rename workspace" onclick="event.stopPropagation()" onkeydown="handleTabRenameKeydown('${ws.id}', event)" onblur="commitTabRename('${ws.id}', this)">`
+        ? `<input class="tab-rename-input" value="${safeName}" maxlength="40" aria-label="Rename workspace" data-action="ui.tabRename" data-tab-id="${ws.id}">`
         : `<span class="tab-name">${safeName}</span>`}
       ${type ? `<span class="tab-type" aria-hidden="true">${escapeTabText(machine)}</span>` : ''}
       ${end}`;
@@ -333,21 +342,23 @@ export function finishTabDrag() {
   draggingTabId = null;
 }
 
-export function handleTabDragStart(id, e) {
+// `tabEl` is the tab being dragged; the ui.tab behaviour passes it, since a
+// delegated event's currentTarget is the page rather than the tab.
+export function handleTabDragStart(id, e, tabEl = e.currentTarget) {
   if (editingTabId === id || Workspaces.length < 2) {
     e.preventDefault();
     return;
   }
   draggingTabId = id;
   tabDragDropped = false;
-  if (e.currentTarget) e.currentTarget.classList.add('dragging');
+  if (tabEl) tabEl.classList.add('dragging');
   if (e.dataTransfer) {
     e.dataTransfer.effectAllowed = 'move';
     try { e.dataTransfer.setData('text/plain', id); } catch (_) { }
   }
 }
 
-export function handleTabDragOver(id, e) {
+export function handleTabDragOver(id, e, tabEl = e.currentTarget) {
   if (!draggingTabId) return;
   // Over the dragged tab itself too: it is under the pointer more often than
   // not once it has moved, and a drop it refused would undo the drag.
@@ -358,7 +369,7 @@ export function handleTabDragOver(id, e) {
 
   const tb = $('tab-bar');
   const dragged = tabEls.get(draggingTabId);
-  const target = e.currentTarget;
+  const target = tabEl;
   if (!tb || !dragged || !target || dragged.parentNode !== tb) return;
 
   // Past the target's middle in the direction of travel, not just past it:
@@ -708,18 +719,17 @@ export function renderTabOverflowMenu() {
     const machine = getWorkspaceMachine(ws);
     const type = machine && MachineTypes[machine] ? machine : '';
     return `
-    <div class="tab-overflow-item ${isActive ? 'active' : ''}" data-tab-id="${ws.id}" role="option" aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? '0' : '-1'}" style="--item-accent:${getWorkspaceAccent(ws)}" onclick="switchTabFromOverflow('${ws.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();switchTabFromOverflow('${ws.id}');}">
+    <div class="tab-overflow-item ${isActive ? 'active' : ''}" data-tab-id="${ws.id}" role="option" aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? '0' : '-1'}" style="--item-accent:${getWorkspaceAccent(ws)}" data-action="activate->ui.switchTabFromOverflow">
       <span class="tab-overflow-item-dot" aria-hidden="true"></span>
       <span class="tab-overflow-item-name" data-tip="${safeName}">${safeName}</span>
       ${type ? `<span class="tab-type" aria-hidden="true">${escapeTabText(type)}</span>` : ''}
       ${ws.dirty ? '<span class="tab-overflow-item-dirty" aria-hidden="true" data-tip="Unsaved changes"></span>' : ''}
-      ${Workspaces.length > 1 ? `<button class="tab-overflow-item-close" type="button" aria-label="Close ${safeName}" onclick="event.stopPropagation(); closeTab('${ws.id}', event); renderTabOverflowMenu();"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button>` : ''}
+      ${Workspaces.length > 1 ? `<button class="tab-overflow-item-close" type="button" aria-label="Close ${safeName}" data-action="ui.closeTabFromOverflow" data-tab-id="${ws.id}"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button>` : ''}
     </div>
   `;
   }).join('') + (filtering ? '<div class="tab-overflow-empty" hidden>No workspace matches</div>' : '') + `
     <div class="tab-overflow-new" role="option" aria-selected="false" tabindex="-1"
-         onclick="hideTabOverflowMenu(); createTab();"
-         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();hideTabOverflowMenu();createTab();}">
+         data-action="activate->ui.createTabFromOverflow">
       <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></svg>
       New workspace
     </div>
@@ -735,7 +745,8 @@ export function switchTabFromOverflow(id) {
   });
 }
 
-export function toggleTabOverflowMenu(e) {
+// `anchor` is the control that opened the menu — see toggleSaveMenu.
+export function toggleTabOverflowMenu(e, anchor = e.currentTarget) {
   e.stopPropagation();
   const menu = $('tab-overflow-menu');
   if (!menu) return;
@@ -744,7 +755,7 @@ export function toggleTabOverflowMenu(e) {
   if (typeof hideContextMenu === 'function') hideContextMenu();
   if (typeof hideCanvasContextMenu === 'function') hideCanvasContextMenu();
   const btn = $('tab-overflow-btn');
-  const r = e.currentTarget.getBoundingClientRect();
+  const r = anchor.getBoundingClientRect();
   // Render first so the menu has its real height/width before we place it.
   menu.style.display = 'block';
   menu.style.visibility = 'hidden';
@@ -1789,8 +1800,7 @@ export function closeThemePicker(focusTrigger = false) {
 
 // Bound once, lazily, on first open: the grid is built by this module rather
 // than present in index.html, so there is nothing to attach to at load time.
-// Delegated rather than per-card inline handlers, which also keeps the whole
-// picker off the window surface in bridge.js.
+// Delegated from the grid rather than a listener per card.
 function bindThemePicker() {
   if (themePickerBound) return;
   const grid = $('theme-grid');
@@ -3286,8 +3296,7 @@ export function renderModelPicker() {
                  role="option" aria-selected="${isActive ? 'true' : 'false'}"
                  ${isDisabled ? 'aria-disabled="true"' : ''}
                  tabindex="0"
-                 onclick="${isDisabled ? '' : `selectModel('${mid}')`}"
-                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${isDisabled ? '' : `selectModel('${mid}')`}}">
+                 ${isDisabled ? '' : `data-action="activate->ui.selectModel" data-model="${mid}"`}>
               <span class="model-item-label">${full}</span>
               ${isDisabled ? '<span class="model-item-status">Coming Soon</span>'
                            : (showCode ? `<span class="model-item-code">${mid}</span>` : '')}
@@ -3585,7 +3594,7 @@ export function togglePanelPin(side) {
   if ($(side)) setPanelPinned(side, !isPanelPinned(side));
 }
 
-// The two names the `onclick=` attributes and bridge.js know it by.
+// The pin buttons' actions (ui.toggleLPanelPin, ui.toggleRPanelPin) and init.js call these.
 export function toggleLPanelPin() { togglePanelPin('lpanel'); }
 export function toggleRPanelPin() { togglePanelPin('rpanel'); }
 
@@ -4169,8 +4178,7 @@ export function initPanelTabs() {
     const order = localStorage.getItem(TAB_ORDER_KEY);
     if (order) setPanelTabOrder(JSON.parse(order));
   } catch (e) { }
-  // Wired at creation the way reference.js does it, so the tabs add no names
-  // to bridge.js.
+  // Wired at creation the way reference.js does it.
   PANEL_TAB_NAMES.forEach(name => {
     const tab = $(PANEL_TABS[name].tab);
     if (!tab || tab._panelTabInit) return;
@@ -5067,3 +5075,62 @@ export function populateSettingsModalInputs(data) {
   if (data.symRight !== undefined) $('set-sym-right').value = data.symRight;
   if (data.symZ0 !== undefined) $('set-sym-z0').value = data.symZ0;
 }
+
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  // The tab strip and its overflow menu
+  'ui.tab': TAB_BEHAVIOUR,
+  'ui.closeTab': ({ el, event }) => closeTab(el.dataset.tabId, event),
+  'ui.tabRename': {
+    // A click in the field is not a click on the tab around it.
+    click: ({ event }) => event.stopPropagation(),
+    keydown: ({ el, event }) => handleTabRenameKeydown(el.dataset.tabId, event),
+    blur: ({ el }) => commitTabRename(el.dataset.tabId, el)
+  },
+  'ui.switchTabFromOverflow': ({ el }) => switchTabFromOverflow(el.dataset.tabId),
+  'ui.closeTabFromOverflow': ({ el, event }) => { closeTab(el.dataset.tabId, event); renderTabOverflowMenu(); },
+  'ui.createTabFromOverflow': () => { hideTabOverflowMenu(); createTab(); },
+  // The model picker
+  'ui.selectModel': ({ el }) => selectModel(el.dataset.model),
+  // index.html
+  'ui.blurField': ({ el }) => el.blur(),
+  'ui.chooseSettingsFile': () => $('settings-file-input').click(),
+  'ui.closeMobileAuxNav': () => closeMobileAuxNav(),
+  'ui.closeMobilePanels': () => closeMobilePanels(),
+  'ui.collapseMobilePanel': ({ el }) => toggleMobilePanel(el.dataset.panel, true),
+  'ui.confirmSettings': () => confirmSettings(),
+  'ui.createTab': () => createTab(),
+  'ui.ctxCopy': () => ctxCopy(),
+  'ui.ctxCut': () => ctxCut(),
+  'ui.exportSettings': () => exportSettings(),
+  'ui.filterAlgos': () => filterAlgos(),
+  'ui.filterStates': () => filterStates(),
+  'ui.filterTransitions': () => filterTransitions(),
+  'ui.fitToScreen': () => fitToScreen(),
+  'ui.handleTabAddDragOver': ({ event }) => handleTabAddDragOver(event),
+  'ui.handleTabAddDrop': ({ event }) => handleTabAddDrop(event),
+  'ui.importSettings': ({ event }) => importSettings(event),
+  'ui.openSettingsModal': () => openSettingsModal(),
+  'ui.reopenClosedTab': () => reopenClosedTab(),
+  'ui.setZoomFromInput': ({ el }) => setZoomFromInput(el.value),
+  'ui.switchHelpTab': ({ el }) => switchHelpTab(el.dataset.tab),
+  'ui.switchSettingsTab': ({ el }) => switchSettingsTab(el.dataset.tab),
+  'ui.tabCtxClose': () => tabCtxClose(),
+  'ui.tabCtxCloseAll': () => tabCtxCloseAll(),
+  'ui.tabCtxCloseOthers': () => tabCtxCloseOthers(),
+  'ui.tabCtxCloseRight': () => tabCtxCloseRight(),
+  'ui.tabCtxDuplicate': () => tabCtxDuplicate(),
+  'ui.tabCtxRename': () => tabCtxRename(),
+  'ui.toggleFullscreen': () => toggleFullscreen(),
+  'ui.toggleLPSection': ({ el }) => toggleLPSection(el.dataset.section),
+  'ui.toggleLPanelPin': () => toggleLPanelPin(),
+  'ui.toggleMobilePanel': ({ el }) => toggleMobilePanel(el.dataset.panel),
+  'ui.toggleModelPicker': () => toggleModelPicker(),
+  'ui.toggleRPSection': ({ el }) => toggleRPSection(el.dataset.section),
+  'ui.toggleRPanelPin': () => toggleRPanelPin(),
+  'ui.toggleTabOverflowMenu': ({ el, event }) => toggleTabOverflowMenu(event, el),
+  'ui.toggleThemePicker': ({ event }) => toggleThemePicker(event),
+  'ui.toggleTool': ({ el }) => toggleTool(el.dataset.tool),
+  'ui.zoomIn': () => zoomIn(),
+  'ui.zoomOut': () => zoomOut()
+});

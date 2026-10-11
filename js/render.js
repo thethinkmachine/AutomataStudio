@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { animEnabled, beginPass, claimGroup, dropTrack, easeTrack, endPass, requestSettle, setSettlePainter, snapTrack } from './anim.js';
 import { applyEdgeDirectionHighlight, clearEdgeDirectionHighlight, clearSelection, onPortDown, resetPortPlacement, onStateDown, wrap } from './canvas.js';
 import { renderDividers } from './dividers.js';
@@ -18,13 +19,13 @@ import { thumbBounds, thumbEdgePairs, thumbEdgePath, thumbEdgeSegments, thumbSub
 import { enterBlockScope } from './scope.js';
 import { blockAncestry } from './blocks.js';
 import { openEdgeLabelEditor } from './edge-label-editor.js';
-import { edgeTipFor, getState, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
+import { deleteState, deleteTrans, edgeTipFor, editTransFromList, getState, openStateModal, openTransModal, showContextMenu, transLabel, transLabelDescriptive, transLabelParts } from './states-transitions.js';
 import { Change, changed, emit, subscribe } from './store.js';
 import { createMemo, reactiveRoot } from './reactive.js';
 import { setSectionStatus } from './section-status.js';
 import { followCanvas } from './draft-layer.js';
 import { triggerMath } from './reference.js';
-import { filterStates, filterTransitions } from './ui.js';
+import { filterStates, filterTransitions, focusStateFromList, focusTransFromList, hlListHover, hlTransListHover } from './ui.js';
 import { escapeHtml, hasStateOutput, isAnyPDA, isAnyTM, showStatus } from './utils.js';
 
 // A structural edit repaints the canvas and both side panels; a CANVAS change
@@ -2096,7 +2097,7 @@ export function updateBlockList() {
   // reachable with Tab and firable with Enter, which is the rule the States Q
   // and Transitions δ rows already follow.
   host.innerHTML = rows.map(b => `
-    <button type="button" class="bi${b.id === here ? ' is-current' : ''}" onclick="openBlockFromList('${b.id}')"
+    <button type="button" class="bi${b.id === here ? ' is-current' : ''}" data-action="blocks.openBlockFromList" data-block-id="${escapeHtml(b.id)}"
          data-tip="Open ${escapeHtml(b.name)}"${b.id === here ? ' aria-current="true"' : ''}>
       <div class="lp-row-body">
         <div class="bi-name">${escapeHtml(b.name)}</div>
@@ -2117,19 +2118,26 @@ export function updateBlockList() {
 const LP_ICON_EDIT = 'M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z';
 const LP_ICON_DELETE = 'M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z';
 
-function lpRowBtn(call, label, path, cls) {
-  return `<button type="button" class="lp-row-btn ${cls}" onclick="event.stopPropagation(); ${call}"
-    data-tip="${label}" aria-label="${label}"><svg viewBox="0 0 256 256" width="11" height="11" fill="currentColor"><path d="${path}"/></svg></button>`;
-}
-
-function rowActions(editCall, editLabel, deleteCall, deleteLabel) {
-  return `<span class="lp-row-acts">${lpRowBtn(editCall, editLabel, LP_ICON_EDIT, 'is-edit')}${lpRowBtn(deleteCall, deleteLabel, LP_ICON_DELETE, 'is-del')}</span>`;
+// `kind` is 'state' or 'trans' and `id` the row's; the actions (LIST_ACTIONS,
+// below) read both off the button, and :stop keeps the press from reaching
+// the row's own focus-the-canvas action.
+function rowActions(kind, id, editLabel, deleteLabel) {
+  // data-row-id, never data-id: [data-id] is how the app finds a node on the
+  // canvas (document.querySelector in canvas.js, ui.js, simulation.js), and the
+  // panel comes first in the document.
+  const attrs = `data-kind="${kind}" data-row-id="${escapeHtml(id)}"`;
+  return `<span class="lp-row-acts">`
+    + `<button type="button" class="lp-row-btn is-edit" data-action="lists.editRow:stop" ${attrs}
+    data-tip="${editLabel}" aria-label="${editLabel}"><svg viewBox="0 0 256 256" width="11" height="11" fill="currentColor"><path d="${LP_ICON_EDIT}"/></svg></button>`
+    + `<button type="button" class="lp-row-btn is-del" data-action="lists.deleteRow:stop" ${attrs}
+    data-tip="${deleteLabel}" aria-label="${deleteLabel}"><svg viewBox="0 0 256 256" width="11" height="11" fill="currentColor"><path d="${LP_ICON_DELETE}"/></svg></button>`
+    + `</span>`;
 }
 
 // The two lists are handed to js/panel-list.js as data plus a row renderer,
 // rather than being joined into one enormous innerHTML string. What a row says
-// stays here; how many of them exist at a time is that module's problem. The
-// markup is unchanged, inline handlers included, so nothing moves in bridge.js.
+// stays here; how many of them exist at a time is that module's problem. What
+// a row does is LIST_ACTIONS, below, keyed by the ids the row carries.
 export function stateRowHTML(s) {
   const showAccepts = acceptsAreShown();
   let mooreOut = '';
@@ -2143,12 +2151,10 @@ export function stateRowHTML(s) {
   // class.  Sharing it applies control sizing/overflow rules to this row.
   const sel = App.selectedStates.has(s.id) ? 'lp-selected' : '';
   return `<div class="si ${App.startId === s.id ? 'start' : ''} ${showAccepts && App.accepts.has(s.id) ? 'acc' : ''} ${sel}"
-  onclick="focusStateFromList('${s.id}')" ondblclick="openStateModal('${s.id}')"
-  onmouseenter="hlListHover('${s.id}', true)" onmouseleave="hlListHover('${s.id}', false)"
+  data-action="lists.stateRow" data-state-id="${escapeHtml(s.id)}"
   data-tip="Click to focus · Double-click to edit">
   <span class="lp-row-body">${escapeHtml(s.name)}${mooreOut}</span>
-  ${rowActions(`openStateModal('${s.id}')`, `Edit state ${escapeHtml(s.name)}`,
-    `deleteState('${s.id}')`, `Delete state ${escapeHtml(s.name)}`)}
+  ${rowActions('state', s.id, `Edit state ${escapeHtml(s.name)}`, `Delete state ${escapeHtml(s.name)}`)}
   <div class="dot"></div>
 </div>`;
 }
@@ -2161,12 +2167,11 @@ export function transRowHTML(t) {
   // columnar form travel through data-tip at all.
   const fullTitle = `${edgeTipFor([t])}\n---\nClick to focus · Double-click to edit`;
   const label = escapeHtml(`${fn} –${transLabel(t)}→ ${tn}`);
-  return `<div class="ti ${sel}" onclick="focusTransFromList('${t.id}')" ondblclick="editTransFromList('${t.id}')"
-  onmouseenter="hlTransListHover('${t.from}','${t.to}', true)" onmouseleave="hlTransListHover('${t.from}','${t.to}', false)"
+  return `<div class="ti ${sel}" data-action="lists.transRow" data-trans-id="${escapeHtml(t.id)}"
+  data-from="${escapeHtml(t.from)}" data-to="${escapeHtml(t.to)}"
   data-tip="${fullTitle.replace(/"/g, '&quot;')}">
   <span class="lp-row-body"><span class="ti-from">${escapeHtml(fn)}</span><span class="arr">–${escapeHtml(transLabel(t))}→</span><span class="ti-to">${escapeHtml(tn)}</span></span>
-  ${rowActions(`editTransFromList('${t.id}')`, `Edit transition ${label}`,
-    `deleteTrans('${t.id}')`, `Delete transition ${label}`)}
+  ${rowActions('trans', t.id, `Edit transition ${label}`, `Delete transition ${label}`)}
 </div>`;
 }
 
@@ -2723,3 +2728,29 @@ export function simplifyRE(r) {
     .replace(/\(([a-zA-Z0-9])\)\*/g, '$1*')
     .replace(/\(([a-zA-Z0-9])\)/g, '$1');
 }
+
+// What index.html names, beside the functions it runs (js/actions.js).
+// The States Q and Transitions δ rows (stateRowHTML, transRowHTML) and the
+// two buttons each row ends in. A row is focused by a click, opened by a
+// double-click, and lights its state or edge on the canvas while hovered.
+const LIST_ACTIONS = {
+  'lists.stateRow': {
+    click: ({ el }) => focusStateFromList(el.dataset.stateId),
+    dblclick: ({ el }) => openStateModal(el.dataset.stateId),
+    mouseenter: ({ el }) => hlListHover(el.dataset.stateId, true),
+    mouseleave: ({ el }) => hlListHover(el.dataset.stateId, false)
+  },
+  'lists.transRow': {
+    click: ({ el }) => focusTransFromList(el.dataset.transId),
+    dblclick: ({ el }) => editTransFromList(el.dataset.transId),
+    mouseenter: ({ el }) => hlTransListHover(el.dataset.from, el.dataset.to, true),
+    mouseleave: ({ el }) => hlTransListHover(el.dataset.from, el.dataset.to, false)
+  },
+  'lists.editRow': ({ el }) => (el.dataset.kind === 'state' ? openStateModal : editTransFromList)(el.dataset.rowId),
+  'lists.deleteRow': ({ el }) => (el.dataset.kind === 'state' ? deleteState : deleteTrans)(el.dataset.rowId)
+};
+
+defineActions({
+  ...LIST_ACTIONS,
+  'render.copyBoxText': ({ el }) => copyBoxText(el.dataset.box)
+});

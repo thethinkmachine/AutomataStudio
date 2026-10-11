@@ -23,9 +23,10 @@
 //  would take the caret with it. Structural changes — adding a row, changing
 //  the machine, moving between steps — re-render the body, and only they do.
 //
-//  **Listeners are attached at creation**, the way js/reference.js does it,
-//  so the whole feature adds exactly one name to js/bridge.js.
+//  **Listeners are attached at creation**, the way js/reference.js does it;
+//  the one action it registers is the header button's.
 
+import { defineActions } from './action-registry.js';
 import { closeModal, isModalOpen, registerModal, showOverlay } from './modal.js';
 import { MachineGuides } from './machine-guide.js';
 import {
@@ -1196,3 +1197,8 @@ function focusStep() {
   const first = host.querySelector('input:not([type=radio]), select, textarea, button');
   if (first && first.focus) first.focus();
 }
+
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'wizard.openMachineWizard': () => openMachineWizard()
+});

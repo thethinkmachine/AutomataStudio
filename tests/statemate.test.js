@@ -4504,7 +4504,7 @@ test('a render that force-pins does not overrule a resumption', () => {
     'the resume decision is made before the render, not read back off it');
 });
 
-test('the tab strip is wired at creation, so it adds no name to bridge.js', () => {
+test('the tab strip is wired at creation, with listeners rather than actions', () => {
   const h = createHarness();
   h.context.initPanelTabs();
   h.context.openStateMate();

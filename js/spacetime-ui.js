@@ -30,8 +30,7 @@
 //    screen is the tracker's step; clicking or dragging a row scrubs there.
 //    The two are one control seen two ways, never two cursors.
 //
-//  Listeners are attached at creation and nothing is reached from an `on*`
-//  attribute, so the whole feature adds nothing to bridge.js.
+//  Listeners are attached at creation.
 // ══════════════════════════════════════════════════════════════════
 
 import { $, App, getMachineConfig, getState } from './state.js';

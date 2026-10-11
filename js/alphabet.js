@@ -1,8 +1,9 @@
+import { defineActions } from './action-registry.js';
 import { renderGramSyms } from './grammar-ui.js';
 import { updateLPanelSectionMeta, updateRPanel } from './render.js';
 import { $, App, getMachineConfig, isBoundarySymbol, isBoundaryTapeMachine } from './state.js';
 import { Change, subscribe } from './store.js';
-import { escapeHtml, isAnyTM, jsAttr, showStatus } from './utils.js';
+import { escapeHtml, isAnyTM, showStatus } from './utils.js';
 
 subscribe(Change.ALPHABET, renderSigma);
 subscribe(Change.ALPHABET, renderGamma);
@@ -60,12 +61,16 @@ export function syncAlphabetSection(m = App.machine) {
 // names the button and not the thing it acts on.
 const REMOVE_ICON = '<svg viewBox="0 0 256 256"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>';
 
-function chipRemove(fn, sym) {
-  // jsAttr already runs escapeHtml over the JSON literal — see js/utils.js.
-  return `<button type="button" class="x" onclick="${fn}(${jsAttr(sym)})" `
+// The symbol travels as data, not as code: data-sym is an attribute value, so
+// escaping it as HTML is the whole job, and the action reads it back decoded.
+function chipRemove(alphabet, sym) {
+  return `<button type="button" class="x" data-action="alphabet.removeSymbol" `
+    + `data-alphabet="${alphabet}" data-sym="${escapeHtml(sym)}" `
     + `aria-label="Remove ${escapeHtml(sym)}" data-tip="Remove ${escapeHtml(sym)}">`
     + `${REMOVE_ICON}</button>`;
 }
+
+const REMOVE_FROM = { sigma: delSym, gamma: delGSym, output: delOutSym };
 
 export function addSym() {
   const v = $('sym-in').value.trim(); if (!v) return;
@@ -85,7 +90,7 @@ export function addSym() {
   }
 export function renderSigma() {
   const c = $('sigma-chips');
-  c.innerHTML = [...App.sigma].map(s => `<div class="chip">${escapeHtml(s)}${chipRemove('delSym', s)}</div>`).join('')
+  c.innerHTML = [...App.sigma].map(s => `<div class="chip">${escapeHtml(s)}${chipRemove('sigma', s)}</div>`).join('')
     || '<div class="empty-msg">Add symbols</div>';
   if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
@@ -112,7 +117,7 @@ export function renderGamma() {
       const isBoundary = isBoundaryTapeMachine(App.machine) && isBoundarySymbol(s);
       const style = isBottom ? 'style="color:var(--green)"' : (isBoundary ? 'style="color:var(--gold)"' : '');
       const title = isBoundary ? ` data-tip="${s === App.config.sym.leftMarker ? 'Left boundary marker' : 'Right boundary marker'}"` : '';
-      return `<div class="chip" ${style}${title}>${escapeHtml(s)}${(isBottom || isBoundary) ? '' : chipRemove('delGSym', s)}</div>`;
+      return `<div class="chip" ${style}${title}>${escapeHtml(s)}${(isBottom || isBoundary) ? '' : chipRemove('gamma', s)}</div>`;
     }).join('') || '<div class="empty-msg">Add symbols</div>';
   if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
@@ -124,8 +129,15 @@ export function addOutSym() {
 export function delOutSym(s) { App.outputAlpha.delete(s); renderOutputAlpha(); }
 export function renderOutputAlpha() {
   const c = $('output-chips');
-  c.innerHTML = [...App.outputAlpha].map(s => `<div class="chip">${escapeHtml(s)}${chipRemove('delOutSym', s)}</div>`).join('')
+  c.innerHTML = [...App.outputAlpha].map(s => `<div class="chip">${escapeHtml(s)}${chipRemove('output', s)}</div>`).join('')
     || '<div class="empty-msg">Add symbols</div>';
   if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
 }
 
+
+defineActions({
+  'alphabet.addSym': () => addSym(),
+  'alphabet.addGSym': () => addGSym(),
+  'alphabet.addOutSym': () => addOutSym(),
+  'alphabet.removeSymbol': ({ el }) => REMOVE_FROM[el.dataset.alphabet]?.(el.dataset.sym)
+});

@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { closeModal, showOverlay } from './modal.js';
 import { clearRunScope } from './run-scope.js';
 import { showExampleCard } from './persistence.js';
@@ -171,11 +172,7 @@ export function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// Safely embeds an arbitrary string as a JS argument inside an inline HTML
-// event handler attribute, e.g. `onclick="delSym(${jsAttr(s)})"`. JSON.stringify
-// produces a properly quote/backslash-escaped JS string literal; escapeHtml then
-// protects the surrounding HTML attribute (browsers HTML-decode the attribute
-// value before parsing it as JS, so both layers are required).
-export function jsAttr(str) {
-  return escapeHtml(JSON.stringify(String(str)));
-}
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'workspace.clearAll': () => clearAll()
+});

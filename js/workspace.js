@@ -51,7 +51,9 @@ export function loadWorkspaceB() {
 
 defineActions({
   'workspace.saveWorkspaceB': () => saveWorkspaceB(),
-  'workspace.loadWorkspaceB': () => loadWorkspaceB()
+  'workspace.loadWorkspaceB': () => loadWorkspaceB(),
+  'workspace.openAboutModal': () => openAboutModal(),
+  'workspace.showHelpModal': () => showHelpModal()
 });
 export function getCurrentMachineSnapshot() {
   return {

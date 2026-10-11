@@ -13,8 +13,7 @@
 //
 //  Layout is the Reference view's: a nav rail and a content pane, inside the
 //  shared aux overlay. Pages are built as nodes with listeners attached at
-//  creation, the way reference.js and statemate-ui.js do it, so the view adds
-//  nothing to bridge.js — setView('library') is already there.
+//  creation, the way reference.js and statemate-ui.js do it.
 //
 //  Pages: discover · browse · entry/<id> · collections · collection/<id> ·
 //         mine · submit · about

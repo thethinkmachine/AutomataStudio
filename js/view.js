@@ -76,8 +76,8 @@ function auxTabs() {
 }
 
 // The bar is built once, on first open, from AUX_META — so a view's name, its
-// icon and its tooltip are written in one place. Nothing in it carries an on*
-// attribute, which is why none of it is in bridge.js.
+// icon and its tooltip are written in one place, with listeners attached as
+// it is built.
 function ensureAuxChrome() {
   const strip = $('aux-tabs');
   if (!strip || strip.dataset.built === '1') return;
@@ -387,7 +387,10 @@ export function closeAuxView() {
 }
 
 defineActions({
-  'view.closeAuxView': () => closeAuxView()
+  'view.closeAuxView': () => closeAuxView(),
+  'view.hideMoreMenu': () => hideMoreMenu(),
+  'view.setView': ({ el }) => setView(el.dataset.view),
+  'view.toggleMoreMenu': ({ event }) => toggleMoreMenu(event)
 });
 
 // ── Header overflow menu ──

@@ -119,7 +119,8 @@ say so in the pull request.
 
 - `npm test` must pass. The suite is `node:test` over `tests/*.test.js`.
 - Match the surrounding code — the codebase has strong local conventions, and
-  [CLAUDE.md](CLAUDE.md) documents the load-bearing ones (the `bridge.js` seam,
-  evaluation order, the `store.js` change protocol, the layout pass).
+  [CLAUDE.md](CLAUDE.md) documents the load-bearing ones (how controls are
+  wired with `data-action`, evaluation order, the `store.js` change protocol,
+  the layout pass).
 - Keep computation separate from rendering in algorithm code; that separation is
   what makes the algorithms testable.

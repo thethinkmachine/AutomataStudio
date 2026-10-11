@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { App, Workspaces, activeWorkspaceId, getMachineConfig, largeMachineProfile, setR } from './state.js';
 import { Change, emit, subscribe } from './store.js';
 import { toggleSnapToGrid } from './canvas.js';
@@ -390,3 +391,8 @@ export function restoreSnapshot(s) {
   emit(Change.ALPHABET, Change.GRAPH, Change.META, Change.GRAMMAR);
 }
 
+// What index.html names, beside the functions it runs (js/actions.js).
+defineActions({
+  'history.redo': () => redo(),
+  'history.undo': () => undo()
+});

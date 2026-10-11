@@ -19,7 +19,7 @@
 //
 //  SVG, built fresh per render: a profile is a few dozen points and the
 //  colours come from classes, so a theme change needs nothing from here.
-//  Listeners are attached at creation; nothing is in bridge.js.
+//  Listeners are attached at creation.
 // ══════════════════════════════════════════════════════════════════
 
 import { $, App } from './state.js';

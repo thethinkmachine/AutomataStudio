@@ -1,3 +1,4 @@
+import { defineActions } from './action-registry.js';
 import { exportPNG, exportSVG, getContentBounds, wrap } from './canvas.js';
 import { buildMachineIR, exportCanTrace, exportCopyText, exportCoverageWords, exportDefaultMaxLength, exportDownload, exportFilename, exportRequireMachine, exportRouteDepth, exportSampleWords } from './export-core.js';
 import { LANG_TRACE_DEPTH_CAP } from './language.js';
@@ -49,9 +50,14 @@ export function openExportImageModal() {
   showOverlay('export-image-modal');
 }
 
+// A value from the dialog may arrive as text — a segment button carries it in
+// data-value — so a flag is read as one: `!!'false'` is true, which is how
+// "Current view" used to crop to content all the same.
+const asFlag = value => value === true || value === 'true';
+
 export function setExportImageOpt(key, value) {
   if (key === 'scale' || key === 'padding') value = Number(value);
-  if (key === 'crop' || key === 'includeNotes' || key === 'includeDividers' || key === 'embedData') value = !!value;
+  if (key === 'crop' || key === 'includeNotes' || key === 'includeDividers' || key === 'embedData') value = asFlag(value);
   ExportImageOpts[key] = value;
   if (key === 'scale') App.config.exportRes = value;
   renderExportImageModal();
@@ -81,11 +87,11 @@ export function renderExportImageModal() {
   const dim = exportImageDimensions();
 
   const seg = (key, val, label, current) =>
-    `<button type="button" class="exp-seg${current === val ? ' on' : ''}" onclick="setExportImageOpt('${key}', ${typeof val === 'number' ? val : `'${val}'`})">${label}</button>`;
+    `<button type="button" class="exp-seg${current === val ? ' on' : ''}" data-action="export.setImageOpt" data-key="${key}" data-value="${val}">${label}</button>`;
 
   const check = (key, label, hint) =>
     `<label class="exp-check"><input type="checkbox" ${ExportImageOpts[key] ? 'checked' : ''}
-      onchange="setExportImageOpt('${key}', this.checked)"><span>${label}${hint ? `<em>${hint}</em>` : ''}</span></label>`;
+      data-action="change->export.setImageOpt" data-key="${key}"><span>${label}${hint ? `<em>${hint}</em>` : ''}</span></label>`;
 
   host.innerHTML = `
     <div class="exp-row">
@@ -114,7 +120,7 @@ export function renderExportImageModal() {
     <div class="exp-row">
       <span class="exp-lbl">Padding</span>
       <input class="inp exp-num" type="number" min="0" max="400" step="10" value="${o.padding}"
-        onchange="setExportImageOpt('padding', this.value)">
+        data-action="change->export.setImageOpt" data-key="padding">
     </div>` : ''}
     <div class="exp-row">
       <span class="exp-lbl">Background</span>
@@ -128,7 +134,7 @@ export function renderExportImageModal() {
     <div class="exp-row">
       <span class="exp-lbl">Colour</span>
       <input class="exp-color" type="color" value="${o.customColor}"
-        onchange="setExportImageOpt('customColor', this.value)">
+        data-action="change->export.setImageOpt" data-key="customColor">
     </div>` : ''}
     <div class="exp-row exp-row-stack">
       <span class="exp-lbl">Include</span>
@@ -411,7 +417,7 @@ export function exportCodeOptionsHtml(spec, opts) {
     const val = opts[opt.id];
     if (opt.type === 'check') {
       return `<label class="exp-check"><input type="checkbox" ${val ? 'checked' : ''}
-        onchange="setExportCodeOpt('${opt.id}', this.checked, 'check')"><span>${opt.label}</span>${opt.hint ? `<em>${opt.hint}</em>` : ''}</label>`;
+        data-action="change->export.setCodeOpt" data-opt="${escapeHtml(opt.id)}" data-type="check"><span>${opt.label}</span>${opt.hint ? `<em>${opt.hint}</em>` : ''}</label>`;
     }
     if (opt.type === 'select') {
       // Choices may be a function: the origin picker lists the machine's
@@ -419,21 +425,21 @@ export function exportCodeOptionsHtml(spec, opts) {
       // value and the label are escaped because a state name is user text.
       const choices = optValue(opt.choices);
       return `<label class="exp-field"><span>${opt.label}</span>
-        <select class="inp" onchange="setExportCodeOpt('${opt.id}', this.value, 'select')">
+        <select class="inp" data-action="change->export.setCodeOpt" data-opt="${escapeHtml(opt.id)}" data-type="select">
           ${choices.map(([v, l]) => `<option value="${escapeHtml(v)}" ${val === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}
         </select></label>`;
     }
     if (opt.type === 'text') {
       return `<label class="exp-field"><span>${opt.label}</span>
         <input class="inp" type="text" value="${escapeHtml(val)}"
-          onchange="setExportCodeOpt('${opt.id}', this.value, 'text')"></label>`;
+          data-action="change->export.setCodeOpt" data-opt="${escapeHtml(opt.id)}" data-type="text"></label>`;
     }
     const min = optValue(opt.min), max = optValue(opt.max);
     return `<label class="exp-field"><span>${opt.label}</span>
       <input class="inp exp-num" type="number" value="${val}"
         ${min !== undefined ? `min="${min}"` : ''} ${max !== undefined ? `max="${max}"` : ''}
         ${opt.step !== undefined ? `step="${opt.step}"` : ''}
-        onchange="setExportCodeOpt('${opt.id}', this.value, 'number')"></label>`;
+        data-action="change->export.setCodeOpt" data-opt="${escapeHtml(opt.id)}" data-type="number"></label>`;
   }).join('');
 
   // A warning is a function of the current options, so it appears only when
@@ -466,7 +472,7 @@ export function renderExportCodeModal() {
       ${g.items.map(({ key, f }) => {
         const off = f.available && !f.available();
         return `<button type="button" class="exp-fmt${key === ExportUI.format ? ' on' : ''}${off ? ' off' : ''}"
-          onclick="selectExportFormat('${key}')">${escapeHtml(f.label)}</button>`;
+          data-action="export.selectFormat" data-format="${key}">${escapeHtml(f.label)}</button>`;
       }).join('')}
     </div>`).join('');
 
@@ -544,3 +550,25 @@ export function exportCopyBatchQuick() {
   if (!App.lastBatch) { showStatus('Run a batch test first'); return; }
   exportCopyText(exportBatchText(App.lastBatch, { format: 'markdown' }), 'Batch results copied as Markdown');
 }
+
+function controlValue(el) {
+  if (el.type === 'checkbox') return el.checked;
+  return 'value' in el.dataset ? el.dataset.value : el.value;
+}
+
+// What the dialogs and index.html name, beside the functions they run (js/actions.js).
+defineActions({
+  // The two dialogs' generated controls. A control's value is its own: a
+  // checkbox's state, a field's text, or a segment button's data-value.
+  'export.setImageOpt': ({ el }) => setExportImageOpt(el.dataset.key, controlValue(el)),
+  'export.setCodeOpt': ({ el }) => setExportCodeOpt(el.dataset.opt, controlValue(el), el.dataset.type),
+  'export.selectFormat': ({ el }) => selectExportFormat(el.dataset.format),
+  // index.html
+  'export.exportCodeCopy': () => exportCodeCopy(),
+  'export.exportCodeDownload': () => exportCodeDownload(),
+  'export.exportCopyBatchQuick': () => exportCopyBatchQuick(),
+  'export.exportOpenBatch': () => exportOpenBatch(),
+  'export.openExportCodeModal': () => openExportCodeModal(),
+  'export.openExportImageModal': () => openExportImageModal(),
+  'export.runImageExport': () => runImageExport()
+});

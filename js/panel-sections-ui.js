@@ -38,7 +38,7 @@
 //   can put a card back even after it has been docked somewhere else.
 //
 // Listeners are attached at creation the way [js/reference.js](reference.js)
-// does it, so the whole feature adds nothing to `bridge.js`.
+// does it.
 
 import {
   PANEL_SECTIONS, PANEL_SECTION_SIDES, anySectionMoved, declaredGroupOf, declaredSectionIds,

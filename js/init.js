@@ -26,6 +26,15 @@ import { installActions } from './actions.js';
 // First, so every data-action control works from the first paint — the
 // listener is delegated, so markup rendered later needs nothing further.
 installActions();
+// KaTeX's auto-render, once, for any math already in the page — what the
+// script tag's onload used to do. It is a deferred script ahead of this module
+// and has normally run by now; if not, wait for it. Offline it never arrives.
+if (typeof renderMathInElement === 'function') {
+  renderMathInElement(document.body);
+} else {
+  document.querySelector('script[src*="katex"][src*="auto-render"]')
+    ?.addEventListener('load', () => renderMathInElement(document.body), { once: true });
+}
 try {
   applyTheme(localStorage.getItem('automata-theme') || App.config.theme || DEFAULT_THEME, false);
 } catch (e) {

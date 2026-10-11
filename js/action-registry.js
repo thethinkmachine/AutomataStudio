@@ -3,9 +3,9 @@
 // ══════════════════════════════════════════════════════════════════
 // The named things markup can ask for. An element says what it wants with
 // data-action="algo.loadSubsetAsDFA"; js/actions.js reads the attribute when
-// the event arrives and looks the name up here. That is the replacement for an
-// on*="..." attribute, which can only reach functions bridge.js has put on
-// window — see the "one global seam" section of CLAUDE.md.
+// the event arrives and looks the name up here. It replaced on*="..."
+// attributes, which could only reach functions put on window — see "Wiring
+// controls" in CLAUDE.md.
 //
 // Import-free for the reason js/modal-registry.js is: modules call
 // defineActions() at module scope, beside the functions they wire up, and a

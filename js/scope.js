@@ -104,8 +104,7 @@ export function resetScopeCameras() { cameras.clear(); }
 // ══════════════════════════════════════════════════════════════════
 // Built rather than written into index.html because it exists only while the
 // reader is inside something, and because its content is the scope. Listeners
-// are attached at creation the way js/reference.js does it, so the whole
-// feature adds no name to js/bridge.js.
+// are attached at creation the way js/reference.js does it.
 
 // The Phosphor `arrow-up` the rest of the app's chrome uses. A `↑` typed as
 // text picks up whatever glyph the reader's font has for it and sits on the

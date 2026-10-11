@@ -418,7 +418,7 @@ export function renderSymSuggest(el, state) {
       const isDead = state.liveSet && !isEps && !state.liveSet.has(s);
       const title = isEps ? 'Empty string' : (isDead ? 'No transition from the current state — would dead-end here' : '');
       return `<button type="button" class="chip sugg-chip${i === SymSuggest.activeIdx ? ' active' : ''}${isEps ? ' sugg-eps' : ''}${isDead ? ' sugg-dead' : ''}"
-        onmousedown="event.preventDefault(); acceptSuggestion(${i})" data-tip="${title}">${label}</button>`;
+        data-action="mousedown->suggest.accept:prevent" data-index="${i}" data-tip="${title}">${label}</button>`;
     }).join('');
     statusEl.className = 'sym-suggest-status';
     updateSuggestStatusHint(state);
@@ -506,7 +506,7 @@ export function acceptSuggestion(idx) {
   el.value = newValue;
   el.focus();
   el.setSelectionRange(newCaret, newCaret);
-  // Every field wired through `on*` attributes reads the element when it runs,
+  // Every field wired through suggest.symbols reads the element when it runs,
   // so this write reaches them by itself. The Grammar workbench holds the
   // field's value in a model instead and re-renders from it, so it has to hear
   // that the popover wrote — accepting a symbol there would otherwise show in
@@ -515,8 +515,10 @@ export function acceptSuggestion(idx) {
   refreshSymSuggest(el);
 }
 
-// Returns true if the key was consumed by the suggestion popover, so callers
-// (handleSimInputKeydown / handleBatchInputKeydown) can bail out early.
+// Returns true if the key was consumed by the suggestion popover — and then it
+// has called preventDefault, which is how a field's own keyboard action knows
+// to stand aside: the suggest.symbols behaviour runs first, and js/actions.js
+// does not deliver a key that has already been claimed.
 // Enter and ArrowUp/ArrowDown are deliberately left untouched — Enter always
 // runs the simulation and Up/Down always recall input history, popover open
 // or not.
@@ -557,9 +559,6 @@ export function trySymSuggestKeydown(e) {
   return false;
 }
 
-export function handleBatchInputKeydown(e) {
-  trySymSuggestKeydown(e);
-}
 
 // What a field opts into with data-action="suggest.symbols": the six listeners
 // an alphabet-aware field needs, under one name, instead of six on*= attributes
@@ -572,7 +571,10 @@ defineActions({
     focus: ({ el }) => handleSymSuggestActive(el),
     click: ({ el }) => refreshSymSuggest(el),
     blur: () => hideSymSuggest()
-  }
+  },
+  // A chip in the popover. On mousedown, and :prevent, so that pressing it
+  // does not take focus from the field it is filling in.
+  'suggest.accept': ({ el }) => acceptSuggestion(Number(el.dataset.index))
 });
 
 window.addEventListener('resize', () => { if (SymSuggest.target) hideSymSuggest(); });
