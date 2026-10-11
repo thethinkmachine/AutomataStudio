@@ -1026,10 +1026,6 @@ body.panel-resizing .rpanel {
   border-bottom: 1px solid var(--border);
 }
 
-.mobile-panel-close {
-  display: none;
-}
-
 /* ── the tab strip ──
    VS Code's panel title, deliberately: compact uppercase labels sized to
    their own text, no fills and no outlines, and the selected tab carried by
