@@ -1,3 +1,4 @@
+import { migrateLegacyNoteText } from './notes-legacy-markup.js';
 import { defineActions } from './action-registry.js';
 import { tokenizeSymbols } from './grammar/parse.js';
 import { renderGamma, renderOutputAlpha, renderSigma } from './alphabet.js';
@@ -93,7 +94,8 @@ export const WORKSPACE_FORMAT = 'automata-studio/workspace';
 //  `scope`, `meta` and `grammar` all arrive without one.
 //
 //  1 — the first numbered schema. Everything written before it reads as 0.
-export const SCHEMA_VERSION = 1;
+//  2 — a note's text is Markdown, with markdown-it's conventions.
+export const SCHEMA_VERSION = 2;
 
 // What a document with no `schema` field is. Every file this app wrote before
 // the field existed, plus every hand-written and third-party one.
@@ -140,6 +142,19 @@ const MIGRATIONS = [
   // and the reader's own symbols may differ.
   d => {
     if (!d.config) migrateLegacySymbols(d);
+    return d;
+  },
+  // 1 → 2. A note's text became Markdown, with markdown-it's conventions
+  // (js/markdown.js). It had been a markup of the app's own in which `a*b*`
+  // was literal and `__x__` underlined; read as Markdown those draw an italic
+  // "b" and a bold "x". Each note is rewritten as the Markdown that draws what
+  // it drew — see js/notes-legacy-markup.js.
+  d => {
+    if (Array.isArray(d.notes)) {
+      for (const note of d.notes) {
+        if (note && typeof note.text === 'string') note.text = migrateLegacyNoteText(note.text);
+      }
+    }
     return d;
   }
 ];

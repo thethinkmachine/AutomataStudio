@@ -2752,10 +2752,6 @@ button.sm-stat:disabled {
   flex-direction: column;
 }
 
-.modal.note-modal-wide {
-  max-width: 480px;
-}
-
 .modal.about-modal-wide {
   max-width: 440px;
 }
@@ -3661,18 +3657,28 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
-/* ─── NOTE EDITOR (rich-text modal) ─── */
-.note-editor-row {
-  align-items: flex-start;
+/* ─── NOTE EDITOR ───
+   The note's Markdown on the left, the note as the canvas draws it on the
+   right (js/notes.js, renderNotePreview). The dialog is a column of fixed
+   height whose panes take what is left, so each pane scrolls on its own and
+   nothing else does — the colours and the buttons never leave the screen. */
+.modal.note-modal {
+  max-width: 940px;
+  width: min(940px, 94vw);
+  height: min(720px, 86vh);
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .note-editor {
   flex: 1;
-  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border2);
-  border-radius: 9px;
+  border-radius: 10px;
   background: var(--bg3);
   overflow: hidden;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
@@ -3687,31 +3693,29 @@ button:focus-visible {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 6px;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--border);
   background: var(--surface2);
-  flex-wrap: wrap;
 }
 
 .note-tb-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text2);
-  border-radius: 6px;
+  border-radius: 7px;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 
 .note-tb-btn svg {
-  width: 14px;
-  height: 14px;
-  fill: currentColor;
+  width: 15px;
+  height: 15px;
 }
 
 .note-tb-btn:hover {
@@ -3724,90 +3728,150 @@ button:focus-visible {
   transform: translateY(1px);
 }
 
+.note-tb-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .note-tb-sep {
   width: 1px;
   height: 18px;
   background: var(--border2);
-  margin: 0 4px;
+  margin: 0 6px;
   flex-shrink: 0;
 }
 
-.note-tb-hint {
-  font-family: var(--sans);
-  font-size: .63rem;
-  color: var(--text3);
-  line-height: 1.4;
-  margin-left: 6px;
-  flex: 1 1 180px;
-  min-width: 140px;
+.note-panes {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
-.note-tb-hint code {
-  font-family: var(--mono);
-  background: var(--surface3);
-  border-radius: 3px;
-  padding: 0 3px;
-  color: var(--text2);
-}
-
-.note-tb-hint kbd {
-  font: inherit;
-  color: var(--text2);
-}
-
-.note-textarea {
-  border: none;
-  border-radius: 0;
+.note-source {
+  min-height: 0;
+  resize: none;
+  border: 0;
   background: transparent;
-  width: 100%;
-  resize: vertical;
-  min-height: 90px;
-  max-height: 50vh;
+  color: var(--text);
   font-family: var(--mono);
-  line-height: 1.5;
-  padding: 10px 12px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.note-textarea:focus {
+  font-size: 12.5px;
+  line-height: 1.65;
+  padding: 14px 16px;
+  overflow: auto;
+  tab-size: 2;
   outline: none;
-  box-shadow: none;
-  border-color: transparent;
 }
 
-.note-textarea:empty::before {
-  content: attr(data-placeholder);
+.note-source::placeholder {
   color: var(--text3);
+}
+
+/* The canvas's ground under the note, so its colours read as they will there. */
+.note-preview {
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  padding: 18px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+/* A note wider than the pane is shown smaller, never cut. */
+.note-preview-svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
   pointer-events: none;
 }
 
 .note-editor-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 6px 12px;
+  gap: 14px;
+  padding: 8px 12px;
   border-top: 1px solid var(--border);
   background: var(--surface2);
+  flex-wrap: wrap;
 }
 
-.note-resize-hint {
+.note-editor-help {
+  margin-left: auto;
   font-family: var(--sans);
-  font-size: .62rem;
+  font-size: .66rem;
   color: var(--text3);
+}
+
+.note-editor-help kbd {
+  font: inherit;
+  color: var(--text2);
 }
 
 .note-char-count {
   font-family: var(--mono);
-  font-size: .65rem;
+  font-size: .66rem;
   color: var(--text3);
   white-space: nowrap;
 }
 
 .note-char-count-max {
   color: var(--orange);
+}
+
+/* Write | Preview: only where there is room for one pane at a time. */
+.note-pane-tabs {
+  display: none;
+  margin-left: auto;
+  padding: 2px;
+  gap: 2px;
+  border-radius: 8px;
+  background: var(--surface3);
+}
+
+.note-pane-tab {
+  border: 0;
+  background: transparent;
+  color: var(--text2);
+  font: 500 .72rem var(--sans);
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.note-pane-tab[aria-selected="true"] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+@media (max-width: 720px) {
+  .modal.note-modal {
+    width: calc(100% - 20px);
+    height: min(640px, 88vh);
+  }
+
+  .note-panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .note-pane-tabs {
+    display: flex;
+  }
+
+  .note-editor[data-pane="write"] .note-preview,
+  .note-editor[data-pane="preview"] .note-source {
+    display: none;
+  }
+
+  .note-preview {
+    border-left: 0;
+  }
+
+  .note-editor-help {
+    display: none;
+  }
 }
 
 /* ─── TOOLTIPS ───

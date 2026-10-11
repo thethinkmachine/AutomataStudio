@@ -8,6 +8,9 @@ import { getBlock } from './blocks.js';
 import { nodeIdAtScope, scopeId } from './view-graph.js';
 import { getState, getTransition, hideContextMenu, showContextMenu } from './states-transitions.js';
 import { showStatus } from './utils.js';
+import { RUN_STYLES } from './markdown.js';
+import { INLINE_MARKERS, insertTable, toggleInline, toggleList } from './note-editor-text.js';
+import { layoutNoteMarkdown, noteNaturalWidth } from './note-layout.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  CANVAS NOTES — free or anchored comments on states/transitions
@@ -153,8 +156,12 @@ export function noteBoxLayout(note) {
     }
     return { w, h, lines };
   }
-  const lines = layoutNoteText(note.text, NOTE_CHARS_PER_LINE);
-  const w = NOTE_WIDTH, h = NOTE_PAD * 2 + lines.length * NOTE_LINE_H;
+  // Wider than NOTE_WIDTH only for a table that needs it, and no wider than
+  // a note may be resized to (js/note-layout.js, noteNaturalWidth).
+  const chars = Math.max(NOTE_CHARS_PER_LINE, Math.min(noteNaturalWidth(note.text), noteCharsPerLine(NOTE_MAX_W)));
+  const lines = layoutNoteText(note.text, chars);
+  const w = chars === NOTE_CHARS_PER_LINE ? NOTE_WIDTH : noteWidthForChars(chars);
+  const h = NOTE_PAD * 2 + lines.length * NOTE_LINE_H;
   return { w, h, lines };
 }
 
@@ -225,115 +232,45 @@ export function pruneNoteAnchors() {
   pruneNoteAnchorsRemoving(goneStates, goneTrans);
 }
 
-// ── Rich text: a minimal inline markup (**bold**, *italic*, __underline__)
-// parsed into styled runs and laid out as plain SVG tspans (not
+// ── Rich text: a note is Markdown, the app's one dialect (js/markdown.js,
+// markdown-it's conventions). Each line is read into styled runs — bold,
+// italic, strikethrough, code — and laid out as plain SVG tspans (not
 // foreignObject), so notes survive the PNG export pipeline, which rasterizes
-// the SVG via drawImage(). Word-wrap operates on run boundaries so a bold
-// word never gets silently split from its markers. ──
+// the SVG via drawImage(). Word-wrap operates on runs, so a style is never
+// split from the text it covers. ──
 export const NOTE_EMPTY_PLACEHOLDER = 'Double-click to edit';
 // Derived, not hardcoded, so an auto-sized note and one resized to exactly
 // NOTE_WIDTH wrap identically instead of differing by a character.
 export const NOTE_CHARS_PER_LINE = noteCharsPerLine(NOTE_WIDTH);
 
-// Splits raw markup text into { text, bold, italic, underline } runs, one per
-// styled span, without crossing newlines (callers split on '\n' first).
-// Recognizes **bold**, *italic*, __underline__ — non-greedy and non-nested.
-//
-// Markers must "flank" a word the way CommonMark requires: the opener sits at
-// line start or after whitespace/opening punctuation, the closer at line end or
-// before whitespace/closing punctuation, and the content may not begin or end
-// with a space. Without that rule this markup would eat notation that shows up
-// constantly in this domain — `a*b*`, `Σ*`, `(0|1)*` would silently italicize,
-// and `q_start to q_end` would silently underline. Those now render literally;
-// the trade-off is that markers can only wrap whole words, not word interiors.
-export function parseNoteRuns(line) {
-  const runs = [], active = { bold: 0, italic: 0, underline: 0 };
-  const markerStyles = { '**': ['bold'], '***': ['bold', 'italic'], '*': ['italic'], '__': ['underline'] };
-  const markerRe = /\*{1,3}|__/g;
-  let cursor = 0, match;
-  const pushText = text => {
-    if (!text) return;
-    const prev = runs[runs.length - 1];
-    const style = { bold: active.bold > 0, italic: active.italic > 0, underline: active.underline > 0 };
-    if (prev && prev.bold === style.bold && prev.italic === style.italic && prev.underline === style.underline) prev.text += text;
-    else runs.push({ text, ...style });
-  };
-  while ((match = markerRe.exec(line))) {
-    const marker = match[0], styles = markerStyles[marker];
-    const before = match.index ? line[match.index - 1] : '';
-    const after = line[match.index + marker.length] || '';
-    const leftBoundary = !before || /[\s([{"']/.test(before) || before === '*' || before === '_';
-    const rightBoundary = !after || /[\s)\]}"'.,;:!?]/.test(after) || after === '*' || after === '_';
-    const canClose = styles && styles.every(style => active[style] > 0) && rightBoundary;
-    let closeAt = line.indexOf(marker, match.index + marker.length);
-    let hasCloser = false;
-    while (closeAt !== -1) {
-      const closeAfter = line[closeAt + marker.length] || '';
-      if (!closeAfter || /[\s)\]}"'.,;:!?]/.test(closeAfter) || closeAfter === '*' || closeAfter === '_') { hasCloser = true; break; }
-      closeAt = line.indexOf(marker, closeAt + marker.length);
-    }
-    const canOpen = styles && leftBoundary && !/^\s$/.test(after) && hasCloser;
-    if (!canClose && !canOpen) continue;
-    pushText(line.slice(cursor, match.index));
-    styles.forEach(style => { active[style] += canClose ? -1 : 1; });
-    cursor = match.index + marker.length;
-  }
-  pushText(line.slice(cursor));
-  return runs;
-}
+// Full layout: a note's Markdown -> array of lines, each an array of styled
+// runs, in `charsPerLine` characters (js/note-layout.js does the work: tables,
+// lists, quotes and code as well as wrapped paragraphs). Blank source shows a
+// placeholder run. Cached, because a drag re-lays a note out every frame and
+// its text does not change during one.
+const _layoutCache = new Map();
+const LAYOUT_CACHE_MAX = 256;
 
-// Word-wraps one paragraph's runs to `charsPerLine`, preserving styling
-// across the break. Returns an array of lines, each an array of runs.
-export function wrapNoteRuns(runs, charsPerLine) {
-  const lines = [];
-  let curLine = [], curLen = 0;
-  // Commits the current line, dropping the separator space that would
-  // otherwise dangle past the wrap point and skew the next line's budget.
-  const flushLine = () => {
-    while (curLine.length && !curLine[curLine.length - 1].text.trim()) curLine.pop();
-    lines.push(curLine);
-    curLine = []; curLen = 0;
-  };
-  runs.forEach(run => {
-    const style = { bold: run.bold, italic: run.italic, underline: run.underline };
-    run.text.split(/(\s+)/).forEach(chunk => { // keep separators so we know where spaces were
-      if (!chunk) return;
-      if (/^\s+$/.test(chunk)) {
-        // Whitespace: collapse to a single separator between words.
-        if (curLen) { curLine.push({ text: ' ' }); curLen += 1; }
-        return;
-      }
-      let word = chunk;
-      while (word.length > charsPerLine) {
-        if (curLine.length) flushLine();
-        lines.push([{ text: word.slice(0, charsPerLine), ...style }]);
-        word = word.slice(charsPerLine);
-      }
-      if (!word) return;
-      if (curLen && curLen + word.length > charsPerLine) flushLine();
-      curLine.push({ text: word, ...style });
-      curLen += word.length;
-    });
-  });
-  if (curLine.length) flushLine();
-  return lines.length ? lines : [[]];
-}
-
-// Full layout: raw markup text -> array of lines, each an array of styled
-// runs, wrapped to `charsPerLine`. Blank source shows a placeholder run.
 export function layoutNoteText(text, charsPerLine) {
   const raw = String(text || '').replace(/\r\n/g, '\n');
   if (!raw.trim()) return [[{ text: NOTE_EMPTY_PLACEHOLDER, placeholder: true }]];
-  const out = [];
-  raw.split('\n').forEach(para => {
-    if (!para) { out.push([]); return; }
-    wrapNoteRuns(parseNoteRuns(para), charsPerLine).forEach(l => out.push(l));
-  });
-  return out.length ? out : [[]];
+  const key = `${charsPerLine}\u0000${raw}`;
+  let lines = _layoutCache.get(key);
+  if (!lines) {
+    lines = layoutNoteMarkdown(raw, charsPerLine);
+    if (_layoutCache.size >= LAYOUT_CACHE_MAX) _layoutCache.delete(_layoutCache.keys().next().value);
+    _layoutCache.set(key, lines);
+  }
+  // Callers append to a line (the overflow mark), so each gets its own copy.
+  return lines.map(line => line.slice());
 }
 
 // How many characters fit per line for a note of the given pixel width.
 // Hoisted above its use in NOTE_CHARS_PER_LINE by function declaration.
+export function noteWidthForChars(chars) {
+  return Math.ceil(chars * 6.25 + NOTE_PAD * 2);
+}
+
 export function noteCharsPerLine(widthPx) {
   // ~ monospace 10.5px advance width, calibrated so NOTE_WIDTH yields exactly
   // the 24 chars/line that auto-sized notes have always wrapped at.
@@ -351,27 +288,87 @@ export function renderNotes() {
   visibleNotes().forEach(note => renderOneNote(g, note));
 }
 
+// ── Drawing made of box characters ───────────────────────────────
+// A table's borders, a rule and a quote's bar arrive from js/note-layout.js as
+// box-drawing characters on the note's character grid. They are drawn as
+// lines rather than as text: the webfont of JetBrains Mono carries no box
+// drawing, so the browser substitutes another face whose characters are
+// narrower and shorter — horizontals stopped short of the corners and
+// verticals did not meet between rows. Geometry is exact whatever the font,
+// joins across lines (a vertical spans the whole line), and exports as itself.
+//
+// The grid's pitch is JetBrains Mono's advance at the note's 10.5px: 0.6em.
+export const NOTE_CHAR_ADVANCE = 6.3;
+
+// Each box character as segments in its cell, x and y from 0 to 1: the half
+// lines from the centre to each edge it reaches.
+const BOX_ARMS = {
+  '─': 'lr', '│': 'tb', '┌': 'rb', '┐': 'lb', '└': 'rt', '┘': 'lt',
+  '├': 'tbr', '┤': 'tbl', '┬': 'lrb', '┴': 'lrt', '┼': 'lrtb'
+};
+const ARM = { l: [0, 0.5], r: [1, 0.5], t: [0.5, 0], b: [0.5, 1] };
+const isBoxChar = ch => ch in BOX_ARMS;
+// A line that carries drawing is placed on the grid run by run.
+const isGridLine = runs => runs.some(r => r.rule && [...r.text].some(isBoxChar));
+
+/** The box characters of `lines` as one path, the first line's top at `top`. */
+export function noteRulePath(lines, xLeft, top) {
+  const d = [];
+  const pt = (x, y) => `${Math.round(x * 100) / 100} ${Math.round(y * 100) / 100}`;
+  lines.forEach((runs, i) => {
+    let col = 0;
+    for (const run of runs) {
+      for (const ch of run.text) {
+        if (run.rule && isBoxChar(ch)) {
+          const x0 = xLeft + col * NOTE_CHAR_ADVANCE, y0 = top + i * NOTE_LINE_H;
+          const cx = x0 + NOTE_CHAR_ADVANCE / 2, cy = y0 + NOTE_LINE_H / 2;
+          for (const arm of BOX_ARMS[ch]) {
+            const [ax, ay] = ARM[arm];
+            d.push(`M${pt(cx, cy)}L${pt(x0 + ax * NOTE_CHAR_ADVANCE, y0 + ay * NOTE_LINE_H)}`);
+          }
+        }
+        col++;
+      }
+    }
+  });
+  return d.join('');
+}
+
 // Fills `textEl` with one tspan per styled run, laid out as wrapped lines.
-// Shared by the initial render and the fast in-place update path.
+// Shared by the initial render and the fast in-place update path. A line with
+// drawing in it (a table row) has every run placed at its grid column, and its
+// box characters left to noteRulePath.
 export function fillNoteTextEl(textEl, lines, xLeft) {
   textEl.innerHTML = '';
   lines.forEach((runs, i) => {
-    runs.forEach((run, j) => {
+    const grid = isGridLine(runs);
+    let col = 0, first = true;
+    const place = (tspan, at) => {
+      if (grid) { tspan.__gridCol = at; tspan.setAttribute('x', xLeft + at * NOTE_CHAR_ADVANCE); }
+      else if (first) tspan.setAttribute('x', xLeft);
+      if (first) tspan.setAttribute('dy', i === 0 ? 0 : NOTE_LINE_H);
+      first = false;
+    };
+    runs.forEach(run => {
+      const at = col;
+      col += [...run.text].length;
+      // A border run is all box characters on a grid line: nothing to write.
+      if (grid && run.rule && [...run.text].every(ch => isBoxChar(ch) || ch === ' ')) return;
       const tspan = makeSVG('tspan');
       tspan.textContent = run.text;
-      if (j === 0) {
-        tspan.setAttribute('x', xLeft);
-        tspan.setAttribute('dy', i === 0 ? 0 : NOTE_LINE_H);
-      }
+      place(tspan, at);
       if (run.bold) tspan.setAttribute('font-weight', '700');
       if (run.italic) tspan.setAttribute('font-style', 'italic');
-      if (run.underline) tspan.setAttribute('text-decoration', 'underline');
+      if (run.strike) tspan.setAttribute('text-decoration', 'line-through');
+      if (run.code) tspan.classList.add('note-code');
+      if (run.rule) tspan.classList.add('note-rule');
       if (run.placeholder) tspan.classList.add('note-placeholder');
       if (run.ellipsis) tspan.classList.add('note-overflow-mark');
       textEl.appendChild(tspan);
     });
-    if (!runs.length && i > 0) {
-      // Blank line: emit an empty tspan so dy-stacking stays correct.
+    if (first && i > 0) {
+      // A line that wrote nothing — blank, or all border: an empty tspan so
+      // the dy-stacking stays correct.
       const tspan = makeSVG('tspan');
       tspan.textContent = '​';
       tspan.setAttribute('x', xLeft);
@@ -432,6 +429,13 @@ export function renderOneNote(g, note) {
   textEl.setAttribute('y', y + NOTE_PAD + NOTE_LINE_H * 0.72);
   grp.appendChild(textEl);
 
+  // A table's borders, a rule, a quote's bar (see noteRulePath).
+  const rulesEl = makeSVG('path');
+  rulesEl.classList.add('note-rules');
+  rulesEl.setAttribute('clip-path', `url(#${clipId})`);
+  rulesEl.setAttribute('d', noteRulePath(lines, x + NOTE_PAD, y + NOTE_PAD));
+  grp.appendChild(rulesEl);
+
   // Two paths, mirroring the .tarr / .tarr-hit split used for edges: a wide
   // transparent stroke catches the pointer, the thin visible one is decoration
   // only. A 1.5px stroke is far too small a target to grab on its own.
@@ -448,7 +452,7 @@ export function renderOneNote(g, note) {
 
   // What updateOneNoteDOM writes to on a drag frame — held rather than
   // queried, the same as a state's or an edge's __parts in render.js.
-  grp.__parts = { leaders, rect, clipRect, textEl, handleHit, handle };
+  grp.__parts = { leaders, rect, clipRect, textEl, rulesEl, handleHit, handle };
 
   const noteTip = 'Double-click to edit · Right-click for options · Drag corner to resize';
   grp.setAttribute('data-tip', noteTip);
@@ -492,17 +496,21 @@ export function updateOneNoteDOM(note, { refillText = true } = {}) {
   if (!refillText && grp.__geoKey === geoKey) return;
   grp.__geoKey = geoKey;
 
-  const { leaders, rect, clipRect, textEl, handleHit, handle } = grp.__parts;
+  const { leaders, rect, clipRect, textEl, rulesEl, handleHit, handle } = grp.__parts;
   rect.setAttribute('x', x); rect.setAttribute('y', y); rect.setAttribute('width', w); rect.setAttribute('height', h);
   clipRect.setAttribute('x', x + 1); clipRect.setAttribute('y', y + 1);
   clipRect.setAttribute('width', Math.max(0, w - 2)); clipRect.setAttribute('height', Math.max(0, h - 2));
   if (refillText) {
     fillNoteTextEl(textEl, lines, x + NOTE_PAD);
   } else {
-    // Only line-leading tspans carry an x; setting it on continuation runs
-    // would break them out of inline flow onto their own column.
-    for (const ts of textEl.childNodes) if (ts.getAttribute('x') != null) ts.setAttribute('x', x + NOTE_PAD);
+    // Only line-leading tspans carry an x — and every run of a grid line,
+    // at its own column; setting it on a continuation run of ordinary text
+    // would break it out of inline flow onto a column of its own.
+    for (const ts of textEl.childNodes) {
+      if (ts.getAttribute('x') != null) ts.setAttribute('x', x + NOTE_PAD + (ts.__gridCol || 0) * NOTE_CHAR_ADVANCE);
+    }
   }
+  if (rulesEl) rulesEl.setAttribute('d', noteRulePath(lines, x + NOTE_PAD, y + NOTE_PAD));
   textEl.setAttribute('x', x + NOTE_PAD);
   textEl.setAttribute('y', y + NOTE_PAD + NOTE_LINE_H * 0.72);
   for (const p of [handleHit, handle]) p.setAttribute('d', noteResizeHandlePath(x + w, y + h));
@@ -852,7 +860,6 @@ export function ctxAnchorNoteToSelection() {
 export let _noteModalColor = 'default';
 let _noteModalIsNew = false;
 let _noteModalCommitted = false;
-let _noteEditorLastValid = '';
 
 // Enter inserts a newline in the note textarea; Ctrl/Cmd+Enter saves.
 registerModal('note-modal', {
@@ -877,12 +884,19 @@ export function openNoteModal(id, { isNew = false } = {}) {
   App.editNoteId = id;
   _noteModalIsNew = isNew;
   _noteModalCommitted = false;
-  const textEl = $('note-text');
-  _noteEditorLastValid = note.text || '';
-  if (textEl) setNoteEditorMarkdown(textEl, _noteEditorLastValid);
+  const editor = $('note-text');
+  if (editor) {
+    editor.value = note.text || '';
+    editor.setAttribute('maxlength', String(NOTE_MAX_CHARS));
+    // Open at the top: the caret goes where focus would otherwise scroll to.
+    editor.setSelectionRange?.(0, 0);
+    editor.scrollTop = 0;
+  }
   _noteModalColor = normalizeNoteColor(note.color);
   setNoteModalColorUI(_noteModalColor);
-  updateNoteEditor();
+  showNotePane('write');
+  updateNoteCharCount();
+  renderNotePreview();
   showOverlay('note-modal');
 }
 export function setNoteModalColorUI(color) {
@@ -893,11 +907,12 @@ export function setNoteModalColorUI(color) {
 export function setNoteModalColor(color) {
   _noteModalColor = color;
   setNoteModalColorUI(color);
+  renderNotePreview();
 }
 export function confirmNote() {
   const note = getNote(App.editNoteId);
   if (!note) return closeModal('note-modal');
-  const nextText = noteEditorMarkdown($('note-text')).slice(0, NOTE_MAX_CHARS);
+  const nextText = String($('note-text')?.value || '').replace(/\r\n?/g, '\n').slice(0, NOTE_MAX_CHARS);
   const nextColor = normalizeNoteColor(_noteModalColor);
   if (note.text !== nextText || normalizeNoteColor(note.color) !== nextColor) {
     if (!_noteModalIsNew) snapshot();
@@ -909,98 +924,116 @@ export function confirmNote() {
   renderAll();
 }
 
-// ── Formatting toolbar: wraps (or unwraps, if already applied to an
-// identical selection) the textarea's current selection with markup
-// markers, mirroring the classic "bold/italic in a plain textarea" pattern
-// used by Markdown editors everywhere. ──
+// ── The editor: the Markdown in a text box, the note beside it ─────────────
+// What is typed is the note's Markdown, character for character — markdown-it's
+// conventions, as everywhere in the app (js/markdown.js) — and the preview is
+// the note drawn by renderOneNote, the function that draws it on the canvas,
+// so a table, a list or a code span looks there exactly as it will here. The
+// toolbar writes syntax around the selection (js/note-editor-text.js).
+//
+// It used to be a rich-text box that turned its own HTML back into markup on
+// save, and the two halves never agreed: Chrome's Enter made a <div> the
+// serializer glued to the line before, typed asterisks came back as bold, and
+// a table was neither one thing nor the other.
+const NOTE_FORMATS = {
+  bold: (text, a, b) => toggleInline(text, a, b, INLINE_MARKERS.bold),
+  italic: (text, a, b) => toggleInline(text, a, b, INLINE_MARKERS.italic),
+  strike: (text, a, b) => toggleInline(text, a, b, INLINE_MARKERS.strike),
+  code: (text, a, b) => toggleInline(text, a, b, INLINE_MARKERS.code),
+  bullet: (text, a, b) => toggleList(text, a, b, 'bullet'),
+  numbered: (text, a, b) => toggleList(text, a, b, 'numbered'),
+  table: (text, a, b) => insertTable(text, a, b)
+};
+
 export function applyNoteFormat(kind) {
   const editor = $('note-text');
-  const command = { bold: 'bold', italic: 'italic', underline: 'underline' }[kind];
-  if (!editor || !command) return;
+  const format = NOTE_FORMATS[kind];
+  if (!editor || !format) return;
+  const edit = format(editor.value, editor.selectionStart, editor.selectionEnd);
   editor.focus();
-  document.execCommand(command, false);
+  editor.setSelectionRange(edit.from, edit.to);
+  // Through the box's own editing where there is one, so Ctrl+Z undoes it.
+  const typed = typeof document.execCommand === 'function' && document.execCommand('insertText', false, edit.insert);
+  if (!typed || editor.value.slice(edit.from, edit.from + edit.insert.length) !== edit.insert) {
+    editor.setRangeText(edit.insert, edit.from, edit.to, 'end');
+  }
+  editor.setSelectionRange(...edit.select);
   updateNoteEditor();
 }
 
-export function clearNoteFormatting() {
-  const editor = $('note-text');
-  if (!editor) return;
-  editor.focus();
-  const selection = window.getSelection?.();
-  if (!selection || selection.isCollapsed) document.execCommand('selectAll', false);
-  document.execCommand('removeFormat', false);
-  updateNoteEditor();
-}
+const NOTE_SHORTCUTS = { b: 'bold', i: 'italic', e: 'code' };
 
 export function handleNoteEditorKeydown(e) {
-  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-  const kind = { b: 'bold', i: 'italic', u: 'underline' }[String(e.key).toLowerCase()];
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+  const kind = NOTE_SHORTCUTS[String(e.key).toLowerCase()];
   if (!kind) return;
   e.preventDefault();
   e.stopPropagation();
   applyNoteFormat(kind);
 }
 
-export function insertNoteNewline() {
-  const editor = $('note-text');
-  if (!editor) return;
-  editor.focus();
-  document.execCommand('insertLineBreak', false);
-  updateNoteEditor();
-}
-
 export function updateNoteCharCount() {
-  const ta = $('note-text');
+  const editor = $('note-text');
   const counter = $('note-char-count');
-  if (!ta || !counter) return;
-  const len = noteEditorMarkdown(ta).length;
+  if (!editor || !counter) return;
+  const len = String(editor.value || '').length;
   counter.textContent = `${len} / ${NOTE_MAX_CHARS}`;
   counter.classList.toggle('note-char-count-max', len >= NOTE_MAX_CHARS);
 }
 
-export function setNoteEditorMarkdown(editor, markdown) {
-  if (!editor) return;
-  editor.innerHTML = '';
-  String(markdown || '').replace(/\r\n/g, '\n').split('\n').forEach((line, i) => {
-    if (i) editor.appendChild(document.createElement('br'));
-    parseNoteRuns(line).forEach(run => {
-      let node = document.createTextNode(run.text);
-      if (run.underline) { const el = document.createElement('u'); el.appendChild(node); node = el; }
-      if (run.italic) { const el = document.createElement('em'); el.appendChild(node); node = el; }
-      if (run.bold) { const el = document.createElement('strong'); el.appendChild(node); node = el; }
-      editor.appendChild(node);
-    });
-  });
-}
+// The note as the canvas will draw it: its own renderer, into an SVG of its
+// own, at the size the note will have. A frame's worth of typing is one draw.
+let _previewFrame = 0;
 
-function serializeNoteEditorNode(node) {
-  if (!node) return '';
-  if (node.nodeType === 3) return node.textContent || '';
-  const tag = String(node.tagName || '').toUpperCase();
-  if (tag === 'BR') return '\n';
-  const inner = Array.from(node.childNodes || node.children || []).map(serializeNoteEditorNode).join('');
-  if (tag === 'B' || tag === 'STRONG') return `**${inner}**`;
-  if (tag === 'I' || tag === 'EM') return `*${inner}*`;
-  if (tag === 'U') return `__${inner}__`;
-  return inner;
-}
-
-export function noteEditorMarkdown(editor) {
-  if (!editor) return '';
-  return Array.from(editor.childNodes || editor.children || []).map(serializeNoteEditorNode).join('').replace(/\n+$/, '');
+export function renderNotePreview() {
+  _previewFrame = 0;
+  const host = $('note-preview');
+  const note = getNote(App.editNoteId);
+  if (!host || !note) return;
+  const editor = $('note-text');
+  const draft = {
+    ...note,
+    id: 'preview',
+    text: editor ? String(editor.value || '') : note.text,
+    color: _noteModalColor,
+    anchorStates: [], anchorTransitions: [], x: 0, y: 0
+  };
+  const { w, h } = noteBoxLayout(draft);
+  const margin = 6;
+  draft.x = w / 2 + margin;
+  draft.y = h / 2 + margin;
+  const svg = makeSVG('svg');
+  svg.classList.add('note-preview-svg');
+  svg.setAttribute('viewBox', `0 0 ${w + margin * 2} ${h + margin * 2}`);
+  svg.setAttribute('width', w + margin * 2);
+  svg.setAttribute('height', h + margin * 2);
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Preview of the note');
+  const g = makeSVG('g');
+  svg.appendChild(g);
+  renderOneNote(g, draft);
+  host.innerHTML = '';
+  host.appendChild(svg);
 }
 
 export function updateNoteEditor() {
-  const editor = $('note-text');
-  const markdown = noteEditorMarkdown(editor);
-  if (markdown.length > NOTE_MAX_CHARS) {
-    setNoteEditorMarkdown(editor, _noteEditorLastValid);
-    showStatus(`Note is at the ${NOTE_MAX_CHARS}-character limit`);
-  } else {
-    _noteEditorLastValid = markdown;
-  }
   updateNoteCharCount();
+  if (typeof requestAnimationFrame !== 'function') { renderNotePreview(); return; }
+  if (!_previewFrame) _previewFrame = requestAnimationFrame(renderNotePreview);
 }
+
+// A phone has room for one pane at a time; the tabs say which.
+export function showNotePane(pane) {
+  const editor = $('note-editor');
+  if (!editor) return;
+  editor.dataset.pane = pane === 'preview' ? 'preview' : 'write';
+  document.querySelectorAll('#note-editor [data-pane-tab]').forEach(tab => {
+    tab.setAttribute('aria-selected', String(tab.dataset.paneTab === editor.dataset.pane));
+  });
+  if (editor.dataset.pane === 'preview') renderNotePreview();
+  else $('note-text')?.focus();
+}
+
 export function deleteNoteFromModal() {
   const id = App.editNoteId;
   if (_noteModalIsNew) { closeModal('note-modal'); return; }
@@ -1013,7 +1046,6 @@ export function deleteNoteFromModal() {
 // What index.html names, beside the functions it runs (js/actions.js).
 defineActions({
   'notes.applyNoteFormat': ({ el }) => applyNoteFormat(el.dataset.format),
-  'notes.clearNoteFormatting': () => clearNoteFormatting(),
   'notes.confirmNote': () => confirmNote(),
   'notes.ctxAddNoteEdge': () => ctxAddNoteEdge(),
   'notes.ctxAddNoteState': () => ctxAddNoteState(),
@@ -1026,7 +1058,7 @@ defineActions({
   'notes.ctxSetNoteColor': ({ el }) => ctxSetNoteColor(el.dataset.color),
   'notes.deleteNoteFromModal': () => deleteNoteFromModal(),
   'notes.handleNoteEditorKeydown': ({ event }) => handleNoteEditorKeydown(event),
-  'notes.insertNoteNewline': () => insertNoteNewline(),
+  'notes.showNotePane': ({ el }) => showNotePane(el.dataset.paneTab),
   'notes.setNoteModalColor': ({ el }) => setNoteModalColor(el.dataset.color),
   'notes.updateNoteEditor': () => updateNoteEditor()
 });

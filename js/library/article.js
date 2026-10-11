@@ -45,6 +45,7 @@ import deflist from 'markdown-it-deflist';
 import sub from 'markdown-it-sub';
 import sup from 'markdown-it-sup';
 import mark from 'markdown-it-mark';
+import { mathPlugin } from '../markdown-math.js';
 
 export const ARTICLE_MAX_CHARS = 60000;
 
@@ -118,53 +119,11 @@ export function balanceHtml(html) {
   return out + stack.reverse().map(n => `</${n}>`).join('');
 }
 
-/** `$…$`, `$$…$$`, `\(…\)`, `\[…\]` inline, and `$$` blocks: kept verbatim for KaTeX. */
-function mathPlugin(md) {
-  md.inline.ruler.before('escape', 'essay_math', (state, silent) => {
-    const src = state.src, pos = state.pos;
-    let close = -1, open = '';
-    if (src.startsWith('\\(', pos)) { open = '\\('; close = src.indexOf('\\)', pos + 2); if (close >= 0) close += 2; }
-    else if (src.startsWith('\\[', pos)) { open = '\\['; close = src.indexOf('\\]', pos + 2); if (close >= 0) close += 2; }
-    else if (src.startsWith('$$', pos)) { open = '$$'; close = src.indexOf('$$', pos + 2); if (close > pos + 2) close += 2; else close = -1; }
-    else if (src[pos] === '$') {
-      // Pandoc's rule, so a price is not math: no space inside either end, and
-      // no digit straight after the closing sign ("$5 and $10").
-      open = '$';
-      if (/\s/.test(src[pos + 1] || ' ')) return false;
-      let i = pos + 1;
-      while ((i = src.indexOf('$', i)) >= 0) {
-        if (src[i - 1] !== '\\' && !/\s/.test(src[i - 1]) && !/\d/.test(src[i + 1] || '')) break;
-        i++;
-      }
-      if (i < 0 || i === pos + 1) return false;
-      close = i + 1;
-    } else return false;
-    if (close < 0 || !open) return false;
-    if (!silent) state.push('essay_math', '', 0).content = src.slice(pos, close);
-    state.pos = close;
-    return true;
-  });
-  md.block.ruler.before('fence', 'essay_math_block', (state, start, end, silent) => {
-    const first = state.src.slice(state.bMarks[start] + state.tShift[start], state.eMarks[start]);
-    if (!first.startsWith('$$')) return false;
-    if (silent) return true;
-    let line = start;
-    const one = first.length > 4 && first.trimEnd().endsWith('$$');
-    if (!one) {
-      for (line = start + 1; line < end; line++) {
-        const t = state.src.slice(state.bMarks[line] + state.tShift[line], state.eMarks[line]);
-        if (t.trimEnd().endsWith('$$')) break;
-      }
-      if (line >= end) line = end - 1;
-    }
-    const tok = state.push('essay_math_block', 'div', 0);
-    tok.content = state.getLines(start, line + 1, state.tShift[start], false).trim();
-    tok.map = [start, line + 1];
-    state.line = line + 1;
-    return true;
-  }, { alt: ['paragraph', 'reference', 'blockquote', 'list'] });
-  md.renderer.rules.essay_math = (t, i) => esc(t[i].content);
-  md.renderer.rules.essay_math_block = (t, i) => `<div class="essay-math">${esc(t[i].content)}</div>\n`;
+/** Math (js/markdown-math.js, shared with the app's own Markdown), drawn as the essay draws it. */
+function mathRenderPlugin(md) {
+  md.use(mathPlugin);
+  md.renderer.rules.math_inline = (t, i) => esc(t[i].content);
+  md.renderer.rules.math_block = (t, i) => `<div class="essay-math">${esc(t[i].content)}</div>\n`;
 }
 
 /** `{{name}}` and `{{name <id>}}`: a fact the library computed. */
@@ -410,7 +369,7 @@ function markdown() {
   if (parser) return parser;
   parser = new MarkdownIt({ html: true, linkify: true, typographer: true });
   parser.use(footnote).use(deflist).use(sub).use(sup).use(mark)
-    .use(mathPlugin).use(factPlugin).use(wikilinkPlugin).use(figurePlugin)
+    .use(mathRenderPlugin).use(factPlugin).use(wikilinkPlugin).use(figurePlugin)
     .use(calloutPlugin).use(taskPlugin).use(headingPlugin).use(linkPolicyPlugin).use(rendererPlugin);
   return parser;
 }

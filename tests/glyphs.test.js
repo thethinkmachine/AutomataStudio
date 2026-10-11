@@ -378,6 +378,18 @@ test('an underline is drawn, because an outline does not carry one', () => {
   assert.ok(Number(rule.getAttribute('width')) > 0);
 });
 
+test('a strikethrough is drawn through the letters, not under them', () => {
+  setup();
+  // A note's ~~struck~~ run. The outlines carry no decoration, so the rule is
+  // drawn — above the baseline, where an underline's is below it.
+  const under = convert(svgWith(text('ab', { textDecorationLine: 'underline' }))).clone.querySelectorAll('rect')[0];
+  const struck = convert(svgWith(text('ab', { textDecorationLine: 'line-through' }))).clone.querySelectorAll('rect')[0];
+  assert.ok(struck, 'a struck run gets a rule');
+  assert.ok(Number(struck.getAttribute('y')) < Number(under.getAttribute('y')), 'through the letters, not under them');
+  const both = convert(svgWith(text('ab', { textDecorationLine: 'underline line-through' }))).clone.querySelectorAll('rect');
+  assert.equal(both.length, 2, 'both decorations, both drawn');
+});
+
 test('a family falls back per character, not per label', () => {
   setup();
   // JetBrains Mono has no U+22A2 RIGHT TACK -- which is the left end marker on

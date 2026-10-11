@@ -2,563 +2,237 @@
 // Copyright (c) 2026 Shreyan Chaubey. See LICENSE.
 //
 // ══════════════════════════════════════════════════════════════════
-//  MARKDOWN — FOR TEXT THIS APP DID NOT WRITE
+//  MARKDOWN — the app's one dialect, which is markdown-it's
 // ══════════════════════════════════════════════════════════════════
-//  A CommonMark subset plus the GFM bits a language model actually reaches
-//  for, rendered to DOM nodes.
+//  CommonMark with GitHub's tables and ~~strikethrough~~, bare URLs linked,
+//  and math left verbatim for KaTeX (js/markdown-math.js) — parsed by
+//  markdown-it, the same library the library's essays use, so a convention
+//  means the same thing everywhere the app shows Markdown: StateMate's
+//  replies, an exercise's prompt, and a note on the canvas.
+//
+//  The app had two hand-rolled dialects before this, and they disagreed: the
+//  reply renderer read `__x__` as bold, the notes read it as underline, and
+//  the notes refused emphasis inside a word, so bolding part of one wrote
+//  `accept**ing**` and drew the asterisks. There is no underline in Markdown,
+//  so there is none here.
 //
 //  **It builds nodes; it never assigns innerHTML, and there is no HTML
-//  passthrough.** That is the whole security design, and it is a property of
-//  the shape rather than of a filter: the only way text becomes content here
-//  is document.createTextNode, so a reply containing <script> or <img onerror>
-//  renders those characters. There is nothing to sanitise because there is no
-//  parser for it to get past. Markdown from a remote model is untrusted input,
-//  and the usual answer — parse to HTML, then scrub — is one CVE in the
-//  scrubber away from executing it.
+//  passthrough.** markdown-it parses to tokens and this module turns tokens
+//  into elements with createElement and createTextNode, so a reply containing
+//  <script> or <img onerror> renders those characters (`html: false` makes
+//  markdown-it treat them as text, and nothing here could draw them anyway).
+//  Markdown from a remote model is untrusted input; parse-to-HTML-then-scrub
+//  is one CVE in the scrubber away from executing it, and the page's
+//  Content-Security-Policy is the second line, not the first.
 //
-//  Two consequences of that stance worth knowing:
-//
-//  · **Links are scheme-checked, not escaped.** Only http, https and mailto
-//    survive as anchors; javascript:, data: and the rest render as plain text,
+//  · **Links are scheme-checked.** Only http, https and mailto survive as
+//    anchors (`validateLink`); anything else stays the text it was written as,
 //    so an anchor that exists is an anchor that is safe to click.
 //  · **Images are rendered as links.** An <img> is a request to a third party
 //    the moment it is drawn — a tracking pixel a model can plant just by
 //    answering. The alt text and URL are shown instead; the reader decides.
+//  · **Math is passed through verbatim**, delimiters and all, before emphasis
+//    can touch it. Typesetting is the caller's job — hand the finished node to
+//    triggerMath().
 //
-//  Math is passed through *verbatim*, delimiters and all, and deliberately
-//  parsed before emphasis: `$a_1 * b_2$` must not lose its asterisk to an
-//  emphasis run before KaTeX ever sees it. Typesetting is the caller's job —
-//  hand the finished node to triggerMath().
-//
-//  Imports nothing, so it stays a leaf and is safe to reach from anywhere.
+//  Imports no app module, so it stays a leaf of the app's graph.
+
+import MarkdownIt from 'markdown-it';
+import { mathPlugin } from './markdown-math.js';
 
 // ══════════════════════════════════════════════════════════════════
-//  BLOCKS
+//  THE PARSER
 // ══════════════════════════════════════════════════════════════════
-
-const FENCE = /^ {0,3}(`{3,}|~{3,})[ \t]*([^`\n]*)$/;
-const HEADING = /^ {0,3}(#{1,6})[ \t]+(.*?)[ \t]*#*[ \t]*$/;
-const HR = /^ {0,3}((\*[ \t]*){3,}|(-[ \t]*){3,}|(_[ \t]*){3,})$/;
-const QUOTE = /^ {0,3}>[ \t]?(.*)$/;
-const ITEM = /^( {0,7})([-*+]|\d{1,9}[.)])([ \t]+)(.*)$/;
-const TABLE_DELIM = /^ {0,3}\|?[ \t]*:?-{1,}:?[ \t]*(\|[ \t]*:?-{1,}:?[ \t]*)*\|?[ \t]*$/;
-
-/** Split a table row into cells, honouring \| escapes and optional edge pipes. */
-function tableCells(line) {
-  const cells = [];
-  let cell = '';
-  let i = 0;
-  const src = line.trim().replace(/^\|/, '').replace(/(?<!\\)\|[ \t]*$/, '');
-  while (i < src.length) {
-    if (src[i] === '\\' && src[i + 1] === '|') { cell += '|'; i += 2; continue; }
-    if (src[i] === '|') { cells.push(cell.trim()); cell = ''; i++; continue; }
-    cell += src[i++];
-  }
-  cells.push(cell.trim());
-  return cells;
-}
-
-function alignments(delim) {
-  return tableCells(delim).map(spec => {
-    const left = spec.startsWith(':');
-    const right = spec.endsWith(':');
-    if (left && right) return 'center';
-    if (right) return 'right';
-    if (left) return 'left';
-    return '';
-  });
-}
-
-/**
- * Lines → block objects. Recursive: a blockquote and a list item hold blocks
- * of their own, which is what makes nesting work without a special case per
- * depth.
- */
-export function parseBlocks(lines) {
-  const blocks = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    if (!line.trim()) { i++; continue; }
-
-    // ── fenced code ──────────────────────────────────────────────
-    const fence = FENCE.exec(line);
-    if (fence) {
-      const marker = fence[1][0];
-      const width = fence[1].length;
-      const lang = fence[2].trim().split(/\s+/)[0] || '';
-      const body = [];
-      i++;
-      while (i < lines.length) {
-        const close = new RegExp(`^ {0,3}${marker === '`' ? '`' : '~'}{${width},}[ \\t]*$`);
-        if (close.test(lines[i])) { i++; break; }
-        body.push(lines[i]);
-        i++;
-      }
-      blocks.push({ type: 'code', lang, text: body.join('\n') });
-      continue;
-    }
-
-    // ── thematic break ───────────────────────────────────────────
-    if (HR.test(line)) { blocks.push({ type: 'hr' }); i++; continue; }
-
-    // ── heading ──────────────────────────────────────────────────
-    const heading = HEADING.exec(line);
-    if (heading) {
-      blocks.push({ type: 'heading', level: heading[1].length, text: heading[2] });
-      i++;
-      continue;
-    }
-
-    // ── blockquote ───────────────────────────────────────────────
-    if (QUOTE.test(line)) {
-      const inner = [];
-      while (i < lines.length && (QUOTE.test(lines[i]) || (lines[i].trim() && inner.length && !ITEM.test(lines[i])))) {
-        const m = QUOTE.exec(lines[i]);
-        inner.push(m ? m[1] : lines[i]);   // lazy continuation
-        i++;
-      }
-      blocks.push({ type: 'quote', blocks: parseBlocks(inner) });
-      continue;
-    }
-
-    // ── table ────────────────────────────────────────────────────
-    if (line.includes('|') && i + 1 < lines.length && TABLE_DELIM.test(lines[i + 1])) {
-      const head = tableCells(line);
-      const align = alignments(lines[i + 1]);
-      i += 2;
-      const rows = [];
-      while (i < lines.length && lines[i].trim() && lines[i].includes('|')) {
-        rows.push(tableCells(lines[i]));
-        i++;
-      }
-      blocks.push({ type: 'table', head, align, rows });
-      continue;
-    }
-
-    // ── list ─────────────────────────────────────────────────────
-    const item = ITEM.exec(line);
-    if (item) {
-      const ordered = /\d/.test(item[2]);
-      const start = ordered ? parseInt(item[2], 10) : 1;
-      const items = [];
-      let loose = false;
-
-      while (i < lines.length) {
-        const head = ITEM.exec(lines[i]);
-        if (!head) break;
-        if (/\d/.test(head[2]) !== ordered) break;   // a different list starts here
-
-        // Everything indented past this marker belongs to the item, so a
-        // nested list or a second paragraph comes back out of parseBlocks
-        // rather than needing a rule of its own.
-        const indent = head[1].length + head[2].length + head[3].length;
-        const body = [head[4]];
-        i++;
-        let trailingBlank = false;
-        while (i < lines.length) {
-          if (!lines[i].trim()) {
-            // A blank line ends the item unless indented content follows it.
-            const next = lines[i + 1];
-            if (next && next.trim() && next.search(/\S/) >= indent) {
-              body.push('');
-              trailingBlank = true;
-              i++;
-              continue;
-            }
-            break;
-          }
-          if (lines[i].search(/\S/) >= indent) { body.push(lines[i].slice(indent)); i++; continue; }
-          if (ITEM.test(lines[i]) || HR.test(lines[i])) break;
-          body.push(lines[i].trim());   // lazy paragraph continuation
-          i++;
-        }
-        if (trailingBlank) loose = true;
-        items.push(parseBlocks(body));
-
-        while (i < lines.length && !lines[i].trim()) {
-          // A blank line between items makes the list loose; two end it.
-          if (i + 1 < lines.length && ITEM.test(lines[i + 1])) { loose = true; i++; continue; }
-          break;
-        }
-      }
-      blocks.push({ type: 'list', ordered, start, loose, items });
-      continue;
-    }
-
-    // ── paragraph ────────────────────────────────────────────────
-    const para = [];
-    while (i < lines.length && lines[i].trim()
-      && !FENCE.test(lines[i]) && !HEADING.test(lines[i]) && !HR.test(lines[i])
-      && !QUOTE.test(lines[i]) && !ITEM.test(lines[i])) {
-      para.push(lines[i]);
-      i++;
-    }
-    if (para.length) blocks.push({ type: 'para', text: para.join('\n') });
-    else i++;   // nothing consumed; do not spin
-  }
-
-  return blocks;
-}
-
-// ══════════════════════════════════════════════════════════════════
-//  INLINE
-// ══════════════════════════════════════════════════════════════════
-
-const ESCAPABLE = '\\`*_{}[]()#+-.!|~<>$';
-
-// Math is matched before anything else can claim its contents. The delimiters
-// stay in the text so KaTeX's auto-render can find them later.
-const MATH = [
-  { open: '$$', close: '$$' },
-  { open: '\\[', close: '\\]' },
-  { open: '\\(', close: '\\)' },
-  { open: '$', close: '$' }
-];
 
 const SAFE_SCHEME = /^(https?:|mailto:)/i;
 
 /**
- * A URL is either safe to make clickable or it is text. Relative links have no
- * meaning in a dialog rendered from a string, so they are text too — which
- * leaves exactly three schemes, all of them inert until the reader acts.
+ * The URL if its scheme is one the app will follow, else ''. Relative URLs
+ * mean nothing in a reply rendered from a string, so they are refused too —
+ * which leaves exactly three schemes, all of them inert until the reader acts.
  */
 export function safeUrl(raw) {
   const url = String(raw || '').trim().replace(/^<|>$/g, '');
   if (!url) return '';
   // Control characters are how "java\nscript:" gets past a naive check.
-  const flat = url.replace(/[\u0000-\u0020]/g, '');
+  const flat = url.replace(/[\u0000- ]/g, '');
   return SAFE_SCHEME.test(flat) ? flat : '';
 }
 
-function textNode(text) { return document.createTextNode(text); }
+export const markdown = new MarkdownIt('default', { html: false, linkify: true, typographer: false })
+  .use(mathPlugin);
+markdown.validateLink = url => !!safeUrl(url);
 
-function elem(tag, className) {
+// The same dialect for styled runs, without bare-URL linking: a run draws a
+// link as its text anyway, and linkify takes the `~~` after a URL as part of
+// it, which would turn the strikethrough around one into text.
+const inlineMarkdown = new MarkdownIt('default', { html: false, linkify: false, typographer: false })
+  .use(mathPlugin);
+inlineMarkdown.validateLink = markdown.validateLink;
+
+// And for a note, a whole one: every line the author ended is a line on the
+// canvas (`breaks`), which is how a note has always read and what its editor
+// writes — a note is short text in a box, not prose to be reflowed.
+const noteMarkdown = new MarkdownIt('default', { html: false, linkify: false, typographer: false, breaks: true })
+  .use(mathPlugin);
+noteMarkdown.validateLink = markdown.validateLink;
+
+/** A note's block tokens (js/note-layout.js lays them out). */
+export function parseNoteMarkdown(text) {
+  return noteMarkdown.parse(String(text ?? ''), {});
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  RENDERING TO THE DOM
+// ══════════════════════════════════════════════════════════════════
+
+const elem = (tag, className) => {
   const node = document.createElement(tag);
   if (className) node.className = className;
   return node;
+};
+
+// Block tokens and the element each opens. A token not listed opens nothing:
+// its children land in the parent, which is the safe failure.
+const BLOCK = {
+  paragraph_open: t => elem('p', 'md-p'),
+  heading_open: t => elem(/^h[1-6]$/.test(t.tag) ? t.tag : 'h6', 'md-h'),
+  blockquote_open: () => elem('blockquote', 'md-quote'),
+  bullet_list_open: () => elem('ul', 'md-list'),
+  ordered_list_open: t => {
+    const ol = elem('ol', 'md-list');
+    const start = Number(t.attrGet('start'));
+    if (Number.isFinite(start) && start !== 1) ol.setAttribute('start', String(start));
+    return ol;
+  },
+  list_item_open: () => elem('li', 'md-li'),
+  thead_open: () => elem('thead'),
+  tbody_open: () => elem('tbody'),
+  tr_open: () => elem('tr'),
+  th_open: t => alignedCell('th', t),
+  td_open: t => alignedCell('td', t)
+};
+
+function alignedCell(tag, token) {
+  const cell = elem(tag);
+  const align = /text-align:\s*(left|right|center)/.exec(token.attrGet('style') || '');
+  if (align) cell.style.textAlign = align[1];
+  return cell;
 }
 
-/** Find the end of a run opened at `i`, skipping escapes. */
-function findClose(src, from, close) {
-  let i = from;
-  while (i < src.length) {
-    if (src[i] === '\\') { i += 2; continue; }
-    if (src.startsWith(close, i)) return i;
-    i++;
-  }
-  return -1;
+function codeBlock(token) {
+  const pre = elem('pre', 'md-pre');
+  const code = elem('code');
+  const lang = String(token.info || '').trim().split(/\s+/)[0];
+  if (lang) code.setAttribute('data-lang', lang);
+  code.textContent = token.content.replace(/\n$/, '');
+  pre.append(code);
+  return pre;
 }
 
-// `_` must not fire inside a word — q_0 and snake_case are ordinary text in a
-// tool about automata, and treating them as emphasis is the single most
-// common way a naive renderer mangles a reply.
-function isWordChar(ch) { return !!ch && /[\p{L}\p{N}]/u.test(ch); }
-
-/** Inline markdown → an array of nodes. */
-export function inlineNodes(src) {
-  const out = [];
-  let buffer = '';
-  const flush = () => { if (buffer) { out.push(textNode(buffer)); buffer = ''; } };
-  let i = 0;
-
-  while (i < src.length) {
-    const ch = src[i];
-
-    // ── backslash escape ─────────────────────────────────────────
-    if (ch === '\\' && ESCAPABLE.includes(src[i + 1])) { buffer += src[i + 1]; i += 2; continue; }
-
-    // ── hard break ───────────────────────────────────────────────
-    if (ch === '\n') {
-      const hard = /[ ]{2,}$/.test(src.slice(0, i)) || src[i - 1] === '\\';
-      if (hard) {
-        buffer = buffer.replace(/[ \\]+$/, '');
-        flush();
-        out.push(elem('br'));
-      } else {
-        buffer += ' ';   // a soft break is a space, the way markdown means it
-      }
-      i++;
-      continue;
+function renderBlocks(tokens, host) {
+  const stack = [host];
+  const top = () => stack[stack.length - 1];
+  for (const token of tokens) {
+    if (token.type === 'table_open') {
+      // The wrapper scrolls on its own so a wide table never widens the card.
+      const wrap = elem('div', 'md-table-wrap');
+      const table = elem('table', 'md-table');
+      wrap.append(table);
+      top().append(wrap);
+      stack.push(table);
+    } else if (token.nesting === 1) {
+      // A tight list's paragraphs are hidden: an item's text is its content,
+      // not a paragraph, or every bullet carries a block's worth of margin.
+      if (token.hidden) { stack.push(top()); continue; }
+      const make = BLOCK[token.type];
+      const node = make ? make(token) : null;
+      if (node) top().append(node);
+      stack.push(node || top());
+    } else if (token.nesting === -1) {
+      if (stack.length > 1) stack.pop();
+    } else if (token.type === 'inline') {
+      renderInline(token.children || [], top());
+    } else if (token.type === 'fence' || token.type === 'code_block') {
+      top().append(codeBlock(token));
+    } else if (token.type === 'hr') {
+      top().append(elem('hr', 'md-hr'));
+    } else if (token.type === 'math_block') {
+      const block = elem('div', 'md-math');
+      block.textContent = token.content;
+      top().append(block);
     }
-
-    // ── math, before emphasis can eat into it ────────────────────
-    const math = MATH.find(m => src.startsWith(m.open, i));
-    if (math) {
-      const end = src.indexOf(math.close, i + math.open.length);
-      // A lone $ is a dollar sign, not an unterminated formula.
-      if (end !== -1 && end > i + math.open.length) {
-        flush();
-        out.push(textNode(src.slice(i, end + math.close.length)));
-        i = end + math.close.length;
-        continue;
-      }
-    }
-
-    // ── code span ────────────────────────────────────────────────
-    if (ch === '`') {
-      const ticks = /^`+/.exec(src.slice(i))[0];
-      const end = src.indexOf(ticks, i + ticks.length);
-      if (end !== -1) {
-        flush();
-        const code = elem('code');
-        code.textContent = src.slice(i + ticks.length, end).replace(/^ (.*) $/, '$1');
-        out.push(code);
-        i = end + ticks.length;
-        continue;
-      }
-    }
-
-    // ── image → a link, never a request ──────────────────────────
-    if (ch === '!' && src[i + 1] === '[') {
-      const link = matchLink(src, i + 1);
-      if (link) {
-        flush();
-        out.push(...imageNodes(link));
-        i = link.end;
-        continue;
-      }
-    }
-
-    // ── link ─────────────────────────────────────────────────────
-    if (ch === '[') {
-      const link = matchLink(src, i);
-      if (link) {
-        flush();
-        out.push(anchorNode(link));
-        i = link.end;
-        continue;
-      }
-    }
-
-    // ── autolink ─────────────────────────────────────────────────
-    if (ch === '<') {
-      const close = src.indexOf('>', i);
-      if (close !== -1) {
-        const url = safeUrl(src.slice(i + 1, close));
-        if (url) {
-          flush();
-          out.push(anchorNode({ text: src.slice(i + 1, close), url, literal: true }));
-          i = close + 1;
-          continue;
-        }
-      }
-    }
-
-    // ── bare URL ─────────────────────────────────────────────────
-    if ((ch === 'h' || ch === 'H') && /^https?:\/\//i.test(src.slice(i))) {
-      const raw = /^[^\s<>()]+/.exec(src.slice(i))[0].replace(/[.,;:!?]+$/, '');
-      const url = safeUrl(raw);
-      if (url) {
-        flush();
-        out.push(anchorNode({ text: raw, url, literal: true }));
-        i += raw.length;
-        continue;
-      }
-    }
-
-    // ── emphasis ─────────────────────────────────────────────────
-    const emphasis = matchEmphasis(src, i);
-    if (emphasis) {
-      flush();
-      const node = elem(emphasis.tag);
-      inlineNodes(emphasis.inner).forEach(child => node.append(child));
-      out.push(node);
-      i = emphasis.end;
-      continue;
-    }
-
-    buffer += ch;
-    i++;
   }
-
-  flush();
-  return out;
 }
 
-/** `[text](url "title")` starting at `[`. */
-function matchLink(src, at) {
-  if (src[at] !== '[') return null;
-  let depth = 1;
-  let i = at + 1;
-  while (i < src.length && depth) {
-    if (src[i] === '\\') { i += 2; continue; }
-    if (src[i] === '[') depth++;
-    else if (src[i] === ']') depth--;
-    if (depth) i++;
-  }
-  if (depth || src[i + 1] !== '(') return null;
-  const text = src.slice(at + 1, i);
-  const close = findClose(src, i + 2, ')');
-  if (close === -1) return null;
-  const target = src.slice(i + 2, close).trim();
-  const url = safeUrl(target.replace(/\s+["'(].*$/, ''));
-  return { text, url, end: close + 1 };
-}
+const INLINE = {
+  strong_open: () => elem('strong'),
+  em_open: () => elem('em'),
+  s_open: () => elem('del')
+};
 
-/**
- * `literal` marks a label that is already final — an autolink, a bare URL, the
- * address beside an image. Without it the label is re-parsed, spots the URL it
- * is made of, and builds another anchor around it, forever.
- */
-function anchorNode({ text, url, literal = false }) {
-  // A link whose scheme did not survive is shown, not followed.
-  if (!url) {
-    const span = elem('span');
-    span.textContent = text || '';
-    return span;
-  }
+function anchor(url) {
   const a = elem('a', 'md-link');
   a.setAttribute('href', url);
   a.setAttribute('target', '_blank');
   a.setAttribute('rel', 'noopener noreferrer nofollow');
-  if (literal) a.textContent = text;
-  else inlineNodes(text).forEach(child => a.append(child));
   return a;
 }
 
-function imageNodes({ text, url }) {
-  const label = elem('span', 'md-image');
-  label.textContent = text ? `🖼 ${text}` : '🖼 image';
-  return url ? [label, textNode(' '), anchorNode({ text: url, url, literal: true })] : [label];
-}
-
-const EMPHASIS = [
-  { marker: '***', tag: 'strong', wrap: 'em' },
-  { marker: '___', tag: 'strong', wrap: 'em' },
-  { marker: '**', tag: 'strong' },
-  { marker: '__', tag: 'strong' },
-  { marker: '~~', tag: 'del' },
-  { marker: '*', tag: 'em' },
-  { marker: '_', tag: 'em' }
-];
-
-function matchEmphasis(src, i) {
-  for (const rule of EMPHASIS) {
-    if (!src.startsWith(rule.marker, i)) continue;
-
-    // Intraword underscores are not emphasis.
-    if (rule.marker[0] === '_' && isWordChar(src[i - 1])) continue;
-
-    const from = i + rule.marker.length;
-    if (src[from] === ' ' || src[from] === undefined) continue;   // "a * b" is arithmetic
-
-    let end = from;
-    for (;;) {
-      end = findClose(src, end, rule.marker);
-      if (end === -1) break;
-      if (rule.marker[0] === '_' && isWordChar(src[end + rule.marker.length])) { end += rule.marker.length; continue; }
-      if (src[end - 1] === ' ') { end += rule.marker.length; continue; }
-      break;
-    }
-    if (end === -1 || end === from) continue;
-
-    const inner = src.slice(from, end);
-    if (rule.wrap) {
-      // ***both*** — one node inside the other, so the markers stay honest.
-      const outer = { tag: rule.tag, inner: `${rule.wrap === 'em' ? '*' : ''}${inner}${rule.wrap === 'em' ? '*' : ''}` };
-      return { ...outer, end: end + rule.marker.length };
-    }
-    return { tag: rule.tag, inner, end: end + rule.marker.length };
-  }
-  return null;
-}
-
-// ══════════════════════════════════════════════════════════════════
-//  RENDER
-// ══════════════════════════════════════════════════════════════════
-
-function renderBlock(block, host) {
-  switch (block.type) {
-    case 'heading': {
-      const node = elem(`h${Math.min(6, block.level)}`, 'md-h');
-      inlineNodes(block.text).forEach(child => node.append(child));
-      host.append(node);
-      break;
-    }
-    case 'para': {
-      const node = elem('p', 'md-p');
-      inlineNodes(block.text).forEach(child => node.append(child));
-      host.append(node);
-      break;
-    }
-    case 'code': {
-      const pre = elem('pre', 'md-pre');
-      const code = elem('code');
-      if (block.lang) code.setAttribute('data-lang', block.lang);
-      code.textContent = block.text;
-      pre.append(code);
-      host.append(pre);
-      break;
-    }
-    case 'quote': {
-      const node = elem('blockquote', 'md-quote');
-      block.blocks.forEach(child => renderBlock(child, node));
-      host.append(node);
-      break;
-    }
-    case 'hr':
-      host.append(elem('hr', 'md-hr'));
-      break;
-    case 'list': {
-      const list = elem(block.ordered ? 'ol' : 'ul', 'md-list');
-      if (block.ordered && block.start !== 1) list.setAttribute('start', String(block.start));
-      block.items.forEach(blocks => {
-        const li = elem('li', 'md-li');
-        blocks.forEach(child => {
-          // In a tight list an item's paragraphs are its contents, not
-          // paragraphs — otherwise every bullet carries a block's worth of
-          // margin, and a bullet with a nested list under it carries two. The
-          // unwrap is per block, not only when the paragraph is alone: an item
-          // is usually [text, sublist], and that is exactly the case where the
-          // stray <p> shows.
-          if (!block.loose && child.type === 'para') {
-            inlineNodes(child.text).forEach(node => li.append(node));
-          } else {
-            renderBlock(child, li);
-          }
-        });
-        list.append(li);
-      });
-      host.append(list);
-      break;
-    }
-    case 'table': {
-      // The wrapper scrolls on its own so a wide table never widens the card.
-      const wrap = elem('div', 'md-table-wrap');
-      const table = elem('table', 'md-table');
-      const thead = elem('thead');
-      const hrow = elem('tr');
-      block.head.forEach((cell, n) => {
-        const th = elem('th');
-        if (block.align[n]) th.style.textAlign = block.align[n];
-        inlineNodes(cell).forEach(child => th.append(child));
-        hrow.append(th);
-      });
-      thead.append(hrow);
-      table.append(thead);
-
-      const tbody = elem('tbody');
-      block.rows.forEach(row => {
-        const tr = elem('tr');
-        // Ragged rows are normal in generated tables; pad rather than drop.
-        for (let n = 0; n < block.head.length; n++) {
-          const td = elem('td');
-          if (block.align[n]) td.style.textAlign = block.align[n];
-          inlineNodes(row[n] || '').forEach(child => td.append(child));
-          tr.append(td);
+function renderInline(tokens, host) {
+  const stack = [host];
+  const top = () => stack[stack.length - 1];
+  for (const token of tokens) {
+    switch (token.type) {
+      case 'text':
+      case 'math_inline':
+        top().append(document.createTextNode(token.content));
+        break;
+      case 'softbreak':
+        // A line that wraps in the source is one line in the text: the space a
+        // browser shows for markdown-it's own "\n", written as one so that a
+        // pre-wrap container (StateMate's prose is one) shows it the same way.
+        top().append(document.createTextNode(' '));
+        break;
+      case 'hardbreak':
+        top().append(elem('br'));
+        break;
+      case 'code_inline': {
+        const code = elem('code');
+        code.textContent = token.content;
+        top().append(code);
+        break;
+      }
+      case 'link_open': {
+        // validateLink already refused anything else; checked again here so
+        // this function is safe on any token stream, not only markdown-it's.
+        const url = safeUrl(token.attrGet('href'));
+        const node = url ? anchor(url) : elem('span');
+        top().append(node);
+        stack.push(node);
+        break;
+      }
+      case 'image': {
+        const label = elem('span', 'md-image');
+        label.textContent = token.content ? `🖼 ${token.content}` : '🖼 image';
+        top().append(label);
+        const url = safeUrl(token.attrGet('src'));
+        if (url) {
+          const a = anchor(url);
+          a.textContent = url;
+          top().append(document.createTextNode(' '), a);
         }
-        tbody.append(tr);
-      });
-      table.append(tbody);
-      wrap.append(table);
-      host.append(wrap);
-      break;
+        break;
+      }
+      default:
+        if (token.nesting === 1) {
+          const node = (INLINE[token.type] || (() => elem('span')))(token);
+          top().append(node);
+          stack.push(node);
+        } else if (token.nesting === -1 && stack.length > 1) {
+          stack.pop();
+        }
     }
-    default:
-      break;
   }
 }
 
@@ -572,10 +246,150 @@ function renderBlock(block, host) {
 export function renderMarkdown(src, host) {
   if (!host) return host;
   host.innerHTML = '';   // clearing only — no markup is ever assigned
-  const lines = String(src ?? '')
-    .replace(/\r\n?/g, '\n')
-    .replace(/\t/g, '    ')
-    .split('\n');
-  parseBlocks(lines).forEach(block => renderBlock(block, host));
+  renderBlocks(markdown.parse(String(src ?? ''), {}), host);
   return host;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  STYLED RUNS — Markdown for text that is not HTML
+// ══════════════════════════════════════════════════════════════════
+//  A note is drawn in SVG text (so it survives PNG export) and edited in a
+//  rich-text box, and both want the same thing from Markdown: one line as a
+//  list of runs, each a piece of text and the styles over it. These two
+//  functions are that, in both directions, and they are each other's inverse:
+//  markdownRuns(runsToMarkdown(runs)) gives back the runs, which
+//  tests/markdown.test.js checks over every combination of styles.
+
+/** The styles a run can carry: what Markdown can say inside a line. */
+export const RUN_STYLES = ['bold', 'italic', 'strike', 'code'];
+
+const sameStyle = (a, b) => RUN_STYLES.every(s => !!a[s] === !!b[s]);
+
+function pushRun(runs, text, style) {
+  if (!text) return;
+  const prev = runs[runs.length - 1];
+  if (prev && sameStyle(prev, style)) prev.text += text;
+  else runs.push({ text, ...Object.fromEntries(RUN_STYLES.map(s => [s, !!style[s]])) });
+}
+
+/**
+ * One line of Markdown as styled runs. A link is its text; math and an image
+ * are their source, verbatim — a note shows what was written, not a request.
+ */
+export function markdownRuns(line) {
+  const [inline] = inlineMarkdown.parseInline(String(line ?? ''), {});
+  return inlineTokenRuns(inline?.children || []);
+}
+
+/** Inline tokens — an `inline` token's children — as styled runs. A break is a space. */
+export function inlineTokenRuns(tokens) {
+  const runs = [];
+  const style = { bold: 0, italic: 0, strike: 0, code: 0 };
+  const flags = () => Object.fromEntries(RUN_STYLES.map(s => [s, style[s] > 0]));
+  for (const token of tokens) {
+    switch (token.type) {
+      case 'strong_open': style.bold++; break;
+      case 'strong_close': style.bold--; break;
+      case 'em_open': style.italic++; break;
+      case 'em_close': style.italic--; break;
+      case 's_open': style.strike++; break;
+      case 's_close': style.strike--; break;
+      case 'code_inline': pushRun(runs, token.content, { ...flags(), code: true }); break;
+      case 'image': pushRun(runs, token.content || token.attrGet('src') || '', flags()); break;
+      case 'softbreak': case 'hardbreak': pushRun(runs, ' ', flags()); break;
+      default:
+        if (token.type === 'text' || token.type === 'math_inline') pushRun(runs, token.content, flags());
+    }
+  }
+  return runs;
+}
+
+const isWordChar = ch => !!ch && /[\p{L}\p{N}]/u.test(ch);
+
+// A character that could start syntax inside a line gets a backslash, and
+// only where it could: `q_start` stays as written (an underscore inside a word
+// is not emphasis in CommonMark), `(a|b)*` becomes `(a|b)\*`. Math needs no
+// escaping here — it comes back verbatim, delimiters included — and block
+// syntax cannot occur, since a line is parsed as inline text only.
+function escapeText(text) {
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i], prev = text[i - 1], next = text[i + 1];
+    const special = ch === '\\' || ch === '`' || ch === '*' || ch === '~'
+      || (ch === '_' && !(isWordChar(prev) && isWordChar(next)))
+      // A link needs `](`, so escaping that `]` is enough to keep one literal.
+      // Not `[`: `\[` opens display math (js/markdown-math.js).
+      || (ch === ']' && next === '(')
+      || (ch === '<' && /[A-Za-z/!?]/.test(next || ''))
+      || (ch === '&' && /^#?\w+;/.test(text.slice(i + 1)));
+    out += special ? `\\${ch}` : ch;
+  }
+  return out;
+}
+
+function codeSpan(text) {
+  // A fence one backtick longer than the longest run inside it, padded when
+  // the code starts or ends with one, as CommonMark spells it.
+  const longest = Math.max(0, ...(text.match(/`+/g) || []).map(r => r.length));
+  const fence = '`'.repeat(longest + 1);
+  const pad = /^`|`$/.test(text) || /^ .* $/.test(text) ? ' ' : '';
+  return fence + pad + text + pad + fence;
+}
+
+// Each character of some runs, with the styles it is drawn in — whitespace
+// with none, since a marker never sits around it.
+function styledChars(runs) {
+  return runs.flatMap(r => [...r.text].map(ch => (/\s/u.test(ch) ? ch : `${ch}\u0000${RUN_STYLES.filter(s => r[s]).join('+')}`)));
+}
+
+function writeRun(part, styled) {
+  if (!part.core) return part.run.text;
+  let out = part.body;
+  if (styled) {
+    if (part.run.strike) out = `~~${out}~~`;
+    if (part.run.italic) out = `*${out}*`;
+    if (part.run.bold) out = `**${out}**`;
+  }
+  return part.lead + out + part.trail;
+}
+
+/**
+ * Styled runs as one line of Markdown that parses back to them. Whitespace at
+ * a run's edges is moved outside its markers — `** bold**` is not bold — and a
+ * run of nothing but whitespace carries no markers at all.
+ *
+ * Whether a marker opens or closes depends on the characters either side of
+ * it (CommonMark's flanking rules), and some places admit none: a run that
+ * ends in punctuation with a letter straight after it (`*x.*y`). A marker
+ * there is not markup but the text `*`. So the line is checked against the
+ * parser itself rather than predicted: written, read back, and any run that
+ * did not come back as it went in is written unstyled and the line tried
+ * again. The characters are always what the reader wrote; at worst the
+ * emphasis on a run Markdown has no way to say is dropped. Each pass drops at
+ * least one style, so it ends.
+ */
+export function runsToMarkdown(runs) {
+  const merged = [];
+  for (const run of runs || []) pushRun(merged, run.text, run);
+  const parts = merged.map(run => {
+    const [, lead, core, trail] = /^(\s*)([\s\S]*?)(\s*)$/.exec(run.text);
+    return { run, lead, core, trail, body: core && run.code ? codeSpan(core) : escapeText(core) };
+  });
+  const want = styledChars(merged);
+  // Where each part's characters start in `want`.
+  const starts = [];
+  parts.reduce((at, part) => { starts.push(at); return at + [...part.run.text].length; }, 0);
+  const styled = parts.map(p => !!p.core && !!(p.run.bold || p.run.italic || p.run.strike));
+  for (;;) {
+    const line = parts.map((part, i) => writeRun(part, styled[i])).join('');
+    const got = styledChars(markdownRuns(line));
+    const at = want.findIndex((c, i) => got[i] !== c);
+    if (at === -1 && got.length === want.length) return line;
+    // The part the first difference falls in, or the styled one before it —
+    // a marker that failed to close shows up in the run after its own.
+    const inPart = Math.max(0, starts.findLastIndex(s => s <= (at === -1 ? want.length - 1 : at)));
+    const culprit = styled[inPart] ? inPart : styled.slice(0, inPart).lastIndexOf(true);
+    if (culprit === -1) return parts.map(part => writeRun(part, false)).join('');
+    styled[culprit] = false;
+  }
 }

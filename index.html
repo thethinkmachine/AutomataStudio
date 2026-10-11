@@ -1594,48 +1594,58 @@
   </div>
 
   <div class="overlay" id="note-modal" role="dialog" aria-modal="true" aria-labelledby="note-modal-title">
-    <div class="modal note-modal-wide">
+    <div class="modal note-modal">
       <h2 class="modal-title"><span class="modal-title-text" id="note-modal-title">Note</span></h2>
-      <div class="modal-row note-editor-row">
-        <span class="modal-lbl">Text</span>
-        <div class="note-editor">
-          <div class="note-toolbar" role="toolbar" aria-label="Note formatting">
-            <button type="button" class="note-tb-btn" data-action="notes.applyNoteFormat" data-format="bold" data-tip="Bold (**text**)" aria-label="Bold">
-              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M170.48,115.7A44,44,0,0,0,140,40H72a12,12,0,0,0-12,12V204a12,12,0,0,0,12,12h74a48,48,0,0,0,24.48-89.3ZM84,64h56a20,20,0,0,1,0,40H84Zm62,128H84V128h62a32,32,0,0,1,0,64Z"></path></svg>
-            </button>
-            <button type="button" class="note-tb-btn" data-action="notes.applyNoteFormat" data-format="italic" data-tip="Italic (*text*)" aria-label="Italic">
-              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M200,52a12,12,0,0,1-12,12H164.65l-42,128H148a12,12,0,0,1,0,24H68a12,12,0,0,1,0-24H91.35l42-128H108a12,12,0,0,1,0-24h80A12,12,0,0,1,200,52Z"></path></svg>
-            </button>
-            <button type="button" class="note-tb-btn" data-action="notes.applyNoteFormat" data-format="underline" data-tip="Underline (__text__)" aria-label="Underline">
-              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M76,40a12,12,0,0,1,12,12v72a40,40,0,0,0,80,0V52a12,12,0,0,1,24,0v72a64,64,0,0,1-128,0V52A12,12,0,0,1,76,40ZM224,208a12,12,0,0,1-12,12H44a12,12,0,0,1,0-24H212A12,12,0,0,1,224,208Z"></path></svg>
-            </button>
-            <span class="note-tb-sep"></span>
-            <button type="button" class="note-tb-btn" data-action="notes.insertNoteNewline" data-tip="New line" aria-label="Insert new line">
-              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M228,56V144a12,12,0,0,1-12,12H69l25.66,25.66a12,12,0,0,1-17,17l-46-46a12,12,0,0,1,0-17l46-46a12,12,0,1,1,17,17L69,112H204V56a12,12,0,0,1,24,0Z"></path></svg>
-            </button>
-            <button type="button" class="note-tb-btn note-tb-clear" data-action="notes.clearNoteFormatting" data-tip="Clear formatting" aria-label="Clear formatting">
-              <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216.49,79.51l-40-40a12,12,0,0,0-17,0l-120,120a12,12,0,0,0,0,17l40,40a12,12,0,0,0,17,0l32-32L151,207H128a12,12,0,0,0,0,24h64a12,12,0,0,0,0-24h-7l-39-39,70.49-70.49A12,12,0,0,0,216.49,79.51ZM88,191,65,168,168,65l23,23Z"></path></svg>
-            </button>
-            <span class="note-tb-hint"><kbd data-kbd="Mod+B">Ctrl+B</kbd> bold · <kbd>I</kbd> italic · <kbd>U</kbd> underline</span>
-          </div>
-          <div class="inp note-textarea" id="note-text" contenteditable="true" role="textbox" aria-multiline="true"
-            data-placeholder="Write a note…" data-action="input->notes.updateNoteEditor keydown->notes.handleNoteEditorKeydown" aria-describedby="note-editor-help"></div>
-          <div class="note-editor-foot">
-            <span class="note-resize-hint" id="note-editor-help">Supports Markdown formatting · <kbd data-kbd="Mod+Enter">Ctrl+Enter</kbd> saves</span>
-            <span class="note-char-count" id="note-char-count">0 / 2000</span>
+      <!-- The note is its Markdown, typed as such; the preview beside it is
+           drawn by the canvas's own renderer (renderNotePreview in js/notes.js).
+           On a phone the two are tabs. -->
+      <div class="note-editor" id="note-editor" data-pane="write">
+        <div class="note-toolbar" role="toolbar" aria-label="Formatting" aria-controls="note-text">
+          <button type="button" class="note-tb-btn" data-action="notes.applyNoteFormat" data-format="bold" data-tip="Bold" data-tip-kbd="Mod+B" aria-label="Bold">
+            <svg viewBox="0 0 256 256" aria-hidden="true"><path fill="currentColor" d="M170.48,115.7A44,44,0,0,0,140,40H72a12,12,0,0,0-12,12V204a12,12,0,0,0,12,12h74a48,48,0,0,0,24.48-89.3ZM84,64h56a20,20,0,0,1,0,40H84Zm62,128H84V128h62a32,32,0,0,1,0,64Z"></path></svg>
+          </button>
+          <button type="button" class="note-tb-btn" data-action="notes.applyNoteFormat" data-format="italic" data-tip="Italic" data-tip-kbd="Mod+I" aria-label="Italic">
+            <svg viewBox="0 0 256 256" aria-hidden="true"><path fill="currentColor" d="M200,52a12,12,0,0,1-12,12H164.65l-42,128H148a12,12,0,0,1,0,24H68a12,12,0,0,1,0-24H91.35l42-128H108a12,12,0,0,1,0-24h80A12,12,0,0,1,200,52Z"></path></svg>
+          </button>
+          <button type="button" class="note-tb-btn" data-action="notes.applyNoteFormat" data-format="strike" data-tip="Strikethrough" aria-label="Strikethrough">
+            <svg viewBox="0 0 256 256" aria-hidden="true"><path fill="currentColor" d="M228,128a12,12,0,0,1-12,12H186.88A46.11,46.11,0,0,1,196,168c0,30.36-30.73,52-68,52s-68-21.64-68-52a12,12,0,0,1,24,0c0,15.18,20.15,28,44,28s44-12.82,44-28c0-14.48-11.55-21.51-34.84-28H40a12,12,0,0,1,0-24H216A12,12,0,0,1,228,128ZM75.11,100a12,12,0,0,0,11.24-7.81C90.84,80.06,107.74,60,128,60c14.68,0,27.81,5.16,35.12,13.8a12,12,0,1,0,18.32-15.5C169.31,44,149.65,36,128,36,95.6,36,70.15,56.84,63.87,84.19A12,12,0,0,0,75.11,100Z"></path></svg>
+          </button>
+          <button type="button" class="note-tb-btn" data-action="notes.applyNoteFormat" data-format="code" data-tip="Code" data-tip-kbd="Mod+E" aria-label="Code">
+            <svg viewBox="0 0 256 256" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" d="M84 76 32 128l52 52M172 76l52 52-52 52"></path></svg>
+          </button>
+          <span class="note-tb-sep" aria-hidden="true"></span>
+          <button type="button" class="note-tb-btn" data-action="notes.applyNoteFormat" data-format="bullet" data-tip="Bulleted list" aria-label="Bulleted list">
+            <svg viewBox="0 0 256 256" aria-hidden="true"><g fill="currentColor"><circle cx="52" cy="64" r="16"></circle><circle cx="52" cy="128" r="16"></circle><circle cx="52" cy="192" r="16"></circle></g><path fill="none" stroke="currentColor" stroke-width="22" stroke-linecap="round" d="M100 64h120M100 128h120M100 192h120"></path></svg>
+          </button>
+          <button type="button" class="note-tb-btn" data-action="notes.applyNoteFormat" data-format="numbered" data-tip="Numbered list" aria-label="Numbered list">
+            <svg viewBox="0 0 256 256" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" d="M40 52l16-10v52M36 150a20 20 0 0 1 36 6c0 18-36 30-36 46h38"></path><path fill="none" stroke="currentColor" stroke-width="22" stroke-linecap="round" d="M108 68h112M108 128h112M108 188h112"></path></svg>
+          </button>
+          <button type="button" class="note-tb-btn" data-action="notes.applyNoteFormat" data-format="table" data-tip="Table" aria-label="Insert a table">
+            <svg viewBox="0 0 256 256" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="20" stroke-linejoin="round" d="M36 52h184v152H36zM36 104h184M36 154h184M112 104v100"></path></svg>
+          </button>
+          <div class="note-pane-tabs" role="tablist" aria-label="Show">
+            <button type="button" role="tab" class="note-pane-tab" data-pane-tab="write" data-action="notes.showNotePane" aria-selected="true" aria-controls="note-text">Write</button>
+            <button type="button" role="tab" class="note-pane-tab" data-pane-tab="preview" data-action="notes.showNotePane" aria-selected="false" aria-controls="note-preview">Preview</button>
           </div>
         </div>
-      </div>
-      <div class="modal-row">
-        <span class="modal-lbl">Color</span>
-        <div class="note-swatch-row">
-          <button class="note-swatch" data-color="violet" data-action="notes.setNoteModalColor" data-tip="Violet" aria-label="Violet"></button>
-          <button class="note-swatch" data-color="indigo" data-action="notes.setNoteModalColor" data-tip="Indigo" aria-label="Indigo"></button>
-          <button class="note-swatch" data-color="blue" data-action="notes.setNoteModalColor" data-tip="Blue" aria-label="Blue"></button>
-          <button class="note-swatch" data-color="green" data-action="notes.setNoteModalColor" data-tip="Green" aria-label="Green"></button>
-          <button class="note-swatch" data-color="yellow" data-action="notes.setNoteModalColor" data-tip="Yellow" aria-label="Yellow"></button>
-          <button class="note-swatch" data-color="orange" data-action="notes.setNoteModalColor" data-tip="Orange" aria-label="Orange"></button>
-          <button class="note-swatch" data-color="red" data-action="notes.setNoteModalColor" data-tip="Red" aria-label="Red"></button>
+        <div class="note-panes">
+          <textarea class="note-source" id="note-text" spellcheck="true" aria-label="Note, in Markdown" aria-describedby="note-editor-help"
+            placeholder="Write the note in Markdown: **bold**, *italic*, `code`, - lists, | tables |"
+            data-action="input->notes.updateNoteEditor keydown->notes.handleNoteEditorKeydown"></textarea>
+          <div class="note-preview" id="note-preview" role="region" aria-label="Preview"></div>
+        </div>
+        <div class="note-editor-foot">
+          <div class="note-swatch-row" role="group" aria-label="Colour">
+            <button type="button" class="note-swatch" data-color="violet" data-action="notes.setNoteModalColor" data-tip="Violet" aria-label="Violet"></button>
+            <button type="button" class="note-swatch" data-color="indigo" data-action="notes.setNoteModalColor" data-tip="Indigo" aria-label="Indigo"></button>
+            <button type="button" class="note-swatch" data-color="blue" data-action="notes.setNoteModalColor" data-tip="Blue" aria-label="Blue"></button>
+            <button type="button" class="note-swatch" data-color="green" data-action="notes.setNoteModalColor" data-tip="Green" aria-label="Green"></button>
+            <button type="button" class="note-swatch" data-color="yellow" data-action="notes.setNoteModalColor" data-tip="Yellow" aria-label="Yellow"></button>
+            <button type="button" class="note-swatch" data-color="orange" data-action="notes.setNoteModalColor" data-tip="Orange" aria-label="Orange"></button>
+            <button type="button" class="note-swatch" data-color="red" data-action="notes.setNoteModalColor" data-tip="Red" aria-label="Red"></button>
+          </div>
+          <span class="note-editor-help" id="note-editor-help">Markdown · <kbd data-kbd="Mod+Enter">Ctrl+Enter</kbd> saves</span>
+          <span class="note-char-count" id="note-char-count">0 / 2000</span>
         </div>
       </div>
       <div class="modal-foot">

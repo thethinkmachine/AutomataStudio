@@ -14,7 +14,7 @@ import { createHarness } from './harness.js';
 //  that matters most: everything an attacker would try, arriving as content.
 
 const h = createHarness();
-const { renderMarkdown, parseBlocks, inlineNodes, safeUrl, document } = h.context;
+const { renderMarkdown, markdownRuns, runsToMarkdown, RUN_STYLES, safeUrl, document } = h.context;
 
 function render(src) {
   const host = document.createElement('div');
@@ -258,7 +258,72 @@ test('malformed input terminates and renders something', () => {
   }
 });
 
-test('parseBlocks and inlineNodes are usable on their own', () => {
-  assert.deepEqual(parseBlocks(['# a', '', 'b']).map(b => b.type), ['heading', 'para']);
-  assert.equal(inlineNodes('plain').length, 1);
+// ── one dialect: markdown-it's ────────────────────────────────────
+//  StateMate's replies, an exercise's prompt and a note on the canvas all read
+//  Markdown through js/markdown.js, and the library's essays through the same
+//  library and the same math rule. These pin the conventions that used to
+//  differ between the app's two hand-rolled dialects.
+
+const show = runs => runs.map(r => `${RUN_STYLES.filter(s => r[s]).join('+')}[${r.text}]`).join(' ');
+
+test('__x__ is bold, as in CommonMark — there is no underline', () => {
+  assert.equal(show(markdownRuns('__bold__ and **bold**')), 'bold[bold] [ and ] bold[bold]');
+  assert.deepEqual(shape(render('__x__')), ['p(strong)']);
+});
+
+test('emphasis may start and end inside a word with *, never with _', () => {
+  assert.equal(show(markdownRuns('accept**ing**')), '[accept] bold[ing]');
+  assert.equal(show(markdownRuns('q_start to q_end')), '[q_start to q_end]');
+});
+
+test('a line reads into styled runs: bold, italic, strikethrough and code', () => {
+  assert.equal(show(markdownRuns('***both*** ~~gone~~ `a*b*`')),
+    'bold+italic[both] [ ] strike[gone] [ ] code[a*b*]');
+  assert.equal(show(markdownRuns('\\*literal\\* $a_1*b$ [text](https://x.y)')),
+    '[*literal* $a_1*b$ text]', 'escapes, math verbatim, a link as its text');
+});
+
+test('runs written as Markdown read back as the same runs', () => {
+  const cases = [
+    [{ text: 'accept' }, { text: 'ing', bold: true }],
+    [{ text: 'L = (a|b)* and **not bold**' }],
+    [{ text: 'q_0', italic: true }, { text: ' then ' }, { text: 'Σ*', bold: true, strike: true }],
+    [{ text: 'x `y` ', code: false }, { text: 'a``b', code: true }],
+    [{ text: '__init__ & &amp; <b> [a](b) \\' }]
+  ];
+  for (const runs of cases) {
+    const md = runsToMarkdown(runs);
+    const back = markdownRuns(md);
+    assert.equal(back.map(r => r.text).join(''), runs.map(r => r.text).join(''), md);
+    assert.equal(show(back), show(markdownRuns(runsToMarkdown(back))), `stable: ${md}`);
+    for (const run of runs.filter(r => r.text.trim())) {
+      const got = back.find(r => r.text.includes(run.text.trim()));
+      assert.ok(got, `${run.text} in ${md}`);
+      for (const s of RUN_STYLES) assert.equal(!!got[s], !!run[s], `${s} of ${run.text} in ${md}`);
+    }
+  }
+});
+
+test('the characters always survive, even where Markdown cannot say the style', () => {
+  // Seeded, so the same lines every run. A styled run that ends in punctuation
+  // with a letter straight after it cannot be closed in CommonMark; the writer
+  // drops that style rather than leave asterisks to be drawn as text.
+  const words = ['a', 'bc', 'q_0', 'Σ*', '(a|b)*', 'x_', '_y', '**', '`t`', '~~', '[a](b)', '$x$', 'a*b*',
+    'http://x.y', '&amp;', '<b>', '\\', '__u__', 'é', '\\(x\\)'];
+  let seed = 7;
+  const rnd = k => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % k; };
+  let dropped = 0;
+  for (let t = 0; t < 3000; t++) {
+    const length = 1 + rnd(4);
+    const runs = Array.from({ length }, (_, i) => ({
+      text: words[rnd(words.length)] + (i < length - 1 ? [' ', '', ' '][rnd(3)] : ''),
+      ...Object.fromEntries(RUN_STYLES.map(s => [s, rnd(3) === 0]))
+    }));
+    const md = runsToMarkdown(runs);
+    const back = markdownRuns(md);
+    assert.equal(back.map(r => r.text).join(''), runs.map(r => r.text).join(''), `${JSON.stringify(runs)} → ${md}`);
+    const styled = rs => rs.flatMap(r => [...r.text].map(c => (/\s/.test(c) ? c : c + RUN_STYLES.filter(s => r[s]))));
+    if (JSON.stringify(styled(back)) !== JSON.stringify(styled(runs))) dropped++;
+  }
+  assert.ok(dropped < 10, `${dropped} of 3000 lines lost a style`);
 });
