@@ -905,6 +905,28 @@
   fill: var(--text3);
 }
 
+/* A table's borders, a list's bullets, a quote's bar: drawing made of
+   characters (js/note-layout.js), quieter than the text it frames. */
+.note-text .note-rule {
+  fill: var(--text3);
+}
+
+/* The same drawing where it is lines: a table's grid, a rule, a quote's bar
+   (noteRulePath in js/notes.js). */
+.note-rules {
+  fill: none;
+  stroke: var(--text3);
+  stroke-width: 1;
+  stroke-linecap: square;
+  pointer-events: none;
+}
+
+/* `code` in a note. The note is already monospace, so a code span is told
+   apart by its ink rather than its face; SVG text has no background to shade. */
+.note-text .note-code {
+  fill: var(--accent);
+}
+
 /* Invisible wide grab target, same trick as .tarr-hit for edges — the visible
    handle's 1.5px stroke is far too thin to hit reliably. */
 .note-resize-hit {

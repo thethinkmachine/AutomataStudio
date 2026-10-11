@@ -270,6 +270,7 @@ function planText(liveEl, cloneEl) {
       bold: SYNTHETIC_BOLD(weight, master.weight, fontSize),
       italic: cs.fontStyle === 'italic' || cs.fontStyle === 'oblique',
       underline: String(cs.textDecorationLine || cs.textDecoration || '').includes('underline'),
+      strike: String(cs.textDecorationLine || cs.textDecoration || '').includes('line-through'),
       // Resolved rather than inherited: the paint has to survive the element
       // ceasing to be a <text>, and getComputedStyle has already turned every
       // theme variable into a literal colour.
@@ -424,14 +425,17 @@ function emitOutlines(job, tables, cache) {
     for (const use of useNodes()) inkG.appendChild(use);
     g.appendChild(inkG);
 
-    if (run.underline && glyphs.length) {
-      // The browser drew this and the outlines do not carry it. Measured off
-      // the run's own glyph positions rather than assumed, so it spans exactly
-      // the characters it decorated.
+    // An underline or a strikethrough: the browser drew it and the outlines
+    // do not carry it. Measured off the run's own glyph positions rather than
+    // assumed, so it spans exactly the characters it decorated; the offset is
+    // from the baseline, below it for an underline and through the middle of
+    // the lowercase letters for a strikethrough (a note's ~~struck~~ run).
+    const rules = [run.underline && 0.11, run.strike && -0.3].filter(o => o !== false);
+    for (const offset of glyphs.length ? rules : []) {
       const first = glyphs[0], last = glyphs[glyphs.length - 1];
       const rule = document.createElementNS(SVG_NS, 'rect');
       rule.setAttribute('x', round(first.x));
-      rule.setAttribute('y', round(last.y + run.fontSize * 0.11));
+      rule.setAttribute('y', round(last.y + run.fontSize * offset));
       rule.setAttribute('width', round(Math.max(0, last.x - first.x + run.fontSize * 0.6)));
       rule.setAttribute('height', round(Math.max(0.5, run.fontSize * 0.06), 3));
       rule.setAttribute('fill', run.fill);
