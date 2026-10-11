@@ -1762,6 +1762,18 @@ export function circularLayout(states) {
 // ══════════════════════════════════════════════════════════════════
 //  AUTO LAYOUT
 // ══════════════════════════════════════════════════════════════════
+
+/** Whether a state has somewhere to be drawn. */
+export const isPlaced = s => Number.isFinite(s.x) && Number.isFinite(s.y);
+
+// Position states with the reader's chosen algorithm. This is the layout half
+// of Arrange; the undo point, the settle and the fit belong to the gesture and
+// stay in autoLayout. loadBuiltMachine uses it for a machine an algorithm
+// built without positions.
+export function layoutStates(states, transitions, startId) {
+  if (App.config.layout.algorithm === 'circular') circularLayout(states);
+  else sugiyamaLayout(states, transitions, startId);
+}
 export function autoLayout() {
   // Arrange what is *drawn*, not what the machine holds. On App.states a block
   // was invisible to both algorithms — its members were shuffled about inside a
@@ -1772,11 +1784,7 @@ export function autoLayout() {
   if (!nodes.length) { showStatus('No states to arrange'); return; }
   snapshot();
   const edges = viewTransitions().filter(t => !t.port);
-  if (App.config.layout.algorithm === 'circular') {
-    circularLayout(nodes);
-  } else {
-    sugiyamaLayout(nodes, edges, startNodeId());
-  }
+  layoutStates(nodes, edges, startNodeId());
   // Every state teleports here, so there is no continuity for an eased edge to
   // preserve — gliding edges over states that have already jumped reads as the
   // drawing coming apart. Settle first so the single paint below lands at target

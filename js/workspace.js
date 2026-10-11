@@ -1,5 +1,6 @@
 import { defineActions } from './action-registry.js';
 import { renderAlgo } from './algorithms-fa.js';
+import { isPlaced, layoutStates } from './canvas.js';
 import { snapshot } from './history.js';
 import { registerModal, showOverlay } from './modal.js';
 import { $, APP_VERSION, App } from './state.js';
@@ -70,6 +71,13 @@ export function loadBuiltMachine(machine, machineType) {
   App.states = machine.states.map(s => ({ ...s }));
   App.transitions = machine.transitions.map(t => ({ ...t }));
   App.startId = machine.startId;
+  // A construction says what a machine is, not where it goes: the closure
+  // builders (star, reversal, union, concatenation) make states with no
+  // coordinates, and those reached the canvas as NaN — no circle, no label,
+  // an edge to nowhere. One state without a place means the old places do not
+  // fit the new machine either, so the whole of it is laid out, the way
+  // Arrange would. A machine that has its places (M₂ restored) keeps them.
+  if (!App.states.every(isPlaced)) layoutStates(App.states, App.transitions, App.startId);
   App.accepts = new Set(machine.accepts);
   App.stateN = Math.max(0, ...App.states.map(s => parseInt(s.id.replace(/\D/g, '')) || 0));
   App.transN = Math.max(0, ...App.transitions.map(t => parseInt(t.id.replace(/\D/g, '')) || 0));

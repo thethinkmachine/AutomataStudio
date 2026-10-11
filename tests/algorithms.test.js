@@ -1177,3 +1177,57 @@ test('FST batch helper returns multiple outputs for nondeterministic transductio
   assert.equal(result.accepted, true);
   assert.match(result.output, /0|1/);
 });
+
+// The closure constructors say what a machine is and not where it goes: their
+// states carry no coordinates. Loaded onto the canvas as they were, every one
+// of them was drawn at NaN — "Load Result into Canvas" for a Kleene star put
+// circles nowhere and edges to nowhere. loadBuiltMachine lays such a machine
+// out, the way Arrange would.
+test('a closure result loaded onto the canvas has a place for every state', () => {
+  const h = createHarness();
+  const m1 = {
+    machine: 'NFA', sigma: ['a', 'b'],
+    states: [makeState('s0', 'q0'), makeState('s1', 'q1'), makeState('s2', 'q2')],
+    transitions: [
+      { id: 't0', from: 's0', to: 's1', symbol: 'a' },
+      { id: 't1', from: 's1', to: 's2', symbol: 'b' },
+      { id: 't2', from: 's2', to: 's0', symbol: 'a' }
+    ],
+    startId: 's0', accepts: ['s1', 's2']
+  };
+  const m2 = {
+    machine: 'NFA', sigma: ['b'],
+    states: [makeState('t0', 'p0'), makeState('t1', 'p1')],
+    transitions: [{ id: 'u0', from: 't0', to: 't1', symbol: 'b' }],
+    startId: 't0', accepts: ['t1']
+  };
+  const built = {
+    star: h.context.buildNFAStar(m1),
+    reversal: h.context.buildNFAReversal(m1),
+    union: h.context.buildNFAUnion(m1, m2),
+    concat: h.context.buildNFAConcat(m1, m2)
+  };
+  for (const [name, machine] of Object.entries(built)) {
+    assert.ok(machine.states.some(s => !Number.isFinite(s.x)), `${name}: the builder leaves positions out`);
+    h.context.loadBuiltMachine(machine, 'ε-NFA');
+    const { App } = h.context;
+    assert.equal(App.states.length, machine.states.length);
+    for (const s of App.states) {
+      assert.ok(Number.isFinite(s.x) && Number.isFinite(s.y), `${name}: ${s.name} at (${s.x}, ${s.y})`);
+    }
+    const spots = new Set(App.states.map(s => `${Math.round(s.x)},${Math.round(s.y)}`));
+    assert.equal(spots.size, App.states.length, `${name}: two states laid out on one spot`);
+  }
+});
+
+test('a loaded machine that has its places keeps them', () => {
+  const h = createHarness();
+  const placed = {
+    machine: 'DFA', sigma: ['a'],
+    states: [{ id: 's0', name: 'q0', x: 11, y: 22 }, { id: 's1', name: 'q1', x: 333, y: 44 }],
+    transitions: [{ id: 't0', from: 's0', to: 's1', symbol: 'a' }],
+    startId: 's0', accepts: ['s1']
+  };
+  h.context.loadBuiltMachine(placed, 'DFA');
+  assert.deepEqual(h.context.App.states.map(s => [s.x, s.y]), [[11, 22], [333, 44]]);
+});
