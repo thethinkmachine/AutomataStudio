@@ -4,12 +4,14 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { MEASUREMENT_ID } from '../js/analytics.js';
 
 // index.html's Content-Security-Policy. Its point is the one thing it leaves
 // out: 'unsafe-inline' in script-src, so an on*="..." attribute or a <script>
 // that reaches the page through rendered content does not run. That was not
 // possible while the UI was wired through inline handlers (CLAUDE.md, "Wiring
-// controls"). The two inline scripts the page does need are allowed by hash.
+// controls"). The one inline script the page needs — the theme bootstrap,
+// which has to run before first paint — is allowed by hash.
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
@@ -41,7 +43,7 @@ test('the policy lists exactly the hashes of the inline scripts the page has', (
   // one: the browser would otherwise refuse it without a word.
   const listed = policy()['script-src'].filter(s => s.startsWith("'sha256-")).sort();
   const actual = inlineScripts().map(sha256).sort();
-  assert.ok(actual.length, 'the theme bootstrap and the tag setup are inline');
+  assert.ok(actual.length, 'the theme bootstrap is inline');
   assert.deepEqual(listed, actual);
 });
 
@@ -52,13 +54,41 @@ test('the inline scripts hash the same on every checkout', () => {
   assert.match(readFileSync(join(ROOT, '.gitattributes'), 'utf8'), /^index\.html\s+text\s+eol=lf$/m);
 });
 
-test('the policy comes before any script, and every script host is allowed', () => {
+// How a CSP host source matches a URL: a source ending in / admits that
+// folder and below; one with no path admits the whole host.
+function admits(source, url) {
+  if (!source.startsWith('https://')) return false;
+  const u = new URL(url), s = new URL(source);
+  if (u.origin !== s.origin) return false;
+  if (s.pathname === '/') return true;
+  return s.pathname.endsWith('/') ? u.pathname.startsWith(s.pathname) : u.pathname === s.pathname;
+}
+
+test('the policy comes before any script, and every script it loads is admitted', () => {
   // A meta CSP governs only what is parsed after it.
   assert.ok(html.indexOf('http-equiv="Content-Security-Policy"') < html.indexOf('<script'));
   const allowed = policy()['script-src'];
-  for (const [, url] of html.matchAll(/<script\b[^>]*\bsrc="(https?:[^"]+)"/g)) {
-    const origin = new URL(url).origin;
-    assert.ok(allowed.includes(origin), `${origin} is loaded but not allowed`);
+  const loaded = [...html.matchAll(/<script\b[^>]*\bsrc="(https?:[^"]+)"/g)].map(m => m[1]);
+  loaded.push(`https://www.googletagmanager.com/gtag/js?id=${MEASUREMENT_ID}`); // js/analytics.js
+  for (const url of loaded) {
+    assert.ok(allowed.some(src => admits(src, url)), `${url} is loaded but not admitted`);
+  }
+});
+
+test('the CDN is admitted by folder, never as a host', () => {
+  // jsDelivr serves any package anyone has published to npm, so a host source
+  // would admit a script element pointing at one. Only KaTeX's folder is.
+  const cdn = policy()['script-src'].filter(src => src.startsWith('https://cdn.jsdelivr.net'));
+  assert.deepEqual(cdn, ['https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/']);
+});
+
+test('every file from the CDN carries an integrity hash', () => {
+  // Within the folder, a file that does not hash to what was published is refused.
+  const tags = [...html.matchAll(/<(?:script|link)\b[^>]*https:\/\/cdn\.jsdelivr\.net[^>]*>/g)].map(m => m[0]);
+  assert.equal(tags.length, 3, 'katex.min.css, katex.min.js and auto-render.min.js');
+  for (const tag of tags) {
+    assert.match(tag, /\bintegrity="sha384-[A-Za-z0-9+/=]+"/, tag);
+    assert.match(tag, /\bcrossorigin="anonymous"/, `${tag} — integrity on a cross-origin file needs CORS`);
   }
 });
 

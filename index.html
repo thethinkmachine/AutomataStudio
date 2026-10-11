@@ -4,26 +4,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- Scripts come from this origin, two CDNs and the two inline scripts below,
-       allowed by hash: no 'unsafe-inline', so an on*="..." attribute or an
-       injected script element does not run. tests/csp.test.js recomputes the hashes,
-       so editing either inline script fails the suite until the policy is
-       updated with it. 'wasm-unsafe-eval' is the label kernel (label-wasm.js). -->
-  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'wasm-unsafe-eval' 'sha256-9o4ReEyqaF36wcxDA5Uwi4/Jj1KvyCuz3kPR3dOvXLA=' 'sha256-H7NEMxepdQtkMPx4AaBjUv2RyTZrOU4Zch5fDZ28UoU=' https://cdn.jsdelivr.net https://www.googletagmanager.com; object-src 'none'; base-uri 'self'">
+  <!-- Scripts come from this origin, KaTeX 0.16.9's folder on the CDN — not the
+       CDN, which serves any npm package anyone has published — the Google tag
+       (js/analytics.js loads it, on the website only), and the theme
+       bootstrap below, allowed by hash. No 'unsafe-inline', so an on*="..."
+       attribute or an injected script element does not run.
+       tests/csp.test.js recomputes the hash, so editing the bootstrap fails
+       the suite until the policy is updated with it. 'wasm-unsafe-eval' is
+       the label kernel (label-wasm.js). -->
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'wasm-unsafe-eval' 'sha256-9o4ReEyqaF36wcxDA5Uwi4/Jj1KvyCuz3kPR3dOvXLA=' https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/ https://www.googletagmanager.com; object-src 'none'; base-uri 'self'">
   <script>
     try {
       const theme = localStorage.getItem('automata-theme');
       if (theme) document.documentElement.dataset.theme = theme;
     } catch (e) { }
-  </script>
-  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-R1LKJ6JFEF"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-
-    gtag('config', 'G-R1LKJ6JFEF');
   </script>
   <title>AutomataStudio</title>
   <meta name="description" content="An IDE for designing, simulating and analysing automata and formal languages.">
@@ -42,9 +36,14 @@
   <link rel="stylesheet" href="css/dropdowns.css">
   <link rel="stylesheet" href="css/mobile.css">
   <link rel="stylesheet" href="css/chrome-polish.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <!-- KaTeX, pinned: each file must hash to what 0.16.9 published (integrity),
+       and the policy above admits nothing else from the CDN. -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
+    integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"
+    integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
 </head>
 
 <body>
@@ -449,11 +448,6 @@
 
     <!-- LPANEL (shown on Build+Algo views) -->
     <aside class="lpanel" id="lpanel">
-      <button class="mobile-panel-toggle" id="lpanel-mobile-toggle" data-mobile-panel-toggle="lpanel" data-action="ui.toggleMobilePanel" data-panel="lpanel"
-        aria-controls="lpanel-mobile-content" aria-expanded="true">
-        <span class="mobile-panel-title">Machine</span>
-        <span class="mobile-panel-icon">▾</span>
-      </button>
       <div class="mobile-panel-content" id="lpanel-mobile-content">
         <!-- Same header shape as the right panel: a tab strip, then the
              panel-level chrome. One tab today, and the strip is what lets
@@ -469,10 +463,6 @@
           </div>
           <button class="pin-btn" id="lpanel-pin-btn" data-action="ui.toggleLPanelPin" aria-label="Unpin left panel" aria-pressed="true" data-tip="Unpin left panel">
             <svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M235.32,81.37,174.63,20.69a16,16,0,0,0-22.63,0L98.37,74.49c-10.66-3.34-35-7.37-60.4,13.14a16,16,0,0,0-1.29,23.78L85,159.71,42.34,202.34a8,8,0,0,0,11.32,11.32L96.29,171l48.29,48.29A16,16,0,0,0,155.9,224c.38,0,.75,0,1.13,0a15.93,15.93,0,0,0,11.64-6.33c19.64-26.1,17.75-47.32,13.19-60L235.33,104A16,16,0,0,0,235.32,81.37ZM224,92.69h0l-57.27,57.46a8,8,0,0,0-1.49,9.22c9.46,18.93-1.8,38.59-9.34,48.62L48,100.08c12.08-9.74,23.64-12.31,32.48-12.31A40.13,40.13,0,0,1,96.81,91a8,8,0,0,0,9.25-1.51L163.32,32,224,92.68Z" /></svg>
-          </button>
-          <button class="mobile-panel-close" type="button" data-action="ui.collapseMobilePanel" data-panel="lpanel"
-                  aria-label="Close left panel">
-            <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg>
           </button>
         </div>
         <div class="lpanel-content" id="lpanel-content" role="tabpanel"
@@ -847,11 +837,6 @@
         <!-- Right Panel -->
         <div class="rpanel" id="rpanel">
           <div class="panel-resizer panel-resizer-left" id="rpanel-resizer" role="separator" aria-orientation="vertical" aria-label="Resize right panel" data-tip="Resize right panel"></div>
-          <button class="mobile-panel-toggle" id="rpanel-mobile-toggle" data-mobile-panel-toggle="rpanel" data-action="ui.toggleMobilePanel" data-panel="rpanel"
-            aria-controls="rpanel-mobile-content" aria-expanded="true">
-            <span class="mobile-panel-title">Panels</span>
-            <span class="mobile-panel-icon">▾</span>
-          </button>
           <div class="mobile-panel-content" id="rpanel-mobile-content">
             <!-- Two tabs on one right edge. StateMate is a peer of the
                  Inspector rather than a dock over the canvas, so it inherits
@@ -908,10 +893,6 @@
               </div>
               <button class="pin-btn" id="rpanel-pin-btn" data-action="ui.toggleRPanelPin" aria-label="Unpin right panel" aria-pressed="true" data-tip="Unpin right panel">
                 <svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M235.32,81.37,174.63,20.69a16,16,0,0,0-22.63,0L98.37,74.49c-10.66-3.34-35-7.37-60.4,13.14a16,16,0,0,0-1.29,23.78L85,159.71,42.34,202.34a8,8,0,0,0,11.32,11.32L96.29,171l48.29,48.29A16,16,0,0,0,155.9,224c.38,0,.75,0,1.13,0a15.93,15.93,0,0,0,11.64-6.33c19.64-26.1,17.75-47.32,13.19-60L235.33,104A16,16,0,0,0,235.32,81.37ZM224,92.69h0l-57.27,57.46a8,8,0,0,0-1.49,9.22c9.46,18.93-1.8,38.59-9.34,48.62L48,100.08c12.08-9.74,23.64-12.31,32.48-12.31A40.13,40.13,0,0,1,96.81,91a8,8,0,0,0,9.25-1.51L163.32,32,224,92.68Z" /></svg>
-              </button>
-              <button class="mobile-panel-close" type="button" data-action="ui.collapseMobilePanel" data-panel="rpanel"
-                      aria-label="Close right panel">
-                <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" /></svg>
               </button>
             </div>
             <div class="rpanel-content" id="rpanel-content" role="tabpanel"

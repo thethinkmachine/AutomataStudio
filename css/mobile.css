@@ -1012,11 +1012,6 @@
     display: flex;
   }
 
-  .lpanel > .mobile-panel-toggle,
-  .rpanel > .mobile-panel-toggle {
-    display: none;
-  }
-
   .lpanel .mobile-panel-content,
   .rpanel .mobile-panel-content {
     display: flex;
@@ -1143,8 +1138,7 @@
   }
 
   .lpanel .pin-btn,
-  .rpanel .pin-btn,
-  .mobile-panel-close {
+  .rpanel .pin-btn {
     display: none;
   }
 

@@ -5097,7 +5097,6 @@ defineActions({
   'ui.chooseSettingsFile': () => $('settings-file-input').click(),
   'ui.closeMobileAuxNav': () => closeMobileAuxNav(),
   'ui.closeMobilePanels': () => closeMobilePanels(),
-  'ui.collapseMobilePanel': ({ el }) => toggleMobilePanel(el.dataset.panel, true),
   'ui.confirmSettings': () => confirmSettings(),
   'ui.createTab': () => createTab(),
   'ui.ctxCopy': () => ctxCopy(),

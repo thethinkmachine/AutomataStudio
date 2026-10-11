@@ -19,6 +19,7 @@ import { initFraming } from './ui.js';
 import { initSpeedControl } from './speed-control.js';
 import { initCanvasMotion } from './canvas-motion.js';
 import { installActions } from './actions.js';
+import { startAnalytics } from './analytics.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  INIT
@@ -26,6 +27,8 @@ import { installActions } from './actions.js';
 // First, so every data-action control works from the first paint — the
 // listener is delegated, so markup rendered later needs nothing further.
 installActions();
+// The website reports its visits; dev, preview and the desktop app do not.
+startAnalytics();
 // KaTeX's auto-render, once, for any math already in the page — what the
 // script tag's onload used to do. It is a deferred script ahead of this module
 // and has normally run by now; if not, wait for it. Offline it never arrives.
