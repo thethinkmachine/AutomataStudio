@@ -38,7 +38,7 @@ import { animMotionOk, isSyncRAF } from './anim.js';
 import { applyCamera, clampZoom, normalizeWheelDeltas } from './canvas.js';
 import { includeDividerBounds, isRectDivider } from './dividers.js';
 import { markDirty } from './history.js';
-import { includeNoteBounds, noteBoxLayout, resolveNotePos } from './notes.js';
+import { includeNoteBounds, noteWorldBoxes } from './notes.js';
 import { $, App, largeMachineProfile } from './state.js';
 import { viewGraph, viewStates, viewTransitions, visibleNodeIdFor } from './view-graph.js';
 import { thumbEdgePairs, thumbEdgeSegments, thumbNodeRadius } from './graph-thumb.js';
@@ -356,7 +356,7 @@ function paint(dt) {
   retarget(W, H);
   const settled = stepView(dt);
 
-  const hasContent = viewStates().length || App.notes.length || App.dividers.length;
+  const hasContent = viewStates().length || noteWorldBoxes().length || App.dividers.length;
   if (!hasContent) { canvas._mm = null; return settled; }
 
   // World → CSS pixels. One scale for both axes, because computeGoal already
@@ -408,14 +408,18 @@ function drawDividers(ctx, pal, px, py, scale) {
 // Notes get their real box rather than a fixed dot, so a long annotation reads
 // as the large object it is on the canvas. Floored at a few pixels so a note is
 // never invisible on a zoomed-out frame.
+//
+// The drawn notes, as the canvas has them: a note inside another block is not
+// on this level, and the map's frame (includeNoteBounds) already left it out.
+// Their boxes are kept by notes.js, so a repaint on every frame of a pan or a
+// drag reads a ready list rather than placing every note again.
 function drawNotes(ctx, pal, px, py, scale) {
-  if (!App.notes.length) return;
+  const boxes = noteWorldBoxes();
+  if (!boxes.length) return;
   ctx.save();
-  for (const note of App.notes) {
-    const pos = resolveNotePos(note);
-    const box = noteBoxLayout(note);
+  for (const box of boxes) {
     const w = Math.max(3, box.w * scale), h = Math.max(2.5, box.h * scale);
-    const x = px(pos.x) - w / 2, y = py(pos.y) - h / 2;
+    const x = px(box.x + box.w / 2) - w / 2, y = py(box.y + box.h / 2) - h / 2;
     ctx.beginPath();
     roundRectPath(ctx, x, y, w, h, 1.5);
     ctx.globalAlpha = 0.14;

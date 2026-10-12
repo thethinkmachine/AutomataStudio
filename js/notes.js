@@ -2,10 +2,10 @@ import { defineActions } from './action-registry.js';
 import { beginSelectionDrag, clearSelection, hideCanvasContextMenu, pickObject, svgPt } from './canvas.js';
 import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
-import { drawnEdgeEl, drawnStateEl, makeSVG, renderAll } from './render.js';
+import { drawnEdgeEl, drawnStateEl, edgeLeaderPoint, makeSVG, renderAll } from './render.js';
 import { $, App } from './state.js';
 import { getBlock } from './blocks.js';
-import { nodeIdAtScope, scopeId } from './view-graph.js';
+import { nodeIdAtScope, scopeId, viewEdgeKeyFor } from './view-graph.js';
 import { getState, getTransition, hideContextMenu, showContextMenu } from './states-transitions.js';
 import { showStatus } from './utils.js';
 import { RUN_STYLES } from './markdown.js';
@@ -107,6 +107,23 @@ function anchorPoint(stateId, scope) {
   return b ? { x: b.x || 0, y: b.y || 0 } : null;
 }
 
+// A transition anchors a note at the midpoint of its two ends. Both ends are
+// taken against the same level, so an edge crossing into a block is a midpoint
+// between the state outside and the box — the line the reader can actually
+// see — rather than between one drawn node and one that is not.
+function transitionAnchorPoint(id, scope) {
+  const t = getTransition(id);
+  if (!t) return null;
+  const from = anchorPoint(t.from, scope), to = anchorPoint(t.to, scope);
+  return from && to ? { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 } : null;
+}
+
+/**
+ * The points a note is *placed* by: its offset is from their centroid. These
+ * read state positions only, never routed geometry, so a saved note lands where
+ * it always has and does not drift while an edge re-routes. Where its leaders
+ * *end* is noteLeaderTargets.
+ */
 export function noteAnchorPoints(note) {
   const scope = noteScopeOf(note);
   const pts = [];
@@ -115,16 +132,41 @@ export function noteAnchorPoints(note) {
     if (p) pts.push(p);
   });
   (note.anchorTransitions || []).forEach(id => {
-    const t = getTransition(id);
-    if (!t) return;
-    const from = anchorPoint(t.from, scope), to = anchorPoint(t.to, scope);
-    // Both ends against the same level, so an edge crossing into a block is a
-    // midpoint between the state outside and the box — the line the reader can
-    // actually see — rather than between one drawn node and one that is not.
-    if (from && to) pts.push({ x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 });
+    const p = transitionAnchorPoint(id, scope);
+    if (p) pts.push(p);
   });
   return pts;
 }
+
+/**
+ * Where a note's leaders end. A state's is its centre, as for placement. A
+ * transition's is on its edge as drawn, beside the label and clear of it
+ * (edgeLeaderPoint): the chord midpoint placement uses is on the edge only
+ * while the edge is straight, and on a bent one the leader used to stop in
+ * empty canvas. An edge that is not drawn falls back to the midpoint. `edge`
+ * marks an end on a drawn edge, which gets a dot. One leader per point, so two
+ * rules on one edge — or two states inside one collapsed block — draw one line.
+ */
+export function noteLeaderTargets(note, pos = resolveNotePos(note)) {
+  const scope = noteScopeOf(note);
+  const targets = [];
+  const seen = new Set();
+  const add = (p, edge) => {
+    if (!p) return;
+    const k = `${p.x},${p.y}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    targets.push({ x: p.x, y: p.y, edge });
+  };
+  (note.anchorStates || []).forEach(id => add(anchorPoint(id, scope), false));
+  (note.anchorTransitions || []).forEach(id => {
+    const key = viewEdgeKeyFor(id);
+    const drawn = key ? edgeLeaderPoint(key, pos) : null;
+    add(drawn || transitionAnchorPoint(id, scope), !!drawn);
+  });
+  return targets;
+}
+
 export function noteAnchorCentroid(note) {
   const pts = noteAnchorPoints(note);
   if (!pts.length) return null;
@@ -138,11 +180,38 @@ export function resolveNotePos(note) {
   return c ? { x: c.x + note.x, y: c.y + note.y } : { x: note.x, y: note.y };
 }
 
+// Laying out a note's Markdown is the expensive part of drawing one, and it
+// depends on nothing but the text and, for a resized note, the box. So it is
+// cached by note id and checked against those on every read: an undo hands back
+// new note objects with the same text, and keeps its layouts. The returned
+// object is the cache's — callers read it, and a changed layout is a new object,
+// which is how a drawn note knows its text needs rebuilding.
+const _layouts = new Map();
+
+export function noteBoxLayout(note) {
+  if (note.id == null) return computeNoteBoxLayout(note);
+  const resized = noteIsResized(note);
+  const hit = _layouts.get(note.id);
+  if (hit && hit.text === note.text && hit.resized === resized
+      && (!resized || (hit.w === note.w && hit.h === note.h))) return hit.layout;
+  const layout = computeNoteBoxLayout(note);
+  _layouts.set(note.id, { text: note.text, resized, w: note.w, h: note.h, layout });
+  return layout;
+}
+
+// Drops the layouts of notes that no longer exist. A note's id is all a layout
+// is filed under, so the entries outlive the notes unless something sweeps them.
+function pruneNoteLayouts() {
+  if (_layouts.size <= App.notes.length) return;
+  const ids = new Set(App.notes.map(n => n.id));
+  for (const id of _layouts.keys()) if (!ids.has(id)) _layouts.delete(id);
+}
+
 // Computes a note's effective on-screen box: for an auto-sized note the
 // width is fixed (NOTE_WIDTH) and the height grows with content; for a
 // user-resized note both are pinned and content wraps/clips to fit, showing
 // as many lines as fit (plus a "…" overflow marker) rather than spilling out.
-export function noteBoxLayout(note) {
+function computeNoteBoxLayout(note) {
   if (noteIsResized(note)) {
     const w = Math.max(NOTE_MIN_W, Math.min(NOTE_MAX_W, note.w));
     const h = Math.max(NOTE_MIN_H, Math.min(NOTE_MAX_H, note.h));
@@ -165,18 +234,32 @@ export function noteBoxLayout(note) {
   return { w, h, lines };
 }
 
+// The drawn notes' boxes in world coordinates (top-left x, y, w, h), for the
+// minimap and the bounds. The drawn ones: fit-to-screen and a cropped export
+// frame what is on screen, and a note two levels down would otherwise pull the
+// frame out to wherever its anchors happen to sit.
+//
+// Kept rather than recomputed, because the minimap repaints on every frame of
+// a pan or a drag. Dropped whenever the drawn set changes (renderNotes) or a
+// drawn note's box is written (placeNoteNode) — the only two ways one moves.
+let _worldBoxes = null;
+
+export function noteWorldBoxes() {
+  if (!_worldBoxes) {
+    _worldBoxes = visibleNotes().map(note => {
+      const pos = resolveNotePos(note);
+      const { w, h } = noteBoxLayout(note);
+      return { x: pos.x - w / 2, y: pos.y - h / 2, w, h };
+    });
+  }
+  return _worldBoxes;
+}
+
 // Lets fitToScreen / the minimap / resize-framing include note bodies in
 // their world bounding box, so a free-floating note never gets scrolled out
 // of view when a saved workspace is loaded.
 export function includeNoteBounds(cb) {
-  // The drawn ones. Fit-to-screen and a cropped export frame what is on screen,
-  // and a note two levels down would otherwise pull the frame out to wherever
-  // its anchors happen to sit.
-  visibleNotes().forEach(note => {
-    const pos = resolveNotePos(note);
-    const { w, h } = noteBoxLayout(note);
-    cb(pos.x - w / 2, pos.y - h / 2, pos.x + w / 2, pos.y + h / 2);
-  });
+  for (const b of noteWorldBoxes()) cb(b.x, b.y, b.x + b.w, b.y + b.h);
 }
 
 // Drops the given state/transition ids from every note's anchors, preserving
@@ -281,11 +364,93 @@ export function noteCharsPerLine(widthPx) {
 // ══════════════════════════════════════════════════════════════════
 //  RENDERING
 // ══════════════════════════════════════════════════════════════════
+// Notes are diffed by id, the way render.js diffs states and edges: a note's
+// group is built once and kept, and a render writes to it only what changed.
+// They used to be torn down and rebuilt on every renderAll, which cost every
+// note a Markdown layout and its elements on each structural edit.
+// App.domCache.notes is this module's registry: renderNotes adds and evicts.
 export function renderNotes() {
   const g = $('notes-g');
   if (!g) return;
-  g.innerHTML = '';
-  visibleNotes().forEach(note => renderOneNote(g, note));
+  // Leaders live in a layer of their own, under the edge labels and the
+  // states, so a leader that has to cross a label passes behind it.
+  const leaders = $('note-leaders-g');
+  const live = App.domCache.notes;
+  const notes = visibleNotes();
+  const seen = new Set();
+  let prev = null;
+  for (const note of notes) {
+    let grp = live.get(note.id);
+    // A node whose leaders went to another layer is from a canvas that has
+    // since been replaced, and is not reused.
+    if (grp && grp.__parts.leaderLayer !== leaders) { removeNoteNode(grp); grp = null; }
+    if (!grp) {
+      grp = createNoteNode(note.id, leaders);
+      live.set(note.id, grp);
+    }
+    syncNoteNode(grp, note);
+    seen.add(note.id);
+    const expected = prev ? prev.nextSibling : g.firstChild;
+    if (grp !== expected) g.insertBefore(grp, expected);
+    prev = grp;
+  }
+  for (const [id, grp] of live) {
+    if (!seen.has(id)) { removeNoteNode(grp); live.delete(id); }
+  }
+  indexNotes(notes);
+  pruneNoteLayouts();
+  _worldBoxes = null;
+}
+
+// ── Which notes a frame can touch ─────────────────────────────────
+// A drawn note is filed under every drawn node it is placed from — its anchor
+// states, and both ends of its anchor transitions — and under every edge its
+// leaders end on. A drag frame hands updateNotesDOM the nodes that moved and
+// the edges whose drawing changed, and only the notes filed under those are
+// visited. Rebuilt by renderNotes: every change to a note's anchors goes
+// through renderAll.
+let _notesByNode = new Map();
+let _notesByEdge = new Map();
+
+function fileNote(map, key, note) {
+  let set = map.get(key);
+  if (!set) map.set(key, (set = new Set()));
+  set.add(note);
+}
+
+// The node drawn for a state at `scope`: the state, or the block it is inside.
+// The same answer anchorPoint gives.
+function drawnNodeOf(stateId, scope) {
+  return nodeIdAtScope(stateId, scope) || stateId;
+}
+
+function indexNotes(notes) {
+  _notesByNode = new Map();
+  _notesByEdge = new Map();
+  for (const note of notes) {
+    const scope = noteScopeOf(note);
+    for (const id of note.anchorStates || []) fileNote(_notesByNode, drawnNodeOf(id, scope), note);
+    for (const id of note.anchorTransitions || []) {
+      const t = getTransition(id);
+      if (!t) continue;
+      fileNote(_notesByNode, drawnNodeOf(t.from, scope), note);
+      fileNote(_notesByNode, drawnNodeOf(t.to, scope), note);
+      const key = viewEdgeKeyFor(id);
+      if (key) fileNote(_notesByEdge, key, note);
+    }
+  }
+}
+
+/** Whether a drawn note has a leader ending on edge `key`. */
+export function noteWatchesEdge(key) {
+  return _notesByEdge.has(key);
+}
+
+/** Forgets the index and the boxes, for the test harness's reset. */
+export function resetNoteIndex() {
+  _notesByNode = new Map();
+  _notesByEdge = new Map();
+  _worldBoxes = null;
 }
 
 // ── Drawing made of box characters ───────────────────────────────
@@ -378,45 +543,32 @@ export function fillNoteTextEl(textEl, lines, xLeft) {
   });
 }
 
-export function renderOneNote(g, note) {
-  const pos = resolveNotePos(note);
-  const { w, h, lines } = noteBoxLayout(note);
-  const x = pos.x - w / 2, y = pos.y - h / 2;
+const NOTE_TIP = 'Double-click to edit · Right-click for options · Drag corner to resize';
 
+// A note's group and its parts, empty: syncNoteNode fills them. Everything here
+// is the same for every note and every render, and the listeners resolve the
+// note by id when they fire, because the group outlives the note object — an
+// undo replaces it. `leaderLayer` is where the leaders go: #note-leaders-g on
+// the canvas; without one (the editor's preview, whose note has no anchors)
+// they go in the note's own group, under its body.
+function createNoteNode(id, leaderLayer) {
   const grp = makeSVG('g');
   grp.classList.add('note-g');
-  if (App.selectedNotes.has(note.id)) grp.classList.add('sel-note');
-  if (App.activeNoteId === note.id) grp.classList.add('note-link-active');
-  if (noteIsResized(note)) grp.classList.add('note-resized');
-  grp.setAttribute('data-note-id', note.id);
-  grp.setAttribute('data-color', normalizeNoteColor(note.color));
-
-  const anchorPts = noteAnchorPoints(note);
-  grp.__geoKey = noteGeoKey(x, y, w, h, anchorPts);
-  const leaders = anchorPts.map(pt => {
-    const line = makeSVG('line');
-    line.classList.add('note-leader');
-    line.setAttribute('x1', pos.x); line.setAttribute('y1', pos.y);
-    line.setAttribute('x2', pt.x); line.setAttribute('y2', pt.y);
-    grp.appendChild(line);
-    return line;
-  });
+  grp.setAttribute('data-note-id', id);
+  grp.setAttribute('data-tip', NOTE_TIP);
+  grp.setAttribute('aria-label', NOTE_TIP);
 
   const rect = makeSVG('rect');
   rect.classList.add('note-body');
-  rect.setAttribute('x', x); rect.setAttribute('y', y);
-  rect.setAttribute('width', w); rect.setAttribute('height', h);
   rect.setAttribute('rx', 6);
   grp.appendChild(rect);
 
   // Clip text to the box so a resized-down note never lets long words bleed
   // past its border (the layout already caps line count to fit height).
-  const clipId = `note-clip-${note.id}`;
+  const clipId = `note-clip-${id}`;
   const clip = makeSVG('clipPath');
   clip.setAttribute('id', clipId);
   const clipRect = makeSVG('rect');
-  clipRect.setAttribute('x', x + 1); clipRect.setAttribute('y', y + 1);
-  clipRect.setAttribute('width', Math.max(0, w - 2)); clipRect.setAttribute('height', Math.max(0, h - 2));
   clipRect.setAttribute('rx', 5);
   clip.appendChild(clipRect);
   grp.appendChild(clip);
@@ -424,16 +576,12 @@ export function renderOneNote(g, note) {
   const textEl = makeSVG('text');
   textEl.classList.add('note-text');
   textEl.setAttribute('clip-path', `url(#${clipId})`);
-  fillNoteTextEl(textEl, lines, x + NOTE_PAD);
-  textEl.setAttribute('x', x + NOTE_PAD);
-  textEl.setAttribute('y', y + NOTE_PAD + NOTE_LINE_H * 0.72);
   grp.appendChild(textEl);
 
   // A table's borders, a rule, a quote's bar (see noteRulePath).
   const rulesEl = makeSVG('path');
   rulesEl.classList.add('note-rules');
   rulesEl.setAttribute('clip-path', `url(#${clipId})`);
-  rulesEl.setAttribute('d', noteRulePath(lines, x + NOTE_PAD, y + NOTE_PAD));
   grp.appendChild(rulesEl);
 
   // Two paths, mirroring the .tarr / .tarr-hit split used for edges: a wide
@@ -441,66 +589,58 @@ export function renderOneNote(g, note) {
   // only. A 1.5px stroke is far too small a target to grab on its own.
   const handleHit = makeSVG('path');
   handleHit.classList.add('note-resize-hit');
-  handleHit.setAttribute('d', noteResizeHandlePath(x + w, y + h));
-  handleHit.addEventListener('pointerdown', e => onNoteResizeDown(e, note.id));
+  handleHit.addEventListener('pointerdown', e => onNoteResizeDown(e, id));
   grp.appendChild(handleHit);
 
   const handle = makeSVG('path');
   handle.classList.add('note-resize-handle');
-  handle.setAttribute('d', noteResizeHandlePath(x + w, y + h));
   grp.appendChild(handle);
 
-  // What updateOneNoteDOM writes to on a drag frame — held rather than
-  // queried, the same as a state's or an edge's __parts in render.js.
-  grp.__parts = { leaders, rect, clipRect, textEl, rulesEl, handleHit, handle };
-
-  const noteTip = 'Double-click to edit · Right-click for options · Drag corner to resize';
-  grp.setAttribute('data-tip', noteTip);
-  grp.setAttribute('aria-label', noteTip);
-
-  attachNoteHandlers(grp, note);
-  g.appendChild(grp);
+  // What placeNoteNode writes to — held rather than queried, the same as a
+  // state's or an edge's __parts in render.js.
+  grp.__parts = { leaders: [], leaderLayer, rect, clipRect, textEl, rulesEl, handleHit, handle };
+  attachNoteHandlers(grp, id);
+  return grp;
 }
 
-// Everything a move can change about a drawn note: its box and where its
-// leader lines end.
-function noteGeoKey(x, y, w, h, anchorPts) {
-  return `${x},${y},${w},${h}|${anchorPts.map(pt => `${pt.x},${pt.y}`).join(';')}`;
+function removeNoteNode(grp) {
+  for (const { line, dot } of grp.__parts.leaders) { line.remove(); dot.remove(); }
+  grp.remove();
 }
 
-export function noteResizeHandlePath(cx, cy) {
-  const s = 9;
-  return `M ${cx - s} ${cy} L ${cx} ${cy} L ${cx} ${cy - s}`;
+// Writes a note onto its node. Classes are written every time, because they
+// are also toggled from outside (syncNoteSelectionClasses, the anchor
+// highlight) and a record of what was written last would drift from the DOM.
+function syncNoteNode(grp, note) {
+  grp.classList.toggle('sel-note', App.selectedNotes.has(note.id));
+  grp.classList.toggle('note-link-active', App.activeNoteId === note.id);
+  grp.classList.toggle('note-resized', noteIsResized(note));
+  const color = normalizeNoteColor(note.color);
+  if (grp.getAttribute('data-color') !== color) grp.setAttribute('data-color', color);
+  placeNoteNode(grp, note);
 }
 
-// Fast path used while dragging: reposition one note's existing DOM in place
-// instead of re-rendering the whole notes layer. Pass refillText:false when the
-// text can't have changed (a plain move) to skip rebuilding every tspan — that
-// teardown runs on each pointermove and is pure waste while only x/y shift.
-export function updateOneNoteDOM(note, { refillText = true } = {}) {
-  const grp = App.domCache.notes.get(note.id) || document.querySelector(`.note-g[data-note-id="${note.id}"]`);
-  if (!grp || !grp.__parts) return;
-  if (!App.domCache.notes.has(note.id)) App.domCache.notes.set(note.id, grp);
-
+// A note's geometry and text, written only when they changed: the box and the
+// leaders when the note or a leader's end moved, the text only when its layout
+// is a different one (noteBoxLayout) — a move shifts the lines it has.
+function placeNoteNode(grp, note) {
   const pos = resolveNotePos(note);
-  const { w, h, lines } = noteBoxLayout(note);
+  const layout = noteBoxLayout(note);
+  const { w, h, lines } = layout;
   const x = pos.x - w / 2, y = pos.y - h / 2;
-  const anchorPts = noteAnchorPoints(note);
-
-  // A move that left this note's box and leaders where they were writes
-  // nothing. updateNotesDOM runs for every visible note on every drag frame,
-  // and a note pinned nowhere near the dragged state is most of them. A refill
-  // always writes: the text is what it came to change, and the key says
-  // nothing about the text.
-  const geoKey = noteGeoKey(x, y, w, h, anchorPts);
-  if (!refillText && grp.__geoKey === geoKey) return;
+  const targets = noteLeaderTargets(note, pos);
+  const geoKey = noteGeoKey(x, y, w, h, targets);
+  const relaid = grp.__layout !== layout;
+  if (!relaid && grp.__geoKey === geoKey) return;
   grp.__geoKey = geoKey;
+  grp.__layout = layout;
+  if (grp.__parts.leaderLayer) _worldBoxes = null;
 
-  const { leaders, rect, clipRect, textEl, rulesEl, handleHit, handle } = grp.__parts;
+  const { rect, clipRect, textEl, rulesEl, handleHit, handle } = grp.__parts;
   rect.setAttribute('x', x); rect.setAttribute('y', y); rect.setAttribute('width', w); rect.setAttribute('height', h);
   clipRect.setAttribute('x', x + 1); clipRect.setAttribute('y', y + 1);
   clipRect.setAttribute('width', Math.max(0, w - 2)); clipRect.setAttribute('height', Math.max(0, h - 2));
-  if (refillText) {
+  if (relaid) {
     fillNoteTextEl(textEl, lines, x + NOTE_PAD);
   } else {
     // Only line-leading tspans carry an x — and every run of a grid line,
@@ -510,55 +650,133 @@ export function updateOneNoteDOM(note, { refillText = true } = {}) {
       if (ts.getAttribute('x') != null) ts.setAttribute('x', x + NOTE_PAD + (ts.__gridCol || 0) * NOTE_CHAR_ADVANCE);
     }
   }
-  if (rulesEl) rulesEl.setAttribute('d', noteRulePath(lines, x + NOTE_PAD, y + NOTE_PAD));
+  rulesEl.setAttribute('d', noteRulePath(lines, x + NOTE_PAD, y + NOTE_PAD));
   textEl.setAttribute('x', x + NOTE_PAD);
   textEl.setAttribute('y', y + NOTE_PAD + NOTE_LINE_H * 0.72);
   for (const p of [handleHit, handle]) p.setAttribute('d', noteResizeHandlePath(x + w, y + h));
-  leaders.forEach((line, i) => {
-    const pt = anchorPts[i];
-    if (!pt) return;
-    line.setAttribute('x1', pos.x); line.setAttribute('y1', pos.y);
-    line.setAttribute('x2', pt.x); line.setAttribute('y2', pt.y);
+  syncNoteLeaders(grp, pos, w, h, targets);
+}
+
+/** One note drawn on its own into `g` — the editor's preview. */
+export function renderOneNote(g, note, leaderLayer = null) {
+  const grp = createNoteNode(note.id, leaderLayer);
+  syncNoteNode(grp, note);
+  g.appendChild(grp);
+  return grp;
+}
+
+// Everything a move can change about a drawn note: its box and where its
+// leader lines end.
+function noteGeoKey(x, y, w, h, targets) {
+  return `${x},${y},${w},${h}|${targets.map(pt => `${pt.x},${pt.y},${pt.edge ? 1 : 0}`).join(';')}`;
+}
+
+// The leader from the note's border to `pt`, or null when `pt` is under the
+// note — a line from the box to a point it covers would point at nothing.
+function leaderSegment(pos, w, h, pt) {
+  const dx = pt.x - pos.x, dy = pt.y - pos.y;
+  const s = Math.min(dx ? w / 2 / Math.abs(dx) : Infinity, dy ? h / 2 / Math.abs(dy) : Infinity);
+  if (s >= 1) return null;
+  return { x1: pos.x + dx * s, y1: pos.y + dy * s, x2: pt.x, y2: pt.y };
+}
+
+// A line per target and a dot where one meets an edge, in the leader layer.
+// The elements are kept across frames and rebuilt only when the count changes,
+// which a drag can do: two targets landing on one point merge.
+function syncNoteLeaders(grp, pos, w, h, targets) {
+  const parts = grp.__parts;
+  if (parts.leaders.length !== targets.length) {
+    for (const { line, dot } of parts.leaders) { line.remove(); dot.remove(); }
+    parts.leaders = targets.map(() => {
+      const line = makeSVG('line');
+      line.classList.add('note-leader');
+      const dot = makeSVG('circle');
+      dot.classList.add('note-leader-end');
+      dot.setAttribute('r', 2.5);
+      for (const el of [line, dot]) {
+        if (parts.leaderLayer) parts.leaderLayer.appendChild(el);
+        else grp.insertBefore(el, parts.rect);
+      }
+      return { line, dot };
+    });
+  }
+  targets.forEach((pt, i) => {
+    const { line, dot } = parts.leaders[i];
+    const seg = leaderSegment(pos, w, h, pt);
+    if (!seg) {
+      line.setAttribute('display', 'none');
+      dot.setAttribute('display', 'none');
+      return;
+    }
+    line.removeAttribute('display');
+    line.setAttribute('x1', seg.x1); line.setAttribute('y1', seg.y1);
+    line.setAttribute('x2', seg.x2); line.setAttribute('y2', seg.y2);
+    if (pt.edge) {
+      dot.removeAttribute('display');
+      dot.setAttribute('cx', pt.x); dot.setAttribute('cy', pt.y);
+    } else {
+      dot.setAttribute('display', 'none');
+    }
   });
 }
-// The drag path's note pass (updateFastDOM). A state moving can carry a note
-// with it but cannot change what the note says, so the text is repositioned
-// and never rebuilt. This was `forEach(updateOneNoteDOM)`, which passed the
-// array index as the options — so `refillText` kept its default and every
-// tspan of every note was torn down and rebuilt on every drag frame.
-export function updateNotesDOM() {
-  for (const note of visibleNotes()) updateOneNoteDOM(note, { refillText: false });
+
+export function noteResizeHandlePath(cx, cy) {
+  const s = 9;
+  return `M ${cx - s} ${cy} L ${cx} ${cy} L ${cx} ${cy - s}`;
+}
+
+// One drawn note brought up to date in place: a note being dragged or resized,
+// or one a drag frame touched. Writes nothing when nothing about it changed.
+export function updateOneNoteDOM(note) {
+  const grp = App.domCache.notes.get(note.id);
+  if (grp) placeNoteNode(grp, note);
+}
+
+// The drag path's note pass (updateFastDOM): only the notes the frame touched —
+// placed from a drawn node that moved, or with a leader on an edge whose drawing
+// changed (the index above). A note the frame did not touch is not looked at,
+// so an idle settle frame, or a drag nowhere near any note, costs nothing here.
+export function updateNotesDOM(movedNodes = [], changedEdges = []) {
+  if (!movedNodes.length && !changedEdges.length) return;
+  const touched = new Set();
+  for (const id of movedNodes) for (const note of _notesByNode.get(id) || []) touched.add(note);
+  for (const key of changedEdges) for (const note of _notesByEdge.get(key) || []) touched.add(note);
+  for (const note of touched) updateOneNoteDOM(note);
 }
 
 // ══════════════════════════════════════════════════════════════════
 //  INTERACTION: drag, edit, context menu
 // ══════════════════════════════════════════════════════════════════
-export function attachNoteHandlers(grp, note) {
-  grp.addEventListener('pointerdown', e => onNoteDown(e, note.id));
-  grp.addEventListener('pointerenter', () => highlightNoteAnchors(note.id));
+// Attached once, when the group is built, so each resolves the note by id when
+// it fires: the group outlives the note object it was built for.
+export function attachNoteHandlers(grp, id) {
+  grp.addEventListener('pointerdown', e => onNoteDown(e, id));
+  grp.addEventListener('pointerenter', () => highlightNoteAnchors(id));
   grp.addEventListener('pointerleave', () => {
-    if (App.activeNoteId === note.id) return;
+    if (App.activeNoteId === id) return;
     clearNoteAnchorHighlight();
     if (App.activeNoteId) highlightNoteAnchors(App.activeNoteId);
   });
   grp.addEventListener('dblclick', e => {
     e.stopPropagation();
-    openNoteModal(note.id);
+    openNoteModal(id);
   });
   grp.addEventListener('contextmenu', e => {
     e.preventDefault();
     e.stopPropagation();
+    const note = getNote(id);
+    if (!note) return;
     // Right-clicking an unselected note takes it, the way it does for an edge;
     // a note already part of a larger selection keeps that selection intact.
-    if (!App.selectedNotes.has(note.id)) {
+    if (!App.selectedNotes.has(id)) {
       clearSelection();
-      App.selectedNotes.add(note.id);
+      App.selectedNotes.add(id);
       syncNoteSelectionClasses();
     }
     App.ctxId = null;
     App.ctxEdge = null;
     App.ctxMode = 'note';
-    App.ctxNoteId = note.id;
+    App.ctxNoteId = id;
     const anchored = (note.anchorStates && note.anchorStates.length) || (note.anchorTransitions && note.anchorTransitions.length);
     const detachItem = $('ctx-note-detach');
     if (detachItem) detachItem.style.display = anchored ? '' : 'none';
@@ -604,9 +822,9 @@ export function clearActiveNoteHighlight() {
   clearNoteAnchorHighlight();
 }
 
-// Repaints .sel-note from App.selectedNotes. Notes are rebuilt wholesale by
-// renderNotes, but selection also changes without a render (click, marquee),
-// so it has to be writable straight onto the nodes.
+// Repaints .sel-note from App.selectedNotes. renderNotes writes it too, but
+// selection also changes without a render (click, marquee), so it has to be
+// writable straight onto the nodes.
 export function syncNoteSelectionClasses() {
   document.querySelectorAll('.note-g').forEach(el => {
     el.classList.toggle('sel-note', App.selectedNotes.has(el.getAttribute('data-note-id')));
@@ -653,7 +871,7 @@ export function dragSelectedNotesTo(pt) {
     const c = noteAnchorCentroid(note);
     if (c) { note.x = nx - c.x; note.y = ny - c.y; }
     else { note.x = nx; note.y = ny; }
-    updateOneNoteDOM(note, { refillText: false });
+    updateOneNoteDOM(note);
   });
 }
 

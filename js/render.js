@@ -2,7 +2,7 @@ import { defineActions } from './action-registry.js';
 import { animEnabled, beginPass, claimGroup, dropTrack, easeTrack, endPass, requestSettle, setSettlePainter, snapTrack } from './anim.js';
 import { applyEdgeDirectionHighlight, clearEdgeDirectionHighlight, clearSelection, onPortDown, resetPortPlacement, onStateDown, wrap } from './canvas.js';
 import { renderDividers } from './dividers.js';
-import { PILL_GAP, PILL_HEIGHT, PILL_ROW_H, buildLayoutContext, edgeGeometryFor, estimatePillLabelSize, estimateTextLabelSize, pillPartWidth, selfLoopLabelPoint, selfLoopPath, startNodeId } from './geometry.js';
+import { PILL_GAP, PILL_HEIGHT, PILL_ROW_H, buildLayoutContext, edgeGeometryFor, estimatePillLabelSize, estimateTextLabelSize, labelFootPoint, pillPartWidth, selfLoopLabelPoint, selfLoopPath, startNodeId } from './geometry.js';
 import { commit, snapshot } from './history.js';
 import { publishListHeight, setListItems } from './panel-list.js';
 import { leaveTransTable, renderTransTable, syncTransViewToggle, transView } from './delta-table.js';
@@ -10,7 +10,7 @@ import { cullNeedsRepaint, cullViewport, cullingActive, edgeLabelLOD, invalidate
 import { scheduleMinimap } from './minimap.js';
 import { renderLanguagePanel } from './language.js';
 import { TIKZ_SYMBOL_MAP } from './export-formats.js';
-import { highlightNoteAnchors, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
+import { highlightNoteAnchors, noteWatchesEdge, pruneNoteAnchors, renderNotes, updateNotesDOM } from './notes.js';
 import { $, App, R, SVG_NS, edgeLabelsHidden, getMachineConfig, isDeterministicOmega, omegaAcceptanceOf, previewNodeBudget, statePriority, usesParityPriorities, wrapStateLabelsOn } from './state.js';
 import { BLOCK_STRIP_H, blockPreviewGraph, blockPreviewKey, getNode, viewEdgeGroup, viewEdgeKeyFor, viewStates, visibleNodeIdFor } from './view-graph.js';
 import { machineSupportsBlocks } from './machines/index.js';
@@ -65,14 +65,12 @@ export function renderAll() {
   const view = cullViewport();
   renderTransitions(view); renderStates(view);
   if (typeof renderNotes === 'function') renderNotes();
-  // domCache.states and .transitions are the renderer's own node registries now
-  // — renderStates/renderTransitions add and evict entries as they diff, so
-  // clearing and re-querying here would throw away the identity the diff needs.
-  // Notes and dividers are still rebuilt wholesale by their modules, so their
-  // caches are still refreshed from the DOM.
-  App.domCache.notes.clear();
+  // domCache.states, .transitions and .notes are the renderers' own node
+  // registries — renderStates, renderTransitions and renderNotes add and evict
+  // entries as they diff, so clearing and re-querying here would throw away the
+  // identity the diff needs. Dividers are still rebuilt wholesale by their
+  // module, so their cache is still refreshed from the DOM.
   App.domCache.dividers.clear();
-  for (const el of $('notes-g')?.childNodes || []) App.domCache.notes.set(el.getAttribute('data-note-id'), el);
   document.querySelectorAll('.divider-g').forEach(el => App.domCache.dividers.set(el.getAttribute('data-divider-id'), el));
   if (App.activeNoteId && typeof highlightNoteAnchors === 'function') highlightNoteAnchors(App.activeNoteId, true);
   if (typeof applyEdgeDirectionHighlight === 'function') applyEdgeDirectionHighlight();
@@ -248,7 +246,7 @@ function displayGeo(geo, dt) {
   // keys are recycled (resetIds numbers states s1, s2, … on every load), this is
   // what stops a freshly loaded machine easing in from the previous one's shape.
   if (claimGroup(key, geo.from, geo.to)) {
-    for (const suffix of [':a', ':c', ':lx', ':ly']) dropTrack(key + suffix);
+    for (const suffix of [':a', ':c', ':lx', ':ly', ':lt']) dropTrack(key + suffix);
   }
 
   if (geo.isSelf) {
@@ -283,14 +281,17 @@ function displayGeo(geo, dt) {
   // list — its jumps are its own, not the curve's.
   const lx = easeTrack(key + ':lx', geo.lx, dt);
   const ly = easeTrack(key + ':ly', geo.ly, dt);
-  // Same early-out as the self-loop branch above: all three tracks settled means
+  // Where along the edge the label sits, for a note's leader (labelFootPoint):
+  // eased with the label, or the leader's end would jump while the label glides.
+  const lt = easeTrack(key + ':lt', geo.lt, dt);
+  // Same early-out as the self-loop branch above: all four tracks settled means
   // the drawn edge is the laid-out edge, so there is nothing to build.
-  if (crvVal === geo.crvVal && lx === geo.lx && ly === geo.ly) return geo;
+  if (crvVal === geo.crvVal && lx === geo.lx && ly === geo.ly && lt === geo.lt) return geo;
   const edge = crvVal === geo.crvVal ? null : edgeGeometryFor(geo.from, geo.to, crvVal);
-  if (!edge) return { ...geo, lx, ly };
+  if (!edge) return { ...geo, lx, ly, lt };
   return {
     ...geo,
-    crvVal, lx, ly,
+    crvVal, lx, ly, lt,
     sx: edge.sx, sy: edge.sy, ex: edge.ex, ey: edge.ey,
     mx: edge.mx, my: edge.my,
     d: edge.d
@@ -566,8 +567,31 @@ export function edgeLabelAnchor(key) {
   if (!geo) return null;
   const node = App.domCache.transitions.get(key);
   const pills = App.config.edgeLabelStyle === 'pills' || App.config.edgeLabelStyle === 'beginner';
-  const drawn = !!node && (pills ? node.__pillKey : node.__labelKey) != null;
-  return { x: geo.lx, y: geo.ly, pitch: pills ? PILL_ROW_H : TLBL_ROW_PITCH, drawn };
+  return { x: geo.lx, y: geo.ly, pitch: pills ? PILL_ROW_H : TLBL_ROW_PITCH, drawn: edgeLabelDrawn(node) };
+}
+
+// Whether an edge node's label is painted: not zoomed past the level of detail,
+// and labels not off for the machine's size or by choice.
+function edgeLabelDrawn(node) {
+  if (!node) return false;
+  const pills = App.config.edgeLabelStyle === 'pills' || App.config.edgeLabelStyle === 'beginner';
+  return (pills ? node.__pillKey : node.__labelKey) != null;
+}
+
+/**
+ * Where a note's leader to an edge ends (labelFootPoint): on the edge *as
+ * drawn*, beside its label and clear of it, on the side facing `toward` — the
+ * note's centre. Read off the node rather than the layout context, so it
+ * follows a curve or a label that is still easing. Null when the edge is not
+ * drawn — culled, or inside a collapsed block.
+ */
+export function edgeLeaderPoint(key, toward = null) {
+  const node = App.domCache.transitions.get(key);
+  const geo = node && node.__shown;
+  if (!geo) return null;
+  const { w, h } = geo.labelSize;
+  const box = edgeLabelDrawn(node) ? { x: geo.lx - w / 2, y: geo.ly - h / 2, w, h } : null;
+  return labelFootPoint(geo, toward, box);
 }
 
 // The curve handle only exists while the edge is selected: a visible grip at the
@@ -603,8 +627,16 @@ function syncCurveHandle(edgeGrp, key, geo, selected) {
   }
 }
 
+// Whether two drawings of an edge put a note's leader end in the same place:
+// the same path and the same label slot.
+function sameEdgeDrawing(a, b) {
+  return !!a && a.d === b.d && a.lx === b.lx && a.ly === b.ly && a.lt === b.lt;
+}
+
 function syncEdgeNode(edgeGrp, geo, ts, lod = false) {
   if (!geo) return false;
+  // What is on screen, mid-glide included — what a note's leader ends on.
+  edgeGrp.__shown = geo;
   const parts = edgeGrp.__parts;
   const selected = isEdgeSelected(ts);
 
@@ -1047,6 +1079,11 @@ export function updateFastDOM({ statesMoved = true } = {}) {
   // very different on a culled one, and the registry is by definition the set
   // with something to write to — walking the model would be a thousand map
   // misses per frame to find the fifty nodes that exist.
+  // The drawn nodes this frame moved, and the edges whose drawing changed under
+  // a note's leader: all the notes pass needs, so it visits only what they touch.
+  const movedNodes = [];
+  const changedEdges = [];
+
   for (const [id, grp] of App.domCache.states) {
     if (!grp.__parts) continue;
     const s = stateById.get(id);
@@ -1055,14 +1092,21 @@ export function updateFastDOM({ statesMoved = true } = {}) {
     // A block and a port are boxes, and moving one is a handful of attribute
     // writes on the box itself — never a rebuild of the preview inside it,
     // which is keyed on the interior and cannot have changed by a drag out here.
-    if (grp.__kind === 'block') { moveBlockNode(grp, s); continue; }
-    if (grp.__kind === 'port') { movePortNode(grp, s); continue; }
+    if (grp.__kind === 'block' || grp.__kind === 'port') {
+      if (grp.__nx !== s.x || grp.__ny !== s.y) {
+        grp.__nx = s.x; grp.__ny = s.y;
+        movedNodes.push(id);
+      }
+      if (grp.__kind === 'block') moveBlockNode(grp, s); else movePortNode(grp, s);
+      continue;
+    }
     // Asked of the node rather than of the machine: zoomed out far enough the
     // sub-label is not drawn at all, and the name then belongs on the centre
     // line rather than raised to make room for something that is not there.
     const hasSub = !!p.sub;
-    setGeoAttr(p.circle, 'cx', s.x);
-    setGeoAttr(p.circle, 'cy', s.y);
+    const movedX = setGeoAttr(p.circle, 'cx', s.x);
+    const movedY = setGeoAttr(p.circle, 'cy', s.y);
+    if (movedX || movedY) movedNodes.push(id);
     if (p.ring) {
       setGeoAttr(p.ring, 'cx', s.x);
       setGeoAttr(p.ring, 'cy', s.y);
@@ -1105,6 +1149,9 @@ export function updateFastDOM({ statesMoved = true } = {}) {
     if (!p) continue;
     const geo = displayGeo(ctx.geo.get(key), dt);
     if (!geo) continue;
+    const was = edgeGrp.__shown;
+    edgeGrp.__shown = geo;
+    if (was !== geo && noteWatchesEdge(key) && !sameEdgeDrawing(was, geo)) changedEdges.push(key);
 
     setGeoAttr(p.pathEl, 'd', geo.d);
     setGeoAttr(p.hitEl, 'd', geo.d);
@@ -1121,11 +1168,10 @@ export function updateFastDOM({ statesMoved = true } = {}) {
     }
   }
 
-  // Anchored notes ride along with the states/edges they're pinned to. A note
-  // anchors to a state's x/y or to a plain chord midpoint (notes.js), never to
-  // an edge's routed path or label slot — so on a settle frame, where no state
-  // has moved, no note can have moved either.
-  if (statesMoved && typeof updateNotesDOM === 'function') updateNotesDOM();
+  // Anchored notes ride along with the nodes they're pinned to, and a leader to
+  // an edge with the edge as drawn — still easing on a settle frame. Only the
+  // notes on what this frame moved are visited.
+  if (typeof updateNotesDOM === 'function') updateNotesDOM(movedNodes, changedEdges);
   // StateMate's draft is drawn against where the real states are; a drag moves
   // them without announcing anything, so the draft is told here.
   if (statesMoved) followCanvas();
