@@ -8,7 +8,7 @@ import { getBlock } from './blocks.js';
 import { nodeIdAtScope, scopeId, viewEdgeKeyFor } from './view-graph.js';
 import { getState, getTransition, hideContextMenu, showContextMenu } from './states-transitions.js';
 import { showStatus } from './utils.js';
-import { RUN_STYLES } from './markdown.js';
+
 import { INLINE_MARKERS, insertTable, toggleInline, toggleList } from './note-editor-text.js';
 import { layoutNoteMarkdown, noteNaturalWidth } from './note-layout.js';
 

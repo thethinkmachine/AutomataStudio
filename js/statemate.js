@@ -51,7 +51,7 @@ import {
 import { StateMateError, describeSpecSize, extractSpecJSON, focusIsEmpty, machineToSpec, parseTurn, partialStringField, resolveContextRefs, scopedSource, testKindFor } from './statemate-spec.js';
 import { Change, emit } from './store.js';
 import { assistPolicy } from './exercise/model.js';
-import { autoFitLoadedMachine, createTab, fitToScreen, switchTab } from './ui.js';
+import { autoFitLoadedMachine, createTab, switchTab } from './ui.js';
 import { resetIds, showStatus } from './utils.js';
 import { applyMachineSwitch } from './view.js';
 
@@ -410,7 +410,7 @@ export function restoreCheckpoint(id) {
     // Change.GRAMMAR for the same reason: the blob carries one.
   }, Change.ALPHABET, Change.GRAPH, Change.META, Change.GRAMMAR);
 
-  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
+  autoFitLoadedMachine();
   return true;
 }
 
@@ -427,7 +427,7 @@ export function cancelStateMate() {
 
 /** Test seam. */
 export function resetStateMateRuntime() {
-  if (activeRun) { try { activeRun.controller.abort(); } catch (e) { } }
+  if (activeRun) activeRun.controller.abort();
   activeRun = null;
   suspendedAgent = null;
   clearThread();
@@ -649,8 +649,7 @@ export function applyCandidate(candidate, { openNewTab = false, title = '' } = {
     commit(() => assignCandidate(candidate), Change.ALPHABET, Change.GRAPH);
   }
 
-  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
-  else fitToScreen(true);
+  autoFitLoadedMachine();
   return checkpoint;
 }
 
@@ -816,6 +815,159 @@ const PREVIEW_INTERVAL_MS = 200;
 const MAX_OUTPUT_TOKENS = 64000;
 
 /**
+ * The streamed answer, read as it arrives: the plan, a reply's words, and —
+ * when previewing — the machine as far as it has been written.
+ */
+function makeStreamReader({ native, previewing, previewFrom, onEvent }) {
+  let lastPreviewAt = 0;
+  let lastPreviewSize = 0;
+  return full => {
+    // With native tools attached the answer is prose beside a tool call
+    // rather than an envelope, so there is no `plan` field to read and the
+    // running commentary *is* the plan. Text that opens as JSON is still the
+    // complete-spec path, which reads its plan field below. Routing it here is
+    // also what puts time to first token back on the card: the console stamps
+    // it on the first plan or reply delta, and a buffered round has neither.
+    if (native && !full.trimStart().startsWith('{')) {
+      const said = full.trim();
+      if (said) onEvent({ type: 'plan', text: said.replace(/\s+/g, ' ') });
+      return;
+    }
+    // Both fields are first in their schema for exactly this reason: they are
+    // readable a chunk or two into an answer that will not parse for several
+    // seconds yet.
+    const planned = partialStringField(full, 'plan');
+    if (planned) onEvent({ type: 'plan', text: planned.replace(/\s+/g, ' ') });
+
+    // The machine as far as it has been written. The scan is cheap; the
+    // compile is not, so it runs only when an object has finished arriving
+    // since the last frame, and at most five times a second. The throttle is
+    // spent only on a frame that drew something — a chunk with nothing whole
+    // in it must not hold back the next.
+    if (previewing) {
+      const raw = partialMachine(full);
+      const size = raw ? raw.states.length * 10000 + raw.transitions.length : 0;
+      const now = Date.now();
+      if (size && size !== lastPreviewSize && now - lastPreviewAt > PREVIEW_INTERVAL_MS) {
+        lastPreviewAt = now;
+        lastPreviewSize = size;
+        previewFrom(raw, 'stream');
+      }
+    }
+
+    // Guarded on the declared kind, or a machine carrying canvas notes —
+    // which have a "text" of their own — would stream its first note as if it
+    // were a reply.
+    if (partialStringField(full, 'kind') === 'reply') {
+      const said = partialStringField(full, 'text');
+      if (said) onEvent({ type: 'reply-delta', text: said });
+    }
+  };
+}
+
+/**
+ * The agent session a question left waiting, if this turn answers it on the
+ * canvas it was asked about; its pending prompt is restated in the live turn.
+ */
+function resumeSuspendedAgent(resumeKey, liveTurn, { agentic, onEvent }) {
+  if (suspendedAgent?.key !== resumeKey) return null;
+  const { session, signature } = suspendedAgent;
+  suspendedAgent = null;
+  // The canvas moved while the question was waiting, so the private draft was
+  // computed against an obsolete base; or Standard behaviour has been chosen
+  // since, which has no tools to resume with. Either way it cannot be resumed
+  // honestly, and is let go.
+  if (!agentic || signature !== machineSignature()) return null;
+  session.finished = null;
+  const original = session.originalPrompt
+    ? `The original request was: ${session.originalPrompt}`
+    : 'Continue the pending request';
+  const notice = `${original}\nThis answers your pending question. Continue with the same private candidate and use tools before finishing if needed.`;
+  if (typeof liveTurn?.content === 'string') liveTurn.content = `${notice}\n\n${liveTurn.content}`;
+  else if (Array.isArray(liveTurn?.content)) liveTurn.content.push({ type: 'text', text: notice });
+  onEvent({ type: 'agent', stage: 'resumed' });
+  return session;
+}
+
+/** A round of tool results, in the shape the model's provider reads them. */
+function toolResultMessages(response, results, { native, provider, session }) {
+  if (!native) {
+    return [
+      { role: 'assistant', content: response.text.slice(0, MAX_ECHO_CHARS) },
+      { role: 'user', content: toolResultsMessage(results, session) }
+    ];
+  }
+  if (provider === 'anthropic') {
+    return [
+      { role: 'assistant', content: response.rawContent || [] },
+      { role: 'user', content: results.map(result => ({ type: 'tool_result', tool_use_id: result.id, content: JSON.stringify(result) })) }
+    ];
+  }
+  return [
+    { role: 'assistant', content: response.text || null, tool_calls: response.rawToolCalls || [] },
+    ...results.map(result => ({ role: 'tool', tool_call_id: result.id, content: JSON.stringify(result) }))
+  ];
+}
+
+/**
+ * Run the spec's own tests against the candidate. A simulator that throws on
+ * a malformed machine is information, not a crash — it becomes a repair note
+ * like any other.
+ */
+function verifyAgainstTests(candidate, spec, settings, onEvent) {
+  if (!settings.verify || !spec.tests.length) return { batch: null, failures: [] };
+  onEvent({ type: 'stage', stage: 'verify', count: spec.tests.length });
+  try {
+    const batch = verifyCandidate(candidate, spec.tests);
+    return { batch, failures: describeFailures(batch, spec.tests, candidate.machine) };
+  } catch (err) {
+    return { batch: null, failures: [{ kind: 'crash', detail: err.message }] };
+  }
+}
+
+/**
+ * Why the canvas the answer was built against is not the one on screen any
+ * more, or ''. Writing anyway replaced a different tab's machine with this
+ * one, or threw away whatever the reader did while waiting, without a word —
+ * so even `auto` stops and asks. A build into a tab of its own replaces
+ * nothing, and is exempt for the reason scopeGuard exempts it.
+ */
+function canvasMovedSince(homeWorkspace, startSignature, openNewTab) {
+  if (openNewTab) return '';
+  if ((activeWorkspaceId ?? null) !== homeWorkspace) return 'you switched tabs while it was being written — Apply takes you back to the tab it was made for';
+  if (machineSignature() !== startSignature) return 'the canvas changed while it was being written, and applying it would replace those edits';
+  return '';
+}
+
+/** Why a finished machine is held as a proposal rather than drawn, or ''. */
+function holdReason({ authority, session, moved, overreach }) {
+  if (authority === 'ask' || authority === 'propose') return authority;
+  if (session?.forceProposal) return 'agent';
+  if (moved) return 'moved';
+  return overreach ? 'scope' : '';
+}
+
+/**
+ * The end of a run whose answer was prose. It leaves by a door that does not
+ * pass compile, lint, verify or apply, so nothing of it can reach the canvas.
+ */
+function finishWithReply({ text, reply, waiting = false, threadHome, facts, onEvent }) {
+  const userTurn = rememberTurn({ role: 'user', text }, threadHome);
+  const assistantTurn = rememberTurn({ role: 'assistant', kind: 'reply', text: reply }, threadHome);
+  // The ids are how the console attaches its retry, branch and delete
+  // controls to the thread; without them its entries and the thread are two
+  // lists that happen to be the same length.
+  onEvent({ type: 'turn', userId: userTurn.id, assistantId: assistantTurn.id });
+  const replied = {
+    status: 'replied', kind: 'reply', reply, waiting,
+    ...facts,
+    turnId: userTurn.id, answerId: assistantTurn.id, thread: getThread()
+  };
+  onEvent({ type: 'done', result: replied });
+  return replied;
+}
+
+/**
  * One prompt, start to finish.
  *
  * @param {object}   opts
@@ -932,8 +1084,6 @@ export async function runStateMate({
     // inside a block either, where the canvas is drawing a projection whose
     // coordinates a flat candidate does not share.
     const previewing = !tutor && !scoped;
-    let lastPreviewAt = 0;
-    let lastPreviewSize = 0;
     const emitDraft = (candidate, source) => {
       if (!candidate) return;
       onEvent({ type: 'draft', candidate, live: before, source });
@@ -991,28 +1141,15 @@ export async function runStateMate({
     let usage = null, model = null, repaired = false, timing = null;
     let lastFailures = [], lastFindings = [];
     const resumeKey = currentThreadKey();
-    let agentSession = agentic &&
-      suspendedAgent?.key === resumeKey && suspendedAgent.signature === machineSignature()
-      ? suspendedAgent.session
-      : null;
-    if (agentSession) {
-      suspendedAgent = null;
-      agentSession.finished = null;
-      const original = agentSession.originalPrompt
-        ? `The original request was: ${agentSession.originalPrompt}`
-        : 'Continue the pending request';
-      const notice = `${original}\nThis answers your pending question. Continue with the same private candidate and use tools before finishing if needed.`;
-      const live = messages[messages.length - 1];
-      if (typeof live?.content === 'string') live.content = `${notice}\n\n${live.content}`;
-      else if (Array.isArray(live?.content)) live.content.push({ type: 'text', text: notice });
-      onEvent({ type: 'agent', stage: 'resumed' });
-    } else if (suspendedAgent?.key === resumeKey) {
-      // The canvas moved while the question was waiting; the private draft was
-      // computed against an obsolete base, or Standard behavior was selected.
-      // Either way it cannot be resumed honestly.
-      suspendedAgent = null;
-    }
+    // A question the agent left waiting is answered by this turn.
+    let agentSession = resumeSuspendedAgent(resumeKey, messages[messages.length - 1], { agentic, onEvent });
     let agentSteps = 0;
+    // What every result reports about the run, however it ends.
+    const runFacts = () => ({
+      imagesDropped: wanted.length - pictures.length,
+      usage, model, timing, retries, repaired,
+      agent: agentSession ? { steps: agentSteps, tools: agentSession.calls.length } : null
+    });
 
     // Two self-heals, each allowed once, neither of which spends a repair
     // attempt: they are not about the quality of an answer, they are about the
@@ -1020,6 +1157,8 @@ export async function runStateMate({
     let maxTokens = BASE_MAX_TOKENS;
     let grewCap = false, trimmed = false;
     const retries = [];
+
+    const readStream = makeStreamReader({ native: nativeTools.length > 0, previewing, previewFrom, onEvent });
 
     /** One request, with the two size self-heals folded in. */
     const ask = async () => {
@@ -1043,49 +1182,7 @@ export async function runStateMate({
                 message: info.error?.message
               });
             },
-            onText: full => {
-              // With native tools attached the answer is prose beside a tool
-              // call rather than an envelope, so there is no `plan` field to
-              // read and the running commentary *is* the plan. Text that opens
-              // as JSON is still the complete-spec path, which reads its plan
-              // field below. Routing it here is also what puts time to first
-              // token back on the card: the console stamps it on the first
-              // plan or reply delta, and a buffered round has neither.
-              if (nativeTools.length && !full.trimStart().startsWith('{')) {
-                const said = full.trim();
-                if (said) onEvent({ type: 'plan', text: said.replace(/\s+/g, ' ') });
-                return;
-              }
-              // Both fields are first in their schema for exactly this reason:
-              // they are readable a chunk or two into an answer that will not
-              // parse for several seconds yet.
-              const planned = partialStringField(full, 'plan');
-              if (planned) onEvent({ type: 'plan', text: planned.replace(/\s+/g, ' ') });
-
-              // The machine as far as it has been written. The scan is cheap;
-              // the compile is not, so it runs only when an object has finished
-              // arriving since the last frame, and at most five times a second.
-              // The throttle is spent only on a frame that drew something — a
-              // chunk with nothing whole in it must not hold back the next.
-              if (previewing) {
-                const raw = partialMachine(full);
-                const size = raw ? raw.states.length * 10000 + raw.transitions.length : 0;
-                const now = Date.now();
-                if (size && size !== lastPreviewSize && now - lastPreviewAt > PREVIEW_INTERVAL_MS) {
-                  lastPreviewAt = now;
-                  lastPreviewSize = size;
-                  previewFrom(raw, 'stream');
-                }
-              }
-
-              // Guarded on the declared kind, or a machine carrying canvas
-              // notes — which have a "text" of their own — would stream its
-              // first note as if it were a reply.
-              if (partialStringField(full, 'kind') === 'reply') {
-                const said = partialStringField(full, 'text');
-                if (said) onEvent({ type: 'reply-delta', text: said });
-              }
-            }
+            onText: readStream
           });
         } catch (err) {
           if (err?.code === 'truncated' && !grewCap && maxTokens < MAX_OUTPUT_TOKENS) {
@@ -1166,17 +1263,7 @@ export async function runStateMate({
         const finished = agentFinishedTurn(agentSession);
         if (finished?.kind === 'reply') {
           if (finished.waiting) suspendedAgent = { key: resumeKey, signature: startSignature, session: agentSession };
-          const userTurn = rememberTurn({ role: 'user', text }, threadHome);
-          const assistantTurn = rememberTurn({ role: 'assistant', kind: 'reply', text: finished.text }, threadHome);
-          onEvent({ type: 'turn', userId: userTurn.id, assistantId: assistantTurn.id });
-          const replied = {
-            status: 'replied', kind: 'reply', reply: finished.text,
-            waiting: !!finished.waiting, usage, model, timing, repaired,
-            agent: { steps: agentSteps, tools: agentSession.calls.length },
-            turnId: userTurn.id, answerId: assistantTurn.id, thread: getThread()
-          };
-          onEvent({ type: 'done', result: replied });
-          return replied;
+          return finishWithReply({ text, reply: finished.text, waiting: !!finished.waiting, threadHome, facts: runFacts(), onEvent });
         }
         if (finished?.kind === 'machine') {
           turn = { kind: 'machine', spec: finished.spec };
@@ -1188,32 +1275,7 @@ export async function runStateMate({
           // a one-shot answer. The candidate session is intentionally not
           // installed into App here; it has already been sandboxed by tools.
         } else {
-          if (nativeToolCalls) {
-            if (settings.provider === 'anthropic') {
-              messages.push(
-                { role: 'assistant', content: response.rawContent || [] },
-                { role: 'user', content: results.map(result => ({
-                  type: 'tool_result',
-                  tool_use_id: result.id,
-                  content: JSON.stringify(result)
-                })) }
-              );
-            } else {
-              messages.push(
-                { role: 'assistant', content: response.text || null, tool_calls: response.rawToolCalls || [] },
-                ...results.map(result => ({
-                  role: 'tool',
-                  tool_call_id: result.id,
-                  content: JSON.stringify(result)
-                }))
-              );
-            }
-          } else {
-            messages.push(
-              { role: 'assistant', content: response.text.slice(0, MAX_ECHO_CHARS) },
-              { role: 'user', content: toolResultsMessage(results, agentSession) }
-            );
-          }
+          messages.push(...toolResultMessages(response, results, { native: !!nativeToolCalls, provider: settings.provider, session: agentSession }));
           continue;
         }
       }
@@ -1272,27 +1334,7 @@ export async function runStateMate({
       // apply. No candidate is ever built, so there is nothing that could
       // reach the canvas even by accident.
       if (turn.kind === 'reply') {
-        const userTurn = rememberTurn({ role: 'user', text }, threadHome);
-        const assistantTurn = rememberTurn({ role: 'assistant', kind: 'reply', text: turn.text }, threadHome);
-        // The ids are how the console attaches its retry, branch and delete
-        // controls to the thread; without them its entries and the thread are
-        // two lists that happen to be the same length.
-        onEvent({ type: 'turn', userId: userTurn.id, assistantId: assistantTurn.id });
-        const replied = {
-          status: 'replied',
-          kind: 'reply',
-          reply: turn.text,
-          imagesDropped: wanted.length - pictures.length,
-          usage, model, timing,
-          retries,
-          repaired,
-          agent: agentSession ? { steps: agentSteps, tools: agentSession.calls.length } : null,
-          turnId: userTurn.id,
-          answerId: assistantTurn.id,
-          thread: getThread()
-        };
-        onEvent({ type: 'done', result: replied });
-        return replied;
+        return finishWithReply({ text, reply: turn.text, threadHome, facts: runFacts(), onEvent });
       }
 
       spec = turn.spec;
@@ -1324,20 +1366,7 @@ export async function runStateMate({
       lastFindings = lint.fatal;
 
       // ── 6 · verify ──────────────────────────────────────────
-      batch = null;
-      lastFailures = [];
-      if (settings.verify && spec.tests.length) {
-        onEvent({ type: 'stage', stage: 'verify', count: spec.tests.length });
-        try {
-          batch = verifyCandidate(candidate, spec.tests);
-          lastFailures = describeFailures(batch, spec.tests, candidate.machine);
-        } catch (err) {
-          // A simulator that throws on a malformed machine is information,
-          // not a crash — it becomes a repair note like any other.
-          lastFailures = [{ kind: 'crash', detail: err.message }];
-          batch = null;
-        }
-      }
+      ({ batch, failures: lastFailures } = verifyAgainstTests(candidate, spec, settings, onEvent));
       guard();
 
       const needsRepair = lint.fatal.length || lastFailures.length;
@@ -1389,22 +1418,8 @@ export async function runStateMate({
       && settings.newTabForBuild;
 
     const overreach = scopeGuard(diff, before, { intent: resolvedIntent, openNewTab });
-    // The canvas this was built against is not the one on screen any more.
-    // Writing anyway replaced a different tab's machine with this one, or
-    // threw away whatever the reader did while waiting, without a word — so
-    // even `auto` stops and asks. A build into a tab of its own replaces
-    // nothing, and is exempt for the reason scopeGuard exempts it.
-    const moved = openNewTab ? ''
-      : (activeWorkspaceId ?? null) !== homeWorkspace
-        ? 'you switched tabs while it was being written — Apply takes you back to the tab it was made for'
-        : machineSignature() !== startSignature
-          ? 'the canvas changed while it was being written, and applying it would replace those edits'
-          : '';
-    const hold = authority === 'ask' ? 'ask'
-      : authority === 'propose' ? 'propose'
-      : agentSession?.forceProposal ? 'agent'
-      : moved ? 'moved'
-      : (overreach ? 'scope' : '');
+    const moved = canvasMovedSince(homeWorkspace, startSignature, openNewTab);
+    const hold = holdReason({ authority, session: agentSession, moved, overreach });
 
     // One stage either way — the last step of a run is deciding what happens
     // to the candidate, and `hold` says which way it went. A stage id the UI

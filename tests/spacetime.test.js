@@ -1018,3 +1018,19 @@ test('a whole-run picture of narrow tapes keeps each tape\'s label to itself', (
   for (let i = 1; i <= model.tapes.length; i++) assert.ok(texts.includes(`T${i}`), `T${i} keeps its name`);
   assert.ok(!texts.some(t => t.includes('bounded left')), 'the description is dropped where it would run into the next tape');
 });
+
+test('the SVG surface saves and restores drawing state, as a canvas does', () => {
+  const ctx = context.svgContext(10, 10);
+  ctx.fillStyle = '#111';
+  ctx.globalAlpha = 0.5;
+  ctx.save();
+  ctx.fillStyle = '#222';
+  ctx.globalAlpha = 1;
+  ctx.setLineDash([2, 2]);
+  // It used to copy the whole object, and restore() threw assigning `size`.
+  ctx.restore();
+  assert.equal(ctx.fillStyle, '#111');
+  assert.equal(ctx.globalAlpha, 0.5);
+  assert.deepEqual(ctx._dash, []);
+  assert.equal(typeof ctx.size, 'number');
+});

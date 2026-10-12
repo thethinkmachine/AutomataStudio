@@ -1918,7 +1918,7 @@ function settingsTabs() {
 function openAppSettings(tabId = '') {
   closeHeadMenu();
   openSettingsModal();
-  if (tabId && typeof switchSettingsTab === 'function') switchSettingsTab(tabId);
+  if (tabId) switchSettingsTab(tabId);
 }
 
 const Commands = [
@@ -2321,7 +2321,7 @@ function revealRef(ref) {
   if (ref.kind === 'states') {
     App.selectedStates = new Set(ref.ids);
     App.selectedTransitions.clear();
-    if (ref.ids.length === 1 && typeof hlState === 'function') hlState(ref.ids[0]);
+    if (ref.ids.length === 1) hlState(ref.ids[0]);
   } else if (ref.kind === 'transitions') {
     App.selectedTransitions = new Set(ref.ids);
     App.selectedStates.clear();

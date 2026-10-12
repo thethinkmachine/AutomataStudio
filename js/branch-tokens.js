@@ -411,7 +411,8 @@ function fly(tree, p, tr, dur) {
   const grp = key && (App.domCache.transitions.get(key) || null);
   const pathEl = grp && grp.querySelector && grp.querySelector('.tarr');
   let len = 0;
-  try { len = pathEl && layer ? pathEl.getTotalLength() : 0; } catch (e) { }
+  // A path that is not rendered has no length, and some engines throw for it.
+  try { len = pathEl && layer ? pathEl.getTotalLength() : 0; } catch { /* stays 0 */ }
   if (!len) { land(p); return; }
   const dot = takeDot(layer, tree, p.id, tr);
   dot.classList.add('is-flying');

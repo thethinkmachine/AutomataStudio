@@ -135,6 +135,11 @@ export function isPushdownTransducer(m = App.machine) {
 // "nondeterministic families are exempt" rule — and a list that has to be
 // read in the right order is a list that will eventually be read in the
 // wrong one, letting the editor draw an NBA and call it a DBA.
+/** DFA, NFA or ε-NFA: one head, one way, no store. */
+export function isOneWayFA(m = App.machine) {
+  return machineDef(m)?.family === 'finite';
+}
+
 export function hasSingleValuedDelta(m = App.machine) {
   return !!machineDef(m)?.deterministicDelta;
 }

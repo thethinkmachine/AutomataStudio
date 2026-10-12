@@ -20,6 +20,7 @@ import { initSpeedControl } from './speed-control.js';
 import { initCanvasMotion } from './canvas-motion.js';
 import { installActions } from './actions.js';
 import { startAnalytics } from './analytics.js';
+import { readFlag, readPref } from './prefs.js';
 
 // ══════════════════════════════════════════════════════════════════
 //  INIT
@@ -47,10 +48,8 @@ renderSigma(); renderGamma(); renderOutputAlpha();
 updateLPanel();
 App.stackAlpha = new Set([App.config.sym.stackBottom]);
 initSpeedControl();
-try {
-  const st = localStorage.getItem('automata-shape-tool');
-  if (st === 'rect' || st === 'divider') App.lastShapeTool = st;
-} catch (e) { }
+const shapeTool = readPref('automata-shape-tool');
+if (shapeTool === 'rect' || shapeTool === 'divider') App.lastShapeTool = shapeTool;
 setMachine('DFA'); setTool('pointer'); setView('build');
 // No boot snapshot: App.history holds states you can go *back* to, and at boot
 // there is nothing behind the empty canvas. An entry here would make the first
@@ -58,15 +57,12 @@ setMachine('DFA'); setTool('pointer'); setView('build');
 // Attach the minimap's pointer, wheel and keyboard navigation.
 initMinimap();
 // Restore localStorage preferences
-try {
-  if (localStorage.getItem('automata-minimap') === '0') toggleMinimap();
-  if (localStorage.getItem('automata-lpanel-pinned') === '0') toggleLPanelPin();
-  if (localStorage.getItem('automata-rpanel-pinned') === '0') toggleRPanelPin();
-  const wz = localStorage.getItem('automata-wheel-zoom');
-  if (wz !== null) App.config.wheelZoom = wz === '1';
-  if (localStorage.getItem('automata-snap-grid') === '1') toggleSnapToGrid(true);
-  if (typeof initToolbarCollapse === 'function') initToolbarCollapse();
-} catch (e) { }
+if (!readFlag('automata-minimap', true)) toggleMinimap();
+if (!readFlag('automata-lpanel-pinned', true)) toggleLPanelPin();
+if (!readFlag('automata-rpanel-pinned', true)) toggleRPanelPin();
+App.config.wheelZoom = readFlag('automata-wheel-zoom', App.config.wheelZoom);
+if (readFlag('automata-snap-grid')) toggleSnapToGrid(true);
+initToolbarCollapse();
 // Undo/redo start dimmed; edits and loads keep them current from history.js.
 syncHistoryButtons();
 // A fitted machine stays fitted as the overlays over it change.
@@ -76,54 +72,52 @@ initCanvasMotion();
 // What Save, Save As and Open mean differs between the website and the desktop
 // build, and the labels have to say which — see SAYING WHICH HOST THIS IS in
 // js/persistence.js. Written once, because the answer cannot change.
-if (typeof syncDocumentLabels === 'function') syncDocumentLabels();
+syncDocumentLabels();
 // And the shortcut labels, for the same reason: `⌘Z` on a Mac, `Ctrl+Z`
 // everywhere else, from the one spec each label carries. See js/kbd.js.
 localizeKbdLabels();
-if (typeof initMobilePanels === 'function') initMobilePanels();
-if (typeof initLPanelSections === 'function') initLPanelSections();
-if (typeof initRPanelSections === 'function') initRPanelSections();
+initMobilePanels();
+initLPanelSections();
+initRPanelSections();
 // After the collapse state, since the grips go into headers this may reveal.
 initPanelSectionReorder();
 // And after the reorder: a section restored to a window over the canvas is one
 // `applySectionOrder` must already know to leave out of the panel.
 initPanelFloat();
-if (typeof initPanelResizers === 'function') initPanelResizers();
-if (typeof initPanelTabs === 'function') initPanelTabs();
+initPanelResizers();
+initPanelTabs();
 // After the tabs: the mobile sheet's head carries a strip of every tab, and
 // `applyPanelLayout` is what decides which panel each one is on.
-if (typeof initMobilePanelBar === 'function') initMobilePanelBar();
-if (typeof initCanvasResizeObserver === 'function') initCanvasResizeObserver();
-if (typeof initDefBoxOverflowObserver === 'function') initDefBoxOverflowObserver();
-if (typeof initLangClaimOverflowObserver === 'function') initLangClaimOverflowObserver();
+initMobilePanelBar();
+initCanvasResizeObserver();
+initDefBoxOverflowObserver();
+initLangClaimOverflowObserver();
 // Restoring now reads IndexedDB first, so it is asynchronous. Everything that
 // depends on the restored workspaces — the empty-state guard, the autosave
 // timer, and the shared-link import that may overwrite them — has to run after
 // it resolves, or it would race a still-empty Workspaces array.
 export async function finishBoot() {
   if (Workspaces.length === 0) initTabs(); // Guard for fresh launch
-  if (typeof restartAutosaveTimer === 'function') restartAutosaveTimer();
+  restartAutosaveTimer();
   // setMachine('DFA') above no-ops at boot because DFA is already the default,
   // so nothing has refreshed the Language section yet — without this it would
   // sit on its static placeholder markup until the first edit.
-  if (typeof updateRPanel === 'function') updateRPanel();
+  updateRPanel();
   // The saved block definitions. Read once at boot and then only when the
   // library itself changes (a save, a delete) — it is an IndexedDB round trip,
   // and nothing about drawing the machine can alter it.
-  if (typeof renderBlockLibrary === 'function') {
-    Promise.resolve(renderBlockLibrary()).catch(() => { });
-  }
+  Promise.resolve(renderBlockLibrary()).catch(() => { });
 
   // Reading the link is asynchronous now that the payload is compressed; the
   // whole of finishBoot already runs off a promise, so awaiting it here costs
   // nothing and keeps the status hint timed against what actually happened.
-  const sharedLinkLoaded = typeof loadSharedLinkFromURL === 'function' && await loadSharedLinkFromURL();
+  const sharedLinkLoaded = await loadSharedLinkFromURL();
   // The workspaces are restored and the link, if there was one, has been read.
   // Only now is it safe to let a file the OS handed us onto the canvas: on a
   // cold launch that path arrives while electron-bridge.js is being evaluated,
   // long before any of the above, and the restore would land on top of it. See
   // THE BOOT GATE in js/persistence.js.
-  if (typeof markBootRestored === 'function') markBootRestored();
+  markBootRestored();
   // A library link — #lib=<id> from the website's "Open" button, #library=<id>
   // from a shared listing — is read after the restore for the reason the file
   // gate above exists: opening it places a tab, and the restore would otherwise
@@ -141,9 +135,4 @@ export async function finishBoot() {
   setTimeout(() => showStatus(bootHint), sharedLinkLoaded ? 3200 : 600);
 }
 
-if (typeof loadBackup === 'function') {
-  Promise.resolve(loadBackup()).catch(e => console.error('Backup load failed:', e)).then(finishBoot);
-} else {
-  initTabs(); // Create initial tab if no backup logic
-  finishBoot();
-}
+Promise.resolve(loadBackup()).catch(e => console.error('Backup load failed:', e)).then(finishBoot);

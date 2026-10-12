@@ -100,13 +100,13 @@ export function resetWorkspace() {
   App.exercise = exercise;
   App.lexer = lexer;
   clearTransientPointers();
-  if (typeof showExampleCard === 'function') showExampleCard(null);
+  showExampleCard(null);
   resetSim();
   // The machine type is part of what was reset, so the panels, badges and
   // per-machine sections have to be told — emit(GRAPH) redraws the diagram
   // but does not re-shape the editor around a different machine.
-  if (typeof applyMachineSwitch === 'function') applyMachineSwitch(App.machine);
-  if (typeof applyCamera === 'function') applyCamera();
+  applyMachineSwitch(App.machine);
+  applyCamera();
   emit(Change.ALPHABET, Change.META, Change.GRAMMAR, Change.EXERCISE, Change.LEXER, Change.GRAPH, Change.CANVAS);
 }
 
@@ -149,7 +149,7 @@ export function performClear() {
   // same answer arrived at eagerly rather than a second policy.
   App.blocks = []; App.blockN = 0; App.scope = [];
   clearTransientPointers();
-  if (typeof showExampleCard === 'function') showExampleCard(null);
+  showExampleCard(null);
   resetSim(); emit(Change.GRAPH);
 }
 

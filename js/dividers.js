@@ -655,8 +655,8 @@ export function showShapeToolMenu(e) {
   e.preventDefault();
   e.stopPropagation();
   hideContextMenu();
-  if (typeof hideCanvasContextMenu === 'function') hideCanvasContextMenu();
-  if (typeof hideSaveMenu === 'function') hideSaveMenu();
+  hideCanvasContextMenu();
+  hideSaveMenu();
   const m = $('shape-tool-menu');
   if (!m) return;
   m.querySelectorAll('.ctx-i').forEach(el => {

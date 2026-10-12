@@ -1128,9 +1128,7 @@ export function importWorkspaceState(data) {
     setR(App.config.radius);
   }
 
-  if (typeof normalizeBoundarySymbolsForMachine === 'function') {
-    normalizeBoundarySymbolsForMachine(App.machine);
-  }
+  normalizeBoundarySymbolsForMachine(App.machine);
 }
 
 // ══════════════════════════════════════════════════════════════════

@@ -218,7 +218,7 @@ export function saveStateMateSettings(patch) {
 export function resetStateMateSettings() {
   settings = { ...DEFAULTS };
   loaded = true;
-  try { localStorage.removeItem(STORAGE_KEY); } catch (e) { }
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* storage unavailable: nothing was kept */ }
   return settings;
 }
 
@@ -572,7 +572,7 @@ function readWholeResponse(json, provider) {
     rawToolCalls: message.tool_calls || [],
     toolCalls: (message.tool_calls || []).map(call => {
       let argumentsValue = {};
-      try { argumentsValue = JSON.parse(call.function?.arguments || '{}'); } catch (_error) { }
+      try { argumentsValue = JSON.parse(call.function?.arguments || '{}'); } catch { /* malformed: the tool is called with none */ }
       return { id: call.id, name: call.function?.name || '', arguments: argumentsValue };
     }),
     usage: { input: json.usage?.prompt_tokens ?? null, output: json.usage?.completion_tokens ?? null },
@@ -740,7 +740,7 @@ function createSSEReader(provider, onText) {
       rawToolCalls,
       toolCalls: rawToolCalls.map(call => {
         let argumentsValue = {};
-        try { argumentsValue = JSON.parse(call.function?.arguments || '{}'); } catch (e) { }
+        try { argumentsValue = JSON.parse(call.function?.arguments || '{}'); } catch { /* malformed: the tool is called with none */ }
         return { id: call.id, name: call.function?.name || '', arguments: argumentsValue };
       })
     };

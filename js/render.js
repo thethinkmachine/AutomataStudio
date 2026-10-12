@@ -1,4 +1,5 @@
 import { defineActions } from './action-registry.js';
+import { capturePointer } from './pointer-capture.js';
 import { animEnabled, beginPass, claimGroup, dropTrack, easeTrack, endPass, requestSettle, setSettlePainter, snapTrack } from './anim.js';
 import { applyEdgeDirectionHighlight, clearEdgeDirectionHighlight, clearSelection, onPortDown, resetPortPlacement, onStateDown, wrap } from './canvas.js';
 import { renderDividers } from './dividers.js';
@@ -58,13 +59,13 @@ export function renderAll() {
   const cfg = getMachineConfig(App.machine);
   $('mach-badge').className = `badge ${cfg.badge}`;
   $('mach-badge').textContent = cfg.label;
-  if (typeof pruneNoteAnchors === 'function') pruneNoteAnchors();
-  if (typeof renderDividers === 'function') renderDividers();
+  pruneNoteAnchors();
+  renderDividers();
   // One cull decision for the whole pass, so the states and the edges cannot
   // disagree about where the screen is. See js/viewport.js.
   const view = cullViewport();
   renderTransitions(view); renderStates(view);
-  if (typeof renderNotes === 'function') renderNotes();
+  renderNotes();
   // domCache.states, .transitions and .notes are the renderers' own node
   // registries — renderStates, renderTransitions and renderNotes add and evict
   // entries as they diff, so clearing and re-querying here would throw away the
@@ -72,8 +73,8 @@ export function renderAll() {
   // module, so their cache is still refreshed from the DOM.
   App.domCache.dividers.clear();
   document.querySelectorAll('.divider-g').forEach(el => App.domCache.dividers.set(el.getAttribute('data-divider-id'), el));
-  if (App.activeNoteId && typeof highlightNoteAnchors === 'function') highlightNoteAnchors(App.activeNoteId, true);
-  if (typeof applyEdgeDirectionHighlight === 'function') applyEdgeDirectionHighlight();
+  if (App.activeNoteId) highlightNoteAnchors(App.activeNoteId, true);
+  applyEdgeDirectionHighlight();
   followCanvas();
 }
 
@@ -428,7 +429,7 @@ function onEdgeDown(e, key, edgeGrp, { bend = true } = {}) {
     const multi = e.shiftKey || e.ctrlKey || e.metaKey;
     // Focus moved to an edge — the highlighted state is no longer the thing
     // being read, so its lit edges would just be stale clutter.
-    if (typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
+    clearEdgeDirectionHighlight();
     if (!multi && !isSel) {
       // An edge is an object like any other: taking it drops whatever else
       // was selected, notes and dividers included.
@@ -448,7 +449,7 @@ function onEdgeDown(e, key, edgeGrp, { bend = true } = {}) {
     // bend gesture; this avoids turning an ordinary tap into a drag.
     if (bend && from.id !== to.id && e.pointerType !== 'touch') {
       App.dragCurve = { grp, from, to };
-      try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
+      capturePointer(wrap, e.pointerId);
     }
   }
 }
@@ -613,7 +614,7 @@ function syncCurveHandle(edgeGrp, key, geo, selected) {
       const info = edgeGroupFor(key);
       if (!info) return;
       App.dragCurve = { grp: info.grp, from: info.from, to: info.to };
-      try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
+      capturePointer(wrap, e.pointerId);
     });
     edgeGrp.appendChild(handle);
     parts.handle = handle;
@@ -1171,7 +1172,7 @@ export function updateFastDOM({ statesMoved = true } = {}) {
   // Anchored notes ride along with the nodes they're pinned to, and a leader to
   // an edge with the edge as drawn — still easing on a settle frame. Only the
   // notes on what this frame moved are visited.
-  if (typeof updateNotesDOM === 'function') updateNotesDOM(movedNodes, changedEdges);
+  updateNotesDOM(movedNodes, changedEdges);
   // StateMate's draft is drawn against where the real states are; a drag moves
   // them without announcing anything, so the draft is told here.
   if (statesMoved) followCanvas();
@@ -2304,8 +2305,8 @@ export function updateLPanel() {
     });
   }
   syncTransViewToggle();
-  if (typeof filterStates === 'function') filterStates();
-  if (typeof filterTransitions === 'function') filterTransitions();
+  filterStates();
+  filterTransitions();
   updateLPanelSectionMeta();
 }
 
@@ -2317,7 +2318,7 @@ export function updateRPanel() {
   updateRegex();
   // The extension of L and the clickable tuple line both depend on the
   // two above, so they refresh last.
-  if (typeof renderLanguagePanel === 'function') renderLanguagePanel();
+  renderLanguagePanel();
 }
 
 // GNFA State Elimination (textbook: add new start + new accept, eliminate interior)
@@ -2654,7 +2655,7 @@ export function updateFormalDef() {
   }
   defBox.innerHTML = txt;
   _defBoxPainted = txt;
-  if (typeof triggerMath === 'function') triggerMath(defBox);
+  triggerMath(defBox);
   updateDefBoxOverflowShadow();
 }
 

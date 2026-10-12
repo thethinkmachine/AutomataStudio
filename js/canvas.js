@@ -1,4 +1,6 @@
 import { defineActions } from './action-registry.js';
+import { capturePointer, releasePointer } from './pointer-capture.js';
+import { writeFlag } from './prefs.js';
 import { settleAll } from './anim.js';
 import { beginDividerDraw, dividerMid, dividerToolKind, dragDividerEndpointTo, dragSelectedDividersTo, endDividerEndpointDrag, finishDividerDraw, getDivider, includeDividerBounds, syncDividerSelectionClasses, updateDividerDraw, updateOneDividerDOM } from './dividers.js';
 import { exportDownload, exportFilename } from './export-core.js';
@@ -82,7 +84,7 @@ export function cancelCanvasManipulationForTouch() {
   App.dragOffsets = null;
   App.dragCurve = null;
   App.dragPendingSnapshot = false;
-  if (typeof clearAlignGuides === 'function') clearAlignGuides();
+  clearAlignGuides();
 }
 
 export function beginTouchCameraGesture() {
@@ -157,7 +159,7 @@ export function captureTouchPointerEnd(e) {
     e.stopPropagation();
     if (touchPointers.size < 2) {
       touchCameraGesture = null;
-      if (typeof markDirty === 'function') markDirty();
+      markDirty();
     }
   }
 }
@@ -263,7 +265,7 @@ export function minZoom() {
   });
   let z = base;
   if (Number.isFinite(minX)) {
-    const vis = typeof visibleCanvasBox === 'function' ? visibleCanvasBox() : null;
+    const vis = visibleCanvasBox();
     const cw = Math.max(1, (vis?.w || wrap.clientWidth || 800) - 180);
     const ch = Math.max(1, (vis?.h || wrap.clientHeight || 600) - 180);
     const fit = Math.min(cw / Math.max(1, maxX - minX + pad * 2),
@@ -377,7 +379,7 @@ wrap.addEventListener('wheel', e => {
   // scroll doesn't trigger a burst of tab re-renders. The minimap is not marked
   // here — applyCamera above already told it, on every tick.
   _wheelIdleTimer = setTimeout(() => {
-    if (typeof markDirty === 'function') markDirty();
+    markDirty();
   }, 150);
 }, { passive: false });
 
@@ -418,7 +420,7 @@ wrap.addEventListener('pointerdown', e => {
   const additive = App.tool === 'pointer' && (e.shiftKey || e.ctrlKey || e.metaKey);
   if (!additive && App.tool !== 'trans') clearSelection();
 
-  if (typeof dividerToolKind === 'function' && dividerToolKind()) {
+  if (dividerToolKind()) {
     beginDividerDraw(e);
     wrap.setPointerCapture(e.pointerId);
     e.preventDefault();
@@ -467,7 +469,7 @@ export function startPan(e) {
   isPanning = true; panStart = { x: e.clientX, y: e.clientY }; camStart = { x: App.cam.x, y: App.cam.y };
   panPointerId = e.pointerId;
   wrap.classList.add('panning');
-  try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
+  capturePointer(wrap, e.pointerId);
   e.preventDefault();
 }
 
@@ -560,7 +562,7 @@ export function toggleSnapToGrid(force) {
     btn.classList.toggle('active', App.config.snapToGrid);
     btn.setAttribute('aria-pressed', App.config.snapToGrid ? 'true' : 'false');
   }
-  try { localStorage.setItem('automata-snap-grid', App.config.snapToGrid ? '1' : '0'); } catch (e) { }
+  writeFlag('automata-snap-grid', App.config.snapToGrid);
   showStatus(App.config.snapToGrid ? 'Snap to grid: on' : 'Snap to grid: off');
 }
 
@@ -701,7 +703,7 @@ export function handlePointerMove(e) {
     }
     dragSelectedNotesTo(pt);
     dragSelectedDividersTo(pt);
-    if (typeof scheduleFastDOM === 'function') scheduleFastDOM(); else renderAll();
+    scheduleFastDOM();
     checkAutoPan(e);
     return;
   }
@@ -716,7 +718,7 @@ export function handlePointerMove(e) {
     return;
   }
   if (App.resizeNoteId) {
-    if (typeof resizeNoteTo === 'function') resizeNoteTo(e);
+    resizeNoteTo(e);
     return;
   }
   if (App.dragCurve) {
@@ -731,7 +733,7 @@ export function handlePointerMove(e) {
       if (dx || dy) {
         const angle = Math.atan2(dy, dx);
         grp.ts.forEach(t => t.loopAngle = angle);
-        if (typeof scheduleFastDOM === 'function') scheduleFastDOM(); else renderAll();
+        scheduleFastDOM();
       }
       return;
     }
@@ -742,7 +744,7 @@ export function handlePointerMove(e) {
       const cx = (from.x + to.x) / 2, cy = (from.y + to.y) / 2;
       const proj = (pt.x - cx) * px + (pt.y - cy) * py;
       grp.ts.forEach(t => t.curve = proj);
-      if (typeof scheduleFastDOM === 'function') scheduleFastDOM(); else renderAll();
+      scheduleFastDOM();
     }
     return;
   }
@@ -768,10 +770,10 @@ export function endPointerInteractions() {
   stopAutoPan();
   if (isPanning) {
     isPanning = false; wrap.classList.remove('panning');
-    if (panPointerId !== null) { try { wrap.releasePointerCapture(panPointerId); } catch (e) { } }
+    if (panPointerId !== null) { releasePointer(wrap, panPointerId); }
     panPointerId = null;
     scheduleMinimap();
-    if (typeof markDirty === 'function') markDirty();
+    markDirty();
     return;
   }
   if (App.dragPort) {
@@ -818,7 +820,7 @@ export function endPointerInteractions() {
     scheduleMinimap();
   }
   if (App.resizeNoteId) {
-    if (typeof endNoteResize === 'function') endNoteResize();
+    endNoteResize();
     scheduleMinimap();
   }
 }
@@ -979,7 +981,7 @@ export function onPortDown(e, id) {
   // draggable thing on this canvas already follows, and a second copy of it is
   // a second thing to get wrong.
   App.dragPendingSnapshot = true;
-  try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
+  capturePointer(wrap, e.pointerId);
 }
 
 /**
@@ -1160,7 +1162,7 @@ export function onStateDown(e, id) {
     // workspace dirty (and pushed a no-op undo step) for every plain click.
     // handlePointerMove takes it on the first real movement instead.
     beginSelectionDrag(svgPt(e));
-    try { wrap.setPointerCapture(e.pointerId); } catch (err) { }
+    capturePointer(wrap, e.pointerId);
   }
 }
 
@@ -1431,7 +1433,7 @@ export function nudgeSelected(dx, dy) {
     updateOneDividerDOM(d);
   });
   // updateFastDOM carries the states and, with them, the notes.
-  if (typeof updateFastDOM === 'function') updateFastDOM(); else renderAll();
+  updateFastDOM();
   scheduleMinimap();
 }
 
@@ -1827,11 +1829,9 @@ export function getContentBounds(statePad = 0) {
   // Self-loops stand well clear of their state and a crowded label can be pushed
   // further still, so the states alone no longer bound the drawing — framing on
   // them would crop a loop off the top of an exported diagram.
-  if (typeof currentLayoutContext === 'function') {
-    try { includeLayoutBounds(currentLayoutContext(), grow); } catch (e) { }
-  }
-  if (typeof includeNoteBounds === 'function') includeNoteBounds(grow);
-  if (typeof includeDividerBounds === 'function') includeDividerBounds(grow);
+  includeLayoutBounds(currentLayoutContext(), grow);
+  includeNoteBounds(grow);
+  includeDividerBounds(grow);
   if (!Number.isFinite(minX)) return null;
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
 }
@@ -1968,7 +1968,7 @@ function finishExportSVG(staged, fontCss, opts = {}) {
       for (let rule of sheet.cssRules) {
         cssRules += rule.cssText + "\n";
       }
-    } catch(e) {} // Skip cross-origin sheets safely
+    } catch { /* a cross-origin sheet does not let its rules be read */ }
   }
 
   // 3. Glue it together and ensure hit-areas are hidden in the final export
@@ -2005,7 +2005,7 @@ export async function exportSVG(opts = {}) {
   const header = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n';
   exportDownload(exportFilename('svg'), header + svg, 'image/svg+xml;charset=utf-8');
   showStatus('Exported as SVG');
-  if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
+  markActiveWorkspaceSaved();
 }
 
 export async function exportPNG(opts = {}) {
@@ -2042,10 +2042,10 @@ export async function exportPNG(opts = {}) {
       a.href = outUrl;
       a.download = exportFilename('png');
       a.click();
-      setTimeout(() => { try { URL.revokeObjectURL(outUrl); } catch (e) {} }, 1000);
+      setTimeout(() => URL.revokeObjectURL(outUrl), 1000);
       URL.revokeObjectURL(url);
       showStatus(embedData ? 'Workspace snapshot saved!' : 'Exported as PNG');
-      if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
+      markActiveWorkspaceSaved();
     }, 'image/png');
   };
   img.src = url;

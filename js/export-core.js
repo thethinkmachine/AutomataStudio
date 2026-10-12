@@ -58,7 +58,7 @@ function mayExceedLength(maxLen) {
 // transition can appear in some exported word. See langRouteDepth().
 export function exportDefaultMaxLength() {
   try {
-    const depth = typeof langRouteDepth === 'function' ? langRouteDepth() : 0;
+    const depth = langRouteDepth();
     if (!depth) return EXPORT_FALLBACK_LENGTH;
     return Math.min(Math.max(depth, 1), LANG_TRACE_DEPTH_CAP);
   } catch (e) {
@@ -97,7 +97,7 @@ export function buildMachineIR() {
       fromName: from ? (from.name || from.id) : t.from,
       toName: to ? (to.name || to.id) : t.to,
       symbol: t.symbol,
-      label: typeof transLabel === 'function' ? transLabel(t) : String(t.symbol),
+      label: transLabel(t),
       // Machine-specific fields, carried through untouched so a format
       // that understands them (TikZ, the CSV table) can show them and
       // one that doesn't can ignore them.
@@ -147,7 +147,7 @@ export function buildMachineIR() {
     cutPoint: App.config.pfaCutPoint,
     // Multi-character symbols mean words can't be concatenated without a
     // separator; every format that prints a word has to know this.
-    isSymbolic: typeof langIsSymbolic === 'function' ? langIsSymbolic() : true,
+    isSymbolic: langIsSymbolic(),
     grammar: {
       start: App.grammar.start,
       vars: [...App.grammar.vars],
@@ -162,7 +162,7 @@ export function buildMachineIR() {
 // length symbols need a separator or "openClose" reads as one token.
 export function exportWordText(word, ir) {
   if (!word || !word.length) return (ir && ir.sym ? ir.sym.eps : 'ε');
-  const symbolic = ir ? ir.isSymbolic : (typeof langIsSymbolic === 'function' ? langIsSymbolic() : true);
+  const symbolic = ir ? ir.isSymbolic : langIsSymbolic();
   return symbolic ? word.join('') : word.join(' ');
 }
 
@@ -243,7 +243,7 @@ export function exportSampleWords(opts = {}) {
     origin: null, target: null, limits: { accepted: null, rejected: null }
   };
 
-  if (typeof langCanDecide === 'function' && !langCanDecide()) {
+  if (!langCanDecide()) {
     // A transducer with no accept notion, or an ω-automaton, has no set of
     // finite words to sample.
     out.decidable = false;
@@ -260,8 +260,8 @@ export function exportSampleWords(opts = {}) {
 // The body of exportSampleWords, split out so the origin swap wraps the whole
 // computation rather than being reinstalled around each of its two halves.
 function exportSampleWordsFrom(out, { wantAcc, wantRej, maxLen, minLen, perPath, budget }) {
-  const canTrace = typeof langCanTrace === 'function' && langCanTrace();
-  if (canTrace && wantAcc > 0 && typeof langAcceptedTraces === 'function') {
+  const canTrace = langCanTrace();
+  if (canTrace && wantAcc > 0) {
     const res = langAcceptedTraces(wantAcc, { minLen, maxLen, perPath });
     out.accepted = (res.traces || []).map(w => [...w]);
     if (res.truncated) out.truncated = true;
@@ -288,7 +288,7 @@ function exportSampleWordsFrom(out, { wantAcc, wantRej, maxLen, minLen, perPath,
     for (const word of exportSigmaStar(sigma, maxLen, budget, minLen)) {
       if (out.rejected.length >= wantRej && addedAcc >= needAcc) break;
       seen++;
-      const verdict = typeof langVerdict === 'function' ? langVerdict(word) : 'unk';
+      const verdict = langVerdict(word);
       if (verdict === 'unk') { out.undecided++; continue; }
       if (verdict === 'acc') {
         if (addedAcc < needAcc) { out.accepted.push(word); addedAcc++; }
@@ -368,7 +368,7 @@ function withRoute(originId, targetId, fn) {
 export function exportRouteDepth(opts = {}) {
   return withRoute(opts.origin, opts.target, () => {
     try {
-      return typeof langRouteDepth === 'function' ? langRouteDepth() : 0;
+      return langRouteDepth();
     } catch (e) {
       return 0;
     }
@@ -379,7 +379,7 @@ export function exportRouteDepth(opts = {}) {
 // included — applies to this machine at all.
 export function exportCanTrace() {
   try {
-    return typeof langCanTrace === 'function' ? langCanTrace() : false;
+    return langCanTrace();
   } catch (e) {
     return false;
   }
@@ -403,8 +403,8 @@ function routeLabels(opts) {
  */
 export function exportCoverageWords(opts = {}) {
   const out = { rows: [], uncovered: [], decidable: true, traceable: true, reason: null, origin: null, target: null };
-  if (typeof langCanDecide === 'function' && !langCanDecide()) { out.decidable = false; return out; }
-  if (typeof langCanTrace === 'function' && !langCanTrace()) { out.traceable = false; return out; }
+  if (!langCanDecide()) { out.decidable = false; return out; }
+  if (!langCanTrace()) { out.traceable = false; return out; }
   if (!App.startId) { out.reason = 'no start state'; return out; }
 
   Object.assign(out, routeLabels(opts));
@@ -432,7 +432,7 @@ export function exportDownload(filename, content, mime) {
   a.click();
   // Revoke on the next turn: Chrome and Safari need the URL to survive the
   // synchronous click, and leaking it pins the whole blob for the session.
-  setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 1000);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function exportCopyText(text, okMsg) {

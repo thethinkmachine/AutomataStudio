@@ -36,6 +36,7 @@ import { fastLaneEnabled, fastTM } from './fast-tm.js';
 import { buildMarkedInputTape, tapeTuplesOverlap } from './predicates.js';
 import { ConfigSet, Fifo, firstOverlappingTransition, makeRepeatDetector, makeStateNumbering, formatTapeInstantaneousDescription, langStepBudget, makeLoopTracker, markLoopStep, markTimeoutStep, multiTapeLookup, nameOfState, parseWordInput, playEagerly, singleTapeLookup, tokenize, transitionsFrom } from './runtime.js';
 import { defineFamily, machineDef } from './registry.js';
+import { narrateAccept, narrateEnd, narrateExplore, narrateStuck } from './narrate.js';
 import { NPDA_LOG_KEEP } from './pushdown.js';
 import { attachBranchTree, newBranchTree } from './branch-tree.js';
 import { ZipperTape } from './zipper-tape.js';
@@ -230,7 +231,7 @@ export function* streamNDTM(tokens) {
       step.note += ' — ACCEPT';
       last = step;
       yield step;
-      if (narrate) log.push(`<span class="step-acc">Branch ${branch}: ACCEPT ✓</span><span class="step-sub">State "${stateName}" is accepting.<br>Depth ${depth} · ID: ${idStr}</span>`);
+      if (narrate) log.push(narrateAccept(branch, `State "${stateName}" is accepting.`, `Depth ${depth} · ID: ${idStr}`));
       accepted = true;
       break;
     }
@@ -241,7 +242,7 @@ export function* streamNDTM(tokens) {
       step.note += ' — dead branch';
       last = step;
       yield step;
-      if (narrate) log.push(`Branch ${branch}: <span class="step-dead">stuck</span><span class="step-sub">No transition matches (${stateName}, '${sym}').<br>Depth ${depth} · ID: ${idStr}</span>`);
+      if (narrate) log.push(narrateStuck(branch, `No transition matches (${stateName}, '${sym}').`, `Depth ${depth} · ID: ${idStr}`));
       continue;
     }
 
@@ -257,7 +258,7 @@ export function* streamNDTM(tokens) {
       if (matching.length > 1) {
         subs.push(`Nondeterministic choice: ${matching.length} matching transitions.`);
       }
-      log.push(`Branch ${branch}: exploring <em>${stateName}</em><span class="step-sub">${subs.join('<br>')}</span>`);
+      log.push(narrateExplore(branch, stateName, subs));
     }
 
     const kids = tree && !tree.full ? [] : null;
@@ -295,7 +296,7 @@ export function* streamNDTM(tokens) {
       final: unresolved ? 'timeout' : 'reject',
       limit: unresolved ? App.config.maxTmSteps : undefined
     });
-    log.push(`${queue.length ? 'Exploration limit reached' : 'Reject'}<span class="step-sub">${finalNote}.<br>Branches explored: ${branches} · max depth ${maxDepth}</span>`);
+    log.push(narrateEnd(queue.length ? 'Exploration limit reached' : 'Reject', `${finalNote}.`, `Branches explored: ${branches} · max depth ${maxDepth}`));
   }
 
   return { accepted, branches, maxDepth, log };

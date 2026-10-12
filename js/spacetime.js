@@ -717,424 +717,476 @@ function hatch(ctx, x0, y0, w, y1, spacing) {
  *            { playhead, hover, headPath, clip }.
  */
 export function paintSpaceTime(ctx, model, L, S, V = {}) {
-  const sx = V.sx || 0;
-  const sy = V.sy || 0;
-  const vw = V.vw ?? L.width;
-  const vh = V.vh ?? L.height;
-  const { cell, top, gutterW } = L;
-  const headPath = V.headPath !== false;
-  const pal = S.palette;
-
-  if (S.bg) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, vw, vh); }
-
-  const lastRow = L.rowFrom + L.rowCount - 1;
-  const rA = L.rowCount ? L.rowFrom + Math.max(0, Math.floor(sy / cell)) : 0;
-  const rB = L.rowCount ? Math.min(lastRow, L.rowFrom + Math.floor((sy + vh - top) / cell)) : -1;
-  const yOf = r => top + (r - L.rowFrom) * cell - sy;
-  const xLeft = gutterW + sx;
-  const xRight = sx + vw;
-  const bodyBottom = Math.min(vh, yOf(lastRow) + cell);
+  const f = paintFrame(L, S, V);
+  if (S.bg) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, f.vw, f.vh); }
 
   const clipped = V.clip && typeof ctx.clip === 'function';
   if (clipped) {
     ctx.save();
     ctx.beginPath();
-    ctx.rect(gutterW, top, Math.max(0, vw - gutterW), Math.max(0, vh - top));
+    ctx.rect(f.gutterW, f.top, Math.max(0, f.vw - f.gutterW), Math.max(0, f.vh - f.top));
     ctx.clip();
   }
-
-  const fillOf = slot => (slot < 0 ? null : slot < 8 ? pal[slot] : S.other);
-  const glyphPx = clamp(Math.round(cell * 0.56), 8, 15);
-  const glyphChars = Math.max(1, Math.floor((cell - 3) / charW(glyphPx)));
-
-  for (const e of L.tapes) {
-    const tr = model.tapes[e.index];
-    const edgeL = e.x - sx;
-    const edgeR = e.x + e.cols * cell - sx;
-    const colX = c => e.x + (c - e.lo) * cell - sx;
-
-    // The ends. A wall is where the head cannot go; a dashed edge is where
-    // the tape goes on and the diagram simply stops drawing it — dashed
-    // meaning "not part of the machine", as it does everywhere in the app.
-    if (rA <= rB) {
-      const y0 = yOf(rA);
-      const y1 = bodyBottom;
-      const wall = (x) => {
-        ctx.fillStyle = S.wallBg;
-        ctx.fillRect(x, y0, e.capW, y1 - y0);
-        ctx.strokeStyle = S.wallInk;
-        ctx.lineWidth = 1;
-        hatch(ctx, x, y0, e.capW, y1, 5);
-      };
-      const open = (x) => {
-        ctx.strokeStyle = S.ink3;
-        ctx.lineWidth = 1;
-        if (ctx.setLineDash) ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.moveTo(x, y0);
-        ctx.lineTo(x, y1);
-        ctx.stroke();
-        if (ctx.setLineDash) ctx.setLineDash([]);
-      };
-      const boundL = tr.leftBound !== null && tr.leftBound !== undefined && e.lo <= tr.leftBound;
-      const boundR = tr.rightBound !== null && tr.rightBound !== undefined && e.hi >= tr.rightBound;
-      if (boundL) wall(edgeL - e.capW); else open(edgeL - 0.5);
-      if (boundR) wall(edgeR); else open(edgeR + 0.5);
-    }
-
-    const c0 = Math.max(e.lo, e.lo + Math.floor((xLeft - e.x) / cell));
-    const c1 = Math.min(e.hi, e.lo + Math.floor((xRight - e.x) / cell));
-    if (c0 > c1 || rA > rB) continue;
-
-    // The head's path, through the centre of the head cell on every row, with
-    // a halo of the ground under it so it stays legible over any fill. Once
-    // symbols are printed it goes *under* the cells instead, as a faint thread
-    // the glyphs sit on — drawn over them it read as a strikethrough.
-    const drawPath = () => {
-      const pts = [];
-      const pr0 = Math.max(L.rowFrom, rA - 1);
-      const pr1 = Math.min(lastRow, rB + 1);
-      for (let r = pr0; r <= pr1; r++) {
-        const h = model.headAt(e.index, r);
-        pts.push(h === null ? null : [colX(h) + cell / 2, yOf(r) + cell / 2]);
-      }
-      const trace = () => {
-        ctx.beginPath();
-        let pen = false;
-        for (const p of pts) {
-          if (!p) { pen = false; continue; }
-          if (pen) ctx.lineTo(p[0], p[1]); else ctx.moveTo(p[0], p[1]);
-          pen = true;
-        }
-        ctx.stroke();
-      };
-      ctx.lineJoin = 'round';
-      if (L.glyphs) {
-        ctx.globalAlpha = 0.45;
-        ctx.strokeStyle = S.ink;
-        ctx.lineWidth = 2;
-        trace();
-      } else {
-        ctx.globalAlpha = 0.85;
-        ctx.strokeStyle = S.halo || S.bg || S.gutterBg || '#ffffff';
-        ctx.lineWidth = cell < 4 ? 3 : 4;
-        trace();
-        ctx.globalAlpha = 1;
-        ctx.strokeStyle = S.ink;
-        ctx.lineWidth = cell < 3 ? 1 : 1.5;
-        trace();
-      }
-      ctx.globalAlpha = 1;
-    };
-    if (headPath && L.glyphs) drawPath();
-
-    // Cells. Below the glyph size a run of equal cells is one rectangle, which
-    // is what keeps a thousand-column row cheap on a canvas and small in an
-    // SVG; above it each cell is a tint with its symbol printed on it, since
-    // colour alone cannot tell more than three symbols apart for everyone.
-    const cur = model.cursor(e.index, rA, c0, c1);
-    const glyphRows = [];
-    // Full strength only where a cell is a pixel or two and needs all the
-    // colour it can carry. Larger, a long run of one symbol at full saturation
-    // becomes a slab that drowns the head's path, which is the thing being read.
-    const fillAlpha = cell < 4 ? 0.9 : 0.6;
-    for (let r = rA; r <= rB; r++) {
-      const y = yOf(r);
-      const cells = cur.cells;
-      if (L.glyphs) {
-        for (let i = 0; i < cells.length; i++) {
-          const slot = model.slotOf(cells[i]);
-          if (slot === -1) continue;
-          ctx.fillStyle = slot === -2 ? S.ink : fillOf(slot);
-          ctx.globalAlpha = slot === -2 ? 0.12 : 0.3;
-          ctx.fillRect(colX(c0 + i), y, cell, cell);
-        }
-        ctx.globalAlpha = 1;
-        glyphRows.push({ y, cells: cells.slice() });
-      } else {
-        let runStart = 0;
-        let runFill = null;
-        let runAlpha = 1;
-        const flush = (end) => {
-          if (runFill) {
-            ctx.globalAlpha = runAlpha;
-            ctx.fillStyle = runFill;
-            ctx.fillRect(colX(c0 + runStart), y, (end - runStart) * cell, cell);
-          }
-        };
-        for (let i = 0; i <= cells.length; i++) {
-          let f = null;
-          let a = 1;
-          if (i < cells.length) {
-            const slot = model.slotOf(cells[i]);
-            if (slot === -2) { f = S.ink; a = 0.3; } else { f = fillOf(slot); a = fillAlpha; }
-          }
-          if (f !== runFill || a !== runAlpha || i === cells.length) {
-            flush(i);
-            runStart = i;
-            runFill = f;
-            runAlpha = a;
-          }
-        }
-        ctx.globalAlpha = 1;
-      }
-      if (r < rB) cur.next();
-    }
-
-    if (L.grid) {
-      ctx.strokeStyle = S.grid;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      const gy0 = yOf(rA);
-      for (let c = c0; c <= c1 + 1; c++) {
-        const x = Math.round(colX(c)) + 0.5;
-        ctx.moveTo(x, gy0);
-        ctx.lineTo(x, bodyBottom);
-      }
-      const gx0 = colX(c0);
-      const gx1 = colX(c1 + 1);
-      for (let r = rA; r <= rB + 1 && r <= lastRow + 1; r++) {
-        const y = Math.round(yOf(r)) + 0.5;
-        ctx.moveTo(gx0, y);
-        ctx.lineTo(gx1, y);
-      }
-      ctx.stroke();
-    }
-
-    if (headPath && !L.glyphs) drawPath();
-
-    if (L.glyphs) {
-      ctx.font = font(glyphPx, 500, S.mono);
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      // Each glyph is cut out of the path under it by a ring of the ground.
-      const halo = headPath && (S.halo || S.bg);
-      if (halo) { ctx.strokeStyle = halo; ctx.lineWidth = 3; ctx.lineJoin = 'round'; }
-      for (const g of glyphRows) {
-        for (let i = 0; i < g.cells.length; i++) {
-          const slot = model.slotOf(g.cells[i]);
-          if (slot === -1) continue;
-          const text = fit(g.cells[i], glyphChars);
-          const x = colX(c0 + i) + cell / 2;
-          const y = g.y + cell / 2 + 0.5;
-          if (halo) ctx.strokeText(text, x, y);
-          ctx.fillStyle = slot === -2 ? S.ink2 : S.ink;
-          ctx.fillText(text, x, y);
-        }
-      }
-    }
-
-    // The head itself. A ring once symbols are printed, since the ring has to
-    // leave the symbol legible; below that the path carries the head — a ring
-    // on every row as well read as a chain of boxes — and with the path off
-    // the cell is inked instead.
-    for (let r = rA; r <= rB; r++) {
-      const h = model.headAt(e.index, r);
-      if (h === null || h < c0 || h > c1) continue;
-      const x = colX(h);
-      const y = yOf(r);
-      if (L.glyphs) {
-        ctx.strokeStyle = S.ink;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x + 1, y + 1, cell - 2, cell - 2);
-      } else if (!headPath) {
-        ctx.fillStyle = S.ink;
-        ctx.globalAlpha = 0.85;
-        ctx.fillRect(x, y, cell, cell);
-        ctx.globalAlpha = 1;
-      }
-    }
-  }
-
-  // A traced cell: every row that wrote it, and the stretch from the write that
-  // put its current symbol there down to the row being asked about.
-  const trace = V.trace;
-  const te = trace && L.tapes[trace.tape];
-  if (te && rA <= rB) {
-    const x = te.x + (trace.col - te.lo) * cell - sx;
-    if (x + cell > gutterW && x < vw) {
-      const from = trace.from === null || trace.from === undefined ? L.rowFrom : Math.max(L.rowFrom, trace.from);
-      const y0 = Math.max(yOf(from), top - cell);
-      const y1 = Math.min(yOf(trace.row) + cell, vh + cell);
-      if (y1 > y0) {
-        ctx.fillStyle = S.accent;
-        ctx.globalAlpha = 0.14;
-        ctx.fillRect(x, y0, cell, y1 - y0);
-        ctx.globalAlpha = 1;
-      }
-      ctx.fillStyle = S.accent;
-      const tick = Math.max(2, Math.min(4, cell / 4));
-      for (const r of model.writesIn(trace.tape, trace.col, rA, rB)) {
-        ctx.fillRect(x - tick - 1, yOf(r), tick, cell);
-      }
-      ctx.strokeStyle = S.accent;
-      ctx.lineWidth = 2;
-      if (trace.from !== null && trace.from !== undefined && trace.from >= rA && trace.from <= rB) {
-        ctx.strokeRect(x + 1, yOf(trace.from) + 1, cell - 2, cell - 2);
-      }
-      if (trace.row >= rA && trace.row <= rB) {
-        if (ctx.setLineDash) ctx.setLineDash([3, 2]);
-        ctx.strokeRect(x + 1, yOf(trace.row) + 1, cell - 2, cell - 2);
-        if (ctx.setLineDash) ctx.setLineDash([]);
-      }
-    }
-  }
-
-  // The step on screen, and the cell under the pointer.
-  const content0 = gutterW;
-  // To the end of the cells (and their cap), not of the layout: `width` has a
-  // floor for the ending's text, and a band carried on to it ended in the
-  // middle of empty space.
-  const contentW = Math.max(0, Math.min(vw, (L.contentRight ?? L.width) + 4 - sx) - gutterW);
-  if (V.playhead !== undefined && V.playhead !== null && V.playhead >= rA && V.playhead <= rB) {
-    const y = yOf(V.playhead);
-    ctx.fillStyle = S.accent;
-    ctx.globalAlpha = 0.14;
-    ctx.fillRect(content0, y, contentW, cell);
-    ctx.globalAlpha = 0.9;
-    const lw = cell >= 6 ? 1.5 : 1;
-    ctx.fillRect(content0, y - lw, contentW, lw);
-    if (cell >= 6) ctx.fillRect(content0, y + cell, contentW, lw);
-    ctx.globalAlpha = 1;
-    // The head on that step, in the accent, at every size — the one cell the
-    // tracker is showing, findable at 1px as well as at 30.
-    for (const e of L.tapes) {
-      const h = model.headAt(e.index, V.playhead);
-      if (h === null) continue;
-      const x = e.x + (h - e.lo) * cell - sx;
-      if (x + cell < gutterW || x > vw) continue;
-      ctx.strokeStyle = S.accent;
-      const lw = cell >= 6 ? 2 : 1.5;
-      ctx.lineWidth = lw;
-      const pad = cell >= 6 ? lw / 2 : -lw;
-      ctx.strokeRect(x + pad, y + pad, cell - 2 * pad, cell - 2 * pad);
-    }
-  }
-  if (V.hover && V.hover.row >= rA && V.hover.row <= rB) {
-    const y = yOf(V.hover.row);
-    ctx.fillStyle = S.ink;
-    ctx.globalAlpha = 0.06;
-    ctx.fillRect(content0, y, contentW, cell);
-    ctx.globalAlpha = 1;
-    const e = L.tapes[V.hover.tape];
-    if (e && V.hover.col !== null) {
-      ctx.strokeStyle = S.accent;
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(e.x + (V.hover.col - e.lo) * cell - sx - 0.75, y - 0.75, cell + 1.5, cell + 1.5);
-    }
-  }
-
+  for (const e of L.tapes) paintTape(ctx, model, L, S, f, e);
+  paintTrace(ctx, model, L, S, f, V.trace);
+  paintPlayhead(ctx, model, L, S, f, V.playhead);
+  paintHover(ctx, L, S, f, V.hover);
   if (clipped) ctx.restore();
 
-  // How the run ended, under its last row. Pinned horizontally, so it can be
-  // read wherever the diagram has been scrolled to.
-  if (L.rowCount) {
-    const y = top + L.rowCount * cell - sy + 17;
-    if (y > top - 4 && y < vh + 12) {
-      const fin = FINAL_SAY[model.finalAt(lastRow)];
-      const x = gutterW + 10;
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      // Pinned, so it is fitted to the view it is pinned in: a line longer
-      // than the view ran on under the overview strip and was cut mid-word.
-      const room = Math.max(0, Math.floor((vw - x - 6) / charW(11)));
-      const said = statusParts(model, L);
-      if (L.complete && fin) {
-        ctx.font = font(11, 700, S.mono);
-        ctx.fillStyle = S[fin.tone] || S.ink2;
-        ctx.fillText(fit(said.lead, room), x, y);
-        ctx.font = font(11, 400, S.mono);
-        ctx.fillStyle = S.ink2;
-        const after = room - said.lead.length - 1;
-        if (after > 0) ctx.fillText(fit(said.rest, after), x + charW(11) * (said.lead.length + 1), y);
-      } else if (!L.complete) {
-        ctx.strokeStyle = S.ink3;
-        ctx.lineWidth = 1;
-        if (ctx.setLineDash) ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.moveTo(x, y - 9);
-        ctx.lineTo(x + Math.max(0, Math.min(vw - x - 10, 260)), y - 9);
-        ctx.stroke();
-        if (ctx.setLineDash) ctx.setLineDash([]);
-        ctx.font = font(11, 400, S.mono);
-        ctx.fillStyle = S.ink3;
-        ctx.fillText(fit(said.rest, room), x, y + 2);
+  paintEnding(ctx, model, L, S, f);
+  paintGutter(ctx, model, L, S, f, V.playhead);
+  paintRuler(ctx, model, L, S, f, V.playhead);
+  paintCaption(ctx, L, S);
+  paintLegend(ctx, model, L, S, f);
+}
+
+// What every phase of one painting shares: the viewport, the rows it shows,
+// and the measures derived from them.
+function paintFrame(L, S, V) {
+  const sx = V.sx || 0;
+  const sy = V.sy || 0;
+  const vw = V.vw ?? L.width;
+  const vh = V.vh ?? L.height;
+  const { cell, top, gutterW } = L;
+  const lastRow = L.rowFrom + L.rowCount - 1;
+  const yOf = r => top + (r - L.rowFrom) * cell - sy;
+  const glyphPx = clamp(Math.round(cell * 0.56), 8, 15);
+  return {
+    sx, sy, vw, vh, cell, top, gutterW, lastRow, yOf, glyphPx,
+    headPath: V.headPath !== false,
+    // The first and last rows in view.
+    rA: L.rowCount ? L.rowFrom + Math.max(0, Math.floor(sy / cell)) : 0,
+    rB: L.rowCount ? Math.min(lastRow, L.rowFrom + Math.floor((sy + vh - top) / cell)) : -1,
+    xLeft: gutterW + sx,
+    xRight: sx + vw,
+    bodyBottom: Math.min(vh, yOf(lastRow) + cell),
+    fillOf: slot => (slot < 0 ? null : slot < 8 ? S.palette[slot] : S.other),
+    glyphChars: Math.max(1, Math.floor((cell - 3) / charW(glyphPx))),
+    // To the end of the cells (and their cap), not of the layout: `width` has a
+    // floor for the ending's text, and a band carried on to it ended in the
+    // middle of empty space.
+    contentW: Math.max(0, Math.min(vw, (L.contentRight ?? L.width) + 4 - sx) - gutterW)
+  };
+}
+
+const onRow = (row, f) => row !== undefined && row !== null && row >= f.rA && row <= f.rB;
+
+/** The columns of tape `e` in view, or null. */
+function visibleColumns(e, f) {
+  const c0 = Math.max(e.lo, e.lo + Math.floor((f.xLeft - e.x) / f.cell));
+  const c1 = Math.min(e.hi, e.lo + Math.floor((f.xRight - e.x) / f.cell));
+  return c0 > c1 ? null : { c0, c1 };
+}
+
+// ── one tape's band ─────────────────────────────────────────────────
+
+function paintTape(ctx, model, L, S, f, e) {
+  const colX = c => e.x + (c - e.lo) * f.cell - f.sx;
+  if (f.rA <= f.rB) paintTapeEnds(ctx, S, f, e, model.tapes[e.index]);
+  const cols = visibleColumns(e, f);
+  if (!cols || f.rA > f.rB) return;
+  // The head's path goes under the cells once symbols are printed on them,
+  // and over them otherwise.
+  if (f.headPath && L.glyphs) paintHeadPath(ctx, model, L, S, f, e, colX);
+  const glyphRows = paintCells(ctx, model, L, S, f, e, cols, colX);
+  if (L.grid) paintGrid(ctx, S, f, cols, colX);
+  if (f.headPath && !L.glyphs) paintHeadPath(ctx, model, L, S, f, e, colX);
+  if (L.glyphs) paintGlyphs(ctx, model, S, f, cols, colX, glyphRows);
+  paintHeads(ctx, model, L, S, f, e, cols, colX);
+}
+
+// The ends. A wall is where the head cannot go; a dashed edge is where
+// the tape goes on and the diagram simply stops drawing it — dashed
+// meaning "not part of the machine", as it does everywhere in the app.
+function paintTapeEnds(ctx, S, f, e, tr) {
+  const y0 = f.yOf(f.rA);
+  const y1 = f.bodyBottom;
+  const edgeL = e.x - f.sx;
+  const edgeR = e.x + e.cols * f.cell - f.sx;
+  const wall = (x) => {
+    ctx.fillStyle = S.wallBg;
+    ctx.fillRect(x, y0, e.capW, y1 - y0);
+    ctx.strokeStyle = S.wallInk;
+    ctx.lineWidth = 1;
+    hatch(ctx, x, y0, e.capW, y1, 5);
+  };
+  const open = (x) => {
+    ctx.strokeStyle = S.ink3;
+    ctx.lineWidth = 1;
+    if (ctx.setLineDash) ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(x, y0);
+    ctx.lineTo(x, y1);
+    ctx.stroke();
+    if (ctx.setLineDash) ctx.setLineDash([]);
+  };
+  const boundL = tr.leftBound !== null && tr.leftBound !== undefined && e.lo <= tr.leftBound;
+  const boundR = tr.rightBound !== null && tr.rightBound !== undefined && e.hi >= tr.rightBound;
+  if (boundL) wall(edgeL - e.capW); else open(edgeL - 0.5);
+  if (boundR) wall(edgeR); else open(edgeR + 0.5);
+}
+
+// The head's path, through the centre of the head cell on every row, with
+// a halo of the ground under it so it stays legible over any fill. Once
+// symbols are printed it goes *under* the cells instead, as a faint thread
+// the glyphs sit on — drawn over them it read as a strikethrough.
+function paintHeadPath(ctx, model, L, S, f, e, colX) {
+  const { cell, yOf } = f;
+  const pts = [];
+  const pr0 = Math.max(L.rowFrom, f.rA - 1);
+  const pr1 = Math.min(f.lastRow, f.rB + 1);
+  for (let r = pr0; r <= pr1; r++) {
+    const h = model.headAt(e.index, r);
+    pts.push(h === null ? null : [colX(h) + cell / 2, yOf(r) + cell / 2]);
+  }
+  const trace = () => {
+    ctx.beginPath();
+    let pen = false;
+    for (const p of pts) {
+      if (!p) { pen = false; continue; }
+      if (pen) ctx.lineTo(p[0], p[1]); else ctx.moveTo(p[0], p[1]);
+      pen = true;
+    }
+    ctx.stroke();
+  };
+  ctx.lineJoin = 'round';
+  if (L.glyphs) {
+    ctx.globalAlpha = 0.45;
+    ctx.strokeStyle = S.ink;
+    ctx.lineWidth = 2;
+    trace();
+  } else {
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = S.halo || S.bg || S.gutterBg || '#ffffff';
+    ctx.lineWidth = cell < 4 ? 3 : 4;
+    trace();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = S.ink;
+    ctx.lineWidth = cell < 3 ? 1 : 1.5;
+    trace();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Cells. Below the glyph size a run of equal cells is one rectangle, which
+// is what keeps a thousand-column row cheap on a canvas and small in an
+// SVG; above it each cell is a tint with its symbol printed on it, since
+// colour alone cannot tell more than three symbols apart for everyone.
+// Returns the rows whose glyphs are still to be printed.
+function paintCells(ctx, model, L, S, f, e, { c0, c1 }, colX) {
+  const { cell, yOf, fillOf } = f;
+  const cur = model.cursor(e.index, f.rA, c0, c1);
+  const glyphRows = [];
+  // Full strength only where a cell is a pixel or two and needs all the
+  // colour it can carry. Larger, a long run of one symbol at full saturation
+  // becomes a slab that drowns the head's path, which is the thing being read.
+  const fillAlpha = cell < 4 ? 0.9 : 0.6;
+  for (let r = f.rA; r <= f.rB; r++) {
+    const y = yOf(r);
+    const cells = cur.cells;
+    if (L.glyphs) {
+      for (let i = 0; i < cells.length; i++) {
+        const slot = model.slotOf(cells[i]);
+        if (slot === -1) continue;
+        ctx.fillStyle = slot === -2 ? S.ink : fillOf(slot);
+        ctx.globalAlpha = slot === -2 ? 0.12 : 0.3;
+        ctx.fillRect(colX(c0 + i), y, cell, cell);
       }
+      ctx.globalAlpha = 1;
+      glyphRows.push({ y, cells: cells.slice() });
+    } else {
+      let runStart = 0;
+      let runFill = null;
+      let runAlpha = 1;
+      const flush = (end) => {
+        if (runFill) {
+          ctx.globalAlpha = runAlpha;
+          ctx.fillStyle = runFill;
+          ctx.fillRect(colX(c0 + runStart), y, (end - runStart) * cell, cell);
+        }
+      };
+      for (let i = 0; i <= cells.length; i++) {
+        let fill = null;
+        let a = 1;
+        if (i < cells.length) {
+          const slot = model.slotOf(cells[i]);
+          if (slot === -2) { fill = S.ink; a = 0.3; } else { fill = fillOf(slot); a = fillAlpha; }
+        }
+        if (fill !== runFill || a !== runAlpha || i === cells.length) {
+          flush(i);
+          runStart = i;
+          runFill = fill;
+          runAlpha = a;
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (r < f.rB) cur.next();
+  }
+  return glyphRows;
+}
+
+function paintGrid(ctx, S, f, { c0, c1 }, colX) {
+  const { yOf } = f;
+  ctx.strokeStyle = S.grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  const gy0 = yOf(f.rA);
+  for (let c = c0; c <= c1 + 1; c++) {
+    const x = Math.round(colX(c)) + 0.5;
+    ctx.moveTo(x, gy0);
+    ctx.lineTo(x, f.bodyBottom);
+  }
+  const gx0 = colX(c0);
+  const gx1 = colX(c1 + 1);
+  for (let r = f.rA; r <= f.rB + 1 && r <= f.lastRow + 1; r++) {
+    const y = Math.round(yOf(r)) + 0.5;
+    ctx.moveTo(gx0, y);
+    ctx.lineTo(gx1, y);
+  }
+  ctx.stroke();
+}
+
+function paintGlyphs(ctx, model, S, f, { c0 }, colX, glyphRows) {
+  const { cell } = f;
+  ctx.font = font(f.glyphPx, 500, S.mono);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // Each glyph is cut out of the path under it by a ring of the ground.
+  const halo = f.headPath && (S.halo || S.bg);
+  if (halo) { ctx.strokeStyle = halo; ctx.lineWidth = 3; ctx.lineJoin = 'round'; }
+  for (const g of glyphRows) {
+    for (let i = 0; i < g.cells.length; i++) {
+      const slot = model.slotOf(g.cells[i]);
+      if (slot === -1) continue;
+      const text = fit(g.cells[i], f.glyphChars);
+      const x = colX(c0 + i) + cell / 2;
+      const y = g.y + cell / 2 + 0.5;
+      if (halo) ctx.strokeText(text, x, y);
+      ctx.fillStyle = slot === -2 ? S.ink2 : S.ink;
+      ctx.fillText(text, x, y);
     }
   }
+}
 
-  // ── the gutter: step numbers, and state names once there is room ──
-  if (gutterW) {
-    if (S.gutterBg) {
-      ctx.fillStyle = S.gutterBg;
-      ctx.fillRect(0, top, gutterW, Math.max(0, vh - top));
+// The head itself. A ring once symbols are printed, since the ring has to
+// leave the symbol legible; below that the path carries the head — a ring
+// on every row as well read as a chain of boxes — and with the path off
+// the cell is inked instead.
+function paintHeads(ctx, model, L, S, f, e, { c0, c1 }, colX) {
+  const { cell } = f;
+  for (let r = f.rA; r <= f.rB; r++) {
+    const h = model.headAt(e.index, r);
+    if (h === null || h < c0 || h > c1) continue;
+    const x = colX(h);
+    const y = f.yOf(r);
+    if (L.glyphs) {
+      ctx.strokeStyle = S.ink;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 1, y + 1, cell - 2, cell - 2);
+    } else if (!f.headPath) {
+      ctx.fillStyle = S.ink;
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(x, y, cell, cell);
+      ctx.globalAlpha = 1;
     }
-    ctx.fillStyle = S.rule;
-    ctx.fillRect(gutterW - 1, top, 1, Math.max(0, Math.min(vh, bodyBottom + 6) - top));
-    if (rA <= rB) {
-      const px = L.labelPx;
-      ctx.textBaseline = 'middle';
-      const every = L.glyphs ? 1 : niceStep(Math.ceil(15 / cell));
-      const finalAt = L.complete ? model.finalAt(lastRow) : null;
-      const p = V.playhead;
-      const hasP = p !== undefined && p !== null && p >= rA && p <= rB;
-      // Below glyph size a row is thinner than its label, so the playhead's
-      // label is centred on its row but never allowed under the ruler: at step
-      // 0 the row is the first pixel under it, and the rule for ticks below
-      // dropped the one label the reader was looking for.
-      const pY = hasP ? (L.glyphs ? yOf(p) + cell / 2 : Math.max(top + px / 2 + 1, yOf(p) + cell / 2)) : null;
-      for (let r = rA - (rA % every); r <= rB; r += every) {
-        if (r < rA) continue;
-        const isPlay = r === p;
-        const y = isPlay ? pY : yOf(r) + cell / 2;
-        // A label half under the ruler is a clipped label; the next tick says
-        // where the reader is just as well.
-        if (y - px / 2 < top) continue;
-        // Nor may a tick sit on the playhead's label: at 8px, "40" was drawn
-        // half under a "41" that is only one row below it.
-        if (!L.glyphs && hasP && !isPlay && Math.abs(y - pY) < px + 3) continue;
-        const isFinal = r === lastRow && FINAL_SAY[finalAt];
-        ctx.font = font(px, isPlay || isFinal ? 700 : 400, S.mono);
-        ctx.fillStyle = isPlay ? S.accent : isFinal ? S[FINAL_SAY[finalAt].tone] : S.ink3;
-        ctx.textAlign = 'right';
-        ctx.fillText(String(r), L.numW - 8, y);
-        if (!L.glyphs) {
-          ctx.fillStyle = S.rule;
-          ctx.fillRect(gutterW - 5, Math.round(yOf(r)), 4, 1);
-        }
-        if (L.showStates) {
-          ctx.textAlign = 'left';
-          ctx.font = font(px, isPlay ? 600 : 400, S.mono);
-          ctx.fillStyle = isPlay ? S.accent : S.ink2;
-          ctx.fillText(fit(L.stateName(model.stateAt(r)), L.stateChars), L.numW, y);
-        }
+  }
+}
+
+// ── over the cells ──────────────────────────────────────────────────
+
+// A traced cell: every row that wrote it, and the stretch from the write that
+// put its current symbol there down to the row being asked about.
+function paintTrace(ctx, model, L, S, f, trace) {
+  const te = trace && L.tapes[trace.tape];
+  if (!te || f.rA > f.rB) return;
+  const { cell, yOf } = f;
+  const x = te.x + (trace.col - te.lo) * cell - f.sx;
+  if (x + cell <= f.gutterW || x >= f.vw) return;
+  const from = trace.from === null || trace.from === undefined ? L.rowFrom : Math.max(L.rowFrom, trace.from);
+  const y0 = Math.max(yOf(from), f.top - cell);
+  const y1 = Math.min(yOf(trace.row) + cell, f.vh + cell);
+  if (y1 > y0) {
+    ctx.fillStyle = S.accent;
+    ctx.globalAlpha = 0.14;
+    ctx.fillRect(x, y0, cell, y1 - y0);
+    ctx.globalAlpha = 1;
+  }
+  ctx.fillStyle = S.accent;
+  const tick = Math.max(2, Math.min(4, cell / 4));
+  for (const r of model.writesIn(trace.tape, trace.col, f.rA, f.rB)) {
+    ctx.fillRect(x - tick - 1, yOf(r), tick, cell);
+  }
+  ctx.strokeStyle = S.accent;
+  ctx.lineWidth = 2;
+  if (onRow(trace.from, f)) {
+    ctx.strokeRect(x + 1, yOf(trace.from) + 1, cell - 2, cell - 2);
+  }
+  if (trace.row >= f.rA && trace.row <= f.rB) {
+    if (ctx.setLineDash) ctx.setLineDash([3, 2]);
+    ctx.strokeRect(x + 1, yOf(trace.row) + 1, cell - 2, cell - 2);
+    if (ctx.setLineDash) ctx.setLineDash([]);
+  }
+}
+
+// The step on screen: a band across its row, and the head on that step in
+// the accent at every size — the one cell the tracker is showing, findable
+// at 1px as well as at 30.
+function paintPlayhead(ctx, model, L, S, f, playhead) {
+  if (!onRow(playhead, f)) return;
+  const { cell, gutterW, contentW } = f;
+  const y = f.yOf(playhead);
+  ctx.fillStyle = S.accent;
+  ctx.globalAlpha = 0.14;
+  ctx.fillRect(gutterW, y, contentW, cell);
+  ctx.globalAlpha = 0.9;
+  const band = cell >= 6 ? 1.5 : 1;
+  ctx.fillRect(gutterW, y - band, contentW, band);
+  if (cell >= 6) ctx.fillRect(gutterW, y + cell, contentW, band);
+  ctx.globalAlpha = 1;
+  for (const e of L.tapes) {
+    const h = model.headAt(e.index, playhead);
+    if (h === null) continue;
+    const x = e.x + (h - e.lo) * cell - f.sx;
+    if (x + cell < gutterW || x > f.vw) continue;
+    ctx.strokeStyle = S.accent;
+    const lw = cell >= 6 ? 2 : 1.5;
+    ctx.lineWidth = lw;
+    const pad = cell >= 6 ? lw / 2 : -lw;
+    ctx.strokeRect(x + pad, y + pad, cell - 2 * pad, cell - 2 * pad);
+  }
+}
+
+// The row, and the cell, under the pointer.
+function paintHover(ctx, L, S, f, hover) {
+  if (!hover || !(hover.row >= f.rA && hover.row <= f.rB)) return;
+  const { cell } = f;
+  const y = f.yOf(hover.row);
+  ctx.fillStyle = S.ink;
+  ctx.globalAlpha = 0.06;
+  ctx.fillRect(f.gutterW, y, f.contentW, cell);
+  ctx.globalAlpha = 1;
+  const e = L.tapes[hover.tape];
+  if (e && hover.col !== null) {
+    ctx.strokeStyle = S.accent;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(e.x + (hover.col - e.lo) * cell - f.sx - 0.75, y - 0.75, cell + 1.5, cell + 1.5);
+  }
+}
+
+// ── pinned around the cells ─────────────────────────────────────────
+
+// How the run ended, under its last row. Pinned horizontally, so it can be
+// read wherever the diagram has been scrolled to.
+function paintEnding(ctx, model, L, S, f) {
+  if (!L.rowCount) return;
+  const y = f.top + L.rowCount * f.cell - f.sy + 17;
+  if (!(y > f.top - 4 && y < f.vh + 12)) return;
+  const fin = FINAL_SAY[model.finalAt(f.lastRow)];
+  const x = f.gutterW + 10;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  // Pinned, so it is fitted to the view it is pinned in: a line longer
+  // than the view ran on under the overview strip and was cut mid-word.
+  const room = Math.max(0, Math.floor((f.vw - x - 6) / charW(11)));
+  const said = statusParts(model, L);
+  if (L.complete && fin) {
+    ctx.font = font(11, 700, S.mono);
+    ctx.fillStyle = S[fin.tone] || S.ink2;
+    ctx.fillText(fit(said.lead, room), x, y);
+    ctx.font = font(11, 400, S.mono);
+    ctx.fillStyle = S.ink2;
+    const after = room - said.lead.length - 1;
+    if (after > 0) ctx.fillText(fit(said.rest, after), x + charW(11) * (said.lead.length + 1), y);
+  } else if (!L.complete) {
+    ctx.strokeStyle = S.ink3;
+    ctx.lineWidth = 1;
+    if (ctx.setLineDash) ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(x, y - 9);
+    ctx.lineTo(x + Math.max(0, Math.min(f.vw - x - 10, 260)), y - 9);
+    ctx.stroke();
+    if (ctx.setLineDash) ctx.setLineDash([]);
+    ctx.font = font(11, 400, S.mono);
+    ctx.fillStyle = S.ink3;
+    ctx.fillText(fit(said.rest, room), x, y + 2);
+  }
+}
+
+// The gutter: step numbers, and state names once there is room.
+function paintGutter(ctx, model, L, S, f, p) {
+  const { cell, top, gutterW, yOf, rA, rB } = f;
+  if (!gutterW) return;
+  if (S.gutterBg) {
+    ctx.fillStyle = S.gutterBg;
+    ctx.fillRect(0, top, gutterW, Math.max(0, f.vh - top));
+  }
+  ctx.fillStyle = S.rule;
+  ctx.fillRect(gutterW - 1, top, 1, Math.max(0, Math.min(f.vh, f.bodyBottom + 6) - top));
+  const hasP = onRow(p, f);
+  if (rA <= rB) {
+    const px = L.labelPx;
+    ctx.textBaseline = 'middle';
+    const every = L.glyphs ? 1 : niceStep(Math.ceil(15 / cell));
+    const finalAt = L.complete ? model.finalAt(f.lastRow) : null;
+    // Below glyph size a row is thinner than its label, so the playhead's
+    // label is centred on its row but never allowed under the ruler: at step
+    // 0 the row is the first pixel under it, and the rule for ticks below
+    // dropped the one label the reader was looking for.
+    const pY = hasP ? (L.glyphs ? yOf(p) + cell / 2 : Math.max(top + px / 2 + 1, yOf(p) + cell / 2)) : null;
+    for (let r = rA - (rA % every); r <= rB; r += every) {
+      if (r < rA) continue;
+      const isPlay = r === p;
+      const y = isPlay ? pY : yOf(r) + cell / 2;
+      // A label half under the ruler is a clipped label; the next tick says
+      // where the reader is just as well.
+      if (y - px / 2 < top) continue;
+      // Nor may a tick sit on the playhead's label: at 8px, "40" was drawn
+      // half under a "41" that is only one row below it.
+      if (!L.glyphs && hasP && !isPlay && Math.abs(y - pY) < px + 3) continue;
+      const isFinal = r === f.lastRow && FINAL_SAY[finalAt];
+      ctx.font = font(px, isPlay || isFinal ? 700 : 400, S.mono);
+      ctx.fillStyle = isPlay ? S.accent : isFinal ? S[FINAL_SAY[finalAt].tone] : S.ink3;
+      ctx.textAlign = 'right';
+      ctx.fillText(String(r), L.numW - 8, y);
+      if (!L.glyphs) {
+        ctx.fillStyle = S.rule;
+        ctx.fillRect(gutterW - 5, Math.round(yOf(r)), 4, 1);
       }
-      // The playhead is always labelled, whatever the tick interval skipped.
-      if (!L.glyphs && hasP && p % every !== 0) {
-        const y = pY;
-        const label = String(p);
-        const w = charW(px) * label.length + 8;
-        ctx.fillStyle = S.gutterBg || S.bg;
-        if (ctx.fillStyle) ctx.fillRect(L.numW - 4 - w, y - 7, w, 14);
-        ctx.font = font(px, 700, S.mono);
-        ctx.fillStyle = S.accent;
-        ctx.textAlign = 'right';
-        ctx.fillText(label, L.numW - 8, y);
+      if (L.showStates) {
+        ctx.textAlign = 'left';
+        ctx.font = font(px, isPlay ? 600 : 400, S.mono);
+        ctx.fillStyle = isPlay ? S.accent : S.ink2;
+        ctx.fillText(fit(L.stateName(model.stateAt(r)), L.stateChars), L.numW, y);
       }
     }
-    if (V.playhead !== undefined && V.playhead !== null && V.playhead >= rA && V.playhead <= rB) {
-      // A tab on the gutter's edge, pointing into the row.
-      const y = yOf(V.playhead) + cell / 2;
+    // The playhead is always labelled, whatever the tick interval skipped.
+    if (!L.glyphs && hasP && p % every !== 0) {
+      const label = String(p);
+      const w = charW(px) * label.length + 8;
+      ctx.fillStyle = S.gutterBg || S.bg;
+      if (ctx.fillStyle) ctx.fillRect(L.numW - 4 - w, pY - 7, w, 14);
+      ctx.font = font(px, 700, S.mono);
       ctx.fillStyle = S.accent;
-      ctx.beginPath();
-      ctx.moveTo(gutterW - 5, y - 4);
-      ctx.lineTo(gutterW, y);
-      ctx.lineTo(gutterW - 5, y + 4);
-      if (typeof ctx.fill === 'function') ctx.fill();
+      ctx.textAlign = 'right';
+      ctx.fillText(label, L.numW - 8, pY);
     }
   }
+  if (hasP) {
+    // A tab on the gutter's edge, pointing into the row.
+    const y = yOf(p) + cell / 2;
+    ctx.fillStyle = S.accent;
+    ctx.beginPath();
+    ctx.moveTo(gutterW - 5, y - 4);
+    ctx.lineTo(gutterW, y);
+    ctx.lineTo(gutterW - 5, y + 4);
+    if (typeof ctx.fill === 'function') ctx.fill();
+  }
+}
 
-  // ── the ruler: which tape, and which cell ──
+// The ruler: which tape, and which cell.
+function paintRuler(ctx, model, L, S, f, p) {
+  const { cell, top, gutterW, sx, vw } = f;
   const rTop = L.captionH;
   if (S.rulerBg) {
     ctx.fillStyle = S.rulerBg;
@@ -1159,9 +1211,9 @@ export function paintSpaceTime(ctx, model, L, S, V = {}) {
     const label = charW(10) * String(e.label).length <= room ? e.label : short;
     if (lblX < e.x + e.cols * cell - sx && charW(10) * label.length <= room + 8) ctx.fillText(label, lblX, rTop + 10);
 
-    const c0 = Math.max(e.lo, e.lo + Math.floor((xLeft - e.x) / cell));
-    const c1 = Math.min(e.hi, e.lo + Math.floor((xRight - e.x) / cell));
-    if (c0 > c1) continue;
+    const cols = visibleColumns(e, f);
+    if (!cols) continue;
+    const { c0, c1 } = cols;
     const widest = Math.max(String(e.lo).length, String(e.hi).length);
     const every = niceStep(Math.ceil((charW(numPx) * widest + 10) / cell));
     ctx.font = font(numPx, 400, S.mono);
@@ -1175,7 +1227,6 @@ export function paintSpaceTime(ctx, model, L, S, V = {}) {
       ctx.fillRect(Math.round(x), top - 5, 1, 4);
     }
     // Where the head is on the step on screen.
-    const p = V.playhead;
     if (p !== undefined && p !== null) {
       const h = model.headAt(e.index, p);
       if (h !== null && h >= c0 && h <= c1) {
@@ -1206,45 +1257,49 @@ export function paintSpaceTime(ctx, model, L, S, V = {}) {
       ctx.fillText('state', L.numW, top - 12);
     }
   }
+}
 
-  // ── an export's caption and legend ──
-  if (L.captionH && L.caption) {
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.font = font(13, 700, S.sans);
-    ctx.fillStyle = S.ink;
-    ctx.fillText(L.caption.title || '', 12, 18);
-    if (L.caption.sub) {
-      ctx.font = font(11, 400, S.sans);
-      ctx.fillStyle = S.ink2;
-      ctx.fillText(L.caption.sub, 12, 36);
-    }
+// An export's caption…
+function paintCaption(ctx, L, S) {
+  if (!L.captionH || !L.caption) return;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = font(13, 700, S.sans);
+  ctx.fillStyle = S.ink;
+  ctx.fillText(L.caption.title || '', 12, 18);
+  if (L.caption.sub) {
+    ctx.font = font(11, 400, S.sans);
+    ctx.fillStyle = S.ink2;
+    ctx.fillText(L.caption.sub, 12, 36);
   }
-  if (L.legendH) {
-    let x = gutterW + 10;
-    const y = top + L.rowCount * cell - sy + L.statusH + 12;
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'left';
-    ctx.font = font(10, 400, S.mono);
-    for (const sym of model.symbols) {
-      const slot = model.slotOf(sym);
-      ctx.fillStyle = fillOf(slot) || S.ink3;
-      ctx.fillRect(x, y - 5, 10, 10);
-      ctx.fillStyle = S.ink2;
-      ctx.fillText(sym, x + 14, y);
-      x += 14 + charW(10) * String(sym).length + 14;
-    }
-    if (headPath) {
-      ctx.strokeStyle = S.ink;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(x, y + 4);
-      ctx.lineTo(x + 6, y - 4);
-      ctx.lineTo(x + 12, y + 4);
-      ctx.stroke();
-      ctx.fillStyle = S.ink2;
-      ctx.fillText('head', x + 17, y);
-    }
+}
+
+// …and its legend: a swatch per symbol, and the head's path.
+function paintLegend(ctx, model, L, S, f) {
+  if (!L.legendH) return;
+  let x = f.gutterW + 10;
+  const y = f.top + L.rowCount * f.cell - f.sy + L.statusH + 12;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  ctx.font = font(10, 400, S.mono);
+  for (const sym of model.symbols) {
+    const slot = model.slotOf(sym);
+    ctx.fillStyle = f.fillOf(slot) || S.ink3;
+    ctx.fillRect(x, y - 5, 10, 10);
+    ctx.fillStyle = S.ink2;
+    ctx.fillText(sym, x + 14, y);
+    x += 14 + charW(10) * String(sym).length + 14;
+  }
+  if (f.headPath) {
+    ctx.strokeStyle = S.ink;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y + 4);
+    ctx.lineTo(x + 6, y - 4);
+    ctx.lineTo(x + 12, y + 4);
+    ctx.stroke();
+    ctx.fillStyle = S.ink2;
+    ctx.fillText('head', x + 17, y);
   }
 }
 
@@ -1260,6 +1315,11 @@ const esc = s => String(s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const n2 = v => Math.round(v * 100) / 100;
 
+// What save() and restore() carry: the drawing state, as a canvas's do. It
+// used to be the whole object — methods, and the read-only `size` getter,
+// which restore() then tried to assign and threw.
+const SVG_STATE = ['fillStyle', 'strokeStyle', 'lineWidth', 'lineJoin', 'font', 'textAlign', 'textBaseline', 'globalAlpha', 'imageSmoothingEnabled'];
+
 export function svgContext(width, height) {
   const parts = [];
   const stack = [];
@@ -1274,7 +1334,7 @@ export function svgContext(width, height) {
     textBaseline: 'alphabetic',
     globalAlpha: 1,
     _dash: [],
-    save() { stack.push({ ...ctx, _dash: [...ctx._dash] }); },
+    save() { stack.push({ ...Object.fromEntries(SVG_STATE.map(k => [k, ctx[k]])), _dash: [...ctx._dash] }); },
     restore() { const s = stack.pop(); if (s) Object.assign(ctx, s); },
     setLineDash(d) { ctx._dash = [...d]; },
     rect() {},

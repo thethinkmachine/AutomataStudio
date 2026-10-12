@@ -264,7 +264,7 @@ export function redrawAllLists() {
 /** Tests reset module singletons; a stale host would keep a detached listener. */
 export function resetPanelLists() {
   for (const rec of lists.values()) {
-    try { rec.host.removeEventListener('scroll', rec.onScroll); } catch (e) { }
+    rec.host.removeEventListener('scroll', rec.onScroll);
   }
   lists.clear();
 }

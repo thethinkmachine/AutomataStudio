@@ -23,6 +23,8 @@
 //   - **Listeners are attached at creation**, the way js/reference.js does it.
 
 import { App, $, Workspaces, activeWorkspaceId } from './state.js';
+import { capturePointer, releasePointer } from './pointer-capture.js';
+import { readPref, writePref } from './prefs.js';
 import { toggleTool, toggleMobilePanelTab, closeMobilePanels, getWorkspaceAccent } from './ui.js';
 import { undo, redo } from './history.js';
 import { autoLayout, toggleSnapToGrid } from './canvas.js';
@@ -70,15 +72,14 @@ const TAB_META = {
 
 /** The tab the panel cell offers. Falls back to the first real tab. */
 export function preferredMobileTab() {
-  let stored = null;
-  try { stored = localStorage.getItem(MOBILE_TAB_KEY); } catch (e) { }
+  const stored = readPref(MOBILE_TAB_KEY);
   if (stored && PANEL_TABS[stored]) return stored;
   return PANEL_TAB_NAMES.includes('inspector') ? 'inspector' : PANEL_TAB_NAMES[0];
 }
 
 export function rememberMobileTab(name) {
   if (!PANEL_TABS[name]) return;
-  try { localStorage.setItem(MOBILE_TAB_KEY, name); } catch (e) { }
+  writePref(MOBILE_TAB_KEY, name);
 }
 
 /**
@@ -318,7 +319,7 @@ function installSheetDrag(grab, panel) {
   grab.addEventListener('pointerdown', e => {
     if (!isMobileShell() || drag) return;
     drag = { id: e.pointerId, y: e.clientY, h: panel.getBoundingClientRect().height, moved: false };
-    try { grab.setPointerCapture(e.pointerId); } catch (err) { }
+    capturePointer(grab, e.pointerId);
     e.preventDefault();
   });
 
@@ -341,7 +342,7 @@ function installSheetDrag(grab, panel) {
     if (!drag || e.pointerId !== drag.id) return;
     const started = drag;
     drag = null;
-    try { grab.releasePointerCapture(e.pointerId); } catch (err) { }
+    releasePointer(grab, e.pointerId);
     panel.classList.remove('is-dragging');
     panel.style.height = '';
 

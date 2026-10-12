@@ -115,10 +115,10 @@ export function applySettings(saved) {
   }
 
   if (c.radius !== radiusWas) setR(c.radius);
-  if (!!c.snapToGrid !== snapWas && typeof toggleSnapToGrid === 'function') {
+  if (!!c.snapToGrid !== snapWas) {
     toggleSnapToGrid(!!c.snapToGrid);
   }
-  if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
+  refreshQuickSettings();
 }
 
 // Records an undo point for a settings change, but only when one of the
@@ -315,8 +315,8 @@ export function markDirty() {
   const ws = Workspaces.find(w => w.id === activeWorkspaceId);
   if (ws && !ws.dirty) {
     ws.dirty = true;
-    if (typeof renderTabs === 'function') renderTabs();
-    if (typeof setSaveState === 'function') setSaveState('unsaved');
+    renderTabs();
+    setSaveState('unsaved');
   }
 }
 // Step back one entry, handing the state being left behind to redo.
@@ -347,7 +347,7 @@ export function restoreSnapshot(s) {
   if (d.machine && d.machine !== App.machine) {
     const cfg = getMachineConfig(d.machine);
     App.machine = d.machine;
-    if (typeof syncMachineSelectors === 'function') syncMachineSelectors(d.machine);
+    syncMachineSelectors(d.machine);
     const badge = document.getElementById('mach-badge');
     if (badge) { badge.className = `badge ${cfg.badge}`; badge.textContent = cfg.label; }
     // The same function the machine switch uses. This path used to carry its

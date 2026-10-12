@@ -89,7 +89,7 @@ export function algoLexer(c) {
   dfaCard.append(el('div', 'card-title', 'The automaton'));
   const stats = el('div', 'lx-stats');
   const classes = el('div', 'lx-classes');
-  const load = el('button', 'algo-btn');
+  const load = el('button', 'algo-btn has-icon');
   load.type = 'button';
   load.innerHTML = `${ALGO_ICON_LOAD_CANVAS}Load DFA onto canvas`;
   load.addEventListener('click', loadOntoCanvas);

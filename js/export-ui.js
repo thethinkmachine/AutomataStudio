@@ -67,7 +67,7 @@ export function exportImageDimensions() {
   const o = ExportImageOpts;
   let w, h;
   if (o.crop) {
-    const b = typeof getContentBounds === 'function' ? getContentBounds(App.config.radius + 4) : null;
+    const b = getContentBounds(App.config.radius + 4);
     if (b) { w = Math.round(b.width + o.padding * 2); h = Math.round(b.height + o.padding * 2); }
   }
   if (w === undefined) {

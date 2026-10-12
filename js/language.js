@@ -860,7 +860,7 @@ export function langLoadTrace(word) {
     ? (langIsSymbolic() ? word.join('') : word.join(','))
     : App.config.sym.eps;
   revealPlayer();
-  if (typeof runSim === 'function') runSim();
+  runSim();
 }
 
 // Both the fingerprint and the trace search run the real simulator many
@@ -869,9 +869,7 @@ export function langLoadTrace(word) {
 // state around must not re-decide 127 words.
 export let _langExtCache = { key: '', node: null };
 export function _langExtKey() {
-  const base = typeof _regexCacheKey === 'function'
-    ? _regexCacheKey()
-    : App.transitions.map(t => t.from + t.symbol + t.to).join(',');
+  const base = _regexCacheKey();
   return App.machine + '|' + [...App.sigma].join('') + '|' +
     [...App.stackAlpha].join('') + '|' + App.config.transducerAccepts + '|' +
     App.config.langStepBudget + '|' + App.tapeCount + '|' + base;
@@ -1476,7 +1474,7 @@ export function toggleFormalDef() {
     btn.classList.toggle('open', show);
     btn.dataset.tip = show ? 'Hide the full formal definition' : 'Show the full formal definition';
   }
-  if (show && typeof updateDefBoxOverflowShadow === 'function') updateDefBoxOverflowShadow();
+  if (show) updateDefBoxOverflowShadow();
 }
 
 // Flags the claim row while the expression runs past its right edge, which

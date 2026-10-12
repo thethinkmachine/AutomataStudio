@@ -119,7 +119,7 @@ export function openCustomSelect(api) {
   // identifier face under a trigger set in prose. Before positioning, because
   // the width it is given is measured off its own text.
   if (typeof getComputedStyle === 'function') {
-    try { api.listbox.style.fontFamily = getComputedStyle(api.trigger).fontFamily; } catch (e) { }
+    api.listbox.style.fontFamily = getComputedStyle(api.trigger).fontFamily;
   }
   positionCustomSelect(api);
   const options = Array.from(api.listbox.querySelectorAll('.custom-select-option:not([aria-disabled="true"])'));

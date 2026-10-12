@@ -81,7 +81,7 @@ export function addSym() {
       App.sigma.add(s);
     });
   $('sym-in').value = ''; renderSigma(); updateRPanel(); renderGramSyms();
-    if (blocked.length && typeof showStatus === 'function') showStatus('Boundary markers are reserved and cannot be added to Σ.');
+    if (blocked.length) showStatus('Boundary markers are reserved and cannot be added to Σ.');
 }
   export function delSym(s) { 
     App.sigma.delete(s); 
@@ -92,7 +92,7 @@ export function renderSigma() {
   const c = $('sigma-chips');
   c.innerHTML = [...App.sigma].map(s => `<div class="chip">${escapeHtml(s)}${chipRemove('sigma', s)}</div>`).join('')
     || '<div class="empty-msg">Add symbols</div>';
-  if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
+  updateLPanelSectionMeta();
 }
 export function addGSym() {
   const v = $('gsym-in').value.trim(); if (!v) return;
@@ -103,7 +103,7 @@ export function addGSym() {
       App.stackAlpha.add(s);
     });
   $('gsym-in').value = ''; renderGamma();
-    if (blocked.length && typeof showStatus === 'function') showStatus('Boundary markers are reserved for the tape boundary and were not added here.');
+    if (blocked.length) showStatus('Boundary markers are reserved for the tape boundary and were not added here.');
 }
   export function delGSym(s) { 
     if (isBoundaryTapeMachine(App.machine) && isBoundarySymbol(s)) return; 
@@ -119,7 +119,7 @@ export function renderGamma() {
       const title = isBoundary ? ` data-tip="${s === App.config.sym.leftMarker ? 'Left boundary marker' : 'Right boundary marker'}"` : '';
       return `<div class="chip" ${style}${title}>${escapeHtml(s)}${(isBottom || isBoundary) ? '' : chipRemove('gamma', s)}</div>`;
     }).join('') || '<div class="empty-msg">Add symbols</div>';
-  if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
+  updateLPanelSectionMeta();
 }
 export function addOutSym() {
   const v = $('outsym-in').value.trim(); if (!v) return;
@@ -131,7 +131,7 @@ export function renderOutputAlpha() {
   const c = $('output-chips');
   c.innerHTML = [...App.outputAlpha].map(s => `<div class="chip">${escapeHtml(s)}${chipRemove('output', s)}</div>`).join('')
     || '<div class="empty-msg">Add symbols</div>';
-  if (typeof updateLPanelSectionMeta === 'function') updateLPanelSectionMeta();
+  updateLPanelSectionMeta();
 }
 
 

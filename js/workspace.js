@@ -6,7 +6,7 @@ import { registerModal, showOverlay } from './modal.js';
 import { showExampleCard } from './machine-card.js';
 import { $, APP_VERSION, App, clampTapeCount } from './state.js';
 import { Change, emit } from './store.js';
-import { autoFitLoadedMachine, fitToScreen, switchHelpTab } from './ui.js';
+import { autoFitLoadedMachine, switchHelpTab } from './ui.js';
 import { performClear, showStatus } from './utils.js';
 import { applyMachineSwitch, setView } from './view.js';
 
@@ -20,7 +20,7 @@ registerModal('about-modal', { dismissOnBackdrop: true });
 // Reopens on the first tab rather than wherever it was left, matching
 // openSettingsModal.
 export function showHelpModal() {
-  if (typeof switchHelpTab === 'function') switchHelpTab('tools');
+  switchHelpTab('tools');
   showOverlay('help-modal');
 }
 
@@ -127,11 +127,10 @@ export function loadBuiltMachine(machine, machineType, card = null) {
   App.accepts = new Set(machine.accepts);
   App.stateN = Math.max(0, ...App.states.map(s => parseInt(s.id.replace(/\D/g, '')) || 0));
   App.transN = Math.max(0, ...App.transitions.map(t => parseInt(t.id.replace(/\D/g, '')) || 0));
-  if (typeof showExampleCard === 'function') showExampleCard(card);
+  showExampleCard(card);
   applyMachineSwitch(machineType || App.machine);
   emit(Change.ALPHABET, Change.META, Change.GRAPH);
   setView('build');
-  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
-  else setTimeout(() => fitToScreen(true), 50);
+  autoFitLoadedMachine();
 }
 

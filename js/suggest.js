@@ -224,7 +224,7 @@ export function getBatchSuggestState(el) {
 // in a production) rather than Σ directly, so this is a straight reuse of
 // getSimSuggestState with that alphabet swapped in.
 export function getGrammarSuggestState(el) {
-  const terms = typeof grammarSuggestTerminals === 'function' ? grammarSuggestTerminals() : App.sigma;
+  const terms = grammarSuggestTerminals();
   return getSimSuggestState(el, terms, 'Σ');
 }
 

@@ -1377,7 +1377,8 @@ export function animateSimToken(edgeKey, dur, onDone) {
   // with no length, or a host without getTotalLength at all, means there is
   // nothing to travel along, so hand straight back to the caller.
   let len = 0;
-  try { len = pathEl && layer ? pathEl.getTotalLength() : 0; } catch (e) { }
+  // A path that is not rendered has no length, and some engines throw for it.
+  try { len = pathEl && layer ? pathEl.getTotalLength() : 0; } catch { /* stays 0 */ }
   if (!len) { if (onDone) onDone(); return; }
   const dot = makeSVG('circle');
   // The radius is in world units, so the camera divides it: on a machine drawn
@@ -2060,7 +2061,7 @@ export function handleSimInputKeydown(e) {
     // dismissSymSuggest (not hideSymSuggest) — Enter's keyup still fires
     // after this keydown handler returns, and would otherwise pop the
     // popover back open via the onkeyup caret-refresh handler.
-    if (typeof dismissSymSuggest === 'function') dismissSymSuggest();
+    dismissSymSuggest();
     runSim();
     return;
   }

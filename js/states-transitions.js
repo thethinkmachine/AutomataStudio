@@ -1,6 +1,7 @@
 import { defineActions } from './action-registry.js';
 import { clearTempLine, hideCanvasContextMenu } from './canvas.js';
 import { invalidateTransitionIndex } from './machines/runtime.js';
+import { hasSingleValuedDelta, isLBA, isOneWayFA } from './machines/predicates.js';
 import { snapshot } from './history.js';
 import { closeModal, registerModal, showOverlay } from './modal.js';
 import { pruneNoteAnchorsExcluding } from './notes.js';
@@ -51,7 +52,7 @@ export function getEdgeTransitions(from, to) { return App.transitions.filter(t =
 export function showContextMenu(kind, x, y) {
   const m = $('ctx');
   if (!m) return;
-  if (typeof hideCanvasContextMenu === 'function') hideCanvasContextMenu();
+  hideCanvasContextMenu();
   m.dataset.mode = kind;
   m.style.display = 'block';
   // These are the menu's own dimensions, used to keep it inside the viewport.
@@ -302,7 +303,7 @@ export function populateTransitionModal(t) {
 
   const symSel = $('m-sym');
   if (symSel) {
-    if (App.machine !== 'MTM') {
+    if (!isMultiTape(App.machine)) {
       symSel.innerHTML = symbolOptions(syms);
       if (t?.symbol !== undefined) ensureSelectValue(symSel, t.symbol);
     } else {
@@ -498,7 +499,7 @@ export function deleteState(id) {
   // still live — renderAll()'s prune pass runs after the array mutation below
   // and can no longer recover the note's pre-deletion position.
   const orphanedTransIds = App.transitions.filter(t => t.from === id || t.to === id).map(t => t.id);
-  if (typeof pruneNoteAnchorsExcluding === 'function') pruneNoteAnchorsExcluding([id], orphanedTransIds);
+  pruneNoteAnchorsExcluding([id], orphanedTransIds);
   App.states = App.states.filter(s => s.id !== id);
   App.transitions = App.transitions.filter(t => t.from !== id && t.to !== id);
   App.accepts.delete(id);
@@ -589,7 +590,7 @@ export function saveTransition(values, editId = null) {
     if (sym === rightMarker && values.dir === 'R') {
       return fail(`${App.machine} cannot move right of the right boundary marker.`);
     }
-    if (App.machine === 'LBA' && values.write !== sym) {
+    if (isLBA() && values.write !== sym) {
       return fail('LBA boundary markers are fixed and must be preserved on write.');
     }
   }
@@ -771,7 +772,7 @@ export function editTransFromList(id) {
 
 export function deleteTrans(id) {
   snapshot();
-  if (typeof pruneNoteAnchorsExcluding === 'function') pruneNoteAnchorsExcluding([], [id]);
+  pruneNoteAnchorsExcluding([], [id]);
   App.transitions = App.transitions.filter(t => t.id !== id);
   emit(Change.GRAPH);
 }
@@ -779,7 +780,7 @@ export function deleteTransitions(ids) {
   const removeIds = new Set(ids);
   if (!removeIds.size) return;
   snapshot();
-  if (typeof pruneNoteAnchorsExcluding === 'function') pruneNoteAnchorsExcluding([], ids);
+  pruneNoteAnchorsExcluding([], ids);
   App.transitions = App.transitions.filter(t => !removeIds.has(t.id));
   emit(Change.GRAPH);
 }
@@ -1343,7 +1344,9 @@ export function applyStartState(targetId) {
     App.startId = targetId;
     return;
   }
-  if (App.machine === 'NFA' || App.machine === 'ε-NFA') {
+  // A nondeterministic finite automaton can have a second start state, wired
+  // in by ε-moves from a dummy one; anything else just moves the mark.
+  if (isOneWayFA() && !hasSingleValuedDelta()) {
     let dummy = App.states.find(s => s.isDummyStart && App.startId === s.id);
     const eps = App.config.sym.eps;
     if (dummy) {
@@ -1369,7 +1372,7 @@ export function applyStartState(targetId) {
       // replaces updated three elements by hand, two of which
       // (#mobile-machine-select, .mtab) no longer exist, and never touched the
       // picker — so the header kept reading "NFA" for an ε-NFA.
-      if (App.machine === 'NFA') applyMachineSwitch('ε-NFA');
+      if (!getMachineConfig(App.machine).hasEpsilon) applyMachineSwitch('ε-NFA');
     }
   } else {
     App.startId = targetId; 
@@ -1454,7 +1457,7 @@ export function ctxReverseTrans() {
   hideContextMenu();
   const ids = new Set(edge.transitionIds);
   if (!ids.size) return;
-  if (App.machine === 'DFA') {
+  if (isOneWayFA() && hasSingleValuedDelta()) {
     let conflictMsg = null;
     App.transitions.find(t => {
       if (ids.has(t.id)) return false;

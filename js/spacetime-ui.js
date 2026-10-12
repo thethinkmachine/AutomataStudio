@@ -34,6 +34,7 @@
 // ══════════════════════════════════════════════════════════════════
 
 import { $, App, getMachineConfig, getState } from './state.js';
+import { readPref, writePref } from './prefs.js';
 import { isAnyPDA, isCounterMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, showStatus } from './utils.js';
 import { getTransition, transLabel } from './states-transitions.js';
 import {
@@ -210,13 +211,6 @@ let gripDrag = null;
 // when there is no branch to draw.
 let trace = null;
 let branchNote = null;
-
-function readPref(key, fallback) {
-  try { const v = localStorage.getItem(key); return v === null ? fallback : v; } catch (e) { return fallback; }
-}
-function writePref(key, value) {
-  try { localStorage.setItem(key, String(value)); } catch (e) { /* private mode */ }
-}
 
 /** Test hook: everything here is module state that would survive a reset. */
 export function resetSpaceTime() {

@@ -21,7 +21,7 @@ import { isMultiTape, machineSupportsBlocks } from './machines/index.js';
 import { $, APP_VERSION, App, MachineExamples, MachineTypes, Workspaces, activeWorkspaceId, exportWorkspaceState, getMachineConfig, largeMachineProfile, normalizeBoundarySymbolsForMachine, setActiveWorkspaceId, setR, setWorkspaces } from './state.js';
 import { WORKSPACE_EXT, fileStem, hasFileHost, noteOpenDocument, openFileDialog, saveFileAs, suggestedFileName, writeFile } from './file-host.js';
 import { Change, emit } from './store.js';
-import { autoFitLoadedMachine, createTab, fitToScreen, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
+import { autoFitLoadedMachine, createTab, initTabs, markActiveWorkspaceSaved, renderTabs, setSaveState, switchTab } from './ui.js';
 import { hasPdaNondeterminism, hasSingleTapeNondeterminism, isAnyPDA, performClear, resetIds, showStatus } from './utils.js';
 import { applyMachineSwitch } from './view.js';
 
@@ -528,7 +528,7 @@ export async function openWorkspaceDb() {
 // here keeps whatever mark it was last written with.
 function tabRecordsFor(ids) {
   const act = Workspaces.find(w => w.id === activeWorkspaceId);
-  if (act && typeof exportWorkspaceState === 'function') act.data = exportWorkspaceState();
+  if (act) act.data = exportWorkspaceState();
   const want = new Set(ids);
   return Workspaces.filter(w => want.has(w.id)).map(w => stripTabForStorage({ ...w, dirty: false }));
 }
@@ -718,7 +718,7 @@ export function persistTabState() {
   };
   tabStateWriteInFlight = run()
     .catch(() => {
-      if (typeof setSaveState === 'function') setSaveState('error', 'Save failed');
+      setSaveState('error', 'Save failed');
     })
     .finally(() => { tabStateWriteInFlight = null; });
   return tabStateWriteInFlight;
@@ -726,7 +726,7 @@ export function persistTabState() {
 
 export async function saveWorkspace(opts = {}) {
   if (pendingWorkspaceSave) return pendingWorkspaceSave;
-  if (typeof setSaveState === 'function') setSaveState('saving');
+  setSaveState('saving');
 
   pendingWorkspaceSave = Promise.resolve().then(async () => {
     if (typeof exportWorkspaceState !== 'function' || !activeWorkspaceId) return false;
@@ -742,12 +742,12 @@ export async function saveWorkspace(opts = {}) {
       if (active) active.dirty = wasDirty;
       throw new Error('Could not update workspace backup');
     }
-    if (typeof renderTabs === 'function') renderTabs();
-    if (typeof setSaveState === 'function') setSaveState(Workspaces.some(ws => ws.dirty) ? 'unsaved' : 'saved');
+    renderTabs();
+    setSaveState(Workspaces.some(ws => ws.dirty) ? 'unsaved' : 'saved');
     if (!opts.silent) showStatus('Workspace saved');
     return true;
   }).catch(() => {
-    if (typeof setSaveState === 'function') setSaveState('error', 'Save failed');
+    setSaveState('error', 'Save failed');
     showStatus('Could not save — storage is unavailable');
     return false;
   }).finally(() => {
@@ -771,12 +771,12 @@ export async function saveWorkspaceById(id) {
   try {
     await writeWorkspaceRecords([id]);
     ws.dirty = false;
-    if (typeof renderTabs === 'function') renderTabs();
-    if (typeof setSaveState === 'function') setSaveState(Workspaces.some(item => item.dirty) ? 'unsaved' : 'saved');
+    renderTabs();
+    setSaveState(Workspaces.some(item => item.dirty) ? 'unsaved' : 'saved');
     return true;
   } catch {
     ws.dirty = wasDirty;
-    if (typeof setSaveState === 'function') setSaveState('error', 'Save failed');
+    setSaveState('error', 'Save failed');
     showStatus('Could not save — browser storage is full or unavailable');
     return false;
   }
@@ -787,7 +787,7 @@ export async function runAutosave() {
   const dirtyIds = Workspaces.filter(ws => ws.dirty).map(ws => ws.id);
   if (!dirtyIds.length) return;
   autosaveInProgress = true;
-  if (typeof setSaveState === 'function') setSaveState('saving', 'Autosaving…');
+  setSaveState('saving', 'Autosaving…');
   let allSaved = true;
   try {
     for (const id of dirtyIds) {
@@ -796,9 +796,7 @@ export async function runAutosave() {
   } finally {
     autosaveInProgress = false;
   }
-  if (typeof setSaveState === 'function') {
-    setSaveState(allSaved && !Workspaces.some(ws => ws.dirty) ? 'saved' : allSaved ? 'unsaved' : 'error');
-  }
+  setSaveState(allSaved && !Workspaces.some(ws => ws.dirty) ? 'saved' : allSaved ? 'unsaved' : 'error');
 }
 
 // How often a tick may fire. A tick is JSON.stringify over every workspace,
@@ -882,7 +880,7 @@ function bindActiveFile(filePath, { rename = false } = {}) {
     if (rename && filePath) ws.name = fileStem(filePath) || ws.name;
   }
   noteOpenDocument(filePath, { dirty: !!ws?.dirty });
-  if (typeof renderTabs === 'function') renderTabs();
+  renderTabs();
 }
 
 export function activeFilePath() {
@@ -909,12 +907,12 @@ export async function saveDocument() {
     // A cancel cannot happen on this path — there is no dialog — so anything
     // that is not success is a real failure worth reporting.
     showStatus(`Could not save: ${res.error || 'unknown error'}`);
-    if (typeof setSaveState === 'function') setSaveState('error', 'Save failed');
+    setSaveState('error', 'Save failed');
     return false;
   }
   bindActiveFile(path);
   showStatus(`Saved ${fileStem(path)}${WORKSPACE_EXT}`);
-  if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
+  markActiveWorkspaceSaved();
   return true;
 }
 
@@ -935,7 +933,7 @@ export async function saveDocumentAs() {
   }
   bindActiveFile(res.path, { rename: true });
   showStatus(`Saved ${fileStem(res.path)}${WORKSPACE_EXT}`);
-  if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
+  markActiveWorkspaceSaved();
   return true;
 }
 
@@ -950,7 +948,7 @@ export function saveJSON() {
   a.download = suggestedFileName(activeWorkspace()?.name || 'machine');
   a.click();
   showStatus('Machine saved');
-  if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
+  markActiveWorkspaceSaved();
 }
 
 // ── One Save ──────────────────────────────────────────────────────
@@ -1188,7 +1186,7 @@ export function applyOpenedDocument(doc) {
     // What is on screen is what is on disk: reading it in raised the unsaved
     // dot through the same announcements an edit makes, so a file came up
     // marked as changed before anyone had touched it.
-    if (typeof markActiveWorkspaceSaved === 'function') markActiveWorkspaceSaved();
+    markActiveWorkspaceSaved();
   }
   return ok;
 }
@@ -1261,7 +1259,7 @@ export function applyDocument(payload, name, opts = {}) {
     // the document is called says so, and an untitled tab takes it.
     if (opts.tabName) {
       const ws = activeWorkspace();
-      if (ws && /^Workspace \d+$/.test(ws.name || '')) { ws.name = opts.tabName; if (typeof renderTabs === 'function') renderTabs(); }
+      if (ws && /^Workspace \d+$/.test(ws.name || '')) { ws.name = opts.tabName; renderTabs(); }
     }
     // A saved workspace usually has no `meta`; an example or a StateMate
     // result saved to disk does. Either way the card is retargeted rather
@@ -1886,22 +1884,17 @@ export function loadData(d, isExample) {
   // document. Running it here as well would map an already-mapped symbol.
   if (d.cam) { App.cam = { ...d.cam }; }
 
-  if (typeof normalizeBoundarySymbolsForMachine === 'function') {
-    normalizeBoundarySymbolsForMachine(App.machine);
-  }
+  normalizeBoundarySymbolsForMachine(App.machine);
 
   // Update view without confirm bypass
-  if (typeof applyMachineSwitch === 'function') {
-    applyMachineSwitch(App.machine);
-  }
+  applyMachineSwitch(App.machine);
   renderSigma(); renderGamma(); renderOutputAlpha();
   // Change.GRAMMAR because a loaded file carries one: without it the Grammar
   // workbench keeps the rules of whatever was open before the load.
   emit(Change.GRAPH, Change.GRAMMAR, Change.EXERCISE, Change.LEXER);
 
   if (d.cam) { applyCamera(); }
-  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
-  else setTimeout(() => fitToScreen(true), 50);
+  autoFitLoadedMachine();
 
   if (!isExample) snapshot();
 }
@@ -2034,7 +2027,7 @@ export async function loadBackup() {
       loadData(loaded);
       
       // Inject the monolith state into a fresh tab correctly
-      if (typeof initTabs === 'function') initTabs();
+      initTabs();
     }
   } catch (e) { console.error('Backup load failed:', e); }
 }

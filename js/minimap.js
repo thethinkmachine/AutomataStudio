@@ -34,6 +34,8 @@
 // strokes are 1px on any display.
 
 import { defineActions } from './action-registry.js';
+import { capturePointer } from './pointer-capture.js';
+import { writeFlag } from './prefs.js';
 import { animMotionOk, isSyncRAF } from './anim.js';
 import { applyCamera, clampZoom, normalizeWheelDeltas } from './canvas.js';
 import { includeDividerBounds, isRectDivider } from './dividers.js';
@@ -698,7 +700,7 @@ export function initMinimap() {
     const inside = Math.abs(pt.x - c.x) <= c.hw && Math.abs(pt.y - c.y) <= c.hh;
     grab = inside ? { dx: pt.x - c.x, dy: pt.y - c.y } : { dx: 0, dy: 0 };
     canvas.classList.add('dragging');
-    try { canvas.setPointerCapture(e.pointerId); } catch (err) { }
+    capturePointer(canvas, e.pointerId);
     if (!inside) centreCameraOn(pt.x, pt.y, false);
   });
 
@@ -785,7 +787,7 @@ export function toggleMinimap() {
     btn.setAttribute('aria-pressed', hidden ? 'false' : 'true');
     btn.setAttribute('data-tip', hidden ? 'Show minimap' : 'Hide minimap');
   }
-  try { localStorage.setItem('automata-minimap', hidden ? '0' : '1'); } catch (e) { }
+  writeFlag('automata-minimap', !(hidden));
   // The map leaving the stack changes what sits above the nav controls.
   layoutCanvasOverlays();
   if (!hidden) {

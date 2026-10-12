@@ -1,4 +1,5 @@
 import { defineActions } from './action-registry.js';
+import { writeFlag, writePref } from './prefs.js';
 import { renderGrammarView } from './grammar-ui.js';
 import { renderAlgo } from './algorithms-fa.js';
 import { renderGamma, renderOutputAlpha, renderSigma, syncAlphabetSection } from './alphabet.js';
@@ -146,7 +147,7 @@ let auxMaximized = (() => {
 
 export function setAuxMaximized(on) {
   auxMaximized = !!on;
-  try { localStorage.setItem(AUX_MAX_KEY, auxMaximized ? '1' : '0'); } catch (e) { }
+  writeFlag(AUX_MAX_KEY, auxMaximized);
   syncAuxMaximized();
 }
 
@@ -206,7 +207,7 @@ export function lastAuxViewId() { return lastAuxView; }
 function rememberAuxView(v) {
   if (v === lastAuxView) return;
   lastAuxView = v;
-  try { localStorage.setItem(AUX_LAST_KEY, v); } catch (e) { }
+  writePref(AUX_LAST_KEY, v);
 }
 
 // On a phone the window opens below the header, so the button is still there
@@ -313,7 +314,7 @@ export function setView(v) {
   if (v === 'reference') { renderReferenceView(); }
   if (v === 'library') { renderLibraryView(); }
   updateLPanel();
-  if (typeof updateMobilePanelChrome === 'function') updateMobilePanelChrome();
+  updateMobilePanelChrome();
 
   // The dialog is aria-modal, so focus has to actually move into it — and come
   // back to whatever opened it on close.
@@ -341,7 +342,7 @@ const AUX_TAB_STOPS = ['a[href]', 'button:not([disabled])', 'input:not([disabled
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape' || e.defaultPrevented) return;
   if (!AUX_VIEWS.includes(App.view)) return;
-  if (typeof anyModalOpen === 'function' && anyModalOpen()) return;
+  if (anyModalOpen()) return;
   const t = e.target;
   if (!t || !t.closest || !t.closest('#aux-overlay')) return;
   if (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA' && t.tagName !== 'SELECT') return;
@@ -358,7 +359,7 @@ document.addEventListener('keydown', e => {
   if (!AUX_VIEWS.includes(App.view)) return;
   // A modal (e.g. the machine-switch confirm) can open on top of an aux view;
   // while one is up it owns the focus trap.
-  if (typeof anyModalOpen === 'function' && anyModalOpen()) return;
+  if (anyModalOpen()) return;
   const shell = $('aux-overlay');
   if (!shell) return;
   // Tab stops only. The strip's inactive tabs are tabindex -1 — a roving
@@ -451,9 +452,7 @@ export function setMachine(m) {
 }
 
 export function syncMachineSelectors(m) {
-  if (typeof updateModelPickerLabels === 'function') {
-    updateModelPickerLabels();
-  }
+  updateModelPickerLabels();
 }
 
 export function applyMachineSwitch(m) {
@@ -464,21 +463,19 @@ export function applyMachineSwitch(m) {
     const bottom = App.config.sym.stackBottom;
     const counterSym = [...App.stackAlpha].find(sym => sym !== bottom) || '1';
     App.stackAlpha = new Set([bottom, counterSym]);
-    if (typeof renderGamma === 'function') renderGamma();
+    renderGamma();
   }
 
-  if (typeof normalizeBoundarySymbolsForMachine === 'function') {
-    normalizeBoundarySymbolsForMachine(m);
-  }
+  normalizeBoundarySymbolsForMachine(m);
 
   // Update UI Tabs and Badges
   syncMachineSelectors(m);
   $('mach-badge').className = `badge ${cfg.badge}`;
   $('mach-badge').textContent = cfg.label;
 
-  if (typeof renderSigma === 'function') renderSigma();
-  if (typeof renderGamma === 'function') renderGamma();
-  if (typeof renderOutputAlpha === 'function') renderOutputAlpha();
+  renderSigma();
+  renderGamma();
+  renderOutputAlpha();
 
   // Toggle UI Sections based on Machine Features. The alphabets and the
   // machine's own parameters each have one function that decides them, shared
@@ -504,7 +501,7 @@ export function applyMachineSwitch(m) {
 
   updateRPanel();
   renderAll();
-  if (typeof renderTabs === 'function') renderTabs();
+  renderTabs();
   showStatus('Machine: ' + m);
 }
 

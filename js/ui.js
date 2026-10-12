@@ -1,4 +1,6 @@
 import { defineActions } from './action-registry.js';
+import { capturePointer, releasePointer } from './pointer-capture.js';
+import { forgetPref, readFlag, readJsonPref, readPref, writeFlag, writeJsonPref, writePref } from './prefs.js';
 import { utmStepBack, utmStepFwd, utmToggleAuto } from './algorithms-fa.js';
 import { renderGamma } from './alphabet.js';
 import { settleAll } from './anim.js';
@@ -354,7 +356,8 @@ export function handleTabDragStart(id, e, tabEl = e.currentTarget) {
   if (tabEl) tabEl.classList.add('dragging');
   if (e.dataTransfer) {
     e.dataTransfer.effectAllowed = 'move';
-    try { e.dataTransfer.setData('text/plain', id); } catch (_) { }
+    // Firefox will not start a drag without data; older engines throw on the type.
+    try { e.dataTransfer.setData('text/plain', id); } catch { /* the drag still runs */ }
   }
 }
 
@@ -604,7 +607,7 @@ export function renderTabs() {
 
   // The strip is hidden below 900px; the header carries a button naming the
   // active workspace instead, and it is drawn from the same list.
-  if (typeof syncMobileWorkspaceButton === 'function') syncMobileWorkspaceButton();
+  syncMobileWorkspaceButton();
 
   tb.onscroll = () => updateTabOverflowShadows(tb);
   requestAnimationFrame(() => {
@@ -752,8 +755,8 @@ export function toggleTabOverflowMenu(e, anchor = e.currentTarget) {
   if (!menu) return;
   if (menu.style.display === 'block') { hideTabOverflowMenu(); return; }
   hideTabContextMenu();
-  if (typeof hideContextMenu === 'function') hideContextMenu();
-  if (typeof hideCanvasContextMenu === 'function') hideCanvasContextMenu();
+  hideContextMenu();
+  hideCanvasContextMenu();
   const btn = $('tab-overflow-btn');
   const r = anchor.getBoundingClientRect();
   // Render first so the menu has its real height/width before we place it.
@@ -891,17 +894,17 @@ export function createTab(name) {
 
     App.selectedStates.clear();
     App.selectedTransitions.clear();
-    if (typeof resetSim === 'function') resetSim();
-    if (typeof applyMachineSwitch === 'function') applyMachineSwitch(App.machine);
+    resetSim();
+    applyMachineSwitch(App.machine);
   
     renderTabs();
     renderAll();
-    if (typeof applyCamera === 'function') applyCamera();
-    if (typeof updateLPanel === 'function') updateLPanel();
-    if (typeof updateRPanel === 'function') updateRPanel();
+    applyCamera();
+    updateLPanel();
+    updateRPanel();
     // Each tab carries its own config, so activating one can bring different
     // canvas settings with it — the same reason R gets republished here.
-    if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
+    refreshQuickSettings();
     // The speed dial too: it is drawn once at boot, before loadBackup replaces
     // the config it reads, and the restore lands here.
     syncSpeedControl();
@@ -918,8 +921,8 @@ export function createTab(name) {
     // reload: the boot restore comes through here, App.scope was restored
     // correctly, and nothing ever told the bar to draw it. Exactly the rule the
     // comment above states for Change.META.
-    if (typeof syncScopeBar === 'function') syncScopeBar();
-    if (typeof updateBlockList === 'function') updateBlockList();
+    syncScopeBar();
+    updateBlockList();
   });
   saveBackupChecked();
 }
@@ -947,20 +950,18 @@ export function switchTab(id) {
   
     App.selectedStates.clear();
     App.selectedTransitions.clear();
-    if (typeof resetSim === 'function') resetSim();
-    if (typeof applyMachineSwitch === 'function') {
-      // Re-bind toolbar UI to match machine switch
-      applyMachineSwitch(App.machine);
-    }
+    resetSim();
+    // Re-bind toolbar UI to match machine switch
+    applyMachineSwitch(App.machine);
 
     renderTabs();
     renderAll();
-    if (typeof applyCamera === 'function') applyCamera();
-    if (typeof updateLPanel === 'function') updateLPanel();
-    if (typeof updateRPanel === 'function') updateRPanel();
+    applyCamera();
+    updateLPanel();
+    updateRPanel();
     // Each tab carries its own config, so activating one can bring different
     // canvas settings with it — the same reason R gets republished here.
-    if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
+    refreshQuickSettings();
     // The speed dial too: it is drawn once at boot, before loadBackup replaces
     // the config it reads, and the restore lands here.
     syncSpeedControl();
@@ -977,8 +978,8 @@ export function switchTab(id) {
     // reload: the boot restore comes through here, App.scope was restored
     // correctly, and nothing ever told the bar to draw it. Exactly the rule the
     // comment above states for Change.META.
-    if (typeof syncScopeBar === 'function') syncScopeBar();
-    if (typeof updateBlockList === 'function') updateBlockList();
+    syncScopeBar();
+    updateBlockList();
   });
   saveBackupChecked();
 }
@@ -1189,8 +1190,8 @@ export function showTabContextMenu(id, e) {
   e.stopPropagation();
   const m = $('tab-ctx-menu');
   if (!m) return;
-  if (typeof hideContextMenu === 'function') hideContextMenu();
-  if (typeof hideCanvasContextMenu === 'function') hideCanvasContextMenu();
+  hideContextMenu();
+  hideCanvasContextMenu();
   tabCtxId = id;
   const idx = Workspaces.findIndex(w => w.id === id);
   const closeBtn = $('tab-ctx-close');
@@ -1298,24 +1299,22 @@ function hasSelection() {
  * owns both, so a cut costs one history entry rather than two.
  */
 function deleteSelection() {
-  if (typeof pruneNoteAnchorsExcluding === 'function') {
-    const removedTransIds = new Set(App.selectedTransitions);
-    App.transitions.forEach(t => {
-      if (App.selectedStates.has(t.from) || App.selectedStates.has(t.to)) removedTransIds.add(t.id);
-    });
-    // A selected *block* is one id standing for a whole subtree, so naming
-    // the selection alone named the box and not one state inside it: a note
-    // out here anchored into the block was never seen by the prune and
-    // settled at its stored offset instead of holding where it was drawn.
-    const removedStateIds = new Set(App.selectedStates);
-    App.selectedStates.forEach(id => {
-      if (!getBlock(id)) return;
-      const gone = blockRemovalIds(id);
-      gone.states.forEach(sid => removedStateIds.add(sid));
-      gone.transitions.forEach(tid => removedTransIds.add(tid));
-    });
-    pruneNoteAnchorsExcluding([...removedStateIds], [...removedTransIds]);
-  }
+  const removedTransIds = new Set(App.selectedTransitions);
+  App.transitions.forEach(t => {
+    if (App.selectedStates.has(t.from) || App.selectedStates.has(t.to)) removedTransIds.add(t.id);
+  });
+  // A selected *block* is one id standing for a whole subtree, so naming
+  // the selection alone named the box and not one state inside it: a note
+  // out here anchored into the block was never seen by the prune and
+  // settled at its stored offset instead of holding where it was drawn.
+  const removedStateIds = new Set(App.selectedStates);
+  App.selectedStates.forEach(id => {
+    if (!getBlock(id)) return;
+    const gone = blockRemovalIds(id);
+    gone.states.forEach(sid => removedStateIds.add(sid));
+    gone.transitions.forEach(tid => removedTransIds.add(tid));
+  });
+  pruneNoteAnchorsExcluding([...removedStateIds], [...removedTransIds]);
   App.selectedStates.forEach(id => {
     // A selected block id deletes the whole subtree behind the box — every
     // state at every depth, and the records that grouped them. The selection
@@ -1332,8 +1331,8 @@ function deleteSelection() {
   });
   // Notes and dividers go in the same history step as the states and
   // edges beside them — one selection, one Delete, one undo.
-  if (typeof removeNotes === 'function') removeNotes([...App.selectedNotes]);
-  if (typeof removeDividers === 'function') removeDividers([...App.selectedDividers]);
+  removeNotes([...App.selectedNotes]);
+  removeDividers([...App.selectedDividers]);
   App.selectedStates.clear();
   App.selectedTransitions.clear();
   App.selectedNotes.clear();
@@ -1373,7 +1372,7 @@ function ctxTargetSelection() {
   if (!App.selectedStates.has(id)) {
     clearSelection();
     App.selectedStates.add(id);
-    if (typeof syncSelectionClasses === 'function') syncSelectionClasses();
+    syncSelectionClasses();
   }
   return true;
 }
@@ -1464,7 +1463,7 @@ document.addEventListener('keydown', e => {
   // bare keys here would otherwise still switch tools, toggle fullscreen or
   // step the simulation underneath the dialog. Escape and Enter are handled
   // by modal.js, which sees them first from its capture-phase listener.
-  if (typeof anyModalOpen === 'function' && anyModalOpen()) return;
+  if (anyModalOpen()) return;
   // A panel is not blocking — the canvas beside StateMate is live, and these
   // shortcuts are how it is driven. But a key pressed with the focus still
   // inside the panel belongs to the panel: tabbing to a transcript button and
@@ -1942,7 +1941,7 @@ export function applyTheme(theme, persist = true) {
   // of the old palette.
   renderMinimap();
   if (persist) {
-    try { localStorage.setItem('automata-theme', resolved); } catch (e) { }
+    writePref('automata-theme', resolved);
   }
 }
 
@@ -1951,7 +1950,7 @@ export function applyTheme(theme, persist = true) {
 // message would be premature or redundant.
 export function selectTheme(theme) {
   applyTheme(theme);
-  if (typeof renderAll === 'function') renderAll();
+  renderAll();
   saveBackupChecked();
   showStatus(`Theme: ${Themes[App.config.theme]?.label || App.config.theme}`);
 }
@@ -1973,7 +1972,7 @@ const ZOOM_STEP = 1.25;
 // animate. `cam-smooth` goes on both the camera group and the wrapper because
 // the two carry different halves of the transform.
 function easeCamera(w) {
-  if (typeof markDirty === 'function') markDirty();
+  markDirty();
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
@@ -2171,7 +2170,7 @@ export function fitToScreen(silent = false) {
   framedVis = wrapRect ? { cw: wrapRect.width, ch: wrapRect.height, x: vis.x, w: vis.w } : null;
   // `silent` marks the programmatic fits that run on load/restore. Those must
   // not dirty the tab — the camera they set is the one that was just restored.
-  if (!silent && typeof markDirty === 'function') markDirty();
+  if (!silent) markDirty();
   $('cam-g').classList.add('cam-smooth');
   w.classList.add('cam-smooth');
   applyCamera();
@@ -2288,7 +2287,7 @@ function sameSignature(a, b) {
 // the thing under their pointer. The check waits for the gesture to end.
 function canvasGestureInProgress() {
   return !!(isPanning || App.dragOffsets || App.marquee || App.dividerDraft || App.dragDividerEndpoint
-    || App.toolbarDragging || (typeof isMovingFloat === 'function' && isMovingFloat()));
+    || App.toolbarDragging || (isMovingFloat()));
 }
 
 export function scheduleFramingCheck() {
@@ -2341,7 +2340,7 @@ export function initFraming() {
   // The windows' layer is made on first use, which can be after this runs —
   // and an observer on a node that did not exist yet watches nothing, which is
   // how torn-off windows went unnoticed. Asking for it makes it now.
-  const layer = typeof floatLayer === 'function' ? floatLayer() : null;
+  const layer = floatLayer();
   if (layer) watched.push(layer);
   if (typeof MutationObserver === 'function') {
     const mo = new MutationObserver(() => scheduleFramingCheck());
@@ -2377,18 +2376,14 @@ export function isMachineFullyVisible(vw, vh) {
     minX = Math.min(minX, s.x - hw); minY = Math.min(minY, s.y - hh);
     maxX = Math.max(maxX, s.x + hw); maxY = Math.max(maxY, s.y + hh);
   });
-  if (typeof includeNoteBounds === 'function') {
-    includeNoteBounds((x0, y0, x1, y1) => {
-      minX = Math.min(minX, x0); minY = Math.min(minY, y0);
-      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
-    });
-  }
-  if (typeof includeDividerBounds === 'function') {
-    includeDividerBounds((x0, y0, x1, y1) => {
-      minX = Math.min(minX, x0); minY = Math.min(minY, y0);
-      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
-    });
-  }
+  includeNoteBounds((x0, y0, x1, y1) => {
+    minX = Math.min(minX, x0); minY = Math.min(minY, y0);
+    maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
+  });
+  includeDividerBounds((x0, y0, x1, y1) => {
+    minX = Math.min(minX, x0); minY = Math.min(minY, y0);
+    maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
+  });
   const vpMinX = -App.cam.x / App.cam.z, vpMinY = -App.cam.y / App.cam.z;
   const vpMaxX = (vw - App.cam.x) / App.cam.z, vpMaxY = (vh - App.cam.y) / App.cam.z;
   return minX >= vpMinX && minY >= vpMinY && maxX <= vpMaxX && maxY <= vpMaxY;
@@ -2443,7 +2438,7 @@ export function centerCameraOn(x, y, animate = true) {
   const w = $('canvas-wrap'); if (!w) return;
   App.cam.x = w.clientWidth / 2 - x * App.cam.z;
   App.cam.y = w.clientHeight / 2 - y * App.cam.z;
-  if (typeof markDirty === 'function') markDirty();
+  markDirty();
   if (animate) { $('cam-g').classList.add('cam-smooth'); w.classList.add('cam-smooth'); }
   applyCamera();
   if (animate) {
@@ -2511,9 +2506,9 @@ document.addEventListener('fullscreenchange', () => {
 
 export function setTool(t) {
   App.tool = t;
-  if (App.transFrom && typeof hlState === 'function') hlState(App.transFrom, false);
+  if (App.transFrom) hlState(App.transFrom, false);
   App.transFrom = null;
-  if (typeof clearTempLine === 'function') clearTempLine();
+  clearTempLine();
 
   const w = $('canvas-wrap');
   if (w) {
@@ -2532,13 +2527,13 @@ export function setTool(t) {
   });
   if (isShapeTool) {
     App.lastShapeTool = t;
-    try { localStorage.setItem('automata-shape-tool', t); } catch (e) { }
+    writePref('automata-shape-tool', t);
   }
-  if (typeof updateShapeToolButton === 'function') updateShapeToolButton(App.lastShapeTool);
+  updateShapeToolButton(App.lastShapeTool);
   // The mobile bar carries three of these tools as cells and the rest behind
   // its More popover, so it is lit from here rather than keeping a second
   // record of which tool is on.
-  if (typeof syncMobileTools === 'function') syncMobileTools();
+  syncMobileTools();
 
   const msgs = {
     pointer: 'Click or drag states to interact',
@@ -2588,22 +2583,15 @@ export function getDefaultToolbarDock() {
 }
 
 export function readToolbarDock() {
-  try {
-    const raw = localStorage.getItem(TOOLBAR_DOCK_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && ['top', 'bottom', 'left', 'right'].includes(parsed.side)) {
-        return normalizeToolbarDock({ side: parsed.side, ratio: parsed.ratio });
-      }
-    }
-  } catch (e) { }
+  const stored = readJsonPref(TOOLBAR_DOCK_KEY);
+  if (stored && ['top', 'bottom', 'left', 'right'].includes(stored.side)) {
+    return normalizeToolbarDock({ side: stored.side, ratio: stored.ratio });
+  }
   return normalizeToolbarDock(getDefaultToolbarDock());
 }
 
 export function saveToolbarDock() {
-  try {
-    if (App.toolbarDock) localStorage.setItem(TOOLBAR_DOCK_KEY, JSON.stringify(App.toolbarDock));
-  } catch (e) { }
+  if (App.toolbarDock) writeJsonPref(TOOLBAR_DOCK_KEY, App.toolbarDock);
 }
 
 export function getToolbarDockFromPoint(pointerX, pointerY, wrapRect) {
@@ -2660,16 +2648,14 @@ export function toggleToolbarCollapsed(force) {
   if (!toolbox) return;
   App.toolbarCollapsed = force !== undefined ? !!force : !App.toolbarCollapsed;
   toolbox.classList.toggle('collapsed', App.toolbarCollapsed);
-  try { localStorage.setItem(TOOLBAR_COLLAPSE_KEY, App.toolbarCollapsed ? '1' : '0'); } catch (e) { }
+  writeFlag(TOOLBAR_COLLAPSE_KEY, App.toolbarCollapsed);
   requestAnimationFrame(() => applyToolbarDock(false));
 }
 export function initToolbarCollapse() {
-  let collapsed = false;
-  try { collapsed = localStorage.getItem(TOOLBAR_COLLAPSE_KEY) === '1'; } catch (e) { }
-  App.toolbarCollapsed = collapsed;
+  App.toolbarCollapsed = readFlag(TOOLBAR_COLLAPSE_KEY);
   const toolbox = $('canvas-toolbox');
   if (toolbox) toolbox.classList.toggle('collapsed', collapsed);
-  if (typeof applyToolbarDock === 'function') applyToolbarDock(false);
+  applyToolbarDock(false);
 }
 
 export function computeToolbarRatio(side, pointerX, pointerY, wrapRect, box) {
@@ -3168,7 +3154,7 @@ export function layoutCanvasOverlays(wrapRect, toolbarBox) {
 
   // The popover anchors off the nav bar, so it has to follow the stack when
   // the toolbar redocks or the panel resizes underneath it.
-  if (typeof isQuickSettingsOpen === 'function' && isQuickSettingsOpen()) positionQuickSettings();
+  if (isQuickSettingsOpen()) positionQuickSettings();
 }
 
 export function initToolbarDock() {
@@ -3197,7 +3183,7 @@ export function initToolbarDock() {
       moved: false
     };
     App.toolbarPreviewDock = null;
-    try { grip.setPointerCapture(e.pointerId); } catch (err) { }
+    capturePointer(grip, e.pointerId);
     e.preventDefault();
     e.stopPropagation();
   });
@@ -3241,7 +3227,7 @@ export function initToolbarDock() {
     const toolbox = $('canvas-toolbox');
     App.toolbarDragging = null;
     removeToolbarPreview();
-    try { grip.releasePointerCapture(e.pointerId); } catch (err) { }
+    releasePointer(grip, e.pointerId);
 
     if (!dragging.moved) {
       toggleToolbarCollapsed();
@@ -3259,7 +3245,7 @@ export function initToolbarDock() {
   window.addEventListener('resize', () => applyToolbarDock(false));
 }
 
-if (typeof initToolbarDock === 'function') initToolbarDock();
+initToolbarDock();
 
 document.addEventListener('keyup', e => {
   if (e.code !== 'Space') return;
@@ -3474,9 +3460,9 @@ export function setPanelWidth(panelId, width, persist = true) {
   const next = Math.round(clampPanelWidth(panelId, width));
   document.documentElement.style.setProperty(cfg.cssVar, `${next}px`);
   if (persist) {
-    try { localStorage.setItem(cfg.storageKey, String(next)); } catch (e) { }
+    writePref(cfg.storageKey, String(next));
   }
-  if (typeof applyToolbarDock === 'function') applyToolbarDock(false);
+  applyToolbarDock(false);
   return next;
 }
 
@@ -3494,7 +3480,7 @@ export function startPanelResize(panelId, e) {
   if (!cfg) return;
 
   const handle = panelId === 'lpanel' ? $('lpanel-resizer') : $('rpanel-resizer');
-  if (handle) { handle.classList.add('active'); try { handle.setPointerCapture(e.pointerId); } catch (err) { } }
+  if (handle) { handle.classList.add('active'); capturePointer(handle, e.pointerId); }
   activePanelResize = {
     panelId,
     startX: e.clientX,
@@ -3521,7 +3507,7 @@ export function stopPanelResize() {
   if (handle) handle.classList.remove('active');
   activePanelResize = null;
   document.body.classList.remove('panel-resizing');
-  if (typeof notifyCanvasResize === 'function') notifyCanvasResize();
+  notifyCanvasResize();
 }
 
 export function initPanelResizers() {
@@ -3585,8 +3571,8 @@ export function setPanelPinned(side, pinned) {
     btn.setAttribute('aria-label', say);
     btn.setAttribute('aria-pressed', unpinned ? 'false' : 'true');
   }
-  if (typeof applyToolbarDock === 'function') applyToolbarDock(false);
-  try { localStorage.setItem(`automata-${side}-pinned`, unpinned ? '0' : '1'); } catch (e) { }
+  applyToolbarDock(false);
+  writeFlag(`automata-${side}-pinned`, !(unpinned));
   return true;
 }
 
@@ -3745,27 +3731,21 @@ const LEGACY_STATEMATE_SIDE_KEY = 'automata-statemate-panel';
 
 /** Write the tab layout — the order and every moved tab's side. */
 function persistPanelTabLayout() {
-  try {
-    const order = getPanelTabOrder();
-    if (order) localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(order));
-    else localStorage.removeItem(TAB_ORDER_KEY);
-    const sides = getTabSides();
-    if (Object.keys(sides).length) localStorage.setItem(TAB_SIDES_KEY, JSON.stringify(sides));
-    else localStorage.removeItem(TAB_SIDES_KEY);
-    localStorage.removeItem(LEGACY_STATEMATE_SIDE_KEY);
-  } catch (e) { }
+  const order = getPanelTabOrder();
+  if (order) writeJsonPref(TAB_ORDER_KEY, order);
+  else forgetPref(TAB_ORDER_KEY);
+  const sides = getTabSides();
+  if (Object.keys(sides).length) writeJsonPref(TAB_SIDES_KEY, sides);
+  else forgetPref(TAB_SIDES_KEY);
+  forgetPref(LEGACY_STATEMATE_SIDE_KEY);
 }
 
 /** The saved sides, with the StateMate-only key of earlier versions folded in. */
 function readStoredTabSides() {
-  try {
-    const raw = localStorage.getItem(TAB_SIDES_KEY);
-    if (raw) return JSON.parse(raw);
-    const legacy = localStorage.getItem(LEGACY_STATEMATE_SIDE_KEY);
-    return legacy ? { statemate: legacy } : null;
-  } catch (e) {
-    return null;
-  }
+  const sides = readJsonPref(TAB_SIDES_KEY);
+  if (sides) return sides;
+  const legacy = readPref(LEGACY_STATEMATE_SIDE_KEY);
+  return legacy ? { statemate: legacy } : null;
 }
 
 /**
@@ -3937,7 +3917,7 @@ function startTabDrag() {
   d.active = true;
   d.targets = measureTabDropTargets(d.name);
   d.zones = showVacantZones(d.targets);
-  try { d.tab.setPointerCapture?.(d.pointerId); } catch (e) { }
+  capturePointer(d.tab, d.pointerId);
   d.tab.classList.add('is-dragging');
   document.body.classList.add('is-dragging-panel-tab');
   const ghost = document.createElement('div');
@@ -3957,7 +3937,7 @@ function endTabDrag() {
   document.removeEventListener('pointercancel', onTabDragCancel, true);
   document.removeEventListener('keydown', onTabDragKey, true);
   if (!d?.active) return d;
-  try { d.tab.releasePointerCapture?.(d.pointerId); } catch (e) { }
+  releasePointer(d.tab, d.pointerId);
   d.tab.classList.remove('is-dragging');
   document.body.classList.remove('is-dragging-panel-tab');
   d.ghost?.remove?.();
@@ -4172,12 +4152,10 @@ export function showPanelTab(name) {
 }
 
 export function initPanelTabs() {
-  try {
-    const sides = readStoredTabSides();
-    if (sides) setTabSides(sides);
-    const order = localStorage.getItem(TAB_ORDER_KEY);
-    if (order) setPanelTabOrder(JSON.parse(order));
-  } catch (e) { }
+  const sides = readStoredTabSides();
+  if (sides) setTabSides(sides);
+  const order = readJsonPref(TAB_ORDER_KEY);
+  if (order) setPanelTabOrder(order);
   // Wired at creation the way reference.js does it.
   PANEL_TAB_NAMES.forEach(name => {
     const tab = $(PANEL_TABS[name].tab);
@@ -4264,7 +4242,7 @@ export function setMobilePanelCollapsed(id, collapsed, persist = true) {
     toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   });
   if (persist) {
-    try { localStorage.setItem(`automata-mobile-panel-${id}`, collapsed ? '1' : '0'); } catch (e) { }
+    writeFlag(`automata-mobile-panel-${id}`, collapsed);
   }
   syncMobilePanelBar();
   updateMobilePanelChrome();
@@ -4314,12 +4292,12 @@ export function toggleMobilePanelTab(name) {
  * learn that the mobile bar changed shape.
  */
 export function syncMobilePanelBar() {
-  if (typeof syncMobileBar === 'function') syncMobileBar();
+  syncMobileBar();
 }
 
 /** Kept as the boot entry point the sequence in js/init.js already calls. */
 export function initMobilePanelBar() {
-  if (typeof initMobileShell === 'function') initMobileShell();
+  initMobileShell();
 }
 
 export function toggleMobilePanel(id, force) {
@@ -4368,8 +4346,7 @@ export function initMobilePanels() {
 export function reconcileMobilePanels() {
   let openedBuildPanel = false;
   [...MOBILE_BUILD_PANEL_IDS, ...MOBILE_AUX_PANEL_IDS].forEach(id => {
-    let stored = null;
-    try { stored = localStorage.getItem(`automata-mobile-panel-${id}`); } catch (e) { }
+    const stored = readPref(`automata-mobile-panel-${id}`);
     // A fresh mobile session should reveal the canvas first. Existing explicit
     // preferences still win, but two build sheets can never be open together.
     const isBuildPanel = MOBILE_BUILD_PANEL_IDS.includes(id);
@@ -4428,7 +4405,7 @@ export function setLPSectionCollapsed(id, collapsed, persist = true) {
   const hdr = sec.querySelector('.lp-section-header');
   if (hdr) hdr.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   if (persist) {
-    try { localStorage.setItem(`automata-lpanel-section-${id}`, collapsed ? '1' : '0'); } catch (e) { }
+    writeFlag(`automata-lpanel-section-${id}`, collapsed);
   }
   syncDockFill(sectionSide(id) || 'lpanel');
 }
@@ -4447,11 +4424,7 @@ export function toggleLPSection(id) {
 // silently never restores its collapsed state.
 export function initLPanelSections() {
   sectionsWithHeader('lp-section-header').forEach(id => {
-    let collapsed = sectionStartsCollapsed(id);
-    try {
-      const raw = localStorage.getItem(`automata-lpanel-section-${id}`);
-      if (raw !== null) collapsed = raw === '1';
-    } catch (e) { }
+    const collapsed = readFlag(`automata-lpanel-section-${id}`, sectionStartsCollapsed(id));
     setLPSectionCollapsed(id, collapsed, false);
   });
 }
@@ -4481,7 +4454,7 @@ export function setRPSectionCollapsed(id, collapsed, persist = true) {
   const hdr = sec.querySelector('.rp-section-header');
   if (hdr) hdr.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   if (persist) {
-    try { localStorage.setItem(`automata-rpanel-section-${id}`, collapsed ? '1' : '0'); } catch (e) { }
+    writeFlag(`automata-rpanel-section-${id}`, collapsed);
   }
   syncDockFill(sectionSide(id) || 'rpanel');
 }
@@ -4522,11 +4495,7 @@ export function revealPlayer() {
 
 export function initRPanelSections() {
   rpanelSectionIds().forEach(id => {
-    let collapsed = sectionStartsCollapsed(id);
-    try {
-      const raw = localStorage.getItem(`automata-rpanel-section-${id}`);
-      if (raw !== null) collapsed = raw === '1';
-    } catch (e) { }
+    const collapsed = readFlag(`automata-rpanel-section-${id}`, sectionStartsCollapsed(id));
     setRPSectionCollapsed(id, collapsed, false);
   });
 }
@@ -4610,9 +4579,9 @@ export function openSettingsModal() {
   // StateMate's panel is the one tab that does not read App.config — its
   // settings live in their own store so an API key never reaches
   // exportWorkspaceState or the autosave payload. See statemate-provider.js.
-  if (typeof populateStateMateSettings === 'function') populateStateMateSettings();
+  populateStateMateSettings();
 
-  if (typeof switchSettingsTab === 'function') switchSettingsTab('general');
+  switchSettingsTab('general');
   sizeSettingsPanels();
   showOverlay('settings-modal');
 }
@@ -4773,10 +4742,10 @@ export function syncLargeMachineProfile() {
   const first = lastLargeProfile === null;
   lastLargeProfile = now;
   // Re-arm the timer against the period the profile now implies.
-  if (typeof restartAutosaveTimer === 'function') restartAutosaveTimer();
+  restartAutosaveTimer();
   // Coming on mid-glide would otherwise leave every eased track stranded where
   // it happened to be when the easing was switched off.
-  if (now && typeof settleAll === 'function') settleAll();
+  if (now) settleAll();
   if (first && !now) return;
   showStatus(now
     ? 'Large machine — canvas simplified for performance. Settings → Performance to override.'
@@ -4822,7 +4791,7 @@ export function applySettings() {
   applyTheme($('set-theme').value || c.theme || DEFAULT_THEME);
   if ($('set-wheel-zoom')) {
     c.wheelZoom = $('set-wheel-zoom').checked;
-    try { localStorage.setItem('automata-wheel-zoom', c.wheelZoom ? '1' : '0'); } catch (e) { }
+    writeFlag('automata-wheel-zoom', c.wheelZoom);
   }
   if ($('set-snap-grid')) toggleSnapToGrid($('set-snap-grid').checked);
   if ($('set-state-prefix')) c.statePrefix = $('set-state-prefix').value.trim() || 'q';
@@ -4859,7 +4828,7 @@ export function applySettings() {
   if ($('set-autosave-interval')) {
     const interval = parseInt($('set-autosave-interval').value);
     c.autosaveIntervalMs = Number.isFinite(interval) && interval >= 0 ? interval : 15000;
-    if (typeof restartAutosaveTimer === 'function') restartAutosaveTimer();
+    restartAutosaveTimer();
   }
   if ($('set-card-autohide')) {
     // 0 is a real answer here — "never fold the card away" — so an unparseable
@@ -4868,13 +4837,13 @@ export function applySettings() {
     c.cardAutoHideMs = Number.isFinite(hide) && hide >= 0 ? hide : CARD_AUTO_HIDE_MS;
   }
   syncSpeedControl();
-  if (typeof restartAutoTimerIfPlaying === 'function') restartAutoTimerIfPlaying();
+  restartAutoTimerIfPlaying();
   c.radius = parseInt($('set-radius').value) || 30;
   if ($('set-wrap-labels')) c.wrapStateLabels = $('set-wrap-labels').checked;
   if ($('set-edge-label-style')) c.edgeLabelStyle = normalizeEdgeLabelStyle($('set-edge-label-style').value);
   if ($('set-click-highlight-mode')) {
     c.clickHighlightMode = $('set-click-highlight-mode').value || 'off';
-    if (c.clickHighlightMode === 'off' && typeof clearEdgeDirectionHighlight === 'function') clearEdgeDirectionHighlight();
+    if (c.clickHighlightMode === 'off') clearEdgeDirectionHighlight();
   }
   c.zoom.step = parseFloat($('set-zoom-step').value) || 0.1;
   c.gridSnap = parseInt($('set-grid-snap').value) || 20;
@@ -4911,9 +4880,7 @@ export function applySettings() {
   c.sym.rightMarker = $('set-sym-right').value || oldSyms.rightMarker;
   c.sym.stackBottom = $('set-sym-z0').value || oldSyms.stackBottom;
 
-  if (typeof migrateSystemSymbols === 'function') {
-    migrateSystemSymbols(oldSyms, c.sym);
-  }
+  migrateSystemSymbols(oldSyms, c.sym);
 
   // Apply visual changes
   setR(c.radius);
@@ -4922,20 +4889,20 @@ export function applySettings() {
   // the new settings should be what you see, not something being eased toward.
   settleAll();
   renderAll();
-  if (typeof updateLPanel === 'function') updateLPanel();
-  if (typeof updateRPanel === 'function') updateRPanel();
-  if (typeof renderGamma === 'function') renderGamma();
+  updateLPanel();
+  updateRPanel();
+  renderGamma();
   // The quick popover mirrors several of the controls just written, so it
   // re-reads rather than keeping whatever it showed when it was last opened.
-  if (typeof refreshQuickSettings === 'function') refreshQuickSettings();
+  refreshQuickSettings();
   // Undoable settings changed here should be undoable from here too, or the
   // same setting would behave differently depending on which surface you used.
   // No-ops when only app preferences (theme, symbols, step budgets) moved.
-  if (typeof snapshotSettings === 'function') snapshotSettings();
+  snapshotSettings();
 
   // Written to its own store, not App.config, and therefore not part of the
   // undo point above — an API key is not an edit to the machine.
-  if (typeof applyStateMateSettings === 'function') applyStateMateSettings();
+  applyStateMateSettings();
 
   // applySettings calls the renderers directly rather than emitting, so the
   // subscribers above never see the override change. Idempotent, so this is a

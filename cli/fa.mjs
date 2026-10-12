@@ -18,7 +18,7 @@ import { aMachine } from './grammar.mjs';
 import { App } from '../js/state.js';
 import { subsetSide, withMachine } from '../js/exercise/grade.js';
 import { minimalDfaOf } from '../js/library/analyze.js';
-import { thompsonBuild } from '../js/algorithms-fa.js';
+import { thompsonBuild } from '../js/thompson.js';
 import { deriveRegex } from '../js/render.js';
 import { CliError } from './errors.mjs';
 

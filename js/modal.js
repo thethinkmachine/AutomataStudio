@@ -284,7 +284,7 @@ export function askConfirm({ title, message, confirmLabel = 'Confirm', danger = 
 export function closeModal(id) {
   const shell = $(id);
   if (!shell) return;
-  if (typeof closeCustomSelect === 'function') closeCustomSelect();
+  closeCustomSelect();
   shell.classList.remove('show');
   shell.style.zIndex = '';
 
@@ -300,7 +300,7 @@ export function closeModal(id) {
   // Shared canvas teardown: a modal dismissed mid-gesture must not leave a
   // dangling transition-in-progress behind it.
   App._pendFrom = null; App._pendTo = null; App.transFrom = null;
-  if (typeof clearTempLine === 'function') clearTempLine();
+  clearTempLine();
 
   const back = ModalReturnFocus[id];
   delete ModalReturnFocus[id];

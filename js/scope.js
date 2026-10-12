@@ -68,7 +68,7 @@ export function enterBlockScope(blockId, opts = {}) {
   if (remembered) {
     App.cam = { ...remembered };
     applyCamera();
-  } else if (typeof fitToScreen === 'function') {
+  } else {
     fitToScreen(true);
   }
   renderBreadcrumb();
@@ -131,11 +131,11 @@ export function renderBreadcrumb() {
     // The bar is an obstacle the info pill routes around, so appearing and
     // disappearing both have to re-run the overlay layout — otherwise the pill
     // keeps dodging a bar that has gone, or is sat on by one that has arrived.
-    if (wasShown && typeof layoutCanvasOverlays === 'function') layoutCanvasOverlays();
+    if (wasShown) layoutCanvasOverlays();
     return;
   }
   host.hidden = false;
-  if (!wasShown && typeof layoutCanvasOverlays === 'function') layoutCanvasOverlays();
+  if (!wasShown) layoutCanvasOverlays();
   if (key === painted && host.childNodes.length) return;
   painted = key;
   host.innerHTML = '';
