@@ -3,10 +3,11 @@ import { renderAlgo } from './algorithms-fa.js';
 import { isPlaced, layoutStates } from './canvas.js';
 import { snapshot } from './history.js';
 import { registerModal, showOverlay } from './modal.js';
-import { $, APP_VERSION, App } from './state.js';
+import { showExampleCard } from './machine-card.js';
+import { $, APP_VERSION, App, clampTapeCount } from './state.js';
 import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen, switchHelpTab } from './ui.js';
-import { showStatus } from './utils.js';
+import { performClear, showStatus } from './utils.js';
 import { applyMachineSwitch, setView } from './view.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -64,11 +65,56 @@ export function getCurrentMachineSnapshot() {
     startId: App.startId,
     accepts: [...App.accepts],
     sigma: [...App.sigma],
+    stackAlpha: [...App.stackAlpha],
+    outputAlpha: [...App.outputAlpha],
+    tapeCount: App.tapeCount,
   };
 }
-export function loadBuiltMachine(machine, machineType) {
+
+// Σ for a machine that does not say: what its transitions read, less ε and
+// the wildcard. A construction that knows its alphabet (union and
+// concatenation merge both; subset construction and minimisation keep the
+// source's) says so with `sigma`, which wins — a symbol with no edge is still
+// in Σ, and a DFA is complete over all of it.
+function builtSigma(machine) {
+  const { eps, any } = App.config.sym;
+  const given = machine.sigma ? [...machine.sigma] : [];
+  const syms = given.length ? given : machine.transitions.map(t => t.symbol);
+  return [...new Set(syms.filter(sym => sym !== undefined && sym !== null && sym !== '' && sym !== eps && sym !== any))];
+}
+
+/**
+ * Put a machine an algorithm built on the canvas, as a new machine.
+ *
+ * A built result is what loading an example is: a clean canvas apart from the
+ * machine. This used to replace the states, transitions, start and F and
+ * nothing else, so everything else about the machine that had been there
+ * stayed, describing one that was gone — Σ (the Run box refused M₂'s words on
+ * a union that accepts them), notes anchored to ids the result does not have
+ * (drawn at their offset, near the origin, over whatever state landed there),
+ * dividers placed for the old diagram, and the card. performClear() is the
+ * one definition of "the graph and everything anchored to it", so this goes
+ * through it rather than clearing fields by hand.
+ *
+ * `card` is what the card says instead — what was built, which is useful on a
+ * derived machine — or nothing, which takes the card away. One Ctrl+Z brings
+ * back the machine and all of it.
+ */
+export function loadBuiltMachine(machine, machineType, card = null) {
   snapshot();
-  App.states = machine.states.map(s => ({ ...s }));
+  // performClear empties the undo stacks as part of clearing the canvas; they
+  // are the session's, and the entry just taken is the one that undoes this.
+  const history = App.history;
+  performClear();
+  App.history = history;
+  App.future = [];
+  App.sigma = new Set(builtSigma(machine));
+  if (machine.stackAlpha) App.stackAlpha = new Set(machine.stackAlpha);
+  if (machine.outputAlpha) App.outputAlpha = new Set(machine.outputAlpha);
+  if (machine.tapeCount) App.tapeCount = clampTapeCount(machine.tapeCount);
+  // A state of a saved M₂ can still name the block it sat in, and the blocks
+  // went with performClear — no block comes with a built machine.
+  App.states = machine.states.map(({ blockId, ...s }) => s);
   App.transitions = machine.transitions.map(t => ({ ...t }));
   App.startId = machine.startId;
   // A construction says what a machine is, not where it goes: the closure
@@ -81,8 +127,9 @@ export function loadBuiltMachine(machine, machineType) {
   App.accepts = new Set(machine.accepts);
   App.stateN = Math.max(0, ...App.states.map(s => parseInt(s.id.replace(/\D/g, '')) || 0));
   App.transN = Math.max(0, ...App.transitions.map(t => parseInt(t.id.replace(/\D/g, '')) || 0));
-  if (machineType) { applyMachineSwitch(machineType); }
-  emit(Change.GRAPH);
+  if (typeof showExampleCard === 'function') showExampleCard(card);
+  applyMachineSwitch(machineType || App.machine);
+  emit(Change.ALPHABET, Change.META, Change.GRAPH);
   setView('build');
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
   else setTimeout(() => fitToScreen(true), 50);

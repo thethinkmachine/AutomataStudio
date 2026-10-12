@@ -4,8 +4,7 @@ import { commit, snapshot } from './history.js';
 import { persistTabState } from './persistence.js';
 import { inFamily } from './machines/registry.js';
 import { isCfgConvertiblePDA, showStatus } from './utils.js';
-import { applyMachineSwitch, setView } from './view.js';
-import { autoFitLoadedMachine, fitToScreen } from './ui.js';
+import { loadBuiltMachine } from './workspace.js';
 import { triggerMath } from './reference.js';
 import {
   GRAMMAR_STRING_FIELD_IDS, handleSymSuggestActive, handleSymSuggestKeyup,
@@ -900,73 +899,52 @@ function placeStates(names, primary) {
 }
 
 function loadPdaToCanvas(res) {
-  snapshot();
   const pos = placeStates(res.states, ['q_start', 'q_loop', 'q_accept']);
   const ids = new Map();
-  App.states = [];
-  App.transitions = [];
-  App.accepts.clear();
-  App.startId = null;
-  App.stateN = 0;
-  App.transN = 0;
+  const m = { states: [], transitions: [], startId: null, accepts: [], sigma: res.sigma, stackAlpha: res.stackAlpha };
   res.states.forEach((name, i) => {
     const id = 's' + (i + 1);
     ids.set(name, id);
-    App.stateN = i + 1;
     const p = pos.get(name) || { x: 140 + i * 180, y: 200 };
-    App.states.push({ id, name, x: p.x, y: p.y });
-    if (name === res.start) App.startId = id;
-    if (res.accepts.includes(name)) App.accepts.add(id);
+    m.states.push({ id, name, x: p.x, y: p.y });
+    if (name === res.start) m.startId = id;
+    if (res.accepts.includes(name)) m.accepts.push(id);
   });
-  App.sigma = new Set(res.sigma);
-  App.stackAlpha = new Set(res.stackAlpha);
   res.transitions.forEach((t, i) => {
-    App.transitions.push({ ...t, id: 't' + (i + 1), from: ids.get(t.from), to: ids.get(t.to) });
+    m.transitions.push({ ...t, id: 't' + (i + 1), from: ids.get(t.from), to: ids.get(t.to) });
   });
-  App.transN = res.transitions.length;
+  loadBuiltMachine(m, 'NPDA', {
+    title: 'PDA from a grammar',
+    blurb: 'The three-state PDA that runs the grammar: it expands a variable on top of the stack by a production, and matches a terminal on top against the input.'
+  });
   // The construction pushes strings and reads Z₀ explicitly, so the 7-tuple
   // paradigm is a property of what was built rather than a preference the
-  // reader is being overridden on.
+  // reader is being overridden on. After the load, so the undo point it took
+  // holds the paradigm the reader had.
   App.config.pdaParadigm = 'explicit';
   const sel = $('set-pda-paradigm');
   if (sel) sel.value = 'explicit';
-
-  applyMachineSwitch('NPDA');
-  emit(Change.ALPHABET, Change.GRAPH);
+  emit(Change.GRAPH);
   persistTabState();
-  setView('build');
-  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
-  else setTimeout(() => fitToScreen(true), 50);
   showStatus('NPDA loaded onto the canvas');
 }
 
 function loadFaToCanvas(res) {
-  snapshot();
-  App.states = [];
-  App.transitions = [];
-  App.accepts.clear();
-  App.startId = null;
-  App.stateN = 0;
-  App.transN = 0;
   const cols = Math.max(2, Math.ceil(Math.sqrt(res.states.length)));
-  res.states.forEach((s, i) => {
-    App.states.push({ id: s.id, name: s.name, x: 140 + (i % cols) * 190, y: 140 + Math.floor(i / cols) * 160 });
-    App.stateN = Math.max(App.stateN, Number(String(s.id).slice(1)) || 0);
-    if (s.id === res.startId) App.startId = s.id;
-    if (res.accepts.includes(s.id)) App.accepts.add(s.id);
+  // Σ is the grammar's terminals. It used to be added to the Σ already there,
+  // so the old machine's symbols stayed in the alphabet of one that never
+  // reads them.
+  loadBuiltMachine({
+    states: res.states.map((s, i) => ({ id: s.id, name: s.name, x: 140 + (i % cols) * 190, y: 140 + Math.floor(i / cols) * 160 })),
+    transitions: res.transitions,
+    startId: res.startId,
+    accepts: res.accepts,
+    sigma: res.sigma
+  }, res.machine, {
+    title: `${res.machine} from a regular grammar`,
+    blurb: 'One state per variable and one final state; each production is a transition.'
   });
-  res.transitions.forEach((t, i) => {
-    App.transitions.push({ ...t });
-    App.transN = Math.max(App.transN, i + 1);
-  });
-  res.sigma.forEach(s => App.sigma.add(s));
-
-  applyMachineSwitch(res.machine);
-  emit(Change.ALPHABET, Change.GRAPH);
   persistTabState();
-  setView('build');
-  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
-  else setTimeout(() => fitToScreen(true), 50);
   showStatus(`${res.machine} loaded onto the canvas`);
 }
 

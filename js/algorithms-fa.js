@@ -1,6 +1,7 @@
 import { defineActions } from './action-registry.js';
 import { snapshot } from './history.js';
 import { langVerdict } from './language.js';
+import { showExampleCard } from './machine-card.js';
 import { deriveRegex, renderAll, updateLPanel, updateRPanel } from './render.js';
 import { log } from './simulation.js';
 import { renderTracker, resetTracker } from './tape-view.js';
@@ -12,7 +13,7 @@ import { getState } from './states-transitions.js';
 import { Change, emit } from './store.js';
 import { autoFitLoadedMachine, fitToScreen } from './ui.js';
 import { escapeHtml, findPdaNondeterministicPairs, isAnyTM, isClassicPDA, parseEps, showStatus } from './utils.js';
-import { applyMachineSwitch, setMachine, setView } from './view.js';
+import { applyMachineSwitch, setView } from './view.js';
 import { getCurrentMachineSnapshot, loadBuiltMachine } from './workspace.js';
 import { algoLexer } from './lexer-ui.js';
 
@@ -300,25 +301,23 @@ export function subsetConstruction() {
 
 export function loadSubsetAsDFA() {
   const r = App._lastSubset; if (!r) return;
-  snapshot();
-  App.states = []; App.transitions = []; App.accepts.clear(); App.startId = null; App.stateN = 0; App.transN = 0;
+  // Σ is the NFA's, edges or not: the DFA is complete over all of it.
+  const m = { states: [], transitions: [], startId: null, accepts: [], sigma: [...App.sigma] };
   const nameMap = {};
   r.states.forEach((ds, i) => {
-    const id = 's' + (i + 1); App.stateN = i + 1;
-    App.states.push({ id, x: 120 + (i % 4) * 200, y: 120 + Math.floor(i / 4) * 160, name: ds.name.length > 12 ? `D${i}` : ds.name });
+    const id = 's' + (i + 1);
+    m.states.push({ id, x: 120 + (i % 4) * 200, y: 120 + Math.floor(i / 4) * 160, name: ds.name.length > 12 ? `D${i}` : ds.name });
     nameMap[ds.name] = id;
-    if (ds.isStart) App.startId = id;
-    if (ds.isAcc) App.accepts.add(id);
+    if (ds.isStart) m.startId = id;
+    if (ds.isAcc) m.accepts.push(id);
   });
   r.trans.forEach((t, i) => {
-    App.transN = i + 1;
-    App.transitions.push({ id: 't' + (i + 1), from: nameMap[t.from], to: nameMap[t.to], symbol: t.sym });
+    m.transitions.push({ id: 't' + (i + 1), from: nameMap[t.from], to: nameMap[t.to], symbol: t.sym });
   });
-  applyMachineSwitch('DFA');
-  emit(Change.GRAPH);
-  setView('build');
-  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
-  else setTimeout(() => fitToScreen(true), 50);
+  loadBuiltMachine(m, 'DFA', {
+    title: 'Subset construction',
+    blurb: 'The DFA the subset construction built from an NFA. Each state stands for the set of NFA states it is named after.'
+  });
   showStatus('DFA loaded into canvas!');
 }
 
@@ -473,7 +472,6 @@ export function tableFillingMinimize() {
 export function loadMinimizedDFA() {
   const r = App._lastMin; if (!r) return;
   const { groups, savedTrans, savedAccepts, savedStart } = r;
-  snapshot();
   // Group representative mapping: origId -> groupIndex
   const groupOf = {};
   groups.forEach((g, i) => g.forEach(id => groupOf[id] = i));
@@ -497,13 +495,12 @@ export function loadMinimizedDFA() {
     seenTrans.add(key);
     newTrans.push({ ...t, id: 't' + (newTrans.length + 1), from: 's' + (fg + 1), to: 's' + (tg + 1), symbol: t.symbol });
   });
-  App.states = newStates; App.transitions = newTrans; App.accepts = newAccepts;
-  App.startId = newStart; App.stateN = groups.length; App.transN = newTrans.length;
-  applyMachineSwitch('DFA');
-  emit(Change.GRAPH);
-  setView('build');
-  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
-  else setTimeout(() => fitToScreen(true), 50);
+  loadBuiltMachine({
+    states: newStates, transitions: newTrans, startId: newStart, accepts: [...newAccepts], sigma: [...App.sigma]
+  }, 'DFA', {
+    title: 'Minimised DFA',
+    blurb: 'The DFA with its indistinguishable states merged by table filling. A merged state is named after the states it stands for.'
+  });
   showStatus(`Minimized: ${groups.length} states (was ${r.savedStates.length})`);
 }
 
@@ -548,7 +545,7 @@ export function doThompson() {
     html += '</tbody></table></div>';
     html += `<div style="margin-top:8px"><button class="algo-btn" style="display:flex;align-items:center;justify-content:center" data-action="algo.loadThompsonNFA">${ALGO_ICON_LOAD_CANVAS}Load into Canvas</button></div>`;
     $('re-result').innerHTML = html;
-    App._lastThompson = nfaData;
+    App._lastThompson = { ...nfaData, re };
   } catch (err) { $('re-result').innerHTML = `<div class="card" style="color:var(--red);font-size:.75rem">Parse error: ${err.message}</div>`; }
 }
 
@@ -674,27 +671,25 @@ export function getAllChars() {
 
 export function loadThompsonNFA() {
   const d = App._lastThompson; if (!d) return;
-  snapshot();
-  App.states = []; App.transitions = []; App.accepts.clear(); App.startId = null; App.stateN = 0; App.transN = 0;
-  applyMachineSwitch('ε-NFA');
+  // No sigma: Σ is what the expression reads, which is what the edges read.
+  // It used to be added to the Σ already there, so the old machine's symbols
+  // stayed in the alphabet of one that never reads them.
+  const m = { states: [], transitions: [], startId: null, accepts: [] };
   const nameMap = {};
   d.states.forEach((s, i) => {
-    const id = 's' + (i + 1); App.stateN = i + 1; nameMap[s] = id;
+    const id = 's' + (i + 1); nameMap[s] = id;
     const cols = Math.ceil(Math.sqrt(d.states.length)) + 1;
-    App.states.push({ id, x: 100 + (i % cols) * 130, y: 100 + Math.floor(i / cols) * 120, name: s });
-    if (s === d.start) App.startId = id;
-    if (s === d.accept) App.accepts.add(id);
+    m.states.push({ id, x: 100 + (i % cols) * 130, y: 100 + Math.floor(i / cols) * 120, name: s });
+    if (s === d.start) m.startId = id;
+    if (s === d.accept) m.accepts.push(id);
   });
   d.trans.forEach((t, i) => {
-    App.transN = i + 1;
-    App.transitions.push({ id: 't' + (i + 1), from: nameMap[t.from], to: nameMap[t.to], symbol: t.sym });
+    m.transitions.push({ id: 't' + (i + 1), from: nameMap[t.from], to: nameMap[t.to], symbol: t.sym });
   });
-  // Update sigma
-  d.trans.forEach(t => { if (t.sym !== App.config.sym.eps) App.sigma.add(t.sym); });
-  emit(Change.ALPHABET, Change.GRAPH);
-  setView('build');
-  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
-  else setTimeout(() => fitToScreen(true), 50);
+  loadBuiltMachine(m, 'ε-NFA', {
+    title: 'Thompson NFA',
+    blurb: d.re ? `The ε-NFA Thompson's construction built for \`${d.re}\`.` : 'The ε-NFA Thompson\'s construction built for a regular expression.'
+  });
   showStatus('NFA loaded from Thompson\'s construction!');
 }
 
@@ -808,8 +803,10 @@ export function loadEpsEliminatedNFA() {
   App.transitions = r.transitions.map((t, i) => ({ id: 't' + (i + 1), from: t.from, to: t.to, symbol: t.symbol }));
   App.transN = App.transitions.length;
   App.accepts = new Set(r.accepts);
+  showExampleCard({ title: 'NFA without ε-moves', blurb: 'The same language, with each ε-move folded into the moves on a symbol that follow it.' });
 
   applyMachineSwitch('NFA');
+  emit(Change.META);
   updateLPanel(); updateRPanel();
   setView('build');
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
@@ -848,7 +845,11 @@ export function loadComplement() {
   }
   // Swap accept / non-accept
   const newAcc = new Set(App.states.filter(s => !App.accepts.has(s.id)).map(s => s.id));
-  App.accepts = newAcc; emit(Change.GRAPH);
+  App.accepts = newAcc;
+  // The states are the same states, so the notes still describe them; the
+  // card described the language, and this is the other one.
+  showExampleCard({ title: 'Complement', blurb: 'The DFA with its accepting and rejecting states swapped, completed with a trap state where a move was missing.' });
+  emit(Change.META, Change.GRAPH);
   setView('build');
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
   else setTimeout(() => fitToScreen(true), 50);
@@ -1358,10 +1359,19 @@ export function algoClopConcat(c) {
   App._lastBuiltNFA = { key: 'concat', machine: result };
 }
 
+// What the card says over each closure's result.
+const BUILT_NFA_CARDS = {
+  star: { title: 'Kleene star', blurb: 'An ε-NFA for L*, built from the machine that was on the canvas.' },
+  reversal: { title: 'Reversal', blurb: 'An ε-NFA for the reversal of L, built from the machine that was on the canvas.' },
+  union: { title: 'Union of M₁ and M₂', blurb: 'An ε-NFA for L(M₁) ∪ L(M₂): a new start state with an ε-move into each machine.' },
+  intersect: { title: 'Intersection of M₁ and M₂', blurb: 'The product construction for L(M₁) ∩ L(M₂). Each state is a pair, one state of each machine.' },
+  concat: { title: 'Concatenation of M₁ and M₂', blurb: 'An ε-NFA for L(M₁)·L(M₂): ε-moves from M₁\'s accepting states into M₂.' }
+};
+
 export function loadBuiltNFAResult(key) {
   if (!App._lastBuiltNFA || App._lastBuiltNFA.key !== key) { showStatus('Run the algorithm first.'); return; }
   const m = App._lastBuiltNFA.machine;
-  loadBuiltMachine(m, 'ε-NFA');
+  loadBuiltMachine(m, 'ε-NFA', BUILT_NFA_CARDS[key] || null);
 }
 
 export function renderBuiltNFAResult(m, title) {
@@ -2215,7 +2225,9 @@ export function loadMooreAsMealy() {
   if (App.machine !== 'Moore') return;
   snapshot();
   App.transitions.forEach(t => { t.output = getState(t.to)?.output || ''; });
+  showExampleCard({ title: 'Mealy machine from a Moore machine', blurb: 'Each transition writes the output of the state it enters. The Moore machine\'s first output, before any input, has no Mealy counterpart.' });
   applyMachineSwitch('Mealy');
+  emit(Change.META);
   updateLPanel();
   setView('build');
   if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
@@ -2322,17 +2334,16 @@ export function computeMealy2Moore() {
 
 export function loadMealyAsMoore() {
   const r = App._lastMealy2Moore; if (!r) return;
-  snapshot();
-  App.states = r.states.map((s, i) => ({ ...s, x: 120 + (i % 4) * 180, y: 120 + Math.floor(i / 4) * 160 }));
-  App.transitions = r.transitions;
-  App.startId = r.startId;
-  App.accepts = r.accepts;
-  App.stateN = r.states.length; App.transN = r.transitions.length;
-  applyMachineSwitch('Moore');
-  updateLPanel();
-  setView('build');
-  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
-  else setTimeout(() => fitToScreen(true), 50);
+  loadBuiltMachine({
+    states: r.states.map((s, i) => ({ ...s, x: 120 + (i % 4) * 180, y: 120 + Math.floor(i / 4) * 160 })),
+    transitions: r.transitions,
+    startId: r.startId,
+    accepts: [...r.accepts],
+    sigma: [...App.sigma]
+  }, 'Moore', {
+    title: 'Moore machine from a Mealy machine',
+    blurb: 'Each state pairs a Mealy state with the output written on the way into it, so the output moves from the transition to the state.'
+  });
   showStatus('Loaded as Moore machine.');
 }
 
@@ -3073,31 +3084,18 @@ export function buildRG2NFA() {
 
 export function loadRG2NFAToCanvas() {
   if (!_rgNFAData) return;
-  snapshot();
   const { states, transitions, accepts, startId } = _rgNFAData;
-  App.states = []; App.transitions = []; App.accepts.clear(); App.startId = null;
-  App.stateN = 0; App.transN = 0;
-
   const cols = Math.max(Math.ceil(Math.sqrt(states.length)), 2);
-  states.forEach((s, i) => {
-    App.states.push({ id: s.id, name: s.name, x: 120 + (i % cols) * 170, y: 120 + Math.floor(i / cols) * 150 });
-    App.stateN = Math.max(App.stateN, parseInt(s.id.slice(1)) || 0);
-    if (s.id === startId) App.startId = s.id;
-    if (accepts.has(s.id)) App.accepts.add(s.id);
+  // No sigma: Σ is the grammar's terminals, which are what the edges read.
+  loadBuiltMachine({
+    states: states.map((s, i) => ({ id: s.id, name: s.name, x: 120 + (i % cols) * 170, y: 120 + Math.floor(i / cols) * 150 })),
+    transitions,
+    startId,
+    accepts: [...accepts]
+  }, transitions.some(t => t.symbol === App.config.sym.eps) ? 'ε-NFA' : 'NFA', {
+    title: 'NFA from a regular grammar',
+    blurb: 'One state per variable and one final state; each production is a transition.'
   });
-  transitions.forEach((t, i) => {
-    App.transitions.push({ ...t });
-    App.transN = Math.max(App.transN, i + 1);
-    const sym = t.symbol;
-    if (sym && sym !== App.config.sym.eps) App.sigma.add(sym);
-  });
-
-  App.machine = transitions.some(t => t.symbol === App.config.sym.eps) ? 'ε-NFA' : 'NFA';
-  setMachine(App.machine);
-  emit(Change.ALPHABET, Change.GRAPH);
-  setView('build');
-  if (typeof autoFitLoadedMachine === 'function') autoFitLoadedMachine();
-  else setTimeout(() => fitToScreen(true), 50);
   showStatus('Regular Grammar NFA loaded!');
 }
 
