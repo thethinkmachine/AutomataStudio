@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHarness } from './harness.js';
 
-// The easing layer (js/anim.js) and its one seam into the renderer.
+// The easing layer (js/canvas/anim.js) and its one seam into the renderer.
 //
 // Two things make this file look unusual. First, animation is *off* under the
 // stub: tests/dom-stub.js runs requestAnimationFrame synchronously, anim.js

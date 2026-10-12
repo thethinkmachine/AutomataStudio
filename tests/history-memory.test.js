@@ -21,7 +21,7 @@ import {
   HISTORY_STOWED_MAX_BYTES,
   HISTORY_STOWED_MAX_ENTRIES,
   trimStowedHistory
-} from '../js/history.js';
+} from '../js/core/history.js';
 
 const h = createHarness();
 const C = h.context;

@@ -14,7 +14,7 @@ import { createHarness } from './harness.js';
 const harness = createHarness();
 const { context } = harness;
 
-// Derived from the registry rather than written out again: js/panel-sections.js
+// Derived from the registry rather than written out again: js/ui/panel-sections.js
 // is the one list of sections, and a copy here would be a second one.
 const LP = context.declaredSectionIds('lpanel');
 const RP = context.declaredSectionIds('rpanel');

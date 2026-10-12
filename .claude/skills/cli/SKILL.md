@@ -251,7 +251,7 @@ the way `npm run glyphs` is; output committed. `--list` names the tapes.
 - **Several CLI fixes came from filming**, and are worth knowing were bugs: `play`'s
   frame overran the screen by two lines (the header box counted as one), a double-click
   on a state never toggled accepting in a browser (pointer capture swallows `dblclick`;
-  it is two presses now, js/render.js), an opened file came up marked unsaved, and the
+  it is two presses now, js/canvas/render.js), an opened file came up marked unsaved, and the
   CLI's own layout put a chain DFA's states in a row that its back edges ran through.
 
 ### Running it elsewhere

@@ -1287,7 +1287,7 @@ test('the website: an entry credits its author with a search, and a collection o
 // ── LaTeX in an author's words ────────────────────────────────────
 
 test('hasTex finds a closed formula, and a price is not one', async () => {
-  const { hasTex, TEX_DELIMITERS } = await import('../js/tex.js');
+  const { hasTex, TEX_DELIMITERS } = await import('../js/text/tex.js');
   assert.equal(hasTex('Accepts $a^n b^n$ for $n \\ge 0$.'), true);
   assert.equal(hasTex('$$\n\\sum_i x_i\n$$'), true);
   assert.equal(hasTex('inline \\(q_0\\) and displayed \\[L\\]'), true);

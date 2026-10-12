@@ -3,20 +3,20 @@
 // ══════════════════════════════════════════════════════════════════
 // Every command that produces a machine ends here, so `--to` and the output
 // file's extension mean the same thing everywhere. The app's own export
-// registry (js/export-registry.js) supplies the diagram, table, code and test
+// registry (js/io/export-registry.js) supplies the diagram, table, code and test
 // formats; they are built from the machine IR exactly as the export dialog
 // builds them, with the target swapped in for the canvas's machine.
 
 import { extname } from 'node:path';
 
-import { App } from '../js/state.js';
-import { ExportFormats } from '../js/export-registry.js';
-import '../js/export-ui.js';
-import '../js/codegen.js';
-import { buildMachineIR } from '../js/export-core.js';
+import { App } from '../js/core/state.js';
+import { ExportFormats } from '../js/io/export-registry.js';
+import '../js/io/export-ui.js';
+import '../js/io/codegen.js';
+import { buildMachineIR } from '../js/io/export-core.js';
 import { withMachine } from '../js/exercise/grade.js';
 import { drawSketch, sketchAspect, sketchFromTarget } from '../js/library/sketch.js';
-import { transLabel } from '../js/states-transitions.js';
+import { transLabel } from '../js/editor/states-transitions.js';
 import { writeStandardTM } from '../js/interop/standard-tm.js';
 import { writeMachineCode } from '../js/interop/smtf.js';
 import { CliError } from './errors.mjs';

@@ -4,12 +4,12 @@
 // Deciding a list of words and *showing* the verdicts were already separate
 // jobs — computeBatchResults() returned data and renderBatchResults() drew it.
 // This file finishes the split by moving the deciding half out of
-// js/simulation.js, which is the player and imports the renderer.
+// js/simulation/simulation.js, which is the player and imports the renderer.
 //
 // The reason is that this is the app's one embarrassingly parallel workload:
 // every row is an independent run over the same machine. Splitting the rows
 // across a pool of workers needs the deciding half to be importable somewhere
-// with no document, which js/simulation.js is not and js/machines/** now is.
+// with no document, which js/simulation/simulation.js is not and js/machines/** now is.
 //
 // The split inside is what keeps the two paths honest. decideBatchRows() is
 // the map — the part a worker runs on a slice — and summarizeBatch() is the
@@ -19,7 +19,7 @@
 // the same function, called on the whole list or on a quarter of it. A
 // parallel batch that scored differently from a serial one would be a far
 // worse bug than a slow batch.
-import { App, getMachineConfig } from '../state.js';
+import { App, getMachineConfig } from '../core/state.js';
 import { decideMachine, parseMachineInput } from './index.js';
 import { parseEps } from './predicates.js';
 import { langStepBudget } from './runtime.js';

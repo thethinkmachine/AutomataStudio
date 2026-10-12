@@ -1,10 +1,10 @@
 // words, profile — the language as a list, and the cost of deciding it.
 import { aMachine } from '../grammar.mjs';
-import { App, getMachineConfig } from '../../js/state.js';
+import { App, getMachineConfig } from '../../js/core/state.js';
 import { withMachine } from '../../js/exercise/grade.js';
 import { decideRaw } from '../../js/library/analyze.js';
-import { growthEstimate, profileCSV, profileRun } from '../../js/complexity.js';
-import { spaceTimeKind } from '../../js/spacetime-ui.js';
+import { growthEstimate, profileCSV, profileRun } from '../../js/simulation/complexity.js';
+import { spaceTimeKind } from '../../js/simulation/spacetime-ui.js';
 import { readMachine, CliError } from '../io.mjs';
 import { FA_TYPES, countByLength, lettersOf, listAccepted, sampleAccepted, seeded } from '../fa.mjs';
 import { c, print, printJson, table, wordOf } from '../out.mjs';

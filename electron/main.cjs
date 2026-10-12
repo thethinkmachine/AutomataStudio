@@ -330,9 +330,9 @@ ipcMain.on('install-update', () => updates.install());
 // Deliberately not a general-purpose fetch bridge: only http(s) is allowed,
 // only POST is issued, and the URL is whatever the user typed into their own
 // settings. Errors resolve rather than reject so both transports map to the
-// same error copy in js/statemate.js.
+// same error copy in js/statemate/statemate.js.
 const STATEMATE_TIMEOUT_MS = 60000;
-// The streamed path splits that budget the way js/statemate-provider.js does:
+// The streamed path splits that budget the way js/statemate/statemate-provider.js does:
 // one clock to prove the provider is there, then one that resets on every chunk.
 // A wall-clock limit cannot tell a hung request from a large machine still
 // arriving, and kills the second along with the first.
@@ -530,7 +530,7 @@ function createWindow() {
   mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized-change', true));
   mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-maximized-change', false));
 
-  // The page's own beforeunload handler (js/persistence.js) calls preventDefault()
+  // The page's own beforeunload handler (js/io/persistence.js) calls preventDefault()
   // when a workspace tab is dirty, to trigger the browser's native "leave site?"
   // prompt. Electron has no such prompt, so left alone this silently blocks the
   // window from ever closing — Alt+F4/Cmd+Q/the close button all become no-ops.
@@ -689,7 +689,7 @@ function buildMenu() {
     {
       label: 'File',
       submenu: [
-        // The page binds these keys itself (js/ui.js, handleWorkspaceShortcut),
+        // The page binds these keys itself (js/ui/ui.js, handleWorkspaceShortcut),
         // so the accelerators are shown but not registered: a registered one
         // would be a second, competing handler for the same keystroke.
         { label: 'New Workspace Tab', accelerator: 'CmdOrCtrl+T', registerAccelerator: false, click: () => sendMenuAction('new-tab') },
@@ -711,7 +711,7 @@ function buildMenu() {
     },
     {
       // Deliberately no accelerators here: the page already binds Ctrl/Cmd+Z/Y/A/C/V/D
-      // itself (js/ui.js), so these entries are mouse-clickable equivalents only —
+      // itself (js/ui/ui.js), so these entries are mouse-clickable equivalents only —
       // giving them accelerators too would create a second, competing key handler.
       label: 'Edit',
       submenu: [
@@ -808,7 +808,7 @@ function loadUpdater() {
 // The whole vocabulary between the two processes: main owns the updater, the page
 // owns how any of it looks. Deliberately not dialog.showMessageBox -- an OS dialog
 // is the one piece of window chrome this app does not draw itself, and it would be
-// the only framed surface in a frameless window. See js/electron-bridge.js for the
+// the only framed surface in a frameless window. See js/core/electron-bridge.js for the
 // receiving end and index.html #update-modal for the markup.
 const updates = createUpdateController({
   loadUpdater,

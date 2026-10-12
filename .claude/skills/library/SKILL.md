@@ -1,6 +1,6 @@
 ---
 name: library
-description: AutomataStudio: the machine library — the index format, what earns each badge, the Library view, My Library and offline copies, deep links and automata-studio:// links, the submission path (issue form → PR, updates and remixes), and the library repo's CI scripts. Read before touching js/library/**, js/library-ui.js, css/library.css, scripts/library/** or library-template/.
+description: AutomataStudio: the machine library — the index format, what earns each badge, the Library view, My Library and offline copies, deep links and automata-studio:// links, the submission path (issue form → PR, updates and remixes), and the library repo's CI scripts. Read before touching js/library/**, js/library/library-ui.js, css/library.css, scripts/library/** or library-template/.
 ---
 
 ### What it is
@@ -43,7 +43,7 @@ js/library/
   essay-guide.md  how to write an essay: the documentation, in the essay format.
   essay-guide.js  renders it, each example beside what it becomes.
   essay-draw.js   the view's figures, drawn in essay-figures.worker.js.
-js/library-ui.js  the view: discover, browse, entry pages, collections,
+js/library/library-ui.js  the view: discover, browse, entry pages, collections,
                   My Library, submit, about.
 scripts/library/  build.mjs (index + site), site.mjs, seed.mjs,
                   issue-to-entry.mjs, guard.mjs, dev-server.mjs, env.mjs;
@@ -89,7 +89,7 @@ Everything is asked of a *target* through `withMachine`, never by loading onto t
 - **`loadLibrary` always yields before it does anything.** With a fresh copy in memory it would otherwise finish synchronously, run its `finally` before `inflight` was assigned, and leave a settled promise as "in flight" — which every later call, a forced Refresh included, got back.
 - **An offline copy is not cached under the listed version's hash** (`entryDoc`): it is an older file, and the next look, online, should get the real one.
 - **Storage is its own database** (`automata-studio-library`), not a store in the workspace DB: adding a store there is a version bump through `openWorkspaceDb`'s upgrade path, which guards the reader's tabs. Everything in it can be fetched again. With no IndexedDB it runs on Maps.
-- **An opened entry is stamped** `meta.library.source = { id, hash, structure, version, title }` (`stampSource`). The card carries `meta.library` through edits and saves (`normalizeCardMeta` keeps it, ≤ 8 KB), which is what makes "Update available" on the card and "Remix of"/"Updates" in the submit form work with nothing typed. The card's line is drawn by a painter the Library installs in [js/card-source.js](js/card-source.js) — a leaf, because it is written at module scope across an import cycle.
+- **An opened entry is stamped** `meta.library.source = { id, hash, structure, version, title }` (`stampSource`). The card carries `meta.library` through edits and saves (`normalizeCardMeta` keeps it, ≤ 8 KB), which is what makes "Update available" on the card and "Remix of"/"Updates" in the submit form work with nothing typed. The card's line is drawn by a painter the Library installs in [js/ui/card-source.js](js/ui/card-source.js) — a leaf, because it is written at module scope across an import cycle.
 - **An entry opens by `applyDocument` → `placeOpenedDocument`**, never `loadExampleFile` (which clears the canvas). It gets a tab of its own when the canvas is occupied, named for the entry (`opts.tabName`).
 
 ### Links
@@ -168,6 +168,6 @@ The dev server binds its port **before** it builds or watches: a second copy sta
 
 Try it's run: once the file arrives, the index sketch is replaced by `liveDiagram(target)` — the same drawing with names, labels (finite automata and letter-transducers only, where a label says the whole move) and every node a `data-s` group and every edge a `data-e` group. `traceWord(target, word, cap)` runs the machine's own `streamMachine` with the painter suppressed and the player's `simSteps` put back, and pulls at most `cap` steps (400), so BB(5) costs 400 steps, not 47 million. A step names its `tid`; a set run (an NFA) names none, so the edges lit are every drawn edge from a state it was in to a state it is in. Playback takes about six seconds whatever the length; under reduced motion it jumps to the last step.
 
-- **An author's words take LaTeX** — the description, an older entry's notes and a collection's blurb, in the Library view, the submit form's preview and the website. The delimiters are [js/tex.js](js/tex.js)'s, shared with `triggerMath`, so `$…$` reads the same on every face. The text always goes in as text and KaTeX typesets it in place (its `trust: false` default refuses `\href`). The website typesets **only elements marked `tex`**, never `document.body` — a machine code, an example word or a tape symbol may hold a `$` — and loads KaTeX only on a page where `hasTex` finds something. The submit form's preview shows only while the text holds LaTeX, and shares the field's one `input` listener (the DOM stub keeps one per type).
+- **An author's words take LaTeX** — the description, an older entry's notes and a collection's blurb, in the Library view, the submit form's preview and the website. The delimiters are [js/text/tex.js](js/text/tex.js)'s, shared with `triggerMath`, so `$…$` reads the same on every face. The text always goes in as text and KaTeX typesets it in place (its `trust: false` default refuses `\href`). The website typesets **only elements marked `tex`**, never `document.body` — a machine code, an example word or a tape symbol may hold a `$` — and loads KaTeX only on a page where `hasTex` finds something. The submit form's preview shows only while the text holds LaTeX, and shares the field's one `input` listener (the DOM stub keeps one per type).
 - **The submit form re-reads its defaults when the machine changes** (`submitFields`, keyed by workspace and source), so switching tabs never files one machine under another's title.
 - **A browser's `children` is an HTMLCollection**: use `Array.from`, never `.filter` on it — the DOM stub hands out arrays. A test runs `showPicture` over an array-like.

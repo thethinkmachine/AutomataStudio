@@ -4,7 +4,7 @@
 // where the state names and configurations — which are the reader's text —
 // are escaped once rather than at each of nine call sites.
 
-import { html } from '../html.js';
+import { html } from '../text/html.js';
 
 const subLines = lines => html`<span class="step-sub">${lines.map((line, i) => html`${i ? html`<br>` : ''}${line}`)}</span>`;
 

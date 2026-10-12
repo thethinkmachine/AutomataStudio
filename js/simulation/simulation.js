@@ -1,0 +1,2480 @@
+// ══════════════════════════════════════════════════════════════════
+//  SIMULATION — the player
+// ══════════════════════════════════════════════════════════════════
+// What a *run* is, rather than what a machine is. This module owns the
+// run box, the trace log, the step tracker, the scrubber, playback and
+// the batch tester; it owns nothing about any particular machine.
+//
+// The machines themselves live under js/machines/, one module per family,
+// and reach the player through the registry. So runSim below is the whole
+// of the dispatch: parse the input the way this machine reads input, run
+// the guards this machine carries, hand the result to this machine's
+// simulator. It used to be a seventeen-branch if-chain ending in
+// `else simTM(tokens)` — which is what a machine type nobody had wired up
+// silently became.
+
+import { defineActions } from '../core/action-registry.js';
+import { formatTraceNote } from './trace-format.js';
+import { makeSVG, setSectionCount } from '../canvas/render.js';
+import { $, App, INPUT_LENGTH_NOTICE, R, detectsLoops, execMode, getMachineConfig, isOmegaAutomaton, isWeightedFA, runsLazily } from '../core/state.js';
+import { getState, getTransition } from '../editor/states-transitions.js';
+import { dismissSymSuggest } from '../editor/suggest.js';
+import { escapeHtml, isAnyPDA, isEmbeddedMachine, isQueueAutomaton, isSingleTapeTM, isTwoStackPDA, parseEps, showStatus } from '../core/utils.js';
+import { setCanvasMotionTempo } from '../canvas/canvas-motion.js';
+import { machineGuards, parseMachineInput, streamMachine } from '../machines/index.js';
+import { stateNames, transitionsFrom } from '../machines/runtime.js';
+import { computeBatchResults, decideBatchRows, parseBatchLine, summarizeBatch } from '../machines/batch.js';
+import { poolSize, runParallel, shouldParallelize } from '../parallel/pool.js';
+import { renderTracker, resetTracker } from './tape-view.js';
+import { stepColumnsOf } from './tape-log.js';
+import { isPainterSuppressed, setSimStepPainter, withPainterSuppressed } from '../machines/paint.js';
+import { makeRun } from '../machines/run.js';
+import { nodeIdAtScope, viewGraph, visibleNodeIdFor } from '../editor/view-graph.js';
+import { boundaryAt, breakScope, resetRunBounds, runSubject } from '../editor/run-scope.js';
+import { getBlock } from '../editor/blocks.js';
+import { clearBranchTokens, paintBranchTokens } from '../canvas/branch-tokens.js';
+import { withBranchTrees } from '../machines/branch-tree.js';
+import { refreshBranchTree } from './branch-tree-ui.js';
+import { SPACETIME_ICON, openSpaceTime, refreshSpaceTime, spaceTimeKind } from './spacetime-ui.js';
+import { revealPlayer } from '../ui/ui.js';
+import { setSectionStatus } from '../ui/section-status.js';
+import { isSyncRAF } from '../canvas/anim.js';
+
+export function runSim() {
+  resetSim();
+  let raw = parseEps($('sim-in').value);
+  if (raw === App.config.sym.eps) $('sim-in').value = raw;
+  if (raw !== '') {
+    App.simInputHistory = App.simInputHistory || [];
+    if (App.simInputHistory[App.simInputHistory.length - 1] !== raw) {
+      App.simInputHistory.push(raw);
+      if (App.simInputHistory.length > 50) App.simInputHistory.shift();
+    }
+  }
+  App.simHistoryIdx = undefined;
+  if (!App.startId) { log('<span class="t-err">No start state.</span>'); return; }
+
+  const m = App.machine;
+  // How this machine reads input is the machine's business: a finite word
+  // for most, u(v) for an ω-automaton, one value per tape for an MTM.
+  const parsed = parseMachineInput(m, raw);
+  if (!parsed.ok) { log(`<span class="t-err">${parsed.error}</span>`); return; }
+
+  // Claims about the machine rather than about this word — a D-type whose δ
+  // branches, a weak automaton whose SCCs straddle F. A refusal stops the
+  // run; a warning is printed and the run continues underneath it.
+  for (const fired of machineGuards(m, parsed.input)) {
+    if (fired.refuse) { log(`<span class="t-err">${fired.refuse}</span>`); return; }
+    log(`<span class="t-warn">${fired.warn}</span>`);
+  }
+
+  // A long word is not refused — see INPUT_LENGTH_NOTICE. It is announced,
+  // because the tape tracker draws a cell per symbol and the reader should
+  // know that is what the pause is before they meet it.
+  const wordLen = parsed.tokens?.length ?? 0;
+  if (wordLen > INPUT_LENGTH_NOTICE) {
+    log(`<span class="t-warn">${wordLen.toLocaleString()} symbols — the run itself is cheap, but the input row draws a cell for each one, so the tracker will take a moment to paint.</span>`);
+  }
+
+  // What the canvas highlights against. A multi-tape run has no single
+  // token list, and says so by handing back null rather than a guess.
+  if (parsed.tokens) App.currentTokens = parsed.tokens;
+
+  // The word these steps belong to, so a later press of play can tell
+  // "carry on" from "run this instead". Recorded after the guards, since a
+  // refused run has no steps to resume.
+  App.simInput = raw;
+
+  // The player's run is the one run that records its branches: the card and the
+  // canvas's tokens read the tree, and nothing that runs a machine quietly does.
+  // Around beginRun rather than streamMachine, because a streaming search (the
+  // NDTM's) only starts, and decides whether to record, on its first pull.
+  withBranchTrees(() => beginRun(streamMachine(m, parsed.input), wordLen, m));
+
+  // Unified playback: automatically start the animation if it loaded correctly
+  if (App.simSteps && App.simSteps.length > 0) {
+    toggleAuto();
+  }
+}
+
+// How many steps a single drain slice may take before the loop gives the page
+// back. "Go to the end" on a machine that never halts is otherwise an
+// unbounded loop on the main thread — the run is bounded by maxTmSteps, but
+// ten thousand tape snapshots is long enough to lose the frame and the Escape
+// key with it.
+const DRAIN_SLICE = 500;
+
+// **A drain is paced by time, and painted far less often than it computes.**
+// It used to pull DRAIN_SLICE steps, paint the whole player — the trace log's
+// four hundred rows, the tracker, the canvas — and yield on a zero timer, so
+// ninety-nine per cent of "go to the end" was painting frames of a run moving
+// too fast to read: 28k steps a second, twenty times slower than pressing
+// play at Max, and half an hour to reach the halt of the five-state busy
+// beaver. Now a slice computes for DRAIN_WORK_MS (steps pulled DRAIN_SLICE at a
+// time, each batch scanned for a block boundary before the next is pulled),
+// and the player is painted at most every DRAIN_PAINT_MS, plus once at the end.
+// The page still gets the thread back between slices, so Escape and the
+// transport stay live.
+const DRAIN_WORK_MS = 24;
+const DRAIN_PAINT_MS = 100;
+
+/** Pull until the run ends, a boundary trips, or the slice's time is up. */
+function drainFor(run, ms) {
+  const start = clockNow();
+  do {
+    run.drain(DRAIN_SLICE);
+    maxReachable();   // scans what was just computed for a block boundary
+  } while (!run.done && App.simStopAt == null && clockNow() - start < ms);
+}
+
+/**
+ * Take a run from the machine layer and make it the one on screen.
+ *
+ * Eager and lazy differ here and nowhere else. Eager drains the cursor before
+ * the first frame, which is exactly what the app did when every simulator ran
+ * to completion and wrote App.simSteps; lazy materializes only the first step
+ * and lets playback pull the rest. Either way `App.simSteps` is the cursor's
+ * array — the same object for the life of the run — so every reader of it, the
+ * trace log's tail and the minimap and StateMate included, is untouched.
+ */
+export function beginRun(run, inputLen = 0, m = App.machine) {
+  App.simRun = run;
+  App.simSteps = run.steps;
+  const lazy = run.streaming && runsLazily(inputLen, m);
+  if (lazy) run.at(0);
+  else run.drain();
+  streamNote = noteForRun(run, lazy, m);
+  App.simIdx = 0;
+  renderSimStep();
+  return run;
+}
+
+// The one-line explanation of why the step counter is showing a '+'. It is a
+// property of the run rather than of a step, so it lives beside the run and is
+// re-emitted by every log render — written into the log once at the top and
+// then wiped by the next tick would be worse than not saying it at all.
+//
+// Only the automatic path says anything. A reader who chose a mode needs no
+// narration, and a run that finished on its first pull is not streaming in any
+// sense they could observe.
+let streamNote = '';
+
+function noteForRun(run, lazy, m) {
+  if (!lazy || run.done || execMode() !== 'auto') return '';
+  const cfg = getMachineConfig(m);
+  const limit = cfg.hasTape ? App.config.maxTmSteps : App.config.maxPdaSteps;
+  return `Streaming: this machine can run to ${limit.toLocaleString()} steps, so each is computed as it plays.`;
+}
+
+/** The run on screen, or an empty one before anything has been run. */
+function currentRun() {
+  if (!App.simRun || App.simRun.steps !== App.simSteps) {
+    // A direct caller wrote App.simSteps without going through beginRun —
+    // every eager simulator does, and so does every test that calls one. An
+    // array source is adopted by reference and reported done, so the transport
+    // works unchanged on a run this module did not start.
+    App.simRun = makeRun(App.simSteps || []);
+  }
+  return App.simRun;
+}
+
+/**
+ * Materialize the step at `idx`, if the run can still reach it *and* the run
+ * boundary lets it.
+ *
+ * The one gate, and deliberately here rather than in the four callers: this is
+ * already the bounds check — `stepFwd` advances only when it answers, and
+ * `stepToEnd` drains against it — so a boundary written as "this index does not
+ * exist" needs nothing else taught about it. On a streaming run it also means
+ * the steps past the boundary are never computed, because nothing pulls them.
+ *
+ * See js/editor/run-scope.js: a block run is the real machine started at the block's
+ * entry and held at the last step still inside it.
+ */
+function stepAt(idx) {
+  if (App.simStopAt != null && idx > App.simStopAt) return null;
+  const step = currentRun().at(idx);
+  if (!step) return null;
+  scanBoundary();
+  return App.simStopAt != null && idx > App.simStopAt ? null : step;
+}
+
+/**
+ * Look for the boundary in whatever has been computed since the last look.
+ *
+ * **It inspects `steps` directly and never pulls**, which is the whole reason
+ * it is a separate pass from `stepAt`. Written as a walk through the cursor it
+ * would drain a streaming run to its budget the first time anything asked how
+ * far the reader may go — which is on every render — and that is precisely the
+ * frozen tab lazy execution exists to prevent.
+ *
+ * A cursor makes it amortized O(1) per step over a run rather than O(n) per
+ * ask. It is needed at all because an *eager* simulator writes the whole trace
+ * before anything pulls a cursor over it, so `stepAt` alone would never see the
+ * step where control left the block.
+ */
+let scannedSteps = null, scannedTo = 0;
+function scanBoundary() {
+  const steps = currentRun().steps;
+  if (scannedSteps !== steps) { scannedSteps = steps; scannedTo = 0; }
+  if (App.simStopAt != null) return;
+  if (!runSubject() && !breakScope()) { scannedTo = steps.length; return; }
+  for (let i = Math.max(1, scannedTo); i < steps.length; i++) {
+    const edge = boundaryAt(steps[i], i, steps[i - 1]);
+    if (edge?.stop) {
+      // Held at the last step *inside*. The step that trips this is the host
+      // machine's, not the block's, and "run this block" means what the block
+      // did — where control went afterwards is the exit's label, not a frame.
+      App.simStopAt = i - 1;
+      App.simExit = edge.exit;
+      scannedTo = i;
+      return;
+    }
+    if (edge?.pause && App.simPauseAt == null) App.simPauseAt = i;
+  }
+  scannedTo = steps.length;
+}
+
+/** Test-only, and for resetSim: the cursor is keyed on the steps array too. */
+export function resetBoundaryScan() { scannedSteps = null; scannedTo = 0; }
+
+/** The last step the reader may reach. */
+function maxReachable() {
+  scanBoundary();
+  const end = currentRun().steps.length - 1;
+  return App.simStopAt != null ? Math.min(App.simStopAt, end) : end;
+}
+
+/**
+ * How many steps the reader may reach — the prefix, not the array.
+ *
+ * On a block run the steps past the boundary have been computed but belong to
+ * the host machine, so counting them would have the Trace header say 6 over a
+ * scrubber reading `4 / 4`. One declaration because three places ask: the log's
+ * header count, the scrubber and the step counter.
+ */
+export function reachableCount() {
+  if (!App.simSteps?.length) return 0;
+  return App.simStopAt != null ? App.simStopAt + 1 : App.simSteps.length;
+}
+
+/**
+ * The playhead has been moved by hand.
+ *
+ * Two things follow from that and they are always both true: the trace log
+ * drops back to its tail (an expansion lasts only while the cursor is still),
+ * and a pending break mark is spent. The second is why this is a function
+ * rather than a bare `resetTraceWindow()` — a reader who has stepped or
+ * scrubbed past where control entered the watched block has already seen it, so
+ * pressing play afterwards must carry straight on instead of pausing again on
+ * a mark it can no longer reach.
+ */
+function handMovedPlayhead() {
+  resetTraceWindow();
+  App.simPauseAt = null;
+}
+
+/** Is there more run to come than has been materialized? */
+export function runIsComplete() {
+  return currentRun().done;
+}
+/**
+ * The card before anything has run: what it is for and how to fill it. The
+ * same markup index.html starts with, so the first paint and a reset agree.
+ */
+export function traceEmptyHtml(alphabet = 'Σ*') {
+  return '<div class="trace-empty">'
+    + '<svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H104a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM104,72H216a8,8,0,0,0,0-16H104a8,8,0,0,0,0,16ZM216,184H104a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16ZM56,112H40a8,8,0,0,0,0,16H56a8,8,0,0,0,0-16Zm0-56H40a8,8,0,0,0,0,16H56a8,8,0,0,0,0-16Zm0,112H40a8,8,0,0,0,0,16H56a8,8,0,0,0,0-16Z"/></svg>'
+    + `<span>No run yet. Type a word in ${alphabet} and press Run to trace it here, one step per row.</span>`
+    + '</div>';
+}
+
+export function log(html) {
+  const t = $('trace-log');
+  if (!t) return;
+  t.innerHTML = html;
+  t.__traceWin = null;   // the rows renderTraceLog drew are gone — see there
+  t.scrollTop = t.scrollHeight;
+  setSectionCount($('rp-count-trace'), reachableCount());
+}
+
+
+// ── running a machine with no page to run it on ────────────────────
+//
+// Every simulator ends with `renderSimStep()`, and that call is the only place
+// in a run that touches the page — which is exactly what StateMate's trace
+// tool must not do. It runs a *private* candidate, so a paint here would
+// replay a machine that is not on the reader's canvas across their trace log,
+// tape tracker, canvas highlights, scrubber and verdict banner at once.
+//
+// A counter rather than a boolean so nesting cannot un-silence an outer run,
+// and restored in a `finally` so a simulator that throws cannot leave the real
+// player mute. `App.simSteps` is written either way — reading it back is how
+// the caller gets its trace.
+// The counter itself lives in js/machines/paint.js, so the machine layer can
+// collect a run without the page — streamMachine() does exactly that for the
+// simulators that cannot stream. Two counters for one property would be two
+// ways for a run to be half-silenced.
+export function runQuietly(fn) {
+  return withPainterSuppressed(fn);
+}
+
+// The machine layer calls this through js/machines/paint.js rather than
+// importing it from here, so that importing a simulator does not drag the
+// renderer in behind it. Installing the binding is this module's job because
+// this module owns the function; it happens as simulation.js evaluates, which
+// on the main thread is long before any run can start.
+setSimStepPainter(renderSimStep);
+
+// Steps kept in the trace log. Generous next to the panel's height — scrolling
+// back through the last few hundred steps of a run is a real thing to want, and
+// scrolling back through ten thousand is what the scrubber is for.
+export const SIM_LOG_TAIL = 400;
+
+// ── the trace log ──────────────────────────────────────────────────
+//
+// **Only the tail is written**, and that is not an optimisation. The log used
+// to be rebuilt from step 0 on every tick, which is quadratic in the length of
+// the run and the reason playing back a Turing machine got slower the longer it
+// ran: at maxTmSteps a single tick meant building and parsing ten thousand
+// divs, ten thousand times over.
+//
+// But "the rest is gone" is a different claim from "the rest is not drawn", and
+// the elided line used to make the first one — a count, and no way to reach
+// what it counted. The steps are all still there in `App.simSteps`; the only
+// reason they were not on screen is that drawing them costs. So the floor is
+// **lowered on demand**: the elided line is a button, and scrolling to the top
+// of the log pulls the next page in behind it.
+//
+// The one rule that keeps the quadratic from coming back: **an expansion lasts
+// only while the cursor is still.** Every path that moves the playhead —
+// a tick, a step, a scrub, a reset — drops the floor back to the tail, because
+// a reader watching playback is not reading history, and re-rendering a
+// thousand revealed rows per tick is exactly the cost this all exists to avoid.
+// Reading history happens while paused, and there the render is one click.
+let logFloor = null;
+
+/** Back to the tail. Called wherever the playhead moves. */
+export function resetTraceWindow() { logFloor = null; }
+
+// The tail while playback is fast. At Max a frame advances thousands of steps,
+// so every frame's tail is a new one and nothing can slide — 400 rows were
+// formatted, parsed and laid out per frame to be replaced before anyone could
+// read them (15% of a frame at 2.5M steps of the five-state busy beaver). A
+// reader cannot read a log moving that fast either; what they see is its last
+// screenful, which this still more than covers. A ⏭ drain is the same case and
+// takes the same tail. Stopping brings the whole tail back — toggleAuto,
+// playFrame and the drain's last slice each repaint once it has ended.
+export const SIM_LOG_FAST_TAIL = 80;
+
+/** How many steps the log's tail holds right now. */
+function traceTail() {
+  return isFastPlayback() || App.simDrainTimer ? SIM_LOG_FAST_TAIL : SIM_LOG_TAIL;
+}
+
+/** The first step the log is currently drawing. */
+function traceFloor() {
+  const tail = Math.max(0, App.simIdx + 1 - traceTail());
+  return logFloor == null ? tail : Math.max(0, Math.min(logFloor, tail));
+}
+
+// ── the log as a window that slides ──
+//
+// Playing forward, the tail moves by a step or two per frame: a row or two
+// arrive at the bottom and as many leave the top. Rebuilding four hundred rows
+// with innerHTML to show that was most of the cost of a frame of playback —
+// measured in Chromium at 17–49% of a step, before the document-wide
+// MutationObserver in dropdown.js walked every one of the ~800 nodes the swap
+// added and removed. So the window the log is drawing is remembered on the
+// element (`__traceWin`), and a forward move appends what is new, drops what
+// fell off the top, and redraws the one row whose class changes.
+//
+// Anything else rebuilds — a step back, a scrub, a reveal, a new run, a jump of
+// a whole tail or more — and so does a log someone else wrote to: `log()` and
+// StateMate both assign innerHTML, which detaches every row, and a window
+// whose rows are no longer in the element is not one to extend.
+
+function traceRowClass(s, current) {
+  if (!current) return '';
+  return s.final === 'accept' ? 't-ok'
+    : (s.final === 'reject' || s.final === 'loop') ? 't-err'
+      : s.final === 'timeout' ? 't-warn' : 't-step';
+}
+
+// A row is a step number in a gutter of its own and the note beside it, so a
+// note that wraps wraps under itself rather than back under the number — see
+// js/simulation/trace-format.js for how the note is lifted into parts. The current row is
+// marked `is-current` beside the verdict colour it always carried, and every
+// row records its step so a click can take the player there.
+function fillTraceRow(row, i) {
+  const s = App.simSteps[i];
+  const current = i === App.simIdx;
+  const tone = traceRowClass(s, current);
+  row.className = 'tr-row' + (current ? ' is-current' : '') + (tone ? ' ' + tone : '');
+  row.dataset.step = String(i);
+  row.innerHTML = `<span class="tr-n">${i}</span><span class="tr-body">${formatTraceNote(s.note, current ? s.final : null)}</span>`;
+  return row;
+}
+
+/** The gutter is as wide as the largest step number the log shows. */
+function sizeTraceGutter(el) {
+  const digits = String(Math.max(0, App.simIdx)).length;
+  if (el.__traceDigits !== digits) {
+    el.__traceDigits = digits;
+    el.style?.setProperty?.('--tr-num', `${digits}ch`);
+  }
+}
+
+// A row is a way back to its step. One delegated listener rather than one per
+// row: rows are appended and dropped every tick of playback, and a listener
+// each would be that many more things to create and collect. A click that
+// ended a text selection is someone copying a line, not asking to jump.
+document.addEventListener('click', e => {
+  const row = e.target?.closest?.('#trace-log .tr-row');
+  if (!row || row.classList.contains('is-current')) return;
+  if (typeof getSelection === 'function' && String(getSelection() || '').length) return;
+  scrubSim(row.dataset.step);
+});
+
+function traceMoreButton(from) {
+  const more = Math.min(SIM_LOG_TAIL, from);
+  const btn = document.createElement('button');
+  btn.setAttribute('type', 'button');
+  btn.className = 't-step sim-log-more';
+  // Built with createElement, so wired here rather than through an action.
+  btn.addEventListener('click', () => revealEarlierTrace());
+  btn.setAttribute('data-tip', `Draw the previous ${more.toLocaleString()} steps. They were always in the run — only the drawing is deferred, because a log rebuilt from step 0 on every tick is quadratic in the length of the run.`);
+  btn.textContent = `↑ ${from.toLocaleString()} earlier step${from === 1 ? '' : 's'} — show ${more.toLocaleString()}`;
+  return btn;
+}
+
+/** Can the window drawn last time be slid forward to [from, simIdx]? */
+function traceWindowExtends(el, w, from) {
+  if (!w || logFloor != null || w.run !== App.simSteps || w.note !== streamNote) return false;
+  if (from < w.from || App.simIdx < w.to || App.simIdx - w.to >= traceTail()) return false;
+  // The "earlier steps" button appears once, when the run first outgrows the
+  // tail; that is a rebuild rather than a special case.
+  if (!!w.btn !== (from > 0)) return false;
+  const last = w.rows[w.rows.length - 1];
+  return !!last && last.parentNode === el;
+}
+
+export function renderTraceLog() {
+  const from = traceFloor();
+  const el = $('trace-log');
+  setSectionCount($('rp-count-trace'), reachableCount());
+  if (!el) return;
+  sizeTraceGutter(el);
+  const w = el.__traceWin;
+
+  if (traceWindowExtends(el, w, from)) {
+    // The newest row drawn last time is redrawn whatever else happens: it
+    // loses the current-step class, and a step the budget ran out on is
+    // stamped (note and final) after it was handed over — see markTimeoutStep.
+    fillTraceRow(w.rows[w.rows.length - 1], w.to);
+    for (let i = w.to + 1; i <= App.simIdx; i++) {
+      w.rows.push(el.appendChild(fillTraceRow(document.createElement('div'), i)));
+    }
+    let drop = from - w.from;
+    while (drop-- > 0) el.removeChild(w.rows.shift());
+    if (w.btn && from !== w.from) {
+      const btn = traceMoreButton(from);
+      el.replaceChild(btn, w.btn);
+      w.btn = btn;
+    }
+    w.from = from; w.to = App.simIdx;
+    pinTraceToBottom(el);
+    return;
+  }
+
+  const before = logFloor != null ? el.scrollHeight : 0;
+  const wasTop = el.scrollTop;
+  el.innerHTML = '';
+  if (streamNote) {
+    const note = document.createElement('div');
+    note.className = 't-warn sim-log-stream';
+    note.textContent = streamNote;
+    el.appendChild(note);
+  }
+  const btn = from ? el.appendChild(traceMoreButton(from)) : null;
+  const rows = [];
+  for (let i = from; i <= App.simIdx; i++) {
+    if (!App.simSteps[i]) break;
+    rows.push(el.appendChild(fillTraceRow(document.createElement('div'), i)));
+  }
+  el.__traceWin = { run: App.simSteps, note: streamNote, from, to: from + rows.length - 1, rows, btn };
+  if (logFloor == null) {
+    pinTraceToBottom(el);
+  } else {
+    // Hold the reader where they were: the rows arrived *above* what they are
+    // looking at, so the content they had in view moved down by exactly the
+    // height of what was added. Without this, revealing a page throws them to
+    // the top of it, which is the one place they have already read.
+    el.scrollTop = wasTop + (el.scrollHeight - before);
+  }
+}
+
+// Pinning to the bottom reads scrollHeight, which forces a layout. Inside a
+// paint that is deferred to the end (see afterWrites), so the frame pays for
+// one layout rather than one per reader of geometry.
+function pinTraceToBottom(el) {
+  afterWrites(() => { el.scrollTop = el.scrollHeight; });
+}
+
+/** Draw the previous page — the trace's "earlier steps" button. */
+export function revealEarlierTrace() {
+  const from = traceFloor();
+  if (!from) return;
+  logFloor = Math.max(0, from - SIM_LOG_TAIL);
+  renderTraceLog();
+}
+
+/**
+ * Pull the next page in when the reader reaches the top of the log.
+ *
+ * The button is the affordance and this is the convenience; both exist because
+ * either alone is wrong — a button nobody sees at the top of a scroller is a
+ * dead end, and an auto-load with nothing saying what it is doing reads as the
+ * page jumping. Guarded on the floor so it cannot fire on a log that is already
+ * whole, and on `logFloor` never rising, so it cannot loop.
+ */
+export function handleTraceScroll() {
+  const el = $('trace-log');
+  if (!el || el.scrollTop > 24) return;
+  if (!traceFloor()) return;
+  revealEarlierTrace();
+}
+
+// ── reads after writes ──
+//
+// A frame of playback writes to the log, the tracker, the canvas, the scrubber
+// and the verdict, and three things in it *read* geometry: pinning the log to
+// its bottom (scrollHeight), keeping the head in view (offsetLeft), and the
+// travelling token (getTotalLength, which in Chromium flushes style). Each read
+// that lands between two writes forces a synchronous layout of the whole page,
+// and on a large machine that page is fifteen thousand SVG nodes — profiled,
+// those three were 25–45% of a step. So inside a paint the reads are queued
+// and run once the writes are done: the first forces the one layout the frame
+// needed anyway, and the rest find it clean.
+let pendingReads = null;
+function afterWrites(fn) {
+  if (pendingReads) pendingReads.push(fn);
+  else fn();
+}
+
+export function renderSimStep() {
+  if (isPainterSuppressed()) return;
+  const step = App.simSteps[App.simIdx]; if (!step) return;
+  const isLast = App.simIdx === maxReachable();
+  const outer = !pendingReads;
+  if (outer) pendingReads = [];
+  try {
+    renderTraceLog();
+
+    // Unified Tracker System
+    const trackerEl = $('sim-tracker');
+    trackerEl.style.display = 'block';
+
+    const rows = trackerRows(step);
+    const finalClass = (isLast && step.final) ? step.final : '';
+    rows.forEach(r => { r.finalClass = finalClass; });
+
+    const stateName = getState(step.state)?.name || (step.states ? stateNames(step.states) : '?');
+    renderTrackerHeader(trackerEl, stateName, rows);
+    renderTracker(trackerBody(trackerEl), rows, { defer: afterWrites, instant: isFastPlayback() });
+
+    updateSimCanvasHighlights(step);
+
+    updateSimScrubber();
+    updateSimVerdict(step, isLast);
+    refreshSpaceTime();
+    refreshBranchTree();
+  } finally {
+    if (outer) {
+      const reads = pendingReads;
+      pendingReads = null;
+      for (const read of reads) read();
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  THE STEP TRACKER
+// ══════════════════════════════════════════════════════════════════
+// What a step *shows*; js/simulation/tape-view.js is how a row of it is drawn.
+//
+// A row is one of two things and the difference is not cosmetic. A tape
+// has ends — a wall the head cannot pass, or blank cells running on
+// forever — and which ends it has is the whole difference between a TM,
+// an ITM, an LBA and a two-way head. That fact comes from the tape
+// itself, as `step.view`, for the same reason the clamp does: a machine
+// name branch here would be a second, drifting copy of js/simulation/tape.js.
+//
+// A stack, a queue, an output and a probability distribution are *not*
+// tapes, and are deliberately not drawn as ones. They get cells and no
+// ends, because a stack's ends are a top and a bottom rather than a wall
+// and an infinity, and drawing a wall at the bottom of a stack would be
+// claiming something about it that is not true.
+
+/**
+ * A finite word, said in the tape vocabulary.
+ *
+ * The input row of a DFA really is a strip bounded at both ends, so it is
+ * described as one rather than getting a row shape of its own — the
+ * reader who has just watched an LBA scan between two markers should not
+ * have to learn a second idiom to read a DFA's input.
+ */
+function wordView(cells, head, opts = {}) {
+  return {
+    say: opts.say,
+    kind: 'tape',
+    cells,
+    head,
+    origin: 0,
+    leftBound: 0,
+    rightBound: cells.length - 1,
+    markers: [],
+    blank: App.config.sym.blank,
+    // Not read-only — nothing is being *declined* here. A DFA's input is a
+    // word being consumed rather than a tape the machine chooses not to
+    // write to, and saying "read-only" of it would put a caveat on the
+    // commonest row in the app to describe a restriction that is not one.
+    readOnly: false
+  };
+}
+
+/**
+ * A tape row, from the tape if the simulator sent one.
+ *
+ * The fallback matters: `step.view` is new, and a step can reach here
+ * without one — a machine module that has not been taught to send it, or
+ * a run restored from somewhere that predates it. Falling back to a plain
+ * bounded strip draws the cells correctly and simply declines to claim
+ * anything about the ends, which is better than guessing at them from the
+ * machine's name.
+ */
+function tapeRow(label, view, cells, head) {
+  return { label, view: view || wordView(cells || [], head ?? -1) };
+}
+
+/** How many of an embedded store's stacks get a row before they are counted. */
+const EMBEDDED_STACK_ROWS = 6;
+
+function trackerRows(step) {
+  const m = App.machine;
+  const rows = [];
+
+  // isSingleTapeTM is exactly TM/NDTM/LBA/ITM plus the two-way heads (2DFA,
+  // 2NFA, 2DFT) — MTM is deliberately not in it and keeps its own branch.
+  if (isSingleTapeTM(m)) {
+    rows.push(tapeRow('Tape', step.view, step.tape, step.head));
+  } else if (m === 'MTM') {
+    step.tapes.forEach((t, i) => rows.push(
+      tapeRow(`T${i + 1}`, step.views && step.views[i], t, step.heads[i])
+    ));
+  } else if (isOmegaAutomaton(m)) {
+    // The ω-word is unrolled far enough to cover the witness lasso; the head
+    // keeps advancing into the repetitions rather than wrapping in place.
+    rows.push(tapeRow('ω', step.view, step.tape, step.head));
+  } else {
+    // DFA, NFA, PDA, Moore, Mealy
+    const tokens = step.tokens || App.currentTokens || [];
+    const tokensToDisplay = tokens.length ? tokens : [App.config.sym.eps];
+
+    // Determine token index (which one was JUST read)
+    // `pos` is how far the head has got, so the symbol just read is the one
+    // before it. Asking for `step.remaining` here would build the suffix
+    // array only to measure it — see js/machines/step-log.js.
+    let tokIdx = -1;
+    if (typeof step.pos === 'number') {
+      tokIdx = step.pos - 1;
+    } else {
+      tokIdx = App.simIdx - 1;
+    }
+
+    // The empty word is drawn as the ε placeholder, which is one cell holding
+    // a symbol that is not in it — so the length comes from the tokens.
+    rows.push({
+      label: 'In',
+      view: wordView(tokensToDisplay, tokIdx, {
+        say: {
+          badge: `|w| = ${tokens.length}`,
+          tip: `The input word: ${tokens.length} symbol${tokens.length === 1 ? '' : 's'}, read left to right. The head marks the symbol just consumed.`
+        }
+      })
+    });
+
+    if (isEmbeddedMachine(m)) {
+      // A store that is a sequence of stacks is drawn as a row per stack,
+      // topmost first, because the nesting *is* the information — a single row
+      // with separators would say the machine has one store with marks in it,
+      // which is the thing this model is not. Only the top one is reachable, so
+      // it is the one labelled as a stack; the rest are named by how far down
+      // they are.
+      if (Array.isArray(step.store)) {
+        const shown = step.store.slice().reverse().slice(0, EMBEDDED_STACK_ROWS);
+        shown.forEach((st, i) => rows.push({
+          label: i === 0 ? 'Top' : `−${i}`,
+          cells: [...st].reverse(),
+          head: i === 0 ? 0 : -1,
+          capL: 'top',
+          capR: 'bottom'
+        }));
+        const hidden = step.store.length - shown.length;
+        if (hidden > 0) rows.push({ label: '⋯', cells: [`${hidden} more`], head: -1 });
+      }
+    } else if (isAnyPDA(m) && step.stack) {
+      if (isQueueAutomaton(m)) {
+        rows.push({ label: 'Que', cells: [...step.stack], head: 0, capL: 'front', capR: 'back' });
+      } else {
+        rows.push({ label: 'Stk', cells: [...step.stack].reverse(), head: 0, capL: 'top', capR: 'bottom' });
+      }
+      if (isTwoStackPDA(m) && step.stack2) {
+        rows.push({ label: 'Stk2', cells: [...step.stack2].reverse(), head: 0, capL: 'top', capR: 'bottom' });
+      }
+    } else if (isWeightedFA(m) && step.dist) {
+      // Not a tape: one cell per state still carrying probability, so the
+      // distribution is legible as it spreads and collapses.
+      rows.push({ label: 'Pr', cells: step.dist, head: -1 });
+    }
+  }
+
+  // Any machine that prints gets an output row, wherever its other rows came
+  // from — Moore/Mealy/FST alongside the input, PDT alongside the stack,
+  // 2DFT alongside the two-way tape.
+  if (getMachineConfig(m).isTransducer) {
+    const outToks = step.outToks || [];
+    rows.push({ label: 'Out', cells: outToks, head: outToks.length ? outToks.length - 1 : -1, capR: 'newest' });
+  }
+
+  return rows;
+}
+
+/**
+ * The tracker is a header and a body, and the body is the part
+ * js/simulation/tape-view.js caches its nodes in — so the two cannot share an
+ * element, or rewriting the header would throw away every cell.
+ */
+function trackerBody(trackerEl) {
+  let body = trackerEl.__tvBody;
+  if (!body || body.parentNode !== trackerEl) {
+    body = document.createElement('div');
+    body.className = 'tv-body';
+    trackerEl.appendChild(body);
+    trackerEl.__tvBody = body;
+  }
+  return body;
+}
+
+/**
+ * One line saying where the machine is: the state, and what is under
+ * each head.
+ *
+ * A tape row also gets its *cell number*, which is the one thing the row
+ * of boxes cannot say on its own — on a two-way tape the drawn position
+ * and the cell diverge the moment the tape grows leftward, which is why
+ * simTM had to put `@-3` in its note.
+ */
+function renderTrackerHeader(trackerEl, stateName, rows) {
+  let head = trackerEl.__tvHeader;
+  if (!head || head.parentNode !== trackerEl) {
+    head = document.createElement('div');
+    head.className = 'tracker-header';
+    const text = document.createElement('span');
+    text.className = 'tracker-header-text';
+    head.appendChild(text);
+    head.__stBtn = makeTrackerSpaceTimeBtn();
+    head.appendChild(head.__stBtn);
+    head.appendChild(makeTrackerCopyBtn());
+    trackerEl.insertBefore(head, trackerEl.firstChild);
+    trackerEl.__tvHeader = head;
+  }
+  const parts = rows.map(r => {
+    const view = r.view;
+    const cells = view ? view.cells : (r.cells || []);
+    const idx = view ? view.head : (r.head ?? -1);
+    const sym = (idx >= 0 && cells[idx] !== undefined) ? cells[idx] : '—';
+    const at = (view && idx >= 0 && view.origin !== undefined)
+      ? `<span class="tracker-val-at">@${view.origin + idx}</span>`
+      : '';
+    return `${r.label}:<span class="tracker-val-sym">${escapeCell(sym)}</span>${at}`;
+  });
+  // The whole run, drawn — offered only where a run is one tape history.
+  if (head.__stBtn) head.__stBtn.hidden = !spaceTimeKind();
+  head.firstChild.innerHTML = `State: <span class="tracker-val-st">${escapeCell(stateName)}</span>`
+    + (parts.length ? ' &nbsp; ' + parts.join(' &nbsp; ') : '');
+}
+
+function escapeCell(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * The whole row — every cell, not just the one under the head — as plain
+ * text. Symbols join with nothing between them when every one is a single
+ * character (the ordinary case: tape and stack alphabets are), or with a
+ * space when any symbol is longer, so a multi-character symbol doesn't
+ * fuse with its neighbour into a string the reader would have to re-split.
+ */
+function rowText(row) {
+  const view = row.view;
+  const cells = (view ? view.cells : (row.cells || [])).map(String);
+  const spaced = cells.some(s => s.length > 1);
+  return cells.join(spaced ? ' ' : '');
+}
+
+// The def-box / regex-box copy icon (index.html's .box-copy-btn), reused
+// here rather than redrawn — same affordance, same glyph, wherever a panel
+// offers to copy its own content.
+const COPY_ICON_SVG = '<svg viewBox="0 0 256 256" fill="currentColor" width="12" height="12">'
+  + '<path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z" />'
+  + '</svg>';
+
+// Built once per tracker header rather than written into index.html: unlike
+// the def-box/regex-box copies, this one lives inside a node the tracker
+// itself creates, so it is wired the way reference.js and the wizard button
+// are — a listener attached at creation.
+function makeTrackerCopyBtn() {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'tracker-copy-btn';
+  btn.setAttribute('data-tip', 'Copy tape dump at current timestep');
+  btn.setAttribute('aria-label', 'Copy tape dump at current timestep');
+  btn.innerHTML = COPY_ICON_SVG;
+  btn.addEventListener('click', copyTapeContents);
+  return btn;
+}
+
+const SPACETIME_TIP = 'Space-time diagram: the whole run, one row per step';
+
+function makeTrackerSpaceTimeBtn() {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'tracker-copy-btn tracker-st-btn';
+  btn.setAttribute('data-tip', SPACETIME_TIP);
+  btn.setAttribute('aria-label', SPACETIME_TIP);
+  btn.innerHTML = SPACETIME_ICON;
+  btn.addEventListener('click', () => openSpaceTime());
+  return btn;
+}
+
+function copyTapeContents(evt) {
+  // Captured now rather than read off `evt` inside the .then() below: a
+  // DOM event's currentTarget is cleared once dispatch finishes, which is
+  // well before the clipboard promise settles.
+  const btn = evt && evt.currentTarget;
+  const step = App.simSteps[App.simIdx];
+  if (!step) { showStatus('Nothing to copy — run a simulation first'); return; }
+  const rows = trackerRows(step);
+  const text = rows.map(r => `${r.label}: ${rowText(r)}`).join('\n');
+  if (!navigator.clipboard || !navigator.clipboard.writeText) {
+    showStatus('Clipboard access unavailable');
+    return;
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    showStatus(rows.length > 1 ? 'Copied tape contents' : `Copied ${rows[0].label} contents`);
+    if (btn) {
+      btn.classList.add('copied');
+      clearTimeout(btn._copiedTimer);
+      btn._copiedTimer = setTimeout(() => btn.classList.remove('copied'), 1200);
+    }
+  }).catch(() => showStatus('Copy failed — clipboard access blocked'));
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  CANVAS PATH HIGHLIGHTING
+// ══════════════════════════════════════════════════════════════════
+export function simMotionOk() {
+  return !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+export function findSimEdgeGroup(key) {
+  if (!key) return null;
+  return App.domCache.transitions.get(key) || document.querySelector(`.edge-g[data-edge="${key}"]`);
+}
+
+// ── the run, projected onto what is drawn ─────────────────────────
+// The machine is flat and the canvas is a projection of it (js/editor/view-graph.js),
+// so a run's own ids are not always ids the canvas has anything under. A step
+// inside a block names a state that is not drawn, and a step that crosses a
+// block's boundary names a transition drawn as `x2|b1` — a pair the *model*
+// does not contain. Built from the transition's own endpoints, every one of
+// those lookups came back empty: no trail, no active edge, no travelling token
+// and no pulse, from the first step a run touched a block onward. The run was
+// correct throughout; the whole of what was lost was the drawing of it.
+//
+// So both halves go through the projection. What resolves to nothing is dropped
+// rather than guessed at: an edge *wholly inside* a block is not on screen, and
+// the box standing in for it is already lit by the state half below.
+
+/** The drawn node a real state is shown by — itself, or the box it is inside. */
+function drawnNodeId(stateId) {
+  return visibleNodeIdFor(stateId) || null;
+}
+
+// Edge(s) traversed to arrive at step `idx`, as "from|to" keys matching the
+// grouped edge DOM. Path-style machines record the transition id on the step;
+// NFA-style set steps are reconstructed from the previous state set (symbol
+// move + ε-closure). NDTM exploration steps carry no path information —
+// consecutive steps are BFS order, not a run — so they highlight states only.
+export function getSimStepEdgeKeys(idx) {
+  const keyOf = viewGraph().keyOf;
+  const keys = new Set();
+  for (const t of simStepTransitions(idx)) {
+    const key = keyOf.get(t.id);
+    // The *drawn* edge, which several real transitions can share — a Set is
+    // what keeps a block's four incoming rules one highlight. What resolves to
+    // nothing is an edge wholly inside a block, which is not on screen at all.
+    if (key) keys.add(key);
+  }
+  return [...keys];
+}
+
+/**
+ * The real transitions a step was taken along.
+ *
+ * Split out from the keys because the two halves of the highlight want
+ * different things from it: the canvas wants the *drawn* edge, and a block's
+ * preview wants the transition itself, to find the mark for it one level in.
+ * Written twice they would be two answers to "which edge fired", and the
+ * preview would light one the canvas did not.
+ */
+function simStepTransitions(idx) {
+  const step = App.simSteps[idx];
+  if (!step) return [];
+  if (step.tid) {
+    const t = getTransition(step.tid);
+    return t ? [t] : [];
+  }
+  if (step.states) return nfaStepTransitions(idx);
+  return [];
+}
+
+function nfaStepTransitions(idx) {
+  const eps = App.config.sym.eps, any = App.config.sym.any;
+  const out = [];
+  const step = App.simSteps[idx];
+  const cur = new Set(step.states);
+  let seed;
+  if (idx === 0) {
+    seed = new Set([App.startId]);
+  } else {
+    const prev = App.simSteps[idx - 1];
+    const prevStates = prev.states || (prev.state ? [prev.state] : []);
+    // The next symbol the previous step had to read, taken by index rather
+    // than off the front of a suffix this would otherwise have to build.
+    const prevToks = prev.tokens;
+    const sym = (prevToks && typeof prev.pos === 'number' && prev.pos < prevToks.length)
+      ? prevToks[prev.pos]
+      : null;
+    seed = new Set();
+    if (sym !== null) {
+      prevStates.forEach(sid => transitionsFrom(sid).forEach(t => {
+        if ((t.symbol === sym || t.symbol === any) && cur.has(t.to)) {
+          out.push(t);
+          seed.add(t.to);
+        }
+      }));
+    }
+  }
+  // ε-edges that expanded the closure into the current set
+  const stk = [...seed], seen = new Set(seed);
+  while (stk.length) {
+    const s = stk.pop();
+    transitionsFrom(s).forEach(t => {
+      if (t.symbol === eps && cur.has(t.to)) {
+        out.push(t);
+        if (!seen.has(t.to)) { seen.add(t.to); stk.push(t.to); }
+      }
+    });
+  }
+  return out;
+}
+
+// What the last paint lit, so undoing it is a walk over a few dozen elements
+// rather than four document-wide selector matches per step of playback.
+let simLit = new Map();
+
+// The preview paths whose `d` the last paint wrote. Kept apart from simLit
+// because what has to be undone there is an attribute rather than a class —
+// and blanking every block's path unconditionally would mean a write per box on
+// screen per step, on boxes with no run anywhere near them.
+let simLitPaths = [];
+
+// **A frame of highlights is a diff, not a clear-and-redraw.** The trail and
+// the visited states only grow as the run plays forward, so a step changes the
+// classes on the two or three things the active mark moved between — but the
+// frame used to strip every mark and put every one back, which on a machine a
+// run had wandered across was thousands of class writes per step, each one a
+// style invalidation on the biggest SVG in the app. `litNext` collects what the
+// frame wants; `commitLit` writes only the differences against what this
+// module last wrote (`simLit`, element → classes). Nothing else writes these
+// classes, and a node the renderer evicted and rebuilt is a new element, so it
+// is simply one the diff has not lit yet.
+let litNext = null;
+
+function litAdd(el, ...classes) {
+  if (!el) return;
+  if (!litNext) {
+    // Outside a frame: apply and remember, so the next clear undoes it.
+    el.classList.add(...classes);
+    const have = simLit.get(el);
+    if (have) classes.forEach(c => have.add(c)); else simLit.set(el, new Set(classes));
+    return;
+  }
+  const want = litNext.get(el);
+  if (want) classes.forEach(c => want.add(c)); else litNext.set(el, new Set(classes));
+}
+
+function commitLit() {
+  const next = litNext;
+  litNext = null;
+  for (const [el, have] of simLit) {
+    const want = next.get(el);
+    for (const c of have) if (!want || !want.has(c)) el.classList.remove(c);
+  }
+  for (const [el, want] of next) {
+    const have = simLit.get(el);
+    for (const c of want) if (!have || !have.has(c)) el.classList.add(c);
+  }
+  simLit = next;
+}
+
+// Pulses are transient rings the animation appends and removes itself; this is
+// the safety net for the ones whose animationend never fired. Tracked rather
+// than swept with querySelectorAll, which walked the whole states layer on
+// every step to find, almost always, nothing.
+const simPulses = new Set();
+
+export function clearSimCanvasHighlights() {
+  for (const [el, classes] of simLit) el.classList.remove(...classes);
+  simLit = new Map();
+  litNext = null;
+  clearTransientMarks();
+  clearBranchTokens();
+}
+
+// `keepPulses` is for a single forward step: the rings already on screen are
+// arrivals the run really made, so they are left to finish rather than cut off
+// by the step after them (see pulseMs).
+function clearTransientMarks(keepPulses = false) {
+  for (const el of simLitPaths) el.setAttribute('d', '');
+  simLitPaths = [];
+  if (!keepPulses) {
+    for (const ring of simPulses) ring.remove();
+    simPulses.clear();
+  }
+  removeSimTokens();
+}
+
+// The trail — every state and edge the run has been through — accumulates as
+// the playhead advances, so it is carried forward rather than recomputed. It
+// used to be rebuilt from step 0 on every step, and each of those steps resolved
+// its transition by scanning App.transitions: at a machine's ten-thousandth step
+// that is twenty million comparisons, for one frame of playback, and the run got
+// slower with every step it took.
+//
+// Only a jump backwards costs a rebuild, which is what a scrub is and is
+// bounded by where it lands.
+function trailUpTo(idx) {
+  // The keys are *drawn* keys, so the scope is part of what makes the cache
+  // valid: drilling into a block while a run is paused changes which node every
+  // step of it is shown by, and a trail carried across that would be a set of
+  // keys for a diagram that is no longer on screen. Rebuilding costs what a
+  // backward scrub costs, and only on a scope change.
+  const scopeKey = (App.scope || []).join('/');
+  let c = App._simTrail;
+  if (!c || c.run !== App.simSteps || c.upTo > idx || c.scope !== scopeKey) {
+    c = { run: App.simSteps, scope: scopeKey, upTo: 0, visited: new Set(), keys: new Set(), tids: new Set() };
+  }
+  // **A step that names its transition is looked up once per transition, not
+  // once per step.** Its drawn edge depends on the transition and nothing else,
+  // and a long run takes the same handful of transitions millions of times —
+  // so resolving each step's edge (a step built through the columnar Proxy, a
+  // validated view-graph lookup, an array of keys) was 11% of a frame of fast
+  // playback, all of it re-finding edges the trail already had. A columnar run
+  // is read straight from its columns, so no step is built at all. Only a
+  // set-valued step (an NFA's), whose edges depend on the step before it,
+  // still resolves every time.
+  const cols = c.upTo < idx ? stepColumnsOf(App.simSteps[c.upTo]) : null;
+  for (let i = c.upTo; i < idx; i++) {
+    let tid;
+    if (cols) {
+      const st = cols.stateAt(i);
+      if (st) c.visited.add(st);
+      tid = cols.tidAt(i);
+    } else {
+      const s = App.simSteps[i];
+      (s.states || (s.state ? [s.state] : [])).forEach(id => c.visited.add(id));
+      tid = s.tid;
+      if (!tid) { getSimStepEdgeKeys(i).forEach(k => c.keys.add(k)); continue; }
+    }
+    if (!tid || c.tids.has(tid)) continue;
+    c.tids.add(tid);
+    getSimStepEdgeKeys(i).forEach(k => c.keys.add(k));
+  }
+  c.upTo = Math.max(c.upTo, idx);
+  App._simTrail = c;
+  return c;
+}
+
+export function updateSimCanvasHighlights(step) {
+  const isNewRun = App._simRenderRun !== App.simSteps;
+  const advancedOne = !isNewRun && App.simIdx === App._simRenderIdx + 1;
+  App._simRenderRun = App.simSteps;
+  App._simRenderIdx = App.simIdx;
+
+  clearTransientMarks(advancedOne);
+  litNext = new Map();
+  try {
+    litFrame(step);
+  } finally {
+    commitLit();
+  }
+
+  // A nondeterministic run puts a token on every live branch instead of one on
+  // the edge just taken (js/canvas/branch-tokens.js). The tokens are marks as well as
+  // motion, so they are drawn at every speed; only their flights are subject
+  // to the rules below.
+  const motion = simMotionOk() && !tooFastForMotion();
+  const branched = paintBranchTokens(App.simSteps, App.simIdx, {
+    advancedOne,
+    flightMs: motion ? tokenFlightMs(App.autoTimer ? playbackIntervalMs() : null) : 0,
+    defer: afterWrites
+  });
+
+  // Motion: a token slides along each newly-taken edge, then the arrival
+  // state pulses (verdict-colored on the final step). Only on a single
+  // forward step — scrubbing and jumps update instantly — and not past 10×,
+  // where a flight that fits inside a step is too short to be seen moving (see
+  // tokenFlightMs), and each one starts by measuring its path, which flushes
+  // style.
+  if (!motion) return;
+  const hlNodes = drawnHighlightNodes(step);
+  const activeKeys = getSimStepEdgeKeys(App.simIdx);
+  const tone = step.final === 'reject' ? 'rej' : step.final === 'accept' ? 'acc' : '';
+  // Over the drawn nodes, so a run that has stepped inside a block pulses the
+  // box once rather than pulsing nothing four times.
+  const ring = pulseMs(App.autoTimer ? playbackIntervalMs() : null);
+  const pulseAll = () => hlNodes.forEach(id => pulseSimNode(id, tone, ring));
+  if (advancedOne && activeKeys.length && !branched) {
+    const dur = tokenFlightMs(App.autoTimer ? playbackIntervalMs() : null);
+    afterWrites(() => activeKeys.slice(0, 8).forEach((k, i) => {
+      animateSimToken(k, dur, i === 0 ? pulseAll : null);
+    }));
+  } else if ((advancedOne && step.final) || (isNewRun && App.simIdx === 0)) {
+    pulseAll();
+  }
+}
+
+// ── fast playback ──
+// Two thresholds, because two different things stop keeping up.
+//
+// **The token goes first.** Each step removes the last step's token, so a
+// flight has to land inside the step or it is cut off mid-edge and the arrival
+// pulse it hands on to never fires — which, at a fixed 160ms floor, is what
+// every speed from 5× up used to do. tokenFlightMs shrinks the flight with the
+// step instead. Below MOTION_MIN_INTERVAL_MS (10×) that is two or three frames,
+// which reads as a flicker rather than as movement, so there is no flight.
+//
+// **Everything else holds on until 50×.** The 150–180ms fades on a state, an
+// edge and a tape cell, and the smooth scrolls that follow the head, lag behind
+// at 5× but still read as motion. At FAST_PLAYBACK_MS a step lands every frame
+// or two: the fades never reach their colour — the head is a smear of half-lit
+// cells and the canvas a trail of half-lit states — and each smooth scroll is
+// restarted from mid-air by the next, so the thing it follows runs off the
+// edge. So fast playback draws marks, not motion: every effect snaps to where
+// it is going.
+const MOTION_MIN_INTERVAL_MS = 50;   // 10×
+const FAST_PLAYBACK_MS = 10;         // 50×
+
+// The share of a step a flight may take. The rest is the arrival pulse's.
+const TOKEN_STEP_SHARE = 0.8;
+
+/**
+ * How long a token takes to cross its edge, in ms.
+ *
+ * By hand (`intervalMs` null) it is a fixed 280. Playing, it is 60% of the step
+ * within 160–500ms — long enough to follow at 1×, never so long it drags — and
+ * then capped at TOKEN_STEP_SHARE of the step, so it lands before the next one
+ * removes it: 160ms at 2×, 80 at 5×, 40 at 10×.
+ */
+export function tokenFlightMs(intervalMs) {
+  if (intervalMs == null) return 280;
+  const eased = Math.max(160, Math.min(intervalMs * 0.6, 500));
+  return Math.min(eased, intervalMs * TOKEN_STEP_SHARE);
+}
+
+/**
+ * How long an arrival ring takes to fade, in ms, or null for the stylesheet's.
+ *
+ * A ring outlives its step (clearTransientMarks keeps it on a forward step), so
+ * it never needs to fit inside one — it used to be cut off by the next step at
+ * every playback speed, to 200ms of its 500 at 1× and nothing at all from 5×.
+ * What it needs is not to pile up: at twice the step there are at most two or
+ * three on screen, a short fading wake along the path, rather than one per
+ * state the run has crossed in the last half second. 150ms is the shortest a
+ * ring still reads as growing rather than blinking.
+ */
+export function pulseMs(intervalMs) {
+  if (intervalMs == null) return null;
+  return Math.max(150, Math.min(intervalMs * 2, 500));
+}
+
+/** Playing, and too fast for a token to be seen moving. */
+function tooFastForMotion() {
+  return !!App.autoTimer && playbackIntervalMs() < MOTION_MIN_INTERVAL_MS;
+}
+
+/** Playing at 50× or faster, where timed effects cannot keep up. Hand stepping never is. */
+export function isFastPlayback() {
+  return !!App.autoTimer && playbackIntervalMs() <= FAST_PLAYBACK_MS;
+}
+
+/**
+ * Put `.sim-fast` on the root while `isFastPlayback()` holds — what the CSS
+ * reads to drop its transitions. A class rather than a per-element write,
+ * because the fades live on every state, edge and cell, and toggling one
+ * class when playback starts, stops or changes speed is one style
+ * invalidation, not one per frame.
+ */
+function syncFastPlayback() {
+  const root = typeof document === 'object' && document ? document.documentElement : null;
+  if (root && root.classList) root.classList.toggle('sim-fast', isFastPlayback());
+  // Every start, stop and change of speed passes through here, which makes it
+  // the one place the canvas background can learn the run's pace.
+  setCanvasMotionTempo(App.autoTimer ? playbackIntervalMs() : null);
+}
+
+/** The drawn node ids a step lights, deduped (several states in one block are one box). */
+function drawnHighlightNodes(step) {
+  const hl = step.state ? [step.state] : (step.states || []);
+  const nodes = new Set();
+  hl.forEach(id => { const n = drawnNodeId(id); if (n) nodes.add(n); });
+  return nodes;
+}
+
+function litFrame(step) {
+  const trail = trailUpTo(App.simIdx);
+  const visited = trail.visited;
+  const trailKeys = trail.keys;
+
+  const activeKeys = getSimStepEdgeKeys(App.simIdx);
+  const activeSet = new Set(activeKeys);
+  const hl = step.state ? [step.state] : (step.states || []);
+
+  // Resolved to *drawn* nodes before anything is compared, and deduped there:
+  // several states inside one block are one box on screen, so a set of real ids
+  // would light it once per member and — worse — the "is this one already
+  // active?" test below would answer about ids the canvas does not have.
+  const hlNodes = drawnHighlightNodes(step);
+  const visitedNodes = new Set();
+  visited.forEach(id => { const n = drawnNodeId(id); if (n && !hlNodes.has(n)) visitedNodes.add(n); });
+
+  // The registries rather than the document: after culling only the drawn
+  // window has nodes, and a state the trail passed through that is currently
+  // off screen has nothing to mark. That holds for the trail's edges too, which
+  // used to fall back to a document-wide querySelector per edge the registry
+  // did not hold — on a culled machine, every off-screen edge the run had
+  // taken, every step, to find nothing.
+  visitedNodes.forEach(id => {
+    litAdd(App.domCache.states.get(id), 'sim-visited-st');
+  });
+  trailKeys.forEach(k => {
+    if (activeSet.has(k)) return;
+    litAdd(App.domCache.transitions.get(k), 'sim-trail-t');
+  });
+
+  hlNodes.forEach(id => {
+    litAdd(App.domCache.states.get(id) || document.querySelector(`[data-id="${id}"]`),
+      step.final === 'reject' ? 'rej-st' : 'act-st');
+  });
+  activeKeys.forEach(k => {
+    litAdd(findSimEdgeGroup(k), 'sim-active-t');
+    litAdd(document.getElementById(`lbl-${k}`), 'sim-active-lbl');
+    litAdd(document.getElementById(`pill-lbl-${k}`), 'sim-active-lbl');
+  });
+
+  // ── one level in ──
+  // A box on the canvas is a small drawing of the machine inside it, so the
+  // marks above stop one level short of what the reader can actually see: the
+  // box lights, and the dot that is really running stays the same grey as the
+  // twenty around it. These write onto elements the preview already built, so
+  // the cost is a class per mark and nothing is rebuilt — see markPreviewRun.
+  markPreviewRun(hl, visited, simStepTransitions(App.simIdx), step);
+}
+
+/**
+ * The run, marked inside the previews the blocks on screen are drawing.
+ *
+ * **Nothing here rebuilds a preview**, and that is the whole of why it is
+ * affordable. `renderAll` draws a preview only when `blockPreviewKey` changes,
+ * and a run changes no position and no transition — so the dots and the edge
+ * subpaths this writes to were built once and are still there. Per step the
+ * work is: a short ancestry walk per marked state (nodeIdAtScope), a Map get
+ * per mark, and one `d` write per box the run is actually inside. It runs on a
+ * step change rather than on a frame, so it is off the render path entirely.
+ *
+ * What it deliberately does not do is send a travelling token in there. At
+ * preview scale an interior edge is a dozen pixels and a node is two, so the
+ * dot would be larger than the states it travels between — the one part of the
+ * canvas animation that does not survive being shrunk.
+ */
+function markPreviewRun(active, visited, transitions, step) {
+  const boxes = App.domCache.states;
+  const activeCls = step.final === 'reject' ? 'is-rej' : 'is-active';
+
+  // A state is marked in a preview only when it is *inside* a box — a state at
+  // this scope is drawn as itself and already has the canvas mark.
+  const markState = (stateId, cls) => {
+    const boxId = drawnNodeId(stateId);
+    if (!boxId || boxId === stateId) return;
+    const g = boxes.get(boxId);
+    if (!g || !g.__pvIndex) return;   // off screen, or blanked by the zoom LOD
+    const pvId = nodeIdAtScope(stateId, boxId);
+    const el = pvId && g.__pvIndex.get(pvId);
+    if (el) litAdd(el, cls);
+  };
+
+  visited.forEach(id => markState(id, 'is-visited'));
+  active.forEach(id => markState(id, activeCls));
+
+  // The edge, which is only drawn when both ends are immediate members of the
+  // same box: an edge deeper than that is inside the nested rect the state half
+  // has already lit, and one crossing the box's own boundary is the canvas edge
+  // above.
+  const byBox = new Map();
+  for (const t of transitions) {
+    const boxId = drawnNodeId(t.from);
+    if (!boxId || boxId === t.from || drawnNodeId(t.to) !== boxId) continue;
+    const g = boxes.get(boxId);
+    if (!g || !g.__pvEdgeD) continue;
+    const a = nodeIdAtScope(t.from, boxId), b = nodeIdAtScope(t.to, boxId);
+    if (!a || !b || a === b) continue;
+    const d = g.__pvEdgeD.get(a + '|' + b);
+    if (!d) continue;
+    const acc = byBox.get(g);
+    if (acc) acc.push(d); else byBox.set(g, [d]);
+  }
+  for (const [g, parts] of byBox) {
+    const el = g.__parts.pvActive;
+    el.setAttribute('d', parts.join(' '));
+    simLitPaths.push(el);
+    if (step.final === 'reject') litAdd(el, 'is-rej');
+  }
+}
+
+export function removeSimTokens() {
+  (App._simTokens || []).forEach(t => { cancelAnimationFrame(t.raf); t.el.remove(); });
+  App._simTokens = [];
+}
+
+export function animateSimToken(edgeKey, dur, onDone) {
+  const grp = findSimEdgeGroup(edgeKey);
+  const pathEl = grp && grp.querySelector('.tarr');
+  const layer = $('sim-anim-g');
+  // Probe only — the flight itself re-measures per frame (see tick below). A path
+  // with no length, or a host without getTotalLength at all, means there is
+  // nothing to travel along, so hand straight back to the caller.
+  let len = 0;
+  // A path that is not rendered has no length, and some engines throw for it.
+  try { len = pathEl && layer ? pathEl.getTotalLength() : 0; } catch { /* stays 0 */ }
+  if (!len) { if (onDone) onDone(); return; }
+  const dot = makeSVG('circle');
+  // The radius is in world units, so the camera divides it: on a machine drawn
+  // at 8% a 5px token is half a pixel of the one thing that says which edge is
+  // being taken right now. It is sized against the zoom instead, never below
+  // its own 5px, so it stays the same dot on screen however far out you are.
+  dot.setAttribute('r', Math.max(5, 5 / (App.cam?.z || 1)));
+  dot.classList.add('sim-token');
+  const p0 = pathEl.getPointAtLength(0);
+  dot.setAttribute('cx', p0.x); dot.setAttribute('cy', p0.y);
+  layer.appendChild(dot);
+  const token = { el: dot, raf: 0 };
+  App._simTokens = App._simTokens || [];
+  App._simTokens.push(token);
+  const t0 = performance.now();
+  const finish = () => {
+    dot.remove();
+    App._simTokens = (App._simTokens || []).filter(t => t !== token);
+    if (onDone) onDone();
+  };
+  let measuredD = pathEl.getAttribute('d');
+  const tick = now => {
+    if (!pathEl.isConnected) { finish(); return; }
+    const p = Math.min(1, (now - t0) / dur);
+    const e = p < 0.5 ? 2 * p * p : -1 + (4 - 2 * p) * p; // easeInOutQuad
+    // Re-measured when the path has changed, not on every frame: the edge under
+    // the token may still be easing toward a new route (js/canvas/anim.js), and a stale
+    // length against a path that has since changed leaves the token short of
+    // the arrowhead or past it. But getTotalLength is not free — in Chromium it
+    // flushes style first, which profiled at 7–22% of a playback step — while
+    // reading the `d` attribute back is a string compare.
+    const d = pathEl.getAttribute('d');
+    if (d !== measuredD) { measuredD = d; len = pathEl.getTotalLength(); }
+    const pt = pathEl.getPointAtLength(len * e);
+    dot.setAttribute('cx', pt.x); dot.setAttribute('cy', pt.y);
+    if (p < 1) token.raf = requestAnimationFrame(tick);
+    else finish();
+  };
+  token.raf = requestAnimationFrame(tick);
+}
+
+/**
+ * The arrival ring, on a *drawn* node — which is a circle for a state and a box
+ * for a block or a port.
+ *
+ * The shape is asked of the node rather than assumed, because the ring has to
+ * trace the outline the reader can see: a circle of radius R centred on a box
+ * two hundred pixels wide is a ring floating inside it, which reads as a second
+ * unexplained mark rather than as "control arrived here".
+ *
+ * The scale is the shape's too. `.sim-pulse` grows 1.7x from its own centre,
+ * which is right for a 22px circle and far too much for a block's box — it
+ * would sweep out over half the diagram. `.is-box` is the gentler ramp.
+ */
+export function pulseSimNode(nodeId, tone = '', durMs = null) {
+  const grp = App.domCache.states.get(nodeId) || document.querySelector(`[data-id="${nodeId}"]`);
+  if (!grp) return;
+  const parts = grp.__parts || {};
+  const box = (grp.__kind === 'block' || grp.__kind === 'port') ? parts.body : null;
+  let ring;
+  if (box) {
+    ring = makeSVG('rect');
+    ring.setAttribute('x', box.getAttribute('x'));
+    ring.setAttribute('y', box.getAttribute('y'));
+    ring.setAttribute('width', box.getAttribute('width'));
+    ring.setAttribute('height', box.getAttribute('height'));
+    const rx = box.getAttribute('rx');
+    if (rx) ring.setAttribute('rx', rx);
+    ring.classList.add('is-box');
+  } else {
+    const c = parts.circle || (grp.querySelector && grp.querySelector('circle.bd'));
+    if (!c) return;
+    ring = makeSVG('circle');
+    ring.setAttribute('cx', c.getAttribute('cx'));
+    ring.setAttribute('cy', c.getAttribute('cy'));
+    ring.setAttribute('r', R);
+  }
+  ring.classList.add('sim-pulse');
+  if (tone) ring.classList.add(tone);
+  // Scaled against the keyframes' own .5s, so the box's longer .55s ramp keeps
+  // its proportion to the circle's.
+  if (durMs != null && ring.style) ring.style.animationDuration = `${(durMs / 500) * (box ? 0.55 : 0.5)}s`;
+  grp.appendChild(ring);
+  simPulses.add(ring);
+  const drop = () => { ring.remove(); simPulses.delete(ring); };
+  ring.addEventListener('animationend', drop);
+  setTimeout(drop, Math.max(900, (durMs || 0) + 400)); // safety net if animations are disabled
+}
+
+/** The same, addressed by a *machine* state id. */
+export function pulseSimState(id, tone = '') {
+  const nodeId = drawnNodeId(id);
+  if (nodeId) pulseSimNode(nodeId, tone);
+}
+
+// ── Scrubber / transport ──
+export function updateSimScrubber() {
+  const row = $('sim-scrubber-row'), scrubber = $('sim-scrubber'), counter = $('sim-step-counter');
+  if (!row || !scrubber || !counter) return;
+  // Under a streaming run this is what has been materialized, not the length
+  // of the run — which is not knowable until the machine halts. The counter
+  // says so with a '+' rather than quietly reporting a total that will grow;
+  // the slider addresses the prefix and its max moves with it.
+  // On a block run the reachable prefix is shorter than what was computed:
+  // everything past the boundary is the host machine, not the block, so the
+  // slider must not reach it and the counter must not include it. With no
+  // boundary maxReachable() is the end of the array and this is what it was.
+  const bounded = App.simStopAt != null;
+  const known = reachableCount();
+  const complete = bounded || runIsComplete();
+  row.style.display = known > 1 ? 'flex' : 'none';
+  if (document.activeElement !== scrubber) {
+    scrubber.max = String(Math.max(0, known - 1));
+    scrubber.value = String(Math.min(App.simIdx, Math.max(0, known - 1)));
+  }
+  counter.textContent = `${known ? App.simIdx + 1 : 0} / ${known}${complete ? '' : '+'}`;
+  // The counter sits in the transport, which is always there, rather than on
+  // the timeline's row, which is not — so with nothing to count it is muted
+  // rather than hidden, and the buttons either side of it do not shift.
+  counter.classList.toggle('is-idle', known <= 1);
+  syncSimStatus();
+}
+
+/**
+ * What the Simulate header says while it is folded: the word, and where its
+ * run has got to — the step the playhead is on, or the verdict once it is on
+ * the step that decided.
+ *
+ * Folding Simulate, or minimizing its window, used to put the answer away with
+ * the controls; a reader who runs a word from the input box and folds the
+ * transport to see more of the canvas still wants to know what it said. It is
+ * read off the run rather than off the banner, so it cannot disagree with the
+ * scrubber beside it, and it says "loops" and "no verdict" in their own words
+ * for the same reason the banner does — neither is a rejection by timeout.
+ *
+ * A block run keeps the step count: its answer is which exit it took, and the
+ * body says that far better than a chip can.
+ */
+export function syncSimStatus() {
+  const known = reachableCount();
+  if (!known || App.simInput === null || App.simInput === undefined) {
+    setSectionStatus('rp-simulate', '');
+    return;
+  }
+  const word = App.simInput === '' ? App.config.sym.eps : String(App.simInput);
+  const step = App.simSteps[App.simIdx];
+  const complete = App.simStopAt != null || runIsComplete();
+  let say = `${Math.min(App.simIdx + 1, known)} / ${known}${complete ? '' : '+'}`;
+  let tone = '';
+  if (step && step.final && !runSubject()) {
+    if (step.final === 'accept') { say = 'accepted'; tone = 'acc'; }
+    else if (step.final === 'reject') { say = 'rejected'; tone = 'rej'; }
+    else if (step.final === 'loop') { say = 'never halts'; tone = 'rej'; }
+    else if (step.final === 'timeout') { say = 'no verdict'; tone = 'warn'; }
+  } else if (step && step.outToks !== undefined && complete && App.simIdx >= known - 1 &&
+    getMachineConfig(App.machine).isTransducer) {
+    say = `→ ${step.outToks.length ? step.outToks.join('') : '—'}`;
+  }
+  setSectionStatus('rp-simulate', `${word} · ${say}`, tone);
+}
+
+export const SIM_ICON_ACCEPT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>';
+export const SIM_ICON_REJECT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>';
+export const SIM_ICON_PLAY = '<svg viewBox="0 0 256 256" fill="currentColor" width="14" height="14"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>';
+export const SIM_ICON_PAUSE = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M200,28H160a20,20,0,0,0-20,20V208a20,20,0,0,0,20,20h40a20,20,0,0,0,20-20V48A20,20,0,0,0,200,28Zm-4,176H164V52h32ZM96,28H56A20,20,0,0,0,36,48V208a20,20,0,0,0,20,20H96a20,20,0,0,0,20-20V48A20,20,0,0,0,96,28ZM92,204H60V52H92Z"/></svg>';
+export const SIM_ICON_REPEAT = '<svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor"><path d="M228,48V96a12,12,0,0,1-12,12H168a12,12,0,0,1,0-24h19l-7.8-7.8a75.55,75.55,0,0,0-53.32-22.26h-.43A75.49,75.49,0,0,0,72.39,75.57,12,12,0,1,1,55.61,58.41a99.38,99.38,0,0,1,69.87-28.47H126A99.42,99.42,0,0,1,196.2,59.23L204,67V48a12,12,0,0,1,24,0ZM183.61,180.43a75.49,75.49,0,0,1-53.09,21.63h-.43A75.55,75.55,0,0,1,76.77,179.8L69,172H88a12,12,0,0,0,0-24H40a12,12,0,0,0-12,12v48a12,12,0,0,0,24,0V189l7.8,7.8A99.42,99.42,0,0,0,130,226.06h.56a99.38,99.38,0,0,0,69.87-28.47,12,12,0,0,0-16.78-17.16Z"/></svg>';
+export const SIM_ICON_SEPARATOR = '<span class="run-btn-sep">|</span>';
+
+// Clicking run-btn plays, pauses, resumes or replays — one button, the way
+// a media control works.
+//
+// **Pause then play resumes; it does not start over.** It used to call
+// runSim() unconditionally, which begins with resetSim() — so pausing to
+// look at a configuration and pressing play again threw the run away and
+// re-ran it from step 0. That is the one thing a pause button must not do,
+// and it made pausing useless on exactly the runs worth pausing: a long
+// tape machine, where getting back to where you were meant holding the
+// step key. Resuming is not a new capability either — the ▶| button already
+// advances the same paused run without re-simulating.
+//
+// Two things are deliberately *not* resumed. A run sitting on its last step
+// has nothing to resume, and the button is already showing the replay icon
+// by then, so it re-runs. And a run whose word no longer matches the run box
+// re-runs too: editing the box and pressing play means "run this", and
+// silently continuing the previous word would be the same class of surprise
+// in the other direction.
+export function handleRunBtnClick() {
+  if (App.autoTimer) { stopAutoPlay(); setRunBtnState('idle'); return; }
+  if (canResumeSim()) { toggleAuto(); return; }
+  runSim();
+}
+
+/** Is there a paused run left to carry on with, for the word in the box? */
+export function canResumeSim() {
+  if (!App.simSteps.length) return false;
+  // At the frontier of a run that has not finished is a resumable position:
+  // the next press pulls the next step. Only a *finished* run sitting on its
+  // last step has nothing left to carry on with.
+  if (App.simIdx >= App.simSteps.length - 1 && runIsComplete()) return false;
+  // Null-safe on the box: this is read from setRunBtnState, which runs on
+  // every paint of the transport, and a paint must not throw for want of a
+  // field.
+  const box = $('sim-in');
+  return App.simInput !== null && !!box && App.simInput === parseEps(box.value);
+}
+
+// Run doubles as the verdict/transport readout — recoloring/relabeling this
+// one button communicates play state and accept/reject at a glance instead
+// of separate controls/banner. 'idle' is pre-run/paused/mid-scrub; 'playing'
+// while the auto-play timer is running; 'accept'/'reject' only apply once
+// isLast is true and get cleared the moment you step away from the final
+// step, reset, or start a new run.
+export function setRunBtnState(mode) {
+  const btn = $('run-btn');
+  if (!btn) return;
+  // The icon is the whole of what this button says, and it says four different
+  // things — so the name has to move with it. Written from one place for the
+  // reason the pin button's is: a `data-tip` is a tooltip, not an accessible
+  // name, and the app's most-pressed control was announced as "button" in
+  // every one of its states.
+  const say = (name) => {
+    btn.setAttribute('aria-label', name);
+    btn.dataset.tip = name;
+  };
+  // Every paint of the transport lands here, and each rewrite of the icon is an
+  // innerHTML parse plus a trip through the document-wide MutationObserver in
+  // dropdown.js. This function is the only writer of the button, so what it
+  // last wrote is what the button shows.
+  const playing = !!App.autoTimer;
+  const key = mode === 'accept' || mode === 'reject'
+    ? mode
+    : `${playing}|${playing ? '' : canResumeSim()}`;
+  if (btn.__runKey === key) return;
+  btn.__runKey = key;
+  btn.classList.remove('accept', 'reject');
+  if (mode === 'accept') {
+    btn.classList.add('accept');
+    btn.innerHTML = `${SIM_ICON_ACCEPT}${SIM_ICON_SEPARATOR}${SIM_ICON_REPEAT}`;
+    say('Accepted — run again');
+    return;
+  }
+  if (mode === 'reject') {
+    btn.classList.add('reject');
+    btn.innerHTML = `${SIM_ICON_REJECT}${SIM_ICON_SEPARATOR}${SIM_ICON_REPEAT}`;
+    say('Rejected — run again');
+    return;
+  }
+  btn.innerHTML = App.autoTimer ? SIM_ICON_PAUSE : SIM_ICON_PLAY;
+  say(App.autoTimer ? 'Pause' : (canResumeSim() ? 'Resume' : 'Run'));
+}
+
+export function updateSimVerdict(step, isLast) {
+  const el = $('sim-verdict');
+  if (!el) return;
+  if (!isLast) { el.style.display = 'none'; setRunBtnState('idle'); return; }
+  // A block has no F — its accepting marks are dropped when it is inlined,
+  // because a block finishing is not the machine accepting — so the answer to
+  // "run this block on this word" is not accept or reject. It is **which exit
+  // it left by**, which is what the block declares and what everything
+  // downstream of it branches on. A run that never leaves says that instead of
+  // borrowing a verdict that would mean something else.
+  if (runSubject()) { renderBlockVerdict(el, step); return; }
+  if (step.final === 'accept' || step.final === 'reject') {
+    el.style.display = 'none';
+    setRunBtnState(step.final);
+    return;
+  }
+  // A proven loop IS a decision — the machine never halts, so the input is
+  // not accepted — but it is a different fact from halting in a non-accepting
+  // state, and the banner says which one happened.
+  if (step.final === 'loop') {
+    setRunBtnState('reject');
+    el.style.display = 'flex';
+    el.className = 'sim-verdict loop';
+    el.innerHTML = `<span class="sim-verdict-lbl">Loop</span>` +
+      `<span class="sim-verdict-out">configuration repeats step ${step.loopFrom ?? 0} — never halts, so the input is not accepted</span>`;
+    return;
+  }
+  // A run that never halted has no verdict at all. Saying so is the point —
+  // the alternative is a red REJECT that quietly asserts something false.
+  if (step.final === 'timeout') {
+    setRunBtnState('idle');
+    el.style.display = 'flex';
+    el.className = 'sim-verdict timeout';
+    // With loop detection off this is where a proven non-halt would have been
+    // reported, so the banner names the setting rather than leaving the
+    // reader to wonder why the app stopped deciding.
+    const off = detectsLoops() ? '' : ', and loop detection is off';
+    el.innerHTML = `<span class="sim-verdict-lbl">No verdict</span>` +
+      `<span class="sim-verdict-out">still running after ${step.limit || App.config.maxTmSteps} steps — not a rejection${off}</span>`;
+    return;
+  }
+  setRunBtnState('idle');
+  const cfg = getMachineConfig(App.machine);
+  if (cfg.isTransducer && step.outToks !== undefined) {
+    el.style.display = 'flex';
+    el.className = 'sim-verdict output';
+    el.innerHTML = `<span class="sim-verdict-lbl">Output</span><span class="sim-verdict-out">${step.outToks.length ? step.outToks.join('') : '—'}</span>`;
+    return;
+  }
+  el.style.display = 'none';
+}
+
+/**
+ * How a block run ended, in the block's own terms.
+ *
+ * Three answers, and the third is the one worth being careful about: an
+ * *undeclared* way out is a real result, not an error — but it is also exactly
+ * what stops the block being reusable, since a copy placed elsewhere would have
+ * that wire hanging off a state its definition never mentioned. So it is
+ * reported as what happened and marked as undeclared, rather than being
+ * rounded to the nearest declared exit or refused.
+ */
+function renderBlockVerdict(el, step) {
+  const b = getBlock(runSubject());
+  const exit = App.simExit;
+  setRunBtnState('idle');
+  // **Nothing has happened yet.** On a streaming run the newest materialized
+  // step is always the last one, so `isLast` is true on every single tick — and
+  // where an ordinary machine falls through to a hidden banner, this branch
+  // used to draw one. The reader watched "No exit — control never left B" flash
+  // past on every frame of a run that was still inside the block and had every
+  // intention of leaving it.
+  //
+  // There is no answer until the boundary has been crossed or the run has
+  // stopped of its own accord, so until then there is nothing to say.
+  if (!exit && App.simStopAt == null && !runIsComplete()) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'flex';
+  if (exit) {
+    const how = exit.declared
+      ? `<span class="sim-verdict-lbl">${escapeHtml(exit.label || 'exit')}</span>`
+      : `<span class="sim-verdict-lbl">left</span>`;
+    const where = exit.declared
+      ? `from ${escapeHtml(exit.fromName || '?')}, into ${escapeHtml(exit.toName || '?')}`
+      : `from ${escapeHtml(exit.fromName || '?')} — not a declared exit of ${escapeHtml(b?.name || 'the block')} — into ${escapeHtml(exit.toName || '?')}`;
+    el.className = 'sim-verdict block-exit' + (exit.declared ? '' : ' is-stray');
+    el.innerHTML = how + `<span class="sim-verdict-out">${where}</span>`;
+    return;
+  }
+  // No exit means the run ended without control ever leaving: it halted inside,
+  // ran out of budget, or looped. Which of those is the step's own business and
+  // it has already said so in the log; what this line adds is that the block
+  // never handed control back, which is the thing the caller would be waiting on.
+  const why = step?.final === 'loop' ? 'it loops'
+    : step?.final === 'timeout' ? 'it ran out of steps'
+      : 'it halted inside';
+  el.className = 'sim-verdict block-exit is-stuck';
+  el.innerHTML = `<span class="sim-verdict-lbl">No exit</span>`
+    + `<span class="sim-verdict-out">control never left ${escapeHtml(b?.name || 'the block')} — ${why}</span>`;
+}
+
+export function stopAutoPlay() {
+  stopDraining();
+  const clock = App.autoTimer;
+  if (!clock) return;
+  App.autoTimer = null;
+  if (typeof clock === 'object' && typeof clock.cancel === 'function') clock.cancel();
+  else clearInterval(clock);
+  syncFastPlayback();
+}
+
+export function stepFwd(stopAuto = true) {
+  if (stopAuto) { stopAutoPlay(); handMovedPlayhead(); }
+  else resetTraceWindow();
+  // The pull is the bounds check: on a streaming run the next step may not
+  // exist yet, and asking for it is what computes it.
+  const knewBound = App.simStopAt != null;
+  const wasComplete = currentRun().done;
+  if (stepAt(App.simIdx + 1)) { App.simIdx++; renderSimStep(); return; }
+  // **The pull that just failed is the one that learns how the run ended**, and
+  // by then the last frame has already been drawn without knowing. Two things
+  // become true here and neither was true when the previous step was painted:
+  // the boundary has been found (the step where control leaves the block is
+  // materialized inside `stepAt` and then refused), and a streaming run has
+  // reached its end.
+  //
+  // Left unpainted, a block run finished showing the verdict from before
+  // control left — "No exit, control never left" — which is the one answer
+  // certain to be wrong by then. Only ⏭ escaped it, because it re-reads
+  // maxReachable() after every drain slice; play and step-forward, the two
+  // controls anyone actually uses, did not.
+  if ((!knewBound && App.simStopAt != null) || (!wasComplete && currentRun().done)) {
+    App.simIdx = Math.min(App.simIdx, Math.max(0, maxReachable()));
+    renderSimStep();
+  }
+}
+
+// ── the playback clock ─────────────────────────────────────────────
+//
+// **Playback is paced by frames, not by a timer per step.** It used to be a
+// setInterval that advanced one step and painted it, so the speed menu was a
+// promise about the timer that painting could not keep: a step's paint cost
+// 8–54ms in Chromium, the fastest preset asked for one every 50ms, and asking
+// for more bought nothing — a hundred steps a frame, each painted in full, ran
+// at 26–116 steps a second.
+//
+// A screen shows sixty frames a second whatever the machine does, so the clock
+// runs once per frame, performs the steps that have come due — or, at Max, as
+// many as fit in FRAME_WORK_MS — and paints once, the newest. Nothing is
+// skipped: every step is still computed, stored and reachable by the scrubber,
+// the log and the space-time diagram; only the paints nobody could have seen
+// are not made. At a slow speed that is one step every few frames, exactly the
+// rhythm the interval had.
+//
+// `App.autoTimer` is the clock while playing and null otherwise, the same
+// truthiness everything that asks "is it playing?" already reads.
+
+// How long a frame of fast playback may spend computing before it paints.
+const FRAME_WORK_MS = 8;
+// Behind by more than this, the clock drops the backlog rather than bursting
+// to catch up — a tab that was hidden resumes where it was, not ten seconds on.
+const CATCH_UP_MS = 250;
+
+function clockNow() {
+  return typeof performance === 'object' && performance && typeof performance.now === 'function'
+    ? performance.now() : Date.now();
+}
+
+/** Milliseconds per step at the current speed; 0 means as fast as the page can go. */
+export function playbackIntervalMs() {
+  const ms = Number(App.config.autoSpeed);
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
+}
+
+function startPlaybackClock() {
+  const clock = {
+    handle: 0,
+    // The test DOM runs requestAnimationFrame callbacks inline, where a loop
+    // that re-arms itself would recurse; a frame-rate timer stands in there.
+    sync: isSyncRAF(),
+    due: clockNow() + playbackIntervalMs(),
+    cancel() {
+      if (this.sync) clearTimeout(this.handle);
+      else if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.handle);
+    }
+  };
+  App.autoTimer = clock;
+  syncFastPlayback();
+  armClock(clock);
+  return clock;
+}
+
+function armClock(clock) {
+  if (clock.sync) clock.handle = setTimeout(() => playFrame(clock), 16);
+  else clock.handle = requestAnimationFrame(() => playFrame(clock));
+}
+
+/**
+ * One frame of playback: the steps that are due, then one paint.
+ *
+ * The run boundary, the break mark and the end of the run are all noticed here
+ * and only here, one step at a time, which is why the steps go through
+ * `advanceQuiet` rather than `stepFwd` — the same checks, without a paint per
+ * step.
+ */
+function playFrame(clock) {
+  if (App.autoTimer !== clock) return;
+  const start = clockNow();
+  const interval = playbackIntervalMs();
+  if (interval > 0 && start - clock.due > CATCH_UP_MS) clock.due = start;
+
+  let moved = false, repaint = false, outcome = 'play';
+  for (let n = 1; ; n++) {
+    if (interval > 0) {
+      if (start < clock.due) break;
+      clock.due += interval;
+    }
+    const r = advanceQuiet();
+    if (r === 'step' || r === 'pause') moved = true;
+    if (r === 'learned') repaint = true;
+    if (r === 'pause' || r === 'end' || r === 'learned') { outcome = r === 'pause' ? 'pause' : 'end'; break; }
+    if ((n & 31) === 0 && clockNow() - start > FRAME_WORK_MS) break;
+  }
+
+  if (outcome !== 'play') stopAutoPlay();
+  if (moved || repaint) {
+    resetTraceWindow();
+    renderSimStep();
+  }
+  if (outcome === 'pause') {
+    // A break scope pauses playback where control entered the block being
+    // watched; the run is untouched, so step-forward carries straight on and
+    // the scrubber still reaches everything computed. A pause, not a stop.
+    App.simPauseAt = null;
+    setRunBtnState('idle');
+    showStatus(`Paused — control entered ${getBlock(breakScope())?.name || 'the block'}`);
+  }
+  if (App.autoTimer === clock) armClock(clock);
+}
+
+/**
+ * One step of playback, with no paint.
+ *
+ * `stepFwd` without the render, and with its end-of-run bookkeeping kept:
+ * **the pull that fails is the one that learns how the run ended** — a block
+ * boundary found, or a streaming run discovered to be done — and that has to
+ * be painted, since the last frame was drawn before either was known.
+ *
+ * The break mark is tested with `>=` rather than `===` because a streaming pull
+ * can materialize several steps at once, so the mark may already be behind the
+ * playhead by the time it is looked at. It is one-shot, and hand navigation
+ * spends it (see handMovedPlayhead) so resuming does not pause on it twice.
+ */
+function advanceQuiet() {
+  const knewBound = App.simStopAt != null;
+  const wasComplete = currentRun().done;
+  if (stepAt(App.simIdx + 1)) {
+    App.simIdx++;
+    return App.simPauseAt != null && App.simIdx >= App.simPauseAt ? 'pause' : 'step';
+  }
+  if ((!knewBound && App.simStopAt != null) || (!wasComplete && currentRun().done)) {
+    App.simIdx = Math.min(App.simIdx, Math.max(0, maxReachable()));
+    return 'learned';
+  }
+  return 'end';
+}
+
+export function stepBack() {
+  stopAutoPlay();
+  handMovedPlayhead();
+  if (App.simIdx > 0) { App.simIdx--; renderSimStep(); }
+}
+export function stepToStart() {
+  if (!App.simSteps.length) return;
+  stopAutoPlay();
+  handMovedPlayhead();
+  App.simIdx = 0; renderSimStep();
+}
+export function stepToEnd() {
+  if (!App.simSteps.length) return;
+  stopAutoPlay();
+  handMovedPlayhead();
+  // On a streaming run "the end" is a computation rather than an index, so it
+  // is drained in slices with the page given back between them — a machine
+  // that never halts runs to its budget here, and holding the main thread for
+  // all of it would take the Escape key with it.
+  const run = currentRun();
+  if (!run.done && App.simStopAt == null) {
+    let painted = -Infinity;
+    const tick = () => {
+      drainFor(run, DRAIN_WORK_MS);
+      App.simIdx = Math.max(0, maxReachable());
+      // A boundary tripped mid-drain ends the drain: everything past it is the
+      // host machine rather than the block, and computing it would be work for
+      // steps nothing can navigate to.
+      const finished = run.done || App.simStopAt != null;
+      // Cleared before the last paint, which is the one a reader stops on: the
+      // trace log draws its short tail while a drain is running (traceTail).
+      if (finished) App.simDrainTimer = null;
+      if (finished || clockNow() - painted >= DRAIN_PAINT_MS) {
+        renderSimStep();
+        painted = clockNow();
+      }
+      if (!finished) App.simDrainTimer = setTimeout(tick, 0);
+    };
+    stopDraining();
+    tick();
+    return;
+  }
+  App.simIdx = Math.max(0, maxReachable()); renderSimStep();
+}
+
+/**
+ * Compute the rest of a streaming run without moving the playhead.
+ *
+ * ⏭ is the only other way to finish a run, and it takes the reader to the
+ * last step — the wrong answer for someone reading step 40 of a space-time
+ * diagram who wants to see how the run ends underneath it. Same drain, same
+ * slices, same timer (so `stopDraining` and a press of play both cancel it);
+ * what differs is only that the playhead stays where it was.
+ */
+export function computeRestOfRun() {
+  const run = currentRun();
+  if (run.done || App.simStopAt != null) return false;
+  stopDraining();
+  const tick = () => {
+    drainFor(run, DRAIN_WORK_MS);
+    updateSimScrubber();
+    refreshSpaceTime();
+    refreshBranchTree();
+    if (!run.done && App.simStopAt == null) App.simDrainTimer = setTimeout(tick, 0);
+    else {
+      App.simDrainTimer = null;
+      // The step on screen may have just become the last one, and the banner
+      // only knows a run has ended when it is told so on a render.
+      renderSimStep();
+    }
+  };
+  tick();
+  return true;
+}
+
+/** Stop a "go to the end" that is still draining a streaming run. */
+export function stopDraining() {
+  if (App.simDrainTimer) { clearTimeout(App.simDrainTimer); App.simDrainTimer = null; }
+}
+export function scrubSim(value) {
+  handMovedPlayhead();
+  const idx = parseInt(value, 10);
+  if (isNaN(idx) || idx < 0 || idx >= App.simSteps.length) return;
+  // The prefix, not the array: on a block run the steps past the boundary are
+  // the host machine's, and a scrubber that could reach them would be showing
+  // the reader something the run they asked for did not do.
+  if (App.simStopAt != null && idx > App.simStopAt) return;
+  stopAutoPlay();
+  App.simIdx = idx;
+  renderSimStep();
+}
+// Re-arms the auto-play interval at the current autoSpeed, but only if
+// playback is already running — called whenever autoSpeed changes so an
+// in-progress run picks up the new pace instead of finishing out the old one.
+export function restartAutoTimerIfPlaying() {
+  if (!App.autoTimer) return;
+  // Same clock, new rhythm: the next step is one interval from now.
+  App.autoTimer.due = clockNow() + playbackIntervalMs();
+  syncFastPlayback();
+}
+export function resetSim() {
+  stopAutoPlay();
+  App.simSteps = []; App.simIdx = 0; App.currentTokens = null; App.simInput = null;
+  // Where the last run stopped goes with the run. What it was *about* does not:
+  // the subject is the reader's choice of what to investigate, and re-picking
+  // the block for every word tried is the one thing you do repeatedly here.
+  App.simPauseAt = null;
+  resetRunBounds();
+  resetBoundaryScan();
+  resetTraceWindow();
+  // The cursor goes with the steps it was producing. An abandoned generator is
+  // collected on its own; what must not survive is a run whose `steps` array is
+  // no longer the one App.simSteps points at.
+  App.simRun = null;
+  streamNote = '';
+  // An ω-automaton's inputs are Σ^ω, not Σ*: the run box above already asks
+  // for u(v), and the empty log beside it was naming the other set.
+  log(traceEmptyHtml(isOmegaAutomaton(App.machine) ? 'Σ<sup>ω</sup>' : 'Σ*'));
+  resetTracker($('sim-tracker')); $('sim-tracker').style.display = 'none';
+  refreshSpaceTime();
+  refreshBranchTree();
+  const verdict = $('sim-verdict'); if (verdict) verdict.style.display = 'none';
+  const scrubRow = $('sim-scrubber-row'); if (scrubRow) scrubRow.style.display = 'none';
+  const counter = $('sim-step-counter');
+  if (counter) { counter.textContent = '0 / 0'; counter.classList.add('is-idle'); }
+  clearSimCanvasHighlights();
+  App._simRenderRun = null; App._simRenderIdx = -1;
+  // The accumulated trail is keyed on the steps array it was built from, and
+  // the assignment above hands out a new one — but clearing it here keeps that
+  // an explicit reset rather than a consequence of how resetSim happens to
+  // empty the run.
+  App._simTrail = null;
+  setRunBtnState('idle');
+  syncSimStatus();
+}
+export function toggleAuto() {
+  if (App.autoTimer) {
+    const wasFast = isFastPlayback();
+    stopAutoPlay();
+    setRunBtnState('idle');
+    // Fast playback drew a short tail (SIM_LOG_FAST_TAIL); a paused reader is
+    // the one who reads history, so they get the whole of it back.
+    if (wasFast && App.simSteps?.length) renderTraceLog();
+    return;
+  }
+  // stepFwd pulls, so on a streaming run playback is what drives the
+  // computation: the machine advances one step per tick because the animation
+  // asked for it, rather than the whole run having been built beforehand.
+  startPlaybackClock();
+  setRunBtnState('playing');
+}
+
+// ── Input history (↑ / ↓ recall previously-run strings) ──
+// The symbol popover has already had the key by the time this runs (the field
+// is `suggest.symbols keydown->sim.handleSimInputKeydown`), and a key it took
+// never arrives here.
+export function handleSimInputKeydown(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    // dismissSymSuggest (not hideSymSuggest) — Enter's keyup still fires
+    // after this keydown handler returns, and would otherwise pop the
+    // popover back open via the onkeyup caret-refresh handler.
+    dismissSymSuggest();
+    runSim();
+    return;
+  }
+  const hist = App.simInputHistory || [];
+  if (!hist.length) return;
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (App.simHistoryIdx === undefined || App.simHistoryIdx < 0) App.simHistoryIdx = hist.length;
+    App.simHistoryIdx = Math.max(0, App.simHistoryIdx - 1);
+    e.target.value = hist[App.simHistoryIdx];
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (App.simHistoryIdx === undefined) return;
+    App.simHistoryIdx = Math.min(hist.length, App.simHistoryIdx + 1);
+    e.target.value = App.simHistoryIdx >= hist.length ? '' : hist[App.simHistoryIdx];
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  BATCH TESTING
+// ══════════════════════════════════════════════════════════════════
+// The deciding half of the batch tester moved to js/machines/batch.js so a
+// worker can run it — see the header there. Re-exported from here because
+// this is where every caller already imports it from, and because a batch
+// run is still a *run*: the player owns the control flow, the machine layer
+// owns the verdict.
+export { computeBatchResults, decideBatchRows, parseBatchLine, summarizeBatch } from '../machines/batch.js';
+
+export function renderBatchResults(batch) {
+  const summaryEl = $('batch-summary');
+  const { results } = batch;
+
+  if (summaryEl) {
+    if (batch.expected) {
+      summaryEl.style.display = 'block';
+      summaryEl.className = `batch-summary ${batch.allPassed ? 'all-pass' : 'has-fail'}`;
+      summaryEl.textContent = `${batch.passCount} / ${batch.expected} expectations passed`;
+    } else {
+      summaryEl.style.display = 'none';
+    }
+  }
+
+  const rows = results.map((r, i) => batchRowHtml(r, i, batch.budget)).join('');
+
+  const unknowns = batch.unknowns;
+  const budgetNote = unknowns
+    ? `<div class="br-note">${unknowns} input${unknowns > 1 ? 's' : ''} had no verdict inside ${batch.budget} steps. ` +
+      `Raise <em>Language Fingerprint Budget</em> in Settings › Turing Machine; whatever stays unresolved never halts.</div>`
+    : '';
+  const host = $('batch-result');
+  host.innerHTML = rows + budgetNote;
+  renderBatchFilter(results);
+  const bar = $('batch-export-bar');
+  if (bar) bar.style.display = results.length ? 'flex' : 'none';
+  syncBatchPin();
+  syncBatchStatus(batch);
+}
+
+/**
+ * What one row is, as the filter sees it. `kind` is what the machine said
+ * (accepted, rejected, undecided, unreadable, or — for a transducer with no
+ * verdict — only an output); `failed` is whether it broke an expectation,
+ * which an unreadable word always does.
+ */
+export function batchRowKind(r) {
+  if (r.error) return { kind: 'err', failed: true };
+  if (r.verdict === 'unknown') return { kind: 'unk', failed: !!r.expect };
+  if (r.accepted === undefined) return { kind: 'out', failed: false };
+  return { kind: r.accepted ? 'acc' : 'rej', failed: !!r.expect && r.verdict !== r.expect };
+}
+
+function batchRowHtml(r, i, budget) {
+  const { kind, failed } = batchRowKind(r);
+  const word = `<span class="br-word">${escapeHtml(r.str)}</span>`;
+  const out = r.output != null && r.output !== ''
+    ? `<span class="br-out">→ ${escapeHtml(String(r.output))}</span>` : '';
+  let cls, mark, meta;
+  if (kind === 'err') {
+    cls = 'br-err'; mark = '✗'; meta = 'not a word over Σ';
+  } else if (kind === 'unk') {
+    cls = 'br-unk'; mark = '?';
+    meta = `${r.expect ? `expected ${r.expect}, ` : ''}still running after ${budget} steps — not a rejection`;
+  } else if (r.expect) {
+    cls = failed ? 'br-err' : 'br-ok'; mark = failed ? '✗' : '✓';
+    meta = failed ? `expected ${r.expect}, got ${r.verdict}` : `${r.verdict}, as expected`;
+  } else if (kind === 'out') {
+    cls = 'br-plain'; mark = '•'; meta = '';
+  } else {
+    cls = r.accepted ? 'br-ok' : 'br-err'; mark = r.accepted ? '✓' : '✗';
+    meta = r.accepted ? 'accepted' : 'rejected';
+  }
+  // An unreadable word has no run to step through.
+  const playable = kind !== 'err';
+  return `<div class="br-row ${cls}" data-idx="${i}" data-kind="${kind}"${failed ? ' data-failed="1"' : ''}` +
+    (playable ? ` role="button" tabindex="0" title="Step through “${escapeHtml(r.str)}” in the player"` : '') + '>' +
+    `<span class="br-mark" aria-hidden="true">${mark}</span>${word}${out}` +
+    (meta ? `<span class="br-meta">${escapeHtml(meta)}</span>` : '') +
+    (playable ? `<span class="br-play" aria-hidden="true">${BATCH_PLAY_ICON}</span>` : '') +
+    '</div>';
+}
+
+const BATCH_PLAY_ICON = '<svg viewBox="0 0 256 256" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>';
+
+// ── Filtering the results ─────────────────────────────────────────
+// The rows are drawn once; the filter is a data attribute on the host that CSS
+// reads, so switching between "failed" and "all" on a thousand-word batch
+// touches one attribute rather than a thousand rows. It persists across runs,
+// which is the point of it: fix the machine, run again, and you are still
+// looking at whatever is left failing.
+let batchFilter = 'all';
+
+const BATCH_FILTERS = [
+  { id: 'all', label: 'All', test: () => true },
+  { id: 'fail', label: 'Failed', test: r => batchRowKind(r).failed },
+  { id: 'acc', label: 'Accepted', test: r => batchRowKind(r).kind === 'acc' },
+  { id: 'rej', label: 'Rejected', test: r => batchRowKind(r).kind === 'rej' },
+  { id: 'unk', label: 'Undecided', test: r => batchRowKind(r).kind === 'unk' }
+];
+
+function renderBatchFilter(results) {
+  const bar = $('batch-filter');
+  const host = $('batch-result');
+  if (!bar) return;
+  const counts = BATCH_FILTERS.map(f => ({ ...f, n: results.filter(f.test).length }));
+  // "All" and one other bucket say nothing a glance at the rows does not;
+  // a filter earns its row once the results are long or mixed.
+  const shown = counts.filter(f => f.id === 'all' || f.n > 0);
+  if (results.length < 2 || shown.length < 3) {
+    bar.hidden = true;
+    batchFilter = 'all';
+  } else {
+    if (!shown.some(f => f.id === batchFilter)) batchFilter = 'all';
+    bar.hidden = false;
+    bar.innerHTML = shown.map(f =>
+      `<button type="button" class="bf-chip bf-${f.id}" data-batch-filter="${f.id}" aria-pressed="${f.id === batchFilter}">` +
+      `${f.label}<span class="bf-n">${f.n}</span></button>`).join('');
+  }
+  if (host && host.dataset) host.dataset.filter = batchFilter;
+}
+
+function setBatchFilter(id) {
+  batchFilter = id;
+  const host = $('batch-result');
+  if (host && host.dataset) host.dataset.filter = id;
+  const bar = $('batch-filter');
+  if (bar) bar.querySelectorAll('[data-batch-filter]').forEach(b =>
+    b.setAttribute('aria-pressed', b.dataset.batchFilter === id ? 'true' : 'false'));
+}
+
+// ── The editor's tools ────────────────────────────────────────────
+
+/** Non-empty lines, and how many of them carry an expectation. */
+function batchLines() {
+  const box = $('batch-in');
+  return box ? box.value.split('\n').map(l => l.trim()).filter(Boolean) : [];
+}
+
+export function syncBatchCount() {
+  const el = $('batch-count');
+  if (!el) return;
+  const lines = batchLines();
+  const expected = lines.filter(l => parseBatchLine(l).expect).length;
+  const words = `${lines.length} word${lines.length === 1 ? '' : 's'}`;
+  el.textContent = expected ? `${words} · ${expected} expected` : words;
+}
+
+/** "Expect" is offered only while there is a verdict it could write down. */
+function syncBatchPin() {
+  const btn = $('batch-pin');
+  if (!btn) return;
+  const rows = App.lastBatch?.results || [];
+  btn.disabled = !rows.some(r => !r.expect && !r.error && (r.verdict === 'accept' || r.verdict === 'reject'));
+}
+
+/**
+ * Every word over Σ up to the longest length that keeps the list short,
+ * shortest first — ε, then the letters, then pairs. It is the list a reader
+ * types by hand to see whether a machine does what they meant, and the
+ * shortest counterexample is usually in it. Multi-character symbols are joined
+ * with spaces, which is how the tokenizer reads them back unambiguously.
+ */
+export function sampleBatchWords(sigma = App.sigma, cap = 40) {
+  const eps = App.config.sym.eps;
+  const syms = [...sigma].filter(s => s && s !== eps).sort();
+  if (!syms.length) return [];
+  const sep = syms.some(s => s.length > 1) ? ' ' : '';
+  const words = [eps];
+  let layer = [[]];
+  while (true) {
+    const next = [];
+    for (const w of layer) for (const s of syms) next.push([...w, s]);
+    if (words.length + next.length > cap && words.length > 1) break;
+    next.forEach(w => words.push(w.join(sep)));
+    layer = next;
+    if (words.length >= cap) break;
+  }
+  return words;
+}
+
+function fillBatchSamples() {
+  const box = $('batch-in');
+  if (!box) return;
+  if (isOmegaAutomaton()) {
+    showStatus('An ω-automaton reads u(v) words — type them in; there is no finite list to sample.');
+    return;
+  }
+  const words = sampleBatchWords();
+  if (!words.length) { showStatus('Add symbols to Σ first — the samples are words over it.'); return; }
+  const have = new Set(batchLines().map(l => parseBatchLine(l).input));
+  const fresh = words.filter(w => !have.has(w));
+  if (!fresh.length) { showStatus('Every sample word is already in the list.'); return; }
+  const cur = box.value.replace(/\s+$/, '');
+  box.value = (cur ? cur + '\n' : '') + fresh.join('\n');
+  syncBatchCount();
+}
+
+/**
+ * Turns the last run's verdicts into expectations, so the next run is a
+ * regression test. Only lines without one are touched — an expectation the
+ * reader wrote is a claim about the language, and a verdict that disagrees
+ * with it is the bug being looked for, not a correction.
+ */
+export function pinBatchVerdicts() {
+  const box = $('batch-in');
+  const rows = App.lastBatch?.results;
+  if (!box || !rows) return 0;
+  const verdictOf = new Map();
+  rows.forEach(r => {
+    if (!r.expect && !r.error && (r.verdict === 'accept' || r.verdict === 'reject')) verdictOf.set(r.str, r.verdict);
+  });
+  let n = 0;
+  box.value = box.value.split('\n').map(line => {
+    const t = line.trim();
+    if (!t) return line;
+    const { input, expect } = parseBatchLine(t);
+    if (expect || !verdictOf.has(input)) return line;
+    n++;
+    return `${input} => ${verdictOf.get(input)}`;
+  }).join('\n');
+  syncBatchCount();
+  if (n) runBatch();
+  return n;
+}
+
+export function clearBatch() {
+  batchRunToken++;
+  const box = $('batch-in');
+  if (box) box.value = '';
+  const host = $('batch-result');
+  if (host) host.innerHTML = '';
+  const summaryEl = $('batch-summary');
+  if (summaryEl) summaryEl.style.display = 'none';
+  const bar = $('batch-export-bar');
+  if (bar) bar.style.display = 'none';
+  const filter = $('batch-filter');
+  if (filter) filter.hidden = true;
+  App.lastBatch = null;
+  syncBatchPin();
+  syncBatchCount();
+  setSectionStatus('rp-batch', '');
+}
+
+/** A result row, replayed in the player: the word goes into the run box and runs. */
+function playBatchRow(idx) {
+  const r = App.lastBatch?.results?.[idx];
+  const box = $('sim-in');
+  if (!r || r.error || !box) return;
+  box.value = r.str;
+  revealPlayer();
+  runSim();
+}
+
+// One delegated listener per event for the whole section, so the rows — which
+// are rewritten on every run — carry no handlers.
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+  const within = (e, sel) => (e.target && typeof e.target.closest === 'function') ? e.target.closest(sel) : null;
+  document.addEventListener('click', e => {
+    const action = within(e, '[data-batch-action]');
+    if (action && !action.disabled) {
+      const what = action.dataset.batchAction;
+      if (what === 'fill') fillBatchSamples();
+      else if (what === 'pin') pinBatchVerdicts();
+      else if (what === 'clear') clearBatch();
+      return;
+    }
+    const chip = within(e, '[data-batch-filter]');
+    if (chip) { setBatchFilter(chip.dataset.batchFilter); return; }
+    const row = within(e, '#batch-result .br-row[role="button"]');
+    if (row) playBatchRow(Number(row.dataset.idx));
+  });
+  document.addEventListener('keydown', e => {
+    const t = e.target;
+    if (t && t.id === 'batch-in' && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      dismissSymSuggest();
+      runBatch();
+      return;
+    }
+    if ((e.key === 'Enter' || e.key === ' ') && within(e, '#batch-result .br-row[role="button"]')) {
+      e.preventDefault();
+      playBatchRow(Number(within(e, '.br-row').dataset.idx));
+    }
+  });
+  document.addEventListener('input', e => {
+    if (e.target && e.target.id === 'batch-in') syncBatchCount();
+  });
+}
+
+/**
+ * What the Batch Test header says while folded. With expectations, whether
+ * they held; without, how many words the machine took — the two questions a
+ * batch is run to answer, and the ones a folded section should not make the
+ * reader open it to see. `null` clears it: the results it described are gone.
+ */
+export function syncBatchStatus(batch) {
+  if (!batch || !batch.results || !batch.results.length) {
+    setSectionStatus('rp-batch', '');
+    return;
+  }
+  if (batch.expected) {
+    setSectionStatus('rp-batch', `${batch.passCount} / ${batch.expected} passed`,
+      batch.allPassed ? 'acc' : 'rej');
+    return;
+  }
+  const decided = batch.results.filter(r => r.accepted !== undefined && !r.error);
+  if (!decided.length) {
+    setSectionStatus('rp-batch', `${batch.results.length} run`);
+    return;
+  }
+  const took = decided.filter(r => r.accepted).length;
+  setSectionStatus('rp-batch', `${took} / ${decided.length} accepted`);
+}
+
+// Incremented on every run, so a parallel result that lands after the reader
+// has started another one — of either kind — is dropped instead of painting
+// over it. The serial branch bumps it too: a short run started while a long
+// one is still out must not be overwritten when the long one returns.
+let batchRunToken = 0;
+
+export function runBatch() {
+  const token = ++batchRunToken;
+  const rawLines = $('batch-in').value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  syncBatchCount();
+  if (!rawLines.length) return;
+  if (!App.startId) {
+    $('batch-result').innerHTML = `<div class="br-note br-warn">No start state yet — mark one on the canvas, then run the batch again.</div>`;
+    const summaryEl = $('batch-summary');
+    if (summaryEl) summaryEl.style.display = 'none';
+    const bar = $('batch-export-bar');
+    if (bar) bar.style.display = 'none';
+    const filter = $('batch-filter');
+    if (filter) filter.hidden = true;
+    App.lastBatch = null;
+    syncBatchPin();
+    setSectionStatus('rp-batch', 'no start state', 'warn');
+    return;
+  }
+  // Every row is an independent run over one unchanging machine, which is the
+  // one workload in the app that goes wide for free. Under the threshold — or
+  // wherever workers are unavailable — this is the same synchronous call it
+  // always was, and both paths run the identical decideBatchRows().
+  if (!shouldParallelize(rawLines.length, App.machine)) {
+    const batch = computeBatchResults(rawLines);
+    // Held so the export actions report exactly what is on screen rather than
+    // silently re-running the machine against an edited textarea.
+    App.lastBatch = batch;
+    renderBatchResults(batch);
+    return;
+  }
+
+  renderBatchPending(rawLines.length);
+  runParallel({
+    kind: 'batch', items: rawLines, machine: App.machine, serial: decideBatchRows
+  }).then(rows => {
+    // A second Run pressed while this one was out supersedes it — the results
+    // on screen must be the ones for the words in the box now.
+    if (token !== batchRunToken) return;
+    const batch = summarizeBatch(rows);
+    App.lastBatch = batch;
+    renderBatchResults(batch);
+  });
+}
+
+// A parallel batch is the only one that can take long enough to need saying
+// so. Deliberately plain: the results table replaces this the moment the pool
+// returns, and a progress bar that is usually on screen for 80ms is noise.
+function renderBatchPending(n) {
+  // The previous run's rows are no longer what the box says, and the export
+  // actions read App.lastBatch — so it goes now rather than when the pool
+  // returns, or a fast click exports results for words that are gone.
+  App.lastBatch = null;
+  const el = $('batch-result');
+  if (el) el.innerHTML = `<div class="br-note">Running ${n} words on ${poolSize()} threads…</div>`;
+  const summaryEl = $('batch-summary');
+  if (summaryEl) summaryEl.style.display = 'none';
+  const bar = $('batch-export-bar');
+  if (bar) bar.style.display = 'none';
+  const filter = $('batch-filter');
+  if (filter) filter.hidden = true;
+  syncBatchPin();
+  setSectionStatus('rp-batch', `running ${n}…`);
+}
+
+// What index.html names, beside the functions it runs (js/core/actions.js).
+defineActions({
+  'sim.handleRunBtnClick': () => handleRunBtnClick(),
+  'sim.handleSimInputKeydown': ({ event }) => handleSimInputKeydown(event),
+  'sim.handleTraceScroll': () => handleTraceScroll(),
+  'sim.resetSim': () => resetSim(),
+  'sim.runBatch': () => runBatch(),
+  'sim.scrubSim': ({ el }) => scrubSim(el.value),
+  'sim.stepBack': () => stepBack(),
+  'sim.stepFwd': () => stepFwd(),
+  'sim.stepToEnd': () => stepToEnd(),
+  'sim.stepToStart': () => stepToStart()
+});

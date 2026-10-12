@@ -552,7 +552,7 @@
      nothing is being placed against it anyway. A ramp rather than a threshold,
      or the grid would pop in and out on a slow scroll-zoom.
 
-     --cam-z is set by applyCamera() in js/canvas.js; it is unregistered, so it
+     --cam-z is set by applyCamera() in js/canvas/canvas.js; it is unregistered, so it
      substitutes textually into the calc and the fallback covers first paint. */
   opacity: calc(.35 * clamp(0, (var(--cam-z, 1) * 40 - 12) / 12, 1));
   /* Clean under the tab strip. The grid's vertical lines start at the well's
@@ -594,7 +594,7 @@
    compositor against a gradient rasterised once, so no frame of it touches
    the main thread, layout or paint, and nothing here is a custom property
    the diagram inherits (see .canvas-grid above for why that matters). It
-   rests whenever nobody is watching: js/canvas-motion.js pauses it after a
+   rests whenever nobody is watching: js/canvas/canvas-motion.js pauses it after a
    minute and a half without input or when the window loses focus, and the
    rule below pauses it under an aux view.
 
@@ -944,7 +944,7 @@ body.aux-open .canvas-aurora > i {
    A row is cells *between two caps*, and the caps carry the whole of
    what separates a TM from an ITM from an LBA from a two-way head: a
    hatched wall where the tape stops, a fade into ⋯ where it does not.
-   See the note at the top of js/tape-view.js. */
+   See the note at the top of js/simulation/tape-view.js. */
 .tv-body {
   display: flex;
   flex-direction: column;
@@ -1466,7 +1466,7 @@ body.aux-open .canvas-aurora > i {
 
 .lang-fp-cells {
   display: grid;
-  /* LANG_FP_ROW_CELLS in js/language.js is this number. The stream
+  /* LANG_FP_ROW_CELLS in js/algorithms/language.js is this number. The stream
      hands over rows already cut to it, so the two have to agree or a
      row wraps where nothing said it should. */
   grid-template-columns: repeat(20, 1fr);
@@ -2042,9 +2042,9 @@ body.aux-open .canvas-aurora > i {
 /* ═══ THE MACHINE CARD ═══
    What the machine on the canvas is, floating over the diagram it describes
    rather than sitting in a panel, because the diagram is what the reader is
-   looking at. Built and wired from App.meta in js/machine-card.js.
+   looking at. Built and wired from App.meta in js/ui/machine-card.js.
 
-   The corner is not fixed: layoutCanvasInfo() in js/ui.js anchors the card and
+   The corner is not fixed: layoutCanvasInfo() in js/ui/ui.js anchors the card and
    its button to whichever corner the toolbar and the overlay stack have left
    free, and stamps the choice as `data-corner` — which is what the transform
    origins below read, so the card always grows away from its own edge.
@@ -2789,7 +2789,7 @@ body.aux-open .canvas-aurora > i {
 }
 
 /* The varispeed — playback speed as a knob, the last segment of the
-   transport pill (js/speed-control.js). A 270° arc like a rate knob on a tape
+   transport pill (js/simulation/speed-control.js). A 270° arc like a rate knob on a tape
    deck or an audio editor: the track, the accent fill up to the setting, a
    pointer, and a notch at 1× for unity, the way a pitch fader marks its centre
    detent. The readout beside it is the setting in words. It keeps the pill's
@@ -3028,7 +3028,7 @@ body.aux-open .canvas-aurora > i {
   color: var(--orange);
 }
 
-/* ── the parts of a note ── (js/trace-format.js) */
+/* ── the parts of a note ── (js/simulation/trace-format.js) */
 .tr-sym {
   display: inline-block;
   min-width: 1.4em;
@@ -3788,7 +3788,7 @@ body.aux-open .canvas-aurora > i {
 
 /* The arrow column in the Algorithms view's TM → Grammar table. The rest of
    the old .prod-* family went with the grammar view that printed it; this one
-   still has a writer in js/algorithms-fa.js. */
+   still has a writer in js/algorithms/algorithms-fa.js. */
 .prod-arrow {
   color: var(--accent);
 }
@@ -4027,7 +4027,7 @@ body.aux-open .canvas-aurora > i {
 }
 
 /* ── Algorithm cards ────────────────────────────────────────────────
-   What js/algorithms-fa.js used to write as inline styles, one string per
+   What js/algorithms/algorithms-fa.js used to write as inline styles, one string per
    card: 150 of them, a dozen spellings of "small grey caption". Named once
    here, they follow the theme and can be changed in one place. */
 
@@ -5623,7 +5623,7 @@ body.aux-open .canvas-aurora > i {
   margin-bottom: 5px;
 }
 
-/* ── Reference view (js/reference.js + js/machine-guide.js) ──
+/* ── Reference view (js/reference/reference.js + js/reference/machine-guide.js) ──
    The guides are long-form prose, so .ref-prose is a reading face rather than
    the monospace the rest of the app's panels use. Symbols, tuples and edge
    labels stay monospaced via <code>. */
@@ -5991,7 +5991,7 @@ body.aux-open .canvas-aurora > i {
 }
 
 /* ═══ EXERCISE ═══
-   The right-panel section a student works in (js/exercise-ui.js). Words are
+   The right-panel section a student works in (js/exercise/exercise-ui.js). Words are
    set in the prose face and identifiers — Σ, a counterexample — in the mono
    one, the rule the rest of the app follows. */
 .ex-body {
@@ -6153,7 +6153,7 @@ body.aux-open .canvas-aurora > i {
   border-top: 1px solid var(--border);
 }
 
-/* ═══ LEXER GENERATOR ═══ (js/lexer-ui.js, in the Algorithms view) */
+/* ═══ LEXER GENERATOR ═══ (js/lexer/lexer-ui.js, in the Algorithms view) */
 .lx-rules,
 .lx-sample {
   width: 100%;

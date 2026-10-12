@@ -12,7 +12,7 @@
 
 import {
   App, getState, runStartId
-} from '../state.js';
+} from '../core/state.js';
 import { renderSimStep } from './paint.js';
 import { accepted, transitionsFrom } from './runtime.js';
 import { defineMachine } from './registry.js';

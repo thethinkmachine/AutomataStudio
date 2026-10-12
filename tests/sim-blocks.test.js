@@ -4,7 +4,7 @@ import { createHarness, context } from './harness.js';
 
 // The run, drawn onto a canvas that is showing blocks.
 //
-// The machine is flat and the canvas is a projection of it (js/view-graph.js),
+// The machine is flat and the canvas is a projection of it (js/editor/view-graph.js),
 // and the playback highlight is the one consumer that had never been told. It
 // built its edge keys from each transition's own endpoints and looked its states
 // up by their own ids — both perfectly correct about the *machine*, and both

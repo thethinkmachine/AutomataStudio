@@ -2,7 +2,7 @@
 import { readdirSync, statSync } from 'node:fs';
 import { extname, join } from 'node:path';
 
-import { App, getMachineConfig } from '../../js/state.js';
+import { App, getMachineConfig } from '../../js/core/state.js';
 import { compareMachines, withMachine } from '../../js/exercise/grade.js';
 import { decideMachine, decideWord } from '../../js/machines/index.js';
 import { decideRaw, languageFingerprint, minimalDfaOf } from '../../js/library/analyze.js';

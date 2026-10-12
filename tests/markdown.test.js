@@ -234,7 +234,7 @@ test('markup in a reply is text, not markup', () => {
 test('the renderer never assigns markup', () => {
   // The property the tests above rely on, asserted at the source rather than
   // inferred: the only innerHTML in the module is the clear on entry.
-  const src = readFileSync(new URL('../js/markdown.js', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('../js/text/markdown.js', import.meta.url), 'utf8');
   const writes = src.match(/innerHTML\s*=\s*(.*)/g) || [];
   assert.deepEqual(writes.map(w => w.trim()), ["innerHTML = '';   // clearing only — no markup is ever assigned"]);
   assert.ok(!/insertAdjacentHTML|outerHTML|document\.write/.test(src));
@@ -260,7 +260,7 @@ test('malformed input terminates and renders something', () => {
 
 // ── one dialect: markdown-it's ────────────────────────────────────
 //  StateMate's replies, an exercise's prompt and a note on the canvas all read
-//  Markdown through js/markdown.js, and the library's essays through the same
+//  Markdown through js/text/markdown.js, and the library's essays through the same
 //  library and the same math rule. These pin the conventions that used to
 //  differ between the app's two hand-rolled dialects.
 

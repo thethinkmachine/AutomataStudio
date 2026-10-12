@@ -10,8 +10,8 @@
 // drive it with a fake updater: the app's only update bugs so far were in exactly
 // this sequencing, and a packaged build is the one place nobody can step through.
 //
-// The page's half is js/electron-bridge.js, which renders each status into
-// #update-modal through js/update-view.js.
+// The page's half is js/core/electron-bridge.js, which renders each status into
+// #update-modal through js/ui/update-view.js.
 
 // What the user is shown when something fails. electron-updater's own errors are
 // unusable here: an HttpError stringifies to the entire response -- status, request
@@ -144,7 +144,7 @@ function createUpdateController({ loadUpdater, appVersion, send, log = console.e
 
   // The last thing sent, replayed over the 'update-state' channel. Broadcasts are
   // fire-and-forget into a window that may not have finished loading: the startup
-  // check begins at whenReady, while js/electron-bridge.js does not register its
+  // check begins at whenReady, while js/core/electron-bridge.js does not register its
   // listener until the whole module graph has evaluated. On the second and later
   // launches the installer is already in the pending cache, so 'update-downloaded'
   // fires a second or two in -- squarely inside that gap -- and the page never heard

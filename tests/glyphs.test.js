@@ -2,7 +2,7 @@ import './dom-stub.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { applyOutlines, planOutlines, resetGlyphCache } from '../js/glyphs.js';
+import { applyOutlines, planOutlines, resetGlyphCache } from '../js/io/glyphs.js';
 
 // Turning an exported diagram's text into outlines.
 //
@@ -33,7 +33,7 @@ const TABLES = new Map([
 
 // ── a fake SVG, just measurable enough ───────────────────────────────────────
 //
-// js/glyphs.js imports nothing and reads no App, so it can be handed a tree of
+// js/io/glyphs.js imports nothing and reads no App, so it can be handed a tree of
 // plain objects. What it actually requires of one is small and worth stating:
 // querySelectorAll('text'), the character-measuring half of
 // SVGTextContentElement, and a computed style.

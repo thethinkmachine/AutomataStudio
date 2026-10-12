@@ -2,7 +2,7 @@
 //  A MACHINE IN THE CATALOGUE
 // ══════════════════════════════════════════════════════════════════
 // The rules both faces of the library share, so a machine reads the same in
-// the app's Library view (js/library-ui.js, as DOM) and on the website
+// the app's Library view (js/library/library-ui.js, as DOM) and on the website
 // (scripts/library/site.mjs, as HTML): which figure it is known by, the one
 // line of facts under its name, what the library checked in words, and the
 // plate those make.

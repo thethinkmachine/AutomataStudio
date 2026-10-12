@@ -45,7 +45,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { analyzeDocument, decideRaw, libraryMetaOf, namedDiagram, outputText, runFramesOf } from '../../js/library/analyze.js';
-import { buildFormalDefLatex } from '../../js/render.js';
+import { buildFormalDefLatex } from '../../js/canvas/render.js';
 import { withMachine } from '../../js/exercise/grade.js';
 import { canonicalCodeOf, contentHash } from '../../js/library/hash.js';
 import { INDEX_FORMAT, INDEX_VERSION, LIBRARY_REPO, LIBRARY_SITE_URL, isLibraryId } from '../../js/library/config.js';

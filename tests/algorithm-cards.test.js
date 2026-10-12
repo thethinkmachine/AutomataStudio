@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
 // Safe after harness.js, which installs the DOM stub before any real module.
-import { html, raw } from '../js/html.js';
-import { thompsonBuild, thompsonSteps } from '../js/thompson.js';
+import { html, raw } from '../js/text/html.js';
+import { thompsonBuild, thompsonSteps } from '../js/algorithms/thompson.js';
 
 // A state name and a symbol that are markup. Every card prints both, and the
 // machines they come from can be someone else's: a share link, the library.

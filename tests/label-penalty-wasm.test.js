@@ -5,7 +5,7 @@ import { createHarness, context } from './harness.js';
 // The label stage exists twice — compiled in wasm/label-penalty.ts and in JS in
 // geometry.js — because the kernel cannot always be compiled: Chrome refuses
 // synchronous compilation past 4KB on the main thread, a CSP can forbid it
-// outright, and an engine may have no WebAssembly at all. js/label-wasm.js
+// outright, and an engine may have no WebAssembly at all. js/canvas/label-wasm.js
 // answers `null` in every one of those cases and the pass falls back.
 //
 // So the fallback is not a degraded mode; it is the same diagram computed the

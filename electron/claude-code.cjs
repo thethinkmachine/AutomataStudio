@@ -5,7 +5,7 @@
 // `claude -p` as a provider: the reader's own Claude Code login answers, with
 // no API key in this app at all. The renderer does not learn that a process is
 // involved — this module turns the CLI's stream-json into the same OpenAI-style
-// SSE frames an HTTP provider sends, so js/statemate-provider.js reads it with
+// SSE frames an HTTP provider sends, so js/statemate/statemate-provider.js reads it with
 // the reader it already has.
 //
 // What the renderer may choose is deliberately small: the prompt text and a

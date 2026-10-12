@@ -27,7 +27,7 @@ import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { decodeSharePayload, SHARE_HASH_PREFIX } from '../../js/persistence.js';
+import { decodeSharePayload, SHARE_HASH_PREFIX } from '../../js/io/persistence.js';
 import { standardTMText } from '../../js/interop/standard-tm.js';
 import { LIBRARY_LICENSES, analyzeDocument } from '../../js/library/analyze.js';
 import { isLibraryId } from '../../js/library/config.js';

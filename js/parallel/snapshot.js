@@ -4,7 +4,7 @@
 // A worker has its own module registry, so it has its own `App`. Deciding a
 // word there means putting the machine into that copy first.
 //
-// This is deliberately *not* getWorkspaceData() from js/persistence.js. That
+// This is deliberately *not* getWorkspaceData() from js/io/persistence.js. That
 // one is the save format: it carries the camera, notes, dividers, the info
 // card and the workspace tabs, none of which change a verdict, and it lives
 // in a DOM-bound module. This carries exactly what js/machines/** reads and
@@ -15,7 +15,7 @@
 //
 // Everything here is structured-cloneable: plain objects, arrays and strings.
 // The four Set-valued fields are the only conversion.
-import { App } from '../state.js';
+import { App } from '../core/state.js';
 
 // App fields the machine layer reads. Sets are listed separately because they
 // are the only members that do not survive a structured clone as themselves.

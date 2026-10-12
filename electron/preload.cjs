@@ -42,7 +42,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // ── Files ───────────────────────────────────────────────────────
-  // The filesystem the website does not have. js/file-host.js is the only
+  // The filesystem the website does not have. js/io/file-host.js is the only
   // consumer, and it is what lets "save the file I opened" be a thing that can
   // be expressed at all — a Blob download has no path, so before these the
   // desktop build could not offer Save, only Save A Copy Somewhere.
@@ -88,7 +88,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // StateMate's model request, proxied through the main process. The browser
   // build has to satisfy each provider's CORS policy — Anthropic needs an
   // explicit opt-in header, and a local Ollama needs OLLAMA_ORIGINS set. None
-  // of that applies here, and js/statemate-provider.js prefers this path
+  // of that applies here, and js/statemate/statemate-provider.js prefers this path
   // whenever it exists. Resolves { ok, status, body } rather than throwing, so
   // an HTTP error maps to the same copy in both transports.
   statemateRequest: (payload) => ipcRenderer.invoke('statemate:request', payload),

@@ -13,7 +13,7 @@
 
 import {
   App, getState, runStartId
-} from '../state.js';
+} from '../core/state.js';
 import { narrateAccept, narrateExplore, narrateStuck } from './narrate.js';
 import { renderSimStep } from './paint.js';
 import { getPdaDeterminismConflict, isQueueAutomaton, isTwoStackPDA } from './predicates.js';

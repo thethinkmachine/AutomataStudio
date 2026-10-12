@@ -4,7 +4,7 @@ import { createHarness } from './harness.js';
 
 // A tape machine's step no longer carries a copy of the tape — it carries the
 // index of a journal entry, and the window is rebuilt for whichever step is
-// being looked at. See js/tape-log.js.
+// being looked at. See js/simulation/tape-log.js.
 //
 // The measurement that motivated it: a Turing machine whose head keeps
 // travelling cost 921 MB over the default 10,000-step budget, because each

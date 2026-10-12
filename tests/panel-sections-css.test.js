@@ -105,7 +105,7 @@ test('the δ table\'s header is framed where its rows are', () => {
   // A border on `.dt-head` is drawn outside its scrollbar gutter, and each
   // row's inside the host's, so the header ran ~10px past every row. The frame
   // is the header row's; the header's padding for the host's bar is measured
-  // (js/delta-table.js) rather than reserved, which also stopped the table
+  // (js/editor/delta-table.js) rather than reserved, which also stopped the table
   // sitting a gutter narrower than the fields above it with nothing to scroll.
   const head = bodiesFor(PANELS, '.dt-head').join('\n');
   assert.doesNotMatch(head, /border\s*:/, '.dt-head draws a frame of its own');
@@ -139,7 +139,7 @@ test('the docked fill grows only as far as its rows', () => {
   assert.doesNotMatch(region, /flex\s*:\s*1\s+1\s+0/, 'the list is not sized to the leftover alone');
   assert.match(region, /min-height\s*:\s*var\(--lw-floor/, 'its floor is the cap or its own rows, whichever is less');
 
-  const LIST = readFileSync(new URL('../js/panel-list.js', import.meta.url), 'utf8');
+  const LIST = readFileSync(new URL('../js/ui/panel-list.js', import.meta.url), 'utf8');
   assert.match(LIST, /setProperty\('--lw-floor'/, 'panel-list publishes the list\'s floor');
   assert.match(LIST, /setProperty\('--dock-fill-min'/, 'and the section\'s');
   assert.match(LIST, /removeProperty\('--dock-fill-min'\)/,

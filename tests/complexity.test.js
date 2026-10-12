@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHarness } from './harness.js';
 
-// The complexity profile: js/complexity.js (inputs, measuring, the growth
-// reading) and js/complexity-ui.js (the section).
+// The complexity profile: js/simulation/complexity.js (inputs, measuring, the growth
+// reading) and js/simulation/complexity-ui.js (the section).
 //
 // The measurement is the part a reader takes on trust, so it is checked
 // against the run the player would show for the same word; the growth

@@ -45,7 +45,7 @@ header {
    wrong was that they were ever in the same place. Aligned, the strip only
    ever meets the flat part of the well's top edge.
 
-   The width is read from --lpanel-width / --rpanel-width, which js/ui.js sets
+   The width is read from --lpanel-width / --rpanel-width, which js/ui/ui.js sets
    on the root element in setPanelWidth(), so this follows a panel being
    dragged wider with no measuring and no JS of its own. */
 .hdr-left {
@@ -853,7 +853,7 @@ body:has(.rpanel.is-empty) .hdr-right {
 }
 
 /* Offered once there are enough workspaces that typing beats scanning; see
-   TAB_FILTER_AT in js/ui.js. Sticky, so it stays put while the list scrolls. */
+   TAB_FILTER_AT in js/ui/ui.js. Sticky, so it stays put while the list scrolls. */
 .tab-overflow-search {
   position: sticky;
   top: 0;
@@ -1091,7 +1091,7 @@ body:has(.rpanel.is-empty) .hdr-right {
 
 /* A tab opens by unfolding to its width and closes by folding to nothing,
    so its neighbours slide rather than jump. A drag slides them the same way,
-   from js/ui.js (flipTabs) — the dragged tab is moved for real, which is why
+   from js/ui/ui.js (flipTabs) — the dragged tab is moved for real, which is why
    there is no insertion marker. */
 @keyframes tab-in {
   from { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; }

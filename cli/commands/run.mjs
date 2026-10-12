@@ -1,7 +1,7 @@
 // run, test, trace — deciding words.
 import { readFileSync, watch } from 'node:fs';
 
-import { App, getMachineConfig } from '../../js/state.js';
+import { App, getMachineConfig } from '../../js/core/state.js';
 import { decideRaw, outputText } from '../../js/library/analyze.js';
 import { parseBatchLine } from '../../js/machines/batch.js';
 import { withMachine } from '../../js/exercise/grade.js';

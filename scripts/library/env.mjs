@@ -13,12 +13,12 @@
 // calls through, and a run with no painter installed is a run that throws.
 //
 // Solid resolves to its SSR build in Node unless the browser condition is set,
-// and js/reactive.js throws when it gets the stub. The scripts are therefore
+// and js/core/reactive.js throws when it gets the stub. The scripts are therefore
 // run as `node --conditions=browser --conditions=development …`; the npm
 // scripts in package.json say so.
 
 import '../../js/headless/dom-stub.js';
-import '../../js/simulation.js';
+import '../../js/simulation/simulation.js';
 import '../../js/machines/index.js';
 
-export { App, APP_VERSION } from '../../js/state.js';
+export { App, APP_VERSION } from '../../js/core/state.js';

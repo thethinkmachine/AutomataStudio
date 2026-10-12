@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
 
-// The wizard's logic half. Everything here runs against js/wizard.js and
-// js/wizard-copy.js directly — no dialog, no clicking — which is the whole
-// reason those two are separate from js/wizard-ui.js.
+// The wizard's logic half. Everything here runs against js/ui/wizard.js and
+// js/ui/wizard-copy.js directly — no dialog, no clicking — which is the whole
+// reason those two are separate from js/ui/wizard-ui.js.
 //
 // What is worth pinning, and why:
 //
@@ -17,13 +17,13 @@ import { createHarness } from './harness.js';
 //   * state rows reference each other by key, so renaming a state is a
 //     rename and not an orphaning.
 
-import { MachineCategories, MachineTypes } from '../js/state.js';
-import { validateSpec } from '../js/statemate-spec.js';
+import { MachineCategories, MachineTypes } from '../js/core/state.js';
+import { validateSpec } from '../js/statemate/statemate-spec.js';
 import {
   addState, addTransition, draftToSpec, fieldCopy, newDraft, optionsFor,
   removeState, resetWizard, setDraftMachine, setDraftTapeCount, setStart,
   stepCopy, stepIssues, symbolChoices, wizardSteps
-} from '../js/wizard.js';
+} from '../js/ui/wizard.js';
 
 function seed(machine) {
   resetWizard();

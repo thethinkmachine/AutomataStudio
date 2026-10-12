@@ -26,10 +26,10 @@
 import { readFileSync, existsSync, statSync, writeFileSync } from 'node:fs';
 import { extname } from 'node:path';
 
-import { App, APP_VERSION } from '../js/state.js';
-import { SCHEMA_VERSION, WORKSPACE_FORMAT, migrateWorkspaceDoc, validateSchema } from '../js/persistence.js';
+import { App, APP_VERSION } from '../js/core/state.js';
+import { SCHEMA_VERSION, WORKSPACE_FORMAT, migrateWorkspaceDoc, validateSchema } from '../js/io/persistence.js';
 import { targetFromDoc } from '../js/library/analyze.js';
-import { readJFLAPText } from '../js/import-jflap.js';
+import { readJFLAPText } from '../js/io/import-jflap.js';
 import { readStandardTM, standardTMText } from '../js/interop/standard-tm.js';
 import { machineCodeText, readMachineCode } from '../js/interop/smtf.js';
 import { readStatechart, statechartKindOf } from '../js/interop/statechart.js';

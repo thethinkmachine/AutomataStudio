@@ -19,11 +19,11 @@ import { cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { MachineExamples, MachineTypes, getMachineConfig } from '../../js/state.js';
+import { MachineExamples, MachineTypes, getMachineConfig } from '../../js/core/state.js';
 import { readStandardTM } from '../../js/interop/standard-tm.js';
-import { sugiyamaLayout } from '../../js/canvas.js';
-import { SCHEMA_VERSION, WORKSPACE_FORMAT } from '../../js/persistence.js';
-import { APP_VERSION } from '../../js/state.js';
+import { sugiyamaLayout } from '../../js/canvas/canvas.js';
+import { SCHEMA_VERSION, WORKSPACE_FORMAT } from '../../js/io/persistence.js';
+import { APP_VERSION } from '../../js/core/state.js';
 import { categoryOf } from '../../js/library/analyze.js';
 import { machineIdOf } from '../../js/library/hash.js';
 

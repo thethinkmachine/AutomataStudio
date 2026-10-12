@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
-import { Change, batch, emit, subscribe, _subscriberCount } from '../js/store.js';
+import { Change, batch, emit, subscribe, _subscriberCount } from '../js/core/store.js';
 
 // The change store.
 //

@@ -7,11 +7,11 @@ import { dirname, join, relative } from 'node:path';
 // The harness imports every app module, so every defineActions() call in the
 // app has run by the time the markup checks below ask the registry.
 import './harness.js';
-import { actionNames, defineActions, getAction } from '../js/action-registry.js';
-import { SPEC_EVENT_NAMES, dispatchActions, installActions, parseActionSpec } from '../js/actions.js';
+import { actionNames, defineActions, getAction } from '../js/core/action-registry.js';
+import { SPEC_EVENT_NAMES, dispatchActions, installActions, parseActionSpec } from '../js/core/actions.js';
 
-// data-action in place of on*="...": js/action-registry.js holds the names,
-// js/actions.js delivers events to them. The first half of this file is the
+// data-action in place of on*="...": js/core/action-registry.js holds the names,
+// js/core/actions.js delivers events to them. The first half of this file is the
 // mechanism; the second is the markup — that every name it uses exists, and
 // that the inline-handler seam it replaces only ever shrinks.
 
@@ -288,7 +288,7 @@ function sourceFiles() {
   });
   // The mechanism's own two files describe the syntax in comments and error
   // messages; they are not markup.
-  const mechanism = new Set(['js/actions.js', 'js/action-registry.js']);
+  const mechanism = new Set(['js/core/actions.js', 'js/core/action-registry.js']);
   return [join(ROOT, 'index.html'), ...walk(join(ROOT, 'js'))]
     .map(path => [relative(ROOT, path).replaceAll('\\', '/'), path])
     .filter(([file]) => !mechanism.has(file))
@@ -346,7 +346,7 @@ test('every registered action is used by some control: the registry does not gro
 test('the scan sees generated markup, not only index.html', () => {
   // A guard on the guard: a scan that found nothing would pass both tests above.
   const specs = actionSpecs();
-  assert.ok(specs.some(s => s.where.startsWith('js/algorithms-fa.js') && s.spec === 'algo.loadSubsetAsDFA'));
+  assert.ok(specs.some(s => s.where.startsWith('js/algorithms/algorithms-fa.js') && s.spec === 'algo.loadSubsetAsDFA'));
   assert.ok(specs.some(s => s.spec.startsWith('suggest.symbols ')), 'a behaviour followed by a key action');
 });
 

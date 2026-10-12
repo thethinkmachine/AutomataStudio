@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHarness } from './harness.js';
 
-// Editing a transition on its label — js/edge-label-editor.js — and the
+// Editing a transition on its label — js/canvas/edge-label-editor.js — and the
 // function it shares with the dialog, saveTransition().
 //
 // Pinned: the double-click is two presses (a browser never delivers the native

@@ -6,7 +6,7 @@
 // `automata mcp`.
 import { createInterface } from 'node:readline';
 
-import { App, APP_VERSION, getMachineConfig } from '../../js/state.js';
+import { App, APP_VERSION, getMachineConfig } from '../../js/core/state.js';
 import { decideRaw, outputText } from '../../js/library/analyze.js';
 import { readMachine, readMachineText, CliError } from '../io.mjs';
 import { formatFor, serialize } from '../writers.mjs';

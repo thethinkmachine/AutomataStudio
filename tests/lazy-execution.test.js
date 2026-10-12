@@ -4,7 +4,7 @@ import { createHarness } from './harness.js';
 
 // Lazy execution: the run is a cursor over its steps rather than a finished
 // array, so a machine that runs to its step budget costs nothing until it is
-// watched. See js/machines/run.js and runsLazily() in js/state.js.
+// watched. See js/machines/run.js and runsLazily() in js/core/state.js.
 //
 // The invariant everything else rests on is the first test here. Eager and
 // lazy must produce *the same steps*, or `execMode` would not be a performance

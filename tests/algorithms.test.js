@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
 // Safe after harness.js: it installs the DOM stub before any real module is
 // evaluated, so ui.js is already up by the time this binding resolves.
-import { themeGridNeighbor } from '../js/ui.js';
+import { themeGridNeighbor } from '../js/ui/ui.js';
 
 function makeState(id, name) {
   return { id, name, x: 0, y: 0 };

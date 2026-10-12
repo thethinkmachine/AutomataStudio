@@ -2,7 +2,7 @@
 //  A TAPE A SEARCH CAN BRANCH ON
 // ══════════════════════════════════════════════════════════════════
 // The nondeterministic Turing machine forks a configuration per matching
-// transition, and with js/tape.js that meant copying the fork's whole tape
+// transition, and with js/simulation/tape.js that meant copying the fork's whole tape
 // (a Map of every cell) and then spelling it out as a string to ask whether
 // the search had been there before — twice the tape per configuration, so a
 // search slowed down in proportion to how far its heads had travelled.
@@ -22,7 +22,7 @@
 //
 // It serves only the search. It has no end markers and no right bound (the
 // NDTM's tape has neither), and a word that *contains* the blank is left to
-// js/tape.js: there a written blank and an unwritten cell differ at the left
+// js/simulation/tape.js: there a written blank and an unwritten cell differ at the left
 // edge of key()'s window, a distinction a zipper that trims blanks cannot see.
 
 import { stackArray, stackPush, stackRoot } from './step-log.js';

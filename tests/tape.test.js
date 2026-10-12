@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
-import { Tape, makeTapes, tapesKey } from '../js/tape.js';
+import { Tape, makeTapes, tapesKey } from '../js/simulation/tape.js';
 
 // The tape, on its own.
 //

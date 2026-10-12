@@ -1,4 +1,4 @@
-import { App, getState } from '../state.js';
+import { App, getState } from '../core/state.js';
 import { classify } from './analysis.js';
 import { eps, grammarOf, makeRule, terminalsOf } from './model.js';
 
@@ -7,7 +7,7 @@ import { eps, grammarOf, makeRule, terminalsOf } from './model.js';
 // ══════════════════════════════════════════════════════════════════
 //  Grammars in one direction, machines in the other. Every function here is
 //  DOM-free: it answers a machine *description* — states, transitions, a
-//  start and an accept set — and js/grammar-ui.js is what puts one on the
+//  start and an accept set — and js/grammar/grammar-ui.js is what puts one on the
 //  canvas. That is the same split `algorithms-fa.js` documents (`build*`
 //  computes, `load*Result` applies) and it is what makes a construction
 //  assertable without a canvas.

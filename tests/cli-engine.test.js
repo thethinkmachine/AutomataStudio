@@ -10,7 +10,7 @@ import { inflateSync } from 'node:zlib';
 
 import { compareMachines } from '../js/exercise/grade.js';
 import { decideRaw } from '../js/library/analyze.js';
-import { readJFLAPText } from '../js/import-jflap.js';
+import { readJFLAPText } from '../js/io/import-jflap.js';
 import { readMachine, readMachineText } from '../cli/io.mjs';
 import {
   complement, concat, countByLength, determinize, epsilonFree, fromRegex, listAccepted, minimize,
@@ -27,7 +27,7 @@ import { rpni, lstar, accepts } from '../cli/learn.mjs';
 import { shrink } from '../cli/commands/fuzz.mjs';
 import { normalizeStandard } from '../cli/commands/tm.mjs';
 import { Indexed, encodePNG, encodeGIF, TAPE_PALETTE } from '../cli/raster.mjs';
-import { App } from '../js/state.js';
+import { App } from '../js/core/state.js';
 
 const ex = name => readMachine(`js/examples/${name}.json`).target;
 const same = (a, b) => compareMachines(a, b, { maxLength: 8 }).equal;

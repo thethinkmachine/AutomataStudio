@@ -1,5 +1,5 @@
 // convert, export, codegen, svg — every way a machine leaves.
-import { ExportFormats } from '../../js/export-registry.js';
+import { ExportFormats } from '../../js/io/export-registry.js';
 import { readMachine, emit, CliError } from '../io.mjs';
 import { cliExportFormats, exportOptions, formatFor, formatNames, serialize } from '../writers.mjs';
 import { determinize, epsilonFree, minimize } from '../fa.mjs';

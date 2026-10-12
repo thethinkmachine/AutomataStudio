@@ -15,7 +15,7 @@ import { createHarness, getElement } from './harness.js';
 // offered a queue's fields in the editor.
 //
 // This file is what makes that impossible. It walks MachineTypes rather
-// than a list written here, so a machine added to js/state.js fails these
+// than a list written here, so a machine added to js/core/state.js fails these
 // tests until it has a definition, and a definition that answers half the
 // questions fails them until it answers the rest.
 
@@ -393,7 +393,7 @@ test('a nondeterministic machine writes a power set into its δ signature', () =
 // machine it was filled from, so a fragment written for an MTM can be offered
 // to a DFA. What decides it is the registry's own `transitionFields` rather
 // than the family or the name, and these walk MachineTypes for the same reason
-// the rest of this file does — a machine added to js/state.js must not silently
+// the rest of this file does — a machine added to js/core/state.js must not silently
 // become paste-compatible with everything.
 
 test('a fragment is only movable onto a machine that reads the same rules', () => {

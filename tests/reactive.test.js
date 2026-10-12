@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
-import { App } from '../js/state.js';
-import { Change, changed, emit } from '../js/store.js';
-import { REACTIVITY_LIVE, ReactiveSet, createMemo, reactiveRoot } from '../js/reactive.js';
-import { updateFormalDef, _defBoxPainted } from '../js/render.js';
-import { renderLanguagePanel } from '../js/language.js';
+import { App } from '../js/core/state.js';
+import { Change, changed, emit } from '../js/core/store.js';
+import { REACTIVITY_LIVE, ReactiveSet, createMemo, reactiveRoot } from '../js/core/reactive.js';
+import { updateFormalDef, _defBoxPainted } from '../js/canvas/render.js';
+import { renderLanguagePanel } from '../js/algorithms/language.js';
 // Namespace import: machine-card's exports are not in the harness context, and an
 // ESM namespace read is live, so this tracks the module's own `let`.
-import * as card from '../js/machine-card.js';
+import * as card from '../js/ui/machine-card.js';
 
 // Reactivity.
 //
@@ -78,7 +78,7 @@ test('an in-place Set mutation notifies', () => {
 
 test('a plain Set assigned from another module is coerced, not accepted', () => {
   harness.resetApp();
-  // Exactly what js/statemate.js, js/persistence.js, js/history.js and nine
+  // Exactly what js/statemate/statemate.js, js/io/persistence.js, js/core/history.js and nine
   // others do. If this were stored as handed over, the field would stop
   // notifying and no error would be raised anywhere.
   App.sigma = new Set(['x', 'y']);
@@ -104,7 +104,7 @@ test('every reactive field survives a wholesale reassignment', () => {
 test('assignment builds a new set, so save-and-restore keeps its contents', () => {
   harness.resetApp();
   fa();
-  // The exportWithOverrides pattern in js/export-core.js: stash the real accept
+  // The exportWithOverrides pattern in js/io/export-core.js: stash the real accept
   // set, install a temporary one, put the original back in a finally. Refilling
   // the backing set in place would empty the object it just saved.
   App.accepts = new Set(['s1']);

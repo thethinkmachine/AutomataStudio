@@ -3,7 +3,7 @@
 // ══════════════════════════════════════════════════════════════════
 // The pattern language of the lexer generator. Import-free and App-free.
 //
-// It is not `parseRE` in js/algorithms-fa.js, and the difference is the
+// It is not `parseRE` in js/algorithms/algorithms-fa.js, and the difference is the
 // reason it exists. That one reads the textbook notation over Σ — no
 // escapes, `.` meaning "any symbol of the alphabet", ε written as ε — which
 // is the right language for drawing Thompson's construction and the wrong

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
 
 // A deterministic tape machine's run keeps columns, not step objects — see
-// js/machines/columns.js, js/tape-log.js and `columnarSteps` in
+// js/machines/columns.js, js/simulation/tape-log.js and `columnarSteps` in
 // js/machines/run.js. The measurement that motivated it: a run of the
 // five-state busy beaver kept 250 bytes a step, 10.6 GiB to its halt at
 // 47,176,870 steps; it is now 5 bytes a step. `npm run bench -- horizon`

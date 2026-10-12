@@ -181,7 +181,7 @@
    A collapsed section and a minimized window are both a title strip, and a
    strip that only says "SIMULATE" has folded the verdict away with the body.
    So a section that knows something worth a glance reports it here — see
-   js/section-status.js — and it shows only while folded: open, the body says
+   js/ui/section-status.js — and it shows only while folded: open, the body says
    the same thing at full size.
 
    The count chip's shape and type, in the verdict colours the run button and
@@ -571,7 +571,7 @@
 }
 
 /* A <button>, not the <span onclick> it was. Same lesson rowActions() in
-   js/render.js learned for the list rows: a control that deletes something has
+   js/canvas/render.js learned for the list rows: a control that deletes something has
    to be reachable with Tab and firable with Enter, and a span is neither — so
    of everything in the panel, Σ, Γ and Δ were the three lists whose only
    destructive control no keyboard could reach and no screen reader could name.
@@ -651,7 +651,7 @@
 
 /* ─── ROW ACTIONS ───
    The same pair of controls ends every row in both lists — see rowActions() in
-   js/render.js for why they are written once. A state used to carry a pencil
+   js/canvas/render.js for why they are written once. A state used to carry a pencil
    and no delete; a transition a delete and no pencil, built as a <span> rather
    than a button, so it was the one of the two that no keyboard could reach.
 
@@ -1145,7 +1145,7 @@ body.panel-resizing .rpanel {
    its name — an ellipsis is the worse way to lose that argument, "WORKSP…"
    and "STATEM…" costing the ends of every name at once. Measured rather than
    keyed to a width: with every tab movable a strip can hold one tab or four,
-   so no single breakpoint is right. `fitPanelTabs` in js/ui.js sets
+   so no single breakpoint is right. `fitPanelTabs` in js/ui/ui.js sets
    `.is-compact` from the tabs' natural widths against the strip's. */
 .panel-tabs.is-measuring > .panel-tab {
   flex-shrink: 0;
@@ -1199,7 +1199,7 @@ body.panel-resizing .rpanel {
 }
 
 /* ── dragging a tab ──
-   See js/ui.js. The tab stays in its slot, dimmed, while a small label follows
+   See js/ui/ui.js. The tab stays in its slot, dimmed, while a small label follows
    the pointer, and a bar between two tabs says where it will land — the shape
    VS Code draws for the same gesture. */
 .panel-tab.is-dragging {
@@ -1384,7 +1384,7 @@ body:has(.is-reordering) .tooltip {
    are grids with `align-content: start`, so a grid with room to spare does
    not stretch its search row to use it.
 
-   The floors are set by js/panel-list.js (publishListHeight), because the
+   The floors are set by js/ui/panel-list.js (publishListHeight), because the
    browser's would be wrong in both places. The list's floor is the cap, or
    its own height when that is less, so a short panel cannot crush it — "as
    tall as the content but no more than 168px" is not a size CSS can take from
@@ -1534,7 +1534,7 @@ body:has(.is-reordering) .tooltip {
 /* ─── δ AS A TABLE ───
    The Transitions section can draw δ as the textbook's table — a row per
    state, a column per symbol — for the machines whose rules fit one; see
-   js/delta-table.js. The switch sits at the end of the filter row, the one
+   js/editor/delta-table.js. The switch sits at the end of the filter row, the one
    place in the section with room to spare, and is a segmented pair so the
    view that is on reads as a position rather than a mode to remember. */
 .lp-search-row {
@@ -1596,7 +1596,7 @@ body:has(.is-reordering) .tooltip {
 /* The header row and the rows are separate grids — the rows are drawn by the
    windowed list and rewritten on scroll, the header is not — so both read one
    template, set as a custom property by the renderer. The header scrolls with
-   the host from js/delta-table.js, which also pads it by the width of the
+   the host from js/editor/delta-table.js, which also pads it by the width of the
    host's vertical bar when there is one, or that bar would take width the
    header still has and every column would sit a scrollbar's width out of line.
 
@@ -2285,7 +2285,7 @@ button.dt-cell:hover {
    the header being overloaded: the header already collapses the section,
    from a click and from Enter/Space, so a drag started there would have to
    be guessed at from pointer travel and the keyboard would be left with no
-   way to reorder at all. See js/panel-sections-ui.js.
+   way to reorder at all. See js/ui/panel-sections-ui.js.
 
    It follows .lp-row-btn's rule — revealed on :hover and on keyboard focus,
    and always shown where there is no hover to reveal it with. Keyboard focus
@@ -2390,7 +2390,7 @@ button.dt-cell:hover {
 
 /* ─── FLOATING PANEL SECTIONS ───
    A section pulled out of its panel and put over the canvas. See
-   js/panel-float.js for why these are windows rather than modals: the whole
+   js/ui/panel-float.js for why these are windows rather than modals: the whole
    point is that the canvas underneath stays live, so there is no scrim, no
    focus trap and no z-index anywhere near the modal layer.
 
@@ -2625,7 +2625,7 @@ button.dt-cell:hover {
 }
 
 /* A window fits its content, up to the ceiling it was given (`applyGeom` in
-   js/panel-float.js) — so the lists shed the panel's cap here, or pulling
+   js/ui/panel-float.js) — so the lists shed the panel's cap here, or pulling
    States Q out to read it would leave it the same short strip it was in the
    rail. The body is the column that passes the ceiling down, and when the
    content is taller than that, the list is the one child that gives; the
@@ -2649,7 +2649,7 @@ button.dt-cell:hover {
 
 /* Exactly one child of a window gives when the window is shorter than its
    content, and the registry says which — see `sectionFill` in
-   js/panel-sections.js. Everything else keeps the height it was drawn for, so
+   js/ui/panel-sections.js. Everything else keeps the height it was drawn for, so
    shrinking a window scrolls the list or the trace log and leaves the fields,
    rows and transport controls above it alone. Two flexible children would
    share the shortfall between them, which is how a resize turns into a layout
@@ -2838,7 +2838,7 @@ button.dt-cell:hover {
 }
 
 /* ─── desktop and Electron only ───
-   Not a breakpoint but a device test, and the same one js/panel-float.js asks:
+   Not a breakpoint but a device test, and the same one js/ui/panel-float.js asks:
    a window wants a pointer that can hover a 6px resize band and hold a title
    bar precisely, and below the breakpoint the panels are bottom sheets with no
    room to float anything over. A tablet in landscape passes a width test and
@@ -2846,7 +2846,7 @@ button.dt-cell:hover {
    is the negation of the whole conjunction, which is what "anything less than
    a desktop" means.
 
-   js/panel-float.js suspends the feature without forgetting what the reader
+   js/ui/panel-float.js suspends the feature without forgetting what the reader
    chose on a desktop, so this is the belt to its braces: it covers the frame
    between a resize and the pass that answers it, and it takes the pop-out
    button off a device that has no use for it. */
@@ -2882,7 +2882,7 @@ button.dt-cell:hover {
 }
 
 /* A <button>, not a <div onclick>. The States Q and Transitions δ rows learned
-   this the hard way (see rowActions in js/render.js): a row that opens something
+   this the hard way (see rowActions in js/canvas/render.js): a row that opens something
    has to be reachable with Tab and firable with Enter, and a div is neither. */
 .bi {
   display: flex;
@@ -2996,7 +2996,7 @@ button.dt-cell:hover {
 }
 
 /* ─── SPACE-TIME ───
-   The whole run of a tape, one row per step (js/spacetime-ui.js). Docked it
+   The whole run of a tape, one row per step (js/simulation/spacetime-ui.js). Docked it
    is a short strip under the trace; floating, `.st-view` is the one region
    that takes the window's spare height (the section registry's `fill`), and
    the toolbar and legend keep theirs.
@@ -3120,7 +3120,7 @@ button.dt-cell:hover {
 .panel-float .st-view.panel-float-fill {
   /* The view is a scroll viewport with nothing in flow, so it has no height
      of its own for a window to fit. `--st-fit` is the diagram's, written by
-     js/spacetime-ui.js at every layout: a short run draws a short window, a
+     js/simulation/spacetime-ui.js at every layout: a short run draws a short window, a
      long one grows it to the ceiling and scrolls from there. */
   height: var(--st-fit, 240px);
   min-height: 120px;
@@ -3374,7 +3374,7 @@ button.dt-cell:hover {
 }
 
 /* The strip's left edge, a drag handle. `right` is the strip's width, written
-   by js/spacetime-ui.js; the transform centres the handle on that edge. */
+   by js/simulation/spacetime-ui.js; the transform centres the handle on that edge. */
 .st-ov-grip {
   position: absolute;
   top: 0;
@@ -3500,7 +3500,7 @@ button.dt-cell:hover {
 }
 
 /* ─── COMPLEXITY ───
-   The profile (js/complexity-ui.js): controls, a progress line, and two small
+   The profile (js/simulation/complexity-ui.js): controls, a progress line, and two small
    charts — steps and space against n. Floating, `.cx-charts` is the region
    that takes a window's spare height. Chart colours are classes on the SVG,
    so a theme change repaints them with nothing asked of the script. */
@@ -3921,7 +3921,7 @@ button.dt-cell:hover {
 }
 
 /* ─── BEHAVIOUR ───
-   Whether a Turing machine halts (js/behaviour-ui.js). The controls borrow the
+   Whether a Turing machine halts (js/simulation/behaviour-ui.js). The controls borrow the
    complexity section's pieces; the answer is a card whose colour is the
    player's for the same outcome: green for a halt, red for a proven non-halt
    (the loop verdict's colour — it is a decision), and orange for unknown,
@@ -4275,7 +4275,7 @@ button.dt-cell:hover {
 }
 
 /* ── Computation tree ──────────────────────────────────────────────
-   Every branch of a nondeterministic run — js/branch-tree-ui.js. A branch's
+   Every branch of a nondeterministic run — js/simulation/branch-tree-ui.js. A branch's
    colour is its slice of the hue range, the same one its token wears on the
    canvas, so the two can be matched by eye. Mixed toward the theme's own text
    colour rather than given a lightness per theme: that lifts it on a dark

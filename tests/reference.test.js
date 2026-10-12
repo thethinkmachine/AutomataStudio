@@ -1,16 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
-import { MachineCategories, MachineTypes } from '../js/state.js';
-import { GuideOverview, MachineGuides } from '../js/machine-guide.js';
-import { ConceptCategories, ConceptGuides } from '../js/concept-guide.js';
-import { keepSymbolCase, referencePages, renderReferenceView } from '../js/reference.js';
+import { MachineCategories, MachineTypes } from '../js/core/state.js';
+import { GuideOverview, MachineGuides } from '../js/reference/machine-guide.js';
+import { ConceptCategories, ConceptGuides } from '../js/reference/concept-guide.js';
+import { keepSymbolCase, referencePages, renderReferenceView } from '../js/reference/reference.js';
 
 // The Reference view.
 //
 // The navigation is generated from MachineCategories rather than written out
 // in index.html, which removes one way for the two to drift but not the other:
-// a machine can still be added to js/state.js with no guide behind it. That is
+// a machine can still be added to js/core/state.js with no guide behind it. That is
 // what the first test is for.
 const harness = createHarness();
 

@@ -44,8 +44,8 @@
 // set asked directly, the transition's fields read on resume — with only the
 // Map tape and the fingerprint gone.
 
-import { App } from '../state.js';
-import { DELETED, NO_WRITE } from '../tape-log.js';
+import { App } from '../core/state.js';
+import { DELETED, NO_WRITE } from '../simulation/tape-log.js';
 import { batch } from './run.js';
 import { markTimeoutStep } from './runtime.js';
 

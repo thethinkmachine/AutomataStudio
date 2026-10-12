@@ -103,7 +103,7 @@
 // run it. It reads the machine through the same lookup the player uses, so a
 // wildcard or a missing transition means what it means everywhere else.
 
-import { App, usesTwoWayTape } from '../state.js';
+import { App, usesTwoWayTape } from '../core/state.js';
 import { singleTapeLookup } from './runtime.js';
 import { haltingSegment } from './halting-segment.js';
 import { finiteAutomataReduction } from './far.js';

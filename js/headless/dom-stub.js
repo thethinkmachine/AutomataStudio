@@ -146,10 +146,10 @@ export function createElement(id = '') {
     // is the only way to answer "what attributes does this node have?" -- a
     // property bag cannot be told apart from the element's own fields. Anything
     // that copies a node's attributes rather than naming them needs the second,
-    // which js/glyphs.js does when it swaps a <text> for the group of outlines
+    // which js/io/glyphs.js does when it swaps a <text> for the group of outlines
     // that replaces it.
     // A data-* attribute shows through dataset, as it does in a browser:
-    // js/actions.js finds an action by its attribute, and the action reads its
+    // js/core/actions.js finds an action by its attribute, and the action reads its
     // arguments back from dataset.
     setAttribute(name, value) {
       this[name] = value;
@@ -341,7 +341,7 @@ export function clearElements() {
 // question about *phase*, not about registration order, so the delivery below
 // models capture-before-bubble and honours stopPropagation.
 //
-// <html> is on the same path, one step inside document, and js/actions.js
+// <html> is on the same path, one step inside document, and js/core/actions.js
 // listens there precisely so its actions run before every document listener —
 // so its listeners are recorded here too, tagged with the node they are on.
 const documentListeners = [];

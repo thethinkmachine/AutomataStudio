@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHarness } from './harness.js';
 
-// Space-time diagrams: js/spacetime.js (the model, layout and painter) and
-// js/spacetime-ui.js (the section).
+// Space-time diagrams: js/simulation/spacetime.js (the model, layout and painter) and
+// js/simulation/spacetime-ui.js (the section).
 //
 // The invariant everything rests on is the first test: **row i of the diagram
 // is the tape the tracker shows at step i**, cell for cell at absolute
@@ -113,7 +113,7 @@ test('checkpoints on a growing tape cost the run, not its square', () => {
   // Each checkpoint copies the whole tape, and this tape is as wide as the run
   // is long — a copy every 256 rows would be rows² / 256 cells (7 GB at
   // 300,000 steps). Spaced by what they copy, they sum to about the rows. They
-  // are the tape log's (js/tape-log.js), which the diagram reads rather than
+  // are the tape log's (js/simulation/tape-log.js), which the diagram reads rather than
   // copying the tape again.
   harness.resetApp();
   const { App, setMachine } = context;

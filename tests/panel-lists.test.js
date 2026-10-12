@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from './dom-stub.js';
 import { createHarness, context, getElement } from './harness.js';
-import { dispatchActions } from '../js/actions.js';
+import { dispatchActions } from '../js/core/actions.js';
 
 // The two left-panel lists.
 //
@@ -49,7 +49,7 @@ test('both lists offer the same pair of row actions', () => {
   }
 });
 
-// The rows are template markup wired by data-action (js/actions.js). The stub
+// The rows are template markup wired by data-action (js/core/actions.js). The stub
 // does not parse HTML, so a control is rebuilt from the attributes the markup
 // gave it and pressed through the dispatcher — what a click in a browser does.
 function controls(html, tag) {

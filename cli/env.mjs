@@ -14,7 +14,7 @@
 
 import { nodeGlobals } from './node-globals.mjs';
 import '../js/headless/dom-stub.js';
-import '../js/simulation.js';
+import '../js/simulation/simulation.js';
 import '../js/machines/index.js';
 
 // The stub's fetch throws, which is right for a test and wrong for a command
@@ -23,4 +23,4 @@ for (const [key, value] of Object.entries(nodeGlobals)) {
   if (value) Object.defineProperty(globalThis, key, { value, writable: true, configurable: true, enumerable: true });
 }
 
-export { App, APP_VERSION } from '../js/state.js';
+export { App, APP_VERSION } from '../js/core/state.js';

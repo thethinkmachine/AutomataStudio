@@ -171,7 +171,7 @@ test('a quick change announces the repaint exactly once', () => {
 // twice — invisible on screen, and only ever visible as wasted work. Counting
 // emissions cannot see it (one emit either way), so this reads the source.
 test('the write path does not call a renderer directly', () => {
-  const src = readFileSync(new URL('../js/quick-settings.js', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('../js/ui/quick-settings.js', import.meta.url), 'utf8');
   const fn = name => {
     const at = src.indexOf(`function ${name}(`);
     assert.notEqual(at, -1, `${name} not found`);
@@ -198,8 +198,8 @@ test('the write path does not call a renderer directly', () => {
 // .json replaces the config without one, and a tab switch rehydrates it. Both
 // have to refresh explicitly or an open popover shows the outgoing settings.
 test('every path that replaces App.config refreshes the popover', () => {
-  const uiSrc = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
-  const persistSrc = readFileSync(new URL('../js/persistence.js', import.meta.url), 'utf8');
+  const uiSrc = readFileSync(new URL('../js/ui/ui.js', import.meta.url), 'utf8');
+  const persistSrc = readFileSync(new URL('../js/io/persistence.js', import.meta.url), 'utf8');
 
   const fn = (src, name) => {
     const at = src.indexOf(`export function ${name}(`);

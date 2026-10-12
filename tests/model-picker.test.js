@@ -2,7 +2,7 @@ import { createElement } from './dom-stub.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
-import { dispatchActions } from '../js/actions.js';
+import { dispatchActions } from '../js/core/actions.js';
 
 // The model picker is markup built as a string, so its items are wired by
 // data-action. It is also the control that once shipped dead — selectModel was

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
-import { layoutNoteMarkdown, noteNaturalWidth } from '../js/note-layout.js';
+import { layoutNoteMarkdown, noteNaturalWidth } from '../js/canvas/note-layout.js';
 
 // A note's Markdown laid out as SVG-drawable lines: a monospace grid, so a
 // table is box-drawing characters and stays text the PNG export and the glyph

@@ -244,7 +244,7 @@
 /* A run does not stop at a block's edge — it steps inside, where there is
    nothing on screen to mark. The box standing in for those states is what the
    reader can see, so it takes the playhead's marks: the machine is flat, and
-   which node is drawn for a state is the projection's answer (js/view-graph.js),
+   which node is drawn for a state is the projection's answer (js/editor/view-graph.js),
    not the run's. Written against `.bn-body` because a block is a rounded rect
    where a state is a circle, and the ink is the only difference. */
 .bn.act-st .bn-body,
@@ -318,7 +318,7 @@
    at four pixels a state an arrowhead is a sub-pixel smudge and the route is
    the whole content, and the trail stops being quiet since there is nothing
    else left on screen for it to be quiet against. `.zoom-far` is set by
-   applyCamera() in js/canvas.js at the threshold the labels drop out at, so
+   applyCamera() in js/canvas/canvas.js at the threshold the labels drop out at, so
    "the names went" and "the trail came forward" are one place on the zoom
    dial. */
 .zoom-far .edge-g.sim-trail-t .tarr {
@@ -410,7 +410,7 @@
 
 /* ─── Fast playback ───
    `.sim-fast` is on the root while playback runs at 50× (10ms a step) or
-   faster (isFastPlayback in js/simulation.js). A step then lands every frame
+   faster (isFastPlayback in js/simulation/simulation.js). A step then lands every frame
    or two, long before a 150ms fade has finished, so the active state never
    reaches its colour and the ones it just left are still fading out — a smear of half-lit states where there
    should be one. The marks snap instead. The active edge drops its marching
@@ -499,7 +499,7 @@
 
 /* A label is the edge's, and with the Select tool it can be pressed like the
    edge: once to select it, twice to edit the row under the pointer
-   (js/edge-label-editor.js). Every other tool leaves it click-through, so a
+   (js/canvas/edge-label-editor.js). Every other tool leaves it click-through, so a
    press still reaches whatever lies beneath. The compact label is hit as its
    box — glyphs alone leave gaps between the characters — where the browser
    has bounding-box; the declaration before it is the fallback where it does
@@ -913,13 +913,13 @@
 }
 
 /* A table's borders, a list's bullets, a quote's bar: drawing made of
-   characters (js/note-layout.js), quieter than the text it frames. */
+   characters (js/canvas/note-layout.js), quieter than the text it frames. */
 .note-text .note-rule {
   fill: var(--text3);
 }
 
 /* The same drawing where it is lines: a table's grid, a rule, a quote's bar
-   (noteRulePath in js/notes.js). */
+   (noteRulePath in js/canvas/notes.js). */
 .note-rules {
   fill: none;
   stroke: var(--text3);
@@ -1736,7 +1736,7 @@
    A block is a subroutine drawn as one node, and what it is drawn as is what
    it contains: a box, a title strip across the top, and under it the machine
    inside — the same drawing the minimap makes of the whole diagram, from the
-   same code (js/graph-thumb.js).
+   same code (js/canvas/graph-thumb.js).
 
    The strip quotes .minimap-header deliberately. The two are the same idea in
    two places — a small frame with a name on it and a diagram under it — and a
@@ -1768,7 +1768,7 @@
    corners stick out past the body's radius as two pointed ears; rounded to
    match, the two radii meet in a visible notch. The box already frames the
    title, so the band was removed rather than reshaped — `BLOCK_STRIP_H` in
-   js/view-graph.js survives only as reserved space the preview is clipped
+   js/editor/view-graph.js survives only as reserved space the preview is clipped
    below, so nothing is ever drawn under the name. */
 
 .bn-title {
@@ -1906,7 +1906,7 @@
    `ADDR_L_leaf_14 -> ADDR_L_count_14` is not 96px wide in any font. And with no
    fill it was drawn *through* by every edge and edge label behind it.
 
-   So: sized to its text (js/view-graph.js), filled so it occludes, and two rows
+   So: sized to its text (js/editor/view-graph.js), filled so it occludes, and two rows
    so the role and the target each get one. Direction is the ROLE — `ENTRY`,
    `FROM`, or the block's own word for an exit — which says it in language
    rather than in a glyph, and does not need to be read at any particular size
@@ -2003,7 +2003,7 @@
      from the left because the info pill routes around obstacles and this does
      not: while you are inside a block, where you are outranks a description of
      the machine you are in. The offset stays a custom property because a
-     top-docked toolbar occupies exactly this strip — js/ui.js pushes the bar
+     top-docked toolbar occupies exactly this strip — js/ui/ui.js pushes the bar
      below it (see positionScopeBar) rather than the two fighting over one
      magic number. */
   top: var(--scope-bar-top, 12px);
@@ -2038,7 +2038,7 @@
   transition: top var(--transition-base);
 }
 
-/* `hidden` is what js/scope.js sets, so `hidden` has to be what hides. The
+/* `hidden` is what js/editor/scope.js sets, so `hidden` has to be what hides. The
    `display: flex` above is an author rule and outranks the user agent's
    `[hidden] { display: none }` — so without this line the bar never went away
    and every machine, blocks or not, carried an empty bordered pill over the top
@@ -2053,7 +2053,7 @@
 }
 
 /* The same "there is more past this edge" fade the workspace tab strip and
-   the formal-definition box use — js/scope.js toggles these off App.scope's
+   the formal-definition box use — js/editor/scope.js toggles these off App.scope's
    own scroll position. Without it a deep block hierarchy just clips mid-word
    at the container edge with nothing on screen to say it is scrollable. */
 .scope-bar.has-overflow-left {
@@ -2153,7 +2153,7 @@
   pointer-events: none;
 }
 
-/* ── StateMate's draft (js/draft-layer.js) ─────────────────────────
+/* ── StateMate's draft (js/statemate/draft-layer.js) ─────────────────────────
    Work in progress over the canvas: dashed, because dashed means drafted,
    not yet part of the machine (css/views.css). What the draft adds is in the
    accent, what it keeps is quiet, and a state it drops is ringed in red where
@@ -2243,7 +2243,7 @@
 
 /* ── Branch tokens ─────────────────────────────────────────────────
    A nondeterministic run puts a token on every live branch —
-   js/branch-tokens.js. The hue is the branch's place in the computation tree,
+   js/canvas/branch-tokens.js. The hue is the branch's place in the computation tree,
    set per token as --h; the colour is mixed toward the theme's text so it
    reads on every ground (see .bt-node in panels.css, which it matches). */
 .br-tok {
@@ -2266,7 +2266,7 @@
 
 /* A group or dot the run drew once and is not using this step. Hidden rather
    than removed: taking a node out of the canvas SVG costs a layout pass, and
-   hiding it costs nothing (js/branch-tokens.js). */
+   hiding it costs nothing (js/canvas/branch-tokens.js). */
 .br-toks.is-spare,
 .br-tok.is-spare,
 .br-more.is-spare {

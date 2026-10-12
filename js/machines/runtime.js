@@ -12,7 +12,7 @@
 // StateMate's verifyCandidate all depend on it. A single $() in this file
 // would take that away from all three at once.
 
-import { App, detectsLoops, getState } from '../state.js';
+import { App, detectsLoops, getState } from '../core/state.js';
 import { renderSimStep } from './paint.js';
 import { pickMostSpecificTransition, symbolsOverlap } from './predicates.js';
 
@@ -227,7 +227,7 @@ export function makeStateNumbering() {
 // the array, its length and its two ends, which every push, filter and
 // reassignment in the app changes) or changing a transition's `from` in place.
 // Two places do the second — the edit dialog and "reverse edges", both in
-// js/states-transitions.js — and they call `invalidateTransitionIndex()`.
+// js/editor/states-transitions.js — and they call `invalidateTransitionIndex()`.
 
 const NO_TRANSITIONS = Object.freeze([]);
 let _tIdx = null, _tArr = null, _tLen = -1, _tFirst = null, _tLast = null;

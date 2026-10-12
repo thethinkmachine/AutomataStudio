@@ -45,7 +45,7 @@ import deflist from 'markdown-it-deflist';
 import sub from 'markdown-it-sub';
 import sup from 'markdown-it-sup';
 import mark from 'markdown-it-mark';
-import { mathPlugin } from '../markdown-math.js';
+import { mathPlugin } from '../text/markdown-math.js';
 
 export const ARTICLE_MAX_CHARS = 60000;
 
@@ -119,7 +119,7 @@ export function balanceHtml(html) {
   return out + stack.reverse().map(n => `</${n}>`).join('');
 }
 
-/** Math (js/markdown-math.js, shared with the app's own Markdown), drawn as the essay draws it. */
+/** Math (js/text/markdown-math.js, shared with the app's own Markdown), drawn as the essay draws it. */
 function mathRenderPlugin(md) {
   md.use(mathPlugin);
   md.renderer.rules.math_inline = (t, i) => esc(t[i].content);

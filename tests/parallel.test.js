@@ -278,7 +278,10 @@ test('the machine layer imports nothing that needs a document', async () => {
   // would fail in the browser, silently falling back to serial, rather than
   // here. So the import graph is the assertion.
   const { readFileSync, readdirSync } = await import('node:fs');
-  const UI = /from '\.\.\/(canvas|render|ui|modal|persistence|simulation|view|suggest|tape-view|notes|dividers|alphabet|export-|statemate|language|geometry|minimap|history|store)/;
+  // Matched on the imported module's file name, not its folder: tape.js and
+  // tape-log.js live in js/simulation/ beside the player and are leaves the
+  // layer may read, while simulation.js in the same folder is the player.
+  const UI = /from '[^']*\/(canvas|render|ui|modal|persistence|simulation|view|suggest|tape-view|notes|dividers|alphabet|export-[\w-]+|statemate[\w-]*|language|geometry|minimap|history|store)\.js'/;
   const offenders = [];
   for (const f of readdirSync('js/machines')) {
     if (!f.endsWith('.js')) continue;
@@ -291,7 +294,7 @@ test('the machine layer imports nothing that needs a document', async () => {
 });
 
 test('the painter is installed on the main thread and absent in a worker', () => {
-  // js/simulation.js installs it as it evaluates, and the harness imports
+  // js/simulation/simulation.js installs it as it evaluates, and the harness imports
   // simulation.js — so on this side it is present. A worker never imports
   // simulation.js, which is what makes renderSimStep a no-op there.
   assert.equal(ctx.hasSimStepPainter(), true);

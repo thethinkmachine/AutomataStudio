@@ -8,7 +8,7 @@ const modalCss = readFileSync(new URL('../css/modals.css', import.meta.url), 'ut
 const viewCss = readFileSync(new URL('../css/views.css', import.meta.url), 'utf8');
 
 // The examples live inside StateMate rather than in a dialog of their own — see
-// the note at the top of js/statemate-ui.js for why they stayed at all. One
+// the note at the top of js/statemate/statemate-ui.js for why they stayed at all. One
 // searchable surface, and no anchored dropdown.
 //
 // StateMate no longer has a header button: that slot is the machine wizard's.
@@ -27,7 +27,7 @@ test('StateMate is a searchable panel, reachable without a header button', () =>
   assert.ok(!html.includes('id="example-modal"'), 'the standalone example dialog is superseded');
 });
 
-// The button that replaced it. Two modes, one element — js/wizard-ui.js swaps
+// The button that replaced it. Two modes, one element — js/ui/wizard-ui.js swaps
 // the glyph on Change.GRAPH — so the markup carries the create-mode icon and
 // the dialog it controls, and nothing else.
 test('the header button opens the machine wizard', () => {

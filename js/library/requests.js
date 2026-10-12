@@ -3,13 +3,13 @@
 // ══════════════════════════════════════════════════════════════════
 // The desktop app registers the automata-studio:// scheme, so a website's
 // "Open in the desktop app" button can launch it. That link reaches the page
-// through js/electron-bridge.js, which main.js evaluates first — long before
+// through js/core/electron-bridge.js, which main.js evaluates first — long before
 // the workspaces are restored. Acting on it then would open the machine in a
-// tab and have the restore paint over it: the boot gate js/persistence.js has
+// tab and have the restore paint over it: the boot gate js/io/persistence.js has
 // for files, for the same reason.
 //
 // So a link is queued here until the Library says it is ready (at the end of
-// the boot, in js/init.js), and handed straight through after that. A leaf, so
+// the boot, in js/core/init.js), and handed straight through after that. A leaf, so
 // electron-bridge.js can import it without evaluating the Library's UI early.
 //
 // Import-free.

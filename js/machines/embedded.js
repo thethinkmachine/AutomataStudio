@@ -2,7 +2,7 @@
 //  EMBEDDED MACHINES — the EPDA
 // ══════════════════════════════════════════════════════════════════
 // The automaton that recognises exactly the tree-adjoining languages (the
-// `tag` page in js/concept-guide.js explains the class). It is a family of
+// `tag` page in js/reference/concept-guide.js explains the class). It is a family of
 // its own rather than a pushdown machine with an extra field, and the reason
 // is the store: a PDA's is an array of symbols and every one of
 // applyPdaStoreTransition / pdaPeek / pdaStoreToString is written against
@@ -26,7 +26,7 @@
 // store admits several moves from one configuration, and the languages it
 // is for are not deterministic ones.
 
-import { App, getState, runStartId } from '../state.js';
+import { App, getState, runStartId } from '../core/state.js';
 import { narrateAccept, narrateExplore, narrateStuck } from './narrate.js';
 import { renderSimStep } from './paint.js';
 import { ConfigSet, Fifo, accepted, makeStateNumbering, traceSearchPath, transitionsFrom } from './runtime.js';

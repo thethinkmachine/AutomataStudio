@@ -1,0 +1,5102 @@
+import { defineActions } from '../core/action-registry.js';
+import { capturePointer, releasePointer } from '../core/pointer-capture.js';
+import { forgetPref, readFlag, readJsonPref, readPref, writeFlag, writeJsonPref, writePref } from '../core/prefs.js';
+import { utmStepBack, utmStepFwd, utmToggleAuto } from '../algorithms/algorithms-fa.js';
+import { renderGamma } from '../editor/alphabet.js';
+import { settleAll } from '../canvas/anim.js';
+import { applyCamera, clampZoom, clearEdgeDirectionHighlight, clearSelection, clearTempLine, copySelection, duplicateSelection, getContentBounds, hideCanvasContextMenu, isPanning,hlState, nudgeSelected, pasteClipboard, selectAllStates, selectionCount, syncSelectionClasses, toggleSnapToGrid, wrap } from '../canvas/canvas.js';
+import { floatLayer, isMovingFloat } from './panel-float.js';
+import { blockRemovalIds, getBlock, removeBlock } from '../editor/blocks.js';
+import { viewStates } from '../editor/view-graph.js';
+import { leaveBlockScope, syncScopeBar } from '../editor/scope.js';
+import { isQuickSettingsOpen, positionQuickSettings, refreshQuickSettings } from './quick-settings.js';
+import { includeDividerBounds, removeDividers, updateShapeToolButton } from '../canvas/dividers.js';
+import { markDirty, redo, snapshot, snapshotSettings, trimStowedHistory, undo, withoutDirtying } from '../core/history.js';
+import { renderMinimap, scheduleMinimap } from '../canvas/minimap.js';
+import { anyModalOpen, askConfirm, closeModal, registerModal, showOverlay } from './modal.js';
+import { includeNoteBounds, pruneNoteAnchorsExcluding, removeNotes } from '../canvas/notes.js';
+import { CARD_AUTO_HIDE_MS, applyPastedText, hideSaveMenu, restartAutosaveTimer, saveBackupChecked, saveDocumentAs, saveNow, saveWorkspaceById } from '../io/persistence.js';
+import { renderAll, updateBlockList, updateLPanel, updateRPanel } from '../canvas/render.js';
+import { filterList } from './panel-list.js';
+import {
+  canTabGoTo, getActivePanelTab, getPanelTabOrder, getTabSide, getTabSides, isPanelEmpty,
+  isPanelTabActive, movePanelTabTo, PANEL_SIDES, PANEL_TAB_NAMES, PANEL_TABS, panelTabNames,
+  setActivePanelTab, setPanelTabOrder, setTabSides
+} from './panel-state.js';
+import { PANEL_SECTIONS, isSectionFloating, sectionConfig, sectionHost, sectionSide, sectionStartsCollapsed, sectionsWithHeader } from './panel-sections.js';
+import { syncDockFill } from './panel-sections-ui.js';
+import { setShakeToMinimizeEnabled, shakeToMinimizeEnabled } from './panel-state.js';
+import { canvasMotionEnabled, setCanvasMotionEnabled } from '../canvas/canvas-motion.js';
+import { resetSim, restartAutoTimerIfPlaying, stepBack, stepFwd } from '../simulation/simulation.js';
+import { syncSpeedControl } from '../simulation/speed-control.js';
+import { $, App, MIN_TAPES, MachineCategories, blankWorkspaceData, MachineTypes, R, TAPE_LIMIT, Workspaces, activeWorkspaceId, execMode, exportWorkspaceState, importWorkspaceState, largeMachineOverridePrompt, largeMachineProfile, machineIsLarge, maxTapes, migrateSystemSymbols, normalizeEdgeLabelStyle, setActiveWorkspaceId, setR, setWorkspaces } from '../core/state.js';
+import { getState, getTransition, hideContextMenu } from '../editor/states-transitions.js';
+import { openMachineWizard } from './wizard-ui.js';
+import {
+  applyStateMateSettings, askStateMateAboutSelection, openStateMate, populateStateMateSettings,
+  stowStateMate
+} from '../statemate/statemate-ui.js';
+import { Change, emit, subscribe } from '../core/store.js';
+import { DEFAULT_THEME, Themes } from './themes.js';
+import { clearAll, escapeHtml, showStatus } from '../core/utils.js';
+import { AUX_VIEWS, applyMachineSwitch, auxViewKey, closeAuxView, hideMoreMenu, setMachine, setView, syncTapeCountUI } from './view.js';
+import { initMobileShell, syncMobileBar, syncMobileTools, syncMobileWorkspaceButton } from './mobile.js';
+
+subscribe(Change.TABS, renderTabs);
+subscribe(Change.SAVE, updateSaveIndicator);
+
+// ══════════════════════════════════════════════════════════════════
+//  WORKSPACE TABS UI
+// ══════════════════════════════════════════════════════════════════
+// Tab accent reflects the workspace's machine *category* (not the exact type)
+// so a glance at the dot tells you "finite automaton" vs "stack machine" vs
+// "Turing machine" vs "transducer" without needing 18 distinct colors.
+export const CATEGORY_ACCENT_VAR = { fa: '--accent', mem: '--green', tm: '--orange', special: '--purple' };
+export let editingTabId = null;
+export let draggingTabId = null;
+export let closedWorkspaces = [];
+export let saveState = 'saved';
+
+export function getWorkspaceMachine(ws) {
+  if (!ws) return null;
+  return ws.id === activeWorkspaceId ? App.machine : ws.data?.machine;
+}
+
+export function getWorkspaceAccent(ws) {
+  const machine = getWorkspaceMachine(ws);
+  const cat = machine && MachineTypes[machine] ? MachineTypes[machine].category : null;
+  return `var(${CATEGORY_ACCENT_VAR[cat] || '--accent'})`;
+}
+
+export function markActiveWorkspaceSaved() {
+  if (!activeWorkspaceId) return;
+  const ws = Workspaces.find(w => w.id === activeWorkspaceId);
+  if (ws && ws.dirty) {
+    ws.dirty = false;
+    renderTabs();
+  }
+}
+
+// The single source of truth for everything the Save button displays: its
+// colour, its tooltip, and the unsaved dot. The dot used to be toggled
+// separately from `Workspaces.some(dirty)` while the colour came from here,
+// which let the two disagree — an orange icon with no dot, or a dot left over
+// after the state moved on. Both are derived from `state` now.
+export function setSaveState(state, message) {
+  saveState = state;
+  const btn = $('save-now-btn');
+  const labels = { unsaved: 'Unsaved', saving: 'Saving…', saved: 'Saved', error: 'Save failed' };
+  const label = message || labels[state] || labels.saved;
+  if (btn) {
+    btn.dataset.saveState = state;
+    btn.dataset.tip = label === 'Saved' ? 'Save workspace' : `${label} — save workspace`;
+    btn.setAttribute('aria-label', label === 'Saved' ? 'Save workspace — saved' : `${label} — save workspace`);
+    // "There is something to save" — true while unsaved, and still true when a
+    // save failed, since the work is in fact still unsaved.
+    btn.classList.toggle('is-dirty', state === 'unsaved' || state === 'error');
+  }
+}
+
+export function escapeTabText(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function updateTabOverflowShadows(tb = $('tab-bar')) {
+  if (!tb) return;
+  const maxScroll = Math.max(0, tb.scrollWidth - tb.clientWidth);
+  const hasOverflow = maxScroll > 2;
+  tb.classList.toggle('has-overflow-left', hasOverflow && tb.scrollLeft > 2);
+  tb.classList.toggle('has-overflow-right', hasOverflow && tb.scrollLeft < maxScroll - 2);
+  // The strip can't fit every tab (which happens with far fewer tabs on a
+  // narrow/mobile viewport) — surface the jump-to-tab dropdown as an
+  // alternative to hunting via horizontal scroll or drag.
+  const btn = $('tab-overflow-btn');
+  if (btn) {
+    // Below 900px the strip is not a scroller — css/mobile.css hands the
+    // header the scroll and leaves `.tab-bar` `overflow: visible`, so
+    // `scrollWidth - clientWidth` is 0 and `hasOverflow` is false however many
+    // workspaces there are. Gating on it retired this button on exactly the
+    // screen where hunting by drag is worst, and the mobile header now hides
+    // the strip outright, so the list has to be reachable regardless.
+    const show = hasOverflow || isMobilePanelLayout();
+    btn.classList.toggle('show', show);
+    if (!show) hideTabOverflowMenu();
+  }
+}
+
+// Scrolls the strip, and only the strip, until the active tab is wholly in
+// view. scrollIntoView would also scroll the header's overflow-hidden
+// ancestors, which nothing ever scrolls back.
+export function revealActiveTab(tb = $('tab-bar')) {
+  const tab = tabEls.get(activeWorkspaceId);
+  if (!tb || !tab || tab.parentNode !== tb) return;
+  const edge = 24;   // clear of the fade drawn over a scrolled edge
+  const left = tab.offsetLeft - edge;
+  const right = tab.offsetLeft + tab.offsetWidth + edge;
+  if (left < tb.scrollLeft) tb.scrollLeft = Math.max(0, left);
+  else if (right > tb.scrollLeft + tb.clientWidth) tb.scrollLeft = right - tb.clientWidth;
+}
+
+export function focusTabElement(id) {
+  const tab = tabEls.get(id);
+  if (tab && tab.parentNode) tab.focus();
+}
+
+function reducedMotion() {
+  return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+}
+
+// The live tab elements, in no particular order: the strip's children are the
+// order. A tab is kept for as long as its workspace is, so its hover, its
+// focus and a transition it is part-way through all survive a redraw. The
+// strip used to be rebuilt from a string on every call — there are ~18 — which
+// restarted every hover fade, dropped the keyboard focus, threw away a rename
+// half typed, and left nothing that could animate.
+const tabEls = new Map();
+let tabsDrawn = false;     // no entrance animation for the tabs present at boot
+let tabDragDropped = false;
+
+// Plays a reflow as motion: whatever `mutate` moves, each tab is drawn back at
+// its old offset and then let go, so it glides to the new one. FLIP, measured
+// on offsetLeft so a transform already in flight does not skew the reading.
+function flipTabs(tb, mutate) {
+  if (reducedMotion()) { mutate(); return; }
+  const els = [...tabEls.values()].filter(el => el.parentNode === tb);
+  const before = new Map(els.map(el => [el, el.offsetLeft]));
+  mutate();
+  for (const el of els) {
+    if (el.parentNode !== tb) continue;
+    const dx = before.get(el) - el.offsetLeft;
+    if (!dx) continue;
+    el.style.transition = 'none';
+    el.style.transform = `translateX(${dx}px)`;
+    void el.offsetWidth;
+    el.style.transition = '';
+    el.style.transform = '';
+  }
+}
+
+const TAB_CLOSE_SVG = '<svg width="10" height="10" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>';
+
+function createTabElement(id) {
+  const el = document.createElement('div');
+  el.className = 'tab';
+  el.setAttribute('role', 'tab');
+  el.setAttribute('data-tab-id', id);
+  el.dataset.tabId = id;
+  // A behaviour (TAB_BEHAVIOUR, below) rather than listeners attached here,
+  // though this node is built with createElement: the close button and the
+  // rename field inside it are template markup with actions of their own, and
+  // an element's own listener runs before any delegated action — so a direct
+  // click listener here would switch to the tab before its close button had
+  // the chance to stop the click. In one walk the button goes first.
+  el.setAttribute('data-action', 'ui.tab');
+  return el;
+}
+
+// Everything a tab answers to, keyed by the event; the workspace is the tab's
+// data-tab-id, fixed for the node's life.
+const TAB_BEHAVIOUR = {
+  click: ({ el }) => switchTab(el.dataset.tabId),
+  dblclick: ({ el, event }) => beginRenameTab(el.dataset.tabId, event),
+  // A middle press would start an autoscroll; the release closes the tab.
+  mousedown: ({ event }) => { if (event.button === 1) event.preventDefault(); },
+  auxclick: ({ el, event }) => { if (event.button === 1) closeTab(el.dataset.tabId, event); },
+  keydown: ({ el, event }) => handleTabKeydown(el.dataset.tabId, event),
+  contextmenu: ({ el, event }) => showTabContextMenu(el.dataset.tabId, event),
+  dragstart: ({ el, event }) => handleTabDragStart(el.dataset.tabId, event, el),
+  dragover: ({ el, event }) => handleTabDragOver(el.dataset.tabId, event, el),
+  drop: ({ el, event }) => handleTabDrop(el.dataset.tabId, event),
+  dragend: () => handleTabDragEnd()
+};
+
+function workspaceCounts(ws) {
+  if (ws.id === activeWorkspaceId) return { states: App.states.length, transitions: App.transitions.length };
+  return { states: ws.data?.states?.length || 0, transitions: ws.data?.transitions?.length || 0 };
+}
+
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+function syncTabElement(el, ws, closable) {
+  const isActive = ws.id === activeWorkspaceId;
+  const isEditing = ws.id === editingTabId;
+  const machine = getWorkspaceMachine(ws);
+  const type = machine && MachineTypes[machine] ? MachineTypes[machine] : null;
+  const hasEnd = !!ws.dirty || closable;
+
+  el.classList.toggle('active', isActive);
+  el.classList.toggle('is-dirty', !!ws.dirty);
+  el.classList.toggle('has-end', hasEnd);
+  el.classList.toggle('dragging', draggingTabId === ws.id);
+  el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  el.setAttribute('tabindex', isActive ? '0' : '-1');
+  el.setAttribute('draggable', isEditing ? 'false' : 'true');
+  el.style.setProperty('--tab-accent', getWorkspaceAccent(ws));
+
+  // The inside is rebuilt only when what it draws has changed. That is also
+  // what keeps a rename alive: the input is not replaced under the caret by
+  // some unrelated redraw while the name is being typed.
+  // The type key, not its label: the key is always a short code (ITM, PDT,
+  // Counter) where the label can be a phrase ("2-Way Infinite TM"), and a
+  // phrase beside the name took its room and cut the name to three letters.
+  const key = [ws.name, machine, !!ws.dirty, closable, isEditing].join('\u0001');
+  if (el._tabKey !== key) {
+    el._tabKey = key;
+    const safeName = escapeTabText(ws.name || 'Workspace');
+    // The unsaved dot and the close button share one slot at the tab's end,
+    // the dot giving way to the button on hover. Kept apart, every tab carried
+    // an invisible button's worth of space on its right, and the gaps between
+    // tabs read as random.
+    const end = hasEnd ? `<span class="tab-end">${
+      ws.dirty ? '<span class="tab-dirty" aria-hidden="true"></span>' : ''}${
+      closable ? `<button class="tab-close" type="button" tabindex="-1" aria-label="Close ${safeName}" data-action="ui.closeTab" data-tab-id="${ws.id}">${TAB_CLOSE_SVG}</button>` : ''}</span>` : '';
+    el.innerHTML = `
+      <span class="tab-dot" aria-hidden="true"></span>
+      ${type ? `<span class="sr-only">${escapeTabText(type.fullName || type.label)} — </span>` : ''}
+      ${isEditing
+        ? `<input class="tab-rename-input" value="${safeName}" maxlength="40" aria-label="Rename workspace" data-action="ui.tabRename" data-tab-id="${ws.id}">`
+        : `<span class="tab-name">${safeName}</span>`}
+      ${type ? `<span class="tab-type" aria-hidden="true">${escapeTabText(machine)}</span>` : ''}
+      ${end}`;
+  }
+
+  // The tooltip is the one part that moves with every edit — the counts — so
+  // it is written on its own rather than being allowed to rebuild the tab.
+  const { states, transitions } = workspaceCounts(ws);
+  const tip = [
+    `${ws.name || 'Workspace'}${type ? ' — ' + (type.fullName || type.label) : ''}`,
+    `${plural(states, 'state')} · ${plural(transitions, 'transition')}`,
+    ws.dirty ? 'Unsaved changes' : 'Saved',
+  ].join(' · ');
+  el.querySelector?.('.tab-name')?.setAttribute('data-tip', tip);
+}
+
+// A closed tab folds away rather than vanishing, so the ones after it slide
+// into the gap instead of jumping. It stops being a tab at once — no id, no
+// focus, no pointer — and every lookup skips it.
+function retireTabElement(el) {
+  el.removeAttribute('data-tab-id');
+  delete el.dataset.tabId;
+  el.setAttribute('aria-hidden', 'true');
+  el.setAttribute('tabindex', '-1');
+  if (reducedMotion() || !el.parentNode) { el.remove(); return; }
+  el.classList.remove('is-entering');
+  el.classList.add('is-leaving');
+  const tb = el.parentNode;
+  const done = () => {
+    if (!el.parentNode) return;
+    el.remove();
+    updateTabOverflowShadows(tb);
+  };
+  el.addEventListener?.('animationend', done, { once: true });
+  setTimeout(done, 260);
+}
+
+function liveTabIds(tb) {
+  const ids = [];
+  for (let n = tb.firstChild; n; n = n.nextSibling) {
+    const id = n.dataset?.tabId;
+    if (id && !n.classList?.contains('is-leaving')) ids.push(id);
+  }
+  return ids;
+}
+
+function precedes(a, b) {
+  for (let n = a.nextSibling; n; n = n.nextSibling) if (n === b) return true;
+  return false;
+}
+
+// Dragging reorders the elements themselves, with the neighbours sliding out
+// of the way, so where the tab will land is where it already is. Workspaces is
+// left alone until the drop; a drag that ends anywhere else is put back by a
+// redraw, which orders the strip from Workspaces.
+function commitTabOrderFromStrip() {
+  const tb = $('tab-bar');
+  if (!tb) return false;
+  const ids = liveTabIds(tb);
+  const byId = new Map(Workspaces.map(w => [w.id, w]));
+  if (ids.length !== Workspaces.length || ids.some(id => !byId.has(id))) return false;
+  if (ids.every((id, i) => Workspaces[i].id === id)) return false;
+  Workspaces.splice(0, Workspaces.length, ...ids.map(id => byId.get(id)));
+  return true;
+}
+
+function finishTabDropCommit() {
+  const movedId = draggingTabId;
+  tabDragDropped = true;
+  const moved = commitTabOrderFromStrip();
+  finishTabDrag();
+  renderTabs();
+  if (moved) saveBackupChecked();
+  requestAnimationFrame(() => focusTabElement(movedId));
+}
+
+export function finishTabDrag() {
+  const el = tabEls.get(draggingTabId);
+  if (el) el.classList.remove('dragging');
+  draggingTabId = null;
+}
+
+// `tabEl` is the tab being dragged; the ui.tab behaviour passes it, since a
+// delegated event's currentTarget is the page rather than the tab.
+export function handleTabDragStart(id, e, tabEl = e.currentTarget) {
+  if (editingTabId === id || Workspaces.length < 2) {
+    e.preventDefault();
+    return;
+  }
+  draggingTabId = id;
+  tabDragDropped = false;
+  if (tabEl) tabEl.classList.add('dragging');
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox will not start a drag without data; older engines throw on the type.
+    try { e.dataTransfer.setData('text/plain', id); } catch { /* the drag still runs */ }
+  }
+}
+
+export function handleTabDragOver(id, e, tabEl = e.currentTarget) {
+  if (!draggingTabId) return;
+  // Over the dragged tab itself too: it is under the pointer more often than
+  // not once it has moved, and a drop it refused would undo the drag.
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  if (id === draggingTabId) return;
+
+  const tb = $('tab-bar');
+  const dragged = tabEls.get(draggingTabId);
+  const target = tabEl;
+  if (!tb || !dragged || !target || dragged.parentNode !== tb) return;
+
+  // Past the target's middle in the direction of travel, not just past it:
+  // the gap the pointer is in has to belong to the tab being dragged, or the
+  // two swap back and forth under a pointer that is standing still.
+  const x = e.clientX - tb.getBoundingClientRect().left + tb.scrollLeft;
+  const mid = target.offsetLeft + target.offsetWidth / 2;
+  const forward = precedes(dragged, target);
+  if (forward && x > mid) flipTabs(tb, () => tb.insertBefore(dragged, target.nextSibling));
+  else if (!forward && x < mid) flipTabs(tb, () => tb.insertBefore(dragged, target));
+}
+
+export function handleTabDrop(id, e) {
+  if (!draggingTabId) return;
+  e.preventDefault();
+  e.stopPropagation();
+  finishTabDropCommit();
+}
+
+export function handleTabDragEnd() {
+  if (tabDragDropped || !draggingTabId) { finishTabDrag(); return; }
+  finishTabDrag();
+  const tb = $('tab-bar');
+  if (tb) flipTabs(tb, renderTabs); else renderTabs();
+}
+
+export function handleTabAddDragOver(e) {
+  if (!draggingTabId) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const tb = $('tab-bar');
+  const dragged = tabEls.get(draggingTabId);
+  if (!tb || !dragged || dragged.parentNode !== tb) return;
+  const ids = liveTabIds(tb);
+  if (ids[ids.length - 1] !== draggingTabId) flipTabs(tb, () => tb.insertBefore(dragged, null));
+}
+
+export function handleTabAddDrop(e) {
+  if (!draggingTabId) return;
+  e.preventDefault();
+  e.stopPropagation();
+  finishTabDropCommit();
+}
+
+export function handleTabKeydown(id, e) {
+  if (editingTabId === id) return;
+
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    e.stopPropagation();
+    switchTab(id);
+    return;
+  }
+
+  if (e.key === 'F2') {
+    e.preventDefault();
+    e.stopPropagation();
+    beginRenameTab(id, e);
+    return;
+  }
+
+  if (e.key === 'Delete' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'w')) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeTab(id, e);
+    return;
+  }
+
+  const ids = Workspaces.map(w => w.id);
+  const idx = ids.indexOf(id);
+  if (!ids.length || idx === -1) return;
+  let nextId = null;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    const delta = e.key === 'ArrowRight' ? 1 : -1;
+    nextId = ids[(idx + delta + ids.length) % ids.length];
+  } else if (e.key === 'Home') {
+    nextId = ids[0];
+  } else if (e.key === 'End') {
+    nextId = ids[ids.length - 1];
+  }
+  if (!nextId) return;
+  e.preventDefault();
+  e.stopPropagation();
+  switchTab(nextId);
+  requestAnimationFrame(() => focusTabElement(nextId));
+}
+
+// Workspace tabs from anywhere, not only from a focused tab. Each act has two
+// spellings. The desktop one — Ctrl+Tab, Ctrl+PageUp/PageDown, Mod+T, Mod+W,
+// Mod+1…9 — is what every tabbed app uses, and a browser keeps all of it for
+// its own tabs, so on the website the page never sees it. The Alt one is what
+// the website does receive. Matched on `code`, so a layout or an Alt that
+// changes the character typed does not change the key.
+export function handleWorkspaceShortcut(e) {
+  const mod = (e.ctrlKey || e.metaKey) && !e.altKey;
+  const alt = e.altKey && !e.ctrlKey && !e.metaKey;
+  const code = e.code || '';
+  let act = null;
+  let n = 0;
+  if (e.ctrlKey && !e.altKey && e.key === 'Tab') act = e.shiftKey ? 'prev' : 'next';
+  else if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === 'PageDown' || e.key === 'PageUp')) act = e.key === 'PageDown' ? 'next' : 'prev';
+  else if (alt && !e.shiftKey && (code === 'BracketRight' || code === 'BracketLeft')) act = code === 'BracketRight' ? 'next' : 'prev';
+  else if ((mod || alt) && !e.shiftKey && /^Digit[1-9]$/.test(code)) { act = 'nth'; n = +code.slice(5); }
+  else if ((mod || alt) && !e.shiftKey && code === 'KeyT') act = 'new';
+  else if ((mod || alt) && !e.shiftKey && code === 'KeyW') act = 'close';
+  else if (alt && e.shiftKey && code === 'KeyT') act = 'reopen';
+  if (!act) return false;
+
+  e.preventDefault();
+  const ids = Workspaces.map(w => w.id);
+  const idx = ids.indexOf(activeWorkspaceId);
+  if (act === 'next' || act === 'prev') {
+    if (ids.length > 1) switchTab(ids[(idx + (act === 'next' ? 1 : -1) + ids.length) % ids.length]);
+  } else if (act === 'nth') {
+    // 9 is the last tab however many there are, as it is in a browser.
+    const id = n === 9 ? ids[ids.length - 1] : ids[n - 1];
+    if (id && id !== activeWorkspaceId) switchTab(id);
+  } else if (act === 'new') {
+    createTab();
+  } else if (act === 'close') {
+    if (activeWorkspaceId) closeTab(activeWorkspaceId);
+  } else if (act === 'reopen') {
+    reopenClosedTab();
+  }
+  return true;
+}
+
+export function beginRenameTab(id, e) {
+  if (e) {
+    e.stopPropagation();
+    e.preventDefault();
+  }
+  editingTabId = id;
+  renderTabs();
+}
+
+export function handleTabRenameKeydown(id, e) {
+  e.stopPropagation();
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    commitTabRename(id, e.target);
+    return;
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    editingTabId = null;
+    renderTabs();
+    requestAnimationFrame(() => focusTabElement(id));
+  }
+}
+
+export function commitTabRename(id, inputEl) {
+  if (editingTabId !== id) return;
+  const ws = Workspaces.find(w => w.id === id);
+  if (!ws) {
+    editingTabId = null;
+    renderTabs();
+    return;
+  }
+
+  const candidate = String(inputEl?.value || '').trim();
+  if (candidate) ws.name = candidate.slice(0, 40);
+
+  editingTabId = null;
+  renderTabs();
+  saveBackupChecked();
+}
+
+export function renderTabs() {
+  const tb = $('tab-bar');
+  if (!tb) return;
+  tb.setAttribute('role', 'tablist');
+  tb.setAttribute('aria-label', 'Workspace tabs');
+
+  // Keyed on the workspace id, the way renderAll keys the diagram: reuse the
+  // element a workspace already has, create only what is new, retire only what
+  // is gone, and touch the order only where it differs.
+  const closable = Workspaces.length > 1;
+  const live = new Set();
+  let prev = null;
+  for (const ws of Workspaces) {
+    live.add(ws.id);
+    let el = tabEls.get(ws.id);
+    if (!el || (el.parentNode && el.parentNode !== tb) || el.classList.contains('is-leaving')) {
+      el = createTabElement(ws.id);
+      tabEls.set(ws.id, el);
+      if (tabsDrawn && !reducedMotion()) {
+        el.classList.add('is-entering');
+        // Measured again once it has its full width: the pass a frame after
+        // this render sees it part-way unfolded, so the strip read as fitting
+        // when it no longer did — no chevron, no fade, and the new tab cut off.
+        el.addEventListener?.('animationend', () => {
+          el.classList.remove('is-entering');
+          revealActiveTab(tb);
+          updateTabOverflowShadows(tb);
+        }, { once: true });
+      }
+    }
+    syncTabElement(el, ws, closable);
+    let at = prev ? prev.nextSibling : tb.firstChild;
+    while (at && at !== el && at.classList?.contains('is-leaving')) at = at.nextSibling;
+    if (at !== el) tb.insertBefore(el, at || null);
+    prev = el;
+  }
+  for (const [id, el] of tabEls) {
+    if (live.has(id)) continue;
+    tabEls.delete(id);
+    retireTabElement(el);
+  }
+  tabsDrawn = true;
+
+  // Double-clicking the strip's empty stretch opens a workspace, as it does in
+  // a browser. A tab's own double-click renames it and never reaches here.
+  tb.ondblclick = (e) => {
+    if (e.target === tb) createTab();
+  };
+  // A drop past the last tab is a drop, not a cancel.
+  tb.ondragover = (e) => { if (draggingTabId) e.preventDefault(); };
+  tb.ondrop = (e) => {
+    if (!draggingTabId) return;
+    e.preventDefault();
+    finishTabDropCommit();
+  };
+
+  // Enable horizontal scrolling with standard mouse wheel
+  tb.onwheel = (e) => {
+    if (e.deltaY !== 0) {
+      tb.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }
+  };
+
+  // The strip is hidden below 900px; the header carries a button naming the
+  // active workspace instead, and it is drawn from the same list.
+  syncMobileWorkspaceButton();
+
+  tb.onscroll = () => updateTabOverflowShadows(tb);
+  requestAnimationFrame(() => {
+    revealActiveTab(tb);
+    updateTabOverflowShadows(tb);
+    if (editingTabId) {
+      const input = tabEls.get(editingTabId)?.querySelector?.('.tab-rename-input');
+      if (input && document.activeElement !== input) {
+        input.focus();
+        input.select();
+      }
+    }
+  });
+
+  renderTabOverflowMenu();
+  updateSaveIndicator();
+}
+
+// The Save button carries the same unsaved marker as the tabs. Driven from
+// renderTabs, which is already the one place dirty state changes are drawn.
+//
+// `saving` and `error` are both owned by the save itself and must survive this:
+// renderTabs runs from ~18 call sites, so recomputing the state here from
+// `dirty` alone used to wipe a "Save failed" the moment any unrelated tab
+// activity redrew — reporting a workspace as stored when it was not.
+// Whatever started those states is responsible for ending them.
+export function updateSaveIndicator() {
+  const btn = $('save-now-btn');
+  if (!btn) return;
+  if (saveState === 'saving' || saveState === 'error') return;
+  setSaveState(Workspaces.some(w => w.dirty) ? 'unsaved' : 'saved');
+}
+
+// Past this many workspaces the list gets a filter at its head: hunting by
+// eye down a scrolling list is where a list stops being faster than typing.
+export const TAB_FILTER_AT = 8;
+let tabOverflowQuery = '';
+
+function tabMatchesQuery(ws, q) {
+  if (!q) return true;
+  const machine = getWorkspaceMachine(ws);
+  const hay = `${ws.name || ''} ${machine || ''} ${MachineTypes[machine]?.fullName || ''}`.toLowerCase();
+  return hay.includes(q);
+}
+
+// Shows and hides rows in place rather than redrawing, so the filter keeps
+// its focus and caret as it is typed into.
+export function filterTabOverflowMenu(query = tabOverflowQuery) {
+  const menu = $('tab-overflow-menu');
+  tabOverflowQuery = String(query || '');
+  if (!menu?.querySelectorAll) return;
+  const q = tabOverflowQuery.trim().toLowerCase();
+  let shown = 0;
+  menu.querySelectorAll('.tab-overflow-item').forEach(row => {
+    const ws = Workspaces.find(w => w.id === row.dataset.tabId);
+    const hit = !!ws && tabMatchesQuery(ws, q);
+    row.hidden = !hit;
+    if (hit) shown++;
+  });
+  const empty = menu.querySelector('.tab-overflow-empty');
+  if (empty) empty.hidden = shown > 0;
+}
+
+function wireTabOverflowFilter(menu, refocus) {
+  const input = menu.querySelector?.('.tab-overflow-filter');
+  if (!input) return;
+  input.value = tabOverflowQuery;
+  // The document's click listener closes this menu; a click into its own
+  // filter is not an outside click.
+  input.onclick = e => e.stopPropagation();
+  input.oninput = () => filterTabOverflowMenu(input.value);
+  input.onkeydown = e => {
+    const visible = () => [...menu.querySelectorAll('.tab-overflow-item')].filter(r => !r.hidden);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const first = visible()[0];
+      if (first) { first.setAttribute('tabindex', '0'); first.focus(); }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const first = visible()[0];
+      if (first) switchTabFromOverflow(first.dataset.tabId);
+    } else if (e.key === 'Escape') {
+      // The page's shortcut handler ignores keys typed into a field, so the
+      // filter answers Escape itself: first it clears, then it closes.
+      e.preventDefault();
+      e.stopPropagation();
+      if (input.value) { input.value = ''; filterTabOverflowMenu(''); }
+      else { hideTabOverflowMenu(); $('tab-overflow-btn')?.focus(); }
+    }
+  };
+  filterTabOverflowMenu(tabOverflowQuery);
+  if (refocus) {
+    input.focus();
+    const end = input.value.length;
+    input.setSelectionRange?.(end, end);
+  }
+}
+
+export function renderTabOverflowMenu() {
+  const menu = $('tab-overflow-menu');
+  if (!menu || menu.style.display !== 'block') return;
+  const filtering = Workspaces.length >= TAB_FILTER_AT;
+  const refocus = filtering && document.activeElement?.classList?.contains('tab-overflow-filter');
+  if (!filtering) tabOverflowQuery = '';
+  menu.innerHTML = (filtering ? `
+    <div class="tab-overflow-search">
+      <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg>
+      <input class="tab-overflow-filter" type="text" placeholder="Find a workspace" aria-label="Find a workspace" autocomplete="off" spellcheck="false">
+    </div>` : '') + Workspaces.map(ws => {
+    const isActive = ws.id === activeWorkspaceId;
+    const safeName = escapeTabText(ws.name || 'Workspace');
+    const machine = getWorkspaceMachine(ws);
+    const type = machine && MachineTypes[machine] ? machine : '';
+    return `
+    <div class="tab-overflow-item ${isActive ? 'active' : ''}" data-tab-id="${ws.id}" role="option" aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? '0' : '-1'}" style="--item-accent:${getWorkspaceAccent(ws)}" data-action="activate->ui.switchTabFromOverflow">
+      <span class="tab-overflow-item-dot" aria-hidden="true"></span>
+      <span class="tab-overflow-item-name" data-tip="${safeName}">${safeName}</span>
+      ${type ? `<span class="tab-type" aria-hidden="true">${escapeTabText(type)}</span>` : ''}
+      ${ws.dirty ? '<span class="tab-overflow-item-dirty" aria-hidden="true" data-tip="Unsaved changes"></span>' : ''}
+      ${Workspaces.length > 1 ? `<button class="tab-overflow-item-close" type="button" aria-label="Close ${safeName}" data-action="ui.closeTabFromOverflow" data-tab-id="${ws.id}"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button>` : ''}
+    </div>
+  `;
+  }).join('') + (filtering ? '<div class="tab-overflow-empty" hidden>No workspace matches</div>' : '') + `
+    <div class="tab-overflow-new" role="option" aria-selected="false" tabindex="-1"
+         data-action="activate->ui.createTabFromOverflow">
+      <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></svg>
+      New workspace
+    </div>
+  `;
+  wireTabOverflowFilter(menu, refocus);
+}
+
+export function switchTabFromOverflow(id) {
+  hideTabOverflowMenu();
+  switchTab(id);
+  requestAnimationFrame(() => {
+    revealActiveTab();
+  });
+}
+
+// `anchor` is the control that opened the menu — see toggleSaveMenu.
+export function toggleTabOverflowMenu(e, anchor = e.currentTarget) {
+  e.stopPropagation();
+  const menu = $('tab-overflow-menu');
+  if (!menu) return;
+  if (menu.style.display === 'block') { hideTabOverflowMenu(); return; }
+  hideTabContextMenu();
+  hideContextMenu();
+  hideCanvasContextMenu();
+  const btn = $('tab-overflow-btn');
+  const r = anchor.getBoundingClientRect();
+  // Render first so the menu has its real height/width before we place it.
+  menu.style.display = 'block';
+  menu.style.visibility = 'hidden';
+  if (btn) btn.setAttribute('aria-expanded', 'true');
+  const wsBtn = $('mobile-ws-btn');
+  if (wsBtn) wsBtn.setAttribute('aria-expanded', 'true');
+  tabOverflowQuery = '';
+  renderTabOverflowMenu();
+  const m = menu.getBoundingClientRect();
+  // Right-align the menu to the button, clamped inside the viewport, and
+  // flip it above the button when there isn't room below.
+  menu.style.left = Math.max(8, Math.min(r.right - m.width, innerWidth - m.width - 8)) + 'px';
+  const below = r.bottom + 6;
+  menu.style.top = (below + m.height > innerHeight - 8
+    ? Math.max(8, r.top - 6 - m.height)
+    : below) + 'px';
+  menu.style.visibility = '';
+  menu.querySelector?.('.tab-overflow-filter')?.focus();
+}
+
+export function hideTabOverflowMenu() {
+  const menu = $('tab-overflow-menu');
+  if (menu) menu.style.display = 'none';
+  const btn = $('tab-overflow-btn');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+  // The mobile workspace button opens this same listbox, so its expanded
+  // state moves with the menu's — a static answer is a lie half the time.
+  const wsBtn = $('mobile-ws-btn');
+  if (wsBtn) wsBtn.setAttribute('aria-expanded', 'false');
+}
+
+document.addEventListener('click', () => hideTabOverflowMenu());
+
+// Menu rows are divs with onclick handlers — onclick is not a keyboard
+// interface. Rather than teach every builder to emit its own keydown, one
+// delegated listener answers for any menu row that carries a tabindex:
+// Enter and Space activate the row, and the arrow keys move between the
+// rows of its menu the way a real menu does (which is what role="menu" and
+// role="listbox" promise a keyboard user in the first place). The roving
+// tabindex follows the focus: the row that has it keeps `tabindex="0"`,
+// the rest answer `-1`, so Tab itself leaves the menu rather than walking
+// every row.
+const MENU_ROW_SELECTOR = '.ctx-i, .tab-overflow-item, .model-item, .tab-overflow-new';
+document.addEventListener('keydown', e => {
+  const row = e.target.closest && e.target.closest(MENU_ROW_SELECTOR);
+  if (!row) return;
+  const key = e.key;
+  if (key === 'Enter' || key === ' ') {
+    e.preventDefault();
+    if (row.classList.contains('disabled') || row.getAttribute('aria-disabled') === 'true') return;
+    row.click();
+    return;
+  }
+  if (key !== 'ArrowDown' && key !== 'ArrowUp') return;
+  e.preventDefault();
+  const rows = Array.from(row.parentElement.children).filter(el =>
+    el.matches && el.matches(MENU_ROW_SELECTOR) && el.offsetParent !== null);
+  const idx = rows.indexOf(row);
+  const next = key === 'ArrowDown'
+    ? rows[(idx + 1) % rows.length]
+    : rows[(idx - 1 + rows.length) % rows.length];
+  if (!next || !next.focus) return;
+  row.setAttribute('tabindex', '-1');
+  next.setAttribute('tabindex', '0');
+  next.focus();
+});
+
+// One dismissal path for every popover the header can open, so Escape and a
+// window blur do for all of them what the outside click already does. The
+// More menu, the tab-overflow listbox, the save menu and the model picker
+// each own a close function; this is the single place they are called
+// together, which is what keeps the next header menu from shipping with the
+// same Escape gap the four so far have.
+export function dismissHeaderMenus() {
+  let closed = false;
+  const more = $('hdr-more-menu');
+  if (more && more.classList.contains('open')) { hideMoreMenu(); closed = true; }
+  const tabs = $('tab-overflow-menu');
+  if (tabs && tabs.style.display === 'block') { hideTabOverflowMenu(); closed = true; }
+  const save = $('save-menu');
+  if (save && save.style.display === 'block') { hideSaveMenu(); closed = true; }
+  const model = $('model-picker-container');
+  if (model && model.classList.contains('open')) { closeModelPicker(); closed = true; }
+  return closed;
+}
+
+// Losing the window — alt-tab, a dialog from the OS, another monitor — should
+// not leave a popover parked open under wherever the pointer went.
+window.addEventListener('blur', () => dismissHeaderMenus());
+
+/**
+ * Write the live workspace back into its own tab record, on the way to
+ * activating or closing a different one.
+ *
+ * The trim is what stops every background tab from retaining a full undo
+ * stack — see trimStowedHistory in js/core/history.js. It happens here rather than
+ * inside exportWorkspaceState() because that function has three other kinds
+ * of caller (StateMate's stash/restore above all) which must round-trip a
+ * workspace exactly, undo stack included.
+ */
+function stowActiveWorkspace() {
+  if (!activeWorkspaceId) return null;
+  const act = Workspaces.find(w => w.id === activeWorkspaceId);
+  if (!act) return null;
+  act.data = trimStowedHistory(exportWorkspaceState());
+  return act;
+}
+
+export function createTab(name) {
+  const body = document.querySelector('.app-body');
+  if (body) {
+    body.classList.remove('tab-switching');
+    void body.offsetWidth;
+    body.classList.add('tab-switching');
+  }
+
+  stowActiveWorkspace();
+
+  let wsName = name || `Workspace ${Workspaces.length + 1}`;
+  const newWs = {
+    id: 'ws_' + Date.now() + '_' + Math.random().toString(36).substring(2,9),
+    name: wsName,
+    dirty: false,
+    data: blankWorkspaceData()
+  };
+  Workspaces.push(newWs);
+  editingTabId = null;
+  
+  // A blank workspace has nothing unsaved; see withoutDirtying in js/core/history.js.
+  withoutDirtying(() => {
+    importWorkspaceState(newWs.data);
+    setActiveWorkspaceId(newWs.id);
+
+    App.selectedStates.clear();
+    App.selectedTransitions.clear();
+    resetSim();
+    applyMachineSwitch(App.machine);
+  
+    renderTabs();
+    renderAll();
+    applyCamera();
+    updateLPanel();
+    updateRPanel();
+    // Each tab carries its own config, so activating one can bring different
+    // canvas settings with it — the same reason R gets republished here.
+    refreshQuickSettings();
+    // The speed dial too: it is drawn once at boot, before loadBackup replaces
+    // the config it reads, and the restore lands here.
+    syncSpeedControl();
+    // And its own description, and its own grammar. importWorkspaceState has
+    // already written App.meta and App.grammar; this is what redraws the info
+    // card and the Grammar workbench from them, so a tab's card does not linger
+    // over the next tab's diagram — and the editor does not go on showing the
+    // previous tab's rules, which the next keystroke would then write into this
+    // one.
+    emit(Change.META, Change.GRAMMAR, Change.EXERCISE, Change.LEXER);
+    // And its own scope and its own blocks. Both paths here call renderAll()
+    // directly and never `emit(Change.GRAPH)`, so every GRAPH subscriber that is
+    // not renderAll itself is skipped — which is why the breadcrumb vanished on a
+    // reload: the boot restore comes through here, App.scope was restored
+    // correctly, and nothing ever told the bar to draw it. Exactly the rule the
+    // comment above states for Change.META.
+    syncScopeBar();
+    updateBlockList();
+  });
+  saveBackupChecked();
+}
+
+export function switchTab(id) {
+  if (id === activeWorkspaceId) return;
+  
+  const body = document.querySelector('.app-body');
+  if (body) {
+    body.classList.remove('tab-switching');
+    void body.offsetWidth; // trigger reflow
+    body.classList.add('tab-switching');
+  }
+
+  stowActiveWorkspace();
+
+  // Rehydrating is not editing; see withoutDirtying in js/core/history.js.
+  withoutDirtying(() => {
+    setActiveWorkspaceId(id);
+    editingTabId = null;
+    const curr = Workspaces.find(w => w.id === id);
+    if (curr && curr.data) {
+      importWorkspaceState(curr.data);
+    }
+  
+    App.selectedStates.clear();
+    App.selectedTransitions.clear();
+    resetSim();
+    // Re-bind toolbar UI to match machine switch
+    applyMachineSwitch(App.machine);
+
+    renderTabs();
+    renderAll();
+    applyCamera();
+    updateLPanel();
+    updateRPanel();
+    // Each tab carries its own config, so activating one can bring different
+    // canvas settings with it — the same reason R gets republished here.
+    refreshQuickSettings();
+    // The speed dial too: it is drawn once at boot, before loadBackup replaces
+    // the config it reads, and the restore lands here.
+    syncSpeedControl();
+    // And its own description, and its own grammar. importWorkspaceState has
+    // already written App.meta and App.grammar; this is what redraws the info
+    // card and the Grammar workbench from them, so a tab's card does not linger
+    // over the next tab's diagram — and the editor does not go on showing the
+    // previous tab's rules, which the next keystroke would then write into this
+    // one.
+    emit(Change.META, Change.GRAMMAR, Change.EXERCISE, Change.LEXER);
+    // And its own scope and its own blocks. Both paths here call renderAll()
+    // directly and never `emit(Change.GRAPH)`, so every GRAPH subscriber that is
+    // not renderAll itself is skipped — which is why the breadcrumb vanished on a
+    // reload: the boot restore comes through here, App.scope was restored
+    // correctly, and nothing ever told the bar to draw it. Exactly the rule the
+    // comment above states for Change.META.
+    syncScopeBar();
+    updateBlockList();
+  });
+  saveBackupChecked();
+}
+
+// ── Unsaved-changes guard ─────────────────────────────────────────
+// Closing a tab is undoable via the toast, but the undo stack is capped and
+// in-memory, so a dirty tab still deserves an explicit prompt. Every close
+// path routes through here: it resolves which of the tabs being closed are
+// dirty, and only then runs `proceed`.
+//
+// `proceed` is invoked for Save and Discard alike — Save just persists first.
+// Cancel simply never calls it, leaving the workspace untouched.
+export function confirmDiscardingTabs(ids, proceed) {
+  const dirty = ids
+    .map(id => Workspaces.find(w => w.id === id))
+    .filter(ws => ws && ws.dirty);
+
+  if (!dirty.length) { proceed(); return; }
+
+  const many = dirty.length > 1;
+  const msgEl = $('unsaved-msg');
+  if (msgEl) {
+    msgEl.textContent = many
+      ? `${dirty.length} tabs have unsaved changes. Save them before closing?`
+      : `"${dirty[0].name}" has unsaved changes. Save before closing?`;
+  }
+
+  const saveBtn = $('unsaved-save-btn');
+  const discardBtn = $('unsaved-discard-btn');
+  if (saveBtn) {
+    saveBtn.textContent = many ? 'Save all' : 'Save';
+    saveBtn.onclick = async () => {
+      // A failed save must not close the tab — that would destroy the very
+      // work the prompt exists to protect. saveWorkspaceById reports the
+      // failure itself; leaving the dialog open lets the user retry or
+      // deliberately discard.
+      saveBtn.disabled = true;
+      let allSaved = true;
+      for (const ws of dirty) {
+        if (!await saveWorkspaceById(ws.id)) allSaved = false;
+      }
+      saveBtn.disabled = false;
+      if (!allSaved) return;
+      closeModal('unsaved-modal');
+      proceed();
+    };
+  }
+  if (discardBtn) {
+    discardBtn.textContent = many ? 'Discard all' : 'Discard';
+    discardBtn.onclick = () => { closeModal('unsaved-modal'); proceed(); };
+  }
+  showOverlay('unsaved-modal');
+}
+
+// Enter activates the primary (Save) action, matching the other dialogs.
+registerModal('unsaved-modal', {
+  submit: () => { const b = $('unsaved-save-btn'); if (b && b.onclick) b.onclick(); }
+});
+
+export function closeTab(id, e) {
+  if (e) { e.stopPropagation(); e.preventDefault(); }
+  if (Workspaces.length <= 1) return;
+  hideTabContextMenu();
+  confirmDiscardingTabs([id], () => performCloseTab(id));
+}
+
+export function performCloseTab(id) {
+  if (Workspaces.length <= 1) return;
+  if (editingTabId === id) editingTabId = null;
+
+  const idx = Workspaces.findIndex(w => w.id === id);
+  if (idx === -1) return;
+
+  // Keep the active workspace's in-flight edits in its snapshot before it's
+  // possibly the one being removed, so a reopen restores exactly what was on
+  // screen rather than whatever was last saved on a prior switch.
+  stowActiveWorkspace();
+
+  const [removed] = Workspaces.splice(idx, 1);
+  recordClosedWorkspace(removed, idx);
+  showTabUndoToast(removed.name);
+
+  if (id === activeWorkspaceId) {
+    setActiveWorkspaceId(null);
+    let nextIdx = Math.max(0, idx - 1);
+    switchTab(Workspaces[nextIdx].id);
+  } else {
+    renderTabs();
+    saveBackupChecked();
+  }
+}
+
+export function closeOtherTabs(id) {
+  hideTabContextMenu();
+  if (Workspaces.length <= 1 || !Workspaces.find(w => w.id === id)) return;
+  confirmDiscardingTabs(
+    Workspaces.filter(w => w.id !== id).map(w => w.id),
+    () => performCloseOtherTabs(id)
+  );
+}
+
+export function performCloseOtherTabs(id) {
+  if (Workspaces.length <= 1 || !Workspaces.find(w => w.id === id)) return;
+  stowActiveWorkspace();
+  const closed = Workspaces.map((w, i) => ({ w, i })).filter(({ w }) => w.id !== id);
+  closed.forEach(({ w, i }) => recordClosedWorkspace(w, i));
+  setWorkspaces(Workspaces.filter(w => w.id === id));
+  if (editingTabId && editingTabId !== id) editingTabId = null;
+  showTabUndoToast(closed.length === 1 ? closed[0].w.name : `${closed.length} tabs`, closed.length);
+  if (activeWorkspaceId !== id) {
+    setActiveWorkspaceId(null);
+    switchTab(id);
+  } else {
+    renderTabs();
+    saveBackupChecked();
+  }
+}
+
+export function closeTabsToRight(id) {
+  hideTabContextMenu();
+  const idx = Workspaces.findIndex(w => w.id === id);
+  if (idx === -1 || idx >= Workspaces.length - 1) return;
+  confirmDiscardingTabs(
+    Workspaces.slice(idx + 1).map(w => w.id),
+    () => performCloseTabsToRight(id)
+  );
+}
+
+export function performCloseTabsToRight(id) {
+  const idx = Workspaces.findIndex(w => w.id === id);
+  if (idx === -1 || idx >= Workspaces.length - 1) return;
+  stowActiveWorkspace();
+  const closed = Workspaces.slice(idx + 1).map((w, off) => ({ w, i: idx + 1 + off }));
+  closed.forEach(({ w, i }) => recordClosedWorkspace(w, i));
+  const closingActive = closed.some(({ w }) => w.id === activeWorkspaceId);
+  setWorkspaces(Workspaces.slice(0, idx + 1));
+  if (editingTabId && !Workspaces.find(w => w.id === editingTabId)) editingTabId = null;
+  showTabUndoToast(closed.length === 1 ? closed[0].w.name : `${closed.length} tabs`, closed.length);
+  if (closingActive) {
+    setActiveWorkspaceId(null);
+    switchTab(id);
+  } else {
+    renderTabs();
+    saveBackupChecked();
+  }
+}
+
+export function closeAllTabs() {
+  hideTabContextMenu();
+  if (!Workspaces.length) return;
+  confirmDiscardingTabs(Workspaces.map(w => w.id), performCloseAllTabs);
+}
+
+export function performCloseAllTabs() {
+  if (!Workspaces.length) return;
+  stowActiveWorkspace();
+  const closed = Workspaces.map((w, i) => ({ w, i }));
+  closed.forEach(({ w, i }) => recordClosedWorkspace(w, i));
+  setWorkspaces([]);
+  setActiveWorkspaceId(null);
+  editingTabId = null;
+  createTab();
+  showTabUndoToast(closed.length === 1 ? closed[0].w.name : `${closed.length} tabs`, closed.length);
+}
+
+export function recordClosedWorkspace(workspace, index) {
+  closedWorkspaces.push({ workspace, index });
+  if (closedWorkspaces.length > 15) closedWorkspaces.shift();
+}
+
+export function reopenClosedTab() {
+  if (!closedWorkspaces.length) { showStatus('No recently closed tabs'); return; }
+  const { workspace, index } = closedWorkspaces.pop();
+  if (Workspaces.find(w => w.id === workspace.id)) { reopenClosedTab(); return; }
+  const insertAt = Math.max(0, Math.min(index, Workspaces.length));
+  Workspaces.splice(insertAt, 0, workspace);
+  hideTabUndoToast();
+  switchTab(workspace.id);
+  showStatus(`Reopened "${workspace.name}"`);
+}
+
+export function showTabUndoToast(label, count) {
+  const toast = $('tab-undo-toast');
+  if (!toast) return;
+  const msg = $('tab-undo-msg');
+  if (msg) {
+    msg.textContent = count && count > 1 ? `Closed ${count} tabs` : `Closed "${label}"`;
+  }
+  toast.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => toast.classList.remove('show'), 6000);
+}
+
+export function hideTabUndoToast() {
+  const toast = $('tab-undo-toast');
+  if (!toast) return;
+  toast.classList.remove('show');
+  clearTimeout(toast._t);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  TAB CONTEXT MENU
+// ══════════════════════════════════════════════════════════════════
+export let tabCtxId = null;
+
+export function showTabContextMenu(id, e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const m = $('tab-ctx-menu');
+  if (!m) return;
+  hideContextMenu();
+  hideCanvasContextMenu();
+  tabCtxId = id;
+  const idx = Workspaces.findIndex(w => w.id === id);
+  const closeBtn = $('tab-ctx-close');
+  const othersBtn = $('tab-ctx-close-others');
+  const rightBtn = $('tab-ctx-close-right');
+  if (closeBtn) closeBtn.classList.toggle('disabled', Workspaces.length <= 1);
+  if (othersBtn) othersBtn.classList.toggle('disabled', Workspaces.length <= 1);
+  if (rightBtn) rightBtn.classList.toggle('disabled', idx === -1 || idx >= Workspaces.length - 1);
+  m.style.display = 'block';
+  const maxX = 220, maxY = 260;
+  m.style.left = Math.max(8, Math.min(e.clientX, innerWidth - maxX)) + 'px';
+  m.style.top = Math.max(8, Math.min(e.clientY, innerHeight - maxY)) + 'px';
+}
+
+export function hideTabContextMenu() {
+  const m = $('tab-ctx-menu');
+  if (m) m.style.display = 'none';
+  tabCtxId = null;
+}
+
+export function tabCtxRename() {
+  if (!tabCtxId) return;
+  const id = tabCtxId;
+  hideTabContextMenu();
+  beginRenameTab(id);
+}
+
+export function tabCtxDuplicate() {
+  if (!tabCtxId) return;
+  const src = Workspaces.find(w => w.id === tabCtxId);
+  hideTabContextMenu();
+  if (!src) return;
+  if (src.id === activeWorkspaceId) src.data = exportWorkspaceState();
+  const srcIdx = Workspaces.findIndex(w => w.id === src.id);
+  const copy = {
+    id: 'ws_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
+    name: `${src.name} copy`,
+    dirty: true,
+    data: JSON.parse(JSON.stringify(src.data)),
+  };
+  Workspaces.splice(srcIdx + 1, 0, copy);
+  switchTab(copy.id);
+}
+
+export function tabCtxClose() {
+  if (!tabCtxId) return;
+  const id = tabCtxId;
+  closeTab(id);
+}
+
+export function tabCtxCloseOthers() {
+  if (!tabCtxId) return;
+  closeOtherTabs(tabCtxId);
+}
+
+export function tabCtxCloseRight() {
+  if (!tabCtxId) return;
+  closeTabsToRight(tabCtxId);
+}
+
+export function tabCtxCloseAll() {
+  closeAllTabs();
+}
+
+document.addEventListener('click', () => hideTabContextMenu());
+
+export function initTabs() {
+  if (Workspaces.length === 0) {
+    Workspaces.push({
+      id: 'ws_initial',
+      name: 'Workspace 1',
+      dirty: false,
+      data: exportWorkspaceState()
+    });
+    setActiveWorkspaceId('ws_initial');
+  }
+  Workspaces.forEach((ws, idx) => {
+    if (!ws.name) ws.name = `Workspace ${idx + 1}`;
+    ws.dirty = !!ws.dirty;
+  });
+  if (!Workspaces.find(w => w.id === activeWorkspaceId)) setActiveWorkspaceId(Workspaces[0].id);
+  editingTabId = null;
+  renderTabs();
+}
+
+window.addEventListener('resize', () => updateTabOverflowShadows());
+
+// ══════════════════════════════════════════════════════════════════
+//  DELETING, AND CUTTING
+//
+//  Cut is copy plus delete, and the only thing that makes it more than two
+//  keystrokes the reader could press themselves is that it has to be *one*
+//  edit: one snapshot, one Ctrl+Z. So the removal is a function rather than
+//  the body of the Delete branch, and both callers wrap it the same way.
+// ══════════════════════════════════════════════════════════════════
+
+/** Anything on the canvas selected, of any of the four kinds. */
+function hasSelection() {
+  return !!(App.selectedStates.size || App.selectedTransitions.size
+    || App.selectedNotes.size || App.selectedDividers.size);
+}
+
+/**
+ * Remove the selection. Takes no undo point and announces nothing — the caller
+ * owns both, so a cut costs one history entry rather than two.
+ */
+function deleteSelection() {
+  const removedTransIds = new Set(App.selectedTransitions);
+  App.transitions.forEach(t => {
+    if (App.selectedStates.has(t.from) || App.selectedStates.has(t.to)) removedTransIds.add(t.id);
+  });
+  // A selected *block* is one id standing for a whole subtree, so naming
+  // the selection alone named the box and not one state inside it: a note
+  // out here anchored into the block was never seen by the prune and
+  // settled at its stored offset instead of holding where it was drawn.
+  const removedStateIds = new Set(App.selectedStates);
+  App.selectedStates.forEach(id => {
+    if (!getBlock(id)) return;
+    const gone = blockRemovalIds(id);
+    gone.states.forEach(sid => removedStateIds.add(sid));
+    gone.transitions.forEach(tid => removedTransIds.add(tid));
+  });
+  pruneNoteAnchorsExcluding([...removedStateIds], [...removedTransIds]);
+  App.selectedStates.forEach(id => {
+    // A selected block id deletes the whole subtree behind the box — every
+    // state at every depth, and the records that grouped them. The selection
+    // model is deliberately one set for both kinds (a block is a node you
+    // click, drag and delete), so this is the one branch that has to know.
+    if (getBlock(id)) { removeBlock(id); return; }
+    App.states = App.states.filter(s => s.id !== id);
+    App.transitions = App.transitions.filter(t => t.from !== id && t.to !== id);
+    if (App.startId === id) App.startId = null;
+    App.accepts.delete(id);
+  });
+  App.selectedTransitions.forEach(tid => {
+    App.transitions = App.transitions.filter(t => t.id !== tid);
+  });
+  // Notes and dividers go in the same history step as the states and
+  // edges beside them — one selection, one Delete, one undo.
+  removeNotes([...App.selectedNotes]);
+  removeDividers([...App.selectedDividers]);
+  App.selectedStates.clear();
+  App.selectedTransitions.clear();
+  App.selectedNotes.clear();
+  App.selectedDividers.clear();
+}
+
+/** The Delete key: one undo point, the removal, one announcement. */
+function commitDeleteSelection() {
+  snapshot();
+  deleteSelection();
+  emit(Change.GRAPH);
+}
+
+/**
+ * Ctrl+X. The copy runs first and against the live machine, because
+ * `outlineBlock` reads a selected block's subtree straight off `App.states` —
+ * delete first and there is nothing left to outline.
+ */
+export function cutSelection() {
+  if (!hasSelection()) { showStatus('Nothing to cut'); return; }
+  copySelection();
+  commitDeleteSelection();
+}
+
+/**
+ * The right-clicked node, as a selection.
+ *
+ * A right-click sets `App.ctxId` and deliberately does not disturb the
+ * selection, so the menu has two cases and the conventional answer to both:
+ * a node already in the selection means the whole selection, and one that is
+ * not means that node alone. Cutting five states because the reader
+ * right-clicked a sixth would be the surprising half of that.
+ */
+function ctxTargetSelection() {
+  const id = App.ctxId;
+  if (!id) return App.selectedStates.size > 0;
+  if (!App.selectedStates.has(id)) {
+    clearSelection();
+    App.selectedStates.add(id);
+    syncSelectionClasses();
+  }
+  return true;
+}
+
+export function ctxCopy() {
+  const ok = ctxTargetSelection();
+  hideContextMenu();
+  if (ok) copySelection();
+}
+
+export function ctxCut() {
+  const ok = ctxTargetSelection();
+  hideContextMenu();
+  if (ok) cutSelection();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  THE SYSTEM CLIPBOARD
+// ══════════════════════════════════════════════════════════════════
+// Ctrl+V on the canvas pastes one of two things: a machine on the system
+// clipboard — a share link, a saved file's JSON, or a 1RB1LC_1RC1RB_… string;
+// applyPastedText decides — or else the states copied inside the app. The text is read from the `paste` event,
+// the one way a page gets it with no permission prompt, so the keydown only
+// arms the paste and leaves the browser's default alone to fire the event.
+//
+// The event goes to the focused element or the body, and every browser fires
+// it there — except where one does not, which is what the timer is for: the
+// event arrives in the same task as the keydown, so a timer that runs first
+// means there is no event coming, and the in-app paste happens anyway.
+let armedPaste = null;
+
+function armCanvasPaste() {
+  clearTimeout(armedPaste);
+  armedPaste = setTimeout(() => {
+    armedPaste = null;
+    pasteClipboard(App._lastCanvasWorldPt || null);
+  }, 0);
+}
+
+document.addEventListener('paste', e => {
+  // Only a paste the canvas shortcut armed: the keydown's own guards (a field
+  // with the caret, a modal, StateMate) already decided whose paste this is.
+  if (armedPaste === null) return;
+  clearTimeout(armedPaste);
+  armedPaste = null;
+  e.preventDefault();
+  const text = e.clipboardData?.getData('text/plain') || '';
+  if (!applyPastedText(text)) pasteClipboard(App._lastCanvasWorldPt || null);
+});
+
+// Edit ▸ Paste in the desktop menu is a click, not a keystroke, so there is no
+// paste event to read — it asks for the text instead, which Electron grants.
+export async function pasteFromSystemClipboard() {
+  let text = '';
+  try { text = await navigator.clipboard.readText(); } catch { /* no access: in-app paste */ }
+  if (!applyPastedText(text)) pasteClipboard(App._lastCanvasWorldPt || null);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  KEYBOARD SHORTCUTS
+// ══════════════════════════════════════════════════════════════════
+
+// The tool window is a dialog, and the canvas is out of sight under it — so a
+// key that edits the diagram, switches its tool or steps its run must not
+// reach it. Delete used to remove the selected states from behind the
+// Library. What is left live is the window's own (Escape, the view digits,
+// the UTM simulator's keys in Algorithms) and the document's (save, reopen a
+// closed tab).
+function auxWindowKey(e) {
+  if (e.ctrlKey || e.metaKey) {
+    return e.key === 's' || (e.key === 'S' && e.shiftKey) || (e.shiftKey && (e.key === 't' || e.key === 'T'));
+  }
+  if (e.key === 'Escape' || e.key === '1') return true;
+  if (AUX_VIEWS.some(v => auxViewKey(v) === e.key)) return true;
+  // Not on a focused control: Space and Enter press a button, and the arrows
+  // walk the tab strip.
+  if (App.view === 'algo' && App.currentAlgo === 'utm'
+    && (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    return !(e.target.closest && e.target.closest('button, a, [role="tab"]'));
+  }
+  return false;
+}
+
+document.addEventListener('keydown', e => {
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  // A modal is blocking, so canvas shortcuts must not reach through it —
+  // bare keys here would otherwise still switch tools, toggle fullscreen or
+  // step the simulation underneath the dialog. Escape and Enter are handled
+  // by modal.js, which sees them first from its capture-phase listener.
+  if (anyModalOpen()) return;
+  // A panel is not blocking — the canvas beside StateMate is live, and these
+  // shortcuts are how it is driven. But a key pressed with the focus still
+  // inside the panel belongs to the panel: tabbing to a transcript button and
+  // pressing "s" must not switch the canvas tool underneath it.
+  if (e.target.closest && e.target.closest('.sm-panel')) return;
+  // Same reasoning for the info card, which is a floating panel over a live
+  // canvas rather than a dialog. Its editor is mostly text fields, already
+  // covered by the tag check above — but its buttons are not, and Delete on a
+  // focused "remove this word" button must not delete the selected state.
+  if (e.target.closest && e.target.closest('.example-card')) return;
+  // Same reasoning once more for menu rows: they are divs, so the tag check
+  // above does not filter them, and pressing "s" while arrowing through a
+  // header menu must not switch the canvas tool underneath it.
+  if (e.target.closest && e.target.closest('.ctx-i, .model-item, .tab-overflow-item')) return;
+  if (handleWorkspaceShortcut(e)) return;
+  if (AUX_VIEWS.includes(App.view) && !auxWindowKey(e)) return;
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === 'z') { e.preventDefault(); undo(); }
+    if (e.key === 'y' || e.key === 'Z') { e.preventDefault(); redo(); }
+    // Ctrl+S and the header's Save button are one act — see ONE SAVE in
+    // js/io/persistence.js. On the desktop that writes the file this workspace
+    // came from; on the website there is no file, so it is the workspace save,
+    // and Ctrl+Shift+S is what produces a file.
+    if (e.key === 's') {
+      e.preventDefault();
+      void saveNow();
+    }
+    if (e.key === 'S' && e.shiftKey) { e.preventDefault(); void saveDocumentAs(); }
+    if (e.key === 'a' || e.key === 'A') { e.preventDefault(); if (App.view === 'build') selectAllStates(); }
+    if (e.key === 'c' || e.key === 'C') { if (App.view === 'build') copySelection(); }
+    if (e.key === 'x' || e.key === 'X') { if (App.view === 'build') { e.preventDefault(); cutSelection(); } }
+    // Not prevented: the browser's own paste is what hands over the system
+    // clipboard, without a permission prompt — see THE SYSTEM CLIPBOARD below.
+    if (e.key === 'v' || e.key === 'V') { if (App.view === 'build') armCanvasPaste(); }
+    if (e.key === 'd' || e.key === 'D') { if (App.view === 'build') { e.preventDefault(); duplicateSelection(); } }
+    if (e.shiftKey && (e.key === 't' || e.key === 'T')) { e.preventDefault(); reopenClosedTab(); }
+    // StateMate has no header button of its own — that slot is the wizard's —
+    // so this and the panel tab are its two front doors. With a selection
+    // live, this carries it in as the subject of the prompt, which is the
+    // question people actually have in front of a diagram.
+    if (e.key === 'k' || e.key === 'K') {
+      e.preventDefault();
+      if (App.view === 'build' && (App.selectedStates.size || App.selectedTransitions.size)) {
+        askStateMateAboutSelection();
+      } else {
+        openStateMate();
+      }
+    }
+    return;
+  }
+  if (e.key === 'v' || e.key === 'V') setTool('move');
+  if (e.key === 's' || e.key === 'S') setTool('state');
+  if (e.key === 't' || e.key === 'T') setTool('trans');
+  if (e.key === 'l' || e.key === 'L') setTool('divider');
+  if (e.key === 'r' || e.key === 'R') setTool('rect');
+  if (e.key === 'h' || e.key === 'H') { e.preventDefault(); fitToScreen(); }
+  if (e.key === '=' || e.key === '+') { e.preventDefault(); zoomIn(); }
+  if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut(); }
+  if (e.key === 'd' || e.key === 'D') setTool('del');
+  // Bare X previously cleared the entire canvas with no confirmation-free
+  // undo path — require Shift so a stray keypress can't wipe the workspace.
+  if ((e.key === 'x' || e.key === 'X') && e.shiftKey) clearAll();
+  if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); }
+  // The sparkle, as a key. It opens or restores — openStateMate is never a
+  // no-op — which is the other end of Escape putting the console away.
+  if (e.key === '`') { e.preventDefault(); openStateMate(); }
+  // The header's other entry point: build a machine by answering questions,
+  // or edit the one on the canvas the same way. Which of the two it is comes
+  // off the canvas, here as everywhere else.
+  if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openMachineWizard(); }
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (hasSelection()) { e.preventDefault(); commitDeleteSelection(); }
+  }
+  if (e.key === 'Escape') {
+    // Open modals are handled in modal.js and never reach this far.
+    // Every popover the header can open answers to Escape here — the More
+    // menu, the tab-overflow listbox, the save menu and the model picker —
+    // not just the one that happens to sit above the canvas. Escape is the
+    // dismissal reflex everywhere else in the app, and a header menu that
+    // only closes on an outside click is a menu the keyboard cannot leave.
+    if (dismissHeaderMenus()) {
+      // A menu was open; the key closed it and stops here, the way closing
+      // the Tools menu used to before any aux view or selection saw the key.
+    } else if (typeof AUX_VIEWS !== 'undefined' && AUX_VIEWS.includes(App.view)) {
+      // Escape from an auxiliary view returns to the canvas.
+      closeAuxView();
+    } else if (selectionCount() || App.transFrom) {
+      clearSelection();
+      App.transFrom = null; clearTempLine(); setTool('pointer');
+    } else if (!leaveBlockScope()) {
+      // Last in the ladder, deliberately. Escape already dismisses a menu,
+      // closes an aux view, cancels a half-drawn transition and clears the
+      // selection; going out one level of a block is what is left when none of
+      // those applied, so drilling in never costs the reader the key's other
+      // jobs. leaveBlockScope answers false at the top level, and this falls
+      // through to the same reset it always did.
+      setTool('pointer');
+    }
+  }
+  if (e.key.startsWith('Arrow') && (App.selectedStates.size || App.selectedNotes.size || App.selectedDividers.size) && App.view === 'build') {
+    e.preventDefault();
+    const amt = e.shiftKey ? (App.config.gridSnap || 20) : 1;
+    const dx = e.key === 'ArrowRight' ? amt : e.key === 'ArrowLeft' ? -amt : 0;
+    const dy = e.key === 'ArrowDown' ? amt : e.key === 'ArrowUp' ? -amt : 0;
+    nudgeSelected(dx, dy);
+  } else if (e.key === 'ArrowRight' || e.key === 'Enter') {
+    if (App.currentAlgo === 'utm') utmStepFwd(); else stepFwd();
+  } else if (e.key === 'ArrowLeft') {
+    if (App.currentAlgo === 'utm') utmStepBack(); else stepBack();
+  }
+  if (e.key === ' ' && App.currentAlgo === 'utm') {
+    e.preventDefault();
+    utmToggleAuto();
+  }
+  // 1 returns to the canvas (closing any auxiliary view); 2 onward open one,
+  // in the order the tab strip draws them (see auxViewKey in view.js).
+  if (e.key === '1') setView('build');
+  else {
+    const aux = AUX_VIEWS.find(v => auxViewKey(v) === e.key);
+    if (aux) setView(aux);
+  }
+});
+
+export function syncThemeExportPalette(theme) {
+  const t = Themes[theme] || Themes[DEFAULT_THEME];
+  App.config.export = { ...App.config.export, ...t.export };
+}
+
+// ── Theme picker ──────────────────────────────────────────────────
+// The card preview is a miniature of the thing being themed: start state,
+// active state, accepting state, two edges. A two-colour swatch cannot
+// separate 35 themes — measured across the registry, dozens of bg/accent
+// pairs are perceptually near-identical (kanagawa/nightfox, rivers/himalaya,
+// dark/cyberpunk), because what actually distinguishes them is the ring and
+// edge colours a swatch throws away. Drawing the real diagram costs nothing
+// extra: `export` already carries every colour, since it is what the PNG
+// exporter and minimap paint from.
+//
+// Geometry is identical for every card and only the colours vary, so this is
+// a template with holes rather than a layout pass.
+const THEME_PREVIEW_GEOM = {
+  start: 26, mid: 69, end: 112, cy: 23, r: 9,
+  // stem then arrowhead, for the start marker and the two edges
+  edges: [[5, 12, 11, 16], [35, 56, 55, 60], [78, 99, 98, 103]]
+};
+
+function themePreviewSVG(x) {
+  const g = THEME_PREVIEW_GEOM;
+  const stems = g.edges.map(([a, b]) => `M${a} ${g.cy}H${b}`).join('');
+  const heads = g.edges.map(([, , a, tip]) =>
+    `M${a} ${g.cy - 2.8}L${tip} ${g.cy}L${a} ${g.cy + 2.8}Z`).join('');
+  const node = (cx, fill) => `<circle cx="${cx}" cy="${g.cy}" r="${g.r}" fill="${fill}"/>`;
+  const ring = (cx, stroke, r, w) =>
+    `<circle cx="${cx}" cy="${g.cy}" r="${r}" fill="none" stroke="${stroke}" stroke-width="${w}"/>`;
+  // Fills first, then every stroke, so no ring is half-covered by a later node.
+  return `<svg class="theme-card-preview" viewBox="0 0 126 46" aria-hidden="true">
+    <rect width="126" height="46" rx="6" fill="${x.bg}"/>
+    <path d="${stems}" stroke="${x.edgeStroke}" stroke-width="1.6" fill="none"/>
+    <path d="${heads}" fill="${x.edgeStroke}"/>
+    ${node(g.start, x.nodeFill)}${node(g.mid, x.nodeFill)}${node(g.end, x.nodeFill)}
+    <circle cx="${g.mid}" cy="${g.cy}" r="${g.r}" fill="${x.actFill}"/>
+    ${ring(g.start, x.startStroke, g.r, 1.8)}
+    ${ring(g.mid, x.actStroke, g.r, 1.8)}
+    ${ring(g.end, x.accStroke, g.r, 1.5)}
+    ${ring(g.end, x.accStroke, g.r - 3.2, 1.2)}
+  </svg>`;
+}
+
+// Same rule tests/themes.test.js uses to check `color-scheme`, so the
+// grouping can never disagree with what the stylesheet declares.
+function themeIsLight(t) {
+  const c = [0, 2, 4].map(i => parseInt(t.export.bg.replace('#', '').slice(i, i + 2), 16) / 255)
+    .map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] > 0.45;
+}
+
+const CHECK_PATH = 'M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z';
+
+// Cards are toggle buttons, not listbox options: a listbox promises arrow-key
+// navigation and roving focus that this grid does not implement, and claiming
+// the role without the behaviour is worse for a screen reader than not
+// claiming it. `aria-pressed` describes exactly what these are.
+export function renderThemeCards() {
+  const grid = $('theme-grid');
+  if (!grid) return;
+  const current = App.config.theme;
+  const groups = [['dark', 'Dark'], ['light', 'Light']];
+  grid.innerHTML = groups.map(([key, heading]) => {
+    const cards = Object.entries(Themes)
+      .filter(([, t]) => (themeIsLight(t) ? 'light' : 'dark') === key)
+      .map(([id, t]) => `<button type="button" class="theme-card${id === current ? ' active' : ''}"
+        data-theme="${id}" aria-pressed="${id === current}" tabindex="${id === current ? '0' : '-1'}"
+        title="${escapeHtml(t.label || id)}">
+        ${themePreviewSVG(t.export)}
+        <span class="theme-card-name">${escapeHtml(t.label || id)}</span>
+        <svg class="theme-card-check" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="${CHECK_PATH}"/></svg>
+      </button>`).join('');
+    return `<section class="theme-group" data-group="${key}">
+      <h3 class="theme-group-hd">${heading}</h3>
+      <div class="theme-group-grid">${cards}</div>
+    </section>`;
+  }).join('');
+}
+
+// Only the selection marker changes on a theme switch, so applyTheme syncs
+// it in place rather than rebuilding 35 cards' worth of innerHTML — which
+// would also destroy the very card the pointer is hovering, cancelling the
+// preview that triggered it.
+export function syncThemeCardSelection() {
+  const grid = $('theme-grid');
+  if (!grid) return;
+  grid.querySelectorAll('.theme-card').forEach(el => {
+    const on = el.dataset.theme === App.config.theme;
+    el.classList.toggle('active', on);
+    el.setAttribute('aria-pressed', String(on));
+  });
+}
+
+// Substring match over label and id, with group headings hiding themselves
+// once every card beneath them is filtered out.
+function filterThemeCards() {
+  const grid = $('theme-grid');
+  const q = ($('theme-search')?.value || '').trim().toLowerCase();
+  if (!grid) return;
+  let shown = 0;
+  grid.querySelectorAll('.theme-card').forEach(el => {
+    const hit = !q || `${el.dataset.theme} ${el.textContent}`.toLowerCase().includes(q);
+    el.classList.toggle('is-filtered', !hit);
+    if (hit) shown++;
+  });
+  grid.querySelectorAll('.theme-group').forEach(sec => {
+    const any = sec.querySelector('.theme-card:not(.is-filtered)');
+    sec.classList.toggle('is-filtered', !any);
+  });
+  const empty = $('theme-empty');
+  if (empty) empty.hidden = shown > 0;
+  // Filtering can hide whichever card held the tab stop, which would leave the
+  // grid unreachable by keyboard entirely.
+  setThemeRoving();
+}
+
+// ── Grid keyboard navigation ──────────────────────────────────────
+// Rows are read off the laid-out boxes rather than assumed, because the grid
+// is `auto-fill` (column count varies with panel width), the last row of a
+// section is ragged, and Dark/Light are two separate grids stacked — so there
+// is no single column count that Up/Down could be computed from. Working from
+// geometry handles all three without knowing about any of them.
+//
+// Pure so it can be tested without a layout engine: `boxes` is one
+// {top, left, width} per *visible* card, in DOM order. Returns the index to
+// move to, or -1 meaning "leave the grid upward", which the caller turns into
+// focusing the search field.
+export function themeGridNeighbor(boxes, index, key) {
+  const n = boxes.length;
+  if (!n) return -1;
+  if (key === 'Home') return 0;
+  if (key === 'End') return n - 1;
+  if (key === 'ArrowRight') return Math.min(index + 1, n - 1);
+  if (key === 'ArrowLeft') return Math.max(index - 1, 0);
+  if (key !== 'ArrowUp' && key !== 'ArrowDown') return index;
+
+  const rowOf = b => Math.round(b.top);
+  const rows = [...new Set(boxes.map(rowOf))].sort((a, b) => a - b);
+  const target = rows[rows.indexOf(rowOf(boxes[index])) + (key === 'ArrowDown' ? 1 : -1)];
+  // Up from the first row exits to the search field; Down from the last stays.
+  if (target === undefined) return key === 'ArrowUp' ? -1 : index;
+
+  // Keep the horizontal position across the jump, so a ragged row or a
+  // narrower section lands under the finger rather than at its edge.
+  const centre = boxes[index].left + boxes[index].width / 2;
+  let best = index, bestD = Infinity;
+  boxes.forEach((b, i) => {
+    if (rowOf(b) !== target) return;
+    const d = Math.abs(b.left + b.width / 2 - centre);
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  return best;
+}
+
+function visibleThemeCards() {
+  const grid = $('theme-grid');
+  if (!grid) return [];
+  return Array.prototype.filter.call(
+    grid.querySelectorAll('.theme-card'), el => !el.classList.contains('is-filtered'));
+}
+
+// Exactly one card carries the tab stop, so Tab enters and leaves the grid in
+// one press instead of walking all 35. Preference order: the card being moved
+// to, else the selected theme, else the first visible one.
+function setThemeRoving(target) {
+  const cards = visibleThemeCards();
+  if (!cards.length) return;
+  const stop = (target && cards.includes(target) && target)
+    || cards.find(c => c.dataset.theme === App.config.theme)
+    || cards[0];
+  cards.forEach(c => c.setAttribute('tabindex', c === stop ? '0' : '-1'));
+  return stop;
+}
+
+function focusThemeCard(card) {
+  const stop = setThemeRoving(card);
+  if (stop && stop.focus) stop.focus();
+}
+
+// A non-blocking popover rather than a modal, which is what makes the rest of
+// this simple. A modal scrim (`.overlay` blurs at 6px) hides the canvas — so
+// the only way to judge a theme was to apply it on hover and unwind it after,
+// and re-theming the whole page as a pointer crosses a grid reads as flashing
+// rather than as preview. With the diagram left visible, clicking *is* the
+// preview: it applies, you see your real machine in it, and another click
+// changes your mind. The dwell timers, the origin tracking and the revert are
+// all gone with the scrim that made them necessary.
+let themePickerBound = false;
+
+export function isThemePickerOpen() {
+  const p = $('theme-panel');
+  return !!p && p.classList.contains('open');
+}
+
+export function closeThemePicker(focusTrigger = false) {
+  const p = $('theme-panel');
+  if (!p) return;
+  p.classList.remove('open');
+  const btn = $('theme-btn');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+  // The trigger lives inside the More menu, which is closed by now, so focus
+  // goes back to the button that opens it rather than to a hidden row.
+  if (focusTrigger) {
+    const more = $('hdr-more-btn');
+    if (more && more.focus) more.focus();
+  }
+}
+
+// Bound once, lazily, on first open: the grid is built by this module rather
+// than present in index.html, so there is nothing to attach to at load time.
+// Delegated from the grid rather than a listener per card.
+function bindThemePicker() {
+  if (themePickerBound) return;
+  const grid = $('theme-grid');
+  if (!grid) return;
+  themePickerBound = true;
+
+  // Selecting does not close the panel. Comparing themes is the whole task,
+  // and a picker that dismissed itself on every pick would have to be
+  // reopened to make the comparison it exists for.
+  grid.addEventListener('click', e => {
+    const card = e.target.closest('.theme-card');
+    if (card) selectTheme(card.dataset.theme);
+  });
+
+  const NAV = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End']);
+  grid.addEventListener('keydown', e => {
+    const card = e.target.closest && e.target.closest('.theme-card');
+    if (!card) return;
+    if (NAV.has(e.key)) {
+      const cards = visibleThemeCards();
+      const at = cards.indexOf(card);
+      if (at === -1) return;
+      e.preventDefault();
+      const next = themeGridNeighbor(cards.map(c => c.getBoundingClientRect()), at, e.key);
+      if (next === -1) {
+        const s = $('theme-search');
+        if (s && s.focus) s.focus();
+      } else {
+        focusThemeCard(cards[next]);
+      }
+      return;
+    }
+    // A printable key means the user is naming a theme, and there is already
+    // one place for that. Routing it to the field beats a second, invisible
+    // type-ahead that matches by different rules than the box above it.
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const s = $('theme-search');
+      if (!s) return;
+      e.preventDefault();
+      s.value += e.key;
+      s.focus();
+      filterThemeCards();
+    }
+  });
+
+  const search = $('theme-search');
+  if (search) {
+    search.addEventListener('input', filterThemeCards);
+    search.addEventListener('keydown', e => {
+      const cards = visibleThemeCards();
+      if (!cards.length) return;
+      // Down walks into the results; Enter takes the top one outright, which
+      // is the whole point of having typed — and one more click undoes it.
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        focusThemeCard(cards[0]);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        selectTheme(cards[0].dataset.theme);
+        focusThemeCard(cards[0]);
+      }
+    });
+  }
+  const close = $('theme-panel-close');
+  if (close) close.addEventListener('click', () => closeThemePicker(true));
+}
+
+export function openThemePicker() {
+  const p = $('theme-panel');
+  if (!p) return;
+  renderThemeCards();
+  bindThemePicker();
+  const search = $('theme-search');
+  if (search) search.value = '';
+  filterThemeCards();
+  p.classList.add('open');
+  const btn = $('theme-btn');
+  if (btn) btn.setAttribute('aria-expanded', 'true');
+  if (search && search.focus) search.focus();
+}
+
+export function toggleThemePicker(event) {
+  // The opening click also reaches the document listeners below and the one in
+  // view.js that dismisses the header menus. Closing that menu is wanted; this
+  // panel seeing its own opening click and closing again is not — so the
+  // propagation stops here and the menu is dismissed explicitly.
+  if (event && event.stopPropagation) event.stopPropagation();
+  hideMoreMenu();
+  if (isThemePickerOpen()) closeThemePicker();
+  else openThemePicker();
+}
+
+// Dismissal, matching quick-settings.js: a click outside, or Escape. Escape
+// still reaches here from inside the search field, because the global shortcut
+// handler that ignores form fields is a separate listener.
+document.addEventListener('click', event => {
+  if (!isThemePickerOpen()) return;
+  const p = $('theme-panel');
+  if (p && p.contains && p.contains(event.target)) return;
+  closeThemePicker();
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && isThemePickerOpen()) closeThemePicker(true);
+});
+
+// The header row's small trailing label (e.g. "Nord") so the current theme
+// is visible without opening the modal.
+export function updateThemeMenuLabel() {
+  const el = $('theme-btn-current');
+  if (!el) return;
+  const t = Themes[App.config.theme];
+  el.textContent = t ? t.label : '';
+}
+
+// Builds the Settings dropdown's options from the theme registry. Run once —
+// the dropdown-enhancer (js/ui/dropdown.js) watches the native <select> for
+// further mutations, so this never needs to run again after the first open.
+export function populateThemeSelect() {
+  const sel = $('set-theme');
+  if (!sel || sel.children.length) return;
+  sel.innerHTML = Object.entries(Themes)
+    .map(([id, t]) => `<option value="${id}">${escapeHtml(t.label || id)}</option>`)
+    .join('');
+}
+
+export function applyTheme(theme, persist = true) {
+  const resolved = Themes[theme] ? theme : DEFAULT_THEME;
+  App.config.theme = resolved;
+  document.documentElement.dataset.theme = resolved;
+  syncThemeExportPalette(resolved);
+  syncThemeCardSelection();
+  updateThemeMenuLabel();
+  if ($('set-theme')) $('set-theme').value = resolved;
+  // The minimap paints from App.config.export.*, which syncThemeExportPalette
+  // has just rewritten, so it has to be repainted or it keeps the old theme's
+  // colours until some unrelated edit happens to trigger a redraw. Painted
+  // synchronously rather than scheduled so a theme switch never shows a frame
+  // of the old palette.
+  renderMinimap();
+  if (persist) {
+    writePref('automata-theme', resolved);
+  }
+}
+
+// Entry point for interactive theme picks (theme-panel cards); applyTheme
+// alone is also used at boot and from Settings, where a repaint/status
+// message would be premature or redundant.
+export function selectTheme(theme) {
+  applyTheme(theme);
+  renderAll();
+  saveBackupChecked();
+  showStatus(`Theme: ${Themes[App.config.theme]?.label || App.config.theme}`);
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+//  ZOOM / FIT / MINIMAP / SIDEBAR / FILTER FUNCTIONS
+// ══════════════════════════════════════════════════════════════════
+// Matches the 0.25s transition `.cam-smooth` declares in css/canvas.css; the
+// class has to come back off once the transition it enables has finished, or
+// the next pan is animated too.
+const CAM_EASE_MS = 250;
+// One press of + or - . The wheel and the pinch are continuous and scale by
+// their own deltas instead.
+const ZOOM_STEP = 1.25;
+
+// The eased repaint every *stepped* zoom ends in — the ± buttons and the zoom
+// field, as against the wheel and the pinch, which are continuous and must not
+// animate. `cam-smooth` goes on both the camera group and the wrapper because
+// the two carry different halves of the transform.
+function easeCamera(w) {
+  markDirty();
+  $('cam-g').classList.add('cam-smooth');
+  w.classList.add('cam-smooth');
+  applyCamera();
+  setTimeout(() => {
+    $('cam-g').classList.remove('cam-smooth');
+    w.classList.remove('cam-smooth');
+  }, CAM_EASE_MS);
+}
+
+// Zoom to `z` about the middle of the viewport: the camera moves so the point
+// under the centre stays under it. Written out three times before, and the
+// copies had drifted — two clamped by hand (one of them only at the maximum)
+// where `clampZoom` is the single answer every zoom path is meant to go
+// through, and they disagreed about how to measure the box.
+// `getBoundingClientRect` and `clientWidth` are the same number here, since
+// `.canvas-area` has no border, no padding and `overflow: hidden`.
+function zoomAboutCentre(z) {
+  const w = $('canvas-wrap'); if (!w) return;
+  const mx = w.clientWidth / 2, my = w.clientHeight / 2;
+  const newZ = clampZoom(z);
+  App.cam.x = mx - (mx - App.cam.x) * newZ / App.cam.z;
+  App.cam.y = my - (my - App.cam.y) * newZ / App.cam.z;
+  App.cam.z = newZ;
+  easeCamera(w);
+}
+
+export function zoomIn() { zoomAboutCentre(App.cam.z * ZOOM_STEP); }
+
+export function zoomOut() { zoomAboutCentre(App.cam.z / ZOOM_STEP); }
+
+export function setZoomFromInput(val) {
+  const num = parseFloat(val.replace('%', ''));
+  if (isNaN(num)) { applyCamera(); return; }
+  // Nothing drawn: there is no content to keep under the centre, so this is a
+  // reset to 1:1 rather than a zoom, and it does not go through clampZoom —
+  // an empty canvas has no machine-derived floor to be clamped against.
+  if (!App.states.length) {
+    const w = $('canvas-wrap'); if (!w) return;
+    App.cam = { x: w.clientWidth / 2, y: w.clientHeight / 2, z: 1 };
+    easeCamera(w);
+    return;
+  }
+  zoomAboutCentre(num / 100);
+}
+
+// The canvas spans the full width of the workspace, but a pinned panel sits
+// beside it while an *unpinned* one is absolutely positioned on top of it
+// (see .lpanel.unpinned in css/lpanel.css). clientWidth therefore counts the
+// strip hidden underneath an overlaying panel as visible space, which pushes
+// anything centred on it off toward the covered side and makes the minimap's
+// viewport rect wider than what the user can actually see. This reports the
+// genuinely visible box, in canvas-wrap-local CSS pixels.
+export function visibleCanvasBox() {
+  const w = $('canvas-wrap');
+  if (!w) return { x: 0, y: 0, w: 600, h: 400 };
+  const full = { x: 0, y: 0, w: w.clientWidth, h: w.clientHeight };
+  if (typeof w.getBoundingClientRect !== 'function') return full;
+  const wrapRect = w.getBoundingClientRect();
+  if (!wrapRect.width || !wrapRect.height) return full;
+  let left = wrapRect.left, right = wrapRect.right;
+  ['lpanel', 'rpanel'].forEach(id => {
+    const p = $(id);
+    // Only panels drawn over the canvas steal visible space; a pinned panel
+    // already shrinks canvas-wrap, so counting it would subtract twice.
+    if (!p || typeof p.getBoundingClientRect !== 'function') return;
+    if (p.classList && !p.classList.contains('unpinned')) return;
+    const r = p.getBoundingClientRect();
+    if (!r.width) return;
+    if (r.left <= wrapRect.left) left = Math.max(left, r.right);
+    else right = Math.min(right, r.left);
+  });
+  if (!(right > left)) return full;
+  return { x: left - wrapRect.left, y: 0, w: right - left, h: wrapRect.height };
+}
+
+// What floats over the canvas, in wrap-local coordinates: the toolbox, the
+// zoom bar, the minimap, the info pill — and the machine card while it is
+// open, and on a phone the strip the mobile bar covers. A fit that ignored them
+// framed the machine into the whole well and let them sit on it: the DFA
+// example opened with its notes under the toolbox and a state under the
+// minimap, and a run ended there.
+//
+// The card counts only while open. Shut, it is `visibility: hidden` and still
+// laid out, so a rect alone would reserve its corner forever. It does not make
+// the two chase each other: the card picks its corner when it opens, which is
+// before a load's fit, and a fit never asks it to move again.
+//
+// And every floating panel window, minimized ones included — a title strip
+// over a state hides its name as surely as a whole window does. fitRegion
+// already refuses a cut that would cost more than half the zoom, so a window
+// too big to frame around is left out of the answer rather than shrinking the
+// machine to a thumbnail beside it.
+//
+// Deliberately absent: the status toast, which is gone in seconds.
+//
+// Measured rather than computed the way layoutCanvasOverlays computes them:
+// this runs once per fit, after that layout has been written, not on the frame
+// the overlays move.
+export function canvasObstacleRects(wrapRect) {
+  const rects = [];
+  if (!wrapRect || !wrapRect.width) return rects;
+  const map = $('minimap-container');
+  const card = $('example-card');
+  const info = $('canvas-info-btn');
+  const layer = $('panel-float-layer');
+  const windows = layer
+    ? [...(layer.children || [])].filter(el => el.classList && el.classList.contains('panel-float'))
+    : [];
+  const members = [$('canvas-toolbox'), $('canvas-nav-controls'),
+    map && !map.classList.contains('minimap-hidden') ? map : null,
+    info && !info.hidden ? info : null,
+    card && card.classList.contains('is-open') ? card : null,
+    ...windows];
+  for (const el of members) {
+    if (!el || el.offsetParent === null || !el.getBoundingClientRect) continue;
+    const b = el.getBoundingClientRect();
+    if (!b || !b.width || !b.height) continue;
+    // The card scales in from its top-left; read mid-animation its painted box
+    // is smaller than the one it is about to have, and a fit would frame
+    // around the smaller one.
+    const full = el === card && el.offsetWidth > 0 && el.offsetHeight > 0;
+    rects.push({
+      left: b.left - wrapRect.left, top: b.top - wrapRect.top,
+      width: full ? el.offsetWidth : b.width, height: full ? el.offsetHeight : b.height
+    });
+  }
+  const inset = compactBottomInset(wrapRect);
+  if (inset > 0) rects.push({ left: 0, top: wrapRect.height - inset, width: wrapRect.width, height: inset });
+  return rects;
+}
+
+// Breathing room around a fitted machine. It was a flat 90px, which is right
+// on a desktop and nearly half the width of a phone: on a 390px screen the
+// machine came out a thumbnail in the middle of empty canvas. It scales with
+// the short side now and reaches the old 90 at a 600px short side, so every
+// desktop-sized canvas frames exactly as it did.
+export const FIT_PAD_MAX = 90;
+export function fitPadding(box) {
+  return Math.min(FIT_PAD_MAX, Math.round(Math.min(box.w, box.h) * 0.15));
+}
+
+/**
+ * The region a machine of `bw × bh` is fitted into: the visible box, padded,
+ * with every obstacle that reaches into it cut away.
+ *
+ * An obstacle is cut on whichever side leaves the larger zoom, so a column
+ * down the left edge takes a strip off the left and a corner stack takes a
+ * strip off whichever of its two edges the machine's shape can best spare.
+ * Only the part past the padding matters — the padding is already empty.
+ *
+ * A cut that would leave the machine at less than half the zoom it had is
+ * refused, and that obstacle is overlapped instead: on a small enough screen
+ * every control is in the way of everything, and a machine drawn at a quarter
+ * size so as to touch none of them is the worse of the two outcomes. The same
+ * degrade-rather-than-fail rule the machine card's height cap follows.
+ */
+export function fitRegion(box, obstacles, bw, bh, pad) {
+  const w = Math.max(bw, 1), h = Math.max(bh, 1);
+  const zoomOf = r => Math.min((r.r - r.l) / w, (r.b - r.t) / h);
+  let region = { l: box.x + pad, t: box.y + pad, r: box.x + box.w - pad, b: box.y + box.h - pad };
+  if (!(region.r > region.l && region.b > region.t)) return { x: box.x, y: box.y, w: box.w, h: box.h };
+  const c = OVERLAY_CLEARANCE;
+  for (const o of obstacles) {
+    const ol = o.left - c, ot = o.top - c, or = o.left + o.width + c, ob = o.top + o.height + c;
+    if (or <= region.l || ol >= region.r || ob <= region.t || ot >= region.b) continue;
+    const cuts = [
+      { ...region, l: Math.max(region.l, or) }, { ...region, r: Math.min(region.r, ol) },
+      { ...region, t: Math.max(region.t, ob) }, { ...region, b: Math.min(region.b, ot) }
+    ].filter(r => r.r > r.l && r.b > r.t);
+    if (!cuts.length) continue;
+    const best = cuts.reduce((a, r) => (zoomOf(r) > zoomOf(a) ? r : a));
+    if (zoomOf(best) >= zoomOf(region) / 2) region = best;
+  }
+  return { x: region.l, y: region.t, w: region.r - region.l, h: region.b - region.t };
+}
+
+export function fitToScreen(silent = false) {
+  if (!App.states.length) return;
+  const w = $('canvas-wrap'); if (!w) return;
+  // Fit into the region the user can actually see, not the strip an
+  // overlaying panel is covering, so the machine lands centred on screen.
+  const vis = visibleCanvasBox();
+  const R = App.config.radius + 4; // state radius + some padding
+  const b = getContentBounds(R);
+  if (!b) return;
+  const { minX, minY, maxX, maxY } = b;
+  const bw = maxX - minX, bh = maxY - minY;
+  const wrapRect = typeof w.getBoundingClientRect === 'function' ? w.getBoundingClientRect() : null;
+  const region = fitRegion(vis, canvasObstacleRects(wrapRect), bw, bh, fitPadding(vis));
+  const z = clampZoom(Math.min(region.w / bw, region.h / bh));
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  App.cam.x = region.x + region.w / 2 - cx * z;
+  App.cam.y = region.y + region.h / 2 - cy * z;
+  App.cam.z = z;
+  framedVis = wrapRect ? { cw: wrapRect.width, ch: wrapRect.height, x: vis.x, w: vis.w } : null;
+  // `silent` marks the programmatic fits that run on load/restore. Those must
+  // not dirty the tab — the camera they set is the one that was just restored.
+  if (!silent) markDirty();
+  $('cam-g').classList.add('cam-smooth');
+  w.classList.add('cam-smooth');
+  applyCamera();
+  markFramed();
+  setTimeout(() => {
+    $('cam-g').classList.remove('cam-smooth');
+    w.classList.remove('cam-smooth');
+  }, 250);
+  if (!silent) showStatus('Fit to screen');
+}
+
+export function autoFitLoadedMachine() {
+  // Wait a tick so view switches and panel layout changes settle before fitting.
+  setTimeout(() => fitToScreen(true), 50);
+}
+
+// ── Keeping a framed machine framed ────────────────────────────────
+// After a fit the view is *framed*: the machine sits in the free part of the
+// canvas. While it stays framed, anything that changes what floats over the
+// canvas — the card opening or folding, the toolbar redocked, collapsed or
+// folding itself, the minimap shown or hidden, a window torn off, moved,
+// minimized or docked, the breadcrumb appearing — fits again, in either
+// direction: a card opening pulls the view out, and folding away gives the
+// room back.
+//
+// Framed means the camera is still exactly the one the last fit set. That is
+// the whole test, and it is why no pan or zoom path has to report in: a wheel
+// tick, a drag, a pinch, a minimap click, the zoom buttons, a tab switch or a
+// restored workspace all leave a different camera, and a camera the reader
+// has taken is never moved out from under them. Pressing Fit (or H) hands it
+// back.
+//
+// What changed is found by measuring, not by listening for each trigger: the
+// overlays' boxes are compared with the last settled measurement, so a trigger
+// nobody thought to wire up still counts. Observers only say *when* to
+// measure. Both sides wait for movement to settle, because the card scales in
+// and a box read mid-animation is a box that is about to change.
+//
+// An unpinned sidebar is followed too, and deliberately: peeking one open over
+// the canvas re-fits the machine into what is left, and letting it fold away
+// gives the room back. It is measured differently, because it is not an
+// obstacle a fit cuts around but the edge of the visible box itself, so the
+// test is visibleCanvasBox() against the one the last fit framed into. That
+// half ignores the settle window: a fit cannot move a panel, so a panel that
+// moved just after one is a real change. Unpinning is the case that needs it —
+// the canvas widens at once, the resize path fits while the panel is still
+// open under the pointer, and the panel folds a moment later, inside the window.
+export const FRAMING_SETTLE_MS = 260;
+// Changes smaller than this are noise — the zoom readout in the nav bar
+// changing width as a fit changes the zoom must not set off another fit.
+export const FRAMING_TOLERANCE = 3;
+
+let framedCam = null;
+// The canvas size and visible box (x, w) the last fit framed into.
+let framedVis = null;
+let framingBaseline = null;
+let framingTimer = null;
+// A check inside this window after a fit adopts what it measures as the new
+// baseline instead of acting on it: whatever moved did so because of the fit.
+let framingQuietUntil = 0;
+
+const nowMs = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
+
+// `quiet: false` is for a test that has to act before the settle window ends.
+export function markFramed({ quiet = true } = {}) {
+  framedCam = { x: App.cam.x, y: App.cam.y, z: App.cam.z };
+  framingQuietUntil = quiet ? nowMs() + FRAMING_SETTLE_MS + 150 : 0;
+  scheduleFramingCheck();
+}
+
+export function isFramed() {
+  const c = framedCam;
+  return !!c && Math.abs(App.cam.x - c.x) < 0.5 && Math.abs(App.cam.y - c.y) < 0.5
+    && Math.abs(App.cam.z - c.z) < 1e-6;
+}
+
+export function resetFraming() {
+  framedCam = null;
+  framedVis = null;
+  framingBaseline = null;
+  framingQuietUntil = 0;
+  clearTimeout(framingTimer);
+  framingTimer = null;
+}
+
+// The canvas size and every obstacle, as numbers. canvasObstacleRects is the
+// same list a fit frames around, so what is compared is exactly what a fit
+// would respond to.
+function framingSignature(wrapRect) {
+  const out = [Math.round(wrapRect.width), Math.round(wrapRect.height)];
+  for (const r of canvasObstacleRects(wrapRect)) {
+    out.push(Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height));
+  }
+  return out;
+}
+
+// Whether an unpinned sidebar opened or folded since the last fit, at the canvas
+// size that fit saw — a different size is a resize, and the resize path's.
+function visibleBoxMoved(wrapRect) {
+  const f = framedVis;
+  if (!f) return false;
+  if (Math.abs(wrapRect.width - f.cw) > FRAMING_TOLERANCE || Math.abs(wrapRect.height - f.ch) > FRAMING_TOLERANCE) return false;
+  const v = visibleCanvasBox();
+  return Math.abs(v.x - f.x) > FRAMING_TOLERANCE || Math.abs(v.w - f.w) > FRAMING_TOLERANCE;
+}
+
+function sameSignature(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > FRAMING_TOLERANCE) return false;
+  return true;
+}
+
+// Mid-gesture the reader is working in the diagram; fitting then would move
+// the thing under their pointer. The check waits for the gesture to end.
+function canvasGestureInProgress() {
+  return !!(isPanning || App.dragOffsets || App.marquee || App.dividerDraft || App.dragDividerEndpoint
+    || App.toolbarDragging || (isMovingFloat()));
+}
+
+export function scheduleFramingCheck() {
+  clearTimeout(framingTimer);
+  framingTimer = setTimeout(() => {
+    framingTimer = null;
+    try { checkFraming(); } catch (e) { /* a failed measurement leaves the view alone */ }
+  }, FRAMING_SETTLE_MS);
+}
+
+/**
+ * Measure the overlays, and fit if they changed while the view was framed.
+ * Returns whether it fitted. Synchronous, so a test can drive it directly.
+ */
+export function checkFraming() {
+  const w = $('canvas-wrap');
+  if (!w || !w.getBoundingClientRect) return false;
+  if (canvasGestureInProgress()) { scheduleFramingCheck(); return false; }
+  // The canvas mid-resize is the resize path's (notifyCanvasResize).
+  if (_resizeSettleTimer) { scheduleFramingCheck(); return false; }
+  const rect = w.getBoundingClientRect();
+  if (!rect.width || !rect.height) return false;
+  const sig = framingSignature(rect);
+  const before = framingBaseline;
+  framingBaseline = sig;
+  if (visibleBoxMoved(rect) && isFramed() && App.states.length) {
+    fitToScreen(true);
+    return true;
+  }
+  if (nowMs() < framingQuietUntil) return false;
+  if (!before || sameSignature(before, sig)) return false;
+  // A different canvas size is a resize, which frames on its own terms.
+  if (Math.abs(before[0] - sig[0]) > FRAMING_TOLERANCE || Math.abs(before[1] - sig[1]) > FRAMING_TOLERANCE) return false;
+  if (!isFramed() || !App.states.length) return false;
+  fitToScreen(true);
+  return true;
+}
+
+/**
+ * Watch every overlay for anything that could change its box. Attributes cover
+ * the class and style writes that open, fold, move and hide them; childList
+ * covers the card's content and the windows arriving and leaving; the
+ * ResizeObserver covers a box that grew from its content alone.
+ */
+export function initFraming() {
+  if (initFraming.done) return;
+  initFraming.done = true;
+  const watched = ['canvas-toolbox', 'canvas-nav-controls', 'minimap-container', 'canvas-info-btn',
+    'example-card', 'scope-bar', 'mobile-bar', 'lpanel', 'rpanel'].map(id => $(id)).filter(Boolean);
+  // The windows' layer is made on first use, which can be after this runs —
+  // and an observer on a node that did not exist yet watches nothing, which is
+  // how torn-off windows went unnoticed. Asking for it makes it now.
+  const layer = floatLayer();
+  if (layer) watched.push(layer);
+  if (typeof MutationObserver === 'function') {
+    const mo = new MutationObserver(() => scheduleFramingCheck());
+    for (const el of watched) {
+      const deep = el === layer || el.id === 'example-card' || el.id === 'scope-bar';
+      mo.observe(el, {
+        attributes: true, attributeFilter: ['style', 'class', 'hidden'],
+        childList: deep, subtree: deep
+      });
+    }
+  }
+  if (typeof ResizeObserver === 'function') {
+    const ro = new ResizeObserver(() => scheduleFramingCheck());
+    for (const el of watched) ro.observe(el);
+  }
+  scheduleFramingCheck();
+}
+
+// ── Keep the diagram framed as the canvas area changes shape ──
+// (panel resize/pin/unpin, fullscreen toggle, browser window resize)
+export function isMachineFullyVisible(vw, vh) {
+  // What is drawn, and each node's own extent. On App.states this asked whether
+  // the whole machine fitted while the reader was inside a block looking at four
+  // states of it — so the answer was about a diagram that is not on screen, and
+  // a block's box was measured as a point.
+  const drawn = viewStates();
+  if (!drawn.length) return false;
+  const R_PAD = App.config.radius + 4;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  drawn.forEach(s => {
+    const hw = s.box ? s.box.w / 2 : R_PAD;
+    const hh = s.box ? s.box.h / 2 : R_PAD;
+    minX = Math.min(minX, s.x - hw); minY = Math.min(minY, s.y - hh);
+    maxX = Math.max(maxX, s.x + hw); maxY = Math.max(maxY, s.y + hh);
+  });
+  includeNoteBounds((x0, y0, x1, y1) => {
+    minX = Math.min(minX, x0); minY = Math.min(minY, y0);
+    maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
+  });
+  includeDividerBounds((x0, y0, x1, y1) => {
+    minX = Math.min(minX, x0); minY = Math.min(minY, y0);
+    maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
+  });
+  const vpMinX = -App.cam.x / App.cam.z, vpMinY = -App.cam.y / App.cam.z;
+  const vpMaxX = (vw - App.cam.x) / App.cam.z, vpMaxY = (vh - App.cam.y) / App.cam.z;
+  return minX >= vpMinX && minY >= vpMinY && maxX <= vpMaxX && maxY <= vpMaxY;
+}
+
+export let _lastCanvasSize = null;
+export let _resizeWasFullyVisible = false;
+export let _resizeSettleTimer = null;
+
+export function notifyCanvasResize() {
+  const w = $('canvas-wrap');
+  if (!w) return;
+  const rect = w.getBoundingClientRect();
+  const newSize = { w: rect.width, h: rect.height };
+  const prev = _lastCanvasSize;
+  _lastCanvasSize = newSize;
+  if (!prev || !prev.w || !prev.h || !newSize.w || !newSize.h) return;
+  const dw = newSize.w - prev.w, dh = newSize.h - prev.h;
+  if (!dw && !dh) return;
+
+  if (!_resizeSettleTimer) {
+    // Start of a resize gesture — remember whether the whole diagram was in
+    // view, so the same framing can be restored once the resize settles.
+    // A framed view stays framed through a resize too, whether or not every
+    // edge of the machine happened to be on screen.
+    _resizeWasFullyVisible = isFramed() || isMachineFullyVisible(prev.w, prev.h);
+  }
+  // Keep the world point at the viewport center fixed frame-to-frame instead
+  // of letting the camera silently drift while the canvas area is resizing.
+  App.cam.x += dw / 2;
+  App.cam.y += dh / 2;
+  applyCamera(true);
+
+  clearTimeout(_resizeSettleTimer);
+  _resizeSettleTimer = setTimeout(() => {
+    _resizeSettleTimer = null;
+    if (_resizeWasFullyVisible) fitToScreen(true);
+    else scheduleMinimap();
+  }, 150);
+}
+
+export function initCanvasResizeObserver() {
+  const w = $('canvas-wrap');
+  if (!w || !('ResizeObserver' in window) || w._resizeObserverInit) return;
+  w._resizeObserverInit = true;
+  const rect = w.getBoundingClientRect();
+  _lastCanvasSize = { w: rect.width, h: rect.height };
+  new ResizeObserver(() => notifyCanvasResize()).observe(w);
+}
+
+export function centerCameraOn(x, y, animate = true) {
+  const w = $('canvas-wrap'); if (!w) return;
+  App.cam.x = w.clientWidth / 2 - x * App.cam.z;
+  App.cam.y = w.clientHeight / 2 - y * App.cam.z;
+  markDirty();
+  if (animate) { $('cam-g').classList.add('cam-smooth'); w.classList.add('cam-smooth'); }
+  applyCamera();
+  if (animate) {
+    setTimeout(() => { $('cam-g').classList.remove('cam-smooth'); w.classList.remove('cam-smooth'); }, 250);
+  }
+}
+
+// ── Panel list ↔ canvas cross-highlighting ──
+export function focusStateFromList(id) {
+  const s = getState(id); if (!s) return;
+  App.selectedStates = new Set([id]);
+  App.selectedTransitions.clear();
+  document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
+  const el = document.querySelector(`[data-id="${id}"]`);
+  if (el) el.classList.add('sel-st');
+  centerCameraOn(s.x, s.y, true);
+  updateLPanel();
+  if (isMobilePanelLayout()) setMobilePanelCollapsed(sectionHost(sectionSide('lp-states')) || 'lpanel', true);
+}
+
+export function hlListHover(id, on) {
+  const el = document.querySelector(`[data-id="${id}"]`);
+  if (el) el.classList.toggle('list-hover-st', on);
+}
+
+export function focusTransFromList(id) {
+  const t = getTransition(id); if (!t) return;
+  const from = getState(t.from), to = getState(t.to);
+  if (!from || !to) return;
+  App.selectedTransitions = new Set([id]);
+  App.selectedStates.clear();
+  document.querySelectorAll('.sn.sel-st, .edge-g.sel-t').forEach(n => n.classList.remove('sel-st', 'sel-t'));
+  renderAll();
+  centerCameraOn((from.x + to.x) / 2, (from.y + to.y) / 2, true);
+  updateLPanel();
+  if (isMobilePanelLayout()) setMobilePanelCollapsed(sectionHost(sectionSide('lp-transitions')) || 'lpanel', true);
+}
+
+export function hlTransListHover(fromId, toId, on) {
+  const el = document.querySelector(`[data-edge="${fromId}|${toId}"]`);
+  if (el) el.classList.toggle('list-hover-t', on);
+}
+
+export function filterTransitions() {
+  filterList($('trans-list'), $('trans-search')?.value || '');
+}
+
+export function toggleFullscreen() {
+  const elem = document.documentElement;
+  if (!document.fullscreenElement) {
+    elem.requestFullscreen().catch(err => showStatus(`Fullscreen failed: ${err.message}`));
+  } else {
+    document.exitFullscreen().catch(err => showStatus(`Exit fullscreen failed: ${err.message}`));
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  const btn = $('fs-btn');
+  if (btn) {
+    btn.dataset.tip = document.fullscreenElement ? 'Exit fullscreen' : 'Enter fullscreen';
+    btn.dataset.tipKbd = 'F';
+    btn.style.opacity = document.fullscreenElement ? '0.7' : '1';
+  }
+});
+
+
+export function setTool(t) {
+  App.tool = t;
+  if (App.transFrom) hlState(App.transFrom, false);
+  App.transFrom = null;
+  clearTempLine();
+
+  const w = $('canvas-wrap');
+  if (w) {
+    const cursors = { pointer: 'default', move: 'grab', state: 'crosshair', trans: 'crosshair', divider: 'crosshair', rect: 'crosshair', del: 'not-allowed' };
+    w.style.cursor = cursors[t] || 'default';
+    w.setAttribute('data-tool', t);
+  }
+
+  // Divider and Rect share one toolbar slot (#t-shape), so both map to it here.
+  const isShapeTool = t === 'divider' || t === 'rect';
+  const activeBtnId = isShapeTool ? 't-shape' : `t-${t}`;
+  document.querySelectorAll('.toolbox-btn[id^="t-"]').forEach(b => {
+    const isActive = b.id === activeBtnId;
+    b.classList.toggle('active', isActive);
+    b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+  if (isShapeTool) {
+    App.lastShapeTool = t;
+    writePref('automata-shape-tool', t);
+  }
+  updateShapeToolButton(App.lastShapeTool);
+  // The mobile bar carries three of these tools as cells and the rest behind
+  // its More popover, so it is lit from here rather than keeping a second
+  // record of which tool is on.
+  syncMobileTools();
+
+  const msgs = {
+    pointer: 'Click or drag states to interact',
+    move: 'Drag canvas to pan · drag state to move · click the active tool again to return to Select',
+    state: 'Click canvas to place state · click the active tool again to return to Select',
+    trans: 'Click source then target state · click the active tool again to return to Select',
+    divider: 'Drag on the canvas to draw a divider · hold Shift to lock to 0° / 45° / 90°',
+    rect: 'Drag on the canvas to draw a region box · hold Shift for a square',
+    del: 'Click state or transition to delete · press Esc or click Select to return'
+  };
+  showStatus(msgs[t] || '');
+}
+
+export function toggleTool(t) {
+  setTool(App.tool === t && t !== 'pointer' ? 'pointer' : t);
+}
+
+export const TOOLBAR_DOCK_KEY = 'automata-toolbar-dock';
+export const TOOLBAR_MARGIN = 12;
+
+// Must stay in step with the `@media (max-width: 900px)` block in css/canvas.css
+// that pins .canvas-toolbox across the bottom. These two disagreed — CSS at
+// 900, JS at 820 — which left an 80px band where the stylesheet had already
+// moved the toolbar to the bottom edge while this still reported "not compact",
+// so the overlay stack stayed in the bottom corner and the two bars crowded
+// each other. One constant, read by both the mode check and the default dock.
+export const COMPACT_TOOLBAR_QUERY = '(max-width: 900px)';
+
+export function isCompactToolbarMode() {
+  return !!(window.matchMedia && window.matchMedia(COMPACT_TOOLBAR_QUERY).matches);
+}
+
+export function normalizeToolbarDock(dock) {
+  const fallback = dock && ['top', 'bottom', 'left', 'right'].includes(dock.side)
+    ? dock
+    : getDefaultToolbarDock();
+  if (isCompactToolbarMode()) return { side: 'bottom', ratio: 0.5 };
+  return { side: fallback.side, ratio: clamp01(typeof fallback.ratio === 'number' ? fallback.ratio : 0.5) };
+}
+
+export function clamp01(n) {
+  return Math.max(0, Math.min(1, n));
+}
+
+export function getDefaultToolbarDock() {
+  return { side: isCompactToolbarMode() ? 'bottom' : 'left', ratio: 0.5 };
+}
+
+export function readToolbarDock() {
+  const stored = readJsonPref(TOOLBAR_DOCK_KEY);
+  if (stored && ['top', 'bottom', 'left', 'right'].includes(stored.side)) {
+    return normalizeToolbarDock({ side: stored.side, ratio: stored.ratio });
+  }
+  return normalizeToolbarDock(getDefaultToolbarDock());
+}
+
+export function saveToolbarDock() {
+  if (App.toolbarDock) writeJsonPref(TOOLBAR_DOCK_KEY, App.toolbarDock);
+}
+
+export function getToolbarDockFromPoint(pointerX, pointerY, wrapRect) {
+  const distances = [
+    { side: 'left', value: pointerX },
+    { side: 'right', value: wrapRect.width - pointerX },
+    { side: 'top', value: pointerY },
+    { side: 'bottom', value: wrapRect.height - pointerY }
+  ];
+  return distances.reduce((best, item) => item.value < best.value ? item : best).side;
+}
+
+// A translucent ghost clone of the toolbar, positioned exactly where it will
+// land (same positioning math as the real dock, so it can't drift out of
+// sync) — shows the actual final shape/size/orientation, not just an edge.
+export function stripToolbarPreviewClone(root) {
+  root.removeAttribute('onclick');
+  root.setAttribute('aria-hidden', 'true');
+  root.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+  root.querySelectorAll('[onclick]').forEach(el => el.removeAttribute('onclick'));
+  root.querySelectorAll('button, input, select').forEach(el => { el.tabIndex = -1; });
+}
+
+export function ensureToolbarPreview() {
+  const wrap = $('canvas-wrap');
+  const toolbox = $('canvas-toolbox');
+  if (!wrap || !toolbox) return null;
+  let preview = $('toolbar-dock-preview');
+  if (preview) return preview;
+  preview = toolbox.cloneNode(true);
+  preview.id = 'toolbar-dock-preview';
+  preview.classList.remove('dragging');
+  preview.classList.add('toolbar-preview');
+  stripToolbarPreviewClone(preview);
+  wrap.appendChild(preview);
+  return preview;
+}
+
+export function showToolbarPreview(dock, wrapRect) {
+  const preview = ensureToolbarPreview();
+  if (!preview) return;
+  positionToolbarNode(preview, dock, wrapRect);
+  preview.classList.add('visible');
+}
+
+export function removeToolbarPreview() {
+  const preview = $('toolbar-dock-preview');
+  if (preview) preview.remove();
+}
+
+export const TOOLBAR_COLLAPSE_KEY = 'automata-toolbar-collapsed';
+export function toggleToolbarCollapsed(force) {
+  const toolbox = $('canvas-toolbox');
+  if (!toolbox) return;
+  App.toolbarCollapsed = force !== undefined ? !!force : !App.toolbarCollapsed;
+  toolbox.classList.toggle('collapsed', App.toolbarCollapsed);
+  writeFlag(TOOLBAR_COLLAPSE_KEY, App.toolbarCollapsed);
+  requestAnimationFrame(() => applyToolbarDock(false));
+}
+export function initToolbarCollapse() {
+  App.toolbarCollapsed = readFlag(TOOLBAR_COLLAPSE_KEY);
+  const toolbox = $('canvas-toolbox');
+  if (toolbox) toolbox.classList.toggle('collapsed', App.toolbarCollapsed);
+  applyToolbarDock(false);
+}
+
+export function computeToolbarRatio(side, pointerX, pointerY, wrapRect, box) {
+  const margin = TOOLBAR_MARGIN;
+  return side === 'left' || side === 'right'
+    ? clamp01((pointerY - box.height / 2 - margin) / Math.max(1, wrapRect.height - box.height - margin * 2))
+    : clamp01((pointerX - box.width / 2 - margin) / Math.max(1, wrapRect.width - box.width - margin * 2));
+}
+
+export function positionToolbarNode(node, dock, wrapRect) {
+  const margin = TOOLBAR_MARGIN;
+  const compact = isCompactToolbarMode();
+  const normalizedDock = compact ? { side: 'bottom', ratio: 0.5 } : dock;
+  const isHorizontal = compact || normalizedDock.side === 'top' || normalizedDock.side === 'bottom';
+  node.dataset.dock = normalizedDock.side;
+  node.style.position = 'absolute';
+  node.style.transform = 'none';
+  node.style.right = 'auto';
+  node.style.bottom = 'auto';
+  node.style.boxSizing = 'border-box';
+  node.style.flexDirection = isHorizontal ? 'row' : 'column';
+  node.style.alignItems = isHorizontal ? 'center' : 'stretch';
+  node.style.gap = '2px';
+  node.style.width = compact ? 'auto' : 'max-content';
+  node.style.maxWidth = compact ? 'none' : (isHorizontal ? `calc(100% - ${margin * 2}px)` : 'none');
+  node.style.overflowX = isHorizontal ? 'auto' : 'hidden';
+  node.style.overflowY = isHorizontal ? 'hidden' : 'auto';
+  node.style.justifyContent = 'flex-start';
+
+  if (compact) {
+    node.style.left = `${margin}px`;
+    node.style.right = `${margin}px`;
+    node.style.top = 'auto';
+    node.style.bottom = `${margin}px`;
+    node.style.padding = '6px 8px';
+    return node.getBoundingClientRect();
+  }
+
+  const box = node.getBoundingClientRect();
+  const availableX = Math.max(1, wrapRect.width - box.width - margin * 2);
+  const availableY = Math.max(1, wrapRect.height - box.height - margin * 2);
+  const ratio = clamp01(normalizedDock.ratio);
+  const left = isHorizontal
+    ? margin + ratio * availableX
+    : normalizedDock.side === 'left' ? margin : wrapRect.width - box.width - margin;
+  const top = isHorizontal
+    ? normalizedDock.side === 'top' ? margin : wrapRect.height - box.height - margin
+    : margin + ratio * availableY;
+
+  node.style.left = `${Math.max(margin, Math.min(left, wrapRect.width - box.width - margin))}px`;
+  node.style.top = `${Math.max(margin, Math.min(top, wrapRect.height - box.height - margin))}px`;
+  return box;
+}
+
+export function applyToolbarDock(persist = false) {
+  const toolbox = $('canvas-toolbox');
+  const w = $('canvas-wrap');
+  if (!toolbox || !w) return;
+
+  const dock = normalizeToolbarDock(App.toolbarDock || readToolbarDock());
+  App.toolbarDock = dock;
+  toolbox.dataset.dock = dock.side;
+  toolbox.classList.toggle('dragging', !!App.toolbarDragging);
+
+  const wrapRect = w.getBoundingClientRect();
+  toolbox.classList.toggle('collapsed', !!App.toolbarCollapsed);
+  let box = positionToolbarNode(toolbox, dock, wrapRect);
+  // A toolbar too long for its edge folds to icons by itself and unfolds when
+  // the room comes back. Laid out full length, a row along a narrow canvas
+  // scrolled undo and redo out of sight behind a hidden scrollbar, and a column
+  // on a short one ran off the bottom. Not written to the collapse preference:
+  // that is the reader's, and a window resize is not the reader asking.
+  const squeezed = !App.toolbarCollapsed && toolbarOverflows(toolbox, dock, wrapRect, box);
+  if (squeezed) {
+    toolbox.classList.add('collapsed');
+    box = positionToolbarNode(toolbox, dock, wrapRect);
+  }
+  toolbox.classList.toggle('is-squeezed', squeezed);
+  layoutCanvasOverlays(wrapRect, box);
+
+  if (persist) saveToolbarDock();
+}
+
+// Whether the toolbar, laid out at full length, runs past the edge it is
+// docked to. A row is capped at the canvas width and scrolls, so its overflow
+// is in its scroll size; a column is not capped, so its overflow is its height.
+export function toolbarOverflows(toolbox, dock, wrapRect, box) {
+  if (!toolbox || !wrapRect || isCompactToolbarMode()) return false;
+  const horizontal = dock.side === 'top' || dock.side === 'bottom';
+  if (horizontal) return toolbox.scrollWidth > toolbox.clientWidth + 1;
+  return !!box && box.height > wrapRect.height - TOOLBAR_MARGIN * 2;
+}
+
+// ── Overlay placement ─────────────────────────────────────────────
+// Every overlay has a home it does not leave: the zoom controls and the
+// minimap in the bottom-right, the info pill and its card in the top-left, the
+// status toast along the top. The toolbar is the one the reader moves, so it is
+// the one the others make room for — and they make room by stepping aside
+// along the edge they share with it, never by jumping to another corner.
+//
+// It used to be the other way round. Each overlay searched the four corners
+// for the least crowded one, so the zoom controls crossed the canvas when the
+// toolbar was dragged past the middle of an edge, and the card's search also
+// scored the drawing under it: the same machine opened its description
+// bottom-left at one window size and top-right at the next, and the pill it
+// folds into went with it. A control that is somewhere new each time has to be
+// looked for each time.
+//
+// Both are positioned from the same margin and share one vertical rhythm, so
+// they line up with each other and sit the same distance from the edges as
+// the toolbar does.
+export const OVERLAY_GAP = 8;
+
+// Stand-ins for the stack before it has been laid out, so its placement can be
+// resolved on first paint: the nav bar is the wide member, and it alone is the
+// height of a stack with the minimap hidden.
+export const STACK_MIN_WIDTH = 250;
+export const STACK_MIN_HEIGHT = 38;
+
+/**
+ * Where the zoom-and-minimap stack sits: always the bottom-right, inset from
+ * those two edges by `right` and `bottom`.
+ *
+ * A toolbar in the way is stepped around along its own axis: a column down the
+ * right edge moves the stack in beside it, a row along the bottom lifts the
+ * stack to stand on it. Whether the two merely *could* share the bottom edge —
+ * widths adding up — is not the question; a centred toolbar splits the spare
+ * room across both ends, and that is how the zoom cluster came to sit on
+ * undo/redo. A left or top toolbar cannot reach the corner on any canvas big
+ * enough to hold both, and is left alone rather than answered with a move that
+ * would put the stack off the edge.
+ */
+export function canvasOverlayCorner(dock, wrapRect, toolbarBox, stackSize) {
+  const m = TOOLBAR_MARGIN;
+  const place = { x: 'right', y: 'bottom', right: m, bottom: m };
+  // Compact mode has no toolbar over the canvas — the tools are cells in the
+  // mobile bar (js/ui/mobile.js), whose clearance the caller adds.
+  if (isCompactToolbarMode() || !wrapRect || !wrapRect.width) return place;
+  const bar = toolbarRectIn(dock, wrapRect, toolbarBox);
+  const side = dock && dock.side;
+  if (!bar || (side !== 'right' && side !== 'bottom')) return place;
+  const size = stackSize && stackSize.width
+    ? stackSize
+    : { width: STACK_MIN_WIDTH, height: STACK_MIN_HEIGHT };
+  const home = {
+    left: wrapRect.width - m - size.width, top: wrapRect.height - m - size.height,
+    width: size.width, height: size.height
+  };
+  if (!overlapArea(home, bar, OVERLAY_GAP)) return place;
+  if (side === 'right') place.right = m + bar.width + OVERLAY_GAP;
+  else place.bottom = m + bar.height + OVERLAY_GAP;
+  return place;
+}
+
+// ── the info pill ─────────────────────────────────────────────────
+//  "About this machine" lives in the top-left, where a description reads
+//  first, and the card opens out of the pill in the same place. A toolbar
+//  docked across that corner pushes them along the edge rather than off to
+//  another corner: a left column moves them in beside it, a top row moves them
+//  below it. The pill is where the reader goes looking for the description, so
+//  the one thing it must not do is turn up somewhere new.
+//
+//  The toolbar's rect comes from the same dock arithmetic that positions it,
+//  so the answer holds on the frame everything moves rather than one behind it.
+
+// The toolbar's box in wrap coordinates, or null when it is not on screen.
+// Mirrors positionToolbarNode rather than reading its style back, for the
+// reason above.
+export function toolbarRectIn(dock, wrapRect, toolbarBox) {
+  if (!toolbarBox || !toolbarBox.width || !wrapRect || !wrapRect.width) return null;
+  const margin = TOOLBAR_MARGIN;
+  const { width, height } = toolbarBox;
+  if (isCompactToolbarMode()) {
+    return {
+      left: margin, top: Math.max(0, wrapRect.height - height - margin),
+      width: Math.max(0, wrapRect.width - margin * 2), height
+    };
+  }
+  const side = (dock && dock.side) || 'left';
+  const ratio = clamp01(dock ? dock.ratio : 0.5);
+  const horizontal = side === 'top' || side === 'bottom';
+  const availX = Math.max(1, wrapRect.width - width - margin * 2);
+  const availY = Math.max(1, wrapRect.height - height - margin * 2);
+  return {
+    left: horizontal ? margin + ratio * availX
+      : side === 'left' ? margin : Math.max(margin, wrapRect.width - width - margin),
+    top: horizontal ? (side === 'top' ? margin : Math.max(margin, wrapRect.height - height - margin))
+      : margin + ratio * availY,
+    width, height
+  };
+}
+
+// Clearance, not just a miss: two overlays a pixel apart read as one smudge.
+export const OVERLAY_CLEARANCE = 8;
+
+function overlapArea(a, b, pad = 0) {
+  if (!a || !b) return 0;
+  const x = Math.min(a.left + a.width + pad, b.left + b.width) - Math.max(a.left - pad, b.left);
+  const y = Math.min(a.top + a.height + pad, b.top + b.height) - Math.max(a.top - pad, b.top);
+  return x > 0 && y > 0 ? x * y : 0;
+}
+
+/**
+ * The top-left of the pill and its card, in wrap coordinates.
+ *
+ * Sized for the card even while it is shut — `visibility: hidden` still lays
+ * out — so opening it never moves the anchor off a toolbar the pill alone
+ * would have cleared.
+ */
+export function canvasInfoOrigin(dock, toolbarRect, size) {
+  const m = TOOLBAR_MARGIN;
+  const origin = { left: m, top: m };
+  if (!toolbarRect || !size || isCompactToolbarMode()) return origin;
+  const home = { left: m, top: m, width: size.width, height: size.height };
+  if (!overlapArea(home, toolbarRect, OVERLAY_GAP)) return origin;
+  const side = dock && dock.side;
+  if (side === 'top') origin.top = toolbarRect.top + toolbarRect.height + OVERLAY_GAP;
+  else if (side === 'left') origin.left = toolbarRect.left + toolbarRect.width + OVERLAY_GAP;
+  return origin;
+}
+
+// Shorter than this a card is a title and a scrollbar, and overlapping
+// whatever is below it is the lesser fault.
+export const CARD_MIN_HEIGHT = 120;
+
+function measureBox(el) {
+  if (!el) return null;
+  // The layout size, not the painted one: the card opens with a scale
+  // transition, and a box read mid-animation comes up a few pixels short.
+  if (el.offsetWidth > 0 && el.offsetHeight > 0) return { width: el.offsetWidth, height: el.offsetHeight };
+  if (!el.getBoundingClientRect) return null;
+  const box = el.getBoundingClientRect();
+  return box && box.width ? { width: box.width, height: box.height } : null;
+}
+
+/**
+ * Anchor the info pill and its card at their origin, and keep the open card
+ * off whatever sits below it.
+ *
+ * `below` is the stack and the toolbar. The card is capped to stop short of
+ * any of them it would reach down onto, and scrolls instead — on a narrow
+ * canvas the card used to open straight over the zoom controls and minimap,
+ * because every corner was "taken" and the search settled for the least-bad
+ * one.
+ */
+// The pill is hidden while the card is open, so it cannot be measured then;
+// the last size it had stands in, and a circle's is the first guess.
+let lastPillSize = { width: 24, height: 24 };
+
+export function layoutCanvasInfo(wrapRect, toolbarRect, below = []) {
+  const btn = $('canvas-info-btn');
+  const card = $('example-card');
+  if (!btn && !card) return null;
+  const measuredPill = btn && !btn.hidden ? measureBox(btn) : null;
+  if (measuredPill) lastPillSize = measuredPill;
+  const pillSize = lastPillSize;
+  const cardSize = measureBox(card) || pillSize;
+
+  // Each takes its own spot. The pill is small enough for the corner above a
+  // left toolbar that the card is too tall for, and sizing the pill's spot for
+  // the card pushed a 24px button out beside the toolbar with nothing around
+  // it. The card still opens where it will fit, and grows out of the pill
+  // (the transform-origin below), so opening it reads as the pill unfolding.
+  const pill = canvasInfoOrigin(App.toolbarDock, toolbarRect, pillSize);
+  const origin = canvasInfoOrigin(App.toolbarDock, toolbarRect, cardSize);
+  // On a phone the bottom edge belongs to the mobile bar.
+  let room = wrapRect.height - TOOLBAR_MARGIN - compactBottomInset(wrapRect) - origin.top;
+  for (const o of below) {
+    if (!o || !(o.top > origin.top)) continue;
+    const across = o.left < origin.left + cardSize.width && o.left + o.width > origin.left;
+    if (across) room = Math.min(room, o.top - OVERLAY_GAP - origin.top);
+  }
+
+  const place = (el, at) => {
+    if (!el || !el.style) return;
+    el.style.position = 'absolute';
+    el.style.left = `${at.left}px`;
+    el.style.top = `${at.top}px`;
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+    if (el.dataset) el.dataset.corner = 'top-left';
+  };
+  place(btn, pill);
+  place(card, origin);
+  const maxHeight = Math.max(CARD_MIN_HEIGHT, Math.round(room));
+  if (card && card.style) {
+    card.style.maxHeight = `${maxHeight}px`;
+    card.style.transformOrigin = `${Math.round(pill.left - origin.left + pillSize.width / 2)}px ${Math.round(pill.top - origin.top + pillSize.height / 2)}px`;
+  }
+  // What now stands in the top-left, from the positions just written rather
+  // than read back off the DOM, for the status toast to make room for.
+  const open = !!(card && card.classList && card.classList.contains('is-open'));
+  const pillRect = btn && !btn.hidden ? { ...pill, ...pillSize } : null;
+  const cardRect = open ? { ...origin, width: cardSize.width, height: Math.min(cardSize.height, maxHeight) } : null;
+  return { x: 'left', y: 'top', ...pill, card: origin, occupied: [pillRect, cardRect] };
+}
+
+/** Re-anchor after the card's own content changes size. */
+export function repositionCanvasInfo() {
+  const w = $('canvas-wrap');
+  if (!w || !w.getBoundingClientRect) return;
+  layoutCanvasOverlays(w.getBoundingClientRect());
+}
+
+// The toolbar's live box, or null when it is not on screen. A hidden node
+// measures as a zero rect, which every consumer here reads as "no toolbar" —
+// returning null says that outright instead of leaving zeros to be interpreted.
+export function measuredToolbarBox(toolbox) {
+  if (!toolbox || !toolbox.getBoundingClientRect) return null;
+  if (toolbox.offsetParent === null) return null;
+  const box = toolbox.getBoundingClientRect();
+  return box && box.width ? box : null;
+}
+
+/**
+ * How far the mobile bar reaches up into the canvas well.
+ *
+ * Zero on a desktop, and zero on a phone whenever the bar is not on screen —
+ * it is `display: none` while an auxiliary view is open, and a hidden node
+ * measures as a zero rect, which is read here as "nothing in the way" rather
+ * than left as zeros for a caller to interpret.
+ */
+export function compactBottomInset(wrapRect) {
+  if (!isCompactToolbarMode()) return 0;
+  const bar = $('mobile-bar');
+  if (!bar || !bar.getBoundingClientRect) return 0;
+  // Deliberately *not* `offsetParent === null`, which is how the rest of this
+  // file asks whether a node is on screen: the bar is `position: fixed`, and a
+  // fixed element has no offsetParent at all. Read that way it always answered
+  // "hidden", the inset was always zero, and the Fit button sat underneath the
+  // bar. A hidden node measures as a zero rect, which is the same test one
+  // step later and holds for both kinds of positioning.
+  const box = bar.getBoundingClientRect();
+  if (!box.height || !box.width) return 0;
+  return Math.max(0, wrapRect.bottom - box.top);
+}
+
+// Where the status toast sits by default, and its height — the lane it needs.
+const STATUS_TOP = 10;
+const STATUS_H = 24;
+// Narrower than this a message is mostly ellipsis; the toast drops a row
+// instead.
+export const STATUS_MIN_LANE = 220;
+
+/**
+ * The status toast is centred in whatever is left of the top strip: below a
+ * top-docked toolbar, and between whatever leads the strip from either side —
+ * the pill, the open card and the breadcrumb on the left, a side-docked
+ * toolbar that reaches the top.
+ *
+ * It is given the lane's width instead of being measured, because the message
+ * is written after layout runs: showStatus sets the text and nothing else, so a
+ * toast placed for its last message was wrong for the next one, and a short
+ * "Example loaded" measured at load time let the card open across the long
+ * tool hint that followed it. When the lane is too narrow to read in, the
+ * toast drops beneath whatever was crowding it.
+ */
+export function positionStatusToast(wrapRect, toolbarRect, leaders = []) {
+  const el = $('status-bar');
+  if (!el || !el.style) return;
+  // Phones included: css/mobile.css keeps 36px clear either side, which is the
+  // 24px pill and not the wider "Describe" label an undescribed machine shows.
+  if (!wrapRect || !wrapRect.width) {
+    el.style.top = ''; el.style.left = ''; el.style.maxWidth = '';
+    return;
+  }
+  const m = TOOLBAR_MARGIN;
+  const side = App.toolbarDock && App.toolbarDock.side;
+  let top = STATUS_TOP;
+  if (toolbarRect && side === 'top') top = toolbarRect.top + toolbarRect.height + OVERLAY_GAP;
+  const crowd = [...leaders];
+  if (toolbarRect && (side === 'left' || side === 'right')) crowd.push(toolbarRect);
+  const inLane = o => o && o.top < top + STATUS_H && o.top + o.height > top;
+
+  let left = m, right = wrapRect.width - m;
+  for (const o of crowd) {
+    if (!inLane(o)) continue;
+    if (o.left + o.width / 2 < wrapRect.width / 2) left = Math.max(left, o.left + o.width + OVERLAY_GAP);
+    else right = Math.min(right, o.left - OVERLAY_GAP);
+  }
+  if (right - left < STATUS_MIN_LANE) {
+    let floor = top;
+    for (const o of crowd) if (inLane(o)) floor = Math.max(floor, o.top + o.height + OVERLAY_GAP);
+    top = floor; left = m; right = wrapRect.width - m;
+  }
+  el.style.top = `${Math.round(top)}px`;
+  el.style.left = `${Math.round((left + right) / 2)}px`;
+  el.style.maxWidth = `${Math.round(right - left)}px`;
+}
+
+// An overlay's box in wrap coordinates, or null when it is not showing.
+function overlayRectIn(el, wrapRect) {
+  if (!el || el.hidden || !el.getBoundingClientRect) return null;
+  const box = el.getBoundingClientRect();
+  if (!box || !box.width || !box.height || !Number.isFinite(box.left)) return null;
+  return { left: box.left - wrapRect.left, top: box.top - wrapRect.top, width: box.width, height: box.height };
+}
+
+/**
+ * The breadcrumb's box, so the status toast can make room for it.
+ *
+ * The pill leads the top-left strip and the bar follows it, from the pill's
+ * own origin — so a toolbar that moved the pill moves the bar with it, and the
+ * two never contend for the corner. It used to run its own clash test against
+ * the toolbar from a fixed `top: 12px`, which agreed with the pill's corner
+ * search only as long as both happened to reach the same answer.
+ */
+export function positionScopeBar(wrapRect, origin) {
+  const el = $('scope-bar');
+  if (!el) return null;
+  const o = origin || { left: TOOLBAR_MARGIN, top: TOOLBAR_MARGIN };
+  el.style.setProperty('--scope-bar-left', `${o.left + infoPillWidth()}px`);
+  el.style.setProperty('--scope-bar-top', `${o.top}px`);
+  // An obstacle only while it is actually showing crumbs. `hidden` alone is not
+  // the whole test: the bar is emptied and hidden together, and a bar with
+  // nothing in it occupies nothing whether or not the attribute is set.
+  if (el.hidden || !el.childNodes || !el.childNodes.length) return null;
+  return wrapRect ? overlayRectIn(el, wrapRect) : null;
+}
+
+/**
+ * How much of the top-left strip the info pill has taken, gap included — zero
+ * when it is not showing, so a machine with no description gives the bar the
+ * whole edge. Measured rather than assumed: the pill is a 24px circle when the
+ * machine is described and a wider dashed label when it is not, and hard-coding
+ * either leaves the bar overlapping in the other case.
+ */
+function infoPillWidth() {
+  const btn = $('canvas-info-btn');
+  if (!btn || btn.hidden || !btn.getBoundingClientRect) return 0;
+  const box = btn.getBoundingClientRect();
+  return box && box.width ? box.width + OVERLAY_GAP : 0;
+}
+
+// Places every overlay around the toolbar: the stack bottom-right, the pill
+// and card top-left, the breadcrumb after the pill, the toast in what is left
+// of the top strip. In that order, because each reads where the ones before it
+// landed.
+export function layoutCanvasOverlays(wrapRect, toolbarBox) {
+  const w = $('canvas-wrap');
+  if (!w) return;
+  const rect = wrapRect || w.getBoundingClientRect();
+
+  const nav = $('canvas-nav-controls');
+  const map = $('minimap-container');
+
+  // Measure the toolbar whenever the caller did not just position it. Only
+  // applyToolbarDock has a box to hand; toggleMinimap and the quick-settings
+  // reposition call in with nothing, and the placement has to depend on the
+  // DOM, not on who called.
+  const toolbox = $('canvas-toolbox');
+  const box = toolbarBox || measuredToolbarBox(toolbox);
+
+  // Bottom-up in visual order: zoom controls sit outermost, the minimap rests
+  // on top of them. A hidden map leaves nothing behind — its toggle lives in
+  // the nav bar — so the stack is just the one member.
+  const stack = [nav, (map && !map.classList.contains('minimap-hidden')) ? map : null]
+    .filter(el => el && el.offsetParent !== null);
+  const sizes = stack.map(el => el.getBoundingClientRect());
+  const stackSize = sizes.length ? {
+    width: Math.max(...sizes.map(s => s.width || 0)),
+    height: sizes.reduce((h, s) => h + (s.height || 0), 0) + OVERLAY_GAP * (sizes.length - 1)
+  } : null;
+  const place = canvasOverlayCorner(App.toolbarDock, rect, box, stackSize);
+
+  // On a phone the bottom edge is the mobile bar's, not the canvas's. It is a
+  // fixed element over the viewport, so the clearance is measured rather than
+  // read off a token — `env(safe-area-inset-bottom)` is in the bar's height
+  // and there is no way to ask CSS for it from here.
+  let offset = place.bottom + compactBottomInset(rect);
+  // Where each member ended up, in wrap coordinates. The card is kept off
+  // them, and reading them back off the DOM would be a frame behind the
+  // assignments below.
+  const placed = [];
+  stack.forEach((el, i) => {
+    const size = sizes[i];
+    el.style.position = 'absolute';
+    el.style.left = 'auto';
+    el.style.top = 'auto';
+    el.style.right = `${place.right}px`;
+    el.style.bottom = `${offset}px`;
+    placed.push({
+      left: Math.max(0, rect.width - size.width - place.right),
+      top: Math.max(0, rect.height - size.height - offset),
+      width: size.width, height: size.height
+    });
+    offset += size.height + OVERLAY_GAP;
+  });
+
+  if (map) map.dataset.corner = `${place.y}-${place.x}`;
+
+  const toolbarRect = toolbarRectIn(App.toolbarDock, rect, box);
+  const info = layoutCanvasInfo(rect, toolbarRect, [...placed, toolbarRect]);
+  const scopeRect = positionScopeBar(rect, info);
+  positionStatusToast(rect, toolbarRect, [...((info && info.occupied) || []), scopeRect]);
+
+  // The popover anchors off the nav bar, so it has to follow the stack when
+  // the toolbar redocks or the panel resizes underneath it.
+  if (isQuickSettingsOpen()) positionQuickSettings();
+}
+
+export function initToolbarDock() {
+  App.toolbarDock = readToolbarDock();
+  applyToolbarDock(false);
+
+  const grip = $('toolbox-grip');
+  if (!grip || grip._toolbarDockInit) return;
+  grip._toolbarDockInit = true;
+
+  // A click on the grip toggles collapse; a drag past a small threshold
+  // redocks the toolbar. Pointer capture keeps tracking even if the
+  // pointer leaves the grip element mid-drag.
+  grip.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    const toolbox = $('canvas-toolbox');
+    const w = $('canvas-wrap');
+    if (!toolbox || !w) return;
+
+    const box = toolbox.getBoundingClientRect();
+    App.toolbarDragging = {
+      grabX: e.clientX - box.left,
+      grabY: e.clientY - box.top,
+      startX: e.clientX,
+      startY: e.clientY,
+      moved: false
+    };
+    App.toolbarPreviewDock = null;
+    capturePointer(grip, e.pointerId);
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  grip.addEventListener('pointermove', e => {
+    const dragging = App.toolbarDragging;
+    if (!dragging) return;
+    const toolbox = $('canvas-toolbox');
+    const w = $('canvas-wrap');
+    if (!toolbox || !w) return;
+
+    if (!dragging.moved) {
+      if (Math.hypot(e.clientX - dragging.startX, e.clientY - dragging.startY) < 4) return;
+      dragging.moved = true;
+      toolbox.classList.add('dragging');
+    }
+
+    const wrapRect = w.getBoundingClientRect();
+    const margin = TOOLBAR_MARGIN;
+    const left = e.clientX - wrapRect.left - dragging.grabX;
+    const top = e.clientY - wrapRect.top - dragging.grabY;
+    const pointerX = e.clientX - wrapRect.left;
+    const pointerY = e.clientY - wrapRect.top;
+    toolbox.style.left = `${left}px`;
+    toolbox.style.top = `${top}px`;
+    toolbox.style.right = 'auto';
+    toolbox.style.bottom = 'auto';
+    toolbox.style.transform = 'none';
+    toolbox.style.maxWidth = `${Math.max(120, wrapRect.width - margin * 2)}px`;
+
+    const side = getToolbarDockFromPoint(pointerX, pointerY, wrapRect);
+    const box = toolbox.getBoundingClientRect();
+    const ratio = computeToolbarRatio(side, pointerX, pointerY, wrapRect, box);
+    App.toolbarPreviewDock = { side, ratio };
+    showToolbarPreview({ side, ratio }, wrapRect);
+  });
+
+  const finishGripInteraction = e => {
+    const dragging = App.toolbarDragging;
+    if (!dragging) return;
+    const toolbox = $('canvas-toolbox');
+    App.toolbarDragging = null;
+    removeToolbarPreview();
+    releasePointer(grip, e.pointerId);
+
+    if (!dragging.moved) {
+      toggleToolbarCollapsed();
+      return;
+    }
+    if (toolbox) toolbox.classList.remove('dragging');
+    const dock = App.toolbarPreviewDock || { side: App.toolbarDock?.side || 'left', ratio: App.toolbarDock?.ratio ?? 0.5 };
+    App.toolbarPreviewDock = null;
+    App.toolbarDock = dock;
+    applyToolbarDock(true);
+  };
+  grip.addEventListener('pointerup', finishGripInteraction);
+  grip.addEventListener('pointercancel', finishGripInteraction);
+
+  window.addEventListener('resize', () => applyToolbarDock(false));
+}
+
+initToolbarDock();
+
+document.addEventListener('keyup', e => {
+  if (e.code !== 'Space') return;
+  if (!App.spacePan) return;
+  App.spacePan = false;
+  const w = $('canvas-wrap');
+  if (w) w.classList.remove('space-pan');
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  MODEL PICKER LOGIC
+// ══════════════════════════════════════════════════════════════════
+
+export function renderModelPicker() {
+  const menu = $('model-picker-menu');
+  if (!menu) return;
+  
+  let html = '';
+  MachineCategories.forEach(cat => {
+    html += `
+      <div class="model-cat-group">
+        <div class="model-cat-group-title">${cat.label}</div>
+        ${cat.machines.map(mid => {
+          const m = MachineTypes[mid];
+          if (!m) return '';
+          const isActive = App.machine === mid;
+          const isDisabled = m.implemented === false;
+          const full = m.fullName || m.label;
+          // The short code earns its slot only when it isn't already the opening
+          // words of the full name ("Moore" / "Moore Machine" reads as a stutter).
+          const showCode = !full.startsWith(mid);
+          return `
+            <div class="model-item ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}"
+                 role="option" aria-selected="${isActive ? 'true' : 'false'}"
+                 ${isDisabled ? 'aria-disabled="true"' : ''}
+                 tabindex="0"
+                 ${isDisabled ? '' : `data-action="activate->ui.selectModel" data-model="${mid}"`}>
+              <span class="model-item-label">${full}</span>
+              ${isDisabled ? '<span class="model-item-status">Coming Soon</span>'
+                           : (showCode ? `<span class="model-item-code">${mid}</span>` : '')}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  });
+
+  // Power Hierarchy Summary
+  html += `
+    <div class="model-hierarchy-summary">
+      <div class="model-hierarchy-title">
+        <svg width="12" height="12" viewBox="0 0 256 256" fill="currentColor">
+          <path d="M213.66,165.66a8,8,0,0,1-11.32,0L128,91.31,53.66,165.66a8,8,0,0,1-11.32-11.32l80-80a8,8,0,0,1,11.32,0l80,80A8,8,0,0,1,213.66,165.66Z" />
+        </svg>
+        Chomsky Power Hierarchy
+      </div>
+      <div class="model-hierarchy-math">
+        DFA = NFA < DPDA < NPDA ≤ QA ≤ 2PDA = TM
+      </div>
+    </div>
+  `;
+
+  menu.innerHTML = html;
+}
+
+let guardNextClose = false;
+
+export function closeModelPicker() {
+  const container = $('model-picker-container');
+  if (!container) return;
+  container.classList.remove('open');
+  window.removeEventListener('click', closeModelPickerOnClickOutside);
+  const btn = $('model-picker-btn');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+export function toggleModelPicker(force) {
+  const container = $('model-picker-container');
+  if (!container) return;
+  const wantOpen = force === undefined ? !container.classList.contains('open') : !!force;
+
+  if (!wantOpen) {
+    // Closing, whether by explicit force or by the toggle's own second
+    // press: the listener comes off with the menu.
+    closeModelPicker();
+    return;
+  }
+
+  // An opening click: the same click bubbles to window level, where
+  // closeModelPickerOnClickOutside would see it as outside-the-menu and close
+  // what is only just opening. guardNextClose swallows that one click instead
+  // of racing a setTimeout(0) against it, the way the rest of the app
+  // (modal.js, the theme picker) already does.
+  guardNextClose = true;
+  requestAnimationFrame(() => { guardNextClose = false; });
+  const btn = $('model-picker-btn');
+  if (btn) btn.setAttribute('aria-expanded', 'true');
+  renderModelPicker();
+  container.classList.add('open');
+  window.addEventListener('click', closeModelPickerOnClickOutside);
+}
+
+export function closeModelPickerOnClickOutside(e) {
+  if (guardNextClose) return;
+  const container = $('model-picker-container');
+  if (container && !container.contains(e.target)) {
+    closeModelPicker();
+    // Return focus to the trigger so the keyboard is not stranded inside a
+    // menu that just vanished.
+    const btn = $('model-picker-btn');
+    if (btn) btn.focus();
+  }
+}
+
+export function selectModel(id) {
+  if (MachineTypes[id] && MachineTypes[id].implemented) {
+    setMachine(id);
+    closeModelPicker();
+  }
+}
+
+export function updateModelPickerLabels() {
+  const m = MachineTypes[App.machine];
+  if (!m) return;
+  const cat = MachineCategories.find(c => c.id === m.category);
+  
+  const catEl = $('cur-model-cat');
+  const nameEl = $('cur-model-name');
+  if (catEl) catEl.textContent = cat ? cat.label : 'Automata';
+  if (nameEl) nameEl.textContent = m.label;
+}
+
+// Initial call to set labels
+document.addEventListener('DOMContentLoaded', () => {
+    updateModelPickerLabels();
+});
+
+
+export function clearSpacePan() {
+  if (!App.spacePan) return;
+  App.spacePan = false;
+  const w = $('canvas-wrap');
+  if (w) w.classList.remove('space-pan');
+}
+
+export function cancelToolbarDrag() {
+  if (!App.toolbarDragging) return;
+  App.toolbarDragging = null;
+  App.toolbarPreviewDock = null;
+  const toolbox = $('canvas-toolbox');
+  if (toolbox) toolbox.classList.remove('dragging');
+  removeToolbarPreview();
+  applyToolbarDock(false);
+}
+
+window.addEventListener('blur', () => {
+  clearSpacePan();
+  cancelToolbarDrag();
+});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) return;
+  clearSpacePan();
+  cancelToolbarDrag();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.code !== 'Space' || e.repeat) return;
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON') return;
+  if (e.target !== document.body && e.target !== document.documentElement && e.target !== $('canvas-wrap')) return;
+  // Don't activate spacePan when UTM algo is using Space for auto-play toggle
+  if (App.currentAlgo === 'utm') return;
+  App.spacePan = true;
+  const w = $('canvas-wrap');
+  if (w) w.classList.add('space-pan');
+  e.preventDefault();
+});
+
+export const PANEL_WIDTH_LIMITS = {
+  lpanel: { min: 220, max: 420, defaultWidth: 256, storageKey: 'automata-lpanel-width', cssVar: '--lpanel-width' },
+  rpanel: { min: 240, max: 480, defaultWidth: 288, storageKey: 'automata-rpanel-width', cssVar: '--rpanel-width' }
+};
+export let activePanelResize = null;
+
+export function isMobilePanelLayout() {
+  return !!(window.matchMedia && window.matchMedia('(max-width: 900px)').matches);
+}
+
+export function clampPanelWidth(panelId, width) {
+  const cfg = PANEL_WIDTH_LIMITS[panelId];
+  if (!cfg) return width;
+  return Math.max(cfg.min, Math.min(cfg.max, width));
+}
+
+export function readStoredPanelWidth(panelId) {
+  const cfg = PANEL_WIDTH_LIMITS[panelId];
+  if (!cfg) return null;
+  try {
+    const raw = localStorage.getItem(cfg.storageKey);
+    if (!raw) return cfg.defaultWidth;
+    const parsed = parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) return cfg.defaultWidth;
+    return clampPanelWidth(panelId, parsed);
+  } catch (e) {
+    return cfg.defaultWidth;
+  }
+}
+
+export function setPanelWidth(panelId, width, persist = true) {
+  const cfg = PANEL_WIDTH_LIMITS[panelId];
+  if (!cfg) return null;
+  const next = Math.round(clampPanelWidth(panelId, width));
+  document.documentElement.style.setProperty(cfg.cssVar, `${next}px`);
+  if (persist) {
+    writePref(cfg.storageKey, String(next));
+  }
+  applyToolbarDock(false);
+  return next;
+}
+
+export function applyStoredPanelWidths() {
+  if (isMobilePanelLayout()) return;
+  setPanelWidth('lpanel', readStoredPanelWidth('lpanel'), false);
+  setPanelWidth('rpanel', readStoredPanelWidth('rpanel'), false);
+}
+
+export function startPanelResize(panelId, e) {
+  if (e.button !== 0 || isMobilePanelLayout()) return;
+  const panel = $(panelId);
+  if (!panel || panel.classList.contains('unpinned')) return;
+  const cfg = PANEL_WIDTH_LIMITS[panelId];
+  if (!cfg) return;
+
+  const handle = panelId === 'lpanel' ? $('lpanel-resizer') : $('rpanel-resizer');
+  if (handle) { handle.classList.add('active'); capturePointer(handle, e.pointerId); }
+  activePanelResize = {
+    panelId,
+    startX: e.clientX,
+    startWidth: panel.getBoundingClientRect().width
+  };
+  document.body.classList.add('panel-resizing');
+  e.preventDefault();
+}
+
+export function handlePanelResizeMove(e) {
+  if (!activePanelResize) return;
+  const { panelId, startX, startWidth } = activePanelResize;
+  const delta = e.clientX - startX;
+  const next = panelId === 'lpanel' ? startWidth + delta : startWidth - delta;
+  setPanelWidth(panelId, next, false);
+}
+
+export function stopPanelResize() {
+  if (!activePanelResize) return;
+  const { panelId } = activePanelResize;
+  const panel = $(panelId);
+  if (panel) setPanelWidth(panelId, panel.getBoundingClientRect().width, true);
+  const handle = panelId === 'lpanel' ? $('lpanel-resizer') : $('rpanel-resizer');
+  if (handle) handle.classList.remove('active');
+  activePanelResize = null;
+  document.body.classList.remove('panel-resizing');
+  notifyCanvasResize();
+}
+
+export function initPanelResizers() {
+  const lHandle = $('lpanel-resizer');
+  const rHandle = $('rpanel-resizer');
+  if (!lHandle || !rHandle || lHandle.dataset.resizeInit === '1') return;
+
+  lHandle.dataset.resizeInit = '1';
+  rHandle.dataset.resizeInit = '1';
+
+  lHandle.addEventListener('pointerdown', e => startPanelResize('lpanel', e));
+  rHandle.addEventListener('pointerdown', e => startPanelResize('rpanel', e));
+
+  lHandle.addEventListener('dblclick', () => setPanelWidth('lpanel', PANEL_WIDTH_LIMITS.lpanel.defaultWidth, true));
+  rHandle.addEventListener('dblclick', () => setPanelWidth('rpanel', PANEL_WIDTH_LIMITS.rpanel.defaultWidth, true));
+
+  document.addEventListener('pointermove', handlePanelResizeMove);
+  document.addEventListener('pointerup', stopPanelResize);
+  document.addEventListener('pointercancel', stopPanelResize);
+  window.addEventListener('resize', applyStoredPanelWidths);
+
+  applyStoredPanelWidths();
+}
+
+const PANEL_LABEL = { lpanel: 'left panel', rpanel: 'right panel' };
+
+/** Whether a sidebar is docked beside the canvas rather than a hover rail. */
+export function isPanelPinned(side) {
+  const panel = $(side);
+  return !!panel && !panel.classList.contains('unpinned');
+}
+
+/**
+ * Pin or unpin either sidebar.
+ *
+ * One function for both sides. It was two copies differing in three string
+ * literals, which is how the left panel came to hide a hand-picked list of its
+ * children on unpin while the right one hid all of them.
+ *
+ * Stated as "put it in this state" rather than as a toggle, and `togglePanelPin`
+ * asks for the state it wants. A caller that knows the answer it wants — the
+ * shake gesture putting both panels away, or bringing back exactly the ones it
+ * put away — would otherwise have to read the class and decide whether to call,
+ * which is the same test written once per caller and wrong the first time one
+ * of them forgets it. Answering `false` for "it was already like that" is what
+ * lets the gesture report what it actually did.
+ */
+export function setPanelPinned(side, pinned) {
+  const panel = $(side);
+  if (!panel) return false;
+  const unpinned = !pinned;
+  if (panel.classList.contains('unpinned') === unpinned) return false;
+  panel.classList.toggle('unpinned', unpinned);
+  const btn = $(`${side}-pin-btn`);
+  if (btn) {
+    // The tooltip was the only thing this button said, and a tooltip is not an
+    // accessible name: an icon-only <button> with nothing but a `data-tip` is
+    // announced as "button". One string serves both, so they cannot drift.
+    const say = `${unpinned ? 'Pin' : 'Unpin'} ${PANEL_LABEL[side]}`;
+    btn.dataset.tip = say;
+    btn.setAttribute('aria-label', say);
+    btn.setAttribute('aria-pressed', unpinned ? 'false' : 'true');
+  }
+  applyToolbarDock(false);
+  writeFlag(`automata-${side}-pinned`, !(unpinned));
+  return true;
+}
+
+export function togglePanelPin(side) {
+  if ($(side)) setPanelPinned(side, !isPanelPinned(side));
+}
+
+// The pin buttons' actions (ui.toggleLPanelPin, ui.toggleRPanelPin) and init.js call these.
+export function toggleLPanelPin() { togglePanelPin('lpanel'); }
+export function toggleRPanelPin() { togglePanelPin('rpanel'); }
+
+// ── the sidebars' tabs ────────────────────────────────────────────
+//  Both edges are the same component: a header with a tab strip, a body of
+//  tabpanels, a pin, a resizer and a mobile sheet. StateMate was a dock across
+//  the bottom of the canvas, which made it the only durable surface in the app
+//  that covered the diagram rather than making room for it; as a tab it makes
+//  room like everything else, and loses the private minimize/close/Escape-ladder
+//  vocabulary it needed to compensate. See the note over .sm-panel in
+//  css/modals.css.
+//
+//  Which tab is which — and, for a movable one, which side it is on — lives in
+//  panel-state.js, so the list a strip is painted from is the list a selection
+//  is validated against and the list the DOM pass moves nodes by.
+
+/** The element a side's tabpanels are children of. */
+function panelBody(side) {
+  return $(`${side}-mobile-content`);
+}
+
+/** Paint both tab strips and every tabpanel from the panel state. */
+export function syncPanelTabs() {
+  PANEL_SIDES.forEach(side => {
+    const on = getActivePanelTab(side);
+    const panel = $(side);
+    if (panel) panel.dataset.activePanel = on || '';
+    // A panel every tab has been dragged off is not drawn at all, the way VS
+    // Code hides an empty sidebar; dragging a tab to that edge brings it back.
+    if (panel?.classList) panel.classList.toggle('is-empty', isPanelEmpty(side));
+    panelTabNames(side).forEach(name => {
+      const ids = PANEL_TABS[name];
+      const tab = $(ids.tab);
+      const tabpanel = $(ids.panel);
+      const active = name === on;
+      if (tab) {
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', String(active));
+        tab.setAttribute('tabindex', active ? '0' : '-1');
+      }
+      if (tabpanel) {
+        tabpanel.hidden = !active;
+        tabpanel.setAttribute('aria-hidden', String(!active));
+      }
+    });
+  });
+  // StateMate's ⋯ menu is part of its tab, not of the right panel: it follows
+  // the panel between edges and is only offered while that panel is showing.
+  const actions = $('sm-head-actions');
+  if (actions) actions.hidden = !isPanelTabActive('statemate');
+  PANEL_SIDES.forEach(fitPanelTabs);
+}
+
+/**
+ * Compact a strip whose labels do not fit: the unselected tabs drop to their
+ * icons. Measured, because with every tab movable a strip can hold one tab or
+ * four and no container breakpoint is right for both — and measured with the
+ * tabs' shrinking switched off (`.is-measuring`), since a tab's own
+ * `scrollWidth` is taken after its label has already been ellipsised down to
+ * whatever room there was, which always "fits".
+ */
+export function fitPanelTabs(side) {
+  const strip = $(`${side}-tabs`);
+  if (!strip?.classList) return;
+  strip.classList.remove('is-compact');
+  const tabs = [...(strip.children || [])];
+  let compact = false;
+  if (tabs.length >= 2 && strip.clientWidth) {
+    strip.classList.add('is-measuring');
+    const need = strip.scrollWidth || 0;
+    strip.classList.remove('is-measuring');
+    compact = need > strip.clientWidth + 1;
+  }
+  strip.classList.toggle('is-compact', compact);
+  // A tooltip only where the name is not already on screen. On every tab it
+  // repeated the label it was hovering over, and it followed the pointer
+  // through drags and over the tab menu.
+  tabs.forEach(tab => {
+    const label = tab.querySelector?.('.panel-tab-label')?.textContent?.trim();
+    if (compact && !tab.classList.contains('active') && label) tab.setAttribute('data-tip', label);
+    else tab.removeAttribute?.('data-tip');
+  });
+}
+
+/** Select a tab without invoking a panel's enter/leave lifecycle. */
+export function activatePanelTab(name) {
+  const side = getTabSide(name);
+  if (!side) return null;
+  const active = setActivePanelTab(side, name);
+  syncPanelTabs();
+  return active;
+}
+
+/**
+ * Put a movable tab's button, tabpanel and header chrome on the side that owns
+ * it now.
+ *
+ * The single place the DOM is moved, so "which panel is StateMate on" has one
+ * answer (panel-state.js) and one consequence (this). Appending is enough for
+ * both order and re-parenting: `.panel-header` is never moved, so it stays the
+ * body's first child, and the strips list tabs in declaration order.
+ */
+export function applyPanelLayout() {
+  PANEL_SIDES.forEach(side => {
+    const strip = $(`${side}-tabs`);
+    const body = panelBody(side);
+    const names = panelTabNames(side);
+    const tabs = names.map(name => $(PANEL_TABS[name].tab)).filter(Boolean);
+    if (strip) {
+      // Touch the strip only when its order is wrong: re-appending a tab that
+      // is already in place would still move focus-bearing DOM for nothing.
+      const drawn = [...strip.children].filter(el => tabs.includes(el));
+      if (drawn.length !== tabs.length || drawn.some((el, i) => el !== tabs[i])) {
+        tabs.forEach(tab => strip.appendChild(tab));
+      }
+    }
+    names.forEach(name => {
+      const tabpanel = $(PANEL_TABS[name].panel);
+      if (body && tabpanel && tabpanel.parentNode !== body) body.appendChild(tabpanel);
+    });
+  });
+  const host = getTabSide('statemate');
+  const pin = $(`${host}-pin-btn`);
+  const actions = $('sm-head-actions');
+  if (pin?.parentNode && actions && actions.parentNode !== pin.parentNode) {
+    pin.parentNode.insertBefore(actions, pin);
+  }
+  syncPanelTabs();
+}
+
+/**
+ * Move StateMate to the other sidebar and remember the choice.
+ *
+ * Not in `App.config`: that is deep-copied into every workspace tab and written
+ * to IndexedDB, and where a panel sits is a property of this browser rather
+ * than of the machine being edited.
+ */
+export function setStateMatePanel(side) {
+  if (!PANEL_SIDES.includes(side) || getTabSide('statemate') === side) return;
+  movePanelTab('statemate', side, null);
+}
+
+const TAB_ORDER_KEY = 'automata-panel-tab-order';
+const TAB_SIDES_KEY = 'automata-panel-tab-sides';
+// Written before every tab could move, when StateMate was the only one that
+// did. Read once as a migration and never written again.
+const LEGACY_STATEMATE_SIDE_KEY = 'automata-statemate-panel';
+
+/** Write the tab layout — the order and every moved tab's side. */
+function persistPanelTabLayout() {
+  const order = getPanelTabOrder();
+  if (order) writeJsonPref(TAB_ORDER_KEY, order);
+  else forgetPref(TAB_ORDER_KEY);
+  const sides = getTabSides();
+  if (Object.keys(sides).length) writeJsonPref(TAB_SIDES_KEY, sides);
+  else forgetPref(TAB_SIDES_KEY);
+  forgetPref(LEGACY_STATEMATE_SIDE_KEY);
+}
+
+/** The saved sides, with the StateMate-only key of earlier versions folded in. */
+function readStoredTabSides() {
+  const sides = readJsonPref(TAB_SIDES_KEY);
+  if (sides) return sides;
+  const legacy = readPref(LEGACY_STATEMATE_SIDE_KEY);
+  return legacy ? { statemate: legacy } : null;
+}
+
+/**
+ * StateMate has to be *opened*, not merely selected — `openStateMate` wires its
+ * composer. When a layout change rather than the reader leaves it the tab its
+ * panel falls back to (every other tab dragged off that panel, a saved layout
+ * at boot), open it quietly: no pin, no focus, since nobody asked for it.
+ */
+function settleStateMate(wasShowing) {
+  if (!wasShowing && isPanelTabActive('statemate')) openStateMate({ resume: true, quiet: true });
+}
+
+/**
+ * Put a tab on `side` before `before` (null: last), the way dragging a tab in
+ * VS Code does — the one entry point for the drag, the tab menu and
+ * `setStateMatePanel`.
+ *
+ * A tab that crosses to the other panel is opened there, which is what a
+ * reader who dragged it across is asking to see. A reorder within one strip
+ * changes nothing about which tab is showing.
+ */
+export function movePanelTab(name, side, before = null) {
+  const from = getTabSide(name);
+  const smWas = isPanelTabActive('statemate');
+  if (!movePanelTabTo(name, side, before)) return false;
+  persistPanelTabLayout();
+  applyPanelLayout();
+  if (from !== side) showPanelTab(name);
+  settleStateMate(smWas || (from !== side && name === 'statemate'));
+  return true;
+}
+
+/** Back to declared order, with every tab on its home side. */
+export function resetPanelTabLayout() {
+  const smWas = isPanelTabActive('statemate');
+  PANEL_TAB_NAMES.forEach(name => {
+    const home = PANEL_TABS[name].home;
+    if (getTabSide(name) !== home) movePanelTabTo(name, home, null);
+  });
+  setPanelTabOrder(null);
+  persistPanelTabLayout();
+  applyPanelLayout();
+  settleStateMate(smWas);
+}
+
+// ── dragging a tab ────────────────────────────────────────────────
+//  A press is a click until it travels, the rule panel-float.js follows: no
+//  pointer capture and no listeners of consequence until the threshold, so an
+//  ordinary click reaches the tab's own handler untouched. Past it, the tab can
+//  be dropped anywhere on its own strip to reorder, or anywhere over the other
+//  panel to move it there — and, when that panel has no tabs left and so is
+//  not drawn at all, on a band at that edge of the canvas. The drop targets
+//  are measured once, at the start of the gesture, not per frame.
+
+const TAB_DRAG_THRESHOLD = 5;
+// A collapsed hover rail, or a panel with no tabs, is zero wide, so it is
+// given a band at its edge.
+const TAB_RAIL_BAND = 48;
+const TAB_EMPTY_BAND = 72;
+// How far above or below a strip a pointer may stray and still reorder it.
+const TAB_STRIP_SLACK = 16;
+
+let tabDrag = null;
+let tabDragEndedAt = 0;
+
+function tabLabel(name) {
+  return $(PANEL_TABS[name].tab)?.querySelector?.('.panel-tab-label')?.textContent?.trim() || name;
+}
+
+function panelIsDrawn(side) {
+  const panel = $(side);
+  return !!panel && panel.offsetParent !== null && !panel.classList.contains('hidden')
+    && !panel.classList.contains('is-empty');
+}
+
+/** A panel with no tabs, which is not drawn — but could take one. */
+function panelIsVacant(side) {
+  const panel = $(side);
+  return !!panel && isPanelEmpty(side) && !panel.classList.contains('hidden');
+}
+
+/** Where a drag could land, measured once. */
+function measureTabDropTargets(name) {
+  const wrapRect = $('canvas-wrap')?.getBoundingClientRect?.();
+  return PANEL_SIDES.filter(side => canTabGoTo(name, side) && (panelIsDrawn(side) || panelIsVacant(side))).map(side => {
+    if (!panelIsDrawn(side)) {
+      if (!wrapRect || !wrapRect.width) return null;
+      const rect = side === 'lpanel'
+        ? { left: wrapRect.left - 8, right: wrapRect.left + TAB_EMPTY_BAND, top: wrapRect.top, bottom: wrapRect.bottom }
+        : { left: wrapRect.right - TAB_EMPTY_BAND, right: wrapRect.right + 8, top: wrapRect.top, bottom: wrapRect.bottom };
+      return { side, rect, strip: null, tabs: [], home: false, vacant: true };
+    }
+    const panel = $(side);
+    const r = panel.getBoundingClientRect();
+    let rect = { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+    if (r.width < 8) {
+      rect = side === 'lpanel'
+        ? { left: r.left - 4, right: r.left + TAB_RAIL_BAND, top: r.top, bottom: r.bottom }
+        : { left: r.right - TAB_RAIL_BAND, right: r.right + 4, top: r.top, bottom: r.bottom };
+    }
+    const strip = $(`${side}-tabs`)?.getBoundingClientRect?.();
+    const tabs = panelTabNames(side).filter(n => n !== name).map(n => {
+      const b = $(PANEL_TABS[n].tab)?.getBoundingClientRect?.();
+      return b ? { name: n, mid: b.left + b.width / 2 } : null;
+    }).filter(Boolean);
+    return { side, rect, strip, tabs, home: side === getTabSide(name) };
+  }).filter(Boolean);
+}
+
+function findTabDrop(x, y) {
+  const target = tabDrag.targets.find(t =>
+    x >= t.rect.left && x <= t.rect.right && y >= t.rect.top && y <= t.rect.bottom);
+  if (!target) return null;
+  const onStrip = target.strip && target.strip.height > 0
+    && y >= target.strip.top - TAB_STRIP_SLACK && y <= target.strip.bottom + TAB_STRIP_SLACK;
+  // Within its own panel a tab reorders only over the strip; the body of the
+  // panel is not a place a tab can go. Over the other panel, anywhere will do.
+  if (target.home && !onStrip) return null;
+  const before = onStrip ? (target.tabs.find(t => x < t.mid)?.name || null) : null;
+  return { side: target.side, before };
+}
+
+/** True when dropping here would leave the tab exactly where it is. */
+function tabDropIsNoop(name, drop) {
+  if (!drop || drop.side !== getTabSide(name)) return false;
+  const names = panelTabNames(drop.side);
+  const next = names[names.indexOf(name) + 1] || null;
+  return drop.before === next;
+}
+
+function clearTabDropMarks() {
+  document.querySelectorAll('.panel-tab.drop-before, .panel-tab.drop-after')
+    .forEach(el => el.classList.remove('drop-before', 'drop-after'));
+  PANEL_SIDES.forEach(side => $(side)?.classList.remove('is-tab-drop-target'));
+  (tabDrag?.zones || []).forEach(z => z.el.classList.remove('is-target'));
+}
+
+function showTabDrop(drop) {
+  clearTabDropMarks();
+  if (!drop || tabDropIsNoop(tabDrag.name, drop)) return;
+  const zone = (tabDrag.zones || []).find(z => z.side === drop.side);
+  if (zone) { zone.el.classList.add('is-target'); return; }
+  if (drop.side !== getTabSide(tabDrag.name)) $(drop.side)?.classList.add('is-tab-drop-target');
+  const names = panelTabNames(drop.side).filter(n => n !== tabDrag.name);
+  if (drop.before) $(PANEL_TABS[drop.before].tab)?.classList.add('drop-before');
+  else if (names.length) $(PANEL_TABS[names[names.length - 1]].tab)?.classList.add('drop-after');
+}
+
+/** A visible band where a panel with no tabs would be, for the drag's length. */
+function showVacantZones(targets) {
+  return targets.filter(t => t.vacant).map(t => {
+    const el = document.createElement('div');
+    el.className = `panel-edge-drop is-${t.side}`;
+    el.setAttribute('aria-hidden', 'true');
+    el.style.left = t.rect.left + 8 * (t.side === 'lpanel' ? 1 : 0) + 'px';
+    el.style.top = t.rect.top + 'px';
+    el.style.width = (t.rect.right - t.rect.left - 8) + 'px';
+    el.style.height = (t.rect.bottom - t.rect.top) + 'px';
+    const label = document.createElement('span');
+    label.textContent = t.side === 'lpanel' ? 'Left panel' : 'Right panel';
+    el.appendChild(label);
+    document.body.appendChild(el);
+    return { side: t.side, el };
+  });
+}
+
+function startTabDrag() {
+  const d = tabDrag;
+  d.active = true;
+  d.targets = measureTabDropTargets(d.name);
+  d.zones = showVacantZones(d.targets);
+  capturePointer(d.tab, d.pointerId);
+  d.tab.classList.add('is-dragging');
+  document.body.classList.add('is-dragging-panel-tab');
+  const ghost = document.createElement('div');
+  ghost.className = 'panel-tab-ghost';
+  ghost.setAttribute('aria-hidden', 'true');
+  ghost.textContent = tabLabel(d.name);
+  document.body.appendChild(ghost);
+  d.ghost = ghost;
+}
+
+function endTabDrag() {
+  const d = tabDrag;
+  if (d?.active) clearTabDropMarks();
+  tabDrag = null;
+  document.removeEventListener('pointermove', onTabDragMove, true);
+  document.removeEventListener('pointerup', onTabDragUp, true);
+  document.removeEventListener('pointercancel', onTabDragCancel, true);
+  document.removeEventListener('keydown', onTabDragKey, true);
+  if (!d?.active) return d;
+  releasePointer(d.tab, d.pointerId);
+  d.tab.classList.remove('is-dragging');
+  document.body.classList.remove('is-dragging-panel-tab');
+  d.ghost?.remove?.();
+  (d.zones || []).forEach(z => z.el.remove?.());
+  // The pointerup of a drag still produces a click on the tab; it is not one.
+  tabDragEndedAt = Date.now();
+  return d;
+}
+
+function onTabDragMove(e) {
+  if (!tabDrag || e.pointerId !== tabDrag.pointerId) return;
+  if (!tabDrag.active) {
+    if (Math.hypot(e.clientX - tabDrag.x0, e.clientY - tabDrag.y0) < TAB_DRAG_THRESHOLD) return;
+    startTabDrag();
+  }
+  e.preventDefault();
+  if (tabDrag.ghost) tabDrag.ghost.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 10}px)`;
+  tabDrag.drop = findTabDrop(e.clientX, e.clientY);
+  showTabDrop(tabDrag.drop);
+}
+
+function onTabDragUp(e) {
+  if (!tabDrag || e.pointerId !== tabDrag.pointerId) return;
+  const d = endTabDrag();
+  if (!d.active || !d.drop || tabDropIsNoop(d.name, d.drop)) return;
+  movePanelTab(d.name, d.drop.side, d.drop.before);
+}
+
+function onTabDragCancel(e) {
+  if (tabDrag && e.pointerId === tabDrag.pointerId) endTabDrag();
+}
+
+function onTabDragKey(e) {
+  if (!tabDrag?.active || e.key !== 'Escape') return;
+  // Claimed only while a drag is in flight, so it pre-empts nothing otherwise.
+  e.preventDefault();
+  e.stopPropagation();
+  endTabDrag();
+}
+
+function onPanelTabPointerDown(name, e) {
+  if (e.button !== 0 || e.isPrimary === false || tabDrag || isMobilePanelLayout()) return;
+  hideActionMenu();
+  tabDrag = {
+    name, tab: $(PANEL_TABS[name].tab), pointerId: e.pointerId,
+    x0: e.clientX, y0: e.clientY, active: false, drop: null, ghost: null, targets: [], zones: []
+  };
+  document.addEventListener('pointermove', onTabDragMove, true);
+  document.addEventListener('pointerup', onTabDragUp, true);
+  document.addEventListener('pointercancel', onTabDragCancel, true);
+  document.addEventListener('keydown', onTabDragKey, true);
+}
+
+// ── the action menu ───────────────────────────────────────────────
+//  One context menu for the panel chrome: a tab's (Move Left/Right, to the
+//  other panel) and a card's (to another tab). Right-click, Shift+F10 or the
+//  context-menu key — the keyboard's route to everything the drags do. Built
+//  on first use and rebuilt on each open, since which rows apply depends on
+//  where the thing is now.
+
+let actionMenu = null;
+let actionMenuAnchor = null;
+
+export function hideActionMenu(refocus = false) {
+  if (!actionMenu || actionMenu.style.display !== 'block') return;
+  actionMenu.style.display = 'none';
+  const anchor = actionMenuAnchor;
+  actionMenuAnchor = null;
+  if (refocus) anchor?.focus?.();
+}
+
+/** The name the tab menu has always been hidden by. */
+export function hidePanelTabMenu(refocus = false) {
+  hideActionMenu(refocus);
+}
+
+/**
+ * Open the menu with `items` (`{label, run, disabled}` or `{divider: true}`),
+ * at the pointer (`at`) or under `anchor` when opened from the keyboard.
+ * Answers false, opening nothing, when no row could do anything.
+ */
+export function openActionMenu(items, { at = null, anchor = null, label = 'Actions' } = {}) {
+  if (!items.some(it => !it.divider && !it.disabled)) return false;
+  if (!actionMenu) {
+    actionMenu = document.createElement('div');
+    actionMenu.className = 'ctx panel-tab-menu';
+    actionMenu.id = 'panel-tab-menu';
+    actionMenu.setAttribute('role', 'menu');
+    actionMenu.addEventListener('keydown', e => {
+      if (e.key !== 'Escape' && e.key !== 'Tab') return;
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); }
+      hideActionMenu(e.key === 'Escape');
+    });
+    document.body.appendChild(actionMenu);
+  }
+  hideTabContextMenu();
+  hideContextMenu?.();
+  hideCanvasContextMenu?.();
+  actionMenu.setAttribute('aria-label', label);
+  actionMenu.innerHTML = '';
+  items.forEach(it => {
+    const row = document.createElement('div');
+    if (it.divider) { row.className = 'ctx-divider'; actionMenu.appendChild(row); return; }
+    row.className = 'ctx-i' + (it.disabled ? ' disabled' : '');
+    row.setAttribute('role', 'menuitem');
+    row.setAttribute('tabindex', '-1');
+    if (it.disabled) row.setAttribute('aria-disabled', 'true');
+    row.textContent = it.label;
+    row.addEventListener('click', e => {
+      e.stopPropagation();
+      if (it.disabled) return;
+      hideActionMenu();
+      it.run();
+    });
+    actionMenu.appendChild(row);
+  });
+  actionMenuAnchor = anchor;
+  actionMenu.style.visibility = 'hidden';
+  actionMenu.style.display = 'block';
+  const m = actionMenu.getBoundingClientRect();
+  let x = at?.x, y = at?.y;
+  if (x == null) {
+    const r = anchor?.getBoundingClientRect?.() || { left: 8, bottom: 8 };
+    x = r.left;
+    y = r.bottom + 4;
+  }
+  actionMenu.style.left = Math.max(8, Math.min(x, innerWidth - m.width - 8)) + 'px';
+  actionMenu.style.top = Math.max(8, Math.min(y, innerHeight - m.height - 8)) + 'px';
+  actionMenu.style.visibility = '';
+  if (!at) {
+    const first = actionMenu.querySelector('.ctx-i:not(.disabled)');
+    if (first) { first.setAttribute('tabindex', '0'); first.focus?.(); }
+  }
+  return true;
+}
+
+function panelTabMenuItems(name) {
+  const side = getTabSide(name);
+  const names = panelTabNames(side);
+  const i = names.indexOf(name);
+  const other = PANEL_SIDES.find(s => s !== side);
+  const items = [
+    { label: 'Move Left', disabled: i <= 0, run: () => movePanelTab(name, side, names[i - 1]) },
+    { label: 'Move Right', disabled: i >= names.length - 1, run: () => movePanelTab(name, side, names[i + 2] || null) }
+  ];
+  if (canTabGoTo(name, other)) {
+    items.push({
+      label: other === 'lpanel' ? 'Move to Left Panel' : 'Move to Right Panel',
+      run: () => movePanelTab(name, other, null)
+    });
+  }
+  const customised = !!getPanelTabOrder()
+    || PANEL_TAB_NAMES.some(n => getTabSide(n) !== PANEL_TABS[n].home);
+  if (customised) items.push({ divider: true }, { label: 'Reset Tab Layout', run: resetPanelTabLayout });
+  return items;
+}
+
+function openPanelTabMenu(name, at) {
+  return openActionMenu(panelTabMenuItems(name), {
+    at, anchor: $(PANEL_TABS[name].tab), label: 'Panel tab actions'
+  });
+}
+
+document.addEventListener('click', () => hideActionMenu());
+// Any right-click closes it; one on a tab or a card header reopens it for
+// that thing, from the target's own listener, which runs after this one.
+document.addEventListener('contextmenu', () => hideActionMenu(), true);
+window.addEventListener?.('resize', () => hideActionMenu());
+
+/**
+ * Make a sidebar visible enough to read.
+ *
+ * An unpinned panel is collapsed to a hover rail, so a tab opened onto it would
+ * reveal nothing. Pinning is the honest fix — the reader asked for the panel,
+ * and a button that appears to do nothing is worse than one that takes the
+ * width it needs.
+ *
+ * Only an opening calls this, and `showPanelTab` never calls it directly.
+ * Selecting a panel's *default* tab must not: the strip is inside the panel, so
+ * reaching it means the panel is already readable, and pinning writes to
+ * localStorage — clicking "Inspector" on a hover-revealed panel would quietly
+ * change a preference the reader set on purpose. Selecting StateMate goes
+ * through `openStateMate`, which does reveal, because it ends by focusing the
+ * composer and an unpinned panel hides its content the moment the pointer
+ * leaves.
+ */
+export function revealPanel(side) {
+  const panel = $(side);
+  if (panel?.classList?.contains('unpinned')) togglePanelPin(side);
+  if (isMobilePanelLayout() && panel?.dataset.mobileCollapsed === '1') {
+    toggleMobilePanel(side, false);
+  }
+}
+
+/**
+ * Select a tab through its panel's lifecycle.
+ *
+ * Leaving StateMate is deliberately not destructive: nothing about the session
+ * lives in the DOM, so there is nothing for a tab switch to tear down. That is
+ * the whole difference from the ✕ this replaced. Both branches end in
+ * `activatePanelTab`, so the strip is painted once by whichever ran, and
+ * neither reveals the panel from here — `openStateMate` does its own, for the
+ * reason in `revealPanel`, and selecting a default tab must not.
+ */
+export function showPanelTab(name) {
+  if (name === 'statemate') openStateMate({ resume: true });
+  // Only a selection on StateMate's own side displaces it; the other panel's
+  // tabs have nothing to do with it now that it can be on either edge.
+  else if (getTabSide(name) === getTabSide('statemate')) stowStateMate();
+  if (!isPanelTabActive(name)) activatePanelTab(name);
+  syncMobilePanelBar();
+}
+
+export function initPanelTabs() {
+  const sides = readStoredTabSides();
+  if (sides) setTabSides(sides);
+  const order = readJsonPref(TAB_ORDER_KEY);
+  if (order) setPanelTabOrder(order);
+  // Wired at creation the way reference.js does it.
+  PANEL_TAB_NAMES.forEach(name => {
+    const tab = $(PANEL_TABS[name].tab);
+    if (!tab || tab._panelTabInit) return;
+    tab._panelTabInit = true;
+    tab.addEventListener('click', () => {
+      if (Date.now() - tabDragEndedAt < 400) return;
+      showPanelTab(name);
+    });
+    tab.addEventListener('pointerdown', e => onPanelTabPointerDown(name, e));
+    tab.addEventListener('contextmenu', e => {
+      if (isMobilePanelLayout()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openPanelTabMenu(name, { x: e.clientX, y: e.clientY });
+    });
+    tab.addEventListener('keydown', e => {
+      if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+        e.preventDefault();
+        openPanelTabMenu(name, null);
+        return;
+      }
+      // The walk is over the tabs on *this* strip, read at event time: a
+      // movable tab changes both strips' contents when it moves.
+      const names = panelTabNames(getTabSide(name));
+      const index = names.indexOf(name);
+      let next = null;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = names[(index + 1) % names.length];
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = names[(index - 1 + names.length) % names.length];
+      if (e.key === 'Home') next = names[0];
+      if (e.key === 'End') next = names[names.length - 1];
+      if (!next) return;
+      e.preventDefault();
+      showPanelTab(next);
+      $(PANEL_TABS[next].tab)?.focus();
+    });
+  });
+  applyPanelLayout();
+  // A saved layout can leave StateMate alone on a panel, and so showing.
+  settleStateMate(false);
+  // A strip's room changes with its panel — resized, pinned, opened from a
+  // hover rail — and the labels arrive late when the web font does.
+  if (typeof ResizeObserver === 'function' && !initPanelTabs._observer) {
+    initPanelTabs._observer = new ResizeObserver(() => PANEL_SIDES.forEach(fitPanelTabs));
+    PANEL_SIDES.forEach(side => { const strip = $(`${side}-tabs`); if (strip) initPanelTabs._observer.observe(strip); });
+  }
+  document.fonts?.ready?.then?.(() => PANEL_SIDES.forEach(fitPanelTabs));
+}
+
+export const MOBILE_BUILD_PANEL_IDS = ['lpanel', 'rpanel'];
+export const MOBILE_AUX_PANEL_IDS = ['algo-nav', 'gram-nav', 'ref-nav', 'lib-nav'];
+export const MOBILE_AUX_PANEL_BY_VIEW = {
+  algo: 'algo-nav',
+  grammar: 'gram-nav',
+  reference: 'ref-nav',
+  library: 'lib-nav'
+};
+
+export function updateMobilePanelChrome() {
+  const openId = MOBILE_BUILD_PANEL_IDS.find(id => $(id)?.dataset.mobileCollapsed !== '1') || null;
+  const auxId = MOBILE_AUX_PANEL_BY_VIEW[App.view];
+  const auxOpen = !!auxId && $(auxId)?.dataset.mobileCollapsed !== '1';
+  const scrim = $('mobile-panel-scrim');
+  if (scrim) scrim.classList.toggle('open', !!openId);
+  const auxScrim = $('mobile-aux-sheet-scrim');
+  if (auxScrim) auxScrim.classList.toggle('open', auxOpen);
+
+  document.querySelectorAll('[data-mobile-panel-toggle]').forEach(toggle => {
+    const id = toggle.dataset.mobilePanelToggle;
+    const isOpen = id === openId || !!$(id) && $(id).dataset.mobileCollapsed !== '1';
+    toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    toggle.classList.toggle('active', isOpen);
+  });
+}
+
+export function setMobilePanelCollapsed(id, collapsed, persist = true) {
+  const panel = $(id);
+  if (!panel) return;
+  panel.dataset.mobileCollapsed = collapsed ? '1' : '0';
+  panel.querySelectorAll('.mobile-panel-toggle').forEach(toggle => {
+    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  });
+  document.querySelectorAll(`[data-mobile-panel-toggle="${id}"]`).forEach(toggle => {
+    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  });
+  if (persist) {
+    writeFlag(`automata-mobile-panel-${id}`, collapsed);
+  }
+  syncMobilePanelBar();
+  updateMobilePanelChrome();
+}
+
+// ── the mobile panel bar ──────────────────────────────────────────
+//
+// One button per panel *tab*, not per panel. "Panels" named a container
+// rather than anything the reader wants, and it hid the fact that the right
+// sheet holds two different things — you tapped it to reach StateMate and
+// landed on the Inspector, or the other way round, with the bar giving no
+// sign either existed. The names here are the panel tabs' own names, so the
+// mobile bar and the desktop strips cannot describe the app differently, and
+// **the side is asked for rather than assumed**: StateMate is movable, so a
+// button hard-wired to `rpanel` would stop working the moment it was moved.
+
+/** The tab a mobile bar button opens, and where that tab currently lives. */
+function mobileBarTarget(name) {
+  const side = getTabSide(name);
+  return side ? { name, side } : null;
+}
+
+/**
+ * Opens the sheet showing a tab — or closes it, if that is already what is
+ * on screen. A bar button is a toggle for the thing it names, which is why
+ * the test is the tab and not just the panel.
+ */
+export function toggleMobilePanelTab(name) {
+  const target = mobileBarTarget(name);
+  if (!target) return;
+  const panel = $(target.side);
+  const open = panel && panel.dataset.mobileCollapsed !== '1';
+  if (open && isPanelTabActive(name)) { setMobilePanelCollapsed(target.side, true); return; }
+  // showPanelTab first: the sheet slides up already showing what was asked
+  // for, rather than showing the last tab and swapping under the reader.
+  showPanelTab(name);
+  toggleMobilePanel(target.side, false);
+}
+
+/**
+ * Repaint whatever names the panel a sheet is showing.
+ *
+ * There used to be three bar buttons here, one per tab. There is one cell now,
+ * named for the tab it opens, with the other two on a strip across the sheet's
+ * own head — see js/ui/mobile.js, which owns the drawing. This stays as the hook
+ * every caller already knew about, so the panel controller does not have to
+ * learn that the mobile bar changed shape.
+ */
+export function syncMobilePanelBar() {
+  syncMobileBar();
+}
+
+/** Kept as the boot entry point the sequence in js/core/init.js already calls. */
+export function initMobilePanelBar() {
+  initMobileShell();
+}
+
+export function toggleMobilePanel(id, force) {
+  const panel = $(id);
+  if (!panel) return;
+  const collapsed = force === undefined ? panel.dataset.mobileCollapsed !== '1' : !!force;
+
+  // Build panels behave like mutually exclusive bottom sheets on mobile. The
+  // auxiliary-view navigation panels remain independent because they live in
+  // their own overlay.
+  if (!collapsed && isMobilePanelLayout() && MOBILE_BUILD_PANEL_IDS.includes(id)) {
+    MOBILE_BUILD_PANEL_IDS.filter(otherId => otherId !== id).forEach(otherId => {
+      setMobilePanelCollapsed(otherId, true, false);
+    });
+  }
+  setMobilePanelCollapsed(id, collapsed);
+}
+
+export function closeMobilePanels() {
+  MOBILE_BUILD_PANEL_IDS.forEach(id => setMobilePanelCollapsed(id, true));
+}
+
+export function closeMobileAuxNav() {
+  const id = MOBILE_AUX_PANEL_BY_VIEW[App.view];
+  if (id) setMobilePanelCollapsed(id, true);
+}
+
+// Boot is not the only way into the mobile shell. A window narrowed past the
+// breakpoint, or a tablet rotated across it, arrives carrying the desktop's
+// panels — and on desktop every panel is `mobileCollapsed = '0'`, because both
+// are on screen. Read as sheets, that is two open at once: both strips marked
+// two tabs selected and the bar's cell named the sheet underneath. So the same
+// reconciliation boot runs is run again on every entry, which is what makes an
+// arrival by resize the same arrival as one by load.
+let _mobileLayoutWatched = false;
+
+export function initMobilePanels() {
+  reconcileMobilePanels();
+  if (_mobileLayoutWatched || !window.matchMedia) return;
+  const mq = window.matchMedia('(max-width: 900px)');
+  if (!mq || typeof mq.addEventListener !== 'function') return;
+  _mobileLayoutWatched = true;
+  mq.addEventListener('change', e => { if (e.matches) reconcileMobilePanels(); });
+}
+
+export function reconcileMobilePanels() {
+  let openedBuildPanel = false;
+  [...MOBILE_BUILD_PANEL_IDS, ...MOBILE_AUX_PANEL_IDS].forEach(id => {
+    const stored = readPref(`automata-mobile-panel-${id}`);
+    // A fresh mobile session should reveal the canvas first. Existing explicit
+    // preferences still win, but two build sheets can never be open together.
+    const isBuildPanel = MOBILE_BUILD_PANEL_IDS.includes(id);
+    const isAuxPanel = MOBILE_AUX_PANEL_IDS.includes(id);
+    let collapsed = stored === null ? (isMobilePanelLayout() && (isBuildPanel || isAuxPanel)) : stored === '1';
+    if (isMobilePanelLayout() && isBuildPanel && !collapsed) {
+      if (openedBuildPanel) collapsed = true;
+      else openedBuildPanel = true;
+    }
+    setMobilePanelCollapsed(id, collapsed, false);
+  });
+  updateMobilePanelChrome();
+}
+
+// Selecting a tool should return the user to the result, not leave the
+// navigation sheet covering it. Inputs stay open so a grammar can still be
+// edited without repeatedly reopening the sheet.
+document.addEventListener('click', e => {
+  if (!isMobilePanelLayout()) return;
+  const target = e.target && e.target.closest ? e.target.closest.bind(e.target) : null;
+  const algoItem = target && target('#algo-nav .algo-item');
+  const referenceLink = target && target('#ref-nav .ref-nav-link');
+  if (algoItem) {
+    requestAnimationFrame(() => setMobilePanelCollapsed('algo-nav', true));
+    return;
+  }
+  if (referenceLink) {
+    requestAnimationFrame(() => setMobilePanelCollapsed('ref-nav', true));
+    return;
+  }
+  const libraryLink = target && target('#lib-nav .lib-nav-link');
+  if (libraryLink) {
+    requestAnimationFrame(() => setMobilePanelCollapsed('lib-nav', true));
+    return;
+  }
+  // The grammar rail is a list of tool links now, the same shape the other two
+  // rails have — the old one held the grammar textarea as well, which is why it
+  // used to have to exclude its own inputs from this.
+  const grammarLink = target && target('#gram-nav .gram-nav-link');
+  if (grammarLink) requestAnimationFrame(() => setMobilePanelCollapsed('gram-nav', true));
+});
+
+// The filter narrows the list's data rather than hiding rows that were built to
+// be hidden — which is the only version that works once the list draws a window
+// onto a thousand states instead of all of them. See js/ui/panel-list.js.
+export function filterStates() {
+  filterList($('states-list'), $('state-search')?.value || '');
+}
+
+export function setLPSectionCollapsed(id, collapsed, persist = true) {
+  const sec = $(id);
+  if (!sec) return;
+  sec.classList.toggle('collapsed', !!collapsed);
+  const body = sec.querySelector('.lp-section-body');
+  if (body) body.style.display = collapsed ? 'none' : '';
+  const hdr = sec.querySelector('.lp-section-header');
+  if (hdr) hdr.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  if (persist) {
+    writeFlag(`automata-lpanel-section-${id}`, collapsed);
+  }
+  syncDockFill(sectionSide(id) || 'lpanel');
+}
+
+export function toggleLPSection(id) {
+  const sec = $(id);
+  if (!sec) return;
+  const collapsed = !sec.classList.contains('collapsed');
+  setLPSectionCollapsed(id, collapsed, true);
+}
+
+// The list of sections comes from js/ui/panel-sections.js rather than from a
+// copy here. It was a copy, and the drift it invites is not hypothetical:
+// this array and RP_SECTION_DEFAULTS' keys were two of three places the ids
+// were written down, and a section in one and not the other is a section that
+// silently never restores its collapsed state.
+export function initLPanelSections() {
+  sectionsWithHeader('lp-section-header').forEach(id => {
+    const collapsed = readFlag(`automata-lpanel-section-${id}`, sectionStartsCollapsed(id));
+    setLPSectionCollapsed(id, collapsed, false);
+  });
+}
+
+/**
+ * Every section built on the right panel's markup — Analyze's, Run's, and the
+ * exercise wherever it is declared. By markup, not by where a card is: the
+ * collapse helpers and storage keys follow the markup wherever it is dragged.
+ */
+function rpanelSectionIds() {
+  return sectionsWithHeader('rp-section-header');
+}
+
+export const RP_SECTION_DEFAULTS = Object.fromEntries(
+  rpanelSectionIds().map(id => [id, sectionStartsCollapsed(id)])
+);
+
+export function setRPSectionCollapsed(id, collapsed, persist = true) {
+  const sec = $(id);
+  if (!sec) return;
+  sec.classList.toggle('collapsed', !!collapsed);
+  const body = sec.querySelector('.rp-section-body');
+  if (body) body.style.display = collapsed ? 'none' : '';
+  // The header is a `role="button"` with `aria-expanded`, the same as the left
+  // panel's — so the state has to be written here too, or the four right panel
+  // sections report themselves as permanently open however they are drawn.
+  const hdr = sec.querySelector('.rp-section-header');
+  if (hdr) hdr.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  if (persist) {
+    writeFlag(`automata-rpanel-section-${id}`, collapsed);
+  }
+  syncDockFill(sectionSide(id) || 'rpanel');
+}
+
+export function toggleRPSection(id) {
+  const sec = $(id); if (!sec) return;
+  setRPSectionCollapsed(id, !sec.classList.contains('collapsed'), true);
+}
+
+/**
+ * Bring a section into view: the tab that holds it selected, and the section
+ * expanded — VS Code's "reveal", for the places that jump into a section from
+ * somewhere else (trace this word, replay this row, run the worst case).
+ *
+ * A floating section is already in view wherever its tab is, so it switches
+ * nothing. It does not pin an unpinned panel: that is a preference, and the
+ * callers that mean to override it (an exercise arriving) say so themselves.
+ */
+export function revealSection(id) {
+  const sec = $(id);
+  const group = sectionSide(id);
+  if (!sec || !group) return;
+  if (!isSectionFloating(id)) {
+    const container = PANEL_SECTIONS[group].container;
+    const tab = PANEL_TAB_NAMES.find(name => PANEL_TABS[name].panel === container);
+    if (tab && !isPanelTabActive(tab)) showPanelTab(tab);
+  }
+  if (sec.classList.contains('collapsed')) {
+    if (sectionConfig(id)?.headerClass === 'lp-section-header') setLPSectionCollapsed(id, false, true);
+    else setRPSectionCollapsed(id, false, true);
+  }
+}
+
+/** Show the player — what every "run this word" from outside the Run tab does. */
+export function revealPlayer() {
+  revealSection('rp-simulate');
+}
+
+export function initRPanelSections() {
+  rpanelSectionIds().forEach(id => {
+    const collapsed = readFlag(`automata-rpanel-section-${id}`, sectionStartsCollapsed(id));
+    setRPSectionCollapsed(id, collapsed, false);
+  });
+}
+
+export function filterAlgos() {
+  const q = ($('algo-search')?.value || '').toLowerCase();
+  document.querySelectorAll('.algo-item').forEach(el => {
+    el.style.display = (!q || el.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  });
+  document.querySelectorAll('.algo-grp').forEach(grp => {
+    let sib = grp.nextElementSibling, any = false;
+    while (sib && sib.classList.contains('algo-item')) {
+      if (sib.style.display !== 'none') any = true;
+      sib = sib.nextElementSibling;
+    }
+    grp.style.display = any ? '' : 'none';
+  });
+}
+
+registerModal('settings-modal', { submit: () => confirmSettings() });
+
+export function openSettingsModal() {
+  const c = App.config;
+  populateThemeSelect();
+  $('set-theme').value = c.theme || DEFAULT_THEME;
+  if ($('set-wheel-zoom')) $('set-wheel-zoom').checked = !!c.wheelZoom;
+  if ($('set-snap-grid')) $('set-snap-grid').checked = !!c.snapToGrid;
+  if ($('set-state-prefix')) $('set-state-prefix').value = c.statePrefix || 'q';
+  $('set-transducer-accepts').checked = !!c.transducerAccepts;
+  if ($('set-two-way-tape')) $('set-two-way-tape').checked = !!c.twoWayTape;
+  // Absent reads as on — see detectsLoops() in js/core/state.js.
+  if ($('set-detect-loops')) $('set-detect-loops').checked = c.detectLoops !== false;
+  $('set-pda-steps').value = c.maxPdaSteps;
+  $('set-pda-paradigm').value = c.pdaParadigm || 'explicit';
+  if ($('set-pfa-cutpoint')) $('set-pfa-cutpoint').value = c.pfaCutPoint ?? 0.5;
+  if ($('set-max-tapes')) $('set-max-tapes').value = maxTapes();
+  $('set-tm-steps').value = c.maxTmSteps;
+  if ($('set-lang-budget')) $('set-lang-budget').value = c.langStepBudget ?? 400;
+  $('set-auto-speed').value = c.autoSpeed;
+  if ($('set-exec-mode')) $('set-exec-mode').value = execMode();
+  if ($('set-autosave-interval')) $('set-autosave-interval').value = String(c.autosaveIntervalMs ?? 15000);
+  if ($('set-card-autohide')) $('set-card-autohide').value = String(c.cardAutoHideMs ?? CARD_AUTO_HIDE_MS);
+  $('set-radius').value = c.radius;
+  if ($('set-wrap-labels')) $('set-wrap-labels').checked = c.wrapStateLabels !== false;
+  if ($('set-edge-label-style')) $('set-edge-label-style').value = normalizeEdgeLabelStyle(c.edgeLabelStyle);
+  if ($('set-click-highlight-mode')) $('set-click-highlight-mode').value = c.clickHighlightMode || 'off';
+  $('set-zoom-step').value = c.zoom.step;
+  $('set-grid-snap').value = c.gridSnap;
+  if ($('set-layout-algo')) $('set-layout-algo').value = c.layout.algorithm || 'sugiyama';
+  $('set-node-spacing').value = c.layout.nodeSpacing;
+  $('set-curve-off').value = c.render.curveOff;
+  // An imported or restored config predating collision avoidance has none of
+  // these keys, and every pass treats "absent" as on — so the boxes have to as
+  // well, or opening Settings would silently turn them all off.
+  if ($('set-smart-loops')) $('set-smart-loops').checked = c.render.smartSelfLoops !== false;
+  if ($('set-auto-route')) $('set-auto-route').checked = c.render.autoRouteEdges !== false;
+  if ($('set-smart-labels')) $('set-smart-labels').checked = c.render.smartLabels !== false;
+  if ($('set-avoid-overlap')) $('set-avoid-overlap').checked = c.render.avoidNodeOverlap !== false;
+  if ($('set-animate-layout')) $('set-animate-layout').checked = c.render.animateLayout !== false;
+  if ($('set-node-clearance')) $('set-node-clearance').value = c.render.nodeClearance ?? 12;
+  // Same "absent means on" rule as the four above: a workspace or settings
+  // profile written before windowing existed must not open with it switched off.
+  // Not out of `c`: a preference about which sidebars this reader likes on
+  // screen is not a property of the machine, and `App.config` is deep-copied
+  // into every workspace tab and written into the `.json`. See panel-state.js.
+  if ($('set-shake-minimize')) $('set-shake-minimize').checked = shakeToMinimizeEnabled();
+  // A device preference for the same reason. See js/canvas/canvas-motion.js.
+  if ($('set-canvas-motion')) $('set-canvas-motion').checked = canvasMotionEnabled();
+  if ($('set-cull-offscreen')) $('set-cull-offscreen').checked = c.render.cullOffscreen !== false;
+  if ($('set-zoom-lod')) $('set-zoom-lod').checked = c.render.zoomLOD !== false;
+  if ($('set-large-machine-auto')) $('set-large-machine-auto').checked = c.render.largeMachineAuto !== false;
+  $('set-export-res').value = c.exportRes || 2;
+  $('set-sym-eps').value = c.sym.eps;
+  if ($('set-sym-lambda')) $('set-sym-lambda').value = c.sym.lambda;
+  $('set-sym-any').value = c.sym.any;
+  $('set-sym-blank').value = c.sym.blank;
+  $('set-sym-left').value = c.sym.leftMarker;
+  $('set-sym-right').value = c.sym.rightMarker;
+  $('set-sym-z0').value = c.sym.stackBottom;
+
+  // StateMate's panel is the one tab that does not read App.config — its
+  // settings live in their own store so an API key never reaches
+  // exportWorkspaceState or the autosave payload. See statemate-provider.js.
+  populateStateMateSettings();
+
+  switchSettingsTab('general');
+  sizeSettingsPanels();
+  showOverlay('settings-modal');
+}
+
+// Both tabbed dialogs — Settings and Keyboard Shortcuts — are the same
+// shell (.export-code-modal + .settings-modal-wide), so they switch tabs the
+// same way. The rail is scoped by id because the two are in the DOM at once.
+//
+// The tabs are <button role="tab">s. They were <div onclick>s, which meant the
+// settings panels and the five shortcut panels could not be reached from
+// the keyboard at all — the one strip in the app that had not had the treatment
+// js/ui/panel-state.js gives the sidebars. Three things follow, and they are the
+// same three the sidebar strip maintains:
+//
+//   • `aria-selected` is the state a screen reader reads, so it is written on
+//     every tab, not just the selected one.
+//   • Exactly one tab is in the page's tab order at a time (a roving
+//     tabindex), so Tab steps past the whole strip rather than through it, and
+//     the arrows walk it.
+//   • `hidden` is what hides a panel — see the note in css/modals.css. The
+//     `.active` class is now only what the strip styles from.
+//
+// The target is resolved by data-tab rather than by matching the onclick
+// attribute's text, which is what this did before: it made the selector depend
+// on the exact spelling of a handler call, so the help rail — which carried no
+// data-tab — could not be addressed any other way.
+function switchModalTab(railSel, modalSel, panelPrefix, tabPrefix, tabId) {
+  // Deselect everything, then select the target by id. The sweep cannot do both
+  // jobs: it runs through querySelectorAll, and the target has to be reachable
+  // even when that returns nothing — which is how the tests observe this, and
+  // how the previous version of this function was written for the same reason.
+  document.querySelectorAll(`${railSel} .modal-tab`).forEach(t => {
+    t.classList.remove('active');
+    t.setAttribute('aria-selected', 'false');
+    t.tabIndex = -1;
+  });
+  document.querySelectorAll(`${modalSel} .modal-tab-content`).forEach(c => {
+    c.classList.remove('active');
+    c.hidden = true;
+  });
+
+  const targetTab = document.getElementById(tabPrefix + tabId);
+  if (targetTab) {
+    targetTab.classList.add('active');
+    targetTab.setAttribute('aria-selected', 'true');
+    targetTab.tabIndex = 0;
+    // On a phone the rail is one sideways-scrolling row, so a tab opened by
+    // name — StateMate's /model, the quick-settings More… — can be selected
+    // while scrolled out of sight, and the reader sees a panel with no tab lit
+    // above it. `nearest` makes this a no-op wherever the tab already shows.
+    targetTab.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }
+
+  const targetContent = document.getElementById(panelPrefix + tabId);
+  if (targetContent) {
+    targetContent.classList.add('active');
+    targetContent.hidden = false;
+  }
+}
+
+export function switchSettingsTab(tabId) {
+  switchModalTab('#settings-tabs', '#settings-modal', 'tab-', 'settings-tab-', tabId);
+}
+
+export function switchHelpTab(tabId) {
+  switchModalTab('#help-tabs', '#help-modal', 'help-tab-', 'help-tab-btn-', tabId);
+}
+
+// Arrow/Home/End over a modal tab strip. Delegated on document rather than
+// bound per tab so it costs one listener for both dialogs, and read at event
+// time so it stays correct if a rail is ever built at runtime. Selecting moves
+// focus with it, which is what makes an arrow walk feel like a walk — the
+// panel changes under the reader as they go, matching the sidebar strip.
+document.addEventListener('keydown', e => {
+  // Duck-typed rather than `instanceof Element`: the DOM stub the tests run
+  // against has no Element constructor, and a listener that throws on document
+  // takes every handler after it down with it.
+  const tab = e.target && typeof e.target.closest === 'function' ? e.target.closest('.modal-tab') : null;
+  if (!tab) return;
+  const rail = tab.closest('[role="tablist"]');
+  if (!rail) return;
+
+  const tabs = Array.from(rail.querySelectorAll('.modal-tab'));
+  const i = tabs.indexOf(tab);
+  if (i === -1) return;
+
+  // The rails are vertical, but Left/Right are accepted too: the strip is a
+  // list either way, and a reader who reaches for the wrong axis should not
+  // find the keys dead.
+  let next = -1;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+  else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+  else if (e.key === 'Home') next = 0;
+  else if (e.key === 'End') next = tabs.length - 1;
+  else return;
+
+  e.preventDefault();
+  e.stopPropagation();
+  tabs[next].click();
+  tabs[next].focus();
+});
+
+// Panels vary a lot in height (Symbols vs. Transducers), so switching tabs
+// with a plain display:none/block toggle made the whole modal resize —
+// it's centered via flexbox, so both edges jumped at once. Locking the
+// panel wrapper to the tallest tab's height keeps the dialog a fixed size
+// no matter which tab is active. Run once per open: measures each panel in
+// turn (each becomes visible on its own for a synchronous layout read, so
+// nothing actually paints mid-loop) and re-picks the tallest.
+export function sizeSettingsPanels() {
+  const panels = $('settings-tab-panels');
+  if (!panels) return;
+  const contents = document.querySelectorAll('#settings-modal .modal-tab-content');
+  const prevActive = document.querySelector('#settings-modal .modal-tab-content.active');
+
+  let max = 0;
+  contents.forEach(c => {
+    // `hidden`, not `.active` — the attribute is what draws a panel now, so
+    // measuring through the class would measure a box that is still display:none
+    // and lock the dialog to the height of whichever panel happened to be open.
+    const wasHidden = c.hidden;
+    c.hidden = false;
+    max = Math.max(max, c.scrollHeight);
+    if (c !== prevActive) c.hidden = wasHidden;
+  });
+  panels.style.height = max + 'px';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  THE LARGE-MACHINE PROFILE
+// ══════════════════════════════════════════════════════════════════
+// The profile itself is derived — see largeMachineProfile() in js/core/state.js —
+// so nothing has to be applied when it comes on. Everything that reads it gets
+// the new answer on its next call, which for the drawing is the render that
+// crossing the threshold caused in the first place.
+//
+// Two things are not reads, and they are why this exists:
+//
+//   * the autosave timer is a live setInterval, so a machine that grows past
+//     the threshold keeps the fifteen-second period it was armed with
+//   * a flip has to be *said*. A reader whose edge labels vanish between one
+//     subset construction and the next is looking at a bug unless something
+//     tells them otherwise, and this is the only surface that can.
+//
+// It is idempotent — a flip is a change of a boolean — so it is safe to call
+// from anywhere that might have caused one, and it is. `null` rather than
+// `false` at rest, or the app would announce the profile on the first render
+// of a small machine.
+let lastLargeProfile = null;
+
+// The watcher's whole job is to notice a *change*, so a stale "it was already
+// on" is exactly the state a test would inherit and then not see announced.
+export function resetLargeMachineProfileWatch() { lastLargeProfile = null; }
+
+export function syncLargeMachineProfile() {
+  const now = largeMachineProfile();
+  if (now === lastLargeProfile) return;
+  const first = lastLargeProfile === null;
+  lastLargeProfile = now;
+  // Re-arm the timer against the period the profile now implies.
+  restartAutosaveTimer();
+  // Coming on mid-glide would otherwise leave every eased track stranded where
+  // it happened to be when the easing was switched off.
+  if (now) settleAll();
+  if (first && !now) return;
+  showStatus(now
+    ? 'Large machine — canvas simplified for performance. Settings → Performance to override.'
+    : 'Full canvas detail restored.');
+}
+
+subscribe(Change.GRAPH, syncLargeMachineProfile);
+// The override is written from the quick-settings popover, which announces
+// Change.CANVAS rather than GRAPH — the machine did not change, only what is
+// drawn of it.
+subscribe(Change.CANVAS, syncLargeMachineProfile);
+
+/**
+ * The gate on turning the profile off.
+ *
+ * It asks only when the answer costs something: the machine has to be large
+ * enough for the profile to be doing work right now, and the reader has to be
+ * turning it off rather than on. Turning it back on is always free and never
+ * asks.
+ */
+export function askLargeMachineOverride(proceed, revert) {
+  askConfirm({ ...largeMachineOverridePrompt(), onConfirm: proceed, onCancel: revert });
+}
+
+/**
+ * Apply is the one place the dialog writes, so the one place the gate can sit
+ * without splitting the transaction. The pre-flight runs before any control is
+ * read: cancelling puts the toggle back and leaves every other staged edit
+ * exactly where the reader left it, so nothing has to be unwound.
+ */
+export function confirmSettings() {
+  const box = $('set-large-machine-auto');
+  const turningOff = box && !box.checked && App.config.render.largeMachineAuto !== false;
+  if (turningOff && machineIsLarge()) {
+    askLargeMachineOverride(applySettings, () => { box.checked = true; });
+    return;
+  }
+  applySettings();
+}
+
+export function applySettings() {
+  const c = App.config;
+  applyTheme($('set-theme').value || c.theme || DEFAULT_THEME);
+  if ($('set-wheel-zoom')) {
+    c.wheelZoom = $('set-wheel-zoom').checked;
+    writeFlag('automata-wheel-zoom', c.wheelZoom);
+  }
+  if ($('set-snap-grid')) toggleSnapToGrid($('set-snap-grid').checked);
+  if ($('set-state-prefix')) c.statePrefix = $('set-state-prefix').value.trim() || 'q';
+  c.transducerAccepts = $('set-transducer-accepts').checked;
+  if ($('set-two-way-tape')) c.twoWayTape = $('set-two-way-tape').checked;
+  if ($('set-detect-loops')) c.detectLoops = $('set-detect-loops').checked;
+  c.pdaParadigm = $('set-pda-paradigm').value || 'explicit';
+  if ($('set-pfa-cutpoint')) {
+    // A cut-point outside [0, 1] can never be crossed in one direction or the
+    // other, which would make every word accept or every word reject.
+    const cut = parseFloat($('set-pfa-cutpoint').value);
+    c.pfaCutPoint = Number.isFinite(cut) ? Math.min(1, Math.max(0, cut)) : 0.5;
+  }
+  c.maxPdaSteps = parseInt($('set-pda-steps').value) || 2000;
+  if ($('set-max-tapes')) {
+    // Clamped to what the app can draw, never below the machine on the
+    // canvas — syncTapeCountUI rebuilds the picker from the result.
+    c.maxTapeCount = Math.max(MIN_TAPES, Math.min(TAPE_LIMIT, parseInt($('set-max-tapes').value) || 8));
+    syncTapeCountUI();
+  }
+  c.maxTmSteps = parseInt($('set-tm-steps').value) || 10000;
+  if ($('set-lang-budget')) {
+    c.langStepBudget = Math.max(10, parseInt($('set-lang-budget').value) || 400);
+  }
+  {
+    // 0 is a speed (as fast as the page can go), so it cannot be the fallback.
+    const v = parseFloat($('set-auto-speed').value);
+    c.autoSpeed = Number.isFinite(v) && v >= 0 ? v : 500;
+  }
+  if ($('set-exec-mode')) {
+    const mode = $('set-exec-mode').value;
+    c.execMode = (mode === 'eager' || mode === 'lazy') ? mode : 'auto';
+  }
+  if ($('set-autosave-interval')) {
+    const interval = parseInt($('set-autosave-interval').value);
+    c.autosaveIntervalMs = Number.isFinite(interval) && interval >= 0 ? interval : 15000;
+    restartAutosaveTimer();
+  }
+  if ($('set-card-autohide')) {
+    // 0 is a real answer here — "never fold the card away" — so an unparseable
+    // value falls back to the default rather than to zero.
+    const hide = parseInt($('set-card-autohide').value);
+    c.cardAutoHideMs = Number.isFinite(hide) && hide >= 0 ? hide : CARD_AUTO_HIDE_MS;
+  }
+  syncSpeedControl();
+  restartAutoTimerIfPlaying();
+  c.radius = parseInt($('set-radius').value) || 30;
+  if ($('set-wrap-labels')) c.wrapStateLabels = $('set-wrap-labels').checked;
+  if ($('set-edge-label-style')) c.edgeLabelStyle = normalizeEdgeLabelStyle($('set-edge-label-style').value);
+  if ($('set-click-highlight-mode')) {
+    c.clickHighlightMode = $('set-click-highlight-mode').value || 'off';
+    if (c.clickHighlightMode === 'off') clearEdgeDirectionHighlight();
+  }
+  c.zoom.step = parseFloat($('set-zoom-step').value) || 0.1;
+  c.gridSnap = parseInt($('set-grid-snap').value) || 20;
+  if ($('set-layout-algo')) c.layout.algorithm = $('set-layout-algo').value || 'sugiyama';
+  // Gap between node edges during auto-layout. Clamped so a stray 0 or a
+  // negative can't collapse the layout; layoutGap() enforces the same floor
+  // for configs that arrive from imports rather than this modal.
+  c.layout.nodeSpacing = Math.max(8, parseInt($('set-node-spacing').value) || 35);
+  c.render.curveOff = parseInt($('set-curve-off').value) || 45;
+  if ($('set-smart-loops')) c.render.smartSelfLoops = $('set-smart-loops').checked;
+  if ($('set-auto-route')) c.render.autoRouteEdges = $('set-auto-route').checked;
+  if ($('set-smart-labels')) c.render.smartLabels = $('set-smart-labels').checked;
+  if ($('set-avoid-overlap')) c.render.avoidNodeOverlap = $('set-avoid-overlap').checked;
+  if ($('set-animate-layout')) c.render.animateLayout = $('set-animate-layout').checked;
+  if ($('set-shake-minimize')) setShakeToMinimizeEnabled($('set-shake-minimize').checked);
+  if ($('set-canvas-motion')) setCanvasMotionEnabled($('set-canvas-motion').checked);
+  if ($('set-cull-offscreen')) c.render.cullOffscreen = $('set-cull-offscreen').checked;
+  if ($('set-zoom-lod')) c.render.zoomLOD = $('set-zoom-lod').checked;
+  if ($('set-large-machine-auto')) c.render.largeMachineAuto = $('set-large-machine-auto').checked;
+  if ($('set-node-clearance')) {
+    // Clamped because it is a distance every routing search steps in: zero makes
+    // "clear of a node" mean "touching it", and an outsized value pushes every
+    // label off the diagram.
+    const clearance = parseInt($('set-node-clearance').value);
+    c.render.nodeClearance = Number.isFinite(clearance) ? Math.min(80, Math.max(0, clearance)) : 12;
+  }
+  c.exportRes = parseFloat($('set-export-res').value) || 2;
+  const oldSyms = { ...c.sym };
+  c.sym.eps = $('set-sym-eps').value || oldSyms.eps;
+  if ($('set-sym-lambda')) c.sym.lambda = $('set-sym-lambda').value || oldSyms.lambda;
+  c.sym.any = $('set-sym-any').value || oldSyms.any;
+  c.sym.blank = $('set-sym-blank').value || oldSyms.blank;
+  c.sym.leftMarker = $('set-sym-left').value || oldSyms.leftMarker;
+  c.sym.rightMarker = $('set-sym-right').value || oldSyms.rightMarker;
+  c.sym.stackBottom = $('set-sym-z0').value || oldSyms.stackBottom;
+
+  migrateSystemSymbols(oldSyms, c.sym);
+
+  // Apply visual changes
+  setR(c.radius);
+  // A radius change moves every endpoint, every loop and every label at once,
+  // and the animation toggle may itself have just been turned off. Either way
+  // the new settings should be what you see, not something being eased toward.
+  settleAll();
+  renderAll();
+  updateLPanel();
+  updateRPanel();
+  renderGamma();
+  // The quick popover mirrors several of the controls just written, so it
+  // re-reads rather than keeping whatever it showed when it was last opened.
+  refreshQuickSettings();
+  // Undoable settings changed here should be undoable from here too, or the
+  // same setting would behave differently depending on which surface you used.
+  // No-ops when only app preferences (theme, symbols, step budgets) moved.
+  snapshotSettings();
+
+  // Written to its own store, not App.config, and therefore not part of the
+  // undo point above — an API key is not an edit to the machine.
+  applyStateMateSettings();
+
+  // applySettings calls the renderers directly rather than emitting, so the
+  // subscribers above never see the override change. Idempotent, so this is a
+  // no-op on every apply that did not move it.
+  syncLargeMachineProfile();
+
+  closeModal('settings-modal');
+  showStatus('Settings applied!');
+  saveBackupChecked();
+}
+
+export function getEditorSettingsData() {
+  const c = App.config;
+  return {
+    theme: c.theme,
+    wheelZoom: !!c.wheelZoom,
+    snapToGrid: !!c.snapToGrid,
+    statePrefix: c.statePrefix || 'q',
+    pdaParadigm: c.pdaParadigm,
+    pfaCutPoint: c.pfaCutPoint,
+    transducerAccepts: !!c.transducerAccepts,
+    twoWayTape: !!c.twoWayTape,
+    detectLoops: c.detectLoops !== false,
+    maxPdaSteps: c.maxPdaSteps,
+    maxTapeCount: c.maxTapeCount,
+    maxTmSteps: c.maxTmSteps,
+    langStepBudget: c.langStepBudget,
+    autoSpeed: c.autoSpeed,
+    // Deliberately here and not in getWorkspaceData()'s allow-list. detectLoops
+    // and twoWayTape travel with a workspace because they change what a run
+    // *decides*, and a file that decides differently for the next reader is a
+    // file that lies. This changes only when the steps are computed — the
+    // verdict is the same one either way — so it stays a preference.
+    execMode: execMode(),
+    autosaveIntervalMs: c.autosaveIntervalMs,
+    cardAutoHideMs: c.cardAutoHideMs,
+    radius: c.radius,
+    wrapStateLabels: !!c.wrapStateLabels,
+    edgeLabelStyle: normalizeEdgeLabelStyle(c.edgeLabelStyle),
+    clickHighlightMode: c.clickHighlightMode || 'off',
+    zoomStep: c.zoom.step,
+    gridSnap: c.gridSnap,
+    layoutAlgorithm: c.layout.algorithm,
+    layoutNodeSpacing: c.layout.nodeSpacing,
+    renderCurveOff: c.render.curveOff,
+    renderSmartSelfLoops: c.render.smartSelfLoops !== false,
+    renderAutoRouteEdges: c.render.autoRouteEdges !== false,
+    renderSmartLabels: c.render.smartLabels !== false,
+    renderAvoidNodeOverlap: c.render.avoidNodeOverlap !== false,
+    renderAnimateLayout: c.render.animateLayout !== false,
+    renderCullOffscreen: c.render.cullOffscreen !== false,
+    renderZoomLOD: c.render.zoomLOD !== false,
+    renderLargeMachineAuto: c.render.largeMachineAuto !== false,
+    renderNodeClearance: c.render.nodeClearance ?? 12,
+    exportRes: c.exportRes,
+    symEps: c.sym.eps,
+    symLambda: c.sym.lambda,
+    symAny: c.sym.any,
+    symBlank: c.sym.blank,
+    symLeft: c.sym.leftMarker,
+    symRight: c.sym.rightMarker,
+    symZ0: c.sym.stackBottom
+  };
+}
+
+export function exportSettings() {
+  const data = getEditorSettingsData();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'automata-settings.json';
+  a.click();
+  showStatus('Settings profile exported!');
+}
+
+export function importSettings(e) {
+  const f = e.target.files[0];
+  if (!f) return;
+  e.target.value = '';
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      populateSettingsModalInputs(data);
+      showStatus('Settings loaded! Click Apply to save or Discard to cancel.');
+    } catch (err) {
+      console.error(err);
+      showStatus('Invalid settings file');
+    }
+  };
+  reader.readAsText(f);
+}
+
+export function populateSettingsModalInputs(data) {
+  populateThemeSelect();
+  if (data.theme !== undefined) $('set-theme').value = data.theme;
+  if (data.wheelZoom !== undefined && $('set-wheel-zoom')) $('set-wheel-zoom').checked = !!data.wheelZoom;
+  if (data.snapToGrid !== undefined && $('set-snap-grid')) $('set-snap-grid').checked = !!data.snapToGrid;
+  if (data.statePrefix !== undefined && $('set-state-prefix')) $('set-state-prefix').value = data.statePrefix;
+  if (data.pdaParadigm !== undefined) $('set-pda-paradigm').value = data.pdaParadigm;
+  if (data.pfaCutPoint !== undefined && $('set-pfa-cutpoint')) $('set-pfa-cutpoint').value = data.pfaCutPoint;
+  if (data.transducerAccepts !== undefined) $('set-transducer-accepts').checked = !!data.transducerAccepts;
+  if (data.twoWayTape !== undefined && $('set-two-way-tape')) $('set-two-way-tape').checked = !!data.twoWayTape;
+  if (data.detectLoops !== undefined && $('set-detect-loops')) $('set-detect-loops').checked = data.detectLoops !== false;
+  if (data.maxPdaSteps !== undefined) $('set-pda-steps').value = data.maxPdaSteps;
+  if (data.maxTapeCount !== undefined && $('set-max-tapes')) $('set-max-tapes').value = data.maxTapeCount;
+  if (data.maxTmSteps !== undefined) $('set-tm-steps').value = data.maxTmSteps;
+  if (data.langStepBudget !== undefined && $('set-lang-budget')) $('set-lang-budget').value = data.langStepBudget;
+  if (data.autoSpeed !== undefined) $('set-auto-speed').value = data.autoSpeed;
+  if (data.execMode !== undefined && $('set-exec-mode')) $('set-exec-mode').value = data.execMode;
+  if (data.autosaveIntervalMs !== undefined && $('set-autosave-interval')) $('set-autosave-interval').value = data.autosaveIntervalMs;
+  if (data.cardAutoHideMs !== undefined && $('set-card-autohide')) $('set-card-autohide').value = data.cardAutoHideMs;
+  if (data.radius !== undefined) $('set-radius').value = data.radius;
+  if (data.wrapStateLabels !== undefined && $('set-wrap-labels')) $('set-wrap-labels').checked = !!data.wrapStateLabels;
+  if (data.edgeLabelStyle !== undefined && $('set-edge-label-style')) $('set-edge-label-style').value = normalizeEdgeLabelStyle(data.edgeLabelStyle);
+  if (data.clickHighlightMode !== undefined && $('set-click-highlight-mode')) $('set-click-highlight-mode').value = data.clickHighlightMode;
+  if (data.zoomStep !== undefined) $('set-zoom-step').value = data.zoomStep;
+  if (data.gridSnap !== undefined) $('set-grid-snap').value = data.gridSnap;
+  if (data.layoutAlgorithm !== undefined && $('set-layout-algo')) $('set-layout-algo').value = data.layoutAlgorithm;
+  if (data.layoutNodeSpacing !== undefined) $('set-node-spacing').value = data.layoutNodeSpacing;
+  if (data.renderCurveOff !== undefined) $('set-curve-off').value = data.renderCurveOff;
+  if (data.renderSmartSelfLoops !== undefined && $('set-smart-loops')) $('set-smart-loops').checked = !!data.renderSmartSelfLoops;
+  if (data.renderAutoRouteEdges !== undefined && $('set-auto-route')) $('set-auto-route').checked = !!data.renderAutoRouteEdges;
+  if (data.renderSmartLabels !== undefined && $('set-smart-labels')) $('set-smart-labels').checked = !!data.renderSmartLabels;
+  if (data.renderAvoidNodeOverlap !== undefined && $('set-avoid-overlap')) $('set-avoid-overlap').checked = !!data.renderAvoidNodeOverlap;
+  if (data.renderAnimateLayout !== undefined && $('set-animate-layout')) $('set-animate-layout').checked = !!data.renderAnimateLayout;
+  if (data.renderCullOffscreen !== undefined && $('set-cull-offscreen')) $('set-cull-offscreen').checked = !!data.renderCullOffscreen;
+  if (data.renderZoomLOD !== undefined && $('set-zoom-lod')) $('set-zoom-lod').checked = !!data.renderZoomLOD;
+  if (data.renderLargeMachineAuto !== undefined && $('set-large-machine-auto')) $('set-large-machine-auto').checked = !!data.renderLargeMachineAuto;
+  if (data.renderNodeClearance !== undefined && $('set-node-clearance')) $('set-node-clearance').value = data.renderNodeClearance;
+  if (data.exportRes !== undefined) $('set-export-res').value = data.exportRes;
+  if (data.symEps !== undefined) $('set-sym-eps').value = data.symEps;
+  if (data.symLambda !== undefined && $('set-sym-lambda')) $('set-sym-lambda').value = data.symLambda;
+  if (data.symAny !== undefined) $('set-sym-any').value = data.symAny;
+  if (data.symBlank !== undefined) $('set-sym-blank').value = data.symBlank;
+  if (data.symLeft !== undefined) $('set-sym-left').value = data.symLeft;
+  if (data.symRight !== undefined) $('set-sym-right').value = data.symRight;
+  if (data.symZ0 !== undefined) $('set-sym-z0').value = data.symZ0;
+}
+
+// What index.html names, beside the functions it runs (js/core/actions.js).
+defineActions({
+  // The tab strip and its overflow menu
+  'ui.tab': TAB_BEHAVIOUR,
+  'ui.closeTab': ({ el, event }) => closeTab(el.dataset.tabId, event),
+  'ui.tabRename': {
+    // A click in the field is not a click on the tab around it.
+    click: ({ event }) => event.stopPropagation(),
+    keydown: ({ el, event }) => handleTabRenameKeydown(el.dataset.tabId, event),
+    blur: ({ el }) => commitTabRename(el.dataset.tabId, el)
+  },
+  'ui.switchTabFromOverflow': ({ el }) => switchTabFromOverflow(el.dataset.tabId),
+  'ui.closeTabFromOverflow': ({ el, event }) => { closeTab(el.dataset.tabId, event); renderTabOverflowMenu(); },
+  'ui.createTabFromOverflow': () => { hideTabOverflowMenu(); createTab(); },
+  // The model picker
+  'ui.selectModel': ({ el }) => selectModel(el.dataset.model),
+  // index.html
+  'ui.blurField': ({ el }) => el.blur(),
+  'ui.chooseSettingsFile': () => $('settings-file-input').click(),
+  'ui.closeMobileAuxNav': () => closeMobileAuxNav(),
+  'ui.closeMobilePanels': () => closeMobilePanels(),
+  'ui.confirmSettings': () => confirmSettings(),
+  'ui.createTab': () => createTab(),
+  'ui.ctxCopy': () => ctxCopy(),
+  'ui.ctxCut': () => ctxCut(),
+  'ui.exportSettings': () => exportSettings(),
+  'ui.filterAlgos': () => filterAlgos(),
+  'ui.filterStates': () => filterStates(),
+  'ui.filterTransitions': () => filterTransitions(),
+  'ui.fitToScreen': () => fitToScreen(),
+  'ui.handleTabAddDragOver': ({ event }) => handleTabAddDragOver(event),
+  'ui.handleTabAddDrop': ({ event }) => handleTabAddDrop(event),
+  'ui.importSettings': ({ event }) => importSettings(event),
+  'ui.openSettingsModal': () => openSettingsModal(),
+  'ui.reopenClosedTab': () => reopenClosedTab(),
+  'ui.setZoomFromInput': ({ el }) => setZoomFromInput(el.value),
+  'ui.switchHelpTab': ({ el }) => switchHelpTab(el.dataset.tab),
+  'ui.switchSettingsTab': ({ el }) => switchSettingsTab(el.dataset.tab),
+  'ui.tabCtxClose': () => tabCtxClose(),
+  'ui.tabCtxCloseAll': () => tabCtxCloseAll(),
+  'ui.tabCtxCloseOthers': () => tabCtxCloseOthers(),
+  'ui.tabCtxCloseRight': () => tabCtxCloseRight(),
+  'ui.tabCtxDuplicate': () => tabCtxDuplicate(),
+  'ui.tabCtxRename': () => tabCtxRename(),
+  'ui.toggleFullscreen': () => toggleFullscreen(),
+  'ui.toggleLPSection': ({ el }) => toggleLPSection(el.dataset.section),
+  'ui.toggleLPanelPin': () => toggleLPanelPin(),
+  'ui.toggleMobilePanel': ({ el }) => toggleMobilePanel(el.dataset.panel),
+  'ui.toggleModelPicker': () => toggleModelPicker(),
+  'ui.toggleRPSection': ({ el }) => toggleRPSection(el.dataset.section),
+  'ui.toggleRPanelPin': () => toggleRPanelPin(),
+  'ui.toggleTabOverflowMenu': ({ el, event }) => toggleTabOverflowMenu(event, el),
+  'ui.toggleThemePicker': ({ event }) => toggleThemePicker(event),
+  'ui.toggleTool': ({ el }) => toggleTool(el.dataset.tool),
+  'ui.zoomIn': () => zoomIn(),
+  'ui.zoomOut': () => zoomOut()
+});

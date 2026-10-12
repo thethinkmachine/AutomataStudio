@@ -5,7 +5,7 @@
 // types, one head: 2DFT differs from 2DFA only in emitting output on each
 // move, which is the transducer flag's business and not the head's.
 //
-// They deliberately do not use js/tape.js. That object exists to model
+// They deliberately do not use js/simulation/tape.js. That object exists to model
 // what a *writable* tape refuses — a left bound, a right bound, an
 // unwritable cell — and these never write. Running off an end here is a
 // halt condition rather than a move to refuse, so Tape would be the wrong
@@ -18,7 +18,7 @@
 
 import {
   App, getBoundaryMarkers, getState, runStartId
-} from '../state.js';
+} from '../core/state.js';
 import { renderSimStep } from './paint.js';
 import { buildMarkedInputTape, pickMostSpecificTransition } from './predicates.js';
 import { Fifo, accepted, firstOverlappingTransition, nameOfState, traceSearchPath, transduced, transitionsFrom } from './runtime.js';
@@ -41,7 +41,7 @@ export function twoWayDisplayHead(tokens, head) {
 /**
  * What these heads run over, said in the tape tracker's own vocabulary.
  *
- * They do not use js/tape.js — see the note above — so the descriptor is
+ * They do not use js/simulation/tape.js — see the note above — so the descriptor is
  * built here rather than asked for. It is still the same object the
  * tracker draws for a real Tape, because the reader is owed the same
  * answer to the same question: this input is walled at both ends, the
@@ -53,7 +53,7 @@ export function twoWayTapeView(displayTape, head) {
     kind: 'tape',
     // Shared, not copied: these heads never write, so one array serves every
     // step of the run. Copying it per step made a run quadratic in the input
-    // — the cost js/tape-log.js removed for the machines that *do* write.
+    // — the cost js/simulation/tape-log.js removed for the machines that *do* write.
     cells: displayTape,
     head,
     origin: 0,

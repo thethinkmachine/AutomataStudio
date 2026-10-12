@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
-import { UpdateMenuLabel, stagedUpdateView, updateView } from '../js/update-view.js';
+import { UpdateMenuLabel, stagedUpdateView, updateView } from '../js/ui/update-view.js';
 
 // The software update, both halves without Electron: the main-process controller
 // driven through a fake electron-updater, and the table that turns each status it

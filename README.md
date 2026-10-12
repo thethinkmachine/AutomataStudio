@@ -288,10 +288,22 @@ npm run bench             # engine and renderer timings vs. bench/baseline.json
 The code is organised as follows:
 
 ```
-js/            the app: plain ES modules, SVG rendering, Solid signals for derived panels
-js/machines/   one module per machine family, behind a registry (DOM-free)
-js/grammar/    the grammar workbench
-cli/           the `automata` command line
+js/              the app: plain ES modules, SVG rendering, Solid signals for derived panels
+  main.js        the entry point index.html loads
+  core/          state, the change store, undo, actions, boot
+  canvas/        the diagram: rendering, geometry, camera, notes
+  editor/        editing a machine: states, transitions, alphabets, blocks
+  simulation/    the player, tapes, space-time diagrams, complexity, behaviour
+  algorithms/    the Algorithms view's constructions and the Language panel
+  statemate/     the AI assist
+  io/            saving, loading, export, import, code generation
+  ui/            application chrome: tabs, views, dialogs, panels, themes
+  reference/     the in-app guide
+  text/          escaped markup, Markdown, math
+  machines/      one module per machine family, behind a registry (DOM-free)
+  grammar/       the grammar workbench
+  library/ exercise/ lexer/ interop/ parallel/   their features, UI included
+cli/             the `automata` command line
 electron/      the desktop shell
 wasm/          the label-placement kernel (AssemblyScript)
 tests/         node:test, with a DOM stub

@@ -364,7 +364,7 @@ const player = [
     }
   },
   {
-    // The tape a step shows is rebuilt from the tape log (js/tape-log.js):
+    // The tape a step shows is rebuilt from the tape log (js/simulation/tape-log.js):
     // from a checkpoint either side, or from where the reader already is. A
     // jump costs about a tape-width of writes however far it goes — it used
     // to cost the distance from step 0, 4.4ms for this one.
@@ -544,7 +544,7 @@ const layout = [200, 1000].flatMap(n => [
 ]);
 
 // ── the space-time diagram ──────────────────────────────────────────
-// js/spacetime.js, the half with no page attached: indexing a finished run,
+// js/simulation/spacetime.js, the half with no page attached: indexing a finished run,
 // painting a viewport of it, and the overview strip beside it. Two shapes of
 // tape, because they fail differently — BB(5) stays a few thousand cells wide
 // over a million rows, and the runaway machine's tape is as wide as the run

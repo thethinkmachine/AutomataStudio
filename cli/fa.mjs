@@ -15,11 +15,11 @@
 // and the Thompson-style operations that only need fresh names.
 
 import { aMachine } from './grammar.mjs';
-import { App } from '../js/state.js';
+import { App } from '../js/core/state.js';
 import { subsetSide, withMachine } from '../js/exercise/grade.js';
 import { minimalDfaOf } from '../js/library/analyze.js';
-import { thompsonBuild } from '../js/thompson.js';
-import { deriveRegex } from '../js/render.js';
+import { thompsonBuild } from '../js/algorithms/thompson.js';
+import { deriveRegex } from '../js/canvas/render.js';
 import { CliError } from './errors.mjs';
 
 export const FA_TYPES = new Set(['DFA', 'NFA', 'ε-NFA']);

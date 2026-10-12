@@ -23,7 +23,7 @@
 
 import {
   App, getState, runStartId
-} from '../state.js';
+} from '../core/state.js';
 import { renderSimStep } from './paint.js';
 import { ConfigSet, Fifo, accepted, makeStateNumbering, firstOverlappingTransition, nameOfState, playEagerly, singleTapeLookup, traceSearchPath, transduced, transducerRunContributes, transitionsFrom } from './runtime.js';
 import { attachBranchTree, newBranchTree } from './branch-tree.js';

@@ -6,7 +6,7 @@ import { createHarness } from './harness.js';
 //  THE MACHINE CARD
 // ══════════════════════════════════════════════════════════════════
 //  The info card behind the (i) button used to be readable only, and its text
-//  lived in a module variable in js/persistence.js. Two things followed, and
+//  lived in a module variable in js/io/persistence.js. Two things followed, and
 //  this file is mostly about them not coming back:
 //
 //    * a machine you drew yourself could never have a card at all, because

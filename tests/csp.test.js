@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { MEASUREMENT_ID } from '../js/analytics.js';
+import { MEASUREMENT_ID } from '../js/core/analytics.js';
 
 // index.html's Content-Security-Policy. Its point is the one thing it leaves
 // out: 'unsafe-inline' in script-src, so an on*="..." attribute or a <script>
@@ -69,7 +69,7 @@ test('the policy comes before any script, and every script it loads is admitted'
   assert.ok(html.indexOf('http-equiv="Content-Security-Policy"') < html.indexOf('<script'));
   const allowed = policy()['script-src'];
   const loaded = [...html.matchAll(/<script\b[^>]*\bsrc="(https?:[^"]+)"/g)].map(m => m[1]);
-  loaded.push(`https://www.googletagmanager.com/gtag/js?id=${MEASUREMENT_ID}`); // js/analytics.js
+  loaded.push(`https://www.googletagmanager.com/gtag/js?id=${MEASUREMENT_ID}`); // js/core/analytics.js
   for (const url of loaded) {
     assert.ok(allowed.some(src => admits(src, url)), `${url} is loaded but not admitted`);
   }
@@ -93,8 +93,8 @@ test('every file from the CDN carries an integrity hash', () => {
 });
 
 test('the label kernel is allowed to compile', () => {
-  // js/label-wasm.js compiles its bytes with new WebAssembly.Module, which a
+  // js/canvas/label-wasm.js compiles its bytes with new WebAssembly.Module, which a
   // script-src without 'wasm-unsafe-eval' refuses.
-  assert.match(readFileSync(join(ROOT, 'js', 'label-wasm.js'), 'utf8'), /new WebAssembly\.Module/);
+  assert.match(readFileSync(join(ROOT, 'js', 'canvas', 'label-wasm.js'), 'utf8'), /new WebAssembly\.Module/);
   assert.ok(policy()['script-src'].includes("'wasm-unsafe-eval'"));
 });

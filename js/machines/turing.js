@@ -2,7 +2,7 @@
 //  TURING MACHINES — TM, NDTM, MTM, LBA, ITM
 // ══════════════════════════════════════════════════════════════════
 // A machine and a tape, and most of what separates these five is the
-// tape rather than the machine. js/tape.js holds where the head may go —
+// tape rather than the machine. js/simulation/tape.js holds where the head may go —
 // bounded at the left, unbounded both ways, or bounded at both ends with
 // two unwritable cells — so ITM is TM with a different tape and testITM3
 // is a one-line delegation rather than a second copy of the loop.
@@ -29,9 +29,9 @@
 
 import {
   App, getState, runStartId, usesTwoWayTape
-} from '../state.js';
-import { Tape, makeTapes, tapesKey } from '../tape.js';
-import { makeStepColumns, makeTapeLog } from '../tape-log.js';
+} from '../core/state.js';
+import { Tape, makeTapes, tapesKey } from '../simulation/tape.js';
+import { makeStepColumns, makeTapeLog } from '../simulation/tape-log.js';
 import { fastLaneEnabled, fastTM } from './fast-tm.js';
 import { buildMarkedInputTape, tapeTuplesOverlap } from './predicates.js';
 import { ConfigSet, Fifo, firstOverlappingTransition, makeRepeatDetector, makeStateNumbering, formatTapeInstantaneousDescription, langStepBudget, makeLoopTracker, markLoopStep, markTimeoutStep, multiTapeLookup, nameOfState, parseWordInput, playEagerly, singleTapeLookup, tokenize, transitionsFrom } from './runtime.js';
@@ -70,7 +70,7 @@ export function* streamTM(tokens) {
   const blank = App.config.sym.blank, twoWay = usesTwoWayTape();
   const tape = new Tape(tokens, blank, twoWay).trackFingerprint();
   // The step's tape, head and view are reads of this rather than copies held
-  // on the step — see js/tape-log.js for why that is most of a long run's
+  // on the step — see js/simulation/tape-log.js for why that is most of a long run's
   // memory. Nothing else about the loop changes: the live tape is still what
   // the machine is driven against and what key() reads.
   const log = makeTapeLog(tape);

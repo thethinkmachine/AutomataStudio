@@ -33,7 +33,7 @@
 // accessor *without* notifying (see installReactiveSetField), so no memo
 // recomputes against the borrowed machine, and nothing here emits.
 
-import { App, getMachineConfig } from '../state.js';
+import { App, getMachineConfig } from '../core/state.js';
 import { decideWord, machineDef } from '../machines/index.js';
 import { grammarTerminals, isContextFree, readGrammar } from '../grammar/model.js';
 import { toCNF } from '../grammar/transform.js';
