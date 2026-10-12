@@ -2607,11 +2607,13 @@ export function getToolbarDockFromPoint(pointerX, pointerY, wrapRect) {
 // A translucent ghost clone of the toolbar, positioned exactly where it will
 // land (same positioning math as the real dock, so it can't drift out of
 // sync) — shows the actual final shape/size/orientation, not just an edge.
+// The clone is inert: no ids to collide with the real toolbar's, and no
+// data-action, or a click on the ghost would run the control it copies.
 export function stripToolbarPreviewClone(root) {
-  root.removeAttribute('onclick');
+  root.removeAttribute('data-action');
   root.setAttribute('aria-hidden', 'true');
   root.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
-  root.querySelectorAll('[onclick]').forEach(el => el.removeAttribute('onclick'));
+  root.querySelectorAll('[data-action]').forEach(el => el.removeAttribute('data-action'));
   root.querySelectorAll('button, input, select').forEach(el => { el.tabIndex = -1; });
 }
 

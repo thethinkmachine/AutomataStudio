@@ -384,3 +384,42 @@ test('no inline handler anywhere in index.html or js/', () => {
   }
   assert.deepEqual(found, []);
 });
+
+// ── What still pointed at the inline handlers ─────────────────────
+
+test('nothing selects controls by an inline handler that no longer exists', () => {
+  // A selector for [onclick] does not fail once the attribute is gone — it
+  // quietly matches nothing. The desktop titlebar punched its no-drag holes
+  // that way, and workspace tabs went on dragging the window for it.
+  const stale = /\[on[a-z]+\]/;
+  const found = [];
+  for (const dir of ['css', 'js']) {
+    const walk = d => readdirSync(d).flatMap(n => {
+      const p = join(d, n);
+      return statSync(p).isDirectory() ? walk(p) : /\.(css|js)$/.test(n) ? [p] : [];
+    });
+    for (const path of walk(join(ROOT, dir))) {
+      // Comments may say what used to be here, as the titlebar's does.
+      // Blanked rather than removed, so line numbers still point at the source.
+      const blank = text => text.replace(/[^\n]/g, ' ');
+      const code = readFileSync(path, 'utf8').replace(/\/\*[\s\S]*?\*\//g, blank).replace(/(^|[^:])\/\/[^\n]*/g, blank);
+      code.split('\n').forEach((line, i) => {
+        if (stale.test(line)) found.push(`${relative(ROOT, path)}:${i + 1}  ${line.trim()}`);
+      });
+    }
+  }
+  assert.deepEqual(found, []);
+});
+
+test('in the desktop titlebar, every wired control is a hole in the drag region', () => {
+  // A drag region takes the pointer before the page sees it, so a wired
+  // element that is not a native button — a workspace tab, a menu item — has
+  // to be no-drag, or a press on it moves the window instead.
+  const css = readFileSync(join(ROOT, 'css', 'layout.css'), 'utf8');
+  const rule = [...css.matchAll(/([^{}]+)\{[^}]*-webkit-app-region:\s*no-drag/g)]
+    .map(m => m[1]).find(sel => sel.includes('.is-electron header'));
+  assert.ok(rule, 'the titlebar has a no-drag rule');
+  const selectors = rule.split(',').map(s => s.replace(/\/\*[\s\S]*?\*\//g, '').trim());
+  assert.ok(selectors.includes('.is-electron header [data-action]'), 'wired controls are no-drag');
+  assert.ok(selectors.includes('.is-electron header .tab'), 'workspace tabs are no-drag');
+});
