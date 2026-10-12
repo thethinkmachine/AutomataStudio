@@ -21,7 +21,7 @@
 //     an optimisation, never a capability, and nothing above it may need it.
 //   • Not making small work slower. Spawning eight workers to decide twenty
 //     DFA words costs more than deciding them. See shouldParallelize().
-import { hasExpensiveRuns } from '../state.js';
+import { hasExpensiveRuns } from '../core/state.js';
 import { snapshotMachine } from './snapshot.js';
 
 // One worker per hardware thread. The main thread is blocked awaiting the
@@ -38,7 +38,7 @@ const MIN_ITEMS_FOR_POOL = 32;
 // Machines whose per-word cost is high enough that even a short list is worth
 // spreading. A TM at maxTmSteps is ~10,000 steps of work for one word.
 //
-// The judgement itself is hasExpensiveRuns() in js/state.js, which the player
+// The judgement itself is hasExpensiveRuns() in js/core/state.js, which the player
 // also reads to decide whether to stream a run rather than precompute it —
 // the same fact about the machine, asked by two callers. It used to be a set
 // of type names here, which a machine added to MachineTypes falls silently out

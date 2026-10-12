@@ -16,7 +16,7 @@
 // Import-free apart from graph-thumb.js, which is itself import-free: the
 // minimap's arithmetic, so a sketch frames a machine the way the minimap does.
 
-import { thumbBounds, thumbEdgePairs, thumbFit } from '../graph-thumb.js';
+import { thumbBounds, thumbEdgePairs, thumbFit } from '../canvas/graph-thumb.js';
 
 const r1 = v => Math.round(v * 10) / 10;
 

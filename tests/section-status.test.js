@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
 
-// What a folded section says about itself — js/section-status.js.
+// What a folded section says about itself — js/ui/section-status.js.
 //
 // A collapsed section and a minimized window are both a title strip, and a
 // strip that said only "SIMULATE" had folded the verdict away with the body.

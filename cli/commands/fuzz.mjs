@@ -2,7 +2,7 @@
 // to be. The program is the specification; the machine is under test.
 import { spawnSync } from 'node:child_process';
 
-import { App, getMachineConfig } from '../../js/state.js';
+import { App, getMachineConfig } from '../../js/core/state.js';
 import { decideRaw, outputText } from '../../js/library/analyze.js';
 import { readMachine, CliError } from '../io.mjs';
 import { lettersOf, seeded } from '../fa.mjs';

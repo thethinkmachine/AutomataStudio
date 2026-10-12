@@ -25,8 +25,8 @@
 // takes it out again and writes it beside the machine as a .md file
 // (issue-to-entry.mjs), so the published machine file never carries it.
 
-import { App } from '../state.js';
-import { getWorkspaceData, shareLinkFor } from '../persistence.js';
+import { App } from '../core/state.js';
+import { getWorkspaceData, shareLinkFor } from '../io/persistence.js';
 import { APP_WEB_URL, ISSUE_URL_MAX, LIBRARY_REPO, SUBMIT_TEMPLATE, isLibraryId, repoUrl } from './config.js';
 import { LIBRARY_LICENSES, analyzeDocument, exerciseIdOf } from './analyze.js';
 import { entryById, sameLanguageAs, sameMachineAs, sameTaskAs } from './index-model.js';

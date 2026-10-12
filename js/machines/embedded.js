@@ -2,7 +2,7 @@
 //  EMBEDDED MACHINES — the EPDA
 // ══════════════════════════════════════════════════════════════════
 // The automaton that recognises exactly the tree-adjoining languages (the
-// `tag` page in js/concept-guide.js explains the class). It is a family of
+// `tag` page in js/reference/concept-guide.js explains the class). It is a family of
 // its own rather than a pushdown machine with an extra field, and the reason
 // is the store: a PDA's is an array of symbols and every one of
 // applyPdaStoreTransition / pdaPeek / pdaStoreToString is written against
@@ -26,7 +26,8 @@
 // store admits several moves from one configuration, and the languages it
 // is for are not deterministic ones.
 
-import { App, getState, runStartId } from '../state.js';
+import { App, getState, runStartId } from '../core/state.js';
+import { narrateAccept, narrateExplore, narrateStuck } from './narrate.js';
 import { renderSimStep } from './paint.js';
 import { ConfigSet, Fifo, accepted, makeStateNumbering, traceSearchPath, transitionsFrom } from './runtime.js';
 import { attachBranchTree, newBranchTree } from './branch-tree.js';
@@ -391,14 +392,14 @@ export function exploreEPDA(tokens, opts = {}) {
     if (isEpdaAcceptingConfig(cfg)) {
       acceptedCfg = cfg;
       if (tree) tree.accept(cfg.tn);
-      if (narrate) log.push(`<span class="step-acc">Branch ${cfg.branch}: ACCEPT ✓</span><span class="step-sub">Accepted at depth ${cfg.depth}.<br>ID: ${formatEpdaId(cfg)}</span>`);
+      if (narrate) log.push(narrateAccept(cfg.branch, `Accepted at depth ${cfg.depth}.`, `ID: ${formatEpdaId(cfg)}`));
       break;
     }
 
     const matching = getMatchingEpdaTransitions(cfg);
     if (!matching.length) {
       if (tree) tree.expandCfgs(cfg, []);
-      if (narrate) log.push(`Branch ${cfg.branch}: <span class="step-dead">stuck</span><span class="step-sub">No transition matches ${formatEpdaId(cfg)}.<br>Depth ${cfg.depth}</span>`);
+      if (narrate) log.push(narrateStuck(cfg.branch, `No transition matches ${formatEpdaId(cfg)}.`, `Depth ${cfg.depth}`));
       continue;
     }
 
@@ -410,7 +411,7 @@ export function exploreEPDA(tokens, opts = {}) {
         `ID: ${formatEpdaId(cfg)}`
       ];
       if (matching.length > 1) subs.push(`Nondeterministic choice: ${matching.length} matching transitions.`);
-      log.push(`Branch ${cfg.branch}: exploring <em>${name}</em><span class="step-sub">${subs.join('<br>')}</span>`);
+      log.push(narrateExplore(cfg.branch, name, subs));
     }
 
     const kids = tree && !tree.full ? [] : null;

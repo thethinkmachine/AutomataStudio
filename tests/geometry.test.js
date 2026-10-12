@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
 
-// Collision avoidance (js/geometry.js).
+// Collision avoidance (js/canvas/geometry.js).
 //
 // These assert on the layout pass rather than on the SVG, because what changed
 // is where things go, not what is drawn. The pass is a pure read of App, so a

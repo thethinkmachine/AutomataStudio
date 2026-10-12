@@ -8,7 +8,7 @@
 // small: a head that moved by one, a symbol out of a handful, a state out of a
 // few dozen. So they are stored as typed arrays of the narrowest width that
 // holds them, and the step objects are built again when a step is read (see
-// js/tape-log.js and js/machines/run.js).
+// js/simulation/tape-log.js and js/machines/run.js).
 //
 // **Chunked, never reallocated.** A reader holds a column by reference while
 // the producer is still appending to it — the space-time diagram indexes a
@@ -19,7 +19,7 @@
 // Import-free, like the rest of what js/machines/** reads.
 
 // Exported for the replay loops that walk a column a chunk at a time (see
-// `replay` in js/tape-log.js) — the layout is this module's, but a loop that
+// `replay` in js/simulation/tape-log.js) — the layout is this module's, but a loop that
 // asks for one row at a time pays for the asking on every row.
 export const BITS = 12;
 const SIZE = 1 << BITS;

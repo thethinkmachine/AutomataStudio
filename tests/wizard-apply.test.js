@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
-import { App, exportWorkspaceState } from '../js/state.js';
-import { undo } from '../js/history.js';
+import { App, exportWorkspaceState } from '../js/core/state.js';
+import { undo } from '../js/core/history.js';
 import {
   Wizard, addState, addTransition, applyDraft, beginWizard, draftFromCanvas,
   newDraft, previewCandidate, resetWizard
-} from '../js/wizard.js';
-import { _showWizardStep, openMachineWizard, syncWizardButton } from '../js/wizard-ui.js';
-import { MachineTypes } from '../js/state.js';
-import { wizardSteps } from '../js/wizard.js';
+} from '../js/ui/wizard.js';
+import { _showWizardStep, openMachineWizard, syncWizardButton } from '../js/ui/wizard-ui.js';
+import { MachineTypes } from '../js/core/state.js';
+import { wizardSteps } from '../js/ui/wizard.js';
 
 // What the wizard has to be true about, as distinct from what it draws.
 //

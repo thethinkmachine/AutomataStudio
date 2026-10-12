@@ -26,7 +26,7 @@
 //
 //   family        — 'finite' | 'twoway' | 'weighted' | 'omega' |
 //                   'pushdown' | 'embedded' | 'turing' | 'transducer'. The
-//                   grouping the behaviour is shared along; js/utils.js's
+//                   grouping the behaviour is shared along; js/core/utils.js's
 //                   family predicates read this rather than listing names.
 //   parseInput(raw, m)
 //                 — the run box's text → whatever simulate/decide take.
@@ -60,7 +60,7 @@
 //                   first step (js/machines/branch-tree.js): the Computation
 //                   Tree card and the canvas's branch tokens read it.
 //   columnar      — true when `stream` yields steps built from step columns
-//                   (makeStepColumns in js/tape-log.js), so the run keeps the
+//                   (makeStepColumns in js/simulation/tape-log.js), so the run keeps the
 //                   columns and rebuilds a step when it is read rather than
 //                   holding an object per step. The deterministic tape machines.
 //

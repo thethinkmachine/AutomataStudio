@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 // The two tabbed dialogs -- Settings and Keyboard Shortcuts -- share one
-// switcher (switchModalTab in js/ui.js), which pairs a tab with its panel by
+// switcher (switchModalTab in js/ui/ui.js), which pairs a tab with its panel by
 // string: the tab id inside the onclick becomes `<prefix><id>` and that is
 // looked up with getElementById. Nothing checks that the pair exists. Rename a
 // panel id, or add a tab and forget the panel, and the tab is simply inert when

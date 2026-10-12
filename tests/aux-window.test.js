@@ -143,7 +143,7 @@ test('the header button names the view the window showed last, Library before an
   const h = createHarness();
   // The remembered view is module state an earlier test may have set, so the
   // Library default is pinned on the source rather than observed here.
-  assert.match(readFileSync(join(ROOT, 'js/view.js'), 'utf8'),
+  assert.match(readFileSync(join(ROOT, 'js/ui/view.js'), 'utf8'),
     /AUX_VIEWS\.includes\(v\) \? v : AUX_VIEWS\[0\]/);
   h.context.setView('build');
   const btn = lastView(h);

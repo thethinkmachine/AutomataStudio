@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MEASUREMENT_ID, shouldMeasure, startAnalytics } from '../js/analytics.js';
+import { MEASUREMENT_ID, shouldMeasure, startAnalytics } from '../js/core/analytics.js';
 
 // The website reports its visits and nothing else does: the dev server and
 // `vite preview` are http://localhost, and the desktop app is app://.

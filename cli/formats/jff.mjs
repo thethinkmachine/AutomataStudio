@@ -1,7 +1,7 @@
 // ══════════════════════════════════════════════════════════════════
 //  JFLAP (.jff), WRITTEN
 // ══════════════════════════════════════════════════════════════════
-// The app reads JFLAP (js/import-jflap.js) and, until the command line, never
+// The app reads JFLAP (js/io/import-jflap.js) and, until the command line, never
 // wrote it. This is the other direction for the machines JFLAP has: finite
 // automata, single-stack PDAs, one- and multi-tape Turing machines, Mealy and
 // Moore. What JFLAP spells differently:

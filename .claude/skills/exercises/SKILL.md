@@ -1,6 +1,6 @@
 ---
 name: exercises
-description: AutomataStudio: exercises and the lexer generator - the exercise document, sealing the reference, exact vs bounded grading, the right-panel Exercise section and the Create Exercise dialog; and the lexer generator's pattern language, construction, diagnostics, code emitters and its Algorithms page. Read before touching js/exercise/, js/exercise-ui.js, js/lexer/ or js/lexer-ui.js.
+description: AutomataStudio: exercises and the lexer generator - the exercise document, sealing the reference, exact vs bounded grading, the right-panel Exercise section and the Create Exercise dialog; and the lexer generator's pattern language, construction, diagnostics, code emitters and its Algorithms page. Read before touching js/exercise/, js/exercise/exercise-ui.js, js/lexer/ or js/lexer/lexer-ui.js.
 ---
 
 ### Exercises
@@ -13,7 +13,7 @@ js/exercise/
                 sealTarget/unsealTarget.
   grade.js      DOM-free. The reference as data, withMachine, the two
                 grading methods, recordAttempt.
-js/exercise-ui.js   the #rp-exercise section and the #exercise-modal dialog.
+js/exercise/exercise-ui.js   the #rp-exercise section and the #exercise-modal dialog.
 ```
 
 **The reference is sealed, not secret.** `sealTarget` XORs and base64s it so a student opening the `.automaton` in an editor does not read the answer off the first screen. It is not encryption and says so in the dialog: everything grading needs runs in the browser, so what the grader can read a determined student can too. An exam that must be tamper-proof needs a server.
@@ -56,7 +56,7 @@ js/lexer/
   build.js   import-free but for regex.js. Spec → NFA → classes → DFA →
              minimal DFA; runLexer; lexerToMachine.
   emit.js    tables + maximal-munch driver, as JS / Python / C.
-js/lexer-ui.js   the page.
+js/lexer/lexer-ui.js   the page.
 ```
 
 **It has its own pattern parser, and not `parseRE`.** That one reads the textbook notation over Σ — no escapes, `.` meaning a symbol of the alphabet — which is right for drawing Thompson's construction and wrong for a lexer, whose rules are about characters (`\(`, `\n`, `\d`, `[^"\\]`). Growing escapes into the textbook parser would change what an existing regex means in the Algorithms view. Anchors, lazy quantifiers, backreferences and lookaround are refused, each with a sentence saying why it has no meaning here.

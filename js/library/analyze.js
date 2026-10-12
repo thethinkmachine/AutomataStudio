@@ -22,7 +22,7 @@
 // this machine — a minimal DFA of a PDA, a halting proof for an NFA. An entry
 // carries no badge it did not earn, and no badge because a check was skipped.
 
-import { App, MachineCategories, MachineTypes, getMachineConfig } from '../state.js';
+import { App, MachineCategories, MachineTypes, getMachineConfig } from '../core/state.js';
 import {
   decideMachine, decideWord, machineDef, machineDeterminism, machineGuards, parseMachineInput, streamMachine
 } from '../machines/index.js';
@@ -30,8 +30,8 @@ import { withPainterSuppressed } from '../machines/paint.js';
 import { BEHAVIOUR_MACHINES, classifyBehaviourNow, compileBehaviourMachine } from '../machines/tm-behaviour.js';
 import { subsetSide, withMachine } from '../exercise/grade.js';
 import { writeStandardTM } from '../interop/standard-tm.js';
-import { migrateWorkspaceDoc, normalizeMachineType, validateSchema } from '../persistence.js';
-import { thumbBounds, thumbEdgePairs, thumbEdgePath, thumbEdgeSegments, thumbFit, thumbNodeRadius } from '../graph-thumb.js';
+import { migrateWorkspaceDoc, normalizeMachineType, validateSchema } from '../io/persistence.js';
+import { thumbBounds, thumbEdgePairs, thumbEdgePath, thumbEdgeSegments, thumbFit, thumbNodeRadius } from '../canvas/graph-thumb.js';
 import { canonicalCodeOf, hash64, machineIdOf } from './hash.js';
 import { unsealTarget } from '../exercise/model.js';
 import { drawSketch, packSketch, sketchAspect, sketchFromTarget } from './sketch.js';
@@ -45,7 +45,7 @@ export const LIBRARY_LIMITS = {
   bytes: 1_500_000,
   states: 2000,
   transitions: 20000,
-  // The card's own limits (js/machine-card.js), so an entry reads the same in
+  // The card's own limits (js/ui/machine-card.js), so an entry reads the same in
   // the library and on the canvas. A longer write-up is the entry's essay; meta.library.readme is the
   // short notes older entries carry instead, still read and shown.
   inputs: 12,
@@ -407,7 +407,7 @@ function esc(s) {
 function round(v) { return Math.round(v * 10) / 10; }
 
 // ── Card art ──────────────────────────────────────────────────────
-//  Each card shows two or three pictures in turn (js/library-ui.js rotates
+//  Each card shows two or three pictures in turn (js/library/library-ui.js rotates
 //  them), each the most characteristic view of the machine in some sense:
 //
 //    diagram    the machine as drawn, in its family's colour, state names on

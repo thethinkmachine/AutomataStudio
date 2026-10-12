@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
 
-// Transitions δ as a table — js/delta-table.js.
+// Transitions δ as a table — js/editor/delta-table.js.
 //
 // Pinned: which machines get a table (read off the declared transition fields,
 // never a list of names), which of them are edited in place, that the columns

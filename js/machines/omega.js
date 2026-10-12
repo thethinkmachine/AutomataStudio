@@ -19,7 +19,7 @@
 
 import {
   App, getState, omegaAcceptanceOf, runStartId, statePriority
-} from '../state.js';
+} from '../core/state.js';
 import { renderSimStep } from './paint.js';
 import { findOmegaDeterminismConflict } from './predicates.js';
 import { Fifo, accepted, firstOverlappingTransition, nameOfState, tokenize, transitionsFrom } from './runtime.js';

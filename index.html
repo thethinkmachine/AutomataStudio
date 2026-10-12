@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- Scripts come from this origin, KaTeX 0.16.9's folder on the CDN — not the
        CDN, which serves any npm package anyone has published — the Google tag
-       (js/analytics.js loads it, on the website only), and the theme
+       (js/core/analytics.js loads it, on the website only), and the theme
        bootstrap below, allowed by hash. No 'unsafe-inline', so an on*="..."
        attribute or an injected script element does not run.
        tests/csp.test.js recomputes the hash, so editing the bootstrap fails
@@ -56,7 +56,7 @@
        Colours are deliberately not the literal values from svgs/*.svg. The mono
        strokes take `currentColor` and the highlighted state takes `var(--accent)`,
        both of which resolve through <use> into the symbol. That is what lets one
-       copy serve all of the themes in js/themes.js rather than needing an
+       copy serve all of the themes in js/ui/themes.js rather than needing an
        on-dark and an on-light file — the theme swaps --text and --accent, and the
        mark follows. The exported PNG/SVG tiles in svgs/ keep their fixed colours,
        because a favicon and an app icon have no page to inherit from.
@@ -121,7 +121,7 @@
         <!-- The view the tool window last showed, reopened in one click.
              Inside the strip's frame but outside its scroller, so however
              many workspaces there are it never scrolls away with them.
-             Labelled and wired by js/view.js; none of it is in bridge.js. -->
+             Labelled and wired by js/ui/view.js; none of it is in bridge.js. -->
         <span class="tab-strip-sep" aria-hidden="true"></span>
         <button class="last-view-btn" id="hdr-last-view" type="button"></button>
       </div>
@@ -184,7 +184,7 @@
         <!-- One button in two modes, and the canvas decides which: a plus on
              an empty canvas builds a machine by asking questions, a pencil on
              a canvas with a machine on it edits that machine with the answers
-             already filled in. syncWizardButton() in js/wizard-ui.js swaps the
+             already filled in. syncWizardButton() in js/ui/wizard-ui.js swaps the
              glyph, the label and the tooltip, subscribed to Change.GRAPH.
              The plus is circled deliberately — the tab bar's "create
              workspace" control is a bare plus, and two identical glyphs in one
@@ -323,7 +323,7 @@
               </div>
             </div>
             <div class="ctx-divider"></div>
-            <!-- Wired in js/exercise-ui.js rather than by onclick=, so it adds
+            <!-- Wired in js/exercise/exercise-ui.js rather than by onclick=, so it adds
                  nothing to bridge.js. -->
             <div class="ctx-group" role="group" aria-labelledby="hdr-teach-label">
               <div class="ctx-group-label" id="hdr-teach-label" aria-hidden="true">Teach</div>
@@ -391,7 +391,7 @@
 
     <!-- Electron only (electron/main.js loads a frameless BrowserWindow, so
          there are no native minimize/maximize/close buttons — hidden on the
-         website by default; js/electron-bridge.js unhides it and wires the
+         website by default; js/core/electron-bridge.js unhides it and wires the
          clicks up over IPC). -->
     <div class="winctl" id="winctl">
       <button class="winctl-btn" id="winctl-minimize" type="button" aria-label="Minimize">
@@ -469,8 +469,8 @@
              aria-labelledby="panel-tab-workspace">
           <!-- The exercise this tab is an answer to — first in Machine, because
                its brief is what is being built. See the note over the
-               registry in js/panel-sections.js. Hidden until there is one;
-               the body is built and wired in js/exercise-ui.js from
+               registry in js/ui/panel-sections.js. Hidden until there is one;
+               the body is built and wired in js/exercise/exercise-ui.js from
                App.exercise, so nothing inside needs a name in bridge.js. -->
           <div class="rp-collapsible" id="rp-exercise" style="display:none">
             <div class="rp-section-header" data-action="activate->ui.toggleRPSection" data-section="rp-exercise" role="button" aria-expanded="true" tabindex="0">
@@ -486,7 +486,7 @@
                runs left of the input, a PFA's cut-point. They were in three
                places (the Language card, two Settings tabs) and each is a
                component of the tuple, so they live beside Σ now. Rows come
-               from the machine's declared `options` (js/machine-options-ui.js),
+               from the machine's declared `options` (js/editor/machine-options-ui.js),
                and a machine with none hides the section. -->
           <div class="sec lp-collapsible" id="lp-machine" style="display:none">
             <div class="lp-section-header" data-action="activate->ui.toggleLPSection" data-section="lp-machine" role="button" aria-expanded="true" tabindex="0">
@@ -502,7 +502,7 @@
                sections of their own, so a PDT opened on three near-identical
                headers before its first state. The row ids are the ones those
                sections had, because the machine switch still shows and hides
-               them by id — see syncAlphabetSection in js/alphabet.js. -->
+               them by id — see syncAlphabetSection in js/editor/alphabet.js. -->
           <div class="sec lp-collapsible" id="lp-alphabet">
             <div class="lp-section-header" data-action="activate->ui.toggleLPSection" data-section="lp-alphabet" role="button" aria-expanded="true" tabindex="0">
               <span class="sec-lbl lp-section-title" id="lp-alphabet-title">Alphabet <span class="sym">Σ</span></span>
@@ -570,7 +570,7 @@
             </div>
             <div class="lp-section-body">
               <!-- δ as a list of rules, or as the textbook's table of states by
-                   symbols (js/delta-table.js). The switch is shown only for
+                   symbols (js/editor/delta-table.js). The switch is shown only for
                    machines whose rules fit a table; its listener is attached
                    at first draw, so it has no name in bridge.js. -->
               <div class="lp-search-row">
@@ -607,7 +607,7 @@
               <!-- Saved definitions, and the only way back to one: a block kept
                    with "Save to Library…" is a whole machine in IndexedDB, and
                    until this list existed there was nothing anywhere that could
-                   place, list or delete one. Rows are built by js/blocks-ui.js
+                   place, list or delete one. Rows are built by js/editor/blocks-ui.js
                    with their listeners attached at creation. -->
               <div class="blib-head" id="block-library-head" hidden>Library</div>
               <div class="blist" id="block-library-list" hidden></div>
@@ -627,14 +627,14 @@
           <!-- The breathing background: two glows tracing a figure-eight. First
                in the well so it paints under the grid and the diagram, and
                animated on transform and opacity only — see .canvas-aurora in
-               css/views.css, and js/canvas-motion.js for when it rests. -->
+               css/views.css, and js/canvas/canvas-motion.js for when it rests. -->
           <div class="canvas-aurora" id="canvas-aurora" aria-hidden="true"><i></i><i></i></div>
           <!-- The grid. An element of its own, and childless, because the camera
                is written onto it every frame of a pan or zoom — see applyCamera()
-               in js/canvas.js. -->
+               in js/canvas/canvas.js. -->
           <div class="canvas-grid" id="canvas-grid" aria-hidden="true"></div>
           <!-- Where you are inside the block hierarchy. Empty and hidden at the
-               top level; js/scope.js fills it and attaches its own listeners. -->
+               top level; js/editor/scope.js fills it and attaches its own listeners. -->
           <nav class="scope-bar" id="scope-bar" aria-label="Block location" hidden></nav>
           <svg id="svgCanvas">
             <defs id="canvas-defs">
@@ -760,7 +760,7 @@
                seconds after a load or a StateMate run, then folds back into
                the button it springs from; the button is also offered for an
                undescribed machine, where it opens the editor instead. Body and
-               chrome are built and wired in js/machine-card.js from App.meta,
+               chrome are built and wired in js/ui/machine-card.js from App.meta,
                so neither needs an entry in bridge.js. -->
           <button class="canvas-info-btn" id="canvas-info-btn" type="button" hidden
                   aria-expanded="false" aria-controls="example-card"
@@ -826,7 +826,7 @@
           </div>
 
           <!-- Quick canvas settings. Every row mirrors a control in the Settings
-               dialog rather than owning its own state; see js/quick-settings.js. -->
+               dialog rather than owning its own state; see js/ui/quick-settings.js. -->
           <div class="quick-settings" id="quick-settings" role="dialog" aria-label="Canvas settings" aria-modal="false">
             <div class="qs-header">
               <span class="qs-title">Canvas</span>
@@ -946,7 +946,7 @@
             </div>
             <!-- Complexity section. Runs the machine over growing inputs and
                  charts steps and space against n. Hidden on machines whose runs
-                 have no length worth charting; built by js/complexity-ui.js. -->
+                 have no length worth charting; built by js/simulation/complexity-ui.js. -->
             <div class="rp-collapsible collapsed" id="rp-complexity" style="display:none">
               <div class="rp-section-header" data-action="activate->ui.toggleRPSection" data-section="rp-complexity" role="button" aria-expanded="false" tabindex="0">
                 <span class="rp-section-title">Complexity</span>
@@ -956,7 +956,7 @@
             </div>
             <!-- Behaviour section. Proves whether a Turing machine halts, cycles,
                  or cycles while travelling — or says it does not know. Only
-                 for deterministic one-tape machines; built by js/behaviour-ui.js. -->
+                 for deterministic one-tape machines; built by js/simulation/behaviour-ui.js. -->
             <div class="rp-collapsible collapsed" id="rp-behaviour" style="display:none">
               <div class="rp-section-header" data-action="activate->ui.toggleRPSection" data-section="rp-behaviour" role="button" aria-expanded="false" tabindex="0">
                 <span class="rp-section-title">Behaviour</span>
@@ -972,7 +972,7 @@
               </div>
               <div class="rp-section-body" style="display:none">
                 <!-- The editor, its tools and the results are wired in
-                     js/simulation.js by delegation on data-batch-action, so
+                     js/simulation/simulation.js by delegation on data-batch-action, so
                      none of the buttons below needs a name in bridge.js. -->
                 <div class="batch-editor">
                   <textarea class="batch-in" id="batch-in" autocomplete="off" spellcheck="false"
@@ -1019,7 +1019,7 @@
                  transport and tape, the trace, the computation tree and the
                  space-time diagram. Analyze keeps what is about the
                  machine over all its inputs; see the `run` group in
-                 js/panel-sections.js for where that line is drawn. -->
+                 js/ui/panel-sections.js for where that line is drawn. -->
             <div class="rpanel-content" id="rpanel-run-content" role="tabpanel"
                  aria-labelledby="panel-tab-run" hidden>
             <!-- Simulate section -->
@@ -1035,7 +1035,7 @@
                      nearly all of the time. Inside a block it offers that block
                      and every one it is nested in, so from within CPU/ALU/add
                      you can run the adder, the ALU or the CPU without going
-                     back out to do it. js/run-scope.js owns what it means. -->
+                     back out to do it. js/editor/run-scope.js owns what it means. -->
                 <div class="sim-subject-row" id="sim-subject-row" hidden>
                   <label class="sim-subject-lbl" for="sim-subject">Run</label>
                   <select class="sim-subject-sel" id="sim-subject" data-action="change->runScope.setRunSubjectFromUI"
@@ -1076,7 +1076,7 @@
                       <svg viewBox="0 0 256 256" fill="currentColor" width="13" height="13"><path d="M200,32a8,8,0,0,0-8,8v69.23L72.43,34.45A15.95,15.95,0,0,0,48,47.88V208.12a16,16,0,0,0,24.43,13.43L192,146.77V216a8,8,0,0,0,16,0V40A8,8,0,0,0,200,32ZM64,207.93V48.05l127.84,80Z" /></svg>
                     </button>
                     <!-- The varispeed: playback speed as a knob, turned in place — click,
-                         scroll or drag. Wired in js/speed-control.js, not through an
+                         scroll or drag. Wired in js/simulation/speed-control.js, not through an
                          on* attribute. -->
                     <div class="sbtn sbtn-speed" id="sim-speed" role="slider" tabindex="0"
                       aria-label="Playback speed" aria-valuemin="0" aria-valuemax="7" aria-valuenow="1"
@@ -1115,7 +1115,7 @@
             <!-- Computation tree section. Every branch a nondeterministic run
                  took, not only the one the trace follows, coloured the way the
                  canvas colours its tokens. Hidden on machines that do not
-                 branch; built by js/branch-tree-ui.js. -->
+                 branch; built by js/simulation/branch-tree-ui.js. -->
             <div class="rp-collapsible" id="rp-branches" style="display:none">
               <div class="rp-section-header" data-action="activate->ui.toggleRPSection" data-section="rp-branches" role="button" aria-expanded="true" tabindex="0">
                 <span class="rp-section-title">Computation Tree</span>
@@ -1128,7 +1128,7 @@
                  step. Hidden on machines without a tape and collapsed by default:
                  the tracker's header opens it straight into a window, which is
                  the shape a diagram of a run wants. Everything inside the body
-                 is built by js/spacetime-ui.js. -->
+                 is built by js/simulation/spacetime-ui.js. -->
             <div class="rp-collapsible collapsed" id="rp-spacetime" style="display:none">
               <div class="rp-section-header" data-action="activate->ui.toggleRPSection" data-section="rp-spacetime" role="button" aria-expanded="false" tabindex="0">
                 <span class="rp-section-title">Space-time</span>
@@ -1174,11 +1174,11 @@
                 <!-- Set while a past turn is being rewritten; built by renderEditing(). -->
                 <div class="sm-editing-slot" id="sm-editing"></div>
                 <!-- Selected parts of the diagram this prompt is about; built by
-                     renderContext() in js/statemate-ui.js, empty most of the time. -->
+                     renderContext() in js/statemate/statemate-ui.js, empty most of the time. -->
                 <div class="sm-context-slot" id="sm-context" aria-label="Prompt context"></div>
                 <div class="sm-nudge-slot" id="sm-nudge"></div>
                 <!-- Images attached to the next prompt, for a model that reads
-                     them; built by renderAttachments() in js/statemate-ui.js. -->
+                     them; built by renderAttachments() in js/statemate/statemate-ui.js. -->
                 <div class="sm-attach-slot" id="sm-attach" aria-label="Attached images"></div>
                 <div class="sm-behavior-switch" id="sm-behavior-switch" role="radiogroup"
                      aria-label="StateMate behavior">
@@ -1219,7 +1219,7 @@
            they share one window over the canvas, which stays mounted
            underneath, and are dismissed with Esc, the close button, or a click
            on the backdrop. The bar is a tab strip across the four, built by
-           js/view.js from AUX_META, so moving between them never means
+           js/ui/view.js from AUX_META, so moving between them never means
            closing the window first. -->
       <div class="aux-scrim" id="aux-scrim" data-action="view.closeAuxView" aria-hidden="true"></div>
       <div class="aux-overlay" id="aux-overlay" role="dialog" aria-modal="true"
@@ -1315,7 +1315,7 @@
 
       <!-- ─── GRAMMAR VIEW ─── -->
       <!-- Nav rail + content, the shape the Algorithms and Reference views
-           already have. The rail is generated by js/grammar-ui.js from the
+           already have. The rail is generated by js/grammar/grammar-ui.js from the
            tool registry in js/grammar/registry.js, so a tool added there
            appears here with no edit. The grammar itself rides at the top of
            the content pane rather than in the rail: a result is only readable
@@ -1339,8 +1339,8 @@
       </div>
 
       <!-- ─── REFERENCE VIEW ─── -->
-      <!-- Both panes are generated by js/reference.js from the machine guides in
-           js/machine-guide.js, so the navigation cannot drift from the list of
+      <!-- Both panes are generated by js/reference/reference.js from the machine guides in
+           js/reference/machine-guide.js, so the navigation cannot drift from the list of
            machines the model picker offers. -->
       <div id="v-reference" style="display:none">
         <div class="algo-nav ref-nav" id="ref-nav">
@@ -1361,7 +1361,7 @@
       </div>
 
       <!-- ─── LIBRARY VIEW ─── -->
-      <!-- Both panes are generated by js/library-ui.js from the library index
+      <!-- Both panes are generated by js/library/library-ui.js from the library index
            (js/library/index-model.js). Nothing here carries an on* attribute
            beyond the shared mobile toggle — every listener is attached at
            creation, the way the Reference view does it. -->
@@ -1440,7 +1440,7 @@
          That last cell is deliberately *not* called "Panels" — a container is
          not a thing anybody wants. It carries the name and glyph of the tab it
          will open, and the sheet opens with all three tabs on a strip across
-         its head, so nothing is hidden behind a word. Wired in js/mobile.js;
+         its head, so nothing is hidden behind a word. Wired in js/ui/mobile.js;
          `data-mobile-tool` and the ids are the whole registration. -->
     <nav class="mobile-bar" id="mobile-bar" aria-label="Tools and panels">
       <button class="mobile-bar-btn" type="button" data-mobile-tool="pointer" aria-pressed="false">
@@ -1599,7 +1599,7 @@
     <div class="modal note-modal">
       <h2 class="modal-title"><span class="modal-title-text" id="note-modal-title">Note</span></h2>
       <!-- The note is its Markdown, typed as such; the preview beside it is
-           drawn by the canvas's own renderer (renderNotePreview in js/notes.js).
+           drawn by the canvas's own renderer (renderNotePreview in js/canvas/notes.js).
            On a phone the two are tabs. -->
       <div class="note-editor" id="note-editor" data-pane="write">
         <div class="note-toolbar" role="toolbar" aria-label="Formatting" aria-controls="note-text">
@@ -1702,7 +1702,7 @@
   </div>
 
   <!-- ══════ CREATE EXERCISE ══════
-       Body and footer are built in js/exercise-ui.js, which attaches every
+       Body and footer are built in js/exercise/exercise-ui.js, which attaches every
        listener at creation. -->
   <div class="overlay" id="exercise-modal" role="dialog" aria-modal="true" aria-labelledby="exercise-modal-title">
     <div class="modal exercise-modal">
@@ -1757,7 +1757,7 @@
   </div>
 
   <!-- ══════ EXPORT A SPACE-TIME DIAGRAM ══════
-       Wired by js/spacetime-ui.js at first open; no on*= attributes, so
+       Wired by js/simulation/spacetime-ui.js at first open; no on*= attributes, so
        nothing here is in bridge.js. -->
   <div class="overlay" id="spacetime-export-modal" role="dialog" aria-modal="true" aria-labelledby="st-export-title">
     <div class="modal st-export-modal">
@@ -1803,13 +1803,13 @@
 
   <!-- Settings Modal -->
   <!-- ─── THE MACHINE WIZARD ───
-       Built entirely by js/wizard-ui.js: the rail, the body and the footer
+       Built entirely by js/ui/wizard-ui.js: the rail, the body and the footer
        are all generated, and every listener is attached at creation. That is
        why there is not one on*= attribute below — the whole feature adds a
-       single name to js/bridge.js, the way js/reference.js does.
+       single name to js/bridge.js, the way js/reference/reference.js does.
 
        What goes in each step, and what each step says, are decided in
-       js/wizard.js and js/wizard-copy.js respectively. -->
+       js/ui/wizard.js and js/ui/wizard-copy.js respectively. -->
   <div class="overlay" id="wizard-modal" role="dialog" aria-modal="true" aria-labelledby="wiz-title">
     <div class="modal wizard-modal-wide">
       <h2 class="modal-title"><span class="modal-title-text" id="wiz-title">Build a machine</span></h2>
@@ -1836,7 +1836,7 @@
              limit in one place.
 
              The group labels are not tabs: they carry no .modal-tab, so the
-             Arrow/Home/End walk in js/ui.js and StateMate's /settings command
+             Arrow/Home/End walk in js/ui/ui.js and StateMate's /settings command
              (which both read `.modal-tab`) pass straight over them.
 
              switchSettingsTab resolves tabs by id, so this strip can be
@@ -2147,8 +2147,8 @@
            StateMate. These controls do NOT write App.config: exportWorkspaceState
            and getBackupPayload both serialize the whole config, so an API key
            living there would be written into every workspace tab and the
-           autosave blob. js/statemate-provider.js keeps its own store under its
-           own localStorage key; js/statemate-ui.js reads and writes this panel. -->
+           autosave blob. js/statemate/statemate-provider.js keeps its own store under its
+           own localStorage key; js/statemate/statemate-ui.js reads and writes this panel. -->
       <div class="modal-tab-content" id="tab-ai" role="tabpanel" aria-labelledby="settings-tab-ai" tabindex="0" hidden>
         <p class="settings-panel-intro">The AI assistant: which model it talks to, how it works, and what it hands back.</p>
         <div class="modal-section-lbl">Connection</div>
@@ -2178,7 +2178,7 @@
         </div>
         <div class="modal-row">
           <span class="modal-lbl">Model</span>
-          <!-- The provider's own /models listing, fetched by js/statemate-ui.js
+          <!-- The provider's own /models listing, fetched by js/statemate/statemate-ui.js
                and filtered as the name is typed. A menu of our own rather than
                a <datalist>: the native one is invisible until the browser
                decides to open it and has nowhere to say "fetching" or why a
@@ -2304,7 +2304,7 @@
        for the padding-less frame, .settings-modal-wide for the vertical tab
        rail — because it has the same shape of content: many grouped rows that
        do not fit one scroll. The bindings mirror the keydown handlers in
-       js/ui.js, js/minimap.js and js/notes.js; anything added there belongs in
+       js/ui/ui.js, js/canvas/minimap.js and js/canvas/notes.js; anything added there belongs in
        the matching section here. -->
   <div class="overlay" id="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-modal-title">
     <div class="modal export-code-modal settings-modal-wide">
@@ -2471,7 +2471,7 @@
   </div>
 
   <!-- Software update. Desktop only, and driven entirely from
-       js/electron-bridge.js over the update-status channel — the web build never
+       js/core/electron-bridge.js over the update-status channel — the web build never
        opens it, which is why nothing here is wired through bridge.js. -->
   <div class="overlay" id="update-modal" role="dialog" aria-modal="true" aria-labelledby="update-title" aria-describedby="update-msg">
     <div class="modal">

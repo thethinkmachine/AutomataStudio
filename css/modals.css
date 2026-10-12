@@ -120,7 +120,7 @@ body.modal-open {
 /* A hairline says "the chrome ends here". It cannot also say "and there is
    more of the body above this line", which is what an opaque pinned bar over
    scrolled content needs to say — without it a sentence cut through its
-   ascenders reads as a rendering fault. js/modal.js sets both classes.
+   ascenders reads as a rendering fault. js/ui/modal.js sets both classes.
 
    --tab-overflow-shadow is the app's existing "there is more past this edge"
    colour, already carried by the workspace tab strip and the algorithm rail,
@@ -145,7 +145,7 @@ body.modal-open {
 }
 
 /* ─── CLOSE BUTTON ───
-   Injected into every dialog by installModalChrome() in js/modal.js rather than
+   Injected into every dialog by installModalChrome() in js/ui/modal.js rather than
    written thirteen times, so a dialog added later gets one for free. It rides
    in the title's flex row — inside the sticky element, so it stays reachable in
    a dialog tall enough to scroll — and `margin-left: auto` pins it to the far
@@ -223,7 +223,7 @@ body.modal-open {
      keystroke, so there is no rung between them and the page.
 
    The shell is static in index.html; every line inside .sm-log is built by
-   js/statemate-ui.js. */
+   js/statemate/statemate-ui.js. */
 .sm-panel {
   /* The type scale. Two voices and four sizes, and the rule for which is
      which: sans is language — what a person wrote or is meant to read;
@@ -993,7 +993,7 @@ body.modal-open {
   overflow-wrap: anywhere;
 }
 
-/* ── markdown, as rendered by js/markdown.js ──
+/* ── markdown, as rendered by js/text/markdown.js ──
    The reply is the one surface where the model writes prose for a person, so
    it is the one surface that gets block structure. Everything here is scoped
    under .sm-md: these are tag selectors, and the console must not start
@@ -1139,7 +1139,7 @@ body.modal-open {
 }
 
 /* An image is shown as its label and its address — see the note at the top of
-   js/markdown.js for why a reply never gets to make a request. */
+   js/text/markdown.js for why a reply never gets to make a request. */
 .sm-md .md-image {
   color: var(--text3);
   font-family: var(--mono);
@@ -2993,7 +2993,7 @@ button.sm-stat:disabled {
   margin-right: 2px;
 }
 
-/* What will be drawn, drawn by the canvas (js/edit-preview.js): the node and
+/* What will be drawn, drawn by the canvas (js/canvas/edit-preview.js): the node and
    edge classes in css/canvas.css paint it, on the canvas's own ground, so it
    follows the theme and the label style the way the diagram does. Dashed:
    derived from the fields, and saved nowhere until the dialog is confirmed
@@ -3659,7 +3659,7 @@ button:focus-visible {
 
 /* ─── NOTE EDITOR ───
    The note's Markdown on the left, the note as the canvas draws it on the
-   right (js/notes.js, renderNotePreview). The dialog is a column of fixed
+   right (js/canvas/notes.js, renderNotePreview). The dialog is a column of fixed
    height whose panes take what is left, so each pane scrolls on its own and
    nothing else does — the colours and the buttons never leave the screen. */
 .modal.note-modal {
@@ -3934,7 +3934,7 @@ button:focus-visible {
 
 /* The exception: a tooltip whose content did not fit, which is therefore
    scrollable and so has to be reachable — a scrollbar the pointer passes
-   straight through is not a scrollbar. Set by js/tooltip.js from a *measurement*
+   straight through is not a scrollbar. Set by js/ui/tooltip.js from a *measurement*
    of the body (scrollHeight > clientHeight) rather than from the content's kind,
    so an ordinary tooltip is never made to block the canvas on the chance that it
    might have overflowed. Leaving the anchor then hides after a grace period
@@ -3967,7 +3967,7 @@ button:focus-visible {
   text-align: left;
 }
 
-/* A tabular label — see renderGrid() in js/tooltip.js.
+/* A tabular label — see renderGrid() in js/ui/tooltip.js.
    A table is as wide as its columns, bounded only by the window. The prose
    widths above are a *measure* — a line length chosen so a sentence is readable
    — and that reasoning does not transfer: a column of "Write" narrowed to a
@@ -4012,7 +4012,7 @@ button:focus-visible {
 }
 
 /* Columns are max-content: a cell is a symbol, a tape index or a direction, and
-   every one of them is short. Set in js/tooltip.js, where the column count is
+   every one of them is short. Set in js/ui/tooltip.js, where the column count is
    known. They are deliberately not allowed to shrink — a squeezed column breaks
    its own header mid-word, which is what a table is for. */
 
@@ -5206,7 +5206,7 @@ button:focus-visible {
 }
 
 /* ─── THE MACHINE WIZARD ───
-   One question per screen, over the draft in js/wizard.js. The dialog is a
+   One question per screen, over the draft in js/ui/wizard.js. The dialog is a
    flex column with a pinned rail and footer and a scrolling body: a step is
    allowed to be long (a twelve-state machine's list is), and when it is, the
    step you are on and the way forward must both still be on screen.
@@ -5997,7 +5997,7 @@ button:focus-visible {
   }
 }
 
-/* ═══ CREATE EXERCISE ═══ (js/exercise-ui.js) */
+/* ═══ CREATE EXERCISE ═══ (js/exercise/exercise-ui.js) */
 .modal.exercise-modal {
   max-width: 560px;
 }

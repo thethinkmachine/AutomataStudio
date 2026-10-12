@@ -9,7 +9,7 @@
 
 import {
   App, getState, runStartId
-} from '../state.js';
+} from '../core/state.js';
 import { accepted, firstIdenticalTransition, nameOfState, playEagerly, singleTapeLookup, stateNames, transitionsFrom } from './runtime.js';
 import { defineFamily } from './registry.js';
 import { wordStep } from './step-log.js';

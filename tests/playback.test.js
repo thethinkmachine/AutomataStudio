@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
 
 // Playback: paced by frames, painted once per frame, and each paint writing
-// only what changed. See "the playback clock" in js/simulation.js.
+// only what changed. See "the playback clock" in js/simulation/simulation.js.
 //
 // Profiled in Chromium before any of this, a step's paint cost 8–54ms against
 // a 16.7ms frame and a step's computation 0.7–16µs, so the player was never

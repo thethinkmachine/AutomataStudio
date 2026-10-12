@@ -3,7 +3,7 @@
 // ══════════════════════════════════════════════════════════════════
 // Every function here answers a question about a *machine* — its family,
 // the shape of its δ, whether two transitions overlap — by reading nothing
-// but `App` and the registry. They used to live in js/utils.js, which is a
+// but `App` and the registry. They used to live in js/core/utils.js, which is a
 // UI module: it imports modal.js, render.js, persistence.js and
 // simulation.js, and resolves DOM nodes at module scope.
 //
@@ -22,8 +22,8 @@
 // whole point of the file, and it is what js/parallel/decide.worker.js
 // depends on.
 //
-// js/utils.js re-exports all of it, so every existing call site is unchanged.
-import { App, getBoundaryMarkers, isTwoWayFA } from '../state.js';
+// js/core/utils.js re-exports all of it, so every existing call site is unchanged.
+import { App, getBoundaryMarkers, isTwoWayFA } from '../core/state.js';
 import { inFamily, machineDef } from './registry.js';
 
 export function buildMarkedInputTape(tokens = []) {
@@ -135,6 +135,11 @@ export function isPushdownTransducer(m = App.machine) {
 // "nondeterministic families are exempt" rule — and a list that has to be
 // read in the right order is a list that will eventually be read in the
 // wrong one, letting the editor draw an NBA and call it a DBA.
+/** DFA, NFA or ε-NFA: one head, one way, no store. */
+export function isOneWayFA(m = App.machine) {
+  return machineDef(m)?.family === 'finite';
+}
+
 export function hasSingleValuedDelta(m = App.machine) {
   return !!machineDef(m)?.deterministicDelta;
 }

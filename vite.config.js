@@ -27,8 +27,8 @@ const LICENSE_BANNER = `/*!
 // Two sets of JSON are fetched at runtime by a URL built from a name, so neither
 // can be hashed or rewritten by the bundler and both must keep their exact path:
 // the example machines (`js/examples/<name>.json`, loadExampleFile in
-// js/persistence.js) and the glyph outline tables (`js/glyphs/<face>.json`,
-// loadFace in js/glyphs.js). During dev Vite serves them straight from the
+// js/io/persistence.js) and the glyph outline tables (`js/glyphs/<face>.json`,
+// loadFace in js/io/glyphs.js). During dev Vite serves them straight from the
 // project root; for the build they are copied verbatim.
 //
 // The glyph tables are deliberately not imported: a static import would put
@@ -54,7 +54,7 @@ export default defineConfig({
   // so neither can assume the document sits at the domain root.
   base: './',
   plugins: [copyRuntimeAssets()],
-  // Read back in js/workspace.js, which guards on `typeof` so the Node test
+  // Read back in js/io/workspace.js, which guards on `typeof` so the Node test
   // run — which imports the modules directly, with no Vite in the way — does
   // not trip over an undefined global.
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },

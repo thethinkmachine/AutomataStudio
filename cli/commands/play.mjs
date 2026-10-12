@@ -2,7 +2,7 @@
 import { openSync, writeFileSync } from 'node:fs';
 import { ReadStream } from 'node:tty';
 
-import { App } from '../../js/state.js';
+import { App } from '../../js/core/state.js';
 import { readMachine, emit, CliError } from '../io.mjs';
 import { endingCode, endingWord, traceSteps } from './run.mjs';
 import { animatedRun } from '../figure.mjs';

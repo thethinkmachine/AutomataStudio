@@ -1,4 +1,4 @@
-import { $, App } from '../state.js';
+import { $, App } from '../core/state.js';
 import { DEFAULT_EPS, deriveVars, formatRules, parseGrammarText, tokenizeSymbols } from './parse.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -200,7 +200,7 @@ export function tokenizeWord(raw, g) {
   const bad = tokens.find(t => !alphabet.has(t));
   // No `tokens` on the failure, deliberately: a caller that forgets to check
   // `ok` should fail loudly rather than quietly answer about the empty word.
-  // `needs: { word: true }` is what states the check, and js/grammar-ui.js's
+  // `needs: { word: true }` is what states the check, and js/grammar/grammar-ui.js's
   // `unmet` is where it is made.
   if (bad) return { ok: false, raw: s, error: bad };
   return { ok: true, raw: s, tokens };

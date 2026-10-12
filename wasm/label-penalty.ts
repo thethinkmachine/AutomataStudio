@@ -1,7 +1,7 @@
 // The label stage's inner loop, compiled to WebAssembly.
 //
 // This is a port of labelPenalty and the grid it queries out of
-// js/geometry.js, and it is deliberately a *port* rather than a second design:
+// js/canvas/geometry.js, and it is deliberately a *port* rather than a second design:
 // the two have to answer the same number for the same diagram, so the grid's
 // probe order, its insertion order within a cell and the arithmetic of each
 // predicate are all reproduced exactly. tests/label-penalty-wasm.test.js is

@@ -154,7 +154,7 @@ test('a PDA with no final states warns about empty-stack acceptance', () => {
 // A JFLAP <block> is this app's building block seen from the other side: an
 // interior automaton entered at its own start state and left from the states
 // it halts in. The two models line up, so the interior is expanded rather than
-// dropped — and the machine is flat afterwards, exactly as js/blocks.js keeps
+// dropped — and the machine is flat afterwards, exactly as js/editor/blocks.js keeps
 // it, with the block a *grouping* over it.
 
 // One block with two halting states, wired in and out at the top level.

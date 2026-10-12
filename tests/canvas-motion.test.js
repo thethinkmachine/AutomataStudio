@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createHarness } from './harness.js';
 
 // The breathing canvas background: a device preference, and a promise about
-// cost. See js/canvas-motion.js and .canvas-aurora in css/views.css.
+// cost. See js/canvas/canvas-motion.js and .canvas-aurora in css/views.css.
 
 const css = readFileSync(new URL('../css/views.css', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
@@ -38,7 +38,7 @@ test('the preference is not part of the machine', () => {
 
 test('the Settings dialog reads and writes the preference', () => {
   assert.ok(html.includes('id="set-canvas-motion"'));
-  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
+  const ui = readFileSync(new URL('../js/ui/ui.js', import.meta.url), 'utf8');
   const fn = name => {
     const at = ui.indexOf(`export function ${name}(`);
     assert.notEqual(at, -1, `${name} not found`);
@@ -102,7 +102,7 @@ test('a run starting and stopping sets and clears the tempo', () => {
 });
 
 test('the playback clock tells the background its pace', () => {
-  const src = readFileSync(new URL('../js/simulation.js', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('../js/simulation/simulation.js', import.meta.url), 'utf8');
   const at = src.indexOf('function syncFastPlayback(');
   assert.notEqual(at, -1);
   // Start, stop and every speed change all pass through syncFastPlayback.
@@ -113,7 +113,7 @@ test('the playback clock tells the background its pace', () => {
 // Changing animation-duration on a running CSS animation re-derives its
 // progress and the glows jump. The rate has to go through playbackRate.
 test('the tempo changes playback rate, never the CSS duration', () => {
-  const src = readFileSync(new URL('../js/canvas-motion.js', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('../js/canvas/canvas-motion.js', import.meta.url), 'utf8');
   assert.ok(!/animationDuration|animation-duration/.test(src.replace(/\/\/.*$/gm, '')),
     'writing a duration makes the pools jump');
   assert.match(src, /updatePlaybackRate/);

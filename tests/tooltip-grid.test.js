@@ -151,7 +151,7 @@ test('the first transition is shown whatever it costs', () => {
 
 // ── reaching a tooltip that did not fit ───────────────────────────
 //
-// js/tooltip.js is an IIFE of document listeners with no exports, so these read
+// js/ui/tooltip.js is an IIFE of document listeners with no exports, so these read
 // the source the way tests/canvas-overlays.test.js reads the stylesheet. What
 // they protect is a set of exemptions that are invisible to break: each of the
 // global dismiss listeners fires for events that happen *inside* the tooltip,
@@ -167,7 +167,7 @@ test('taking the pointer is measured, and only while shown', () => {
   // out would intercept a click nobody can see it intercepting.
   assert.match(rule[0].split('{')[0], /\.show/);
 
-  const js = readFileSync(new URL('../js/tooltip.js', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('../js/ui/tooltip.js', import.meta.url), 'utf8');
   // From what actually overflowed, never from the content's kind — an ordinary
   // tooltip must not block the canvas on the chance that it might have. Measured
   // on the body, since that is the box that scrolls.
@@ -175,7 +175,7 @@ test('taking the pointer is measured, and only while shown', () => {
 });
 
 test('every global dismisser exempts events from inside the tooltip', () => {
-  const js = readFileSync(new URL('../js/tooltip.js', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('../js/ui/tooltip.js', import.meta.url), 'utf8');
   for (const [evt, why] of [
     ['pointerdown', 'a press on its own scrollbar'],
     ['scroll', 'the scroll that press produces']
@@ -234,7 +234,7 @@ test('the box is measured from a neutral offset, not from the last hover', () =>
   // still on the element squeezes the width, and that squeezed width computes
   // the next offset — so a table hovered near the right edge came back
   // permanently narrow, breaking "Write" into "Wri/te".
-  const js = readFileSync(new URL('../js/tooltip.js', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('../js/ui/tooltip.js', import.meta.url), 'utf8');
   const at = js.indexOf('function place(');
   const body = js.slice(at, js.indexOf('const tw = el.offsetWidth', at));
   assert.match(body, /el\.style\.left = '0px'/, 'width measured against a stale offset');

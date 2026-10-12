@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Themes, DEFAULT_THEME } from '../js/themes.js';
+import { Themes, DEFAULT_THEME } from '../js/ui/themes.js';
 
 // Themes are declared in two places that have to agree: a
 // `:root[data-theme="id"]` block in css/variables.css (what the page paints
@@ -201,7 +201,7 @@ test('the start and accepting rings stay visible against the state fill', () => 
   }
 });
 
-// ── The design rules in js/themes.js, enforced ───────────────────────
+// ── The design rules in js/ui/themes.js, enforced ───────────────────────
 // Four colours are semantic on the canvas (accent = the state the run is in,
 // green = start, gold = accepting, red = rejection), and the ink colours are
 // legibility floors. These held only as prose until every theme was rebuilt

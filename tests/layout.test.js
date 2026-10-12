@@ -166,7 +166,7 @@ function stubGeometry(harnessCtx, getEl, { lpanel, rpanel }) {
   wrap.clientWidth = 1280;
   wrap.clientHeight = 800;
   wrap.getBoundingClientRect = () => ({ left: 0, right: 1280, top: 0, bottom: 800, width: 1280, height: 800 });
-  // applyCamera (real, from js/canvas.js) writes CSS custom properties that
+  // applyCamera (real, from js/canvas/canvas.js) writes CSS custom properties that
   // the harness's plain-object style stub doesn't implement.
   wrap.style.setProperty = () => {};
   getEl('cam-g').style.setProperty = () => {};

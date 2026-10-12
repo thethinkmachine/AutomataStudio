@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
 import { readdirSync, readFileSync } from 'node:fs';
-import { markdownRuns } from '../js/markdown.js';
-import { migrateLegacyNoteText, parseLegacyNoteRuns } from '../js/notes-legacy-markup.js';
-import { insertTable, toggleInline, toggleList } from '../js/note-editor-text.js';
+import { markdownRuns } from '../js/text/markdown.js';
+import { migrateLegacyNoteText, parseLegacyNoteRuns } from '../js/canvas/notes-legacy-markup.js';
+import { insertTable, toggleInline, toggleList } from '../js/canvas/note-editor-text.js';
 
-// ── A note is Markdown, with markdown-it's conventions (js/markdown.js) ──
+// ── A note is Markdown, with markdown-it's conventions (js/text/markdown.js) ──
 
 const styled = runs => runs.map(r => `${['bold', 'italic', 'strike', 'code'].filter(s => r[s]).join('+')}[${r.text}]`).join(' ');
 
@@ -19,7 +19,7 @@ test('a note reads as Markdown: nested emphasis, strikethrough, code, and __ is 
 // ── The editor: the Markdown in a text box, the note beside it ──
 // What is typed is saved as typed, and the preview is the canvas's own
 // renderer. The toolbar's edits are pure functions of the text and selection
-// (js/note-editor-text.js), tested without a DOM.
+// (js/canvas/note-editor-text.js), tested without a DOM.
 
 const apply = (text, edit) => text.slice(0, edit.from) + edit.insert + text.slice(edit.to);
 const selected = (text, edit) => apply(text, edit).slice(...edit.select);

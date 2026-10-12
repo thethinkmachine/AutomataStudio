@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
 // Safe after harness.js: it installs the DOM stub before any real module is
 // evaluated, so ui.js is already up by the time this binding resolves.
-import { themeGridNeighbor } from '../js/ui.js';
+import { themeGridNeighbor } from '../js/ui/ui.js';
 
 function makeState(id, name) {
   return { id, name, x: 0, y: 0 };
@@ -851,7 +851,7 @@ test('DFA to regular grammar includes epsilon productions for accepting states',
   const card = h.getElement('algo-content');
   h.context.algoDFA2RG(card);
   assert.match(card.innerHTML, />ε<\/td>/);
-  assert.match(card.innerHTML, />S<\/td><td style="color:var\(--text3\)">→<\/td><td>a/);
+  assert.match(card.innerHTML, />S<\/td><td class="prod-arrow">→<\/td><td>a/);
 });
 
 test('closure constructors preserve their intended languages on sample inputs', () => {

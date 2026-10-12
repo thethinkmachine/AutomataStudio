@@ -3,7 +3,7 @@
 // ══════════════════════════════════════════════════════════════════
 // Every simulator ends a step with renderSimStep(). That is the whole of
 // what js/machines/** ever asked of the DOM — and it was imported straight
-// from js/simulation.js, which imports render.js, suggest.js and tape-view.js
+// from js/simulation/simulation.js, which imports render.js, suggest.js and tape-view.js
 // and so cannot be evaluated without a document.
 //
 // So the machine layer was DOM-free in what it *did* and DOM-bound in what it
@@ -15,7 +15,7 @@
 // container written from more than one place (modal-registry.js,
 // export-registry.js, machines/registry.js, store.js): an import-free leaf
 // holding the binding, with the real implementation installed at module scope
-// by the module that owns it. js/simulation.js calls setSimStepPainter() as it
+// by the module that owns it. js/simulation/simulation.js calls setSimStepPainter() as it
 // evaluates; on the main thread that happens before any run can start, because
 // a run begins with a user gesture.
 //
@@ -32,7 +32,7 @@ let painter = null;
 // player mute.
 let suppressed = 0;
 
-/** Whether painting is currently suppressed. js/simulation.js checks it too:
+/** Whether painting is currently suppressed. js/simulation/simulation.js checks it too:
  *  the player calls its own renderSimStep directly, which does not pass through
  *  the hook below, and a direct call inside a suppressed block must stay mute. */
 export function isPainterSuppressed() {
@@ -45,7 +45,7 @@ export function withPainterSuppressed(fn) {
   try { return fn(); } finally { suppressed--; }
 }
 
-/** Installed once, at module scope, by js/simulation.js. */
+/** Installed once, at module scope, by js/simulation/simulation.js. */
 export function setSimStepPainter(fn) {
   painter = typeof fn === 'function' ? fn : null;
 }

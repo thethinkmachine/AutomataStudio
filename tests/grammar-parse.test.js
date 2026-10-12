@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
 import { formatRules, meansEmpty, parseGrammarText, tokenizeSymbols } from '../js/grammar/parse.js';
-import { ReactiveSet } from '../js/reactive.js';
+import { ReactiveSet } from '../js/core/reactive.js';
 
 // The grammar parser.
 //

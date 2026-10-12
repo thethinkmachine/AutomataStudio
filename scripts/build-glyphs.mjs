@@ -1,5 +1,5 @@
 // Extracts glyph outlines from the app's canvas fonts into small JSON tables,
-// which js/glyphs.js uses to convert an exported diagram's <text> into <path>.
+// which js/io/glyphs.js uses to convert an exported diagram's <text> into <path>.
 //
 //   npm run glyphs
 //
@@ -35,7 +35,7 @@ const SUBSETS = 'latin,latin-ext,greek,greek-ext,cyrillic,cyrillic-ext,vietnames
 // The symbols, listed rather than taken as ranges. U+2200..U+22FF alone is 256
 // characters and the app can emit about a dozen of them -- carrying the rest
 // costs ~90KB to cover integrals nobody is going to draw on an automaton. A
-// symbol outside this list is not an error: js/glyphs.js leaves the one label
+// symbol outside this list is not an error: js/io/glyphs.js leaves the one label
 // containing it as text.
 const MATH_CHARS =
   '∅∈∉⊂⊃⊄⊆⊇∪∩∖∀∃∄¬∧∨'   // sets and logic
@@ -55,7 +55,7 @@ const MATH_CHARS =
 // The weights are the ones with real masters behind them. .state-sub (600),
 // .priority-value (700) and .edge-pill-beginner (550) are already synthesised
 // by the browser today -- JetBrains Mono is loaded at 300/400/500, see the font
-// link in index.html -- so js/glyphs.js synthesises them the same way, from the
+// link in index.html -- so js/io/glyphs.js synthesises them the same way, from the
 // nearest master, rather than this file pretending a master exists.
 const FACES = [
   { id: 'mono-400', family: 'JetBrains Mono', weight: 400, query: 'JetBrains+Mono:400' },
@@ -73,7 +73,7 @@ const FACES = [
 
 // A curated charset rather than the whole font. Everything the app itself can
 // put on the canvas, plus the range a state name or an alphabet symbol
-// realistically lands in. Anything outside it is not a failure -- js/glyphs.js
+// realistically lands in. Anything outside it is not a failure -- js/io/glyphs.js
 // leaves a text element it cannot fully convert as text, so an unusual symbol
 // costs that one label its outlines and nothing else.
 function charset() {
@@ -420,7 +420,7 @@ for (const face of FACES) {
     covered++;
     const d = contoursToPath(glyphContours(buf, loca, tables.glyf, gid));
     // A space has a cmap entry and no outline. Recording it as "" is the point:
-    // js/glyphs.js has to tell "this face has no glyph for that character" from
+    // js/io/glyphs.js has to tell "this face has no glyph for that character" from
     // "that character is legitimately blank", and only the first is a reason to
     // leave a label as text.
     if (!d) blank++;

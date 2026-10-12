@@ -2,7 +2,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { App, getMachineConfig } from '../../js/state.js';
+import { App, getMachineConfig } from '../../js/core/state.js';
 import { gradeExercise, wordText } from '../../js/exercise/grade.js';
 import { normalizeExercise, sealTarget, unsealTarget, validateExercise } from '../../js/exercise/model.js';
 import { minimalDfaOf } from '../../js/library/analyze.js';

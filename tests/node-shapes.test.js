@@ -6,7 +6,7 @@ import { createHarness, context } from './harness.js';
 //
 // A state is a circle of radius R and always was. A building block is a box,
 // and a bigger one — it carries a title strip and a live preview of the machine
-// inside it. Every "keep clear" distance in js/geometry.js used to be one
+// inside it. Every "keep clear" distance in js/canvas/geometry.js used to be one
 // number read from the config, and the whole of this change is that they are
 // now per node.
 //

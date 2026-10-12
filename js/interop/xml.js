@@ -1,7 +1,7 @@
 // ══════════════════════════════════════════════════════════════════
 //  A SMALL XML READER
 // ══════════════════════════════════════════════════════════════════
-// Import-free, and not DOMParser, for the reason js/import-jflap.js gives for
+// Import-free, and not DOMParser, for the reason js/io/import-jflap.js gives for
 // its own reader: the formats it serves are machine-written and regular, and
 // a reader with no DOM is one the test suite can run. It handles elements,
 // attributes, self-closing tags, text, comments, CDATA, processing

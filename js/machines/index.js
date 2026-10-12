@@ -13,15 +13,15 @@
 // answers `null` here instead of quietly running as a DFA in one place
 // and a Turing machine in another.
 //
-// Adding a machine is: a row in MachineTypes (js/state.js), and a
+// Adding a machine is: a row in MachineTypes (js/core/state.js), and a
 // defineMachine call in the family module whose mechanism it shares.
 // tests/machines.test.js fails until both exist.
 
-import { App } from '../state.js';
+import { App } from '../core/state.js';
 import { withPainterSuppressed } from './paint.js';
 import { machineDef, requireMachineDef } from './registry.js';
 import { makeRun } from './run.js';
-import { stepColumnsOf } from '../tape-log.js';
+import { stepColumnsOf } from '../simulation/tape-log.js';
 import { parseWordInput } from './runtime.js';
 import { tapeTuplesOverlap } from './predicates.js';
 
@@ -96,7 +96,7 @@ export function simulateMachine(m, input) {
  */
 export function streamMachine(m, input) {
   const def = requireMachineDef(m);
-  // A machine whose steps are rebuilt from columns (see js/tape-log.js) has
+  // A machine whose steps are rebuilt from columns (see js/simulation/tape-log.js) has
   // its run keep the columns rather than the step objects — the whole of what
   // lets a run of tens of millions of steps fit.
   if (def.stream) return makeRun(def.stream(input, m), def.columnar ? { columnsOf: stepColumnsOf } : undefined);
@@ -300,7 +300,7 @@ export function isMultiTape(m) {
  * A block is inlined, and control leaves it along an exit edge that consumes
  * nothing — which needs a stay move and a wildcard write. Declared per family
  * rather than tested for by name, so this cannot fall out of step with the
- * machines that actually have them. See js/blocks.js.
+ * machines that actually have them. See js/editor/blocks.js.
  */
 export function machineSupportsBlocks(m = App.machine) {
   return !!machineDef(m)?.supportsBlocks;
@@ -394,7 +394,7 @@ export function machineDeterminism(m) {
 // Both answers are the schema read one way or the other, so the node's
 // second line, the state modal's Output row, the wizard's extra column and
 // the StateMate dialect's state keys all follow from one declaration.
-// js/utils.js re-exports both for the callers that already knew them there.
+// js/core/utils.js re-exports both for the callers that already knew them there.
 export function hasTransitionOutput(m = App.machine) {
   return transitionFieldsOf(m).includes('out');
 }

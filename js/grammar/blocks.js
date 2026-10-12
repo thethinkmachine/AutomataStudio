@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════════
 //  RESULT BLOCK VOCABULARY
 // ══════════════════════════════════════════════════════════════════
-//  The same arrangement js/guide-blocks.js has with js/reference.js: this
-//  module is the vocabulary and is import-free, and js/grammar-ui.js is the
+//  The same arrangement js/reference/guide-blocks.js has with js/reference/reference.js: this
+//  module is the vocabulary and is import-free, and js/grammar/grammar-ui.js is the
 //  only thing that turns a block into DOM. A block kind added here needs a
 //  case in `renderBlock()` there, and that is the single place the two halves
 //  have to agree.

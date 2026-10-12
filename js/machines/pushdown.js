@@ -13,7 +13,8 @@
 
 import {
   App, getState, runStartId
-} from '../state.js';
+} from '../core/state.js';
+import { narrateAccept, narrateExplore, narrateStuck } from './narrate.js';
 import { renderSimStep } from './paint.js';
 import { getPdaDeterminismConflict, isQueueAutomaton, isTwoStackPDA } from './predicates.js';
 import { ConfigSet, Fifo, accepted, makeStateNumbering, nameOfState, traceSearchPath, transduced, transducerRunContributes, transitionsFrom } from './runtime.js';
@@ -410,14 +411,14 @@ export function exploreNPDA(tokens, opts = {}) {
     if (isAccepting(cfg)) {
       acceptedCfg = cfg;
       if (tree) tree.accept(cfg.tn);
-      if (narrate) log.push(`<span class="step-acc">Branch ${cfg.branch}: ACCEPT ✓</span><span class="step-sub">Accepted at depth ${cfg.depth}.<br>ID: ${idStr}</span>`);
+      if (narrate) log.push(narrateAccept(cfg.branch, `Accepted at depth ${cfg.depth}.`, `ID: ${idStr}`));
       break;
     }
 
     const matching = matchesOf(cfg);
     if (!matching.length) {
       if (tree) tree.expandCfgs(cfg, []);
-      if (narrate) log.push(`Branch ${cfg.branch}: <span class="step-dead">stuck</span><span class="step-sub">No transition matches ${idStr}.<br>Depth ${cfg.depth}</span>`);
+      if (narrate) log.push(narrateStuck(cfg.branch, `No transition matches ${idStr}.`, `Depth ${cfg.depth}`));
       continue;
     }
 
@@ -461,7 +462,7 @@ function narrateBranch(log, cfg, stateName, idStr, matching) {
   if (matching.length > 1) {
     subs.push(`Nondeterministic choice: ${matching.length} matching transitions.`);
   }
-  log.push(`Branch ${cfg.branch}: exploring <em>${stateName}</em><span class="step-sub">${subs.join('<br>')}</span>`);
+  log.push(narrateExplore(cfg.branch, stateName, subs));
 }
 
 export function simNPDA(tokens) {

@@ -7,7 +7,7 @@ import { createHarness } from './harness.js';
 // `App.states` is pushed to, filtered and reassigned wholesale from around
 // twenty places — every algorithm's load path, StateMate's apply, the wizard,
 // performClear, an undo — and **not one of them announces it**. That is the
-// same problem stateIndex() in js/state.js solves by checking array identity
+// same problem stateIndex() in js/core/state.js solves by checking array identity
 // rather than being told, and it is the way a feature like this rots: a block
 // record survives a subset construction, points at states that no longer
 // exist, and the renderer draws a node over nothing.
@@ -205,7 +205,7 @@ test('a document naming a machine that cannot have blocks loses the grouping, no
 
   // Hand-edited, or written before blockPlacementRefusal existed. The flat
   // machine underneath is perfectly good, so it is the grouping that goes and
-  // not one state or transition with it — the same call js/import-jflap.js
+  // not one state or transition with it — the same call js/io/import-jflap.js
   // makes for a JFLAP file whose family has no stay move.
   data.machine = 'DFA';
   const states = data.states.length, transitions = data.transitions.length;

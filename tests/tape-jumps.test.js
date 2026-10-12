@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
 
 // A jump in a long run costs a tape's width, not the run's length — see
-// js/tape-log.js. The log keeps cost-spaced checkpoints of the tape, and steps
+// js/simulation/tape-log.js. The log keeps cost-spaced checkpoints of the tape, and steps
 // *back* by undoing a write rather than replaying from the start: what a cell
 // held before a step wrote it is the symbol that step read. The reader reaches
 // any step by the cheapest of four routes, so every one of them has to land on

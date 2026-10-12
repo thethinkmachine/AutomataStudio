@@ -2,13 +2,13 @@
 //  STATECHARTS IN — XState and SCXML, flattened to a machine
 // ══════════════════════════════════════════════════════════════════
 // The export side has existed for a while (codegenXState / codegenSCXML in
-// js/codegen.js); this is the way back, and the way in for a statechart
+// js/io/codegen.js); this is the way back, and the way in for a statechart
 // someone wrote for a real application.
 //
 // Import-free: the two readers above it are, and the symbol table comes in
 // as an argument. The UI half — clearing the canvas, loading the result,
-// writing the caveats to the machine card — is js/import-statechart.js, the
-// same split js/import-jflap.js makes between reading and placing.
+// writing the caveats to the machine card — is js/io/import-statechart.js, the
+// same split js/io/import-jflap.js makes between reading and placing.
 //
 // A statechart is a *hierarchical* machine and this app's machines are flat,
 // so the heart of this is flattening, and it has one rule per statechart

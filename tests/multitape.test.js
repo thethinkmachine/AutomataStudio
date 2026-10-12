@@ -63,7 +63,7 @@ const ALU_JSON = fs.readFileSync(new URL('../js/examples/mtm-alu.json', import.m
 
 const picker = () => getElement('tape-count-sel');
 
-/** The rows the tracker actually drew, as js/tape-view.js built them. */
+/** The rows the tracker actually drew, as js/simulation/tape-view.js built them. */
 function drawnRows(idx) {
   context.App.simIdx = idx;
   context.renderSimStep();

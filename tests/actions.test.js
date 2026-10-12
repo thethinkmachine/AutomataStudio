@@ -7,11 +7,11 @@ import { dirname, join, relative } from 'node:path';
 // The harness imports every app module, so every defineActions() call in the
 // app has run by the time the markup checks below ask the registry.
 import './harness.js';
-import { actionNames, defineActions, getAction } from '../js/action-registry.js';
-import { SPEC_EVENT_NAMES, dispatchActions, installActions, parseActionSpec } from '../js/actions.js';
+import { actionNames, defineActions, getAction } from '../js/core/action-registry.js';
+import { SPEC_EVENT_NAMES, dispatchActions, installActions, parseActionSpec } from '../js/core/actions.js';
 
-// data-action in place of on*="...": js/action-registry.js holds the names,
-// js/actions.js delivers events to them. The first half of this file is the
+// data-action in place of on*="...": js/core/action-registry.js holds the names,
+// js/core/actions.js delivers events to them. The first half of this file is the
 // mechanism; the second is the markup — that every name it uses exists, and
 // that the inline-handler seam it replaces only ever shrinks.
 
@@ -288,7 +288,7 @@ function sourceFiles() {
   });
   // The mechanism's own two files describe the syntax in comments and error
   // messages; they are not markup.
-  const mechanism = new Set(['js/actions.js', 'js/action-registry.js']);
+  const mechanism = new Set(['js/core/actions.js', 'js/core/action-registry.js']);
   return [join(ROOT, 'index.html'), ...walk(join(ROOT, 'js'))]
     .map(path => [relative(ROOT, path).replaceAll('\\', '/'), path])
     .filter(([file]) => !mechanism.has(file))
@@ -346,7 +346,7 @@ test('every registered action is used by some control: the registry does not gro
 test('the scan sees generated markup, not only index.html', () => {
   // A guard on the guard: a scan that found nothing would pass both tests above.
   const specs = actionSpecs();
-  assert.ok(specs.some(s => s.where.startsWith('js/algorithms-fa.js') && s.spec === 'algo.loadSubsetAsDFA'));
+  assert.ok(specs.some(s => s.where.startsWith('js/algorithms/algorithms-fa.js') && s.spec === 'algo.loadSubsetAsDFA'));
   assert.ok(specs.some(s => s.spec.startsWith('suggest.symbols ')), 'a behaviour followed by a key action');
 });
 
@@ -383,4 +383,43 @@ test('no inline handler anywhere in index.html or js/', () => {
     }
   }
   assert.deepEqual(found, []);
+});
+
+// ── What still pointed at the inline handlers ─────────────────────
+
+test('nothing selects controls by an inline handler that no longer exists', () => {
+  // A selector for [onclick] does not fail once the attribute is gone — it
+  // quietly matches nothing. The desktop titlebar punched its no-drag holes
+  // that way, and workspace tabs went on dragging the window for it.
+  const stale = /\[on[a-z]+\]/;
+  const found = [];
+  for (const dir of ['css', 'js']) {
+    const walk = d => readdirSync(d).flatMap(n => {
+      const p = join(d, n);
+      return statSync(p).isDirectory() ? walk(p) : /\.(css|js)$/.test(n) ? [p] : [];
+    });
+    for (const path of walk(join(ROOT, dir))) {
+      // Comments may say what used to be here, as the titlebar's does.
+      // Blanked rather than removed, so line numbers still point at the source.
+      const blank = text => text.replace(/[^\n]/g, ' ');
+      const code = readFileSync(path, 'utf8').replace(/\/\*[\s\S]*?\*\//g, blank).replace(/(^|[^:])\/\/[^\n]*/g, blank);
+      code.split('\n').forEach((line, i) => {
+        if (stale.test(line)) found.push(`${relative(ROOT, path)}:${i + 1}  ${line.trim()}`);
+      });
+    }
+  }
+  assert.deepEqual(found, []);
+});
+
+test('in the desktop titlebar, every wired control is a hole in the drag region', () => {
+  // A drag region takes the pointer before the page sees it, so a wired
+  // element that is not a native button — a workspace tab, a menu item — has
+  // to be no-drag, or a press on it moves the window instead.
+  const css = readFileSync(join(ROOT, 'css', 'layout.css'), 'utf8');
+  const rule = [...css.matchAll(/([^{}]+)\{[^}]*-webkit-app-region:\s*no-drag/g)]
+    .map(m => m[1]).find(sel => sel.includes('.is-electron header'));
+  assert.ok(rule, 'the titlebar has a no-drag rule');
+  const selectors = rule.split(',').map(s => s.replace(/\/\*[\s\S]*?\*\//g, '').trim());
+  assert.ok(selectors.includes('.is-electron header [data-action]'), 'wired controls are no-drag');
+  assert.ok(selectors.includes('.is-electron header .tab'), 'workspace tabs are no-drag');
 });

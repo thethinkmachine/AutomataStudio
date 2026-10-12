@@ -1,7 +1,7 @@
 // ══════════════════════════════════════════════════════════════════
 //  WHAT A STEP REMEMBERS — the half that is not a tape
 // ══════════════════════════════════════════════════════════════════
-// js/tape-log.js makes the case for the tape machines: a run is tens of
+// js/simulation/tape-log.js makes the case for the tape machines: a run is tens of
 // thousands of steps, so anything a step holds that grows with the run is
 // quadratic in the run. That was true of every machine that is *not* a tape
 // machine too, in two directions at once, and it was the largest single cost

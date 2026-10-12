@@ -59,7 +59,7 @@
 // keyed by their own text, so two copies that still agree are one definition.
 // Only a clean subroutine is written as one: entered at its entry and left only
 // from an exit along Σ/Σ,S. Anything else is written flat and the writer says
-// which block and why. Inlining is the semantics (js/blocks.js), so either way
+// which block and why. Inlining is the semantics (js/editor/blocks.js), so either way
 // the machine is the same.
 //
 // ── Identity ──────────────────────────────────────────────────────
@@ -70,7 +70,7 @@
 // every case short of the graph-isomorphism ones refinement cannot separate.
 //
 // Import-free and DOM-free. Positions are the caller's business — see
-// js/import-machine-code.js. Throws SMTFError with a sentence the status bar
+// js/io/import-machine-code.js. Throws SMTFError with a sentence the status bar
 // can show.
 
 export class SMTFError extends Error {}

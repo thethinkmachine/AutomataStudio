@@ -2,7 +2,7 @@
 // The `automata` executable.
 //
 // Solid resolves to its server build under Node's default conditions, and the
-// app's js/reactive.js refuses to run on that stub. The browser build is a
+// app's js/core/reactive.js refuses to run on that stub. The browser build is a
 // Node *flag* (--conditions=browser), which a shebang cannot pass portably —
 // `env -S` is not on Windows, and npm's Windows launcher ignores shebang
 // arguments anyway. So when the flag is missing, this re-runs itself once with

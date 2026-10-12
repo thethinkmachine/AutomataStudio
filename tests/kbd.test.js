@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { formatKbd } from '../js/kbd.js';
+import { formatKbd } from '../js/ui/kbd.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 

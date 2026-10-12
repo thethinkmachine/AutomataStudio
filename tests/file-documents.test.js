@@ -7,7 +7,7 @@ const { context } = harness;
 
 // Two hosts, one set of verbs. On the desktop a workspace has a file — a path
 // it came from and can be written back to — and in the browser it does not.
-// What is pinned here is that the difference lives in js/file-host.js and that
+// What is pinned here is that the difference lives in js/io/file-host.js and that
 // neither host can be made to overwrite the wrong file.
 
 // A fake `window.electronAPI` with just the file surface. `calls` records what

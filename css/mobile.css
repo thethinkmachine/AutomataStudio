@@ -735,7 +735,7 @@
 
   /* ── the toolbox is gone ──────────────────────────────────────
      Its contents are the mobile bar's cells and the bar's More popover.
-     `!important` because js/view.js writes `display: flex` inline on every
+     `!important` because js/ui/view.js writes `display: flex` inline on every
      view change; the toolbar's dock arithmetic then measures it as a hidden
      node (offsetParent null) and correctly reports "no toolbar", so the
      overlay stack stops reserving a strip for something that is not there. */
@@ -1021,7 +1021,7 @@
   }
 
   /* ── the sheet's head ─────────────────────────────────────────
-     Built by installSheetChrome() in js/mobile.js rather than written into
+     Built by installSheetChrome() in js/ui/mobile.js rather than written into
      both panels' markup — the same reasoning as installModalChrome(). */
   .mobile-sheet-head {
     display: flex;
@@ -1177,7 +1177,7 @@
   /* The bar is hidden while an auxiliary view is up — the aux bar takes the
      same slot, at the same height — so the Fit button and the info pill move
      down to the canvas's own edge with it. Measured in JS rather than
-     described here (compactBottomInset in js/ui.js), because both are placed
+     described here (compactBottomInset in js/ui/ui.js), because both are placed
      with inline styles. */
   body.aux-open .mobile-bar:not(.mobile-aux-bar),
   body.aux-open .mobile-panel-scrim {

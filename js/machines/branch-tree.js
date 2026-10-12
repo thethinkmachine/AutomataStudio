@@ -6,8 +6,8 @@
 // configuration it opened, which ones forked, which died, which ran into a
 // configuration another branch had already reached — was thrown away the
 // moment that path was chosen. This is where it is kept instead, and two
-// views read it: the Computation Tree card (js/branch-tree-ui.js) draws it
-// whole, and the canvas (js/branch-tokens.js) puts a token on every branch
+// views read it: the Computation Tree card (js/simulation/branch-tree-ui.js) draws it
+// whole, and the canvas (js/canvas/branch-tokens.js) puts a token on every branch
 // alive at the playhead, the way a coloured Petri net marks its places.
 //
 // **Colour is identity, and it is inherited.** Each node owns a slice of the

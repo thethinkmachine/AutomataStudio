@@ -1,11 +1,11 @@
 // info, lint — what a machine is, and what is odd about it.
-import { App, getMachineConfig } from '../../js/state.js';
+import { App, getMachineConfig } from '../../js/core/state.js';
 import {
   isDeterministicTarget, isMinimalDfa, languageClassOf, minimalDfaOf, statsOf
 } from '../../js/library/analyze.js';
 import { withMachine } from '../../js/exercise/grade.js';
 import { machineDeterminism, machineGuards, parseMachineInput } from '../../js/machines/index.js';
-import { buildFormalDefLatex } from '../../js/render.js';
+import { buildFormalDefLatex } from '../../js/canvas/render.js';
 import { writeStandardTM } from '../../js/interop/standard-tm.js';
 import { writeMachineCode } from '../../js/interop/smtf.js';
 import { readMachine } from '../io.mjs';

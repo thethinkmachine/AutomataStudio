@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHarness } from './harness.js';
 
 // The varispeed: playback speed as a knob in the transport rather than a
-// dropdown after it. js/speed-control.js.
+// dropdown after it. js/simulation/speed-control.js.
 //
 // What is pinned here is the dial's arithmetic and its gestures. The value it
 // turns is App.config.autoSpeed — milliseconds per step, 0 for Max — which is

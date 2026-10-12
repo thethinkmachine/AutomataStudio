@@ -114,7 +114,7 @@ test('nothing under js/machines reads App.startId directly', () => {
     if (!f.endsWith('.js')) continue;
     if (/App\.startId/.test(readFileSync(join(dir, f), 'utf8'))) offenders.push(f);
   }
-  assert.deepEqual(offenders, [], 'use runStartId() from js/state.js');
+  assert.deepEqual(offenders, [], 'use runStartId() from js/core/state.js');
 });
 
 test('deciding is about the machine, however the run box is pointed', () => {
@@ -282,7 +282,7 @@ test('walking out of a block drops the subject it named', () => {
 
 test('none of it reaches a serializer', () => {
   // A saved machine whose start state is not its start state would be a file
-  // that lies. The same reasoning js/scope.js gives for the per-scope cameras.
+  // that lies. The same reasoning js/editor/scope.js gives for the per-scope cameras.
   hostWithBlock();
   context.setRunSubject('B');
   context.setBreakScope('B');

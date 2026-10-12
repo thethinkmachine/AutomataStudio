@@ -10,7 +10,7 @@ import { parseGrammarText } from '../js/grammar/parse.js';
 import { member } from '../js/grammar/parsing.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const UI_SRC = readFileSync(join(ROOT, 'js/grammar-ui.js'), 'utf8');
+const UI_SRC = readFileSync(join(ROOT, 'js/grammar/grammar-ui.js'), 'utf8');
 
 // The workbench: the tool registry, the block vocabulary, and the seam between
 // the two.
@@ -122,7 +122,7 @@ test('every block kind a tool emits has a renderer case', () => {
   });
   assert.ok(emitted.size > 8, 'the sweep should reach most of the vocabulary');
   emitted.forEach(kind => assert.ok(cases.has(kind),
-    `js/grammar-ui.js has no renderBlock case for "${kind}" — the block would silently draw nothing`));
+    `js/grammar/grammar-ui.js has no renderBlock case for "${kind}" — the block would silently draw nothing`));
 });
 
 // ── The seam ──────────────────────────────────────────────────────
@@ -135,11 +135,11 @@ test('the grammar view names one action, the shared mobile sheet toggle', () => 
   const actions = [...view.matchAll(/data-action="([^"]*)"/g)].map(m => m[1]);
   assert.deepEqual(actions, ['ui.toggleMobilePanel']);
   assert.ok(view.includes('data-panel="gram-nav"'));
-  const ui = readFileSync(join(ROOT, 'js/grammar-ui.js'), 'utf8');
+  const ui = readFileSync(join(ROOT, 'js/grammar/grammar-ui.js'), 'utf8');
   assert.ok(!ui.includes('defineActions'), 'the workbench wires its own listeners');
 });
 
-// The rail's id was renamed when the view was rebuilt, and js/ui.js names it
+// The rail's id was renamed when the view was rebuilt, and js/ui/ui.js names it
 // in three places the CSS cannot: the panel that starts collapsed on a phone,
 // the sheet the Grammar view's bar button belongs to, and the tap that closes
 // it once a tool is chosen. A name that no longer matches an element is silent
@@ -155,7 +155,7 @@ test('the mobile sheet the Grammar view opens is the rail the markup carries', (
   assert.ok(h.context.MOBILE_AUX_PANEL_IDS.includes(railId),
     'the rail has to be in the list initMobilePanels collapses, or it opens over the view on load');
 
-  const ui = readFileSync(join(ROOT, 'js/ui.js'), 'utf8');
+  const ui = readFileSync(join(ROOT, 'js/ui/ui.js'), 'utf8');
   assert.ok(ui.includes(`#${railId} .gram-nav-link`),
     'choosing a tool has to close the sheet covering the result it just drew');
 });

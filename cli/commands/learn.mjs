@@ -1,5 +1,5 @@
 // learn — a DFA from examples (RPNI) or from a teacher (L*).
-import { App } from '../../js/state.js';
+import { App } from '../../js/core/state.js';
 import { decideRaw } from '../../js/library/analyze.js';
 import { parseBatchLine } from '../../js/machines/batch.js';
 import { readMachine, readSpecText, emit, CliError } from '../io.mjs';

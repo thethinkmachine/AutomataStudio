@@ -157,7 +157,7 @@ export function makeRun(source, opts = {}) {
 // for as long as the run is on screen. Measured on the five-state busy beaver,
 // 250 bytes a step, 10.6 GiB to its halt. A deterministic tape machine's step
 // is a handful of small numbers the tape log already records as columns (see
-// js/tape-log.js), so the run keeps the columns and lets the objects go.
+// js/simulation/tape-log.js), so the run keeps the columns and lets the objects go.
 //
 // `steps` is still an array to everyone who reads it — `Array.isArray` holds,
 // `steps[i]`, `length`, `slice`, `for…of` all work — because it is a Proxy

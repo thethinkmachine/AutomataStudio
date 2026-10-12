@@ -33,7 +33,7 @@ import { LIBRARY_LICENSES } from '../../js/library/analyze.js';
 import { bbchallengeUrl } from '../../js/interop/standard-tm.js';
 import { FRONTIS_NOTE, MAST_LEDE, cardPicture, figureHtml, frontispieceWhat, plateHtml, rankBadges, standardSize } from '../../js/library/card-html.js';
 import { drawLanguage, drawRun, drawSketch, framesFromStandard, languageRows, sketchAspect, unpackSketch } from '../../js/library/sketch.js';
-import { TEX_DELIMITERS, hasTex } from '../../js/tex.js';
+import { TEX_DELIMITERS, hasTex } from '../../js/text/tex.js';
 import { readingMinutes, renderArticle } from '../../js/library/article.js';
 import { drawStandardFigure } from '../../js/library/article-figures.js';
 import { essayFacts, essayFigureSpec, essayLinkTarget } from '../../js/library/essay.js';
@@ -88,7 +88,7 @@ const GLASS = '<svg class="searchbar-icon" viewBox="0 0 24 24" aria-hidden="true
 const EMPTY_ART = '<svg class="empty-art" viewBox="0 0 120 64" aria-hidden="true"><circle cx="24" cy="32" r="14"/><circle cx="24" cy="32" r="9.5"/><circle cx="96" cy="32" r="14" class="d"/><path d="M40 32 H74" class="d"/><path d="M69 26 l7 6 -7 6" class="d"/></svg>';
 const KATEX = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist';
 // KaTeX typesets only what is marked `tex` — the formal definition and the
-// author's own words — with the app's delimiters (js/tex.js), so `$…$` reads
+// author's own words — with the app's delimiters (js/text/tex.js), so `$…$` reads
 // the same here as in the Library view. Anywhere else a `$` is a character: a
 // machine code, an example word, a tape symbol.
 const TYPESET = `document.querySelectorAll('.tex').forEach(function(el){renderMathInElement(el,{delimiters:${JSON.stringify(TEX_DELIMITERS)},throwOnError:false})})`;

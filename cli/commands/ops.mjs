@@ -7,7 +7,7 @@ import {
   complement, concat, determinize, epsilonFree, fromRegex, lettersOf, minimize, product, reverse, star, toRegex, union
 } from '../fa.mjs';
 import { compareMachines } from '../../js/exercise/grade.js';
-import { App } from '../../js/state.js';
+import { App } from '../../js/core/state.js';
 import { c, print, printJson, wordOf } from '../out.mjs';
 
 const OUT = {
