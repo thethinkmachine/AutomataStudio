@@ -208,10 +208,12 @@ function loadOntoCanvas() {
   const spec = App.lexer ? { ...App.lexer } : null;
   createTab('Lexer DFA');
   App.lexer = spec;
-  App.sigma = new Set(m.sigma);
-  loadBuiltMachine(m, 'DFA');
+  loadBuiltMachine(m, 'DFA', {
+    title: 'Lexer DFA',
+    blurb: 'The DFA the lexer generator built from the rules. Each symbol of Σ is a character class, and each accepting state is named after the token it produces.'
+  });
   autoLayout();
-  emit(Change.ALPHABET, Change.LEXER);
+  emit(Change.LEXER);
   showStatus(`Lexer DFA loaded: ${m.states.length} states. Accepting states are named after the token they produce.`);
 }
 
