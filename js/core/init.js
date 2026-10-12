@@ -19,6 +19,7 @@ import { initFraming } from '../ui/ui.js';
 import { initSpeedControl } from '../simulation/speed-control.js';
 import { initCanvasMotion } from '../canvas/canvas-motion.js';
 import { installActions } from './actions.js';
+import { installContextMenuPolicy } from '../ui/context-menu.js';
 import { startAnalytics } from './analytics.js';
 import { readFlag, readPref } from './prefs.js';
 
@@ -28,6 +29,9 @@ import { readFlag, readPref } from './prefs.js';
 // First, so every data-action control works from the first paint — the
 // listener is delegated, so markup rendered later needs nothing further.
 installActions();
+// The browser's right-click menu only where it has something to do; the
+// app's own menus are unaffected (js/ui/context-menu.js).
+installContextMenuPolicy();
 // The website reports its visits; dev, preview and the desktop app do not.
 startAnalytics();
 // KaTeX's auto-render, once, for any math already in the page — what the

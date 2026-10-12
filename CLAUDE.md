@@ -384,6 +384,8 @@ Adding a theme touches two places, documented at the top of [js/ui/themes.js](js
 
 ### Electron
 
+**Right-click is one rule, in [js/ui/context-menu.js](js/ui/context-menu.js).** A part of the app with its own menu (the canvas, a state, an edge, a note, a divider, a workspace tab, a section header) handles `contextmenu` and prevents the default; a document-level listener, which runs after all of them, lets the browser's menu through only on a text field, selected text or a link, and suppresses it everywhere else. Electron shows no menu of its own, so [electron/context-menu.cjs](electron/context-menu.cjs) builds the native one for the same three cases — cut, copy, paste and spelling in a field. A new custom menu needs nothing from this: prevent the default in its own listener. In the frameless window the header is a drag region, so **a wired element in it that is not a native control must be `no-drag`** — `css/layout.css` punches out every `[data-action]` and `.tab`, and tests/actions.test.js pins it.
+
 `window.electronAPI` (from [electron/preload.cjs](electron/preload.cjs)) exists only inside the shell; [js/core/electron-bridge.js](js/core/electron-bridge.js) sets `isElectron` and the `.is-electron` root class, and every `isElectron` branch falls through to browser behaviour on the website. The window is frameless — the page draws its own window controls. The packaged app serves `dist/` over a custom `app://` protocol rather than `loadFile()`, so `fetch`/CORS behave like http.
 
 ## Tests

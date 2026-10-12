@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 Shreyan Chaubey. See LICENSE.
 
-const { app, BrowserWindow, Menu, protocol, shell, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, Menu, protocol, shell, ipcMain, dialog, clipboard } = require('electron');
+const { attachContextMenu } = require('./context-menu.cjs');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
@@ -524,6 +525,11 @@ function createWindow() {
   });
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
+
+  // Cut, copy and paste in text fields, copy on a selection, and a link's two
+  // actions — the places the page lets the native menu through. Electron
+  // shows none of its own (electron/context-menu.cjs).
+  attachContextMenu(mainWindow.webContents, { Menu, shell, clipboard });
 
   // Frameless means no native minimize/maximize/close buttons either, so the
   // header's custom ones need to know which icon (maximize vs restore) to show.
