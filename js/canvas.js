@@ -1904,8 +1904,10 @@ function stageExportSVG(opts = {}) {
   if (guideLayer) guideLayer.innerHTML = '';
 
   if (opts.includeNotes === false) {
-    const g = clone.querySelector('#notes-g');
-    if (g) g.innerHTML = '';
+    for (const id of ['#notes-g', '#note-leaders-g']) {
+      const g = clone.querySelector(id);
+      if (g) g.innerHTML = '';
+    }
   }
   if (opts.includeDividers === false) {
     const g = clone.querySelector('#dividers-g');

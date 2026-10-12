@@ -344,6 +344,9 @@ function resetModuleState() {
   App.domCache.states.clear();
   App.domCache.transitions.clear();
   App.domCache.notes.clear();
+  // Which notes a drag frame visits is filed by the last renderNotes; a test
+  // that drags before rendering must not visit the previous test's notes.
+  notes.resetNoteIndex();
   App.domCache.dividers.clear();
   App.domCache.startArrow = null;
   // Eased drawing keeps a track per edge quantity between paints. The tracks are

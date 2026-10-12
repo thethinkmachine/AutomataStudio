@@ -935,6 +935,80 @@ export function labelRestPoint(geo) {
   return { x: p.x + geo.px * d, y: p.y + geo.py * d };
 }
 
+// How far clear of a label a leader's end sits, so its dot does not touch the
+// label's border, and the step footExit walks the curve in.
+const FOOT_CLEARANCE = 4;
+const FOOT_STEP = 1 / 48;
+
+/**
+ * Where a note's leader meets an edge: the point on the drawn edge its label
+ * was placed against. On the line, never on the label, because the label can
+ * sit on the far side of the edge from the note and a leader to it would cross
+ * the edge it means. A self-loop's is the loop's outer point.
+ *
+ * `lt` is the slide placeLabel chose; an edge whose label was never placed
+ * (smart labels off, past the collision budget) keeps the midpoint it was
+ * given. Pass the *displayed* geometry, so the end rides an easing curve.
+ *
+ * A label can straddle its own edge — a wide pill on a steep one is offset by
+ * half its height, not its width — and then that point is under the label, and
+ * a dot there is drawn on its text. Given the label's drawn `box` (top-left
+ * x, y, w, h) and the note's centre `toward`, the end walks along the curve to
+ * the nearest point clear of the box on either side, preferring the side whose
+ * leader does not cut back across the label.
+ */
+export function labelFootPoint(geo, toward = null, box = null) {
+  if (geo.isSelf) return { x: geo.mx, y: geo.my };
+  const t = geo.lt ?? LABEL_SLIDES[0].t;
+  const foot = pathPoint(geo, t);
+  if (!toward || !box || !box.w || !box.h) return foot;
+  const m = FOOT_CLEARANCE;
+  const clear = { x: box.x - m, y: box.y - m, w: box.w + 2 * m, h: box.h + 2 * m };
+  if (!pointInRect(foot.x, foot.y, clear)) return foot;
+  const exits = [footExit(geo, t, -1, clear), footExit(geo, t, 1, clear)].filter(Boolean);
+  if (!exits.length) return foot;
+  const crosses = p => segmentHitsRect(toward.x, toward.y, p.x, p.y, box);
+  const dist = p => Math.hypot(p.x - toward.x, p.y - toward.y);
+  exits.sort((a, b) => (crosses(a) - crosses(b)) || (dist(a) - dist(b)));
+  return exits[0];
+}
+
+// The first point along the edge from `t` in direction `dir` that is outside
+// `rect`: stepped to find it, then bisected so the end sits at the border
+// rather than up to a step past it. Null when the edge ends first.
+function footExit(geo, t, dir, rect) {
+  let inside = t, outside = null;
+  for (let s = t + dir * FOOT_STEP; s >= 0 && s <= 1; s += dir * FOOT_STEP) {
+    const p = pathPoint(geo, s);
+    if (!pointInRect(p.x, p.y, rect)) { outside = s; break; }
+    inside = s;
+  }
+  if (outside === null) return null;
+  for (let i = 0; i < 8; i++) {
+    const mid = (inside + outside) / 2;
+    const p = pathPoint(geo, mid);
+    if (pointInRect(p.x, p.y, rect)) inside = mid; else outside = mid;
+  }
+  return pathPoint(geo, outside);
+}
+
+// Whether the segment from (x1, y1) to (x2, y2) passes through `r` (Liang–Barsky).
+function segmentHitsRect(x1, y1, x2, y2, r) {
+  const dx = x2 - x1, dy = y2 - y1;
+  let lo = 0, hi = 1;
+  for (const [p, q] of [[-dx, x1 - r.x], [dx, r.x + r.w - x1], [-dy, y1 - r.y], [dy, r.y + r.h - y1]]) {
+    if (p === 0) {
+      if (q < 0) return false;
+      continue;
+    }
+    const k = q / p;
+    if (p < 0) lo = Math.max(lo, k);
+    else hi = Math.min(hi, k);
+    if (lo > hi) return false;
+  }
+  return true;
+}
+
 function placeLabel(geo, ctx) {
   const { w, h } = geo.labelSize;
   const gap = labelGap();
@@ -963,6 +1037,7 @@ function placeLabel(geo, ctx) {
           candidates.push({
             x: p.x + nx * d * side,
             y: p.y + ny * d * side,
+            t: slide.t,
             cost: k * 3 + slide.cost + (side === outward ? 0 : 1.5)
           });
         }
@@ -976,7 +1051,7 @@ function placeLabel(geo, ctx) {
     const collision = labelPenalty(rectAt(c.x, c.y, w, h), ctx, geo.keyId);
     if (collision === 0) return c;
     const total = collision + c.cost;
-    if (!best || total < best.total) best = { x: c.x, y: c.y, total };
+    if (!best || total < best.total) best = { x: c.x, y: c.y, t: c.t, total };
   }
   return best;
 }
@@ -1215,7 +1290,8 @@ function computeGroupGeo(g, ctx) {
       mx: edge.mx, my: edge.my, px: edge.px, py: edge.py,
       d: edge.d
     };
-    const mid = pathPoint(geo, 0.5);
+    geo.lt = LABEL_SLIDES[0].t;
+    const mid = pathPoint(geo, geo.lt);
     geo.lx = mid.x;
     geo.ly = mid.y;
     out.set(key, geo);
@@ -1440,6 +1516,8 @@ function placeGroupLabel(g, ctx) {
   if (!spot) return;
   geo.lx = spot.x;
   geo.ly = spot.y;
+  // Where along the edge it was placed — a self-loop's candidates have none.
+  if (spot.t !== undefined) geo.lt = spot.t;
   // The box carries its own key, so the incremental pass can ask the label grid
   // which edges' labels sit near a state that moved.
   const box = rectAt(spot.x, spot.y, geo.labelSize.w, geo.labelSize.h);

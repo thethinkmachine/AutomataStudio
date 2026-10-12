@@ -876,6 +876,13 @@
   opacity: .6;
 }
 
+/* Where a leader meets an edge: a dashed line ending on a solid one is easy
+   to lose, so the end is marked. */
+.note-leader-end {
+  fill: var(--text3);
+  pointer-events: none;
+}
+
 .note-body {
   fill: var(--surface2);
   stroke: var(--border2);
